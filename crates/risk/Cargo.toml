@@ -1,0 +1,16 @@
+[package]
+name = "risk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+trading_core = { path = "../core" }
+thiserror.workspace = true
+serde.workspace = true
+tracing.workspace = true
+rust_decimal.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rust_decimal_macros.workspace = true

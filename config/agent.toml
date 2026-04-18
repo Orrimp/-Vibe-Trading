@@ -1,0 +1,50 @@
+mode = "research"   # research | paper ; "live" rejected in v0
+
+[data.sources.binance]
+ws_url   = "wss://stream.binance.com:9443/ws"
+rest_url = "https://api.binance.com"
+
+[data.historical]
+parquet_root = "./data/binance/BTCUSDT"
+
+[data]
+clock_skew_warn_ms = 2000
+clock_skew_halt_ms = 10000
+
+[strategies.sma_crossover]
+enabled  = true
+fast_len = 20
+slow_len = 50
+
+[risk]
+per_symbol_exposure_cap = 0.40
+daily_loss_stop_pct     = -5.0
+max_drawdown_stop_pct   = -15.0
+
+[risk.sizing]
+fixed_fraction = 0.10
+
+[backtest]
+slippage_bps         = 2
+taker_fee_bps        = 4
+maker_fee_bps        = 2
+initial_capital_usdt = 100000
+
+[audit]
+ledger_db_path                = "./data/audit/ledger.db"
+reconciliation_tolerance_usdt = 0.01
+
+[kill_switch]
+halt_file             = "./.halt"
+heartbeat_timeout_ms  = 5000
+
+[observability]
+prometheus_listen = "0.0.0.0:9100"
+
+[cost]
+budget_usd_month = 20
+
+[bus]
+bars_capacity  = 1024
+ticks_capacity = 8192
+fills_capacity = 1024

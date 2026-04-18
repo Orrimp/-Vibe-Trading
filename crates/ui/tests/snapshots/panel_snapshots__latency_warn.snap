@@ -1,0 +1,11 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: latency_summary(&c)
+---
+panel: latency
+title: Feed latency
+badge: Warn
+label: Slow
+color: warn
+value: 500 ms
+help: Venue timestamp vs local clock on the last tick.

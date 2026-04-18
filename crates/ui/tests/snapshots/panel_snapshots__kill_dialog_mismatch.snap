@@ -1,0 +1,16 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: kill_summary(&c)
+---
+panel: kill
+title: Stop trading
+state: confirming
+dialog_title: Confirm stop trading
+dialog_body: This cancels every open order, sells each open position at market, and puts the agent into a halted state. Type the phrase below to confirm.
+phrase_label: Type HALT BTC to confirm
+typed: "HALT"
+matched: false
+confirm_enabled: false
+hint: Phrase doesn't match. Type HALT BTC exactly (case-sensitive).
+confirm_label: Confirm stop
+cancel_label: Cancel

@@ -1,0 +1,41 @@
+[package]
+name = "backtest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "backtest"
+path = "src/main.rs"
+
+[dependencies]
+trading_core = { path = "../core" }
+data = { path = "../data" }
+features = { path = "../features" }
+strategy = { path = "../strategy" }
+risk = { path = "../risk" }
+audit = { path = "../audit" }
+exec = { path = "../exec" }
+cost = { path = "../cost" }
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros = { workspace = true }
+async-trait.workspace = true
+tokio.workspace = true
+tokio-stream = { workspace = true, features = ["full"] }
+rand.workspace = true
+rand_chacha.workspace = true
+anyhow.workspace = true
+time.workspace = true
+sha2.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+cost = { path = "../cost" }
+sha2.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

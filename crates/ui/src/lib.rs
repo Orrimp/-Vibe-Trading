@@ -1,0 +1,43 @@
+//! UI crate — iced desktop app: ops cockpit and backtest viewer.
+//!
+//! **v0 scope:** `cockpit` binary only. `viewer` is deferred to v0.5.
+//!
+//! Dependencies are deliberately narrow: `core` (types) and `audit`
+//! (read-only ledger queries via `audit::query`). **Never** `strategy`,
+//! `exec`, `models`, or `llm`. This is enforced by the architect — see
+//! [`architecture.md`][0] — so the cockpit is swappable without touching
+//! trading logic.
+//!
+//! [0]: ../../spec/architecture.md
+//!
+//! ### Design-system contract
+//!
+//! - All user-visible copy lives in [`strings`] (no inline literals).
+//! - All colors / spacing / font sizes flow from [`theme`] (no inline hex).
+//! - Every panel has explicit loading / empty / error / ready states via
+//!   [`state::PanelState`] — no blank screens.
+//! - Destructive actions (kill switch) go through a typed-phrase confirm
+//!   dialog. See [`widgets::kill`].
+
+// Lint policy: deny unwraps at the crate boundary.
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![warn(clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
+
+pub mod state;
+pub mod strings;
+pub mod theme;
+pub mod widgets;
+
+// Fixtures module is always compiled so unit + integration snapshot tests
+// can access deterministic generators without `--features fixtures`. The
+// binary still only pulls fixtures into the default state under
+// `#[cfg(feature = "fixtures")]` — see `bin/cockpit.rs`.
+pub mod fixtures;
+
+pub use state::{update, AgentMode, Cockpit, KillState, Latency, Message, PanelState};
+
+/// Crate-wide convenience: the iced `Element` type specialized to our
+/// [`Message`]. Avoids repeating `iced::Element<'_, Message>` at every
+/// widget boundary.
+pub type Element<'a> = iced::Element<'a, Message>;

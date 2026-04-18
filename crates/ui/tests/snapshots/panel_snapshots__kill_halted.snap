@@ -1,0 +1,10 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: kill_summary(&c)
+---
+panel: kill
+title: Stop trading
+state: halted
+banner: AGENT HALTED
+hint: Remove .halt and re-arm from the operator runbook before resuming.
+reason: halt_file

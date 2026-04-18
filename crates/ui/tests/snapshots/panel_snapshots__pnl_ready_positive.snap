@@ -1,0 +1,12 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: pnl_summary(&c)
+---
+panel: pnl
+title: P&L
+state: ready
+equity: 90,129.50 USDT
+daily_return: +129.50 USDT color=pos
+cash: 90,000.00 USDT
+unrealized: +250.00 USDT color=pos
+realized: -120.50 USDT color=neg

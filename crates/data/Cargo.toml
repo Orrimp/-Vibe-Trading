@@ -1,0 +1,28 @@
+[package]
+name = "data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+trading_core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+time.workspace = true
+rust_decimal.workspace = true
+reqwest.workspace = true
+tokio-tungstenite.workspace = true
+polars.workspace = true
+async-stream.workspace = true
+metrics.workspace = true
+rust_decimal_macros.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true

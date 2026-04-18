@@ -1,0 +1,8 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: positions_summary(&c)
+---
+panel: positions
+title: Open positions
+state: error
+copy: Ledger error while reading positions: database locked

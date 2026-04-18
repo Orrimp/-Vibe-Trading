@@ -1,0 +1,44 @@
+[package]
+name = "agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "trading"
+path = "src/main.rs"
+
+[lib]
+name = "agent"
+path = "src/lib.rs"
+
+[dependencies]
+trading_core = { path = "../core" }
+data = { path = "../data" }
+features = { path = "../features" }
+risk = { path = "../risk" }
+strategy = { path = "../strategy" }
+exec = { path = "../exec" }
+audit = { path = "../audit" }
+cost = { path = "../cost" }
+backtest = { path = "../backtest" }
+thiserror.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+notify.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+time.workspace = true
+config.workspace = true
+toml.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

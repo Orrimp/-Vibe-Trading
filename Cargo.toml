@@ -1,0 +1,103 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/data",
+    "crates/features",
+    "crates/models",
+    "crates/llm",
+    "crates/cost",
+    "crates/risk",
+    "crates/strategy",
+    "crates/exec",
+    "crates/backtest",
+    "crates/audit",
+    "crates/ui",
+    "crates/agent",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Trading Agent"]
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+# These are enforced at crate level in core, risk, audit, exec, backtest
+# but listed here as documentation of the policy.
+pedantic = "warn"
+all = "warn"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.44", features = ["full"] }
+tokio-stream = { version = "0.1" }
+futures = { version = "0.3" }
+async-trait = { version = "0.1" }
+
+# Observability
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = { version = "0.24" }
+metrics-exporter-prometheus = { version = "0.16" }
+
+# Error handling
+thiserror = { version = "2.0" }
+anyhow = { version = "1.0" }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+toml = { version = "0.8" }
+config = { version = "0.14" }
+
+# Numerics
+rust_decimal = { version = "1.36", features = ["serde-with-str"] }
+rust_decimal_macros = { version = "1.36" }
+
+# String interning
+smol_str = { version = "0.3", features = ["serde"] }
+
+# Time
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+
+# Data
+polars = { version = "0.46", features = ["parquet", "lazy"] }
+
+# Random
+rand = { version = "0.9" }
+rand_chacha = { version = "0.9" }
+
+# Testing
+proptest = { version = "1.6" }
+trybuild = { version = "1.0" }
+insta = { version = "1.42" }
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = { version = "3.14" }
+
+# File watching
+notify = { version = "8.0" }
+
+# Networking
+reqwest = { version = "0.12", features = ["json"] }
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+
+# UUID
+uuid = { version = "1.16", features = ["v4", "serde"] }
+
+# Stream generators
+async-stream = { version = "0.3" }
+
+# CLI argument parsing
+clap = { version = "4.5.37", features = ["derive"] }
+
+# Technical analysis
+# kand 0.2.2 has a compile bug (Signal: Into<i64> not satisfied) — excluded.
+# See spec/features/v0-paper-sma.md ## Deviations for details.
+quantedge-ta = { version = "0.17.0" }
+
+# Hash (for determinism checks)
+sha2 = { version = "0.10.8" }

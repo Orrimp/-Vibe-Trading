@@ -1,0 +1,13 @@
+[package]
+name = "exec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+trading_core = { path = "../core" }
+thiserror.workspace = true
+serde.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+tokio.workspace = true

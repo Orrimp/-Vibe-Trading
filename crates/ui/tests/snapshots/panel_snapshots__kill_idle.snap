@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: kill_summary(&c)
+---
+panel: kill
+title: Stop trading
+state: idle
+button: Stop trading
+help: Cancels open orders, flattens every position, and halts the agent. Requires a typed confirmation.

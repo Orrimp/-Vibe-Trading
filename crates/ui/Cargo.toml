@@ -1,0 +1,38 @@
+[package]
+name = "ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cockpit"
+path = "src/bin/cockpit.rs"
+
+[dependencies]
+trading_core = { path = "../core" }
+rust_decimal_macros.workspace = true
+# NOTE: The `audit` dep is intentionally not wired in Week 1. The cockpit
+# runs against `ui::fixtures` for T13–T20 and the real `audit::query` surface
+# (T07) has not landed yet. T32 (Week 2) adds `audit = { path = "../audit" }`
+# and swaps the Subscription from fixtures to live ledger reads.
+thiserror.workspace = true
+serde.workspace = true
+tracing.workspace = true
+rust_decimal.workspace = true
+time.workspace = true
+smol_str.workspace = true
+
+# iced — GUI framework. Pinned explicitly per ui-designer constraint.
+# Do NOT use a range. Update in lockstep across ui/cockpit/viewer.
+iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool"] }
+
+[dev-dependencies]
+insta = { version = "=1.47.2", features = ["yaml"] }
+
+[features]
+# `fixtures` — enables ui::fixtures with deterministic in-memory generators.
+# Used by `cargo run --bin cockpit --features fixtures` to smoke-test the
+# cockpit without a running agent. `fixtures` is also auto-enabled under
+# `#[cfg(test)]` via a gate in `lib.rs` so snapshot tests see the module
+# without needing `--features fixtures` on every invocation.
+fixtures = []

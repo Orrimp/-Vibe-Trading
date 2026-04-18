@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: positions_summary(&c)
+---
+panel: positions
+title: Open positions
+state: ready
+rows:
+  BTCUSDT qty=0.25 cost=10000.00 mark=40050.00 pnl=-500 pnl_color=neg pct=-2.5 exp=11.10

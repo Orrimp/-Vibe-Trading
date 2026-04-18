@@ -1,0 +1,8 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: positions_summary(&c)
+---
+panel: positions
+title: Open positions
+state: loading
+copy: Loading positions from the ledger…

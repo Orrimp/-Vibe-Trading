@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: tape_summary(&c)
+---
+panel: tape
+title: Live tape
+state: loading
+paused: false
+copy: Connecting to the fill stream…

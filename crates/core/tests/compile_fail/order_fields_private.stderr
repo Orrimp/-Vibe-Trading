@@ -1,0 +1,28 @@
+warning: unreachable expression
+  --> tests/compile_fail/order_fields_private.rs:11:24
+   |
+11 |     let order: Order = Order { qty: q, ..todo!() };
+   |                        ^^^^^^^^^^^^^^^^^^-------^^
+   |                        |                 |
+   |                        |                 any code following this expression is unreachable
+   |                        unreachable expression
+   |
+   = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `order`
+  --> tests/compile_fail/order_fields_private.rs:11:9
+   |
+11 |     let order: Order = Order { qty: q, ..todo!() };
+   |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+error[E0451]: fields `id`, `strategy_id`, `symbol`, `side`, `qty`, `kind`, `tif` and `created_at` of struct `Order` are private
+  --> tests/compile_fail/order_fields_private.rs:11:32
+   |
+11 |     let order: Order = Order { qty: q, ..todo!() };
+   |                                ^^^^^^    ^^^^^^^ fields `id`, `strategy_id`, `symbol`, `side`, `kind`, `tif` and `created_at` are private
+   |                                |
+   |                                private field
+   |
+   = note: this error originates in the macro `todo` (in Nightly builds, run with -Z macro-backtrace for more info)
