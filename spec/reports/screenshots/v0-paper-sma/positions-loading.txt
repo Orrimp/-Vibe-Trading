@@ -1,4 +1,0 @@
-panel: positions
-title: Open positions
-state: loading
-copy: Loading positions from the ledger…

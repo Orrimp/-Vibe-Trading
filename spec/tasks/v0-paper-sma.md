@@ -363,6 +363,9 @@ what the tester will verify.
   headless sandbox — capture instructions documented in the checklist.
   Runbook link verified: `strings::KILL_RUNBOOK_LINK_PATH` =
   `spec/runbooks/kill-switch.md`._
+  _update 2026-04-19 (operator): 32 per-state artifacts compacted into
+  `spec/reports/screenshots/v0-paper-sma/README.md` — single reference
+  doc for future AI validation / SDD._
 
 ## Parallelism map
 

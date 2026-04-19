@@ -1420,10 +1420,10 @@ contains:
 - Runbook link verification step.
 - Deferred PNG capture list with instructions.
 
-16 logical-state artifacts committed under
-[`spec/reports/screenshots/v0-paper-sma/`](../reports/screenshots/v0-paper-sma/):
-`tape|positions|pnl|kill` × `loading|empty|error|ready`, each describing
-the rendered copy, color tokens, and behavior.
+Panel state reference (compacted 2026-04-19) at
+[`spec/reports/screenshots/v0-paper-sma/README.md`](../reports/screenshots/v0-paper-sma/README.md):
+single document covering `tape|positions|pnl|kill` × `loading|empty|error|ready`,
+each with rendered copy, `strings::*` keys, and `theme::*` color tokens.
 
 ### Deferred manual steps
 
@@ -1584,6 +1584,10 @@ cases: `quantity_negative_direct.rs` (private tuple field) and
   `spec/reports/ui-week2-smoke-checklist-2026-04-18.md`. Four new
   strings (`KILL_RUNBOOK_LINK_PATH`, `CONNECTION_*`), zero new theme
   tokens. Total ui-crate tests: 53 (with `live`) / 43 (default).
+- 2026-04-19 (operator): compacted the 32 panel-state artifacts
+  (16 `.txt` + 16 `.png`) into a single reference at
+  `spec/reports/screenshots/v0-paper-sma/README.md`. Optimized for future
+  AI validation / spec-driven development. Individual files removed.
 
 ## Implementation — backend (Week 2)
 

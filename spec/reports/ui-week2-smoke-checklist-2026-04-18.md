@@ -8,9 +8,10 @@ scope: T_FINAL_B — cockpit smoke + kill-switch drill
 # Cockpit Smoke + Kill-Switch Drill (T_FINAL_B)
 
 This is the operator-run checklist for Week 2's cockpit acceptance.
-It pairs the logical-state artifacts committed next to it
-(`screenshots/v0-paper-sma/<panel>-<state>.txt`, 16 total) with the
-two runtime smokes (fixtures-driven and live against a running agent).
+It pairs the **panel state reference** in
+[`screenshots/v0-paper-sma/README.md`](screenshots/v0-paper-sma/README.md)
+(compacted from 16 per-state artifacts) with the two runtime smokes
+(fixtures-driven and live against a running agent).
 
 The sandbox that generated this report is **headless** — real PNG
 screenshots are marked `_deferred_manual_` and must be captured on the
@@ -35,29 +36,21 @@ Each of these must pass before the operator runs the manual steps below.
 
 ---
 
-## Logical-state artifacts (committed)
+## Panel state reference (committed)
 
-Each panel's four states are captured as plain-text artifacts under
-`spec/reports/screenshots/v0-paper-sma/`. These are deterministic and
-survive headless CI. They describe exactly what copy is shown, which
-`theme` tokens drive the colors, and which `strings::*` key backs each
-label.
+All 16 panel-state descriptions (`tape|positions|pnl|kill` × `loading|empty|error|ready`) now live in a single compacted document:
+[`spec/reports/screenshots/v0-paper-sma/README.md`](screenshots/v0-paper-sma/README.md).
 
-```
-screenshots/v0-paper-sma/
-├── tape-{loading,empty,error,ready}.txt
-├── positions-{loading,empty,error,ready}.txt
-├── pnl-{loading,empty,error,ready}.txt
-└── kill-{loading,empty,error,ready}.txt         ← "loading/empty" are
-                                                   the idle-button view;
-                                                   "error" is the halted
-                                                   sticky banner; "ready"
-                                                   is the confirm dialog
-                                                   with matched phrase.
-```
+That README captures, for each state, the exact copy shown, the `strings::*`
+key backing each label, and the `theme::*` tokens driving each color.
 
-These are snapshots of what `tests/panel_snapshots.rs` already asserts
-on every test run — they double as human-readable documentation.
+The kill panel's states collapse: "loading" and "empty" are both the idle
+button view, "error" is the halted sticky banner, "ready" is the confirm
+dialog with the safety phrase matched.
+
+These mappings are also asserted on every test run by
+`crates/ui/tests/panel_snapshots.rs` — the README doubles as human-readable
+documentation of what those snapshots cover.
 
 ---
 
@@ -165,8 +158,9 @@ on every test run — they double as human-readable documentation.
 ## Acceptance checklist for T_FINAL_B
 
 - [x] Smoke checklist committed (this file).
-- [x] 16 logical-state artifacts committed under
-  `spec/reports/screenshots/v0-paper-sma/`.
+- [x] Panel state reference committed at
+  `spec/reports/screenshots/v0-paper-sma/README.md` (compacted from the
+  original 16 per-state artifacts on 2026-04-19).
 - [x] Kill-switch drill section documents both triggers (`.halt` file
   file-watcher + cockpit button typed-phrase confirm).
 - [x] Runbook link verified: `ui::strings::KILL_RUNBOOK_LINK_PATH`

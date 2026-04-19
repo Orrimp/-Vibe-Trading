@@ -1,4 +1,0 @@
-panel: pnl
-title: P&L
-state: empty
-copy: No equity recorded yet. First reconciliation pending.

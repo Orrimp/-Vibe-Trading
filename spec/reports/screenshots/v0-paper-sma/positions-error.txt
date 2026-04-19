@@ -1,9 +1,0 @@
-panel: positions
-title: Open positions
-state: error
-copy: Ledger error while reading positions: Trading agent disconnected. Check the agent log and restart it.
-
-notes:
-  - Prefix from `strings::POS_ERROR_PREFIX`; detail from
-    `strings::CONNECTION_CHANNEL_CLOSED` (live path) or an upstream ledger
-    error (future T07 wiring).

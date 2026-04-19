@@ -1,4 +1,0 @@
-panel: pnl
-title: P&L
-state: loading
-copy: Reading equity from the ledger…
