@@ -139,21 +139,15 @@ mod tests {
         ema.push(dec!(10));
         ema.push(dec!(20));
         ema.push(dec!(30)); // seed = 20
-        // α = 2/(3+1) = 0.5
-        // EMA_4 = 0.5 * 40 + 0.5 * 20 = 30
+                            // α = 2/(3+1) = 0.5
+                            // EMA_4 = 0.5 * 40 + 0.5 * 20 = 30
         let v4 = ema.push(dec!(40));
         assert_eq!(v4, Some(dec!(30)));
     }
 
     #[test]
     fn t502_ema_batch_matches_stream() {
-        let prices = vec![
-            dec!(10),
-            dec!(20),
-            dec!(30),
-            dec!(40),
-            dec!(50),
-        ];
+        let prices = vec![dec!(10), dec!(20), dec!(30), dec!(40), dec!(50)];
         let stream = {
             let mut s = EmaStream::new(3);
             let mut last = None;

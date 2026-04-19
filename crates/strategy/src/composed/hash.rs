@@ -94,7 +94,12 @@ fn hash_rule(h: &mut Sha256, rule: &RuleAst) {
             hash_expr(h, b);
             h.update(b")");
         }
-        RuleAst::MacdCross { fast, slow, signal, direction } => {
+        RuleAst::MacdCross {
+            fast,
+            slow,
+            signal,
+            direction,
+        } => {
             h.update(b"MACD_CROSS(");
             h.update(fast.to_string().as_bytes());
             h.update(b",");

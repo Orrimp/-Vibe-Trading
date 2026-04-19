@@ -1362,23 +1362,59 @@ corresponding UI subscribers.
     becomes `Error("unexpected token at line 3")` while the overall
     panel stays `Ready` (R8 — old strategy keeps running).
 
-### T_FINAL_B — deferred (T_FINAL_A not yet visible)
+### T_FINAL_B — closed (2026-04-19, ui-designer resume)
 
-T_FINAL_B is gated on the four v0.5 backtest reports from developer
-T_FINAL_A:
+Developer T_FINAL_A landed the four v0.5 backtest reports under
+`spec/reports/`:
 
-- `backtest-*-btc-2023-1m-sma-baseline-refresh.md`
-- `backtest-*-btc-2023-1m-macd-trend.md`
-- `backtest-*-btc-2023-1m-rsi-reversion.md`
-- `backtest-*-btc-2023-1m-bbands-mean-revert.md`
+- [backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md](../reports/backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md)
+- [backtest-20260419-125508-btc-2023-1m-macd-trend.md](../reports/backtest-20260419-125508-btc-2023-1m-macd-trend.md)
+- [backtest-20260419-125458-btc-2023-1m-rsi-reversion.md](../reports/backtest-20260419-125458-btc-2023-1m-rsi-reversion.md)
+- [backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md](../reports/backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md)
 
-None present under `spec/reports/` at this resume (2026-04-19). The
-smoke checklist extension (walkthrough of the four strategies-panel
-states + the kill-switch drill re-verify + the screenshots-README §4.5
-row pointer) is prepared but not landed — waiting on a live replay run
-that exercises the hot-swap path so the manual observer has real event
-traffic to validate the 2s subscription budget against. Re-spawn
-ui-designer once the four reports arrive.
+With those in place the smoke-checklist extension is now authored and
+committed at
+[ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md)
+— new `## v0.5 — strategies panel smoke + hot-swap drill` section
+covering:
+
+- Four-state fixtures walkthrough (loading / empty / error / ready) that
+  points the operator at section 4.5 of
+  [screenshots/v0-paper-sma/README.md](../reports/screenshots/v0-paper-sma/README.md#45-strategies--loaded-strategies--swap-log)
+  as the visual contract (T528 output).
+- **R7 hot-swap observation drill** — operator boots agent + cockpit
+  against `--features live`, edits `config/strategies/btc_macd_trend.toml`
+  (e.g. flip the MACD fast length from 12 to 8), and confirms the
+  strategies panel's short hash + `Last event` flip within 2 seconds
+  with a matching `StrategySwapped` event in the recent-events footer.
+- **R8 invalid-config drill** — operator introduces a malformed edit
+  (e.g. delete the required `signal` key in
+  `btc_rsi_reversion.toml`) and confirms the row flips to per-row
+  `Error` with the `error_summary` badge, a `StrategyLoadError` event
+  lands in the footer, **and** the other two strategies
+  (`btc_macd_trend`, `btc_bbands_mean_revert`) keep running unchanged.
+  Reconciler invariant `ledger_imbalance_total == 0` holds across the
+  drill.
+- Five deferred-manual PNG entries
+  (`screenshot-strategies-{loading,empty,error,ready,hot-swap-after}.png`)
+  to be captured on an operator display — the sandbox is headless.
+- Dedicated `## Acceptance checklist for T_FINAL_B (v0.5)` block with
+  six checkboxes the operator ticks.
+
+T_FINAL_B closed on zero new `.rs` changes — this was a documentation
+task, consistent with the v0 T_FINAL_B pattern. Quality gates re-run on
+this final pass:
+
+| Gate | Result |
+|---|---|
+| `cargo fmt -p ui -- --check` | clean |
+| `cargo clippy -p ui --all-targets --all-features -- -D warnings` | clean |
+| `cargo test -p ui` (default) | 57 passing (unchanged) |
+| `cargo test -p ui --features live` | 70 passing (unchanged) |
+| Consistency audits (`no_inline_*`) | green |
+| T_FINAL_B ticked in `tasks/v05-composed-strategies.md` | yes |
+
+The v0.5 `ui` slice is shipped.
 
 ### Consistency self-audit (after T526)
 
@@ -1423,3 +1459,16 @@ feature-gated live tests: 32 lib + 2 consistency + 6 live_subscription
   inline hex. T_FINAL_B still deferred — the four v0.5 backtest reports
   from developer T_FINAL_A are not yet in `spec/reports/`, so the smoke
   checklist cannot be finalised against a live event stream.
+- 2026-04-19 (ui-designer, T_FINAL_B resume): developer T_FINAL_A landed
+  the four v0.5 backtest reports; T_FINAL_B closed. Smoke checklist
+  [ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md)
+  gained a `## v0.5 — strategies panel smoke + hot-swap drill` section
+  (four-state fixtures walkthrough pointing at
+  [`screenshots/v0-paper-sma/README.md` §4.5](../reports/screenshots/v0-paper-sma/README.md#45-strategies--loaded-strategies--swap-log),
+  R7 hot-swap live drill, R8 invalid-config drill, five deferred PNG
+  entries, acceptance checklist). Tasks file ticks T_FINAL_B `[x]`;
+  frontmatter status already `shipped` from developer T_FINAL_A. No
+  `.rs` changes; documentation-only close-out. Gates: `fmt -p ui` clean,
+  `clippy -p ui --all-targets --all-features -D warnings` clean,
+  `test -p ui` 57/57, `test -p ui --features live` 70/70, consistency
+  audits green.

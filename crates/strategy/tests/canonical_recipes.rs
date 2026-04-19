@@ -10,8 +10,7 @@ use strategy::composed::{ComposedStrategyConfig, Stage};
 
 fn recipes_dir() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/strategy — go up two levels to workspace root.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../config/strategies")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../config/strategies")
 }
 
 fn load(name: &str) -> ComposedStrategyConfig {
@@ -45,7 +44,10 @@ fn t515_btc_bbands_mean_revert_loads() {
 fn t515_hashes_are_deterministic() {
     let cfg1 = load("btc_macd_trend");
     let cfg2 = load("btc_macd_trend");
-    assert_eq!(cfg1.hash, cfg2.hash, "content hash must be deterministic across two loads");
+    assert_eq!(
+        cfg1.hash, cfg2.hash,
+        "content hash must be deterministic across two loads"
+    );
 }
 
 #[test]

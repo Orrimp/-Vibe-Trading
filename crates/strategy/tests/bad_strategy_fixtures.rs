@@ -7,8 +7,7 @@ use std::path::PathBuf;
 use strategy::composed::{ComposedStrategyConfig, StrategyLoadError};
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/bad_strategies")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bad_strategies")
 }
 
 fn load(stem: &str) -> Result<ComposedStrategyConfig, StrategyLoadError> {
@@ -122,9 +121,15 @@ fn t504_all_error_codes_distinct() {
             }
             Ok(_) => panic!("fixture '{stem}' should have failed"),
         };
-        assert!(!observed_codes.contains(&actual_code),
-            "duplicate error code '{actual_code}' from fixture '{stem}'");
+        assert!(
+            !observed_codes.contains(&actual_code),
+            "duplicate error code '{actual_code}' from fixture '{stem}'"
+        );
         observed_codes.push(actual_code);
     }
-    assert_eq!(observed_codes.len(), 10, "expected exactly 10 distinct error codes");
+    assert_eq!(
+        observed_codes.len(),
+        10,
+        "expected exactly 10 distinct error codes"
+    );
 }

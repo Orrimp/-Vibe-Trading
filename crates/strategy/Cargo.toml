@@ -24,3 +24,10 @@ rust_decimal_macros.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+proptest.workspace = true
+criterion.workspace = true
+time.workspace = true
+
+[[bench]]
+name = "composed_strategies"
+harness = false

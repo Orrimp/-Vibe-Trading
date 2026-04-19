@@ -1,12 +1,8 @@
 //! Integration tests for strategy_events table (T508, T509, T510).
 
-use audit::{
-    bootstrap, journal,
-    ledger::Ledger,
-    query,
-};
-use trading_core::{StrategyEventKind, StrategyId, Timestamp};
+use audit::{bootstrap, journal, ledger::Ledger, query};
 use time::OffsetDateTime;
+use trading_core::{StrategyEventKind, StrategyId, Timestamp};
 
 async fn open_test_ledger() -> Ledger {
     let ledger = Ledger::in_memory().await.expect("open in-memory ledger");
@@ -175,7 +171,11 @@ async fn t510_strategy_events_do_not_affect_balance() {
                 new_hash: None,
                 source_path: "config/strategies/test.toml",
                 operator: "system",
-                error_code: if *kind == "Reject" { Some("empty_signal") } else { None },
+                error_code: if *kind == "Reject" {
+                    Some("empty_signal")
+                } else {
+                    None
+                },
                 error_summary: None,
             },
         )
@@ -224,5 +224,8 @@ async fn t509_strategy_events_since() {
         .expect("strategy_events_since");
 
     assert!(!events.is_empty(), "should have at least 1 event");
-    assert_eq!(events[0].strategy_id.as_ref().map(|s| s.0.as_str()), Some("strategy_a"));
+    assert_eq!(
+        events[0].strategy_id.as_ref().map(|s| s.0.as_str()),
+        Some("strategy_a")
+    );
 }

@@ -8,8 +8,8 @@ use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, FillView, JournalEntryView, LedgerError, Money, Price, Quantity, Side, Symbol,
-    StrategyEventKind, StrategyEventView, StrategyId, Timestamp, Usdt,
+    AccountId, FillView, JournalEntryView, LedgerError, Money, Price, Quantity, Side,
+    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp, Usdt,
 };
 
 use crate::Ledger;
@@ -365,9 +365,31 @@ pub async fn strategy_history(
 /// Parse a strategy event row from a `SQLite` query result.
 #[allow(clippy::type_complexity)]
 fn parse_strategy_event_view(
-    row: (String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<String>),
+    row: (
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+    ),
 ) -> Result<StrategyEventView, LedgerError> {
-    let (id, ts_str, kind_str, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary) = row;
+    let (
+        id,
+        ts_str,
+        kind_str,
+        strategy_id,
+        old_hash,
+        new_hash,
+        source_path,
+        operator,
+        error_code,
+        error_summary,
+    ) = row;
 
     let ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
         .map(Timestamp::new)
@@ -378,7 +400,11 @@ fn parse_strategy_event_view(
         "Swap" => StrategyEventKind::Swap,
         "Unload" => StrategyEventKind::Unload,
         "Reject" => StrategyEventKind::Reject,
-        other => return Err(LedgerError::Database(format!("unknown strategy event kind: {other}"))),
+        other => {
+            return Err(LedgerError::Database(format!(
+                "unknown strategy event kind: {other}"
+            )))
+        }
     };
 
     Ok(StrategyEventView {

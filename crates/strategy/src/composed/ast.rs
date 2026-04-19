@@ -75,11 +75,7 @@ pub enum RuleAst {
     /// Logical NOT.
     Not(Box<RuleAst>),
     /// Comparison: `lhs CMP_OP rhs`.
-    Cmp {
-        op: CmpOp,
-        lhs: Expr,
-        rhs: Expr,
-    },
+    Cmp { op: CmpOp, lhs: Expr, rhs: Expr },
     /// Cross-above sugar: `cross_above(a, b)`.
     CrossAbove { a: Expr, b: Expr },
     /// Cross-below sugar: `cross_below(a, b)`.

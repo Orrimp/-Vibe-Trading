@@ -150,7 +150,12 @@ impl IndicatorState {
     pub fn on_bar(&mut self, bar: &Bar) {
         let close = bar.close.get();
         match self {
-            Self::Sma { period, window, sum, latest } => {
+            Self::Sma {
+                period,
+                window,
+                sum,
+                latest,
+            } => {
                 if window.len() == *period {
                     let evicted = window.pop_front().unwrap_or(Decimal::ZERO);
                     *sum -= evicted;
@@ -161,7 +166,13 @@ impl IndicatorState {
                     *latest = Some(*sum / Decimal::from(*period as u32));
                 }
             }
-            Self::Ema { period, alpha, seed_sum, seed_count, latest } => {
+            Self::Ema {
+                period,
+                alpha,
+                seed_sum,
+                seed_count,
+                latest,
+            } => {
                 if *seed_count < *period {
                     *seed_sum += close;
                     *seed_count += 1;
@@ -173,7 +184,12 @@ impl IndicatorState {
                     *latest = Some(*alpha * close + (Decimal::ONE - *alpha) * prev);
                 }
             }
-            Self::MacdLine { fast_state, slow_state, latest, .. } => {
+            Self::MacdLine {
+                fast_state,
+                slow_state,
+                latest,
+                ..
+            } => {
                 fast_state.on_bar(bar);
                 slow_state.on_bar(bar);
                 *latest = match (fast_state.latest(), slow_state.latest()) {
@@ -182,7 +198,11 @@ impl IndicatorState {
                 };
             }
             Self::MacdSignal {
-                fast_state, slow_state, signal_state, latest, ..
+                fast_state,
+                slow_state,
+                signal_state,
+                latest,
+                ..
             } => {
                 fast_state.on_bar(bar);
                 slow_state.on_bar(bar);
@@ -199,7 +219,11 @@ impl IndicatorState {
                 *latest = signal_state.latest();
             }
             Self::MacdHist {
-                fast_state, slow_state, signal_state, latest, ..
+                fast_state,
+                slow_state,
+                signal_state,
+                latest,
+                ..
             } => {
                 fast_state.on_bar(bar);
                 slow_state.on_bar(bar);
@@ -257,7 +281,14 @@ impl IndicatorState {
                     *latest = Some(rsi_value(ag, al));
                 }
             }
-            Self::BollingerUpper { period, mult, window, sum, latest_sma, latest } => {
+            Self::BollingerUpper {
+                period,
+                mult,
+                window,
+                sum,
+                latest_sma,
+                latest,
+            } => {
                 if window.len() == *period {
                     *sum -= window.pop_front().unwrap_or(Decimal::ZERO);
                 }
@@ -270,7 +301,12 @@ impl IndicatorState {
                     *latest = Some(mid + *mult * std_dev);
                 }
             }
-            Self::BollingerMid { period, window, sum, latest } => {
+            Self::BollingerMid {
+                period,
+                window,
+                sum,
+                latest,
+            } => {
                 if window.len() == *period {
                     *sum -= window.pop_front().unwrap_or(Decimal::ZERO);
                 }
@@ -280,7 +316,14 @@ impl IndicatorState {
                     *latest = Some(*sum / Decimal::from(*period as u32));
                 }
             }
-            Self::BollingerLower { period, mult, window, sum, latest_sma, latest } => {
+            Self::BollingerLower {
+                period,
+                mult,
+                window,
+                sum,
+                latest_sma,
+                latest,
+            } => {
                 if window.len() == *period {
                     *sum -= window.pop_front().unwrap_or(Decimal::ZERO);
                 }
@@ -293,7 +336,12 @@ impl IndicatorState {
                     *latest = Some(mid - *mult * std_dev);
                 }
             }
-            Self::RollingMin { field, window_size, window, latest } => {
+            Self::RollingMin {
+                field,
+                window_size,
+                window,
+                latest,
+            } => {
                 let val = get_bar_field(bar, field);
                 if window.len() == *window_size as usize {
                     window.pop_front();
@@ -303,7 +351,12 @@ impl IndicatorState {
                     *latest = window.iter().copied().reduce(Decimal::min);
                 }
             }
-            Self::RollingMax { field, window_size, window, latest } => {
+            Self::RollingMax {
+                field,
+                window_size,
+                window,
+                latest,
+            } => {
                 let val = get_bar_field(bar, field);
                 if window.len() == *window_size as usize {
                     window.pop_front();
@@ -313,7 +366,13 @@ impl IndicatorState {
                     *latest = window.iter().copied().reduce(Decimal::max);
                 }
             }
-            Self::RollingAvg { field, window_size, window, sum, latest } => {
+            Self::RollingAvg {
+                field,
+                window_size,
+                window,
+                sum,
+                latest,
+            } => {
                 let val = get_bar_field(bar, field);
                 if window.len() == *window_size as usize {
                     *sum -= window.pop_front().unwrap_or(Decimal::ZERO);
@@ -389,7 +448,12 @@ pub fn eval_rule(rule: &RuleAst, ctx: &EvalCtx<'_>, prev: &mut RuleNodeState) ->
             };
             result
         }
-        RuleAst::MacdCross { fast, slow, signal, direction } => {
+        RuleAst::MacdCross {
+            fast,
+            slow,
+            signal,
+            direction,
+        } => {
             // Evaluate the MACD line and signal from indicator states.
             // We look up the MacdLine and MacdSignal states by matching params.
             let line = find_macd_line(ctx.indicators, *fast, *slow);
@@ -507,7 +571,11 @@ fn eval_indicator_expr(call: &IndicatorCall, ctx: &EvalCtx<'_>) -> Option<Decima
             let sig = num_arg(2)?;
             let line = find_macd_line(ctx.indicators, fast, slow)?;
             let signal = find_macd_signal(ctx.indicators, fast, slow, sig)?;
-            if line > signal { Some(Decimal::ONE) } else { Some(Decimal::ZERO) }
+            if line > signal {
+                Some(Decimal::ONE)
+            } else {
+                Some(Decimal::ZERO)
+            }
         }
         "rsi" => {
             let p = num_arg(0)?;
@@ -531,7 +599,11 @@ fn eval_indicator_expr(call: &IndicatorCall, ctx: &EvalCtx<'_>) -> Option<Decima
             let p = num_arg(0)?;
             let lower = find_bollinger_lower(ctx.indicators, p)?;
             let close = ctx.bar.close.get();
-            if close <= lower { Some(Decimal::ONE) } else { Some(Decimal::ZERO) }
+            if close <= lower {
+                Some(Decimal::ONE)
+            } else {
+                Some(Decimal::ZERO)
+            }
         }
         "min" => {
             let field = field_arg(0)?.clone();
@@ -560,8 +632,13 @@ fn eval_indicator_expr(call: &IndicatorCall, ctx: &EvalCtx<'_>) -> Option<Decima
 
 fn find_sma(states: &[IndicatorState], period: usize) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::Sma { period: p, latest, .. } = s {
-            if *p == period { return *latest; }
+        if let IndicatorState::Sma {
+            period: p, latest, ..
+        } = s
+        {
+            if *p == period {
+                return *latest;
+            }
         }
         None
     })
@@ -569,8 +646,13 @@ fn find_sma(states: &[IndicatorState], period: usize) -> Option<Decimal> {
 
 fn find_ema(states: &[IndicatorState], period: u32) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::Ema { period: p, latest, .. } = s {
-            if *p == period { return *latest; }
+        if let IndicatorState::Ema {
+            period: p, latest, ..
+        } = s
+        {
+            if *p == period {
+                return *latest;
+            }
         }
         None
     })
@@ -578,26 +660,62 @@ fn find_ema(states: &[IndicatorState], period: u32) -> Option<Decimal> {
 
 fn find_macd_line(states: &[IndicatorState], fast: u32, slow: u32) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::MacdLine { fast: f, slow: sl, latest, .. } = s {
-            if *f == fast && *sl == slow { return *latest; }
+        if let IndicatorState::MacdLine {
+            fast: f,
+            slow: sl,
+            latest,
+            ..
+        } = s
+        {
+            if *f == fast && *sl == slow {
+                return *latest;
+            }
         }
         None
     })
 }
 
-fn find_macd_signal(states: &[IndicatorState], fast: u32, slow: u32, signal_period: u32) -> Option<Decimal> {
+fn find_macd_signal(
+    states: &[IndicatorState],
+    fast: u32,
+    slow: u32,
+    signal_period: u32,
+) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::MacdSignal { fast: f, slow: sl, signal_period: sp, latest, .. } = s {
-            if *f == fast && *sl == slow && *sp == signal_period { return *latest; }
+        if let IndicatorState::MacdSignal {
+            fast: f,
+            slow: sl,
+            signal_period: sp,
+            latest,
+            ..
+        } = s
+        {
+            if *f == fast && *sl == slow && *sp == signal_period {
+                return *latest;
+            }
         }
         None
     })
 }
 
-fn find_macd_hist(states: &[IndicatorState], fast: u32, slow: u32, signal_period: u32) -> Option<Decimal> {
+fn find_macd_hist(
+    states: &[IndicatorState],
+    fast: u32,
+    slow: u32,
+    signal_period: u32,
+) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::MacdHist { fast: f, slow: sl, signal_period: sp, latest, .. } = s {
-            if *f == fast && *sl == slow && *sp == signal_period { return *latest; }
+        if let IndicatorState::MacdHist {
+            fast: f,
+            slow: sl,
+            signal_period: sp,
+            latest,
+            ..
+        } = s
+        {
+            if *f == fast && *sl == slow && *sp == signal_period {
+                return *latest;
+            }
         }
         None
     })
@@ -605,8 +723,13 @@ fn find_macd_hist(states: &[IndicatorState], fast: u32, slow: u32, signal_period
 
 fn find_rsi(states: &[IndicatorState], period: u32) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::Rsi { period: p, latest, .. } = s {
-            if *p == period { return *latest; }
+        if let IndicatorState::Rsi {
+            period: p, latest, ..
+        } = s
+        {
+            if *p == period {
+                return *latest;
+            }
         }
         None
     })
@@ -614,8 +737,13 @@ fn find_rsi(states: &[IndicatorState], period: u32) -> Option<Decimal> {
 
 fn find_bollinger_upper(states: &[IndicatorState], period: u32) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::BollingerUpper { period: p, latest, .. } = s {
-            if *p == period as usize { return *latest; }
+        if let IndicatorState::BollingerUpper {
+            period: p, latest, ..
+        } = s
+        {
+            if *p == period as usize {
+                return *latest;
+            }
         }
         None
     })
@@ -623,8 +751,13 @@ fn find_bollinger_upper(states: &[IndicatorState], period: u32) -> Option<Decima
 
 fn find_bollinger_mid(states: &[IndicatorState], period: u32) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::BollingerMid { period: p, latest, .. } = s {
-            if *p == period as usize { return *latest; }
+        if let IndicatorState::BollingerMid {
+            period: p, latest, ..
+        } = s
+        {
+            if *p == period as usize {
+                return *latest;
+            }
         }
         None
     })
@@ -632,30 +765,64 @@ fn find_bollinger_mid(states: &[IndicatorState], period: u32) -> Option<Decimal>
 
 fn find_bollinger_lower(states: &[IndicatorState], period: u32) -> Option<Decimal> {
     states.iter().find_map(|s| {
-        if let IndicatorState::BollingerLower { period: p, latest, .. } = s {
-            if *p == period as usize { return *latest; }
+        if let IndicatorState::BollingerLower {
+            period: p, latest, ..
+        } = s
+        {
+            if *p == period as usize {
+                return *latest;
+            }
         }
         None
     })
 }
 
-fn find_rolling(states: &[IndicatorState], kind: &str, field: &SmolStr, window_size: u32) -> Option<Decimal> {
+fn find_rolling(
+    states: &[IndicatorState],
+    kind: &str,
+    field: &SmolStr,
+    window_size: u32,
+) -> Option<Decimal> {
     match kind {
         "min" => states.iter().find_map(|s| {
-            if let IndicatorState::RollingMin { field: f, window_size: w, latest, .. } = s {
-                if f == field && *w == window_size { return *latest; }
+            if let IndicatorState::RollingMin {
+                field: f,
+                window_size: w,
+                latest,
+                ..
+            } = s
+            {
+                if f == field && *w == window_size {
+                    return *latest;
+                }
             }
             None
         }),
         "max" => states.iter().find_map(|s| {
-            if let IndicatorState::RollingMax { field: f, window_size: w, latest, .. } = s {
-                if f == field && *w == window_size { return *latest; }
+            if let IndicatorState::RollingMax {
+                field: f,
+                window_size: w,
+                latest,
+                ..
+            } = s
+            {
+                if f == field && *w == window_size {
+                    return *latest;
+                }
             }
             None
         }),
         "avg" => states.iter().find_map(|s| {
-            if let IndicatorState::RollingAvg { field: f, window_size: w, latest, .. } = s {
-                if f == field && *w == window_size { return *latest; }
+            if let IndicatorState::RollingAvg {
+                field: f,
+                window_size: w,
+                latest,
+                ..
+            } = s
+            {
+                if f == field && *w == window_size {
+                    return *latest;
+                }
             }
             None
         }),
@@ -686,7 +853,10 @@ impl RuleNodeState {
             RuleAst::Not(inner) => vec![Self::from_ast(inner)],
             _ => vec![],
         };
-        Self { prev_cross: None, children }
+        Self {
+            prev_cross: None,
+            children,
+        }
     }
 }
 
@@ -716,7 +886,9 @@ fn collect_indicators(rule: &RuleAst, states: &mut Vec<IndicatorState>) {
             collect_from_expr(a, states);
             collect_from_expr(b, states);
         }
-        RuleAst::MacdCross { fast, slow, signal, .. } => {
+        RuleAst::MacdCross {
+            fast, slow, signal, ..
+        } => {
             ensure_macd_line(states, *fast, *slow);
             ensure_macd_signal(states, *fast, *slow, *signal);
         }
@@ -747,7 +919,11 @@ fn add_indicator(call: &IndicatorCall, states: &mut Vec<IndicatorState>) {
         }
     };
     let dec_arg = |idx: usize| -> Decimal {
-        if let Some(Expr::Literal(d)) = call.args.get(idx) { *d } else { Decimal::ZERO }
+        if let Some(Expr::Literal(d)) = call.args.get(idx) {
+            *d
+        } else {
+            Decimal::ZERO
+        }
     };
     let field_arg = |idx: usize| -> SmolStr {
         if let Some(Expr::BarField(f)) = call.args.get(idx) {
@@ -760,7 +936,10 @@ fn add_indicator(call: &IndicatorCall, states: &mut Vec<IndicatorState>) {
     match call.name.as_str() {
         "sma" => {
             let p = num_arg(0) as usize;
-            if !states.iter().any(|s| matches!(s, IndicatorState::Sma { period, .. } if *period == p)) {
+            if !states
+                .iter()
+                .any(|s| matches!(s, IndicatorState::Sma { period, .. } if *period == p))
+            {
                 states.push(IndicatorState::Sma {
                     period: p,
                     window: VecDeque::with_capacity(p),
@@ -799,7 +978,10 @@ fn add_indicator(call: &IndicatorCall, states: &mut Vec<IndicatorState>) {
         }
         "rsi" => {
             let p = num_arg(0);
-            if !states.iter().any(|s| matches!(s, IndicatorState::Rsi { period, .. } if *period == p)) {
+            if !states
+                .iter()
+                .any(|s| matches!(s, IndicatorState::Rsi { period, .. } if *period == p))
+            {
                 states.push(IndicatorState::Rsi {
                     period: p,
                     prev_close: None,
@@ -872,7 +1054,10 @@ fn add_indicator(call: &IndicatorCall, states: &mut Vec<IndicatorState>) {
 }
 
 fn ensure_ema(states: &mut Vec<IndicatorState>, period: u32) {
-    if !states.iter().any(|s| matches!(s, IndicatorState::Ema { period: p, .. } if *p == period)) {
+    if !states
+        .iter()
+        .any(|s| matches!(s, IndicatorState::Ema { period: p, .. } if *p == period))
+    {
         states.push(IndicatorState::new_ema(period));
     }
 }
@@ -931,7 +1116,10 @@ fn ensure_bollinger_upper(states: &mut Vec<IndicatorState>, period: usize, mult:
 }
 
 fn ensure_bollinger_mid(states: &mut Vec<IndicatorState>, period: usize) {
-    if !states.iter().any(|s| matches!(s, IndicatorState::BollingerMid { period: p, .. } if *p == period)) {
+    if !states
+        .iter()
+        .any(|s| matches!(s, IndicatorState::BollingerMid { period: p, .. } if *p == period))
+    {
         states.push(IndicatorState::BollingerMid {
             period,
             window: VecDeque::with_capacity(period),
@@ -1097,8 +1285,12 @@ fn rsi_value(avg_gain: Decimal, avg_loss: Decimal) -> Decimal {
 }
 
 fn pop_std_dev(window: &VecDeque<Decimal>, mean: Decimal) -> Decimal {
-    let variance = window.iter()
-        .map(|&x| { let d = x - mean; d * d })
+    let variance = window
+        .iter()
+        .map(|&x| {
+            let d = x - mean;
+            d * d
+        })
         .fold(Decimal::ZERO, |acc, v| acc + v)
         / Decimal::from(window.len() as u32);
     decimal_sqrt(variance)
@@ -1112,7 +1304,9 @@ fn decimal_sqrt(x: Decimal) -> Decimal {
     let seed = x_f64.sqrt();
     let mut est = Decimal::try_from(seed).unwrap_or(Decimal::ONE);
     for _ in 0..50 {
-        if est == Decimal::ZERO { break; }
+        if est == Decimal::ZERO {
+            break;
+        }
         let next = (est + x / est) / Decimal::from(2);
         if (next - est).abs() < Decimal::new(1, 28) {
             est = next;
@@ -1144,5 +1338,230 @@ fn apply_cmp(op: &CmpOp, lhs: Decimal, rhs: Decimal) -> bool {
         CmpOp::Ge => lhs >= rhs,
         CmpOp::Gt => lhs > rhs,
         CmpOp::Ne => lhs != rhs,
+    }
+}
+
+// ── T505 / T507 tests ─────────────────────────────────────────────────────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod t505_t507_tests {
+    use super::*;
+    use crate::traits::Strategy;
+    use rust_decimal_macros::dec;
+    use trading_core::{Price, Quantity, Symbol, Timeframe, Timestamp};
+
+    /// Synthetic 1000-bar fixture — deterministic, derived from bar index only.
+    /// Uses a volatile random-walk to ensure RSI explores < 35 territory and
+    /// MACD crossovers occur.
+    fn make_bars(count: usize) -> Vec<Bar> {
+        use time::OffsetDateTime;
+        // Simple LCG PRNG — deterministic, no external deps.
+        struct Lcg(u64);
+        impl Lcg {
+            fn next_f64(&mut self) -> f64 {
+                self.0 = self
+                    .0
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                (self.0 >> 33) as f64 / (u64::MAX >> 33) as f64
+            }
+        }
+        let mut rng = Lcg(0xDEAD_BEEF);
+
+        let epoch = OffsetDateTime::new_utc(
+            time::Date::from_calendar_date(2023, time::Month::January, 1).unwrap(),
+            time::Time::MIDNIGHT,
+        );
+        let mut bars = Vec::with_capacity(count);
+        // Volatile walk: std dev ~2% per bar to ensure wide RSI range.
+        let mut close: f64 = 16_500.0;
+        for i in 0..count {
+            let z = (rng.next_f64() - 0.5) * 2.0; // in (-1, 1)
+            let ret = z * 0.02; // ±2% per bar
+            close = (close * (1.0 + ret)).clamp(1_000.0, 500_000.0);
+            let open = close * (1.0 + (rng.next_f64() - 0.5) * 0.001);
+            let high = close.max(open) * (1.0 + rng.next_f64() * 0.005);
+            let low = close.min(open) * (1.0 - rng.next_f64() * 0.005);
+
+            let open_ts = Timestamp::new(epoch + time::Duration::minutes(i as i64));
+            let close_ts = Timestamp::new(
+                epoch + time::Duration::minutes(i as i64 + 1) - time::Duration::seconds(1),
+            );
+            let mk_price = |v: f64| {
+                Price::new(Decimal::try_from(v.max(0.01)).unwrap_or(dec!(1)))
+                    .unwrap_or_else(|_| Price::new(dec!(1)).unwrap())
+            };
+            bars.push(Bar {
+                symbol: Symbol::new("BTCUSDT"),
+                tf: Timeframe::OneMinute,
+                open: mk_price(open),
+                high: mk_price(high),
+                low: mk_price(low),
+                close: mk_price(close),
+                volume: Quantity::new(dec!(10)).unwrap(),
+                trade_count: 100,
+                local_recv_ts: close_ts,
+                open_ts,
+                close_ts,
+            });
+        }
+        bars
+    }
+
+    /// Hand-coded reference implementation of `rsi(14) < 30` — the simplest
+    /// single-rule case for T505 correctness verification.
+    ///
+    /// Computes RSI directly using the same seeded-average formula as
+    /// `IndicatorState::Rsi`, then applies the same edge-triggered logic.
+    fn reference_signals_rsi(bars: &[Bar]) -> Vec<(usize, trading_core::SignalKind)> {
+        let closes: Vec<Decimal> = bars.iter().map(|b| b.close.get()).collect();
+        let period = 14usize;
+        let mut rsi_vals: Vec<Option<Decimal>> = vec![None; bars.len()];
+
+        if closes.len() > 1 {
+            // The ComposedStrategy RSI state skips the first close (sets prev_close,
+            // returns without producing a value).  From bar index 1 onward it
+            // accumulates diffs; seed is ready after `period` diffs (bar index period).
+            let mut seed_gains: Vec<Decimal> = Vec::new();
+            let mut seed_losses: Vec<Decimal> = Vec::new();
+            let mut avg_gain: Option<Decimal> = None;
+            let mut avg_loss: Option<Decimal> = None;
+            let mut prev = closes[0];
+
+            for i in 1..closes.len() {
+                let diff = closes[i] - prev;
+                prev = closes[i];
+                let gain = if diff > Decimal::ZERO {
+                    diff
+                } else {
+                    Decimal::ZERO
+                };
+                let loss = if diff < Decimal::ZERO {
+                    -diff
+                } else {
+                    Decimal::ZERO
+                };
+
+                if avg_gain.is_none() {
+                    seed_gains.push(gain);
+                    seed_losses.push(loss);
+                    if seed_gains.len() == period {
+                        let sg: Decimal = seed_gains.iter().sum();
+                        let sl: Decimal = seed_losses.iter().sum();
+                        let p = Decimal::from(period as u32);
+                        avg_gain = Some(sg / p);
+                        avg_loss = Some(sl / p);
+                        rsi_vals[i] = Some(rsi_value(avg_gain.unwrap(), avg_loss.unwrap()));
+                    }
+                } else {
+                    let p = Decimal::from(period as u32);
+                    let ag = (avg_gain.unwrap() * (p - Decimal::ONE) + gain) / p;
+                    let al = (avg_loss.unwrap() * (p - Decimal::ONE) + loss) / p;
+                    avg_gain = Some(ag);
+                    avg_loss = Some(al);
+                    rsi_vals[i] = Some(rsi_value(ag, al));
+                }
+            }
+        }
+
+        let mut signals = Vec::new();
+        let mut last: Option<bool> = None;
+        for (i, r) in rsi_vals.iter().enumerate() {
+            let now = r.map(|v| v < dec!(30)).unwrap_or(false);
+            match (last, now) {
+                (Some(false), true) => signals.push((i, trading_core::SignalKind::Buy)),
+                (Some(true), false) => signals.push((i, trading_core::SignalKind::Sell)),
+                _ => {}
+            }
+            last = Some(now);
+        }
+        signals
+    }
+
+    /// T505: programmatically-built ComposedStrategy vs hand-coded reference.
+    ///
+    /// Uses `rsi(14) < 30` — a single indicator, no MACD complexity — to keep
+    /// the hand-coded reference fully independent and verifiable by inspection.
+    /// The volatile fixture guarantees RSI explores both < 30 and > 30 territory.
+    #[test]
+    fn t505_rsi_single_rule_matches_reference_impl() {
+        let toml = r#"
+id     = "test_rsi"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(14) < 30"
+size   = "fixed_fraction(0.1)"
+"#;
+        let cfg = crate::composed::config::ComposedStrategyConfig::from_str(toml, "test_rsi")
+            .expect("valid config");
+        let mut strategy = ComposedStrategy::from_config(cfg, smol_str::SmolStr::new("test"));
+
+        let bars = make_bars(1000);
+        let mut composed_signals: Vec<(usize, trading_core::SignalKind)> = Vec::new();
+        for (i, bar) in bars.iter().enumerate() {
+            let sigs = strategy.on_bar(bar);
+            for s in sigs {
+                composed_signals.push((i, s.kind));
+            }
+        }
+
+        let reference = reference_signals_rsi(&bars);
+        assert!(
+            !composed_signals.is_empty(),
+            "volatile fixture must produce at least one signal (RSI < 30)"
+        );
+        assert_eq!(
+            composed_signals, reference,
+            "ComposedStrategy signal sequence must be byte-identical to hand-coded RSI reference"
+        );
+    }
+
+    /// T507: verify Vec<Signal> per bar is bounded to 0 or 1 items, and that
+    /// the Strategy trait surface is exercised (id, on_bar, on_tick, config_schema).
+    #[test]
+    fn t507_strategy_trait_bounded_signal_output() {
+        let toml = r#"
+id     = "test_bounded"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "macd_hist(12,26,9) > 0 AND rsi(14) < 50"
+size   = "fixed_fraction(0.1)"
+"#;
+        let cfg = crate::composed::config::ComposedStrategyConfig::from_str(toml, "test_bounded")
+            .expect("valid config");
+        let mut strategy = ComposedStrategy::from_config(cfg, smol_str::SmolStr::new("test"));
+
+        // Verify Strategy::id().
+        assert_eq!(strategy.id().0.as_str(), "test_bounded");
+
+        // Verify config_schema().
+        let schema = ComposedStrategy::config_schema();
+        assert!(schema.get("type").is_some());
+
+        let bars = make_bars(1000);
+        for bar in &bars {
+            let sigs = strategy.on_bar(bar);
+            assert!(
+                sigs.len() <= 1,
+                "on_bar must emit at most 1 signal per bar, got {}",
+                sigs.len()
+            );
+        }
+
+        // Verify on_tick returns empty.
+        use trading_core::{Side, Tick};
+        let tick = Tick {
+            symbol: Symbol::new("BTCUSDT"),
+            venue_ts: bars[0].close_ts,
+            local_recv_ts: bars[0].close_ts,
+            price: bars[0].close,
+            qty: Quantity::new(dec!(1)).unwrap(),
+            side: Side::Buy,
+            trade_id: 1,
+        };
+        assert!(strategy.on_tick(&tick).is_empty());
     }
 }

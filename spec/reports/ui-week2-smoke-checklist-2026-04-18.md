@@ -188,3 +188,210 @@ into `spec/reports/screenshots/v0-paper-sma/`:
 | screenshot-live-tape-advancing.png       | run agent in term 1, cockpit `--features live` in term 2; full-window. |
 | screenshot-live-halt-file-banner.png     | `touch .halt`; wait 2s; cockpit full-window. |
 | screenshot-live-kill-confirmed.png       | kill-switch flow in live mode, post-confirm. |
+
+---
+
+## v0.5 — strategies panel smoke + hot-swap drill
+
+Scope extension for **T_FINAL_B (v0.5)**. Adds operator verification for
+the new `strategies` panel (tasks T522–T528) plus the R7 hot-swap and R8
+invalid-config drills from
+[v05-composed-strategies.md → Verification V7](../features/v05-composed-strategies.md#verification).
+
+The developer's T_FINAL_A landed four v0.5 backtest reports under
+`spec/reports/`, unblocking this section:
+
+- [backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md](./backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md)
+  — baseline; body-SHA256 matches v0 `btc-2023-1m-sma-cross`, proving
+  v0.5 is purely additive.
+- [backtest-20260419-125508-btc-2023-1m-macd-trend.md](./backtest-20260419-125508-btc-2023-1m-macd-trend.md)
+  — MACD trend recipe loaded from `config/strategies/btc_macd_trend.toml`.
+- [backtest-20260419-125458-btc-2023-1m-rsi-reversion.md](./backtest-20260419-125458-btc-2023-1m-rsi-reversion.md)
+  — RSI mean-reversion recipe.
+- [backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md](./backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md)
+  — Bollinger bands mean-reversion recipe.
+
+Each report's `Strategy` section carries the id + content hash + source
+path the operator cross-checks against the cockpit's `Hash` column
+tooltip during the live drill below.
+
+### Sandbox-verifiable gates (automated) — v0.5 extension
+
+| Gate | Command | What it checks |
+|------|---------|----------------|
+| Build (fixtures, strategies panel) | `cargo build -p ui --bin cockpit --features fixtures` | Cockpit boots with the strategies panel populated by `ui::fixtures::fake_cockpit_with_strategies` (T525). |
+| Live-subscription (strategies) | `cargo test -p ui --features live` | 3 new T526 integration tests (`t526_strategy_loaded_stream_refreshes_cockpit` / `_swapped_` / `_error_`) drive the panel from a fake `EventBus`. Total ≥ 70. |
+| Panel snapshots | `cargo test -p ui` | `insta` snapshots for each of the four strategies-panel states + the per-row-error visual (T524). Total ≥ 57. |
+| Consistency audit | `cargo test -p ui` | `no_inline_user_visible_strings_in_widgets` + `no_inline_hex_colors_in_widgets_or_state` still zero on the `widgets::strategies` module. |
+
+All gates above must be green before running the manual steps below.
+
+### Manual steps — fixtures walkthrough (four-state contract)
+
+Visual contract for each state: section 4.5 of the panel-state reference
+in [`screenshots/v0-paper-sma/README.md`](./screenshots/v0-paper-sma/README.md#45-strategies--loaded-strategies--swap-log)
+(the v0.5 addition you read before running this drill). Copy keys
+(`STRATEGIES_*`) and theme tokens are pinned there; compare the render
+against that table line-by-line.
+
+1. [ ] Terminal 1: `cargo run --bin cockpit --features fixtures`.
+   - The right column's top slot shows the `strategies` panel (Q4
+     resolution: above Open positions). Left column (P&L, latency, kill
+     switch) unchanged from v0.
+   - With fixtures, three rows render: one Ready, one Loading, one
+     Error. Visual must match README §4.5 `ready` row description:
+     columns `Strategy  Hash  Status  Last event  Signals / 60s  Holds
+     position`, right-aligned monospace numbers, status-pill colors
+     (`POS` / `FG_MUTED` / `NEG`).
+   - `[ ]` screenshot-strategies-ready.png _deferred_manual_
+2. [ ] Drive the panel to the `loading` state (fixtures helper —
+   `fake_cockpit_with_strategies_loading()`; in production this state
+   only flashes briefly at cockpit boot before the first bus message
+   arrives). Copy `Loading active strategies…` renders in
+   `color::FG_MUTED` per README §4.5 `loading` row.
+   - `[ ]` screenshot-strategies-loading.png _deferred_manual_
+3. [ ] Drive to `empty` (no rows). Copy `No strategies loaded. Drop a
+   TOML under config/strategies/ to begin.` renders in `FG_MUTED`. The
+   `config/strategies/` path is carried verbatim so the operator knows
+   exactly where to add a TOML.
+   - `[ ]` screenshot-strategies-empty.png _deferred_manual_
+4. [ ] Drive to `error` (close the bus). Copy `Can't read strategies:
+   Trading agent disconnected. Check the agent log and restart it.`
+   renders with `NEG` prefix via the shared `error_body` frame.
+   - `[ ]` screenshot-strategies-error.png _deferred_manual_
+5. [ ] Per-row error (R8 visual rehearsal): use the fixtures
+   `error_row` variant — the row shows a caption-sized `NEG` badge
+   beneath it carrying `error_summary`; other rows stay Ready. This is
+   the same state the R8 drill below reaches against a real agent.
+
+### Hot-swap observation drill (R7) — live against running agent
+
+**Terminals:** one for the agent, one for the cockpit, one for
+file-edit drills. The `--features live` flag swaps the cockpit's
+fixtures subscription for the T526 `ui::live` subscribers that listen
+on the three `EventBus` broadcast channels.
+
+1. [ ] Terminal 1: start the agent against the three canonical recipes.
+   ```
+   cargo run --bin trading -- --config config/agent.toml --mode research
+   ```
+   Expect log lines `strategy_watcher started` and three
+   `StrategyLoaded` events, one per TOML under `config/strategies/`
+   (`btc_macd_trend`, `btc_rsi_reversion`, `btc_bbands_mean_revert`).
+2. [ ] Terminal 2: start the cockpit wired to the live bus.
+   ```
+   cargo run --bin cockpit --features live
+   ```
+   Within 2s of start the strategies panel transitions from `Loading`
+   to `Ready` with three rows — ids `btc_macd_trend`,
+   `btc_rsi_reversion`, `btc_bbands_mean_revert` — each carrying a
+   7-char short hash and a `loaded` last-event value. Hover a row's
+   `Hash` cell: tooltip shows the full 64-char hash and the source
+   path `config/strategies/<id>.toml` (matches the `Strategy` section
+   of the backtest reports linked above).
+3. [ ] Terminal 3: edit `config/strategies/btc_macd_trend.toml`. For
+   example flip `fast_len` in the signal expression —
+   `signal = "macd_hist(12,26,9) > 0 AND close > ema(200)"` →
+   `signal = "macd_hist(8,21,9) > 0 AND close > ema(200)"`. Save.
+4. [ ] Observe the cockpit: within **2 seconds** the
+   `btc_macd_trend` row's short hash flips to a new value, the
+   `Last event` cell changes to `swapped`, and a new row appears at
+   the top of the recent-events footer colored `WARN` (per §4.5
+   footer color map: `swapped` → `WARN`). The other two rows
+   (`btc_rsi_reversion`, `btc_bbands_mean_revert`) are unchanged —
+   their hashes, statuses and last-event values stay put.
+   - `[ ]` screenshot-strategies-hot-swap-after.png _deferred_manual_
+5. [ ] Cross-check via the audit ledger: the `strategy_events` table
+   now contains exactly one `Swap` row for `btc_macd_trend` with
+   distinct `from_hash` / `to_hash` values, in addition to the three
+   `Load` rows from boot. (Operator can grep the agent log for
+   `StrategySwapped` or query
+   `audit::query::strategy_history("btc_macd_trend")`.)
+6. [ ] Revert the edit and confirm the panel flips back to the
+   original short hash within 2s (second `Swap` row appears in the
+   footer).
+
+### Invalid-config drill (R8) — malformed TOML rejection
+
+Immediately after the R7 drill, keep both terminals running and move
+to the R8 drill. The goal: verify that a bad edit to one strategy's
+TOML flips only that row to the error state, while the other two
+strategies keep running (R8 guarantee: fail-closed at the offender,
+do not take the registry down).
+
+1. [ ] Terminal 3: introduce a malformed edit to
+   `config/strategies/btc_rsi_reversion.toml`. For example delete the
+   required `signal` line, or set `signal = "rsi(14) < 30 AND"` (a
+   dangling `AND` — parser rejects). Save.
+2. [ ] Observe the cockpit: within 2 seconds the `btc_rsi_reversion`
+   row's status pill flips from Ready (`POS`) to `Error` (`NEG`), the
+   `Last event` cell shows `rejected`, and a caption-sized `NEG`
+   error badge appears beneath the row carrying the
+   `error_summary` (e.g. `unexpected token at line …` or `missing
+   required key "signal"`). A new row appears at the top of the
+   recent-events footer colored `NEG` (`rejected` → `NEG`).
+3. [ ] Crucially confirm the other two rows (`btc_macd_trend`,
+   `btc_bbands_mean_revert`) remain `Ready` with their previous
+   hashes — the registry rejected the malformed TOML without
+   touching the good strategies. The overall panel stays in
+   `Ready` state (not the panel-wide `error` body); only the
+   offending row carries the error badge.
+4. [ ] Cross-check the agent log: one `StrategyLoadError` event
+   published on the `strategy_error` channel; one `Reject` row
+   written to `strategy_events` for `btc_rsi_reversion`; the
+   registry's pointer for `btc_rsi_reversion` still references the
+   previous good strategy (confirmable via the short hash in the
+   row, which is unchanged from its pre-edit value).
+5. [ ] Revert the TOML to the canonical content. Within 2s the row
+   flips back to Ready and the error badge disappears; a fresh
+   `Load` / `Swap` row appears in the footer (whichever the
+   watcher chooses — a full Load if the previous registration was
+   rejected, otherwise a Swap).
+6. [ ] Reconciler sanity: over the full drill, the v0 R3.5
+   minute-boundary invariant
+   (`ledger_imbalance_total == 0`) must hold at every bar —
+   `strategy_events` rows do not perturb journal balance
+   (enforced by T510 / T518).
+
+### Deferred PNG list — v0.5 additions
+
+Captured on the operator's workstation, saved into
+`spec/reports/screenshots/v0-paper-sma/` (or the sibling dir
+`screenshots/v05-composed-strategies/` if the v0 dir grows unwieldy —
+ui-designer's call on PR review):
+
+| File                                        | How to capture |
+|---------------------------------------------|----------------|
+| screenshot-strategies-loading.png           | `cargo run --bin cockpit --features fixtures`; drive to the `loading` variant; panel crop. |
+| screenshot-strategies-empty.png             | same binary; drive to the `empty` variant; panel crop. |
+| screenshot-strategies-error.png             | same binary; drive to the `error` variant (closed bus); panel crop. |
+| screenshot-strategies-ready.png             | same binary default run — three rows render; panel crop. |
+| screenshot-strategies-hot-swap-after.png    | R7 live drill: after the `btc_macd_trend.toml` edit, cockpit full-window (captures the fresh short-hash + the new `WARN`-colored footer row). |
+
+### Acceptance checklist for T_FINAL_B (v0.5)
+
+- [ ] Four-state fixtures walkthrough performed
+  (`cargo run --bin cockpit --features fixtures`); render matches
+  `screenshots/v0-paper-sma/README.md` §4.5 line-by-line.
+- [ ] R7 hot-swap drill performed against `--features live`; swap
+  visible in the strategies panel within 2 seconds of the TOML
+  rewrite; `StrategySwapped` event visible in the recent-events
+  footer.
+- [ ] R8 invalid-config drill performed; offending row flips to
+  `Error` with `error_summary` badge; other rows unchanged;
+  `StrategyLoadError` event visible in the footer;
+  `ledger_imbalance_total == 0` across the drill.
+- [ ] Automated gates green: `cargo fmt -p ui -- --check`,
+  `cargo clippy -p ui --all-targets --all-features -- -D warnings`,
+  `cargo test -p ui` (≥ 57), `cargo test -p ui --features live`
+  (≥ 70), workspace consistency audits.
+- [ ] Four v0.5 backtest reports cross-checked: each report's
+  `Strategy` section id + hash + source matches the cockpit's
+  `Hash` tooltip for the same strategy during the live drill
+  (baseline report's `Strategy` section is `compiled-in` for the
+  refreshed `sma_crossover` baseline; the other three carry the
+  composed id + content hash).
+- [ ] Deferred PNG screenshots captured on the operator display
+  and committed (see v0.5 list above). CI gate is the logical-state
+  artifacts (README §4.5 + `insta` snapshots); the operator PR
+  review adds the PNGs.

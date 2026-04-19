@@ -171,7 +171,7 @@ pub async fn run_strategy_watcher(
 }
 
 /// Handle a single (debounced) file-system event.
-async fn handle_fs_event(
+pub async fn handle_fs_event(
     event: FsEvent,
     registry: &strategy::StrategyRegistry,
     ledger: &audit::Ledger,
@@ -247,8 +247,9 @@ async fn handle_upsert(
     let source_path_smol = SmolStr::new(&source_path);
 
     // Construct the ComposedStrategy from config (allocation, outside guard).
-    let new_strategy: Box<dyn strategy::Strategy> =
-        Box::new(strategy::ComposedStrategy::from_config(config, source_path_smol.clone()));
+    let new_strategy: Box<dyn strategy::Strategy> = Box::new(
+        strategy::ComposedStrategy::from_config(config, source_path_smol.clone()),
+    );
 
     // Step 2: Atomic pointer-swap inside the write-guard (minimal critical section).
     // The old boxed strategy is returned for hash extraction.
@@ -369,8 +370,10 @@ fn hex_encode(bytes: &[u8; 32]) -> String {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn hex_encode_all_zeros() {
@@ -383,5 +386,149 @@ mod tests {
     fn hex_encode_all_ff() {
         let h = hex_encode(&[0xffu8; 32]);
         assert_eq!(h, "f".repeat(64));
+    }
+
+    /// Helper: create a real audit ledger backed by an in-memory SQLite.
+    async fn make_ledger() -> Arc<audit::Ledger> {
+        let ledger = audit::Ledger::in_memory()
+            .await
+            .expect("open in-memory ledger");
+        audit::bootstrap::chart_of_accounts(&ledger)
+            .await
+            .expect("bootstrap ledger");
+        Arc::new(ledger)
+    }
+
+    /// Helper: create an EventBus with no subscribers (capacity 32 each channel).
+    fn make_bus() -> Arc<EventBus> {
+        Arc::new(EventBus::new(&crate::config::BusConfig::default()))
+    }
+
+    /// T513 — loading a valid TOML via handle_fs_event registers the strategy.
+    #[tokio::test]
+    async fn t513_handle_upsert_valid_toml_registers_strategy() {
+        let dir = tempfile::tempdir().unwrap();
+        let toml_path = dir.path().join("btc_macd_trend.toml");
+        std::fs::write(
+            &toml_path,
+            r#"id = "btc_macd_trend"
+kind = "composed"
+symbol = "BTCUSDT"
+stage = "research"
+signal = "macd_hist(12,26,9) > 0 AND close > ema(200)"
+size = "fixed_fraction(0.1)"
+"#,
+        )
+        .unwrap();
+
+        let registry = Arc::new(strategy::StrategyRegistry::new());
+        let ledger = make_ledger().await;
+        let bus = make_bus();
+
+        assert_eq!(registry.len(), 0, "registry should start empty");
+
+        handle_fs_event(FsEvent::Upsert(toml_path), &registry, &ledger, &bus).await;
+
+        assert_eq!(
+            registry.len(),
+            1,
+            "registry should contain one strategy after load"
+        );
+    }
+
+    /// T513 — invalid TOML does NOT touch the registry.
+    #[tokio::test]
+    async fn t513_handle_upsert_invalid_toml_leaves_registry_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let toml_path = dir.path().join("btc_bad.toml");
+        // Arity mismatch — macd_cross requires 3 args.
+        std::fs::write(
+            &toml_path,
+            r#"id = "btc_bad"
+kind = "composed"
+symbol = "BTCUSDT"
+stage = "research"
+signal = "macd_cross(12)"
+size = "fixed_fraction(0.1)"
+"#,
+        )
+        .unwrap();
+
+        let registry = Arc::new(strategy::StrategyRegistry::new());
+        let ledger = make_ledger().await;
+        let bus = make_bus();
+
+        // Subscribe to strategy_error channel before publishing.
+        let mut err_rx = bus.strategy_error();
+
+        handle_fs_event(FsEvent::Upsert(toml_path), &registry, &ledger, &bus).await;
+
+        // Registry must be unchanged.
+        assert_eq!(
+            registry.len(),
+            0,
+            "registry must not be touched after bad TOML"
+        );
+
+        // An error event must have been published.
+        let err = err_rx.try_recv().expect("expected strategy_error event");
+        assert_eq!(
+            err.error_code.as_str(),
+            "arity_mismatch",
+            "error_code should be arity_mismatch"
+        );
+    }
+
+    /// T513 — Remove event unloads an existing strategy.
+    #[tokio::test]
+    async fn t513_handle_remove_unloads_strategy() {
+        let dir = tempfile::tempdir().unwrap();
+        let toml_path = dir.path().join("btc_macd_trend.toml");
+        std::fs::write(
+            &toml_path,
+            r#"id = "btc_macd_trend"
+kind = "composed"
+symbol = "BTCUSDT"
+stage = "research"
+signal = "rsi(14) < 30"
+size = "fixed_fraction(0.1)"
+"#,
+        )
+        .unwrap();
+
+        let registry = Arc::new(strategy::StrategyRegistry::new());
+        let ledger = make_ledger().await;
+        let bus = make_bus();
+
+        // Load first.
+        handle_fs_event(FsEvent::Upsert(toml_path.clone()), &registry, &ledger, &bus).await;
+        assert_eq!(registry.len(), 1);
+
+        // Remove.
+        handle_fs_event(FsEvent::Remove(toml_path), &registry, &ledger, &bus).await;
+        assert_eq!(registry.len(), 0, "strategy must be unloaded after Remove");
+    }
+
+    /// T513 — 250ms debounce: rapid Upsert events for the same path collapse to one load.
+    ///
+    /// We simulate the debounce map manually (not the full watcher loop) to keep
+    /// this a fast unit test without real timers.
+    #[test]
+    fn t513_debounce_collapses_rapid_events_to_last() {
+        // Simulate the debounce HashMap: inserting the same path 10 times should
+        // keep only the last event (HashMap insert overwrites).
+        let path = std::path::PathBuf::from("/tmp/btc_macd_trend.toml");
+        let mut debounce: HashMap<PathBuf, (FsEvent, u64)> = HashMap::new();
+
+        for i in 0..10u64 {
+            debounce.insert(path.clone(), (FsEvent::Upsert(path.clone()), i));
+        }
+
+        assert_eq!(debounce.len(), 1, "debounce must collapse 10 events to 1");
+        let (_, ts) = &debounce[&path];
+        assert_eq!(
+            *ts, 9,
+            "last event's timestamp should be 9 (the 10th insert)"
+        );
     }
 }

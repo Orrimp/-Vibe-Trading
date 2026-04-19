@@ -70,7 +70,10 @@ impl RsiStream {
                 let p = Decimal::from(self.period);
                 self.avg_gain = Some(sum_g / p);
                 self.avg_loss = Some(sum_l / p);
-                return Some(Self::rsi_value(self.avg_gain.unwrap(), self.avg_loss.unwrap()));
+                return Some(Self::rsi_value(
+                    self.avg_gain.unwrap(),
+                    self.avg_loss.unwrap(),
+                ));
             }
             return None;
         }
@@ -146,9 +149,21 @@ mod tests {
     fn t502_rsi_bounded_0_to_100() {
         let mut rsi = RsiStream::new(14);
         let prices = [
-            dec!(100), dec!(102), dec!(101), dec!(103), dec!(105),
-            dec!(104), dec!(106), dec!(103), dec!(101), dec!(99),
-            dec!(98), dec!(100), dec!(102), dec!(104), dec!(103),
+            dec!(100),
+            dec!(102),
+            dec!(101),
+            dec!(103),
+            dec!(105),
+            dec!(104),
+            dec!(106),
+            dec!(103),
+            dec!(101),
+            dec!(99),
+            dec!(98),
+            dec!(100),
+            dec!(102),
+            dec!(104),
+            dec!(103),
         ];
         for &p in &prices {
             if let Some(v) = rsi.push(p) {

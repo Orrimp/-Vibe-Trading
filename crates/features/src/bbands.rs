@@ -62,7 +62,9 @@ impl BbandsStream {
         let mid = self.sma.push(close)?;
 
         // Population std dev over the window.
-        let variance = self.window.iter()
+        let variance = self
+            .window
+            .iter()
             .map(|&x| {
                 let diff = x - mid;
                 diff * diff
@@ -188,7 +190,12 @@ mod tests {
         match (stream, batch) {
             (Some(s), Some(b)) => {
                 let tol = Decimal::new(1, 6);
-                assert!((s.upper - b.upper).abs() <= tol, "upper mismatch: s={} b={}", s.upper, b.upper);
+                assert!(
+                    (s.upper - b.upper).abs() <= tol,
+                    "upper mismatch: s={} b={}",
+                    s.upper,
+                    b.upper
+                );
                 assert!((s.lower - b.lower).abs() <= tol, "lower mismatch");
             }
             _ => panic!("expected Some from both"),

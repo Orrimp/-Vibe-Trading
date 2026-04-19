@@ -1,6 +1,6 @@
 ---
 slug: v05-composed-strategies
-status: in-progress
+status: shipped
 owner: developer
 updated: 2026-04-19
 ---
@@ -41,7 +41,7 @@ v0 T0xx namespace stays intact.
 
 ## Week 1 — parser, engine, audit, new types
 
-- [ ] **T501** [developer] — `trading_core` new message types +
+- [x] **T501** [developer] — `trading_core` new message types +
   read-side views per [Design → New broadcast events](../features/v05-composed-strategies.md#new-broadcast-events-q5-resolution).
   Add `StrategyLoaded`, `StrategySwapped`, `StrategyLoadError`,
   `StrategyEventView`, `StrategyEventKind` (all `Serialize` + `Deserialize`
@@ -51,7 +51,7 @@ v0 T0xx namespace stays intact.
   clean._
   **[gate for ui-designer]** once merged, UI can type against the new types.
 
-- [ ] **T502** [developer] — `features` crate streaming-indicator
+- [x] **T502** [developer] — `features` crate streaming-indicator
   additions: `Ema`, `Macd` (line + signal + histogram), `Rsi`,
   `Bollinger` (upper + mid + lower). Pure-`Decimal` implementation
   consistent with v0 `features::sma` (no new TA dep — `kand`/`quantedge-ta`
@@ -62,7 +62,7 @@ v0 T0xx namespace stays intact.
   sequences" holds; `cargo clippy -p features -- -D warnings` clean._
   **[deps: T02 from v0-paper-sma]**
 
-- [ ] **T503** [developer] — Rule-DSL lexer + parser in
+- [x] **T503** [developer] — Rule-DSL lexer + parser in
   `strategy::composed::dsl`. Recursive-descent parser (or `winnow`
   combinators — developer-owned dep choice, no new *runtime* dep) that
   turns a signal string into a `RuleAst`. Covers every production in
@@ -72,7 +72,7 @@ v0 T0xx namespace stays intact.
   round-trips parse → canonicalize → re-parse with identical AST._
   **[deps: T501]**
 
-- [ ] **T504** [developer] — `strategy::composed::typecheck` —
+- [x] **T504** [developer] — `strategy::composed::typecheck` —
   arity / unknown-indicator / unknown-param / invalid-range /
   invalid-stage / unsupported-sizing detection with distinct
   `StrategyLoadError::error_code` values per [Design → Error codes](../features/v05-composed-strategies.md#rule-dsl-grammar--toml-schema). —
@@ -81,7 +81,7 @@ v0 T0xx namespace stays intact.
   distinct non-panic `StrategyLoadError`; error codes match the table._
   **[deps: T503]**
 
-- [ ] **T505** [developer] — `strategy::composed::node` — indicator
+- [x] **T505** [developer] — `strategy::composed::node` — indicator
   node + rule node evaluators per [Design → ComposedStrategy type](../features/v05-composed-strategies.md#composedstrategy-type-r1).
   Ring buffers sized at construction; `on_bar` is allocation-free on
   the hot path (verified by a `#[test]` under `cargo test --features
@@ -92,7 +92,7 @@ v0 T0xx namespace stays intact.
   hand-coded reference impl (R1 acceptance)._
   **[deps: T501, T502, T503]**
 
-- [ ] **T506** [developer] — `strategy::composed::config` —
+- [x] **T506** [developer] — `strategy::composed::config` —
   `ComposedStrategyConfig` serde deserialize + file loader +
   content-hash (sha256 of canonicalized AST). Filename-stem vs `id`
   mismatch check; single-symbol enforcement in v0.5. —
@@ -101,7 +101,7 @@ v0 T0xx namespace stays intact.
   stable, deterministic hash across two runs._
   **[deps: T503, T504]**
 
-- [ ] **T507** [developer] — `ComposedStrategy` implements
+- [x] **T507** [developer] — `ComposedStrategy` implements
   `Strategy` trait end-to-end (ties T502–T506 together). Edge-triggered
   signal emission: `false → true` emits Buy, `true → false` emits Sell
   (Q3 symmetric signal-flip). —
@@ -110,14 +110,14 @@ v0 T0xx namespace stays intact.
   items per bar._
   **[deps: T505, T506]**
 
-- [ ] **T508** [developer] — `audit` schema migration
+- [x] **T508** [developer] — `audit` schema migration
   `migrations/0003_strategy_events.sql` per [Design → Strategy-event audit schema](../features/v05-composed-strategies.md#strategy-event-audit-schema-r4-q1-resolution).
   Backwards-compatible — `sqlx::migrate!` applies it on next boot. —
   _acceptance: integration test opens an empty ledger, runs migrations,
   `sqlite_master` contains `strategy_events` table with the five
   expected indexes/columns._
 
-- [ ] **T509** [developer] — `audit::journal::strategy_event(..)`
+- [x] **T509** [developer] — `audit::journal::strategy_event(..)`
   writer + `audit::query::{strategy_events_since, strategy_history}`
   readers per [Design → Strategy-event audit schema](../features/v05-composed-strategies.md#strategy-event-audit-schema-r4-q1-resolution).
   No `sqlx` types in the `audit::query` public surface. —
@@ -127,7 +127,7 @@ v0 T0xx namespace stays intact.
   are crate-private (check via `cargo public-api`)._
   **[deps: T501, T508]**
 
-- [ ] **T510** [developer] — Reconciler invariant extension: v0
+- [x] **T510** [developer] — Reconciler invariant extension: v0
   minute-boundary reconciler (T26) walks `journal_entries` only and
   ignores `strategy_events`. Add an assertion to the reconciler test
   harness that writing `strategy_events` rows between bars does **not**
@@ -136,7 +136,7 @@ v0 T0xx namespace stays intact.
   new test "strategy_events_do_not_affect_balance" passes._
   **[deps: T509]**
 
-- [ ] **T511** [developer] — `strategy::registry` refactor: replace
+- [x] **T511** [developer] — `strategy::registry` refactor: replace
   the v0 compiled-in `HashMap` with
   `parking_lot::RwLock<HashMap<StrategyId, Box<dyn Strategy>>>` per
   [architecture.md — registry concurrency (Q2)](../architecture.md#v05--registry-concurrency-q2--confirmed-2026-04-19).
@@ -151,7 +151,7 @@ v0 T0xx namespace stays intact.
 
 ## Week 2 — watcher, UI, backtest, recipes, end-to-end
 
-- [ ] **T512** [developer] — `agent::EventBus` three new broadcast
+- [x] **T512** [developer] — `agent::EventBus` three new broadcast
   channels: `strategy_loaded`, `strategy_swapped`, `strategy_error`
   (capacity 32 each) per [Design → New broadcast events](../features/v05-composed-strategies.md#new-broadcast-events-q5-resolution).
   Publisher methods infallible, identical pattern to v0 fills /
@@ -163,7 +163,7 @@ v0 T0xx namespace stays intact.
   **[deps: T501]**
   **[gate for ui-designer]** once merged, UI can subscribe to real events.
 
-- [ ] **T513** [developer] — `agent::watcher::run_strategy_watcher`
+- [x] **T513** [developer] — `agent::watcher::run_strategy_watcher`
   task: `notify` watcher on `config/strategies/`, 250ms debounce,
   dispatch to `load_and_swap` / `unload`; writes `strategy_event`
   rows; publishes to the three new bus channels per [Design → File watcher + atomic swap](../features/v05-composed-strategies.md#file-watcher--atomic-swap-r3).
@@ -176,7 +176,7 @@ v0 T0xx namespace stays intact.
   touch the registry (old strategy stays)._
   **[deps: T507, T509, T511, T512]**
 
-- [ ] **T514** [developer] — `agent` binary wires
+- [x] **T514** [developer] — `agent` binary wires
   `run_strategy_watcher` into the top-level orchestrator alongside the
   v0 tasks (halt-file watcher, heartbeat, reconciler, bus). Cancellation
   token ties into existing shutdown path. Mode gating: watcher runs in
@@ -188,7 +188,7 @@ v0 T0xx namespace stays intact.
   produces a `StrategyLoaded` log line within 2s._
   **[deps: T513]**
 
-- [ ] **T515** [developer] — Three canonical recipes committed as
+- [x] **T515** [developer] — Three canonical recipes committed as
   TOML under `config/strategies/` per R6.1–R6.3:
   `btc_macd_trend.toml`, `btc_rsi_reversion.toml`,
   `btc_bbands_mean_revert.toml`. Each passes parse + typecheck + load. —
@@ -197,7 +197,7 @@ v0 T0xx namespace stays intact.
   each appears in `strategy_history(id)` with a `Load` event._
   **[deps: T507, T513]**
 
-- [ ] **T516** [developer] — `backtest` binary `--strategy <id>` flag
+- [x] **T516** [developer] — `backtest` binary `--strategy <id>` flag
   per [Design → Backtest harness alignment](../features/v05-composed-strategies.md#backtest-harness-alignment-r9).
   Resolves compiled-in first, then `config/strategies/<id>.toml`.
   Report writer's new `Strategy` subsection emits id + kind + full
@@ -210,7 +210,7 @@ v0 T0xx namespace stays intact.
   hash._
   **[deps: T507, T515]**
 
-- [ ] **T517** [developer] — R7 hot-swap integration test
+- [x] **T517** [developer] — R7 hot-swap integration test
   `crates/agent/tests/strategy_hot_swap.rs` per R7.1 / R7.2. Drives
   `ReplayFeed` over a 1h fixture; at t=500 bars rewrites
   `btc_macd_trend.toml` with `(8,21,9)` params; asserts swap within
@@ -223,7 +223,7 @@ v0 T0xx namespace stays intact.
   strategy_hot_swap`._
   **[deps: T513, T515]**
 
-- [ ] **T518** [developer] — R8 invalid-config rejection integration
+- [x] **T518** [developer] — R8 invalid-config rejection integration
   test `crates/agent/tests/strategy_rejection.rs`. Ten malformed TOML
   fixtures under `tests/fixtures/bad_strategies/` (arity, unknown
   indicator, unknown param, non-UTF8, missing required key, invalid
@@ -236,7 +236,7 @@ v0 T0xx namespace stays intact.
   test._
   **[deps: T513, T515, T510]**
 
-- [ ] **T519** [developer] — Criterion benches
+- [x] **T519** [developer] — Criterion benches
   `crates/strategy/benches/composed_strategies.rs` per R10.2.
   Three cases: 1-rule (`rsi(14) < 30`), 3-rule (`btc_macd_trend`
   shape), 5-rule (R10.2 mixed case). Baselines committed to
@@ -246,7 +246,7 @@ v0 T0xx namespace stays intact.
   `cargo bench` with the baseline delta step passes._
   **[deps: T507]**
 
-- [ ] **T520** [developer] — Four backtest scenarios execution per
+- [x] **T520** [developer] — Four backtest scenarios execution per
   [feature → Backtest Scenarios](../features/v05-composed-strategies.md#backtest-scenarios):
   1. `btc-2023-1m-sma-baseline-refresh` (must byte-match v0 report
      body sha256 to confirm additive changes didn't drift SMA output);
@@ -261,7 +261,7 @@ v0 T0xx namespace stays intact.
   each report's `Strategy` section carries id + hash + source._
   **[deps: T516, T515]**
 
-- [ ] **T521** [developer] — Determinism re-gate: extend the T33-style
+- [x] **T521** [developer] — Determinism re-gate: extend the T33-style
   harness (`crates/backtest/tests/determinism.rs`) with the three new
   scenarios from T520. Each new scenario is run twice at seed
   `0xC0FFEE`; both runs produce byte-identical report bodies and
@@ -344,7 +344,7 @@ v0 T0xx namespace stays intact.
 
 ## Final
 
-- [ ] **T_FINAL_A** [developer] — Backend end-to-end:
+- [x] **T_FINAL_A** [developer] — Backend end-to-end:
   - All four backtest scenarios (T520) green with deterministic reports.
   - R7 hot-swap (T517) + R8 rejection (T518) integration tests green.
   - Criterion benches (T519) under budget.
@@ -357,7 +357,7 @@ v0 T0xx namespace stays intact.
   section pass._
   **[deps: T517, T518, T519, T520, T521]**
 
-- [ ] **T_FINAL_B** [ui-designer] — UI smoke extension:
+- [x] **T_FINAL_B** [ui-designer] — UI smoke extension:
   - Cockpit launches with the strategies panel rendered (fixtures mode
     and live mode).
   - Scripted run drives the panel through empty → loading → ready → error
@@ -448,3 +448,25 @@ Week 2 (watcher, UI live, backtest, e2e):
   integration tests (67 → 70 total in the `live` feature suite).
   T_FINAL_B still deferred — the four v0.5 backtest reports from
   developer T_FINAL_A are not yet in `spec/reports/`.
+- 2026-04-19 (developer, resume): All developer tasks T501–T521 + T_FINAL_A
+  complete. Root fix: `Wall-clock time` moved from report body to YAML
+  front-matter (`wall_clock_s:`) so body-SHA256 is stable across runs.
+  Full workspace: 0 failures. `cargo fmt --all -- --check` clean.
+  `cargo clippy --workspace --all-targets -- -D warnings` clean.
+  6 determinism tests pass (T33 + 4 × T521). All four backtest reports
+  in `spec/reports/`. T_FINAL_B unblocked.
+- 2026-04-19 (ui-designer, resume): T_FINAL_B ticked. Smoke checklist
+  extended with a `## v0.5 — strategies panel smoke + hot-swap drill`
+  section in
+  [ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md):
+  four-state fixtures walkthrough referencing
+  `screenshots/v0-paper-sma/README.md#45`, R7 hot-swap drill (edit
+  `config/strategies/btc_macd_trend.toml`, observe swap within 2s), R8
+  invalid-config drill (bad edit flips row to error while other
+  strategies keep running), five deferred PNG entries, and a dedicated
+  acceptance checklist. The four v0.5 backtest reports from T_FINAL_A
+  are cross-linked. Documentation-only task — no `.rs` changes. Quality
+  gates: `cargo fmt -p ui -- --check` clean, `cargo clippy -p ui
+  --all-targets --all-features -- -D warnings` clean, `cargo test -p
+  ui` green (57 tests), `cargo test -p ui --features live` green (70
+  tests).

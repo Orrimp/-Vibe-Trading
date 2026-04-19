@@ -20,12 +20,14 @@ use trading_core::{
     Bar, Money, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
     Timeframe, Timestamp, Usdt,
 };
-use smol_str;
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
-#[command(name = "backtest", about = "v0.5 backtest engine (SMA + composed strategies)")]
+#[command(
+    name = "backtest",
+    about = "v0.5 backtest engine (SMA + composed strategies)"
+)]
 struct Args {
     /// Scenario name, e.g. btc-2023-1m-sma-cross
     #[arg(long)]
@@ -420,6 +422,7 @@ fn write_report(
          scenario: {scenario_name}\n\
          seed: 0x{seed:X}\n\
          generated: {stamp}\n\
+         wall_clock_s: {elapsed:.1}\n\
          data_source: {data_source}\n\
          {baseline_line}\n\
          ledger_imbalance_total: {imbalance}\n\
@@ -457,7 +460,6 @@ fn write_report(
          | Total fees           | ${fees:.6} USDT            |\n\
          | Ledger imbalances    | {imbalance}                |\n\
          | LLM spend            | $0.00                      |\n\
-         | Wall-clock time      | {elapsed:.1}s              |\n\
          | Seed                 | 0x{seed:X}                 |\n\
          | Data source          | {data_source}              |\n\
          \n\
@@ -557,8 +559,10 @@ async fn main() -> Result<()> {
             "no Parquet data — generating synthetic bars"
         );
         let start_price = match scenario.name.as_str() {
-            "btc-2023-1m-sma-cross" | "btc-2023-1m-sma-baseline-refresh"
-            | "btc-2023-1m-macd-trend" | "btc-2023-1m-rsi-reversion"
+            "btc-2023-1m-sma-cross"
+            | "btc-2023-1m-sma-baseline-refresh"
+            | "btc-2023-1m-macd-trend"
+            | "btc-2023-1m-rsi-reversion"
             | "btc-2023-1m-bbands-mean-revert" => dec!(16_500),
             "btc-2024-h1-sma-cross" => dec!(42_000),
             _ => dec!(30_000),
@@ -580,9 +584,7 @@ async fn main() -> Result<()> {
         }
     } else if matches!(
         args.scenario.as_str(),
-        "btc-2023-1m-macd-trend"
-            | "btc-2023-1m-rsi-reversion"
-            | "btc-2023-1m-bbands-mean-revert"
+        "btc-2023-1m-macd-trend" | "btc-2023-1m-rsi-reversion" | "btc-2023-1m-bbands-mean-revert"
     ) {
         if let Some(b) = find_latest_report("spec/reports", "btc-2023-1m-sma-baseline-refresh") {
             scenario.baseline_report = Some(b);
@@ -624,7 +626,11 @@ async fn main() -> Result<()> {
             let toml_path = PathBuf::from(format!("config/strategies/{strat_id}.toml"));
             let cfg = strategy::ComposedStrategyConfig::from_file(&toml_path)
                 .with_context(|| format!("load strategy config: {}", toml_path.display()))?;
-            let hash_hex = cfg.hash.iter().map(|b| format!("{b:02x}")).collect::<String>();
+            let hash_hex = cfg
+                .hash
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
             let source_path = toml_path.display().to_string();
             let signal = cfg.signal_raw.to_string();
             let meta = StrategyMeta {

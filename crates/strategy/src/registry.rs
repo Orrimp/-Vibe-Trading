@@ -405,7 +405,9 @@ mod tests {
 
         // Signal reader to stop and join
         stop.store(true, Ordering::Relaxed);
-        reader.join().expect("reader thread panicked — torn read detected");
+        reader
+            .join()
+            .expect("reader thread panicked — torn read detected");
 
         // Registry should still hold exactly 1 strategy
         assert_eq!(reg.len(), 1);

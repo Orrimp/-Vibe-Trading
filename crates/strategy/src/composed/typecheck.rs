@@ -39,7 +39,9 @@ fn check_rule(rule: &RuleAst) -> Result<(), StrategyLoadError> {
             check_expr(a)?;
             check_expr(b)?;
         }
-        RuleAst::MacdCross { fast, slow, signal, .. } => {
+        RuleAst::MacdCross {
+            fast, slow, signal, ..
+        } => {
             check_macd_params(*fast, *slow, *signal)?;
         }
         RuleAst::BollingerLowerTouch { period, mult } => {

@@ -42,9 +42,9 @@ fn indicator_arity(name: &str) -> Option<usize> {
         "bollinger_mid" => Some(2),
         "bollinger_lower" => Some(2),
         "bollinger_lower_touch" => Some(2),
-        "min" => Some(2),   // min(field, window)
-        "max" => Some(2),   // max(field, window)
-        "avg" => Some(2),   // avg(field, window)
+        "min" => Some(2), // min(field, window)
+        "max" => Some(2), // max(field, window)
+        "avg" => Some(2), // avg(field, window)
         "cross_above" => Some(2),
         "cross_below" => Some(2),
         _ => None,
@@ -103,33 +103,76 @@ fn tokenize(input: &str) -> Result<Vec<Token>, StrategyLoadError> {
         if i + 1 < n {
             let two = &input[i..i + 2];
             match two {
-                "<=" => { tokens.push(Token::Le); i += 2; continue; }
-                ">=" => { tokens.push(Token::Ge); i += 2; continue; }
-                "==" => { tokens.push(Token::Eq); i += 2; continue; }
-                "!=" => { tokens.push(Token::Ne); i += 2; continue; }
+                "<=" => {
+                    tokens.push(Token::Le);
+                    i += 2;
+                    continue;
+                }
+                ">=" => {
+                    tokens.push(Token::Ge);
+                    i += 2;
+                    continue;
+                }
+                "==" => {
+                    tokens.push(Token::Eq);
+                    i += 2;
+                    continue;
+                }
+                "!=" => {
+                    tokens.push(Token::Ne);
+                    i += 2;
+                    continue;
+                }
                 _ => {}
             }
         }
 
         match ch {
-            '<' => { tokens.push(Token::Lt); i += 1; }
-            '>' => { tokens.push(Token::Gt); i += 1; }
-            '+' => { tokens.push(Token::Plus); i += 1; }
-            '-' => { tokens.push(Token::Minus); i += 1; }
-            '*' => { tokens.push(Token::Star); i += 1; }
-            '/' => { tokens.push(Token::Slash); i += 1; }
-            '(' => { tokens.push(Token::LParen); i += 1; }
-            ')' => { tokens.push(Token::RParen); i += 1; }
-            ',' => { tokens.push(Token::Comma); i += 1; }
+            '<' => {
+                tokens.push(Token::Lt);
+                i += 1;
+            }
+            '>' => {
+                tokens.push(Token::Gt);
+                i += 1;
+            }
+            '+' => {
+                tokens.push(Token::Plus);
+                i += 1;
+            }
+            '-' => {
+                tokens.push(Token::Minus);
+                i += 1;
+            }
+            '*' => {
+                tokens.push(Token::Star);
+                i += 1;
+            }
+            '/' => {
+                tokens.push(Token::Slash);
+                i += 1;
+            }
+            '(' => {
+                tokens.push(Token::LParen);
+                i += 1;
+            }
+            ')' => {
+                tokens.push(Token::RParen);
+                i += 1;
+            }
+            ',' => {
+                tokens.push(Token::Comma);
+                i += 1;
+            }
             '0'..='9' | '.' => {
                 let start = i;
                 while i < n && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
                     i += 1;
                 }
                 let s = &input[start..i];
-                let d: Decimal = s.parse().map_err(|_| {
-                    StrategyLoadError::GrammarParse(format!("invalid number: {s}"))
-                })?;
+                let d: Decimal = s
+                    .parse()
+                    .map_err(|_| StrategyLoadError::GrammarParse(format!("invalid number: {s}")))?;
                 tokens.push(Token::Number(d));
             }
             'a'..='z' | 'A'..='Z' | '_' => {
@@ -166,7 +209,11 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(tokens: &'a [Token], params: &'a BTreeMap<SmolStr, Decimal>) -> Self {
-        Self { tokens, pos: 0, params }
+        Self {
+            tokens,
+            pos: 0,
+            params,
+        }
     }
 
     fn peek(&self) -> Option<&Token> {
@@ -267,7 +314,11 @@ impl<'a> Parser<'a> {
             };
             self.advance();
             let rhs = self.parse_term()?;
-            lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            lhs = Expr::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            };
         }
         Ok(lhs)
     }
@@ -350,10 +401,7 @@ impl<'a> Parser<'a> {
         // For simplicity, macd_cross and cross_above/cross_below are Expr-level
         // sugar that get desugared when the rule-level parse completes.
 
-        Ok(Expr::Indicator(IndicatorCall {
-            name,
-            args,
-        }))
+        Ok(Expr::Indicator(IndicatorCall { name, args }))
     }
 }
 
@@ -415,7 +463,11 @@ mod tests {
 
     #[test]
     fn t503_parse_or_with_threshold() {
-        let ast = parse_signal("bollinger_lower_touch(20,2) OR rsi(14) < 20", &empty_params()).unwrap();
+        let ast = parse_signal(
+            "bollinger_lower_touch(20,2) OR rsi(14) < 20",
+            &empty_params(),
+        )
+        .unwrap();
         assert!(matches!(ast, RuleAst::Or(_, _)));
     }
 
@@ -428,13 +480,21 @@ mod tests {
 
     #[test]
     fn t503_parse_arithmetic_literal() {
-        let ast = parse_signal("close < bollinger_lower(20,2) AND volume > 1.5 * avg(volume, 20)", &empty_params()).unwrap();
+        let ast = parse_signal(
+            "close < bollinger_lower(20,2) AND volume > 1.5 * avg(volume, 20)",
+            &empty_params(),
+        )
+        .unwrap();
         assert!(matches!(ast, RuleAst::And(_, _)));
     }
 
     #[test]
     fn t503_parse_macd_hist_greater_ema() {
-        let ast = parse_signal("macd_hist(12,26,9) > 0 AND close > ema(200)", &empty_params()).unwrap();
+        let ast = parse_signal(
+            "macd_hist(12,26,9) > 0 AND close > ema(200)",
+            &empty_params(),
+        )
+        .unwrap();
         assert!(matches!(ast, RuleAst::And(_, _)));
     }
 
@@ -478,5 +538,55 @@ mod tests {
         let result = parse_signal("   ", &empty_params());
         let err = result.unwrap_err();
         assert_eq!(err.error_code(), "empty_signal");
+    }
+
+    // ── T503 proptest: 1000-case parse determinism ────────────────────────────
+
+    /// Valid signal templates for proptest generation.
+    const SIGNAL_TEMPLATES: &[&str] = &[
+        "rsi(14) < 30",
+        "rsi(14) > 70",
+        "rsi(14) <= 40",
+        "rsi(14) >= 60",
+        "macd_cross(12,26,9)",
+        "macd_cross(5,13,3)",
+        "bollinger_lower_touch(20,2)",
+        "bollinger_lower_touch(10,1)",
+        "macd_hist(12,26,9) > 0",
+        "macd_hist(12,26,9) < 0",
+        "close > ema(200)",
+        "close > ema(50)",
+        "close < sma(20)",
+        "volume > 1.5 * avg(volume, 20)",
+        "close > min(low, 20)",
+        "macd_cross(12,26,9) AND rsi(14) < 35",
+        "bollinger_lower_touch(20,2) OR rsi(14) < 20",
+        "(rsi(14) < 30 OR macd_cross(12,26,9)) AND NOT (close < min(low, 20))",
+        "macd_hist(12,26,9) > 0 AND close > ema(200)",
+        "close < bollinger_lower(20,2) AND volume > 1.5 * avg(volume, 20)",
+        "NOT (rsi(14) > 50)",
+        "rsi(14) < 30 AND rsi(14) > 10",
+        "close > open",
+        "high > close",
+        "volume > avg(volume, 10)",
+    ];
+
+    /// T503 proptest: parsing a valid signal string is deterministic —
+    /// parse → re-parse produces an identical `RuleAst`.
+    ///
+    /// Runs 1 000 cases by cycling through the template list.
+    #[test]
+    fn t503_proptest_parse_is_deterministic_1000_cases() {
+        let params = empty_params();
+        for (i, &template) in SIGNAL_TEMPLATES.iter().cycle().take(1_000).enumerate() {
+            let first = parse_signal(template, &params)
+                .unwrap_or_else(|e| panic!("case {i}: failed to parse {template:?}: {e}"));
+            let second = parse_signal(template, &params)
+                .unwrap_or_else(|e| panic!("case {i}: second parse of {template:?} failed: {e}"));
+            assert_eq!(
+                first, second,
+                "case {i}: parse of {template:?} is not deterministic"
+            );
+        }
     }
 }

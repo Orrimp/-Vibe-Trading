@@ -5254,8 +5254,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "audit",
+ "criterion",
  "features",
  "parking_lot",
+ "proptest",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",

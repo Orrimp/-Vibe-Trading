@@ -57,7 +57,9 @@
 //! handles lag by showing a "replay lag" indicator, not by blocking the agent.
 
 use tokio::sync::broadcast;
-use trading_core::{Bar, Fill, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded, StrategySwapped, Tick};
+use trading_core::{
+    Bar, Fill, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded, StrategySwapped, Tick,
+};
 
 use crate::config::BusConfig;
 use crate::kill_switch::AgentMode;

@@ -44,7 +44,10 @@ impl MacdStream {
     #[must_use]
     pub fn new(fast: u32, slow: u32, signal_period: u32) -> Self {
         assert!(fast < slow, "MACD fast({fast}) must be < slow({slow})");
-        assert!(fast > 0 && slow > 0 && signal_period > 0, "MACD periods must be > 0");
+        assert!(
+            fast > 0 && slow > 0 && signal_period > 0,
+            "MACD periods must be > 0"
+        );
         Self {
             fast_ema: EmaStream::new(fast),
             slow_ema: EmaStream::new(slow),
@@ -67,7 +70,11 @@ impl MacdStream {
         let macd_line = fast - slow;
         let signal = self.signal_ema.push(macd_line)?;
         let hist = macd_line - signal;
-        Some(MacdValue { line: macd_line, signal, hist })
+        Some(MacdValue {
+            line: macd_line,
+            signal,
+            hist,
+        })
     }
 }
 
@@ -84,7 +91,11 @@ impl MacdBatch {
     /// Create a new batch MACD.
     #[must_use]
     pub fn new(fast: u32, slow: u32, signal_period: u32) -> Self {
-        Self { fast, slow, signal_period }
+        Self {
+            fast,
+            slow,
+            signal_period,
+        }
     }
 
     /// Compute last MACD value from `prices`.
@@ -130,7 +141,10 @@ mod tests {
                 break;
             }
         }
-        assert!(first_some_bar.is_some(), "MACD never produced a value in 100 bars");
+        assert!(
+            first_some_bar.is_some(),
+            "MACD never produced a value in 100 bars"
+        );
         // Slow EMA(26) and fast EMA(12) are pushed in parallel, so slow is ready at
         // bar 26, fast at bar 12. First MACD line = bar 26.
         // Signal EMA(9) needs 9 MACD values → first MacdValue = bar 26+9-1 = 34.
@@ -142,9 +156,21 @@ mod tests {
     fn t502_macd_hist_is_line_minus_signal() {
         let mut macd = MacdStream::new(3, 6, 3);
         let prices = [
-            dec!(10), dec!(11), dec!(12), dec!(13), dec!(12),
-            dec!(11), dec!(12), dec!(13), dec!(14), dec!(15),
-            dec!(14), dec!(13), dec!(14), dec!(15), dec!(16),
+            dec!(10),
+            dec!(11),
+            dec!(12),
+            dec!(13),
+            dec!(12),
+            dec!(11),
+            dec!(12),
+            dec!(13),
+            dec!(14),
+            dec!(15),
+            dec!(14),
+            dec!(13),
+            dec!(14),
+            dec!(15),
+            dec!(16),
         ];
         for &p in &prices {
             if let Some(v) = macd.push(p) {

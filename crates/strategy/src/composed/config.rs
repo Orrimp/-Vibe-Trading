@@ -79,15 +79,11 @@ impl ComposedStrategyConfig {
     ///
     /// Returns [`StrategyLoadError`] on any parse or validation failure.
     pub fn from_file(path: &Path) -> Result<Self, StrategyLoadError> {
-        let bytes = std::fs::read(path)
-            .map_err(|e| StrategyLoadError::IoRead(e.to_string()))?;
+        let bytes = std::fs::read(path).map_err(|e| StrategyLoadError::IoRead(e.to_string()))?;
         let toml_str = std::str::from_utf8(&bytes)
             .map_err(|e| StrategyLoadError::TomlParse(format!("non-UTF8: {e}")))?;
 
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
         Self::from_str(toml_str, stem)
     }
@@ -163,10 +159,14 @@ impl ComposedStrategyConfig {
 /// Parse `"fixed_fraction(<f>)"` into `Sizing::FixedFraction`.
 fn parse_sizing(s: &str) -> Result<Sizing, StrategyLoadError> {
     let s = s.trim();
-    if let Some(inner) = s.strip_prefix("fixed_fraction(").and_then(|r| r.strip_suffix(')')) {
-        let f: Decimal = inner.trim().parse().map_err(|_| {
-            StrategyLoadError::UnsupportedSizing(SmolStr::new(s))
-        })?;
+    if let Some(inner) = s
+        .strip_prefix("fixed_fraction(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
+        let f: Decimal = inner
+            .trim()
+            .parse()
+            .map_err(|_| StrategyLoadError::UnsupportedSizing(SmolStr::new(s)))?;
         Ok(Sizing::FixedFraction(f))
     } else {
         Err(StrategyLoadError::UnsupportedSizing(SmolStr::new(s)))
@@ -261,7 +261,10 @@ size = "fixed_fraction(0.1)"
 "#;
         let cfg1 = ComposedStrategyConfig::from_str(toml1, "test_strategy").unwrap();
         let cfg2 = ComposedStrategyConfig::from_str(toml2, "test_strategy").unwrap();
-        assert_ne!(cfg1.hash, cfg2.hash, "different signals should have different hashes");
+        assert_ne!(
+            cfg1.hash, cfg2.hash,
+            "different signals should have different hashes"
+        );
     }
 
     #[test]
