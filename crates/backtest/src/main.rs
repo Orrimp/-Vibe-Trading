@@ -1,6 +1,7 @@
-//! Backtest binary — T25.
+//! Backtest binary — T25, T516.
 //!
 //! Usage: `cargo run --release --bin backtest -- --scenario btc-2023-1m-sma-cross --seed 0xC0FFEE`
+//!        `cargo run --release --bin backtest -- --scenario btc-2023-1m-macd-trend --strategy btc_macd_trend --seed 0xC0FFEE`
 //!
 //! Reads Parquet via `ReplayFeed` (or generates synthetic data if absent),
 //! drives `StrategyRegistry` → `risk` → `PaperEngine` → `audit`,
@@ -19,15 +20,22 @@ use trading_core::{
     Bar, Money, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
     Timeframe, Timestamp, Usdt,
 };
+use smol_str;
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
-#[command(name = "backtest", about = "v0 SMA backtest engine")]
+#[command(name = "backtest", about = "v0.5 backtest engine (SMA + composed strategies)")]
 struct Args {
     /// Scenario name, e.g. btc-2023-1m-sma-cross
     #[arg(long)]
     scenario: String,
+
+    /// Strategy id: compiled-in (e.g. sma_crossover) or composed TOML id
+    /// (e.g. btc_macd_trend → loads config/strategies/btc_macd_trend.toml).
+    /// When omitted the scenario's default strategy is used.
+    #[arg(long)]
+    strategy: Option<String>,
 
     /// RNG seed (hex or decimal), e.g. 0xC0FFEE
     #[arg(long, default_value = "0xC0FFEE")]
@@ -49,14 +57,22 @@ fn parse_seed(s: &str) -> Result<u64> {
 
 // ── Scenario catalogue ────────────────────────────────────────────────────────
 
+/// Whether the scenario uses the compiled-in SMA or a composed TOML strategy.
+#[derive(Debug, Clone)]
+enum ScenarioStrategy {
+    /// Compiled-in SMA crossover.
+    SmaCrossover { fast_len: usize, slow_len: usize },
+    /// Composed strategy — resolved at run-time from a config path.
+    Composed { id: String },
+}
+
 #[derive(Debug, Clone)]
 struct Scenario {
     name: String,
     symbol: Symbol,
     start_year: i32,
     bar_count: usize,
-    fast_len: usize,
-    slow_len: usize,
+    strategy: ScenarioStrategy,
     initial_capital: Decimal,
     slippage_bps: u32,
     taker_fee_bps: u32,
@@ -68,13 +84,15 @@ struct Scenario {
 impl Scenario {
     fn from_name(name: &str, data_root: PathBuf) -> Result<Self> {
         match name {
-            "btc-2023-1m-sma-cross" => Ok(Self {
+            "btc-2023-1m-sma-cross" | "btc-2023-1m-sma-baseline-refresh" => Ok(Self {
                 name: name.to_string(),
                 symbol: Symbol::new("BTCUSDT"),
                 start_year: 2023,
                 bar_count: 525_600, // 365 days × 1440 bars/day
-                fast_len: 20,
-                slow_len: 50,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
@@ -86,8 +104,52 @@ impl Scenario {
                 symbol: Symbol::new("BTCUSDT"),
                 start_year: 2024,
                 bar_count: 262_800, // ~182.5 days × 1440 bars/day
-                fast_len: 20,
-                slow_len: 50,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+            }),
+            "btc-2023-1m-macd-trend" => Ok(Self {
+                name: name.to_string(),
+                symbol: Symbol::new("BTCUSDT"),
+                start_year: 2023,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::Composed {
+                    id: "btc_macd_trend".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+            }),
+            "btc-2023-1m-rsi-reversion" => Ok(Self {
+                name: name.to_string(),
+                symbol: Symbol::new("BTCUSDT"),
+                start_year: 2023,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::Composed {
+                    id: "btc_rsi_reversion".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+            }),
+            "btc-2023-1m-bbands-mean-revert" => Ok(Self {
+                name: name.to_string(),
+                symbol: Symbol::new("BTCUSDT"),
+                start_year: 2023,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::Composed {
+                    id: "btc_bbands_mean_revert".to_string(),
+                },
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
@@ -97,6 +159,16 @@ impl Scenario {
             other => anyhow::bail!("unknown scenario: {other}"),
         }
     }
+}
+
+/// Metadata about the active strategy — for report generation (R9.3).
+#[derive(Debug, Clone)]
+struct StrategyMeta {
+    id: String,
+    kind: String,
+    hash_hex: String,
+    source_path: String,
+    signal: String,
 }
 
 // ── Synthetic data generation ─────────────────────────────────────────────────
@@ -296,6 +368,7 @@ fn write_report(
     data_source: &str,
     elapsed_secs: f64,
     report_path: &Path,
+    strategy_meta: &StrategyMeta,
 ) -> Result<()> {
     let total_return_pct = if initial_capital > Decimal::ZERO {
         let r = (final_equity - initial_capital) / initial_capital;
@@ -333,6 +406,15 @@ fn write_report(
     let initial_f = f64::try_from(initial_capital).unwrap_or(0.0);
     let final_f = f64::try_from(final_equity).unwrap_or(0.0);
 
+    let strategy_notes = match &scenario.strategy {
+        ScenarioStrategy::SmaCrossover { fast_len, slow_len } => {
+            format!("- SMA crossover: fast={fast_len}, slow={slow_len}")
+        }
+        ScenarioStrategy::Composed { id } => {
+            format!("- Composed strategy: {id}")
+        }
+    };
+
     let content = format!(
         "---\n\
          scenario: {scenario_name}\n\
@@ -345,6 +427,16 @@ fn write_report(
          ---\n\
          \n\
          # Backtest Report — {scenario_name}\n\
+         \n\
+         ## Strategy\n\
+         \n\
+         | Field        | Value                                                    |\n\
+         |--------------|----------------------------------------------------------|\n\
+         | ID           | {strat_id}                                               |\n\
+         | Kind         | {strat_kind}                                             |\n\
+         | Hash         | {strat_hash}                                             |\n\
+         | Source       | {strat_source}                                           |\n\
+         | Signal       | {strat_signal}                                           |\n\
          \n\
          ## Summary\n\
          \n\
@@ -376,7 +468,7 @@ fn write_report(
          \n\
          ## Notes\n\
          \n\
-         - v0 SMA crossover: fast={fast_len}, slow={slow_len}\n\
+         - {strategy_notes}\n\
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
          - Size: fixed_fraction = 10%\n\
          - Risk: per-symbol exposure cap = 40%\n",
@@ -386,6 +478,11 @@ fn write_report(
         data_source = data_source,
         baseline_line = baseline_line,
         imbalance = state.ledger_imbalance_events,
+        strat_id = strategy_meta.id,
+        strat_kind = strategy_meta.kind,
+        strat_hash = strategy_meta.hash_hex,
+        strat_source = strategy_meta.source_path,
+        strat_signal = strategy_meta.signal,
         symbol = scenario.symbol,
         start_year = scenario.start_year,
         bars = state.equity_curve.len(),
@@ -399,8 +496,7 @@ fn write_report(
         sells = state.sells,
         fees = fees_f,
         elapsed = elapsed_secs,
-        fast_len = scenario.fast_len,
-        slow_len = scenario.slow_len,
+        strategy_notes = strategy_notes,
         slippage_bps = scenario.slippage_bps,
         taker_fee_bps = scenario.taker_fee_bps,
         reconcile_result = reconcile_result,
@@ -461,7 +557,9 @@ async fn main() -> Result<()> {
             "no Parquet data — generating synthetic bars"
         );
         let start_price = match scenario.name.as_str() {
-            "btc-2023-1m-sma-cross" => dec!(16_500),
+            "btc-2023-1m-sma-cross" | "btc-2023-1m-sma-baseline-refresh"
+            | "btc-2023-1m-macd-trend" | "btc-2023-1m-rsi-reversion"
+            | "btc-2023-1m-bbands-mean-revert" => dec!(16_500),
             "btc-2024-h1-sma-cross" => dec!(42_000),
             _ => dec!(30_000),
         };
@@ -475,9 +573,18 @@ async fn main() -> Result<()> {
         (bars, "synthetic (seeded RNG, v0 fallback)".to_string())
     };
 
-    // ── Find baseline for 2024 scenario ───────────────────────────────────────
+    // ── Find baseline for comparative scenarios ────────────────────────────────
     if args.scenario == "btc-2024-h1-sma-cross" {
         if let Some(b) = find_latest_report("spec/reports", "btc-2023-1m-sma-cross") {
+            scenario.baseline_report = Some(b);
+        }
+    } else if matches!(
+        args.scenario.as_str(),
+        "btc-2023-1m-macd-trend"
+            | "btc-2023-1m-rsi-reversion"
+            | "btc-2023-1m-bbands-mean-revert"
+    ) {
+        if let Some(b) = find_latest_report("spec/reports", "btc-2023-1m-sma-baseline-refresh") {
             scenario.baseline_report = Some(b);
         }
     }
@@ -486,11 +593,75 @@ async fn main() -> Result<()> {
     info!(bars = bar_count, data = %data_source, "data ready");
 
     // ── Strategy + risk setup ──────────────────────────────────────────────────
-    let mut registry = strategy::StrategyRegistry::new();
-    registry.register(Box::new(strategy::SmaCrossover::new(
-        scenario.fast_len,
-        scenario.slow_len,
-    )));
+    let registry = strategy::StrategyRegistry::new();
+
+    // Resolve the strategy to use — CLI `--strategy` overrides scenario default.
+    // Priority: CLI flag → scenario default.
+    let effective_strategy_id: Option<String> = args.strategy.clone().or_else(|| {
+        match &scenario.strategy {
+            ScenarioStrategy::Composed { id } => Some(id.clone()),
+            ScenarioStrategy::SmaCrossover { .. } => None, // use compiled-in
+        }
+    });
+
+    let strategy_meta = if let Some(ref strat_id) = effective_strategy_id {
+        // Check if it's a compiled-in strategy first.
+        if strat_id == "sma_crossover" {
+            let (fast_len, slow_len) = match &scenario.strategy {
+                ScenarioStrategy::SmaCrossover { fast_len, slow_len } => (*fast_len, *slow_len),
+                _ => (20, 50), // CLI override with sma_crossover — use defaults
+            };
+            registry.register(Box::new(strategy::SmaCrossover::new(fast_len, slow_len)));
+            StrategyMeta {
+                id: "sma_crossover".to_string(),
+                kind: "compiled-in".to_string(),
+                hash_hex: "n/a".to_string(),
+                source_path: "compiled-in".to_string(),
+                signal: format!("sma_crossover(fast={fast_len}, slow={slow_len})"),
+            }
+        } else {
+            // Attempt to load from config/strategies/<id>.toml.
+            let toml_path = PathBuf::from(format!("config/strategies/{strat_id}.toml"));
+            let cfg = strategy::ComposedStrategyConfig::from_file(&toml_path)
+                .with_context(|| format!("load strategy config: {}", toml_path.display()))?;
+            let hash_hex = cfg.hash.iter().map(|b| format!("{b:02x}")).collect::<String>();
+            let source_path = toml_path.display().to_string();
+            let signal = cfg.signal_raw.to_string();
+            let meta = StrategyMeta {
+                id: strat_id.clone(),
+                kind: "composed".to_string(),
+                hash_hex,
+                source_path,
+                signal,
+            };
+            let composed = strategy::ComposedStrategy::from_config(
+                cfg,
+                smol_str::SmolStr::new(toml_path.to_string_lossy()),
+            );
+            registry.register(Box::new(composed));
+            meta
+        }
+    } else {
+        // Default: use compiled-in SMA crossover from scenario.
+        let (fast_len, slow_len) = match &scenario.strategy {
+            ScenarioStrategy::SmaCrossover { fast_len, slow_len } => (*fast_len, *slow_len),
+            _ => (20, 50),
+        };
+        registry.register(Box::new(strategy::SmaCrossover::new(fast_len, slow_len)));
+        StrategyMeta {
+            id: "sma_crossover".to_string(),
+            kind: "compiled-in".to_string(),
+            hash_hex: "n/a".to_string(),
+            source_path: "compiled-in".to_string(),
+            signal: format!("sma_crossover(fast={fast_len}, slow={slow_len})"),
+        }
+    };
+
+    info!(
+        strategy_id = %strategy_meta.id,
+        strategy_kind = %strategy_meta.kind,
+        "strategy resolved"
+    );
 
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: dec!(0.40),
@@ -649,6 +820,7 @@ async fn main() -> Result<()> {
         &data_source,
         elapsed,
         &report_path,
+        &strategy_meta,
     )?;
 
     println!("Report written: {}", report_path.display());

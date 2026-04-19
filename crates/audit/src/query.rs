@@ -4,11 +4,12 @@
 //! `Money<Usdt>` — never raw `String` or `sqlx` row types.
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
     AccountId, FillView, JournalEntryView, LedgerError, Money, Price, Quantity, Side, Symbol,
-    Timestamp, Usdt,
+    StrategyEventKind, StrategyEventView, StrategyId, Timestamp, Usdt,
 };
 
 use crate::Ledger;
@@ -302,6 +303,96 @@ pub async fn global_debit_credit_sum(ledger: &Ledger) -> Result<(Decimal, Decima
             .map_err(|_| LedgerError::Database("parse credit".into()))?;
     }
     Ok((sum_debits, sum_credits))
+}
+
+// ── Strategy events ───────────────────────────────────────────────────────────
+
+/// Return all strategy lifecycle events since `ts`, oldest first.
+///
+/// No `sqlx` types in the return type — all fields are from `trading_core`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn strategy_events_since(
+    ledger: &Ledger,
+    ts: Timestamp,
+) -> Result<Vec<StrategyEventView>, LedgerError> {
+    let ts_str = ts
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary \
+         FROM strategy_events \
+         WHERE ts >= ? \
+         ORDER BY ts ASC, rowid ASC",
+    )
+    .bind(&ts_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    rows.into_iter().map(parse_strategy_event_view).collect()
+}
+
+/// Return all strategy lifecycle events for a given strategy id, oldest first.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn strategy_history(
+    ledger: &Ledger,
+    id: StrategyId,
+) -> Result<Vec<StrategyEventView>, LedgerError> {
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary \
+         FROM strategy_events \
+         WHERE strategy_id = ? \
+         ORDER BY ts ASC, rowid ASC",
+    )
+    .bind(id.0.as_str())
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    rows.into_iter().map(parse_strategy_event_view).collect()
+}
+
+/// Parse a strategy event row from a `SQLite` query result.
+#[allow(clippy::type_complexity)]
+fn parse_strategy_event_view(
+    row: (String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<String>),
+) -> Result<StrategyEventView, LedgerError> {
+    let (id, ts_str, kind_str, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary) = row;
+
+    let ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
+        .map(Timestamp::new)
+        .map_err(|e| LedgerError::Database(format!("bad ts in strategy_events: {e}")))?;
+
+    let kind = match kind_str.as_str() {
+        "Load" => StrategyEventKind::Load,
+        "Swap" => StrategyEventKind::Swap,
+        "Unload" => StrategyEventKind::Unload,
+        "Reject" => StrategyEventKind::Reject,
+        other => return Err(LedgerError::Database(format!("unknown strategy event kind: {other}"))),
+    };
+
+    Ok(StrategyEventView {
+        id: SmolStr::new(&id),
+        ts,
+        kind,
+        strategy_id: strategy_id.map(|s| StrategyId::new(s.as_str())),
+        old_hash: old_hash.map(SmolStr::new),
+        new_hash: new_hash.map(SmolStr::new),
+        source_path: source_path.map(SmolStr::new),
+        operator: SmolStr::new(&operator),
+        error_code: error_code.map(SmolStr::new),
+        error_summary: error_summary.map(SmolStr::new),
+    })
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

@@ -1,0 +1,17 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: strategies_summary(&c)
+---
+panel: strategies
+title: Strategies
+state: ready
+rows:
+  btc_macd_trend hash=a1b2c3d status=Ready[pos] last=loaded signals_60s=3 pos=yes
+  btc_rsi_reversion hash=— status=Loading[fg_muted] last=— signals_60s=0 pos=no
+  btc_bbands_mean_revert hash=e5f6a7b status=Error[neg] last=rejected signals_60s=0 pos=no
+    badge: arity_mismatch: macd_cross(12) color=neg
+recent_events:
+  rejected btc_bbands_mean_revert color=neg
+  swapped btc_macd_trend color=warn
+  loaded btc_rsi_reversion color=accent
+  loaded btc_macd_trend color=accent

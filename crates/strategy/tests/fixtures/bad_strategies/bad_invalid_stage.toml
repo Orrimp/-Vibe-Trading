@@ -1,0 +1,8 @@
+# Fixture: invalid_stage
+# "live" is not an allowed stage in v0.5 (only research|paper).
+id     = "bad_invalid_stage"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "live"
+signal = "rsi(14) < 30"
+size   = "fixed_fraction(0.1)"

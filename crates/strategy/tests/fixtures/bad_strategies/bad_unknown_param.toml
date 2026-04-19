@@ -1,0 +1,8 @@
+# Fixture: unknown_param
+# "rsi_floor" is used in the signal but not declared in [params].
+id     = "bad_unknown_param"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(14) < rsi_floor"
+size   = "fixed_fraction(0.1)"

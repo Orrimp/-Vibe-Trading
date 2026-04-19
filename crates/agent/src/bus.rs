@@ -1,19 +1,34 @@
-//! Broadcast event bus — T31.
+//! Broadcast event bus — T31, extended for v0.5 (T512).
 //!
 //! The `EventBus` holds one `broadcast::Sender<T>` per domain event stream.
 //! Both the `agent` binary (producer) and the `cockpit` binary (consumer) access
 //! these via `agent::bus::EventBus`.
 //!
-//! ## Broadcast API (for ui-designer / T32)
+//! ## Broadcast API (for ui-designer / T32, T512)
 //!
-//! | Channel          | Type                     | Capacity | Notes                      |
-//! |------------------|--------------------------|----------|----------------------------|
-//! | `fills`          | `trading_core::Fill`     | 1024     | Every paper/live fill      |
-//! | `positions`      | `trading_core::Position` | 256      | Updated on every fill      |
-//! | `bars`           | `trading_core::Bar`      | 1024     | Published at bar close     |
-//! | `ticks`          | `trading_core::Tick`     | 8192     | Raw trades                 |
-//! | `pnl`            | `trading_core::PnlSnapshot`| 256    | After each bar close       |
-//! | `agent_mode`     | `agent::AgentMode`       | 32       | Running / Halted           |
+//! | Channel              | Type                           | Capacity | Notes                         |
+//! |----------------------|--------------------------------|----------|-------------------------------|
+//! | `fills`              | `trading_core::Fill`           | 1024     | Every paper/live fill         |
+//! | `positions`          | `trading_core::Position`       | 256      | Updated on every fill         |
+//! | `bars`               | `trading_core::Bar`            | 1024     | Published at bar close        |
+//! | `ticks`              | `trading_core::Tick`           | 8192     | Raw trades                    |
+//! | `pnl`                | `trading_core::PnlSnapshot`    | 256      | After each bar close          |
+//! | `agent_mode`         | `agent::AgentMode`             | 32       | Running / Halted              |
+//! | `strategy_loaded`    | `trading_core::StrategyLoaded` | 32       | Config loaded / swapped in    |
+//! | `strategy_swapped`   | `trading_core::StrategySwapped`| 32       | Hot-swap of existing strategy |
+//! | `strategy_error`     | `trading_core::StrategyLoadError`| 32     | Parse / typecheck rejection   |
+//!
+//! ### v0.5 extension — strategy lifecycle channels
+//!
+//! Three new channels carry `StrategyLoaded`, `StrategySwapped`, and
+//! `StrategyLoadError` events emitted by the file watcher (T513) and the
+//! initial load path (T514).  Subscribers receive events within one Tokio
+//! task-yield of the causal `strategy_event` audit write.
+//!
+//! **Backpressure**: same policy as v0 channels — bounded ring-buffer of 32
+//! items; slow consumers get `RecvError::Lagged(n)` and skip events; the
+//! publisher never blocks.  `RecvError::Closed` indicates no remaining
+//! subscribers (benign — strategy events are also persisted in the ledger).
 //!
 //! ### How to subscribe from the cockpit
 //!
@@ -42,7 +57,7 @@
 //! handles lag by showing a "replay lag" indicator, not by blocking the agent.
 
 use tokio::sync::broadcast;
-use trading_core::{Bar, Fill, PnlSnapshot, Position, Tick};
+use trading_core::{Bar, Fill, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded, StrategySwapped, Tick};
 
 use crate::config::BusConfig;
 use crate::kill_switch::AgentMode;
@@ -58,6 +73,9 @@ pub struct EventBus {
     ticks_tx: broadcast::Sender<Tick>,
     pnl_tx: broadcast::Sender<PnlSnapshot>,
     mode_tx: broadcast::Sender<AgentMode>,
+    strategy_loaded_tx: broadcast::Sender<StrategyLoaded>,
+    strategy_swapped_tx: broadcast::Sender<StrategySwapped>,
+    strategy_error_tx: broadcast::Sender<StrategyLoadError>,
 }
 
 impl EventBus {
@@ -70,6 +88,9 @@ impl EventBus {
         let (ticks_tx, _) = broadcast::channel(cfg.ticks_capacity);
         let (pnl_tx, _) = broadcast::channel(256);
         let (mode_tx, _) = broadcast::channel(32);
+        let (strategy_loaded_tx, _) = broadcast::channel(32);
+        let (strategy_swapped_tx, _) = broadcast::channel(32);
+        let (strategy_error_tx, _) = broadcast::channel(32);
         Self {
             fills_tx,
             positions_tx,
@@ -77,6 +98,9 @@ impl EventBus {
             ticks_tx,
             pnl_tx,
             mode_tx,
+            strategy_loaded_tx,
+            strategy_swapped_tx,
+            strategy_error_tx,
         }
     }
 
@@ -110,6 +134,21 @@ impl EventBus {
     /// Publish an agent mode change.
     pub fn publish_mode(&self, mode: AgentMode) {
         let _ = self.mode_tx.send(mode);
+    }
+
+    /// Publish a `StrategyLoaded` event (file watcher: initial load or reload).
+    pub fn publish_strategy_loaded(&self, event: StrategyLoaded) {
+        let _ = self.strategy_loaded_tx.send(event);
+    }
+
+    /// Publish a `StrategySwapped` event (file watcher: hot-swap of an existing strategy).
+    pub fn publish_strategy_swapped(&self, event: StrategySwapped) {
+        let _ = self.strategy_swapped_tx.send(event);
+    }
+
+    /// Publish a `StrategyLoadError` event (parse / typecheck rejection — old strategy kept).
+    pub fn publish_strategy_error(&self, event: StrategyLoadError) {
+        let _ = self.strategy_error_tx.send(event);
     }
 
     // ── Consumers (subscribe) ────────────────────────────────────────────────
@@ -148,5 +187,23 @@ impl EventBus {
     #[must_use]
     pub fn mode(&self) -> broadcast::Receiver<AgentMode> {
         self.mode_tx.subscribe()
+    }
+
+    /// Subscribe to `StrategyLoaded` events.
+    #[must_use]
+    pub fn strategy_loaded(&self) -> broadcast::Receiver<StrategyLoaded> {
+        self.strategy_loaded_tx.subscribe()
+    }
+
+    /// Subscribe to `StrategySwapped` events.
+    #[must_use]
+    pub fn strategy_swapped(&self) -> broadcast::Receiver<StrategySwapped> {
+        self.strategy_swapped_tx.subscribe()
+    }
+
+    /// Subscribe to `StrategyLoadError` events.
+    #[must_use]
+    pub fn strategy_error(&self) -> broadcast::Receiver<StrategyLoadError> {
+        self.strategy_error_tx.subscribe()
     }
 }

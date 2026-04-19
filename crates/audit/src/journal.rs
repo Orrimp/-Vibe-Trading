@@ -326,6 +326,78 @@ pub async fn post_cost(
     Ok(())
 }
 
+/// Write a strategy lifecycle event to the `strategy_events` table (T509, Q1).
+///
+/// This table is separate from `journal_entries` — it carries no debit/credit
+/// amounts and does not affect the reconciliation invariant.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.strategy_event", skip(ledger, write), fields(kind = ?write.kind, id = write.strategy_id.unwrap_or("")))]
+pub async fn strategy_event(
+    ledger: &Ledger,
+    write: &StrategyEventWrite<'_>,
+) -> Result<(), LedgerError> {
+    let row_id = Uuid::new_v4().to_string();
+    let ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    sqlx::query(
+        "INSERT INTO strategy_events \
+         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&row_id)
+    .bind(&ts)
+    .bind(write.kind)
+    .bind(write.strategy_id)
+    .bind(write.old_hash)
+    .bind(write.new_hash)
+    .bind(write.source_path)
+    .bind(write.operator)
+    .bind(write.error_code)
+    .bind(write.error_summary)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(
+        row_id = %row_id,
+        kind = write.kind,
+        strategy_id = ?write.strategy_id,
+        "strategy_event written"
+    );
+    Ok(())
+}
+
+/// Kind discriminator — passed as a string to `SQLite`.
+pub type StrategyEventKindStr = str;
+
+/// Writer struct for `strategy_event` (T509).
+///
+/// Mirrors the `strategy_events` table schema without exposing `SQLite` types.
+#[derive(Debug)]
+pub struct StrategyEventWrite<'a> {
+    /// `"Load"` | `"Swap"` | `"Unload"` | `"Reject"`.
+    pub kind: &'a str,
+    /// `None` for `Reject` when the filename stem is unparsable.
+    pub strategy_id: Option<&'a str>,
+    /// SHA-256 hex (64 chars) of the previous config. Present for Swap and Unload.
+    pub old_hash: Option<&'a str>,
+    /// SHA-256 hex (64 chars) of the new config. Present for Load and Swap.
+    pub new_hash: Option<&'a str>,
+    /// Repo-relative path to the source TOML.
+    pub source_path: &'a str,
+    /// `"system"` in v0.5.
+    pub operator: &'a str,
+    /// Machine-readable error code (Reject only).
+    pub error_code: Option<&'a str>,
+    /// One-line human error summary (Reject only).
+    pub error_summary: Option<&'a str>,
+}
+
 /// Verify that for a given transaction `Σ debits == Σ credits`.
 ///
 /// # Errors

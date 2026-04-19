@@ -1,0 +1,10 @@
+# R6.3 — BTC Bollinger Bands Mean-Reversion strategy
+# Enters long when close is below the lower Bollinger Band AND volume confirms the move.
+# Exits when rule transitions from true → false (symmetric signal-flip, Q3).
+
+id     = "btc_bbands_mean_revert"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "close < bollinger_lower(20,2) AND volume > 1.5 * avg(volume, 20)"
+size   = "fixed_fraction(0.1)"

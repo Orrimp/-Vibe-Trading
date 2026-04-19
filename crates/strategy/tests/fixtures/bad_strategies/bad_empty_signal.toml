@@ -1,0 +1,8 @@
+# Fixture: empty_signal
+# Signal string is whitespace-only.
+id     = "bad_empty_signal"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "   "
+size   = "fixed_fraction(0.1)"

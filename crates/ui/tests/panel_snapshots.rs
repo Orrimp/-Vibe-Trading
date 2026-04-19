@@ -22,7 +22,9 @@ use insta::assert_snapshot;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 
-use ui::state::{update, AgentMode, Cockpit, KillState, Latency, Message, PanelState};
+use ui::state::{
+    update, AgentMode, Cockpit, KillState, Latency, Message, PanelState, StrategyStatus,
+};
 use ui::strings;
 use ui::widgets::latency::Badge;
 
@@ -203,6 +205,60 @@ fn kill_halted_banner() {
         Message::AgentHaltedExternally(SmolStr::new("halt_file")),
     );
     assert_snapshot!("kill_halted", kill_summary(&c));
+}
+
+// ── Strategies panel (v0.5 T524) ────────────────────────────────────────────
+
+#[test]
+fn strategies_loading() {
+    let c = Cockpit::new();
+    assert_snapshot!("strategies_loading", strategies_summary(&c));
+}
+
+#[test]
+fn strategies_empty() {
+    let mut c = Cockpit::new();
+    update(&mut c, Message::StrategiesRefreshed(vec![]));
+    assert_snapshot!("strategies_empty", strategies_summary(&c));
+}
+
+#[test]
+fn strategies_error() {
+    let mut c = Cockpit::new();
+    update(
+        &mut c,
+        Message::StrategiesError(SmolStr::new(strings::CONNECTION_CHANNEL_CLOSED)),
+    );
+    assert_snapshot!("strategies_error", strategies_summary(&c));
+}
+
+#[test]
+fn strategies_ready_three_rows() {
+    let c = ui::fixtures::fake_cockpit_with_strategies();
+    assert_snapshot!("strategies_ready_three_rows", strategies_summary(&c));
+}
+
+/// T527 — full cockpit layout snapshot confirming the strategies panel
+/// sits in the right column **above** Open positions and above the live
+/// tape, per the Q4 resolution. Captures panel order top-to-bottom so a
+/// future refactor that accidentally moves the panel is caught here.
+#[test]
+fn cockpit_layout_strategies_above_positions() {
+    let c = ui::fixtures::fake_cockpit_with_strategies();
+    let summary = cockpit_layout_summary(&c);
+    assert_snapshot!("cockpit_layout_strategies_above_positions", summary);
+}
+
+#[test]
+fn strategies_per_row_error_badge() {
+    // Start from ready with three rows; the third row is already Error per
+    // the fixture. Snapshot confirms the per-row error badge renders the
+    // `error_summary` in `NEG`.
+    let c = ui::fixtures::fake_cockpit_with_strategies();
+    let summary = strategies_summary(&c);
+    // Sanity — the fixture is the one carrying the error row.
+    assert!(summary.contains("badge: arity_mismatch"));
+    assert_snapshot!("strategies_per_row_error", summary);
 }
 
 // ── Latency badge ───────────────────────────────────────────────────────────
@@ -410,6 +466,102 @@ fn latency_summary(c: &Cockpit) -> String {
     out.push_str(&format!("color: {}\n", color_name(badge.color())));
     out.push_str(&format!("value: {}\n", value));
     out.push_str(&format!("help: {}\n", strings::LATENCY_HELP));
+    out
+}
+
+/// Tiny declarative summary of the full cockpit layout — emits the panel
+/// titles in column order. The strategies panel must appear first in the
+/// right column per the Q4 Cockpit layout resolution (T527). This is the
+/// byte the snapshot pins so a refactor that moves the panel gets caught.
+fn cockpit_layout_summary(c: &Cockpit) -> String {
+    let mut out = String::new();
+    out.push_str("layout: cockpit\n");
+    out.push_str("left_column:\n");
+    out.push_str(&format!("  - {}\n", strings::PANEL_PNL_TITLE));
+    out.push_str(&format!("  - {}\n", strings::PANEL_LATENCY_TITLE));
+    out.push_str(&format!("  - {}\n", strings::PANEL_KILL_TITLE));
+    out.push_str("right_column:\n");
+    out.push_str(&format!("  - {}\n", strings::PANEL_STRATEGIES_TITLE));
+    out.push_str(&format!("  - {}\n", strings::PANEL_POSITIONS_TITLE));
+    out.push_str(&format!("  - {}\n", strings::PANEL_TAPE_TITLE));
+    out.push_str(&format!(
+        "strategies_state: {}\n",
+        c.strategies.variant_name()
+    ));
+    out
+}
+
+fn strategies_summary(c: &Cockpit) -> String {
+    use trading_core::StrategyEventKind;
+    let mut out = String::new();
+    out.push_str("panel: strategies\n");
+    out.push_str(&format!("title: {}\n", strings::PANEL_STRATEGIES_TITLE));
+    out.push_str(&format!("state: {}\n", c.strategies.variant_name()));
+    match &c.strategies {
+        PanelState::Loading => out.push_str(&format!("copy: {}\n", strings::STRATEGIES_LOADING)),
+        PanelState::Empty => out.push_str(&format!("copy: {}\n", strings::STRATEGIES_EMPTY)),
+        PanelState::Error(e) => {
+            out.push_str(&format!(
+                "copy: {}{}\n",
+                strings::STRATEGIES_ERROR_PREFIX,
+                e
+            ));
+        }
+        PanelState::Ready(rows) => {
+            out.push_str("rows:\n");
+            for r in rows {
+                let (status_label, status_color) = match &r.status {
+                    StrategyStatus::Ready => (strings::STRATEGIES_STATUS_READY, "pos"),
+                    StrategyStatus::Loading => (strings::STRATEGIES_STATUS_LOADING, "fg_muted"),
+                    StrategyStatus::Error(_) => (strings::STRATEGIES_STATUS_ERROR, "neg"),
+                };
+                let last_event = r.last_event.as_ref().map_or("—", |ev| match ev.kind {
+                    StrategyEventKind::Load => strings::STRATEGIES_EVENT_LOAD,
+                    StrategyEventKind::Swap => strings::STRATEGIES_EVENT_SWAP,
+                    StrategyEventKind::Unload => strings::STRATEGIES_EVENT_UNLOAD,
+                    StrategyEventKind::Reject => strings::STRATEGIES_EVENT_REJECT,
+                });
+                let position = if r.has_position {
+                    strings::STRATEGIES_POSITION_HELD
+                } else {
+                    strings::STRATEGIES_POSITION_FLAT
+                };
+                out.push_str(&format!(
+                    "  {} hash={} status={}[{}] last={} signals_60s={} pos={}\n",
+                    r.id,
+                    if r.short_hash.is_empty() {
+                        strings::PLACEHOLDER_NONE
+                    } else {
+                        r.short_hash.as_str()
+                    },
+                    status_label,
+                    status_color,
+                    last_event,
+                    r.signals_60s,
+                    position,
+                ));
+                if let StrategyStatus::Error(summary) = &r.status {
+                    out.push_str(&format!("    badge: {} color=neg\n", summary));
+                }
+            }
+        }
+    }
+    if !c.strategies_recent_events.is_empty() {
+        out.push_str("recent_events:\n");
+        for ev in &c.strategies_recent_events {
+            let (label, color) = match ev.kind {
+                StrategyEventKind::Load => (strings::STRATEGIES_EVENT_LOAD, "accent"),
+                StrategyEventKind::Swap => (strings::STRATEGIES_EVENT_SWAP, "warn"),
+                StrategyEventKind::Unload => (strings::STRATEGIES_EVENT_UNLOAD, "fg_muted"),
+                StrategyEventKind::Reject => (strings::STRATEGIES_EVENT_REJECT, "neg"),
+            };
+            let id = ev
+                .strategy_id
+                .as_ref()
+                .map_or(strings::PLACEHOLDER_NONE.to_string(), ToString::to_string);
+            out.push_str(&format!("  {} {} color={}\n", label, id, color));
+        }
+    }
     out
 }
 

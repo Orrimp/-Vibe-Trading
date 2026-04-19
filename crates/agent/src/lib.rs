@@ -6,7 +6,9 @@ pub mod config;
 pub mod kill_switch;
 pub mod observability;
 pub mod reconciler;
+pub mod watcher;
 
 pub use bus::EventBus;
 pub use kill_switch::{AgentMode, HaltReason, KillSwitch};
 pub use reconciler::ReconcilerTask;
+pub use watcher::run_strategy_watcher;

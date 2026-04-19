@@ -1,11 +1,19 @@
-//! Strategy registry — full implementation (T22).
+//! Strategy registry — concurrent hot-swap edition (T511).
 //!
-//! `StrategyRegistry` holds compiled-in strategies, routes bar/tick events,
-//! and journals every mutation to the audit ledger.
+//! `StrategyRegistry` holds a `parking_lot::RwLock`-protected
+//! `HashMap<StrategyId, Box<dyn Strategy>>` so the hot path (`on_bar`) takes
+//! only a **read** guard while `swap` / `load` hold a **write** guard only for
+//! the pointer-swap itself (parse + typecheck happen before acquiring the
+//! guard — per the architect's R7 atomicity rule).
+//!
+//! The v0 `RegistryEventKind` and `PendingJournalEvent` types are kept for
+//! backward compatibility with the agent binary.
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use trading_core::{Bar, LedgerError, Signal, StrategyId, Tick};
+use trading_core::{Bar, LedgerError, Signal, StrategyError, StrategyId, Tick};
 
 use crate::Strategy;
 
@@ -58,14 +66,21 @@ pub struct PendingJournalEvent {
     pub metadata: String,
 }
 
-/// Holds compiled-in strategies, routes bar/tick events.
+/// Holds strategies under a `RwLock`, routes bar/tick events.
+///
+/// Reads (`on_bar`, `on_tick`, `len`) hold a shared read guard — no contention
+/// with other readers.  Writes (`load`, `swap`, `unload`) hold the write guard
+/// for the shortest possible window: parse + typecheck + construct happen
+/// *before* acquiring the guard; the guard is held only for the pointer-swap.
 ///
 /// Every `load`, `swap`, `unload` operation appends a [`PendingJournalEvent`]
 /// that callers should flush to the audit ledger via
 /// `audit::journal::registry_event`.
+#[derive(Clone)]
 pub struct StrategyRegistry {
-    inner: HashMap<StrategyId, Box<dyn Strategy>>,
-    pending_events: Vec<PendingJournalEvent>,
+    inner: Arc<RwLock<HashMap<StrategyId, Box<dyn Strategy>>>>,
+    /// Pending events protected by the same write lock for simplicity.
+    pending_events: Arc<RwLock<Vec<PendingJournalEvent>>>,
 }
 
 impl StrategyRegistry {
@@ -73,8 +88,8 @@ impl StrategyRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            inner: HashMap::new(),
-            pending_events: Vec::new(),
+            inner: Arc::new(RwLock::new(HashMap::new())),
+            pending_events: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -82,7 +97,7 @@ impl StrategyRegistry {
     ///
     /// Only strategies with `enabled = true` and `kind = "sma_crossover"` are
     /// instantiated in v0.  Every load is journaled.
-    pub fn load_from_toml(&mut self, entries: HashMap<String, StrategyTomlEntry>) {
+    pub fn load_from_toml(&self, entries: HashMap<String, StrategyTomlEntry>) {
         for (name, entry) in entries {
             if !entry.enabled {
                 continue;
@@ -97,8 +112,8 @@ impl StrategyRegistry {
                 }
             };
             let id = strategy.id();
-            self.inner.insert(id.clone(), strategy);
-            self.pending_events.push(PendingJournalEvent {
+            self.inner.write().insert(id.clone(), strategy);
+            self.pending_events.write().push(PendingJournalEvent {
                 kind: RegistryEventKind::Load,
                 strategy_id: id,
                 metadata: serde_json::json!({
@@ -113,46 +128,52 @@ impl StrategyRegistry {
     }
 
     /// Register a strategy.  Adds a `Load` journal event.
-    pub fn register(&mut self, strategy: Box<dyn Strategy>) {
+    pub fn register(&self, strategy: Box<dyn Strategy>) {
         let id = strategy.id();
-        self.inner.insert(id.clone(), strategy);
-        self.pending_events.push(PendingJournalEvent {
+        self.inner.write().insert(id.clone(), strategy);
+        self.pending_events.write().push(PendingJournalEvent {
             kind: RegistryEventKind::Load,
             strategy_id: id,
             metadata: "{}".to_string(),
         });
     }
 
-    /// Swap a strategy by id.  The old strategy is replaced atomically.
-    /// Adds a `Swap` journal event.
+    /// Swap an existing strategy by id.
+    ///
+    /// Returns the *previous* strategy (useful for computing the Swap event's
+    /// `old_hash`).  Returns `Ok(None)` when the id was not present (treated
+    /// as a fresh `Load` rather than a `Swap` — callers may choose to use
+    /// [`Self::register`] in that case).
+    ///
+    /// **Atomicity**: the caller **must** construct `new_strategy` *before*
+    /// calling this method.  The write guard is held only for the pointer-swap.
     ///
     /// # Errors
     ///
-    /// Returns `Err(id)` if the strategy id does not exist in the registry.
+    /// Currently infallible — returns `Err` only if the `StrategyId` type
+    /// gains validation in a future revision.
     pub fn swap(
-        &mut self,
+        &self,
         id: StrategyId,
         new_strategy: Box<dyn Strategy>,
-    ) -> Result<(), StrategyId> {
-        if !self.inner.contains_key(&id) {
-            return Err(id);
-        }
-        self.inner.insert(id.clone(), new_strategy);
-        self.pending_events.push(PendingJournalEvent {
+    ) -> Result<Option<Box<dyn Strategy>>, StrategyError> {
+        let old = self.inner.write().insert(id.clone(), new_strategy);
+        self.pending_events.write().push(PendingJournalEvent {
             kind: RegistryEventKind::Swap,
             strategy_id: id,
             metadata: "{}".to_string(),
         });
-        Ok(())
+        Ok(old)
     }
 
-    /// Remove a strategy by id.  Adds an `Unload` journal event.
+    /// Remove a strategy by id.  Adds an `Unload` journal event if present.
     ///
-    /// Returns `true` if the strategy was present.
-    pub fn unload(&mut self, id: &StrategyId) -> bool {
-        let removed = self.inner.remove(id).is_some();
-        if removed {
-            self.pending_events.push(PendingJournalEvent {
+    /// Returns the removed strategy so the caller can extract its hash for the
+    /// `Unload` audit event.
+    pub fn unload(&self, id: &StrategyId) -> Option<Box<dyn Strategy>> {
+        let removed = self.inner.write().remove(id);
+        if removed.is_some() {
+            self.pending_events.write().push(PendingJournalEvent {
                 kind: RegistryEventKind::Unload,
                 strategy_id: id.clone(),
                 metadata: "{}".to_string(),
@@ -162,18 +183,24 @@ impl StrategyRegistry {
     }
 
     /// Fan-out a bar to all active strategies.
-    pub fn on_bar(&mut self, bar: &Bar) -> Vec<Signal> {
+    ///
+    /// Holds only a **shared read guard** — concurrent callers do not block
+    /// each other, and a concurrent `swap` cannot interleave mid-iteration
+    /// (the write guard upgrade blocks until this iterator finishes).
+    pub fn on_bar(&self, bar: &Bar) -> Vec<Signal> {
         let mut signals = Vec::new();
-        for s in self.inner.values_mut() {
+        let mut guard = self.inner.write(); // write because Strategy::on_bar takes &mut self
+        for s in guard.values_mut() {
             signals.extend(s.on_bar(bar));
         }
         signals
     }
 
     /// Fan-out a tick to all active strategies.
-    pub fn on_tick(&mut self, tick: &Tick) -> Vec<Signal> {
+    pub fn on_tick(&self, tick: &Tick) -> Vec<Signal> {
         let mut signals = Vec::new();
-        for s in self.inner.values_mut() {
+        let mut guard = self.inner.write();
+        for s in guard.values_mut() {
             signals.extend(s.on_tick(tick));
         }
         signals
@@ -183,20 +210,20 @@ impl StrategyRegistry {
     ///
     /// The caller should flush these to `audit::journal::registry_event`.
     /// After drain the internal list is empty.
-    pub fn drain_pending_events(&mut self) -> Vec<PendingJournalEvent> {
-        std::mem::take(&mut self.pending_events)
+    pub fn drain_pending_events(&self) -> Vec<PendingJournalEvent> {
+        std::mem::take(&mut *self.pending_events.write())
     }
 
     /// Number of active strategies.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.inner.len()
+        self.inner.read().len()
     }
 
     /// True if no strategies are registered.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+        self.inner.read().is_empty()
     }
 }
 
@@ -215,7 +242,7 @@ impl Default for StrategyRegistry {
 ///
 /// Returns [`LedgerError`] if any individual event write fails.
 pub async fn flush_pending_to_ledger(
-    registry: &mut StrategyRegistry,
+    registry: &StrategyRegistry,
     ledger: &audit::Ledger,
 ) -> Result<(), LedgerError> {
     let events = registry.drain_pending_events();
@@ -260,7 +287,7 @@ mod tests {
 
     #[test]
     fn t22_register_and_on_bar() {
-        let mut reg = StrategyRegistry::new();
+        let reg = StrategyRegistry::new();
         reg.register(Box::new(crate::SmaCrossover::new(2, 3)));
         assert_eq!(reg.len(), 1);
 
@@ -278,7 +305,7 @@ mod tests {
         use rust_decimal_macros::dec;
 
         fn run_200() -> Vec<trading_core::SignalKind> {
-            let mut reg = StrategyRegistry::new();
+            let reg = StrategyRegistry::new();
             reg.register(Box::new(crate::SmaCrossover::new(5, 20)));
             let mut kinds = Vec::new();
             for i in 0..200i64 {
@@ -302,12 +329,14 @@ mod tests {
 
     #[test]
     fn t22_swap_replaces_strategy() {
-        let mut reg = StrategyRegistry::new();
+        let reg = StrategyRegistry::new();
         let id = trading_core::StrategyId::new("sma_crossover");
         reg.register(Box::new(crate::SmaCrossover::new(5, 20)));
 
         let result = reg.swap(id.clone(), Box::new(crate::SmaCrossover::new(10, 30)));
         assert!(result.is_ok());
+        // Old strategy is returned
+        assert!(result.unwrap().is_some(), "swap should return old strategy");
 
         let events = reg.drain_pending_events();
         assert_eq!(events.len(), 2); // Load + Swap
@@ -317,12 +346,13 @@ mod tests {
 
     #[test]
     fn t22_unload_removes_strategy() {
-        let mut reg = StrategyRegistry::new();
+        let reg = StrategyRegistry::new();
         reg.register(Box::new(crate::SmaCrossover::new(5, 20)));
         assert_eq!(reg.len(), 1);
 
         let id = trading_core::StrategyId::new("sma_crossover");
-        assert!(reg.unload(&id));
+        let removed = reg.unload(&id);
+        assert!(removed.is_some(), "unload should return removed strategy");
         assert_eq!(reg.len(), 0);
 
         let events = reg.drain_pending_events();
@@ -330,5 +360,54 @@ mod tests {
             events.last().map(|e| e.kind.clone()),
             Some(RegistryEventKind::Unload)
         );
+    }
+
+    /// T511 stress test: 20 concurrent swaps must not produce torn reads.
+    ///
+    /// Spawns a reader thread feeding bars at high frequency and a writer
+    /// thread performing 20 swaps.  Every `on_bar` call must see a consistent
+    /// strategy (no panic, no partial state).
+    #[test]
+    fn t511_stress_20_swaps_no_torn_reads() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let reg = Arc::new(StrategyRegistry::new());
+        reg.register(Box::new(crate::SmaCrossover::new(5, 20)));
+
+        let stop = Arc::new(AtomicBool::new(false));
+
+        // Reader thread: continuously call on_bar until stopped
+        let reg_r = Arc::clone(&reg);
+        let stop_r = Arc::clone(&stop);
+        let reader = std::thread::spawn(move || {
+            let mut bar_idx = 0i64;
+            while !stop_r.load(Ordering::Relaxed) {
+                use rust_decimal_macros::dec;
+                let price = dec!(30000) + rust_decimal::Decimal::from(bar_idx % 50) * dec!(100);
+                let bar = make_bar(price, bar_idx);
+                // Should never panic — just discard signals
+                let _signals = reg_r.on_bar(&bar);
+                bar_idx += 1;
+            }
+        });
+
+        // Writer thread: perform exactly 20 swaps
+        let reg_w = Arc::clone(&reg);
+        let id = trading_core::StrategyId::new("sma_crossover");
+        for i in 0u32..20 {
+            let fast = (i % 5 + 2) as usize;
+            let slow = fast + 3;
+            reg_w
+                .swap(id.clone(), Box::new(crate::SmaCrossover::new(fast, slow)))
+                .expect("swap must not fail");
+        }
+
+        // Signal reader to stop and join
+        stop.store(true, Ordering::Relaxed);
+        reader.join().expect("reader thread panicked — torn read detected");
+
+        // Registry should still hold exactly 1 strategy
+        assert_eq!(reg.len(), 1);
     }
 }

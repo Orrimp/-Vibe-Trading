@@ -1,0 +1,14 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: summary
+---
+layout: cockpit
+left_column:
+  - P&L
+  - Feed latency
+  - Stop trading
+right_column:
+  - Strategies
+  - Open positions
+  - Live tape
+strategies_state: ready

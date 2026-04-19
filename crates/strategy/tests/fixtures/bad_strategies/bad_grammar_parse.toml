@@ -1,0 +1,8 @@
+# Fixture: grammar_parse
+# Signal uses a non-ASCII operator that cannot be parsed.
+id     = "bad_grammar_parse"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(14) ≤ 30"
+size   = "fixed_fraction(0.1)"

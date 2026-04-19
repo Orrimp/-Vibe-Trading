@@ -1,0 +1,8 @@
+# Fixture: unknown_indicator
+# "stonks" is not a supported indicator.
+id     = "bad_unknown_indicator"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "stonks(14) > 50"
+size   = "fixed_fraction(0.1)"

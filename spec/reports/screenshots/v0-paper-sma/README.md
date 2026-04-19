@@ -37,7 +37,7 @@ full source tree.
 | `models` | Stub — populated in v2.5+. |
 | `llm` | Stub — populated in v0.5 (first `sentiment_analyst`). |
 | `agent` | Top-level binary `trading`: construct all subsystems, kill switch (halt file + heartbeat), Prometheus exporter on `:9100`, broadcast-bus API (`Arc<EventBus>`) for cockpit. |
-| `ui` | iced 0.14 cockpit binary. Single design source of truth via `ui::theme` + `ui::strings`; `tests/consistency.rs` enforces zero inline strings / hex in widgets. |
+| `ui` | iced 0.14 cockpit binary. Single design source of truth via `ui::theme` + `ui::strings`; `tests/consistency.rs` enforces zero inline strings / hex in widgets. v0.5 extends with the `strategies` panel (right column, above Open positions — Q4 resolution) plus three new broadcast subscribers (`strategy_loaded` / `strategy_swapped` / `strategy_error`). |
 
 ## 3. Canonical backtest runs (v0 ship artifacts)
 
@@ -52,7 +52,7 @@ Both scenarios show losses — **expected** per the analyst's hypothesis in the 
 
 ## 4. Cockpit panel state reference
 
-Single design contract: all copy flows from `crates/ui/src/strings.rs`, all colors/spacing from `crates/ui/src/theme.rs`. Consistency audits (`crates/ui/tests/consistency.rs`) fail the build if any widget inlines a string literal or hex color. Four panels × four states = 16 rendered combinations.
+Single design contract: all copy flows from `crates/ui/src/strings.rs`, all colors/spacing from `crates/ui/src/theme.rs`. Consistency audits (`crates/ui/tests/consistency.rs`) fail the build if any widget inlines a string literal or hex color. Five panels × four states = 20 rendered combinations (T528 added the `strategies` panel in v0.5).
 
 Copy is the exact operator-facing text. String keys reference the `strings.rs` constant that carries it; theme tokens reference `theme.rs`.
 
@@ -92,6 +92,21 @@ Copy is the exact operator-facing text. String keys reference the `strings.rs` c
 | error *(== halted, sticky)* | Banner "AGENT HALTED" (`text::DISPLAY` in `NEG`); hint "Remove .halt and re-arm from the operator runbook before resuming."; runbook link "Open kill-switch runbook" → `spec/runbooks/kill-switch.md` (via `KILL_RUNBOOK_LINK_PATH`). | `NEG` banner, `WARN` hint, `ACCENT` link |
 | ready *(== confirming)* | Dialog title "Confirm stop trading"; body "This cancels every open order, sells each open position at market, and puts the agent into a halted state. Type the phrase below to confirm."; label "Type HALT BTC to confirm"; phrase typed `"HALT BTC"`, matched `true`, Confirm enabled; mismatch shows `KILL_PHRASE_MISMATCH_HINT` in `color::WARN`. | Disabled confirm until phrase matches |
 
+### 4.5 `strategies` — loaded strategies + swap log
+
+v0.5 addition (tasks T522–T528). Placement: **right column, above Open positions** per the Q4 resolution in [architecture.md § v0.5 cockpit strategies panel layout](../../architecture.md#v05--cockpit-strategies-panel-layout-q4--confirmed-2026-04-19). Columns: `Strategy`, `Hash`, `Status`, `Last event`, `Signals / 60s`, `Holds position`. Footer: last ten `StrategyEventView`s colored by event kind (Load → `ACCENT`, Swap → `WARN`, Unload → `FG_MUTED`, Reject → `NEG`).
+
+| State | Copy | Key visual |
+|---|---|---|
+| loading | "Loading active strategies…" — `STRATEGIES_LOADING` | `FG_MUTED` body |
+| empty | "No strategies loaded. Drop a TOML under config/strategies/ to begin." — `STRATEGIES_EMPTY` | `FG_MUTED` body, the `config/strategies/` path is carried verbatim in the copy so the operator knows exactly where to add a TOML |
+| error | "Can't read strategies: Trading agent disconnected. Check the agent log and restart it." — `STRATEGIES_ERROR_PREFIX` + `CONNECTION_CHANNEL_CLOSED` | `NEG` prefix via the shared `error_body` frame helper |
+| ready | Rows: `Strategy  Hash  Status  Last event  Signals / 60s  Holds position`. Status pill colors: Ready → `POS`, Loading → `FG_MUTED`, Error → `NEG`. Error-marked rows render a caption-sized `NEG` badge beneath them carrying the `error_summary` (R8 "malformed TOML, old strategy keeps running" visual). Last-event column uses plain verbs: "loaded" / "swapped" / "unloaded" / "rejected". `Holds position` uses "yes" / "no". Numbers right-aligned monospaced. Recent-events footer (strategies-recent-event rows): `loaded` → `ACCENT`, `swapped` → `WARN`, `unloaded` → `FG_MUTED`, `rejected` → `NEG`. | |
+
+String keys on this panel (all prefixed `STRATEGIES_*`): `PANEL_STRATEGIES_TITLE`, `STRATEGIES_LOADING`, `STRATEGIES_EMPTY`, `STRATEGIES_ERROR_PREFIX`, `STRATEGIES_COL_*` (6), `STRATEGIES_STATUS_*` (3), `STRATEGIES_EVENT_*` (4), `STRATEGIES_POSITION_HELD` / `STRATEGIES_POSITION_FLAT`. Theme tokens: reused only — `color::POS`, `color::NEG`, `color::WARN`, `color::ACCENT`, `color::FG`, `color::FG_MUTED`; zero new tokens (deliberate per the three-goal contract).
+
+Subscriptions driving this panel (via `ui::live`, feature `live`): `strategy_loaded` → `Message::StrategyLoaded`, `strategy_swapped` → `Message::StrategySwapped`, `strategy_error` → `Message::StrategyLoadError`. `RecvError::Lagged(n)` → log-and-continue; `RecvError::Closed` → `Message::StrategiesError(STRATEGIES_ERROR_PREFIX + CONNECTION_CHANNEL_CLOSED)`.
+
 ## 5. Latency badge thresholds
 
 Source of truth: `ui::theme::latency` in `crates/ui/src/theme.rs`.
@@ -114,7 +129,7 @@ Typed-confirm phrase: **`HALT BTC`** (from `strings::KILL_SAFETY_PHRASE`). iced 
 - **Adding a new panel state:** (a) extend `PanelState<T>` (in `crates/ui/src/state.rs`), (b) add copy to `ui::strings`, (c) add a row to the table above, (d) add an `insta` snapshot in `crates/ui/tests/panel_snapshots.rs`.
 - **Regenerating visual PNG mockups** (optional — not needed for validation, only for PR review aesthetics): `scripts/render_panel_mockups.py` rendered the originals using the tokens above. The script's current input is `.txt` artifacts that were compacted into this README; to regenerate it, the script would need a refactor to read from this table or to reconstitute `.txt` stubs. Low priority — real screenshots come from `cargo run --bin cockpit --features fixtures` on an actual display (see [smoke checklist](../ui-week2-smoke-checklist-2026-04-18.md)).
 - **Verifying a v0 regression:** `cargo test --workspace && cargo run --release --bin backtest -- --scenario btc-2023-1m-sma-cross --seed 0xC0FFEE`, compare body-SHA256 to `fc2e3b4a…` above. Byte-identical match = PASS.
-- **Building on top in v0.5+:** the broadcast-bus API contract the cockpit subscribes to lives in [dev-week2-broadcast-api-2026-04-18.md](../dev-week2-broadcast-api-2026-04-18.md). New v0.5 runtime events (e.g. `StrategyLoaded`, `StrategySwapped`) extend this bus; add corresponding `Message` variants and `ui::live` subscription handlers, then extend this summary with any new panel or state.
+- **Building on top in v0.5+:** the broadcast-bus API contract the cockpit subscribes to lives in [dev-week2-broadcast-api-2026-04-18.md](../dev-week2-broadcast-api-2026-04-18.md). New v0.5 runtime events (`StrategyLoaded`, `StrategySwapped`, `StrategyLoadError`) extend this bus; corresponding `Message` variants + `ui::live` subscription handlers + the `strategies` panel row above all landed together (T522–T528). Future extensions follow the same playbook: add types to `trading_core`, broadcast channel to `agent::EventBus`, `Message` variant + `update` arm in `ui::state`, widget in `ui::widgets`, a snapshot, and a row in this reference.
 
 ## 8. Manual smoke + screenshot capture
 

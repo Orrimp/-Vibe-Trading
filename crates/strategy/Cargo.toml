@@ -11,9 +11,13 @@ audit = { path = "../audit" }
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 tracing.workspace = true
 rust_decimal.workspace = true
 async-trait.workspace = true
+parking_lot.workspace = true
+smol_str.workspace = true
+sha2.workspace = true
 
 time.workspace = true
 rust_decimal_macros.workspace = true

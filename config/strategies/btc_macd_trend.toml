@@ -1,0 +1,10 @@
+# R6.1 — BTC MACD Trend-Following strategy
+# Enters long when MACD histogram is positive AND price is above EMA(200).
+# Exits when rule transitions from true → false (symmetric signal-flip, Q3).
+
+id     = "btc_macd_trend"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "macd_hist(12,26,9) > 0 AND close > ema(200)"
+size   = "fixed_fraction(0.1)"

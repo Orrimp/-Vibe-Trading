@@ -1,0 +1,8 @@
+# Fixture: invalid_range
+# RSI period must be >= 2; period=1 is invalid.
+id     = "bad_invalid_range"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(1) < 30"
+size   = "fixed_fraction(0.1)"

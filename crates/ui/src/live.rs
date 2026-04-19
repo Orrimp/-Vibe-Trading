@@ -67,7 +67,10 @@ pub fn subscription(bus: Arc<EventBus>) -> iced::Subscription<Message> {
         subscription_for(Channel::Pnl, Arc::clone(&bus)),
         subscription_for(Channel::Ticks, Arc::clone(&bus)),
         subscription_for(Channel::Bars, Arc::clone(&bus)),
-        subscription_for(Channel::Mode, bus),
+        subscription_for(Channel::Mode, Arc::clone(&bus)),
+        subscription_for(Channel::StrategyLoaded, Arc::clone(&bus)),
+        subscription_for(Channel::StrategySwapped, Arc::clone(&bus)),
+        subscription_for(Channel::StrategyError, bus),
     ])
 }
 
@@ -82,6 +85,12 @@ pub enum Channel {
     Ticks,
     Bars,
     Mode,
+    /// v0.5 — strategy registry: an initial load / reload of a strategy TOML.
+    StrategyLoaded,
+    /// v0.5 — strategy registry: a hot-swap of an existing strategy.
+    StrategySwapped,
+    /// v0.5 — strategy registry: a parse / typecheck rejection.
+    StrategyError,
 }
 
 fn subscription_for(channel: Channel, bus: Arc<EventBus>) -> iced::Subscription<Message> {
@@ -121,6 +130,9 @@ impl Recipe for BusRecipe {
             Channel::Ticks => Box::pin(stream_ticks(&bus)),
             Channel::Bars => Box::pin(stream_bars(&bus)),
             Channel::Mode => Box::pin(stream_mode(&bus)),
+            Channel::StrategyLoaded => Box::pin(stream_strategy_loaded(&bus)),
+            Channel::StrategySwapped => Box::pin(stream_strategy_swapped(&bus)),
+            Channel::StrategyError => Box::pin(stream_strategy_error(&bus)),
         }
     }
 }
@@ -268,6 +280,88 @@ pub fn stream_mode(bus: &EventBus) -> impl Stream<Item = Message> + Send {
                     // it as an "externally halted" event with a recognisable
                     // reason string.
                     yield Message::AgentHaltedExternally(SmolStr::new(
+                        strings::CONNECTION_CHANNEL_CLOSED,
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// ── Strategy-registry streams (v0.5 T526) ───────────────────────────────────
+//
+// Three channels — one per lifecycle event — match the pattern established by
+// `stream_fills` / `stream_positions`: subscribe synchronously before yielding
+// (eager-subscribe avoids the publish-before-subscribe race when events fire
+// between `stream()` being called and the first `.next().await`), then loop
+// on `recv`. Lagged receivers warn + continue; a closed channel flips the
+// whole panel into its error state by yielding `StrategiesError` with the
+// shared `CONNECTION_CHANNEL_CLOSED` copy (the widget prepends
+// `STRATEGIES_ERROR_PREFIX` when rendering).
+//
+// Whereas the fills channel has its own `TapeError` and positions has
+// `PositionsError`, all three strategy-registry channels funnel their
+// `Closed` state into the single `StrategiesError` variant — the operator
+// sees one panel-wide "Can't read strategies: agent disconnected" rather
+// than three simultaneous red stripes saying the same thing.
+
+/// `strategy_loaded` → `Message::StrategyLoaded`.
+pub fn stream_strategy_loaded(bus: &EventBus) -> impl Stream<Item = Message> + Send {
+    let mut rx = bus.strategy_loaded();
+    stream! {
+        loop {
+            match rx.recv().await {
+                Ok(event) => yield Message::StrategyLoaded(event),
+                Err(RecvError::Lagged(n)) => {
+                    warn!(channel = "strategy_loaded", skipped = n, "broadcast lagged");
+                }
+                Err(RecvError::Closed) => {
+                    yield Message::StrategiesError(SmolStr::new(
+                        strings::CONNECTION_CHANNEL_CLOSED,
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// `strategy_swapped` → `Message::StrategySwapped`.
+pub fn stream_strategy_swapped(bus: &EventBus) -> impl Stream<Item = Message> + Send {
+    let mut rx = bus.strategy_swapped();
+    stream! {
+        loop {
+            match rx.recv().await {
+                Ok(event) => yield Message::StrategySwapped(event),
+                Err(RecvError::Lagged(n)) => {
+                    warn!(channel = "strategy_swapped", skipped = n, "broadcast lagged");
+                }
+                Err(RecvError::Closed) => {
+                    yield Message::StrategiesError(SmolStr::new(
+                        strings::CONNECTION_CHANNEL_CLOSED,
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// `strategy_error` → `Message::StrategyLoadError`. The per-row error path
+/// (`Reject` event) uses `StrategyLoadError`; the panel-wide closed-channel
+/// path still yields `StrategiesError`.
+pub fn stream_strategy_error(bus: &EventBus) -> impl Stream<Item = Message> + Send {
+    let mut rx = bus.strategy_error();
+    stream! {
+        loop {
+            match rx.recv().await {
+                Ok(event) => yield Message::StrategyLoadError(event),
+                Err(RecvError::Lagged(n)) => {
+                    warn!(channel = "strategy_error", skipped = n, "broadcast lagged");
+                }
+                Err(RecvError::Closed) => {
+                    yield Message::StrategiesError(SmolStr::new(
                         strings::CONNECTION_CHANNEL_CLOSED,
                     ));
                     break;

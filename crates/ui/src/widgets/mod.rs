@@ -15,4 +15,5 @@ pub mod latency;
 pub mod num;
 pub mod pnl;
 pub mod positions;
+pub mod strategies;
 pub mod tape;

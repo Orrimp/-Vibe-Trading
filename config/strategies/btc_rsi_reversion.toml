@@ -1,0 +1,10 @@
+# R6.2 — BTC RSI Mean-Reversion strategy
+# Enters long when RSI is oversold (< 30) AND close is above recent support floor.
+# Exits when rule transitions from true → false (symmetric signal-flip, Q3).
+
+id     = "btc_rsi_reversion"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(14) < 30 AND close > min(low, 20)"
+size   = "fixed_fraction(0.1)"

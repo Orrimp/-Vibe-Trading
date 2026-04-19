@@ -1,0 +1,8 @@
+# Fixture: toml_parse
+# Invalid TOML syntax — unclosed string.
+id     = "bad_toml_parse"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(14) < 30
+size   = "fixed_fraction(0.1)"

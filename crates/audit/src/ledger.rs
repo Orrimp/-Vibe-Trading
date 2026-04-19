@@ -45,4 +45,11 @@ impl Ledger {
     pub async fn in_memory() -> Result<Self, LedgerError> {
         Self::open(":memory:").await
     }
+
+    /// Expose the underlying connection pool (needed for raw SQL in tests /
+    /// admin tooling).
+    #[must_use]
+    pub fn pool(&self) -> &sqlx::SqlitePool {
+        &self.pool
+    }
 }

@@ -1,0 +1,8 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: strategies_summary(&c)
+---
+panel: strategies
+title: Strategies
+state: loading
+copy: Loading active strategies…

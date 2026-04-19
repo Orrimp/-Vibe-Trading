@@ -1,0 +1,8 @@
+# Fixture: arity_mismatch
+# macd_cross requires 3 args (fast, slow, signal); only 1 provided.
+id     = "bad_arity_mismatch"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "macd_cross(12)"
+size   = "fixed_fraction(0.1)"

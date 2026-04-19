@@ -22,6 +22,7 @@ pub const PANEL_POSITIONS_TITLE: &str = "Open positions";
 pub const PANEL_PNL_TITLE: &str = "P&L";
 pub const PANEL_KILL_TITLE: &str = "Stop trading";
 pub const PANEL_LATENCY_TITLE: &str = "Feed latency";
+pub const PANEL_STRATEGIES_TITLE: &str = "Strategies";
 
 // ── Live tape ────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,49 @@ pub const KILL_RUNBOOK_LINK_LABEL: &str = "Open kill-switch runbook";
 /// terminal can still find the file. Used by `T_FINAL_B`.
 pub const KILL_RUNBOOK_LINK_PATH: &str = "spec/runbooks/kill-switch.md";
 
+// ── Strategies panel (v0.5 T522, R5 cockpit visibility) ─────────────────────
+//
+// Copy contract (feature brief R5.2 + architect Q4 resolution):
+// - loading → explicit "connecting" verb, not "fetching".
+// - empty   → actionable next step: where to drop a TOML.
+// - error   → what broke + what to check; channel-closed copy is reused
+//             from the existing CONNECTION_CHANNEL_CLOSED constant.
+// - ready   → tabular rows; per-row error state reuses `STRATEGIES_STATUS_ERROR`
+//             plus the `error_summary` carried by the `StrategyLoadError`.
+
+pub const STRATEGIES_LOADING: &str = "Loading active strategies…";
+pub const STRATEGIES_EMPTY: &str =
+    "No strategies loaded. Drop a TOML under config/strategies/ to begin.";
+/// Reused with `CONNECTION_CHANNEL_CLOSED` (or any other error detail) to
+/// produce the full red-tinted error-state line. Matches the `*_ERROR_PREFIX`
+/// pattern used by tape / positions / P&L.
+pub const STRATEGIES_ERROR_PREFIX: &str = "Can't read strategies: ";
+
+// Column headers for the strategies table (Ready state).
+pub const STRATEGIES_COL_ID: &str = "Strategy";
+pub const STRATEGIES_COL_HASH: &str = "Hash";
+pub const STRATEGIES_COL_STATUS: &str = "Status";
+pub const STRATEGIES_COL_LAST_EVENT: &str = "Last event";
+pub const STRATEGIES_COL_SIGNALS_60S: &str = "Signals / 60s";
+pub const STRATEGIES_COL_POSITION: &str = "Holds position";
+
+// Status pill labels.
+pub const STRATEGIES_STATUS_READY: &str = "Ready";
+pub const STRATEGIES_STATUS_LOADING: &str = "Loading";
+pub const STRATEGIES_STATUS_ERROR: &str = "Error";
+
+// Event-kind labels (rendered in the `Last event` column and the recent-events
+// footer list in the panel).
+pub const STRATEGIES_EVENT_LOAD: &str = "loaded";
+pub const STRATEGIES_EVENT_SWAP: &str = "swapped";
+pub const STRATEGIES_EVENT_UNLOAD: &str = "unloaded";
+pub const STRATEGIES_EVENT_REJECT: &str = "rejected";
+
+/// Rendered in the `Holds position` column when a strategy is currently net
+/// long or short. Pairs with `PLACEHOLDER_NONE` for flat.
+pub const STRATEGIES_POSITION_HELD: &str = "yes";
+pub const STRATEGIES_POSITION_FLAT: &str = "no";
+
 // ── Connection states (live broadcast bus, T32) ──────────────────────────────
 
 /// Shown in every panel's error state when the cockpit can't reach the agent
@@ -149,6 +193,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("PANEL_PNL_TITLE", PANEL_PNL_TITLE),
         ("PANEL_KILL_TITLE", PANEL_KILL_TITLE),
         ("PANEL_LATENCY_TITLE", PANEL_LATENCY_TITLE),
+        ("PANEL_STRATEGIES_TITLE", PANEL_STRATEGIES_TITLE),
         ("TAPE_COL_TIME", TAPE_COL_TIME),
         ("TAPE_COL_SYMBOL", TAPE_COL_SYMBOL),
         ("TAPE_COL_SIDE", TAPE_COL_SIDE),
@@ -195,6 +240,24 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("CONNECTION_AGENT_UNREACHABLE", CONNECTION_AGENT_UNREACHABLE),
         ("CONNECTION_LAGGED", CONNECTION_LAGGED),
         ("CONNECTION_CHANNEL_CLOSED", CONNECTION_CHANNEL_CLOSED),
+        ("STRATEGIES_LOADING", STRATEGIES_LOADING),
+        ("STRATEGIES_EMPTY", STRATEGIES_EMPTY),
+        ("STRATEGIES_ERROR_PREFIX", STRATEGIES_ERROR_PREFIX),
+        ("STRATEGIES_COL_ID", STRATEGIES_COL_ID),
+        ("STRATEGIES_COL_HASH", STRATEGIES_COL_HASH),
+        ("STRATEGIES_COL_STATUS", STRATEGIES_COL_STATUS),
+        ("STRATEGIES_COL_LAST_EVENT", STRATEGIES_COL_LAST_EVENT),
+        ("STRATEGIES_COL_SIGNALS_60S", STRATEGIES_COL_SIGNALS_60S),
+        ("STRATEGIES_COL_POSITION", STRATEGIES_COL_POSITION),
+        ("STRATEGIES_STATUS_READY", STRATEGIES_STATUS_READY),
+        ("STRATEGIES_STATUS_LOADING", STRATEGIES_STATUS_LOADING),
+        ("STRATEGIES_STATUS_ERROR", STRATEGIES_STATUS_ERROR),
+        ("STRATEGIES_EVENT_LOAD", STRATEGIES_EVENT_LOAD),
+        ("STRATEGIES_EVENT_SWAP", STRATEGIES_EVENT_SWAP),
+        ("STRATEGIES_EVENT_UNLOAD", STRATEGIES_EVENT_UNLOAD),
+        ("STRATEGIES_EVENT_REJECT", STRATEGIES_EVENT_REJECT),
+        ("STRATEGIES_POSITION_HELD", STRATEGIES_POSITION_HELD),
+        ("STRATEGIES_POSITION_FLAT", STRATEGIES_POSITION_FLAT),
         ("LATENCY_OK_LABEL", LATENCY_OK_LABEL),
         ("LATENCY_WARN_LABEL", LATENCY_WARN_LABEL),
         ("LATENCY_HIGH_LABEL", LATENCY_HIGH_LABEL),

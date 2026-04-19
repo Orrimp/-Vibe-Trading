@@ -106,12 +106,12 @@ async fn main() -> Result<()> {
     info!(budget_usd = %cost_budget.remaining(), "cost budget initialized");
 
     // ── Strategy registry ─────────────────────────────────────────────────────
-    let mut registry = strategy::StrategyRegistry::new();
+    let registry = strategy::StrategyRegistry::new();
     registry.register(Box::new(strategy::SmaCrossover::new(
         cfg.strategies.sma_crossover.fast_len,
         cfg.strategies.sma_crossover.slow_len,
     )));
-    strategy::flush_pending_to_ledger(&mut registry, &ledger)
+    strategy::flush_pending_to_ledger(&registry, &ledger)
         .await
         .context("journal strategy load")?;
     info!(
@@ -121,8 +121,31 @@ async fn main() -> Result<()> {
     );
 
     // ── Broadcast bus ─────────────────────────────────────────────────────────
-    let _bus = EventBus::new(&cfg.bus);
+    let bus = Arc::new(EventBus::new(&cfg.bus));
     info!("broadcast event bus initialized");
+
+    // ── Strategy watcher (paper + research only) ──────────────────────────────
+    let registry = Arc::new(registry);
+    let (watcher_shutdown_tx, watcher_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    {
+        let strategies_dir = PathBuf::from("config/strategies");
+        // Create the directory if it doesn't exist (non-fatal).
+        let _ = std::fs::create_dir_all(&strategies_dir);
+        let reg_clone = Arc::clone(&registry);
+        let ledger_clone = Arc::clone(&ledger);
+        let bus_clone = Arc::clone(&bus);
+        tokio::spawn(agent::run_strategy_watcher(
+            strategies_dir,
+            reg_clone,
+            ledger_clone,
+            bus_clone,
+            watcher_shutdown_rx,
+        ));
+    }
+    info!("strategy_watcher started");
+
+    // Keep the shutdown sender so it's dropped on shutdown, closing the watcher.
+    let _watcher_shutdown = watcher_shutdown_tx;
 
     // ── Data source ───────────────────────────────────────────────────────────
     // In research mode, use replay; in paper mode, use Binance WS.

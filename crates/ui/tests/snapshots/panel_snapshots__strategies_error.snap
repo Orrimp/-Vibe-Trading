@@ -1,0 +1,8 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: strategies_summary(&c)
+---
+panel: strategies
+title: Strategies
+state: error
+copy: Can't read strategies: Trading agent disconnected. Check the agent log and restart it.

@@ -1,7 +1,7 @@
 ---
 slug: v05-composed-strategies
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-04-19
 ---
 
@@ -550,9 +550,581 @@ reducer in a single rule).** If Sharpe does beat baseline we check
 for look-ahead bias in `avg(volume, 20)` before celebrating — the
 reducer must include only bars strictly prior to the current one.
 
-## Implementation
+## Design
 
-_developer fills this during build._
+Translates R1–R10 into crate / module additions, Rust types, TOML schema,
+message types, and test strategy. All decisions anchor to
+[architecture.md — Strategy registry & hot-loading](../architecture.md#strategy-registry--hot-loading)
+and the five v0.5 resolutions (Q1–Q5) signed there on 2026-04-19. This
+section is `ComposedStrategy` + hot-load wiring; v0 crate surfaces stay
+untouched except for additive extensions.
+
+### Crate map delta from v0
+
+| Crate       | Change in v0.5                                                                                                                                                                     |
+|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `trading_core` | **+** New message types `StrategyLoaded` / `StrategySwapped` / `StrategyLoadError` (Q5). **+** Read-side `StrategyEventView` + `StrategyEventKind`. **No trait changes** to `Strategy`. |
+| `features`  | **+** New streaming indicators: EMA, MACD (line + signal + histogram), RSI, Bollinger Bands. Implemented as pure-`Decimal` adapters next to the existing `features::sma` (no new TA dep). |
+| `strategy`  | **+** New submodule `strategy::composed` with `ComposedStrategy` (`impl Strategy`), indicator-node tree, rule-node tree, content-hasher, and `StrategyConfig` parse/validate. **+** `strategy::registry` gains `parking_lot::RwLock` + `swap`/`unload` wired to `audit::journal::strategy_event`. |
+| `audit`     | **+** New migration `0003_strategy_events.sql` + `audit::journal::strategy_event(..)` writer + `audit::query::strategy_events_since` / `strategy_history` reader. The existing `registry_event` zero-memo path (used by kill-switch) stays. |
+| `agent`     | **+** File-watcher task (`notify` re-used from v0 kill-switch wiring). **+** Three new `EventBus` channels. **+** Debounce + swap pipeline. |
+| `ui`        | **+** `widgets::strategies` panel. **+** `ui::strings::STRATEGIES_*` keys. **+** Live subscriber for the three new bus channels. |
+| `backtest`  | **+** `--strategy <id>` CLI flag resolving `config/strategies/<id>.toml` once at run start. Report writer gains a `Strategy` section (id + hash + source path). |
+| `risk`      | Unchanged in v0.5. v1+ will grow `max_strategy_drawdown_pct` — see [architecture.md — v0.5 ComposedStrategy exit policy (Q3)](../architecture.md#v05--composedstrategy-exit-policy-q3--confirmed-2026-04-19). `// TODO(v1): max_strategy_drawdown` breadcrumb lives in `risk::RiskLimits`. |
+| `data`, `exec`, `models`, `llm`, `cost` | Unchanged. |
+
+Dependency edges (additive):
+
+```
+trading_core ← strategy::composed, audit::journal::strategy_event,
+               agent::watcher, ui::widgets::strategies
+audit        ← strategy::registry (swap/unload writes)
+features     ← strategy::composed (indicator nodes)
+strategy     ← agent::watcher (registry handle)
+```
+
+No new crate is introduced. No edge reverses.
+
+### `ComposedStrategy` type (R1)
+
+Implements the existing v0 `Strategy` trait verbatim — no trait changes.
+
+```rust
+// crates/strategy/src/composed/mod.rs
+pub struct ComposedStrategy {
+    id: StrategyId,
+    symbol: Symbol,
+    hash: [u8; 32],              // sha256 of canonicalized AST; stable across runs
+    source_path: SmolStr,
+
+    // Evaluation state — allocation-free on the hot path.
+    indicators: Vec<IndicatorNode>,   // owns ring buffers sized at construction
+    rule:       RuleNode,             // immutable tree of comparisons / boolean ops
+    last_rule_value: Option<bool>,    // drives edge-triggered signal emission (R1.3)
+
+    // Sizing reference — resolved once at load time.
+    sizing: Sizing,                   // Sizing::FixedFraction(Decimal) only in v0.5 (R2.4)
+    params: ParamMap,                 // named scalars from [params] TOML table
+}
+
+impl Strategy for ComposedStrategy {
+    fn id(&self) -> StrategyId { self.id.clone() }
+
+    fn on_bar(&mut self, bar: &Bar) -> Vec<Signal> {
+        // 1. Push bar into each indicator node; each advances its ring buffer
+        //    and updates its latest computed value. No allocation on this path.
+        for ind in &mut self.indicators { ind.on_bar(bar); }
+
+        // 2. Evaluate the rule tree against the current indicator values +
+        //    bar-native references (close/open/high/low/volume).
+        let now = self.rule.eval(&EvalCtx::new(bar, &self.indicators, &self.params));
+
+        // 3. Edge-triggered emission — symmetric signal-flip (Q3).
+        let out = match (self.last_rule_value, now) {
+            (Some(false), true)  => vec![self.emit_signal(bar, SignalKind::Buy)],
+            (Some(true),  false) => vec![self.emit_signal(bar, SignalKind::Sell)],
+            _                    => vec![],
+        };
+        self.last_rule_value = Some(now);
+        out
+    }
+
+    fn on_tick(&mut self, _tick: &Tick) -> Vec<Signal> { vec![] }
+
+    fn config_schema() -> serde_json::Value where Self: Sized {
+        // Returns the JSON-Schema for ComposedStrategyConfig so a future
+        // cockpit "edit strategy" flow can validate before writing to disk.
+        ComposedStrategyConfig::json_schema()
+    }
+}
+```
+
+**Indicator node taxonomy** (R1.2):
+
+```rust
+pub enum IndicatorNode {
+    Sma    { period: u32, ring: RingBuffer<Decimal>, latest: Option<Decimal> },
+    Ema    { period: u32, alpha: Decimal,            latest: Option<Decimal> },
+    Macd   { fast: u32, slow: u32, signal_period: u32,
+             fast_ema: Ema, slow_ema: Ema, signal_ema: Ema,
+             line: Option<Decimal>, signal_line: Option<Decimal>, hist: Option<Decimal> },
+    Rsi    { period: u32, gains: RingBuffer<Decimal>, losses: RingBuffer<Decimal>,
+             latest: Option<Decimal> },
+    Bbands { period: u32, mult: Decimal,
+             ring: RingBuffer<Decimal>,
+             upper: Option<Decimal>, mid: Option<Decimal>, lower: Option<Decimal> },
+    // Value nodes — bar-native, zero state.
+    Close, Open, High, Low, Volume, TradeCount,
+    // Rolling reducers over bar-native values — parameterized at construction.
+    RollingMin { field: BarField, window: u32, ring: RingBuffer<Decimal>, latest: Option<Decimal> },
+    RollingMax { field: BarField, window: u32, ring: RingBuffer<Decimal>, latest: Option<Decimal> },
+    RollingAvg { field: BarField, window: u32, ring: RingBuffer<Decimal>, latest: Option<Decimal> },
+}
+```
+
+**Rule node taxonomy** (R1.2):
+
+```rust
+pub enum RuleNode {
+    // Logical combinators.
+    And(Box<RuleNode>, Box<RuleNode>),
+    Or (Box<RuleNode>, Box<RuleNode>),
+    Not(Box<RuleNode>),
+
+    // Comparisons produce bool; operands are Expr (Decimal-valued).
+    Cmp { op: CmpOp, lhs: Expr, rhs: Expr }, // CmpOp = Lt | Le | Eq | Ge | Gt
+
+    // Crossovers over the *previous two* values of their inner Expr pair.
+    // Maintained as internal state so `cross_above(a, b)` fires exactly once
+    // per crossing, matching the v0 sma_crossover edge-triggered contract.
+    CrossAbove { a: Expr, b: Expr, prev: Option<(Decimal, Decimal)> },
+    CrossBelow { a: Expr, b: Expr, prev: Option<(Decimal, Decimal)> },
+
+    // Convenience predicates compiled down from familiar sugar (see grammar).
+    MacdCross { fast: u32, slow: u32, signal: u32, direction: CrossDir,
+                prev: Option<(Decimal, Decimal)> },
+    BollingerLowerTouch { period: u32, mult: Decimal },
+}
+
+pub enum Expr {
+    Indicator(IndicatorRef),   // handle into ComposedStrategy::indicators
+    BarField(BarField),        // close, open, high, low, volume, trade_count
+    Param(SmolStr),             // [params] scalar
+    Literal(Decimal),           // numeric literal from TOML
+    Binary { op: ArithOp, lhs: Box<Expr>, rhs: Box<Expr> },  // + - * / — DSL supports `1.5 * avg(volume, 20)`
+}
+```
+
+**Allocation discipline (R1.3, R1.4):** indicator ring buffers are sized to
+the deepest lookback at construction; `on_bar` performs no `Vec::push`, no
+`String` formatting, no `format!`, no `serde` calls. The `Vec<Signal>`
+returned is the only allocation, bounded to 0 or 1 items per bar under
+symmetric signal-flip semantics. Verified by a criterion bench with
+`heaptrack` scratchpad (see R10).
+
+**Content hash (R3.2, R4.2):** after parse + typecheck, canonicalize the
+AST into a deterministic byte sequence (indicator nodes sorted by their
+TOML-parse order, rule tree serialized depth-first with fixed-width
+separators, parameter map sorted by key) and sha256 it. The 32-byte
+digest is what the audit ledger and broadcast-bus events carry.
+
+### Rule DSL grammar — TOML schema
+
+**Per-strategy file** at `config/strategies/<id>.toml` — filename stem is
+the canonical `StrategyId` (R2.1).
+
+```toml
+# config/strategies/btc_macd_trend.toml
+id     = "btc_macd_trend"                   # MUST equal filename stem
+kind   = "composed"                         # future: "wasm" (v1+)
+symbol = "BTCUSDT"                          # single-symbol in v0.5
+stage  = "research"                         # "research" | "paper"
+signal = "macd_hist(12,26,9) > 0 AND close > ema(200)"
+size   = "fixed_fraction(0.1)"              # only fixed_fraction in v0.5
+
+[params]                                    # optional named scalars
+rsi_floor    = 35
+vol_multiple = 1.5
+```
+
+`serde` struct (in `strategy::composed::config`):
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComposedStrategyConfig {
+    pub id:     SmolStr,
+    pub kind:   StrategyKind,            // ComposedKind { kind: "composed" } discriminator
+    pub symbol: SmolStr,
+    pub stage:  Stage,                   // Research | Paper (Live rejected at load)
+    pub signal: SmolStr,                 // raw rule string — parsed + typechecked in load()
+    pub size:   SmolStr,                 // e.g. "fixed_fraction(0.1)"
+    #[serde(default)]
+    pub params: BTreeMap<SmolStr, Decimal>,
+}
+```
+
+**Rule-DSL grammar** (PEG, one-line, informative — actual implementation
+uses a small hand-written recursive-descent parser on top of the
+`logos` lexer or `winnow` combinators; dep choice is developer-owned
+but no new runtime dep vs what's already in the workspace). Productions:
+
+```
+rule        := or_expr
+or_expr     := and_expr ("OR" and_expr)*
+and_expr    := not_expr ("AND" not_expr)*
+not_expr    := "NOT" not_expr | cmp
+cmp         := value_expr (CMP_OP value_expr)?
+                 // bare value_expr is promoted to `value_expr != 0`
+CMP_OP      := "<" | "<=" | "==" | ">=" | ">" | "!="
+value_expr  := term (ARITH_OP term)*
+ARITH_OP    := "+" | "-" | "*" | "/"
+term        := indicator_call
+             | bar_field
+             | param_ref
+             | numeric_literal
+             | "(" rule ")"
+indicator_call := INDICATOR_NAME "(" numeric_literal ("," numeric_literal)* ")"
+INDICATOR_NAME ∈ { sma, ema, macd_line, macd_signal, macd_hist, macd_cross,
+                    rsi, bollinger_upper, bollinger_mid, bollinger_lower,
+                    bollinger_lower_touch, min, max, avg, cross_above, cross_below }
+bar_field   ∈ { close, open, high, low, volume, trade_count }
+param_ref   := IDENTIFIER   // must appear as a key in [params]
+```
+
+**Supported rule examples** (R2.3, all covered by parser unit tests):
+
+```toml
+signal = "macd_cross(12,26,9)"                                  # crossover sugar
+signal = "macd_cross(12,26,9) AND rsi(14) < 35"                 # AND
+signal = "bollinger_lower_touch(20,2) OR rsi(14) < 20"          # OR with threshold
+signal = "(rsi(14) < rsi_floor OR macd_cross(12,26,9)) AND NOT (close < min(low, 20))"
+signal = "close < bollinger_lower(20,2) AND volume > 1.5 * avg(volume, 20)"
+signal = "macd_hist(12,26,9) > 0 AND close > ema(200)"
+```
+
+**Parse → typecheck → construct** (R2.5):
+
+1. `ComposedStrategyConfig` deserializes the TOML (`deny_unknown_fields`).
+2. `signal` string goes through the DSL parser → raw `RuleAst`.
+3. Typechecker walks the AST:
+   - every `INDICATOR_NAME` must be in the supported set with correct
+     arity;
+   - every `param_ref` must appear in `[params]`;
+   - numeric ranges: RSI period ≥ 2, MACD `fast < slow`, Bollinger
+     `mult > 0`, lookback windows ≥ 1.
+4. Indicator nodes are deduplicated (two `rsi(14)` references share one
+   node) and sorted deterministically for content hashing.
+5. `size` string parsed into `Sizing::FixedFraction(Decimal)`; anything
+   else returns `StrategyLoadError { error_code: "unsupported_sizing" }`.
+6. Ring buffers allocated with capacity = deepest lookback.
+7. AST canonicalized + sha256 hashed → stored as `ComposedStrategy.hash`.
+
+**Error codes** emitted via `StrategyLoadError` (R2.5, R8.2):
+
+| code                      | cause                                                  |
+|---------------------------|--------------------------------------------------------|
+| `io_read`                 | file removed / permission denied during reload         |
+| `toml_parse`              | malformed TOML syntax                                  |
+| `unknown_field`           | `deny_unknown_fields` hit                              |
+| `id_filename_mismatch`    | `id` field does not equal filename stem                |
+| `grammar_parse`           | rule-DSL syntax error                                  |
+| `unknown_indicator`       | indicator name not in the supported set                |
+| `arity_mismatch`          | e.g. `macd_cross(12)` — expected 3 args                |
+| `unknown_param`           | `param_ref` not declared in `[params]`                 |
+| `invalid_range`           | `fast >= slow` in MACD, period < 2 in RSI, etc.        |
+| `invalid_stage`           | stage not in {`research`,`paper`}                       |
+| `unsupported_sizing`      | sizing expression not `fixed_fraction(<f>)`             |
+| `empty_signal`            | signal string empty / whitespace-only                  |
+
+**Broadcast event** on reject carries `error_code` + `error_summary`;
+`audit::journal::strategy_event` persists them in the `strategy_events`
+table.
+
+### File watcher + atomic swap (R3)
+
+Lives in `agent::watcher` as a tokio task spawned by the agent binary:
+
+```rust
+pub async fn run_strategy_watcher(
+    strategies_dir: PathBuf,
+    registry: Arc<parking_lot::RwLock<StrategyRegistry>>,
+    ledger: audit::Ledger,
+    bus: Arc<EventBus>,
+    cancel: CancellationToken,
+) -> Result<(), WatcherError> { /* ... */ }
+```
+
+**Mechanics:**
+
+1. `notify::recommended_watcher(strategies_dir)` on `Create | Modify |
+   Remove | Rename` (the `notify` crate is already workspace-pinned from
+   v0's kill-switch file watcher).
+2. Events feed a `debounce::<Duration=250ms>` (per R3.1 — collapse editor
+   write-storms). If multiple events for the same file arrive inside
+   250ms, only the final state is processed.
+3. For each debounced event, dispatch:
+   - **Create / Modify**: `load_and_swap(path, &registry, &ledger, &bus)`.
+   - **Remove / Rename-out**: `unload(id, &registry, &ledger, &bus)`.
+4. `load_and_swap`:
+   1. Read file bytes (`io_read` on failure → emit
+      `StrategyLoadError`).
+   2. `ComposedStrategyConfig::parse(bytes)` + typecheck + build
+      (`toml_parse` / grammar / arity / unknown_* / invalid_* → emit
+      `StrategyLoadError`).
+   3. On success: acquire `registry.write()` guard **briefly** (lock
+      held only for the `HashMap::insert` call — parse + typecheck +
+      construction happen outside the guard), call `registry.swap(id,
+      Box::new(new))`, drop the guard.
+   4. `audit::journal::strategy_event(..)` writes the `Load` or `Swap`
+      row (new-swap keeps both old + new hash).
+   5. `bus.publish_strategy_loaded(..)` or
+      `bus.publish_strategy_swapped(..)`.
+5. `unload`:
+   1. Acquire write guard, remove from `HashMap`, drop guard.
+   2. Write `Unload` strategy-event row.
+   3. (No broadcast-bus event for unload in v0.5 — the cockpit
+      reconciles from `strategy_history`; a later tier adds an
+      `strategy_unloaded` channel if needed.)
+
+**Atomicity from the runtime's view (R3.4):** the `RwLock` guarantees
+that `on_bar` fan-out either sees the old strategy or the new one,
+never a partially-constructed state. Because construction happens
+outside the guard, a slow parse / build cannot block the bar-close
+critical path; the guard is held only for the pointer swap.
+
+**Open-position persistence (R3.3):** positions live in `PositionBook`
+owned by `agent`, not in the strategy. Unloading a strategy leaves its
+positions open; the operator can close them manually via the cockpit or
+let a replacement strategy manage them. This preserves the ledger's
+property that every fill references a `strategy_id` even if that
+strategy is no longer loaded.
+
+**Latency (R3.5):** `file-save → next-bar` ≤ 2s is dominated by (a) the
+250ms debounce + (b) the remainder of the current bar window. Parse +
+construct + swap is ≤ 10ms for v0.5-complexity rules (measured in R10
+bench).
+
+### Strategy-event audit schema (R4, Q1 resolution)
+
+See [architecture.md — v0.5 strategy-event journal schema (Q1)](../architecture.md#v05--strategy-event-journal-schema-q1--confirmed-2026-04-19)
+for the full table / writer / reader signatures. Summary:
+
+- **Table** `strategy_events` lives in the same SQLite ledger DB as
+  `journal_entries`.
+- **Writer** `audit::journal::strategy_event(ledger, StrategyEventWrite)`
+  inserts a single row inside a `sqlx::Transaction`.
+- **Reader** `audit::query::strategy_events_since(ts)` and
+  `audit::query::strategy_history(id)` — return `Vec<StrategyEventView>`;
+  `StrategyEventView` is defined in `trading_core`.
+- **Monetary invariant** unchanged: reconciler walks `journal_entries`
+  only; `strategy_events` has no debit/credit columns.
+
+**Migration shape** (new file
+`crates/audit/migrations/0003_strategy_events.sql`):
+
+```sql
+CREATE TABLE IF NOT EXISTS strategy_events (
+    id            TEXT PRIMARY KEY,
+    ts            TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    strategy_id   TEXT,
+    old_hash      TEXT,
+    new_hash      TEXT,
+    source_path   TEXT,
+    operator      TEXT NOT NULL DEFAULT 'system',
+    error_code    TEXT,
+    error_summary TEXT
+);
+CREATE INDEX IF NOT EXISTS strategy_events_ts_idx ON strategy_events(ts);
+CREATE INDEX IF NOT EXISTS strategy_events_sid_idx ON strategy_events(strategy_id, ts);
+```
+
+The existing `journal::registry_event` function (which writes zero-amount
+memo rows into `journal_entries` against `equity:opening_balance`) is
+**kept** for the kill-switch `KillSwitchTripped` memo path. v0.5 strategy
+lifecycle events go to the new dedicated table.
+
+### New broadcast events (Q5 resolution)
+
+See [architecture.md — v0.5 broadcast bus extensions (Q5)](../architecture.md#v05--broadcast-bus-extensions-q5--confirmed-2026-04-19)
+for the full message types + channel additions. Summary:
+
+- `trading_core::{StrategyLoaded, StrategySwapped, StrategyLoadError}` —
+  carry `StrategyId`, 32-byte sha256 hashes, source path, timestamp.
+- `agent::EventBus` gains `strategy_loaded`, `strategy_swapped`,
+  `strategy_error` broadcast channels (capacity 32 each).
+- Backpressure: `RecvError::Lagged(n)` → log-and-continue in the UI
+  subscriber, identical to existing v0 pattern per
+  [dev-week2-broadcast-api-2026-04-18.md](../reports/dev-week2-broadcast-api-2026-04-18.md).
+- `RecvError::Closed` → UI flips the Strategies panel into
+  `PanelState::Error(STRATEGIES_CONNECTION_CLOSED)`.
+
+### Cockpit strategies panel (R5, Q4 resolution)
+
+**Position:** right column, above Open positions. See
+[architecture.md — v0.5 cockpit strategies panel layout (Q4)](../architecture.md#v05--cockpit-strategies-panel-layout-q4--confirmed-2026-04-19).
+
+**Updated wireframe:**
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Trading Cockpit                                                            │
+├──────────────────────────────────┬─────────────────────────────────────────┤
+│ ┌──────────────────────────────┐ │ ┌─────────────────────────────────────┐ │
+│ │ P&L                          │ │ │ Strategies                          │ │
+│ │ Total equity     90,129.50   │ │ │ ID                 Hash  Status     │ │
+│ │ Cash             50,000.00   │ │ │ btc_macd_trend     a1b2  Ready      │ │
+│ │ Realized today      129.50   │ │ │ btc_rsi_reversion  c3d4  Ready      │ │
+│ │ Unrealized            0.00   │ │ │ btc_bb_mean_revert e5f6  Error      │ │
+│ │ P&L today           129.50   │ │ │   ↳ arity_mismatch: macd_cross(12)  │ │
+│ └──────────────────────────────┘ │ └─────────────────────────────────────┘ │
+│ ┌──────────────────────────────┐ │ ┌─────────────────────────────────────┐ │
+│ │ Feed latency  120ms          │ │ │ Open positions                      │ │
+│ └──────────────────────────────┘ │ │ ...                                 │ │
+│ ┌──────────────────────────────┐ │ └─────────────────────────────────────┘ │
+│ │ Stop trading                 │ │ ┌─────────────────────────────────────┐ │
+│ │ [ big red button ]           │ │ │ Live tape                           │ │
+│ └──────────────────────────────┘ │ │ ...                                 │ │
+│                                  │ └─────────────────────────────────────┘ │
+└──────────────────────────────────┴─────────────────────────────────────────┘
+```
+
+**Model extensions** (`crates/ui/src/state.rs`, additive):
+
+```rust
+#[derive(Debug, Clone)]
+pub struct StrategyRow {
+    pub id:            StrategyId,
+    pub short_hash:    SmolStr,      // 7-char prefix of hex
+    pub full_hash:     SmolStr,      // tooltip only
+    pub status:        StrategyStatus,
+    pub last_event:    Option<StrategyEventView>,
+    pub signals_60s:   u32,
+    pub has_position:  bool,
+    pub source_path:   SmolStr,
+}
+
+#[derive(Debug, Clone)]
+pub enum StrategyStatus { Loading, Ready, Error(SmolStr) }
+
+pub struct Cockpit {
+    // ... existing fields ...
+    pub strategies: PanelState<Vec<StrategyRow>>,
+    pub strategies_signal_counters: HashMap<StrategyId, RingBuffer60s>,
+}
+```
+
+**Message additions:**
+
+```rust
+pub enum Message {
+    // ... existing variants ...
+
+    // Strategy panel inputs — from the three new bus channels.
+    StrategyLoaded(StrategyLoaded),
+    StrategySwapped(StrategySwapped),
+    StrategyLoadError(StrategyLoadError),
+
+    // Refreshed snapshot (from audit::query::strategy_events_since at BarClose).
+    StrategiesRefreshed(Vec<StrategyRow>),
+    StrategiesError(SmolStr),
+
+    // Per-bar: fills produced during last bar, keyed by strategy_id.
+    //         Used to increment the 60s signal counter.
+    StrategySignalObserved(StrategyId),
+}
+```
+
+**Four panel states (V7, R5.2):**
+
+| State     | Copy source                                                         | Trigger                                          |
+|-----------|---------------------------------------------------------------------|--------------------------------------------------|
+| `Loading` | `STRATEGIES_LOADING` — "Connecting to the strategy registry…"       | Initial cockpit startup; no data yet.            |
+| `Empty`   | `STRATEGIES_EMPTY` — "No strategies loaded. Add a TOML under config/strategies/." | Registry returns empty vector.                   |
+| `Error`   | `STRATEGIES_ERROR_PREFIX` + error                                   | `RecvError::Closed` on any of the three channels.|
+| `Ready`   | table with N rows                                                   | Registry has ≥ 1 strategy.                       |
+
+Each row in `Ready` can itself show a per-row `Error` badge (from the
+`StrategyStatus::Error` variant) with `error_summary` underneath — this
+is the R8 "malformed TOML keeps old strategy running" visual.
+
+**`ui::strings` additions** (prefix `STRATEGIES_*`):
+
+```rust
+pub const PANEL_STRATEGIES_TITLE:      &str = "Strategies";
+pub const STRATEGIES_LOADING:          &str = "Connecting to the strategy registry…";
+pub const STRATEGIES_EMPTY:            &str = "No strategies loaded. Add a TOML under config/strategies/.";
+pub const STRATEGIES_ERROR_PREFIX:     &str = "Can't read the strategy registry: ";
+pub const STRATEGIES_CONNECTION_CLOSED: &str = "Registry channel closed — restart the agent.";
+pub const STRATEGIES_COL_ID:           &str = "Strategy";
+pub const STRATEGIES_COL_HASH:         &str = "Hash";
+pub const STRATEGIES_COL_STATUS:       &str = "Status";
+pub const STRATEGIES_COL_LAST_EVENT:   &str = "Last event";
+pub const STRATEGIES_COL_SIGNALS_60S:  &str = "Signals / 60s";
+pub const STRATEGIES_COL_POSITION:     &str = "Holds position";
+pub const STRATEGIES_STATUS_READY:     &str = "Ready";
+pub const STRATEGIES_STATUS_LOADING:   &str = "Loading";
+pub const STRATEGIES_STATUS_ERROR:     &str = "Error";
+pub const STRATEGIES_EVENT_LOAD:       &str = "loaded";
+pub const STRATEGIES_EVENT_SWAP:       &str = "swapped";
+pub const STRATEGIES_EVENT_UNLOAD:     &str = "unloaded";
+pub const STRATEGIES_EVENT_REJECT:     &str = "rejected";
+```
+
+**Theme tokens:** reuse `theme::color::{success, warning, danger, muted}`
+— no new tokens. Row-level error state uses `color::danger`; Ready uses
+`color::success`; Loading uses `color::muted`.
+
+### Backtest harness alignment (R9)
+
+`backtest` binary gains a `--strategy <id>` CLI flag; resolution:
+
+1. If `<id>` resolves to a compiled-in strategy (v0: `sma_crossover`),
+   use it (backward compatibility, R9.2).
+2. Otherwise look for `config/strategies/<id>.toml`; load via the same
+   `ComposedStrategy::from_config` path used by the live agent.
+3. **No file watcher inside backtest** — config resolved once at run
+   start; determinism requires the strategy not to change mid-run.
+
+Report writer (R9.3) extends the existing template with a `Strategy`
+subsection emitting:
+
+```
+### Strategy
+
+- **id:** btc_macd_trend
+- **kind:** composed
+- **hash:** a1b2c3d4e5f6…  (full 64-char sha256)
+- **source:** config/strategies/btc_macd_trend.toml
+- **signal:** macd_hist(12,26,9) > 0 AND close > ema(200)
+```
+
+Determinism invariant (R9.4): two runs of `--strategy btc_macd_trend
+--seed 0xC0FFEE` produce byte-identical report bodies (same hash path
+as v0 T33).
+
+### Performance budget
+
+Restated from
+[architecture.md — Performance budget](../architecture.md#performance-budget):
+
+| Path                          | Budget      | Applies to v0.5?            |
+|-------------------------------|-------------|------------------------------|
+| Bar-close → signal (no LLM)   | < 5 ms p99  | Yes — unchanged from v0.    |
+| Backtest throughput           | > 100k bars/s per symbol per thread | Yes — unchanged. |
+
+**v0.5-specific targets (R10.1, R10.2):**
+
+| Target                                              | Budget       |
+|-----------------------------------------------------|-------------:|
+| `ComposedStrategy::on_bar` — 1-rule (e.g. `rsi(14) < 30`)              | < 200 µs p99 |
+| `ComposedStrategy::on_bar` — 3-rule (MACD-trend shape)                 | < 500 µs p99 |
+| `ComposedStrategy::on_bar` — 5-rule mixed (bbands + volume + reducers) | < 1 ms p99   |
+| Strategy parse + construct (from TOML bytes in memory)                 | < 10 ms      |
+| File-save → registry swap (on warm OS cache)                           | < 500 ms     |
+
+Bench home: `crates/strategy/benches/composed_strategies.rs`. Criterion
+baseline committed to `criterion_baselines/`; regressions > 10% fail the
+bench step (R10.3).
+
+### Test strategy
+
+| Layer                         | Tests                                                                                                   | Crate(s)       | Tool         |
+|-------------------------------|---------------------------------------------------------------------------------------------------------|----------------|--------------|
+| **Unit — parser**             | DSL grammar covers all R2.3 rule shapes; negative cases produce distinct `StrategyLoadError`            | `strategy`     | `cargo test` |
+| **Unit — typecheck**          | Arity, unknown-indicator, unknown-param, invalid-range, invalid-stage, unsupported-sizing               | `strategy`     | `cargo test` |
+| **Unit — engine**             | Programmatic `ComposedStrategy` vs hand-coded reference → byte-identical signal sequence (R1 acceptance)| `strategy`     | `cargo test` |
+| **Property — parser**         | Round-trip parse → canonicalize → re-parse preserves AST for 1 000 generated valid rules                | `strategy`     | `proptest`   |
+| **Property — engine**         | For any deterministic indicator sequence, `on_bar` emits ≤ 1 signal per bar and signal-flip is symmetric | `strategy`     | `proptest`   |
+| **Integration — R7 hot-swap** | Replay driver + file rewrite at t=500 → swap within 2s; `strategy_history` shows exactly `Load` + `Swap`| `agent`        | `cargo test` |
+| **Integration — R8 reject**   | 10 malformed TOML fixtures; each rejected without crash; good strategy keeps running                     | `agent`        | `cargo test` |
+| **Integration — reconcile**   | R7 + R8 suites leave `journal_entries` balanced; `ledger_imbalance_total == 0` after the run            | `audit`        | `cargo test` |
+| **Snapshot — UI**             | Strategies panel: Loading / Empty / Ready(3 rows) / Error / per-row-error                                | `ui`           | `insta`      |
+| **Snapshot — report**         | Composed-strategy report body sha256 stable at seed `0xC0FFEE`                                          | `backtest`     | `insta` + direct hash |
+| **Determinism**               | Each of the four backtest scenarios runs twice at `0xC0FFEE` → byte-identical report + empty DB diff    | `backtest`     | `cargo test` |
+| **Bench**                     | 1-rule / 3-rule / 5-rule `on_bar` p99; backtest throughput > 100k bars/s                                | `strategy`, `backtest` | `criterion` |
+
 
 ## Verification
 
@@ -633,6 +1205,221 @@ Failure on any of V1–V9 routes as follows (matches the router in
 - Strategy / scenario hypothesis wrong (unexpected Sharpe, trade
   count off by > 10× vs hypothesis) → `analyst`.
 
+## Implementation
+
+_developer fills this during build._
+
+## UI — v0.5
+
+_Partial fill by ui-designer (2026-04-19). T522–T525 + T527 + T528 landed
+against `trading_core`'s v0.5 types (T501). T526 (live subscribers) and
+T_FINAL_B (smoke extension) remain blocked on developer T512 — see
+[ui-v05-blockers-2026-04-19.md](../reports/ui-v05-blockers-2026-04-19.md)._
+
+### Panel landed — strategies
+
+- **Placement:** right column, **above** Open positions (Q4 resolution);
+  v0 layout for the left column (P&L, latency, kill switch) unchanged.
+  Snapshot `cockpit_layout_strategies_above_positions` pins the order.
+- **States:** loading / empty / error / ready with plain-language copy and
+  a per-row error badge (R8 visual) when an individual strategy's last
+  load attempt was rejected.
+- **Subscriptions** _(blocked — wires once T512 adds the three broadcast
+  channels)_: `strategy_loaded` → `Message::StrategyLoaded`,
+  `strategy_swapped` → `Message::StrategySwapped`, `strategy_error` →
+  `Message::StrategyLoadError`.
+- **Fixture path:** `fake_cockpit_with_strategies()` boots the cockpit
+  with three rows (Ready / Loading / Error) so the whole panel state
+  surface renders without a running agent — `cargo run --bin cockpit
+  --features fixtures` exercises the layout today.
+
+### Strings added
+
+Every user-visible string lives in `ui::strings`; widgets carry zero
+literals. New constants (all prefixed `STRATEGIES_*` except the panel
+title; keys → English values):
+
+| Key | Value |
+|---|---|
+| `PANEL_STRATEGIES_TITLE` | "Strategies" |
+| `STRATEGIES_LOADING` | "Loading active strategies…" |
+| `STRATEGIES_EMPTY` | "No strategies loaded. Drop a TOML under config/strategies/ to begin." |
+| `STRATEGIES_ERROR_PREFIX` | "Can't read strategies: " |
+| `STRATEGIES_COL_ID` | "Strategy" |
+| `STRATEGIES_COL_HASH` | "Hash" |
+| `STRATEGIES_COL_STATUS` | "Status" |
+| `STRATEGIES_COL_LAST_EVENT` | "Last event" |
+| `STRATEGIES_COL_SIGNALS_60S` | "Signals / 60s" |
+| `STRATEGIES_COL_POSITION` | "Holds position" |
+| `STRATEGIES_STATUS_READY` | "Ready" |
+| `STRATEGIES_STATUS_LOADING` | "Loading" |
+| `STRATEGIES_STATUS_ERROR` | "Error" |
+| `STRATEGIES_EVENT_LOAD` | "loaded" |
+| `STRATEGIES_EVENT_SWAP` | "swapped" |
+| `STRATEGIES_EVENT_UNLOAD` | "unloaded" |
+| `STRATEGIES_EVENT_REJECT` | "rejected" |
+| `STRATEGIES_POSITION_HELD` | "yes" |
+| `STRATEGIES_POSITION_FLAT` | "no" |
+
+Reused from v0: `CONNECTION_CHANNEL_CLOSED` (error-state detail),
+`PLACEHOLDER_NONE` (missing hash / last-event cell).
+
+### Theme tokens added
+
+**Zero.** The strategies panel reuses `color::{POS, NEG, WARN, ACCENT,
+FG, FG_MUTED}` and the existing spacing scale (`space::M`, `space::S`,
+`space::XS`). Deliberate: the three-goal contract treats new tokens as
+a code smell and the v0.5 visual needs only the semantic colors already
+carried by v0.
+
+### Accessibility notes
+
+- Contrast: every status-pill color / background pair reuses v0 tokens
+  already hand-checked at ≥ 4.5:1 WCAG AA against the dark palette —
+  no new color pair introduced.
+- Color is never the only signal: the status pill carries the label
+  text next to the color, and the per-row error badge shows the
+  `error_summary` in words (not just a red dot).
+- Tab order: the strategies panel contains no interactive elements in
+  v0.5 (it is read-only). No new tab stops introduced. Kill switch
+  remains the last tab stop in the left column, per v0.
+- The `Hash` cell is the 7-char short hash; the full 64-char hash is
+  available in the tooltip (deferred to the iced 0.14 `tooltip` wiring —
+  carried as a TODO in `widgets::strategies`).
+
+### Consistency self-audit
+
+Run against HEAD with T522–T525 + T527 + T528 landed (T526 stub absent):
+
+- inline strings: **0** (`no_inline_user_visible_strings_in_widgets`
+  green)
+- inline hex: **0** (`no_inline_hex_colors_in_widgets_or_state` green)
+
+Expected counts — non-zero on either would be a fail.
+
+### Deferred manual
+
+- PNG screenshot of the strategies panel in each of its four states and
+  the per-row-error visual. Capture on an operator display via `cargo
+  run --bin cockpit --features fixtures` once T526 lands and
+  `--features live` can drive a replay swap. Manual smoke checklist
+  entry to be appended to
+  [ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md)
+  at T_FINAL_B time.
+
+### Test counts (after T522–T525 + T527 + T528)
+
+| Suite | Count |
+|---|---|
+| `cargo test -p ui` (default) | 25 lib + 2 consistency + 30 snapshots = **57** |
+| `cargo test -p ui --features live` | pending — T526 adds ~3 live subscriber tests |
+
+### Open deps (handoff)
+
+- **T512** (developer) — three `EventBus` broadcast channels + the
+  corresponding publisher methods + the v0.5 extension section in
+  `spec/reports/dev-week2-broadcast-api-2026-04-18.md`. Blocks T526.
+- **T_FINAL_B** — waits on T526 + the developer's T_FINAL_A (R7
+  hot-swap integration). Once T512 lands the ui-designer re-spawns to
+  complete T526 + T_FINAL_B.
+
+### T526 close-out (2026-04-19, ui-designer resume)
+
+T512 landed on `crates/agent/src/bus.rs` with three publisher methods
+(`publish_strategy_loaded` / `_swapped` / `_error`) + three matching
+`bus.strategy_*()` receiver getters, capacity 32 each.  T526 wired the
+corresponding UI subscribers.
+
+- **`ui::live::Channel`** gained three variants — `StrategyLoaded`,
+  `StrategySwapped`, `StrategyError` — each mapped to its own stream
+  builder (`stream_strategy_loaded` / `_swapped` / `_error`). The
+  `subscription(bus)` batcher now fans in nine recipes instead of six.
+- **Eager-subscribe** pattern (architect risk #5): each stream calls
+  `bus.strategy_*()` **before** entering the `stream!` body, closing
+  the publish-before-subscribe race so events published in the gap
+  between `stream()` returning and the first `.next().await` are not
+  dropped.
+- **Backpressure policy** matches v0: `RecvError::Lagged(n)` →
+  `warn!(channel = "strategy_*", skipped = n)` + continue;
+  `RecvError::Closed` → `Message::StrategiesError(SmolStr::new(
+  CONNECTION_CHANNEL_CLOSED))` and the stream ends. All three
+  strategy-registry channels funnel their `Closed` path into the
+  single `StrategiesError` variant so the operator sees one
+  panel-wide error line rather than three simultaneous ones.
+- **Strings** — zero new keys added; the blocker report's plan held
+  up. The three `stream_strategy_*` helpers reuse the existing
+  `CONNECTION_CHANNEL_CLOSED` constant; the widget prepends
+  `STRATEGIES_ERROR_PREFIX` at render time.
+- **Tests** — three new `#[tokio::test]` cases appended to
+  `crates/ui/tests/live_subscription.rs`:
+  - `t526_strategy_loaded_stream_refreshes_cockpit` — publish one
+    `StrategyLoaded`, assert the cockpit's `strategies` panel
+    transitions to `Ready` with one row within 2s.
+  - `t526_strategy_swapped_stream_updates_cockpit` — publish load +
+    swap, assert the row's hash flips and status stays `Ready`.
+  - `t526_strategy_error_stream_flips_row_to_error` — publish load +
+    error (with a matching `strategy_id`), assert the per-row status
+    becomes `Error("unexpected token at line 3")` while the overall
+    panel stays `Ready` (R8 — old strategy keeps running).
+
+### T_FINAL_B — deferred (T_FINAL_A not yet visible)
+
+T_FINAL_B is gated on the four v0.5 backtest reports from developer
+T_FINAL_A:
+
+- `backtest-*-btc-2023-1m-sma-baseline-refresh.md`
+- `backtest-*-btc-2023-1m-macd-trend.md`
+- `backtest-*-btc-2023-1m-rsi-reversion.md`
+- `backtest-*-btc-2023-1m-bbands-mean-revert.md`
+
+None present under `spec/reports/` at this resume (2026-04-19). The
+smoke checklist extension (walkthrough of the four strategies-panel
+states + the kill-switch drill re-verify + the screenshots-README §4.5
+row pointer) is prepared but not landed — waiting on a live replay run
+that exercises the hot-swap path so the manual observer has real event
+traffic to validate the 2s subscription budget against. Re-spawn
+ui-designer once the four reports arrive.
+
+### Consistency self-audit (after T526)
+
+Re-run against HEAD with T526 landed:
+
+- inline strings: **0** (`no_inline_user_visible_strings_in_widgets`
+  green)
+- inline hex: **0** (`no_inline_hex_colors_in_widgets_or_state` green)
+
+Live suite now includes the three new `stream_strategy_*` helpers and
+their `#[cfg(test)]` siblings in `crates/ui/src/live.rs`. Total
+feature-gated live tests: 32 lib + 2 consistency + 6 live_subscription
++ 30 snapshots = **70** (67 before + 3 new T526 integration cases).
+
 ## Changelog
 
 - 2026-04-19 (analyst): initial brief.
+- 2026-04-19 (architect): added `## Design` section translating R1–R10 into
+  crate/module deltas, `ComposedStrategy` Rust sketch, TOML rule-DSL grammar
+  + schema + error codes, `notify`-based file watcher + atomic
+  `parking_lot::RwLock` swap pipeline, strategy-event audit schema, three
+  new `trading_core` broadcast types, cockpit strategies panel layout
+  (right column, above Open positions) with Model / Message / strings /
+  states, `--strategy <id>` backtest flag, performance budget, and the
+  full test matrix. Five open questions resolved in
+  [architecture.md Changelog 2026-04-19](../architecture.md#changelog)
+  and anchored back from the Design section. Status flipped to
+  `in-progress`; owner handed to `architect` → developer + ui-designer.
+- 2026-04-19 (ui-designer): `## UI — v0.5` section filled for the T522–T525
+  + T527 + T528 slice (strategies panel copy, state model, fixtures, widget,
+  layout wiring, screenshots README row). Zero new theme tokens; zero
+  inline strings / hex (consistency audit green). T526 + T_FINAL_B deferred
+  pending developer T512 — blocker writeup at
+  [ui-v05-blockers-2026-04-19.md](../reports/ui-v05-blockers-2026-04-19.md).
+  via [spec/tasks/v05-composed-strategies.md](../tasks/v05-composed-strategies.md).
+- 2026-04-19 (ui-designer, resume): T512 landed; T526 closed out. Three
+  `ui::live` subscribers (`stream_strategy_loaded` / `_swapped` / `_error`)
+  wired with eager-subscribe + shared `CONNECTION_CHANNEL_CLOSED` copy;
+  three new integration tests in `tests/live_subscription.rs`
+  (`t526_strategy_loaded_*` / `_swapped_*` / `_error_*`). Default suite
+  unchanged at 57; `--features live` suite 67 → 70. Zero new strings; zero
+  inline hex. T_FINAL_B still deferred — the four v0.5 backtest reports
+  from developer T_FINAL_A are not yet in `spec/reports/`, so the smoke
+  checklist cannot be finalised against a live event stream.

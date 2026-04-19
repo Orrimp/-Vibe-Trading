@@ -7,13 +7,14 @@
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use smol_str::SmolStr;
 use time::OffsetDateTime;
 use trading_core::{
-    Bar, FeeTier, FillView, Money, PnlSnapshot, PositionView, Price, Quantity, Side, Symbol, Tick,
-    Timeframe, Timestamp,
+    Bar, FeeTier, FillView, Money, PnlSnapshot, PositionView, Price, Quantity, Side,
+    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Tick, Timeframe, Timestamp,
 };
 
-use crate::state::{AgentMode, Cockpit};
+use crate::state::{AgentMode, Cockpit, PanelState, StrategyRow, StrategyStatus};
 
 /// A fixed epoch used to generate deterministic timestamps.
 /// 2024-01-15T12:00:00Z — arbitrary but stable, so snapshot outputs
@@ -161,5 +162,159 @@ pub fn fake_cockpit_ready() -> Cockpit {
 pub fn fake_cockpit_ready_with_three_fills() -> Cockpit {
     let mut c = Cockpit::ready(fake_fill_feed(3), fake_positions(), fake_pnl_positive());
     c.mode = AgentMode::Paper;
+    c
+}
+
+// ── v0.5 strategies panel fixtures (T525) ──────────────────────────────────
+//
+// Deterministic generators so the panel renders the same rows on every run.
+// Keeps one Ready, one Loading, and one Error row to cover every status
+// pill and the per-row error badge in the widget snapshot suite.
+
+const RECIPE_MACD: &str = "config/strategies/btc_macd_trend.toml";
+const RECIPE_RSI: &str = "config/strategies/btc_rsi_reversion.toml";
+const RECIPE_BB: &str = "config/strategies/btc_bbands_mean_revert.toml";
+
+/// A full `StrategyRow` in the `Ready` state — healthy strategy, active signals.
+#[must_use]
+pub fn fake_strategy_row_ready() -> StrategyRow {
+    StrategyRow {
+        id: StrategyId::new("btc_macd_trend"),
+        short_hash: SmolStr::new("a1b2c3d"),
+        full_hash: SmolStr::new("a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"),
+        status: StrategyStatus::Ready,
+        last_event: Some(fake_event_load("btc_macd_trend", RECIPE_MACD)),
+        signals_60s: 3,
+        has_position: true,
+        source_path: SmolStr::new(RECIPE_MACD),
+    }
+}
+
+/// A row that is still warming up (no hash assigned yet; `short_hash` and
+/// `full_hash` are empty placeholders). Renders the `Loading` status pill
+/// and no signal-count number (shows the placeholder dash).
+#[must_use]
+pub fn fake_strategy_row_loading() -> StrategyRow {
+    StrategyRow {
+        id: StrategyId::new("btc_rsi_reversion"),
+        short_hash: SmolStr::new(""),
+        full_hash: SmolStr::new(""),
+        status: StrategyStatus::Loading,
+        last_event: None,
+        signals_60s: 0,
+        has_position: false,
+        source_path: SmolStr::new(RECIPE_RSI),
+    }
+}
+
+/// A row that failed its last load attempt. The `error_summary` surfaces in
+/// the per-row error badge; the previous `short_hash` is retained so the
+/// operator can still see what version was running before the bad swap.
+#[must_use]
+pub fn fake_strategy_row_error() -> StrategyRow {
+    StrategyRow {
+        id: StrategyId::new("btc_bbands_mean_revert"),
+        short_hash: SmolStr::new("e5f6a7b"),
+        full_hash: SmolStr::new("e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6"),
+        status: StrategyStatus::Error(SmolStr::new("arity_mismatch: macd_cross(12)")),
+        last_event: Some(fake_event_reject("btc_bbands_mean_revert", RECIPE_BB)),
+        signals_60s: 0,
+        has_position: false,
+        source_path: SmolStr::new(RECIPE_BB),
+    }
+}
+
+/// Three-row fixture covering every status pill — the canonical demo set
+/// for `cargo run --bin cockpit --features fixtures` and the widget
+/// snapshot tests.
+#[must_use]
+pub fn fake_strategy_rows() -> Vec<StrategyRow> {
+    vec![
+        fake_strategy_row_ready(),
+        fake_strategy_row_loading(),
+        fake_strategy_row_error(),
+    ]
+}
+
+/// Deterministic `StrategyEventView` of a `Load` event — most recent event
+/// for the healthy row. Matches the shape `audit::query::strategy_history`
+/// returns.
+#[must_use]
+pub fn fake_event_load(id: &str, path: &str) -> StrategyEventView {
+    StrategyEventView {
+        id: SmolStr::new("11111111-1111-1111-1111-111111111111"),
+        ts: fixed_ts(0),
+        kind: StrategyEventKind::Load,
+        strategy_id: Some(StrategyId::new(id)),
+        old_hash: None,
+        new_hash: Some(SmolStr::new(
+            "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890",
+        )),
+        source_path: Some(SmolStr::new(path)),
+        operator: SmolStr::new("system"),
+        error_code: None,
+        error_summary: None,
+    }
+}
+
+/// Deterministic `StrategyEventView` of a `Swap` event.
+#[must_use]
+pub fn fake_event_swap(id: &str, path: &str) -> StrategyEventView {
+    StrategyEventView {
+        id: SmolStr::new("22222222-2222-2222-2222-222222222222"),
+        ts: fixed_ts(30),
+        kind: StrategyEventKind::Swap,
+        strategy_id: Some(StrategyId::new(id)),
+        old_hash: Some(SmolStr::new(
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        )),
+        new_hash: Some(SmolStr::new(
+            "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890",
+        )),
+        source_path: Some(SmolStr::new(path)),
+        operator: SmolStr::new("system"),
+        error_code: None,
+        error_summary: None,
+    }
+}
+
+/// Deterministic `StrategyEventView` of a `Reject` event — used for the per-
+/// row error badge.
+#[must_use]
+pub fn fake_event_reject(id: &str, path: &str) -> StrategyEventView {
+    StrategyEventView {
+        id: SmolStr::new("33333333-3333-3333-3333-333333333333"),
+        ts: fixed_ts(60),
+        kind: StrategyEventKind::Reject,
+        strategy_id: Some(StrategyId::new(id)),
+        old_hash: None,
+        new_hash: None,
+        source_path: Some(SmolStr::new(path)),
+        operator: SmolStr::new("system"),
+        error_code: Some(SmolStr::new("arity_mismatch")),
+        error_summary: Some(SmolStr::new("arity_mismatch: macd_cross(12)")),
+    }
+}
+
+/// Ten recent events for the footer list, covering Load / Swap / Reject.
+/// Newest-first so the iced renderer iterates without reversing.
+#[must_use]
+pub fn fake_recent_events() -> Vec<StrategyEventView> {
+    vec![
+        fake_event_reject("btc_bbands_mean_revert", RECIPE_BB),
+        fake_event_swap("btc_macd_trend", RECIPE_MACD),
+        fake_event_load("btc_rsi_reversion", RECIPE_RSI),
+        fake_event_load("btc_macd_trend", RECIPE_MACD),
+    ]
+}
+
+/// A cockpit in the strategies-panel Ready state with three deterministic
+/// rows. Used by `cargo run --bin cockpit --features fixtures` and by the
+/// T527 full-cockpit snapshot.
+#[must_use]
+pub fn fake_cockpit_with_strategies() -> Cockpit {
+    let mut c = fake_cockpit_ready();
+    c.strategies = PanelState::Ready(fake_strategy_rows());
+    c.strategies_recent_events = fake_recent_events().into_iter().collect();
     c
 }

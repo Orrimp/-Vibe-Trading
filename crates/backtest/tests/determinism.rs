@@ -108,7 +108,7 @@ async fn run_mini() -> RunResult {
     use backtest::MatchingEngine;
 
     let bars = synthetic_bars_det(1000);
-    let mut registry = strategy::StrategyRegistry::new();
+    let registry = strategy::StrategyRegistry::new();
     registry.register(Box::new(strategy::SmaCrossover::new(20, 50)));
 
     let risk_limits = RiskLimits {

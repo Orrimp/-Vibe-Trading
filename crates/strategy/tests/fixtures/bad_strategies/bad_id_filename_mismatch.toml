@@ -1,0 +1,8 @@
+# Fixture: id_filename_mismatch
+# The "id" field does not match the filename stem ("bad_id_filename_mismatch").
+id     = "completely_different_name"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(14) < 30"
+size   = "fixed_fraction(0.1)"

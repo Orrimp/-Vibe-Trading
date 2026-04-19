@@ -2,7 +2,7 @@
 slug: architecture
 status: in-progress
 owner: architect
-updated: 2026-04-17
+updated: 2026-04-19
 ---
 
 # Architecture — Crypto Trading Agent
@@ -180,6 +180,284 @@ entry to the audit ledger. Combined with the [strategy lifecycle gates in
 product.md](product.md#strategy-lifecycle--promotion-gates), this means the
 ledger always answers "which strategies were active when this trade fired?".
 
+### v0.5 — strategy-event journal schema (Q1) — confirmed 2026-04-19
+
+**Decision:** dedicated `strategy_events` SQLite table, written by a new
+`audit::journal::strategy_event(..)` function inside the same `sqlx`
+transaction machinery used for fills. **Not** reused into `journal_entries`.
+
+**Rationale:** `journal_entries` is the double-entry ledger — rows carry
+debit / credit money amounts and reconcile to `Σ debits == Σ credits` per
+transaction. Strategy lifecycle events (load / swap / unload / reject)
+carry no money — they are operator / system events. Mixing them via a
+`kind` discriminator column forces every consumer of `journal_entries`
+to filter, complicates the reconciler's invariant proof, and muddies
+future non-monetary events (kill-switch trips, mode changes, cost-budget
+alerts). A sibling table with its own schema is the cleanest expression
+of the two-kinds-of-thing distinction.
+
+The v0 `registry_event` function currently writes zero-amount memo rows
+into `journal_entries` against `equity:opening_balance`. v0.5 replaces
+that path with `strategy_event` writes to the new table; the old memo
+rows remain in the ledger as history. No schema migration is needed for
+the existing table.
+
+**Schema** (`migrations/0003_strategy_events.sql`, approximate):
+
+```sql
+CREATE TABLE strategy_events (
+    id            TEXT PRIMARY KEY,       -- uuid v4
+    ts            TEXT NOT NULL,          -- RFC3339
+    kind          TEXT NOT NULL,          -- 'Load' | 'Swap' | 'Unload' | 'Reject'
+    strategy_id   TEXT,                   -- nullable for Reject when id unparsable
+    old_hash      TEXT,                   -- sha256 hex, 64 chars
+    new_hash      TEXT,                   -- sha256 hex, 64 chars
+    source_path   TEXT,                   -- repo-relative
+    operator      TEXT NOT NULL DEFAULT 'system',
+    error_code    TEXT,                   -- Reject only
+    error_summary TEXT                    -- Reject only, short human message
+);
+CREATE INDEX strategy_events_ts_idx ON strategy_events(ts);
+CREATE INDEX strategy_events_sid_idx ON strategy_events(strategy_id, ts);
+```
+
+**Writer** (in `audit::journal`):
+
+```rust
+pub enum StrategyEventKind { Load, Swap, Unload, Reject }
+
+pub struct StrategyEventWrite<'a> {
+    pub kind:          StrategyEventKind,
+    pub strategy_id:   Option<&'a str>,
+    pub old_hash:      Option<&'a str>,
+    pub new_hash:      Option<&'a str>,
+    pub source_path:   &'a str,
+    pub operator:      &'a str,          // "system" in v0.5
+    pub error_code:    Option<&'a str>,
+    pub error_summary: Option<&'a str>,
+}
+
+pub async fn strategy_event(
+    ledger: &Ledger,
+    write: StrategyEventWrite<'_>,
+) -> Result<(), LedgerError>;
+```
+
+**Reader** (in `audit::query`, `Decimal`/core-types-only contract):
+
+```rust
+pub async fn strategy_events_since(
+    ledger: &Ledger,
+    ts: Timestamp,
+) -> Result<Vec<StrategyEventView>, LedgerError>;
+
+pub async fn strategy_history(
+    ledger: &Ledger,
+    id: StrategyId,
+) -> Result<Vec<StrategyEventView>, LedgerError>;
+```
+
+`StrategyEventView` is defined in `trading_core` alongside `FillView` /
+`JournalEntryView` (no back-edge from `trading_core` to `audit`).
+
+**Reconciliation invariant (unchanged):** the minute-boundary reconciler
+walks `journal_entries` only. `strategy_events` rows do not affect
+`Σ debits == Σ credits`. v0.5 test T214 (see
+[spec/tasks/v05-composed-strategies.md](tasks/v05-composed-strategies.md))
+asserts that running R7 + R8 integration cycles leaves the reconciler
+at zero imbalance.
+
+**Alternatives considered:**
+
+- Reuse `journal_entries` with an `entry_kind` column plus a CHECK
+  constraint — rejected; conflates balance-carrying and metadata rows,
+  poisons the reconciler query, and turns a clean double-entry story
+  into a filter discipline that a future developer will forget.
+- Single-table polymorphism via sparse nullable metadata columns on
+  `journal_entries` — rejected on the same grounds plus index bloat.
+
+### v0.5 — registry concurrency (Q2) — confirmed 2026-04-19
+
+**Decision:** `parking_lot::RwLock<HashMap<StrategyId, Box<dyn Strategy>>>`
+for the v0.5 `StrategyRegistry`. No new dep (`parking_lot` is already
+workspace-pulled). Hot path takes a read guard; the file-watcher task
+takes a write guard only during swap.
+
+**Rationale:** at 1m bar cadence the read frequency is ≤ a few per second
+across all active strategies. Writes are rare (file edit → debounce →
+parse → construct → swap; order of once per minute at worst during
+research iteration). `parking_lot::RwLock` gives us sub-microsecond
+acquire in the uncontended case, stdlib-shaped API, zero new
+dependencies, and zero async-await inside the hot path — the agent's
+`on_bar` fan-out stays blocking-free around the registry read.
+
+Async-aware `tokio::sync::RwLock` is also acceptable if the hot path
+later grows an `.await` point around the registry read. v0.5 does not —
+`Strategy::on_bar` is a sync `&mut self` method, and the registry read
+happens inside `StrategyRegistry::on_bar` which is itself sync — so
+`parking_lot` is the correct instrument.
+
+**Alternatives considered:**
+
+- `arc-swap::ArcSwap<HashMap<..>>` lock-free hot-swap — overkill for 1m
+  cadence; adds a dep and a cognitive overhead for readers familiar
+  with lock semantics. Revisit in v1+ only if a tick-latency strategy
+  pushes contention into the microsecond budget.
+- `tokio::sync::RwLock` — introduces an unnecessary `.await` into the
+  bar-close path at current trait shape. Stop-gap if we later migrate
+  `Strategy::on_bar` to async.
+- `std::sync::RwLock` — fine semantically; we pick `parking_lot` for
+  the faster uncontended path and already-present workspace
+  dependency.
+
+### v0.5 — ComposedStrategy exit policy (Q3) — confirmed 2026-04-19
+
+**Decision:** symmetric signal-flip only — when the rule transitions
+`true → false` the strategy emits `Sell` to close. No drawdown-triggered
+exit lives inside `ComposedStrategy`.
+
+**Rationale:** a per-strategy drawdown clamp is a **risk** concern, not a
+**strategy** concern. Putting it in each composed rule tree duplicates
+state (last-high, drawdown counter) N-ways and makes the rule DSL less
+orthogonal. The `risk` crate already owns `size_and_validate` (v0 R4.5)
+and the portfolio-level `max_drawdown_stop_pct` floor; a per-strategy
+drawdown limit is a natural extension — but it belongs on the
+risk-limits struct, not inside the signal tree. Deferred to v1+ when
+live-paper drawdowns surface as a real problem worth building for.
+
+v0.5 `ComposedStrategy` therefore emits buy on `false → true` and sell
+on `true → false`, matching v0 `sma_crossover` edge-triggered semantics.
+
+**v1+ hook:** `risk::RiskLimits` grows an optional
+`max_strategy_drawdown_pct: Option<Decimal>` field; `risk::size_and_validate`
+clamps to zero (and emits a `StrategyRiskTripped` audit event) when a
+specific strategy's cumulative drawdown passes the limit. Leave a
+`// TODO(v1): max_strategy_drawdown` breadcrumb in the v0.5 Design section
+so the developer does not invent the feature in v0.5.
+
+**Alternatives considered:**
+
+- Ship drawdown-triggered exit inside `ComposedStrategy` in v0.5 — bloats
+  the rule tree, forces state into every node, and duplicates a risk
+  concern. Rejected.
+- Make it a first-class DSL node (`if drawdown(20) > 0.05 then close`) —
+  possible but premature; commit after seeing real drawdown patterns in
+  v1 paper trading.
+
+### v0.5 — cockpit strategies panel layout (Q4) — confirmed 2026-04-19
+
+**Decision:** **right column, above "Open positions"**, in a new
+`StrategiesPanel` widget. The existing cockpit left column (P&L card,
+latency badge, "Stop trading" button) is action-oriented; the right
+column (Open positions, Live tape) is observation-oriented. Strategies
+are observation-oriented (which strategies are running, what was the
+last swap, how many signals in the last 60s) and pair naturally with
+positions (what strategies produced the current book).
+
+```
+┌──────────────────────────────────┬─────────────────────────────────────┐
+│  P&L                             │  Strategies (v0.5 new)              │
+│  Feed latency                    │  Open positions                     │
+│  Stop trading (destructive)      │  Live tape                          │
+└──────────────────────────────────┴─────────────────────────────────────┘
+```
+
+**Rationale:** co-locating the passive strategies panel with a
+destructive action (kill switch) crowds the decision surface and
+creates visual competition between "look at this" and "do this".
+Keeping the kill switch the biggest thing in the left column protects
+the operator's muscle memory from v0.
+
+Final widget composition (column widths, row heights, padding) is
+ui-designer's call; architect only fixes the panel's position in the
+column layout and the Model / Message surface (see
+[v0.5 design in the feature file](features/v05-composed-strategies.md#design)).
+
+**Alternatives considered:**
+
+- Left column next to kill switch (analyst's initial suggestion) —
+  rejected on visual-crowding grounds above.
+- Full cockpit re-wireframe — rejected; v0 layout is stable and the
+  operator has muscle memory on the four existing panels. Additive
+  placement keeps cognitive load low.
+- Separate top-level window — rejected; the strategies panel is part
+  of the cockpit's live view, not a standalone tool (`viewer` binary
+  is for offline reports).
+
+### v0.5 — broadcast bus extensions (Q5) — confirmed 2026-04-19
+
+**Decision:** the three new message types — `StrategyLoaded`,
+`StrategySwapped`, `StrategyLoadError` — live in `trading_core`
+alongside `Fill`, `Bar`, `PnlSnapshot`. The `agent::EventBus` (see
+[dev-week2-broadcast-api-2026-04-18.md](reports/dev-week2-broadcast-api-2026-04-18.md))
+gains three new `broadcast::Sender`/`Receiver` pairs, same pattern as
+the existing `fills` / `positions` / `bars` / `ticks` / `pnl` / `mode`
+channels.
+
+**Rust sketch** (in `trading_core`):
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrategyLoaded {
+    pub id:          StrategyId,
+    pub hash:        [u8; 32],        // sha256 of canonicalized AST
+    pub source_path: SmolStr,
+    pub ts:          Timestamp,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrategySwapped {
+    pub id:          StrategyId,
+    pub old_hash:    [u8; 32],
+    pub new_hash:    [u8; 32],
+    pub source_path: SmolStr,
+    pub ts:          Timestamp,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrategyLoadError {
+    pub source_path:   SmolStr,
+    pub strategy_id:   Option<StrategyId>,   // None if filename-stem unparsable
+    pub error_code:    SmolStr,              // e.g. "unknown_indicator"
+    pub error_summary: SmolStr,              // one-line human message
+    pub ts:            Timestamp,
+}
+```
+
+**Bus extension** (in `agent::EventBus`):
+
+| Channel | Type | Capacity | Description |
+|---|---|---|---|
+| `strategy_loaded`  | `StrategyLoaded`      | 32  | Emitted on registry `Load`. |
+| `strategy_swapped` | `StrategySwapped`     | 32  | Emitted on registry `Swap`. |
+| `strategy_error`   | `StrategyLoadError`   | 32  | Emitted on registry `Reject`. |
+
+**Backpressure:** identical to the v0 pattern —
+`RecvError::Lagged(n)` triggers log-and-continue in the UI subscriber;
+`RecvError::Closed` surfaces as a `STRATEGIES_CONNECTION_CLOSED`
+panel-error copy. Capacity is small (32) because publish rate is
+bounded by file-edit cadence.
+
+**Why `trading_core`, not `agent`:**
+
+- `audit::journal::strategy_event` also needs these types when it
+  persists the events (it converts `StrategyLoaded` into a
+  `strategy_events` row). Placing them in `agent` would force `audit`
+  to depend on `agent`, inverting the existing `audit ← agent`
+  dependency edge.
+- `ui` (cockpit strategies panel) subscribes to the bus; types in
+  `trading_core` are already imported.
+- `trading_core` is upstream of every other crate; no cycle.
+
+**Alternatives considered:**
+
+- Put them in `agent` — creates the cycle above. Rejected.
+- Put them in `strategy` — forces `audit` → `strategy`, wrong
+  direction (audit should be a pure sink). Rejected.
+- Put them in `audit` — same cycle problem, and ties the UI's
+  broadcast-bus subscriber to the audit crate just to get a type.
+  Rejected.
+
 ## Observability
 
 - `tracing` with JSON output.
@@ -333,49 +611,75 @@ Plan: default `kand` (batch) + `quantedge-ta` (streaming), thin adapters in
 
 The "every decision auditable" goal in [product.md](product.md) is implemented as
 a **double-entry ledger** of decisions, intents, orders, fills, and P&L
-attribution. Lives in a new `audit` crate.
+attribution. Lives in the `audit` crate.
 
-#### v0 decision — `sqlx-ledger` on SQLite — confirmed 2026-04-17, re-signed 2026-04-17
+#### v0 decision — raw `sqlx` + `SQLite` + in-repo migrations — reconciled 2026-04-19
 
-**Choice:** `sqlx-ledger` with a SQLite backend is the v0 substrate. It is
-the lighter-weight, embeddable sibling of `cala-ledger` and supports SQLite
-out of the box via `sqlx`. Week 1 development verified the pick: the crate
-integrates cleanly, the 13-account v0 chart of accounts bootstraps on
-startup, and the T05 + T06 integration suite (5 tests covering account
-list, cash-balance update on buy fill, idempotent bootstrap, per-transaction
-debit/credit equality, and 100-fill cumulative equality) is green.
+**Choice:** raw `sqlx` against an embedded `SQLite` file, with a small set of
+schema migrations (`crates/audit/migrations/`) authored by us. The `audit`
+crate exposes a `Ledger` handle, a `chart_of_accounts` bootstrap (13
+accounts), and a balanced-double-entry `journal` module (`post_fill`,
+`registry_event`, `post_cost`) that enforces `Σ debits == Σ credits` per
+transaction. A read-only `audit::query` surface returns `Decimal` / `core`
+types — no `sqlx` rows leak to consumers.
 
-**Rationale:** single-binary deploy, zero ops, fits the `$20/month` hosting
-line in [product.md → Cost economics](product.md#cost-economics--monthly-ceiling);
-embedded SQLite WAL handles the v0 write rate (≤ a few hundred journal entries
-per minute at 1m bars) trivially; backup = copy the file.
+**Why not `sqlx-ledger`:** Week 1 wiring discovered `sqlx-ledger` v0.11.14
+is **Postgres-only** — its `Cargo.toml` gates the store behind
+`sqlx/postgres`, no SQLite path compiles. Taking it would have forced
+Postgres as an ops dep and broken the single-binary deploy goal locked in
+[product.md → Project scope boundary](product.md#project-scope-boundary).
+We retained the **semantics** (double-entry, balanced-per-txn, append-only
+journal, idempotent chart bootstrap) and dropped only the dependency — the
+substitution is purely additive and keeps the `audit::query` public API
+unchanged.
+
+**Shape of the substitute** (actual code in `crates/audit/src/`):
+
+- `ledger.rs` — `Ledger::open(db_path)` + `sqlx::migrate!` runs the
+  in-repo migrations; `:memory:` path for tests.
+- `bootstrap.rs` — `chart_of_accounts()` inserts the 13 v0 accounts
+  idempotently (`INSERT OR IGNORE`).
+- `journal.rs` — `post_fill(&Fill)` writes one `journal_transactions`
+  row plus N `journal_entries` rows inside a single `sqlx` transaction;
+  buy / sell / fee legs balance to the satoshi. `registry_event()` and
+  `kill_switch_tripped()` write zero-amount memo rows against
+  `equity:opening_balance` to preserve the balance invariant.
+- `query.rs` — `cash_balance`, `realized_pnl_since`, `total_fees`,
+  `account_list`, `recent_fills`, `recent_journal`,
+  `all_transaction_ids`, `global_debit_credit_sum` — none return
+  `sqlx` types.
+
+**Rationale:** single-binary deploy, zero ops, fits the `$20/month`
+hosting line in [product.md → Cost economics](product.md#cost-economics--monthly-ceiling);
+embedded SQLite WAL handles the v0 write rate (≤ a few hundred journal
+entries per minute at 1m bars) trivially; backup = copy the file.
 
 **Alternatives considered:**
 
-- `cala-ledger` on Postgres — richer account hierarchy, but `cala-ledger`'s
-  current releases are **Postgres-only** (its `Cargo.toml` pins the
-  `sqlx/postgres` feature with no SQLite path). Adopting it would force
-  Postgres as an ops dependency and break the single-binary deploy goal.
-  **Deferred to v1+:** reconsider only if the hosted deployment moves off
-  single-box (unlikely inside the $45/$135 ceilings in
-  [product.md → Cost economics](product.md#cost-economics--monthly-ceiling))
-  *and* `cala-ledger` still lacks a SQLite backend.
-- Hand-rolled journal tables — rejected; we want an off-the-shelf double-entry
-  model including balance invariants, not to reimplement them.
+- `sqlx-ledger` on SQLite — the earlier pick; rejected at build time
+  because the crate is **Postgres-only** in its shipped releases. A
+  SQLite port would be a multi-week fork job, outside v0 budget.
+- `cala-ledger` on Postgres — even more Postgres-locked; forces a DB
+  process. Same reason, stronger.
+- Leave the substrate open — rejected; the feature work needs a stable
+  journal / query surface to build against.
 
-**Pinning + isolation:** pin a specific `sqlx-ledger` version and keep the
-backend behind a thin `audit::backend` adapter so a future switch (to
-`cala-ledger` if it gains SQLite, or to a hand-rolled tables implementation
-if `sqlx-ledger` churns) is a one-file change. Do not expose the backend
-type in `audit`'s public API — only the chart-of-accounts and journal
-abstractions and the `audit::query` read-only surface.
+**Pinning + isolation:** the backend (`sqlx::SqlitePool`) is
+crate-private; no consumer imports `sqlx` types from `audit`'s public
+API. A future swap (to Postgres, to a different embedded store, or to a
+hypothetical `sqlx-ledger` with SQLite support) is a one-file change
+inside `audit`. Consumers see only `Decimal`, `Money<C>`, `FillView`,
+`JournalEntryView`, and the new `StrategyEventView` (v0.5 — see
+[Strategy registry & hot-loading → v0.5 strategy-event journal](#v05--strategy-event-journal-schema-q1--confirmed-2026-04-19)
+below).
 
 #### v1+ migration path
 
-If the hosted deployment moves off single-box, reconsider `cala-ledger`
-**provided** it has by then gained a SQLite backend or we are willing to
-take on Postgres. The `audit` crate's public API must not leak SQLite
-(or sqlx-ledger) types, so the migration stays additive.
+If the hosted deployment moves off single-box, reconsider Postgres-backed
+ledgers (`cala-ledger`, a revived `sqlx-ledger`, or a hand-rolled
+Postgres adapter) — provided the migration preserves the public
+`audit::query` shape. The Decimal-in / Decimal-out contract is the load-bearing
+constraint; the storage engine is not.
 
 ### Tick aggregation
 
@@ -666,3 +970,29 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   10 to 13 (added `expense:infra`, `expense:data` per cost-telemetry scaffold;
   LLM accounts were already present). `cala-ledger` count in the v0 decision
   prose updated from 10 to 13.
+- 2026-04-19 (architect): reconciled Audit & ledger section to code reality
+  and resolved the five v0.5 composed-strategies open questions
+  ([feature brief](features/v05-composed-strategies.md)).
+  **Doc-reality reconciliation:** `sqlx-ledger` v0.11.14 is Postgres-only
+  in shipped releases; during v0 Week 1 the developer discovered this and
+  substituted raw `sqlx` + `SQLite` + in-repo migrations preserving
+  identical double-entry semantics. The Audit & ledger section now documents
+  what the code actually does. Substitution is additive: the `audit::query`
+  public API stays `Decimal`/core-types-only and is unchanged.
+  **Q1 strategy-event journal:** new sibling `strategy_events` table in the
+  SQLite ledger; keeps `journal_entries` monetary-only; exposed via
+  `audit::query::strategy_events_since` /
+  `audit::query::strategy_history`.
+  **Q2 registry concurrency:** `parking_lot::RwLock<HashMap<..>>` — zero
+  new deps, sub-microsecond uncontended read, fits the 1m bar cadence.
+  `arc-swap` reconsidered in v1+ if tick-latency strategies arrive.
+  **Q3 exit policy:** symmetric signal-flip in v0.5; per-strategy
+  drawdown clamp deferred to v1+ and will live in `risk`, not inside
+  each `ComposedStrategy`.
+  **Q4 strategies panel layout:** right column above Open positions;
+  keeps observation-oriented widgets together and protects the left
+  column's destructive-action focus.
+  **Q5 new broadcast message types:** `StrategyLoaded` /
+  `StrategySwapped` / `StrategyLoadError` live in `trading_core`; three
+  new `agent::EventBus` channels (capacity 32 each); lagged-drop + log
+  backpressure matches the v0 pattern.

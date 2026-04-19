@@ -13,6 +13,7 @@ pub mod money;
 pub mod order;
 pub mod position;
 pub mod signal;
+pub mod strategy_events;
 pub mod symbol;
 #[cfg(test)]
 mod tests;
@@ -32,6 +33,9 @@ pub use money::{Price, Quantity};
 pub use order::{Order, OrderId, OrderKind, ProposedOrder, RiskLimits, TimeInForce};
 pub use position::Position;
 pub use signal::{Decision, Signal, SignalEvidence, SignalKind};
+pub use strategy_events::{
+    StrategyEventKind, StrategyEventView, StrategyLoadError, StrategyLoaded, StrategySwapped,
+};
 pub use symbol::{AccountId, Side, StrategyId, Symbol};
 pub use tick::Tick;
 pub use time::Timestamp;

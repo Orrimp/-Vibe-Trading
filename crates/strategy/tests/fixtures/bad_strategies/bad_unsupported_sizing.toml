@@ -1,0 +1,8 @@
+# Fixture: unsupported_sizing
+# "kelly_criterion" is not supported in v0.5 (only fixed_fraction).
+id     = "bad_unsupported_sizing"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "rsi(14) < 30"
+size   = "kelly_criterion(0.5)"

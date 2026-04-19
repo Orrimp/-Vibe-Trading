@@ -26,7 +26,7 @@ use iced::{Element, Length};
 use ui::state::{Cockpit, Message};
 use ui::strings::APP_TITLE;
 use ui::theme::{color, layout, space};
-use ui::widgets::{kill, latency, pnl, positions, tape};
+use ui::widgets::{kill, latency, pnl, positions, strategies, tape};
 
 #[cfg(feature = "live")]
 use std::sync::Arc;
@@ -48,8 +48,11 @@ struct App {
 
 impl App {
     fn boot() -> (Self, iced::Task<Message>) {
+        // Fixtures boot populates every panel including the v0.5 strategies
+        // panel so the layout smoke covers the full column stack without a
+        // running agent.
         #[cfg(feature = "fixtures")]
-        let cockpit = ui::fixtures::fake_cockpit_ready();
+        let cockpit = ui::fixtures::fake_cockpit_with_strategies();
         #[cfg(not(feature = "fixtures"))]
         let cockpit = Cockpit::new();
 
@@ -93,6 +96,7 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
+        // Left column — v0 layout unchanged (P&L, latency, kill).
         let left = Column::new()
             .spacing(layout::PANEL_OUTER_GAP)
             .push(pnl::view(&self.cockpit))
@@ -100,8 +104,12 @@ impl App {
             .push(kill::view(&self.cockpit))
             .width(Length::FillPortion(1));
 
+        // Right column — v0.5 Q4 resolution: strategies panel ABOVE Open
+        // positions. Live tape stays at the bottom so the operator's eye
+        // flows strategies → positions → ticker.
         let right = Column::new()
             .spacing(layout::PANEL_OUTER_GAP)
+            .push(strategies::view(&self.cockpit))
             .push(positions::view(&self.cockpit))
             .push(tape::view(&self.cockpit))
             .width(Length::FillPortion(2));
