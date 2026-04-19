@@ -1,0 +1,12 @@
+panel: kill
+title: Stop trading
+state: idle
+button: Stop trading
+help: Cancels open orders, flattens every position, and halts the agent. Requires a typed confirmation.
+
+notes:
+  - The kill-switch panel has no intrinsic "loading" state — the agent
+    bus is event-driven, not query-driven, so there is no waiting period.
+    This artifact documents the pre-interaction idle view which functions
+    as the panel's "loading equivalent" — a quiet neutral state before
+    any operator action has occurred.

@@ -186,6 +186,29 @@ ledger always answers "which strategies were active when this trade fired?".
 - Metrics via `metrics` + Prometheus exporter.
 - Structured logs to `logs/` plus stdout.
 
+## Disaster recovery & backups
+
+v0 → v3 policy: **local snapshots only.** No cloud spend until the project
+reaches terminal state. Confirmed 2026-04-19 ([product.md → Open decisions](product.md#open-decisions)).
+
+- **SQLite ledger:** `sqlite3 <db> ".backup 'snapshot/<YYYY-MM-DD>-ledger.db'"`
+  nightly via a tokio task in the `agent` binary. Retain 30 days; purge older.
+- **Parquet archive:** historical market data lives in `data/binance/...`;
+  treated as append-only. Weekly `rsync -a data/ data-snapshot/` rotation
+  gives a 4-week rolling local backup.
+- **Config + strategy TOML:** versioned in place under `config/`; backed up
+  alongside the ledger snapshot.
+- **RPO:** 24h (ledger + config). **RTO:** ~1h manual (copy snapshot,
+  restart agent).
+
+**Explicitly not in scope for this project:** off-site cloud sync (B2 / S3),
+continuous WAL streaming (`litestream`), multi-region replication. Deferred
+to a follow-up project triggered when real-money execution lands
+([product.md → Project scope boundary](product.md#project-scope-boundary)).
+
+Restore runbook lives at `spec/runbooks/disaster-recovery.md` (v0.5
+deliverable; for v0 a section in `spec/runbooks/kill-switch.md` suffices).
+
 ## Performance budget
 
 | Path                          | Budget      | Notes                           |
@@ -634,6 +657,11 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   `cala-ledger` deferred to v1+ — reconsider only if hosted deployment moves
   off single-box *and* `cala-ledger` has gained a SQLite backend by then.
   Week 1 T05/T06 integration tests (5/5 green) confirm the pick.
+- 2026-04-19 (architect): added **Disaster recovery & backups** section
+  reflecting the operator's locked DR decision — local-only snapshots (daily
+  `sqlite3 .backup`, weekly Parquet rsync), RPO 24h / RTO ~1h manual, zero
+  cloud spend. Off-site sync and WAL streaming explicitly deferred to the
+  follow-up project that lands real-money execution.
 - 2026-04-17 (developer): repair pass — updated chart-of-accounts count from
   10 to 13 (added `expense:infra`, `expense:data` per cost-telemetry scaffold;
   LLM accounts were already present). `cala-ledger` count in the v0 decision

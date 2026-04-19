@@ -1,0 +1,9 @@
+panel: pnl
+title: P&L
+state: error
+copy: Ledger error while reading equity: Trading agent disconnected. Check the agent log and restart it.
+
+notes:
+  - Prefix from `strings::PNL_ERROR_PREFIX`; detail from
+    `strings::CONNECTION_CHANNEL_CLOSED` (live path, pnl broadcast
+    closed) or an upstream ledger error.

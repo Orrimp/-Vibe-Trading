@@ -63,12 +63,13 @@ async fn main() -> Result<()> {
     info!(mode = %cfg.mode, "config loaded");
 
     // ── Observability ─────────────────────────────────────────────────────────
-    agent::observability::register_metrics();
+    // Install recorder before registering metrics — otherwise names never surface on /metrics.
     if let Err(e) =
         agent::observability::start_prometheus_exporter(&cfg.observability.prometheus_listen)
     {
         warn!(error = %e, "prometheus exporter failed to start (non-fatal)");
     }
+    agent::observability::register_metrics();
     info!("observability initialized");
 
     // ── Kill switch ───────────────────────────────────────────────────────────

@@ -1,0 +1,14 @@
+panel: tape
+title: Live tape
+state: ready
+paused: false
+rows:
+  (most recent first, up to 200)
+  2024-01-15T12:00:02Z  BTCUSDT  Buy   40001.00  0.1
+  2024-01-15T12:00:01Z  BTCUSDT  Sell  40000.50  0.1
+  2024-01-15T12:00:00Z  BTCUSDT  Buy   40000.00  0.1
+
+notes:
+  - Columns: Time  Symbol  Side  Price  Qty  Fee (shown right-aligned, monospaced).
+  - Side BUY → `color::POS`, SELL → `color::NEG`; nothing else is colored.
+  - Pause toggle label: "Pause" (idle) → "Resume" (paused).

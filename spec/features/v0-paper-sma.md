@@ -2,7 +2,7 @@
 slug: v0-paper-sma
 status: in-progress
 owner: architect
-updated: 2026-04-17
+updated: 2026-04-19
 ---
 
 # v0 — Paper-Trading SMA Tracer Bullet
@@ -1334,6 +1334,137 @@ Enforced as tests in `crates/ui/tests/consistency.rs` (runs on every
   depend directly on `trading_core = { path = "../core" }`. The `doctest = false`
   workaround has been removed. `cargo test --workspace --doc` is green.
 
+## UI — Week 2
+
+_Filled by ui-designer at end of Week 2 (T32 + T_FINAL_B)._
+
+### What wired up
+
+**New module: `ui::live`** (gated behind `--features live`). Subscribes the
+cockpit to the `agent::EventBus` six broadcast channels listed in
+[dev-week2-broadcast-api-2026-04-18.md](../reports/dev-week2-broadcast-api-2026-04-18.md)
+and converts each event into the existing cockpit `Message` enum:
+
+| Channel     | Bus type                    | Cockpit `Message`                         | Close behavior                                     |
+|-------------|-----------------------------|-------------------------------------------|----------------------------------------------------|
+| `fills`     | `trading_core::Fill`        | `FillReceived(FillView)`                  | `TapeError(CONNECTION_CHANNEL_CLOSED)`             |
+| `positions` | `trading_core::Position`    | `PositionsRefreshed(Vec<PositionView>)`\* | `PositionsError(CONNECTION_CHANNEL_CLOSED)`        |
+| `pnl`       | `trading_core::PnlSnapshot` | `PnlRefreshed`                            | `PnlError(CONNECTION_CHANNEL_CLOSED)`              |
+| `ticks`     | `trading_core::Tick`        | `TickReceived` (drives latency badge)     | silent (latency badge sticks to last reading)      |
+| `bars`      | `trading_core::Bar`         | `BarReceived` + `BarClose(close_ts)`      | silent                                             |
+| `mode`      | `agent::AgentMode`          | `AgentModeChanged` / `AgentHaltedExternally` | `AgentHaltedExternally(CONNECTION_CHANNEL_CLOSED)` |
+
+\* The positions stream keeps a per-subscription `HashMap<Symbol,
+PositionView>` and re-emits the full snapshot on every update — the UI
+state machine was designed around full-list refreshes (T07 / `audit::query`
+semantics), not per-symbol deltas, so this shim preserves the contract.
+
+**IPC model — same-process, shared `Arc<EventBus>`.** Matches the
+developer's handoff (`v0: same process`). In v0 the standalone
+`cargo run --bin cockpit --features live` creates its own empty bus (no
+publisher) and every panel stays in `Loading` — this is honest behavior,
+not a bug. A unified agent+cockpit binary that hands an `Arc<EventBus>` to
+both sides is a v0.5 deliverable; until then, the two-binary acceptance
+`cargo run --bin cockpit --features live` / `cargo run --bin agent` is
+documented in the smoke checklist as a deferred manual step.
+
+**Backpressure.** `broadcast::Receiver::recv` returns:
+- `Ok(T)` — forwarded.
+- `Err(Lagged(n))` — logged at `warn` (`debug` on the high-volume tick
+  channel) and the stream continues. The UI sees a brief gap, not a
+  frozen panel.
+- `Err(Closed)` — surfaced as the panel's typed error message using
+  `strings::CONNECTION_CHANNEL_CLOSED`; for the mode channel it becomes
+  `AgentHaltedExternally(CONNECTION_CHANNEL_CLOSED)` so the halted
+  banner lights up instead of a silent drop.
+
+**Iced wiring.** Each channel is a `BusRecipe` implementing
+`iced::advanced::subscription::Recipe`. `ui::live::subscription(bus)`
+batches all six into one `iced::Subscription<Message>`. The cockpit
+binary's `App::subscription()` returns `ui::live::subscription(...)`
+under `--features live` and `iced::Subscription::none()` otherwise. Eager
+subscription (`bus.<channel>()` called before the `stream!` body runs)
+closes a publish-before-subscribe race.
+
+**Error-state copy added.** Three new keys in `ui::strings`:
+`CONNECTION_AGENT_UNREACHABLE` (reserved for the unified-binary case
+where `EventBus::new` fails at startup — not yet reachable in v0),
+`CONNECTION_CHANNEL_CLOSED` ("Trading agent disconnected. Check the
+agent log and restart it."), and `CONNECTION_LAGGED` (reserved for a
+future "cockpit fell behind" banner). All keys are routed into the
+panel-error branches so the operator always has a next step.
+
+### New strings / theme tokens
+
+**Strings** (all in `ui::strings`):
+
+| Key                            | English                                                                                                     |
+|--------------------------------|-------------------------------------------------------------------------------------------------------------|
+| `KILL_RUNBOOK_LINK_PATH`       | `spec/runbooks/kill-switch.md`                                                                              |
+| `CONNECTION_AGENT_UNREACHABLE` | Can't reach the trading agent. Start it with `cargo run --bin agent` and re-launch the cockpit.             |
+| `CONNECTION_CHANNEL_CLOSED`    | Trading agent disconnected. Check the agent log and restart it.                                             |
+| `CONNECTION_LAGGED`            | Cockpit fell behind — some updates were skipped.                                                            |
+
+**Theme tokens:** none added. Week 2 UI work reused the existing
+palette, spacing, and type scales — the right outcome per the consistency
+contract ("most additions are a code smell").
+
+### Smoke checklist location
+
+[`spec/reports/ui-week2-smoke-checklist-2026-04-18.md`](../reports/ui-week2-smoke-checklist-2026-04-18.md) —
+contains:
+- Sandbox-verifiable gate table (build + test commands).
+- Fixtures-driven walkthrough (8 steps).
+- Live kill-switch drill against a running agent (both `.halt` file
+  file-watcher trigger and cockpit button typed-phrase confirm).
+- Runbook link verification step.
+- Deferred PNG capture list with instructions.
+
+16 logical-state artifacts committed under
+[`spec/reports/screenshots/v0-paper-sma/`](../reports/screenshots/v0-paper-sma/):
+`tape|positions|pnl|kill` × `loading|empty|error|ready`, each describing
+the rendered copy, color tokens, and behavior.
+
+### Deferred manual steps
+
+- **PNG screenshots** (8 files listed in the checklist). The headless
+  sandbox cannot render iced into a bitmap; the operator captures with
+  the OS screenshot tool (`Cmd+Shift+4` on macOS, `gnome-screenshot -i`
+  on Linux) on their workstation and commits into
+  `spec/reports/screenshots/v0-paper-sma/`. The logical-state artifacts
+  cover every state transition that could regress; pixel-layout drift is
+  only checked during PR review.
+- **Two-binary launch** (`cargo run --bin agent` + `cargo run --bin
+  cockpit --features live`). Same reason: separate-process drill needs
+  a real display to see fills advance. Integration test
+  `crates/ui/tests/live_subscription.rs` is the sandbox-verifiable
+  stand-in for the 2-second acceptance window.
+
+### Consistency self-audit
+
+Grep results from a clean tree (at handoff):
+
+- `rg -g 'crates/ui/src/widgets/*.rs' '"[A-Z]'` → **0 inline strings**.
+- `rg -g 'crates/ui/src/**' '#[0-9a-fA-F]{6}' | rg -v theme.rs` → **0 inline hex**.
+- `cargo test -p ui --test consistency` — 2/2 PASS.
+
+Both Week 1 consistency gates stay green.
+
+### Test coverage
+
+`cargo test -p ui --features live` now runs **53 tests**, all green:
+
+| Suite                          | Count | Notes                                               |
+|--------------------------------|-------|-----------------------------------------------------|
+| `ui` unit (lib.rs)             | 24    | includes 7 new `live::tests::*` (stream + conversion) |
+| `cockpit` bin                  |  0    | unchanged                                           |
+| `tests/consistency.rs`         |  2    | inline-strings + inline-hex audits                  |
+| `tests/live_subscription.rs`   |  3    | **new T32 integration tests**                       |
+| `tests/panel_snapshots.rs`     | 24    | unchanged — every Week 1 snapshot still green       |
+
+Under `cargo test -p ui` (default features, no `live`), the `live_*`
+tests are compile-skipped and the total is 43 (≥ 41 gate satisfied).
+
 ## Implementation — backend (Week 1)
 
 ### Summary
@@ -1445,6 +1576,14 @@ cases: `quantity_negative_direct.rs` (private tuple field) and
   honesty pass T01–T12 (Phase 6). All 7 quality gates now PASS.
 - 2026-04-18 (developer): T21–T33 + T_FINAL_A landed. Added
   `## Implementation — backend (Week 2)` section below.
+- 2026-04-19 (ui-designer): T32 + T_FINAL_B landed. Added
+  `## UI — Week 2` section. `ui::live` module wires the cockpit
+  `Subscription` to `agent::EventBus` behind `--features live`; 3 new
+  integration tests; 16 logical-state artifacts + smoke checklist
+  committed under `spec/reports/screenshots/v0-paper-sma/` +
+  `spec/reports/ui-week2-smoke-checklist-2026-04-18.md`. Four new
+  strings (`KILL_RUNBOOK_LINK_PATH`, `CONNECTION_*`), zero new theme
+  tokens. Total ui-crate tests: 53 (with `live`) / 43 (default).
 
 ## Implementation — backend (Week 2)
 
@@ -1577,4 +1716,48 @@ Both reports in `spec/reports/`.
 | `kand` 0.2.2 excluded (compile bug) | Batch SMA uses Decimal arithmetic instead of kand f64 | More precise; proptest cross-check passes |
 | Synthetic bars used (no Parquet on disk) | Results not real-market | Seeded RNG → fully reproducible; real Parquet drops in via `data/binance/` |
 | `spawn_halt_file_watcher` uses polling (500ms), not `notify` inotify | Max halt-detection latency 500ms vs ~1ms | Acceptable for v0; upgrade in v0.5 |
+
+---
+
+## Implementation — v0 repairs (HF-1, HF-2)
+
+_Added 2026-04-19 by developer agent._
+
+- **HF-1 — Determinism hash convention** (`crates/backtest/src/lib.rs`):
+  Added `backtest::report_body_hash(report: &str) -> Vec<u8>` and
+  `backtest::extract_report_body(report: &str) -> &str`.  These functions
+  locate the closing `---` delimiter of the YAML front matter and hash only
+  the content that follows.  The `generated:` wall-clock timestamp lives in
+  the front matter and is intentionally excluded; everything else
+  (scenario parameters, equity, trade counts, fees, Sharpe, drawdown) is a
+  pure function of the seed and must be byte-identical.
+
+- **HF-1 — Fake T33 test replaced** (`crates/backtest/tests/determinism.rs`):
+  `t33_report_sha256_deterministic` previously hashed a hardcoded static
+  string and asserted equality — trivially true, proved nothing.  Replaced
+  with a real test that spawns the `backtest` binary twice via
+  `std::process::Command`, reads each report from a temp directory, calls
+  `backtest::report_body_hash()` on each, and asserts byte-identical results.
+  Manual verification confirmed body-only SHA-256 is identical across two
+  real binary runs at seed `0xC0FFEE`.
+
+- **HF-2 — Prometheus recorder ordering fix** (`crates/agent/src/main.rs`):
+  `register_metrics()` was called before `start_prometheus_exporter()`,
+  sending all `describe_counter!` / `counter!` / `gauge!` calls to the
+  no-op global recorder and causing `/metrics` to return an empty body.
+  Fixed by swapping the two calls: install the Prometheus recorder first,
+  then register metrics.  A comment documents the invariant: _"Install
+  recorder before registering metrics — otherwise names never surface
+  on /metrics."_
+
+- **HF-2 — Metrics regression test** (`crates/agent/tests/metrics_endpoint.rs`):
+  Spins up just the Prometheus exporter on port `19100` (test-only), calls
+  `register_metrics()`, waits 150 ms for the HTTP server to bind, hits
+  `GET /metrics` via `reqwest`, and asserts every R9.2 metric name is
+  present in the body.  Runs in the default `cargo test` suite (not `#[ignore]`).
+
+- **T31 binary name corrected** (`spec/tasks/v0-paper-sma.md`): The
+  acceptance criterion previously said `--bin agent`; the actual binary is
+  `--bin trading` per `[[bin]] name = "trading"` in `crates/agent/Cargo.toml`.
+  Task note updated.
 | T32 / T_FINAL_B deferred | Cockpit not wired to real bus | ui-designer scope; broadcast API documented in `dev-week2-broadcast-api-2026-04-18.md` |

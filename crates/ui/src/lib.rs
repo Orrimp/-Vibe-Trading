@@ -35,6 +35,12 @@ pub mod widgets;
 // `#[cfg(feature = "fixtures")]` — see `bin/cockpit.rs`.
 pub mod fixtures;
 
+/// Live broadcast-bus subscription (T32). Gated behind the `live` feature
+/// so `cargo build -p ui` stays fast and iced remains the only required
+/// heavy dep. See `live.rs` for the channel list and handoff contract.
+#[cfg(feature = "live")]
+pub mod live;
+
 pub use state::{update, AgentMode, Cockpit, KillState, Latency, Message, PanelState};
 
 /// Crate-wide convenience: the iced `Element` type specialized to our

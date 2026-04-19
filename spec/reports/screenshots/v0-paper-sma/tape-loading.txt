@@ -1,0 +1,5 @@
+panel: tape
+title: Live tape
+state: loading
+paused: false
+copy: Connecting to the fill stream…

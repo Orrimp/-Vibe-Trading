@@ -1,0 +1,10 @@
+panel: tape
+title: Live tape
+state: error
+paused: false
+copy: Can't read the fill stream: Trading agent disconnected. Check the agent log and restart it.
+
+notes:
+  - Error text uses `strings::TAPE_ERROR_PREFIX` + `strings::CONNECTION_CHANNEL_CLOSED`.
+  - This is what the operator sees when the `fills` broadcast channel closes
+    mid-session (agent crashed or shut down cleanly).

@@ -84,6 +84,26 @@ pub const KILL_HALTED_BANNER: &str = "AGENT HALTED";
 pub const KILL_HALTED_HINT: &str =
     "Remove .halt and re-arm from the operator runbook before resuming.";
 pub const KILL_RUNBOOK_LINK_LABEL: &str = "Open kill-switch runbook";
+/// Relative path from the workspace root to the kill-switch runbook.
+/// Rendered next to the runbook link so operators without a clickable
+/// terminal can still find the file. Used by `T_FINAL_B`.
+pub const KILL_RUNBOOK_LINK_PATH: &str = "spec/runbooks/kill-switch.md";
+
+// ── Connection states (live broadcast bus, T32) ──────────────────────────────
+
+/// Shown in every panel's error state when the cockpit can't reach the agent
+/// process. Tells the operator exactly what to do — not just "connection
+/// failed".
+pub const CONNECTION_AGENT_UNREACHABLE: &str =
+    "Can't reach the trading agent. Start it with `cargo run --bin agent` and re-launch the \
+     cockpit.";
+/// Shown when the cockpit falls behind the broadcast and the channel lags.
+/// The agent keeps running; the cockpit skipped N events.
+pub const CONNECTION_LAGGED: &str = "Cockpit fell behind — some updates were skipped.";
+/// Shown when a broadcast channel closes unexpectedly (sender dropped —
+/// agent shut down). Distinguishes from unreachable-at-startup.
+pub const CONNECTION_CHANNEL_CLOSED: &str =
+    "Trading agent disconnected. Check the agent log and restart it.";
 
 // ── Latency badge ────────────────────────────────────────────────────────────
 
@@ -171,6 +191,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("KILL_HALTED_BANNER", KILL_HALTED_BANNER),
         ("KILL_HALTED_HINT", KILL_HALTED_HINT),
         ("KILL_RUNBOOK_LINK_LABEL", KILL_RUNBOOK_LINK_LABEL),
+        ("KILL_RUNBOOK_LINK_PATH", KILL_RUNBOOK_LINK_PATH),
+        ("CONNECTION_AGENT_UNREACHABLE", CONNECTION_AGENT_UNREACHABLE),
+        ("CONNECTION_LAGGED", CONNECTION_LAGGED),
+        ("CONNECTION_CHANNEL_CLOSED", CONNECTION_CHANNEL_CLOSED),
         ("LATENCY_OK_LABEL", LATENCY_OK_LABEL),
         ("LATENCY_WARN_LABEL", LATENCY_WARN_LABEL),
         ("LATENCY_HIGH_LABEL", LATENCY_HIGH_LABEL),

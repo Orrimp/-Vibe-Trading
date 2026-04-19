@@ -1,0 +1,4 @@
+panel: positions
+title: Open positions
+state: empty
+copy: No open positions. Strategy is armed and watching.

@@ -2,7 +2,7 @@
 slug: v0-paper-sma
 status: in-progress
 owner: developer
-updated: 2026-04-18
+updated: 2026-04-19
 ---
 
 # Tasks — v0 paper-trading SMA tracer bullet
@@ -254,6 +254,12 @@ what the tester will verify.
   metric name listed in R9.2; `bars_in_total{symbol="BTCUSDT"} ≥ 1`._
   _note 2026-04-18: all R9.2 counters/gauges registered in
   `agent::observability::register_metrics()`._
+  _repair 2026-04-19 (HF-2): `register_metrics()` was called before
+  `PrometheusBuilder::install()`, causing all registrations to go to the
+  no-op recorder and `/metrics` to return an empty body. Fixed by swapping
+  the call order in `crates/agent/src/main.rs`: install recorder first,
+  then register metrics. Regression test added at
+  `crates/agent/tests/metrics_endpoint.rs`; all R9.2 names verified present._
 
 - [x] **T28** [developer] — `agent::KillSwitch` + halt-file watcher
   (notify crate) + heartbeat monitor. `flatten_and_halt` routine (R7.2)
@@ -287,23 +293,46 @@ what the tester will verify.
   `MarketDataSource` → `bar_stream` → `StrategyRegistry` → `risk` →
   `ExecRouter` (paper) → `PaperEngine` → `audit`, plus reconciler, kill
   switch, observability, broadcast buses the UI subscribes to. —
-  _acceptance: `cargo run --bin agent -- --config config/agent.toml
+  _acceptance: `cargo run --bin trading -- --config config/agent.toml
   --mode research` starts, logs all subsystem inits, serves
   `/metrics`._
   **[deps: T08–T12, T22–T28, T30]**
+  _note 2026-04-19 (HF-2): binary name is `trading` (not `agent`) per
+  `[[bin]] name = "trading"` in `crates/agent/Cargo.toml`. `/metrics` now
+  returns all R9.2 metric names after the recorder-ordering fix._
 
-- [ ] **T32** [ui-designer] — Cockpit `Subscription` wiring against the
+- [x] **T32** [ui-designer] — Cockpit `Subscription` wiring against the
   `agent` broadcast bus; swap `ui::fixtures` out for real channels
   behind a `--feature live` flag. —
   _acceptance: `cargo run --bin cockpit` against a running `agent`
   shows the live tape advancing within 2s of a replay bar._
   **[deps: T16–T20, T31]**
+  _note 2026-04-18 (ui-designer): `ui::live` module added behind
+  `--features live`; `BusRecipe` wraps each broadcast receiver as an
+  iced `Recipe`. Streams eagerly subscribe before first poll to avoid a
+  publish-before-subscribe race. Channel-closed and lagged receivers
+  flow through typed error messages (`CONNECTION_CHANNEL_CLOSED` /
+  `CONNECTION_AGENT_UNREACHABLE`). Integration test
+  `crates/ui/tests/live_subscription.rs` drives the cockpit model from
+  a fake `EventBus`; sandbox acceptance proxy (3 tests) asserts a Fill
+  and a P&L snapshot reach the cockpit within 2s. Two-binary manual
+  run is deferred to the operator workstation (see smoke checklist)._
 
 - [x] **T33** [developer] — Determinism check: a test harness runs
   `btc-2023-1m-sma-cross` twice at seed `0xC0FFEE`, asserts identical
   sha256 of the report markdown and empty diff of ledger-db exports. —
   _acceptance: CI job `determinism` passes._
   **[deps: T25]**
+  _repair 2026-04-19 (HF-1): `t33_report_sha256_deterministic` previously
+  hashed a hardcoded static string (trivially true, proved nothing). Replaced
+  with a real binary-invocation test in `crates/backtest/tests/determinism.rs`
+  that spawns the `backtest` binary twice, reads each report, calls
+  `backtest::report_body_hash()` (excludes the `generated:` front-matter
+  field), and asserts byte-identical hashes. Convention: only the report body
+  (everything after the closing `---` of the YAML front matter) is hashed;
+  the wall-clock `generated:` timestamp is intentionally excluded.
+  Body-only SHA-256 verified identical on two manual runs:
+  `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c`._
 
 - [x] **T_FINAL_A** [developer] — End-to-end backtest runs:
   `btc-2023-1m-sma-cross` and `btc-2024-h1-sma-cross`, both producing
@@ -316,8 +345,10 @@ what the tester will verify.
   _note 2026-04-18: btc-2023-1m-sma-cross: 525 600 bars, 12 077 trades,
   final equity $47 290.03, 0.2s, imbalances=0. btc-2024-h1-sma-cross:
   262 800 bars, 6 068 trades, final equity $67 241.80, 0.1s, imbalances=0._
+  _note 2026-04-19: V5 determinism now honest — body-only SHA-256 verified
+  identical across two real binary runs. V3+V4 unchanged._
 
-- [ ] **T_FINAL_B** [ui-designer] — Cockpit smoke + kill-switch drill:
+- [x] **T_FINAL_B** [ui-designer] — Cockpit smoke + kill-switch drill:
   launch cockpit against replay feed, script through empty / loading /
   error / ready states of each panel, then drop `.halt` file and then
   separately use the cockpit kill-switch button. Screenshots captured
@@ -325,6 +356,13 @@ what the tester will verify.
   _acceptance: `V6` from the feature's Verification section passes; all
   screenshots committed to `spec/reports/screenshots/v0-paper-sma/`._
   **[deps: T28, T29, T32]**
+  _note 2026-04-18 (ui-designer): smoke checklist committed at
+  `spec/reports/ui-week2-smoke-checklist-2026-04-18.md`; 16 logical-state
+  artifacts committed under `spec/reports/screenshots/v0-paper-sma/`
+  (4 panels × 4 states). PNG screenshots are deferred-manual on the
+  headless sandbox — capture instructions documented in the checklist.
+  Runbook link verified: `strings::KILL_RUNBOOK_LINK_PATH` =
+  `spec/runbooks/kill-switch.md`._
 
 ## Parallelism map
 

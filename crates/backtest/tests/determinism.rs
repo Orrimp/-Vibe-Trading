@@ -3,16 +3,21 @@
 //!
 //! Runs the `btc-2023-1m-sma-cross` scenario twice at seed `0xC0FFEE` and
 //! asserts that:
-//!   1. Both runs produce identical sha256 hashes of their report markdown.
+//!   1. Both runs produce identical deterministic-content sha256 hashes of
+//!      their report markdown.  The hash covers the report body only,
+//!      **excluding** the YAML front-matter block (which contains the
+//!      wall-clock `generated:` field).  See `backtest::report_body_hash` for
+//!      the canonical convention.
 //!   2. Both runs produce identical final equity and trade counts (ledger proxy).
 //!
-//! This replaces the full "identical sqlite export" check (the backtest binary
-//! uses an in-process state machine, not the on-disk SQLite ledger — the ledger
-//! integration test in `audit` covers DB correctness separately).
+//! Why body-only hashing?  The `generated:` timestamp in the front matter is
+//! intentionally kept for operator readability but is non-deterministic by
+//! construction.  Everything else in the report — scenario parameters, equity,
+//! trade counts, fees, Sharpe, drawdown — is purely a function of the seed and
+//! the scenario definition, and must be byte-identical.
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use sha2::{Digest, Sha256};
 use trading_core::{
     Bar, Money, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
     Timeframe, Timestamp, Usdt,
@@ -217,19 +222,95 @@ async fn run_mini() -> RunResult {
     }
 }
 
-/// Verify sha256 of report text is identical across two report writes.
+// ── T33 report sha256 — real binary-level determinism ─────────────────────────
+
+/// Verify that the backtest binary produces byte-identical report bodies across
+/// two runs at the same seed.
+///
+/// Strategy: spawn the `backtest` binary twice via `std::process::Command`,
+/// capture the report file it writes, read the file content, compute the
+/// deterministic-content hash (body only, excluding the `generated:` line in
+/// the YAML front matter), and assert the two hashes are equal.
+///
+/// This test is marked `#[ignore]` only when the binary cannot be located (CI
+/// environments that have not run `cargo build`).  In the default `cargo test
+/// --workspace` run the binary is always built first, so the test runs.
 #[test]
 fn t33_report_sha256_deterministic() {
-    // Build a simple "report" from fixed inputs and verify sha256 is stable.
-    let report_text = "scenario: btc-2023-1m-sma-cross\nseed: 0xC0FFEE\ndata_source: synthetic\n";
+    // Locate the backtest binary.  `cargo test` is invoked from the workspace
+    // root, so we look in the standard `target/debug` path.
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    // Walk up from the crate manifest to the workspace root (two levels).
+    let workspace_root = std::path::Path::new(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("could not locate workspace root");
 
-    let mut h1 = Sha256::new();
-    h1.update(report_text.as_bytes());
-    let hash1 = h1.finalize();
+    let bin_path = workspace_root.join("target/debug/backtest");
+    if !bin_path.exists() {
+        // Binary not built yet — build it first.
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--bin", "backtest"])
+            .current_dir(workspace_root)
+            .status()
+            .expect("cargo build failed");
+        assert!(status.success(), "cargo build --bin backtest failed");
+    }
 
-    let mut h2 = Sha256::new();
-    h2.update(report_text.as_bytes());
-    let hash2 = h2.finalize();
+    // Use a temp directory for report output so we don't pollute spec/reports.
+    let tmp = tempfile::tempdir().expect("create tempdir");
+    let reports_dir = tmp.path().join("spec/reports");
+    std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
 
-    assert_eq!(hash1, hash2, "sha256 must be deterministic");
+    let run_backtest = || -> String {
+        let output = std::process::Command::new(&bin_path)
+            .args(["--scenario", "btc-2023-1m-sma-cross", "--seed", "0xC0FFEE"])
+            .current_dir(tmp.path())
+            .output()
+            .expect("spawn backtest binary");
+        assert!(
+            output.status.success(),
+            "backtest binary exited non-zero: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // The binary prints "Report written: spec/reports/backtest-<stamp>-<scenario>.md"
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let report_rel = stdout
+            .lines()
+            .find(|l| l.starts_with("Report written: "))
+            .map(|l| l.trim_start_matches("Report written: ").trim())
+            .expect("could not find 'Report written:' line in binary output");
+
+        let report_path = tmp.path().join(report_rel);
+        std::fs::read_to_string(&report_path)
+            .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
+    };
+
+    let report1 = run_backtest();
+    let report2 = run_backtest();
+
+    // Hash only the report body (everything after the YAML front matter).
+    // The front matter contains the `generated:` wall-clock timestamp which is
+    // legitimately different between runs; everything else must be identical.
+    let hash1 = backtest::report_body_hash(&report1);
+    let hash2 = backtest::report_body_hash(&report2);
+
+    let hex1 = hash1.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let hex2 = hash2.iter().map(|b| format!("{b:02x}")).collect::<String>();
+
+    assert_eq!(
+        hex1,
+        hex2,
+        "deterministic-content SHA-256 must be identical across two runs at the same seed.\n\
+         Report body 1 (first 500 chars):\n{}\n\nReport body 2 (first 500 chars):\n{}",
+        {
+            let body = backtest::extract_report_body(&report1);
+            &body[..500_usize.min(body.len())]
+        },
+        {
+            let body = backtest::extract_report_body(&report2);
+            &body[..500_usize.min(body.len())]
+        },
+    );
 }

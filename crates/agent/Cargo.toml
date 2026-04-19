@@ -42,3 +42,4 @@ clap.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+reqwest = { workspace = true, features = ["json"] }

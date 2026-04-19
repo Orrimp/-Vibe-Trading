@@ -38,4 +38,5 @@ clap.workspace = true
 criterion.workspace = true
 cost = { path = "../cost" }
 sha2.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

@@ -1,0 +1,19 @@
+panel: kill
+title: Stop trading
+state: confirming
+dialog_title: Confirm stop trading
+dialog_body: This cancels every open order, sells each open position at market, and puts the agent into a halted state. Type the phrase below to confirm.
+phrase_label: Type HALT BTC to confirm
+typed: "HALT BTC"
+matched: true
+confirm_enabled: true
+confirm_label: Confirm stop
+cancel_label: Cancel
+
+notes:
+  - "Ready" for the kill panel = dialog open, safety phrase matched,
+    Confirm button enabled.
+  - When the phrase is wrong, `strings::KILL_PHRASE_MISMATCH_HINT` is
+    shown in `color::WARN` between the input and the button row.
+  - Confirm button has `on_press` only when `typed == KILL_SAFETY_PHRASE`;
+    iced renders it as disabled otherwise (no `on_press` handler).

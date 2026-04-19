@@ -23,11 +23,43 @@ decisions across multiple exchanges.
   double-entry ledger so cash and position accounts always reconcile.
 - Be safe: hard risk limits enforced in Rust, independent of any model output.
 
-## Non-goals (initial)
+## Non-goals
 
 - Ultra-HFT sub-millisecond execution.
 - Market making at scale.
 - Regulated derivatives trading.
+- **Real-money execution, KYC, exchange API keys, withdrawals.** Out of scope
+  for this project. Terminal mode is continuous paper-trading on **real
+  market data** with **simulated** fills. A follow-up project would integrate
+  multi-venue real-money execution and multi-platform data APIs.
+- **Tax reports / lot accounting.** Out of scope. Operator reports focus on
+  performance visibility, not tax compliance.
+
+## Project scope boundary
+
+This project has an explicit finish line. What it ships:
+
+- Rust-native trading agent running locally on real Binance (and later
+  additional-venue) market data.
+- Paper trading with **simulated fills**, end-to-end, on a 24/7 continuous
+  basis in v3.
+- Multi-agent decision pipeline (analysts → debate → trader → risk → PM)
+  with full audit ledger and persistent reflection memory.
+- Operator success reports proving "is this working?" — equity curve,
+  Sharpe / Sortino / drawdown, strategy attribution, system health.
+
+What it does **not** ship, and what becomes a **follow-up project** once v3
+is stable:
+
+- Real-money order execution on any venue.
+- KYC, exchange API key management, withdrawal flows.
+- Multi-platform real-money integration (CEXes + DEXes + custody).
+- Tax lot accounting, FIFO / specific-lot, jurisdictional reports.
+
+The reasoning: real money introduces a large surface of compliance, key
+management, and operational risk that is best tackled **after** the core
+trading intelligence is proven on real data in paper. Splitting the work
+across two projects keeps both scopes honest.
 
 ## Differentiator
 
@@ -364,8 +396,13 @@ matching feature brief in `spec/features/v0-paper-sma.md`.
 - **v2 (paper at scale)** — 30 consecutive days of paper trading on top-10
   USDT spot without a risk-limit breach; LLM cost stays inside monthly
   budget.
-- **v3 (live, optional)** — 90 days live with realized Sharpe within ±0.3
-  of backtest, max drawdown ≤ 15%.
+- **v3 (continuous paper + success reports)** — 90 days continuous
+  paper-trading on real Binance market data with **simulated** fills,
+  weekly auto-generated operator success reports, lesson-card memory
+  demonstrably accumulating, uptime > 99%, zero risk-limit breaches,
+  LLM cost inside the v2 monthly budget. **This is the terminal state
+  for this project.** A follow-up project picks up from here for
+  multi-platform real-money integration.
 
 ---
 
@@ -387,15 +424,62 @@ into [architecture.md](architecture.md).
   adds **(B) WASM plugins** via `wasmtime` for genuinely custom logic.
   Native dynamic libs and embedded scripting explicitly rejected. Detail
   in [architecture.md → Strategy registry & hot-loading](architecture.md#strategy-registry--hot-loading).
-- [ ] **Live trading horizon** — is going live ever in scope, or is this a
-  research/paper-only product? (Drives whether we ever need exchange API
-  keys, KYC, withdrawal flows.)
-- [ ] **Second operator** — will anyone else ever use this UI? (Defaults
-  to "no" — drives auth, multi-user concerns.)
-- [ ] **Tax / reporting** — annual P&L report needed? FIFO/LIFO accounting?
-  Jurisdiction? (Affects audit-ledger schema.)
-- [ ] **DR / backups** — acceptable RPO/RTO if the box dies? snapshot
-  cadence for ledger + Parquet archive?
+- [x] **Live trading horizon (2026-04-19):** paper-trading on real data
+  is the terminal mode for THIS project. No real-money execution, no KYC,
+  no withdrawal flows. Real-money + multi-platform integration is a
+  **separate follow-up project** kicked off only after v3 continuous-paper
+  is stable. See [Non-goals](#non-goals) and [Project scope boundary](#project-scope-boundary).
+- [x] **Second operator (2026-04-19):** single-operator forever. No auth,
+  no RBAC. Anyone else can look over the operator's shoulder.
+- [x] **Tax / reporting (2026-04-19):** no tax reports, no lot accounting.
+  Operator reports focus instead on **program success visibility** —
+  equity, Sharpe / Sortino / drawdown, strategy attribution, system
+  health. See [Operator success reports](#operator-success-reports).
+- [x] **DR / backups (2026-04-19):** local snapshots only (daily
+  `sqlite3 .backup` + weekly Parquet rsync). Zero monthly cloud spend
+  until the project is complete. RPO 24h, RTO ~1h manual. Off-site sync
+  and continuous WAL streaming are follow-up-project concerns.
+
+---
+
+## Operator success reports
+
+The operator's question is always "is this working?" — and the reports are
+the answer. Auto-generated at a regular cadence (weekly default,
+configurable) and written as dated markdown under `spec/reports/success/`
+with linked plots in `spec/reports/success/artifacts/`.
+
+### What every report contains
+
+- **Headline** — one number: cumulative return since inception vs a
+  BTC buy-and-hold baseline.
+- **Equity curve** — since-inception + last-7-days.
+- **Risk metrics** — Sharpe, Sortino, Calmar, max drawdown + recovery
+  time.
+- **Strategy attribution** — per-strategy P&L, trade count, win rate,
+  avg trade P&L. (v0.5+, once multiple strategies exist.)
+- **Memory highlights** — top lesson cards the trader retrieved this
+  week; which correlated with wins vs losses. (v1+, once the memory
+  loop runs.)
+- **System health** — uptime, kill-switch trips, clock-skew events,
+  feed reconnects, LLM spend vs budget.
+- **What changed** — any strategy swaps, config changes, stage
+  promotions (research → paper) during the period.
+- **Open risks** — drawdown approaching limit? LLM budget approaching
+  cap? A strategy showing decay? Surface these at the top.
+
+### Generation cadence
+
+- v1+: weekly on Monday 00:00 UTC.
+- On-demand via `cargo run --bin reports -- --period 7d`.
+- Triggered immediately on kill-switch trip with incident context
+  attached.
+
+### Consumer
+
+The single operator (you). No distribution list, no email pipeline.
+Reports are browsable markdown that the cockpit's `viewer` binary (v0.5
+scope) can render inline.
 
 ---
 
@@ -434,6 +518,15 @@ into [architecture.md](architecture.md).
   v0 scope, and cost ladder confirmed. Strategy registry decided: hot-loadable
   via two-phase plan (config-driven A in v0.5, WASM B in v1+); v0 ships a
   plug-in-shaped trait. Analyst kicked off to draft `spec/features/v0-paper-sma.md`.
+- 2026-04-19 (operator + analyst): v0 delivered and verified PASS (all 35
+  tasks, 124 tests green, deterministic backtests, Prometheus live). Final
+  four Open decisions resolved — live/KYC out of scope (paper on real data
+  is terminal state; real-money is a follow-up project), single-operator
+  forever, no tax/reporting (replaced by operator success reports focused
+  on "is this working?"), local-only DR with zero cloud spend. Added
+  `## Non-goals` expansion, `## Project scope boundary`, `## Operator
+  success reports` sections; revised v3 success metric to continuous-paper
+  terminus.
 - 2026-04-17 (developer): updated stale `cala-ledger` references to `sqlx-ledger`
   per architect decision in `spec/architecture.md`. `sqlx-ledger` on SQLite is
   the confirmed v0 audit-ledger substrate.

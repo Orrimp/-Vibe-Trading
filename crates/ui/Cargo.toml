@@ -24,10 +24,23 @@ smol_str.workspace = true
 
 # iced — GUI framework. Pinned explicitly per ui-designer constraint.
 # Do NOT use a range. Update in lockstep across ui/cockpit/viewer.
-iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool"] }
+iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced"] }
+
+# `live` feature deps — Week 2 (T32). Only enabled when wiring the cockpit
+# against the real `agent::EventBus`. Pinned like iced to keep the live
+# path reproducible; the bus surface is a handoff contract (see
+# spec/reports/dev-week2-broadcast-api-2026-04-18.md).
+agent = { path = "../agent", optional = true }
+tokio = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+async-stream = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta = { version = "=1.47.2", features = ["yaml"] }
+# T32 integration test: needs tokio runtime to drive the live subscription.
+tokio = { workspace = true }
+futures = { workspace = true }
+agent = { path = "../agent" }
 
 [features]
 # `fixtures` — enables ui::fixtures with deterministic in-memory generators.
@@ -36,3 +49,8 @@ insta = { version = "=1.47.2", features = ["yaml"] }
 # `#[cfg(test)]` via a gate in `lib.rs` so snapshot tests see the module
 # without needing `--features fixtures` on every invocation.
 fixtures = []
+
+# `live` — enables the real broadcast-bus subscription (T32). Without this
+# feature the `ui::live` module is not compiled; the cockpit falls back to
+# `fixtures` (or an empty subscription).
+live = ["dep:agent", "dep:tokio", "dep:futures", "dep:async-stream"]
