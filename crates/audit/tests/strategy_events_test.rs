@@ -42,6 +42,7 @@ async fn t509_write_and_read_load_event() {
         operator: "system",
         error_code: None,
         error_summary: None,
+        ts: None,
     };
     journal::strategy_event(&ledger, &write)
         .await
@@ -74,6 +75,7 @@ async fn t509_write_all_event_kinds_and_read_in_order() {
             operator: "system",
             error_code: None,
             error_summary: None,
+            ts: None,
         },
     )
     .await
@@ -91,6 +93,7 @@ async fn t509_write_all_event_kinds_and_read_in_order() {
             operator: "system",
             error_code: None,
             error_summary: None,
+            ts: None,
         },
     )
     .await
@@ -108,6 +111,7 @@ async fn t509_write_all_event_kinds_and_read_in_order() {
             operator: "system",
             error_code: Some("arity_mismatch"),
             error_summary: Some("macd_cross(12): expected 3 args"),
+            ts: None,
         },
     )
     .await
@@ -125,6 +129,7 @@ async fn t509_write_all_event_kinds_and_read_in_order() {
             operator: "system",
             error_code: None,
             error_summary: None,
+            ts: None,
         },
     )
     .await
@@ -177,6 +182,7 @@ async fn t510_strategy_events_do_not_affect_balance() {
                     None
                 },
                 error_summary: None,
+                ts: None,
             },
         )
         .await
@@ -213,6 +219,7 @@ async fn t509_strategy_events_since() {
             operator: "system",
             error_code: None,
             error_summary: None,
+            ts: None,
         },
     )
     .await

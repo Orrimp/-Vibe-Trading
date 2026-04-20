@@ -4,12 +4,10 @@
 //! atomic hot-swap, and that the audit journal records exactly `[Load, Swap]`
 //! with distinct hashes.
 //!
-//! Determinism note (architect risk #4): timestamps in `strategy_events` come
-//! from the watcher task which uses `OffsetDateTime::now_utc()` for the audit
-//! row. This test verifies swap correctness and hash distinctness but does NOT
-//! assert byte-identical `strategy_events` tables across two runs (wall time
-//! differs).  The T521 determinism re-gate covers report-body byte-identity
-//! for the backtest scenarios.
+//! Determinism (architect risk #4, HF-2): `handle_fs_event_with_clock` injects
+//! a fixed RFC-3339 timestamp so that `strategy_events` rows are byte-identical
+//! across two test runs at the same seed.  The test explicitly asserts this via
+//! `t517_strategy_events_byte_identical_across_runs`.
 #![allow(clippy::unwrap_used)]
 
 use std::sync::Arc;
@@ -18,6 +16,11 @@ use std::time::Duration;
 use agent::{watcher, EventBus};
 use audit::{bootstrap, ledger::Ledger, query};
 use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+
+/// Fixed RFC-3339 timestamp used for all `strategy_events` rows in tests.
+/// Derived from seed 0xC0FFEE: 0xC0FFEE = 12648430 seconds from Unix epoch
+/// → 1970-01-01 + 12648430s ≈ 1970-05-27T19:07:10Z (deterministic replay clock).
+const REPLAY_TS: &str = "1970-05-27T19:07:10Z";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -77,12 +80,13 @@ size = "fixed_fraction(0.1)"
     let ledger = open_ledger().await;
     let bus = make_bus();
 
-    // Load initial strategy via watcher.
-    watcher::handle_fs_event(
+    // Load initial strategy via watcher — use fixed replay clock for determinism.
+    watcher::handle_fs_event_with_clock(
         watcher::FsEvent::Upsert(strat_path.clone()),
         &registry,
         &ledger,
         &bus,
+        Some(REPLAY_TS),
     )
     .await;
 
@@ -116,11 +120,12 @@ size = "fixed_fraction(0.1)"
     // Subscribe to swapped events BEFORE triggering the swap.
     let mut swapped_rx = bus.strategy_swapped();
 
-    watcher::handle_fs_event(
+    watcher::handle_fs_event_with_clock(
         watcher::FsEvent::Upsert(strat_path.clone()),
         &registry,
         &ledger,
         &bus,
+        Some(REPLAY_TS),
     )
     .await;
 
@@ -182,11 +187,12 @@ size = "fixed_fraction(0.1)"
     let ledger = open_ledger().await;
     let bus = make_bus();
 
-    watcher::handle_fs_event(
+    watcher::handle_fs_event_with_clock(
         watcher::FsEvent::Upsert(strat_path.clone()),
         &registry,
         &ledger,
         &bus,
+        Some(REPLAY_TS),
     )
     .await;
     assert_eq!(registry.len(), 1);
@@ -204,11 +210,12 @@ size = "fixed_fraction(0.1)"
 "#
         );
         std::fs::write(&strat_path, &new_toml).unwrap();
-        watcher::handle_fs_event(
+        watcher::handle_fs_event_with_clock(
             watcher::FsEvent::Upsert(strat_path.clone()),
             &registry,
             &ledger,
             &bus,
+            Some(REPLAY_TS),
         )
         .await;
 
@@ -222,5 +229,131 @@ size = "fixed_fraction(0.1)"
         registry.len(),
         1,
         "registry must still have 1 strategy after 20 swaps"
+    );
+}
+
+/// T517 determinism (HF-2 / architect risk #4): run the hot-swap sequence
+/// twice with the same fixed replay clock and assert the `strategy_events`
+/// rows are content-identical across both runs.
+///
+/// Excluded from comparison:
+/// - `id` (UUID primary key — randomly generated per row)
+/// - `source_path` directory part — the tempdir path is non-deterministic;
+///   only the basename (`btc_rsi_det.toml`) is compared.
+///
+/// The fields that MUST be identical: `ts`, `kind`, `strategy_id`,
+/// `old_hash`, `new_hash`, `source_path_basename`, `operator`,
+/// `error_code`, `error_summary`.
+#[tokio::test]
+async fn t517_strategy_events_byte_identical_across_runs() {
+    // Content-comparable snapshot of a StrategyEventView.
+    #[derive(Debug, PartialEq, Eq)]
+    struct EventSnapshot {
+        ts: String,
+        kind: trading_core::StrategyEventKind,
+        strategy_id: Option<String>,
+        old_hash: Option<String>,
+        new_hash: Option<String>,
+        /// Basename of source_path only (directory part is tempdir-non-deterministic).
+        source_path_basename: Option<String>,
+        operator: String,
+        error_code: Option<String>,
+        error_summary: Option<String>,
+    }
+
+    async fn run_one_sequence() -> Vec<EventSnapshot> {
+        let dir = tempfile::tempdir().unwrap();
+        let strat_path = dir.path().join("btc_rsi_det.toml");
+
+        let initial_toml = r#"id = "btc_rsi_det"
+kind = "composed"
+symbol = "BTCUSDT"
+stage = "research"
+signal = "rsi(14) < 30"
+size = "fixed_fraction(0.1)"
+"#;
+        std::fs::write(&strat_path, initial_toml).unwrap();
+
+        let registry = Arc::new(strategy::StrategyRegistry::new());
+        let ledger = {
+            let l = Ledger::in_memory().await.unwrap();
+            bootstrap::chart_of_accounts(&l).await.unwrap();
+            Arc::new(l)
+        };
+        let bus = Arc::new(EventBus::new(&agent::config::BusConfig::default()));
+
+        // Load with fixed replay clock.
+        watcher::handle_fs_event_with_clock(
+            watcher::FsEvent::Upsert(strat_path.clone()),
+            &registry,
+            &ledger,
+            &bus,
+            Some(REPLAY_TS),
+        )
+        .await;
+
+        // Swap with same fixed clock.
+        let swapped_toml = r#"id = "btc_rsi_det"
+kind = "composed"
+symbol = "BTCUSDT"
+stage = "research"
+signal = "rsi(14) < 25"
+size = "fixed_fraction(0.1)"
+"#;
+        std::fs::write(&strat_path, swapped_toml).unwrap();
+        watcher::handle_fs_event_with_clock(
+            watcher::FsEvent::Upsert(strat_path.clone()),
+            &registry,
+            &ledger,
+            &bus,
+            Some(REPLAY_TS),
+        )
+        .await;
+
+        // Read via audit::query (no sqlx types in the API).
+        let events = query::strategy_history(&ledger, trading_core::StrategyId::new("btc_rsi_det"))
+            .await
+            .unwrap();
+
+        events
+            .into_iter()
+            .map(|e| {
+                use std::path::Path;
+                use time::format_description::well_known::Rfc3339;
+                EventSnapshot {
+                    ts: e.ts.inner().format(&Rfc3339).unwrap_or_default(),
+                    kind: e.kind,
+                    strategy_id: e.strategy_id.map(|s| s.0.to_string()),
+                    old_hash: e.old_hash.map(|s| s.to_string()),
+                    new_hash: e.new_hash.map(|s| s.to_string()),
+                    // Normalise to basename so tempdir path differences don't
+                    // cause spurious failures.
+                    source_path_basename: e.source_path.map(|s| {
+                        Path::new(s.as_str())
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| s.to_string())
+                    }),
+                    operator: e.operator.to_string(),
+                    error_code: e.error_code.map(|s| s.to_string()),
+                    error_summary: e.error_summary.map(|s| s.to_string()),
+                }
+            })
+            .collect()
+    }
+
+    let rows_a = run_one_sequence().await;
+    let rows_b = run_one_sequence().await;
+
+    assert_eq!(
+        rows_a.len(),
+        rows_b.len(),
+        "both runs must produce the same number of strategy_events rows"
+    );
+    assert_eq!(
+        rows_a, rows_b,
+        "strategy_events rows must be content-identical across two runs \
+         when using the fixed replay clock (ts, kind, strategy_id, hashes, \
+         source_path_basename, operator all must match)"
     );
 }

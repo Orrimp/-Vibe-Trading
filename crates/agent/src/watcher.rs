@@ -156,11 +156,12 @@ pub async fn run_strategy_watcher(
 
                 for path in expired {
                     if let Some((event, _)) = debounce.remove(&path) {
-                        handle_fs_event(
+                        handle_fs_event_with_clock(
                             event,
                             &registry,
                             &ledger,
                             &bus,
+                            None,
                         )
                         .await;
                     }
@@ -171,15 +172,32 @@ pub async fn run_strategy_watcher(
 }
 
 /// Handle a single (debounced) file-system event.
+///
+/// `ts_override` — when `Some(rfc3339_str)`, that string is written as the
+/// `ts` column of the resulting `strategy_events` row instead of wall-clock
+/// time.  Pass `None` in production; pass a fixed value in deterministic
+/// integration tests (architect risk #4 — HF-2).
 pub async fn handle_fs_event(
     event: FsEvent,
     registry: &strategy::StrategyRegistry,
     ledger: &audit::Ledger,
     bus: &EventBus,
 ) {
+    handle_fs_event_with_clock(event, registry, ledger, bus, None).await;
+}
+
+/// `handle_fs_event` with an explicit clock override — use in deterministic
+/// tests to inject the replay synthetic clock (architect risk #4).
+pub async fn handle_fs_event_with_clock(
+    event: FsEvent,
+    registry: &strategy::StrategyRegistry,
+    ledger: &audit::Ledger,
+    bus: &EventBus,
+    ts_override: Option<&str>,
+) {
     match event {
-        FsEvent::Upsert(path) => handle_upsert(&path, registry, ledger, bus).await,
-        FsEvent::Remove(path) => handle_remove(&path, registry, ledger, bus).await,
+        FsEvent::Upsert(path) => handle_upsert(&path, registry, ledger, bus, ts_override).await,
+        FsEvent::Remove(path) => handle_remove(&path, registry, ledger, bus, ts_override).await,
     }
 }
 
@@ -188,11 +206,15 @@ pub async fn handle_fs_event(
 /// 1. Parse + typecheck + construct **outside** the registry write-guard.
 /// 2. Swap or register inside the write-guard (pointer swap only).
 /// 3. Write audit event + publish to bus.
+///
+/// `ts_override` — RFC-3339 timestamp injected by deterministic tests;
+/// `None` uses `OffsetDateTime::now_utc()`.
 async fn handle_upsert(
     path: &Path,
     registry: &strategy::StrategyRegistry,
     ledger: &audit::Ledger,
     bus: &EventBus,
+    ts_override: Option<&str>,
 ) {
     let source_path = path.to_string_lossy().to_string();
 
@@ -212,7 +234,13 @@ async fn handle_upsert(
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string());
 
-            let ts = Timestamp::new(OffsetDateTime::now_utc());
+            let ts_odt = ts_override
+                .and_then(|s| {
+                    time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+                        .ok()
+                })
+                .unwrap_or_else(OffsetDateTime::now_utc);
+            let ts = Timestamp::new(ts_odt);
 
             // Write Reject audit row.
             let write = audit::journal::StrategyEventWrite {
@@ -224,6 +252,7 @@ async fn handle_upsert(
                 operator: "system",
                 error_code: Some(e.error_code()),
                 error_summary: Some(&e.to_string()),
+                ts: ts_override,
             };
             if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
                 error!(err = %db_err, "failed to write Reject audit event");
@@ -257,7 +286,14 @@ async fn handle_upsert(
         .swap(id.clone(), new_strategy)
         .expect("registry swap infallible");
 
-    let ts = Timestamp::new(OffsetDateTime::now_utc());
+    // Resolve the event timestamp: use the injected replay clock when present,
+    // otherwise fall back to wall-clock time (production path).
+    let ts_odt = ts_override
+        .and_then(|s| {
+            time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
+        })
+        .unwrap_or_else(OffsetDateTime::now_utc);
+    let ts = Timestamp::new(ts_odt);
 
     // Step 3: Audit + bus.
     if old.is_some() {
@@ -278,6 +314,7 @@ async fn handle_upsert(
             operator: "system",
             error_code: None,
             error_summary: None,
+            ts: ts_override,
         };
         if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
             error!(err = %db_err, "failed to write Swap audit event");
@@ -302,6 +339,7 @@ async fn handle_upsert(
             operator: "system",
             error_code: None,
             error_summary: None,
+            ts: ts_override,
         };
         if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
             error!(err = %db_err, "failed to write Load audit event");
@@ -318,11 +356,14 @@ async fn handle_upsert(
 }
 
 /// Unload a strategy whose TOML file was removed.
+///
+/// `ts_override` — RFC-3339 timestamp injected by deterministic tests.
 async fn handle_remove(
     path: &Path,
     registry: &strategy::StrategyRegistry,
     ledger: &audit::Ledger,
     _bus: &EventBus,
+    ts_override: Option<&str>,
 ) {
     let stem = match path.file_stem().and_then(|s| s.to_str()) {
         Some(s) => s.to_string(),
@@ -347,6 +388,7 @@ async fn handle_remove(
             operator: "system",
             error_code: None,
             error_summary: None,
+            ts: ts_override,
         };
         if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
             error!(err = %db_err, "failed to write Unload audit event");

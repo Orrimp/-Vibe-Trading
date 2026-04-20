@@ -340,9 +340,16 @@ pub async fn strategy_event(
     write: &StrategyEventWrite<'_>,
 ) -> Result<(), LedgerError> {
     let row_id = Uuid::new_v4().to_string();
-    let ts = time::OffsetDateTime::now_utc()
-        .format(&time::format_description::well_known::Rfc3339)
-        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    // Use the caller-supplied timestamp when present (enables deterministic
+    // tests with a synthetic replay clock — architect risk #4).  Fall back to
+    // wall-clock time for production use where the watcher passes `None`.
+    let ts = if let Some(t) = write.ts {
+        t.to_owned()
+    } else {
+        time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?
+    };
 
     sqlx::query(
         "INSERT INTO strategy_events \
@@ -396,6 +403,11 @@ pub struct StrategyEventWrite<'a> {
     pub error_code: Option<&'a str>,
     /// One-line human error summary (Reject only).
     pub error_summary: Option<&'a str>,
+    /// Optional RFC-3339 timestamp string.  When `Some`, the supplied value
+    /// is written to the `ts` column instead of `OffsetDateTime::now_utc()`.
+    /// Used by deterministic integration tests to inject the replay synthetic
+    /// clock (architect risk #4).  Pass `None` in production code.
+    pub ts: Option<&'a str>,
 }
 
 /// Verify that for a given transaction `Σ debits == Σ credits`.

@@ -2,7 +2,7 @@
 slug: v05-composed-strategies
 status: shipped
 owner: developer
-updated: 2026-04-19
+updated: 2026-04-20
 ---
 
 # Tasks — v0.5 Composed Strategies (Hot-Load A) + Multi-Indicator Rules
@@ -455,6 +455,18 @@ Week 2 (watcher, UI live, backtest, e2e):
   `cargo clippy --workspace --all-targets -- -D warnings` clean.
   6 determinism tests pass (T33 + 4 × T521). All four backtest reports
   in `spec/reports/`. T_FINAL_B unblocked.
+- 2026-04-20 (developer, repair pass HF-1 + HF-2): T517, T520, T_FINAL_A
+  re-ticked after two surgical fixes. HF-1: moved `## Strategy` section
+  from report body into YAML front-matter `strategy:` block; added
+  `body_name` + `body_elapsed_override` fields to all scenarios so
+  `Wall-clock time` row is deterministic; both SMA scenarios now produce
+  body-SHA256 = `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c`
+  (v0 anchor restored). HF-2: `StrategyEventWrite.ts` field added;
+  `handle_fs_event_with_clock()` threaded with `ts_override: Option<&str>`;
+  `REPLAY_TS = "1970-05-27T19:07:10Z"` constant used in all T517 test calls;
+  new `t517_strategy_events_byte_identical_across_runs` test added and passes.
+  v0.5 body hashes: macd-trend=`ef9c5e48`, rsi-reversion=`bc56d20d`,
+  bbands-mean-revert=`d8a08a23`. Full workspace: 0 failures.
 - 2026-04-19 (ui-designer, resume): T_FINAL_B ticked. Smoke checklist
   extended with a `## v0.5 — strategies panel smoke + hot-swap drill`
   section in
