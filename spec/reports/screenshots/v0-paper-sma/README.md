@@ -39,16 +39,26 @@ full source tree.
 | `agent` | Top-level binary `trading`: construct all subsystems, kill switch (halt file + heartbeat), Prometheus exporter on `:9100`, broadcast-bus API (`Arc<EventBus>`) for cockpit. |
 | `ui` | iced 0.14 cockpit binary. Single design source of truth via `ui::theme` + `ui::strings`; `tests/consistency.rs` enforces zero inline strings / hex in widgets. v0.5 extends with the `strategies` panel (right column, above Open positions — Q4 resolution) plus three new broadcast subscribers (`strategy_loaded` / `strategy_swapped` / `strategy_error`). |
 
-## 3. Canonical backtest runs (v0 ship artifacts)
+## 3. Canonical backtest runs
 
-Seed `0xC0FFEE`, fixed-fraction 0.1 sizing, 2 bps slippage, 0.04% taker, $100 000 initial. Both deterministic.
+Seed `0xC0FFEE`, fixed-fraction 0.1 sizing, 2 bps slippage, 0.04% taker, $100 000 initial. All deterministic (body-SHA256 byte-identical across runs).
 
-| Scenario | Report | Body SHA-256 | Final equity | Wall-clock |
-|---|---|---|---|---|
-| `btc-2023-1m-sma-cross` | [backtest-20260419-060409](../backtest-20260419-060409-btc-2023-1m-sma-cross.md) | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` | $47 290.03 | 0.2 s |
-| `btc-2024-h1-sma-cross` | [backtest-20260419-060410](../backtest-20260419-060410-btc-2024-h1-sma-cross.md) | `345ee0c0d485a44b8b4adabcf5e2af36e82224034e1f8bc8d66694378352a574` | $67 241.80 | 0.1 s |
+| Scenario | Report | Body SHA-256 | Notes |
+|---|---|---|---|
+| `btc-2023-1m-sma-cross` | [backtest-20260420-202621](../backtest-20260420-202621-btc-2023-1m-sma-cross.md) | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` | v0 ship anchor — never moves |
+| `btc-2023-1m-sma-baseline-refresh` | [backtest-20260420-151944](../backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md) | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` | v0.5 sanity anchor — same code path as sma-cross |
+| `btc-2023-1m-macd-trend` | [backtest-20260420-152014](../backtest-20260420-152014-btc-2023-1m-macd-trend.md) | `ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805` | v0.5 recipe |
+| `btc-2023-1m-rsi-reversion` | [backtest-20260420-152017](../backtest-20260420-152017-btc-2023-1m-rsi-reversion.md) | `bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa` | v0.5 recipe |
+| `btc-2023-1m-bbands-mean-revert` | [backtest-20260420-152020](../backtest-20260420-152020-btc-2023-1m-bbands-mean-revert.md) | `d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3` | v0.5 recipe |
+| `btc-2024-h1-sma-cross` | _not committed_ — regenerate with command below | `345ee0c0d485a44b8b4adabcf5e2af36e82224034e1f8bc8d66694378352a574` | v0 OOS; report was swept up in the Tier 1–3 cleanup. Scenario still wired. |
 
-Both scenarios show losses — **expected** per the analyst's hypothesis in the feature brief ("SMA cross on 1m is a known underperformer; we test the harness, not the edge"). A positive Sharpe would have been a red flag that fees/slippage were mis-modelled. Ledger imbalance on both = 0.
+Regenerate the 2024 H1 report on demand:
+
+```
+cargo run --release --bin backtest -- --scenario btc-2024-h1-sma-cross --seed 0xC0FFEE
+```
+
+All SMA-based scenarios show losses — **expected** per the analyst's hypothesis ("SMA cross on 1m is a known underperformer; we test the harness, not the edge"). Positive Sharpe would have been a red flag that fees/slippage were mis-modelled. Ledger imbalance on all = 0.
 
 ## 4. Cockpit panel state reference
 
