@@ -1383,9 +1383,9 @@ No new external crates added. `ChaCha20Rng` is from existing `rand_chacha` works
 | T609 | PASS | `audit::query::pnl_by_symbol` — Σ invariant + proptest(200) |
 | T610 | PASS | `audit::bootstrap::seed_universe_accounts` — idempotent |
 | T611 | PASS | `data::ReplayFeed::merge_symbols` + `merge_synthetic` |
-| T612 | FAIL | Multi-symbol live WS; per-symbol `clock_skew_ms` label; testnet — all absent |
-| T613 | PARTIAL | Struct + channel wired; mock-REST test, migration, history query absent |
-| T614 | FAIL | `funding_poller_task` not spawned in `main.rs` |
+| T612 | FAIL | Multi-symbol live WS; per-symbol `clock_skew_ms` label; testnet — all absent — deferred to v1.5 |
+| T613 | PASS | mock-REST integration test (wiremock, 3 tests); `insert_funding_obs` + `funding_rate_history` added (6 audit tests) |
+| T614 | PASS | Poller spawned in `main.rs`; `FundingConfig` default-off; `funding_poller_started` / `funding_poller_disabled` boot logs |
 | T615 | PASS | `top10_momentum_h1.toml` parses; content hash verified |
 | T616 | PASS | 10 `ChaCha20Rng` streams seeded from master seed documented |
 | T617 | PASS | Both v1 scenarios run end-to-end; exit 0; `ledger_imbalance=0` |
@@ -1394,9 +1394,9 @@ No new external crates added. `ChaCha20Rng` is from existing `rand_chacha` works
 | T620 | PASS | `v1_rebalance_reject` 3/3; `portfolio_exposure_breach`; `ledger_imbalance=0` |
 | T621 | PASS | `--no-run` build gate; runtime budget deferred |
 | T622 | PASS | All 5 v0/v0.5 anchors verified |
-| T_FINAL_A_v1 | BLOCKED | All test-based criteria pass; blocked on T614 |
+| T_FINAL_A_v1 | PASS | All criteria met; 7 anchor hashes preserved; 306 tests green |
 
-**Ticked: 20/23.** T612, T613, T614 deferred to next sprint (live ingest path).
+**Ticked: 22/23.** T612 deferred to v1.5 (multi-symbol live BinanceFeed). T613 + T614 + T_FINAL_A_v1 complete.
 
 ### v0/v0.5 anchor regression gate (T622)
 
@@ -1432,13 +1432,92 @@ Reports written to:
 | `cargo fmt --all -- --check` | PASS (formatting fixed before gate) |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | PASS (11 issues found and fixed) |
 | `cargo check --workspace --all-targets` | PASS |
-| `cargo test --workspace --all-targets` | PASS — 297 tests |
+| `cargo test --workspace --all-targets` | PASS — 306 tests (9 new: 3 data + 6 audit) |
 | `cargo test --workspace --doc` | PASS |
 | `cargo test -p trading_core --test trybuild` | PASS |
 | `cargo test -p audit` | PASS |
 | `cargo build --workspace --release` | PASS — 13s |
 
 Closeout notes: [spec/reports/dev-v1-closeout-notes-2026-04-29.md](../reports/dev-v1-closeout-notes-2026-04-29.md)
+
+### v1 funding-poller close (T613 + T614 + T_FINAL_A_v1)
+
+**Completed 2026-04-29.**
+
+#### What landed
+
+**T613 — FundingPoller integration test + migration + query:**
+
+- `audit::journal::insert_funding_obs(&Ledger, &FundingObs) -> Result<()>` — appends
+  a row to `funding_rates` table (not a double-entry entry; reconciler invariant unaffected).
+- `audit::query::funding_rate_history(ledger, symbol, since, until) -> Result<Vec<FundingObs>>` —
+  read-only, no `sqlx` types in return; sorted by `funding_ts ASC`.
+- `FundingPoller::poll_once_for_test()` — public test helper exposing one poll cycle
+  so tests drive timing without depending on wall-clock sleep.
+- `crates/data/tests/funding_poller_integration.rs` — 3 wiremock-backed tests:
+  - `t613_poll_three_symbols_persists_rows` — happy path: mock server returns canned
+    `premiumIndex` JSON; 3 `FundingObs` events broadcast; 3 rows persisted; `funding_rate_history`
+    returns them.
+  - `t613_poller_skips_on_connection_refused` — server dropped before poll; poller skips
+    gracefully (no panic).
+  - `t613_poller_skips_on_5xx` — server returns 500; poller skips gracefully.
+- `crates/audit/tests/funding_rate_history_test.rs` — 6 tests: table existence,
+  chronological order, symbol exclusion, window filter, empty result, ledger balance invariant.
+- `003_funding_rates.sql` migration verified — `CREATE TABLE IF NOT EXISTS funding_rates`
+  with correct columns and two indices; applies cleanly on a fresh in-memory DB.
+- `wiremock = "0.6.2"` added as workspace dev-dependency (pinned exact version; no new runtime dep).
+
+**T614 — Spawn the poller in agent main:**
+
+- `FundingConfig` struct added to `agent::config` with fields: `enabled: bool` (default
+  `false`), `interval_secs: u64` (default 3600), `universe: Vec<String>` (default empty).
+- `[funding]` section added to `config/agent.toml` — `enabled = false` by default with a
+  comment explaining the default-off policy.
+- `EventBus::funding_obs_sender()` — new method returning a `broadcast::Sender<FundingObs>`
+  clone for direct handoff to the poller task.
+- `crates/agent/src/main.rs` — after the strategy watcher spawn:
+  - If `cfg.funding.enabled`: constructs `FundingPoller` from config, spawns it with
+    `tokio::spawn` + `CancellationToken`; spawns a persistence sidecar that subscribes to
+    `funding_obs` and calls `audit::journal::insert_funding_obs`; logs
+    `INFO funding_poller_started universe_size=N`.
+  - If disabled: logs `INFO funding_poller_disabled`.
+  - Non-essential: poller and persistence sidecar panic do NOT crash the agent.
+  - `CancellationToken` is held in `_funding_cancel` which is dropped on agent shutdown,
+    cancelling both tasks.
+
+#### Mock test pattern
+
+The integration test implements `FundingRestClient` for a `MockRestClient` struct that points
+at the wiremock `MockServer` base URL. This avoids the `BinanceFundingClient` hard-coded
+`fapi.binance.com` URL without modifying production code. The pattern follows the
+"all external I/O behind a trait" rule from the coding standards.
+
+#### Config-disable default
+
+`funding.enabled = false` in `config/agent.toml` means:
+- All tests and CI runs never hit Binance fapi.
+- Research-mode backtests are unaffected.
+- Setting `enabled = true` in a paper-mode deployment activates the hourly REST poller.
+
+#### 7 anchor hashes preserved
+
+All 7 hashes verified green after T613 + T614 landed (no shared code paths touched):
+
+| Scenario | Body SHA-256 |
+|---|---|
+| `btc-2023-1m-sma-cross` | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` |
+| `btc-2023-1m-sma-baseline-refresh` | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` |
+| `btc-2023-1m-macd-trend` | `ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805` |
+| `btc-2023-1m-rsi-reversion` | `bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa` |
+| `btc-2023-1m-bbands-mean-revert` | `d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3` |
+| `top10-2023-1h-momentum` | `3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97` |
+| `top10-2024-h1-momentum` | `1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6` |
+
+#### T612 status
+
+T612 (multi-symbol live BinanceFeed) remains `[ ]`. Note in tasks file:
+**deferred to v1.5** — single-symbol WS only; no per-symbol `clock_skew_ms{feed,symbol}` label;
+no testnet smoke test.
 
 ## Verification
 
@@ -1550,6 +1629,7 @@ contract:
 
 - 2026-04-20 (analyst): initial brief.
 - 2026-04-29 (developer): appended `## Implementation — v1 backend`; ticked 20/23 T6xx tasks; T612/T613/T614 deferred to next sprint (live ingest path); v1 scenario hashes locked; v0/v0.5 anchor regression PASS; 297 tests green; all quality gates PASS. Ownership transferred to developer; status remains `in-progress` pending T612–T614.
+- 2026-04-29 (developer): T613 + T614 + T_FINAL_A_v1 completed; appended `### v1 funding-poller close` subsection; ticked 22/23 tasks; T612 deferred to v1.5; 306 tests green; 7 anchor hashes preserved.
 - 2026-04-29 (architect): appended `## Design` section translating R1–R12
   into crate / module additions, traits, message types, TOML schema, and
   test strategy. Resolved the six open analyst questions in

@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, FillView, JournalEntryView, LedgerError, Money, Price, Quantity, Side,
+    AccountId, FillView, FundingObs, JournalEntryView, LedgerError, Money, Price, Quantity, Side,
     StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp, Usdt,
 };
 
@@ -507,6 +507,72 @@ fn extract_symbol_from_description(desc: &str) -> Symbol {
     } else {
         Symbol::new("UNKNOWN")
     }
+}
+
+// ── Funding-rate history (v1 T613) ────────────────────────────────────────────
+
+/// Return all funding-rate observations for `symbol` in `[since, until]`,
+/// oldest first.
+///
+/// No `sqlx` types in the return type — all fields are from `trading_core`.
+/// Returns an empty `Vec` if no rows match.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn funding_rate_history(
+    ledger: &Ledger,
+    symbol: Symbol,
+    since: Timestamp,
+    until: Timestamp,
+) -> Result<Vec<FundingObs>, LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
+        "SELECT symbol, funding_rate, funding_ts, next_funding_ts, poll_ts \
+         FROM funding_rates \
+         WHERE symbol = ? AND funding_ts >= ? AND funding_ts <= ? \
+         ORDER BY funding_ts ASC",
+    )
+    .bind(symbol.0.as_str())
+    .bind(&since_str)
+    .bind(&until_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    rows.into_iter()
+        .map(
+            |(sym, rate_str, funding_ts_str, next_ts_str, poll_ts_str)| {
+                let funding_rate: Decimal = rate_str.parse().map_err(|_| {
+                    LedgerError::Database("funding_rate_history: parse rate".into())
+                })?;
+                let funding_ts = OffsetDateTime::parse(&funding_ts_str, &Rfc3339)
+                    .map(Timestamp::new)
+                    .map_err(|e| LedgerError::Database(format!("funding_ts parse: {e}")))?;
+                let next_funding_ts = OffsetDateTime::parse(&next_ts_str, &Rfc3339)
+                    .map(Timestamp::new)
+                    .map_err(|e| LedgerError::Database(format!("next_funding_ts parse: {e}")))?;
+                let poll_ts = OffsetDateTime::parse(&poll_ts_str, &Rfc3339)
+                    .map(Timestamp::new)
+                    .map_err(|e| LedgerError::Database(format!("poll_ts parse: {e}")))?;
+                Ok(FundingObs {
+                    symbol: Symbol::new(sym),
+                    funding_rate,
+                    funding_ts,
+                    next_funding_ts,
+                    poll_ts,
+                })
+            },
+        )
+        .collect()
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

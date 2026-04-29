@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use agent::{EventBus, KillSwitch};
@@ -146,6 +147,67 @@ async fn main() -> Result<()> {
 
     // Keep the shutdown sender so it's dropped on shutdown, closing the watcher.
     let _watcher_shutdown = watcher_shutdown_tx;
+
+    // ── Funding-rate poller (v1 T614) ─────────────────────────────────────────
+    // Disabled by default (funding.enabled = false in config/agent.toml).
+    // When enabled, spawns an hourly REST poller against Binance fapi.
+    // Non-essential: if the spawned task panics the agent continues running.
+    let _funding_cancel = {
+        if cfg.funding.enabled {
+            let universe: Vec<trading_core::Symbol> = cfg
+                .funding
+                .universe
+                .iter()
+                .map(|s| trading_core::Symbol::new(s.as_str()))
+                .collect();
+            let interval = std::time::Duration::from_secs(cfg.funding.interval_secs);
+            let poller = data::funding::FundingPoller {
+                universe: universe.clone(),
+                interval,
+            };
+            let client = Arc::new(data::funding::BinanceFundingClient::new());
+            let tx = bus.funding_obs_sender();
+            let ledger_clone = Arc::clone(&ledger);
+            let cancel = CancellationToken::new();
+            let cancel_child = cancel.clone();
+
+            info!(universe_size = universe.len(), "funding_poller_started");
+
+            // Spawn the poller task.  Panic in the poller does NOT crash the agent.
+            tokio::spawn(async move {
+                poller.run(client.as_ref(), &tx, cancel_child).await;
+            });
+
+            // Spawn a persistence sidecar: subscribe to funding_obs and write to ledger.
+            let mut rx = bus.funding_obs();
+            let cancel_persist = cancel.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        () = cancel_persist.cancelled() => break,
+                        msg = rx.recv() => {
+                            match msg {
+                                Ok(obs) => {
+                                    if let Err(e) = audit::journal::insert_funding_obs(&ledger_clone, &obs).await {
+                                        warn!(error = %e, "funding_obs persist failed (non-fatal)");
+                                    }
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                    warn!(skipped = n, "funding_obs channel lagged — rows skipped");
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                            }
+                        }
+                    }
+                }
+            });
+
+            Some(cancel)
+        } else {
+            info!("funding_poller_disabled");
+            None
+        }
+    };
 
     // ── Data source ───────────────────────────────────────────────────────────
     // In research mode, use replay; in paper mode, use Binance WS.

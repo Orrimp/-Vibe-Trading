@@ -48,3 +48,14 @@ budget_usd_month = 20
 bars_capacity  = 1024
 ticks_capacity = 8192
 fills_capacity = 1024
+
+# Funding-rate poller (v1 T614).
+# Default off — tests and research-mode backtests never hit Binance fapi.
+# Set enabled = true in paper mode to activate hourly polling.
+[funding]
+enabled       = false
+interval_secs = 3600
+universe      = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
+    "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT",
+]

@@ -235,6 +235,49 @@ impl Default for BusConfig {
     }
 }
 
+/// Funding-rate poller configuration (v1 T614).
+///
+/// Default: `enabled = false` so test infrastructure and research-mode backtests
+/// never hit the Binance fapi endpoint unexpectedly.
+///
+/// Set `enabled = true` in `config/agent.toml` to activate the hourly poller
+/// in paper mode.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FundingConfig {
+    /// When `false` (default) the funding poller is not started.  Boot log emits
+    /// `"funding_poller_disabled"`.  When `true`, the poller starts and emits
+    /// `"funding_poller_started"` with the universe size.
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+
+    /// Poll interval in seconds (default: 3600 = 1 hour).
+    #[serde(default = "default_funding_interval_secs")]
+    pub interval_secs: u64,
+
+    /// Universe symbols to poll.  Empty list means no symbols are polled even
+    /// if `enabled = true`.
+    #[serde(default)]
+    pub universe: Vec<String>,
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_funding_interval_secs() -> u64 {
+    3600
+}
+
+impl Default for FundingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_secs: 3600,
+            universe: Vec::new(),
+        }
+    }
+}
+
 // ── Root config ───────────────────────────────────────────────────────────────
 
 /// Agent operating mode.
@@ -276,6 +319,9 @@ pub struct Config {
     pub cost: CostConfig,
     #[serde(default)]
     pub bus: BusConfig,
+    /// Funding-rate poller (v1 T614).  Default off — see [`FundingConfig`].
+    #[serde(default)]
+    pub funding: FundingConfig,
 }
 
 impl Default for Config {
@@ -291,6 +337,7 @@ impl Default for Config {
             observability: ObservabilityConfig::default(),
             cost: CostConfig::default(),
             bus: BusConfig::default(),
+            funding: FundingConfig::default(),
         }
     }
 }

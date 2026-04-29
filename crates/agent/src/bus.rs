@@ -165,6 +165,16 @@ impl EventBus {
         let _ = self.funding_obs_tx.send(obs);
     }
 
+    /// Return a clone of the raw `funding_obs` sender.
+    ///
+    /// Used by `agent::main` to hand the sender directly to `FundingPoller::run`,
+    /// which calls `tx.send()` itself (avoiding the `publish_funding_obs` wrapper
+    /// so the poller does not need to clone the whole `EventBus`).
+    #[must_use]
+    pub fn funding_obs_sender(&self) -> broadcast::Sender<FundingObs> {
+        self.funding_obs_tx.clone()
+    }
+
     // ── Consumers (subscribe) ────────────────────────────────────────────────
 
     /// Subscribe to fill events.

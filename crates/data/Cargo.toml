@@ -29,3 +29,7 @@ tokio-util.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 mockall = { version = "0.13" }
+wiremock.workspace = true
+audit = { path = "../audit" }
+rust_decimal_macros.workspace = true
+time.workspace = true

@@ -98,6 +98,18 @@ impl FundingPoller {
         }
     }
 
+    /// Expose a single poll cycle for integration tests.
+    ///
+    /// Production code drives this via `run()` (with a sleep loop).
+    /// Tests call this directly to avoid depending on wall-clock time.
+    pub async fn poll_once_for_test(
+        &self,
+        client: &dyn FundingRestClient,
+        tx: &broadcast::Sender<FundingObs>,
+    ) {
+        self.poll_once(client, tx).await;
+    }
+
     async fn poll_once(&self, client: &dyn FundingRestClient, tx: &broadcast::Sender<FundingObs>) {
         let poll_ts = Timestamp::now();
 

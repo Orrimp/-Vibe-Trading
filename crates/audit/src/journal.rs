@@ -5,7 +5,7 @@
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tracing::instrument;
-use trading_core::{Fill, LedgerError, Side};
+use trading_core::{Fill, FundingObs, LedgerError, Side};
 use uuid::Uuid;
 
 use crate::Ledger;
@@ -442,6 +442,52 @@ pub async fn rebalance_rejected(
         },
     )
     .await
+}
+
+/// Persist a `FundingObs` to the `funding_rates` table (T613 — v1 Q2).
+///
+/// This is NOT a double-entry ledger entry — it is an append-only log of
+/// observation-only data. The reconciliation invariant is unaffected.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.insert_funding_obs", skip(ledger, obs), fields(symbol = %obs.symbol))]
+pub async fn insert_funding_obs(ledger: &Ledger, obs: &FundingObs) -> Result<(), LedgerError> {
+    let row_id = Uuid::new_v4().to_string();
+    let funding_ts = obs
+        .funding_ts
+        .inner()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let next_funding_ts = obs
+        .next_funding_ts
+        .inner()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let poll_ts = obs
+        .poll_ts
+        .inner()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    sqlx::query(
+        "INSERT INTO funding_rates \
+         (id, symbol, funding_rate, funding_ts, next_funding_ts, poll_ts) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&row_id)
+    .bind(obs.symbol.0.as_str())
+    .bind(obs.funding_rate.to_string())
+    .bind(&funding_ts)
+    .bind(&next_funding_ts)
+    .bind(&poll_ts)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(row_id = %row_id, symbol = %obs.symbol, "funding_obs persisted");
+    Ok(())
 }
 
 /// Verify that for a given transaction `Σ debits == Σ credits`.
