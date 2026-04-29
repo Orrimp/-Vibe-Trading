@@ -9,6 +9,7 @@ pub mod asset;
 pub mod bar;
 pub mod error;
 pub mod fill;
+pub mod funding;
 pub mod money;
 pub mod order;
 pub mod position;
@@ -19,6 +20,7 @@ pub mod symbol;
 mod tests;
 pub mod tick;
 pub mod time;
+pub mod universe;
 pub mod views;
 
 pub use asset::{Asset, Btc, Currency, Usdt};
@@ -28,6 +30,7 @@ pub use error::{
     StrategyError,
 };
 pub use fill::{FeeTier, Fill, FillId, Liquidity};
+pub use funding::FundingObs;
 pub use money::Money;
 pub use money::{Price, Quantity};
 pub use order::{Order, OrderId, OrderKind, ProposedOrder, RiskLimits, TimeInForce};
@@ -39,4 +42,5 @@ pub use strategy_events::{
 pub use symbol::{AccountId, Side, StrategyId, Symbol};
 pub use tick::Tick;
 pub use time::Timestamp;
+pub use universe::{SymbolSet, Universe, UniverseError};
 pub use views::{FillView, JournalEntryView, PnlSnapshot, PositionView};

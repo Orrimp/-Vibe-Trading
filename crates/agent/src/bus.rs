@@ -58,7 +58,8 @@
 
 use tokio::sync::broadcast;
 use trading_core::{
-    Bar, Fill, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded, StrategySwapped, Tick,
+    Bar, Fill, FundingObs, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded,
+    StrategySwapped, Tick,
 };
 
 use crate::config::BusConfig;
@@ -67,6 +68,8 @@ use crate::kill_switch::AgentMode;
 /// The agent's event bus.
 ///
 /// Clone-able — all clones share the same underlying channels.
+///
+/// v1 adds `funding_obs` channel (capacity 32, Q2 — observation-only).
 #[derive(Clone)]
 pub struct EventBus {
     fills_tx: broadcast::Sender<Fill>,
@@ -78,6 +81,8 @@ pub struct EventBus {
     strategy_loaded_tx: broadcast::Sender<StrategyLoaded>,
     strategy_swapped_tx: broadcast::Sender<StrategySwapped>,
     strategy_error_tx: broadcast::Sender<StrategyLoadError>,
+    /// v1 Q2 — funding-rate observations (observation-only; strategy does not subscribe).
+    funding_obs_tx: broadcast::Sender<FundingObs>,
 }
 
 impl EventBus {
@@ -93,6 +98,7 @@ impl EventBus {
         let (strategy_loaded_tx, _) = broadcast::channel(32);
         let (strategy_swapped_tx, _) = broadcast::channel(32);
         let (strategy_error_tx, _) = broadcast::channel(32);
+        let (funding_obs_tx, _) = broadcast::channel(32); // v1 Q2
         Self {
             fills_tx,
             positions_tx,
@@ -103,6 +109,7 @@ impl EventBus {
             strategy_loaded_tx,
             strategy_swapped_tx,
             strategy_error_tx,
+            funding_obs_tx,
         }
     }
 
@@ -151,6 +158,11 @@ impl EventBus {
     /// Publish a `StrategyLoadError` event (parse / typecheck rejection — old strategy kept).
     pub fn publish_strategy_error(&self, event: StrategyLoadError) {
         let _ = self.strategy_error_tx.send(event);
+    }
+
+    /// Publish a `FundingObs` event (v1 Q2 — observation-only, no strategy consumes this).
+    pub fn publish_funding_obs(&self, obs: FundingObs) {
+        let _ = self.funding_obs_tx.send(obs);
     }
 
     // ── Consumers (subscribe) ────────────────────────────────────────────────
@@ -207,5 +219,11 @@ impl EventBus {
     #[must_use]
     pub fn strategy_error(&self) -> broadcast::Receiver<StrategyLoadError> {
         self.strategy_error_tx.subscribe()
+    }
+
+    /// Subscribe to `FundingObs` events (v1 Q2 — observation-only).
+    #[must_use]
+    pub fn funding_obs(&self) -> broadcast::Receiver<FundingObs> {
+        self.funding_obs_tx.subscribe()
     }
 }

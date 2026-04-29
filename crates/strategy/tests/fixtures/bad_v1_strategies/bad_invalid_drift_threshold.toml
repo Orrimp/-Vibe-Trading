@@ -1,0 +1,11 @@
+# T605 negative fixture: invalid_drift_threshold — value = 0.
+id = "bad_invalid_drift_threshold"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+k_long = 1
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.0
+vol_floor = 0.000001
+size = "equal_weight"

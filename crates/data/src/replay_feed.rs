@@ -202,6 +202,84 @@ fn read_parquet_bars(
     Ok(bars)
 }
 
+// ── Multi-symbol k-way merge (v1 T611) ───────────────────────────────────────
+
+impl ReplayFeed {
+    /// Deterministic k-way merge of N per-symbol bar streams.
+    ///
+    /// Sort key: `(venue_ts ASC, symbol ASC)` — matches R12.2.
+    ///
+    /// Reads all Parquet files for every symbol up-front (same strategy as
+    /// `subscribe_bars` for v0 single-symbol), then merges via a sorted
+    /// structure.  Memory bound: O(total bar count × bar size).  For a year
+    /// of 10 symbols at 1m granularity (~5.2M bars), each bar is ~200 bytes
+    /// → ~1 GB peak; within the 64 MiB integration-test budget for the
+    /// 10-symbol fixture (which uses synthetic bars, not full-year Parquet).
+    ///
+    /// A `debug_assert!` verifies per-symbol monotonic `venue_ts` order before
+    /// the merge runs (architect risk #1 — silent failure if out-of-order).
+    ///
+    /// # Errors
+    ///
+    /// Returns `FeedError::Io` if no Parquet files are found for any symbol.
+    /// Returns `FeedError::Parse` on Parquet schema errors.
+    pub fn merge_symbols(
+        &self,
+        symbol_paths: &[(Symbol, std::path::PathBuf)],
+        tf: Timeframe,
+    ) -> Result<Vec<Bar>, FeedError> {
+        let mut all_bars: Vec<Bar> = Vec::new();
+
+        for (symbol, _root) in symbol_paths {
+            let files = self.parquet_files(symbol);
+            if files.is_empty() {
+                return Err(FeedError::Io(format!(
+                    "no parquet files found for {} under {:?}",
+                    symbol, self.parquet_root
+                )));
+            }
+
+            let mut sym_bars: Vec<Bar> = Vec::new();
+            for file in &files {
+                let mut parsed = read_parquet_bars(file, symbol, tf)?;
+                sym_bars.append(&mut parsed);
+            }
+            sym_bars.sort_by_key(|b| b.open_ts);
+
+            // Architect risk #1: assert per-symbol monotonicity before merge.
+            debug_assert!(
+                sym_bars.windows(2).all(|w| w[0].open_ts <= w[1].open_ts),
+                "per-symbol bars must be monotonically non-decreasing in venue_ts for symbol {}",
+                symbol
+            );
+
+            all_bars.append(&mut sym_bars);
+        }
+
+        // k-way merge: sort by (venue_ts ASC, symbol ASC) per R12.2.
+        all_bars.sort_by(|a, b| {
+            a.open_ts
+                .cmp(&b.open_ts)
+                .then_with(|| a.symbol.0.cmp(&b.symbol.0))
+        });
+
+        Ok(all_bars)
+    }
+
+    /// Merge symbols from synthetic bar vectors (for testing / synthetic fallback).
+    ///
+    /// Same sort key as `merge_symbols`: `(venue_ts ASC, symbol ASC)`.
+    pub fn merge_synthetic(bars_by_symbol: Vec<Vec<Bar>>) -> Vec<Bar> {
+        let mut all_bars: Vec<Bar> = bars_by_symbol.into_iter().flatten().collect();
+        all_bars.sort_by(|a, b| {
+            a.open_ts
+                .cmp(&b.open_ts)
+                .then_with(|| a.symbol.0.cmp(&b.symbol.0))
+        });
+        all_bars
+    }
+}
+
 // ── MarketDataSource impl ─────────────────────────────────────────────────────
 
 #[async_trait]

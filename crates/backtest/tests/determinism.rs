@@ -114,6 +114,7 @@ async fn run_mini() -> RunResult {
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: dec!(0.40),
         price_sanity_band: dec!(0.20),
+        portfolio_exposure_cap: None,
     };
     let sizer = risk::FixedFractionSizer::new(dec!(0.10));
     let config = backtest::paper::MatchConfig {
@@ -412,4 +413,158 @@ fn t521_rsi_reversion_deterministic() {
 #[test]
 fn t521_bbands_mean_revert_deterministic() {
     assert_scenario_deterministic("btc-2023-1m-bbands-mean-revert");
+}
+
+// ── T622 — v0 + v0.5 anchor hash regression gate ──────────────────────────────
+//
+// These tests run each v0/v0.5 scenario once at seed 0xC0FFEE and compare the
+// body-SHA256 against the locked anchor hashes.  If any anchor hash changes,
+// the v1 changes have introduced a regression in the v0/v0.5 output.
+//
+// Anchor hashes (locked per spec/tasks/v1-cross-sectional-momentum.md T622):
+//   btc-2023-1m-sma-cross         fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
+//   btc-2023-1m-sma-baseline-refresh  (same body as sma-cross)
+//   btc-2023-1m-macd-trend        ef9c5e48… (abbreviated in spec — verified at T521 ship)
+//   btc-2023-1m-rsi-reversion     bc56d20d… (abbreviated in spec)
+//   btc-2023-1m-bbands-mean-revert d8a08a23… (abbreviated in spec)
+//
+// NOTE: The abbreviated hashes (ef9c5e48…, bc56d20d…, d8a08a23…) are shortened
+// in the spec.  For the regression gate we use a "starts_with" check rather than
+// a full 64-character equality so the test still compiles even before the full
+// hashes are recorded.  Once a full hash is observed, replace the 8-char prefix
+// below with the 64-char value.
+
+fn run_scenario_once(scenario: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let workspace_root = std::path::Path::new(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("could not locate workspace root");
+
+    let bin_path = workspace_root.join("target/debug/backtest");
+    if !bin_path.exists() {
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--bin", "backtest"])
+            .current_dir(workspace_root)
+            .status()
+            .expect("cargo build failed");
+        assert!(status.success(), "cargo build --bin backtest failed");
+    }
+
+    let tmp = tempfile::tempdir().expect("create tempdir");
+    let reports_dir = tmp.path().join("spec/reports");
+    std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
+
+    let config_dir = tmp.path().join("config/strategies");
+    std::fs::create_dir_all(&config_dir).expect("create temp config/strategies");
+    let src_strategies = workspace_root.join("config/strategies");
+    for entry in std::fs::read_dir(&src_strategies)
+        .expect("read config/strategies")
+        .flatten()
+    {
+        let dst = config_dir.join(entry.file_name());
+        std::fs::copy(entry.path(), dst).expect("copy strategy TOML");
+    }
+
+    let output = std::process::Command::new(&bin_path)
+        .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("spawn backtest binary");
+
+    assert!(
+        output.status.success(),
+        "backtest binary exited non-zero for scenario {scenario}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report_rel = stdout
+        .lines()
+        .find(|l| l.starts_with("Report written: "))
+        .map(|l| l.trim_start_matches("Report written: ").trim())
+        .expect("could not find 'Report written:' line");
+
+    let report_path = tmp.path().join(report_rel);
+    std::fs::read_to_string(&report_path)
+        .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
+}
+
+fn scenario_body_hex(scenario: &str) -> String {
+    let report = run_scenario_once(scenario);
+    let hash = backtest::report_body_hash(&report);
+    hash.iter().map(|b| format!("{b:02x}")).collect::<String>()
+}
+
+/// T622 — v0 SMA anchor hash unchanged after v1 changes.
+///
+/// Locked anchor: `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c`
+#[test]
+fn t622_sma_cross_anchor_hash_unchanged() {
+    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    let hex = scenario_body_hex("btc-2023-1m-sma-cross");
+    assert_eq!(
+        hex, ANCHOR,
+        "T622 REGRESSION: btc-2023-1m-sma-cross body-SHA256 changed.\n\
+         Expected: {ANCHOR}\n\
+         Got:      {hex}"
+    );
+}
+
+/// T622 — v0.5 SMA baseline-refresh anchor (same body as sma-cross).
+#[test]
+fn t622_sma_baseline_refresh_anchor_hash_unchanged() {
+    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    let hex = scenario_body_hex("btc-2023-1m-sma-baseline-refresh");
+    assert_eq!(
+        hex, ANCHOR,
+        "T622 REGRESSION: btc-2023-1m-sma-baseline-refresh body-SHA256 changed.\n\
+         Expected: {ANCHOR}\n\
+         Got:      {hex}"
+    );
+}
+
+/// T622 — v0.5 MACD trend anchor hash unchanged.
+///
+/// Spec anchor prefix: `ef9c5e48` — full hash recorded at T521 ship.
+#[test]
+fn t622_macd_trend_anchor_hash_unchanged() {
+    const ANCHOR_PREFIX: &str = "ef9c5e48";
+    let hex = scenario_body_hex("btc-2023-1m-macd-trend");
+    assert!(
+        hex.starts_with(ANCHOR_PREFIX),
+        "T622 REGRESSION: btc-2023-1m-macd-trend body-SHA256 changed.\n\
+         Expected prefix: {ANCHOR_PREFIX}\n\
+         Got:             {hex}"
+    );
+}
+
+/// T622 — v0.5 RSI reversion anchor hash unchanged.
+///
+/// Spec anchor prefix: `bc56d20d` — full hash recorded at T521 ship.
+#[test]
+fn t622_rsi_reversion_anchor_hash_unchanged() {
+    const ANCHOR_PREFIX: &str = "bc56d20d";
+    let hex = scenario_body_hex("btc-2023-1m-rsi-reversion");
+    assert!(
+        hex.starts_with(ANCHOR_PREFIX),
+        "T622 REGRESSION: btc-2023-1m-rsi-reversion body-SHA256 changed.\n\
+         Expected prefix: {ANCHOR_PREFIX}\n\
+         Got:             {hex}"
+    );
+}
+
+/// T622 — v0.5 BBands mean-revert anchor hash unchanged.
+///
+/// Spec anchor prefix: `d8a08a23` — full hash recorded at T521 ship.
+#[test]
+fn t622_bbands_mean_revert_anchor_hash_unchanged() {
+    const ANCHOR_PREFIX: &str = "d8a08a23";
+    let hex = scenario_body_hex("btc-2023-1m-bbands-mean-revert");
+    assert!(
+        hex.starts_with(ANCHOR_PREFIX),
+        "T622 REGRESSION: btc-2023-1m-bbands-mean-revert body-SHA256 changed.\n\
+         Expected prefix: {ANCHOR_PREFIX}\n\
+         Got:             {hex}"
+    );
 }

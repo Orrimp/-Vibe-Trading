@@ -520,6 +520,7 @@ fn strategies_summary(c: &Cockpit) -> String {
                     StrategyEventKind::Swap => strings::STRATEGIES_EVENT_SWAP,
                     StrategyEventKind::Unload => strings::STRATEGIES_EVENT_UNLOAD,
                     StrategyEventKind::Reject => strings::STRATEGIES_EVENT_REJECT,
+                    StrategyEventKind::RebalanceRejected => strings::STRATEGIES_EVENT_REJECT,
                 });
                 let position = if r.has_position {
                     strings::STRATEGIES_POSITION_HELD
@@ -554,6 +555,7 @@ fn strategies_summary(c: &Cockpit) -> String {
                 StrategyEventKind::Swap => (strings::STRATEGIES_EVENT_SWAP, "warn"),
                 StrategyEventKind::Unload => (strings::STRATEGIES_EVENT_UNLOAD, "fg_muted"),
                 StrategyEventKind::Reject => (strings::STRATEGIES_EVENT_REJECT, "neg"),
+                StrategyEventKind::RebalanceRejected => (strings::STRATEGIES_EVENT_REJECT, "neg"),
             };
             let id = ev
                 .strategy_id

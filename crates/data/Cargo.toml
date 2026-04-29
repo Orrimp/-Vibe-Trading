@@ -23,6 +23,9 @@ async-stream.workspace = true
 metrics.workspace = true
 rust_decimal_macros.workspace = true
 
+tokio-util.workspace = true
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
+mockall = { version = "0.13" }

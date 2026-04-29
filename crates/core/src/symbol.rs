@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 
 /// Exchange-native symbol, e.g. `"BTCUSDT"`.
 /// Uses slash-free format as required by spec (not `BTC/USDT`).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Symbol(pub SmolStr);
 

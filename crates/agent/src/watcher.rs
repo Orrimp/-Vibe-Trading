@@ -219,21 +219,30 @@ async fn handle_upsert(
     let source_path = path.to_string_lossy().to_string();
 
     // Step 1: Parse + typecheck + construct entirely outside the registry lock.
-    let config = match strategy::ComposedStrategyConfig::from_file(path) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            warn!(
-                source = %source_path,
-                error_code = %e.error_code(),
-                summary = %e.to_string(),
-                "strategy reload rejected — keeping old strategy"
-            );
-            // Derive strategy_id from filename stem (best-effort; None if unparsable)
+    //
+    // Dispatch by `kind` field: sniff the raw TOML to decide which loader to use.
+    // Supported kinds:
+    //   - "composed"                   → ComposedStrategy (v0.5)
+    //   - "cross_sectional_momentum"   → MomentumStrategy (v1)
+
+    // Sniff the `kind` field from the raw TOML to select the loader.
+    let raw_kind: Option<String> = std::fs::read(path)
+        .ok()
+        .and_then(|b| String::from_utf8(b).ok())
+        .and_then(|s| {
+            toml::from_str::<toml::Value>(&s)
+                .ok()
+                .and_then(|v| v.get("kind")?.as_str().map(|k| k.to_string()))
+        });
+
+    // Helper: emit a Reject event and return early.
+    // Defined as a macro-like block since closures can't be async here.
+    macro_rules! reject_strategy {
+        ($error_code:expr, $summary:expr) => {{
             let strategy_id_str = path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string());
-
             let ts_odt = ts_override
                 .and_then(|s| {
                     time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
@@ -241,8 +250,6 @@ async fn handle_upsert(
                 })
                 .unwrap_or_else(OffsetDateTime::now_utc);
             let ts = Timestamp::new(ts_odt);
-
-            // Write Reject audit row.
             let write = audit::journal::StrategyEventWrite {
                 kind: "Reject",
                 strategy_id: strategy_id_str.as_deref(),
@@ -250,35 +257,80 @@ async fn handle_upsert(
                 new_hash: None,
                 source_path: &source_path,
                 operator: "system",
-                error_code: Some(e.error_code()),
-                error_summary: Some(&e.to_string()),
+                error_code: Some($error_code),
+                error_summary: Some($summary),
                 ts: ts_override,
             };
             if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
                 error!(err = %db_err, "failed to write Reject audit event");
             }
-
-            // Publish to bus.
             bus.publish_strategy_error(CoreStrategyLoadError {
                 source_path: SmolStr::new(&source_path),
                 strategy_id: strategy_id_str.map(|s| StrategyId::new(s.as_str())),
-                error_code: SmolStr::new(e.error_code()),
-                error_summary: SmolStr::new(e.to_string()),
+                error_code: SmolStr::new($error_code),
+                error_summary: SmolStr::new($summary),
                 ts,
             });
             return;
-        }
-    };
+        }};
+    }
 
-    let id = StrategyId::new(config.id.as_str());
-    let hash_bytes = config.hash;
+    // Dispatch based on kind field.
+    let (id, hash_bytes, new_strategy): (StrategyId, [u8; 32], Box<dyn strategy::Strategy>) =
+        match raw_kind.as_deref() {
+            Some("cross_sectional_momentum") => {
+                // v1 MomentumStrategy path.
+                let source_path_smol = SmolStr::new(&source_path);
+                match strategy::CrossSectionalMomentumConfig::from_file(path) {
+                    Ok(cfg) => {
+                        let strat_id = StrategyId::new(cfg.id.as_str());
+                        let momentum =
+                            strategy::MomentumStrategy::from_config(cfg, source_path_smol.clone());
+                        let hash_bytes = momentum.hash;
+                        (strat_id, hash_bytes, Box::new(momentum))
+                    }
+                    Err(e) => {
+                        warn!(
+                            source = %source_path,
+                            error_code = %e.error_code(),
+                            summary = %e,
+                            "momentum strategy reload rejected — keeping old strategy"
+                        );
+                        let summary_owned = e.to_string();
+                        reject_strategy!(e.error_code(), summary_owned.as_str());
+                    }
+                }
+            }
+            _ => {
+                // Default: ComposedStrategy path (v0.5, or unknown kind → let ComposedConfig
+                // report the error with proper error code).
+                let source_path_smol = SmolStr::new(&source_path);
+                match strategy::ComposedStrategyConfig::from_file(path) {
+                    Ok(cfg) => {
+                        let strat_id = StrategyId::new(cfg.id.as_str());
+                        let hash_bytes = cfg.hash;
+                        let composed =
+                            strategy::ComposedStrategy::from_config(cfg, source_path_smol.clone());
+                        (strat_id, hash_bytes, Box::new(composed))
+                    }
+                    Err(e) => {
+                        warn!(
+                            source = %source_path,
+                            error_code = %e.error_code(),
+                            summary = %e,
+                            "strategy reload rejected — keeping old strategy"
+                        );
+                        let summary_owned = e.to_string();
+                        reject_strategy!(e.error_code(), summary_owned.as_str());
+                    }
+                }
+            }
+        };
+
     let hash_hex = hex_encode(&hash_bytes);
     let source_path_smol = SmolStr::new(&source_path);
 
-    // Construct the ComposedStrategy from config (allocation, outside guard).
-    let new_strategy: Box<dyn strategy::Strategy> = Box::new(
-        strategy::ComposedStrategy::from_config(config, source_path_smol.clone()),
-    );
+    // new_strategy is already constructed above.
 
     // Step 2: Atomic pointer-swap inside the write-guard (minimal critical section).
     // The old boxed strategy is returned for hash extraction.

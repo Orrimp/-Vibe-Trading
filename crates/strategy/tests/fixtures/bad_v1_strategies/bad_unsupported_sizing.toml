@@ -1,0 +1,11 @@
+# T605 negative fixture: unsupported_sizing — only equal_weight is supported in v1.
+id = "bad_unsupported_sizing"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+k_long = 1
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "fixed_fraction(0.1)"

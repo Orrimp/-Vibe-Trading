@@ -10,7 +10,8 @@ thiserror.workspace = true
 serde.workspace = true
 tracing.workspace = true
 rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-rust_decimal_macros.workspace = true

@@ -1,0 +1,11 @@
+# T605 negative fixture: invalid_universe — empty universe list.
+id = "bad_empty_universe"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = []
+k_long = 3
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"

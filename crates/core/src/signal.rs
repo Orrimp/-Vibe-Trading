@@ -39,6 +39,22 @@ impl SignalEvidence {
         }
     }
 
+    /// Create evidence for a momentum signal (v1).
+    ///
+    /// `action` is a human-readable tag: `"open"`, `"close"`, `"resize"`.
+    /// `score` is the vol-adjusted momentum score.
+    #[must_use]
+    pub fn momentum(action: &str, score: Decimal) -> Self {
+        Self {
+            fast_ma: None,
+            slow_ma: None,
+            extra: vec![
+                (SmolStr::new("action"), Decimal::ZERO), // tag — score not Decimal but works
+                (SmolStr::new(action), score),
+            ],
+        }
+    }
+
     /// Empty evidence (e.g. for Hold signals).
     #[must_use]
     pub fn empty() -> Self {

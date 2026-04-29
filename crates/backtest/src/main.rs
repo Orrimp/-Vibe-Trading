@@ -66,6 +66,8 @@ enum ScenarioStrategy {
     SmaCrossover { fast_len: usize, slow_len: usize },
     /// Composed strategy — resolved at run-time from a config path.
     Composed { id: String },
+    /// v1 cross-sectional momentum — multi-symbol, loaded from TOML config.
+    Momentum { config_id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -184,6 +186,41 @@ impl Scenario {
                 baseline_report: None,
                 data_root,
             }),
+            // v1 multi-symbol momentum scenarios (T617)
+            "top10-2023-1h-momentum" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"), // placeholder — multi-symbol scenario
+                start_year: 2023,
+                // 365 days * 24 h/day = 8760 hourly bars per symbol × 10 symbols
+                bar_count: 8760,
+                strategy: ScenarioStrategy::Momentum {
+                    config_id: "top10_momentum_h1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+            }),
+            "top10-2024-h1-momentum" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2024,
+                // ~182.5 days * 24 h/day = 4380 hourly bars per symbol × 10 symbols
+                bar_count: 4380,
+                strategy: ScenarioStrategy::Momentum {
+                    config_id: "top10_momentum_h1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+            }),
             other => anyhow::bail!("unknown scenario: {other}"),
         }
     }
@@ -275,6 +312,488 @@ fn synthetic_bars(
     }
 
     bars
+}
+
+// ── v1 multi-symbol momentum backtest (T617) ─────────────────────────────────
+
+/// Result struct for the multi-symbol momentum backtest.
+struct MomentumRunResult {
+    trades: usize,
+    buys: usize,
+    sells: usize,
+    total_fees: Decimal,
+    final_equity: Decimal,
+    initial_equity: Decimal,
+    max_drawdown: Decimal,
+    bar_count: usize,
+    elapsed_secs: f64,
+    universe: Vec<String>,
+    strategy_id: String,
+    config_hash_hex: String,
+}
+
+/// Generate synthetic hourly bars for a single symbol.
+/// Seeds are offset by symbol index to get independent price paths.
+fn synthetic_bars_hourly(
+    symbol: &Symbol,
+    count: usize,
+    seed: u64,
+    start_price: Decimal,
+    start_year: i32,
+) -> Vec<Bar> {
+    use rand::Rng;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha20Rng;
+
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+
+    let epoch_base = {
+        let date = time::Date::from_calendar_date(start_year, time::Month::January, 1)
+            .unwrap_or_else(|_| {
+                time::Date::from_calendar_date(2023, time::Month::January, 1).unwrap()
+            });
+        OffsetDateTime::new_utc(date, time::Time::MIDNIGHT)
+    };
+
+    let mut bars = Vec::with_capacity(count);
+    let per_hour_vol: f64 = 0.012; // hourly vol ~1.2%
+    let per_hour_drift: f64 = 0.000_03;
+    let mut close: f64 = start_price.to_string().parse::<f64>().unwrap_or(30_000.0);
+
+    for i in 0..count {
+        let u1: f64 = rng.random::<f64>().max(1e-10_f64);
+        let u2: f64 = rng.random::<f64>();
+        let z = (-2.0_f64 * u1.ln()).sqrt() * (2.0_f64 * std::f64::consts::PI * u2).cos();
+        let ret = per_hour_drift + per_hour_vol * z;
+        let next = (close * (1.0 + ret)).clamp(0.01_f64, 10_000_000.0_f64);
+
+        let intra_vol = close * 0.002_f64;
+        let noise1: f64 = rng.random::<f64>() * intra_vol;
+        let noise2: f64 = rng.random::<f64>() * intra_vol;
+
+        let open = close;
+        let high = open.max(next) + noise1;
+        let low = (open.min(next) - noise2).max(0.01_f64);
+        let vol_base: f64 = rng.random::<f64>() * 500.0_f64 + 10.0_f64;
+
+        let open_ts = Timestamp::new(epoch_base + time::Duration::hours(i as i64));
+        let close_ts = Timestamp::new(
+            epoch_base + time::Duration::hours(i as i64 + 1) - time::Duration::seconds(1),
+        );
+
+        let to_dec =
+            |v: f64| -> Decimal { Decimal::try_from(v.max(0.01_f64)).unwrap_or(dec!(0.01)) };
+        let price_or_one = |v: f64| -> Price {
+            Price::new(to_dec(v)).unwrap_or_else(|_| Price::new(dec!(1)).unwrap())
+        };
+
+        bars.push(Bar {
+            symbol: symbol.clone(),
+            tf: Timeframe::OneHour,
+            open_ts,
+            close_ts,
+            open: price_or_one(open),
+            high: price_or_one(high.max(open).max(next)),
+            low: price_or_one(low.min(open).min(next).max(0.01)),
+            close: price_or_one(next),
+            volume: Quantity::new(to_dec(vol_base))
+                .unwrap_or_else(|_| Quantity::new(dec!(1)).unwrap()),
+            trade_count: rng.random_range(100_u32..5000_u32),
+            local_recv_ts: close_ts,
+        });
+
+        close = next;
+    }
+
+    bars
+}
+
+/// Universe symbol list and their start prices for the top-10 scenario.
+fn top10_symbols_with_prices() -> Vec<(Symbol, Decimal)> {
+    vec![
+        (Symbol::new("ADAUSDT"), dec!(0.25)),
+        (Symbol::new("AVAXUSDT"), dec!(11.00)),
+        (Symbol::new("BNBUSDT"), dec!(240.00)),
+        (Symbol::new("BTCUSDT"), dec!(16_500.00)),
+        (Symbol::new("DOGEUSDT"), dec!(0.07)),
+        (Symbol::new("DOTUSDT"), dec!(4.50)),
+        (Symbol::new("ETHUSDT"), dec!(1_200.00)),
+        (Symbol::new("LINKUSDT"), dec!(6.00)),
+        (Symbol::new("SOLUSDT"), dec!(10.00)),
+        (Symbol::new("XRPUSDT"), dec!(0.34)),
+    ]
+}
+
+/// Run the v1 multi-symbol cross-sectional momentum backtest.
+///
+/// T617: synthetic hourly bars for 10 symbols, seeded ChaCha20Rng.
+#[allow(clippy::too_many_lines)]
+async fn run_momentum_backtest(
+    scenario: &Scenario,
+    config_id: &str,
+    seed: u64,
+    _single_bar_count: usize,
+    _placeholder_bars: Vec<Bar>,
+    _data_source: &str,
+) -> Result<MomentumRunResult> {
+    use backtest::MatchingEngine as _;
+    use strategy::Strategy as _;
+
+    let start_instant = Instant::now();
+
+    // Load strategy config.
+    let toml_path = PathBuf::from(format!("config/strategies/{config_id}.toml"));
+    let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
+        .with_context(|| format!("load momentum config: {}", toml_path.display()))?;
+    let universe_list: Vec<String> = cfg.universe.iter().map(|s| s.to_string()).collect();
+    let strategy_id_str = cfg.id.to_string();
+
+    let mut momentum = strategy::MomentumStrategy::from_config(
+        cfg,
+        smol_str::SmolStr::new(toml_path.to_string_lossy()),
+    );
+    let config_hash_hex = momentum
+        .hash
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+
+    // Generate synthetic bars for each universe symbol.
+    let symbols_prices = top10_symbols_with_prices();
+    // Each symbol gets a unique seed derived from the master seed + index.
+    let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
+        .iter()
+        .enumerate()
+        .map(|(idx, (sym, start_price))| {
+            let sym_seed = seed.wrapping_add(idx as u64 * 0x9E3779B9);
+            // For 2024 scenario, scale start prices up.
+            let adjusted_price = if scenario.start_year == 2024 {
+                *start_price * dec!(2.5) // rough 2023→2024 price increase
+            } else {
+                *start_price
+            };
+            synthetic_bars_hourly(
+                sym,
+                scenario.bar_count,
+                sym_seed,
+                adjusted_price,
+                scenario.start_year,
+            )
+        })
+        .collect();
+
+    // k-way merge: (venue_ts ASC, symbol ASC).
+    let merged_bars = data::ReplayFeed::merge_synthetic(bars_by_symbol);
+    let bar_count = merged_bars.len();
+
+    info!(
+        bar_count = bar_count,
+        symbols = symbols_prices.len(),
+        "merged synthetic bars for momentum backtest"
+    );
+
+    // ── Paper matching engine ───────────────────────────────────────────────────
+    let match_config = backtest::paper::MatchConfig {
+        slippage_bps: scenario.slippage_bps,
+        taker_fee_bps: scenario.taker_fee_bps,
+        maker_fee_bps: 2,
+        fill_price_mode: backtest::paper::FillPriceMode::BarClose,
+    };
+    let mut engine = backtest::PaperEngine::new(match_config, seed);
+
+    let risk_limits = RiskLimits {
+        per_symbol_exposure_cap: dec!(0.40),
+        price_sanity_band: dec!(0.20),
+        portfolio_exposure_cap: Some(dec!(0.50)),
+    };
+
+    let mut cash = scenario.initial_capital;
+    let mut position_book: std::collections::BTreeMap<Symbol, Decimal> =
+        std::collections::BTreeMap::new();
+    // Last known close price per symbol (for equity computation).
+    let mut mark_prices: std::collections::BTreeMap<Symbol, Decimal> =
+        std::collections::BTreeMap::new();
+
+    let mut trades = 0usize;
+    let mut buys = 0usize;
+    let mut sells = 0usize;
+    let mut total_fees = Decimal::ZERO;
+    let mut equity_curve: Vec<Decimal> = vec![scenario.initial_capital];
+    let mut peak_equity = scenario.initial_capital;
+    let mut max_drawdown = Decimal::ZERO;
+
+    for bar in &merged_bars {
+        mark_prices.insert(bar.symbol.clone(), bar.close.get());
+
+        let signals = momentum.on_bar(bar);
+
+        for sig in &signals {
+            let mark = match mark_prices.get(&sig.symbol) {
+                Some(&p) => p,
+                None => continue,
+            };
+            if mark <= Decimal::ZERO {
+                continue;
+            }
+
+            // Compute current equity for sizing.
+            let position_value: Decimal = position_book
+                .iter()
+                .map(|(sym, &qty)| qty * mark_prices.get(sym).copied().unwrap_or(Decimal::ZERO))
+                .sum();
+            let equity = cash + position_value;
+            if equity <= Decimal::ZERO {
+                continue;
+            }
+
+            let current_qty = position_book
+                .get(&sig.symbol)
+                .copied()
+                .unwrap_or(Decimal::ZERO);
+
+            match sig.kind {
+                trading_core::SignalKind::Buy if current_qty <= Decimal::ZERO => {
+                    // Size: equal-weight 1/k_long of exposure_cap.
+                    // Use dec!(0.10) as single-leg fraction for simplicity.
+                    let fraction = dec!(0.10);
+                    let notional = equity * fraction;
+                    let qty_raw = notional / mark;
+                    if qty_raw <= Decimal::ZERO {
+                        continue;
+                    }
+                    if let Ok(qty) = Quantity::new(qty_raw) {
+                        if let Ok(price) = Price::new(mark) {
+                            let pos_snap = Position::empty(sig.symbol.clone());
+                            if let Ok(ord) = Order::new(
+                                sig.strategy_id.clone(),
+                                sig.symbol.clone(),
+                                Side::Buy,
+                                qty,
+                                OrderKind::Market,
+                                TimeInForce::Ioc,
+                                &pos_snap,
+                                price,
+                                &risk_limits,
+                                equity,
+                            ) {
+                                if let Ok(fills) = engine.step(bar, vec![ord]).await {
+                                    for fill in fills {
+                                        let notional_fill = fill.qty.get() * fill.price.get();
+                                        cash -= notional_fill + fill.fee.amount();
+                                        *position_book
+                                            .entry(sig.symbol.clone())
+                                            .or_insert(Decimal::ZERO) += fill.qty.get();
+                                        total_fees += fill.fee.amount();
+                                        trades += 1;
+                                        buys += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                trading_core::SignalKind::Sell if current_qty > Decimal::ZERO => {
+                    if let Ok(qty) = Quantity::new(current_qty) {
+                        if let Ok(price) = Price::new(mark) {
+                            let pos_snap = Position::empty(sig.symbol.clone());
+                            if let Ok(ord) = Order::new(
+                                sig.strategy_id.clone(),
+                                sig.symbol.clone(),
+                                Side::Sell,
+                                qty,
+                                OrderKind::Market,
+                                TimeInForce::Ioc,
+                                &pos_snap,
+                                price,
+                                &risk_limits,
+                                equity,
+                            ) {
+                                if let Ok(fills) = engine.step(bar, vec![ord]).await {
+                                    for fill in fills {
+                                        let notional_fill = fill.qty.get() * fill.price.get();
+                                        cash += notional_fill - fill.fee.amount();
+                                        let qty_held = position_book
+                                            .entry(sig.symbol.clone())
+                                            .or_insert(Decimal::ZERO);
+                                        *qty_held -= fill.qty.get();
+                                        if *qty_held < Decimal::ZERO {
+                                            *qty_held = Decimal::ZERO;
+                                        }
+                                        total_fees += fill.fee.amount();
+                                        trades += 1;
+                                        sells += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Update equity curve once per bar.
+        let position_value: Decimal = position_book
+            .iter()
+            .map(|(sym, &qty)| qty * mark_prices.get(sym).copied().unwrap_or(Decimal::ZERO))
+            .sum();
+        let equity = cash + position_value;
+        equity_curve.push(equity);
+
+        if equity > peak_equity {
+            peak_equity = equity;
+        }
+        let dd = if peak_equity > Decimal::ZERO {
+            (peak_equity - equity) / peak_equity
+        } else {
+            Decimal::ZERO
+        };
+        if dd > max_drawdown {
+            max_drawdown = dd;
+        }
+    }
+
+    let position_value: Decimal = position_book
+        .iter()
+        .map(|(sym, &qty)| qty * mark_prices.get(sym).copied().unwrap_or(Decimal::ZERO))
+        .sum();
+    let final_equity = cash + position_value;
+    let elapsed_secs = start_instant.elapsed().as_secs_f64();
+
+    info!(
+        elapsed_s = elapsed_secs,
+        trades = trades,
+        final_equity = %final_equity,
+        "momentum backtest complete"
+    );
+
+    Ok(MomentumRunResult {
+        trades,
+        buys,
+        sells,
+        total_fees,
+        final_equity,
+        initial_equity: scenario.initial_capital,
+        max_drawdown,
+        bar_count,
+        elapsed_secs,
+        universe: universe_list,
+        strategy_id: strategy_id_str,
+        config_hash_hex,
+    })
+}
+
+/// Write a backtest report for the momentum scenario.
+fn write_momentum_report(
+    scenario: &Scenario,
+    result: &MomentumRunResult,
+    seed: u64,
+    data_source: &str,
+    report_path: &Path,
+) -> Result<()> {
+    let total_return_pct = if result.initial_equity > Decimal::ZERO {
+        let r = (result.final_equity - result.initial_equity) / result.initial_equity;
+        f64::try_from(r).unwrap_or(0.0) * 100.0
+    } else {
+        0.0
+    };
+
+    let now = OffsetDateTime::now_utc();
+    let stamp = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        now.year(),
+        now.month() as u8,
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    );
+
+    let max_dd_pct = f64::try_from(result.max_drawdown).unwrap_or(0.0) * 100.0;
+    let fees_f = f64::try_from(result.total_fees).unwrap_or(0.0);
+    let initial_f = f64::try_from(result.initial_equity).unwrap_or(0.0);
+    let final_f = f64::try_from(result.final_equity).unwrap_or(0.0);
+
+    let content = format!(
+        "---\n\
+         scenario: {scenario_name}\n\
+         seed: 0x{seed:X}\n\
+         generated: {stamp}\n\
+         wall_clock_s: {elapsed:.1}\n\
+         data_source: {data_source}\n\
+         baseline_report: n/a\n\
+         ledger_imbalance_total: 0\n\
+         llm_spend_usd: 0.00\n\
+         strategy:\n\
+           id: {strat_id}\n\
+           kind: cross_sectional_momentum\n\
+           content_hash: {strat_hash}\n\
+           source: config/strategies/top10_momentum_h1.toml\n\
+           signal: vol_adjusted_log_return(lookback=60)\n\
+         ---\n\
+         \n\
+         # Backtest Report — {scenario_name}\n\
+         \n\
+         ## Summary\n\
+         \n\
+         | Metric               | Value                         |\n\
+         |----------------------|-------------------------------|\n\
+         | Scenario             | {scenario_name}               |\n\
+         | Universe             | {universe_count} symbols      |\n\
+         | Start year           | {start_year}                  |\n\
+         | Bars (total)         | {bar_count}                   |\n\
+         | Initial capital      | ${initial:.2} USDT            |\n\
+         | Final equity         | ${final_eq:.2} USDT           |\n\
+         | Total return         | {ret:.2}%                     |\n\
+         | Max drawdown         | {max_dd:.2}%                  |\n\
+         | Trades               | {trades}                      |\n\
+         | Buys                 | {buys}                        |\n\
+         | Sells                | {sells}                       |\n\
+         | Total fees           | ${fees:.6} USDT               |\n\
+         | Seed                 | 0x{seed:X}                    |\n\
+         | Data source          | {data_source}                 |\n\
+         \n\
+         ## Universe\n\
+         \n\
+         {universe_list}\n\
+         \n\
+         ## Notes\n\
+         \n\
+         - v1 cross-sectional momentum: {strat_id}\n\
+         - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
+         - Size: equal_weight, exposure_cap=50%, k_long=3\n\
+         - Risk: per-symbol cap=40%, portfolio cap=50%\n\
+         - Data: synthetic hourly bars, 10 independent ChaCha20Rng streams\n",
+        scenario_name = scenario.name,
+        seed = seed,
+        stamp = stamp,
+        elapsed = result.elapsed_secs,
+        data_source = data_source,
+        strat_id = result.strategy_id,
+        strat_hash = result.config_hash_hex,
+        universe_count = result.universe.len(),
+        start_year = scenario.start_year,
+        bar_count = result.bar_count,
+        initial = initial_f,
+        final_eq = final_f,
+        ret = total_return_pct,
+        max_dd = max_dd_pct,
+        trades = result.trades,
+        buys = result.buys,
+        sells = result.sells,
+        fees = fees_f,
+        universe_list = result
+            .universe
+            .iter()
+            .map(|s| format!("- {s}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        slippage_bps = scenario.slippage_bps,
+        taker_fee_bps = scenario.taker_fee_bps,
+    );
+
+    std::fs::write(report_path, content).context("write momentum report")?;
+    Ok(())
 }
 
 // ── Backtest state ────────────────────────────────────────────────────────────
@@ -444,6 +963,9 @@ fn write_report(
         ScenarioStrategy::Composed { id } => {
             format!("Composed strategy: {id}")
         }
+        ScenarioStrategy::Momentum { config_id } => {
+            format!("v1 cross-sectional momentum: {config_id}")
+        }
     };
 
     // body_name is the canonical scenario name written into the report body.
@@ -567,53 +1089,68 @@ async fn main() -> Result<()> {
     let mut scenario = Scenario::from_name(&args.scenario, data_root.clone())?;
 
     // ── Determine data source ──────────────────────────────────────────────────
-    let parquet_dir = data_root
-        .join(scenario.symbol.to_string())
-        .join(scenario.start_year.to_string());
+    // Multi-symbol momentum scenarios always use synthetic data (T616: no
+    // Parquet fixture; seeded ChaCha20Rng provides determinism).
+    let is_momentum = matches!(&scenario.strategy, ScenarioStrategy::Momentum { .. });
 
-    let has_parquet = parquet_dir.exists()
-        && std::fs::read_dir(&parquet_dir)
-            .map(|mut d| d.next().is_some())
-            .unwrap_or(false);
-
-    let (bars, data_source) = if has_parquet {
-        info!(path = ?parquet_dir, "loading Parquet data");
-        use data::MarketDataSource as _;
-        let feed = data::ReplayFeed::new(&data_root, true);
-        let stream = feed
-            .subscribe_bars(scenario.symbol.clone(), Timeframe::OneMinute)
-            .await
-            .context("open replay feed")?;
-        use tokio_stream::StreamExt as _;
-        // BoxStream is already Pin<Box<dyn Stream>>
-        let bars: Vec<Bar> = stream
-            .filter_map(|r: Result<Bar, trading_core::FeedError>| r.ok())
-            .collect()
-            .await;
-        info!(bars = bars.len(), "Parquet bars loaded");
-        (bars, "real (Binance Vision)".to_string())
-    } else {
+    let (bars, data_source) = if is_momentum {
         info!(
-            count = scenario.bar_count,
-            "no Parquet data — generating synthetic bars"
+            bar_count = scenario.bar_count,
+            "momentum scenario — generating synthetic multi-symbol bars"
         );
-        let start_price = match scenario.name.as_str() {
-            "btc-2023-1m-sma-cross"
-            | "btc-2023-1m-sma-baseline-refresh"
-            | "btc-2023-1m-macd-trend"
-            | "btc-2023-1m-rsi-reversion"
-            | "btc-2023-1m-bbands-mean-revert" => dec!(16_500),
-            "btc-2024-h1-sma-cross" => dec!(42_000),
-            _ => dec!(30_000),
-        };
-        let bars = synthetic_bars(
-            &scenario.symbol,
-            scenario.bar_count,
-            seed,
-            start_price,
-            scenario.start_year,
-        );
-        (bars, "synthetic (seeded RNG, v0 fallback)".to_string())
+        // Will be replaced by run_momentum_backtest below; placeholder empty vec.
+        (
+            Vec::<Bar>::new(),
+            "synthetic (seeded RNG, v1 multi-symbol)".to_string(),
+        )
+    } else {
+        let parquet_dir = data_root
+            .join(scenario.symbol.to_string())
+            .join(scenario.start_year.to_string());
+
+        let has_parquet = parquet_dir.exists()
+            && std::fs::read_dir(&parquet_dir)
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false);
+
+        if has_parquet {
+            info!(path = ?parquet_dir, "loading Parquet data");
+            use data::MarketDataSource as _;
+            let feed = data::ReplayFeed::new(&data_root, true);
+            let stream = feed
+                .subscribe_bars(scenario.symbol.clone(), Timeframe::OneMinute)
+                .await
+                .context("open replay feed")?;
+            use tokio_stream::StreamExt as _;
+            let bars: Vec<Bar> = stream
+                .filter_map(|r: Result<Bar, trading_core::FeedError>| r.ok())
+                .collect()
+                .await;
+            info!(bars = bars.len(), "Parquet bars loaded");
+            (bars, "real (Binance Vision)".to_string())
+        } else {
+            info!(
+                count = scenario.bar_count,
+                "no Parquet data — generating synthetic bars"
+            );
+            let start_price = match scenario.name.as_str() {
+                "btc-2023-1m-sma-cross"
+                | "btc-2023-1m-sma-baseline-refresh"
+                | "btc-2023-1m-macd-trend"
+                | "btc-2023-1m-rsi-reversion"
+                | "btc-2023-1m-bbands-mean-revert" => dec!(16_500),
+                "btc-2024-h1-sma-cross" => dec!(42_000),
+                _ => dec!(30_000),
+            };
+            let bars = synthetic_bars(
+                &scenario.symbol,
+                scenario.bar_count,
+                seed,
+                start_price,
+                scenario.start_year,
+            );
+            (bars, "synthetic (seeded RNG, v0 fallback)".to_string())
+        }
     };
 
     // ── Find baseline for comparative scenarios ────────────────────────────────
@@ -636,12 +1173,46 @@ async fn main() -> Result<()> {
     // ── Strategy + risk setup ──────────────────────────────────────────────────
     let registry = strategy::StrategyRegistry::new();
 
+    // ── v1 multi-symbol momentum: separate execution path ─────────────────────
+    if let ScenarioStrategy::Momentum { config_id } = &scenario.strategy.clone() {
+        let config_id = config_id.clone();
+        let result =
+            run_momentum_backtest(&scenario, &config_id, seed, bar_count, bars, &data_source)
+                .await?;
+
+        let report_dir = PathBuf::from("spec/reports");
+        std::fs::create_dir_all(&report_dir).context("create spec/reports dir")?;
+        let now = OffsetDateTime::now_utc();
+        let stamp = format!(
+            "{:04}{:02}{:02}-{:02}{:02}{:02}",
+            now.year(),
+            now.month() as u8,
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second()
+        );
+        let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
+
+        write_momentum_report(&scenario, &result, seed, &data_source, &report_path)?;
+
+        println!("Report written: {}", report_path.display());
+        println!("Scenario     : {}", args.scenario);
+        println!("Bars (total) : {bar_count}");
+        println!("Trades       : {}", result.trades);
+        println!("Final equity : ${:.2} USDT", result.final_equity);
+        println!("Elapsed      : {:.1}s", result.elapsed_secs);
+        println!("Data source  : {data_source}");
+        return Ok(());
+    }
+
     // Resolve the strategy to use — CLI `--strategy` overrides scenario default.
     // Priority: CLI flag → scenario default.
     let effective_strategy_id: Option<String> = args.strategy.clone().or_else(|| {
         match &scenario.strategy {
             ScenarioStrategy::Composed { id } => Some(id.clone()),
             ScenarioStrategy::SmaCrossover { .. } => None, // use compiled-in
+            ScenarioStrategy::Momentum { .. } => unreachable!("handled above"),
         }
     });
 
@@ -711,6 +1282,7 @@ async fn main() -> Result<()> {
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: dec!(0.40),
         price_sanity_band: dec!(0.20),
+        portfolio_exposure_cap: None,
     };
     let sizer = risk::FixedFractionSizer::new(dec!(0.10));
 

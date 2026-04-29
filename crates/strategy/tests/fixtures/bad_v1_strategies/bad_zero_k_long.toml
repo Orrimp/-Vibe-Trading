@@ -1,0 +1,11 @@
+# T605 negative fixture: invalid_k_long — k_long = 0.
+id = "bad_zero_k_long"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+k_long = 0
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"

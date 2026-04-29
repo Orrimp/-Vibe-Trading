@@ -410,6 +410,40 @@ pub struct StrategyEventWrite<'a> {
     pub ts: Option<&'a str>,
 }
 
+/// Write a `rebalance_rejected` event to the `strategy_events` table (T608 — v1 Q6).
+///
+/// Extends `strategy_events.kind` with `"rebalance_rejected"`.
+/// No SQL migration — the `kind` column is TEXT.
+/// Reconciler invariant preserved: `strategy_events` carries no money.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.rebalance_rejected", skip(ledger), fields(strategy_id = %strategy_id, error_code = %error_code))]
+pub async fn rebalance_rejected(
+    ledger: &Ledger,
+    strategy_id: &str,
+    error_code: &str,
+    error_summary: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    strategy_event(
+        ledger,
+        &StrategyEventWrite {
+            kind: "RebalanceRejected",
+            strategy_id: Some(strategy_id),
+            old_hash: None,
+            new_hash: None,
+            source_path: "",
+            operator: "system",
+            error_code: Some(error_code),
+            error_summary: Some(error_summary),
+            ts,
+        },
+    )
+    .await
+}
+
 /// Verify that for a given transaction `Σ debits == Σ credits`.
 ///
 /// # Errors

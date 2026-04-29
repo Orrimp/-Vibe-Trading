@@ -10,9 +10,9 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
 # kand excluded (compile bug in 0.2.2) — batch SMA uses Decimal arithmetic
 quantedge-ta.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-rust_decimal_macros.workspace = true

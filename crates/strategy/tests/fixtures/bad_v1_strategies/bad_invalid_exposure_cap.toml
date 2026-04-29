@@ -1,0 +1,11 @@
+# T605 negative fixture: invalid_exposure_cap — value > 1.
+id = "bad_invalid_exposure_cap"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+k_long = 1
+k_short = 0
+exposure_cap = 1.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"

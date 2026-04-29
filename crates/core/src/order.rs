@@ -62,6 +62,12 @@ pub struct RiskLimits {
     pub per_symbol_exposure_cap: Decimal,
     /// Price sanity band: reject if `|price - mark| / mark > band`.
     pub price_sanity_band: Decimal,
+    /// v1 — optional portfolio-level exposure cap: sum of all long notionals
+    /// as a fraction of equity.  `None` = no portfolio cap (v0 backward-compat).
+    /// When `Some(cap)`, `risk::size_portfolio_target` enforces the cap
+    /// atomically across the entire rebalance vector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub portfolio_exposure_cap: Option<Decimal>,
 }
 
 impl Default for RiskLimits {
@@ -69,6 +75,7 @@ impl Default for RiskLimits {
         Self {
             per_symbol_exposure_cap: Decimal::new(40, 2), // 0.40
             price_sanity_band: Decimal::new(10, 2),       // 0.10 = 10%
+            portfolio_exposure_cap: None,                 // v0 compat — no portfolio cap
         }
     }
 }

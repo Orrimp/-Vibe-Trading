@@ -140,7 +140,9 @@ fn event_row(ev: &StrategyEventView) -> Element<'_, Message> {
         StrategyEventKind::Load => (STRATEGIES_EVENT_LOAD, color::ACCENT),
         StrategyEventKind::Swap => (STRATEGIES_EVENT_SWAP, color::WARN),
         StrategyEventKind::Unload => (STRATEGIES_EVENT_UNLOAD, color::FG_MUTED),
-        StrategyEventKind::Reject => (STRATEGIES_EVENT_REJECT, color::NEG),
+        StrategyEventKind::Reject | StrategyEventKind::RebalanceRejected => {
+            (STRATEGIES_EVENT_REJECT, color::NEG)
+        }
     };
     let id = ev
         .strategy_id
@@ -169,6 +171,6 @@ pub(crate) fn event_kind_label(ev: &StrategyEventView) -> &'static str {
         StrategyEventKind::Load => STRATEGIES_EVENT_LOAD,
         StrategyEventKind::Swap => STRATEGIES_EVENT_SWAP,
         StrategyEventKind::Unload => STRATEGIES_EVENT_UNLOAD,
-        StrategyEventKind::Reject => STRATEGIES_EVENT_REJECT,
+        StrategyEventKind::Reject | StrategyEventKind::RebalanceRejected => STRATEGIES_EVENT_REJECT,
     }
 }

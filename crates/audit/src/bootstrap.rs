@@ -50,3 +50,41 @@ pub async fn chart_of_accounts(ledger: &Ledger) -> Result<(), LedgerError> {
     }
     Ok(())
 }
+
+/// Idempotently seed v1 universe asset accounts for the given base assets (T610).
+///
+/// Creates `assets:position:<ASSET>` and `assets:position_mark:<ASSET>` for
+/// each base asset that is not already in the chart of accounts.
+///
+/// Uses `INSERT OR IGNORE` so restarting the agent is a no-op.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on any SQL error.
+#[instrument(name = "ledger.bootstrap_v1_universe", skip_all)]
+pub async fn seed_universe_accounts(
+    ledger: &Ledger,
+    base_assets: &[&str],
+) -> Result<(), LedgerError> {
+    for asset in base_assets {
+        let position_id = format!("assets:position:{asset}");
+        let position_mark_id = format!("assets:position_mark:{asset}");
+
+        sqlx::query("INSERT OR IGNORE INTO accounts (id, kind, currency) VALUES (?, ?, ?)")
+            .bind(&position_id)
+            .bind("asset")
+            .bind(*asset)
+            .execute(&ledger.pool)
+            .await
+            .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+        sqlx::query("INSERT OR IGNORE INTO accounts (id, kind, currency) VALUES (?, ?, ?)")
+            .bind(&position_mark_id)
+            .bind("asset")
+            .bind(*asset)
+            .execute(&ledger.pool)
+            .await
+            .map_err(|e| LedgerError::Database(e.to_string()))?;
+    }
+    Ok(())
+}

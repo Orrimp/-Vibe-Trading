@@ -127,6 +127,7 @@ mod tests {
         RiskLimits {
             per_symbol_exposure_cap: dec!(0.40), // 40%
             price_sanity_band: dec!(0.10),
+            portfolio_exposure_cap: None,
         }
     }
 

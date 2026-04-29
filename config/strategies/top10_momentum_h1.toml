@@ -1,0 +1,46 @@
+# v1 — Cross-sectional momentum strategy (T615)
+# Top-K long-only, hourly rebalance, vol-adjusted log-return scoring.
+# Q3: long-only (k_short = 0 enforced; loader rejects any positive value).
+# Q2: funding rates observed externally — strategy does NOT consume them.
+
+id     = "top10_momentum_h1"
+kind   = "cross_sectional_momentum"
+stage  = "research"
+
+universe = [
+    "ADAUSDT",
+    "AVAXUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOGEUSDT",
+    "DOTUSDT",
+    "ETHUSDT",
+    "LINKUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+]
+
+# Lookback window for log-return and volatility computation (60 bars = 1 hour at 1-min bars,
+# or exactly 1 bar at 1h bars).  Spec default: 60.
+lookback_minutes      = 60
+
+# Rebalance every 60 minutes (1h bar close triggers on_bar).
+rebalance_minutes     = 60
+
+# Select top-3 symbols by vol-adjusted score.
+k_long                = 3
+
+# Long-only (Q3 — loader rejects k_short > 0).
+k_short               = 0
+
+# Maximum total portfolio long exposure (50% of equity).
+exposure_cap          = "0.50"
+
+# Drift threshold: rebalance if any leg drifts more than 10% from target.
+drift_rebalance_threshold = "0.10"
+
+# Volatility floor prevents division by near-zero vol (Decimal, not f64).
+vol_floor             = "0.000001"
+
+# Equal-weight allocation across selected symbols (only supported value in v1).
+size                  = "equal_weight"

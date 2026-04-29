@@ -400,6 +400,7 @@ fn parse_strategy_event_view(
         "Swap" => StrategyEventKind::Swap,
         "Unload" => StrategyEventKind::Unload,
         "Reject" => StrategyEventKind::Reject,
+        "RebalanceRejected" | "rebalance_rejected" => StrategyEventKind::RebalanceRejected,
         other => {
             return Err(LedgerError::Database(format!(
                 "unknown strategy event kind: {other}"
@@ -419,6 +420,93 @@ fn parse_strategy_event_view(
         error_code: error_code.map(SmolStr::new),
         error_summary: error_summary.map(SmolStr::new),
     })
+}
+
+// ── Per-symbol P&L attribution (v1 T609) ─────────────────────────────────────
+
+/// Return per-symbol realized P&L in `[since, until]`, sorted alphabetically.
+///
+/// Aggregates credits minus debits on `income:realized_pnl` split by symbol
+/// (derived from the transaction description pattern `"<side> <qty> <symbol> @ <price>"`).
+/// Zero-P&L symbols are omitted.
+///
+/// # P&L sum invariant (R8.5)
+///
+/// `Σ pnl_by_symbol(since, until) == realized_pnl_since(since)` when
+/// `until` is the end of the window.  Asserted by integration tests.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn pnl_by_symbol(
+    ledger: &Ledger,
+    since: Timestamp,
+    until: Timestamp,
+) -> Result<Vec<(Symbol, Money<Usdt>)>, LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Join journal_entries on income:realized_pnl with journal_transactions
+    // to extract the symbol from the description.
+    let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
+        "SELECT je.debit_amount, je.credit_amount, je.ts, jt.id, jt.description \
+         FROM journal_entries je \
+         JOIN journal_transactions jt ON je.transaction_id = jt.id \
+         WHERE je.account_id = 'income:realized_pnl' \
+           AND je.ts >= ? AND je.ts <= ?",
+    )
+    .bind(&since_str)
+    .bind(&until_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Accumulate per-symbol P&L.
+    let mut by_symbol: std::collections::BTreeMap<Symbol, Decimal> =
+        std::collections::BTreeMap::new();
+
+    for (dr_str, cr_str, _ts_str, _txn_id, description) in rows {
+        let dr: Decimal = dr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("pnl_by_symbol: parse debit".into()))?;
+        let cr: Decimal = cr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("pnl_by_symbol: parse credit".into()))?;
+        let pnl_delta = cr - dr; // income: credit = profit, debit = loss
+
+        // Extract symbol from transaction description.
+        // Format: "<side> <qty> <symbol> @ <price>"
+        let symbol = extract_symbol_from_description(&description);
+        *by_symbol.entry(symbol).or_insert(Decimal::ZERO) += pnl_delta;
+    }
+
+    // Filter zero-P&L symbols, sort alphabetically (BTreeMap is already sorted).
+    let result: Vec<(Symbol, Money<Usdt>)> = by_symbol
+        .into_iter()
+        .filter(|(_sym, pnl)| *pnl != Decimal::ZERO)
+        .map(|(sym, pnl)| (sym, Money::<Usdt>::from_decimal(pnl)))
+        .collect();
+
+    Ok(result)
+}
+
+/// Extract the symbol from a journal transaction description.
+///
+/// Expected format: `"<side> <qty> <symbol> @ <price>"`.
+/// Returns `Symbol::new("UNKNOWN")` if the format doesn't match.
+fn extract_symbol_from_description(desc: &str) -> Symbol {
+    let parts: Vec<&str> = desc.splitn(5, ' ').collect();
+    if parts.len() >= 3 {
+        Symbol::new(parts[2])
+    } else {
+        Symbol::new("UNKNOWN")
+    }
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

@@ -149,6 +149,7 @@ mod tests {
         let limits = RiskLimits {
             per_symbol_exposure_cap: dec!(1.0), // allow large orders in test
             price_sanity_band: dec!(0.5),
+            portfolio_exposure_cap: None,
         };
         Order::new(
             StrategyId::new("test"),

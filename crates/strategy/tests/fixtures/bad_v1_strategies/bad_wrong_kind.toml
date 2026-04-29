@@ -1,0 +1,11 @@
+# T605 negative fixture: unsupported_kind — wrong kind field.
+id = "bad_wrong_kind"
+kind = "composed"
+stage = "research"
+universe = ["BTCUSDT"]
+k_long = 1
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"

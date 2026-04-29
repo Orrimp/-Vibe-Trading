@@ -73,6 +73,10 @@ pub struct StrategyLoadError {
 
 /// Discriminator for a `strategy_events` row returned by
 /// `audit::query::strategy_history` / `strategy_events_since`.
+///
+/// v1 adds `RebalanceRejected` (Q6) — written to `strategy_events` table
+/// with `kind = "rebalance_rejected"` when the portfolio-exposure validator
+/// refuses a rebalance vector. No schema migration needed (TEXT column).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum StrategyEventKind {
@@ -80,6 +84,8 @@ pub enum StrategyEventKind {
     Swap,
     Unload,
     Reject,
+    /// v1 Q6 — risk gate rejected the rebalance vector (portfolio exposure breach).
+    RebalanceRejected,
 }
 
 impl std::fmt::Display for StrategyEventKind {
@@ -89,6 +95,7 @@ impl std::fmt::Display for StrategyEventKind {
             Self::Swap => write!(f, "Swap"),
             Self::Unload => write!(f, "Unload"),
             Self::Reject => write!(f, "Reject"),
+            Self::RebalanceRejected => write!(f, "RebalanceRejected"),
         }
     }
 }

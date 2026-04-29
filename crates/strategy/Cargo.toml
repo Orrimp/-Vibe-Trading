@@ -31,3 +31,7 @@ time.workspace = true
 [[bench]]
 name = "composed_strategies"
 harness = false
+
+[[bench]]
+name = "cross_sectional"
+harness = false

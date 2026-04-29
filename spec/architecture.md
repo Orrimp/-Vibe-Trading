@@ -2,7 +2,7 @@
 slug: architecture
 status: in-progress
 owner: architect
-updated: 2026-04-19
+updated: 2026-04-29
 ---
 
 # Architecture — Crypto Trading Agent
@@ -457,6 +457,279 @@ bounded by file-edit cadence.
 - Put them in `audit` — same cycle problem, and ties the UI's
   broadcast-bus subscriber to the audit crate just to get a type.
   Rejected.
+
+### v1 — cross-sectional momentum resolutions (Q1–Q6) — confirmed 2026-04-29
+
+Six open questions from
+[v1-cross-sectional-momentum.md → Notes](features/v1-cross-sectional-momentum.md#notes--open-questions-for-architect).
+All resolutions preserve the v0 `Strategy` trait shape and the v0.5
+audit / broadcast / strategies-panel surfaces.
+
+#### v1 Q1 — L2 book ingest: **deferred to v1.5**
+
+**Decision:** v1 ships **klines + trades only**, identical fan-out shape
+to v0/v0.5. No L2 book ingest path in v1. The
+[product.md → Universe & data fidelity ladder](product.md#universe--data-fidelity-ladder)
+v1 entry mentioning "L2 + funding context" is **walked back to v1.5** —
+v1's two stretches (multi-symbol + first edge-candidate strategy) are
+already enough; L2 adds a third memory-and-fan-out vector that the
+momentum score does not consume.
+
+**Rationale:** the v1 momentum score (R3) is close-to-close vol-adjusted
+return; depth has no inputs that would exercise it. Adding L2 in v1
+would force a new bus channel, a new persistence schema, and ~10× the
+per-bar serde cost for zero strategy benefit. Pushed to v1.5 alongside
+the other ladder stretches (Coinbase / Kraken multi-venue, 1s
+aggregated trades).
+
+**Alternatives considered:**
+
+- L2 as observation-only at v1 (analogous to Q2 funding) — rejected;
+  L2 ingest cost is dominated by serde + storage, not poll cadence,
+  so "observation only" still pays the full bill.
+- Ship L2 in v1 because the ladder says so — rejected; the ladder is a
+  goal sketch, not a delivery contract; v1 must remain shippable.
+
+#### v1 Q2 — Funding-rate ingest: **observation-only at v1**
+
+**Decision:** v1 wires the Binance USDT-perpetual funding-rate REST
+endpoint as a **once-per-hour poller** in a new
+`crates/data/src/funding.rs`, persists to a small `funding_rates`
+SQLite table (sibling to `journal_entries`), and broadcasts on a new
+`funding_obs` channel. The v1 `MomentumStrategy` does **not** consume
+funding — the channel exists so v1.5+ strategies and the operator
+success report can read funding history without a follow-up
+ingest-path build.
+
+**Why ship the path now (not in v1.5):**
+
+- One cheap REST poll per hour per symbol — the cost is bounded and
+  pre-priced into the v1 hosting line ($40/month, unchanged).
+- Validates the cross-stream-rate (per-bar bars vs per-hour funding)
+  ingest pattern that v1.5 multi-venue / 1s aggregation will need.
+- Operator success reports (per
+  [product.md → Operator success reports](product.md#operator-success-reports))
+  can show a funding column once a UI feature lands without waiting on
+  a future ingest spike.
+- Zero impact on the bar-close → signal hot path (the channel is
+  observation-only and the strategy does not subscribe).
+
+**Schema** (new file
+`crates/audit/migrations/003_funding_rates.sql` or a sibling DB —
+**architect's call to keep it inside the same SQLite file** as
+`journal_entries` to preserve "ledger = single file" property):
+
+```sql
+CREATE TABLE IF NOT EXISTS funding_rates (
+    id              TEXT PRIMARY KEY,        -- uuid v4
+    symbol          TEXT NOT NULL,           -- e.g. "BTCUSDT" (perp symbol; spot mapping in metadata)
+    funding_ts      TEXT NOT NULL,           -- RFC3339 — venue-published funding timestamp
+    funding_rate    TEXT NOT NULL,           -- Decimal as TEXT (8h rate, e.g. "0.00010000")
+    next_funding_ts TEXT NOT NULL,           -- RFC3339 — next scheduled funding settlement
+    poll_ts         TEXT NOT NULL            -- RFC3339 — when we polled (audit)
+);
+CREATE INDEX IF NOT EXISTS funding_rates_symbol_ts_idx
+    ON funding_rates(symbol, funding_ts);
+```
+
+**New broadcast type** in `trading_core`:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FundingObs {
+    pub symbol:          Symbol,           // perp symbol — operator should be aware of basis
+    pub funding_rate:    Decimal,
+    pub funding_ts:      Timestamp,
+    pub next_funding_ts: Timestamp,
+    pub poll_ts:         Timestamp,
+}
+```
+
+`agent::EventBus` gains a `funding_obs` channel (capacity 32, same
+backpressure semantics as `strategy_*`).
+
+**Reader API** in `audit::query`:
+
+```rust
+pub async fn funding_rate_history(
+    ledger: &Ledger,
+    symbol: Symbol,
+    since: Timestamp,
+) -> Result<Vec<FundingObs>, LedgerError>;
+```
+
+**Alternatives considered:**
+
+- Defer funding entirely to v1.5 alongside L2 — acceptable but punts on
+  validating a cross-cadence ingest pattern that v1.5 will need
+  regardless. The marginal cost of shipping the poller in v1
+  (one tokio task, ~40 lines of REST client) is small.
+- Build a perp-WS funding stream — rejected as overkill; funding rates
+  publish at 8h cadence with a 1m forecast ticker; an hourly REST poll
+  catches every settlement and the next-forecast value.
+
+#### v1 Q3 — Long-only confirmed: **`K_long=3`, `K_short=0`** for v1
+
+**Decision:** v1 ships **long-only spot momentum** explicitly in
+`architecture.md` so future architect-rounds do not re-debate. The
+analyst's `[ASSUMPTION]` (R4.3 in the v1 brief) is correct — spot
+crypto on Binance / Coinbase / Kraken USDT pairs has **no native
+short-sell mechanism**. Perp-based shorting belongs in v2 per the
+[product.md → Universe & data fidelity ladder](product.md#universe--data-fidelity-ladder)
+v2 row ("Top-25 perps (signal only, not exec)").
+
+**Implication for the v1 strategy & risk surface:**
+
+- `MomentumStrategy::on_bar` constructs `Vec<ProposedOrder>` with at
+  most `K_long` `Side::Buy` legs, plus `Side::Sell` legs to close
+  positions falling out of the top-K. **Never** `Side::Sell` to open a
+  short.
+- `risk::cross_sectional.k_short = 0` in the TOML schema; loader
+  rejects `k_short > 0` with `unsupported_short_sizing` error code in
+  v1. v1.5 may relax to "exclude these symbols from longs" semantics if
+  the analyst pushes for it; perp-execution shorting waits for v2.
+
+**Alternatives considered:**
+
+- Ship `K_short` plumbing as "exclude from longs" in v1 — rejected;
+  adds parser + sizer surface area for zero edge before the v1.5
+  re-evaluation. Easier to add later than to remove.
+- Allow synthetic shorts via inverse perps — out of scope per
+  [product.md → Non-goals](product.md#non-goals) (no derivatives in v1).
+
+#### v1 Q4 — Multi-venue: **single-venue (Binance) for v1**
+
+**Decision:** v1 stays **Binance-only**. Multi-venue
+(Coinbase + Kraken) is v1.5 scope. The
+[universe ladder](product.md#universe--data-fidelity-ladder) v1 entry
+("Top-10 USDT spot, 1m + L2 + funding context, +Kraken") is re-read as
+the v1-series goal: v1 itself does the universe-size work,
+v1.5 does venue multiplexing.
+
+**Rationale:** each new venue is its own client + reconnect quirks +
+fee schedule + symbol-name normalization (e.g. `BTCUSDT` on Binance
+vs. `BTC-USD` on Coinbase vs. `XBT/USDT` on Kraken). v1's stretch is
+multi-symbol determinism on a known venue; venue diversity is an
+orthogonal stretch with its own reconciliation surface (per-venue
+attribution in the ledger, cross-venue symbol mapping, latency
+arbitrage controls).
+
+**v1.5 trigger:** revisit when v1's cross-sectional momentum has
+defensible Sharpe on Binance OOS. At that point the
+`barter-data` v0.5 fallback (per
+[Data / venues](#v0-decision--hand-rolled-binance-ws--marketdatasource-trait--confirmed-2026-04-17))
+becomes the natural pick if it cleanly maps to `MarketDataSource`,
+else a second hand-rolled adapter (Coinbase) lands first.
+
+**Alternatives considered:**
+
+- Ship Coinbase ingest in v1 alongside Binance — rejected; doubles the
+  feed-test surface and forces premature decisions on cross-venue
+  symbol normalization before the strategy has a defensible OOS number.
+- Ship all three venues in v1 — rejected on the same grounds, harder.
+
+#### v1 Q5 — Universe filtering: **strategy-side (pattern A)**
+
+**Decision:** v1 strategies filter bars by symbol **internally** in
+`Strategy::on_bar` rather than via a registry-level `interested_in()`
+predicate. The registry's existing fan-out
+(`StrategyRegistry::on_bar(&Bar) → Vec<Signal>`, see
+[v0.5 strategy-event journal](#v05--strategy-event-journal-schema-q1--confirmed-2026-04-19))
+is **unchanged** — every strategy sees every bar; out-of-universe bars
+are a fast `match symbol { in_universe => …, _ => return Vec::new() }`
+in the strategy.
+
+**Rationale:** at v1 scale (10 symbols × 1m bars × ≤10 active
+strategies), the constant cost of an `if !self.universe.contains(...)`
+check is dominated by a single hash lookup per bar — sub-microsecond.
+The trait stays minimal; no new method shape; v0 `sma_crossover` and
+v0.5 `ComposedStrategy` continue to filter on `bar.symbol == self.symbol`
+exactly as today.
+
+**Trade-off:** registry-side filtering (pattern B) would save the
+hash-lookup cost on out-of-universe bars at the cost of a new
+trait method (`fn universe(&self) -> &[Symbol]`) and a two-stage
+fan-out in the registry. The performance plan below
+([Performance budget](#performance-budget) + R10.4) shows the v1 hot
+path comfortably fits the 5ms p99 budget under pattern A; pattern B is
+a future optimization if a tick-latency strategy ever stresses it.
+
+**Implementation contract:** every multi-symbol `Strategy` impl
+exposes `pub fn universe(&self) -> &SymbolSet` as an inherent method
+(not a trait method) so the audit ledger and operator-success reports
+can introspect it; the registry does not consume this method.
+
+**Alternatives considered:**
+
+- Pattern B (registry-side filtering with `fn universe()` trait method) —
+  cleaner under heavy multi-strategy fan-out; rejected for v1 because
+  the cost it saves is already inside budget. Promote in v2+ if a
+  per-tick / per-microstructure strategy lands.
+- Pattern C (hybrid: per-strategy `Vec<Symbol>` declared at registration,
+  registry holds the index) — combines the worst of both (mutable
+  registry index + strategy-side fallback for hot-loaded universe
+  changes). Rejected.
+
+#### v1 Q6 — `RebalanceRejected` ledger surface: **extend `strategy_events`**
+
+**Decision:** add a new `kind = "rebalance_rejected"` variant to the
+v0.5 `strategy_events` table (see
+[v0.5 strategy-event journal](#v05--strategy-event-journal-schema-q1--confirmed-2026-04-19))
+rather than create a parallel `decision_events` table.
+
+**Rationale:** the existing schema already carries `error_code` /
+`error_summary` columns and is operator-event-shaped. A rebalance
+rejection is a **strategy-lifecycle event** (the strategy proposed an
+action that the risk gate refused), not a money movement, so it
+belongs alongside `Load` / `Swap` / `Unload` / `Reject`. A parallel
+`decision_events` table would fork the schema for a single
+non-monetary row type and complicate the operator success report's
+"what happened to my strategies this week" query (it would need to
+union two tables).
+
+**No schema migration needed** — `strategy_events.kind` is a `TEXT`
+column; v1 simply writes a new value. The reconciler invariant
+(`Σ debits == Σ credits` over `journal_entries` only) is preserved
+because `strategy_events` rows carry no money.
+
+**v1 writer extension** (in `audit::journal`, additive):
+
+```rust
+pub enum StrategyEventKind {
+    Load,
+    Swap,
+    Unload,
+    Reject,
+    RebalanceRejected,   // new in v1
+}
+
+// New helper, written from risk crate when vector validation rejects:
+pub async fn rebalance_rejected(
+    ledger: &Ledger,
+    strategy_id: StrategyId,
+    error_code: &str,           // e.g. "portfolio_exposure_breach"
+    error_summary: &str,        // e.g. "proposed 0.55 > cap 0.50"
+    ts: Timestamp,
+) -> Result<(), LedgerError>;
+```
+
+**Reader extension** (in `audit::query`):
+
+`strategy_history(id)` already returns all `strategy_events` rows for a
+strategy. v1 callers use the `kind` field to filter to rebalance
+rejections; no new reader method is required.
+
+**Alternatives considered:**
+
+- New `decision_events` table with one row per `Decision`
+  (accepted + rejected) — rejected; doubles schema surface for one
+  variant, and the v0 `Decision` model already lives in the audit log
+  as the journaled fills' parent transaction (per v0
+  `journal_transactions`). Rebalance rejections would be the only
+  rows in `decision_events` that don't have a corresponding fill.
+- Add a `kind` column with a CHECK constraint to `journal_entries` —
+  rejected on the same grounds as v0.5 Q1: poisons the reconciler
+  invariant and conflates monetary and metadata rows.
 
 ## Observability
 
@@ -996,3 +1269,37 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   `StrategySwapped` / `StrategyLoadError` live in `trading_core`; three
   new `agent::EventBus` channels (capacity 32 each); lagged-drop + log
   backpressure matches the v0 pattern.
+- 2026-04-29 (architect): resolved the six v1-cross-sectional-momentum
+  open questions from
+  [features/v1-cross-sectional-momentum.md](features/v1-cross-sectional-momentum.md#notes--open-questions-for-architect).
+  **Q1 L2 ingest** deferred to v1.5 — keeps v1 shippable; momentum score
+  is close-to-close, depth has no consumer. **Q2 funding-rate ingest**
+  observation-only at v1: hourly REST poller + new `funding_rates`
+  SQLite table + `funding_obs` broadcast channel + new
+  `trading_core::FundingObs` type; `MomentumStrategy` does not consume
+  it (validates the ingest path for v1.5 without expanding hot-path
+  cost). **Q3 long-only** confirmed: `K_long=3`, `K_short=0` for v1;
+  loader rejects `k_short > 0` with `unsupported_short_sizing` error
+  code; perp-shorting waits for v2. **Q4 multi-venue** deferred to v1.5:
+  v1 stays Binance-only; the universe-ladder `+Kraken` entry is re-read
+  as a v1-series goal. **Q5 universe filtering** is strategy-side
+  (pattern A) — strategies filter `Strategy::on_bar` internally; no
+  trait change. Pattern B (registry-side via a new `fn universe()`
+  trait method) deferred to v2+ if a tick-latency strategy ever
+  stresses the budget. **Q6 `RebalanceRejected` ledger surface** —
+  extend the v0.5 `strategy_events` table with a new
+  `kind = "rebalance_rejected"` variant; no schema migration; new
+  `audit::journal::rebalance_rejected` writer + the existing
+  `strategy_history` reader. **v1 architectural deltas:** new
+  `crates/strategy/src/cross_sectional/` module (`MomentumStrategy`,
+  score, selector); vector-order shape in `risk` (`size_portfolio_target`
+  alongside the existing scalar `size_and_validate`);
+  `RiskLimits.portfolio_exposure_cap: Option<Decimal>` field added;
+  `audit::query::pnl_by_symbol` reader + extended chart of accounts
+  (the existing 13-account chart is additive — `assets:position:<asset>`
+  is parameterized; v1 universe symbols seed nine new sub-accounts at
+  startup, no migration); multi-symbol `ReplayFeed` interleave with
+  `(venue_ts ASC, symbol ASC)` deterministic sort; `funding_obs`
+  broadcast channel added to `agent::EventBus`. No change to the
+  v0 `Strategy` trait shape, no change to the v0.5 audit/broadcast
+  surfaces beyond the additive items above.
