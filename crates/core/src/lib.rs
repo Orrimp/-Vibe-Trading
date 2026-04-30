@@ -12,6 +12,7 @@ pub mod fill;
 pub mod funding;
 pub mod money;
 pub mod order;
+pub mod pair;
 pub mod position;
 pub mod signal;
 pub mod strategy_events;
@@ -34,8 +35,9 @@ pub use funding::FundingObs;
 pub use money::Money;
 pub use money::{Price, Quantity};
 pub use order::{Order, OrderId, OrderKind, ProposedOrder, RiskLimits, TimeInForce};
+pub use pair::{Pair, PairError, PairKey, PairMembership};
 pub use position::Position;
-pub use signal::{Decision, Signal, SignalEvidence, SignalKind};
+pub use signal::{Decision, PairSignalData, Signal, SignalEvidence, SignalKind, StopReason};
 pub use strategy_events::{
     StrategyEventKind, StrategyEventView, StrategyLoadError, StrategyLoaded, StrategySwapped,
 };

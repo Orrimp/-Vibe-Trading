@@ -55,6 +55,7 @@ impl Strategy for SmaCrossover {
                     ts: bar.close_ts,
                     kind,
                     evidence: SignalEvidence::sma(f, s),
+                    pair_data: None, // v1.5a — not a pair signal
                 }]
             }
             _ => vec![],

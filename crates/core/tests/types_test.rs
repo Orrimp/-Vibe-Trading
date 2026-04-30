@@ -191,6 +191,7 @@ fn signal_serde_roundtrip() {
         ts: ts(),
         kind: SignalKind::Buy,
         evidence: SignalEvidence::sma(dec!(200.0), dec!(195.0)),
+        pair_data: None,
     };
     let json = serde_json::to_string(&sig).unwrap();
     let sig2: Signal = serde_json::from_str(&json).unwrap();

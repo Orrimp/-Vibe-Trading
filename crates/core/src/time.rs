@@ -35,6 +35,24 @@ impl Timestamp {
         // date within ±292 years of the Unix epoch.
         i64::try_from(nanos / 1_000_000).unwrap_or(i64::MAX)
     }
+
+    /// Number of whole minutes elapsed between `earlier` and `self`.
+    ///
+    /// Returns a non-negative value when `self >= earlier`; negative when
+    /// `self < earlier` (e.g. checking staleness with `self` = now,
+    /// `earlier` = cached leg timestamp).
+    #[must_use]
+    pub fn minutes_since(self, earlier: Timestamp) -> i64 {
+        let diff_ns =
+            self.0.unix_timestamp_nanos() - earlier.0.unix_timestamp_nanos();
+        i64::try_from(diff_ns / 60_000_000_000_i128).unwrap_or(i64::MAX)
+    }
+
+    /// Returns a new `Timestamp` that is `n` minutes after `self`.
+    #[must_use]
+    pub fn plus_minutes(self, n: u32) -> Timestamp {
+        Timestamp::new(self.0 + time::Duration::minutes(i64::from(n)))
+    }
 }
 
 impl From<OffsetDateTime> for Timestamp {

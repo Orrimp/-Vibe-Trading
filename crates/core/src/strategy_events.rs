@@ -77,6 +77,15 @@ pub struct StrategyLoadError {
 /// v1 adds `RebalanceRejected` (Q6) — written to `strategy_events` table
 /// with `kind = "rebalance_rejected"` when the portfolio-exposure validator
 /// refuses a rebalance vector. No schema migration needed (TEXT column).
+///
+/// v1.5a adds two new variants (Q8) — **no SQL migration**; the `kind`
+/// column is TEXT so new values are stored directly:
+/// - `MeanReversionStop` — emitted when a long position is closed by the
+///   `z >= z_stop` hard-stop (R4.1). Distinguishes from the normal
+///   `z_exit` reversion close.
+/// - `PairShortObservation` — emitted alongside the executed long-leg buy
+///   on entry; records "would have shorted `b`" (formulation C residual,
+///   R5.3 / Q3). No money moves.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum StrategyEventKind {
@@ -86,6 +95,10 @@ pub enum StrategyEventKind {
     Reject,
     /// v1 Q6 — risk gate rejected the rebalance vector (portfolio exposure breach).
     RebalanceRejected,
+    /// v1.5a Q8 — hard-stop triggered: `z >= z_stop` while long.
+    MeanReversionStop,
+    /// v1.5a Q8 — observation-only: would have shorted `b` leg in formulation C.
+    PairShortObservation,
 }
 
 impl std::fmt::Display for StrategyEventKind {
@@ -96,6 +109,8 @@ impl std::fmt::Display for StrategyEventKind {
             Self::Unload => write!(f, "Unload"),
             Self::Reject => write!(f, "Reject"),
             Self::RebalanceRejected => write!(f, "RebalanceRejected"),
+            Self::MeanReversionStop => write!(f, "MeanReversionStop"),
+            Self::PairShortObservation => write!(f, "PairShortObservation"),
         }
     }
 }
@@ -216,5 +231,31 @@ mod tests {
         assert_eq!(StrategyEventKind::Swap.to_string(), "Swap");
         assert_eq!(StrategyEventKind::Unload.to_string(), "Unload");
         assert_eq!(StrategyEventKind::Reject.to_string(), "Reject");
+    }
+
+    #[test]
+    fn t701_strategy_event_kind_v15a_variants() {
+        // v1.5a Q8 — two new kind values
+        assert_eq!(
+            StrategyEventKind::MeanReversionStop.to_string(),
+            "MeanReversionStop"
+        );
+        assert_eq!(
+            StrategyEventKind::PairShortObservation.to_string(),
+            "PairShortObservation"
+        );
+    }
+
+    #[test]
+    fn t701_strategy_event_kind_v15a_serde_roundtrip() {
+        let kind = StrategyEventKind::MeanReversionStop;
+        let json = serde_json::to_string(&kind).unwrap();
+        let back: StrategyEventKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(kind, back);
+
+        let kind2 = StrategyEventKind::PairShortObservation;
+        let json2 = serde_json::to_string(&kind2).unwrap();
+        let back2: StrategyEventKind = serde_json::from_str(&json2).unwrap();
+        assert_eq!(kind2, back2);
     }
 }

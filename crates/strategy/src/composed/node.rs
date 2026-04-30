@@ -1204,6 +1204,7 @@ impl ComposedStrategy {
             ts: bar.close_ts,
             kind,
             evidence: SignalEvidence::empty(),
+            pair_data: None, // v1.5a — composed strategies don't emit pair signals
         }
     }
 }

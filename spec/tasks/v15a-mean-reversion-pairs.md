@@ -2,7 +2,7 @@
 slug: v15a-mean-reversion-pairs
 status: in-progress
 owner: developer
-updated: 2026-04-30
+updated: 2026-04-29
 ---
 
 # Tasks — v1.5a Mean-Reversion on Z-Scored Pairs
@@ -45,7 +45,7 @@ smaller than v1's.
 
 ## Week 1 — types, primitives, strategy core, audit
 
-- [ ] **T701** [developer] — `trading_core` v1.5a type additions per
+- [x] **T701** [developer] — `trading_core` v1.5a type additions per
   [Design → Pair types](../features/v15a-mean-reversion-pairs.md#pair-types-r1-r2):
   - `Pair`, `PairKey`, `PairMembership`, `PairError` in
     `crates/core/src/pair.rs`.
@@ -63,7 +63,7 @@ smaller than v1's.
   via exhaustive `match` defaults._
   **[gate for ui-designer]** once merged, UI types are stable.
 
-- [ ] **T702** [developer] — `features::pairs` module per
+- [x] **T702** [developer] — `features::pairs` module per
   [Design → Spread + z-score primitives](../features/v15a-mean-reversion-pairs.md#spread--z-score-primitives-r3):
   `spread(price_a, price_b, beta) -> Result<Decimal, PairScoreError>`
   and `rolling_zscore(history, n, vol_floor) -> Result<Decimal,
@@ -78,7 +78,7 @@ smaller than v1's.
   returns `Err(InsufficientHistory)`._
   **[deps: T701]**
 
-- [ ] **T703** [developer] — Per-pair state machine
+- [x] **T703** [developer] — Per-pair state machine
   `strategy::pairs::pair_state` per
   [Design → Per-pair state machine](../features/v15a-mean-reversion-pairs.md#meanreversionpairsstrategy-r7-r4-r5):
   `SyncSlot`, `PairState`, `LegRole`, `PositionState`, `decide(..)`
@@ -94,7 +94,7 @@ smaller than v1's.
   clean._
   **[deps: T701, T702]**
 
-- [ ] **T704** [developer] — Pair-bar sync + max-staleness clamp
+- [x] **T704** [developer] — Pair-bar sync + max-staleness clamp
   test (Q10) per
   [Design → Pair-bar sync](../features/v15a-mean-reversion-pairs.md#pair-bar-sync-r75-q10).
   Dedicated test exercising: (a) both legs at same `venue_ts` →
@@ -109,7 +109,7 @@ smaller than v1's.
   Prometheus counter increments on staleness drops._
   **[deps: T703]**
 
-- [ ] **T705** [developer] — `MeanReversionPairsConfig` TOML serde
+- [x] **T705** [developer] — `MeanReversionPairsConfig` TOML serde
   + parser per
   [Design → TOML schema](../features/v15a-mean-reversion-pairs.md#toml-schema-for-v15a-strategy-config-r76).
   `kind = "mean_reversion_pairs"` discriminator routes loader.
@@ -125,7 +125,7 @@ smaller than v1's.
   `unsupported_quote` (Q5)._
   **[deps: T701]**
 
-- [ ] **T706** [developer] — `MeanReversionPairsStrategy` core (R7)
+- [x] **T706** [developer] — `MeanReversionPairsStrategy` core (R7)
   per [Design → MeanReversionPairsStrategy](../features/v15a-mean-reversion-pairs.md#meanreversionpairsstrategy-r7-r4-r5).
   Implements v0 `Strategy` trait verbatim (`id`, `on_bar`, `on_tick`,
   `config_schema`); `on_tick` returns `vec![]` (R7.2). Strategy-side
@@ -465,3 +465,19 @@ Week 2 (backtest, integration, e2e):
   integration tests, backtest scenarios, determinism, regression,
   bench, ui fixtures. Granularity ~½ day per task. Parallelism map
   + ui-handoff contract included.
+- 2026-04-29 (developer): T701–T706 implemented and all tests passing.
+  Created `crates/core/src/pair.rs` (`PairKey`, `Pair`, `PairMembership`,
+  `PairError`), extended `crates/core/src/signal.rs` (`OpenPairLong`,
+  `ClosePair`, `PairShortObservation` `SignalKind` variants; `PairSignalData`,
+  `StopReason` structs; `Signal` helper constructors), extended
+  `crates/core/src/strategy_events.rs` (`MeanReversionStop`,
+  `PairShortObservation` `StrategyEventKind` variants), added
+  `Timestamp::minutes_since` and `plus_minutes` to `crates/core/src/time.rs`,
+  created `crates/features/src/pairs.rs` (`spread`, `rolling_zscore`,
+  `PairScoreError`), created `crates/strategy/src/pairs/` module with
+  `config.rs` (`MeanReversionPairsConfig`, `PairsLoadError`),
+  `pair_state.rs` (`SyncSlot`, `PairState`, `PositionState`, `decide`,
+  `PAIR_SYNC_DROPPED_TOTAL`), `mean_reversion.rs`
+  (`MeanReversionPairsStrategy` implementing `Strategy` trait). All 76
+  strategy unit tests + 27 integration tests pass. Full workspace
+  `cargo test` clean. `cargo clippy --workspace -D warnings` clean.

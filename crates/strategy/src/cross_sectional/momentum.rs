@@ -153,6 +153,8 @@ impl MomentumStrategy {
                         self.held_symbols.insert(symbol.clone(), false);
                     }
                     SignalKind::Hold => {}
+                    // v1.5a pair variants are not emitted by MomentumStrategy
+                    _ => {}
                 }
                 signals.push(Signal {
                     strategy_id: self.id.clone(),
@@ -167,6 +169,7 @@ impl MomentumStrategy {
                             .flatten()
                             .unwrap_or(Decimal::ZERO),
                     ),
+                    pair_data: None, // v1.5a — not a pair signal
                 });
             }
         }

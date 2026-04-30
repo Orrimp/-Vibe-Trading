@@ -143,6 +143,10 @@ fn event_row(ev: &StrategyEventView) -> Element<'_, Message> {
         StrategyEventKind::Reject | StrategyEventKind::RebalanceRejected => {
             (STRATEGIES_EVENT_REJECT, color::NEG)
         }
+        // v1.5a Q8 — new strategy event kinds; rendered as informational events
+        StrategyEventKind::MeanReversionStop | StrategyEventKind::PairShortObservation => {
+            (STRATEGIES_EVENT_LOAD, color::FG_MUTED)
+        }
     };
     let id = ev
         .strategy_id
@@ -172,5 +176,9 @@ pub(crate) fn event_kind_label(ev: &StrategyEventView) -> &'static str {
         StrategyEventKind::Swap => STRATEGIES_EVENT_SWAP,
         StrategyEventKind::Unload => STRATEGIES_EVENT_UNLOAD,
         StrategyEventKind::Reject | StrategyEventKind::RebalanceRejected => STRATEGIES_EVENT_REJECT,
+        // v1.5a Q8 — new strategy event kinds; rendered as generic load label
+        StrategyEventKind::MeanReversionStop | StrategyEventKind::PairShortObservation => {
+            STRATEGIES_EVENT_LOAD
+        }
     }
 }
