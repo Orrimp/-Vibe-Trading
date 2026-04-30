@@ -2,7 +2,7 @@
 slug: architecture
 status: in-progress
 owner: architect
-updated: 2026-04-29
+updated: 2026-04-30
 ---
 
 # Architecture — Crypto Trading Agent
@@ -731,6 +731,476 @@ rejections; no new reader method is required.
   rejected on the same grounds as v0.5 Q1: poisons the reconciler
   invariant and conflates monetary and metadata rows.
 
+### v1.5a — mean-reversion pairs resolutions (Q1–Q10) — confirmed 2026-04-30
+
+Ten open questions from
+[v15a-mean-reversion-pairs.md → Notes](features/v15a-mean-reversion-pairs.md#notes--open-questions-for-architect).
+All resolutions preserve the v0 `Strategy` trait shape, the v0.5
+audit / broadcast / strategies-panel surfaces, and the v1
+multi-symbol / vector-order / `pnl_by_symbol` infra. v1.5a is a
+fourth `Strategy` impl plus thin additive helpers; **no schema
+migration**.
+
+#### v1.5a Q1 — Single brief vs split: **confirm split (Option B)**
+
+**Decision:** v1.5a ships the **pairs strategy on the existing
+Binance USDT universe only**. The sibling brief
+`v15b-multi-venue-live-ingest` (queued) covers Coinbase + Kraken
+adapters, T612 multi-symbol live `BinanceFeed`, USDC pairs, and 1s
+aggregated trades.
+
+**Rationale:** the strategy-edge claim is independent of venue
+diversity. Bundling them couples two scopes that fail
+independently — a pairs Sharpe miss should not block multi-venue
+infra and a Coinbase reconnect bug should not block a pairs
+backtest. The split halves per-brief surface and lets v1.5a ship
+first.
+
+**Alternatives considered:**
+
+- Option A — single combined brief absorbing R13–R20+ for Coinbase /
+  Kraken / USDC / 1s aggregated trades. Rejected on surface bloat
+  and orthogonal failure modes.
+
+#### v1.5a Q2 — Hedge ratio: **fixed β = 1.0** (with per-pair TOML override)
+
+**Decision:** v1.5a uses **fixed β** read from the per-pair TOML
+(default `1.0`). No rolling-OLS β estimator in v1.5a.
+
+**Rationale:** rolling-OLS β adds (1) a new dependency (linear
+regression with shrinkage to handle ill-conditioning during
+low-variance windows), (2) a calibration-window choice that
+confounds threshold tuning of `z_entry` / `z_exit`, and (3) a
+look-ahead-bias surface (what window? overlapping with the lookback?
+expanding vs rolling?) that v1.5a does not need to ship to test the
+plumbing. β = 1.0 makes the spread a clean
+`log(price_a) - log(price_b)` at large-cap crypto pair scales where
+log-space hedge ratios are close to 1. The TOML knob (`beta = "0.92"`
+etc.) lets the operator pin a per-pair fixed β if a 2022 fit
+suggests one without re-shipping the strategy. Rolling-OLS β is
+queued for **v1.5c** alongside any other parameter-estimator work.
+
+**Alternatives considered:**
+
+- Rolling-OLS β with shrinkage (Avellaneda-Lee canonical formulation) —
+  rejected for v1.5a; adds estimator surface before the baseline is
+  locked. Defer to v1.5c.
+- Per-pair architect-pinned β (e.g. β_BTC_ETH ≈ 0.92 from a 2022 OLS
+  fit) — accepted shape via TOML override; default stays 1.0 because
+  the analyst's 3-pair default list (BTC-ETH, ETH-SOL, BNB-BTC) has
+  no operator-known prior to pin.
+
+#### v1.5a Q3 — Spot-only formulation: **C — observation-only short leg**
+
+**Decision:** v1.5a ships **formulation C** — the spread / z-score
+machinery computes signals for both legs of a pair, but **executes
+long-only on the `a` leg** (the target leg per R1.1). The would-have-
+shorted `b` leg is logged to the audit ledger as a
+`pair_short_observation` event (Q8) — **no `Order` constructed**, **no
+money moves**, but the audit trail captures the hypothetical short
+notional so v2's perp executor can backfill the short-leg P&L from
+history without re-deriving the spread layer.
+
+**Rationale:** formulation C is the cleanest moat-bet move per
+[product.md → Differentiator](product.md#differentiator) (auditable
+double-entry + persistent memory). It (1) preserves the spread /
+z-score logic for v2 perp expansion, (2) populates the audit ledger
+with "hypothetical short" data immediately so v2 can compute
+"what if we could short" P&L from history, (3) avoids conflating
+the strategy primitive (signal generation) with the execution
+constraint (spot vs perp). Formulation A (per-symbol z-score MR) does
+not exercise pair plumbing and is wasted v1.5 scope; formulation
+B (pair-switching long-only) executes at parity with C but loses
+the short-leg observation trail.
+
+**Alternatives considered:**
+
+- A — long-flat single-symbol z-score MR. Rejected: doesn't exercise
+  the pair plumbing the v1.5 roadmap entry exists to test; v0.5's
+  `ComposedStrategy` already covers per-symbol mean-reversion via
+  a Bollinger recipe.
+- B — pure pair-switching, no observation event. Rejected: same
+  execution surface as C but loses the v2 short-leg audit trail.
+  C is a strict superset of B at the cost of two `strategy_events`
+  rows per pair round-trip.
+
+#### v1.5a Q4 — `pnl_by_pair` shape: **compose, no schema change**
+
+**Decision:** new `audit::query::pnl_by_pair(pair_membership, since,
+until)` reader **composes** existing `pnl_by_symbol` results with
+the pair-membership map captured at strategy-load time. **No new
+column on `Position` / `journal_entries`. No schema migration.**
+
+**Signature** (in `crates/audit/src/query.rs`, additive):
+
+```rust
+pub async fn pnl_by_pair(
+    ledger:           &Ledger,
+    pair_membership:  &[PairMembership],   // (PairKey, traded_a_asset)
+    since:            Timestamp,
+    until:            Timestamp,
+) -> Result<Vec<(PairKey, Money<Usdt>)>, LedgerError>;
+```
+
+`PairKey` is the `(Symbol, Symbol)` tuple of `(a, b)` (insertion
+order; `(BTC, ETH)` and `(ETH, BTC)` are distinct because the `a`
+leg is the traded one). `PairMembership` carries the `(PairKey,
+Asset)` for the traded leg so the query can route the per-asset
+`pnl_by_symbol` value to the right pair row.
+
+**Implementation:** internally calls `pnl_by_symbol(since, until)`
+once, then walks `pair_membership` and projects per-asset P&L into
+per-pair rows. Because v1.5a never trades the `b` leg, the invariant
+`pnl_by_pair[(a, b)] == pnl_by_symbol[a]` holds for every active pair
+(R6.2, R6.3). Result rows with zero realized P&L are omitted. Rows
+sorted by `(a, b)` lexicographically.
+
+**Rationale:** v1.5a never trades the `b` leg, so the P&L genuinely
+lives under `assets:position:<a-asset>` — no cross-symbol allocation
+problem. A `pair_id` schema column would be additive but premature:
+v2 perp shorting will re-open this question (the `b` leg then has
+its own P&L) and is the natural moment to add a `pair_id` column if
+needed. The compose-from-`pnl_by_symbol` path keeps v0/v0.5/v1
+schemas unchanged and matches the analyst's preference.
+
+**Alternatives considered:**
+
+- New `pair_id` column on `journal_entries.metadata` JSON or as a
+  first-class column — rejected for v1.5a; a schema migration for a
+  query that composes correctly without one is overkill. Revisit at
+  v2 perp shorting.
+- Dedicated `pnl_by_pair` SQL aggregation that joins on a hypothetical
+  `pair_id` — same rejection; defer until the column lands.
+
+#### v1.5a Q5 — USDC pairs: **blocked on v1.5b multi-venue**
+
+**Decision:** v1.5a ships **USDT-only pairs**. USDC pairs depend on
+v1.5b multi-venue ingest (Coinbase + Kraken adapters; Binance USDC
+liquidity is concentrated on Coinbase / Kraken, and ingesting only
+Binance USDC books would underrepresent the universe and contaminate
+the strategy-edge claim with venue choice).
+
+**Rationale:** the
+[universe ladder v1.5 entry](product.md#universe--data-fidelity-ladder)
+pairs USDC liquidity with multi-venue ingest deliberately. Ingesting
+only Binance USDC books would underrepresent the universe and force
+us to disambiguate venue effects without a multi-venue reconciliation
+surface. The v1.5b brief absorbs USDC pairs once multi-venue ingest
+lands.
+
+**Documented dependency:** v1.5b carries the explicit deliverable
+"unblock USDC pair support in `MeanReversionPairsStrategy` once
+Coinbase / Kraken adapters ship." The v1.5a TOML schema accepts USDC
+pair tuples syntactically but the strategy loader rejects them with
+`unsupported_quote` until v1.5b lands.
+
+**Alternatives considered:**
+
+- Ship Binance-only USDC pairs in v1.5a — rejected; venue choice
+  contaminates the edge claim, and the Binance USDC book is thin
+  enough that fee/slippage assumptions would not generalize.
+- Defer USDC pair support entirely until v2 — rejected; v1.5b is the
+  natural home per the universe-ladder pairing.
+
+#### v1.5a Q6 — L2 / funding-rate ingest: **stay deferred**
+
+**Decision:** v1.5a does **not** consume L2 books or funding rates.
+The v1 funding poller (observation-only) stays as-is; the
+`MeanReversionPairsStrategy` does not subscribe to `funding_obs`.
+L2 ingest stays deferred — re-evaluated in v1.5b alongside multi-
+venue infra (architect's call there) or v2 perp-shorting (whichever
+needs it first).
+
+**Rationale:** the spread is close-to-close on `decimal_ln(close)`;
+neither L2 depth nor funding rates feed the score. Adding either to
+v1.5a would pay full ingest cost (storage + serde + bus channels)
+for zero strategy benefit.
+
+**Alternatives considered:**
+
+- Consume funding rates as a regime gate on entry — rejected; that's
+  v2 LLM news/sentiment overlay territory.
+- Pull L2 ingest forward to v1.5a for "richer signal" — rejected;
+  the strategy primitive is intentionally simple at v1.5a.
+
+#### v1.5a Q7 — `portfolio_exposure_cap` shape: **reuse v1's single field**
+
+**Decision:** v1.5a **reuses** `RiskLimits.portfolio_exposure_cap:
+Option<Decimal>` (added in v1 R5.5). The default is bumped from
+`0.50` to `0.75` for v1.5a's 3-pair × `0.25`-per-pair sizing. **No
+new field, no per-strategy `HashMap<StrategyId, Decimal>` shape.**
+
+**Rationale:** at v1.5a scale (one or two multi-symbol strategies
+running concurrently — v1 momentum + v1.5a pairs at most), a global
+cap is sufficient. The momentum strategy's `0.50` default and the
+pairs strategy's `0.75` default coexist by the operator picking
+whichever is tightest for the active strategy set in `agent.toml`.
+A per-strategy cap-map would be the right shape if v2+ runs five or
+more multi-symbol strategies simultaneously; that's the natural
+trigger for promoting the field to a map.
+
+**Defense-in-depth:** the pairs strategy can additionally clamp
+internally via a TOML `exposure_cap_per_pair` knob (default `0.25`)
+evaluated **before** emitting orders, so the strategy never asks
+risk for more than `K_pairs × exposure_cap_per_pair`. The
+`size_portfolio_target` aggregate-cap check is the second-line
+gate that catches any internal-clamp regression.
+
+**Alternatives considered:**
+
+- Promote `portfolio_exposure_cap` to `BTreeMap<StrategyId, Decimal>` —
+  rejected for v1.5a; surface bloat for a problem we don't have at
+  v1.5a's strategy count. Promote in v2+ if 5+ multi-symbol
+  strategies coexist.
+- Per-pair sibling field on `RiskLimits` (`pair_exposure_cap`) —
+  rejected; couples risk to a strategy-specific concept (pairs).
+  Strategy-internal `exposure_cap_per_pair` is cleaner.
+
+#### v1.5a Q8 — Hard-stop / short-observation ledger surface: **two new `kind` values on `strategy_events`**
+
+**Decision:** extend the v0.5 `strategy_events.kind` column with
+**two new variants**:
+
+- `mean_reversion_stop` — emitted when a long position is closed by
+  the `z >= z_stop` hard-stop (R4.1), distinguishing it from the
+  normal `z_exit` reversion close.
+- `pair_short_observation` — emitted alongside the executed long-leg
+  buy on entry, recording "would have shorted `b` with weight
+  β · target_long_a" (R5.3, formulation C residual).
+
+Same shape and pattern as v1 Q6's `rebalance_rejected` extension —
+**no SQL migration**. `strategy_events.kind` is a `TEXT` column;
+v1.5a writes new values.
+
+**Writers** (in `crates/audit/src/journal.rs`, additive):
+
+```rust
+pub enum StrategyEventKind {
+    Load,
+    Swap,
+    Unload,
+    Reject,
+    RebalanceRejected,        // v1
+    MeanReversionStop,        // NEW v1.5a
+    PairShortObservation,     // NEW v1.5a
+}
+
+pub async fn mean_reversion_stop(
+    ledger:        &Ledger,
+    strategy_id:   StrategyId,
+    pair_key:      PairKey,                 // serialized into error_summary
+    z_at_stop:     Decimal,
+    ts:            Timestamp,
+) -> Result<(), LedgerError>;
+
+pub async fn pair_short_observation(
+    ledger:           &Ledger,
+    strategy_id:      StrategyId,
+    pair_key:         PairKey,
+    intended_notional: Money<Usdt>,         // β · target_long_a notional
+    z_at_signal:      Decimal,
+    ts:               Timestamp,
+) -> Result<(), LedgerError>;
+```
+
+Both helpers build `StrategyEventWrite` with their kind, the
+`pair_key` + decimal fields canonicalized into `error_summary` (one
+JSON line for stable cross-version readers), and `error_code` =
+`"mean_reversion_stop"` / `"spot_only_no_short_exec"` respectively.
+
+**Reader:** existing `audit::query::strategy_history(id)` returns all
+events including the two new variants; callers filter on `kind` if
+they need only stops or only short observations. **No new reader
+method.**
+
+**Reconciler invariant unchanged:** `strategy_events` rows carry no
+money; the v0 `journal_entries` reconciliation
+(`Σ debits == Σ credits`) is unaffected.
+
+**Rationale:** identical reasoning to v1 Q6 — these are strategy-
+lifecycle events, not money movements. The schema is already
+operator-event-shaped (`error_code` / `error_summary` columns);
+extending `kind` with two new values is the minimal-surface change
+and matches the precedent. Two parallel tables would fork the schema
+for non-monetary rows and complicate the operator-success-report
+"what happened to my strategies this week" query.
+
+**Alternatives considered:**
+
+- New `pair_events` table — rejected on the same grounds as v1 Q6's
+  rejection of `decision_events`. Schema fork for two row types.
+- Encode short-observation into the executed long-leg's
+  `journal_transactions.metadata` — rejected; conflates the executed
+  trade with a hypothetical, and `journal_transactions` is a
+  money-bearing surface. The strategy_events sibling table is the
+  correct home for non-monetary observations.
+
+#### v1.5a Q9 — Per-symbol cap composition: **strategy emits desired vector; risk clamps**
+
+**Decision:** the strategy emits its desired `Vec<ProposedOrder>` and
+**`risk::size_portfolio_target` clamps per-symbol** (existing v0
+invariant). When two pairs both want to long the same symbol — e.g.
+both `(BTC, ETH)` and `(BTC, SOL)` long-favor BTC after a regime
+shift — the per-symbol cap (`risk.per_symbol_exposure_cap`, default
+`0.40`) binds first and one or both legs get clamped or rejected.
+
+**Behavior under stacked exposure:** with three legs each at
+`exposure_cap_per_pair = 0.25`, the per-pair sum is `0.75` (= the
+v1.5a `portfolio_exposure_cap` default). If two of the three pairs
+share a leg symbol — e.g. BTCUSDT as `a` in two pairs at 0.25 each
+— the symbol's stacked exposure is `0.50`, which exceeds the v0
+per-symbol cap of `0.40`. **Per `size_portfolio_target`'s
+all-or-nothing semantics (R5.2 v1 invariant), the entire vector is
+rejected** with `RiskError::PerSymbolExposureBreach` and a
+`rebalance_rejected` event row is written. The strategy logs the
+rejection and re-attempts on the next rebalance bar; the operator
+sees the rejection in the audit ledger and either widens the
+per-symbol cap, picks non-overlapping pair `a` legs, or accepts that
+stacked-favoring regimes degrade gracefully (one pair gets full
+size; the other waits).
+
+**This is correct behavior, not a bug.** Pair non-overlap on the `a`
+leg is a **config-time discipline**, not a runtime invariant. The
+strategy loader does **not** reject overlapping `a` legs — operator
+freedom — but the analyst's default 3-pair list is non-overlapping
+on `a` (BTC, ETH, BNB are each `a` in exactly one pair), so the
+default config never hits this clamp.
+
+**Default config Q9 sanity check:**
+
+| Pair                  | `a` leg | `b` leg |
+|-----------------------|---------|---------|
+| `(BTCUSDT, ETHUSDT)`  | BTC     | ETH     |
+| `(ETHUSDT, SOLUSDT)`  | ETH     | SOL     |
+| `(BNBUSDT, BTCUSDT)`  | BNB     | BTC     |
+
+Each `a` leg appears once. Stacked exposure max per symbol = `0.25`
+(< per-symbol cap `0.40`). ✓.
+
+**Rationale:** the v1 vector-order sizer is already the right tool;
+adding strategy-internal aggregation would duplicate per-symbol
+accounting outside the risk crate, and risk-side clamping at the
+edge is the cleanest place to enforce a portfolio invariant. Rejecting
+the whole vector on overlap is a **deterministic, observable
+degradation** — the `rebalance_rejected` ledger row makes the event
+visible to the operator. Bumping the per-symbol cap to `0.60` for
+v1.5a would invert the v0 invariant for a strategy-specific reason
+and is rejected on grounds of preserving v0 invariants across
+features.
+
+**Alternatives considered:**
+
+- Bump per-symbol cap to `0.60` for v1.5a — rejected; changes a v0
+  invariant for a strategy-specific reason. Future features would
+  each lobby for further bumps.
+- Strategy aggregates pair exposures internally and emits a single
+  per-symbol target — rejected; duplicates per-symbol accounting
+  outside risk and complicates the strategy state machine.
+- Loader rejects overlapping `a` legs at config-load — rejected;
+  takes operator freedom away for a problem they may want to
+  experiment with (e.g. 5-pair configs with intentional overlap to
+  exercise the clamp behavior).
+
+#### v1.5a Q10 — Pair-bar synchronization: **wait-for-sync with max-staleness clamp**
+
+**Decision:** the strategy **waits for both legs of a pair to arrive
+at the same `venue_ts`** before computing the spread and deciding.
+Concretely: cache the leg that arrives first inside the strategy
+(per-pair `last_leg_a` / `last_leg_b` slots keyed by `venue_ts`);
+when the second leg's bar arrives at the same `venue_ts`, compute
+the spread and (if a rebalance / threshold-cross condition fires)
+emit signals.
+
+**Max-staleness clamp:** the strategy maintains a configurable
+`max_staleness_minutes` (default `5`, TOML knob) — if a cached leg's
+bar is older than the clamp by the time its partner arrives, the
+**cached leg is dropped and the strategy waits for a fresh pair of
+bars**. Prevents a stalled-tape leg from anchoring decisions made on
+a fresh partner.
+
+**Determinism guarantee:** the v1 multi-symbol `(venue_ts ASC,
+symbol ASC)` interleave (per v1 Q5 + v1 design) makes both legs of
+a pair surface inside the same `venue_ts` boundary in alphabetical
+order. The first leg always populates the cache, the second leg
+always triggers the spread compute. Across runs the order is fixed
+by the lexicographic symbol comparison; the strategy's signal
+emission order is therefore deterministic.
+
+**Rationale:** wait-for-sync gives **zero look-ahead bias** by
+construction — the spread at `t` uses prices at `t` for both legs,
+period. One-bar lag (decisions on `t` use `t-1` for both legs)
+sounds safer but introduces a hidden look-ahead vector: if leg `a`'s
+`t-1` close was after leg `b`'s `t-1` close in venue clock time, the
+"lag" is asymmetric and a careless implementation can leak future
+information. Stalls under wait-for-sync are observable (the cached
+leg ages out); look-ahead bias is hidden. Pick the visible failure
+mode.
+
+**Performance:** per-pair work on the bar that arrives second is
+1 spread compute (2 `decimal_ln` + 1 multiply + 1 subtract) +
+1 ring-push + 1 z-score recompute (O(lookback)). At 60-cell lookback
+and 3 pairs the upper bound is well inside the 5ms p99 budget per
+[performance budget](#performance-budget).
+
+**Alternatives considered:**
+
+- One-bar lag (decisions on `t` use prices at `t-1` for both legs) —
+  rejected on hidden look-ahead bias above.
+- Wait-for-sync with no max-staleness clamp — rejected; one stalled
+  leg would freeze pair decisions indefinitely. The 5-minute clamp
+  is operator-tunable; on v1.5a's 1m bars and Binance Vision Parquet
+  fixtures jitter is sub-bar so the clamp rarely fires.
+- Wait-for-sync with strict equality on `venue_ts` only (no
+  staleness clamp) — same rejection as above.
+
+#### v1.5a architectural deltas (summary)
+
+The ten resolutions above produce the following additive changes to
+the workspace. **No crate is introduced; no edge reverses; no SQL
+migration runs.**
+
+- **`crates/core/` (`trading_core`):** new `Pair` newtype + `PairKey`
+  / `PairMembership` types in `crates/core/src/pair.rs`; new
+  `StrategyEventKind::MeanReversionStop` + `::PairShortObservation`
+  variants on the v0.5 enum.
+- **`crates/features/`:** new `features::pairs` module
+  (`spread`, `rolling_zscore`) reusing v1 `decimal_ln` / `decimal_sqrt`
+  + `RingBuffer<Decimal>`. No new dependencies.
+- **`crates/strategy/`:** new `strategy::pairs` module
+  (`mean_reversion.rs` — `MeanReversionPairsStrategy`;
+  `pair_state.rs` — per-pair state machine;
+  `config.rs` — `MeanReversionPairsConfig` TOML serde). Strategy-side
+  universe filter (per v1 Q5 pattern A) — no registry changes.
+- **`crates/risk/`:** **unchanged**. The existing
+  `size_portfolio_target` (v1) and `RiskLimits.portfolio_exposure_cap`
+  (v1) handle v1.5a's vector-order shape. The `0.50` default is
+  bumped to `0.75` only in the v1.5a strategy's TOML, not in the
+  Rust default.
+- **`crates/audit/`:** new `audit::journal::mean_reversion_stop` and
+  `audit::journal::pair_short_observation` writers (Q8, additive on
+  `strategy_events.kind`); new `audit::query::pnl_by_pair` reader
+  (Q4, composes `pnl_by_symbol`). **No SQL migration.**
+- **`crates/data/`:** **unchanged**. v1's `ReplayFeed::merge_symbols`
+  delivers the multi-symbol `(venue_ts, symbol)` interleave that
+  v1.5a's pair-bar sync depends on.
+- **`crates/agent/`:** **unchanged** (no new bus channels — the
+  pair_short_observation events flow through the existing
+  `strategy_*` channels via `audit::journal`).
+- **`crates/backtest/`:** new `--scenario pairs-2023-zscore-mr` and
+  `--scenario pairs-2024-h1-zscore-mr` wiring + per-pair report
+  section.
+- **`crates/ui/`:** **unchanged** — R11 is a negative confirmation;
+  the strategies panel absorbs one new strategy row, the positions
+  panel renders up to 3 long-leg rows. Pair-aware UI deferred to
+  v1.5c per analyst preference (see Q4 in the v15a brief).
+
+**No change to the v0 `Strategy` trait shape, no change to the v0.5
+`strategy_events` schema, no change to the v1 vector-order sizer,
+no change to the v1 chart-of-accounts seeding (the v1.5a default
+3-pair universe `{BTC, ETH, SOL, BNB}` is a subset of v1's 10 — all
+required `assets:position:<asset>` rows already seeded by v1
+bootstrap).**
+
 ## Observability
 
 - `tracing` with JSON output.
@@ -1269,6 +1739,53 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   `StrategySwapped` / `StrategyLoadError` live in `trading_core`; three
   new `agent::EventBus` channels (capacity 32 each); lagged-drop + log
   backpressure matches the v0 pattern.
+- 2026-04-30 (architect): resolved the ten v1.5a-mean-reversion-pairs
+  open questions from
+  [features/v15a-mean-reversion-pairs.md → Notes](features/v15a-mean-reversion-pairs.md#notes--open-questions-for-architect).
+  **Q1 split** confirmed — v1.5a is pairs-strategy-only on the
+  Binance USDT universe; multi-venue + USDC + 1s aggregated trades
+  + T612 are queued in sibling `v15b-multi-venue-live-ingest`.
+  **Q2 hedge ratio** fixed β = 1.0 with per-pair TOML override
+  (`beta = "..."`); rolling-OLS β deferred to v1.5c. **Q3 spot-only
+  formulation** is **C — observation-only short leg**: long-leg `a`
+  executes; would-have-shorted `b` logs as
+  `pair_short_observation` event so v2 perp executor can backfill
+  short P&L from history. **Q4 `pnl_by_pair`** composes existing
+  `pnl_by_symbol` against a `PairMembership` map; no schema
+  migration; `(a, b)` lex-sorted; v1.5a invariant
+  `pnl_by_pair[(a, b)] == pnl_by_symbol[a]` because the `b` leg is
+  never traded. **Q5 USDC pairs** blocked on v1.5b multi-venue;
+  v1.5a is USDT-only with three default pairs `(BTC, ETH)`,
+  `(ETH, SOL)`, `(BNB, BTC)`. **Q6 L2 / funding** stay deferred —
+  pair MR doesn't consume either; the v1 funding poller stays as-is
+  observation-only. **Q7 `portfolio_exposure_cap`** reuses the v1
+  single field; default bumped from `0.50` → `0.75` in the v1.5a
+  TOML (Rust default unchanged); strategy-internal
+  `exposure_cap_per_pair = 0.25` is the first-line clamp.
+  **Q8 `MeanReversionStop` + `pair_short_observation`** extend the
+  v0.5 `strategy_events.kind` column (additive — no SQL migration);
+  new `audit::journal::mean_reversion_stop` and
+  `audit::journal::pair_short_observation` writers. **Q9 per-symbol
+  cap composition under stacked pair exposures** — strategy emits
+  desired vector, `risk::size_portfolio_target` clamps per-symbol
+  (existing v0 invariant); overlapping `a` legs degrade gracefully
+  via `rebalance_rejected`; the analyst's default 3-pair list has
+  non-overlapping `a` legs by construction. **Q10 pair-bar sync** —
+  wait-for-sync on `venue_ts` equality with a configurable
+  `max_staleness_minutes` (default 5) clamp; deterministic via the
+  v1 `(venue_ts ASC, symbol ASC)` interleave. **v1.5a architectural
+  deltas:** new `crates/core/src/pair.rs` (`Pair`, `PairKey`,
+  `PairMembership`); new `features::pairs` module (`spread`,
+  `rolling_zscore`) reusing v1 `decimal_ln` / `decimal_sqrt` /
+  `RingBuffer<Decimal>`; new `strategy::pairs` module
+  (`MeanReversionPairsStrategy` — fourth `Strategy` impl alongside
+  v0 `sma_crossover`, v0.5 `ComposedStrategy`, v1 `MomentumStrategy`);
+  new `audit::query::pnl_by_pair` compose helper; new backtest
+  scenarios `pairs-2023-zscore-mr` + `pairs-2024-h1-zscore-mr`.
+  No `Strategy` trait change, no `strategy_events` schema change,
+  no `risk::size_portfolio_target` shape change, no chart-of-
+  accounts addition (v1.5a's 4-symbol universe is a subset of v1's
+  10).
 - 2026-04-29 (architect): resolved the six v1-cross-sectional-momentum
   open questions from
   [features/v1-cross-sectional-momentum.md](features/v1-cross-sectional-momentum.md#notes--open-questions-for-architect).
