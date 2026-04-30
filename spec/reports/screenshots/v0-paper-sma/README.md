@@ -51,6 +51,8 @@ Seed `0xC0FFEE`, fixed-fraction 0.1 sizing, 2 bps slippage, 0.04% taker, $100 00
 | `btc-2023-1m-rsi-reversion` | [backtest-20260420-152017](../backtest-20260420-152017-btc-2023-1m-rsi-reversion.md) | `bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa` | v0.5 recipe |
 | `btc-2023-1m-bbands-mean-revert` | [backtest-20260420-152020](../backtest-20260420-152020-btc-2023-1m-bbands-mean-revert.md) | `d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3` | v0.5 recipe |
 | `btc-2024-h1-sma-cross` | _not committed_ — regenerate with command below | `345ee0c0d485a44b8b4adabcf5e2af36e82224034e1f8bc8d66694378352a574` | v0 OOS; report was swept up in the Tier 1–3 cleanup. Scenario still wired. |
+| `pairs-2023-zscore-mr` | _v1.5a_ — regenerate with `cargo run --release --bin backtest -- --scenario pairs-2023-zscore-mr --seed 0xC0FFEE` | `90591a0e…` | v1.5a 4-symbol mean-reversion pairs anchor (T715/T716). Per-pair metrics section in report body. |
+| `pairs-2024-h1-zscore-mr` | _v1.5a_ — regenerate with `cargo run --release --bin backtest -- --scenario pairs-2024-h1-zscore-mr --seed 0xC0FFEE` | `14f50a59…` | v1.5a OOS scenario (T715). |
 
 Regenerate the 2024 H1 report on demand:
 

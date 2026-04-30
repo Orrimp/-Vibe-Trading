@@ -1,8 +1,8 @@
 ---
 slug: v15a-mean-reversion-pairs
 status: shipped
-owner: developer
-updated: 2026-04-30
+owner: ui-designer
+updated: 2026-04-29
 ---
 
 # v1.5a — Mean-Reversion on Z-Scored Pairs
@@ -1855,8 +1855,85 @@ requirements above.
     Parquet replay (no jitter); paper-mode live feed jitter is
     tighter than a 1m bar boundary in practice.
 
+## UI — v1.5a
+
+### What landed
+- T719: `ui::fixtures` v1.5a extension — new
+  `fake_cockpit_v15a_pairs_steady_state` preset wired as the default
+  cockpit fixtures-mode boot. Supporting helpers:
+  `fake_v15a_position_btc/eth/bnb`, `fake_v15a_three_long_legs`,
+  `fake_v15a_strategy_row_pairs_mr_h1`, `fake_v15a_strategy_rows`,
+  `fake_event_mean_reversion_stop`, `fake_event_pair_short_observation`,
+  `fake_v15a_recent_events`. Three long-leg position rows
+  (BTCUSDT / BNBUSDT / ETHUSDT — formulation-C: only `a` legs trade)
+  + one `pairs_mr_h1` strategy row + a recent-events footer
+  exercising both new v1.5a `StrategyEventKind` variants.
+- T_FINAL_B_v15a: smoke section `## v1.5a — pairs strategy smoke`
+  appended to
+  [spec/reports/ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md);
+  new multi-pair snapshot test
+  `panel_snapshots__cockpit_v15a_pairs_steady_state` in
+  `crates/ui/tests/panel_snapshots.rs`; screenshots README §3
+  anchors table extended with the two v1.5a backtest scenarios
+  (`pairs-2023-zscore-mr` = `90591a0e…`,
+  `pairs-2024-h1-zscore-mr` = `14f50a59…`).
+
+### Strings added
+- (none) — the v1.5a `StrategyEventKind::MeanReversionStop` and
+  `StrategyEventKind::PairShortObservation` variants were already
+  added to the strategies widget's exhaustive `match` in v1.5a's
+  type-additions task (T701) and route to the existing
+  `STRATEGIES_EVENT_LOAD` label. Adding a new copy string just for
+  v1.5a would be a code smell per the design-system contract.
+
+### Theme tokens added
+- 0 — the new event kinds render in the existing `color::FG_MUTED`
+  to signal "informational, not a control transition." Pairs with
+  the existing `loaded` / `swapped` / `unloaded` / `rejected` color
+  map.
+
+### Accessibility notes
+- No new keyboard / focus surface — multi-row positions and
+  multi-row recent-events footer were already accessibility-audited
+  under v0.5 / v1. Number cells stay right-aligned monospaced; row
+  count delta is data-only.
+
+### Consistency self-audit
+- Inline strings in `crates/ui/`: 0 (consistency tests stay green).
+- Inline hex colors outside `theme.rs`: 0.
+- Diff in `crates/ui/`: `fixtures.rs` (data), `bin/cockpit.rs`
+  (default-fixture wiring), `tests/panel_snapshots.rs` (new
+  snapshot test). Zero edits to `widgets/`, `strings.rs`,
+  `theme.rs`, `state.rs`, `live.rs`.
+
+### Test coverage delta
+- `cargo test -p ui` (default suite): was 58, now 59 — added
+  `panel_snapshots__cockpit_v15a_pairs_steady_state` covering the
+  3-pair steady-state layout.
+- `cargo test -p ui --features live`: 72 (≥ 71 required).
+- Workspace `cargo test --workspace`: green, no regression of the
+  developer's v1.5a backend (T707 – T_FINAL_A_v15a).
+
+### Deferred manual
+- `screenshot-v15a-pairs-steady-state.png` — captured on the
+  operator's display via `cargo run --bin cockpit --features
+  fixtures`; committed under
+  `spec/reports/screenshots/v15a-mean-reversion-pairs/` (sibling
+  pattern from v0 / v1; ui-designer's call on PR review whether to
+  fork into a new dir or append to v0).
+
+### R11 negative confirmation
+- The architect's R11 `[ASSUMPTION] zero new UI work` is **upheld**.
+  Three long-leg position rows render through the same v0
+  positions widget that was extended to N rows in v1; one strategy
+  row renders through the v0.5 strategies widget; the new event
+  kinds are exhaustively matched without new widget code.
+
 ## Changelog
 
+- 2026-04-29 (ui-designer): T719 + T_FINAL_B_v15a complete.
+  Appended `## UI — v1.5a` section. Status stays `shipped`; owner
+  → `ui-designer`. Zero new strings, zero new theme tokens.
 - 2026-04-30 (developer): v1.5a backend complete (T707–T_FINAL_A_v15a).
   All 13 developer tasks shipped. Implementation section populated with
   crate map, fixture decision, T717 anchor note, and v1.5a body-SHA256

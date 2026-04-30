@@ -140,6 +140,26 @@ fn positions_v1_three_rows() {
     assert_snapshot!("positions_v1_three_rows", positions_summary(&c));
 }
 
+/// T_FINAL_B_v15a — pins the v1.5a mean-reversion-pairs steady-state
+/// layout. Three long-leg position rows (BTCUSDT / BNBUSDT / ETHUSDT —
+/// formulation C: only the `a` legs of each pair trade), one
+/// `pairs_mr_h1` strategy row, recent-events footer carrying both new
+/// v1.5a kinds (`MeanReversionStop` → `fg_muted`, `PairShortObservation`
+/// → `fg_muted`) plus a `loaded` row → `accent`. Same widget code path
+/// as the v0/v1 fixtures per R11 negative confirmation; this snapshot
+/// catches a regression where the new event kinds break exhaustive
+/// matching or where the long-leg-only invariant silently allows a
+/// short row.
+#[test]
+fn cockpit_v15a_pairs_steady_state() {
+    let c = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
+    let mut summary = String::new();
+    summary.push_str(&positions_summary(&c));
+    summary.push_str("---\n");
+    summary.push_str(&strategies_summary(&c));
+    assert_snapshot!("cockpit_v15a_pairs_steady_state", summary);
+}
+
 // ── P&L card ────────────────────────────────────────────────────────────────
 
 #[test]

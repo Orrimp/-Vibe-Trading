@@ -1,0 +1,22 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: summary
+---
+panel: positions
+title: Open positions
+state: ready
+rows:
+  BTCUSDT qty=0.45 cost=18000.00 mark=40500.00 pnl=225.00 pnl_color=pos pct=1.25 exp=18.30
+  BNBUSDT qty=60.00 cost=18000.00 mark=300.00 pnl=0 pnl_color=fg_muted pct=0 exp=18.00
+  ETHUSDT qty=7.50 cost=18300.00 mark=2400.00 pnl=-300.00 pnl_color=neg pct=-1.64 exp=18.20
+---
+panel: strategies
+title: Strategies
+state: ready
+rows:
+  pairs_mr_h1 hash=90591a0 status=Ready[pos] last=loaded signals_60s=6 pos=yes
+recent_events:
+  loaded pairs_mr_h1 color=fg_muted
+  loaded pairs_mr_h1 color=fg_muted
+  loaded pairs_mr_h1 color=fg_muted
+  loaded pairs_mr_h1 color=accent

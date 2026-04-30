@@ -437,3 +437,202 @@ pub fn fake_cockpit_v1_steady_state() -> Cockpit {
     c.strategies_recent_events = fake_v1_recent_events().into_iter().collect();
     c
 }
+
+// ── v1.5a mean-reversion-pairs fixtures (T719) ──────────────────────────────
+//
+// R11 (v1.5a) is a **negative confirmation** — the v0 multi-row positions
+// panel and the v0.5 strategies panel already render the v1.5a steady state
+// without a widget code change. Per architecture.md Q3 (formulation C), only
+// the long `a` legs of each pair appear on-book; the would-have-shorted `b`
+// legs surface as `pair_short_observation` strategy-event rows in the
+// recent-events footer (zero money columns). The architect's Q8 added two
+// new `StrategyEventKind` variants (`MeanReversionStop`,
+// `PairShortObservation`); both are already exhaustively matched by the
+// strategies widget and the snapshot helper.
+//
+// Steady state for the canonical `pairs_mr_h1` config (T714):
+//
+// - 3 long-leg position rows on the `a` legs of the three pairs:
+//     (BTCUSDT, ETHUSDT) → BTCUSDT long
+//     (ETHUSDT, SOLUSDT) → ETHUSDT long
+//     (BNBUSDT, BTCUSDT) → BNBUSDT long
+// - 1 strategies-panel row for `pairs_mr_h1` with kind
+//   `mean_reversion_pairs` (panel renders the id verbatim; kind is implicit
+//   in the row's source path).
+// - Recent-events footer carries the two new v1.5a kinds plus a `Load`
+//   row, exercising every `StrategyEventKind` arm in the widget's `match`.
+// - Live tape shows mixed `Side::Buy` / `Side::Sell` fills from the
+//   long-leg round trips so the `POS` / `NEG` color paths are exercised.
+//
+// Strings: zero new copy expected — the strategies widget already maps
+// the new `MeanReversionStop` / `PairShortObservation` kinds onto the
+// existing `STRATEGIES_EVENT_LOAD` label (informational; muted color).
+// Adding a v1.5a-specific copy string would create a code smell per the
+// design-system contract, so we route through the existing label.
+
+const RECIPE_PAIRS_MR_H1: &str = "config/strategies/pairs_mr_h1.toml";
+
+/// Long-leg BTC position from the `(BTCUSDT, ETHUSDT)` pair. Positive
+/// unrealized — drives the `POS` color path on row 1.
+#[must_use]
+pub fn fake_v15a_position_btc() -> PositionView {
+    PositionView {
+        symbol: Symbol::new("BTCUSDT"),
+        base_qty: dec!(0.45),
+        cost_basis: Money::from_decimal(dec!(18_000.00)),
+        last_mark: Price::new(dec!(40_500.00)).unwrap_or_else(|_| unreachable!()),
+        pnl: Money::from_decimal(dec!(225.00)),
+        pnl_pct: dec!(1.25),
+        exposure_pct: dec!(18.30),
+    }
+}
+
+/// Long-leg ETH position from the `(ETHUSDT, SOLUSDT)` pair. Slightly
+/// underwater — drives the `NEG` color path on row 2.
+#[must_use]
+pub fn fake_v15a_position_eth() -> PositionView {
+    PositionView {
+        symbol: Symbol::new("ETHUSDT"),
+        base_qty: dec!(7.50),
+        cost_basis: Money::from_decimal(dec!(18_300.00)),
+        last_mark: Price::new(dec!(2_400.00)).unwrap_or_else(|_| unreachable!()),
+        pnl: Money::from_decimal(dec!(-300.00)),
+        pnl_pct: dec!(-1.64),
+        exposure_pct: dec!(18.20),
+    }
+}
+
+/// Long-leg BNB position from the `(BNBUSDT, BTCUSDT)` pair. Flat —
+/// drives the `FG_MUTED` zero-delta color path on row 3.
+#[must_use]
+pub fn fake_v15a_position_bnb() -> PositionView {
+    PositionView {
+        symbol: Symbol::new("BNBUSDT"),
+        base_qty: dec!(60.00),
+        cost_basis: Money::from_decimal(dec!(18_000.00)),
+        last_mark: Price::new(dec!(300.00)).unwrap_or_else(|_| unreachable!()),
+        pnl: Money::from_decimal(dec!(0)),
+        pnl_pct: dec!(0),
+        exposure_pct: dec!(18.00),
+    }
+}
+
+/// Three long-leg position rows for the v1.5a steady state of
+/// `pairs_mr_h1`. Order matches the lex-sorted `BTreeMap<PairKey, _>`
+/// iteration the strategy uses (R9.3): `(BTCUSDT, ETHUSDT)`,
+/// `(BNBUSDT, BTCUSDT)`, `(ETHUSDT, SOLUSDT)` — but the position rows
+/// surface only the traded `a` leg of each pair, so the rendered order
+/// is the lex-sorted `a` legs: BTCUSDT, BNBUSDT, ETHUSDT. Per Q3
+/// formulation-C, no short-leg rows appear on-book.
+#[must_use]
+pub fn fake_v15a_three_long_legs() -> Vec<PositionView> {
+    vec![
+        fake_v15a_position_btc(),
+        fake_v15a_position_bnb(),
+        fake_v15a_position_eth(),
+    ]
+}
+
+/// Strategy row for `pairs_mr_h1` in steady state. The id, source path
+/// and short hash are stable; the rendered kind (`mean_reversion_pairs`)
+/// is implicit in the row — the strategies widget reads it via the
+/// `StrategyId` and source-path tooltip, not via a separate column.
+#[must_use]
+pub fn fake_v15a_strategy_row_pairs_mr_h1() -> StrategyRow {
+    StrategyRow {
+        id: StrategyId::new("pairs_mr_h1"),
+        short_hash: SmolStr::new("90591a0"),
+        full_hash: SmolStr::new("90591a0e1f2c3d4a5b6e7f8091a2b3c4d5e6f70819a0b1c2d3e4f5061728394a"),
+        status: StrategyStatus::Ready,
+        last_event: Some(fake_event_load("pairs_mr_h1", RECIPE_PAIRS_MR_H1)),
+        signals_60s: 6,
+        has_position: true,
+        source_path: SmolStr::new(RECIPE_PAIRS_MR_H1),
+    }
+}
+
+/// One-row strategies-panel input for v1.5a — only deployed strategy is
+/// `pairs_mr_h1`.
+#[must_use]
+pub fn fake_v15a_strategy_rows() -> Vec<StrategyRow> {
+    vec![fake_v15a_strategy_row_pairs_mr_h1()]
+}
+
+/// Build a `StrategyEventView` carrying a v1.5a `MeanReversionStop` row
+/// — the architect's Q8 hard-stop event written to `strategy_events`.
+/// Rendered in the recent-events footer with `FG_MUTED` color and the
+/// `STRATEGIES_EVENT_LOAD` label per the strategies widget's mapping
+/// (observation-only kind; not a control event).
+#[must_use]
+pub fn fake_event_mean_reversion_stop(id: &str, path: &str) -> StrategyEventView {
+    StrategyEventView {
+        id: SmolStr::new("44444444-4444-4444-4444-444444444444"),
+        ts: fixed_ts(120),
+        kind: StrategyEventKind::MeanReversionStop,
+        strategy_id: Some(StrategyId::new(id)),
+        old_hash: None,
+        new_hash: None,
+        source_path: Some(SmolStr::new(path)),
+        operator: SmolStr::new("system"),
+        error_code: Some(SmolStr::new("mean_reversion_stop")),
+        error_summary: Some(SmolStr::new("z=4.12 >= z_stop=4.0 on (BTCUSDT, ETHUSDT)")),
+    }
+}
+
+/// Build a `StrategyEventView` carrying a v1.5a `PairShortObservation`
+/// row — the architect's Q8 observation-only event written alongside
+/// every long-leg buy on entry. `error_code` and `error_summary` are
+/// `None` (this is informational, not an error).
+#[must_use]
+pub fn fake_event_pair_short_observation(id: &str, path: &str) -> StrategyEventView {
+    StrategyEventView {
+        id: SmolStr::new("55555555-5555-5555-5555-555555555555"),
+        ts: fixed_ts(180),
+        kind: StrategyEventKind::PairShortObservation,
+        strategy_id: Some(StrategyId::new(id)),
+        old_hash: None,
+        new_hash: None,
+        source_path: Some(SmolStr::new(path)),
+        operator: SmolStr::new("system"),
+        error_code: None,
+        error_summary: None,
+    }
+}
+
+/// Recent-events footer for v1.5a steady state. Newest-first to match the
+/// `fake_recent_events` ordering convention. Exercises the two new v1.5a
+/// `StrategyEventKind` variants (`MeanReversionStop`,
+/// `PairShortObservation`) plus a `Load` row so every footer color path
+/// is covered.
+#[must_use]
+pub fn fake_v15a_recent_events() -> Vec<StrategyEventView> {
+    vec![
+        fake_event_pair_short_observation("pairs_mr_h1", RECIPE_PAIRS_MR_H1),
+        fake_event_mean_reversion_stop("pairs_mr_h1", RECIPE_PAIRS_MR_H1),
+        fake_event_pair_short_observation("pairs_mr_h1", RECIPE_PAIRS_MR_H1),
+        fake_event_load("pairs_mr_h1", RECIPE_PAIRS_MR_H1),
+    ]
+}
+
+/// Cockpit booted into the v1.5a steady-state: 3 long-leg position rows
+/// (BTCUSDT / BNBUSDT / ETHUSDT — formulation C, only `a` legs trade)
+/// plus one strategy row for `pairs_mr_h1`, with recent-events footer
+/// listing `MeanReversionStop` + `PairShortObservation` kinds. R11
+/// negative confirmation — pure data, no widget code change.
+///
+/// This is the **default** fixtures-mode cockpit boot: operators that
+/// run `cargo run --bin cockpit --features fixtures` see the most
+/// recent feature set. Earlier presets (`fake_cockpit_v1_steady_state`,
+/// `fake_cockpit_with_strategies`) remain available for snapshot tests.
+#[must_use]
+pub fn fake_cockpit_v15a_pairs_steady_state() -> Cockpit {
+    let mut c = Cockpit::ready(
+        fake_fill_feed(8),
+        fake_v15a_three_long_legs(),
+        fake_pnl_positive(),
+    );
+    c.mode = AgentMode::Paper;
+    c.strategies = PanelState::Ready(fake_v15a_strategy_rows());
+    c.strategies_recent_events = fake_v15a_recent_events().into_iter().collect();
+    c
+}

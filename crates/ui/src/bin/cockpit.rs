@@ -52,9 +52,14 @@ impl App {
         // full column stack without a running agent. v1 (T623) extends this
         // to a top-3 momentum portfolio so the positions panel renders the
         // multi-row steady state for the V8 smoke (R11 negative confirmation
-        // — same widget, more rows).
+        // — same widget, more rows). v1.5a (T719) extends it again to the
+        // mean-reversion-pairs steady state: 3 long-leg position rows +
+        // `pairs_mr_h1` strategy row + a recent-events footer carrying both
+        // new v1.5a kinds (`MeanReversionStop`, `PairShortObservation`).
+        // Operators see the most recent feature set when they fixtures-boot
+        // the cockpit — earlier presets stay available for snapshot tests.
         #[cfg(feature = "fixtures")]
-        let cockpit = ui::fixtures::fake_cockpit_v1_steady_state();
+        let cockpit = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
         #[cfg(not(feature = "fixtures"))]
         let cockpit = Cockpit::new();
 

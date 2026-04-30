@@ -2,8 +2,8 @@
 generated: 2026-04-18
 updated: 2026-04-30
 author: ui-designer
-feature: v0-paper-sma, v05-composed-strategies, v1-cross-sectional-momentum
-scope: T_FINAL_B (v0) + T_FINAL_B (v0.5) + T_FINAL_B_v1 — cockpit smoke
+feature: v0-paper-sma, v05-composed-strategies, v1-cross-sectional-momentum, v15a-mean-reversion-pairs
+scope: T_FINAL_B (v0) + T_FINAL_B (v0.5) + T_FINAL_B_v1 + T_FINAL_B_v15a — cockpit smoke
 ---
 
 # Cockpit Smoke + Kill-Switch Drill (T_FINAL_B)
@@ -490,3 +490,148 @@ All gates above must be green before running the manual steps.
   negative confirmation). The only diff in `crates/ui/` is in
   `fixtures.rs` (data), `bin/cockpit.rs` (default-fixture wiring),
   and `tests/panel_snapshots.rs` (the new multi-row snapshot test).
+
+---
+
+## v1.5a — pairs strategy smoke
+
+Scope extension for **T_FINAL_B_v15a** (V8 from
+[v15a-mean-reversion-pairs.md → Verification](../features/v15a-mean-reversion-pairs.md#verification)).
+This is a **negative-confirmation drill** for R11 — the v0 multi-row
+positions panel and the v0.5 strategies panel already render the v1.5a
+steady state without a widget code change. T719 ships a new fixtures
+preset; zero new strings, zero new theme tokens.
+
+The fixture `ui::fixtures::fake_cockpit_v15a_pairs_steady_state()`
+(T719) is tuned to the canonical 3-pair config from `pairs_mr_h1.toml`
+(T714). Per architecture.md Q3 (formulation C), only the long `a` legs
+of each pair appear on-book; the would-have-shorted `b` legs surface as
+`pair_short_observation` rows in the recent-events footer with zero
+money columns.
+
+Pairs (lex-sorted `BTreeMap<PairKey, _>` iteration per R9.3):
+
+- `(BTCUSDT, ETHUSDT)` → BTCUSDT long-leg position (`POS` green, +$225)
+- `(BNBUSDT, BTCUSDT)` → BNBUSDT long-leg position (`FG_MUTED` flat, $0)
+- `(ETHUSDT, SOLUSDT)` → ETHUSDT long-leg position (`NEG` red, −$300)
+
+The matching strategies row is `pairs_mr_h1`, kind
+`mean_reversion_pairs` (rendered via the strategy-id and source path),
+`Holds position = yes`, signals/60s = 6 (most recent 3 entries × 2
+emitted Signals — the long-leg `OpenPairLong` plus the
+`PairShortObservation`).
+
+### Sandbox-verifiable gates (automated) — v1.5a extension
+
+| Gate | Command | What it checks |
+|------|---------|----------------|
+| Build (fixtures, v1.5a portfolio) | `cargo build -p ui --bin cockpit --features fixtures` | Cockpit boots against `fake_cockpit_v15a_pairs_steady_state()` (T719) — the new default fixture for the cockpit binary. |
+| Multi-pair snapshot | `cargo test -p ui` | New `panel_snapshots__cockpit_v15a_pairs_steady_state` snapshot pins three long-leg position rows + one strategies row + recent-events footer covering both v1.5a `StrategyEventKind` variants. Total ≥ 59. |
+| Consistency audit | `cargo test -p ui` | `no_inline_user_visible_strings_in_widgets` + `no_inline_hex_colors_in_widgets_or_state` still zero on every widget (no widget edits in v1.5a). |
+| Workspace no-regression | `cargo test --workspace` | All v0 + v0.5 + v1 + v1.5a backend tests still green; `pairs-2023-zscore-mr` = `90591a0e…` and `pairs-2024-h1-zscore-mr` = `14f50a59…` body-SHA256 anchors hold. |
+
+All gates above must be green before running the manual steps.
+
+### Manual steps — fixtures walkthrough (multi-pair steady state)
+
+1. [ ] Terminal 1: `cargo run --bin cockpit --features fixtures`.
+   - Window opens; right column (top-to-bottom) shows the strategies
+     panel with **one row** (`pairs_mr_h1`), then the positions panel
+     with **three rows** (BTCUSDT, BNBUSDT, ETHUSDT — lex-sorted `a`
+     legs of the three pairs), then the live tape with mixed buy/sell
+     fills.
+   - `[ ]` screenshot-v15a-pairs-steady-state.png _deferred_manual_
+2. [ ] Inspect the positions panel rows (formulation-C invariant):
+   - BTCUSDT row: `P&L` reads `+225.00` in `POS` green; `P&L %` reads
+     `+1.25%` also in `POS`. This is the long leg of `(BTCUSDT,
+     ETHUSDT)`.
+   - BNBUSDT row: `P&L` reads `0.00` in `FG_MUTED` neutral; `P&L %`
+     reads `0.00%` also in `FG_MUTED`. Long leg of `(BNBUSDT, BTCUSDT)`.
+   - ETHUSDT row: `P&L` reads `-300.00` in `NEG` red; `P&L %` reads
+     `-1.64%` also in `NEG`. Long leg of `(ETHUSDT, SOLUSDT)`.
+   - **Crucially:** no SOLUSDT row, no short rows of any kind. Per
+     formulation C, only the `a` leg of each pair trades; the `b` leg
+     is observation-only and surfaces in the recent-events footer
+     (next step), not on the positions panel.
+3. [ ] Inspect the strategies panel:
+   - Single row id `pairs_mr_h1`, short hash `90591a0`, status pill
+     `Ready` in `POS` green, last-event `loaded`, `Signals / 60s = 6`,
+     `Holds position = yes`.
+   - Recent-events footer (newest first): three observation rows in
+     `FG_MUTED` (the v1.5a `PairShortObservation` + `MeanReversionStop`
+     kinds map to the `STRATEGIES_EVENT_LOAD` label per the widget's
+     `match` arm — Q8 informational kinds, not control events) plus
+     one `loaded` row in `ACCENT` for the canonical Load. Total: 4 rows.
+   - The widget's exhaustive `match` over `StrategyEventKind` (Load /
+     Swap / Unload / Reject / RebalanceRejected / MeanReversionStop /
+     PairShortObservation) renders without panic.
+4. [ ] Spot-check theme-token contract (no inline hex / no inline
+   strings introduced by v1.5a):
+   - `cargo test -p ui` — consistency audits stay green.
+   - The recent-events footer renders the new Q8 kinds with the
+     existing `STRATEGIES_EVENT_LOAD` constant (no new strings) in
+     `color::FG_MUTED` (no new theme tokens). The visual signal of
+     "informational, not a control transition" comes from the muted
+     color alone — pairs with the existing `loaded` / `swapped` /
+     `rejected` color map.
+5. [ ] Resize the window narrower (drag the right edge inward until
+   the positions panel hits its minimum width). Expected behavior:
+   the panel's inner `Scrollable` keeps the rows clipped cleanly to
+   the panel frame; row text remains right-aligned monospaced; no
+   text overflows the panel border. Same as v1's R11 multi-row drill —
+   v1.5a adds zero new layout surface.
+6. [ ] Quit the binary (`Cmd+Q` on macOS).
+
+> Why deferred PNG: the sandbox is headless. Capture instructions in
+> the deferred-PNG table below.
+
+### Acceptance for T_FINAL_B_v15a
+
+- [ ] Multi-pair fixtures walkthrough performed (step 1 above);
+  three long-leg position rows + one strategy row visible under
+  `cargo run --bin cockpit --features fixtures`.
+- [ ] Formulation-C invariant validated (step 2): positions panel
+  shows ONLY long-leg rows on the `a` legs of each pair. No
+  short-leg rows appear, even though `pair_short_observation`
+  events are visible in the recent-events footer.
+- [ ] Strategies panel shows one row for `pairs_mr_h1`,
+  `Holds position = yes`, recent-events footer carries both
+  `MeanReversionStop` and `PairShortObservation` kinds (step 3).
+- [ ] Theme-token / strings contract intact (step 4): zero new
+  `ui::strings` constants, zero new `ui::theme` tokens added by
+  v1.5a — the new event kinds map onto existing copy + colors.
+- [ ] Resize/clip behavior sane (step 5): rows clip inside the
+  panel via the existing `Scrollable`; no overflow into adjacent
+  panels. Same widget code path as v0/v1 per R11 negative
+  confirmation.
+- [ ] Automated gates green: `cargo fmt -p ui -- --check`,
+  `cargo clippy -p ui --all-targets --all-features -- -D
+  warnings`, `cargo test -p ui` (≥ 59, including the new
+  `cockpit_v15a_pairs_steady_state` snapshot), `cargo test -p ui
+  --features live` (≥ 71), workspace consistency audits.
+- [ ] Workspace no-regression: `cargo test --workspace` green;
+  the seven v0/v0.5/v1 anchor reports + the two new v1.5a anchor
+  reports (`pairs-2023-zscore-mr` = `90591a0e…`,
+  `pairs-2024-h1-zscore-mr` = `14f50a59…`) byte-identical across
+  two runs at seed `0xC0FFEE`.
+- [ ] Deferred PNG `screenshot-v15a-pairs-steady-state.png`
+  captured on the operator display and committed under
+  `spec/reports/screenshots/v15a-mean-reversion-pairs/` (or
+  appended to the v0 dir per the v1 sibling pattern;
+  ui-designer's call on PR review).
+- [ ] ui-designer signoff: no widget code changed for v1.5a (R11
+  negative confirmation). The only diffs in `crates/ui/` are in
+  `fixtures.rs` (new v1.5a presets), `bin/cockpit.rs`
+  (default-fixture wiring updated to the v1.5a steady state),
+  and `tests/panel_snapshots.rs` (new multi-pair snapshot test).
+  No new `ui::strings` constants, no new `ui::theme` tokens.
+
+### Deferred PNG list — v1.5a additions
+
+Captured on the operator's workstation, saved into
+`spec/reports/screenshots/v15a-mean-reversion-pairs/` (sibling of
+the v0 / v1 dirs):
+
+| File | How to capture |
+|---|---|
+| screenshot-v15a-pairs-steady-state.png | `cargo run --bin cockpit --features fixtures`; cockpit full-window. Captures the 3 long-leg position rows + the `pairs_mr_h1` strategy row + the recent-events footer carrying both v1.5a `StrategyEventKind` variants. |

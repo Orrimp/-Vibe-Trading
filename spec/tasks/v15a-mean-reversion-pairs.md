@@ -1,8 +1,8 @@
 ---
 slug: v15a-mean-reversion-pairs
 status: shipped
-owner: developer
-updated: 2026-04-30
+owner: ui-designer
+updated: 2026-04-29
 ---
 
 # Tasks — v1.5a Mean-Reversion on Z-Scored Pairs
@@ -318,7 +318,7 @@ smaller than v1's.
   > 100k bars/s aggregated across the 4-symbol universe._
   **[deps: T706]**
 
-- [ ] **T719** [ui-designer] — `ui::fixtures` v1.5a extension:
+- [x] **T719** [ui-designer] — `ui::fixtures` v1.5a extension:
   up-to-3-pair-position roster preset (BTCUSDT / ETHUSDT / BNBUSDT
   long, all from `pairs_mr_h1`) driven from a v1.5a-shaped fixture
   so `cargo run --bin cockpit --features fixtures` shows up to
@@ -359,7 +359,7 @@ smaller than v1's.
   from the feature's Verification section pass._
   **[deps: T709, T710, T711, T712, T715, T716, T717, T718]**
 
-- [ ] **T_FINAL_B_v15a** [ui-designer] — UI smoke (V8):
+- [x] **T_FINAL_B_v15a** [ui-designer] — UI smoke (V8):
   - `cargo run --bin cockpit --features fixtures` against the
     T719 v1.5a fixtures shows up to three position rows + one
     strategy row (`pairs_mr_h1`).
@@ -462,6 +462,26 @@ Week 2 (backtest, integration, e2e):
 
 ## Changelog
 
+- 2026-04-29 (ui-designer): T719 + T_FINAL_B_v15a complete. Added
+  `fake_cockpit_v15a_pairs_steady_state` + supporting helpers
+  (`fake_v15a_position_btc/eth/bnb`, `fake_v15a_strategy_row_pairs_mr_h1`,
+  `fake_event_mean_reversion_stop`, `fake_event_pair_short_observation`,
+  `fake_v15a_recent_events`) to `crates/ui/src/fixtures.rs`. Wired the
+  v1.5a steady-state as the default cockpit fixtures-mode boot in
+  `crates/ui/src/bin/cockpit.rs`. New snapshot
+  `panel_snapshots__cockpit_v15a_pairs_steady_state` covers 3 long-leg
+  position rows (formulation C: BTCUSDT/BNBUSDT/ETHUSDT, no shorts) +
+  the `pairs_mr_h1` strategy row + a recent-events footer exercising
+  both v1.5a `StrategyEventKind` variants
+  (`MeanReversionStop`, `PairShortObservation`). Smoke checklist
+  extended with a `## v1.5a — pairs strategy smoke` section in
+  `spec/reports/ui-week2-smoke-checklist-2026-04-18.md`. Screenshots
+  README §3 anchors table extended with the two v1.5a backtest
+  scenarios. Zero new strings, zero new theme tokens — R11 negative
+  confirmation holds; the new event kinds map onto the existing
+  `STRATEGIES_EVENT_LOAD` label in `FG_MUTED` color. UI tests:
+  default 59 (was 58, +1 v1.5a snapshot); live feature 72 (≥ 71
+  required). All quality gates green.
 - 2026-04-30 (architect): initial task breakdown — 19 tasks (T701–T719)
   + 2 finals; covers types, primitives, state machine, sync, config,
   strategy core, two new audit writers, `pnl_by_pair` reader,
