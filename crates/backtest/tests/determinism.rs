@@ -575,14 +575,20 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
 // v0/v0.5/v1 scenarios.  The v1.5a backend changes must not affect any of
 // these anchors (architecture determinism contract R9.4).
 //
-// Anchor hashes locked per spec/tasks/v15a-mean-reversion-pairs.md T717:
+// Anchor hashes locked per v1 ship contract
+// (spec/reports/test-2026-04-30-1458-v1-cross-sectional-momentum-ship.md §5A):
 //   btc-2023-1m-sma-cross             fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
 //   btc-2023-1m-sma-baseline-refresh  fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
 //   btc-2023-1m-macd-trend            ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805
 //   btc-2023-1m-rsi-reversion         bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa
 //   btc-2023-1m-bbands-mean-revert    d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3
-//   top10-2023-1h-momentum            a20431e3f5765cefbdfed7d1157654bcbec90d90e4bd178cdd37ce084cba55af
-//   top10-2024-h1-momentum            38b576335c9a7a45b7f4a74ecf82ca8310b89ae025c2ba33c56f79e62c22ba2c
+//   top10-2023-1h-momentum            3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97
+//   top10-2024-h1-momentum            1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6
+//
+// NOTE: T715 (pairs backtest) introduced a data_source regression where the
+// momentum scenarios were emitting "synthetic (seeded RNG, v1.5a multi-symbol)"
+// instead of the v1-locked "synthetic (seeded RNG, v1 multi-symbol)".  Fixed in
+// the T717 hotfix: momentum data_source restored; pairs keep the v1.5a label.
 
 /// T717 — SMA cross anchor unchanged after v1.5a backend changes.
 #[test]
@@ -645,9 +651,12 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 }
 
 /// T717 — top10-2023-1h-momentum anchor hash unchanged.
+///
+/// Locked v1 ship anchor: `3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97`
+/// (spec/reports/test-2026-04-30-1458-v1-cross-sectional-momentum-ship.md §5A)
 #[test]
 fn t717_top10_2023_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "a20431e3f5765cefbdfed7d1157654bcbec90d90e4bd178cdd37ce084cba55af";
+    const ANCHOR: &str = "3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97";
     let hex = scenario_body_hex("top10-2023-1h-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -657,9 +666,12 @@ fn t717_top10_2023_momentum_anchor_hash_unchanged() {
 }
 
 /// T717 — top10-2024-h1-momentum anchor hash unchanged.
+///
+/// Locked v1 ship anchor: `1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6`
+/// (spec/reports/test-2026-04-30-1458-v1-cross-sectional-momentum-ship.md §5A)
 #[test]
 fn t717_top10_2024_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "38b576335c9a7a45b7f4a74ecf82ca8310b89ae025c2ba33c56f79e62c22ba2c";
+    const ANCHOR: &str = "1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6";
     let hex = scenario_body_hex("top10-2024-h1-momentum");
     assert_eq!(
         hex, ANCHOR,

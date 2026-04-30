@@ -343,11 +343,20 @@ pub async fn strategy_event(
     // Use the caller-supplied timestamp when present (enables deterministic
     // tests with a synthetic replay clock — architect risk #4).  Fall back to
     // wall-clock time for production use where the watcher passes `None`.
+    // Microsecond-precision format ensures that two sequential writes within
+    // the same wall-clock second still produce distinct, monotonically-ordered
+    // `ts` values.  Without sub-second precision, two rapid writes collide on
+    // the same `ts` string and the sort falls back to `rowid ASC`, which is
+    // fragile under concurrent inserts (architect risk #4).
+    let ts_fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
     let ts = if let Some(t) = write.ts {
         t.to_owned()
     } else {
         time::OffsetDateTime::now_utc()
-            .format(&time::format_description::well_known::Rfc3339)
+            .format(&ts_fmt)
             .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?
     };
 

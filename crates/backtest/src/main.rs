@@ -1610,13 +1610,25 @@ async fn main() -> Result<()> {
         ScenarioStrategy::MeanReversionPairs { .. }
     );
 
-    let (bars, data_source) = if is_momentum || is_pairs {
+    let (bars, data_source) = if is_momentum {
         info!(
             bar_count = scenario.bar_count,
             "multi-symbol scenario — generating synthetic bars"
         );
-        // Will be replaced by run_momentum_backtest / run_pairs_backtest below;
-        // placeholder empty vec.
+        // Momentum scenarios: data_source string is part of the v1 ship contract
+        // (locked anchor hashes 3b60ef07… / 1f33534f…).  Must stay byte-for-byte
+        // identical to what v1 emitted.  Do NOT change this string.
+        (
+            Vec::<Bar>::new(),
+            "synthetic (seeded RNG, v1 multi-symbol)".to_string(),
+        )
+    } else if is_pairs {
+        info!(
+            bar_count = scenario.bar_count,
+            "pairs scenario — generating synthetic bars"
+        );
+        // Pairs scenarios (v1.5a): new scenarios with no locked v1 anchor.
+        // Free to use the v1.5a label.
         (
             Vec::<Bar>::new(),
             "synthetic (seeded RNG, v1.5a multi-symbol)".to_string(),
