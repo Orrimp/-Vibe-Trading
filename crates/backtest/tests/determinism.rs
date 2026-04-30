@@ -568,3 +568,102 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
          Got:             {hex}"
     );
 }
+
+// ── T717 — v0 + v0.5 + v1 full-hash regression gate ──────────────────────────
+//
+// These tests extend T622 with the complete 64-char anchor hashes for all 7
+// v0/v0.5/v1 scenarios.  The v1.5a backend changes must not affect any of
+// these anchors (architecture determinism contract R9.4).
+//
+// Anchor hashes locked per spec/tasks/v15a-mean-reversion-pairs.md T717:
+//   btc-2023-1m-sma-cross             fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
+//   btc-2023-1m-sma-baseline-refresh  fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
+//   btc-2023-1m-macd-trend            ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805
+//   btc-2023-1m-rsi-reversion         bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa
+//   btc-2023-1m-bbands-mean-revert    d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3
+//   top10-2023-1h-momentum            a20431e3f5765cefbdfed7d1157654bcbec90d90e4bd178cdd37ce084cba55af
+//   top10-2024-h1-momentum            38b576335c9a7a45b7f4a74ecf82ca8310b89ae025c2ba33c56f79e62c22ba2c
+
+/// T717 — SMA cross anchor unchanged after v1.5a backend changes.
+#[test]
+fn t717_sma_cross_anchor_hash_unchanged() {
+    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    let hex = scenario_body_hex("btc-2023-1m-sma-cross");
+    assert_eq!(
+        hex, ANCHOR,
+        "T717 REGRESSION: btc-2023-1m-sma-cross body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}"
+    );
+}
+
+/// T717 — SMA baseline-refresh anchor unchanged after v1.5a backend changes.
+#[test]
+fn t717_sma_baseline_refresh_anchor_hash_unchanged() {
+    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    let hex = scenario_body_hex("btc-2023-1m-sma-baseline-refresh");
+    assert_eq!(
+        hex, ANCHOR,
+        "T717 REGRESSION: btc-2023-1m-sma-baseline-refresh body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}"
+    );
+}
+
+/// T717 — MACD trend full anchor hash unchanged.
+#[test]
+fn t717_macd_trend_anchor_hash_unchanged() {
+    const ANCHOR: &str = "ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805";
+    let hex = scenario_body_hex("btc-2023-1m-macd-trend");
+    assert_eq!(
+        hex, ANCHOR,
+        "T717 REGRESSION: btc-2023-1m-macd-trend body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}"
+    );
+}
+
+/// T717 — RSI reversion full anchor hash unchanged.
+#[test]
+fn t717_rsi_reversion_anchor_hash_unchanged() {
+    const ANCHOR: &str = "bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa";
+    let hex = scenario_body_hex("btc-2023-1m-rsi-reversion");
+    assert_eq!(
+        hex, ANCHOR,
+        "T717 REGRESSION: btc-2023-1m-rsi-reversion body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}"
+    );
+}
+
+/// T717 — BBands mean-revert full anchor hash unchanged.
+#[test]
+fn t717_bbands_mean_revert_anchor_hash_unchanged() {
+    const ANCHOR: &str = "d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3";
+    let hex = scenario_body_hex("btc-2023-1m-bbands-mean-revert");
+    assert_eq!(
+        hex, ANCHOR,
+        "T717 REGRESSION: btc-2023-1m-bbands-mean-revert body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}"
+    );
+}
+
+/// T717 — top10-2023-1h-momentum anchor hash unchanged.
+#[test]
+fn t717_top10_2023_momentum_anchor_hash_unchanged() {
+    const ANCHOR: &str = "a20431e3f5765cefbdfed7d1157654bcbec90d90e4bd178cdd37ce084cba55af";
+    let hex = scenario_body_hex("top10-2023-1h-momentum");
+    assert_eq!(
+        hex, ANCHOR,
+        "T717 REGRESSION: top10-2023-1h-momentum body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}"
+    );
+}
+
+/// T717 — top10-2024-h1-momentum anchor hash unchanged.
+#[test]
+fn t717_top10_2024_momentum_anchor_hash_unchanged() {
+    const ANCHOR: &str = "38b576335c9a7a45b7f4a74ecf82ca8310b89ae025c2ba33c56f79e62c22ba2c";
+    let hex = scenario_body_hex("top10-2024-h1-momentum");
+    assert_eq!(
+        hex, ANCHOR,
+        "T717 REGRESSION: top10-2024-h1-momentum body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}"
+    );
+}

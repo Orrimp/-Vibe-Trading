@@ -35,3 +35,7 @@ harness = false
 [[bench]]
 name = "cross_sectional"
 harness = false
+
+[[bench]]
+name = "pairs_mean_reversion"
+harness = false

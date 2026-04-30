@@ -301,8 +301,22 @@ mod tests {
         let k = dec!(1.5);
         let vol_floor = dec!(0.000001);
 
-        let prices_a = [dec!(100), dec!(102), dec!(101), dec!(103), dec!(104), dec!(100)];
-        let prices_b = [dec!(200), dec!(201), dec!(202), dec!(203), dec!(204), dec!(200)];
+        let prices_a = [
+            dec!(100),
+            dec!(102),
+            dec!(101),
+            dec!(103),
+            dec!(104),
+            dec!(100),
+        ];
+        let prices_b = [
+            dec!(200),
+            dec!(201),
+            dec!(202),
+            dec!(203),
+            dec!(204),
+            dec!(200),
+        ];
 
         let mut rb1 = RingBuffer::new(n as usize + 2);
         let mut rb2 = RingBuffer::new(n as usize + 2);

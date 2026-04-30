@@ -8,8 +8,9 @@ use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, FillView, FundingObs, JournalEntryView, LedgerError, Money, Price, Quantity, Side,
-    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp, Usdt,
+    AccountId, FillView, FundingObs, JournalEntryView, LedgerError, Money, PairKey, PairMembership,
+    Price, Quantity, Side, StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp,
+    Usdt,
 };
 
 use crate::Ledger;
@@ -401,6 +402,11 @@ fn parse_strategy_event_view(
         "Unload" => StrategyEventKind::Unload,
         "Reject" => StrategyEventKind::Reject,
         "RebalanceRejected" | "rebalance_rejected" => StrategyEventKind::RebalanceRejected,
+        // v1.5a Q8 variants (T707)
+        "MeanReversionStop" | "mean_reversion_stop" => StrategyEventKind::MeanReversionStop,
+        "PairShortObservation" | "pair_short_observation" => {
+            StrategyEventKind::PairShortObservation
+        }
         other => {
             return Err(LedgerError::Database(format!(
                 "unknown strategy event kind: {other}"
@@ -507,6 +513,73 @@ fn extract_symbol_from_description(desc: &str) -> Symbol {
     } else {
         Symbol::new("UNKNOWN")
     }
+}
+
+// ── Per-pair P&L attribution (v1.5a T708) ────────────────────────────────────
+
+/// Return per-pair realized P&L in `[since, until]`, lex-sorted by [`PairKey`].
+///
+/// Composes [`pnl_by_symbol`] (v1 T609) against the `&[PairMembership]` captured
+/// at strategy-load time.  Only the `traded_a_symbol` leg contributes P&L in
+/// formulation C (the `b` leg is never traded).  Zero-P&L pairs are omitted.
+///
+/// ## Multiplicity note (architect risk #3 / Q9)
+///
+/// When the same `a` symbol appears in more than one pair
+/// (`k > 1` multiplicity — e.g. `BTCUSDT` in both `(BTCUSDT, ETHUSDT)` and
+/// `(BTCUSDT, SOLUSDT)`), `pnl_by_pair[(a, b)] == pnl_by_symbol[a]` only holds
+/// when `k == 1`.  For `k > 1`, `pnl_by_symbol[a]` is the **aggregate** P&L from
+/// *all* pairs that traded `a`; `pnl_by_pair` reports the same aggregate value for
+/// each pair that contains `a`, which means `Σ pnl_by_pair` can exceed
+/// `Σ pnl_by_symbol` when `k > 1`.  Callers must be aware of this when summing
+/// pair-level P&L across overlapping universes.
+///
+/// ## Sum invariant (R6.3) — k == 1 case only
+///
+/// `Σ pnl_by_pair(since, until) == Σ pnl_by_symbol(since, until)` when each
+/// `a` symbol is unique across all pairs in `memberships`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn pnl_by_pair(
+    ledger: &Ledger,
+    memberships: &[PairMembership],
+    since: Timestamp,
+    until: Timestamp,
+) -> Result<Vec<(PairKey, Money<Usdt>)>, LedgerError> {
+    // Build the per-symbol P&L lookup from the existing v1 query.
+    let by_symbol = pnl_by_symbol(ledger, since, until).await?;
+    let symbol_pnl: std::collections::HashMap<Symbol, Decimal> = by_symbol
+        .into_iter()
+        .map(|(sym, money)| (sym, money.amount()))
+        .collect();
+
+    // Project per-symbol P&L onto pairs via PairMembership.
+    // Accumulate into BTreeMap for lex-sorted output (architect risk #1).
+    let mut by_pair: std::collections::BTreeMap<PairKey, Decimal> =
+        std::collections::BTreeMap::new();
+
+    for membership in memberships {
+        let pair_pnl = symbol_pnl
+            .get(&membership.traded_a_symbol)
+            .copied()
+            .unwrap_or(Decimal::ZERO);
+        // Accumulate in case the same pair appears more than once in memberships
+        // (should not happen in practice but is defensive).
+        *by_pair
+            .entry(membership.key.clone())
+            .or_insert(Decimal::ZERO) += pair_pnl;
+    }
+
+    // Filter zero-P&L pairs; BTreeMap is already lex-sorted.
+    let result: Vec<(PairKey, Money<Usdt>)> = by_pair
+        .into_iter()
+        .filter(|(_key, pnl)| *pnl != Decimal::ZERO)
+        .map(|(key, pnl)| (key, Money::<Usdt>::from_decimal(pnl)))
+        .collect();
+
+    Ok(result)
 }
 
 // ── Funding-rate history (v1 T613) ────────────────────────────────────────────

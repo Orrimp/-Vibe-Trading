@@ -1,0 +1,47 @@
+# v1.5a Mean-Reversion Pairs Strategy — canonical h1 config (T714)
+#
+# Strategy: mean-reversion on z-scored spread across 3 BTC-ETH-SOL-BNB pairs.
+# Formulation C: long-only (buy the `a` leg on z <= -z_entry; observe `b` short).
+# All pairs use β = 1.0 fixed hedge ratio (R2.1).
+#
+# operator: lift agent.toml risk.portfolio_exposure_cap to 0.75 for v1.5a.
+# See config/agent.toml → [risk] section. Default is 0.50 (v1); v1.5a needs
+# 0.75 to accommodate up to 3 simultaneous pair positions (3 × 0.25 = 0.75).
+
+id    = "pairs_mr_h1"
+kind  = "mean_reversion_pairs"
+stage = "research"
+
+pairs = [
+    { a = "BTCUSDT", b = "ETHUSDT", beta = "1.0" },
+    { a = "ETHUSDT", b = "SOLUSDT", beta = "1.0" },
+    { a = "BNBUSDT", b = "BTCUSDT", beta = "1.0" },
+]
+
+# Lookback window for rolling z-score (60 × 1-minute bars = 1 hour).
+lookback_minutes      = 60
+
+# Cooldown after a position is closed before re-entry is allowed.
+cooldown_minutes      = 60
+
+# Entry: open long when spread z-score <= -z_entry (spread undervalued).
+z_entry               = "2.0"
+
+# Exit: close long when |z| <= z_exit (spread mean-reverts).
+z_exit                = "0.5"
+
+# Hard-stop: close long when z >= z_stop (spread diverges severely).
+z_stop                = "4.0"
+
+# Vol floor: minimum spread standard deviation — prevents divide-by-zero.
+vol_floor             = "0.000001"
+
+# Sizing: binary (all-in per pair up to exposure_cap_per_pair).
+size                  = "binary_per_pair"
+
+# Maximum fraction of equity allocated to a single pair position.
+# 3 pairs × 0.25 = 0.75 ≤ portfolio_exposure_cap (must set cap to 0.75 in agent.toml).
+exposure_cap_per_pair = "0.25"
+
+# Maximum staleness of a cached leg bar before the sync is dropped (Q10).
+max_staleness_minutes = 5

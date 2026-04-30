@@ -444,6 +444,91 @@ pub async fn rebalance_rejected(
     .await
 }
 
+/// Write a `mean_reversion_stop` event to the `strategy_events` table (T707 — v1.5a Q8).
+///
+/// Emitted when the hard-stop condition (`z >= z_stop`) closes a long position.
+/// Extends `strategy_events.kind` with `"MeanReversionStop"`.
+/// No SQL migration — the `kind` column is TEXT.
+/// Reconciler invariant preserved: `strategy_events` carries no money.
+///
+/// `error_summary` JSON should contain `{"pair_key": "(a, b)", "z_at_stop": "4.23"}`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.mean_reversion_stop", skip(ledger), fields(strategy_id = %strategy_id, pair_key = %pair_key))]
+pub async fn mean_reversion_stop(
+    ledger: &Ledger,
+    strategy_id: &str,
+    pair_key: &str,
+    z_at_stop: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    let error_summary = serde_json::json!({
+        "pair_key": pair_key,
+        "z_at_stop": z_at_stop,
+    })
+    .to_string();
+    strategy_event(
+        ledger,
+        &StrategyEventWrite {
+            kind: "MeanReversionStop",
+            strategy_id: Some(strategy_id),
+            old_hash: None,
+            new_hash: None,
+            source_path: "",
+            operator: "system",
+            error_code: Some("mean_reversion_stop"),
+            error_summary: Some(&error_summary),
+            ts,
+        },
+    )
+    .await
+}
+
+/// Write a `pair_short_observation` event to the `strategy_events` table (T707 — v1.5a Q8).
+///
+/// Emitted alongside the executed long-leg buy on entry; records "would have
+/// shorted `b`" in formulation C (R5.3 / Q3). No money moves.
+/// Extends `strategy_events.kind` with `"PairShortObservation"`.
+/// No SQL migration — the `kind` column is TEXT.
+/// Reconciler invariant preserved: `strategy_events` carries no money.
+///
+/// `error_summary` JSON should contain `{"pair_key": "(a, b)", "z_at_entry": "-2.34"}`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.pair_short_observation", skip(ledger), fields(strategy_id = %strategy_id, pair_key = %pair_key))]
+pub async fn pair_short_observation(
+    ledger: &Ledger,
+    strategy_id: &str,
+    pair_key: &str,
+    z_at_entry: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    let error_summary = serde_json::json!({
+        "pair_key": pair_key,
+        "z_at_entry": z_at_entry,
+    })
+    .to_string();
+    strategy_event(
+        ledger,
+        &StrategyEventWrite {
+            kind: "PairShortObservation",
+            strategy_id: Some(strategy_id),
+            old_hash: None,
+            new_hash: None,
+            source_path: "",
+            operator: "system",
+            error_code: Some("pair_short_observation"),
+            error_summary: Some(&error_summary),
+            ts,
+        },
+    )
+    .await
+}
+
 /// Persist a `FundingObs` to the `funding_rates` table (T613 — v1 Q2).
 ///
 /// This is NOT a double-entry ledger entry — it is an append-only log of

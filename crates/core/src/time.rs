@@ -43,8 +43,7 @@ impl Timestamp {
     /// `earlier` = cached leg timestamp).
     #[must_use]
     pub fn minutes_since(self, earlier: Timestamp) -> i64 {
-        let diff_ns =
-            self.0.unix_timestamp_nanos() - earlier.0.unix_timestamp_nanos();
+        let diff_ns = self.0.unix_timestamp_nanos() - earlier.0.unix_timestamp_nanos();
         i64::try_from(diff_ns / 60_000_000_000_i128).unwrap_or(i64::MAX)
     }
 

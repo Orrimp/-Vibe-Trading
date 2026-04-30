@@ -457,7 +457,10 @@ max_staleness_minutes = 5
 
         let run1 = run();
         let run2 = run();
-        assert_eq!(run1, run2, "signal sequence must be identical across two runs");
+        assert_eq!(
+            run1, run2,
+            "signal sequence must be identical across two runs"
+        );
     }
 
     // ── T706 acceptance: config hash stability ─────────────────────────────
@@ -475,7 +478,8 @@ max_staleness_minutes = 5
     #[test]
     fn t706_config_hash_changes_on_z_entry_change() {
         let strat1 = make_strategy(canonical_toml());
-        let toml2 = canonical_toml().replace(r#"z_entry               = "2.0""#, r#"z_entry = "3.0""#);
+        let toml2 =
+            canonical_toml().replace(r#"z_entry               = "2.0""#, r#"z_entry = "3.0""#);
         let strat2 = make_strategy(&toml2);
         assert_ne!(
             strat1.hash, strat2.hash,
@@ -498,7 +502,10 @@ max_staleness_minutes = 5
     #[test]
     fn t706_config_schema_is_valid_json_object() {
         let schema = MeanReversionPairsStrategy::config_schema();
-        assert!(schema.is_object(), "config_schema() must return a JSON object");
+        assert!(
+            schema.is_object(),
+            "config_schema() must return a JSON object"
+        );
         assert!(schema["type"] == "object");
     }
 }

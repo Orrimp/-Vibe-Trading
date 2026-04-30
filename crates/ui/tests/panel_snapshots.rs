@@ -534,9 +534,8 @@ fn strategies_summary(c: &Cockpit) -> String {
                     StrategyEventKind::Reject => strings::STRATEGIES_EVENT_REJECT,
                     StrategyEventKind::RebalanceRejected => strings::STRATEGIES_EVENT_REJECT,
                     // v1.5a pair events — displayed as "loaded" label (muted, observation-only)
-                    StrategyEventKind::MeanReversionStop | StrategyEventKind::PairShortObservation => {
-                        strings::STRATEGIES_EVENT_LOAD
-                    }
+                    StrategyEventKind::MeanReversionStop
+                    | StrategyEventKind::PairShortObservation => strings::STRATEGIES_EVENT_LOAD,
                 });
                 let position = if r.has_position {
                     strings::STRATEGIES_POSITION_HELD

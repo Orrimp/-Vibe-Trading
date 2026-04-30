@@ -290,8 +290,7 @@ mod tests {
 
     #[test]
     fn t701_open_pair_long_serde_roundtrip() {
-        let sig =
-            Signal::open_pair_long(strat(), pair_key(), dec!(-2.1), dec!(0.25), ts());
+        let sig = Signal::open_pair_long(strat(), pair_key(), dec!(-2.1), dec!(0.25), ts());
         assert_eq!(sig.kind, SignalKind::OpenPairLong);
         assert_eq!(sig.symbol, sym("BTCUSDT")); // traded a leg
         let pd = sig.pair_data.as_ref().unwrap();
@@ -303,10 +302,7 @@ mod tests {
         let json = serde_json::to_string(&sig).unwrap();
         let back: Signal = serde_json::from_str(&json).unwrap();
         assert_eq!(back.kind, SignalKind::OpenPairLong);
-        assert_eq!(
-            back.pair_data.unwrap().pair_key.a,
-            sym("BTCUSDT")
-        );
+        assert_eq!(back.pair_data.unwrap().pair_key.a, sym("BTCUSDT"));
     }
 
     #[test]
@@ -314,23 +310,21 @@ mod tests {
         let sig = Signal::close_pair(
             strat(),
             pair_key(),
-            StopReason::Reversion { z_at_exit: dec!(0.3) },
+            StopReason::Reversion {
+                z_at_exit: dec!(0.3),
+            },
             ts(),
         );
         assert_eq!(sig.kind, SignalKind::ClosePair);
         let pd = sig.pair_data.as_ref().unwrap();
-        assert!(
-            matches!(pd.stop_reason, Some(StopReason::Reversion { .. }))
-        );
+        assert!(matches!(pd.stop_reason, Some(StopReason::Reversion { .. })));
 
         let json = serde_json::to_string(&sig).unwrap();
         let back: Signal = serde_json::from_str(&json).unwrap();
-        assert!(
-            matches!(
-                back.pair_data.unwrap().stop_reason,
-                Some(StopReason::Reversion { .. })
-            )
-        );
+        assert!(matches!(
+            back.pair_data.unwrap().stop_reason,
+            Some(StopReason::Reversion { .. })
+        ));
     }
 
     #[test]
@@ -338,22 +332,20 @@ mod tests {
         let sig = Signal::close_pair(
             strat(),
             pair_key(),
-            StopReason::HardStop { z_at_stop: dec!(4.2) },
+            StopReason::HardStop {
+                z_at_stop: dec!(4.2),
+            },
             ts(),
         );
         assert_eq!(sig.kind, SignalKind::ClosePair);
         let pd = sig.pair_data.as_ref().unwrap();
-        assert!(
-            matches!(pd.stop_reason, Some(StopReason::HardStop { .. }))
-        );
+        assert!(matches!(pd.stop_reason, Some(StopReason::HardStop { .. })));
         let json = serde_json::to_string(&sig).unwrap();
         let back: Signal = serde_json::from_str(&json).unwrap();
-        assert!(
-            matches!(
-                back.pair_data.unwrap().stop_reason,
-                Some(StopReason::HardStop { .. })
-            )
-        );
+        assert!(matches!(
+            back.pair_data.unwrap().stop_reason,
+            Some(StopReason::HardStop { .. })
+        ));
     }
 
     #[test]
@@ -383,12 +375,16 @@ mod tests {
 
     #[test]
     fn t701_stop_reason_serde_roundtrip() {
-        let r = StopReason::HardStop { z_at_stop: dec!(4.5) };
+        let r = StopReason::HardStop {
+            z_at_stop: dec!(4.5),
+        };
         let json = serde_json::to_string(&r).unwrap();
         let back: StopReason = serde_json::from_str(&json).unwrap();
         assert!(matches!(back, StopReason::HardStop { .. }));
 
-        let r2 = StopReason::Reversion { z_at_exit: dec!(0.4) };
+        let r2 = StopReason::Reversion {
+            z_at_exit: dec!(0.4),
+        };
         let json2 = serde_json::to_string(&r2).unwrap();
         let back2: StopReason = serde_json::from_str(&json2).unwrap();
         assert!(matches!(back2, StopReason::Reversion { .. }));

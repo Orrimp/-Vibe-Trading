@@ -187,18 +187,9 @@ mod tests {
     fn t701_pair_key_btreemap_order() {
         // BTreeMap iteration follows lexicographic order: BNBUSDT < BTCUSDT < ETHUSDT
         let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            PairKey::new(sym("ETHUSDT"), sym("SOLUSDT")).unwrap(),
-            3u32,
-        );
-        map.insert(
-            PairKey::new(sym("BTCUSDT"), sym("ETHUSDT")).unwrap(),
-            1u32,
-        );
-        map.insert(
-            PairKey::new(sym("BNBUSDT"), sym("BTCUSDT")).unwrap(),
-            2u32,
-        );
+        map.insert(PairKey::new(sym("ETHUSDT"), sym("SOLUSDT")).unwrap(), 3u32);
+        map.insert(PairKey::new(sym("BTCUSDT"), sym("ETHUSDT")).unwrap(), 1u32);
+        map.insert(PairKey::new(sym("BNBUSDT"), sym("BTCUSDT")).unwrap(), 2u32);
         let keys: Vec<_> = map.keys().cloned().collect();
         assert_eq!(keys[0].a, sym("BNBUSDT"));
         assert_eq!(keys[1].a, sym("BTCUSDT"));

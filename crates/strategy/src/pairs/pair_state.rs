@@ -27,9 +27,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rust_decimal::Decimal;
-use trading_core::{
-    Bar, PairKey, Signal, StopReason, StrategyId, Timestamp,
-};
+use trading_core::{Bar, PairKey, Signal, StopReason, StrategyId, Timestamp};
 
 use features::{rolling_zscore, spread, RingBuffer};
 
@@ -192,9 +190,7 @@ impl PairState {
         self.sync.update(role, bar.close_ts, bar.close.get());
 
         // 2. Try to complete the pair tick.
-        let Some((ca, cb, ts)) =
-            self.sync.try_pair(bar.close_ts, max_staleness_minutes)
-        else {
+        let Some((ca, cb, ts)) = self.sync.try_pair(bar.close_ts, max_staleness_minutes) else {
             return Vec::new();
         };
 
@@ -353,9 +349,7 @@ mod tests {
     use trading_core::{Price, Quantity, SignalKind, Symbol, Timeframe};
 
     fn ts_at(minute: i64) -> Timestamp {
-        Timestamp::new(
-            OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(minute),
-        )
+        Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(minute))
     }
 
     fn make_bar(symbol: &str, close: Decimal, minute: i64) -> Bar {
@@ -448,7 +442,8 @@ mod tests {
             "entry should include OpenPairLong"
         );
         assert!(
-            sigs.iter().any(|s| s.kind == SignalKind::PairShortObservation),
+            sigs.iter()
+                .any(|s| s.kind == SignalKind::PairShortObservation),
             "entry should include PairShortObservation"
         );
         assert!(
@@ -473,7 +468,10 @@ mod tests {
             strat(),
             key.clone(),
         );
-        assert!(sigs2.is_empty(), "middle bar (z=-1.5 in hold zone): no signals expected, z={z2}");
+        assert!(
+            sigs2.is_empty(),
+            "middle bar (z=-1.5 in hold zone): no signals expected, z={z2}"
+        );
 
         // --- exit bar: push value that brings |z| <= z_exit
         // With current buffer, push a value near 0 to get z ≈ 0
@@ -513,7 +511,7 @@ mod tests {
         let sigs4 = decide(
             &mut state,
             Some(dec!(0.3)),
-            dec!(-3.0), // z << -z_entry, would trigger entry if not in cooldown
+            dec!(-3.0),          // z << -z_entry, would trigger entry if not in cooldown
             ts_at(base_min + 3), // still within cooldown (base_min + 3 + 60 > base_min + 3)
             cooldown,
             z_entry,

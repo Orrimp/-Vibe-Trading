@@ -116,8 +116,7 @@ impl MeanReversionPairsConfig {
     ///
     /// Returns [`PairsLoadError`] on I/O error or any validation rule violation.
     pub fn from_file(path: &Path) -> Result<Self, PairsLoadError> {
-        let s = std::fs::read_to_string(path)
-            .map_err(|e| PairsLoadError::IoRead(e.to_string()))?;
+        let s = std::fs::read_to_string(path).map_err(|e| PairsLoadError::IoRead(e.to_string()))?;
         Self::from_str(&s)
     }
 
@@ -454,40 +453,42 @@ max_staleness_minutes = 5
 
     #[test]
     fn t705_invalid_z_thresholds_entry_not_gt_exit() {
-        let toml = canonical_toml()
-            .replace(r#"z_entry               = "2.0""#, r#"z_entry = "0.3""#);
+        let toml =
+            canonical_toml().replace(r#"z_entry               = "2.0""#, r#"z_entry = "0.3""#);
         let err = MeanReversionPairsConfig::from_str(&toml).unwrap_err();
         assert_eq!(err.error_code(), "invalid_z_thresholds");
     }
 
     #[test]
     fn t705_invalid_z_thresholds_stop_not_gt_entry() {
-        let toml = canonical_toml()
-            .replace(r#"z_stop                = "4.0""#, r#"z_stop = "1.5""#);
+        let toml =
+            canonical_toml().replace(r#"z_stop                = "4.0""#, r#"z_stop = "1.5""#);
         let err = MeanReversionPairsConfig::from_str(&toml).unwrap_err();
         assert_eq!(err.error_code(), "invalid_z_thresholds");
     }
 
     #[test]
     fn t705_invalid_z_exit_zero() {
-        let toml = canonical_toml()
-            .replace(r#"z_exit                = "0.5""#, r#"z_exit = "0.0""#);
+        let toml =
+            canonical_toml().replace(r#"z_exit                = "0.5""#, r#"z_exit = "0.0""#);
         let err = MeanReversionPairsConfig::from_str(&toml).unwrap_err();
         assert_eq!(err.error_code(), "invalid_z_thresholds");
     }
 
     #[test]
     fn t705_invalid_exposure_cap() {
-        let toml = canonical_toml()
-            .replace(r#"exposure_cap_per_pair = "0.25""#, r#"exposure_cap_per_pair = "1.5""#);
+        let toml = canonical_toml().replace(
+            r#"exposure_cap_per_pair = "0.25""#,
+            r#"exposure_cap_per_pair = "1.5""#,
+        );
         let err = MeanReversionPairsConfig::from_str(&toml).unwrap_err();
         assert_eq!(err.error_code(), "invalid_exposure_cap");
     }
 
     #[test]
     fn t705_invalid_staleness() {
-        let toml = canonical_toml()
-            .replace("max_staleness_minutes = 5", "max_staleness_minutes = 0");
+        let toml =
+            canonical_toml().replace("max_staleness_minutes = 5", "max_staleness_minutes = 0");
         let err = MeanReversionPairsConfig::from_str(&toml).unwrap_err();
         assert_eq!(err.error_code(), "invalid_staleness");
     }

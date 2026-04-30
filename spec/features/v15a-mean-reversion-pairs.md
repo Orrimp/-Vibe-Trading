@@ -1,7 +1,7 @@
 ---
 slug: v15a-mean-reversion-pairs
-status: in-progress
-owner: architect
+status: shipped
+owner: developer
 updated: 2026-04-30
 ---
 
@@ -1572,9 +1572,51 @@ tester, the regression gate is **7-anchor + new-scenario byte-
 identical-across-two-runs determinism check** for the two new
 scenarios; the anchors lock in once the tester captures their SHAs.
 
-## Implementation
+## Implementation — v1.5a backend
 
-_developer fills this_
+### Crates modified / added
+
+| Crate | Module | Change |
+|-------|--------|--------|
+| `trading_core` | `pair.rs` | `PairKey`, `Pair`, `PairMembership`, `PairError` (new) |
+| `trading_core` | `signal.rs` | `OpenPairLong`, `ClosePair`, `PairShortObservation` signal kinds; `PairSignalData`, `StopReason` structs (additive) |
+| `trading_core` | `strategy_events.rs` | `MeanReversionStop`, `PairShortObservation` `StrategyEventKind` variants (additive) |
+| `trading_core` | `time.rs` | `Timestamp::minutes_since`, `Timestamp::plus_minutes` helpers |
+| `features` | `pairs.rs` | `spread(price_a, price_b, beta) -> Result<Decimal, PairScoreError>` and `rolling_zscore(history, n, vol_floor) -> Result<Decimal, PairScoreError>` |
+| `strategy` | `pairs/config.rs` | `MeanReversionPairsConfig` (TOML serde + validation); `PairsLoadError` |
+| `strategy` | `pairs/pair_state.rs` | `SyncSlot`, `PairState`, `PositionState`, `decide()`; Prometheus counter `PAIR_SYNC_DROPPED_TOTAL` |
+| `strategy` | `pairs/mean_reversion.rs` | `MeanReversionPairsStrategy` implementing `Strategy` trait |
+| `audit` | `journal.rs` | `mean_reversion_stop()` and `pair_short_observation()` writers |
+| `audit` | `query.rs` | `pnl_by_pair()` reader; `MeanReversionStop` / `PairShortObservation` parse cases |
+| `backtest` | `main.rs` | `pairs-2023-zscore-mr` and `pairs-2024-h1-zscore-mr` scenario paths; `run_pairs_backtest()`; `write_pairs_report()` |
+
+### Data fixture decision (T713)
+
+No Binance Vision Parquet files exist under `data/binance/` for the 4-symbol
+pairs universe. Synthetic bars are generated via `synthetic_bars_hourly` using
+a seeded `ChaCha20Rng` with one independent stream per symbol (sym_seed =
+`master_seed + idx * 0x9E3779B9`). This is the same approach as v1's T616
+10-symbol momentum fixture. The seed is committed as part of the binary
+`--seed` argument; `0xC0FFEE` is the canonical test seed.
+
+### T717 anchor note
+
+The five single-symbol btc-2023-1m-* anchors are unchanged. The two
+top10 momentum anchors were re-locked when T715 changed the `data_source`
+string in the report template to `synthetic (seeded RNG, v1.5a multi-symbol)`.
+New top10 anchors (v1.5a):
+- `top10-2023-1h-momentum`: `a20431e3f5765cefbdfed7d1157654bcbec90d90e4bd178cdd37ce084cba55af`
+- `top10-2024-h1-momentum`: `38b576335c9a7a45b7f4a74ecf82ca8310b89ae025c2ba33c56f79e62c22ba2c`
+
+### v1.5a body-SHA256 hashes (seed 0xC0FFEE)
+
+| Scenario | body-SHA256 |
+|----------|-------------|
+| `pairs-2023-zscore-mr` | `90591a0ecc5d56c8ff93834b127a3780a31f51634f38f12c3c412391116abbd0` |
+| `pairs-2024-h1-zscore-mr` | `14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f` |
+
+Both are byte-identical across two sequential invocations at seed `0xC0FFEE`
+(verified by T716 `multi_pair_determinism` test).
 
 ## Verification
 
@@ -1815,6 +1857,11 @@ requirements above.
 
 ## Changelog
 
+- 2026-04-30 (developer): v1.5a backend complete (T707–T_FINAL_A_v15a).
+  All 13 developer tasks shipped. Implementation section populated with
+  crate map, fixture decision, T717 anchor note, and v1.5a body-SHA256
+  hashes. Status → `shipped`, owner → `developer`. Awaiting tester
+  report and ui-designer T719/T_FINAL_B handoff.
 - 2026-04-30 (architect): resolved analyst's Q1–Q10 (single Changelog
   entry in [architecture.md](../architecture.md#v15a--mean-reversion-pairs-resolutions-q1q10--confirmed-2026-04-30)).
   Q1 split confirmed; Q2 fixed β = 1.0 with TOML override; Q3 formulation
