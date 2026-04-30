@@ -1,8 +1,9 @@
 ---
 generated: 2026-04-18
+updated: 2026-04-30
 author: ui-designer
-feature: v0-paper-sma
-scope: T_FINAL_B — cockpit smoke + kill-switch drill
+feature: v0-paper-sma, v05-composed-strategies, v1-cross-sectional-momentum
+scope: T_FINAL_B (v0) + T_FINAL_B (v0.5) + T_FINAL_B_v1 — cockpit smoke
 ---
 
 # Cockpit Smoke + Kill-Switch Drill (T_FINAL_B)
@@ -367,6 +368,7 @@ ui-designer's call on PR review):
 | screenshot-strategies-error.png             | same binary; drive to the `error` variant (closed bus); panel crop. |
 | screenshot-strategies-ready.png             | same binary default run — three rows render; panel crop. |
 | screenshot-strategies-hot-swap-after.png    | R7 live drill: after the `btc_macd_trend.toml` edit, cockpit full-window (captures the fresh short-hash + the new `WARN`-colored footer row). |
+| screenshot-v1-positions-three-rows.png      | `cargo run --bin cockpit --features fixtures` (v1 default fixture is `fake_cockpit_v1_steady_state`); positions panel crop showing BTC/ETH/SOL with `POS` / `NEG` / `FG_MUTED` P&L colors. |
 
 ### Acceptance checklist for T_FINAL_B (v0.5)
 
@@ -395,3 +397,96 @@ ui-designer's call on PR review):
   and committed (see v0.5 list above). CI gate is the logical-state
   artifacts (README §4.5 + `insta` snapshots); the operator PR
   review adds the PNGs.
+
+---
+
+## v1 — multi-symbol positions smoke
+
+Scope extension for **T_FINAL_B_v1** (V8 from
+[v1-cross-sectional-momentum.md → Verification](../features/v1-cross-sectional-momentum.md#verification)).
+This is a **negative-confirmation drill** for R11 — the v0 positions
+panel already supports N rows; v1 ships zero widget code. Acceptance is
+"the cockpit shows up to 3 simultaneous rows in the steady state of the
+top-3 long-only momentum strategy."
+
+The fixture `ui::fixtures::fake_v1_three_symbol_portfolio()` (T623) is
+tuned to exercise every branch of `theme::color_for_delta` in one
+screen so the visual contract is densely covered:
+
+- **BTCUSDT** — long, +$150 unrealized → `POS` green.
+- **ETHUSDT** — long, −$200 unrealized → `NEG` red.
+- **SOLUSDT** — long, $0 unrealized → `FG_MUTED` neutral.
+
+The matching strategies row is `top10_momentum_h1`, `Holds position =
+yes`, signals/60s = 3 (the most recent rebalance fired).
+
+### Sandbox-verifiable gates (automated) — v1 extension
+
+| Gate | Command | What it checks |
+|------|---------|----------------|
+| Build (fixtures, v1 portfolio) | `cargo build -p ui --bin cockpit --features fixtures` | Cockpit boots against `fake_cockpit_v1_steady_state()` (T623) — the new default fixture for the cockpit binary. |
+| Multi-row snapshot | `cargo test -p ui` | New `panel_snapshots__positions_v1_three_rows` snapshot pins three rows with the correct color tokens (`pos` / `neg` / `fg_muted`). Total ≥ 58. |
+| Consistency audit | `cargo test -p ui` | `no_inline_user_visible_strings_in_widgets` + `no_inline_hex_colors_in_widgets_or_state` still zero on the positions widget (no widget edits in v1). |
+| Workspace no-regression | `cargo test --workspace` | All v0 + v0.5 + v1 backend tests still green. |
+
+All gates above must be green before running the manual steps.
+
+### Manual steps — fixtures walkthrough (multi-row positions)
+
+1. [ ] Terminal 1: `cargo run --bin cockpit --features fixtures`.
+   - Window opens; right column (top-to-bottom) shows the strategies
+     panel with one row (`top10_momentum_h1`), then the positions
+     panel with **three rows** (BTCUSDT, ETHUSDT, SOLUSDT in that
+     order — highest momentum first), then the live tape.
+   - `[ ]` screenshot-v1-positions-three-rows.png _deferred_manual_
+2. [ ] Inspect the positions panel rows:
+   - BTCUSDT row: `P&L` column reads `+150.00` in `POS` green;
+     `P&L %` reads `+1.25%` also in `POS`.
+   - ETHUSDT row: `P&L` reads `-200.00` in `NEG` red; `P&L %` reads
+     `-1.82%` also in `NEG`.
+   - SOLUSDT row: `P&L` reads `0.00` in `FG_MUTED` neutral; `P&L %`
+     reads `0.00%` also in `FG_MUTED`. This row is the one that
+     exercises `theme::color_for_delta`'s zero branch — visually
+     muted relative to the two flanking rows.
+3. [ ] Resize the window narrower (drag the right edge inward until
+   the positions panel hits its minimum width). Expected behavior:
+   the panel's inner `Scrollable` keeps the rows clipped cleanly to
+   the panel frame; row text remains right-aligned monospaced; no
+   text overflows the panel border. If the window is dragged
+   shorter than the row count needs, the scrollable shows a
+   vertical scrollbar — the rows do not fall off the panel into the
+   neighboring tape panel.
+4. [ ] Quit the binary (`Cmd+Q` on macOS).
+
+> Why deferred PNG: the sandbox is headless. The capture instruction
+> is in the deferred-PNG table at the end of the v0.5 section above.
+
+### Acceptance for T_FINAL_B_v1
+
+- [ ] Multi-row fixtures walkthrough performed (step 1 above);
+  three position rows visible in the positions panel under
+  `cargo run --bin cockpit --features fixtures`.
+- [ ] Color contract validated (step 2): `POS` / `NEG` /
+  `FG_MUTED` each rendered on the corresponding row's P&L cell —
+  proves the v0 widget's `color_for_delta` path handles all three
+  signs over an N-row table.
+- [ ] Resize/clip behavior sane (step 3): rows clip inside the
+  panel via the existing `Scrollable`; no overflow into adjacent
+  panels.
+- [ ] Strategies panel shows one row for `top10_momentum_h1`,
+  `Holds position = yes` (R11.4 cross-link to V8).
+- [ ] Automated gates green: `cargo fmt -p ui -- --check`,
+  `cargo clippy -p ui --all-targets --all-features -- -D
+  warnings`, `cargo test -p ui` (≥ 58, including the new
+  `positions_v1_three_rows` snapshot), `cargo test -p ui
+  --features live` (≥ 71), workspace consistency audits.
+- [ ] Deferred PNG `screenshot-v1-positions-three-rows.png`
+  captured on the operator display and committed under
+  `spec/reports/screenshots/v0-paper-sma/` (sibling pattern from
+  v0.5; ui-designer's call on PR review whether to fork into a
+  `screenshots/v1-cross-sectional-momentum/` dir if the v0 dir
+  grows unwieldy).
+- [ ] ui-designer signoff: no widget code changed for v1 (R11
+  negative confirmation). The only diff in `crates/ui/` is in
+  `fixtures.rs` (data), `bin/cockpit.rs` (default-fixture wiring),
+  and `tests/panel_snapshots.rs` (the new multi-row snapshot test).

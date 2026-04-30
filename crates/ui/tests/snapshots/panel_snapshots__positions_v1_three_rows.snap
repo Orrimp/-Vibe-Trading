@@ -1,0 +1,12 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 140
+expression: positions_summary(&c)
+---
+panel: positions
+title: Open positions
+state: ready
+rows:
+  BTCUSDT qty=0.30 cost=12000.00 mark=40500.00 pnl=150.00 pnl_color=pos pct=1.25 exp=12.15
+  ETHUSDT qty=4.50 cost=11000.00 mark=2400.00 pnl=-200.00 pnl_color=neg pct=-1.82 exp=10.80
+  SOLUSDT qty=110.00 cost=11000.00 mark=100.00 pnl=0 pnl_color=fg_muted pct=0 exp=9.90

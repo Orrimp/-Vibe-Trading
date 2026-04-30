@@ -128,6 +128,18 @@ fn positions_ready_negative_pnl_uses_neg_color() {
     assert_snapshot!("positions_ready_negative_pnl", positions_summary(&c));
 }
 
+/// T_FINAL_B_v1 — pins the v1 multi-symbol steady-state layout. Three
+/// rows render in a single positions panel: BTC (`POS`), ETH (`NEG`),
+/// SOL (`FG_MUTED` zero-delta). Same widget code path as the v0
+/// single-row fixture per R11 negative confirmation; this snapshot
+/// catches a regression where the panel could no longer iterate
+/// past one row (or where row order changes silently).
+#[test]
+fn positions_v1_three_rows() {
+    let c = ui::fixtures::fake_cockpit_v1_steady_state();
+    assert_snapshot!("positions_v1_three_rows", positions_summary(&c));
+}
+
 // ── P&L card ────────────────────────────────────────────────────────────────
 
 #[test]

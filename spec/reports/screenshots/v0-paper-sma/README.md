@@ -82,7 +82,7 @@ Copy is the exact operator-facing text. String keys reference the `strings.rs` c
 | loading | "Loading positions from the ledger…" | `FG_MUTED` |
 | empty | "No open positions. Strategy is armed and watching." | `FG_MUTED` |
 | error | "Ledger error while reading positions: Trading agent disconnected. Check the agent log and restart it." — `POS_ERROR_PREFIX` + `CONNECTION_CHANNEL_CLOSED` | `NEG` prefix |
-| ready | Columns: `Symbol  Qty  Cost  Mark  P&L  P&L %  Exposure %`. Zero-qty rows filtered out (T17). P&L sign colors via `theme::color_for_delta` (`POS` / `NEG` / `FG_MUTED`). Exposure % shown to two decimals. | |
+| ready | Columns: `Symbol  Qty  Cost  Mark  P&L  P&L %  Exposure %`. Zero-qty rows filtered out (T17). P&L sign colors via `theme::color_for_delta` (`POS` / `NEG` / `FG_MUTED`). Exposure % shown to two decimals. (v1: up to 3 rows in steady state for the top-3 momentum strategy, fixture `fake_v1_three_symbol_portfolio()`.) | |
 
 ### 4.3 `pnl` — P&L card
 

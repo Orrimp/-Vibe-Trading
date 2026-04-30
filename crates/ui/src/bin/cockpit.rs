@@ -48,11 +48,13 @@ struct App {
 
 impl App {
     fn boot() -> (Self, iced::Task<Message>) {
-        // Fixtures boot populates every panel including the v0.5 strategies
-        // panel so the layout smoke covers the full column stack without a
-        // running agent.
+        // Fixtures boot populates every panel so the layout smoke covers the
+        // full column stack without a running agent. v1 (T623) extends this
+        // to a top-3 momentum portfolio so the positions panel renders the
+        // multi-row steady state for the V8 smoke (R11 negative confirmation
+        // — same widget, more rows).
         #[cfg(feature = "fixtures")]
-        let cockpit = ui::fixtures::fake_cockpit_with_strategies();
+        let cockpit = ui::fixtures::fake_cockpit_v1_steady_state();
         #[cfg(not(feature = "fixtures"))]
         let cockpit = Cockpit::new();
 

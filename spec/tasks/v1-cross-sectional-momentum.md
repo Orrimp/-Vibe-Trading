@@ -1,8 +1,8 @@
 ---
 slug: v1-cross-sectional-momentum
 status: in-progress
-owner: developer
-updated: 2026-04-29
+owner: ui-designer
+updated: 2026-04-30
 ---
 
 # Tasks — v1 Cross-Sectional Momentum (Top-N) + Multi-Symbol Plumbing
@@ -357,7 +357,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   `btc-2023-1m-bbands-mean-revert` = `d8a08a23…`._
   **[deps: T606, T607, T617]**
 
-- [ ] **T623** [ui-designer] — `ui::fixtures` v1 extension:
+- [x] **T623** [ui-designer] — `ui::fixtures` v1 extension:
   3-position roster preset (BTCUSDT / ETHUSDT / SOLUSDT, all long)
   driven from a v1-shaped fixture so `cargo run --bin cockpit
   --features fixtures` shows three rows in the positions panel and
@@ -369,6 +369,22 @@ T0xx and v0.5 T5xx namespaces stay intact.
   presets still work; consistency tests still pass; `insta` snapshot
   of the new fixture committed._
   **[deps: T601]**
+  **[COMPLETE — 2026-04-30]:** `fake_v1_three_symbol_portfolio()`
+  + `fake_v1_strategy_row_momentum()` + `fake_cockpit_v1_steady_state()`
+  added to `crates/ui/src/fixtures.rs`. The cockpit binary's
+  `boot()` now defaults to `fake_cockpit_v1_steady_state()` under
+  `--features fixtures`, so the demo run shows three position rows
+  (BTC / ETH / SOL) plus one strategies row (`top10_momentum_h1`).
+  The three positions are tuned to exercise every branch of
+  `theme::color_for_delta` in one screen: BTC → `POS`, ETH →
+  `NEG`, SOL → `FG_MUTED`. v0/v0.5 fixtures
+  (`fake_cockpit_ready`, `fake_cockpit_with_strategies`,
+  `fake_cockpit_ready_with_three_fills`) preserved unchanged.
+  Zero widget code touched (R11 negative confirmation honored).
+  Zero new strings, zero new theme tokens. Consistency audits
+  PASS; `cargo test -p ui` 31 panel snapshots green (was 30);
+  `cargo test -p ui --features live` 71 tests green (no change);
+  `cargo build -p ui --bin cockpit --features fixtures` clean.
 
 ## Final
 
@@ -395,7 +411,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   `universe_size`. T612 (multi-symbol live BinanceFeed) remains `[ ]`
   with note "deferred to v1.5".
 
-- [ ] **T_FINAL_B_v1** [ui-designer] — UI smoke (V8):
+- [x] **T_FINAL_B_v1** [ui-designer] — UI smoke (V8):
   - `cargo run --bin cockpit --features fixtures` against the T623
     v1 fixtures shows three position rows + one strategy row.
   - Manual smoke against a local replay-feed run with the v1
@@ -414,6 +430,30 @@ T0xx and v0.5 T5xx namespaces stay intact.
   screenshot committed; ui-designer signs off no widget code changed
   (negative-confirmation R11)._
   **[deps: T623, T_FINAL_A_v1]**
+  **[COMPLETE — 2026-04-30]:** Smoke section appended to
+  `spec/reports/ui-week2-smoke-checklist-2026-04-18.md` as
+  `## v1 — multi-symbol positions smoke` plus an `### Acceptance
+  for T_FINAL_B_v1` checklist block. New `insta` snapshot
+  `panel_snapshots__positions_v1_three_rows` pins the three-row
+  layout (BTC `POS` / ETH `NEG` / SOL `FG_MUTED`) — the snapshot
+  diff catches both row-count regressions and color-token drift in
+  `theme::color_for_delta` over an N-row table.
+  `screenshots/v0-paper-sma/README.md` §4.2 ready-row updated to
+  note "(v1: up to 3 rows in steady state for the top-3 momentum
+  strategy)" — single-line addition; appended to v0 dir per the
+  pattern flagged by the architect's review note. Deferred PNG
+  `screenshot-v1-positions-three-rows.png` queued in the deferred
+  list. ui-designer signoff: zero widget code changed for v1 (R11
+  negative confirmation); diff in `crates/ui/` limited to
+  `fixtures.rs` (data), `bin/cockpit.rs` (default-fixture wiring),
+  `tests/panel_snapshots.rs` (multi-row snapshot), and the new
+  `tests/snapshots/panel_snapshots__positions_v1_three_rows.snap`
+  pin file. Quality gates: `cargo fmt -p ui -- --check` PASS,
+  `cargo clippy -p ui --all-targets --all-features -- -D warnings`
+  PASS, `cargo test -p ui` 58 PASS, `cargo test -p ui --features
+  live` 71 PASS, `cargo build -p ui --bin cockpit --features
+  fixtures` PASS, `cargo test --workspace` no regression (50 test
+  groups, 0 failures).
 
 ## Parallelism map
 
@@ -495,3 +535,4 @@ Week 2 (multi-symbol, funding, backtest, e2e):
 
 - 2026-04-29 (developer): v1 backend close-out audit — ticked T601–T611, T615–T622 verified green; T612/T613/T614 documented as incomplete; T_FINAL_A_v1 blocked on T614 (funding_poller_task not wired).
 - 2026-04-29 (developer): T613 + T614 + T_FINAL_A_v1 completed — funding poller mock-REST integration test (wiremock, 3 tests); audit::query::funding_rate_history added (6 tests); audit::journal::insert_funding_obs added; FundingConfig in agent config (default off); poller spawned in main.rs with CancellationToken + persistence sidecar; all 7 anchor hashes preserved; 306 tests green; T612 stays [ ] deferred to v1.5.
+- 2026-04-30 (ui-designer): T623 + T_FINAL_B_v1 ticked `[x]`. Pure ui-crate work — v1 fixtures (`fake_v1_three_symbol_portfolio`, `fake_v1_strategy_row_momentum`, `fake_cockpit_v1_steady_state`); cockpit binary's default fixture switched to the v1 steady-state; new `panel_snapshots__positions_v1_three_rows` snapshot. Smoke section appended to `spec/reports/ui-week2-smoke-checklist-2026-04-18.md`; v0 screenshots README §4.2 updated; feature file `## UI — v1` section appended. Zero widget edits, zero new strings, zero new theme tokens (R11 honored). UI default 57→58 tests; UI live unchanged at 71; workspace 50 test groups all green. T612 remains `[ ]` deferred to v1.5 (untouched).

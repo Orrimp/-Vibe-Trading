@@ -1,8 +1,8 @@
 ---
 slug: v1-cross-sectional-momentum
 status: in-progress
-owner: developer
-updated: 2026-04-29
+owner: ui-designer
+updated: 2026-04-30
 ---
 
 # v1 — Cross-Sectional Momentum (Top-N)
@@ -1625,11 +1625,103 @@ contract:
   Sharpe < -1 or > +1.5 — outside the analyst's defensible-range
   prior) → `analyst`.
 
+## UI — v1
+
+R11 is a **negative confirmation**: the v0 positions widget already
+renders N rows; v1 ships **no widget code**. The ui-designer's tail
+is fixtures + smoke + snapshot only.
+
+### What landed
+
+- **T623** — `ui::fixtures` v1 extension. New deterministic
+  generators for the top-3 long momentum portfolio:
+  `fake_v1_position_btc()` (`POS`), `fake_v1_position_eth()`
+  (`NEG`), `fake_v1_position_sol()` (`FG_MUTED`),
+  `fake_v1_three_symbol_portfolio()`,
+  `fake_v1_strategy_row_momentum()` (id `top10_momentum_h1`),
+  `fake_v1_recent_events()`, and
+  `fake_cockpit_v1_steady_state()`. The cockpit binary's `boot()`
+  switches its default fixture from
+  `fake_cockpit_with_strategies()` to
+  `fake_cockpit_v1_steady_state()` so `cargo run --bin cockpit
+  --features fixtures` directly demos the v1 multi-row state. The
+  v0/v0.5 fixtures are untouched and still callable from tests.
+- **T_FINAL_B_v1** — V8 smoke. Appended `## v1 — multi-symbol
+  positions smoke` to
+  [`spec/reports/ui-week2-smoke-checklist-2026-04-18.md`](../reports/ui-week2-smoke-checklist-2026-04-18.md);
+  added the new snapshot test
+  `panel_snapshots__positions_v1_three_rows` that pins the
+  three-row layout and the per-row color tokens; updated
+  [`screenshots/v0-paper-sma/README.md` §4.2](../reports/screenshots/v0-paper-sma/README.md#42-positions--open-positions)
+  to note the v1 up-to-3-rows steady state; queued the deferred
+  PNG `screenshot-v1-positions-three-rows.png` for the operator
+  capture.
+
+### Strings added
+
+- 0. The positions panel headers / empty / error / loading copy from
+  v0 already cover the v1 multi-row case (R11); multi-row is data,
+  not new copy. The `top10_momentum_h1` id is a fixture string
+  (not user-facing chrome) and lives in `ui::fixtures`, not
+  `ui::strings`.
+
+### Theme tokens added
+
+- 0. The v0 token set (`POS` / `NEG` / `FG_MUTED` / `FG` / `BG` /
+  `BG_ELEV` / `ACCENT` / `WARN` / `BORDER`) already covers all
+  three P&L sign branches the new fixture exercises. Per the
+  three-goal contract, "near-zero" was the ship-target; v1
+  achieved zero.
+
+### Accessibility notes
+
+- Keyboard / focus order unchanged from v0. The positions panel is
+  read-only; tab order is governed by the cockpit container in
+  `bin/cockpit.rs`, untouched in v1.
+- Color is never the only signal — the `pnl` and `pnl_pct`
+  numerals carry an explicit sign character (`+` / `-` / no
+  prefix for zero) via `fmt_usdt_signed` / `fmt_pct`, so an
+  operator with a color-vision deficiency can still tell the rows
+  apart.
+- Numbers stay right-aligned monospaced (per the v0 contract).
+  The v1 fixture's three different magnitudes (BTC ~40k mark, ETH
+  ~2.4k mark, SOL ~100 mark) deliberately stress that
+  right-alignment so a future regression that switches to
+  left-alignment is visually obvious in the snapshot diff.
+
+### Consistency self-audit
+
+- inline strings: 0 / inline hex: 0. `cargo test -p ui` still
+  passes the
+  `no_inline_user_visible_strings_in_widgets` and
+  `no_inline_hex_colors_in_widgets_or_state` gates. No widget
+  files were touched in v1; only `fixtures.rs`, `bin/cockpit.rs`,
+  and the snapshot test.
+
+### Test coverage delta
+
+- default suite (`cargo test -p ui`): was 30 → now 31 panel
+  snapshots (added `positions_v1_three_rows`). Total default-build
+  test count (across the three test binaries) was 57 → now 58.
+- live suite (`cargo test -p ui --features live`): unchanged at
+  71 — v1 introduces no new live subscribers (R11.3 explicit:
+  multi-symbol is a positions-bus payload change, not a new
+  channel).
+
+### Deferred manual
+
+- `screenshot-v1-positions-three-rows.png` — operator captures via
+  `cargo run --bin cockpit --features fixtures` on a desktop
+  display (sandbox is headless). Capture instruction is in the
+  smoke checklist's "Deferred PNG list — v0.5 additions" table
+  (the v1 row is appended there to keep one canonical list).
+
 ## Changelog
 
 - 2026-04-20 (analyst): initial brief.
 - 2026-04-29 (developer): appended `## Implementation — v1 backend`; ticked 20/23 T6xx tasks; T612/T613/T614 deferred to next sprint (live ingest path); v1 scenario hashes locked; v0/v0.5 anchor regression PASS; 297 tests green; all quality gates PASS. Ownership transferred to developer; status remains `in-progress` pending T612–T614.
 - 2026-04-29 (developer): T613 + T614 + T_FINAL_A_v1 completed; appended `### v1 funding-poller close` subsection; ticked 22/23 tasks; T612 deferred to v1.5; 306 tests green; 7 anchor hashes preserved.
+- 2026-04-30 (ui-designer): T623 + T_FINAL_B_v1 completed — appended `## UI — v1` section above; ticked both UI tasks in the task list; v1 cockpit fixture (`fake_cockpit_v1_steady_state`) drives `cargo run --bin cockpit --features fixtures` to the multi-row positions steady state; new `panel_snapshots__positions_v1_three_rows` snapshot test pins the three-row layout (`POS` / `NEG` / `FG_MUTED`); zero new strings, zero new theme tokens (R11 negative confirmation honored); `screenshots/v0-paper-sma/README.md` §4.2 updated; smoke checklist appended at `spec/reports/ui-week2-smoke-checklist-2026-04-18.md`. UI test count default 57 → 58; live unchanged at 71. T612 stays `[ ]` deferred to v1.5.
 - 2026-04-29 (architect): appended `## Design` section translating R1–R12
   into crate / module additions, traits, message types, TOML schema, and
   test strategy. Resolved the six open analyst questions in

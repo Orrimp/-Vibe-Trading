@@ -318,3 +318,122 @@ pub fn fake_cockpit_with_strategies() -> Cockpit {
     c.strategies_recent_events = fake_recent_events().into_iter().collect();
     c
 }
+
+// ── v1 cross-sectional momentum fixtures (T623) ─────────────────────────────
+//
+// R11 says the v0 positions panel "already supports N rows" and v1 needs
+// **zero new widget code** — fixtures just feed it a multi-symbol portfolio
+// so `cargo run --bin cockpit --features fixtures` can demo the multi-row
+// steady state of `top10_momentum_h1`'s `K_long = 3` selection.
+//
+// The three rows below are tuned to exercise every branch of
+// `theme::color_for_delta` in one screen: BTCUSDT carries a positive P&L
+// (`POS` green), ETHUSDT a negative P&L (`NEG` red), and SOLUSDT a zero
+// P&L (`FG_MUTED`). Exposure totals ~33% so the operator sees a
+// comfortable headroom over the strategy's notional cap.
+
+const RECIPE_TOP10_MOMENTUM: &str = "config/strategies/top10_momentum_h1.toml";
+
+/// Long BTC leg of the top-3 momentum portfolio. Positive unrealized.
+#[must_use]
+pub fn fake_v1_position_btc() -> PositionView {
+    PositionView {
+        symbol: Symbol::new("BTCUSDT"),
+        base_qty: dec!(0.30),
+        cost_basis: Money::from_decimal(dec!(12_000.00)),
+        last_mark: Price::new(dec!(40_500.00)).unwrap_or_else(|_| unreachable!()),
+        pnl: Money::from_decimal(dec!(150.00)),
+        pnl_pct: dec!(1.25),
+        exposure_pct: dec!(12.15),
+    }
+}
+
+/// Long ETH leg — slightly underwater. Drives the `NEG` color path.
+#[must_use]
+pub fn fake_v1_position_eth() -> PositionView {
+    PositionView {
+        symbol: Symbol::new("ETHUSDT"),
+        base_qty: dec!(4.50),
+        cost_basis: Money::from_decimal(dec!(11_000.00)),
+        last_mark: Price::new(dec!(2_400.00)).unwrap_or_else(|_| unreachable!()),
+        pnl: Money::from_decimal(dec!(-200.00)),
+        pnl_pct: dec!(-1.82),
+        exposure_pct: dec!(10.80),
+    }
+}
+
+/// Long SOL leg — flat (zero unrealized). Drives the `FG_MUTED` color path
+/// of `color_for_delta`, which the v0 single-row fixture never exercised.
+#[must_use]
+pub fn fake_v1_position_sol() -> PositionView {
+    PositionView {
+        symbol: Symbol::new("SOLUSDT"),
+        base_qty: dec!(110.00),
+        cost_basis: Money::from_decimal(dec!(11_000.00)),
+        last_mark: Price::new(dec!(100.00)).unwrap_or_else(|_| unreachable!()),
+        pnl: Money::from_decimal(dec!(0)),
+        pnl_pct: dec!(0),
+        exposure_pct: dec!(9.90),
+    }
+}
+
+/// Top-3 long-only momentum portfolio: BTC (`POS`), ETH (`NEG`), SOL (`FG_MUTED`).
+/// Order matches the rebalance-output convention: highest momentum first.
+/// This is the canonical v1 R11 steady-state input.
+#[must_use]
+pub fn fake_v1_three_symbol_portfolio() -> Vec<PositionView> {
+    vec![
+        fake_v1_position_btc(),
+        fake_v1_position_eth(),
+        fake_v1_position_sol(),
+    ]
+}
+
+/// Single strategy row for `top10_momentum_h1` in the v1 cockpit demo.
+/// Mirrors what `MomentumStrategy` reports once it's running steady-state:
+/// loaded, holding K=3 positions, signals fired on the last rebalance.
+#[must_use]
+pub fn fake_v1_strategy_row_momentum() -> StrategyRow {
+    StrategyRow {
+        id: StrategyId::new("top10_momentum_h1"),
+        short_hash: SmolStr::new("c0ffee0"),
+        full_hash: SmolStr::new("c0ffee00deadbeefcafef00d12345678c0ffee00deadbeefcafef00d12345678"),
+        status: StrategyStatus::Ready,
+        last_event: Some(fake_event_load("top10_momentum_h1", RECIPE_TOP10_MOMENTUM)),
+        signals_60s: 3,
+        has_position: true,
+        source_path: SmolStr::new(RECIPE_TOP10_MOMENTUM),
+    }
+}
+
+/// One-row strategies-panel input for v1 — the only deployed strategy is
+/// `top10_momentum_h1`.
+#[must_use]
+pub fn fake_v1_strategy_rows() -> Vec<StrategyRow> {
+    vec![fake_v1_strategy_row_momentum()]
+}
+
+/// Recent-events footer for v1 demo: the most recent boot event for the
+/// momentum strategy. Newest-first to match `fake_recent_events`.
+#[must_use]
+pub fn fake_v1_recent_events() -> Vec<StrategyEventView> {
+    vec![fake_event_load("top10_momentum_h1", RECIPE_TOP10_MOMENTUM)]
+}
+
+/// Cockpit booted into the v1 steady-state: top-3 long momentum portfolio
+/// (3 position rows: `POS` / `NEG` / `FG_MUTED`) plus one strategy row
+/// for `top10_momentum_h1`. Used by `cargo run --bin cockpit --features
+/// fixtures` and by the `T_FINAL_B_v1` multi-row snapshot. R11 negative
+/// confirmation — pure data, no widget code change.
+#[must_use]
+pub fn fake_cockpit_v1_steady_state() -> Cockpit {
+    let mut c = Cockpit::ready(
+        fake_fill_feed(12),
+        fake_v1_three_symbol_portfolio(),
+        fake_pnl_positive(),
+    );
+    c.mode = AgentMode::Paper;
+    c.strategies = PanelState::Ready(fake_v1_strategy_rows());
+    c.strategies_recent_events = fake_v1_recent_events().into_iter().collect();
+    c
+}
