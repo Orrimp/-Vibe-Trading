@@ -177,6 +177,7 @@ pub async fn build_ledger_1y(
                     error_code: None,
                     error_summary: None,
                     ts: Some(&ts_str),
+                    venue: None,
                 },
             )
             .await?;
@@ -234,6 +235,7 @@ pub async fn build_ledger_1y(
                 error_code: Some("kill_switch_tripped"),
                 error_summary: Some(reason),
                 ts: Some(&ts_str),
+                venue: None,
             },
         )
         .await?;

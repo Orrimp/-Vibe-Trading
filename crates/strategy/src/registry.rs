@@ -265,7 +265,7 @@ mod tests {
     use super::*;
     #[allow(unused_imports)]
     use rust_decimal_macros::dec;
-    use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+    use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
     fn make_bar(close: rust_decimal::Decimal, ts_offset: i64) -> Bar {
         let base = time::OffsetDateTime::UNIX_EPOCH;
@@ -282,6 +282,7 @@ mod tests {
             local_recv_ts: ts,
             open_ts: ts,
             close_ts: ts,
+            venue: Venue::Binance,
         }
     }
 

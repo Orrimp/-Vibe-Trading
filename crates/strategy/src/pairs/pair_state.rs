@@ -346,7 +346,7 @@ mod tests {
     use super::*;
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use trading_core::{Price, Quantity, SignalKind, Symbol, Timeframe};
+    use trading_core::{Price, Quantity, SignalKind, Symbol, Timeframe, Venue};
 
     fn ts_at(minute: i64) -> Timestamp {
         Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(minute))
@@ -366,6 +366,7 @@ mod tests {
             local_recv_ts: ts,
             open_ts: ts,
             close_ts: ts,
+            venue: Venue::Binance,
         }
     }
 

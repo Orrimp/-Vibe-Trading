@@ -91,7 +91,7 @@ use agent::{EventBus, KillSwitch, RunHandles};
 
 use smol_str::SmolStr;
 use ui::state::{Cockpit, JournalTransactionView, Message};
-use ui::strings::APP_TITLE;
+use ui::strings::{APP_TITLE, TAPE_AUDIT_MODAL_ERROR_PREFIX};
 use ui::theme::{color, layout, space};
 use ui::widgets::{journal_transaction_modal, kill, latency, pnl, positions, strategies, tape};
 
@@ -496,39 +496,56 @@ impl AppState {
             iced::Task::perform(
                 async move {
                     // Bridge the iced thread's lack-of-runtime to the
-                    // side-thread tokio runtime: spawn the audit read on
+                    // side-thread tokio runtime: spawn the audit reads on
                     // `rt_handle` and await its `JoinHandle`. The handle
                     // is `Send + 'static`, so the closure is `iced::Task`
                     // friendly.
+                    //
+                    // Per [Design § Q4](../../../../spec/features/journal-transactions-metadata.md#q4--sequential-await-not-tokiojoin),
+                    // the chain is sequential — metadata first (with a
+                    // `None` short-circuit on stale clicks), then entries.
+                    // Per [Design § Q6](../../../../spec/features/journal-transactions-metadata.md#q6--partial-failure-semantics-any-err--error-state),
+                    // every non-happy outcome maps to a single
+                    // `Err(SmolStr)` payload that the modal renders as
+                    // `TAPE_AUDIT_MODAL_ERROR_PREFIX + msg`.
                     let join = rt_handle.spawn(async move {
                         let tx_id_str = tx_id.as_str();
+                        let meta =
+                            match audit::query::journal_transaction_metadata(&ledger, tx_id_str)
+                                .await
+                            {
+                                Ok(Some(m)) => m,
+                                Ok(None) => {
+                                    return Err(SmolStr::new(format!(
+                                        "{TAPE_AUDIT_MODAL_ERROR_PREFIX}unknown transaction"
+                                    )));
+                                }
+                                Err(e) => {
+                                    return Err(SmolStr::new(format!(
+                                        "{TAPE_AUDIT_MODAL_ERROR_PREFIX}{e}"
+                                    )));
+                                }
+                            };
                         match audit::query::journal_entries_for_transaction(&ledger, tx_id_str)
                             .await
                         {
-                            Ok(entries) => {
-                                // Best-effort header — the dedicated
-                                // `journal_transactions` metadata reader
-                                // is a follow-up. Use the first entry's
-                                // `ts` as a proxy until then; description
-                                // and strategy_id default to empty / None
-                                // so the modal still renders.
-                                let ts = entries
-                                    .first()
-                                    .map_or_else(trading_core::Timestamp::now, |e| e.ts);
-                                Ok(JournalTransactionView {
-                                    tx_id: SmolStr::new(tx_id_str),
-                                    ts,
-                                    description: SmolStr::default(),
-                                    strategy_id: None,
-                                    entries,
-                                })
+                            Ok(entries) => Ok(JournalTransactionView {
+                                tx_id: meta.transaction_id,
+                                ts: meta.ts,
+                                description: meta.description,
+                                strategy_id: meta.strategy_id,
+                                entries,
+                            }),
+                            Err(e) => {
+                                Err(SmolStr::new(format!("{TAPE_AUDIT_MODAL_ERROR_PREFIX}{e}")))
                             }
-                            Err(e) => Err(SmolStr::new(e.to_string())),
                         }
                     });
                     match join.await {
                         Ok(result) => result,
-                        Err(e) => Err(SmolStr::new(format!("audit task join: {e}"))),
+                        Err(e) => Err(SmolStr::new(format!(
+                            "{TAPE_AUDIT_MODAL_ERROR_PREFIX}audit task join: {e}"
+                        ))),
                     }
                 },
                 Message::TapeAuditEntriesLoaded,

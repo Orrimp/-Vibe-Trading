@@ -80,7 +80,7 @@ fn t712_new_strategy_has_clean_state_after_swap() {
     use rust_decimal_macros::dec;
     use strategy::Strategy as _;
     use time::OffsetDateTime;
-    use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+    use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
     fn ts_at(minute: i64) -> Timestamp {
         Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(minute))
@@ -100,6 +100,7 @@ fn t712_new_strategy_has_clean_state_after_swap() {
             local_recv_ts: ts,
             open_ts: ts,
             close_ts: ts,
+            venue: Venue::Binance,
         }
     }
 
@@ -152,6 +153,7 @@ async fn t712_audit_load_swap_lifecycle() {
             error_code: None,
             error_summary: None,
             ts: None,
+            venue: None,
         },
     )
     .await
@@ -170,6 +172,7 @@ async fn t712_audit_load_swap_lifecycle() {
             error_code: None,
             error_summary: None,
             ts: None,
+            venue: None,
         },
     )
     .await

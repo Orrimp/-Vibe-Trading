@@ -41,7 +41,7 @@ use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use trading_core::{
     Bar, FeeTier, Fill, FillId, FundingObs, Liquidity, Money, OrderId, PnlSnapshot, Position,
-    Price, Quantity, Side, Symbol, Tick, Timeframe, Timestamp,
+    Price, Quantity, Side, Symbol, Tick, Timeframe, Timestamp, Venue,
 };
 
 use ui::live::{
@@ -99,6 +99,7 @@ fn synthetic_bar(n: i64) -> Bar {
         volume: Quantity::new(dec!(1)).unwrap(),
         trade_count: 1,
         local_recv_ts: ts(n * 60 + 60),
+        venue: Venue::Binance,
     }
 }
 
@@ -111,6 +112,7 @@ fn synthetic_tick(n: i64) -> Tick {
         qty: Quantity::new(dec!(1)).unwrap(),
         side: Side::Buy,
         trade_id: u64::try_from(n).unwrap_or(0),
+        venue: Venue::Binance,
     }
 }
 

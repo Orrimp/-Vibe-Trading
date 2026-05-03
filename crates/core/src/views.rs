@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 use crate::asset::Usdt;
 use crate::fill::FeeTier;
 use crate::money::{Money, Price, Quantity};
-use crate::symbol::{AccountId, Side, Symbol};
+use crate::symbol::{AccountId, Side, StrategyId, Symbol};
 use crate::time::Timestamp;
 
 /// Read-side representation of a fill, returned by `audit::query::recent_fills`.
@@ -57,6 +57,29 @@ pub struct JournalEntry {
     pub currency: SmolStr,
     pub ts: Timestamp,
     pub memo: SmolStr,
+}
+
+/// Read-side header for a journal-transaction row, returned by
+/// `audit::query::journal_transaction_metadata`. Composed with
+/// `Vec<JournalEntry>` at the `cockpit_live` `Task::perform` site to populate
+/// `ui::state::JournalTransactionView`.
+///
+/// `description` is `SmolStr` — typical paper-fill descriptions
+/// (`"buy 0.04 BTCUSDT @ 50000"`) fit in inline storage; LLM-cost and
+/// registry-event descriptions spill to heap on the slow path at no extra cost
+/// vs `String`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalTransactionMetadata {
+    /// `journal_transactions.id` UUID string.
+    pub transaction_id: SmolStr,
+    /// Transaction timestamp (microsecond precision).
+    pub ts: Timestamp,
+    /// Free-form description (e.g. `"buy 0.04 BTCUSDT @ 50000"`).
+    /// Empty `SmolStr` for legacy rows without a description.
+    pub description: SmolStr,
+    /// Attribution to the strategy that emitted the signal.
+    /// `None` for pre-T802 rows or non-strategy transactions.
+    pub strategy_id: Option<StrategyId>,
 }
 
 /// P&L snapshot as reported by `audit::query::*`.

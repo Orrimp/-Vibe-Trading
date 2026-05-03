@@ -5,6 +5,54 @@ owner: architect
 updated: 2026-05-03
 ---
 
+<!-- updated 2026-05-03 (architect) — v1.5b-multi-venue Design landing:
+     largest queued backend feature. New closed enum
+     `trading_core::Venue { Binance, Coinbase, Kraken }` lands as a
+     load-bearing type with `#[serde(rename_all = "snake_case")]`;
+     `Tick` and `Bar` gain required `venue: Venue` field (mechanical
+     migration across ~30+ fixture sites — every existing literal
+     defaults `Venue::Binance`). New `Timeframe::OneSecond` variant
+     plus `crates/data/src/bar_aggregator.rs` for client-side 1s
+     aggregation on `i64` epoch microseconds (deterministic). New
+     `data::CoinbaseFeed` (Coinbase Advanced Trade WS) +
+     `data::KrakenFeed` (Kraken WS v2) + `data::MockFeed` test
+     harness. T612 finally lands — `BinanceFeed::subscribe_*_multi`
+     using the combined-stream URL. New audit migration
+     `007_strategy_events_venue.sql` (NULLABLE `venue TEXT` column
+     on `strategy_events`); `audit::journal::feed_reconnect`
+     signature gains required `venue: Venue` argument. New
+     `EventBus::market_health: broadcast::Sender<MarketHealth>`
+     channel (capacity 64) for the per-venue stale-data watchdog;
+     `MarketHealth { Fresh, Stale, Recovered }` enum in
+     `trading_core::venue`. `agent::runtime::run` spawns one
+     `tokio::JoinSet` task per enabled venue (panic isolation —
+     a Coinbase parser panic does NOT poison Binance / Kraken).
+     New `[universe]` config section with `usdt_enabled` /
+     `usdc_enabled` toggles + 10 USDC mirror pairs (operator
+     opt-in). NO new external crate dep — all three feeds reuse
+     `tokio_tungstenite` + `serde_json` + `reqwest`. NO `Cargo.toml`
+     change. NO `unsafe`. **Anchor budget: 11 / 11 byte-identical**
+     by construction (Q12: independent grep on
+     `spec/reports/backtest-*.md` + `spec/reports/success/success-*.md`
+     returned zero hits on `venue|coinbase|kraken`). Full delta
+     in the new "v1.5b — multi-venue resolutions" subsection +
+     changelog entry at the bottom. -->
+
+<!-- updated 2026-05-03 (architect) — journal-transactions-metadata Design landing:
+     adds new `trading_core::JournalTransactionMetadata` view struct
+     (`transaction_id`, `ts`, `description`, `strategy_id`) in
+     `crates/core/src/views.rs`; new `audit::query::journal_transaction_metadata`
+     reader (single-row `SELECT id, ts, description, strategy_id FROM
+     journal_transactions WHERE id = ?` returning `Option<JournalTransactionMetadata>`,
+     `Ok(None)` for unknown tx_id); cockpit_live `Task::perform` closure at
+     `crates/ui/src/bin/cockpit_live.rs:496-535` rewires from a partial
+     `JournalTransactionView` construction to a sequential metadata→entries
+     chain with Q6 error mapping (any-`Err` → `PanelState::Error`,
+     metadata-`None` → "unknown transaction" error). Read-only additive feature
+     off the anchored path — no migration, no new dep, no `Cargo.toml` change,
+     no new theme/string/widget surface, no `unsafe`. 11/11 anchors stay
+     byte-identical (R5). Full delta in the changelog entry at the bottom. -->
+
 <!-- updated 2026-05-03 (architect) — tape-row-audit-modal Design landing:
      adds new `trading_core::JournalEntry` un-collapsed view struct
      (debit/credit pair, distinct from existing collapsed-amount
@@ -325,6 +373,7 @@ into a future v2+ wave).
 | 004 | `004_journal_transactions_strategy_id.sql` | T802: nullable `strategy_id TEXT` column on `journal_transactions` + `journal_transactions_sid_idx`. |
 | 005 | `005_uptime_intervals.sql` | T805/806: `agent_uptime` table for boot/heartbeat/close intervals. |
 | 006 | `006_per_symbol_position_accounts.sql` | T1101 (per-symbol-position-accounts R1): purely additive `INSERT OR IGNORE` of one `assets:position:<SYMBOL>` row per pair-symbol in `config/agent.toml [funding].universe` (10 symbols). No schema change. Reclaims the `006` slot (the real-mtm `006_open_positions_index.sql` was conditional on V8 perf-gate failure; gate PASSED at 0.287ms vs 100ms, so the index migration never landed). |
+| 007 | `007_strategy_events_venue.sql` | T1402 (v1.5b multi-venue Q11): purely additive `ALTER TABLE strategy_events ADD COLUMN venue TEXT;` (NULLABLE, no default). Pre-migration rows have `venue = NULL`; readers handle `Option<Venue>` semantics. Writer signature change at `crates/audit/src/journal.rs:648` — `feed_reconnect(ledger, symbol, venue, ts)` gains required `venue: Venue`. `kill_switch_tripped` writer gains optional `venue: Option<Venue>` (R8.3). Architect's principled override of analyst's R8.2 recommendation (encode-in-`error_summary`) — the typed column wins because v1.5b is the load-bearing introduction of the `Venue` type, and audit is the boundary where typed attribution matters most. |
 
 The real-mtm R10 follow-up (the hardcoded `assets:position:BTC`
 account-id at `crates/audit/src/journal.rs:82,135` — every fill
@@ -1860,6 +1909,345 @@ v1+ has no real shorts. Real short fills are out of scope (need
   remain non-negotiable; the 2 v1+ anchors hold their
   T816-captured SHAs.
 
+### v1.5b — multi-venue resolutions (Q1–Q12) — confirmed 2026-05-03
+
+Twelve open questions from
+[v1-5b-multi-venue.md → Open questions for architect](features/v1-5b-multi-venue.md#open-questions-for-architect).
+v1.5b is the **largest queued backend feature** — three new
+market-data adapters (Coinbase + Kraken plus T612 multi-symbol
+fan-out for Binance), USDC universe, 1s aggregation, per-venue
+tokio-task topology, audit schema migration `007`, plus a
+load-bearing type-system change (`Tick` / `Bar` gain required
+`venue: Venue`). All resolutions preserve the v0–v1.5a `Strategy`
+trait shape, the audit chart of accounts (no new accounts beyond
+per-symbol-position-accounts seeds), the live-cockpit-unified bus
+shape (additive `market_health` channel only), and — critically
+— the 11 locked anchor SHAs (Q12 confirms zero anchor risk by
+construction via independent grep). **No new crate dep**; all
+three feeds reuse `tokio_tungstenite` + `serde_json` + `reqwest`.
+
+#### v1.5b Q1 — `Venue` type shape: **closed enum**
+
+**Decision:** new type
+`enum Venue { Binance, Coinbase, Kraken }` in
+`crates/core/src/venue.rs` with
+`#[serde(rename_all = "snake_case")]`. Derives `Debug, Clone,
+Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize,
+Deserialize`. `impl Display` / `impl FromStr` emit / parse
+`"binance"` / `"coinbase"` / `"kraken"`. **No `Default`** —
+every Bar / Tick must construct it explicitly. `Ord` is
+alphabetical (`Binance < Coinbase < Kraken`) matching R7.4
+tie-break.
+
+**Rationale:** exhaustive `match` catches new venues at compile
+time. Future venues are deliberate spec changes (each ships an
+adapter + symbol normalization + rate-limit budget) — never a
+silent stringly-typed extension. Newtype `Venue(SmolStr)`
+rejected: open-set typing buys nothing and loses exhaustive
+match.
+
+#### v1.5b Q2 — Coinbase API: **Advanced Trade WS**
+
+**Decision:** target `wss://advanced-trade-ws.coinbase.com`
+(Coinbase Advanced Trade WebSocket). REST `exchange_info` via
+`https://api.coinbase.com/api/v3/brokerage/products/{product_id}`.
+Channels: `market_trades` (raw trades) + `candles` (kline-
+equivalent).
+
+**Rationale:** Coinbase Pro WS is in maintenance mode; new
+venues should adopt the supported surface so v2's potential
+cross-venue expansion inherits the right base. Both endpoints
+expose unauthenticated public market data (Q8 confirms);
+operational delta today is zero, but the future delta is
+asymmetric.
+
+#### v1.5b Q3 — Ingest topology: **per-venue `tokio::JoinSet`**
+
+**Decision:** `agent::runtime::run` spawns one tokio task per
+enabled venue via `tokio::task::JoinSet`. Each task owns the
+venue's reconnect / backoff state and consumes the venue's
+`subscribe_*` streams. Three tasks total when all three
+venues are enabled.
+
+**Rationale:** panic isolation > scheduler savings. With three
+venues the steady-state overhead is trivial and a panic in one
+venue's parser cannot poison the others (R14.1 / R14.3). Each
+task carries its own backoff clock without a shared poll loop.
+`select_all` rejected: a single panic in any venue's stream
+poll kills the merged select.
+
+#### v1.5b Q4 — `venue` field on Tick / Bar: **required**
+
+**Decision:** `Tick.venue: Venue` and `Bar.venue: Venue` are
+required (not `Option<Venue>`). Migration touches every
+existing `Bar { … }` / `Tick { … }` literal exactly once
+(~30+ sites enumerated by grep at T1401 design time); each
+gets `venue: Venue::Binance` (every existing fixture is
+Binance-shaped — R7.2 / R10.4).
+
+**Rationale:** optional `venue` would let venue-less data leak
+through every consumer (`if let Some(v) = bar.venue { … else
+what? }`). Required forces every code path to declare
+provenance at the type level. The migration is mechanical
+because every literal originates from `BinanceFeed` / a
+Binance-shaped fixture.
+
+#### v1.5b Q5 — 1s bar aggregation: **client-side**
+
+**Decision:** new `crates/data/src/bar_aggregator.rs` aggregates
+the raw `Tick` stream into `Bar { tf: Timeframe::OneSecond, … }`
+client-side. Bucketing key:
+`floor(tick.venue_ts.unix_micros() / 1_000_000)` — pure integer
+arithmetic on `i64` epoch microseconds. `open_ts =
+bucket * 1_000_000`; `close_ts = open_ts + 999_999`. Empty
+seconds emit no bar. New variant `Timeframe::OneSecond` lands
+in `core::bar.rs` (Display string `"1s"`).
+
+**Rationale:** cross-venue determinism — each venue's "1s
+bar" has its own quirks (Binance's 1s WS is new-ish; Coinbase
+/ Kraken don't expose 1s candles publicly). Client-side
+gives identical algorithm across venues, testable from a
+synthetic Tick stream (V5), byte-identical across replays.
+Server-side rejected: heterogeneous bar definitions would
+force strategies to reason about per-venue 1s semantics.
+
+#### v1.5b Q6 — USDC universe: **doubled (operator-gated)**
+
+**Decision:** new `[universe]` section in `config/agent.toml`
+with `usdt_enabled = true` (default — preserves v1.5a
+behaviour), `usdc_enabled = false` (default off; operator opts
+in). When both enabled: 20 symbols total (10 USDT + 10 USDC
+mirrors). The legacy `[funding].universe` array stays as a
+back-compat reader path: if `[universe]` is absent, the loader
+treats `[funding].universe` as `usdt_symbols` with
+`usdc_enabled = false` (R10.1).
+
+**Rationale:** USDT remains the largest crypto-stablecoin pair
+set by volume; deprecating it would re-anchor v1's
+cross-sectional momentum strategy on a new data set (direct
+anchor regression). Doubling preserves existing strategy
+inputs while letting the operator A/B the new universe. The
+default `usdc_enabled = false` matches R10.2.
+
+#### v1.5b Q7 — Failover: **per-venue stale-data pause + bus event**
+
+**Decision:** strategies pause **per-venue** on a stale-data
+threshold of 30 seconds of no Tick from that venue
+(configurable via `[universe].stale_threshold_secs`). New
+`MarketHealth` enum in `trading_core::venue` with three
+variants — `Fresh { venue, last_tick_ts }`,
+`Stale { venue, last_tick_ts, threshold_secs }`,
+`Recovered { venue, recovered_ts, gap_secs }`. New bus channel
+`EventBus::market_health: broadcast::Sender<MarketHealth>`
+(capacity 64). Per-venue watchdog
+(`crates/agent/src/stale_watchdog.rs`) tracks last-Tick µs
+and publishes the events. Default strategy behaviour: skip
+rebalance if any subscribed venue is `Stale`.
+
+**Rationale:** "stale per-venue" is the correct mental model
+for cross-venue redundancy — a Coinbase outage halts
+strategies that consume Coinbase data; Binance-only
+strategies continue. The 30s default is longer than any
+expected reconnect (Binance backoff cap is 60s but typical
+reconnect is <5s) and shorter than a meaningful market move.
+Bus event keeps the staleness check in one place. The
+kill-switch stays global (a venue-specific clock-skew event
+may halt all venues if it crosses `clock_skew_halt_ms`); WS
+reconnects do not trip it.
+
+#### v1.5b Q8 — Authentication: **free unauthenticated WS for all three**
+
+**Decision:** all three venues use free unauthenticated WS
+endpoints for public market data:
+
+- Binance: `wss://stream.binance.com:9443` (existing).
+- Coinbase: `wss://advanced-trade-ws.coinbase.com`.
+- Kraken: `wss://ws.kraken.com/v2`.
+
+No API keys, no authenticated tier, no per-message billing
+for any of these surfaces. R9 cost ladder ($0/mo market
+data) holds.
+
+**Rationale:** confirmed against each venue's published docs
+as of 2026-05-01. Auth is required only for private channels
+(orders, balances) which v1.5b does not subscribe to (paper-
+trading; no real-money execution per project scope boundary).
+
+**Risk if false at implementation time:** if any venue
+silently moves to authenticated tier between now and
+T1403/T1404, the developer routes back to architect; we
+either find the cheapest authenticated tier ($0/mo target)
+or drop the venue.
+
+#### v1.5b Q9 — Rate limits: **30–60 subscription slots within free tier**
+
+**Decision:** v1.5b worst case is 60 subscription slots (20
+symbols × 3 venues, both quote sets enabled). All three
+venues' free-tier limits accommodate with margin:
+
+| Venue | Limit | v1.5b worst case | Margin |
+|---|---|---|---|
+| Binance Spot WS | 1024 streams / WS connection (≤200 / combined URL recommended) | 1 combined-stream URL × 40 streams (20 symbols × kline + trade) | Way inside |
+| Coinbase Advanced Trade WS | 750 msg/s / IP | ~60 msg/s steady state | 12× margin |
+| Kraken WS v2 | 75 conn/session; ~80 sub/channel | 1 conn × 40 sub | Way inside |
+
+T1405's BinanceFeed multi-symbol fan-out uses **one** combined-
+stream URL rather than N WS connections to stay under the
+per-IP TCP budget on the hosting VM.
+
+#### v1.5b Q10 — Test harness: **`MockFeed` over `wiremock`**
+
+**Decision:** new `crates/data/src/mock_feed.rs` introduces
+`MockFeed` — a lightweight in-memory feed that publishes
+scripted `Tick` events on a `tokio::time::interval`.
+`MockFeed` impls `MarketDataSource` directly. Constructors:
+`MockFeed::new(events: Vec<Tick>, interval, venue)` and
+`MockFeed::new_multi(events: HashMap<Symbol, Vec<Tick>>,
+interval, venue)` (the latter for V6 multi-symbol fan-out
+testing). WS-frame parsing for each venue's adapter is
+unit-tested directly at the `parse_*_event` private function
+level — no WS server stand-up needed.
+
+**Rationale:** `wiremock` doesn't script WS frames cleanly;
+spinning a real `tokio_tungstenite` server per test is slow
+and flaky in CI. `MockFeed` covers every seam **above** the
+WS-frame layer (the seam strategies see); parser unit tests
+cover **below**. Together they cover the full ingest path
+with zero WS server in test scope.
+
+#### v1.5b Q11 — T805 schema: **migration `007` + writer signature change**
+
+**Principled override** of analyst's R8.2 recommendation.
+Analyst recommended option (b) — encode `<venue>:<symbol>` in
+`error_summary`. Architect chooses **option (a) — schema
+migration** because v1.5b is the load-bearing introduction of
+the `Venue` type to the system; encoding it in a TEXT column
+would defeat the type-system change at the audit boundary
+(the **one place** structured attribution matters most).
+
+**Decision:** new migration
+`crates/audit/migrations/007_strategy_events_venue.sql` —
+single statement: `ALTER TABLE strategy_events ADD COLUMN
+venue TEXT;` (NULLABLE, no default). Pre-migration rows have
+`venue = NULL`; readers handle `Option<Venue>` semantics.
+Writer signature change at `crates/audit/src/journal.rs:648`:
+
+```rust
+pub async fn feed_reconnect(
+    ledger: &Ledger,
+    symbol: &str,
+    venue:  Venue,        // NEW — required, not Option
+    ts:     Option<&str>,
+) -> Result<(), LedgerError>;
+```
+
+The writer stamps `venue.to_string()` (`"binance"` /
+`"coinbase"` / `"kraken"` per the snake_case serde) into the
+new column. Two existing call sites in
+`crates/data/src/binance.rs:297-304` and `:406-414` add
+`Venue::Binance` as the third arg. New `CoinbaseFeed` /
+`KrakenFeed` call sites pass their respective venue.
+`kill_switch_tripped` writer gains optional `venue:
+Option<Venue>` per R8.3 (`None` for global trips).
+
+**Rationale:** `error_summary` parsing on read at the
+operator-success-reports R7 row would be a parse-on-every-
+render hot path; a typed column is a SQL `GROUP BY` away.
+Schema churn risk is bounded — purely additive NULLABLE
+column, no data migration. Q12 confirms zero anchor risk on
+the column existing in the DB (the column does not enter
+report bodies until the reports binary explicitly groups by
+it — out of scope for v1.5b; that renderer change ships
+later with its own re-lock budget if any).
+
+#### v1.5b Q12 — Anchor risk: **zero by construction (re-confirmed)**
+
+**Decision:** independent re-grep at design time —
+`grep -rni "venue\|coinbase\|kraken"
+spec/reports/backtest-*.md spec/reports/success/success-*.md`
+returned **zero hits**. The type-system change adds a field
+that no committed report body references. Anchor risk is
+zero by construction; all 11 anchor SHAs in
+[`spec/anchors.toml`](anchors.toml) stay byte-identical.
+
+**Hard architectural rule (forward-looking):** any future
+change to backtest or operator-success report rendering that
+introduces venue strings (`"binance"`, `"coinbase"`,
+`"kraken"`, or any case variant) into a report **body**
+breaks all 11 anchors and requires an architect-approved
+re-lock budget via an explicit ADR. The grep
+`grep -rni "venue\|coinbase\|kraken" spec/reports/backtest-*.md
+spec/reports/success/success-*.md` should remain zero across
+the v1.5b lifecycle and beyond, until / unless a deliberate
+re-lock is approved.
+
+**v1.5b architectural deltas:**
+
+- **`crates/core/`** (`trading_core` package): new
+  `crates/core/src/venue.rs` with `pub enum Venue { Binance,
+  Coinbase, Kraken }` (closed, `#[serde(rename_all = "snake_case")]`)
+  + `pub enum MarketHealth { Fresh, Stale, Recovered }` +
+  `ParseVenueError`; re-exported at the crate root. New variant
+  `Timeframe::OneSecond` (Display `"1s"`). `Bar` and `Tick`
+  gain required `pub venue: Venue` field (last position).
+- **`crates/audit/`:** new migration
+  `007_strategy_events_venue.sql` adds NULLABLE `venue TEXT`
+  column to `strategy_events`. `audit::journal::feed_reconnect`
+  signature gains required `venue: Venue` argument;
+  `kill_switch_tripped` gains optional
+  `venue: Option<Venue>` (R8.3). No new reader.
+- **`crates/data/`:** new modules
+  `crates/data/src/coinbase.rs` (Coinbase Advanced Trade WS
+  impl), `crates/data/src/kraken.rs` (Kraken WS v2 impl),
+  `crates/data/src/bar_aggregator.rs` (1s client-side
+  aggregator on `i64` epoch-µs bucketing),
+  `crates/data/src/mock_feed.rs` (test harness; gated under
+  `#[cfg(any(test, feature = "fixtures"))]`).
+  `crates/data/src/binance.rs` extended with
+  `subscribe_bars_multi(symbols, tf)` /
+  `subscribe_trades_multi(symbols)` using the combined-stream
+  URL (T612 finally lands); single-symbol API unchanged
+  (R10.3). Per-symbol Prometheus
+  `clock_skew_ms{feed,symbol}` label populated (R4.2).
+  Adapter-local helpers `coinbase_symbol_map(s) -> "BTC-USDC"`
+  and `kraken_symbol_map(s) -> "XBT/USDC"`.
+- **`crates/agent/`:** `agent::runtime::run` spawns one
+  `tokio::task::JoinSet` task per enabled venue. `RunHandles`
+  gains `venue_tasks: HashMap<Venue, JoinHandle<()>>`. New
+  `agent::stale_watchdog` per-venue last-Tick tracker
+  publishing `MarketHealth` events on a 1Hz `tokio::time::interval`.
+  `EventBus` gains `pub market_health: broadcast::Sender<MarketHealth>`
+  channel (capacity 64). Loader extends to read
+  `[universe].usdt_symbols` / `usdc_symbols` /
+  `stale_threshold_secs`.
+- **`config/agent.toml`:** new `[universe]` section with
+  `usdt_enabled = true` / `usdc_enabled = false` (default —
+  preserves v1.5a behaviour) + `usdt_symbols` / `usdc_symbols`
+  lists + `stale_threshold_secs = 30`. New (commented-out)
+  `[data.sources.coinbase]` / `[data.sources.kraken]` stanzas
+  with the URLs from the WS endpoint table; operator opts in
+  by uncommenting. Legacy `[funding].universe` stays as a
+  back-compat reader path.
+- **`crates/strategy/`, `crates/exec/`, `crates/risk/`,
+  `crates/cost/`, `crates/backtest/`, `crates/reports/`,
+  `crates/ui/`:** **unchanged** (v1.5b is plumbing-only).
+  Each crate's existing test fixtures gain `venue:
+  Venue::Binance` on every Bar / Tick literal as part of T1401's
+  mechanical migration (R10.4). Strategies that want the new
+  staleness signal can subscribe to `bus.market_health`; v0–
+  v1.5a strategies are unaffected (R10.5).
+- **No new external dep.** Workspace Cargo.toml unchanged across
+  v1.5b. All three feeds reuse `tokio_tungstenite` + `serde_json`
+  + `reqwest`. Library compatibility checklist: ✅ no new dep.
+- **Anchor budget:** all 11 anchor SHAs in
+  [`spec/anchors.toml`](anchors.toml) stay byte-identical
+  (Q12 confirmed by independent grep). No re-lock.
+
+Tasks T1401–T1415 + `T_FINAL_V15B` filed at
+[tasks/v1-5b-multi-venue.md](tasks/v1-5b-multi-venue.md).
+T1401 is the sole sequential foundation gate; ~7 parallel
+paths fan out after it.
+
 ## Observability
 
 - `tracing` with JSON output.
@@ -2345,6 +2733,7 @@ plus what's expected to be used by v1.5+):
 | `recent_fills(&Ledger, usize)`            | `Vec<FillView>`                  | live tape (boot snapshot)              |
 | `recent_journal(&Ledger, usize)`          | `Vec<JournalEntryView>`          | future "show the why" modal (collapsed view) |
 | `journal_entries_for_transaction(&Ledger, &str)` | `Vec<JournalEntry>`        | tape-row → audit modal (un-collapsed dr/cr) |
+| `journal_transaction_metadata(&Ledger, &str)` | `Option<JournalTransactionMetadata>` | tape-row → audit modal header (description + strategy_id) |
 | `open_positions_at(&Ledger, Timestamp)`   | `Vec<OpenPosition>`              | positions panel snapshot               |
 | `pnl_by_symbol(&Ledger, ...)`             | per-symbol P&L                   | positions panel                         |
 | `pnl_by_strategy(&Ledger, ...)`           | per-strategy P&L                 | strategies panel                        |
@@ -3059,3 +3448,126 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   stamp never fires on backtest paths). Tasks T1201–T1209 +
   `T_FINAL_TAPE_MODAL` filed at
   [tasks/tape-row-audit-modal.md](tasks/tape-row-audit-modal.md).
+- 2026-05-03 (architect): resolved the six
+  journal-transactions-metadata open questions from
+  [features/journal-transactions-metadata.md → Open questions for architect](features/journal-transactions-metadata.md#open-questions-for-architect).
+  Follow-up to the T1206 deviation note in tape-row-audit-modal:
+  the live-mode modal currently renders `description: ""` and
+  `strategy_id: None` because the cockpit_live `Task::perform`
+  closure constructs a partial `JournalTransactionView` until a
+  metadata reader lands. This feature is that reader. **Q1** new
+  `pub struct JournalTransactionMetadata { transaction_id: SmolStr,
+  ts: Timestamp, description: SmolStr, strategy_id: Option<StrategyId> }`
+  in [`crates/core/src/views.rs`](../crates/core/src/views.rs)
+  alongside `JournalEntry` (T1201); re-exported from
+  `crates/core/src/lib.rs:48`. **Principled override** on the
+  brief default: `description: SmolStr` (not `String`) — symmetry
+  with `JournalTransactionView.description: SmolStr` and
+  `JournalEntry.memo: SmolStr`; typical paper-fill descriptions
+  fit inline-storage. **Q2** two separate readers per T1202's
+  "one reader, one job" pattern — no fused
+  `(Metadata, Vec<JournalEntry>)` reader; cockpit_live closure
+  sequences both. **Q3** four fields; omit the schema's
+  `metadata: TEXT NOT NULL DEFAULT '{}'` JSON blob (no consumer,
+  three-uses rule applied). **Q4** sequential `await` (NOT
+  `tokio::join!`); metadata-`None` short-circuit skips the
+  entries query on stale clicks. **Q5** override of brief default
+  — re-verify T1207's existing 4 modal snapshots stay byte-identical
+  (`JournalModalState` doesn't carry provenance, so a duplicate
+  populated-metadata snapshot would be byte-identical noise) +
+  add ONE new wiring smoke test
+  `crates/ui/tests/cockpit_live_modal_metadata_chain.rs` (NEW)
+  driving the chained-fetch path. **Q6** any-`Err` collapses to
+  `PanelState::Error(TAPE_AUDIT_MODAL_ERROR_PREFIX + msg)`;
+  metadata-`None` → "unknown transaction" error. Consistent with
+  today's modal error UX; no new strings.
+  **journal-transactions-metadata architectural deltas:** new
+  `trading_core::JournalTransactionMetadata` view struct (separate
+  from `JournalEntry` and `JournalEntryView`); new reader
+  `audit::query::journal_transaction_metadata` (sibling of
+  `journal_entries_for_transaction`, T1202 reader is unchanged
+  per R7); cockpit_live `Task::perform` closure at
+  `crates/ui/src/bin/cockpit_live.rs:496-535` replaces partial-view
+  construction with a sequential metadata→entries chain plus Q6
+  error mapping; one new audit unit-test file
+  `crates/audit/tests/journal_transaction_metadata.rs` (V1 + V2);
+  one new ui smoke-test file
+  `crates/ui/tests/cockpit_live_modal_metadata_chain.rs` (V3).
+  No new external dep, no system C dep, no `unsafe`, no migration,
+  no `Cargo.toml` change, no new theme tokens, no new strings, no
+  new widget files, no new `Message` variants. Public API the
+  cockpit may call grows by one row in the
+  [Cockpit ← `audit::query`](#cockpit--auditquery) table
+  (`journal_transaction_metadata`). Anchor budget unchanged
+  (11 / 11 byte-identical) — the new reader is not on any anchored
+  path; backtests use `PaperEnginePublisher` with `NullPublisher`
+  and the rendering pipeline in `crates/reports/src/` consumes
+  aggregate cells, never `JournalTransactionMetadata`. Tasks
+  T1301–T1305 + `T_FINAL_TX_METADATA` filed at
+  [tasks/journal-transactions-metadata.md](tasks/journal-transactions-metadata.md).
+- 2026-05-03 (architect): resolved the twelve v1.5b-multi-venue
+  open questions from
+  [features/v1-5b-multi-venue.md → Open questions for architect](features/v1-5b-multi-venue.md#open-questions-for-architect).
+  Largest queued backend feature. **Q1** new closed enum
+  `trading_core::Venue { Binance, Coinbase, Kraken }` with
+  `#[serde(rename_all = "snake_case")]` in
+  `crates/core/src/venue.rs` (re-exported at crate root); no
+  `Default` impl — every Bar / Tick must construct it. **Q2**
+  Coinbase Advanced Trade WS
+  (`wss://advanced-trade-ws.coinbase.com`) over the legacy Pro
+  WS. **Q3** per-venue `tokio::task::JoinSet` topology
+  (`agent::runtime::run` spawns one task per enabled venue);
+  `select_all` rejected for panic-poison risk. **Q4** required
+  `venue: Venue` field on `Tick` / `Bar` (mechanical migration
+  across ~30+ literal sites — every existing literal defaults
+  `Venue::Binance`); `Option<Venue>` rejected for forever-bug-
+  surface. **Q5** client-side 1s aggregation in new
+  `crates/data/src/bar_aggregator.rs` (deterministic on `i64`
+  epoch-µs bucketing); new `Timeframe::OneSecond` variant
+  (Display `"1s"`). **Q6** doubled USDC universe with
+  operator-gated `[universe]` section
+  (`usdt_enabled = true` default, `usdc_enabled = false`
+  default; legacy `[funding].universe` stays as back-compat
+  reader path). **Q7** per-venue stale-data pause @ 30s default
+  + new `MarketHealth { Fresh, Stale, Recovered }` enum +
+  `EventBus::market_health: broadcast::Sender<MarketHealth>`
+  channel (capacity 64) + per-venue watchdog
+  `crates/agent/src/stale_watchdog.rs`. **Q8** free
+  unauthenticated WS for all three venues confirmed (Binance
+  / Coinbase / Kraken). **Q9** worst-case 60 subscription slots
+  fits within all three venues' free tiers with ≥10× margin
+  on the tightest limit (Coinbase 750 msg/s/IP). **Q10**
+  `MockFeed` test harness (`crates/data/src/mock_feed.rs`,
+  gated under `cfg(any(test, feature = "fixtures"))`) over
+  `wiremock` — covers V1–V7; WS-frame parsing unit-tested
+  directly at the per-venue `parse_*_event` private function
+  level. **Q11 — principled override of analyst R8.2** —
+  schema migration `007_strategy_events_venue.sql` (NULLABLE
+  `venue TEXT` column on `strategy_events`) + writer signature
+  change `feed_reconnect(ledger, symbol, venue: Venue, ts)`;
+  `error_summary`-encoding rejected because v1.5b is the
+  load-bearing introduction of `Venue` and audit is the
+  boundary where typed attribution matters most. **Q12**
+  zero anchor risk re-confirmed by independent grep on
+  `spec/reports/backtest-*.md` + `spec/reports/success/success-*.md`
+  (zero hits on `venue|coinbase|kraken`); hard architectural
+  rule: any future renderer change that introduces venue
+  strings into a committed report body requires an architect-
+  approved re-lock budget. **No new external dep** —
+  Coinbase + Kraken adapters reuse `tokio_tungstenite` +
+  `serde_json` + `reqwest` (identical to today's `BinanceFeed`).
+  No `Cargo.toml` change. No `unsafe`. **Anchor budget
+  unchanged (11 / 11 byte-identical).** Migration `007` added
+  to the Audit migration list. T612 (multi-symbol live
+  `BinanceFeed` fan-out) finally lands as part of v1.5b via
+  new `subscribe_bars_multi` / `subscribe_trades_multi` methods
+  on `BinanceFeed` using the combined-stream URL; single-symbol
+  API unchanged (R10.3). Tasks T1401–T1415 + `T_FINAL_V15B`
+  filed at
+  [tasks/v1-5b-multi-venue.md](tasks/v1-5b-multi-venue.md).
+  T1401 is the sole sequential foundation gate (~30+ mechanical
+  fixture-site migrations); ~7 parallel paths fan out after it
+  (T1402 ‖ T1403 ‖ T1404 ‖ T1405 ‖ T1406 ‖ T1407 ‖ T1410),
+  converging at T1408 (runtime topology) and T1409 (bus
+  channel + watchdog). Test wave T1411–T1414 fans out again;
+  T1415 sequential at end.

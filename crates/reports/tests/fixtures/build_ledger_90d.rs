@@ -103,6 +103,7 @@ pub async fn build_ledger_90d(db_path: &Path) -> Result<(Timestamp, Timestamp), 
                 error_code: None,
                 error_summary: None,
                 ts: Some(&load_ts),
+                venue: None,
             },
         )
         .await?;
@@ -125,6 +126,7 @@ pub async fn build_ledger_90d(db_path: &Path) -> Result<(Timestamp, Timestamp), 
             error_code: None,
             error_summary: None,
             ts: Some(&swap_ts),
+            venue: None,
         },
     )
     .await?;

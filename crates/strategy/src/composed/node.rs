@@ -1350,7 +1350,7 @@ mod t505_t507_tests {
     use super::*;
     use crate::traits::Strategy;
     use rust_decimal_macros::dec;
-    use trading_core::{Price, Quantity, Symbol, Timeframe, Timestamp};
+    use trading_core::{Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
     /// Synthetic 1000-bar fixture — deterministic, derived from bar index only.
     /// Uses a volatile random-walk to ensure RSI explores < 35 territory and
@@ -1405,6 +1405,7 @@ mod t505_t507_tests {
                 local_recv_ts: close_ts,
                 open_ts,
                 close_ts,
+                venue: Venue::Binance,
             });
         }
         bars
@@ -1562,6 +1563,7 @@ size   = "fixed_fraction(0.1)"
             qty: Quantity::new(dec!(1)).unwrap(),
             side: Side::Buy,
             trade_id: 1,
+            venue: Venue::Binance,
         };
         assert!(strategy.on_tick(&tick).is_empty());
     }

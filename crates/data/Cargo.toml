@@ -26,6 +26,12 @@ rust_decimal_macros.workspace = true
 
 tokio-util.workspace = true
 
+[features]
+# `fixtures` exposes `MockFeed` and other test-harness scaffolding to other
+# crates' integration tests (T1407 / Q10). Production binaries do not enable
+# this feature, so the harness is excluded from `cargo build --release`.
+fixtures = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
@@ -33,3 +39,8 @@ mockall = { version = "0.13" }
 wiremock.workspace = true
 rust_decimal_macros.workspace = true
 time.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "bar_aggregator"
+harness = false

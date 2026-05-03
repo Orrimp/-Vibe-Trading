@@ -28,7 +28,7 @@ impl Ledger {
             .await
             .map_err(|e| LedgerError::Database(e.to_string()))?;
 
-        // Run embedded migrations (001..006)
+        // Run embedded migrations (001..007)
         sqlx::migrate!("./migrations")
             .run(&pool)
             .await

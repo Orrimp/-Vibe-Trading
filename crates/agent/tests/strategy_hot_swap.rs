@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use agent::{watcher, EventBus};
 use audit::{bootstrap, ledger::Ledger, query};
-use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
 /// Fixed RFC-3339 timestamp used for all `strategy_events` rows in tests.
 /// Derived from seed 0xC0FFEE: 0xC0FFEE = 12648430 seconds from Unix epoch
@@ -53,6 +53,7 @@ fn make_bar(close: f64) -> Bar {
         local_recv_ts: ts,
         open_ts: ts,
         close_ts: ts,
+        venue: Venue::Binance,
     }
 }
 

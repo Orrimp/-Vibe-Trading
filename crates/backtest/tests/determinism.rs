@@ -20,7 +20,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{
     Bar, Money, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
-    Timeframe, Timestamp, Usdt,
+    Timeframe, Timestamp, Usdt, Venue,
 };
 
 const SEED: u64 = 0xC0_FFEE;
@@ -74,6 +74,7 @@ fn synthetic_bars_det(count: usize) -> Vec<Bar> {
             local_recv_ts: close_ts,
             open_ts,
             close_ts,
+            venue: Venue::Binance,
         });
         close = next;
     }

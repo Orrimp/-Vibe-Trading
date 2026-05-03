@@ -22,6 +22,7 @@ mod tests;
 pub mod tick;
 pub mod time;
 pub mod universe;
+pub mod venue;
 pub mod views;
 
 pub use asset::{Asset, Btc, Currency, Usdt};
@@ -45,4 +46,7 @@ pub use symbol::{AccountId, Side, StrategyId, Symbol};
 pub use tick::Tick;
 pub use time::Timestamp;
 pub use universe::{SymbolSet, Universe, UniverseError};
-pub use views::{FillView, JournalEntry, JournalEntryView, PnlSnapshot, PositionView};
+pub use venue::{MarketHealth, ParseVenueError, Venue};
+pub use views::{
+    FillView, JournalEntry, JournalEntryView, JournalTransactionMetadata, PnlSnapshot, PositionView,
+};

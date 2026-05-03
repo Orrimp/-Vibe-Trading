@@ -119,6 +119,7 @@ pub async fn build_ledger_7d(db_path: &Path) -> Result<(Timestamp, Timestamp), L
                 error_code: None,
                 error_summary: None,
                 ts: Some(&load_ts),
+                venue: None,
             },
         )
         .await?;

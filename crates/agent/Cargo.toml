@@ -58,3 +58,12 @@ tokio-cron-scheduler = { version = "0.15", optional = true }
 [dev-dependencies]
 tempfile.workspace = true
 reqwest = { workspace = true, features = ["json"] }
+async-trait.workspace = true
+# T1409 — `tokio::time::advance` / `pause` / `start_paused` are gated
+# behind tokio's `test-util` feature.  The watchdog tests pause the
+# tokio clock to control the 1Hz scan interval deterministically.
+tokio = { workspace = true, features = ["test-util"] }
+# T1414 — V7 Coinbase outage isolation integration test needs
+# `data::MockFeed`, which lives behind the `fixtures` feature flag
+# (mirrors the production gating from T1407).
+data = { path = "../data", features = ["fixtures"] }

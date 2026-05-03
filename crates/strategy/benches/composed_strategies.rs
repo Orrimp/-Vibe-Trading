@@ -15,7 +15,7 @@ use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use strategy::{ComposedStrategy, ComposedStrategyConfig, Strategy};
 use time::OffsetDateTime;
-use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
 // ── Fixture generation ────────────────────────────────────────────────────────
 
@@ -67,6 +67,7 @@ fn make_bars(count: usize) -> Vec<Bar> {
             local_recv_ts: close_ts,
             open_ts,
             close_ts,
+            venue: Venue::Binance,
         });
     }
     bars

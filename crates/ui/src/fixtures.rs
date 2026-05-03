@@ -11,7 +11,7 @@ use smol_str::SmolStr;
 use time::OffsetDateTime;
 use trading_core::{
     Bar, FeeTier, FillView, Money, PnlSnapshot, PositionView, Price, Quantity, Side,
-    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Tick, Timeframe, Timestamp,
+    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Tick, Timeframe, Timestamp, Venue,
 };
 
 use crate::state::{AgentMode, Cockpit, PanelState, StrategyRow, StrategyStatus};
@@ -47,6 +47,7 @@ pub fn fake_bar(offset_min: i64) -> Bar {
         volume: Quantity::new(dec!(12.5)).unwrap_or_else(|_| unreachable!()),
         trade_count: 100,
         local_recv_ts: close_ts,
+        venue: Venue::Binance,
     }
 }
 
@@ -54,7 +55,7 @@ pub fn fake_bar(offset_min: i64) -> Bar {
 /// badge can be exercised deterministically.
 #[must_use]
 pub fn fake_tick_with_skew_ms(skew_ms: i64) -> Tick {
-    let venue = fixed_ts(0);
+    let venue_ts = fixed_ts(0);
     let local = {
         let dt = OffsetDateTime::from_unix_timestamp_nanos(
             i128::from(FIXED_EPOCH_SECS) * 1_000_000_000 + i128::from(skew_ms) * 1_000_000,
@@ -64,12 +65,13 @@ pub fn fake_tick_with_skew_ms(skew_ms: i64) -> Tick {
     };
     Tick {
         symbol: Symbol::new("BTCUSDT"),
-        venue_ts: venue,
+        venue_ts,
         local_recv_ts: local,
         price: Price::new(dec!(40050.00)).unwrap_or_else(|_| unreachable!()),
         qty: Quantity::new(dec!(0.05)).unwrap_or_else(|_| unreachable!()),
         side: Side::Buy,
         trade_id: 1,
+        venue: Venue::Binance,
     }
 }
 

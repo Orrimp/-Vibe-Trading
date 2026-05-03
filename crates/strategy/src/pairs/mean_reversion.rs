@@ -272,7 +272,7 @@ mod tests {
     use super::*;
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use trading_core::{Price, Quantity, SignalKind, Timeframe, Timestamp};
+    use trading_core::{Price, Quantity, SignalKind, Timeframe, Timestamp, Venue};
 
     fn ts_at(minute: i64) -> Timestamp {
         Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(minute))
@@ -292,6 +292,7 @@ mod tests {
             local_recv_ts: ts,
             open_ts: ts,
             close_ts: ts,
+            venue: Venue::Binance,
         }
     }
 
@@ -343,6 +344,7 @@ max_staleness_minutes = 5
             qty: trading_core::Quantity::new(dec!(1)).unwrap(),
             side: trading_core::Side::Buy,
             trade_id: 1,
+            venue: Venue::Binance,
         };
         let sigs = strat.on_tick(&tick);
         assert!(sigs.is_empty(), "on_tick must always return vec![]");

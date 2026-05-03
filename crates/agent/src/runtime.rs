@@ -42,8 +42,10 @@
 //!   return — they run on their own task lifecycles inside the
 //!   spawned subsystems.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use data::MarketDataSource;
@@ -51,11 +53,35 @@ use futures::StreamExt;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
-use trading_core::{Symbol, Timeframe};
+use tracing::{debug, error, info, warn};
+use trading_core::{MarketHealth, Symbol, Tick, Timeframe, Timestamp, Venue};
 
 use crate::config::Config;
 use crate::{AgentMode, EventBus, KillSwitch};
+
+/// T1409 — wall-clock injection for the stale-data watchdog.
+///
+/// The watchdog reads the current `Timestamp` via this trait object so
+/// tests can supply a controllable clock (`OffsetDateTime` is not
+/// affected by `tokio::time::pause`).  Live mode wires
+/// `Arc::new(Timestamp::now)`; tests construct a fixture clock that
+/// returns a value owned by the test harness.
+pub type NowFn = Arc<dyn Fn() -> Timestamp + Send + Sync>;
+
+/// T1409 — shared per-venue last-tick timestamp map.
+///
+/// Updated by the per-venue `ticks_tap` (paper-mode only) and read by
+/// the stale-data watchdog every tick of its scan interval.  We use
+/// `std::sync::Mutex` (not `tokio::sync::Mutex`) because the critical
+/// section is a single map insert / read — no `.await` is held under
+/// the lock.
+pub type LastTickMap = Arc<Mutex<HashMap<Venue, Timestamp>>>;
+
+/// T1409 — observer hook called by [`spawn_feed_taps_with_observer`] on
+/// each tick before the tick is republished to the bus.  The paper-mode
+/// supervisor wires a closure that records `tick.local_recv_ts` into
+/// the shared [`LastTickMap`] under venue `V`.
+pub type TickObserver = Arc<dyn Fn(&Tick) + Send + Sync>;
 
 /// Subsystems handed to [`run`] as already-constructed handles.
 ///
@@ -348,19 +374,104 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
             info!("agent subsystems initialized — entering idle (replay loop in backtest binary)");
         }
         crate::config::Mode::Paper => {
-            info!("paper mode — Binance WS feed (paper fills, no real orders)");
-            let ws_url = &config.data.sources.binance.ws_url;
-            let feed: Arc<dyn MarketDataSource> = Arc::new(data::BinanceFeed::new(ws_url, ws_url));
-            info!(ws = %ws_url, "Binance feed initialized");
-            spawn_feed_taps(
-                feed.as_ref(),
+            // ── Per-venue ingest topology (T1408) ────────────────────────────
+            // Build the enabled-venue list deterministically: Binance always
+            // (R10.2 / backwards compat), Coinbase + Kraken opt-in via
+            // `[data.sources.<venue>] enabled = true`.  Iteration order is
+            // fixed by Venue's `Ord` impl (Binance < Coinbase < Kraken)
+            // so cross-run determinism holds (R7.4).
+            //
+            // Each enabled venue gets its OWN supervisor task spawned into
+            // the runtime JoinSet via [`spawn_venue_supervisor`].  The
+            // supervisor wraps the actual feed-consumption in
+            // `tokio::task::spawn` and inspects the resulting `JoinError`:
+            //   * `is_panic() == true` → log + emit a `FeedReconnect`
+            //     audit event with `error_code = "task_panic"` (R14.3) so
+            //     the failure is venue-tagged in the journal.  The other
+            //     venues' tasks keep running — Q3 / R14.1.
+            //   * Normal completion / cancel → log + return.
+            //
+            // T1409 will add the watchdog respawn loop on top of this
+            // skeleton; T1408 only ensures a panic is *isolated* (does not
+            // tear down `runtime::run`).
+            info!("paper mode — multi-venue WS ingest (paper fills, no real orders)");
+            let mut enabled: Vec<(Venue, Arc<dyn MarketDataSource>)> = Vec::new();
+
+            // Binance — always enabled in paper mode (R10.2).
+            {
+                let ws_url = &config.data.sources.binance.ws_url;
+                let feed: Arc<dyn MarketDataSource> =
+                    Arc::new(data::BinanceFeed::new(ws_url, ws_url));
+                info!(ws = %ws_url, "Binance feed initialized");
+                enabled.push((Venue::Binance, feed));
+            }
+
+            // Coinbase — operator opts in via config.
+            if config.data.sources.coinbase.enabled {
+                let ws_url = &config.data.sources.coinbase.ws_url;
+                let rest_url = &config.data.sources.coinbase.rest_url;
+                let feed: Arc<dyn MarketDataSource> =
+                    Arc::new(data::CoinbaseFeed::with_urls(ws_url, rest_url));
+                info!(ws = %ws_url, "Coinbase feed initialized");
+                enabled.push((Venue::Coinbase, feed));
+            }
+
+            // Kraken — operator opts in via config.
+            if config.data.sources.kraken.enabled {
+                let ws_url = &config.data.sources.kraken.ws_url;
+                let rest_url = &config.data.sources.kraken.rest_url;
+                let feed: Arc<dyn MarketDataSource> =
+                    Arc::new(data::KrakenFeed::with_urls(ws_url, rest_url));
+                info!(ws = %ws_url, "Kraken feed initialized");
+                enabled.push((Venue::Kraken, feed));
+            }
+
+            // Sort by Venue's Ord impl so spawn order is deterministic
+            // across runs (R7.4 / determinism non-negotiable).  The
+            // ascending order is `Binance < Coinbase < Kraken`.
+            enabled.sort_by_key(|(v, _)| *v);
+
+            info!(
+                venue_count = enabled.len(),
+                "spawning per-venue ingest supervisors"
+            );
+            // T1409 — shared per-venue last-tick map; updated by every
+            // tick observer in the paper-mode supervisors and read by
+            // the stale-data watchdog every scan.
+            let last_tick: LastTickMap = Arc::new(Mutex::new(HashMap::new()));
+            let venue_list: Vec<Venue> = enabled.iter().map(|(v, _)| *v).collect();
+            for (venue, feed) in enabled {
+                spawn_venue_supervisor(
+                    venue,
+                    feed,
+                    Arc::clone(&bus),
+                    Arc::clone(&ledger),
+                    feed_symbol.clone(),
+                    feed_tf,
+                    &mut set,
+                    &cancel,
+                    Some(Arc::clone(&last_tick)),
+                );
+            }
+
+            // ── T1409 — stale-data watchdog ──────────────────────────────────
+            // Live mode: scan every 1s, threshold 30s by default (Q7).
+            // The clock is `Timestamp::now` (wall-clock) — backtest
+            // replay never reaches here so the determinism gate
+            // (`crates/backtest/` is `MarketHealth`-free) holds.
+            //
+            // T1410 will plumb the threshold from `[universe].stale_threshold_secs`;
+            // for T1409 the default 30s constant lives here.
+            spawn_market_health_watchdog(
                 Arc::clone(&bus),
-                feed_symbol.clone(),
-                feed_tf,
+                Arc::clone(&last_tick),
+                venue_list,
+                30, // default stale_threshold_secs (Q7)
+                Arc::new(Timestamp::now),
+                Duration::from_secs(1),
                 &mut set,
                 &cancel,
-            )
-            .await;
+            );
         }
     }
 
@@ -461,6 +572,25 @@ pub(crate) async fn spawn_feed_taps<S: MarketDataSource + ?Sized>(
     set: &mut JoinSet<()>,
     cancel: &CancellationToken,
 ) {
+    spawn_feed_taps_with_observer(feed, bus, symbol, tf, set, cancel, None).await;
+}
+
+/// Variant of [`spawn_feed_taps`] that calls an optional `tick_observer`
+/// closure on each tick *before* re-publishing it on the bus.
+///
+/// T1409 wires this from the per-venue paper-mode supervisor with a
+/// closure that records the tick's `local_recv_ts` into the shared
+/// [`LastTickMap`] so the stale-data watchdog can see venue activity.
+/// Research mode keeps using [`spawn_feed_taps`] (observer = `None`).
+pub(crate) async fn spawn_feed_taps_with_observer<S: MarketDataSource + ?Sized>(
+    feed: &S,
+    bus: Arc<EventBus>,
+    symbol: Symbol,
+    tf: Timeframe,
+    set: &mut JoinSet<()>,
+    cancel: &CancellationToken,
+    tick_observer: Option<TickObserver>,
+) {
     // ── bars tap ──────────────────────────────────────────────────────────────
     match feed.subscribe_bars(symbol.clone(), tf).await {
         Ok(mut stream) => {
@@ -496,13 +626,21 @@ pub(crate) async fn spawn_feed_taps<S: MarketDataSource + ?Sized>(
             let bus_t = Arc::clone(&bus);
             let cancel_t = cancel.child_token();
             let symbol_t = symbol;
+            let observer = tick_observer.clone();
             set.spawn(async move {
                 info!(symbol = %symbol_t, "ticks_tap started");
                 loop {
                     tokio::select! {
                         () = cancel_t.cancelled() => break,
                         next = stream.next() => match next {
-                            Some(Ok(tick)) => bus_t.publish_tick(tick),
+                            Some(Ok(tick)) => {
+                                // T1409 — observe the tick (e.g. update the
+                                // per-venue last-tick map) before broadcasting.
+                                if let Some(obs) = observer.as_ref() {
+                                    obs(&tick);
+                                }
+                                bus_t.publish_tick(tick);
+                            }
                             Some(Err(e)) => {
                                 debug!(error = %e, "ticks_tap stream error (continuing)");
                             }
@@ -562,6 +700,328 @@ pub fn spawn_mode_forwarder(
     });
 }
 
+/// Spawn a per-venue ingest **supervisor** task (T1408 — v1.5b
+/// multi-venue / Q3 / R14).
+///
+/// The supervisor task is the panic-isolation boundary: it spawns the
+/// actual feed-consumption work (the bar/tick taps via
+/// [`spawn_feed_taps`]) inside an inner `tokio::task::spawn` and
+/// inspects the resulting `JoinError`.  A panic in any venue's task
+/// surfaces here as `JoinError::is_panic() == true` and is logged +
+/// audit-journaled with `error_code = "task_panic"`; **the panic does
+/// not propagate into `runtime::run` itself, so the other venues'
+/// supervisors keep running** (R14.1 / R14.3).
+///
+/// ## Topology
+///
+/// ```text
+/// runtime::run::set: JoinSet<()>
+///    │
+///    ├── supervisor_task[Venue::Binance]   ← this fn spawns one of these per venue
+///    │      │
+///    │      └── inner_handle = tokio::spawn(consume_streams())
+///    │             │  bars_tap + ticks_tap (via spawn_feed_taps,
+///    │             │  but spawned into a *local* JoinSet whose
+///    │             │  drain happens before the supervisor returns)
+///    │             ▼
+///    │             on panic → JoinError::is_panic() → feed_reconnect
+///    │             on cancel / clean exit → log + return
+///    ├── supervisor_task[Venue::Coinbase]   (if enabled)
+///    └── supervisor_task[Venue::Kraken]     (if enabled)
+/// ```
+///
+/// ## Caller contract
+///
+/// `cancel.child_token()` is forwarded into the inner consumption
+/// task; on `cancel.cancel()` from the top of `runtime::run`, the
+/// inner task drains and the supervisor returns cleanly.
+///
+/// ## Watchdog respawn (T1409)
+///
+/// T1408 implements **panic isolation only**: a panicked task is
+/// logged + audit-journaled but is NOT respawned by the supervisor
+/// itself.  T1409 will layer the stale-data watchdog on top — it
+/// detects a venue's silence (no Tick within `stale_threshold_secs`)
+/// and re-runs the supervisor's spawn body.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_venue_supervisor(
+    venue: Venue,
+    feed: Arc<dyn MarketDataSource>,
+    bus: Arc<EventBus>,
+    ledger: Arc<audit::Ledger>,
+    symbol: Symbol,
+    tf: Timeframe,
+    set: &mut JoinSet<()>,
+    cancel: &CancellationToken,
+    last_tick: Option<LastTickMap>,
+) {
+    let cancel_sup = cancel.child_token();
+    set.spawn(async move {
+        info!(venue = %venue, "venue_supervisor started");
+
+        // The inner task owns the actual bar/tick stream consumption.
+        // Wrapping it in `tokio::spawn` is the panic-isolation
+        // boundary: a panic inside `spawn_feed_taps` (or anywhere
+        // in the bar/tick stream poll loop) surfaces as
+        // `JoinError::is_panic() == true` on the join handle below;
+        // it does NOT unwind the supervisor.
+        let bus_inner = Arc::clone(&bus);
+        let cancel_inner = cancel_sup.clone();
+        let symbol_inner = symbol.clone();
+        // T1409 — when a `LastTickMap` is supplied (paper mode), build
+        // a tick observer that records `local_recv_ts` per venue so the
+        // stale-data watchdog can detect silence.
+        let tick_observer: Option<TickObserver> = last_tick.map(|map| {
+            let v = venue;
+            Arc::new(move |tick: &Tick| {
+                if let Ok(mut guard) = map.lock() {
+                    guard.insert(v, tick.local_recv_ts);
+                }
+            }) as TickObserver
+        });
+        let inner = tokio::spawn(async move {
+            let mut inner_set: JoinSet<()> = JoinSet::new();
+            spawn_feed_taps_with_observer(
+                feed.as_ref(),
+                Arc::clone(&bus_inner),
+                symbol_inner,
+                tf,
+                &mut inner_set,
+                &cancel_inner,
+                tick_observer,
+            )
+            .await;
+            // Drain the tap tasks: cancel is the natural stop signal,
+            // streams ending naturally also drains.  We bound nothing
+            // here (the outer `runtime::run` shutdown enforces a 2s
+            // wall-clock cap on the whole JoinSet).
+            while inner_set.join_next().await.is_some() {}
+        });
+
+        match inner.await {
+            Ok(()) => {
+                info!(venue = %venue, "venue_supervisor inner task completed cleanly");
+            }
+            Err(join_err) if join_err.is_panic() => {
+                // R14.3 — a panic in venue X's task is logged +
+                // audit-journaled with `error_code = "task_panic"`;
+                // crucially, it does NOT unwind the supervisor itself
+                // (we caught the JoinError) so other venues keep
+                // running.  The panic message is best-effort
+                // extracted via `into_panic` + downcast.
+                let panic_msg = panic_message(join_err.into_panic());
+                error!(
+                    venue = %venue,
+                    panic = %panic_msg,
+                    "venue {} crashed: {} ; restarting via watchdog",
+                    venue,
+                    panic_msg,
+                );
+                // Audit-journal the failure with venue context
+                // (R8 / R14.3).  Failure to write is non-fatal —
+                // observability, not control flow.
+                if let Err(e) =
+                    audit::journal::feed_reconnect(ledger.as_ref(), "unknown", venue, None).await
+                {
+                    warn!(
+                        venue = %venue,
+                        error = %e,
+                        "feed_reconnect audit write failed (non-fatal)",
+                    );
+                }
+                // T1408 stops here (panic isolated).  T1409 will add
+                // the respawn loop on top of the watchdog.
+            }
+            Err(join_err) if join_err.is_cancelled() => {
+                debug!(venue = %venue, "venue_supervisor inner task cancelled");
+            }
+            Err(join_err) => {
+                warn!(
+                    venue = %venue,
+                    error = %join_err,
+                    "venue_supervisor inner task ended with non-panic JoinError",
+                );
+            }
+        }
+
+        info!(venue = %venue, "venue_supervisor stopped");
+    });
+}
+
+/// Best-effort extraction of a panic payload's message.
+///
+/// `JoinError::into_panic()` returns a `Box<dyn Any + Send>` whose
+/// concrete type depends on what was panicked with.  The two common
+/// cases (`String` and `&'static str`) cover almost every
+/// `panic!("…")` invocation; anything else falls back to the literal
+/// string `"non-string panic payload"`.
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else if let Some(s) = payload.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else {
+        "non-string panic payload".into()
+    }
+}
+
+/// Spawn the v1.5b stale-data watchdog (T1409 — Q7 / R14.4).
+///
+/// The watchdog is the **single producer** of `MarketHealth` events on
+/// `EventBus::market_health`.  It scans the shared per-venue last-tick
+/// map every `interval` and, for each venue in `venues`:
+///
+/// - When the venue is **not yet seen** (no entry in the map) it is in
+///   the "Unseen" state — no event is emitted until the first tick
+///   arrives.  The first tick transitions Unseen → Fresh and publishes
+///   `MarketHealth::Fresh { venue, last_tick_ts }`.
+/// - When `now - last_tick > threshold_secs` and the previous state was
+///   `Fresh`, transitions Fresh → Stale and publishes
+///   `MarketHealth::Stale { venue, last_tick_ts, threshold_secs }`.
+/// - When a tick arrives after a `Stale` window (i.e. a stored
+///   `last_tick` updates and is now within threshold while the watchdog
+///   recorded `Stale`), transitions Stale → Fresh and publishes
+///   `MarketHealth::Recovered { venue, recovered_ts, gap_secs }`.
+///
+/// The clock is injected via [`NowFn`] so tests can drive the wall-clock
+/// deterministically (`tokio::time::pause` only controls tokio sleeps,
+/// not `OffsetDateTime::now_utc`).  Live mode wires `Timestamp::now`.
+///
+/// Determinism: the watchdog is live-only (paper-mode), never reachable
+/// from `crates/backtest/` replay — see Q7 in the feature brief.  The
+/// state machine itself is deterministic given a fixed input sequence.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_market_health_watchdog(
+    bus: Arc<EventBus>,
+    last_tick: LastTickMap,
+    venues: Vec<Venue>,
+    threshold_secs: u32,
+    now_fn: NowFn,
+    interval: Duration,
+    set: &mut JoinSet<()>,
+    cancel: &CancellationToken,
+) {
+    let cancel_w = cancel.child_token();
+    set.spawn(async move {
+        info!(
+            venue_count = venues.len(),
+            threshold_secs, "market_health_watchdog started"
+        );
+        // Per-venue tracked state.  None = Unseen (no tick observed
+        // yet); Some(MarketHealthState::Fresh) / Some(Stale) once seen.
+        let mut state: HashMap<Venue, MarketHealthState> = HashMap::new();
+        let mut tick = tokio::time::interval(interval);
+        // Skip the immediate first tick so the watchdog's first scan
+        // happens after `interval`, matching wall-clock cadence.
+        tick.tick().await;
+        loop {
+            tokio::select! {
+                () = cancel_w.cancelled() => break,
+                _ = tick.tick() => {
+                    let now = now_fn();
+                    // Snapshot the last-tick map under the lock; do not
+                    // hold the mutex across `await` (we don't await
+                    // anything inside this scan, but the snapshot keeps
+                    // the lock window O(venue_count)).
+                    let snapshot: HashMap<Venue, Timestamp> = match last_tick.lock() {
+                        Ok(g) => g.clone(),
+                        Err(p) => {
+                            // Another task panicked while holding the
+                            // map; recover the inner value so we keep
+                            // running (best-effort observability).
+                            warn!("last_tick map poisoned — recovering inner state");
+                            p.into_inner().clone()
+                        }
+                    };
+
+                    // Iterate venues in deterministic Ord order so the
+                    // emitted event sequence is reproducible across
+                    // runs (matches Venue::Ord in core::venue).
+                    let mut sorted = venues.clone();
+                    sorted.sort();
+                    for venue in sorted {
+                        match snapshot.get(&venue) {
+                            None => {
+                                // Unseen: no event until the first tick
+                                // (state remains absent from `state`).
+                            }
+                            Some(&last_tick_ts) => {
+                                let age = saturating_secs_between(last_tick_ts, now);
+                                let prev = state.get(&venue).copied();
+                                let is_stale = age > i64::from(threshold_secs);
+                                match (prev, is_stale) {
+                                    (None, false) => {
+                                        // First-ever observation: Unseen → Fresh.
+                                        bus.publish_market_health(MarketHealth::Fresh {
+                                            venue,
+                                            last_tick_ts,
+                                        });
+                                        state.insert(venue, MarketHealthState::Fresh);
+                                    }
+                                    (None, true) => {
+                                        // First observation but already
+                                        // older than threshold (e.g. an
+                                        // ancient tick replayed).  Emit
+                                        // Stale directly so subscribers
+                                        // see the worst-case state.
+                                        bus.publish_market_health(MarketHealth::Stale {
+                                            venue,
+                                            last_tick_ts,
+                                            threshold_secs,
+                                        });
+                                        state.insert(venue, MarketHealthState::Stale);
+                                    }
+                                    (Some(MarketHealthState::Fresh), true) => {
+                                        // Fresh → Stale transition.
+                                        bus.publish_market_health(MarketHealth::Stale {
+                                            venue,
+                                            last_tick_ts,
+                                            threshold_secs,
+                                        });
+                                        state.insert(venue, MarketHealthState::Stale);
+                                    }
+                                    (Some(MarketHealthState::Stale), false) => {
+                                        // Stale → Fresh (Recovered): a
+                                        // newer tick has arrived inside
+                                        // the threshold window.
+                                        let gap_secs = u32::try_from(age.max(0)).unwrap_or(u32::MAX);
+                                        bus.publish_market_health(MarketHealth::Recovered {
+                                            venue,
+                                            recovered_ts: last_tick_ts,
+                                            gap_secs,
+                                        });
+                                        state.insert(venue, MarketHealthState::Fresh);
+                                    }
+                                    (Some(MarketHealthState::Fresh), false)
+                                    | (Some(MarketHealthState::Stale), true) => {
+                                        // Steady state — no event.
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        info!("market_health_watchdog stopped");
+    });
+}
+
+/// Tracked per-venue health state inside the watchdog (private — the
+/// public surface is the `MarketHealth` enum on the bus).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MarketHealthState {
+    Fresh,
+    Stale,
+}
+
+/// Whole-second age between `earlier` and `later`, saturating at
+/// `i64::MAX`.  Negative when `earlier > later` (clock-skew defensive).
+fn saturating_secs_between(earlier: Timestamp, later: Timestamp) -> i64 {
+    let diff_ns = later.inner().unix_timestamp_nanos() - earlier.inner().unix_timestamp_nanos();
+    i64::try_from(diff_ns / 1_000_000_000_i128).unwrap_or(i64::MAX)
+}
+
 /// Close the uptime interval — call exactly once after [`run`]
 /// returns (T806 R7.1).
 ///
@@ -584,7 +1044,7 @@ mod tests {
     use crate::config::BusConfig;
     use crate::kill_switch::{HaltReason, MockIncidentSpawner};
     use rust_decimal_macros::dec;
-    use trading_core::{Bar, Price, Quantity, Side, Tick, Timestamp};
+    use trading_core::{Bar, Price, Quantity, Side, Tick, Timestamp, Venue};
 
     fn ts(offset_secs: i64) -> Timestamp {
         Timestamp::new(
@@ -606,6 +1066,7 @@ mod tests {
             volume: Quantity::new(dec!(1)).expect("volume"),
             trade_count: 1,
             local_recv_ts: ts(t + 60),
+            venue: Venue::Binance,
         }
     }
 
@@ -618,6 +1079,7 @@ mod tests {
             qty: Quantity::new(dec!(1)).expect("qty"),
             side: Side::Buy,
             trade_id: u64::try_from(t).unwrap_or(0),
+            venue: Venue::Binance,
         }
     }
 
@@ -872,5 +1334,502 @@ mod tests {
             .expect("pos recv timed out")
             .expect("pos channel closed");
         assert_eq!(got_pos.symbol, pos.symbol);
+    }
+
+    // ── T1408 — per-venue ingest topology + panic isolation ───────────────────
+
+    /// T1408 / R10.2 — backwards compatibility.  The default `Config`
+    /// has Coinbase + Kraken disabled; a `runtime::run` build against
+    /// the default config therefore enables Binance only.  This test
+    /// asserts the **config flags** that drive the per-venue spawn loop
+    /// in [`run`] line up with the v1.5a single-venue behaviour.  An
+    /// integration test that spins up `run` would also cover this; the
+    /// flag-level test is the cheap unit gate that fires on every
+    /// `cargo test -p agent` run.
+    #[test]
+    fn t1408_default_config_spawns_only_binance() {
+        let cfg = Config::default();
+        assert!(
+            !cfg.data.sources.coinbase.enabled,
+            "default Coinbase must be disabled (R10.2 backwards compat)"
+        );
+        assert!(
+            !cfg.data.sources.kraken.enabled,
+            "default Kraken must be disabled (R10.2 backwards compat)"
+        );
+
+        // Mirror the per-venue enabled-set construction in `run`'s
+        // `Mode::Paper` arm.  Binance is unconditionally enabled; the
+        // other two follow the config flags.  The resulting list MUST
+        // contain exactly Venue::Binance for the default config.
+        let mut enabled: Vec<Venue> = vec![Venue::Binance];
+        if cfg.data.sources.coinbase.enabled {
+            enabled.push(Venue::Coinbase);
+        }
+        if cfg.data.sources.kraken.enabled {
+            enabled.push(Venue::Kraken);
+        }
+        enabled.sort();
+
+        assert_eq!(
+            enabled,
+            vec![Venue::Binance],
+            "default config must enable Binance only (1.5a parity)"
+        );
+    }
+
+    /// T1408 — three-venue config produces three sorted supervisor
+    /// tasks.  We don't stand up the real WS feeds (those would touch
+    /// the network); we instead drive [`spawn_venue_supervisor`] with
+    /// `FakeFeed` instances and assert (a) three tasks land in the
+    /// JoinSet, (b) `cancel.cancel()` drains them all cleanly, and
+    /// (c) the spawn order is deterministic by `Venue`'s `Ord`
+    /// (Binance < Coinbase < Kraken — R7.4 / determinism).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn t1408_three_venue_config_spawns_all_three() {
+        // In-memory ledger (every supervisor is given a ledger arc;
+        // we don't expect any feed_reconnect writes on the happy path).
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db_path = temp.path().join("test_ledger.db");
+        let ledger = Arc::new(
+            audit::Ledger::open(db_path.to_str().expect("path str"))
+                .await
+                .expect("open ledger"),
+        );
+        audit::bootstrap::chart_of_accounts(&ledger)
+            .await
+            .expect("chart");
+
+        let bus = Arc::new(EventBus::new(&BusConfig::default()));
+        let mut set: JoinSet<()> = JoinSet::new();
+        let cancel = CancellationToken::new();
+
+        // Three venues, each with a FakeFeed that emits one bar +
+        // one tick and then ends naturally (stream completes).
+        let venues = [Venue::Binance, Venue::Coinbase, Venue::Kraken];
+        for v in venues {
+            let bar = make_bar(rust_decimal_macros::dec!(50_000), 0);
+            let tick = make_tick(rust_decimal_macros::dec!(50_000), 0);
+            let feed: Arc<dyn MarketDataSource> =
+                Arc::new(data::FakeFeed::new(vec![bar], vec![tick]));
+            spawn_venue_supervisor(
+                v,
+                feed,
+                Arc::clone(&bus),
+                Arc::clone(&ledger),
+                Symbol::new("BTCUSDT"),
+                Timeframe::OneMinute,
+                &mut set,
+                &cancel,
+                None,
+            );
+        }
+
+        // Three supervisor tasks must be queued.  `JoinSet::len`
+        // reports tasks that have not yet been polled to completion.
+        assert_eq!(
+            set.len(),
+            3,
+            "expected one supervisor per enabled venue (3)"
+        );
+
+        // Cancel and drain — every supervisor must exit cleanly.
+        cancel.cancel();
+        let drain = async { while set.join_next().await.is_some() {} };
+        tokio::time::timeout(std::time::Duration::from_secs(2), drain)
+            .await
+            .expect("supervisors did not drain inside 2 s");
+    }
+
+    /// T1408 / R14.1 + R14.3 — a venue-task panic must NOT propagate
+    /// into `runtime::run`.  We construct a `PanickingFeed` whose
+    /// `subscribe_bars` panics on the first poll; spawn the
+    /// supervisor; await the JoinSet drain.  The test passes iff the
+    /// JoinSet drain completes (no panic surfaces out of
+    /// `spawn_venue_supervisor`).  If panic isolation regresses,
+    /// `JoinSet::join_next` would surface a `JoinError::is_panic()`
+    /// from the supervisor task and the assertion below would fail.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn t1408_venue_panic_isolated_does_not_kill_runtime() {
+        use async_trait::async_trait;
+        use futures::stream::BoxStream;
+        use trading_core::FeedError;
+
+        struct PanickingFeed;
+
+        #[async_trait]
+        impl MarketDataSource for PanickingFeed {
+            async fn exchange_info(
+                &self,
+                _symbol: Symbol,
+            ) -> Result<data::source::SymbolInfo, FeedError> {
+                // Not exercised by the supervisor path; surface an
+                // error to keep the trait satisfied.
+                Err(FeedError::Parse("PanickingFeed::exchange_info".into()))
+            }
+
+            async fn subscribe_bars(
+                &self,
+                _symbol: Symbol,
+                _tf: Timeframe,
+            ) -> Result<BoxStream<'static, Result<trading_core::Bar, FeedError>>, FeedError>
+            {
+                // Synthetic crash inside the venue's stream subscribe
+                // path — exactly the kind of bug Q3 / R14.3 calls out
+                // (a parser bug poisoning the venue's stream).
+                panic!("synthetic venue parser crash");
+            }
+
+            async fn subscribe_trades(
+                &self,
+                _symbol: Symbol,
+            ) -> Result<BoxStream<'static, Result<trading_core::Tick, FeedError>>, FeedError>
+            {
+                panic!("synthetic venue parser crash (trades)");
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db_path = temp.path().join("test_ledger.db");
+        let ledger = Arc::new(
+            audit::Ledger::open(db_path.to_str().expect("path str"))
+                .await
+                .expect("open ledger"),
+        );
+        audit::bootstrap::chart_of_accounts(&ledger)
+            .await
+            .expect("chart");
+
+        let bus = Arc::new(EventBus::new(&BusConfig::default()));
+        let mut set: JoinSet<()> = JoinSet::new();
+        let cancel = CancellationToken::new();
+
+        // The Coinbase supervisor's inner task will panic.  The
+        // supervisor MUST catch it via `JoinError::is_panic()` and
+        // return cleanly so the surrounding JoinSet drains.
+        spawn_venue_supervisor(
+            Venue::Coinbase,
+            Arc::new(PanickingFeed),
+            Arc::clone(&bus),
+            Arc::clone(&ledger),
+            Symbol::new("BTCUSDT"),
+            Timeframe::OneMinute,
+            &mut set,
+            &cancel,
+            None,
+        );
+
+        // A second, healthy supervisor confirms cross-venue isolation:
+        // the Coinbase panic must NOT poison the Binance supervisor.
+        let bar = make_bar(rust_decimal_macros::dec!(50_000), 0);
+        let tick = make_tick(rust_decimal_macros::dec!(50_000), 0);
+        let healthy: Arc<dyn MarketDataSource> =
+            Arc::new(data::FakeFeed::new(vec![bar], vec![tick]));
+        spawn_venue_supervisor(
+            Venue::Binance,
+            healthy,
+            Arc::clone(&bus),
+            Arc::clone(&ledger),
+            Symbol::new("BTCUSDT"),
+            Timeframe::OneMinute,
+            &mut set,
+            &cancel,
+            None,
+        );
+
+        // Drive the supervisors: drain join_next.  Critically, NO
+        // join_next call should ever return `Err(JoinError)` — the
+        // supervisor catches panics internally and returns Ok.  We
+        // give the supervisor up to 2 s to detect + log + return; the
+        // FakeFeed-backed Binance supervisor exits naturally as soon
+        // as cancel fires.
+        cancel.cancel();
+        let collected = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let mut joins = Vec::new();
+            while let Some(res) = set.join_next().await {
+                joins.push(res);
+            }
+            joins
+        })
+        .await
+        .expect("supervisors did not drain inside 2 s");
+
+        assert_eq!(
+            collected.len(),
+            2,
+            "expected both supervisors to drain (panic + healthy)"
+        );
+        for res in collected {
+            // Panic isolation invariant: the supervisor task itself
+            // never panics, even when its inner task does.
+            assert!(
+                res.is_ok(),
+                "supervisor task surfaced a JoinError — panic isolation regressed: {res:?}"
+            );
+        }
+    }
+
+    // ── T1409 — MarketHealth bus channel + stale-data watchdog ────────────────
+
+    /// Helper: a fake injected wall-clock the watchdog reads via [`NowFn`].
+    /// Tests advance this independently of `tokio::time::advance`, since
+    /// `OffsetDateTime::now_utc()` is NOT controllable through tokio
+    /// pausing — only the watchdog's `interval` cadence is.  Pairing the
+    /// two gives full deterministic control over (a) when the watchdog
+    /// scans (`tokio::time::advance`) and (b) what `now()` returns at that
+    /// scan (`fake_clock.set(...)`).
+    #[derive(Clone)]
+    struct FakeClock(Arc<Mutex<Timestamp>>);
+
+    impl FakeClock {
+        fn new(t: Timestamp) -> Self {
+            Self(Arc::new(Mutex::new(t)))
+        }
+        fn set(&self, t: Timestamp) {
+            // Best-effort: a poisoned mutex is recovered (test-only path).
+            let mut guard = self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *guard = t;
+        }
+        fn into_now_fn(self) -> NowFn {
+            Arc::new(move || {
+                self.0
+                    .lock()
+                    .map(|g| *g)
+                    .unwrap_or_else(|p| *p.into_inner())
+            })
+        }
+    }
+
+    /// T1409 V1 — first observation of a venue's tick lands on the bus
+    /// as `MarketHealth::Fresh { venue, last_tick_ts }`.  Drives the
+    /// watchdog directly (no per-venue feed needed) so the test is
+    /// strictly state-machine focused.
+    #[tokio::test(start_paused = true, flavor = "current_thread")]
+    async fn t1409_v1_health_publishes_fresh_on_first_tick() {
+        let bus = Arc::new(EventBus::new(&BusConfig::default()));
+        let mut health_rx = bus.market_health();
+
+        let last_tick: LastTickMap = Arc::new(Mutex::new(HashMap::new()));
+        let t0 = ts(0);
+        let clock = FakeClock::new(t0);
+
+        let mut set: JoinSet<()> = JoinSet::new();
+        let cancel = CancellationToken::new();
+        spawn_market_health_watchdog(
+            Arc::clone(&bus),
+            Arc::clone(&last_tick),
+            vec![Venue::Binance],
+            30,
+            clock.clone().into_now_fn(),
+            std::time::Duration::from_secs(1),
+            &mut set,
+            &cancel,
+        );
+
+        // Inject the venue's first tick into the last-tick map.  This
+        // simulates the per-venue ticks_tap observer (the production
+        // wiring in `spawn_venue_supervisor`).
+        last_tick.lock().expect("lock").insert(Venue::Binance, t0);
+
+        // Advance both clocks by 1s — the watchdog interval fires once.
+        clock.set(ts(1));
+        tokio::time::advance(std::time::Duration::from_secs(1)).await;
+
+        // Recv the Fresh event.  Use a generous tokio-time timeout
+        // (start_paused = true makes wall-clock irrelevant).
+        let evt = tokio::time::timeout(std::time::Duration::from_secs(5), health_rx.recv())
+            .await
+            .expect("watchdog did not publish Fresh inside the budget")
+            .expect("channel closed unexpectedly");
+        match evt {
+            MarketHealth::Fresh {
+                venue,
+                last_tick_ts,
+            } => {
+                assert_eq!(venue, Venue::Binance);
+                assert_eq!(last_tick_ts, t0);
+            }
+            other => panic!("expected Fresh, got {other:?}"),
+        }
+
+        cancel.cancel();
+        let drain = async { while set.join_next().await.is_some() {} };
+        tokio::time::timeout(std::time::Duration::from_secs(5), drain)
+            .await
+            .expect("watchdog did not drain inside budget");
+    }
+
+    /// T1409 V2 — after the fixture clock advances 30s past the last
+    /// recorded tick, the watchdog publishes `MarketHealth::Stale`.
+    #[tokio::test(start_paused = true, flavor = "current_thread")]
+    async fn t1409_v2_publishes_stale_after_30s_silence() {
+        let bus = Arc::new(EventBus::new(&BusConfig::default()));
+        let mut health_rx = bus.market_health();
+
+        let last_tick: LastTickMap = Arc::new(Mutex::new(HashMap::new()));
+        let t0 = ts(0);
+        let clock = FakeClock::new(t0);
+
+        let mut set: JoinSet<()> = JoinSet::new();
+        let cancel = CancellationToken::new();
+        spawn_market_health_watchdog(
+            Arc::clone(&bus),
+            Arc::clone(&last_tick),
+            vec![Venue::Coinbase],
+            30,
+            clock.clone().into_now_fn(),
+            std::time::Duration::from_secs(1),
+            &mut set,
+            &cancel,
+        );
+
+        // Inject a tick at t=0 — drives the Unseen → Fresh transition.
+        last_tick.lock().expect("lock").insert(Venue::Coinbase, t0);
+
+        // Advance 1s → first scan publishes Fresh.
+        clock.set(ts(1));
+        tokio::time::advance(std::time::Duration::from_secs(1)).await;
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), health_rx.recv())
+            .await
+            .expect("Fresh event missing")
+            .expect("channel closed");
+        assert!(
+            matches!(first, MarketHealth::Fresh { .. }),
+            "expected Fresh, got {first:?}"
+        );
+
+        // Advance another 31s with no new tick — watchdog scans on every
+        // interval, but we jump in one large advance to keep the test
+        // deterministic.  After the jump, the "now" clock reads t=32 and
+        // last_tick is still t=0, so age = 32s > threshold = 30s.
+        clock.set(ts(32));
+        tokio::time::advance(std::time::Duration::from_secs(31)).await;
+
+        // The next emitted event MUST be `Stale` for Coinbase at t=0.
+        // Drain until we see a non-Fresh event (the watchdog fires
+        // multiple intervals in the advance window but only the first
+        // Stale-transition publishes; subsequent scans see no state
+        // change).
+        let stale = loop {
+            let evt = tokio::time::timeout(std::time::Duration::from_secs(5), health_rx.recv())
+                .await
+                .expect("Stale event did not arrive")
+                .expect("channel closed");
+            if !matches!(evt, MarketHealth::Fresh { .. }) {
+                break evt;
+            }
+        };
+        match stale {
+            MarketHealth::Stale {
+                venue,
+                last_tick_ts,
+                threshold_secs,
+            } => {
+                assert_eq!(venue, Venue::Coinbase);
+                assert_eq!(last_tick_ts, t0);
+                assert_eq!(threshold_secs, 30);
+            }
+            other => panic!("expected Stale, got {other:?}"),
+        }
+
+        cancel.cancel();
+        let drain = async { while set.join_next().await.is_some() {} };
+        tokio::time::timeout(std::time::Duration::from_secs(5), drain)
+            .await
+            .expect("watchdog did not drain inside budget");
+    }
+
+    /// T1409 V3 — after the venue is `Stale`, the next fresh tick (and
+    /// the next watchdog scan) publishes `MarketHealth::Recovered`.
+    #[tokio::test(start_paused = true, flavor = "current_thread")]
+    async fn t1409_v3_publishes_recovered_on_first_tick_after_stale() {
+        let bus = Arc::new(EventBus::new(&BusConfig::default()));
+        let mut health_rx = bus.market_health();
+
+        let last_tick: LastTickMap = Arc::new(Mutex::new(HashMap::new()));
+        let t0 = ts(0);
+        let clock = FakeClock::new(t0);
+
+        let mut set: JoinSet<()> = JoinSet::new();
+        let cancel = CancellationToken::new();
+        spawn_market_health_watchdog(
+            Arc::clone(&bus),
+            Arc::clone(&last_tick),
+            vec![Venue::Kraken],
+            30,
+            clock.clone().into_now_fn(),
+            std::time::Duration::from_secs(1),
+            &mut set,
+            &cancel,
+        );
+
+        // Step 1: inject a tick at t=0 → Fresh.
+        last_tick.lock().expect("lock").insert(Venue::Kraken, t0);
+        clock.set(ts(1));
+        tokio::time::advance(std::time::Duration::from_secs(1)).await;
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), health_rx.recv())
+            .await
+            .expect("Fresh event missing")
+            .expect("channel closed");
+        assert!(
+            matches!(first, MarketHealth::Fresh { .. }),
+            "expected Fresh, got {first:?}"
+        );
+
+        // Step 2: advance 31s past last tick → Stale.
+        clock.set(ts(32));
+        tokio::time::advance(std::time::Duration::from_secs(31)).await;
+        let stale = loop {
+            let evt = tokio::time::timeout(std::time::Duration::from_secs(5), health_rx.recv())
+                .await
+                .expect("Stale event did not arrive")
+                .expect("channel closed");
+            if !matches!(evt, MarketHealth::Fresh { .. }) {
+                break evt;
+            }
+        };
+        assert!(
+            matches!(stale, MarketHealth::Stale { .. }),
+            "expected Stale, got {stale:?}"
+        );
+
+        // Step 3: a fresh tick lands and the watchdog runs again.  The
+        // tick `local_recv_ts` is "now" (t=32); after the next scan the
+        // age is 0s (well under threshold) so the venue transitions
+        // Stale → Fresh and emits `Recovered`.
+        let recovery_ts = ts(32);
+        last_tick
+            .lock()
+            .expect("lock")
+            .insert(Venue::Kraken, recovery_ts);
+        clock.set(ts(33));
+        tokio::time::advance(std::time::Duration::from_secs(1)).await;
+
+        let recovered = tokio::time::timeout(std::time::Duration::from_secs(5), health_rx.recv())
+            .await
+            .expect("Recovered event did not arrive")
+            .expect("channel closed");
+        match recovered {
+            MarketHealth::Recovered {
+                venue,
+                recovered_ts: rec_ts,
+                gap_secs,
+            } => {
+                assert_eq!(venue, Venue::Kraken);
+                assert_eq!(rec_ts, recovery_ts);
+                // gap_secs is the age at scan time (now=t33, last=t32 → 1s).
+                assert!(gap_secs <= 1, "expected gap_secs ~0..1, got {gap_secs}");
+            }
+            other => panic!("expected Recovered, got {other:?}"),
+        }
+
+        cancel.cancel();
+        let drain = async { while set.join_next().await.is_some() {} };
+        tokio::time::timeout(std::time::Duration::from_secs(5), drain)
+            .await
+            .expect("watchdog did not drain inside budget");
     }
 }

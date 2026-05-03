@@ -127,6 +127,7 @@ pub async fn build_ledger_with_open_positions_7d(
                 error_code: None,
                 error_summary: None,
                 ts: Some(&load_ts),
+                venue: None,
             },
         )
         .await?;

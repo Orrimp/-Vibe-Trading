@@ -21,7 +21,7 @@ use polars::prelude::*;
 use std::path::PathBuf;
 use time::OffsetDateTime;
 use tracing::debug;
-use trading_core::{Bar, FeedError, Price, Quantity, Symbol, Tick, Timeframe, Timestamp};
+use trading_core::{Bar, FeedError, Price, Quantity, Symbol, Tick, Timeframe, Timestamp, Venue};
 
 use crate::source::{MarketDataSource, SymbolInfo};
 
@@ -195,6 +195,8 @@ fn read_parquet_bars(
             volume: parse_qty_str(vol_str)?,
             trade_count,
             local_recv_ts: Timestamp::now(),
+            // Replay fixtures originate from Binance archives.
+            venue: Venue::Binance,
         });
     }
 

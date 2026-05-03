@@ -8,9 +8,9 @@ use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, FillView, FundingObs, JournalEntry, JournalEntryView, LedgerError, Money,
-    OpenPosition, PairKey, PairMembership, Price, Quantity, Side, StrategyEventKind,
-    StrategyEventView, StrategyId, Symbol, Timestamp, Usdt,
+    AccountId, FillView, FundingObs, JournalEntry, JournalEntryView, JournalTransactionMetadata,
+    LedgerError, Money, OpenPosition, PairKey, PairMembership, Price, Quantity, Side,
+    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp, Usdt,
 };
 
 use crate::Ledger;
@@ -342,6 +342,64 @@ pub async fn journal_entries_for_transaction(
         });
     }
     Ok(entries)
+}
+
+// ── Journal-transaction header metadata (T1302) ───────────────────────────────
+
+/// Header-only read for the `journal_transactions` row identified by `tx_id`.
+///
+/// Returns the four-field header (`transaction_id`, `ts`, `description`,
+/// `strategy_id`) the live cockpit's tape-row → audit-modal feature uses to
+/// populate `JournalTransactionView` next to the entries returned by
+/// [`journal_entries_for_transaction`]. The two readers compose at the
+/// `cockpit_live` `Task::perform` site
+/// (`spec/features/journal-transactions-metadata.md` Design § Q2 / Q4).
+///
+/// ## Determinism
+///
+/// Single-row `SELECT ... WHERE id = ?` against the `journal_transactions`
+/// PRIMARY KEY column; deterministic by construction. No `f64` math.
+///
+/// ## Empty result
+///
+/// Returns `Ok(None)` when no row matches `tx_id` (stale row, fixture-mode
+/// click, unknown UUID); never `Err` for missing rows. Mirrors the
+/// empty-result contract of [`journal_entries_for_transaction`] (which
+/// returns `Ok(vec![])` for the same condition).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or timestamp parse error.
+pub async fn journal_transaction_metadata(
+    ledger: &Ledger,
+    tx_id: &str,
+) -> Result<Option<JournalTransactionMetadata>, LedgerError> {
+    let row: Option<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, ts, description, strategy_id \
+         FROM journal_transactions \
+         WHERE id = ?",
+    )
+    .bind(tx_id)
+    .fetch_optional(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let Some((id, ts_str, description, strategy_id)) = row else {
+        return Ok(None);
+    };
+
+    let ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
+        .map(Timestamp::new)
+        .map_err(|e| {
+            LedgerError::Database(format!("journal_transaction_metadata: parse ts: {e}"))
+        })?;
+
+    Ok(Some(JournalTransactionMetadata {
+        transaction_id: SmolStr::new(id),
+        ts,
+        description: SmolStr::new(description),
+        strategy_id: strategy_id.map(StrategyId::new),
+    }))
 }
 
 // ── Transaction verification helpers (used by integration tests) ───────────────

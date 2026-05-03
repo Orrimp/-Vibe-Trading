@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use agent::{watcher, EventBus};
 use audit::{bootstrap, ledger::Ledger, query};
-use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
 const REPLAY_TS: &str = "1970-05-27T19:07:10Z";
 
@@ -67,6 +67,7 @@ fn make_bar(symbol: &str, close: f64, offset_minutes: i64) -> Bar {
         local_recv_ts: ts,
         open_ts: ts,
         close_ts: ts,
+        venue: Venue::Binance,
     }
 }
 

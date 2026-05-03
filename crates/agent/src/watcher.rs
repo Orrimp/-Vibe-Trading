@@ -282,6 +282,7 @@ async fn handle_upsert(
                 error_code: Some($error_code),
                 error_summary: Some($summary),
                 ts: ts_override,
+                venue: None,
             };
             if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
                 error!(err = %db_err, "failed to write Reject audit event");
@@ -389,6 +390,7 @@ async fn handle_upsert(
             error_code: None,
             error_summary: None,
             ts: ts_override,
+            venue: None,
         };
         if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
             error!(err = %db_err, "failed to write Swap audit event");
@@ -414,6 +416,7 @@ async fn handle_upsert(
             error_code: None,
             error_summary: None,
             ts: ts_override,
+            venue: None,
         };
         if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
             error!(err = %db_err, "failed to write Load audit event");
@@ -463,6 +466,7 @@ async fn handle_remove(
             error_code: None,
             error_summary: None,
             ts: ts_override,
+            venue: None,
         };
         if let Err(db_err) = audit::journal::strategy_event(ledger, &write).await {
             error!(err = %db_err, "failed to write Unload audit event");

@@ -18,7 +18,7 @@ use rand_chacha::ChaCha20Rng;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
-use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
 const SEED: u64 = 0x00C0_FFEE_1234_5678;
 const BAR_COUNT: usize = 200; // enough to warm up lookback=10 + rebalance
@@ -38,6 +38,7 @@ fn make_bar(symbol: &str, close: Decimal, offset_hours: i64) -> Bar {
         local_recv_ts: ts,
         open_ts: ts,
         close_ts: ts,
+        venue: Venue::Binance,
     }
 }
 
@@ -73,6 +74,7 @@ fn synthetic_hourly(symbol: &str, count: usize, seed: u64) -> Vec<Bar> {
             volume: Quantity::new(dec!(100)).unwrap(),
             trade_count: 10,
             local_recv_ts: ts,
+            venue: Venue::Binance,
         });
 
         close = next;

@@ -18,7 +18,7 @@ use time::OffsetDateTime;
 use tracing::info;
 use trading_core::{
     Bar, Money, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
-    Timeframe, Timestamp, Usdt,
+    Timeframe, Timestamp, Usdt, Venue,
 };
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -343,6 +343,7 @@ fn synthetic_bars(
                 .unwrap_or_else(|_| Quantity::new(dec!(1)).unwrap()),
             trade_count: rng.random_range(10_u32..500_u32),
             local_recv_ts: close_ts,
+            venue: Venue::Binance,
         });
 
         close = next;
@@ -437,6 +438,7 @@ fn synthetic_bars_hourly(
                 .unwrap_or_else(|_| Quantity::new(dec!(1)).unwrap()),
             trade_count: rng.random_range(100_u32..5000_u32),
             local_recv_ts: close_ts,
+            venue: Venue::Binance,
         });
 
         close = next;

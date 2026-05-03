@@ -25,10 +25,62 @@ impl Default for BinanceSourceConfig {
     }
 }
 
+/// Coinbase Advanced Trade WS source (v1.5b T1408).
+///
+/// Default: `enabled = false` so the v1.5a backwards-compat default
+/// (Binance only, USDT only) keeps working unchanged (R10.2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoinbaseSourceConfig {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    pub ws_url: String,
+    pub rest_url: String,
+}
+
+impl Default for CoinbaseSourceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            ws_url: "wss://advanced-trade-ws.coinbase.com".into(),
+            rest_url: "https://api.coinbase.com".into(),
+        }
+    }
+}
+
+/// Kraken WS v2 source (v1.5b T1408).
+///
+/// Default: `enabled = false` so the v1.5a backwards-compat default
+/// (Binance only, USDT only) keeps working unchanged (R10.2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KrakenSourceConfig {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    pub ws_url: String,
+    pub rest_url: String,
+}
+
+impl Default for KrakenSourceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            ws_url: "wss://ws.kraken.com/v2".into(),
+            rest_url: "https://api.kraken.com".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DataSourcesConfig {
     #[serde(default)]
     pub binance: BinanceSourceConfig,
+    /// Coinbase Advanced Trade WS source (v1.5b T1408).  Default off
+    /// — operator opts in via `[data.sources.coinbase] enabled = true`.
+    #[serde(default)]
+    pub coinbase: CoinbaseSourceConfig,
+    /// Kraken WS v2 source (v1.5b T1408).  Default off — operator
+    /// opts in via `[data.sources.kraken] enabled = true`.
+    #[serde(default)]
+    pub kraken: KrakenSourceConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,6 +340,35 @@ impl Default for FundingConfig {
     }
 }
 
+/// Symbol-universe toggles (v1.5b T1410 / Q6).
+///
+/// Defaults preserve v1.5a behaviour: `usdt_enabled = true`,
+/// `usdc_enabled = false` — operator opts in to the USDC mirror set.
+///
+/// The actual symbol lists are owned by [`trading_core::universe`]; this
+/// struct only carries the operator-facing toggles. The loader in core
+/// merges sets based on these flags:
+///
+/// - `usdt_enabled = true,  usdc_enabled = false` → 10 USDT symbols.
+/// - `usdt_enabled = true,  usdc_enabled = true`  → 20 symbols.
+/// - `usdt_enabled = false, usdc_enabled = true`  → 10 USDC symbols.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UniverseConfig {
+    #[serde(default = "default_true")]
+    pub usdt_enabled: bool,
+    #[serde(default)]
+    pub usdc_enabled: bool,
+}
+
+impl Default for UniverseConfig {
+    fn default() -> Self {
+        Self {
+            usdt_enabled: true,
+            usdc_enabled: false,
+        }
+    }
+}
+
 // ── Root config ───────────────────────────────────────────────────────────────
 
 /// Agent operating mode.
@@ -332,6 +413,9 @@ pub struct Config {
     /// Funding-rate poller (v1 T614).  Default off — see [`FundingConfig`].
     #[serde(default)]
     pub funding: FundingConfig,
+    /// Symbol-universe toggles (v1.5b T1410 / Q6).  Default: USDT only.
+    #[serde(default)]
+    pub universe: UniverseConfig,
 }
 
 impl Default for Config {
@@ -348,6 +432,7 @@ impl Default for Config {
             cost: CostConfig::default(),
             bus: BusConfig::default(),
             funding: FundingConfig::default(),
+            universe: UniverseConfig::default(),
         }
     }
 }
@@ -595,6 +680,106 @@ prometheus_enabled  = false
 "#;
         let cfg = Config::from_toml_str(toml).expect("parse explicit-false config");
         assert!(!cfg.observability.prometheus_enabled);
+    }
+
+    #[test]
+    fn t1410_universe_defaults_when_section_omitted() {
+        // No [universe] section → defaults: usdt on, usdc off.
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse minimal");
+        assert!(
+            cfg.universe.usdt_enabled,
+            "usdt_enabled must default to true"
+        );
+        assert!(
+            !cfg.universe.usdc_enabled,
+            "usdc_enabled must default to false"
+        );
+    }
+
+    #[test]
+    fn t1410_universe_explicit_both_enabled_round_trips() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[universe]
+usdt_enabled = true
+usdc_enabled = true
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse explicit universe");
+        assert!(cfg.universe.usdt_enabled);
+        assert!(cfg.universe.usdc_enabled);
+    }
+
+    #[test]
+    fn t1408_coinbase_kraken_default_disabled() {
+        // v1.5a-style minimal config (no [data.sources.coinbase]
+        // / [data.sources.kraken] sections) → both default to disabled
+        // (R10 backwards compat).
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse minimal");
+        assert!(
+            !cfg.data.sources.coinbase.enabled,
+            "coinbase must default to disabled (R10 backwards compat)"
+        );
+        assert!(
+            !cfg.data.sources.kraken.enabled,
+            "kraken must default to disabled (R10 backwards compat)"
+        );
+        // Default Binance config must continue to work unchanged.
+        assert_eq!(
+            cfg.data.sources.binance.ws_url,
+            "wss://stream.binance.com:9443/ws"
+        );
+    }
+
+    #[test]
+    fn t1408_three_venues_explicit_enable_round_trips() {
+        let toml = r#"
+mode = "paper"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[data.sources.coinbase]
+enabled  = true
+ws_url   = "wss://advanced-trade-ws.coinbase.com"
+rest_url = "https://api.coinbase.com"
+
+[data.sources.kraken]
+enabled  = true
+ws_url   = "wss://ws.kraken.com/v2"
+rest_url = "https://api.kraken.com"
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse three-venue config");
+        assert!(cfg.data.sources.coinbase.enabled);
+        assert!(cfg.data.sources.kraken.enabled);
+        assert_eq!(
+            cfg.data.sources.coinbase.ws_url,
+            "wss://advanced-trade-ws.coinbase.com"
+        );
+        assert_eq!(cfg.data.sources.kraken.ws_url, "wss://ws.kraken.com/v2");
+    }
+
+    #[test]
+    fn t1410_universe_usdc_only_parses() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[universe]
+usdt_enabled = false
+usdc_enabled = true
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse usdc-only universe");
+        assert!(!cfg.universe.usdt_enabled);
+        assert!(cfg.universe.usdc_enabled);
     }
 
     #[test]

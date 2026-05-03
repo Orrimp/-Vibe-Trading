@@ -58,7 +58,7 @@
 
 use tokio::sync::broadcast;
 use trading_core::{
-    Bar, Fill, FundingObs, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded,
+    Bar, Fill, FundingObs, MarketHealth, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded,
     StrategySwapped, Tick,
 };
 
@@ -83,6 +83,9 @@ pub struct EventBus {
     strategy_error_tx: broadcast::Sender<StrategyLoadError>,
     /// v1 Q2 — funding-rate observations (observation-only; strategy does not subscribe).
     funding_obs_tx: broadcast::Sender<FundingObs>,
+    /// v1.5b Q7 / T1409 — per-venue market-health events
+    /// (`Fresh` / `Stale` / `Recovered`). Capacity 64.
+    market_health_tx: broadcast::Sender<MarketHealth>,
 }
 
 impl EventBus {
@@ -98,7 +101,11 @@ impl EventBus {
         let (strategy_loaded_tx, _) = broadcast::channel(32);
         let (strategy_swapped_tx, _) = broadcast::channel(32);
         let (strategy_error_tx, _) = broadcast::channel(32);
-        let (funding_obs_tx, _) = broadcast::channel(32); // v1 Q2
+        // v1 Q2 — observation-only.
+        let (funding_obs_tx, _) = broadcast::channel(32);
+        // v1.5b Q7 / T1409 — capacity 64 per architect's design
+        // (well above expected per-venue health-event rate ≈ 0/min steady state).
+        let (market_health_tx, _) = broadcast::channel(64);
         Self {
             fills_tx,
             positions_tx,
@@ -110,6 +117,7 @@ impl EventBus {
             strategy_swapped_tx,
             strategy_error_tx,
             funding_obs_tx,
+            market_health_tx,
         }
     }
 
@@ -163,6 +171,13 @@ impl EventBus {
     /// Publish a `FundingObs` event (v1 Q2 — observation-only, no strategy consumes this).
     pub fn publish_funding_obs(&self, obs: FundingObs) {
         let _ = self.funding_obs_tx.send(obs);
+    }
+
+    /// Publish a `MarketHealth` event (v1.5b Q7 / T1409 — per-venue
+    /// freshness signal published by the stale-data watchdog).  No-op if
+    /// no subscribers are attached.
+    pub fn publish_market_health(&self, event: MarketHealth) {
+        let _ = self.market_health_tx.send(event);
     }
 
     /// Return a clone of the raw `funding_obs` sender.
@@ -235,6 +250,13 @@ impl EventBus {
     #[must_use]
     pub fn funding_obs(&self) -> broadcast::Receiver<FundingObs> {
         self.funding_obs_tx.subscribe()
+    }
+
+    /// Subscribe to `MarketHealth` events (v1.5b Q7 / T1409 — per-venue
+    /// stale / recovered events for strategy pause/resume gating).
+    #[must_use]
+    pub fn market_health(&self) -> broadcast::Receiver<MarketHealth> {
+        self.market_health_tx.subscribe()
     }
 }
 

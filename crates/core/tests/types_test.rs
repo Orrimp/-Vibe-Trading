@@ -9,9 +9,9 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, Asset, Bar, FeeTier, Fill, JournalEntry, Liquidity, Money, Position, Price,
-    Quantity, Side, Signal, SignalEvidence, SignalKind, StrategyId, Symbol, Tick, Timeframe,
-    Timestamp, Usdt,
+    AccountId, Asset, Bar, FeeTier, Fill, JournalEntry, JournalTransactionMetadata, Liquidity,
+    Money, Position, Price, Quantity, Side, Signal, SignalEvidence, SignalKind, StrategyId, Symbol,
+    Tick, Timeframe, Timestamp, Usdt, Venue,
 };
 
 fn ts() -> Timestamp {
@@ -156,11 +156,24 @@ fn bar_serde_roundtrip() {
         volume: qty(dec!(12.5)),
         trade_count: 100,
         local_recv_ts: ts(),
+        venue: Venue::Binance,
     };
     let json = serde_json::to_string(&bar).unwrap();
     let bar2: Bar = serde_json::from_str(&json).unwrap();
     assert_eq!(bar.symbol, bar2.symbol);
     assert_eq!(bar.close, bar2.close);
+    assert_eq!(bar.venue, bar2.venue);
+    // venue encoded as snake_case
+    assert!(json.contains("\"venue\":\"binance\""));
+}
+
+#[test]
+fn bar_one_second_timeframe_display() {
+    assert_eq!(Timeframe::OneSecond.to_string(), "1s");
+    let json = serde_json::to_string(&Timeframe::OneSecond).unwrap();
+    assert_eq!(json, "\"one_second\"");
+    let back: Timeframe = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, Timeframe::OneSecond);
 }
 
 // ── Tick ──────────────────────────────────────────────────────────────────────
@@ -175,11 +188,15 @@ fn tick_serde_roundtrip() {
         qty: qty(dec!(0.01)),
         side: Side::Buy,
         trade_id: 42,
+        venue: Venue::Coinbase,
     };
     let json = serde_json::to_string(&tick).unwrap();
     let tick2: Tick = serde_json::from_str(&json).unwrap();
     assert_eq!(tick.trade_id, tick2.trade_id);
     assert_eq!(tick.price, tick2.price);
+    assert_eq!(tick.venue, tick2.venue);
+    // venue encoded as snake_case
+    assert!(json.contains("\"venue\":\"coinbase\""));
 }
 
 // ── Signal ────────────────────────────────────────────────────────────────────
@@ -250,4 +267,33 @@ fn journal_entry_serde_roundtrip() {
     let json = serde_json::to_string(&entry).unwrap();
     let entry2: JournalEntry = serde_json::from_str(&json).unwrap();
     assert_eq!(entry, entry2);
+}
+
+// ── JournalTransactionMetadata (journal-transactions-metadata T1301) ─────────
+
+#[test]
+fn journal_transaction_metadata_serde_roundtrip() {
+    let meta = JournalTransactionMetadata {
+        transaction_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+        ts: ts(),
+        description: "buy 0.04 BTCUSDT @ 50000".into(),
+        strategy_id: Some(StrategyId::new("sma_crossover")),
+    };
+    let json = serde_json::to_string(&meta).unwrap();
+    let meta2: JournalTransactionMetadata = serde_json::from_str(&json).unwrap();
+    assert_eq!(meta, meta2);
+}
+
+#[test]
+fn journal_transaction_metadata_serde_roundtrip_legacy_row() {
+    // Legacy / pre-T802 shape: empty description, no strategy attribution.
+    let meta = JournalTransactionMetadata {
+        transaction_id: "11111111-2222-3333-4444-555555555555".into(),
+        ts: ts(),
+        description: "".into(),
+        strategy_id: None,
+    };
+    let json = serde_json::to_string(&meta).unwrap();
+    let meta2: JournalTransactionMetadata = serde_json::from_str(&json).unwrap();
+    assert_eq!(meta, meta2);
 }

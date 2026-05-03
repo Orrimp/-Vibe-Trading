@@ -124,7 +124,7 @@ mod tests {
     use rust_decimal_macros::dec;
     use trading_core::{
         Bar, OrderKind, Position, Price, Quantity, RiskLimits, Side, StrategyId, Symbol,
-        TimeInForce, Timeframe, Timestamp,
+        TimeInForce, Timeframe, Timestamp, Venue,
     };
 
     fn make_bar_at_close(close: Decimal) -> Bar {
@@ -141,6 +141,7 @@ mod tests {
             local_recv_ts: ts,
             open_ts: ts,
             close_ts: ts,
+            venue: Venue::Binance,
         }
     }
 

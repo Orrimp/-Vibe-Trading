@@ -63,3 +63,10 @@ universe      = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
     "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT",
 ]
+
+# Symbol universe — operator-gated USDT / USDC sets (v1.5b T1410, Q6).
+# Default: USDT only (preserves v1.5a behaviour). Flip `usdc_enabled = true`
+# to add the 10-symbol USDC mirror set (20 symbols total).
+[universe]
+usdt_enabled = true
+usdc_enabled = false  # opt-in to USDC mirror set

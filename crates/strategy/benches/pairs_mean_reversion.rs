@@ -17,7 +17,7 @@ use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use strategy::{pairs::mean_reversion::MeanReversionPairsStrategy, Strategy};
 use time::OffsetDateTime;
-use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp};
+use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
 // ── Fixture helpers ────────────────────────────────────────────────────────────
 
@@ -43,6 +43,7 @@ fn make_bar(symbol: &str, close: Decimal, minute: i64) -> Bar {
         local_recv_ts: ts,
         open_ts: ts,
         close_ts: ts,
+        venue: Venue::Binance,
     }
 }
 

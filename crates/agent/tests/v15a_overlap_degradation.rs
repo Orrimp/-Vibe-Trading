@@ -18,7 +18,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use time::OffsetDateTime;
-use trading_core::{Bar, Price, Quantity, SignalKind, Symbol, Timeframe, Timestamp};
+use trading_core::{Bar, Price, Quantity, SignalKind, Symbol, Timeframe, Timestamp, Venue};
 
 fn ts_at(minute: i64) -> Timestamp {
     Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(minute))
@@ -38,6 +38,7 @@ fn make_bar(symbol: &str, close: Decimal, minute: i64) -> Bar {
         local_recv_ts: ts,
         open_ts: ts,
         close_ts: ts,
+        venue: Venue::Binance,
     }
 }
 

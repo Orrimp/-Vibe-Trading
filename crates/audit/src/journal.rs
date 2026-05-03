@@ -6,7 +6,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use tracing::instrument;
-use trading_core::{Fill, FundingObs, LedgerError, Side};
+use trading_core::{Fill, FundingObs, LedgerError, Side, Venue};
 use uuid::Uuid;
 
 use crate::Ledger;
@@ -379,8 +379,8 @@ pub async fn kill_switch_tripped(
     // — reconciler invariant unaffected.
     sqlx::query(
         "INSERT INTO strategy_events \
-         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary, venue) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&strategy_row_id)
     .bind(&strategy_ts)
@@ -392,6 +392,7 @@ pub async fn kill_switch_tripped(
     .bind(operator)
     .bind(Some("kill_switch_tripped"))
     .bind(Some(reason))
+    .bind::<Option<&str>>(None) // venue — global trip; per-venue trips wired in a follow-up (R8.3)
     .execute(&mut *db_txn)
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
@@ -497,8 +498,8 @@ pub async fn strategy_event(
 
     sqlx::query(
         "INSERT INTO strategy_events \
-         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary, venue) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&row_id)
     .bind(&ts)
@@ -510,6 +511,7 @@ pub async fn strategy_event(
     .bind(write.operator)
     .bind(write.error_code)
     .bind(write.error_summary)
+    .bind(write.venue)
     .execute(&ledger.pool)
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
@@ -552,6 +554,11 @@ pub struct StrategyEventWrite<'a> {
     /// Used by deterministic integration tests to inject the replay synthetic
     /// clock (architect risk #4).  Pass `None` in production code.
     pub ts: Option<&'a str>,
+    /// Optional venue label written to `strategy_events.venue` (T1402 /
+    /// Q11).  `Some(v.to_string().as_str())` for feed-level events
+    /// (`FeedReconnect`); `None` for venue-agnostic events. Migration
+    /// `007_strategy_events_venue.sql` adds the NULLABLE column.
+    pub venue: Option<&'a str>,
 }
 
 /// Write a `rebalance_rejected` event to the `strategy_events` table (T608 — v1 Q6).
@@ -583,6 +590,7 @@ pub async fn rebalance_rejected(
             error_code: Some(error_code),
             error_summary: Some(error_summary),
             ts,
+            venue: None,
         },
     )
     .await
@@ -625,31 +633,40 @@ pub async fn mean_reversion_stop(
             error_code: Some("mean_reversion_stop"),
             error_summary: Some(&error_summary),
             ts,
+            venue: None,
         },
     )
     .await
 }
 
-/// Write a `feed_reconnect` event to the `strategy_events` table (T805 — v1+ R7.1).
+/// Write a `feed_reconnect` event to the `strategy_events` table (T805 — v1+ R7.1; T1402 — v1.5b Q11).
 ///
-/// Emitted when the Binance WS handler re-establishes a connection.  The
+/// Emitted when a venue WS handler re-establishes a connection.  The
 /// reports binary counts these per-window for the R7 system-health row.
 /// Extends `strategy_events.kind` with `"FeedReconnect"`.
-/// No SQL migration — the `kind` column is TEXT.
-/// Reconciler invariant preserved: `strategy_events` carries no money.
 ///
 /// `error_summary` carries the symbol identifier (e.g. `"BTCUSDT"`).  No
 /// `strategy_id` (the event is feed-level, not strategy-level).
 ///
+/// `venue` is required (T1402 / Q11): the v1.5b multi-venue feature
+/// elevates `Venue` to a typed first-class field at the audit boundary
+/// rather than encoding it inline in `error_summary`. The writer stamps
+/// `venue.to_string()` (`"binance"` / `"coinbase"` / `"kraken"`) into
+/// the `strategy_events.venue` column added by migration
+/// `007_strategy_events_venue.sql`. Reconciler invariant preserved:
+/// `strategy_events` carries no money.
+///
 /// # Errors
 ///
 /// Returns [`LedgerError::TransactionFailed`] on SQL error.
-#[instrument(name = "ledger.feed_reconnect", skip(ledger), fields(symbol = %symbol))]
+#[instrument(name = "ledger.feed_reconnect", skip(ledger), fields(symbol = %symbol, venue = %venue))]
 pub async fn feed_reconnect(
     ledger: &Ledger,
     symbol: &str,
+    venue: Venue,
     ts: Option<&str>,
 ) -> Result<(), LedgerError> {
+    let venue_str = venue.to_string();
     strategy_event(
         ledger,
         &StrategyEventWrite {
@@ -662,6 +679,7 @@ pub async fn feed_reconnect(
             error_code: Some("feed_reconnect"),
             error_summary: Some(symbol),
             ts,
+            venue: Some(venue_str.as_str()),
         },
     )
     .await
@@ -705,6 +723,7 @@ pub async fn pair_short_observation(
             error_code: Some("pair_short_observation"),
             error_summary: Some(&error_summary),
             ts,
+            venue: None,
         },
     )
     .await

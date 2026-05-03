@@ -7,6 +7,8 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+#[cfg(test)]
+use trading_core::Venue;
 use trading_core::{Bar, FeedError, Price, Quantity, Symbol, Tick, Timeframe, Timestamp};
 
 use crate::source::{MarketDataSource, SymbolInfo};
@@ -122,6 +124,8 @@ pub fn trade_aggregation(ticks: &[Tick], symbol: Symbol, tf: Timeframe) -> Optio
         volume: Quantity::new(volume).unwrap_or_else(|_| Quantity::zero()),
         trade_count: u32::try_from(ticks.len()).unwrap_or(u32::MAX),
         local_recv_ts: Timestamp::now(),
+        // Aggregated bars inherit the venue of their constituent ticks.
+        venue: first.venue,
     })
 }
 
@@ -168,6 +172,7 @@ mod tests {
             qty: Quantity::new(qty).expect("qty ok"),
             side: Side::Buy,
             trade_id: u64::try_from(t).unwrap_or(0),
+            venue: Venue::Binance,
         }
     }
 

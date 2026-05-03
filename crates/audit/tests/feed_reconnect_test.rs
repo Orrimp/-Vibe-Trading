@@ -9,7 +9,7 @@
 use audit::query::{global_debit_credit_sum, strategy_events_since};
 use audit::{bootstrap, journal, Ledger};
 use time::OffsetDateTime;
-use trading_core::{StrategyEventKind, Timestamp};
+use trading_core::{StrategyEventKind, Timestamp, Venue};
 
 async fn open_ledger() -> Ledger {
     let ledger = Ledger::in_memory().await.expect("open in-memory");
@@ -34,7 +34,7 @@ async fn t805_feed_reconnect_writes_and_reads() {
 
     // Use a deterministic ts so we exercise the injected-clock path.
     let ts_str = "2030-06-01T00:00:00.123456Z";
-    journal::feed_reconnect(&ledger, "BTCUSDT", Some(ts_str))
+    journal::feed_reconnect(&ledger, "BTCUSDT", Venue::Binance, Some(ts_str))
         .await
         .expect("feed_reconnect write");
 
@@ -78,7 +78,7 @@ async fn t805_feed_reconnect_microsecond_timestamp_preserved() {
     // Determinism — when caller supplies a ts, it round-trips verbatim.
     let ledger = open_ledger().await;
     let ts_str = "2030-06-01T00:00:00.654321Z";
-    journal::feed_reconnect(&ledger, "ETHUSDT", Some(ts_str))
+    journal::feed_reconnect(&ledger, "ETHUSDT", Venue::Binance, Some(ts_str))
         .await
         .expect("feed_reconnect");
 
