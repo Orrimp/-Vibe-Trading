@@ -5,6 +5,23 @@ owner: architect
 updated: 2026-05-03
 ---
 
+<!-- updated 2026-05-03 (architect) — tape-row-audit-modal Design landing:
+     adds new `trading_core::JournalEntry` un-collapsed view struct
+     (debit/credit pair, distinct from existing collapsed-amount
+     `JournalEntryView`); new `audit::query::journal_entries_for_transaction`
+     reader; new additive field `FillView::transaction_id: SmolStr` plus
+     `Fill::transaction_id: Option<SmolStr>`; `audit::journal::post_fill`
+     return type bumped from `Result<(), LedgerError>` to
+     `Result<SmolStr, LedgerError>` (returns the generated
+     `journal_transactions.id` for live-mode runtime to stamp on the
+     bus-side `Fill` before fan-out); first cockpit modal — establishes
+     `iced::widget::Stack` as the modal-overlay precedent for future
+     click-through-to-audit drilldowns (positions, strategies); three
+     additive theme tokens land (`bg_overlay`, `info`, `border_strong`)
+     per the dark-mode hex in `ui-design-principles.md`. 11/11 anchors
+     stay byte-identical (R12). Full delta in the tape-row-audit-modal
+     architectural deltas subsection below + changelog entry at bottom. -->
+
 <!-- updated 2026-05-01 (architect) — live-cockpit-unified Design landing:
      workspace-map adds `cockpit_live` bin under crates/ui; new public API
      `agent::runtime::run` (RunHandles, CancellationToken); deprecation of
@@ -2326,7 +2343,8 @@ plus what's expected to be used by v1.5+):
 | `realized_pnl_since(&Ledger, Timestamp)`  | `Money<Usdt>`                    | P&L card                                |
 | `total_fees(&Ledger)`                     | `Money<Usdt>`                    | future cost-card / footer              |
 | `recent_fills(&Ledger, usize)`            | `Vec<FillView>`                  | live tape (boot snapshot)              |
-| `recent_journal(&Ledger, usize)`          | `Vec<JournalEntryView>`          | future "show the why" modal            |
+| `recent_journal(&Ledger, usize)`          | `Vec<JournalEntryView>`          | future "show the why" modal (collapsed view) |
+| `journal_entries_for_transaction(&Ledger, &str)` | `Vec<JournalEntry>`        | tape-row → audit modal (un-collapsed dr/cr) |
 | `open_positions_at(&Ledger, Timestamp)`   | `Vec<OpenPosition>`              | positions panel snapshot               |
 | `pnl_by_symbol(&Ledger, ...)`             | per-symbol P&L                   | positions panel                         |
 | `pnl_by_strategy(&Ledger, ...)`           | per-strategy P&L                 | strategies panel                        |
@@ -2394,9 +2412,12 @@ The widget code's only legal source of color, spacing, type sizes,
 border radii, and latency thresholds is `ui::theme`. The four sub-
 modules are closed sets:
 
-- `theme::color` — 9 shipped semantic tokens; principles doc
-  proposes 3 additions (`bg_overlay`, `info`, `border_strong`).
-  `Color::from_rgb(…)` outside `theme.rs` is a build break.
+- `theme::color` — 12 shipped semantic tokens (9 v0–v1.5a +
+  3 added by [tape-row-audit-modal](features/tape-row-audit-modal.md):
+  `bg_overlay = #0B0D12`, `info = #7BC2FF`,
+  `border_strong = #3A4456` — first concrete consumer is the
+  journal-transaction modal). `Color::from_rgb(…)` outside
+  `theme.rs` is a build break.
 - `theme::space` — `XS=4, S=8, M=12, L=16, XL=24, XXL=32`.
 - `theme::text` — `CAPTION=11, BODY=13, TITLE=16, DISPLAY=22`.
 - `theme::radius` — `SMALL=2.0, MEDIUM=4.0`.
@@ -2963,3 +2984,78 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   unchanged (11 / 11 byte-identical). Tasks T1101–T1107 +
   `T_FINAL_PER_SYMBOL` filed at
   [tasks/per-symbol-position-accounts.md](tasks/per-symbol-position-accounts.md).
+- 2026-05-03 (architect): resolved the nine
+  tape-row-audit-modal open questions from
+  [features/tape-row-audit-modal.md → Open questions for architect](features/tape-row-audit-modal.md#open-questions-for-architect).
+  **Q1** `iced::widget::Stack` overlay (no new dep — verified
+  `iced 0.14.0` ships Stack via `Cargo.lock` `iced_widget = "0.14.2"`);
+  Stack's bottom child is the existing cockpit `Column`, top
+  child is a full-bleed `bg_overlay` `Container` capturing
+  backdrop clicks → `Message::TapeAuditModalClosed`. **Q2** new
+  `pub struct JournalEntry { account, debit, credit, currency,
+  ts, memo }` in `crates/core/src/views.rs` — additive; the
+  existing `JournalEntryView` (signed-amount collapse) stays
+  unchanged for its consumers (`recent_journal`, etc.).
+  **Q3** land all three theme tokens in this feature:
+  `bg_overlay = #0B0D12`, `info = #7BC2FF`,
+  `border_strong = #3A4456` (dark-mode hex from
+  [ui-design-principles.md](ui-design-principles.md)). Light-mode
+  hex documented but landed by the broader light-mode feature.
+  **Q4** column order `Account | Debit | Credit | Currency`;
+  numbers right-aligned, monospace digits, locale-default
+  thousands separator (per principles "Numbers are scannable").
+  **Q5** `FillView` gains additive field `transaction_id: SmolStr`;
+  `Fill` gains additive field `transaction_id: Option<SmolStr>`;
+  `audit::journal::post_fill` return type bumped from
+  `Result<(), LedgerError>` to `Result<SmolStr, LedgerError>`
+  (returns the generated `journal_transactions.id`); the live
+  runtime in `crates/agent/src/runtime.rs` stamps
+  `fill.transaction_id` from the audit return value before
+  `engine.on_fill` fans out on the bus; backtests construct
+  `PaperEnginePublisher` with `NullPublisher` so the
+  `transaction_id` stamp never fires on the backtest path
+  (anchor-safe). **Q6** modal-open-gated `iced::keyboard::on_key_press`
+  subscription absorbs `Esc` / `Tab` / arrows / Page-Up / Page-Down
+  while the modal is open; subscription is removed on close
+  (no leak across cycles). **Q7** specific
+  `widgets::journal_transaction_modal` widget (new file); generic
+  modal refactor deferred per principles three-uses rule
+  (positions-drilldown + strategy-events-drilldown will trigger
+  it). **Q8** three new test files: `audit/tests/journal_entries_for_transaction.rs`
+  (V11), `ui/tests/tape_row_click_opens_modal.rs` (V1/V3/V4/V5),
+  `ui/tests/snapshots/panel_snapshots__tape_audit_modal_ready_paper_fill.snap`
+  (V8 / V2). Existing `panel_snapshots__tape_*` stay byte-identical
+  (R11 + V7) — `tape_summary` does not inspect `transaction_id`.
+  **Q9** modal closes on `Message::AgentHaltedExternally`;
+  one modal at a time (`TapeRowClicked` while open replaces
+  identity); clipboard `Cmd-C` deferred. **First feature against
+  [ui-design-principles.md](ui-design-principles.md)** — documents
+  the click-through-to-audit modal pattern that future drilldowns
+  inherit (`Stack` overlay + `bg_overlay` backdrop +
+  `border_strong` frame + Esc-to-close subscription +
+  `Message::*Clicked(id)` / `*ModalClosed` / `*EntriesLoaded`
+  message triplet + per-feature `widgets::*_modal.rs`).
+  **tape-row-audit-modal architectural deltas:** new
+  `trading_core::JournalEntry` view struct (separate from existing
+  `JournalEntryView`); additive field
+  `trading_core::FillView::transaction_id: SmolStr`; additive
+  field `trading_core::Fill::transaction_id: Option<SmolStr>`;
+  new reader `audit::query::journal_entries_for_transaction`;
+  return-type change on `audit::journal::post_fill` (signature
+  becomes `Result<SmolStr, LedgerError>`); three additive theme
+  tokens in `crates/ui/src/theme.rs` (semantic-colors namespace
+  grows from 9 to 12); modal pattern precedent
+  `iced::widget::Stack` documented for future drilldowns; new
+  widget file `crates/ui/src/widgets/journal_transaction_modal.rs`;
+  three new `Message` variants (`TapeRowClicked`,
+  `TapeAuditModalClosed`, `TapeAuditEntriesLoaded`); new
+  `JournalModalState` + `JournalTransactionView` view types in
+  `crates/ui/src/state.rs`. No new external dep, no system C
+  dep, no `unsafe`, no migration. Anchor budget unchanged
+  (11 / 11 byte-identical) — the `FillView::transaction_id`
+  field is not rendered into any anchored report body
+  (`crates/reports/src/` consumes aggregate cells; backtests
+  construct the publisher with `NullPublisher` so the live-mode
+  stamp never fires on backtest paths). Tasks T1201–T1209 +
+  `T_FINAL_TAPE_MODAL` filed at
+  [tasks/tape-row-audit-modal.md](tasks/tape-row-audit-modal.md).

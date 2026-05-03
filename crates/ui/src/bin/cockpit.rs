@@ -59,7 +59,7 @@ use iced::{Element, Length};
 use ui::state::{Cockpit, Message};
 use ui::strings::APP_TITLE;
 use ui::theme::{color, layout, space};
-use ui::widgets::{kill, latency, pnl, positions, strategies, tape};
+use ui::widgets::{journal_transaction_modal, kill, latency, pnl, positions, strategies, tape};
 
 fn main() -> iced::Result {
     iced::application(App::boot, App::update, App::view)
@@ -102,14 +102,29 @@ impl App {
         ui::state::update(&mut self.cockpit, msg);
     }
 
-    /// Cockpit subscription — fixtures path only.
+    /// Cockpit subscription — fixtures path + modal-open keyboard recipe.
     ///
     /// - `fixtures` or default → empty subscription; the `fixtures` boot
     ///   already populates every panel, so no live stream is needed.
     /// - The retired `live` arm now lives in `cockpit_live` (T908).
-    #[allow(clippy::unused_self)]
+    /// - When the tape-row → audit modal is open, batch in an
+    ///   `iced::event::listen_with` recipe that translates the keyboard
+    ///   `Esc` press into `Message::TapeAuditModalClosed` (Q6 —
+    ///   modal-open-gated subscription). Other keys are not consumed
+    ///   (the fixtures cockpit has no keyboard navigation today, so
+    ///   nothing leaks).
     fn subscription(&self) -> iced::Subscription<Message> {
-        iced::Subscription::none()
+        if self.cockpit.tape_audit_modal.is_some() {
+            iced::event::listen_with(|event, _status, _window| match event {
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                    ..
+                }) => Some(Message::TapeAuditModalClosed),
+                _ => None,
+            })
+        } else {
+            iced::Subscription::none()
+        }
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -136,7 +151,7 @@ impl App {
             .push(left)
             .push(right);
 
-        iced::widget::container(body)
+        let main_column: Element<'_, Message> = iced::widget::container(body)
             // iced 0.14 Padding accepts `u16`.
             .padding(space::L as u16)
             .width(Length::Fill)
@@ -146,7 +161,18 @@ impl App {
                 text_color: Some(color::FG),
                 ..Default::default()
             })
-            .into()
+            .into();
+
+        // Render the modal as a `Stack` overlay only when the modal is open
+        // (`tape-row-audit-modal` Q1). When closed, return `main_column`
+        // directly so the cockpit's iced widget tree is byte-identical to
+        // the pre-modal world — existing `panel_snapshots__*` stay green
+        // by construction (V7 / R11).
+        if let Some(modal_state) = self.cockpit.tape_audit_modal.as_ref() {
+            journal_transaction_modal::view(modal_state, main_column, Message::TapeAuditModalClosed)
+        } else {
+            main_column
+        }
     }
 
     fn theme(&self) -> iced::Theme {

@@ -8,9 +8,9 @@ use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, FillView, FundingObs, JournalEntryView, LedgerError, Money, OpenPosition, PairKey,
-    PairMembership, Price, Quantity, Side, StrategyEventKind, StrategyEventView, StrategyId,
-    Symbol, Timestamp, Usdt,
+    AccountId, FillView, FundingObs, JournalEntry, JournalEntryView, LedgerError, Money,
+    OpenPosition, PairKey, PairMembership, Price, Quantity, Side, StrategyEventKind,
+    StrategyEventView, StrategyId, Symbol, Timestamp, Usdt,
 };
 
 use crate::Ledger;
@@ -218,6 +218,7 @@ async fn parse_fill_view_from_description(
         fee,
         fee_tier: trading_core::FeeTier::Taker,
         venue_ts,
+        transaction_id: SmolStr::new(txn_id),
     }))
 }
 
@@ -261,6 +262,83 @@ pub async fn recent_journal(
             amount,
             ts,
             memo: String::new(),
+        });
+    }
+    Ok(entries)
+}
+
+// ── Journal entries for a single transaction (T1202) ──────────────────────────
+
+/// Return every `journal_entries` row attached to `tx_id`, un-collapsed
+/// (debit + credit kept as separate columns) and joined with `accounts` so
+/// each row carries its display currency ticker.
+///
+/// Used by the tape-row → audit-modal feature
+/// (`spec/features/tape-row-audit-modal.md` Q2 / Q8 V11) to render the
+/// 4-column `Account | Debit | Credit | Currency` table without losing the
+/// "exact zero" debit or credit cells that signed-amount rendering would
+/// erase.
+///
+/// ## Determinism
+///
+/// Rows are ordered by `journal_entries.id ASC` — the column is a UUID v4
+/// string, lex-sorted; stable across runs. No `f64` math.
+///
+/// ## Empty result
+///
+/// When `tx_id` does not match any row, the function returns `Ok(vec![])`
+/// — never `Err`. (Unknown / typo'd transaction ids are a normal UI signal,
+/// not a data corruption.)
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or `Decimal` / timestamp parse
+/// error.
+pub async fn journal_entries_for_transaction(
+    ledger: &Ledger,
+    tx_id: &str,
+) -> Result<Vec<JournalEntry>, LedgerError> {
+    // Join with `accounts` so each row carries its display currency ticker
+    // (USDT / BTC / …) without baking chart-of-accounts naming into the
+    // reader. ORDER BY journal_entries.id ASC for deterministic output
+    // (UUID v4 strings sort lex-stably).
+    let rows: Vec<(String, String, String, String, String, String)> = sqlx::query_as(
+        "SELECT je.account_id, je.debit_amount, je.credit_amount, \
+                a.currency, je.ts, je.memo \
+         FROM journal_entries je \
+         JOIN accounts a ON a.id = je.account_id \
+         WHERE je.transaction_id = ? \
+         ORDER BY je.id ASC",
+    )
+    .bind(tx_id)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut entries = Vec::with_capacity(rows.len());
+    for (account, dr_str, cr_str, currency, ts_str, memo) in rows {
+        let dr: Decimal = dr_str.parse().map_err(|_| {
+            LedgerError::Database(format!(
+                "journal_entries_for_transaction: parse debit `{dr_str}`"
+            ))
+        })?;
+        let cr: Decimal = cr_str.parse().map_err(|_| {
+            LedgerError::Database(format!(
+                "journal_entries_for_transaction: parse credit `{cr_str}`"
+            ))
+        })?;
+        let ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
+            .map(Timestamp::new)
+            .map_err(|e| {
+                LedgerError::Database(format!("journal_entries_for_transaction: parse ts: {e}"))
+            })?;
+        entries.push(JournalEntry {
+            account: AccountId::new(account),
+            debit: Money::<Usdt>::from_decimal(dr),
+            credit: Money::<Usdt>::from_decimal(cr),
+            currency: SmolStr::new(currency),
+            ts,
+            memo: SmolStr::new(memo),
         });
     }
     Ok(entries)

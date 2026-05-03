@@ -45,4 +45,4 @@ pub use symbol::{AccountId, Side, StrategyId, Symbol};
 pub use tick::Tick;
 pub use time::Timestamp;
 pub use universe::{SymbolSet, Universe, UniverseError};
-pub use views::{FillView, JournalEntryView, PnlSnapshot, PositionView};
+pub use views::{FillView, JournalEntry, JournalEntryView, PnlSnapshot, PositionView};

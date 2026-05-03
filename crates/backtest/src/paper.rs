@@ -102,6 +102,7 @@ impl MatchingEngine for PaperEngine {
                 venue_ts: bar.close_ts,
                 local_ts: Timestamp::now(),
                 liquidity: Liquidity::Taker,
+                transaction_id: None,
             };
             fills.push(fill);
         }

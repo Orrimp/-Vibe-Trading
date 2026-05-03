@@ -10,6 +10,7 @@
 //! - No hex colors or magic-number `Length::Units(N)` — use `crate::theme::*`.
 
 pub mod frame;
+pub mod journal_transaction_modal;
 pub mod kill;
 pub mod latency;
 pub mod num;

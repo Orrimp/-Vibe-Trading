@@ -4,6 +4,7 @@
 //! Debits == Credits is enforced per transaction.
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use smol_str::SmolStr;
 use tracing::instrument;
 use trading_core::{Fill, FundingObs, LedgerError, Side};
 use uuid::Uuid;
@@ -31,6 +32,11 @@ use crate::Ledger;
 /// `(unattributed)` bucket.  The column is storage-only; it must NOT
 /// surface in the backtest report body bytes (V6 anchor gate).
 ///
+/// Returns the generated `journal_transactions.id` (a UUID v4 string wrapped
+/// in [`SmolStr`]) so the caller can stamp `Fill.transaction_id` on the
+/// in-memory fill before announcing it to the engine
+/// (tape-row-audit-modal Q5).
+///
 /// # Errors
 ///
 /// Returns [`LedgerError::TransactionFailed`] if the SQL transaction fails.
@@ -40,7 +46,7 @@ pub async fn post_fill(
     ledger: &Ledger,
     fill: &Fill,
     strategy_id: Option<&str>,
-) -> Result<(), LedgerError> {
+) -> Result<SmolStr, LedgerError> {
     let txn_id = Uuid::new_v4().to_string();
     let ts = fill
         .venue_ts
@@ -193,7 +199,7 @@ pub async fn post_fill(
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
     tracing::debug!(fill_id = %fill.id, side = %fill.side, notional = %notional, "fill journaled");
-    Ok(())
+    Ok(SmolStr::new(&txn_id))
 }
 
 /// Insert a single journal entry line.

@@ -303,6 +303,7 @@ async fn t1005_q8_short_position_raises() {
         venue_ts,
         local_ts: venue_ts,
         liquidity: Liquidity::Taker,
+        transaction_id: None,
     };
     journal::post_fill(&ledger, &sell, Some("strat_alpha"))
         .await

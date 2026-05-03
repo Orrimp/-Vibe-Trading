@@ -1,0 +1,21 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 472
+expression: tape_audit_modal_summary(&state)
+---
+panel: tape_audit_modal
+title: Journal transaction
+state: ready
+tx_id: 4f9a2c1e-aaaa-bbbb-cccc-000000000001
+close_label: Close
+header:
+  Transaction ID: 4f9a2c1e-aaaa-bbbb-cccc-000000000001
+  Time: 2026-05-03 14:32:18.0 +00:00:00
+  Description: buy 0.04 BTCUSDT @ 50000
+  Strategy: sma_crossover
+columns: Account | Debit | Credit | Currency
+rows:
+  assets:cash:USDT | 0.00 USDT | 1,234.56 USDT | USDT
+  assets:position:BTCUSDT | 0.04 USDT | 0.00 USDT | BTCUSDT
+  assets:cash:USDT | 0.00 USDT | 1.23 USDT | USDT
+  expenses:fees:exchange | 1.23 USDT | 0.00 USDT | USDT

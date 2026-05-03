@@ -1,5 +1,6 @@
 //! Fill type — a completed execution.
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use uuid::Uuid;
 
 use crate::asset::Usdt;
@@ -64,4 +65,9 @@ pub struct Fill {
     pub venue_ts: Timestamp,
     pub local_ts: Timestamp,
     pub liquidity: Liquidity,
+    /// Populated by the live-mode runtime after `audit::journal::post_fill`
+    /// writes the journal transaction; `None` in backtests and at construction
+    /// time (tape-row-audit-modal Q5).
+    #[serde(default)]
+    pub transaction_id: Option<SmolStr>,
 }

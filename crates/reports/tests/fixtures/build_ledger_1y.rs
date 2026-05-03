@@ -143,6 +143,7 @@ pub async fn build_ledger_1y(
                 venue_ts: ts,
                 local_ts: ts,
                 liquidity: Liquidity::Taker,
+                transaction_id: None,
             };
             journal::post_fill(&ledger, &fill, Some(strategy)).await?;
             fills_written += 1;

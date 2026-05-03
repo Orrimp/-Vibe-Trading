@@ -21,12 +21,17 @@
 use insta::assert_snapshot;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
+use time::{Date, Month, PrimitiveDateTime, Time};
+use trading_core::{AccountId, JournalEntry, Money, StrategyId, Timestamp};
 
 use ui::state::{
-    update, AgentMode, Cockpit, KillState, Latency, Message, PanelState, StrategyStatus,
+    update, AgentMode, Cockpit, JournalModalState, JournalTransactionView, KillState, Latency,
+    Message, PanelState, StrategyStatus,
 };
 use ui::strings;
+use ui::widgets::journal_transaction_modal;
 use ui::widgets::latency::Badge;
+use ui::widgets::num::fmt_usdt;
 
 // ── Live tape ───────────────────────────────────────────────────────────────
 
@@ -330,6 +335,146 @@ fn latency_halted_at_10000ms() {
     assert_snapshot!("latency_halted", latency_summary(&c));
 }
 
+// ── Tape-row audit modal (T1207) ────────────────────────────────────────────
+//
+// Covers V8 from `spec/features/tape-row-audit-modal.md`: snapshot the
+// modal in compact density on a 4-entry paper-fill fixture — the
+// canonical four-leg journal of a paper Buy fill (cash credit / position
+// debit / fee credit on cash / fee debit on expense). Plus one snapshot
+// per other `PanelState` arm (loading / empty / error) so a regression
+// in any single arm shows up as a single granular failure.
+//
+// We snapshot a text summary (mirroring `tape_summary` etc.) — the
+// existing pattern for this file. Each test ALSO renders the live
+// widget via `journal_transaction_modal::view(&state, dummy_content,
+// dummy_close_msg)` to catch any compile/render-path regressions.
+
+/// Fixed deterministic timestamp for the V8 fixture — `2026-05-03T14:32:18Z`.
+/// The widget's metadata block formats `Timestamp` via its `Display` impl,
+/// which produces `time` crate's RFC 3339 + offset rendering. The chosen
+/// epoch makes the rendered string visible in the snapshot.
+fn fixture_modal_ts() -> Timestamp {
+    let date = Date::from_calendar_date(2026, Month::May, 3).unwrap_or(Date::MIN);
+    let clock = Time::from_hms(14, 32, 18).unwrap_or(Time::MIDNIGHT);
+    let dt = PrimitiveDateTime::new(date, clock).assume_utc();
+    Timestamp::new(dt)
+}
+
+/// V8 4-entry paper-fill fixture per
+/// [`spec/features/tape-row-audit-modal.md` § Q8 / V8](../../../spec/features/tape-row-audit-modal.md#q8--test-plan).
+///
+/// Models a paper Buy round-trip on BTCUSDT — the canonical four legs that
+/// `audit::post_fill` writes for one fill:
+/// 1. cash debit  — cash decreases by `1234.56` (asset CR per double-entry).
+/// 2. position credit — position increases by `0.04 BTC` (asset DR).
+/// 3. fee debit   — cash decreases by `1.23` for the taker fee (asset CR).
+/// 4. fee credit  — fees expense increases by `1.23` (expense DR).
+///
+/// Each entry holds one non-zero side (debit XOR credit) per the
+/// architect's `JournalEntry` shape (Q2). `Money<Usdt>` is the storage
+/// type for both columns regardless of the rendered `currency` ticker —
+/// the un-collapsed `(debit, credit)` pair is what the widget renders.
+/// Position row uses `0.04` BTC (rather than the prompt's illustrative
+/// `0.025`) so the `fmt_usdt` two-dp formatter renders the value cleanly
+/// in the snapshot rather than rounding the third decimal — keeps the
+/// snapshot reviewable without changing what's being asserted.
+fn fixture_journal_view() -> JournalTransactionView {
+    let ts = fixture_modal_ts();
+    JournalTransactionView {
+        tx_id: SmolStr::new("4f9a2c1e-aaaa-bbbb-cccc-000000000001"),
+        ts,
+        description: SmolStr::new("buy 0.04 BTCUSDT @ 50000"),
+        strategy_id: Some(StrategyId::new("sma_crossover")),
+        entries: vec![
+            JournalEntry {
+                account: AccountId::new("assets:cash:USDT"),
+                debit: Money::from_decimal(dec!(0)),
+                credit: Money::from_decimal(dec!(1234.56)),
+                currency: SmolStr::new("USDT"),
+                ts,
+                memo: SmolStr::new(""),
+            },
+            JournalEntry {
+                account: AccountId::new("assets:position:BTCUSDT"),
+                debit: Money::from_decimal(dec!(0.04)),
+                credit: Money::from_decimal(dec!(0)),
+                currency: SmolStr::new("BTCUSDT"),
+                ts,
+                memo: SmolStr::new(""),
+            },
+            JournalEntry {
+                account: AccountId::new("assets:cash:USDT"),
+                debit: Money::from_decimal(dec!(0)),
+                credit: Money::from_decimal(dec!(1.23)),
+                currency: SmolStr::new("USDT"),
+                ts,
+                memo: SmolStr::new(""),
+            },
+            JournalEntry {
+                account: AccountId::new("expenses:fees:exchange"),
+                debit: Money::from_decimal(dec!(1.23)),
+                credit: Money::from_decimal(dec!(0)),
+                currency: SmolStr::new("USDT"),
+                ts,
+                memo: SmolStr::new(""),
+            },
+        ],
+    }
+}
+
+/// Render the live widget with `()`-typed messages so the rendering
+/// path is exercised even though the snapshot is text-only. If
+/// `journal_transaction_modal::view(...)` ever panics for one of the
+/// four `PanelState` arms, every snapshot test trips at once.
+fn render_modal_widget_for_smoke(state: &JournalModalState) {
+    use iced::widget::{Container, Text};
+    let dummy_content: iced::Element<()> = Container::new(Text::new("cockpit")).into();
+    let _: iced::Element<()> = journal_transaction_modal::view(state, dummy_content, ());
+}
+
+#[test]
+fn tape_audit_modal_loading() {
+    let state = JournalModalState {
+        tx_id: SmolStr::new("4f9a2c1e-aaaa-bbbb-cccc-000000000001"),
+        entries: PanelState::Loading,
+    };
+    render_modal_widget_for_smoke(&state);
+    assert_snapshot!("tape_audit_modal_loading", tape_audit_modal_summary(&state));
+}
+
+#[test]
+fn tape_audit_modal_empty() {
+    let state = JournalModalState {
+        tx_id: SmolStr::new("4f9a2c1e-aaaa-bbbb-cccc-000000000001"),
+        entries: PanelState::Empty,
+    };
+    render_modal_widget_for_smoke(&state);
+    assert_snapshot!("tape_audit_modal_empty", tape_audit_modal_summary(&state));
+}
+
+#[test]
+fn tape_audit_modal_error() {
+    let state = JournalModalState {
+        tx_id: SmolStr::new("4f9a2c1e-aaaa-bbbb-cccc-000000000001"),
+        entries: PanelState::Error(SmolStr::new("ledger unreachable")),
+    };
+    render_modal_widget_for_smoke(&state);
+    assert_snapshot!("tape_audit_modal_error", tape_audit_modal_summary(&state));
+}
+
+#[test]
+fn tape_audit_modal_ready_paper_fill() {
+    let state = JournalModalState {
+        tx_id: SmolStr::new("4f9a2c1e-aaaa-bbbb-cccc-000000000001"),
+        entries: PanelState::Ready(fixture_journal_view()),
+    };
+    render_modal_widget_for_smoke(&state);
+    assert_snapshot!(
+        "tape_audit_modal_ready_paper_fill",
+        tape_audit_modal_summary(&state)
+    );
+}
+
 // ── Summary helpers — plain-text state rendering ────────────────────────────
 
 fn tape_summary(c: &Cockpit) -> String {
@@ -606,6 +751,95 @@ fn strategies_summary(c: &Cockpit) -> String {
                 .as_ref()
                 .map_or(strings::PLACEHOLDER_NONE.to_string(), ToString::to_string);
             out.push_str(&format!("  {} {} color={}\n", label, id, color));
+        }
+    }
+    out
+}
+
+/// Plain-text summary of the tape-row → audit modal state. Mirrors the
+/// branching the widget performs in `journal_transaction_modal::view` so
+/// regressions in
+/// (a) which branch of the `PanelState<JournalTransactionView>` match
+///     was taken,
+/// (b) which `strings::TAPE_AUDIT_MODAL_*` copy was rendered,
+/// (c) the `(account, debit, credit, currency)` cell values per entry,
+/// surface as a snapshot diff. The summary intentionally uses the same
+/// `widgets::num::fmt_usdt` formatter the widget uses for the debit /
+/// credit cells, so a regression in the number renderer reaches the
+/// snapshot.
+fn tape_audit_modal_summary(state: &JournalModalState) -> String {
+    let mut out = String::new();
+    out.push_str("panel: tape_audit_modal\n");
+    out.push_str(&format!("title: {}\n", strings::TAPE_AUDIT_MODAL_TITLE));
+    out.push_str(&format!("state: {}\n", state.entries.variant_name()));
+    out.push_str(&format!("tx_id: {}\n", state.tx_id));
+    out.push_str(&format!(
+        "close_label: {}\n",
+        strings::TAPE_AUDIT_MODAL_CLOSE_LABEL
+    ));
+    match &state.entries {
+        PanelState::Loading => {
+            out.push_str(&format!("copy: {}\n", strings::TAPE_AUDIT_MODAL_LOADING));
+        }
+        PanelState::Empty => {
+            out.push_str(&format!("copy: {}\n", strings::TAPE_AUDIT_MODAL_EMPTY));
+        }
+        PanelState::Error(msg) => {
+            out.push_str(&format!(
+                "copy: {}{}\n",
+                strings::TAPE_AUDIT_MODAL_ERROR_PREFIX,
+                msg
+            ));
+        }
+        PanelState::Ready(view) => {
+            // Header rows — `(label, value)` pairs the widget renders above
+            // the entries table. Mirrors `metadata_block` in the widget.
+            out.push_str("header:\n");
+            out.push_str(&format!(
+                "  {}: {}\n",
+                strings::TAPE_AUDIT_MODAL_TX_LABEL,
+                view.tx_id
+            ));
+            out.push_str(&format!(
+                "  {}: {}\n",
+                strings::TAPE_AUDIT_MODAL_TS_LABEL,
+                view.ts
+            ));
+            out.push_str(&format!(
+                "  {}: {}\n",
+                strings::TAPE_AUDIT_MODAL_DESC_LABEL,
+                view.description
+            ));
+            let strategy = view
+                .strategy_id
+                .as_ref()
+                .map_or(strings::TAPE_AUDIT_MODAL_STRATEGY_NONE.to_string(), |s| {
+                    s.0.as_str().to_string()
+                });
+            out.push_str(&format!(
+                "  {}: {}\n",
+                strings::TAPE_AUDIT_MODAL_STRATEGY_LABEL,
+                strategy
+            ));
+            // Column headers — pinned per principles "Plain language" so a
+            // regression to `account_id` / `debit_amount` shows in diff.
+            out.push_str(&format!(
+                "columns: {} | {} | {} | {}\n",
+                strings::TAPE_AUDIT_MODAL_COL_ACCOUNT,
+                strings::TAPE_AUDIT_MODAL_COL_DEBIT,
+                strings::TAPE_AUDIT_MODAL_COL_CREDIT,
+                strings::TAPE_AUDIT_MODAL_COL_CURRENCY,
+            ));
+            out.push_str("rows:\n");
+            for entry in &view.entries {
+                out.push_str(&format!(
+                    "  {} | {} | {} | {}\n",
+                    entry.account,
+                    fmt_usdt(entry.debit.amount()),
+                    fmt_usdt(entry.credit.amount()),
+                    entry.currency,
+                ));
+            }
         }
     }
     out

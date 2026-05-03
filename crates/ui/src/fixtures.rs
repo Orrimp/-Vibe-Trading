@@ -75,6 +75,13 @@ pub fn fake_tick_with_skew_ms(skew_ms: i64) -> Tick {
 
 /// A single deterministic fill view. `n` controls minor price drift so a
 /// sequence of fills renders with distinct rows.
+///
+/// `transaction_id` is stamped as a deterministic per-`n` fixture id
+/// (`"fixture-tx-{n}"`) so the tape-row → audit-modal click flow has a
+/// stable, reproducible UUID-shaped string in fixtures-mode (T1206 /
+/// `tape-row-audit-modal` Q5). The existing `tape_summary` snapshot
+/// helper does not inspect `transaction_id`, so existing snapshots stay
+/// byte-identical (R11 + V7).
 #[must_use]
 pub fn fake_fill_view(n: i64) -> FillView {
     let price = Price::new(dec!(40000.00) + Decimal::from(n) * dec!(0.5))
@@ -88,6 +95,7 @@ pub fn fake_fill_view(n: i64) -> FillView {
         fee: Money::from_decimal(dec!(1.6003)),
         fee_tier: FeeTier::Taker,
         venue_ts: fixed_ts(n),
+        transaction_id: smol_str::SmolStr::new(format!("fixture-tx-{n}")),
     }
 }
 

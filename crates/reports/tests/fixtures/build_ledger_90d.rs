@@ -274,6 +274,7 @@ fn build_fill_plan(rng: &mut ChaCha20Rng) -> Vec<(&'static str, Fill)> {
             venue_ts: ts,
             local_ts: ts,
             liquidity: Liquidity::Taker,
+            transaction_id: None,
         };
         out.push((strategy, fill));
     }

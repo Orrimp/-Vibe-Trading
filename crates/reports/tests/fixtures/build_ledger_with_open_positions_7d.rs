@@ -221,6 +221,7 @@ fn build_fill_plan(rng: &mut ChaCha20Rng) -> Vec<(&'static str, Fill)> {
             venue_ts: ts,
             local_ts: ts,
             liquidity: Liquidity::Taker,
+            transaction_id: None,
         };
         out.push((strategy, fill));
     }
@@ -423,6 +424,7 @@ pub async fn build_ledger_mixed_legacy_and_per_symbol_7d(
         venue_ts: sol_ts,
         local_ts: sol_ts,
         liquidity: Liquidity::Taker,
+        transaction_id: None,
     };
     journal::post_fill(ledger, &sol_fill, Some("test_strategy")).await?;
 

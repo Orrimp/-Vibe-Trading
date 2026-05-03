@@ -137,6 +137,35 @@ pub const STRATEGIES_EVENT_REJECT: &str = "rejected";
 pub const STRATEGIES_POSITION_HELD: &str = "yes";
 pub const STRATEGIES_POSITION_FLAT: &str = "no";
 
+// ── Tape audit modal ────────────────────────────────────────────────────────
+//
+// Copy contract (tape-row-audit-modal R7 + principles voice/copy):
+// - title    → terse, declarative ("Journal transaction").
+// - labels   → sentence case, no trailing period (form labels).
+// - loading  → present-tense verb + ellipsis (unicode `…`, not `...`).
+// - empty    → declarative full sentence with terminal period.
+// - error    → `<what's broken>:` prefix matching `TAPE_ERROR_PREFIX`.
+// - close    → imperative single word (no glyph — principles "no icons").
+
+pub const TAPE_AUDIT_MODAL_TITLE: &str = "Journal transaction";
+pub const TAPE_AUDIT_MODAL_TX_LABEL: &str = "Transaction ID";
+pub const TAPE_AUDIT_MODAL_TS_LABEL: &str = "Time";
+pub const TAPE_AUDIT_MODAL_DESC_LABEL: &str = "Description";
+pub const TAPE_AUDIT_MODAL_STRATEGY_LABEL: &str = "Strategy";
+/// Rendered in the strategy slot when `strategy_id` is `None` (fills not
+/// attributable to a specific strategy — manual-operator fills, kill-switch
+/// flatten, etc.). Same em-dash as `PLACEHOLDER_NONE` but kept as a distinct
+/// constant so a future "Manual" / "—" copy split is one-line.
+pub const TAPE_AUDIT_MODAL_STRATEGY_NONE: &str = "—";
+pub const TAPE_AUDIT_MODAL_COL_ACCOUNT: &str = "Account";
+pub const TAPE_AUDIT_MODAL_COL_DEBIT: &str = "Debit";
+pub const TAPE_AUDIT_MODAL_COL_CREDIT: &str = "Credit";
+pub const TAPE_AUDIT_MODAL_COL_CURRENCY: &str = "Currency";
+pub const TAPE_AUDIT_MODAL_LOADING: &str = "Loading journal entries…";
+pub const TAPE_AUDIT_MODAL_EMPTY: &str = "No entries for this transaction.";
+pub const TAPE_AUDIT_MODAL_ERROR_PREFIX: &str = "Failed to load journal entries: ";
+pub const TAPE_AUDIT_MODAL_CLOSE_LABEL: &str = "Close";
+
 // ── Connection states (live broadcast bus, T32) ──────────────────────────────
 
 /// Shown in every panel's error state when the cockpit can't reach the agent
@@ -188,6 +217,12 @@ pub const PLACEHOLDER_NONE: &str = "—";
 /// Stable ordered list of every string key declared above. Used by tests
 /// to verify no string in the UI escapes this module and by tooling that
 /// might later extract these for localization.
+///
+/// The function body is one big literal slice — clippy's
+/// `too_many_lines` lint disagrees, we disagree back. Splitting this into
+/// per-section helpers would obscure the single-source-of-truth shape
+/// and force tests to call multiple accessors.
+#[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn all() -> &'static [(&'static str, &'static str)] {
     &[
@@ -241,6 +276,32 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("KILL_HALTED_HINT", KILL_HALTED_HINT),
         ("KILL_RUNBOOK_LINK_LABEL", KILL_RUNBOOK_LINK_LABEL),
         ("KILL_RUNBOOK_LINK_PATH", KILL_RUNBOOK_LINK_PATH),
+        ("TAPE_AUDIT_MODAL_TITLE", TAPE_AUDIT_MODAL_TITLE),
+        ("TAPE_AUDIT_MODAL_TX_LABEL", TAPE_AUDIT_MODAL_TX_LABEL),
+        ("TAPE_AUDIT_MODAL_TS_LABEL", TAPE_AUDIT_MODAL_TS_LABEL),
+        ("TAPE_AUDIT_MODAL_DESC_LABEL", TAPE_AUDIT_MODAL_DESC_LABEL),
+        (
+            "TAPE_AUDIT_MODAL_STRATEGY_LABEL",
+            TAPE_AUDIT_MODAL_STRATEGY_LABEL,
+        ),
+        (
+            "TAPE_AUDIT_MODAL_STRATEGY_NONE",
+            TAPE_AUDIT_MODAL_STRATEGY_NONE,
+        ),
+        ("TAPE_AUDIT_MODAL_COL_ACCOUNT", TAPE_AUDIT_MODAL_COL_ACCOUNT),
+        ("TAPE_AUDIT_MODAL_COL_DEBIT", TAPE_AUDIT_MODAL_COL_DEBIT),
+        ("TAPE_AUDIT_MODAL_COL_CREDIT", TAPE_AUDIT_MODAL_COL_CREDIT),
+        (
+            "TAPE_AUDIT_MODAL_COL_CURRENCY",
+            TAPE_AUDIT_MODAL_COL_CURRENCY,
+        ),
+        ("TAPE_AUDIT_MODAL_LOADING", TAPE_AUDIT_MODAL_LOADING),
+        ("TAPE_AUDIT_MODAL_EMPTY", TAPE_AUDIT_MODAL_EMPTY),
+        (
+            "TAPE_AUDIT_MODAL_ERROR_PREFIX",
+            TAPE_AUDIT_MODAL_ERROR_PREFIX,
+        ),
+        ("TAPE_AUDIT_MODAL_CLOSE_LABEL", TAPE_AUDIT_MODAL_CLOSE_LABEL),
         ("CONNECTION_AGENT_UNREACHABLE", CONNECTION_AGENT_UNREACHABLE),
         ("CONNECTION_LAGGED", CONNECTION_LAGGED),
         ("CONNECTION_CHANNEL_CLOSED", CONNECTION_CHANNEL_CLOSED),

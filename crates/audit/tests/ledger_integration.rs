@@ -27,6 +27,7 @@ fn make_fill(side: Side, qty: Decimal, price: Decimal, fee: Decimal) -> Fill {
         venue_ts: Timestamp::now(),
         local_ts: Timestamp::now(),
         liquidity: Liquidity::Taker,
+        transaction_id: None,
     }
 }
 

@@ -59,6 +59,7 @@ fn make_fill(symbol: &str, side: Side, qty: Decimal, price: Decimal, venue_ts_se
         venue_ts: ts_offset_secs(venue_ts_secs),
         local_ts: ts_offset_secs(venue_ts_secs),
         liquidity: Liquidity::Taker,
+        transaction_id: None,
     }
 }
 

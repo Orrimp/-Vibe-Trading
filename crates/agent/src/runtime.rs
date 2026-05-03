@@ -855,6 +855,7 @@ mod tests {
             venue_ts: ts(0),
             local_ts: ts(0),
             liquidity: Liquidity::Taker,
+            transaction_id: None,
         };
         let pos = Position::empty(Symbol::new("BTCUSDT"));
 

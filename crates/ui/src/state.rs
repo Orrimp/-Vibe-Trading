@@ -8,8 +8,8 @@ use std::collections::{HashMap, VecDeque};
 
 use smol_str::SmolStr;
 use trading_core::{
-    Bar, FillView, PnlSnapshot, PositionView, StrategyEventKind, StrategyEventView, StrategyId,
-    StrategyLoadError, StrategyLoaded, StrategySwapped, Tick, Timestamp,
+    Bar, FillView, JournalEntry, PnlSnapshot, PositionView, StrategyEventKind, StrategyEventView,
+    StrategyId, StrategyLoadError, StrategyLoaded, StrategySwapped, Tick, Timestamp,
 };
 
 use crate::theme::layout::TAPE_MAX_ROWS;
@@ -60,6 +60,38 @@ impl<T> PanelState<T> {
             PanelState::Ready(_) => "ready",
         }
     }
+}
+
+/// Modal-only sub-state for the tape-row → audit-modal feature
+/// ([tape-row-audit-modal R8](../../spec/features/tape-row-audit-modal.md#r8)).
+///
+/// The full `PanelState<T>` machinery applies (`Loading` / `Empty` / `Error` /
+/// `Ready`) — every modal render covers the four arms per the principles
+/// "no blank screens" rule.
+#[derive(Debug, Clone)]
+pub struct JournalModalState {
+    /// The transaction id the modal is rendering. Populated at click
+    /// time and carried as the modal's identity until close.
+    pub tx_id: SmolStr,
+    /// The entries panel state — first arrives as `Loading`, flips to
+    /// `Ready(view)` on `TapeAuditEntriesLoaded(Ok)`, `Error` on `Err`,
+    /// `Empty` when `entries.is_empty()` (defensive — every transaction
+    /// has ≥ 2 entries by audit invariant).
+    pub entries: PanelState<JournalTransactionView>,
+}
+
+/// Header + entries view for the journal-transaction audit modal.
+///
+/// Header rows render as label-value pairs above the 4-column entries
+/// table. The architect's design ([tape-row-audit-modal Q2](../../spec/features/tape-row-audit-modal.md#q2--journalentry-un-collapsed-lives-in-trading_core))
+/// pins the field shape so the widget swap is mechanical.
+#[derive(Debug, Clone)]
+pub struct JournalTransactionView {
+    pub tx_id: SmolStr,
+    pub ts: Timestamp,
+    pub description: SmolStr,
+    pub strategy_id: Option<StrategyId>,
+    pub entries: Vec<JournalEntry>,
 }
 
 /// Kill-switch state machine, rendered by `widgets::kill`.
@@ -209,6 +241,16 @@ pub struct Cockpit {
     pub last_bar_ts: Option<Timestamp>,
     pub last_tick_ts: Option<Timestamp>,
 
+    /// Tape-row → audit-modal sub-state. `None` while the modal is closed
+    /// (the cockpit's `view` then renders the main column directly so the
+    /// pre-modal panel snapshots stay byte-identical). `Some(state)` while
+    /// the modal is open — the cockpit wraps its main column in
+    /// `widgets::journal_transaction_modal::view(...)` and the
+    /// modal-open-gated keyboard subscription routes `Esc` →
+    /// `Message::TapeAuditModalClosed` per
+    /// [tape-row-audit-modal Q6](../../spec/features/tape-row-audit-modal.md#q6--keyboard-absorption-subscription-on-modal-open).
+    pub tape_audit_modal: Option<JournalModalState>,
+
     /// Trip-the-kill-switch closure (T906). When set, processing
     /// `Message::KillConfirmed` invokes this with `HaltReason::ManualOperator`
     /// before transitioning the UI into `KillState::Flattening`. Absent in
@@ -235,7 +277,8 @@ impl std::fmt::Debug for Cockpit {
             .field("kill", &self.kill)
             .field("latency", &self.latency)
             .field("last_bar_ts", &self.last_bar_ts)
-            .field("last_tick_ts", &self.last_tick_ts);
+            .field("last_tick_ts", &self.last_tick_ts)
+            .field("tape_audit_modal", &self.tape_audit_modal);
         #[cfg(feature = "live")]
         dbg.field(
             "kill_switch",
@@ -261,6 +304,7 @@ impl Default for Cockpit {
             latency: Latency::Unknown,
             last_bar_ts: None,
             last_tick_ts: None,
+            tape_audit_modal: None,
             #[cfg(feature = "live")]
             kill_switch: None,
         }
@@ -313,6 +357,7 @@ impl Cockpit {
             latency: Latency::Known { ms: 120 },
             last_bar_ts: None,
             last_tick_ts: None,
+            tape_audit_modal: None,
             #[cfg(feature = "live")]
             kill_switch: None,
         }
@@ -371,6 +416,24 @@ pub enum Message {
     /// A fill was observed that originated from the given strategy; increment
     /// the rolling 60s counter for that row.
     StrategySignalObserved(StrategyId, Timestamp),
+
+    // ── tape-row audit modal (R1, R2, R4 — `tape-row-audit-modal`) ──────────
+    /// Operator clicked a tape row. Carries the `journal_transactions.id`
+    /// UUID string of the fill's underlying transaction. The cockpit's
+    /// binary issues the `audit::query::journal_entries_for_transaction`
+    /// fetch via `iced::Task::perform` and routes the result back as
+    /// `TapeAuditEntriesLoaded`. `update` only sets the modal sub-state to
+    /// `Loading` — pure-function discipline (R5).
+    TapeRowClicked(SmolStr),
+    /// Operator dismissed the modal — funnel for `Esc`, click-outside, and
+    /// the explicit Close button (R4 three close affordances).
+    TapeAuditModalClosed,
+    /// Async result of the `journal_entries_for_transaction` fetch issued
+    /// after `TapeRowClicked`. `Ok(view)` flips the modal to
+    /// `Ready(view)` (or `Empty` when `view.entries.is_empty()` per R8 /
+    /// audit invariant); `Err(msg)` flips to `Error(msg)` so the operator
+    /// sees `TAPE_AUDIT_MODAL_ERROR_PREFIX + msg` and can dismiss.
+    TapeAuditEntriesLoaded(Result<JournalTransactionView, SmolStr>),
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -510,6 +573,10 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::AgentHaltedExternally(reason) => {
             model.mode = AgentMode::Halted;
             model.kill = KillState::Halted { reason };
+            // Q9 — operator's attention belongs on the halt banner, not on
+            // a stacked read-only modal. Audit data stays queryable
+            // post-halt via the same row click.
+            model.tape_audit_modal = None;
         }
         Message::StrategyLoaded(ev) => {
             apply_strategy_loaded(model, ev);
@@ -542,6 +609,38 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                     row.signals_60s = count;
                 }
             }
+        }
+        Message::TapeRowClicked(tx_id) => {
+            // Q9 — only one modal at a time; a second click while the
+            // previous modal is still open replaces identity unconditionally.
+            // No back-stack — the cockpit is an instrument, not a browser.
+            model.tape_audit_modal = Some(JournalModalState {
+                tx_id,
+                entries: PanelState::Loading,
+            });
+            // The async `journal_entries_for_transaction` fetch is issued
+            // by the binary's `update` wrapper via `iced::Task::perform`.
+            // `update` here stays pure — R5 / pure-function discipline.
+        }
+        Message::TapeAuditModalClosed => {
+            model.tape_audit_modal = None;
+        }
+        Message::TapeAuditEntriesLoaded(result) => {
+            if let Some(modal) = model.tape_audit_modal.as_mut() {
+                modal.entries = match result {
+                    Ok(view) => {
+                        if view.entries.is_empty() {
+                            PanelState::Empty
+                        } else {
+                            PanelState::Ready(view)
+                        }
+                    }
+                    Err(msg) => PanelState::Error(msg),
+                };
+            }
+            // If the modal was closed before the async fetch returned
+            // (operator hit Esc mid-flight), drop the result silently —
+            // there is no panel to update and `update` stays pure.
         }
     }
 }
@@ -1064,6 +1163,7 @@ mod tests {
                 fee: trading_core::Money::from_decimal(dec!(0)),
                 fee_tier: FeeTier::Taker,
                 venue_ts: Timestamp::now(),
+                transaction_id: smol_str::SmolStr::default(),
             }
         }
         let mut c = Cockpit::new();

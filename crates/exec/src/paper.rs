@@ -147,6 +147,7 @@ mod tests {
             venue_ts: Timestamp::new(time::OffsetDateTime::UNIX_EPOCH),
             local_ts: Timestamp::new(time::OffsetDateTime::UNIX_EPOCH),
             liquidity: Liquidity::Taker,
+            transaction_id: None,
         }
     }
 

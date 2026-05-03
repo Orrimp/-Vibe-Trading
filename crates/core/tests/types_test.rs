@@ -9,8 +9,9 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
-    Asset, Bar, FeeTier, Fill, Liquidity, Money, Position, Price, Quantity, Side, Signal,
-    SignalEvidence, SignalKind, StrategyId, Symbol, Tick, Timeframe, Timestamp, Usdt,
+    AccountId, Asset, Bar, FeeTier, Fill, JournalEntry, Liquidity, Money, Position, Price,
+    Quantity, Side, Signal, SignalEvidence, SignalKind, StrategyId, Symbol, Tick, Timeframe,
+    Timestamp, Usdt,
 };
 
 fn ts() -> Timestamp {
@@ -226,9 +227,27 @@ fn fill_serde_roundtrip() {
         venue_ts: ts(),
         local_ts: ts(),
         liquidity: Liquidity::Taker,
+        transaction_id: None,
     };
     let json = serde_json::to_string(&fill).unwrap();
     let fill2: Fill = serde_json::from_str(&json).unwrap();
     assert_eq!(fill.id, fill2.id);
     assert_eq!(fill.price, fill2.price);
+}
+
+// ── JournalEntry (tape-row-audit-modal Q2) ───────────────────────────────────
+
+#[test]
+fn journal_entry_serde_roundtrip() {
+    let entry = JournalEntry {
+        account: AccountId::new("assets:position:BTCUSDT"),
+        debit: Money::<Usdt>::from_decimal(dec!(40008.00)),
+        credit: Money::<Usdt>::from_decimal(dec!(0)),
+        currency: "BTC".into(),
+        ts: ts(),
+        memo: "buy 0.25 BTCUSDT @ 40008.00".into(),
+    };
+    let json = serde_json::to_string(&entry).unwrap();
+    let entry2: JournalEntry = serde_json::from_str(&json).unwrap();
+    assert_eq!(entry, entry2);
 }

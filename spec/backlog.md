@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-02
+updated: 2026-05-03
 ---
 
 # Backlog
@@ -41,16 +41,19 @@ into a `spec/features/<slug>.md` brief and removes the entry here.
   R10 deferral note in
   [`real-mtm-unrealized-pnl.md` Design § Q3 / R10 verdict, lines
   386–401, 541–554](features/real-mtm-unrealized-pnl.md).
+- **Tape-row → audit modal** — promoted 2026-05-03 to
+  [`spec/features/tape-row-audit-modal.md`](features/tape-row-audit-modal.md).
+  Status: `draft`, owner: analyst → architect. 15 R-items, 11
+  V-items, 9 Open Questions for the architect. Pure UI + new audit
+  reader (`journal_entries_for_transaction`) + first-time consumer
+  of the proposed `bg_overlay` / `info` / `border_strong` theme
+  tokens (Q3) and `FillView::transaction_id` plumbing (Q5). Anchor
+  risk: zero — UI feature, no backtest path touched (R12,
+  preferred 11/11 PASS byte-identical). First feature to land
+  against [ui-design-principles.md](ui-design-principles.md) — the
+  "Show the why" cockpit click-through-to-audit path begins here.
 
 ## Queue
-
-### UI / cockpit
-
-- **`tape-row-audit-modal`** (v1.5+). Click a live-tape row → modal
-  shows the full `journal_transaction` (debits, credits, transaction_id,
-  source strategy). Operator-approved 2026-05-03 (UI principles Q4).
-  Needs analyst → architect spawn when promoted; consumes existing
-  `audit::query` reads, no new audit surface required. Small scope.
 
 ### Strategy
 
@@ -106,3 +109,13 @@ into a `spec/features/<slug>.md` brief and removes the entry here.
   `tape-row-audit-modal` per operator decision on UI principles Q4
   (2026-05-03). Promotes when operator picks it up; analyst → architect
   → developer pipeline standard.
+- 2026-05-03 (analyst): promoted `tape-row-audit-modal` from Queue
+  (UI / cockpit) → Active. Brief at
+  [`features/tape-row-audit-modal.md`](features/tape-row-audit-modal.md).
+  First feature to land against
+  [`ui-design-principles.md`](ui-design-principles.md) (the "Show
+  the why" cockpit click-through-to-audit path begins here). 15
+  R-items, 11 V-items, 9 open questions for the architect. Anchor
+  risk: zero (pure UI + new additive audit reader). HANDOFF →
+  architect. The now-empty `### UI / cockpit` Queue subsection has
+  been removed; future UI additions will recreate it.

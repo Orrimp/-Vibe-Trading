@@ -70,6 +70,7 @@ fn synthetic_fill(n: i64) -> Fill {
         venue_ts: ts(n),
         local_ts: ts(n),
         liquidity: Liquidity::Taker,
+        transaction_id: None,
     }
 }
 

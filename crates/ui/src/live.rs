@@ -397,6 +397,7 @@ pub fn fill_to_view(fill: &Fill) -> FillView {
         fee: fill.fee,
         fee_tier: fill.fee_tier,
         venue_ts: fill.venue_ts,
+        transaction_id: fill.transaction_id.clone().unwrap_or_default(),
     }
 }
 
@@ -447,6 +448,7 @@ mod tests {
             venue_ts: Timestamp::now(),
             local_ts: Timestamp::now(),
             liquidity: Liquidity::Taker,
+            transaction_id: None,
         }
     }
 

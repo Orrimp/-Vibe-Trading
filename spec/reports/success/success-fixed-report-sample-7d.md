@@ -1,16 +1,16 @@
 ---
 period: since:2026-04-21T00:00:00Z
 period_start: 2026-04-21T00:00:00.000000Z
-period_end: 2026-05-03T08:01:30.690513Z
-generated: 2026-05-03T08:01:30.690513Z
-run_id: 2904e8f2ef60a528
-ledger_snapshot_sha: 436050f41ca6dfcb1ef5a899524ebd40cacf97a2fc0b8ca01cb8106a68d5552e
+period_end: 2026-05-03T13:57:42.481878Z
+generated: 2026-05-03T13:57:42.481878Z
+run_id: f2a302fdd21f6f33
+ledger_snapshot_sha: c469122560a5cf089893609d450654e6c2326f99c17bdfa319bad5414e910d66
 seed: 0xC0FFEE
-data_source: fixture:/var/folders/3d/q05sqj0x3r79f5jszgbsv0cc0000gp/T/.tmptAsnjf/audit-7d.db
-wall_clock_s: 0.020082
+data_source: fixture:/var/folders/3d/q05sqj0x3r79f5jszgbsv0cc0000gp/T/.tmpes1Igh/audit-7d.db
+wall_clock_s: 0.023348
 binary_version: 0.1.0
 git_commit: n/a
-agent_pid: 82483
+agent_pid: 30382
 host: unknown
 reconciliation: PASS
 ---

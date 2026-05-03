@@ -49,6 +49,7 @@ fn t813_csv_fills_header_and_row() {
         fee: Money::<Usdt>::from_decimal(dec!(0.70)),
         fee_tier: FeeTier::Taker,
         venue_ts: Timestamp::new(OffsetDateTime::UNIX_EPOCH),
+        transaction_id: smol_str::SmolStr::default(),
     };
     let rows = vec![(f, Some("alpha".to_string()))];
     write_fills_csv(&path, &rows).unwrap();

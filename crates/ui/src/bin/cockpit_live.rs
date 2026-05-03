@@ -89,10 +89,11 @@ use tracing::{info, warn};
 
 use agent::{EventBus, KillSwitch, RunHandles};
 
-use ui::state::{Cockpit, Message};
+use smol_str::SmolStr;
+use ui::state::{Cockpit, JournalTransactionView, Message};
 use ui::strings::APP_TITLE;
 use ui::theme::{color, layout, space};
-use ui::widgets::{kill, latency, pnl, positions, strategies, tape};
+use ui::widgets::{journal_transaction_modal, kill, latency, pnl, positions, strategies, tape};
 
 use iced::widget::{Column, Row};
 use iced::{Element, Length};
@@ -364,6 +365,8 @@ fn main() -> Result<()> {
         cockpit,
         bus: Arc::clone(&bus),
         kill_switch: Arc::clone(&kill_switch),
+        ledger: Arc::clone(&ledger),
+        rt_handle: rt_handle.clone(),
     };
 
     let iced_result = iced::application(
@@ -447,6 +450,19 @@ struct AppState {
     /// already-halted banner on app cold-boot).
     #[allow(dead_code)]
     kill_switch: Arc<KillSwitch>,
+    /// Shared audit-ledger handle. Used by the tape-row → audit-modal
+    /// click path (`Message::TapeRowClicked`) to read journal entries
+    /// for the clicked transaction id via
+    /// `audit::query::journal_entries_for_transaction`. The query is
+    /// dispatched on the side-thread tokio runtime (`rt_handle`) — iced's
+    /// main thread has no tokio runtime context.
+    ledger: Arc<audit::Ledger>,
+    /// Side-thread tokio runtime handle. Used to drive `audit::query`
+    /// fetches issued by the cockpit's iced thread (where there is no
+    /// tokio runtime). `iced::Task::perform` requires an executor; we
+    /// route through `rt_handle.spawn(...)` so the future runs on the
+    /// agent runtime.
+    rt_handle: tokio::runtime::Handle,
 }
 
 impl AppState {
@@ -454,15 +470,99 @@ impl AppState {
         APP_TITLE.to_string()
     }
 
-    fn update(&mut self, msg: Message) {
+    /// Pure-state update + side-effect dispatch.
+    ///
+    /// `ui::state::update` mutates the cockpit model deterministically
+    /// (no I/O). On `Message::TapeRowClicked`, we additionally issue an
+    /// async fetch against the audit ledger via `iced::Task::perform`
+    /// — the result returns to the cockpit as
+    /// `Message::TapeAuditEntriesLoaded`. The state mutation that
+    /// flips the modal sub-state into `Loading` is owned by
+    /// `ui::state::update`; the binary owns only the I/O wiring
+    /// (Q5 — separation of pure state from side-channel I/O).
+    fn update(&mut self, msg: Message) -> iced::Task<Message> {
+        // Capture the tx_id before delegating so we can dispatch the
+        // async fetch after `update` mutates the model.
+        let tx_id = match &msg {
+            Message::TapeRowClicked(tx) => Some(tx.clone()),
+            _ => None,
+        };
+
         ui::state::update(&mut self.cockpit, msg);
+
+        if let Some(tx_id) = tx_id {
+            let ledger = Arc::clone(&self.ledger);
+            let rt_handle = self.rt_handle.clone();
+            iced::Task::perform(
+                async move {
+                    // Bridge the iced thread's lack-of-runtime to the
+                    // side-thread tokio runtime: spawn the audit read on
+                    // `rt_handle` and await its `JoinHandle`. The handle
+                    // is `Send + 'static`, so the closure is `iced::Task`
+                    // friendly.
+                    let join = rt_handle.spawn(async move {
+                        let tx_id_str = tx_id.as_str();
+                        match audit::query::journal_entries_for_transaction(&ledger, tx_id_str)
+                            .await
+                        {
+                            Ok(entries) => {
+                                // Best-effort header — the dedicated
+                                // `journal_transactions` metadata reader
+                                // is a follow-up. Use the first entry's
+                                // `ts` as a proxy until then; description
+                                // and strategy_id default to empty / None
+                                // so the modal still renders.
+                                let ts = entries
+                                    .first()
+                                    .map_or_else(trading_core::Timestamp::now, |e| e.ts);
+                                Ok(JournalTransactionView {
+                                    tx_id: SmolStr::new(tx_id_str),
+                                    ts,
+                                    description: SmolStr::default(),
+                                    strategy_id: None,
+                                    entries,
+                                })
+                            }
+                            Err(e) => Err(SmolStr::new(e.to_string())),
+                        }
+                    });
+                    match join.await {
+                        Ok(result) => result,
+                        Err(e) => Err(SmolStr::new(format!("audit task join: {e}"))),
+                    }
+                },
+                Message::TapeAuditEntriesLoaded,
+            )
+        } else {
+            iced::Task::none()
+        }
     }
 
     /// Subscribe to the real bus — the entire point of `cockpit_live`.
     /// `ui::live::subscription` already exists (T32) and batches the
     /// six core channels + three v0.5 strategy lifecycle channels.
+    ///
+    /// When the tape-row → audit modal is open, batch in an
+    /// `iced::event::listen_with` recipe so `Esc` closes the modal
+    /// (Q6 — modal-open-gated subscription). Other keys are not
+    /// consumed; the live cockpit has no general keyboard navigation
+    /// today, so nothing leaks to the tape beneath.
     fn subscription(&self) -> iced::Subscription<Message> {
-        ui::live::subscription(Arc::clone(&self.bus))
+        let bus_sub = ui::live::subscription(Arc::clone(&self.bus));
+        if self.cockpit.tape_audit_modal.is_some() {
+            iced::Subscription::batch(vec![
+                bus_sub,
+                iced::event::listen_with(|event, _status, _window| match event {
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                        ..
+                    }) => Some(Message::TapeAuditModalClosed),
+                    _ => None,
+                }),
+            ])
+        } else {
+            bus_sub
+        }
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -487,7 +587,7 @@ impl AppState {
             .push(left)
             .push(right);
 
-        iced::widget::container(body)
+        let main_column: Element<'_, Message> = iced::widget::container(body)
             .padding(space::L as u16)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -496,7 +596,18 @@ impl AppState {
                 text_color: Some(color::FG),
                 ..Default::default()
             })
-            .into()
+            .into();
+
+        // Render the modal as a `Stack` overlay only when the modal is
+        // open (tape-row-audit-modal Q1). When closed, return
+        // `main_column` directly so the cockpit's iced widget tree is
+        // byte-identical to the pre-modal world — existing
+        // `panel_snapshots__*` stay green by construction (V7 / R11).
+        if let Some(modal_state) = self.cockpit.tape_audit_modal.as_ref() {
+            journal_transaction_modal::view(modal_state, main_column, Message::TapeAuditModalClosed)
+        } else {
+            main_column
+        }
     }
 
     fn theme(&self) -> iced::Theme {
