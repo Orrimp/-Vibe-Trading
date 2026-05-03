@@ -40,6 +40,51 @@ description: Run a historical backtest for a strategy feature and emit a metrics
 - All metrics present but Sharpe < baseline − tolerance → flag as
   `REGRESSION` in the verdict; do not auto-route — the tester decides.
 
+## Body-vs-front-matter discipline (HARD RULE)
+
+The 9-anchor regression gate hashes the body of each report only —
+the leading YAML front-matter is excluded. Use `scripts/hash_report.py`
+to compute the canonical hash; never re-type a hash function inline.
+
+Run-varying fields MUST go in the front-matter:
+
+```yaml
+---
+scenario:       <name>
+seed:           0xC0FFEE
+generated:      <RFC3339 timestamp>     # excluded from hash
+wall_clock_s:   <float>                  # excluded from hash
+host:           <hostname>               # excluded from hash
+agent_pid:      <int>                    # excluded from hash
+git_commit:     <sha>                    # excluded from hash
+binary_version: <semver>                 # excluded from hash
+data_source:    <description>            # excluded if it can shift
+run_id:         <uuid>                   # excluded from hash
+---
+```
+
+The body holds: scenario params, metric values, ledger lines, equity
+curve series — the deterministic outputs of the run. If you add a new
+field that may differ between two equivalent runs, put it in the
+front-matter or you will break an anchor.
+
+## Anchor verification (after every run)
+
+After the binary writes a report, run the regression gate:
+
+```bash
+scripts/verify_anchors.sh
+```
+
+- All 9 PASS → embed metrics in the test report and continue.
+- FAIL on a scenario you just re-ran → the body drifted. Diff the body
+  bytes against the prior locked report (commands in
+  `.claude/skills/verify-anchors/SKILL.md`). Most likely cause: a
+  run-varying field leaked from front-matter into the body.
+- MISS on a brand-new scenario the architect added → that's expected;
+  capture the SHA across two sequential runs and propose appending
+  to `spec/anchors.toml` (architect approves).
+
 ## Templates
 
 See [templates/scenario.md](templates/scenario.md) for the scenario-definition

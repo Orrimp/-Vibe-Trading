@@ -12,20 +12,35 @@ use crate::Ledger;
 
 /// Post a fill as balanced double-entry journal entries (R3.3).
 ///
-/// Buy fill of `q` BTC @ `p` USDT with fee `f` USDT:
-/// - Dr `assets:position:BTC`  `q * p`
-/// - Cr `assets:cash:USDT`     `q * p`
-/// - Dr `expense:fees:taker`   `f`
-/// - Cr `assets:cash:USDT`     `f`
+/// Buy fill of `q SYMBOL` @ `p` USDT with fee `f` USDT:
+/// - Dr `assets:position:<SYMBOL>`  `q * p`  (T1102 — per-symbol-position-accounts)
+/// - Cr `assets:cash:USDT`          `q * p`
+/// - Dr `expense:fees:taker`        `f`
+/// - Cr `assets:cash:USDT`          `f`
 ///
 /// Sell fill is the mirror.
+///
+/// `<SYMBOL>` is the full Binance pair (e.g. `BTCUSDT`, `ETHUSDT`). The chart
+/// of accounts row is seeded by migration `006_per_symbol_position_accounts.sql`
+/// for the universe at `config/agent.toml [funding].universe`.
+///
+/// `strategy_id` (T802 — operator success reports R5.3 / Q2) tags the
+/// fill with the strategy that emitted the signal so per-strategy
+/// attribution can roll up over `[since, until]`.  `None` writes SQL
+/// NULL — those rows surface in the report under the synthetic
+/// `(unattributed)` bucket.  The column is storage-only; it must NOT
+/// surface in the backtest report body bytes (V6 anchor gate).
 ///
 /// # Errors
 ///
 /// Returns [`LedgerError::TransactionFailed`] if the SQL transaction fails.
 #[allow(clippy::too_many_lines)] // double-entry for buy and sell requires this length
-#[instrument(name = "ledger.post_fill", skip(ledger, fill), fields(fill_id = %fill.id))]
-pub async fn post_fill(ledger: &Ledger, fill: &Fill) -> Result<(), LedgerError> {
+#[instrument(name = "ledger.post_fill", skip(ledger, fill), fields(fill_id = %fill.id, strategy_id = ?strategy_id))]
+pub async fn post_fill(
+    ledger: &Ledger,
+    fill: &Fill,
+    strategy_id: Option<&str>,
+) -> Result<(), LedgerError> {
     let txn_id = Uuid::new_v4().to_string();
     let ts = fill
         .venue_ts
@@ -38,6 +53,14 @@ pub async fn post_fill(ledger: &Ledger, fill: &Fill) -> Result<(), LedgerError> 
         "{} {} {} @ {}",
         fill.side, fill.qty, fill.symbol, fill.price
     );
+    // T1102 — per-symbol position account-id (per-symbol-position-accounts Q2):
+    // chart-of-accounts row is seeded by migration `006`. Pre-T1102 fills wrote
+    // to the literal `"assets:position:BTC"` regardless of `fill.symbol`; from
+    // T1102 onward every fill targets `assets:position:<SYMBOL>` where
+    // `<SYMBOL>` is the full Binance pair (e.g. `BTCUSDT`). Reader-side
+    // description-parse stays the primary symbol source for backwards-compat
+    // (Q4); the structural account-id is a defensive cross-check.
+    let position_account_id = format!("assets:position:{}", fill.symbol);
 
     let mut db_txn = ledger
         .pool
@@ -45,23 +68,30 @@ pub async fn post_fill(ledger: &Ledger, fill: &Fill) -> Result<(), LedgerError> 
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
-    // Insert transaction header
-    sqlx::query("INSERT INTO journal_transactions (id, ts, description) VALUES (?, ?, ?)")
-        .bind(&txn_id)
-        .bind(&ts)
-        .bind(&description)
-        .execute(&mut *db_txn)
-        .await
-        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    // Insert transaction header. The `strategy_id` column was added in
+    // migration 004; pre-migration rows are NULL.  The column is bound
+    // verbatim and is storage-only — it never surfaces in the rendered
+    // backtest report body.
+    sqlx::query(
+        "INSERT INTO journal_transactions (id, ts, description, strategy_id) \
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(&txn_id)
+    .bind(&ts)
+    .bind(&description)
+    .bind(strategy_id)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
     match fill.side {
         Side::Buy => {
-            // Dr assets:position:BTC  notional
+            // Dr assets:position:<SYMBOL>  notional (T1102 — per-pair account)
             insert_entry(
                 &mut db_txn,
                 &txn_id,
                 &ts,
-                "assets:position:BTC",
+                &position_account_id,
                 notional,
                 dec!(0),
             )
@@ -109,12 +139,12 @@ pub async fn post_fill(ledger: &Ledger, fill: &Fill) -> Result<(), LedgerError> 
                 dec!(0),
             )
             .await?;
-            // Cr assets:position:BTC  cost
+            // Cr assets:position:<SYMBOL>  cost (T1102 — per-pair account)
             insert_entry(
                 &mut db_txn,
                 &txn_id,
                 &ts,
-                "assets:position:BTC",
+                &position_account_id,
                 dec!(0),
                 cost,
             )
@@ -248,11 +278,33 @@ pub async fn registry_event(
     Ok(())
 }
 
-/// Post a kill-switch trip as a memo entry (R7.2).
+/// Post a kill-switch trip — **dual-write** under a single SQL transaction
+/// (T809 — operator success reports Q8).
+///
+/// Writes BOTH:
+///
+/// 1. The v0 zero-amount memo journal row (preserved byte-for-byte for
+///    backwards compatibility — same shape as [`registry_event`] would
+///    produce: `journal_transactions` + a zero-amount
+///    `equity:opening_balance` entry).
+/// 2. A `strategy_events` row with `kind = "KillSwitchTripped"`,
+///    `strategy_id = NULL`, `error_summary = <reason>`.  The
+///    operator-success-report's R7 system-health row reads only this
+///    second row — Q8's Migration policy: pre-existing v0 ledgers are
+///    NOT retro-rewritten.
+///
+/// Both writes share one [`sqlx::Transaction`] so the pair is atomic —
+/// either both land or neither does.  The memo row uses RFC-3339
+/// second precision (matches v0 [`registry_event`] byte-for-byte).
+/// The `strategy_events` row uses the 6-digit microsecond format used
+/// by every other v0.5+/v1+ `strategy_event` writer (HF-3 / architect
+/// risk #4 — sub-second precision keeps `ORDER BY ts` stable under
+/// rapid sequential writes).
 ///
 /// # Errors
 ///
-/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.  On failure
+/// the entire transaction rolls back; neither row is left orphaned.
 #[instrument(name = "ledger.kill_switch_trip", skip(ledger))]
 pub async fn kill_switch_tripped(
     ledger: &Ledger,
@@ -265,7 +317,84 @@ pub async fn kill_switch_tripped(
         "operator": operator,
     })
     .to_string();
-    registry_event(ledger, "KillSwitchTripped", reason, &metadata).await
+
+    // Memo-row timestamp: RFC-3339 second precision — matches v0 byte-for-byte
+    // (the original `registry_event` used `Rfc3339` here; do not change).
+    let memo_ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let memo_txn_id = Uuid::new_v4().to_string();
+    let memo_description = format!("registry:KillSwitchTripped:{reason}");
+
+    // strategy_events-row timestamp: 6-digit microsecond format.  See
+    // `strategy_event` / `uptime_ts_string` — sub-second precision is
+    // mandatory so two consecutive writes within the same wall-clock
+    // second produce monotonically-ordered `ts` values (HF-3 gate).
+    let strategy_ts_fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let strategy_ts = time::OffsetDateTime::now_utc()
+        .format(&strategy_ts_fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let strategy_row_id = Uuid::new_v4().to_string();
+
+    // Atomic dual-write: one transaction, both rows.
+    let mut db_txn = ledger
+        .pool
+        .begin()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    // (1) v0 memo row — backwards compat — preserved byte-for-byte.
+    sqlx::query(
+        "INSERT INTO journal_transactions (id, ts, description, metadata) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&memo_txn_id)
+    .bind(&memo_ts)
+    .bind(&memo_description)
+    .bind(&metadata)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    insert_entry(
+        &mut db_txn,
+        &memo_txn_id,
+        &memo_ts,
+        "equity:opening_balance",
+        dec!(0),
+        dec!(0),
+    )
+    .await?;
+
+    // (2) NEW v1+ strategy_events row — operator-success-report source of
+    // truth for R7's "kill-switch trips" count (Q8).  No money columns
+    // — reconciler invariant unaffected.
+    sqlx::query(
+        "INSERT INTO strategy_events \
+         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&strategy_row_id)
+    .bind(&strategy_ts)
+    .bind("KillSwitchTripped")
+    .bind::<Option<&str>>(None) // strategy_id — feed-level event
+    .bind::<Option<&str>>(None) // old_hash
+    .bind::<Option<&str>>(None) // new_hash
+    .bind("") // source_path
+    .bind(operator)
+    .bind(Some("kill_switch_tripped"))
+    .bind(Some(reason))
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    db_txn
+        .commit()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
 }
 
 /// Post an LLM / infra cost as a balanced journal entry (T30).
@@ -495,6 +624,43 @@ pub async fn mean_reversion_stop(
     .await
 }
 
+/// Write a `feed_reconnect` event to the `strategy_events` table (T805 — v1+ R7.1).
+///
+/// Emitted when the Binance WS handler re-establishes a connection.  The
+/// reports binary counts these per-window for the R7 system-health row.
+/// Extends `strategy_events.kind` with `"FeedReconnect"`.
+/// No SQL migration — the `kind` column is TEXT.
+/// Reconciler invariant preserved: `strategy_events` carries no money.
+///
+/// `error_summary` carries the symbol identifier (e.g. `"BTCUSDT"`).  No
+/// `strategy_id` (the event is feed-level, not strategy-level).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.feed_reconnect", skip(ledger), fields(symbol = %symbol))]
+pub async fn feed_reconnect(
+    ledger: &Ledger,
+    symbol: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    strategy_event(
+        ledger,
+        &StrategyEventWrite {
+            kind: "FeedReconnect",
+            strategy_id: None,
+            old_hash: None,
+            new_hash: None,
+            source_path: "",
+            operator: "system",
+            error_code: Some("feed_reconnect"),
+            error_summary: Some(symbol),
+            ts,
+        },
+    )
+    .await
+}
+
 /// Write a `pair_short_observation` event to the `strategy_events` table (T707 — v1.5a Q8).
 ///
 /// Emitted alongside the executed long-leg buy on entry; records "would have
@@ -536,6 +702,102 @@ pub async fn pair_short_observation(
         },
     )
     .await
+}
+
+// ── T806 — agent_uptime writers (operator success reports R7.1) ─────────────
+
+/// Format an RFC-3339 timestamp to the same 6-digit fractional-second format
+/// the `strategy_events` writer uses (`HF-3`/architect risk #4 determinism
+/// gate).  Returns the now-utc value when `ts` is `None`.
+fn uptime_ts_string(ts: Option<&str>) -> Result<String, LedgerError> {
+    if let Some(t) = ts {
+        return Ok(t.to_owned());
+    }
+    let fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    time::OffsetDateTime::now_utc()
+        .format(&fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))
+}
+
+/// Open a new uptime interval — call exactly once per agent boot.
+///
+/// Inserts `(boot_id, started_at = ts, last_heartbeat_at = ts,
+/// stopped_at = NULL)` into `agent_uptime`.  The caller supplies a
+/// freshly-generated UUID v4 as `boot_id`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.open_uptime_interval", skip(ledger))]
+pub async fn open_uptime_interval(
+    ledger: &Ledger,
+    boot_id: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    let ts_str = uptime_ts_string(ts)?;
+    sqlx::query(
+        "INSERT INTO agent_uptime (boot_id, started_at, last_heartbeat_at, stopped_at) \
+         VALUES (?, ?, ?, NULL)",
+    )
+    .bind(boot_id)
+    .bind(&ts_str)
+    .bind(&ts_str)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
+}
+
+/// Update the `last_heartbeat_at` column for the given `boot_id`.
+///
+/// Idempotent — a heartbeat for a non-existent `boot_id` is a no-op (the
+/// caller's spawned heartbeat task warn-logs and continues).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.heartbeat_uptime", skip(ledger))]
+pub async fn heartbeat_uptime(
+    ledger: &Ledger,
+    boot_id: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    let ts_str = uptime_ts_string(ts)?;
+    sqlx::query("UPDATE agent_uptime SET last_heartbeat_at = ? WHERE boot_id = ?")
+        .bind(&ts_str)
+        .bind(boot_id)
+        .execute(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
+}
+
+/// Close the uptime interval for the given `boot_id` (graceful shutdown).
+///
+/// Sets `stopped_at = ts` for the row matching `boot_id`.  If the row does
+/// not exist (caller never called `open_uptime_interval`), the UPDATE is a
+/// no-op — the caller warn-logs.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.close_uptime_interval", skip(ledger))]
+pub async fn close_uptime_interval(
+    ledger: &Ledger,
+    boot_id: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    let ts_str = uptime_ts_string(ts)?;
+    sqlx::query("UPDATE agent_uptime SET stopped_at = ? WHERE boot_id = ?")
+        .bind(&ts_str)
+        .bind(boot_id)
+        .execute(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
 }
 
 /// Persist a `FundingObs` to the `funding_rates` table (T613 — v1 Q2).

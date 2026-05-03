@@ -8,9 +8,9 @@ use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, FillView, FundingObs, JournalEntryView, LedgerError, Money, PairKey, PairMembership,
-    Price, Quantity, Side, StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp,
-    Usdt,
+    AccountId, FillView, FundingObs, JournalEntryView, LedgerError, Money, OpenPosition, PairKey,
+    PairMembership, Price, Quantity, Side, StrategyEventKind, StrategyEventView, StrategyId,
+    Symbol, Timestamp, Usdt,
 };
 
 use crate::Ledger;
@@ -407,6 +407,9 @@ fn parse_strategy_event_view(
         "PairShortObservation" | "pair_short_observation" => {
             StrategyEventKind::PairShortObservation
         }
+        // v1+ Q8 / R7.1 variants (T801 / T805 / T809)
+        "KillSwitchTripped" | "kill_switch_tripped" => StrategyEventKind::KillSwitchTripped,
+        "FeedReconnect" | "feed_reconnect" => StrategyEventKind::FeedReconnect,
         other => {
             return Err(LedgerError::Database(format!(
                 "unknown strategy event kind: {other}"
@@ -513,6 +516,153 @@ fn extract_symbol_from_description(desc: &str) -> Symbol {
     } else {
         Symbol::new("UNKNOWN")
     }
+}
+
+// ── Per-strategy P&L attribution (v1+ T803, R5.3 / Q2) ───────────────────────
+
+/// Per-strategy P&L + trade stats.
+///
+/// A struct (not tuple-of-vectors) so callers can grow new fields additively
+/// without breaking call sites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StrategyPnl {
+    /// Strategy identifier.  Pre-migration NULL rows surface as the synthetic
+    /// `StrategyId::new("(unattributed)")`.
+    pub strategy_id: StrategyId,
+    /// Realized P&L in USDT (`Σ (credit − debit)` on `income:realized_pnl`).
+    pub realized: Money<Usdt>,
+    /// Closed-trade count = number of distinct journal transactions that
+    /// produced at least one `income:realized_pnl` row in the window.
+    pub closed_trade_count: u32,
+    /// Subset of closed trades where the realized P&L was strictly positive.
+    pub winning_trade_count: u32,
+    /// `realized / closed_trade_count`, or `0` when `closed_trade_count == 0`.
+    pub avg_trade_realized: Money<Usdt>,
+}
+
+/// Return per-strategy realized P&L + trade stats over `[since, until]`.
+///
+/// Pre-migration rows (`strategy_id IS NULL`) bucket into the synthetic
+/// `StrategyId::new("(unattributed)")` row so historical fills surface in the
+/// report under a clearly-named bucket rather than vanishing.
+///
+/// Returned rows are sorted by `realized` DESC, ties broken by `strategy_id`
+/// ASC (R5.5).
+///
+/// # Sum invariant (R11.2)
+///
+/// `Σ rows.realized == realized_pnl_since(since)` when `until` is the end of
+/// the window.  Asserted by an integration test in
+/// `crates/audit/tests/pnl_by_strategy.rs`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn pnl_by_strategy(
+    ledger: &Ledger,
+    since: Timestamp,
+    until: Timestamp,
+) -> Result<Vec<StrategyPnl>, LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Pull every realized-pnl row in the window joined with its
+    // transaction's strategy_id.  We aggregate in Rust (rather than via
+    // GROUP BY) so the parse is uniform with `pnl_by_symbol` and the
+    // closed-trade count uses `COUNT(DISTINCT transaction_id)` semantics
+    // — every transaction id contributes at most one closed-trade tally.
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT je.debit_amount, je.credit_amount, jt.id, jt.strategy_id \
+         FROM journal_entries je \
+         JOIN journal_transactions jt ON je.transaction_id = jt.id \
+         WHERE je.account_id = 'income:realized_pnl' \
+           AND je.ts >= ? AND je.ts <= ?",
+    )
+    .bind(&since_str)
+    .bind(&until_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Per-strategy accumulator.  Keyed on strategy id (string) so NULL rows
+    // bucket under the synthetic "(unattributed)" key alongside other rows
+    // with the literal id.  Per-transaction stats use a side table keyed on
+    // (strategy_id, transaction_id) so we count closed trades per-strategy.
+    let mut realized: std::collections::BTreeMap<String, Decimal> =
+        std::collections::BTreeMap::new();
+    // (strategy_id, transaction_id) -> running per-txn realized delta.
+    // We accumulate the per-transaction realized delta first, then derive
+    // closed-trade and winning-trade counts at the end.  This keeps the
+    // semantics aligned with "1 closed trade = 1 transaction that produced
+    // a realized_pnl row" (a transaction may carry multiple realized_pnl
+    // entries if a partial-fill ladder writes more than one row).
+    let mut per_txn: std::collections::BTreeMap<(String, String), Decimal> =
+        std::collections::BTreeMap::new();
+
+    for (dr_str, cr_str, txn_id, strategy_id) in rows {
+        let dr: Decimal = dr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("pnl_by_strategy: parse debit".into()))?;
+        let cr: Decimal = cr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("pnl_by_strategy: parse credit".into()))?;
+        let pnl_delta = cr - dr;
+
+        let sid = strategy_id.unwrap_or_else(|| "(unattributed)".to_string());
+
+        *realized.entry(sid.clone()).or_insert(Decimal::ZERO) += pnl_delta;
+        *per_txn.entry((sid, txn_id)).or_insert(Decimal::ZERO) += pnl_delta;
+    }
+
+    // Per-strategy closed-trade and winning-trade counts.
+    let mut closed_count: std::collections::BTreeMap<String, u32> =
+        std::collections::BTreeMap::new();
+    let mut winning_count: std::collections::BTreeMap<String, u32> =
+        std::collections::BTreeMap::new();
+    for ((sid, _txn_id), txn_realized) in &per_txn {
+        *closed_count.entry(sid.clone()).or_insert(0) += 1;
+        if *txn_realized > Decimal::ZERO {
+            *winning_count.entry(sid.clone()).or_insert(0) += 1;
+        }
+    }
+
+    // Build StrategyPnl rows.
+    let mut result: Vec<StrategyPnl> = realized
+        .into_iter()
+        .map(|(sid, realized_sum)| {
+            let closed = closed_count.get(&sid).copied().unwrap_or(0);
+            let winning = winning_count.get(&sid).copied().unwrap_or(0);
+            let avg = if closed == 0 {
+                Decimal::ZERO
+            } else {
+                realized_sum / Decimal::from(closed)
+            };
+            StrategyPnl {
+                strategy_id: StrategyId::new(sid.as_str()),
+                realized: Money::<Usdt>::from_decimal(realized_sum),
+                closed_trade_count: closed,
+                winning_trade_count: winning,
+                avg_trade_realized: Money::<Usdt>::from_decimal(avg),
+            }
+        })
+        .collect();
+
+    // Sort by realized DESC, ties broken by strategy_id ASC (R5.5).
+    result.sort_by(|a, b| {
+        b.realized
+            .amount()
+            .cmp(&a.realized.amount())
+            .then_with(|| a.strategy_id.0.as_str().cmp(b.strategy_id.0.as_str()))
+    });
+
+    Ok(result)
 }
 
 // ── Per-pair P&L attribution (v1.5a T708) ────────────────────────────────────
@@ -648,6 +798,131 @@ pub async fn funding_rate_history(
         .collect()
 }
 
+// ── T806 — agent uptime intervals reader (operator success reports R7.1) ────
+
+/// One row of the `agent_uptime` table.
+///
+/// `stopped_at` is `None` while the agent is running.  The reports binary
+/// reads this slice over `[period_start, period_end]` and computes
+/// effective uptime per the formula in
+/// `spec/features/operator-success-reports.md` R7.1.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UptimeInterval {
+    pub boot_id: SmolStr,
+    pub started_at: Timestamp,
+    pub last_heartbeat_at: Timestamp,
+    pub stopped_at: Option<Timestamp>,
+}
+
+/// Return all `agent_uptime` rows whose `started_at >= since`, ordered
+/// chronologically (`started_at ASC`).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn uptime_intervals_since(
+    ledger: &Ledger,
+    since: Timestamp,
+) -> Result<Vec<UptimeInterval>, LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT boot_id, started_at, last_heartbeat_at, stopped_at \
+         FROM agent_uptime \
+         WHERE started_at >= ? \
+         ORDER BY started_at ASC, boot_id ASC",
+    )
+    .bind(&since_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (boot_id, started_at, last_heartbeat_at, stopped_at) in rows {
+        let parse_ts = |s: &str| {
+            OffsetDateTime::parse(s, &Rfc3339)
+                .map(Timestamp::new)
+                .map_err(|e| LedgerError::Database(format!("uptime ts parse: {e}")))
+        };
+        let stopped = match stopped_at {
+            Some(s) => Some(parse_ts(&s)?),
+            None => None,
+        };
+        out.push(UptimeInterval {
+            boot_id: SmolStr::new(&boot_id),
+            started_at: parse_ts(&started_at)?,
+            last_heartbeat_at: parse_ts(&last_heartbeat_at)?,
+            stopped_at: stopped,
+        });
+    }
+    Ok(out)
+}
+
+// ── T804 — ledger snapshot SHA + inception timestamp helpers ────────────────
+
+/// Stream-hash the `SQLite` database file at `db_path` with `sha2::Sha256`.
+///
+/// Used by the operator success report renderer to record the exact ledger
+/// state a report was rendered from (front-matter `ledger_sha:` field —
+/// R10.1).  The function reads the file in 64 KiB chunks so a multi-GiB
+/// ledger does not load fully into memory.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on file IO failure (open/read).
+pub fn ledger_snapshot_sha(db_path: &std::path::Path) -> Result<[u8; 32], LedgerError> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let display = db_path.display();
+    let mut file = std::fs::File::open(db_path)
+        .map_err(|e| LedgerError::Database(format!("ledger_snapshot_sha: open {display}: {e}")))?;
+    let mut hasher = Sha256::new();
+    // Heap-allocated 64 KiB buffer — clippy::large_stack_arrays.
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| LedgerError::Database(format!("ledger_snapshot_sha: read: {e}")))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().into())
+}
+
+/// Return the earliest `ts` across `journal_transactions` (the ledger's
+/// inception timestamp).
+///
+/// Used by `ReportWindow::Inception` (`crates/reports/src/window.rs`) to
+/// resolve to the (since, until) range covering the entire ledger.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.  Returns
+/// [`LedgerError::Database`] with `"ledger_inception_ts: no transactions"`
+/// when the table is empty.
+pub async fn ledger_inception_ts(ledger: &Ledger) -> Result<Timestamp, LedgerError> {
+    let rows: Vec<(Option<String>,)> = sqlx::query_as("SELECT MIN(ts) FROM journal_transactions")
+        .fetch_all(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let ts_str = rows
+        .into_iter()
+        .next()
+        .and_then(|(s,)| s)
+        .ok_or_else(|| LedgerError::Database("ledger_inception_ts: no transactions".into()))?;
+
+    OffsetDateTime::parse(&ts_str, &Rfc3339)
+        .map(Timestamp::new)
+        .map_err(|e| LedgerError::Database(format!("ledger_inception_ts: parse: {e}")))
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Net balance of an account: `Σ credits − Σ debits` for asset/income accounts,
@@ -679,4 +954,242 @@ async fn account_balance(ledger: &Ledger, account_id: &str) -> Result<Decimal, L
         total += cr - dr;
     }
     Ok(total)
+}
+
+// ── Open-positions reader (v1+ T1002 — real-mtm-unrealized-pnl) ──────────────
+
+/// Project all fills in `journal_transactions` whose `ts <= ts` into open
+/// positions per `(symbol, strategy_id)`.
+///
+/// Implements the architect's resolutions for the
+/// `real-mtm-unrealized-pnl` feature (`spec/features/real-mtm-unrealized-pnl.md`):
+/// Q1 (snapshot-vec signature parallel to `pnl_by_symbol`), Q3 (no new SQL
+/// index — full-table scan over the description-prefixed rows; same pattern
+/// `recent_fills` uses), Q7 (weighted-average cost basis with proportional
+/// release on Sells), Q8 (long-only — net-negative qty raises
+/// `LedgerError::Database`).
+///
+/// Symbol identification parses the **transaction description** via the
+/// existing private [`extract_symbol_from_description`] helper. Per
+/// `spec/features/per-symbol-position-accounts.md` Design § Q4,
+/// description-parse stays the **primary** source pre- and post-T1102 so a
+/// single code path covers both legacy rows (`account_id` =
+/// `"assets:position:BTC"` regardless of underlying symbol) and post-T1102
+/// rows (`account_id` = `format!("assets:position:{}", symbol)`). After
+/// description-parse, a defensive cross-check compares the row's
+/// position-side `account_id` against the parsed symbol; mismatches emit
+/// `tracing::warn!` (observation-only — never raises an error) so a future
+/// writer regression surfaces at read time rather than silently.
+///
+/// ## Algorithm
+///
+/// For each fill in `[inception, ts]`, ordered chronologically:
+/// - Buy `qty_b @ price_b`:
+///   `running_notional += qty_b * price_b; running_qty += qty_b`. The
+///   first Buy (after the last `running_qty == 0` reset, or the very
+///   first fill) records `opened_at` and `strategy_id` from that fill.
+/// - Sell `qty_s @ price_s` (long-only, `qty_s <= running_qty`):
+///   `released = (running_notional / running_qty) * qty_s;
+///    running_notional -= released; running_qty -= qty_s`. If
+///   `running_qty` returns to zero, the lot closes and the next Buy
+///   re-opens with a fresh `opened_at` / `strategy_id`.
+///
+/// End-of-scan: groups with `running_qty > 0` emit `OpenPosition`;
+/// `== 0` skip; `< 0` raises `LedgerError::Database`.
+///
+/// ## Determinism (R6)
+///
+/// - `BTreeMap` accumulator (no `HashMap` on the hot path), matching
+///   the precedent at [`pnl_by_symbol`].
+/// - `Decimal` arithmetic only; no `f64`.
+/// - Output `Vec` sorted by `(symbol ASC, strategy_id ASC, None last)`
+///   so two reads against the same DB return byte-identical slices.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error, and on
+/// net-negative qty for any `(symbol, strategy_id)` group (Q8 — v1+ is
+/// long-only; real shorts deferred to v2+).
+#[allow(clippy::too_many_lines)] // double-pass fold + emit + sort requires this length
+pub async fn open_positions_at(
+    ledger: &Ledger,
+    ts: Timestamp,
+) -> Result<Vec<OpenPosition>, LedgerError> {
+    /// One running open lot per `(symbol, strategy_id_string)` group.
+    ///
+    /// `strategy_id` is keyed as `Option<String>` (in the `BTreeMap` key)
+    /// rather than `Option<StrategyId>` because `StrategyId` does not
+    /// implement `Ord`; the inner `SmolStr`'s lex order is what we want
+    /// for R6 determinism.
+    struct Acc {
+        running_qty: Decimal,
+        running_notional: Decimal,
+        opened_at: Timestamp,
+        strategy_id: Option<StrategyId>,
+    }
+
+    let ts_str = ts
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Pull every Buy/Sell transaction up to `ts`, oldest first, so the fold
+    // applies fills in chronological order (Q7 weighted-average semantics
+    // depend on this). LEFT JOIN journal_entries on the position-side row
+    // (account_id LIKE 'assets:position:%') so the Q4 cross-check can compare
+    // the row's account_id against the description-parsed symbol. Pre-T1102
+    // rows yield `assets:position:BTC` (regardless of underlying symbol);
+    // post-T1102 rows yield `assets:position:<SYMBOL>` for the parsed symbol.
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT jt.id, jt.ts, jt.description, jt.strategy_id, je.account_id \
+         FROM journal_transactions jt \
+         LEFT JOIN journal_entries je \
+           ON je.transaction_id = jt.id \
+          AND je.account_id LIKE 'assets:position:%' \
+         WHERE (jt.description LIKE 'buy %' OR jt.description LIKE 'sell %') \
+           AND jt.ts <= ? \
+         GROUP BY jt.id \
+         ORDER BY jt.ts ASC, jt.id ASC",
+    )
+    .bind(&ts_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut acc: std::collections::BTreeMap<(Symbol, Option<String>), Acc> =
+        std::collections::BTreeMap::new();
+
+    for (_txn_id, ts_str_row, desc, strategy_id_str, position_account_id) in rows {
+        // Description format: "<side> <qty> <symbol> @ <price>"
+        let parts: Vec<&str> = desc.splitn(5, ' ').collect();
+        if parts.len() < 5 {
+            // Same defensive skip as `parse_fill_view_from_description`.
+            continue;
+        }
+        let side = match parts[0] {
+            "buy" => Side::Buy,
+            "sell" => Side::Sell,
+            _ => continue,
+        };
+        let qty_d: Decimal = parts[1].parse().map_err(|_| {
+            LedgerError::Database(format!("open_positions_at: bad qty in desc: {desc}"))
+        })?;
+        let price_d: Decimal = parts[4].parse().map_err(|_| {
+            LedgerError::Database(format!("open_positions_at: bad price in desc: {desc}"))
+        })?;
+
+        let symbol = extract_symbol_from_description(&desc);
+
+        // T1102 — Q4 defensive cross-check: account_id should be either the
+        // legacy BTC bucket (`"assets:position:BTC"` — pre-migration row,
+        // any underlying symbol) or the per-pair form
+        // (`format!("assets:position:{}", symbol)` — post-T1102 row).
+        // Any other value indicates a writer or renderer regression; emit
+        // `tracing::warn!` and continue with the description-parsed symbol.
+        // Never raises — description-parse is authoritative (Q4 primary).
+        if let Some(ref account_id) = position_account_id {
+            if account_id.starts_with("assets:position:") {
+                let expected_per_pair = format!("assets:position:{symbol}");
+                if account_id != "assets:position:BTC" && account_id.as_str() != expected_per_pair {
+                    tracing::warn!(
+                        target: "audit::query",
+                        account_id = %account_id,
+                        parsed_symbol = %symbol,
+                        "open_positions_at: account_id / description-symbol mismatch; \
+                         falling back to description-parsed symbol (Q4)"
+                    );
+                }
+            }
+        }
+
+        let key = (symbol, strategy_id_str.clone());
+
+        let row_ts = OffsetDateTime::parse(&ts_str_row, &Rfc3339)
+            .map(Timestamp::new)
+            .map_err(|e| LedgerError::Database(format!("open_positions_at: bad ts: {e}")))?;
+
+        match side {
+            Side::Buy => {
+                let entry = acc.entry(key).or_insert_with(|| Acc {
+                    running_qty: Decimal::ZERO,
+                    running_notional: Decimal::ZERO,
+                    opened_at: row_ts,
+                    strategy_id: strategy_id_str.as_deref().map(StrategyId::new),
+                });
+                // If the lot was previously fully closed (`running_qty == 0`)
+                // and is now re-opening, refresh `opened_at` and `strategy_id`
+                // to reflect the FIRST fill of this new open lot (per Design
+                // § "ts of first un-closed Buy" semantics).
+                if entry.running_qty == Decimal::ZERO {
+                    entry.opened_at = row_ts;
+                    entry.strategy_id = strategy_id_str.as_deref().map(StrategyId::new);
+                    entry.running_notional = Decimal::ZERO;
+                }
+                entry.running_qty += qty_d;
+                entry.running_notional += qty_d * price_d;
+            }
+            Side::Sell => {
+                let entry = acc.entry(key).or_insert_with(|| Acc {
+                    running_qty: Decimal::ZERO,
+                    running_notional: Decimal::ZERO,
+                    opened_at: row_ts,
+                    strategy_id: strategy_id_str.as_deref().map(StrategyId::new),
+                });
+                if entry.running_qty > Decimal::ZERO {
+                    // Proportional release of the running cost basis (Q7).
+                    let released = (entry.running_notional / entry.running_qty) * qty_d;
+                    entry.running_notional -= released;
+                }
+                entry.running_qty -= qty_d;
+                // Snap to zero if numerically equal, to keep the long-only
+                // close detection clean (Decimal subtraction can leave
+                // trailing zeros but is exact for integer-style quantities).
+                if entry.running_qty == Decimal::ZERO {
+                    entry.running_notional = Decimal::ZERO;
+                }
+            }
+        }
+    }
+
+    // Materialize surviving open lots, raising on net-negative groups (Q8).
+    let mut out: Vec<OpenPosition> = Vec::new();
+    for ((symbol, _sid_str), entry) in acc {
+        if entry.running_qty < Decimal::ZERO {
+            return Err(LedgerError::Database(format!(
+                "open_positions_at: net-negative qty for group ({symbol}, {sid:?}) — \
+                 short positions out of scope at v1+; check ledger integrity",
+                sid = entry.strategy_id.as_ref().map(|s| s.0.as_str()),
+            )));
+        }
+        if entry.running_qty == Decimal::ZERO {
+            continue;
+        }
+        let avg_cost_basis_d = entry.running_notional / entry.running_qty;
+        out.push(OpenPosition {
+            symbol,
+            qty: entry.running_qty,
+            avg_cost_basis: Money::<Usdt>::from_decimal(avg_cost_basis_d),
+            opened_at: entry.opened_at,
+            strategy_id: entry.strategy_id,
+        });
+    }
+
+    // Final deterministic sort: (symbol ASC, strategy_id ASC, None last).
+    // BTreeMap iteration over `(Symbol, Option<String>)` already yields
+    // (symbol ASC, strategy_id ASC, None first) — re-sort here to honour
+    // the architect's "None last" tiebreaker, which differs from
+    // `Option<T>`'s natural ordering (None < Some).
+    out.sort_by(|a, b| {
+        a.symbol
+            .cmp(&b.symbol)
+            .then_with(|| match (&a.strategy_id, &b.strategy_id) {
+                (Some(x), Some(y)) => x.0.as_str().cmp(y.0.as_str()),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            })
+    });
+
+    Ok(out)
 }

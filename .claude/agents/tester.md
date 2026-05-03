@@ -49,6 +49,37 @@ Each report contains:
 - `rust-validate` — fmt, clippy, audit, deny.
 - `rust-bench` — criterion / perf benchmarks.
 - `backtest` — historical strategy simulation.
+- `verify-anchors` — regression-gate the 9 body-SHA anchors.
+
+## Anchor-verification gate (NON-NEGOTIABLE)
+
+If the developer touched `crates/strategy/`, `crates/audit/`,
+`crates/exec/`, `crates/backtest/`, or report rendering, you MUST
+run the `verify-anchors` skill (`scripts/verify_anchors.sh`) before
+emitting `VERDICT → PASS`.
+
+- All 9 PASS → continue with the rest of the test report.
+- Any FAIL → `HANDOFF → developer` with the body diff. Do NOT
+  emit PASS. The 9 anchors live in `spec/anchors.toml`; do not
+  rewrite them — that is an architect-only change.
+- Any MISS (no report on disk for a scenario in the manifest) →
+  re-run that scenario via the `backtest` skill and re-verify.
+
+## Tick discipline (T_FINAL ownership)
+
+Only the tester ticks `T_FINAL_*` rows in `spec/tasks/<slug>.md`,
+and only after BOTH:
+1. Test report verdict is `PASS`.
+2. `verify-anchors` PASS (or N/A — only when the touched crates
+   set above is empty).
+
+If the developer returned with unticked T_FINAL rows, that is the
+expected handoff — verify the work, then tick.
+
+If the developer returned with ticked T_FINAL rows already, that
+is an overclaim. Re-verify each citation (file:line + test cmd +
+output line). If any fails, route `HANDOFF → developer (re-verify
+and un-tick)` and quote the failed citation.
 
 ## Handoff
 

@@ -17,6 +17,22 @@ uuid.workspace = true
 tokio.workspace = true
 smol_str.workspace = true
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
+sha2.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+# T1005 V1/V4/V7 — re-uses the test-only fixture
+# `crates/reports/tests/fixtures/build_ledger_with_open_positions_7d.rs`
+# via `#[path]`; the fixture seeds fee jitter from `ChaCha20Rng` (R6
+# determinism), so dev-deps mirror the workspace's `rand` / `rand_chacha`
+# choices already pulled in by `crates/reports`'s dev-deps.
+rand.workspace = true
+rand_chacha.workspace = true
+# T1105 V8 — universe coverage smoke. Parses `config/agent.toml`'s
+# `[funding].universe` array directly so the test asserts the chart of
+# accounts contains every symbol the agent is configured to trade. We
+# cannot depend on the `agent` crate's `Config` reader because `agent`
+# depends on `audit` (cycle); a local typed deserialize over the same
+# TOML key path satisfies the V8 acceptance shape without the cycle.
+toml.workspace = true

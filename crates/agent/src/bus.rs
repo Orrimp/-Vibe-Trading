@@ -237,3 +237,125 @@ impl EventBus {
         self.funding_obs_tx.subscribe()
     }
 }
+
+// ── T903a-glue — `FillPublisher` impl on the bus ─────────────────────────────
+//
+// Closes the `live-cockpit-unified` Wave 2 bus-wiring loop: Dev A landed
+// `exec::FillPublisher` + `exec::PaperEnginePublisher` inside `crates/exec/`
+// (no agent-side dependency, to keep the dep graph acyclic).  This impl
+// is the single agent-side glue the design [Q-resolution table row Q6 +
+// Bus producer wiring → `fills` / `positions` rows] calls for: it lets a
+// `Arc<EventBus>` be handed in as `Arc<dyn FillPublisher>` to
+// `PaperEnginePublisher::with_publisher(...)` so every fill the live paper
+// engine produces fans out on `bus.fills_tx` + `bus.positions_tx`.
+//
+// Body just delegates to the existing `publish_fill` / `publish_position`
+// methods, so the broadcast policy (no-op when no subscribers; lag handling
+// on the receiver side) is shared with all other publish paths.  The
+// callers pass `&Fill` / `&Position` (per the trait signature); we clone
+// once at the publish boundary because `broadcast::Sender::send` needs an
+// owned value — same allocation cost the trait already accepts on the
+// `RecordingPublisher` test helper in `crates/exec/src/paper.rs`.
+impl exec::FillPublisher for EventBus {
+    fn publish_fill(&self, fill: &trading_core::Fill) {
+        // Delegate via the existing publisher; clone matches the
+        // broadcast-channel ownership requirement.  `let _ = ...` swallows
+        // the `SendError::Closed` case (no subscribers attached) — same
+        // policy as `EventBus::publish_fill`.
+        EventBus::publish_fill(self, fill.clone());
+    }
+
+    fn publish_position(&self, pos: &trading_core::Position) {
+        EventBus::publish_position(self, pos.clone());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use std::sync::Arc;
+
+    use exec::{FillPublisher, PaperEnginePublisher};
+    use rust_decimal_macros::dec;
+    use trading_core::{
+        FeeTier, Fill, FillId, Liquidity, Money, OrderId, Position, Price, Quantity, Side, Symbol,
+        Timestamp,
+    };
+
+    use super::*;
+
+    fn sample_fill() -> Fill {
+        Fill {
+            id: FillId::new(),
+            order_id: OrderId::new(),
+            symbol: Symbol::new("BTCUSDT"),
+            side: Side::Buy,
+            qty: Quantity::new(dec!(0.1)).unwrap(),
+            price: Price::new(dec!(40_000)).unwrap(),
+            fee: Money::from_decimal(dec!(1.6)),
+            fee_tier: FeeTier::Taker,
+            venue_ts: Timestamp::new(time::OffsetDateTime::UNIX_EPOCH),
+            local_ts: Timestamp::new(time::OffsetDateTime::UNIX_EPOCH),
+            liquidity: Liquidity::Taker,
+        }
+    }
+
+    /// T903a-glue acceptance — `EventBus` implements `FillPublisher`,
+    /// and a publish on the trait surface fans out on the same
+    /// `fills_tx` / `positions_tx` channels that `publish_fill` /
+    /// `publish_position` use.  The bus wired directly via
+    /// `Arc<dyn FillPublisher>` is the cheapest correct way to hand the
+    /// bus to the live `PaperEnginePublisher`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn t903a_glue_event_bus_impls_fill_publisher() {
+        let bus = Arc::new(EventBus::new(&BusConfig::default()));
+        let mut fills_rx = bus.fills();
+        let mut pos_rx = bus.positions();
+
+        // Use the trait surface directly.  Coerce via `as` because
+        // `Arc::clone` infers the source type and won't unsize on its own.
+        let publisher: Arc<dyn FillPublisher> = bus.clone() as Arc<dyn FillPublisher>;
+        let fill = sample_fill();
+        let pos = Position::empty(Symbol::new("BTCUSDT"));
+        publisher.publish_fill(&fill);
+        publisher.publish_position(&pos);
+
+        let got_fill = tokio::time::timeout(std::time::Duration::from_millis(500), fills_rx.recv())
+            .await
+            .expect("fill recv timed out")
+            .expect("fill channel closed");
+        assert_eq!(got_fill.id, fill.id);
+
+        let got_pos = tokio::time::timeout(std::time::Duration::from_millis(500), pos_rx.recv())
+            .await
+            .expect("pos recv timed out")
+            .expect("pos channel closed");
+        assert_eq!(got_pos.symbol, pos.symbol);
+    }
+
+    /// T903a-glue end-to-end — wire `PaperEnginePublisher` against the
+    /// `EventBus` (the way `agent::runtime::run` does at task-spawn
+    /// time) and assert that calling `on_fill` fans out one `Fill` and
+    /// one `Position` event on the bus.
+    #[tokio::test(flavor = "current_thread")]
+    async fn t903a_glue_paper_engine_publisher_routes_to_bus() {
+        let bus = Arc::new(EventBus::new(&BusConfig::default()));
+        let mut fills_rx = bus.fills();
+        let mut pos_rx = bus.positions();
+
+        let publisher: Arc<dyn FillPublisher> = bus.clone() as Arc<dyn FillPublisher>;
+        let engine = PaperEnginePublisher::with_publisher(publisher);
+
+        engine.on_fill(&sample_fill(), &Position::empty(Symbol::new("BTCUSDT")));
+
+        // Both channels must observe exactly one event.
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(500), fills_rx.recv())
+            .await
+            .expect("fill recv timed out")
+            .expect("fill channel closed");
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(500), pos_rx.recv())
+            .await
+            .expect("pos recv timed out")
+            .expect("pos channel closed");
+    }
+}

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    launchd plist — operator success report (macOS dev)
+
+    T810 — operator success reports (R12.1b / Q7).  Reference-only
+    file: the operator copies it to ~/Library/LaunchAgents/ and
+    customizes the path keys.  Not wired into the build.
+
+    Install:
+        cp ops/com.trading.reports.plist.example \
+           ~/Library/LaunchAgents/com.trading.reports.plist
+        launchctl load ~/Library/LaunchAgents/com.trading.reports.plist
+
+    Verify the plist parses:
+        plutil -lint ops/com.trading.reports.plist.example
+
+    Inspect schedule:
+        launchctl print gui/$(id -u)/com.trading.reports
+
+    Schedule: Mondays 09:00 local time.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.trading.reports</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/operator/Projects/trading/target/release/report</string>
+        <string>--period</string>
+        <string>weekly</string>
+        <string>--ledger</string>
+        <string>/Users/operator/Projects/trading/data/audit/ledger.db</string>
+        <string>--output</string>
+        <string>/Users/operator/Projects/trading/spec/reports/success/weekly.md</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/operator/Projects/trading</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/operator/Projects/trading/spec/reports/success/launchd.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/operator/Projects/trading/spec/reports/success/launchd.stderr.log</string>
+</dict>
+</plist>

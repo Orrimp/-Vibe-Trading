@@ -86,6 +86,14 @@ pub struct StrategyLoadError {
 /// - `PairShortObservation` — emitted alongside the executed long-leg buy
 ///   on entry; records "would have shorted `b`" (formulation C residual,
 ///   R5.3 / Q3). No money moves.
+///
+/// v1+ adds two new variants (Q8 / R7.1) — **no SQL migration**; the
+/// `kind` column is TEXT so new values are stored directly:
+/// - `KillSwitchTripped` — emitted when the agent's `KillSwitch::trip`
+///   fires (any reason).  The reports binary counts these per-window
+///   to populate R7's "kill-switch trips" row.
+/// - `FeedReconnect` — emitted when the Binance WS handler re-establishes
+///   a connection (R7.1 feed-reconnects metric).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum StrategyEventKind {
@@ -99,6 +107,10 @@ pub enum StrategyEventKind {
     MeanReversionStop,
     /// v1.5a Q8 — observation-only: would have shorted `b` leg in formulation C.
     PairShortObservation,
+    /// v1+ Q8 — kill switch tripped (any reason).
+    KillSwitchTripped,
+    /// v1+ R7.1 — Binance WS feed re-established a connection.
+    FeedReconnect,
 }
 
 impl std::fmt::Display for StrategyEventKind {
@@ -111,6 +123,8 @@ impl std::fmt::Display for StrategyEventKind {
             Self::RebalanceRejected => write!(f, "RebalanceRejected"),
             Self::MeanReversionStop => write!(f, "MeanReversionStop"),
             Self::PairShortObservation => write!(f, "PairShortObservation"),
+            Self::KillSwitchTripped => write!(f, "KillSwitchTripped"),
+            Self::FeedReconnect => write!(f, "FeedReconnect"),
         }
     }
 }
@@ -255,6 +269,35 @@ mod tests {
 
         let kind2 = StrategyEventKind::PairShortObservation;
         let json2 = serde_json::to_string(&kind2).unwrap();
+        let back2: StrategyEventKind = serde_json::from_str(&json2).unwrap();
+        assert_eq!(kind2, back2);
+    }
+
+    #[test]
+    fn t801_strategy_event_kind_v1plus_variants() {
+        // v1+ Q8 / R7.1 — two new kind values
+        assert_eq!(
+            StrategyEventKind::KillSwitchTripped.to_string(),
+            "KillSwitchTripped"
+        );
+        assert_eq!(
+            StrategyEventKind::FeedReconnect.to_string(),
+            "FeedReconnect"
+        );
+    }
+
+    #[test]
+    fn t801_strategy_event_kind_v1plus_serde_roundtrip() {
+        let kind = StrategyEventKind::KillSwitchTripped;
+        let json = serde_json::to_string(&kind).unwrap();
+        // PascalCase rename — the JSON form is "\"KillSwitchTripped\""
+        assert_eq!(json, "\"KillSwitchTripped\"");
+        let back: StrategyEventKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(kind, back);
+
+        let kind2 = StrategyEventKind::FeedReconnect;
+        let json2 = serde_json::to_string(&kind2).unwrap();
+        assert_eq!(json2, "\"FeedReconnect\"");
         let back2: StrategyEventKind = serde_json::from_str(&json2).unwrap();
         assert_eq!(kind2, back2);
     }

@@ -1,0 +1,34 @@
+# systemd unit — operator success report (Linux production)
+#
+# T810 — operator success reports (R12.1b / Q7).  Companion to
+# `reports.timer.example`.  Reference-only file: the operator copies
+# it to /etc/systemd/system/ and customizes paths + user.  Not wired
+# into the build.
+#
+# The unit invokes the pre-built `report` binary (NOT `cargo run`) so
+# production never triggers a recompile.  Fall back to a debug build
+# only on a workstation.
+
+[Unit]
+Description=Trading agent — operator success report (weekly run)
+After=network.target
+
+[Service]
+Type=oneshot
+# Adjust user/group to the operator's deploy account.
+User=trading
+Group=trading
+# Adjust to wherever the trading workspace is installed.
+WorkingDirectory=/opt/trading
+# Adjust ledger path + period as needed.
+ExecStart=/opt/trading/target/release/report --period weekly --ledger /opt/trading/data/audit/ledger.db --output /opt/trading/spec/reports/success/weekly-%Y-%m-%dT%H%M%SZ.md
+# Hardening — read-only filesystem with the workspace mounted writable.
+ProtectSystem=strict
+ReadWritePaths=/opt/trading/spec/reports/success
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

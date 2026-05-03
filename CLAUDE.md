@@ -6,8 +6,11 @@ multi-agent workflow. Before doing anything non-trivial, read [AGENT.md](AGENT.m
 ## TL;DR for Claude
 
 - The canonical workflow is **analyst → architect → (developer ‖ ui-designer)
-  → tester**, with bidirectional feedback routes. Developer and ui-designer
-  run in parallel whenever a feature has both backend and UI surface.
+  → tester → presenter → human**, with bidirectional feedback routes.
+  Developer and ui-designer run in parallel whenever a feature has both
+  backend and UI surface. The presenter is the agile sprint-review face —
+  it assembles a `spec/presentations/<slug>-<date>.md` for operator approval
+  and runs only after `VERDICT → PASS`.
 - Use **sub-agents in parallel** whenever their work is independent — see
   [AGENT.md](AGENT.md#parallelism-rules).
 - All durable output goes into `spec/` via the [`spec-update`](.claude/skills/spec-update/SKILL.md)

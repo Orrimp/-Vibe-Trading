@@ -61,6 +61,14 @@ pub async fn chart_of_accounts(ledger: &Ledger) -> Result<(), LedgerError> {
 /// # Errors
 ///
 /// Returns [`LedgerError::Database`] on any SQL error.
+#[deprecated(
+    since = "1.6.0",
+    note = "shape mismatch — takes base assets (e.g. \"BTC\") but \
+            migration 006_per_symbol_position_accounts.sql seeds \
+            pair symbols (e.g. \"BTCUSDT\"). The migration is the \
+            canonical seed; this function has zero callers and \
+            will be removed in a follow-up wave."
+)]
 #[instrument(name = "ledger.bootstrap_v1_universe", skip_all)]
 pub async fn seed_universe_accounts(
     ledger: &Ledger,

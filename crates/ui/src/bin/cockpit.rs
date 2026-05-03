@@ -1,24 +1,57 @@
-//! Cockpit binary — live ops view.
+//! Cockpit binary — fixtures-only ops view.
 //!
 //! Wires the `ui` crate panels into an iced `Application` using the
-//! functional builder API (`iced::application` / `iced::run`). The empty
-//! `Subscription` in v0 is replaced by a real broadcast subscription in
-//! T32 (Week 2).
+//! functional builder API (`iced::application` / `iced::run`).
 //!
-//! Feature flags:
+//! ## Why `--features live` no longer applies here (T908)
+//!
+//! Pre-T908, this binary accepted a `--features live` build that
+//! constructed an *empty* `Arc<EventBus>` — every panel stayed in
+//! `Loading` forever because nothing was publishing. That dead-end was
+//! the exact failure mode the unified [`cockpit_live`] binary exists
+//! to delete. Per
+//! [`spec/features/live-cockpit-unified.md` Q7](../../../../spec/features/live-cockpit-unified.md#q7--keep-two-binary-path-alive)
+//! the standalone `cockpit` binary is now fixtures-only; an explicit
+//! [`compile_error!`] below fires if anyone tries
+//! `cargo run --bin cockpit --features live`, redirecting them to
+//! `cargo run --bin cockpit_live --features live` (the unified binary
+//! that actually wires the bus + kill switch + audit ledger end-to-end).
+//!
+//! Feature flag still supported here:
 //! - `fixtures` — boot against deterministic in-memory data from
 //!   `ui::fixtures`; no `agent` process required. Best for layout smoke
 //!   tests and demo runs.
-//! - `live` — subscribe to a same-process `agent::EventBus` via
-//!   [`ui::live::subscription`]. With no bus publishing, every panel
-//!   stays in `Loading`; with a running agent publishing into the bus,
-//!   fills / positions / P&L stream in via broadcast receivers.
 //!
-//! The `live` path uses a shared `Arc<EventBus>`. In a unified
-//! agent+cockpit binary (future v0.5), the bus would be threaded in
-//! here; for now the cockpit creates an empty bus at startup so it
-//! boots cleanly in isolation — see
-//! `spec/reports/dev-week2-broadcast-api-2026-04-18.md` § IPC model.
+//! [`cockpit_live`]: ../../bin/cockpit_live/index.html
+
+// T908 — deprecation shim. The standalone `cockpit` bin no longer
+// honors `--features live` as the live entry point; the new home for
+// live wiring is the `cockpit_live` bin (see Cargo.toml
+// `[[bin]] cockpit_live`, `required-features = ["live"]`).
+//
+// Two layers of gating defend against the dead empty-bus path:
+//
+// 1. **Cargo-level**: this bin declares `required-features =
+//    ["fixtures"]` in `Cargo.toml`, so `cargo run --bin cockpit
+//    --features live` fails at resolve time with "target requires the
+//    features: fixtures" — pointing the operator at the right call.
+// 2. **Source-level (this `compile_error!`)**: fires only when
+//    `live` is requested *without* `fixtures`. That combination is
+//    impossible to hit through the cargo gate above, but if a future
+//    edit ever drops the `required-features` line, this shim still
+//    routes the operator to `cockpit_live` with a clear message
+//    instead of silently re-introducing the empty-bus dead end.
+//
+// Workspace-wide `cargo build --workspace --all-features` (which
+// activates both `live` and `fixtures`) compiles cleanly because the
+// `not(feature = "fixtures")` half of the gate is false.
+#[cfg(all(feature = "live", not(feature = "fixtures")))]
+compile_error!(
+    "The `cargo run --bin cockpit --features live` path was retired in \
+     live-cockpit-unified (T908). Use `cargo run --bin cockpit_live --features live` \
+     for the unified agent+cockpit binary; the headless agent still runs via \
+     `cargo run --bin trading`. The standalone `cockpit` bin is fixtures-only."
+);
 
 use iced::widget::{Column, Row};
 use iced::{Element, Length};
@@ -27,9 +60,6 @@ use ui::state::{Cockpit, Message};
 use ui::strings::APP_TITLE;
 use ui::theme::{color, layout, space};
 use ui::widgets::{kill, latency, pnl, positions, strategies, tape};
-
-#[cfg(feature = "live")]
-use std::sync::Arc;
 
 fn main() -> iced::Result {
     iced::application(App::boot, App::update, App::view)
@@ -42,8 +72,6 @@ fn main() -> iced::Result {
 #[derive(Default)]
 struct App {
     cockpit: Cockpit,
-    #[cfg(feature = "live")]
-    bus: Option<Arc<agent::EventBus>>,
 }
 
 impl App {
@@ -63,19 +91,7 @@ impl App {
         #[cfg(not(feature = "fixtures"))]
         let cockpit = Cockpit::new();
 
-        #[cfg(feature = "live")]
-        let bus = Some(Arc::new(agent::EventBus::new(
-            &agent::config::BusConfig::default(),
-        )));
-
-        (
-            Self {
-                cockpit,
-                #[cfg(feature = "live")]
-                bus,
-            },
-            iced::Task::none(),
-        )
+        (Self { cockpit }, iced::Task::none())
     }
 
     fn title(&self) -> String {
@@ -86,19 +102,13 @@ impl App {
         ui::state::update(&mut self.cockpit, msg);
     }
 
-    /// Cockpit subscription — swapped by feature flag.
+    /// Cockpit subscription — fixtures path only.
     ///
-    /// - `live`  → real broadcast-bus stream (T32).
     /// - `fixtures` or default → empty subscription; the `fixtures` boot
     ///   already populates every panel, so no live stream is needed.
+    /// - The retired `live` arm now lives in `cockpit_live` (T908).
     #[allow(clippy::unused_self)]
     fn subscription(&self) -> iced::Subscription<Message> {
-        #[cfg(feature = "live")]
-        {
-            if let Some(bus) = self.bus.as_ref() {
-                return ui::live::subscription(Arc::clone(bus));
-            }
-        }
         iced::Subscription::none()
     }
 

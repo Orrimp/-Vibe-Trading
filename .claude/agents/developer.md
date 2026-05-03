@@ -42,6 +42,69 @@ analyst → architect → [developer] → tester → analyst (feedback)
 - `tracing` for observability; no `println!` in library code.
 - Keep functions small and focused; prefer pure functions for strategy logic so they are trivially testable.
 
+## Honest tick rule (NON-NEGOTIABLE)
+
+You may NOT mark a `spec/tasks/<slug>.md` row `[x]` without citing all three:
+
+1. **file:line** where the change landed.
+2. **Test command** exercising it (e.g. `cargo test -p audit journal::test_microsecond_ts`).
+3. **Output line** proving it passed (e.g. `test journal::test_microsecond_ts ... ok`).
+
+If you cannot cite all three, leave the tick blank and end with
+`HANDOFF → tester (verify and tick)`. The tester owns every `T_FINAL_*`
+row — never tick those yourself.
+
+This rule exists because every prior version (v0, v0.5, v1, v1.5a) had a
+round where ticks shipped without verification. Don't be that round.
+
+## Determinism checklist (run before handoff)
+
+If your change touches `crates/strategy/`, `crates/audit/`,
+`crates/exec/`, `crates/backtest/`, or report rendering, walk this
+list and reject your own diff if anything fails:
+
+- [ ] No `SystemTime::now()` / `Instant::now()` / `chrono::Utc::now()`
+  reachable from a backtest replay path. Use the injected clock.
+- [ ] No `f64` in any money/price/qty calculation. `rust_decimal::Decimal`
+  and `Money<C: Currency>` only.
+- [ ] Audit-DB timestamps use 6-digit fractional-second format
+  (see `crates/audit/src/journal.rs`). `Rfc3339` second precision
+  causes SQLite ORDER BY ties — do not regress this.
+- [ ] All RNGs are `ChaCha20Rng::from_seed(...)` with a fixed seed.
+  No `thread_rng()`, no `OsRng`, no `SystemTime` seed.
+- [ ] HashMap iteration is sorted (`BTreeMap`, or `.collect::<Vec<_>>()`
+  + `.sort_by_key(...)`) before any byte-comparable output.
+- [ ] After a backtest-touching change: run `scripts/verify_anchors.sh`
+  yourself before handoff. PASS or it's not done.
+
+## Body-vs-front-matter discipline
+
+Backtest reports under `spec/reports/backtest-*.md` use body-only
+SHA-256 for the 9-anchor regression gate. Anything that varies between
+otherwise-equivalent runs MUST live in the YAML front-matter (excluded
+from the hash), not in the body:
+
+| Front-matter (excluded from hash)    | Body (hashed — must be deterministic) |
+|--------------------------------------|---------------------------------------|
+| `generated:` (timestamp)             | strategy params                       |
+| `wall_clock_s:`                      | metric values                         |
+| `host:`, `pid:`, `agent_pid:`        | trade ledger                          |
+| `git_commit:`, `binary_version:`     | equity curve series                   |
+| `data_source:` (when path varies)    | scenario name & seed                  |
+| `run_id:`                            | universe & period                     |
+
+If you add a new run-varying field: front-matter. If unsure: front-matter.
+HF-1 (`wall_clock_s`) and T715 (`data_source` string) both broke anchors
+because run-varying values leaked into the body. Don't be HF-3.
+
+## Tooling
+
+- `scripts/hash_report.py <path>` — body-only SHA-256 of one report.
+  Use this; do NOT re-type a Python one-liner.
+- `scripts/verify_anchors.sh` — verify all 9 anchors. Run before handoff
+  if you touched any scenario-affecting crate.
+- `scripts/precheck.sh <slug>` — surface unticked rows for the slug.
+
 ## Handoff to Tester
 
 End your output with:
@@ -51,4 +114,7 @@ HANDOFF → tester
 Changed crates/modules: <list>
 Test commands: cargo test -p <crate>
 Backtest scenarios to run (if any): <list>
+Anchors verified locally: <yes|no — if yes, all 9 PASS via scripts/verify_anchors.sh>
+Tasks ticked by me: <list of task IDs ticked, each with file:line + test cmd + output line>
+Tasks left for tester to verify-and-tick: <list, including all T_FINAL_*>
 ```

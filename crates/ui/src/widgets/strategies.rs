@@ -143,10 +143,14 @@ fn event_row(ev: &StrategyEventView) -> Element<'_, Message> {
         StrategyEventKind::Reject | StrategyEventKind::RebalanceRejected => {
             (STRATEGIES_EVENT_REJECT, color::NEG)
         }
-        // v1.5a Q8 — new strategy event kinds; rendered as informational events
-        StrategyEventKind::MeanReversionStop | StrategyEventKind::PairShortObservation => {
-            (STRATEGIES_EVENT_LOAD, color::FG_MUTED)
-        }
+        // v1.5a Q8 — new strategy event kinds (MeanReversionStop /
+        // PairShortObservation), and v1+ Q8 / R7.1 operator-success-report
+        // sources (KillSwitchTripped / FeedReconnect); rendered as
+        // informational events.
+        StrategyEventKind::MeanReversionStop
+        | StrategyEventKind::PairShortObservation
+        | StrategyEventKind::KillSwitchTripped
+        | StrategyEventKind::FeedReconnect => (STRATEGIES_EVENT_LOAD, color::FG_MUTED),
     };
     let id = ev
         .strategy_id
@@ -172,13 +176,18 @@ fn colored_cell<'a>(s: String, c: iced::Color) -> Element<'a, Message> {
 /// text the panel does.
 pub(crate) fn event_kind_label(ev: &StrategyEventView) -> &'static str {
     match ev.kind {
-        StrategyEventKind::Load => STRATEGIES_EVENT_LOAD,
+        // v1.5a Q8 informational kinds (MeanReversionStop /
+        // PairShortObservation) and v1+ Q8 / R7.1 operator-success-report
+        // sources (KillSwitchTripped / FeedReconnect) all render under the
+        // generic Load label in the cockpit (informational, no error
+        // styling).
+        StrategyEventKind::Load
+        | StrategyEventKind::MeanReversionStop
+        | StrategyEventKind::PairShortObservation
+        | StrategyEventKind::KillSwitchTripped
+        | StrategyEventKind::FeedReconnect => STRATEGIES_EVENT_LOAD,
         StrategyEventKind::Swap => STRATEGIES_EVENT_SWAP,
         StrategyEventKind::Unload => STRATEGIES_EVENT_UNLOAD,
         StrategyEventKind::Reject | StrategyEventKind::RebalanceRejected => STRATEGIES_EVENT_REJECT,
-        // v1.5a Q8 — new strategy event kinds; rendered as generic load label
-        StrategyEventKind::MeanReversionStop | StrategyEventKind::PairShortObservation => {
-            STRATEGIES_EVENT_LOAD
-        }
     }
 }

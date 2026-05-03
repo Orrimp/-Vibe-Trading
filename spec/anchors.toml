@@ -1,0 +1,75 @@
+# Locked body-only SHA-256 anchors for the 9-scenario regression gate.
+#
+# `body` = report file with leading YAML front-matter (`---\n...\n---\n`)
+# stripped. The front-matter holds run-varying metadata (generated:,
+# wall_clock_s, host, pid, git_commit, data_source); the body is the
+# deterministic part that must remain byte-identical across runs.
+#
+# Verify with: scripts/verify_anchors.sh
+# Recompute one: scripts/hash_report.py spec/reports/backtest-...md
+#
+# Owners: tester locks new entries; architect approves any change to an
+# existing entry. Do NOT mutate without an architect-approved migration
+# (see spec/architecture.md "v1.5a regression-gate discipline").
+
+[[anchors]]
+scenario = "btc-2023-1m-sma-cross"
+version  = "v0"
+sha256   = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c"
+
+[[anchors]]
+scenario = "btc-2023-1m-sma-baseline-refresh"
+version  = "v0"
+sha256   = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c"
+
+[[anchors]]
+scenario = "btc-2023-1m-macd-trend"
+version  = "v0.5"
+sha256   = "ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805"
+
+[[anchors]]
+scenario = "btc-2023-1m-rsi-reversion"
+version  = "v0.5"
+sha256   = "bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa"
+
+[[anchors]]
+scenario = "btc-2023-1m-bbands-mean-revert"
+version  = "v0.5"
+sha256   = "d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3"
+
+[[anchors]]
+scenario = "top10-2023-1h-momentum"
+version  = "v1"
+sha256   = "3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97"
+
+[[anchors]]
+scenario = "top10-2024-h1-momentum"
+version  = "v1"
+sha256   = "1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6"
+
+[[anchors]]
+scenario = "pairs-2023-zscore-mr"
+version  = "v1.5a"
+sha256   = "90591a0ecc5d56c8ff93834b127a3780a31f51634f38f12c3c412391116abbd0"
+
+[[anchors]]
+scenario = "pairs-2024-h1-zscore-mr"
+version  = "v1.5a"
+sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
+
+# v1+ operator success report scenarios (T816).  Resolved by
+# verify_anchors.sh under spec/reports/success/success-*-<scenario>.md
+# (the script tries the backtest-* glob first, then falls through to the
+# success-* glob).  Captured at first deterministic local run on
+# 2026-05-01 against the FIXTURE_SEED = 0xC0FFEE fixtures shipped at
+# crates/reports/tests/fixtures/build_ledger_{7d,90d}.rs.
+
+[[anchors]]
+scenario = "report-sample-7d"
+version  = "v1+"
+sha256   = "ab06dbcbe9a2d81be0f1ad0eecaab1d513c4bcbe5469b4eec4e9b58989482b4c"
+
+[[anchors]]
+scenario = "report-sample-90d"
+version  = "v1+"
+sha256   = "2ef403f1845b8eb3b87fe381f89279c488bc54840b1d0306d95e6122bbdffd0f"

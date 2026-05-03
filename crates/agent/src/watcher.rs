@@ -105,11 +105,33 @@ pub async fn run_strategy_watcher(
             .expect("watch strategy dir");
 
         // Relay from sync channel → async channel.
-        for event in notify_rx {
-            if tx.blocking_send(event).is_err() {
-                break;
+        //
+        // We poll with a timeout so the blocking thread can observe the
+        // async receiver being dropped (i.e. `run_strategy_watcher`
+        // exited on shutdown_rx).  Without the timeout the thread would
+        // block forever inside `for event in notify_rx`, pinning the
+        // tokio runtime's blocking-pool shutdown — see T902 smoke-test
+        // hang.  200ms cadence is small enough that test/runtime
+        // shutdown completes well inside the 2s drain budget yet large
+        // enough to be effectively zero-cost in steady-state.
+        loop {
+            match notify_rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(event) => {
+                    if tx.blocking_send(event).is_err() {
+                        break;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if tx.is_closed() {
+                        break;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
+        // Explicitly drop the notify::Watcher so the OS-level handles
+        // are released before the blocking task returns to the pool.
+        drop(watcher);
     });
 
     // Debounce map: path → last-event-kind + instant of last event.

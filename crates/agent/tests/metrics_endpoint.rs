@@ -35,7 +35,11 @@ const REQUIRED_METRICS: &[&str] = &[
 async fn t27_metrics_endpoint_returns_all_r9_2_names() {
     // Install the Prometheus recorder first, then register metrics.
     // This is the fixed ordering introduced in HF-2.
-    agent::observability::start_prometheus_exporter(METRICS_ADDR)
+    let cfg = agent::config::ObservabilityConfig {
+        prometheus_listen: METRICS_ADDR.into(),
+        prometheus_enabled: true,
+    };
+    agent::observability::start_prometheus_exporter(&cfg)
         .expect("failed to start prometheus exporter on test port");
     agent::observability::register_metrics();
 

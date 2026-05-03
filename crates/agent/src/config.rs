@@ -195,12 +195,22 @@ impl Default for KillSwitchConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservabilityConfig {
     pub prometheus_listen: String,
+    /// When `false`, [`crate::observability::start_prometheus_exporter`]
+    /// returns `Ok(())` without binding the listener and emits one
+    /// `prometheus_listener_disabled` info line.
+    ///
+    /// Default: `true` (preserves pre-feature behavior). The unified
+    /// `cockpit_live` binary may set this to `false` when running on a
+    /// laptop where binding `:9100` is wrong (R7 / live-cockpit-unified Q4).
+    #[serde(default = "default_true")]
+    pub prometheus_enabled: bool,
 }
 
 impl Default for ObservabilityConfig {
     fn default() -> Self {
         Self {
             prometheus_listen: "0.0.0.0:9100".into(),
+            prometheus_enabled: true,
         }
     }
 }
@@ -545,6 +555,46 @@ max_drawdown_stop_pct   = -15.0
             matches!(err, ConfigError::InvalidValue { ref field, .. } if field.contains("exposure_cap")),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn t901_prometheus_enabled_defaults_true_when_omitted() {
+        // Pre-feature config files (no `prometheus_enabled` key in
+        // `[observability]`) must load successfully with the field
+        // defaulting to `true`.  V10 negative case.
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[observability]
+prometheus_listen = "0.0.0.0:9100"
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse pre-feature config");
+        assert!(
+            cfg.observability.prometheus_enabled,
+            "prometheus_enabled must default to true for backward compat"
+        );
+        assert_eq!(cfg.observability.prometheus_listen, "0.0.0.0:9100");
+    }
+
+    #[test]
+    fn t901_prometheus_enabled_explicit_false_round_trips() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[observability]
+prometheus_listen   = "0.0.0.0:9100"
+prometheus_enabled  = false
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse explicit-false config");
+        assert!(!cfg.observability.prometheus_enabled);
     }
 
     #[test]

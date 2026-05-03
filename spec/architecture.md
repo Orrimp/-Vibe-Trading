@@ -2,8 +2,36 @@
 slug: architecture
 status: in-progress
 owner: architect
-updated: 2026-04-30
+updated: 2026-05-03
 ---
+
+<!-- updated 2026-05-01 (architect) — live-cockpit-unified Design landing:
+     workspace-map adds `cockpit_live` bin under crates/ui; new public API
+     `agent::runtime::run` (RunHandles, CancellationToken); deprecation of
+     `cockpit --features live`; dep edge `ui → agent` now load-bearing for
+     the unified bin. Full delta in the live-cockpit-unified architectural
+     deltas subsection below + changelog entry at the bottom. -->
+
+<!-- updated 2026-05-02 (architect) — real-mtm-unrealized-pnl Design landing:
+     adds new `trading_core::OpenPosition` struct, new `audit::query::open_positions_at`
+     reader, no new migration (Q3 no-index for v1+; conditional follow-up
+     `006_open_positions_index.sql` only if V8 perf gate fails); 11 anchors
+     stay byte-identical (Q4). R10 (post_fill BTC hardcode at
+     `crates/audit/src/journal.rs:82,135`) explicitly DEFERRED to a follow-up
+     brief `per-symbol-position-accounts.md`. -->
+
+<!-- updated 2026-05-02 (ui-designer) — Frontend ↔ backend interfaces
+     subsection added under `### Frontend — iced`. Documents the seven
+     load-bearing surfaces between cockpit/viewer and the rest of the
+     workspace: `Arc<EventBus>` (10 channels + backpressure policy),
+     `audit::query` read-only API (15 read paths), `KillTripFn` closure
+     (the sole operator → backend write surface, via `KillSwitch::trip`
+     on the side-thread tokio runtime), `spec/reports/**/*.md` (viewer
+     read path + file-naming convention), theme/strings/fixtures
+     widget-side rules. Companion document
+     `spec/ui-design-principles.md` lands the design-system rules. -->
+
+
 
 # Architecture — Crypto Trading Agent
 
@@ -29,9 +57,13 @@ trading/
 │   ├── backtest/         # backtest engine (bin target: backtest)
 │   ├── audit/            # double-entry ledger of decisions/orders/fills/PnL
 │   ├── cost/             # cost telemetry — LLM tokens, infra, data feeds (Q4)
+│   ├── reports/          # v1+ operator success reports — read-only over audit
+│   │                     # (lib + bin: report). Cron + on-kill-switch friendly.
 │   ├── ui/               # iced desktop app — ops cockpit + backtest viewer
-│   │                     # (bin targets: cockpit, viewer)
-│   └── agent/            # top-level orchestrator (bin target: trading)
+│   │                     # (bin targets: cockpit, cockpit_live, viewer)
+│   └── agent/            # top-level orchestrator (bin target: trading;
+│                         # lib also hosts agent::runtime::run shared by
+│                         # cockpit_live — see live-cockpit-unified)
 ```
 
 ## Naming conventions
@@ -91,6 +123,7 @@ field.
 flowchart LR
   feed[Exchange feed] --> data
   data --> features
+  data -. reconnect events .-> audit
   features --> models
   features --> llm
   models --> strategy
@@ -98,7 +131,197 @@ flowchart LR
   strategy --> risk
   risk --> exec
   exec --> feed
+  exec --> audit
+  agent --> audit
+  reports -. read-only .-> audit
 ```
+
+### Crate dependency edges (runtime, non-test)
+
+The arrows above are message / data flow. The Rust crate-graph
+edges are a superset of those plus a few read-only sinks. Each
+edge below is a `[dependencies]` line in some crate's `Cargo.toml`
+and exists for one explicit reason:
+
+- `data → audit` — the Binance reconnect handler calls
+  `audit::journal::feed_reconnect` to journal feed-disconnect /
+  reconnect events into the `strategy_events` table. Added in
+  Wave 1 / T805 alongside the v1+ operator-success-reports
+  feature. The reverse edge (`audit → data`) does not exist;
+  audit is a pure sink.
+- `exec → audit` — `post_fill` writes balance-affecting journal
+  entries on every paper / live fill (existing v0 edge).
+- `agent → audit` — kill-switch trips, uptime open / heartbeat /
+  close intervals, strategy registry mutations all journal via
+  `audit::journal::*` writers (v0 + v1+ additions).
+- `reports → {trading_core, audit, data, cost}` — read-only
+  consumers; no reverse edges (`crates/reports/` is leaf in the
+  graph). v1+ addition.
+- `ui → {trading_core, audit}` — read-only consumer of
+  `audit::query` for the cockpit's live-view widgets; no reverse
+  edge (audit knows nothing about UI).
+- `ui → agent` (load-bearing under `--features live`) — the
+  unified `cockpit_live` bin imports `agent` to call
+  `agent::runtime::run(RunHandles, CancellationToken)` on a
+  side-thread tokio runtime; constructs the shared
+  `Arc<EventBus>` and `Arc<KillSwitch>` once and clones them
+  into both the `RunHandles` and the `Cockpit` model. The same
+  edge gates the iced `ui::live::subscription` against the real
+  bus. Live-cockpit-unified (2026-05-01) made this a
+  load-bearing edge — pre-feature it existed only for
+  `cockpit --features live` (now retired). No reverse edge
+  (`agent → ui` would be a cycle).
+- Every crate depends on `trading_core` for shared domain types
+  (`Symbol`, `Money<C>`, `FillView`, `JournalEntryView`,
+  `StrategyEventView`, `FundingObs`, …); `trading_core` itself
+  depends only on stdlib + `rust_decimal` + `time` + `smol_str`
+  (no reverse edges).
+
+The single rule: **audit is a sink** — it has zero outgoing
+runtime deps to any sibling crate. Anything that needs to write
+to the ledger imports `audit`; nothing that audit imports
+imports back. This keeps the reconciler invariant
+(Σ debits == Σ credits) provable from a single crate's source.
+
+### Public API surface — bin-shared agent runtime (live-cockpit-unified)
+
+When the `live-cockpit-unified` feature lands the `agent` crate
+exposes a small public surface so the `trading` headless bin and
+the `cockpit_live` unified bin can share one task-spawn loop:
+
+```rust
+// crates/agent/src/runtime.rs
+
+pub struct RunHandles {
+    pub config: Arc<crate::config::Config>,
+    pub ledger: Arc<audit::Ledger>,
+    pub bus: Arc<crate::EventBus>,
+    pub kill_switch: Arc<crate::KillSwitch>,
+    pub registry: Arc<strategy::StrategyRegistry>,
+    pub boot_id: String,
+}
+
+pub async fn run(
+    handles: RunHandles,
+    cancel: tokio_util::sync::CancellationToken,
+) -> anyhow::Result<()>;
+
+pub async fn shutdown_writer(
+    ledger: Arc<audit::Ledger>,
+    boot_id: &str,
+);
+```
+
+Caller responsibilities (both bins):
+1. construct `RunHandles` (config + ledger + bus + kill_switch +
+   registry + boot_id) before calling;
+2. call `audit::journal::open_uptime_interval` before `run`;
+3. install a Ctrl-C handler that calls `cancel.cancel()`;
+4. after `run` returns Ok(), call `shutdown_writer` exactly once
+   (it issues the T806 close-uptime row).
+
+The `cockpit_live` bin additionally hosts the `tokio::runtime::Runtime`
+on a side `std::thread::spawn`, runs iced on the main thread, and
+threads the same `Arc<EventBus>` / `Arc<KillSwitch>` into the iced
+`Cockpit` model so the cockpit's `Message::KillConfirmed` arm calls
+`KillSwitch::trip(HaltReason::ManualOperator)` on the *same*
+kill switch the agent owns (closes the analyst-flagged
+trip-button-no-op gap). T809 dual-write is preserved by sticky-trip
+semantics in `KillSwitch::trip`.
+
+The headless `trading` bin uses the same `agent::runtime::run`
+verbatim — it just runs everything on a `#[tokio::main]` runtime
+and doesn't open a window.
+
+**Bus producer wiring (live-cockpit-unified):** the `EventBus`
+publisher API was always present (`crates/agent/src/bus.rs`
+lines 116–166); but pre-feature, only the strategy watcher called
+into it. The unified-binary feature wires three additional
+producers:
+- `crates/exec/src/paper.rs::PaperEngine` publishes `fills` +
+  `positions` after each post_fill (via a new
+  `exec::publisher::FillPublisher` trait — keeps the
+  `exec → agent` cycle open by abstracting the bus type).
+- `crates/agent/src/runtime.rs` runs two `tap` tasks that
+  republish each `Bar` and `Tick` from the data feed into
+  `bus.publish_bar` / `bus.publish_tick`.
+- `crates/agent/src/reconciler.rs::ReconcilerTask::after_bar_close`
+  publishes `pnl`.
+- A new `mode-broadcast forwarder` task in `agent::runtime::run`
+  bridges `KillSwitch::subscribe()` → `bus.publish_mode(...)` so
+  the cockpit's halted banner lights up after any trip path
+  (file watch, cockpit button, heartbeat timeout).
+
+The bus + kill_switch shapes are unchanged — only the producer
+side gained call sites.
+
+### Public API surface — open-positions reader (real-mtm-unrealized-pnl)
+
+Added 2026-05-02 as part of the
+[real-mtm-unrealized-pnl](features/real-mtm-unrealized-pnl.md)
+plumbing feature. Closes the
+`crates/reports/src/lib.rs:135–150` `let unrealized: Decimal =
+Decimal::ZERO;` placeholder.
+
+```rust
+// crates/core/src/position.rs (NEW)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenPosition {
+    pub symbol:         Symbol,
+    pub qty:            Decimal,            // > 0 (long-only at v1+)
+    pub avg_cost_basis: Money<Usdt>,        // PER-UNIT cost, not notional
+    pub opened_at:      Timestamp,
+    pub strategy_id:    Option<StrategyId>, // T802 column; None pre-T802
+}
+
+// crates/audit/src/query.rs (additive)
+pub async fn open_positions_at(
+    ledger: &Ledger,
+    ts:     Timestamp,
+) -> Result<Vec<OpenPosition>, LedgerError>;
+```
+
+`OpenPosition` lives in `trading_core` for cross-crate reach:
+`audit::query` produces it; `crates/reports/` consumes it; the
+post-T903c cockpit positions widget will likely consume it next.
+The reader parses the symbol from
+`journal_transactions.description` via the existing private
+`extract_symbol_from_description` helper at
+`crates/audit/src/query.rs:512` — same parser `pnl_by_symbol`
+and `recent_fills` use. **No SQL migration in this feature**
+(Q3); a conditional follow-up `006_open_positions_index.sql`
+ships only if the V8 perf gate (<100ms on 100 fills + 5 open
+positions) fails.
+
+Sort key: `(symbol ASC, strategy_id ASC, None last)` for
+byte-identical re-reads (R6). Long-only at v1+; net-negative qty
+raises `LedgerError::Database` (Q8 — short positions bundled
+into a future v2+ wave).
+
+### Audit migration list — current
+
+| # | File | Purpose |
+|---|------|---------|
+| 001 | `001_chart_of_accounts.sql` | Tables `accounts`, `journal_transactions`, `journal_entries`; `idx_entries_{account,ts,txn}`. |
+| 002 | `002_strategy_events.sql` | `strategy_events` table (v0.5 Q1). |
+| 003 | `003_funding_rates.sql` | `funding_rates` table (v1 Q2). |
+| 004 | `004_journal_transactions_strategy_id.sql` | T802: nullable `strategy_id TEXT` column on `journal_transactions` + `journal_transactions_sid_idx`. |
+| 005 | `005_uptime_intervals.sql` | T805/806: `agent_uptime` table for boot/heartbeat/close intervals. |
+| 006 | `006_per_symbol_position_accounts.sql` | T1101 (per-symbol-position-accounts R1): purely additive `INSERT OR IGNORE` of one `assets:position:<SYMBOL>` row per pair-symbol in `config/agent.toml [funding].universe` (10 symbols). No schema change. Reclaims the `006` slot (the real-mtm `006_open_positions_index.sql` was conditional on V8 perf-gate failure; gate PASSED at 0.287ms vs 100ms, so the index migration never landed). |
+
+The real-mtm R10 follow-up (the hardcoded `assets:position:BTC`
+account-id at `crates/audit/src/journal.rs:82,135` — every fill
+regardless of symbol writing to the BTC bucket) is **resolved**
+by [features/per-symbol-position-accounts.md → Design](features/per-symbol-position-accounts.md#design)
+(architect 2026-05-03): migration `006` seeds per-pair
+`assets:position:<SYMBOL>` rows; T1102 flips the `post_fill` writer
+to `format!("assets:position:{}", fill.symbol)`. Description-parse
+in `audit::query::open_positions_at` / `pnl_by_symbol` /
+`recent_fills` stays as the primary symbol source (legacy-row
+compat); a defensive `account_id` cross-check warns on mismatch.
+`bootstrap::seed_universe_accounts` is marked `#[deprecated]`
+(shape mismatch — takes base assets, not pair symbols). Anchor
+budget unchanged (11 / 11 byte-identical, Q7 re-verified).
 
 ## ML / DL
 
@@ -1201,6 +1424,425 @@ no change to the v1 chart-of-accounts seeding (the v1.5a default
 required `assets:position:<asset>` rows already seeded by v1
 bootstrap).**
 
+### v1+ — Operator success reports resolutions (Q1–Q9) — confirmed 2026-05-01
+
+Nine open questions from
+[operator-success-reports.md → Notes](features/operator-success-reports.md#notes--open-questions-for-architect),
+with full Design section in the same brief. v1+ is the
+operator-facing surface of the moat bet — read-only over the audit
+ledger, no strategy-code change, no impact on the 9 locked anchor
+SHA-256s.
+
+#### v1+ Q1 — Crate placement: **dedicated `crates/reports/`**
+
+**Decision:** new top-level workspace member `crates/reports/`
+(lib + bin). Lib exposes
+`pub async fn generate(window, audit, marks, out, seed) -> Result<ReportArtifacts>`;
+bin is `cargo run --bin report -- --period <duration>`. Depends on
+`trading_core`, `audit` (read-only), `data` (parquet read-only for
+position marks + BTC buy-and-hold baseline), `cost` (read-only
+`CostBudget::remaining`).
+
+**Rationale:** clean dependency graph (no reverse dep into `audit`
+or `backtest`); separation of concerns (`audit` is a query surface,
+not a presentation layer; `backtest` is a simulation harness, not a
+periodic-reporting harness); independent test surface. Operator's
+preference (per the orchestrator's instructions).
+
+**Alternatives considered:** absorbing the binary into `audit` —
+inverts the audit/presentation boundary. Absorbing into `backtest`
+— forces backtest to grow a dependency on the live agent's
+audit-DB shape. Both rejected.
+
+#### v1+ Q2 — `pnl_by_strategy` query: **`audit::query` + additive schema migration**
+
+**Decision:** new
+`audit::query::pnl_by_strategy(since, until) -> Vec<StrategyPnl>`
+reader (struct return, not tuple-of-vectors) lives in
+`crates/audit/src/query.rs` — keeps the read-only query API in one
+place. To attribute trades to strategies, the v1+ migration
+`004_journal_transactions_strategy_id.sql` adds a nullable
+`strategy_id TEXT` column to `journal_transactions`; the
+`audit::journal::post_fill` writer's signature gains an
+`Option<&str>` parameter that records the active strategy id.
+
+Pre-migration rows have NULL `strategy_id` and surface in the
+report under a synthetic `(unattributed)` bucket — historical fills
+remain visible, and the bucket shrinks to zero as new fills
+accumulate.
+
+**Why not the timestamp-join over `strategy_events`** (analyst's
+proposal in Q2): v1.5a explicitly runs **multiple strategies
+concurrently** (`sma_crossover` + 3 composed recipes +
+`top10_momentum_h1` + `pairs_mr_h1`). The "latest Load/Swap
+event" rule would funnel every trade to the most-recently-loaded
+strategy regardless of which strategy actually fired the order —
+wrong by construction.
+
+**Mark-to-market helper for unrealized P&L** (R11.1): lives in
+`crates/reports/`, NOT in `audit::query`. The unrealized component
+needs price data (parquet), not ledger data. `audit::query` stays
+ledger-only; `reports::marks::ParquetMarkSource` owns the price
+side via the Polars `LazyFrame` reader.
+
+**Backward-compat guardrail:** the `post_fill` signature change
+must NOT shift any backtest-binary report bytes. The 9 locked
+anchor SHA-256s are the v1+ regression gate (V6); task T817 in
+`spec/tasks/operator-success-reports.md` is the gate test.
+
+#### v1+ Q3 — Atomic write: **tempfile + `rename`**
+
+**Decision:** write to `<output>.tmp.<pid>`, `fsync_all`, then
+`std::fs::rename` to the canonical path. macOS / ext4 / APFS
+guarantee rename atomicity within the same filesystem; the report
+path always lives under `spec/reports/success/` (workspace FS).
+Same pattern v0 backtest binary uses for its report writes.
+
+**Rationale:** simplest pattern that satisfies R12.2; no
+`O_TMPFILE` / `linkat` dance needed at v1+ scale. Across-FS
+rename is non-atomic on macOS but the reports directory is always
+the workspace FS so the constraint never bites.
+
+#### v1+ Q4 — Sparkline format: **Unicode block `▁▂▃▄▅▆▇█`**
+
+**Decision:** eight-level Unicode-block palette (U+2581..U+2588),
+60-character width default, low→high mapping. Same eight-level
+encoding the analyst's R7 brief specified.
+
+**Algorithm:** `min, max = (cells.min, cells.max); range = max -
+min; bucket(c) = floor((c - min) / range * 8).clamp(0, 7);
+chars[bucket(c)]`. `range == 0` short-circuits to `▁` × width
+(flat curve = flat line; no NaN, no divide).
+
+**Determinism:** `Decimal`-only arithmetic, no `f64`, no locale.
+Byte-stable across runs. Property test in
+`crates/reports/tests/sparkline.rs` over 1000 random inputs.
+
+**Alternatives considered:** ASCII bars (`#`/`*`/`.`) — rejected;
+Unicode block renders correctly in every modern terminal +
+markdown previewer including the cockpit's `viewer`. SVG / PNG —
+rejected; not embeddable in deterministic body markdown.
+
+#### v1+ Q5 — CSV vs Parquet: **CSV companion artifacts**
+
+**Decision:** companion CSVs alongside the markdown report, written
+atomically (same tempfile + rename per Q3). Six canonical files:
+
+| File                   | Columns                                                                                |
+|------------------------|----------------------------------------------------------------------------------------|
+| `equity-<window>.csv`  | `ts_utc,equity_usdt,cash_usdt,positions_value_usdt`                                    |
+| `fills.csv`            | `ts_utc,symbol,side,qty,price,fee_usdt,fee_tier,strategy_id`                          |
+| `pnl_by_strategy.csv`  | `strategy_id,realized_usdt,closed_trade_count,winning_trade_count,win_rate,avg_trade_realized_usdt` |
+| `pnl_by_symbol.csv`    | `symbol,realized_usdt`                                                                 |
+| `journal.csv`          | `ts_utc,account,debit_usdt,credit_usdt,memo,transaction_id`                            |
+| `strategy_events.csv`  | `ts_utc,kind,strategy_id,old_hash,new_hash,source_path,operator,error_code,error_summary` |
+
+Plus optional `funding_observations.csv` when the v1 funding
+poller ran in the window.
+
+All amounts are `Decimal`-as-TEXT (no scientific notation, no
+locale separator) — same encoding as the audit ledger's TEXT
+columns. Timestamps are RFC3339 UTC with microsecond precision
+(matches HF-3's `journal.rs::strategy_event` format).
+
+**Rationale:** portability — operator can `cat`/`awk`/`pandas`
+without tooling. Parquet wins on size only; at v1+ scale (~50MB
+inception equity-curve CSV) storage is not the constraint.
+
+#### v1+ Q6 — Reconciliation tolerance: **exact cent**
+
+**Decision:** `Decimal == Decimal` exact equality. No bps tolerance.
+On any `Δ != $0.00`:
+
+1. The body renders with a banner line above R9 Open risks reading
+   `*** RECONCILIATION FAILURE — see Reconciliation section ***`.
+2. The R11.3 appendix table prints `FAIL` (literal uppercase) in the
+   `Pass?` cells of failing rows.
+3. The markdown body writes atomically to `<output>` (operators see
+   the broken report).
+4. A sibling `_reconciliation_failure.json` artifact is written next
+   to the report capturing per-row report_side, ledger_side, delta,
+   and passed flags.
+5. The bin returns exit 1 (R1.6).
+
+**Why no tolerance:** every audit-side amount is `Decimal`
+end-to-end (no `f64` storage, no `f64` arithmetic in the audit
+crate). Sharpe / Sortino / Calmar use `f64` for annualization
+display ONLY — the reconciliation paths are `Decimal`-only by
+construction. If a future quirk introduces ULP drift, the
+architect re-opens R11.5; the design must not silently introduce
+a tolerance.
+
+#### v1+ Q7 — Front-matter schema: **12 fixed fields**
+
+**Decision:** the analyst's 9-field set plus four
+ops-classification fields (`binary_version`, `git_commit`,
+`agent_pid`, `host`, `reconciliation`):
+
+```yaml
+period:                  <slug>
+period_start:            <RFC3339, μs precision>
+period_end:              <RFC3339, μs precision>
+generated:               <RFC3339, μs precision>
+run_id:                  <hex, 16 chars — sha256 prefix>
+ledger_snapshot_sha:     <hex, 64 chars>
+seed:                    0x<hex>          # only emitted for fixture/test runs
+data_source:             <"live-ledger" | "fixture:<path>">
+wall_clock_s:            <float>
+binary_version:          <semver>
+git_commit:              <40-char hex or "n/a">
+agent_pid:               <integer>
+host:                    <hostname or "unknown">
+reconciliation:          <"PASS" | "FAIL">
+```
+
+The `reconciliation` field placement enables ops tooling to
+classify failures without parsing markdown — `grep
+'reconciliation: FAIL'` over the success directory surfaces every
+broken report in one shell line.
+
+Fixed at v1+ — adding fields is a new task; removing is an updated
+R10.1 in the brief. All keys lowercase + snake_case; values are
+scalars only (no nested maps) so operators can grep / awk without
+a YAML library.
+
+#### v1+ Q8 — Kill-switch trip event provenance: **new `StrategyEventKind::KillSwitchTripped`**
+
+**Decision:** add a `KillSwitchTripped` variant to
+`StrategyEventKind` (additive — no schema migration since
+`strategy_events.kind` is `TEXT`). The v0
+`audit::journal::kill_switch_tripped` writer is rewritten to emit
+**both**:
+
+1. The existing zero-amount memo journal row against
+   `equity:opening_balance` (v0 backwards compat — already-stored
+   ledgers retain their history).
+2. A new `strategy_events` row with `kind = "KillSwitchTripped"`,
+   `error_code = "kill_switch_tripped"`, `error_summary =
+   <reason>`.
+
+Both writes are inside the same `sqlx::Transaction` so they're
+atomic.
+
+**Migration policy:** v0 memo rows in already-existing ledgers are
+**NOT** retro-rewritten. They remain in `journal_entries` as legal
+history. The reports query reads ONLY the new `strategy_events`
+rows for R7's "kill-switch trips" count — so historical trips
+that happened before this v1+ change ship will not appear in the
+count. Acceptable: the operator knows the ship-date, and historical
+trips are rare enough that operators remember them.
+
+**On-trip incident report (R12.1c):** when `KillSwitch::trip` fires
+(any `HaltReason`: halt-file, heartbeat-timeout, ledger-imbalance,
+clock-skew, manual-operator), the trip handler spawns the reports
+binary out-of-process via `std::process::Command::new` (preferring
+`target/release/report` when present; falling back to `cargo run
+--bin report` in dev). Spawn is fire-and-forget — failure does not
+re-trip the kill switch. The incident report writes to
+`spec/reports/success/incident-<halt_event_ts>.md`.
+
+**Alternatives considered:** route R7 to query the v0 zero-amount
+memo rows directly — rejected; less clean (requires a description
+LIKE filter on the journal) and entrenches the v0 surface for an
+event that semantically belongs in `strategy_events`.
+
+#### v1+ Q9 — R6 reflection-memory placeholder lifecycle
+
+**Decision:** the v1+ report ships R6 as a fixed placeholder string
+(`_no lesson cards yet — reflection memory ships in a future feature._`)
+and that string IS locked into the two new operator-success-report
+anchor SHA-256s. When the reflection-memory feature ships
+(separate brief), the architect re-opens R6 and re-locks the two
+anchors using the same precedent as v1.5a T717's top10 momentum
+re-lock.
+
+**Forward-compat scaffolding:** task T811 in the v1+ task list
+adds a one-paragraph rustdoc note in
+`crates/reports/src/render/memory_highlights.rs` explaining the
+re-lock requirement, plus an optional stub note file
+`spec/reports/memory-anchor-relock-TBD.md` as a grep-able marker
+for the eventual reflection-memory architect.
+
+#### v1+ architectural deltas summary
+
+- **`crates/reports/`** (NEW WORKSPACE MEMBER): lib + bin
+  (`cargo run --bin report -- --period <duration>`). Deps:
+  `trading_core`, `audit`, `data`, `cost`. No reverse edges.
+- **`crates/audit/`:** new migrations
+  `004_journal_transactions_strategy_id.sql` (additive
+  `strategy_id TEXT` column on `journal_transactions`) and
+  `005_uptime_intervals.sql` (new `agent_uptime` table). New
+  writers: `feed_reconnect`, `open_uptime_interval`,
+  `heartbeat_uptime`, `close_uptime_interval`. Rewritten
+  `kill_switch_tripped` (Q8 dual-write). New readers:
+  `pnl_by_strategy`, `ledger_snapshot_sha`, `ledger_inception_ts`,
+  `uptime_intervals_since`. Signature change:
+  `post_fill(ledger, fill, Option<&str>)`.
+- **`crates/core/` (`trading_core`):** two new
+  `StrategyEventKind` variants — `KillSwitchTripped`,
+  `FeedReconnect`. Additive enum extension; no consumer breaks.
+- **`crates/agent/`:** kill-switch trip writes to the audit ledger
+  (Q8) + spawns the incident reports binary out-of-process (R12.1c).
+  Boots / heartbeats / shutdowns write to `agent_uptime` (R7.1).
+  Optional in-process cron behind `--features in_process_cron` —
+  default build unchanged.
+- **`crates/data/`:** unchanged at the public surface. The Binance
+  reconnect handler adds a single call to
+  `audit::journal::feed_reconnect` (additive, isolated to one
+  function).
+- **`crates/strategy/`, `crates/risk/`, `crates/exec/`,
+  `crates/models/`, `crates/llm/`, `crates/features/`,
+  `crates/ui/`:** **unchanged**. `crates/exec/src/paper.rs`
+  threads the `strategy_id` through to `post_fill` — that's a
+  call-site update, not a logic change.
+- **`crates/backtest/`:** **unchanged report bytes** —
+  the 9 locked anchor SHA-256s are the V6 regression gate.
+  `crates/backtest/src/main.rs` updates its `post_fill` call sites
+  to pass the scenario's strategy id, but the rendered report bytes
+  must remain byte-identical. Task T817 verifies.
+- **No new bus channels.** Reports run out-of-process from the
+  audit DB; nothing on the broadcast bus.
+- **No LLM token budget impact.** `cost::CostBudget::spent()`
+  remains zero through V8.
+
+### real-mtm-unrealized-pnl resolutions (Q1–Q8, R10) — confirmed 2026-05-02
+
+Plumbing feature on top of operator-success-reports. Closes the
+`crates/reports/src/lib.rs:135–150` placeholder
+(`let unrealized: Decimal = Decimal::ZERO;`) by introducing a
+typed open-positions reader and wiring it into the orchestrator.
+Full design at
+[features/real-mtm-unrealized-pnl.md → Design](features/real-mtm-unrealized-pnl.md#design).
+
+**Q1 reader signature** — snapshot vec
+`audit::query::open_positions_at(ledger: &Ledger, ts: Timestamp) ->
+Result<Vec<OpenPosition>, LedgerError>`. Parallel to
+`pnl_by_strategy` / `pnl_by_symbol`. Sort key
+`(symbol ASC, strategy_id ASC, None last)` for byte-identical
+re-reads (R6).
+
+**Q2 `OpenPosition` location** — new
+`trading_core::OpenPosition` struct
+(`{symbol, qty, avg_cost_basis: Money<Usdt>, opened_at,
+strategy_id: Option<StrategyId>}`) at
+`crates/core/src/position.rs`, re-exported at the crate root.
+Cross-crate visibility (`audit::query` produces, `crates/reports/`
+consumes; future `crates/ui/` positions widget will too).
+`avg_cost_basis` is the **per-unit** cost basis (not notional).
+
+**Q3 index strategy + R10** — **NO new SQL index** for v1+
+(full-table scan on `journal_transactions` is well under the
+100 ms V8 budget at v1+ scale). If V8 fails, conditional
+follow-up migration `006_open_positions_index.sql` adds a
+prefix-substr index on `(description prefix, ts)`. **R10** (the
+hardcoded `assets:position:BTC` account-id at
+`crates/audit/src/journal.rs:82,135` — every fill regardless of
+symbol writes to the BTC bucket) is **DEFERRED** to a follow-up
+brief `spec/features/per-symbol-position-accounts.md`. The new
+reader does NOT touch the account id; it parses the symbol from
+`journal_transactions.description` (format `"<side> <qty>
+<symbol> @ <price>"`) via the existing private
+`extract_symbol_from_description` helper at
+`crates/audit/src/query.rs:512` — same parser
+`pnl_by_symbol` and `recent_fills` use. Verified
+description-faithful symbol propagation against
+`build_ledger_90d.rs` (4 symbols, all writing the literal BTC
+account id today).
+
+**Q4 anchor regression: byte-identical** — both v1+ anchors
+(`report-sample-7d` `ab06dbcb…`, `report-sample-90d`
+`2ef403f1…`) stay byte-identical. The two existing fixtures
+`crates/reports/tests/fixtures/build_ledger_{7d,90d}.rs` lay 6
++ 12 perfectly symmetric (Buy, Sell) pairs respectively (every
+Buy followed by a matching Sell of the same `qty` for the same
+`(strategy, symbol)` group within the window) → net qty == 0
+at `period_end` →
+`open_positions_at(period_end) = vec![]` →
+`Σ unrealized = 0` → body bytes byte-identical to today's
+`Decimal::ZERO`-hardcoded path. The 9 v0/v0.5/v1/v1.5a backtest
+anchors are independent (no strategy/exec/backtest code path
+touched). All 11 anchor SHAs in `spec/anchors.toml` unchanged.
+
+**Q5 fixture choice** — ADD a new test-only, **non-anchored**
+fixture
+`crates/reports/tests/fixtures/build_ledger_with_open_positions_7d.rs`
+for V1, V2, V7, V8. Mirrors `build_ledger_7d`'s constants +
+seed; same 6 closed (Buy, Sell) pairs; PLUS 2 dangling Buys at
+`(day=6, hour=20)` (BTCUSDT @ 60_000 qty 0.01, ETHUSDT @ 3_000
+qty 0.20) for a hand-computed expected unrealized of `+200.00
+USDT` against marks `BTCUSDT@70_000` + `ETHUSDT@3_500`. The
+two existing anchored fixtures are NOT modified.
+
+**Q6 mark-source miss** (architect override of analyst's
+front-matter `warnings:` recommendation) — on
+`MarkError::OutOfRange` the orchestrator emits
+`tracing::warn!`, contributes `Decimal::ZERO` for that position,
+and renders a deterministic Markdown footnote `*one or more
+open-position marks were unavailable at period_end; see logs*`
+on the R11.1 reconciliation row IF any position fell back. The
+override avoids a determinism foot-gun: surfacing the miss into
+front-matter would make the body's `unrealized` arithmetic
+depend on parquet-root health, breaking byte-identical re-runs.
+Front-matter `warnings:` stays reserved for run-varying signals
+per operator-success-reports Q7.
+
+**Q7 cost basis** — weighted-average across remaining qty with
+proportional release on each Sell. Reader maintains
+`(running_qty, running_notional)` per `(symbol, strategy_id)`;
+on Sell `released_basis = (running_notional / running_qty) *
+qty_s`. End-of-scan emits the position with
+`avg_cost_basis = Money(running_notional / running_qty)`. One
+division per emitted position; `Decimal`-only.
+
+**Q8 long-only at v1+** — reader filters to `running_qty > 0`.
+On `running_qty < 0` returns `LedgerError::Database` with a
+precise error string. v1.5a's pairs strategy logs the short
+leg as `pair_short_observation` (memo only; no journal fill);
+v1+ has no real shorts. Real short fills are out of scope (need
+`Side::Short/Cover`, `liability:short:<asset>` accounts,
+`OpenPosition.side: Side` — bundled into a future v2+ wave).
+
+**real-mtm-unrealized-pnl architectural deltas:**
+
+- **`crates/core/`** (`trading_core` package): new
+  `crates/core/src/position.rs` with `pub struct OpenPosition
+  { symbol: Symbol, qty: Decimal, avg_cost_basis: Money<Usdt>,
+  opened_at: Timestamp, strategy_id: Option<StrategyId> }`;
+  re-exported at the crate root. Additive; no enum / trait
+  changes.
+- **`crates/audit/`:** new
+  `pub async fn open_positions_at(ledger, ts) ->
+  Result<Vec<OpenPosition>, LedgerError>` reader at the bottom
+  of `crates/audit/src/query.rs`. Reuses the existing private
+  `extract_symbol_from_description` helper (line 512). NO new
+  migration in this feature; **conditional** follow-up
+  `006_open_positions_index.sql` only if V8 perf gate fails.
+  No writer changes. The hardcoded `assets:position:BTC`
+  account-id at `journal.rs:82,135` (R10) stays — fixing it is
+  a follow-up brief out-of-scope here.
+- **`crates/reports/`:** orchestrator diff at
+  `crates/reports/src/lib.rs::generate(...)` lines 135–150
+  (replace `let unrealized: Decimal = Decimal::ZERO;` with the
+  open-positions loop); additive `mark_unavailable: bool`
+  field on the R11 reconciliation renderer's input struct. NEW
+  test fixture `tests/fixtures/build_ledger_with_open_positions_7d.rs`;
+  NEW perf test `tests/perf_smoke_open_positions.rs`. Existing
+  anchored `tests/report_scenarios.rs` UNCHANGED.
+- **`crates/ui/`, `crates/strategy/`, `crates/exec/`,
+  `crates/risk/`, `crates/agent/`, `crates/data/`,
+  `crates/cost/`, `crates/backtest/`:** **unchanged**. Cockpit's
+  PNL panel reads the bus's `pnl` channel (T903c reconciler);
+  once `generate(...)` computes real unrealized, the cockpit
+  picks it up automatically — no UI surface change required.
+- **No new external dep.** Workspace edition 2021 unchanged. No
+  stdlib name shadow. Library compatibility checklist: N/A
+  (no new dep).
+- **Anchor budget:** all 11 anchor SHAs in
+  `spec/anchors.toml` stay byte-identical. No re-lock under
+  this feature (Q4 resolution). The 9 v0/v0.5/v1/v1.5a anchors
+  remain non-negotiable; the 2 v1+ anchors hold their
+  T816-captured SHAs.
+
 ## Observability
 
 - `tracing` with JSON output.
@@ -1560,6 +2202,260 @@ differentiator argues against.
 - Empty, loading, and error states are first-class for every view — no blank
   screens.
 
+#### Frontend ↔ backend interfaces — confirmed 2026-05-02
+
+The cockpit + viewer are the only operator-facing surfaces; this subsection
+formalizes every load-bearing interface they consume so a future
+ui-designer / developer / architect doesn't have to grep the codebase to
+find the contract. See also [spec/ui-design-principles.md](ui-design-principles.md)
+for the design-system rules these interfaces dress.
+
+##### Surface map
+
+| Interface                                | Direction | Producer                            | Consumer                          | Doc anchor                              |
+|------------------------------------------|-----------|-------------------------------------|-----------------------------------|-----------------------------------------|
+| `Arc<EventBus>` broadcast channels       | →         | `agent::runtime::run`               | `ui::live::subscription`           | [bus shape](#cockpit--eventbus)         |
+| `audit::query` read-only API             | →         | `crates/audit/src/query.rs`         | `cockpit_live` Subscription, `viewer` | [query module](#cockpit--auditquery) |
+| `KillTripFn` closure                     | ←         | `cockpit_live` builds, calls `KillSwitch::trip` | `agent::KillSwitch::trip`         | [kill switch](#cockpit--arckillswitch)  |
+| `spec/reports/**/*.md` markdown          | →         | `tester` (writes), `presenter`       | `viewer` binary (reads)           | [viewer](#viewer--specreports)          |
+| `theme` tokens                           | (closed)  | `ui::theme`                          | every `ui::widgets::*`            | [theme](#theme--widget)                 |
+| `strings` constants                      | (closed)  | `ui::strings`                        | every `ui::widgets::*`            | [strings](#strings--widget)             |
+| `fixtures` data                          | →         | `ui::fixtures` (`--features fixtures`)| `cockpit` (dev-mode subscription)| [fixtures](#fixtures--widget)           |
+
+The arrows are deliberately one-way for read paths. The cockpit
+**never** mutates the agent except via the kill-switch closure (the
+sole operator → backend write surface) and **never** writes to the
+audit ledger directly. The agent never reads cockpit state.
+
+##### Cockpit ← `EventBus`
+
+Live event push, same-process. The `agent::EventBus` (defined in
+`crates/agent/src/bus.rs`) holds one `tokio::sync::broadcast::Sender<T>`
+per domain channel. The `cockpit_live` binary constructs the bus once
+on the main thread, hands an `Arc<EventBus>` to both the agent runtime
+side-thread and the iced cockpit's `Subscription`, and the broadcast
+fan-out does the rest. No IPC.
+
+| Channel                     | Type                       | Capacity | Sender call site                                | Receiver                                  |
+|-----------------------------|----------------------------|----------|-------------------------------------------------|-------------------------------------------|
+| `fills_tx`                  | `core::Fill`               | 1024     | `EventBus as exec::FillPublisher` (paper engine glue) | `bus.fills()` → `Message::FillReceived`   |
+| `positions_tx`              | `core::Position`           | 256      | `EventBus as exec::FillPublisher` + reconciler  | `bus.positions()` → `Message::PositionsRefreshed` |
+| `bars_tx`                   | `core::Bar`                | 1024     | data feed (`agent::runtime` bar fan-out)        | `bus.bars()` → `Message::BarReceived` + `Message::BarClose` |
+| `ticks_tx`                  | `core::Tick`               | 8192     | data feed (`agent::runtime` tick fan-out)       | `bus.ticks()` → `Message::TickReceived`   |
+| `pnl_tx`                    | `core::PnlSnapshot`        | 256      | reconciler (post bar close)                     | `bus.pnl()` → `Message::PnlRefreshed`     |
+| `mode_tx`                   | `agent::AgentMode`         | 32       | `KillSwitch::trip` + boot                       | `bus.mode()` → `Message::AgentModeChanged` / `AgentHaltedExternally` |
+| `strategy_loaded_tx`        | `core::StrategyLoaded`     | 32       | `agent::watcher` initial-load + reload          | `bus.strategy_loaded()` → `Message::StrategyLoaded` |
+| `strategy_swapped_tx`       | `core::StrategySwapped`    | 32       | `agent::watcher` hot-swap                       | `bus.strategy_swapped()` → `Message::StrategySwapped` |
+| `strategy_error_tx`         | `core::StrategyLoadError`  | 32       | `agent::watcher` parse / typecheck failure      | `bus.strategy_error()` → `Message::StrategyLoadError` |
+| `funding_obs_tx`            | `core::FundingObs`         | 32       | `FundingPoller::run` (v1 Q2)                    | observation-only (no cockpit subscriber today) |
+
+The `ui::live::subscription` function (in `crates/ui/src/live.rs`) batches
+nine `iced::Recipe`s — one per channel except `funding_obs` (no consumer
+yet). Each recipe **subscribes synchronously** before yielding the
+async stream so events published before the first `.next().await` are
+not dropped (eager-subscribe is the documented contract).
+
+**Backpressure policy** (single rule, applied per channel):
+
+- `Ok(event)` → translate to a typed `Message::*` variant and yield.
+- `RecvError::Lagged(n)` → log via `tracing` and continue. The cockpit
+  is allowed to fall behind; the agent never blocks. Chosen log level
+  is `warn` for events the operator should know about (`fills`,
+  `positions`, `pnl`, `bars`, `mode`, all three `strategy_*`),
+  `debug` for routine high-volume lag (`ticks`).
+- `RecvError::Closed` → emit a panel-specific error variant with the
+  shared `strings::CONNECTION_CHANNEL_CLOSED` copy
+  (`Message::TapeError` / `PositionsError` / `PnlError` /
+  `StrategiesError`), then break the stream. The mode channel closing
+  is treated as `Message::AgentHaltedExternally` because losing the
+  mode broadcaster means the agent process is gone.
+
+The bus type-conversion layer (`fill_to_view`, `position_to_view`,
+`mode_to_message`) lives in `ui::live` — not in `core` — so `core`
+stays free of UI concerns. `FillView` / `PositionView` are the
+audit-facing read types; `Fill` / `Position` are the runtime-facing
+types. The conversion is lossy by design (UI doesn't need
+`order_id`, `local_ts`, etc.) and is the only legal way bus types
+enter the `Message` enum.
+
+##### Viewer ← `spec/reports/`
+
+The offline `viewer` binary consumes **markdown files**, not a live
+data path. It reads `spec/reports/**/*.md` directly off disk and
+renders the body in iced. There is no agent dependency.
+
+File-naming convention (locked):
+
+| Pattern                                       | Producer       | Body content                            |
+|-----------------------------------------------|----------------|-----------------------------------------|
+| `backtest-<YYYYMMDD>-<HHMMSS>-<scenario>.md`  | `crates/backtest` binary | Equity curve, trade log, anchored body |
+| `success-<YYYYMMDD>-<scenario>.md`            | `crates/reports` binary  | Operator-facing weekly success summary |
+| `test-<YYYYMMDDD>-<HHMM>-<slug>.md`           | `tester` agent + `rust-test` skill | Test verdict, table, anchors  |
+| `dev-<feature>-<slug>-<date>.md`              | developer agent (handoff) | Implementation notes for tester    |
+| `ui-debt-<YYYY-MM-DD>.md`                     | ui-designer agent | Consistency drift reports         |
+| `ui-week<N>-smoke-checklist-<date>.md`        | ui-designer agent | Operator-side manual smoke checklist|
+
+**Body-vs-front-matter discipline** (re-stated, since the viewer
+reads both): anything that may differ between two equivalent runs
+(`generated:` timestamp, host, pid, git commit, wall-clock seconds,
+data-source variants) belongs in YAML front-matter — never in the
+body. The body is what gets hashed for anchor verification
+(`scripts/hash_report.py`). The viewer renders front-matter as a
+collapsed metadata table at the top of the screen and the body as
+the main reading surface; reading-fidelity for the body is what
+matters.
+
+The viewer is read-only on the spec tree — never edits, never
+deletes. Re-running a backtest writes a new file with a new
+timestamp; old reports are immutable history.
+
+##### Cockpit ← `audit::query`
+
+Read-only ledger access. The cockpit (and viewer) calls into
+`crates/audit/src/query.rs` for any aggregate that lives in the
+ledger but isn't published on the bus. The shape is async functions
+that take `&Ledger` and return typed `Result<T, LedgerError>`. No
+`sqlx` types leak across the boundary.
+
+Public API the cockpit may call (the union of what's currently used
+plus what's expected to be used by v1.5+):
+
+| Function                                  | Returns                          | Used by                                |
+|-------------------------------------------|----------------------------------|----------------------------------------|
+| `cash_balance(&Ledger)`                   | `Money<Usdt>`                    | P&L card snapshot                       |
+| `realized_pnl_since(&Ledger, Timestamp)`  | `Money<Usdt>`                    | P&L card                                |
+| `total_fees(&Ledger)`                     | `Money<Usdt>`                    | future cost-card / footer              |
+| `recent_fills(&Ledger, usize)`            | `Vec<FillView>`                  | live tape (boot snapshot)              |
+| `recent_journal(&Ledger, usize)`          | `Vec<JournalEntryView>`          | future "show the why" modal            |
+| `open_positions_at(&Ledger, Timestamp)`   | `Vec<OpenPosition>`              | positions panel snapshot               |
+| `pnl_by_symbol(&Ledger, ...)`             | per-symbol P&L                   | positions panel                         |
+| `pnl_by_strategy(&Ledger, ...)`           | per-strategy P&L                 | strategies panel                        |
+| `pnl_by_pair(&Ledger, ...)`               | per-pair P&L (v1.5a)             | future pairs panel                      |
+| `strategy_events_since(&Ledger, Timestamp)` | `Vec<StrategyEventView>`        | strategies panel footer                |
+| `strategy_history(&Ledger, StrategyId)`   | `Vec<StrategyEventView>`         | future strategy-detail modal           |
+| `funding_rate_history(&Ledger, ...)`      | `Vec<FundingObs>`                | future funding-observation panel       |
+| `uptime_intervals_since(&Ledger, Timestamp)` | `Vec<UptimeInterval>`         | future operator-uptime card            |
+| `ledger_snapshot_sha(&Path)`              | `[u8; 32]`                       | viewer integrity check                  |
+| `ledger_inception_ts(&Ledger)`            | `Timestamp`                      | viewer "since" timestamps               |
+
+**Hard constraint:** the cockpit MUST NOT call `audit::ledger`
+writers (`Ledger::post_fill`, `Ledger::post_strategy_event`, etc.).
+The bus is the **only** event-push surface from the operator to the
+audit ledger, and it is mediated by the agent runtime — the cockpit
+never bypasses the agent's invariant checks. The single exception
+is the kill-switch trip closure, which goes through
+`agent::KillSwitch::trip`, which itself calls the audit writer
+(T809 dual-write) — the cockpit never touches `Ledger` directly.
+
+##### Cockpit ← `Arc<KillSwitch>`
+
+The only operator → backend write surface. Resolved per the
+[live-cockpit-unified Q6](#v05--cockpit-strategies-panel-layout-q4--confirmed-2026-04-19)
+follow-up — the cockpit holds a `KillTripFn` closure
+(`Arc<dyn Fn(agent::HaltReason) + Send + Sync>`) defined in
+`crates/ui/src/state.rs` under `#[cfg(feature = "live")]`.
+
+The closure exists because `KillSwitch::trip(reason)` uses
+`tokio::spawn` internally for its T809 audit dual-write side effect,
+which requires a tokio runtime in scope at the call site. The iced
+`update` function runs on the iced thread, where there is **no
+tokio runtime**. The closure injects a `tokio::runtime::Handle`
+captured in `cockpit_live::main` from the side-thread runtime,
+so the spawn lands on it.
+
+Construction sequence in `cockpit_live::main`:
+
+1. Build a `tokio::runtime::Builder::new_multi_thread().enable_all().build()`
+   runtime on the main thread.
+2. Capture `runtime.handle().clone()` BEFORE moving the runtime
+   into the side thread.
+3. Build the closure: `move |reason| handle.spawn(async move { kill_switch.trip(reason).await })`.
+4. Move the runtime to the side thread, run `agent::runtime::run`.
+5. Pass the closure into `Cockpit { kill_switch: Some(closure), … }`
+   on the iced main thread.
+6. The `Message::KillConfirmed` arm in `state::update` calls the
+   closure with `agent::HaltReason::ManualOperator` after the
+   safety-phrase gate passes; the closure spawns
+   `KillSwitch::trip(ManualOperator)` onto the side-thread runtime,
+   the trip writes the audit memo + `strategy_events` row + spawns
+   the incident-report helper, and broadcasts `AgentMode::Halted`
+   on `mode_tx`. The cockpit observes the halt via its existing
+   mode subscription.
+
+The fixture-only `cockpit` binary (built without `--features live`
+or with `--features fixtures`) constructs `kill_switch: None`. The
+kill button still flips the UI to `KillState::Flattening` for smoke
+testing but does not contact any agent. This separation is the
+contract that lets the `cockpit` binary be a pure-design dev tool.
+
+##### Theme ↔ widget
+
+The widget code's only legal source of color, spacing, type sizes,
+border radii, and latency thresholds is `ui::theme`. The four sub-
+modules are closed sets:
+
+- `theme::color` — 9 shipped semantic tokens; principles doc
+  proposes 3 additions (`bg_overlay`, `info`, `border_strong`).
+  `Color::from_rgb(…)` outside `theme.rs` is a build break.
+- `theme::space` — `XS=4, S=8, M=12, L=16, XL=24, XXL=32`.
+- `theme::text` — `CAPTION=11, BODY=13, TITLE=16, DISPLAY=22`.
+- `theme::radius` — `SMALL=2.0, MEDIUM=4.0`.
+- `theme::layout` — panel padding, gap, max tape rows.
+- `theme::latency` — `OK_MS=500, WARN_MS=2000, HALTED_MS=10000`.
+
+Helper functions encode "color-from-data" rules so widgets don't
+re-implement them inline:
+
+- `theme::color_for_delta(Decimal)` → `pos` / `neg` / `fg_muted`
+  for signed values. The single rule: zero is muted, sign drives
+  color.
+- `theme::color_for_latency_ms(i64)` → `pos` / `warn` / `neg`
+  per the threshold bands.
+
+The consistency test `crates/ui/tests/consistency.rs` enforces "no
+inline hex" by grep-failing the build on any
+`Color::from_rgb` or `#rrggbb`-shaped literal outside `theme.rs`.
+Adding a new token is a `theme.rs` change plus a principles-doc
+update — never a one-off in a widget.
+
+##### Strings ↔ widget
+
+Same shape as theme: `crates/ui/src/strings.rs` is the single source
+of operator-visible copy. Every constant is a `pub const &str`. The
+`strings::all()` function returns an ordered slice of `(key, value)`
+pairs, exercised by tests for uniqueness and non-emptiness, and
+designed to be a future i18n extraction point.
+
+Pattern conventions:
+
+- `*_TITLE` — panel / dialog titles.
+- `*_COL_*` — table column headers.
+- `*_LOADING` / `*_EMPTY` / `*_ERROR_PREFIX` — first-class panel state copy.
+- `*_LABEL` / `*_HELP` — button labels and helper tooltips.
+- `*_SAFETY_PHRASE` — typed-confirm phrases (currently only
+  `KILL_SAFETY_PHRASE = "HALT BTC"`).
+
+The consistency test `no_inline_user_visible_strings_in_widgets`
+fails the build on any string literal in `crates/ui/src/widgets/`.
+The `strings.rs` file is the one place a copy review happens.
+
+##### Fixtures ↔ widget
+
+The `cockpit` binary built with `--features fixtures` reads from
+`ui::fixtures::*` instead of subscribing to a real bus. The same
+`Cockpit` model is populated; the same widgets render; only the
+data source differs. This is the design dev-mode loop — the
+ui-designer can iterate on a widget without booting the full agent.
+
+Fixture functions are deterministic (`ChaCha20Rng::from_seed`) so
+two runs of `cargo run --bin cockpit --features fixtures` produce
+the same screenshot. This is the contract for the
+`spec/reports/screenshots/` PNG regeneration path.
+
+The `cockpit` binary is **never** the production runtime — that
+role belongs to `cockpit_live` (with the live agent attached to a
+real bus). Fixture-mode is dev-only.
+
 ### Data / venues
 
 - `reqwest` + `tokio-tungstenite` for REST and WebSocket feeds (crypto venues).
@@ -1820,3 +2716,250 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   broadcast channel added to `agent::EventBus`. No change to the
   v0 `Strategy` trait shape, no change to the v0.5 audit/broadcast
   surfaces beyond the additive items above.
+- 2026-05-01 (architect): added **v1+ — Operator success reports
+  resolutions (Q1–Q9)** subsection (under "Strategy registry &
+  hot-loading" alongside the v1 / v1.5a resolutions) and added
+  `crates/reports/` to the workspace layout map. **Q1 crate
+  placement** confirmed: dedicated `crates/reports/` lib + bin
+  (`cargo run --bin report -- --period <duration>`); deps
+  `trading_core` + `audit` (read-only) + `data` (parquet) +
+  `cost` (`CostBudget::remaining`). **Q2 `pnl_by_strategy`
+  query** lives in `audit::query`; new additive migration
+  `004_journal_transactions_strategy_id.sql` adds nullable
+  `strategy_id TEXT` column on `journal_transactions`;
+  `audit::journal::post_fill` signature gains
+  `Option<&str>`. Pre-migration NULL rows surface as
+  `(unattributed)`. Mark-to-market for unrealized P&L lives in
+  `crates/reports/` (parquet), NOT in `audit::query`. **Q3
+  atomic write**: tempfile + `rename` (same as v0 backtest
+  binary). **Q4 sparkline**: Unicode-block `▁▂▃▄▅▆▇█` (8-level,
+  60-char default width). **Q5 CSV** companion artifacts; six
+  canonical files with documented columns. **Q6 reconciliation
+  tolerance**: exact-cent `Decimal == Decimal`; on FAIL writes
+  sibling `_reconciliation_failure.json` and exits 1. **Q7
+  front-matter**: 12 fields including new
+  `binary_version` / `git_commit` / `agent_pid` / `host` /
+  `reconciliation`. **Q8 kill-switch trip provenance**: new
+  `StrategyEventKind::KillSwitchTripped` variant; v0
+  `kill_switch_tripped` writer rewritten to dual-write the
+  v0 memo journal row PLUS a `strategy_events` row. v0 memo
+  rows preserved (no retro-rewrite). **Q9 R6 placeholder
+  re-lock plan** documented at task T811 — when reflection-memory
+  ships, the new operator-success-report anchors get re-locked
+  the same way v1.5a T717 re-locked the top10 momentum anchors.
+  **v1+ architectural deltas**: new `crates/reports/` workspace
+  member; new `StrategyEventKind` variants `KillSwitchTripped`
+  + `FeedReconnect`; two additive audit migrations (`004_…
+  strategy_id.sql`, `005_uptime_intervals.sql`); rewritten
+  `kill_switch_tripped` (Q8 dual-write); new audit writers
+  (`feed_reconnect`, `open_uptime_interval`, `heartbeat_uptime`,
+  `close_uptime_interval`); new audit readers
+  (`pnl_by_strategy`, `ledger_snapshot_sha`,
+  `ledger_inception_ts`, `uptime_intervals_since`); agent
+  boots/heartbeats/shutdowns now write to `agent_uptime`;
+  agent's `KillSwitch::trip` writes the new strategy event +
+  spawns the reports binary out-of-process. No new bus channels.
+  No change to `crates/strategy/`, `crates/risk/`, `crates/exec/`
+  (call-site update only), `crates/models/`, `crates/llm/`,
+  `crates/features/`, `crates/ui/`. The 9 v0/v0.5/v1/v1.5a
+  backtest anchor SHA-256s remain non-negotiable post-v1+ (V6
+  regression gate).
+- 2026-05-01 (architect): documented the runtime crate-dependency
+  edge `crates/data → crates/audit` introduced by Wave 1 / T805
+  (Binance reconnect handler calling
+  `audit::journal::feed_reconnect`). Added the edge to the **Data
+  flow** mermaid diagram, plus a new **Crate dependency edges
+  (runtime, non-test)** subsection enumerating every sibling-crate
+  dep with its single-purpose justification (`exec → audit`,
+  `agent → audit`, `reports → {core, audit, data, cost}`,
+  `ui → {core, audit}`). Reaffirmed the architectural rule "audit
+  is a sink — zero outgoing runtime deps". No code change; flagged
+  in Wave 1 and Wave 2 tester reports as undocumented; now closed.
+- 2026-05-01 (architect): reconciled the v1+ operator-success-reports
+  CSV column schemas in `spec/features/operator-success-reports.md`
+  to match the Wave 2c shipped renderer
+  (`crates/reports/src/csv_artifacts.rs`, 134 tests green). Picked
+  Option A (code is canonical): equity files emit
+  `equity_total_usdt,realized_pnl_usdt,unrealized_pnl_usdt,cash_balance_usdt`
+  (realized + unrealized + cash decomposition) rather than the
+  spec's prior `equity_usdt,cash_usdt,positions_value_usdt`
+  (cash + positions_value decomposition). Operator question "how
+  much of my P&L is real?" beats "how much is in cash vs
+  marked-to-market positions". Also dropped the `_utc` suffix from
+  `ts` columns across `equity-*.csv`, `fills.csv`, `journal.csv`,
+  `strategy_events.csv` to match the writer headers; the UTC
+  contract remains in the introductory paragraph and the writer
+  doc-comments. No anchor risk (CSV companions are not in the 9
+  locked anchor SHAs). Wave 2d (T816 anchor capture) proceeds
+  against the renderer's actual byte output.
+- 2026-05-01 (architect): resolved the eight live-cockpit-unified
+  open questions from
+  [features/live-cockpit-unified.md → Open questions for architect](features/live-cockpit-unified.md#open-questions-for-architect).
+  **Q1** new bin `cockpit_live` at `crates/ui/src/bin/cockpit_live.rs`;
+  extract `pub async fn agent::runtime::run(RunHandles, CancellationToken)`
+  shared by both the headless `trading` bin and the unified bin
+  (overrode analyst's `trading-cockpit` name in favor of
+  `cockpit_live` for prefix-parity with `cockpit`). **Q2** iced on
+  main thread, multi-thread tokio runtime hosted on a side
+  `std::thread::spawn`; `Arc<EventBus>` + `Arc<KillSwitch>` +
+  `tokio_util::sync::CancellationToken` shared via clone (matches
+  analyst default; macOS GUI-on-main respected). **Q3** iced-led
+  shutdown — single `CancellationToken`, 2 s wall-clock bound on
+  the side-thread join, force-abort on timeout. **Q4** single
+  `config/agent.toml` + new
+  `[observability].prometheus_enabled: bool` (`#[serde(default =
+  "default_true")]`); no `[cockpit]` section in v1. **Q5**
+  `in_process_cron` opt-in unchanged; the new bin re-exports the
+  feature gate via `[features] in_process_cron =
+  ["agent/in_process_cron"]`. **Q6** single shared
+  `Arc<KillSwitch>` — cockpit's `Message::KillConfirmed` calls
+  `kill_switch.trip(HaltReason::ManualOperator)` via a closure
+  capturing the side-thread tokio Handle; T809 dual-write
+  preserved by sticky-trip semantics
+  (`tripped.swap(true, SeqCst)`). **Q7** retire `cockpit
+  --features live` (its only behavior was an empty-bus stub);
+  keep `trading` headless and `cockpit --features fixtures`; add
+  `compile_error!` deprecation shim on the old combo. **Q8** zero
+  new UI surface; one tooltip-string edit on the kill button.
+  **Bus-wiring scope: in-scope** — analyst's finding #1 (only the
+  strategy watcher publishes today; `Arc<EventBus>` constructed at
+  `crates/agent/src/main.rs:193` is not threaded through
+  data/exec/risk producers) is closed by tasks T903a (paper
+  engine publishes `fills` + `positions` via a new
+  `exec::publisher::FillPublisher` trait), T903b (data feed `tap`
+  tasks publish `bars` + `ticks`), T903c (reconciler publishes
+  `pnl`), T905 (mode-broadcast forwarder bridges
+  `KillSwitch::subscribe()` → `bus.publish_mode`). Without those
+  wires R1 ("single binary that runs both") is structurally
+  false. **Analyst finding #2** (cockpit `Message::KillConfirmed`
+  only mutates `KillState::Flattening`, never calls
+  `KillSwitch::trip`) confirmed by reading
+  `crates/ui/src/state.rs:397–402`; closed by Q6 + T906.
+  **Architectural deltas:** new public API
+  `agent::runtime::run` + `agent::runtime::RunHandles` +
+  `agent::runtime::shutdown_writer`; new
+  `exec::publisher::FillPublisher` trait (keeps `exec → agent`
+  cycle open by abstracting the bus type); new bin
+  `cockpit_live` at `crates/ui/src/bin/cockpit_live.rs`
+  (`required-features = ["live"]`); new field
+  `agent::config::ObservabilityConfig::prometheus_enabled: bool`;
+  new field `ui::state::Cockpit::kill_switch:
+  Option<Arc<dyn Fn(HaltReason) + Send + Sync>>` under
+  `cfg(feature = "live")`. **Deprecation:** `cockpit --features
+  live` retired (compile_error! shim with migration message).
+  **Edge-graph delta:** `ui → agent` becomes load-bearing under
+  `--features live` (was previously cosmetic — only consumed by
+  the empty-bus stub). No new workspace member; no new system C
+  dep; `tokio_util::sync::CancellationToken` already in
+  `Cargo.lock`; `assert_cmd` added as dev-dep for the V3 / V9
+  subprocess-launch tests in T910 / T912. No anchor risk —
+  `spec/anchors.toml`'s 11 entries cover backtest report
+  rendering, none cover `agent` or `ui` (R15 + V5).
+- 2026-05-02 (architect): resolved the eight
+  real-mtm-unrealized-pnl open questions from
+  [features/real-mtm-unrealized-pnl.md → Open questions for architect](features/real-mtm-unrealized-pnl.md#open-questions-for-architect).
+  **Q1** snapshot vec
+  `audit::query::open_positions_at(ledger, ts) ->
+  Result<Vec<OpenPosition>, LedgerError>`. **Q2**
+  `OpenPosition` lives in `trading_core` (new
+  `crates/core/src/position.rs`) for cross-crate visibility.
+  **Q3** NO new SQL index in this feature (full-table scan
+  fits the 100 ms V8 budget); conditional follow-up
+  migration `006_open_positions_index.sql` only if V8 fails.
+  **R10** (`post_fill` BTC hardcode at
+  `crates/audit/src/journal.rs:82,135`) explicitly
+  **DEFERRED** to a follow-up brief
+  `spec/features/per-symbol-position-accounts.md` —
+  description-parse path already gives correct per-symbol
+  semantics (verified against `build_ledger_90d.rs` 4-symbol
+  fixture). **Q4** anchors stay byte-identical — both v1+
+  fixtures (`build_ledger_7d.rs`, `build_ledger_90d.rs`) lay
+  6+12 perfectly symmetric (Buy, Sell) pairs; net qty == 0 at
+  `period_end`; `unrealized = 0`; bodies byte-identical to
+  today. All 11 anchor SHAs in `spec/anchors.toml` unchanged.
+  **Q5** add a third **non-anchored** test fixture
+  `build_ledger_with_open_positions_7d.rs` for V1/V2/V7/V8.
+  **Q6** mark-source miss on `MarkError::OutOfRange` →
+  `tracing::warn!` + zero contribution + deterministic body
+  footnote on the R11.1 reconciliation row IF any miss
+  (architect override of analyst's
+  surface-as-front-matter `warnings:` recommendation —
+  determinism rationale: front-matter path would make
+  `unrealized` arithmetic depend on parquet-root health,
+  breaking byte-identical re-runs). **Q7** weighted-average
+  cost basis with proportional release on each Sell;
+  per-unit `Money<Usdt>` on `OpenPosition.avg_cost_basis`.
+  **Q8** long-only; net-negative qty raises
+  `LedgerError::Database`; real shorts deferred to v2+.
+  **real-mtm-unrealized-pnl architectural deltas:**
+  additive `trading_core::OpenPosition` struct; additive
+  `audit::query::open_positions_at` reader; orchestrator
+  diff at `crates/reports/src/lib.rs:135–150`; new test-only
+  fixture; new test files for V1/V2/V4/V6/V7/V8. No new
+  external dep; workspace edition 2021 unchanged; library
+  compatibility checklist N/A. Anchor budget unchanged
+  (11 / 11 byte-identical).
+- 2026-05-02 (ui-designer): added "Frontend ↔ backend interfaces"
+  subsection under `### Frontend — iced`. Formalizes the seven
+  load-bearing surfaces between `crates/ui/` and the rest of the
+  workspace: (1) `Arc<EventBus>` broadcast — 10 channels with
+  per-channel sender, type, capacity, backpressure policy
+  (`Lagged` warns + continues, `Closed` emits typed panel-error
+  variant); (2) `audit::query` read-only API — 15 read paths the
+  cockpit may call, hard constraint that the cockpit MUST NOT call
+  audit writers; (3) `KillTripFn` closure — sole operator → backend
+  write surface, calls `KillSwitch::trip(HaltReason::ManualOperator)`
+  on the side-thread tokio runtime captured in `cockpit_live::main`;
+  (4) `spec/reports/**/*.md` — viewer's offline read path plus
+  file-naming convention (`backtest-` / `success-` / `test-` /
+  `dev-` / `ui-debt-` / `ui-week*-smoke-` prefixes) and reaffirmed
+  body-vs-front-matter discipline; (5) theme tokens are the only
+  legal color/spacing/type source; (6) strings module is the only
+  legal copy source; (7) fixtures provide the dev-mode data path
+  for `cargo run --bin cockpit --features fixtures`. No code change;
+  documents the existing contract. Companion living doc
+  [ui-design-principles.md](ui-design-principles.md) lands the
+  design-system rules these interfaces dress (color palette
+  extensions, type/spacing scale lock, density tables, motion
+  timings, trading-specific patterns, eight open questions for
+  operator).
+- 2026-05-03 (architect): resolved the eight
+  per-symbol-position-accounts open questions from
+  [features/per-symbol-position-accounts.md → Open questions for architect](features/per-symbol-position-accounts.md#open-questions-for-architect).
+  **Q1** purely additive migration
+  `006_per_symbol_position_accounts.sql` (10 `INSERT OR IGNORE`
+  lines, one per pair-symbol in
+  `config/agent.toml:62-65 [funding].universe`). **Q2** account-id
+  format `assets:position:<SYMBOL>` (full Binance pair, e.g.
+  `assets:position:BTCUSDT`); strategy stays in T802 column.
+  **Q3** NO backfill — purely additive; legacy
+  `assets:position:BTC` rows untouched. **Q4** description-parse
+  stays primary in `open_positions_at` / `pnl_by_symbol` /
+  `recent_fills`; account-id is a defensive cross-check (warn-only,
+  no return-value branch). **Q5** `extract_symbol_from_description`
+  retained indefinitely; doc-comment notes new code SHOULD use the
+  typed readers instead. **Q6** EXTEND
+  `build_ledger_with_open_positions_7d.rs` (override of analyst's
+  recommendation b — the existing fixture is non-anchored, so
+  extension is anchor-safe). **Q7** anchor risk zero by independent
+  re-grep; 11 / 11 byte-identical. **Q8 (corrected)**
+  `bootstrap::seed_universe_accounts` has a SHAPE MISMATCH (takes
+  base assets like `"BTC"`, not pair symbols like `"BTCUSDT"`); it
+  cannot be reused. Mark `#[deprecated]` in T1103; deletion is a
+  separable follow-up. The migration is the canonical seed
+  (`Ledger::open` runs migrations on every binary boot, so no
+  Rust-side defensive seed is needed).
+  **per-symbol-position-accounts architectural deltas:**
+  new migration `006_per_symbol_position_accounts.sql`; line-edit
+  inside `audit::journal::post_fill` body (signature unchanged —
+  T802's `(ledger, fill, strategy_id)` byte-identical); defensive
+  cross-check + doc-comment in `audit::query`'s description-parse
+  path; `#[deprecated]` attribute on `seed_universe_accounts`
+  (zero callers — silent in normal builds). No new public API
+  surface, no new types, no new dep, no `Cargo.toml` change, no
+  `unsafe`. The migration list table above reclaims the `006`
+  slot from the conditional `006_open_positions_index.sql` that
+  never landed (real-mtm V8 PASSED at 0.287ms). Anchor budget
+  unchanged (11 / 11 byte-identical). Tasks T1101–T1107 +
+  `T_FINAL_PER_SYMBOL` filed at
+  [tasks/per-symbol-position-accounts.md](tasks/per-symbol-position-accounts.md).

@@ -66,9 +66,13 @@ pub const PNL_ERROR_PREFIX: &str = "Ledger error while reading equity: ";
 // ── Kill switch ──────────────────────────────────────────────────────────────
 
 pub const KILL_BUTTON_LABEL: &str = "Stop trading";
+/// Help text shown next to the kill button (and used as the hover-tooltip
+/// surface). Updated in T907 once T906 wired the button to the real
+/// `KillSwitch::trip` path: clicking it now actually halts the agent and
+/// writes an incident report — so the copy promises that explicitly.
 pub const KILL_BUTTON_HELP: &str =
-    "Cancels open orders, flattens every position, and halts the agent. Requires a typed \
-     confirmation.";
+    "Halts the trading agent and writes an incident report. Cancels open orders and flattens \
+     every position. Requires a typed confirmation.";
 pub const KILL_DIALOG_TITLE: &str = "Confirm stop trading";
 pub const KILL_DIALOG_BODY: &str =
     "This cancels every open order, sells each open position at market, and puts the agent \

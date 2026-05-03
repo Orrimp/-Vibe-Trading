@@ -11,6 +11,8 @@ use metrics::{counter, describe_counter, describe_gauge, gauge, Unit};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tracing::info;
 
+use crate::config::ObservabilityConfig;
+
 /// Register all v0 metrics (R9.2).
 ///
 /// Call once at agent startup before any data flows.
@@ -90,15 +92,57 @@ pub fn register_metrics() {
 
 /// Start the Prometheus exporter HTTP server.
 ///
+/// When `cfg.prometheus_enabled` is `false` (T901 / live-cockpit-unified
+/// Q4), the function returns `Ok(())` *without* binding any listener and
+/// emits one `prometheus_listener_disabled` info line — the operator can
+/// run the unified `cockpit_live` binary on a laptop without fighting for
+/// port `:9100`.  When `true` (default), behavior is unchanged from the
+/// pre-feature implementation.
+///
 /// # Errors
 ///
-/// Returns an error if the address cannot be bound.
-pub fn start_prometheus_exporter(listen: &str) -> Result<()> {
-    let addr: SocketAddr = listen.parse().context("parse prometheus listen address")?;
+/// Returns an error if `cfg.prometheus_enabled = true` and the address
+/// cannot be parsed or bound.
+pub fn start_prometheus_exporter(cfg: &ObservabilityConfig) -> Result<()> {
+    if !cfg.prometheus_enabled {
+        info!(
+            listen = %cfg.prometheus_listen,
+            "prometheus_listener_disabled"
+        );
+        return Ok(());
+    }
+    let addr: SocketAddr = cfg
+        .prometheus_listen
+        .parse()
+        .context("parse prometheus listen address")?;
     PrometheusBuilder::new()
         .with_http_listener(addr)
         .install()
         .context("install prometheus exporter")?;
-    info!(addr = listen, "Prometheus exporter started");
+    info!(addr = %cfg.prometheus_listen, "Prometheus exporter started");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T901 — when `prometheus_enabled = false`, the function does NOT
+    /// attempt to bind a listener and returns `Ok(())`.  Under the
+    /// pre-feature behavior this same call would fail loudly when port
+    /// 9100 was already in use; with the toggle off it must succeed
+    /// silently regardless of port availability.
+    ///
+    /// We assert the success path on a deliberately-bogus address — if
+    /// the function tried to bind it, parsing or binding would error.
+    #[test]
+    fn t901_disabled_skips_listener() {
+        let cfg = ObservabilityConfig {
+            prometheus_listen: "this-is-not-an-address-and-would-fail-to-parse".into(),
+            prometheus_enabled: false,
+        };
+        // Must succeed despite the malformed listen string — the
+        // function short-circuits before parsing.
+        start_prometheus_exporter(&cfg).expect("disabled exporter must skip parsing");
+    }
 }

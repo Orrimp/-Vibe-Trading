@@ -55,6 +55,18 @@ async fn t05_account_list_returns_all_v0_accounts() {
         "income:realized_pnl",
         "income:unrealized_pnl",
         "liabilities:llm_accrued",
+        // T1101 — per-symbol position accounts seeded by migration 006
+        // (config/agent.toml [funding].universe).
+        "assets:position:BTCUSDT",
+        "assets:position:ETHUSDT",
+        "assets:position:BNBUSDT",
+        "assets:position:SOLUSDT",
+        "assets:position:XRPUSDT",
+        "assets:position:ADAUSDT",
+        "assets:position:DOGEUSDT",
+        "assets:position:AVAXUSDT",
+        "assets:position:DOTUSDT",
+        "assets:position:LINKUSDT",
     ];
 
     assert_eq!(
@@ -82,7 +94,10 @@ async fn t05_bootstrap_is_idempotent() {
         .expect("second bootstrap — must not fail");
 
     let accounts = query::account_list(&ledger).await.expect("account_list");
-    assert_eq!(accounts.len(), 13, "idempotent: still 13 accounts");
+    // 13 v0 accounts + 10 per-symbol position accounts seeded by migration 006
+    // (T1101). `chart_of_accounts` is idempotent (INSERT OR IGNORE) and the
+    // migration's own INSERTs are also idempotent, so the total stays 23.
+    assert_eq!(accounts.len(), 23, "idempotent: still 23 accounts");
 }
 
 // ── T06: journal balance ──────────────────────────────────────────────────────
@@ -101,7 +116,9 @@ async fn t06_100_fills_all_transactions_balance() {
         let qty = dec!(0.01) + Decimal::from(i % 5) * dec!(0.001);
         let fee = qty * price * dec!(0.001);
         let fill = make_fill(side, qty, price, fee);
-        journal::post_fill(&ledger, &fill).await.expect("post_fill");
+        journal::post_fill(&ledger, &fill, None)
+            .await
+            .expect("post_fill");
     }
 
     let txn_ids = query::all_transaction_ids(&ledger)
@@ -130,7 +147,9 @@ async fn t06_global_debit_credit_equality() {
         let qty = dec!(0.05);
         let fee = qty * price * dec!(0.001);
         let fill = make_fill(side, qty, price, fee);
-        journal::post_fill(&ledger, &fill).await.expect("post_fill");
+        journal::post_fill(&ledger, &fill, None)
+            .await
+            .expect("post_fill");
     }
 
     let (total_dr, total_cr) = query::global_debit_credit_sum(&ledger)
@@ -156,7 +175,9 @@ async fn t05_cash_balance_after_buy_fill() {
     let qty = dec!(0.1);
     let fee = dec!(5);
     let fill = make_fill(Side::Buy, qty, price, fee);
-    journal::post_fill(&ledger, &fill).await.expect("post_fill");
+    journal::post_fill(&ledger, &fill, None)
+        .await
+        .expect("post_fill");
 
     let cash = query::cash_balance(&ledger).await.expect("cash_balance");
     // Buy: Cr assets:cash notional + Cr assets:cash fee → cr-dr = notional+fee
@@ -167,5 +188,80 @@ async fn t05_cash_balance_after_buy_fill() {
         "cash_balance {} != {}",
         cash.amount(),
         expected
+    );
+}
+
+// ── T802 — strategy_id column populated by post_fill ─────────────────────────
+
+#[tokio::test]
+async fn t802_post_fill_populates_strategy_id_when_some() {
+    let ledger = Ledger::in_memory().await.expect("open");
+    bootstrap::chart_of_accounts(&ledger)
+        .await
+        .expect("bootstrap");
+
+    let fill = make_fill(Side::Buy, dec!(0.1), dec!(50000), dec!(5));
+    journal::post_fill(&ledger, &fill, Some("sma_crossover"))
+        .await
+        .expect("post_fill with strategy_id");
+
+    // Read the column directly — verify it stores the strategy id verbatim.
+    let rows: Vec<(Option<String>,)> =
+        sqlx::query_as("SELECT strategy_id FROM journal_transactions")
+            .fetch_all(ledger.pool())
+            .await
+            .expect("select strategy_id");
+
+    assert_eq!(rows.len(), 1, "expected 1 transaction row");
+    assert_eq!(
+        rows[0].0.as_deref(),
+        Some("sma_crossover"),
+        "strategy_id must be populated verbatim"
+    );
+}
+
+#[tokio::test]
+async fn t802_post_fill_leaves_strategy_id_null_when_none() {
+    let ledger = Ledger::in_memory().await.expect("open");
+    bootstrap::chart_of_accounts(&ledger)
+        .await
+        .expect("bootstrap");
+
+    let fill = make_fill(Side::Buy, dec!(0.1), dec!(50000), dec!(5));
+    journal::post_fill(&ledger, &fill, None)
+        .await
+        .expect("post_fill without strategy_id");
+
+    let rows: Vec<(Option<String>,)> =
+        sqlx::query_as("SELECT strategy_id FROM journal_transactions")
+            .fetch_all(ledger.pool())
+            .await
+            .expect("select strategy_id");
+
+    assert_eq!(rows.len(), 1, "expected 1 transaction row");
+    assert_eq!(rows[0].0, None, "strategy_id must be NULL when None passed");
+}
+
+#[tokio::test]
+async fn t802_migration_004_creates_index() {
+    // Verify the migration created the (strategy_id, ts) index — required
+    // for sub-millisecond `pnl_by_strategy` queries at v1+ scale.
+    let ledger = Ledger::in_memory().await.expect("open");
+    bootstrap::chart_of_accounts(&ledger)
+        .await
+        .expect("bootstrap");
+
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='index' \
+         AND name='journal_transactions_sid_idx'",
+    )
+    .fetch_all(ledger.pool())
+    .await
+    .expect("select index");
+
+    assert_eq!(
+        rows.len(),
+        1,
+        "migration 004 must create journal_transactions_sid_idx"
     );
 }

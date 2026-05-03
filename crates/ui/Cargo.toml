@@ -4,9 +4,32 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+# T908 — the standalone `cockpit` bin is fixtures-only.  The
+# `required-features = ["fixtures"]` gate makes
+# `cargo run --bin cockpit --features live` fail at the cargo level
+# with a "target requires the features: fixtures" error, redirecting
+# the operator to `cargo run --bin cockpit_live --features live`
+# (the unified agent+cockpit binary).  Builds with `--features
+# fixtures,live` (or `--all-features`) still compile cleanly because
+# the bin source itself gates the compile-time deprecation message
+# on the *combination* live+!fixtures, not on `live` alone — see
+# `src/bin/cockpit.rs`.
 [[bin]]
 name = "cockpit"
 path = "src/bin/cockpit.rs"
+required-features = ["fixtures"]
+
+# `cockpit_live` — unified agent + iced cockpit binary (T904 /
+# live-cockpit-unified).  Builds a multi-thread tokio runtime on a
+# side thread, hosts `agent::runtime::run` there, and runs iced on
+# the main thread (macOS forces GUI on main).  `required-features =
+# ["live"]` so a default `cargo build -p ui` does not pull the
+# `agent` dep tree; operators opt in with
+# `cargo run -p ui --features live --bin cockpit_live`.
+[[bin]]
+name = "cockpit_live"
+path = "src/bin/cockpit_live.rs"
+required-features = ["live"]
 
 [dependencies]
 trading_core = { path = "../core" }
@@ -31,9 +54,18 @@ iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia",
 # path reproducible; the bus surface is a handoff contract (see
 # spec/reports/dev-week2-broadcast-api-2026-04-18.md).
 agent = { path = "../agent", optional = true }
+audit = { path = "../audit", optional = true }
+strategy = { path = "../strategy", optional = true }
 tokio = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 async-stream = { workspace = true, optional = true }
+# T904 (live-cockpit-unified) — additional deps for the `cockpit_live`
+# unified binary.  Same `live`-gated stanza so default builds skip them.
+tokio-util = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta = { version = "=1.47.2", features = ["yaml"] }
@@ -41,6 +73,14 @@ insta = { version = "=1.47.2", features = ["yaml"] }
 tokio = { workspace = true }
 futures = { workspace = true }
 agent = { path = "../agent" }
+# T906 stitch (Wave 3 follow-up — orchestrator-spawned 2026-05-01):
+# the `cockpit_live_kill_button_writes_audit` integration test
+# constructs an in-memory `audit::Ledger` + `KillSwitch::with_audit(...)`
+# fixture and asserts the T809 dual-write lands when the kill button is
+# driven through `ui::state::update`.  Dev-only deps; the production
+# build pulls these via the `live` feature.
+audit = { path = "../audit" }
+tempfile = { workspace = true }
 
 [features]
 # `fixtures` — enables ui::fixtures with deterministic in-memory generators.
@@ -53,4 +93,33 @@ fixtures = []
 # `live` — enables the real broadcast-bus subscription (T32). Without this
 # feature the `ui::live` module is not compiled; the cockpit falls back to
 # `fixtures` (or an empty subscription).
-live = ["dep:agent", "dep:tokio", "dep:futures", "dep:async-stream"]
+#
+# T904 (live-cockpit-unified) extends `live` to also cover the deps
+# needed by the unified `cockpit_live` binary: `audit` (ledger
+# bootstrap + uptime open/close), `strategy` (registry seed),
+# `tokio-util` (CancellationToken), `anyhow`/`clap`/`tracing-subscriber`/
+# `uuid` (binary boilerplate).  `cockpit_live` declares
+# `required-features = ["live"]` so this stanza is the single source of
+# truth for everything the unified bin needs.
+live = [
+    "dep:agent",
+    "dep:audit",
+    "dep:strategy",
+    "dep:tokio",
+    "dep:futures",
+    "dep:async-stream",
+    "dep:tokio-util",
+    "dep:anyhow",
+    "dep:clap",
+    "dep:tracing-subscriber",
+    "dep:uuid",
+]
+
+# `in_process_cron` — pass-through to `agent`'s opt-in cron scheduler
+# feature (T810).  Per [Design Q5](../../spec/features/live-cockpit-unified.md#q5-in-process-cron-t810-interaction)
+# the gate is exactly the same as the headless `trading` bin: default
+# off, opt in with `--features in_process_cron`.  We force `live` too
+# because the cron scheduler is only meaningful when the agent runtime
+# is wired (i.e. inside `cockpit_live`); enabling cron without `live`
+# would compile to no behavior.
+in_process_cron = ["live", "agent/in_process_cron"]

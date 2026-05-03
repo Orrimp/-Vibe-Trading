@@ -1,0 +1,56 @@
+[package]
+name = "reports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "reports"
+path = "src/lib.rs"
+
+[[bin]]
+name = "report"
+path = "src/bin/report.rs"
+
+[dependencies]
+trading_core = { path = "../core" }
+audit = { path = "../audit" }
+data = { path = "../data" }
+cost = { path = "../cost" }
+
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+tokio.workspace = true
+time.workspace = true
+sha2.workspace = true
+hex = "0.4"
+clap.workspace = true
+smol_str.workspace = true
+parking_lot.workspace = true
+polars = { workspace = true, features = ["parquet", "lazy"] }
+csv = "1.3"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util", "macros"] }
+proptest.workspace = true
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+# T815 perf smoke test — deterministic seeded ledger fixture (R13).
+rand.workspace = true
+rand_chacha.workspace = true
+# T815 perf smoke test — `getrusage(RUSAGE_SELF, ru_maxrss)` for RSS
+# measurement (R13.3 / 256 MiB ceiling).  One-FFI-call solution; no
+# new transitive deps (libc is already pulled in transitively).
+libc = "0.2"
+# T1006 V6 mark-unavailable test — captures `tracing::warn!` events
+# emitted by `reports::generate(...)` when `MarkSource::close_at`
+# returns `MarkError::OutOfRange` for an open position (architect
+# Design § Q6).  `tracing` itself is already in `[dependencies]`; this
+# pulls in `tracing-subscriber` only for the test wiring (already a
+# workspace-level dep used by the agent crate, no new transitive deps).
+tracing-subscriber.workspace = true

@@ -89,6 +89,14 @@ struct TradeEvent {
 pub struct BinanceFeed {
     pub ws_url: String,
     pub rest_url: String,
+    /// Optional audit ledger handle (T805 — operator success reports R7.1).
+    ///
+    /// When `Some`, every WS reconnection writes a `FeedReconnect` strategy
+    /// event to the ledger so the report's R7 system-health row can count
+    /// reconnects per window.  When `None`, no audit write happens — kept
+    /// `Option` so existing test/research callers (which build their own
+    /// `BinanceFeed` without a Ledger) compile unchanged.
+    pub ledger: Option<std::sync::Arc<audit::Ledger>>,
 }
 
 impl BinanceFeed {
@@ -101,7 +109,16 @@ impl BinanceFeed {
         Self {
             ws_url: ws_url.into(),
             rest_url: rest_url.into(),
+            ledger: None,
         }
+    }
+
+    /// Builder-style helper that attaches an audit ledger so WS reconnects
+    /// emit `FeedReconnect` strategy events (T805 — R7.1).
+    #[must_use]
+    pub fn with_ledger(mut self, ledger: std::sync::Arc<audit::Ledger>) -> Self {
+        self.ledger = Some(ledger);
+        self
     }
 
     /// Default Binance production URLs.
@@ -247,12 +264,20 @@ impl MarketDataSource for BinanceFeed {
         );
         let ws_url = format!("{}/{}", self.ws_url, stream_name);
         let symbol_clone = symbol.clone();
+        // Capture optional ledger for T805 — write a `FeedReconnect`
+        // event each time the WS re-establishes (after the initial connect).
+        let ledger_for_stream = self.ledger.clone();
+        let symbol_for_audit = symbol.clone();
 
         // Verify initial connection before returning the stream.
         let _ws = connect_ws(&ws_url).await?;
 
         let stream = async_stream::stream! {
             let mut backoff_secs: u64 = 1;
+            // Track whether this is the first iteration of the outer loop
+            // — the very first `Ok(mut ws)` is the initial connect, not a
+            // reconnect, so we suppress the audit write on it.
+            let mut is_reconnect = false;
             loop {
                 debug!(stream = %stream_name, "connecting to kline WS");
                 match connect_ws(&ws_url).await {
@@ -264,6 +289,21 @@ impl MarketDataSource for BinanceFeed {
                     }
                     Ok(mut ws) => {
                         backoff_secs = 1;
+                        // T805 — emit a `FeedReconnect` strategy event on
+                        // re-establishment (skip the first connect).  Failure
+                        // to write is warn-logged, never breaks the stream.
+                        if is_reconnect {
+                            if let Some(ledger) = ledger_for_stream.as_ref() {
+                                if let Err(e) = audit::journal::feed_reconnect(
+                                    ledger,
+                                    symbol_for_audit.0.as_str(),
+                                    None,
+                                ).await {
+                                    warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
+                                }
+                            }
+                        }
+                        is_reconnect = true;
                         loop {
                             match ws.next().await {
                                 None => {
@@ -338,12 +378,19 @@ impl MarketDataSource for BinanceFeed {
         let stream_name = format!("{}@trade", symbol.0.as_str().to_lowercase());
         let ws_url = format!("{}/{}", self.ws_url, stream_name);
         let symbol_clone = symbol.clone();
+        // Capture optional ledger for T805 — emit a `FeedReconnect` event
+        // each time the trade WS re-establishes (after the initial connect).
+        let ledger_for_stream = self.ledger.clone();
+        let symbol_for_audit = symbol.clone();
 
         // Verify initial connection before returning the stream.
         let _ws = connect_ws(&ws_url).await?;
 
         let stream = async_stream::stream! {
             let mut backoff_secs: u64 = 1;
+            // Same is_reconnect flag as in subscribe_bars — first connect
+            // is not a reconnect.
+            let mut is_reconnect = false;
             loop {
                 debug!(stream = %stream_name, "connecting to trade WS");
                 match connect_ws(&ws_url).await {
@@ -355,6 +402,18 @@ impl MarketDataSource for BinanceFeed {
                     }
                     Ok(mut ws) => {
                         backoff_secs = 1;
+                        if is_reconnect {
+                            if let Some(ledger) = ledger_for_stream.as_ref() {
+                                if let Err(e) = audit::journal::feed_reconnect(
+                                    ledger,
+                                    symbol_for_audit.0.as_str(),
+                                    None,
+                                ).await {
+                                    warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
+                                }
+                            }
+                        }
+                        is_reconnect = true;
                         loop {
                             match ws.next().await {
                                 None => {

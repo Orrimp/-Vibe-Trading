@@ -40,6 +40,10 @@ heartbeat_timeout_ms  = 5000
 
 [observability]
 prometheus_listen = "0.0.0.0:9100"
+# T901 / live-cockpit-unified Q4 — when false, the agent skips binding
+# the listener and emits one `prometheus_listener_disabled` info line.
+# Default: true (omit for the same behavior as pre-feature configs).
+# prometheus_enabled = true
 
 [cost]
 budget_usd_month = 20

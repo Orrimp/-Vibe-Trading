@@ -44,6 +44,53 @@ Use the `spec-update` skill for writes.
 - Prefer boring, production-proven Rust crates over exotic ones; flag experimental choices explicitly.
 - Design for testability first: every component must be mockable/fakeable.
 
+## Library / crate compatibility checklist (run before locking dep)
+
+Verify each new dependency before it lands in any `Cargo.toml`. We
+have paid for missing each of these:
+
+- [ ] **Single-binary friendly.** Does it work with our SQLite backend
+  (zero infra spend)? `sqlx-ledger` failed this — it's Postgres-only.
+  Reject anything that pins to Postgres / requires a separate service
+  unless the user has explicitly opted in.
+- [ ] **No system C deps without a `bundled`/static-link option.**
+  We ship one binary. OpenSSL, libssh2, libsodium without `vendored`
+  features → reject.
+- [ ] **Edition 2024 compatible.** Pulled by `cargo check` on stable.
+  If it fails on 2024, route back to analyst with a substitute.
+- [ ] **`[package] name` does NOT shadow Rust stdlib crates**:
+  `core`, `std`, `alloc`, `test`, `proc_macro`. Doctests will explode
+  on `cargo test --workspace --doc`. Run `scripts/precheck.sh` to
+  catch this. Directory names may match — only the `name = "..."`
+  field matters.
+- [ ] **Maintained.** Last release ≤ 18 months ago, OR the crate is
+  well-known and stable. Otherwise propose an alternative.
+- [ ] **License compatible.** Compatible with the project license per
+  `deny.toml` if present.
+
+Record the decision (chosen crate, rejected alternatives, why) in
+`spec/architecture.md` under the relevant subsystem.
+
+## Determinism & report-format guardrails
+
+When you design anything that emits a backtest report, an audit
+artifact, or any byte-comparable file:
+
+- Every run-varying field (timestamps, wall-clock, host, pid, git
+  commit, generated-at, paths that may shift between machines)
+  goes in the YAML front-matter — never in the body. The body is
+  hashed by `scripts/hash_report.py`.
+- Audit-DB timestamps use 6-digit fractional-second format. Never
+  `Rfc3339` second precision (causes SQLite ORDER BY ties).
+- Money math: `rust_decimal::Decimal` + `Money<C: Currency>` newtype.
+  Never `f64`. Spec a reconciliation rule (exact-cent, no tolerance)
+  for any P&L aggregation.
+- RNGs: `ChaCha20Rng::from_seed(...)`. Spec the seed in the feature file.
+
+If your design needs to add or change any of the 9 anchor SHAs in
+`spec/anchors.toml`, that requires an explicit ADR — anchors do not
+mutate silently.
+
 ## Handoff to Developer
 
 End your output with:

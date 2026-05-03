@@ -1,0 +1,32 @@
+# systemd timer — operator success report (Linux production)
+#
+# T810 — operator success reports (R12.1b / Q7).  Reference-only file:
+# the operator copies it to /etc/systemd/system/ (or
+# ~/.config/systemd/user/) and customizes paths + user.  None of the
+# files under ops/ are wired into the build.
+#
+# Install:
+#     sudo cp ops/reports.timer.example   /etc/systemd/system/reports.timer
+#     sudo cp ops/reports.service.example /etc/systemd/system/reports.service
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now reports.timer
+#
+# Verify the unit parses:
+#     systemd-analyze verify ops/reports.timer.example
+#
+# Inspect schedule:
+#     systemctl list-timers reports.timer
+
+[Unit]
+Description=Trading agent — operator success report (weekly)
+Requires=reports.service
+
+[Timer]
+# Mondays 09:00 local time.  Tweak for the operator's timezone.
+OnCalendar=Mon *-*-* 09:00:00
+Persistent=true
+RandomizedDelaySec=60s
+Unit=reports.service
+
+[Install]
+WantedBy=timers.target

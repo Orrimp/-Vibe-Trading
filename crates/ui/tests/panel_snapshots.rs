@@ -553,9 +553,12 @@ fn strategies_summary(c: &Cockpit) -> String {
                     StrategyEventKind::Unload => strings::STRATEGIES_EVENT_UNLOAD,
                     StrategyEventKind::Reject => strings::STRATEGIES_EVENT_REJECT,
                     StrategyEventKind::RebalanceRejected => strings::STRATEGIES_EVENT_REJECT,
-                    // v1.5a pair events — displayed as "loaded" label (muted, observation-only)
+                    // v1.5a pair events + v1+ operator-success-report sources —
+                    // displayed as "loaded" label (muted, observation-only).
                     StrategyEventKind::MeanReversionStop
-                    | StrategyEventKind::PairShortObservation => strings::STRATEGIES_EVENT_LOAD,
+                    | StrategyEventKind::PairShortObservation
+                    | StrategyEventKind::KillSwitchTripped
+                    | StrategyEventKind::FeedReconnect => strings::STRATEGIES_EVENT_LOAD,
                 });
                 let position = if r.has_position {
                     strings::STRATEGIES_POSITION_HELD
@@ -591,10 +594,12 @@ fn strategies_summary(c: &Cockpit) -> String {
                 StrategyEventKind::Unload => (strings::STRATEGIES_EVENT_UNLOAD, "fg_muted"),
                 StrategyEventKind::Reject => (strings::STRATEGIES_EVENT_REJECT, "neg"),
                 StrategyEventKind::RebalanceRejected => (strings::STRATEGIES_EVENT_REJECT, "neg"),
-                // v1.5a pair events — show as "loaded" (muted, observation-only in v1.5a)
-                StrategyEventKind::MeanReversionStop | StrategyEventKind::PairShortObservation => {
-                    (strings::STRATEGIES_EVENT_LOAD, "fg_muted")
-                }
+                // v1.5a pair events + v1+ operator-success-report sources —
+                // show as "loaded" (muted, observation-only).
+                StrategyEventKind::MeanReversionStop
+                | StrategyEventKind::PairShortObservation
+                | StrategyEventKind::KillSwitchTripped
+                | StrategyEventKind::FeedReconnect => (strings::STRATEGIES_EVENT_LOAD, "fg_muted"),
             };
             let id = ev
                 .strategy_id

@@ -86,6 +86,21 @@ pub enum Latency {
     Known { ms: i64 },
 }
 
+/// Trip-the-kill-switch closure type used by the cockpit's
+/// `Message::KillConfirmed` handler.
+///
+/// **Why a closure not the `Arc<KillSwitch>` directly:** `KillSwitch::trip`
+/// uses `tokio::spawn` internally for its dual-write side effect (T809);
+/// that requires a tokio runtime in scope at the call site. The iced
+/// `update` arm runs on the iced thread, where there is no tokio runtime.
+/// The closure injects the side-thread runtime's `tokio::runtime::Handle`
+/// so the spawn lands on it instead.
+///
+/// Constructed by `cockpit_live` (the unified bin); left `None` for
+/// `cockpit --features fixtures` (no kill switch to trip).
+#[cfg(feature = "live")]
+pub type KillTripFn = std::sync::Arc<dyn Fn(agent::HaltReason) + Send + Sync>;
+
 /// Per-strategy status pill (R5). A row can carry an error badge (with
 /// `error_summary` copy) while the overall panel is still `Ready` — this is
 /// the "malformed TOML, old strategy keeps running" visual from R8.
@@ -159,7 +174,11 @@ pub struct StrategyRow {
 }
 
 /// Root cockpit model. Owned by the iced `Application`.
-#[derive(Debug, Clone)]
+///
+/// `Debug` and `Clone` are implemented manually so the optional
+/// `kill_switch` closure (`#[cfg(feature = "live")]`) does not block the
+/// derive — `Arc<dyn Fn(...)>` does not implement `Debug`.
+#[derive(Clone)]
 pub struct Cockpit {
     pub mode: AgentMode,
 
@@ -189,6 +208,41 @@ pub struct Cockpit {
     /// Most recent bar/tick timestamps for debug/telemetry.
     pub last_bar_ts: Option<Timestamp>,
     pub last_tick_ts: Option<Timestamp>,
+
+    /// Trip-the-kill-switch closure (T906). When set, processing
+    /// `Message::KillConfirmed` invokes this with `HaltReason::ManualOperator`
+    /// before transitioning the UI into `KillState::Flattening`. Absent in
+    /// fixture / standalone-cockpit modes — see `KillTripFn` doc.
+    #[cfg(feature = "live")]
+    pub kill_switch: Option<KillTripFn>,
+}
+
+impl std::fmt::Debug for Cockpit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut dbg = f.debug_struct("Cockpit");
+        dbg.field("mode", &self.mode)
+            .field("tape", &self.tape)
+            .field("tape_paused", &self.tape_paused)
+            .field("tape_paused_buffer", &self.tape_paused_buffer)
+            .field("positions", &self.positions)
+            .field("pnl", &self.pnl)
+            .field("strategies", &self.strategies)
+            .field(
+                "strategies_signal_counters",
+                &self.strategies_signal_counters,
+            )
+            .field("strategies_recent_events", &self.strategies_recent_events)
+            .field("kill", &self.kill)
+            .field("latency", &self.latency)
+            .field("last_bar_ts", &self.last_bar_ts)
+            .field("last_tick_ts", &self.last_tick_ts);
+        #[cfg(feature = "live")]
+        dbg.field(
+            "kill_switch",
+            &self.kill_switch.as_ref().map(|_| "<trip-fn>"),
+        );
+        dbg.finish()
+    }
 }
 
 impl Default for Cockpit {
@@ -207,6 +261,8 @@ impl Default for Cockpit {
             latency: Latency::Unknown,
             last_bar_ts: None,
             last_tick_ts: None,
+            #[cfg(feature = "live")]
+            kill_switch: None,
         }
     }
 }
@@ -257,6 +313,8 @@ impl Cockpit {
             latency: Latency::Known { ms: 120 },
             last_bar_ts: None,
             last_tick_ts: None,
+            #[cfg(feature = "live")]
+            kill_switch: None,
         }
     }
 }
@@ -397,6 +455,19 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::KillConfirmed => {
             if let KillState::Confirming { typed } = &model.kill {
                 if typed == crate::strings::KILL_SAFETY_PHRASE {
+                    // T906: trip the real kill switch (when running under
+                    // `cockpit_live`'s wired-bus path). The closure spawns
+                    // `KillSwitch::trip` onto the side-thread tokio runtime
+                    // so the T809 dual-write (audit memo + strategy_events
+                    // row + incident-spawn helper) executes end-to-end.
+                    // `cockpit --features fixtures` boots with
+                    // `kill_switch = None`, preserving fixture-only
+                    // smoke-test behaviour: the UI flips to
+                    // `KillState::Flattening` without any agent contact.
+                    #[cfg(feature = "live")]
+                    if let Some(trip) = model.kill_switch.as_ref() {
+                        trip(agent::HaltReason::ManualOperator);
+                    }
                     model.kill = KillState::Flattening;
                 }
             }
@@ -648,6 +719,7 @@ fn strategy_event_view_from_load_error(ev: &StrategyLoadError) -> StrategyEventV
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
@@ -714,6 +786,100 @@ mod tests {
         update(&mut c, Message::KillPressed);
         update(&mut c, Message::KillCancelled);
         assert_eq!(c.kill, KillState::Idle);
+    }
+
+    /// T906 — when `kill_switch` is wired with a real trip closure, the
+    /// `Message::KillConfirmed` arm calls the closure exactly once with
+    /// `HaltReason::ManualOperator` before flipping the UI to
+    /// `KillState::Flattening`. This is the analyst's finding-#2 fix:
+    /// pre-T906 the arm only updated UI state; post-T906 it actually
+    /// halts the agent via the side-thread tokio runtime.
+    #[cfg(feature = "live")]
+    #[test]
+    fn t906_kill_confirmed_calls_trip_closure_with_manual_operator() {
+        use std::sync::Mutex;
+
+        let captured: std::sync::Arc<Mutex<Vec<agent::HaltReason>>> =
+            std::sync::Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = std::sync::Arc::clone(&captured);
+        let trip: KillTripFn = std::sync::Arc::new(move |reason| {
+            captured_clone
+                .lock()
+                .expect("test mutex unpoisoned")
+                .push(reason);
+        });
+
+        let mut c = Cockpit::new();
+        c.kill_switch = Some(trip);
+
+        update(&mut c, Message::KillPressed);
+        update(
+            &mut c,
+            Message::KillConfirmPhraseChanged(crate::strings::KILL_SAFETY_PHRASE.to_string()),
+        );
+        update(&mut c, Message::KillConfirmed);
+
+        let calls = captured.lock().expect("test mutex unpoisoned");
+        assert_eq!(
+            calls.len(),
+            1,
+            "trip closure must be called exactly once on KillConfirmed",
+        );
+        assert!(
+            matches!(calls[0], agent::HaltReason::ManualOperator),
+            "trip closure must receive HaltReason::ManualOperator, got {:?}",
+            calls[0],
+        );
+        assert_eq!(c.kill, KillState::Flattening);
+    }
+
+    /// T906 — wrong-phrase path must NOT call the trip closure (the
+    /// safety-phrase gate is the operator's last guard against an
+    /// accidental kill).
+    #[cfg(feature = "live")]
+    #[test]
+    fn t906_kill_confirmed_with_wrong_phrase_does_not_call_trip() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let calls_clone = std::sync::Arc::clone(&calls);
+        let trip: KillTripFn = std::sync::Arc::new(move |_reason| {
+            calls_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        let mut c = Cockpit::new();
+        c.kill_switch = Some(trip);
+
+        update(&mut c, Message::KillPressed);
+        update(&mut c, Message::KillConfirmPhraseChanged("HALT".into()));
+        update(&mut c, Message::KillConfirmed);
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "trip closure must NOT fire on phrase mismatch",
+        );
+        assert!(matches!(c.kill, KillState::Confirming { .. }));
+    }
+
+    /// T906 — fixture / standalone-cockpit boot leaves `kill_switch =
+    /// None`; the arm must still flip to `Flattening` (UI-only effect),
+    /// preserving the pre-T906 behavior under `cargo run --bin cockpit
+    /// --features fixtures`.
+    #[cfg(feature = "live")]
+    #[test]
+    fn t906_kill_confirmed_with_no_closure_still_advances_ui() {
+        let mut c = Cockpit::new();
+        assert!(c.kill_switch.is_none());
+
+        update(&mut c, Message::KillPressed);
+        update(
+            &mut c,
+            Message::KillConfirmPhraseChanged(crate::strings::KILL_SAFETY_PHRASE.to_string()),
+        );
+        update(&mut c, Message::KillConfirmed);
+
+        assert_eq!(c.kill, KillState::Flattening);
     }
 
     // ── v0.5 strategies panel state tests (T523) ────────────────────────────

@@ -12,6 +12,13 @@ path = "src/main.rs"
 name = "agent"
 path = "src/lib.rs"
 
+[features]
+# T810 — operator success reports (R12.1b / Q7).  When enabled the agent
+# spawns an in-process tokio cron scheduler that runs the reports binary
+# at the configured cron expression (default Mondays 09:00).  Default
+# build is **unchanged** — the cron scheduler is opt-in only.
+in_process_cron = ["dep:tokio-cron-scheduler", "dep:reports"]
+
 [dependencies]
 trading_core = { path = "../core" }
 data = { path = "../data" }
@@ -22,6 +29,7 @@ exec = { path = "../exec" }
 audit = { path = "../audit" }
 cost = { path = "../cost" }
 backtest = { path = "../backtest" }
+reports = { path = "../reports", optional = true }
 thiserror.workspace = true
 anyhow.workspace = true
 serde.workspace = true
@@ -42,6 +50,10 @@ config.workspace = true
 toml.workspace = true
 clap.workspace = true
 tokio-util.workspace = true
+uuid.workspace = true
+# T810 — optional in-process cron scheduler.  Pulled in only when the
+# `in_process_cron` feature is enabled; default build is unchanged.
+tokio-cron-scheduler = { version = "0.15", optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

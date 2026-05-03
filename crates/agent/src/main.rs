@@ -1,10 +1,23 @@
-//! Trading agent binary — T31.
+//! Trading agent binary — T31 (refactored T902).
 //!
 //! Usage: `cargo run --bin trading -- --config config/agent.toml --mode research`
 //!
-//! Wires: `MarketDataSource` → `bar_stream` → `StrategyRegistry` → `risk` →
-//! `ExecRouter` (paper) → `PaperEngine` → `audit`, plus reconciler, kill switch,
-//! observability, broadcast buses the UI subscribes to.
+//! After T902 (live-cockpit-unified), this binary is a thin wrapper around
+//! `agent::runtime::run`.  The unified `cockpit_live` binary
+//! (`crates/ui/src/bin/cockpit_live.rs`, lands in T904) calls into the
+//! same `run` function from a side-thread tokio runtime; this binary
+//! drives it from `#[tokio::main]` directly.
+//!
+//! Caller responsibilities here mirror the
+//! `agent::runtime` module-doc:
+//!
+//! 1. parse CLI / load config / install tracing / install observability;
+//! 2. construct ledger, kill_switch, registry, bus, boot_id;
+//! 3. open the uptime interval (T806 R7.1);
+//! 4. install Ctrl-C handler that calls `cancel.cancel()`;
+//! 5. `agent::runtime::run(handles, cancel).await?`;
+//! 6. `agent::runtime::shutdown_writer(ledger, &boot_id).await`;
+//! 7. exit.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,7 +27,7 @@ use clap::Parser;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use agent::{EventBus, KillSwitch};
+use agent::{EventBus, KillSwitch, RunHandles};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -65,25 +78,15 @@ async fn main() -> Result<()> {
 
     // ── Observability ─────────────────────────────────────────────────────────
     // Install recorder before registering metrics — otherwise names never surface on /metrics.
-    if let Err(e) =
-        agent::observability::start_prometheus_exporter(&cfg.observability.prometheus_listen)
-    {
+    if let Err(e) = agent::observability::start_prometheus_exporter(&cfg.observability) {
         warn!(error = %e, "prometheus exporter failed to start (non-fatal)");
     }
     agent::observability::register_metrics();
     info!("observability initialized");
 
-    // ── Kill switch ───────────────────────────────────────────────────────────
-    let kill_switch = Arc::new(KillSwitch::new(&cfg.kill_switch.halt_file, 32));
-    kill_switch.clone().spawn_halt_file_watcher();
-    info!(halt_file = %cfg.kill_switch.halt_file, "kill switch initialized");
-
-    if kill_switch.is_tripped() {
-        warn!("halt file present at startup — agent entering Halted mode immediately");
-        return Ok(());
-    }
-
     // ── Audit ledger ──────────────────────────────────────────────────────────
+    // Opened BEFORE the kill switch so the trip handler can dual-write
+    // (T809 — operator success reports Q8).
     let db_path = &cfg.audit.ledger_db_path;
     if let Some(parent) = std::path::Path::new(db_path).parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -98,13 +101,19 @@ async fn main() -> Result<()> {
         .context("bootstrap chart of accounts")?;
     info!(db = %db_path, "audit ledger initialized");
 
-    // ── Cost budget ───────────────────────────────────────────────────────────
-    let _cost_sink = cost::LedgerCostSink::new(Arc::clone(&ledger));
-    let cost_budget = cost::CostBudget::new(
-        rust_decimal::Decimal::try_from(cfg.cost.budget_usd_month)
-            .unwrap_or(rust_decimal::Decimal::from(20u32)),
-    );
-    info!(budget_usd = %cost_budget.remaining(), "cost budget initialized");
+    // ── Kill switch ───────────────────────────────────────────────────────────
+    // T809 — wire the audit ledger + production incident spawner.  On
+    // trip the kill switch dual-writes the audit memo + `strategy_events`
+    // row and spawns the reports binary out-of-process.  The halt-file
+    // watcher itself is spawned inside `agent::runtime::run`.
+    let incident_spawner: Arc<dyn agent::IncidentSpawner> = Arc::new(agent::CommandIncidentSpawner);
+    let kill_switch = Arc::new(KillSwitch::with_audit(
+        &cfg.kill_switch.halt_file,
+        32,
+        Arc::clone(&ledger),
+        incident_spawner,
+    ));
+    info!(halt_file = %cfg.kill_switch.halt_file, "kill switch initialized (audit-wired)");
 
     // ── Strategy registry ─────────────────────────────────────────────────────
     let registry = strategy::StrategyRegistry::new();
@@ -112,137 +121,59 @@ async fn main() -> Result<()> {
         cfg.strategies.sma_crossover.fast_len,
         cfg.strategies.sma_crossover.slow_len,
     )));
-    strategy::flush_pending_to_ledger(&registry, &ledger)
-        .await
-        .context("journal strategy load")?;
     info!(
         fast = cfg.strategies.sma_crossover.fast_len,
         slow = cfg.strategies.sma_crossover.slow_len,
-        "strategy registry initialized"
+        "strategy registry constructed",
     );
+    let registry = Arc::new(registry);
 
     // ── Broadcast bus ─────────────────────────────────────────────────────────
     let bus = Arc::new(EventBus::new(&cfg.bus));
     info!("broadcast event bus initialized");
 
-    // ── Strategy watcher (paper + research only) ──────────────────────────────
-    let registry = Arc::new(registry);
-    let (watcher_shutdown_tx, watcher_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    // ── Agent uptime interval — open BEFORE entering the runtime ─────────────
+    // T806 R7.1: the open row carries the same boot id that the
+    // heartbeat task (spawned inside `runtime::run`) writes against and
+    // the close row written via `shutdown_writer` matches.  Failures
+    // are warn-logged, never fatal — uptime is observability, not
+    // control flow.
+    let boot_id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = audit::journal::open_uptime_interval(&ledger, &boot_id, None).await {
+        warn!(error = %e, "open_uptime_interval failed (non-fatal)");
+    } else {
+        info!(boot_id = %boot_id, "agent uptime interval opened");
+    }
+
+    // ── Cancellation token + Ctrl-C bridge ───────────────────────────────────
+    // Single CancellationToken shared with `runtime::run`.  A
+    // background task awaits SIGINT and trips the same token; the
+    // runtime's internal `select!` observes the cancellation via its
+    // child tokens and drains the JoinSet.
+    let cancel = CancellationToken::new();
     {
-        let strategies_dir = PathBuf::from("config/strategies");
-        // Create the directory if it doesn't exist (non-fatal).
-        let _ = std::fs::create_dir_all(&strategies_dir);
-        let reg_clone = Arc::clone(&registry);
-        let ledger_clone = Arc::clone(&ledger);
-        let bus_clone = Arc::clone(&bus);
-        tokio::spawn(agent::run_strategy_watcher(
-            strategies_dir,
-            reg_clone,
-            ledger_clone,
-            bus_clone,
-            watcher_shutdown_rx,
-        ));
-    }
-    info!("strategy_watcher started");
-
-    // Keep the shutdown sender so it's dropped on shutdown, closing the watcher.
-    let _watcher_shutdown = watcher_shutdown_tx;
-
-    // ── Funding-rate poller (v1 T614) ─────────────────────────────────────────
-    // Disabled by default (funding.enabled = false in config/agent.toml).
-    // When enabled, spawns an hourly REST poller against Binance fapi.
-    // Non-essential: if the spawned task panics the agent continues running.
-    let _funding_cancel = {
-        if cfg.funding.enabled {
-            let universe: Vec<trading_core::Symbol> = cfg
-                .funding
-                .universe
-                .iter()
-                .map(|s| trading_core::Symbol::new(s.as_str()))
-                .collect();
-            let interval = std::time::Duration::from_secs(cfg.funding.interval_secs);
-            let poller = data::funding::FundingPoller {
-                universe: universe.clone(),
-                interval,
-            };
-            let client = Arc::new(data::funding::BinanceFundingClient::new());
-            let tx = bus.funding_obs_sender();
-            let ledger_clone = Arc::clone(&ledger);
-            let cancel = CancellationToken::new();
-            let cancel_child = cancel.clone();
-
-            info!(universe_size = universe.len(), "funding_poller_started");
-
-            // Spawn the poller task.  Panic in the poller does NOT crash the agent.
-            tokio::spawn(async move {
-                poller.run(client.as_ref(), &tx, cancel_child).await;
-            });
-
-            // Spawn a persistence sidecar: subscribe to funding_obs and write to ledger.
-            let mut rx = bus.funding_obs();
-            let cancel_persist = cancel.clone();
-            tokio::spawn(async move {
-                loop {
-                    tokio::select! {
-                        () = cancel_persist.cancelled() => break,
-                        msg = rx.recv() => {
-                            match msg {
-                                Ok(obs) => {
-                                    if let Err(e) = audit::journal::insert_funding_obs(&ledger_clone, &obs).await {
-                                        warn!(error = %e, "funding_obs persist failed (non-fatal)");
-                                    }
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                                    warn!(skipped = n, "funding_obs channel lagged — rows skipped");
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                            }
-                        }
-                    }
-                }
-            });
-
-            Some(cancel)
-        } else {
-            info!("funding_poller_disabled");
-            None
-        }
-    };
-
-    // ── Data source ───────────────────────────────────────────────────────────
-    // In research mode, use replay; in paper mode, use Binance WS.
-    match cfg.mode {
-        agent::config::Mode::Research => {
-            info!("research mode — replay feed (no live orders)");
-            let parquet_root = &cfg.data.historical.parquet_root;
-            let _feed = data::ReplayFeed::new(parquet_root, false); // wallclock pace
-            info!(parquet_root = %parquet_root, "replay feed initialized");
-
-            // Note: full replay loop would go here; for now just verify init.
-            // The backtest binary (T25) runs the full loop.
-            info!("agent subsystems initialized — entering idle (replay loop in backtest binary)");
-        }
-        agent::config::Mode::Paper => {
-            info!("paper mode — Binance WS feed (paper fills, no real orders)");
-            let ws_url = &cfg.data.sources.binance.ws_url;
-            let _feed = data::BinanceFeed::new(ws_url, ws_url);
-            info!(ws = %ws_url, "Binance feed initialized");
-        }
-    }
-
-    // ── Serve until halted ────────────────────────────────────────────────────
-    info!("agent running — serving /metrics, watching for halt file");
-    let mut mode_rx = kill_switch.subscribe();
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            info!("ctrl-c received — shutting down");
-        }
-        mode = mode_rx.recv() => {
-            if let Ok(agent::AgentMode::Halted { reason }) = mode {
-                warn!(reason = %reason, "agent halted");
+        let cancel_signal = cancel.clone();
+        tokio::spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                info!("ctrl-c received — shutting down");
+                cancel_signal.cancel();
             }
-        }
+        });
     }
+
+    // ── Run the agent runtime ─────────────────────────────────────────────────
+    let handles = RunHandles {
+        config: Arc::new(cfg),
+        ledger: Arc::clone(&ledger),
+        bus: Arc::clone(&bus),
+        kill_switch: Arc::clone(&kill_switch),
+        registry: Arc::clone(&registry),
+        boot_id: boot_id.clone(),
+    };
+    agent::runtime::run(handles, cancel).await?;
+
+    // ── T806 — close uptime interval on graceful shutdown ────────────────────
+    agent::runtime::shutdown_writer(Arc::clone(&ledger), &boot_id).await;
 
     info!("agent stopped");
     Ok(())

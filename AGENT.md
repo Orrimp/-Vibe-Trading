@@ -1,13 +1,13 @@
 # AGENT.md — Orchestration & Workflow
 
-This document is the contract for how the five specialist agents collaborate
+This document is the contract for how the six specialist agents collaborate
 on the Rust crypto trading agent. It is **required reading** for any Claude
 session acting as the orchestrator.
 
 > This project uses sub-agents and expects them to run in **parallel** whenever
 > their work is independent. Sequential handoffs are only for dependent work.
 
-## The five agents
+## The six agents
 
 | Agent        | Model  | File                                  | Primary role                              |
 |--------------|--------|---------------------------------------|-------------------------------------------|
@@ -16,8 +16,9 @@ session acting as the orchestrator.
 | developer    | sonnet | `.claude/agents/developer.md`         | Rust implementation, tests alongside code |
 | ui-designer  | opus   | `.claude/agents/ui-designer.md`       | iced UI: implement + consistency + human-friendliness |
 | tester       | sonnet | `.claude/agents/tester.md`            | Build, test, validate, backtest, report   |
+| presenter    | opus   | `.claude/agents/presenter.md`         | Operator-facing presentations + agile approval loop |
 
-Opus for deep thinking (analyst, architect, ui-designer — UI is hard).
+Opus for deep thinking (analyst, architect, ui-designer, presenter — communication is hard).
 Sonnet for high-throughput execution (developer, tester).
 
 ## Canonical workflow
@@ -49,20 +50,34 @@ Sonnet for high-throughput execution (developer, tester).
                          ▼
                 ┌────────────────────────┐
                 │ verdict routing:       │
-                │  PASS → ship           │
+                │  PASS → presenter      │
                 │  FAIL → developer      │
                 │       or ui-designer   │
                 │  REGRESSION:           │
                 │   structural → architect │
                 │   strategy   → analyst   │
                 │   UX/visual  → ui-designer │
-                └────────────────────────┘
+                └────────┬───────────────┘
+                         │ on PASS
+                         ▼
+                  ┌─────────────┐
+                  │  presenter  │  opus — distills work into a sprint-review
+                  └──────┬──────┘  presentation; runs real bins, captures
+                         │         screenshots, lists open decisions
+                         ▼
+                  ┌─────────────┐
+                  │    human    │  approves / approves-with-notes / rejects
+                  └─────────────┘
+                         │ on rejection: feedback routes to the named agent
+                         │ (analyst / architect / developer / ui-designer)
 ```
 
 Feedback edges are **first-class**. The tester's report is not a terminator —
 it is an input to whichever agent owns the failure mode. UI-designer and
 developer run **in parallel** whenever a feature has both backend and UI
-work; they synchronize only on shared types in the `core` crate.
+work; they synchronize only on shared types in the `core` crate. The
+presenter is the human-facing terminator: nothing ships without an
+operator approval recorded against a presentation.
 
 ## Parallelism rules
 
@@ -94,6 +109,15 @@ whenever their tasks are independent. Concrete patterns:
    `backtest` as parallel sub-agents; the main tester merges their outputs
    into a single report.
 
+6. **Presenter is sequential, not fanned out.** Spawn the presenter
+   AFTER the tester emits `VERDICT → PASS`. There is no presenter
+   fan-out — one feature, one presentation. The presenter may itself
+   call multiple skills internally (`present-results`, `verify-anchors`,
+   `capture-screenshot`) but the orchestrator spawns it as a single
+   agent. Optionally spawn a `preview` mode presenter mid-feature when
+   the analyst or architect wants the operator to ratify a direction
+   before more work is committed.
+
 Call the Agent tool **once with multiple tool-use blocks in the same message**
 to achieve actual concurrency. Sequential calls defeat the purpose.
 
@@ -120,10 +144,19 @@ to achieve actual concurrency. Sequential calls defeat the purpose.
 5. Orchestrator spawns **tester** which fans out into parallel
    validate/test/bench/backtest and merges into one report;
 6. Orchestrator reads the verdict:
-   - PASS → summarize for the user, ask what's next.
+   - PASS → spawn **presenter** for `release` mode. Presenter assembles
+     `spec/presentations/<slug>-<date>.md`, runs real bins, embeds
+     verification matrix + numbers, lists open decisions. Hand the file
+     path back to the user with the approval block. Wait for the
+     operator's tick.
    - FAIL / REGRESSION → route to the agent named in the report and loop
      (UX/visual regressions route to **ui-designer**).
-7. At every step, the agent MUST write to the right spec file. The chat is a
+7. **Operator approval gate:** when the user approves the presentation,
+   the feature ships (status `→ shipped`). If the operator approves with
+   notes, append the notes to the presentation's feedback log and route
+   to the relevant agent for follow-up. If the operator rejects, the
+   presenter routes back to the agent that owns the failure mode.
+8. At every step, the agent MUST write to the right spec file. The chat is a
    view, not a store.
 
 ## When does ui-designer get involved?
@@ -139,19 +172,99 @@ to achieve actual concurrency. Sequential calls defeat the purpose.
 If a feature is purely backend (data ingestion plumbing, model training
 script, no operator-visible change), skip ui-designer.
 
+## When does presenter get involved?
+
+- **Always after `VERDICT → PASS`** for any feature the operator will
+  ship or use directly. Even backend features that have no UI surface
+  still get a presentation — the operator needs to know what changed
+  and approve.
+- **Optionally mid-feature** in `preview` mode, when the analyst or
+  architect wants the operator to ratify a non-trivial design choice
+  before development commits to it. Examples: "we're considering
+  Postgres vs SQLite — here's the tradeoff, please pick"; "v2 RL
+  strategy will need a GPU budget — approve the cost?".
+- **Skip the presenter** for tiny one-line fixes, doc-only changes,
+  refactors with no behavior change, and dependency bumps. Presenter
+  ceremony costs more than it saves on those.
+
+The presenter is the only agent that addresses the human in
+presentation form. Other agents may write reports the operator reads,
+but those are technical artifacts — the presenter is the agile
+"sprint review" face of the whole team.
+
 ## Skills catalog
 
-| Skill           | Purpose                                   |
-|-----------------|-------------------------------------------|
-| `rust-build`    | `cargo check` / `build` pipeline          |
-| `rust-test`     | Full test matrix + report generation      |
-| `rust-validate` | fmt, clippy, audit, deny, docs            |
-| `rust-bench`    | Criterion benchmarks with baseline diffs  |
-| `backtest`      | Historical strategy simulation            |
-| `spec-update`   | Safe writer for `spec/` files             |
+| Skill                | Purpose                                                       |
+|----------------------|---------------------------------------------------------------|
+| `rust-build`         | `cargo check` / `build` pipeline                              |
+| `rust-test`          | Full test matrix + report generation                          |
+| `rust-validate`      | fmt, clippy, audit, deny, docs                                |
+| `rust-bench`         | Criterion benchmarks with baseline diffs                      |
+| `backtest`           | Historical strategy simulation                                |
+| `verify-anchors`     | Regression-gate the body-SHA anchors in `spec/anchors.toml`   |
+| `present-results`    | Assemble a `spec/presentations/<slug>-<date>.md` from spec + tests + live bin runs |
+| `capture-screenshot` | Capture (or operator-instruct) a UI screenshot                |
+| `spec-update`        | Safe writer for `spec/` files                                 |
 
 Agents invoke skills; the orchestrator does not need to call skills directly
 unless operating without sub-agents.
+
+## Tooling — `scripts/`
+
+Small utilities that several agents share. Use them instead of inline
+Python or hand-typed pipelines.
+
+| Script                         | Purpose                                                  | Caller                       |
+|--------------------------------|----------------------------------------------------------|------------------------------|
+| `scripts/hash_report.py`       | Body-only SHA-256 of a YAML-front-mattered report file   | tester, developer, architect |
+| `scripts/verify_anchors.sh`    | Verify all 9 anchors in `spec/anchors.toml`              | tester (mandatory gate)      |
+| `scripts/precheck.sh`          | Stdlib-name clash check + task-tick summary              | architect, orchestrator      |
+
+`spec/anchors.toml` is the single source of truth for locked anchor SHAs
+— never duplicate hashes into feature/task/report files. Update only via
+architect approval; tester locks new entries.
+
+## Process discipline (lessons from v0 → v1.5a)
+
+These rules exist because we paid for them. Each one maps to a real
+incident and a concrete tooling gate:
+
+1. **Honest tick.** The developer agent MUST NOT mark a task `[x]`
+   without citing three things: (a) the file:line where the change
+   landed, (b) the test command exercising it, (c) the test-output
+   line proving it passed. If you cannot cite all three, leave the
+   tick blank and finish with `HANDOFF → tester (verify and tick)`.
+   *Why:* every version v0/v0.5/v1/v1.5a had a developer round that
+   ticked tasks before the work was done.
+
+2. **Tester owns `T_FINAL_*` ticks.** The developer never ticks the
+   `T_FINAL_*` rows. Only the tester does, and only after `VERDICT →
+   PASS` AND `verify-anchors` PASS. If the dev list ends with an
+   unticked `T_FINAL_*`, the developer has finished correctly — that
+   is the handoff.
+
+3. **Anchor gate.** Any tester run that touched `crates/strategy/`,
+   `crates/audit/`, `crates/exec/`, `crates/backtest/`, or report
+   rendering MUST run `verify-anchors`. A single FAIL routes
+   `HANDOFF → developer` with the body diff. The 9 anchors live in
+   `spec/anchors.toml`; nowhere else.
+
+4. **Body-vs-front-matter discipline.** Anything that may differ
+   between two equivalent runs (timestamps, wall-clock, host, pid,
+   git commit, generated:, data_source variants) belongs in YAML
+   front-matter — never in the body. The body is what gets hashed.
+   *Why:* HF-1 (`wall_clock_s`) and T715 (`data_source` string)
+   each cost a round.
+
+5. **Determinism non-negotiables** (developer-agent checklist):
+   - No `SystemTime::now()` / `Instant::now()` reachable from a
+     backtest replay path. Inject a clock.
+   - No `f64` in money math. `rust_decimal::Decimal` + `Money<C>`
+     newtype only.
+   - Microsecond fractional-second timestamps in the audit DB —
+     `Rfc3339` second-precision causes SQLite ORDER BY ties.
+   - All RNGs `ChaCha20Rng::from_seed(...)`. No `thread_rng`.
+   - HashMap iteration sorted before any cross-run comparison.
 
 ## Guardrails
 
