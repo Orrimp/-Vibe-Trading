@@ -1,0 +1,11 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 547
+expression: home_screen_summary(&c)
+---
+screen: home
+layout: 2x2 grid (pnl + positions / strategies + tape)
+pnl_state: ready
+positions_state: ready
+strategies_state: ready
+tape_state: ready

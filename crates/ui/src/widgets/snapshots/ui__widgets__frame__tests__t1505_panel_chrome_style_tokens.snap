@@ -1,0 +1,10 @@
+---
+source: crates/ui/src/widgets/frame.rs
+assertion_line: 191
+expression: summary
+---
+panel_bg=#1c2127
+border=#232a33 width=1.0 radius=8
+header_bg=#2a3038
+fg=#e8ecf1
+shadow_offset_y=1 blur=2

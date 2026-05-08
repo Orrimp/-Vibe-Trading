@@ -1,0 +1,13 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 578
+expression: charts_screen_summary(&c)
+---
+screen: charts
+layout: chip_row + chart_canvas
+chips:
+  rule=ACCENT venue=binance symbol=BTCUSDT
+  rule=— venue=binance symbol=ETHUSDT
+  rule=— venue=binance symbol=SOLUSDT
+chart_markers: ready(4 markers)
+chart_bars: 0

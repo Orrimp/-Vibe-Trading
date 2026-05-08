@@ -1,0 +1,12 @@
+---
+source: crates/ui/src/widgets/kpi_strip.rs
+expression: strip_summary(&state)
+---
+widget: kpi_strip
+state: ready
+total_return: −57.80%
+cagr: —
+sharpe: −55.4257
+max_dd: −57.81%
+win_rate: —
+trades: 14,118

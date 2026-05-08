@@ -1,0 +1,15 @@
+---
+source: crates/ui/src/widgets/equity_curve.rs
+expression: curve_summary(&state)
+---
+widget: equity_curve
+height_px: 240
+gridlines: 5
+state: ready
+points: 60
+peak: 100000
+trough: 42195
+max_dd: 0.57805
+line_color: ACCENT
+fill_color: UP_500
+fill_alpha: 0.18

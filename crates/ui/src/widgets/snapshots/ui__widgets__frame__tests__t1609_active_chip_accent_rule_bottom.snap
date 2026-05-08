@@ -1,0 +1,11 @@
+---
+source: crates/ui/src/widgets/frame.rs
+assertion_line: 320
+expression: summary
+---
+rule_height_px=2
+rule_edge=bottom
+active_color=#6fb6ae alpha=1.00
+inactive_color=#000000 alpha=0.00
+chip_active_chip: accent rule visible on bottom edge
+chip_inactive_chip: transparent rule (no layout shift)

@@ -1,0 +1,14 @@
+---
+source: crates/ui/src/widgets/drawdown_band.rs
+expression: band_summary(&state)
+---
+widget: drawdown_band
+height_px: 100
+gridlines: 5
+y_axis: inverted (0 top, max_dd bottom)
+state: ready
+points: 60
+max_dd: 0.57805
+line_color: DOWN_500
+fill_color: DOWN_500
+fill_alpha: 0.18

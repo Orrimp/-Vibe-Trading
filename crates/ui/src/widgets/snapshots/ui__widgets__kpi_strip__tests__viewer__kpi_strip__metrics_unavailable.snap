@@ -1,0 +1,7 @@
+---
+source: crates/ui/src/widgets/kpi_strip.rs
+expression: strip_summary(&state)
+---
+widget: kpi_strip
+state: unavailable
+muted_body: Backtest metrics unavailable

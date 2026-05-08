@@ -1,0 +1,12 @@
+---
+source: crates/ui/src/widgets/sparkline.rs
+expression: sparkline_summary(&s)
+---
+widget: sparkline
+width_px: 120
+height_px: 36
+points: 120
+line_color: ACCENT
+fill_alpha: 0.0
+peak: 1600
+trough: 1000

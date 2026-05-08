@@ -1,0 +1,10 @@
+---
+source: crates/ui/src/widgets/frame.rs
+assertion_line: 225
+expression: summary
+---
+rule_width_px=2
+active_color=#6fb6ae alpha=1.00
+inactive_color=#000000 alpha=0.00
+strategy_active_row: accent rule visible
+positions_active_row: transparent rule (no layout shift)

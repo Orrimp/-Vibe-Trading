@@ -1,0 +1,9 @@
+---
+source: crates/ui/src/widgets/equity_curve.rs
+expression: curve_summary(&state)
+---
+widget: equity_curve
+height_px: 240
+gridlines: 5
+state: empty
+body: No equity data

@@ -1,0 +1,15 @@
+---
+source: crates/ui/src/widgets/chart.rs
+assertion_line: 382
+expression: "chart_summary(&bars, &markers)"
+---
+widget: chart
+bar_count: 60
+gridlines: 5
+empty_state: false
+line_color: ACCENT
+axis_range: min=39904.62 max=40242.88
+markers_buy: 2
+markers_sell: 1
+marker_buy_color: UP_500
+marker_sell_color: DOWN_500

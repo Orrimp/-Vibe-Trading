@@ -1,0 +1,10 @@
+---
+source: crates/ui/src/widgets/chart.rs
+assertion_line: 392
+expression: "chart_summary(&bars, &markers)"
+---
+widget: chart
+bar_count: 0
+gridlines: 5
+empty_state: true
+empty_label: No data

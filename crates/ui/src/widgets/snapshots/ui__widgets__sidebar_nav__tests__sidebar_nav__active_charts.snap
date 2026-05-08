@@ -1,0 +1,14 @@
+---
+source: crates/ui/src/widgets/sidebar_nav.rs
+expression: summary
+---
+widget: sidebar_nav
+width_px: 180
+active: Charts
+entries:
+  rule=— label=Home screen=Home fg=fg_2
+  rule=— label=Debug screen=Debug fg=fg_2
+  rule=— label=Strategies screen=Strategies fg=fg_2
+  rule=— label=Risk screen=Risk fg=fg_2
+  rule=— label=Audit screen=Audit fg=fg_2
+  rule=ACCENT label=Charts screen=Charts fg=fg_1
