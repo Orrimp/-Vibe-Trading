@@ -82,13 +82,13 @@ reserved for v2 LLM. No new feature is currently promoted.)_
 - **Lumen Phase 5 — HumanControl + AgentFeed rename** — shipped
   2026-05-07 (tester second-pass PASS, presenter approved
   2026-05-08). Tester reports at
-  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md`](reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md)
+  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md`](lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md)
   (first-pass FAIL on fmt drift) and
-  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
+  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
   (second-pass PASS); brief at
   [`features/lumen-phase-5-humancontrol-agentfeed.md`](features/lumen-phase-5-humancontrol-agentfeed.md)
   (status: `shipped`); presenter deck at
-  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
+  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   **First phase to ship net-new operator-write surfaces since v0**:
   HumanControl panel widget (execution-mode segmented control +
   daily loss limit / max position / used-today P&L mirror rows +
@@ -121,13 +121,13 @@ reserved for v2 LLM. No new feature is currently promoted.)_
 - **Lumen Phase 4 — Backtest panel (`viewer` bin)** — shipped
   2026-05-06 (tester second-pass PASS, presenter approved
   2026-05-06). Tester reports at
-  [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06-lumen-phase-4-backtest-panel.md`](reports/test-2026-05-06-lumen-phase-4-backtest-panel.md)
+  [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06-lumen-phase-4-backtest-panel.md`](lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06-lumen-phase-4-backtest-panel.md)
   (first-pass FAIL on `clippy::match_same_arms`) and
-  [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
+  [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
   (second-pass PASS); brief at
   [`features/lumen-phase-4-backtest-panel.md`](features/lumen-phase-4-backtest-panel.md)
   (status: `shipped`); presenter deck at
-  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
+  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds the new `viewer` binary at `crates/ui/src/bin/viewer.rs`
   (workspace now ships 3 bins), KPI strip + equity curve + drawdown
   band widgets sharing a refactored `widgets::canvas_chart` core
@@ -156,11 +156,11 @@ reserved for v2 LLM. No new feature is currently promoted.)_
 - **Lumen Phase 3 — Detail screens (Strategies / Risk / Audit)** —
   shipped 2026-05-05 (tester first-pass PASS, presenter approved
   2026-05-06). Tester report at
-  [`spec/lumen-design-adoption/phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md`](reports/test-2026-05-05-lumen-phase-3-detail-screens.md);
+  [`spec/lumen-design-adoption/phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md`](lumen-design-adoption/phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md);
   brief at
   [`features/lumen-phase-3-detail-screens.md`](features/lumen-phase-3-detail-screens.md)
   (status: `shipped`); presenter deck at
-  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
+  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds Strategies / Risk / Audit sidebar entries (3 → 6) + per-screen
   detail bodies, additive `008_journal_transactions_venue.sql`
   migration (default `'binance'` backfill), `post_fill` writer's
@@ -186,11 +186,11 @@ reserved for v2 LLM. No new feature is currently promoted.)_
 
 - **Lumen Phase 2 — Shell IA + Charts** — shipped 2026-05-05.
   Tester first-pass `VERDICT → PASS`; report at
-  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md).
+  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md).
   Brief at
   [`features/lumen-phase-2-shell-ia-charts.md`](features/lumen-phase-2-shell-ia-charts.md)
   (status: `shipped`). Presenter deck approved by operator at
-  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
+  [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds left-sidebar shell (fixed 180 px, T1507-styled, no icons),
   Screen routing (`Cockpit::current_screen` × six variants — Home /
   Debug / Charts wired in Phase 2; Strategies / Risk / Audit
@@ -216,7 +216,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
 
 - **Lumen Phase 1 — Foundation (tokens + tiers + status bar)** —
   shipped 2026-05-04. Tester third-pass `VERDICT → PASS`; report at
-  [`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](reports/test-2026-05-04c-lumen-phase-1-foundation.md).
+  [`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md).
   Brief at
   [`features/lumen-phase-1-foundation.md`](features/lumen-phase-1-foundation.md)
   (status: `shipped`). Replaced the 12-token theme with the full
@@ -281,7 +281,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   point absent v2 LLM. No new feature promoted.
 - 2026-05-08 (presenter, Phase 5 sprint review APPROVED): operator
   signed the Phase 5 sprint review deck at
-  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
+  [`lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 5 closed cleanly: tester second-
   pass PASS (8/8 gates after a one-line `cargo fmt --all` fixup
   between passes; first-pass FAIL preserved on disk for audit), 896
@@ -298,7 +298,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   side initiative as 5-phase-complete).
 - 2026-05-06 (presenter, Phase 4 sprint review APPROVED): operator
   signed the Phase 4 sprint review deck at
-  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
+  [`lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 4 closed cleanly: tester second-
   pass PASS (8/8 gates after a one-line `match_same_arms` fix
   between passes; first-pass FAIL preserved on disk for audit), 850
@@ -316,7 +316,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   (Phase 5 brief expansion).
 - 2026-05-06 (presenter, Phase 3 sprint review APPROVED): operator
   signed the Phase 3 sprint review deck at
-  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
+  [`lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 3 closed cleanly: tester first-pass
   PASS (8/8 gates), 810 tests across 104 binaries, 11/11 anchors
   byte-identical post-migration, 65 baselines attested clean, two
@@ -333,7 +333,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   CHECK PASS`). HANDOFF → analyst (Phase 4 brief expansion).
 - 2026-05-05 (presenter, Phase 2 sprint review APPROVED): operator
   signed the Phase 2 sprint review deck at
-  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
+  [`lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 2 closed cleanly: tester first-pass
   PASS (8/8 gates), 781 tests across 98 binaries, 11/11 anchors,
   53 baselines attested clean. Promoted `lumen-phase-3-detail-screens`
@@ -346,7 +346,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   brief expansion).
 - 2026-05-04 (presenter, Phase 1 sprint review APPROVED): operator
   signed the Phase 1 sprint review deck at
-  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
+  [`lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 1 closed cleanly. Promoted
   `lumen-phase-2-shell-ia-charts` from Queue → Active per the
   master-roadmap sequencing constraint (Constraint 3). Phase 2
