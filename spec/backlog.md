@@ -34,73 +34,10 @@ into a `spec/features/<slug>.md` brief and removes the entry here.
 
 ## Active
 
-- **Live cockpit unified binary** — promoted 2026-05-01 to
-  [`spec/features/live-cockpit-unified.md`](features/live-cockpit-unified.md).
-  Status: `draft`, owner: analyst → architect. 15 R-items, 10 V-items,
-  8 Open Questions for the architect.
-- **Real mark-to-market unrealized P&L** — promoted 2026-05-02 to
-  [`spec/features/real-mtm-unrealized-pnl.md`](features/real-mtm-unrealized-pnl.md).
-  Status: `draft → architect-pending`, owner: analyst → architect.
-  10 R-items, 8 V-items, 8 Open Questions for the architect.
-  Anchor risk: preferred byte-identical outcome (existing fixtures
-  are fully symmetric, zero open positions at `period_end`); fallback
-  re-lock per v1.5a T717 precedent if Q5 resolution extends a fixture.
-- **R10 follow-up: per-symbol-position-accounts** — promoted 2026-05-02
-  to
-  [`spec/features/per-symbol-position-accounts.md`](features/per-symbol-position-accounts.md).
-  Status: `draft`, owner: analyst → architect. 11 R-items, 8 V-items,
-  8 Open Questions for the architect. Plumbing-only:
-  chart-of-accounts migration `006_*.sql` + `post_fill` writer change
-  (BTC hardcode → `format!("assets:position:{}", fill.symbol)`) +
-  optional `open_positions_at` reader optimization. Anchor risk:
-  preferred byte-identical (9 backtest + 2 v1+); architect must
-  confirm migration is purely additive at the chart-of-accounts level
-  (Q3, Q7) so report bodies stay byte-identical. Originated as the
-  R10 deferral note in
-  [`real-mtm-unrealized-pnl.md` Design § Q3 / R10 verdict, lines
-  386–401, 541–554](features/real-mtm-unrealized-pnl.md).
-- **Tape-row → audit modal** — promoted 2026-05-03 to
-  [`spec/features/tape-row-audit-modal.md`](features/tape-row-audit-modal.md).
-  Status: `draft`, owner: analyst → architect. 15 R-items, 11
-  V-items, 9 Open Questions for the architect. Pure UI + new audit
-  reader (`journal_entries_for_transaction`) + first-time consumer
-  of the proposed `bg_overlay` / `info` / `border_strong` theme
-  tokens (Q3) and `FillView::transaction_id` plumbing (Q5). Anchor
-  risk: zero — UI feature, no backtest path touched (R12,
-  preferred 11/11 PASS byte-identical). First feature to land
-  against [ui-design-principles.md](ui-design-principles.md) — the
-  "Show the why" cockpit click-through-to-audit path begins here.
-- **Journal-transactions metadata reader** — promoted 2026-05-03 to
-  [`spec/features/journal-transactions-metadata.md`](features/journal-transactions-metadata.md).
-  Status: `draft`, owner: analyst → architect. 7 R-items, 5 V-items,
-  6 Open Questions for the architect. Closes the T1206 deviation
-  note from `tape-row-audit-modal`: live cockpit's modal header
-  currently renders empty `description` + `None` strategy_id
-  because T1202's reader is intentionally narrow (entries-only).
-  This feature adds a sibling `journal_transaction_metadata(tx_id)`
-  reader (header projection — id / ts / description / strategy_id)
-  + a new `core::JournalTransactionMetadata` struct, then chains
-  it into `cockpit_live`'s `Task::perform`. Anchor risk: zero —
-  additive read-only, no write path, no rendering path, no
-  anchored code path consumed.
-- **Lumen design-system adoption — master roadmap** — promoted
-  2026-05-03 to
-  [`spec/features/lumen-design-adoption.md`](features/lumen-design-adoption.md).
-  Status: `roadmap`, owner: analyst → architect. **Largest
-  non-feature spec exercise.** Tracks the 4-phase rollout:
-  Phase 1 Foundation (Active, brief below), Phase 2 Viewer
-  Backtest (Queue), Phase 3 HumanControl + AgentFeed rename
-  (Queue), Phase 4 Assistant slot (Reserved for v2 LLM).
-  Operator-locked constraints (no brand adoption, no voice
-  rewrite, sequential phasing, dark-default) documented inline.
-  Master roadmap is the contract for spawning each phase in
-  turn; the file itself does not ship through the
-  analyst → architect → developer → tester → presenter gate.
-  Anchor risk per phase: zero (UI feature) for Phases 1 / 2 / 3;
-  Phase 4 out of scope. Cross-feature invariants documented for
-  the 7 prior shipped UI-touching features
-  (operator-success-reports, live-cockpit-unified, real-mtm,
-  per-symbol, tape-modal, journal-tx-metadata, v1.5b).
+_(empty — all prior Active entries are now Recent (shipped). The
+lumen-design-adoption initiative reached a natural pause point
+2026-05-08 at 5-of-6 phases shipped; Phase 6 (Assistant slot) is
+reserved for v2 LLM. No new feature is currently promoted.)_
 
 ## Queue
 
@@ -118,31 +55,19 @@ into a `spec/features/<slug>.md` brief and removes the entry here.
   roadmap** (the right-rail Assistant slot — reserved until this
   ships).
 
-### UI / cockpit (Lumen design-system adoption — Phases 2 / 3 / 4 / 5 / 6, post-2026-05-04 revision)
+### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 
-- **Lumen Phase 2 — Shell IA + Charts.** Promoted 2026-05-04 (see
-  Active section above for the live entry). _This Queue entry
-  remains as a roadmap pointer; the brief is now `active` not
-  `queued`._
-- **Lumen Phase 3 — Detail screens.** Promoted 2026-05-05 (see
-  Active section above for the live entry). _This Queue entry
-  remains as a roadmap pointer; the brief is now `active` not
-  `queued`._
-- **Lumen Phase 4 — Backtest panel.** Promoted 2026-05-06 (see
-  Active section above for the live entry). _This Queue entry
-  remains as a roadmap pointer; the brief is now `active` not
-  `queued`._
-- **Lumen Phase 5 — HumanControl + AgentFeed rename.** Shipped
-  2026-05-08 (see Recent section below). _This Queue entry remains
-  as a roadmap pointer; brief is now `shipped`._
-- **Lumen Phase 6 — Assistant slot** (was original Phase 4).
-  _reserved_ — depends on the v2 LLM strategy queued item above.
-  Right-rail collapsible panel for the v2 LLM assistant per
+- **Lumen Phase 6 — Assistant slot.** _reserved_ — depends on the
+  v2 LLM strategy queued item above. Right-rail collapsible panel
+  for the v2 LLM assistant per
   [`spec/design/project/ui_kits/desktop/Assistant.jsx`](design/project/ui_kits/desktop/Assistant.jsx).
-  Phase 2 reserves the right-rail column-track in the shell grid;
-  the actual Phase 6 brief lands when v2 LLM is approved. Until
-  then, no analyst spawn. Stub at
+  Phase 2 reserved the right-rail column-track in the shell grid
+  at `Length::Fixed(0.0)`; the actual Phase 6 brief lands when v2
+  LLM is approved. Until then, no analyst spawn. Stub at
   [`features/lumen-phase-6-assistant-slot.md`](features/lumen-phase-6-assistant-slot.md).
+  _(Phases 1–5 of the lumen-design-adoption initiative are shipped
+  and live in the Recent section; this Queue entry is the only
+  remaining initiative work, gated on v2 LLM.)_
 
 ### Process / tooling
 
@@ -340,6 +265,20 @@ into a `spec/features/<slug>.md` brief and removes the entry here.
 
 ## Changelog
 
+- 2026-05-08 (orchestrator, post-Phase-5 cleanup): drained the
+  Active section. The 5 prior Active entries (`live-cockpit-unified`,
+  `real-mtm-unrealized-pnl`, `per-symbol-position-accounts`,
+  `tape-row-audit-modal`, `journal-transactions-metadata`) all
+  shipped in v1+ → operator-success-reports cycle and are referenced
+  as shipped invariants in the Lumen master roadmap's cross-feature
+  invariants table; never moved out of Active. Plus the
+  `lumen-design-adoption` master-roadmap row dated 2026-05-03 still
+  referenced the obsolete 4-phase plan. All six Active entries
+  removed (organizational hygiene; their feature briefs remain at
+  `spec/features/<slug>.md`). UI / cockpit Queue subsection
+  collapsed to just Phase 6 (the only remaining initiative work).
+  Initiative status: 5-of-6 phases shipped; reaches a natural pause
+  point absent v2 LLM. No new feature promoted.
 - 2026-05-08 (presenter, Phase 5 sprint review APPROVED): operator
   signed the Phase 5 sprint review deck at
   [`presentations/lumen-phase-5-humancontrol-agentfeed-2026-05-07.md`](presentations/lumen-phase-5-humancontrol-agentfeed-2026-05-07.md)
