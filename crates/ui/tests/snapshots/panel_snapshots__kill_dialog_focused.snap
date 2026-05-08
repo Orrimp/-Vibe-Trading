@@ -1,7 +1,7 @@
 ---
 source: crates/ui/tests/panel_snapshots.rs
-assertion_line: 216
-expression: kill_summary(&c)
+assertion_line: 259
+expression: "kill_summary_focused(&c, true)"
 ---
 panel: kill
 title: Stop trading
@@ -9,12 +9,12 @@ state: confirming
 dialog_title: Confirm stop trading
 dialog_body: This cancels every open order, sells each open position at market, and puts the agent into a halted state. Type the phrase below to confirm.
 phrase_label: Type HALT BTC to confirm
-typed: ""
-matched: false
-confirm_enabled: false
+typed: "HALT BTC"
+matched: true
+confirm_enabled: true
 input_bg: PANEL_SUNKEN
 input_hairline: shadow_inset
-input_border: BORDER_2
-input_focus_ring: none
+input_border: ACCENT
+input_focus_ring: deferred (iced 0.14 text_input::Style has no shadow field)
 confirm_label: Confirm stop
 cancel_label: Cancel

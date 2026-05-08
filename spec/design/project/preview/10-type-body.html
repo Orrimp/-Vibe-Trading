@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Type body & UI</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { padding: 22px 24px; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  .row { display: flex; align-items: baseline; gap: 16px; }
+  .meta { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.08em; min-width: 80px; }
+  .h3 { font-size: 15px; font-weight: 600; }
+  .body { font-size: 13px; color: var(--fg-1); }
+  .small { font-size: 12px; color: var(--fg-2); }
+  .micro { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-3); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="stack">
+    <div class="row"><div class="meta">H3 15</div><div class="h3">Risk parameters</div></div>
+    <div class="row"><div class="meta">Body 13</div><div class="body">Lumen sees momentum building in NVDA. Review the signal before sizing up.</div></div>
+    <div class="row"><div class="meta">Small 12</div><div class="small">Last sync 14:32:08 · 4 ms latency</div></div>
+    <div class="row"><div class="meta">Micro 11</div><div class="micro">Open positions · 7</div></div>
+  </div>
+</div>
+</body>
+</html>

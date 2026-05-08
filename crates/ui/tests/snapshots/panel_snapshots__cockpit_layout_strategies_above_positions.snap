@@ -10,5 +10,5 @@ left_column:
 right_column:
   - Strategies
   - Open positions
-  - Live tape
+  - Agent activity
 strategies_state: ready

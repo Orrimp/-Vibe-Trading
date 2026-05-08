@@ -1,0 +1,13 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 383
+expression: status_bar_summary(&c)
+---
+widget: status_bar
+connection_dot: warn
+connection: Reconnecting · binance
+latency: Latency — color=fg_muted
+account: Paper · Demo 3-symbol
+Server: — UTC
+cpu: CPU —
+version: v0.1.0 · rust

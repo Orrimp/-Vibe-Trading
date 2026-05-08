@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Voice samples</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { padding: 22px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+  .h { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.08em; }
+  .item { padding: 8px 12px; border-radius: 4px; font-size: 12px; line-height: 1.4; }
+  .bad { background: #F5E5DD; color: #7a3f29; text-decoration: line-through; text-decoration-color: rgba(122,63,41,0.4); }
+  .good { background: #E9F0E7; color: #2c4429; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="col">
+    <div class="h">Don't</div>
+    <div class="item bad">🚀 You're crushing it today!</div>
+    <div class="item bad">Whoa! That order is huge.</div>
+    <div class="item bad">Oops, something went wrong!</div>
+    <div class="item bad">AI Insights: Buy NVDA NOW!!!</div>
+  </div>
+  <div class="col">
+    <div class="h">Do</div>
+    <div class="item good">Up 1.24% today.</div>
+    <div class="item good">This order exceeds your daily limit.</div>
+    <div class="item good">Order rejected — insufficient buying power.</div>
+    <div class="item good">Lumen sees momentum building in NVDA.</div>
+  </div>
+</div>
+</body>
+</html>

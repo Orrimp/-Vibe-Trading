@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Buttons</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .lbl { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.08em; min-width: 70px; }
+  .btn { font-family: 'Inter'; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; line-height: 1.4; transition: all 140ms cubic-bezier(0.22,0.61,0.36,1); }
+  .primary { background: #3F968D; color: #fff; }
+  .primary:hover { background: #2A7B73; }
+  .secondary { background: #FBFAF7; color: var(--fg-1); border-color: #E2DDD2; }
+  .secondary:hover { background: #FFFFFF; }
+  .ghost { background: transparent; color: var(--fg-1); }
+  .ghost:hover { background: #EFEBE3; }
+  .danger { background: #FBFAF7; color: #A95F46; border-color: #E2DDD2; }
+  .danger:hover { background: #F5E5DD; border-color: #C97B5E; color: #A95F46; }
+  .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="row"><div class="lbl">Primary</div>
+    <button class="btn primary">Place order</button>
+    <button class="btn primary" style="background:#2A7B73">Hover</button>
+    <button class="btn primary" style="background:#1F635D">Press</button>
+  </div>
+  <div class="row"><div class="lbl">Secondary</div>
+    <button class="btn secondary">Cancel</button>
+    <button class="btn secondary" style="background:#fff">Hover</button>
+  </div>
+  <div class="row"><div class="lbl">Ghost</div>
+    <button class="btn ghost">Reset</button>
+    <button class="btn ghost" style="background:#EFEBE3">Hover</button>
+  </div>
+  <div class="row"><div class="lbl">Destructive</div>
+    <button class="btn danger">Close position</button>
+  </div>
+</div>
+</body>
+</html>

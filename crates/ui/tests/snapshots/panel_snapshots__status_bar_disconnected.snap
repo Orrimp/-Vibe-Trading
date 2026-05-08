@@ -1,0 +1,13 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 389
+expression: status_bar_summary(&c)
+---
+widget: status_bar
+connection_dot: fg_muted
+connection: Disconnected
+latency: Latency — color=fg_muted
+account:
+Server: — UTC
+cpu: CPU —
+version: v0.1.0 · rust

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Logo lockups</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { display: flex; flex-direction: column; gap: 14px; padding: 22px 26px; }
+  .row-l { display: flex; align-items: center; gap: 18px; padding: 10px 14px; border: 1px solid var(--border-1); border-radius: 6px; background: var(--panel-raised); }
+  .row-l.dark { background: var(--cool-800); border-color: #232A33; color: #E8ECF1; }
+  .label { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.08em; min-width: 90px; }
+  .row-l.dark .label { color: #808993; }
+  .lockup { display: flex; align-items: center; gap: 10px; }
+  .lockup span { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="row-l">
+    <div class="label">Mark</div>
+    <img src="../assets/brand/lumen-mark.svg" width="32" height="32" alt="">
+    <img src="../assets/brand/lumen-monogram.svg" width="32" height="32" alt="" style="margin-left:8px">
+    <img src="../assets/brand/lumen-ai-lens.svg" width="32" height="32" alt="" style="margin-left:8px">
+  </div>
+  <div class="row-l">
+    <div class="label">Wordmark</div>
+    <div class="lockup"><img src="../assets/brand/lumen-mark.svg" width="28" height="28" alt=""><span>lumen</span></div>
+  </div>
+  <div class="row-l dark">
+    <div class="label">On dark</div>
+    <div class="lockup"><img src="../assets/brand/lumen-mark.svg" width="28" height="28" alt="" style="filter:invert(1)"><span>lumen</span></div>
+  </div>
+</div>
+</body>
+</html>

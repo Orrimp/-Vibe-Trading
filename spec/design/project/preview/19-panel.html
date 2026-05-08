@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Panel example</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { padding: 0; background: #F6F4EF; border-color: transparent; box-shadow: none; }
+  .panel { background: #FBFAF7; border: 1px solid #E2DDD2; border-radius: 6px; box-shadow: 0 1px 1px rgba(20,19,15,0.04), 0 1px 2px rgba(20,19,15,0.04); margin: 16px; overflow: hidden; }
+  .ph { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #E2DDD2; background: #FFFFFF; }
+  .ph .ttl { font-size: 12px; font-weight: 600; }
+  .ph .meta { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.08em; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th { font-family: 'Inter'; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-3); font-weight: 500; padding: 6px 12px; text-align: right; border-bottom: 1px solid #E2DDD2; background: #FBFAF7; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 6px 12px; text-align: right; font-family: 'JetBrains Mono'; font-variant-numeric: tabular-nums; }
+  td.sym { font-family: 'Inter'; font-weight: 500; color: var(--fg-1); }
+  tr:nth-child(even) td { background: #F6F4EF; }
+  td.up { color: #547A52; }
+  td.down { color: #A95F46; }
+  tr.active td { background: #ECF6F5; }
+  tr.active td:first-child { box-shadow: inset 2px 0 0 #3F968D; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="panel">
+    <div class="ph"><div class="ttl">Watchlist</div><div class="meta">Top movers · 14:32</div></div>
+    <table>
+      <thead><tr><th>Symbol</th><th>Last</th><th>Δ %</th><th>Vol</th></tr></thead>
+      <tbody>
+        <tr class="active"><td class="sym">NVDA</td><td>1,240.50</td><td class="up">+1.24</td><td>42.1M</td></tr>
+        <tr><td class="sym">AAPL</td><td>  214.08</td><td class="down">−0.83</td><td>38.5M</td></tr>
+        <tr><td class="sym">TSLA</td><td>  198.20</td><td class="up">+0.12</td><td>61.2M</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

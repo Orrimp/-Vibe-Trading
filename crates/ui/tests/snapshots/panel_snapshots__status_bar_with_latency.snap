@@ -1,0 +1,13 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 399
+expression: status_bar_summary(&c)
+---
+widget: status_bar
+connection_dot: pos
+connection: Connected · binance
+latency: Latency 1500 ms color=warn
+account: Paper · Demo 3-symbol
+Server: — UTC
+cpu: CPU —
+version: v0.1.0 · rust

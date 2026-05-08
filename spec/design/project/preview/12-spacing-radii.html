@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Spacing & radii</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { padding: 22px 24px; display: flex; gap: 28px; }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+  .ttl { font-size: 12px; font-weight: 600; color: var(--fg-1); margin-bottom: 4px; }
+  .row { display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono'; font-size: 11px; color: var(--fg-2); }
+  .bar { background: #3F968D; height: 12px; border-radius: 2px; }
+  .rad { width: 44px; height: 44px; background: #EFEBE3; border: 1px solid #E2DDD2; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono'; font-size: 10px; color: var(--fg-2); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="col" style="flex:1">
+    <div class="ttl">Spacing — 4px base</div>
+    <div class="row"><div class="bar" style="width:2px"></div>2 · space-1</div>
+    <div class="row"><div class="bar" style="width:4px"></div>4 · space-2</div>
+    <div class="row"><div class="bar" style="width:8px"></div>8 · space-4</div>
+    <div class="row"><div class="bar" style="width:16px"></div>16 · space-6</div>
+    <div class="row"><div class="bar" style="width:24px"></div>24 · space-8</div>
+    <div class="row"><div class="bar" style="width:40px"></div>40 · space-10</div>
+  </div>
+  <div class="col" style="flex:1">
+    <div class="ttl">Radii</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      <div class="rad" style="border-radius:2px">2</div>
+      <div class="rad" style="border-radius:4px">4</div>
+      <div class="rad" style="border-radius:6px">6</div>
+      <div class="rad" style="border-radius:8px">8</div>
+      <div class="rad" style="border-radius:12px">12</div>
+      <div class="rad" style="border-radius:999px">∞</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

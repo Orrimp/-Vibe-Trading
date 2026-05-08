@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Mono numerics</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { padding: 22px 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  table { border-collapse: collapse; width: 100%; font-family: 'JetBrains Mono'; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 4px 10px; }
+  th { font-family: 'Inter'; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-3); font-weight: 500; border-bottom: 1px solid var(--border-1); }
+  td.sym { font-family: 'Inter'; font-weight: 500; text-align: left; color: var(--fg-1); }
+  td.up { color: #547A52; }
+  td.down { color: #A95F46; }
+  .ttl { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .meta { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--fg-3); }
+  .big { font-family: 'JetBrains Mono'; font-size: 28px; font-weight: 500; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .stack { display: flex; flex-direction: column; gap: 4px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="ttl">Numerics — JetBrains Mono, tabular</div>
+  <div class="grid">
+    <table>
+      <thead><tr><th style="text-align:left">Sym</th><th>Last</th><th>Δ %</th></tr></thead>
+      <tbody>
+        <tr><td class="sym">NVDA</td><td>1,240.50</td><td class="up">+1.24</td></tr>
+        <tr><td class="sym">AAPL</td><td>  214.08</td><td class="down">−0.83</td></tr>
+        <tr><td class="sym">TSLA</td><td>  198.20</td><td class="up">+0.12</td></tr>
+        <tr><td class="sym">MSFT</td><td>  431.77</td><td class="down">−1.04</td></tr>
+      </tbody>
+    </table>
+    <div class="stack">
+      <div class="meta">Net P/L · today</div>
+      <div class="big" style="color:#547A52">+$3,240.50</div>
+      <div class="meta">−$420.50 unrealized</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

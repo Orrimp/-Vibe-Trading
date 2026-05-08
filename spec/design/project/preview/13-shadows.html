@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lumen — Shadows</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .card { padding: 28px 24px; display: flex; gap: 18px; justify-content: space-around; background: #F6F4EF; }
+  .box { width: 130px; height: 80px; background: #FFFFFF; border-radius: 8px; border: 1px solid #E2DDD2; display: flex; align-items: flex-end; padding: 10px; font-family: 'JetBrains Mono'; font-size: 10px; color: var(--fg-3); }
+  .s1 { box-shadow: 0 1px 1px rgba(20,19,15,0.04), 0 1px 2px rgba(20,19,15,0.04); }
+  .s2 { box-shadow: 0 1px 2px rgba(20,19,15,0.05), 0 4px 10px rgba(20,19,15,0.06); }
+  .s3 { box-shadow: 0 2px 4px rgba(20,19,15,0.06), 0 12px 24px rgba(20,19,15,0.08); }
+  .si { box-shadow: inset 0 1px 0 rgba(20,19,15,0.04); background: #EFEBE3; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="box s1">shadow-1</div>
+  <div class="box s2">shadow-2</div>
+  <div class="box s3">shadow-3</div>
+  <div class="box si">inset · sunken</div>
+</div>
+</body>
+</html>

@@ -1,5 +1,6 @@
 ---
 source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 224
 expression: kill_summary(&c)
 ---
 panel: kill
@@ -11,6 +12,10 @@ phrase_label: Type HALT BTC to confirm
 typed: "HALT"
 matched: false
 confirm_enabled: false
+input_bg: PANEL_SUNKEN
+input_hairline: shadow_inset
+input_border: BORDER_2
+input_focus_ring: none
 hint: Phrase doesn't match. Type HALT BTC exactly (case-sensitive).
 confirm_label: Confirm stop
 cancel_label: Cancel
