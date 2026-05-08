@@ -122,7 +122,10 @@ impl IncidentSpawner for CommandIncidentSpawner {
             return;
         };
         let period_arg = format!("since:{}", args.halt_ts_rfc3339);
-        let output_arg = format!("spec/reports/success/incident-{}.md", args.halt_ts_rfc3339);
+        let output_arg = format!(
+            "spec/operator-success-reports/reports/incident-{}.md",
+            args.halt_ts_rfc3339
+        );
         let res = std::process::Command::new(bin)
             .args(["--period", &period_arg, "--output", &output_arg])
             .stdin(std::process::Stdio::null())

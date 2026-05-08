@@ -1,7 +1,7 @@
 //! Backtest report viewer — Phase 4.
 //!
 //! Read-only iced surface that renders a single committed
-//! `spec/reports/backtest-*.md` body alongside its KPI strip + equity
+//! `spec/<feature>/reports/backtest-*.md` body alongside its KPI strip + equity
 //! curve + drawdown band. CLI-arg-driven (`viewer <report-path>`);
 //! offline / single-shot — no `Subscription`, no audit-bus channels,
 //! no kill switch. Sibling of `cockpit` and `cockpit_live`.
@@ -39,7 +39,7 @@ use ui::widgets::{drawdown_band, equity_curve, kpi_strip};
 #[derive(Parser)]
 #[command(name = "viewer", about = "Backtest report viewer")]
 struct Args {
-    /// Path to a backtest report under `spec/reports/backtest-*.md`.
+    /// Path to a backtest report under `spec/<feature>/reports/backtest-*.md`.
     report_path: PathBuf,
 }
 
@@ -307,12 +307,12 @@ mod tests {
         // Construct a parsed Args from a one-arg vector.
         let args = Args::try_parse_from([
             "viewer",
-            "spec/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md",
+            "spec/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md",
         ])
         .expect("parser must accept positional report path");
         assert_eq!(
             args.report_path,
-            PathBuf::from("spec/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md")
+            PathBuf::from("spec/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md")
         );
     }
 

@@ -5,7 +5,9 @@
 //!
 //! Reads Parquet via `ReplayFeed` (or generates synthetic data if absent),
 //! drives `StrategyRegistry` → `risk` → `PaperEngine` → `audit`,
-//! writes a report to `spec/reports/backtest-<stamp>-<scenario>.md`.
+//! writes a report to `spec/<feature>/reports/backtest-<stamp>-<scenario>.md`,
+//! where `<feature>` is resolved from the scenario name via
+//! [`scenario_to_feature`] (defined at the bottom of this file).
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -1687,14 +1689,16 @@ async fn main() -> Result<()> {
 
     // ── Find baseline for comparative scenarios ────────────────────────────────
     if args.scenario == "btc-2024-h1-sma-cross" {
-        if let Some(b) = find_latest_report("spec/reports", "btc-2023-1m-sma-cross") {
+        let baseline_dir = report_dir_for_scenario("btc-2023-1m-sma-cross");
+        if let Some(b) = find_latest_report(&baseline_dir, "btc-2023-1m-sma-cross") {
             scenario.baseline_report = Some(b);
         }
     } else if matches!(
         args.scenario.as_str(),
         "btc-2023-1m-macd-trend" | "btc-2023-1m-rsi-reversion" | "btc-2023-1m-bbands-mean-revert"
     ) {
-        if let Some(b) = find_latest_report("spec/reports", "btc-2023-1m-sma-baseline-refresh") {
+        let baseline_dir = report_dir_for_scenario("btc-2023-1m-sma-baseline-refresh");
+        if let Some(b) = find_latest_report(&baseline_dir, "btc-2023-1m-sma-baseline-refresh") {
             scenario.baseline_report = Some(b);
         }
     }
@@ -1712,8 +1716,8 @@ async fn main() -> Result<()> {
             run_momentum_backtest(&scenario, &config_id, seed, bar_count, bars, &data_source)
                 .await?;
 
-        let report_dir = PathBuf::from("spec/reports");
-        std::fs::create_dir_all(&report_dir).context("create spec/reports dir")?;
+        let report_dir = report_dir_for_scenario(&args.scenario);
+        std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
         let now = OffsetDateTime::now_utc();
         let stamp = format!(
             "{:04}{:02}{:02}-{:02}{:02}{:02}",
@@ -1743,8 +1747,8 @@ async fn main() -> Result<()> {
         let config_id = config_id.clone();
         let result = run_pairs_backtest(&scenario, &config_id, seed).await?;
 
-        let report_dir = PathBuf::from("spec/reports");
-        std::fs::create_dir_all(&report_dir).context("create spec/reports dir")?;
+        let report_dir = report_dir_for_scenario(&args.scenario);
+        std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
         let now = OffsetDateTime::now_utc();
         let stamp = format!(
             "{:04}{:02}{:02}-{:02}{:02}{:02}",
@@ -1988,8 +1992,8 @@ async fn main() -> Result<()> {
         now.minute(),
         now.second()
     );
-    let report_dir = PathBuf::from("spec/reports");
-    std::fs::create_dir_all(&report_dir).context("create spec/reports dir")?;
+    let report_dir = report_dir_for_scenario(&args.scenario);
+    std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
     let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
 
     write_report(
@@ -2017,12 +2021,11 @@ async fn main() -> Result<()> {
 }
 
 /// Find the filename of the most recent backtest report for a given scenario.
-fn find_latest_report(dir: &str, scenario: &str) -> Option<String> {
-    let dir_path = Path::new(dir);
-    if !dir_path.exists() {
+fn find_latest_report(dir: &Path, scenario: &str) -> Option<String> {
+    if !dir.exists() {
         return None;
     }
-    let mut candidates: Vec<String> = std::fs::read_dir(dir_path)
+    let mut candidates: Vec<String> = std::fs::read_dir(dir)
         .ok()?
         .flatten()
         .filter_map(|e| {
@@ -2036,4 +2039,32 @@ fn find_latest_report(dir: &str, scenario: &str) -> Option<String> {
         .collect();
     candidates.sort();
     candidates.into_iter().last()
+}
+
+/// Map a backtest scenario name to the feature slug that owns its
+/// reports. Fixed mapping (each scenario was first locked into
+/// `spec/anchors.toml` under exactly one feature). Future scenarios
+/// that don't match return `"_unknown"`, which causes
+/// [`report_dir_for_scenario`] to write under `spec/_unknown/reports/`
+/// so orphaned reports surface immediately.
+fn scenario_to_feature(scenario: &str) -> &'static str {
+    match scenario {
+        "btc-2023-1m-sma-cross"
+        | "btc-2023-1m-sma-baseline-refresh"
+        | "btc-2024-h1-sma-cross" => "v0-paper-sma",
+        "btc-2023-1m-macd-trend"
+        | "btc-2023-1m-rsi-reversion"
+        | "btc-2023-1m-bbands-mean-revert" => "v05-composed-strategies",
+        "top10-2023-1h-momentum" | "top10-2024-h1-momentum" => "v1-cross-sectional-momentum",
+        "pairs-2023-zscore-mr" | "pairs-2024-h1-zscore-mr" => "v15a-mean-reversion-pairs",
+        _ => "_unknown",
+    }
+}
+
+/// Resolve the per-feature `spec/<feature>/reports/` directory for a
+/// given scenario. Caller is responsible for `create_dir_all`.
+fn report_dir_for_scenario(scenario: &str) -> PathBuf {
+    PathBuf::from("spec")
+        .join(scenario_to_feature(scenario))
+        .join("reports")
 }

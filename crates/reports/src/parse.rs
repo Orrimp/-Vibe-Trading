@@ -218,6 +218,7 @@ fn parse_count(s: &str) -> Option<u64> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use rust_decimal_macros::dec;
 
     const RSI_REVERSION_REPORT: &str = "---
@@ -298,32 +299,49 @@ PASS.
         assert_eq!(m.win_rate_pct, dec!(55.50));
     }
 
-    /// Iterate every committed `spec/reports/backtest-*.md` and
-    /// assert each parse returns `Ok(_)` (no field aborts the parser
-    /// on any of the anchored reports + any extras).
+    /// Iterate every committed `spec/<feature>/reports/backtest-*.md`
+    /// and assert each parse returns `Ok(_)` (no field aborts the
+    /// parser on any of the anchored reports + any extras).
     #[test]
     fn all_anchored_reports_parse_ok() {
-        // From this crate's manifest dir up to the workspace root +
-        // `spec/reports`.
+        // From this crate's manifest dir up to the workspace root.
         let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .parent()
             .unwrap();
-        let reports_dir = workspace_root.join("spec/reports");
-        let mut count = 0usize;
-        for entry in fs::read_dir(&reports_dir).expect("read spec/reports") {
-            let entry = entry.expect("dir entry");
+        let spec_root = workspace_root.join("spec");
+        let mut backtests: Vec<PathBuf> = Vec::new();
+        collect_backtest_reports(&spec_root, &mut backtests);
+        for path in &backtests {
+            let res = parse_from_report(path);
+            assert!(res.is_ok(), "parse failed for {}: {res:?}", path.display());
+        }
+        assert!(
+            backtests.len() >= 9,
+            "expected ≥ 9 anchored backtest-*.md across spec/<feature>/reports/, found {}",
+            backtests.len()
+        );
+    }
+
+    /// Recursively walk `root` collecting every `*/reports/backtest-*.md`
+    /// path. Skips well-known cross-cutting subtrees (`design`,
+    /// `archive`) so the walk doesn't descend into the design system or
+    /// the historical tarball.
+    fn collect_backtest_reports(root: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(root) else { return; };
+        for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if !name.starts_with("backtest-") || !name.ends_with(".md") {
-                continue;
+            if path.is_dir() {
+                if name == "design" || name == "archive" {
+                    continue;
+                }
+                collect_backtest_reports(&path, out);
+            } else if name.starts_with("backtest-") && name.ends_with(".md") {
+                out.push(path);
             }
-            let res = parse_from_report(&path);
-            assert!(res.is_ok(), "parse failed for {}: {res:?}", path.display(),);
-            count += 1;
         }
-        assert!(count >= 11, "expected ≥ 11 backtest-*.md, found {count}");
     }
 }
