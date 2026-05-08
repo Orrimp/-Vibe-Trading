@@ -36,7 +36,8 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
 
 ## Routing
 
-- **All PASS** → tester proceeds with VERDICT line. Anchors are good.
+- **All PASS** → run `scripts/prune_backtest_duplicates.sh` (see below),
+  then tester proceeds with VERDICT line. Anchors are good.
 - **FAIL** → `HANDOFF → developer` with the body diff. Most likely cause is
   a metadata field that should have been in YAML front-matter but leaked
   into the body (HF-1 / T715 pattern). The developer agent's body-vs-front-
@@ -44,6 +45,28 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
 - **MISS** for a brand-new scenario the architect added → `HANDOFF →
   developer` to run it; once stable across two runs, append to
   `spec/anchors.toml`.
+
+## Post-PASS bookkeeping (mandatory)
+
+After `verify_anchors.sh` exits 0, run:
+
+```bash
+scripts/prune_backtest_duplicates.sh
+```
+
+For each anchored scenario this keeps exactly one report on disk — the
+oldest run whose body-SHA matches the locked anchor — and deletes every
+other matching `backtest-*-<scenario>.md`. Idempotent: a run that
+produced an identical body to the existing canonical file leaves the
+canonical file's timestamp untouched (option C semantics — the
+filename's timestamp records when the current canonical body was first
+produced, not when last verified). Stale runs from before an anchor
+update are also removed; their content lives in git history. Run with
+`--dry-run` to preview.
+
+Without this step `spec/reports/` accumulates duplicate runs every time
+the tester touches strategy code; with it the directory steady-states
+at one file per anchored scenario.
 
 ## When to invoke
 

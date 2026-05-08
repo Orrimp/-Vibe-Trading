@@ -76,11 +76,15 @@ After the binary writes a report, run the regression gate:
 scripts/verify_anchors.sh
 ```
 
-- All 9 PASS → embed metrics in the test report and continue.
+- All 9 PASS → run `scripts/prune_backtest_duplicates.sh` to collapse
+  the just-written file into the canonical one-per-scenario set, then
+  embed metrics in the test report and continue. (See
+  `.claude/skills/verify-anchors/SKILL.md` § "Post-PASS bookkeeping".)
 - FAIL on a scenario you just re-ran → the body drifted. Diff the body
   bytes against the prior locked report (commands in
   `.claude/skills/verify-anchors/SKILL.md`). Most likely cause: a
-  run-varying field leaked from front-matter into the body.
+  run-varying field leaked from front-matter into the body. Do NOT
+  prune on FAIL — keep the divergent file for the developer's diff.
 - MISS on a brand-new scenario the architect added → that's expected;
   capture the SHA across two sequential runs and propose appending
   to `spec/anchors.toml` (architect approves).

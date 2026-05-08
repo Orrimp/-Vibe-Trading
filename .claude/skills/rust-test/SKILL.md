@@ -36,6 +36,10 @@ Canonical test-and-report pipeline.
 
 6. If backtests are in scope for this run, invoke the `backtest` skill and embed
    its metrics table in the "Backtest Results" section of the same report.
+   After `scripts/verify_anchors.sh` exits 0, run
+   `scripts/prune_backtest_duplicates.sh` so `spec/reports/` keeps exactly
+   one report per anchored scenario (see `verify-anchors` SKILL.md
+   § "Post-PASS bookkeeping").
 
 7. Print the report's verdict line and routing line as the last two lines of
    your response, exactly as written in the template.
