@@ -62,7 +62,7 @@ updated: 2026-05-04
      `tokio_tungstenite` + `serde_json` + `reqwest`. NO `Cargo.toml`
      change. NO `unsafe`. **Anchor budget: 11 / 11 byte-identical**
      by construction (Q12: independent grep on
-     `spec/reports/backtest-*.md` + `spec/reports/success/success-*.md`
+     `spec/*/reports/backtest-*.md` + `spec/operator-success-reports/reports/success-*.md`
      returned zero hits on `venue|coinbase|kraken`). Full delta
      in the new "v1.5b — multi-venue resolutions" subsection +
      changelog entry at the bottom. -->
@@ -581,7 +581,7 @@ pub async fn strategy_history(
 **Reconciliation invariant (unchanged):** the minute-boundary reconciler
 walks `journal_entries` only. `strategy_events` rows do not affect
 `Σ debits == Σ credits`. v0.5 test T214 (see
-[spec/tasks/v05-composed-strategies.md](tasks/v05-composed-strategies.md))
+[spec/v05-composed-strategies/tasks.md](tasks/v05-composed-strategies.md))
 asserts that running R7 + R8 integration cycles leaves the reconciler
 at zero imbalance.
 
@@ -1583,14 +1583,14 @@ side via the Polars `LazyFrame` reader.
 **Backward-compat guardrail:** the `post_fill` signature change
 must NOT shift any backtest-binary report bytes. The 9 locked
 anchor SHA-256s are the v1+ regression gate (V6); task T817 in
-`spec/tasks/operator-success-reports.md` is the gate test.
+`spec/operator-success-reports/tasks.md` is the gate test.
 
 #### v1+ Q3 — Atomic write: **tempfile + `rename`**
 
 **Decision:** write to `<output>.tmp.<pid>`, `fsync_all`, then
 `std::fs::rename` to the canonical path. macOS / ext4 / APFS
 guarantee rename atomicity within the same filesystem; the report
-path always lives under `spec/reports/success/` (workspace FS).
+path always lives under `spec/operator-success-reports/reports/` (workspace FS).
 Same pattern v0 backtest binary uses for its report writes.
 
 **Rationale:** simplest pattern that satisfies R12.2; no
@@ -1734,7 +1734,7 @@ binary out-of-process via `std::process::Command::new` (preferring
 `target/release/report` when present; falling back to `cargo run
 --bin report` in dev). Spawn is fire-and-forget — failure does not
 re-trip the kill switch. The incident report writes to
-`spec/reports/success/incident-<halt_event_ts>.md`.
+`spec/operator-success-reports/reports/incident-<halt_event_ts>.md`.
 
 **Alternatives considered:** route R7 to query the v0 zero-amount
 memo rows directly — rejected; less clean (requires a description
@@ -1755,7 +1755,7 @@ re-lock.
 adds a one-paragraph rustdoc note in
 `crates/reports/src/render/memory_highlights.rs` explaining the
 re-lock requirement, plus an optional stub note file
-`spec/reports/memory-anchor-relock-TBD.md` as a grep-able marker
+`spec/dev-notes/memory-anchor-relock-TBD.md` as a grep-able marker
 for the eventual reflection-memory architect.
 
 #### v1+ architectural deltas summary
@@ -1833,7 +1833,7 @@ prefix-substr index on `(description prefix, ts)`. **R10** (the
 hardcoded `assets:position:BTC` account-id at
 `crates/audit/src/journal.rs:82,135` — every fill regardless of
 symbol writes to the BTC bucket) is **DEFERRED** to a follow-up
-brief `spec/features/per-symbol-position-accounts.md`. The new
+brief `spec/per-symbol-position-accounts/feature.md`. The new
 reader does NOT touch the account id; it parses the symbol from
 `journal_transactions.description` (format `"<side> <qty>
 <symbol> @ <price>"`) via the existing private
@@ -2193,7 +2193,7 @@ later with its own re-lock budget if any).
 
 **Decision:** independent re-grep at design time —
 `grep -rni "venue\|coinbase\|kraken"
-spec/reports/backtest-*.md spec/reports/success/success-*.md`
+spec/*/reports/backtest-*.md spec/operator-success-reports/reports/success-*.md`
 returned **zero hits**. The type-system change adds a field
 that no committed report body references. Anchor risk is
 zero by construction; all 11 anchor SHAs in
@@ -2205,8 +2205,8 @@ introduces venue strings (`"binance"`, `"coinbase"`,
 `"kraken"`, or any case variant) into a report **body**
 breaks all 11 anchors and requires an architect-approved
 re-lock budget via an explicit ADR. The grep
-`grep -rni "venue\|coinbase\|kraken" spec/reports/backtest-*.md
-spec/reports/success/success-*.md` should remain zero across
+`grep -rni "venue\|coinbase\|kraken" spec/*/reports/backtest-*.md
+spec/operator-success-reports/reports/success-*.md` should remain zero across
 the v1.5b lifecycle and beyond, until / unless a deliberate
 re-lock is approved.
 
@@ -3263,7 +3263,7 @@ ui-designer can iterate on a widget without booting the full agent.
 Fixture functions are deterministic (`ChaCha20Rng::from_seed`) so
 two runs of `cargo run --bin cockpit --features fixtures` produce
 the same screenshot. This is the contract for the
-`spec/reports/screenshots/` PNG regeneration path.
+`spec/<slug>/reports/screenshots/` PNG regeneration path.
 
 The `cockpit` binary is **never** the production runtime — that
 role belongs to `cockpit_live` (with the live agent attached to a
@@ -4680,7 +4680,7 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   stop shadowing Rust stdlib `::core::` (Rust 2024); crate directory stays
   `crates/core/`. Replaces the per-consumer `trading_core = { package = "core" }`
   alias trap and unblocks `cargo test --workspace --doc`. See Week 1 test
-  report [spec/reports/test-2026-04-17-1443-v0-paper-sma-week1.md](reports/test-2026-04-17-1443-v0-paper-sma-week1.md)
+  report [spec/archive/test-2026-04-17-1443-v0-paper-sma-week1.md](reports/test-2026-04-17-1443-v0-paper-sma-week1.md (archived; see spec/archive/README.md))
   section 7 (R-A).
 - 2026-04-17 (architect): formally signed off `sqlx-ledger` on SQLite as the
   v0 audit-ledger substrate (supersedes the earlier candidate language).
@@ -4863,7 +4863,7 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   is a sink — zero outgoing runtime deps". No code change; flagged
   in Wave 1 and Wave 2 tester reports as undocumented; now closed.
 - 2026-05-01 (architect): reconciled the v1+ operator-success-reports
-  CSV column schemas in `spec/features/operator-success-reports.md`
+  CSV column schemas in `spec/operator-success-reports/feature.md`
   to match the Wave 2c shipped renderer
   (`crates/reports/src/csv_artifacts.rs`, 134 tests green). Picked
   Option A (code is canonical): equity files emit
@@ -4956,7 +4956,7 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   **R10** (`post_fill` BTC hardcode at
   `crates/audit/src/journal.rs:82,135`) explicitly
   **DEFERRED** to a follow-up brief
-  `spec/features/per-symbol-position-accounts.md` —
+  `spec/per-symbol-position-accounts/feature.md` —
   description-parse path already gives correct per-symbol
   semantics (verified against `build_ledger_90d.rs` 4-symbol
   fixture). **Q4** anchors stay byte-identical — both v1+
@@ -5226,7 +5226,7 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   load-bearing introduction of `Venue` and audit is the
   boundary where typed attribution matters most. **Q12**
   zero anchor risk re-confirmed by independent grep on
-  `spec/reports/backtest-*.md` + `spec/reports/success/success-*.md`
+  `spec/*/reports/backtest-*.md` + `spec/operator-success-reports/reports/success-*.md`
   (zero hits on `venue|coinbase|kraken`); hard architectural
   rule: any future renderer change that introduces venue
   strings into a committed report body requires an architect-

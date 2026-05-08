@@ -6,7 +6,7 @@
 # deterministic part that must remain byte-identical across runs.
 #
 # Verify with: scripts/verify_anchors.sh
-# Recompute one: scripts/hash_report.py spec/reports/backtest-...md
+# Recompute one: scripts/hash_report.py spec/<feature>/reports/backtest-...md
 #
 # Owners: tester locks new entries; architect approves any change to an
 # existing entry. Do NOT mutate without an architect-approved migration
@@ -58,7 +58,7 @@ version  = "v1.5a"
 sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
 
 # v1+ operator success report scenarios (T816).  Resolved by
-# verify_anchors.sh under spec/reports/success/success-*-<scenario>.md
+# verify_anchors.sh under spec/operator-success-reports/reports/success-*-<scenario>.md
 # (the script tries the backtest-* glob first, then falls through to the
 # success-* glob).  Captured at first deterministic local run on
 # 2026-05-01 against the FIXTURE_SEED = 0xC0FFEE fixtures shipped at

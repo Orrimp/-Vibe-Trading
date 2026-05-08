@@ -305,7 +305,7 @@ prevents drift):
 
 | Stage         | Entry criteria                                                                | Approver                  |
 |---------------|-------------------------------------------------------------------------------|---------------------------|
-| `research`    | Hypothesis + backtest scenario file in `spec/features/<slug>.md`              | analyst                   |
+| `research`    | Hypothesis + backtest scenario file in `spec/<slug>/feature.md`              | analyst                   |
 | `paper`       | Backtest Sharpe > 1.0 on 2y OOS data; no fatal regressions in tester report   | tester verdict + operator |
 | `live`        | 30 days paper without risk-limit breach; live cost ≤ projected; PM signoff    | operator                  |
 | `deprecated`  | Live drawdown > 1.5× backtest, or operator opt-out                            | operator                  |
@@ -381,7 +381,7 @@ and posts a cockpit alert. **Ladder confirmed (2026-04-17).**
 - Kill switch verified manually (toggle `.halt`, observe flatten + halt).
 
 **Confirmed (2026-04-17):** Candidate C is v0. Analyst now drafts the
-matching feature brief in `spec/features/v0-paper-sma.md`.
+matching feature brief in `spec/v0-paper-sma/feature.md`.
 
 ---
 
@@ -524,8 +524,8 @@ boundaries — those live in the master roadmap and the per-phase briefs.
 
 The operator's question is always "is this working?" — and the reports are
 the answer. Auto-generated at a regular cadence (weekly default,
-configurable) and written as dated markdown under `spec/reports/success/`
-with linked plots in `spec/reports/success/artifacts/`.
+configurable) and written as dated markdown under `spec/operator-success-reports/reports/`
+with linked plots in `spec/operator-success-reports/reports/artifacts/`.
 
 ### What every report contains
 
@@ -605,7 +605,7 @@ scope) can render inline.
 - 2026-04-17 (operator): all three `[DECIDE]` markers resolved — moat bet,
   v0 scope, and cost ladder confirmed. Strategy registry decided: hot-loadable
   via two-phase plan (config-driven A in v0.5, WASM B in v1+); v0 ships a
-  plug-in-shaped trait. Analyst kicked off to draft `spec/features/v0-paper-sma.md`.
+  plug-in-shaped trait. Analyst kicked off to draft `spec/v0-paper-sma/feature.md`.
 - 2026-04-19 (operator + analyst): v0 delivered and verified PASS (all 35
   tasks, 124 tests green, deterministic backtests, Prometheus live). Final
   four Open decisions resolved — live/KYC out of scope (paper on real data

@@ -50,7 +50,7 @@ while IFS= read -r line; do
         files=()
         while IFS= read -r f; do
             [[ -n "$f" ]] && files+=("$f")
-        done < <(ls -1 "$root"/spec/reports/backtest-*-"$scenario".md 2>/dev/null | sort || true)
+        done < <(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" 2>/dev/null | sort || true)
 
         if [[ "${#files[@]}" -eq 0 ]]; then
             continue

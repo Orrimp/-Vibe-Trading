@@ -29,17 +29,16 @@ while IFS= read -r line; do
     if [[ "$line" =~ ^[[:space:]]*sha256[[:space:]]*=[[:space:]]*\"([a-f0-9]{64})\" ]]; then
         expected="${BASH_REMATCH[1]}"
         total=$((total + 1))
-        # Resolve the latest report file for this scenario.  The 9 v0/v0.5/
-        # v1/v1.5a backtest scenarios live at
-        #     spec/reports/backtest-<stamp>-<scenario>.md
-        # The 2 v1+ operator-success-report scenarios (T816) live at
-        #     spec/reports/success/success-<stamp>-<scenario>.md
-        # The script picks whichever pattern resolves first; both globs
+        # Resolve the latest report file for this scenario. Reports live
+        # under per-feature folders:
+        #     spec/<feature>/reports/backtest-<stamp>-<scenario>.md   (9 backtest)
+        #     spec/<feature>/reports/success-<stamp>-<scenario>.md    (2 success, T816)
+        # The script picks whichever pattern resolves first; both finds
         # are sorted independently and the lexicographically-largest
         # match wins (timestamp prefix → effectively "newest").
-        latest="$(ls -1 "$root"/spec/reports/backtest-*-"$scenario".md 2>/dev/null | sort | tail -1 || true)"
+        latest="$(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" 2>/dev/null | sort | tail -1 || true)"
         if [[ -z "$latest" ]]; then
-            latest="$(ls -1 "$root"/spec/reports/success/success-*-"$scenario".md 2>/dev/null | sort | tail -1 || true)"
+            latest="$(find "$root"/spec -type f -path "*/reports/success-*-$scenario.md" 2>/dev/null | sort | tail -1 || true)"
         fi
         if [[ -z "$latest" ]]; then
             printf 'MISS  %-36s  no report on disk\n' "$scenario"
