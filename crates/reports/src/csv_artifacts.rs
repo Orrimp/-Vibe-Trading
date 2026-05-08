@@ -96,6 +96,53 @@ pub fn write_equity_csv(path: &Path, samples: &[EquitySample]) -> Result<(), Csv
     Ok(())
 }
 
+/// Phase 4 (T1810) — read the per-window equity curve CSV at `path`.
+/// Inverse of [`write_equity_csv`]; consumes the same column schema
+/// (`ts,equity_total_usdt,realized_pnl_usdt,unrealized_pnl_usdt,
+/// cash_balance_usdt`). Used by the viewer bin to populate the
+/// `EquitySeries` that feeds the equity curve + drawdown band.
+///
+/// # Errors
+///
+/// Returns [`CsvError::Io`] on IO failure, [`CsvError::Csv`] on
+/// parse failure, or [`CsvError::Format`] on timestamp parse failure.
+pub fn read_equity_csv(path: &Path) -> Result<Vec<EquitySample>, CsvError> {
+    use std::str::FromStr;
+    use time::OffsetDateTime;
+
+    let f = std::fs::File::open(path).map_err(|e| CsvError::Io(e.to_string()))?;
+    let mut rdr = csv::ReaderBuilder::new().has_headers(true).from_reader(f);
+    let mut out = Vec::new();
+    for record in rdr.records() {
+        let rec = record.map_err(|e| CsvError::Csv(e.to_string()))?;
+        if rec.len() < 5 {
+            return Err(CsvError::Csv(format!(
+                "expected 5 columns, got {}",
+                rec.len()
+            )));
+        }
+        let ts = OffsetDateTime::parse(&rec[0], &Rfc3339)
+            .map(Timestamp::new)
+            .map_err(|e| CsvError::Format(e.to_string()))?;
+        let equity_total = Decimal::from_str(rec[1].trim())
+            .map_err(|e| CsvError::Csv(format!("equity_total parse: {e}")))?;
+        let realized_pnl = Decimal::from_str(rec[2].trim())
+            .map_err(|e| CsvError::Csv(format!("realized_pnl parse: {e}")))?;
+        let unrealized_pnl = Decimal::from_str(rec[3].trim())
+            .map_err(|e| CsvError::Csv(format!("unrealized_pnl parse: {e}")))?;
+        let cash_balance = Decimal::from_str(rec[4].trim())
+            .map_err(|e| CsvError::Csv(format!("cash_balance parse: {e}")))?;
+        out.push(EquitySample {
+            ts,
+            equity_total,
+            realized_pnl,
+            unrealized_pnl,
+            cash_balance,
+        });
+    }
+    Ok(out)
+}
+
 /// Write the fills CSV at `path`.
 ///
 /// Columns: `ts,symbol,side,qty,price,fee_usdt,fee_tier,strategy_id`.

@@ -1,0 +1,20 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: "viewer_full_view_summary(&metrics, &series, \"btc-2023-1m-rsi-reversion\")"
+---
+bin: viewer
+window_title: Backtest report — btc-2023-1m-rsi-reversion
+layout: column
+  kpi_strip: ~80 px (intrinsic)
+  equity_curve: 240 px fixed
+  drawdown_band: 100 px fixed
+  body: scrollable, fill remaining
+chrome: tier-1 PANEL
+buttons: 0
+status_bar: absent
+kpi_total_return: −57.80%
+kpi_trades: 14118
+equity_points: 60
+equity_peak: 100000
+equity_trough: 42195
+max_drawdown_pct: 0.57805

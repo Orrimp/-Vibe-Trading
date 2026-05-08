@@ -1,0 +1,7 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: strategies_sparkline_present_summary(&c)
+---
+screen: strategies
+selected: btc_rsi_reversion
+sparkline_canvas: ACCENT line, 120 points, peak=1600 trough=1000

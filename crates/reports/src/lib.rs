@@ -17,6 +17,7 @@
 pub mod atomic_write;
 pub mod csv_artifacts;
 pub mod marks;
+pub mod parse;
 pub mod reconcile;
 pub mod render;
 pub mod run_id;
