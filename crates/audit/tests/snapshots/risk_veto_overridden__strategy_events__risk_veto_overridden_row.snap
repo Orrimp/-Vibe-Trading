@@ -1,0 +1,10 @@
+---
+source: crates/audit/tests/risk_veto_overridden.rs
+expression: summary
+---
+kind: RiskVetoOverridden
+strategy_id: Some("alpha")
+error_code: Some("risk_veto_overridden")
+error_summary: Some("daily_loss_cap")
+operator: operator
+venue: None

@@ -1,4 +1,10 @@
-//! Live tape panel — last 200 fills, most recent on top (R6.2).
+//! Live agent activity feed — last 200 fills, most recent on top (R6.2).
+//!
+//! Phase 5 (Lumen Q6 / R11) renamed this module from `tape.rs` to
+//! `agent_feed.rs` to match the Lumen `AgentFeed.jsx` reference; the
+//! widget body / state contract is unchanged. **Field on Cockpit is
+//! preserved as `Cockpit::tape` per Phase 5 Q14 — see
+//! `lumen-phase-5-humancontrol-agentfeed.md` / Cockpit state diff.**
 //!
 //! Supports empty / loading / error / ready states (R6.4). Pause button
 //! buffers incoming fills without dropping them (see `state::update`
@@ -8,7 +14,7 @@
 //!
 //! Each row is wrapped in a transparent `Button` that emits
 //! `Message::TapeRowClicked(fill.transaction_id.clone())` on press. The
-//! button's style strips the default chrome so the rendered tape is
+//! button's style strips the default chrome so the rendered feed is
 //! visually identical to the pre-modal world (R11 / V7); the click
 //! handler is a pure interaction wrapper.
 
@@ -18,16 +24,16 @@ use iced::Length;
 
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    PANEL_TAPE_TITLE, SIDE_BUY, SIDE_SELL, TAPE_COL_FEE, TAPE_COL_PRICE, TAPE_COL_QTY,
+    PANEL_AGENT_FEED_TITLE, SIDE_BUY, SIDE_SELL, TAPE_COL_FEE, TAPE_COL_PRICE, TAPE_COL_QTY,
     TAPE_COL_SIDE, TAPE_COL_SYMBOL, TAPE_COL_TIME, TAPE_EMPTY, TAPE_ERROR_PREFIX, TAPE_LOADING,
     TAPE_PAUSED_BANNER, TAPE_PAUSE_LABEL, TAPE_RESUME_LABEL,
 };
-use crate::theme::{color, space, text};
+use crate::theme::{color, space, text, ThemeMode};
 
 use super::frame::{col_header, error_body, muted_body, panel};
 use super::num::{fmt_price, fmt_qty, fmt_usdt};
 
-/// Render the live tape panel.
+/// Render the live agent-activity feed panel.
 #[must_use]
 pub fn view(model: &Cockpit) -> Element<'_, Message> {
     let body: Element<Message> = match &model.tape {
@@ -37,7 +43,7 @@ pub fn view(model: &Cockpit) -> Element<'_, Message> {
         PanelState::Ready(fills) => ready_body(model, fills),
     };
 
-    panel(PANEL_TAPE_TITLE, body)
+    panel(PANEL_AGENT_FEED_TITLE, body, ThemeMode::Dark)
 }
 
 fn ready_body<'a>(
@@ -82,8 +88,8 @@ fn ready_body<'a>(
     if model.tape_paused {
         col = col.push(
             Text::new(TAPE_PAUSED_BANNER)
-                .size(text::CAPTION)
-                .color(color::WARN),
+                .size(text::MICRO)
+                .color(color::WARN_500.current(ThemeMode::Dark)),
         );
     }
 
@@ -96,8 +102,8 @@ fn row_for(fill: &trading_core::FillView) -> Element<'_, Message> {
         trading_core::Side::Sell => SIDE_SELL,
     };
     let side_color = match fill.side {
-        trading_core::Side::Buy => color::POS,
-        trading_core::Side::Sell => color::NEG,
+        trading_core::Side::Buy => color::UP_500.current(ThemeMode::Dark),
+        trading_core::Side::Sell => color::DOWN_500.current(ThemeMode::Dark),
     };
     let row_content = Row::new()
         .push(cell(short_time(fill.venue_ts)))
@@ -112,7 +118,7 @@ fn row_for(fill: &trading_core::FillView) -> Element<'_, Message> {
     // through to the journal-transaction audit modal. The button strips
     // its default chrome (no background, no border) so the rendered tape
     // is visually identical to the pre-modal world — existing
-    // `panel_snapshots__tape_*` snapshots stay byte-identical (R11 / V7).
+    // `panel_snapshots__agent_feed_*` snapshots stay byte-identical (R11 / V7).
     Button::new(row_content)
         .on_press(Message::TapeRowClicked(fill.transaction_id.clone()))
         .padding(0)
@@ -126,14 +132,17 @@ fn row_for(fill: &trading_core::FillView) -> Element<'_, Message> {
 fn transparent_row_button(_theme: &iced::Theme, _status: button::Status) -> button::Style {
     button::Style {
         background: None,
-        text_color: color::FG,
+        text_color: color::FG_1.current(ThemeMode::Dark),
         border: iced::Border::default(),
         ..Default::default()
     }
 }
 
 fn cell<'a>(s: String) -> Element<'a, Message> {
-    Text::new(s).size(text::BODY).color(color::FG).into()
+    Text::new(s)
+        .size(text::BODY)
+        .color(color::FG_1.current(ThemeMode::Dark))
+        .into()
 }
 
 /// Render a timestamp as `HH:MM:SS` (UTC). Kept private to the tape — the

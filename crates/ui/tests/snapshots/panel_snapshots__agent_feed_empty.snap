@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: tape_summary(&c)
+---
+panel: agent_feed
+title: Agent activity
+state: empty
+paused: false
+copy: No fills yet. Waiting for the first bar from BTCUSDT.

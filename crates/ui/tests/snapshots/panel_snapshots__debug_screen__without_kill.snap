@@ -1,0 +1,15 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: debug_screen_without_kill_summary(&c)
+---
+screen: debug
+layout: latency | market_health | server_time | version | logs_stub
+kill_widget: absent (migrated to HumanControl per Q1)
+latency: known ms=240
+market_health:
+  binance: fresh
+  coinbase: fresh
+  kraken: stale
+server_time: —
+version: v0.1.0 · rust
+logs: Logs surface lands with a future metrics brief

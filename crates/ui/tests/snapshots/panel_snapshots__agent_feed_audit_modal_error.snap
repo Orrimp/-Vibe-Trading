@@ -1,0 +1,11 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 462
+expression: tape_audit_modal_summary(&state)
+---
+panel: tape_audit_modal
+title: Journal transaction
+state: error
+tx_id: 4f9a2c1e-aaaa-bbbb-cccc-000000000001
+close_label: Close
+copy: Failed to load journal entries: ledger unreachable

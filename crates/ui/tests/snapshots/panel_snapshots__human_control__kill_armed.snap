@@ -1,0 +1,25 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: human_control_summary(&c)
+---
+panel: human_control
+title: You're in control
+placement: 7th sidebar entry (Screen::Control)
+layout: mode_segment | mode_hint | limit_rows | kill_bottom_action
+mode_segment:
+  Observe active=false bg=PANEL border=BORDER_2 focused=false
+  Supervised active=true bg=PANEL_RAISED border=ACCENT focused=false
+  Auto active=false bg=PANEL border=BORDER_2 focused=false
+mode_hint: Each decision needs your approval.
+limit_rows:
+  Daily loss limit = 100.00% sentiment=none
+  Max position = 100.00% sentiment=none
+  Used today = +129.50 USDT sentiment=pos
+kill_bottom_action:
+  state: confirming
+  dialog_title: Confirm stop trading
+  dialog_body: This cancels every open order, sells each open position at market, and puts the agent into a halted state. Type the phrase below to confirm.
+  phrase_label: Type HALT BTC to confirm
+  typed: ""
+  matched: false
+  confirm_enabled: false

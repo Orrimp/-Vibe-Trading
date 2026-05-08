@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: tape_summary(&c)
+---
+panel: agent_feed
+title: Agent activity
+state: loading
+paused: false
+copy: Connecting to the fill stream…

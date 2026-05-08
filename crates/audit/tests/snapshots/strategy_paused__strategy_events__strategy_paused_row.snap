@@ -1,0 +1,10 @@
+---
+source: crates/audit/tests/strategy_paused.rs
+expression: summary
+---
+kind: StrategyPaused
+strategy_id: Some("alpha")
+error_code: Some("strategy_paused")
+error_summary: Some("paused")
+operator: operator
+venue: None

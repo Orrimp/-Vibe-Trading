@@ -41,6 +41,37 @@ There is **one** design system. You enforce it.
 - **Density**: cockpit uses compact density (operator scanning at a glance);
   viewer uses comfortable density (reading reports). Defined in `theme`.
 
+#### Design-system source of truth (post-Phase-1, 2026-05-04)
+
+Three artefacts together define the design system; cite the right one
+for the right kind of question:
+
+1. **`crates/ui/src/theme.rs`** — the **executable contract**. Every
+   token (colour, spacing, radius, type, motion, shadow, latency band)
+   exists here as a typed Rust constant. If `theme.rs` doesn't export
+   it, the design system doesn't have it. The Lumen Phase 1 ship made
+   this file the single source of truth.
+2. **`spec/ui-design-principles.md`** — the **prose contract** for
+   *why* tokens are shaped the way they are, plus the trading-specific
+   patterns (P&L coloring, latency bands, kill-confirm phrase pattern,
+   flash-on-update, charts with audit-anchored markers, sidebar IA,
+   screen-routing rules). When you need to *justify* a design choice
+   in a brief or to push back on a request, cite this file.
+3. **`spec/design/`** — the **purpose-built bundle** the Lumen design
+   conversation produced for this project (see
+   [`spec/design/project/README.md`](../../spec/design/project/README.md)
+   and [`spec/design/chats/chat1.md`](../../spec/design/chats/chat1.md)).
+   The bundle contains the canonical token tables in
+   [`spec/design/project/colors_and_type.css`](../../spec/design/project/colors_and_type.css)
+   and JSX component patterns under
+   [`spec/design/project/ui_kits/desktop/`](../../spec/design/project/ui_kits/desktop/)
+   that the per-phase briefs translate into Rust widget contracts.
+   When the architect or analyst asks "what does the design system
+   say about X" and the executable token doesn't exist yet, this
+   bundle is the source-of-record. When `theme.rs` and `spec/design/`
+   diverge, **`theme.rs` wins** — it's the shipped reality; the
+   bundle is the contract that gates *future* token additions.
+
 When you ship a new feature, your last act is to scan `git diff` for
 violations of the rules above. Fix them, do not handoff with them in.
 

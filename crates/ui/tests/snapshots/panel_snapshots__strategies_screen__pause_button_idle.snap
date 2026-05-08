@@ -1,0 +1,12 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: strategies_pause_summary(&c)
+---
+screen: strategies
+section: pause_buttons
+paused_count: 0
+typed_confirm: false (Q8 — single-click both directions)
+rows:
+  btc_bbands_mean_revert label=Pause paused=false bg=PANEL focused=false
+  btc_macd_trend label=Pause paused=false bg=PANEL focused=false
+  btc_rsi_reversion label=Pause paused=false bg=PANEL focused=false

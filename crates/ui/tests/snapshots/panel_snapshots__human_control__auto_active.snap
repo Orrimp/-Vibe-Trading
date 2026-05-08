@@ -1,0 +1,21 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: human_control_summary(&c)
+---
+panel: human_control
+title: You're in control
+placement: 7th sidebar entry (Screen::Control)
+layout: mode_segment | mode_hint | limit_rows | kill_bottom_action
+mode_segment:
+  Observe active=false bg=PANEL border=BORDER_2 focused=false
+  Supervised active=false bg=PANEL border=BORDER_2 focused=false
+  Auto active=true bg=PANEL_RAISED border=ACCENT focused=false
+mode_hint: Within-envelope autonomy.
+limit_rows:
+  Daily loss limit = 100.00% sentiment=none
+  Max position = 100.00% sentiment=none
+  Used today = +129.50 USDT sentiment=pos
+kill_bottom_action:
+  state: idle
+  button_label: Stop trading
+  help: Halts the trading agent and writes an incident report. Cancels open orders and flattens every position. Requires a typed confirmation.

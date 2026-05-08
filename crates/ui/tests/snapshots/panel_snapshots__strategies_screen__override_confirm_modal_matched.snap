@@ -1,0 +1,23 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: strategies_override_summary(&c)
+---
+screen: strategies
+section: risk_veto_events
+veto_count: 1
+rows:
+  veto_id=veto-1 strategy=btc_macd_trend reason=daily_loss_cap button_label=Override border=WARN_500 focused=false
+modal:
+  state: confirming
+  dialog_title: Override risk veto
+  dialog_body: This bypasses the risk engine for the surfaced veto. Type OVERRIDE exactly to confirm.
+  phrase: OVERRIDE
+  veto_id: veto-1
+  typed: "OVERRIDE"
+  matched: true
+  confirm_enabled: true
+  confirm_label: Override veto
+  cancel_label: Cancel
+  input_bg: PANEL_SUNKEN
+  input_hairline: shadow_inset
+  input_focused: false

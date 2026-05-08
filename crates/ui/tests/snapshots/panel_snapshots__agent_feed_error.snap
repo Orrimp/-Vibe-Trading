@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: tape_summary(&c)
+---
+panel: agent_feed
+title: Agent activity
+state: error
+paused: false
+copy: Can't read the fill stream: broadcast channel closed

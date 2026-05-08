@@ -1,0 +1,15 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: focus_ring_kill_summary(&c)
+---
+widget: focus_ring (TD-1 path b custom-widget escape hatch)
+wrapped_widget: kill_button (Stop trading idle body)
+focused_widget: Some("kill_button")
+focus_key: kill_button
+focused: true
+halo_visible: true
+halo_border_color: ACCENT
+halo_border_width: 1.0
+halo_radius: R2
+halo_shadow: theme::focus::ring(Dark)
+td1_closure: visible (custom-widget escape hatch — iced 0.14 button::Status::Focused absent; halo lands via parent-side focus state owner)
