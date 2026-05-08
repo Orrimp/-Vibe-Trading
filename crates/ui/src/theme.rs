@@ -1,28 +1,69 @@
-//! Design tokens: color, spacing, typography, radii.
+//! Design tokens — Lumen palette + tier system + whisper shadows + motion.
 //!
-//! **Every** color, spacing value, border radius, and font size used in the
-//! cockpit flows from this module. Widgets never inline hex codes or magic
-//! `Length::Units(N)` numbers. This is the design-system contract.
+//! **Every** colour, spacing value, border radius, font size, shadow, and
+//! motion duration used in the cockpit flows from this module. Widgets
+//! never inline hex codes or magic `Length::Units(N)` numbers. This is
+//! the design-system contract.
 //!
-//! If you want to add a new token, think twice — the spacing scale is fixed
-//! at `4 / 8 / 12 / 16 / 24 / 32`, the type scale at four sizes
-//! (`caption / body / title / display`), and the palette at eight semantic
-//! colors. Drift starts with "just one exception"; the whole scale stops
-//! being useful the moment it has one. Prefer recombining existing tokens.
+//! Phase 1 (Lumen foundation) ships:
 //!
-//! Contrast spot-check: every `fg`/`bg` and `fg_muted`/`bg` pairing has
-//! been hand-checked at ≥ 4.5:1 per WCAG AA against the primary dark
-//! palette below.
+//! - **Palette** — the Lumen warm + cool neutral scales, accent ramp,
+//!   and semantic up / down / warn / info ramps. All values come from
+//!   [`spec/design/project/colors_and_type.css`][css]. Both light and
+//!   dark mode are wired; the cold-start render is dark per
+//!   [`ThemeMode::Dark`].
+//! - **Tier surfaces** — `CANVAS / PANEL / PANEL_RAISED / PANEL_SUNKEN /
+//!   OVERLAY`. The four-tier elevation language replaces the old flat
+//!   `BG / BG_ELEV` split.
+//! - **Whisper shadows** — `shadow::shadow_1 / shadow_2 / shadow_3` plus
+//!   `shadow_inset`. Three soft elevation levels; dark mode uses darker
+//!   alpha, not bigger blurs (Lumen rule).
+//! - **Focus ring** — [`focus::ring`] returns the 3 px low-alpha accent
+//!   ring used on every focusable widget.
+//! - **Spacing ladder** — 13 steps `0 / 2 / 4 / 6 / 8 / 12 / 16 / 20 /
+//!   24 / 32 / 40 / 48 / 64`. Naming `ZERO / TICK / XXS / XS / S / M /
+//!   L / L_PLUS / XL / XXL / XXXL / HUGE / MASSIVE`.
+//! - **Radii** — six steps `R1 / R2 / R3 / R4 / R5 / PILL`.
+//! - **Typography** — seven sizes `MICRO / SMALL / BODY / H3 / H2 / H1 /
+//!   DISPLAY` plus the `FONT_SANS` / `FONT_MONO` family strings.
+//! - **Motion** — four durations `DUR_1..DUR_4` and two cubic-bezier
+//!   easings `EASE_OUT / EASE_IN_OUT`. No bounces — trading desks don't
+//!   want kinetic UI.
+//!
+//! Drift starts with "just one exception"; the whole scale stops being
+//! useful the moment it has one. Prefer recombining existing tokens to
+//! adding new ones.
+//!
+//! [css]: ../../../../../spec/design/project/colors_and_type.css
 
 use iced::Color;
 
-/// Semantic color tokens — the only colors that appear in widget code.
+/// Theme mode — `Dark` is the cold-start (Q6).
 ///
-/// Raw `#rrggbb` literals anywhere outside this module are a bug. The set
-/// is deliberately small: if you find yourself wanting a fifth accent,
-/// you are fighting the scale and should revisit the design, not add a
-/// token.
+/// Both bins (`cockpit`, `cockpit_live`) cold-start in `Dark`. The light
+/// palette is wired through every `ModeColor` so the runtime toggle
+/// (downstream feature) lights up without a token rewrite.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ThemeMode {
+    /// Cool dark canvas — the default render.
+    #[default]
+    Dark,
+    /// Warm paper-like canvas — wired but not yet runtime-toggled.
+    Light,
+}
+
+/// Semantic colour tokens — the only colours that appear in widget code.
+///
+/// Raw `#rrggbb` literals anywhere outside this module are a bug and the
+/// `consistency.rs` test will catch them. The set is large but every
+/// constant is grounded in
+/// [`spec/design/project/colors_and_type.css`][css] and the Phase 1
+/// architect's token-mapping table — see `theme.rs::tests::*` for the
+/// load-bearing dark + light hex pin tests.
+///
+/// [css]: ../../../../../spec/design/project/colors_and_type.css
 pub mod color {
+    use super::ThemeMode;
     use iced::Color;
 
     /// Raw 8-bit RGB → [`Color`]. Hex literals never leak outside this module.
@@ -35,118 +76,479 @@ pub mod color {
         }
     }
 
-    /// Background — cockpit canvas.
-    pub const BG: Color = rgb(0x11, 0x14, 0x1A);
+    /// Raw 8-bit RGBA → [`Color`].
+    pub(super) const fn rgba(r: u8, g: u8, b: u8, a: f32) -> Color {
+        Color {
+            r: r as f32 / 255.0,
+            g: g as f32 / 255.0,
+            b: b as f32 / 255.0,
+            a,
+        }
+    }
 
-    /// Elevated surface — cards, panels.
-    pub const BG_ELEV: Color = rgb(0x1A, 0x1F, 0x29);
+    /// Dual-mode colour token. `dark` is the cold-start render; `light`
+    /// is selected only when the runtime theme switches (downstream
+    /// feature). Use [`ModeColor::current`] in style closures so a
+    /// future toggle is a one-line change.
+    #[derive(Debug, Clone, Copy)]
+    pub struct ModeColor {
+        /// Dark-mode value — used at cold start.
+        pub dark: Color,
+        /// Light-mode value — wired but not toggled in Phase 1.
+        pub light: Color,
+    }
+
+    impl ModeColor {
+        /// Resolve to the active theme.
+        #[must_use]
+        pub const fn current(&self, mode: ThemeMode) -> Color {
+            match mode {
+                ThemeMode::Dark => self.dark,
+                ThemeMode::Light => self.light,
+            }
+        }
+    }
+
+    // ── Surface tier tokens ──────────────────────────────────────────────
+    //
+    // `colors_and_type.css:73, 114` — canvas
+    // `colors_and_type.css:74, 115` — panel
+    // `colors_and_type.css:75, 116` — panel-raised
+    // `colors_and_type.css:76, 117` — panel-sunken
+    // `colors_and_type.css:77, 118` — overlay (alpha)
+
+    /// Tier 0 — app background. Top-level shell container only.
+    pub const CANVAS: ModeColor = ModeColor {
+        dark: rgb(0x13, 0x18, 0x20),  // cool-800
+        light: rgb(0xF6, 0xF4, 0xEF), // warm-50
+    };
+
+    /// Tier 1 — default panel surface. Used by every panel widget.
+    pub const PANEL: ModeColor = ModeColor {
+        dark: rgb(0x1C, 0x21, 0x27),  // cool-700
+        light: rgb(0xFB, 0xFA, 0xF7), // warm-25
+    };
+
+    /// Tier 2 — dialogs / popovers / dropdowns. Also the panel-header tint
+    /// (Tier 1.h) inside a Tier 1 frame.
+    pub const PANEL_RAISED: ModeColor = ModeColor {
+        dark: rgb(0x2A, 0x30, 0x38),  // cool-600
+        light: rgb(0xFF, 0xFF, 0xFF), // pure white
+    };
+
+    /// Sunken — input fields, table stripes.
+    pub const PANEL_SUNKEN: ModeColor = ModeColor {
+        dark: rgb(0x0B, 0x0F, 0x15),  // cool-900
+        light: rgb(0xEF, 0xEB, 0xE3), // warm-100
+    };
 
     /// Modal-dialog backdrop. Captures clicks outside the modal card.
-    ///
-    /// Sits behind the modal card and above the cockpit body in the iced
-    /// `Stack`. Darker than `BG` so the modal card (`BG_ELEV`) reads as
-    /// elevated; clicking this surface dismisses the modal.
-    ///
-    /// First consumer: `widgets::journal_transaction_modal` (tape-row →
-    /// audit modal). Light-mode hex `#0B0D12CC` (80% opacity onto the
-    /// light `BG`) is documented in `spec/ui-design-principles.md`'s
-    /// light-mode table; lands with the broader light-mode feature.
-    // TODO(light-mode): wire `#0B0D12CC` (light) when light-mode lands.
-    pub const BG_OVERLAY: Color = rgb(0x0B, 0x0D, 0x12);
+    /// Lumen's overlay is alpha-blended; we materialise it as a flat
+    /// pre-multiplied colour for iced's container API.
+    pub const OVERLAY: ModeColor = ModeColor {
+        dark: rgba(0x00, 0x00, 0x00, 0.55),
+        light: rgba(0x14, 0x13, 0x0F, 0.45),
+    };
 
-    /// Primary foreground text.
-    pub const FG: Color = rgb(0xE8, 0xEC, 0xF2);
+    // ── Foreground (text) ────────────────────────────────────────────────
+    //
+    // `colors_and_type.css:79–83` — light fg ladder
+    // `colors_and_type.css:120–125` — dark fg ladder
 
-    /// Muted foreground — labels, secondary text.
-    pub const FG_MUTED: Color = rgb(0x8B, 0x93, 0xA3);
+    /// Primary text — `cool-25-ish` dark / `warm-900` light.
+    pub const FG_1: ModeColor = ModeColor {
+        dark: rgb(0xE8, 0xEC, 0xF1),
+        light: rgb(0x14, 0x13, 0x0F), // warm-900
+    };
 
-    /// Accent — primary interactive element.
-    pub const ACCENT: Color = rgb(0x5E, 0xA3, 0xFF);
+    /// Secondary text.
+    pub const FG_2: ModeColor = ModeColor {
+        dark: rgb(0xB7, 0xBF, 0xCB),
+        light: rgb(0x34, 0x32, 0x2C), // warm-700
+    };
 
-    /// Positive — gains, buys, healthy state.
-    pub const POS: Color = rgb(0x3E, 0xCF, 0x8E);
+    /// Tertiary / labels. The status bar baseline.
+    pub const FG_3: ModeColor = ModeColor {
+        dark: rgb(0x80, 0x89, 0x93),
+        light: rgb(0x6F, 0x6A, 0x5E), // warm-500
+    };
 
-    /// Negative — losses, sells, danger, kill-switch fill.
-    pub const NEG: Color = rgb(0xFF, 0x6B, 0x6B);
+    /// Placeholder / disabled.
+    pub const FG_4: ModeColor = ModeColor {
+        dark: rgb(0x5C, 0x65, 0x71),
+        light: rgb(0x9E, 0x97, 0x88), // warm-400
+    };
 
-    /// Warning — amber, attention needed but not fatal.
-    pub const WARN: Color = rgb(0xFF, 0xC4, 0x5A);
+    /// Text rendered on top of an `ACCENT` fill.
+    pub const FG_ON_ACCENT: ModeColor = ModeColor {
+        dark: rgb(0x0B, 0x0F, 0x15),  // cool-900
+        light: rgb(0xFF, 0xFF, 0xFF), // pure white
+    };
 
-    /// Observation-only signals. Used for transaction-id text and other
-    /// informational, non-interactive elements (funding-rate badges, "did
-    /// you mean" hints). Distinct from `ACCENT`, which signals
-    /// interactivity — `INFO` is read-only by convention.
-    ///
-    /// Light-mode hex `#1F6FE5` (same as light-mode `ACCENT`) is
-    /// documented in `spec/ui-design-principles.md`; lands with the
-    /// broader light-mode feature.
-    // TODO(light-mode): wire `#1F6FE5` (light) when light-mode lands.
-    pub const INFO: Color = rgb(0x7B, 0xC2, 0xFF);
+    // ── Accent ramp + soft ──────────────────────────────────────────────
+    //
+    // `colors_and_type.css:18–27` — accent-50 .. accent-900
+    // `colors_and_type.css:89–92` — light surface accent + variants
+    // `colors_and_type.css:131–134` — dark surface accent + variants
 
-    /// Border — panel outlines, separators.
-    pub const BORDER: Color = rgb(0x2A, 0x31, 0x3F);
+    /// Primary accent. Dark uses `accent-300` (lighter); light uses
+    /// `accent-400` (darker) — both target the same perceived weight
+    /// against their surface.
+    pub const ACCENT: ModeColor = ModeColor {
+        dark: rgb(0x6F, 0xB6, 0xAE),  // accent-300
+        light: rgb(0x3F, 0x96, 0x8D), // accent-400
+    };
 
-    /// Focused / hovered border, modal frame. Distinct from `BORDER` so
-    /// the keyboard user can tell focused-from-active.
-    ///
-    /// First consumers: modal-card framing in
-    /// `widgets::journal_transaction_modal`, and the focus ring on
-    /// keyboard-navigated buttons (per accessibility minimums in
-    /// `spec/ui-design-principles.md`).
-    ///
-    /// Light-mode hex `#C9D0DA` is documented in
-    /// `spec/ui-design-principles.md`; lands with the broader
-    /// light-mode feature.
-    // TODO(light-mode): wire `#C9D0DA` (light) when light-mode lands.
-    pub const BORDER_STRONG: Color = rgb(0x3A, 0x44, 0x56);
+    /// Hover variant of accent.
+    pub const ACCENT_HOVER: ModeColor = ModeColor {
+        dark: rgb(0xA6, 0xD5, 0xCF),  // accent-200
+        light: rgb(0x2A, 0x7B, 0x73), // accent-500
+    };
+
+    /// Pressed variant of accent.
+    pub const ACCENT_PRESS: ModeColor = ModeColor {
+        dark: rgb(0x3F, 0x96, 0x8D),  // accent-400
+        light: rgb(0x1F, 0x63, 0x5D), // accent-600
+    };
+
+    /// Soft accent fill — chips, gentle highlights.
+    /// Lumen specifies `rgba(111, 182, 174, 0.12)` for dark and the
+    /// `accent-50` opaque colour for light.
+    pub const ACCENT_SOFT: ModeColor = ModeColor {
+        dark: rgba(0x6F, 0xB6, 0xAE, 0.12),
+        light: rgb(0xEC, 0xF6, 0xF5), // accent-50
+    };
+
+    // ── Semantic ramps — sage / clay / warn / info ───────────────────────
+    //
+    // `colors_and_type.css:57–70` — light values
+    // `colors_and_type.css:136–148` — dark values
+
+    /// Sage gain — soft tint backdrop (`up-50`).
+    pub const UP_50: ModeColor = ModeColor {
+        dark: rgba(0x88, 0xB3, 0x83, 0.12),
+        light: rgb(0xE9, 0xF0, 0xE7),
+    };
+
+    /// Sage gain — `up-400` brighter shade.
+    pub const UP_400: ModeColor = ModeColor {
+        dark: rgb(0x88, 0xB3, 0x83),
+        light: rgb(0x6E, 0x9B, 0x6A),
+    };
+
+    /// Sage gain — `up-500` deeper shade. Public default for "positive".
+    pub const UP_500: ModeColor = ModeColor {
+        dark: rgb(0x6E, 0x9B, 0x6A),
+        light: rgb(0x54, 0x7A, 0x52),
+    };
+
+    /// Clay loss — soft tint backdrop (`down-50`).
+    pub const DOWN_50: ModeColor = ModeColor {
+        dark: rgba(0xDD, 0x8E, 0x70, 0.12),
+        light: rgb(0xF5, 0xE5, 0xDD),
+    };
+
+    /// Clay loss — `down-400` brighter shade.
+    pub const DOWN_400: ModeColor = ModeColor {
+        dark: rgb(0xDD, 0x8E, 0x70),
+        light: rgb(0xC9, 0x7B, 0x5E),
+    };
+
+    /// Clay loss — `down-500` deeper shade. Public default for "negative".
+    pub const DOWN_500: ModeColor = ModeColor {
+        dark: rgb(0xC9, 0x7B, 0x5E),
+        light: rgb(0xA9, 0x5F, 0x46),
+    };
+
+    /// Warn — soft tint backdrop (`warn-50`).
+    pub const WARN_50: ModeColor = ModeColor {
+        dark: rgba(0xE0, 0xB4, 0x5C, 0.12),
+        light: rgb(0xF6, 0xEC, 0xD3),
+    };
+
+    /// Warn — `warn-400` brighter shade.
+    pub const WARN_400: ModeColor = ModeColor {
+        dark: rgb(0xE0, 0xB4, 0x5C),
+        light: rgb(0xD4, 0xA2, 0x4A),
+    };
+
+    /// Warn — `warn-500` deeper shade. Public default for "warning".
+    /// Lumen's CSS doesn't expose a dark `--warn-500` explicitly; the
+    /// dark surface inherits `warn-400` for legibility, so we shadow the
+    /// 500 step with the 400 hex in dark mode (matches the published
+    /// Lumen brand kit's dark-mode behaviour).
+    pub const WARN_500: ModeColor = ModeColor {
+        dark: rgb(0xE0, 0xB4, 0x5C),
+        light: rgb(0xB7, 0x86, 0x2F),
+    };
+
+    /// Info — soft tint backdrop (`info-50`).
+    pub const INFO_50: ModeColor = ModeColor {
+        dark: rgba(0x84, 0xA6, 0xD0, 0.12),
+        light: rgb(0xE4, 0xEC, 0xF5),
+    };
+
+    /// Info — `info-400` brighter shade.
+    pub const INFO_400: ModeColor = ModeColor {
+        dark: rgb(0x84, 0xA6, 0xD0),
+        light: rgb(0x5E, 0x84, 0xB4),
+    };
+
+    /// Info — `info-500` deeper shade. Public default for "informational".
+    /// Same dark-mode caveat as `WARN_500`: Lumen shadows the 500 step
+    /// with `info-400` on cool surfaces.
+    pub const INFO_500: ModeColor = ModeColor {
+        dark: rgb(0x84, 0xA6, 0xD0),
+        light: rgb(0x43, 0x6A, 0x9A),
+    };
+
+    // ── Borders ──────────────────────────────────────────────────────────
+    //
+    // `colors_and_type.css:85–87` — light border ladder
+    // `colors_and_type.css:127–129` — dark border ladder
+
+    /// Hairline between panels.
+    pub const BORDER_1: ModeColor = ModeColor {
+        dark: rgb(0x23, 0x2A, 0x33),
+        light: rgb(0xE2, 0xDD, 0xD2), // warm-200
+    };
+
+    /// Stronger divider — sunken-input border, table-stripe edge.
+    pub const BORDER_2: ModeColor = ModeColor {
+        dark: rgb(0x2E, 0x36, 0x40),
+        light: rgb(0xC9, 0xC2, 0xB3), // warm-300
+    };
+
+    /// Hover / active border. Distinct from `BORDER_1` so the keyboard
+    /// user can tell active-from-resting; the focus ring layers
+    /// `focus::ring` on top.
+    pub const BORDER_STRONG: ModeColor = ModeColor {
+        dark: rgb(0x40, 0x49, 0x54),
+        light: rgb(0x9E, 0x97, 0x88), // warm-400
+    };
 }
 
-/// Spacing scale — use **only** these values. No exceptions.
+/// Shadow tokens — the whisper-shadow ladder.
 ///
-/// The scale is `4 / 8 / 12 / 16 / 24 / 32`. Component padding, row gaps,
-/// margins, and panel insets all pick from here. If you find yourself
-/// wanting `10` or `20`, you are probably resizing something that should
-/// use `12` or `16` and a different font size.
+/// Lumen layers two box-shadows per level (`0 1px 1px ..., 0 1px 2px
+/// ...`); iced takes one shadow per `container::Style`, so we collapse
+/// to the dominant outer layer. The inner hair-shadow is inherited from
+/// the 1 px hairline border every panel already draws, which lands in
+/// the same colour budget. See Q3 / Phase 1 design notes for the
+/// rendering verification.
+pub mod shadow {
+    use super::{color::rgba, ThemeMode};
+    use iced::{Color, Shadow, Vector};
+
+    /// Tier 1 — panel chrome. `(offset_y, blur, alpha)` per design table.
+    #[must_use]
+    pub fn shadow_1(mode: ThemeMode) -> Shadow {
+        match mode {
+            ThemeMode::Dark => Shadow {
+                color: rgba(0x00, 0x00, 0x00, 0.30),
+                offset: Vector::new(0.0, 1.0),
+                blur_radius: 2.0,
+            },
+            ThemeMode::Light => Shadow {
+                color: rgba(0x14, 0x13, 0x0F, 0.04),
+                offset: Vector::new(0.0, 1.0),
+                blur_radius: 2.0,
+            },
+        }
+    }
+
+    /// Tier 2 — dialogs / popovers.
+    #[must_use]
+    pub fn shadow_2(mode: ThemeMode) -> Shadow {
+        match mode {
+            ThemeMode::Dark => Shadow {
+                color: rgba(0x00, 0x00, 0x00, 0.35),
+                offset: Vector::new(0.0, 4.0),
+                blur_radius: 10.0,
+            },
+            ThemeMode::Light => Shadow {
+                color: rgba(0x14, 0x13, 0x0F, 0.06),
+                offset: Vector::new(0.0, 4.0),
+                blur_radius: 10.0,
+            },
+        }
+    }
+
+    /// Tier 3 — modals.
+    #[must_use]
+    pub fn shadow_3(mode: ThemeMode) -> Shadow {
+        match mode {
+            ThemeMode::Dark => Shadow {
+                color: rgba(0x00, 0x00, 0x00, 0.50),
+                offset: Vector::new(0.0, 12.0),
+                blur_radius: 28.0,
+            },
+            ThemeMode::Light => Shadow {
+                color: rgba(0x14, 0x13, 0x0F, 0.08),
+                offset: Vector::new(0.0, 12.0),
+                blur_radius: 24.0,
+            },
+        }
+    }
+
+    /// Sunken inset — iced's `Shadow` is outer-only, so the visual
+    /// equivalent of CSS `inset 0 1px 0 rgba(...)` is rendered as a
+    /// 1 px hairline `Container` along the input's top edge. This
+    /// function returns the colour for that hairline.
+    #[must_use]
+    pub fn shadow_inset(mode: ThemeMode) -> Color {
+        match mode {
+            ThemeMode::Dark => rgba(0xFF, 0xFF, 0xFF, 0.03),
+            ThemeMode::Light => rgba(0x14, 0x13, 0x0F, 0.04),
+        }
+    }
+}
+
+/// Focus ring — Lumen's 3 px low-alpha accent halo.
+///
+/// Rendered as an outer iced `Shadow` with offset `(0, 0)` and a 3 px
+/// blur. iced doesn't natively support box-shadow `spread`; the blur
+/// produces the same perceived halo at the alpha values Lumen specifies.
+pub mod focus {
+    use super::{color::rgba, ThemeMode};
+    use iced::{Shadow, Vector};
+
+    /// 3 px low-alpha accent ring. Layered on top of `BORDER_STRONG`
+    /// borders for keyboard-focused interactive elements.
+    ///
+    /// Light: `rgba(63, 150, 141, 0.28)` (accent-400).
+    /// Dark: `rgba(166, 213, 207, 0.30)` (accent-200).
+    #[must_use]
+    pub fn ring(mode: ThemeMode) -> Shadow {
+        let color = match mode {
+            ThemeMode::Dark => rgba(0xA6, 0xD5, 0xCF, 0.30),
+            ThemeMode::Light => rgba(0x3F, 0x96, 0x8D, 0.28),
+        };
+        Shadow {
+            color,
+            offset: Vector::ZERO,
+            blur_radius: 3.0,
+        }
+    }
+}
+
+/// Spacing scale — the Lumen 13-step ladder.
+///
+/// Use **only** these values. No exceptions. Pixel values, top-to-bottom:
+/// `0 / 2 / 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64`.
 ///
 /// `u32` because iced's `Pixels` impls `From<u32>` but not `From<u16>`.
 pub mod space {
-    /// 4 px.
-    pub const XS: u32 = 4;
-    /// 8 px.
+    /// 0 px — collapse a slot without removing it.
+    pub const ZERO: u32 = 0;
+    /// 2 px — hairline gap, separator spacing.
+    pub const TICK: u32 = 2;
+    /// 4 px — chip padding, dense table cell padding.
+    pub const XXS: u32 = 4;
+    /// 6 px — small button padding, inline icon gap.
+    pub const XS: u32 = 6;
+    /// 8 px — control padding, badge padding.
     pub const S: u32 = 8;
-    /// 12 px.
+    /// 12 px — section padding, panel header gap.
     pub const M: u32 = 12;
-    /// 16 px.
+    /// 16 px — panel padding, list-row gap.
     pub const L: u32 = 16;
-    /// 24 px.
+    /// 20 px — block separator.
+    pub const L_PLUS: u32 = 20;
+    /// 24 px — panel outer gap, dialog padding.
     pub const XL: u32 = 24;
-    /// 32 px.
+    /// 32 px — top-of-screen breathing room.
     pub const XXL: u32 = 32;
+    /// 40 px — section divider spacing.
+    pub const XXXL: u32 = 40;
+    /// 48 px — page-level header padding.
+    pub const HUGE: u32 = 48;
+    /// 64 px — empty-state vertical anchor.
+    pub const MASSIVE: u32 = 64;
 }
 
-/// Type scale — four sizes, no more.
+/// Type scale — Lumen's 7-step typography ladder.
+///
+/// Sizes in CSS pixels (desktop-app convention; UI is fixed-zoom).
 pub mod text {
-    /// 11 px — captions, axis labels, column headers.
-    pub const CAPTION: u32 = 11;
-    /// 13 px — body text, panel cell content.
+    /// 11 px — table column headers, timestamps, status-bar text.
+    pub const MICRO: u32 = 11;
+    /// 12 px — small labels.
+    pub const SMALL: u32 = 12;
+    /// 13 px — default desktop body / UI text.
     pub const BODY: u32 = 13;
-    /// 16 px — panel titles, card headings.
-    pub const TITLE: u32 = 16;
-    /// 22 px — the equity number, kill-switch label, halted banner.
-    pub const DISPLAY: u32 = 22;
+    /// 15 px — sub-section headers.
+    pub const H3: u32 = 15;
+    /// 18 px — panel titles, card headings.
+    pub const H2: u32 = 18;
+    /// 24 px — page-level headings, equity number.
+    pub const H1: u32 = 24;
+    /// 32 px — hero numbers, marketing-style display.
+    pub const DISPLAY: u32 = 32;
 }
 
-/// Border radii. Two values; cockpit is rectangular by design.
+/// Font family stacks. `Inter` for UI, `JetBrains Mono` for numerics.
+///
+/// The runtime does not bundle `Inter` or `JetBrains Mono` TTFs —
+/// operator-locked: every kilobyte of font is a kilobyte not spent on
+/// faster bar rendering. iced falls through the stack to a platform
+/// default. The constants exist so widget code can still cite the
+/// canonical Lumen stack when the runtime gains font loading.
+pub mod font {
+    /// UI sans-serif stack: `Inter` → platform default.
+    pub const FONT_SANS: &str =
+        "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif";
+    /// Numerics monospace stack: `JetBrains Mono` → platform default.
+    pub const FONT_MONO: &str =
+        "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, \"Cascadia Mono\", Consolas, monospace";
+}
+
+/// Border radii — the Lumen 6-step radii ladder.
+///
+/// `f32` because iced's `border::Radius` impls `From<f32>`.
 pub mod radius {
-    /// 2 px — chips, small inputs, badges.
-    pub const SMALL: f32 = 2.0;
-    /// 4 px — panels, cards, buttons.
-    pub const MEDIUM: f32 = 4.0;
+    /// 2 px — dense table inputs.
+    pub const R1: f32 = 2.0;
+    /// 4 px — default control radius.
+    pub const R2: f32 = 4.0;
+    /// 6 px — buttons, chips.
+    pub const R3: f32 = 6.0;
+    /// 8 px — cards, panels.
+    pub const R4: f32 = 8.0;
+    /// 12 px — modals, sheets.
+    pub const R5: f32 = 12.0;
+    /// Pill / fully-rounded — tags, toggle thumbs, status-bar dots.
+    pub const PILL: f32 = 999.0;
 }
 
-/// Panel-level layout constants.
+/// Motion tokens — durations + easings.
+///
+/// Trading desks don't want kinetic UI. No bounces, no spring physics.
+/// Four short durations and two cubic-bezier curves; that's all.
+pub mod motion {
+    use std::time::Duration;
+
+    /// 80 ms — tap feedback.
+    pub const DUR_1: Duration = Duration::from_millis(80);
+    /// 140 ms — hover, focus.
+    pub const DUR_2: Duration = Duration::from_millis(140);
+    /// 220 ms — panel reveal.
+    pub const DUR_3: Duration = Duration::from_millis(220);
+    /// 320 ms — modal enter.
+    pub const DUR_4: Duration = Duration::from_millis(320);
+
+    /// Cubic-bezier easing — `ease-out` flavoured (no overshoot).
+    /// Control points: `(0.22, 0.61, 0.36, 1.0)`.
+    pub const EASE_OUT: [f32; 4] = [0.22, 0.61, 0.36, 1.0];
+    /// Cubic-bezier easing — symmetric `ease-in-out`.
+    /// Control points: `(0.4, 0.0, 0.2, 1.0)`.
+    pub const EASE_IN_OUT: [f32; 4] = [0.4, 0.0, 0.2, 1.0];
+}
+
+/// Panel-level layout constants. Tier-1 default geometry.
 pub mod layout {
     use super::space;
+    use crate::state::Screen;
     /// Outer padding inside a panel frame.
     pub const PANEL_PADDING: u32 = space::L;
     /// Gap between a panel's header and its body.
@@ -155,45 +557,102 @@ pub mod layout {
     pub const PANEL_OUTER_GAP: u32 = space::L;
     /// Max rows shown in the live tape (R6.2 — last 200 fills).
     pub const TAPE_MAX_ROWS: usize = 200;
+
+    /// Phase 2 — fixed sidebar-nav column width in logical pixels.
+    /// Sized so single-word labels (`Home / Debug / Charts`) sit comfortably
+    /// with `space::M` left padding + `space::L` right padding.
+    pub const SIDEBAR_WIDTH_PX: f32 = 180.0;
+
+    /// Phase 2 — right-rail Phase 6 Assistant slot reservation. The shell
+    /// renders this column with `Length::Fixed(0.0)` until the v2-LLM
+    /// Assistant ships in Phase 6. (Phase 2 Q7 — structural-now.)
+    pub const RIGHT_RAIL_WIDTH_PX: f32 = 0.0;
+
+    /// Phase 3 — sidebar entry list — six entries in master-roadmap scan
+    /// order (Q8). Inserts `Strategies / Risk / Audit` between `Debug`
+    /// and `Charts` per the analyst's ratified insertion point. Phase 2's
+    /// `SIDEBAR_ENTRIES_PHASE_2` was removed atomically on Phase 3 ship —
+    /// no forward-compat need.
+    pub const SIDEBAR_ENTRIES_PHASE_3: &[Screen] = &[
+        Screen::Home,
+        Screen::Debug,
+        Screen::Strategies,
+        Screen::Risk,
+        Screen::Audit,
+        Screen::Charts,
+    ];
+
+    /// Phase 5 (Q1) — adds `Screen::Control` (`HumanControl` panel) as
+    /// the 7th sidebar entry, appended to the end so the existing 6
+    /// positions are preserved. The Phase 2 R1.6 sidebar widget API is
+    /// parameterised — additive only.
+    pub const SIDEBAR_ENTRIES_PHASE_5: &[Screen] = &[
+        Screen::Home,
+        Screen::Debug,
+        Screen::Strategies,
+        Screen::Risk,
+        Screen::Audit,
+        Screen::Charts,
+        Screen::Control,
+    ];
+
+    /// Phase 3 — Audit-screen pagination size (Q4 — fixed 250 rows / page).
+    /// Bins use this constant when issuing `recent_journal_filtered`
+    /// (`LIMIT 250 OFFSET page * 250`); the screen pagination header
+    /// renders "Showing N–M of T" using the same constant.
+    pub const AUDIT_PAGE_SIZE: u32 = 250;
+
+    /// Phase 4 — equity-history sparkline point cap for the cockpit
+    /// Strategies-detail screen (Q9). The fetched `EquitySeries` is
+    /// `downsample(SPARKLINE_POINT_CAP)`-d before landing on
+    /// `Cockpit::strategy_equity`.
+    pub const SPARKLINE_POINT_CAP: usize = 120;
 }
 
-/// Latency thresholds per R6.2. Source of truth for badge color logic.
+/// Latency thresholds per R6.2. Source of truth for badge colour logic.
 pub mod latency {
-    /// `< 500 ms` → OK (green).
+    /// `< 500 ms` → OK (green / `UP_500`).
     pub const OK_MS: i64 = 500;
-    /// `< 2 s`  → WARN (amber).
+    /// `< 2 s` → WARN (amber / `WARN_500`).
     pub const WARN_MS: i64 = 2_000;
-    /// `≥ 10 s` → HALTED (red banner, not just "high").
+    /// `≥ 10 s` → HALTED (red banner / `DOWN_500`, not just "high").
     pub const HALTED_MS: i64 = 10_000;
 }
 
-/// Returns the color that should represent a signed delta in P&L, returns,
-/// or exposure. Centralizes the "color only for pos/neg, muted for zero"
-/// rule. Widgets must call this rather than picking colors inline.
+/// Returns the colour that should represent a signed delta in P&L,
+/// returns, or exposure. Centralizes the "colour only for pos/neg, muted
+/// for zero" rule. Widgets must call this rather than picking colours
+/// inline.
+///
+/// Phase 1: returns `Color` resolved against the cold-start
+/// [`ThemeMode::Dark`]. Signature preserved across the Lumen rewrite
+/// (see `lumen-phase-1-foundation.md` R9.3).
 #[must_use]
 pub fn color_for_delta(delta: rust_decimal::Decimal) -> Color {
     if delta.is_zero() {
-        color::FG_MUTED
+        color::FG_3.current(ThemeMode::Dark)
     } else if delta.is_sign_positive() {
-        color::POS
+        color::UP_500.current(ThemeMode::Dark)
     } else {
-        color::NEG
+        color::DOWN_500.current(ThemeMode::Dark)
     }
 }
 
-/// Returns the color for a latency value in milliseconds, per the R6.2
-/// thresholds. Widgets must use this helper rather than re-doing the
-/// thresholds inline. Halted and High share red by design — the distinct
-/// labels are carried by the strings, not the color.
+/// Returns the colour for a latency value in milliseconds, per the R6.2
+/// thresholds. Halted and High share red by design — the distinct
+/// labels are carried by the strings, not the colour.
+///
+/// Phase 1: returns `Color` resolved against the cold-start
+/// [`ThemeMode::Dark`]. Signature preserved (R9.4).
 #[must_use]
 pub fn color_for_latency_ms(ms: i64) -> Color {
     if ms >= latency::WARN_MS {
-        // Covers both High (≥ 2s) and Halted (≥ 10s) bands — same red.
-        color::NEG
+        // Covers both High (≥ 2 s) and Halted (≥ 10 s) bands — same red.
+        color::DOWN_500.current(ThemeMode::Dark)
     } else if ms >= latency::OK_MS {
-        color::WARN
+        color::WARN_500.current(ThemeMode::Dark)
     } else {
-        color::POS
+        color::UP_500.current(ThemeMode::Dark)
     }
 }
 
@@ -201,60 +660,510 @@ pub fn color_for_latency_ms(ms: i64) -> Color {
 mod tests {
     use super::*;
 
-    /// Compare two `Color`s by their byte-level RGBA components. Avoids
-    /// dragging in a `PartialEq` impl on iced's `Color` (which uses `f32`
-    /// equality and is awkward in `assert_eq!`).
-    fn rgba8(c: Color) -> (u8, u8, u8, u8) {
-        // `f32 → u8` is intentional: every `rgb(r,g,b)` constant is a
+    /// Compare two `Color`s by their byte-level RGB components. We
+    /// deliberately drop alpha for the hex-pin tests because most tokens
+    /// are opaque (`a = 1.0`); the alpha-blended overlay / soft tokens
+    /// have dedicated tests below that probe alpha explicitly.
+    fn rgb8(c: Color) -> (u8, u8, u8) {
+        // `f32 → u8` is intentional: every `rgb(r, g, b)` constant is a
         // round-trip of `(byte / 255.0) * 255.0 → round() → byte`, which
         // is exact for the discrete byte values we feed in. The clippy
         // truncation/sign-loss lints fire on the lossy *general* case;
         // here the input is bounded to `[0.0, 1.0]` by construction.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let to_u8 = |x: f32| (x * 255.0).round() as u8;
-        (to_u8(c.r), to_u8(c.g), to_u8(c.b), to_u8(c.a))
+        (to_u8(c.r), to_u8(c.g), to_u8(c.b))
     }
 
-    /// Modal-dialog backdrop — `#0B0D12` per
-    /// `spec/ui-design-principles.md` color palette.
+    /// T1501 — pin the load-bearing dark-mode hex values byte-for-byte
+    /// against `spec/design/project/colors_and_type.css`. If any
+    /// constant drifts, this test fails before a snapshot diff or a
+    /// presentation screenshot ever lands. Eight tokens cover the
+    /// full surface ladder + the four semantic ramps + the accent.
     #[test]
-    fn bg_overlay_has_principles_dark_hex() {
-        assert_eq!(rgba8(color::BG_OVERLAY), (0x0B, 0x0D, 0x12, 0xFF));
+    fn t1501_palette_dark_hex_pinned() {
+        // Surfaces (cool ladder).
+        assert_eq!(
+            rgb8(color::CANVAS.current(ThemeMode::Dark)),
+            (0x13, 0x18, 0x20),
+            "CANVAS dark = cool-800 #131820",
+        );
+        assert_eq!(
+            rgb8(color::PANEL.current(ThemeMode::Dark)),
+            (0x1C, 0x21, 0x27),
+            "PANEL dark = cool-700 #1C2127",
+        );
+        assert_eq!(
+            rgb8(color::PANEL_RAISED.current(ThemeMode::Dark)),
+            (0x2A, 0x30, 0x38),
+            "PANEL_RAISED dark = cool-600 #2A3038",
+        );
+        assert_eq!(
+            rgb8(color::PANEL_SUNKEN.current(ThemeMode::Dark)),
+            (0x0B, 0x0F, 0x15),
+            "PANEL_SUNKEN dark = cool-900 #0B0F15",
+        );
+
+        // Foreground (text).
+        assert_eq!(
+            rgb8(color::FG_1.current(ThemeMode::Dark)),
+            (0xE8, 0xEC, 0xF1),
+            "FG_1 dark = #E8ECF1",
+        );
+
+        // Accent (teal) replaces the old blue.
+        assert_eq!(
+            rgb8(color::ACCENT.current(ThemeMode::Dark)),
+            (0x6F, 0xB6, 0xAE),
+            "ACCENT dark = accent-300 #6FB6AE",
+        );
+
+        // Semantic ramps (sage / clay).
+        assert_eq!(
+            rgb8(color::UP_500.current(ThemeMode::Dark)),
+            (0x6E, 0x9B, 0x6A),
+            "UP_500 dark = sage #6E9B6A",
+        );
+        assert_eq!(
+            rgb8(color::DOWN_500.current(ThemeMode::Dark)),
+            (0xC9, 0x7B, 0x5E),
+            "DOWN_500 dark = clay #C97B5E",
+        );
     }
 
-    /// Observation-only accent — `#7BC2FF` per
-    /// `spec/ui-design-principles.md` color palette.
+    /// T1501 — pin the load-bearing light-mode hex values. Light mode is
+    /// wired but not yet runtime-toggled (Q6); pinning the values here
+    /// guarantees V8 (light-palette parity) lights up the day a toggle
+    /// lands.
     #[test]
-    fn info_has_principles_dark_hex() {
-        assert_eq!(rgba8(color::INFO), (0x7B, 0xC2, 0xFF, 0xFF));
+    fn t1501_palette_light_hex_pinned() {
+        // Surfaces (warm ladder).
+        assert_eq!(
+            rgb8(color::CANVAS.current(ThemeMode::Light)),
+            (0xF6, 0xF4, 0xEF),
+            "CANVAS light = warm-50 #F6F4EF",
+        );
+        assert_eq!(
+            rgb8(color::PANEL.current(ThemeMode::Light)),
+            (0xFB, 0xFA, 0xF7),
+            "PANEL light = warm-25 #FBFAF7",
+        );
+        assert_eq!(
+            rgb8(color::PANEL_RAISED.current(ThemeMode::Light)),
+            (0xFF, 0xFF, 0xFF),
+            "PANEL_RAISED light = pure white",
+        );
+        assert_eq!(
+            rgb8(color::PANEL_SUNKEN.current(ThemeMode::Light)),
+            (0xEF, 0xEB, 0xE3),
+            "PANEL_SUNKEN light = warm-100 #EFEBE3",
+        );
+
+        // Foreground.
+        assert_eq!(
+            rgb8(color::FG_1.current(ThemeMode::Light)),
+            (0x14, 0x13, 0x0F),
+            "FG_1 light = warm-900 #14130F",
+        );
+
+        // Accent (teal) at the darker accent-400 step on light surfaces.
+        assert_eq!(
+            rgb8(color::ACCENT.current(ThemeMode::Light)),
+            (0x3F, 0x96, 0x8D),
+            "ACCENT light = accent-400 #3F968D",
+        );
+
+        // Semantic ramps.
+        assert_eq!(
+            rgb8(color::UP_500.current(ThemeMode::Light)),
+            (0x54, 0x7A, 0x52),
+            "UP_500 light = #547A52",
+        );
+        assert_eq!(
+            rgb8(color::DOWN_500.current(ThemeMode::Light)),
+            (0xA9, 0x5F, 0x46),
+            "DOWN_500 light = #A95F46",
+        );
     }
 
-    /// Focused / hovered border — `#3A4456` per
-    /// `spec/ui-design-principles.md` color palette.
+    /// T1501 — every step on the spacing ladder is non-zero except
+    /// `ZERO`, and the ladder is monotonically increasing. Catches a
+    /// mistyped constant before any pixel lands on screen.
     #[test]
-    fn border_strong_has_principles_dark_hex() {
-        assert_eq!(rgba8(color::BORDER_STRONG), (0x3A, 0x44, 0x56, 0xFF));
+    fn t1501_spacing_ladder_complete() {
+        assert_eq!(space::ZERO, 0);
+        let ladder = [
+            space::TICK,
+            space::XXS,
+            space::XS,
+            space::S,
+            space::M,
+            space::L,
+            space::L_PLUS,
+            space::XL,
+            space::XXL,
+            space::XXXL,
+            space::HUGE,
+            space::MASSIVE,
+        ];
+        // 12 non-zero entries (13 total including ZERO).
+        assert_eq!(ladder.len(), 12, "12 non-zero spacing steps");
+        for (i, v) in ladder.iter().enumerate() {
+            assert!(*v > 0, "spacing[{i}] = {v} must be non-zero");
+        }
+        // Strictly increasing.
+        for i in 1..ladder.len() {
+            assert!(
+                ladder[i] > ladder[i - 1],
+                "spacing must strictly increase: {} → {}",
+                ladder[i - 1],
+                ladder[i],
+            );
+        }
+        // Pin the canonical Lumen pixel values.
+        assert_eq!(ladder, [2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64]);
     }
 
-    /// `BORDER_STRONG` must be visibly distinct from `BORDER` so a
+    /// T1501 — motion durations match Lumen's `--dur-1..4` (80, 140,
+    /// 220, 320 ms).
+    #[test]
+    fn t1501_motion_durations_pinned() {
+        assert_eq!(motion::DUR_1.as_millis(), 80, "DUR_1 = 80 ms");
+        assert_eq!(motion::DUR_2.as_millis(), 140, "DUR_2 = 140 ms");
+        assert_eq!(motion::DUR_3.as_millis(), 220, "DUR_3 = 220 ms");
+        assert_eq!(motion::DUR_4.as_millis(), 320, "DUR_4 = 320 ms");
+    }
+
+    /// T1501 — radii ladder pins to Lumen's `--radius-1..5 + pill`.
+    /// Each `radius::*` constant is a literal `f32` from a CSS pixel
+    /// integer; the equality is exact by construction (no arithmetic),
+    /// so the float-comparison clippy lint is suppressed at the helper.
+    #[allow(clippy::float_cmp)]
+    fn pin_f32(actual: f32, expected: f32, label: &str) {
+        assert_eq!(actual, expected, "{label}");
+    }
+
+    #[test]
+    fn t1501_radii_ladder_pinned() {
+        pin_f32(radius::R1, 2.0, "R1 = 2px");
+        pin_f32(radius::R2, 4.0, "R2 = 4px");
+        pin_f32(radius::R3, 6.0, "R3 = 6px");
+        pin_f32(radius::R4, 8.0, "R4 = 8px");
+        pin_f32(radius::R5, 12.0, "R5 = 12px");
+        pin_f32(radius::PILL, 999.0, "PILL = 999px");
+    }
+
+    /// T1501 — typography scale pins to Lumen's `--fs-*`.
+    #[test]
+    fn t1501_text_ladder_pinned() {
+        assert_eq!(text::MICRO, 11);
+        assert_eq!(text::SMALL, 12);
+        assert_eq!(text::BODY, 13);
+        assert_eq!(text::H3, 15);
+        assert_eq!(text::H2, 18);
+        assert_eq!(text::H1, 24);
+        assert_eq!(text::DISPLAY, 32);
+    }
+
+    /// Luminance proxy — sum of integer RGB byte values. Bounded to
+    /// `[0.0, 1.0]` by construction, so the lossy `f32 → u8` cast is
+    /// exact for our discrete inputs.
+    fn lum(c: Color) -> u32 {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let to_u8 = |x: f32| (x * 255.0).round() as u8;
+        u32::from(to_u8(c.r)) + u32::from(to_u8(c.g)) + u32::from(to_u8(c.b))
+    }
+
+    /// R2.5 acceptance — the four surface tiers form a strict luminance
+    /// ladder in dark mode (`PANEL_SUNKEN < CANVAS < PANEL <
+    /// PANEL_RAISED`) so each tier reads as a distinct elevation.
+    #[test]
+    fn tier_token_presence_test() {
+        let sunken = lum(color::PANEL_SUNKEN.current(ThemeMode::Dark));
+        let canvas = lum(color::CANVAS.current(ThemeMode::Dark));
+        let panel = lum(color::PANEL.current(ThemeMode::Dark));
+        let raised = lum(color::PANEL_RAISED.current(ThemeMode::Dark));
+        assert!(sunken < canvas, "sunken {sunken} < canvas {canvas}");
+        assert!(canvas < panel, "canvas {canvas} < panel {panel}");
+        assert!(panel < raised, "panel {panel} < raised {raised}");
+    }
+
+    /// R3.3 acceptance — Lumen's "shadows in dark mode are darker, not
+    /// bigger" rule. The dark `shadow_1` colour has more alpha-weighted
+    /// blackness than the light `shadow_1`; blur radius is identical.
+    #[test]
+    fn shadow_dark_is_more_black_than_light() {
+        let dark = shadow::shadow_1(ThemeMode::Dark);
+        let light = shadow::shadow_1(ThemeMode::Light);
+        // Same blur — darker, not bigger. Both are literal `2.0` from
+        // `shadow_1`, no arithmetic, so the equality is exact.
+        pin_f32(
+            dark.blur_radius,
+            light.blur_radius,
+            "shadow_1 blur same across modes",
+        );
+        // Dark shadow alpha (0.30) > light shadow alpha (0.04).
+        assert!(
+            dark.color.a > light.color.a,
+            "dark alpha {} > light alpha {}",
+            dark.color.a,
+            light.color.a,
+        );
+    }
+
+    /// T1503 — pin the three-level shadow ladder `(offset_y, blur, alpha)`
+    /// against the Design table for both `ThemeMode::Dark` and
+    /// `ThemeMode::Light`. Uses approx-equality (1e-4 tolerance) for `f32`
+    /// comparisons to guard against rounding in future refactors.
+    ///
+    /// Design table (spec/tasks/lumen-phase-1-foundation.md lines 154–156):
+    /// - Dark:  (1,2,0.30) / (4,10,0.35) / (12,28,0.50)
+    /// - Light: (1,2,0.04) / (4,10,0.06) / (12,24,0.08)
+    #[test]
+    fn t1503_shadow_ladder_dark() {
+        let s1 = shadow::shadow_1(ThemeMode::Dark);
+        assert!(
+            (s1.offset.y - 1.0).abs() < 1e-4,
+            "shadow_1 dark offset_y: expected 1.0, got {}",
+            s1.offset.y,
+        );
+        assert!(
+            (s1.blur_radius - 2.0).abs() < 1e-4,
+            "shadow_1 dark blur: expected 2.0, got {}",
+            s1.blur_radius,
+        );
+        assert!(
+            (s1.color.a - 0.30).abs() < 1e-4,
+            "shadow_1 dark alpha: expected 0.30, got {}",
+            s1.color.a,
+        );
+
+        let s2 = shadow::shadow_2(ThemeMode::Dark);
+        assert!(
+            (s2.offset.y - 4.0).abs() < 1e-4,
+            "shadow_2 dark offset_y: expected 4.0, got {}",
+            s2.offset.y,
+        );
+        assert!(
+            (s2.blur_radius - 10.0).abs() < 1e-4,
+            "shadow_2 dark blur: expected 10.0, got {}",
+            s2.blur_radius,
+        );
+        assert!(
+            (s2.color.a - 0.35).abs() < 1e-4,
+            "shadow_2 dark alpha: expected 0.35, got {}",
+            s2.color.a,
+        );
+
+        let s3 = shadow::shadow_3(ThemeMode::Dark);
+        assert!(
+            (s3.offset.y - 12.0).abs() < 1e-4,
+            "shadow_3 dark offset_y: expected 12.0, got {}",
+            s3.offset.y,
+        );
+        assert!(
+            (s3.blur_radius - 28.0).abs() < 1e-4,
+            "shadow_3 dark blur: expected 28.0, got {}",
+            s3.blur_radius,
+        );
+        assert!(
+            (s3.color.a - 0.50).abs() < 1e-4,
+            "shadow_3 dark alpha: expected 0.50, got {}",
+            s3.color.a,
+        );
+    }
+
+    /// T1503 — pin shadow ladder values for `ThemeMode::Light`.
+    #[test]
+    fn t1503_shadow_ladder_light() {
+        let s1 = shadow::shadow_1(ThemeMode::Light);
+        assert!(
+            (s1.offset.y - 1.0).abs() < 1e-4,
+            "shadow_1 light offset_y: expected 1.0, got {}",
+            s1.offset.y,
+        );
+        assert!(
+            (s1.blur_radius - 2.0).abs() < 1e-4,
+            "shadow_1 light blur: expected 2.0, got {}",
+            s1.blur_radius,
+        );
+        assert!(
+            (s1.color.a - 0.04).abs() < 1e-4,
+            "shadow_1 light alpha: expected 0.04, got {}",
+            s1.color.a,
+        );
+
+        let s2 = shadow::shadow_2(ThemeMode::Light);
+        assert!(
+            (s2.offset.y - 4.0).abs() < 1e-4,
+            "shadow_2 light offset_y: expected 4.0, got {}",
+            s2.offset.y,
+        );
+        assert!(
+            (s2.blur_radius - 10.0).abs() < 1e-4,
+            "shadow_2 light blur: expected 10.0, got {}",
+            s2.blur_radius,
+        );
+        assert!(
+            (s2.color.a - 0.06).abs() < 1e-4,
+            "shadow_2 light alpha: expected 0.06, got {}",
+            s2.color.a,
+        );
+
+        let s3 = shadow::shadow_3(ThemeMode::Light);
+        assert!(
+            (s3.offset.y - 12.0).abs() < 1e-4,
+            "shadow_3 light offset_y: expected 12.0, got {}",
+            s3.offset.y,
+        );
+        assert!(
+            (s3.blur_radius - 24.0).abs() < 1e-4,
+            "shadow_3 light blur: expected 24.0, got {}",
+            s3.blur_radius,
+        );
+        assert!(
+            (s3.color.a - 0.08).abs() < 1e-4,
+            "shadow_3 light alpha: expected 0.08, got {}",
+            s3.color.a,
+        );
+    }
+
+    /// T1503 — `shadow_inset` returns `Color` (not `Shadow`), and the
+    /// dark variant is a brighter/lighter-alpha value than the light variant
+    /// (dark inset: white 3% → luminance near-max; light inset: near-black
+    /// 4% → near-zero luminance).
+    #[test]
+    fn t1503_shadow_inset_returns_color_and_modes_distinct() {
+        let dark_inset = shadow::shadow_inset(ThemeMode::Dark);
+        let light_inset = shadow::shadow_inset(ThemeMode::Light);
+
+        // Dark inset is white (rgb 255,255,255) — luminance is max.
+        // Light inset is near-black (rgb 20,19,15) — luminance is low.
+        // The two colours must be visually distinct.
+        assert_ne!(
+            rgb8(dark_inset),
+            rgb8(light_inset),
+            "shadow_inset must differ across modes",
+        );
+
+        // Dark inset: white at 3% alpha — R channel is 255.
+        let (r_dark, g_dark, b_dark) = rgb8(dark_inset);
+        assert_eq!(
+            (r_dark, g_dark, b_dark),
+            (0xFF, 0xFF, 0xFF),
+            "dark inset colour is white (0xFF,0xFF,0xFF)"
+        );
+        assert!(
+            (dark_inset.a - 0.03).abs() < 1e-4,
+            "dark inset alpha: expected 0.03, got {}",
+            dark_inset.a,
+        );
+
+        // Light inset: warm near-black at 4% alpha — barely visible.
+        let (r_light, g_light, b_light) = rgb8(light_inset);
+        assert_eq!(
+            (r_light, g_light, b_light),
+            (0x14, 0x13, 0x0F),
+            "light inset colour is warm-900 (0x14,0x13,0x0F)"
+        );
+        assert!(
+            (light_inset.a - 0.04).abs() < 1e-4,
+            "light inset alpha: expected 0.04, got {}",
+            light_inset.a,
+        );
+    }
+
+    /// R1.2 acceptance — the light palette is wired (not just dark).
+    /// The `CANVAS` / `PANEL` / `FG_1` light values must differ from the
+    /// dark values, proving the dual-mode struct isn't a stub.
+    #[test]
+    fn light_palette_present() {
+        let canvas_dark = rgb8(color::CANVAS.current(ThemeMode::Dark));
+        let canvas_light = rgb8(color::CANVAS.current(ThemeMode::Light));
+        assert_ne!(canvas_dark, canvas_light, "CANVAS differs across modes");
+
+        let panel_dark = rgb8(color::PANEL.current(ThemeMode::Dark));
+        let panel_light = rgb8(color::PANEL.current(ThemeMode::Light));
+        assert_ne!(panel_dark, panel_light, "PANEL differs across modes");
+
+        let fg_dark = rgb8(color::FG_1.current(ThemeMode::Dark));
+        let fg_light = rgb8(color::FG_1.current(ThemeMode::Light));
+        assert_ne!(fg_dark, fg_light, "FG_1 differs across modes");
+    }
+
+    /// `BORDER_STRONG` must be visibly distinct from `BORDER_1` so a
     /// keyboard-focused element can be told apart from a panel outline.
-    /// Principles doc: "Focus rings use `border_strong`, not `accent`,
-    /// so the keyboard user can tell focused-from-active."
     #[test]
     fn border_strong_is_distinct_from_border() {
-        assert_ne!(rgba8(color::BORDER), rgba8(color::BORDER_STRONG));
+        assert_ne!(
+            rgb8(color::BORDER_1.current(ThemeMode::Dark)),
+            rgb8(color::BORDER_STRONG.current(ThemeMode::Dark)),
+        );
     }
 
-    /// `BG_OVERLAY` must be darker than `BG` so the modal card (`BG_ELEV`)
-    /// reads as elevated above the dimmed-out cockpit body.
+    /// `OVERLAY` must read as darker than `CANVAS` so the modal card
+    /// (`PANEL_RAISED`) reads as elevated above the dimmed-out cockpit
+    /// body. Overlay carries alpha; we compare its RGB luminance.
     #[test]
-    fn bg_overlay_is_darker_than_bg() {
-        let bg = rgba8(color::BG);
-        let overlay = rgba8(color::BG_OVERLAY);
-        let lum = |(r, g, b, _): (u8, u8, u8, u8)| u32::from(r) + u32::from(g) + u32::from(b);
+    fn overlay_is_darker_than_canvas() {
+        let canvas = lum(color::CANVAS.current(ThemeMode::Dark));
+        let overlay = lum(color::OVERLAY.current(ThemeMode::Dark));
         assert!(
-            lum(overlay) < lum(bg),
-            "bg_overlay ({overlay:?}) must be darker than bg ({bg:?})",
+            overlay < canvas,
+            "OVERLAY ({overlay}) must be darker than CANVAS ({canvas})",
         );
+    }
+
+    /// `color_for_delta` returns sage / clay / muted rather than the
+    /// old neon green / red / muted (R9.3 — Lumen rename).
+    #[test]
+    fn color_for_delta_uses_lumen_ramp() {
+        use rust_decimal_macros::dec;
+        let pos = color_for_delta(dec!(1));
+        let neg = color_for_delta(dec!(-1));
+        let zero = color_for_delta(dec!(0));
+        assert_eq!(rgb8(pos), (0x6E, 0x9B, 0x6A), "positive = sage UP_500");
+        assert_eq!(rgb8(neg), (0xC9, 0x7B, 0x5E), "negative = clay DOWN_500");
+        assert_eq!(rgb8(zero), (0x80, 0x89, 0x93), "zero = muted FG_3");
+    }
+
+    /// `color_for_latency_ms` band reconcile (Q8 / R9.4). Halted shares
+    /// the red band with High by design — the distinct labels carry the
+    /// distinction, not the colour.
+    #[test]
+    fn color_for_latency_ms_uses_lumen_ramp() {
+        let ok = color_for_latency_ms(100);
+        let warn = color_for_latency_ms(1_000);
+        let high = color_for_latency_ms(5_000);
+        let halted = color_for_latency_ms(15_000);
+        assert_eq!(rgb8(ok), (0x6E, 0x9B, 0x6A), "OK = sage UP_500");
+        assert_eq!(rgb8(warn), (0xE0, 0xB4, 0x5C), "WARN = WARN_500 (dark)");
+        assert_eq!(rgb8(high), (0xC9, 0x7B, 0x5E), "HIGH = clay DOWN_500");
+        assert_eq!(rgb8(halted), (0xC9, 0x7B, 0x5E), "HALTED = clay DOWN_500");
+    }
+
+    /// `focus::ring` returns a 3 px blur, zero offset, accent-tinted
+    /// shadow — the iced-idiomatic equivalent of Lumen's CSS
+    /// `box-shadow: 0 0 0 3px rgba(...)`. The exact-equality on the
+    /// shape fields is sound: offsets and blur are literal `f32` values
+    /// constructed inside `focus::ring`, no arithmetic.
+    #[test]
+    fn focus_ring_shape() {
+        let dark = focus::ring(ThemeMode::Dark);
+        pin_f32(dark.offset.x, 0.0, "dark offset.x");
+        pin_f32(dark.offset.y, 0.0, "dark offset.y");
+        pin_f32(dark.blur_radius, 3.0, "dark blur_radius");
+        // Accent-200 dark, 30% alpha.
+        let (r, g, b) = rgb8(dark.color);
+        assert_eq!((r, g, b), (0xA6, 0xD5, 0xCF));
+        assert!((dark.color.a - 0.30).abs() < 1e-4);
+
+        let light = focus::ring(ThemeMode::Light);
+        pin_f32(light.offset.x, 0.0, "light offset.x");
+        pin_f32(light.offset.y, 0.0, "light offset.y");
+        pin_f32(light.blur_radius, 3.0, "light blur_radius");
+        let (r, g, b) = rgb8(light.color);
+        assert_eq!((r, g, b), (0x3F, 0x96, 0x8D));
+        assert!((light.color.a - 0.28).abs() < 1e-4);
     }
 }

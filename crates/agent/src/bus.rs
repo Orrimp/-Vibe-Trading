@@ -58,8 +58,8 @@
 
 use tokio::sync::broadcast;
 use trading_core::{
-    Bar, Fill, FundingObs, MarketHealth, PnlSnapshot, Position, StrategyLoadError, StrategyLoaded,
-    StrategySwapped, Tick,
+    Bar, Fill, FundingObs, MarketHealth, PnlSnapshot, Position, RiskTelemetry, StrategyLoadError,
+    StrategyLoaded, StrategySwapped, Tick,
 };
 
 use crate::config::BusConfig;
@@ -86,6 +86,10 @@ pub struct EventBus {
     /// v1.5b Q7 / T1409 — per-venue market-health events
     /// (`Fresh` / `Stale` / `Recovered`). Capacity 64.
     market_health_tx: broadcast::Sender<MarketHealth>,
+    /// Phase 3 (Lumen detail screens) Q3 / T1707 — periodic risk-engine
+    /// snapshot (1 Hz tick). Mirrors the `MarketHealth` channel pattern.
+    /// Capacity 64 — well above the steady-state 1 Hz tick rate.
+    risk_telemetry_tx: broadcast::Sender<RiskTelemetry>,
 }
 
 impl EventBus {
@@ -106,6 +110,9 @@ impl EventBus {
         // v1.5b Q7 / T1409 — capacity 64 per architect's design
         // (well above expected per-venue health-event rate ≈ 0/min steady state).
         let (market_health_tx, _) = broadcast::channel(64);
+        // Phase 3 Q3 / T1707 — capacity 64 covers the 1 Hz risk-engine
+        // tick with headroom for late subscribers.
+        let (risk_telemetry_tx, _) = broadcast::channel(64);
         Self {
             fills_tx,
             positions_tx,
@@ -118,6 +125,7 @@ impl EventBus {
             strategy_error_tx,
             funding_obs_tx,
             market_health_tx,
+            risk_telemetry_tx,
         }
     }
 
@@ -178,6 +186,12 @@ impl EventBus {
     /// no subscribers are attached.
     pub fn publish_market_health(&self, event: MarketHealth) {
         let _ = self.market_health_tx.send(event);
+    }
+
+    /// Publish a `RiskTelemetry` snapshot (Phase 3 Q3 / T1707 — periodic
+    /// risk-engine tick).  No-op if no subscribers are attached.
+    pub fn publish_risk_telemetry(&self, snapshot: RiskTelemetry) {
+        let _ = self.risk_telemetry_tx.send(snapshot);
     }
 
     /// Return a clone of the raw `funding_obs` sender.
@@ -257,6 +271,13 @@ impl EventBus {
     #[must_use]
     pub fn market_health(&self) -> broadcast::Receiver<MarketHealth> {
         self.market_health_tx.subscribe()
+    }
+
+    /// Subscribe to `RiskTelemetry` events (Phase 3 Q3 / T1707 — periodic
+    /// risk-engine snapshot for the cockpit's Risk / Limits screen).
+    #[must_use]
+    pub fn risk_telemetry(&self) -> broadcast::Receiver<RiskTelemetry> {
+        self.risk_telemetry_tx.subscribe()
     }
 }
 

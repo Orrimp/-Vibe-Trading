@@ -2,7 +2,7 @@
 slug: ui-design-principles
 status: living
 owner: ui-designer
-updated: 2026-05-02
+updated: 2026-05-04
 ---
 
 # UI Design Principles
@@ -66,194 +66,138 @@ What we are **not**:
 
 ## Visual language
 
+All tokens below live in `crates/ui/src/theme.rs`. Names are the Rust constant
+names — grep the source to confirm. Color constants are `ModeColor` with
+`.current(mode: ThemeMode) -> Color` unless noted otherwise.
+
 ### Color palette
 
-The shipped palette is 9 semantic tokens (in `crates/ui/src/theme.rs`).
-This document **extends** the set with three additions that already
-exist *implicitly* (we get away without them today by reusing `BORDER`
-and never touching `info`-style state) but will hurt at v1.5+ as we add
-funding-rate observation badges, PR-style "did you mean" hints, and
-elevated panel layering for modal overlays.
+29 color constants in `theme::color`. Hex values are pinned by `t1501_*` tests
+in `theme.rs` — that file is the hex source of truth.
 
-#### Dark mode (default)
+**Surface tiers:** `CANVAS` · `PANEL` · `PANEL_RAISED` · `PANEL_SUNKEN` ·
+`OVERLAY` — see Tier elevation model below.
 
-| Token            | Hex (dark)  | Role                                                  | Status      |
-|------------------|-------------|-------------------------------------------------------|-------------|
-| `bg`             | `#11141A`   | Cockpit canvas background                             | shipped     |
-| `bg_elev`        | `#1A1F29`   | Cards, panels, raised surfaces                        | shipped     |
-| `bg_overlay`     | `#0B0D12`   | Modal-dialog backdrop (kill-confirm, future Cmd-K)    | **propose** |
-| `fg`             | `#E8ECF2`   | Primary text                                          | shipped     |
-| `fg_muted`       | `#8B93A3`   | Labels, captions, secondary text                      | shipped     |
-| `accent`         | `#5EA3FF`   | Primary interactive (links, active tab)               | shipped     |
-| `pos`            | `#3ECF8E`   | Gains, buys, healthy                                  | shipped     |
-| `neg`            | `#FF6B6B`   | Losses, sells, danger, halted                         | shipped     |
-| `warn`           | `#FFC45A`   | Slow latency, soft warnings, recoverable error        | shipped     |
-| `info`           | `#7BC2FF`   | Observation-only signals (e.g. funding-rate badge)    | **propose** |
-| `border`         | `#2A313F`   | Panel outlines, separators (shipped as `BORDER`)      | shipped     |
-| `border_strong`  | `#3A4456`   | Focused / hovered border, modal frame                 | **propose** |
+**Foreground:** `FG_1` (primary) · `FG_2` (secondary) · `FG_3` (tertiary /
+labels) · `FG_4` (placeholder / disabled) · `FG_ON_ACCENT` (on-accent text).
 
-#### Light mode (parity, not default)
+**Accent ramp:** `ACCENT` (primary interactive) · `ACCENT_HOVER` · `ACCENT_PRESS`
+· `ACCENT_SOFT` (chip/highlight fill, low-alpha).
 
-| Token            | Hex (light) | Role                                                  | Status      |
-|------------------|-------------|-------------------------------------------------------|-------------|
-| `bg`             | `#FAFBFC`   | Cockpit canvas background                             | propose     |
-| `bg_elev`        | `#FFFFFF`   | Cards, panels                                         | propose     |
-| `bg_overlay`     | `#0B0D12CC` | Modal backdrop (80% opacity onto light bg)            | propose     |
-| `fg`             | `#0F1217`   | Primary text                                          | propose     |
-| `fg_muted`       | `#5B6473`   | Labels, captions                                      | propose     |
-| `accent`         | `#1F6FE5`   | Primary interactive                                   | propose     |
-| `pos`            | `#0E9F6E`   | Gains                                                 | propose     |
-| `neg`            | `#D14343`   | Losses, danger                                        | propose     |
-| `warn`           | `#B4751B`   | Soft warnings                                         | propose     |
-| `info`           | `#1F6FE5`   | Observation-only (same as accent in light)            | propose     |
-| `border`         | `#E2E6EC`   | Panel outlines                                        | propose     |
-| `border_strong`  | `#C9D0DA`   | Focused / hovered                                     | propose     |
+**Semantic ramps** — three steps each (_50 soft tint, _400 brighter, _500 default):
 
-> Light mode is a future task — the shipped cockpit is dark-only. The hex
-> values above are the design contract; first implementation extends
-> `theme::color` with a runtime mode switch and a parallel `light::*` const
-> block. This document fixes the values so a developer can land that change
-> mechanically without re-litigation.
+| Group | _50 tint | _400 shade | _500 default | Domain          |
+|-------|----------|------------|--------------|-----------------|
+| Up    | `UP_50`  | `UP_400`   | `UP_500`     | Positive P&L    |
+| Down  | `DOWN_50`| `DOWN_400` | `DOWN_500`   | Negative P&L    |
+| Warn  | `WARN_50`| `WARN_400` | `WARN_500`   | Latency / caution |
+| Info  | `INFO_50`| `INFO_400` | `INFO_500`   | Observation-only |
 
-#### Contrast contract (WCAG AA, 4.5:1 minimum)
+**Borders:** `BORDER_1` (Tier 1 hairline) · `BORDER_2` (sunken-input /
+table-stripe divider) · `BORDER_STRONG` (hover / active, base for focus rings).
 
-Every text-on-surface pairing in the cockpit must clear WCAG AA for body
-text (4.5:1) and AAA for the equity display (7:1). The shipped pairings
-were hand-checked; the proposed extensions follow the same rule:
+**R4.3 — Focus ring rule.** `focus::ring` (3 px low-alpha accent halo,
+zero offset, iced `Shadow`) layers **on top of** `BORDER_STRONG` for every
+keyboard-focused element — `BORDER_STRONG` is the resting border, the ring
+adds the accent glow so keyboard users distinguish focused-from-active.
 
-| Pairing                          | Dark ratio | Light ratio | Required |
-|----------------------------------|------------|-------------|----------|
-| `fg` on `bg`                     | 13.7:1     | 16.1:1      | AAA 7:1  |
-| `fg_muted` on `bg`               | 5.0:1      | 5.7:1       | AA 4.5:1 |
-| `fg` on `bg_elev`                | 11.2:1     | 15.5:1      | AAA 7:1  |
-| `pos` / `neg` / `warn` on `bg`   | ≥ 4.6:1    | ≥ 4.5:1     | AA 4.5:1 |
-| `accent` on `bg`                 | 5.9:1      | 5.2:1       | AA 4.5:1 |
+### Tier elevation model
 
-Color-pair changes ship with a contrast-table update. A future
-`tests/contrast.rs` will computationally enforce this against the same
-table; until then the rule is on the design reviewer.
+| Tier    | Surface token   | Border          | Shadow                      | Notes                        |
+|---------|-----------------|-----------------|-----------------------------|------------------------------|
+| 0       | `CANVAS`        | none            | none                        | Top-level shell only         |
+| 1       | `PANEL`         | `BORDER_1`      | `shadow_1`                  | Every panel widget           |
+| 2       | `PANEL_RAISED`  | `BORDER_2`      | `shadow_2`                  | Dialogs, popovers, dropdowns |
+| 3       | modal card      | `BORDER_STRONG` | `shadow_3` + `OVERLAY` scrim| Kill-confirm, future Cmd-K   |
+| Sunken  | `PANEL_SUNKEN`  | `BORDER_2`      | `shadow_inset`              | Input fields, table stripes  |
 
-### Typography
+### Shadow ladder
 
-Four sizes total. We refuse a fifth.
+`shadow::shadow_1/2/3` (in `theme::shadow`) return iced `Shadow`.
+`shadow_inset` returns `Color` — iced's outer-only shadow API means the inset
+is a 1 px hairline container on the input's top edge.
 
-| Token     | Size | Line-height | Weight | Use                                            |
-|-----------|------|-------------|--------|------------------------------------------------|
-| `caption` | 11px | 16px        | 400    | Column headers, axis labels, helper text       |
-| `body`    | 13px | 20px        | 400    | Cell content, paragraph copy, button labels    |
-| `title`   | 16px | 24px        | 600    | Panel titles, card headings, dialog titles     |
-| `display` | 22px | 32px        | 600    | Equity number, halted banner, kill-switch label |
+| Function       | Dark (offset_y, blur, alpha) | Light (offset_y, blur, alpha) |
+|----------------|------------------------------|-------------------------------|
+| `shadow_1`     | (1, 2, 0.30)                 | (1, 2, 0.04)                  |
+| `shadow_2`     | (4, 10, 0.35)                | (4, 10, 0.06)                 |
+| `shadow_3`     | (12, 28, 0.50)               | (12, 24, 0.08)                |
+| `shadow_inset` | white @ 3 % alpha            | warm-900 @ 4 % alpha          |
 
-**Font choice:**
+Lumen rule: dark mode uses **darker alpha, not bigger blurs**.
 
-- **Sans:** the platform default (`-apple-system`, `Inter`, `Segoe UI`).
-  iced's default font already routes here on macOS / Linux. We do not
-  bundle a custom font — every kilobyte of ttf is a kilobyte not spent
-  on faster bar rendering.
-- **Mono (digits):** **non-negotiable.** Numbers in the tape, positions,
-  P&L card, and any future leaderboard use a monospaced font (`SF Mono`
-  on macOS, `JetBrains Mono` if bundled, falling back to the platform
-  monospace). Monospaced digits in a proportional font (tabular-nums)
-  are an acceptable substitute when shipping a custom font is too heavy.
-- **Italic:** never, except verbatim error messages from upstream
-  (`error_summary` from a `StrategyLoadError`). Italics imply emphasis
-  the cockpit doesn't need.
+### Spacing ladder
 
-**Number formatting** (all rendered through `widgets::num`, which is the
-single place this rule lives):
+13 steps in `theme::space`. The consistency-test allow-list is exactly:
+`0 / 2 / 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64`.
 
-- Right-aligned in tabular contexts.
-- Thousands separator: locale-default (` ` for de-DE, `,` for en-US).
-  We default to en-US until v3+ i18n.
-- Decimal precision per type: prices to symbol minor tick (e.g. 2 dp
-  for USDT pairs), quantities to 6 dp, P&L to 2 dp, percentages to 2 dp.
-- Sign always shown for deltas (`+12.34` / `-5.67`), never for absolute
-  values (`52,341.20`, not `+52,341.20`).
-- Color-of-sign **only** on signed deltas, not on absolute balances.
-  See `color_for_delta` in `theme.rs`.
+| `ZERO`=0 | `TICK`=2 | `XXS`=4 | `XS`=6 | `S`=8 | `M`=12 | `L`=16 | `L_PLUS`=20 | `XL`=24 | `XXL`=32 | `XXXL`=40 | `HUGE`=48 | `MASSIVE`=64 |
 
-### Spacing scale
+If a feature thinks it needs `10` or `18`, the answer is "use `M` or `L` and
+adjust the font size". This is the most violated rule on casual feature work.
 
-The shipped scale `4 / 8 / 12 / 16 / 24 / 32` (`xs / s / m / l / xl / xxl`)
-is correct and stays as the closed set. Justification:
+### Border radii
 
-- Six values is dense enough for a 12-pixel grid (the cockpit is a
-  desktop application; we don't need 4-pixel-grid precision).
-- The geometric-ish jump (4→8→12→16→24→32) gives sufficient discrimination
-  at every level — no two adjacent values are perceptually close.
-- Powers of 2 *plus* multiples of 4 cover both Material-style 8-grid
-  and 12-column row layouts without ad-hoc values.
+6 steps in `theme::radius`: `R1`=2 px (dense table inputs), `R2`=4 px (default
+control), `R3`=6 px (buttons/chips), `R4`=8 px (cards/panels), `R5`=12 px
+(modals/sheets), `PILL`=999 px (tags, toggle thumbs, status-bar dots).
 
-If a feature thinks it needs `10` or `20`, the answer is "use `12` or
-`16` and a different font size". This is the most violated rule on
-casual feature work, and the most worth defending.
+### Typography ladder
+
+7 steps in `theme::text`. Font stacks in `theme::font`: `FONT_SANS` (Inter for
+UI) and `FONT_MONO` (JetBrains Mono for numerics).
+
+| Constant  | px | Use                                                |
+|-----------|----|----------------------------------------------------|
+| `MICRO`   | 11 | Column headers, timestamps, status-bar text        |
+| `SMALL`   | 12 | Small labels                                       |
+| `BODY`    | 13 | Default body / UI text                             |
+| `H3`      | 15 | Sub-section headers                                |
+| `H2`      | 18 | Panel titles, card headings                        |
+| `H1`      | 24 | Page-level headings, equity number                 |
+| `DISPLAY` | 32 | Hero numbers, halted banner                        |
+
+Sans for UI, mono for all numerics — non-negotiable. Italic: never, except
+verbatim error messages from upstream. Number formatting via `widgets::num`:
+right-aligned, locale separator, sign shown only on deltas, color-of-sign
+via `theme::color_for_delta` only.
 
 ### Density
 
-Two density modes — **compact** for the live cockpit (operator scans at
-a glance) and **comfortable** for the offline viewer (operator reads
-reports). Pinned metrics:
+Two modes: **compact** (cockpit) and **comfortable** (viewer).
 
-| Metric                   | Compact (cockpit) | Comfortable (viewer) |
-|--------------------------|-------------------|----------------------|
-| Table row height         | 24 px             | 32 px                |
-| Table cell horizontal pad| 12 px             | 16 px                |
-| Panel inner pad          | 16 px             | 24 px                |
-| Panel outer gap          | 16 px             | 24 px                |
-| Card title → body gap    | 12 px             | 16 px                |
-| Dialog inner pad         | 24 px             | 24 px                |
-
-The shipped cockpit already uses these via `theme::layout::*`. The viewer
-sees less hourly scrutiny but has higher per-glance reading load — a
-backtest report is a 30-second read, not a 30-millisecond read.
+| Metric                    | Compact | Comfortable |
+|---------------------------|---------|-------------|
+| Table row height          | 24 px   | 32 px       |
+| Table cell horizontal pad | 12 px   | 16 px       |
+| Panel inner pad           | 16 px   | 24 px       |
+| Panel outer gap           | 16 px   | 24 px       |
+| Card title → body gap     | 12 px   | 16 px       |
+| Dialog inner pad          | 24 px   | 24 px       |
 
 ### Motion
 
-Trading UIs must look **still when nothing is happening**. The agent is
-not Slack. Surprise motion costs operator attention and trains them to
-ignore real updates.
+Trading UIs must look **still when nothing is happening**. Four durations and
+two easings in `theme::motion`. No bounces.
 
-| Element                        | Duration | Easing       |
-|--------------------------------|----------|--------------|
-| Tooltip / hover surface        | 60 ms    | linear       |
-| Button press feedback          | 80 ms    | linear       |
-| Panel state transition         | 150 ms   | ease-out     |
-| Modal open / close             | 180 ms   | ease-out     |
-| Number flash on update         | 200 ms   | ease-out fade|
-| Halted banner appear           | 150 ms   | ease-out     |
+| Token          | Value                              | Use                        |
+|----------------|------------------------------------|----------------------------|
+| `DUR_1`        | 80 ms                              | Tap / button press         |
+| `DUR_2`        | 140 ms                             | Hover, focus transition    |
+| `DUR_3`        | 220 ms                             | Panel reveal               |
+| `DUR_4`        | 320 ms                             | Modal enter / exit         |
+| `EASE_OUT`     | `cubic-bezier(0.22, 0.61, 0.36, 1)`| Panel / modal, no overshoot|
+| `EASE_IN_OUT`  | `cubic-bezier(0.4, 0.0, 0.2, 1)`  | Symmetric transitions      |
 
-Hard rules:
-
-- **No auto-advancing carousels.** The operator scrolls, not the UI.
-- **No parallax.** It only exists on marketing sites.
-- **No idle animation.** A pulsing dot for "live" is fine; a pulsing
-  card border is not.
-- **No 60 fps animations on charts.** The equity curve renders once per
-  bar close (1s in v0, 1m at v0.5+); requestAnimationFrame is for games.
-- **Never animate the kill switch.** Confirm dialogs open immediately
-  (no slide-in, no fade); operators clicking that button should not be
-  delayed by a single ms.
+No auto-advancing carousels. No parallax. No idle animation. No 60 fps chart
+animations. Never animate the kill switch — confirm dialogs open immediately.
 
 ### Iconography
 
-**Position: no icons until needed.** v0–v1.5 ships with **zero icons**.
-Every interactive element is labeled with text. A button reading "Stop
-trading" beats a square with a stop-sign glyph for an operator at
-hour ten.
-
-When a v2+ feature legitimately needs an icon (e.g. a per-row "view
-audit trail" affordance in the tape, where text labels would balloon
-the row), the rule is:
-
-- **Style:** Lucide / Feather — line icons, 1.5 px stroke.
-- **Sizes:** 16 / 20 / 24 px on a 24-px grid. No 18 or 22.
-- **Color:** `fg_muted` default; `accent` on hover; never colored.
-- **Pairing:** every icon has a `tooltip` constant in `ui::strings`. No
-  text-free buttons. Screen-reader labels are mandatory.
-
-The justification for "no icons" is empirical: the shipped cockpit has
-zero icons and is readable. Adding them is a one-way door (the operator
-learns the glyph, then can't un-learn it); deferring is free.
+**No icons until needed.** v0–v1.5 ships zero icons; every element is text-
+labeled. When v2+ legitimately needs an icon: Lucide line icons (1.5 px
+stroke), sizes 16/20/24 px, `FG_3` default / `ACCENT` hover, tooltip constant
+in `ui::strings` mandatory.
 
 ## Component principles
 
@@ -388,6 +332,10 @@ How strings sound:
 The `ui::strings` module is the single review surface. A copy review
 is reading one file in one diff.
 
+Our voice rules are independently aligned with the directness-and-brevity
+principles in the Lumen voice table (operator-locked Constraint 2 — no
+Lumen voice rewrite; the alignment is structural, not adoptive).
+
 ## Trading-specific patterns
 
 Patterns that exist because this is a trading UI, not a generic web
@@ -395,9 +343,9 @@ dashboard.
 
 ### P&L coloring
 
-- **Positive** P&L → `pos`.
-- **Negative** P&L → `neg`.
-- **Zero** P&L → `fg_muted` (NOT `fg`, NOT a third "neutral" color).
+- **Positive** P&L → `UP_500`.
+- **Negative** P&L → `DOWN_500`.
+- **Zero** P&L → `FG_3` (NOT `FG_1`, NOT a third "neutral" color).
 
 The reason zero is muted, not foreground: when the operator scans a
 column of P&L, the zeroes should fade so positives and negatives jump
@@ -406,7 +354,7 @@ like background, not data.
 
 This is implemented in `theme::color_for_delta` and is the only legal
 source for delta colors. Widgets calling it inline rather than picking
-their own `pos` / `neg` per-row is enforced by the consistency tests.
+their own `UP_500` / `DOWN_500` per-row is enforced by the consistency tests.
 
 ### Position sizing display
 
@@ -425,16 +373,16 @@ Bands are pinned in `theme::latency`:
 
 | Range          | Band  | Color      | Label    |
 |----------------|-------|------------|----------|
-| `< 500 ms`     | OK    | `pos`      | "OK"     |
-| `< 2 s`        | WARN  | `warn`     | "Slow"   |
-| `< 10 s`       | HIGH  | `neg`      | "High"   |
-| `≥ 10 s`       | HALTED| `neg` + banner | "Halted" |
+| `< 500 ms`     | OK    | `UP_500`   | "OK"     |
+| `< 2 s`        | WARN  | `WARN_500` | "Slow"   |
+| `< 10 s`       | HIGH  | `DOWN_500` | "High"   |
+| `≥ 10 s`       | HALTED| `DOWN_500` + banner | "Halted" |
 
 Three-band thresholds are deliberate — two bands (OK / not-OK) loses
 the operator's grace period; four bands (OK / Slow / High / Halted)
 gives a "things are getting worse" signal before the kill threshold.
 The same color is used for High and Halted by design — once the
-operator sees `neg`, they look at the label, not the color.
+operator sees `DOWN_500`, they look at the label, not the color.
 
 ### Kill-switch confirmations
 
@@ -446,8 +394,8 @@ operator typing the previous phrase under stress.
 
 ### Numbers that change frequently — flash on update
 
-P&L, last price, equity, latency: subtle 200 ms fade from `accent` (or
-`bg_elev` in the case of equity) back to the resting color when the
+P&L, last price, equity, latency: subtle 200 ms fade from `ACCENT` (or
+`PANEL_RAISED` in the case of equity) back to the resting color when the
 value updates. The flash is **subtle** — it is barely perceptible at
 the corner of the eye, and invisible to the operator who is staring
 straight at it. It is the "the number changed and you didn't miss
@@ -460,26 +408,156 @@ hasn't changed numerically (same float to same float) does not flash.
 This is a v1+ task; v0 ships static rendering. The principle is locked
 so the implementation lands without re-litigation.
 
+### Charts — price plot with audit-anchored markers
+
+Charts (Phase 2+) render a **per-symbol price series** with **buy/sell
+markers** drawn from the audit ledger. The pattern is opinionated:
+
+- **Background = `PANEL`**; **gridlines = `BORDER_1`** (1 px, low-alpha
+  horizontals only — no vertical grid; vertical noise competes with
+  the marker triangles).
+- **Series style** — line series in `ACCENT` for the default plot;
+  OHLC candles in `UP_500` (close > open) / `DOWN_500` (close ≤ open)
+  for the candlestick variant. Architect resolves the default at
+  Phase 2 design (see master roadmap Q11–Q14).
+- **Buy markers** = upward triangle in `UP_500`, anchored at the
+  fill price on the time axis. **Sell markers** = downward triangle
+  in `DOWN_500`. Markers never use a fill colour different from the
+  P&L colour pair — the operator's "green = my side won, red = my
+  side lost" mental model carries over from the P&L card.
+- **Marker source = audit ledger**, never a runtime accumulator.
+  This is the same rule as "ledger is single source of truth for
+  P&L" applied to fills: the chart shows what the audit query
+  returns, not what the cockpit thinks happened. Any
+  ledger / chart divergence is a data bug surfacing through the
+  visual cross-check the chart was added to enable.
+- **Visible window** = fixed 60 minutes of 1-minute bars by default;
+  pan/zoom is out of scope for Phase 2 and may land in a later phase.
+- **Empty state** — when the visible window contains no bars (very
+  rare in live mode; possible in fixtures mode for the very first
+  minute), the chart renders the gridlines + an inline `FG_3` "No
+  data" label centred. Never blank.
+- **Symbol selector** — chip row at the top of the Charts screen,
+  active chip uses the T1507 active-row pattern (2 px ACCENT left
+  rule). The selected symbol persists across screen switches via
+  `Cockpit::selected_symbol` so the operator can navigate away and
+  back without losing context.
+
+The chart is a **read-only surface**: no order entry, no draw
+tools, no annotations. The cockpit's job is to show what the
+agent did and what the market did; tools for "what if I drew
+this trendline" belong in a research surface that this product
+deliberately does not have (see [`product.md`](product.md)
+non-goals).
+
+## Information architecture
+
+Patterns for how cockpit screens compose, switch, and persist state.
+Locked at the post-Phase-1 roadmap revision (2026-05-04).
+
+### Sidebar nav — fixed-width, text-labelled, T1507-styled
+
+The cockpit's left rail is a fixed-width (~180 px) sidebar of
+text-labelled nav entries. The selected entry uses the T1507
+`active_row` pattern (2 px ACCENT left rule). Two reasons fixed-width
+beats collapsible at this surface size:
+
+- **Icons are still operator-locked out** (see § Iconography).
+  Collapsible navs need icon glyphs to make sense in the collapsed
+  state, so collapsibility forces icon adoption — a re-litigation
+  this revision deliberately doesn't want.
+- **Desk display surface is ample.** The operator's monitor is
+  ≥ 1440 px wide; 180 px sidebar + screen body fits comfortably
+  without crowding the trading view.
+
+The sidebar's nav order is the operator's normal scan order: most
+frequently used at top. Phase 2 ships **Home → Debug → Charts**.
+Phase 3 inserts **Strategies → Risk → Audit** between Debug and
+Charts (architect resolves the exact ordering at Phase 3 design).
+
+### Screens are pure render dispatches, never side-effecting
+
+`Cockpit::current_screen` is the only state that drives the screen
+shown. `Message::SwitchScreen(Screen)` is a pure assignment — no
+side effects, no async work, no mutation of any other field. The
+shell's `view()` reads `current_screen` and dispatches to the
+appropriate screen body's `view()` function.
+
+Two corollaries:
+
+- **No screen "loads" anything on entry.** Every screen renders
+  whatever is currently in `Cockpit` for it. Data freshness is the
+  bus's responsibility; the screen's switch is instantaneous.
+- **Screens never mutate sibling-screen state.** The Audit screen
+  does not, on switch, refresh anything for the Risk screen.
+
+This keeps the screen model trivial to test (insta snapshot per
+screen) and trivial to reason about ("what does this screen show?
+exactly what's in `Cockpit` and the screen's `view()` function").
+
+### Persistence: selected symbol, current screen
+
+These two pieces of `Cockpit` state persist across screen switches:
+
+- `Cockpit::current_screen` — last screen the operator was on.
+- `Cockpit::selected_symbol` — which `(venue, symbol)` was last
+  selected on the Charts screen.
+
+Both are session-scoped (cleared on cockpit restart) — a deliberate
+decision; the operator should not feel the cockpit "remembers"
+across separate runs because the trading session is the natural
+unit of state. Persisting across runs would surface a "did the
+operator close on this screen, and is it still meaningful now?"
+question we don't want to litigate per session.
+
+### Navigation does not write to backend
+
+Switching screens is **never** observed by the backend. The
+sidebar nav writes `Message::SwitchScreen(Screen)`, the cockpit
+mutates `current_screen`, the next `view()` renders the new screen
+body. No bus event, no audit writer, no agent state change. This is
+the same one-way contract that
+[`audit::query`](architecture.md#cockpit--auditquery) reads have:
+the cockpit sees, the cockpit doesn't tell.
+
+### Right-rail Assistant slot — reserved, hidden by default
+
+Phase 2's shell grid reserves a **right column-track** for the
+Phase 6 Assistant slot. Reservation = the column exists in the
+grid spec with zero width when the v2 LLM strategy is not
+enabled. No widget renders in it; no token references it. When
+v2 LLM ships, Phase 6 sets the track width and inserts the
+assistant widget — no Phase 2-side change needed. (See master
+roadmap Constraint 4.)
+
 ## Dark / light mode parity
 
+The Lumen dual-palette in `crates/ui/src/theme.rs` is the single source of
+truth for both dark and light mode color values. The old proposed-light-table
+(previously at lines 97–110 of this document) is retired — those values now
+live as pinned constants in `theme.rs` and are verified by
+`t1501_palette_light_hex_pinned` in the `theme.rs` test suite.
+
 Both modes are first-class, both maintained, both contrast-checked.
-The default is **dark**:
+
+**Q6 — cold-start behavior:** The cockpit cold-starts in **dark mode**
+(`ThemeMode::Dark` is the `#[default]`). Reasons:
 
 - The cockpit session is long (six- to twelve-hour shifts).
 - The operator is most often working in a dim room or at night
   (most strategies in v0/v0.5 are crypto, which is 24/7).
 - The dark palette has been operator-tested for the v0 ship.
 
-Light mode is for screenshot-friendliness in presentations and for the
-small fraction of the operator's sessions in bright daylight. Both
-modes share strings, spacing, typography, and copy — only the color
-constants change.
+**Light mode is wired, not yet runtime-toggled.** Every `ModeColor`
+constant carries both dark and light values. A future runtime toggle
+calls `.current(mode)` with `ThemeMode::Light` and the entire palette
+switches without any token rewrite. The `t1501_palette_light_hex_pinned`
+test guarantees the light values are not stubs.
 
-Implementation contract: a single `ThemeMode { Dark, Light }` enum is
-threaded through the cockpit's `Cockpit` model; all `theme::color::*`
-becomes `theme::color::accent(mode)` etc. No conditional `if dark { … }
-else { … }` blocks at call sites — the function returns the right
-color for the active mode.
+Both modes share strings, spacing, typography, and copy — only the color
+constants change. No conditional `if dark { … } else { … }` blocks at
+call sites — `ModeColor::current(mode)` returns the right color for the
+active mode.
 
 ## Consistency enforcement
 
@@ -495,12 +573,13 @@ Re-stating the existing rules. These are already enforced by
   on violation.
 - **All reusable widgets in `ui::widgets`.** Three-uses rule: the
   third copy is a refactor, not a copy-paste.
-- **Spacing scale is closed.** `4 / 8 / 12 / 16 / 24 / 32` — zero
+- **Spacing scale is closed.** The consistency-test allow-list is the
+  new spacing scale (`0/2/4/6/8/12/16/20/24/32/40/48/64`) — zero
   exceptions.
-- **Type scale is closed.** `caption / body / title / display` — zero
-  fifth size.
+- **Type scale is closed.** `MICRO / SMALL / BODY / H3 / H2 / H1 / DISPLAY`
+  — zero eighth size.
 - **Color tokens are semantic.** No `red`, `green`, `blue` — only
-  `pos`, `neg`, `accent`, etc.
+  `UP_500`, `DOWN_500`, `ACCENT`, etc.
 - **`Message::*` is exhaustive.** No `_ => {}` catch-all in `update`.
   Adding a new message variant forces a compile-time review of every
   arm. This is also what makes the `Message` enum an honest public
@@ -515,6 +594,7 @@ To prevent gold-plating, the following are explicitly out of scope:
 
 - **Branding.** No logo. No marketing site. No "Trading Cockpit by
   Acme Corp" splash. The product is single-operator and self-hosted.
+  (Master Constraint 1 — no brand adoption.)
 - **Onboarding flows.** The operator IS the developer. No first-run
   wizard, no tour, no empty-state CTAs that explain what the agent
   does. The agent runs trading; the cockpit shows what it did.
@@ -533,69 +613,45 @@ To prevent gold-plating, the following are explicitly out of scope:
 - **In-cockpit chart editing / drawing tools.** Equity curves and
   bar charts are read-only. No trendlines, no annotations. Annotations
   are an analyst's job in markdown reports.
+- **Voice rewrite.** The cockpit copy voice is operator-locked as-is
+  (master Constraint 2). No Lumen voice adoption; no copy rewrite
+  driven by a design system update.
+- **Icon adoption.** Lucide icons are deferred until a text label
+  fails the operator's scan-test. v0–v1.5 ships zero icons.
 
 ## Open questions
 
-Real questions that need the operator's call before the next UI
-feature lands. Each is one-sentence-answerable.
+Questions deferred past Phase 1. Phase-1-resolved items (Q6 dark default,
+Q7 single-file replace, dual-palette source of truth) have been closed and
+are documented in this file or in `theme.rs`.
 
-1. **Global command palette (`Cmd-K`)?** Linear-style fuzzy command
-   bar — "halt agent", "go to strategies", "view audit for tx_id 4f9…".
-   Cheap to add, high-impact for keyboard-first operators. *Default
-   answer if no input: yes, ship in v2.*
-   **Operator decision 2026-05-03 (vitaliy.schreibmann@senacor.com):
-   defer to v2-or-later, near project completion. Not a near-term
-   feature.**
-
-2. **Tabbed views or single-pane?** The shipped cockpit is single-pane
-   (one window, all panels visible). At v1+ multi-symbol-portfolio
+1. **Tabbed views or single-pane (Phase 2)?** The shipped cockpit is
+   single-pane (one window, all panels visible). At v1+ multi-symbol-portfolio
    scale, do we (a) keep single-pane and let it scroll, (b) tab by
-   strategy / symbol, or (c) multi-window iced (which we already
-   support)? *Default answer: (a) until 5+ active strategies, then re-evaluate.*
+   strategy / symbol, or (c) multi-window iced? *Default answer: (a) until
+   5+ active strategies, then re-evaluate.*
 
-3. **Snapshot / share button?** A "copy a screenshot of this panel
-   to the clipboard" affordance for sharing in operator-team Slack.
-   Trivially implementable on macOS via `screencapture`. *Default
-   answer: yes for the P&L card and the strategies panel; no for the
-   tape (privacy).*
-   **Operator decision 2026-05-03: NO. Project is single-operator,
-   private on the operator's local machine — no Slack/share scenario
-   exists. The macOS-native `Cmd-Shift-4` is sufficient when the
-   operator wants a screenshot.**
+2. **Live-tape row click → audit modal (Phase 2, v1.5+)?** Promoted to
+   backlog as `tape-row-audit-modal`.
+   **Operator decision 2026-05-03: YES. Promoted to backlog for v1.5+ scope.**
 
-4. **Live-tape row click → audit modal?** Currently the tape is
-   read-only. Should clicking a row open a modal with the full
-   `journal_transaction` (debits, credits, transaction_id, source
-   strategy)? *Default answer: yes, ship in v1.5+.*
-   **Operator decision 2026-05-03: YES. Promoted to backlog as
-   `tape-row-audit-modal` for v1.5+ scope.**
+3. **P&L card — sparkline (Phase 2)?** A 60-bar Unicode sparkline or a
+   `plotters-iced` embedded mini-chart beneath the equity number.
+   *Default answer: Unicode sparkline first.*
 
-5. **P&L card — sparkline?** A 60-bar sparkline of equity tucked
-   beneath the equity number, Unicode `▁▂▃▄▅▆▇█` style (already in
-   use in success reports per architecture v1+ Q4). Or a `plotters-iced`
-   embedded mini-chart? *Default answer: Unicode sparkline first,
-   `plotters-iced` only if the operator says it's hard to read.*
+4. **Strategy panel — chart per strategy (Phase 3)?** Each strategy row
+   could expand to show a 60-bar sparkline of that strategy's signals.
+   *Default answer: defer until the operator has 3+ strategies running
+   concurrently.*
 
-6. **Sound alerts?** A short tone when the agent halts, when a fill
-   exceeds N USDT, or when latency crosses HALTED. *Default answer:
-   no — the operator's auditory environment varies (headphones /
-   open-office / overnight). Visual + macOS Notification Center is
-   enough; sound can be added per-operator as a config flag.*
-   **Operator decision 2026-05-03: NO. Confirmed default. Visual +
-   macOS Notification Center suffices.**
+5. **Persisted layout (Phase 3)?** Operator can drag panels to reorder.
+   *Default answer: no — the layout is the operator's mental model. Any
+   change is a deliberate ship.*
 
-7. **Strategy panel — chart per strategy?** Each strategy row could
-   expand to show a 60-bar sparkline of that strategy's signals.
-   Could clutter; could illuminate. *Default answer: defer; revisit
-   when the operator has 3+ strategies running concurrently.*
-
-8. **Persisted layout?** Operator can drag panels to reorder (left-
-   column / right-column / which order). *Default answer: no —
-   the layout is the operator's mental model. If we change it,
-   we change it for everyone in a deliberate ship.*
-
-The operator's one-line answer to any of these unblocks an architect
-brief. None of them are blocking the current cockpit's correctness.
+6. **Runtime theme toggle UI (Phase 4)?** The light palette is wired in
+   `theme.rs`; the runtime toggle surface (button, keyboard shortcut,
+   `config/cockpit-state.toml` persistence) is a Phase 4 task once the
+   operator has expressed a preference for daytime sessions.
 
 ## Changelog
 
@@ -615,3 +671,29 @@ brief. None of them are blocking the current cockpit's correctness.
   modal) YES — promoted to backlog as `tape-row-audit-modal` for v1.5+.
   Q6 (sound alerts) NO — default confirmed. Q2/Q5/Q7/Q8 left at their
   default-answer state pending future revisit.
+- 2026-05-04 (ui-designer, T1510): Lumen-anchored rewrite per Q7
+  single-file replace. "Visual language" section fully rewritten —
+  token tables replaced with Lumen palette (29 colors), tier model,
+  shadow ladder, 13-step spacing scale, 6-step radii, 7-step type,
+  motion tokens; all constants cite `theme.rs` names for grep-ability.
+  R4.3 focus-ring rule documented. "Dark/light mode parity" rewritten
+  — commits to `theme.rs` dual-palette as source of truth, documents
+  Q6 dark default, drops the old proposed-light-table. Colour names
+  updated throughout (`pos` → `UP_500`, `neg` → `DOWN_500`). Voice,
+  consistency, not-in-scope, and open-questions sections updated with
+  additive paragraphs/bullets per task brief.
+- 2026-05-04 (analyst, post-Phase-1 roadmap revision): added two new
+  top-level subsections capturing the post-Phase-1 IA + chart
+  patterns: **"Charts — price plot with audit-anchored markers"**
+  under Trading-specific patterns (background / gridline rules, line
+  vs candle styling, buy/sell triangle markers from the audit ledger,
+  read-only surface contract) and **"Information architecture"** as
+  a new top-level section (sidebar fixed-width / text-labelled / T1507
+  selected-entry; screens are pure render dispatches; persistence
+  scope = current_screen + selected_symbol session-only; navigation
+  never writes to backend; right-rail Assistant slot reservation for
+  Phase 6). Locks the design rules every Phase 2 / 3 / 4 / 5 / 6
+  widget plugs into; per-phase R-items live in the per-phase briefs
+  at [features/lumen-phase-2-shell-ia-charts.md](features/lumen-phase-2-shell-ia-charts.md)
+  through
+  [features/lumen-phase-6-assistant-slot.md](features/lumen-phase-6-assistant-slot.md).

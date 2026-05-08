@@ -11,7 +11,7 @@ use crate::strings::{
     PANEL_PNL_TITLE, PNL_EMPTY, PNL_ERROR_PREFIX, PNL_LABEL_CASH, PNL_LABEL_DAILY_RETURN,
     PNL_LABEL_EQUITY, PNL_LABEL_REALIZED, PNL_LABEL_UNREALIZED, PNL_LOADING,
 };
-use crate::theme::{color, color_for_delta, space, text};
+use crate::theme::{color, color_for_delta, space, text, ThemeMode};
 
 use super::frame::{error_body, muted_body, panel};
 use super::num::{fmt_usdt, fmt_usdt_signed};
@@ -24,7 +24,7 @@ pub fn view(model: &Cockpit) -> Element<'_, Message> {
         PanelState::Error(e) => error_body(PNL_ERROR_PREFIX, e.as_str()),
         PanelState::Ready(snap) => ready_body(snap),
     };
-    panel(PANEL_PNL_TITLE, body)
+    panel(PANEL_PNL_TITLE, body, ThemeMode::Dark)
 }
 
 fn ready_body(snap: &trading_core::PnlSnapshot) -> Element<'_, Message> {
@@ -33,13 +33,13 @@ fn ready_body(snap: &trading_core::PnlSnapshot) -> Element<'_, Message> {
     let equity_row = Row::new()
         .push(
             Text::new(PNL_LABEL_EQUITY)
-                .size(text::CAPTION)
-                .color(color::FG_MUTED),
+                .size(text::MICRO)
+                .color(color::FG_3.current(ThemeMode::Dark)),
         )
         .push(
             Text::new(fmt_usdt(snap.total_equity.amount()))
                 .size(text::DISPLAY)
-                .color(color::FG),
+                .color(color::FG_1.current(ThemeMode::Dark)),
         )
         .spacing(space::M);
 
@@ -68,9 +68,13 @@ fn ready_body(snap: &trading_core::PnlSnapshot) -> Element<'_, Message> {
 fn row(label: &str, value: String, value_color: Option<iced::Color>) -> Element<'_, Message> {
     let value_el = Text::new(value)
         .size(text::BODY)
-        .color(value_color.unwrap_or(color::FG));
+        .color(value_color.unwrap_or_else(|| color::FG_1.current(ThemeMode::Dark)));
     Row::new()
-        .push(Text::new(label).size(text::BODY).color(color::FG_MUTED))
+        .push(
+            Text::new(label)
+                .size(text::BODY)
+                .color(color::FG_3.current(ThemeMode::Dark)),
+        )
         .push(value_el)
         .spacing(space::M)
         .into()

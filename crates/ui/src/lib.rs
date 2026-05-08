@@ -24,9 +24,12 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod screens;
+pub mod shell;
 pub mod state;
 pub mod strings;
 pub mod theme;
+pub mod viewer;
 pub mod widgets;
 
 // Fixtures module is always compiled so unit + integration snapshot tests
@@ -41,7 +44,10 @@ pub mod fixtures;
 #[cfg(feature = "live")]
 pub mod live;
 
-pub use state::{update, AgentMode, Cockpit, KillState, Latency, Message, PanelState};
+pub use state::{
+    update, AgentMode, ChartBuffer, Cockpit, KillState, Latency, MarketHealthState, Message,
+    PanelState, Screen, CHART_BUFFER_CAPACITY,
+};
 
 /// Crate-wide convenience: the iced `Element` type specialized to our
 /// [`Message`]. Avoids repeating `iced::Element<'_, Message>` at every

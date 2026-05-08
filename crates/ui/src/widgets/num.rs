@@ -4,9 +4,11 @@
 //! alignment, thousands separators, and sign rendering are consistent.
 //! Widgets never hand-format with `format!("{:.2}", x)` — it's a smell.
 
+use iced::Color;
 use rust_decimal::Decimal;
 
-use crate::strings::{UNIT_BTC, UNIT_USDT};
+use crate::strings::{MINUS_SIGN_LITERAL, UNIT_BTC, UNIT_USDT};
+use crate::theme::{color, ThemeMode};
 
 /// Insert thousands separators into the integer part of a decimal string.
 /// Works on a pre-stringified `Decimal` to avoid reintroducing `f64`.
@@ -105,6 +107,68 @@ pub fn fmt_pct(d: Decimal) -> String {
     let rounded = d.round_dp(2);
     let padded = pad_fractional(&rounded.to_string(), 2);
     format!("{padded}%")
+}
+
+/// Phase 4 (T1805) — format a percentage with sentiment colouring.
+/// Returns the formatted string + the colour the caller paints. The
+/// minus-sign prefix is the unicode `MINUS_SIGN_LITERAL` so the
+/// rendering matches the Lumen reference component (R2.4).
+///
+/// `> 0` → `UP_500`; `< 0` → `DOWN_500`; `0` → `FG_1`. The string
+/// always carries an explicit `MINUS_SIGN_LITERAL` prefix on
+/// negatives.
+#[must_use]
+pub fn format_pct_sentiment(value: Decimal, mode: ThemeMode) -> (String, Color) {
+    let rounded = value.round_dp(2);
+    let abs_padded = pad_fractional(&rounded.abs().to_string(), 2);
+    let (text, c) = if value.is_zero() {
+        (format!("{abs_padded}%"), color::FG_1.current(mode))
+    } else if value.is_sign_positive() {
+        (format!("{abs_padded}%"), color::UP_500.current(mode))
+    } else {
+        (
+            format!("{MINUS_SIGN_LITERAL}{abs_padded}%"),
+            color::DOWN_500.current(mode),
+        )
+    };
+    (text, c)
+}
+
+/// Phase 4 (T1805) — format a max-DD percentage. Always `DOWN_500`
+/// with the unicode minus prefix (R2.4 — drawdown is always negative
+/// or zero by construction).
+#[must_use]
+pub fn format_pct_max_dd(value: Decimal, mode: ThemeMode) -> (String, Color) {
+    let abs = value.abs().round_dp(2);
+    let padded = pad_fractional(&abs.to_string(), 2);
+    let text = if abs.is_zero() {
+        format!("{padded}%")
+    } else {
+        format!("{MINUS_SIGN_LITERAL}{padded}%")
+    };
+    (text, color::DOWN_500.current(mode))
+}
+
+/// Phase 4 (T1805) — format the Sharpe ratio to 4 decimal places.
+#[must_use]
+pub fn format_sharpe(value: Decimal) -> String {
+    let rounded = value.round_dp(4);
+    let raw = rounded.to_string();
+    let padded = pad_fractional(&raw, 4);
+    // Replace ASCII '-' with the unicode minus literal so all
+    // negative-sign rendering is consistent with the strip's other
+    // cards.
+    if let Some(stripped) = padded.strip_prefix('-') {
+        format!("{MINUS_SIGN_LITERAL}{stripped}")
+    } else {
+        padded
+    }
+}
+
+/// Phase 4 (T1805) — format a `u64` count with thousands-separators.
+#[must_use]
+pub fn format_count(value: u64) -> String {
+    with_thousands_sep(&value.to_string())
 }
 
 /// Format a signed delta in USDT with explicit `+` / `-` sign.

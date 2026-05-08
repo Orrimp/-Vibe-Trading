@@ -2,8 +2,37 @@
 slug: architecture
 status: in-progress
 owner: architect
-updated: 2026-05-03
+updated: 2026-05-04
 ---
+
+<!-- updated 2026-05-04 (architect) — Q11 mid-phase deviation ratification:
+     iced 0.14.2 `button::Status` has no `Focused` variant and `text_input::Style`
+     has no `shadow` field. T1504's true keyboard-focus-ring acceptance is
+     unachievable under the shipped framework. Option A ratified — Phase 1
+     ships hover-state ring on buttons + ACCENT border-shift on focused
+     inputs as a bounded best-effort approximation; T1504 tick stands as
+     honest under iced 0.14.2 API gap. Phase-N follow-up filed in
+     `features/lumen-design-adoption.md` (upgrade trigger: iced version
+     bump exposing `button::Status::Focused` + `text_input::Style.shadow`,
+     OR custom-widget approach — Phase-2-or-later). Same shape as Q3's
+     `shadow_inset` outer-only API workaround. -->
+
+<!-- updated 2026-05-04 (architect) — lumen-design-adoption Phase 1 foundation
+     resolutions landing. Q1–Q9 + master Q10 ratified. Token system rewrites
+     12 → ~50 tokens (Lumen palette + 5-tier surface system + whisper-shadow
+     ladder + focus ring + 13-step spacing + 6-step radii + 7-step typography
+     + motion ladder); flat `theme::color::*` SHOUTY_SNAKE_CASE per Q10. iced
+     0.14 `Shadow` API confirmed via `iced_core-0.14.0/src/shadow.rs`. New
+     `widgets::status_bar` consumes existing `bus.market_health()` (additive,
+     no producer change). Single-file principles-doc supersede (~480 lines).
+     Operator-locked: no brand, no `ui::strings` rewrite, no icons, sequential
+     phases. Anchor risk zero by construction — UI-only feature, no
+     `crates/strategy/audit/exec/backtest/reports/` touched. 11 / 11 anchors
+     verify byte-identical. Cross-feature invariants for 7 prior shipped
+     features preserved. Tasks `T1501–T1514 + T_FINAL_LUMEN_PHASE_1` filed
+     at `tasks/lumen-phase-1-foundation.md`. New section "Lumen design
+     adoption — Phase 1 foundation resolutions"; changelog entry at the
+     bottom. -->
 
 <!-- updated 2026-05-03 (architect) — v1.5b-multi-venue Design landing:
      largest queued backend feature. New closed enum
@@ -2248,6 +2277,368 @@ Tasks T1401–T1415 + `T_FINAL_V15B` filed at
 T1401 is the sole sequential foundation gate; ~7 parallel
 paths fan out after it.
 
+### Lumen design adoption — Phase 1 foundation resolutions (Q1–Q9 + master Q10 + mid-phase Q11) — confirmed 2026-05-04
+
+Architect's Phase 1 design landing for the
+[lumen-design-adoption](features/lumen-design-adoption.md) initiative,
+ratifying the analyst's brief at
+[lumen-phase-1-foundation](features/lumen-phase-1-foundation.md).
+Phase 1 is the first of four sequential phases; only Phase 1 ships
+through this gate. Phases 2/3 are queued; Phase 4 is reserved for
+the v2 LLM strategy.
+
+**Operator-locked constraints (master roadmap):**
+
+- **No brand adoption.** No `"Lumen"` string, no logo, no wordmark.
+  Cockpit binaries stay `cockpit` / `cockpit_live`.
+- **No `ui::strings` rewrite.** Voice rules unchanged. Net-new
+  status-bar prose constants are additive, not a rewrite.
+- **No icon adoption.** Lucide stays deferred per the principles
+  doc's "no icons until needed" rule.
+- **Sequential phasing.** Phase 2 promotes only on Phase 1 ship +
+  operator approval; same for Phase 3 / 4.
+
+#### Token system — replace 12 with ~50 (Q1: hard-replace)
+
+`crates/ui/src/theme.rs` rewrites in T1501 to ship the full Lumen
+palette per [colors_and_type.css](design/project/colors_and_type.css):
+
+- **Surface tokens** — `CANVAS`, `PANEL`, `PANEL_RAISED`,
+  `PANEL_SUNKEN`, `OVERLAY` — keyed to a Tier system (below).
+- **Foreground tokens** — `FG_1` (primary), `FG_2` (secondary),
+  `FG_3` (tertiary / labels), `FG_4` (placeholder), `FG_ON_ACCENT`.
+- **Accent ramp** — `ACCENT`, `ACCENT_HOVER`, `ACCENT_PRESS`,
+  `ACCENT_SOFT`. Single muted-teal accent (`#6FB6AE` dark / `#3F968D`
+  light); the colour shifts from the existing blue `#5EA3FF`.
+- **Semantic ramps** — `UP_{50,400,500}` (sage), `DOWN_{50,400,500}`
+  (clay), `WARN_{50,400,500}`, `INFO_{50,400,500}`. Sage and clay
+  are intentionally calmer than neon green/red — Lumen's
+  long-session ergonomic choice.
+- **Borders** — `BORDER_1` (hairline), `BORDER_2` (stronger
+  divider), `BORDER_STRONG` (focus / active borders).
+- **Shadows** — `shadow_1`, `shadow_2`, `shadow_3` returned as
+  `iced::Shadow` values per mode; `shadow_inset` returned as a
+  hairline colour (the outer-shadow API workaround).
+- **Focus** — `focus::ring(mode) -> iced::Shadow` (3 px low-alpha
+  accent halo via `Shadow { offset: 0,0, blur: 3 }`).
+- **Spacing** — 13-step ladder `0/2/4/6/8/12/16/20/24/32/40/48/64`
+  exposed as `space::{ZERO, TICK, XXS, XS, S, M, L, L_PLUS, XL,
+  XXL, XXXL, HUGE, MASSIVE}`. Superset of the old 6-step scale.
+- **Radii** — 6-step ladder `radius::{R1=2, R2=4, R3=6, R4=8, R5=12,
+  PILL=999}`.
+- **Typography** — 7-step `text::{MICRO=11, SMALL=12, BODY=13, H3=15,
+  H2=18, H1=24, DISPLAY=32}`. Replaces the 4-step scale; `title`
+  shifts 16 → 18 px and `display` shifts 22 → 24 px (the only
+  pixel changes; everything else either preserves a value or adds a
+  new step).
+- **Motion** — `motion::{DUR_1=80ms, DUR_2=140ms, DUR_3=220ms,
+  DUR_4=320ms}` + `EASE_OUT` / `EASE_IN_OUT` cubic-bezier control
+  arrays.
+
+Every token is a `ModeColor { dark: Color, light: Color }` struct
+keyed by a `ThemeMode` enum (default `Dark` per Q6). Light values
+are wired even though the runtime mode toggle is downstream — V8
+asserts non-zero light values; V9 asserts WCAG AA contrast on every
+pair.
+
+**Q10 ratified: flat constants under `theme::color`** (no submodules).
+Matches the existing shape; keeps `use ui::theme::color;` grep-friendly.
+
+#### Tier system
+
+| Tier      | Surface           | Used by                                                                | Recipe                                                  |
+|-----------|-------------------|------------------------------------------------------------------------|---------------------------------------------------------|
+| Tier 0    | `CANVAS`          | Top-level shell container in `cockpit` / `cockpit_live`                | flat bg, no border, no shadow                           |
+| Tier 1    | `PANEL`           | `frame::panel`, `tape`, `positions`, `pnl`, `kill`, `strategies`, `latency`, `status_bar` | hairline `BORDER_1` + `radius::R4` + `shadow_1`         |
+| Tier 1.h  | `PANEL_RAISED`    | Panel headers (one step up inside a Tier 1 frame)                      | `panel_raised` bg, `border-bottom: 1 px BORDER_1`       |
+| Tier 2    | `PANEL_RAISED`    | Reserved (future Cmd-K palette, popovers)                              | Tier 1 chrome + `shadow_2`                              |
+| Tier 3    | `PANEL_RAISED`    | `journal_transaction_modal` modal card                                 | `radius::R5` + `shadow_3` on `OVERLAY` backdrop         |
+| Sunken    | `PANEL_SUNKEN`    | Kill-switch confirm input; future table stripes                        | 1 px `BORDER_2` + `radius::R2` + `shadow_inset` hairline|
+
+The `frame::panel` helper grows a `Tier` parameter (default Tier 1).
+Modal widgets opt into Tier 3 explicitly. The kill-switch panel
+inherits Tier 1 styling identical to other panels — the typed-
+confirm phrase carries the "danger" signal, not the chrome.
+
+#### Active-row pattern
+
+Lumen's 2 px left rule in `ACCENT` (no fill change) is implemented
+as a two-element `Row::new().push(rule).push(content)` where `rule`
+is a 2 px `Container` whose `background` toggles between `ACCENT`
+(active) and `Color::TRANSPARENT` (inactive). The rule is **always
+present** — only the colour changes — so layout is byte-identical
+between active and inactive rows. Consumed by `widgets::positions`
+and `widgets::strategies`.
+
+#### Shadow rendering — iced 0.14 verification (Q3)
+
+iced 0.14.0 ships `iced::Shadow` (in `iced_core::shadow`, re-exported
+at the iced root) with fields `color: Color`, `offset: Vector`,
+`blur_radius: f32`. The `iced::widget::container::Style` struct
+exposes a public `shadow: Shadow` field. Verified via the iced_core
+0.14.0 source layout (`src/shadow.rs` present in the registry
+checkout used by the workspace's compiled artefacts in `target/debug/deps/`).
+
+The Lumen CSS layers two box-shadows per level. iced takes one
+shadow per container — Phase 1 collapses to the **outer / dominant**
+layer; the inner hair-shadow is inherited from the 1 px hairline
+border (same colour budget). This is a bounded approximation; the
+visual fidelity loss is sub-perceptual at the "barely there" alpha
+values Lumen specifies.
+
+`shadow_inset` is **outer-only API workaround** — rendered as a 1 px
+hairline `Container` row at the input's top inside edge (the CSS
+`inset 0 1px 0 rgba(...)` analogue). The `tiny-skia` renderer is
+verified in T1503 to draw soft shadows correctly; if it falters,
+the documented fallback is **flat panels + 1 px luminance shift**
+between Tier 0 and Tier 1 — preserves the principle (visible
+elevation), drops the whisper-shadow language.
+
+The `focus_ring` is rendered as `Shadow { color: ACCENT@alpha28,
+offset: zero, blur: 3.0 }` — iced-idiomatic equivalent of CSS
+`box-shadow: 0 0 0 3px rgba(...)`. R4.3 supersedes the principles-
+doc rule "focus rings use `border_strong`, not `accent`": the new
+rule layers the accent ring on top of the existing `BORDER_STRONG`
+border, so both signals are present.
+
+#### Status bar widget (R13) — new `crates/ui/src/widgets/status_bar.rs`
+
+Always-visible bottom strip per the Lumen Shell.jsx pattern
+([Shell.jsx:67–81](design/project/ui_kits/desktop/Shell.jsx)).
+Per Q4: separate widget at `crates/ui/src/widgets/status_bar.rs`.
+
+**Layout:** `Row` with `height(Length::Fixed(24.0))`, `background:
+PANEL`, `border-top: 1 px BORDER_1`, `font-size: text::MICRO`,
+`color: FG_3`. Padding `0,12`; spacing `space::L`.
+
+**Fields (left → right, with right-flex spacer):**
+
+| Field         | Source                                                                 | Cadence            |
+|---------------|------------------------------------------------------------------------|--------------------|
+| Connection    | `EventBus::market_health` (existing v1.5b watchdog) → `Cockpit::market_health: HashMap<Venue, MarketHealthState>`. Renders `● Connected · {venues}` (UP_500 dot), `● Reconnecting · {venue}` (WARN_500), or `● Disconnected` (DOWN_500). | event-driven       |
+| Latency       | Existing `widgets::latency` band logic via `theme::color_for_latency_ms`. Shows `—` when unknown. | per tick           |
+| Account       | Derived: `format!("{} · {} {}-symbol", mode, universe_label, count)`. `mode` from `AgentMode`; `universe_label` from `config.universe.usdc_enabled`; `count` from `config.universe.symbols.len()`. Static for the session. | static at boot     |
+| Server time   | `std::time::SystemTime::now()` formatted RFC 3339 to second precision; iced `time::every` 1 Hz subscription. | 1 Hz               |
+| CPU %         | Phase 1 placeholder `CPU —`. Adding `sysinfo` defers to a future ship; not load-bearing. | n/a                |
+| Version       | `concat!("v", env!("CARGO_PKG_VERSION"), " · rust")` static const.       | static             |
+
+**Why `EventBus::market_health` over a new query:** the v1.5b watchdog
+(`agent::runtime::spawn_market_health_watchdog`) already publishes
+`MarketHealth::{Fresh, Stale, Recovered}` on `bus.market_health()`.
+Adding a new query path duplicates the contract. The cockpit
+subscribes via `ui::live::subscription` (one new recipe in T1508,
+the 10th alongside the nine existing).
+
+**Why local clock over audit `now_utc()`:** the audit DB's `now_utc`
+helper exists for deterministic write ordering; reading it from a
+1 Hz UI tick injects a DB query into the paint loop. Local clock is
+fine for a status indicator.
+
+#### Q8 reconcile — split vocabulary
+
+The status bar's **connection** field uses Lumen's
+`Connected / Reconnecting / Disconnected` boolean-state vocabulary;
+the **latency badge** keeps the existing `OK / Slow / High / Halted`
+continuous-band labels (operator-success-reports R7 contract). Same
+colour palette on both surfaces — `UP_500 / WARN_400 / DOWN_500` —
+but different vocabularies because different semantics.
+
+#### Cross-feature invariants preserved
+
+The 7 prior shipped features ([master roadmap cross-feature
+invariants table](features/lumen-design-adoption.md#cross-feature-invariants))
+all remain green post-Phase 1. The most load-bearing:
+
+- `operator-success-reports` R7 latency badges — colour values shift
+  to the new palette via `color_for_latency_ms`; band thresholds
+  (500 ms / 2 s / 10 s) and labels (OK / Slow / High / Halted)
+  unchanged.
+- `live-cockpit-unified` halted banner — `AGENT HALTED` string in
+  `ui::strings` unchanged; banner uses new `DOWN_500` bg + `FG_ON_ACCENT`
+  text.
+- `tape-row-audit-modal` — modal frame adopts Tier 3 chrome
+  (`PANEL_RAISED + SHADOW_3 + R5`); modal-trigger flow (click any
+  tape row → modal opens) unchanged.
+- `v1.5b-multi-venue` — venue-tagged ticks unchanged; the status
+  bar's connection field is an **additive consumer** of the existing
+  `bus.market_health()` channel.
+
+#### Principles-doc supersede pointer (Q7)
+
+`spec/ui-design-principles.md` is replaced (single-file replace) in
+T1510 with a Lumen-anchored rewrite (~480 lines). The new doc
+preserves the "Voice and copy" / "Component principles" /
+"Trading-specific patterns" / "Consistency enforcement" / "What's
+NOT in scope" sections verbatim (operator-locked Constraint 2);
+rewrites "Visual language" + "Dark / light mode parity" to cite the
+new Lumen tokens, tier system, shadow ladder, focus-ring rule
+(R4.3 supersede), and dual-palette commitment. The doc is committed
+in the same Phase 1 PR as the code; no decoupled ship.
+
+#### Anchor budget
+
+Zero touched. UI-only feature; `crates/strategy/`, `crates/audit/`,
+`crates/exec/`, `crates/backtest/`, `crates/reports/` — none of
+these depend on `ui::theme`. The 11 backtest body-SHA-256 anchors
+in [`spec/anchors.toml`](anchors.toml) verify byte-identical post-
+Phase 1. R16.3 grep gate locks the report-body cleanliness:
+`grep -rni "lumen\|panel-raised\|panel-sunken\|cool-800" spec/reports/`
+must return zero.
+
+#### Library compatibility checklist
+
+- iced 0.14.0 already pinned (`crates/ui/Cargo.toml`); `Shadow` is
+  first-class. **No new dep.**
+- `sysinfo` (CPU %) deferred — placeholder ships instead. Future
+  consideration.
+- Lucide icons explicitly out of scope (master Constraint).
+
+#### Tasks
+
+`T1501–T1514` + `T_FINAL_LUMEN_PHASE_1` filed at
+[tasks/lumen-phase-1-foundation.md](tasks/lumen-phase-1-foundation.md).
+T1501 is the foundation gate (theme rewrite); T1502 is the call-
+site sweep. After T1502, six dev tasks fan out (T1503 shadow / T1504
+focus / T1505 Tier 1 / T1506 sunken / T1507 active row / T1508
+status bar) plus the spec-only T1510 (principles supersede). T1509
+(status bar shell wiring) and T1511 (snapshot accept) are the narrow
+points. T1512 / T1513 / T1514 close out before the tester gate.
+
+#### Frontend ↔ backend interfaces — addendum
+
+The status bar adds one new consumer to the existing bus surface:
+
+| Interface                    | Direction | Producer                                  | Consumer                  | New?       |
+|------------------------------|-----------|-------------------------------------------|---------------------------|------------|
+| `bus.market_health()`        | →         | `agent::runtime::spawn_market_health_watchdog` (existing) | `ui::live::MarketHealthRecipe` (NEW T1508) → `Message::MarketHealthUpdated` | additive consumer |
+
+No new producer. No new bus channel. No new audit row. No
+backend change. The status bar is an additive UI surface over
+existing v1.5b plumbing.
+
+#### Q11 — iced 0.14.2 focus-ring API gap (mid-phase deviation, ratified 2026-05-04)
+
+**Surfaced by:** developer, T1504/T1506 implementation pass.
+**Verified against:** iced 0.14.2 (the shipped pin in
+`crates/ui/Cargo.toml`).
+
+**The gap.** Phase 1 design (Q4 + the Shadow / focus-ring paragraph
+above) assumed `theme::focus::ring(mode) -> iced::Shadow` could be
+wired to keyboard-focus on three surfaces: kill-switch trigger
+button, kill-switch confirm input, and the modal close button —
+T1504 acceptance read "tab-navigating to a button or input shows
+the accent halo". Two iced 0.14.2 API limits invalidate the
+assumption:
+
+1. **`button::Status` has no `Focused` variant.** Available
+   variants are `Active / Hovered / Pressed / Disabled`. Keyboard
+   focus on a button does not propagate to the style closure; the
+   3 px halo cannot be rendered conditionally on tab-navigation.
+2. **`text_input::Style` has no `shadow` field.** The struct
+   exposes `background`, `border`, `placeholder`, `value`,
+   `selection`, `icon` — no shadow channel. The 3 px outer halo
+   cannot be rendered on text inputs at all under the existing
+   styling channel.
+
+These are framework-level limitations, not implementation gaps; no
+combination of the existing closures produces a true keyboard-focus
+ring on the three surfaces named in T1504.
+
+**Decision: Option A — ratify the bounded approximation as the Phase 1
+deliverable.** Phase 1 ships:
+
+- **Buttons (kill trigger, confirm, modal close):** `focus::ring(mode)`
+  wired on `button::Status::Hovered` as a best-effort visual
+  indicator. An operator hovering with the mouse sees the halo;
+  tab-keyboard navigation does not produce the halo. Documented in
+  the `crates/ui/src/widgets/kill.rs` module-level doc and at the
+  T1504 honest-tick rows in
+  [tasks/lumen-phase-1-foundation.md](tasks/lumen-phase-1-foundation.md).
+- **Confirm input:** `BORDER_2 → ACCENT` border-colour shift on
+  `text_input::Status::Focused { .. }` (1 px, `radius::R2`,
+  `PANEL_SUNKEN` background). The accent shift is the visible
+  focus signal on the input; the halo is omitted entirely. The
+  `shadow_inset` 1 px hairline above the input (T1506) is
+  unaffected and ships as designed.
+
+**Why ratify, not reject.** Three reasons, in order of weight:
+
+1. **Confirmation gating bounds the operator-impact.** The kill
+   switch is the lone destructive control in the cockpit, but it
+   is **typed-confirm gated** — the operator must type
+   `KILL_SAFETY_PHRASE` exactly before the confirm button enables.
+   The destructive-intent signal is carried by the confirm phrase,
+   not the focus halo. A missed visual focus indicator on a
+   confirmation-gated control is bounded; the framing is materially
+   different from a CSS button on a SaaS form where focus state is
+   the only safety signal.
+2. **Phase 1 is "Foundation."** Option B (custom
+   `iced::widget::Component` with subscription-based focus state,
+   or hand-rolled focus-overlay layer above the button/input)
+   blocks T1504 from ticking until a multi-day spike lands.
+   Foundation phases tolerate documented gaps with follow-up
+   triggers; they do not tolerate scope creep that delays
+   downstream phases. Same discipline as the existing v0 deferrals
+   (`PaperEngine` over a real LOB, R6 reflection-memory placeholder).
+3. **Architectural consistency with Q3.** Q3 already accepts a
+   bounded iced 0.14 API workaround — the `shadow_inset` outer-only
+   API gap is patched with a 1 px hairline `Container` row at the
+   input's top edge, with `tiny-skia` fallback documented. Q11 is
+   the same shape (bounded approximation + documented follow-up
+   trigger), so ratifying it preserves the architect's stance on
+   how iced 0.14 limits land in this project.
+
+**Why not Option C (rewrite the acceptance criterion to match the
+deviation).** Option C retroactively legitimizes the deviation by
+moving the acceptance bar. The original criterion was *correct* —
+true keyboard-focus indication is the right Phase-N target — only
+the *implementation path* was wrong (the assumed iced API doesn't
+exist). Rewriting the criterion erases the original intent and
+makes it harder for a future architect to find the upgrade trigger.
+Option A keeps the original criterion visible as the unmet goal,
+the deviation honestly documented, and the upgrade trigger named.
+
+**T1504 tick stands.** Dev B's implementation is an honest tick
+under the iced 0.14.2 API gap. The honest-tick rows at
+[tasks/lumen-phase-1-foundation.md](tasks/lumen-phase-1-foundation.md)
+T1504 + T1506 already cite the file:line, the test command, the
+test output, and the API-gap rationale. No re-run required; the
+acceptance bullet is interpreted relative to this Q11 ratification.
+
+**Phase-N follow-up trigger.** Filed in
+[features/lumen-design-adoption.md](features/lumen-design-adoption.md)
+under "Cross-phase technical-debt items". Upgrade triggers (any
+one suffices):
+
+1. **iced version bump** that exposes `button::Status::Focused`
+   AND a `shadow` field on `text_input::Style`. Surfaces: the next
+   iced major after 0.14.x (likely 0.15+, unverified at this
+   ratification — the architect declined to gate Phase 1 on a
+   prerelease). The follow-up brief at upgrade time is a one-file
+   sweep across `widgets/kill.rs` (two button styles + one input)
+   and `widgets/journal_transaction_modal.rs` (one button style)
+   replacing the `Hovered` arm with `Focused` + adding the
+   `shadow` field on the input. ~30 lines net change.
+2. **Custom-widget escape hatch** — a project-local
+   `iced::widget::Component` wrapper that owns its focus state via
+   a `Subscription` on `keyboard::Event::KeyPressed { key: Tab }`
+   and emits a synthetic `FocusChanged(WidgetId)` `Message`. Higher
+   complexity; rejected for Phase 1 scope, but the standing option
+   if iced upstream stalls.
+
+**No anchor impact.** UI-only deviation; the 11 backtest
+body-SHA-256 anchors in [`spec/anchors.toml`](anchors.toml) remain
+byte-identical. The `R16.3` grep gate
+(`grep -rni "lumen|panel-raised|panel-sunken|cool-800" spec/reports/`)
+is unaffected — Q11 introduces no new committed-report strings.
+
+**No cross-feature invariant change.** None of the 7 prior shipped
+features depends on keyboard-focus-ring behaviour on the kill
+panel; the kill panel's confirmation flow is invariant to the
+focus indicator. The cross-feature table in
+[features/lumen-design-adoption.md](features/lumen-design-adoption.md)
+is unchanged.
+
 ## Observability
 
 - `tracing` with JSON output.
@@ -2553,14 +2944,26 @@ Single UI stack across the project. No mixing with `egui`/`tauri`/`dioxus`.
 
 #### App layout
 
-| Binary       | Window(s)                       | Data source               |
-|--------------|---------------------------------|---------------------------|
-| `cockpit`    | Live ops, kill-switch, P&L, log | `agent` over IPC / shared store |
-| `viewer`     | Backtest report + equity curve  | `spec/reports/` markdown + artifacts |
+| Binary         | Window(s) (post-Phase-2 contract)                            | Data source                          |
+|----------------|--------------------------------------------------------------|--------------------------------------|
+| `cockpit`      | Sidebar shell · screens routed via `Cockpit::current_screen`  | `ui::fixtures` (deterministic)        |
+| `cockpit_live` | Sidebar shell · screens routed via `Cockpit::current_screen`  | `agent` over `Arc<EventBus>` (in-process broadcast) |
+| `viewer`       | Backtest report shell · KPI strip + equity curve + drawdown band + markdown body (Phase 4 — shipped) | `spec/reports/` markdown + `<stem>__equity.csv` companion |
 
-Both binaries live in the `ui` crate and depend only on `core` (types) and
-`audit` (read-only ledger queries) — never on `strategy`, `exec`, or `models`.
-This keeps the UI swappable without touching trading logic.
+The cockpit's sidebar exposes the screens shipped per phase:
+**Phase 2** — Home / Debug / Charts. **Phase 3** — adds Strategies /
+Risk / Audit. **Phase 6** — adds the right-rail Assistant (gated on
+v2 LLM). Phase-1-shipped widgets compose into the appropriate screen
+body; the cockpit shell renders the sidebar + selected screen body +
+the always-visible status bar at the bottom. See
+[Cockpit screen routing (Phase 2+ contract)](#cockpit-screen-routing-phase-2-contract--added-2026-05-04)
+below for the state shape and bus-path contract.
+
+Both cockpit binaries live in the `ui` crate and depend only on
+`core` (types), `audit` (read-only ledger queries), and `agent`
+(public-API surface for `cockpit_live`'s side-thread runtime) —
+never on `strategy`, `exec`, or `models`. This keeps the UI
+swappable without touching trading logic.
 
 #### `audit::query` — the read-only surface for `ui` — confirmed 2026-04-17
 
@@ -2866,6 +3269,1040 @@ The `cockpit` binary is **never** the production runtime — that
 role belongs to `cockpit_live` (with the live agent attached to a
 real bus). Fixture-mode is dev-only.
 
+##### Cockpit screen routing (Phase 2+ contract — added 2026-05-04)
+
+Phase 1 (shipped) kept the cockpit as a single-page layout — every
+panel visible together. The
+[`lumen-design-adoption`](features/lumen-design-adoption.md) Phase 2
+brief introduces a **left-sidebar shell with multiple screens**.
+This sub-section is the architecture-level contract that every
+Phase 2+ widget plugs into; per-phase R-items live in the per-phase
+briefs.
+
+**State shape — additions to `Cockpit`:**
+
+```rust
+pub enum Screen {
+    Home,    // Phase 2 — pnl + positions + strategies + tape
+    Debug,   // Phase 2 — kill + latency + market_health + version
+    Charts,  // Phase 2 — per-symbol price chart with buy/sell markers
+    Strategies, // Phase 3
+    Risk,    // Phase 3
+    Audit,   // Phase 3
+}
+
+pub struct Cockpit {
+    // … existing fields …
+    pub current_screen: Screen,                 // Phase 2 default = Home
+    pub selected_symbol: Option<(Venue, Symbol)>, // Charts screen state
+    pub chart_buffer: ChartBuffer,              // see below
+    // … later phases extend …
+}
+
+pub enum Message {
+    // … existing variants …
+    SwitchScreen(Screen),                       // Phase 2
+    SelectSymbol(Venue, Symbol),                // Phase 2 (Charts)
+    ChartTickReceived(Venue, Symbol, Tick),     // Phase 2 (Charts) — bus path
+    // … later phases extend …
+}
+```
+
+The cockpit shell's `view()` dispatches on `cockpit.current_screen`
+and renders the appropriate screen body. The `SwitchScreen`
+handler is a pure assignment; no side effects.
+
+**Chart data path** — per-`(venue, symbol)` rolling buffer:
+
+```rust
+pub struct ChartBuffer {
+    // Keyed by (venue, symbol). Each value is a fixed-capacity
+    // ring buffer of OHLC bars (default capacity = 60 minutes of
+    // 1-minute bars).
+    pub series: HashMap<(Venue, Symbol), VecDeque<Bar>>,
+}
+```
+
+- **Live mode** (`cockpit_live`, `--features live`): the existing
+  `bars_tx` channel on the `EventBus` already carries every
+  `core::Bar` produced by the data feed. The cockpit's existing
+  `Message::BarReceived` handler is extended to push the bar into
+  `chart_buffer.series.entry((venue, bar.symbol)).or_default()`,
+  popping the oldest if the buffer is at capacity. **No new bus
+  channel.**
+- **Fixtures mode** (`cockpit --features fixtures`): the existing
+  `ui::fixtures` module gains a deterministic `synthetic_candles(seed,
+  venue, symbol, count)` helper (random walk via
+  `ChaCha20Rng::from_seed`). The fixtures-mode subscription seeds
+  the chart buffer at boot and continues to emit synthetic
+  `Bar` values via the existing fixture-bus shim, so the same
+  `Message::BarReceived` path populates the buffer in both modes.
+- **Snapshot stability**: fixtures-mode uses a single fixed seed
+  per symbol, so `cargo run --bin cockpit --features fixtures`
+  produces a chart with the same bar shape every run — the
+  contract for the chart's snapshot baselines.
+
+**Audit query extension** — additive to existing
+[`audit::query`](#cockpit--auditquery):
+
+```rust
+pub mod audit::query {
+    // … existing API unchanged …
+
+    /// Phase 2 addition. Returns fills filtered by venue, symbol,
+    /// and time-range — used by the Charts screen to populate
+    /// buy/sell markers within the chart's visible window.
+    ///
+    /// Read-only over the same description-prefixed rows that
+    /// `recent_fills` already iterates. Additive; does not alter
+    /// any committed report body.
+    pub fn recent_fills_filtered(
+        venue: Venue,
+        symbol: Symbol,
+        time_range: Range<Timestamp>,
+    ) -> Result<Vec<FillView>, QueryError>;
+}
+```
+
+Phase 3 may extend the signature with an `Option<&str> kind`
+parameter for the Audit screen's filter row; Phase 2 ships the
+narrow signature. Architect resolves the exact column-projection
+shape at Phase 2 design — the contract above is the master-roadmap
+intent, not the final R-item language.
+
+**Sidebar nav widget** — `crates/ui/src/widgets/sidebar_nav.rs`
+(new in Phase 2). Renders a vertical column of nav entries with
+the T1507 active-row pattern (2 px ACCENT left rule on the
+selected entry). Width fixed at ~180 px; Tier 1 background; text-
+only labels until icon adoption is re-litigated. The widget emits
+a `Message::SwitchScreen(Screen)` per selected entry and is
+otherwise stateless — `current_screen` lives on `Cockpit`.
+
+**Right-rail track reservation for Phase 6** — Phase 2's shell grid
+**reserves** a right column-track for the Phase 6 Assistant slot
+(see
+[`lumen-phase-6-assistant-slot.md`](features/lumen-phase-6-assistant-slot.md)).
+Reservation = the column exists in the grid spec but has zero
+width when the v2 LLM strategy is not enabled. No widget renders
+in it; no token references it; the layout simply doesn't consume
+the rightmost track. When v2 LLM ships, Phase 6 sets the track
+width and inserts the assistant widget — no Phase 2-side change
+needed.
+
+**Bin parity.** Both `cockpit` (fixtures) and `cockpit_live` adopt
+the sidebar shell + every screen routed through `Cockpit::current_screen`
+in Phase 2. Phase 1's status bar continues to span the bottom of
+every screen (see [`widgets::status_bar`](#cockpit--auditquery)).
+
+##### Q1–Q11 ratification (Phase 2, confirmed 2026-05-04)
+
+Architect's Phase 2 design landing for the
+[lumen-design-adoption](features/lumen-design-adoption.md) initiative,
+ratifying the analyst's brief at
+[lumen-phase-2-shell-ia-charts](features/lumen-phase-2-shell-ia-charts.md).
+Phase 2 is the second of six sequential phases; only Phase 2 ships
+through this gate. Phases 3 / 4 / 5 are queued; Phase 6 is reserved
+for the v2 LLM strategy. **11 / 11 architect Q-items ratified; zero
+principled overrides.** Each Q resolution cites the R-item(s) it
+ratifies; full Q-resolution table lives in the Phase 2 brief.
+
+**Q1 — default plot style: line series in `ACCENT`** (R7.3). Phase 2's
+chart is a cross-check surface, not a primary trading chart. The
+operator's question is "did the marker land on or near the line at
+the right time"; a line plot answers most directly. The OHLC variant
+remains supportable from the same `ChartBuffer` shape (R10) — defer
+to a post-Phase-2 ask if the operator requests it. The chart widget
+body is line-only by default; the OHLC drawing helper is **not**
+stubbed (no dead code).
+
+**Q2 — pan/zoom: deferred** (R7.5). Phase 2 ships the fixed 60-minute
+window. Pan/zoom adds ~2–3 R-items of widget surface (axis re-scaling,
+hit-region tracking, marker re-positioning, snapshot stability) and
+risks bloating Phase 2 past the "one shippable thing" budget.
+Phase 4's Backtest equity curve is the natural next pan-capable
+surface.
+
+**Q3 — symbol-selector universe source: `Cockpit::universe`,
+boot-populated** (R6.2). Live mode reads `Config.universe.usdt_symbols`
+× `Config.data.sources` once before `iced::application::run`;
+fixtures mode hard-codes the 3-symbol set. Static for the session.
+Matches the existing `Cockpit::account_label` precedent (Phase 1
+R13.4) — view-time `Config` reads couple the widget to live config
+plumbing in a way fixtures mode can't satisfy without a shim;
+market-health-key derivation drops never-ticked symbols from the
+chip row, which is wrong for "show me the chart of X".
+
+**Q4 — `recent_fills_filtered` signature: `(ledger, venue, symbol,
+since: Timestamp, until: Timestamp)` half-open form** (R12.1, R12.2).
+Symmetric with the existing `pnl_by_symbol(since, until)` at
+`crates/audit/src/query.rs:586` and `funding_rate_history` shape;
+symmetry beats Rust idiom. The chart's call-site computes
+`(window_start, window_end)` deterministically from
+`Cockpit::server_time_now` — no hidden clock. **Phase 2 venue
+handling**: the `journal_transactions` rows are all `Venue::Binance`
+per v1.5b plumbing-only state (architecture.md § v1.5b architectural
+deltas line 2260+); the function returns the matching subset when
+`venue == Binance`, `Ok(vec![])` when `venue != Binance`. Phase 3's
+Audit screen promotes this to read a `journal_transactions.venue`
+column added via a future migration. The forward-compat surface
+keeps Phase 3 from rippling the call-site.
+
+**Q5 — chip-row active rule: bottom-edge T1507 variant** (R6.3).
+The active-row concept is "2 px ACCENT, no fill change"; the literal
+edge depends on widget orientation. Sidebar-nav rows are vertical →
+left rule; chip row is horizontal → bottom rule. The
+`frame::active_chip` helper prepends a 2 px bottom rule via
+`Column::push(content).push(rule_2px_bottom)` (mirror of the existing
+`active_row` Row-composition helper). One-line note in the Phase 2
+principles-doc append (a follow-up the orchestrator routes to the
+analyst — architect does not edit `spec/ui-design-principles.md`,
+operator-locked Phase 1 Q7).
+
+**Q6 — synthetic-candle seed: per-symbol, in-process determinism**
+(R11.1, R11.2). `seed_for(venue, symbol) = DefaultHasher` over
+`format!("{venue:?}/{symbol}")`. Each chip's chart looks distinct in
+fixtures mode. Determinism caveat: `DefaultHasher` is **not**
+guaranteed to produce the same hash across compiler versions, only
+within a single process. Acceptable for Phase 2 because snapshot
+baselines are pinned per CI run and the test expectation is "two
+calls within the same process produce equal output" — not "the seed
+equals 0xDEADBEEF". Phase 3+ that needs cross-version determinism
+promotes to `seahash` or a hand-rolled FNV; Phase 2 sticks with
+`DefaultHasher` (zero new dep crosses the library-compat budget for
+a non-load-bearing field). RNG remains
+`ChaCha20Rng::from_seed([u8; 32])` per architect.md determinism
+guardrails (no `f64`, no `thread_rng`).
+
+**Q7 — right-rail track: structural now, single
+`Length::Fixed(0.0)` column** (R13.1, R13.2). Master roadmap
+Constraint 4 is unambiguous; a `Length::Fixed(0.0)` column is the
+cheapest honest reservation (zero render cost, zero dead code — a
+single `Length` constant), and Phase 6 swaps the constant to the
+real width without restructuring the shell. **No
+`cfg!(feature = "v2-llm")` gate** — the gate doesn't exist, and
+adding a feature flag for one zero-pixel column is more dead code
+than the column itself. Phase 1 Q9 deferred this for the original
+Phase 4 assistant slot pre-roadmap-revision; the post-revision lock
+at master Constraint 4 supersedes that.
+
+**Q8 — sidebar nav state persistence: two-field addition only, no
+on-disk persistence** (R2.2, R6.4). `Cockpit::current_screen: Screen`
+(default `Home`) + `Cockpit::selected_symbol: Option<(Venue, Symbol)>`
+(default `None`). Both session-scoped per
+[ui-design-principles.md § Persistence](ui-design-principles.md). No
+`~/.cockpit-state.json`, no `serde::Serialize` on `Cockpit`, no
+`Drop` impl writing state. The cockpit is an instrument, not a
+browser.
+
+**Q9 — Debug screen logs/metrics output stub: placeholder** (R5.7).
+A single `frame::muted_body(strings::DEBUG_LOGS_PLACEHOLDER)` row at
+the bottom of the Debug screen body; copy added to `ui::strings` per
+the no-inline-prose rule. Zero new code paths; honest about the
+scope boundary. Defer to a future "structured metrics surface" brief
+when the operator names a specific gap (e.g. "I want to see reconnect
+events on a graph"). The placeholder gives Phase 2 a clean stopping
+point and Phase 3+ a clean follow-up trigger.
+
+**Q10 — `recent_fills_filtered` test scope: unit only is required;
+integration test optional in Phase 2** (R12.7, R12.8). The unit test
+exercises the SQL projection + the description-parse against a
+fixture ledger seeded inline (the existing
+`crates/audit/tests/journal_entries_for_transaction.rs` precedent
+shows the boilerplate is ~30 lines per integration). Phase 3's Audit
+screen needs the multi-venue / multi-symbol / multi-kind integration
+anyway, so the integration test promotes naturally one phase later.
+Phase 2's gate is the unit test (`recent_fills_filtered_returns_window_subset`,
+`recent_fills_filtered_empty_window_returns_ok_empty`,
+`recent_fills_filtered_distinct_symbols_isolated`) + the V3 manual
+chart-renders-markers run.
+
+**Q11 — TD-1 re-evaluation: deferral restated** (TD-1 cross-phase
+row). Verified at design pass on disk: `crates/ui/Cargo.toml:50`
+reads `iced = { version = "=0.14.0", default-features = false,
+features = ["tiny-skia", "thread-pool", "advanced"] }`. iced 0.15+
+has not landed; the `button::Status::Focused` variant and
+`text_input::Style.shadow` field are **not** available. **Phase 2
+ships no focus-ring upgrade.** Phase 1's deferred state holds:
+hover-state ring on the three buttons named in T1504 (kill trigger,
+kill confirm, modal close); ACCENT border-shift on the kill confirm
+input. Operator-impact bound is unchanged — kill-switch destructive
+flow is typed-confirm gated, focus halo is a secondary signal.
+Named upgrade trigger unchanged — any iced version bump that
+exposes both fields promotes the ~30-line one-file sweep across
+`widgets/kill.rs` (two button styles + one input) and
+`widgets/journal_transaction_modal.rs` (one button style); next
+re-evaluation at Phase 3 analyst kickoff. The TD-1 row in the
+master roadmap should be appended with a 2026-05-04 line under
+"Promotion timing" noting the Phase 2 design verification — that's
+a follow-up the orchestrator routes to the analyst on Phase 2 ship
+(architect does not edit the master roadmap directly).
+
+**Cross-feature invariants preserved.** All 7 prior shipped features
+([master roadmap cross-feature invariants
+table](features/lumen-design-adoption.md#cross-feature-invariants))
+remain green post-Phase 2 — see the brief's "Cross-feature
+invariants" sub-section for the row-by-row preservation note.
+
+**Anchor budget.** Zero touched. UI shell + read-only audit query;
+`crates/strategy/`, `crates/exec/`, `crates/risk/`, `crates/cost/`,
+`crates/backtest/`, `crates/reports/` unchanged. The 11 backtest
+body-SHA-256 anchors in [`spec/anchors.toml`](anchors.toml) verify
+byte-identical post-Phase 2; the `recent_fills_filtered` query is
+read-only over the same description-prefixed rows `recent_fills`
+already iterates and cannot alter any committed report body by
+construction.
+
+**Library compatibility checklist.**
+
+- iced still pinned `=0.14.0` (`crates/ui/Cargo.toml:50`); no new
+  iced version, no new dep. **Q11 deferral verified on disk.**
+- `rand_chacha::ChaCha20Rng` already in the workspace via prior
+  fixtures use; the `synthetic_candles` helper reuses the existing
+  dep — no new addition.
+- `std::hash::DefaultHasher` is in `std`; no new dep for the
+  per-symbol seed.
+- Lucide icons explicitly out of scope (master Constraint).
+
+**Tasks.** `T1601–T1616` + `T_FINAL_LUMEN_PHASE_2` filed at
+[tasks/lumen-phase-2-shell-ia-charts.md](tasks/lumen-phase-2-shell-ia-charts.md).
+T1601 is the foundation gate (state additions); T1602 (sidebar nav
+widget) and T1603 (shell rewiring) sequence after. After T1603,
+eight tasks fan out (T1604 Home / T1605 Debug / T1606 audit query
+/ T1607 fixtures / T1608 chart canvas / T1609 chip-row variant /
+T1610 Charts wiring / T1611 right-rail / T1612 universe boot).
+T1613 (snapshot accept) is the narrow point. T1614 / T1615 / T1616
+close out before the tester gate.
+
+##### Q1–Q11 ratification (Phase 3, confirmed 2026-05-05)
+
+Architect's Phase 3 design landing for the
+[lumen-design-adoption](features/lumen-design-adoption.md) initiative,
+ratifying the analyst's brief at
+[lumen-phase-3-detail-screens](features/lumen-phase-3-detail-screens.md).
+Phase 3 is the third of six sequential phases (Phase 1 + Phase 2
+shipped 2026-05-04 / 2026-05-05); Phases 4 / 5 are queued; Phase 6
+is reserved for the v2 LLM strategy. **11 / 11 architect Q-items
+ratified; zero principled overrides.** Each Q resolution cites the
+R-item(s) it ratifies; full resolution table lives in the Phase 3
+brief.
+
+**Q1 — `journal_transactions.venue` migration scope: ship in Phase 3**
+(R13.1–R13.6). Migration filename
+`crates/audit/migrations/008_journal_transactions_venue.sql` (next-
+numbered after the existing `007_strategy_events_venue.sql`). SQL is
+`ALTER TABLE journal_transactions ADD COLUMN venue TEXT NOT NULL
+DEFAULT 'Binance';` — the `DEFAULT 'Binance'` clause backfills every
+existing row in one statement (no separate UPDATE pass needed; every
+shipped fill on disk is Binance per the Phase 2 venue-handling note).
+The writer at `crates/audit/src/journal.rs::post_fill` gains a
+`venue: Venue` parameter; the existing `Fill` struct does not carry
+venue (only `venue_ts` / `local_ts`), so the runtime caller stamps it
+explicitly. The two other `INSERT INTO journal_transactions`
+call-sites (funding-obs writer + reconciliation writer) take the same
+treatment. Phase 2's `recent_fills_filtered` venue gate (`if venue !=
+Venue::Binance { return Ok(Vec::new()) }`) drops; replaced with
+`WHERE venue = ?` in the SQL. Splitting as Phase 3.5 was rejected —
+~30 LOC, additive, one consumer (the Audit screen); gate friction
+without isolating actual risk.
+
+**Q2 — Strategies-detail signal-history: filter
+`Cockpit::strategies_recent_events`** (R5.4). Phase 1 R5 already
+populates the buffer from the strategy-event subscription; Phase 3
+filters by `selected_strategy` at view time. Zero new audit writers —
+Phase 5 HumanControl introduces the first new operator-write paths.
+A new `signal_emitted` audit writer was rejected as a violation of
+the master-roadmap "no new audit writers in Phase 3" stance and as
+unnecessary anchor-risk surface for a screen that only renders
+existing telemetry.
+
+**Q3 — Risk screen exposure source: new tokio channel**
+(R8.1–R8.5). New `RiskTelemetry` event type sibling of `MarketHealth`
+on the agent runtime's `EventBus`; published by
+`crates/risk/src/portfolio.rs` at 1 Hz; consumed by the cockpit's
+`Subscription::batch` recipe in `crates/ui/src/live.rs` mapped to
+`Message::RiskStateRefreshed(RiskState)`. ~40 LOC publisher + ~20 LOC
+subscriber. Polled view-time reads were rejected — couples render-rate
+to agent-state-cache locking and breaks the "screens are pure render
+dispatches" invariant. The cockpit-thread isolation rule (no UI-thread
+reads from agent-runtime mutexes) is load-bearing; the Phase 1
+`MarketHealth` channel is the canonical example.
+
+**Q4 — Audit screen pagination: fixed 250 rows / page** (R9.3, R10.1).
+`AUDIT_PAGE_SIZE = 250` constant in `theme::layout`. Cockpit IA forbids
+surfaces without operator-stated need; fixed 250 keeps the SQL `LIMIT`
+constant, snapshot baselines deterministic, and the call-site one
+line shorter. Operator-configurable chip selectors and infinite-scroll
+were both rejected.
+
+**Q5 — Audit filter persistence: in-session only** (R9.4, R10.1).
+Filter state on `Cockpit::audit_screen_state.filter`; cleared on
+restart. No `~/.cockpit-state.json`; no `serde::Serialize`; no `Drop`
+impl. Matches Phase 2 Q8's "the cockpit is an instrument, not a
+browser" + the principles-doc session-scoped persistence rule.
+
+**Q6 — Strategies-detail equity sparkline: defer to Phase 4**
+(R6.1–R6.4). Design-pass measurement: `Cockpit::pnl: PanelState<PnlSnapshot>`
+is a single snapshot, not a historical buffer; there is no
+per-strategy history field on `Cockpit` today. Wiring a 60-bar
+per-strategy buffer requires either (a) a new bus subscription on
+top of `pnl_by_strategy(ledger, strategy_id, since, until)` ticked
+at bar-close, or (b) a one-shot fetch on chip-select — both cost
+more than the 50-LOC "cheap path" budget the analyst named. Phase
+3 ships the deferred placeholder copy
+(`STRATEGIES_SPARKLINE_DEFERRED`) top-right of the Strategies
+screen; the snapshot baseline locks the deferral so Phase 4 has a
+clear "this is the seam" target. Phase 4 (Backtest) already needs
+the same equity-history primitive.
+
+**Q7 — Audit-query method shape: add a sibling
+`recent_journal_filtered`** (R12.1–R12.6). Fills predicate scans
+`journal_transactions` filtered by description-prefix regex
+(`description LIKE 'buy %' OR LIKE 'sell %'`); non-fill rows scan
+`strategy_events` (LEFT JOIN on `transaction_id`) and reconciliation
+rows. Different table set, different join shape; cramming both into
+one method either ships two SQL paths inside one function (code-smell)
+or unifies the queries onto a single rows view (premature). Two
+siblings is honest about the data shape diverging. Signature:
+`(ledger, venues: &[Venue], symbol: Option<&Symbol>, kind:
+AuditKindFilter, since, until, page_offset, page_size) ->
+Result<(Vec<JournalRow>, u64), LedgerError>` — returns the page rows
++ total count so the screen header can render "Showing N–M of T"
+without a separate `COUNT(*)` round-trip. Empty venue set ↔ all
+venues; symbol `None` ↔ all symbols; `kind == All` ↔ all kinds.
+Empty result returns `Ok((vec![], 0))`; never `Err` for "no rows".
+
+**Q8 — Sidebar entry insertion order: master-roadmap order** (R1.1).
+`Home → Debug → Strategies → Risk → Audit → Charts`. Trading data
+first, ops chrome second, detail screens third, cross-check chart
+last. The widget body at `crates/ui/src/widgets/sidebar_nav.rs:48`
+is unchanged — Phase 2 R1.6 parameterised `entries: &[Screen]`;
+Phase 3 swaps `SIDEBAR_ENTRIES_PHASE_2` for `SIDEBAR_ENTRIES_PHASE_3`
+(constant-only diff). The `label_for(Screen)` match arm and the six
+`SIDEBAR_NAV_*` strings already ship from Phase 2 declare-now;
+**no `ui::strings` rewrite** (operator-locked Constraint 2).
+
+**Q9 — Risk kill-threshold gauge style: horizontal bar** (R7.2–R7.3).
+Visual consistency with the per-venue exposure section + daily-loss
+section (both horizontal bars) and Phase 1's `theme::color_for_latency_ms`
+colour ramp (`ACCENT` < 70 %, `WARN_500` ≥ 70 %, `DOWN_500` ≥ 90 %).
+A new `frame::threshold_bar(used: Decimal, cap: Decimal, mode:
+ThemeMode)` helper in `crates/ui/src/widgets/frame.rs` (additive,
+sibling of Phase 1 `active_row` and Phase 2 `active_chip`) renders
+the bar. Radial dials add a new chart primitive Phase 3 doesn't
+otherwise need; numeric-only loses the at-a-glance signal.
+
+**Q10 — Per-strategy params + risk caps: read-only** (R4.4, R7.5).
+Matches `spec/product.md` § Cockpit IA → "`config/agent.toml` is
+hand-edited; the cockpit never writes config. (Risk and execution-
+mode toggles in Phase 5 are exceptions ratified there.)" Phase 3
+holds the line; Phase 5 HumanControl ratifies the operator-write
+exceptions. No edit / pause / deploy / "raise the limit" buttons on
+Strategies or Risk screens.
+
+**Q11 — Snapshot ripple budget + cross-link Message variant: ~13
+baselines, compound dispatch** (R5.2, R5.5). Q11a — ripple ≈ 13:
+~3 per detail screen × 3 = 9 net-new + 3 sidebar variants
+(`active_strategies / active_risk / active_audit`) + 1 refreshed
+Phase 2 sidebar (`sidebar_nav__three_entries` → `_six_entries`).
+Single `cargo insta accept` pass per Phase 1 Q2 / Phase 2 V11
+precedent. Q11b — compound dispatch: Phase 2 R8.2 established the
+pattern (chip-select uses `SelectSymbol` plus binary-side
+`Task::perform`); reusing it keeps the `Message` enum smaller. The
+Home → Strategies-summary row click emits
+`Message::SelectStrategy(id)`; the binary's wiring chains
+`Task::done(Message::SwitchScreen(Screen::Strategies))` only when
+`current_screen != Strategies`. No new `OpenStrategy` variant.
+
+**TD-1 re-evaluation (Phase 3 design pass).** Verified at design
+pass on disk: `crates/ui/Cargo.toml:52` reads
+`iced = { version = "=0.14.0", default-features = false, features =
+["tiny-skia", "thread-pool", "advanced", "canvas"] }`. iced 0.15+
+has not landed; the `button::Status::Focused` variant and
+`text_input::Style.shadow` field are **not** available. **Phase 3
+ships no focus-ring upgrade.** Phase 1's deferred state holds.
+Operator-impact bound is unchanged — kill-switch destructive flow
+typed-confirm gated, focus halo a secondary signal. Named upgrade
+trigger unchanged — any iced version bump exposing both fields
+promotes the ~30-line one-file sweep across `widgets/kill.rs` and
+`widgets/journal_transaction_modal.rs`. **Next re-evaluation: Phase
+4 (Backtest panel) analyst kickoff.** If iced upstream stalls
+through Phase 4, re-evaluate at Phase 5 (HumanControl) — the new
+operator-write controls there sharpen the cost/benefit on the
+custom-widget escape-hatch path. The TD-1 row in the master roadmap
+should be appended with a 2026-05-05 line under "Promotion timing"
+noting the Phase 3 design verification — that's a follow-up the
+orchestrator routes to the analyst on Phase 3 ship (architect does
+not edit the master roadmap directly).
+
+**Cross-feature invariants preserved.** All 7 prior shipped features
+([master roadmap cross-feature invariants
+table](features/lumen-design-adoption.md#cross-feature-invariants))
+remain green post-Phase 3 — see the Phase 3 brief's "Cross-feature
+invariants" sub-section for the row-by-row preservation note. Notable
+delta: the `tape-row-audit-modal` invariant gains the Audit screen as
+a second host — the modal trigger flow is identical to Home (literal
+reuse of `Message::TapeRowClicked(tx_id)`, no new variant).
+
+**Anchor budget.** Zero touched. UI screens + read-only audit query
+addition + additive schema migration with constant-string backfill.
+`crates/strategy/`, `crates/cost/`, `crates/backtest/`,
+`crates/reports/` unchanged. The 11 backtest body-SHA-256 anchors in
+[`spec/anchors.toml`](anchors.toml) verify byte-identical post-Phase
+3. The `008_journal_transactions_venue.sql` migration is **additive**:
+`ADD COLUMN … DEFAULT 'Binance'`. SQLite's column-add is a schema
+change, not a row-body rewrite; existing rows' description / amount /
+strategy_id bytes are untouched. The `recent_journal_filtered` query
+is read-only over the same `journal_transactions` rows that
+`recent_journal` and `recent_fills_filtered` already iterate; cannot
+alter any committed report body by construction.
+
+**Library compatibility checklist.**
+
+- iced still pinned `=0.14.0` (`crates/ui/Cargo.toml:52`); no new
+  iced version, no new dep. **Q11 deferral verified on disk;
+  re-evaluation deferred to Phase 4.**
+- No new dep — the `RiskTelemetry` channel reuses the existing
+  `tokio::sync::broadcast` shape from `MarketHealth` /
+  `publish_market_health`; the audit query addition uses the
+  existing `sqlx` surface.
+- `rust_decimal::Decimal` covers all numeric fields on `RiskState`;
+  no `f64`. Money math discipline preserved per architect.md
+  determinism guardrails.
+- Lucide icons explicitly out of scope (master Constraint).
+
+**Tasks.** `T1701–T1716` + `T_FINAL_LUMEN_PHASE_3` filed at
+[tasks/lumen-phase-3-detail-screens.md](tasks/lumen-phase-3-detail-screens.md).
+T1701 is the foundation gate (state additions). T1702 (`008`
+migration + writer wiring), T1703 (sidebar swap), T1707
+(`RiskTelemetry` channel), T1709 (audit filter row), and T1712
+(`recent_journal_filtered`) all fan out from T1701 in parallel.
+T1704–T1706 (Strategies-detail), T1708 (Risk screen), and
+T1710–T1711 (Audit screen body + modal reuse) complete the visual
+surface. T1713 (snapshot accept + ui-designer attestation
+sub-block) is the narrow point. T1714 / T1715 / T1716 close out
+before the tester gate.
+
+##### Q1–Q12 ratification (Phase 4, confirmed 2026-05-06)
+
+Architect's Phase 4 design landing for the
+[lumen-design-adoption](features/lumen-design-adoption.md) initiative,
+ratifying the analyst's brief at
+[lumen-phase-4-backtest-panel](features/lumen-phase-4-backtest-panel.md).
+Phase 4 is the fourth of six sequential phases (Phases 1 / 2 / 3
+shipped 2026-05-04 / 2026-05-05 / 2026-05-06; Phase 5 queued; Phase 6
+reserved for the v2 LLM strategy). **12 / 12 architect Q-items
+ratified; zero principled overrides.** Each Q resolution cites the
+R-item(s) it ratifies; full resolution table lives in the Phase 4
+brief.
+
+**Q1 — `EquitySeries` field set: richer with precomputed drawdown**
+(R10.2–R10.5). The cross-phase primitive carries `points:
+Vec<EquityPoint>` where `EquityPoint = { ts, equity, drawdown_pct }`,
+plus `peak`, `trough`, `max_drawdown_pct`, `inception_ts`, `as_of_ts`.
+The drawdown vector lives **inside** `EquityPoint` (not a parallel
+`Vec<Decimal>` per the analyst sketch — the per-point struct shape
+eliminates implicit length-coupling and off-by-one risk between two
+parallel vectors). Single O(N) `Decimal` walk at build time
+(`EquitySeries::from_points`) computes running peak / trough /
+drawdown / max-DD; consumers branchless-render straight from the
+struct. Two consumers (viewer offline + cockpit sparkline online)
+need the same vector — precomputing once at construction eliminates
+per-render divergence risk. Minimal-shape rejected: forces every
+consumer to re-implement the drawdown walk, precision-bug divergence
+risk between consumers.
+
+**Q2 — Chart-widget reuse: shared `widgets::canvas_chart` core**
+(R5.1–R5.4). Phase 2's internal helpers (`draw_gridlines`,
+`inner_rect`, `with_alpha` + the 5-gridline `BORDER_1 @ 0.4`
+constant + `LINE_STROKE_PX` + `RANGE_PAD_FRACTION`) promote to
+`pub(crate)` in a new `crates/ui/src/widgets/canvas_chart.rs`. Phase
+2's existing `widgets::chart` becomes a wrapper that consumes the
+core for the Charts-screen surface — **public `view` signature
+byte-stable**, Phase 2 baseline byte-identical post-refactor. Phase 4
+adds three sibling wrappers consuming the same core: `widgets::equity_curve`
+(line + filled area), `widgets::drawdown_band` (line + filled area,
+inverted Y), `widgets::sparkline` (line-only at `fill_alpha = 0.0`).
+A new `widgets::canvas_chart::polyline_with_fill(frame, inner, points,
+line_color, fill_color, fill_alpha)` primitive is the single drawing
+function shared across all four wrappers. Copy-paste rejected on
+divergence-risk grounds; re-export of internals without a refactor
+rejected on visibility grounds (Phase 2's `pub(crate)` was
+intentional).
+
+**Q3 — KPI source format: stable-contract via existing markdown body
+(Q3a)** (R3.1–R3.5). All 11 anchored reports already carry the six
+metrics (with CAGR + Win rate marked-absent on the live samples) in
+the `## Summary` table; new module `crates/reports/src/parse.rs`
+houses `BacktestMetrics::parse_from_report(path)`. **Failure mode is
+graceful** — if a future report-format change breaks the parser, the
+viewer renders the R2.6 empty state (six `—` dashes +
+`VIEWER_METRICS_UNAVAILABLE` muted-body) and continues to render the
+equity curve + drawdown band + body. Sidecar `report.json` (Q3b)
+rejected on cost / benefit: write-path ripple in `crates/reports`,
+backfill question for past reports, two-source-of-truth divergence
+between table and JSON. The equity-points contract (R11) is
+independent — both options reuse the existing
+`<stem>__equity.csv` companion file regardless. Anchor risk zero:
+parser is read-only over committed bodies, no write-path change.
+
+**Q4 — Operator-defined report file picker: CLI-only** (R1.2). The
+viewer accepts a `clap`-parsed positional `<report-path>`; missing
+arg → exit 2; non-existent path → exit 3. No file-dialog widget
+surface, no recents list. Matches the v1 "single operator,
+config-driven" non-goal. A future phase may add a recents list if
+asked. `iced_aw` file-picker rejected — out-of-band of the
+"config-driven, operator-typed paths" discipline.
+
+**Q5 — Equity-curve large-report performance: cap at 2000 points**
+(R6.3). iced 0.14 `tiny-skia` paints 2000 polyline segments
+comfortably within a 16 ms frame. `EquitySeries::downsample(2000)`
+enforces the cap via equal-stride bucketing (last-value-wins per
+bucket); preserves `points[0]` and `points[N-1]` exactly so peak /
+trough / inception / as-of survive the downsample. `Decimal`
+arithmetic only; no `f64`. 90-day 1-min reports (~129 600 points)
+remain deliberately out of scope — downsample at metric-emit time
+upstream of the viewer.
+
+**Q6 — Drawdown band fill: solid `DOWN_500 @ 0.18`** (R7.2). Matches
+Lumen's own `Backtest.jsx:103` flat fill and the Phase 2 line-fill
+style. Equity curve's `UP_500 @ 0.18` fill takes the same solid
+treatment for consistency. Gradients in iced 0.14 require
+`Brush::Gradient` paths — extra complexity below the operator's
+"perceptible difference at workstation distance" threshold; one
+fewer code path to test.
+
+**Q7 — `equity_curve_for_strategy` signature: `(ledger, strategy_id,
+since, until: Option<Timestamp>) -> Result<EquitySeries, LedgerError>`**
+(R12.1–R12.6). Sibling-style consistency with Phase 3
+`recent_journal_filtered` (positional timestamps, not `Range`).
+`Option<until>` is explicit about "to now" semantics; the cockpit
+consumer (R13.4) calls `until: None`, saving a clock read at the
+call-site. Column projection: `SELECT je.ts, je.debit_amount,
+je.credit_amount FROM journal_entries je JOIN journal_transactions jt
+ON je.transaction_id = jt.id WHERE je.account_id =
+'income:realized_pnl' AND jt.strategy_id = ? AND je.ts >= ? AND je.ts
+< ? ORDER BY je.ts ASC, je.id ASC` — same row set as `pnl_by_strategy`,
+emitted as a vector of running-equity samples (`running += cr - dr`
+walk seeded from the existing `cash_balance(&ledger)` baseline)
+rather than a single aggregate. Returns `Err(LedgerError::EmptyWindow)`
+on zero rows so the cockpit consumer can render the R13.8 empty state
+without inspecting `Ok(EquitySeries)` for `points.is_empty()` —
+keeps the `EquitySeries::from_points` `Empty` invariant load-bearing.
+Determinism: `ORDER BY` ties broken on `je.id ASC`; `Decimal`
+arithmetic only. Read-only sibling; `pnl_by_strategy` unchanged.
+`Range<Timestamp>` rejected — inconsistent with sibling-method style;
+`until: Timestamp` no-`Option` rejected — forces caller-side clock
+read.
+
+**Q8 — Strategies-detail sparkline placement: above (top-right of
+the chip row)** (R13.1, R13.2). Matches the Phase 3 deferred-
+placeholder slot at `crates/ui/src/screens/strategies.rs:135`. Same
+160 px-wide `Container`, same scan position; the Phase 4 change is
+"the placeholder retires; the canvas widget lands". Right-of-params
+rejected (narrow-width regression); bottom rejected (low in scan
+order for an "is this working" signal).
+
+**Q9 — Cockpit sparkline render budget: cap + downsample at fetch,
+no live update** (R13.5–R13.6). `SPARKLINE_POINT_CAP = 120` (in
+`theme::layout` next to Phase 3's `AUDIT_PAGE_SIZE`); the fetched
+series goes through `EquitySeries::downsample(120)` before landing
+on `Cockpit::strategy_equity`. No `Subscription::batch` recipe —
+refresh is one-shot on `Message::SelectStrategy(id)` (Phase 3 Q11b
+compound-dispatch) firing a `Task::perform(audit::query::equity_curve_for_strategy(...))`.
+Live-rebuild rejected — couples render rate to ledger write rate,
+violates the "screens are pure render dispatches" invariant
+established in Phase 3 Q3. Future phase may add a 1-Hz live recipe;
+not in Phase 4.
+
+**Q10 — Viewer dark-default cold-start** (R1.1). Inherits cockpit's
+dark default. Phase 1 `theme::ThemeMode::Dark` is the cold-start;
+the viewer threads the same default through `ViewerModel::new()`. No
+OS-detection plumbing; long-session-at-a-desk operator context fits
+dark. Light default rejected (inconsistent with cockpit); `dark-light`
+crate detection rejected (new dep for marginal value).
+
+**Q11 — Snapshot baseline budget: 5 net-new + 1 deletion, single
+`cargo insta accept` pass** (all visual R-items). `viewer__kpi_strip__sample_report.snap`
++ `viewer__equity_curve__sample_report.snap` + `viewer__drawdown_band__sample_report.snap`
++ `viewer__full_view__sample_report.snap` (the 4 viewer-bin
+baselines) + `strategies_screen__sparkline_present.snap` (replaces
+the deferred placeholder). `strategies_screen__sparkline_deferred.snap`
+retires (deleted in same commit). Phase 1 / 2 / 3 baselines stay
+byte-identical (viewer is a separate bin; the cockpit-side change
+is local to the sparkline placement in the existing 160 px slot).
+Phase 1 Q2 / Phase 2 V11 / Phase 3 V12 single-pass precedent
+preserved. Staged review (KPI first, curve next, band next)
+rejected — three review passes for tightly-coupled visuals is
+overhead without value.
+
+**Q12 — `EquitySeries` module placement: new module
+`crates/core/src/equity_series.rs`** (R10.1, R10.6). The type carries
+non-trivial constructor logic (drawdown walk + peak / trough);
+`views.rs` is a "thin DTOs" file by convention. The new module
+co-locates `EquitySeries` + `EquityPoint` + `EquitySeriesError` +
+`BacktestMetrics` (the architect groups `BacktestMetrics` with
+`EquitySeries` rather than placing it at module root — both Phase 4
+cross-phase primitives travel together to consumers). `crates/core/src/lib.rs`
+re-exports. Test module has space for the seven mandatory unit tests
+without crowding. Sibling-in-`views.rs` rejected (logical-group
+mismatch — `views.rs` is read-side projections, not computed
+aggregates).
+
+**TD-1 re-evaluation (Phase 4 design pass).** Verified at design
+pass on disk: `crates/ui/Cargo.toml:52` reads
+`iced = { version = "=0.14.0", default-features = false, features =
+["tiny-skia", "thread-pool", "advanced", "canvas"] }`. iced 0.15+
+has not landed; the `button::Status::Focused` variant and
+`text_input::Style.shadow` field are **not** available. **Phase 4
+ships no focus-ring upgrade.** The viewer is a **zero-button surface**
+(R14.1 / R14.2 — no "Deploy live", no "Export", no file-picker) and
+the cockpit-side Strategies-detail change is a sparkline canvas
+(non-focusable, no destructive action), so the Phase 4 deliverable
+adds zero new focus-ring exposure. Phase 1's bounded approximation
+holds. Operator-impact bound is unchanged: kill-switch destructive
+flow remains typed-confirm gated, focus halo a secondary signal.
+**Next re-evaluation: Phase 5 (HumanControl) analyst kickoff.** Phase
+5 introduces the first new operator-write controls (pause-strategy,
+override-risk-veto) where the focus-ring ergonomic gap sharpens —
+architect re-evaluates the cost / benefit on the custom-widget
+escape-hatch path at that point. The TD-1 row in the master roadmap
+should be appended with a 2026-05-06 line under "Promotion timing"
+noting the Phase 4 design verification — that's a follow-up the
+orchestrator routes to the analyst on Phase 4 ship (architect does
+not edit the master roadmap directly).
+
+**Cross-feature invariants preserved.** All 7 prior shipped features
+([master roadmap cross-feature invariants
+table](features/lumen-design-adoption.md#cross-feature-invariants))
+remain green post-Phase 4 — see the Phase 4 brief's "Cross-feature
+invariants" sub-section for the row-by-row preservation note. Notable
+delta: the `v1.5b-multi-venue` invariant gains a passive note — the
+new `equity_curve_for_strategy` SQL has no `venue` predicate (equity
+is per-strategy, not per-venue), so v1.5b plumbing-only state remains
+untouched and the Phase 3 `008_journal_transactions_venue.sql`
+column is read-only present on the row set, not required by the
+query.
+
+**Anchor budget.** Zero touched. Read-only over committed reports +
+read-only audit query addition + UI-only screens. `crates/strategy/`,
+`crates/cost/`, `crates/backtest/`, `crates/reports/src/render/`
+unchanged. The 11 backtest body-SHA-256 anchors in
+[`spec/anchors.toml`](anchors.toml) verify byte-identical post-Phase
+4. The KPI-strip parser at `crates/reports/src/parse.rs` is read-only
+over the existing markdown bodies; the viewer's equity-curve
+companion-CSV reader is read-only over the existing
+`<stem>__equity.csv` files (`EquitySample` row type unchanged); the
+audit query addition is read-only over committed `journal_entries`
+rows. The viewer is read-only on the spec tree
+([architecture.md:3116](#viewer--specreports)) — build-time test in
+`crates/ui/tests/viewer_read_only.rs` asserts the bin declares no
+`File::create` / `tokio::fs::write` against `spec/**`.
+
+**Library compatibility checklist.**
+
+- iced still pinned `=0.14.0` (`crates/ui/Cargo.toml:52`); no new
+  iced version, no new dep. **Q11 (TD-1) deferral verified on disk;
+  re-evaluation deferred to Phase 5.**
+- No new dep — the `widgets::canvas_chart` core extraction is a
+  pure refactor of Phase 2's existing helpers; the new
+  `polyline_with_fill` primitive uses the existing
+  `iced::widget::canvas` surface; `BacktestMetrics::parse_from_report`
+  uses `Decimal::from_str` + standard string slicing; the audit query
+  addition uses the existing `sqlx` surface; the viewer body
+  renderer is ~30 LOC of in-module heading-pre-pass (no
+  `pulldown-cmark`).
+- `rust_decimal::Decimal` covers all numeric fields on
+  `BacktestMetrics` + `EquityPoint::drawdown_pct` + `EquitySeries::max_drawdown_pct`;
+  no `f64`. Money math discipline preserved per architect.md
+  determinism guardrails.
+- Lucide icons explicitly out of scope (master Constraint).
+
+**App-layout table updated.** The `viewer` row at
+[architecture.md:2947–2951](#app-layout) is updated to reflect the
+Phase 4 deliverable shape: window contract becomes "Backtest report
+shell · KPI strip + equity curve + drawdown band + markdown body
+(Phase 4 — shipped)"; data source becomes "`spec/reports/` markdown
++ `<stem>__equity.csv` companion" (the viewer reads both the body
+markdown for the KPI parser + the `EquitySample` companion CSV for
+the curve / band; the audit query addition is for the cockpit-side
+sparkline consumer, not the viewer).
+
+**Tasks.** `T1801–T1815` + `T_FINAL_LUMEN_PHASE_4` filed at
+[tasks/lumen-phase-4-backtest-panel.md](tasks/lumen-phase-4-backtest-panel.md).
+T1801 is the foundation gate (`core::EquitySeries` + `BacktestMetrics`
++ `Cockpit::strategy_equity` field + `Message::StrategyEquityRefreshed`
+variant). T1802 (audit query), T1803 (viewer skeleton), T1804
+(canvas-chart core extraction), and T1808 (reports parser) all fan
+out from T1801 in parallel. T1805–T1807 + T1809 (the four widget
+modules — KPI strip, equity curve, drawdown band, sparkline) share
+T1804's canvas-chart core. T1810 (viewer composition) gates on the
+four widgets + the parser. T1811 (cockpit Strategies-detail
+sparkline replacement; closes the Phase 3 Q6 deferral) gates on
+T1802 + T1809. T1812 (snapshot accept + ui-designer attestation
+sub-block) is the narrow point. T1813–T1815 close out before the
+tester gate.
+
+##### Q1–Q15 ratification (Phase 5, confirmed 2026-05-06)
+
+Architect's Phase 5 design landing for the
+[lumen-design-adoption](features/lumen-design-adoption.md) initiative,
+ratifying the analyst's brief at
+[lumen-phase-5-humancontrol-agentfeed](features/lumen-phase-5-humancontrol-agentfeed.md).
+Phase 5 is the fifth of six sequential phases (Phases 1–4 shipped
+2026-05-04 / 2026-05-05 / 2026-05-06 / 2026-05-06; Phase 6 reserved
+for the v2 LLM strategy). **15 / 15 architect Q-items ratified; zero
+principled overrides on substance.** Q5 (TD-1) carries a load-bearing
+concrete commitment grounded in the on-disk iced version verification
+below. Each Q resolution cites the R-item(s) it ratifies; full
+resolution table lives in the Phase 5 brief.
+
+**Q1 — HumanControl panel placement: 7th sidebar entry**
+(R1.3, R2.2). HumanControl lives as `Screen::Control`, a 7th sidebar
+entry after the existing six (Home / Debug / Charts / Strategies /
+Risk / Audit). Consistency with the Phase 2 / 3 IA (every cockpit
+surface is a sidebar entry); Lumen's "always-visible" framing
+(`HumanControl.jsx:2`) maps cleanly onto a persistent sidebar entry.
+The Phase 2 R1.6 sidebar widget API is parameterised — absorbing a
+7th entry is an additive `entries.push(...)` in the binary's sidebar
+build. Implication: the Debug-screen kill placement migrates into
+HumanControl as the bottom action via a new
+`widgets::kill::view_inner` body-extraction helper (the public
+`widgets::kill::view` retains its current shape per R2.3); the
+Debug-screen kill row retires (one regenerated baseline per Q11).
+Home-screen header card rejected (breaks the four-panel grid +
+hides kill behind a click); footer-panel rejected (panel is ~6–8
+rows, exceeds status-bar-adjacent slot).
+
+**Q2 / Q3 — New audit writers: `strategy_paused` + `risk_veto_overridden`**
+(R5.1–R5.5, R8.1–R8.5). Two new sibling-of-`kill_switch_tripped`
+functions in `crates/audit/src/journal.rs`. Operator decisions belong
+in the ledger (`spec/ui-design-principles.md:282–284` — "audit ledger
+is the canonical why"); compliance-bounded for the override case.
+Atomic dual-write per `kill_switch_tripped` (memo row in
+`journal_transactions` + `strategy_events` row in one txn). Memo `ts`
+uses `Rfc3339` second precision (preserved from
+`kill_switch_tripped`); `strategy_events` `ts` uses 6-digit
+fractional-second format (HF-3 gate). Column projection table:
+
+| Column          | `strategy_paused`                       | `risk_veto_overridden`              |
+|-----------------|-----------------------------------------|-------------------------------------|
+| `kind`          | `"StrategyPaused"`                      | `"RiskVetoOverridden"`              |
+| `strategy_id`   | `Some(strategy_id.as_str())`            | `Some(strategy_id.as_str())`        |
+| `error_code`    | `Some("strategy_paused")`               | `Some("risk_veto_overridden")`      |
+| `error_summary` | `Some("paused")` / `Some("resumed")`    | `Some(reason)` (verbatim)           |
+| `venue`         | `None`                                  | `None`                              |
+
+`StrategyEventKind` extends with two new PascalCase variants
+(`StrategyPaused`, `RiskVetoOverridden`) at
+`crates/core/src/strategy_events.rs:99–113`. **No SQL migration** —
+the `strategy_events.kind` column at
+`crates/audit/migrations/002_strategy_events.sql` is `TEXT`. Test
+scope per Q10: unit + integration + audit-row snapshot baseline (all
+three). Runtime-only persistence rejected — leaves no audit trail;
+bisects the principles-doc rule.
+
+**Q4 — Execution-mode persistence: runtime-only for v1** (R10.1–R10.4).
+Cold-start = `ExecutionMode::Observe` (safest default). No
+`config/agent.toml` write; no audit writer (mode is prospective, not
+a decision). The shipped tree has zero config-write surfaces (v0–v4
+are config-driven); introducing one for session ergonomics is out of
+bounds. `config/agent.toml` write rejected — bisects the
+"config-driven, no UI-write-to-disk" non-goal; corruption-on-crash
+risk.
+
+**Q5 — TD-1 resolution (load-bearing): path (b) — custom-widget
+escape hatch** (R13.1, R13.3, R13.5). **Verified at design pass:**
+`crates/ui/Cargo.toml:69` reads `iced = { version = "=0.14.0",
+default-features = false, features = ["tiny-skia", "thread-pool",
+"advanced", "canvas"] }`. iced 0.15+ has not landed; neither
+`button::Status::Focused` nor `text_input::Style.shadow` is available.
+**Path (a) fold-in is unavailable.** Path (c) restate-with-deadline is
+**rejected**: Phase 6 is gated on v2 LLM (operationally indefinite —
+may take quarters); a fifth restatement is no longer viable, and
+Phase 5 is exactly the moment the cost/benefit tightened (three new
+operator-write surfaces — execution-mode toggle + pause-strategy +
+override-risk-veto). The architect commits to **path (b)**: new
+module `crates/ui/src/widgets/focus_ring.rs` implementing a
+focus-state-owning wrapper that owns focus state via a
+`Subscription` on `iced::keyboard::on_key_press` filtered to `Tab`
++ `ArrowDown` / `ArrowUp`, emits a synthetic
+`Message::FocusChanged(WidgetId)` on focus traversal. Cockpit gains
+a new `focused_widget: Option<SmolStr>` field (treated as Phase-5
+internal state — no audit writer, no persistence). Focus-ring
+rendering uses the existing `theme::focus::ring(mode)` token (3 px
+low-alpha accent). **Consumer sites:** all four destructive surfaces
+gating on focus — kill button + kill confirm input
+(`widgets::kill`); override-risk-veto confirm input + cancel +
+confirm buttons (`widgets::override_risk_veto`); per-strategy pause
+button (`widgets::strategies::pause_button`); execution-mode segment
+buttons (`widgets::human_control::mode_segment`). The four-phase
+TD-1 deferral closes at Phase 5 ship.
+
+**Q6 — `tape` → `AgentFeed` snapshot rename: rename via `git mv`**
+(R11.1, R12.1, R12.4). Snapshot filenames are operator-greppable;
+stale-filename → new-module mismatch breaks the convention. The 9
+baselines (5 panel-states + 4 audit-modal variants) move via `git
+mv` to preserve git-history continuity; the body diff is
+title-string only (`PANEL_TAPE_TITLE` → `PANEL_AGENT_FEED_TITLE`).
+After the moves land, a single `cargo insta accept` pass at end of
+phase regenerates the body content for the title-string change.
+**Not** delete-then-regenerate via `cargo insta accept` over deleted
+baselines — that path loses git history and bloats the diff for
+review.
+
+**Q7 — HumanControl panel field set: full Lumen set (mode + 3 limits
++ kill)** (R3.1–R3.5). All three limit fields read from existing
+`Cockpit::risk_state` + `Cockpit::pnl` (no new backend wiring).
+Daily-loss reads `risk_state.daily_loss_cap_pct`; max-position
+derives from `risk_state.per_symbol_caps`; used-today reads from
+`Cockpit::pnl` with sentiment colouring per
+`widgets::pnl::color_for_delta` (R14.3 — helper signature unchanged;
+read-only consumption). Trimmed (mode + kill only) rejected —
+hides the daily-loss-limit context the principles doc calls out as
+load-bearing.
+
+**Q8 — Pause-strategy resume semantics: single-click resume** (R4.4,
+R6.1). Pause is bounded-destructive (skips future signals; doesn't
+reverse past decisions); resume returns to default state — principles-
+doc "undo where physically possible" case
+(`spec/ui-design-principles.md:275–278`). Typed-confirm both sides
+rejected — friction without proportional safety value.
+
+**Q9 — Override-risk-veto scope: per-veto override** (R7.3). One
+button per surfaced `VetoEvent`, not per strategy. **Forward-only**
+— the veto is dismissed + audit row recorded; the agent does NOT
+re-emit the blocked signal. Per-strategy override rejected — too
+broad ("disable risk-engine for this strategy" is exactly what the
+engine exists to prevent); loses per-decision audit trail.
+
+**Q10 — Audit-writer test scope: unit + integration + audit-row
+snapshot baseline (all three)** (R5, R8). Unit tests cover the
+dual-write contract (sibling of `kill_switch_tripped` tests);
+integration tests cover cockpit → bus → writer wiring; snapshot
+baselines lock the audit row format
+(`strategy_events__strategy_paused_row.snap`,
+`strategy_events__risk_veto_overridden_row.snap`). Unit-only
+rejected — leaves cockpit-side wiring untested; cockpit ↔ writer
+is the load-bearing seam.
+
+**Q11 — Snapshot baseline budget: ~9 rename pairs + ~12 net-new + 1
+Q1-driven Debug regen + 1 focus-ring net-new; single `cargo insta
+accept` pass** (R12, V12). Phase 1 Q2 / Phase 2 V11 / Phase 3 V12 /
+Phase 4 V12 single-pass precedent. Q1's 7th-sidebar-entry pick → kill
+migrates from Debug-screen → Debug-screen baseline regenerates (1
+row); Home stays byte-identical. Net-new: 4 HumanControl mode
+baselines (observe/supervised/auto + kill armed) + 2 HumanControl
+limits (loading/error) + 2 Strategies-screen pause baselines + 3
+Strategies-screen override baselines (button idle + 2 modal states)
++ 1 focus-ring (focused kill button) + 2 audit-row baselines under
+`crates/audit/tests/snapshots/`. Staged review rejected — three
+review passes for tightly-coupled visuals is overhead without value.
+
+**Q12 — Kill button copy in HumanControl: preserve "Stop trading"**
+(R2.4). Master Constraint 2 (no voice rewrite) + principles-doc
+"exact phrase not negotiable mid-session"
+(`spec/ui-design-principles.md:391–393`). Lumen `"Halt all agents"`
+rejected.
+
+**Q13 — Risk-engine veto-emit wiring: placeholder feed in Phase 5;
+defer real upstream wiring** (R7.2). Phase 5 ships the cockpit-side
+override flow (typed-confirm + audit writer + clear-from-list) over
+`Cockpit::risk_veto_events: Vec<VetoEvent>` populated by fixtures;
+live emits empty `Vec`. **The deferred upstream wiring tracks as a
+new `TD-2` row** in the master roadmap's Cross-phase technical-debt
+items section (architect flags for orchestrator to append on Phase
+5 ship — architect does not edit master roadmap directly):
+
+> **TD-2 — Risk-engine veto-emit upstream wiring (Phase 5 Q13
+> deferral, ratified 2026-05-06).** The agent runtime's
+> `default_risk_telemetry_stub` at `crates/agent/src/runtime.rs:1023–1090`
+> does not emit `VetoEvent`s upstream of the cockpit. Phase 5 ships
+> the operator-side surface over a placeholder; live override
+> surface is empty (no surfaced vetoes → no overrides possible) but
+> safety primary is preserved (risk engine still vetoes upstream of
+> the executor). Promotion timing: Phase 6 (Assistant slot) if v2
+> LLM lands first, else a standalone backend brief.
+
+Wire-full-pipeline rejected — couples Phase 5 ship to a larger
+backend refactor; Phase 5's in-scope is the operator-facing override
+surface.
+
+**Q14 — `Cockpit::tape` field rename: preserve `Cockpit::tape`
+field name** (R11.4). Field is referenced by every Phase 1–4 test
+fixture and the `tape-row-audit-modal` modal-trigger import path;
+rename would ripple through ~100+ test sites for cosmetic value.
+Phase 5 is module rename, not state-shape rename. Mismatch documented
+via a code-comment annotation on the field pointing at the
+`widgets::agent_feed` module path. Rename-the-field rejected —
+disproportionate test ripple; out of Phase 5 scope.
+
+**Q15 — Audit-query reader for "recent operator writes": NO — defer**
+(none). New `StrategyPaused` / `RiskVetoOverridden` rows are
+queryable via Phase 3's `recent_journal_filtered` (with `kind`
+filtering); Phase 3's Audit screen is the canonical surface for
+`strategy_events`. A dedicated "recent operator activity" panel is
+a separate future brief; not Phase 5 scope. Add-a-reader rejected —
+scope creep.
+
+**TD-1 closure (Phase 5 design pass).** Verified at design pass on
+disk: `crates/ui/Cargo.toml:69` reads `iced = "=0.14.0"`. iced 0.15+
+has not landed; the `button::Status::Focused` variant and
+`text_input::Style.shadow` field are **not** available. Path (a)
+fold-in unavailable; path (c) restate-with-deadline rejected (Phase
+6 v2-LLM gated, operationally indefinite); **Phase 5 closes the
+four-phase deferral via path (b) — custom-widget escape hatch** at
+`crates/ui/src/widgets/focus_ring.rs`. The TD-1 row in the master
+roadmap should be appended with a 2026-05-06 closure note —
+architect flags for orchestrator to route to the analyst on Phase 5
+ship (architect does not edit the master roadmap directly).
+
+**Cross-feature invariants preserved.** All 7 prior shipped features
+remain green post-Phase 5 — see the Phase 5 brief's "Cross-feature
+invariants" sub-section for the row-by-row preservation note.
+Notable delta: the `tape-row-audit-modal` invariant is preserved
+because the `Cockpit::tape` field name stays (Q14); the modal
+trigger reads from the same field. The `live-cockpit-unified`
+invariant gains two additive `EventBus` channels (`pause_strategy_tx`
++ `execution_mode_tx`) — additive, no existing channel touched.
+
+**Anchor budget.** Zero touched. The two new audit writers are
+**additive** — new `StrategyEventKind` enum variants + sibling
+functions following the `kill_switch_tripped` pattern verbatim. No
+existing row's body is altered; `kind` column is `TEXT` so no
+schema migration. No new backtest scenarios; no committed report
+body re-renders. The `tape` → `agent_feed` rename is module-path +
+snapshot-filename + title-string only — no committed report
+references the `tape` widget module. The 11 backtest body-SHA-256
+anchors in [`spec/anchors.toml`](anchors.toml) verify byte-identical
+post-Phase 5.
+
+**Library compatibility checklist.**
+
+- iced still pinned `=0.14.0` (`crates/ui/Cargo.toml:69`); no new
+  iced version, no new workspace dep. **TD-1 resolved via custom-
+  widget escape hatch (path b), not version bump.**
+- No new dep — the `widgets::focus_ring`, `widgets::human_control`,
+  and `widgets::override_risk_veto` modules use only the existing
+  `iced::widget` + `iced::keyboard` surfaces. The two new audit
+  writers use the existing `sqlx` + `time` + `uuid` surfaces.
+- `rust_decimal::Decimal` is unchanged in this phase; no money math
+  surfaces extend.
+- Lucide icons explicitly out of scope (master Constraint).
+
+**Tasks.** `T1901–T1916` + `T_FINAL_LUMEN_PHASE_5` filed at
+[tasks/lumen-phase-5-humancontrol-agentfeed.md](tasks/lumen-phase-5-humancontrol-agentfeed.md).
+T1901 is the foundation gate (Cockpit state additions). After T1901,
+**five** tasks fan out in parallel: T1902 (audit writers — separate
+crate, no UI dep), T1903 (`tape` → `agent_feed` rename via `git mv`
+— mechanical, reviewable in isolation), T1904 (HumanControl
+skeleton), T1909 (override modal skeleton), T1912 (focus-ring widget
+— TD-1 path b). T1905 / T1906 / T1911 share T1904's HumanControl
+skeleton + T1912's focus-ring wrapper. T1907 / T1908 share T1902's
+audit writers + T1912's focus-ring wrapper. T1910 shares T1909's
+modal + T1912's focus-ring + T1902's audit writer. T1913 (snapshot
+accept) is the narrow point. T1914–T1916 close out before the tester
+gate.
+
 ### Data / venues
 
 - `reqwest` + `tokio-tungstenite` for REST and WebSocket feeds (crypto venues).
@@ -2956,6 +4393,246 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
 
 ## Changelog
 
+- 2026-05-06 (architect, Phase 5 design): appended Phase 5
+  **"Q1–Q15 ratification (Phase 5, confirmed 2026-05-06)"** sub-
+  section under the existing Phase 4 ratification block. **15 / 15
+  architect Q-items ratified, zero principled overrides on substance:**
+  Q1 HumanControl as 7th sidebar entry `Screen::Control` (Lumen
+  "always-visible" framing + Phase 2 / 3 IA consistency; Debug-screen
+  kill migrates to HumanControl bottom action via new
+  `widgets::kill::view_inner` body-extraction helper); Q2 / Q3 new
+  audit writers `audit::journal::strategy_paused` +
+  `audit::journal::risk_veto_overridden` (sibling of
+  `kill_switch_tripped` at `crates/audit/src/journal.rs:316–407`,
+  atomic dual-write — memo row + `strategy_events` row in one txn,
+  6-digit fractional-second `ts` per HF-3 gate, `kind` PascalCase,
+  `error_summary` carries direction / reason); Q4 execution-mode
+  runtime-only persistence (cold-start = `ExecutionMode::Observe`, no
+  `config/agent.toml` write, no audit writer); **Q5 / TD-1 = path
+  (b) custom-widget escape hatch** — verified at design pass
+  `crates/ui/Cargo.toml:69` still pins `iced = "=0.14.0"`, iced 0.15+
+  has not landed (path a fold-in unavailable), restate-with-deadline
+  rejected (Phase 6 v2-LLM gated, operationally indefinite); Phase 5
+  is the operator-write-surface sharpening point so a fifth
+  restatement is no longer viable; commits to a new
+  `crates/ui/src/widgets/focus_ring.rs` Subscription-driven wrapper
+  (owns focus state via `iced::keyboard::on_key_press` filtered to
+  `Tab` / arrows, emits `Message::FocusChanged(WidgetId)`, renders
+  halo via existing `theme::focus::ring(mode)` token) wrapping all
+  four destructive surfaces (kill button + kill confirm input +
+  override-risk-veto confirm + per-strategy pause + execution-mode
+  segments). **The four-phase TD-1 deferral closes at Phase 5 ship.**
+  Q6 snapshot rename via `git mv` (preserves history; body diff =
+  title-string only); Q7 full Lumen field set (mode + 3 limits +
+  kill); Q8 single-click pause-resume (no typed-confirm — bounded-
+  destructive); Q9 per-veto override (forward-only — agent does not
+  re-emit blocked signal); Q10 unit + integration + audit-row
+  snapshot baseline (all three); Q11 ~9 rename + ~12 net-new + 1
+  Q1-driven Debug regen + 1 focus-ring net-new + 2 audit-row
+  baselines, single `cargo insta accept` pass per Phase 1 Q2 / Phase
+  2 V11 / Phase 3 V12 / Phase 4 V12 precedent; Q12 preserve
+  `KILL_BUTTON_LABEL = "Stop trading"` (Master Constraint 2); **Q13
+  placeholder feed for risk-engine veto-emit; deferred upstream
+  wiring tracked as new TD-2 row** (architect flags for orchestrator
+  to append to master roadmap's Cross-phase technical-debt section
+  on Phase 5 ship); Q14 preserve `Cockpit::tape` field name (rename
+  ripples through ~100+ test sites for cosmetic value) — annotated
+  via code-comment pointing at `widgets::agent_feed`; Q15 NO new
+  audit-query reader (defer; existing `recent_journal_filtered`
+  covers via `kind` filtering). Cockpit state diff specified —
+  `ExecutionMode` enum, `OverrideRiskVetoState` enum, `VetoEvent`
+  struct, four new fields (`execution_mode`, `paused_strategies`,
+  `override_risk_veto`, `risk_veto_events`), six new `Message`
+  variants (`ExecutionModeSelected`, `StrategyPauseToggled`, +4
+  `OverrideRiskVeto*` family). HumanControl panel widget contract
+  (`crates/ui/src/widgets/human_control.rs` — frame + title constants
+  + mode segment + 3 mirror rows + kill bottom action), pause-
+  strategy control contract (single-click `widgets::strategies::pause_button`
+  + `pause_strategy_tx` broadcast channel + audit-writer call),
+  override-risk-veto control contract
+  (`crates/ui/src/widgets/override_risk_veto.rs` mirror of kill-
+  confirm + `OVERRIDE` phrase + per-veto button + clear-from-list
+  + audit-writer call), execution-mode toggle contract (segmented
+  control + 3 hint constants + `execution_mode_tx` broadcast
+  channel), audit writer additions (exact signatures + column
+  projection table + 7 unit + 2 integration + 2 row snapshot
+  baselines), `tape` → `agent_feed` rename (`git mv` preserves
+  history; field name preserved per Q14), TD-1 resolution (path b
+  custom-widget escape hatch with concrete `focus_ring.rs` shape),
+  risk-engine veto-emit deferral (TD-2 tracking row text). Cross-
+  feature invariants table re-stated (7 rows, all preserved). **Zero
+  anchor risk re-affirmed** — additive `StrategyEventKind` variants;
+  no schema migration; no committed report body re-renders. Snapshot
+  ripple: 9 rename pairs + ~12 net-new + 1 Debug regen + 1 focus-
+  ring + 2 audit-row baselines; single `cargo insta accept` pass.
+  Implementation parallelism map: T1901 foundation gate → fan-out
+  across T1902 (audit writers) / T1903 (rename) / T1904 (HumanControl
+  skeleton) / T1909 (override modal) / T1912 (focus-ring) → T1905 /
+  T1906 / T1911 share HumanControl + focus-ring → T1907 / T1908 /
+  T1910 share audit writers + focus-ring → narrow at T1913 snapshot
+  accept → T1914–T1916 → T_FINAL. Task list at
+  [tasks/lumen-phase-5-humancontrol-agentfeed.md](tasks/lumen-phase-5-humancontrol-agentfeed.md)
+  with 16 T19xx tasks + tester `T_FINAL_LUMEN_PHASE_5` gate.
+  **Master-roadmap follow-ups flagged for orchestrator on Phase 5
+  ship (architect does not edit master roadmap directly):** (a)
+  TD-1 row gains a 2026-05-06 closure note ("path b custom-widget
+  escape hatch shipped at `crates/ui/src/widgets/focus_ring.rs`");
+  (b) new TD-2 row appended for the risk-engine veto-emit upstream
+  wiring deferral. HANDOFF → developer ‖ ui-designer.
+- 2026-05-06 (architect, Phase 4 design): appended Phase 4
+  **"Q1–Q12 ratification (Phase 4, confirmed 2026-05-06)"** sub-
+  section under the existing Phase 3 ratification block. **12 / 12
+  architect Q-items ratified, zero principled overrides:** Q1 richer
+  `EquitySeries` shape with `EquityPoint = { ts, equity, drawdown_pct }`
+  + precomputed peak / trough / max-DD / inception / as-of (drawdown
+  vector inside each point — not a parallel `Vec<Decimal>`; eliminates
+  off-by-one risk between consumers); Q2 shared
+  `widgets::canvas_chart` core extracted from Phase 2 internal
+  helpers + new `polyline_with_fill` primitive shared across four
+  wrappers (`widgets::chart` Phase 2 byte-stable, `widgets::equity_curve`,
+  `widgets::drawdown_band`, `widgets::sparkline`); Q3 KPI source
+  parses the existing markdown summary table (`crates/reports/src/parse.rs::BacktestMetrics::parse_from_report`),
+  graceful fallback to `VIEWER_METRICS_UNAVAILABLE` strip on parse
+  failure, no sidecar JSON, no write-path change; Q4 CLI-only viewer
+  (`clap`-parsed positional `<report-path>`, missing arg → 2,
+  non-existent file → 3); Q5 cap at 2000 points via
+  `EquitySeries::downsample`; Q6 solid `DOWN_500 @ 0.18` drawdown fill
+  + matching `UP_500 @ 0.18` equity fill; Q7
+  `equity_curve_for_strategy(ledger, strategy_id, since,
+  until: Option<Timestamp>) -> Result<EquitySeries, LedgerError>`
+  read-only sibling of `pnl_by_strategy` over the same
+  `income:realized_pnl` rows + running cash-balance baseline + new
+  `LedgerError::EmptyWindow` variant; Q8 sparkline placement above
+  the chip row at the existing 160 px slot; Q9 cap+downsample at
+  fetch (`SPARKLINE_POINT_CAP = 120`), one-shot via `Task::perform`
+  on `Message::SelectStrategy`, no live update; Q10 dark default
+  cold-start; Q11 5 net-new + 1 deletion snapshot ripple, single
+  `cargo insta accept`; Q12 new module `crates/core/src/equity_series.rs`
+  co-locating `EquitySeries` + `EquityPoint` + `EquitySeriesError` +
+  `BacktestMetrics`. TD-1 deferred — verified `crates/ui/Cargo.toml:52`
+  still pins `iced = "=0.14.0"`; viewer is zero-button surface and
+  cockpit-side sparkline non-focusable so deferral is operationally
+  invisible on Phase 4 deliverable. Next re-evaluation at Phase 5
+  (HumanControl) analyst kickoff. Cross-feature invariants preserved
+  (7 / 7); zero anchor risk re-affirmed (read-only over committed
+  reports + read-only audit query addition + UI-only screens; no
+  `crates/strategy/` / `crates/cost/` / `crates/backtest/` /
+  `crates/reports/src/render/` write-path touched). Library-compat
+  checklist: no new deps (no `pulldown-cmark`, no chart crate, no
+  file-picker crate; in-module ~30 LOC heading-pre-pass for the
+  markdown body). **App-layout table updated** at
+  [architecture.md:2947–2951](#app-layout) — `viewer` row's window
+  contract becomes "Backtest report shell · KPI strip + equity curve
+  + drawdown band + markdown body (Phase 4 — shipped)"; data source
+  becomes "`spec/reports/` markdown + `<stem>__equity.csv` companion".
+  **Phase 3 deferral closure** — `STRATEGIES_SPARKLINE_DEFERRED`
+  retires from `crates/ui/src/strings.rs:261`; new
+  `STRATEGIES_SPARKLINE_LOADING` lands; the `strategies_screen__sparkline_deferred.snap`
+  baseline retires in the same commit as the `_present.snap` lands.
+  Task list at
+  [tasks/lumen-phase-4-backtest-panel.md](tasks/lumen-phase-4-backtest-panel.md)
+  with 15 T18xx tasks (T1801 foundation gate → fan-out across T1802 /
+  T1803 / T1804 / T1808 → widget modules T1805–T1807 + T1809 share
+  T1804 canvas-chart core → narrow at T1810 viewer composition + T1811
+  cockpit sparkline → narrow at T1812 snapshot accept → T1813–T1815
+  → `T_FINAL_LUMEN_PHASE_4`). HANDOFF → developer ‖ ui-designer
+  (developer takes T1801–T1815 implementation; ui-designer takes
+  the visual-diff attestation sub-block at T1812 / T_FINAL after
+  the developer's snapshot refresh pass).
+- 2026-05-05 (architect, Phase 3 design): appended Phase 3
+  **"Q1–Q11 ratification (Phase 3, confirmed 2026-05-05)"** sub-
+  section under the existing Phase 2 ratification block. **11 / 11
+  architect Q-items ratified, zero principled overrides:** Q1
+  `008_journal_transactions_venue.sql` migration ships in Phase 3
+  (`ADD COLUMN venue TEXT NOT NULL DEFAULT 'Binance'` — additive,
+  the default is the backfill; writer at
+  `crates/audit/src/journal.rs::post_fill` gains a `venue: Venue`
+  parameter, two other `INSERT INTO journal_transactions`
+  call-sites take same treatment; Phase 2 venue gate dropped from
+  `recent_fills_filtered`), Q2 signal history filters
+  `Cockpit::strategies_recent_events` (no new audit writer), Q3
+  Risk via new `RiskTelemetry` tokio channel mirroring Phase 1
+  `MarketHealth`, Q4 audit pagination fixed at 250, Q5 audit
+  filter persistence in-session only, Q6 equity sparkline deferred
+  to Phase 4 (Phase 3 ships placeholder copy only), Q7 audit query
+  as sibling `recent_journal_filtered(ledger, venues, symbol, kind,
+  since, until, page_offset, page_size) -> (Vec<JournalRow>, u64)`,
+  Q8 sidebar order Home → Debug → Strategies → Risk → Audit →
+  Charts via `SIDEBAR_ENTRIES_PHASE_3` constant swap (widget body
+  unchanged, six `SIDEBAR_NAV_*` strings already declared at
+  Phase 2 declare-now), Q9 kill-threshold gauge as horizontal bar
+  via new `frame::threshold_bar` helper (sibling of `active_row` /
+  `active_chip`), Q10 read-only display, Q11 ~13 snapshot ripple +
+  compound-dispatch cross-link (Home → Strategies-summary row
+  click emits `SelectStrategy` + chained `Task::done(SwitchScreen)`
+  in the binary). TD-1 deferred — verified
+  `crates/ui/Cargo.toml:52` still pins `iced = "=0.14.0"`; next
+  re-evaluation at Phase 4 analyst kickoff. Cross-feature
+  invariants preserved (7 / 7); zero anchor risk re-affirmed
+  (additive migration with constant-string backfill + read-only
+  audit query addition + UI-only screens; `crates/strategy/`,
+  `crates/cost/`, `crates/backtest/`, `crates/reports/` untouched).
+  Library-compat checklist: no new deps. Task list at
+  [tasks/lumen-phase-3-detail-screens.md](tasks/lumen-phase-3-detail-screens.md)
+  with 16 T17xx tasks (T1701 foundation gate → fan-out across
+  T1702 / T1703 / T1707 / T1709 / T1712 → T1704–T1706 / T1708 /
+  T1710–T1711 → narrow at T1713 snapshot accept → T1714–T1716
+  → `T_FINAL_LUMEN_PHASE_3`). HANDOFF → developer ‖ ui-designer
+  (developer takes T1701–T1716 implementation; ui-designer takes
+  the visual-diff attestation sub-block at T1713 / T_FINAL after
+  the developer's snapshot refresh pass).
+- 2026-05-04 (architect, Phase 2 design): appended Phase 2
+  **"Q1–Q11 ratification (Phase 2, confirmed 2026-05-04)"** sub-
+  section under the existing "Cockpit screen routing (Phase 2+
+  contract)" block. **11 / 11 architect Q-items ratified, zero
+  principled overrides:** Q1 line-series default, Q2 pan/zoom
+  deferred, Q3 `Cockpit::universe` boot-populated, Q4
+  `since/until` two-arg signature for `recent_fills_filtered`
+  (with Phase 2 venue-handling note — Binance-only fills on disk
+  per v1.5b plumbing-only state; Phase 3 Audit screen promotes
+  to a `journal_transactions.venue` migration), Q5 chip-row
+  bottom-edge T1507 variant via new `frame::active_chip` helper,
+  Q6 per-symbol synthetic-candle seed via `DefaultHasher`
+  in-process determinism, Q7 right-rail reserved structurally as
+  a single `Length::Fixed(0.0)` column (no `cfg!` gate), Q8
+  two-field session-scoped persistence (no on-disk state), Q9
+  Debug screen logs as placeholder, Q10 audit-query unit test
+  only in Phase 2 (integration deferred to Phase 3), Q11 TD-1
+  deferred — verified `crates/ui/Cargo.toml:50` still pins
+  `iced = "=0.14.0"`, the `button::Status::Focused` and
+  `text_input::Style.shadow` API surface has not landed; next
+  re-evaluation at Phase 3 analyst kickoff. Cross-feature
+  invariants preserved (7 / 7); zero anchor risk re-affirmed
+  (read-only audit query extension + UI shell + new widget; no
+  strategy / exec / risk / cost / backtest / reports crate
+  touched). Library-compat checklist: no new deps (iced unchanged,
+  `rand_chacha::ChaCha20Rng` already in workspace, `DefaultHasher`
+  is `std`). Task list at
+  [tasks/lumen-phase-2-shell-ia-charts.md](tasks/lumen-phase-2-shell-ia-charts.md)
+  with 16 T16xx tasks (T1601 foundation gate → fan-out across
+  T1602–T1612 → narrow at T1613 snapshot accept → T1614–T1616
+  → `T_FINAL_LUMEN_PHASE_2`). HANDOFF → developer ‖ ui-designer
+  (developer takes T1601–T1616 implementation; ui-designer takes
+  the visual-diff attestation row at T_FINAL after the
+  developer's snapshot refresh pass).
+- 2026-05-04 (architect, post-Phase-1 ship): added new sub-section
+  **"Cockpit screen routing (Phase 2+ contract)"** under Frontend ↔
+  backend interfaces. Documents the `Screen` enum, the
+  `Cockpit::current_screen` + `Message::SwitchScreen` contract, the
+  per-`(venue, symbol)` chart rolling buffer (live = existing
+  `bars_tx` channel; fixtures = deterministic synthetic candles via
+  `ui::fixtures::synthetic_candles`), the additive `audit::query::recent_fills_filtered`
+  signature for chart buy/sell markers, and the right-rail
+  column-track reservation for Phase 6 (Assistant slot, gated on v2
+  LLM). Updated the App layout table to reflect the multi-screen
+  reality and to add `cockpit_live` as a distinct binary row. The
+  contract above is the shared scaffolding every Phase 2+ widget
+  plugs into; per-phase R-items live in the per-phase briefs at
+  [features/lumen-phase-2-shell-ia-charts.md](features/lumen-phase-2-shell-ia-charts.md)
+  through
+  [features/lumen-phase-6-assistant-slot.md](features/lumen-phase-6-assistant-slot.md).
+  Anchor risk: zero per phase (read-only audit query extensions and
+  UI shell additions; see master roadmap anchor-risk table).
 - 2026-04-17 (architect): initial scaffold.
 - 2026-04-17 (architect): added Foundation libraries section; selected
   RustQuant modules `math` / `stochastics` / `time` / `data` / `iso` /
@@ -3571,3 +5248,59 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   converging at T1408 (runtime topology) and T1409 (bus
   channel + watchdog). Test wave T1411–T1414 fans out again;
   T1415 sequential at end.
+- 2026-05-04 (architect): lumen-design-adoption Phase 1 foundation
+  resolutions landing. Q1–Q9 + master Q10 ratified per the analyst
+  brief at
+  [features/lumen-phase-1-foundation.md](features/lumen-phase-1-foundation.md).
+  New section "Lumen design adoption — Phase 1 foundation resolutions"
+  documents: token-system rewrite (12 → ~50 tokens; full Lumen
+  palette + tier system + shadow ladder + focus ring + spacing 13-step
+  + radii 6-step + typography 7-step + motion ladder; flat
+  `theme::color::*` SHOUTY_SNAKE_CASE per Q10); Tier 0/1/2/3 + Sunken
+  surface specification; active-row pattern (2 px transparent-default
+  rule); iced 0.14 `Shadow` API confirmed first-class via
+  `iced_core-0.14.0/src/shadow.rs`; new `widgets::status_bar`
+  consumer of existing `bus.market_health()` (additive — no producer
+  change); split vocabulary (Q8b — connection field "Connected /
+  Reconnecting / Disconnected", latency badge keeps "OK / Slow / High
+  / Halted"); single-file principles-doc supersede (~480 lines, T1510);
+  dark default at boot (Q6 — light values wired but toggle is
+  downstream); kill-switch behaviour preserved (Q9 — visual chrome
+  only). No new dep — iced 0.14.0 Shadow already supported; `sysinfo`
+  for status-bar CPU% deferred. Anchor risk zero by construction
+  (`crates/strategy/audit/exec/backtest/reports/` untouched). Cross-
+  feature invariants for the 7 prior shipped features documented
+  preserved. Tasks `T1501–T1514 + T_FINAL_LUMEN_PHASE_1` filed at
+  [tasks/lumen-phase-1-foundation.md](tasks/lumen-phase-1-foundation.md);
+  T1501 is the foundation gate (theme rewrite); after T1502 (call-
+  site sweep), six dev tasks fan out (T1503–T1508) + spec-only T1510;
+  T1509 (status bar shell wiring) and T1511 (one-time 36-snapshot
+  refresh) are the narrow points. Phase 2 (viewer Backtest panel) and
+  Phase 3 (HumanControl + AgentFeed rename) remain queued; Phase 4
+  (Assistant slot) reserved for v2 LLM strategy.
+- 2026-05-04 (architect): Q11 mid-phase deviation ratified — iced
+  0.14.2 `button::Status` has no `Focused` variant and
+  `text_input::Style` has no `shadow` field, so T1504's true
+  keyboard-focus-ring acceptance is unachievable under the shipped
+  framework. **Option A** ratified: Phase 1 ships hover-state ring on
+  buttons + ACCENT border-shift on focused inputs as a bounded best-
+  effort approximation; T1504 tick stands as honest under the
+  documented iced 0.14.2 API gap. Reasoning: kill-switch destructive
+  intent is carried by the typed-confirm `KILL_SAFETY_PHRASE`, not
+  the focus halo (operator-impact bounded); Phase 1 "Foundation"
+  scope tolerates documented gaps over multi-day custom-widget
+  spikes (Option B rejected); same shape as Q3's `shadow_inset`
+  outer-only API workaround (architect-consistent). Option C
+  (rewriting the acceptance criterion) rejected — preserves the
+  original intent as the Phase-N target rather than erasing it.
+  Phase-N follow-up filed in
+  [features/lumen-design-adoption.md](features/lumen-design-adoption.md)
+  under "Cross-phase technical-debt items"; upgrade triggers are
+  (a) iced version bump exposing `button::Status::Focused` +
+  `text_input::Style.shadow` (likely 0.15+, unverified at this
+  ratification), or (b) project-local
+  `iced::widget::Component` custom widget owning focus state via
+  keyboard subscription. Anchor risk zero (UI-only); cross-feature
+  invariant table unchanged. Documented in `crates/ui/src/widgets/kill.rs`
+  module-level doc + T1504/T1506 honest-tick rows at
+  [tasks/lumen-phase-1-foundation.md](tasks/lumen-phase-1-foundation.md).

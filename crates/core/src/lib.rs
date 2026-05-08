@@ -7,6 +7,7 @@
 
 pub mod asset;
 pub mod bar;
+pub mod equity_series;
 pub mod error;
 pub mod fill;
 pub mod funding;
@@ -27,6 +28,7 @@ pub mod views;
 
 pub use asset::{Asset, Btc, Currency, Usdt};
 pub use bar::{Bar, Timeframe};
+pub use equity_series::{BacktestMetrics, EquityPoint, EquitySeries, EquitySeriesError};
 pub use error::{
     ConfigError, CostError, FeedError, LedgerError, OrderError, PriceError, QtyError, RiskError,
     StrategyError,
@@ -46,7 +48,8 @@ pub use symbol::{AccountId, Side, StrategyId, Symbol};
 pub use tick::Tick;
 pub use time::Timestamp;
 pub use universe::{SymbolSet, Universe, UniverseError};
-pub use venue::{MarketHealth, ParseVenueError, Venue};
+pub use venue::{MarketHealth, ParseVenueError, RiskTelemetry, Venue};
 pub use views::{
-    FillView, JournalEntry, JournalEntryView, JournalTransactionMetadata, PnlSnapshot, PositionView,
+    AuditKindFilter, AuditKindLabel, FillView, JournalEntry, JournalEntryView, JournalRow,
+    JournalTransactionMetadata, PnlSnapshot, PositionView,
 };

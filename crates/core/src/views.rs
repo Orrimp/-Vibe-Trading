@@ -9,6 +9,7 @@ use crate::fill::FeeTier;
 use crate::money::{Money, Price, Quantity};
 use crate::symbol::{AccountId, Side, StrategyId, Symbol};
 use crate::time::Timestamp;
+use crate::venue::Venue;
 
 /// Read-side representation of a fill, returned by `audit::query::recent_fills`.
 ///
@@ -104,4 +105,46 @@ pub struct PositionView {
     pub pnl_pct: Decimal,
     /// `position_notional / equity`.
     pub exposure_pct: Decimal,
+}
+
+/// Phase 3 (Lumen detail screens) — discriminator for the audit-screen
+/// table's `kind` column. Rendered as a label, not an icon
+/// (operator-locked Constraint 3 — Lucide deferred).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AuditKindLabel {
+    Fill,
+    StrategyEvent,
+    Reconciliation,
+}
+
+/// Phase 3 (Lumen detail screens) — single-select kind discriminator
+/// for the Audit-screen filter row. `All` matches every row; the other
+/// variants narrow the SQL `WHERE` predicate inside
+/// `audit::query::recent_journal_filtered` (Q7 — sibling, not extension).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AuditKindFilter {
+    #[default]
+    All,
+    Fill,
+    StrategyEvent,
+    Reconciliation,
+}
+
+/// Phase 3 (Lumen detail screens) — newest-first row projection for the
+/// Audit / Journal screen table. Returned by
+/// `audit::query::recent_journal_filtered` and consumed verbatim by the
+/// cockpit's `screens::audit::view` body.
+///
+/// `tx_id` carries the `journal_transactions.id` UUID string for the
+/// row-click → modal-open trigger (T1711); `kind` discriminates the
+/// table-row label without surfacing icons (Constraint 3).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JournalRow {
+    pub tx_id: SmolStr,
+    pub ts: Timestamp,
+    pub venue: Venue,
+    pub symbol: Option<Symbol>,
+    pub kind: AuditKindLabel,
+    pub description: SmolStr,
+    pub strategy_id: Option<StrategyId>,
 }

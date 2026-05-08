@@ -53,13 +53,63 @@ compile_error!(
      `cargo run --bin trading`. The standalone `cockpit` bin is fixtures-only."
 );
 
-use iced::widget::{Column, Row};
-use iced::{Element, Length};
+use iced::Element;
 
-use ui::state::{Cockpit, Message};
+use trading_core::{Symbol, Venue};
+use ui::fixtures::{seed_for, synthetic_candles, synthetic_fills_for};
+use ui::shell;
+use ui::state::{Cockpit, Message, PanelState, Screen};
 use ui::strings::APP_TITLE;
-use ui::theme::{color, layout, space};
-use ui::widgets::{journal_transaction_modal, kill, latency, pnl, positions, strategies, tape};
+use ui::theme::ThemeMode;
+use ui::widgets::journal_transaction_modal;
+
+// ── 1 Hz server-time recipe (T1509) ──────────────────────────────────────────
+//
+// A custom iced `Recipe` that emits `Message::ServerTimeTick` every second.
+// Implemented with a background OS thread + `std::sync::mpsc` so no tokio
+// dep is needed in the `fixtures`-only bin. The thread sleeps for 1 s and
+// sends the current `Timestamp`; the stream yields it and loops.
+
+use iced::advanced::subscription::{EventStream, Hasher, Recipe};
+use iced::futures;
+
+struct ServerTimeRecipe;
+
+impl Recipe for ServerTimeRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: EventStream,
+    ) -> futures::stream::BoxStream<'static, Self::Output> {
+        let (tx, rx) = std::sync::mpsc::channel::<Message>();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if tx
+                .send(Message::ServerTimeTick(trading_core::Timestamp::now()))
+                .is_err()
+            {
+                break;
+            }
+        });
+        // Convert the blocking mpsc receiver into a futures Stream.
+        Box::pin(futures::stream::unfold(rx, |rx| async move {
+            // `recv` blocks until a message arrives (or channel drops).
+            // This blocks the iced thread-pool thread, but for a 1 Hz
+            // subscription this is acceptable.
+            match rx.recv() {
+                Ok(msg) => Some((msg, rx)),
+                Err(_) => None,
+            }
+        }))
+    }
+}
 
 fn main() -> iced::Result {
     iced::application(App::boot, App::update, App::view)
@@ -87,9 +137,61 @@ impl App {
         // Operators see the most recent feature set when they fixtures-boot
         // the cockpit — earlier presets stay available for snapshot tests.
         #[cfg(feature = "fixtures")]
-        let cockpit = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
+        let mut cockpit = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
         #[cfg(not(feature = "fixtures"))]
-        let cockpit = Cockpit::new();
+        let mut cockpit = Cockpit::new();
+
+        // Phase 2 boot — sidebar shell + universe + chart-buffer seed.
+        // Universe is the canonical 3-symbol Binance set; per-symbol
+        // synthetic candles flow through `Message::BarReceived` so the
+        // live-mode arm populates the chart buffer.
+        let universe: Vec<(Venue, Symbol)> = vec![
+            (Venue::Binance, Symbol::new("BTCUSDT")),
+            (Venue::Binance, Symbol::new("ETHUSDT")),
+            (Venue::Binance, Symbol::new("SOLUSDT")),
+        ];
+        cockpit.universe = universe.clone();
+        cockpit.current_screen = Screen::Home;
+        let default_pair = universe[0].clone();
+        cockpit.selected_symbol = Some(default_pair.clone());
+        for (venue, symbol) in &universe {
+            let seed = seed_for(*venue, symbol);
+            for bar in synthetic_candles(seed, *venue, symbol.clone(), 60) {
+                ui::state::update(&mut cockpit, Message::BarReceived(bar));
+            }
+        }
+        // Pre-seed chart markers for the default symbol — Q3 + R8.5.
+        cockpit.chart_markers =
+            PanelState::Ready(synthetic_fills_for(default_pair.0, &default_pair.1, 4));
+
+        // Phase 3 (Lumen detail screens) — pre-seed Risk / Strategies-config /
+        // Audit fixtures so the three new screens render their `Ready` body
+        // on first paint (T1707, T1704, T1710 / V5, V6 acceptance).
+        #[cfg(feature = "fixtures")]
+        {
+            cockpit.risk_state = PanelState::Ready(ui::fixtures::fake_risk_state());
+            cockpit.strategies_config = Some(ui::fixtures::fake_strategies_config());
+            // V6: ≥ 5 visible rows by default — fixtures bin seeds 12 rows so
+            // the snapshot baseline can pick its first 5 deterministically;
+            // pagination tests separately seed 250 + 5 to exercise page 2.
+            let rows = ui::fixtures::fake_journal_rows(12);
+            let total = u64::try_from(rows.len()).unwrap_or(0);
+            cockpit.audit_screen_state.rows = PanelState::Ready(rows);
+            cockpit.audit_screen_state.total_count = Some(total);
+
+            // Phase 4 (T1811) — pre-seed strategy_equity for every
+            // loaded strategy so the Strategies-detail sparkline
+            // renders the canvas on first paint (no audit ledger
+            // query in fixtures mode).
+            if let PanelState::Ready(rows) = &cockpit.strategies {
+                for row in rows {
+                    cockpit.strategy_equity.insert(
+                        row.id.clone(),
+                        PanelState::Ready(ui::fixtures::fake_equity_series_for_sparkline()),
+                    );
+                }
+            }
+        }
 
         (Self { cockpit }, iced::Task::none())
     }
@@ -98,14 +200,43 @@ impl App {
         APP_TITLE.to_string()
     }
 
-    fn update(&mut self, msg: Message) {
+    fn update(&mut self, msg: Message) -> iced::Task<Message> {
+        // Phase 2 — capture (venue, symbol) of `SelectSymbol` BEFORE the
+        // model is mutated so we can re-seed the fixtures-mode marker
+        // panel after `update` flips it to `Loading`.
+        let select_pair = if let Message::SelectSymbol(v, s) = &msg {
+            Some((*v, s.clone()))
+        } else {
+            None
+        };
+        // Phase 3 R5.2 / Q11b — compound dispatch: when a Home →
+        // Strategies-summary row click emits `SelectStrategy(id)`, chain
+        // `Task::done(SwitchScreen(Strategies))` if the operator wasn't
+        // already on the Strategies screen. Capture the marker before
+        // `update` runs so the screen-switch decision uses the
+        // pre-mutation `current_screen` value.
+        let cross_link_strategies = matches!(msg, Message::SelectStrategy(_))
+            && self.cockpit.current_screen != Screen::Strategies;
+
         ui::state::update(&mut self.cockpit, msg);
+
+        if let Some((v, s)) = select_pair {
+            let fills = synthetic_fills_for(v, &s, 4);
+            ui::state::update(&mut self.cockpit, Message::ChartMarkersLoaded(Ok(fills)));
+        }
+        if cross_link_strategies {
+            return iced::Task::done(Message::SwitchScreen(Screen::Strategies));
+        }
+        iced::Task::none()
     }
 
     /// Cockpit subscription — fixtures path + modal-open keyboard recipe.
     ///
-    /// - `fixtures` or default → empty subscription; the `fixtures` boot
-    ///   already populates every panel, so no live stream is needed.
+    /// - `fixtures` or default → no live bus; the `fixtures` boot already
+    ///   populates every panel.  We DO add a 1 Hz `time::every` recipe
+    ///   so the status-bar server-time field advances each second
+    ///   (T1509). `MarketHealth` is NOT subscribed here — fixtures boot
+    ///   with `Fresh` per-venue state and never update.
     /// - The retired `live` arm now lives in `cockpit_live` (T908).
     /// - When the tape-row → audit modal is open, batch in an
     ///   `iced::event::listen_with` recipe that translates the keyboard
@@ -114,54 +245,33 @@ impl App {
     ///   (the fixtures cockpit has no keyboard navigation today, so
     ///   nothing leaks).
     fn subscription(&self) -> iced::Subscription<Message> {
+        // 1 Hz server-time tick — drives the status-bar clock (T1509).
+        // Use iced::advanced::subscription::from_recipe with a custom Recipe
+        // that uses an OS thread + std::sync::mpsc for the timer, so no
+        // tokio dep is required in the fixtures bin.
+        let time_sub = iced::advanced::subscription::from_recipe(ServerTimeRecipe);
+
         if self.cockpit.tape_audit_modal.is_some() {
-            iced::event::listen_with(|event, _status, _window| match event {
-                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
-                    ..
-                }) => Some(Message::TapeAuditModalClosed),
-                _ => None,
-            })
+            iced::Subscription::batch(vec![
+                time_sub,
+                iced::event::listen_with(|event, _status, _window| match event {
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                        ..
+                    }) => Some(Message::TapeAuditModalClosed),
+                    _ => None,
+                }),
+            ])
         } else {
-            iced::Subscription::none()
+            time_sub
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // Left column — v0 layout unchanged (P&L, latency, kill).
-        let left = Column::new()
-            .spacing(layout::PANEL_OUTER_GAP)
-            .push(pnl::view(&self.cockpit))
-            .push(latency::view(&self.cockpit))
-            .push(kill::view(&self.cockpit))
-            .width(Length::FillPortion(1));
-
-        // Right column — v0.5 Q4 resolution: strategies panel ABOVE Open
-        // positions. Live tape stays at the bottom so the operator's eye
-        // flows strategies → positions → ticker.
-        let right = Column::new()
-            .spacing(layout::PANEL_OUTER_GAP)
-            .push(strategies::view(&self.cockpit))
-            .push(positions::view(&self.cockpit))
-            .push(tape::view(&self.cockpit))
-            .width(Length::FillPortion(2));
-
-        let body = Row::new()
-            .spacing(layout::PANEL_OUTER_GAP)
-            .push(left)
-            .push(right);
-
-        let main_column: Element<'_, Message> = iced::widget::container(body)
-            // iced 0.14 Padding accepts `u16`.
-            .padding(space::L as u16)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_theme: &iced::Theme| iced::widget::container::Style {
-                background: Some(color::BG.into()),
-                text_color: Some(color::FG),
-                ..Default::default()
-            })
-            .into();
+        // Phase 2 — shell composes sidebar + screen body + status bar +
+        // reserved right-rail. The screen-routed body dispatches off
+        // `current_screen`. (T1603 / T1611.)
+        let main_column: Element<'_, Message> = shell::view(&self.cockpit, ThemeMode::Dark);
 
         // Render the modal as a `Stack` overlay only when the modal is open
         // (`tape-row-audit-modal` Q1). When closed, return `main_column`

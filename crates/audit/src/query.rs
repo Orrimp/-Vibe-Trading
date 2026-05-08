@@ -8,9 +8,10 @@ use smol_str::SmolStr;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use trading_core::{
-    AccountId, FillView, FundingObs, JournalEntry, JournalEntryView, JournalTransactionMetadata,
-    LedgerError, Money, OpenPosition, PairKey, PairMembership, Price, Quantity, Side,
-    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp, Usdt,
+    AccountId, AuditKindFilter, AuditKindLabel, EquitySeries, FillView, FundingObs, JournalEntry,
+    JournalEntryView, JournalRow, JournalTransactionMetadata, LedgerError, Money, OpenPosition,
+    PairKey, PairMembership, Price, Quantity, Side, StrategyEventKind, StrategyEventView,
+    StrategyId, Symbol, Timestamp, Usdt, Venue,
 };
 
 use crate::Ledger;
@@ -158,6 +159,72 @@ pub async fn recent_fills(ledger: &Ledger, limit: usize) -> Result<Vec<FillView>
     Ok(fills)
 }
 
+/// Phase 2 addition (R12 / Q4). Return all fills for `(venue, symbol)`
+/// inside the half-open interval `[since, until)`, newest-first.
+///
+/// Same description-prefixed-rows scan as [`recent_fills`]; narrower
+/// predicate (venue + symbol + time-range vs `recent_fills`'s limit-only).
+/// Read-only over committed audit data; does not alter any committed
+/// report body. Additive — `recent_fills` unchanged.
+///
+/// **Phase 3 R13.4 — venue predicate.** Migration 008 adds the
+/// `journal_transactions.venue` column with `'binance'` backfill on
+/// existing rows; the writer at `journal::post_fill` now binds
+/// `venue.to_string()` on insert. The Phase 2 venue gate
+/// (`if venue != Venue::Binance { return Ok(Vec::new()) }`) is
+/// removed; the SQL gains a `WHERE venue = ?` predicate.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn recent_fills_filtered(
+    ledger: &Ledger,
+    venue: Venue,
+    symbol: Symbol,
+    since: Timestamp,
+    until: Timestamp,
+) -> Result<Vec<FillView>, LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let venue_str = venue.to_string();
+
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, ts, description \
+         FROM journal_transactions \
+         WHERE (description LIKE 'buy %' OR description LIKE 'sell %') \
+           AND ts >= ? AND ts < ? \
+           AND venue = ? \
+         ORDER BY ts DESC, rowid DESC",
+    )
+    .bind(&since_str)
+    .bind(&until_str)
+    .bind(&venue_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut fills = Vec::with_capacity(rows.len());
+    for (txn_id, ts_str, desc) in rows {
+        // Symbol filter — pre-parse, so we don't pay the description-parse
+        // cost for rows we'll discard anyway.
+        if extract_symbol_from_description(&desc) != symbol {
+            continue;
+        }
+        let Some(fill) = parse_fill_view_from_description(&txn_id, &ts_str, &desc, ledger).await?
+        else {
+            continue;
+        };
+        fills.push(fill);
+    }
+    Ok(fills)
+}
+
 /// Parse a `FillView` from the transaction description + fee entry.
 async fn parse_fill_view_from_description(
     txn_id: &str,
@@ -220,6 +287,175 @@ async fn parse_fill_view_from_description(
         venue_ts,
         transaction_id: SmolStr::new(txn_id),
     }))
+}
+
+// ── Phase 3 R12 / Q7 — recent_journal_filtered (sibling of recent_fills_filtered) ──
+
+/// Phase 3 addition (R12 / Q7). Return the page of journal rows
+/// matching the filter, newest-first. Read-only over committed audit
+/// data; additive sibling of [`recent_fills_filtered`].
+///
+/// `venues.is_empty()` ↔ all venues; `symbol.is_none()` ↔ all symbols;
+/// `kind == AuditKindFilter::All` ↔ all kinds. The half-open window
+/// `[since, until)` matches the `recent_fills_filtered` shape. Returns
+/// `(rows, total_count)` so the screen header can render
+/// "Showing N–M of T" without a separate `COUNT(*)` round-trip.
+///
+/// **Determinism / money math.** No `f64`. Description-amount parsing
+/// reuses the existing `Price` / `Quantity` newtypes for any computed
+/// amount fields. Empty result returns `Ok((vec![], 0))`; never `Err`
+/// for "no rows".
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+#[allow(clippy::too_many_arguments)]
+pub async fn recent_journal_filtered(
+    ledger: &Ledger,
+    venues: &[Venue],
+    symbol: Option<&Symbol>,
+    kind: AuditKindFilter,
+    since: Timestamp,
+    until: Timestamp,
+    page_offset: u32,
+    page_size: u32,
+) -> Result<(Vec<JournalRow>, u64), LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Build the venue predicate. Empty venue list ↔ all venues (no
+    // additional `IN` constraint). Otherwise inline the snake_case
+    // venue strings (closed enum — bounded set, no escaping).
+    let venue_clause = if venues.is_empty() {
+        String::new()
+    } else {
+        let placeholders = venues
+            .iter()
+            .map(|v| format!("'{v}'"))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(" AND venue IN ({placeholders})")
+    };
+
+    // Kind discriminator — translates to a description-prefix scan +
+    // an EXISTS sub-query for strategy-event rows (Phase 3 Design).
+    let kind_clause = match kind {
+        AuditKindFilter::All => String::new(),
+        AuditKindFilter::Fill => {
+            " AND (description LIKE 'buy %' OR description LIKE 'sell %')".to_string()
+        }
+        AuditKindFilter::StrategyEvent => " AND EXISTS (SELECT 1 FROM strategy_events se \
+              WHERE se.transaction_id = journal_transactions.id)"
+            .to_string(),
+        AuditKindFilter::Reconciliation => " AND description LIKE 'reconcile %'".to_string(),
+    };
+
+    let where_predicate = format!("WHERE ts >= ? AND ts < ?{venue_clause}{kind_clause}");
+
+    // Total count under the same WHERE — one extra round-trip; well
+    // under the user-perceptible threshold for a 250-row page.
+    let count_sql = format!("SELECT COUNT(*) FROM journal_transactions {where_predicate}");
+    let count_row: (i64,) = sqlx::query_as(&count_sql)
+        .bind(&since_str)
+        .bind(&until_str)
+        .fetch_one(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let total_count = u64::try_from(count_row.0).unwrap_or(0);
+
+    // Page query — ORDER BY ts DESC, rowid DESC (Phase 2 R12.5
+    // determinism); LIMIT ? OFFSET ?.
+    let select_sql = format!(
+        "SELECT id, ts, description, strategy_id, venue \
+         FROM journal_transactions {where_predicate} \
+         ORDER BY ts DESC, rowid DESC LIMIT ? OFFSET ?"
+    );
+    // Tuple shape mirrors the 5-column projection above; clippy
+    // `type_complexity` warns on five-element tuples but extracting
+    // a `type` alias for a one-call-site shape adds noise without
+    // semantic value here.
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, String, String, Option<String>, Option<String>)> =
+        sqlx::query_as(&select_sql)
+            .bind(&since_str)
+            .bind(&until_str)
+            .bind(i64::from(page_size))
+            .bind(i64::from(page_offset))
+            .fetch_all(&ledger.pool)
+            .await
+            .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut out: Vec<JournalRow> = Vec::with_capacity(rows.len());
+    for (txn_id, ts_str, desc, strategy_id, venue_str) in rows {
+        let row_kind = classify_kind(&desc);
+        let row_symbol = match row_kind {
+            AuditKindLabel::Fill => Some(extract_symbol_from_description(&desc)),
+            // Non-fill rows do not encode symbol in description; the
+            // operator filter, when set, narrows to fill-only by virtue
+            // of `extract_symbol_from_description` always returning
+            // `Symbol::new("UNKNOWN")` for those rows. Symbol filtering
+            // is applied below as a post-filter on the parsed value.
+            _ => None,
+        };
+        // Symbol post-filter (skip rows that don't match the operator's
+        // selected symbol — only relevant for fills, since non-fill
+        // rows surface with `symbol = None`).
+        if let Some(target) = symbol {
+            match row_kind {
+                AuditKindLabel::Fill => {
+                    if row_symbol.as_ref() != Some(target) {
+                        continue;
+                    }
+                }
+                _ => {
+                    // Filtering by symbol on non-fill rows yields no
+                    // matches by construction — drop the row.
+                    continue;
+                }
+            }
+        }
+        let venue = venue_str
+            .as_deref()
+            .and_then(|s| s.parse::<Venue>().ok())
+            // Fallback: pre-008 NULL rows backfilled to 'binance' by
+            // the migration. Defensive default keeps the row visible.
+            .unwrap_or(Venue::Binance);
+        let ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
+            .map(Timestamp::new)
+            .map_err(|e| LedgerError::Database(e.to_string()))?;
+        out.push(JournalRow {
+            tx_id: SmolStr::new(txn_id),
+            ts,
+            venue,
+            symbol: row_symbol,
+            kind: row_kind,
+            description: SmolStr::new(desc),
+            strategy_id: strategy_id.map(StrategyId::new),
+        });
+    }
+
+    Ok((out, total_count))
+}
+
+/// Phase 3 R12 — classify a `journal_transactions.description` into
+/// the audit-screen `AuditKindLabel`. Mirrors the SQL discriminator
+/// shape in [`recent_journal_filtered`].
+fn classify_kind(desc: &str) -> AuditKindLabel {
+    if desc.starts_with("buy ") || desc.starts_with("sell ") {
+        AuditKindLabel::Fill
+    } else if desc.starts_with("reconcile ") {
+        AuditKindLabel::Reconciliation
+    } else {
+        // Default to StrategyEvent for any non-fill, non-reconcile
+        // description (e.g. registry events, kill-switch memos).
+        AuditKindLabel::StrategyEvent
+    }
 }
 
 // ── Recent journal entries ─────────────────────────────────────────────────────
@@ -546,6 +782,12 @@ fn parse_strategy_event_view(
         // v1+ Q8 / R7.1 variants (T801 / T805 / T809)
         "KillSwitchTripped" | "kill_switch_tripped" => StrategyEventKind::KillSwitchTripped,
         "FeedReconnect" | "feed_reconnect" => StrategyEventKind::FeedReconnect,
+        // Phase 5 (T1902) — operator-write variants. Only the PascalCase
+        // form is written by the new audit writers; the snake_case
+        // alternative is accepted for forward-compat with future migration
+        // (mirrors the pattern used by the v1+ variants above).
+        "StrategyPaused" | "strategy_paused" => StrategyEventKind::StrategyPaused,
+        "RiskVetoOverridden" | "risk_veto_overridden" => StrategyEventKind::RiskVetoOverridden,
         other => {
             return Err(LedgerError::Database(format!(
                 "unknown strategy event kind: {other}"
@@ -799,6 +1041,92 @@ pub async fn pnl_by_strategy(
     });
 
     Ok(result)
+}
+
+// ── Phase 4 R12 / Q7 — equity_curve_for_strategy (sibling of pnl_by_strategy) ──
+
+/// Phase 4 addition (R12 / Q7). Walk the `journal_entries` rows on the
+/// `income:realized_pnl` account joined to their parent
+/// `journal_transactions` row's `strategy_id`, emitting an
+/// [`EquitySeries`] whose points are the running-sum of realized P&L
+/// samples in the half-open window `[since, until_or_now)`.
+///
+/// Read-only over committed audit data; additive sibling of
+/// [`pnl_by_strategy`]. The inception-equity baseline is read from the
+/// same journal: the first sample carries the running cash balance at
+/// `since` (computed via the [`cash_balance`] query at the same
+/// instant), and each subsequent sample increments by the row's
+/// `(credit - debit)` delta.
+///
+/// `until = None` ↔ "to now" (the function reads
+/// [`Timestamp::now()`] once at the call boundary). The cockpit
+/// consumer (R13.4) uses `until: None` so the call-site doesn't read
+/// the clock.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error. Returns
+/// `Err(LedgerError::EmptyWindow)` when the window contains zero rows
+/// (so the cockpit consumer can render the R13.8 empty state without
+/// inspecting an `Ok(EquitySeries)` for `points.is_empty()` — keeps
+/// the `from_points` `Empty` invariant load-bearing).
+pub async fn equity_curve_for_strategy(
+    ledger: &Ledger,
+    strategy_id: StrategyId,
+    since: Timestamp,
+    until: Option<Timestamp>,
+) -> Result<EquitySeries, LedgerError> {
+    let until = until.unwrap_or_else(Timestamp::now);
+
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT je.ts, je.debit_amount, je.credit_amount \
+         FROM journal_entries je \
+         JOIN journal_transactions jt ON je.transaction_id = jt.id \
+         WHERE je.account_id = 'income:realized_pnl' \
+           AND jt.strategy_id = ? \
+           AND je.ts >= ? \
+           AND je.ts <  ? \
+         ORDER BY je.ts ASC, je.id ASC",
+    )
+    .bind(strategy_id.0.as_str())
+    .bind(&since_str)
+    .bind(&until_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    if rows.is_empty() {
+        return Err(LedgerError::EmptyWindow);
+    }
+
+    let baseline = cash_balance(ledger).await?;
+    let mut running = baseline.amount();
+    let mut points: Vec<(Timestamp, Money<Usdt>)> = Vec::with_capacity(rows.len());
+    for (ts_str, dr_str, cr_str) in rows {
+        let ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
+            .map(Timestamp::new)
+            .map_err(|e| LedgerError::Database(e.to_string()))?;
+        let dr: Decimal = dr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("equity_curve_for_strategy: parse debit".into()))?;
+        let cr: Decimal = cr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("equity_curve_for_strategy: parse credit".into()))?;
+        running += cr - dr;
+        points.push((ts, Money::<Usdt>::from_decimal(running)));
+    }
+
+    EquitySeries::from_points(points)
+        .map_err(|e| LedgerError::Database(format!("equity_curve_for_strategy: {e}")))
 }
 
 // ── Per-pair P&L attribution (v1.5a T708) ────────────────────────────────────
@@ -1106,7 +1434,7 @@ async fn account_balance(ledger: &Ledger, account_id: &str) -> Result<Decimal, L
 /// `LedgerError::Database`).
 ///
 /// Symbol identification parses the **transaction description** via the
-/// existing private [`extract_symbol_from_description`] helper. Per
+/// existing private `extract_symbol_from_description` helper. Per
 /// `spec/features/per-symbol-position-accounts.md` Design § Q4,
 /// description-parse stays the **primary** source pre- and post-T1102 so a
 /// single code path covers both legacy rows (`account_id` =
@@ -1328,4 +1656,585 @@ pub async fn open_positions_at(
     });
 
     Ok(out)
+}
+
+// ── T1606 — recent_fills_filtered unit tests (Phase 2 R12 / Q10) ─────────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::bootstrap;
+    use crate::journal::post_fill;
+    use rust_decimal_macros::dec;
+    use time::OffsetDateTime;
+    use trading_core::{FeeTier, Fill, FillId, Liquidity, OrderId, Side};
+    // `Venue` is already in scope via `use super::*;` (re-exports the
+    // outer `query.rs` imports including `trading_core::Venue`).
+
+    /// Build an in-memory ledger with the chart-of-accounts pre-seeded so
+    /// `post_fill` lands its FK targets cleanly.
+    async fn open_seeded_ledger() -> Ledger {
+        let ledger = Ledger::in_memory().await.expect("open in-memory ledger");
+        bootstrap::chart_of_accounts(&ledger)
+            .await
+            .expect("bootstrap chart of accounts");
+        ledger
+    }
+
+    fn ts_secs(secs: i64) -> Timestamp {
+        Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(secs))
+    }
+
+    fn make_fill(symbol: &str, side: Side, secs: i64) -> Fill {
+        Fill {
+            id: FillId::new(),
+            order_id: OrderId::new(),
+            symbol: Symbol::new(symbol),
+            side,
+            qty: Quantity::new(dec!(0.1)).expect("qty"),
+            price: Price::new(dec!(40_000)).expect("price"),
+            fee: Money::from_decimal(dec!(0.5)),
+            fee_tier: FeeTier::Taker,
+            venue_ts: ts_secs(secs),
+            local_ts: ts_secs(secs),
+            liquidity: Liquidity::Taker,
+            transaction_id: None,
+        }
+    }
+
+    /// T1606 — seed 6 fills across two `(venue, symbol)` pairs (3 BTCUSDT,
+    /// 3 ETHUSDT; two of each inside the window, one outside). Assert
+    /// `recent_fills_filtered(&ledger, Binance, BTCUSDT, since, until)`
+    /// returns exactly the two BTCUSDT fills inside `[since, until)` in
+    /// newest-first order.
+    #[tokio::test]
+    async fn recent_fills_filtered_returns_window_subset() {
+        let ledger = open_seeded_ledger().await;
+        for secs in [10, 100, 200] {
+            post_fill(
+                &ledger,
+                &make_fill("BTCUSDT", Side::Buy, secs),
+                Venue::Binance,
+                None,
+            )
+            .await
+            .expect("post BTCUSDT fill");
+        }
+        for secs in [120, 180, 900] {
+            post_fill(
+                &ledger,
+                &make_fill("ETHUSDT", Side::Sell, secs),
+                Venue::Binance,
+                None,
+            )
+            .await
+            .expect("post ETHUSDT fill");
+        }
+        let since = ts_secs(50);
+        let until = ts_secs(500);
+        let fills = recent_fills_filtered(
+            &ledger,
+            Venue::Binance,
+            Symbol::new("BTCUSDT"),
+            since,
+            until,
+        )
+        .await
+        .expect("query ok");
+        assert_eq!(
+            fills.len(),
+            2,
+            "expected two BTCUSDT fills in window, got {}",
+            fills.len()
+        );
+        // Newest-first — ts=200 before ts=100.
+        assert_eq!(fills[0].venue_ts, ts_secs(200));
+        assert_eq!(fills[1].venue_ts, ts_secs(100));
+        for f in &fills {
+            assert_eq!(f.symbol, Symbol::new("BTCUSDT"));
+        }
+    }
+
+    /// T1606 — far-future window returns `Ok(vec![])` (never `Err`).
+    #[tokio::test]
+    async fn recent_fills_filtered_empty_window_returns_ok_empty() {
+        let ledger = open_seeded_ledger().await;
+        post_fill(
+            &ledger,
+            &make_fill("BTCUSDT", Side::Buy, 100),
+            Venue::Binance,
+            None,
+        )
+        .await
+        .expect("seed fill");
+        let since = ts_secs(10_000_000);
+        let until = ts_secs(20_000_000);
+        let fills = recent_fills_filtered(
+            &ledger,
+            Venue::Binance,
+            Symbol::new("BTCUSDT"),
+            since,
+            until,
+        )
+        .await
+        .expect("query ok");
+        assert!(fills.is_empty(), "far-future window must return empty vec");
+    }
+
+    /// Phase 3 R13.4 — multi-venue case. After migration `008`,
+    /// `recent_fills_filtered(.., Venue::Coinbase, ..)` returns the
+    /// matching subset (previously `Ok(vec![])` under the Phase 2 gate).
+    #[tokio::test]
+    async fn recent_fills_filtered_multi_venue_returns_matching_subset() {
+        let ledger = open_seeded_ledger().await;
+        post_fill(
+            &ledger,
+            &make_fill("BTCUSDT", Side::Buy, 100),
+            Venue::Binance,
+            None,
+        )
+        .await
+        .expect("post Binance fill");
+        post_fill(
+            &ledger,
+            &make_fill("BTCUSDT", Side::Buy, 200),
+            Venue::Coinbase,
+            None,
+        )
+        .await
+        .expect("post Coinbase fill");
+
+        let since = ts_secs(0);
+        let until = ts_secs(1_000);
+
+        // Phase 2 behaviour was `Ok(vec![])`; post-008 behaviour returns
+        // the Coinbase row.
+        let coinbase = recent_fills_filtered(
+            &ledger,
+            Venue::Coinbase,
+            Symbol::new("BTCUSDT"),
+            since,
+            until,
+        )
+        .await
+        .expect("Coinbase query ok");
+        assert_eq!(
+            coinbase.len(),
+            1,
+            "Coinbase must return 1 fill post-008; got {}",
+            coinbase.len()
+        );
+    }
+
+    // ── T1712 — recent_journal_filtered unit tests (Phase 3 R12 / Q7) ─────────
+
+    /// T1712 — multi-venue / multi-kind seed; page-0 cursor returns the
+    /// expected slice newest-first. `kind = All` matches every row.
+    #[tokio::test]
+    async fn recent_journal_filtered_returns_window_subset() {
+        let ledger = open_seeded_ledger().await;
+        // 3 fills at secs 100 / 200 / 300, all Binance.
+        for secs in [100, 200, 300] {
+            post_fill(
+                &ledger,
+                &make_fill("BTCUSDT", Side::Buy, secs),
+                Venue::Binance,
+                None,
+            )
+            .await
+            .expect("seed Binance fill");
+        }
+        let since = ts_secs(0);
+        let until = ts_secs(1_000);
+        let (rows, total) = recent_journal_filtered(
+            &ledger,
+            &[],
+            None,
+            AuditKindFilter::All,
+            since,
+            until,
+            0,
+            250,
+        )
+        .await
+        .expect("query ok");
+        assert_eq!(total, 3, "expected 3 total rows; got {total}");
+        assert_eq!(rows.len(), 3, "page 0 returns all 3 rows");
+        // Newest-first: ts=300 before 200 before 100.
+        assert_eq!(rows[0].ts, ts_secs(300));
+        assert_eq!(rows[1].ts, ts_secs(200));
+        assert_eq!(rows[2].ts, ts_secs(100));
+    }
+
+    /// T1712 — `kind = Fill` isolates fill rows.
+    #[tokio::test]
+    async fn recent_journal_filtered_kind_fill_isolates_fills() {
+        let ledger = open_seeded_ledger().await;
+        // 2 fills + 1 registry memo (which lands as a non-fill description
+        // via the legacy `registry_event` writer — synthesised here via
+        // raw SQL to keep this test self-contained).
+        post_fill(
+            &ledger,
+            &make_fill("BTCUSDT", Side::Buy, 100),
+            Venue::Binance,
+            None,
+        )
+        .await
+        .expect("seed Buy");
+        post_fill(
+            &ledger,
+            &make_fill("ETHUSDT", Side::Sell, 200),
+            Venue::Binance,
+            None,
+        )
+        .await
+        .expect("seed Sell");
+        sqlx::query(
+            "INSERT INTO journal_transactions (id, ts, description, venue) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind("2026-04-27T20:00:50Z")
+        .bind("registry:Bootstrap:initial seed")
+        .bind("binance")
+        .execute(ledger.pool())
+        .await
+        .expect("seed registry row");
+
+        let since = ts_secs(0);
+        let until = ts_secs(1_000_000_000);
+        let (rows, total) = recent_journal_filtered(
+            &ledger,
+            &[],
+            None,
+            AuditKindFilter::Fill,
+            since,
+            until,
+            0,
+            250,
+        )
+        .await
+        .expect("query ok");
+        assert_eq!(
+            total, 2,
+            "kind=Fill must isolate the 2 fill rows; got {total}"
+        );
+        assert_eq!(rows.len(), 2);
+        for r in &rows {
+            assert!(matches!(r.kind, AuditKindLabel::Fill));
+        }
+    }
+
+    /// T1712 — empty window returns `Ok((vec![], 0))` (never `Err`).
+    #[tokio::test]
+    async fn recent_journal_filtered_empty_window_returns_ok_zero() {
+        let ledger = open_seeded_ledger().await;
+        post_fill(
+            &ledger,
+            &make_fill("BTCUSDT", Side::Buy, 100),
+            Venue::Binance,
+            None,
+        )
+        .await
+        .expect("seed");
+        let since = ts_secs(10_000_000);
+        let until = ts_secs(20_000_000);
+        let (rows, total) = recent_journal_filtered(
+            &ledger,
+            &[],
+            None,
+            AuditKindFilter::All,
+            since,
+            until,
+            0,
+            250,
+        )
+        .await
+        .expect("query ok");
+        assert_eq!(total, 0, "far-future window total must be 0");
+        assert!(rows.is_empty());
+    }
+
+    /// T1712 — pagination: 12 rows seeded, page 0 size 5 returns 5;
+    /// page 1 returns 5; page 2 returns 2.
+    #[tokio::test]
+    async fn recent_journal_filtered_pagination_returns_correct_total() {
+        let ledger = open_seeded_ledger().await;
+        for secs in 100..112 {
+            post_fill(
+                &ledger,
+                &make_fill("BTCUSDT", Side::Buy, secs),
+                Venue::Binance,
+                None,
+            )
+            .await
+            .expect("seed");
+        }
+        let since = ts_secs(0);
+        let until = ts_secs(1_000);
+        let (rows0, total0) =
+            recent_journal_filtered(&ledger, &[], None, AuditKindFilter::All, since, until, 0, 5)
+                .await
+                .expect("page 0");
+        assert_eq!(total0, 12, "total_count is window-wide, not page-bound");
+        assert_eq!(rows0.len(), 5, "page 0 returns 5 rows");
+
+        let (rows2, total2) = recent_journal_filtered(
+            &ledger,
+            &[],
+            None,
+            AuditKindFilter::All,
+            since,
+            until,
+            10,
+            5,
+        )
+        .await
+        .expect("page 2");
+        assert_eq!(total2, 12);
+        assert_eq!(
+            rows2.len(),
+            2,
+            "page 2 (offset 10, size 5) returns the tail 2"
+        );
+    }
+
+    /// T1712 — venue predicate isolates the requested venue.
+    #[tokio::test]
+    async fn recent_journal_filtered_venue_predicate_isolates() {
+        let ledger = open_seeded_ledger().await;
+        post_fill(
+            &ledger,
+            &make_fill("BTCUSDT", Side::Buy, 100),
+            Venue::Binance,
+            None,
+        )
+        .await
+        .expect("seed Binance");
+        post_fill(
+            &ledger,
+            &make_fill("BTCUSDT", Side::Buy, 200),
+            Venue::Coinbase,
+            None,
+        )
+        .await
+        .expect("seed Coinbase");
+
+        let since = ts_secs(0);
+        let until = ts_secs(1_000);
+
+        let (rows, total) = recent_journal_filtered(
+            &ledger,
+            &[Venue::Coinbase],
+            None,
+            AuditKindFilter::All,
+            since,
+            until,
+            0,
+            250,
+        )
+        .await
+        .expect("Coinbase query ok");
+        assert_eq!(total, 1, "single-venue predicate isolates 1 row");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].venue, Venue::Coinbase);
+    }
+
+    // ── Phase 4 (T1802) — equity_curve_for_strategy unit tests ───────────────
+
+    /// Inject a closed-trade `income:realized_pnl` row tagged with the
+    /// given strategy id and timestamp. Bypasses `post_fill`'s
+    /// simplified zero-realized cost basis so tests can verify the
+    /// running-sum walk against realistic deltas.
+    async fn inject_realized_pnl(
+        ledger: &Ledger,
+        strategy_id: Option<&str>,
+        pnl: Decimal,
+        ts: Timestamp,
+    ) {
+        let ts_str = ts.inner().format(&Rfc3339).expect("rfc3339 fmt");
+        let txn_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO journal_transactions (id, ts, description, strategy_id) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(&txn_id)
+        .bind(&ts_str)
+        .bind("sell 1 BTCUSDT @ 1000")
+        .bind(strategy_id)
+        .execute(&ledger.pool)
+        .await
+        .expect("insert transaction");
+
+        let (debit, credit) = if pnl >= Decimal::ZERO {
+            (Decimal::ZERO, pnl)
+        } else {
+            (pnl.abs(), Decimal::ZERO)
+        };
+        let entry_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO journal_entries \
+             (id, transaction_id, account_id, debit_amount, credit_amount, ts) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&entry_id)
+        .bind(&txn_id)
+        .bind("income:realized_pnl")
+        .bind(debit.to_string())
+        .bind(credit.to_string())
+        .bind(&ts_str)
+        .execute(&ledger.pool)
+        .await
+        .expect("insert journal entry");
+
+        // Balancing entry against assets:cash:USDT.
+        let bal_id = uuid::Uuid::new_v4().to_string();
+        let (bal_debit, bal_credit) = if pnl >= Decimal::ZERO {
+            (pnl, Decimal::ZERO)
+        } else {
+            (Decimal::ZERO, pnl.abs())
+        };
+        sqlx::query(
+            "INSERT INTO journal_entries \
+             (id, transaction_id, account_id, debit_amount, credit_amount, ts) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&bal_id)
+        .bind(&txn_id)
+        .bind("assets:cash:USDT")
+        .bind(bal_debit.to_string())
+        .bind(bal_credit.to_string())
+        .bind(&ts_str)
+        .execute(&ledger.pool)
+        .await
+        .expect("insert balancing entry");
+    }
+
+    #[tokio::test]
+    async fn equity_curve_for_strategy_returns_window_samples() {
+        let ledger = open_seeded_ledger().await;
+        // 5 known realized-pnl rows: +5, -3, +8, +2, -1.
+        let deltas = [dec!(5), dec!(-3), dec!(8), dec!(2), dec!(-1)];
+        for (i, d) in deltas.iter().enumerate() {
+            let secs = 10 + i64::try_from(i).unwrap_or(0) * 10;
+            inject_realized_pnl(&ledger, Some("alpha"), *d, ts_secs(secs)).await;
+        }
+
+        let since = ts_secs(0);
+        let until = ts_secs(10_000);
+        let series =
+            equity_curve_for_strategy(&ledger, StrategyId::new("alpha"), since, Some(until))
+                .await
+                .expect("query ok");
+        assert_eq!(series.points.len(), 5);
+
+        // Running-sum walk against the baseline cash balance.
+        let baseline = cash_balance(&ledger).await.expect("cash ok").amount();
+        let mut running = baseline;
+        let expected: Vec<Decimal> = deltas
+            .iter()
+            .map(|d| {
+                running += d;
+                running
+            })
+            .collect();
+        for (idx, p) in series.points.iter().enumerate() {
+            assert_eq!(
+                p.equity.amount(),
+                expected[idx],
+                "point {idx} running equity mismatch",
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn equity_curve_for_strategy_empty_window_returns_empty_window_err() {
+        let ledger = open_seeded_ledger().await;
+        let since = ts_secs(0);
+        let until = ts_secs(10);
+        let res =
+            equity_curve_for_strategy(&ledger, StrategyId::new("alpha"), since, Some(until)).await;
+        assert!(matches!(res, Err(LedgerError::EmptyWindow)));
+    }
+
+    #[tokio::test]
+    async fn equity_curve_for_strategy_until_none_includes_to_now() {
+        let ledger = open_seeded_ledger().await;
+        // Seed a row at "5 seconds ago"; until=None reads
+        // Timestamp::now() so the row must surface.
+        let now = OffsetDateTime::now_utc();
+        let ts5 = Timestamp::new(now - time::Duration::seconds(5));
+        inject_realized_pnl(&ledger, Some("alpha"), dec!(7), ts5).await;
+
+        let since = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let series = equity_curve_for_strategy(&ledger, StrategyId::new("alpha"), since, None)
+            .await
+            .expect("until=None must succeed");
+        assert_eq!(series.points.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn equity_curve_for_strategy_filters_by_strategy_id() {
+        let ledger = open_seeded_ledger().await;
+        // alpha: 2 rows; beta: 1 row.
+        inject_realized_pnl(&ledger, Some("alpha"), dec!(10), ts_secs(10)).await;
+        inject_realized_pnl(&ledger, Some("alpha"), dec!(5), ts_secs(20)).await;
+        inject_realized_pnl(&ledger, Some("beta"), dec!(20), ts_secs(30)).await;
+
+        let since = ts_secs(0);
+        let until = ts_secs(10_000);
+        let alpha_series =
+            equity_curve_for_strategy(&ledger, StrategyId::new("alpha"), since, Some(until))
+                .await
+                .expect("alpha ok");
+        assert_eq!(alpha_series.points.len(), 2);
+
+        let beta_series =
+            equity_curve_for_strategy(&ledger, StrategyId::new("beta"), since, Some(until))
+                .await
+                .expect("beta ok");
+        assert_eq!(beta_series.points.len(), 1);
+    }
+
+    /// T1606 — calling for ETHUSDT returns the ETHUSDT subset only.
+    #[tokio::test]
+    async fn recent_fills_filtered_distinct_symbols_isolated() {
+        let ledger = open_seeded_ledger().await;
+        for secs in [100, 200] {
+            post_fill(
+                &ledger,
+                &make_fill("BTCUSDT", Side::Buy, secs),
+                Venue::Binance,
+                None,
+            )
+            .await
+            .expect("seed BTC");
+        }
+        for secs in [150, 250] {
+            post_fill(
+                &ledger,
+                &make_fill("ETHUSDT", Side::Sell, secs),
+                Venue::Binance,
+                None,
+            )
+            .await
+            .expect("seed ETH");
+        }
+        let since = ts_secs(0);
+        let until = ts_secs(1_000);
+        let eth = recent_fills_filtered(
+            &ledger,
+            Venue::Binance,
+            Symbol::new("ETHUSDT"),
+            since,
+            until,
+        )
+        .await
+        .expect("eth ok");
+        assert_eq!(eth.len(), 2);
+        for f in &eth {
+            assert_eq!(f.symbol, Symbol::new("ETHUSDT"));
+        }
+    }
 }

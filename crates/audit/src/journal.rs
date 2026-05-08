@@ -41,10 +41,11 @@ use crate::Ledger;
 ///
 /// Returns [`LedgerError::TransactionFailed`] if the SQL transaction fails.
 #[allow(clippy::too_many_lines)] // double-entry for buy and sell requires this length
-#[instrument(name = "ledger.post_fill", skip(ledger, fill), fields(fill_id = %fill.id, strategy_id = ?strategy_id))]
+#[instrument(name = "ledger.post_fill", skip(ledger, fill), fields(fill_id = %fill.id, venue = %venue, strategy_id = ?strategy_id))]
 pub async fn post_fill(
     ledger: &Ledger,
     fill: &Fill,
+    venue: Venue,
     strategy_id: Option<&str>,
 ) -> Result<SmolStr, LedgerError> {
     let txn_id = Uuid::new_v4().to_string();
@@ -79,13 +80,14 @@ pub async fn post_fill(
     // verbatim and is storage-only — it never surfaces in the rendered
     // backtest report body.
     sqlx::query(
-        "INSERT INTO journal_transactions (id, ts, description, strategy_id) \
-         VALUES (?, ?, ?, ?)",
+        "INSERT INTO journal_transactions (id, ts, description, strategy_id, venue) \
+         VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&txn_id)
     .bind(&ts)
     .bind(&description)
     .bind(strategy_id)
+    .bind(venue.to_string())
     .execute(&mut *db_txn)
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
@@ -393,6 +395,223 @@ pub async fn kill_switch_tripped(
     .bind(Some("kill_switch_tripped"))
     .bind(Some(reason))
     .bind::<Option<&str>>(None) // venue — global trip; per-venue trips wired in a follow-up (R8.3)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    db_txn
+        .commit()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
+}
+
+/// Phase 5 R5 — operator paused or resumed a strategy via the per-row
+/// pause/resume button on the Strategies-detail screen. Atomic dual-
+/// write — memo row in `journal_transactions` + `strategy_events` row
+/// in one transaction (sibling of [`kill_switch_tripped`]).
+///
+/// - `paused == true`  → `error_summary = "paused"`,
+///   memo description `"strategy:StrategyPaused:<id>:paused"`.
+/// - `paused == false` → `error_summary = "resumed"`,
+///   memo description `"strategy:StrategyPaused:<id>:resumed"`.
+///
+/// Memo row uses `Rfc3339` second precision (preserved from
+/// [`kill_switch_tripped`]); the `strategy_events` row uses the 6-digit
+/// fractional-second format used by every other v0.5+/v1+ writer
+/// (HF-3 / architect risk #4 determinism gate).
+///
+/// `strategy_id` is bound to the affected strategy; `error_code =
+/// "strategy_paused"`; `venue = NULL`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error. On failure
+/// the entire transaction rolls back; neither row is left orphaned.
+#[instrument(name = "ledger.strategy_paused", skip(ledger))]
+pub async fn strategy_paused(
+    ledger: &Ledger,
+    strategy_id: &str,
+    paused: bool,
+    operator: &str,
+) -> Result<(), LedgerError> {
+    let direction = if paused { "paused" } else { "resumed" };
+    let metadata = serde_json::json!({
+        "event": "StrategyPaused",
+        "strategy_id": strategy_id,
+        "paused": paused,
+        "operator": operator,
+    })
+    .to_string();
+
+    // Memo-row timestamp: RFC-3339 second precision — matches the v0
+    // byte-for-byte registry_event format (preserved from
+    // kill_switch_tripped).
+    let memo_ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let memo_txn_id = Uuid::new_v4().to_string();
+    let memo_description = format!("strategy:StrategyPaused:{strategy_id}:{direction}");
+
+    // strategy_events row timestamp: 6-digit microsecond format.
+    let strategy_ts_fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let strategy_ts = time::OffsetDateTime::now_utc()
+        .format(&strategy_ts_fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let strategy_row_id = Uuid::new_v4().to_string();
+
+    // Atomic dual-write: one transaction, both rows.
+    let mut db_txn = ledger
+        .pool
+        .begin()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    // (1) memo row — preserves the audit-ledger's "every operator
+    // decision is reconstructible" rule.
+    sqlx::query(
+        "INSERT INTO journal_transactions (id, ts, description, metadata) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&memo_txn_id)
+    .bind(&memo_ts)
+    .bind(&memo_description)
+    .bind(&metadata)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    insert_entry(
+        &mut db_txn,
+        &memo_txn_id,
+        &memo_ts,
+        "equity:opening_balance",
+        dec!(0),
+        dec!(0),
+    )
+    .await?;
+
+    // (2) strategy_events row — operator-success-report and
+    // recent_journal_filtered surface this row.
+    sqlx::query(
+        "INSERT INTO strategy_events \
+         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary, venue) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&strategy_row_id)
+    .bind(&strategy_ts)
+    .bind("StrategyPaused")
+    .bind(Some(strategy_id))
+    .bind::<Option<&str>>(None) // old_hash
+    .bind::<Option<&str>>(None) // new_hash
+    .bind("") // source_path
+    .bind(operator)
+    .bind(Some("strategy_paused"))
+    .bind(Some(direction))
+    .bind::<Option<&str>>(None) // venue — operator action; venue-agnostic
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    db_txn
+        .commit()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
+}
+
+/// Phase 5 R8 — operator overrode a risk-engine veto via the OVERRIDE
+/// typed-confirm modal. Atomic dual-write per [`strategy_paused`].
+///
+/// Memo description: `"strategy:RiskVetoOverridden:<veto_id>:<reason>"`.
+/// `error_code = "risk_veto_overridden"`; `error_summary` carries
+/// `reason` verbatim.
+///
+/// `strategy_id` is bound to the strategy whose signal was vetoed;
+/// `venue = NULL`. Forward-only per Q9 — the override is recorded;
+/// the agent does NOT re-emit the blocked signal.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error. On failure
+/// the entire transaction rolls back; neither row is left orphaned.
+#[instrument(name = "ledger.risk_veto_overridden", skip(ledger))]
+pub async fn risk_veto_overridden(
+    ledger: &Ledger,
+    veto_id: &str,
+    strategy_id: &str,
+    reason: &str,
+    operator: &str,
+) -> Result<(), LedgerError> {
+    let metadata = serde_json::json!({
+        "event": "RiskVetoOverridden",
+        "veto_id": veto_id,
+        "strategy_id": strategy_id,
+        "reason": reason,
+        "operator": operator,
+    })
+    .to_string();
+
+    let memo_ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let memo_txn_id = Uuid::new_v4().to_string();
+    let memo_description = format!("strategy:RiskVetoOverridden:{veto_id}:{reason}");
+
+    let strategy_ts_fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let strategy_ts = time::OffsetDateTime::now_utc()
+        .format(&strategy_ts_fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let strategy_row_id = Uuid::new_v4().to_string();
+
+    let mut db_txn = ledger
+        .pool
+        .begin()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    sqlx::query(
+        "INSERT INTO journal_transactions (id, ts, description, metadata) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&memo_txn_id)
+    .bind(&memo_ts)
+    .bind(&memo_description)
+    .bind(&metadata)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    insert_entry(
+        &mut db_txn,
+        &memo_txn_id,
+        &memo_ts,
+        "equity:opening_balance",
+        dec!(0),
+        dec!(0),
+    )
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO strategy_events \
+         (id, ts, kind, strategy_id, old_hash, new_hash, source_path, operator, error_code, error_summary, venue) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&strategy_row_id)
+    .bind(&strategy_ts)
+    .bind("RiskVetoOverridden")
+    .bind(Some(strategy_id))
+    .bind::<Option<&str>>(None) // old_hash
+    .bind::<Option<&str>>(None) // new_hash
+    .bind("") // source_path
+    .bind(operator)
+    .bind(Some("risk_veto_overridden"))
+    .bind(Some(reason))
+    .bind::<Option<&str>>(None) // venue — operator action; venue-agnostic
     .execute(&mut *db_txn)
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
@@ -906,4 +1125,177 @@ pub async fn verify_balance(ledger: &Ledger, transaction_id: &str) -> Result<(),
         });
     }
     Ok(())
+}
+
+// ── Phase 5 — operator-write audit writers (Q10 unit tests) ─────────────────
+//
+// Sibling-of-`kill_switch_tripped_test` shape (lives at
+// `crates/audit/tests/kill_switch_dual_write_test.rs`) — each test asserts:
+//  - balanced memo + strategy_events row landed,
+//  - PascalCase `kind` value,
+//  - `error_code` / `error_summary` projection per the Phase 5 Design's
+//    column projection table,
+//  - reconciler invariant Σ debits == Σ credits unchanged.
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::{bootstrap, Ledger};
+
+    async fn open_ledger() -> Ledger {
+        let ledger = Ledger::in_memory().await.expect("open in-memory ledger");
+        bootstrap::chart_of_accounts(&ledger)
+            .await
+            .expect("bootstrap chart of accounts");
+        ledger
+    }
+
+    // ── strategy_paused tests ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn strategy_paused_emits_pascal_case_kind() {
+        let ledger = open_ledger().await;
+        strategy_paused(&ledger, "alpha", true, "operator")
+            .await
+            .expect("strategy_paused write");
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT kind FROM strategy_events WHERE kind = 'StrategyPaused'")
+                .fetch_all(ledger.pool())
+                .await
+                .expect("select kind");
+        assert_eq!(rows.len(), 1, "exactly one StrategyPaused row");
+        assert_eq!(rows[0].0, "StrategyPaused");
+    }
+
+    #[tokio::test]
+    async fn strategy_paused_balanced_memo_row() {
+        let ledger = open_ledger().await;
+        strategy_paused(&ledger, "alpha", true, "operator")
+            .await
+            .expect("strategy_paused write");
+        // The memo row's single zero-amount journal entry is balanced.
+        let entries: Vec<(String, String)> = sqlx::query_as(
+            "SELECT je.debit_amount, je.credit_amount \
+             FROM journal_entries je \
+             JOIN journal_transactions jt ON je.transaction_id = jt.id \
+             WHERE jt.description LIKE 'strategy:StrategyPaused:%'",
+        )
+        .fetch_all(ledger.pool())
+        .await
+        .expect("select memo entries");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "0");
+        assert_eq!(entries[0].1, "0");
+    }
+
+    #[tokio::test]
+    async fn strategy_paused_atomic_dual_write() {
+        let ledger = open_ledger().await;
+        strategy_paused(&ledger, "alpha", true, "operator")
+            .await
+            .expect("strategy_paused trip 1");
+        strategy_paused(&ledger, "alpha", false, "operator")
+            .await
+            .expect("strategy_paused trip 2");
+
+        let memo_count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM journal_transactions \
+             WHERE description LIKE 'strategy:StrategyPaused:%'",
+        )
+        .fetch_one(ledger.pool())
+        .await
+        .expect("count memo");
+        assert_eq!(memo_count.0, 2);
+
+        let event_count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM strategy_events WHERE kind = 'StrategyPaused'")
+                .fetch_one(ledger.pool())
+                .await
+                .expect("count events");
+        assert_eq!(event_count.0, 2);
+    }
+
+    #[tokio::test]
+    async fn strategy_paused_resume_flips_error_summary() {
+        let ledger = open_ledger().await;
+        strategy_paused(&ledger, "alpha", true, "operator")
+            .await
+            .expect("pause");
+        strategy_paused(&ledger, "alpha", false, "operator")
+            .await
+            .expect("resume");
+
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT error_summary, error_code FROM strategy_events \
+             WHERE kind = 'StrategyPaused' ORDER BY ts",
+        )
+        .fetch_all(ledger.pool())
+        .await
+        .expect("select error_summary");
+        assert_eq!(rows.len(), 2);
+        // error_code is identical for both directions; error_summary
+        // discriminates.
+        assert_eq!(rows[0].1, "strategy_paused");
+        assert_eq!(rows[1].1, "strategy_paused");
+        assert_eq!(rows[0].0, "paused");
+        assert_eq!(rows[1].0, "resumed");
+    }
+
+    // ── risk_veto_overridden tests ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn risk_veto_overridden_emits_pascal_case_kind() {
+        let ledger = open_ledger().await;
+        risk_veto_overridden(&ledger, "veto-1", "alpha", "daily_loss_cap", "operator")
+            .await
+            .expect("risk_veto_overridden write");
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT kind FROM strategy_events WHERE kind = 'RiskVetoOverridden'")
+                .fetch_all(ledger.pool())
+                .await
+                .expect("select kind");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "RiskVetoOverridden");
+    }
+
+    #[tokio::test]
+    async fn risk_veto_overridden_balanced_memo_row() {
+        let ledger = open_ledger().await;
+        risk_veto_overridden(&ledger, "veto-1", "alpha", "daily_loss_cap", "operator")
+            .await
+            .expect("write");
+        let entries: Vec<(String, String)> = sqlx::query_as(
+            "SELECT je.debit_amount, je.credit_amount \
+             FROM journal_entries je \
+             JOIN journal_transactions jt ON je.transaction_id = jt.id \
+             WHERE jt.description LIKE 'strategy:RiskVetoOverridden:%'",
+        )
+        .fetch_all(ledger.pool())
+        .await
+        .expect("select memo entries");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "0");
+        assert_eq!(entries[0].1, "0");
+    }
+
+    #[tokio::test]
+    async fn risk_veto_overridden_reason_preserved_in_error_summary() {
+        let ledger = open_ledger().await;
+        let reason = "per_symbol_cap_BTCUSDT";
+        risk_veto_overridden(&ledger, "veto-1", "alpha", reason, "operator")
+            .await
+            .expect("write");
+
+        let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+            "SELECT error_summary, error_code, strategy_id FROM strategy_events \
+             WHERE kind = 'RiskVetoOverridden'",
+        )
+        .fetch_all(ledger.pool())
+        .await
+        .expect("select error_summary");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, reason);
+        assert_eq!(rows[0].1, "risk_veto_overridden");
+        assert_eq!(rows[0].2.as_deref(), Some("alpha"));
+    }
 }

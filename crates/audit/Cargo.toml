@@ -36,3 +36,8 @@ rand_chacha.workspace = true
 # depends on `audit` (cycle); a local typed deserialize over the same
 # TOML key path satisfies the V8 acceptance shape without the cycle.
 toml.workspace = true
+# Phase 5 (T1902) — `insta` is needed for the two new audit-row
+# snapshot baselines (`strategy_events__strategy_paused_row.snap`
+# and `strategy_events__risk_veto_overridden_row.snap`) that lock the
+# format of the operator-write strategy_events rows (Q10).
+insta = { version = "1.42", features = ["yaml"] }

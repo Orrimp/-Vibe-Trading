@@ -10,11 +10,15 @@ use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use time::OffsetDateTime;
 use trading_core::{
-    Bar, FeeTier, FillView, Money, PnlSnapshot, PositionView, Price, Quantity, Side,
-    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Tick, Timeframe, Timestamp, Venue,
+    BacktestMetrics, Bar, EquitySeries, FeeTier, FillView, Money, PnlSnapshot, PositionView, Price,
+    Quantity, Side, StrategyEventKind, StrategyEventView, StrategyId, Symbol, Tick, Timeframe,
+    Timestamp, Usdt, Venue,
 };
 
-use crate::state::{AgentMode, Cockpit, PanelState, StrategyRow, StrategyStatus};
+use crate::state::{
+    AgentMode, AuditKindLabel, Cockpit, JournalRow, MarketHealthState, PanelState, RiskState,
+    StrategiesConfig, StrategyConfigEntry, StrategyRow, StrategyStatus, VetoEvent,
+};
 
 /// A fixed epoch used to generate deterministic timestamps.
 /// 2024-01-15T12:00:00Z — arbitrary but stable, so snapshot outputs
@@ -124,7 +128,7 @@ pub fn fake_pnl_positive() -> PnlSnapshot {
     }
 }
 
-/// A P&L snapshot with a losing day (exercises `color::NEG`).
+/// A P&L snapshot with a losing day (exercises `color::DOWN_500`).
 #[must_use]
 pub fn fake_pnl_negative() -> PnlSnapshot {
     PnlSnapshot {
@@ -157,12 +161,29 @@ pub fn fake_positions() -> Vec<PositionView> {
     vec![fake_position_btc()]
 }
 
+/// Build the fixture market-health map: all three canonical venues are
+/// `Fresh`. The fixtures bin has no watchdog running, so health never
+/// updates — this is the "everything is fine" static demo state.
+#[must_use]
+pub fn fake_market_health() -> std::collections::HashMap<Venue, MarketHealthState> {
+    use std::collections::HashMap;
+    let mut map = HashMap::new();
+    map.insert(Venue::Binance, MarketHealthState::Fresh);
+    map
+}
+
+/// Static account label for the fixtures bin (no `Config` available).
+/// Per T1508: `"Paper · Demo 3-symbol"`.
+pub const FIXTURE_ACCOUNT_LABEL: &str = "Paper \u{00b7} Demo 3-symbol";
+
 /// A cockpit booted fully ready — for manual smoke tests with
 /// `cargo run --bin cockpit --features fixtures`.
 #[must_use]
 pub fn fake_cockpit_ready() -> Cockpit {
     let mut c = Cockpit::ready(fake_fill_feed(12), fake_positions(), fake_pnl_positive());
     c.mode = AgentMode::Paper;
+    c.market_health = fake_market_health();
+    c.account_label = smol_str::SmolStr::new(FIXTURE_ACCOUNT_LABEL);
     c
 }
 
@@ -172,6 +193,42 @@ pub fn fake_cockpit_ready() -> Cockpit {
 pub fn fake_cockpit_ready_with_three_fills() -> Cockpit {
     let mut c = Cockpit::ready(fake_fill_feed(3), fake_positions(), fake_pnl_positive());
     c.mode = AgentMode::Paper;
+    c
+}
+
+/// Phase 5 (T1910) — deterministic seed for a single `VetoEvent`.
+/// `veto_id` is a stable label so snapshot baselines stay reviewable.
+#[must_use]
+pub fn fake_veto_event(veto_id: &str, strategy: &str, reason: &str) -> VetoEvent {
+    use trading_core::{Signal, SignalEvidence, SignalKind};
+    VetoEvent {
+        veto_id: SmolStr::new(veto_id),
+        ts: fixed_ts(0),
+        strategy_id: StrategyId::new(strategy),
+        reason: SmolStr::new(reason),
+        blocked_signal: Signal {
+            strategy_id: StrategyId::new(strategy),
+            symbol: Symbol::new("BTCUSDT"),
+            ts: fixed_ts(0),
+            kind: SignalKind::Buy,
+            evidence: SignalEvidence::empty(),
+            pair_data: None,
+        },
+    }
+}
+
+/// Phase 5 (T1910) — fixture cockpit with one surfaced veto event +
+/// the override-modal in `Idle` state. Used by the
+/// `panel_snapshots__strategies_screen__override_button_idle.snap`
+/// baseline + the override-risk-veto round-trip integration test.
+#[must_use]
+pub fn fake_cockpit_with_one_veto() -> Cockpit {
+    let mut c = fake_cockpit_ready();
+    c.risk_veto_events.push(fake_veto_event(
+        "veto-1",
+        "btc_macd_trend",
+        "daily_loss_cap",
+    ));
     c
 }
 
@@ -645,4 +702,380 @@ pub fn fake_cockpit_v15a_pairs_steady_state() -> Cockpit {
     c.strategies = PanelState::Ready(fake_v15a_strategy_rows());
     c.strategies_recent_events = fake_v15a_recent_events().into_iter().collect();
     c
+}
+
+// ── Phase 2 — synthetic candles + per-symbol fills (T1607) ─────────────────
+
+/// Per-symbol starting price + volatility for the deterministic random
+/// walk. Reflects the rough magnitude of each pair's actual price level so
+/// the fixtures-mode chart has visually appropriate amplitude.
+fn symbol_table(symbol: &Symbol) -> (Decimal, f64) {
+    match symbol.0.as_str() {
+        "BTCUSDT" => (dec!(40_000), 50.0),
+        "ETHUSDT" => (dec!(2_400), 8.0),
+        "SOLUSDT" => (dec!(90), 1.5),
+        _ => (dec!(100), 1.0),
+    }
+}
+
+/// Phase 2 (Q6) — per-symbol seed via `DefaultHasher` over
+/// `format!("{venue:?}/{symbol}")`. In-process determinism is sufficient
+/// for Phase 2 (snapshot baselines pinned per CI run).
+#[must_use]
+pub fn seed_for(venue: Venue, symbol: &Symbol) -> u64 {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    format!("{venue:?}/{symbol}").hash(&mut h);
+    h.finish()
+}
+
+/// Phase 2 — deterministic OHLC random walk for fixtures-mode chart
+/// seeding. `seed` controls the random walk; each call with the same
+/// `(seed, venue, symbol, count)` produces a byte-equal `Vec<Bar>`.
+///
+/// `open_ts` is anchored at `fixed_ts(offset_min * 60)` so the fixtures
+/// bin's chart sits at the same epoch the rest of the fixtures share.
+#[allow(clippy::needless_pass_by_value)]
+#[must_use]
+pub fn synthetic_candles(seed: u64, venue: Venue, symbol: Symbol, count: usize) -> Vec<Bar> {
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
+
+    // Broadcast the u64 seed across the 32-byte ChaCha20 seed array
+    // (8 bytes seed + 24 zero bytes — the simplest stable shape).
+    let mut seed_bytes = [0u8; 32];
+    seed_bytes[..8].copy_from_slice(&seed.to_le_bytes());
+    let mut rng = ChaCha20Rng::from_seed(seed_bytes);
+
+    let (start_price, vol) = symbol_table(&symbol);
+    let mut prev_close = start_price;
+    let mut out = Vec::with_capacity(count);
+
+    let p = |d: Decimal| -> Price {
+        // Floor to at least 1 cent so Price::new doesn't reject. Random
+        // walks at extreme negative values clamp to 1 USDT.
+        let clamped = d.max(dec!(1));
+        Price::new(clamped).unwrap_or_else(|_| unreachable!())
+    };
+
+    // `count` is fixture-bounded (≤ 60 typical); the cast is lossless.
+    #[allow(clippy::cast_possible_wrap)]
+    for i in 0..count as i64 {
+        let drift: f64 = rng.random_range(-vol..vol);
+        let drift_dec = Decimal::try_from(drift).unwrap_or(dec!(0));
+        let open = prev_close;
+        let close = open + drift_dec;
+        let wick_high: f64 = rng.random_range(0.0..vol / 2.0);
+        let wick_low: f64 = rng.random_range(0.0..vol / 2.0);
+        let wick_high_dec = Decimal::try_from(wick_high).unwrap_or(dec!(0));
+        let wick_low_dec = Decimal::try_from(wick_low).unwrap_or(dec!(0));
+        let high = open.max(close) + wick_high_dec;
+        let low = open.min(close) - wick_low_dec;
+
+        let open_ts = fixed_ts(i * 60);
+        let close_ts = fixed_ts(i * 60 + 59);
+        out.push(Bar {
+            symbol: symbol.clone(),
+            tf: Timeframe::OneMinute,
+            open_ts,
+            close_ts,
+            open: p(open),
+            high: p(high),
+            low: p(low),
+            close: p(close),
+            volume: Quantity::new(dec!(12.5)).unwrap_or_else(|_| unreachable!()),
+            trade_count: 100,
+            local_recv_ts: close_ts,
+            venue,
+        });
+        prev_close = close;
+    }
+    out
+}
+
+/// Phase 2 — produce `count` deterministic fills alternating `Buy` /
+/// `Sell` for the given `(venue, symbol)`. Mirrors the existing
+/// `fake_fill_view` `n % 2 == 0` rule with `symbol` substituted in.
+/// When `count >= 2` the result holds at least one buy and one sell.
+#[must_use]
+pub fn synthetic_fills_for(_venue: Venue, symbol: &Symbol, count: usize) -> Vec<FillView> {
+    let (start_price, _vol) = symbol_table(symbol);
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        // `i` is fixture-sized (≤ 200); the cast is lossless.
+        #[allow(clippy::cast_possible_wrap)]
+        let n = i as i64;
+        let side = if n % 2 == 0 { Side::Buy } else { Side::Sell };
+        let price = Price::new(start_price + Decimal::from(n)).unwrap_or_else(|_| unreachable!());
+        out.push(FillView {
+            symbol: symbol.clone(),
+            side,
+            price,
+            qty: Quantity::new(dec!(0.1)).unwrap_or_else(|_| unreachable!()),
+            fee: Money::from_decimal(dec!(0.5)),
+            fee_tier: FeeTier::Taker,
+            venue_ts: fixed_ts(n),
+            transaction_id: SmolStr::new(format!("fixture-{symbol}-{n}")),
+        });
+    }
+    out
+}
+
+// ── Phase 3 (Lumen detail screens) — Strategies / Risk / Audit fixtures ─────
+//
+// Deterministic builders the fixtures bin pre-seeds and the snapshot
+// tests consume. Each helper returns canonical demo data with stable
+// timestamps / hashes so insta baselines stay reviewable.
+
+/// T1707 — Risk-screen fixture covering all three colour bands per V5:
+/// one venue/symbol < 70 % (`ACCENT`), one ≥ 80 % (`WARN_500`), one
+/// ≥ 95 % (`DOWN_500`). `daily_loss_used_pct` and `heartbeat_age_ms`
+/// stay in the green band so the snapshot foregrounds the per-symbol
+/// bars (the focus of the screen).
+#[must_use]
+pub fn fake_risk_state() -> RiskState {
+    use std::collections::HashMap;
+    let mut exposure = HashMap::new();
+    let mut caps = HashMap::new();
+    // (Binance, BTCUSDT) — 50 / 100 = 50 % → ACCENT band.
+    exposure.insert((Venue::Binance, Symbol::new("BTCUSDT")), Decimal::from(50));
+    caps.insert((Venue::Binance, Symbol::new("BTCUSDT")), Decimal::from(100));
+    // (Binance, ETHUSDT) — 80 / 100 = 80 % → WARN_500 band.
+    exposure.insert((Venue::Binance, Symbol::new("ETHUSDT")), Decimal::from(80));
+    caps.insert((Venue::Binance, Symbol::new("ETHUSDT")), Decimal::from(100));
+    // (Coinbase, SOLUSDT) — 95 / 100 = 95 % → DOWN_500 band.
+    exposure.insert((Venue::Coinbase, Symbol::new("SOLUSDT")), Decimal::from(95));
+    caps.insert(
+        (Venue::Coinbase, Symbol::new("SOLUSDT")),
+        Decimal::from(100),
+    );
+    RiskState {
+        per_symbol_exposure: exposure,
+        per_symbol_caps: caps,
+        daily_loss_used_pct: Decimal::from(20),
+        daily_loss_cap_pct: Decimal::from(100),
+        heartbeat_age_ms: 120,
+        heartbeat_timeout_ms: 30_000,
+    }
+}
+
+/// T1704 — Strategies-detail fixture covering ≥ 3 params rows per the
+/// snapshot acceptance. Three strategies: SMA crossover, MACD trend,
+/// RSI reversion (matches `fake_strategy_row_*` ids so the chip row +
+/// params block render together end-to-end).
+#[must_use]
+pub fn fake_strategies_config() -> StrategiesConfig {
+    StrategiesConfig {
+        strategies: vec![
+            StrategyConfigEntry {
+                id: StrategyId::new("btc_macd_trend"),
+                source_path: SmolStr::new(RECIPE_MACD),
+                params: vec![
+                    (SmolStr::new("symbol"), SmolStr::new("BTCUSDT")),
+                    (SmolStr::new("fast_period"), SmolStr::new("12")),
+                    (SmolStr::new("slow_period"), SmolStr::new("26")),
+                    (SmolStr::new("signal_period"), SmolStr::new("9")),
+                ],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("btc_rsi_reversion"),
+                source_path: SmolStr::new(RECIPE_RSI),
+                params: vec![
+                    (SmolStr::new("symbol"), SmolStr::new("BTCUSDT")),
+                    (SmolStr::new("period"), SmolStr::new("14")),
+                    (SmolStr::new("oversold"), SmolStr::new("30")),
+                    (SmolStr::new("overbought"), SmolStr::new("70")),
+                ],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("btc_bbands_mean_revert"),
+                source_path: SmolStr::new(RECIPE_BB),
+                params: vec![
+                    (SmolStr::new("symbol"), SmolStr::new("BTCUSDT")),
+                    (SmolStr::new("period"), SmolStr::new("20")),
+                    (SmolStr::new("std_dev"), SmolStr::new("2")),
+                ],
+            },
+        ],
+    }
+}
+
+/// T1710 — Audit-screen fixture row generator. Returns `count`
+/// deterministic rows spanning multiple venues / symbols / kinds in
+/// reverse-chronological order (newest-first). Row `n` sits at
+/// `FIXED_EPOCH_SECS + n` and rotates through (Venue, Symbol, kind)
+/// triples so the snapshot exercises every column shape.
+#[must_use]
+pub fn fake_journal_rows(count: usize) -> Vec<JournalRow> {
+    let venues = [Venue::Binance, Venue::Coinbase, Venue::Kraken];
+    let symbols = [
+        Some(Symbol::new("BTCUSDT")),
+        Some(Symbol::new("ETHUSDT")),
+        Some(Symbol::new("SOLUSDT")),
+        None,
+    ];
+    let kinds = [
+        AuditKindLabel::Fill,
+        AuditKindLabel::StrategyEvent,
+        AuditKindLabel::Reconciliation,
+    ];
+    let strategies = [
+        Some(StrategyId::new("btc_macd_trend")),
+        Some(StrategyId::new("btc_rsi_reversion")),
+        None,
+    ];
+
+    let mut out = Vec::with_capacity(count);
+    for n in 0..count {
+        let n_i64 = i64::try_from(n).unwrap_or(0);
+        let venue = venues[n % venues.len()];
+        let symbol = symbols[n % symbols.len()].clone();
+        let kind = kinds[n % kinds.len()];
+        let strategy_id = strategies[n % strategies.len()].clone();
+        // Fixed seconds-from-epoch so timestamps are stable across runs.
+        let ts = fixed_ts(n_i64);
+        let description = match kind {
+            AuditKindLabel::Fill => format!(
+                "buy 0.{:02} {} @ 50000",
+                n % 100,
+                symbol.as_ref().map_or("BTCUSDT", |s| s.0.as_str()),
+            ),
+            AuditKindLabel::StrategyEvent => "registry:StrategyLoaded:btc_macd_trend".to_string(),
+            AuditKindLabel::Reconciliation => format!("reconcile delta={n}"),
+        };
+        out.push(JournalRow {
+            tx_id: SmolStr::new(format!("fixture-row-{n:04}")),
+            ts,
+            venue,
+            symbol,
+            kind,
+            description: SmolStr::new(description),
+            strategy_id,
+        });
+    }
+    out
+}
+
+// ── Phase 4 (T1805 / T1806 / T1811) — viewer + sparkline fixtures ───────────
+
+/// Phase 4 (T1805) — deterministic `BacktestMetrics` matching the
+/// RSI sample: Total return -57.80 %, Sharpe -55.4257, Max DD
+/// 57.81 %, Trades 14118; CAGR + Win rate marked-absent.
+#[must_use]
+pub fn fake_backtest_metrics() -> BacktestMetrics {
+    BacktestMetrics {
+        total_return_pct: rust_decimal_macros::dec!(-57.80),
+        cagr_pct: rust_decimal::Decimal::ZERO,
+        cagr_present: false,
+        sharpe: rust_decimal_macros::dec!(-55.4257),
+        sharpe_present: true,
+        max_drawdown_pct: rust_decimal_macros::dec!(57.81),
+        win_rate_pct: rust_decimal::Decimal::ZERO,
+        win_rate_present: false,
+        trades: 14118,
+    }
+}
+
+/// Phase 4 (T1806) — 60-point synthetic series matching the RSI
+/// report shape: `peak = 100_000`, `trough = 42_195`,
+/// `max-DD ≈ 0.5781`.
+#[must_use]
+pub fn fake_equity_series_for_viewer() -> EquitySeries {
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    let mut pts = Vec::with_capacity(60);
+    for i in 0..30i64 {
+        pts.push((
+            fixed_ts(i * 60),
+            Money::<Usdt>::from_decimal(dec!(100000) - dec!(1000) * Decimal::from(i)),
+        ));
+    }
+    for i in 0..30i64 {
+        let v = dec!(70000) - dec!(1000) * Decimal::from(i);
+        pts.push((
+            fixed_ts((30 + i) * 60),
+            Money::<Usdt>::from_decimal(v.max(dec!(42195))),
+        ));
+    }
+    EquitySeries::from_points(pts).unwrap_or_else(|_| {
+        EquitySeries::from_points(vec![(
+            fixed_ts(0),
+            Money::<Usdt>::from_decimal(dec!(100000)),
+        )])
+        .unwrap_or_else(|_| unreachable!())
+    })
+}
+
+/// Phase 4 (T1811) — 120-point series for the cockpit-side
+/// Strategies-detail sparkline baseline. Deterministic ramp-up then
+/// ramp-down.
+#[must_use]
+pub fn fake_equity_series_for_sparkline() -> EquitySeries {
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    let mut pts = Vec::with_capacity(120);
+    for i in 0..60i64 {
+        pts.push((
+            fixed_ts(i * 60),
+            Money::<Usdt>::from_decimal(dec!(1000) + Decimal::from(i) * dec!(10)),
+        ));
+    }
+    for i in 0..60i64 {
+        pts.push((
+            fixed_ts((60 + i) * 60),
+            Money::<Usdt>::from_decimal(dec!(1600) - Decimal::from(i) * dec!(5)),
+        ));
+    }
+    EquitySeries::from_points(pts).unwrap_or_else(|_| unreachable!())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    /// T1607 — two calls with the same args produce byte-equal `Vec<Bar>`.
+    #[test]
+    fn synthetic_candles_deterministic() {
+        let symbol = Symbol::new("BTCUSDT");
+        let seed = seed_for(Venue::Binance, &symbol);
+        let a = synthetic_candles(seed, Venue::Binance, symbol.clone(), 60);
+        let b = synthetic_candles(seed, Venue::Binance, symbol, 60);
+        assert_eq!(a.len(), b.len());
+        for (x, y) in a.iter().zip(b.iter()) {
+            assert_eq!(x.close.get(), y.close.get());
+            assert_eq!(x.high.get(), y.high.get());
+            assert_eq!(x.low.get(), y.low.get());
+            assert_eq!(x.open.get(), y.open.get());
+        }
+    }
+
+    /// T1607 — distinct symbols hash to distinct seeds → distinct walks.
+    #[test]
+    fn synthetic_candles_distinct_per_seed() {
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+        let seed_btc = seed_for(Venue::Binance, &btc);
+        let seed_eth = seed_for(Venue::Binance, &eth);
+        assert_ne!(seed_btc, seed_eth, "per-symbol seeds must differ");
+        let a = synthetic_candles(seed_btc, Venue::Binance, btc, 30);
+        let b = synthetic_candles(seed_eth, Venue::Binance, eth, 30);
+        // Different symbols anchor at different starting prices, so the
+        // first close already differs.
+        assert_ne!(a[0].close.get(), b[0].close.get());
+    }
+
+    /// T1607 — `count = 4` returns ≥ 1 buy and ≥ 1 sell.
+    #[test]
+    fn synthetic_fills_for_has_buy_and_sell() {
+        let fills = synthetic_fills_for(Venue::Binance, &Symbol::new("BTCUSDT"), 4);
+        assert_eq!(fills.len(), 4);
+        let buys = fills.iter().filter(|f| matches!(f.side, Side::Buy)).count();
+        let sells = fills
+            .iter()
+            .filter(|f| matches!(f.side, Side::Sell))
+            .count();
+        assert!(buys >= 1, "expected at least one buy, got {buys}");
+        assert!(sells >= 1, "expected at least one sell, got {sells}");
+    }
 }

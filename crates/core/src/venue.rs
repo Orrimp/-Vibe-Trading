@@ -7,11 +7,19 @@
 //! venues at compile time.
 //!
 //! See `spec/features/v1-5b-multi-venue.md` Q1, Q4, Q7.
+//!
+//! Phase 3 (Lumen detail screens) adds `RiskTelemetry` — a sibling
+//! of `MarketHealth` that carries the risk-engine snapshot the new
+//! Risk / Limits cockpit screen mirrors. See
+//! `spec/features/lumen-phase-3-detail-screens.md` Design § Q3.
+use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::symbol::Symbol;
 use crate::time::Timestamp;
 
 /// Closed set of exchanges supported by the agent.
@@ -93,6 +101,31 @@ pub enum MarketHealth {
         recovered_ts: Timestamp,
         gap_secs: u32,
     },
+}
+
+/// Phase 3 (Lumen detail screens) Q3 — periodic risk-engine snapshot
+/// published on `agent::EventBus::risk_telemetry` at 1 Hz from
+/// `crates/risk/src/portfolio.rs`. The cockpit's `Subscription::batch`
+/// recipe in `crates/ui/src/live.rs` maps incoming events to
+/// `Message::RiskStateRefreshed(RiskState)`.
+///
+/// Sibling of [`MarketHealth`] — same channel pattern, same single-
+/// producer / many-consumer shape. All numeric fields are `Decimal` or
+/// `u64`; no `f64` reaches the risk surface.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RiskTelemetry {
+    /// Per-`(Venue, Symbol)` exposure (USDT-denominated notional).
+    pub per_symbol_exposure: HashMap<(Venue, Symbol), Decimal>,
+    /// Per-`(Venue, Symbol)` cap (USDT-denominated notional).
+    pub per_symbol_caps: HashMap<(Venue, Symbol), Decimal>,
+    /// Cumulative daily-loss percentage consumed (0..=100).
+    pub daily_loss_used_pct: Decimal,
+    /// Daily-loss percentage cap (0..=100).
+    pub daily_loss_cap_pct: Decimal,
+    /// Heartbeat age in milliseconds — input to the kill-threshold gauge.
+    pub heartbeat_age_ms: u64,
+    /// Heartbeat timeout in milliseconds — denominator for the gauge.
+    pub heartbeat_timeout_ms: u64,
 }
 
 #[cfg(test)]

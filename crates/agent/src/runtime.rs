@@ -54,7 +54,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-use trading_core::{MarketHealth, Symbol, Tick, Timeframe, Timestamp, Venue};
+use trading_core::{MarketHealth, RiskTelemetry, Symbol, Tick, Timeframe, Timestamp, Venue};
 
 use crate::config::Config;
 use crate::{AgentMode, EventBus, KillSwitch};
@@ -77,7 +77,7 @@ pub type NowFn = Arc<dyn Fn() -> Timestamp + Send + Sync>;
 /// the lock.
 pub type LastTickMap = Arc<Mutex<HashMap<Venue, Timestamp>>>;
 
-/// T1409 — observer hook called by [`spawn_feed_taps_with_observer`] on
+/// T1409 — observer hook called by `spawn_feed_taps_with_observer` on
 /// each tick before the tick is republished to the bus.  The paper-mode
 /// supervisor wires a closure that records `tick.local_recv_ts` into
 /// the shared [`LastTickMap`] under venue `V`.
@@ -475,6 +475,19 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         }
     }
 
+    // ── Phase 3 T1707 — risk-telemetry publisher (Q3) ─────────────────────────
+    // 1 Hz tick. v1.5b plumbing-only state — the snapshot returns a
+    // deterministic placeholder; the actual risk-engine wiring lands in a
+    // follow-up. The bus channel is the load-bearing surface tested by
+    // the cockpit integration test.
+    spawn_risk_telemetry_publisher(
+        Arc::clone(&bus),
+        Arc::new(default_risk_telemetry_stub),
+        Duration::from_secs(1),
+        &mut set,
+        &cancel,
+    );
+
     // ── Mode-broadcast forwarder (T905) ───────────────────────────────────────
     // Bridge `KillSwitch::subscribe()` (the kill-switch internal mode
     // channel) into the bus's `mode` channel so the cockpit's
@@ -705,7 +718,7 @@ pub fn spawn_mode_forwarder(
 ///
 /// The supervisor task is the panic-isolation boundary: it spawns the
 /// actual feed-consumption work (the bar/tick taps via
-/// [`spawn_feed_taps`]) inside an inner `tokio::task::spawn` and
+/// `spawn_feed_taps`) inside an inner `tokio::task::spawn` and
 /// inspects the resulting `JoinError`.  A panic in any venue's task
 /// surfaces here as `JoinError::is_panic() == true` and is logged +
 /// audit-journaled with `error_code = "task_panic"`; **the panic does
@@ -1004,6 +1017,76 @@ pub fn spawn_market_health_watchdog(
             }
         }
         info!("market_health_watchdog stopped");
+    });
+}
+
+// ── T1707 — RiskTelemetry publisher (Phase 3 Q3) ───────────────────────────────
+//
+// Sibling of `spawn_market_health_watchdog` — single-producer, periodic
+// publisher of `RiskTelemetry` snapshots on `EventBus::risk_telemetry`.
+// The cockpit's `Subscription::batch` recipe in `crates/ui/src/live.rs`
+// maps incoming events to `Message::RiskStateRefreshed(RiskState)`.
+//
+// v1.5b plumbing-only state — the snapshot carries deterministic
+// placeholder numbers (zero exposures, zero loss, large heartbeat
+// timeout) until the actual risk-engine wiring lands. The bus
+// channel is the load-bearing surface tested by the Phase 3 cockpit
+// integration test.
+
+/// Snapshot provider for the risk-telemetry publisher. Returns the
+/// current `RiskTelemetry` view; live mode wires the actual risk-engine
+/// state, fixtures wire a deterministic stub.
+pub type RiskSnapshotFn = Arc<dyn Fn() -> RiskTelemetry + Send + Sync>;
+
+/// Phase 3 T1707 — placeholder risk-telemetry snapshot for the live
+/// runtime's 1 Hz publisher. v1.5b plumbing-only state — the
+/// snapshot returns deterministic zero exposures + a wide heartbeat
+/// timeout so the cockpit's Risk / Limits screen renders all-green
+/// bands. The actual risk-engine wiring (per-symbol exposures,
+/// daily-loss accumulator, kill-threshold proximity) lands as a
+/// follow-up.
+fn default_risk_telemetry_stub() -> RiskTelemetry {
+    RiskTelemetry {
+        per_symbol_exposure: HashMap::new(),
+        per_symbol_caps: HashMap::new(),
+        daily_loss_used_pct: rust_decimal::Decimal::ZERO,
+        daily_loss_cap_pct: rust_decimal::Decimal::from(100),
+        heartbeat_age_ms: 0,
+        heartbeat_timeout_ms: 30_000,
+    }
+}
+
+/// Spawn the risk-telemetry publisher (Phase 3 T1707 / Q3).
+///
+/// Ticks at `interval` (1 Hz in production) and publishes the latest
+/// `RiskTelemetry` snapshot via `bus.publish_risk_telemetry(...)`.
+/// `cancel` stops the loop on shutdown.
+pub fn spawn_risk_telemetry_publisher(
+    bus: Arc<EventBus>,
+    snapshot_fn: RiskSnapshotFn,
+    interval: Duration,
+    set: &mut JoinSet<()>,
+    cancel: &CancellationToken,
+) {
+    let cancel_w = cancel.child_token();
+    set.spawn(async move {
+        info!(
+            interval_ms = interval.as_millis() as u64,
+            "risk_telemetry_publisher started"
+        );
+        let mut tick = tokio::time::interval(interval);
+        // Skip the immediate first tick so the cadence matches wall-clock.
+        tick.tick().await;
+        loop {
+            tokio::select! {
+                () = cancel_w.cancelled() => break,
+                _ = tick.tick() => {
+                    let snapshot = snapshot_fn();
+                    bus.publish_risk_telemetry(snapshot);
+                }
+            }
+        }
+        info!("risk_telemetry_publisher stopped");
     });
 }
 

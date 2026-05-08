@@ -49,9 +49,9 @@ use rust_decimal::Decimal;
 use smol_str::SmolStr;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, warn};
-use trading_core::{Fill, FillView, Position, PositionView};
+use trading_core::{Fill, FillView, Position, PositionView, RiskTelemetry};
 
-use crate::state::{AgentMode, Message};
+use crate::state::{AgentMode, Message, RiskState};
 use crate::strings;
 
 // ── Public entry point ──────────────────────────────────────────────────────
@@ -70,7 +70,11 @@ pub fn subscription(bus: Arc<EventBus>) -> iced::Subscription<Message> {
         subscription_for(Channel::Mode, Arc::clone(&bus)),
         subscription_for(Channel::StrategyLoaded, Arc::clone(&bus)),
         subscription_for(Channel::StrategySwapped, Arc::clone(&bus)),
-        subscription_for(Channel::StrategyError, bus),
+        subscription_for(Channel::StrategyError, Arc::clone(&bus)),
+        // T1508 — market-health watchdog channel (v1.5b contract).
+        subscription_for(Channel::MarketHealth, Arc::clone(&bus)),
+        // T1707 — risk-telemetry publisher (Phase 3 Q3).
+        subscription_for(Channel::RiskTelemetry, bus),
     ])
 }
 
@@ -91,6 +95,10 @@ pub enum Channel {
     StrategySwapped,
     /// v0.5 — strategy registry: a parse / typecheck rejection.
     StrategyError,
+    /// T1508 — market-health watchdog (v1.5b). Per-venue freshness events.
+    MarketHealth,
+    /// T1707 — risk-telemetry publisher (Phase 3 Q3). 1 Hz risk-engine snapshot.
+    RiskTelemetry,
 }
 
 fn subscription_for(channel: Channel, bus: Arc<EventBus>) -> iced::Subscription<Message> {
@@ -133,6 +141,8 @@ impl Recipe for BusRecipe {
             Channel::StrategyLoaded => Box::pin(stream_strategy_loaded(&bus)),
             Channel::StrategySwapped => Box::pin(stream_strategy_swapped(&bus)),
             Channel::StrategyError => Box::pin(stream_strategy_error(&bus)),
+            Channel::MarketHealth => Box::pin(stream_market_health(&bus)),
+            Channel::RiskTelemetry => Box::pin(stream_risk_telemetry(&bus)),
         }
     }
 }
@@ -368,6 +378,84 @@ pub fn stream_strategy_error(bus: &EventBus) -> impl Stream<Item = Message> + Se
                 }
             }
         }
+    }
+}
+
+// ── T1508 — Market-health watchdog stream ───────────────────────────────────
+//
+// Subscribes to `bus.market_health()` (the v1.5b watchdog channel) and
+// converts each `MarketHealth` bus event into a `Message::MarketHealthUpdated`.
+//
+// Closed-channel semantics differ from fills/positions/pnl: the watchdog
+// channel closing is not a fatal cockpit error (no operator-facing panel
+// to flip into error state). We log at `warn` level and stop the stream;
+// the connection dot in the status bar will show the last known state.
+
+/// `market_health` → `Message::MarketHealthUpdated`.
+pub fn stream_market_health(bus: &EventBus) -> impl Stream<Item = Message> + Send {
+    let mut rx = bus.market_health();
+    stream! {
+        loop {
+            match rx.recv().await {
+                Ok(event) => yield Message::MarketHealthUpdated(event),
+                Err(RecvError::Lagged(n)) => {
+                    warn!(channel = "market_health", skipped = n, "broadcast lagged");
+                }
+                Err(RecvError::Closed) => {
+                    warn!(channel = "market_health", "broadcast closed");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// ── T1707 — Risk-telemetry publisher stream (Phase 3 Q3) ────────────────────
+//
+// Subscribes to `bus.risk_telemetry()` (1 Hz risk-engine snapshot) and
+// converts each `RiskTelemetry` bus event into a
+// `Message::RiskStateRefreshed(RiskState)` via the
+// `RiskTelemetry → RiskState` reduction (identical field shape; the UI
+// type is decoupled so a future `core::RiskTelemetry` rename does not
+// ripple `state.rs`).
+//
+// Closed-channel semantics mirror `market_health`: the publisher
+// closing is not a fatal cockpit error (the Risk screen falls back to
+// `Loading`); we log at `warn` and stop the stream.
+
+/// `risk_telemetry` → `Message::RiskStateRefreshed`.
+pub fn stream_risk_telemetry(bus: &EventBus) -> impl Stream<Item = Message> + Send {
+    let mut rx = bus.risk_telemetry();
+    stream! {
+        loop {
+            match rx.recv().await {
+                Ok(event) => yield Message::RiskStateRefreshed(risk_telemetry_to_state(&event)),
+                Err(RecvError::Lagged(n)) => {
+                    warn!(channel = "risk_telemetry", skipped = n, "broadcast lagged");
+                }
+                Err(RecvError::Closed) => {
+                    warn!(channel = "risk_telemetry", "broadcast closed");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Convert a bus-side `RiskTelemetry` snapshot into the cockpit's
+/// `RiskState` mirror. Identical field shape — the conversion is
+/// straightforward field copying. The seam exists so a future
+/// `core::RiskTelemetry` schema change ripples here, not into
+/// `state.rs`.
+#[must_use]
+pub fn risk_telemetry_to_state(t: &RiskTelemetry) -> RiskState {
+    RiskState {
+        per_symbol_exposure: t.per_symbol_exposure.clone(),
+        per_symbol_caps: t.per_symbol_caps.clone(),
+        daily_loss_used_pct: t.daily_loss_used_pct,
+        daily_loss_cap_pct: t.daily_loss_cap_pct,
+        heartbeat_age_ms: t.heartbeat_age_ms,
+        heartbeat_timeout_ms: t.heartbeat_timeout_ms,
     }
 }
 

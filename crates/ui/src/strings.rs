@@ -17,7 +17,11 @@ pub const APP_TITLE: &str = "Trading Cockpit";
 
 // ── Panel titles ─────────────────────────────────────────────────────────────
 
-pub const PANEL_TAPE_TITLE: &str = "Live tape";
+/// Phase 5 (R11.5) — title constant renamed from `PANEL_TAPE_TITLE`
+/// (`"Live tape"`) per the Lumen `AgentFeed.jsx:71` reference. Module
+/// path renamed `widgets::tape` → `widgets::agent_feed`. Field name
+/// `Cockpit::tape` is **preserved** per Phase 5 Q14.
+pub const PANEL_AGENT_FEED_TITLE: &str = "Agent activity";
 pub const PANEL_POSITIONS_TITLE: &str = "Open positions";
 pub const PANEL_PNL_TITLE: &str = "P&L";
 pub const PANEL_KILL_TITLE: &str = "Stop trading";
@@ -166,6 +170,237 @@ pub const TAPE_AUDIT_MODAL_EMPTY: &str = "No entries for this transaction.";
 pub const TAPE_AUDIT_MODAL_ERROR_PREFIX: &str = "Failed to load journal entries: ";
 pub const TAPE_AUDIT_MODAL_CLOSE_LABEL: &str = "Close";
 
+// ── Status bar (T1508) ───────────────────────────────────────────────────────
+//
+// Net-new strings for the status-bar widget. Not a rewrite of existing copy
+// (Constraint 2 covers existing strings only). Each constant has a single
+// display home — the status bar row at the bottom of the cockpit shell.
+
+/// Rendered next to the coloured dot when all monitored venues are `Fresh`.
+/// Appended by the widget with `· {venues}` (e.g. "Connected · binance").
+pub const STATUS_BAR_CONNECTED: &str = "Connected";
+
+/// Rendered next to the coloured dot when any venue is `Stale`.
+/// Appended by the widget with `· {venue}` for the first stale venue.
+pub const STATUS_BAR_RECONNECTING: &str = "Reconnecting";
+
+/// Rendered when `cockpit.market_health` is empty (no venues seen yet).
+pub const STATUS_BAR_DISCONNECTED: &str = "Disconnected";
+
+/// Prefix for the latency field: `"Latency {n} ms"` or `"Latency —"`.
+pub const STATUS_BAR_LATENCY_LABEL: &str = "Latency";
+
+/// Prefix for the server-time field: `"Server {HH:MM:SS} UTC"`.
+pub const STATUS_BAR_SERVER_LABEL: &str = "Server";
+
+/// Prefix for the CPU field (Phase 1 placeholder).
+pub const STATUS_BAR_CPU_LABEL: &str = "CPU";
+
+/// Literal placeholder for the CPU field — deferred to R13.4.
+pub const STATUS_BAR_CPU_PLACEHOLDER: &str = "CPU —";
+
+/// Rendered when latency is `Latency::Unknown`.
+/// Combined as `"{STATUS_BAR_LATENCY_LABEL} {STATUS_BAR_NO_LATENCY}"`.
+pub const STATUS_BAR_NO_LATENCY: &str = "—";
+
+/// UTC suffix for the server-time field: `" UTC"`.
+pub const STATUS_BAR_UTC_SUFFIX: &str = "UTC";
+
+/// Rendered when `server_time_now` is `None` (not yet received from the
+/// 1 Hz subscription). Full label becomes `"{SERVER_LABEL} {NO_SERVER_TIME} UTC"`.
+pub const STATUS_BAR_NO_SERVER_TIME: &str = "—";
+
+/// Milliseconds unit suffix for the latency field (single word, no leading space).
+pub const STATUS_BAR_MS: &str = "ms";
+
+/// Version prefix — `"v"` — used in the `concat!` that builds the version label.
+pub const STATUS_BAR_VERSION_PREFIX: &str = "v";
+
+/// Version suffix — `" · rust"` — appended after the crate version number.
+pub const STATUS_BAR_VERSION_SUFFIX: &str = " \u{00b7} rust";
+
+/// Full compile-time version label: `"v{CARGO_PKG_VERSION} · rust"`.
+/// Defined here (single-source-of-truth) via `concat!` + `env!` so widget code
+/// never carries raw string literals for the version sigil or stack tag.
+pub const STATUS_BAR_VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"), " \u{00b7} rust");
+
+// ── Sidebar nav (Phase 2 — T1602) ────────────────────────────────────────────
+//
+// Net-new strings for the screen-routed shell. Phase 2 wires the first
+// three (Home / Debug / Charts); Phase 3 wakes the last three so the
+// extension is additive. Operator-locked Constraint 2 (no voice rewrite)
+// preserved — these are net-new strings, not rewrites.
+
+pub const SIDEBAR_NAV_HOME: &str = "Home";
+pub const SIDEBAR_NAV_DEBUG: &str = "Debug";
+pub const SIDEBAR_NAV_CHARTS: &str = "Charts";
+pub const SIDEBAR_NAV_STRATEGIES: &str = "Strategies";
+pub const SIDEBAR_NAV_RISK: &str = "Risk";
+pub const SIDEBAR_NAV_AUDIT: &str = "Audit";
+
+// ── Charts screen (Phase 2 — T1608, T1610) ───────────────────────────────────
+
+/// Centred label rendered when the chart canvas has zero bars buffered.
+pub const CHART_NO_DATA: &str = "No data";
+
+// ── Debug screen (Phase 2 — T1605) ───────────────────────────────────────────
+
+/// Placeholder copy for the Debug screen's logs/metrics surface (Q9 — the
+/// real logs surface lands with a future structured-metrics brief).
+pub const DEBUG_LOGS_PLACEHOLDER: &str = "Logs surface lands with a future metrics brief";
+
+/// "Not yet" placeholder rendered for `Screen::Strategies / Risk / Audit`
+/// dispatch in Phase 2 (Phase 3 lands the real screens).
+pub const SCREEN_NOT_YET: &str = "Not yet";
+
+// ── Strategies-detail screen (Phase 3 — T1704, T1706) ────────────────────────
+//
+// Net-new constants (additive — operator-locked Constraint 2 unchanged).
+
+pub const STRATEGIES_PANEL_TITLE: &str = "Strategies";
+pub const STRATEGIES_SELECT_PROMPT: &str = "Select a strategy";
+pub const STRATEGIES_PARAMS_TITLE: &str = "Parameters";
+pub const STRATEGIES_EVENTS_TITLE: &str = "Recent signal events";
+/// Phase 4 (T1811) — rendered while the cockpit Strategies-detail
+/// sparkline awaits the equity-curve fetch dispatched on
+/// `Message::SelectStrategy`. Replaces the retired Phase 3
+/// `STRATEGIES_SPARKLINE_DEFERRED` placeholder constant.
+pub const STRATEGIES_SPARKLINE_LOADING: &str = "Loading equity history…";
+
+// ── Backtest viewer (Phase 4 — T1805 / T1806) ───────────────────────────
+//
+// Net-new constants (additive — operator-locked Constraint 2 unchanged).
+// All copy lives here so the viewer's surface stays grep-friendly and
+// the consistency-test fixture allow-list can find every visible
+// string in one place.
+
+pub const KPI_TOTAL_RETURN_LABEL: &str = "Total return";
+pub const KPI_CAGR_LABEL: &str = "CAGR";
+pub const KPI_SHARPE_LABEL: &str = "Sharpe";
+pub const KPI_MAX_DD_LABEL: &str = "Max DD";
+pub const KPI_WIN_RATE_LABEL: &str = "Win rate";
+pub const KPI_TRADES_LABEL: &str = "Trades";
+
+/// Rendered below the KPI strip when the parser returned a
+/// `BacktestMetrics::all_absent()` shape OR the `metrics` panel state
+/// is `Error` (R2.6 / Q3 graceful fallback).
+pub const VIEWER_METRICS_UNAVAILABLE: &str = "Backtest metrics unavailable";
+
+/// Centred label rendered when the equity curve / drawdown band canvas
+/// has zero data points (R4.7 / R7.5).
+pub const VIEWER_NO_EQUITY_DATA: &str = "No equity data";
+
+/// Prefix rendered when the equity curve / drawdown band can't be
+/// drawn because the underlying read failed (R4.7 / R7.5 error
+/// branch). Combined with the underlying error message via
+/// `format!("{prefix}{msg}")` so all "X unavailable: …" copy lives
+/// in `ui::strings`.
+pub const VIEWER_EQUITY_UNAVAILABLE_PREFIX: &str = "Equity curve unavailable: ";
+
+/// Prefix rendered in the cockpit Strategies-detail sparkline slot
+/// when the equity-curve fetch errors (T1811).
+pub const STRATEGIES_EQUITY_HISTORY_UNAVAILABLE_PREFIX: &str = "Equity history unavailable: ";
+
+/// Em-dash literal used in KPI strip cells when a metric is marked-
+/// absent (R3.5 / R2.6 / Q3 graceful fallback). Constant rather than
+/// inline literal so the consistency-test grep stays clean.
+pub const KPI_DASH_PLACEHOLDER: &str = "—";
+
+/// Unicode minus sign rendered as the negative-value prefix in the
+/// KPI strip (R2.4 — `Total return` and `Max DD` use this prefix on
+/// negatives). Distinct from ASCII `-` so the visual contrast matches
+/// the Lumen reference component.
+pub const MINUS_SIGN_LITERAL: &str = "\u{2212}";
+
+// ── Risk / Limits screen (Phase 3 — T1708) ───────────────────────────────────
+
+pub const RISK_PANEL_TITLE: &str = "Risk and limits";
+pub const RISK_LOADING: &str = "Risk state loading";
+pub const RISK_EXPOSURE_SECTION_TITLE: &str = "Per-venue exposure";
+pub const RISK_DAILY_LOSS_SECTION_TITLE: &str = "Daily loss";
+pub const RISK_KILL_THRESHOLD_SECTION_TITLE: &str = "Kill threshold proximity";
+pub const RISK_FEED_UNAVAILABLE_PREFIX: &str = "Risk feed unavailable: ";
+
+// ── Audit / Journal screen (Phase 3 — T1709, T1710) ──────────────────────────
+
+pub const AUDIT_PANEL_TITLE: &str = "Audit journal";
+pub const AUDIT_FILTER_VENUE_LABEL: &str = "Venue";
+pub const AUDIT_FILTER_SYMBOL_LABEL: &str = "Symbol";
+pub const AUDIT_FILTER_KIND_LABEL: &str = "Kind";
+pub const AUDIT_FILTER_TIME_LABEL: &str = "Time range";
+pub const AUDIT_FILTER_NO_MATCH: &str = "No journal rows match these filters";
+pub const AUDIT_LOADING: &str = "Loading journal rows…";
+pub const AUDIT_PREV_LABEL: &str = "Prev";
+pub const AUDIT_NEXT_LABEL: &str = "Next";
+pub const AUDIT_KIND_ALL: &str = "All";
+pub const AUDIT_KIND_FILL: &str = "Fill";
+pub const AUDIT_KIND_STRATEGY_EVENT: &str = "Strategy event";
+pub const AUDIT_KIND_RECONCILIATION: &str = "Reconciliation";
+pub const AUDIT_TIME_LAST_1H: &str = "Last 1 h";
+pub const AUDIT_TIME_LAST_24H: &str = "Last 24 h";
+pub const AUDIT_TIME_LAST_7D: &str = "Last 7 d";
+pub const AUDIT_COL_TIME: &str = "Time";
+pub const AUDIT_COL_VENUE: &str = "Venue";
+pub const AUDIT_COL_SYMBOL: &str = "Symbol";
+pub const AUDIT_COL_KIND: &str = "Kind";
+pub const AUDIT_COL_DESCRIPTION: &str = "Description";
+pub const AUDIT_COL_STRATEGY_ID: &str = "Strategy";
+pub const AUDIT_QUERY_FAILED_PREFIX: &str = "Journal query failed: ";
+
+// ── HumanControl panel (Phase 5 — T1904 / T1905 / T1911) ─────────────────────
+//
+// Net-new constants per the Phase 5 Design's "HumanControl panel widget
+// contract" sub-section. Additive only — operator-locked Constraint 2
+// (no voice rewrite of existing copy) preserved.
+
+pub const PANEL_HUMAN_CONTROL_TITLE: &str = "You're in control";
+pub const PANEL_HUMAN_CONTROL_META: &str = "Human-in-the-loop";
+
+/// Phase 5 R3.4 — error-state copy for the three mirror rows when
+/// `Cockpit::risk_state` is in `Error` or the panel can't read the
+/// limits.
+pub const HUMAN_CONTROL_LIMITS_UNAVAILABLE: &str = "Risk limits unavailable";
+
+pub const HUMAN_CONTROL_DAILY_LOSS_LABEL: &str = "Daily loss limit";
+pub const HUMAN_CONTROL_MAX_POSITION_LABEL: &str = "Max position";
+pub const HUMAN_CONTROL_USED_TODAY_LABEL: &str = "Used today";
+
+// ── Execution-mode segmented control (Phase 5 — T1911) ───────────────────────
+
+pub const EXECUTION_MODE_OBSERVE_LABEL: &str = "Observe";
+pub const EXECUTION_MODE_SUPERVISED_LABEL: &str = "Supervised";
+pub const EXECUTION_MODE_AUTO_LABEL: &str = "Auto";
+
+/// Per-mode hint copy below the segment row, mirrored from
+/// `HumanControl.jsx:27–31` with the project's voice discipline.
+pub const EXECUTION_MODE_OBSERVE_HINT: &str = "Watch only — no orders sent.";
+pub const EXECUTION_MODE_SUPERVISED_HINT: &str = "Each decision needs your approval.";
+pub const EXECUTION_MODE_AUTO_HINT: &str = "Within-envelope autonomy.";
+
+// ── Pause-strategy per-row button (Phase 5 — T1907) ──────────────────────────
+
+pub const STRATEGY_PAUSE_LABEL: &str = "Pause";
+pub const STRATEGY_RESUME_LABEL: &str = "Resume";
+
+// ── Override-risk-veto modal (Phase 5 — T1909) ───────────────────────────────
+//
+// Mirrors the kill-confirm typed-confirm pattern; phrase = `OVERRIDE`
+// (not `HALT BTC`) because the surface differs (per-veto override vs
+// global kill).
+
+pub const OVERRIDE_RISK_VETO_PHRASE: &str = "OVERRIDE";
+pub const OVERRIDE_RISK_VETO_DIALOG_TITLE: &str = "Override risk veto";
+pub const OVERRIDE_RISK_VETO_DIALOG_BODY: &str =
+    "This bypasses the risk engine for the surfaced veto. Type OVERRIDE exactly to confirm.";
+pub const OVERRIDE_RISK_VETO_PHRASE_MISMATCH_HINT: &str = "Type OVERRIDE exactly to enable confirm";
+pub const OVERRIDE_RISK_VETO_CONFIRM_LABEL: &str = "Override veto";
+pub const OVERRIDE_RISK_VETO_CANCEL_LABEL: &str = "Cancel";
+pub const OVERRIDE_RISK_VETO_BUTTON_LABEL: &str = "Override";
+
+/// Sidebar nav label for the Phase 5 `HumanControl` screen (Q1 — 7th
+/// sidebar entry).
+pub const SIDEBAR_NAV_CONTROL: &str = "Control";
+
 // ── Connection states (live broadcast bus, T32) ──────────────────────────────
 
 /// Shown in every panel's error state when the cockpit can't reach the agent
@@ -227,7 +462,7 @@ pub const PLACEHOLDER_NONE: &str = "—";
 pub fn all() -> &'static [(&'static str, &'static str)] {
     &[
         ("APP_TITLE", APP_TITLE),
-        ("PANEL_TAPE_TITLE", PANEL_TAPE_TITLE),
+        ("PANEL_AGENT_FEED_TITLE", PANEL_AGENT_FEED_TITLE),
         ("PANEL_POSITIONS_TITLE", PANEL_POSITIONS_TITLE),
         ("PANEL_PNL_TITLE", PANEL_PNL_TITLE),
         ("PANEL_KILL_TITLE", PANEL_KILL_TITLE),
@@ -339,6 +574,147 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("UNIT_USDT", UNIT_USDT),
         ("UNIT_BTC", UNIT_BTC),
         ("PLACEHOLDER_NONE", PLACEHOLDER_NONE),
+        ("STATUS_BAR_CONNECTED", STATUS_BAR_CONNECTED),
+        ("STATUS_BAR_RECONNECTING", STATUS_BAR_RECONNECTING),
+        ("STATUS_BAR_DISCONNECTED", STATUS_BAR_DISCONNECTED),
+        ("STATUS_BAR_LATENCY_LABEL", STATUS_BAR_LATENCY_LABEL),
+        ("STATUS_BAR_SERVER_LABEL", STATUS_BAR_SERVER_LABEL),
+        ("STATUS_BAR_CPU_LABEL", STATUS_BAR_CPU_LABEL),
+        ("STATUS_BAR_CPU_PLACEHOLDER", STATUS_BAR_CPU_PLACEHOLDER),
+        ("STATUS_BAR_NO_LATENCY", STATUS_BAR_NO_LATENCY),
+        ("STATUS_BAR_UTC_SUFFIX", STATUS_BAR_UTC_SUFFIX),
+        ("STATUS_BAR_NO_SERVER_TIME", STATUS_BAR_NO_SERVER_TIME),
+        ("STATUS_BAR_MS", STATUS_BAR_MS),
+        ("STATUS_BAR_VERSION_PREFIX", STATUS_BAR_VERSION_PREFIX),
+        ("STATUS_BAR_VERSION_SUFFIX", STATUS_BAR_VERSION_SUFFIX),
+        ("STATUS_BAR_VERSION", STATUS_BAR_VERSION),
+        ("SIDEBAR_NAV_HOME", SIDEBAR_NAV_HOME),
+        ("SIDEBAR_NAV_DEBUG", SIDEBAR_NAV_DEBUG),
+        ("SIDEBAR_NAV_CHARTS", SIDEBAR_NAV_CHARTS),
+        ("SIDEBAR_NAV_STRATEGIES", SIDEBAR_NAV_STRATEGIES),
+        ("SIDEBAR_NAV_RISK", SIDEBAR_NAV_RISK),
+        ("SIDEBAR_NAV_AUDIT", SIDEBAR_NAV_AUDIT),
+        ("CHART_NO_DATA", CHART_NO_DATA),
+        ("DEBUG_LOGS_PLACEHOLDER", DEBUG_LOGS_PLACEHOLDER),
+        ("SCREEN_NOT_YET", SCREEN_NOT_YET),
+        ("STRATEGIES_PANEL_TITLE", STRATEGIES_PANEL_TITLE),
+        ("STRATEGIES_SELECT_PROMPT", STRATEGIES_SELECT_PROMPT),
+        ("STRATEGIES_PARAMS_TITLE", STRATEGIES_PARAMS_TITLE),
+        ("STRATEGIES_EVENTS_TITLE", STRATEGIES_EVENTS_TITLE),
+        ("STRATEGIES_SPARKLINE_LOADING", STRATEGIES_SPARKLINE_LOADING),
+        ("KPI_TOTAL_RETURN_LABEL", KPI_TOTAL_RETURN_LABEL),
+        ("KPI_CAGR_LABEL", KPI_CAGR_LABEL),
+        ("KPI_SHARPE_LABEL", KPI_SHARPE_LABEL),
+        ("KPI_MAX_DD_LABEL", KPI_MAX_DD_LABEL),
+        ("KPI_WIN_RATE_LABEL", KPI_WIN_RATE_LABEL),
+        ("KPI_TRADES_LABEL", KPI_TRADES_LABEL),
+        ("VIEWER_METRICS_UNAVAILABLE", VIEWER_METRICS_UNAVAILABLE),
+        ("VIEWER_NO_EQUITY_DATA", VIEWER_NO_EQUITY_DATA),
+        (
+            "VIEWER_EQUITY_UNAVAILABLE_PREFIX",
+            VIEWER_EQUITY_UNAVAILABLE_PREFIX,
+        ),
+        (
+            "STRATEGIES_EQUITY_HISTORY_UNAVAILABLE_PREFIX",
+            STRATEGIES_EQUITY_HISTORY_UNAVAILABLE_PREFIX,
+        ),
+        ("KPI_DASH_PLACEHOLDER", KPI_DASH_PLACEHOLDER),
+        ("MINUS_SIGN_LITERAL", MINUS_SIGN_LITERAL),
+        ("RISK_PANEL_TITLE", RISK_PANEL_TITLE),
+        ("RISK_LOADING", RISK_LOADING),
+        ("RISK_EXPOSURE_SECTION_TITLE", RISK_EXPOSURE_SECTION_TITLE),
+        (
+            "RISK_DAILY_LOSS_SECTION_TITLE",
+            RISK_DAILY_LOSS_SECTION_TITLE,
+        ),
+        (
+            "RISK_KILL_THRESHOLD_SECTION_TITLE",
+            RISK_KILL_THRESHOLD_SECTION_TITLE,
+        ),
+        ("RISK_FEED_UNAVAILABLE_PREFIX", RISK_FEED_UNAVAILABLE_PREFIX),
+        ("AUDIT_PANEL_TITLE", AUDIT_PANEL_TITLE),
+        ("AUDIT_FILTER_VENUE_LABEL", AUDIT_FILTER_VENUE_LABEL),
+        ("AUDIT_FILTER_SYMBOL_LABEL", AUDIT_FILTER_SYMBOL_LABEL),
+        ("AUDIT_FILTER_KIND_LABEL", AUDIT_FILTER_KIND_LABEL),
+        ("AUDIT_FILTER_TIME_LABEL", AUDIT_FILTER_TIME_LABEL),
+        ("AUDIT_FILTER_NO_MATCH", AUDIT_FILTER_NO_MATCH),
+        ("AUDIT_LOADING", AUDIT_LOADING),
+        ("AUDIT_PREV_LABEL", AUDIT_PREV_LABEL),
+        ("AUDIT_NEXT_LABEL", AUDIT_NEXT_LABEL),
+        ("AUDIT_KIND_ALL", AUDIT_KIND_ALL),
+        ("AUDIT_KIND_FILL", AUDIT_KIND_FILL),
+        ("AUDIT_KIND_STRATEGY_EVENT", AUDIT_KIND_STRATEGY_EVENT),
+        ("AUDIT_KIND_RECONCILIATION", AUDIT_KIND_RECONCILIATION),
+        ("AUDIT_TIME_LAST_1H", AUDIT_TIME_LAST_1H),
+        ("AUDIT_TIME_LAST_24H", AUDIT_TIME_LAST_24H),
+        ("AUDIT_TIME_LAST_7D", AUDIT_TIME_LAST_7D),
+        ("AUDIT_COL_TIME", AUDIT_COL_TIME),
+        ("AUDIT_COL_VENUE", AUDIT_COL_VENUE),
+        ("AUDIT_COL_SYMBOL", AUDIT_COL_SYMBOL),
+        ("AUDIT_COL_KIND", AUDIT_COL_KIND),
+        ("AUDIT_COL_DESCRIPTION", AUDIT_COL_DESCRIPTION),
+        ("AUDIT_COL_STRATEGY_ID", AUDIT_COL_STRATEGY_ID),
+        ("AUDIT_QUERY_FAILED_PREFIX", AUDIT_QUERY_FAILED_PREFIX),
+        // Phase 5 — HumanControl + execution-mode + pause + override
+        // additive constants.
+        ("PANEL_HUMAN_CONTROL_TITLE", PANEL_HUMAN_CONTROL_TITLE),
+        ("PANEL_HUMAN_CONTROL_META", PANEL_HUMAN_CONTROL_META),
+        (
+            "HUMAN_CONTROL_LIMITS_UNAVAILABLE",
+            HUMAN_CONTROL_LIMITS_UNAVAILABLE,
+        ),
+        (
+            "HUMAN_CONTROL_DAILY_LOSS_LABEL",
+            HUMAN_CONTROL_DAILY_LOSS_LABEL,
+        ),
+        (
+            "HUMAN_CONTROL_MAX_POSITION_LABEL",
+            HUMAN_CONTROL_MAX_POSITION_LABEL,
+        ),
+        (
+            "HUMAN_CONTROL_USED_TODAY_LABEL",
+            HUMAN_CONTROL_USED_TODAY_LABEL,
+        ),
+        ("EXECUTION_MODE_OBSERVE_LABEL", EXECUTION_MODE_OBSERVE_LABEL),
+        (
+            "EXECUTION_MODE_SUPERVISED_LABEL",
+            EXECUTION_MODE_SUPERVISED_LABEL,
+        ),
+        ("EXECUTION_MODE_AUTO_LABEL", EXECUTION_MODE_AUTO_LABEL),
+        ("EXECUTION_MODE_OBSERVE_HINT", EXECUTION_MODE_OBSERVE_HINT),
+        (
+            "EXECUTION_MODE_SUPERVISED_HINT",
+            EXECUTION_MODE_SUPERVISED_HINT,
+        ),
+        ("EXECUTION_MODE_AUTO_HINT", EXECUTION_MODE_AUTO_HINT),
+        ("STRATEGY_PAUSE_LABEL", STRATEGY_PAUSE_LABEL),
+        ("STRATEGY_RESUME_LABEL", STRATEGY_RESUME_LABEL),
+        ("OVERRIDE_RISK_VETO_PHRASE", OVERRIDE_RISK_VETO_PHRASE),
+        (
+            "OVERRIDE_RISK_VETO_DIALOG_TITLE",
+            OVERRIDE_RISK_VETO_DIALOG_TITLE,
+        ),
+        (
+            "OVERRIDE_RISK_VETO_DIALOG_BODY",
+            OVERRIDE_RISK_VETO_DIALOG_BODY,
+        ),
+        (
+            "OVERRIDE_RISK_VETO_PHRASE_MISMATCH_HINT",
+            OVERRIDE_RISK_VETO_PHRASE_MISMATCH_HINT,
+        ),
+        (
+            "OVERRIDE_RISK_VETO_CONFIRM_LABEL",
+            OVERRIDE_RISK_VETO_CONFIRM_LABEL,
+        ),
+        (
+            "OVERRIDE_RISK_VETO_CANCEL_LABEL",
+            OVERRIDE_RISK_VETO_CANCEL_LABEL,
+        ),
+        (
+            "OVERRIDE_RISK_VETO_BUTTON_LABEL",
+            OVERRIDE_RISK_VETO_BUTTON_LABEL,
+        ),
+        ("SIDEBAR_NAV_CONTROL", SIDEBAR_NAV_CONTROL),
     ]
 }
 

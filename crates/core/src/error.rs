@@ -68,6 +68,10 @@ pub enum LedgerError {
     TransactionFailed(String),
     #[error("database error: {0}")]
     Database(String),
+    /// Phase 4 (R12.4 / Q7) — half-open window contains zero rows.
+    /// The cockpit consumer renders the R13.8 empty state on this err.
+    #[error("query window contains zero rows")]
+    EmptyWindow,
 }
 
 /// Feed / data error.

@@ -94,6 +94,18 @@ pub struct StrategyLoadError {
 ///   to populate R7's "kill-switch trips" row.
 /// - `FeedReconnect` — emitted when the Binance WS handler re-establishes
 ///   a connection (R7.1 feed-reconnects metric).
+///
+/// Phase 5 (Lumen — operator-write surfaces) adds two new variants
+/// (R5.2 / R8.2) — **no SQL migration**; the `kind` column is TEXT so
+/// new values are stored directly:
+/// - `StrategyPaused` — emitted when the operator pauses or resumes a
+///   strategy via the per-row pause/resume button on the Strategies-
+///   detail screen. Direction encoded in `error_summary` (`"paused"` |
+///   `"resumed"`).
+/// - `RiskVetoOverridden` — emitted when the operator overrides a
+///   risk-engine veto via the OVERRIDE typed-confirm modal. Reason
+///   preserved verbatim in `error_summary`; `error_code =
+///   "risk_veto_overridden"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum StrategyEventKind {
@@ -111,6 +123,14 @@ pub enum StrategyEventKind {
     KillSwitchTripped,
     /// v1+ R7.1 — Binance WS feed re-established a connection.
     FeedReconnect,
+    /// Phase 5 R5.2 — operator paused or resumed a strategy via the
+    /// per-row button. Direction in `error_summary` (`"paused"` |
+    /// `"resumed"`).
+    StrategyPaused,
+    /// Phase 5 R8.2 — operator overrode a risk-engine veto via the
+    /// OVERRIDE typed-confirm modal. Reason preserved verbatim in
+    /// `error_summary`; `error_code = "risk_veto_overridden"`.
+    RiskVetoOverridden,
 }
 
 impl std::fmt::Display for StrategyEventKind {
@@ -125,6 +145,8 @@ impl std::fmt::Display for StrategyEventKind {
             Self::PairShortObservation => write!(f, "PairShortObservation"),
             Self::KillSwitchTripped => write!(f, "KillSwitchTripped"),
             Self::FeedReconnect => write!(f, "FeedReconnect"),
+            Self::StrategyPaused => write!(f, "StrategyPaused"),
+            Self::RiskVetoOverridden => write!(f, "RiskVetoOverridden"),
         }
     }
 }
@@ -300,5 +322,26 @@ mod tests {
         assert_eq!(json2, "\"FeedReconnect\"");
         let back2: StrategyEventKind = serde_json::from_str(&json2).unwrap();
         assert_eq!(kind2, back2);
+    }
+
+    /// Phase 5 (T1902 / V9) — `PascalCase` serde round-trip for the
+    /// two new operator-write variants. Locks the on-the-wire spelling
+    /// `"StrategyPaused"` / `"RiskVetoOverridden"` so the audit-row
+    /// snapshot baselines stay byte-stable.
+    #[test]
+    fn pascal_case_for_new_variants() {
+        let paused = StrategyEventKind::StrategyPaused;
+        let json = serde_json::to_string(&paused).unwrap();
+        assert_eq!(json, "\"StrategyPaused\"");
+        let back: StrategyEventKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(paused, back);
+        assert_eq!(paused.to_string(), "StrategyPaused");
+
+        let overridden = StrategyEventKind::RiskVetoOverridden;
+        let json = serde_json::to_string(&overridden).unwrap();
+        assert_eq!(json, "\"RiskVetoOverridden\"");
+        let back: StrategyEventKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(overridden, back);
+        assert_eq!(overridden.to_string(), "RiskVetoOverridden");
     }
 }

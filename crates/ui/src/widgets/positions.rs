@@ -10,9 +10,9 @@ use crate::strings::{
     PANEL_POSITIONS_TITLE, POS_COL_COST, POS_COL_EXPOSURE, POS_COL_MARK, POS_COL_PNL,
     POS_COL_PNL_PCT, POS_COL_QTY, POS_COL_SYMBOL, POS_EMPTY, POS_ERROR_PREFIX, POS_LOADING,
 };
-use crate::theme::{color, color_for_delta, space, text};
+use crate::theme::{color, color_for_delta, space, text, ThemeMode};
 
-use super::frame::{col_header, error_body, muted_body, panel};
+use super::frame::{active_row, col_header, error_body, muted_body, panel};
 use super::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 
 #[must_use]
@@ -23,7 +23,7 @@ pub fn view(model: &Cockpit) -> Element<'_, Message> {
         PanelState::Error(e) => error_body(POS_ERROR_PREFIX, e.as_str()),
         PanelState::Ready(positions) => ready_body(positions),
     };
-    panel(PANEL_POSITIONS_TITLE, body)
+    panel(PANEL_POSITIONS_TITLE, body, ThemeMode::Dark)
 }
 
 fn ready_body(positions: &[trading_core::PositionView]) -> Element<'_, Message> {
@@ -62,7 +62,7 @@ fn ready_body(positions: &[trading_core::PositionView]) -> Element<'_, Message> 
 fn row_for(p: &trading_core::PositionView) -> Element<'_, Message> {
     let pnl_color = color_for_delta(p.pnl.amount());
     let pnl_pct_color = color_for_delta(p.pnl_pct);
-    Row::new()
+    let row = Row::new()
         .push(cell(p.symbol.0.to_string()))
         .push(cell(fmt_qty(p.base_qty)))
         .push(cell(fmt_price(p.cost_basis.amount())))
@@ -71,11 +71,17 @@ fn row_for(p: &trading_core::PositionView) -> Element<'_, Message> {
         .push(colored_cell(fmt_pct(p.pnl_pct), pnl_pct_color))
         .push(cell(fmt_pct(p.exposure_pct)))
         .spacing(space::M)
-        .into()
+        .into();
+    // T1507: 2 px left rule always drawn; active = false for Phase 1
+    // (no position-row selection state yet — wires downstream).
+    active_row(row, false, ThemeMode::Dark)
 }
 
 fn cell<'a>(s: String) -> Element<'a, Message> {
-    Text::new(s).size(text::BODY).color(color::FG).into()
+    Text::new(s)
+        .size(text::BODY)
+        .color(color::FG_1.current(ThemeMode::Dark))
+        .into()
 }
 
 fn colored_cell<'a>(s: String, c: iced::Color) -> Element<'a, Message> {
@@ -85,6 +91,10 @@ fn colored_cell<'a>(s: String, c: iced::Color) -> Element<'a, Message> {
 // Kept available for an exposure-pill or column sorting hook later.
 #[allow(dead_code)]
 fn warn_if_over<'a>(s: String, value: Decimal, cap: Decimal) -> Element<'a, Message> {
-    let c = if value > cap { color::WARN } else { color::FG };
+    let c = if value > cap {
+        color::WARN_500.current(ThemeMode::Dark)
+    } else {
+        color::FG_1.current(ThemeMode::Dark)
+    };
     Text::new(s).size(text::BODY).color(c).into()
 }

@@ -1,9 +1,0 @@
----
-source: crates/ui/tests/panel_snapshots.rs
-expression: tape_summary(&c)
----
-panel: tape
-title: Live tape
-state: empty
-paused: false
-copy: No fills yet. Waiting for the first bar from BTCUSDT.

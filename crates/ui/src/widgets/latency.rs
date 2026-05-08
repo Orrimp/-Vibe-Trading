@@ -11,7 +11,7 @@ use crate::strings::{
     LATENCY_HALTED_LABEL, LATENCY_HELP, LATENCY_HIGH_LABEL, LATENCY_OK_LABEL, LATENCY_UNIT_MS,
     LATENCY_UNKNOWN, LATENCY_WARN_LABEL, PANEL_LATENCY_TITLE,
 };
-use crate::theme::{color, color_for_latency_ms, latency as lat, space, text};
+use crate::theme::{color, color_for_latency_ms, latency as lat, space, text, ThemeMode};
 
 use super::frame::panel;
 
@@ -57,11 +57,11 @@ impl Badge {
     #[must_use]
     pub fn color(self) -> iced::Color {
         match self {
-            Badge::Unknown => color::FG_MUTED,
-            Badge::Ok => color::POS,
-            Badge::Warn => color::WARN,
+            Badge::Unknown => color::FG_3.current(ThemeMode::Dark),
+            Badge::Ok => color::UP_500.current(ThemeMode::Dark),
+            Badge::Warn => color::WARN_500.current(ThemeMode::Dark),
             // High and Halted share red by design — the label distinguishes.
-            Badge::High | Badge::Halted => color::NEG,
+            Badge::High | Badge::Halted => color::DOWN_500.current(ThemeMode::Dark),
         }
     }
 }
@@ -80,28 +80,29 @@ pub fn view(model: &Cockpit) -> Element<'_, Message> {
         Latency::Known { ms } => ms,
     });
 
-    let label =
-        Text::new(badge.label())
-            .size(text::TITLE)
-            .color(if matches!(badge, Badge::Unknown) {
-                color::FG_MUTED
-            } else if matches!(badge, Badge::Halted) {
-                color::NEG
-            } else {
-                label_color
-            });
-    let value = Text::new(value_text).size(text::BODY).color(color::FG);
+    let label = Text::new(badge.label())
+        .size(text::H2)
+        .color(if matches!(badge, Badge::Unknown) {
+            color::FG_3.current(ThemeMode::Dark)
+        } else if matches!(badge, Badge::Halted) {
+            color::DOWN_500.current(ThemeMode::Dark)
+        } else {
+            label_color
+        });
+    let value = Text::new(value_text)
+        .size(text::BODY)
+        .color(color::FG_1.current(ThemeMode::Dark));
 
     let body = Column::new()
         .spacing(space::S)
         .push(Row::new().push(label).push(value).spacing(space::M))
         .push(
             Text::new(LATENCY_HELP)
-                .size(text::CAPTION)
-                .color(color::FG_MUTED),
+                .size(text::MICRO)
+                .color(color::FG_3.current(ThemeMode::Dark)),
         );
 
-    panel(PANEL_LATENCY_TITLE, body.into())
+    panel(PANEL_LATENCY_TITLE, body.into(), ThemeMode::Dark)
 }
 
 #[cfg(test)]

@@ -442,6 +442,84 @@ into [architecture.md](architecture.md).
 
 ---
 
+## Cockpit information architecture
+
+The cockpit (live + fixtures bins) is the operator's one-screen view of
+the system. From v0 it has been a single-page layout: tape + positions
++ P&L + kill switch. The
+[`lumen-design-adoption`](features/lumen-design-adoption.md) initiative
+splits it into a **navigated multi-screen shell** so trading data and
+operations data don't share the primary scan.
+
+### Navigation surfaces (terminal)
+
+The product target — what the cockpit looks like at the end of the
+adoption initiative — is a left-sidebar shell with these screens:
+
+- **Home** — primary trading view. Active strategies (summary), open
+  positions, recent fills (tape / AgentFeed), realised + unrealised
+  P&L. The view the operator looks at by default. (Phase 2.)
+- **Charts** — per-symbol price chart with buy/sell markers from the
+  audit ledger. Symbol selector at the top. (Phase 2.)
+- **Strategies** — per-strategy detail: read-only params, recent
+  signal events, equity-since-deploy sparkline. Reachable via the
+  sidebar or by clicking a strategy row on Home. (Phase 3.)
+- **Risk / Limits** — current per-venue exposure vs caps, daily loss
+  limit consumed, kill threshold proximity gauge. (Phase 3.)
+- **Audit / Journal** — full ledger browser with filter row and
+  pagination; per-row click opens the existing transaction modal.
+  (Phase 3.)
+- **Debug** — operations chrome the operator only checks
+  occasionally: kill switch, latency badge, market-health detail
+  per venue, server-time detail, version, logs/metrics output. The
+  operator can ignore this screen during normal trading. (Phase 2.)
+- **Backtest** (separate `viewer` binary) — KPI strip + equity curve
+  + drawdown band over the existing markdown body. Single-binary
+  scope; not in the cockpit's sidebar. (Phase 4.)
+- **Right-rail Assistant** — opt-in collapsible panel for the v2
+  LLM strategy. Reserved as a column-track in the shell grid;
+  hidden when v2 LLM is not enabled. (Phase 6, gated on v2 LLM.)
+
+### Why this IA
+
+The single-page v0 cockpit conflates three operator modes — "is the
+system trading sensibly", "is the system healthy", and "what
+specifically just happened" — onto one scan. Splitting them lets:
+
+- The trading view stay free of operations chrome (no kill button
+  next to the P&L card) so the operator's normal scan is uncluttered.
+- The operations view live in one place (Debug) so reconnect events,
+  latency, and market-health are findable when something feels off.
+- The detail screens (Strategies / Risk / Audit) surface backend
+  data that already exists but had no UI surface in v0/v0.5/v1/v1.5b.
+- The chart surface answer the natural cross-check — "did my strategy
+  buy at a sensible price?" — that the audit ledger has the data
+  for but no visual surface today.
+
+### What stays out of the cockpit IA
+
+These are covered by other surfaces and **do not** become cockpit
+screens:
+
+- **Order entry** — paper-trading product; no order ticket / order
+  book / watchlist. Universe is config-driven, not UI-driven.
+- **Configuration editor** — `config/agent.toml` is hand-edited; the
+  cockpit never writes config. (Risk and execution-mode toggles in
+  Phase 5 are exceptions ratified there.)
+- **Multi-account / multi-tenant views** — single-operator product
+  forever (per the v3 success-metric scope boundary).
+
+### Phasing reference
+
+The IA above lands across Phases 2 / 3 / 4 / 5 / 6 of the
+[lumen-design-adoption](features/lumen-design-adoption.md) master
+roadmap. Phase 1 (shipped 2026-05-04) ships the design tokens, Tier 1
+chrome, and the always-visible status bar that anchors the bottom of
+every screen above. The product spec doesn't pin per-phase scope
+boundaries — those live in the master roadmap and the per-phase briefs.
+
+---
+
 ## Operator success reports
 
 The operator's question is always "is this working?" — and the reports are
@@ -493,6 +571,16 @@ scope) can render inline.
 
 ## Changelog
 
+- 2026-05-04 (analyst, post-Phase-1 ship): added new top-level
+  section **"Cockpit information architecture"** capturing the
+  terminal product IA — left-sidebar shell with Home / Charts /
+  Strategies / Risk / Audit / Debug screens, separate viewer Backtest
+  surface, reserved right-rail Assistant for v2 LLM. The IA lands
+  across Phases 2 / 3 / 4 / 5 / 6 of the
+  [`lumen-design-adoption`](features/lumen-design-adoption.md) master
+  roadmap (revised same day from 4 to 6 phases at operator request).
+  Phase 1 (shipped) provides the design tokens + Tier 1 chrome +
+  status-bar anchor that every screen sits on.
 - 2026-04-17 (analyst): initial scaffold.
 - 2026-04-17 (analyst): added trading-time agent roster, decision pipeline,
   data/indicator suite, dual-tier LLM strategy, memory loop, risk

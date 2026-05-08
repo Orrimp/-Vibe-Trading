@@ -82,6 +82,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use trading_core::Timestamp;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use tokio_util::sync::CancellationToken;
@@ -90,13 +92,50 @@ use tracing::{info, warn};
 use agent::{EventBus, KillSwitch, RunHandles};
 
 use smol_str::SmolStr;
-use ui::state::{Cockpit, JournalTransactionView, Message};
+use trading_core::{Symbol as CoreSymbol, Venue as CoreVenue};
+use ui::shell;
+use ui::state::{Cockpit, JournalTransactionView, Message, Screen};
 use ui::strings::{APP_TITLE, TAPE_AUDIT_MODAL_ERROR_PREFIX};
-use ui::theme::{color, layout, space};
-use ui::widgets::{journal_transaction_modal, kill, latency, pnl, positions, strategies, tape};
+use ui::theme::ThemeMode;
+use ui::widgets::journal_transaction_modal;
 
-use iced::widget::{Column, Row};
-use iced::{Element, Length};
+use iced::advanced::subscription::{EventStream, Hasher, Recipe};
+use iced::futures;
+use iced::Element;
+
+// ── Server-time recipe (T1509) ────────────────────────────────────────────────
+//
+// Emits `Message::ServerTimeTick` every second using a `tokio::time::interval`.
+// The `live` feature brings `tokio` as a direct dep, so
+// `tokio::time::interval` is available here.
+
+struct ServerTimeRecipe;
+
+impl Recipe for ServerTimeRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: EventStream,
+    ) -> futures::stream::BoxStream<'static, Self::Output> {
+        Box::pin(async_stream::stream! {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            // Skip the first (immediate) tick so the first ServerTimeTick
+            // arrives ~1 s after subscription, not immediately at boot.
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                yield Message::ServerTimeTick(Timestamp::now());
+            }
+        })
+    }
+}
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -217,6 +256,48 @@ fn main() -> Result<()> {
         incident_spawner,
     ));
     info!(halt_file = %cfg.kill_switch.halt_file, "kill switch initialized (audit-wired)");
+
+    // ── Phase 2 — chart universe (T1612) ─────────────────────────────────────
+    // Build `Vec<(Venue, Symbol)>` from the loaded `Config` BEFORE the
+    // `cfg` is moved into `RunHandles`. The cockpit chip row reads this
+    // (capped to the first 3 entries to keep the row scannable in
+    // Phase 2; Phase 3+ may grow it).
+    let universe_pairs: Vec<(CoreVenue, CoreSymbol)> = {
+        let mut out: Vec<(CoreVenue, CoreSymbol)> = Vec::new();
+        // Binance is always present (no `enabled` toggle); Coinbase and
+        // Kraken are operator-gated per v1.5b T1408/T1409.
+        let mut venues: Vec<CoreVenue> = vec![CoreVenue::Binance];
+        if cfg.data.sources.coinbase.enabled {
+            venues.push(CoreVenue::Coinbase);
+        }
+        if cfg.data.sources.kraken.enabled {
+            venues.push(CoreVenue::Kraken);
+        }
+        // Build the symbol list via the same toggle path the agent uses;
+        // fall back to the Binance defaults if the loader rejects the
+        // toggles (e.g. both disabled).
+        let symbols: Vec<CoreSymbol> = trading_core::Universe::from_toggles(
+            cfg.universe.usdt_enabled,
+            cfg.universe.usdc_enabled,
+        )
+        .map(|u| u.symbols.iter().cloned().collect())
+        .unwrap_or_else(|_| {
+            vec![
+                CoreSymbol::new("BTCUSDT"),
+                CoreSymbol::new("ETHUSDT"),
+                CoreSymbol::new("SOLUSDT"),
+            ]
+        });
+        for v in &venues {
+            for s in symbols.iter().take(3) {
+                out.push((*v, s.clone()));
+            }
+        }
+        if out.is_empty() {
+            out.push((CoreVenue::Binance, CoreSymbol::new("BTCUSDT")));
+        }
+        out
+    };
 
     // ── Strategy registry ────────────────────────────────────────────────────
     let registry = strategy::StrategyRegistry::new();
@@ -360,6 +441,11 @@ fn main() -> Result<()> {
 
     let mut cockpit = Cockpit::new();
     cockpit.kill_switch = Some(trip);
+    cockpit.current_screen = Screen::Home;
+    cockpit.universe = universe_pairs.clone();
+    if let Some(first) = universe_pairs.first() {
+        cockpit.selected_symbol = Some(first.clone());
+    }
 
     let app_state = AppState {
         cockpit,
@@ -487,8 +573,69 @@ impl AppState {
             Message::TapeRowClicked(tx) => Some(tx.clone()),
             _ => None,
         };
+        // Phase 2 — capture (venue, symbol) on `SelectSymbol` for the
+        // marker re-fetch dispatch (T1610). The window is the last
+        // 60 minutes against `server_time_now` (or current Timestamp
+        // as a fallback when the 1 Hz tick has not landed yet).
+        let select_pair = match &msg {
+            Message::SelectSymbol(v, s) => Some((*v, s.clone())),
+            _ => None,
+        };
+        // Phase 3 R5.2 / Q11b — compound dispatch: on a Home →
+        // Strategies-summary row click (`SelectStrategy(id)` from a
+        // non-Strategies screen), chain `Task::done(SwitchScreen(
+        // Strategies))`. Capture before `update` so the marker reads
+        // the pre-mutation `current_screen`.
+        let cross_link_strategies = matches!(msg, Message::SelectStrategy(_))
+            && self.cockpit.current_screen != Screen::Strategies;
+        // Phase 4 (T1811) — capture the strategy id BEFORE `update`
+        // mutates the cockpit so we can chain a Task::perform fetch
+        // for the equity curve. `Loading` marker is inserted into
+        // `model.strategy_equity` right after `update` runs.
+        let select_strategy_id: Option<trading_core::StrategyId> = match &msg {
+            Message::SelectStrategy(id) => Some(id.clone()),
+            _ => None,
+        };
 
         ui::state::update(&mut self.cockpit, msg);
+
+        if let Some(ref id) = select_strategy_id {
+            // Phase 4 R13 — insert Loading marker so the screen
+            // renders the loading copy until the fetch returns.
+            self.cockpit
+                .strategy_equity
+                .insert(id.clone(), ui::state::PanelState::Loading);
+        }
+
+        if let Some((venue, symbol)) = select_pair {
+            let now = self
+                .cockpit
+                .server_time_now
+                .unwrap_or_else(trading_core::Timestamp::now);
+            let now_ms = now.unix_millis();
+            let since_ms = now_ms.saturating_sub(60 * 60 * 1_000);
+            let since = trading_core::Timestamp::new(
+                time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(since_ms) * 1_000_000)
+                    .unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
+            );
+            let until = now;
+            let ledger = Arc::clone(&self.ledger);
+            let rt_handle = self.rt_handle.clone();
+            return iced::Task::perform(
+                async move {
+                    let join = rt_handle.spawn(async move {
+                        audit::query::recent_fills_filtered(&ledger, venue, symbol, since, until)
+                            .await
+                            .map_err(|e| SmolStr::new(format!("{e}")))
+                    });
+                    match join.await {
+                        Ok(result) => result,
+                        Err(e) => Err(SmolStr::new(format!("audit task join: {e}"))),
+                    }
+                },
+                Message::ChartMarkersLoaded,
+            );
+        }
 
         if let Some(tx_id) = tx_id {
             let ledger = Arc::clone(&self.ledger);
@@ -550,6 +697,51 @@ impl AppState {
                 },
                 Message::TapeAuditEntriesLoaded,
             )
+        } else if let Some(id) = select_strategy_id {
+            // Phase 4 (T1811) — chain the equity-curve fetch + the
+            // optional screen-switch. The fetched series is
+            // `downsample(SPARKLINE_POINT_CAP)`-d at fetch time
+            // (Q9 — cap-and-downsample at fetch, not at view time).
+            let ledger = Arc::clone(&self.ledger);
+            let rt_handle = self.rt_handle.clone();
+            let id_for_task = id.clone();
+            let id_for_msg = id.clone();
+            let fetch_task = iced::Task::perform(
+                async move {
+                    let join = rt_handle.spawn(async move {
+                        // `since`: 24h ago — Q9 keeps the cockpit
+                        // surface offline-friendly without forcing
+                        // a strategy-load timestamp lookup.
+                        let now = trading_core::Timestamp::now();
+                        let since_ms = now.unix_millis().saturating_sub(24 * 60 * 60 * 1_000);
+                        let since = trading_core::Timestamp::new(
+                            time::OffsetDateTime::from_unix_timestamp_nanos(
+                                i128::from(since_ms) * 1_000_000,
+                            )
+                            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
+                        );
+                        audit::query::equity_curve_for_strategy(&ledger, id_for_task, since, None)
+                            .await
+                            .map(|s| s.downsample(ui::theme::layout::SPARKLINE_POINT_CAP))
+                            .map_err(|e| SmolStr::new(format!("{e}")))
+                    });
+                    match join.await {
+                        Ok(result) => result,
+                        Err(e) => Err(SmolStr::new(format!("audit task join: {e}"))),
+                    }
+                },
+                move |res| Message::StrategyEquityRefreshed(id_for_msg.clone(), res),
+            );
+            if cross_link_strategies {
+                iced::Task::batch(vec![
+                    iced::Task::done(Message::SwitchScreen(Screen::Strategies)),
+                    fetch_task,
+                ])
+            } else {
+                fetch_task
+            }
+        } else if cross_link_strategies {
+            iced::Task::done(Message::SwitchScreen(Screen::Strategies))
         } else {
             iced::Task::none()
         }
@@ -557,7 +749,14 @@ impl AppState {
 
     /// Subscribe to the real bus — the entire point of `cockpit_live`.
     /// `ui::live::subscription` already exists (T32) and batches the
-    /// six core channels + three v0.5 strategy lifecycle channels.
+    /// six core channels + three v0.5 strategy lifecycle channels +
+    /// the T1508 `MarketHealth` channel.
+    ///
+    /// T1509 additions:
+    /// - The `MarketHealth` recipe is already included in
+    ///   `ui::live::subscription` (T1508 shipped it in `live.rs`).
+    /// - A 1 Hz `time::every` subscription emits `Message::ServerTimeTick`
+    ///   so the status-bar server-time field advances each second.
     ///
     /// When the tape-row → audit modal is open, batch in an
     /// `iced::event::listen_with` recipe so `Esc` closes the modal
@@ -566,9 +765,16 @@ impl AppState {
     /// today, so nothing leaks to the tape beneath.
     fn subscription(&self) -> iced::Subscription<Message> {
         let bus_sub = ui::live::subscription(Arc::clone(&self.bus));
+
+        // 1 Hz server-time tick — drives the status-bar clock (T1509).
+        // Uses `ServerTimeRecipe` (tokio interval via tokio_stream) rather
+        // than `iced::time::every` which requires iced's `tokio` feature flag.
+        let time_sub = iced::advanced::subscription::from_recipe(ServerTimeRecipe);
+
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![
                 bus_sub,
+                time_sub,
                 iced::event::listen_with(|event, _status, _window| match event {
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
@@ -578,48 +784,23 @@ impl AppState {
                 }),
             ])
         } else {
-            bus_sub
+            iced::Subscription::batch(vec![bus_sub, time_sub])
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // Layout mirrors `cockpit.rs` so a screenshot taken against the
-        // unified bin matches the fixtures cockpit's pixel positions.
-        let left = Column::new()
-            .spacing(layout::PANEL_OUTER_GAP)
-            .push(pnl::view(&self.cockpit))
-            .push(latency::view(&self.cockpit))
-            .push(kill::view(&self.cockpit))
-            .width(Length::FillPortion(1));
-
-        let right = Column::new()
-            .spacing(layout::PANEL_OUTER_GAP)
-            .push(strategies::view(&self.cockpit))
-            .push(positions::view(&self.cockpit))
-            .push(tape::view(&self.cockpit))
-            .width(Length::FillPortion(2));
-
-        let body = Row::new()
-            .spacing(layout::PANEL_OUTER_GAP)
-            .push(left)
-            .push(right);
-
-        let main_column: Element<'_, Message> = iced::widget::container(body)
-            .padding(space::L as u16)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_theme: &iced::Theme| iced::widget::container::Style {
-                background: Some(color::BG.into()),
-                text_color: Some(color::FG),
-                ..Default::default()
-            })
-            .into();
+        // Phase 2 — both bins compose the same shell so screenshots align
+        // pixel-for-pixel. (T1603 / T1611.)
+        let main_column: Element<'_, Message> = shell::view(&self.cockpit, ThemeMode::Dark);
 
         // Render the modal as a `Stack` overlay only when the modal is
-        // open (tape-row-audit-modal Q1). When closed, return
-        // `main_column` directly so the cockpit's iced widget tree is
-        // byte-identical to the pre-modal world — existing
-        // `panel_snapshots__*` stay green by construction (V7 / R11).
+        // open (tape-row-audit-modal Q1). The `Stack` base layer is
+        // `main_column` (body + status bar), so the modal scrim overlays
+        // both — the status bar stays visible behind the backdrop.
+        // When closed, return `main_column` directly so the cockpit's
+        // iced widget tree is byte-identical to the pre-modal world —
+        // existing `panel_snapshots__*` stay green by construction
+        // (V7 / R11).
         if let Some(modal_state) = self.cockpit.tape_audit_modal.as_ref() {
             journal_transaction_modal::view(modal_state, main_column, Message::TapeAuditModalClosed)
         } else {

@@ -59,7 +59,7 @@ use crate::strings::{
     TAPE_AUDIT_MODAL_STRATEGY_LABEL, TAPE_AUDIT_MODAL_STRATEGY_NONE, TAPE_AUDIT_MODAL_TITLE,
     TAPE_AUDIT_MODAL_TS_LABEL, TAPE_AUDIT_MODAL_TX_LABEL,
 };
-use crate::theme::{color, radius, space, text};
+use crate::theme::{color, radius, space, text, ThemeMode};
 
 use super::num::fmt_usdt;
 
@@ -123,7 +123,7 @@ where
         .width(Length::Fill)
         .height(Length::Fill)
         .style(|_theme: &iced::Theme| container::Style {
-            background: Some(color::BG_OVERLAY.into()),
+            background: Some(color::OVERLAY.current(ThemeMode::Dark).into()),
             ..Default::default()
         });
 
@@ -157,13 +157,13 @@ where
             u16::try_from(MODAL_WIDTH_PX).unwrap_or(u16::MAX),
         )))
         .style(|_theme: &iced::Theme| container::Style {
-            background: Some(color::BG_ELEV.into()),
+            background: Some(color::PANEL_RAISED.current(ThemeMode::Dark).into()),
             border: iced::Border {
-                color: color::BORDER_STRONG,
+                color: color::BORDER_STRONG.current(ThemeMode::Dark),
                 width: 1.0,
-                radius: radius::MEDIUM.into(),
+                radius: radius::R4.into(),
             },
-            text_color: Some(color::FG),
+            text_color: Some(color::FG_1.current(ThemeMode::Dark)),
             ..Default::default()
         });
 
@@ -182,28 +182,44 @@ where
     Msg: Clone + 'a,
 {
     let title = Text::new(TAPE_AUDIT_MODAL_TITLE)
-        .size(text::TITLE)
-        .color(color::FG);
+        .size(text::H2)
+        .color(color::FG_1.current(ThemeMode::Dark));
 
+    // T1504 — modal close button gains focus ring.
+    // NOTE: iced 0.14 button::Status has no Focused variant (Active /
+    // Hovered / Pressed / Disabled only). focus::ring is wired on Hovered
+    // as a best-effort visual indicator; true keyboard focus ring is deferred
+    // until iced exposes a Focused variant.
     let close_button = Button::new(
         Text::new(TAPE_AUDIT_MODAL_CLOSE_LABEL)
             .size(text::BODY)
-            .color(color::FG),
+            .color(color::FG_1.current(ThemeMode::Dark)),
     )
     .on_press(close_msg)
     .style(|_theme: &iced::Theme, status| {
-        let bg = match status {
-            button::Status::Hovered | button::Status::Pressed => color::BORDER_STRONG,
-            _ => color::BORDER,
+        let (bg, ring) = match status {
+            button::Status::Hovered => (
+                color::BORDER_STRONG.current(ThemeMode::Dark),
+                crate::theme::focus::ring(ThemeMode::Dark),
+            ),
+            button::Status::Pressed => (
+                color::BORDER_STRONG.current(ThemeMode::Dark),
+                iced::Shadow::default(),
+            ),
+            _ => (
+                color::BORDER_1.current(ThemeMode::Dark),
+                iced::Shadow::default(),
+            ),
         };
         button::Style {
             background: Some(bg.into()),
-            text_color: color::FG,
+            text_color: color::FG_1.current(ThemeMode::Dark),
             border: iced::Border {
-                color: color::BORDER_STRONG,
+                color: color::BORDER_STRONG.current(ThemeMode::Dark),
                 width: 1.0,
-                radius: radius::SMALL.into(),
+                radius: radius::R2.into(),
             },
+            shadow: ring,
             ..Default::default()
         }
     });
@@ -266,8 +282,8 @@ where
         .spacing(space::M)
         .push(
             Text::new(label)
-                .size(text::CAPTION)
-                .color(color::FG_MUTED)
+                .size(text::MICRO)
+                .color(color::FG_3.current(ThemeMode::Dark))
                 .width(Length::Fixed(f32::from(112u16))),
         )
         .push(value)
@@ -282,21 +298,30 @@ fn tx_id_value<'a, Msg>(value: &'a str) -> Element<'a, Msg>
 where
     Msg: Clone + 'a,
 {
-    Text::new(value).size(text::BODY).color(color::INFO).into()
+    Text::new(value)
+        .size(text::BODY)
+        .color(color::INFO_500.current(ThemeMode::Dark))
+        .into()
 }
 
 fn mono_value<'a, Msg>(value: String) -> Element<'a, Msg>
 where
     Msg: Clone + 'a,
 {
-    Text::new(value).size(text::BODY).color(color::FG).into()
+    Text::new(value)
+        .size(text::BODY)
+        .color(color::FG_1.current(ThemeMode::Dark))
+        .into()
 }
 
 fn body_value<'a, Msg>(value: String) -> Element<'a, Msg>
 where
     Msg: Clone + 'a,
 {
-    Text::new(value).size(text::BODY).color(color::FG).into()
+    Text::new(value)
+        .size(text::BODY)
+        .color(color::FG_1.current(ThemeMode::Dark))
+        .into()
 }
 
 fn body_for<'a, Msg>(entries: &'a PanelState<JournalTransactionView>) -> Element<'a, Msg>
@@ -304,14 +329,19 @@ where
     Msg: Clone + 'a,
 {
     match entries {
-        PanelState::Loading => centered_message(TAPE_AUDIT_MODAL_LOADING, color::FG_MUTED),
-        PanelState::Empty => centered_message(TAPE_AUDIT_MODAL_EMPTY, color::FG_MUTED),
+        PanelState::Loading => centered_message(
+            TAPE_AUDIT_MODAL_LOADING,
+            color::FG_3.current(ThemeMode::Dark),
+        ),
+        PanelState::Empty => {
+            centered_message(TAPE_AUDIT_MODAL_EMPTY, color::FG_3.current(ThemeMode::Dark))
+        }
         PanelState::Error(msg) => {
             // `<prefix><detail>` — matches the existing `*_ERROR_PREFIX`
             // pattern for tape / positions / P&L panels (principles
             // "Voice and copy" — "what's broken: what to check").
             let line = format!("{TAPE_AUDIT_MODAL_ERROR_PREFIX}{msg}");
-            centered_message_owned(line, color::NEG)
+            centered_message_owned(line, color::DOWN_500.current(ThemeMode::Dark))
         }
         PanelState::Ready(view) => entries_table(&view.entries),
     }
@@ -380,8 +410,8 @@ where
     Msg: Clone + 'a,
 {
     Text::new(label)
-        .size(text::CAPTION)
-        .color(color::FG_MUTED)
+        .size(text::MICRO)
+        .color(color::FG_3.current(ThemeMode::Dark))
         .width(Length::FillPortion(3))
         .into()
 }
@@ -391,8 +421,8 @@ where
     Msg: Clone + 'a,
 {
     Text::new(label)
-        .size(text::CAPTION)
-        .color(color::FG_MUTED)
+        .size(text::MICRO)
+        .color(color::FG_3.current(ThemeMode::Dark))
         .width(Length::FillPortion(3))
         .align_x(iced::alignment::Horizontal::Right)
         .into()
@@ -403,8 +433,8 @@ where
     Msg: Clone + 'a,
 {
     Text::new(label)
-        .size(text::CAPTION)
-        .color(color::FG_MUTED)
+        .size(text::MICRO)
+        .color(color::FG_3.current(ThemeMode::Dark))
         .width(Length::FillPortion(2))
         .align_x(iced::alignment::Horizontal::Center)
         .into()
@@ -416,7 +446,7 @@ where
 {
     Text::new(value)
         .size(text::BODY)
-        .color(color::FG)
+        .color(color::FG_1.current(ThemeMode::Dark))
         .width(Length::FillPortion(3))
         .into()
 }
@@ -427,7 +457,7 @@ where
 {
     Text::new(value)
         .size(text::BODY)
-        .color(color::FG)
+        .color(color::FG_1.current(ThemeMode::Dark))
         .width(Length::FillPortion(3))
         .align_x(iced::alignment::Horizontal::Right)
         .into()
@@ -439,7 +469,7 @@ where
 {
     Text::new(value)
         .size(text::BODY)
-        .color(color::FG_MUTED)
+        .color(color::FG_3.current(ThemeMode::Dark))
         .width(Length::FillPortion(2))
         .align_x(iced::alignment::Horizontal::Center)
         .into()

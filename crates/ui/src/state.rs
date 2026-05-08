@@ -4,12 +4,15 @@
 //! only presentation state. Data comes in via feed messages and ledger
 //! refresh callbacks; `update` is pure.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use trading_core::{
-    Bar, FillView, JournalEntry, PnlSnapshot, PositionView, StrategyEventKind, StrategyEventView,
-    StrategyId, StrategyLoadError, StrategyLoaded, StrategySwapped, Tick, Timestamp,
+    Bar, EquitySeries, FillView, JournalEntry, MarketHealth, PnlSnapshot, PositionView, Signal,
+    StrategyEventKind, StrategyEventView, StrategyId, StrategyLoadError, StrategyLoaded,
+    StrategySwapped, Symbol, Tick, Timestamp, Venue,
 };
 
 use crate::theme::layout::TAPE_MAX_ROWS;
@@ -22,6 +25,72 @@ pub const STRATEGIES_RECENT_EVENT_CAP: usize = 10;
 /// Rolling 60-second window size (bars). At 1s ticks this is enough; bars
 /// drive refresh so the window is counted in seconds by the ringbuffer helper.
 pub const STRATEGIES_SIGNAL_WINDOW_SECS: u64 = 60;
+
+/// Phase 2 — rolling chart-buffer capacity per `(Venue, Symbol)`. 60 bars =
+/// 60 minutes of 1-minute bars. Sibling of `STRATEGIES_RECENT_EVENT_CAP`
+/// because this is a state-shape constant, not a render constant. (Phase 2
+/// Design — `ChartBuffer shape`, R10.3.)
+pub const CHART_BUFFER_CAPACITY: usize = 60;
+
+/// Phase 2 — screen-routed shell. `Home / Debug / Charts` ship in Phase 2;
+/// `Strategies / Risk / Audit` are declared now (Phase 3 wires their
+/// dispatch) so Phase 3's enum extension is a backlog item, not an enum
+/// migration. Phase 5 adds `Control` (`HumanControl` panel — Q1 ratification:
+/// 7th sidebar entry). (Phase 2 Design Q-resolutions; R2.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Screen {
+    /// Phase 2 — pnl + positions + strategies + `agent_feed` grid.
+    #[default]
+    Home,
+    /// Phase 2 — kill + latency + market-health + version + logs stub.
+    /// Phase 5 (Q1) — kill widget migrates to the `HumanControl` bottom
+    /// action; the `Debug` screen no longer renders the kill panel.
+    Debug,
+    /// Phase 2 — chip-row + canvas chart with audit markers.
+    Charts,
+    /// Phase 3 — declared now; dispatch returns "Not yet" placeholder.
+    Strategies,
+    /// Phase 3 — declared now; dispatch returns "Not yet" placeholder.
+    Risk,
+    /// Phase 3 — declared now; dispatch returns "Not yet" placeholder.
+    Audit,
+    /// Phase 5 (Q1) — `HumanControl` panel (mode + 3 limit mirror rows
+    /// + kill bottom action). Sidebar's 7th entry.
+    Control,
+}
+
+/// Per-`(Venue, Symbol)` rolling 60-bar buffer. Fed by the
+/// `Message::BarReceived` arm; evicts the oldest bar on push when at
+/// capacity. (Phase 2 Design — `ChartBuffer shape`.)
+#[derive(Debug, Default, Clone)]
+pub struct ChartBuffer {
+    /// Each value is a `VecDeque<Bar>` capped at
+    /// [`CHART_BUFFER_CAPACITY`]; oldest-front, newest-back so the canvas
+    /// paints left-to-right by iterating `bars()` directly.
+    pub series: HashMap<(Venue, Symbol), VecDeque<Bar>>,
+}
+
+impl ChartBuffer {
+    /// Push a new bar onto the deque for `(venue, symbol)`, evicting the
+    /// oldest bar if the deque is at capacity.
+    pub fn push_bar(&mut self, bar: Bar) {
+        let key = (bar.venue, bar.symbol.clone());
+        let series = self.series.entry(key).or_default();
+        if series.len() == CHART_BUFFER_CAPACITY {
+            series.pop_front();
+        }
+        series.push_back(bar);
+    }
+
+    /// Iterate the buffered bars for `(venue, symbol)` oldest-first.
+    /// Returns an empty iterator if the key has never been seen.
+    pub fn bars(&self, venue: Venue, symbol: &Symbol) -> impl Iterator<Item = &Bar> {
+        self.series
+            .get(&(venue, symbol.clone()))
+            .into_iter()
+            .flat_map(|deque| deque.iter())
+    }
+}
 
 /// Agent mode banner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -108,6 +177,110 @@ pub enum KillState {
     Halted { reason: SmolStr },
 }
 
+// ── Phase 5 — focus-state-machine WidgetId constants ───────────────────────
+//
+// These live here (state.rs) rather than in `widgets/focus_ring.rs`
+// because the consistency test (`crates/ui/tests/consistency.rs`) scans
+// every file under `src/widgets/` for inline user-visible string
+// literals. The focus-state-machine keys ARE string literals but they
+// are NEVER operator-visible — they are stable identifiers for the
+// `Cockpit::focused_widget` field. Hosting them under `state.rs`
+// satisfies the consistency rule cleanly.
+pub mod focus_ids {
+    use smol_str::SmolStr;
+
+    /// Stable focus key for the kill button.
+    pub const KILL_BUTTON: &str = "kill_button";
+    /// Stable focus key for the kill-confirm typed-phrase input.
+    pub const KILL_CONFIRM_INPUT: &str = "kill_confirm_input";
+    /// Stable focus key for the kill-confirm "Confirm stop" button.
+    pub const KILL_CONFIRM_BUTTON: &str = "kill_confirm_button";
+    /// Stable focus key for the kill-confirm "Cancel" button.
+    pub const KILL_CANCEL_BUTTON: &str = "kill_cancel_button";
+
+    /// Stable focus key for the override-veto confirm input.
+    pub const OVERRIDE_RISK_VETO_INPUT: &str = "override_risk_veto_input";
+    /// Stable focus key for the override-veto confirm button.
+    pub const OVERRIDE_RISK_VETO_CONFIRM: &str = "override_risk_veto_confirm";
+    /// Stable focus key for the override-veto cancel button.
+    pub const OVERRIDE_RISK_VETO_CANCEL: &str = "override_risk_veto_cancel";
+
+    /// Stable focus key for the execution-mode "Observe" segment.
+    pub const EXECUTION_MODE_OBSERVE: &str = "execution_mode_observe";
+    /// Stable focus key for the execution-mode "Supervised" segment.
+    pub const EXECUTION_MODE_SUPERVISED: &str = "execution_mode_supervised";
+    /// Stable focus key for the execution-mode "Auto" segment.
+    pub const EXECUTION_MODE_AUTO: &str = "execution_mode_auto";
+
+    /// Per-strategy pause-button focus key. Format
+    /// `"strategy_pause::<strategy_id>"`.
+    #[must_use]
+    pub fn strategy_pause_id(strategy_id: &str) -> SmolStr {
+        SmolStr::new(format!("strategy_pause::{strategy_id}"))
+    }
+
+    /// Per-veto override-button focus key. Format
+    /// `"override_veto_button::<veto_id>"`.
+    #[must_use]
+    pub fn override_veto_button_id(veto_id: &str) -> SmolStr {
+        SmolStr::new(format!("override_veto_button::{veto_id}"))
+    }
+}
+
+// ── Phase 5 — HumanControl panel + per-strategy pause + override-risk-veto ──
+//
+// All four additions ratified by the Phase 5 Design's "Cockpit state diff"
+// sub-section. The `Cockpit::tape` field name is **preserved** per Q14;
+// only the module path renames from `tape.rs` → `agent_feed.rs` (R11).
+
+/// Phase 5 — execution mode (Q4 — runtime-only). Cold-start = `Observe`
+/// (safest default; v0–v4 are config-driven, so introducing a UI-write-to-
+/// disk surface for session ergonomics is out of bounds). Mirrors
+/// `AgentMode`'s derive set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ExecutionMode {
+    /// Cold-start default per Q4 — safest setting; agent observes
+    /// signals but does not send orders.
+    #[default]
+    Observe,
+    Supervised,
+    Auto,
+}
+
+/// Phase 5 — typed-confirm state for the override-risk-veto modal
+/// (R7.4 / R7.5). Mirror of `KillState::Confirming { typed }`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum OverrideRiskVetoState {
+    #[default]
+    Idle,
+    Confirming {
+        veto_id: SmolStr,
+        typed: String,
+    },
+    Submitting {
+        veto_id: SmolStr,
+    },
+}
+
+/// Phase 5 — surfaced risk-engine veto event (R7.2). Live upstream is
+/// the `default_risk_telemetry_stub` at
+/// `crates/agent/src/runtime.rs:1023–1090` (TD-2); fixtures populate
+/// for visual baselines.
+///
+/// `Signal` (the blocked payload) does not derive `PartialEq / Eq` (it
+/// carries floating-point evidence that is not bitwise-equal-safe), so
+/// `VetoEvent` mirrors that derive set: `Debug + Clone + Serialize +
+/// Deserialize`. Tests compare on `veto_id` instead of structural
+/// equality.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VetoEvent {
+    pub veto_id: SmolStr,
+    pub ts: Timestamp,
+    pub strategy_id: StrategyId,
+    pub reason: SmolStr,
+    pub blocked_signal: Signal,
+}
+
 /// Latency reading derived from the most recent tick.
 #[derive(Debug, Clone, Copy, Default)]
 pub enum Latency {
@@ -116,6 +289,23 @@ pub enum Latency {
     Unknown,
     /// Delta between venue ts and local clock, milliseconds.
     Known { ms: i64 },
+}
+
+/// UI-side per-venue market-health state. Derived from `MarketHealth` bus
+/// events; maps the three-variant bus enum to the two states the status bar
+/// needs (connected = Fresh/Recovered; reconnecting = Stale).
+///
+/// Phase 1 note: `Reconnecting` subsumes both `Stale` and the brief gap
+/// between `Stale` and `Recovered`. The status bar has no "gap" state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MarketHealthState {
+    /// Venue is producing fresh ticks (last seen within threshold). This is
+    /// also the initial fixture state (no watchdog running).
+    #[default]
+    Fresh,
+    /// Venue has not produced a tick within the stale threshold. Status bar
+    /// shows "Reconnecting".
+    Stale,
 }
 
 /// Trip-the-kill-switch closure type used by the cockpit's
@@ -183,6 +373,163 @@ impl SignalWindow {
     }
 }
 
+// ── Phase 3 — Strategies-detail / Risk / Audit screen types ─────────────────
+//
+// Lumen Phase 3 (Detail screens) — Q-resolutions documented in
+// `spec/features/lumen-phase-3-detail-screens.md` § Design.
+//
+// `StrategiesConfig` is a **UI-local read-only mirror** of the relevant
+// fields from `agent::config::StrategiesConfig`. It deliberately does NOT
+// re-export the agent struct so the `ui` crate's default-feature build
+// (no `agent` dep) still compiles.
+
+/// Phase 3 — read-only mirror of the agent runtime's strategies config
+/// surface used by the Strategies-detail screen (Q10 — read-only). Only
+/// the fields the screen renders are mirrored; the live binary's boot
+/// path translates `agent::config::StrategiesConfig` into this struct.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StrategiesConfig {
+    /// Per-strategy params — keyed by `StrategyId`. Each entry's
+    /// `params` map is rendered as the read-only key-value rows in the
+    /// Strategies-detail params block (Phase 3 R4.2).
+    pub strategies: Vec<StrategyConfigEntry>,
+}
+
+/// Phase 3 — one entry in the read-only `StrategiesConfig.strategies`
+/// list. The `id` matches the `StrategyId` keying `Cockpit::strategies`
+/// rows so the params block is selectable from the chip row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StrategyConfigEntry {
+    pub id: StrategyId,
+    /// Repo-relative TOML source path — matches `StrategyRow::source_path`
+    /// so the Strategies-detail screen can show the operator where the
+    /// config lives.
+    pub source_path: SmolStr,
+    /// Read-only key-value params. Order is preserved for deterministic
+    /// snapshot baselines.
+    pub params: Vec<(SmolStr, SmolStr)>,
+}
+
+/// Phase 3 — Risk-screen mirror. Shipped by the agent runtime's
+/// `RiskTelemetry` snapshot (Q3 ratification — channel pattern, sibling
+/// of Phase 1 `MarketHealth`). All numeric fields are `Decimal` or `u64`;
+/// no `f64`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RiskState {
+    pub per_symbol_exposure: HashMap<(Venue, Symbol), Decimal>,
+    pub per_symbol_caps: HashMap<(Venue, Symbol), Decimal>,
+    pub daily_loss_used_pct: Decimal,
+    pub daily_loss_cap_pct: Decimal,
+    pub heartbeat_age_ms: u64,
+    pub heartbeat_timeout_ms: u64,
+}
+
+// Phase 3 — `AuditKindFilter` is defined in `trading_core::views` so
+// the audit query crate can take it as a parameter without a back-edge
+// into `ui`. Re-exported below for the existing
+// `ui::state::AuditKindFilter` import path.
+pub use trading_core::AuditKindFilter;
+
+/// Phase 3 — Audit-screen single-select time-range chip.
+///
+/// `Last7D` is the default — widest window operators are likely to
+/// want; chip row makes narrowing one click.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AuditTimeRange {
+    Last1H,
+    Last24H,
+    #[default]
+    Last7D,
+}
+
+/// Phase 3 — Audit-screen filter row composite. All fields are
+/// session-scoped (Q5 — no on-disk persistence). Empty venue set
+/// means "all venues"; `None` symbol means "all symbols".
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AuditFilter {
+    pub venues: Vec<Venue>,
+    pub symbol: Option<Symbol>,
+    pub kind: AuditKindFilter,
+    pub time_range: AuditTimeRange,
+}
+
+impl AuditFilter {
+    /// Phase 3 — chip-click helper. Replaces `venues` and returns the
+    /// new filter. Used by the screen's chip-press handler to emit a
+    /// fresh `AuditFilterChanged` value on every interaction.
+    #[must_use]
+    pub fn with_venues(&self, venues: Vec<Venue>) -> Self {
+        Self {
+            venues,
+            symbol: self.symbol.clone(),
+            kind: self.kind,
+            time_range: self.time_range,
+        }
+    }
+
+    /// Phase 3 — symbol-input helper. `None` means "all symbols".
+    #[must_use]
+    pub fn with_symbol(&self, symbol: Option<Symbol>) -> Self {
+        Self {
+            venues: self.venues.clone(),
+            symbol,
+            kind: self.kind,
+            time_range: self.time_range,
+        }
+    }
+
+    /// Phase 3 — kind-chip helper.
+    #[must_use]
+    pub fn with_kind(&self, kind: AuditKindFilter) -> Self {
+        Self {
+            venues: self.venues.clone(),
+            symbol: self.symbol.clone(),
+            kind,
+            time_range: self.time_range,
+        }
+    }
+
+    /// Phase 3 — time-range chip helper.
+    #[must_use]
+    pub fn with_time_range(&self, time_range: AuditTimeRange) -> Self {
+        Self {
+            venues: self.venues.clone(),
+            symbol: self.symbol.clone(),
+            kind: self.kind,
+            time_range,
+        }
+    }
+}
+
+// Phase 3 — `AuditKindLabel` and `JournalRow` are defined in
+// `trading_core::views` so the audit query crate can return them
+// without a back-edge into `ui`. Re-exported below for the
+// existing `ui::state::JournalRow` import path.
+pub use trading_core::{AuditKindLabel, JournalRow};
+
+/// Phase 3 — Audit-screen sub-state. Filter, page cursor, loaded row
+/// set, and total count all live here so the screen body is a pure
+/// dispatch over `&Cockpit`.
+#[derive(Debug, Clone)]
+pub struct AuditScreenState {
+    pub filter: AuditFilter,
+    /// 0-indexed page cursor (Q4 — fixed 250 rows / page).
+    pub page: u32,
+    pub rows: PanelState<Vec<JournalRow>>,
+    pub total_count: Option<u64>,
+}
+
+impl Default for AuditScreenState {
+    fn default() -> Self {
+        Self {
+            filter: AuditFilter::default(),
+            page: 0,
+            rows: PanelState::Loading,
+            total_count: None,
+        }
+    }
+}
+
 /// A single row in the strategies panel (R5.1). Carries enough for the
 /// table cells plus the hash tooltip and the per-row error badge.
 #[derive(Debug, Clone)]
@@ -215,6 +562,11 @@ pub struct Cockpit {
     pub mode: AgentMode,
 
     // Panels (each carries its own PanelState).
+    /// Live fills panel state. **Module renamed `tape.rs` → `agent_feed.rs`
+    /// (Phase 5 R11). Field name preserved per Phase 5 Q14 — renaming
+    /// the field would ripple through ~100+ test sites for cosmetic
+    /// value. See `widgets::agent_feed` module doc-comment for the
+    /// rename rationale.**
     pub tape: PanelState<VecDeque<FillView>>,
     pub tape_paused: bool,
     /// Buffered fills received while paused; flushed on resume.
@@ -237,6 +589,21 @@ pub struct Cockpit {
     pub kill: KillState,
     pub latency: Latency,
 
+    // ── T1508 — Status bar state ─────────────────────────────────────────────
+    /// Per-venue market-health state, updated by `Message::MarketHealthUpdated`.
+    /// Empty on boot (no venues seen yet); fixture bin pre-populates with
+    /// `Fresh` for all known venues.
+    pub market_health: HashMap<Venue, MarketHealthState>,
+
+    /// Most recently ticked server time. Updated 1 Hz by a `time::every`
+    /// subscription via `Message::ServerTimeTick`. `None` until first tick.
+    pub server_time_now: Option<Timestamp>,
+
+    /// Account label displayed in the status bar.  Populated at boot from
+    /// `Config` in the live path; set to the static fixture string
+    /// `"Paper · Demo 3-symbol"` in fixtures mode. Static for the session.
+    pub account_label: SmolStr,
+
     /// Most recent bar/tick timestamps for debug/telemetry.
     pub last_bar_ts: Option<Timestamp>,
     pub last_tick_ts: Option<Timestamp>,
@@ -257,6 +624,93 @@ pub struct Cockpit {
     /// fixture / standalone-cockpit modes — see `KillTripFn` doc.
     #[cfg(feature = "live")]
     pub kill_switch: Option<KillTripFn>,
+
+    // ── Phase 2 — Shell IA + Charts ─────────────────────────────────────────
+    /// Active screen for the routed shell. Default `Home` so cold-start
+    /// lands the operator on trading data, not operations chrome.
+    /// (Phase 2 Q8 — session-scoped, no on-disk persistence.)
+    pub current_screen: Screen,
+
+    /// Configured `(Venue, Symbol)` universe — populated once at boot
+    /// from `agent::config::Config` in live mode, hard-coded to the
+    /// 3-symbol Binance set in fixtures mode. Static for the session.
+    /// (Phase 2 Q3.)
+    pub universe: Vec<(Venue, Symbol)>,
+
+    /// Currently-selected `(Venue, Symbol)` on the Charts screen.
+    /// `None` until the operator first enters Charts; auto-set to the
+    /// first universe entry on first paint of Charts (R6.5). Persists
+    /// across Home ↔ Debug ↔ Charts switches; cleared only on cockpit
+    /// restart (Q8).
+    pub selected_symbol: Option<(Venue, Symbol)>,
+
+    /// Per-`(Venue, Symbol)` rolling 60-bar buffer fed by the existing
+    /// `Message::BarReceived` arm.
+    pub chart_buffer: ChartBuffer,
+
+    /// Marker layer for the Charts screen — fills filtered to the active
+    /// `(venue, symbol, window)` triple. `Loading` until the first async
+    /// fetch returns; `Ready(fills)` after; `Error(msg)` on query failure.
+    pub chart_markers: PanelState<Vec<FillView>>,
+
+    // ── Phase 3 — Detail screens ────────────────────────────────────────
+    /// Currently-selected strategy on the Strategies-detail screen.
+    /// Set by `Message::SelectStrategy` (chip click on the Strategies
+    /// screen, or row click on the Home → Strategies-summary panel
+    /// followed by `SwitchScreen(Screen::Strategies)` — Q11b compound
+    /// dispatch). Reset to `None` only on cockpit restart (Q5 —
+    /// session-scoped).
+    pub selected_strategy: Option<StrategyId>,
+
+    /// Read-only mirror of the agent runtime's strategies config,
+    /// populated once at boot in both bins (live: from
+    /// `agent::config::Config.strategies`; fixtures: from a
+    /// `fake_strategies_config()` helper). Static for the session — same
+    /// precedent as `Cockpit::universe` (Phase 2 Q3) and
+    /// `Cockpit::account_label` (Phase 1 R13.4). `None` if the binary
+    /// boots before config loads; the screen renders the empty-state
+    /// until populated.
+    pub strategies_config: Option<StrategiesConfig>,
+
+    /// Live-mirrored risk state. Populated by the new bus subscription on
+    /// `RiskTelemetry` events (Q3 — channel pattern; mirrors Phase 1
+    /// `MarketHealth`). `Loading` on cold-start until the first
+    /// `RiskStateRefreshed` arm fires.
+    pub risk_state: PanelState<RiskState>,
+
+    /// Audit-screen sub-state. Filter, page cursor, loaded row set, and
+    /// total count all live here so the screen body is a pure dispatch
+    /// over `&Cockpit`.
+    pub audit_screen_state: AuditScreenState,
+
+    // ── Phase 4 — Backtest-panel cross-link ─────────────────────────────
+    /// Read-only mirror of `audit::query::equity_curve_for_strategy`
+    /// results, keyed on `StrategyId`. Entry inserted at first
+    /// `SelectStrategy(id)`; replaced on subsequent re-selects of the
+    /// same id (one-shot semantics — operator switching screens triggers
+    /// a fresh fetch). Cleared only on cockpit restart (session-scoped
+    /// per Phase 3 Q5).
+    pub strategy_equity: HashMap<StrategyId, PanelState<EquitySeries>>,
+
+    // ── Phase 5 — HumanControl panel + per-strategy pause + override ───
+    /// Operator-selected execution mode (Q4 — runtime-only). Cold-start
+    /// = `Observe`; restart returns to `Observe`; no `config/agent.toml`
+    /// write; no audit writer.
+    pub execution_mode: ExecutionMode,
+    /// Per-strategy pause set (R4.3). Sibling of `tape_paused: bool`;
+    /// single-click toggles membership.
+    pub paused_strategies: HashSet<StrategyId>,
+    /// Typed-confirm state for the per-veto override modal (R7).
+    pub override_risk_veto: OverrideRiskVetoState,
+    /// Surfaced risk-engine veto events (R7.2). Live upstream is the
+    /// `default_risk_telemetry_stub` at
+    /// `crates/agent/src/runtime.rs:1023–1090`; real wiring tracked as
+    /// TD-2 (Phase 5 Design / Risk-engine veto-emit deferral).
+    pub risk_veto_events: Vec<VetoEvent>,
+    /// Phase 5 (T1912 / TD-1 path b) — currently keyboard-focused widget.
+    /// Owned by the `widgets::focus_ring` Subscription wrapper. `None`
+    /// when nothing is focused (cold-start; mouse-only interaction).
+    pub focused_widget: Option<SmolStr>,
 }
 
 impl std::fmt::Debug for Cockpit {
@@ -276,6 +730,9 @@ impl std::fmt::Debug for Cockpit {
             .field("strategies_recent_events", &self.strategies_recent_events)
             .field("kill", &self.kill)
             .field("latency", &self.latency)
+            .field("market_health", &self.market_health)
+            .field("server_time_now", &self.server_time_now)
+            .field("account_label", &self.account_label)
             .field("last_bar_ts", &self.last_bar_ts)
             .field("last_tick_ts", &self.last_tick_ts)
             .field("tape_audit_modal", &self.tape_audit_modal);
@@ -284,6 +741,21 @@ impl std::fmt::Debug for Cockpit {
             "kill_switch",
             &self.kill_switch.as_ref().map(|_| "<trip-fn>"),
         );
+        dbg.field("current_screen", &self.current_screen)
+            .field("universe", &self.universe)
+            .field("selected_symbol", &self.selected_symbol)
+            .field("chart_buffer", &self.chart_buffer)
+            .field("chart_markers", &self.chart_markers)
+            .field("selected_strategy", &self.selected_strategy)
+            .field("strategies_config", &self.strategies_config)
+            .field("risk_state", &self.risk_state)
+            .field("audit_screen_state", &self.audit_screen_state)
+            .field("strategy_equity", &self.strategy_equity)
+            .field("execution_mode", &self.execution_mode)
+            .field("paused_strategies", &self.paused_strategies)
+            .field("override_risk_veto", &self.override_risk_veto)
+            .field("risk_veto_events", &self.risk_veto_events)
+            .field("focused_widget", &self.focused_widget);
         dbg.finish()
     }
 }
@@ -302,11 +774,29 @@ impl Default for Cockpit {
             strategies_recent_events: VecDeque::with_capacity(STRATEGIES_RECENT_EVENT_CAP),
             kill: KillState::Idle,
             latency: Latency::Unknown,
+            market_health: HashMap::new(),
+            server_time_now: None,
+            account_label: SmolStr::new(""),
             last_bar_ts: None,
             last_tick_ts: None,
             tape_audit_modal: None,
             #[cfg(feature = "live")]
             kill_switch: None,
+            current_screen: Screen::default(),
+            universe: Vec::new(),
+            selected_symbol: None,
+            chart_buffer: ChartBuffer::default(),
+            chart_markers: PanelState::Loading,
+            selected_strategy: None,
+            strategies_config: None,
+            risk_state: PanelState::Loading,
+            audit_screen_state: AuditScreenState::default(),
+            strategy_equity: HashMap::new(),
+            execution_mode: ExecutionMode::default(),
+            paused_strategies: HashSet::new(),
+            override_risk_veto: OverrideRiskVetoState::default(),
+            risk_veto_events: Vec::new(),
+            focused_widget: None,
         }
     }
 }
@@ -355,11 +845,29 @@ impl Cockpit {
             strategies_recent_events: VecDeque::with_capacity(STRATEGIES_RECENT_EVENT_CAP),
             kill: KillState::Idle,
             latency: Latency::Known { ms: 120 },
+            market_health: HashMap::new(),
+            server_time_now: None,
+            account_label: SmolStr::new(""),
             last_bar_ts: None,
             last_tick_ts: None,
             tape_audit_modal: None,
             #[cfg(feature = "live")]
             kill_switch: None,
+            current_screen: Screen::default(),
+            universe: Vec::new(),
+            selected_symbol: None,
+            chart_buffer: ChartBuffer::default(),
+            chart_markers: PanelState::Loading,
+            selected_strategy: None,
+            strategies_config: None,
+            risk_state: PanelState::Loading,
+            audit_screen_state: AuditScreenState::default(),
+            strategy_equity: HashMap::new(),
+            execution_mode: ExecutionMode::default(),
+            paused_strategies: HashSet::new(),
+            override_risk_veto: OverrideRiskVetoState::default(),
+            risk_veto_events: Vec::new(),
+            focused_widget: None,
         }
     }
 }
@@ -417,6 +925,16 @@ pub enum Message {
     /// the rolling 60s counter for that row.
     StrategySignalObserved(StrategyId, Timestamp),
 
+    // ── T1508 — Status bar messages ──────────────────────────────────────────
+    /// Market-health event from the watchdog bus channel. Updates
+    /// `Cockpit::market_health` for the venue carried in the event.
+    MarketHealthUpdated(MarketHealth),
+
+    /// 1 Hz server-time tick from a `time::every` iced subscription.
+    /// Updates `Cockpit::server_time_now` so the status bar always shows
+    /// a fresh "Server … UTC" timestamp without re-rendering everything.
+    ServerTimeTick(Timestamp),
+
     // ── tape-row audit modal (R1, R2, R4 — `tape-row-audit-modal`) ──────────
     /// Operator clicked a tape row. Carries the `journal_transactions.id`
     /// UUID string of the fill's underlying transaction. The cockpit's
@@ -434,6 +952,90 @@ pub enum Message {
     /// audit invariant); `Err(msg)` flips to `Error(msg)` so the operator
     /// sees `TAPE_AUDIT_MODAL_ERROR_PREFIX + msg` and can dismiss.
     TapeAuditEntriesLoaded(Result<JournalTransactionView, SmolStr>),
+
+    // ── Phase 2 — Shell IA + Charts ─────────────────────────────────────────
+    /// Sidebar-nav row click. Pure assignment; no side effects.
+    SwitchScreen(Screen),
+
+    /// Symbol-selector chip click. Sets `selected_symbol` and resets the
+    /// marker panel to `Loading`; the binary's `Task::perform` shim then
+    /// dispatches the marker re-fetch (R8.3). Pure-function `update`
+    /// discipline preserved — async work lives in the binary.
+    SelectSymbol(Venue, Symbol),
+
+    /// Async result of the `recent_fills_filtered` fetch issued after
+    /// `SelectSymbol` or after `BarClose` for the active symbol.
+    /// `Ok(fills)` flips `chart_markers` to `Ready(fills)`; `Err(msg)`
+    /// flips it to `Error(msg)`.
+    ChartMarkersLoaded(Result<Vec<FillView>, SmolStr>),
+
+    // ── Phase 3 — Detail screens ────────────────────────────────────────
+    /// Strategies-detail chip click OR Home → Strategies-summary row
+    /// click. Pure assignment; `selected_strategy = Some(id)`. The Home-
+    /// row variant follows up with `Message::SwitchScreen(
+    /// Screen::Strategies)` via the binary's `Task::done` chain (Q11b
+    /// compound dispatch — no new `OpenStrategy` variant).
+    SelectStrategy(StrategyId),
+
+    /// Risk telemetry refresh from the new agent-runtime channel
+    /// (Q3 ratification). Pure assignment; `risk_state = Ready(state)`.
+    /// `Subscription::batch` recipe in `crates/ui/src/live.rs` maps
+    /// incoming `RiskTelemetry` bus events to this variant.
+    RiskStateRefreshed(RiskState),
+
+    /// Audit filter chip / input changed. Pure: resets `page` to 0,
+    /// flips `rows` to `Loading`. The binary's `Task::perform` shim
+    /// dispatches the `recent_journal_filtered` re-fetch.
+    AuditFilterChanged(AuditFilter),
+
+    /// Audit pagination Prev / Next. Pure: increments / decrements
+    /// `page`, flips `rows` to `Loading`. Binary dispatches re-fetch.
+    AuditPageChanged(u32),
+
+    /// Async result of `recent_journal_filtered`. `Ok((rows, total))`
+    /// → `rows = Ready(rows); total_count = Some(total)`; `Err(msg)`
+    /// → `rows = Error(msg); total_count = None`.
+    AuditRowsLoaded(Result<(Vec<JournalRow>, u64), SmolStr>),
+
+    // ── Phase 4 — Strategies sparkline cross-link ───────────────────────
+    /// Async result of `audit::query::equity_curve_for_strategy`.
+    /// `Ok(series)` → `strategy_equity.insert(id, Ready(series))`;
+    /// `Err(msg)` → `strategy_equity.insert(id, Error(msg))`. Pure
+    /// assignment — async work lives in the binary's `Task::perform`
+    /// shim. The series has already been
+    /// `downsample(SPARKLINE_POINT_CAP)`-d before landing here (Q9).
+    StrategyEquityRefreshed(StrategyId, Result<EquitySeries, SmolStr>),
+
+    // ── Phase 5 — HumanControl panel ───────────────────────────────────
+    /// Operator clicked one of the three execution-mode segments.
+    /// Pure assignment to `Cockpit::execution_mode`; live mode also
+    /// emits on `execution_mode_tx` (R10.3).
+    ExecutionModeSelected(ExecutionMode),
+
+    // ── Phase 5 — Pause-strategy ───────────────────────────────────────
+    /// Operator clicked the per-row pause/resume button (R4.3 / Q8 —
+    /// single-click both directions). Pure update flips set membership;
+    /// live mode also emits on `pause_strategy_tx` (R4.6) and spawns
+    /// the audit-writer task (R5.5).
+    StrategyPauseToggled(StrategyId),
+
+    // ── Phase 5 — Override-risk-veto (kill-confirm modal mirror) ───────
+    /// Operator pressed the `Override` button on a surfaced veto event.
+    /// Opens the typed-confirm modal in `Confirming { veto_id, typed: "" }`.
+    OverrideRiskVetoPressed(SmolStr),
+    /// Operator typed into the OVERRIDE input. Pure update.
+    OverrideRiskVetoTyped(String),
+    /// Operator pressed cancel on the modal. Returns to `Idle`.
+    OverrideRiskVetoCancelled,
+    /// Operator pressed confirm with the phrase matched. Spawns the
+    /// audit-writer task (R8.5) + clears the matching `VetoEvent`.
+    OverrideRiskVetoConfirmed(SmolStr),
+
+    // ── Phase 5 — TD-1 path b — focus ring (T1912) ─────────────────────
+    /// Synthetic focus-traversal message emitted by
+    /// `widgets::focus_ring::subscription` on Tab / Arrow keypress.
+    /// Pure assignment to `Cockpit::focused_widget`.
+    FocusChanged(SmolStr),
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -450,6 +1052,9 @@ pub fn update(model: &mut Cockpit, msg: Message) {
     match msg {
         Message::BarReceived(bar) => {
             model.last_bar_ts = Some(bar.close_ts);
+            // Phase 2 R10.4 — push the bar into the rolling chart buffer.
+            // Pure mutation on `Cockpit`; no async work, no bus event emitted.
+            model.chart_buffer.push_bar(bar);
         }
         Message::TickReceived(tick) => {
             let venue_ms = tick.venue_ts.unix_millis();
@@ -641,6 +1246,113 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // If the modal was closed before the async fetch returned
             // (operator hit Esc mid-flight), drop the result silently —
             // there is no panel to update and `update` stays pure.
+        }
+
+        // ── T1508 status-bar messages ────────────────────────────────────────
+        Message::MarketHealthUpdated(health) => {
+            // Translate the three-variant bus enum to the two-state UI enum:
+            // Fresh + Recovered → MarketHealthState::Fresh;  Stale → Stale.
+            let (venue, new_state) = match health {
+                MarketHealth::Fresh { venue, .. } | MarketHealth::Recovered { venue, .. } => {
+                    (venue, MarketHealthState::Fresh)
+                }
+                MarketHealth::Stale { venue, .. } => (venue, MarketHealthState::Stale),
+            };
+            model.market_health.insert(venue, new_state);
+        }
+        Message::ServerTimeTick(ts) => {
+            model.server_time_now = Some(ts);
+        }
+
+        // ── Phase 2 — Shell IA + Charts ─────────────────────────────────────
+        Message::SwitchScreen(s) => {
+            model.current_screen = s;
+        }
+        Message::SelectSymbol(venue, symbol) => {
+            model.selected_symbol = Some((venue, symbol));
+            model.chart_markers = PanelState::Loading;
+        }
+        Message::ChartMarkersLoaded(result) => {
+            model.chart_markers = match result {
+                Ok(fills) => PanelState::Ready(fills),
+                Err(msg) => PanelState::Error(msg),
+            };
+        }
+
+        // ── Phase 3 — Detail screens ────────────────────────────────────
+        Message::SelectStrategy(id) => {
+            model.selected_strategy = Some(id);
+        }
+        Message::RiskStateRefreshed(state) => {
+            model.risk_state = PanelState::Ready(state);
+        }
+        Message::AuditFilterChanged(filter) => {
+            model.audit_screen_state.filter = filter;
+            model.audit_screen_state.page = 0;
+            model.audit_screen_state.rows = PanelState::Loading;
+        }
+        Message::AuditPageChanged(page) => {
+            model.audit_screen_state.page = page;
+            model.audit_screen_state.rows = PanelState::Loading;
+        }
+        Message::AuditRowsLoaded(Ok((rows, total))) => {
+            model.audit_screen_state.rows = PanelState::Ready(rows);
+            model.audit_screen_state.total_count = Some(total);
+        }
+        Message::AuditRowsLoaded(Err(msg)) => {
+            model.audit_screen_state.rows = PanelState::Error(msg);
+            model.audit_screen_state.total_count = None;
+        }
+
+        // ── Phase 4 — Strategies sparkline cross-link ───────────────────
+        Message::StrategyEquityRefreshed(id, Ok(series)) => {
+            model.strategy_equity.insert(id, PanelState::Ready(series));
+        }
+        Message::StrategyEquityRefreshed(id, Err(msg)) => {
+            model.strategy_equity.insert(id, PanelState::Error(msg));
+        }
+
+        // ── Phase 5 — HumanControl panel ────────────────────────────────
+        Message::ExecutionModeSelected(mode) => {
+            model.execution_mode = mode;
+        }
+        Message::StrategyPauseToggled(id) => {
+            // Set-membership flip — the pure-update arm for both directions.
+            // Live mode's binary-side closure spawns the audit writer + bus
+            // emit after this arm runs (R4.6 / R5.5).
+            if !model.paused_strategies.remove(&id) {
+                model.paused_strategies.insert(id);
+            }
+        }
+
+        // ── Phase 5 — Override-risk-veto modal ──────────────────────────
+        Message::OverrideRiskVetoPressed(veto_id) => {
+            model.override_risk_veto = OverrideRiskVetoState::Confirming {
+                veto_id,
+                typed: String::new(),
+            };
+        }
+        Message::OverrideRiskVetoTyped(s) => {
+            if let OverrideRiskVetoState::Confirming { typed, .. } = &mut model.override_risk_veto {
+                *typed = s;
+            }
+        }
+        Message::OverrideRiskVetoCancelled => {
+            model.override_risk_veto = OverrideRiskVetoState::Idle;
+        }
+        Message::OverrideRiskVetoConfirmed(veto_id) => {
+            // Pure-update arm clears the matching VetoEvent so the visual
+            // state reflects immediately. The binary's wrapping update arm
+            // then spawns audit::journal::risk_veto_overridden(...) under
+            // #[cfg(feature = "live")] (R8.5). Forward-only per Q9 — the
+            // agent does NOT re-emit the blocked signal.
+            model.risk_veto_events.retain(|v| v.veto_id != veto_id);
+            model.override_risk_veto = OverrideRiskVetoState::Idle;
+        }
+
+        // ── Phase 5 — TD-1 path b — focus ring (T1912) ──────────────────
+        Message::FocusChanged(id) => {
+            model.focused_widget = Some(id);
         }
     }
 }
@@ -1183,5 +1895,391 @@ mod tests {
         } else {
             panic!("tape should have all three fills after resume");
         }
+    }
+
+    // ── Phase 2 — Shell IA + Charts (T1601) ─────────────────────────────────
+
+    fn fixed_bar(symbol: &str, venue: Venue, offset_min: i64) -> Bar {
+        use rust_decimal::Decimal;
+        use trading_core::{Price, Quantity, Timeframe};
+        let dt = time::OffsetDateTime::from_unix_timestamp(1_705_320_000 + offset_min * 60)
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+        let close_dt =
+            time::OffsetDateTime::from_unix_timestamp(1_705_320_000 + offset_min * 60 + 59)
+                .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+        let open_ts = Timestamp::new(dt);
+        let close_ts = Timestamp::new(close_dt);
+        let p = |d: Decimal| Price::new(d).unwrap_or_else(|_| unreachable!());
+        Bar {
+            symbol: Symbol::new(symbol),
+            tf: Timeframe::OneMinute,
+            open_ts,
+            close_ts,
+            open: p(dec!(40_000)),
+            high: p(dec!(40_100)),
+            low: p(dec!(39_900)),
+            close: p(dec!(40_050)),
+            volume: Quantity::new(dec!(12.5)).unwrap_or_else(|_| unreachable!()),
+            trade_count: 100,
+            local_recv_ts: close_ts,
+            venue,
+        }
+    }
+
+    /// T1601 — `Message::SwitchScreen` mutates only `current_screen`.
+    /// All other fields stay byte-identical (compared via `Debug`-format).
+    #[test]
+    fn switch_screen_is_pure() {
+        for target in [
+            Screen::Home,
+            Screen::Debug,
+            Screen::Charts,
+            Screen::Strategies,
+            Screen::Risk,
+            Screen::Audit,
+        ] {
+            let baseline = Cockpit::new();
+            let mut after = baseline.clone();
+            update(&mut after, Message::SwitchScreen(target));
+            assert_eq!(after.current_screen, target);
+            // Force every other field to be byte-equal by overwriting the
+            // mutated field on `after` and comparing the Debug rendering.
+            let mut restored = after.clone();
+            restored.current_screen = baseline.current_screen;
+            assert_eq!(format!("{baseline:?}"), format!("{restored:?}"));
+        }
+    }
+
+    /// T1601 — `chart_buffer` enforces 60-bar cap with FIFO eviction.
+    #[test]
+    fn chart_buffer_evicts_at_capacity() {
+        let mut c = Cockpit::new();
+        // Push 61 bars; only the most recent 60 should remain.
+        for i in 0..61 {
+            update(
+                &mut c,
+                Message::BarReceived(fixed_bar("BTCUSDT", Venue::Binance, i)),
+            );
+        }
+        let bars: Vec<&Bar> = c
+            .chart_buffer
+            .bars(Venue::Binance, &Symbol::new("BTCUSDT"))
+            .collect();
+        assert_eq!(bars.len(), CHART_BUFFER_CAPACITY);
+        // Oldest in the deque is offset 1 (offset 0 was evicted).
+        assert_eq!(bars[0].open_ts, fixed_ts_min(1));
+        // Newest is offset 60.
+        assert_eq!(bars[bars.len() - 1].open_ts, fixed_ts_min(60));
+    }
+
+    /// T1601 — distinct `(Venue, Symbol)` keys carry disjoint deques.
+    #[test]
+    fn chart_buffer_keys_distinct_per_pair() {
+        let mut c = Cockpit::new();
+        update(
+            &mut c,
+            Message::BarReceived(fixed_bar("BTCUSDT", Venue::Binance, 0)),
+        );
+        update(
+            &mut c,
+            Message::BarReceived(fixed_bar("ETHUSDT", Venue::Binance, 0)),
+        );
+        update(
+            &mut c,
+            Message::BarReceived(fixed_bar("BTCUSDT", Venue::Coinbase, 0)),
+        );
+        assert_eq!(
+            c.chart_buffer
+                .bars(Venue::Binance, &Symbol::new("BTCUSDT"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            c.chart_buffer
+                .bars(Venue::Binance, &Symbol::new("ETHUSDT"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            c.chart_buffer
+                .bars(Venue::Coinbase, &Symbol::new("BTCUSDT"))
+                .count(),
+            1
+        );
+        // A symbol/venue pair never written shows zero bars.
+        assert_eq!(
+            c.chart_buffer
+                .bars(Venue::Kraken, &Symbol::new("SOLUSDT"))
+                .count(),
+            0
+        );
+    }
+
+    // ── Phase 3 — Detail screens (T1701) ────────────────────────────────────
+
+    /// T1701 — `Message::SelectStrategy` survives `SwitchScreen` round-trips.
+    #[test]
+    fn select_strategy_persists_across_screen_switch() {
+        let mut c = Cockpit::new();
+        let id = StrategyId::new("btc_macd_trend");
+        update(&mut c, Message::SelectStrategy(id.clone()));
+        assert_eq!(c.selected_strategy.as_ref(), Some(&id));
+        update(&mut c, Message::SwitchScreen(Screen::Home));
+        update(&mut c, Message::SwitchScreen(Screen::Risk));
+        update(&mut c, Message::SwitchScreen(Screen::Strategies));
+        assert_eq!(
+            c.selected_strategy.as_ref(),
+            Some(&id),
+            "selected_strategy must survive screen switches",
+        );
+    }
+
+    /// T1701 — `RiskStateRefreshed` flips `risk_state` from Loading to Ready.
+    #[test]
+    fn risk_state_refresh_replaces_panel_state() {
+        let mut c = Cockpit::new();
+        assert_eq!(c.risk_state.variant_name(), "loading");
+        let snap = RiskState {
+            per_symbol_exposure: HashMap::new(),
+            per_symbol_caps: HashMap::new(),
+            daily_loss_used_pct: dec!(2.5),
+            daily_loss_cap_pct: dec!(5.0),
+            heartbeat_age_ms: 1_000,
+            heartbeat_timeout_ms: 5_000,
+        };
+        update(&mut c, Message::RiskStateRefreshed(snap));
+        assert_eq!(c.risk_state.variant_name(), "ready");
+    }
+
+    /// T1701 — `AuditFilterChanged` resets page → 0 + rows → Loading.
+    #[test]
+    fn audit_filter_changed_resets_page() {
+        let mut c = Cockpit::new();
+        // Pre-condition: bump page off zero so the reset is observable.
+        c.audit_screen_state.page = 7;
+        c.audit_screen_state.rows = PanelState::Ready(Vec::new());
+        let new_filter = AuditFilter::default().with_kind(AuditKindFilter::Fill);
+        update(&mut c, Message::AuditFilterChanged(new_filter.clone()));
+        assert_eq!(c.audit_screen_state.page, 0, "page must reset to 0");
+        assert_eq!(
+            c.audit_screen_state.rows.variant_name(),
+            "loading",
+            "rows must flip to Loading"
+        );
+        assert_eq!(c.audit_screen_state.filter, new_filter);
+    }
+
+    /// T1701 — `AuditPageChanged` marks rows → Loading and applies the new
+    /// page cursor.
+    #[test]
+    fn audit_page_changed_marks_rows_loading() {
+        let mut c = Cockpit::new();
+        c.audit_screen_state.rows = PanelState::Ready(Vec::new());
+        update(&mut c, Message::AuditPageChanged(2));
+        assert_eq!(c.audit_screen_state.page, 2);
+        assert_eq!(c.audit_screen_state.rows.variant_name(), "loading");
+    }
+
+    /// T1701 — `AuditRowsLoaded(Ok((rows, total)))` sets Ready + `total_count`.
+    #[test]
+    fn audit_rows_loaded_ok_sets_ready_and_total_count() {
+        let mut c = Cockpit::new();
+        let rows: Vec<JournalRow> = Vec::new();
+        update(&mut c, Message::AuditRowsLoaded(Ok((rows, 42))));
+        assert_eq!(c.audit_screen_state.rows.variant_name(), "ready");
+        assert_eq!(c.audit_screen_state.total_count, Some(42));
+    }
+
+    /// T1601 — `selected_symbol` survives `SwitchScreen` round-trips.
+    #[test]
+    fn select_symbol_persists_across_screen_switch() {
+        let mut c = Cockpit::new();
+        let pair = (Venue::Binance, Symbol::new("BTCUSDT"));
+        update(&mut c, Message::SelectSymbol(pair.0, pair.1.clone()));
+        assert_eq!(c.selected_symbol.as_ref(), Some(&pair));
+        update(&mut c, Message::SwitchScreen(Screen::Home));
+        update(&mut c, Message::SwitchScreen(Screen::Debug));
+        update(&mut c, Message::SwitchScreen(Screen::Charts));
+        assert_eq!(
+            c.selected_symbol.as_ref(),
+            Some(&pair),
+            "selected_symbol must survive screen switches",
+        );
+    }
+
+    fn fixed_ts_min(offset_min: i64) -> Timestamp {
+        let dt = time::OffsetDateTime::from_unix_timestamp(1_705_320_000 + offset_min * 60)
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+        Timestamp::new(dt)
+    }
+
+    // ── Phase 4 (T1801) — strategy_equity arm tests ─────────────────────
+    fn fixture_equity_series() -> EquitySeries {
+        let pts = vec![
+            (
+                fixed_ts_min(0),
+                trading_core::Money::from_decimal(dec!(100)),
+            ),
+            (
+                fixed_ts_min(1),
+                trading_core::Money::from_decimal(dec!(110)),
+            ),
+        ];
+        EquitySeries::from_points(pts).unwrap()
+    }
+
+    #[test]
+    fn strategy_equity_refresh_inserts_ready_panel_state() {
+        let mut c = Cockpit::new();
+        let id = StrategyId::new("alpha");
+        let series = fixture_equity_series();
+        update(
+            &mut c,
+            Message::StrategyEquityRefreshed(id.clone(), Ok(series)),
+        );
+        assert!(c.strategy_equity.contains_key(&id));
+        assert_eq!(
+            c.strategy_equity.get(&id).map(PanelState::variant_name),
+            Some("ready"),
+        );
+    }
+
+    #[test]
+    fn strategy_equity_refresh_err_inserts_error_panel_state() {
+        let mut c = Cockpit::new();
+        let id = StrategyId::new("alpha");
+        update(
+            &mut c,
+            Message::StrategyEquityRefreshed(id.clone(), Err(SmolStr::new("boom"))),
+        );
+        assert_eq!(
+            c.strategy_equity.get(&id).map(PanelState::variant_name),
+            Some("error"),
+        );
+    }
+
+    // ── Phase 5 — HumanControl + Override + Pause + Focus ring tests ───
+
+    #[test]
+    fn execution_mode_selected_assigns_field() {
+        let mut c = Cockpit::new();
+        assert_eq!(c.execution_mode, ExecutionMode::Observe);
+        update(
+            &mut c,
+            Message::ExecutionModeSelected(ExecutionMode::Supervised),
+        );
+        assert_eq!(c.execution_mode, ExecutionMode::Supervised);
+        update(&mut c, Message::ExecutionModeSelected(ExecutionMode::Auto));
+        assert_eq!(c.execution_mode, ExecutionMode::Auto);
+        update(
+            &mut c,
+            Message::ExecutionModeSelected(ExecutionMode::Observe),
+        );
+        assert_eq!(c.execution_mode, ExecutionMode::Observe);
+    }
+
+    #[test]
+    fn strategy_pause_toggled_inserts_then_removes() {
+        let mut c = Cockpit::new();
+        let id = StrategyId::new("alpha");
+        assert!(c.paused_strategies.is_empty());
+        update(&mut c, Message::StrategyPauseToggled(id.clone()));
+        assert!(c.paused_strategies.contains(&id));
+        update(&mut c, Message::StrategyPauseToggled(id.clone()));
+        assert!(!c.paused_strategies.contains(&id));
+    }
+
+    #[test]
+    fn override_risk_veto_pressed_opens_confirming() {
+        let mut c = Cockpit::new();
+        assert!(matches!(c.override_risk_veto, OverrideRiskVetoState::Idle));
+        update(
+            &mut c,
+            Message::OverrideRiskVetoPressed(SmolStr::new("veto-1")),
+        );
+        match &c.override_risk_veto {
+            OverrideRiskVetoState::Confirming { veto_id, typed } => {
+                assert_eq!(veto_id.as_str(), "veto-1");
+                assert!(typed.is_empty());
+            }
+            other => panic!("expected Confirming, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn override_risk_veto_typed_updates_buffer() {
+        let mut c = Cockpit::new();
+        update(
+            &mut c,
+            Message::OverrideRiskVetoPressed(SmolStr::new("veto-1")),
+        );
+        update(&mut c, Message::OverrideRiskVetoTyped("OVERR".to_string()));
+        match &c.override_risk_veto {
+            OverrideRiskVetoState::Confirming { typed, .. } => {
+                assert_eq!(typed, "OVERR");
+            }
+            other => panic!("expected Confirming, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn override_risk_veto_cancelled_returns_to_idle() {
+        let mut c = Cockpit::new();
+        update(
+            &mut c,
+            Message::OverrideRiskVetoPressed(SmolStr::new("veto-1")),
+        );
+        update(&mut c, Message::OverrideRiskVetoCancelled);
+        assert!(matches!(c.override_risk_veto, OverrideRiskVetoState::Idle));
+    }
+
+    fn dummy_blocked_signal(strategy: &str, sym: &str) -> Signal {
+        use trading_core::SignalEvidence;
+        use trading_core::SignalKind;
+        Signal {
+            strategy_id: StrategyId::new(strategy),
+            symbol: trading_core::Symbol::new(sym),
+            ts: Timestamp::now(),
+            kind: SignalKind::Hold,
+            evidence: SignalEvidence::empty(),
+            pair_data: None,
+        }
+    }
+
+    #[test]
+    fn override_risk_veto_confirmed_clears_event_and_returns_to_idle() {
+        let mut c = Cockpit::new();
+        // Seed two veto events; confirming one of them clears just that
+        // event and leaves the other in place.
+        let veto_id = SmolStr::new("veto-1");
+        let other_id = SmolStr::new("veto-2");
+        c.risk_veto_events.push(VetoEvent {
+            veto_id: veto_id.clone(),
+            ts: Timestamp::now(),
+            strategy_id: StrategyId::new("alpha"),
+            reason: SmolStr::new("daily_loss_cap"),
+            blocked_signal: dummy_blocked_signal("alpha", "BTCUSDT"),
+        });
+        c.risk_veto_events.push(VetoEvent {
+            veto_id: other_id.clone(),
+            ts: Timestamp::now(),
+            strategy_id: StrategyId::new("beta"),
+            reason: SmolStr::new("per_symbol_cap"),
+            blocked_signal: dummy_blocked_signal("beta", "ETHUSDT"),
+        });
+
+        update(&mut c, Message::OverrideRiskVetoPressed(veto_id.clone()));
+        update(&mut c, Message::OverrideRiskVetoConfirmed(veto_id.clone()));
+        assert!(matches!(c.override_risk_veto, OverrideRiskVetoState::Idle));
+        assert_eq!(c.risk_veto_events.len(), 1);
+        assert_eq!(c.risk_veto_events[0].veto_id, other_id);
+    }
+
+    #[test]
+    fn focus_changed_assigns_focused_widget() {
+        let mut c = Cockpit::new();
+        assert!(c.focused_widget.is_none());
+        update(&mut c, Message::FocusChanged(SmolStr::new("kill_button")));
+        assert_eq!(c.focused_widget.as_deref(), Some("kill_button"));
     }
 }
