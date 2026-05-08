@@ -30,9 +30,14 @@ fi
 # 2. Optional slug task summary.
 slug="${1:-}"
 if [[ -n "$slug" ]]; then
-    f="$root/spec/tasks/$slug.md"
+    # Tasks live under per-feature folders. Lumen phases nest one level
+    # deeper at spec/lumen-design-adoption/<phase>/tasks.md.
+    f="$root/spec/$slug/tasks.md"
     if [[ ! -f "$f" ]]; then
-        echo "FAIL  no task file at spec/tasks/$slug.md"
+        f="$root/spec/lumen-design-adoption/$slug/tasks.md"
+    fi
+    if [[ ! -f "$f" ]]; then
+        echo "FAIL  no task file at spec/$slug/tasks.md (or spec/lumen-design-adoption/$slug/tasks.md)"
         exit 1
     fi
     open=$(grep -cE '^- \[ \]'   "$f" || true)

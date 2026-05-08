@@ -6,7 +6,7 @@
 #
 # Example:
 #   scripts/capture_screenshot.sh cockpit "--features fixtures" \
-#     spec/reports/screenshots/v0-paper-sma/tape-ready.png
+#     spec/v0-paper-sma/reports/screenshots/tape-ready.png
 #
 # The script:
 #   1. Launches `cargo run --release --bin <binary> <feature-args>` in the bg.
