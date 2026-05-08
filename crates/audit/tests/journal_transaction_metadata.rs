@@ -24,7 +24,7 @@ use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, StrategyId, Symbol,
-    Timestamp,
+    Timestamp, Venue,
 };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ async fn t1302_v1_returns_metadata_for_existing_transaction() {
 
     let fill = make_paper_buy_fill();
     let expected_ts = fill.venue_ts;
-    let txn_id = journal::post_fill(&ledger, &fill, Some("sma-cross-btc-1m"))
+    let txn_id = journal::post_fill(&ledger, &fill, Venue::Binance, Some("sma-cross-btc-1m"))
         .await
         .expect("post Buy fill");
 
@@ -146,7 +146,7 @@ async fn t1302_strategy_id_optional() {
     let ledger = open_ledger().await;
 
     // post_fill with strategy_id = None writes a NULL into the column.
-    let txn_id = journal::post_fill(&ledger, &make_paper_buy_fill(), None)
+    let txn_id = journal::post_fill(&ledger, &make_paper_buy_fill(), Venue::Binance, None)
         .await
         .expect("post Buy fill (no strategy)");
 

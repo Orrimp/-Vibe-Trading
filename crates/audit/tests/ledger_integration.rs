@@ -10,6 +10,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{
     FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
+    Venue,
 };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ async fn t06_100_fills_all_transactions_balance() {
         let qty = dec!(0.01) + Decimal::from(i % 5) * dec!(0.001);
         let fee = qty * price * dec!(0.001);
         let fill = make_fill(side, qty, price, fee);
-        journal::post_fill(&ledger, &fill, None)
+        journal::post_fill(&ledger, &fill, Venue::Binance, None)
             .await
             .expect("post_fill");
     }
@@ -148,7 +149,7 @@ async fn t06_global_debit_credit_equality() {
         let qty = dec!(0.05);
         let fee = qty * price * dec!(0.001);
         let fill = make_fill(side, qty, price, fee);
-        journal::post_fill(&ledger, &fill, None)
+        journal::post_fill(&ledger, &fill, Venue::Binance, None)
             .await
             .expect("post_fill");
     }
@@ -176,7 +177,7 @@ async fn t05_cash_balance_after_buy_fill() {
     let qty = dec!(0.1);
     let fee = dec!(5);
     let fill = make_fill(Side::Buy, qty, price, fee);
-    journal::post_fill(&ledger, &fill, None)
+    journal::post_fill(&ledger, &fill, Venue::Binance, None)
         .await
         .expect("post_fill");
 
@@ -202,7 +203,7 @@ async fn t802_post_fill_populates_strategy_id_when_some() {
         .expect("bootstrap");
 
     let fill = make_fill(Side::Buy, dec!(0.1), dec!(50000), dec!(5));
-    journal::post_fill(&ledger, &fill, Some("sma_crossover"))
+    journal::post_fill(&ledger, &fill, Venue::Binance, Some("sma_crossover"))
         .await
         .expect("post_fill with strategy_id");
 
@@ -229,7 +230,7 @@ async fn t802_post_fill_leaves_strategy_id_null_when_none() {
         .expect("bootstrap");
 
     let fill = make_fill(Side::Buy, dec!(0.1), dec!(50000), dec!(5));
-    journal::post_fill(&ledger, &fill, None)
+    journal::post_fill(&ledger, &fill, Venue::Binance, None)
         .await
         .expect("post_fill without strategy_id");
 

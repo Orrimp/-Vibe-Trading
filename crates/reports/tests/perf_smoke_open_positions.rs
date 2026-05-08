@@ -36,7 +36,7 @@ use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, LedgerError, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol,
-    Timestamp,
+    Timestamp, Venue,
 };
 
 /// V8 wall-clock budget — assert `< 100ms`.
@@ -152,11 +152,11 @@ async fn build_perf_fixture() -> Result<Ledger, LedgerError> {
 
         let buy = make_fill(symbol, Side::Buy, qty, entry_price, venue_ts_secs);
         venue_ts_secs += 1;
-        journal::post_fill(&ledger, &buy, Some(&strategy_id)).await?;
+        journal::post_fill(&ledger, &buy, Venue::Binance, Some(&strategy_id)).await?;
 
         let sell = make_fill(symbol, Side::Sell, qty, exit_price, venue_ts_secs);
         venue_ts_secs += 1;
-        journal::post_fill(&ledger, &sell, Some(&strategy_id)).await?;
+        journal::post_fill(&ledger, &sell, Venue::Binance, Some(&strategy_id)).await?;
     }
 
     // ── 5 unmatched Buys = 5 expected open positions ──────────────────────────
@@ -171,7 +171,7 @@ async fn build_perf_fixture() -> Result<Ledger, LedgerError> {
         let price = entry_price_for(symbol);
         let buy = make_fill(symbol, Side::Buy, qty, price, venue_ts_secs);
         venue_ts_secs += 1;
-        journal::post_fill(&ledger, &buy, Some(strategy_id)).await?;
+        journal::post_fill(&ledger, &buy, Venue::Binance, Some(strategy_id)).await?;
     }
 
     Ok(ledger)

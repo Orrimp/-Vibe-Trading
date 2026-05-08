@@ -1,0 +1,11 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 629
+expression: strategies_screen_summary(&c)
+---
+screen: strategies
+title: Strategies
+selected: (none)
+config: none
+events:
+  (none)

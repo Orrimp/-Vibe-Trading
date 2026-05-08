@@ -28,6 +28,7 @@ use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
+    Venue,
 };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -81,9 +82,14 @@ fn make_paper_buy_fill() -> Fill {
 async fn t1202_returns_entries_in_id_order() {
     let ledger = open_ledger().await;
 
-    let txn_id = journal::post_fill(&ledger, &make_paper_buy_fill(), Some("sma-cross-btc-1m"))
-        .await
-        .expect("post Buy fill");
+    let txn_id = journal::post_fill(
+        &ledger,
+        &make_paper_buy_fill(),
+        Venue::Binance,
+        Some("sma-cross-btc-1m"),
+    )
+    .await
+    .expect("post Buy fill");
 
     let entries = query::journal_entries_for_transaction(&ledger, &txn_id)
         .await
@@ -164,9 +170,14 @@ async fn t1202_unknown_transaction_returns_empty_vec() {
 async fn t1202_balanced_double_entry() {
     let ledger = open_ledger().await;
 
-    let txn_id = journal::post_fill(&ledger, &make_paper_buy_fill(), Some("sma-cross-btc-1m"))
-        .await
-        .expect("post Buy fill");
+    let txn_id = journal::post_fill(
+        &ledger,
+        &make_paper_buy_fill(),
+        Venue::Binance,
+        Some("sma-cross-btc-1m"),
+    )
+    .await
+    .expect("post Buy fill");
 
     let entries = query::journal_entries_for_transaction(&ledger, &txn_id)
         .await

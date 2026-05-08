@@ -48,7 +48,7 @@ use rust_decimal_macros::dec;
 use tempfile::tempdir;
 use trading_core::{
     FeeTier, Fill, FillId, LedgerError, Liquidity, Money, OrderId, Price, Quantity, Side,
-    StrategyId, Symbol, Timestamp,
+    StrategyId, Symbol, Timestamp, Venue,
 };
 
 #[path = "../../reports/tests/fixtures/build_ledger_with_open_positions_7d.rs"]
@@ -305,7 +305,7 @@ async fn t1005_q8_short_position_raises() {
         liquidity: Liquidity::Taker,
         transaction_id: None,
     };
-    journal::post_fill(&ledger, &sell, Some("strat_alpha"))
+    journal::post_fill(&ledger, &sell, Venue::Binance, Some("strat_alpha"))
         .await
         .expect("post_fill");
 

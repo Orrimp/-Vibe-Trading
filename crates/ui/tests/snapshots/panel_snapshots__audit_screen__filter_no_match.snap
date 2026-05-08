@@ -1,0 +1,10 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 694
+expression: audit_screen_summary(&c)
+---
+screen: audit
+title: Audit journal
+filter: venues= symbol=— kind=All time_range=Last7D
+page: 0 total: 0
+copy: No journal rows match these filters

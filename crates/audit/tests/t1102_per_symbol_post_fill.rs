@@ -25,7 +25,7 @@ use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, StrategyId, Symbol,
-    Timestamp,
+    Timestamp, Venue,
 };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -74,6 +74,7 @@ async fn t1102_post_fill_writes_per_symbol_account() {
     journal::post_fill(
         &ledger,
         &make_fill("ETHUSDT", Side::Buy, dec!(0.5), dec!(2_000), 100),
+        Venue::Binance,
         Some("strat_eth"),
     )
     .await
@@ -81,6 +82,7 @@ async fn t1102_post_fill_writes_per_symbol_account() {
     journal::post_fill(
         &ledger,
         &make_fill("BTCUSDT", Side::Buy, dec!(0.01), dec!(60_000), 200),
+        Venue::Binance,
         Some("strat_btc"),
     )
     .await
@@ -88,6 +90,7 @@ async fn t1102_post_fill_writes_per_symbol_account() {
     journal::post_fill(
         &ledger,
         &make_fill("SOLUSDT", Side::Buy, dec!(10), dec!(100), 300),
+        Venue::Binance,
         Some("strat_sol"),
     )
     .await
@@ -161,6 +164,7 @@ async fn t1102_open_positions_at_handles_legacy_rows() {
     journal::post_fill(
         &ledger,
         &make_fill("ETHUSDT", Side::Buy, dec!(0.5), dec!(2_000), 100),
+        Venue::Binance,
         Some("strat_eth"),
     )
     .await

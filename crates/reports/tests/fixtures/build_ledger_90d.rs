@@ -36,7 +36,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{
     FeeTier, Fill, FillId, FundingObs, LedgerError, Liquidity, Money, OrderId, Price, Quantity,
-    Side, Symbol, Timestamp,
+    Side, Symbol, Timestamp, Venue,
 };
 use uuid::Uuid;
 
@@ -158,7 +158,7 @@ pub async fn build_ledger_90d(db_path: &Path) -> Result<(Timestamp, Timestamp), 
     // disclaimer (R11.1 / R4.4).
     let fills = build_fill_plan(&mut rng);
     for (strategy, fill) in &fills {
-        journal::post_fill(&ledger, fill, Some(strategy)).await?;
+        journal::post_fill(&ledger, fill, Venue::Binance, Some(strategy)).await?;
     }
 
     // ── Rebalance-rejected events (R9 trigger if rate > 5% of trades) ─────

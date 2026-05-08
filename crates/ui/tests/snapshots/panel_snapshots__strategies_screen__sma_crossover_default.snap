@@ -1,0 +1,19 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 617
+expression: strategies_screen_summary(&c)
+---
+screen: strategies
+title: Strategies
+selected: btc_macd_trend
+chips:
+  ACTIVE btc_macd_trend
+  — btc_rsi_reversion
+  — btc_bbands_mean_revert
+params:
+  symbol = BTCUSDT
+  fast_period = 12
+  slow_period = 26
+  signal_period = 9
+events:
+  (none)

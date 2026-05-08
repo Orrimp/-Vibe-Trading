@@ -49,7 +49,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{
     FeeTier, Fill, FillId, JournalEntryView, LedgerError, Liquidity, Money, OrderId, Price,
-    Quantity, Side, Symbol, Timestamp,
+    Quantity, Side, Symbol, Timestamp, Venue,
 };
 use uuid::Uuid;
 
@@ -136,7 +136,7 @@ pub async fn build_ledger_with_open_positions_7d(
     // ── Fills: 12 closed + 2 open = 14 total ───────────────────────────────
     let fills = build_fill_plan(&mut rng);
     for (strategy, fill) in &fills {
-        journal::post_fill(&ledger, fill, Some(strategy)).await?;
+        journal::post_fill(&ledger, fill, Venue::Binance, Some(strategy)).await?;
     }
 
     // ── Uptime interval covering the full report window ────────────────────
@@ -427,7 +427,7 @@ pub async fn build_ledger_mixed_legacy_and_per_symbol_7d(
         liquidity: Liquidity::Taker,
         transaction_id: None,
     };
-    journal::post_fill(ledger, &sol_fill, Some("test_strategy")).await?;
+    journal::post_fill(ledger, &sol_fill, Venue::Binance, Some("test_strategy")).await?;
 
     // Project the resulting ledger as a `Vec<JournalEntryView>` for the
     // caller to assert against (T1106). `recent_journal` orders by

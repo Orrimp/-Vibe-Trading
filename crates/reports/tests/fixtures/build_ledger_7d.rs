@@ -43,7 +43,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{
     FeeTier, Fill, FillId, FundingObs, LedgerError, Liquidity, Money, OrderId, Price, Quantity,
-    Side, Symbol, Timestamp,
+    Side, Symbol, Timestamp, Venue,
 };
 use uuid::Uuid;
 
@@ -133,7 +133,7 @@ pub async fn build_ledger_7d(db_path: &Path) -> Result<(Timestamp, Timestamp), L
     // cost-basis = price simplification — see `audit/src/journal.rs`).
     let fills = build_fill_plan(&mut rng);
     for (strategy, fill) in &fills {
-        journal::post_fill(&ledger, fill, Some(strategy)).await?;
+        journal::post_fill(&ledger, fill, Venue::Binance, Some(strategy)).await?;
     }
 
     // ── Rebalance-rejected event (≥1 required) ─────────────────────────────

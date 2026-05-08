@@ -51,7 +51,7 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
-    Usdt,
+    Usdt, Venue,
 };
 
 // The mounted fixture exports the closed/dangling 7d-plan helpers
@@ -149,6 +149,7 @@ async fn t1105_v1_post_fill_writes_per_symbol_account() {
     journal::post_fill(
         &ledger,
         &make_fill("ETHUSDT", Side::Buy, dec!(0.5), dec!(2_000), 100),
+        Venue::Binance,
         Some("strat_eth"),
     )
     .await
@@ -156,6 +157,7 @@ async fn t1105_v1_post_fill_writes_per_symbol_account() {
     journal::post_fill(
         &ledger,
         &make_fill("BTCUSDT", Side::Buy, dec!(0.01), dec!(60_000), 200),
+        Venue::Binance,
         Some("strat_btc"),
     )
     .await
@@ -163,6 +165,7 @@ async fn t1105_v1_post_fill_writes_per_symbol_account() {
     journal::post_fill(
         &ledger,
         &make_fill("SOLUSDT", Side::Buy, dec!(10), dec!(100), 300),
+        Venue::Binance,
         Some("strat_sol"),
     )
     .await

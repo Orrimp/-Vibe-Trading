@@ -38,7 +38,7 @@ use smol_str::SmolStr;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, StrategyId, Symbol,
-    Timestamp,
+    Timestamp, Venue,
 };
 use ui::state::JournalTransactionView;
 use ui::strings::TAPE_AUDIT_MODAL_ERROR_PREFIX;
@@ -120,7 +120,7 @@ async fn t1304_v3_chained_fetch_populates_view_header() {
 
     let fill = make_paper_buy_fill();
     let expected_ts = fill.venue_ts;
-    let txn_id = journal::post_fill(&ledger, &fill, Some("sma-cross-btc-1m"))
+    let txn_id = journal::post_fill(&ledger, &fill, Venue::Binance, Some("sma-cross-btc-1m"))
         .await
         .expect("post Buy fill");
 

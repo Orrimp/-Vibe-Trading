@@ -27,7 +27,7 @@ use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, LedgerError, Liquidity, Money, OrderId, Price, Quantity, Side,
-    StrategyId, Symbol, Timestamp,
+    StrategyId, Symbol, Timestamp, Venue,
 };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ fn make_fill(symbol: &str, side: Side, qty: Decimal, price: Decimal, venue_ts_se
 }
 
 async fn post(ledger: &Ledger, fill: Fill, strategy_id: Option<&str>) {
-    journal::post_fill(ledger, &fill, strategy_id)
+    journal::post_fill(ledger, &fill, Venue::Binance, strategy_id)
         .await
         .expect("post_fill");
 }

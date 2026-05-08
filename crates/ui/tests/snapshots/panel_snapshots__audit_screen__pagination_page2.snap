@@ -1,0 +1,15 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 708
+expression: audit_screen_summary(&c)
+---
+screen: audit
+title: Audit journal
+filter: venues= symbol=— kind=All time_range=Last7D
+page: 1 total: 255
+rows:
+  fixture-row-0000 binance BTCUSDT Fill buy 0.00 BTCUSDT @ 50000 btc_macd_trend
+  fixture-row-0001 coinbase ETHUSDT StrategyEvent registry:StrategyLoaded:btc_macd_trend btc_rsi_reversion
+  fixture-row-0002 kraken SOLUSDT Reconciliation reconcile delta=2 —
+  fixture-row-0003 binance — Fill buy 0.03 BTCUSDT @ 50000 btc_macd_trend
+  fixture-row-0004 coinbase BTCUSDT StrategyEvent registry:StrategyLoaded:btc_macd_trend btc_rsi_reversion

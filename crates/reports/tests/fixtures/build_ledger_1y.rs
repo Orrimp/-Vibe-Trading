@@ -32,7 +32,7 @@ use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
     FeeTier, Fill, FillId, FundingObs, LedgerError, Liquidity, Money, OrderId, Price, Quantity,
-    Side, Symbol, Timestamp,
+    Side, Symbol, Timestamp, Venue,
 };
 use uuid::Uuid;
 
@@ -145,7 +145,7 @@ pub async fn build_ledger_1y(
                 liquidity: Liquidity::Taker,
                 transaction_id: None,
             };
-            journal::post_fill(&ledger, &fill, Some(strategy)).await?;
+            journal::post_fill(&ledger, &fill, Venue::Binance, Some(strategy)).await?;
             fills_written += 1;
         }
         day_cursor = Timestamp::new(day_cursor.inner() + time::Duration::days(1));

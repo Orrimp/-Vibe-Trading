@@ -1,0 +1,13 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 654
+expression: risk_screen_summary(&c)
+---
+screen: risk
+title: Risk and limits
+section: Per-venue exposure
+  binance BTCUSDT used=40 cap=100 band=ACCENT
+section: Daily loss
+  used=20 cap=100 band=ACCENT
+section: Kill threshold proximity
+  age_ms=100 timeout_ms=30000 band=ACCENT
