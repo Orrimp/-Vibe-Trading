@@ -27,12 +27,12 @@ Sonnet for high-throughput execution (developer, tester).
                   ┌─────────────┐
                   │   analyst   │  opus  — requirements, research
                   └──────┬──────┘
-                         │ HANDOFF (spec/features/<slug>.md)
+                         │ HANDOFF (spec/<slug>/feature.md)
                          ▼
                   ┌─────────────┐
                   │  architect  │  opus  — design, task breakdown
                   └──────┬──────┘
-                         │ HANDOFF (spec/tasks/<slug>.md)
+                         │ HANDOFF (spec/<slug>/tasks.md)
               ┌──────────┴───────────┐
               ▼                      ▼
        ┌─────────────┐        ┌──────────────┐
@@ -88,7 +88,7 @@ whenever their tasks are independent. Concrete patterns:
    - market/data research
    - model/LLM research
    - risk & compliance research
-   Merge findings into one `spec/features/<slug>.md`.
+   Merge findings into one `spec/<slug>/feature.md`.
 
 2. **Architect fan-out.** For large features, split design into parallel
    investigations (e.g. data layer ADR + ML-serving ADR + risk-engine ADR),
@@ -145,7 +145,7 @@ to achieve actual concurrency. Sequential calls defeat the purpose.
    validate/test/bench/backtest and merges into one report;
 6. Orchestrator reads the verdict:
    - PASS → spawn **presenter** for `release` mode. Presenter assembles
-     `spec/presentations/<slug>-<date>.md`, runs real bins, embeds
+     `spec/<slug>/presentations/<slug>-<date>.md`, runs real bins, embeds
      verification matrix + numbers, lists open decisions. Hand the file
      path back to the user with the approval block. Wait for the
      operator's tick.
@@ -167,7 +167,7 @@ to achieve actual concurrency. Sequential calls defeat the purpose.
 - Any change to alerts, confirms, or destructive-action flows.
 - Periodic **consistency audits** — even with no feature in flight, the
   orchestrator may spawn ui-designer to scan for theme/string drift and
-  produce a `spec/reports/ui-debt-<date>.md`.
+  produce a `spec/<slug>/reports/ui-debt-<date>.md`.
 
 If a feature is purely backend (data ingestion plumbing, model training
 script, no operator-visible change), skip ui-designer.
@@ -202,7 +202,7 @@ but those are technical artifacts — the presenter is the agile
 | `rust-bench`         | Criterion benchmarks with baseline diffs                      |
 | `backtest`           | Historical strategy simulation                                |
 | `verify-anchors`     | Regression-gate the body-SHA anchors in `spec/anchors.toml`   |
-| `present-results`    | Assemble a `spec/presentations/<slug>-<date>.md` from spec + tests + live bin runs |
+| `present-results`    | Assemble a `spec/<slug>/presentations/<slug>-<date>.md` from spec + tests + live bin runs |
 | `capture-screenshot` | Capture (or operator-instruct) a UI screenshot                |
 | `spec-update`        | Safe writer for `spec/` files                                 |
 

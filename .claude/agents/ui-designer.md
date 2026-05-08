@@ -121,7 +121,7 @@ a fake data source in `ui::fixtures`.
 - Code in the `ui` crate (`cockpit`, `viewer`, `widgets`, `theme`,
   `strings`, `fixtures`).
 - For non-trivial features, append a `## UI` section to the matching
-  `spec/features/<slug>.md` that includes:
+  `spec/<slug>/feature.md` that includes:
   - Wireframe sketch (ascii or mermaid is fine).
   - List of new screens / panels / widgets.
   - List of new strings added to `ui::strings`.
@@ -129,7 +129,7 @@ a fake data source in `ui::fixtures`.
     a code smell).
   - Accessibility notes (keyboard map, contrast verified, focus order).
 - If you find existing UI inconsistencies while working, write them up in
-  `spec/reports/ui-debt-<YYYY-MM-DD>.md` rather than silently fixing —
+  `spec/<slug>/reports/ui-debt-<YYYY-MM-DD>.md` rather than silently fixing —
   consistency cleanups are tracked work.
 
 ## Coding rules

@@ -1,6 +1,6 @@
 ---
 name: present-results
-description: Assemble a presentation for a feature — TL;DR, what changed, demo run, verification matrix, screenshot references, approval block. Use when the presenter agent needs to produce or refresh a `spec/presentations/<slug>-<date>.md` file. Pulls evidence from spec/features, spec/tasks, spec/reports/test-*, spec/anchors.toml, and live binary runs.
+description: Assemble a presentation for a feature — TL;DR, what changed, demo run, verification matrix, screenshot references, approval block. Use when the presenter agent needs to produce or refresh a `spec/<slug>/presentations/<slug>-<date>.md` file. Pulls evidence from spec/<slug>/{feature.md,tasks.md,reports/test-*.md}, spec/anchors.toml, and live binary runs.
 ---
 
 # present-results
@@ -17,10 +17,10 @@ presentation file and zero external side effects (no commits, no PRs).
 
 ## Procedure
 
-1. **Read the feature brief.** `spec/features/<slug>.md`. Extract the
+1. **Read the feature brief.** `spec/<slug>/feature.md`. Extract the
    "Why", the requirements (R-items), and the verification matrix (V-items).
 
-2. **Read the task list.** `spec/tasks/<slug>.md`. Note any unticked
+2. **Read the task list.** `spec/<slug>/tasks.md`. Note any unticked
    rows and the changelog.
 
 3. **Read the latest test report** (release mode). Pull pass/fail counts,
@@ -38,8 +38,8 @@ presentation file and zero external side effects (no commits, no PRs).
    PASS/FAIL summary line. If FAIL, do NOT continue with `release`
    mode — emit `HANDOFF → developer` and stop.
 
-6. **Find existing screenshots.** Glob `spec/reports/screenshots/<slug>/`
-   and `spec/reports/screenshots/<feature-version>/` for any `.png` files.
+6. **Find existing screenshots.** Glob `spec/<slug>/reports/screenshots/`
+   and `spec/<slug>/reports/screenshots/<feature-version>/` for any `.png` files.
    Reference each with a relative-link caption. If the feature is UI-related
    and no screenshots exist, use `capture-screenshot` skill to emit a
    manual-capture instruction.
@@ -51,13 +51,13 @@ presentation file and zero external side effects (no commits, no PRs).
 8. **Assemble the markdown** per the skeleton below.
 
 9. **Write via `spec-update` skill** to
-   `spec/presentations/<slug>-<YYYY-MM-DD>.md`. Bump `updated:`. Add
+   `spec/<slug>/presentations/<slug>-<YYYY-MM-DD>.md`. Bump `updated:`. Add
    changelog entry. Save raw stdout under
-   `spec/presentations/artifacts/<slug>-<date>/<name>.txt` if longer
+   `spec/<slug>/presentations/artifacts/<slug>-<date>/<name>.txt` if longer
    than the 30-line embed budget.
 
 10. **Run the pre-tick gate (mandatory):**
-    `bash scripts/check_presentation.sh spec/presentations/<slug>-<date>.md`.
+    `bash scripts/check_presentation.sh spec/<slug>/presentations/<slug>-<date>.md`.
     Must exit 0 and print `PRESENTATION CHECK PASS`. Quote that line
     verbatim in your closing summary. If it FAILs (any approval-block
     `[x]` detected), reset the box(es) to `[ ]` in the file and re-run
@@ -92,7 +92,7 @@ generated: <RFC3339>
 - <bullet 3>
 
 ## Why
-<analyst's rationale, distilled to one paragraph; cite spec/features/<slug>.md>
+<analyst's rationale, distilled to one paragraph; cite spec/<slug>/feature.md>
 
 ## What you can do now
 
@@ -111,7 +111,7 @@ $ <cmd>
 <one-line interpretation: "Notice X. The Y row is the new feature working.">
 
 ## Screenshots
-<reference + caption per .png in spec/reports/screenshots/<slug>/, OR
+<reference + caption per .png in spec/<slug>/reports/screenshots/, OR
  a manual-capture instruction block if missing>
 
 ## Verification

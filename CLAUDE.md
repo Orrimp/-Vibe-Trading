@@ -9,7 +9,7 @@ multi-agent workflow. Before doing anything non-trivial, read [AGENT.md](AGENT.m
   → tester → presenter → human**, with bidirectional feedback routes.
   Developer and ui-designer run in parallel whenever a feature has both
   backend and UI surface. The presenter is the agile sprint-review face —
-  it assembles a `spec/presentations/<slug>-<date>.md` for operator approval
+  it assembles a `spec/<slug>/presentations/<slug>-<date>.md` for operator approval
   and runs only after `VERDICT → PASS`.
 - Use **sub-agents in parallel** whenever their work is independent — see
   [AGENT.md](AGENT.md#parallelism-rules).
@@ -33,9 +33,18 @@ trading/
 └── spec/
     ├── product.md           # Product requirements (analyst-owned)
     ├── architecture.md      # System design (architect-owned)
-    ├── features/            # Per-feature briefs
-    ├── tasks/               # Per-feature task lists
-    └── reports/             # Immutable dated reports
+    ├── backlog.md           # Roadmap / queue
+    ├── anchors.toml         # Locked body-SHA-256 regression anchors
+    ├── ui-design-principles.md   # Cross-cutting UI codex
+    ├── design/              # Lumen design system (cross-phase)
+    ├── runbooks/            # Operational runbooks
+    ├── archive/             # Compressed historical reports
+    ├── dev-notes/           # Cross-cutting dev memos
+    └── <feature-slug>/      # Per-feature folder
+        ├── feature.md       # Brief (frontmatter has version: x.y.z)
+        ├── tasks.md         # Task list
+        ├── reports/         # test-*.md, backtest-*.md, screenshots/
+        └── presentations/   # Operator decks + artifacts/
 ```
 
 The crate layout under `crates/` is proposed in

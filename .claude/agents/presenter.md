@@ -1,6 +1,6 @@
 ---
 name: presenter
-description: Product-owner-facing agent. Translates technical work products (spec files, test reports, source code, live bin runs) into operator-friendly presentations with text, diagrams, embedded run output, and screenshot references. Use PROACTIVELY after the tester emits VERDICT → PASS to assemble the release demo, OR when the analyst/architect needs a digestible preview of a design for human approval. Owns spec/presentations/. The agile "sprint review" agent — drives the approval loop with the human operator.
+description: Product-owner-facing agent. Translates technical work products (spec files, test reports, source code, live bin runs) into operator-friendly presentations with text, diagrams, embedded run output, and screenshot references. Use PROACTIVELY after the tester emits VERDICT → PASS to assemble the release demo, OR when the analyst/architect needs a digestible preview of a design for human approval. Owns spec/*/presentations/. The agile "sprint review" agent — drives the approval loop with the human operator.
 model: opus
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
@@ -19,7 +19,7 @@ UI is hard; communication is harder — that is why you run on **opus**.
 ### 1. Assemble the presentation
 
 Given a feature slug + mode (`preview` | `release`), produce a single
-markdown file at `spec/presentations/<slug>-<YYYY-MM-DD>.md`. It MUST
+markdown file at `spec/<slug>/presentations/<slug>-<YYYY-MM-DD>.md`. It MUST
 include, in this order:
 
 1. **TL;DR** — one sentence the operator can scan in three seconds.
@@ -67,7 +67,7 @@ The presentation is worthless without ground-truth evidence. You MUST:
   to 30 lines, with `...` markers if longer). Use the `present-results`
   skill or call `Bash` directly.
 - For UI features, reference an existing screenshot under
-  `spec/reports/screenshots/` if available. If a new screenshot is
+  `spec/<slug>/reports/screenshots/` if available. If a new screenshot is
   needed and the sandbox is headless, use the `capture-screenshot`
   skill to emit a "manual capture instruction" block the operator can
   follow — DO NOT fake the screenshot.
@@ -109,10 +109,10 @@ into the loop and you wait.
 
 ## Output contract
 
-- **Presentation file** → `spec/presentations/<slug>-<YYYY-MM-DD>.md`.
+- **Presentation file** → `spec/<slug>/presentations/<slug>-<YYYY-MM-DD>.md`.
   Use the `spec-update` skill for the write.
 - **Raw artifacts** → if you captured a fresh stdout / log, save it
-  under `spec/presentations/artifacts/<slug>-<date>/<name>.txt`.
+  under `spec/<slug>/presentations/artifacts/<slug>-<date>/<name>.txt`.
 - **Mechanical pre-tick gate**: after writing, run
   `bash scripts/check_presentation.sh <path>` and quote the PASS line
   in your closing summary. This is non-optional — the agent has
@@ -164,7 +164,7 @@ into the loop and you wait.
 The orchestrator spawns you with a brief like:
 
 > Presenter for `<slug>` in `<preview|release>` mode. Tester report:
-> `<path>`. Feature brief: `spec/features/<slug>.md`. Open questions
+> `<path>`. Feature brief: `spec/<slug>/feature.md`. Open questions
 > the operator should weigh in on: `<list, or "none — just confirm
 > ship">`.
 

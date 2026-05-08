@@ -1,20 +1,20 @@
 ---
 name: backtest
-description: Run a historical backtest for a strategy feature and emit a metrics block for embedding into the test report. Use when the tester agent verifies a strategy change, when the analyst needs baseline performance, or whenever spec/features/<slug>.md specifies a backtest scenario.
+description: Run a historical backtest for a strategy feature and emit a metrics block for embedding into the test report. Use when the tester agent verifies a strategy change, when the analyst needs baseline performance, or whenever spec/<slug>/feature.md specifies a backtest scenario.
 ---
 
 # backtest
 
 ## Inputs
 
-- `feature_slug` — matches `spec/features/<slug>.md`
+- `feature_slug` — matches `spec/<slug>/feature.md`
 - `scenario` — section within that feature file, e.g. `btc-2023-regime`
 - `baseline` — optional report path to diff against; defaults to most recent
-  `spec/reports/test-*-<slug>.md` with a Backtest section.
+  `spec/<slug>/reports/test-*-<slug>.md` with a Backtest section.
 
 ## Procedure
 
-1. Resolve the scenario: read `spec/features/<slug>.md` → `## Backtest Scenarios` block.
+1. Resolve the scenario: read `spec/<slug>/feature.md` → `## Backtest Scenarios` block.
    Each scenario defines universe, period, data source, fees, and entry config.
 
 2. Invoke the workspace's backtest binary (the architect defines this; default
@@ -31,7 +31,7 @@ description: Run a historical backtest for a strategy feature and emit a metrics
    `rust-test/templates/test-report.md`. Embed it into the caller's report.
 
 6. Save raw artifacts (equity curve CSV, trade log) under
-   `spec/reports/artifacts/<run_id>/` so they survive for future diffs.
+   `spec/<feature>/reports/artifacts/<run_id>/` so they survive for future diffs.
 
 ## Failure Modes
 
@@ -92,4 +92,4 @@ scripts/verify_anchors.sh
 ## Templates
 
 See [templates/scenario.md](templates/scenario.md) for the scenario-definition
-format used inside `spec/features/<slug>.md`.
+format used inside `spec/<slug>/feature.md`.

@@ -14,9 +14,9 @@ agents so humans and future Claude sessions can trust the docs.
 |-----------------------------------|------------------------|----------------------------------------|
 | `spec/product.md`                 | analyst                | Product requirements & constraints     |
 | `spec/architecture.md`            | architect              | System design, module map, budgets     |
-| `spec/features/<slug>.md`         | analyst → architect → developer | Per-feature lifecycle doc      |
-| `spec/tasks/<slug>.md`            | architect → developer  | Ordered task list with checkboxes      |
-| `spec/reports/<report>.md`        | tester, analyst        | Immutable, dated reports — never edit  |
+| `spec/<slug>/feature.md`         | analyst → architect → developer | Per-feature lifecycle doc      |
+| `spec/<slug>/tasks.md`            | architect → developer  | Ordered task list with checkboxes      |
+| `spec/<slug>/reports/<report>.md`        | tester, analyst        | Immutable, dated reports — never edit  |
 
 ## Frontmatter contract
 
@@ -53,7 +53,7 @@ Reports additionally carry `run_id`, `commit`, and `verdict`.
 
 ## Feature file skeleton
 
-Use this shape for new `spec/features/<slug>.md`:
+Use this shape for new `spec/<slug>/feature.md`:
 
 ```markdown
 ---

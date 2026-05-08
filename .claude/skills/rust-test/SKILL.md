@@ -1,6 +1,6 @@
 ---
 name: rust-test
-description: Run the full Rust test suite and render a structured markdown report. Use after a build succeeds, on every PR, and whenever the tester agent is invoked. Produces a report at spec/reports/test-<timestamp>-<slug>.md using the template in this skill.
+description: Run the full Rust test suite and render a structured markdown report. Use after a build succeeds, on every PR, and whenever the tester agent is invoked. Produces a report at spec/<slug>/reports/test-<timestamp>-<slug>.md using the template in this skill.
 ---
 
 # rust-test
@@ -30,14 +30,14 @@ Canonical test-and-report pipeline.
    - Wall-clock time.
 
 5. Render the report by copying `templates/test-report.md` to
-   `spec/reports/test-<YYYY-MM-DD-HHMM>-<slug>.md` and filling every section.
+   `spec/<slug>/reports/test-<YYYY-MM-DD-HHMM>-<slug>.md` and filling every section.
    Use the current UTC timestamp; derive `<slug>` from the active feature
-   (read `spec/tasks/` for the most recently edited task file).
+   (read `spec/*/tasks.md` for the most recently edited task file).
 
 6. If backtests are in scope for this run, invoke the `backtest` skill and embed
    its metrics table in the "Backtest Results" section of the same report.
    After `scripts/verify_anchors.sh` exits 0, run
-   `scripts/prune_backtest_duplicates.sh` so `spec/reports/` keeps exactly
+   `scripts/prune_backtest_duplicates.sh` so `spec/*/reports/` keeps exactly
    one report per anchored scenario (see `verify-anchors` SKILL.md
    § "Post-PASS bookkeeping").
 

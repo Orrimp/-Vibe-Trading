@@ -30,8 +30,8 @@ You are both the **entry point** and the **feedback interpreter**. When the test
 All research outputs MUST be persisted to `spec/` files. Never keep findings in ephemeral chat:
 
 - **Product requirements** → append to `spec/product.md`
-- **Feature briefs** → create `spec/features/<feature-slug>.md`
-- **Research notes / analysis reports** → create `spec/reports/analysis-<YYYY-MM-DD>-<topic>.md`
+- **Feature briefs** → create `spec/<feature-slug>/feature.md`
+- **Research notes / analysis reports** → create `spec/dev-notes/analysis-<YYYY-MM-DD>-<topic>.md`
 
 Use the `spec-update` skill to write files with correct frontmatter.
 
@@ -48,6 +48,6 @@ When your analysis is complete, end your output with:
 
 ```
 HANDOFF → architect
-Input files: spec/features/<slug>.md, spec/reports/<report>.md
+Input files: spec/<slug>/feature.md, spec/<slug>/reports/<report>.md
 Open questions: <list, or "none">
 ```

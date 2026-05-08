@@ -13,13 +13,13 @@ prefers a manual-instruction path over fake automation.
 - `binary` — name of the binary to screenshot, e.g. `cockpit`.
 - `feature_args` — cargo args to pass, e.g. `--features fixtures`.
 - `panel_name` — used for the output filename, e.g. `tape-ready`.
-- `slug` — feature slug; output goes to `spec/reports/screenshots/<slug>/`.
+- `slug` — feature slug; output goes to `spec/<slug>/reports/screenshots/`.
 - `instruction_only` (default false) — skip the actual capture and
   emit only the operator instruction block.
 
 ## Procedure
 
-1. **Resolve output path.** `spec/reports/screenshots/<slug>/<panel_name>.png`.
+1. **Resolve output path.** `spec/<slug>/reports/screenshots/<panel_name>.png`.
    If the file already exists and the caller didn't ask for a refresh,
    return the existing path with no capture.
 
@@ -45,8 +45,8 @@ prefers a manual-instruction path over fake automation.
    # On your operator workstation, capture the <panel_name> screenshot:
    cargo run --release --bin <binary> <feature_args> &
    sleep 4
-   screencapture -W spec/reports/screenshots/<slug>/<panel_name>.png   # macOS
-   # OR: gnome-screenshot -w -f spec/reports/screenshots/<slug>/<panel_name>.png   # Linux GNOME
+   screencapture -W spec/<slug>/reports/screenshots/<panel_name>.png   # macOS
+   # OR: gnome-screenshot -w -f spec/<slug>/reports/screenshots/<panel_name>.png   # Linux GNOME
    pkill -f "target/release/<binary>"
    ```
 
@@ -70,6 +70,6 @@ prefers a manual-instruction path over fake automation.
 ## Manifest
 
 The presenter or ui-designer SHOULD list every screenshot referenced
-in a presentation under `spec/reports/screenshots/<slug>/README.md` so
+in a presentation under `spec/<slug>/reports/screenshots/README.md` so
 future agents can find them without globbing. The README is small and
 plain-text — caption per file plus the capture date.

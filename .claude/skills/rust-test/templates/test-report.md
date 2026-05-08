@@ -12,7 +12,7 @@ verdict: <PASS | FAIL | REGRESSION>
 ## 1. Scope
 
 - **Feature / change under test:** <short description>
-- **Spec refs:** `spec/features/<slug>.md`, `spec/tasks/<slug>.md`
+- **Spec refs:** `spec/<slug>/feature.md`, `spec/<slug>/tasks.md`
 - **Commit SHA:** `<sha>`
 - **Rust toolchain:** `<rustc --version>`
 - **OS / arch:** `<uname -a short>`

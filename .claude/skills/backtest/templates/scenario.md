@@ -1,4 +1,4 @@
-<!-- Paste this block under "## Backtest Scenarios" in spec/features/<slug>.md -->
+<!-- Paste this block under "## Backtest Scenarios" in spec/<slug>/feature.md -->
 
 ### Scenario: `<scenario-slug>`
 
@@ -14,6 +14,6 @@
   - Max leverage: `3x`
   - Max drawdown stop: `-15%`
   - Per-symbol exposure cap: `40%`
-- **Baseline report:** `spec/reports/test-<prev>-<slug>.md` _(or "none")_
+- **Baseline report:** `spec/<slug>/reports/test-<prev>-<slug>.md` _(or "none")_
 
 **Expected outcome (analyst hypothesis):** one sentence.

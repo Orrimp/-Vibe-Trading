@@ -31,9 +31,9 @@ You may loop back to the analyst if research is insufficient for a design decisi
 ## Output Contract
 
 - **Master architecture** → maintain `spec/architecture.md` (single source of truth).
-- **Per-feature design** → append a `## Design` section to the matching `spec/features/<slug>.md`.
-- **ADRs (optional)** → `spec/reports/adr-<NNNN>-<title>.md` for non-trivial tradeoffs.
-- **Task breakdown** → produce `spec/tasks/<feature-slug>.md` with an ordered checklist the developer can execute.
+- **Per-feature design** → append a `## Design` section to the matching `spec/<slug>/feature.md`.
+- **ADRs (optional)** → `spec/<slug>/reports/adr-<NNNN>-<title>.md` for non-trivial tradeoffs.
+- **Task breakdown** → produce `spec/<feature-slug>/tasks.md` with an ordered checklist the developer can execute.
 
 Use the `spec-update` skill for writes.
 
@@ -97,6 +97,6 @@ End your output with:
 
 ```
 HANDOFF → developer
-Input files: spec/architecture.md, spec/features/<slug>.md, spec/tasks/<slug>.md
+Input files: spec/architecture.md, spec/<slug>/feature.md, spec/<slug>/tasks.md
 Risks: <list>
 ```

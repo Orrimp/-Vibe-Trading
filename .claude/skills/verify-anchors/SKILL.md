@@ -22,8 +22,8 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
 
    ```bash
    # Compare two report bodies (front-matter stripped).
-   diff <(awk '/^---$/{n++; next} n>=2' spec/reports/<old>.md) \
-        <(awk '/^---$/{n++; next} n>=2' spec/reports/<new>.md)
+   diff <(awk '/^---$/{n++; next} n>=2' spec/<slug>/reports/<old>.md) \
+        <(awk '/^---$/{n++; next} n>=2' spec/<slug>/reports/<new>.md)
    ```
 
 3. On MISS (no report for a scenario) re-run the backtest first:
@@ -64,7 +64,7 @@ produced, not when last verified). Stale runs from before an anchor
 update are also removed; their content lives in git history. Run with
 `--dry-run` to preview.
 
-Without this step `spec/reports/` accumulates duplicate runs every time
+Without this step `spec/*/reports/` accumulates duplicate runs every time
 the tester touches strategy code; with it the directory steady-states
 at one file per anchored scenario.
 
@@ -86,7 +86,7 @@ identical across two sequential `--release` runs at the same seed:
 ```bash
 cargo run --release --bin backtest -- --scenario <name>  # run 1
 cargo run --release --bin backtest -- --scenario <name>  # run 2
-scripts/hash_report.py spec/reports/backtest-*-<name>.md  # compare two bodies
+scripts/hash_report.py spec/<feature>/reports/backtest-*-<name>.md  # compare two bodies
 # If hashes match -> append to spec/anchors.toml under the new version.
 ```
 
