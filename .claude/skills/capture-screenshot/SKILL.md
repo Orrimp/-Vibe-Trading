@@ -23,6 +23,21 @@ prefers a manual-instruction path over fake automation.
    If the file already exists and the caller didn't ask for a refresh,
    return the existing path with no capture.
 
+   **Pre-check: is this even a UI feature?** Before invoking any
+   capture path, verify the feature has a UI surface. Heuristics
+   (any one is sufficient):
+   - `spec/<slug>/feature.md` contains a `## UI` heading, or
+   - `spec/<slug>/reports/screenshots/` directory exists (presence
+     of the directory is the project convention for "UI feature").
+
+   If neither is true, emit `n/a — non-UI feature` and return without
+   capturing or emitting an operator instruction block. Caller (the
+   presenter agent's screenshots step) writes
+   `_n/a — non-UI feature_` into the deck. This branch was added
+   2026-05-08 after the `operator-success-reports` smoke test
+   surfaced that the skill defaulted to a manual-capture instruction
+   for a feature that has no UI.
+
 2. **Detect the platform** via `uname -s`:
    - `Darwin` → use `scripts/capture_screenshot.sh` (calls `screencapture`).
    - `Linux` → emit operator instruction (no portable headless GUI capture).

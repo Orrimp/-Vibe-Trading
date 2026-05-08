@@ -25,6 +25,19 @@ presentation file and zero external side effects (no commits, no PRs).
 
 3. **Read the latest test report** (release mode). Pull pass/fail counts,
    anchor-gate result, perf numbers.
+   - Look first under `spec/<slug>/reports/test-*.md`.
+   - If none exist, the feature is pre-Lumen (shipped before the
+     2026-05-08 spec restructure) and its tester reports live in
+     `spec/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz`.
+     Extract the relevant report by name with `tar -xzf
+     spec/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz
+     -C /tmp test-*-<slug>-final.md` (or one of the wave variants —
+     `tar -tzf` to list). Read from `/tmp/`. Cite the archive path
+     in the verification matrix evidence column so the operator can
+     re-extract on their side. Do NOT copy the archived report into
+     the per-feature `reports/` folder — the archive is the canonical
+     home for these reports and committing extracts undoes the
+     `spec/archive/README.md` audit pattern.
 
 4. **Run a live demo.** Pick the most representative bin command for the
    feature. Examples:
@@ -40,9 +53,18 @@ presentation file and zero external side effects (no commits, no PRs).
 
 6. **Find existing screenshots.** Glob `spec/<slug>/reports/screenshots/`
    and `spec/<slug>/reports/screenshots/<feature-version>/` for any `.png` files.
-   Reference each with a relative-link caption. If the feature is UI-related
-   and no screenshots exist, use `capture-screenshot` skill to emit a
-   manual-capture instruction.
+   Reference each with a relative-link caption. Three branches:
+   - **PNGs exist** → reference each with caption.
+   - **No PNGs and feature is UI-related** (`spec/<slug>/feature.md`
+     contains a `## UI` heading, or the feature folder has a
+     `screenshots/` directory with a README) → use `capture-screenshot`
+     skill to emit a manual-capture instruction block.
+   - **No PNGs and feature is not UI-related** (no `## UI` heading,
+     no `screenshots/` directory — typical for report / audit /
+     risk-only features) → write `_n/a — non-UI feature_` with a
+     one-line reason (e.g. "report bin emits markdown; cockpit
+     `viewer` renders it inline"). Do NOT invoke
+     `capture-screenshot`; there is nothing to capture.
 
 7. **Read `spec/anchors.toml`.** Embed the count + the first 8 chars of
    each anchor SHA — proves byte-stable output without flooding the
@@ -112,7 +134,8 @@ $ <cmd>
 
 ## Screenshots
 <reference + caption per .png in spec/<slug>/reports/screenshots/, OR
- a manual-capture instruction block if missing>
+ a manual-capture instruction block if missing-but-UI, OR
+ `_n/a — non-UI feature_` with one-line reason>
 
 ## Verification
 
