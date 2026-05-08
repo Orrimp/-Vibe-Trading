@@ -88,7 +88,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   (second-pass PASS); brief at
   [`features/lumen-phase-5-humancontrol-agentfeed.md`](features/lumen-phase-5-humancontrol-agentfeed.md)
   (status: `shipped`); presenter deck at
-  [`spec/presentations/lumen-phase-5-humancontrol-agentfeed-2026-05-07.md`](presentations/lumen-phase-5-humancontrol-agentfeed-2026-05-07.md).
+  [`spec/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   **First phase to ship net-new operator-write surfaces since v0**:
   HumanControl panel widget (execution-mode segmented control +
   daily loss limit / max position / used-today P&L mirror rows +
@@ -127,7 +127,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   (second-pass PASS); brief at
   [`features/lumen-phase-4-backtest-panel.md`](features/lumen-phase-4-backtest-panel.md)
   (status: `shipped`); presenter deck at
-  [`spec/presentations/lumen-phase-4-backtest-panel-2026-05-06.md`](presentations/lumen-phase-4-backtest-panel-2026-05-06.md).
+  [`spec/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds the new `viewer` binary at `crates/ui/src/bin/viewer.rs`
   (workspace now ships 3 bins), KPI strip + equity curve + drawdown
   band widgets sharing a refactored `widgets::canvas_chart` core
@@ -160,7 +160,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   brief at
   [`features/lumen-phase-3-detail-screens.md`](features/lumen-phase-3-detail-screens.md)
   (status: `shipped`); presenter deck at
-  [`spec/presentations/lumen-phase-3-detail-screens-2026-05-05.md`](presentations/lumen-phase-3-detail-screens-2026-05-05.md).
+  [`spec/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds Strategies / Risk / Audit sidebar entries (3 → 6) + per-screen
   detail bodies, additive `008_journal_transactions_venue.sql`
   migration (default `'binance'` backfill), `post_fill` writer's
@@ -190,7 +190,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   Brief at
   [`features/lumen-phase-2-shell-ia-charts.md`](features/lumen-phase-2-shell-ia-charts.md)
   (status: `shipped`). Presenter deck approved by operator at
-  [`spec/presentations/lumen-phase-2-shell-ia-charts-2026-05-05.md`](presentations/lumen-phase-2-shell-ia-charts-2026-05-05.md).
+  [`spec/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds left-sidebar shell (fixed 180 px, T1507-styled, no icons),
   Screen routing (`Cockpit::current_screen` × six variants — Home /
   Debug / Charts wired in Phase 2; Strategies / Risk / Audit
@@ -281,7 +281,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   point absent v2 LLM. No new feature promoted.
 - 2026-05-08 (presenter, Phase 5 sprint review APPROVED): operator
   signed the Phase 5 sprint review deck at
-  [`presentations/lumen-phase-5-humancontrol-agentfeed-2026-05-07.md`](presentations/lumen-phase-5-humancontrol-agentfeed-2026-05-07.md)
+  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 5 closed cleanly: tester second-
   pass PASS (8/8 gates after a one-line `cargo fmt --all` fixup
   between passes; first-pass FAIL preserved on disk for audit), 896
@@ -298,7 +298,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   side initiative as 5-phase-complete).
 - 2026-05-06 (presenter, Phase 4 sprint review APPROVED): operator
   signed the Phase 4 sprint review deck at
-  [`presentations/lumen-phase-4-backtest-panel-2026-05-06.md`](presentations/lumen-phase-4-backtest-panel-2026-05-06.md)
+  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 4 closed cleanly: tester second-
   pass PASS (8/8 gates after a one-line `match_same_arms` fix
   between passes; first-pass FAIL preserved on disk for audit), 850
@@ -316,7 +316,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   (Phase 5 brief expansion).
 - 2026-05-06 (presenter, Phase 3 sprint review APPROVED): operator
   signed the Phase 3 sprint review deck at
-  [`presentations/lumen-phase-3-detail-screens-2026-05-05.md`](presentations/lumen-phase-3-detail-screens-2026-05-05.md)
+  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 3 closed cleanly: tester first-pass
   PASS (8/8 gates), 810 tests across 104 binaries, 11/11 anchors
   byte-identical post-migration, 65 baselines attested clean, two
@@ -333,7 +333,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   CHECK PASS`). HANDOFF → analyst (Phase 4 brief expansion).
 - 2026-05-05 (presenter, Phase 2 sprint review APPROVED): operator
   signed the Phase 2 sprint review deck at
-  [`presentations/lumen-phase-2-shell-ia-charts-2026-05-05.md`](presentations/lumen-phase-2-shell-ia-charts-2026-05-05.md)
+  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 2 closed cleanly: tester first-pass
   PASS (8/8 gates), 781 tests across 98 binaries, 11/11 anchors,
   53 baselines attested clean. Promoted `lumen-phase-3-detail-screens`
@@ -346,7 +346,7 @@ reserved for v2 LLM. No new feature is currently promoted.)_
   brief expansion).
 - 2026-05-04 (presenter, Phase 1 sprint review APPROVED): operator
   signed the Phase 1 sprint review deck at
-  [`presentations/lumen-phase-1-foundation-2026-05-04.md`](presentations/lumen-phase-1-foundation-2026-05-04.md)
+  [`presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](presentations/lumen-design-adoption-2026-05-04-to-05-08.md)
   (`[x] Approved — ship`). Phase 1 closed cleanly. Promoted
   `lumen-phase-2-shell-ia-charts` from Queue → Active per the
   master-roadmap sequencing constraint (Constraint 3). Phase 2
