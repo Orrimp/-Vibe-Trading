@@ -34,19 +34,20 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-_(empty — all prior Active entries are now Recent (shipped). The
-lumen-design-adoption initiative reached a natural pause point
-2026-05-08 at 5-of-6 phases shipped; Phase 6 (Assistant slot) is
-reserved for v2 LLM. No new feature is currently promoted.)_
+- **Reflection memory.** Promoted from Queue 2026-05-08. Replaces the
+  R6 placeholder body in
+  [`crates/reports/src/render/memory_highlights.rs`](../crates/reports/src/render/memory_highlights.rs)
+  with real reflection-memory output, then re-locks the two
+  `report-sample-7d` / `report-sample-90d` anchors (precedent v1.5a
+  T717). Forward-compat breadcrumb already in place at
+  [`spec/dev-notes/memory-anchor-relock-TBD.md`](dev-notes/memory-anchor-relock-TBD.md).
+  Open R6 in [`spec/operator-success-reports/feature.md`](operator-success-reports/feature.md)
+  for re-scoping at the same time per the breadcrumb's "Owner" section.
+  Analyst owns the feature brief at `spec/reflection-memory/feature.md`.
 
 ## Queue
 
 ### Strategy
-
-- **Reflection memory (v1.5a Q1 follow-up).** Replaces the R6 placeholder
-  in `crates/reports/src/render/memory_highlights.rs`. Will re-lock the
-  two `report-sample-*` anchors — precedent at v1.5a T717. Wants fresh
-  analyst spawn for memory shape + summarization budget.
 - **v2 LLM strategy.** Analyst for prompt design, model choice, and a
   hard cost budget (currently $0/mo). Architect for the LLM-trait
   shape + caching. Likely the biggest scope of any queued item.
@@ -71,13 +72,33 @@ reserved for v2 LLM. No new feature is currently promoted.)_
 
 ### Process / tooling
 
-- **Presenter smoke test against `operator-success-reports`.** Exercises
-  every new presenter skill (`present-results`, `verify-anchors`,
-  `capture-screenshot` fallback) end-to-end on the just-shipped
-  feature. Cheap validation before committing the new agent definition
-  to a real new feature. Recommended as a low-risk first fire.
+_(empty — the only queued item, the presenter smoke test against
+operator-success-reports, ran 2026-05-08; surfaced 4 findings, two
+of which became skill-plumbing fixes that shipped in commit
+`8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **Presenter smoke test on `operator-success-reports`** — shipped
+  2026-05-08 (operator verbal approval recorded as `[x] Approved —
+  ship` in commit `587dad7`). Deck at
+  [`spec/operator-success-reports/presentations/operator-success-reports-2026-05-08.md`](operator-success-reports/presentations/operator-success-reports-2026-05-08.md);
+  pulled evidence from the archived final tester PASS (extracted
+  from `spec/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz`)
+  + a fresh `cargo test -p reports --test report_scenarios` re-run
+  (4/4 PASS, body SHAs match anchors) + a fresh
+  `scripts/verify_anchors.sh` PASS (11/11). Surfaced 4 smoke-test
+  findings: (1) `present-results` skill missed the archive
+  fallback for pre-Lumen tester reports — fixed in `8b139c2`;
+  (2) `capture-screenshot` skill defaulted to a manual-capture
+  instruction for non-UI features — fixed in `8b139c2` with a third
+  "non-UI feature" branch; (3) backlog Recent section had stale
+  relative paths inside link parens (cosmetic, fixed in `1a63156`);
+  (4) confirmed the audit-immutability call on archived tester
+  reports is correct (their internal `spec/features/...` /
+  `spec/tasks/...` references describe the layout at time of
+  writing). The presenter pipeline is now battle-tested before the
+  next real-feature fire.
 
 - **Lumen Phase 5 — HumanControl + AgentFeed rename** — shipped
   2026-05-07 (tester second-pass PASS, presenter approved
