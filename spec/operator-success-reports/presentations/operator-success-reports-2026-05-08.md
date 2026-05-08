@@ -109,7 +109,7 @@ Surfaced while running the `present-results` + `verify-anchors` + `capture-scree
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
@@ -120,3 +120,4 @@ _empty until operator fills_
 ## Changelog
 
 - 2026-05-08 (presenter, smoke-test fire from `spec/backlog.md` Process / tooling queue): initial draft for an already-shipped feature. Pulled evidence from feature brief, archived tester report, live `cargo test -p reports --test report_scenarios` re-run, and a fresh `scripts/verify_anchors.sh` PASS. Surfaces 4 smoke-test findings about the presenter pipeline (see § "Smoke-test findings").
+- 2026-05-08 (operator, verbal approval via orchestrator chat): ticked `[x] Approved — ship`. Verbal approval recorded in the chat transcript at the orchestrator session for 2026-05-08. The two associated skill-plumbing fixes (archive-fallback in `present-results` step 3; non-UI-feature branch in `capture-screenshot` step 1 + `present-results` step 6) shipped in commit 8b139c2 alongside this deck.
