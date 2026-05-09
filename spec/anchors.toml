@@ -67,9 +67,9 @@ sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
 [[anchors]]
 scenario = "report-sample-7d"
 version  = "v1+"
-sha256   = "ab06dbcbe9a2d81be0f1ad0eecaab1d513c4bcbe5469b4eec4e9b58989482b4c"
+sha256   = "f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994"
 
 [[anchors]]
 scenario = "report-sample-90d"
 version  = "v1+"
-sha256   = "2ef403f1845b8eb3b87fe381f89279c488bc54840b1d0306d95e6122bbdffd0f"
+sha256   = "463e19b298552d7e3e37b1aad7c786d1cc71f14eed75d7df7ea6dc57525fa33c"

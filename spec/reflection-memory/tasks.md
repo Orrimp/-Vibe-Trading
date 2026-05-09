@@ -1,6 +1,6 @@
 ---
 slug: reflection-memory
-status: in-progress
+status: shipped
 owner: architect
 updated: 2026-05-08
 ---
@@ -737,7 +737,7 @@ the loop.
 
 ## Final
 
-- [ ] **T_FINAL_REFLECTION_MEMORY** [tester] — End-to-end gate
+- [x] **T_FINAL_REFLECTION_MEMORY** [tester] — End-to-end gate
   per [feature.md → Verification](feature.md#verification):
   - Both report scenarios (T1811) green with deterministic body
     SHA-256s captured by the tester (NOT the developer).
@@ -764,6 +764,27 @@ the loop.
   locked. Operator's "[x] Approved — ship" recorded in the
   presenter deck. [V1–V10, R5, R8.2, Q6]_
   **[deps: T1813, T1814]**
+  - VERIFIED (tester, 2026-05-08 21:14 UTC, commit 7650c7b):
+    `cargo fmt --all -- --check` exit 0;
+    `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+    clean; `cargo deny check bans licenses sources` →
+    `bans ok, licenses ok, sources ok`;
+    `cargo deny check advisories` → `advisories ok`
+    (cargo-audit not installed locally — deny advisories
+    covers the V1 advisory gate).
+    `cargo test --workspace --all-targets` → 952 passed; 0
+    failed; 3 ignored across 124 test-result lines.
+    Determinism re-runs (T1813 R5.4 procedure):
+    `cargo test -p reports --test report_scenarios -- --nocapture`
+    twice in succession both print
+    `T816 report-sample-7d body SHA-256: f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994`
+    and
+    `T816 report-sample-90d body SHA-256: 463e19b298552d7e3e37b1aad7c786d1cc71f14eed75d7df7ea6dc57525fa33c`.
+    Anchors re-locked at `spec/anchors.toml:67-75`;
+    `bash scripts/verify_anchors.sh` →
+    `ANCHORS PASS  (11 / 11)`. Dev-note footer appended at
+    `spec/dev-notes/memory-anchor-relock-TBD.md`. Tester report:
+    `spec/reflection-memory/reports/test-2026-05-08-2114-reflection-memory-final.md`.
 
 ## Parallelism map
 
@@ -876,3 +897,6 @@ share `crates/agent/src/main.rs` + `crates/exec/src/paper.rs`.
   synchronization gates included; handoff contract preserved
   (no UI involvement). Owner → architect; status stays
   in-progress.
+- 2026-05-08 (tester, T_FINAL_REFLECTION_MEMORY): VERDICT → PASS.
+  Two anchors re-locked at spec/anchors.toml:67-75. See
+  test-2026-05-08-2114-reflection-memory-final.md.

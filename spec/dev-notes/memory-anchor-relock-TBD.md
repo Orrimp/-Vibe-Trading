@@ -41,3 +41,16 @@ Whichever analyst opens the reflection-memory feature opens R6 of
 `spec/operator-success-reports/feature.md` for re-scoping at the
 same time.  The architect for that feature carries the re-lock
 deliverable.
+
+## Completed 2026-05-08 (tester, T_FINAL_REFLECTION_MEMORY)
+
+The reflection-memory feature shipped commit `7650c7b` and the two
+`report-sample-*` anchors at `spec/anchors.toml:67-75` are re-locked
+to:
+
+- `report-sample-7d`:  `f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994`
+- `report-sample-90d`: `463e19b298552d7e3e37b1aad7c786d1cc71f14eed75d7df7ea6dc57525fa33c`
+
+Captured from byte-stable two-run renders at seed `0xC0FFEE`;
+`scripts/verify_anchors.sh` returns `ANCHORS PASS (11 / 11)`.
+See `spec/reflection-memory/reports/test-2026-05-08-2114-reflection-memory-final.md`.

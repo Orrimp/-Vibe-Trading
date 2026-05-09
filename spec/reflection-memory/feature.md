@@ -1,6 +1,6 @@
 ---
 slug: reflection-memory
-status: in-progress
+status: shipped
 owner: architect
 updated: 2026-05-08
 version: 1.8.0
@@ -1658,6 +1658,9 @@ substrings (`generated:`, `run_id:`, `wall_clock_s:`,
   + `T_FINAL_REFLECTION_MEMORY`. Crate / module surface lists 23
   new files and 11 modified existing files. Owner → architect;
   status stays `in-progress`.
+- 2026-05-08 (tester, T_FINAL_REFLECTION_MEMORY): VERDICT → PASS.
+  Two anchors re-locked at spec/anchors.toml:67-75. See
+  test-2026-05-08-2114-reflection-memory-final.md.
 
 HANDOFF → architect
 Input files: spec/reflection-memory/feature.md, spec/reflection-memory/tasks.md
