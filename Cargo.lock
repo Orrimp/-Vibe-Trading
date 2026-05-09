@@ -26,6 +26,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "notify",
+ "reflection",
  "reports",
  "reqwest",
  "risk",
@@ -1519,6 +1520,7 @@ name = "exec"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "reflection",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
@@ -4786,6 +4788,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "reflection"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "audit",
+ "features",
+ "metrics",
+ "proptest",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "sha2",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "trading_core",
+ "walkdir",
+]
+
+[[package]]
 name = "regex"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4833,6 +4858,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 name = "reports"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "audit",
  "clap",
  "cost",
@@ -4845,6 +4871,7 @@ dependencies = [
  "proptest",
  "rand 0.9.4",
  "rand_chacha 0.9.0",
+ "reflection",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",

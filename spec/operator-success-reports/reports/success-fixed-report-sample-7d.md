@@ -1,16 +1,16 @@
 ---
 period: since:2026-04-21T00:00:00Z
 period_start: 2026-04-21T00:00:00.000000Z
-period_end: 2026-05-08T09:31:22.314205Z
-generated: 2026-05-08T09:31:22.314205Z
-run_id: 1be3705333e4d0ba
-ledger_snapshot_sha: 7bb5bc6c2f360890d85d75c294b82b68032f84931829dd26130be9da91a0a112
+period_end: 2026-05-09T19:12:46.712776Z
+generated: 2026-05-09T19:12:46.712776Z
+run_id: 92fbc5016a37234d
+ledger_snapshot_sha: c00049426e13e40fbac9a5502031093eed476d8309a40089fb54f0616523efdc
 seed: 0xC0FFEE
-data_source: fixture:/var/folders/3d/q05sqj0x3r79f5jszgbsv0cc0000gp/T/.tmpKxGaS1/audit-7d.db
-wall_clock_s: 0.023285
+data_source: fixture:/var/folders/3d/q05sqj0x3r79f5jszgbsv0cc0000gp/T/.tmp4lO0vk/audit-7d.db
+wall_clock_s: 0.022669
 binary_version: 0.1.0
 git_commit: n/a
-agent_pid: 16097
+agent_pid: 85589
 host: unknown
 reconciliation: PASS
 ---
@@ -52,7 +52,7 @@ Window since:2026-04-21T00:00:00Z:
 
 ## Memory highlights
 
-_reflection memory not yet implemented._
+_no closed trades yet — lesson cards will appear after the first closed trade._
 
 ## System health
 

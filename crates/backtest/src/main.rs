@@ -2049,9 +2049,9 @@ fn find_latest_report(dir: &Path, scenario: &str) -> Option<String> {
 /// so orphaned reports surface immediately.
 fn scenario_to_feature(scenario: &str) -> &'static str {
     match scenario {
-        "btc-2023-1m-sma-cross"
-        | "btc-2023-1m-sma-baseline-refresh"
-        | "btc-2024-h1-sma-cross" => "v0-paper-sma",
+        "btc-2023-1m-sma-cross" | "btc-2023-1m-sma-baseline-refresh" | "btc-2024-h1-sma-cross" => {
+            "v0-paper-sma"
+        }
         "btc-2023-1m-macd-trend"
         | "btc-2023-1m-rsi-reversion"
         | "btc-2023-1m-bbands-mean-revert" => "v05-composed-strategies",

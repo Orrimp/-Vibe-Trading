@@ -53,7 +53,9 @@ use crate::build_ledger_with_open_positions_7d::{
 /// The Q4 invariant — "anchors stay byte-identical" — is the load-bearing
 /// claim of T1003; this constant pins it locally so the smoke fails
 /// loudly rather than via the slower workspace anchor sweep.
-const EXPECTED_SHA_7D: &str = "ab06dbcbe9a2d81be0f1ad0eecaab1d513c4bcbe5469b4eec4e9b58989482b4c";
+// T1810 / T1813 — re-anchored post-reflection-memory renderer rewrite.
+// Same value pinned in `crates/reports/tests/report_scenarios.rs::EXPECTED_SHA_7D`.
+const EXPECTED_SHA_7D: &str = "f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994";
 
 /// Slice off the front-matter and return the body bytes — same
 /// convention as `scripts/hash_report.py` and the anchor regression

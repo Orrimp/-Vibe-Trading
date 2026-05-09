@@ -5,7 +5,7 @@
 //! `paper` only.
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use trading_core::ConfigError;
 
 // ── Sub-config types ──────────────────────────────────────────────────────────
@@ -229,6 +229,36 @@ impl Default for AuditConfig {
     }
 }
 
+/// Reflection-memory writer config (T1807 / Q3a / Q8).
+///
+/// `path` is the sibling sqlite file used by `SqliteReflectionStore`.
+/// `channel_capacity` is the bounded mpsc capacity (Q8 default 1024).
+/// `enable_writer = false` short-circuits the writer task spawn — used
+/// in research-mode fixtures and in the `reports` binary's read-only
+/// path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReflectionConfig {
+    pub path: PathBuf,
+    pub channel_capacity: usize,
+    pub enable_writer: bool,
+}
+
+impl Default for ReflectionConfig {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::from("./data/audit/reflection.db"),
+            channel_capacity: 1024,
+            // Default to false in research mode — agent's main.rs
+            // promotes to true under `Mode::Paper` per architect's
+            // "v1 default is enable_writer = true" plus an explicit
+            // override at boot.  Keeping the default false here means
+            // reading `Config::default()` in tests / research never
+            // touches the writer task.
+            enable_writer: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KillSwitchConfig {
     pub halt_file: String,
@@ -416,6 +446,12 @@ pub struct Config {
     /// Symbol-universe toggles (v1.5b T1410 / Q6).  Default: USDT only.
     #[serde(default)]
     pub universe: UniverseConfig,
+    /// Reflection-memory writer config (T1807 / Q3a / Q8). Default
+    /// `enable_writer = false` so research / fixture profiles do not
+    /// spawn the writer task; production paper-mode flips it on
+    /// explicitly via the loaded TOML.
+    #[serde(default)]
+    pub reflection: ReflectionConfig,
 }
 
 impl Default for Config {
@@ -433,6 +469,7 @@ impl Default for Config {
             bus: BusConfig::default(),
             funding: FundingConfig::default(),
             universe: UniverseConfig::default(),
+            reflection: ReflectionConfig::default(),
         }
     }
 }

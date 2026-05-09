@@ -101,6 +101,33 @@ async fn main() -> Result<()> {
         .context("bootstrap chart of accounts")?;
     info!(db = %db_path, "audit ledger initialized");
 
+    // ── Reflection store + writer task (T1807 / Q8) ────────────────────────────
+    // Internal mpsc — not a bus channel (R8.3, hard constraint #4).
+    // Gated by `cfg.reflection.enable_writer`; default false in
+    // research / fixture profiles.  Producer side is held by the
+    // executor's fill-handler tap; consumer task drains the queue
+    // and persists via `SqliteReflectionStore::upsert`.
+    let _reflection_writer = if cfg.reflection.enable_writer {
+        if let Some(parent) = cfg.reflection.path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let store: std::sync::Arc<dyn reflection::ReflectionStore> = std::sync::Arc::new(
+            reflection::store::sqlite::SqliteReflectionStore::open(&cfg.reflection.path)
+                .await
+                .context("open reflection store")?,
+        );
+        let (writer, task) =
+            reflection::ReflectionWriter::new(store, cfg.reflection.channel_capacity);
+        tokio::spawn(async move {
+            task.run().await;
+        });
+        info!(path = %cfg.reflection.path.display(), "reflection writer task spawned");
+        Some(writer)
+    } else {
+        info!("reflection writer disabled (cfg.reflection.enable_writer = false)");
+        None
+    };
+
     // ── Kill switch ───────────────────────────────────────────────────────────
     // T809 — wire the audit ledger + production incident spawner.  On
     // trip the kill switch dual-writes the audit memo + `strategy_events`

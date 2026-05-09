@@ -1,0 +1,27 @@
+[package]
+name = "reflection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+trading_core = { path = "../core" }
+audit = { path = "../audit" }
+features = { path = "../features" }
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+tracing.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+time.workspace = true
+tokio.workspace = true
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate", "macros"] }
+sha2.workspace = true
+metrics.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+proptest.workspace = true
+walkdir = "2.5"

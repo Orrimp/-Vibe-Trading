@@ -32,6 +32,13 @@ use trading_core::{Fill, Position};
 
 use crate::publisher::{FillPublisher, NullPublisher};
 
+/// Optional reflection-memory writer tap (T1807 / Q8).
+///
+/// Wired by `agent::main` when `cfg.reflection.enable_writer = true`;
+/// `None` in research / fixture profiles.  Internal — not a bus
+/// channel (R8.3, hard constraint #4).
+pub type ReflectionWriterTap = Arc<reflection::ReflectionWriter>;
+
 /// Live-mode publisher wrapping a [`FillPublisher`] trait object.
 ///
 /// Constructed with either [`PaperEnginePublisher::new`] (no-op
@@ -42,6 +49,11 @@ use crate::publisher::{FillPublisher, NullPublisher};
 #[derive(Clone)]
 pub struct PaperEnginePublisher {
     publisher: Arc<dyn FillPublisher>,
+    /// T1807 — optional reflection writer tap.  When `Some`, calls
+    /// to [`PaperEnginePublisher::on_trade_close`] enqueue a
+    /// `LessonCardWriteRequest` via `try_enqueue` (back-pressure-safe,
+    /// drops on full).
+    reflection_writer: Option<ReflectionWriterTap>,
 }
 
 impl PaperEnginePublisher {
@@ -54,6 +66,7 @@ impl PaperEnginePublisher {
     pub fn new() -> Self {
         Self {
             publisher: Arc::new(NullPublisher::new()),
+            reflection_writer: None,
         }
     }
 
@@ -64,7 +77,23 @@ impl PaperEnginePublisher {
     /// so each fill is fanned out on `bus.fills` + `bus.positions`.
     #[must_use]
     pub fn with_publisher(publisher: Arc<dyn FillPublisher>) -> Self {
-        Self { publisher }
+        Self {
+            publisher,
+            reflection_writer: None,
+        }
+    }
+
+    /// Attach a reflection-memory writer tap (T1807).
+    ///
+    /// Returns `self` (builder-style) so callers can chain.  The
+    /// tap is held inside `PaperEnginePublisher`; the runtime calls
+    /// [`PaperEnginePublisher::on_trade_close`] when a sell-side
+    /// fill brings the per-symbol position to zero.  Default (no
+    /// reflection) keeps the v1+ no-op path bit-identical (R8.2).
+    #[must_use]
+    pub fn with_reflection_writer(mut self, writer: ReflectionWriterTap) -> Self {
+        self.reflection_writer = Some(writer);
+        self
     }
 
     /// Return the inner trait object.  Test-only helper.
@@ -81,6 +110,22 @@ impl PaperEnginePublisher {
     pub fn on_fill(&self, fill: &Fill, position: &Position) {
         self.publisher.publish_fill(fill);
         self.publisher.publish_position(position);
+    }
+
+    /// T1807 — trade-close tap.  Called by the runtime when a
+    /// sell-side fill brings the per-symbol position to zero.
+    /// Enqueues a `LessonCardWriteRequest` via the reflection
+    /// writer's `try_enqueue` (`mpsc::try_send` under the hood —
+    /// zero-await, back-pressure-safe).
+    ///
+    /// No-op when the writer was not attached (default research +
+    /// backtest path — R8.2 byte-stability invariant).
+    pub fn on_trade_close(&self, request: reflection::LessonCardWriteRequest) {
+        if let Some(writer) = &self.reflection_writer {
+            // Drop on back-pressure is the contract (Q8); the
+            // metric counter is bumped inside `try_enqueue`.
+            let _ = writer.try_enqueue(request);
+        }
     }
 }
 

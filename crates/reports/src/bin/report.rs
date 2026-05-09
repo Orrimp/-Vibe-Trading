@@ -36,7 +36,10 @@ struct Cli {
     /// Output markdown path.  The atomic-write tempfile lands at
     /// `<output>.tmp.<pid>` next to it, so the parent directory must
     /// be writable.
-    #[arg(long, default_value = "spec/operator-success-reports/reports/report.md")]
+    #[arg(
+        long,
+        default_value = "spec/operator-success-reports/reports/report.md"
+    )]
     output: PathBuf,
 
     /// Optional fixture seed (`0x` prefix tolerated).  Surfaces in the

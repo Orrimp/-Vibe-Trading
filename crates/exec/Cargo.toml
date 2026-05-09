@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 trading_core = { path = "../core" }
+reflection = { path = "../reflection" }
 thiserror.workspace = true
 serde.workspace = true
 tracing.workspace = true

@@ -38,7 +38,6 @@ pub enum MathError {
 const LN2: Decimal = dec!(0.69314718055994530942);
 
 /// `ln(10)` to 20 dp — used for initial seed via `log10` ceiling.
-#[allow(dead_code)]
 const LN10: Decimal = dec!(2.30258509299404568402);
 
 // ── `decimal_ln` ──────────────────────────────────────────────────────────────
@@ -87,6 +86,24 @@ pub fn decimal_ln(x: Decimal) -> Result<Decimal, MathError> {
     // ln(x) = k * ln(2) + ln(m)
     let k_dec = Decimal::from(k);
     Ok(k_dec * LN2 + ln_m)
+}
+
+// ── `decimal_log10` ───────────────────────────────────────────────────────────
+
+/// Compute `log10(x)` for `x > 0`.
+///
+/// Implemented as `ln(x) / ln(10)` — same determinism contract as
+/// [`decimal_ln`] (no floats, pinned iteration count).  Precision is
+/// limited by the `LN10` constant and `Decimal`'s working scale; the
+/// 4-decimal-place truncation in reflection-memory's embedding
+/// (slot 14 / slot 15 — Q3d) is the lowest-precision consumer.
+///
+/// # Errors
+///
+/// Returns [`MathError::LnNonPositive`] if `x <= 0`.
+pub fn decimal_log10(x: Decimal) -> Result<Decimal, MathError> {
+    let ln_x = decimal_ln(x)?;
+    Ok(ln_x / LN10)
 }
 
 // ── `decimal_sqrt` ────────────────────────────────────────────────────────────

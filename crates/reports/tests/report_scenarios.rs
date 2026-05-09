@@ -76,11 +76,17 @@ use crate::build_ledger_90d::{
 /// the body, this constant moves AND the anchors.toml entry moves —
 /// in the same commit.  Architect approval required (per
 /// `spec/anchors.toml` ownership note).
-const EXPECTED_SHA_7D: &str = "ab06dbcbe9a2d81be0f1ad0eecaab1d513c4bcbe5469b4eec4e9b58989482b4c";
+// T1810 / T1813 — re-captured post-reflection-memory renderer rewrite
+// (R5.4 re-anchor procedure).  The reflection-memory empty-state body
+// supersedes the v1+ placeholder body; the new SHA was captured at the
+// developer's first deterministic local run on 2026-05-08 against the
+// FIXTURE_SEED = 0xC0FFEE fixtures.  spec/anchors.toml lines 67–75
+// receive the same value at T_FINAL_REFLECTION_MEMORY (tester only).
+const EXPECTED_SHA_7D: &str = "f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994";
 
 /// Locked body-SHA256 for `report-sample-90d`.  Same ownership notes
 /// as [`EXPECTED_SHA_7D`].
-const EXPECTED_SHA_90D: &str = "2ef403f1845b8eb3b87fe381f89279c488bc54840b1d0306d95e6122bbdffd0f";
+const EXPECTED_SHA_90D: &str = "463e19b298552d7e3e37b1aad7c786d1cc71f14eed75d7df7ea6dc57525fa33c";
 
 /// Slice off the front-matter and return the body bytes the
 /// `scripts/hash_report.py` regex considers the "body".

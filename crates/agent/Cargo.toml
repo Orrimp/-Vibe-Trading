@@ -27,6 +27,7 @@ risk = { path = "../risk" }
 strategy = { path = "../strategy" }
 exec = { path = "../exec" }
 audit = { path = "../audit" }
+reflection = { path = "../reflection" }
 cost = { path = "../cost" }
 backtest = { path = "../backtest" }
 reports = { path = "../reports", optional = true }

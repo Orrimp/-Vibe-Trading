@@ -67,6 +67,49 @@ pub async fn realized_pnl_since(
     Ok(Money::from_decimal(total))
 }
 
+/// Realized P&L for a single closed-trade transaction (T1801, R2.2).
+///
+/// Sums `(credit_amount - debit_amount)` over `journal_entries` rows
+/// where `account_id = 'income:realized_pnl' AND transaction_id = ?`.
+/// Forward-compat: returns `Money::from_decimal(dec!(0))` for a
+/// `trade_id` that has no `realized_pnl` entry (e.g. a buy-only
+/// transaction).
+///
+/// Same TEXT-amount Decimal-only contract as
+/// [`realized_pnl_since`].  Sibling reader; no new account, no new
+/// migration.  Reflection-memory's `post_mortem_analyst::generate_card`
+/// is the v1 caller.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL error or parse failure.
+pub async fn realized_pnl_for_trade(
+    ledger: &Ledger,
+    trade_id: &str,
+) -> Result<Money<Usdt>, LedgerError> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT debit_amount, credit_amount \
+         FROM journal_entries \
+         WHERE account_id = 'income:realized_pnl' AND transaction_id = ?",
+    )
+    .bind(trade_id)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut total = dec!(0);
+    for (dr, cr) in rows {
+        let dr: Decimal = dr
+            .parse()
+            .map_err(|_| LedgerError::Database("realized_pnl_for_trade: parse debit".into()))?;
+        let cr: Decimal = cr
+            .parse()
+            .map_err(|_| LedgerError::Database("realized_pnl_for_trade: parse credit".into()))?;
+        total += cr - dr;
+    }
+    Ok(Money::from_decimal(total))
+}
+
 /// Total fee spend (debits on `expense:fees:taker` and `expense:fees:maker`).
 ///
 /// # Errors

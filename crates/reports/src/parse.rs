@@ -218,8 +218,8 @@ fn parse_count(s: &str) -> Option<u64> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use rust_decimal_macros::dec;
+    use std::path::PathBuf;
 
     const RSI_REVERSION_REPORT: &str = "---
 scenario: btc-2023-1m-rsi-reversion
@@ -329,7 +329,9 @@ PASS.
     /// `archive`) so the walk doesn't descend into the design system or
     /// the historical tarball.
     fn collect_backtest_reports(root: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = fs::read_dir(root) else { return; };
+        let Ok(entries) = fs::read_dir(root) else {
+            return;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name();

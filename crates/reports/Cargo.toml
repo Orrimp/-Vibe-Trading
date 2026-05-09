@@ -17,6 +17,8 @@ trading_core = { path = "../core" }
 audit = { path = "../audit" }
 data = { path = "../data" }
 cost = { path = "../cost" }
+reflection = { path = "../reflection" }
+async-trait.workspace = true
 
 thiserror.workspace = true
 serde.workspace = true

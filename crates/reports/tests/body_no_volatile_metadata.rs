@@ -97,3 +97,69 @@ async fn t814_body_does_not_contain_any_volatile_substring() {
         );
     }
 }
+
+/// T1812 / R5.3 extension — the new `## Memory highlights` body
+/// section also contains none of the 8 forbidden substrings.
+///
+/// Renders both the empty-state body (no cards) AND a lesson-bearing
+/// body (3 cards from the 7d sibling fixture) so the negative
+/// invariant covers both code paths exposed by the reflection-memory
+/// renderer rewrite.
+#[tokio::test]
+async fn t1812_memory_highlights_body_does_not_contain_volatile_metadata() {
+    use reflection::regime::RegimeTag;
+    use reflection::types::{LessonCard, RetrievalQuery, SymbolOrPair};
+    use reports::render::memory_highlights::render_with_lessons;
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    use time::OffsetDateTime;
+    use trading_core::{Money, StrategyId, Symbol, Timestamp, Usdt};
+
+    let _ = RetrievalQuery {
+        strategy_id: StrategyId::new("sma_crossover"),
+        symbol_or_pair: SymbolOrPair::Single(Symbol::new("BTCUSDT")),
+        current_regime: RegimeTag::Bull,
+    };
+
+    let cards = vec![LessonCard {
+        card_id: "vmtest".into(),
+        closed_at: Timestamp::new(OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap()),
+        symbol_or_pair: SymbolOrPair::Single(Symbol::new("BTCUSDT")),
+        strategy_id: StrategyId::new("sma_crossover"),
+        signed_pnl: Money::<Usdt>::from_decimal(dec!(123.45)),
+        opening_capital: Money::<Usdt>::from_decimal(dec!(10000)),
+        holding_period_bars: 60,
+        entry_regime: RegimeTag::Bull,
+        exit_regime: RegimeTag::Chop,
+        outcome_class: reflection::outcome::OutcomeClass::Win,
+        note: None,
+    }];
+    let _ = Decimal::ZERO; // silence unused-import warn
+
+    let bodies = [
+        render_with_lessons(&[], &[]),                       // empty state
+        render_with_lessons(&[], &cards),                    // lesson-bearing
+        render_with_lessons(&["alpha".to_string()], &cards), // with decay footer
+    ];
+
+    let forbidden = [
+        "generated:",
+        "run_id:",
+        "wall_clock_s:",
+        "ledger_snapshot_sha:",
+        "data_source:",
+        "agent_pid:",
+        "host:",
+        "git_commit:",
+    ];
+
+    for body in &bodies {
+        for needle in forbidden {
+            assert!(
+                !body.contains(needle),
+                "R5.3 violation: memory-highlights body contains forbidden \
+                 substring `{needle}`.\nBody:\n{body}"
+            );
+        }
+    }
+}
