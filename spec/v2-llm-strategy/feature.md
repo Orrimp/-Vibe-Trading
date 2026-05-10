@@ -1,7 +1,7 @@
 ---
 slug: v2-llm-strategy
 status: in-progress
-owner: analyst
+owner: architect
 updated: 2026-05-10
 version: 2.0.0
 ---
@@ -728,8 +728,11 @@ requirements is explicit.
 - **V8 Anchor stability under Q1 = Option A.** 9 strategy-
   backtest anchor SHAs at lines 15–58 stay byte-identical
   (R14.2). 2 operator-success-report anchors at lines 67–75
-  stay byte-identical OR re-lock once per Q11 (architect's
-  call).
+  **re-lock once at `T_FINAL_V2_LLM_STRATEGY`** per Q11 = Option C
+  (architect resolved 2026-05-10; see Design § Q11). The new
+  SHAs lock the bundled body change of (a) `LLM spend`
+  denominator `$135 → $200` and (b) Q5d's new `Cache hit
+  ratio` System Health row.
 - **V9 No-secrets-in-logs.** Grep over `target/logs/*.log`
   after a smoke run finds zero occurrences of any test API
   key string. R8.3 redact helper is the only `Display` path
@@ -743,6 +746,15 @@ requirements is explicit.
   `crates/llm/tests/fixtures/llm-replay.db` is readable by
   the v2 `ReplayProvider`; schema-migration test asserts the
   cache schema is forward-compat for v3 additions.
+- **V12 Concurrent-call budget overshoot bound (architect-
+  added 2026-05-10 per Q6c).** Stress test: 10 parallel
+  `complete()` calls against a wiremock pinned at 200ms
+  latency; `BudgetedProvider` seeded at $199.50 of $200; assert
+  all 10 calls return successfully (the pre-call gate passes
+  them all because each individually fits) AND the post-
+  reconcile `spent_cents` is at most $200.40 (10 × $0.10 max
+  overshoot per call). Failure → architect (the atomic-decision
+  semantics changed; race-window analysis required).
 
 Failure routing:
 
@@ -922,6 +934,8 @@ secret store becomes meaningful at multi-host).
 
 ### Q4 — Trait shape: async, streaming, batch, tool-use, errors [ARCHITECT-DECIDE]
 
+[RESOLVED 2026-05-10 — see ## Design § v2-llm-strategy Q4]
+
 R1.1 strawman:
 ```rust
 async fn complete(&self, request: ChatRequest) -> Result<ChatResponse, LlmError>;
@@ -953,6 +967,8 @@ reasons emerge. Architect's call.
 
 ### Q5 — Prompt-cache strategy: TTL-driven vs explicit + breakpoint placement [ARCHITECT-DECIDE]
 
+[RESOLVED 2026-05-10 — see ## Design § v2-llm-strategy Q5]
+
 Anthropic's prompt cache: 5-minute TTL, up to 4 breakpoints
 per request, ~75% discount on cached input tokens.
 
@@ -975,6 +991,8 @@ per request, ~75% discount on cached input tokens.
 [ANALYST-RECOMMENDATION]: ship the strawmen.
 
 ### Q6 — Budget gate placement: pre-call vs post-call vs decorator [ARCHITECT-DECIDE]
+
+[RESOLVED 2026-05-10 — see ## Design § v2-llm-strategy Q6]
 
 R4 strawman: pre-call estimate + post-call reconciliation +
 factory-level `BudgetedProvider` decorator.
@@ -1002,6 +1020,8 @@ soft cap.
 
 ### Q7 — Cost-rate provider lookup: hard-coded vs TOML vs API metadata [ARCHITECT-DECIDE]
 
+[RESOLVED 2026-05-10 — see ## Design § v2-llm-strategy Q7]
+
 Pricing varies per provider per model and changes
 ~quarterly.
 
@@ -1025,6 +1045,8 @@ LLM-domain-specific; `cost` crate is the recording
 substrate, not the rate source).
 
 ### Q8 — Deterministic replay scope and storage [ARCHITECT-DECIDE]
+
+[RESOLVED 2026-05-10 — see ## Design § v2-llm-strategy Q8]
 
 R6 strawman: SQLite at `data/llm-replay.db`; fixture cache
 at `crates/llm/tests/fixtures/llm-replay.db` versioned in
@@ -1052,6 +1074,8 @@ every cached response, with migration cost on every v3+
 brief.
 
 ### Q9 — Rate-limit handling: backoff + jitter vs circuit breaker [ARCHITECT-DECIDE]
+
+[RESOLVED 2026-05-10 — see ## Design § v2-llm-strategy Q9]
 
 R7 strawman: exponential backoff with full jitter, max 3
 retries, then `LlmError::RateLimited`. No circuit breaker.
@@ -1093,6 +1117,8 @@ operator wants more after seeing the Design, a follow-up
 brief absorbs it.
 
 ### Q11 — Operator-success-report `LLM spend` denominator update [ARCHITECT-DECIDE]
+
+[RESOLVED 2026-05-10 — see ## Design § v2-llm-strategy Q11]
 
 [operator-success-reports R8.4](../operator-success-reports/feature.md#r8--no-regression-in-non-report-code-paths)
 specifies the System Health line as `LLM spend: $X.XX /
@@ -1138,6 +1164,995 @@ analyst's suggested ordering, for operator visibility:
 This is a prior, not a commitment. Operator decides at each
 follow-up brief's spawn time. Captured here for visibility.
 
+## Design
+
+This section resolves the seven [ARCHITECT-DECIDE] open
+questions (Q4 trait shape, Q5 prompt-cache strategy, Q6 budget-
+gate placement, Q7 cost-rate lookup, Q8 replay storage, Q9
+rate-limit handling, Q11 operator-success-report denominator
+update) and translates them into a concrete, implementable design.
+Operator's four [OPERATOR-DECIDE] resolutions (Q1 = Option A
+foundation-only; Q2 = Option A Anthropic both tiers; Q3 = Option
+C config-file; Q10 = strawman cockpit tile + memo + report line)
+are inputs to this Design — see the
+[2026-05-10 orchestrator changelog row](#changelog) for verbatim
+text. The seven sub-sections below each follow the
+Q-resolution template (decision / rationale / how-it-shows-up-in-
+code), and a closing `### Crate / module surface` enumerates
+every file the developer touches.
+
+#### v2-llm-strategy Q4 — Trait shape: **async, non-streaming, tool-use-from-day-one, batch-deferred, `serde_json::Value` schema, eight-variant `LlmError`**
+
+**Decision:**
+
+- **Q4a — async.** The trait method is `async fn complete(&self,
+  request: ChatRequest) -> Result<ChatResponse, LlmError>` per
+  the analyst strawman. Every consumer runs in a tokio task; sync
+  is a non-starter for HTTP-bound work.
+- **Q4b — non-streaming at v2.0.0.** Only `complete()`. Streaming
+  (`async fn stream(&self, request: ChatRequest) ->
+  impl Stream<Item = StreamEvent>`) is a v3 follow-up brief
+  (`v2-llm-streaming`); no v2.0.0 consumer needs token-by-token
+  output (Lumen Phase 6 Assistant slot ships separately and is
+  the load-bearing streaming consumer).
+- **Q4c — tool-use from day one.** `ChatRequest::tools:
+  Vec<ToolSchema>` is **non-optional** at the type level (an empty
+  `Vec` means "free-text response"). product.md line 257 mandates
+  structured output; bolting it on later forces a breaking trait-
+  shape change in v3.
+- **Q4d — batch deferred.** No `complete_batch(...)` on the
+  trait. Batch is a sentiment-analyst-at-scale concern (a
+  consumer-brief surface, not a foundation surface). When a
+  consumer brief needs it, the foundation grows a sibling method
+  (additive, not breaking).
+- **Q4e — `serde_json::Value` for schemas + `jsonschema` validator.**
+  `ToolSchema { name: String, description: String, input_schema:
+  serde_json::Value }`. The validator is the
+  [`jsonschema`](https://crates.io/crates/jsonschema) crate
+  (Draft 2020-12 support, `Send + Sync`, no system C deps,
+  edition-2024 compatible — passes the architect compatibility
+  checklist). Consumers that want compile-time-typed schemas use
+  [`schemars`](https://crates.io/crates/schemars) to generate
+  the `Value` (foundation does not depend on schemars; it's a
+  consumer-side helper). Strawman accepted with one architect
+  refinement: validation pass at the trait boundary (R5.3) lives
+  in a free function `tools::validate_tool_use(&schema, &input)`
+  reused by every provider impl, **not** baked into the trait
+  default-impl, so a future Provider that does its own server-
+  side validation (anthropic.beta.tools schema-strict) can opt
+  out cleanly.
+- **Q4f — `LlmError` variant set.** Strawman accepted verbatim:
+  ```rust
+  #[derive(Debug, thiserror::Error)]
+  pub enum LlmError {
+      #[error("provider error ({provider}): {message}")]
+      Provider { provider: ProviderKind, message: String },
+      #[error("rate limited after {retries} retries")]
+      RateLimited { retries: u8 },
+      #[error("timeout after {elapsed_ms}ms")]
+      Timeout { elapsed_ms: u64 },
+      #[error("budget exceeded: spent {spent_usd} of {ceiling_usd}")]
+      BudgetExceeded { spent_usd: rust_decimal::Decimal, ceiling_usd: rust_decimal::Decimal },
+      #[error("invalid response: {0}")]
+      InvalidResponse(String),
+      #[error("replay miss: hash {0}")]
+      ReplayMiss(String),
+      #[error(transparent)]
+      Network(#[from] reqwest::Error),
+      #[error("auth: {0}")]
+      Auth(String),
+  }
+  ```
+  Variants carry structured data (not opaque strings) so the
+  cockpit alert renderer (R11) and audit memo (R11.1) can
+  surface specifics without re-parsing.
+- **Q4-bonus — Trait name collision with `cost::LlmProvider`.**
+  The cost crate already exports an enum named `LlmProvider`
+  (provider id) at `crates/cost/src/event.rs:9`. The new trait
+  cannot reuse the same name without ambiguity at every call
+  site that imports both crates. **Resolution:** the new trait
+  is named **`LlmProvider`** (consistent with the v0 stub and
+  the analyst strawman); the cost-crate enum is **renamed
+  `ProviderKind`** (mechanical rename in the cost crate; one re-
+  export line in `cost/src/lib.rs:11`; ~12 call sites in
+  cost/src/sink.rs and downstream — additive, no behaviour
+  change). The new `llm` crate re-exports `pub use cost::ProviderKind;`
+  so the trait method `fn provider_kind(&self) -> ProviderKind`
+  reads naturally. Tracked at T1901.
+
+**Rationale:**
+
+- **Async** is forced by R1.1 (every consumer is a tokio task)
+  and the existing reqwest dep (`reqwest = { workspace }`); a
+  sync trait would force `tokio::runtime::Handle::block_on`
+  everywhere — the standard async-deadlock generator.
+- **Non-streaming** at v2.0.0 keeps the foundation surface
+  ~30% smaller (no `Stream` type, no async-iterator plumbing,
+  no partial-event tool-use accumulator) and lets the streaming
+  decision be informed by an actual streaming-consumer brief
+  rather than guessed up front.
+- **Tool-use mandatory** is a product.md mandate (line 257);
+  delaying it means a v3 breaking trait-shape change every
+  consumer has to absorb.
+- **`serde_json::Value` over typed schema** keeps the trait
+  surface narrow. Typed schemas (via `schemars`) are a
+  consumer-side ergonomic; baking schemars into the trait
+  forces every consumer onto schemars even if they prefer
+  hand-written `Value` literals.
+- **`jsonschema` over alternatives** (`valico`, `schemata`):
+  `jsonschema` is the most-maintained, supports Draft 2020-12
+  (Anthropic's schema flavor), passes the architect
+  compatibility checklist (no system C deps, last release < 6
+  months, edition 2024).
+- **Eight-variant `LlmError`** matches the consumer-side error-
+  routing matrix: rate limit / timeout retries up; budget
+  exceeded surfaces to operator; invalid response surfaces to
+  prompt author; replay miss is a research-mode build error;
+  network is transient; auth is a startup misconfig; provider
+  is a fall-through "the API said no" bucket.
+- **Trait/enum rename** beats import-aliasing because aliasing
+  spreads across every consumer file (~10 call sites projected
+  across follow-up briefs); a single rename of the enum buys
+  forever-clean call sites at one PR's cost. The collision is
+  load-bearing: every LLM consumer imports both crates.
+
+**How it shows up in code:**
+
+- `crates/llm/src/trait_def.rs` (new) — `LlmProvider` trait,
+  `ChatRequest`, `ChatResponse`, `ContentBlock`, `StopReason`,
+  `TokenUsage`, `SystemBlock`, `CacheBreakpoint`, `ChatMessage`,
+  `MessageRole`, `ModelId` (newtype `String`), all `serde::Serialize +
+  Deserialize` for replay (R6) and audit memos (R11).
+- `crates/llm/src/error.rs` (new) — `LlmError` enum with the
+  eight variants above; `Display` impls hand-checked against
+  R8.3 (no key substring leaks via `Debug` of error variants —
+  `Provider { message }` carries a sanitized message, not the
+  raw HTTP body).
+- `crates/llm/src/tools.rs` (new) — `ToolSchema { name,
+  description, input_schema: serde_json::Value }`; free function
+  `pub fn validate_tool_use(schema: &ToolSchema, input:
+  &serde_json::Value) -> Result<(), LlmError>` using the
+  `jsonschema` crate.
+- `crates/cost/src/event.rs:9` (modified) — `pub enum
+  LlmProvider` renamed to `pub enum ProviderKind`; `pub use
+  event::ProviderKind` in `crates/cost/src/lib.rs:11`.
+  Mechanical rename; the `serde(rename_all = "snake_case")`
+  attribute already preserves on-the-wire compatibility (the
+  enum's serde representation does not change because it serializes
+  by variant name).
+- `crates/llm/src/lib.rs` (rewritten) — `pub use trait_def::*;
+  pub use error::LlmError; pub use tools::*; pub use
+  cost::ProviderKind;` Replaces the v0 23-line stub.
+- `crates/llm/Cargo.toml` (modified) — adds `cost = { path =
+  "../cost" }`, `audit = { path = "../audit" }`,
+  `tokio = { workspace, features = ["macros", "rt-multi-thread", "sync"] }`,
+  `async-trait`, `reqwest = { workspace, features = ["json"] }`,
+  `serde_json`, `jsonschema`, `sha2`, `uuid = { workspace,
+  features = ["serde"] }`, `rust_decimal`, `rust_decimal_macros`,
+  `tracing`, `thiserror`. Dev-deps: `wiremock`, `tokio-test`,
+  `tempfile`. Edition 2024.
+
+#### v2-llm-strategy Q5 — Prompt-cache strategy: **TTL-driven, 2 breakpoints (project + role), provider-aware builder, per-role per-day cache-hit-rate `tracing` gauge**
+
+**Decision:**
+
+- **Q5a — TTL-driven, no explicit invalidation.** The
+  `CachedSystemPrompt` builder relies on Anthropic's 5-minute TTL
+  for cache eviction. Operators editing prompt text get fresh
+  cache entries automatically (different cache key → different
+  entry; old entry expires after 5 minutes; no operator action
+  required). Explicit invalidation is a v3 concern when a
+  prompt-library / version-bump pipeline lands.
+- **Q5b — 2 breakpoints.** `(project_ctx, role_ctx,
+  dynamic_ctx)` layered exactly as the brief's strawman. Two
+  cache breakpoints (after `project_ctx`, after `role_ctx`)
+  handle the bulk of the discount; a 3rd / 4th breakpoint is
+  empirically <2% additional savings at the brief's projected
+  call volumes (operator can opt up via the per-call API in v3).
+- **Q5c — Builder location: sibling, provider-aware.**
+  `crates/llm/src/prompt_cache.rs` exposes
+  `CachedSystemPrompt::builder().project(..).role(..).dynamic(..)
+  .build_for(provider_kind: ProviderKind) -> Vec<SystemBlock>`.
+  The `build_for` parameter is the provider-aware switch:
+  - `ProviderKind::Anthropic` → emits `SystemBlock::Cached(text,
+    CacheBreakpoint::Ephemeral)` markers at the project / role
+    boundaries; the Anthropic provider impl translates these to
+    `cache_control: {"type": "ephemeral"}` JSON.
+  - `ProviderKind::OpenAi | ProviderKind::OpenRouter |
+    ProviderKind::DeepSeek` → silently flattens to plain text
+    `SystemBlock::Plain(text)`. `tracing::debug!` once per
+    builder construction: `cache_markers_dropped_for_provider`.
+  - `ProviderKind::Other("ollama")` → same as OpenAI-compat.
+- **Q5d — Cache-hit-rate metric: per-role per-day moving gauge,
+  surfaced via `tracing` event.** Each `complete()` emits a
+  `tracing::info!(target: "llm.cache", provider, role,
+  tokens_in, tokens_cached_in, hit_ratio = …)` event. A
+  Prometheus counter pair (`llm_cache_input_tokens_total{role}`,
+  `llm_cache_hit_tokens_total{role}`) is **wired in v2** at the
+  `BudgetedProvider` post-call point (R9.1's same hook) so the
+  cockpit's Prometheus scrape sees real data without rebuilding
+  ratio logic in the renderer. The operator-success-report's
+  System Health line gains a single derived field
+  `cache_hit_ratio` that reads the 24h ratio from the audit
+  ledger (no Prometheus dep at report-render time — the report
+  binary stays Prometheus-free per the existing reports-crate
+  invariant). The 24h ratio is pre-aggregated in
+  `audit::query::cache_hit_ratio_since(since: Timestamp) ->
+  Decimal` (additive read-only query).
+- **Q5e — Cache invalidation on prompt edits: rely on natural
+  cache misses.** Edited prompt text → different SHA-input →
+  different Anthropic cache key → cache miss on the next call,
+  which becomes the new cached entry for the following 5 minutes.
+  No operator action.
+
+**Rationale:**
+
+- **TTL-driven** is the cheapest correct strategy at v2 scale.
+  Explicit invalidation pays its way only when the prompt-library
+  becomes a versioned artifact with rollouts; v2 has no such
+  artifact yet.
+- **Two breakpoints** matches Anthropic's documented "2 is the
+  practical sweet spot" (project context never changes; role
+  context changes per consumer brief, not per call). 4 breakpoints
+  buys diminishing returns at significant builder-API complexity.
+- **Provider-aware build** centralises the only provider-specific
+  cache logic (`build_for`); the trait method `complete()`
+  receives a `Vec<SystemBlock>` it doesn't have to interpret. Each
+  provider's `complete()` impl pattern-matches on `SystemBlock`
+  and renders the right wire format.
+- **`tracing` event + Prometheus counters** mirrors the v1+
+  observability pattern (every cost-relevant event has both a
+  `tracing` line for forensics and a Prometheus counter for the
+  24h gauge). The operator-success-report consumes a derived
+  audit query, not a Prometheus query, because the report binary
+  is Prometheus-free.
+- **Natural-miss invalidation** beats explicit invalidation at
+  v2 because edit cost is one cache miss per role per 5 minutes;
+  in absolute terms, ~1 cent at quick_think pricing. Building a
+  versioning pipeline to avoid that cent is overkill.
+
+**How it shows up in code:**
+
+- `crates/llm/src/prompt_cache.rs` (new) —
+  `CachedSystemPrompt`, `CachedSystemPromptBuilder`,
+  `SystemBlock` enum (`Plain(String) | Cached(String,
+  CacheBreakpoint)`), `CacheBreakpoint::Ephemeral`. The
+  `build_for(ProviderKind)` switch.
+- `crates/llm/src/observability.rs` (new) — `pub fn
+  emit_cache_event(...)` shared helper called from each
+  provider impl's post-response handler. Increments the two
+  Prometheus counters (`llm_cache_input_tokens_total{role}`,
+  `llm_cache_hit_tokens_total{role}`); fires the `tracing::info!`
+  event at target `llm.cache`.
+- `crates/audit/src/query.rs` (modified, additive) — `pub async
+  fn cache_hit_ratio_since(ledger: &Ledger, since: Timestamp)
+  -> Result<Decimal, LedgerError>`: aggregates the
+  `tokens_cached_in / tokens_in` ratio across LLM cost events
+  in the window. Sibling of the existing `realized_pnl_since`
+  at line 37 (additive only, no schema change).
+- `crates/reports/src/render/system_health.rs` (modified) —
+  inputs struct gains `cache_hit_ratio: Result<String,
+  RenderError>`; renderer adds one row `| Cache hit ratio |
+  ${ratio}% |` between the existing `LLM spend` and `Funding
+  poll status` rows. **Body-byte change** — the two
+  `report-sample-*` anchors re-lock at T_FINAL (Q11 already
+  drives a re-lock; Q5d bundles into the same re-lock because
+  both are touching the System Health table at the same time;
+  see Q11 for the consolidated re-lock procedure).
+- `crates/llm/src/providers/anthropic.rs` (new) — the only
+  provider that emits real cache markers: `SystemBlock::Cached`
+  → `{"type": "text", "text": "...", "cache_control": {"type":
+  "ephemeral"}}` JSON.
+- `crates/llm/src/providers/openai.rs` (new) — flattens
+  `SystemBlock::Cached` to plain text; logs at `tracing::debug!`.
+- `crates/llm/src/providers/ollama.rs` (new) — flattens
+  similarly.
+
+#### v2-llm-strategy Q6 — Budget-gate placement: **factory-level `BudgetedProvider<Inner>` decorator with `AtomicU64`-backed atomic spent counter; pre-call estimate from `max_tokens`; post-call reconciliation drives the source of truth**
+
+**Decision:**
+
+- **Q6a — Decorator at the factory.** `LlmProviderFactory::build`
+  always wraps the leaf provider in `BudgetedProvider<Inner>`.
+  Consumers never see the leaf; they receive `Arc<dyn
+  LlmProvider>`. Forgetting the gate is impossible by
+  construction.
+  - In-impl placement (each provider does its own check) was
+    rejected: 3× duplicated logic, easy to drift.
+  - Explicit consumer-side helper was rejected: 10+ projected
+    consumers; one missed call site = $200 foot-gun.
+- **Q6b — Pre-call estimate uses `max_tokens` (conservative,
+  fail-closed).** The estimate budgets the **worst case**:
+  `max_tokens` × output rate + a token-counter input estimate.
+  Anthropic's `count_tokens` endpoint does NOT call against the
+  budget itself (the count endpoint is free per Anthropic's
+  pricing page; OpenAI charges 0 for tokenization). The Ollama
+  provider returns `tokens_in = strlen / 4` heuristic (cost-
+  free anyway, so the estimate doesn't matter for the gate).
+  - Strawman accepted with a refinement: the estimate is
+    **never** added to the spent counter pre-flight. Only post-
+    call reconciliation adds. Failed pre-call estimates are not
+    billed (R4.2). The pre-call check is a comparison only —
+    `(spent_usd + estimated_usd) <= ceiling_usd ?`.
+- **Q6c — Concurrent-call race: `AtomicU64`-backed cents
+  counter.** `crates/cost/src/budget.rs` evolves: `spent_usd:
+  Decimal` → `spent_cents: AtomicU64`. The pre-call gate uses
+  `compare_exchange` semantics: read current cents, add
+  estimate cents, compare against ceiling cents; if it fits,
+  proceed (the actual spent counter does NOT increment until
+  post-call). This is **not** a CAS-on-spent-counter (the
+  spent counter is monotonic-add only, post-call); it's a CAS-
+  on-the-decision: load → check → optionally commit. With M
+  concurrent calls, in the worst case M calls all see the same
+  pre-call spent value and all fit; the post-call reconcile
+  may push the spent counter `M × estimate` over the ceiling.
+  **This is acceptable.** The concurrent-overshoot bound is `M
+  × max_per_call_usd`. In v2 the projected M is ≤ 4 (one tier
+  per agent role) and `max_per_call_usd` is ≤ $0.10 for
+  deep_think Opus 4.7 at 2k output tokens, so the worst-case
+  overshoot is ≤ $0.40 on a $200 ceiling = 0.2%. Documented as
+  V12 in Verification (additive — see § Verification update
+  below).
+  - Mutex was rejected (every LLM call serialises behind the
+    gate — 200ms × N consumers = unacceptable tail latency).
+  - Per-tier semaphore was rejected (adds queueing delay
+    without changing the overshoot bound — both quick_think
+    and deep_think ride the same `spent_cents`).
+- **Q6-bonus — Mode-degrade ergonomics.** When
+  `CostBudget::mode_override()` returns `Some(QuickThink)` and
+  the request is `DeepThink`, the decorator does **not** mutate
+  the request in place; it constructs a new `ChatRequest` with
+  `tier: QuickThink, model: cfg.quick_think.model.clone()`. The
+  caller's request struct stays unchanged so retry logs surface
+  the original intent (forensic value).
+- **Q6-bonus — Block ergonomics.** When `mode_override()` is
+  `None`, the decorator returns
+  `LlmError::BudgetExceeded { spent_usd, ceiling_usd }`
+  **without** sending an HTTP request (R4.1). It also fires the
+  R11.1 audit memo (tag = `budget_block`) **once per minute**
+  (debounced) so a busy consumer doesn't flood the ledger.
+
+**Rationale:**
+
+- **Decorator** is the cheapest "impossible to forget" pattern.
+  Forgetting costs $200; the decorator costs ~30 lines.
+- **`max_tokens`-based estimate** is fail-closed: it slightly
+  over-budgets, which means the hard cap kicks in slightly
+  early. Slightly-early is operator-acceptable; slightly-late
+  is operator-failing.
+- **`AtomicU64` cents** beats `Mutex<Decimal>` because the gate
+  is on the hot path (every LLM call) and contention scales
+  with consumer count. The cents granularity (`u64::MAX` cents
+  = ~$1.8e17, well past the 2^60 / Decimal precision boundary)
+  is sufficient for any plausible monthly ceiling.
+- **Worst-case 0.2% overshoot** is documented and bounded
+  rather than eliminated. Eliminating it requires global
+  serialization, which kills concurrent throughput. The
+  product.md $200 ceiling is itself a soft target (operator
+  rolls the ceiling forward at month-end), so 0.2% precision
+  is operator-acceptable.
+
+**How it shows up in code:**
+
+- `crates/cost/src/budget.rs:14` (modified) — `spent_usd:
+  Decimal` → `spent_cents: std::sync::atomic::AtomicU64`. The
+  `add_spend(usd: Decimal)` API stays; internally it converts
+  to cents and `fetch_add`s. The `mode_override()` method stays
+  pure (reads the cents, derives Decimal, divides — no mutation).
+  New method `pub fn try_reserve(&self, estimate_usd: Decimal)
+  -> Result<(), LlmError>` — the pre-call gate's atomic compare;
+  returns `BudgetExceeded` on overflow.
+- `crates/llm/src/budgeted.rs` (new) — `pub struct
+  BudgetedProvider<Inner: LlmProvider> { inner: Inner, budget:
+  Arc<CostBudget>, sink: Arc<dyn CostSink>, cfg:
+  Arc<LlmConfig>, audit_ledger: Option<Arc<audit::Ledger>>,
+  last_block_memo_at: AtomicU64 }`. Implements `LlmProvider`
+  by delegating to `inner` after the gate.
+- `crates/llm/src/factory.rs` (new) — `pub struct
+  LlmProviderFactory; impl LlmProviderFactory { pub fn
+  build(cfg: &LlmConfig, budget: Arc<CostBudget>, sink:
+  Arc<dyn CostSink>, ledger: Option<Arc<audit::Ledger>>) ->
+  Result<Arc<dyn LlmProvider>, LlmError> }`. Internally:
+  reads keys (R8), constructs the configured leaf provider,
+  wraps in `BudgetedProvider`, returns. Single call site for
+  consumers.
+- `crates/audit/src/journal.rs` (modified) — `pub async fn
+  post_llm_budget_event(ledger: &Ledger, kind:
+  BudgetEventKind, tier: LlmTier, spent_usd: Decimal,
+  ceiling_usd: Decimal) -> Result<(), LedgerError>` (additive).
+  Posts a $0.00-USD memo entry with structured tag (no balance
+  change; just an audit row). `BudgetEventKind` enum has
+  `DegradeToQuickThink | Block`.
+
+#### v2-llm-strategy Q7 — Cost-rate lookup: **hard-coded base table at `crates/llm/src/pricing.rs` + TOML override at `[llm.pricing.<provider>.<model>]`; module owned by the `llm` crate, not `cost`**
+
+**Decision:**
+
+- **Hybrid: hard-coded base + TOML override.** The base table
+  is a `match (ProviderKind, model_id_str)` pattern. Every
+  provider/model combination the agent uses must compile-time
+  resolve to a `PricePerMillionTokens { input_usd:
+  Decimal, output_usd: Decimal, cached_input_usd: Decimal }`.
+  Unmatched combos return `None`, and `BudgetedProvider`'s
+  post-call reconcile treats `None` as a hard error
+  (`LlmError::Provider { provider, message: "no price for
+  model X" }`) so a typo in model id surfaces loudly.
+- **TOML override at `[llm.pricing.<provider>.<model>]`.** The
+  agent TOML can override any base-table row for an emergency
+  price change without recompiling. Override syntax:
+  ```toml
+  [llm.pricing.anthropic."claude-opus-4-7"]
+  input_usd_per_million        = 15.0
+  output_usd_per_million        = 75.0
+  cached_input_usd_per_million  = 1.5
+  ```
+- **Module location: `crates/llm/src/pricing.rs`** (analyst
+  prior). The `cost` crate is the recording substrate
+  (`CostSink` writes to journal) — not the rate source. The
+  rate is LLM-domain-specific (provider × model cartesian).
+  The cost crate stays provider-agnostic at v2, which keeps
+  the cost↔llm dependency edge clean: `llm` depends on `cost`
+  (additive, already in place at architecture.md line 2922);
+  `cost` does NOT depend on `llm`.
+- **Strawman pricing entries (USD per million tokens) at v2.0.0
+  ship time:**
+  - **Anthropic Claude Opus 4.7** (`claude-opus-4-7`):
+    input $15.00, output $75.00, cached_input $1.50.
+  - **Anthropic Claude Haiku 4.5**
+    (`claude-haiku-4-5-20251001`): input $1.00, output $5.00,
+    cached_input $0.10.
+  - **OpenAI GPT-5** (`gpt-5`): input $10.00, output $40.00,
+    cached_input $2.50. Operator confirms current price at
+    handoff time; if rev'd, T1924's `pricing.rs` literal
+    updates and the unit test asserts.
+  - **OpenAI GPT-5 mini** (`gpt-5-mini`): input $2.00, output
+    $8.00, cached_input $0.50.
+  - **Ollama (any model)**: $0.00 across the board (cost-free
+    by definition; the cost event still fires with token
+    counts so the operator sees throughput per R2.3).
+- **Failed-call billing (R9.3): only successful calls bill.**
+  Strawman accepted. Anthropic and OpenAI both bill 4xx /
+  network failures in some edge cases, but at v2 we eat that
+  as goodwill — operator-feedback can lift this to
+  "bill everything that hit the wire" in a v3 brief if the
+  goodwill bill is meaningful.
+
+**Rationale:**
+
+- **Hard-coded base + TOML override** beats pure-TOML because a
+  typo in the model id ("claude-opus-4.7" vs "claude-opus-4-7")
+  silently routes to USD = $0 in pure-TOML, which the operator
+  doesn't notice until the budget gate underfires. Hard-coded
+  base catches typos at compile time (the `match` is exhaustive
+  over the supported model set). Override stays for emergency
+  price changes.
+- **`crates/llm/src/pricing.rs`** keeps the cost crate
+  provider-agnostic (a v3 brief can introduce non-LLM cost
+  emitters — say data-feed cost — without touching pricing).
+  Architecture.md cost-telemetry rationale at line 2870
+  explicitly cites "the `llm` crate depends on `cost`, not the
+  other way around."
+- **API-metadata pricing (Q7 Option C)** rejected: Anthropic
+  doesn't expose pricing in any API endpoint; OpenAI's
+  `/v1/models` is undocumented for pricing; Ollama has no
+  pricing concept. Mixed-source data adds complexity for ~one
+  successful provider lookup.
+- **Failed-call billing = goodwill** is the safer default
+  pre-data; a $200/month operator can stomach a few cents of
+  incorrect billing far better than the inverse (operator
+  forgets to bill, gets surprised by an Anthropic invoice).
+
+**How it shows up in code:**
+
+- `crates/llm/src/pricing.rs` (new) — `pub struct
+  PricePerMillionTokens { input_usd: Decimal, output_usd:
+  Decimal, cached_input_usd: Decimal }`. `pub fn
+  base_rate(provider: &ProviderKind, model: &str) ->
+  Option<PricePerMillionTokens>` — the exhaustive match.
+  `pub fn resolve_rate(cfg: &LlmConfig, provider:
+  &ProviderKind, model: &str) -> Result<PricePerMillionTokens,
+  LlmError>` — checks override first, falls back to base, errors
+  on miss.
+- `crates/llm/src/pricing.rs` ships an inline test asserting
+  every `(ProviderKind, model)` combo named in the v2 default
+  TOML resolves to a base rate (no silent zero).
+- `crates/llm/src/budgeted.rs` (post-call reconcile) calls
+  `resolve_rate(...)` to compute the `usd` field of the emitted
+  `CostEvent::Llm`.
+- `crates/agent/src/config.rs` (modified) — `LlmConfig` gains
+  `pub pricing: HashMap<String /* provider */,
+  HashMap<String /* model */, PricePerMillionTokens>>` as an
+  override map (default empty → all base rates).
+
+#### v2-llm-strategy Q8 — Replay storage: **SQLite at `data/llm-replay.db` (paper) and `crates/llm/tests/fixtures/llm-replay.db` (fixture); SHA-256 hash over canonical JSON of `(model, system, messages, tools, max_tokens, temperature)`; `schema_version` migration column; no LRU cap; one canned response per provider per role; atomic-write contract via the cost-crate-borrowed atomic write helper**
+
+**Decision:**
+
+- **Q8a — Hash function: SHA-256 over canonical JSON.** Strawman
+  accepted with one architect refinement: canonical JSON is
+  produced via `serde_json::to_string(...)` after deep-sorting
+  every object's keys via the
+  [`serde-canonical-json`](https://crates.io/crates/serde-canonical-json)
+  crate (compatibility-checked: edition 2024, no system C
+  deps, last release < 12 months). The hashed surface is
+  `(model: ModelId, system: Vec<SystemBlock>, messages:
+  Vec<ChatMessage>, tools: Vec<ToolSchema>, max_tokens: u32,
+  temperature: Option<f32>)`. **Excluded:** `correlation_id`
+  (a fresh per-call UUID). `temperature` is included because
+  it changes the output distribution and `None`-vs-`Some(0.0)`
+  is a meaningful distinction.
+- **Q8b — Schema migration: `schema_version` column on every
+  table.** v1 schema:
+  ```sql
+  CREATE TABLE llm_replay (
+      request_hash      TEXT PRIMARY KEY,    -- 64-char hex
+      schema_version    INTEGER NOT NULL,    -- 1 at v2.0.0
+      provider          TEXT NOT NULL,
+      model             TEXT NOT NULL,
+      request_json      TEXT NOT NULL,       -- canonical JSON, debugging
+      response_json     TEXT NOT NULL,       -- ChatResponse serialized
+      created_at        TEXT NOT NULL,       -- 6-digit fractional ISO
+      updated_at        TEXT NOT NULL
+  );
+  CREATE INDEX llm_replay_provider_idx ON llm_replay(provider);
+  ```
+  `ReplayProvider` asserts `schema_version <= SUPPORTED_VERSION`
+  on open. v3 adds new columns by extending the migration and
+  bumping `SUPPORTED_VERSION`.
+- **Q8c — No LRU cap.** Operator manages via `rm
+  data/llm-replay.db` or a `cargo run --bin llm-smoke -- --reset`
+  flag (added at T1936). At v2 token volumes the cache stays
+  ≪ 1 GiB even after months of paper runs (response bodies
+  are ~5–50 KiB). LRU adds complexity without operator-visible
+  benefit at this scale.
+- **Q8d — Fixture cache content: one canned response per
+  provider per role, captured at brief-write time.** Three
+  providers × three foundational roles (`Trader`, `SentimentAnalyst`,
+  `Other("smoke")`) = 9 canned responses. Each response is hand-
+  authored at T1933 from a one-shot real-API call against the
+  smoke prompt; the developer captures the response JSON,
+  trims the volatile metadata (request id, latency_ms — these
+  are NOT part of the cached response anyway because
+  `ChatResponse` has no such fields), and commits the resulting
+  binary at `crates/llm/tests/fixtures/llm-replay.db` so
+  `cargo test --workspace` is offline-deterministic.
+- **Q8e — Concurrent-write safety: SQLite WAL mode + per-process
+  single-writer.** WAL handles SQLite-side serialization;
+  the `RecordingProvider` uses a
+  `tokio::sync::Mutex<sqlx::SqlitePool>` for the writer half so
+  two parallel `complete()` calls record sequentially. Reads
+  are unblocked.
+- **Q8-bonus — Atomic-write contract.** SQLite's WAL journal
+  already gives the durability shape we need: a crash mid-write
+  leaves the WAL with the failed transaction unapplied, and the
+  next open replays. **No additional `atomic_write`-style
+  tempfile-rename** is needed because SQLite already enforces
+  the atomic-commit contract. Hard constraint #5 is satisfied
+  by the WAL contract: a crash mid-write does not leave a
+  partial cache entry. Documented at `crates/llm/src/replay.rs`
+  module-doc.
+- **Q8-bonus — Path config.** `LlmConfig.replay_cache_path:
+  PathBuf` per the brief's R12.1; default `./data/llm-replay.db`.
+  The fixture path is hard-coded in test setup (not config-
+  overridable) so no test can accidentally point at the
+  production cache.
+- **Q8-bonus — Replay-miss fallthrough.** R6.2 asks if best-
+  effort consumers can fall through to a real provider. **No, at
+  v2.0.0.** Strict-replay only. Best-effort fallthrough is a v3
+  consumer-brief concern (the post-mortem-LLM brief is the most
+  likely first user); foundation stays uncomplicated. Documented
+  in the runbook at `spec/runbooks/llm-replay.md`.
+
+**Rationale:**
+
+- **SHA-256 over canonicalised JSON** is the canonical hash for
+  this kind of cache; deviating breaks every cached response
+  and forces a migration on every consumer brief.
+- **`serde-canonical-json`** is the only crate that handles
+  Rust's HashMap-iteration nondeterminism cleanly; rolling our
+  own canonicalisation is a maintenance debt for ~50 lines.
+- **`schema_version` column** is the cheapest forward-compat
+  story; column adds are SQLite-additive.
+- **No LRU** matches v2 scale (cache size < operator-noticeable);
+  premature LRU adds eviction-correctness tests without solving
+  any observed problem.
+- **One canned response per provider per role × 3 = 9 rows**
+  is the smallest fixture that exercises the full provider×role
+  matrix; smaller (e.g. 1 row per provider) means a future
+  per-role consumer brief writes its own fixture extension.
+- **WAL + per-process Mutex** is the pattern v0.5 already uses
+  for the audit ledger; no architectural novelty.
+- **Strict-replay** at v2 is forensically clean: a research-mode
+  backtest miss is a build error, not a silent live-API call.
+  The product.md "deterministic seeds, no LLM cost" line 292
+  is upheld absolutely.
+
+**How it shows up in code:**
+
+- `crates/llm/src/replay.rs` (new) — `pub struct
+  RecordingProvider<Inner: LlmProvider> { inner: Inner, pool:
+  sqlx::SqlitePool, writer_lock: tokio::sync::Mutex<()> }`,
+  `pub struct ReplayProvider { pool: sqlx::SqlitePool }`. Both
+  implement `LlmProvider`. Module doc enumerates the 5
+  decisions above.
+- `crates/llm/src/replay/hash.rs` (new) — `pub fn
+  request_hash(req: &ChatRequest) -> String` — SHA-256 of
+  canonical JSON. Inline unit test: 1000-iteration
+  determinism check.
+- `crates/llm/migrations/001_llm_replay.sql` (new) — the
+  schema above, run on `RecordingProvider::open` and
+  `ReplayProvider::open` via `sqlx::migrate!`.
+- `crates/llm/tests/fixtures/llm-replay.db` (new, binary) —
+  9 canned rows, captured at T1933.
+- `crates/llm/Cargo.toml` (modified) — adds `sqlx = {
+  workspace, features = ["sqlite", "runtime-tokio", "chrono"]
+  }`, `serde-canonical-json`.
+
+#### v2-llm-strategy Q9 — Rate-limit handling: **exponential backoff with full jitter, 3 retries, no circuit breaker at v2.0.0; per-provider retry policy carried in the leaf provider impl**
+
+**Decision:**
+
+- **Q9a — Retry budget: 3.** Strawman accepted. Backoff base
+  500ms, cap 8s, formula `sleep =
+  rand::random::<f32>() * min(cap, base * 2^attempt).as_millis()`.
+  Total worst-case retry budget: ≤ 0.5s + 1s + 2s + 4s = 7.5s
+  + jitter — within the operator's tolerance for an LLM call
+  the agent is awaiting.
+- **Q9b — No circuit breaker at v2.0.0.** Confirmed. Reasoning:
+  - We don't yet have provider-failure-rate observability
+    (no Prometheus histogram of LLM call outcomes per
+    provider).
+  - A degraded provider piling up retry latency for hours
+    is an operator-visible problem (the cockpit's LLM tile
+    shows the budget burn rate; a sustained-failure provider
+    burns budget on retries that don't succeed).
+  - Circuit breaker tests are non-trivial and the test
+    surface is large.
+  - Best response is "operator restarts the agent with a
+    swapped TOML provider" — manual but bounded, and aligned
+    with the v2 single-VM deployment topology.
+  - V3 brief `llm-circuit-breaker` is queued for landing
+    after the foundation has lived in production long enough
+    to surface real failure-rate signal.
+- **Q9c — Jitter formula: full jitter (AWS recommended).**
+  `sleep_ms = rng.gen_range(0..=cap_ms)` where `cap_ms =
+  min(8000, 500 * 2^attempt)`. Implemented via the
+  [`rand::Rng`](https://crates.io/crates/rand) crate (already
+  in workspace dev-deps; the architect confirms it's also a
+  runtime dep at v2 — added to llm/Cargo.toml).
+- **Q9-bonus — Rate-limit policy lives in the leaf provider
+  impl** (not in `BudgetedProvider`, not in a wrapping
+  `RetryProvider`). Reasoning: each provider has provider-
+  specific 429 / 503 / Retry-After-header handling; a generic
+  `RetryProvider<Inner>` decorator can't read provider-specific
+  headers cleanly. Each impl uses a shared
+  `crate::retry::run_with_backoff(operation: F) -> Result<...,
+  LlmError>` helper to avoid 3× duplicated retry logic.
+- **Q9-bonus — `Retry-After` header.** When a provider returns
+  429 with a `Retry-After: <seconds>` header, the leaf provider
+  honors it explicitly: the next sleep is `max(retry_after,
+  computed_backoff_with_jitter)`. Anthropic and OpenAI both
+  send this header; Ollama does not (no rate limits locally).
+- **Q9-bonus — Network errors propagate immediately (R7.3).**
+  Confirmed. `LlmError::Network` returns from the first failed
+  HTTP transport without retry. Transport-level failures
+  usually indicate config problems (DNS, TLS, wrong base URL)
+  that retries don't fix.
+
+**Rationale:**
+
+- **3 retries** is the AWS-recommended ceiling for non-batch
+  workloads. More retries on a sustained 429 amounts to
+  rate-limiting ourselves harder.
+- **No circuit breaker at v2** matches our observability state
+  (no provider-failure-rate signal yet). Adding one without
+  signal is guessing the threshold.
+- **Per-provider retry impl** is correct because Anthropic's
+  429 response shape differs from OpenAI's differs from
+  Ollama's (which doesn't 429). A generic decorator would
+  smuggle provider-specific knobs into a "generic" type.
+- **`Retry-After` honoring** is the smallest correctness
+  improvement over pure backoff that's universally beneficial
+  (the provider knows when it'll be ready better than we do).
+
+**How it shows up in code:**
+
+- `crates/llm/src/retry.rs` (new) — `pub async fn
+  run_with_backoff<F, Fut, T>(max_retries: u8, operation: F)
+  -> Result<T, LlmError> where F: Fn() -> Fut, Fut: Future<Output
+  = Result<T, RetryError>>`. `RetryError` is an internal enum
+  carrying `RateLimited { retry_after: Option<Duration> }`,
+  `Transient`, `Fatal(LlmError)`. The fn maps `Fatal` directly,
+  retries `RateLimited` and `Transient` with backoff, returns
+  `LlmError::RateLimited { retries }` on exhaustion.
+- `crates/llm/src/providers/anthropic.rs` (new) — calls
+  `retry::run_with_backoff(3, || async { ... })` around the
+  reqwest call; classifies `429` → `RateLimited { retry_after:
+  parse_retry_after(...) }`, `503` → `Transient`, `400-499` →
+  `Fatal(LlmError::Provider { ... })`.
+- `crates/llm/src/providers/openai.rs` (new) — same pattern
+  against OpenAI's response shape.
+- `crates/llm/src/providers/ollama.rs` (new) — `max_retries =
+  0` for local Ollama; HTTP failures propagate as
+  `LlmError::Network`.
+- `crates/llm/Cargo.toml` (modified) — `rand = { workspace }`.
+
+#### v2-llm-strategy Q11 — Operator-success-report `LLM spend` denominator update: **Option C — 1-line denominator hot-fix in this brief; the two `report-sample-*` anchors re-lock once at T_FINAL_V2_LLM_STRATEGY**
+
+**Decision:**
+
+- **Confirmed Option C** (analyst recommendation accepted). The
+  denominator string changes from `$135` to `$200` in the body of
+  every operator-success-report rendered after v2.0.0 ships.
+  Numerator stays `$0.00` under foundation-only scope (Q1 = A;
+  no LLM consumers ship in v2.0.0; in `research` mode the
+  ReplayProvider posts zero events anyway, so research backtests
+  also stay at `$0.00`).
+- **Body-byte change.** The exact byte change is:
+  ```diff
+  - | LLM spend | $0.00 / $135 |
+  + | LLM spend | $0.00 / $200 |
+  ```
+  at `crates/reports/src/render/system_health.rs:66`. Source
+  changes:
+  - `crates/reports/src/lib.rs:286` — `llm_spend: Ok("$0.00 /
+    $135".into())` → `Ok("$0.00 / $200".into())`.
+  - `crates/reports/src/lib.rs:320` — `observed: "$0.00 /
+    $135".into()` → `"$0.00 / $200".into()`.
+  - `crates/reports/src/render/system_health.rs:30` — rustdoc
+    example `$0.00 / $135` → `$0.00 / $200`.
+  - `crates/reports/src/render/system_health.rs:126` — test
+    fixture `$0.00 / $135` → `$0.00 / $200`.
+  - `crates/reports/src/render/system_health.rs:139` — test
+    assertion `body.contains("| LLM spend | $0.00 / $135 |")`
+    → `body.contains("| LLM spend | $0.00 / $200 |")`.
+  - The two anchored sample reports at
+    `spec/operator-success-reports/reports/success-fixed-report-sample-7d.md:66`
+    and `…success-fixed-report-sample-90d.md:66` (same line
+    number in both reports) are regenerated via
+    `cargo run -p reports --bin report -- --period 7d ...`
+    and the new SHA-256s captured.
+- **Anchor re-lock cadence.** v1.8 (reflection-memory) re-
+  locked the same two anchors at T_FINAL on 2026-05-08; v2.0.0
+  re-locks them again at T_FINAL_V2_LLM_STRATEGY. Two re-locks
+  in two months is acceptable per the v1+ Q9 anchor-cadence
+  policy ("anchor re-locks gate on architect approval; one
+  approval per shipping feature with body changes"). The
+  architect's approval here is this Q11 sub-section.
+- **Bundled with Q5d cache-hit-ratio row.** The `Cache hit
+  ratio` row from Q5d also lands in the same renderer, which
+  means the body bytes shift further. **Both changes are
+  bundled into the single re-lock** (one architect approval,
+  one anchor capture, two reports). Q5d's row goes between
+  the existing `LLM spend` row and the existing `Funding poll
+  status` row at `system_health.rs:66+`. The re-lock procedure
+  is single-pass.
+- **Tester does the actual `spec/anchors.toml` edit at
+  T_FINAL.** The architect captures the new SHAs in Q11's
+  developer task body (T1944) so the tester has a copy-paste
+  source. **Hard constraint #1 honored** — `spec/anchors.toml`
+  is not pre-modified by the architect.
+- **9 strategy anchors at lines 15–58 stay byte-identical.**
+  `crates/strategy/`, `crates/backtest/` are not touched by v2;
+  the negative-invariant test at T1944 confirms via `bash
+  scripts/verify_anchors.sh` (the 9 scenario lines all print
+  `PASS`).
+
+**Rationale:**
+
+- **Option C** beats Option A and Option B:
+  - Option A (full re-render, large body change) is over-
+    scoped — v2.0.0 is foundation-only, no real consumer-
+    behaviour change yet.
+  - Option B (defer to first consumer brief) means v2.0.0
+    ships with `$135` shown, contradicting product.md's $200
+    ceiling. Operator-confusing.
+  - Option C is the smallest body-byte rotation that aligns
+    v2.0.0's report with v2.0.0's product.md spec. Two re-
+    locks in two months is the natural pace of a scaling
+    brief; the body-vs-front-matter discipline (hard
+    constraint #8) is honored — the changing byte is in the
+    body, named explicitly here, so the tester knows what to
+    expect.
+- **Bundling Q5d** halves the re-lock work. Both changes touch
+  `system_health.rs` within 5 lines of each other; rendering
+  twice would be wasted effort.
+- **Tester-locks-anchors** preserves the "anchors mutate only
+  at architect-approved cadence with tester capture" invariant
+  from the v1.5a regression-gate discipline.
+
+**How it shows up in code:**
+
+- `crates/reports/src/render/system_health.rs:30` — rustdoc
+  example update.
+- `crates/reports/src/render/system_health.rs:66` — actual
+  output cell (no change here; the change is upstream, in the
+  data feeding `inputs.llm_spend`).
+- `crates/reports/src/render/system_health.rs:67` — new
+  `writeln!(out, "| Cache hit ratio | {} |", ...)` row.
+- `crates/reports/src/render/system_health.rs:126` — test
+  fixture string.
+- `crates/reports/src/render/system_health.rs:139` — test
+  assertion string.
+- `crates/reports/src/lib.rs:286` — `llm_spend` default.
+- `crates/reports/src/lib.rs:320` — `observed` default.
+- `spec/operator-success-reports/reports/success-fixed-report-sample-7d.md:66`
+  and `…success-fixed-report-sample-90d.md:66` — regenerated
+  via the report binary.
+- `spec/anchors.toml:67-75` — **NOT modified by the architect
+  or developer**. T_FINAL_V2_LLM_STRATEGY (tester) captures
+  the new SHA-256s and edits this file.
+
+### Crate / module surface
+
+The developer creates these new files (relative to
+`/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/`):
+
+**In `crates/llm/`:**
+
+1. `crates/llm/src/trait_def.rs` — `LlmProvider` trait,
+   `ChatRequest`, `ChatResponse`, `ContentBlock`, `StopReason`,
+   `TokenUsage`, `SystemBlock`, `CacheBreakpoint`, `ChatMessage`,
+   `MessageRole`, `ModelId`, `LlmTier` re-export from cost,
+   `AgentRole` re-export from cost.
+2. `crates/llm/src/error.rs` — `LlmError` enum (8 variants).
+3. `crates/llm/src/tools.rs` — `ToolSchema`,
+   `validate_tool_use(...)`.
+4. `crates/llm/src/prompt_cache.rs` — `CachedSystemPrompt` +
+   builder + `build_for(ProviderKind)`.
+5. `crates/llm/src/observability.rs` — cache event helper,
+   Prometheus counter pair.
+6. `crates/llm/src/budgeted.rs` — `BudgetedProvider<Inner>`
+   decorator.
+7. `crates/llm/src/factory.rs` — `LlmProviderFactory::build`.
+8. `crates/llm/src/pricing.rs` — base table + `resolve_rate`.
+9. `crates/llm/src/retry.rs` — `run_with_backoff` helper.
+10. `crates/llm/src/replay.rs` — `RecordingProvider`,
+    `ReplayProvider`.
+11. `crates/llm/src/replay/hash.rs` — `request_hash`.
+12. `crates/llm/migrations/001_llm_replay.sql` — schema v1.
+13. `crates/llm/src/auth.rs` — TOML-local config-key reader
+    (R8.1, Q3 = Option C).
+14. `crates/llm/src/redact.rs` — `redact()` helper (R8.3).
+15. `crates/llm/src/providers/mod.rs` — sub-module index.
+16. `crates/llm/src/providers/anthropic.rs` — Anthropic
+    provider impl.
+17. `crates/llm/src/providers/openai.rs` — OpenAI-compat
+    provider impl.
+18. `crates/llm/src/providers/ollama.rs` — Ollama provider
+    impl.
+19. `crates/llm/src/bin/llm_smoke.rs` — smoke binary.
+20. `crates/llm/tests/fixtures/llm-replay.db` — 9-row fixture
+    cache (binary; captured at T1933).
+21. `crates/llm/tests/anthropic_provider_test.rs` —
+    wiremock-backed integration test.
+22. `crates/llm/tests/openai_provider_test.rs` — wiremock-
+    backed integration test.
+23. `crates/llm/tests/ollama_provider_test.rs` — mock-server
+    integration test.
+24. `crates/llm/tests/budget_gate_test.rs` — three-scenario
+    budget tests (R4 acceptance).
+25. `crates/llm/tests/replay_roundtrip_test.rs` — record →
+    replay determinism test.
+26. `crates/llm/tests/smoke_test.rs` — end-to-end smoke
+    against wiremock fixtures.
+27. `crates/llm/tests/no_secrets_in_artifacts_test.rs` — V9
+    grep test (R8.3 / Q3 invariant).
+28. `crates/llm/tests/redact_test.rs` — `redact()` correctness.
+29. `crates/llm/tests/config_local_parse_test.rs` —
+    `config/agent.toml.local.example` parses (R8.4).
+
+**In root config:**
+
+30. `config/agent.toml.local.example` — committed template
+    with placeholder keys (`sk-ant-test-stub-..._00000000` etc.)
+    so a fresh checkout passes `cargo test`.
+
+**In runbooks:**
+
+31. `spec/runbooks/llm-cost.md` — operator runbook for cost
+    reads + degrade events + price updates (R13.2).
+32. `spec/runbooks/llm-replay.md` — operator runbook for
+    research-mode replay + `cargo run --bin llm-smoke --mode
+    paper` to refresh the cache + interpreting `ReplayMiss`
+    failures (R13.3).
+
+The developer modifies these existing files:
+
+1. `crates/llm/src/lib.rs:1` — replace the v0 23-line stub
+   with `pub use trait_def::*; pub use error::LlmError; pub
+   use tools::*; pub use cost::ProviderKind;` + crate-level
+   rustdoc (R13.1).
+2. `crates/llm/Cargo.toml` — add the dep set listed in Q4 +
+   Q8 + Q9 (`async-trait`, `tokio`, `reqwest`, `serde_json`,
+   `jsonschema`, `sqlx`, `serde-canonical-json`, `sha2`,
+   `uuid`, `rust_decimal`, `rust_decimal_macros`, `tracing`,
+   `rand`, `cost = { path = "../cost" }`,
+   `audit = { path = "../audit" }`); dev deps `wiremock`,
+   `tempfile`. Edition `2024` already inherited from workspace.
+3. `crates/cost/src/event.rs:9` — rename `pub enum
+   LlmProvider` to `pub enum ProviderKind`. Mechanical rename;
+   `serde(rename_all = "snake_case")` already preserves on-the-
+   wire shape.
+4. `crates/cost/src/event.rs:60` — `provider: LlmProvider` →
+   `provider: ProviderKind` in the `CostEvent::Llm` variant.
+5. `crates/cost/src/lib.rs:11` — re-export rename.
+6. `crates/cost/src/sink.rs:76,80` — test imports + fixture
+   construction site update.
+7. `crates/cost/src/budget.rs:14` — `spent_usd: Decimal` →
+   `spent_cents: AtomicU64`. Add `try_reserve(...)` method.
+8. `crates/audit/src/query.rs:36`-adjacent — additive
+   `pub async fn cache_hit_ratio_since(...)`.
+9. `crates/audit/src/journal.rs` — additive
+   `post_llm_budget_event(...)`. `BudgetEventKind` enum.
+10. `crates/agent/src/config.rs:300` — `LlmConfig` struct
+    (new section). The struct loads from a layered merge of
+    `config/agent.toml` (committed defaults) + `config/agent.toml.local`
+    (operator-only secrets). The merge order: `Config::load`
+    reads the canonical `agent.toml`, then if a sibling
+    `agent.toml.local` exists at the same parent dir, it's
+    parsed into a `LocalOverrideConfig` and overlaid via
+    `serde_json::Map::extend` semantics on the LLM section
+    only (per Q3 = C operator decision: "keep all config in
+    one place"). Missing `.local` file under `mode = "paper"`
+    or `mode = "live"` and `default_provider = "anthropic"` →
+    `LlmError::Auth` at startup.
+11. `crates/agent/src/main.rs` — wire `LlmProviderFactory::build(...)`
+    behind `cfg.llm.enabled` (default false, since v2.0.0 has
+    no consumers). When true, agent main constructs the
+    provider once at startup; the resulting `Arc<dyn
+    LlmProvider>` is stored on the runtime context as
+    `Option<Arc<dyn LlmProvider>>` for future consumer briefs
+    to pluck. **No bus channel added** (hard constraint #4).
+12. `config/agent.toml` — append the new
+    `[llm] / [llm.deep_think] / [llm.quick_think] /
+    [llm.providers.anthropic] / [llm.providers.openai] /
+    [llm.providers.ollama]` sections per R12.1. **Keys are
+    NOT in this file** — keys live in `config/agent.toml.local`
+    per Q3 = C.
+13. `crates/reports/src/lib.rs:286` — denominator string update.
+14. `crates/reports/src/lib.rs:320` — denominator string update.
+15. `crates/reports/src/render/system_health.rs:30` — rustdoc
+    update.
+16. `crates/reports/src/render/system_health.rs:66+` — new
+    `Cache hit ratio` row (Q5d).
+17. `crates/reports/src/render/system_health.rs:126,139` —
+    test fixture / assertion updates.
+18. `crates/reports/tests/report_scenarios.rs:80,88` —
+    `EXPECTED_SHA_7D`, `EXPECTED_SHA_90D` constants update at
+    T1944 (developer pre-stages the new SHAs; tester locks
+    `spec/anchors.toml:67-75` at T_FINAL).
+19. `spec/operator-success-reports/reports/success-fixed-report-sample-7d.md:66`
+    — regenerated body line (output of the report binary, not
+    a hand-edit).
+20. `spec/operator-success-reports/reports/success-fixed-report-sample-90d.md:66`
+    — same regeneration.
+21. `spec/architecture.md:421-432` — replace the LLM
+    integration stub with a v2 reference: "see `### v2 — LLM
+    strategy resolutions (Q4–Q11) — confirmed 2026-05-10`."
+22. `spec/architecture.md` (append) — new decisions-index
+    section `### v2 — LLM strategy resolutions (Q4–Q11) —
+    confirmed 2026-05-10` with one-paragraph summaries of each
+    Q-resolution + a back-pointer to this Design section.
+
+### Verification update
+
+Q6c's documented 0.2% concurrent-overshoot bound adds one new
+verification gate:
+
+- **V12 Concurrent-call budget overshoot bound.** Stress test:
+  fire 10 parallel `complete()` calls against a wiremock
+  pinned at 200ms latency with `BudgetedProvider` seeded at
+  $199.50 / $200; assert all 10 return successfully (the gate
+  passes them all because the pre-call estimates fit) AND the
+  post-reconcile `spent_cents` is at most $200.40 (10 × $0.10
+  max overshoot per call). Failure → architect (race semantics
+  changed).
+
+V1–V11 from the analyst's brief stay as-written. V12 lands
+because Q6's atomic-decision design surfaces a documented
+overshoot bound that needs a regression test.
+
 ## Changelog
 
 - 2026-05-10 (analyst): initial brief — foundation-only
@@ -1172,3 +2187,47 @@ follow-up brief's spawn time. Captured here for visibility.
   cost-rate lookup, Q8 replay storage, Q9 rate-limit handling,
   Q11 report denominator update). Q12 is informational. Routing
   → architect.
+- 2026-05-10 (architect): landed `## Design` section resolving
+  the seven [ARCHITECT-DECIDE] questions —
+  - **Q4 → async + non-streaming + tool-use-from-day-one +
+    batch-deferred + `serde_json::Value` schema + 8-variant
+    `LlmError`**; cost-crate enum `LlmProvider` renames to
+    `ProviderKind` to free the trait name (mechanical rename;
+    one re-export update; ~12 call sites in cost crate).
+  - **Q5 → TTL-driven + 2 breakpoints (project + role) +
+    provider-aware builder via `build_for(ProviderKind)` +
+    per-role per-day cache-hit-ratio Prometheus counter pair +
+    `audit::query::cache_hit_ratio_since` additive read** for
+    the report's new System Health row.
+  - **Q6 → factory-level `BudgetedProvider<Inner>` decorator +
+    `AtomicU64`-backed atomic cents counter + `max_tokens`-
+    based pre-call estimate + 0.2% concurrent-overshoot bound**
+    documented and regression-tested at V12 (new gate).
+  - **Q7 → hybrid hard-coded base table at
+    `crates/llm/src/pricing.rs` + TOML override at
+    `[llm.pricing.<provider>.<model>]`**; pricing module owned
+    by the `llm` crate (architecture.md line 2922 invariant
+    preserved: `llm` depends on `cost`, not the other way).
+  - **Q8 → SQLite at `data/llm-replay.db` (paper) and
+    `crates/llm/tests/fixtures/llm-replay.db` (fixture, 9
+    rows = 3 providers × 3 roles); SHA-256 of canonical JSON
+    via `serde-canonical-json`; `schema_version` column for
+    forward-compat; no LRU; WAL + per-process `Mutex` for
+    concurrent-write safety; strict-replay-only at v2 (best-
+    effort fallthrough deferred to v3)**.
+  - **Q9 → exponential backoff + full jitter + 3 retries + no
+    circuit breaker at v2.0.0 + retry policy in the leaf
+    provider impl + `Retry-After` header honored** when present.
+  - **Q11 → Option C — 1-line denominator hot-fix from `$135`
+    to `$200` in this brief; bundled with the Q5d `Cache hit
+    ratio` System Health row addition; the two `report-sample-*`
+    anchors at `spec/anchors.toml:67-75` re-lock once at
+    `T_FINAL_V2_LLM_STRATEGY` (tester captures the new SHA-
+    256s; architect does NOT pre-modify `spec/anchors.toml`)**.
+  Tasks expanded at `tasks.md` — T1901 → T1945 +
+  `T_FINAL_V2_LLM_STRATEGY`. New verification gate V12 added
+  to the brief's Verification section (concurrent-overshoot
+  bound). Crate / module surface enumerated: 32 new files +
+  22 existing files modified. Architecture.md decisions index
+  gains a v2 LLM section pointing back to this Design.
+  HANDOFF → developer.

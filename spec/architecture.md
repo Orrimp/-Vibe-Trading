@@ -426,10 +426,14 @@ serving production-trained models._
 
 ## LLM integration
 
-_Architect: define when LLMs are called (per-bar? per-regime-change? on-demand
-tool use?), token budget, caching strategy. Starting assumption: LLM called on
-regime-change events only, cached system prompt, tool-use for structured
-signals._
+_Foundation resolved at v2.0.0 — see
+**[§ v2 — LLM strategy resolutions (Q4–Q11) — confirmed 2026-05-10](#v2--llm-strategy-resolutions-q4q11--confirmed-2026-05-10)**
+below. The trait surface, three provider impls (Anthropic /
+OpenAI-compatible / Ollama), prompt-cache builder, budget gate
+with auto-degrade, record/replay for research mode, tool-use
+schemas, and rate-limit handling all land in v2.0.0 as
+foundation-only — no LLM consumers ship in v2.0.0; each consumer
+is its own follow-up brief._
 
 ## Risk engine
 
@@ -2639,6 +2643,151 @@ focus indicator. The cross-feature table in
 [features/lumen-design-adoption.md](features/lumen-design-adoption.md)
 is unchanged.
 
+### v2 — LLM strategy resolutions (Q4–Q11) — confirmed 2026-05-10
+
+Seven open questions from
+[v2-llm-strategy/feature.md → Notes](v2-llm-strategy/feature.md#notes--open-questions),
+with full Design at
+[v2-llm-strategy/feature.md → Design](v2-llm-strategy/feature.md#design).
+v2.0.0 ships **foundation-only** under the operator's Q1 = Option A
+resolution: LLM trait + 3 provider impls + prompt-cache builder +
+budget gate + record/replay + smoke binary, **zero LLM consumers**.
+Each consumer (post_mortem enrichment, news/sentiment overlay,
+trader debate, reflection-memory trader-wiring) is its own follow-
+up brief on the stable trait surface this section locks in.
+
+#### v2 Q4 — Trait shape: **async + non-streaming + tool-use-from-day-one + 8-variant `LlmError` + cost-crate enum rename**
+
+**Decision:** the `LlmProvider` trait is `async fn complete(&self,
+request: ChatRequest) -> Result<ChatResponse, LlmError>`. Streaming
+is deferred to v3; tool-use is mandatory at v2 per
+[product.md line 257](product.md#llm-strategy); batch is deferred.
+Schemas are `serde_json::Value` validated by the `jsonschema` crate;
+typed schemas are a consumer-side ergonomic via `schemars`.
+`LlmError` has 8 variants: `Provider | RateLimited | Timeout |
+BudgetExceeded | InvalidResponse | ReplayMiss | Network | Auth`.
+**Rename:** the `cost` crate's `LlmProvider` enum (provider id) is
+renamed `ProviderKind` to free the trait name; mechanical rename in
+the cost crate, no on-the-wire shape change.
+
+**Rationale:** async is forced by the tokio task model; tool-use
+delayed = breaking change in v3; `serde_json::Value` keeps the
+trait surface narrow; the 8-variant error matches the consumer-
+side error-routing matrix.
+
+#### v2 Q5 — Prompt-cache strategy: **TTL-driven, 2 breakpoints, provider-aware builder, per-role cache-hit-rate Prometheus counter pair**
+
+**Decision:** a `CachedSystemPrompt` builder layered as
+`(project_ctx, role_ctx, dynamic_ctx)` with two cache breakpoints
+emitted only by the Anthropic provider impl. OpenAI / OpenRouter /
+DeepSeek / Ollama silently flatten cache markers to plain text.
+Cache observability lands as a Prometheus counter pair
+(`llm_cache_input_tokens_total{role}`,
+`llm_cache_hit_tokens_total{role}`) plus an additive
+`audit::query::cache_hit_ratio_since` reader for the operator-
+success-report's new `Cache hit ratio` System Health row.
+
+**Rationale:** TTL-driven (5-minute Anthropic TTL) is the cheapest
+correct strategy; explicit invalidation buys nothing at v2 scale.
+Two breakpoints captures ~98% of the discount; 4 breakpoints buys
+diminishing returns at builder-API complexity cost.
+
+#### v2 Q6 — Budget-gate placement: **factory-level `BudgetedProvider<Inner>` decorator + `AtomicU64` cents counter + 0.2% documented overshoot bound**
+
+**Decision:** `LlmProviderFactory::build` always wraps the leaf
+provider in `BudgetedProvider<Inner>`; consumers receive
+`Arc<dyn LlmProvider>` and never see the leaf. Pre-call estimate
+uses `max_tokens` (conservative, fail-closed). The cost crate's
+`CostBudget::spent_usd: Decimal` becomes `spent_cents: AtomicU64`
+to support concurrent calls without serialization. A new
+`try_reserve(estimate_usd)` method does the atomic compare-and-
+allow. Worst-case concurrent overshoot bound: M × max-per-call USD
+(at v2 scale: ~$0.40 on a $200 ceiling = 0.2%). The bound is
+**regression-tested at V12** (new verification gate).
+
+**Rationale:** decorator beats in-impl (3× duplicated code) and
+explicit consumer-side helper ($200 foot-gun). Atomic cents beats
+mutex (kills throughput under concurrent calls) and per-tier
+semaphore (queueing without overshoot improvement).
+
+#### v2 Q7 — Cost-rate lookup: **hybrid hard-coded base table at `crates/llm/src/pricing.rs` + TOML override**
+
+**Decision:** the base table is a `match (ProviderKind, model_id)`
+pattern returning `PricePerMillionTokens { input_usd, output_usd,
+cached_input_usd }`. Unmatched combos return `None`, which the
+post-call reconcile treats as a hard error so model-id typos
+surface loudly. TOML override at `[llm.pricing.<provider>.<model>]`
+in `config/agent.toml` for emergency price changes without
+recompiling. Module location: `crates/llm/src/pricing.rs` (not
+`cost`) — preserves the `llm` → `cost` dependency edge.
+
+**Rationale:** pure-TOML loses compile-time typo-checking;
+API-metadata pricing isn't reliably available across providers.
+Hybrid keeps the typo gate without losing operator agility.
+
+#### v2 Q8 — Replay storage: **SQLite WAL + canonical-JSON SHA-256 + `schema_version` migration + 9-row fixture + strict-replay-only at v2.0.0**
+
+**Decision:** record/replay uses SQLite at `data/llm-replay.db`
+(paper / live) and `crates/llm/tests/fixtures/llm-replay.db`
+(test fixture; 9 canned rows = 3 providers × 3 roles). Hash:
+SHA-256 over canonical JSON of `(model, system, messages, tools,
+max_tokens, temperature)`; `correlation_id` excluded. WAL
++ per-process `tokio::sync::Mutex` handles concurrent-write
+safety. `schema_version` column gives forward-compat. **Strict-
+replay-only at v2.0.0** — research mode cache miss is fatal
+(`LlmError::ReplayMiss`); fall-through to real provider is
+deferred to v3.
+
+**Rationale:** SHA-256-of-canonical-JSON is the canonical cache
+hash; deviating means migrating every cached response on every
+consumer brief. Strict-replay preserves
+[product.md line 292](product.md#operating-modes) ("research —
+backtest only, deterministic seeds, no LLM cost") absolutely.
+SQLite WAL satisfies the project's atomic-write contract without
+needing a separate tempfile-rename helper.
+
+#### v2 Q9 — Rate-limit handling: **exponential backoff with full jitter, 3 retries, no circuit breaker at v2.0.0, `Retry-After` header honored**
+
+**Decision:** `crates/llm/src/retry.rs::run_with_backoff` is the
+shared helper called from each leaf provider's `complete()`.
+Backoff base 500ms, cap 8s, full-jitter formula
+`sleep_ms = rng.gen_range(0..=cap_ms)`. Up to 3 retries on `429`
+or `503`; `Retry-After` header (when present) caps the next sleep
+at `max(retry_after, computed_backoff)`. Network errors propagate
+immediately. **No circuit breaker at v2.0.0** — provider-failure-
+rate observability is a v3 brief precondition.
+
+**Rationale:** AWS-recommended jitter formula minimizes thundering-
+herd under sustained 429s. Per-provider impl beats a generic
+decorator because each provider's 429 response shape differs
+(Anthropic vs OpenAI vs Ollama-no-rate-limits).
+
+#### v2 Q11 — Operator-success-report `LLM spend` denominator: **Option C — 1-line denominator hot-fix in this brief; `report-sample-*` anchors re-lock once at `T_FINAL_V2_LLM_STRATEGY`**
+
+**Decision:** the System Health line denominator changes from
+`$135` to `$200` in
+`crates/reports/src/render/system_health.rs:66` + adjacent test
+fixtures + adjacent `lib.rs` defaults. Bundled with Q5d's new
+`Cache hit ratio` row addition: both body-byte changes land in
+one rotation; the two `report-sample-*` anchors at
+`spec/anchors.toml:67-75` re-lock once at
+`T_FINAL_V2_LLM_STRATEGY` (tester captures the new SHAs;
+architect does NOT pre-modify `spec/anchors.toml`). The 9
+strategy-backtest anchors at lines 15–58 stay byte-identical
+(R14.2 confirmed).
+
+**Rationale:** Option C aligns the v2.0.0 report's denominator
+with the v2.0.0 product.md ceiling immediately; deferring (Option
+B) ships a confusing `$135` line; Option A (full re-render)
+over-scopes a foundation-only release.
+
+**No cross-feature invariant change** beyond the locked
+`report-sample-*` re-lock. The 9 strategy-backtest anchors stay
+byte-identical because v2.0.0 does not touch `crates/strategy/` or
+`crates/backtest/`. Hard constraint #2 enforced via the
+[v2-llm-strategy tasks → T1937](v2-llm-strategy/tasks.md#m7--configuration-surface--agent-main-wire-up--runbooks--ship)
+negative-invariant test.
+
 ## Observability
 
 - `tracing` with JSON output.
@@ -4393,6 +4542,44 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
 
 ## Changelog
 
+- 2026-05-10 (architect, v2 LLM design): appended decisions-index
+  block **"v2 — LLM strategy resolutions (Q4–Q11) — confirmed
+  2026-05-10"** sibling of the existing v1+ / Lumen Phase blocks.
+  Replaced the v0-stub `## LLM integration` paragraph at lines
+  421–432 with a cross-reference to the new section. Seven
+  architect-decided Q-items resolved: Q4 trait shape (async +
+  non-streaming + tool-use + 8-variant `LlmError` + cost-crate
+  `LlmProvider → ProviderKind` rename), Q5 prompt-cache (TTL-
+  driven, 2 breakpoints, provider-aware builder, Prometheus
+  counter pair + `audit::query::cache_hit_ratio_since`), Q6
+  budget-gate placement (factory-level decorator + `AtomicU64`
+  cents counter + new V12 verification gate for the documented
+  0.2% concurrent-overshoot bound), Q7 cost-rate lookup
+  (hard-coded base + TOML override, module in `llm` crate), Q8
+  replay storage (SQLite WAL + canonical-JSON SHA-256 +
+  `schema_version` + 9-row fixture + strict-replay-only at
+  v2.0.0), Q9 rate-limit (full jitter + 3 retries + no circuit
+  breaker + `Retry-After` honored), Q11 operator-success-report
+  denominator update (Option C — bundled with Q5d's `Cache hit
+  ratio` row addition; `report-sample-*` anchors re-lock once at
+  T_FINAL_V2_LLM_STRATEGY). Operator's four [OPERATOR-DECIDE]
+  resolutions (Q1 = foundation-only, Q2 = Anthropic both tiers,
+  Q3 = config-file with explicit acknowledgement, Q10 = strawman
+  cockpit tile + memo + report line) are inputs, baked into the
+  brief verbatim. Foundation-only scope means **zero LLM
+  consumers in v2.0.0**; each consumer (post_mortem enrichment,
+  news/sentiment overlay, trader debate, reflection-memory
+  trader-wiring) becomes its own follow-up brief on the stable
+  trait surface this section locks in. **9 strategy-backtest
+  anchors at `spec/anchors.toml:15-58` stay byte-identical**
+  (R14.2 enforced via T1937 negative-invariant test); **2
+  `report-sample-*` anchors at lines 67–75 re-lock once** at
+  T_FINAL_V2_LLM_STRATEGY (tester only, never architect). Tasks
+  expanded at `spec/v2-llm-strategy/tasks.md` — 45 developer T
+  tasks (T1901–T1945) + `T_FINAL_V2_LLM_STRATEGY`. New
+  verification gate V12 added (concurrent-overshoot bound).
+  Crate / module surface enumerated: 32 new files + 22 existing
+  files modified. HANDOFF → developer.
 - 2026-05-06 (architect, Phase 5 design): appended Phase 5
   **"Q1–Q15 ratification (Phase 5, confirmed 2026-05-06)"** sub-
   section under the existing Phase 4 ratification block. **15 / 15

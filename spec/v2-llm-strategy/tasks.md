@@ -1,273 +1,1515 @@
 ---
 slug: v2-llm-strategy
 status: in-progress
-owner: analyst
+owner: architect
 updated: 2026-05-10
 version: 2.0.0
 ---
 
 # Tasks — v2 LLM strategy
 
-**Stub.** This file is the analyst's milestone outline. Concrete
-developer tasks (`T1901`, `T1902`, …) are **not enumerated yet** —
-that is the architect's job after the four operator-decides
-([feature.md → Q1, Q2, Q3, Q10](feature.md#notes--open-questions))
-land and the architect publishes the Design section.
+Ordered, testable task list derived from
+[spec/v2-llm-strategy/feature.md → Design](feature.md#design)
+and the seven architect resolutions (Q4, Q5, Q6, Q7, Q8, Q9, Q11)
+recorded in the same Design section. Cross-references to the
+analyst's R/V items use the format `Rn` / `Vn`; cross-references
+to the open questions use `Qn`.
 
-**Task numbering reservation:** **T19xx**.
+Owner tags: `[developer]` for backend Rust work across
+`llm` (rewritten from v0 stub), `cost` (rename + atomic spent
+counter), `audit` (additive query + journal helper), `agent`
+(config + factory wire), `reports` (System Health row
+additions). **No `[ui-designer]` tasks** under foundation-only
+scope — the cockpit "LLM budget" tile (R11.2) lands as a single
+right-rail tile per the developer's existing right-rail patterns;
+no new strings / widgets that warrant a designer spawn (Q10
+operator-resolved 2026-05-10 — strawman accepted). Lumen Phase 6
+Assistant slot is gated on this brief shipping and ships
+separately.
 
-The numbering history of the project:
-- v0 → T0xx
-- v0.5 → T5xx
-- v1 → T6xx
-- v1.5a → T7xx
-- v1+ operator-success-reports → T8xx
-- Lumen design adoption → T15xx / T16xx / T17xx
-- v1.8 reflection-memory → T18xx
-- **v2 LLM strategy → T19xx** (this brief)
+**Task numbering:** T19xx so the v0 T0xx, v0.5 T5xx, v1 T6xx,
+v1.5a T7xx, v1+ T8xx, Lumen T15xx / T16xx / T17xx, and v1.8
+reflection-memory T18xx namespaces stay intact. v1.8 closed at
+T1814; **T19xx is the natural next block**, called out in this
+file's reservation note. **45 tasks (T1901–T1945) +
+`T_FINAL_V2_LLM_STRATEGY`.**
 
-T19xx is the natural next block; no namespace collisions.
+**Parallelism gates** (shared files — only one developer touches each):
 
-**Architect:** when you land the Design section in
-[feature.md → Design](feature.md#design), expand each milestone
-below into ordered T19xx tasks, mirroring the granularity of
-[reflection-memory tasks.md](../reflection-memory/tasks.md)
-(~½ day per task; gate / synchronization-point annotations on the
-critical-path tasks; explicit `[deps: T19yy]` lines).
+- `crates/llm/**` — owned by the LLM-feature lead developer.
+  T1901 is the critical-path gate; everything downstream blocks
+  on it. After T1901 lands, the M2 / M3 / M5 trees can fan out
+  across providers + cache + pricing + replay sub-trees.
+- `crates/cost/src/event.rs` — touched once at T1901 (rename
+  `LlmProvider → ProviderKind`); additive only after that.
+  Mechanical rename — single PR, no follow-up touches.
+- `crates/cost/src/budget.rs` — touched once at T1907
+  (`spent_usd: Decimal → spent_cents: AtomicU64` +
+  `try_reserve(...)`). Single touch point — sequence M4 tasks
+  behind T1907.
+- `crates/audit/src/query.rs` — additive only; T1916 lands
+  `cache_hit_ratio_since` adjacent to existing siblings.
+- `crates/audit/src/journal.rs` — additive; T1917 lands
+  `post_llm_budget_event` + `BudgetEventKind`.
+- `crates/agent/src/config.rs` — T1937 is the single touch
+  point for the new `LlmConfig` + the local-overlay merge.
+- `crates/agent/src/main.rs` — T1938 is the single touch point
+  for the factory wire-up.
+- `crates/reports/src/render/system_health.rs` — T1942 is the
+  single touch point for the bundled Q5d (`Cache hit ratio`
+  row) + Q11 (`$135 → $200`) body-byte changes.
+- `crates/reports/src/lib.rs` — T1942 sub-task for the lines
+  286 + 320 fixture-string updates.
+- `config/agent.toml` — T1937 sub-task; append-only.
+- `config/agent.toml.local.example` — T1934 creates this once.
 
-## Scope assumption: foundation-only (Q1 = Option A)
+**Synchronization points** (block downstream tasks):
 
-Milestones below assume the analyst's Q1 = Option A scope
-(foundation-only — LLM trait + 3 provider impls + cost wiring +
-prompt-cache layer + budget gate + record/replay + smoke binary,
-**no LLM consumers**). If the operator picks Option B/C/D, the
-architect adds milestones M7+ for the bundled consumer(s):
+- **T1901** — `LlmProvider` trait rename + `cost::ProviderKind`
+  rename + `LlmError` enum + `ChatRequest/Response` types +
+  `ToolSchema`. Once merged, T1902–T1945 can fan out.
+- **T1907** — `cost::CostBudget::try_reserve` atomic
+  reservation. Blocks M4's budget-gate work
+  (T1908–T1912).
+- **T1913** — `LlmProviderFactory::build` skeleton. Blocks
+  T1934 (smoke binary), T1937 (agent config wire),
+  T1938 (agent main wire).
+- **T1922** — `RecordingProvider` + `ReplayProvider` skeletons.
+  Blocks T1933 (fixture cache capture), T1936 (smoke `--reset`).
+- **T1942** — System Health renderer rewrite. Blocks T1944
+  (developer-side EXPECTED_SHA capture) and
+  `T_FINAL_V2_LLM_STRATEGY`.
 
-- Q1 = Option B (foundation + news/sentiment overlay) → add
-  **M7 — News/sentiment overlay strategy** + **M8 — Strategy
-  backtest scenarios + anchor re-lock**.
-- Q1 = Option C (foundation + post_mortem enrichment) → add
-  **M7 — `reflection-memory-llm-enrichment` integration**
-  (LLM `note` field, prompt design, replay-cache fixture
-  extension, operator-success-report anchor re-lock).
-- Q1 = Option D (foundation + multiple consumers) → architect
-  scopes the per-consumer milestones explicitly; brief size 4–5x.
+**Granularity:** ~½ day per task (mirrors v1.8 reflection-memory's
+cadence). Dependency lines explicit on every task.
 
-## M1 — `LlmProvider` trait + request/response types
+## M1 — `LlmProvider` trait + request/response types + name collision rename
 
-Covers feature.md **R1** (trait shape + request type +
-response type + error variants).
+Covers feature.md **R1** (trait shape + request type + response
+type + error variants) + Design **Q4** resolution (async,
+non-streaming, tool-use-from-day-one, batch-deferred, 8-variant
+`LlmError`, cost-crate enum rename `LlmProvider → ProviderKind`).
 
-Architect resolutions landing here:
-- **Q4** (trait shape — async, non-streaming, tool-use-from-day-one,
-  batch-deferred, error variant set).
-
-Outputs:
-- New trait + types in `crates/llm/src/lib.rs` replacing the v0
-  23-line stub.
-- Trait + request + response + error rustdocs.
-- `cargo build -p llm` + `cargo doc -p llm --no-deps` clean.
-
-**Tasks T19xx will be expanded by the architect after Q4 resolution.**
+- [ ] **T1901** [developer] — `crates/llm/` rewrite from v0 stub:
+  trait + types + error + tool schema + `cost::ProviderKind`
+  rename, per
+  [Design → § Q4](feature.md#v2-llm-strategy-q4--trait-shape-async-non-streaming-tool-use-from-day-one-batch-deferred-serde_jsonvalue-schema-eight-variant-llmerror)
+  + [Design → Crate / module surface](feature.md#crate--module-surface):
+  - **Replace** `crates/llm/src/lib.rs` (the v0 23-line stub)
+    with a re-exporter: `pub use trait_def::*; pub use
+    error::LlmError; pub use tools::*; pub use
+    cost::ProviderKind;` + crate-level rustdoc per R13.1
+    naming the trait, three providers, prompt-cache builder,
+    budget gate, record/replay.
+  - **New** `crates/llm/src/trait_def.rs` — `#[async_trait]
+    pub trait LlmProvider: Send + Sync { fn name(&self) ->
+    &str; fn provider_kind(&self) -> ProviderKind; async fn
+    complete(&self, request: ChatRequest) -> Result<ChatResponse,
+    LlmError>; }`. Plus `ChatRequest { model: ModelId, tier:
+    LlmTier, role: AgentRole, system: Vec<SystemBlock>,
+    messages: Vec<ChatMessage>, tools: Vec<ToolSchema>,
+    max_tokens: u32, temperature: Option<f32>, correlation_id:
+    Uuid }`, `ChatResponse { content: Vec<ContentBlock>,
+    stop_reason: StopReason, usage: TokenUsage, model: ModelId,
+    correlation_id: Uuid }`, `ContentBlock::{Text(String) |
+    ToolUse { name: String, input: serde_json::Value, id:
+    String }}`, `StopReason::{EndTurn | MaxTokens | ToolUse |
+    StopSequence}`, `TokenUsage { tokens_in: u64, tokens_out:
+    u64, tokens_cached_in: u64 }`, `SystemBlock::{Plain(String)
+    | Cached(String, CacheBreakpoint)}`,
+    `CacheBreakpoint::Ephemeral`, `ChatMessage { role:
+    MessageRole, content: Vec<ContentBlock> }`,
+    `MessageRole::{User | Assistant}`, `ModelId(pub String)`.
+    All `Serialize + Deserialize + Clone + Debug + PartialEq`.
+  - **New** `crates/llm/src/error.rs` — `LlmError` enum with 8
+    variants per Design Q4f.
+  - **New** `crates/llm/src/tools.rs` — `pub struct ToolSchema {
+    pub name: String, pub description: String, pub input_schema:
+    serde_json::Value }` + `pub fn validate_tool_use(schema:
+    &ToolSchema, input: &serde_json::Value) ->
+    Result<(), LlmError>` using the `jsonschema` crate.
+  - **Rename in cost crate** at `crates/cost/src/event.rs:9`:
+    `pub enum LlmProvider` → `pub enum ProviderKind`. Mechanical:
+    `crates/cost/src/event.rs:60` (CostEvent::Llm field type),
+    `crates/cost/src/lib.rs:11` (re-export), `crates/cost/src/sink.rs:76,80`
+    (test imports + fixture).
+  - **`crates/llm/Cargo.toml`** — add deps per Design Crate
+    surface section: `cost = { path = "../cost" }`,
+    `audit = { path = "../audit" }`, `tokio.workspace =
+    { features = ["macros", "rt-multi-thread", "sync"] }`,
+    `async-trait`, `reqwest = { workspace, features = ["json"] }`,
+    `serde_json.workspace`, `jsonschema`, `sha2.workspace`,
+    `uuid = { workspace, features = ["serde", "v4"] }`,
+    `rust_decimal.workspace`, `rust_decimal_macros.workspace`,
+    `tracing.workspace`, `thiserror.workspace`,
+    `rand.workspace`, `sqlx = { workspace, features = ["sqlite",
+    "runtime-tokio", "chrono"] }`, `serde-canonical-json`.
+    Dev-deps: `wiremock`, `tokio-test`, `tempfile`. Edition
+    `2024` already inherited.
+  - Add `#![deny(clippy::float_arithmetic)]` at
+    `crates/llm/src/lib.rs:1` (mirrors the reflection crate's
+    discipline).
+  —
+  _acceptance: `cargo build -p llm` clean; `cargo build -p cost`
+  clean (rename propagates); `cargo doc -p llm --no-deps`
+  warning-clean; `cargo test -p llm --lib` passes a unit test
+  asserting (a) `ChatRequest::new(ModelId::from("test-model"),
+  LlmTier::DeepThink, AgentRole::Trader)` builds with sensible
+  defaults (`max_tokens: 4096`, `temperature: None`,
+  `tools: vec![]`, `system: vec![]`, `messages: vec![]`,
+  `correlation_id: Uuid::new_v4()`), (b) every
+  `LlmError` variant has a non-empty `Display` impl. `cargo test
+  -p cost` passes (rename propagates through tests). [R1.1, R1.2,
+  R1.3, R1.4, R5.1, R5.2, Q4]_
+  **[gate for T1902–T1945]**
 
 ## M2 — Provider implementations (Anthropic, OpenAI-compatible, Ollama)
 
-Covers feature.md **R2** (three first-class providers).
+Covers feature.md **R2** (three first-class providers) + Design
+**Q9** (rate-limit + retry policy lives in leaf provider impl)
++ partial **Q5** (provider-aware translation of cache markers).
 
-Architect resolutions landing here:
-- (none specific to provider impls; the trait shape from M1 is
-  the input).
+- [ ] **T1902** [developer] — Retry helper at
+  `crates/llm/src/retry.rs` per
+  [Design → § Q9](feature.md#v2-llm-strategy-q9--rate-limit-handling-exponential-backoff-with-full-jitter-3-retries-no-circuit-breaker-at-v200-per-provider-retry-policy-carried-in-the-leaf-provider-impl):
+  - `pub async fn run_with_backoff<F, Fut, T>(max_retries: u8,
+    operation: F) -> Result<T, LlmError>` with the
+    `RetryError::{RateLimited { retry_after }, Transient,
+    Fatal(LlmError)}` internal classification enum.
+  - Backoff base 500ms, cap 8s, **full jitter** formula:
+    `sleep_ms = rng.gen_range(0..=cap_ms)` where `cap_ms =
+    min(8000u64, 500u64 * (1u64 << attempt))`.
+  - On `RateLimited { retry_after: Some(d) }` the next sleep
+    is `max(d, computed_backoff)`.
+  - After `max_retries` retries returns
+    `LlmError::RateLimited { retries: max_retries }`.
+  —
+  _acceptance: `cargo test -p llm --test retry_test` passes —
+  (a) 3×429-then-200 succeeds in ≤ `7.5s + jitter` wall
+  clock (use `tokio::time::pause()` deterministic time),
+  (b) 4×429 returns `LlmError::RateLimited { retries: 3 }`,
+  (c) `Retry-After: 2` header pushes the next sleep to ≥ 2s.
+  [R7.1, R7.2, R7.3, Q9]_
+  **[deps: T1901]**
 
-Outputs:
-- `crates/llm/src/providers/anthropic.rs`.
-- `crates/llm/src/providers/openai.rs`.
-- `crates/llm/src/providers/ollama.rs`.
-- `LlmProviderFactory::from_config(cfg: &LlmConfig)` at
-  `crates/llm/src/factory.rs` reading the agent TOML to build
-  the configured provider.
-- Per-provider integration tests against `wiremock` mocks
-  (Anthropic, OpenAI) and a mock Ollama server.
-- `cargo test -p llm --features integration-test` clean.
+- [ ] **T1903** [developer] — Anthropic provider impl at
+  `crates/llm/src/providers/anthropic.rs` per
+  [Design → § Q5 + Q9 + Crate / module surface](feature.md#crate--module-surface):
+  - `pub struct AnthropicProvider { client: reqwest::Client,
+    base_url: String, api_key: String, default_model: ModelId }`.
+  - `LlmProvider for AnthropicProvider`: `name() -> "anthropic"`,
+    `provider_kind() -> ProviderKind::Anthropic`,
+    `async fn complete(...)`:
+    - Build the request body: `messages`, `system` (with
+      `cache_control: {"type": "ephemeral"}` wherever
+      `SystemBlock::Cached` appears), `tools` (Anthropic
+      tool-use schema), `max_tokens`, `temperature`.
+    - POST `{base_url}/messages` with header `x-api-key:
+      <api_key>`, `anthropic-version: 2023-06-01` (latest
+      stable at brief-write time).
+    - Wrap the call in `retry::run_with_backoff(3, …)`.
+    - Parse the response: `content` blocks → `ContentBlock`
+      variants; `usage.input_tokens` → `tokens_in`,
+      `usage.output_tokens` → `tokens_out`,
+      `usage.cache_read_input_tokens` → `tokens_cached_in`.
+    - `tool_use` content blocks pass through
+      `tools::validate_tool_use(...)` against the matching
+      `ToolSchema` from the request; validation failure →
+      `LlmError::InvalidResponse`.
+  —
+  _acceptance: `cargo test -p llm --test anthropic_provider_test`
+  passes — (a) wiremock `expect()` on `POST /messages` asserts
+  the request body contains exactly two `cache_control:
+  {"type": "ephemeral"}` markers when the request carries 2
+  `SystemBlock::Cached` items, (b) a canned 200 response
+  parses into a `ChatResponse` with the expected `usage`
+  fields, (c) a 429 → 200 retry round-trips, (d) a 401
+  surfaces as `LlmError::Auth`. [R2.1, R3.1, R3.2, R3.3, R5.1,
+  R5.3, Q5b, Q5c, Q9]_
+  **[deps: T1901, T1902]**
 
-**Tasks T19xx will be expanded by the architect.**
+- [ ] **T1904** [developer] — OpenAI-compatible provider at
+  `crates/llm/src/providers/openai.rs`:
+  - `pub struct OpenAiProvider { client: reqwest::Client,
+    base_url: String, api_key: String, default_model: ModelId }`
+    + `pub fn new_with_base_url(base_url: impl Into<String>,
+    api_key: impl Into<String>, model: ModelId) -> Self`. The
+    `base_url` parameter covers OpenAI, OpenRouter, DeepSeek,
+    LM Studio.
+  - `complete(...)`:
+    - Build request body in OpenAI Chat Completions shape
+      (`messages: [...]`, `tools: [{type: "function",
+      function: {...}}]`, `max_tokens`, `temperature`).
+    - **`SystemBlock::Cached` flattens to plain text**;
+      `tracing::debug!(target: "llm.cache",
+      "cache_markers_dropped_for_provider", provider =
+      "openai_compat")` once per builder construction.
+    - POST `{base_url}/chat/completions` with `Authorization:
+      Bearer <api_key>`.
+    - Parse response: `choices[0].message.content` /
+      `tool_calls` → `ContentBlock` variants;
+      `usage.prompt_tokens` → `tokens_in`,
+      `usage.completion_tokens` → `tokens_out`,
+      `tokens_cached_in: 0` (OpenAI-compat does not surface
+      cached tokens).
+    - Schema-validate any `tool_calls.function.arguments` JSON
+      via `validate_tool_use(...)`.
+  —
+  _acceptance: `cargo test -p llm --test openai_provider_test`
+  passes — (a) wiremock asserts the request body has **NO**
+  `cache_control` markers when the request carries
+  `SystemBlock::Cached` items (markers silently dropped),
+  (b) canned response parses correctly, (c) 429 → 200 retry
+  round-trips, (d) `tokens_cached_in == 0` always. [R2.2, R3.3,
+  R5.1, R5.3]_
+  **[deps: T1901, T1902]**
 
-**Critical-path note:** M2 blocks M3, M4, M5, M6. Anthropic
-provider impl in particular is the foundation for the prompt-
-cache layer (M3) — if the Anthropic SDK shape evolves between
-brief writing and developer pickup, the architect re-confirms
-R2.1 against the live API at the start of M2.
+- [ ] **T1905** [developer] — Ollama provider at
+  `crates/llm/src/providers/ollama.rs`:
+  - `pub struct OllamaProvider { client: reqwest::Client,
+    base_url: String, default_model: ModelId }`. No `api_key`
+    field (Ollama needs no auth).
+  - `complete(...)`:
+    - Build request body in Ollama `/api/chat` shape
+      (`model`, `messages: [{role, content}]`, `options: {
+      num_predict: max_tokens, temperature}`).
+    - `SystemBlock::Cached` flattens to plain text (no
+      caching).
+    - POST `{base_url}/api/chat`.
+    - **`max_retries = 0`** for local Ollama — HTTP failures
+      propagate immediately as `LlmError::Network`.
+    - Parse response: `message.content` → `ContentBlock::Text`;
+      `prompt_eval_count` → `tokens_in`, `eval_count` →
+      `tokens_out`, `tokens_cached_in: 0`.
+    - **Best-effort tool-use** (R5.4): when the request
+      carries `tools: vec![...]`, the system prompt gains a
+      tail "respond in JSON matching this schema: <schema>";
+      the response's text content is JSON-parsed and run
+      through `validate_tool_use(...)`. Validation failure →
+      `LlmError::InvalidResponse("ollama best-effort tool-
+      use schema-mismatch: ...")`.
+  —
+  _acceptance: `cargo test -p llm --test ollama_provider_test`
+  passes — (a) mock-server canned response parses correctly,
+  (b) `tokens_cached_in == 0`, (c) network failure surfaces as
+  `LlmError::Network` immediately (no retry), (d) best-effort
+  tool-use happy path returns parsed `input`, (e) tool-use
+  schema-mismatch surfaces as `LlmError::InvalidResponse`. [R2.3,
+  R5.4]_
+  **[deps: T1901, T1902]**
 
-## M3 — Prompt-cache layer + `CachedSystemPrompt` builder
+- [ ] **T1906** [developer] — Sub-module index at
+  `crates/llm/src/providers/mod.rs`:
+  - `pub mod anthropic; pub mod openai; pub mod ollama;`
+  - `pub use anthropic::AnthropicProvider;`
+  - `pub use openai::OpenAiProvider;`
+  - `pub use ollama::OllamaProvider;`
+  —
+  _acceptance: `cargo build -p llm` clean; `cargo doc -p llm
+  --no-deps` warning-clean; the three providers are
+  reachable via `llm::AnthropicProvider` etc. (re-exported
+  through `crates/llm/src/lib.rs`). [R2 / housekeeping]_
+  **[deps: T1903, T1904, T1905]**
 
-Covers feature.md **R3** (cache-breakpoint placement +
-builder shape + provider-aware emission +
-cache-hit-rate metric).
+## M3 — Prompt-cache layer + `CachedSystemPrompt` builder + cache-hit-ratio observability
 
-Architect resolutions landing here:
-- **Q5** (TTL-driven vs explicit invalidation; breakpoint count;
-  trait-vs-sibling location; cache-hit-rate metric shape).
+Covers feature.md **R3** (cache-breakpoint placement + builder
+shape + provider-aware emission + cache-hit-rate metric) + Design
+**Q5** resolution (TTL-driven, 2 breakpoints, provider-aware
+`build_for`, per-role per-day Prometheus counter pair +
+`audit::query::cache_hit_ratio_since` for the report's new System
+Health row).
 
-Outputs:
-- `crates/llm/src/prompt_cache.rs` — `CachedSystemPrompt`
-  builder with `(project_ctx, role_ctx, dynamic_ctx)` layered
-  composition.
-- `Vec<SystemBlock>` with optional `CacheBreakpoint` markers.
-- Provider-aware translation: Anthropic emits real
-  `cache_control` markers; OpenAI silently drops; Ollama no-op.
-- `tracing` event for cache-hit-rate metric.
-- Unit + integration tests.
+- [ ] **T1907** [developer] — `CostBudget` atomic-cents refactor
+  per
+  [Design → § Q6](feature.md#v2-llm-strategy-q6--budget-gate-placement-factory-level-budgetedproviderinner-decorator-with-atomicu64-backed-atomic-spent-counter-pre-call-estimate-from-max_tokens-post-call-reconciliation-drives-the-source-of-truth):
+  - `crates/cost/src/budget.rs:14` — replace `spent_usd:
+    Decimal` with `spent_cents: AtomicU64`.
+  - **API stays:** `pub fn add_spend(&self, usd: Decimal)`
+    converts `usd` to cents (multiply by 100, round down on
+    sub-cent — pre-cents value is post-call reconcile, so
+    rounding error per call is ≤ $0.01 worst-case); `fetch_add`
+    on the atomic.
+  - `pub fn remaining(&self) -> Decimal` — reads `spent_cents`,
+    converts back to Decimal, subtracts.
+  - `pub fn mode_override(&self) -> Option<LlmTier>` — pure
+    read; same semantics as before.
+  - **NEW** `pub fn try_reserve(&self, estimate_usd: Decimal)
+    -> Result<(), LlmError>`:
+    - Convert `estimate_usd` to cents.
+    - Atomic load `spent_cents`.
+    - If `(spent_cents + estimate_cents) > ceiling_cents`,
+      return `LlmError::BudgetExceeded { spent_usd:
+      remaining()-derived, ceiling_usd }`.
+    - Else `Ok(())`. Note: this is a check-only API; the
+      actual cents are added by `add_spend(actual_usd)`
+      post-call (R4.3 reconciliation is the source of truth).
+  - `&mut self` removed from `add_spend` — atomic ops don't
+    need `&mut`.
+  —
+  _acceptance: `cargo test -p cost --test budget_atomic_test`
+  passes — (a) seed budget at $179.99 / $200, `try_reserve(0.01)`
+  returns Ok, (b) seed at $200.01, `try_reserve(any)` returns
+  `LlmError::BudgetExceeded`, (c) 100 parallel `add_spend(0.10)`
+  calls produce a final `spent_cents == 1000` (no torn writes),
+  (d) `remaining()` reads consistent. [R4.1, R4.2, R4.3, Q6c]_
+  **[deps: T1901]**
+  **[gate for T1908–T1912]**
 
-**Tasks T19xx will be expanded by the architect after Q5
-resolution.**
+- [ ] **T1908** [developer] — `CachedSystemPrompt` builder at
+  `crates/llm/src/prompt_cache.rs` per
+  [Design → § Q5](feature.md#v2-llm-strategy-q5--prompt-cache-strategy-ttl-driven-2-breakpoints-project--role-provider-aware-builder-per-role-per-day-cache-hit-rate-tracing-gauge):
+  - `pub struct CachedSystemPrompt { project_ctx: String,
+    role_ctx: String, dynamic_ctx: String }`.
+  - `pub struct CachedSystemPromptBuilder { … }` with
+    `.project(text)`, `.role(text)`, `.dynamic(text)`,
+    `.build_for(provider: ProviderKind) -> Vec<SystemBlock>`.
+  - `build_for` dispatch:
+    - `ProviderKind::Anthropic` →
+      `vec![SystemBlock::Cached(project_ctx,
+      CacheBreakpoint::Ephemeral),
+      SystemBlock::Cached(role_ctx,
+      CacheBreakpoint::Ephemeral),
+      SystemBlock::Plain(dynamic_ctx)]`.
+    - Any other variant → flatten to
+      `vec![SystemBlock::Plain(format!("{project_ctx}\n\n{role_ctx}\n\n{dynamic_ctx}"))]`
+      and emit one `tracing::debug!(target: "llm.cache",
+      "cache_markers_dropped_for_provider")` line per builder
+      construction.
+  - The builder is **byte-stable**: same inputs in → same
+    `Vec<SystemBlock>` out (proptest gate on the unit test).
+  —
+  _acceptance: `cargo test -p llm --test prompt_cache_test`
+  passes — (a) Anthropic build emits exactly 2 `Cached`
+  markers, (b) OpenAI / Ollama builds emit zero markers,
+  (c) byte-stability proptest over 1000 random inputs returns
+  identical `Vec<SystemBlock>` bytes across two calls,
+  (d) the same project_ctx + role_ctx → identical cache key
+  in both Anthropic and OpenAI flatten paths (different
+  shapes; consistent content). [R3.1, R3.2, R3.3, Q5a, Q5b,
+  Q5c]_
+  **[deps: T1901]**
 
-## M4 — Budget enforcement gate
+- [ ] **T1909** [developer] — Cache observability helper at
+  `crates/llm/src/observability.rs` per Design Q5d:
+  - Module-level `static LLM_CACHE_INPUT_TOKENS:
+    once_cell::sync::Lazy<prometheus::CounterVec>` with label
+    `role`. Same for `LLM_CACHE_HIT_TOKENS`.
+  - `pub fn emit_cache_event(role: &AgentRole, tokens_in: u64,
+    tokens_cached_in: u64)`:
+    - Increment counters.
+    - Emit `tracing::info!(target: "llm.cache", role =
+      %role.to_string(), tokens_in, tokens_cached_in,
+      hit_ratio = if tokens_in > 0 { tokens_cached_in as f64
+      / tokens_in as f64 } else { 0.0 })`.
+  - **Float arithmetic exception** is module-level:
+    `#[allow(clippy::float_arithmetic)]` on the helper —
+    Prometheus emits `f64` natively, the audit-ledger ratio
+    (R9.5 source) is computed from Decimal-only sums via the
+    new `audit::query::cache_hit_ratio_since`.
+  —
+  _acceptance: `cargo test -p llm --test observability_test`
+  passes — calling `emit_cache_event(&AgentRole::Trader,
+  1000, 750)` increments `llm_cache_input_tokens_total{role="trader"}`
+  by 1000 and `llm_cache_hit_tokens_total{role="trader"}` by
+  750. The `tracing` event lands at target `llm.cache` with
+  the expected fields. [R3.4, R9.5, Q5d]_
+  **[deps: T1901]**
+
+- [ ] **T1910** [developer] — Additive `audit::query::cache_hit_ratio_since`:
+  - `crates/audit/src/query.rs:36`-adjacent — `pub async fn
+    cache_hit_ratio_since(ledger: &Ledger, since: Timestamp)
+    -> Result<Decimal, LedgerError>`.
+  - SQL: aggregate `tokens_cached_in / tokens_in` across the
+    `journal_entries WHERE account_id LIKE 'expense:llm:%' AND
+    transaction_id IN (...)` rows in the window. The token
+    counts live in the LLM-event tags introduced at T1917.
+  - Returns `Decimal::ZERO` when no LLM events in the window
+    (defensive — R9.5's research-mode 0.00 ratio is preserved).
+  —
+  _acceptance: `cargo test -p audit --test cache_hit_ratio_test`
+  passes — fixture ledger with 3 LLM events
+  (`tokens_in=1000, tokens_cached_in=500` each) returns ratio
+  `0.5`; empty fixture returns `0.0`. [R3.4, R9.5, Q5d]_
+  **[deps: T1901]**
+
+## M4 — Budget enforcement gate + audit memo + (deferred) cockpit tile
 
 Covers feature.md **R4** (pre-call check, post-call
 reconciliation, model remap on degrade) + **R11** (cockpit
-alert + memo + report line).
+alert + memo + report line) + Design **Q6** (factory-level
+decorator + atomic cents counter + 0.2% concurrent-overshoot
+bound) + **Q10** (cockpit tile + memo + report line; email/Slack/
+push deferred).
 
-Architect resolutions landing here:
-- **Q6** (gate placement: factory decorator vs in-impl vs
-  explicit helper; pre-call estimate accuracy; concurrent-call
-  race handling).
-- **Q10** (cockpit alert surface — strawman: tile + memo + report
-  line).
+- [ ] **T1911** [developer] — Pricing module at
+  `crates/llm/src/pricing.rs` per
+  [Design → § Q7](feature.md#v2-llm-strategy-q7--cost-rate-lookup-hard-coded-base-table-at-cratesllmsrcpricingrs--toml-override-at-llmpricingprovidermodel-module-owned-by-the-llm-crate-not-cost):
+  - `pub struct PricePerMillionTokens { pub input_usd:
+    Decimal, pub output_usd: Decimal, pub cached_input_usd:
+    Decimal }`. `Serialize + Deserialize + Clone + Debug +
+    PartialEq`.
+  - `pub fn base_rate(provider: &ProviderKind, model: &str)
+    -> Option<PricePerMillionTokens>` — exhaustive `match`
+    over `(provider, model)`:
+    - `(ProviderKind::Anthropic, "claude-opus-4-7") =>
+      Some(PricePerMillionTokens { input_usd: dec!(15.00),
+      output_usd: dec!(75.00), cached_input_usd: dec!(1.50) })`,
+    - `(ProviderKind::Anthropic, "claude-haiku-4-5-20251001") =>
+      Some(...input $1.00 / output $5.00 / cached $0.10)`,
+    - `(ProviderKind::OpenAi, "gpt-5") => Some(...input $10.00
+      / output $40.00 / cached $2.50)`,
+    - `(ProviderKind::OpenAi, "gpt-5-mini") => Some(...input
+      $2.00 / output $8.00 / cached $0.50)`,
+    - `(ProviderKind::Other(s), _) if s == "ollama" =>
+      Some(zeros)`,
+    - `_ => None`.
+  - `pub fn resolve_rate(cfg: &LlmConfig, provider:
+    &ProviderKind, model: &str) -> Result<PricePerMillionTokens,
+    LlmError>` — checks `cfg.pricing` override first, falls
+    back to `base_rate(...)`, returns
+    `LlmError::Provider { provider: provider.clone(), message:
+    format!("no price for model {model}") }` on miss.
+  —
+  _acceptance: `cargo test -p llm --test pricing_test` passes
+  — (a) every `(provider, model)` named in the v2 default
+  TOML resolves to a `Some` rate, (b) typo'd model id
+  `"claude-opus-4.7"` returns `None` from `base_rate` and
+  `LlmError::Provider` from `resolve_rate`, (c) TOML override
+  for an existing pair shadows the base table, (d) Ollama
+  zeros are exact `Decimal::ZERO`. [R9.2, Q7]_
+  **[deps: T1901]**
 
-Outputs:
-- `BudgetedProvider<Inner>` decorator at
-  `crates/llm/src/budgeted.rs` (strawman placement — Q6).
-- Pre-call check against `cost::CostBudget::mode_override()`.
-- Atomic concurrent-call-safe spent-counter (Q6c).
-- Post-call reconciliation that updates `CostBudget` from
-  `ChatResponse::usage`.
-- Model-remap-on-degrade logic per agent TOML's
-  `[llm.deep_think]` / `[llm.quick_think]` model ids.
-- `LlmError::BudgetExceeded` propagation.
-- Cockpit "LLM budget" tile (R11.2 strawman) — architect's call
-  on whether this lands here or in a sibling UI brief.
-- Audit-ledger memo on budget events (R11.1).
-- Unit tests for the degrade and block paths.
+- [ ] **T1912** [developer] — `BudgetedProvider<Inner>` decorator
+  at `crates/llm/src/budgeted.rs` per Design Q6:
+  - `pub struct BudgetedProvider<Inner: LlmProvider> { inner:
+    Inner, budget: Arc<CostBudget>, sink: Arc<dyn CostSink>,
+    cfg: Arc<LlmConfig>, audit_ledger: Option<Arc<audit::Ledger>>,
+    last_block_memo_at: AtomicU64 /* unix-secs */ }`.
+  - `LlmProvider for BudgetedProvider<Inner>` `complete(...)`:
+    1. **Mode check.** Read `budget.mode_override()`:
+       - `None` → debounced audit memo (≤ 1/min via
+         `last_block_memo_at` `compare_exchange`); return
+         `LlmError::BudgetExceeded { spent_usd, ceiling_usd }`.
+       - `Some(QuickThink)` if `request.tier == DeepThink` →
+         construct a degraded request with `tier: QuickThink,
+         model: cfg.quick_think.model.clone()`; emit one
+         `tracing::warn!(target: "llm.budget",
+         "degrade_to_quick_think", role = ...)`; post one
+         audit memo via `audit::journal::post_llm_budget_event(
+         BudgetEventKind::DegradeToQuickThink, ...)` (also
+         debounced).
+       - `Some(DeepThink)` → no change.
+    2. **Pre-call estimate.** Compute estimate via
+       `pricing::resolve_rate(cfg, &request.model.…)`; multiply
+       `(input_estimate × input_usd + max_tokens ×
+       output_usd) / 1_000_000.0` (Decimal math). Call
+       `budget.try_reserve(estimate_usd)`; on
+       `BudgetExceeded` propagate (also debounced memo).
+    3. **Forward to inner.** `inner.complete(actual_request).await`.
+    4. **Post-call reconcile.**
+       - On Ok: compute actual `usd = (tokens_in - tokens_cached_in)
+         × input_usd + tokens_cached_in × cached_input_usd +
+         tokens_out × output_usd) / 1_000_000`.
+       - `budget.add_spend(actual_usd)`.
+       - Construct `CostEvent::Llm { provider:
+         inner.provider_kind(), model: response.model.clone(),
+         tier: actual_request.tier.clone(), role:
+         actual_request.role.clone(), tokens_in: usage.tokens_in,
+         tokens_out: usage.tokens_out, tokens_cached_in:
+         usage.tokens_cached_in, usd, correlation_id:
+         actual_request.correlation_id }`. Call
+         `sink.record(event)?`.
+       - `observability::emit_cache_event(&actual_request.role,
+         tokens_in, tokens_cached_in)`.
+       - Return Ok response.
+       - On Err: **no cost event posted** (R9.3); error
+         propagates.
+  —
+  _acceptance: `cargo test -p llm --test budget_gate_test`
+  passes — (a) seed $179.99 / $200, request DeepThink → call
+  proceeds against `inner`, request was downgraded
+  (`actual_request.tier == QuickThink`,
+  `actual_request.model == "claude-haiku-4-5-20251001"`),
+  warn line emits, audit memo lands; (b) seed $200.01, any
+  request → `LlmError::BudgetExceeded`, **zero** outbound
+  HTTP, audit memo lands; (c) seed $0.00 / $200, request
+  DeepThink → passes through untouched. [R4.1, R4.2, R4.3, R4.4,
+  R9.1, R9.3, R11.1, Q6, Q10]_
+  **[deps: T1907, T1908, T1909, T1911, T1917]**
 
-**Tasks T19xx will be expanded by the architect after Q6
-resolution.**
+- [ ] **T1913** [developer] — `LlmProviderFactory::build` at
+  `crates/llm/src/factory.rs`:
+  - `pub struct LlmProviderFactory;`
+  - `impl LlmProviderFactory { pub fn build(cfg: &LlmConfig,
+    budget: Arc<CostBudget>, sink: Arc<dyn CostSink>, ledger:
+    Option<Arc<audit::Ledger>>) -> Result<Arc<dyn LlmProvider>,
+    LlmError> }`.
+  - Internally:
+    1. Read keys via `auth::load_keys(cfg)?` (T1914).
+    2. Construct the leaf provider per
+       `cfg.default_provider`:
+       - `"anthropic"` → `AnthropicProvider::new(cfg, key)`,
+       - `"openai" | "openrouter" | "deepseek"` →
+         `OpenAiProvider::new(cfg, key)`,
+       - `"ollama"` → `OllamaProvider::new(cfg)`.
+    3. Wrap in `BudgetedProvider::new(leaf, budget, sink,
+       cfg.clone(), ledger)`.
+    4. If `cfg.mode == Mode::Research`, further wrap in
+       `ReplayProvider::new(cfg.replay_cache_path)?` (T1922).
+    5. Else if `cfg.mode == Mode::Paper`, further wrap in
+       `RecordingProvider::new(leaf, cfg.replay_cache_path)?`.
+    6. Return `Arc<dyn LlmProvider>`.
+  —
+  _acceptance: `cargo test -p llm --test factory_test` passes —
+  (a) build with valid `agent.toml.local` succeeds in paper
+  mode; (b) build with missing key returns `LlmError::Auth`
+  whose `Display` names `config/agent.toml.local`; (c) build
+  in research mode wraps in `ReplayProvider`; (d) build in
+  paper mode wraps in `RecordingProvider`. [R2.4, R6.3, R8.1,
+  R8.2]_
+  **[deps: T1903, T1904, T1905, T1912, T1914, T1922]**
+  **[gate for T1934, T1937, T1938]**
 
-## M5 — Tool-use schemas + cost-rate lookup + cost telemetry
+- [ ] **T1914** [developer] — TOML-local key reader at
+  `crates/llm/src/auth.rs` per Design § Q3 = C resolution:
+  - `pub fn load_keys(cfg: &LlmConfig) -> Result<KeyMap,
+    LlmError>` — reads the layered overlay:
+    1. The committed `config/agent.toml` (the
+       `[llm.providers.<name>]` sections; no `api_key` field
+       there).
+    2. The git-ignored `config/agent.toml.local` (overlays
+       any `[llm.providers.<name>] api_key = "..."` keys onto
+       the committed shape).
+  - Path discovery: load relative to the agent's config
+    directory (the same dir as `agent.toml`).
+  - Missing `.local` file under `cfg.default_provider !=
+    "ollama"` → `LlmError::Auth("config/agent.toml.local
+    not found; copy config/agent.toml.local.example and edit
+    in real keys")`.
+  - Missing key for the configured `default_provider` →
+    `LlmError::Auth(format!("{provider}.api_key not set in
+    config/agent.toml.local"))`.
+  - The reader stores the loaded keys in a `KeyMap` (HashMap
+    with `Drop` zeroing the buffers — best-effort; keys are
+    immutable after `LlmProviderFactory::build` consumes them).
+  —
+  _acceptance: `cargo test -p llm --test auth_test` passes —
+  (a) missing `.local` → `LlmError::Auth` whose message names
+  the config path; (b) `.local` present but anthropic key
+  missing under `default_provider = "anthropic"` →
+  `LlmError::Auth` whose message names the key; (c) `.local`
+  present with placeholder `sk-ant-test-stub-...` parses ok
+  (no key-strength validation; that's the operator's
+  responsibility). [R8.1, R8.2]_
+  **[deps: T1901]**
 
-Covers feature.md **R5** (tool-use schemas) + **R9** (cost
-telemetry wired through, including the cost-rate provider
-lookup) + **R12.1** (TOML config keys).
+- [ ] **T1915** [developer] — `redact()` helper at
+  `crates/llm/src/redact.rs`:
+  - `pub fn redact(secret: &str) -> String` — returns first
+    `prefix_len` characters + `"***"` + last 4 characters.
+    `prefix_len` = position of first `-` after `sk` (so
+    `sk-ant-secret-12345` → `sk-ant-***2345`); fallback to 6
+    chars if no `-`.
+  - **Tracing field redaction subscriber** at
+    `crates/llm/src/redact.rs::install_tracing_redactor()`:
+    a `tracing_subscriber::Layer` that intercepts events and
+    rewrites any field with name in `["api_key",
+    "authorization", "x_api_key", "anthropic_api_key",
+    "openai_api_key"]` via `redact()`. Installed once at
+    `agent::main` startup before any LLM call.
+  —
+  _acceptance: `cargo test -p llm --test redact_test` passes —
+  (a) `redact("sk-ant-secret-12345")` does NOT contain
+  `"secret-12345"`; (b) `redact("sk-shortie")` does NOT
+  contain the full string; (c) tracing subscriber test:
+  capturing layer asserts that `info!(api_key = "sk-ant-real")`
+  emits `api_key = "sk-ant-***real"` (last-4 of `"real"`
+  is `"real"` itself, but the `***` is the giveaway). [R8.3]_
+  **[deps: T1901]**
 
-Architect resolutions landing here:
-- **Q4e** (`serde_json::Value` vs typed schema; schema-validation
-  library).
-- **Q7** (cost-rate lookup: hard-coded match vs TOML override
-  vs API metadata; module location — `cost` crate vs `llm`
-  crate).
+## M5 — Cost telemetry wired through + audit memo + V12 stress test
 
-Outputs:
-- `ToolSchema` type at `crates/llm/src/tools.rs`.
-- JSON-schema validation pass on tool-use response blocks.
-- Provider-specific tool-use translation (Anthropic + OpenAI
-  native; Ollama best-effort with prose-validation fallback).
-- Pricing module (analyst strawman:
-  `crates/llm/src/pricing.rs`; architect may pick
-  `crates/cost/src/pricing.rs`).
-- `CostEvent::Llm` construction at the `BudgetedProvider`
-  boundary (post-call reconciliation point).
-- TOML config keys per R12.1.
-- Integration tests asserting one LLM call → one balanced
-  `expense:llm:<tier>` ↔ `liabilities:llm_accrued` journal pair.
+Covers feature.md **R9** (cost telemetry) + **R11.1** (audit
+memo) + **V12** (concurrent-overshoot bound) + Design Q6.
 
-**Tasks T19xx will be expanded by the architect after Q4e + Q7
-resolutions.**
+- [ ] **T1916** [developer] — `BudgetEventKind` + journal helper
+  per Design Q6 + Q10:
+  - `crates/audit/src/journal.rs` — additive
+    `pub enum BudgetEventKind { DegradeToQuickThink |
+    Block }`. `Display` emits `budget_degrade_to_quick_think`
+    and `budget_block` per R11.1.
+  - `pub async fn post_llm_budget_event(ledger: &Ledger, kind:
+    BudgetEventKind, tier: LlmTier, spent_usd: Decimal,
+    ceiling_usd: Decimal) -> Result<(), LedgerError>` — posts
+    a $0.00 memo entry against `expense:llm:<tier>` with
+    `tag = kind.to_string()` and meta carrying `spent_usd`,
+    `ceiling_usd`. The journal pair stays balanced because
+    USD = 0 (no balance change; the row is a tagged audit
+    breadcrumb).
+  —
+  _acceptance: `cargo test -p audit --test
+  llm_budget_event_test` passes — fires
+  `post_llm_budget_event(...)` against an in-memory ledger;
+  asserts (a) one row lands at `expense:llm:deep_think` with
+  the expected tag, (b) global debit-credit sum balanced
+  (Δ ≤ 1e-8). [R11.1, Q10]_
+  **[deps: T1901]**
 
-## M6 — Record/replay for research mode + smoke binary
+- [ ] **T1917** [developer] — LLM cost-event token-tag plumbing:
+  - `crates/audit/src/journal.rs` — extend the existing
+    `post_cost(ledger, tier, usd)` (currently invoked by
+    `LedgerCostSink::record`) to additionally accept
+    `tokens_in: u64`, `tokens_out: u64`, `tokens_cached_in:
+    u64`, `correlation_id: Uuid` so the LLM cost event's
+    token counts land on the journal entry meta as JSON.
+    The tokens are needed by T1910's
+    `cache_hit_ratio_since`. **Backwards-compat:** the
+    existing 3-argument signature stays as a wrapper that
+    fills zeros for the new fields (the only existing caller
+    is `LedgerCostSink` which is updated below).
+  - `crates/cost/src/sink.rs:43+` — `LedgerCostSink::record`
+    pulls the four token / correlation fields out of
+    `CostEvent::Llm` and forwards them to the new signature.
+  —
+  _acceptance: `cargo test -p audit --test llm_cost_meta_test`
+  passes — fires one LLM cost event through `LedgerCostSink`
+  with tokens (1000, 200, 500); reads back the journal entry
+  meta and asserts the token fields round-trip. [R9.1, R9.4]_
+  **[deps: T1901, T1916]**
+
+- [ ] **T1918** [developer] — V12 concurrent-overshoot stress
+  test per Design § Q6:
+  - `crates/llm/tests/budget_concurrent_overshoot_test.rs` —
+    spawn 10 concurrent `BudgetedProvider::complete(...)` tasks
+    against a wiremock pinned at 200ms latency; seed budget at
+    $199.50 / $200; assert all 10 return Ok (gate passes them
+    all because each individually fits) AND post-test
+    `budget.remaining()` is ≥ -$0.40 (worst-case 10 ×
+    $0.10 overshoot).
+  —
+  _acceptance: the test passes; the recorded
+  post-test `spent_usd` does not exceed $200.40. The bound is
+  the V12 invariant. [V12, Q6c]_
+  **[deps: T1912]**
+
+## M6 — Record/replay for research mode + smoke binary + secrets-in-artifacts gate
 
 Covers feature.md **R6** (record/replay) + **R10** (smoke
-binary) + **R7** (rate-limit retries) + **R8** (API key
-management) + **R13** (rustdoc + runbooks).
+binary) + Design **Q8** (SQLite WAL + canonical-JSON SHA-256 +
+schema_version + per-process Mutex + 9-row fixture + strict-
+replay).
 
-Architect resolutions landing here:
-- **Q8** (request-hash schema; cache schema migration; cache
-  size cap; fixture cache content; concurrent-write safety).
-- **Q9** (retry budget; circuit-breaker decision; jitter
-  formula).
+- [ ] **T1919** [developer] — Replay schema migration at
+  `crates/llm/migrations/001_llm_replay.sql` per Design Q8b:
+  ```sql
+  CREATE TABLE llm_replay (
+      request_hash      TEXT PRIMARY KEY,
+      schema_version    INTEGER NOT NULL,
+      provider          TEXT NOT NULL,
+      model             TEXT NOT NULL,
+      request_json      TEXT NOT NULL,
+      response_json     TEXT NOT NULL,
+      created_at        TEXT NOT NULL,
+      updated_at        TEXT NOT NULL
+  );
+  CREATE INDEX llm_replay_provider_idx ON llm_replay(provider);
+  ```
+  - `pub const SUPPORTED_SCHEMA_VERSION: i32 = 1;` exported
+    from `crates/llm/src/replay.rs:1`.
+  —
+  _acceptance: `cargo test -p llm --test replay_schema_test`
+  passes — opens the migration on a tempfile, asserts the
+  table + index exist, asserts `schema_version` column is
+  NOT NULL. [R6.1, Q8b]_
+  **[deps: T1901]**
 
-Outputs:
-- `RecordingProvider<Inner>` decorator + `ReplayProvider`
-  at `crates/llm/src/replay.rs`.
-- SQLite cache at `data/llm-replay.db` (schema-versioned).
-- Fixture cache at `crates/llm/tests/fixtures/llm-replay.db`
-  with one canned response per provider.
-- Per-provider retry loop with exponential-backoff +
-  full-jitter (R7).
-- Env-var-only API-key reader at
-  `crates/llm/src/auth.rs` (R8.1).
-- `redact()` helper at `crates/llm/src/redact.rs` (R8.3).
-- `cargo run --bin llm-smoke` binary at
-  `crates/llm/src/bin/llm_smoke.rs` (R10).
-- `cargo test --test smoke_test` against wiremock fixtures.
-- Rustdoc on `lib.rs` lifting the v0 stub note (R13.1).
-- `spec/runbooks/llm-cost.md` + `spec/runbooks/llm-replay.md`
-  (R13.2 + R13.3).
+- [ ] **T1920** [developer] — `request_hash` at
+  `crates/llm/src/replay/hash.rs` per Design Q8a:
+  - `pub fn request_hash(req: &ChatRequest) -> String` —
+    SHA-256 hex over canonical JSON of `(model, system,
+    messages, tools, max_tokens, temperature)`. Uses
+    `serde_canonical_json::CanonicalFormatter`.
+    `correlation_id` is **excluded** by serializing a
+    sub-struct that omits the field.
+  - 1000-iteration determinism test: same `ChatRequest` →
+    same hash across two calls (proptest seed `0xC0FFEE`).
+  —
+  _acceptance: `cargo test -p llm --test request_hash_test`
+  passes — (a) determinism gate over proptest, (b) two
+  requests differing only in `correlation_id` produce the
+  same hash, (c) two requests differing in `temperature
+  None` vs `Some(0.0)` produce different hashes. [R6.1, Q8a]_
+  **[deps: T1901]**
 
-**Tasks T19xx will be expanded by the architect after Q8 + Q9
-resolutions.**
+- [ ] **T1921** [developer] — `RecordingProvider` at
+  `crates/llm/src/replay.rs` per Design Q8e:
+  - `pub struct RecordingProvider<Inner: LlmProvider> { inner:
+    Inner, pool: sqlx::SqlitePool, writer_lock:
+    tokio::sync::Mutex<()> }`.
+  - `pub async fn open(inner: Inner, path: &Path) ->
+    Result<Self, LlmError>` — opens / creates the SQLite at
+    `path` with `journal_mode=WAL, synchronous=NORMAL`; runs
+    `crates/llm/migrations/`.
+  - `LlmProvider for RecordingProvider<Inner>` `complete(...)`:
+    1. `inner.complete(request.clone()).await?`.
+    2. On Ok response: compute hash; **acquire writer_lock**;
+       INSERT OR REPLACE row with `(hash, schema_version: 1,
+       provider, model, request_json (canonical),
+       response_json (serde), created_at, updated_at)`. Log
+       overwrites at `tracing::info!(target: "llm.replay",
+       "fixture_overwrite", hash)` (R6.5).
+    3. Return Ok.
+  —
+  _acceptance: `cargo test -p llm --test recording_provider_test`
+  passes — (a) one call lands one row in the SQLite,
+  (b) re-record the same hash overwrites idempotently and
+  emits the info line, (c) hash is byte-stable across two
+  recordings of the same request. [R6.1, R6.5, Q8e]_
+  **[deps: T1919, T1920]**
 
-## M7 — Ship gate (VERDICT → PASS)
+- [ ] **T1922** [developer] — `ReplayProvider` at
+  `crates/llm/src/replay.rs`:
+  - `pub struct ReplayProvider { pool: sqlx::SqlitePool }`.
+  - `pub async fn open(path: &Path) -> Result<Self, LlmError>`
+    — opens read-only (`PRAGMA query_only = 1`); asserts
+    `schema_version <= SUPPORTED_SCHEMA_VERSION` on the first
+    row (or returns `LlmError::Provider { provider:
+    ProviderKind::Other("replay"), message: "unknown schema
+    version" }`).
+  - `LlmProvider for ReplayProvider` `complete(...)`:
+    1. Compute hash.
+    2. Read row; cache miss → `LlmError::ReplayMiss(hash)`.
+    3. Decode `response_json` → `ChatResponse`; return.
+  - `provider_kind()` returns the recorded provider's kind
+    (read from the row at lookup time — important for the
+    cost event posting logic that the BudgetedProvider applies
+    on top in research mode; in research mode the budget gate
+    sees ReplayProvider's kind, but the cost is $0 anyway).
+    **Note:** in research mode `BudgetedProvider` wraps
+    `ReplayProvider`, but R9.3 says no cost events on failed
+    calls — and replay calls are deterministic; the cost
+    event posts the recorded provider+model with `usd: $0`
+    because the operator decided research mode is "no LLM
+    cost (cached responses replay)" per product.md line 292.
+    The `BudgetedProvider`'s post-call reconcile in research
+    mode therefore fires with `usd = $0`. (Documented in the
+    runbook at T1932.)
+  —
+  _acceptance: `cargo test -p llm --test replay_provider_test`
+  passes — (a) record one call via `RecordingProvider<Mock>`
+  then replay returns byte-identical response, (b) cache miss
+  returns `LlmError::ReplayMiss(hash)`, (c) schema_version=999
+  fixture rejects with `LlmError::Provider`. [R6.2, R6.3, R6.4,
+  Q8b]_
+  **[deps: T1919, T1920, T1921]**
+  **[gate for T1933, T1936]**
 
-Covers feature.md **V1–V11** verification contract + **R14**
-(no regression in non-LLM code paths) + **Q11**
-(operator-success-report `LLM spend` denominator update from
-`/$135` to `/$200`).
+- [ ] **T1923** [developer] — Smoke binary at
+  `crates/llm/src/bin/llm_smoke.rs` per
+  [feature.md → R10](feature.md#r10--end-to-end-smoke-binary):
+  - Reads `config/agent.toml` + `config/agent.toml.local`
+    (via `crates/agent::config::Config::load`).
+  - For each configured provider in
+    `cfg.llm.providers`, builds an `Arc<dyn LlmProvider>` via
+    `LlmProviderFactory::build` (paper mode forces
+    `RecordingProvider` wrap so subsequent research-mode runs
+    replay the same fixture per R10.2).
+  - Round-trips one prompt: `"Reply with the literal string
+    \`OK\` and nothing else."` against each provider.
+  - Prints the result table (provider / model / tokens_in /
+    tokens_out / usd / latency_ms / result) per R10.1.
+  - Exits 0 if all returned the literal `OK`, 1 otherwise.
+  - CLI flag `--reset` deletes `data/llm-replay.db` before
+    running (Q8c — operator-managed cache).
+  —
+  _acceptance: `cargo build --bin llm-smoke` clean.
+  `cargo run --bin llm-smoke` against a `WIREMOCK=1` env-var-
+  enabled wiremock fixture (or under T1925's `smoke_test.rs`
+  harness) prints the green table and exits 0. [R10.1, R10.2,
+  R10.3, Q8c]_
+  **[deps: T1913, T1922]**
 
-Architect resolutions landing here:
-- **Q11** (denominator update — Option A in this brief vs Option
-  B in first consumer brief vs Option C 1-line hotfix here;
-  analyst recommendation: Option C).
+- [ ] **T1924** [developer] — Smoke wiremock harness at
+  `crates/llm/tests/smoke_test.rs`:
+  - Spawns three wiremock servers (Anthropic-shape, OpenAI-
+    shape, Ollama-shape) on ephemeral ports.
+  - Pipes the smoke binary at the three local URLs via a
+    test-only `[llm.providers.<name>] base_url = …` override.
+  - Asserts the smoke binary exits 0 and the parsed output
+    table contains 3 rows of `result = OK`.
+  —
+  _acceptance: `cargo test --test smoke_test` passes; the
+  smoke run completes in `< 1s` total wall clock (V10
+  performance gate). [R10.3, V10]_
+  **[deps: T1923]**
 
-Outputs:
-- All verification gates green per V1–V11.
-- 9 strategy-backtest anchor SHAs at
-  [`spec/anchors.toml`](../anchors.toml) lines 15–58 byte-
-  identical (R14.2).
-- 2 operator-success-report anchor SHAs at lines 67–75 either
-  byte-identical (Q11 Option B) or re-locked once (Q11 Option
-  A or C).
-- `cargo test --workspace --all-targets` green.
-- Operator-invoked smoke (real API keys) green in operator's
-  environment.
-- Presenter deck at
-  `spec/v2-llm-strategy/presentations/v2-llm-strategy-<date>.md`.
+- [ ] **T1925** [developer] — Fixture cache capture at
+  `crates/llm/tests/fixtures/llm-replay.db` per Design Q8d:
+  - **9 canned responses** = 3 providers × 3 roles
+    (`Trader`, `SentimentAnalyst`, `Other("smoke")`).
+  - Capture procedure (one-shot, manual): operator runs
+    `cargo run --bin llm-smoke --mode paper --providers all`
+    against real APIs (operator-environment); captures the
+    9 rows; copies the resulting `data/llm-replay.db` to
+    `crates/llm/tests/fixtures/llm-replay.db` and commits.
+  - Until the operator-environment capture lands, T1925 ships
+    with a **synthetic** SQLite fixture (canned responses
+    hand-authored with realistic-looking content) so
+    `cargo test --workspace` is offline-deterministic on day
+    one. The synthetic fixture is replaced on the operator's
+    first paper-mode capture.
+  —
+  _acceptance: `crates/llm/tests/fixtures/llm-replay.db`
+  exists with `SELECT count(*) = 9 FROM llm_replay`. The 9
+  canned responses are categorized: 3 providers × 3 roles.
+  `cargo test -p llm --test fixture_cache_test` passes —
+  asserts the row count + that each provider's row's
+  `response_json` parses as a `ChatResponse`. [R6.4, Q8d]_
+  **[deps: T1922]**
 
-**Tasks T19xx will be expanded by the architect after V1–V11
-gate is wired.**
+- [ ] **T1926** [developer] — V9 secrets-in-artifacts grep at
+  `crates/llm/tests/no_secrets_in_artifacts_test.rs` per
+  Design § Q3 = C V9 extension:
+  - Test runs the smoke harness (T1924) against fixture keys
+    matching realistic prefixes (`sk-ant-V9-secretkey-12345678`,
+    `sk-V9-OpenAI-secretkey-87654321`).
+  - Walks every file written under `target/logs/`,
+    `data/llm-replay.db` (decoded JSON for the response_json
+    column), every audit ledger row touched (the
+    test-fixture ledger), every report body file. **Asserts
+    zero substrings** matching `V9-secretkey-12345678` or
+    `V9-OpenAI-secretkey-87654321`.
+  - Asserts zero substrings matching the redacted infix
+    `***` adjacent to a real-looking key prefix in
+    artifact bodies (the redaction is a tracing-only
+    cosmetic; real artifacts shouldn't even surface the
+    prefix).
+  —
+  _acceptance: the test passes; substring count = 0 for both
+  test keys across all artifact paths. [R8.3, V9]_
+  **[deps: T1924, T1925]**
+
+- [ ] **T1927** [developer] — Integration test for replay
+  round-trip at `crates/llm/tests/replay_roundtrip_test.rs`:
+  - Phase 1 (record): `RecordingProvider<MockAnthropic>` →
+    one row in tempfile cache.
+  - Phase 2 (replay): `ReplayProvider` reads the same hash;
+    asserts byte-identical `ChatResponse`.
+  - Phase 3 (miss): `ReplayProvider` against an un-cached
+    request → `LlmError::ReplayMiss(hash)`.
+  —
+  _acceptance: the test passes; phase 2's `ChatResponse` is
+  byte-identical to phase 1's recorded response (V7 replay
+  determinism gate). [R6.1, R6.2, V7]_
+  **[deps: T1922]**
+
+## M7 — Configuration surface + agent main wire-up + runbooks + ship
+
+Covers feature.md **R12** (config surface) + **R13** (docs +
+runbooks) + **R14** (no regression) + **V1–V12** (verification
+gates) + Design **Q11** (denominator update + Cache hit ratio
+row + bundled re-lock).
+
+- [ ] **T1928** [developer] — `LlmConfig` + agent config wire-up
+  at `crates/agent/src/config.rs:300` per Design Crate / module
+  surface:
+  - **New** `pub struct LlmConfig { pub enabled: bool /* default
+    false */, pub default_provider: String, pub
+    budget_usd_month: Decimal, pub replay_cache_path: PathBuf,
+    pub deep_think: TierConfig, pub quick_think: TierConfig,
+    pub providers: HashMap<String, ProviderConfig>, pub pricing:
+    HashMap<String, HashMap<String, PricePerMillionTokens>> /*
+    override map; default empty */ }`.
+  - `pub struct TierConfig { pub provider: String, pub model:
+    String }`.
+  - `pub struct ProviderConfig { pub base_url: String,
+    #[serde(default)] pub api_key: Option<String> /* loaded
+    from agent.toml.local */ }`.
+  - `Default for LlmConfig` returns `enabled: false` so a
+    fresh checkout (no LLM consumers in v2.0.0) does not
+    boot the LLM subsystem.
+  - `Config::load` extension: if a sibling
+    `<config_dir>/agent.toml.local` file exists, parse it
+    into a partial `LlmConfig` overlay struct, deep-merge
+    into the LLM section only (other sections untouched —
+    the operator-only file is LLM-keys-and-overrides exclusively
+    by convention).
+  - `validate()` extension: if `cfg.llm.enabled && cfg.mode !=
+    Mode::Research`, assert `cfg.llm.providers.contains_key(&cfg.llm.default_provider)`
+    and that the corresponding `ProviderConfig.api_key`
+    overlay-resolved-value is `Some(non_empty)`. Else
+    `LlmError::Auth`.
+  —
+  _acceptance: `cargo test -p agent --test llm_config_test`
+  passes — (a) committed `agent.toml` with the new `[llm]`
+  section parses; (b) overlay from `agent.toml.local`
+  populates `api_key`; (c) missing `.local` under
+  `enabled = true && mode = paper` rejects at startup with
+  `LlmError::Auth`; (d) `cfg.llm.enabled = false` (default)
+  boots without any `.local` requirement. [R12.1, R12.2, R12.3,
+  R8.1, R8.2]_
+  **[deps: T1901, T1911, T1914]**
+
+- [ ] **T1929** [developer] — `config/agent.toml` append per R12.1:
+  - Append:
+    ```toml
+    [llm]
+    enabled              = false  # foundation-only at v2.0.0
+    default_provider     = "anthropic"
+    budget_usd_month     = 200.0
+    replay_cache_path    = "./data/llm-replay.db"
+
+    [llm.deep_think]
+    provider = "anthropic"
+    model    = "claude-opus-4-7"
+
+    [llm.quick_think]
+    provider = "anthropic"
+    model    = "claude-haiku-4-5-20251001"
+
+    [llm.providers.anthropic]
+    base_url = "https://api.anthropic.com/v1"
+
+    [llm.providers.openai]
+    base_url = "https://api.openai.com/v1"
+
+    [llm.providers.openrouter]
+    base_url = "https://openrouter.ai/api/v1"
+
+    [llm.providers.deepseek]
+    base_url = "https://api.deepseek.com/v1"
+
+    [llm.providers.ollama]
+    base_url = "http://localhost:11434"
+
+    # Pricing override map (empty by default — see
+    # crates/llm/src/pricing.rs base table).
+    [llm.pricing]
+    ```
+  - **Keys are NOT in this committed file** — they live in
+    `config/agent.toml.local` per Q3 = C.
+  —
+  _acceptance: `cargo test -p agent --lib` passes (the
+  existing `t12_load_from_file` smoke loads the canonical
+  config and asserts `mode == Research`); manual
+  `cargo run --bin agent -- --config config/agent.toml`
+  boots cleanly with `cfg.llm.enabled = false`. [R12.1]_
+  **[deps: T1928]**
+
+- [ ] **T1930** [developer] — `config/agent.toml.local.example`
+  template at the repo root `config/` per R8.4:
+  - Committed file with placeholder keys:
+    ```toml
+    # Copy this file to `agent.toml.local` and edit in your
+    # real API keys. The .local file is git-ignored
+    # (`.gitignore` covers `*.toml.local` + `config/*.local`)
+    # so secrets never touch the repo.
+    #
+    # Per Q3 = Option C (operator-decided 2026-05-10):
+    # all keys live in this single file alongside the
+    # committed `agent.toml`. The agent's startup loader
+    # overlays this file's `[llm.providers.<name>] api_key`
+    # values onto the committed shape.
+
+    [llm.providers.anthropic]
+    api_key = "sk-ant-test-stub-00000000000000000000"
+
+    [llm.providers.openai]
+    api_key = "sk-test-stub-0000000000000000000000"
+
+    [llm.providers.openrouter]
+    api_key = "sk-or-test-stub-0000000000000000000"
+
+    [llm.providers.deepseek]
+    api_key = "test-stub-deepseek-000000000000000"
+    ```
+  - Tests use this template as the default key source so
+    `cargo test --workspace` is hermetic.
+  —
+  _acceptance: `cargo test -p llm --test config_local_parse_test`
+  passes — reads `config/agent.toml.local.example`, asserts
+  it parses as a valid `LocalOverrideConfig`, asserts the four
+  provider keys are placeholder strings (not real-API
+  prefixes after the placeholder zeros). [R8.4]_
+  **[deps: T1928]**
+
+- [ ] **T1931** [developer] — Agent main wire-up at
+  `crates/agent/src/main.rs` (single touch point):
+  - Build `Arc<dyn LlmProvider>` once at startup if
+    `cfg.llm.enabled`, store on the runtime context as
+    `Option<Arc<dyn LlmProvider>>`. **No bus channel added.**
+  - Hard constraint: this is gated on `cfg.llm.enabled`
+    (default false in v2.0.0); when false, no provider is
+    constructed, no key files are read, no `.local` is
+    required.
+  - Install the `redact::install_tracing_redactor()`
+    subscriber at the top of `main` before any other
+    subscriber, ensuring all logs are field-redacted.
+  —
+  _acceptance: `cargo build -p agent` clean; `cargo run -p
+  agent` (with `cfg.llm.enabled = false`) boots cleanly with
+  no `.local` requirement; with `cfg.llm.enabled = true`
+  + valid `.local`, the agent boots, constructs the provider,
+  and stores the `Option<Arc<dyn LlmProvider>>` on the
+  runtime context. [R12.3, R8.3]_
+  **[deps: T1913, T1915, T1928]**
+
+- [ ] **T1932** [developer] — Runbook at
+  `spec/runbooks/llm-cost.md` per R13.2:
+  - Sections: "What the LLM spend line means", "What the
+    operator does on a degrade event", "How to update cost-
+    rate entries (`crates/llm/src/pricing.rs` recompile)",
+    "How to swap providers (TOML edit + restart)", "Real-API
+    smoke procedure (operator-only, requires real keys)".
+  - Includes the byte-stable example output of `cargo run
+    --bin llm-smoke` from T1924.
+  —
+  _acceptance: file exists; `markdownlint spec/runbooks/llm-cost.md`
+  exits 0; `markdown-link-check` (if available locally) exits
+  0. [R13.2]_
+  **[deps: T1923]**
+
+- [ ] **T1933** [developer] — Runbook at
+  `spec/runbooks/llm-replay.md` per R13.3:
+  - Sections: "How research mode uses replay (strict-replay-
+    only at v2.0.0)", "How to refresh the cache (`cargo run
+    --bin llm-smoke --mode paper`)", "How to interpret a
+    `LlmError::ReplayMiss(hash)` failure in a backtest",
+    "How to reset the cache (`cargo run --bin llm-smoke --reset`)",
+    "Schema migration (the `schema_version` column)".
+  - Includes the SHA-256 of one canonical recorded request
+    so the operator can grep their cache for it.
+  —
+  _acceptance: file exists; `markdownlint` exits 0. [R13.3]_
+  **[deps: T1922]**
+
+- [ ] **T1934** [developer] — Crate-level rustdoc rewrite at
+  `crates/llm/src/lib.rs:1` per R13.1:
+  - Replace the v0 stub note with a multi-paragraph rustdoc
+    enumerating: trait + 3 providers + prompt-cache builder +
+    budget gate + record/replay + smoke binary. Each section
+    cross-links to the relevant module / file path.
+  —
+  _acceptance: `cargo doc -p llm --no-deps` passes warning-
+  clean; the generated HTML at
+  `target/doc/llm/index.html` shows the new sections. [R13.1]_
+  **[deps: T1901]**
+
+- [ ] **T1935** [developer] — Reports body-byte changes at
+  `crates/reports/src/render/system_health.rs` + `crates/reports/src/lib.rs`
+  per Design § Q11 (bundled with Q5d):
+  - `crates/reports/src/render/system_health.rs:30` — rustdoc
+    example update `$0.00 / $135` → `$0.00 / $200`.
+  - `crates/reports/src/render/system_health.rs:66+` — new
+    `writeln!(out, "| Cache hit ratio | {} |", ...)` row
+    between the existing `LLM spend` row and the existing
+    `Funding poll status` row. The renderer's input struct
+    gains `pub cache_hit_ratio: Result<String, RenderError>`.
+  - `crates/reports/src/render/system_health.rs:126,139` —
+    test fixture string + assertion update for both
+    denominator and the new `Cache hit ratio` row.
+  - `crates/reports/src/lib.rs:286` — `llm_spend: Ok("$0.00 /
+    $135".into())` → `Ok("$0.00 / $200".into())` + `cache_hit_ratio:
+    Ok("0.0%".into())` (research-mode default).
+  - `crates/reports/src/lib.rs:320` — `observed: "$0.00 /
+    $135".into()` → `"$0.00 / $200".into()` + `cache_hit_ratio:
+    "0.0%".into()`.
+  —
+  _acceptance: `cargo test -p reports --lib system_health`
+  passes (rewritten test asserts the body contains both the
+  new `LLM spend | $0.00 / $200` row AND the new `Cache hit
+  ratio | 0.0%` row). [R9.5, Q5d, Q11]_
+  **[deps: T1910]**
+
+- [ ] **T1936** [developer] — `pre-stage` developer-side anchor
+  re-lock per Design § Q11:
+  - Run the two report scenarios twice 10s apart at seed
+    `0xC0FFEE`:
+    1. `cargo run -p reports --bin report -- --period 7d
+       --ledger target/test-ledgers/sample-7d.db --output
+       spec/operator-success-reports/reports/success-fixed-report-sample-7d.md
+       --seed 0xC0FFEE`
+    2. Same for `report-sample-90d`.
+    3. Re-run each once more; outputs must be byte-identical.
+  - Update `crates/reports/tests/report_scenarios.rs:80,88`
+    `EXPECTED_SHA_7D` / `EXPECTED_SHA_90D` constants with the
+    captured SHAs.
+  - **Developer does NOT edit `spec/anchors.toml`** — that
+    is the tester's job at `T_FINAL_V2_LLM_STRATEGY`. The
+    developer's tick note records the captured SHAs in this
+    task body so the tester can copy-paste them.
+  —
+  _acceptance: the developer's tick note records two byte-
+  stable body-SHA-256s (one per scenario); `bash
+  scripts/hash_report.py
+  spec/operator-success-reports/reports/success-fixed-report-sample-7d.md`
+  matches the recorded SHA across two re-runs. The `cargo
+  test -p reports --test report_scenarios` test passes
+  against the re-anchored EXPECTED_SHA constants. [R5.5, Q11]_
+  **[deps: T1935]**
+
+- [ ] **T1937** [developer] — Negative-invariant test for the 9
+  strategy anchors per Design § Q11 + R14.2:
+  - Document in the developer's tick note: running `bash
+    scripts/verify_anchors.sh` locally shows the 9 strategy-
+    backtest anchors at `spec/anchors.toml:15-58` print
+    `PASS` (byte-identical post-feature). The two
+    `report-sample-*` v1+ anchors at lines 67–75 print `FAIL`
+    until T_FINAL captures the new SHAs.
+  - Mirror the v1.8 reflection-memory T1812 negative-
+    confirmation step pattern.
+  —
+  _acceptance: `bash scripts/verify_anchors.sh` output for
+  the 9 strategy lines reads `PASS`. The 2 `report-sample-*`
+  lines read `FAIL` (expected — the tester re-locks at
+  T_FINAL). [R14.2, V8]_
+  **[deps: T1936]**
+
+- [ ] **T1938** [developer] — Cockpit "LLM budget" tile per
+  R11.2 + Q10 (strawman accepted):
+  - Find the cockpit's right-rail header bar (per existing
+    Lumen Phase 1 patterns); add one `Tile { label: "LLM
+    budget", body: format!("${spent:.2} / $200 = {pct:.1}%"),
+    color: tile_color_for_pct(pct) }`.
+  - `tile_color_for_pct(pct)` returns `Theme::Ok` for `pct <
+    80%`, `Theme::Warn` for `80% <= pct < 100%`, `Theme::Halt`
+    for `pct >= 100%`.
+  - Tile reads `audit::query::llm_spend_this_month(ledger)`
+    (additive; trivial sum over `expense:llm:*` rows in the
+    current month — sibling of `realized_pnl_since`).
+  - **Lumen Phase 6 Assistant slot is NOT wired here** —
+    Phase 6 is a follow-up brief; the `LLM budget` tile is
+    a single right-rail addition only.
+  —
+  _acceptance: `cargo test -p ui --test llm_budget_tile_test`
+  passes — fixture ledger with $143.21 / $200 of LLM spend
+  → tile body reads `$143.21 / $200 = 71.6%`, color =
+  `Theme::Ok`; fixture at $179 / $200 → color = `Theme::Warn`;
+  fixture at $200.01 / $200 → color = `Theme::Halt`. [R11.2,
+  Q10]_
+  **[deps: T1916, T1917]**
+
+- [ ] **T1939** [developer] — V11 schema-migration forward-
+  compat test at `crates/llm/tests/replay_schema_migration_test.rs`:
+  - Open the v1 schema fixture from T1925.
+  - Assert it loads via `ReplayProvider::open`.
+  - Synthesize a hypothetical v2 schema (extra column) by
+    bumping `schema_version` to 2; assert
+    `ReplayProvider::open` rejects with
+    `LlmError::Provider(...)` because `2 > SUPPORTED_SCHEMA_VERSION`.
+  —
+  _acceptance: the test passes both arms. [R6, V11, Q8b]_
+  **[deps: T1925]**
+
+- [ ] **T1940** [developer] — Pre-existing-strategy-test
+  invariant gate per R14.4:
+  - `crates/llm/tests/no_real_api_test.rs` — static-grep
+    style: assert that no test under `crates/llm/tests/`
+    imports `reqwest::Client::new()` without it being passed
+    a `wiremock` mock URL or an Ollama localhost URL. The
+    test walks every `.rs` file under `crates/llm/tests/`,
+    parses HTTP base-URL string literals, asserts every
+    such literal matches a wiremock-spawn pattern (`mock_server.uri()`)
+    or a localhost pattern (`http://localhost:`).
+  —
+  _acceptance: the test passes; the workspace test suite
+  has zero outbound HTTPS dependencies. CI network policy
+  enforces V4 (zero outbound HTTPS to `*.anthropic.com /
+  *.openai.com / *.openrouter.ai / *.deepseek.com`). [R14.4,
+  V4]_
+  **[deps: T1923, T1924]**
+
+- [ ] **T1941** [developer] — Cross-cutting smoke + cleanup pass
+  (mirrors v1.8 T1814):
+  - `cargo fmt --all -- --check` clean.
+  - `cargo clippy --workspace --all-targets --all-features --
+    -D warnings` clean (the new `llm` deps must pass clippy).
+  - `cargo audit` shows no unpatched advisories; `cargo deny
+    check` (bans, licenses, sources, advisories) passes.
+  - Bin smoke: `cargo build --bin llm-smoke` clean;
+    `cargo run --bin llm-smoke` against the wiremock harness
+    exits 0 and prints the green table.
+  - Cost-telemetry confirmation: render a 7d sample report
+    (paper mode with `cfg.llm.enabled = false` per the v2.0.0
+    default) and assert the body's System Health table
+    contains `| LLM spend | $0.00 / $200 |` AND
+    `| Cache hit ratio | 0.0% |`.
+  —
+  _acceptance: every command above exits cleanly. [V1, V2,
+  V3, V8, V10]_
+  **[deps: T1936, T1937, T1938, T1939, T1940]**
+
+- [ ] **T1942** [developer] — V8 anchor-stability negative-
+  confirmation gate (separate from T1937's per-anchor walk-through;
+  this is the consolidated developer-tick note):
+  - Document running `bash scripts/verify_anchors.sh`:
+    the 9 strategy lines print `PASS`; the 2 `report-sample-*`
+    lines print `FAIL` (tester re-locks at T_FINAL).
+  - Document the V12 stress test (T1918) passes with
+    overshoot ≤ $0.40.
+  —
+  _acceptance: developer's tick note quotes the verbatim
+  `verify_anchors.sh` output with `PASS  btc-2023-1m-sma-cross`
+  ... etc. for the 9 lines. [R14.2, V8, V12]_
+  **[deps: T1937, T1918]**
+
+- [ ] **T1943** [developer] — Architecture.md decisions-index
+  update:
+  - **Modify** `spec/architecture.md:421-432` — replace the
+    "LLM integration" stub paragraph with: "_See § v2 — LLM
+    strategy resolutions (Q4–Q11) — confirmed 2026-05-10
+    below._"
+  - **Append** at the bottom of architecture.md (sibling of
+    the existing "v1.8 reflection-memory" decisions-index
+    section if present, else the next sibling after v1+
+    operator-success-reports): a new section
+    `### v2 — LLM strategy resolutions (Q4–Q11) — confirmed
+    2026-05-10` with seven sub-sections (Q4–Q11), each a
+    one-paragraph summary of the decision + a back-pointer
+    `[→ details](spec/v2-llm-strategy/feature.md#design)`.
+  —
+  _acceptance: `markdownlint spec/architecture.md` exits 0;
+  the new section renders correctly in any markdown viewer;
+  the v0-stub paragraph at lines 421–432 reads its
+  cross-reference. [Hard constraint #8 / informational]_
+  **[deps: T1901]**
+
+- [ ] **T1944** [developer] — Final smoke confirmation:
+  - `cargo test --workspace --all-targets` → all suites green
+    (zero failures, zero unexplained `#[ignore]`).
+  - All V1–V12 acceptance gates verified via individual test
+    invocations from the suite output.
+  —
+  _acceptance: workspace-wide test run is fully green; V1–V12
+  individually verified. [V1–V12]_
+  **[deps: T1941, T1942, T1943]**
+
+- [ ] **T1945** [developer] — Pre-FINAL operator-environment
+  smoke (tester's gate input):
+  - Document the procedure for the operator (or the tester
+    in operator's environment) to run the real-API smoke:
+    1. Copy `config/agent.toml.local.example` to
+       `config/agent.toml.local` and fill real API keys.
+    2. Run `cargo run --bin llm-smoke --mode paper` against
+       real Anthropic + OpenAI + Ollama endpoints.
+    3. Verify the table prints 3 rows of `result = OK`.
+    4. Confirm `data/llm-replay.db` has 9 rows (3 providers
+       × 3 roles after the first run).
+  - This is **operator-invoked, not CI** (per V3). Tester
+    confirms at FINAL.
+  —
+  _acceptance: the runbook documents the procedure; tester
+  re-confirms before VERDICT → PASS. [V3, R10.1]_
+  **[deps: T1923, T1932, T1933]**
+
+## Final
+
+- [ ] **T_FINAL_V2_LLM_STRATEGY** [tester] — End-to-end ship gate
+  per [feature.md → Verification](feature.md#verification):
+  - V1: static checks (fmt, clippy `-D warnings`, audit, deny)
+    green.
+  - V2: `cargo test --workspace --all-targets` green.
+  - V3: `cargo run --bin llm-smoke` against wiremock prints
+    green table for all three providers (CI gate);
+    operator-environment real-API smoke confirmed in
+    operator's environment (T1945).
+  - V4: zero outbound HTTPS to `*.anthropic.com`,
+    `*.openai.com`, `*.openrouter.ai`, `*.deepseek.com`
+    during `cargo test --workspace`.
+  - V5: cost-telemetry round-trip — one LLM call asserts a
+    balanced `expense:llm:<tier>` ↔ `liabilities:llm_accrued`
+    journal pair; `audit::query::global_debit_credit_sum`
+    returns `(dr, cr)` with `|dr - cr| ≤ 1e-8`.
+  - V6: budget-gate determinism — two runs of the
+    `llm-budget-degrade` scenario produce byte-identical
+    degrade events.
+  - V7: replay determinism — two runs of `ReplayProvider`
+    against the same hash produce byte-identical responses.
+  - V8 + Q11 anchor re-lock procedure:
+    1. Capture the new body-SHA-256s for
+       `report-sample-7d` and `report-sample-90d` from a
+       byte-stable two-run render at seed `0xC0FFEE`
+       (the developer pre-stages these at T1936; tester re-
+       captures from a clean run).
+    2. **Edit `spec/anchors.toml:67-75`** to replace the
+       v1.8 entries with the new SHAs. Add a comment line
+       above the new entries: "v2.0.0 re-lock — denominator
+       `$135 → $200` + `Cache hit ratio` row added (Q5d +
+       Q11)."
+    3. The 9 v0/v0.5/v1/v1.5a strategy anchors at lines
+       15–58 stay byte-identical (R14.2).
+    4. Run `bash scripts/verify_anchors.sh`; expect
+       `ANCHORS PASS  (11 / 11)`.
+  - V9: grep over `target/logs/`, `data/llm-replay.db`, and
+    every audit row touched during the smoke run finds zero
+    occurrences of the test API-key strings.
+  - V10: smoke binary completes in `< 1s` total wall clock;
+    each provider's `complete()` in `< 200ms` test wall.
+  - V11: fixture cache schema-migration test passes.
+  - V12: concurrent-overshoot stress test passes; bound ≤
+    $0.40.
+  - Tester confirms the operator-environment real-API smoke
+    (T1945) is green in operator's environment.
+  - Status flip `in-progress → shipped`; owner flip
+    `architect → shipped`; appended Changelog row.
+  - Presenter follow-up: `present-results` skill assembles
+    `spec/v2-llm-strategy/presentations/v2-llm-strategy-<date>.md`
+    for operator approval (post-FINAL gate, per AGENT.md).
+  —
+  _acceptance: all V1–V12 verification gates green AND
+  `cargo run --bin llm-smoke` round-trips three providers AND
+  `bash scripts/verify_anchors.sh` PASS 13/13 (11 pre-existing
+  + 2 re-locked `report-sample-*`; the architect's Q11 = Option
+  C decision lands the re-lock in this brief). Operator's
+  "[x] Approved — ship" recorded in the presenter deck. [V1–V12,
+  R14, Q11]_
+  **[deps: T1944, T1945]**
+
+## Parallelism map
+
+```
+M1 (trait + types + rename):
+  developer:
+    T1901 (critical-path gate; rename + trait + error + tools)
+
+M2 (provider impls):
+  developer:
+    T1901 ──► T1902 ──► (T1903 || T1904 || T1905) ──► T1906
+
+M3 (prompt-cache + cache observability):
+  developer:
+    T1901 ──► T1907 (atomic budget refactor)
+    T1901 ──► T1908 (CachedSystemPrompt builder)
+    T1901 ──► T1909 (cache-event helper)
+    T1901 ──► T1910 (audit::cache_hit_ratio_since)
+
+M4 (budget gate + audit memo + V12):
+  developer:
+    T1901 ──► T1911 (pricing module)
+    T1907 ──► T1912 (BudgetedProvider)
+    T1901 ──► T1916 (BudgetEventKind + journal helper)
+    T1901 ──► T1917 (token-tag plumbing)
+    T1912 ──► T1918 (V12 stress test)
+    T1903, T1904, T1905, T1912, T1914, T1922 ──► T1913 (factory)
+
+M5 + M6 (replay + smoke + secrets gate):
+  developer:
+    T1901 ──► T1919 (migration SQL)
+    T1901 ──► T1920 (request_hash)
+    T1919, T1920 ──► T1921 (RecordingProvider)
+                ──► T1922 (ReplayProvider)
+    T1922 ──► T1925 (fixture cache)
+    T1913 ──► T1923 (smoke binary)
+    T1923 ──► T1924 (smoke wiremock harness)
+    T1924, T1925 ──► T1926 (V9 secrets-in-artifacts)
+    T1922 ──► T1927 (replay round-trip integration test)
+    T1922 ──► T1933 (replay runbook)
+
+M7 (config + agent main + reports body change + ship):
+  developer:
+    T1901, T1911, T1914 ──► T1928 (LlmConfig)
+    T1928 ──► T1929 (config/agent.toml append)
+    T1928 ──► T1930 (config/agent.toml.local.example)
+    T1913, T1915, T1928 ──► T1931 (agent main wire)
+    T1923 ──► T1932 (cost runbook)
+    T1901 ──► T1934 (rustdoc rewrite)
+    T1910 ──► T1935 (System Health body change)
+    T1935 ──► T1936 (developer-side EXPECTED_SHA capture)
+    T1936 ──► T1937 (negative-invariant 9-anchor gate)
+    T1916, T1917 ──► T1938 (cockpit "LLM budget" tile)
+    T1925 ──► T1939 (V11 schema-migration test)
+    T1923, T1924 ──► T1940 (no-real-API gate)
+    T1936, T1937, T1938, T1939, T1940 ──► T1941 (cross-cutting smoke)
+    T1937, T1918 ──► T1942 (V8 + V12 negative-conf gate)
+    T1901 ──► T1943 (architecture.md decisions-index update)
+    T1941, T1942, T1943 ──► T1944 (final smoke)
+    T1923, T1932, T1933 ──► T1945 (operator-env real-API smoke)
+
+  tester:
+    T1944, T1945 ──► T_FINAL_V2_LLM_STRATEGY
+```
+
+**Independent fan-out gates after T1901:** T1902 (retry helper),
+T1907 (atomic budget), T1908 (prompt cache builder), T1909
+(observability), T1910 (audit query), T1911 (pricing), T1916
+(BudgetEventKind), T1917 (token-tag plumbing), T1919 (migration
+SQL), T1920 (request hash), T1934 (rustdoc), T1943
+(architecture.md) — **12 tasks parallelize** after the gate.
+
+**Critical path:** T1901 → T1902 → T1903 → T1906 → T1913 →
+T1923 → T1924 → T1941 → T1944 → T_FINAL.
 
 ## Notes
 
-- This stub deliberately leaves T-numbers unenumerated.
-  Spec-skill discipline: tasks expand only after the architect
-  publishes the Design section.
-- Foundation-only scope (Q1 = Option A) keeps the milestone
-  count at **6 build milestones + 1 ship gate** (M1–M7). If
-  Q1 lands Option B/C/D the architect appends consumer-
-  milestones at M8+ and the brief grows accordingly.
-- Per the project's `[parallelism rules]`
-  ([AGENT.md](../../AGENT.md#parallelism-rules)), several M-
-  level tasks parallelize across developers once M1 (the
-  trait shape) lands: M2 (provider impls) and M3 (prompt-
-  cache builder) and M6's pricing-module + auth-helper
-  components can run in parallel under different developers.
-  The architect lays out the parallelism gates explicitly when
-  T19xx tasks expand.
-- **No `[ui-designer]` tasks** under foundation-only scope. The
-  cockpit "LLM budget" tile (R11.2) is the only UI surface
-  this brief introduces; analyst's prior is the developer
-  ships it as a single right-rail tile in the cockpit's
-  header bar (Lumen Phase 6 Assistant slot is gated on this
-  brief and ships separately, so no Phase 6 work happens in
-  v2.0.0). Architect may push back and spawn a `[ui-designer]`
-  for the tile if it's bigger than a single tile (Q10).
+- Every task that writes spec files uses the `spec-update`
+  skill.
+- **T1901** is the critical-path gate. The `LlmProvider` trait
+  + `ChatRequest` / `ChatResponse` types + `LlmError` enum + the
+  `cost::LlmProvider → ProviderKind` rename all land in one PR
+  so downstream developers (M2–M7) compile against a stable
+  trait shape from day one. The rename is the load-bearing
+  detail — every `crates/cost/` consumer (currently
+  `LedgerCostSink`'s tests at `crates/cost/src/sink.rs:76,80`)
+  picks up the rename in the same PR.
+- **T1907** is the load-bearing budget refactor. Going from
+  `Decimal` to `AtomicU64` cents is the change that lets V12
+  stay green; deferring this introduces a budget race that
+  costs operator dollars. The atomic refactor preserves the
+  existing API (`add_spend`, `remaining`, `mode_override`)
+  and adds `try_reserve`.
+- **T1912** wraps the provider in `BudgetedProvider`. This
+  is the "impossible to forget the budget gate" pattern. The
+  factory at T1913 always wraps; consumer code never sees the
+  leaf.
+- **T1922** is the load-bearing replay decision. Strict-replay-
+  only at v2.0.0 means a research-mode backtest miss is a
+  loud build error, not a silent live-API call. Hard constraint
+  #4 (no new bus channel) is preserved — the replay path is
+  call-and-return, no channels.
+- **T1925** ships a synthetic fixture cache; the real
+  operator-environment capture replaces it on first paper-mode
+  run. This means CI is hermetic from day one without blocking
+  on operator-env API access.
+- **T1935** is the load-bearing renderer change. Both Q5d
+  (`Cache hit ratio` row addition) and Q11 (`$135 → $200`
+  denominator) bundle into one body-byte rotation; the V8
+  re-lock at T_FINAL captures the consolidated SHA changes.
+- **T1937** is forward-compat: if any of the 9 strategy-
+  backtest anchors drift, **escalate to analyst** (per the
+  v1.8 precedent) — it signals an unintended hot-path change
+  that violates Q1 = Option A foundation-only scope.
+- **T1936** prepares the re-lock data; **T_FINAL_V2_LLM_STRATEGY**
+  performs the actual `spec/anchors.toml` edit (tester only).
+  Same pattern as v1.5a T717, v1+ T816, v1.8 T1813.
+- **No new runtime crate dependency in default builds beyond
+  `cfg.llm.enabled = false`.** When the LLM subsystem is off
+  (the v2.0.0 default), the agent boots without reading any
+  `.local` file, without constructing any provider, without
+  any network egress.
+- **No `Strategy` trait change** under Q1 = Option A. Hard
+  constraint #3 preserved.
+- **No new bus channel.** Hard constraint #4 preserved. LLM
+  providers are call-and-return; consumers in follow-up briefs
+  decide whether to introduce channels.
+- **No secrets in committed artifacts.** Hard constraint #6
+  preserved via T1915's redact helper + T1926's V9 grep gate.
+- **Anthropic-isms stay behind the provider impl.** The trait
+  is provider-agnostic; cache breakpoints, tool-use schemas,
+  retry-after parsing all live in `crates/llm/src/providers/anthropic.rs`.
+  Hard constraint #7 preserved.
+- **Body-vs-front-matter discipline.** Q11's `$135 → $200`
+  + Q5d's `Cache hit ratio` row are the only deterministic
+  body-byte changes; both are named explicitly in T1935 and
+  re-locked at T_FINAL. Hard constraint #8 preserved.
+- **Atomic-write contract preserved.** Replay cache uses
+  SQLite WAL (Q8e); no tempfile-rename needed because WAL
+  enforces the atomic-commit contract on its own. Hard
+  constraint #5 satisfied by SQLite's durability shape.
+- **Test-fixture key pattern.** All `.local.example` keys end
+  with `0000…` so the V9 grep test can use prefixes like
+  `sk-ant-V9-secretkey-12345678` that don't collide with the
+  fixture template.
 
 ## Changelog
 
@@ -276,3 +1518,26 @@ gate is wired.**
   Tasks to be expanded by the architect after operator
   resolves Q1, Q2, Q3, Q10 and architect lands the Design
   section.
+- 2026-05-10 (architect): expanded the M1–M7 milestones with
+  45 developer T19xx tasks (T1901–T1945) +
+  `T_FINAL_V2_LLM_STRATEGY`. Q4 (trait shape, async +
+  non-streaming + tool-use-day-one + 8-variant `LlmError` +
+  cost-crate `LlmProvider → ProviderKind` rename), Q5
+  (TTL-driven 2-breakpoint provider-aware builder + per-role
+  per-day Prometheus counter pair + `audit::query::cache_hit_ratio_since`),
+  Q6 (factory-level decorator + atomic cents counter + 0.2%
+  documented overshoot bound + new V12 verification gate),
+  Q7 (hybrid hard-coded base table + TOML override; module
+  in `llm` crate not `cost`), Q8 (SQLite WAL + canonical-JSON
+  SHA-256 + `schema_version` + 9-row fixture + strict-replay-
+  only at v2.0.0), Q9 (exponential backoff + full jitter + 3
+  retries + no circuit breaker + `Retry-After` honored), Q11
+  (Option C — denominator hot-fix bundled with Q5d's
+  `Cache hit ratio` row addition; the 2 `report-sample-*`
+  anchors re-lock once at T_FINAL_V2_LLM_STRATEGY) all
+  resolved in feature.md § Design. Each T-task cites the
+  R-item it implements + a one-line acceptance the tester
+  can verify by running a specific command. Parallelism map +
+  synchronization gates included; handoff contract preserved
+  (no UI involvement beyond the right-rail "LLM budget"
+  tile). Owner → architect; status stays in-progress.
