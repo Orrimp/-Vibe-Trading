@@ -711,6 +711,9 @@ strictly worse experience than hover.
 
 ### Q4 — Tooltip content fields [OPERATOR-DECIDE]
 
+[RESOLVED 2026-05-10 — operator confirmed analyst strawman via orchestrator chat AND accepted the sub-question recommendation: **drop the truncated transaction ID from the tooltip**. The full UUID is one click away in the journal-transaction modal (R4.5), so duplicating a truncated form in the tooltip wastes vertical space. Final tooltip fields: Side (Buy/Sell badge), Price (USDT, 4 decimals), Quantity (base asset, 4 decimals), Notional (price × qty, USDT, 2 decimals), Timestamp (RFC3339 UTC), Strategy ID (if surfaceable). Six fields total. Architect's R4.4 positioning math + R4.7 strings constants enumerate exactly these six.]
+
+
 R4.2 strawman: **Side** (Buy/Sell badge), **Price** (USDT, 4
 decimals), **Quantity** (base asset, 4 decimals), **Notional**
 (price × qty, USDT, 2 decimals), **Timestamp** (RFC3339 UTC),
@@ -727,6 +730,9 @@ ID** useful in the tooltip if R4.5 already opens the full modal on
 click, OR should it be dropped to save vertical space?
 
 ### Q5 — Layout for the three counter views [OPERATOR-DECIDE]
+
+[RESOLVED 2026-05-10 — operator picked **Layout (β)** via orchestrator chat (analyst's recommendation). Final shape: chart keeps full width; cumulative-window-volume tile + open-position mirror sit **above** the chart in a status strip; per-bar volume histogram sits **below** the chart at a fixed ~80px height. Eye-line flows tile → chart → histogram. R8.1's layout reshape pins this; architect's M4 task enumeration locks exact pixel heights / spacing per Lumen tokens.]
+
 
 Five plausible layouts for the cumulative tile (R7.1) + per-bar
 histogram (R7.2) + open-position mirror (R7.3):
@@ -791,6 +797,9 @@ gain code reuse but cost type clarity. New widget per the principles
 "three-uses rule" only when a third volume-histogram consumer appears.
 
 ### Q8 — Backtest-viewer parity [OPERATOR-DECIDE]
+
+[RESOLVED 2026-05-10 — operator picked **Option (b) defer** via orchestrator chat (analyst's recommendation). Cockpit-only this round; viewer parity is a follow-up brief named e.g. `viewer-charts-parity` queued post-ship. Reasons: cockpit serves the live-monitoring use case the operator described ("did the strategy buy at the right time"); viewer's purpose is post-hoc backtest review where the existing KPI strip + equity curve + drawdown band already cover the same operator question through different lenses. R12 in this brief explicitly excludes viewer changes.]
+
 
 Should the `viewer` binary
 ([`crates/ui/src/bin/viewer.rs`](../../crates/ui/src/bin/viewer.rs))
@@ -894,3 +903,19 @@ _tester fills this — left blank intentionally._
   Version proposal `1.9.0` continues the main v1.x line (justified
   in `## Why`). HANDOFF → architect (orchestrator routes after
   operator resolves Q4 / Q5 / Q8).
+- 2026-05-10 (orchestrator, operator-relayed via chat): operator
+  resolved the three [OPERATOR-DECIDE] questions —
+  - **Q4 → analyst strawman + drop truncated transaction ID**
+    (sub-question accepted). Final tooltip: 6 fields (Side,
+    Price, Quantity, Notional, Timestamp, Strategy ID). The full
+    UUID is one click away in the journal-transaction modal so
+    the truncated form was redundant.
+  - **Q5 → Layout (β)** — chart keeps full width; cumulative-
+    window-volume tile + open-position mirror in a status strip
+    above; per-bar volume histogram below at fixed ~80px.
+  - **Q8 → defer viewer parity** to a follow-up brief
+    (`viewer-charts-parity`); cockpit-only this round.
+  Six [ARCHITECT-DECIDE] questions remain (Q1 signal source —
+  load-bearing; Q2 y-snap method; Q3 tooltip impl; Q6 marker
+  visual treatment; Q7 histogram widget shape; Q9 SignalView
+  type home). Parking-lot Q10 unchanged. Routing → architect.
