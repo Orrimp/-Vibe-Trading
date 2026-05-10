@@ -34,18 +34,20 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **v2 LLM strategy.** Promoted from Queue 2026-05-10. Analyst owns
-  the brief at `spec/v2-llm-strategy/feature.md`. Prompt design,
-  model + provider choice, hard cost budget enforcement on top of
-  the existing `crates/cost/` scaffolding. Architect for the LLM-trait
-  shape + prompt-cache strategy (the `crates/llm/` stub at
-  [`crates/llm/src/lib.rs`](../crates/llm/src/lib.rs) has a 23-line
-  `LlmProvider` trait sketch from v0). Likely the biggest scope of
-  any feature shipped to date — the analyst will propose whether v2
-  ships as a foundation-only brief (trait + provider impls + cost
-  wiring) with several LLM-consumer follow-up briefs, or bundles
-  more in the first ship. **Unblocks Lumen Phase 6** (Assistant
-  slot reserved until this ships).
+- **v2 LLM strategy** — **PAUSED 2026-05-10 at architect → developer
+  handoff.** Operator paused with *"Write it down for now. I will
+  come to this point a while later."* Resumption breadcrumb at
+  [`spec/v2-llm-strategy/orchestrator-scope-check-2026-05-10.md`](v2-llm-strategy/orchestrator-scope-check-2026-05-10.md)
+  — read that file FIRST when resuming; it holds the three
+  resumption-time decisions (Q4 bonus rename keep/defer, Q8 strict-
+  vs-best-effort replay, Q11 denominator bundle/defer) and the
+  recommended next move. Analyst draft + operator Q-resolutions
+  (Q1=A foundation-only, Q2=A Anthropic, Q3=C config-file,
+  Q10=strawman) + architect Design + 45 dev tasks T1901–T1945 are
+  all committed. **Pending: developer pass.** Brief at
+  [`spec/v2-llm-strategy/feature.md`](v2-llm-strategy/feature.md)
+  (status: in-progress, owner: architect). **Unblocks Lumen Phase 6**
+  (Assistant slot reserved until this ships).
 
 ## Queue
 

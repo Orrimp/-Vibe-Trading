@@ -2231,3 +2231,18 @@ overshoot bound that needs a regression test.
   22 existing files modified. Architecture.md decisions index
   gains a v2 LLM section pointing back to this Design.
   HANDOFF → developer.
+- 2026-05-10 (orchestrator, paused): operator paused at the
+  architect → developer handoff with *"Write it down for now.
+  I will come to this point a while later."* Resumption
+  breadcrumb at
+  [`orchestrator-scope-check-2026-05-10.md`](orchestrator-scope-check-2026-05-10.md)
+  — that file holds the orchestrator's pre-developer-spawn
+  scope-check, the three resumption-time decisions (Q4 bonus
+  rename keep/defer; Q8 strict-vs-best-effort replay; Q11
+  denominator bundle/defer), the surface-area summary, and
+  the recommended next move. Backlog Active entry annotated
+  PAUSED with a forward-pointer to the same file. Defaults
+  are "accept all three" (A / A / C) which matches the
+  architect's picks. No code or spec mutation pending; the
+  architect's Design and T1901–T1945 task list are committed
+  and ready for the developer to consume on resumption.
