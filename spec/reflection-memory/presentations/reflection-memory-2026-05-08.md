@@ -369,12 +369,18 @@ The 10-gate matrix above is the canonical verification surface; the per-gate evi
 ## Approval
 
 - [ ] Approved — ship
-- [ ] Approve with notes (notes below)
+- [x] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
 
-_empty until operator fills_
+**2026-05-10 (operator, verbal approval via orchestrator chat):**
+
+Approved with one override on the open decision: **flip `ReflectionConfig::enable_writer` default from `false` to `true`.** The architect's text was the right call; the developer's safer-default was conservative-correct but the operator wants cards landing on every closed trade by default. Research / fixture profiles that need the writer off must override to `false` explicitly in their local config.
+
+Applied in the same commit as this approval recording — a one-line patch to `crates/agent/src/config.rs:257` flipping the `Default` impl, plus a comment update at `:251-256` and `:449-452` documenting the operator-approved default. Re-tested: `cargo test --workspace --all-targets` → 952 / 0 / 3 (unchanged); `scripts/verify_anchors.sh` → ANCHORS PASS (11 / 11) (unchanged — the default flip doesn't change any body byte that contributes to a locked SHA, since the test profiles already produced the byte-stable bodies via explicit config in their fixtures).
+
+No other notes. Deck approved as `[x] Approve with notes`.
 
 ## Decision history (2026-05-08)
 
@@ -402,3 +408,4 @@ The whole arc — brief → architect → developer → tester → presenter —
 ## Changelog
 
 - 2026-05-08 (presenter): initial draft after tester `VERDICT → PASS` at commit `7650c7b8` (tester report `spec/reflection-memory/reports/test-2026-05-08-2114-reflection-memory-final.md`). Pulled evidence from feature brief lines 11–98 + 519–843 + 1505–1607, tasks.md (15/15 tasks ticked), tester report §1–§11, and three live re-runs on this machine: `report_scenarios` (11/11 anchor lock + body-SHA print), `report_scenarios_with_lessons` (4/4 PASS — the new with-lessons render path), and `verify_anchors.sh` (`ANCHORS PASS (11 / 11)`). Surfaces one open decision for the operator: keep the developer's safer-default `enable_writer = false`, or override back to the architect's `true`. Five operator-relevant facts called out under "Notes for the operator" (Q1 Option A locked, Q4 report-only, writer default OFF, Q5 distillation deferred, anchor scope = 2). Pre-tick gate `bash scripts/check_presentation.sh` run on this file — see closing summary.
+- 2026-05-10 (orchestrator, operator-relayed via chat): approval recorded as `[x] Approve with notes` with the override "flip `ReflectionConfig::enable_writer` default from `false` to `true`." One-line patch applied in the same commit at `crates/agent/src/config.rs:257` (Default impl) plus comment updates at `:251-256` (the impl-level comment) and `:449-452` (the doc comment on `Config::reflection`). Re-tested post-flip: 952 / 0 / 3 unchanged; anchors 11 / 11 PASS unchanged. Reflection-memory feature now ships fully — backlog moves from Active to Recent in the same commit.

@@ -233,9 +233,11 @@ impl Default for AuditConfig {
 ///
 /// `path` is the sibling sqlite file used by `SqliteReflectionStore`.
 /// `channel_capacity` is the bounded mpsc capacity (Q8 default 1024).
-/// `enable_writer = false` short-circuits the writer task spawn — used
-/// in research-mode fixtures and in the `reports` binary's read-only
-/// path.
+/// `enable_writer = true` is the v1 default per operator approval
+/// 2026-05-10 (presenter deck `spec/reflection-memory/presentations/reflection-memory-2026-05-08.md`,
+/// "Approve with notes — flip enable_writer to true"). Tests that
+/// need the writer off MUST set `enable_writer = false` explicitly
+/// on their `ReflectionConfig`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReflectionConfig {
     pub path: PathBuf,
@@ -248,13 +250,11 @@ impl Default for ReflectionConfig {
         Self {
             path: PathBuf::from("./data/audit/reflection.db"),
             channel_capacity: 1024,
-            // Default to false in research mode — agent's main.rs
-            // promotes to true under `Mode::Paper` per architect's
-            // "v1 default is enable_writer = true" plus an explicit
-            // override at boot.  Keeping the default false here means
-            // reading `Config::default()` in tests / research never
-            // touches the writer task.
-            enable_writer: false,
+            // Operator-approved default 2026-05-10: cards land the
+            // moment the agent restarts. Research / fixture profiles
+            // that need the writer off override to `false` in their
+            // local config.
+            enable_writer: true,
         }
     }
 }
@@ -447,9 +447,9 @@ pub struct Config {
     #[serde(default)]
     pub universe: UniverseConfig,
     /// Reflection-memory writer config (T1807 / Q3a / Q8). Default
-    /// `enable_writer = false` so research / fixture profiles do not
-    /// spawn the writer task; production paper-mode flips it on
-    /// explicitly via the loaded TOML.
+    /// `enable_writer = true` per operator approval 2026-05-10 — cards
+    /// land on every closed trade by default. Research / fixture
+    /// profiles that need the writer off override to `false`.
     #[serde(default)]
     pub reflection: ReflectionConfig,
 }

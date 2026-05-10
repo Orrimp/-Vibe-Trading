@@ -34,16 +34,9 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **Reflection memory.** Promoted from Queue 2026-05-08. Replaces the
-  R6 placeholder body in
-  [`crates/reports/src/render/memory_highlights.rs`](../crates/reports/src/render/memory_highlights.rs)
-  with real reflection-memory output, then re-locks the two
-  `report-sample-7d` / `report-sample-90d` anchors (precedent v1.5a
-  T717). Forward-compat breadcrumb already in place at
-  [`spec/dev-notes/memory-anchor-relock-TBD.md`](dev-notes/memory-anchor-relock-TBD.md).
-  Open R6 in [`spec/operator-success-reports/feature.md`](operator-success-reports/feature.md)
-  for re-scoping at the same time per the breadcrumb's "Owner" section.
-  Analyst owns the feature brief at `spec/reflection-memory/feature.md`.
+_(empty — reflection-memory shipped 2026-05-10 as v1.8.0. See
+Recent. No new feature is currently promoted; v2 LLM strategy is the
+next strategic step in Queue.)_
 
 ## Queue
 
@@ -79,6 +72,33 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Recent (shipped)
 
+- **Reflection memory (v1.8.0)** — shipped 2026-05-10 (operator
+  verbal approval recorded as `[x] Approve with notes` in the
+  presenter deck at
+  [`spec/reflection-memory/presentations/reflection-memory-2026-05-08.md`](reflection-memory/presentations/reflection-memory-2026-05-08.md);
+  one note: flip `ReflectionConfig::enable_writer` default from
+  `false` to `true` — applied in the same commit as approval).
+  Replaces the R6 placeholder body in
+  [`crates/reports/src/render/memory_highlights.rs`](../crates/reports/src/render/memory_highlights.rs)
+  with real reflection-memory output. New leaf crate
+  [`crates/reflection/`](../crates/reflection/) (lib only — types,
+  regime + outcome classifiers, deterministic 32-dim embedding,
+  post-mortem-analyst card generator, `ReflectionStore` trait + a
+  `SqliteReflectionStore` linear-scan top-K impl, bounded mpsc
+  writer task with Prometheus drop counter, retrieval API). Wired
+  through `crates/agent/src/{config,main}.rs` + `crates/exec/src/paper.rs`.
+  Re-locked the two `report-sample-*` anchors at
+  `spec/anchors.toml:67-75`; the 9 strategy-backtest anchors at
+  lines 15–58 are byte-identical (negative-invariant test t1812
+  enforces). Q-resolutions: Q1 = Option A (deterministic v1, no
+  LLM dependency); Q4 = report-only (Strategy trait unchanged);
+  Q5 = distillation deferred to follow-up brief
+  `reflection-memory-distillation`. Tester report:
+  [`spec/reflection-memory/reports/test-2026-05-08-2114-reflection-memory-final.md`](reflection-memory/reports/test-2026-05-08-2114-reflection-memory-final.md)
+  (V1–V10 all PASS; 952 / 0 / 3 tests across 124 binaries; 11/11
+  anchors PASS; cargo deny advisories/bans/licenses/sources all
+  ok). Brief: [`spec/reflection-memory/feature.md`](reflection-memory/feature.md)
+  (status: shipped, version: 1.8.0).
 - **Presenter smoke test on `operator-success-reports`** — shipped
   2026-05-08 (operator verbal approval recorded as `[x] Approved —
   ship` in commit `587dad7`). Deck at
