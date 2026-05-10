@@ -53,6 +53,30 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Strategy
 
+- **v2.5 — Kronos foundation-model forecast overlay.** _candidate_,
+  blocks on v2 LLM ship. Decoder-only Transformer pre-trained on
+  K-line data from 45+ exchanges (5 sizes, 4.1M–499M params, MIT
+  license, AAAI 2026 paper, 23.8k stars on
+  [shiyu-coder/Kronos](https://github.com/shiyu-coder/Kronos)). Slots
+  into the v2.5 DL-forecaster row in
+  [`spec/product.md`](product.md#strategy-library--roadmap)
+  (specialises the original "TCN or small Transformer" strawman with
+  a specific pre-trained model rather than training from scratch).
+  Pre-analyst technical evaluation at
+  [`spec/dev-notes/kronos-evaluation-2026-05-10.md`](dev-notes/kronos-evaluation-2026-05-10.md)
+  — license, three integration paths (subprocess / ONNX+tract /
+  candle), context-window caveats (512 / 2048 tokens), and 8 open
+  questions for the future analyst (pre-trained vs fine-tuned, model
+  size, integration path, forecast horizon, pure-strategy vs overlay
+  shape, determinism, anchor impact, cost telemetry). Stub feature
+  folder at
+  [`spec/v25-kronos-forecast-overlay/feature.md`](v25-kronos-forecast-overlay/feature.md)
+  (`status: candidate` — new status for "operator-flagged for future
+  evaluation"). Analyst spawn when the operator promotes from
+  candidate → in-progress; not before v2 LLM ships (v2.5's
+  research-mode determinism contract reuses v2's record/replay cache
+  pattern from `spec/v2-llm-strategy/feature.md` Q8).
+
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 
 - **Lumen Phase 6 — Assistant slot.** _reserved_ — depends on the

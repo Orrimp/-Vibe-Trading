@@ -180,7 +180,7 @@ data/feature/risk/exec scaffolding. Rough order of arrival:
 | v1    | Cross-sectional momentum (top-N)                 | First real edge candidate; multi-symbol  |
 | v1.5  | Mean-reversion on z-scored pairs                 | Tests pairs / portfolio plumbing         |
 | v2    | LLM-augmented news/sentiment overlay             | First LLM-in-the-loop strategy           |
-| v2.5  | DL forecaster (TCN or small Transformer)         | First DL model in production             |
+| v2.5  | DL forecaster — **Kronos foundation model** primary candidate ([eval](dev-notes/kronos-evaluation-2026-05-10.md); [stub](v25-kronos-forecast-overlay/feature.md)) | First DL model in production             |
 | v3    | RL policy on constrained action space            | Learning agent                           |
 | v4+   | Event-driven (listings, exploits, regime shifts) | Higher-skill territory                   |
 
