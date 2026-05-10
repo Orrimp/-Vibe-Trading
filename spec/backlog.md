@@ -34,20 +34,22 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-_(empty — reflection-memory shipped 2026-05-10 as v1.8.0. See
-Recent. No new feature is currently promoted; v2 LLM strategy is the
-next strategic step in Queue.)_
+- **v2 LLM strategy.** Promoted from Queue 2026-05-10. Analyst owns
+  the brief at `spec/v2-llm-strategy/feature.md`. Prompt design,
+  model + provider choice, hard cost budget enforcement on top of
+  the existing `crates/cost/` scaffolding. Architect for the LLM-trait
+  shape + prompt-cache strategy (the `crates/llm/` stub at
+  [`crates/llm/src/lib.rs`](../crates/llm/src/lib.rs) has a 23-line
+  `LlmProvider` trait sketch from v0). Likely the biggest scope of
+  any feature shipped to date — the analyst will propose whether v2
+  ships as a foundation-only brief (trait + provider impls + cost
+  wiring) with several LLM-consumer follow-up briefs, or bundles
+  more in the first ship. **Unblocks Lumen Phase 6** (Assistant
+  slot reserved until this ships).
 
 ## Queue
 
 ### Strategy
-- **v2 LLM strategy.** Analyst for prompt design, model choice, and a
-  hard cost budget (currently $0/mo). Architect for the LLM-trait
-  shape + caching. Likely the biggest scope of any queued item.
-  **Unblocks Phase 4 of the
-  [lumen-design-adoption](features/lumen-design-adoption.md) master
-  roadmap** (the right-rail Assistant slot — reserved until this
-  ships).
 
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 
