@@ -795,18 +795,33 @@ pub fn synthetic_candles(seed: u64, venue: Venue, symbol: Symbol, count: usize) 
 
 /// Phase 2 — produce `count` deterministic fills alternating `Buy` /
 /// `Sell` for the given `(venue, symbol)`. Mirrors the existing
-/// `fake_fill_view` `n % 2 == 0` rule with `symbol` substituted in.
-/// When `count >= 2` the result holds at least one buy and one sell.
+/// `fake_fill_view` `n % 2 == 0` side-alternation rule with `symbol`
+/// substituted in; when `count >= 2` the result holds at least one
+/// buy and one sell.
+///
+/// Fill timestamps are evenly distributed across the 60-minute bar
+/// range produced by [`synthetic_candles`] (60 bars × 60s each) so
+/// markers render visibly along the chart x-axis. Fill `i` lands at
+/// fraction `(i + 1) / (count + 1)` of the bar range — for `count = 4`
+/// the fills sit at minutes 12, 24, 36, 48 (no marker at either edge).
+/// Earlier shape used `fixed_ts(n)` which clustered every fill into
+/// the leftmost ~0.1% of the chart canvas — invisible to the operator.
 #[must_use]
 pub fn synthetic_fills_for(_venue: Venue, symbol: &Symbol, count: usize) -> Vec<FillView> {
     let (start_price, _vol) = symbol_table(symbol);
     let mut out = Vec::with_capacity(count);
+    // 60 bars × 60s per bar — see `synthetic_candles` doc.
+    const BAR_RANGE_SECS: i64 = 60 * 60;
+    // `count` is fixture-sized (≤ 200); the cast is lossless.
+    #[allow(clippy::cast_possible_wrap)]
+    let denom = count as i64 + 1;
     for i in 0..count {
         // `i` is fixture-sized (≤ 200); the cast is lossless.
         #[allow(clippy::cast_possible_wrap)]
         let n = i as i64;
         let side = if n % 2 == 0 { Side::Buy } else { Side::Sell };
         let price = Price::new(start_price + Decimal::from(n)).unwrap_or_else(|_| unreachable!());
+        let venue_ts_secs = ((n + 1) * BAR_RANGE_SECS) / denom;
         out.push(FillView {
             symbol: symbol.clone(),
             side,
@@ -814,7 +829,7 @@ pub fn synthetic_fills_for(_venue: Venue, symbol: &Symbol, count: usize) -> Vec<
             qty: Quantity::new(dec!(0.1)).unwrap_or_else(|_| unreachable!()),
             fee: Money::from_decimal(dec!(0.5)),
             fee_tier: FeeTier::Taker,
-            venue_ts: fixed_ts(n),
+            venue_ts: fixed_ts(venue_ts_secs),
             transaction_id: SmolStr::new(format!("fixture-{symbol}-{n}")),
         });
     }
