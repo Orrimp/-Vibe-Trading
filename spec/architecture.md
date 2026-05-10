@@ -2788,6 +2788,123 @@ byte-identical because v2.0.0 does not touch `crates/strategy/` or
 [v2-llm-strategy tasks → T1937](v2-llm-strategy/tasks.md#m7--configuration-surface--agent-main-wire-up--runbooks--ship)
 negative-invariant test.
 
+### Chart buy/sell emphasis (v1.9) — resolutions (Q1–Q3, Q6, Q7, Q9) — confirmed 2026-05-10
+
+Architect's design landing for the
+[chart-buy-sell-emphasis](chart-buy-sell-emphasis/feature.md) brief.
+Pure UI + one additive read-only audit query + one additive
+agent-config gate. Anchor risk **zero** by construction (V8 hard
+gate at T_FINAL_CHART_BUY_SELL_EMPHASIS).
+
+**Operator-resolved questions (recorded for cross-feature trace):**
+Q4 (tooltip fields → six fields, no truncated tx-id), Q5 (Layout
+β — tile + position above chart, histogram below), Q8 (cockpit-
+only, viewer parity deferred to a follow-up brief).
+
+**Six architect-resolved questions:**
+
+#### v1.9 Q1 — Signal source plumbing: **Option (a) — additive `strategy_signals` table, config-gated, polled by cockpit**
+
+Strategy signals (pre-risk-clamp intent) persist to a new sibling
+table `strategy_signals` via a new
+`crates/audit/src/journal.rs::post_strategy_signal` writer; cockpit
+reads via a new `crates/audit/src/query.rs::recent_signals` reader.
+The agent's per-bar tap point that calls the writer is **deferred
+to a follow-up agent-runtime brief**; this feature ships the
+writer + reader + config gate + cockpit read path. Config gate
+`SignalLogConfig { enabled: false }` (default off) — same opt-in
+shape as reflection-memory v1.8's `enable_writer` (which the
+operator flipped to true on 2026-05-10).
+
+**Why (a) over (b) / (c):** (b) requires a new bus channel,
+which violates the established "no new bus channel" hard
+constraint (three prior precedents: operator-success-reports
+R6.2, live-cockpit-unified R9.1, reflection-memory R7.3). (c)
+defeats the live-monitoring use case. (a) extends the existing
+audit-ledger-as-source-of-truth pattern that the product
+differentiator already commits to. Dedicated `strategy_signals`
+table — not a new `kind` value on `strategy_events` — because
+signals are per-bar emissions, not lifecycle events.
+
+#### v1.9 Q2 — Marker y-snap method: **Option (b) — linear interpolation**
+
+Marker `y` = linear interpolation between the bracketing bars'
+`close` prices, expressed in y-space. The fill's actual execution
+price moves to the tooltip (R4.2). ≤1-px y-misalignment for
+sub-bar-cadence fills (the dominant paper-engine case) is
+visually load-bearing; the extra 4 `f32` ops per marker are
+trivially in budget.
+
+#### v1.9 Q3 — Tooltip implementation: **Option (b) — custom canvas pointer-tracking + custom-drawn tooltip overlay**
+
+`ChartProgram::State` promoted from `()` to `ChartState {
+hovered_marker_idx: Option<ChartMarkerIndex> }`. The canvas's
+`Program::update` consumes `mouse::Event::CursorMoved` and
+`ButtonPressed` events, emits `Message::ChartMarkerHovered /
+ChartMarkerHoverEnded / TapeRowClicked` (reused unchanged from
+tape-row-audit-modal). Tooltip is drawn as a final canvas pass.
+
+**Fallback:** `iced::widget::tooltip` on a transparent overlay
+grid (Option (a)) is the documented fallback if developer
+encounters a 0.14 gotcha at M2 landing. Architect-question-
+regression routing (V3 / V4 failure → architect).
+
+#### v1.9 Q6 — Marker visual treatment: **13-px filled triangle, 1-px `BORDER_STRONG` outline, `shadow_1`-derived drop shadow (fill layer); 8-px `UP_400 / DOWN_400` at 60% alpha, no outline / shadow (ghost layer)**
+
+No new theme tokens. The whisper-shadow values come from
+`theme::shadow::shadow_1(mode).color` (existing API) at offset
+`(0.0, 1.5)`. Ghost layer reuses the existing `_400` tier tokens
+already shipping (no new `UP_300 / DOWN_300` needed).
+
+#### v1.9 Q7 — Per-bar histogram widget shape: **Option (b) — new `widgets::volume_histogram`**
+
+New sibling widget at `crates/ui/src/widgets/volume_histogram.rs`,
+reusing the `canvas_chart.rs` `pub(crate)` helpers (`inner_rect`,
+`with_alpha`, `GRIDLINE_COUNT`). Three-uses-rule honoured —
+sparkline + equity-curve + strategies-detail is its own
+abstraction cluster.
+
+#### v1.9 Q9 — `SignalView` type home + exact shape: **`crates/core/src/views.rs` as sibling of `FillView`**
+
+Shape: analyst strawman + `signal_id: SmolStr` for the second-
+row-update tap from the risk-decide path
+(`update_signal_clamp_status`). `intended_price` omitted in v1.9
+(v0/v0.5/v1/v1.5a strategies emit market-priced signals only);
+column space reserved as `intended_price_str TEXT NULL` in the
+migration for forward-compat with v2 LLM / v2.5 Kronos.
+
+**Cross-feature invariants preserved:**
+
+- **`Strategy` trait shape unchanged** — `fn on_bar(&mut self,
+  &Bar) -> Vec<Signal>` (single line at
+  [`crates/strategy/src/traits.rs:10`](../../crates/strategy/src/traits.rs)).
+  Strategies do not call into the audit ledger. The signal-emit
+  tap point lives in the future agent runtime caller of
+  `post_strategy_signal`, outside the trait.
+- **No new bus channel** — writer-to-reader path via the SQLite
+  ledger only.
+- **Atomic-write contract preserved** — `post_strategy_signal`
+  uses the same `ledger.pool.begin() / commit()` pattern as
+  `post_fill`.
+- **Anchor risk zero** — no `crates/strategy/`, `crates/risk/`,
+  `crates/backtest/`, `crates/reports/`, `crates/exec/` files
+  modified. The 11 anchored reports stay byte-identical (V8
+  gate).
+- **Insta snapshot baselines re-baseline only via `cargo insta
+  accept`** after developer sign-off (T2005, T2009, T2018,
+  T2023, T2025).
+- **Lumen design tokens only** — no `#hex` literal in any new
+  widget file (T2027 grep gate).
+
+Tasks `T2001–T2027 + T_FINAL_CHART_BUY_SELL_EMPHASIS` filed at
+[chart-buy-sell-emphasis/tasks.md](chart-buy-sell-emphasis/tasks.md);
+M1 (T2001–T2005) marker visual fixes; M2 (T2006–T2011) tooltip
++ click-through; M3-backend (T2012–T2016) audit migration +
+writer + reader + core type + config gate; M3-cockpit
+(T2017–T2020) cockpit shim + ghost render + tooltip ghost
+variant; M4 (T2021–T2025) counter views + layout β; M5
+(T2026–T2027 + T_FINAL) ship gate.
+
 ## Observability
 
 - `tracing` with JSON output.
@@ -5491,3 +5608,28 @@ universe, re-evaluate: pick `barter-data` if it still cleanly maps to
   invariant table unchanged. Documented in `crates/ui/src/widgets/kill.rs`
   module-level doc + T1504/T1506 honest-tick rows at
   [tasks/lumen-phase-1-foundation.md](tasks/lumen-phase-1-foundation.md).
+- 2026-05-10 (architect): chart-buy-sell-emphasis v1.9 resolutions
+  landed — six [ARCHITECT-DECIDE] questions Q1 / Q2 / Q3 / Q6 / Q7
+  / Q9 resolved. **Q1 = (a)** additive `strategy_signals` table
+  (migration 009), new `journal::post_strategy_signal` writer
+  pair, new `audit::query::recent_signals` reader, new
+  `SignalLogConfig { enabled: false }` agent-config section.
+  Strategy trait fixed; no new bus channel; atomic-write contract
+  reused via existing journal-writer pattern. **Q2 = (b)** linear
+  interpolation y-snap. **Q3 = (b)** custom canvas
+  `Program::update` + custom-drawn tooltip overlay; iced
+  `tooltip` is the documented fallback. **Q6** — 13-px triangle
+  + `BORDER_STRONG` outline + `shadow_1`-derived whisper shadow
+  for fills; 8-px 60%-opacity `UP_400 / DOWN_400` for ghosts.
+  **No new theme tokens.** **Q7 = (b)** new
+  `crates/ui/src/widgets/volume_histogram.rs` (sibling of
+  `chart.rs`). **Q9** — `SignalView` in
+  `crates/core/src/views.rs` (sibling of `FillView`), shape =
+  analyst strawman + `signal_id: SmolStr`. Operator-resolved
+  Q4 / Q5 / Q8 recorded for trace. Anchor risk zero (R9.4 / V8
+  hard gate). Tasks T2001–T2027 + T_FINAL_CHART_BUY_SELL_EMPHASIS
+  filed at [chart-buy-sell-emphasis/tasks.md](chart-buy-sell-emphasis/tasks.md);
+  8 new files + 12 modified files; `crates/strategy/`,
+  `crates/risk/`, `crates/backtest/`, `crates/reports/`,
+  `crates/exec/` untouched. UI-heavy feature; ui-designer + developer
+  run in parallel per AGENT.md.
