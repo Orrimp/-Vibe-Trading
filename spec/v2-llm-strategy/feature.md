@@ -401,32 +401,64 @@ clause lifts and the architect adds a strategy-side R-section.
 
 ### R8 — API key management
 
-- **R8.1** Keys read from **environment variables only** at
-  v2.0.0: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-  `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`. Ollama needs no
-  key. Per [CLAUDE.md line 84](../../CLAUDE.md): "No secrets
-  in git. Keys in env / secret store per architecture.md."
-- **R8.2** **Missing key is a fatal startup error.** The
-  factory reads the configured provider's key at build time;
-  unset → `LlmError::Auth("ANTHROPIC_API_KEY not set")`,
-  agent main exits non-zero with a clear message.
+- **R8.1** Keys read from a **git-ignored TOML file**
+  `config/agent.toml.local` (Q3 = Option C, operator-resolved
+  2026-05-10). Architect picks the exact key-name shape at
+  Design time; strawman:
+  ```toml
+  [llm.providers.anthropic]
+  api_key = "sk-ant-..."
+
+  [llm.providers.openai]
+  api_key = "sk-..."
+
+  [llm.providers.openrouter]
+  api_key = "sk-or-..."
+
+  [llm.providers.deepseek]
+  api_key = "..."
+  ```
+  Ollama needs no key. Per [CLAUDE.md line 84](../../CLAUDE.md):
+  "No secrets in git." The `*.toml.local` and `config/*.local`
+  patterns are git-ignored at the repo root (defensive add
+  landed alongside Q3 resolution) — accidental-commit risk
+  (the Option C downside) is mechanically blocked.
+- **R8.2** **Missing key for the configured provider is a
+  fatal startup error.** The factory reads the local-config
+  key at build time; unset → `LlmError::Auth("anthropic.api_key
+  not set in config/agent.toml.local")`, agent main exits
+  non-zero with a clear message naming the config path and the
+  expected key. If `config/agent.toml.local` does not exist at
+  all, the error names the file before the key.
 - **R8.3** **Keys never leak into logs, traces, audit
-  ledger, or test fixtures.** A `redact()` helper at
+  ledger, test fixtures, report bodies, or anything else
+  written to disk.** A `redact()` helper at
   `crates/llm/src/redact.rs` is the single `Display` path
   for keys (always prints `sk-ant-...***` with the last 4
-  characters elided).
+  characters elided). `tracing` field-redaction is wired at
+  subscriber-construction time so structured-log JSON output
+  is also redacted automatically. V9 (in `## Verification`)
+  gains a substring-absence test against every artifact written
+  during a smoke run.
 - **R8.4** **Test fixtures use mock providers** (R6 +
   `wiremock`); production secrets never appear in
-  `cargo test`. CI sets `ANTHROPIC_API_KEY=sk-ant-test-stub`
-  so the build doesn't hard-fail when keys are intentionally
-  not provided.
+  `cargo test`. The default `config/agent.toml.local`
+  template (committed at `config/agent.toml.local.example`)
+  carries placeholder keys (`sk-ant-test-stub` etc.) so a
+  fresh checkout passes `cargo test` without any operator
+  intervention; the operator copies `agent.toml.local.example`
+  to `agent.toml.local` and edits in real keys.
 - **R8.5** **Secret-store integration is deferred** to v3
   (`llm-secret-store` follow-up brief, surfaced in Q3).
 - **Acceptance:** unit test asserts `LlmProviderFactory::build`
-  with `ANTHROPIC_API_KEY` unset returns `LlmError::Auth`;
-  second test asserts `redact("sk-ant-secret-12345")` does
-  **not** contain `secret-12345`; CI grep confirms zero
-  secret strings in `target/logs/*.log` after a smoke run.
+  with the anthropic key unset (or `config/agent.toml.local`
+  absent) returns `LlmError::Auth` whose message names the
+  config path; second test asserts `redact("sk-ant-secret-12345")`
+  does **not** contain `secret-12345`; third test asserts that
+  reading `config/agent.toml.local.example` parses as a valid
+  `LlmConfig` so the example stays in sync; CI grep confirms
+  zero substrings matching `sk-ant-[A-Za-z0-9]{20,}` or
+  `sk-[A-Za-z0-9]{40,}` in `target/logs/*.log` after a smoke run.
 
 ### R9 — Cost telemetry wired through
 
@@ -742,6 +774,9 @@ once Q1 lands.
 
 ### Q1 — Scope split: foundation-only vs foundation + N consumers [OPERATOR-DECIDE]
 
+[RESOLVED 2026-05-10 — operator picked **Option A (foundation-only)** via orchestrator chat. v2.0.0 ships LLM trait + 3 provider impls + prompt-cache builder + budget gate + record/replay + `cargo run --bin llm-smoke`. Zero LLM consumers in v2.0.0. Each consumer becomes its own follow-up brief; suggested ordering in Q12. No R-item revisions needed — R1–R14 already assume Option A.]
+
+
 **The load-bearing decision of this brief.** Every downstream
 Q-item is shaped by it.
 
@@ -826,6 +861,9 @@ not the cost report.
 
 ### Q2 — Default provider + tier model assignments [OPERATOR-DECIDE]
 
+[RESOLVED 2026-05-10 — operator picked **Option A (Anthropic, both tiers)** via orchestrator chat. `deep_think` = `claude-opus-4-7` (Claude Opus 4.7); `quick_think` = `claude-haiku-4-5-20251001` (Claude Haiku 4.5). Prompt caching is first-class on Anthropic and is the cheapest path at v2 scale; single-vendor risk is mitigated by the OpenAI-compatible provider being a one-config-flip away.]
+
+
 product.md line 250: "Anthropic (default, with prompt
 caching)." Live alternatives:
 
@@ -859,6 +897,9 @@ has rev'd, architect updates pricing (R9.2) and config
 defaults (R12.1).
 
 ### Q3 — API key management at v2.0.0 [OPERATOR-DECIDE]
+
+[RESOLVED 2026-05-10 — operator picked **Option C (config file with explicit acknowledgement)** via orchestrator chat — overriding the analyst's recommendation of Option A. Keys live in `config/agent.toml.local` (or any `*.toml.local` sibling of a committed `*.toml`); the architect picks the exact key-name shape (e.g. `[llm.providers.anthropic] api_key = "..."`) at Design time. Operator's reasoning: keep all config in one place rather than spread across environment variables. Defensive add: `.gitignore` updated in the same commit to cover `*.toml.local` and `config/*.local` so accidental-commit risk (the Option C downside) is mechanically blocked. Architect MUST add a V9 sub-test that asserts no log line, audit memo, or report body line ever contains a substring matching a known API-key prefix (e.g. `sk-ant-`, `sk-`); the in-process `tracing` filter must redact `api_key` field values at construction time. R8.1 strawman flips from env-var to config-file; architect re-words.]
+
 
 R8.1 picks env-var-only. Alternatives:
 
@@ -1032,6 +1073,9 @@ argument.
 
 ### Q10 — Cost-control surfacing: where the operator sees budget events [OPERATOR-DECIDE — informational]
 
+[RESOLVED 2026-05-10 — operator accepted the analyst strawman via orchestrator chat. Ship the cockpit "LLM budget" tile + audit memo on every degrade transition + a one-line entry in operator-success-reports' System Health. Email / Slack / push notifications are deferred to a v3 follow-up brief once the operator has lived with v2 and named what's missing.]
+
+
 R11 strawman: cockpit "LLM budget" tile + audit memo +
 operator-success-report System Health line.
 
@@ -1104,3 +1148,27 @@ follow-up brief's spawn time. Captured here for visibility.
   replay + budget backtest scenarios. Q1, Q2, Q3, Q10 block
   architect handoff. HANDOFF → architect pending operator
   resolution of Q1, Q2, Q3, Q10.
+- 2026-05-10 (orchestrator, operator-relayed via chat):
+  operator resolved the four [OPERATOR-DECIDE] questions —
+  - **Q1 → Option A** (foundation-only; consumers become
+    follow-up briefs).
+  - **Q2 → Option A** (Anthropic both tiers — Opus 4.7 +
+    Haiku 4.5).
+  - **Q3 → Option C** (config file `config/agent.toml.local`,
+    overriding analyst's Option A recommendation). R8.1 and
+    R8.2 rewritten to point at the local-config path; R8.3
+    and the V9 forbidden-substring test extended to cover
+    every artifact written during a smoke run, not just logs;
+    R8.4 adds a `config/agent.toml.local.example` template
+    so fresh checkouts pass `cargo test` without operator
+    intervention. `.gitignore` updated in the same commit
+    to cover `*.toml.local` and `config/*.local` —
+    accidental-commit risk (the Option C downside) is
+    mechanically blocked.
+  - **Q10 → strawman accepted** (cockpit tile + audit memo +
+    success-report line; email/Slack/push deferred to v3).
+  Seven [ARCHITECT-DECIDE] questions remain (Q4 trait shape,
+  Q5 prompt-cache strategy, Q6 budget gate placement, Q7
+  cost-rate lookup, Q8 replay storage, Q9 rate-limit handling,
+  Q11 report denominator update). Q12 is informational. Routing
+  → architect.

@@ -6,6 +6,12 @@
 /snapshot/
 /data-snapshot/
 
+# Local-only config (Q3 = Option C from spec/v2-llm-strategy/feature.md):
+# secrets and operator-specific overrides live in *.toml.local files
+# alongside their committed *.toml siblings. Never commit these.
+*.toml.local
+config/*.local
+
 # OS / editor cruft
 .DS_Store
 *.swp
