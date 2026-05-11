@@ -1188,7 +1188,7 @@ Closes nothing new. Verified by **V8** (anchors hard gate),
   _Acceptance:_ grep gates pass; consistency tests
   `no_inline_hex_colors_in_widgets_or_state` +
   `no_inline_user_visible_strings_in_widgets` green.
-- [ ] **T_FINAL_CHART_BUY_SELL_EMPHASIS [tester]** — Tester runs
+- [x] **T_FINAL_CHART_BUY_SELL_EMPHASIS [tester]** — Tester runs
   the V-pass per the standard `rust-test` skill:
   - `cargo build --workspace` green (`rust-build`).
   - `cargo test --workspace` green (V9).
