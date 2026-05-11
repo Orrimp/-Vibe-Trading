@@ -12,6 +12,7 @@
 pub mod agent_feed;
 pub(crate) mod canvas_chart;
 pub mod chart;
+pub mod chart_tooltip;
 pub mod drawdown_band;
 pub mod equity_curve;
 pub mod focus_ring;
@@ -29,3 +30,4 @@ pub mod sidebar_nav;
 pub mod sparkline;
 pub mod status_bar;
 pub mod strategies;
+pub mod volume_histogram;

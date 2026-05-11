@@ -2,11 +2,31 @@
 //!
 //! Every fill writes a balanced double-entry transaction atomically.
 //! Debits == Credits is enforced per transaction.
+//!
+//! ## chart-buy-sell-emphasis v1.9 — strategy-signal writers (T2014)
+//!
+//! [`post_strategy_signal`] and [`update_signal_clamp_status`] write to
+//! the additive `strategy_signals` table created by migration 009. They
+//! are the writer half of the ghost-marker layer (R5) — the cockpit
+//! reads via [`crate::query::recent_signals`] and paints one ghost-
+//! triangle per row.
+//!
+//! **Forward-compat note (R9.1, M3 task block):** This brief ships the
+//! writer + reader + config gate + cockpit read path. The live agent-
+//! runtime tap point that *calls* `post_strategy_signal` per emitted
+//! `Signal` is **deferred to a follow-up brief** (the agent-runtime
+//! track). With `agent.toml [signal_log] enabled = false` (the v1.9
+//! default — see `crates/agent/src/config.rs::SignalLogConfig`), zero
+//! rows land in production until an operator opts in. The reader
+//! naturally returns `Ok(vec![])` on the empty table (V11c). When the
+//! follow-up brief lands the live tap, it imports
+//! [`post_strategy_signal`] and the ghost layer comes alive without
+//! any further cockpit-side change.
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use tracing::instrument;
-use trading_core::{Fill, FundingObs, LedgerError, Side, Venue};
+use trading_core::{Fill, FundingObs, LedgerError, Price, Quantity, Side, Signal, Venue};
 use uuid::Uuid;
 
 use crate::Ledger;
@@ -202,6 +222,210 @@ pub async fn post_fill(
 
     tracing::debug!(fill_id = %fill.id, side = %fill.side, notional = %notional, "fill journaled");
     Ok(SmolStr::new(&txn_id))
+}
+
+// ── chart-buy-sell-emphasis v1.9 (T2014) — strategy_signals writers ──────────
+
+/// chart-buy-sell-emphasis v1.9 (T2014) — INSERT one row into
+/// `strategy_signals` (migration 009) for the supplied `signal`.
+///
+/// Sibling of [`post_fill`] in shape (atomic `pool.begin / commit`,
+/// UUID v4 row id, RFC-3339 microsecond ts). Pure additive — no money
+/// columns, no chart-of-accounts impact, no reconciler-invariant
+/// effect.
+///
+/// `intended_qty` carries the strategy-proposed quantity; `intended_price`
+/// is `None` for market signals and `Some(price)` for limit-order
+/// shapes (Q9 forward-compat — v1 strategies all emit market signals).
+///
+/// `was_clamped` is `false` on the initial INSERT (steady-state). The
+/// risk engine's decision is captured by [`update_signal_clamp_status`]
+/// after the risk engine returns. Callers that already know the
+/// risk-decision at INSERT-time may pass `was_clamped = true` and a
+/// `clamp_reason` directly; the typical agent-loop pattern is
+/// `post_strategy_signal(..., false, None)` followed by
+/// `update_signal_clamp_status(..., true, Some("per_symbol_cap"))`
+/// once the risk engine has decided.
+///
+/// `Signal.kind` is projected onto the `side TEXT` column via
+/// [`signal_kind_to_side_str`]: `Buy` / `OpenPairLong` → `"buy"`;
+/// `Sell` / `ClosePair` / `PairShortObservation` → `"sell"`. `Hold`
+/// signals are skipped (no row written; the writer returns `Ok(empty
+/// SmolStr)`) — Hold carries no actionable intent and the ghost layer
+/// has nothing to render.
+///
+/// Returns the generated `strategy_signals.id` UUID v4 wrapped in
+/// [`SmolStr`] so the caller can pair the INSERT with a downstream
+/// [`update_signal_clamp_status`] call keyed on the same id. For Hold
+/// signals (no row written) returns an empty `SmolStr`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL transaction fails.
+#[instrument(
+    name = "ledger.post_strategy_signal",
+    skip(ledger, signal),
+    fields(
+        strategy_id = %signal.strategy_id,
+        symbol = %signal.symbol,
+        kind = ?signal.kind,
+        venue = %venue,
+        was_clamped,
+    )
+)]
+pub async fn post_strategy_signal(
+    ledger: &Ledger,
+    signal: &Signal,
+    intended_qty: Quantity,
+    intended_price: Option<Price>,
+    venue: Venue,
+    was_clamped: bool,
+    clamp_reason: Option<&str>,
+) -> Result<SmolStr, LedgerError> {
+    // Hold signals carry no actionable intent; the ghost layer has
+    // nothing to render. Caller can rely on the empty SmolStr to mean
+    // "no row written" without inspecting the row count.
+    let Some(side_str) = signal_kind_to_side_str(signal) else {
+        return Ok(SmolStr::default());
+    };
+
+    let row_id = Uuid::new_v4().to_string();
+
+    // 6-digit microsecond ts — matches the strategy_events writers
+    // (HF-3 / architect risk #4 determinism gate). Two consecutive
+    // signals within the same wall-clock second still produce
+    // monotonically-ordered `ts` values.
+    let ts_fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let ts = signal
+        .ts
+        .inner()
+        .format(&ts_fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    let intended_qty_str = intended_qty.get().to_string();
+    let intended_price_str = intended_price.map(|p| p.get().to_string());
+    let venue_str = venue.to_string();
+    let was_clamped_i = i64::from(was_clamped);
+
+    // Atomic — sibling of post_fill. No new on-disk write path; reuses
+    // the established `ledger.pool.begin() / commit()` shape (hard-
+    // constraint 4 — atomic-write contract).
+    let mut db_txn = ledger
+        .pool
+        .begin()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    sqlx::query(
+        "INSERT INTO strategy_signals \
+         (id, ts, strategy_id, venue, symbol, side, intended_qty_str, \
+          intended_price_str, was_clamped, clamp_reason) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&row_id)
+    .bind(&ts)
+    .bind(signal.strategy_id.0.as_str())
+    .bind(&venue_str)
+    .bind(signal.symbol.0.as_str())
+    .bind(side_str)
+    .bind(&intended_qty_str)
+    .bind(&intended_price_str)
+    .bind(was_clamped_i)
+    .bind(clamp_reason)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    db_txn
+        .commit()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(
+        row_id = %row_id,
+        strategy_id = %signal.strategy_id,
+        symbol = %signal.symbol,
+        "strategy_signal persisted"
+    );
+    Ok(SmolStr::new(&row_id))
+}
+
+/// chart-buy-sell-emphasis v1.9 (T2014) — UPDATE the
+/// `was_clamped` / `clamp_reason` columns on the row identified by
+/// `signal_id`. Called by the agent's risk engine after it has decided
+/// whether to clamp (or veto) the previously-posted signal.
+///
+/// One single-row UPDATE inside its own `pool.begin / commit` — same
+/// atomic-write shape as [`post_strategy_signal`]. A missing row
+/// (e.g. caller passed a stale id) is silently a no-op — sqlx returns
+/// 0 rows affected without erroring, and the caller's tracing-span
+/// captures the id-mismatch for debugging.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL UPDATE fails.
+#[instrument(
+    name = "ledger.update_signal_clamp_status",
+    skip(ledger),
+    fields(signal_id, was_clamped)
+)]
+pub async fn update_signal_clamp_status(
+    ledger: &Ledger,
+    signal_id: &str,
+    was_clamped: bool,
+    clamp_reason: Option<&str>,
+) -> Result<(), LedgerError> {
+    let was_clamped_i = i64::from(was_clamped);
+
+    let mut db_txn = ledger
+        .pool
+        .begin()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    sqlx::query(
+        "UPDATE strategy_signals SET was_clamped = ?, clamp_reason = ? WHERE id = ?",
+    )
+    .bind(was_clamped_i)
+    .bind(clamp_reason)
+    .bind(signal_id)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    db_txn
+        .commit()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
+}
+
+/// Project `Signal.kind` onto the `strategy_signals.side` TEXT column.
+///
+/// Returns:
+/// - `Some("buy")` for `Buy` and `OpenPairLong`.
+/// - `Some("sell")` for `Sell`, `ClosePair`, and `PairShortObservation`
+///   (the would-have-shorted observation is recorded as a `sell`-side
+///   signal so the ghost layer paints the same down-triangle the
+///   operator already associates with sell intent).
+/// - `None` for `Hold` — Hold carries no actionable intent and the
+///   ghost layer has nothing to render, so the writer skips the INSERT
+///   entirely.
+///
+/// The mapping lives next to the writer (not on the `SignalKind` enum)
+/// because the projection is audit-specific — other consumers of
+/// `SignalKind` (risk engine, backtest binary) discriminate all six
+/// variants explicitly.
+fn signal_kind_to_side_str(signal: &Signal) -> Option<&'static str> {
+    use trading_core::SignalKind::*;
+    match signal.kind {
+        Buy | OpenPairLong => Some("buy"),
+        Sell | ClosePair | PairShortObservation => Some("sell"),
+        Hold => None,
+    }
 }
 
 /// Insert a single journal entry line.
@@ -1297,5 +1521,195 @@ mod tests {
         assert_eq!(rows[0].0, reason);
         assert_eq!(rows[0].1, "risk_veto_overridden");
         assert_eq!(rows[0].2.as_deref(), Some("alpha"));
+    }
+
+    // ── chart-buy-sell-emphasis v1.9 (T2014) — strategy_signals writers ────
+
+    use rust_decimal_macros::dec as dec_lit;
+    use time::OffsetDateTime;
+    use trading_core::{
+        Price as TPrice, Quantity as TQuantity, Signal as TSignal,
+        SignalEvidence as TSignalEvidence, SignalKind as TSignalKind, StrategyId as TStrategyId,
+        Symbol as TSymbol, Timestamp as TTimestamp, Venue as TVenue,
+    };
+
+    fn fixture_signal(kind: TSignalKind, symbol: &str, secs: i64) -> TSignal {
+        TSignal {
+            strategy_id: TStrategyId::new("sma_crossover"),
+            symbol: TSymbol::new(symbol),
+            ts: TTimestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(secs)),
+            kind,
+            evidence: TSignalEvidence::empty(),
+            pair_data: None,
+        }
+    }
+
+    /// T2014 V1 — `post_strategy_signal` writes one row into
+    /// `strategy_signals` with all fields populated from the supplied
+    /// `Signal` + writer parameters.
+    #[tokio::test]
+    async fn post_strategy_signal_writes_row() {
+        let ledger = open_ledger().await;
+
+        // Row count starts at zero (migration 009 ships no seed data).
+        let count_before: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM strategy_signals")
+            .fetch_one(ledger.pool())
+            .await
+            .expect("count before");
+        assert_eq!(count_before.0, 0);
+
+        let signal = fixture_signal(TSignalKind::Buy, "BTCUSDT", 1_700_000_000);
+        let qty = TQuantity::new(dec_lit!(0.05)).expect("qty");
+        let row_id =
+            post_strategy_signal(&ledger, &signal, qty, None, TVenue::Binance, false, None)
+                .await
+                .expect("post_strategy_signal");
+        assert!(!row_id.is_empty(), "writer must return a non-empty row id");
+
+        let count_after: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM strategy_signals")
+            .fetch_one(ledger.pool())
+            .await
+            .expect("count after");
+        assert_eq!(
+            count_after.0, 1,
+            "row count must go 0 → 1 after one post_strategy_signal call"
+        );
+
+        // Field-by-field validation against the writer parameters.
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            i64,
+            Option<String>,
+        )> = sqlx::query_as(
+            "SELECT strategy_id, venue, symbol, side, intended_qty_str, ts, intended_price_str, \
+                    was_clamped, clamp_reason \
+             FROM strategy_signals WHERE id = ?",
+        )
+        .bind(row_id.as_str())
+        .fetch_all(ledger.pool())
+        .await
+        .expect("select fields");
+        assert_eq!(rows.len(), 1);
+        let (
+            strategy_id,
+            venue,
+            symbol,
+            side,
+            intended_qty_str,
+            ts_str,
+            intended_price_str,
+            was_clamped,
+            clamp_reason,
+        ) = &rows[0];
+        assert_eq!(strategy_id, "sma_crossover");
+        assert_eq!(venue, "binance");
+        assert_eq!(symbol, "BTCUSDT");
+        assert_eq!(side, "buy");
+        assert_eq!(intended_qty_str, "0.05");
+        // 6-digit microsecond ts format — sub-second precision keeps
+        // ORDER BY ts stable under rapid sequential writes (HF-3 gate).
+        assert!(
+            ts_str.contains('.') && ts_str.ends_with('Z'),
+            "ts must be RFC-3339 with fractional-second component; got {ts_str}"
+        );
+        assert!(intended_price_str.is_none());
+        assert_eq!(*was_clamped, 0);
+        assert!(clamp_reason.is_none());
+    }
+
+    /// T2014 V2 — `update_signal_clamp_status` flips `was_clamped` from
+    /// 0 → 1 and sets `clamp_reason` on the existing row.
+    #[tokio::test]
+    async fn update_signal_clamp_status_flips_field() {
+        let ledger = open_ledger().await;
+
+        let signal = fixture_signal(TSignalKind::Sell, "ETHUSDT", 1_700_000_100);
+        let qty = TQuantity::new(dec_lit!(0.10)).expect("qty");
+        let row_id =
+            post_strategy_signal(&ledger, &signal, qty, None, TVenue::Binance, false, None)
+                .await
+                .expect("INSERT");
+
+        // Sanity: pre-UPDATE state is `was_clamped = 0, clamp_reason = NULL`.
+        let pre: (i64, Option<String>) = sqlx::query_as(
+            "SELECT was_clamped, clamp_reason FROM strategy_signals WHERE id = ?",
+        )
+        .bind(row_id.as_str())
+        .fetch_one(ledger.pool())
+        .await
+        .expect("pre-UPDATE row");
+        assert_eq!(pre.0, 0);
+        assert!(pre.1.is_none());
+
+        update_signal_clamp_status(&ledger, row_id.as_str(), true, Some("per_symbol_cap"))
+            .await
+            .expect("UPDATE");
+
+        let post: (i64, Option<String>) = sqlx::query_as(
+            "SELECT was_clamped, clamp_reason FROM strategy_signals WHERE id = ?",
+        )
+        .bind(row_id.as_str())
+        .fetch_one(ledger.pool())
+        .await
+        .expect("post-UPDATE row");
+        assert_eq!(post.0, 1, "was_clamped flipped 0 → 1");
+        assert_eq!(post.1.as_deref(), Some("per_symbol_cap"));
+    }
+
+    /// T2014 V3 — `Hold` signals write no row (the writer returns an
+    /// empty SmolStr and the table stays untouched). Defends against
+    /// accidentally polluting the ghost layer with Hold no-ops.
+    #[tokio::test]
+    async fn post_strategy_signal_skips_hold_kind() {
+        let ledger = open_ledger().await;
+
+        let signal = fixture_signal(TSignalKind::Hold, "BTCUSDT", 1_700_000_000);
+        let qty = TQuantity::new(dec_lit!(0)).expect("qty");
+        let id = post_strategy_signal(&ledger, &signal, qty, None, TVenue::Binance, false, None)
+            .await
+            .expect("post_strategy_signal Hold");
+        assert!(id.is_empty(), "Hold must return an empty row id");
+
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM strategy_signals")
+            .fetch_one(ledger.pool())
+            .await
+            .expect("count after Hold");
+        assert_eq!(count.0, 0, "Hold must not write a row");
+    }
+
+    /// T2014 V4 — the writer accepts `intended_price = Some(price)` and
+    /// stores the Decimal-as-TEXT representation (Q9 forward-compat).
+    #[tokio::test]
+    async fn post_strategy_signal_persists_intended_price() {
+        let ledger = open_ledger().await;
+
+        let signal = fixture_signal(TSignalKind::Buy, "BTCUSDT", 1_700_000_200);
+        let qty = TQuantity::new(dec_lit!(0.01)).expect("qty");
+        let price = TPrice::new(dec_lit!(45_000.5)).expect("price");
+        let row_id = post_strategy_signal(
+            &ledger,
+            &signal,
+            qty,
+            Some(price),
+            TVenue::Binance,
+            false,
+            None,
+        )
+        .await
+        .expect("post w/ intended_price");
+
+        let row: (Option<String>,) =
+            sqlx::query_as("SELECT intended_price_str FROM strategy_signals WHERE id = ?")
+                .bind(row_id.as_str())
+                .fetch_one(ledger.pool())
+                .await
+                .expect("select intended_price_str");
+        assert_eq!(row.0.as_deref(), Some("45000.5"));
     }
 }

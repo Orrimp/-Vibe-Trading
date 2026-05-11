@@ -619,14 +619,22 @@ impl AppState {
                     .unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
             );
             let until = now;
-            let ledger = Arc::clone(&self.ledger);
-            let rt_handle = self.rt_handle.clone();
-            return iced::Task::perform(
+            // Fan out two parallel fetches: existing markers (fills) +
+            // chart-buy-sell-emphasis v1.9 (T2017) ghost signals. Each
+            // dispatches its own typed `Message::Chart*Loaded` arm so the
+            // state update is exhaustive and pure.
+            let ledger_m = Arc::clone(&self.ledger);
+            let rt_handle_m = self.rt_handle.clone();
+            let venue_m = venue;
+            let symbol_m = symbol.clone();
+            let markers_task = iced::Task::perform(
                 async move {
-                    let join = rt_handle.spawn(async move {
-                        audit::query::recent_fills_filtered(&ledger, venue, symbol, since, until)
-                            .await
-                            .map_err(|e| SmolStr::new(format!("{e}")))
+                    let join = rt_handle_m.spawn(async move {
+                        audit::query::recent_fills_filtered(
+                            &ledger_m, venue_m, symbol_m, since, until,
+                        )
+                        .await
+                        .map_err(|e| SmolStr::new(format!("{e}")))
                     });
                     match join.await {
                         Ok(result) => result,
@@ -635,6 +643,25 @@ impl AppState {
                 },
                 Message::ChartMarkersLoaded,
             );
+
+            let ledger_s = Arc::clone(&self.ledger);
+            let rt_handle_s = self.rt_handle.clone();
+            let signals_task = iced::Task::perform(
+                async move {
+                    let join = rt_handle_s.spawn(async move {
+                        audit::query::recent_signals(&ledger_s, venue, symbol, since, until)
+                            .await
+                            .map_err(|e| SmolStr::new(format!("{e}")))
+                    });
+                    match join.await {
+                        Ok(result) => result,
+                        Err(e) => Err(SmolStr::new(format!("audit task join: {e}"))),
+                    }
+                },
+                Message::ChartSignalsLoaded,
+            );
+
+            return iced::Task::batch([markers_task, signals_task]);
         }
 
         if let Some(tx_id) = tx_id {

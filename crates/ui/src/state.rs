@@ -10,9 +10,9 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use trading_core::{
-    Bar, EquitySeries, FillView, JournalEntry, MarketHealth, PnlSnapshot, PositionView, Signal,
-    StrategyEventKind, StrategyEventView, StrategyId, StrategyLoadError, StrategyLoaded,
-    StrategySwapped, Symbol, Tick, Timestamp, Venue,
+    Bar, EquitySeries, FillView, JournalEntry, MarketHealth, PnlSnapshot, PositionView, Side,
+    Signal, SignalView, StrategyEventKind, StrategyEventView, StrategyId, StrategyLoadError,
+    StrategyLoaded, StrategySwapped, Symbol, Tick, Timestamp, Venue,
 };
 
 use crate::theme::layout::TAPE_MAX_ROWS;
@@ -552,6 +552,75 @@ pub struct StrategyRow {
     pub source_path: SmolStr,
 }
 
+// ── chart-buy-sell-emphasis v1.9 — tooltip + ghost-marker types (T2006) ─────
+
+/// Discriminates which marker the cockpit's chart tooltip is currently
+/// rendering for: an executed fill (Q4 — six fields, no truncated Tx ID)
+/// or a strategy-intended ghost signal (R5.6 — fewer fields, "intent"
+/// badge).
+///
+/// Sibling of `ChartMarkerIndex` — `Fill` here corresponds to the
+/// `ChartMarkerIndex::Fill` variant; `Signal` corresponds to
+/// `ChartMarkerIndex::Signal`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChartTooltipKind {
+    /// An executed-fill marker (R4.2 six fields).
+    Fill,
+    /// A strategy-intended ghost-signal marker (R5.6 reduced fields).
+    Signal,
+}
+
+/// Index of the currently-hovered chart marker. Emitted by
+/// `ChartProgram::update` on hit-rect transitions; carried by
+/// `Message::ChartMarkerHovered`.
+///
+/// `Fill(usize)` indexes into the active symbol's `chart_markers`
+/// `Vec<FillView>`. `Signal(usize)` indexes into the active symbol's
+/// `chart_signals` `Vec<SignalView>`. The cockpit binary's update wrapper
+/// uses the index to build a `ChartTooltipView` and dispatch it (no extra
+/// async work — pure state lookup).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChartMarkerIndex {
+    /// Index into `Cockpit.chart_markers` (executed-fill layer).
+    Fill(usize),
+    /// Index into `Cockpit.chart_signals` (strategy-intended ghost layer).
+    Signal(usize),
+}
+
+/// Read-side view-data carried by the chart hover tooltip. Built at
+/// hover-message-handle time from the corresponding `FillView` or
+/// `SignalView`; the tooltip widget renders the six R4.2 fields verbatim
+/// (or the reduced R5.6 ghost-variant fields).
+///
+/// Per Q4-operator-resolved 2026-05-10: no truncated transaction ID; the
+/// full UUID is one click away via `Message::TapeRowClicked(transaction_id)`
+/// → existing `JournalTransactionView` modal.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChartTooltipView {
+    /// Drives layout: Fill renders all six fields; Signal renders the
+    /// reduced set + the `CHART_TOOLTIP_GHOST_BADGE` row.
+    pub kind: ChartTooltipKind,
+    pub side: Side,
+    /// `None` for ghost signals (R5.6 — strategy intent precedes price
+    /// discovery for market-priced signals).
+    pub price: Option<Decimal>,
+    /// Intended quantity for ghosts; executed quantity for fills.
+    pub qty: Decimal,
+    /// `price × qty` for fills; `None` for ghosts.
+    pub notional: Option<Decimal>,
+    pub ts: Timestamp,
+    /// Strategy that emitted the signal / produced the fill. Rendered as
+    /// `CHART_TOOLTIP_STRATEGY_NONE` when absent.
+    pub strategy_id: Option<SmolStr>,
+    /// `true` for ghost signals that the risk engine clamped (R5.6 —
+    /// surfaces "(clamped)" suffix on the side badge). Always `false`
+    /// for the Fill variant.
+    pub was_clamped: bool,
+    /// Short clamp reason — rendered under the side row when present
+    /// (`"per_symbol_cap"`, `"daily_loss_cap"`, etc.).
+    pub clamp_reason: Option<SmolStr>,
+}
+
 /// Root cockpit model. Owned by the iced `Application`.
 ///
 /// `Debug` and `Clone` are implemented manually so the optional
@@ -653,6 +722,22 @@ pub struct Cockpit {
     /// fetch returns; `Ready(fills)` after; `Error(msg)` on query failure.
     pub chart_markers: PanelState<Vec<FillView>>,
 
+    /// Ghost-marker layer for the Charts screen — strategy-intended
+    /// signals filtered to the active `(venue, symbol, window)` triple
+    /// (R5.4, M3 — T2018, chart-buy-sell-emphasis v1.9). Sibling of
+    /// `chart_markers`; fed by `audit::query::recent_signals` via the
+    /// `cockpit_live` `Task::perform` shim on `SelectSymbol` and after
+    /// `BarClose` for the active symbol. `Loading` until the first
+    /// async fetch returns; `Ready(signals)` (possibly empty) after.
+    pub chart_signals: PanelState<Vec<SignalView>>,
+
+    /// Currently-rendered hover tooltip for the chart canvas — `None` when
+    /// the cursor is not over any marker (R4.1). Pure-state output of the
+    /// `ChartMarkerHovered` / `ChartMarkerHoverEnded` message arms — the
+    /// chart widget's `canvas::Program::update` impl drives the messages;
+    /// `state::update` does the assignment.
+    pub chart_tooltip: Option<ChartTooltipView>,
+
     // ── Phase 3 — Detail screens ────────────────────────────────────────
     /// Currently-selected strategy on the Strategies-detail screen.
     /// Set by `Message::SelectStrategy` (chip click on the Strategies
@@ -746,6 +831,8 @@ impl std::fmt::Debug for Cockpit {
             .field("selected_symbol", &self.selected_symbol)
             .field("chart_buffer", &self.chart_buffer)
             .field("chart_markers", &self.chart_markers)
+            .field("chart_signals", &self.chart_signals)
+            .field("chart_tooltip", &self.chart_tooltip)
             .field("selected_strategy", &self.selected_strategy)
             .field("strategies_config", &self.strategies_config)
             .field("risk_state", &self.risk_state)
@@ -787,6 +874,8 @@ impl Default for Cockpit {
             selected_symbol: None,
             chart_buffer: ChartBuffer::default(),
             chart_markers: PanelState::Loading,
+            chart_signals: PanelState::Loading,
+            chart_tooltip: None,
             selected_strategy: None,
             strategies_config: None,
             risk_state: PanelState::Loading,
@@ -858,6 +947,8 @@ impl Cockpit {
             selected_symbol: None,
             chart_buffer: ChartBuffer::default(),
             chart_markers: PanelState::Loading,
+            chart_signals: PanelState::Loading,
+            chart_tooltip: None,
             selected_strategy: None,
             strategies_config: None,
             risk_state: PanelState::Loading,
@@ -968,6 +1059,21 @@ pub enum Message {
     /// `Ok(fills)` flips `chart_markers` to `Ready(fills)`; `Err(msg)`
     /// flips it to `Error(msg)`.
     ChartMarkersLoaded(Result<Vec<FillView>, SmolStr>),
+
+    // ── chart-buy-sell-emphasis v1.9 — ghost-signal layer + tooltip ────────
+    /// Async result of the `audit::query::recent_signals` fetch issued
+    /// after `SelectSymbol` or after `BarClose` for the active symbol
+    /// (R5.4). Sibling of `ChartMarkersLoaded`. `Ok(signals)` flips
+    /// `chart_signals` to `Ready(signals)`; `Err(msg)` flips to
+    /// `Error(msg)`.
+    ChartSignalsLoaded(Result<Vec<SignalView>, SmolStr>),
+    /// Cursor entered (or moved into) the hit-rect of a chart marker. The
+    /// chart canvas program emits this via custom pointer-tracking; the
+    /// pure-state arm assigns `chart_tooltip = Some(view)` from the index
+    /// (R4.1, Q3).
+    ChartMarkerHovered(ChartMarkerIndex),
+    /// Cursor left every marker's hit-rect. Clears `chart_tooltip`.
+    ChartMarkerHoverEnded,
 
     // ── Phase 3 — Detail screens ────────────────────────────────────────
     /// Strategies-detail chip click OR Home → Strategies-summary row
@@ -1271,12 +1377,33 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::SelectSymbol(venue, symbol) => {
             model.selected_symbol = Some((venue, symbol));
             model.chart_markers = PanelState::Loading;
+            model.chart_signals = PanelState::Loading;
+            // Clear any stale tooltip from the previous symbol so a hover
+            // on an empty canvas doesn't surface a tooltip referencing a
+            // fill the operator can no longer see.
+            model.chart_tooltip = None;
         }
         Message::ChartMarkersLoaded(result) => {
             model.chart_markers = match result {
                 Ok(fills) => PanelState::Ready(fills),
                 Err(msg) => PanelState::Error(msg),
             };
+        }
+        Message::ChartSignalsLoaded(result) => {
+            model.chart_signals = match result {
+                Ok(signals) => PanelState::Ready(signals),
+                Err(msg) => PanelState::Error(msg),
+            };
+        }
+        Message::ChartMarkerHovered(idx) => {
+            // Build tooltip view from index against the currently-Ready
+            // marker / signal slices. Out-of-range indices clear the
+            // tooltip — the canvas could publish a stale index across an
+            // async refresh boundary; defence-in-depth.
+            model.chart_tooltip = build_tooltip_view(model, idx);
+        }
+        Message::ChartMarkerHoverEnded => {
+            model.chart_tooltip = None;
         }
 
         // ── Phase 3 — Detail screens ────────────────────────────────────
@@ -1527,6 +1654,66 @@ fn strategy_event_view_from_load_error(ev: &StrategyLoadError) -> StrategyEventV
         error_code: Some(ev.error_code.clone()),
         error_summary: Some(ev.error_summary.clone()),
     }
+}
+
+/// Build a `ChartTooltipView` from a hovered-marker index against the
+/// currently-Ready marker / signal slices. Returns `None` for stale or
+/// out-of-range indices — defence-in-depth across the async refresh
+/// boundary (the canvas could publish a hover for an index that has since
+/// been replaced by a `Loading` panel-state).
+fn build_tooltip_view(model: &Cockpit, idx: ChartMarkerIndex) -> Option<ChartTooltipView> {
+    match idx {
+        ChartMarkerIndex::Fill(i) => {
+            let fills = match &model.chart_markers {
+                PanelState::Ready(v) => v,
+                _ => return None,
+            };
+            let fill = fills.get(i)?;
+            let strategy_id = lookup_strategy_for_fill(model, fill);
+            Some(ChartTooltipView {
+                kind: ChartTooltipKind::Fill,
+                side: fill.side,
+                price: Some(fill.price.get()),
+                qty: fill.qty.get(),
+                notional: Some(fill.price.get().saturating_mul(fill.qty.get())),
+                ts: fill.venue_ts,
+                strategy_id,
+                was_clamped: false,
+                clamp_reason: None,
+            })
+        }
+        ChartMarkerIndex::Signal(i) => {
+            let signals = match &model.chart_signals {
+                PanelState::Ready(v) => v,
+                _ => return None,
+            };
+            let signal = signals.get(i)?;
+            Some(ChartTooltipView {
+                kind: ChartTooltipKind::Signal,
+                side: signal.side,
+                price: None,
+                qty: signal.intended_qty.get(),
+                notional: None,
+                ts: signal.signal_ts,
+                strategy_id: Some(signal.strategy_id.0.clone()),
+                was_clamped: signal.was_clamped,
+                clamp_reason: signal.clamp_reason.clone(),
+            })
+        }
+    }
+}
+
+/// Best-effort strategy lookup for a fill — Phase 5 onward `FillView`
+/// doesn't carry a `strategy_id`, so the cockpit relies on the recent
+/// strategy events list to attribute. Returns `None` when no attribution
+/// is available (R4.7 — tooltip then renders the `CHART_TOOLTIP_STRATEGY_NONE`
+/// dash placeholder).
+fn lookup_strategy_for_fill(_model: &Cockpit, _fill: &FillView) -> Option<SmolStr> {
+    // Future enrichment: cross-reference `model.strategies_recent_events`
+    // by tx-id / venue+ts. For v1.9 we leave attribution to the
+    // journal-transaction modal (one click away via R4.5 click-through);
+    // the tooltip simply renders "—" when nothing is plumbed.
+    None
 }
 
 #[cfg(test)]

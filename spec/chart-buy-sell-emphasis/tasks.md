@@ -1,8 +1,8 @@
 ---
 slug: chart-buy-sell-emphasis
 status: in-progress
-owner: architect
-updated: 2026-05-10
+owner: ui-designer
+updated: 2026-05-11
 ---
 
 # Tasks — Chart buy/sell emphasis
@@ -158,13 +158,13 @@ Closes **R1**, **R2**, **R3**, **R6**. Pure rewrite of
 `crates/ui/src/widgets/chart.rs`. Verified by **V1**, **V2**,
 **V9**, **V10**.
 
-- [ ] **T2001 [D]** — Bump `MARKER_SIZE_PX` from `6.0` → `13.0` and
+- [x] **T2001 [D]** — Bump `MARKER_SIZE_PX` from `6.0` → `13.0` and
   add `GHOST_MARKER_SIZE_PX = 8.0` constant in
   `crates/ui/src/widgets/chart.rs`. **[R1.1, Q6]**.
   _Acceptance:_ `grep -n "MARKER_SIZE_PX\|GHOST_MARKER_SIZE_PX"
   crates/ui/src/widgets/chart.rs` returns the two constants with
   values `13.0` and `8.0`. No other call sites change.
-- [ ] **T2002 [D+U]** — Extend `draw_triangle` signature with
+- [x] **T2002 [D+U]** — Extend `draw_triangle` signature with
   `outline: Option<Color>` and `shadow: Option<(iced::Vector,
   iced::Color)>` parameters; render shadow pre-pass (offset
   `(0.0, 1.5)`), then fill, then outline (1-px stroke). Add
@@ -175,7 +175,7 @@ Closes **R1**, **R2**, **R3**, **R6**. Pure rewrite of
   asserts the helper returns the expected `(Vector{0.0,1.5},
   shadow_1.color)` for dark and light modes; no `#hex` literal
   introduced.
-- [ ] **T2003 [D]** — Add `snap_price_to_line(fill_ts: i64, bars:
+- [x] **T2003 [D]** — Add `snap_price_to_line(fill_ts: i64, bars:
   &[Bar]) -> Option<f32>` helper performing linear interpolation
   between the bracketing bars' `close` values. Replace the
   marker `y` derivation at the existing line 156-157 to use the
@@ -185,7 +185,7 @@ Closes **R1**, **R2**, **R3**, **R6**. Pure rewrite of
   passes — fixture: fill at exact midpoint ts between two bars
   whose closes differ by `dec!(100)` asserts rendered `y` is the
   interpolated midpoint y-pixel ± 0.5 px (V2).
-- [ ] **T2004 [D]** — Re-order `ChartProgram::draw` pass sequence
+- [x] **T2004 [D]** — Re-order `ChartProgram::draw` pass sequence
   to: gridlines → axis labels → line stroke → ghost-signal
   triangles (placeholder loop iterating an empty
   `Vec<SignalView>` at this milestone; M3 wires the real data)
@@ -198,7 +198,7 @@ Closes **R1**, **R2**, **R3**, **R6**. Pure rewrite of
   `cargo insta accept` reflecting the new constant + outline
   flag + `draw_order` line; second-run determinism check on the
   same fixture is byte-identical (V10).
-- [ ] **T2005 [D+U]** — Re-bless the existing
+- [x] **T2005 [D+U]** — Re-bless the existing
   `chart__btc_with_two_buys_one_sell.snap` baseline and run the
   full `cargo test -p ui` suite to confirm only the named
   snapshot churns (V1). **[R10.1, V1, V9]**.
@@ -212,7 +212,7 @@ Closes **R1**, **R2**, **R3**, **R6**. Pure rewrite of
 Closes **R4** (R4.1–R4.7). Verified by **V3**, **V4**, **V9**,
 **V13**. Can run in parallel with M3 — different code paths.
 
-- [ ] **T2006 [D]** — Add the new `Message` arms in
+- [x] **T2006 [D]** — Add the new `Message` arms in
   `crates/ui/src/state.rs`:
   `ChartMarkerHovered(ChartMarkerIndex)`,
   `ChartMarkerHoverEnded`, `ChartSignalsLoaded(Result<
@@ -226,7 +226,7 @@ Closes **R4** (R4.1–R4.7). Verified by **V3**, **V4**, **V9**,
   _Acceptance:_ `cargo test -p ui --test consistency` green;
   `cargo build -p ui` green; no `_ =>` catch-all in the
   message-handler `match`.
-- [ ] **T2007 [D+U]** — Add new strings to
+- [x] **T2007 [D+U]** — Add new strings to
   `crates/ui/src/strings.rs`: `CHART_TOOLTIP_SIDE_BUY`,
   `CHART_TOOLTIP_SIDE_SELL`, `CHART_TOOLTIP_PRICE_LABEL`,
   `CHART_TOOLTIP_QTY_LABEL`, `CHART_TOOLTIP_NOTIONAL_LABEL`,
@@ -237,7 +237,7 @@ Closes **R4** (R4.1–R4.7). Verified by **V3**, **V4**, **V9**,
   _Acceptance:_ `cargo test -p ui strings::tests::
   all_strings_present` green; `grep -n 'CHART_TOOLTIP'
   crates/ui/src/strings.rs` returns 9 lines.
-- [ ] **T2008 [D]** — Promote `ChartProgram::State` from `()` to
+- [x] **T2008 [D]** — Promote `ChartProgram::State` from `()` to
   `ChartState { hovered_marker_idx: Option<ChartMarkerIndex>,
   hovered_marker_centroid: Option<iced::Point> }`; implement
   `canvas::Program::update` consuming
@@ -251,7 +251,7 @@ Closes **R4** (R4.1–R4.7). Verified by **V3**, **V4**, **V9**,
   `CursorMoved` event entering a marker's hit-rect transitions
   state from `None` to `Some(Fill(0))`; exit transitions back
   to `None`.
-- [ ] **T2009 [D+U]** — Create
+- [x] **T2009 [D+U]** — Create
   `crates/ui/src/widgets/chart_tooltip.rs` with
   `pub(crate) fn draw_tooltip(frame, bounds, anchor, view,
   mode)` rendering the six tooltip fields per R4.2. Position
@@ -265,7 +265,7 @@ Closes **R4** (R4.1–R4.7). Verified by **V3**, **V4**, **V9**,
   `cargo insta accept`; the captured fields match a hand-
   authored expected text fixture covering all six R4.2 fields
   (no Tx ID per Q4-operator-resolution).
-- [ ] **T2010 [D]** — Wire `Message::TapeRowClicked(transaction_id)`
+- [x] **T2010 [D]** — Wire `Message::TapeRowClicked(transaction_id)`
   dispatch from the canvas-update `mouse::Event::ButtonPressed`
   arm for **fill** markers (ghost markers dispatch nothing on
   click). Reuses the existing wired-up tape-row-audit-modal
@@ -277,7 +277,7 @@ Closes **R4** (R4.1–R4.7). Verified by **V3**, **V4**, **V9**,
   chart_marker_click_opens_modal` green;
   `cockpit.tape_audit_modal == Some(PanelState::Ready(view))`
   with `view.transaction_id == clicked_marker.transaction_id`.
-- [ ] **T2011 [D]** — Wire the cockpit-binary `Task::perform` shim
+- [x] **T2011 [D]** — Wire the cockpit-binary `Task::perform` shim
   for the hover-state update in `crates/ui/src/bin/cockpit_live.rs`
   alongside the existing `recent_fills_filtered` shim (no new
   async work — hover is pure-state; this is a no-op task for
@@ -301,7 +301,7 @@ Sequence: migration + writer + reader + core type + config land
 side ghost render + signal-fetch shim land **second** (T2017–T2020,
 after T2006's `chart_signals` field).
 
-- [ ] **T2012 [D]** — Add `crates/core/src/views.rs::SignalView`
+- [x] **T2012 [D]** — Add `crates/core/src/views.rs::SignalView`
   per Q9 with the exact field shape:
   `{ signal_id: SmolStr, symbol: Symbol, side: Side,
   intended_qty: Quantity, signal_ts: Timestamp, strategy_id:
@@ -313,7 +313,17 @@ after T2006's `chart_signals` field).
   Round-trip serde test
   `signal_view_serde_roundtrip` lands as part of
   `crates/core/src/views.rs::tests`.
-- [ ] **T2013 [D]** — Author migration
+  - VERIFIED — landed at `crates/core/src/views.rs:138-187` (struct)
+    + `crates/core/src/views.rs:189-235` (test module);
+    re-exported from `crates/core/src/lib.rs:53-55`. Test command:
+    `cargo test -p trading_core signal_view_serde_roundtrip`.
+    Output: `test views::tests::signal_view_serde_roundtrip ... ok`.
+    Note: workspace package is `trading_core` (snake) not
+    `trading-core` (hyphen); task spec uses the hyphen form but
+    Cargo resolves both to the same crate. Test exercises both
+    `was_clamped = true / Some(reason)` and `was_clamped = false /
+    None` round-trips.
+- [x] **T2013 [D]** — Author migration
   `crates/audit/migrations/009_strategy_signals.sql`. Schema:
   ```sql
   CREATE TABLE IF NOT EXISTS strategy_signals (
@@ -340,7 +350,16 @@ after T2006's `chart_signals` field).
   _Acceptance:_ `cargo test -p audit migrations_apply_clean`
   green on an empty SQLite database; re-running the migrator is
   a no-op (sqlx tracks version).
-- [ ] **T2014 [D]** — Implement
+  - VERIFIED — migration landed at
+    `crates/audit/migrations/009_strategy_signals.sql`; ledger
+    comment range bumped at `crates/audit/src/ledger.rs:31` from
+    "001..008" to "001..009"; acceptance test at
+    `crates/audit/tests/migration_009.rs:18-72`. Test command:
+    `cargo test -p audit --test migration_009`.
+    Output: `test result: ok. 2 passed; 0 failed; 0 ignored;
+    0 measured; 0 filtered out; finished in 0.01s` (both
+    `migrations_apply_clean` and `migration_009_is_idempotent`).
+- [x] **T2014 [D]** — Implement
   `crates/audit/src/journal.rs::post_strategy_signal(ledger,
   signal, venue, was_clamped, clamp_reason)` and
   `update_signal_clamp_status(ledger, signal_id, was_clamped,
@@ -353,7 +372,32 @@ after T2006's `chart_signals` field).
   post_strategy_signal_writes_row` green — fixture asserts row
   count goes 0 → 1; `update_signal_clamp_status_flips_field`
   green.
-- [ ] **T2015 [D]** — Implement
+  - VERIFIED with note — `post_strategy_signal` landed at
+    `crates/audit/src/journal.rs:259-369`;
+    `update_signal_clamp_status` at
+    `crates/audit/src/journal.rs:385-417`; helper
+    `signal_kind_to_side_str` at `crates/audit/src/journal.rs:420-444`.
+    Tests at `crates/audit/src/journal.rs:1525-1701`. Test command:
+    `cargo test -p audit --lib tests::`. Output:
+    `test journal::tests::post_strategy_signal_writes_row ... ok`,
+    `test journal::tests::update_signal_clamp_status_flips_field ... ok`,
+    `test journal::tests::post_strategy_signal_skips_hold_kind ... ok`,
+    `test journal::tests::post_strategy_signal_persists_intended_price ... ok`
+    (24 tests total, all green, no regression on existing journal tests).
+    NOTE: extended the architect-suggested signature from
+    `(ledger, signal, venue, was_clamped, clamp_reason)` to
+    `(ledger, signal, intended_qty: Quantity, intended_price:
+    Option<Price>, venue, was_clamped, clamp_reason)` because the
+    `strategy_signals.intended_qty_str` column is NOT NULL (per Q1
+    schema in tasks.md T2013 + Q9). `Signal` does not carry quantity
+    — the strategy emits intent, sizing is computed by the agent
+    loop. The added params let the future agent-runtime tap point
+    pass the sized quantity directly. Architect's spec implicitly
+    requires this for the migration to be satisfiable; documented as
+    a deviation here. Forward-compat `intended_price: Option<Price>`
+    matches Q9 (`None` for v1 market strategies; `Some(_)` for v2
+    limit-order shapes).
+- [x] **T2015 [D]** — Implement
   `crates/audit/src/query.rs::recent_signals(ledger, venue,
   symbol, since, until) -> Result<Vec<SignalView>,
   LedgerError>`. Mirror the `recent_fills_filtered` shape
@@ -366,7 +410,20 @@ after T2006's `chart_signals` field).
   with the three sub-tests V11a (correct rows, correct order),
   V11b (empty window → `Ok(vec![])`), V11c (gate-off ledger
   with no rows → `Ok(vec![])`).
-- [ ] **T2016 [D]** — Add `crates/agent/src/config.rs::SignalLogConfig
+  - VERIFIED — reader landed at `crates/audit/src/query.rs:335-432`;
+    import added at `crates/audit/src/query.rs:13`. Integration tests
+    at `crates/audit/tests/recent_signals.rs:1-234`. Test command:
+    `cargo test -p audit recent_signals`.
+    Output: `test result: ok. 5 passed; 0 failed; 0 ignored; 0
+    measured; 0 filtered out; finished in 0.02s` covering all
+    V11 sub-tests:
+    - V11a: `test recent_signals_returns_window_subset ... ok`
+    - V11b: `test recent_signals_empty_window_returns_ok_empty ... ok`
+    - V11c: `test recent_signals_gate_off_ledger_returns_ok_empty ... ok`
+    + two extra defensive sub-tests
+    (`recent_signals_reflects_post_update_clamp_status`,
+    `recent_signals_isolates_by_venue_and_symbol`).
+- [x] **T2016 [D]** — Add `crates/agent/src/config.rs::SignalLogConfig
   { pub enabled: bool }` with `#[serde(default)] enabled: false`.
   Wire a `[signal_log]` section in `Config` (sibling of
   `[reflection]`). **[R5.7, V12]**.
@@ -374,7 +431,18 @@ after T2006's `chart_signals` field).
   config_signal_log_default_off` green — V12 hard-asserts the
   default-off behaviour against a TOML without `[signal_log]`
   and against a TOML with `enabled = true`.
-- [ ] **T2017 [D]** — Add the new `Task::perform` shim in
+  - VERIFIED — `SignalLogConfig` landed at
+    `crates/agent/src/config.rs:232-278`; wired into `Config` at
+    `crates/agent/src/config.rs:480-490` and `Default` impl at
+    `crates/agent/src/config.rs:506`. Tests at
+    `crates/agent/src/config.rs:864-901`. Test command:
+    `cargo test -p agent config_signal_log`.
+    Output: `test config::tests::config_signal_log_default_off ... ok`
+    + `test config::tests::config_signal_log_explicit_enable_round_trips
+    ... ok` (2 passed; 0 failed). Covers both directions of V12 —
+    omitted TOML section defaults to `false`, explicit `enabled =
+    true` round-trips through serde.
+- [x] **T2017 [D]** — Add the new `Task::perform` shim in
   `crates/ui/src/bin/cockpit_live.rs` issuing
   `audit::query::recent_signals` for the active `(venue, symbol)`
   on `SelectSymbol` and after `BarClose` for the active symbol
@@ -385,7 +453,7 @@ after T2006's `chart_signals` field).
   (`cargo build -p ui --features live`); the new shim
   dispatches when a symbol is selected against a fixture
   ledger with one signal row.
-- [ ] **T2018 [D+U]** — Implement the ghost-signal-marker render
+- [x] **T2018 [D+U]** — Implement the ghost-signal-marker render
   pass in `ChartProgram::draw` (before the fill-marker pass,
   per the M1 draw-order). Iterate
   `self.signals: Vec<SignalView>`; for each, compute the
@@ -400,7 +468,7 @@ after T2006's `chart_signals` field).
   `chart__with_ghosts_and_fills.snap` captures a fixture with
   2 ghosts + 1 fill at overlapping bars and the `draw_order:
   gridlines,labels,line,ghosts,fills,tooltip` line (V5).
-- [ ] **T2019 [D+U]** — Extend the tooltip render to surface the
+- [x] **T2019 [D+U]** — Extend the tooltip render to surface the
   ghost-variant with the `CHART_TOOLTIP_GHOST_BADGE` row and
   omit `Price` + `Notional` fields per R5.6. Driven by
   `ChartTooltipView.kind: Fill | Signal` from T2006. Include
@@ -410,7 +478,7 @@ after T2006's `chart_signals` field).
   `chart_tooltip_ghost_variant_renders_no_price` green —
   asserts that a `Signal`-kind view renders the badge and
   omits the `Price` / `Notional` label rows.
-- [ ] **T2020 [D]** — V5 acceptance + V11 acceptance gate:
+- [x] **T2020 [D]** — V5 acceptance + V11 acceptance gate:
   `cargo test -p ui chart_renders_ghost_and_fill_layers` green;
   `cargo test -p audit recent_signals` green; consistency
   test stays green. **Forward-compat documentation:** add a
@@ -432,7 +500,7 @@ Closes **R7**, **R8** (Layout β per Q5). Verified by **V6**, **V7**,
 (which already exists). Ghost-signal data does NOT feed any tile/
 histogram in v1.9 (R7 strawman scope).
 
-- [ ] **T2021 [D]** — Add new strings to `crates/ui/src/strings.rs`:
+- [x] **T2021 [D]** — Add new strings to `crates/ui/src/strings.rs`:
   `CHART_VOLUME_TILE_BUYS_LABEL`, `CHART_VOLUME_TILE_SELLS_LABEL`,
   `CHART_VOLUME_TILE_NET_LABEL`, `CHART_VOLUME_TILE_TRADES_SUFFIX`,
   `CHART_VOLUME_HISTOGRAM_LABEL`, `CHART_POSITION_MIRROR_LABEL`,
@@ -441,7 +509,7 @@ histogram in v1.9 (R7 strawman scope).
   _Acceptance:_ `cargo test -p ui --test consistency` green;
   `grep -n 'CHART_VOLUME\|CHART_POSITION' crates/ui/src/strings.rs`
   returns 7 lines.
-- [ ] **T2022 [D]** — Add tile-arithmetic helper to
+- [x] **T2022 [D]** — Add tile-arithmetic helper to
   `crates/ui/src/screens/charts.rs` (or a private sibling
   module if size warrants): `compute_window_volume(markers:
   &[FillView]) -> (buys_usdt: Decimal, sells_usdt: Decimal,
@@ -453,7 +521,7 @@ histogram in v1.9 (R7 strawman scope).
   green (V6) — fixture: 3 buys ($30,000) + 2 sells ($20,000);
   asserts the tile renders `Buys in window: +$30,000.00 (3)`
   / `Sells in window: -$20,000.00 (2)` / `Net: +$10,000.00`.
-- [ ] **T2023 [D+U]** — Create
+- [x] **T2023 [D+U]** — Create
   `crates/ui/src/widgets/volume_histogram.rs` with
   `pub fn view(bins: Vec<VolumeBin>, mode: ThemeMode) ->
   crate::Element<'a>`. Sibling shape of
@@ -466,7 +534,7 @@ histogram in v1.9 (R7 strawman scope).
   `volume_histogram__btc_three_buys_two_sells.snap` lands via
   `cargo insta accept`; widget renders for the empty-bins case
   with the `"-"` placeholder per R7.6 (no blank screens).
-- [ ] **T2024 [D]** — Add the open-position-mirror helper
+- [x] **T2024 [D]** — Add the open-position-mirror helper
   filtering `model.positions: PanelState<Vec<PositionView>>`
   to the active symbol via the existing
   `widgets::positions::view` shape but with a private slice-
@@ -476,7 +544,7 @@ histogram in v1.9 (R7 strawman scope).
   `position_mirror_filters_to_active_symbol` green — fixture:
   positions in `BTCUSDT` and `ETHUSDT`; mirror filtered to
   `BTCUSDT` shows the BTC row and omits ETH.
-- [ ] **T2025 [D+U]** — Reshape `crates/ui/src/screens/charts.rs`
+- [x] **T2025 [D+U]** — Reshape `crates/ui/src/screens/charts.rs`
   for Layout (β) (Q5-operator-resolved): chip row → tile-strip
   + open-position mirror in a horizontal strip → chart canvas
   (`Length::Fill`) → fixed 80-px histogram below. Compute
@@ -496,14 +564,14 @@ Closes nothing new. Verified by **V8** (anchors hard gate),
 **V9** (workspace green), **V10** (determinism), **V13**
 (consistency). Tester-only milestone.
 
-- [ ] **T2026 [D]** — Pre-tester self-validation: developer runs
+- [x] **T2026 [D]** — Pre-tester self-validation: developer runs
   `cargo fmt`, `cargo clippy -- -D warnings`,
   `bash scripts/precheck.sh`, and the full `cargo test
   --workspace` against the local working tree. Any failure
   blocks the M5 handoff. **[R10.1, R10.2, R10.3, R11.5]**.
   _Acceptance:_ all four pre-checks green locally; signal
   HANDOFF → tester via the `present-results` skill.
-- [ ] **T2027 [D]** — Final cross-cut grep gate:
+- [x] **T2027 [D]** — Final cross-cut grep gate:
   `grep -rn '#[0-9a-fA-F]\{6\}'
   crates/ui/src/widgets/chart.rs
   crates/ui/src/widgets/volume_histogram.rs
@@ -678,3 +746,23 @@ arithmetic is a derived-state helper, not a widget edit)._
   as superseded; new architect-confirmed sections sit above
   the superseded ones in the file. T2001 starts M1 (size +
   outline + shadow + draw order); T_FINAL is the tester gate.
+- 2026-05-11 (ui-designer): completed the UI track — T2001–T2011
+  (markers + tooltip + click-through), T2017 (cockpit_live
+  signals shim — landed alongside developer's T2015), T2018–T2020
+  (ghost-signal render + ghost tooltip variant + V5/V11 gate),
+  T2021–T2025 (counter views + Layout β reshape), T2026 + T2027
+  (self-validation grep gate). `core::SignalView` was available when
+  T2018 reached it (developer's T2012 had already landed). Three
+  insta snapshots re-baselined via `cargo insta accept`:
+  `chart__btc_with_two_buys_one_sell` (M1 churn —
+  `draw_order` line + ghost/fill counts + marker sizes +
+  outline/shadow tokens), `chart__with_ghosts_and_fills` (new — V5
+  ghost+fill render), `volume_histogram__btc_three_buys_two_sells`
+  (new — M4 widget), `charts_screen_with_counters_and_chart` (new
+  — V7 Layout β snapshot). `cargo test -p ui` and
+  `cargo test -p ui --features live` green; `cargo test --workspace`
+  green (143 test binaries, zero failures);
+  `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (11 / 11)`
+  zero drift. `cargo fmt -p ui` clean. T_FINAL stays
+  unticked — tester-only per the orchestrator's contract.
+  HANDOFF → tester (T_FINAL_CHART_BUY_SELL_EMPHASIS).

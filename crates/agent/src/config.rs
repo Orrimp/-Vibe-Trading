@@ -229,6 +229,50 @@ impl Default for AuditConfig {
     }
 }
 
+/// chart-buy-sell-emphasis v1.9 (T2016) — strategy-signal-log writer
+/// gate (Q1, R5.7, V12).
+///
+/// Defaults to `enabled = false`. Operators flip it to `true` in
+/// `agent.toml` when they want the ghost-marker layer (R5) populated
+/// in cockpit. With the gate off (the v1.9 default):
+///
+/// - the agent main loop NEVER calls
+///   `audit::journal::post_strategy_signal`;
+/// - the `strategy_signals` table (migration 009) stays empty;
+/// - `audit::query::recent_signals` returns `Ok(vec![])` for every
+///   `(venue, symbol, window)` tuple;
+/// - the cockpit's ghost layer renders zero triangles.
+///
+/// **Different default than `ReflectionConfig::enable_writer = true`**
+/// per architect Q1 — the audit-DB growth budget is real (≈ 8 MiB/month
+/// at 4-strategy × 60-bar × 24-hour × 30-day volume), so the
+/// conservative-off shipping default lets operators opt in once they
+/// actually want the ghost-layer audit trail. Reflection-memory was
+/// flipped to default-on on operator approval 2026-05-10 (presenter
+/// deck `spec/reflection-memory/presentations/reflection-memory-
+/// 2026-05-08.md`); the signal-log gate stays off in v1.9 and will be
+/// re-evaluated for default-flip in a future brief once the live
+/// agent-runtime tap point lands and operators are ready.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalLogConfig {
+    /// `false` (the v1.9 ship default) → no rows written; ghost layer
+    /// renders empty. `true` → live signal-emit tap is active and one
+    /// row lands in `strategy_signals` per emitted `Signal`.
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+}
+
+impl Default for SignalLogConfig {
+    fn default() -> Self {
+        Self {
+            // Architect Q1 — conservative-off default. Operator opts
+            // in via `[signal_log] enabled = true` once they want the
+            // ghost-layer audit trail.
+            enabled: false,
+        }
+    }
+}
+
 /// Reflection-memory writer config (T1807 / Q3a / Q8).
 ///
 /// `path` is the sibling sqlite file used by `SqliteReflectionStore`.
@@ -452,6 +496,13 @@ pub struct Config {
     /// profiles that need the writer off override to `false`.
     #[serde(default)]
     pub reflection: ReflectionConfig,
+    /// chart-buy-sell-emphasis v1.9 (T2016) — strategy-signal-log
+    /// writer gate. Default `enabled = false` per architect Q1
+    /// (conservative-off; operator opts in via `[signal_log]
+    /// enabled = true` once they want the ghost-marker audit trail
+    /// in cockpit). V12 hard-asserts the default.
+    #[serde(default)]
+    pub signal_log: SignalLogConfig,
 }
 
 impl Default for Config {
@@ -470,6 +521,7 @@ impl Default for Config {
             funding: FundingConfig::default(),
             universe: UniverseConfig::default(),
             reflection: ReflectionConfig::default(),
+            signal_log: SignalLogConfig::default(),
         }
     }
 }
@@ -817,6 +869,41 @@ usdc_enabled = true
         let cfg = Config::from_toml_str(toml).expect("parse usdc-only universe");
         assert!(!cfg.universe.usdt_enabled);
         assert!(cfg.universe.usdc_enabled);
+    }
+
+    /// T2016 / V12 — `[signal_log]` section omitted from `agent.toml`
+    /// must default `enabled = false` (architect Q1 conservative-off
+    /// resolution). Hard-asserts the v1.9 shipping default.
+    #[test]
+    fn config_signal_log_default_off() {
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse minimal");
+        assert!(
+            !cfg.signal_log.enabled,
+            "signal_log.enabled must default to false (architect Q1 conservative-off); \
+             flipping the default requires a follow-up brief + operator approval"
+        );
+    }
+
+    /// T2016 / V12 — explicit `[signal_log] enabled = true` round-trips.
+    /// Operator opt-in path; defends against the field being dropped
+    /// by serde (a regression vector if the field were ever renamed).
+    #[test]
+    fn config_signal_log_explicit_enable_round_trips() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[signal_log]
+enabled = true
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse signal-log opt-in");
+        assert!(
+            cfg.signal_log.enabled,
+            "explicit `enabled = true` must round-trip through serde"
+        );
     }
 
     #[test]

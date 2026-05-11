@@ -1,0 +1,18 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: charts_screen_full_summary(&c)
+---
+screen: charts
+layout: chip_row + status_strip + chart + histogram
+layout_resolution: Q5_beta
+histogram_height_px: 80
+chips:
+  rule=ACCENT venue=binance symbol=BTCUSDT
+  rule=— venue=binance symbol=ETHUSDT
+  rule=— venue=binance symbol=SOLUSDT
+tile: buys=12000.6 sells=8000.4 net=4000.2 buy_count=3 sell_count=2
+position_mirror: symbol=BTCUSDT qty=0.25 pnl=125
+chart_markers: ready(5 markers)
+chart_signals: ready(2 signals)
+chart_bars: 0
+histogram_bins: 0 active=0

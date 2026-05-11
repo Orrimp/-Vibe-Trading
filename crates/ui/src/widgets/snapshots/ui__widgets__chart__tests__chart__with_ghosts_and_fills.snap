@@ -9,12 +9,12 @@ empty_state: false
 draw_order: gridlines,labels,line,ghosts,fills,tooltip
 line_color: ACCENT
 axis_range: min=39904.62 max=40242.88
-fill_count: 3
-ghost_count: 0
-markers_buy: 2
-markers_sell: 1
-ghost_buy: 0
-ghost_sell: 0
+fill_count: 1
+ghost_count: 2
+markers_buy: 1
+markers_sell: 0
+ghost_buy: 1
+ghost_sell: 1
 marker_size_px: 13
 ghost_marker_size_px: 8
 marker_buy_color: UP_500

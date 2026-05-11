@@ -10,8 +10,8 @@ use time::OffsetDateTime;
 use trading_core::{
     AccountId, AuditKindFilter, AuditKindLabel, EquitySeries, FillView, FundingObs, JournalEntry,
     JournalEntryView, JournalRow, JournalTransactionMetadata, LedgerError, Money, OpenPosition,
-    PairKey, PairMembership, Price, Quantity, Side, StrategyEventKind, StrategyEventView,
-    StrategyId, Symbol, Timestamp, Usdt, Venue,
+    PairKey, PairMembership, Price, Quantity, Side, SignalView, StrategyEventKind,
+    StrategyEventView, StrategyId, Symbol, Timestamp, Usdt, Venue,
 };
 
 use crate::Ledger;
@@ -330,6 +330,121 @@ async fn parse_fill_view_from_description(
         venue_ts,
         transaction_id: SmolStr::new(txn_id),
     }))
+}
+
+// ── chart-buy-sell-emphasis v1.9 (T2015) — recent_signals reader ──
+//
+// Sibling of [`recent_fills_filtered`] in shape (same RFC-3339 binding,
+// same `venue.to_string()` predicate, same `[since, until)` half-open
+// window, same `ORDER BY ts DESC, rowid DESC` stability rule). The
+// cockpit polls this on `SelectSymbol` and after `BarClose` for the
+// active symbol — analogous to how `chart_markers` is populated from
+// `recent_fills_filtered` (R9.1: no new bus channel).
+//
+// With `agent.toml [signal_log] enabled = false` (the v1.9 default),
+// the writer is never called and this reader naturally returns
+// `Ok(vec![])` against the empty `strategy_signals` table (V11c).
+
+/// chart-buy-sell-emphasis v1.9 (T2015) — return every `SignalView` for
+/// the supplied `(venue, symbol)` inside the half-open interval
+/// `[since, until)`, newest-first.
+///
+/// Sibling of [`recent_fills_filtered`] — same RFC3339 binding,
+/// `venue.to_string()` predicate, half-open time window, stable
+/// `ORDER BY ts DESC, rowid DESC` (defends against ties on the same
+/// microsecond ts).
+///
+/// `intended_qty_str` is parsed back to [`Quantity`] via the
+/// `Decimal::parse` ↔ `Quantity::new` round-trip already used by
+/// `parse_fill_view_from_description`. Bad rows surface as
+/// [`LedgerError::Database`] (defensive — should be unreachable
+/// because the writer always binds well-formed Decimal strings).
+///
+/// `clamp_reason = NULL` (column absent or unset) maps to `None`.
+///
+/// **V11 acceptance:**
+/// - V11a — correct rows in correct order on a seeded ledger
+///   (`recent_signals_returns_window_subset`).
+/// - V11b — empty window returns `Ok(vec![])`
+///   (`recent_signals_empty_window_returns_ok_empty`).
+/// - V11c — gate-off ledger with no rows in `strategy_signals` returns
+///   `Ok(vec![])` (`recent_signals_gate_off_ledger_returns_ok_empty`).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or Decimal parse error.
+pub async fn recent_signals(
+    ledger: &Ledger,
+    venue: Venue,
+    symbol: Symbol,
+    since: Timestamp,
+    until: Timestamp,
+) -> Result<Vec<SignalView>, LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let venue_str = venue.to_string();
+    let symbol_str = symbol.0.as_str();
+
+    // Tuple shape: (id, ts, strategy_id, side, intended_qty_str,
+    // was_clamped, clamp_reason). Symbol and venue are filtered in the
+    // WHERE; we don't need them back in the projection.
+    type SignalRow = (String, String, String, String, String, i64, Option<String>);
+    let rows: Vec<SignalRow> = sqlx::query_as(
+        "SELECT id, ts, strategy_id, side, intended_qty_str, was_clamped, clamp_reason \
+         FROM strategy_signals \
+         WHERE ts >= ? AND ts < ? \
+           AND venue = ? \
+           AND symbol = ? \
+         ORDER BY ts DESC, rowid DESC",
+    )
+    .bind(&since_str)
+    .bind(&until_str)
+    .bind(&venue_str)
+    .bind(symbol_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut out: Vec<SignalView> = Vec::with_capacity(rows.len());
+    for (id, ts_str, strategy_id, side_str, qty_str, was_clamped_i, clamp_reason) in rows {
+        let side = match side_str.as_str() {
+            "buy" => Side::Buy,
+            "sell" => Side::Sell,
+            other => {
+                // Defensive — writer never produces other values today,
+                // but future SignalKind variants may extend the column.
+                return Err(LedgerError::Database(format!(
+                    "recent_signals: unknown side '{other}'"
+                )));
+            }
+        };
+        let qty_d: Decimal = qty_str
+            .parse()
+            .map_err(|_| LedgerError::Database(format!("recent_signals: bad qty '{qty_str}'")))?;
+        let intended_qty = Quantity::new(qty_d).map_err(|e| LedgerError::Database(e.to_string()))?;
+        let signal_ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
+            .map(Timestamp::new)
+            .map_err(|e| LedgerError::Database(e.to_string()))?;
+        let was_clamped = was_clamped_i != 0;
+
+        out.push(SignalView {
+            signal_id: SmolStr::new(&id),
+            symbol: symbol.clone(),
+            side,
+            intended_qty,
+            signal_ts,
+            strategy_id: StrategyId::new(strategy_id),
+            was_clamped,
+            clamp_reason: clamp_reason.map(SmolStr::new),
+        });
+    }
+    Ok(out)
 }
 
 // ── Phase 3 R12 / Q7 — recent_journal_filtered (sibling of recent_fills_filtered) ──

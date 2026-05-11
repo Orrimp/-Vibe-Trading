@@ -148,3 +148,86 @@ pub struct JournalRow {
     pub description: SmolStr,
     pub strategy_id: Option<StrategyId>,
 }
+
+/// chart-buy-sell-emphasis v1.9 (T2012, Q9) — read-side representation of a
+/// strategy signal row written by `audit::journal::post_strategy_signal` and
+/// returned by `audit::query::recent_signals`.
+///
+/// Sibling of [`FillView`]. The cockpit's chart canvas paints one ghost-
+/// triangle marker per `SignalView` (with `was_clamped` toggling a visual
+/// hint). The `signal_id` carries the `strategy_signals.id` UUID string for
+/// the row-click → tooltip / modal trigger (M2 / M3 — UI track).
+///
+/// `intended_qty` carries the **strategy-proposed** quantity at signal-emit
+/// time — distinct from the **executed** quantity surfaced by `FillView`.
+/// When a signal is clamped, the executed fill (if any) will carry a
+/// reduced `qty`; the ghost marker preserves the original intent so the
+/// operator can see "what the strategy asked for vs what the risk engine
+/// allowed."
+///
+/// `was_clamped == false` + `clamp_reason == None` is the steady state for
+/// signals that pass the risk engine untouched. `was_clamped == true` is
+/// set by `audit::journal::update_signal_clamp_status` after the risk
+/// engine returns its decision; `clamp_reason` carries a short
+/// human-readable tag (e.g. `"per_symbol_cap"`, `"daily_loss_cap"`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SignalView {
+    /// `strategy_signals.id` UUID string. Stable identifier for the
+    /// click-through → tooltip / modal (M2 / M3).
+    pub signal_id: SmolStr,
+    pub symbol: Symbol,
+    pub side: Side,
+    pub intended_qty: Quantity,
+    pub signal_ts: Timestamp,
+    pub strategy_id: StrategyId,
+    /// `true` once the risk engine has decided to clamp this signal.
+    /// `false` for signals that passed through untouched OR for which
+    /// the risk-decision row has not yet been UPDATEed.
+    pub was_clamped: bool,
+    /// Short human-readable reason set alongside `was_clamped = true`.
+    /// `None` when `was_clamped = false`.
+    pub clamp_reason: Option<SmolStr>,
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+    use time::OffsetDateTime;
+
+    /// T2012 — `SignalView` round-trips through JSON serde without losing any
+    /// field (including the `Option<SmolStr>` `clamp_reason`).
+    #[test]
+    fn signal_view_serde_roundtrip() {
+        let view = SignalView {
+            signal_id: SmolStr::new("a1b2c3d4-0000-0000-0000-000000000001"),
+            symbol: Symbol::new("BTCUSDT"),
+            side: Side::Buy,
+            intended_qty: Quantity::new(dec!(0.05)).unwrap(),
+            signal_ts: Timestamp::new(
+                OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_700_000_000),
+            ),
+            strategy_id: StrategyId::new("sma_crossover"),
+            was_clamped: true,
+            clamp_reason: Some(SmolStr::new("per_symbol_cap")),
+        };
+
+        let json = serde_json::to_string(&view).expect("serialize SignalView");
+        let back: SignalView = serde_json::from_str(&json).expect("deserialize SignalView");
+        assert_eq!(view, back, "SignalView must round-trip through JSON");
+
+        // None-variant of clamp_reason round-trips correctly (was previously
+        // a regression vector when the field was renamed).
+        let unclamped = SignalView {
+            was_clamped: false,
+            clamp_reason: None,
+            ..view
+        };
+        let json2 = serde_json::to_string(&unclamped).expect("serialize unclamped");
+        let back2: SignalView = serde_json::from_str(&json2).expect("deserialize unclamped");
+        assert_eq!(unclamped, back2);
+        assert!(back2.clamp_reason.is_none());
+    }
+}

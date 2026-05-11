@@ -604,6 +604,69 @@ fn charts_screen__chip_row_active_eth() {
     );
 }
 
+/// chart-buy-sell-emphasis v1.9 (T2025 / V7) — full Layout β snapshot.
+/// Captures the chip row + tile + position mirror + chart + histogram
+/// in one place so a structural drift (e.g. histogram height changing,
+/// position-mirror disappearing on symbol-switch) is caught at snapshot
+/// time.
+#[test]
+#[allow(non_snake_case)]
+fn charts_screen_with_counters_and_chart() {
+    let mut c = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
+    c.universe = vec![
+        (Venue::Binance, Symbol::new("BTCUSDT")),
+        (Venue::Binance, Symbol::new("ETHUSDT")),
+        (Venue::Binance, Symbol::new("SOLUSDT")),
+    ];
+    c.selected_symbol = Some((Venue::Binance, Symbol::new("BTCUSDT")));
+    c.chart_markers = PanelState::Ready(ui::fixtures::synthetic_fills_for(
+        Venue::Binance,
+        &Symbol::new("BTCUSDT"),
+        5,
+    ));
+    // Ghost-signal layer + open-position mirror enrichment so the
+    // snapshot captures both new layers.
+    use rust_decimal_macros::dec;
+    use smol_str::SmolStr;
+    use trading_core::{Money, Price, Quantity, Side, SignalView, StrategyId};
+    let sig_ts = Timestamp::now();
+    c.chart_signals = PanelState::Ready(vec![
+        SignalView {
+            signal_id: SmolStr::new("sig-1"),
+            symbol: Symbol::new("BTCUSDT"),
+            side: Side::Buy,
+            intended_qty: Quantity::new(dec!(0.05)).unwrap(),
+            signal_ts: sig_ts,
+            strategy_id: StrategyId::new("sma_crossover"),
+            was_clamped: false,
+            clamp_reason: None,
+        },
+        SignalView {
+            signal_id: SmolStr::new("sig-2"),
+            symbol: Symbol::new("BTCUSDT"),
+            side: Side::Sell,
+            intended_qty: Quantity::new(dec!(0.04)).unwrap(),
+            signal_ts: sig_ts,
+            strategy_id: StrategyId::new("sma_crossover"),
+            was_clamped: true,
+            clamp_reason: Some(SmolStr::new("per_symbol_cap")),
+        },
+    ]);
+    c.positions = PanelState::Ready(vec![trading_core::PositionView {
+        symbol: Symbol::new("BTCUSDT"),
+        base_qty: dec!(0.25),
+        cost_basis: Money::from_decimal(dec!(10_000)),
+        last_mark: Price::new(dec!(40_500)).unwrap(),
+        pnl: Money::from_decimal(dec!(125)),
+        pnl_pct: dec!(1.25),
+        exposure_pct: dec!(8.0),
+    }]);
+    assert_snapshot!(
+        "charts_screen_with_counters_and_chart",
+        charts_screen_full_summary(&c)
+    );
+}
+
 // ── Phase 3 — Strategies / Risk / Audit detail screens (T1704–T1711) ─────────
 
 #[test]
@@ -1626,6 +1689,87 @@ fn charts_screen_summary(c: &Cockpit) -> String {
     };
     out.push_str(&format!("chart_bars: {bars}\n"));
     let _ = Screen::Home;
+    out
+}
+
+/// chart-buy-sell-emphasis v1.9 (T2025 — V7) — full Layout β shape:
+/// chip row → status strip (tile + position mirror) → chart → 80-px
+/// histogram. The summary helper surfaces every visible element from the
+/// pure-state side so a layout drift is caught at snapshot time.
+fn charts_screen_full_summary(c: &Cockpit) -> String {
+    let mut out = String::new();
+    out.push_str("screen: charts\n");
+    out.push_str("layout: chip_row + status_strip + chart + histogram\n");
+    out.push_str("layout_resolution: Q5_beta\n");
+    out.push_str("histogram_height_px: 80\n");
+    out.push_str("chips:\n");
+    for (v, s) in &c.universe {
+        let active = matches!(&c.selected_symbol, Some((av, asym)) if av == v && asym == s);
+        let marker = if active { "ACCENT" } else { "—" };
+        out.push_str(&format!("  rule={marker} venue={v} symbol={s}\n"));
+    }
+
+    // Cumulative volume tile (R7.1).
+    let markers: Vec<_> = match &c.chart_markers {
+        PanelState::Ready(v) => v.clone(),
+        _ => Vec::new(),
+    };
+    let totals = ui::screens::charts::compute_window_volume(&markers);
+    out.push_str(&format!(
+        "tile: buys={} sells={} net={} buy_count={} sell_count={}\n",
+        totals.buys_usdt, totals.sells_usdt, totals.net_usdt, totals.buy_count, totals.sell_count
+    ));
+
+    // Open-position mirror (R7.3).
+    let position_state = if let Some((_, sym)) = &c.selected_symbol {
+        match ui::screens::charts::position_for_symbol(c, sym) {
+            Some(p) => format!(
+                "position_mirror: symbol={} qty={} pnl={}",
+                p.symbol,
+                p.base_qty,
+                p.pnl.amount()
+            ),
+            None => "position_mirror: none".to_string(),
+        }
+    } else {
+        "position_mirror: none".to_string()
+    };
+    out.push_str(&format!("{position_state}\n"));
+
+    // Chart canvas.
+    let chart_state = match &c.chart_markers {
+        PanelState::Ready(v) => format!("ready({} markers)", v.len()),
+        PanelState::Loading => "loading".to_string(),
+        PanelState::Empty => "empty".to_string(),
+        PanelState::Error(e) => format!("error: {e}"),
+    };
+    out.push_str(&format!("chart_markers: {chart_state}\n"));
+    let signal_state = match &c.chart_signals {
+        PanelState::Ready(v) => format!("ready({} signals)", v.len()),
+        PanelState::Loading => "loading".to_string(),
+        PanelState::Empty => "empty".to_string(),
+        PanelState::Error(e) => format!("error: {e}"),
+    };
+    out.push_str(&format!("chart_signals: {signal_state}\n"));
+    let bars = if let Some((v, s)) = &c.selected_symbol {
+        c.chart_buffer.bars(*v, s).count()
+    } else {
+        0
+    };
+    out.push_str(&format!("chart_bars: {bars}\n"));
+
+    // Per-bar histogram bin shape.
+    let bars_v: Vec<_> = if let Some((v, s)) = &c.selected_symbol {
+        c.chart_buffer.bars(*v, s).cloned().collect()
+    } else {
+        Vec::new()
+    };
+    let bins = ui::screens::charts::compute_volume_bins(&markers, &bars_v);
+    let active_bins = bins.iter().filter(|b| !b.is_empty()).count();
+    out.push_str(&format!(
+        "histogram_bins: {} active={active_bins}\n",
+        bins.len()
+    ));
     out
 }
 

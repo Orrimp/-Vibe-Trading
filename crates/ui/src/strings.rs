@@ -243,6 +243,38 @@ pub const SIDEBAR_NAV_AUDIT: &str = "Audit";
 /// Centred label rendered when the chart canvas has zero bars buffered.
 pub const CHART_NO_DATA: &str = "No data";
 
+// ── Chart tooltip + ghost-signal layer (chart-buy-sell-emphasis v1.9, T2007) ──
+//
+// Six tooltip fields per Q4-operator-resolved: Side / Price / Quantity /
+// Notional / Timestamp / Strategy ID. Plus a one-row ghost badge for
+// strategy-intended (not-yet-executed) markers per R5.6.
+
+pub const CHART_TOOLTIP_SIDE_BUY: &str = "Buy";
+pub const CHART_TOOLTIP_SIDE_SELL: &str = "Sell";
+pub const CHART_TOOLTIP_PRICE_LABEL: &str = "Price";
+pub const CHART_TOOLTIP_QTY_LABEL: &str = "Qty";
+pub const CHART_TOOLTIP_NOTIONAL_LABEL: &str = "Notional";
+pub const CHART_TOOLTIP_TS_LABEL: &str = "Time";
+pub const CHART_TOOLTIP_STRATEGY_LABEL: &str = "Strategy";
+pub const CHART_TOOLTIP_STRATEGY_NONE: &str = "—";
+/// Top-row badge on ghost-signal tooltips ("Intent only — not executed").
+pub const CHART_TOOLTIP_GHOST_BADGE: &str = "Intent — not executed";
+/// Suffix appended to the side row when `was_clamped == true`.
+pub const CHART_TOOLTIP_CLAMP_SUFFIX: &str = " (clamped)";
+
+// ── Counter views (chart-buy-sell-emphasis v1.9, T2021) ──────────────────────
+//
+// Cumulative window-volume tile labels + per-bar histogram label + open-
+// position-mirror labels for the Charts screen status strip + below-strip.
+
+pub const CHART_VOLUME_TILE_BUYS_LABEL: &str = "Buys in window";
+pub const CHART_VOLUME_TILE_SELLS_LABEL: &str = "Sells in window";
+pub const CHART_VOLUME_TILE_NET_LABEL: &str = "Net";
+pub const CHART_VOLUME_TILE_TRADES_SUFFIX: &str = "trades";
+pub const CHART_VOLUME_HISTOGRAM_LABEL: &str = "Per-bar volume";
+pub const CHART_POSITION_MIRROR_LABEL: &str = "Open position";
+pub const CHART_POSITION_MIRROR_NONE: &str = "No open position on this symbol.";
+
 // ── Debug screen (Phase 2 — T1605) ───────────────────────────────────────────
 
 /// Placeholder copy for the Debug screen's logs/metrics surface (Q9 — the
@@ -595,6 +627,29 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("SIDEBAR_NAV_RISK", SIDEBAR_NAV_RISK),
         ("SIDEBAR_NAV_AUDIT", SIDEBAR_NAV_AUDIT),
         ("CHART_NO_DATA", CHART_NO_DATA),
+        ("CHART_TOOLTIP_SIDE_BUY", CHART_TOOLTIP_SIDE_BUY),
+        ("CHART_TOOLTIP_SIDE_SELL", CHART_TOOLTIP_SIDE_SELL),
+        ("CHART_TOOLTIP_PRICE_LABEL", CHART_TOOLTIP_PRICE_LABEL),
+        ("CHART_TOOLTIP_QTY_LABEL", CHART_TOOLTIP_QTY_LABEL),
+        ("CHART_TOOLTIP_NOTIONAL_LABEL", CHART_TOOLTIP_NOTIONAL_LABEL),
+        ("CHART_TOOLTIP_TS_LABEL", CHART_TOOLTIP_TS_LABEL),
+        ("CHART_TOOLTIP_STRATEGY_LABEL", CHART_TOOLTIP_STRATEGY_LABEL),
+        ("CHART_TOOLTIP_STRATEGY_NONE", CHART_TOOLTIP_STRATEGY_NONE),
+        ("CHART_TOOLTIP_GHOST_BADGE", CHART_TOOLTIP_GHOST_BADGE),
+        ("CHART_TOOLTIP_CLAMP_SUFFIX", CHART_TOOLTIP_CLAMP_SUFFIX),
+        ("CHART_VOLUME_TILE_BUYS_LABEL", CHART_VOLUME_TILE_BUYS_LABEL),
+        (
+            "CHART_VOLUME_TILE_SELLS_LABEL",
+            CHART_VOLUME_TILE_SELLS_LABEL,
+        ),
+        ("CHART_VOLUME_TILE_NET_LABEL", CHART_VOLUME_TILE_NET_LABEL),
+        (
+            "CHART_VOLUME_TILE_TRADES_SUFFIX",
+            CHART_VOLUME_TILE_TRADES_SUFFIX,
+        ),
+        ("CHART_VOLUME_HISTOGRAM_LABEL", CHART_VOLUME_HISTOGRAM_LABEL),
+        ("CHART_POSITION_MIRROR_LABEL", CHART_POSITION_MIRROR_LABEL),
+        ("CHART_POSITION_MIRROR_NONE", CHART_POSITION_MIRROR_NONE),
         ("DEBUG_LOGS_PLACEHOLDER", DEBUG_LOGS_PLACEHOLDER),
         ("SCREEN_NOT_YET", SCREEN_NOT_YET),
         ("STRATEGIES_PANEL_TITLE", STRATEGIES_PANEL_TITLE),

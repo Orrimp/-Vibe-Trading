@@ -1,0 +1,14 @@
+---
+source: crates/ui/src/widgets/volume_histogram.rs
+expression: summary(&bins)
+---
+widget: volume_histogram
+bin_count: 5
+active_bins: 4
+empty_state: false
+draw_order: centreline,bars
+gridlines: 5
+buy_color: UP_500
+sell_color: DOWN_500
+total_buy_usdt: 30000
+total_sell_usdt: 20000
