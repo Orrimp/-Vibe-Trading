@@ -31,6 +31,7 @@ pub mod strings;
 pub mod theme;
 pub mod viewer;
 pub mod widgets;
+pub mod window_icon;
 
 // Fixtures module is always compiled so unit + integration snapshot tests
 // can access deterministic generators without `--features fixtures`. The

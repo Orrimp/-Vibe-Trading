@@ -122,15 +122,27 @@ impl canvas::Program<Message> for ChartProgram {
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<canvas::Action<Message>> {
-        // Bail early when the cursor isn't over the canvas at all — keeps
-        // `update` cheap when the mouse is elsewhere on the cockpit.
-        let cursor_pos = cursor.position_in(bounds)?;
-
         match event {
             canvas::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                let inner = inner_rect(bounds.size());
-                let hit = self.hit_test(cursor_pos, inner);
+                // T2030 — DON'T bail on `cursor.position_in(bounds)?` for
+                // CursorMoved: if the operator was hovering a marker and
+                // then swept the cursor off the canvas entirely (or onto
+                // a sibling widget), we still need to publish
+                // `ChartMarkerHoverEnded` so the tooltip clears.  The
+                // pre-T2030 implementation `?`-bailed here, which is the
+                // bug the operator's 2026-05-11 report surfaced — the
+                // tooltip latched on whatever marker the cursor last
+                // touched and never cleared.
+                let cursor_pos = cursor.position_in(bounds);
+                let hit = match cursor_pos {
+                    Some(p) => {
+                        let inner = inner_rect(bounds.size());
+                        self.hit_test(p, inner)
+                    }
+                    None => None,
+                };
                 if state.hovered_marker_idx == hit.map(|(idx, _)| idx) {
+                    // Idempotent — same hover state, no churn.
                     return None;
                 }
                 state.hovered_marker_idx = hit.map(|(idx, _)| idx);
@@ -139,9 +151,21 @@ impl canvas::Program<Message> for ChartProgram {
                     Some((idx, _)) => Message::ChartMarkerHovered(idx),
                     None => Message::ChartMarkerHoverEnded,
                 };
-                Some(canvas::Action::publish(msg).and_capture())
+                // Only `capture` when the cursor is actually over the
+                // canvas — capturing a CursorMoved we never saw would
+                // suppress event bubbling for cursor-on-sibling moves,
+                // which sibling widgets need.
+                let action = canvas::Action::publish(msg);
+                Some(if cursor_pos.is_some() {
+                    action.and_capture()
+                } else {
+                    action
+                })
             }
             canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                // Clicks DO require the cursor to be on the canvas — a
+                // click on a sibling shouldn't open a journal modal.
+                let cursor_pos = cursor.position_in(bounds)?;
                 let inner = inner_rect(bounds.size());
                 let hit = self.hit_test(cursor_pos, inner)?;
                 // Ghosts have no transaction_id — click is a no-op (R5.6).
@@ -611,6 +635,88 @@ pub(crate) fn strategy_label_or_none(strategy_id: Option<&SmolStr>) -> &str {
     strategy_id
         .map(smol_str::SmolStr::as_str)
         .unwrap_or(CHART_TOOLTIP_STRATEGY_NONE)
+}
+
+/// Test-only helper exposing the canvas `Program::update` pipeline to
+/// integration tests so the **actual hover-event-detection path** can be
+/// exercised without an iced runtime (T2030).
+///
+/// The previous-pass tooltip integration test
+/// (`crates/ui/tests/chart_tooltip_integration.rs`) exercised
+/// `Message::ChartMarkerHovered` against `ui::state::update` — i.e.
+/// render-given-hover-state — but never proved that
+/// `canvas::Program::update` ACTUALLY publishes that message on a
+/// `mouse::Event::CursorMoved`. Operator feedback 2026-05-11 surfaced
+/// the gap (tooltips invisible on hover despite green tests); this
+/// helper closes it.
+///
+/// Returns `(Option<Message>, event::Status)` mirroring the
+/// `canvas::Action` two-value contract: `Some(msg)` when the program
+/// published a message, `None` otherwise; `Status::Captured` when the
+/// program "captured" the event (preventing further bubbling),
+/// `Status::Ignored` otherwise.
+///
+/// `bars` / `markers` / `signals` follow the same shape `chart::view`
+/// takes; `bounds` is the canvas's absolute-screen rectangle and
+/// `cursor_pos` is the cursor's absolute-screen `(x, y)` (i.e. the
+/// caller has already added `bounds.x` and `bounds.y` to the
+/// canvas-local coordinate).
+///
+/// **Test-only**: this is `#[doc(hidden)]` and not part of the stable
+/// widget API.  Production code MUST NOT call it.
+#[doc(hidden)]
+#[must_use]
+#[allow(clippy::needless_pass_by_value)]
+pub fn dispatch_canvas_event_for_test(
+    bars: Vec<Bar>,
+    markers: Vec<FillView>,
+    signals: Vec<SignalView>,
+    state: &mut ChartHoverState,
+    event: iced::widget::canvas::Event,
+    bounds: Rectangle,
+    cursor_pos: Point,
+) -> (Option<Message>, iced::event::Status) {
+    let program = ChartProgram {
+        bars,
+        markers,
+        signals,
+        tooltip: None,
+        mode: ThemeMode::Dark,
+    };
+    let cursor = mouse::Cursor::Available(cursor_pos);
+    let action = canvas::Program::<Message>::update(&program, &mut state.0, &event, bounds, cursor);
+    match action {
+        Some(a) => {
+            let (msg, _redraw, status) = a.into_inner();
+            (msg, status)
+        }
+        None => (None, iced::event::Status::Ignored),
+    }
+}
+
+/// Opaque wrapper around the chart's `Program::State` so integration
+/// tests can keep a hover-state cookie across calls to
+/// [`dispatch_canvas_event_for_test`] without depending on the
+/// crate-private `ChartState` struct.
+#[doc(hidden)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ChartHoverState(ChartState);
+
+impl ChartHoverState {
+    /// Test-only — returns `true` iff this state currently records a
+    /// hovered marker.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn is_hovering(&self) -> bool {
+        self.0.hovered_marker_idx.is_some()
+    }
+
+    /// Test-only — returns the recorded marker centroid, if any.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn hovered_marker_centroid(&self) -> Option<Point> {
+        self.0.hovered_marker_centroid
+    }
 }
 
 #[cfg(test)]

@@ -72,6 +72,8 @@ fn main() -> ExitCode {
     )
     .title(move |_app: &App| format!("Backtest report — {scenario}"))
     .theme(App::theme)
+    // T2028 + T2029 — Layout-β min-size floor + Lumen brand icon.
+    .window(ui::window_icon::standard_window_settings())
     .run()
     {
         eprintln!("viewer: iced crashed: {e}");

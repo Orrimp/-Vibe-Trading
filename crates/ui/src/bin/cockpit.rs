@@ -112,10 +112,14 @@ impl Recipe for ServerTimeRecipe {
 }
 
 fn main() -> iced::Result {
+    // T2028 + T2029 — Layout-β min-size floor + Lumen brand icon.
+    // Shared with `cockpit_live` and `viewer` via
+    // `ui::window_icon::standard_window_settings`.
     iced::application(App::boot, App::update, App::view)
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
+        .window(ui::window_icon::standard_window_settings())
         .run()
 }
 

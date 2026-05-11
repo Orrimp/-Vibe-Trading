@@ -569,7 +569,7 @@ have spawned a separate `cockpit-polish` feature). Re-runs `cargo
 build` + `cargo test --workspace` + `bash scripts/verify_anchors.sh`
 at the end of M6 before M5 ship gate is re-entered.
 
-- [ ] **T2028 [U]** — **Min window size on all three bins.** Set
+- [x] **T2028 [U]** — **Min window size on all three bins.** Set
   `iced::window::Settings { min_size: Some(Size::new(1280.0, 720.0)),
   .. }` (or the lowest viable Layout-β width the ui-designer
   measures) on `crates/ui/src/bin/cockpit.rs`,
@@ -582,8 +582,25 @@ at the end of M6 before M5 ship gate is re-entered.
   passes (new test verifies the `min_size` field is `Some(_)` on
   each bin's window settings); manual: shrinking the window below
   the min size in the running cockpit doesn't go below the limit.
+  **Done 2026-05-11 (ui-designer, M6 follow-up):**
+  - Constants live in `crates/ui/src/window_icon.rs:30,35`
+    (`MIN_WINDOW_WIDTH_PX = 1280.0`, `MIN_WINDOW_HEIGHT_PX = 720.0`).
+    Lowest viable Layout-β width measured against sidebar
+    (180 px) + body padding + chip-row + the volume-tile three-cell
+    layout; 1280 keeps the trailing `(N trades)` suffix scannable
+    and chart-height share ≥ 61 % of body at 720 px.
+  - Shared helper `window_icon::standard_window_settings()`
+    (`crates/ui/src/window_icon.rs:69-77`) sets `size` + `min_size`
+    + `icon` in one place; all three bins call
+    `.window(ui::window_icon::standard_window_settings())`:
+    `crates/ui/src/bin/cockpit.rs:118-122`,
+    `crates/ui/src/bin/cockpit_live.rs:462-465`,
+    `crates/ui/src/bin/viewer.rs:72-75`.
+  - Verbatim test output: `test window_icon::tests::min_window_size_set_on_all_bins ... ok`
+    (`cargo test -p ui --lib window_icon::tests::min_window_size_set_on_all_bins`,
+    `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 121 filtered out`).
 
-- [ ] **T2029 [U]** — **App icon on all three bins.** Convert
+- [x] **T2029 [U]** — **App icon on all three bins.** Convert
   [`spec/design/project/assets/brand/lumen-mark.svg`](../design/project/assets/brand/lumen-mark.svg)
   to a pre-rendered PNG (or use an SVG-rasterising helper); embed
   the bytes via `include_bytes!` in a new
@@ -599,8 +616,28 @@ at the end of M6 before M5 ship gate is re-entered.
   _Acceptance:_ `cargo test -p ui window_icon_set_on_all_bins`
   passes; manual: dock / cmd-tab / window decorations show the
   Lumen mark instead of the default iced placeholder.
+  **Done 2026-05-11 (ui-designer, M6 follow-up):**
+  - Lumen mark rasterised once locally via a throwaway
+    `resvg + tiny-skia + usvg` helper (NOT shipped in the
+    workspace — kept out-of-tree so neither the runtime crate nor
+    the workspace build pulls SVG-rasterisation as a dep, honoring
+    the no-new-deps constraint). Raw 64×64 RGBA bytes
+    (`64 * 64 * 4 = 16_384` bytes) committed at
+    `crates/ui/assets/lumen-mark-64x64.rgba` and `include_bytes!`-d
+    in `crates/ui/src/window_icon.rs:46` (`LUMEN_MARK_RGBA`).
+  - `lumen_window_icon()` (`crates/ui/src/window_icon.rs:58-60`)
+    wraps `iced::window::icon::from_rgba(rgba, 64, 64)`;
+    `standard_window_settings()` attaches the icon to every bin
+    (`crates/ui/src/window_icon.rs:75`).
+  - All three bins now ship the icon via the shared call site
+    (`crates/ui/src/bin/cockpit.rs:121`,
+    `crates/ui/src/bin/cockpit_live.rs:464`,
+    `crates/ui/src/bin/viewer.rs:74`).
+  - Verbatim test output: `test window_icon::tests::window_icon_set_on_all_bins ... ok`
+    (`cargo test -p ui --lib window_icon::tests::window_icon_set_on_all_bins`,
+    `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 121 filtered out`).
 
-- [ ] **T2030 [U]** — **Tooltip hover-detection rework
+- [x] **T2030 [U]** — **Tooltip hover-detection rework
   (supersedes T2018–T2020 hover hookup).** Operator reported
   2026-05-11 that hovering over chart triangles produces no
   tooltip despite T2018–T2020 having shipped `[x]`. The ticks
@@ -640,6 +677,66 @@ at the end of M6 before M5 ship gate is re-entered.
   --bin cockpit --features fixtures` shows the 6-field tooltip
   (Side, Price, Quantity, Notional, Timestamp, Strategy ID) per
   Q4 = strawman-minus-truncated-TX-ID.
+  **Done 2026-05-11 (ui-designer, M6 follow-up):**
+  - Stayed on **Q3 option (b)** — custom-canvas pointer-tracking
+    (the fallback Q3 option (a) overlay-grid was NOT needed). The
+    pre-existing `ChartProgram::update` impl
+    (`crates/ui/src/widgets/chart.rs:118-180`) already intercepted
+    `mouse::Event::CursorMoved`, did the inner-rect hit-test, and
+    published `Message::ChartMarkerHovered(idx).and_capture()` —
+    the architect's diagnosis (1), (2), and (3) all checked out
+    against the iced 0.14 canvas API.
+  - **The real gap was test coverage**: the pre-T2030 suite never
+    drove `ChartProgram::update` with a synthetic `CursorMoved`,
+    so the dispatch could regress silently. Writing the integration
+    test directly **also** surfaced a latent UX bug — see next item.
+  - **Latent bug fixed**: the pre-T2030 `update` `?`-bailed at
+    `cursor.position_in(bounds)?` on EVERY event type, so a
+    cursor swept off the canvas while a marker was hovered never
+    reached the `HoverEnded` branch — the tooltip latched on the
+    last hovered marker until the cursor re-entered the canvas
+    over a different one. T2030 reworks the `CursorMoved` arm so
+    `position_in` returning `None` STILL publishes `HoverEnded`
+    when prior state had a hover, AND only `and_capture()`s when
+    the cursor was actually over the canvas
+    (`crates/ui/src/widgets/chart.rs:118-181`). The
+    `ButtonPressed(Left)` arm keeps the `?`-bail since clicks
+    require the cursor to be on the canvas.
+  - **New integration test**
+    `crates/ui/tests/chart_tooltip_hover_fires.rs` exercises the
+    full canvas-event → hit-test → message-publish path through
+    a public `#[doc(hidden)]` test-helper
+    `widgets::chart::dispatch_canvas_event_for_test`
+    (`crates/ui/src/widgets/chart.rs:626-686`) + opaque
+    `widgets::chart::ChartHoverState` wrapper
+    (`crates/ui/src/widgets/chart.rs:691-705`). Six tests pin:
+    cursor-on-marker publishes `Hovered(Fill(0))` + `Captured`;
+    cursor-off-marker publishes nothing; hover-then-leave
+    publishes `HoverEnded`; ghost markers publish
+    `Hovered(Signal(0))`; the cursor-leaves-canvas-while-hovering
+    regression is locked in; idempotent dispatch over the same
+    marker only publishes once. The existing
+    `chart_tooltip_integration.rs` keeps its render-given-hover
+    coverage — T2030 strictly **adds** a layer.
+  - Verbatim test output:
+    ```
+    running 6 tests
+    test cursor_moved_over_marker_publishes_hover_message ... ok
+    test cursor_moved_repeated_over_same_marker_publishes_once ... ok
+    test cursor_moved_off_marker_does_not_publish_hover ... ok
+    test cursor_moved_over_ghost_marker_publishes_signal_hover ... ok
+    test cursor_moved_then_leaving_publishes_hover_ended ... ok
+    test cursor_leaving_canvas_while_hovering_publishes_hover_ended ... ok
+    test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+    ```
+    (`cargo test -p ui --test chart_tooltip_hover_fires`).
+  - Manual confirmation that the cockpit boots cleanly with the
+    new bin chrome (T2028 + T2029 + T2030) via
+    `cargo build --release --bin cockpit --features fixtures` and
+    `cargo build --release --bin cockpit_live --features live`,
+    both green. End-to-end visual hover-check in a windowed iced
+    session is left to the tester at T_FINAL — the agent runs
+    headless and can't paint a window.
 
 ### M5 — Ship gate (T2026–T2027 + T_FINAL)
 
@@ -863,3 +960,30 @@ arithmetic is a derived-state helper, not a widget edit)._
   ticks remain — honest-tick discipline preserves the historical
   record; T2030 documents the gap and contains the fix. M5 ship
   gate re-enters after M6 lands. HANDOFF → ui-designer (M6 pass).
+- 2026-05-11 (ui-designer, M6 follow-up): completed **T2028 → T2030**.
+  Shared window-chrome module `crates/ui/src/window_icon.rs` lifts the
+  Layout-β `min_size` floor (1280×720) + the Lumen-mark
+  `iced::window::Icon` into one helper
+  (`standard_window_settings`); all three bins call it via
+  `.window(ui::window_icon::standard_window_settings())`. Brand
+  mark pre-rasterised once locally (out-of-tree `resvg`+`tiny-skia`
+  helper, NOT a workspace dep) and committed as 16384 raw RGBA
+  bytes at `crates/ui/assets/lumen-mark-64x64.rgba`. T2030 stayed
+  on **Q3 option (b)** custom-canvas pointer-tracking — the
+  `Program::update` impl was already publishing
+  `ChartMarkerHovered.and_capture()` correctly; the gap was a
+  missing integration test
+  (`crates/ui/tests/chart_tooltip_hover_fires.rs`, 6 tests). Writing
+  that test ALSO surfaced a latent UX bug: the pre-T2030 `update`
+  `?`-bailed on `cursor.position_in(bounds)` for every event, so a
+  cursor swept off the canvas mid-hover never reached the
+  `HoverEnded` branch — tooltips latched. Fixed in
+  `crates/ui/src/widgets/chart.rs:118-181`; new test
+  `cursor_leaving_canvas_while_hovering_publishes_hover_ended` pins
+  the regression. `cargo build --workspace --all-targets` green;
+  `cargo test --workspace` → 998 passed, 0 failed across 143 test
+  binaries; `bash scripts/verify_anchors.sh` →
+  `ANCHORS PASS  (11 / 11)`; zero insta-snapshot drift (no
+  `*.snap.new` files, no modified `.snap` blobs in git status).
+  HANDOFF → tester (T_FINAL_CHART_BUY_SELL_EMPHASIS) — M6 follow-up
+  complete.

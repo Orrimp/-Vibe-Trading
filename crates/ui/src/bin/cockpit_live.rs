@@ -463,6 +463,8 @@ fn main() -> Result<()> {
     .title(AppState::title)
     .theme(AppState::theme)
     .subscription(AppState::subscription)
+    // T2028 + T2029 — Layout-β min-size floor + Lumen brand icon.
+    .window(ui::window_icon::standard_window_settings())
     .run();
 
     // ── Shutdown ─────────────────────────────────────────────────────────────
