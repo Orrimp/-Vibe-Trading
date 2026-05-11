@@ -738,6 +738,114 @@ at the end of M6 before M5 ship gate is re-entered.
     session is left to the tester at T_FINAL — the agent runs
     headless and can't paint a window.
 
+### M6.2 — Second operator-feedback follow-up (T2031–T2033)
+
+Added 2026-05-11 after operator's visual-verification pass on commit
+`9bb5786` (M6 first pass) surfaced three further runtime defects: no
+visible app/dock/cmd-tab icon on macOS despite the icon test passing;
+chart canvas crops on window-resize instead of scaling; tooltip flashes
+briefly on hover and immediately disappears.
+
+**Pattern note:** M6's first pass shipped tests-pass + runtime-broken.
+ui-designer can't visually verify in headless sandbox; the test suite
+covers logic + rendered snapshots but not interactive behaviour.
+**Mandatory new discipline for this pass:** for each tick that
+touches visible UI behaviour (T2032, T2033), the ui-designer MUST:
+
+1. Launch `cargo run --release --bin cockpit --features fixtures`
+   in the background.
+2. Capture a fullscreen screenshot via
+   `screencapture -x /tmp/cockpit-T20xx-<short-name>.png` after
+   the cockpit window has been on-screen for ≥4 seconds.
+3. Open the screenshot via `Read` tool and visually verify the
+   tick's acceptance against the rendered output.
+4. Cite the screenshot path in the tick footer alongside the
+   file:line + test-output evidence.
+
+This is the project-level testing-strategy gap the first two M6 passes
+exposed. The screenshot-verification gate is not negotiable for any
+T2032 / T2033 tick. T2031 (documentation + brief stub) doesn't render
+visible UI behaviour, so it's exempt.
+
+- [ ] **T2031 [U]** — **Document macOS dock-icon limitation +
+  open follow-up brief stub for `.app` bundling.** The
+  `iced::window::Settings::icon` setting affects the title-bar icon
+  only (and even there some macOS configurations hide it). The dock
+  + cmd-tab + Spotlight + Finder app icon all come from an `.app`
+  bundle's `Info.plist` + `.icns` file, NOT from iced's runtime
+  window setting. A bare `cargo run` binary cannot change the macOS
+  dock icon without being wrapped via `cargo bundle` or hand-written
+  `Info.plist`. Document this in
+  [`crates/ui/src/window_icon.rs`](../../crates/ui/src/window_icon.rs)
+  as a module-level note (it's invisible truth that the next reader
+  will hit). Create a stub feature folder
+  `spec/cockpit-app-bundle/feature.md` with `status: candidate` and
+  the bundle approach captured (analyst spawn when promoted; not
+  before). **[Operator feedback 2026-05-11.]**
+  _Acceptance:_ `grep -n "macOS dock icon" crates/ui/src/window_icon.rs`
+  surfaces the limitation note; `ls spec/cockpit-app-bundle/feature.md`
+  exists with `status: candidate`. No runtime change in the cockpit
+  binary; the existing test stays green (the iced-level icon plumbing
+  IS correct — it's the macOS surface that needs `.app` bundling).
+
+- [ ] **T2032 [U]** — **Chart scales on window resize.** Currently
+  the canvas crops instead of scaling when the operator drags the
+  window edge. Suspect: chart parent (Layout β's chart-column inside
+  the status-strip-above + histogram-below sandwich) doesn't
+  propagate `Length::Fill` to the canvas correctly; OR the canvas's
+  `bounds.size()` doesn't refresh on resize; OR the iced::Column
+  proportions allocate fixed pixels to the status strip + histogram
+  but the chart's `Length::Fill` gets clipped at the initial size.
+  Diagnose first; fix follows from the diagnosis.
+
+  **Mandatory screenshot verification:** capture before the fix
+  (cropped state), apply the fix, capture after, confirm via
+  read-screenshot that the chart fills its allocated body region
+  at three window sizes: 1280×720 (min), 1600×900 (mid), 1920×1080
+  (large). All three screenshots cited in tick footer.
+
+  **[Operator feedback 2026-05-11.]**
+  _Acceptance:_ three screenshots at three window sizes show the
+  chart canvas filling its column allocation (no horizontal or
+  vertical cropping bands). New unit test asserts
+  `chart_canvas_height_grows_with_body_height` — when given a 1080-
+  high body, the chart canvas height calculation returns > the 720-
+  high body's chart canvas height.
+
+- [ ] **T2033 [U]** — **Tooltip decouple — read from canvas state
+  directly.** Currently `ChartProgram::draw` (chart.rs:308-310)
+  requires BOTH `self.tooltip.is_some()` (from `Cockpit.chart_tooltip`,
+  filled via the message round-trip) AND `state.hovered_marker_centroid.is_some()`
+  (canvas's local state, set synchronously in `update`). Render-vs-
+  message timing window: canvas state flips on `CursorMoved`, iced
+  redraws once before the published message reaches Cockpit, tooltip
+  fails to draw because `self.tooltip` is still None. Then Cockpit
+  catches up. Then next `CursorMoved` flips state to None on cursor
+  jitter or off-marker move, tooltip clears.
+
+  **Fix:** `ChartProgram::draw` builds the tooltip view from
+  `self.markers[idx]` / `self.signals[idx]` directly using
+  `state.hovered_marker_idx + state.hovered_marker_centroid`. No
+  Cockpit-state round trip. The Cockpit's `chart_tooltip` field stays
+  for snapshot tests (the existing `build_tooltip_view` helper drives
+  the snapshot-test path; canvas reads marker fields independently
+  for the live render).
+
+  **Mandatory screenshot verification:** launch cockpit, manually
+  hover over each of the 4 triangles (operator may need to assist
+  via remote-control or the ui-designer captures sequential
+  screenshots while cursor is over each marker), confirm via
+  read-screenshot that the 6-field tooltip stays visible while
+  cursor is over the marker hit-rect.
+
+  **[Operator feedback 2026-05-11. Supersedes M6 first pass's
+  T2030 partial fix.]**
+  _Acceptance:_ hovering a marker in the running cockpit shows the
+  6-field tooltip stably (no flash-and-disappear); cursor jitter
+  within the 28-px hit-rect does NOT clear the tooltip; cursor
+  moves outside the hit-rect clears it cleanly. Screenshot
+  evidence cited.
+
 ### M5 — Ship gate (T2026–T2027 + T_FINAL)
 
 Closes nothing new. Verified by **V8** (anchors hard gate),
@@ -987,3 +1095,21 @@ arithmetic is a derived-state helper, not a widget edit)._
   `*.snap.new` files, no modified `.snap` blobs in git status).
   HANDOFF → tester (T_FINAL_CHART_BUY_SELL_EMPHASIS) — M6 follow-up
   complete.
+- 2026-05-11 (orchestrator, operator-relayed via chat): operator's
+  second visual-verification pass on commit `9bb5786` (M6 first
+  pass) surfaced three further runtime defects: no visible app/dock/
+  cmd-tab icon on macOS despite the icon test passing; chart canvas
+  crops on window resize instead of scaling; tooltip flashes briefly
+  on hover and immediately disappears. Added milestone **M6.2**
+  with three tasks **T2031** (document macOS dock-icon limitation +
+  open `cockpit-app-bundle` follow-up brief stub), **T2032** (fix
+  chart scaling on resize), **T2033** (decouple tooltip render from
+  Cockpit-state round trip; supersedes M6 first pass's T2030
+  partial fix). Critically: added **mandatory screenshot-
+  verification gate** for T2032 + T2033 — ui-designer MUST launch
+  cockpit, capture `screencapture -x`, read the screenshot, and
+  cite the path in each tick footer. The first two M6 passes
+  exposed that tests-pass + runtime-broken is a real failure mode
+  in the headless agent sandbox; screenshot-as-second-witness
+  closes that gap. T2031 exempt (no rendered UI change). M5 ship
+  gate re-enters after M6.2 lands.
