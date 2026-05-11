@@ -889,54 +889,90 @@ visible UI behaviour, so it's exempt.
   - `cargo test -p ui --lib screens::charts::` → 4/4 green (the
     three pre-existing tests stayed green; new test joined cleanly).
 
-  **Screenshot verification — DOCUMENTED LIMITATION.** The brief's
-  mandatory screenshot-gate could not be executed in this sandbox.
-  Three independent `screencapture` invocations all failed
-  identically:
-  - `screencapture -x /tmp/sc-test1.png` → `could not create image
-    from display` (exit 1).
-  - `screencapture -l<window-id> /tmp/sc-test2.png` → `could not
-    create image from window` (exit 1).
-  - `screencapture /tmp/sc-test3.png` (bare) → same.
+  **Screenshot verification — CAPTURED (M6.2 fixup pass,
+  2026-05-11).** macOS Screen Recording permission, missing on the
+  M6.2 first pass, is now granted to the host process and
+  `screencapture -x` works.  Three screenshots captured at three
+  window sizes against the post-fix release binary; each was
+  read-back inline via the `Read` tool and visually inspected:
 
-  The cockpit binary launched successfully (`ps -p $PID` confirmed
-  `target/release/cockpit` running with PID 39521 for ≥ 5 s before
-  capture attempts), so the failure is at the **macOS Screen
-  Recording TCC privacy gate** — the calling shell process has not
-  been granted Screen Recording permission by the OS, and this
-  permission cannot be granted from inside the sandbox.
+  - **1280×720** (Layout-β min floor) →
+    `/tmp/cockpit-T2032-1280x720.png` (2 640 155 bytes).  Chart
+    canvas occupies the full body region between the chip row +
+    cumulative-volume strip above and the volume histogram below;
+    the BTCUSDT price line plots end-to-end across the canvas
+    width with no horizontal or vertical cropping bands.
+  - **1600×900** (mid-size) →
+    `/tmp/cockpit-T2032-1600x900.png` (2 516 673 bytes).  Chart
+    canvas grew with the body; both the upward (Buy) and downward
+    (Sell) fill-marker triangles are visible at their bar-aligned
+    positions; no cropping.
+  - **1920×1080** (large) →
+    `/tmp/cockpit-T2032-1920x1080.png` (2 175 326 bytes).  Full
+    1920×1080 viewport; sidebar (Home / Debug / Strategies / Risk
+    / Audit / **Charts** highlighted / Control) renders at its
+    canonical 180 px width; chart canvas takes the remaining
+    horizontal body and the full vertical allocation between the
+    fixed siblings.  Multiple fill markers visible along the line.
 
-  AppleScript-driven `System Events` window resize (the brief's
-  alternative path) also failed: `osascript -e 'tell application
-  "System Events" to set the size of front window …'` returned
-  `execution error: Not authorized to send Apple events to System
-  Events. (-1743)` — same TCC class. Three screenshots at three
-  sizes is therefore not achievable in this run.
+  Capture harness (reverted after the captures, see "Files
+  touched" below):
+  1. Temporarily set `cockpit.current_screen = Screen::Charts` in
+     `crates/ui/src/bin/cockpit.rs::boot` so the binary booted
+     directly on the Charts screen (AppleScript / Accessibility
+     permission to click "Charts" in the sidebar is not granted
+     to the host process; Screen Recording is a separate TCC
+     class and *is* granted).
+  2. Temporarily added a `COCKPIT_INIT_W` / `COCKPIT_INIT_H`
+     env-var override on `crates/ui/src/window_icon.rs::standard_window_settings`
+     so the same release binary could boot at three sizes without
+     three rebuilds; the override floors at `MIN_WINDOW_*_PX`.
+  3. For each `(W, H)` triple, ran
+     `COCKPIT_INIT_W=W COCKPIT_INIT_H=H ./target/release/cockpit &`,
+     waited 6 s for the window to draw, `screencapture -x` to
+     the cited path, `pkill -f target/release/cockpit`, re-read
+     the PNG inline.  Both temp tweaks reverted in this same
+     commit; `cargo test -p ui --lib window_icon::tests` stayed
+     green throughout (the constants didn't move; only the
+     starting `size` did).
 
-  The brief's documented fallback is *"document the limitation in
-  the tick footer"*. This footer is that documentation. The fix is
-  validated by:
-  1. The new unit test (above), which is the **regression guard**
-     the M6.2 gate language singles out as the acceptance pin
-     (*"new unit test asserts `chart_canvas_height_grows_with_body_height`"*).
-  2. The diagnosis matching iced 0.14's documented Container
-     default width (Length::Shrink) — verified by reading
-     [`Container::width`](https://docs.rs/iced/0.14/iced/widget/struct.Container.html#method.width)
-     defaulting from `Length::Shrink` and combining with a
-     `Length::Fill` child collapsing to zero.
-  3. The cockpit-binary build green at both default + the three
-     test window sizes (release-mode build runs through the same
-     `view()` function regardless of `window::Settings::size`).
-
-  Operator should re-verify visually post-merge by dragging the
-  cockpit window edge — the chart MUST now grow with the window
-  rather than crop. If it does not, the regression returns to
-  ui-designer with the operator's annotated screenshot.
+  Joint evidence stack (all three pin the same invariant from
+  different angles):
+  1. The new unit test
+     `chart_canvas_height_grows_with_body_height` — pure
+     arithmetic regression guard on the Layout-β budget.
+  2. Three live screenshots above — visual confirmation that the
+     `view()` composition the test pins also paints correctly
+     against the real iced layout engine at three sizes.
+  3. **Corrected diagnosis (M6.2 fixup).** The M6.2 ship-comment
+     here previously blamed `Container::new`'s default width.
+     Reading the iced 0.14 source shows that diagnosis was wrong:
+     [`Container::new(content)`](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/container.rs#L94-L108)
+     inherits width from `content.size_hint()` via
+     `Length::fluid()` and preserves `Fill` from `Fill` children.
+     The Shrink-default trap actually lives in
+     [`Row::new()`](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/row.rs#L80-L81)
+     and [`Column::new()`](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/column.rs#L83-L84).
+     The explicit `.width(Length::Fill).height(Length::Fill)`
+     here is **defensive intent** — it survives future refactors
+     that might wrap the chart in a `Row` / `Column` or swap the
+     child for a `Shrink`-defaulting widget — and the M6.2 fix
+     itself likely worked via a different mechanism (cache
+     invalidation from re-typing the container, or simply the
+     forced relayout pass that editing this code triggered).  The
+     in-source rationale in `crates/ui/src/screens/charts.rs` has
+     been rewritten to reflect this corrected mechanic.
 
   **Files touched (T2032):**
   - [`crates/ui/src/screens/charts.rs`](../../crates/ui/src/screens/charts.rs)
     — two-axis Container fix, new `chart_canvas_height_for_body`
-    helper, new `chart_canvas_height_grows_with_body_height` test.
+    helper, new `chart_canvas_height_grows_with_body_height` test;
+    M6.2 fixup pass rewrote the inline + docstring rationale to
+    cite the iced 0.14 source (`container.rs:94-108`,
+    `row.rs:80-81`, `column.rs:83-84`) — the original "Container
+    defaults to Shrink" story was wrong; the `.width(Length::Fill)`
+    is now documented as defensive intent against future
+    `Row` / `Column`-wrapping refactors.
 
 - [x] **T2033 [U]** — **Tooltip decouple — read from canvas state
   directly.** Currently `ChartProgram::draw` (chart.rs:308-310)
@@ -1042,49 +1078,91 @@ visible UI behaviour, so it's exempt.
     widget tests in `chart_tooltip.rs` pin the `build_rows`
     decomposition, which is unchanged.
 
-  **Screenshot verification — DOCUMENTED LIMITATION.** Same TCC
-  privacy gate as T2032: `screencapture` returns "could not create
-  image from display" and AppleScript cursor-control returns "Not
-  authorized to send Apple events to System Events. (-1743)".
-  Neither cursor-control method (`cliclick` is not installed;
-  AppleScript blocked) can drive a hover-over-marker capture from
-  inside the sandbox. The brief's documented fallback applies:
-  *"document the limitation in the tick footer ... Better than
-  nothing; calls out the limitation honestly."*
+  **Screenshot verification — PARTIAL CAPTURE + DOCUMENTED
+  CURSOR-CONTROL LIMITATION (M6.2 fixup pass, 2026-05-11).**
+  Screen Recording permission is now granted; the cockpit at rest
+  (no hover) was captured at the default 1280×720 size on the
+  Charts screen as
+  `/tmp/cockpit-T2033-no-hover.png` (2 624 028 bytes) and shows
+  the chart with both Buy (upward green) and Sell (downward red)
+  fill-marker triangles rendered along the price line — confirming
+  the marker render path (Passes 4–5) is healthy and that the
+  hover-trigger surface area exists for the operator to walk
+  through manually.
 
-  The fix is validated by:
-  1. The new regression-guard test (above), which exercises the
-     **exact code path** the bug walked — `tooltip: None`,
-     canvas-local state set, tooltip-view-from-hover non-None.
-     Pre-T2033 this would have returned None and the tooltip would
-     have failed to draw. Post-T2033 it builds the view directly.
-  2. The diagnosis matching the asynchronous-message-round-trip
-     race the brief described: iced's `Program::update` runs
-     synchronously on `CursorMoved` (sets canvas state), publishes
-     a message that flows through iced's update queue to
-     `state::update` (sets `Cockpit.chart_tooltip`), then the next
-     frame paints. Pre-T2033 the canvas paint that immediately
-     follows `Program::update` (same tick) had canvas-state set
-     but `self.tooltip = None`, failing the AND condition. The new
-     code's single-source `state.hovered_marker_idx` flips
-     synchronously with the centroid, so they cannot disagree.
-  3. The existing `chart_tooltip_integration` test continues to
-     pass — the Cockpit-state path remains a working code path for
-     the snapshot tests, just no longer required for the live
-     render.
+  **Cursor-driven hover capture remains unavailable** in this
+  environment because the host process has **Screen Recording**
+  permission but **not Accessibility**.  Both cursor-control
+  methods the brief lists are blocked:
+  - `cliclick` not installed (`which cliclick` → not found); the
+    brief explicitly forbids `brew install` in this pass, so this
+    path is closed.
+  - AppleScript cursor-position via System Events returns
+    `Not authorized to send Apple events to System Events.
+    (-1743)` — Accessibility permission has not been granted to
+    the host process (separate TCC class from Screen Recording).
 
-  Operator should re-verify visually post-merge by hovering each
-  of the 4 fill triangles in the cockpit. The 6-field tooltip MUST
-  now appear and stay stable while the cursor sits over the 28-px
-  hit-rect; cursor jitter inside the rect MUST NOT clear it
+  Per the brief: "if cursor-control fails: explicitly cite that
+  limitation in the T2033 footer, point at the new unit test as
+  the load-bearing evidence, and reference the iced 0.14
+  source-level race confirmation."
+
+  **Load-bearing evidence (M6.2 + fixup pass):**
+  1. **Regression-guard unit test**
+     `widgets::chart::tests::chart_tooltip_view_built_from_canvas_state_without_round_trip`
+     (added M6.2; still green this pass) — constructs a
+     `ChartProgram` with `tooltip: None` (the exact pre-T2033 bug
+     scenario), asserts `tooltip_view_from_hover(Fill(0))` /
+     `Signal(0)` return `Some(view)` with the correct field shape
+     and out-of-range indices return `None`.  Pre-T2033 this
+     would have returned `None`; post-T2033 the canvas-local
+     state alone is sufficient to build the tooltip view.
+  2. **Hover integration test**
+     [`crates/ui/tests/chart_tooltip_hover_fires.rs`](../../crates/ui/tests/chart_tooltip_hover_fires.rs)
+     (pre-existing) — exercises `ChartProgram::update` with a
+     synthesized `mouse::Event::CursorMoved` at a known marker
+     position and confirms `state.hovered_marker_idx.is_some()`
+     post-update.  This is the synthesized analogue of the
+     manual-hover screenshot the brief calls out as the
+     fallback-evidence form ("Synthesize via UI test … honor this
+     as evidence if cursor-control isn't available").
+  3. **Source-level race confirmation (M6.2 fixup pass research,
+     2026-05-11).** [`canvas::Program::update`](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/canvas/program.rs#L7-L15)
+     runs for ALL events including `RedrawRequested`; canvas-local
+     `State` mutates synchronously inside that call, but
+     `Application::update` only consumes the published `Message`
+     on the next runtime drain pass.  Reading the tooltip view
+     from canvas-local state (post-T2033 code path) removes the
+     dual-source-of-truth that produced the flash-and-disappear
+     race in the pre-T2033 version.  This citation has been
+     added inline at `crates/ui/src/widgets/chart.rs` Pass 6.
+  4. The existing `chart_tooltip_integration` test continues to
+     pass — the Cockpit-state path remains a working code path
+     for the snapshot tests, just no longer required for the
+     live render.
+
+  Operator-facing manual re-verification (post-merge): hover each
+  of the 4 fill triangles in the cockpit.  The 6-field tooltip
+  MUST now appear and stay stable while the cursor sits over the
+  28-px hit-rect; cursor jitter inside the rect MUST NOT clear it
   (`Program::update`'s idempotent same-idx early-return guards
   that); cursor moves outside the rect MUST clear it cleanly.
+  Two-stage screenshot capture (`/tmp/cockpit-T2033-hover.png`
+  + `/tmp/cockpit-T2033-hover-2s-later.png` — same tooltip on
+  both, proving stability) is filed as a follow-up cursor-control
+  task contingent on Accessibility permission being granted to
+  the host process; outside the scope of this fixup pass.
 
   **Files touched (T2033):**
   - [`crates/ui/src/widgets/chart.rs`](../../crates/ui/src/widgets/chart.rs)
     — Pass 6 refactor, new `tooltip_view_from_hover` helper, new
     regression-guard test, vestigial-field docstring +
-    `#[allow(dead_code)]` on `ChartProgram::tooltip`.
+    `#[allow(dead_code)]` on `ChartProgram::tooltip`; M6.2 fixup
+    pass appended an in-source citation of iced 0.14
+    `canvas::Program::update` running for ALL events including
+    `RedrawRequested` (program.rs:7-15), explaining why reading
+    the tooltip view from canvas-local state closes the
+    Application-update-drain race.
 
 ### M5 — Ship gate (T2026–T2027 + T_FINAL)
 

@@ -334,6 +334,16 @@ impl canvas::Program<Message> for ChartProgram {
         // vestigial for the live render but still drives the
         // `chart_tooltip` widget's snapshot tests via the
         // `build_tooltip_view` helper in `state.rs`.
+        //
+        // **Source-level confirmation (M6.2 fixup, 2026-05-11).**
+        // `canvas::Program::update` runs for ALL events including
+        // `RedrawRequested` (see [iced 0.14 program.rs:7-15](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/canvas/program.rs#L7-L15)),
+        // canvas-local `State` mutates synchronously inside that
+        // call, but `Application::update` only consumes the published
+        // `Message` on the next runtime drain pass.  Reading the
+        // tooltip view from canvas-local state (this code) removes
+        // the dual-source-of-truth that produced the
+        // flash-and-disappear race in the pre-T2033 version.
         if let (Some(idx), Some(anchor)) =
             (state.hovered_marker_idx, state.hovered_marker_centroid)
         {

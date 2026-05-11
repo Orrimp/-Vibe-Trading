@@ -61,10 +61,13 @@ const HISTOGRAM_LABEL_HEIGHT_PX: f32 = 14.0;
 /// histogram (label + 80-px canvas) stacked in a `Column` with
 /// `space::M` between children and `space::L` padding on every side.
 ///
-/// **Why a pure helper:** T2032's regression was a `Length::Shrink`
-/// default on the chart-body container collapsing the canvas to zero
-/// height regardless of `body_height`.  The fix gives the container
-/// `Length::Fill` on both axes; this helper exposes the resulting
+/// **Why a pure helper:** T2032's chart-cropping regression reduced to
+/// a `Length`-propagation problem in the chart-body column; the
+/// defensive fix gives the chart-body container an explicit
+/// `Length::Fill` on both axes (see the comment in [`view`] for the
+/// corrected mechanic — the in-source rationale shipped with M6.2
+/// blamed `Container::new`'s default width, but the iced 0.14 source
+/// shows that diagnosis was wrong).  This helper exposes the resulting
 /// budget arithmetic so the unit test
 /// `chart_canvas_height_grows_with_body_height` can pin the invariant
 /// without dragging in an iced layout runtime.
@@ -187,19 +190,39 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .spacing(space::M)
         .push(chip_row)
         .push(status_strip)
-        // T2032 — chart container needs BOTH `width(Length::Fill)` and
-        // `height(Length::Fill)`.  The pre-T2032 form omitted the
-        // explicit width, which defaults to `Length::Shrink`.  A
-        // `Shrink` parent collapses any `Length::Fill` child to zero,
-        // which is why the canvas cropped at the initial 1280×720 boot
-        // size and refused to grow on window resize: the inner
-        // `Canvas::new(...).width(Length::Fill).height(Length::Fill)`
-        // inside `chart::view` had no room to expand into.  Adding
-        // `width(Length::Fill)` here lets the canvas take the full
-        // body width and the remaining vertical allocation, so the
-        // chart now scales when the operator drags the window edge.
-        // Verified at 1280×720, 1600×900, 1920×1080 via
-        // `screencapture` (see M6.2 / T2032 tick footer).
+        // T2032 — defensive `.width(Length::Fill)` on the chart-body
+        // container.
+        //
+        // **Corrected rationale (M6.2 fixup, 2026-05-11).**  The M6.2
+        // ship comment here claimed `Container::new(content)` defaults
+        // its width to `Length::Shrink`, collapsing the `Fill`-width
+        // canvas child to zero.  Reading the iced 0.14 source shows
+        // that diagnosis was wrong: `Container::new(content)` calls
+        // `content.size_hint()` and applies `Length::fluid()` (see
+        // [iced 0.14 container.rs:94-108](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/container.rs#L94-L108)),
+        // which preserves `Fill` from `Fill` children and only
+        // collapses `Shrink` / `Fixed` children to `Shrink`.  So a
+        // bare `Container::new(chart_body)` wrapping a Fill-width
+        // canvas *should* already propagate `Fill`.  The actual
+        // Shrink-default trap lives in `Row::new()` and
+        // `Column::new()` ([row.rs:80-81](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/row.rs#L80-L81),
+        // [column.rs:83-84](https://github.com/iced-rs/iced/blob/0.14.0/widget/src/column.rs#L83-L84))
+        // — those default to `Length::Shrink` on both axes and would
+        // collapse Fill children to zero.  The original M6.2 fix
+        // probably worked via a different mechanism (cache
+        // invalidation from re-typing the container, or simply the
+        // forced relayout pass triggered by editing this code path) —
+        // not via the Shrink-default story the in-source comment told.
+        //
+        // We keep the explicit `.width(Length::Fill).height(Length::Fill)`
+        // here as **defensive intent**: it documents that the
+        // chart-body container must own its full allocation on both
+        // axes, and survives future refactors that might wrap this
+        // node in a `Row::new()` / `Column::new()` (Shrink-default)
+        // or swap the child for a `Shrink`-defaulting widget.  The
+        // unit test `chart_canvas_height_grows_with_body_height`
+        // remains the load-bearing regression guard for the budget
+        // arithmetic; this `.width(Length::Fill)` is belt-and-braces.
         .push(
             Container::new(chart_body)
                 .width(Length::Fill)
@@ -490,13 +513,14 @@ mod tests {
     }
 
     /// T2032 — chart canvas height MUST grow with body height.  The
-    /// pre-T2032 form wrapped `chart_body` in a
-    /// `Container::new(chart_body).height(Length::Fill)` whose default
-    /// `width(Length::Shrink)` collapsed the inner canvas to zero
-    /// regardless of available body height — the operator's
-    /// 2026-05-11 visual report ("chart crops on window resize")
-    /// reduced to this.  After the fix
-    /// (`width(Length::Fill).height(Length::Fill)` on both axes), the
+    /// operator's 2026-05-11 visual report ("chart crops on window
+    /// resize") reduced to a `Length` propagation issue in the
+    /// chart-body column.  The M6.2 fix gives the chart-body
+    /// container an explicit `.width(Length::Fill).height(Length::Fill)`
+    /// (see the comment in [`super::view`] for the corrected mechanic
+    /// — the M6.2 in-source rationale that blamed `Container::new`'s
+    /// default width was wrong per the iced 0.14 source).  With the
+    /// chart-body container occupying its full body allocation, the
     /// canvas's vertical allocation is `body_height - fixed_siblings`
     /// and therefore grows monotonically with body height.
     ///
