@@ -558,6 +558,89 @@ histogram in v1.9 (R7 strawman scope).
   canvas height stays > 50% of the screen body height at the
   default cockpit window size.
 
+### M6 — Operator-feedback follow-up (T2028–T2030)
+
+Added 2026-05-11 after operator's visual-verification pass on commit
+`ff96ce4` surfaced three items: one bug in the T2018–T2020 deliverable
+(tooltips don't fire on hover despite passing tests) plus two scope
+additions (min window size; app icon). Folded into this feature's
+pipeline per operator's "go with A" 2026-05-11 (alternative B/C would
+have spawned a separate `cockpit-polish` feature). Re-runs `cargo
+build` + `cargo test --workspace` + `bash scripts/verify_anchors.sh`
+at the end of M6 before M5 ship gate is re-entered.
+
+- [ ] **T2028 [U]** — **Min window size on all three bins.** Set
+  `iced::window::Settings { min_size: Some(Size::new(1280.0, 720.0)),
+  .. }` (or the lowest viable Layout-β width the ui-designer
+  measures) on `crates/ui/src/bin/cockpit.rs`,
+  `crates/ui/src/bin/cockpit_live.rs`, and
+  `crates/ui/src/bin/viewer.rs`. Layout β (Q5 = β) requires the
+  chart to stay above ~50% of body height with the status strip +
+  histogram fitting their fixed allocations; that constrains the
+  min width and height. **[Operator feedback 2026-05-11.]**
+  _Acceptance:_ `cargo test -p ui min_window_size_set_on_all_bins`
+  passes (new test verifies the `min_size` field is `Some(_)` on
+  each bin's window settings); manual: shrinking the window below
+  the min size in the running cockpit doesn't go below the limit.
+
+- [ ] **T2029 [U]** — **App icon on all three bins.** Convert
+  [`spec/design/project/assets/brand/lumen-mark.svg`](../design/project/assets/brand/lumen-mark.svg)
+  to a pre-rendered PNG (or use an SVG-rasterising helper); embed
+  the bytes via `include_bytes!` in a new
+  `crates/ui/src/window_icon.rs`; apply via
+  `iced::window::Settings { icon: Some(iced::window::icon::from_rgba(..., w, h)?), .. }`
+  on `cockpit.rs`, `cockpit_live.rs`, `viewer.rs`. macOS uses the
+  icon for dock + cmd-tab; Linux uses it for window decorations.
+  No new dependencies if iced 0.14's `window::icon::from_rgba`
+  accepts pre-rasterised bytes. If SVG-to-RGBA at runtime is
+  needed, prefer a build-time rasterisation step via
+  `build.rs` over a runtime SVG dep. **[Operator feedback
+  2026-05-11.]**
+  _Acceptance:_ `cargo test -p ui window_icon_set_on_all_bins`
+  passes; manual: dock / cmd-tab / window decorations show the
+  Lumen mark instead of the default iced placeholder.
+
+- [ ] **T2030 [U]** — **Tooltip hover-detection rework
+  (supersedes T2018–T2020 hover hookup).** Operator reported
+  2026-05-11 that hovering over chart triangles produces no
+  tooltip despite T2018–T2020 having shipped `[x]`. The ticks
+  stay (honest-tick discipline) but this task documents the gap:
+  the existing `chart_tooltip_integration.rs` test exercises
+  render-given-hover-state, not hover-event-detection. The bug is
+  in the pointer-event plumbing — either `canvas::Program::update`
+  isn't intercepting `mouse::Event::CursorMoved`, the hit-rect
+  math is off (markers' canvas coordinates vs cursor coordinates
+  mismatched), or iced 0.14's canvas-pointer API behaves
+  differently from the implementation's assumption.
+
+  **Diagnosis steps:**
+  1. Read `crates/ui/src/widgets/chart_tooltip.rs` `update` method;
+     check that it returns `(canvas::event::Status::Captured, ...)`
+     on `mouse::Event::CursorMoved`.
+  2. Verify the canvas `update` method is wired into the chart's
+     `canvas::Program` impl, not just defined.
+  3. Print-debug the hit-rect math: do marker canvas coordinates
+     (post linear-interpolation y-snap per Q2 = b) match the
+     cursor's canvas-relative coordinates?
+  4. If (1)–(3) are correct, fall back to the architect's
+     documented Q3 option (a): replace the custom canvas pointer-
+     tracking with `iced::widget::tooltip` widgets on a transparent
+     overlay grid, one hit-rectangle per marker.
+
+  **New integration test:** `crates/ui/tests/chart_tooltip_hover_fires.rs`
+  exercises the actual hover-detection path — `canvas::Program::update`
+  receives a synthetic `mouse::Event::CursorMoved` at the marker's
+  canvas position, asserts the tooltip state flips to
+  `Some(hovered_marker_idx)`. This is the test the ui-designer's
+  existing `chart_tooltip_integration.rs` should have been but
+  wasn't. **[Operator feedback 2026-05-11; supersedes T2018–T2020
+  hover hookup.]**
+  _Acceptance:_ `cargo test -p ui chart_tooltip_hover_fires`
+  passes; manual: hovering over a triangle in `cargo run --release
+  --bin cockpit --features fixtures` shows the 6-field tooltip
+  (Side, Price, Quantity, Notional, Timestamp, Strategy ID) per
+  Q4 = strawman-minus-truncated-TX-ID.
+
 ### M5 — Ship gate (T2026–T2027 + T_FINAL)
 
 Closes nothing new. Verified by **V8** (anchors hard gate),
@@ -766,3 +849,17 @@ arithmetic is a derived-state helper, not a widget edit)._
   zero drift. `cargo fmt -p ui` clean. T_FINAL stays
   unticked — tester-only per the orchestrator's contract.
   HANDOFF → tester (T_FINAL_CHART_BUY_SELL_EMPHASIS).
+- 2026-05-11 (orchestrator, operator-relayed via chat): operator's
+  visual-verification pass on commit `ff96ce4` surfaced three items
+  during a cockpit launch — one bug in the T2018–T2020 deliverable
+  (tooltips don't fire on hover despite passing tests) plus two
+  scope additions (min window size for all three bins; app icon
+  for cockpit / cockpit_live / viewer). Operator picked Option A
+  (fold into this feature's pipeline; defer alternative B/C which
+  would have spawned a separate `cockpit-polish` brief). Added new
+  milestone **M6** with three tasks **T2028** (min window size),
+  **T2029** (app icon), **T2030** (tooltip hover-detection rework
+  that supersedes T2018–T2020 hover hookup). T2018–T2020 `[x]`
+  ticks remain — honest-tick discipline preserves the historical
+  record; T2030 documents the gap and contains the fix. M5 ship
+  gate re-enters after M6 lands. HANDOFF → ui-designer (M6 pass).
