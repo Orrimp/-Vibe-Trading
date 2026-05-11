@@ -21,6 +21,42 @@
 //! (macOS dock + cmd-tab + Linux decorations showed the iced
 //! placeholder).  Both are pure presentation polish that don't touch
 //! audit/strategy/exec.
+//!
+//! ## macOS dock icon limitation (T2031, M6.2)
+//!
+//! The operator's second visual-verification pass (2026-05-11, against
+//! commit `9bb5786`) confirmed that even with [`lumen_window_icon`] set
+//! on every bin's [`iced::window::Settings`], the **macOS dock icon**,
+//! **cmd-tab switcher icon**, **Spotlight result icon**, and **Finder
+//! file icon** all still render as the generic iced/Cargo placeholder.
+//!
+//! **Why:** `iced::window::Settings::icon` only affects the icon iced
+//! draws inside its **own window chrome** — typically the title-bar
+//! glyph on Windows + Linux compositors. macOS's dock, cmd-tab,
+//! Spotlight, and Finder read their app icon from the `.app` bundle's
+//! `Info.plist` (`CFBundleIconFile` → `.icns` resource).  A bare
+//! `cargo run --bin cockpit` produces a Mach-O executable, not an
+//! `.app` bundle — there is **no `Info.plist` for macOS to read**, so
+//! it falls back to the generic placeholder regardless of what iced
+//! is told.  The T2029 test (`window_icon_set_on_all_bins`) is
+//! correct: the iced-level plumbing is plumbed.  The runtime gap is at
+//! the macOS-packaging surface, not in this module.
+//!
+//! **Fix path (not in M6.2 scope):** wrap each bin in an `.app` bundle
+//! at build time — either via `cargo bundle`
+//! (<https://crates.io/crates/cargo-bundle>) or a hand-written
+//! `Info.plist` + `.icns` pair under
+//! `crates/ui/macos/<binname>.app/Contents/`.  The brand mark already
+//! lives at `spec/design/project/assets/brand/lumen-mark.svg`; the
+//! bundle step needs a once-only SVG → `.icns` rasterisation (sips +
+//! iconutil on macOS, or `cargo-bundle`'s built-in macOS path).
+//! Tracked as the candidate feature stub at
+//! [`spec/cockpit-app-bundle/feature.md`](../../../spec/cockpit-app-bundle/feature.md);
+//! analyst spawn when operator promotes from candidate.
+//!
+//! Linux + Windows are unaffected: the title-bar icon path
+//! [`lumen_window_icon`] already drives — `Info.plist`-style packaging
+//! is macOS-specific.
 
 use iced::window::{icon, Icon, Settings as WindowSettings};
 use iced::Size;

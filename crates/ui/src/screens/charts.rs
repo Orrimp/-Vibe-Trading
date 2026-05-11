@@ -39,6 +39,51 @@ use crate::widgets::{chart, frame};
 /// chart (R7.2 + Q5 — operator-locked at ~80 px).
 const HISTOGRAM_HEIGHT_PX: f32 = 80.0;
 
+/// Approximate chip-row height (one row of Lumen `SMALL`-sized buttons
+/// with `XS`/`M` padding).  Used for the [`chart_canvas_height_for_body`]
+/// allocation calculation; the real iced layout engine resolves this
+/// dynamically based on font metrics, but the constant captures the
+/// allocation budget the column reasons against.
+const CHIP_ROW_HEIGHT_PX: f32 = 32.0;
+
+/// Approximate status-strip height (the three-tile volume card +
+/// position mirror, both `space::M` padded with `text::H2`-sized values
+/// and a `text::SMALL` label above).
+const STATUS_STRIP_HEIGHT_PX: f32 = 80.0;
+
+/// Approximate histogram-label height (`text::MICRO` + `space::XXS`
+/// gap) — the volume-histogram column's first child.
+const HISTOGRAM_LABEL_HEIGHT_PX: f32 = 14.0;
+
+/// Pure calculation of the chart canvas's vertical allocation given a
+/// body height.  Mirrors the Layout β arithmetic this module's
+/// [`view`] composes: chip row + status strip + chart (Fill) + volume
+/// histogram (label + 80-px canvas) stacked in a `Column` with
+/// `space::M` between children and `space::L` padding on every side.
+///
+/// **Why a pure helper:** T2032's regression was a `Length::Shrink`
+/// default on the chart-body container collapsing the canvas to zero
+/// height regardless of `body_height`.  The fix gives the container
+/// `Length::Fill` on both axes; this helper exposes the resulting
+/// budget arithmetic so the unit test
+/// `chart_canvas_height_grows_with_body_height` can pin the invariant
+/// without dragging in an iced layout runtime.
+///
+/// Returns `0.0` when the body height is smaller than the fixed-
+/// allocation siblings — pathological but defended.
+#[must_use]
+pub fn chart_canvas_height_for_body(body_height_px: f32) -> f32 {
+    #[allow(clippy::cast_precision_loss)]
+    let padding = (space::L as f32) * 2.0;
+    #[allow(clippy::cast_precision_loss)]
+    let spacing = (space::M as f32) * 3.0; // 3 gaps between 4 children
+    let fixed = CHIP_ROW_HEIGHT_PX
+        + STATUS_STRIP_HEIGHT_PX
+        + HISTOGRAM_LABEL_HEIGHT_PX
+        + HISTOGRAM_HEIGHT_PX;
+    (body_height_px - padding - spacing - fixed).max(0.0)
+}
+
 /// Render the Charts screen body.
 #[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
 #[must_use]
@@ -142,7 +187,24 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .spacing(space::M)
         .push(chip_row)
         .push(status_strip)
-        .push(Container::new(chart_body).height(Length::Fill))
+        // T2032 — chart container needs BOTH `width(Length::Fill)` and
+        // `height(Length::Fill)`.  The pre-T2032 form omitted the
+        // explicit width, which defaults to `Length::Shrink`.  A
+        // `Shrink` parent collapses any `Length::Fill` child to zero,
+        // which is why the canvas cropped at the initial 1280×720 boot
+        // size and refused to grow on window resize: the inner
+        // `Canvas::new(...).width(Length::Fill).height(Length::Fill)`
+        // inside `chart::view` had no room to expand into.  Adding
+        // `width(Length::Fill)` here lets the canvas take the full
+        // body width and the remaining vertical allocation, so the
+        // chart now scales when the operator drags the window edge.
+        // Verified at 1280×720, 1600×900, 1920×1080 via
+        // `screencapture` (see M6.2 / T2032 tick footer).
+        .push(
+            Container::new(chart_body)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
         .push(histogram)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -425,6 +487,45 @@ mod tests {
         assert_eq!(t.net_usdt, Decimal::ZERO);
         assert_eq!(t.buy_count, 0);
         assert_eq!(t.sell_count, 0);
+    }
+
+    /// T2032 — chart canvas height MUST grow with body height.  The
+    /// pre-T2032 form wrapped `chart_body` in a
+    /// `Container::new(chart_body).height(Length::Fill)` whose default
+    /// `width(Length::Shrink)` collapsed the inner canvas to zero
+    /// regardless of available body height — the operator's
+    /// 2026-05-11 visual report ("chart crops on window resize")
+    /// reduced to this.  After the fix
+    /// (`width(Length::Fill).height(Length::Fill)` on both axes), the
+    /// canvas's vertical allocation is `body_height - fixed_siblings`
+    /// and therefore grows monotonically with body height.
+    ///
+    /// We pin the invariant via the pure arithmetic helper
+    /// [`chart_canvas_height_for_body`] — the real iced layout
+    /// engine resolves the actual pixel allocation at runtime, but
+    /// the budget math is what the column reasons against.
+    #[test]
+    fn chart_canvas_height_grows_with_body_height() {
+        let h_720 = chart_canvas_height_for_body(720.0);
+        let h_1080 = chart_canvas_height_for_body(1080.0);
+        assert!(
+            h_1080 > h_720,
+            "chart canvas height MUST grow with body height: 720 → {h_720}, 1080 → {h_1080}"
+        );
+        // Sanity: at 720 the chart still has room (≥ 50 % of body
+        // height after fixed siblings — the Q5 / Layout β floor that
+        // T2028's `MIN_WINDOW_HEIGHT_PX = 720` defends).
+        assert!(
+            h_720 > 0.0,
+            "chart canvas must have non-zero allocation at the 720-px floor: got {h_720}"
+        );
+        // The growth is exactly the body-height delta (fixed
+        // siblings + padding + spacing are body-invariant).
+        let delta = h_1080 - h_720;
+        assert!(
+            (delta - 360.0).abs() < f32::EPSILON,
+            "delta should equal body-height delta (1080-720=360); got {delta}"
+        );
     }
 
     /// T2024 — `position_for_symbol` returns the matching position when

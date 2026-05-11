@@ -99,6 +99,19 @@ pub(crate) struct ChartProgram {
     pub(crate) bars: Vec<Bar>,
     pub(crate) markers: Vec<FillView>,
     pub(crate) signals: Vec<SignalView>,
+    /// Cockpit-state tooltip — vestigial post-T2033.  The pre-T2033
+    /// draw path read this to render the tooltip overlay, but the
+    /// asynchronous round-trip (canvas → `Message::ChartMarkerHovered`
+    /// → `state::update` → next paint) lost the first frame and
+    /// produced the flash-and-disappear bug the operator reported on
+    /// 2026-05-11.  The post-T2033 draw path builds the tooltip view
+    /// from `self.markers[idx]` / `self.signals[idx]` directly using
+    /// the canvas's local `ChartState`.  The field stays in the
+    /// struct so the public `chart::view` signature is unchanged (the
+    /// snapshot-test path at `state::build_tooltip_view` still drives
+    /// `Cockpit.chart_tooltip`); it is intentionally never read by
+    /// the draw pass.
+    #[allow(dead_code)]
     pub(crate) tooltip: Option<ChartTooltipView>,
     pub(crate) mode: ThemeMode,
 }
@@ -300,13 +313,33 @@ impl canvas::Program<Message> for ChartProgram {
             );
         }
 
-        // Pass 6 — Tooltip overlay (R4.2, Q3).
+        // Pass 6 — Tooltip overlay (R4.2, Q3, **T2033**).
         //
-        // Driven by hover state captured in `ChartProgram::update`. Anchor
-        // prefers the centroid the same `update` pass recorded so the
-        // tooltip rides the exact pixel the marker is painted on.
-        if let (Some(view), Some(anchor)) = (self.tooltip.as_ref(), state.hovered_marker_centroid) {
-            chart_tooltip::draw_tooltip(&mut frame, bounds, anchor, view, self.mode);
+        // Render the tooltip directly from canvas-local hover state.
+        // The pre-T2033 form required BOTH `self.tooltip.is_some()`
+        // (a `Cockpit.chart_tooltip` round-trip published by
+        // `Message::ChartMarkerHovered` and applied by
+        // `state::update`) AND `state.hovered_marker_centroid.is_some()`
+        // (the canvas's local `Program::State`, set synchronously in
+        // `update`). The two flip on different ticks: canvas state
+        // flips on `CursorMoved`, iced redraws once before the
+        // published message reaches Cockpit, and the tooltip fails to
+        // draw because `self.tooltip` is still `None` — the
+        // flash-and-disappear the operator reported on 2026-05-11.
+        //
+        // The fix decouples: `draw` now builds the tooltip view from
+        // `self.markers[idx]` / `self.signals[idx]` directly using
+        // `state.hovered_marker_idx + state.hovered_marker_centroid`.
+        // No Cockpit-state round trip. `Cockpit.chart_tooltip` stays
+        // vestigial for the live render but still drives the
+        // `chart_tooltip` widget's snapshot tests via the
+        // `build_tooltip_view` helper in `state.rs`.
+        if let (Some(idx), Some(anchor)) =
+            (state.hovered_marker_idx, state.hovered_marker_centroid)
+        {
+            if let Some(view) = self.tooltip_view_from_hover(idx) {
+                chart_tooltip::draw_tooltip(&mut frame, bounds, anchor, &view, self.mode);
+            }
         }
 
         vec![frame.into_geometry()]
@@ -314,6 +347,35 @@ impl canvas::Program<Message> for ChartProgram {
 }
 
 impl ChartProgram {
+    /// T2033 — build a `ChartTooltipView` directly from the canvas's
+    /// `markers` / `signals` slice at the hovered index, with no
+    /// dependency on the `self.tooltip` round-trip from Cockpit. Used
+    /// by `draw` Pass 6 to render the hover tooltip synchronously
+    /// with the canvas's local hover state — closes the
+    /// flash-and-disappear race the operator reported 2026-05-11.
+    ///
+    /// `strategy_id` is `None` for fill markers because the canvas
+    /// doesn't have a strategy-attribution side-channel (the
+    /// snapshot-test path in `state::build_tooltip_view` reuses the
+    /// `lookup_strategy_for_fill` stub, which today always returns
+    /// `None`).  If a future enrichment plumbs strategy attribution
+    /// onto `FillView`, this branch reads it from there.
+    fn tooltip_view_from_hover(
+        &self,
+        idx: ChartMarkerIndex,
+    ) -> Option<crate::state::ChartTooltipView> {
+        match idx {
+            ChartMarkerIndex::Fill(i) => {
+                let fill = self.markers.get(i)?;
+                Some(tooltip_view_for_fill(fill, None))
+            }
+            ChartMarkerIndex::Signal(i) => {
+                let signal = self.signals.get(i)?;
+                Some(tooltip_view_for_signal(signal))
+            }
+        }
+    }
+
     /// Resolve a cursor position to a marker (fill or ghost) under the
     /// `MARKER_HIT_RECT_PX` square centred on each marker's centroid.
     /// Fills win over ghosts at the same anchor — the z-order from
@@ -924,6 +986,64 @@ mod tests {
         let s_light = shadow::shadow_1(ThemeMode::Light);
         assert!((dark_c.a - s_dark.color.a).abs() < f32::EPSILON);
         assert!((light_c.a - s_light.color.a).abs() < f32::EPSILON);
+    }
+
+    /// T2033 — `ChartProgram::tooltip_view_from_hover` builds a
+    /// `ChartTooltipView` directly from `self.markers` / `self.signals`
+    /// at the hovered index — **with `self.tooltip` set to `None`**.
+    /// This is the exact code path the post-T2033 draw pass walks:
+    /// the Cockpit-state round-trip is no longer required for the
+    /// tooltip to render on the first paint after `CursorMoved`.
+    ///
+    /// The pre-T2033 form required BOTH `self.tooltip.is_some()` AND
+    /// `state.hovered_marker_centroid.is_some()`; this regression
+    /// guard confirms the new decoupled invariant.
+    #[test]
+    fn chart_tooltip_view_built_from_canvas_state_without_round_trip() {
+        let bars: Vec<Bar> = (0..3)
+            .map(|i| make_bar(i, dec!(100) + Decimal::from(i)))
+            .collect();
+        let markers = vec![
+            make_fill(0, Side::Buy, dec!(100)),
+            make_fill(2, Side::Sell, dec!(102)),
+        ];
+        let signals = vec![make_signal(1, Side::Buy, false)];
+        let program = ChartProgram {
+            bars,
+            markers,
+            signals,
+            // Decouple invariant — Cockpit-state round trip is None.
+            tooltip: None,
+            mode: ThemeMode::Dark,
+        };
+
+        // Hover the first fill — view comes from `self.markers[0]`.
+        let view_fill = program
+            .tooltip_view_from_hover(ChartMarkerIndex::Fill(0))
+            .expect("fill index 0 should resolve");
+        assert!(
+            matches!(view_fill.kind, crate::state::ChartTooltipKind::Fill),
+            "fill index resolves to Fill kind"
+        );
+        assert_eq!(view_fill.side, Side::Buy);
+        assert_eq!(view_fill.price, Some(dec!(100)));
+
+        // Hover the ghost signal — view comes from `self.signals[0]`.
+        let view_sig = program
+            .tooltip_view_from_hover(ChartMarkerIndex::Signal(0))
+            .expect("signal index 0 should resolve");
+        assert!(
+            matches!(view_sig.kind, crate::state::ChartTooltipKind::Signal),
+            "signal index resolves to Signal kind"
+        );
+        assert_eq!(view_sig.side, Side::Buy);
+        // Ghosts have no price.
+        assert!(view_sig.price.is_none());
+
+        // Out-of-range index returns None — defence-in-depth across
+        // the async refresh boundary.
+        assert!(program.tooltip_view_from_hover(ChartMarkerIndex::Fill(99)).is_none());
+        assert!(program.tooltip_view_from_hover(ChartMarkerIndex::Signal(99)).is_none());
     }
 
     /// T2008 — `marker_hit_rect` returns a 28-px square centred on the
