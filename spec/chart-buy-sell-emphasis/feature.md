@@ -1,8 +1,8 @@
 ---
 slug: chart-buy-sell-emphasis
-status: in-progress
+status: shipped
 owner: architect
-updated: 2026-05-10
+updated: 2026-05-11
 version: 1.9.0
 ---
 

@@ -390,14 +390,23 @@ Six ticks across M1, M3, M3-shim, M4, M6.2, M6.2 — each verified by file:line 
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
 
-_empty until operator fills_
+**2026-05-11 (operator, verbal approval via orchestrator chat):**
+
+Approved clean — no overrides, no follow-up notes. All seven operator-relevant facts accepted as designed:
+
+- Q1 = Option (a) audit-table signal source ships **default-OFF**. Operator opts in via `agent.toml` when ready for the ghost-marker layer to populate. Different from reflection-memory's v1.8 ship (which flipped `enable_writer` to default-on); the audit-DB growth budget (~8 MiB/month at 4 strategies × 1m cadence) drove the conservative choice.
+- macOS `.app` bundle for the dock icon is **deferred** per the candidate stub at [`spec/cockpit-app-bundle/feature.md`](../../cockpit-app-bundle/feature.md). The iced-level icon plumbing is correct; macOS just doesn't honor it for a bare `cargo run` binary. Operator picks up the bundling task when the cockpit ship target firms up.
+- Three implementation arcs (initial dev+ui-designer parallel + M6 + M6.2 + hardening) are reflected honestly in the deck. The multi-cycle pattern was the headless agent's inability to visually verify; Screen Recording permission grant + the documented screenshot-verification gate close that long-term.
+
+No other notes. Deck approved as `[x] Approved — ship`.
 
 ## Changelog
 
 - 2026-05-11 (presenter): initial draft after tester `VERDICT -> PASS` at commit `b0cc4a5` (tester report `spec/chart-buy-sell-emphasis/reports/test-2026-05-11-2103-chart-buy-sell-emphasis-final.md`; M6.2 hardening closeout `spec/chart-buy-sell-emphasis/reports/m6.2-hardening-2026-05-11.md`). Pulled evidence from feature brief (lines 1–880 architect Design + Q1–Q10 resolutions), tasks.md (33 dev tasks + T_FINAL all ticked), tester report §1–§14, and two fresh live runs on this machine: `bash scripts/verify_anchors.sh` (ANCHORS PASS 11/11) + `cargo build --release --bin cockpit --features fixtures` + `./target/release/cockpit` + `screencapture -x /tmp/cockpit-presenter-charts.png` (clean boot at default size + Home-screen render confirmed). Surfaces no decisions for the operator (the safer-default Q1 = (a) + `enabled = false` is the architect's confirmed default; flipping is one TOML edit if the operator wants it on). Seven operator-relevant facts called out under "Notes for the operator". Pre-tick gate `bash scripts/check_presentation.sh` run on this file — see closing summary.
+- 2026-05-11 (orchestrator, operator-relayed via chat): operator approved clean as `[x] Approved — ship` with no overrides and no follow-up notes. Q1 = Option (a) signal source ships default-OFF as designed; macOS `.app` bundle for the dock icon is deferred per the candidate stub at `spec/cockpit-app-bundle/feature.md`. Three-arc implementation history acknowledged. Feature flips `status: in-progress → shipped` on both `feature.md` and `tasks.md`; backlog updates same commit to add `chart-buy-sell-emphasis v1.9` to the Recent section.

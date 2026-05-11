@@ -1,6 +1,6 @@
 ---
 slug: chart-buy-sell-emphasis
-status: in-progress
+status: shipped
 owner: ui-designer
 updated: 2026-05-11
 ---

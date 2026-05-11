@@ -100,6 +100,42 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Recent (shipped)
 
+- **Chart buy/sell emphasis (v1.9.0)** — shipped 2026-05-11
+  (operator verbal approval recorded as `[x] Approved — ship` in
+  the presenter deck at
+  [`spec/chart-buy-sell-emphasis/presentations/chart-buy-sell-emphasis-2026-05-11.md`](chart-buy-sell-emphasis/presentations/chart-buy-sell-emphasis-2026-05-11.md);
+  no overrides, no follow-up notes). UI feature opened directly
+  from operator visual feedback on the v1.8 cockpit — markers
+  bigger + outlined + line-anchored + 6-field hover tooltip + click-
+  through to existing journal_transaction_modal (R4.5 second
+  consumer of the tape-row-audit-modal pattern); layered
+  fills+signals ghost markers (R5 — signal source default-off via
+  new `SignalLogConfig`); three counter views (cumulative-window
+  volume tile + per-bar histogram + open-position mirror) above /
+  below chart in Layout β; min window size 1280×720; Lumen window
+  icon plumbing (macOS dock-icon limitation documented — needs
+  `.app` bundle, candidate stub at
+  [`spec/cockpit-app-bundle/feature.md`](cockpit-app-bundle/feature.md)).
+  Anchor neutrality preserved: zero changes to `spec/anchors.toml`
+  (11/11 byte-identical); zero modifications to `crates/strategy/`,
+  `crates/risk/`, `crates/backtest/`, `crates/reports/`,
+  `crates/exec/`. New additive surface: `crates/audit/migrations/009_strategy_signals.sql`
+  + `audit::query::recent_signals` reader + `core::SignalView` type
+  + `agent::SignalLogConfig { enabled: false }` + 2 new widgets
+  (`chart_tooltip`, `volume_histogram`) + shared window-chrome helper
+  (`window_icon`) + Lumen mark RGBA asset. Tester report:
+  [`spec/chart-buy-sell-emphasis/reports/test-2026-05-11-2103-chart-buy-sell-emphasis-final.md`](chart-buy-sell-emphasis/reports/test-2026-05-11-2103-chart-buy-sell-emphasis-final.md)
+  (V1–V13 all PASS; 1000 / 0 / 4 tests across 144 binaries;
+  11/11 anchors PASS). Brief:
+  [`spec/chart-buy-sell-emphasis/feature.md`](chart-buy-sell-emphasis/feature.md)
+  (status: shipped, version: 1.9.0). Multi-cycle implementation
+  arc: initial dev+ui-designer parallel ship + M6 follow-up
+  (T2028–T2030) + M6.2 second follow-up (T2031–T2033) + hardening
+  pass (corrected T2032 doc rationale + screenshot evidence). The
+  iterative loop reflected headless-agent's inability to visually
+  verify; addressed long-term by Screen Recording permission grant
+  to the host IDE + documented screenshot-verification gate in
+  M6.2 task bodies.
 - **Reflection memory (v1.8.0)** — shipped 2026-05-10 (operator
   verbal approval recorded as `[x] Approve with notes` in the
   presenter deck at
