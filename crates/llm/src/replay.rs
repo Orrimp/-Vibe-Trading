@@ -31,7 +31,7 @@
 //! deep-sort over `Map<String, Value>` to produce a byte-stable
 //! canonical form — same surface as the strawman crate would have
 //! emitted for the request shape we hash. Determinism is enforced by
-//! [`tests::t1920_canonical_json_is_deterministic_1000x`] — 1000
+//! `tests::t1920_canonical_json_is_deterministic_1000x` — 1000
 //! repeated hashes of the same request produce the same SHA-256, and a
 //! sibling test confirms the `correlation_id` field is excluded (so two
 //! requests differing only in correlation id share a hash). When the
@@ -56,10 +56,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 
 use crate::error::LlmError;
-use crate::trait_def::{
-    ChatMessage, ChatRequest, ChatResponse, LlmProvider, ModelId, SystemBlock,
-};
 use crate::tools::ToolSchema;
+use crate::trait_def::{ChatMessage, ChatRequest, ChatResponse, LlmProvider, ModelId, SystemBlock};
 use crate::ProviderKind;
 
 /// Supported `schema_version` ceiling for the replay cache (Design § Q8b).
@@ -223,9 +221,7 @@ impl ReplayProvider {
     ///   OR the cache holds a row with `schema_version >
     ///   SUPPORTED_SCHEMA_VERSION`.
     pub async fn open(path: &Path) -> Result<Self, LlmError> {
-        let opts = SqliteConnectOptions::new()
-            .filename(path)
-            .read_only(true);
+        let opts = SqliteConnectOptions::new().filename(path).read_only(true);
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
             .connect_with(opts)
@@ -238,14 +234,13 @@ impl ReplayProvider {
         // Schema-version gate. `MAX(schema_version)` returns NULL on an
         // empty table — we accept that as "no rows yet" rather than
         // raising. The gate kicks in once any row exists.
-        let row: Option<(i64,)> =
-            sqlx::query_as("SELECT MAX(schema_version) FROM llm_replay")
-                .fetch_optional(&pool)
-                .await
-                .map_err(|e| LlmError::Provider {
-                    provider: ProviderKind::Other("replay".to_string()),
-                    message: format!("read schema_version: {e}"),
-                })?;
+        let row: Option<(i64,)> = sqlx::query_as("SELECT MAX(schema_version) FROM llm_replay")
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| LlmError::Provider {
+                provider: ProviderKind::Other("replay".to_string()),
+                message: format!("read schema_version: {e}"),
+            })?;
         if let Some((max_v,)) = row {
             // max_v is signed i64 from SQLite; cast carefully.
             if max_v > i64::from(SUPPORTED_SCHEMA_VERSION) {
@@ -385,7 +380,10 @@ mod tests {
 
         let ha = request_hash(&a).unwrap();
         let hb = request_hash(&b).unwrap();
-        assert_ne!(ha, hb, "temperature None vs Some(0.0) must hash differently");
+        assert_ne!(
+            ha, hb,
+            "temperature None vs Some(0.0) must hash differently"
+        );
     }
 
     /// T1919 — `SUPPORTED_SCHEMA_VERSION` is `1` at v2.0.0.

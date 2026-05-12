@@ -82,11 +82,18 @@ use crate::build_ledger_90d::{
 // developer's first deterministic local run on 2026-05-08 against the
 // FIXTURE_SEED = 0xC0FFEE fixtures.  spec/anchors.toml lines 67–75
 // receive the same value at T_FINAL_REFLECTION_MEMORY (tester only).
-const EXPECTED_SHA_7D: &str = "f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994";
+//
+// T1935 / T1936 (v2-llm-strategy, pass 6) — re-captured post-System-
+// Health rewrite (Q11 denominator `$135 → $200` + Q5d `Cache hit
+// ratio` row). New SHAs captured at the developer's first deterministic
+// local run on 2026-05-12 against the FIXTURE_SEED = 0xC0FFEE
+// fixtures. spec/anchors.toml lines 67–75 receive these values at
+// T_FINAL_V2_LLM_STRATEGY (tester only).
+const EXPECTED_SHA_7D: &str = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3";
 
 /// Locked body-SHA256 for `report-sample-90d`.  Same ownership notes
 /// as [`EXPECTED_SHA_7D`].
-const EXPECTED_SHA_90D: &str = "463e19b298552d7e3e37b1aad7c786d1cc71f14eed75d7df7ea6dc57525fa33c";
+const EXPECTED_SHA_90D: &str = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333";
 
 /// Slice off the front-matter and return the body bytes the
 /// `scripts/hash_report.py` regex considers the "body".

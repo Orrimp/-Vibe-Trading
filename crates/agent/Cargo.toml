@@ -29,6 +29,10 @@ exec = { path = "../exec" }
 audit = { path = "../audit" }
 reflection = { path = "../reflection" }
 cost = { path = "../cost" }
+# T1928 (pass 6) — `LlmConfig` is hoisted into agent::config from the
+# llm crate (re-export). T1931 wires the factory at agent boot when
+# `cfg.llm.enabled = true` (default false in v2.0.0).
+llm = { path = "../llm" }
 backtest = { path = "../backtest" }
 reports = { path = "../reports", optional = true }
 thiserror.workspace = true

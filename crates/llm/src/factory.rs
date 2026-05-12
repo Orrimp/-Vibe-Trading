@@ -104,8 +104,7 @@ impl LlmProviderFactory {
                 let keys = load_keys_from_path(cfg.as_ref(), agent_toml_path)?;
                 let leaf = construct_leaf(&cfg, &keys)?;
                 let path = replay_cache_path(&cfg);
-                let rec =
-                    RecordingProvider::open(BoxedProvider(leaf), &path).await?;
+                let rec = RecordingProvider::open(BoxedProvider(leaf), &path).await?;
                 tracing::info!(
                     target: "llm.factory",
                     path = %path.display(),
@@ -303,10 +302,7 @@ api_key = "sk-ant-stub"
                 fn provider_kind(&self) -> ProviderKind {
                     ProviderKind::Anthropic
                 }
-                async fn complete(
-                    &self,
-                    _req: ChatRequest,
-                ) -> Result<ChatResponse, LlmError> {
+                async fn complete(&self, _req: ChatRequest) -> Result<ChatResponse, LlmError> {
                     unreachable!()
                 }
             }
@@ -317,10 +313,9 @@ api_key = "sk-ant-stub"
         let budget = Arc::new(CostBudget::new(dec!(200.00)));
         let sink: Arc<dyn CostSink> = Arc::new(NoopCostSink);
 
-        let provider =
-            LlmProviderFactory::build(cfg, Mode::Research, budget, sink, &agent_toml)
-                .await
-                .expect("research mode should build");
+        let provider = LlmProviderFactory::build(cfg, Mode::Research, budget, sink, &agent_toml)
+            .await
+            .expect("research mode should build");
         assert_eq!(provider.name(), "replay");
         assert!(matches!(
             provider.provider_kind(),

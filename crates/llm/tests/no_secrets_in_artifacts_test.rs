@@ -18,8 +18,8 @@
 use async_trait::async_trait;
 use cost::{AgentRole, LlmTier};
 use llm::{
-    AnthropicProvider, ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmError,
-    LlmProvider, MessageRole, ModelId, OpenAiProvider, ProviderKind, RecordingProvider,
+    AnthropicProvider, ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmError, LlmProvider,
+    MessageRole, ModelId, OpenAiProvider, ProviderKind, RecordingProvider,
 };
 use uuid::Uuid;
 use wiremock::matchers::{method, path};
@@ -112,16 +112,9 @@ async fn t1926_no_secrets_in_artifacts() {
     //    artifact.
     let ant_srv = spawn_ant_mock().await;
     let oai_srv = spawn_oai_mock().await;
-    let ant = AnthropicProvider::with_base_url(
-        ant_srv.uri(),
-        ANT_KEY,
-        ModelId::new("claude-opus-4-7"),
-    );
-    let oai = OpenAiProvider::new_with_base_url(
-        oai_srv.uri(),
-        OAI_KEY,
-        ModelId::new("gpt-5"),
-    );
+    let ant =
+        AnthropicProvider::with_base_url(ant_srv.uri(), ANT_KEY, ModelId::new("claude-opus-4-7"));
+    let oai = OpenAiProvider::new_with_base_url(oai_srv.uri(), OAI_KEY, ModelId::new("gpt-5"));
 
     // 2. Wrap each in a RecordingProvider that writes to the same
     //    tempfile cache.
@@ -139,11 +132,7 @@ async fn t1926_no_secrets_in_artifacts() {
     drop(ant_rec);
 
     let oai_rec = RecordingProvider::open(oai, &db_path).await.unwrap();
-    let mut req = ChatRequest::new(
-        ModelId::new("gpt-5"),
-        LlmTier::DeepThink,
-        AgentRole::Trader,
-    );
+    let mut req = ChatRequest::new(ModelId::new("gpt-5"), LlmTier::DeepThink, AgentRole::Trader);
     req.messages.push(ChatMessage {
         role: MessageRole::User,
         content: vec![ContentBlock::Text("smoke-v9-oai".into())],

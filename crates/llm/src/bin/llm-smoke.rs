@@ -207,7 +207,11 @@ async fn run(cli: Cli) -> ExitCode {
         match outcome {
             Ok(resp) => {
                 let text = first_text(&resp.content).unwrap_or_default();
-                let result = if text.trim() == "OK" { "OK" } else { "MISMATCH" };
+                let result = if text.trim() == "OK" {
+                    "OK"
+                } else {
+                    "MISMATCH"
+                };
                 if result != "OK" {
                     all_ok = false;
                 }

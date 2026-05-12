@@ -70,3 +70,50 @@ universe      = [
 [universe]
 usdt_enabled = true
 usdc_enabled = false  # opt-in to USDC mirror set
+
+# v2-llm-strategy v2.0.0 (T1929 / R12.1) — LLM subsystem.
+# Foundation-only at v2.0.0 (Q1 = Option A); `enabled = false` keeps the
+# subsystem off so a fresh checkout does not require any API keys. Flip
+# `enabled = true` only after copying `config/agent.toml.local.example`
+# to `config/agent.toml.local` and editing in real keys (per Q3 = C).
+#
+# Keys are NOT in this committed file — they live in
+# `config/agent.toml.local` (git-ignored). See `spec/runbooks/llm-cost.md`
+# and `spec/runbooks/llm-replay.md` for operator workflow.
+[llm]
+enabled              = false  # foundation-only at v2.0.0
+default_provider     = "anthropic"
+budget_usd_month     = 200.0
+replay_cache_path    = "./data/llm-replay.db"
+
+[llm.deep_think]
+provider = "anthropic"
+model    = "claude-opus-4-7"
+
+[llm.quick_think]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"
+
+[llm.providers.anthropic]
+base_url = "https://api.anthropic.com/v1"
+
+[llm.providers.openai]
+base_url = "https://api.openai.com/v1"
+
+[llm.providers.openrouter]
+base_url = "https://openrouter.ai/api/v1"
+
+[llm.providers.deepseek]
+base_url = "https://api.deepseek.com/v1"
+
+[llm.providers.ollama]
+base_url = "http://localhost:11434"
+
+# Pricing override map (empty by default — see crates/llm/src/pricing.rs
+# base table for the hard-coded rate card). Operator can override any
+# row via:
+#   [llm.pricing.anthropic."claude-opus-4-7"]
+#   input_usd        = "15.0"
+#   output_usd       = "75.0"
+#   cached_input_usd = "1.5"
+[llm.pricing]

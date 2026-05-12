@@ -1,16 +1,16 @@
 ---
 period: since:2026-01-28T00:00:00Z
 period_start: 2026-01-28T00:00:00.000000Z
-period_end: 2026-05-12T17:59:57.588503Z
-generated: 2026-05-12T17:59:57.588503Z
-run_id: a6001fe732f379c9
-ledger_snapshot_sha: 3fdb2a42a364469dfe1b4d1a6532c93b148415d1786c0a8f0c0493748b056ff4
+period_end: 2026-05-12T21:35:36.322722Z
+generated: 2026-05-12T21:35:36.322722Z
+run_id: ebcbfe7ac910b019
+ledger_snapshot_sha: 6a2ca820ec66ffb79b0ce0d4ae591f62b63ade898dc39fd9f488e83671544ea4
 seed: 0xC0FFEE
-data_source: fixture:/var/folders/3d/q05sqj0x3r79f5jszgbsv0cc0000gp/T/.tmpvPVdNC/audit-90d.db
-wall_clock_s: 0.072714
+data_source: fixture:/var/folders/3d/q05sqj0x3r79f5jszgbsv0cc0000gp/T/.tmpVr58Ht/audit-90d.db
+wall_clock_s: 0.072827
 binary_version: 0.1.0
 git_commit: n/a
-agent_pid: 79937
+agent_pid: 9691
 host: unknown
 reconciliation: PASS
 ---
@@ -65,7 +65,8 @@ _no closed trades yet — lesson cards will appear after the first closed trade.
 | Clock-skew events | 0 |
 | Feed reconnects | 0 |
 | Funding poll success | n/a |
-| LLM spend | $0.00 / $135 |
+| LLM spend | $0.00 / $200 |
+| Cache hit ratio | 0.0% |
 
 ## What changed
 

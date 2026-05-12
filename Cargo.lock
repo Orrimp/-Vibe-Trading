@@ -23,6 +23,7 @@ dependencies = [
  "exec",
  "features",
  "futures",
+ "llm",
  "metrics",
  "metrics-exporter-prometheus",
  "notify",

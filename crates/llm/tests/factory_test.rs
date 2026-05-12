@@ -113,10 +113,7 @@ api_key = "sk-ant-stub"
             fn provider_kind(&self) -> ProviderKind {
                 ProviderKind::Anthropic
             }
-            async fn complete(
-                &self,
-                _req: ChatRequest,
-            ) -> Result<ChatResponse, LlmError> {
+            async fn complete(&self, _req: ChatRequest) -> Result<ChatResponse, LlmError> {
                 unreachable!()
             }
         }

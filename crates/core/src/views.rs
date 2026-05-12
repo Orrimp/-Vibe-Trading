@@ -182,7 +182,7 @@ pub struct SignalView {
     pub strategy_id: StrategyId,
     /// `true` once the risk engine has decided to clamp this signal.
     /// `false` for signals that passed through untouched OR for which
-    /// the risk-decision row has not yet been UPDATEed.
+    /// the risk-decision row has not yet been `UPDATE`d.
     pub was_clamped: bool,
     /// Short human-readable reason set alongside `was_clamped = true`.
     /// `None` when `was_clamped = false`.

@@ -8,6 +8,17 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use trading_core::ConfigError;
 
+// ── T1928 (pass 6) — `LlmConfig` re-exported from the llm crate ───────────────
+//
+// Per Design § "How it shows up in code" item 10, the canonical
+// `LlmConfig` lives at `crates/agent/src/config.rs:300` as a new
+// section. To avoid a circular dep (`agent → llm → cost`, never the
+// inverse), the struct itself is defined in `crates/llm/src/config.rs`
+// (its fields depend on `cost::ProviderKind`, `OverrideMap`, `ModelId`,
+// all owned by the llm crate). The agent re-exports it here so the
+// root `Config` struct can carry `pub llm: LlmConfig`.
+pub use llm::config::{LlmConfig, ProviderConfig, TierConfig};
+
 // ── Sub-config types ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -503,6 +514,14 @@ pub struct Config {
     /// in cockpit). V12 hard-asserts the default.
     #[serde(default)]
     pub signal_log: SignalLogConfig,
+    /// v2-llm-strategy v2.0.0 (T1928, pass 6) — LLM subsystem.
+    /// Default `enabled = false` per architect Q1 = Option A
+    /// (foundation-only, zero consumers at v2.0.0). When `enabled =
+    /// true`, the agent's main wires `LlmProviderFactory::build(...)`
+    /// at startup; when `false` (the default), no provider is
+    /// constructed and no `.local` overlay is required.
+    #[serde(default)]
+    pub llm: LlmConfig,
 }
 
 impl Default for Config {
@@ -522,12 +541,24 @@ impl Default for Config {
             universe: UniverseConfig::default(),
             reflection: ReflectionConfig::default(),
             signal_log: SignalLogConfig::default(),
+            llm: LlmConfig::default(),
         }
     }
 }
 
 impl Config {
     /// Load configuration from a TOML file and validate.
+    ///
+    /// **T1928 overlay (pass 6).** If a sibling `agent.toml.local`
+    /// file lives next to `path`, its `[llm.providers.<name>] api_key
+    /// = "..."` entries are merged into the parsed `Config.llm.providers`
+    /// map. The merge touches the `[llm]` section only — other
+    /// sections in the `.local` file are intentionally ignored (per
+    /// Q3 = C convention: the `.local` file is LLM-keys-and-overrides
+    /// exclusively). Missing `.local` under `cfg.llm.enabled = false`
+    /// is a no-op; missing `.local` under `cfg.llm.enabled = true &&
+    /// default_provider != "ollama"` falls through to `validate()`'s
+    /// `LlmError::Auth` rejection.
     ///
     /// # Errors
     ///
@@ -536,9 +567,25 @@ impl Config {
     /// - [`ConfigError::InvalidValue`] for non-positive caps, negative budgets.
     /// - [`ConfigError::SmaWindowOrder`] if `fast_len >= slow_len`.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
-        let content = std::fs::read_to_string(path.as_ref())
-            .map_err(|e| ConfigError::Parse(e.to_string()))?;
-        Self::from_toml_str(&content)
+        let path_ref = path.as_ref();
+        let content =
+            std::fs::read_to_string(path_ref).map_err(|e| ConfigError::Parse(e.to_string()))?;
+        let mut cfg = Self::from_toml_str(&content)?;
+
+        // T1928 overlay — merge `.local` LLM keys if the sibling file exists.
+        let mut local_path = path_ref.as_os_str().to_owned();
+        local_path.push(".local");
+        let local_path = PathBuf::from(local_path);
+        if local_path.exists() {
+            if let Ok(local_content) = std::fs::read_to_string(&local_path) {
+                merge_llm_local_overlay(&mut cfg.llm, &local_content).map_err(|e| {
+                    ConfigError::Parse(format!("{} overlay: {}", local_path.display(), e))
+                })?;
+            }
+        }
+        // Re-validate after the overlay merged keys.
+        cfg.validate_llm_keys()?;
+        Ok(cfg)
     }
 
     /// Parse from a TOML string and validate.
@@ -630,6 +677,60 @@ impl Config {
 
         Ok(())
     }
+
+    /// T1928 — re-run `LlmConfig::validate_keys` and map any
+    /// `LlmError::Auth` into [`ConfigError::InvalidValue`] so the
+    /// agent's startup loader uniformly rejects misconfiguration.
+    /// Called from `load()` after the `.local` overlay merges keys.
+    fn validate_llm_keys(&self) -> Result<(), ConfigError> {
+        if let Err(e) = self.llm.validate_keys() {
+            return Err(ConfigError::InvalidValue {
+                field: "llm".into(),
+                reason: e.to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// T1928 — merge the `[llm.providers.<name>] api_key = "..."` entries
+/// from an `agent.toml.local` overlay into the parsed `LlmConfig`'s
+/// providers map. Other sections in the overlay are ignored.
+///
+/// The overlay reuses the auth-crate's shape (see
+/// `crates/llm/src/auth.rs`) — we redefine the minimal local-shape
+/// parse here rather than depending on a public surface in `llm::auth`
+/// so the agent's config loader stays self-contained.
+fn merge_llm_local_overlay(llm: &mut LlmConfig, overlay_toml: &str) -> Result<(), toml::de::Error> {
+    #[derive(Deserialize, Default)]
+    struct LocalRoot {
+        #[serde(default)]
+        llm: Option<LocalLlmSection>,
+    }
+    #[derive(Deserialize, Default)]
+    struct LocalLlmSection {
+        #[serde(default)]
+        providers: std::collections::HashMap<String, LocalProviderEntry>,
+    }
+    #[derive(Deserialize, Default)]
+    struct LocalProviderEntry {
+        #[serde(default)]
+        api_key: Option<String>,
+    }
+
+    let parsed: LocalRoot = toml::from_str(overlay_toml)?;
+    if let Some(section) = parsed.llm {
+        for (name, entry) in section.providers {
+            if let Some(api_key) = entry.api_key {
+                let pc = llm
+                    .providers
+                    .entry(name)
+                    .or_insert_with(ProviderConfig::default);
+                pc.api_key = Some(api_key);
+            }
+        }
+    }
+    Ok(())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -921,5 +1022,143 @@ enabled = true
             assert_eq!(cfg.mode, Mode::Research);
         }
         // Skip silently if file not present (CI without workspace root)
+    }
+
+    // ── T1928 (pass 6) — LlmConfig wire-up tests ──────────────────────────────
+
+    /// T1928 (a) — committed-shape `[llm]` block parses with defaults
+    /// preserved.
+    #[test]
+    fn t1928_a_committed_agent_toml_with_llm_block_parses() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[llm]
+enabled              = false
+default_provider     = "anthropic"
+budget_usd_month     = 200.0
+replay_cache_path    = "./data/llm-replay.db"
+
+[llm.deep_think]
+provider = "anthropic"
+model    = "claude-opus-4-7"
+
+[llm.quick_think]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"
+
+[llm.providers.anthropic]
+base_url = "https://api.anthropic.com/v1"
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse committed shape");
+        assert!(!cfg.llm.enabled, "default disabled");
+        assert_eq!(cfg.llm.default_provider, "anthropic");
+        assert_eq!(cfg.llm.deep_think.model.as_str(), "claude-opus-4-7");
+    }
+
+    /// T1928 (b) — overlay populates `api_key`. Drives the
+    /// `Config::load` overlay-merge path with a tempdir-hosted
+    /// `agent.toml` + `agent.toml.local`.
+    #[test]
+    fn t1928_b_overlay_populates_api_key() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let agent_toml = td.path().join("agent.toml");
+        let overlay = td.path().join("agent.toml.local");
+
+        std::fs::write(
+            &agent_toml,
+            r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[llm]
+enabled              = false
+default_provider     = "anthropic"
+
+[llm.deep_think]
+provider = "anthropic"
+model    = "claude-opus-4-7"
+
+[llm.quick_think]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"
+
+[llm.providers.anthropic]
+base_url = "https://api.anthropic.com/v1"
+"#,
+        )
+        .expect("write agent.toml");
+        std::fs::write(
+            &overlay,
+            r#"
+[llm.providers.anthropic]
+api_key = "sk-ant-test-stub-12345"
+"#,
+        )
+        .expect("write overlay");
+
+        let cfg = Config::load(&agent_toml).expect("load overlay");
+        assert_eq!(
+            cfg.llm.providers["anthropic"].api_key.as_deref(),
+            Some("sk-ant-test-stub-12345")
+        );
+    }
+
+    /// T1928 (c) — `cfg.llm.enabled = true && mode = paper` with no
+    /// `.local` overlay rejects at startup.
+    #[test]
+    fn t1928_c_enabled_without_local_overlay_rejects() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let agent_toml = td.path().join("agent.toml");
+        std::fs::write(
+            &agent_toml,
+            r#"
+mode = "paper"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[llm]
+enabled              = true
+default_provider     = "anthropic"
+
+[llm.deep_think]
+provider = "anthropic"
+model    = "claude-opus-4-7"
+
+[llm.quick_think]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"
+
+[llm.providers.anthropic]
+base_url = "https://api.anthropic.com/v1"
+"#,
+        )
+        .expect("write agent.toml");
+        // NO overlay written.
+        let err = Config::load(&agent_toml).expect_err("must reject");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("anthropic"),
+            "rejection must name the missing provider: {msg}"
+        );
+    }
+
+    /// T1928 (d) — `cfg.llm.enabled = false` (default) boots without
+    /// any `.local` requirement.
+    #[test]
+    fn t1928_d_default_disabled_boots_no_overlay() {
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse minimal");
+        assert!(!cfg.llm.enabled, "default disabled");
+        // validate_llm_keys would be called inside load(); replicate here.
+        cfg.llm.validate_keys().expect("no-op when disabled");
     }
 }

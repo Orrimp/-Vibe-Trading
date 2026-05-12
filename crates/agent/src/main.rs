@@ -28,6 +28,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use agent::{EventBus, KillSwitch, RunHandles};
+// T1931 (pass 6) — LLM factory wire-up at agent boot.
+use cost::{CostBudget, CostSink, NoopCostSink};
+use llm::factory::{LlmProviderFactory, Mode as LlmMode};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -171,6 +174,50 @@ async fn main() -> Result<()> {
     } else {
         info!(boot_id = %boot_id, "agent uptime interval opened");
     }
+
+    // ── LLM provider (T1931, pass 6) ─────────────────────────────────────────
+    // Gated on `cfg.llm.enabled` (default false in v2.0.0). When true,
+    // construct the provider stack once at boot; the resulting
+    // `Arc<dyn LlmProvider>` is stored on the runtime context for
+    // future consumer briefs to pluck. **No bus channel added** (R8.3,
+    // hard constraint #4).
+    //
+    // When false (the foundation-only default), no provider is
+    // constructed, no key files are read, no `.local` is required —
+    // a fresh checkout boots cleanly.
+    let llm_provider: Option<Arc<dyn llm::LlmProvider>> = if cfg.llm.enabled {
+        let llm_cfg = Arc::new(cfg.llm.clone());
+        let budget = Arc::new(CostBudget::new(cfg.llm.budget_usd_month));
+        let sink: Arc<dyn CostSink> = Arc::new(NoopCostSink);
+        let llm_mode = match cfg.mode {
+            agent::config::Mode::Research => LlmMode::Research,
+            agent::config::Mode::Paper => LlmMode::Paper,
+        };
+        match LlmProviderFactory::build(Arc::clone(&llm_cfg), llm_mode, budget, sink, &args.config)
+            .await
+        {
+            Ok(p) => {
+                info!(
+                    provider = %p.name(),
+                    mode = %cfg.mode,
+                    "llm provider constructed",
+                );
+                Some(p)
+            }
+            Err(e) => {
+                // Auth / Provider errors at startup are non-fatal in
+                // v2.0.0 (foundation-only — no consumer wired up). The
+                // operator sees the error; the agent boots without LLM.
+                warn!(error = %e, "llm factory build failed (non-fatal); subsystem disabled");
+                None
+            }
+        }
+    } else {
+        info!("llm subsystem disabled (cfg.llm.enabled = false)");
+        None
+    };
+    // Suppress unused warning until a consumer brief plucks the provider.
+    let _llm_provider = llm_provider;
 
     // ── Cancellation token + Ctrl-C bridge ───────────────────────────────────
     // Single CancellationToken shared with `runtime::run`.  A

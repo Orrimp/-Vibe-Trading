@@ -79,15 +79,12 @@ impl<Inner: LlmProvider> RecordingProvider<Inner> {
     pub async fn open(inner: Inner, path: &Path) -> Result<Self, LlmError> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
-                tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                    LlmError::Provider {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| LlmError::Provider {
                         provider: ProviderKind::Other("replay".to_string()),
-                        message: format!(
-                            "create parent dir {}: {e}",
-                            parent.display()
-                        ),
-                    }
-                })?;
+                        message: format!("create parent dir {}: {e}", parent.display()),
+                    })?;
             }
         }
 
@@ -224,7 +221,8 @@ fn chrono_like_timestamp_or_default() -> String {
     use time::format_description::well_known::Rfc3339;
     use time::OffsetDateTime;
     let now = OffsetDateTime::now_utc();
-    now.format(&Rfc3339).unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"))
+    now.format(&Rfc3339)
+        .unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -359,11 +357,10 @@ mod tests {
         rec.complete(req.clone()).await.unwrap();
 
         let expected = request_hash(&req).unwrap();
-        let (got,): (String,) =
-            sqlx::query_as("SELECT request_hash FROM llm_replay LIMIT 1")
-                .fetch_one(rec.pool())
-                .await
-                .unwrap();
+        let (got,): (String,) = sqlx::query_as("SELECT request_hash FROM llm_replay LIMIT 1")
+            .fetch_one(rec.pool())
+            .await
+            .unwrap();
         assert_eq!(got, expected, "row hash diverged from pure-fn hash");
     }
 }

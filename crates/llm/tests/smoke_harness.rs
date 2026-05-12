@@ -164,8 +164,11 @@ async fn t1924_smoke_harness_three_providers_three_roles() {
     let oai_srv = spawn_openai_mock().await;
     let oll_srv = spawn_ollama_mock().await;
 
-    let ant =
-        AnthropicProvider::with_base_url(ant_srv.uri(), "sk-ant-test-12345", ModelId::new("claude-opus-4-7"));
+    let ant = AnthropicProvider::with_base_url(
+        ant_srv.uri(),
+        "sk-ant-test-12345",
+        ModelId::new("claude-opus-4-7"),
+    );
     let oai = OpenAiProvider::new_with_base_url(
         oai_srv.uri(),
         "sk-test-openai-12345",
@@ -194,11 +197,7 @@ async fn t1924_smoke_harness_three_providers_three_roles() {
         }
         // OpenAI.
         {
-            let mut req = ChatRequest::new(
-                ModelId::new("gpt-5"),
-                LlmTier::DeepThink,
-                role.clone(),
-            );
+            let mut req = ChatRequest::new(ModelId::new("gpt-5"), LlmTier::DeepThink, role.clone());
             req.messages.push(ChatMessage {
                 role: MessageRole::User,
                 content: vec![ContentBlock::Text(
@@ -211,11 +210,8 @@ async fn t1924_smoke_harness_three_providers_three_roles() {
         }
         // Ollama.
         {
-            let mut req = ChatRequest::new(
-                ModelId::new("llama3:8b"),
-                LlmTier::QuickThink,
-                role.clone(),
-            );
+            let mut req =
+                ChatRequest::new(ModelId::new("llama3:8b"), LlmTier::QuickThink, role.clone());
             req.messages.push(ChatMessage {
                 role: MessageRole::User,
                 content: vec![ContentBlock::Text(

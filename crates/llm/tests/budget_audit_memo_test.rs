@@ -139,7 +139,9 @@ async fn t1912_audit_memo_degrade_lands_with_ledger() {
     );
 
     let req = make_request(LlmTier::DeepThink, "claude-opus-4-7");
-    bp.complete(req).await.expect("degraded call should succeed");
+    bp.complete(req)
+        .await
+        .expect("degraded call should succeed");
 
     tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 

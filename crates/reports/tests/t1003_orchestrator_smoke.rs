@@ -54,8 +54,10 @@ use crate::build_ledger_with_open_positions_7d::{
 /// claim of T1003; this constant pins it locally so the smoke fails
 /// loudly rather than via the slower workspace anchor sweep.
 // T1810 / T1813 — re-anchored post-reflection-memory renderer rewrite.
+// T1935 / T1936 (v2-llm-strategy, pass 6) — re-anchored post-System-Health
+// renderer rewrite (Q11 denominator $135 → $200 + Q5d Cache hit ratio row).
 // Same value pinned in `crates/reports/tests/report_scenarios.rs::EXPECTED_SHA_7D`.
-const EXPECTED_SHA_7D: &str = "f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994";
+const EXPECTED_SHA_7D: &str = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3";
 
 /// Slice off the front-matter and return the body bytes — same
 /// convention as `scripts/hash_report.py` and the anchor regression

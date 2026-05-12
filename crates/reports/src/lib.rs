@@ -283,7 +283,10 @@ pub async fn generate(
         clock_skew_events: Ok(clock_skew_count.to_string()),
         feed_reconnects: Ok(feed_reconnect_count.to_string()),
         funding_poll_rate: Ok("n/a".into()),
-        llm_spend: Ok("$0.00 / $135".into()),
+        // T1935 / Q11 — denominator $135 → $200 at v2.0.0.
+        llm_spend: Ok("$0.00 / $200".into()),
+        // T1935 / Q5d — new System Health row, research-mode default.
+        cache_hit_ratio: Ok("0.0%".into()),
     });
 
     // R8 inputs.
@@ -317,7 +320,8 @@ pub async fn generate(
         llm_budget: Ok(render::open_risks::RiskOutcome {
             fired: false,
             threshold: "mtd_spend >= 80% of budget".into(),
-            observed: "$0.00 / $135".into(),
+            // T1935 / Q11 — denominator $135 → $200 at v2.0.0.
+            observed: "$0.00 / $200".into(),
         }),
         strategy_decay: Ok(render::open_risks::RiskOutcome {
             fired: false,

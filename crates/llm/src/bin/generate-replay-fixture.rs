@@ -126,11 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ProviderKind::Anthropic,
             ModelId::new("claude-opus-4-7"),
         ),
-        (
-            "openai",
-            ProviderKind::OpenAi,
-            ModelId::new("gpt-5"),
-        ),
+        ("openai", ProviderKind::OpenAi, ModelId::new("gpt-5")),
         (
             "ollama",
             ProviderKind::Other("ollama".to_string()),

@@ -121,9 +121,7 @@ pub fn base_rate(provider: &ProviderKind, model: &str) -> Option<PricePerMillion
         // responses replay)"); reporting `usd: $0` for the cost
         // event keeps the audit ledger and the cockpit cost tile
         // consistent across modes.
-        (ProviderKind::Other(name), _) if name == "replay" => {
-            Some(PricePerMillionTokens::zero())
-        }
+        (ProviderKind::Other(name), _) if name == "replay" => Some(PricePerMillionTokens::zero()),
         _ => None,
     }
 }

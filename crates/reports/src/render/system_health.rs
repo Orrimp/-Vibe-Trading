@@ -27,14 +27,38 @@ pub struct SystemHealthInputs {
     pub feed_reconnects: Cell,
     /// Funding-rate poll success rate (e.g. `42 / 56` or a percent).
     pub funding_poll_rate: Cell,
-    /// LLM spend vs. budget (e.g. `$0.00 / $135`).
+    /// LLM spend vs. budget (e.g. `$0.00 / $200`).
+    ///
+    /// **v2.0.0 — Q11 denominator update.** The v1.5a ship value was
+    /// `$X / $135`; v2.0.0 flips to `$X / $200` (the new monthly LLM
+    /// budget ceiling). Bundled with Q5d's `cache_hit_ratio` row.
     pub llm_spend: Cell,
+    /// Cache hit ratio — per-role per-day moving gauge (Q5d).
+    ///
+    /// Sources from `audit::query::cache_hit_ratio_since(ledger,
+    /// period_start)` at the orchestrator. Default `0.0%` until a
+    /// consumer brief actually exercises the prompt-cache builder.
+    pub cache_hit_ratio: Cell,
 }
 
 /// Render the R7 system-health table.
 ///
-/// Six rows, in the locked order documented in R7.1.  An inner
-/// `Result::Err` for any cell renders as `unknown — see logs`.
+/// Seven rows, in the locked order documented in R7.1 + Q5d.  An
+/// inner `Result::Err` for any cell renders as `unknown — see logs`.
+///
+/// **v2.0.0 row order** (Q5d places `Cache hit ratio` between
+/// `LLM spend` and `Funding poll success` — the existing
+/// `Funding poll success` row stays under `Feed reconnects` for
+/// backwards-compat with downstream cockpit parsers; Q5d's `Cache hit
+/// ratio` row lands after `LLM spend`):
+///
+/// 1. Uptime
+/// 2. Kill-switch trips
+/// 3. Clock-skew events
+/// 4. Feed reconnects
+/// 5. Funding poll success
+/// 6. LLM spend  (denominator flipped `$135 → $200`)
+/// 7. Cache hit ratio  (NEW — Q5d)
 #[must_use]
 pub fn render(inputs: &SystemHealthInputs) -> String {
     let mut out = String::with_capacity(384);
@@ -64,6 +88,11 @@ pub fn render(inputs: &SystemHealthInputs) -> String {
         cell(&inputs.funding_poll_rate)
     );
     let _ = writeln!(out, "| LLM spend | {} |", cell(&inputs.llm_spend));
+    let _ = writeln!(
+        out,
+        "| Cache hit ratio | {} |",
+        cell(&inputs.cache_hit_ratio)
+    );
 
     out
 }
@@ -123,12 +152,16 @@ mod tests {
             clock_skew_events: Ok("0".into()),
             feed_reconnects: Ok("3".into()),
             funding_poll_rate: Ok("56 / 56".into()),
-            llm_spend: Ok("$0.00 / $135".into()),
+            // T1935 / Q11 — denominator flipped $135 → $200 at v2.0.0.
+            llm_spend: Ok("$0.00 / $200".into()),
+            // T1935 / Q5d — new row between LLM spend and the
+            // existing rows; research-mode default `0.0%`.
+            cache_hit_ratio: Ok("0.0%".into()),
         }
     }
 
     #[test]
-    fn t813_system_health_renders_six_rows() {
+    fn t813_system_health_renders_seven_rows() {
         let body = render(&ok_inputs());
         assert!(body.contains("## System health"));
         assert!(body.contains("| Uptime | 99.50% |"));
@@ -136,7 +169,10 @@ mod tests {
         assert!(body.contains("| Clock-skew events | 0 |"));
         assert!(body.contains("| Feed reconnects | 3 |"));
         assert!(body.contains("| Funding poll success | 56 / 56 |"));
-        assert!(body.contains("| LLM spend | $0.00 / $135 |"));
+        // T1935 / Q11 — new denominator.
+        assert!(body.contains("| LLM spend | $0.00 / $200 |"));
+        // T1935 / Q5d — new row.
+        assert!(body.contains("| Cache hit ratio | 0.0% |"));
     }
 
     #[test]

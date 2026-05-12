@@ -1,0 +1,29 @@
+# Copy this file to `agent.toml.local` and edit in your real API keys.
+# The `.local` file is git-ignored (see `.gitignore` for `*.toml.local`
+# and `config/*.local` patterns) so secrets never touch the repo.
+#
+# Per Q3 = Option C (operator-decided 2026-05-10):
+# all keys live in this single file alongside the committed
+# `agent.toml`. The agent's startup loader overlays this file's
+# `[llm.providers.<name>] api_key` values onto the committed shape.
+#
+# To activate the LLM subsystem:
+#   1. cp config/agent.toml.local.example config/agent.toml.local
+#   2. Replace the placeholder keys below with real values.
+#   3. Flip `[llm] enabled = true` in `config/agent.toml`.
+#
+# Ollama needs no key (and is omitted from this template).
+# Operators running ollama-only stacks can leave `agent.toml.local`
+# unwritten if `default_provider = "ollama"`.
+
+[llm.providers.anthropic]
+api_key = "sk-ant-test-stub-00000000000000000000"
+
+[llm.providers.openai]
+api_key = "sk-test-stub-0000000000000000000000"
+
+[llm.providers.openrouter]
+api_key = "sk-or-test-stub-0000000000000000000"
+
+[llm.providers.deepseek]
+api_key = "test-stub-deepseek-000000000000000"
