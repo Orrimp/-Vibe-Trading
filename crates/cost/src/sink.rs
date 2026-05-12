@@ -47,19 +47,48 @@ impl CostSink for LedgerCostSink {
             return Ok(());
         }
 
-        let tier_str = match &event {
-            CostEvent::Llm { tier, .. } => tier.to_string(),
-            _ => "other".to_string(),
-        };
-
         let ledger = Arc::clone(&self.ledger);
 
-        // Fire-and-forget async task
-        tokio::spawn(async move {
-            if let Err(e) = audit::journal::post_cost(&ledger, &tier_str, usd).await {
-                tracing::error!(error = %e, "LedgerCostSink: failed to write journal entries");
+        // T1917 — `CostEvent::Llm` pulls the four token / correlation
+        // fields and forwards them to `post_cost_llm` so the meta JSON
+        // on the `journal_transactions` row carries the tokens the
+        // T1910 `cache_hit_ratio_since` reader needs. Non-LLM events
+        // fall through to the legacy 3-arg `post_cost` shape (zeros in
+        // the meta JSON, which the reader treats as no contribution).
+        match event {
+            CostEvent::Llm {
+                tier,
+                tokens_in,
+                tokens_out,
+                tokens_cached_in,
+                correlation_id,
+                ..
+            } => {
+                let tier_str = tier.to_string();
+                tokio::spawn(async move {
+                    if let Err(e) = audit::journal::post_cost_llm(
+                        &ledger,
+                        &tier_str,
+                        usd,
+                        tokens_in,
+                        tokens_out,
+                        tokens_cached_in,
+                        correlation_id,
+                    )
+                    .await
+                    {
+                        tracing::error!(error = %e, "LedgerCostSink: failed to write LLM journal entries");
+                    }
+                });
             }
-        });
+            _ => {
+                tokio::spawn(async move {
+                    if let Err(e) = audit::journal::post_cost(&ledger, "other", usd).await {
+                        tracing::error!(error = %e, "LedgerCostSink: failed to write journal entries");
+                    }
+                });
+            }
+        }
 
         Ok(())
     }

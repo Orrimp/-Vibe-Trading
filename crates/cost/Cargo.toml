@@ -17,3 +17,9 @@ tokio.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "time"] }
+# T1917 — `ledger_sink_llm_meta_test` reads back the
+# `journal_transactions.metadata` JSON column via raw SQL to assert
+# round-trip of token fields. The `sqlx` features mirror the
+# `audit` crate's runtime features so the in-memory `Ledger` opens cleanly.
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+serde_json.workspace = true

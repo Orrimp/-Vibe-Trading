@@ -850,6 +850,14 @@ pub async fn risk_veto_overridden(
 /// - Dr `expense:llm:<tier>` usd
 /// - Cr `liabilities:llm_accrued` usd
 ///
+/// **T1917** — v2-llm-strategy M5: this is now a thin compatibility
+/// wrapper around [`post_cost_llm`] that fills zero token counts +
+/// `Uuid::nil()` for the correlation id. Existing non-LLM callers stay
+/// green; the `LedgerCostSink` for `CostEvent::Llm` now goes through
+/// [`post_cost_llm`] so the token-meta fields land on
+/// `journal_transactions.metadata` (which feeds
+/// [`crate::query::cache_hit_ratio_since`] / T1910).
+///
 /// # Errors
 ///
 /// Returns [`LedgerError::TransactionFailed`] on SQL error.
@@ -858,6 +866,46 @@ pub async fn post_cost(
     ledger: &Ledger,
     tier: &str,
     usd: rust_decimal::Decimal,
+) -> Result<(), LedgerError> {
+    post_cost_llm(ledger, tier, usd, 0, 0, 0, Uuid::nil()).await
+}
+
+/// Post an LLM cost as a balanced journal entry with token metadata
+/// (T1917 — v2-llm-strategy M5).
+///
+/// Same balanced double-entry shape as [`post_cost`] (Dr
+/// `expense:llm:<tier>` / Cr `liabilities:llm_accrued`), but the
+/// transaction header's `metadata` JSON column carries the four LLM-
+/// event fields that [`crate::query::cache_hit_ratio_since`] reads:
+///
+/// ```text
+/// { "tokens_in": <u64>,
+///   "tokens_cached_in": <u64>,
+///   "tokens_out": <u64>,
+///   "correlation_id": "<uuid>" }
+/// ```
+///
+/// Backwards-compat: the 3-arg [`post_cost`] continues to compile and
+/// writes zeros into the new fields. The only production caller that
+/// uses the extended signature is
+/// `cost::LedgerCostSink::record(CostEvent::Llm { … })`, which pulls
+/// the four fields off the event in T1917.
+///
+/// Zero-USD events return `Ok(())` without writing a row (matches the
+/// pre-T1917 `post_cost` contract).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(name = "ledger.post_cost_llm", skip(ledger))]
+pub async fn post_cost_llm(
+    ledger: &Ledger,
+    tier: &str,
+    usd: rust_decimal::Decimal,
+    tokens_in: u64,
+    tokens_out: u64,
+    tokens_cached_in: u64,
+    correlation_id: Uuid,
 ) -> Result<(), LedgerError> {
     if usd == dec!(0) {
         return Ok(());
@@ -868,6 +916,13 @@ pub async fn post_cost(
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
     let description = format!("llm_cost:{tier}");
     let expense_account = format!("expense:llm:{tier}");
+    let metadata = serde_json::json!({
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "tokens_cached_in": tokens_cached_in,
+        "correlation_id": correlation_id.to_string(),
+    })
+    .to_string();
 
     let mut db_txn = ledger
         .pool
@@ -875,13 +930,16 @@ pub async fn post_cost(
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
-    sqlx::query("INSERT INTO journal_transactions (id, ts, description) VALUES (?, ?, ?)")
-        .bind(&txn_id)
-        .bind(&ts)
-        .bind(&description)
-        .execute(&mut *db_txn)
-        .await
-        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO journal_transactions (id, ts, description, metadata) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&txn_id)
+    .bind(&ts)
+    .bind(&description)
+    .bind(&metadata)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
     // Dr expense:llm:<tier>
     insert_entry(&mut db_txn, &txn_id, &ts, &expense_account, usd, dec!(0)).await?;
@@ -893,6 +951,132 @@ pub async fn post_cost(
         "liabilities:llm_accrued",
         dec!(0),
         usd,
+    )
+    .await?;
+
+    db_txn
+        .commit()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
+}
+
+// ── LLM budget-event memo (T1916 — v2-llm-strategy M5 / Design § Q6 + Q10) ────
+
+/// Discriminator for an LLM budget-gate audit memo.
+///
+/// Emitted by `llm::BudgetedProvider` when the budget gate degrades a
+/// `DeepThink` request to `QuickThink` (≥ 80 % of ceiling) or blocks an
+/// LLM call outright (≥ 100 % of ceiling). The `Display` impl is the
+/// canonical R11.1 tag string written to the journal-transaction
+/// description so downstream readers (cockpit, reports) can grep for
+/// the memo without re-parsing the metadata JSON.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetEventKind {
+    /// Spend ≥ 80 % of ceiling → caller's `DeepThink` request was
+    /// rewritten to `QuickThink` for this call.
+    DegradeToQuickThink,
+    /// Spend ≥ 100 % of ceiling → call was rejected with
+    /// `LlmError::BudgetExceeded` and no HTTP request was made.
+    Block,
+}
+
+impl std::fmt::Display for BudgetEventKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BudgetEventKind::DegradeToQuickThink => write!(f, "budget_degrade_to_quick_think"),
+            BudgetEventKind::Block => write!(f, "budget_block"),
+        }
+    }
+}
+
+/// Post a $0.00 LLM budget-gate audit memo (T1916 — Design § Q6 + Q10 /
+/// R11.1).
+///
+/// Writes ONE balanced journal transaction with a `metadata` payload
+/// carrying `kind` (R11.1 tag), `spent_usd`, `ceiling_usd`, and
+/// `tier`. The two-row entry pair is `Dr expense:llm:<tier> 0.00` +
+/// `Cr liabilities:llm_accrued 0.00` so the reconciler invariant is
+/// untouched — the row is a tagged audit breadcrumb, not a money
+/// transfer.
+///
+/// `tier` is a `&str` rather than `cost::LlmTier` to avoid a
+/// `cost → audit → cost` dependency cycle (the `cost` crate already
+/// depends on `audit::journal::post_cost`). Callers stringify via
+/// `LlmTier::to_string()` (`"deep_think"` / `"quick_think"` — same wire
+/// form as `post_cost`'s tier parameter).
+///
+/// Schema note: **additive** — no migration. The memo uses the
+/// existing `journal_transactions` + `journal_entries` tables; the
+/// `kind` discriminator lives in the description (`"llm_budget:<tag>"`)
+/// and in the metadata JSON's `"kind"` field so both grep-friendly and
+/// JSON-query paths work.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(
+    name = "ledger.post_llm_budget_event",
+    skip(ledger),
+    fields(kind = %kind, tier = %tier)
+)]
+pub async fn post_llm_budget_event(
+    ledger: &Ledger,
+    kind: BudgetEventKind,
+    tier: &str,
+    spent_usd: rust_decimal::Decimal,
+    ceiling_usd: rust_decimal::Decimal,
+) -> Result<(), LedgerError> {
+    let txn_id = Uuid::new_v4().to_string();
+    let ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let kind_str = kind.to_string();
+    let description = format!("llm_budget:{kind_str}");
+    let expense_account = format!("expense:llm:{tier}");
+    let metadata = serde_json::json!({
+        "kind": kind_str,
+        "tier": tier,
+        "spent_usd": spent_usd.to_string(),
+        "ceiling_usd": ceiling_usd.to_string(),
+    })
+    .to_string();
+
+    let mut db_txn = ledger
+        .pool
+        .begin()
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    sqlx::query(
+        "INSERT INTO journal_transactions (id, ts, description, metadata) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&txn_id)
+    .bind(&ts)
+    .bind(&description)
+    .bind(&metadata)
+    .execute(&mut *db_txn)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    // Balanced zero-amount pair: Dr expense:llm:<tier> 0 / Cr liabilities:llm_accrued 0.
+    // The reconciler invariant (Σdr == Σcr per txn) holds trivially.
+    insert_entry(
+        &mut db_txn,
+        &txn_id,
+        &ts,
+        &expense_account,
+        dec!(0),
+        dec!(0),
+    )
+    .await?;
+    insert_entry(
+        &mut db_txn,
+        &txn_id,
+        &ts,
+        "liabilities:llm_accrued",
+        dec!(0),
+        dec!(0),
     )
     .await?;
 

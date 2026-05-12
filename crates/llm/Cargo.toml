@@ -7,6 +7,11 @@ license.workspace = true
 [dependencies]
 # Workspace siblings (v2 — LLM strategy)
 cost = { path = "../cost" }
+# T1916 enhancement (M5, pass 4) — `BudgetedProvider` posts
+# `BudgetEventKind::{DegradeToQuickThink,Block}` audit memos via
+# `audit::journal::post_llm_budget_event` when an `audit_ledger` is
+# wired through `BudgetedProvider::with_audit_ledger`.
+audit = { path = "../audit" }
 
 # Async + trait shape
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
@@ -48,3 +53,7 @@ wiremock = { workspace = true }
 metrics-util = { version = "0.19" }
 # T1914 — temp-dir scaffolding for the auth-key tests.
 tempfile = { workspace = true }
+# T1912 audit-memo enhancement (M5, pass 4) — `budget_audit_memo_test`
+# reads back the `journal_transactions` rows the `BudgetedProvider`
+# wrote via `audit::journal::post_llm_budget_event`.
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }

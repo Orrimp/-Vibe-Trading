@@ -987,6 +987,8 @@ dependencies = [
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
+ "serde_json",
+ "sqlx",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -3003,6 +3005,7 @@ name = "llm"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "audit",
  "cost",
  "jsonschema",
  "metrics",
@@ -3013,6 +3016,7 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "serde_json",
+ "sqlx",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",

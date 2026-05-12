@@ -29,19 +29,25 @@
 //!   throttles audit memos to ≤ 1 / minute so a tight retry loop on a
 //!   blocked budget doesn't flood the ledger.
 //!
-//! **Pass-3 deferral (developer, 2026-05-12).** The spec calls for
-//! `audit::journal::post_llm_budget_event` (T1916) to land the memo;
-//! that helper is M5 — pass 4+. Pass 3 emits `tracing::warn!` lines
-//! at the same debouncing cadence so the forensic record exists in
-//! the structured-log stream; once T1916 lands, the audit-ledger
-//! post slots into the same `if debounced { … }` arm with no other
-//! changes.
+//! **Pass-4 enhancement (developer, 2026-05-12).** T1916 landed in this
+//! same pass (M5), shipping `audit::journal::post_llm_budget_event` +
+//! the `BudgetEventKind` enum. `BudgetedProvider` now optionally wires
+//! an `audit_ledger: Option<Arc<audit::Ledger>>` (via the new
+//! [`BudgetedProvider::with_audit_ledger`] constructor) and, on every
+//! debounced block / degrade event, fires the audit memo alongside the
+//! pre-existing `tracing::warn!` line. The legacy
+//! [`BudgetedProvider::new`] constructor stays backwards-compat —
+//! callers that pass no ledger still get the warn-only forensic path,
+//! preserving every existing call site (factory, integration tests,
+//! unit tests) without churn.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use audit::journal::{post_llm_budget_event, BudgetEventKind};
+use audit::Ledger;
 use cost::{CostBudget, CostEvent, CostSink, LlmTier};
 
 use crate::config::LlmConfig;
@@ -66,6 +72,12 @@ pub struct BudgetedProvider<Inner: LlmProvider> {
     cfg: Arc<LlmConfig>,
     /// Last time we posted a `budget_block` memo (Unix seconds).
     last_block_memo_at: AtomicU64,
+    /// Optional ledger handle. When `Some`, every debounced block /
+    /// degrade event also fires
+    /// `audit::journal::post_llm_budget_event(...)` (T1916 — Q10 /
+    /// R11.1). Wired via [`Self::with_audit_ledger`]; the legacy
+    /// [`Self::new`] leaves it `None` (warn-only forensic path).
+    audit_ledger: Option<Arc<Ledger>>,
 }
 
 impl<Inner: LlmProvider> std::fmt::Debug for BudgetedProvider<Inner> {
@@ -81,6 +93,10 @@ impl<Inner: LlmProvider> BudgetedProvider<Inner> {
     /// Wrap `inner`. The budget + sink + config are shared (Arc) so a
     /// single budget enforcer can apply across multiple wrappers (one
     /// per leaf provider in a multi-provider setup).
+    ///
+    /// No audit-ledger wiring — block / degrade events surface as
+    /// `tracing::warn!` only. Use [`Self::with_audit_ledger`] to also
+    /// post structured audit memos via `post_llm_budget_event` (T1916).
     #[must_use]
     pub fn new(
         inner: Inner,
@@ -94,6 +110,32 @@ impl<Inner: LlmProvider> BudgetedProvider<Inner> {
             sink,
             cfg,
             last_block_memo_at: AtomicU64::new(0),
+            audit_ledger: None,
+        }
+    }
+
+    /// Same as [`Self::new`] but additionally wires the audit ledger so
+    /// every debounced block / degrade event lands a structured memo
+    /// row via `audit::journal::post_llm_budget_event` (T1916 —
+    /// `feature.md` Design § Q6 + Q10 / R11.1).
+    ///
+    /// The memo is fire-and-forget via `tokio::spawn` so the LLM hot
+    /// path is not blocked on the SQL transaction.
+    #[must_use]
+    pub fn with_audit_ledger(
+        inner: Inner,
+        budget: Arc<CostBudget>,
+        sink: Arc<dyn CostSink>,
+        cfg: Arc<LlmConfig>,
+        audit_ledger: Arc<Ledger>,
+    ) -> Self {
+        Self {
+            inner,
+            budget,
+            sink,
+            cfg,
+            last_block_memo_at: AtomicU64::new(0),
+            audit_ledger: Some(audit_ledger),
         }
     }
 
@@ -112,6 +154,32 @@ impl<Inner: LlmProvider> BudgetedProvider<Inner> {
         self.last_block_memo_at
             .compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
+    }
+
+    /// Fire-and-forget audit memo. No-op when `audit_ledger` is `None`.
+    fn spawn_audit_memo(
+        &self,
+        kind: BudgetEventKind,
+        tier: LlmTier,
+        spent_usd: rust_decimal::Decimal,
+        ceiling_usd: rust_decimal::Decimal,
+    ) {
+        if let Some(ledger) = self.audit_ledger.as_ref() {
+            let ledger = Arc::clone(ledger);
+            let tier_str = tier.to_string();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    post_llm_budget_event(&ledger, kind, &tier_str, spent_usd, ceiling_usd).await
+                {
+                    tracing::error!(
+                        target: "llm.budget",
+                        error = %e,
+                        kind = %kind,
+                        "post_llm_budget_event failed"
+                    );
+                }
+            });
+        }
     }
 }
 
@@ -140,6 +208,12 @@ impl<Inner: LlmProvider> LlmProvider for BudgetedProvider<Inner> {
                         tier = ?request.tier,
                         "budget_block"
                     );
+                    self.spawn_audit_memo(
+                        BudgetEventKind::Block,
+                        request.tier.clone(),
+                        self.budget.spent(),
+                        self.budget.ceiling_usd,
+                    );
                 }
                 return Err(LlmError::BudgetExceeded {
                     spent_usd: self.budget.spent(),
@@ -157,6 +231,16 @@ impl<Inner: LlmProvider> LlmProvider for BudgetedProvider<Inner> {
                         from_tier = ?request.tier,
                         to_model = %self.cfg.quick_think.model,
                         "degrade_to_quick_think"
+                    );
+                    // Audit memo tier reflects the *original* (intended)
+                    // tier so the forensic record names what the caller
+                    // tried to do, matching `tracing::warn!`'s
+                    // `from_tier` field.
+                    self.spawn_audit_memo(
+                        BudgetEventKind::DegradeToQuickThink,
+                        request.tier.clone(),
+                        self.budget.spent(),
+                        self.budget.ceiling_usd,
                     );
                 }
                 let mut degraded = request.clone();

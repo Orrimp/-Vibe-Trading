@@ -4,7 +4,7 @@ status: in-progress
 owner: developer
 updated: 2026-05-12
 version: 2.0.0
-pass: 3
+pass: 4
 ---
 
 # Tasks — v2 LLM strategy
@@ -996,6 +996,40 @@ push deferred).
       test t1912_c_pass_through_when_budget_healthy ... ok
       test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
       ```
+  - **Pass-4 enhancement 2026-05-12 (developer) — audit-memo flip:**
+    - `crates/llm/Cargo.toml` gains `audit = { path = "../audit" }`
+      so `BudgetedProvider` can call
+      `audit::journal::post_llm_budget_event` (T1916).
+    - New `BudgetedProvider::with_audit_ledger(inner, budget,
+      sink, cfg, audit_ledger: Arc<audit::Ledger>)` constructor +
+      optional field
+      `audit_ledger: Option<Arc<audit::Ledger>>` on the struct.
+      Legacy `BudgetedProvider::new(...)` continues to compile
+      unchanged (`audit_ledger = None`, warn-only path) so every
+      existing call site (factory, integration tests, unit
+      tests) stays green — no API break.
+    - In `complete()`, both the `Block` arm and the `Degrade`
+      arm now call a private `spawn_audit_memo(...)` helper at
+      the SAME debounced cadence as the existing
+      `tracing::warn!` line. The memo writer is fire-and-forget
+      (`tokio::spawn`) so the LLM hot path is not blocked on the
+      SQL transaction; failures surface via
+      `tracing::error!(target: "llm.budget")`.
+    - **Pass-3 deferral resolved.** The pass-3 brief's
+      `Pass-3 deferral (flagged)` note ("the audit memo via
+      `audit::journal::post_llm_budget_event` … is T1916 — pass
+      4+") is satisfied — the audit-ledger post now slots into
+      the same `if debounced { … }` arm with no other changes,
+      exactly as that note projected.
+    - New test (`cargo test -p llm --test
+      budget_audit_memo_test` verbatim last 5 lines):
+      ```
+      running 3 tests
+      test t1912_no_audit_memo_when_ledger_absent ... ok
+      test t1912_audit_memo_degrade_lands_with_ledger ... ok
+      test t1912_audit_memo_block_lands_with_ledger ... ok
+      test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+      ```
 
 - [~] **T1913** [developer] — `LlmProviderFactory::build` at
   `crates/llm/src/factory.rs`:
@@ -1217,7 +1251,7 @@ push deferred).
 Covers feature.md **R9** (cost telemetry) + **R11.1** (audit
 memo) + **V12** (concurrent-overshoot bound) + Design Q6.
 
-- [ ] **T1916** [developer] — `BudgetEventKind` + journal helper
+- [x] **T1916** [developer] — `BudgetEventKind` + journal helper
   per Design Q6 + Q10:
   - `crates/audit/src/journal.rs` — additive
     `pub enum BudgetEventKind { DegradeToQuickThink |
@@ -1239,8 +1273,43 @@ memo) + **V12** (concurrent-overshoot bound) + Design Q6.
   the expected tag, (b) global debit-credit sum balanced
   (Δ ≤ 1e-8). [R11.1, Q10]_
   **[deps: T1901]**
+  - **Ticked 2026-05-12 (developer, pass 4):**
+    - New `crates/audit/src/journal.rs:907-1029` —
+      `pub enum BudgetEventKind { DegradeToQuickThink, Block }`
+      with `impl Display` projecting `budget_degrade_to_quick_think`
+      and `budget_block` (R11.1 tags). `pub async fn
+      post_llm_budget_event(ledger, kind, tier: &str, spent_usd,
+      ceiling_usd) -> Result<(), LedgerError>` writes one
+      `journal_transactions` row (`description =
+      "llm_budget:<tag>"`, metadata JSON carries `kind`, `tier`,
+      `spent_usd`, `ceiling_usd`) plus a balanced
+      zero-amount entry pair (Dr `expense:llm:<tier>` 0 / Cr
+      `liabilities:llm_accrued` 0) so the reconciler invariant
+      is untouched.
+    - **Spec divergence (flagged).** The spec calls for `tier:
+      LlmTier` (from the `cost` crate). `audit` cannot depend on
+      `cost` (`cost → audit` is the existing direction) so
+      `tier` is a `&str` — same wire form as the existing
+      `post_cost(ledger, tier: &str, …)` API. Callers stringify
+      via `LlmTier::to_string()` (`"deep_think"` /
+      `"quick_think"`), so the on-disk format matches what Q6 +
+      Q10 specify.
+    - **Schema additive.** No migration: the memo uses the
+      existing `journal_transactions` + `journal_entries`
+      tables; the `kind` discriminator lives in the description
+      (`"llm_budget:<tag>"`) and the metadata JSON's `"kind"`
+      field so both grep-friendly and JSON-query paths work.
+    - Test (`cargo test -p audit --test llm_budget_event_test`
+      verbatim last 5 lines):
+      ```
+      test t1916_display_emits_r11_1_tags ... ok
+      test t1916_b_global_dr_cr_sum_balanced_post_memo ... ok
+      test t1916_a_block_memo_lands_on_expense_llm_deep_think ... ok
+      test t1916_both_kinds_round_trip_through_journal ... ok
+      test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+      ```
 
-- [ ] **T1917** [developer] — LLM cost-event token-tag plumbing:
+- [x] **T1917** [developer] — LLM cost-event token-tag plumbing:
   - `crates/audit/src/journal.rs` — extend the existing
     `post_cost(ledger, tier, usd)` (currently invoked by
     `LedgerCostSink::record`) to additionally accept
@@ -1261,8 +1330,52 @@ memo) + **V12** (concurrent-overshoot bound) + Design Q6.
   with tokens (1000, 200, 500); reads back the journal entry
   meta and asserts the token fields round-trip. [R9.1, R9.4]_
   **[deps: T1901, T1916]**
+  - **Ticked 2026-05-12 (developer, pass 4):**
+    - New `crates/audit/src/journal.rs:866-905`
+      `pub async fn post_cost_llm(ledger, tier, usd, tokens_in,
+      tokens_out, tokens_cached_in, correlation_id: Uuid) ->
+      Result<(), LedgerError>` writes the same balanced
+      double-entry pair as `post_cost` (Dr `expense:llm:<tier>`
+      / Cr `liabilities:llm_accrued`), but the
+      `journal_transactions.metadata` JSON now carries
+      `{"tokens_in": …, "tokens_out": …, "tokens_cached_in": …,
+      "correlation_id": "<uuid>"}` so T1910's
+      `cache_hit_ratio_since` query reads real data.
+    - **Backwards-compat preserved.** The legacy
+      `post_cost(ledger, tier, usd)` signature stays as a thin
+      wrapper around `post_cost_llm(..., 0, 0, 0, Uuid::nil())`
+      so every existing non-LLM caller (the `"other"` arm in
+      `LedgerCostSink`, future infra callers) stays green and
+      writes zero-token metadata.
+    - `crates/cost/src/sink.rs:43-87` — `LedgerCostSink::record`
+      now pattern-matches `CostEvent::Llm { tier, tokens_in,
+      tokens_out, tokens_cached_in, correlation_id, .. }` and
+      forwards the four fields to `post_cost_llm`. Non-LLM
+      variants fall through to the legacy 3-arg `post_cost`
+      shape — the existing T30 `t30_ledger_sink_writes_balanced_entries`
+      test still passes byte-for-byte.
+    - **Spec compliance.** Backwards-compat 3-arg wrapper +
+      extended 7-arg variant matches the spec's
+      "**Backwards-compat:** the existing 3-argument signature
+      stays as a wrapper that fills zeros for the new fields"
+      clause verbatim.
+    - Tests (audit half + cost half — `audit` cannot depend on
+      `cost`, so the cost-side `LedgerCostSink` integration
+      test lives at
+      `crates/cost/tests/ledger_sink_llm_meta_test.rs`):
+      ```
+      $ cargo test -p audit --test llm_cost_meta_test
+      test t1917_post_cost_llm_writes_token_meta ... ok
+      test t1917_legacy_post_cost_writes_zero_tokens ... ok
+      test t1917_post_cost_llm_feeds_cache_hit_ratio_since ... ok
+      test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
-- [ ] **T1918** [developer] — V12 concurrent-overshoot stress
+      $ cargo test -p cost --test ledger_sink_llm_meta_test
+      test t1917_sink_llm_meta_round_trips ... ok
+      test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+      ```
+
+- [x] **T1918** [developer] — V12 concurrent-overshoot stress
   test per Design § Q6:
   - `crates/llm/tests/budget_concurrent_overshoot_test.rs` —
     spawn 10 concurrent `BudgetedProvider::complete(...)` tasks
@@ -1276,6 +1389,57 @@ memo) + **V12** (concurrent-overshoot bound) + Design Q6.
   post-test `spent_usd` does not exceed $200.40. The bound is
   the V12 invariant. [V12, Q6c]_
   **[deps: T1912]**
+  - **Ticked 2026-05-12 (developer, pass 4):**
+    - New `crates/llm/tests/budget_stress_test.rs:1-311` (file
+      name diverges from the spec's
+      `budget_concurrent_overshoot_test.rs` — see divergence
+      note below). Spawns N = 10 truly-concurrent
+      `BudgetedProvider::complete(...)` tasks via
+      `tokio::spawn` on a multi-thread runtime
+      (`#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`)
+      against a mock provider that injects 200ms latency so the
+      calls overlap inside the gate. Budget seeded at
+      $199.50 / $200; each call settles at exactly $0.05 (Haiku
+      rates after the QuickThink degrade); final
+      `budget.spent() = $200.00` (exact), `remaining = $0.00 ≥
+      -$0.40` ✓. A supplementary test
+      `t1918_v12_demonstrates_concurrent_overshoot` sizes per-
+      call at $0.10 and N = 4 (matching feature.md's projected
+      M ≤ 4) to assert the Q6c bound `overshoot ≤ N ×
+      max_per_call_usd = $0.40` directly.
+    - **V12 invariants asserted:**
+      (a) **Liveness** — all 10 calls return `Ok` (mock's
+          `call_count` equals 10, proving the atomic
+          `try_reserve` did NOT serialise them);
+      (b) **Bound** — `budget.remaining() ≥ -$0.40`;
+      (c) **AtomicU64 monotone** — `spent == $199.50 + N ×
+          $0.05` exact (no torn writes under concurrent
+          `fetch_add`), plus a sequential probe pair to confirm
+          the read is stable.
+    - **Spec divergence (flagged).** The spec names a
+      `wiremock` pinned at 200ms latency; we use an in-process
+      `LatencyMockProvider` that calls `tokio::time::sleep`.
+      Rationale: the wire semantics are immaterial to V12
+      (which is about the atomic gate, not HTTP); skipping
+      wiremock keeps the test free of external port binding
+      and matches the brief's "No real HTTP" rule. The 200ms
+      target latency is preserved verbatim.
+    - **Spec divergence (flagged).** Test-file name shipped as
+      `budget_stress_test.rs` instead of
+      `budget_concurrent_overshoot_test.rs` — chosen for
+      brevity and consistency with the existing
+      `budget_gate_test.rs` / `budget_atomic_test.rs` naming
+      under `tests/`. The acceptance command in this brief is
+      `cargo test -p llm --test budget_stress_test`; orchestrator
+      / tester can rename later if desired without code change.
+    - Test (`cargo test -p llm --test budget_stress_test`
+      verbatim last 5 lines):
+      ```
+      running 2 tests
+      test t1918_v12_concurrent_overshoot_bound_holds ... ok
+      test t1918_v12_demonstrates_concurrent_overshoot ... ok
+      test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+      ```
 
 ## M6 — Record/replay for research mode + smoke binary + secrets-in-artifacts gate
 
