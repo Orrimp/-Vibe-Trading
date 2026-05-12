@@ -1,0 +1,21 @@
+---
+source: crates/ui/src/widgets/chart_legend.rs
+expression: "legend_summary(ThemeMode::Dark)"
+---
+widget: chart_legend
+placement: top-right inset over inner rect
+card_width_px: 140
+card_height_px: 80
+card_radius_px: 6
+card_background: PANEL_SUNKEN
+card_border: BORDER_STRONG @ 1px
+glyph_px: 10
+ghost_alpha: 0.6
+row_count: 5
+label_color: FG_2
+label_size: text::MICRO
+row_0: glyph=triangle upward=true palette=UP_500 label="Buy"
+row_1: glyph=triangle upward=false palette=DOWN_500 label="Sell"
+row_2: glyph=triangle upward=true palette=UP_400@0.6 label="Buy signal"
+row_3: glyph=triangle upward=false palette=DOWN_400@0.6 label="Sell signal"
+row_4: glyph=stroke upward=false palette=ACCENT label="Price"

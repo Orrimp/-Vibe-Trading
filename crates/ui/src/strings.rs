@@ -275,6 +275,27 @@ pub const CHART_VOLUME_HISTOGRAM_LABEL: &str = "Per-bar volume";
 pub const CHART_POSITION_MIRROR_LABEL: &str = "Open position";
 pub const CHART_POSITION_MIRROR_NONE: &str = "No open position on this symbol.";
 
+// ── Chart legend (chart-canvas-overhaul v1.10, T3015) ────────────────────────
+//
+// Five entries rendered in the top-right inset card over the chart canvas
+// (Q5 — architect's pick): Buy fill / Sell fill / Buy signal (ghost) /
+// Sell signal (ghost) / Price line.  Each label sits to the right of its
+// glyph (a downsized sibling of the chart's executed-fill triangle) at
+// `text::MICRO` size with `color::FG_2` colour.  Locale: English; no
+// i18n for v1.10.  The widget at `crates/ui/src/widgets/chart_legend.rs`
+// resolves these constants — never inline.
+
+/// Legend row for the executed-fill **buy** marker (`UP_500` ▲ triangle).
+pub const CHART_LEGEND_BUY_LABEL: &str = "Buy";
+/// Legend row for the executed-fill **sell** marker (`DOWN_500` ▼ triangle).
+pub const CHART_LEGEND_SELL_LABEL: &str = "Sell";
+/// Legend row for the **buy-signal** ghost marker (`UP_400` ▲ at 60 % alpha).
+pub const CHART_LEGEND_BUY_GHOST_LABEL: &str = "Buy signal";
+/// Legend row for the **sell-signal** ghost marker (`DOWN_400` ▼ at 60 % alpha).
+pub const CHART_LEGEND_SELL_GHOST_LABEL: &str = "Sell signal";
+/// Legend row for the chart **price line** (`ACCENT` stroke).
+pub const CHART_LEGEND_PRICE_LABEL: &str = "Price";
+
 // ── Debug screen (Phase 2 — T1605) ───────────────────────────────────────────
 
 /// Placeholder copy for the Debug screen's logs/metrics surface (Q9 — the
@@ -650,6 +671,14 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("CHART_VOLUME_HISTOGRAM_LABEL", CHART_VOLUME_HISTOGRAM_LABEL),
         ("CHART_POSITION_MIRROR_LABEL", CHART_POSITION_MIRROR_LABEL),
         ("CHART_POSITION_MIRROR_NONE", CHART_POSITION_MIRROR_NONE),
+        ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
+        ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
+        ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
+        (
+            "CHART_LEGEND_SELL_GHOST_LABEL",
+            CHART_LEGEND_SELL_GHOST_LABEL,
+        ),
+        ("CHART_LEGEND_PRICE_LABEL", CHART_LEGEND_PRICE_LABEL),
         ("DEBUG_LOGS_PLACEHOLDER", DEBUG_LOGS_PLACEHOLDER),
         ("SCREEN_NOT_YET", SCREEN_NOT_YET),
         ("STRATEGIES_PANEL_TITLE", STRATEGIES_PANEL_TITLE),

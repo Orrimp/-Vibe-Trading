@@ -6,7 +6,7 @@ widget: chart
 bar_count: 60
 gridlines: 5
 empty_state: false
-draw_order: gridlines,labels,line,ghosts,fills,tooltip
+draw_order: gridlines,price_axis,time_axis,line,ghosts,fills,tooltip,legend
 line_color: ACCENT
 axis_range: min=39904.62 max=40242.88
 fill_count: 1

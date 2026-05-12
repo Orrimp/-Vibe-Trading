@@ -1,0 +1,193 @@
+chart_diag.draw n=0 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=0 bounds=(196.0,162.0,1068.0x406.7) abs=Some((716.2108, 533.8839)) in_bounds=Some((520.2108, 371.8839)) prev_hover=None
+chart_diag.update n=20 bounds=(196.0,162.0,1068.0x406.7) abs=Some((711.2031, 526.8125)) in_bounds=Some((515.2031, 364.8125)) prev_hover=None
+chart_diag.update n=40 bounds=(196.0,162.0,1068.0x406.7) abs=Some((953.78125, 389.29688)) in_bounds=Some((757.78125, 227.29688)) prev_hover=None
+chart_diag.update n=60 bounds=(196.0,162.0,1068.0x406.7) abs=Some((965.9258, 357.42188)) in_bounds=Some((769.9258, 195.42188)) prev_hover=None
+chart_diag.update n=80 bounds=(196.0,162.0,1068.0x406.7) abs=Some((984.1914, 350.30078)) in_bounds=Some((788.1914, 188.30078)) prev_hover=None
+chart_diag.update n=100 bounds=(196.0,162.0,1068.0x406.7) abs=Some((994.4258, 347.82422)) in_bounds=Some((798.4258, 185.82422)) prev_hover=None
+chart_diag.update n=120 bounds=(196.0,162.0,1068.0x406.7) abs=Some((1007.8867, 342.5078)) in_bounds=Some((811.8867, 180.50781)) prev_hover=None
+chart_diag.update n=140 bounds=(196.0,162.0,1068.0x406.7) abs=Some((1021.8711, 339.58594)) in_bounds=Some((825.8711, 177.58594)) prev_hover=None
+chart_diag.update n=160 bounds=(196.0,162.0,1068.0x406.7) abs=Some((1031.7578, 339.76172)) in_bounds=Some((835.7578, 177.76172)) prev_hover=None
+chart_diag.update n=180 bounds=(196.0,162.0,1068.0x406.7) abs=Some((1039.6289, 345.1289)) in_bounds=Some((843.6289, 183.1289)) prev_hover=None
+chart_diag.update n=200 bounds=(196.0,162.0,1068.0x406.7) abs=Some((1038.0742, 352.01172)) in_bounds=Some((842.0742, 190.01172)) prev_hover=None
+chart_diag.update n=220 bounds=(196.0,162.0,1068.0x406.7) abs=Some((862.3633, 44.26172)) in_bounds=None prev_hover=None
+chart_diag.update n=240 bounds=(196.0,162.0,1068.0x406.7) abs=Some((864.9883, 8.2734375)) in_bounds=None prev_hover=None
+chart_diag.draw n=10 bounds=(196.0,162.0,1206.0x485.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=20 bounds=(196.0,138.6,1834.0x869.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=260 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1331.5781, 260.89844)) in_bounds=Some((1135.5781, 122.29843)) prev_hover=None
+chart_diag.update n=280 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1346.0352, 449.72266)) in_bounds=Some((1150.0352, 311.12265)) prev_hover=None
+chart_diag.update n=300 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1198.2461, 427.94922)) in_bounds=Some((1002.2461, 289.3492)) prev_hover=None
+chart_diag.update n=320 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1198.4336, 411.28125)) in_bounds=Some((1002.4336, 272.68124)) prev_hover=None
+chart_diag.update n=340 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1201.8477, 402.78516)) in_bounds=Some((1005.84766, 264.18515)) prev_hover=None
+chart_diag.update n=360 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1146.2578, 207.3164)) in_bounds=Some((950.2578, 68.7164)) prev_hover=None
+chart_diag.update n=380 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1035.6797, 86.265625)) in_bounds=None prev_hover=None
+chart_diag.update n=400 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1049.6016, 39.625)) in_bounds=None prev_hover=None
+chart_diag.update n=420 bounds=(196.0,138.6,1844.0x874.1) abs=Some((936.4961, 32.429688)) in_bounds=None prev_hover=None
+chart_diag.update n=440 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1188.2617, 301.39844)) in_bounds=Some((992.2617, 162.79843)) prev_hover=None
+chart_diag.update n=460 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1273.5938, 549.25)) in_bounds=Some((1077.5938, 410.65)) prev_hover=None
+chart_diag.draw n=30 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=480 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1229.9297, 564.85156)) in_bounds=Some((1033.9297, 426.25156)) prev_hover=None
+chart_diag.update n=500 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1181.668, 548.52734)) in_bounds=Some((985.66797, 409.92734)) prev_hover=None
+chart_diag.update n=520 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1208.2266, 544.8281)) in_bounds=Some((1012.22656, 406.22812)) prev_hover=None
+chart_diag.update n=540 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1277.6719, 549.34766)) in_bounds=Some((1081.6719, 410.74765)) prev_hover=None
+chart_diag.update n=560 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1273.25, 549.48047)) in_bounds=Some((1077.25, 410.88046)) prev_hover=None
+chart_diag.update n=580 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1221.5078, 543.5781)) in_bounds=Some((1025.5078, 404.97812)) prev_hover=None
+chart_diag.update n=600 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1216.1719, 541.3047)) in_bounds=Some((1020.1719, 402.70468)) prev_hover=None
+chart_diag.update n=620 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1248.3359, 543.72266)) in_bounds=Some((1052.3359, 405.12265)) prev_hover=None
+chart_diag.update n=640 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1261.4297, 543.72266)) in_bounds=Some((1065.4297, 405.12265)) prev_hover=None
+chart_diag.update n=660 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1240.3906, 114.91797)) in_bounds=None prev_hover=None
+chart_diag.update n=680 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1254.9531, 30.339844)) in_bounds=None prev_hover=None
+chart_diag.update n=700 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1479.1484, 26.527344)) in_bounds=None prev_hover=None
+chart_diag.update n=720 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1492.8516, 173.51172)) in_bounds=Some((1296.8516, 34.911713)) prev_hover=None
+chart_diag.update n=740 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1493.7852, 399.20313)) in_bounds=Some((1297.7852, 260.60312)) prev_hover=None
+chart_diag.update n=760 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1474.6055, 400.14844)) in_bounds=Some((1278.6055, 261.54843)) prev_hover=None
+chart_diag.update n=780 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1604.2148, 359.7422)) in_bounds=Some((1408.2148, 221.14218)) prev_hover=None
+chart_diag.update n=800 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1570.1758, 367.26953)) in_bounds=Some((1374.1758, 228.66953)) prev_hover=None
+chart_diag.update n=820 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1569.0234, 361.32422)) in_bounds=Some((1373.0234, 222.72421)) prev_hover=None
+chart_diag.update n=840 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1136.6875, 541.4531)) in_bounds=Some((940.6875, 402.85312)) prev_hover=None
+chart_diag.update n=860 bounds=(196.0,138.6,1844.0x874.1) abs=Some((958.8906, 615.64453)) in_bounds=Some((762.8906, 477.04453)) prev_hover=None
+chart_diag.update n=880 bounds=(196.0,138.6,1844.0x874.1) abs=Some((892.60156, 578.91797)) in_bounds=Some((696.60156, 440.31796)) prev_hover=None
+chart_diag.update n=900 bounds=(196.0,138.6,1844.0x874.1) abs=Some((847.91406, 556.5156)) in_bounds=Some((651.91406, 417.91562)) prev_hover=None
+chart_diag.draw n=40 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=920 bounds=(196.0,138.6,1844.0x874.1) abs=Some((621.23047, 8.363281)) in_bounds=None prev_hover=None
+chart_diag.update n=940 bounds=(196.0,138.6,1844.0x874.1) abs=Some((478.9336, 47.847656)) in_bounds=None prev_hover=None
+chart_diag.draw n=50 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=60 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=70 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=80 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=90 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=100 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=960 bounds=(196.0,138.6,1844.0x874.1) abs=Some((971.84766, 1161.7148)) in_bounds=None prev_hover=None
+chart_diag.update n=980 bounds=(196.0,138.6,1844.0x874.1) abs=Some((825.0078, 1147.3164)) in_bounds=None prev_hover=None
+chart_diag.draw n=110 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=120 bounds=(196.0,138.6,1844.0x874.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=1000 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1521.6211, 1162.6094)) in_bounds=None prev_hover=None
+chart_diag.update n=1020 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1095.1953, 80.23828)) in_bounds=None prev_hover=None
+chart_diag.update n=1040 bounds=(196.0,138.6,1844.0x874.1) abs=Some((1001.45703, 44.753906)) in_bounds=None prev_hover=None
+chart_diag.draw n=130 bounds=(196.0,138.6,1840.0x873.1) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=140 bounds=(196.0,162.0,1126.0x439.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=1060 bounds=(196.0,162.0,1068.0x406.7) abs=Some((569.03125, 117.91016)) in_bounds=None prev_hover=None
+chart_diag.update n=1080 bounds=(196.0,162.0,1068.0x406.7) abs=Some((659.8164, 416.71875)) in_bounds=Some((463.8164, 254.71875)) prev_hover=None
+chart_diag.update n=1100 bounds=(196.0,162.0,1068.0x406.7) abs=Some((696.5625, 479.0078)) in_bounds=Some((500.5625, 317.0078)) prev_hover=None
+chart_diag.update n=1120 bounds=(196.0,162.0,1068.0x406.7) abs=Some((788.8008, 658.5781)) in_bounds=None prev_hover=None
+chart_diag.draw n=150 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.update n=1140 bounds=(196.0,162.0,1068.0x406.7) abs=Some((434.60938, 658.4883)) in_bounds=None prev_hover=None
+chart_diag.update n=1160 bounds=(196.0,162.0,1068.0x406.7) abs=Some((145.46094, 616.1406)) in_bounds=None prev_hover=None
+chart_diag.update n=1180 bounds=(196.0,162.0,1068.0x406.7) abs=Some((75.77734, 567.77344)) in_bounds=None prev_hover=None
+chart_diag.update n=1200 bounds=(196.0,162.0,1068.0x406.7) abs=Some((18.300781, 552.1992)) in_bounds=None prev_hover=None
+chart_diag.update n=1220 bounds=(196.0,162.0,1068.0x406.7) abs=Some((10.925781, 556.0547)) in_bounds=None prev_hover=None
+chart_diag.draw n=160 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=170 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=180 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=190 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=200 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=210 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=220 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=230 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=240 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=250 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=260 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=270 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=280 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=290 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=300 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=310 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=320 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=330 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=340 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=350 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=360 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=370 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=380 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=390 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=400 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=410 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=420 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=430 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=440 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=450 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=460 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=470 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=480 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=490 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=500 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=510 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=520 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=530 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=540 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=550 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=560 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=570 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=580 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=590 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=600 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=610 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=620 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=630 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=640 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=650 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=660 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=670 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=680 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=690 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=700 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=710 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=720 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=730 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=740 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=750 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=760 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=770 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=780 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=790 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=800 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=810 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=820 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=830 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=840 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=850 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=860 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=870 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=880 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=890 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=900 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=910 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=920 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=930 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=940 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=950 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=960 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=970 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=980 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=990 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1000 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1010 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1020 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1030 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1040 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1050 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1060 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1070 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1080 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1090 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1100 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1110 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1120 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1130 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1140 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1150 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1160 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1170 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1180 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1190 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1200 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1210 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1220 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1230 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1240 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1250 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1260 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1270 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1280 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1290 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0
+chart_diag.draw n=1300 bounds=(196.0,162.0,1068.0x406.7) hovered=None centroid=None bars=60 markers=4 signals=0

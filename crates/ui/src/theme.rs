@@ -607,6 +607,50 @@ pub mod layout {
     /// `downsample(SPARKLINE_POINT_CAP)`-d before landing on
     /// `Cockpit::strategy_equity`.
     pub const SPARKLINE_POINT_CAP: usize = 120;
+
+    // ── Chart canvas overhaul (v1.10.0) — axis gutters + legend chrome ───
+    //
+    // Six tokens introduced by `chart-canvas-overhaul` v1.10.0 to host the
+    // price axis (left gutter), time axis (bottom gutter), an optional
+    // right margin (TradingView-style centring per Q1), and the top-right
+    // legend inset card (Q5). All values are in **logical pixels**; iced's
+    // HiDPI pipeline scales them on Retina.
+    //
+    // See `spec/chart-canvas-overhaul/feature.md ## Design` for the per-
+    // token derivation. Naming is the architect's pick — the suffix
+    // `_PX` makes them grep-distinct from spacing tokens (`space::*`) and
+    // signals "absolute pixel value, not a step on the spacing ladder."
+
+    /// Left price-axis gutter width (M2 / R4.1). Sized for a 5-digit
+    /// price label (`102.05`) at `text::MICRO` (11 px) with a
+    /// `space::S` (8 px) pad on each side. Derivation:
+    /// `5 digits × 6.5 px/digit + 2 × 8 px pad = 48.5 → 48`.
+    pub const AXIS_GUTTER_PRICE_PX: f32 = 48.0;
+
+    /// Right canvas margin (Q1 — TradingView-style centring without a
+    /// right-side label column in v1.10). Empty band so the most-recent
+    /// close-price marker breathes; v1.11 may repurpose it for a
+    /// right-side current-price tag.
+    pub const AXIS_GUTTER_RIGHT_PX: f32 = 16.0;
+
+    /// Bottom time-axis gutter (M3 / R4.2). Stack: `text::MICRO`
+    /// baseline (11 px) + 4-px tick + `space::XXS` (4 px) gap +
+    /// `space::XXS` (4 px) bottom pad = 23 → round to 24.
+    pub const AXIS_GUTTER_TIME_PX: f32 = 24.0;
+
+    /// Legend card chrome width (M4 / Q5). Fits "Buy signal" /
+    /// "Sell signal" — the longest entry — at `text::MICRO` with the
+    /// 10-px glyph and `space::S` inter-column gap.
+    pub const LEGEND_CARD_WIDTH_PX: f32 = 140.0;
+
+    /// Legend card chrome height — 5 entries × (10 px glyph + 2 px
+    /// inter-row gap) + 2 × `space::S` interior pad = 76 → round to 80.
+    pub const LEGEND_CARD_HEIGHT_PX: f32 = 80.0;
+
+    /// Legend triangle glyph height — `≈ ¾ × MARKER_SIZE_PX` (13 px).
+    /// Sized to read as a downsampled sibling of the chart's executed-
+    /// fill markers at `text::MICRO` label height.
+    pub const LEGEND_GLYPH_PX: f32 = 10.0;
 }
 
 /// Latency thresholds per R6.2. Source of truth for badge colour logic.
@@ -1165,5 +1209,92 @@ mod tests {
         let (r, g, b) = rgb8(light.color);
         assert_eq!((r, g, b), (0x3F, 0x96, 0x8D));
         assert!((light.color.a - 0.28).abs() < 1e-4);
+    }
+
+    /// T3009 — pin the six chart-canvas-overhaul layout tokens to the
+    /// architect's design table in
+    /// `spec/chart-canvas-overhaul/feature.md ## Design`.  These tokens
+    /// drive the price axis (M2), time axis (M3), and legend (M4) draw
+    /// passes added by v1.10.0; drift on any one of them desyncs the
+    /// chart canvas from `inner_rect_with_gutters` arithmetic and the
+    /// legend card chrome.  Pinned at developer-pass time so an
+    /// accidental rename / retune fails this test before it lands a
+    /// snapshot diff.
+    #[test]
+    fn t3009_chart_canvas_overhaul_tokens_pinned() {
+        pin_f32(
+            layout::AXIS_GUTTER_PRICE_PX,
+            48.0,
+            "AXIS_GUTTER_PRICE_PX = 48 px",
+        );
+        pin_f32(
+            layout::AXIS_GUTTER_RIGHT_PX,
+            16.0,
+            "AXIS_GUTTER_RIGHT_PX = 16 px",
+        );
+        pin_f32(
+            layout::AXIS_GUTTER_TIME_PX,
+            24.0,
+            "AXIS_GUTTER_TIME_PX = 24 px",
+        );
+        pin_f32(
+            layout::LEGEND_CARD_WIDTH_PX,
+            140.0,
+            "LEGEND_CARD_WIDTH_PX = 140 px",
+        );
+        pin_f32(
+            layout::LEGEND_CARD_HEIGHT_PX,
+            80.0,
+            "LEGEND_CARD_HEIGHT_PX = 80 px",
+        );
+        pin_f32(layout::LEGEND_GLYPH_PX, 10.0, "LEGEND_GLYPH_PX = 10 px");
+    }
+
+    /// T3009 — the legend card must fit inside the chart canvas at the
+    /// 1280×720 floor.  Inner-rect width at the floor (after the price
+    /// gutter on the left, the right gutter, and the outer 8-px gutter
+    /// on each side from `canvas_chart::inner_rect`) must comfortably
+    /// host the legend's `LEGEND_CARD_WIDTH_PX + 2 × space::M` budget.
+    /// Catches a token-set regression where someone bumps the gutters
+    /// without checking the legend still fits.
+    #[test]
+    fn t3009_legend_card_fits_at_1280_floor() {
+        // Cockpit chart body roughly subtracts a 180-px sidebar and a
+        // `space::L` (16 px) of outer padding on each side. Be
+        // conservative: the chart's outer canvas allocation at the
+        // 1280-px floor is at least 1280 − 180 − 32 = 1068 px wide.
+        // The legend card needs LEGEND_CARD_WIDTH_PX + the `space::M`
+        // (12 px) padding on each side to read; assert the inequality.
+        #[allow(clippy::cast_precision_loss)]
+        let space_m = super::space::M as f32;
+        #[allow(clippy::cast_precision_loss)]
+        let space_s = super::space::S as f32;
+        let card_budget = layout::LEGEND_CARD_WIDTH_PX + 2.0 * space_m;
+        let canvas_min =
+            1068.0 - layout::AXIS_GUTTER_PRICE_PX - layout::AXIS_GUTTER_RIGHT_PX - 2.0 * space_s;
+        assert!(
+            card_budget < canvas_min,
+            "legend card_budget ({card_budget}) must fit inside floor-canvas inner-rect ({canvas_min}) at 1280×720",
+        );
+    }
+
+    /// T3009 — the legend card's height accounting must clear five
+    /// entries at `LEGEND_GLYPH_PX` plus inter-row breathing room and
+    /// `space::S` interior padding on the top and bottom.  Catches a
+    /// regression where someone shrinks `LEGEND_CARD_HEIGHT_PX` below
+    /// the row arithmetic the widget assumes.
+    #[test]
+    fn t3009_legend_card_height_clears_five_entries() {
+        const ENTRIES: f32 = 5.0;
+        #[allow(clippy::cast_precision_loss)]
+        let pad = super::space::S as f32;
+        // Row stride = glyph height + 2-px gap; final row drops the gap.
+        let rows = ENTRIES * layout::LEGEND_GLYPH_PX + (ENTRIES - 1.0) * 2.0;
+        let needed = rows + 2.0 * pad;
+        assert!(
+            layout::LEGEND_CARD_HEIGHT_PX >= needed,
+            "LEGEND_CARD_HEIGHT_PX ({}) must clear 5 entries ({needed} px)",
+            layout::LEGEND_CARD_HEIGHT_PX,
+        );
     }
 }

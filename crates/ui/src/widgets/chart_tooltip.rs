@@ -206,6 +206,20 @@ fn card_height(rows: &[TooltipRow]) -> f32 {
 /// Position the card relative to the marker centroid (R4.4). Default
 /// orientation is above-and-right; when the default would push the card
 /// off the right or top edge of `bounds`, flip to below-and-left.
+///
+/// **T3006 — defence-in-depth clamp inside `bounds`** (chart-canvas-
+/// overhaul v1.10.0, R1.3).  After the default-orientation choice and
+/// the flip-on-overflow heuristic, hard-clamp the returned rectangle
+/// so it is fully contained in `bounds` even when `width > bounds.width`
+/// or `height > bounds.height` (in which case the clamp pins the card
+/// to the bounds origin and the card visibly truncates rather than
+/// silently rendering off-canvas).  The pre-T3006 form composed
+/// `.max(bounds.x)` then `.min(bounds.x + bounds.width - width)`;
+/// when `bounds.width < width` the `.min(...)` produced a value
+/// smaller than `bounds.x`, and the final clamp resolved to a
+/// position the card couldn't fit at.  The post-T3006 form takes
+/// the order `min → max` so the pin-to-origin invariant holds:
+/// if the card is wider than `bounds`, `x = bounds.x`.
 fn compute_card_rect(anchor: Point, bounds: Rectangle, height: f32) -> Rectangle {
     let width = TOOLTIP_WIDTH_PX;
 
@@ -223,9 +237,16 @@ fn compute_card_rect(anchor: Point, bounds: Rectangle, height: f32) -> Rectangle
         y = anchor.y + TOOLTIP_GAP_PX;
     }
 
-    // Clamp to bounds as a defence-in-depth.
-    x = x.max(bounds.x).min(bounds.x + bounds.width - width);
-    y = y.max(bounds.y).min(bounds.y + bounds.height - height);
+    // T3006 — defence-in-depth clamp.  Apply the upper-bound clamp
+    // first, then the lower-bound clamp, so a pathological
+    // `width > bounds.width` pins the card to `bounds.x` (instead
+    // of producing a position smaller than `bounds.x` and then
+    // having `.max(bounds.x)` correct it back — only correct by
+    // coincidence when bounds.width ≥ width).
+    let right_anchor = (bounds.x + bounds.width - width).max(bounds.x);
+    let bottom_anchor = (bounds.y + bounds.height - height).max(bounds.y);
+    x = x.min(right_anchor).max(bounds.x);
+    y = y.min(bottom_anchor).max(bounds.y);
 
     Rectangle {
         x,
@@ -430,5 +451,112 @@ mod tests {
             rect.width
         );
         assert!(rect.y >= 0.0, "card respects top edge: y={}", rect.y);
+    }
+
+    /// T3006 — `tooltip_card_stays_inside_bounds_at_corners` —
+    /// chart-canvas-overhaul v1.10.0 (R1.3 defence-in-depth).
+    ///
+    /// Drive `compute_card_rect` at four extreme marker positions
+    /// (each corner of `bounds`) and assert the returned card stays
+    /// fully inside `bounds` regardless of the default-orientation
+    /// flip decision.  Catches the off-screen-render hypothesis
+    /// from R1.3 (chart-canvas-overhaul brief, Hypothesis 3) without
+    /// requiring the iced runtime.
+    #[test]
+    fn tooltip_card_stays_inside_bounds_at_corners() {
+        // Bounds chosen to be larger than the card by a comfortable
+        // margin so the default + flip orientations both produce
+        // valid placements.
+        let bounds = Rectangle {
+            x: 100.0,
+            y: 50.0,
+            width: 600.0,
+            height: 400.0,
+        };
+        let card_h = 120.0;
+        let card_w = TOOLTIP_WIDTH_PX;
+
+        // Iterate all four corners.
+        let corners = [
+            // Top-left: default orientation should NOT flip.
+            Point::new(bounds.x + 4.0, bounds.y + 4.0),
+            // Top-right: default would overflow right; expects
+            // horizontal flip.
+            Point::new(bounds.x + bounds.width - 4.0, bounds.y + 4.0),
+            // Bottom-left: default would overflow top; expects vertical flip.
+            Point::new(bounds.x + 4.0, bounds.y + bounds.height - 4.0),
+            // Bottom-right: default would overflow both; expects both flips.
+            Point::new(
+                bounds.x + bounds.width - 4.0,
+                bounds.y + bounds.height - 4.0,
+            ),
+        ];
+
+        for (i, anchor) in corners.iter().enumerate() {
+            let r = compute_card_rect(*anchor, bounds, card_h);
+            assert!(
+                r.x >= bounds.x - 0.001,
+                "corner {i}: card.x ({}) >= bounds.x ({})",
+                r.x,
+                bounds.x,
+            );
+            assert!(
+                r.y >= bounds.y - 0.001,
+                "corner {i}: card.y ({}) >= bounds.y ({})",
+                r.y,
+                bounds.y,
+            );
+            assert!(
+                r.x + r.width <= bounds.x + bounds.width + 0.001,
+                "corner {i}: card.right ({}) <= bounds.right ({})",
+                r.x + r.width,
+                bounds.x + bounds.width,
+            );
+            assert!(
+                r.y + r.height <= bounds.y + bounds.height + 0.001,
+                "corner {i}: card.bottom ({}) <= bounds.bottom ({})",
+                r.y + r.height,
+                bounds.y + bounds.height,
+            );
+            assert!(
+                (r.width - card_w).abs() < f32::EPSILON,
+                "corner {i}: width preserved",
+            );
+            assert!(
+                (r.height - card_h).abs() < f32::EPSILON,
+                "corner {i}: height preserved",
+            );
+        }
+    }
+
+    /// T3006 — pathological pin-to-origin case: card wider than
+    /// `bounds`.  Earlier implementation could clamp `x` to
+    /// `bounds.x + bounds.width - width` < `bounds.x`, then re-apply
+    /// `.max(bounds.x)` and land at `bounds.x` — but only because of
+    /// the second clamp's coincidental order.  The post-T3006 clamp
+    /// makes the pin-to-origin invariant explicit.
+    #[test]
+    fn tooltip_card_pins_to_origin_when_wider_than_bounds() {
+        let bounds = Rectangle {
+            x: 200.0,
+            y: 100.0,
+            width: 50.0,  // narrower than TOOLTIP_WIDTH_PX
+            height: 40.0, // smaller than any plausible card height
+        };
+        let r = compute_card_rect(Point::new(225.0, 120.0), bounds, 100.0);
+        // Card pins to bounds origin (or close — the order of clamps
+        // resolves to `x = bounds.x` and `y = bounds.y`).
+        assert!(
+            (r.x - bounds.x).abs() < 0.001,
+            "pin: card.x ({}) == bounds.x ({})",
+            r.x,
+            bounds.x,
+        );
+        assert!(
+            (r.y - bounds.y).abs() < 0.001,
+            "pin: card.y ({}) == bounds.y ({})",
+            r.y,
+            bounds.y,
+        );
     }
 }

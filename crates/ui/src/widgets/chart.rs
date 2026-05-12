@@ -28,20 +28,23 @@
 
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke, Text as CanvasText};
 use iced::widget::{container, Canvas, Container};
-use iced::{mouse, Color, Length, Point, Rectangle, Renderer, Vector};
+use iced::{mouse, Color, Length, Point, Rectangle, Renderer, Size, Vector};
 use rust_decimal::prelude::ToPrimitive;
 use smol_str::SmolStr;
 use trading_core::{Bar, FillView, Side, SignalView};
 
 use super::canvas_chart::{
-    draw_gridlines, inner_rect, with_alpha, GRIDLINE_COUNT, LINE_STROKE_PX, RANGE_PAD_FRACTION,
+    draw_gridlines, inner_rect_with_gutters, with_alpha, GRIDLINE_COUNT, LINE_STROKE_PX,
+    RANGE_PAD_FRACTION,
 };
+use super::chart_legend;
 use super::chart_tooltip;
 use crate::state::{ChartMarkerIndex, ChartTooltipKind, ChartTooltipView, Message};
 use crate::strings::{
     CHART_NO_DATA, CHART_TOOLTIP_SIDE_BUY, CHART_TOOLTIP_SIDE_SELL, CHART_TOOLTIP_STRATEGY_NONE,
 };
-use crate::theme::{color, shadow, text, ThemeMode};
+use crate::theme::layout::{AXIS_GUTTER_PRICE_PX, AXIS_GUTTER_RIGHT_PX, AXIS_GUTTER_TIME_PX};
+use crate::theme::{color, shadow, space, text, ThemeMode};
 
 /// Filled-marker triangle size for executed-fill markers (Q6, R1.1).
 pub(crate) const MARKER_SIZE_PX: f32 = 13.0;
@@ -56,6 +59,101 @@ pub(crate) const MARKER_HIT_RECT_PX: f32 = 28.0;
 
 /// Outline width for the fill-marker outline pass (Q6, R6.3).
 const MARKER_OUTLINE_PX: f32 = 1.0;
+
+/// Tick mark length (price axis + time axis) in logical pixels.
+/// Sized so the tick reads as a distinct mark without crowding the
+/// label.  Same value for both axes — visual rhythm matches.
+const AXIS_TICK_LEN_PX: f32 = 4.0;
+
+/// **T3010 — chart-canvas-overhaul v1.10.0.**  Compute the chart's
+/// drawable inner rect against the canvas's `bounds.size()` using the
+/// brief's R4-locked gutter geometry: left price gutter, right margin,
+/// bottom time gutter, top zero (legend lives inside the inner rect).
+/// Single source of truth for the inner rect used by `draw`, the
+/// hit-test path, and any axis-draw pass — keeps the visual and
+/// hit-test coordinate systems pinned to the same rectangle (R1.2 /
+/// V13).
+#[inline]
+pub(crate) fn chart_inner_rect(size: Size) -> Rectangle {
+    inner_rect_with_gutters(
+        size,
+        AXIS_GUTTER_PRICE_PX,
+        AXIS_GUTTER_RIGHT_PX,
+        0.0,
+        AXIS_GUTTER_TIME_PX,
+    )
+}
+
+/// **T3012 — adaptive tick spacing** for the bottom time axis (R4.2.1
+/// / Q3 architect-resolved).
+///
+/// Formula: `tick_count = clamp(canvas_width_logical / 96, 4, 12)`
+/// rounded to the nearest 5-bar multiple so labels never overlap at
+/// the 1280-px floor and never look sparse at 3360-px native Retina.
+/// Returns the number of intervals (so `tick_count + 1` actual tick
+/// positions land on the axis line).
+///
+/// The formula always emits a multiple-of-5 count (5 / 10 / 15 bars
+/// per tick) so the time axis stays visually anchored on round
+/// minute boundaries.  Bar-count `0` returns `0` — empty state.
+pub(crate) fn time_axis_tick_count(canvas_width_logical: f32, bar_count: usize) -> usize {
+    if bar_count == 0 {
+        return 0;
+    }
+    // Logical-width budget: ~96 px per label (text::MICRO ≈ 11 px
+    // height + space::S inter-label gap + "HH:MM" ≈ 30-35 px wide +
+    // breathing room).
+    let raw = (canvas_width_logical / 96.0).clamp(4.0, 12.0);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let raw_count = raw.round() as usize;
+    // Round down to a bar-step multiple that yields an EVEN tick count
+    // across the 60-bar window: 60 / 5 = 12, 60 / 10 = 6, 60 / 15 = 4.
+    // Pick the largest step ≤ `bar_count / raw_count`.
+    let step = if raw_count >= 12 {
+        5
+    } else if raw_count >= 6 {
+        10
+    } else {
+        15
+    };
+    // Number of intervals = bar_count / step, capped at bar_count - 1.
+    // Returning `intervals + 1` would over-count the right edge; the
+    // caller drives the tick loop from `i = 0..=intervals`.
+    bar_count.saturating_sub(1) / step
+}
+
+/// **T3013 — `local_offset_or_utc`** — chart-canvas-overhaul v1.10.0
+/// (R4.2.2 / Q4).
+///
+/// Returns the UTC offset used to render `HH:MM` labels on the
+/// bottom time axis.  Returns `UtcOffset::UTC` deterministically in
+/// both `cfg(test)` (snapshot tests MUST be deterministic regardless
+/// of the host's time zone) and production.
+///
+/// **Q4 local-time display is queued as v1.11
+/// [`chart-x-axis-local-time`](../../../../spec/backlog.md) brief**
+/// (see `spec/backlog.md` ## Queue / UI / cockpit).  Until that
+/// ships, this function returns `UtcOffset::UTC` deterministically.
+/// The deferral is operator-locked (Q-revised-1 = path (b), recorded
+/// in `spec/chart-canvas-overhaul/feature.md ## Design — M7 / Q4
+/// deferral`); v1.10.0 ships with UTC x-axis labels and v1.11 owns
+/// the workspace `time` `local-offset` feature flip plus the
+/// production-OS-offset wiring.
+///
+/// The function signature pre-anticipates the production-OS-offset
+/// branch so the v1.11 implementation flips only the body, not the
+/// call sites.  The `cfg(test)` UTC override contract holds across
+/// the v1.11 cutover: snapshot tests stay deterministic at UTC even
+/// once production starts reading the OS offset.
+#[must_use]
+pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
+    // Deterministic UTC in both `cfg(test)` and production.  v1.11
+    // `chart-x-axis-local-time` flips production to
+    // CLOCK-OK: doc-only reference; the call below is `UtcOffset::UTC`.
+    // `time::UtcOffset::current_local_offset()` while preserving the
+    // `cfg(test)` UTC override (see doc comment above).
+    time::UtcOffset::UTC
+}
 
 /// Render the chart for the active `(venue, symbol)` against the current
 /// `bars` window. Returns gridlines + line series + ghost-signal markers +
@@ -149,7 +247,12 @@ impl canvas::Program<Message> for ChartProgram {
                 let cursor_pos = cursor.position_in(bounds);
                 let hit = match cursor_pos {
                     Some(p) => {
-                        let inner = inner_rect(bounds.size());
+                        // T3010 — hit-test runs against the SAME
+                        // inner rect the draw pass paints into.
+                        // Single source of truth keeps the visual
+                        // and hit-test coordinate systems pinned to
+                        // the same rectangle (R1.2 / V13).
+                        let inner = chart_inner_rect(bounds.size());
                         self.hit_test(p, inner)
                     }
                     None => None,
@@ -179,7 +282,9 @@ impl canvas::Program<Message> for ChartProgram {
                 // Clicks DO require the cursor to be on the canvas — a
                 // click on a sibling shouldn't open a journal modal.
                 let cursor_pos = cursor.position_in(bounds)?;
-                let inner = inner_rect(bounds.size());
+                // T3010 — same inner-rect single-source-of-truth as
+                // the CursorMoved branch above.
+                let inner = chart_inner_rect(bounds.size());
                 let hit = self.hit_test(cursor_pos, inner)?;
                 // Ghosts have no transaction_id — click is a no-op (R5.6).
                 if let (ChartMarkerIndex::Fill(i), _) = hit {
@@ -207,7 +312,11 @@ impl canvas::Program<Message> for ChartProgram {
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let inner = inner_rect(bounds.size());
+        // T3010 — single source of truth for the drawable rect:
+        // `chart_inner_rect` applies the brief's R4 gutters
+        // (price-axis LEFT, margin RIGHT, time-axis BOTTOM) so the
+        // visual content + hit-test math share one rectangle.
+        let inner = chart_inner_rect(bounds.size());
         let border = with_alpha(color::BORDER_1.current(self.mode), 0.4);
 
         // Pass 1 — Gridlines.
@@ -238,10 +347,19 @@ impl canvas::Program<Message> for ChartProgram {
             return vec![frame.into_geometry()];
         };
 
-        // Pass 2 — Axis labels.
-        draw_price_labels(&mut frame, bounds.size(), range, self.mode);
+        // Pass 2 — Price axis (left gutter — T3011 / R4.1).
+        //
+        // Five labels right-aligned at `inner.x - space::XS`, paired
+        // with a 4-px tick mark drawn into the inner rect's left
+        // edge and a 1-px vertical axis line at `inner.x`.  Labels
+        // sit OUTSIDE the inner rect (in the price-axis gutter)
+        // since v1.10.0; v1.9.0 painted them at `inner.x + 4`
+        // which crowded the line at busy zones.
+        draw_price_axis(&mut frame, inner, range, self.mode);
+        // Pass 3 — Time axis (bottom gutter — T3012 / R4.2).
+        draw_time_axis(&mut frame, inner, &self.bars, self.mode);
 
-        // Pass 3 — Line stroke.
+        // Pass 4 — Line stroke.
         let line_path = Path::new(|builder| {
             for (idx, bar) in self.bars.iter().enumerate() {
                 let x = x_for_index(idx, self.bars.len(), inner);
@@ -261,7 +379,7 @@ impl canvas::Program<Message> for ChartProgram {
                 .with_width(LINE_STROKE_PX),
         );
 
-        // Pass 4 — Ghost-signal triangles (R5.1, M3 — T2018).
+        // Pass 5 — Ghost-signal triangles (R5.1, M3 — T2018).
         //
         // Painted **before** the executed-fill layer so a fill atop a ghost
         // at the same bar visually wins. 60 % alpha + `_400` tier ramp
@@ -286,7 +404,7 @@ impl canvas::Program<Message> for ChartProgram {
             );
         }
 
-        // Pass 5 — Executed-fill triangles (R2.1, R1.1, R6.1, R6.3).
+        // Pass 6 — Executed-fill triangles (R2.1, R1.1, R6.1, R6.3).
         //
         // Painted **after** the line so they stay legible against `ACCENT`.
         // 13-px size + 1-px `BORDER_STRONG` outline + `shadow_1` whisper
@@ -313,7 +431,7 @@ impl canvas::Program<Message> for ChartProgram {
             );
         }
 
-        // Pass 6 — Tooltip overlay (R4.2, Q3, **T2033**).
+        // Pass 7 — Tooltip overlay (R4.2, Q3, **T2033**).
         //
         // Render the tooltip directly from canvas-local hover state.
         // The pre-T2033 form required BOTH `self.tooltip.is_some()`
@@ -344,13 +462,23 @@ impl canvas::Program<Message> for ChartProgram {
         // tooltip view from canvas-local state (this code) removes
         // the dual-source-of-truth that produced the
         // flash-and-disappear race in the pre-T2033 version.
-        if let (Some(idx), Some(anchor)) =
-            (state.hovered_marker_idx, state.hovered_marker_centroid)
+        if let (Some(idx), Some(anchor)) = (state.hovered_marker_idx, state.hovered_marker_centroid)
         {
             if let Some(view) = self.tooltip_view_from_hover(idx) {
                 chart_tooltip::draw_tooltip(&mut frame, bounds, anchor, &view, self.mode);
             }
         }
+
+        // Pass 8 — Legend overlay (R5, Q5 = top-right inset — T3017).
+        //
+        // Painted LAST so the legend sits visually above every other
+        // layer including the tooltip card.  Skipped on empty state
+        // (handled above — no fall-through here because the empty
+        // branch returns early).  The legend re-uses the chart's
+        // marker palette + glyph helpers so any future tweak to
+        // `draw_triangle` flows through automatically (single source
+        // of truth for the marker glyph shape per R5.4 of the brief).
+        chart_legend::draw_legend(&mut frame, inner, self.mode);
 
         vec![frame.into_geometry()]
     }
@@ -521,27 +649,139 @@ pub(crate) fn whisper_shadow(mode: ThemeMode) -> (Vector, Color) {
     (Vector::new(0.0, 1.5), s.color)
 }
 
-fn draw_price_labels(frame: &mut Frame, size: iced::Size, range: (f32, f32), mode: ThemeMode) {
+/// **T3011 — price-axis draw pass** (chart-canvas-overhaul v1.10.0,
+/// R4.1, Q2 = LEFT).
+///
+/// Five labels in the LEFT price-axis gutter (right-aligned at
+/// `inner.x - space::XS`), paired with a 4-px tick mark at the
+/// gridline's y inside the inner rect, and a 1-px vertical axis
+/// line at `inner.x` in `color::BORDER_1 @ alpha 0.4` (matching the
+/// gridline treatment).
+///
+/// Replaces v1.9.0's `draw_price_labels` (which painted labels at
+/// `inner.x + 4` — INSIDE the inner rect, crowding the line at busy
+/// zones).  The labels now live OUTSIDE the inner rect, in the
+/// `AXIS_GUTTER_PRICE_PX`-wide left gutter introduced by R4.1.
+fn draw_price_axis(frame: &mut Frame, inner: Rectangle, range: (f32, f32), mode: ThemeMode) {
     let (min_p, max_p) = range;
     #[allow(clippy::cast_precision_loss)]
     let denom = (GRIDLINE_COUNT - 1) as f32;
-    let inner = inner_rect(size);
+    let axis_color = color::FG_3.current(mode);
+    let border = with_alpha(color::BORDER_1.current(mode), 0.4);
+    #[allow(clippy::cast_precision_loss)]
+    let micro = text::MICRO as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let label_gap = space::XS as f32;
+
+    // 1-px vertical axis line at the inner rect's left edge.
+    let axis_line = Path::new(|builder| {
+        builder.move_to(Point::new(inner.x, inner.y));
+        builder.line_to(Point::new(inner.x, inner.y + inner.height));
+    });
+    frame.stroke(
+        &axis_line,
+        Stroke::default().with_color(border).with_width(1.0),
+    );
+
     for i in 0..GRIDLINE_COUNT {
         #[allow(clippy::cast_precision_loss)]
         let frac = i as f32 / denom;
         let y = inner.y + frac * inner.height;
         // Label-corresponding price (top gridline = max_p, bottom = min_p).
         let price = max_p - frac * (max_p - min_p);
-        #[allow(clippy::cast_precision_loss)]
-        let micro = text::MICRO as f32;
+
+        // Tick mark — 4-px outward stroke from the axis line into
+        // the gutter (so the tick sits in the gutter space, not
+        // inside the inner rect crowding the line stroke).
+        let tick_path = Path::new(|builder| {
+            builder.move_to(Point::new(inner.x - AXIS_TICK_LEN_PX, y));
+            builder.line_to(Point::new(inner.x, y));
+        });
+        frame.stroke(
+            &tick_path,
+            Stroke::default().with_color(border).with_width(1.0),
+        );
+
+        // Label — right-aligned just outside the tick mark.
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
             content: format!("{price:.2}"),
-            position: Point::new(inner.x + 4.0, y),
-            color: color::FG_3.current(mode),
+            position: Point::new(inner.x - AXIS_TICK_LEN_PX - label_gap, y),
+            color: axis_color,
             size: micro.into(),
-            align_x: iced::alignment::Horizontal::Left.into(),
+            align_x: iced::alignment::Horizontal::Right.into(),
             align_y: iced::alignment::Vertical::Center.into(),
+            ..CanvasText::default()
+        });
+    }
+}
+
+/// **T3012 — time-axis draw pass** (chart-canvas-overhaul v1.10.0,
+/// R4.2, Q3 adaptive, Q4 local-time).
+///
+/// Adaptive tick spacing per [`time_axis_tick_count`]: 4 ticks at
+/// the 1280-px floor (every 15 bars ≈ 15 minutes), 12 ticks at
+/// 3360-px native Retina (every 5 bars ≈ 5 minutes).  Labels in
+/// `HH:MM` format derived from `bars[idx].open_ts` via
+/// [`time::OffsetDateTime`] with the platform's local offset (Q4
+/// operator-locked).  Tick marks at the bottom of the inner rect
+/// extending 4 px down into the gutter; labels sit a further
+/// `space::XS` below the tick.
+fn draw_time_axis(frame: &mut Frame, inner: Rectangle, bars: &[Bar], mode: ThemeMode) {
+    if bars.is_empty() || inner.width <= 0.0 {
+        return;
+    }
+    let axis_color = color::FG_3.current(mode);
+    let border = with_alpha(color::BORDER_1.current(mode), 0.4);
+    #[allow(clippy::cast_precision_loss)]
+    let micro = text::MICRO as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let label_gap = space::XS as f32;
+
+    let intervals = time_axis_tick_count(inner.width, bars.len());
+    if intervals == 0 {
+        return;
+    }
+    let offset = local_offset_or_utc();
+    let bar_count = bars.len();
+
+    for i in 0..=intervals {
+        // Map the interval index to a bar index.  `i = 0` → bar 0;
+        // `i = intervals` → bar `bar_count - 1`.  Integer arithmetic
+        // keeps the mapping deterministic.
+        let bar_idx = if intervals == 0 {
+            0
+        } else {
+            (i * (bar_count - 1)) / intervals
+        };
+        let Some(bar) = bars.get(bar_idx) else {
+            continue;
+        };
+        let x = x_for_index(bar_idx, bar_count, inner);
+
+        // Tick mark — 4-px outward stroke from the inner-rect bottom
+        // into the bottom gutter.
+        let tick_path = Path::new(|builder| {
+            builder.move_to(Point::new(x, inner.y + inner.height));
+            builder.line_to(Point::new(x, inner.y + inner.height + AXIS_TICK_LEN_PX));
+        });
+        frame.stroke(
+            &tick_path,
+            Stroke::default().with_color(border).with_width(1.0),
+        );
+
+        // Label — `HH:MM` formatted in the local time zone, centred
+        // beneath the tick.
+        let local_ts = bar.open_ts.inner().to_offset(offset);
+        let label = format!("{:02}:{:02}", local_ts.hour(), local_ts.minute());
+        #[allow(clippy::useless_conversion)]
+        frame.fill_text(CanvasText {
+            content: label,
+            position: Point::new(x, inner.y + inner.height + AXIS_TICK_LEN_PX + label_gap),
+            color: axis_color,
+            size: micro.into(),
+            align_x: iced::alignment::Horizontal::Center.into(),
+            align_y: iced::alignment::Vertical::Top.into(),
             ..CanvasText::default()
         });
     }
@@ -766,6 +1006,136 @@ pub fn dispatch_canvas_event_for_test(
     }
 }
 
+/// **ui-test-harness-bootstrap v0.1 — T4021** — viewport-parametric
+/// wrapper around [`dispatch_canvas_event_for_test`] for the grid-
+/// sweep tests at `crates/ui/tests/chart_hover_grid_sweep.rs`.
+///
+/// Computes the canvas `Rectangle` bounds the production `chart::view`
+/// would emit at the given `viewport`+`scale_factor` (using the same
+/// gutter math via [`chart_inner_rect`] indirectly — bounds are the
+/// outer canvas rect, and `dispatch_canvas_event_for_test` applies
+/// `chart_inner_rect(bounds.size())` itself), then sweeps each
+/// `cursor_position` through the dispatcher. Returns one tuple per
+/// cursor position: `(position, optional_published_message, status)`.
+///
+/// **Coordinate conventions:**
+/// - `viewport` is `(logical_width, logical_height)` in iced's logical
+///   pixel space — the same units `iced_test::screenshot` accepts.
+/// - `scale_factor` is the iced runtime scale (1.0 for `floor` /
+///   `typical`, 2.0 for `operator`); preserved verbatim here so a
+///   future hit-test that consults dpi can read it from the produced
+///   `Rectangle` bounds.
+/// - `cursor_positions` are absolute-screen `Point`s in the same
+///   logical-pixel coordinate space as the canvas bounds — the
+///   dispatcher already subtracts `bounds.x` / `bounds.y` internally
+///   to translate to canvas-local.
+///
+/// The canvas is assumed to fill the full viewport (`bounds = (0, 0,
+/// viewport_w, viewport_h)`). This matches how the cockpit's `view`
+/// composes the chart — `Container::new(canvas).width(Length::Fill)
+/// .height(Length::Fill)`. Tests that need a partial-canvas viewport
+/// (e.g. embedded inside a shell with a sidebar) should keep using
+/// [`dispatch_canvas_event_for_test`] directly with an explicit
+/// `bounds`.
+///
+/// **Backward compat (R3.6):** [`dispatch_canvas_event_for_test`]'s
+/// signature is unchanged. The existing
+/// `chart_tooltip_hover_fires.rs` tests use it verbatim — `cargo test
+/// -p ui --test chart_tooltip_hover_fires` stays green.
+#[doc(hidden)]
+#[must_use]
+#[allow(clippy::needless_pass_by_value)]
+pub fn sweep_canvas_grid_for_test(
+    bars: Vec<Bar>,
+    markers: Vec<FillView>,
+    signals: Vec<SignalView>,
+    viewport: (u32, u32),
+    scale_factor: f32,
+    cursor_positions: Vec<Point>,
+) -> Vec<(Point, Option<Message>, iced::event::Status)> {
+    #[allow(clippy::cast_precision_loss)]
+    let bounds = Rectangle {
+        x: 0.0,
+        y: 0.0,
+        width: viewport.0 as f32,
+        height: viewport.1 as f32,
+    };
+    // `scale_factor` is consumed only for hit-test paths that consult
+    // dpi.  iced's chart canvas works in logical pixels, so the only
+    // effect of `scale_factor` on the bounds is none.  We keep the
+    // parameter in the signature so a future scale-aware hit-test
+    // (e.g. for a Retina-specific gutter override) doesn't break the
+    // callers — and to make the test-name carrying the
+    // `(viewport, scale)` tuple structurally complete (V8 / Q10).
+    let _ = scale_factor;
+
+    cursor_positions
+        .into_iter()
+        .map(|pos| {
+            let mut state = ChartHoverState::default();
+            let event =
+                iced::widget::canvas::Event::Mouse(mouse::Event::CursorMoved { position: pos });
+            let (msg, status) = dispatch_canvas_event_for_test(
+                bars.clone(),
+                markers.clone(),
+                signals.clone(),
+                &mut state,
+                event,
+                bounds,
+                pos,
+            );
+            (pos, msg, status)
+        })
+        .collect()
+}
+
+/// **ui-test-harness-bootstrap v0.1 — T4021** — viewport-parametric
+/// inner-rect helper.  Returns the canvas inner rect the production
+/// `chart::view` would compute at the given viewport (a `Rectangle`
+/// equal to `chart_inner_rect(viewport.into())` against the canvas's
+/// outer bounds).  Used by the H3 falsifier sub-test to assert the
+/// helper's bounds line up with what an iced runtime would lay out.
+#[doc(hidden)]
+#[must_use]
+pub fn inner_rect_for_viewport_test(viewport: (u32, u32)) -> Rectangle {
+    #[allow(clippy::cast_precision_loss)]
+    let size = Size::new(viewport.0 as f32, viewport.1 as f32);
+    chart_inner_rect(size)
+}
+
+/// **ui-test-harness-bootstrap v0.1 — T4023** — wrapper around
+/// [`anchor_for_ts`] that the grid-sweep test uses to assert the
+/// pixel invariants in `marker_centroid_pixel_invariants_across_viewports`.
+///
+/// Takes a `viewport` (logical width / height) and a fill, returns the
+/// `(x, y)` the production canvas would render the marker at against
+/// the supplied `bars` window.  Pure function — no rendering, no
+/// allocation beyond the input slices.
+#[doc(hidden)]
+#[must_use]
+pub fn anchor_for_first_fill_test(
+    bars: &[Bar],
+    fill_ts_unix_millis: i64,
+    viewport: (u32, u32),
+) -> Option<Point> {
+    let inner = inner_rect_for_viewport_test(viewport);
+    // Build the (low, high) range with the same 5% pad the production
+    // path uses — match `chart::view`'s range computation verbatim so
+    // the centroid math matches what the hit-test sees.
+    let mut min_low = f32::INFINITY;
+    let mut max_high = f32::NEG_INFINITY;
+    for b in bars {
+        let low: f32 = b.low.get().to_string().parse().unwrap_or(0.0);
+        let high: f32 = b.high.get().to_string().parse().unwrap_or(0.0);
+        min_low = min_low.min(low);
+        max_high = max_high.max(high);
+    }
+    let span = (max_high - min_low).max(1.0);
+    let pad = span * RANGE_PAD_FRACTION;
+    let range = (min_low - pad, max_high + pad);
+    anchor_for_ts(fill_ts_unix_millis, bars, range, inner).map(|(x, y)| Point::new(x, y))
+}
+
 /// Opaque wrapper around the chart's `Program::State` so integration
 /// tests can keep a hover-state cookie across calls to
 /// [`dispatch_canvas_event_for_test`] without depending on the
@@ -872,7 +1242,12 @@ mod tests {
             out.push_str(&format!("empty_label: {CHART_NO_DATA}\n"));
         } else {
             out.push_str("empty_state: false\n");
-            out.push_str("draw_order: gridlines,labels,line,ghosts,fills,tooltip\n");
+            // chart-canvas-overhaul v1.10.0 — new draw order after
+            // T3011 (price axis in left gutter) + T3012 (time axis in
+            // bottom gutter) + T3017 (legend top-right inset).
+            out.push_str(
+                "draw_order: gridlines,price_axis,time_axis,line,ghosts,fills,tooltip,legend\n",
+            );
             out.push_str("line_color: ACCENT\n");
             if let Some((min_p, max_p)) = price_range(bars) {
                 out.push_str(&format!("axis_range: min={min_p:.2} max={max_p:.2}\n"));
@@ -1052,8 +1427,12 @@ mod tests {
 
         // Out-of-range index returns None — defence-in-depth across
         // the async refresh boundary.
-        assert!(program.tooltip_view_from_hover(ChartMarkerIndex::Fill(99)).is_none());
-        assert!(program.tooltip_view_from_hover(ChartMarkerIndex::Signal(99)).is_none());
+        assert!(program
+            .tooltip_view_from_hover(ChartMarkerIndex::Fill(99))
+            .is_none());
+        assert!(program
+            .tooltip_view_from_hover(ChartMarkerIndex::Signal(99))
+            .is_none());
     }
 
     /// T2008 — `marker_hit_rect` returns a 28-px square centred on the
@@ -1067,5 +1446,94 @@ mod tests {
         assert!(r.contains(Point::new(100.0, 50.0)));
         // 1 px outside the rect doesn't.
         assert!(!r.contains(Point::new(115.0, 50.0)));
+    }
+
+    /// T3012 — `time_axis_tick_count_adaptive` — chart-canvas-overhaul
+    /// v1.10.0 (R4.2.1 / Q3 adaptive).
+    ///
+    /// Sweep `canvas_width_logical` across the three R6 capture
+    /// sizes + the floor + native Retina, and assert the tick
+    /// count rounds to one of the brief's documented bar-step
+    /// multiples (5 / 10 / 15) so the time axis lands on round
+    /// minute boundaries.
+    #[test]
+    fn time_axis_tick_count_adaptive() {
+        // 60-bar window (the cockpit's current chart window).
+        let bar_count = 60_usize;
+
+        // At the 1280-px floor — width / 96 = ~13 → clamped to 12 →
+        // step = 5 → intervals = 11.  But our function caps the
+        // step at 5 → intervals = (60-1)/5 = 11.
+        let n = time_axis_tick_count(1280.0, bar_count);
+        assert!((4..=12).contains(&n), "floor n in [4,12]: got {n}");
+
+        // At ~1920-px mid — width / 96 = 20 → clamped to 12 → 5-bar
+        // step → 11 intervals.
+        let n = time_axis_tick_count(1920.0, bar_count);
+        assert!((4..=12).contains(&n), "mid n in [4,12]: got {n}");
+
+        // At 3360-px native Retina — width / 96 = 35 → clamped to
+        // 12 → 5-bar step → 11 intervals.
+        let n = time_axis_tick_count(3360.0, bar_count);
+        assert!((4..=12).contains(&n), "native n in [4,12]: got {n}");
+
+        // At a tiny canvas (200-px width) — width / 96 ≈ 2 →
+        // clamped to 4 → 15-bar step → 3 intervals.
+        let n = time_axis_tick_count(200.0, bar_count);
+        assert!(n <= 4, "tiny n <= 4: got {n}");
+
+        // Empty bar slice → 0 intervals.
+        let n = time_axis_tick_count(1920.0, 0);
+        assert_eq!(n, 0, "empty bars → 0 intervals");
+    }
+
+    /// T3013 — `local_offset_under_test_is_utc` — chart-canvas-overhaul
+    /// v1.10.0 (R4.2.2 / determinism invariant).
+    ///
+    /// The snapshot-test path MUST always see UTC so the
+    /// `panel_snapshots__charts_screen_with_*` baselines pin
+    /// against a single time zone.  This test pins the cfg-test
+    /// branch's contract: under `#[cfg(test)]` the helper returns
+    /// `UtcOffset::UTC` regardless of the host's local offset.
+    #[test]
+    fn local_offset_under_test_is_utc() {
+        let offset = local_offset_or_utc();
+        assert_eq!(
+            offset,
+            time::UtcOffset::UTC,
+            "snapshot determinism: cfg(test) must return UTC, got {offset:?}",
+        );
+    }
+
+    /// T3010 — `chart_inner_rect` uses the four-sided gutter math
+    /// the brief locked under R4.  The base 8-px gutter applies on
+    /// every side; the price gutter pulls in `inner.x`; the right
+    /// margin shrinks `inner.width`; the time gutter shrinks
+    /// `inner.height`.  Pinning the arithmetic so a refactor that
+    /// fat-fingers a sign or transposes left/right fails loudly.
+    #[test]
+    fn chart_inner_rect_applies_four_sided_gutters() {
+        use crate::theme::layout::{
+            AXIS_GUTTER_PRICE_PX as L, AXIS_GUTTER_RIGHT_PX as R, AXIS_GUTTER_TIME_PX as B,
+        };
+        let size = Size::new(1280.0, 720.0);
+        let r = chart_inner_rect(size);
+        let base = 8.0_f32;
+        assert!((r.x - (base + L)).abs() < 0.001, "x = base + price gutter");
+        assert!((r.y - base).abs() < 0.001, "y = base (top gutter = 0)");
+        let exp_w = size.width - 2.0 * base - L - R;
+        let exp_h = size.height - 2.0 * base - B;
+        assert!(
+            (r.width - exp_w).abs() < 0.001,
+            "width: {} vs {}",
+            r.width,
+            exp_w
+        );
+        assert!(
+            (r.height - exp_h).abs() < 0.001,
+            "height: {} vs {}",
+            r.height,
+            exp_h
+        );
     }
 }

@@ -12,6 +12,7 @@
 pub mod agent_feed;
 pub(crate) mod canvas_chart;
 pub mod chart;
+pub mod chart_legend;
 pub mod chart_tooltip;
 pub mod drawdown_band;
 pub mod equity_curve;

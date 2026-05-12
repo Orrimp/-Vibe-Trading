@@ -83,6 +83,25 @@ pub const MIN_WINDOW_WIDTH_PX: f32 = 1280.0;
 /// doc for the height-budget derivation.
 pub const MIN_WINDOW_HEIGHT_PX: f32 = 720.0;
 
+/// **T3022 — initial window size on cold-launch (chart-canvas-overhaul
+/// v1.10.0, Q8).** `min_size` stays at the Layout-β floor
+/// (1280×720); the initial `size` opens at 1920×1080 so a 3360×1890
+/// native Retina operator gets a usable window without manually
+/// resizing on first launch.  iced 0.14 clamps the bootstrap size to
+/// the display, so this constant is harmless on smaller laptops.
+///
+/// **Why this isn't `maximised: true`:** the operator may run the
+/// cockpit alongside other windows; maximised-by-default surprises
+/// users who expect the OS-window-manager's standard launch geometry.
+/// 1920×1080 sits comfortably inside any laptop display while still
+/// surfacing the chart canvas at a non-floor allocation.  See
+/// [`spec/chart-canvas-overhaul/feature.md ## Resolved Qs / Q8`](../../../../spec/chart-canvas-overhaul/feature.md).
+pub const DEFAULT_WINDOW_WIDTH_PX: f32 = 1920.0;
+
+/// Cold-launch height — paired with [`DEFAULT_WINDOW_WIDTH_PX`].  See
+/// that constant's doc for the rationale (Q8, T3022).
+pub const DEFAULT_WINDOW_HEIGHT_PX: f32 = 1080.0;
+
 /// Pre-rasterised Lumen brand mark — 64×64 RGBA pixels, sRGB. Decoded
 /// once at boot and handed to iced via
 /// [`iced::window::icon::from_rgba`]. Length is `64 * 64 * 4 = 16384`
@@ -110,7 +129,9 @@ pub fn lumen_window_icon() -> Option<Icon> {
 #[must_use]
 pub fn standard_window_settings() -> WindowSettings {
     WindowSettings {
-        size: Size::new(MIN_WINDOW_WIDTH_PX, MIN_WINDOW_HEIGHT_PX),
+        // T3022 — initial size 1920×1080 (Q8 — chart-canvas-overhaul
+        // v1.10.0); min_size stays at the Layout-β floor 1280×720.
+        size: Size::new(DEFAULT_WINDOW_WIDTH_PX, DEFAULT_WINDOW_HEIGHT_PX),
         min_size: Some(Size::new(MIN_WINDOW_WIDTH_PX, MIN_WINDOW_HEIGHT_PX)),
         icon: lumen_window_icon(),
         ..WindowSettings::default()
@@ -142,6 +163,25 @@ mod tests {
         // below our own floor.
         assert!(s.size.width >= min.width);
         assert!(s.size.height >= min.height);
+    }
+
+    /// T3022 acceptance — chart-canvas-overhaul v1.10.0 (Q8) bumps
+    /// the cold-launch size to 1920×1080.  Guards against a future
+    /// regression that re-pins `size = min_size`.  See
+    /// [`feature.md ## Resolved Qs / Q8`](../../../../spec/chart-canvas-overhaul/feature.md).
+    #[test]
+    fn default_size_at_least_1920x1080() {
+        let s = standard_window_settings();
+        assert!(
+            s.size.width >= DEFAULT_WINDOW_WIDTH_PX,
+            "T3022 — size.width >= 1920: got {}",
+            s.size.width
+        );
+        assert!(
+            s.size.height >= DEFAULT_WINDOW_HEIGHT_PX,
+            "T3022 — size.height >= 1080: got {}",
+            s.size.height
+        );
     }
 
     /// T2029 acceptance — every bin must ship the Lumen mark as the

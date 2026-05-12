@@ -38,6 +38,47 @@ pub(crate) fn inner_rect(size: Size) -> Rectangle {
     }
 }
 
+/// T3010 — `inner_rect_with_gutters` — chart-canvas-overhaul v1.10.0.
+///
+/// Build the inset drawing rectangle for a canvas frame of `size`,
+/// applying the base `space::S` decorative gutter on every side AND
+/// additional per-side axis gutters supplied by the caller.  Returns
+/// the rectangle bounded by:
+///
+/// - `x = space::S + left`
+/// - `y = space::S + top`
+/// - `width = max(size.width - 2*space::S - left - right, 0)`
+/// - `height = max(size.height - 2*space::S - top - bottom, 0)`
+///
+/// **Sparkline / volume-histogram callers stay on
+/// [`inner_rect`]** — they pass zero gutters and never gain axes, so
+/// the extra-argument signature is overkill for their call sites.
+///
+/// The price-line widgets (`chart`, `equity_curve`, `drawdown_band`)
+/// migrate to this helper to make room for the left price-axis and
+/// bottom time-axis gutters introduced under R4 of
+/// [`spec/chart-canvas-overhaul/feature.md`](../../../../../spec/chart-canvas-overhaul/feature.md).
+pub(crate) fn inner_rect_with_gutters(
+    size: Size,
+    left: f32,
+    right: f32,
+    top: f32,
+    bottom: f32,
+) -> Rectangle {
+    #[allow(clippy::cast_precision_loss)]
+    let base = space::S as f32;
+    let x = base + left.max(0.0);
+    let y = base + top.max(0.0);
+    let width = (size.width - 2.0 * base - left.max(0.0) - right.max(0.0)).max(0.0);
+    let height = (size.height - 2.0 * base - top.max(0.0) - bottom.max(0.0)).max(0.0);
+    Rectangle {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
 /// Draw five horizontal gridlines across `inner` in `color`.
 pub(crate) fn draw_gridlines(frame: &mut Frame, inner: Rectangle, color: Color) {
     #[allow(clippy::cast_precision_loss)]
@@ -186,5 +227,127 @@ mod tests {
         let r = inner_rect(Size::new(4.0, 4.0));
         assert!(approx_eq(r.width, 0.0));
         assert!(approx_eq(r.height, 0.0));
+    }
+
+    /// T3010 — `inner_rect_with_gutters_subtracts_each_side` —
+    /// chart-canvas-overhaul v1.10.0.
+    ///
+    /// The four-sided inset math must hold:
+    /// `inner.x == base + left`,
+    /// `inner.y == base + top`,
+    /// `inner.right == size.width - base - right`,
+    /// `inner.bottom == size.height - base - bottom`,
+    /// where `base == space::S`.
+    #[test]
+    fn inner_rect_with_gutters_subtracts_each_side() {
+        // Per-side inset arithmetic — values lifted from the M2/M3
+        // tokens (AXIS_GUTTER_PRICE_PX=48, AXIS_GUTTER_RIGHT_PX=16,
+        // AXIS_GUTTER_TIME_PX=24).  Top stays 0 for the cockpit
+        // chart (legend lives inside `inner` — no top gutter eaten).
+        let size = Size::new(1280.0, 720.0);
+        let r = inner_rect_with_gutters(size, 48.0, 16.0, 0.0, 24.0);
+        // Base gutter = 8 (space::S).
+        assert!(approx_eq(r.x, 8.0 + 48.0));
+        assert!(approx_eq(r.y, 8.0));
+        // Width: 1280 - 2*8 - 48 - 16 = 1280 - 16 - 64 = 1200.
+        assert!(approx_eq(r.width, 1200.0));
+        // Height: 720 - 2*8 - 0 - 24 = 720 - 16 - 24 = 680.
+        assert!(approx_eq(r.height, 680.0));
+    }
+
+    /// T3010 — zero gutters fall back to the base `inner_rect`
+    /// shape — invariant `inner_rect_with_gutters(size, 0,0,0,0) ==
+    /// inner_rect(size)`.
+    #[test]
+    fn inner_rect_with_gutters_zero_matches_base() {
+        let sizes = [
+            Size::new(100.0, 100.0),
+            Size::new(1280.0, 720.0),
+            Size::new(1920.0, 1080.0),
+            Size::new(3360.0, 1890.0),
+        ];
+        for size in sizes {
+            let base = inner_rect(size);
+            let with_zero = inner_rect_with_gutters(size, 0.0, 0.0, 0.0, 0.0);
+            assert!(approx_eq(with_zero.x, base.x));
+            assert!(approx_eq(with_zero.y, base.y));
+            assert!(approx_eq(with_zero.width, base.width));
+            assert!(approx_eq(with_zero.height, base.height));
+        }
+    }
+
+    /// T3004 — `chart_inner_rect_stays_within_canvas_bounds` —
+    /// chart-canvas-overhaul v1.10.0 (R2 / V12).
+    ///
+    /// Sweep `bounds.size()` from a tiny pathological 100×100 floor
+    /// up through the operator's native 3360×1890 Retina and assert
+    /// the returned rect is fully INSIDE the supplied canvas size
+    /// even with R4-introduced gutters applied.  This is the
+    /// load-bearing regression guard for the v1.10.0 axis-gutter
+    /// rework: no draw pass may bleed outside `bounds` regardless of
+    /// the per-side gutter values.
+    #[test]
+    fn chart_inner_rect_stays_within_canvas_bounds() {
+        // Cover the floor + every visual-verification target sweep
+        // through to the operator's native Retina.
+        let sizes = [
+            Size::new(100.0, 100.0),
+            Size::new(640.0, 480.0),
+            Size::new(1280.0, 720.0),
+            Size::new(1600.0, 900.0),
+            Size::new(1920.0, 1080.0),
+            Size::new(2560.0, 1440.0),
+            Size::new(3360.0, 1890.0),
+        ];
+        // R4 chart-canvas-overhaul gutters: left=48 (price), right=16
+        // (RIGHT_PX), top=0, bottom=24 (time).
+        let (left, right, top, bottom) = (48.0_f32, 16.0_f32, 0.0_f32, 24.0_f32);
+        for size in sizes {
+            let inner = inner_rect_with_gutters(size, left, right, top, bottom);
+            // Invariant 1: inner.right + right_gutter ≤ size.width.
+            let inner_right = inner.x + inner.width;
+            assert!(
+                inner_right + right <= size.width + 0.001,
+                "inner.right ({inner_right}) + right gutter ({right}) must fit in size.width ({}) — size={size:?}",
+                size.width,
+            );
+            // Invariant 2: inner.bottom + bottom_gutter ≤ size.height.
+            let inner_bottom = inner.y + inner.height;
+            assert!(
+                inner_bottom + bottom <= size.height + 0.001,
+                "inner.bottom ({inner_bottom}) + bottom gutter ({bottom}) must fit in size.height ({}) — size={size:?}",
+                size.height,
+            );
+            // Invariant 3: inner origin at or after the base+left+top inset.
+            #[allow(clippy::cast_precision_loss)]
+            let base = space::S as f32;
+            assert!(
+                inner.x >= base + left - 0.001,
+                "inner.x ({}) ≥ base+left ({}) — size={size:?}",
+                inner.x,
+                base + left,
+            );
+            assert!(
+                inner.y >= base + top - 0.001,
+                "inner.y ({}) ≥ base+top ({}) — size={size:?}",
+                inner.y,
+                base + top,
+            );
+            // Invariant 4: width / height never negative.
+            assert!(inner.width >= 0.0);
+            assert!(inner.height >= 0.0);
+        }
+    }
+
+    /// T3004 — pathological tiny size still produces a non-negative
+    /// rect (clamp to zero — never a negative width / height).
+    #[test]
+    fn inner_rect_with_gutters_clamps_negative_dims() {
+        let size = Size::new(50.0, 30.0);
+        // Asking for gutters bigger than the size would otherwise
+        // produce negative dims.
+        let r = inner_rect_with_gutters(size, 48.0, 16.0, 0.0, 24.0);
+        assert!(r.width >= 0.0, "width clamped: {}", r.width);
+        assert!(r.height >= 0.0, "height clamped: {}", r.height);
     }
 }

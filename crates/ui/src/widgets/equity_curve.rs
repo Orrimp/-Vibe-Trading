@@ -15,19 +15,22 @@
     clippy::match_same_arms
 )]
 
-use iced::widget::canvas::{self, Frame, Geometry};
+use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke, Text as CanvasText};
 use iced::widget::{container, Canvas, Container};
-use iced::{mouse, Length, Rectangle, Renderer};
+use iced::{mouse, Length, Point, Rectangle, Renderer};
 use rust_decimal::prelude::ToPrimitive;
 use trading_core::EquitySeries;
 
 use super::canvas_chart::{
-    draw_gridlines, inner_rect, polyline_with_fill, with_alpha, RANGE_PAD_FRACTION,
+    draw_gridlines, inner_rect_with_gutters, polyline_with_fill, with_alpha, GRIDLINE_COUNT,
+    RANGE_PAD_FRACTION,
 };
+use super::chart::{local_offset_or_utc, time_axis_tick_count};
 use super::frame::muted_body;
 use crate::state::PanelState;
 use crate::strings::{VIEWER_EQUITY_UNAVAILABLE_PREFIX, VIEWER_NO_EQUITY_DATA};
-use crate::theme::{color, ThemeMode};
+use crate::theme::layout::{AXIS_GUTTER_PRICE_PX, AXIS_GUTTER_RIGHT_PX, AXIS_GUTTER_TIME_PX};
+use crate::theme::{color, space, text, ThemeMode};
 use crate::viewer::ViewerMessage;
 
 /// Fixed container height (R9.4 layout — ~240 px for the equity
@@ -109,7 +112,20 @@ impl canvas::Program<ViewerMessage> for EquityCurveProgram {
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let inner = inner_rect(bounds.size());
+        // T3019 — chart-canvas-overhaul v1.10.0 (Q7 viewer parity =
+        // BOTH).  The viewer's equity curve adopts the same four-
+        // sided gutter geometry as the cockpit chart so the USD
+        // labels land in a dedicated LEFT gutter and the wall-clock
+        // labels land in a dedicated BOTTOM gutter — no more
+        // labels-overlapping-the-line at busy zones.  Legend = NO
+        // for the viewer's single-series widget (architect-decided).
+        let inner = inner_rect_with_gutters(
+            bounds.size(),
+            AXIS_GUTTER_PRICE_PX,
+            AXIS_GUTTER_RIGHT_PX,
+            0.0,
+            AXIS_GUTTER_TIME_PX,
+        );
         let border = with_alpha(color::BORDER_1.current(self.mode), 0.4);
 
         // Five horizontal gridlines.
@@ -136,6 +152,11 @@ impl canvas::Program<ViewerMessage> for EquityCurveProgram {
         let y_min = min_eq - pad;
         let y_max = max_eq + pad;
 
+        // Price axis (USD labels in the LEFT gutter — T3019 / Q7).
+        draw_price_axis(&mut frame, inner, (y_min, y_max), self.mode);
+        // Time axis (wall-clock labels in the BOTTOM gutter — T3019).
+        draw_time_axis(&mut frame, inner, &self.series, self.mode);
+
         // Index-based X coordinates.
         let n = self.series.points.len();
         let denom = if n <= 1 { 1.0 } else { (n - 1) as f32 };
@@ -160,6 +181,121 @@ impl canvas::Program<ViewerMessage> for EquityCurveProgram {
         );
 
         vec![frame.into_geometry()]
+    }
+}
+
+/// T3019 — viewer-side price-axis draw pass.  Mirrors the cockpit
+/// chart's `draw_price_axis` shape but formats labels as
+/// `{value:.0}` (USD whole-dollar precision is more readable than
+/// `{:.2}` on a multi-thousand-dollar equity range).
+fn draw_price_axis(frame: &mut Frame, inner: Rectangle, range: (f32, f32), mode: ThemeMode) {
+    let (min_v, max_v) = range;
+    #[allow(clippy::cast_precision_loss)]
+    let denom = (GRIDLINE_COUNT - 1) as f32;
+    let axis_color = color::FG_3.current(mode);
+    let border = with_alpha(color::BORDER_1.current(mode), 0.4);
+    #[allow(clippy::cast_precision_loss)]
+    let micro = text::MICRO as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let label_gap = space::XS as f32;
+    let tick_len = 4.0_f32;
+
+    // 1-px axis line at the inner rect's left edge.
+    let axis_line = Path::new(|builder| {
+        builder.move_to(Point::new(inner.x, inner.y));
+        builder.line_to(Point::new(inner.x, inner.y + inner.height));
+    });
+    frame.stroke(
+        &axis_line,
+        Stroke::default().with_color(border).with_width(1.0),
+    );
+
+    for i in 0..GRIDLINE_COUNT {
+        #[allow(clippy::cast_precision_loss)]
+        let frac = i as f32 / denom;
+        let y = inner.y + frac * inner.height;
+        let v = max_v - frac * (max_v - min_v);
+        let tick_path = Path::new(|builder| {
+            builder.move_to(Point::new(inner.x - tick_len, y));
+            builder.line_to(Point::new(inner.x, y));
+        });
+        frame.stroke(
+            &tick_path,
+            Stroke::default().with_color(border).with_width(1.0),
+        );
+        #[allow(clippy::useless_conversion)]
+        frame.fill_text(CanvasText {
+            content: format!("{v:.0}"),
+            position: Point::new(inner.x - tick_len - label_gap, y),
+            color: axis_color,
+            size: micro.into(),
+            align_x: iced::alignment::Horizontal::Right.into(),
+            align_y: iced::alignment::Vertical::Center.into(),
+            ..CanvasText::default()
+        });
+    }
+}
+
+/// T3019 — viewer-side time-axis draw pass.  Same adaptive tick
+/// spacing as the cockpit `chart::draw_time_axis`; labels formatted
+/// as `HH:MM` against UTC (per `local_offset_or_utc` deterministic
+/// branch under `cfg(test)` and the production fallback).
+fn draw_time_axis(frame: &mut Frame, inner: Rectangle, series: &EquitySeries, mode: ThemeMode) {
+    let n = series.points.len();
+    if n == 0 || inner.width <= 0.0 {
+        return;
+    }
+    let axis_color = color::FG_3.current(mode);
+    let border = with_alpha(color::BORDER_1.current(mode), 0.4);
+    #[allow(clippy::cast_precision_loss)]
+    let micro = text::MICRO as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let label_gap = space::XS as f32;
+    let tick_len = 4.0_f32;
+    let intervals = time_axis_tick_count(inner.width, n);
+    if intervals == 0 {
+        return;
+    }
+    let offset = local_offset_or_utc();
+
+    for i in 0..=intervals {
+        let idx = if intervals == 0 {
+            0
+        } else {
+            (i * (n - 1)) / intervals
+        };
+        let Some(pt) = series.points.get(idx) else {
+            continue;
+        };
+        let frac_x = if n <= 1 {
+            0.0
+        } else {
+            #[allow(clippy::cast_precision_loss)]
+            {
+                idx as f32 / (n - 1) as f32
+            }
+        };
+        let x = inner.x + frac_x * inner.width;
+        let tick_path = Path::new(|builder| {
+            builder.move_to(Point::new(x, inner.y + inner.height));
+            builder.line_to(Point::new(x, inner.y + inner.height + tick_len));
+        });
+        frame.stroke(
+            &tick_path,
+            Stroke::default().with_color(border).with_width(1.0),
+        );
+        let local_ts = pt.ts.inner().to_offset(offset);
+        let label = format!("{:02}:{:02}", local_ts.hour(), local_ts.minute());
+        #[allow(clippy::useless_conversion)]
+        frame.fill_text(CanvasText {
+            content: label,
+            position: Point::new(x, inner.y + inner.height + tick_len + label_gap),
+            color: axis_color,
+            size: micro.into(),
+            align_x: iced::alignment::Horizontal::Center.into(),
+            align_y: iced::alignment::Vertical::Top.into(),
+            ..CanvasText::default()
+        });
     }
 }
 

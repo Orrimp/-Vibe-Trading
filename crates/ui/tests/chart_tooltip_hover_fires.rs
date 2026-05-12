@@ -107,11 +107,28 @@ const BOUNDS: Rectangle = Rectangle {
     height: 600.0,
 };
 
-/// `theme::space::S` — the gutter applied on every side by
-/// `widgets::canvas_chart::inner_rect`. Mirrored here as a const so the
-/// expected-marker-position math below stays explicit (test fails loudly
-/// if the production gutter ever shifts).
+/// `theme::space::S` — the base decorative gutter applied on every
+/// side by `widgets::canvas_chart::inner_rect_with_gutters`.
 const GUTTER_PX: f32 = 8.0;
+
+/// chart-canvas-overhaul v1.10.0 (T3010 / R4.1) — additional left
+/// gutter consumed by the price-axis labels.  The chart's drawable
+/// inner rect now starts at `gutter + AXIS_GUTTER_PRICE_PX` rather
+/// than just `gutter`.  Mirrored here so the expected-marker-x math
+/// stays explicit.
+const AXIS_GUTTER_PRICE_PX: f32 = 48.0;
+
+/// Right margin consumed by the brief's R4 layout.  Doesn't move the
+/// marker's leftmost x, but does reduce `inner.width`.  Documented
+/// here for symmetry with the production tokens; not currently used
+/// because the test fixture's only marker sits at the LEFTMOST bar
+/// (x_frac = 0), where the right margin doesn't enter the math.
+#[allow(dead_code)]
+const AXIS_GUTTER_RIGHT_PX: f32 = 16.0;
+
+/// Bottom gutter consumed by the time-axis labels.  Reduces
+/// `inner.height` (so the y-coord math against `inner` shrinks).
+const AXIS_GUTTER_TIME_PX: f32 = 24.0;
 
 /// `widgets::canvas_chart::RANGE_PAD_FRACTION` — the 5 % pad applied to
 /// the price range so the line+markers don't graze the gutter. Mirrored
@@ -140,10 +157,20 @@ fn three_bar_series_with_left_fill() -> (Vec<Bar>, Vec<FillView>, Point) {
 /// *first* fill — used by the test to position the synthetic cursor on
 /// the actual marker centroid rather than guessing.
 ///
+/// **Updated for chart-canvas-overhaul v1.10.0 (T3010):** the
+/// production `chart_inner_rect` now applies a four-sided gutter
+/// (left price-axis = 48, right margin = 16, top = 0, bottom
+/// time-axis = 24) on top of the base 8-px decorative gutter on
+/// each side.  The marker's canvas-local x at the first bar
+/// (`x_frac = 0`) is therefore `gutter + AXIS_GUTTER_PRICE_PX`,
+/// and `inner.height` shrinks by `AXIS_GUTTER_TIME_PX` at the
+/// bottom.
+///
 /// For the fixture above (3 bars, fill at the leftmost ts):
-/// - `x_frac = 0` → `x = gutter`.
-/// - `y` derives from `y_for_price(close, range_with_pad)` against the
-///   `inner` rectangle of `(BOUNDS.width − 2·gutter, BOUNDS.height − 2·gutter)`.
+/// - `x = gutter + AXIS_GUTTER_PRICE_PX = 8 + 48 = 56`.
+/// - `y` derives from `y_for_price(close, range_with_pad)` against
+///   the inner rectangle of `(BOUNDS.height − 2·gutter −
+///   AXIS_GUTTER_TIME_PX)`.
 fn expected_marker_local(bars: &[Bar], fill_price: Decimal) -> Point {
     let lows: Vec<f32> = bars
         .iter()
@@ -159,11 +186,15 @@ fn expected_marker_local(bars: &[Bar], fill_price: Decimal) -> Point {
     let pad = span * RANGE_PAD_FRACTION;
     let (range_lo, range_hi) = (min_low - pad, max_high + pad);
 
-    let inner_h = BOUNDS.height - 2.0 * GUTTER_PX;
+    // chart-canvas-overhaul v1.10.0 — inner rect = base gutter + R4
+    // axis gutters.  Top stays 0 (legend is inside `inner`).
+    let inner_y = GUTTER_PX; // top gutter = 0
+    let inner_h = BOUNDS.height - 2.0 * GUTTER_PX - AXIS_GUTTER_TIME_PX;
+    let inner_x = GUTTER_PX + AXIS_GUTTER_PRICE_PX;
     let price: f32 = fill_price.to_string().parse().unwrap_or(0.0);
     let frac = (price - range_lo) / (range_hi - range_lo);
-    let y = GUTTER_PX + (1.0 - frac) * inner_h;
-    let x = GUTTER_PX; // ts == bars[0].close_ts → x_frac = 0 → x = inner.x
+    let y = inner_y + (1.0 - frac) * inner_h;
+    let x = inner_x; // ts == bars[0].close_ts → x_frac = 0 → x = inner.x
     Point::new(x, y)
 }
 
@@ -400,15 +431,8 @@ fn cursor_leaving_canvas_while_hovering_publishes_hover_ended() {
     let leave = canvas::Event::Mouse(mouse::Event::CursorMoved {
         position: off_canvas,
     });
-    let (msg, _status) = dispatch_canvas_event_for_test(
-        bars,
-        fills,
-        vec![],
-        &mut state,
-        leave,
-        BOUNDS,
-        off_canvas,
-    );
+    let (msg, _status) =
+        dispatch_canvas_event_for_test(bars, fills, vec![], &mut state, leave, BOUNDS, off_canvas);
     assert!(
         matches!(msg, Some(Message::ChartMarkerHoverEnded)),
         "cursor leaving canvas while hovering must publish HoverEnded (T2030 \
@@ -443,15 +467,8 @@ fn cursor_moved_repeated_over_same_marker_publishes_once() {
     );
     assert!(msg1.is_some(), "first dispatch publishes a Hovered message");
 
-    let (msg2, _status2) = dispatch_canvas_event_for_test(
-        bars,
-        fills,
-        vec![],
-        &mut state,
-        event,
-        BOUNDS,
-        position,
-    );
+    let (msg2, _status2) =
+        dispatch_canvas_event_for_test(bars, fills, vec![], &mut state, event, BOUNDS, position);
     assert!(
         msg2.is_none(),
         "second dispatch (same marker) must NOT republish; got {msg2:?}"
