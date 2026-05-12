@@ -73,11 +73,11 @@ mod tests {
     use rust_decimal_macros::dec;
     use uuid::Uuid;
 
-    use crate::event::{AgentRole, LlmProvider, LlmTier};
+    use crate::event::{AgentRole, LlmTier, ProviderKind};
 
     fn make_llm_event(usd: Decimal) -> CostEvent {
         CostEvent::Llm {
-            provider: LlmProvider::Anthropic,
+            provider: ProviderKind::Anthropic,
             model: "claude-3-opus".to_string(),
             tier: LlmTier::DeepThink,
             role: AgentRole::Trader,

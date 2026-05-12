@@ -4,9 +4,15 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// LLM provider identifier.
+///
+/// Renamed from `LlmProvider` → `ProviderKind` in v2 to free the
+/// `LlmProvider` name for the `llm::LlmProvider` trait. The `serde`
+/// `rename_all = "snake_case"` representation is unchanged (variant
+/// names serialize identically), so on-the-wire / on-disk records
+/// remain compatible.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LlmProvider {
+pub enum ProviderKind {
     Anthropic,
     OpenAi,
     OpenRouter,
@@ -57,7 +63,7 @@ pub enum InfraLine {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CostEvent {
     Llm {
-        provider: LlmProvider,
+        provider: ProviderKind,
         model: String,
         tier: LlmTier,
         role: AgentRole,

@@ -200,3 +200,8 @@ implementation, so push back now if anything feels wrong.
 ## Pause-time changelog
 
 - 2026-05-10 (orchestrator, paused): operator paused at architect → developer handoff with *"Write it down for now. I will come to this point a while later."* Three resumption-time decisions documented in this file. Orchestrator's recommendation is "accept all defaults" (A / A / C) but operator can override at resumption.
+- 2026-05-12 (orchestrator, **RESUMED**): operator confirmed all three resumption-time decisions:
+  - **D1 = A** — Keep Q4 bonus mechanical rename (`cost::LlmProvider` enum → `ProviderKind`, 12 call sites) in v2.
+  - **D2 = A** — Strict replay-only at v2.0.0. `ReplayProvider` panics on any cache miss in research mode. Best-effort fallthrough deferred to v3.
+  - **D3 = C** — Bundle Q11 denominator change (`$135 → $200`) in v2. Two `report-sample-*` anchors re-lock once at `T_FINAL_V2_LLM_STRATEGY` alongside Q5d cache-hit-ratio row addition.
+  Developer pass spawning. Status: in-progress → architect-design-ratified-by-operator → developer-multi-pass. Workflow note: the brief predates the [`AGENT.md ## Capability boundaries`](../../AGENT.md#capability-boundaries-orchestrator-vs-sub-agent) amendment (committed 2026-05-12). No retrofit applied — brief is structurally sound (R-items + V-items + T-tasks all mapped, 9 hard constraints preserved). New `## Hypothesis register` pattern + test-runner/evaluator split applies to the NEXT feature.

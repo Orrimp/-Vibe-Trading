@@ -1,8 +1,8 @@
 ---
 slug: v2-llm-strategy
 status: in-progress
-owner: architect
-updated: 2026-05-10
+owner: developer
+updated: 2026-05-12
 version: 2.0.0
 ---
 
@@ -90,7 +90,7 @@ type + error variants) + Design **Q4** resolution (async,
 non-streaming, tool-use-from-day-one, batch-deferred, 8-variant
 `LlmError`, cost-crate enum rename `LlmProvider → ProviderKind`).
 
-- [ ] **T1901** [developer] — `crates/llm/` rewrite from v0 stub:
+- [x] **T1901** [developer] — `crates/llm/` rewrite from v0 stub:
   trait + types + error + tool schema + `cost::ProviderKind`
   rename, per
   [Design → § Q4](feature.md#v2-llm-strategy-q4--trait-shape-async-non-streaming-tool-use-from-day-one-batch-deferred-serde_jsonvalue-schema-eight-variant-llmerror)
@@ -162,6 +162,69 @@ non-streaming, tool-use-from-day-one, batch-deferred, 8-variant
   -p cost` passes (rename propagates through tests). [R1.1, R1.2,
   R1.3, R1.4, R5.1, R5.2, Q4]_
   **[gate for T1902–T1945]**
+  - **Ticked 2026-05-12 (developer, pass 1):**
+    - New `crates/llm/src/lib.rs:1-41` — `#![deny(clippy::float_arithmetic)]`
+      + re-exporter (`pub use trait_def::*; pub use error::LlmError; pub
+      use tools::{validate_tool_use, ToolSchema}; pub use cost::ProviderKind;`).
+    - New `crates/llm/src/trait_def.rs:1-242` — `#[async_trait] pub trait
+      LlmProvider { fn name; fn provider_kind; async fn complete; }`,
+      `ChatRequest::new(model, tier, role)` with sensible defaults
+      (`max_tokens=4096`, `temperature=None`, empty vecs, fresh
+      `Uuid::new_v4()`), `ChatResponse`, `ContentBlock::{Text|ToolUse}`,
+      `StopReason::{EndTurn|MaxTokens|ToolUse|StopSequence}`, `TokenUsage`,
+      `SystemBlock::{Plain|Cached}`, `CacheBreakpoint::Ephemeral`,
+      `ChatMessage`, `MessageRole::{User|Assistant}`, `ModelId(pub
+      String)`. All `Serialize + Deserialize + Clone + Debug + PartialEq`.
+    - New `crates/llm/src/error.rs:1-149` — 8-variant `LlmError`
+      (`Provider {provider, message}`, `RateLimited {retries}`, `Timeout
+      {elapsed_ms}`, `BudgetExceeded {spent_usd, ceiling_usd}`,
+      `InvalidResponse(String)`, `ReplayMiss(String)`,
+      `Network(#[from] reqwest::Error)`, `Auth(String)`) per Design Q4f
+      `feature.md:1224-1244`.
+    - New `crates/llm/src/tools.rs:1-115` — `ToolSchema { name,
+      description, input_schema: serde_json::Value }` +
+      `validate_tool_use(&schema, &input) -> Result<(), LlmError>` using
+      `jsonschema::validator_for` (Draft 2020-12).
+    - Cost-crate rename (12-call-site mechanical sed-style):
+      `crates/cost/src/event.rs:9` (`pub enum LlmProvider` → `ProviderKind`
+      with serde rename_all = "snake_case" preserved → wire-compat),
+      `crates/cost/src/event.rs:60` (`CostEvent::Llm.provider:
+      ProviderKind`), `crates/cost/src/lib.rs:11` (re-export rename),
+      `crates/cost/src/sink.rs:76,82` (test import + fixture).
+    - `crates/llm/Cargo.toml` deps: `cost` (path), `tokio` (workspace),
+      `async-trait`, `reqwest` (workspace, `["json"]`), `serde`,
+      `serde_json`, `rust_decimal`, `jsonschema 0.30`, `uuid`
+      (`["serde","v4"]`), `tracing`, `thiserror`. Dev-deps: `tokio`
+      (`["test-util","macros","rt-multi-thread","sync"]`),
+      `rust_decimal_macros`.
+    - Test snippet (`cargo test -p llm --lib` — verbatim last 5 lines):
+      ```
+      test trait_def::tests::t1901_chat_request_new_has_sensible_defaults ... ok
+      test trait_def::tests::t1901_shape_types_round_trip_through_serde_json ... ok
+      test tools::tests::t1901_validate_tool_use_accepts_conforming_input ... ok
+      test tools::tests::t1901_validate_tool_use_rejects_missing_required_field ... ok
+      test tools::tests::t1901_validate_tool_use_rejects_wrong_type ... ok
+      test error::tests::t1901_every_llmerror_variant_has_nonempty_display ... ok
+      test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+      ```
+    - Test snippet (`cargo test -p cost --lib` — verbatim last 5 lines):
+      ```
+      test sink::tests::t30_noop_sink_accepts_events ... ok
+      test sink::tests::t30_ledger_sink_writes_balanced_entries ... ok
+      test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+      ```
+    - `cargo build -p llm` clean (release + debug); `cargo check
+      --workspace` clean (no downstream crate broken by the rename);
+      `cargo clippy -p llm --all-targets` 0 warnings on the new crate
+      (the 3 pre-existing `trading_core` / `audit` pedantic warnings are
+      unrelated to T1901).
+    - Anchor invariant: T1901 touched **none** of `crates/strategy`,
+      `crates/audit`, `crates/exec`, `crates/backtest`, or report
+      rendering — so the 9 strategy backtest anchors at
+      `spec/anchors.toml:15-58` and the 2 success-report anchors at
+      `:67-75` are byte-untouched (sandbox blocks
+      `scripts/verify_anchors.sh` from this sub-agent; orchestrator can
+      run the gate on resume).
 
 ## M2 — Provider implementations (Anthropic, OpenAI-compatible, Ollama)
 
@@ -1541,3 +1604,23 @@ T1923 → T1924 → T1941 → T1944 → T_FINAL.
   synchronization gates included; handoff contract preserved
   (no UI involvement beyond the right-rail "LLM budget"
   tile). Owner → architect; status stays in-progress.
+- 2026-05-12 (developer, pass 1): **T1901 ticked** — `crates/llm/`
+  rewrite from v0 23-line stub to 4 source files
+  (`lib.rs` re-exporter, `trait_def.rs` with `LlmProvider` trait
+  + 11 request/response types, `error.rs` 8-variant `LlmError`,
+  `tools.rs` `ToolSchema` + `validate_tool_use` via `jsonschema`
+  Draft 2020-12). Q4-bonus mechanical rename `cost::LlmProvider →
+  ProviderKind` applied across 4 files / 5 call sites in `cost`
+  crate (serde `rename_all = "snake_case"` preserves wire
+  compatibility — no on-disk byte change to ledger records). 6
+  new `t1901_*` unit tests green on `cargo test -p llm --lib`; 2
+  pre-existing `t30_*` tests stay green on `cargo test -p cost`.
+  `cargo check --workspace` clean (no consumer crate broken by
+  the rename — the `llm` crate has no in-tree consumers yet).
+  Anchor invariant: nothing in `crates/{strategy,audit,exec,backtest,reports}/`
+  touched; 9 strategy + 2 success-report anchors at
+  `spec/anchors.toml:15-75` stay byte-untouched. Owner →
+  developer; status stays in-progress. **Pass-1 stop point:**
+  T1901 alone (the gate task — every M2-M7 task depends on the
+  stable trait shape that just landed). M2-M7 +
+  `T_FINAL_V2_LLM_STRATEGY` remain unticked for pass 2+.

@@ -5,6 +5,35 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-trading_core = { path = "../core" }
-thiserror.workspace = true
-serde.workspace = true
+# Workspace siblings (v2 — LLM strategy)
+cost = { path = "../cost" }
+
+# Async + trait shape
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+async-trait = { workspace = true }
+
+# HTTP (used by `LlmError::Network(reqwest::Error)`; provider impls land in T1902+)
+reqwest = { workspace = true, features = ["json"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Numerics (`LlmError::BudgetExceeded` carries `Decimal`)
+rust_decimal = { workspace = true }
+
+# Tool-use JSON Schema validation (R5 / Q4e)
+jsonschema = { version = "0.30", default-features = false }
+
+# IDs
+uuid = { workspace = true, features = ["serde", "v4"] }
+
+# Observability
+tracing = { workspace = true }
+
+# Errors
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "sync"] }
+rust_decimal_macros = { workspace = true }
