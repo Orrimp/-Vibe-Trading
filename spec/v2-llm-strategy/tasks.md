@@ -4,6 +4,7 @@ status: in-progress
 owner: developer
 updated: 2026-05-12
 version: 2.0.0
+pass: 2
 ---
 
 # Tasks — v2 LLM strategy
@@ -232,7 +233,7 @@ Covers feature.md **R2** (three first-class providers) + Design
 **Q9** (rate-limit + retry policy lives in leaf provider impl)
 + partial **Q5** (provider-aware translation of cache markers).
 
-- [ ] **T1902** [developer] — Retry helper at
+- [x] **T1902** [developer] — Retry helper at
   `crates/llm/src/retry.rs` per
   [Design → § Q9](feature.md#v2-llm-strategy-q9--rate-limit-handling-exponential-backoff-with-full-jitter-3-retries-no-circuit-breaker-at-v200-per-provider-retry-policy-carried-in-the-leaf-provider-impl):
   - `pub async fn run_with_backoff<F, Fut, T>(max_retries: u8,
@@ -254,8 +255,36 @@ Covers feature.md **R2** (three first-class providers) + Design
   (c) `Retry-After: 2` header pushes the next sleep to ≥ 2s.
   [R7.1, R7.2, R7.3, Q9]_
   **[deps: T1901]**
+  - **Ticked 2026-05-12 (developer, pass 2):**
+    - New `crates/llm/src/retry.rs:1-273` — `pub async fn
+      run_with_backoff<F, Fut, T>(max_retries, operation)`,
+      `pub enum RetryError::{RateLimited { retry_after }, Transient,
+      Fatal(LlmError)}`, base 500ms / cap 8s, **full jitter**
+      (`rand::rng().random_range(0..=cap_ms)`), `Retry-After`
+      honored via `max(retry_after, computed_backoff)`, fatal
+      propagates immediately.
+    - `crates/llm/Cargo.toml:38` — `rand = { workspace }` added
+      to runtime deps; `wiremock` to dev-deps for provider tests.
+    - `crates/llm/src/lib.rs:32` — `pub mod retry;`.
+    - In-crate unit tests at `crates/llm/src/retry.rs:138-265`
+      (5 tests: 3×429→ok, 4×429 exhausts, Retry-After ≥ 2s,
+      Fatal immediate, Transient retried-then-exhausts) use
+      `#[tokio::test(start_paused = true)]` for deterministic
+      time.
+    - Public-edge integration tests at
+      `crates/llm/tests/retry_test.rs:1-69` re-assert the three
+      T1902 acceptance points against `llm::retry`.
+    - Test snippet (`cargo test -p llm --test retry_test`
+      verbatim last 5 lines):
+      ```
+      running 3 tests
+      test t1902_retry_after_2s_pushes_sleep ... ok
+      test t1902_four_429s_exhausts_budget ... ok
+      test t1902_three_429s_then_success ... ok
+      test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      ```
 
-- [ ] **T1903** [developer] — Anthropic provider impl at
+- [x] **T1903** [developer] — Anthropic provider impl at
   `crates/llm/src/providers/anthropic.rs` per
   [Design → § Q5 + Q9 + Crate / module surface](feature.md#crate--module-surface):
   - `pub struct AnthropicProvider { client: reqwest::Client,
@@ -290,8 +319,52 @@ Covers feature.md **R2** (three first-class providers) + Design
   surfaces as `LlmError::Auth`. [R2.1, R3.1, R3.2, R3.3, R5.1,
   R5.3, Q5b, Q5c, Q9]_
   **[deps: T1901, T1902]**
+  - **Ticked 2026-05-12 (developer, pass 2):**
+    - New `crates/llm/src/providers/anthropic.rs:1-385`
+      `pub struct AnthropicProvider { client, base_url,
+      api_key, default_model }`, `LlmProvider::complete`
+      wraps `retry::run_with_backoff(3, ...)`, sends
+      `POST {base_url}/messages` with headers `x-api-key`,
+      `anthropic-version: 2023-06-01`, `content-type:
+      application/json`.
+    - Wire-format helpers (pub(crate) for tests):
+      `build_request_body` (`anthropic.rs:161-176`),
+      `parse_response` (`anthropic.rs:236-289`),
+      `parse_retry_after` (`anthropic.rs:293-296`),
+      `classify_http_error` (`anthropic.rs:301-318`).
+    - Cache markers: `SystemBlock::Cached` →
+      `{"type":"text","text":...,"cache_control":{"type":"ephemeral"}}`,
+      `SystemBlock::Plain` → `{"type":"text","text":...}` with
+      `cache_control` omitted via
+      `#[serde(skip_serializing_if = "Option::is_none")]`.
+    - Tool-use: declared tools serialize as Anthropic's
+      `{name, description, input_schema}`; response `tool_use`
+      blocks routed through `tools::validate_tool_use(...)` —
+      undeclared tool name AND schema-violation both surface
+      as `LlmError::InvalidResponse`.
+    - HTTP classification: 429 → `RateLimited { retry_after }`,
+      503 → `Transient`, 401/403 → `Fatal(LlmError::Auth)`,
+      other → `Fatal(LlmError::Provider { provider: Anthropic })`.
+    - In-crate unit tests at `anthropic.rs:323-573` (10 tests:
+      2-marker emission, empty-system omit, tool envelope,
+      usage mapping, valid tool-use, schema-violation reject,
+      undeclared tool reject, Retry-After parse, HTTP class).
+    - Integration tests via wiremock at
+      `crates/llm/tests/anthropic_provider_test.rs:1-192`
+      (5 tests covering all four T1903 acceptance items
+      a/b/c/d + the no-cache-when-uncached bonus).
+    - Test snippet (`cargo test -p llm --test
+      anthropic_provider_test` verbatim last 5 lines):
+      ```
+      test t1903_401_surfaces_as_auth_error ... ok
+      test t1903_request_body_no_markers_when_uncached ... ok
+      test t1903_canned_200_parses_into_chat_response ... ok
+      test t1903_request_body_emits_two_cache_breakpoints ... ok
+      test t1903_429_then_200_retries_to_success ... ok
+      test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+      ```
 
-- [ ] **T1904** [developer] — OpenAI-compatible provider at
+- [x] **T1904** [developer] — OpenAI-compatible provider at
   `crates/llm/src/providers/openai.rs`:
   - `pub struct OpenAiProvider { client: reqwest::Client,
     base_url: String, api_key: String, default_model: ModelId }`
@@ -326,8 +399,56 @@ Covers feature.md **R2** (three first-class providers) + Design
   round-trips, (d) `tokens_cached_in == 0` always. [R2.2, R3.3,
   R5.1, R5.3]_
   **[deps: T1901, T1902]**
+  - **Ticked 2026-05-12 (developer, pass 2):**
+    - New `crates/llm/src/providers/openai.rs:1-466`
+      `pub struct OpenAiProvider { client, base_url, api_key,
+      default_model, kind }` + `new_with_base_url(...)` per
+      task body + `with_provider_kind(kind)` so the factory
+      (T1913) can override `provider_kind()` for OpenRouter /
+      DeepSeek routes.
+    - `complete()` posts `{base_url}/chat/completions` with
+      `Authorization: Bearer <api_key>`. `SystemBlock::Cached`
+      silently flattens into the single `role: "system"`
+      message; when any marker was dropped, one
+      `tracing::debug!(target: "llm.cache",
+      "cache_markers_dropped_for_provider", provider =
+      "openai_compat")` line emits per `complete()` call (the
+      task body says "per builder construction" but the only
+      side-effecting boundary at v2 is `complete()`; equivalent
+      observability outcome).
+    - Tool envelope: `{type: "function", function: {name,
+      description, parameters}}` per OpenAI shape.
+    - Response parsing: `choices[0].message.{content,
+      tool_calls}` → `ContentBlock`. `tool_calls[].function.
+      arguments` is a JSON-encoded **string**, parsed +
+      schema-validated via `validate_tool_use`. `usage.
+      prompt_tokens / completion_tokens` map to `tokens_in /
+      tokens_out`; `tokens_cached_in: 0` always (R5.3).
+    - Retries share the helper at `retry.rs`; HTTP class
+      matrix mirrors Anthropic but `LlmError::Provider` carries
+      the configured `kind` (OpenAi / OpenRouter / DeepSeek)
+      so pricing lookups land on the right rate-card.
+    - In-crate unit tests at `openai.rs:355-466` (7 tests:
+      cache markers dropped, tool envelope, no-system-when-
+      empty, usage mapping with cached=0, tool_calls validate,
+      unparseable arguments reject, kind-threading, name-
+      varies-with-kind).
+    - wiremock integration tests at
+      `crates/llm/tests/openai_provider_test.rs:1-119`
+      (3 tests covering T1904 acceptance a/b/c/d — the four
+      items collapse to 3 tests since `tokens_cached_in == 0`
+      is asserted in the (b) and (c) bodies).
+    - Test snippet (`cargo test -p llm --test
+      openai_provider_test` verbatim last 5 lines):
+      ```
+      running 3 tests
+      test t1904_canned_response_parses_with_zero_cached ... ok
+      test t1904_request_body_has_no_cache_markers ... ok
+      test t1904_429_then_200_retries ... ok
+      test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+      ```
 
-- [ ] **T1905** [developer] — Ollama provider at
+- [x] **T1905** [developer] — Ollama provider at
   `crates/llm/src/providers/ollama.rs`:
   - `pub struct OllamaProvider { client: reqwest::Client,
     base_url: String, default_model: ModelId }`. No `api_key`
@@ -360,8 +481,57 @@ Covers feature.md **R2** (three first-class providers) + Design
   schema-mismatch surfaces as `LlmError::InvalidResponse`. [R2.3,
   R5.4]_
   **[deps: T1901, T1902]**
+  - **Ticked 2026-05-12 (developer, pass 2):**
+    - New `crates/llm/src/providers/ollama.rs:1-435`
+      `pub struct OllamaProvider { client, base_url,
+      default_model }` (no `api_key`), default base URL
+      `http://localhost:11434`.
+    - `complete()` posts `{base_url}/api/chat` with
+      `options.num_predict = max_tokens`, `stream: false`,
+      `options.temperature` (skip when None).
+    - **`max_retries = 0`.** No `run_with_backoff` wrap; HTTP
+      transport errors surface directly as `LlmError::Network`
+      via the `From<reqwest::Error>` impl on `LlmError`.
+      Non-success HTTP statuses surface as
+      `LlmError::Provider { provider: Other("ollama") }`.
+    - `SystemBlock::Cached` flattens to plain text (no
+      caching). Best-effort tool-use (R5.4): when
+      `request.tools` is non-empty, the helper
+      `tool_schema_tail(tools)` appends a "Respond with a
+      single JSON object matching one of these tool
+      schemas: …" tail to the system message
+      (`ollama.rs:172-191`).
+    - Response parsing: when tools were declared the text
+      content is JSON-parsed as `{"name": ..., "input":
+      {...}}` and routed through `validate_tool_use(...)`.
+      All schema / parse failures surface as
+      `LlmError::InvalidResponse("ollama best-effort tool-
+      use schema-mismatch: ...")` matching the task's
+      "ollama best-effort tool-use schema-mismatch: ..."
+      string contract.
+      `prompt_eval_count` → `tokens_in`, `eval_count` →
+      `tokens_out`, `tokens_cached_in: 0` always.
+    - In-crate unit tests at `ollama.rs:288-432` (7 tests:
+      options mapping, tool tail, usage mapping, best-effort
+      happy path, schema-mismatch, non-JSON content, name/
+      kind).
+    - wiremock integration tests at
+      `crates/llm/tests/ollama_provider_test.rs:1-158`
+      (4 tests covering acceptance a/b/c/d/e — (b) folded
+      into (a) since `tokens_cached_in == 0` is in the same
+      ChatResponse assertion).
+    - Test snippet (`cargo test -p llm --test
+      ollama_provider_test` verbatim last 5 lines):
+      ```
+      running 4 tests
+      test t1905_network_failure_no_retry ... ok
+      test t1905_canned_response_parses_correctly ... ok
+      test t1905_best_effort_tool_use_happy_path ... ok
+      test t1905_best_effort_tool_use_schema_mismatch ... ok
+      test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+      ```
 
-- [ ] **T1906** [developer] — Sub-module index at
+- [x] **T1906** [developer] — Sub-module index at
   `crates/llm/src/providers/mod.rs`:
   - `pub mod anthropic; pub mod openai; pub mod ollama;`
   - `pub use anthropic::AnthropicProvider;`
@@ -373,6 +543,28 @@ Covers feature.md **R2** (three first-class providers) + Design
   reachable via `llm::AnthropicProvider` etc. (re-exported
   through `crates/llm/src/lib.rs`). [R2 / housekeeping]_
   **[deps: T1903, T1904, T1905]**
+  - **Partially ticked 2026-05-12 (developer, pass 2):**
+    - New `crates/llm/src/providers/mod.rs:1-18` —
+      `pub mod anthropic; pub mod ollama; pub mod openai;`
+      with `pub use {provider}::{Provider}` for each.
+    - `crates/llm/src/lib.rs:37` — re-exports
+      `AnthropicProvider`, `OllamaProvider`, `OpenAiProvider`
+      from the crate root so consumers `use llm::OpenAiProvider`
+      etc. as the acceptance criterion specifies.
+    - `cargo check -p llm` clean; `cargo build -p llm`
+      builds (orchestrator should re-run `cargo doc -p llm
+      --no-deps` to verify the warning-clean docs acceptance —
+      the sub-agent sandbox refused `cargo doc` permission).
+    - Marked `[~]` rather than `[x]` solely because the
+      `cargo doc --no-deps` warning-clean leg of the
+      acceptance contract was not verifiable from this
+      sub-agent's sandbox; the build / re-export / reach-
+      ability legs all pass.
+    - **Orchestrator 2026-05-12: flipped `[~] → [x]`.**
+      `cargo doc -p llm --no-deps` run from orchestrator's
+      shell: `Documenting llm v0.1.0` + `Finished dev profile`
+      + `Generated target/doc/llm/index.html` — zero warnings.
+      Doc acceptance leg confirmed.
 
 ## M3 — Prompt-cache layer + `CachedSystemPrompt` builder + cache-hit-ratio observability
 
@@ -1624,3 +1816,46 @@ T1923 → T1924 → T1941 → T1944 → T_FINAL.
   T1901 alone (the gate task — every M2-M7 task depends on the
   stable trait shape that just landed). M2-M7 +
   `T_FINAL_V2_LLM_STRATEGY` remain unticked for pass 2+.
+- 2026-05-12 (developer, pass 2): **T1902 / T1903 / T1904 / T1905
+  ticked `[x]`, T1906 ticked `[~]`** — M2 provider implementations
+  landed in one pass.
+  - `crates/llm/src/retry.rs` (new, ~273 lines) — shared
+    full-jitter exponential-backoff helper per Q9.
+  - `crates/llm/src/providers/{anthropic,openai,ollama}.rs`
+    (3 new files, ~385 + ~466 + ~435 lines) — load-bearing
+    Anthropic provider (cache markers + tool-use + retry),
+    OpenAI-compat provider (markers silently dropped + JSON-
+    string `arguments` parsing + `kind`-threading for
+    OpenRouter / DeepSeek pricing), Ollama provider (no auth,
+    no retries, best-effort tool-use via system-prompt tail).
+  - `crates/llm/src/providers/mod.rs` (new) + `crates/llm/
+    src/lib.rs` extended re-exports — `AnthropicProvider`,
+    `OpenAiProvider`, `OllamaProvider` reachable from crate
+    root per T1906 acceptance.
+  - `crates/llm/Cargo.toml` — `rand = { workspace }` added to
+    runtime deps (Q9c full-jitter formula); `wiremock` to
+    dev-deps (no real HTTP in tests, per pass-2 brief
+    constraint).
+  - 51 tests green across 5 binaries (`cargo test -p llm`):
+    36 in-crate unit tests, 5 anthropic + 3 openai + 4 ollama
+    wiremock integration tests, 3 retry-helper integration
+    tests. `cargo clippy -p llm --all-targets` zero warnings
+    in llm (pre-existing `trading_core` + `audit` warnings
+    untouched by this pass). `cargo fmt -p llm --check` clean.
+  - Anchor invariant: nothing in
+    `crates/{strategy,audit,exec,backtest,reports}/` touched
+    — the 9 strategy + 2 success-report anchors at
+    `spec/anchors.toml:15-75` stay byte-untouched (sandbox
+    blocks `verify_anchors.sh` from this sub-agent;
+    orchestrator runs the gate on resume).
+  - T1906 left `[~]` rather than `[x]` because the
+    `cargo doc -p llm --no-deps` warning-clean leg of its
+    acceptance contract was not verifiable from this sub-
+    agent's sandbox (permission denied). Build + re-export +
+    reachability legs all pass; orchestrator can flip to `[x]`
+    after `cargo doc`.
+  - **Pass-2 stop point:** end of M2 — natural milestone
+    boundary. Pass-3 candidate: **T1907** (`CostBudget`
+    atomic-cents refactor, gate task for M4 budget enforcement)
+    or **T1908** (`CachedSystemPrompt` builder at
+    `crates/llm/src/prompt_cache.rs`).

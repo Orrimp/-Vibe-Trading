@@ -29,11 +29,14 @@
 //! single import.
 
 pub mod error;
+pub mod providers;
+pub mod retry;
 pub mod tools;
 pub mod trait_def;
 
 pub use cost::ProviderKind;
 pub use error::LlmError;
+pub use providers::{AnthropicProvider, OllamaProvider, OpenAiProvider};
 pub use tools::{validate_tool_use, ToolSchema};
 pub use trait_def::{
     CacheBreakpoint, ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmProvider,
