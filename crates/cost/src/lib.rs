@@ -7,6 +7,6 @@ pub mod budget;
 pub mod event;
 pub mod sink;
 
-pub use budget::CostBudget;
+pub use budget::{BudgetError, CostBudget};
 pub use event::{AgentRole, CostEvent, InfraLine, LlmTier, ProviderKind};
 pub use sink::{CostSink, LedgerCostSink, NoopCostSink};

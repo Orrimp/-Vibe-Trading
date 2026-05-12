@@ -28,14 +28,25 @@
 //! like `fn provider_kind(&self) -> ProviderKind` read naturally from a
 //! single import.
 
+pub mod auth;
+pub mod budgeted;
+pub mod config;
 pub mod error;
+pub mod factory;
+pub mod observability;
+pub mod pricing;
+pub mod prompt_cache;
 pub mod providers;
+pub mod redact;
 pub mod retry;
 pub mod tools;
 pub mod trait_def;
 
+pub use budgeted::BudgetedProvider;
+pub use config::{LlmConfig, TierConfig};
 pub use cost::ProviderKind;
 pub use error::LlmError;
+pub use prompt_cache::{CachedSystemPrompt, CachedSystemPromptBuilder};
 pub use providers::{AnthropicProvider, OllamaProvider, OpenAiProvider};
 pub use tools::{validate_tool_use, ToolSchema};
 pub use trait_def::{

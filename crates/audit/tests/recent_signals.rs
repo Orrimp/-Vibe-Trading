@@ -67,21 +67,40 @@ async fn recent_signals_returns_window_subset() {
     let _id2 = post_strategy_signal(&ledger, &s2, qty.clone(), None, Venue::Binance, false, None)
         .await
         .expect("post s2");
-    let id3 = post_strategy_signal(&ledger, &s3, qty.clone(), None, Venue::Binance, true,
-        Some("per_symbol_cap"))
-        .await
-        .expect("post s3");
+    let id3 = post_strategy_signal(
+        &ledger,
+        &s3,
+        qty.clone(),
+        None,
+        Venue::Binance,
+        true,
+        Some("per_symbol_cap"),
+    )
+    .await
+    .expect("post s3");
     let _id_outside = post_strategy_signal(
-        &ledger, &s_outside, qty.clone(), None, Venue::Binance, false, None,
+        &ledger,
+        &s_outside,
+        qty.clone(),
+        None,
+        Venue::Binance,
+        false,
+        None,
     )
     .await
     .expect("post outside");
 
     let since = ts_secs(0);
     let until = ts_secs(1_000);
-    let rows = recent_signals(&ledger, Venue::Binance, Symbol::new("BTCUSDT"), since, until)
-        .await
-        .expect("recent_signals");
+    let rows = recent_signals(
+        &ledger,
+        Venue::Binance,
+        Symbol::new("BTCUSDT"),
+        since,
+        until,
+    )
+    .await
+    .expect("recent_signals");
 
     assert_eq!(
         rows.len(),
@@ -121,9 +140,15 @@ async fn recent_signals_empty_window_returns_ok_empty() {
     // Query a window before the seeded row.
     let since = ts_secs(1_000_000);
     let until = ts_secs(2_000_000);
-    let rows = recent_signals(&ledger, Venue::Binance, Symbol::new("BTCUSDT"), since, until)
-        .await
-        .expect("query");
+    let rows = recent_signals(
+        &ledger,
+        Venue::Binance,
+        Symbol::new("BTCUSDT"),
+        since,
+        until,
+    )
+    .await
+    .expect("query");
     assert!(rows.is_empty(), "out-of-window query returns Ok(vec![])");
 }
 
@@ -139,9 +164,15 @@ async fn recent_signals_gate_off_ledger_returns_ok_empty() {
     // gate).
     let since = ts_secs(0);
     let until = ts_secs(i64::from(u32::MAX));
-    let rows = recent_signals(&ledger, Venue::Binance, Symbol::new("BTCUSDT"), since, until)
-        .await
-        .expect("query gate-off");
+    let rows = recent_signals(
+        &ledger,
+        Venue::Binance,
+        Symbol::new("BTCUSDT"),
+        since,
+        until,
+    )
+    .await
+    .expect("query gate-off");
     assert!(
         rows.is_empty(),
         "gate-off ledger must return Ok(vec![]) — never Err for the no-rows case"
@@ -209,17 +240,35 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
     let btc_coinbase = make_signal(SignalKind::Buy, "BTCUSDT", 100, "sma_crossover");
 
     let _ = post_strategy_signal(
-        &ledger, &btc_binance, qty.clone(), None, Venue::Binance, false, None,
+        &ledger,
+        &btc_binance,
+        qty.clone(),
+        None,
+        Venue::Binance,
+        false,
+        None,
     )
     .await
     .expect("post btc/binance");
     let _ = post_strategy_signal(
-        &ledger, &eth_binance, qty.clone(), None, Venue::Binance, false, None,
+        &ledger,
+        &eth_binance,
+        qty.clone(),
+        None,
+        Venue::Binance,
+        false,
+        None,
     )
     .await
     .expect("post eth/binance");
     let _ = post_strategy_signal(
-        &ledger, &btc_coinbase, qty.clone(), None, Venue::Coinbase, false, None,
+        &ledger,
+        &btc_coinbase,
+        qty.clone(),
+        None,
+        Venue::Coinbase,
+        false,
+        None,
     )
     .await
     .expect("post btc/coinbase");
@@ -228,23 +277,41 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
     let until = ts_secs(1_000);
 
     // BTC/Binance — exactly 1 row.
-    let btc_bn = recent_signals(&ledger, Venue::Binance, Symbol::new("BTCUSDT"), since, until)
-        .await
-        .expect("read btc/binance");
+    let btc_bn = recent_signals(
+        &ledger,
+        Venue::Binance,
+        Symbol::new("BTCUSDT"),
+        since,
+        until,
+    )
+    .await
+    .expect("read btc/binance");
     assert_eq!(btc_bn.len(), 1);
     assert_eq!(btc_bn[0].symbol, Symbol::new("BTCUSDT"));
 
     // ETH/Binance — exactly 1 row.
-    let eth_bn = recent_signals(&ledger, Venue::Binance, Symbol::new("ETHUSDT"), since, until)
-        .await
-        .expect("read eth/binance");
+    let eth_bn = recent_signals(
+        &ledger,
+        Venue::Binance,
+        Symbol::new("ETHUSDT"),
+        since,
+        until,
+    )
+    .await
+    .expect("read eth/binance");
     assert_eq!(eth_bn.len(), 1);
     assert_eq!(eth_bn[0].symbol, Symbol::new("ETHUSDT"));
 
     // BTC/Coinbase — exactly 1 row (the cross-venue row, isolated by
     // the `venue = ?` predicate).
-    let btc_cb = recent_signals(&ledger, Venue::Coinbase, Symbol::new("BTCUSDT"), since, until)
-        .await
-        .expect("read btc/coinbase");
+    let btc_cb = recent_signals(
+        &ledger,
+        Venue::Coinbase,
+        Symbol::new("BTCUSDT"),
+        since,
+        until,
+    )
+    .await
+    .expect("read btc/coinbase");
     assert_eq!(btc_cb.len(), 1);
 }

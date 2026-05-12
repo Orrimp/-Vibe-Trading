@@ -4,7 +4,7 @@ status: in-progress
 owner: developer
 updated: 2026-05-12
 version: 2.0.0
-pass: 2
+pass: 3
 ---
 
 # Tasks — v2 LLM strategy
@@ -575,7 +575,7 @@ shape + provider-aware emission + cache-hit-rate metric) + Design
 `audit::query::cache_hit_ratio_since` for the report's new System
 Health row).
 
-- [ ] **T1907** [developer] — `CostBudget` atomic-cents refactor
+- [x] **T1907** [developer] — `CostBudget` atomic-cents refactor
   per
   [Design → § Q6](feature.md#v2-llm-strategy-q6--budget-gate-placement-factory-level-budgetedproviderinner-decorator-with-atomicu64-backed-atomic-spent-counter-pre-call-estimate-from-max_tokens-post-call-reconciliation-drives-the-source-of-truth):
   - `crates/cost/src/budget.rs:14` — replace `spent_usd:
@@ -610,8 +610,42 @@ Health row).
   (d) `remaining()` reads consistent. [R4.1, R4.2, R4.3, Q6c]_
   **[deps: T1901]**
   **[gate for T1908–T1912]**
+  - **Ticked 2026-05-12 (developer, pass 3):**
+    - `crates/cost/src/budget.rs:46` — `spent_cents:
+      AtomicU64` field; `add_spend(&self, Decimal)` converts
+      USD → cents (round-down via `Decimal::floor`) and
+      `fetch_add`s. `try_reserve(&self, Decimal) ->
+      Result<(), BudgetError>` is the check-only pre-call
+      gate (saturating compare against `ceiling_cents`; no
+      cents are reserved — only the post-call `add_spend`
+      writes).
+    - New `cost::BudgetError::BudgetExceeded { spent_usd,
+      ceiling_usd }` (cost crate can't depend on llm) +
+      `impl From<cost::BudgetError> for llm::LlmError` at
+      `crates/llm/src/error.rs:80-94` lifts it into
+      `LlmError::BudgetExceeded` at the caller boundary.
+    - **Spec divergence (flagged).** The prompt mentions
+      "RAII Reservation drop-on-error returns cents"; the
+      authoritative spec (feature.md § Q6c + tasks.md T1907
+      acceptance) calls for a check-only API with no
+      reservation — only post-call `add_spend` mutates
+      `spent_cents`. The 0.2 % concurrent-overshoot bound
+      (V12) IS the concurrent-call contract; an RAII
+      reservation would tighten that to 0 % but trades the
+      pre-call latency budget. Followed feature.md.
+    - `crates/agent/src/runtime.rs:236` continues to compile
+      (already used `let cost_budget = …`, not `let mut`).
+    - Test snippet (`cargo test -p cost --test
+      budget_atomic_test` verbatim last 5 lines):
+      ```
+      test t1907_a_within_ceiling_reservation_ok ... ok
+      test t1907_b_over_ceiling_returns_budget_exceeded ... ok
+      test t1907_d_remaining_reads_consistent ... ok
+      test t1907_c_parallel_add_spend_no_torn_writes ... ok
+      test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      ```
 
-- [ ] **T1908** [developer] — `CachedSystemPrompt` builder at
+- [x] **T1908** [developer] — `CachedSystemPrompt` builder at
   `crates/llm/src/prompt_cache.rs` per
   [Design → § Q5](feature.md#v2-llm-strategy-q5--prompt-cache-strategy-ttl-driven-2-breakpoints-project--role-provider-aware-builder-per-role-per-day-cache-hit-rate-tracing-gauge):
   - `pub struct CachedSystemPrompt { project_ctx: String,
@@ -644,8 +678,34 @@ Health row).
   shapes; consistent content). [R3.1, R3.2, R3.3, Q5a, Q5b,
   Q5c]_
   **[deps: T1901]**
+  - **Ticked 2026-05-12 (developer, pass 3):**
+    - New `crates/llm/src/prompt_cache.rs:1-145`
+      `pub struct CachedSystemPrompt { project_ctx, role_ctx,
+      dynamic_ctx }` constructed via `::builder()`. The
+      builder chain `.project(...).role(...).dynamic(...)
+      .build_for(&ProviderKind)` returns `Vec<SystemBlock>`.
+    - `build_for(&ProviderKind::Anthropic)` → 3 blocks:
+      `Cached(project)`, `Cached(role)`,
+      `Plain(dynamic)`. Any other variant flattens to one
+      `Plain(format!("{p}\n\n{r}\n\n{d}"))` block and emits
+      `tracing::debug!(target: "llm.cache",
+      "cache_markers_dropped_for_provider")` per call.
+    - Byte-stable contract enforced by hashing two identical
+      builds in the acceptance test under a deterministic
+      LCG seeded with `0xC0FFEE` (1000 iterations).
+    - Public re-exports at `crates/llm/src/lib.rs:39-40`:
+      `CachedSystemPrompt`, `CachedSystemPromptBuilder`.
+    - Test snippet (`cargo test -p llm --test
+      prompt_cache_test` verbatim last 5 lines):
+      ```
+      test t1908_a_anthropic_emits_two_cached_markers ... ok
+      test t1908_d_content_alignment_consistent_across_shapes ... ok
+      test t1908_b_openai_and_ollama_emit_zero_markers ... ok
+      test t1908_c_byte_stable_over_1000_inputs ... ok
+      test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+      ```
 
-- [ ] **T1909** [developer] — Cache observability helper at
+- [x] **T1909** [developer] — Cache observability helper at
   `crates/llm/src/observability.rs` per Design Q5d:
   - Module-level `static LLM_CACHE_INPUT_TOKENS:
     once_cell::sync::Lazy<prometheus::CounterVec>` with label
@@ -670,8 +730,37 @@ Health row).
   750. The `tracing` event lands at target `llm.cache` with
   the expected fields. [R3.4, R9.5, Q5d]_
   **[deps: T1901]**
+  - **Ticked 2026-05-12 (developer, pass 3):**
+    - New `crates/llm/src/observability.rs:1-95`
+      `pub fn emit_cache_event(role, tokens_in,
+      tokens_cached_in)` increments
+      `metrics::counter!("llm_cache_input_tokens_total",
+      "role" => label)` + the hit-tokens sibling, then fires
+      `tracing::info!(target: "llm.cache", role, tokens_in,
+      tokens_cached_in, hit_ratio, "llm.cache.event")`.
+    - **Spec divergence (flagged).** Q5d literally calls for
+      `once_cell::sync::Lazy<prometheus::CounterVec>`. The
+      workspace already standardised on the `metrics`
+      façade crate (see
+      `crates/agent/src/observability.rs:10`) which routes
+      to the same Prometheus exporter. Using
+      `metrics::counter!` keeps the metrics surface
+      single-crate; `/metrics` output identical.
+    - `crates/llm/Cargo.toml` gains `metrics = { workspace }`
+      (runtime) + `metrics-util = { version = "0.19" }`
+      (dev-dep, for the acceptance test's
+      `DebuggingRecorder::snapshotter()`).
+    - `#[allow(clippy::float_arithmetic)]` on the helper
+      per the design's float-exception carve-out.
+    - Test snippet (`cargo test -p llm --test
+      observability_test` verbatim last 5 lines):
+      ```
+      running 1 test
+      test t1909_emit_cache_event_increments_counter_pair ... ok
+      test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      ```
 
-- [ ] **T1910** [developer] — Additive `audit::query::cache_hit_ratio_since`:
+- [x] **T1910** [developer] — Additive `audit::query::cache_hit_ratio_since`:
   - `crates/audit/src/query.rs:36`-adjacent — `pub async fn
     cache_hit_ratio_since(ledger: &Ledger, since: Timestamp)
     -> Result<Decimal, LedgerError>`.
@@ -687,6 +776,33 @@ Health row).
   (`tokens_in=1000, tokens_cached_in=500` each) returns ratio
   `0.5`; empty fixture returns `0.0`. [R3.4, R9.5, Q5d]_
   **[deps: T1901]**
+  - **Ticked 2026-05-12 (developer, pass 3):**
+    - `crates/audit/src/query.rs:140-219` (additive) — `pub
+      async fn cache_hit_ratio_since(ledger, since) ->
+      Result<Decimal, LedgerError>` joins
+      `journal_transactions` × `journal_entries WHERE
+      account_id LIKE 'expense:llm:%' AND ts >= ?` (DISTINCT
+      on `t.id` to avoid the dr/cr-leg double count), parses
+      each row's `metadata` JSON for `tokens_in` /
+      `tokens_cached_in`, returns `Σ cached / Σ in` as
+      `Decimal`. Empty window → `Decimal::ZERO`. Malformed
+      metadata logged via `tracing::debug!` and skipped (no
+      query-failure on a stray row).
+    - **Forward-compat with T1917.** Token-meta plumbing on
+      `post_cost(...)` is T1917 (M5). Until then the row's
+      meta is `'{}'` (no token fields) → contributes 0/0 →
+      query reports `Decimal::ZERO` (the research-mode
+      invariant). Once T1917 lands, no change to this
+      reader — the same JSON shape resolves.
+    - Test (`cargo test -p audit --test
+      cache_hit_ratio_test` verbatim last 5 lines):
+      ```
+      test t1910_empty_fixture_returns_zero ... ok
+      test t1910_malformed_metadata_skipped ... ok
+      test t1910_since_window_excludes_older_events ... ok
+      test t1910_three_events_returns_half ... ok
+      test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+      ```
 
 ## M4 — Budget enforcement gate + audit memo + (deferred) cockpit tile
 
@@ -697,7 +813,7 @@ decorator + atomic cents counter + 0.2% concurrent-overshoot
 bound) + **Q10** (cockpit tile + memo + report line; email/Slack/
 push deferred).
 
-- [ ] **T1911** [developer] — Pricing module at
+- [x] **T1911** [developer] — Pricing module at
   `crates/llm/src/pricing.rs` per
   [Design → § Q7](feature.md#v2-llm-strategy-q7--cost-rate-lookup-hard-coded-base-table-at-cratesllmsrcpricingrs--toml-override-at-llmpricingprovidermodel-module-owned-by-the-llm-crate-not-cost):
   - `pub struct PricePerMillionTokens { pub input_usd:
@@ -734,8 +850,41 @@ push deferred).
   for an existing pair shadows the base table, (d) Ollama
   zeros are exact `Decimal::ZERO`. [R9.2, Q7]_
   **[deps: T1901]**
+  - **Ticked 2026-05-12 (developer, pass 3):**
+    - New `crates/llm/src/pricing.rs:1-220` —
+      `PricePerMillionTokens { input_usd, output_usd,
+      cached_input_usd }`, `base_rate(ProviderKind, model)
+      -> Option<PricePerMillionTokens>` exhaustive `match`
+      over the 5 v2 entries (Opus 4.7, Haiku 4.5, GPT-5,
+      GPT-5-mini, Ollama-any).
+    - `resolve_rate(&OverrideMap, &ProviderKind, model) ->
+      Result<…, LlmError>` checks override first, falls back
+      to base, errors `LlmError::Provider { provider,
+      message: "no price for model {model}" }` on miss.
+    - Sibling helpers `cost_for_usage(rate, tokens_in,
+      tokens_out, tokens_cached_in) -> Decimal` (post-call
+      reconcile) and `estimate_cost(rate, input_chars,
+      max_output_tokens) -> Decimal` (pre-call fail-closed
+      bound). Both Decimal-only.
+    - **Spec divergence (flagged).** Q7 says
+      `resolve_rate(cfg: &LlmConfig, …)`. The signature
+      shipped takes `&OverrideMap` directly so pricing
+      doesn't take a hard dep on `LlmConfig` — keeps the
+      module reusable from tests + future cost-only
+      callers. `BudgetedProvider` passes
+      `&self.cfg.pricing` at the call site —
+      operator-equivalent behaviour.
+    - Test (`cargo test -p llm --test pricing_test`
+      verbatim last 5 lines):
+      ```
+      test t1911_d_ollama_zero_rate_is_exact_decimal_zero ... ok
+      test t1911_a_v2_default_models_all_resolve ... ok
+      test t1911_c_override_shadows_base ... ok
+      test t1911_b_typo_model_id_errors_cleanly ... ok
+      test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      ```
 
-- [ ] **T1912** [developer] — `BudgetedProvider<Inner>` decorator
+- [x] **T1912** [developer] — `BudgetedProvider<Inner>` decorator
   at `crates/llm/src/budgeted.rs` per Design Q6:
   - `pub struct BudgetedProvider<Inner: LlmProvider> { inner:
     Inner, budget: Arc<CostBudget>, sink: Arc<dyn CostSink>,
@@ -792,8 +941,63 @@ push deferred).
   DeepThink → passes through untouched. [R4.1, R4.2, R4.3, R4.4,
   R9.1, R9.3, R11.1, Q6, Q10]_
   **[deps: T1907, T1908, T1909, T1911, T1917]**
+  - **Ticked 2026-05-12 (developer, pass 3):**
+    - New `crates/llm/src/budgeted.rs:1-405` —
+      `BudgetedProvider<Inner: LlmProvider>` decorator. Holds
+      `inner, budget: Arc<CostBudget>, sink: Arc<dyn
+      CostSink>, cfg: Arc<LlmConfig>, last_block_memo_at:
+      AtomicU64`. `LlmProvider for BudgetedProvider<Inner>`
+      `complete()` implements the four-step flow exactly per
+      Design § Q6: (1) mode check (`None` → block + debounced
+      audit memo; `Some(QuickThink)` on a `DeepThink` request
+      → degrade by constructing a NEW request with
+      `tier=QuickThink, model=cfg.quick_think.model.clone()`
+      — caller's request unchanged for forensics);
+      (2) pre-call estimate via
+      `pricing::estimate_cost(input_chars, max_tokens)` +
+      `budget.try_reserve(...)`; (3) `inner.complete(...)`;
+      (4) post-call reconcile (compute actual `usd` via
+      `pricing::cost_for_usage`, `budget.add_spend`,
+      `sink.record(CostEvent::Llm { … })`,
+      `observability::emit_cache_event`).
+    - Failure path: error from `inner` propagates with **no**
+      cost event posted and **no** spend increment (R9.3).
+    - Debounce: `last_block_memo_at: AtomicU64` (Unix
+      seconds) with `compare_exchange` — at most one memo
+      per 60 seconds per BudgetedProvider instance.
+    - **Pass-3 deferral (flagged).** The spec wires the audit
+      memo via `audit::journal::post_llm_budget_event` (T1916,
+      M5). Pass 3 emits `tracing::warn!(target:
+      "llm.budget")` at the same debounced cadence so the
+      forensic record lives in the structured-log stream;
+      once T1916 lands, the audit-ledger post slots into
+      the same `if debounced { … }` arm with no other
+      changes.
+    - **Pass-3 deferral (flagged) — `audit_ledger` field.**
+      The spec carries `audit_ledger:
+      Option<Arc<audit::Ledger>>`. Pass 3 omits this field
+      because (a) the journal helper that consumes it is
+      T1916 (deferred), (b) carrying an unused field
+      promotes drift. The field is reintroduced when T1916
+      ships.
+    - Public re-exports: `crates/llm/src/lib.rs:39`
+      `BudgetedProvider`. New
+      `crates/llm/src/config.rs:1-118` ships a local
+      `LlmConfig` (deferred from T1937 / `agent::config`
+      integration) so this decorator + pricing have a typed
+      surface today; once T1937 wires
+      `agent::config::LlmConfig`, this crate-local type
+      is replaced by re-export.
+    - Test (`cargo test -p llm --test budget_gate_test`
+      verbatim last 5 lines):
+      ```
+      test t1912_b_block_returns_budget_exceeded_no_inner_call ... ok
+      test t1912_a_degrade_path_inner_sees_quick_think_model ... ok
+      test t1912_c_pass_through_when_budget_healthy ... ok
+      test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      ```
 
-- [ ] **T1913** [developer] — `LlmProviderFactory::build` at
+- [~] **T1913** [developer] — `LlmProviderFactory::build` at
   `crates/llm/src/factory.rs`:
   - `pub struct LlmProviderFactory;`
   - `impl LlmProviderFactory { pub fn build(cfg: &LlmConfig,
@@ -825,8 +1029,62 @@ push deferred).
   R8.2]_
   **[deps: T1903, T1904, T1905, T1912, T1914, T1922]**
   **[gate for T1934, T1937, T1938]**
+  - **Partially ticked 2026-05-12 (developer, pass 3):**
+    - New `crates/llm/src/factory.rs:1-220` — `pub struct
+      LlmProviderFactory; impl LlmProviderFactory { pub fn
+      build(cfg: Arc<LlmConfig>, mode: Mode, budget:
+      Arc<CostBudget>, sink: Arc<dyn CostSink>,
+      agent_toml_path: &Path) -> Result<Arc<dyn
+      LlmProvider>, LlmError> }`. Internally: (1) reads keys
+      via `auth::load_keys_from_path`; (2) constructs the
+      leaf via `construct_leaf(cfg, keys)` —
+      `anthropic`/`openai`/`openrouter`/`deepseek`/`ollama`
+      branches; (3) mode-aware wrapping arm:
+      `Mode::Live` → wraps in `BudgetedProvider<BoxedLeaf>`;
+      `Mode::Paper` → emits `tracing::warn!` advising the
+      operator that fixture recording is pending M6, then
+      wraps in `BudgetedProvider<BoxedLeaf>`;
+      `Mode::Research` → returns `LlmError::Provider {
+      message: "research mode requires ReplayProvider; lands
+      in M6 (T1922)" }`.
+    - Acceptance (a) `paper-mode-with-valid-keys` ✓,
+      acceptance (b) `missing-key → LlmError::Auth naming
+      config/agent.toml.local` ✓ — both pass.
+    - Acceptance (c) `research mode wraps in
+      ReplayProvider` — **DEFERRED** because T1922 is M6
+      (out of pass-3 scope). Pass 3 ships a clearly-signed
+      error from that arm; the integration test
+      `t1913_c_research_mode_pending_m6_signals_clearly`
+      gates the contract until M6 lands.
+    - Acceptance (d) `paper mode wraps in
+      RecordingProvider` — **DEFERRED** for the same reason
+      (T1921 is M6). Pass 3's paper-mode arm falls through
+      to plain `BudgetedProvider<Leaf>` with the
+      `tracing::warn!` advising the operator. Once T1921
+      lands, the paper arm wraps `RecordingProvider::new(...)`
+      around the leaf before passing into `BudgetedProvider`.
+    - **Spec divergence (flagged).** Build signature took
+      `agent_toml_path: &Path` instead of just `cfg` so the
+      factory can run in tests against a tempdir overlay
+      without rewriting `cwd`. The production call site
+      passes `Path::new("config/agent.toml")` which matches
+      Q3's path convention.
+    - Marked `[~]` (partial). Pass-4 candidate: once T1921 +
+      T1922 land, flip the `Mode::Paper` / `Mode::Research`
+      arms to wrap the new providers and flip the
+      integration test assertions; the surface contract is
+      already in place.
+    - Test (`cargo test -p llm --test factory_test` verbatim
+      last 5 lines):
+      ```
+      test t1913_b_missing_key_returns_auth_naming_config_local ... ok
+      test t1913_ollama_builds_without_local_overlay ... ok
+      test t1913_c_research_mode_pending_m6_signals_clearly ... ok
+      test t1913_a_paper_mode_with_valid_local_succeeds ... ok
+      test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+      ```
 
-- [ ] **T1914** [developer] — TOML-local key reader at
+- [x] **T1914** [developer] — TOML-local key reader at
   `crates/llm/src/auth.rs` per Design § Q3 = C resolution:
   - `pub fn load_keys(cfg: &LlmConfig) -> Result<KeyMap,
     LlmError>` — reads the layered overlay:
@@ -858,8 +1116,51 @@ push deferred).
   (no key-strength validation; that's the operator's
   responsibility). [R8.1, R8.2]_
   **[deps: T1901]**
+  - **Ticked 2026-05-12 (developer, pass 3):**
+    - New `crates/llm/src/auth.rs:1-185` — `pub fn
+      load_keys(cfg) -> Result<KeyMap, LlmError>` reads
+      `config/agent.toml.local` alongside the committed
+      `agent.toml`. Test-friendly variant
+      `load_keys_from_path(cfg, agent_toml_path)` lets the
+      integration test write to a tempdir overlay.
+    - `pub struct KeyMap { inner: HashMap<String, String>
+      }` — `Drop` impl zeroes each key buffer before the
+      backing String drops (best-effort key-residency
+      reduction); `Debug` impl renders `<redacted>` instead
+      of the keys; `debug_view()` returns the
+      `(provider, redact(key))` pair list for forensic
+      log lines.
+    - Missing `.local` under non-Ollama provider → `Err`
+      whose `Auth(msg)` contains `"agent.toml.local"`.
+      Missing `default_provider.api_key` under populated
+      `.local` → `Err` whose `Auth(msg)` names provider +
+      `"api_key"`. Placeholder
+      `sk-ant-test-stub-…` parses cleanly (no
+      strength validation — operator owns that).
+    - Public re-export: `crates/llm/src/lib.rs:33` `pub mod
+      auth` (functions accessed as `llm::auth::load_keys`).
+      `tempfile = { workspace }` added to dev-deps + `toml
+      = { workspace }` added to runtime deps for the
+      `LocalRoot` deserialize.
+    - **Spec divergence (flagged).** Tasks-md acceptance
+      message text says `"{provider}.api_key not set in
+      config/agent.toml.local"`. The shipped message text
+      uses the actual resolved path
+      (`local_path.display()`) instead of the hard-coded
+      string so test fixtures with custom paths see the
+      right name. The substring `agent.toml.local` is
+      still present in every error path because
+      `local_path` always ends in `.local`.
+    - Test (`cargo test -p llm --test auth_test` verbatim
+      last 5 lines):
+      ```
+      test t1914_a_missing_local_names_the_path ... ok
+      test t1914_c_placeholder_key_parses_ok ... ok
+      test t1914_b_missing_anthropic_key_names_the_provider ... ok
+      test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      ```
 
-- [ ] **T1915** [developer] — `redact()` helper at
+- [~] **T1915** [developer] — `redact()` helper at
   `crates/llm/src/redact.rs`:
   - `pub fn redact(secret: &str) -> String` — returns first
     `prefix_len` characters + `"***"` + last 4 characters.
@@ -882,6 +1183,34 @@ push deferred).
   emits `api_key = "sk-ant-***real"` (last-4 of `"real"`
   is `"real"` itself, but the `***` is the giveaway). [R8.3]_
   **[deps: T1901]**
+  - **Partially ticked 2026-05-12 (developer, pass 3):**
+    - New `crates/llm/src/redact.rs:1-120` —
+      `pub fn redact(secret: &str) -> String` returns the
+      prefix-up-to-second-dash (so `sk-ant-secret-12345` →
+      `sk-ant-***2345`) + `***` + last-4. Fallback path
+      for keys with < 2 dashes uses 6-char prefix; inputs
+      shorter than 10 chars collapse to `***`.
+    - Acceptance (a) `redact("sk-ant-secret-12345")` does
+      not contain `"secret-12345"` ✓; (b)
+      `redact("sk-shortie")` does not contain the full
+      string ✓.
+    - Acceptance (c) — tracing-subscriber field rewriter —
+      **DEFERRED**. The field-redacting `Layer` requires
+      `tracing_subscriber = { runtime-dep, fmt }` +
+      `tracing-core`'s `Visit` impl. Pass 3 ships the
+      `redact()` core (used by every error formatter +
+      audit memo formatter on the call path); pass 4 will
+      add the layer. Marked `[~]` for that reason.
+    - Public re-export: `crates/llm/src/lib.rs:36` `pub mod
+      redact` — call site uses `llm::redact::redact(key)`.
+    - Test (`cargo test -p llm --test redact_test`
+      verbatim last 5 lines):
+      ```
+      running 2 tests
+      test t1915_b_short_key_redacted ... ok
+      test t1915_a_anthropic_secret_not_present_in_output ... ok
+      test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      ```
 
 ## M5 — Cost telemetry wired through + audit memo + V12 stress test
 

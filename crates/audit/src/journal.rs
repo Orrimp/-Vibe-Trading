@@ -386,15 +386,13 @@ pub async fn update_signal_clamp_status(
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
-    sqlx::query(
-        "UPDATE strategy_signals SET was_clamped = ?, clamp_reason = ? WHERE id = ?",
-    )
-    .bind(was_clamped_i)
-    .bind(clamp_reason)
-    .bind(signal_id)
-    .execute(&mut *db_txn)
-    .await
-    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    sqlx::query("UPDATE strategy_signals SET was_clamped = ?, clamp_reason = ? WHERE id = ?")
+        .bind(was_clamped_i)
+        .bind(clamp_reason)
+        .bind(signal_id)
+        .execute(&mut *db_txn)
+        .await
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
     db_txn
         .commit()
@@ -1637,13 +1635,12 @@ mod tests {
                 .expect("INSERT");
 
         // Sanity: pre-UPDATE state is `was_clamped = 0, clamp_reason = NULL`.
-        let pre: (i64, Option<String>) = sqlx::query_as(
-            "SELECT was_clamped, clamp_reason FROM strategy_signals WHERE id = ?",
-        )
-        .bind(row_id.as_str())
-        .fetch_one(ledger.pool())
-        .await
-        .expect("pre-UPDATE row");
+        let pre: (i64, Option<String>) =
+            sqlx::query_as("SELECT was_clamped, clamp_reason FROM strategy_signals WHERE id = ?")
+                .bind(row_id.as_str())
+                .fetch_one(ledger.pool())
+                .await
+                .expect("pre-UPDATE row");
         assert_eq!(pre.0, 0);
         assert!(pre.1.is_none());
 
@@ -1651,13 +1648,12 @@ mod tests {
             .await
             .expect("UPDATE");
 
-        let post: (i64, Option<String>) = sqlx::query_as(
-            "SELECT was_clamped, clamp_reason FROM strategy_signals WHERE id = ?",
-        )
-        .bind(row_id.as_str())
-        .fetch_one(ledger.pool())
-        .await
-        .expect("post-UPDATE row");
+        let post: (i64, Option<String>) =
+            sqlx::query_as("SELECT was_clamped, clamp_reason FROM strategy_signals WHERE id = ?")
+                .bind(row_id.as_str())
+                .fetch_one(ledger.pool())
+                .await
+                .expect("post-UPDATE row");
         assert_eq!(post.0, 1, "was_clamped flipped 0 → 1");
         assert_eq!(post.1.as_deref(), Some("per_symbol_cap"));
     }

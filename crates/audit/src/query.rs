@@ -135,6 +135,94 @@ pub async fn total_fees(ledger: &Ledger) -> Result<Money<Usdt>, LedgerError> {
     Ok(Money::from_decimal(total))
 }
 
+// ── LLM cache observability (T1910 / Q5d) ────────────────────────────────────
+
+/// 24-hour aggregate cache-hit ratio across LLM cost events.
+///
+/// Reads `journal_transactions.metadata` JSON for every transaction
+/// whose entries hit any `expense:llm:%` account at or after `since`,
+/// summing the `tokens_in` and `tokens_cached_in` fields, then returns
+/// `Σ tokens_cached_in / Σ tokens_in` as a [`Decimal`].
+///
+/// Design § Q5d: the operator-success-report's System Health table
+/// reads this Decimal (no Prometheus dep at report-render time —
+/// reports binary stays Prometheus-free per the existing invariant).
+///
+/// Token fields land on `journal_transactions.metadata` via the
+/// extended `post_cost` signature in T1917 (M5). Until then — or for
+/// any window with no LLM events — the result is
+/// `Decimal::ZERO` (defensive default; mirrors the research-mode 0.00
+/// ratio invariant). Forward-compat: a row whose metadata JSON omits
+/// the token fields is treated as 0/0 and skipped.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL error or timestamp
+/// formatting failure. Malformed metadata JSON does NOT error — the
+/// row is logged via `tracing::debug!` and skipped (read-only query
+/// must not block on a stray bad row).
+pub async fn cache_hit_ratio_since(
+    ledger: &Ledger,
+    since: Timestamp,
+) -> Result<Decimal, LedgerError> {
+    let ts_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // One row per LLM transaction in the window. DISTINCT so a
+    // multi-leg LLM transaction (Dr expense:llm:<tier> + Cr
+    // liabilities:llm_accrued) doesn't double-count.
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT t.metadata \
+         FROM journal_transactions t \
+         JOIN journal_entries e ON e.transaction_id = t.id \
+         WHERE e.account_id LIKE 'expense:llm:%' AND t.ts >= ?",
+    )
+    .bind(&ts_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut sum_in: u128 = 0;
+    let mut sum_cached: u128 = 0;
+    for (meta_json,) in rows {
+        let parsed: serde_json::Value = match serde_json::from_str(&meta_json) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::debug!(
+                    target: "audit.query.cache_hit_ratio",
+                    error = %e,
+                    "skipping row with malformed metadata"
+                );
+                continue;
+            }
+        };
+        let tokens_in = parsed
+            .get("tokens_in")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let tokens_cached = parsed
+            .get("tokens_cached_in")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        sum_in = sum_in.saturating_add(u128::from(tokens_in));
+        sum_cached = sum_cached.saturating_add(u128::from(tokens_cached));
+    }
+
+    if sum_in == 0 {
+        return Ok(Decimal::ZERO);
+    }
+    // u128 → Decimal: use `try_from` since `Decimal` only impls
+    // `From<u64>`/`From<i64>`. Saturate at u64::MAX for the (operator-
+    // unreachable) 18-quintillion-token case.
+    let sum_in_dec = Decimal::try_from(sum_in.min(u128::from(u64::MAX)) as u64)
+        .map_err(|e| LedgerError::Database(format!("cache_hit_ratio_since: sum_in: {e}")))?;
+    let sum_cached_dec = Decimal::try_from(sum_cached.min(u128::from(u64::MAX)) as u64)
+        .map_err(|e| LedgerError::Database(format!("cache_hit_ratio_since: sum_cached: {e}")))?;
+    Ok(sum_cached_dec / sum_in_dec)
+}
+
 // ── Account list ───────────────────────────────────────────────────────────────
 
 /// List all account IDs in the chart of accounts.
@@ -427,7 +515,8 @@ pub async fn recent_signals(
         let qty_d: Decimal = qty_str
             .parse()
             .map_err(|_| LedgerError::Database(format!("recent_signals: bad qty '{qty_str}'")))?;
-        let intended_qty = Quantity::new(qty_d).map_err(|e| LedgerError::Database(e.to_string()))?;
+        let intended_qty =
+            Quantity::new(qty_d).map_err(|e| LedgerError::Database(e.to_string()))?;
         let signal_ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
             .map(Timestamp::new)
             .map_err(|e| LedgerError::Database(e.to_string()))?;

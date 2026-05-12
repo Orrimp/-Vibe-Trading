@@ -77,6 +77,22 @@ pub enum LlmError {
     Auth(String),
 }
 
+/// Lift a `cost::BudgetError` from the pre-call gate into the
+/// LLM-domain error surface so the caller's `?` chain is uniform.
+impl From<cost::BudgetError> for LlmError {
+    fn from(err: cost::BudgetError) -> Self {
+        match err {
+            cost::BudgetError::BudgetExceeded {
+                spent_usd,
+                ceiling_usd,
+            } => LlmError::BudgetExceeded {
+                spent_usd,
+                ceiling_usd,
+            },
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
