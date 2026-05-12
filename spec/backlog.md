@@ -2,8 +2,39 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-04
+updated: 2026-05-12
 ---
+<!-- updated 2026-05-12 (analyst, second pass) — promoted
+     `ui-test-harness-bootstrap` v0.1 from Queue ## Process / tooling
+     → Active. First feature under the new
+     `AGENT.md ## Capability boundaries` regime (committed 2026-05-12).
+     Scope locked to week-1 only of the dev-note 4-week plan:
+     `iced_test` smoke + `insta` binary snapshots + canvas hit-test
+     grid sweep at three viewport sizes. Operator decisions D1-D5 from
+     `spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`
+     LOCKED (analyst does not revisit). Brief at
+     `spec/ui-test-harness-bootstrap/feature.md` (status: in-progress,
+     version: 0.1.0, predecessor: chart-canvas-overhaul v1.10.0). 10
+     open Qs for architect / operator routing. H1 (tiny-skia byte
+     determinism) seeded in the new `Hypothesis register` section.
+     Non-regression contract: 11 anchors stay byte-identical, 818
+     tests stay green, zero changes to non-UI crates. Closes
+     chart-canvas-overhaul V15 via the week-1 grid sweep at 3360×1890
+     (operator decision D4). HANDOFF → architect. -->
+<!-- updated 2026-05-12 (analyst) — promoted `chart-canvas-overhaul`
+     v1.10.0 → Active. Opened in response to operator's
+     2026-05-12 second visual-verification pass at native
+     3360×1890 Retina: tooltip still invisible, chart still
+     cropped, no SVG-style scaling, no legend, no axes,
+     "not centered". Three items (tooltip, cropping, scaling)
+     are regressions vs. v1.9.0's M6.2 hardening pass — the
+     v1.9.0 PASS verdict was issued against a 1280×720 tester
+     capture, missing the operator's actual hardware shape.
+     Brief at `spec/chart-canvas-overhaul/feature.md`; tasks
+     stubbed at `spec/chart-canvas-overhaul/tasks.md` (T3001+).
+     Three operator-decide questions (Q1 "not centered" reading,
+     Q4 UTC-vs-local time axis, Q7 viewer parity) need operator
+     answers before architect spawn. -->
 <!-- updated 2026-05-04 (analyst, post-Phase-1-ship roadmap revision) —
      `lumen-phase-1-foundation` shipped (tester third-pass PASS) → moved
      Active → Recent. Lumen master roadmap revised from 4 phases to 6
@@ -91,14 +122,172 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   and live in the Recent section; this Queue entry is the only
   remaining initiative work, gated on v2 LLM.)_
 
+- **v1.11 — Chart x-axis local time (`chart-x-axis-local-time`).**
+  _candidate_ — surfaced by the
+  [`chart-canvas-overhaul`](chart-canvas-overhaul/feature.md) M7
+  architect pass 2026-05-12, deferred from v1.10.0 by operator-
+  locked Q-revised-1 = path (b). Scope: flip the workspace `time`
+  dep's `local-offset` feature on (one-line `Cargo.toml` edit;
+  macOS-only cockpit so the multi-threaded glibc deadlock caveat
+  doesn't bite); wire
+  [`local_offset_or_utc()`](chart-canvas-overhaul/feature.md#q4-deferral-r10--t3028)
+  at `crates/ui/src/widgets/chart.rs:125-160` to
+  `time::UtcOffset::current_local_offset()` in production; keep
+  `cfg(test)` override at `UtcOffset::UTC` so snapshot tests stay
+  deterministic; add one unit test
+  `local_offset_under_production_reads_os_offset` asserting the
+  helper returns a non-UTC offset on macOS when the OS is set to a
+  non-UTC zone; defence-in-depth `verify_anchors.sh` →
+  `ANCHORS PASS (11/11)` (no strategy / audit / report path
+  affected by the feature flag flip). v1.10.0 ships with UTC
+  fallback; v1.11 closes the operator-friendly local-time landing.
+  Analyst spawn when v1.10.0 ships; not before. Full details
+  deferred to the v1.11 brief's analyst.
+
+- **TBD — Cockpit Windows / Linux support (`cockpit-cross-platform`).**
+  _candidate_ — surfaced 2026-05-12 by operator decision D3 in
+  [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md#section-9).
+  Today the cockpit is macOS-only (Retina assumptions, `screencapture` +
+  TCC dependencies, `iced_tiny_skia` chosen partly for CPU determinism on
+  Apple Silicon). Scope when promoted: validate `iced_tiny_skia` rendering
+  parity on Linux X11/Wayland + Windows; replace `screencapture`-based
+  test artifact capture with cross-platform `xcap` or equivalent;
+  re-evaluate the `time` `local-offset` feature's Linux multi-threaded
+  caveat once v1.11 lands. Analyst spawn deferred — operator triggers
+  when external demand (paper-trading on Linux server, Windows operator
+  hardware) appears.
+
 ### Process / tooling
 
-_(empty — the only queued item, the presenter smoke test against
+- **Canvas-state seeding for snapshot tests
+  (`ui-test-harness-canvas-state-seeding`).** _candidate, surfaced
+  2026-05-12 by H2 operator review on `ui-test-harness-bootstrap`
+  v0.1_ — closes the **render** half of `chart-canvas-overhaul` V15
+  (V8 in the bootstrap brief). The v1.9.0 T2033 refactor decoupled
+  tooltip rendering from `Cockpit.chart_tooltip` — the canvas reads
+  hover state from its internal `ChartProgram::State`, not from
+  `self.tooltip` — so the Q9 fixture's
+  `Cockpit.chart_tooltip = Some(...)` has zero effect on the
+  rendered PNG.  Scope: extend
+  [`crates/ui/src/test_support.rs`](../crates/ui/src/test_support.rs)
+  with `seed_canvas_hover_state(idx)` injecting state directly into
+  `ChartProgram::State` before `iced_test::screenshot` runs. Two
+  viable paths: (a) `iced_test::Simulator::send_event` to dispatch
+  a synthetic `CursorMoved` over the marker centroid; (b) a
+  `#[doc(hidden)]` test-only `ChartProgram::with_seeded_hover_state(
+  idx, centroid) -> Self` constructor.  Acceptance: a new
+  `charts_screen_dark_operator_hover.png` baseline shows the
+  tooltip card next to a hovered marker; existing three baselines
+  stay byte-identical (V15 detection + render fully closed).
+  Analyst spawn after v0.1 ships.
+
+- **Week-2 follow-up — full-widget viewport matrix
+  (`ui-test-harness-viewport-matrix`).** _candidate, gated on
+  `ui-test-harness-bootstrap` v0.1 ship_ — extends the v0.1 Charts-only
+  three-viewport snapshot harness across ALL widget tests (panels,
+  modals, status bar, agent feed, debug screen) per
+  [dev-note §6 week 2](dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
+  Analyst spawn when v0.1 ships and H1 (tiny-skia byte determinism)
+  is unfalsified.
+
+- **Week-3 follow-up — evaluator subagent + PreToolUse hooks
+  (`ui-test-harness-evaluator`).** _candidate, gated on
+  `ui-test-harness-bootstrap` v0.1 ship_ — splits the tester role
+  into test-runner (writeable) + evaluator (read-only, fresh
+  context, default-FAIL PreToolUse hook) per
+  [dev-note §4.2](dev-notes/ui-testing-direction-2026-05-12.md#42-default-fail-evaluator-subagent)
+  and
+  [`AGENT.md ## Test-runner / evaluator split`](../AGENT.md#test-runner--evaluator-split).
+  Wires the PreToolUse hooks for `screencapture`, `osascript`, and
+  `./target/release/cockpit` denying sub-agents (allowing
+  orchestrator). Analyst spawn after v0.1 ships.
+
+- **Week-4 follow-up — GitHub Actions CI + presenter integration
+  (`ui-test-harness-ci`).** _candidate, gated on
+  `ui-test-harness-viewport-matrix` + `ui-test-harness-evaluator`
+  ship_ — macOS runner workflow uploading baseline+actual+diff PNG
+  triples on visual snapshot failures; presenter deck format gets a
+  fixed "screenshot artifacts" section pointing at the CI artifact
+  URL per [dev-note §6 week 4](dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
+
+_(historical: the only previously queued item, the presenter smoke test against
 operator-success-reports, ran 2026-05-08; surfaced 4 findings, two
 of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **UI test harness bootstrap (v0.1)** — shipped 2026-05-12
+  (operator approval recorded as `[x] Approved — ship` in
+  [`spec/ui-test-harness-bootstrap/presentations/ui-test-harness-bootstrap-2026-05-12.md ## Approval`](ui-test-harness-bootstrap/presentations/ui-test-harness-bootstrap-2026-05-12.md#approval);
+  evaluator `VERDICT → PASS` in
+  [`reports/evaluation-2026-05-12T13-15Z.md`](ui-test-harness-bootstrap/reports/evaluation-2026-05-12T13-15Z.md)).
+  **First feature under the new `AGENT.md ## Capability boundaries`
+  regime AND the first run of the test-runner / evaluator split.**
+  Implemented week 1 of the 4-week dev-note adoption plan:
+  `iced_test::screenshot` smoke test at three operator viewport
+  slots (1280×720 / 1920×1080 / 3360×1890 @ 2.0); `image-compare`
+  perceptual-diff forensics on snapshot failure; canvas hit-test
+  grid sweep over every marker centroid at every viewport — closes
+  detection-half of chart-canvas-overhaul V15; viewport-parametric
+  helper on `dispatch_canvas_event_for_test`;
+  `scripts/check_no_clocks_in_ui_tests.sh` determinism gate.
+  Three baseline PNGs committed at
+  [`crates/ui/tests/visual-baselines/charts_screen_dark_{floor,typical,operator}.png`](../crates/ui/tests/visual-baselines/).
+  **V8 PASS-with-H2-caveat**: render-half of chart-canvas-overhaul
+  V15 (visible tooltip card in baseline) deferred to
+  `ui-test-harness-canvas-state-seeding` candidate (Queue) per
+  operator decision "Commit — V14 covered, V15 partial-accept"
+  2026-05-12. New deps: `iced_test = 0.14.0`, `image-compare = 0.4`,
+  `image = 0.25.6` (all dev-deps; zero production runtime impact).
+  **Workflow meta-deliverables proven**: (a) architect's M0 API audit
+  caught a load-bearing `iced_test::Snapshot::png()` assumption
+  (method doesn't exist) before code was written; (b) developer
+  caught a second `iced_test::screenshot → iced::window::Screenshot`
+  API correction during M1 implementation and adjusted cleanly;
+  (c) test-runner emitted raw log with honest `[~]` partial for
+  4 sandbox-denied checks; (d) orchestrator supplemented those
+  checks verbatim; (e) evaluator (read-only, fresh context,
+  default-FAIL contract) emitted PASS with file:line cites for
+  every V-item. Zero capability-boundary violations across all 6
+  agent roles. Anchors PASS 11/11 byte-identical; 818 existing
+  tests stay green; 8 net-new tests added; zero non-UI-crate
+  changes. Weeks 2 / 3 / 4 follow-ups queued in
+  [`## Process / tooling`](#process--tooling).
+
+- **Chart canvas overhaul (v1.10.0)** — shipped 2026-05-12
+  (operator approval recorded as `[x] Approved — ship` in
+  [`spec/chart-canvas-overhaul/presentations/chart-canvas-overhaul-2026-05-12.md ## Approval`](chart-canvas-overhaul/presentations/chart-canvas-overhaul-2026-05-12.md#approval);
+  no overrides, no follow-up notes). Closes the six operator-
+  reported items from the v1.9.0 retrospective: price axis on
+  the LEFT gutter (USD labels), time axis on the BOTTOM gutter
+  (HH:MM UTC), TradingView-style centering via
+  `inner_rect_with_gutters`, top-right legend card
+  (`PANEL_SUNKEN` fill + `BORDER_STRONG` outline at
+  [`crates/ui/src/widgets/chart_legend.rs:156-160`](../crates/ui/src/widgets/chart_legend.rs#L156)),
+  viewer parity for `equity_curve` + `drawdown_band`, default
+  window bump to 1920×1080 (min stays 1280×720), tooltip card
+  clamp to inner-rect bounds. V15 (live tooltip-hover screenshot
+  at 3360×1890) DEFERRED to the queued
+  `ui-test-harness-bootstrap` v0.1 feature per operator decision
+  D4 in [`spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`](dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)
+  — the first `iced_test::Simulator::snapshot().matches_image()`
+  chart-hover test in that feature replaces the manual capture.
+  Q4 local-time x-axis labels DEFERRED to v1.11
+  `chart-x-axis-local-time` (Queue entry above; UTC fallback
+  ships in v1.10.0). Retrospective surfaced the architect's
+  "iced 0.14 canvas-scale bug" misdiagnosis (empirically
+  disproved by orchestrator's red-rect + cyan-dot probe; T3002 /
+  T3003 / T3007 / T3008 closed as no-op) — produced the
+  `AGENT.md ## Capability boundaries` amendment (D5,
+  load-bearing) + [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md)
+  strategy document + `ui-test-harness-bootstrap` v0.1 follow-on
+  feature now in Active. Anchor neutrality preserved: 11/11
+  byte-identical (`bash scripts/verify_anchors.sh → ANCHORS PASS
+  (11 / 11)`); zero changes to `crates/strategy/`, `crates/risk/`,
+  `crates/backtest/`, `crates/reports/`, `crates/exec/`,
+  `crates/audit/`, `crates/agent/`, `crates/core/`,
+  `crates/reflection/`.
 
 - **Chart buy/sell emphasis (v1.9.0)** — shipped 2026-05-11
   (operator verbal approval recorded as `[x] Approved — ship` in
@@ -370,6 +559,31 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Changelog
 
+- 2026-05-12 (analyst, second pass): promoted
+  `ui-test-harness-bootstrap` v0.1 from Queue ## Process / tooling
+  → Active. First feature under the new
+  [`AGENT.md ## Capability boundaries`](../AGENT.md#capability-boundaries)
+  regime. Scope locked to **week-1 only** of the
+  [dev-note §6 4-week plan](dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan)
+  per operator decisions D1–D5; weeks 2 / 3 / 4 are separate
+  candidate features queued under ## Queue ## Process / tooling for
+  later analyst spawn. The week-1 grid-sweep test at 3360×1890
+  closes chart-canvas-overhaul V15 (D4) without a manual
+  screencapture. Brief at
+  [`ui-test-harness-bootstrap/feature.md`](ui-test-harness-bootstrap/feature.md);
+  task stubs at
+  [`ui-test-harness-bootstrap/tasks.md`](ui-test-harness-bootstrap/tasks.md).
+  HANDOFF → architect (Design section + task body fleshing). Q1
+  (cockpit factory), Q2 (iced_test snapshot accessor), Q3-Q7
+  architect-decide; Q8 (image-compare yes/no), Q9 (fixture
+  parity), Q10 (baseline naming) operator-input.
+- 2026-05-12 (architect, chart-canvas-overhaul M7): queued
+  **v1.11 — Chart x-axis local time (`chart-x-axis-local-time`)**
+  under UI / cockpit Queue as a `candidate`. Deferred from v1.10.0
+  by operator-locked Q-revised-1 = path (b) (defer Q4 to v1.11
+  follow-up). One-line scope: workspace `time` `local-offset`
+  feature flag flip + `local_offset_or_utc()` body wire-up; full
+  details for the v1.11 analyst.
 - 2026-05-08 (orchestrator, post-Phase-5 cleanup): drained the
   Active section. The 5 prior Active entries (`live-cockpit-unified`,
   `real-mtm-unrealized-pnl`, `per-symbol-position-accounts`,
@@ -566,3 +780,29 @@ of which became skill-plumbing fixes that shipped in commit
   live-cockpit-unified, real-mtm, per-symbol, tape-modal,
   journal-tx-metadata, v1.5b). HANDOFF → architect (Phase 1
   first; master roadmap for orientation).
+
+- 2026-05-12 (operator): v1.10.0 SHIPPED — `chart-canvas-overhaul`.
+  Recent entry added above. The architect-misdiagnosis
+  retrospective produced
+  [`AGENT.md ## Capability boundaries`](../AGENT.md#capability-boundaries-orchestrator-vs-sub-agent)
+  amendment +
+  [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md)
+  strategy document + queued `ui-test-harness-bootstrap` v0.1
+  feature now in Active per operator decisions D1-D5. Anchors
+  PASS 11/11 (verbatim line in deck `## Live demo` block).
+  Approval evidence:
+  [`chart-canvas-overhaul/presentations/chart-canvas-overhaul-2026-05-12.md ## Approval`](chart-canvas-overhaul/presentations/chart-canvas-overhaul-2026-05-12.md#approval).
+
+- 2026-05-12 (operator): v0.1 SHIPPED — `ui-test-harness-bootstrap`.
+  First feature under the new
+  [`AGENT.md ## Capability boundaries`](../AGENT.md#capability-boundaries-orchestrator-vs-sub-agent)
+  regime AND first run of the test-runner / evaluator split.
+  Empirical proof the new workflow holds: 0 capability-boundary
+  violations across 6 agent roles; 2 architect/developer-side
+  API corrections surfaced cleanly without rework loops; evaluator
+  PASS in fresh read-only context with file:line cites; anchors
+  PASS 11/11. V8 (render-half of chart-canvas-overhaul V15)
+  PASS-with-H2-caveat — queued as
+  `ui-test-harness-canvas-state-seeding` candidate. Approval
+  evidence:
+  [`ui-test-harness-bootstrap/presentations/ui-test-harness-bootstrap-2026-05-12.md ## Approval`](ui-test-harness-bootstrap/presentations/ui-test-harness-bootstrap-2026-05-12.md#approval).

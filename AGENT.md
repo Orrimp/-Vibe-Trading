@@ -276,11 +276,90 @@ incident and a concrete tooling gate:
 - **Never** commit secrets; exchange keys live in env vars or a secret store
   defined in `spec/architecture.md`.
 
+## Capability boundaries (orchestrator vs. sub-agent)
+
+Adopted 2026-05-12 after the chart-canvas-overhaul retrospective
+([spec/dev-notes/ui-testing-direction-2026-05-12.md](spec/dev-notes/ui-testing-direction-2026-05-12.md)).
+Sub-agents are **context tools, not capability tools**. Their toolset is a
+subset of the orchestrator's. When a sub-agent's sandbox blocks a capability
+the orchestrator has, the sub-agent must escalate, not rationalize.
+
+### Capability map
+
+| Capability | Owner | Sub-agents allowed? |
+|---|---|---|
+| `cargo fmt`, `cargo clippy`, `cargo test` (pure Rust) | sub-agent | yes |
+| `verify_anchors.sh` | sub-agent | yes |
+| `rust-build`, `rust-validate` skills | sub-agent | yes |
+| `spec-update` writes to `spec/<slug>/` | sub-agent | yes |
+| `cargo run --bin cockpit` with a live window | **orchestrator** | **no** |
+| `screencapture` of the running app | **orchestrator** | **no** |
+| `osascript`, `cliclick`, Swift `CGWarp` cursor automation | **orchestrator** | **no** |
+| Concluding "the bug is X" from live-app instrumentation | **orchestrator** | **no** |
+| Adjudicating disagreements between sibling sub-agents | **orchestrator** | **no** |
+| Visual approval / rejection of UI | **operator** | **no** |
+
+### Test-runner / evaluator split
+
+The single `tester` role is split into two:
+
+- **test-runner** (write-allowed): runs `rust-test`, `rust-validate`,
+  `verify_anchors`, dumps raw output to
+  `spec/<slug>/reports/test-run-<ts>.log`. No verdict, no prose.
+- **evaluator** (read-only): fresh context that never saw the developer
+  diff. Only `Read` + `Bash(grep|wc|sha256sum|cat)`. Reads the run log + any
+  cited artifact screenshots. Writes
+  `spec/<slug>/reports/evaluation-<ts>.md`. VERDICT → PASS/FAIL/REGRESSION
+  emits from the evaluator, never from the test-runner. Mirrors Anthropic's
+  reference harness ([cwc-long-running-agents](https://github.com/anthropics/cwc-long-running-agents))
+  to break the "agents skew positive when grading their own work" failure
+  mode.
+
+Once PreToolUse hooks are wired (week 3 of the
+[ui-testing-direction adoption plan](spec/dev-notes/ui-testing-direction-2026-05-12.md)),
+the evaluator's `Write` on the evaluation file is default-FAIL unless its
+read trace contains the run log AND every cited artifact. Until those hooks
+land, the contract is procedural — the evaluator agent's brief enforces it
+by instruction.
+
+### Architect = hypothesis only
+
+Architects author **hypotheses with explicit falsifiers** ("if X, then
+measurement Y will show Z"). They do NOT:
+
+- Run instrumentation that requires a display server / GPU / running window.
+- Conclude "the bug is X" without a citation to an orchestrator-run
+  empirical test that refused to falsify.
+
+Hypotheses without orchestrator-run falsification are first-class spec
+artifacts — they appear in `feature.md ## Hypothesis register` and the
+orchestrator picks which to falsify first. The chart-canvas-overhaul
+"iced has a half-scale canvas bug" misdiagnosis (1.5 dev-days of dead
+code) is the prior incident this rule prevents.
+
+### Parallelism caveat
+
+The parallelism rules in `## Parallelism rules` still hold for analyst
+fan-out and orchestrator-coordinated dev/ui-designer splits. But:
+
+- **Default to sequential** dev → ui-designer → orchestrator when in
+  doubt. Cognition's "[Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents)"
+  documents the silent-divergence failure mode: parallel sub-agents have
+  no view of each other's reasoning. We hit it in
+  chart-canvas-overhaul M7 when both agents needed to patch
+  `cockpit.rs:158` for screenshot capture and coordinated via tasks.md.
+- **Most coding tasks involve fewer truly parallelizable tasks than
+  research** ([Anthropic — multi-agent research](https://www.anthropic.com/engineering/multi-agent-research-system)).
+  When the orchestrator can't articulate the lane split explicitly in the
+  spawn brief, default to sequential.
+
 ## When NOT to use sub-agents
 
 - Trivial one-file edits where spinning up an agent costs more than it saves.
 - Purely conversational questions about the code.
 - Quick compile checks after a one-line change.
+- **Any task that requires a display server, GPU, screenshot, or window
+  automation.** Per the capability map above, the orchestrator owns these.
 
 Use direct tools for those; reserve agents for work big enough to justify the
 handoff overhead.
