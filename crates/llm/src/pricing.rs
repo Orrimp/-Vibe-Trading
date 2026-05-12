@@ -114,6 +114,16 @@ pub fn base_rate(provider: &ProviderKind, model: &str) -> Option<PricePerMillion
             cached_input_usd: dec!(0.50),
         }),
         (ProviderKind::Other(name), _) if name == "ollama" => Some(PricePerMillionTokens::zero()),
+        // M6 / T1922 — research mode wraps `ReplayProvider` (whose
+        // `provider_kind() = Other("replay")`) inside the factory's
+        // `BudgetedProvider`. Replay calls are deterministic + free
+        // by definition (product.md line 292 — "no LLM cost (cached
+        // responses replay)"); reporting `usd: $0` for the cost
+        // event keeps the audit ledger and the cockpit cost tile
+        // consistent across modes.
+        (ProviderKind::Other(name), _) if name == "replay" => {
+            Some(PricePerMillionTokens::zero())
+        }
         _ => None,
     }
 }

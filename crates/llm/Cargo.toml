@@ -45,6 +45,31 @@ thiserror = { workspace = true }
 # Retry jitter (T1902 — full-jitter exponential backoff per Q9c)
 rand = { workspace = true }
 
+# M6 record/replay storage (T1919-T1922).
+# Replay DB lives at `data/llm-replay.db` (runtime) or
+# `crates/llm/fixtures/replay-v1.db` (fixture, committed). WAL + per-process
+# tokio Mutex for the writer half per Design § Q8e. The `migrate` feature is
+# required for `sqlx::migrate!("./migrations")` on RecordingProvider::open
+# + ReplayProvider::open.
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
+# T1920 — `request_hash` SHA-256 over canonical JSON. Workspace-level dep
+# already pulled in via the audit crate's hash helpers; reused here for the
+# replay-cache key. Canonical-JSON serialisation is in-crate (deep-sort map
+# keys) — see crates/llm/src/replay.rs ## divergence note (the design's
+# strawman `serde-canonical-json` crate is not in the offline lockfile and
+# v2.0.0 ships sandboxed).
+sha2 = { workspace = true }
+# T1921 — RFC-3339 fractional ISO timestamps for `recorded_at` column.
+time = { workspace = true }
+# T1923 — `llm-smoke` binary CLI flag parsing (`--mode {live|paper|research}`,
+# `--reset`).
+clap = { workspace = true }
+# T1923 — `llm-smoke` binary trace output (`tracing_subscriber::fmt`).
+tracing-subscriber = { workspace = true }
+# T1921 — async filesystem prep (`tokio::fs::create_dir_all` for the
+# replay DB's parent directory before `SqlitePool::connect` opens it).
+# Already pulled in via the `tokio` workspace dep; no new line.
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "sync"] }
 rust_decimal_macros = { workspace = true }
@@ -53,7 +78,3 @@ wiremock = { workspace = true }
 metrics-util = { version = "0.19" }
 # T1914 — temp-dir scaffolding for the auth-key tests.
 tempfile = { workspace = true }
-# T1912 audit-memo enhancement (M5, pass 4) — `budget_audit_memo_test`
-# reads back the `journal_transactions` rows the `BudgetedProvider`
-# wrote via `audit::journal::post_llm_budget_event`.
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }

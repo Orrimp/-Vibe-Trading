@@ -61,10 +61,28 @@ pub enum LlmError {
     InvalidResponse(String),
 
     /// Research-mode `ReplayProvider` (T1922) was asked for a request hash
-    /// that isn't in the replay cache. Strict at v2.0.0 — surfaces as a
-    /// loud test failure, never silently falls through to a live API call.
-    #[error("replay miss: hash {0}")]
-    ReplayMiss(String),
+    /// that isn't in the replay cache. **Strict-only at v2.0.0** per
+    /// operator-locked decision D2 — surfaces as a loud test failure,
+    /// never silently falls through to a live API call.
+    ///
+    /// Carries `provider` + `model` alongside the request hash so the
+    /// research-mode operator knows which fixture row the run was looking
+    /// for (the smallest possible repro: "open `crates/llm/fixtures/replay-v1.db`,
+    /// `SELECT * FROM llm_replay WHERE provider = ? AND model = ?`"). The
+    /// fields are the values the `ReplayProvider` resolved from the
+    /// `ChatRequest` at miss-time — provider from `provider_kind()`, model
+    /// from the request's `model: ModelId`. M6, T1919 (pass 5) refined the
+    /// pass-1 stub `ReplayMiss(String)` to this struct shape.
+    #[error("replay miss: provider={provider:?} model={model} hash={hash}")]
+    ReplayMiss {
+        /// SHA-256 hex of the canonical-JSON request body (the lookup key).
+        hash: String,
+        /// Provider the failed lookup targeted (i.e. the wrapper's
+        /// `provider_kind()`).
+        provider: ProviderKind,
+        /// `ChatRequest::model.as_str()` at miss-time.
+        model: String,
+    },
 
     /// Transport-level HTTP error from `reqwest`.
     #[error(transparent)]
@@ -118,7 +136,11 @@ mod tests {
                 ceiling_usd: dec!(200.00),
             },
             LlmError::InvalidResponse("missing tool_use block".to_string()),
-            LlmError::ReplayMiss("abc123def456".to_string()),
+            LlmError::ReplayMiss {
+                hash: "abc123def456".to_string(),
+                provider: ProviderKind::Anthropic,
+                model: "claude-opus-4-7".to_string(),
+            },
             // `Network` variant is constructed via the From<reqwest::Error>
             // impl in real code; we synthesize one here by forcing a
             // request build error.
@@ -140,7 +162,7 @@ mod tests {
                 | LlmError::Timeout { .. }
                 | LlmError::BudgetExceeded { .. }
                 | LlmError::InvalidResponse(_)
-                | LlmError::ReplayMiss(_)
+                | LlmError::ReplayMiss { .. }
                 | LlmError::Network(_)
                 | LlmError::Auth(_) => {}
             }

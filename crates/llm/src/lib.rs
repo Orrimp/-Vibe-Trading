@@ -37,7 +37,9 @@ pub mod observability;
 pub mod pricing;
 pub mod prompt_cache;
 pub mod providers;
+pub mod recording;
 pub mod redact;
+pub mod replay;
 pub mod retry;
 pub mod tools;
 pub mod trait_def;
@@ -48,6 +50,8 @@ pub use cost::ProviderKind;
 pub use error::LlmError;
 pub use prompt_cache::{CachedSystemPrompt, CachedSystemPromptBuilder};
 pub use providers::{AnthropicProvider, OllamaProvider, OpenAiProvider};
+pub use recording::RecordingProvider;
+pub use replay::{request_hash, ReplayProvider, SUPPORTED_SCHEMA_VERSION};
 pub use tools::{validate_tool_use, ToolSchema};
 pub use trait_def::{
     CacheBreakpoint, ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmProvider,
