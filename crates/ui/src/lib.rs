@@ -39,6 +39,14 @@ pub mod window_icon;
 // `#[cfg(feature = "fixtures")]` — see `bin/cockpit.rs`.
 pub mod fixtures;
 
+// ui-test-harness-bootstrap v0.1 (T4012) — test-only cockpit factory
+// for `iced_test::screenshot`-driven visual snapshots. Always-compiled
+// for the same reason as `fixtures` (integration tests can only see
+// `pub` items); the production builds incur a one-function compile
+// cost. See `crates/ui/src/test_support.rs` for the Q1+Q6 resolution
+// rationale.
+pub mod test_support;
+
 /// Live broadcast-bus subscription (T32). Gated behind the `live` feature
 /// so `cargo build -p ui` stays fast and iced remains the only required
 /// heavy dep. See `live.rs` for the channel list and handoff contract.

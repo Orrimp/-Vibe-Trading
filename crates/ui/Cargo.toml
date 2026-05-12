@@ -100,6 +100,15 @@ agent = { path = "../agent" }
 audit = { path = "../audit" }
 tempfile = { workspace = true }
 
+# ui-test-harness-bootstrap v0.1 (T4011) — `iced_test` 0.14 ships with
+# the workspace-pinned iced 0.14.0; no version skew risk. `image-compare`
+# (MIT/Apache, NOT AGPL `dssim-core`) provides the perceptual-diff PNG
+# under R6 (Q8 operator-lock). Both are dev-only — never reachable from
+# production. See `spec/ui-test-harness-bootstrap/feature.md` Design §.
+iced_test = "=0.14.0"
+image-compare = "=0.4"
+image = { version = "=0.25.6", default-features = false, features = ["png"] }
+
 [features]
 # `fixtures` — enables ui::fixtures with deterministic in-memory generators.
 # Used by `cargo run --bin cockpit --features fixtures` to smoke-test the
