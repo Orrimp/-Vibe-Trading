@@ -227,6 +227,62 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Recent (shipped)
 
+- **iced native widgets (v0.1.0)** — shipped 2026-05-13
+  (operator approval recorded as `[x] Approved — ship` in
+  [`spec/iced-native-widgets/presentations/iced-native-widgets-2026-05-13.md ## Approval`](iced-native-widgets/presentations/iced-native-widgets-2026-05-13.md#approval);
+  evaluator `VERDICT → PASS` at
+  [`reports/evaluation-2026-05-13T10-45Z.md`](iced-native-widgets/reports/evaluation-2026-05-13T10-45Z.md)
+  on commit `1431409`). Brief A of the iced ecosystem evaluation
+  ([predecessor v0.2.0](iced-ecosystem-evaluation/feature.md)) — 4
+  hand-rolled cockpit widgets migrated to iced 0.14 native widgets:
+  - `crates/ui/src/widgets/positions.rs` → native `Table`
+    (commit `9027a0d`, M1 / R1)
+  - `crates/ui/src/widgets/strategies.rs` → native `Table` with
+    Button-in-column-1 row-click + sibling `Column<error_badges>`
+    (commit `3077425`, M2 / R2)
+  - `crates/ui/src/widgets/kpi_strip.rs` → native `Grid::new()
+    .columns(6).spacing(space::M).height(Length::Shrink)`
+    (commit `970e857`, M3 / R3)
+  - `crates/ui/src/widgets/journal_transaction_modal.rs` → native
+    `Float` positioning wrapping a 3-layer `Stack` (commit
+    `9e5bd65`, M4 / R4)
+  New shared theme submodule: `crates/ui/src/theme/iced_widget_catalogs.rs`
+  exposes `cockpit_table_style_fn` factory (commit `3077425`, T2.0)
+  for Brief B `iced_aw` adoption to consume. Native v0.14 `Table::new`
+  has no `.style()` setter, so the factory is unused in v0.1.0 —
+  consumption deferred to Brief B / v0.2.
+  **4-lane parallel dev fan-out worked**: Lanes 2/3/4 spawned in
+  parallel (different files, zero overlap); Lane 1 sequenced after
+  Lane 2's T2.0 Catalog adapter committed. Each lane = one
+  per-widget commit (4 dev commits + 1 tester commit `1431409`).
+  Workflow firsts proven:
+  - **Second invocation of the test-runner / evaluator split** (first
+    was `ui-test-harness-bootstrap` v0.1). Evaluator default-FAIL
+    contract held; 20/20 V-items (V1A-V4E) PASS in fresh context.
+  - **Orchestrator-direct M0 falsifier batch** (T-M0-J through
+    T-M0-N) — 5 grep checks the sub-agent sandbox couldn't run,
+    completed in one orchestrator shell pass before dev fan-out
+    spawned. Caught 2 architect-spec corrections (`Float::new(1
+    arg)` not 2; orphan-rule violation on `impl Catalog`) before
+    code was written.
+  - **`scripts/orch_supplement_log.sh`** (tooling extracted from
+    bootstrap v0.1) supplemented 3 sandbox-denied checks
+    (`cargo doc`, shasum, clocks-grep) into the test-runner's
+    log — pattern repeatable.
+  4 honest architectural divergences flagged inline (orphan-rule
+  pivot to StyleFn factory; `Grid::height(Shrink)` AspectRatio
+  override; `Float::new(1 arg)` not 2; `Table::new` accepts
+  `IntoIterator<Item=T>` looser than `Vec<T>`).
+  **Net LOC** +154 (+47 positions / −30 strategies / +8 kpi /
+  +29 journal / +100 new Catalog adapter) — the predecessor brief's
+  "−900-1100 LOC retired" framing measured file span, not glue
+  layer; **actual value is standardization** (idiomatic iced
+  widgets, future-proof AccessKit hooks, less hand-rolled
+  responsibility, theme adapter scaffold for Brief B). Anchor
+  neutrality preserved: 11/11 byte-identical; bootstrap V8 visual
+  baseline check carry-forward — 3 PNG SHAs byte-identical
+  (Charts screen unaffected). 1203+ workspace tests passing.
+
 - **v2 LLM strategy (v2.0.0)** — shipped 2026-05-13
   (operator approval recorded as `[x] Approved — ship` in
   [`spec/v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md ## Approval`](v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md#approval);
@@ -874,3 +930,19 @@ of which became skill-plumbing fixes that shipped in commit
   candidate. Unblocks Kronos v2.5 + Lumen Phase 6 +
   reflection-memory follow-ups. Approval evidence:
   [`v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md ## Approval`](v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md#approval).
+
+- 2026-05-13 (operator): v0.1.0 SHIPPED — `iced-native-widgets`
+  (Brief A of iced ecosystem evaluation). 4-lane parallel dev
+  fan-out (positions / strategies Tables + kpi_strip Grid +
+  journal_modal Float) across commits `3077425` → `970e857` →
+  `9e5bd65` → `9027a0d` → tester `1431409`. Second invocation
+  of the test-runner / evaluator split; evaluator default-FAIL
+  contract held; 20/20 V-items PASS; 11/11 anchors byte-identical;
+  bootstrap V8 visual baselines preserved (3 PNG SHAs unchanged);
+  1203+ workspace tests passing. New shared
+  `crates/ui/src/theme/iced_widget_catalogs.rs` Catalog adapter
+  scaffold for Brief B (iced_aw cherry-pick: date_picker +
+  spinner + badge). 4 honest architectural divergences from
+  architect's brief flagged + corrected inline. Approval
+  evidence:
+  [`iced-native-widgets/presentations/iced-native-widgets-2026-05-13.md ## Approval`](iced-native-widgets/presentations/iced-native-widgets-2026-05-13.md#approval).

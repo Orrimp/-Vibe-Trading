@@ -1,7 +1,7 @@
 ---
 slug: iced-native-widgets
-status: in-progress
-owner: evaluator
+status: shipped
+owner: shipped
 updated: 2026-05-13
 version: 0.1.0
 ---
