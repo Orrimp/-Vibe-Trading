@@ -63,13 +63,21 @@ sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
 # success-* glob).  Captured at first deterministic local run on
 # 2026-05-01 against the FIXTURE_SEED = 0xC0FFEE fixtures shipped at
 # crates/reports/tests/fixtures/build_ledger_{7d,90d}.rs.
+#
+# v2.0.0 re-lock — denominator `$135 → $200` + `Cache hit ratio` row
+# added (Q5d + Q11). Re-locked by tester at T_FINAL_V2_LLM_STRATEGY
+# on 2026-05-13 against the regenerated success-fixed-report-sample-*
+# bodies under spec/operator-success-reports/reports/. Pre-staged SHA
+# capture from scripts/pre_stage_anchors.sh (T1936). The 9 strategy
+# anchors at lines 15-58 stay byte-identical (R14.2 / V8 enforced by
+# T1937 negative-invariant gate).
 
 [[anchors]]
 scenario = "report-sample-7d"
-version  = "v1+"
-sha256   = "f4ef3d02300f9ac97108a5cd9ce4277d455a5438356ffe2d74f8cfbb4b8ba994"
+version  = "v2.0.0"
+sha256   = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3"
 
 [[anchors]]
 scenario = "report-sample-90d"
-version  = "v1+"
-sha256   = "463e19b298552d7e3e37b1aad7c786d1cc71f14eed75d7df7ea6dc57525fa33c"
+version  = "v2.0.0"
+sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
