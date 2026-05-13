@@ -1,8 +1,16 @@
 //! KPI strip widget — Phase 4 (T1805 / R2).
 //!
 //! Six metric cards (Total return / CAGR / Sharpe / Max DD / Win
-//! rate / Trades) in one Row. Sentiment-coloured per the Phase 4
+//! rate / Trades) laid out on a native `iced::widget::grid::Grid`
+//! with six equal columns. Sentiment-coloured per the Phase 4
 //! Design's Q-resolved table; missing fields render as `—` dashes.
+//!
+//! **Grid theming (Q3-sub / T3.0, 2026-05-13):** `Grid` has no
+//! `Style`, no `Catalog`, no `.style()` / `.class()` method. It
+//! inherits container defaults. Visual chrome (PANEL background,
+//! border, padding) stays in the outer `Container` wrapping the
+//! Grid; per-card surface tokens stay in the `card(...)` helper.
+//! No Catalog adapter is required for Grid.
 //!
 //! **Zero string literals** — copy via `crate::strings::*`.
 //! **Zero hex colours** — tokens via `crate::theme::*`.
@@ -14,7 +22,8 @@
     clippy::match_same_arms
 )]
 
-use iced::widget::{container, Column, Container, Row, Text};
+use iced::widget::grid::Grid;
+use iced::widget::{container, Column, Container, Text};
 use iced::{Border, Length};
 use trading_core::BacktestMetrics;
 
@@ -120,15 +129,27 @@ fn ready_strip<'a>(m: &'a BacktestMetrics, mode: ThemeMode) -> iced::Element<'a,
         mode,
     );
 
-    Row::new()
+    // T3.1 — six-column native `Grid` replaces the prior hand-rolled
+    // `Row::new().spacing(...).push(...) × 6.width(Length::Fill)` chain
+    // per H-arch-A3 RESOLVED-UNFALSIFIED. `Grid::columns(6)` handles
+    // column equalization implicitly, so the per-card
+    // `Length::FillPortion(1)` width hint is removed in `card(...)`.
+    // `Grid` defaults to filling its parent width — no explicit
+    // `.width(...)` call required (and `Grid::width` accepts only
+    // `Pixels`, not `Length::Fill`). The default `Sizing::AspectRatio(1.0)`
+    // would force square cells; override with
+    // `.height(Length::Shrink)` so each cell hugs its intrinsic text
+    // height (~80 px strip per the viewer panel snapshot).
+    Grid::new()
+        .columns(6)
         .spacing(space::M)
+        .height(Length::Shrink)
         .push(total_return)
         .push(cagr)
         .push(sharpe)
         .push(max_dd)
         .push(win_rate)
         .push(trades)
-        .width(Length::Fill)
         .into()
 }
 
@@ -143,13 +164,20 @@ fn unavailable_strip<'a>(mode: ThemeMode) -> iced::Element<'a, ViewerMessage> {
         KPI_WIN_RATE_LABEL,
         KPI_TRADES_LABEL,
     ];
-    let mut row = Row::new().spacing(space::M);
+    // T3.2 — same Grid migration as the ready strip: the six
+    // dash-placeholder cards live on a 6-column `Grid` instead of a
+    // hand-rolled `Row::new().push(...) × 6` loop. Outer `Column`
+    // composition with the muted-body advisory line is unchanged.
+    let mut grid = Grid::new()
+        .columns(6)
+        .spacing(space::M)
+        .height(Length::Shrink);
     for label in labels {
-        row = row.push(card(label, dash.clone(), dash_color, mode));
+        grid = grid.push(card(label, dash.clone(), dash_color, mode));
     }
     Column::new()
         .spacing(space::S)
-        .push(row)
+        .push(grid)
         .push(muted_body(VIEWER_METRICS_UNAVAILABLE))
         .into()
 }
@@ -166,13 +194,15 @@ fn card<'a>(
         .size(text::SMALL)
         .color(color::FG_3.current(mode));
     let value_line = Text::new(value).size(text::H1).color(value_color);
+    // T3.1 — per-card `Length::FillPortion(1)` width hint removed:
+    // `Grid::columns(6)` handles column equalization implicitly so
+    // each cell inherits the column's intrinsic width.
     Container::new(
         Column::new()
             .spacing(space::XS)
             .push(label_line)
             .push(value_line),
     )
-    .width(Length::FillPortion(1))
     .padding([space::XS as u16, space::S as u16])
     .into()
 }
