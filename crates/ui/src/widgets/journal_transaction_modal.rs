@@ -8,15 +8,30 @@
 //!
 //! ## Iced precedent
 //!
-//! This widget is the **first overlay use of `iced::widget::Stack`** in the
-//! workspace. The bottom layer of the Stack is the existing cockpit main
-//! column (passed in as the `content` arg); the top layer is the modal
-//! card framed by `border_strong` on a `bg_overlay` backdrop. Future
-//! click-through-to-audit modals (positions-drilldown, strategy-events)
-//! will inherit this pattern. The architect's design (Q1) selected
-//! `Stack` over `iced_aw::Modal` and a hand-rolled overlay column to
-//! keep the workspace dep-free and use the upstream-blessed z-stacking
-//! primitive.
+//! This widget is the **first overlay use of `iced::widget::float::Float`**
+//! (Brief A R4, M4 — iced-native-widgets v0.1.0) on top of a
+//! `iced::widget::Stack`. The Stack layers in z-order are: (1) cockpit
+//! main column (`content` arg) — bottom; (2) translucent backdrop
+//! (`MouseArea<Container<Space>>`, captures click-outside dismiss) —
+//! middle; (3) centered modal card (Container with `bg_overlay` +
+//! `border_strong`) — top. The whole Stack is wrapped in `Float::new(...)` —
+//! the iced 0.14 positioning primitive — so future overlays inherit the
+//! upstream-blessed `Float` route rather than a hand-rolled overlay column.
+//!
+//! `Float` is **positioning-only** in iced 0.14 (architect H-arch-A7 /
+//! H-arch-A7b RESOLVED-FALSIFIED 2026-05-13): zero `on_dismiss`,
+//! `on_close`, `backdrop`, or keyboard hooks. Consequences: click-outside
+//! dismiss stays via the existing hand-rolled
+//! `MouseArea::new(Space).on_press(close_msg)` backdrop sibling;
+//! Escape-to-dismiss stays in the cockpit's keyboard subscription
+//! (`bin/cockpit.rs::subscription` at line 251 — modal-open-gated
+//! `iced::event::listen_with` recipe routes `Esc` →
+//! `Message::TapeAuditModalClosed`); and card centering stays via the
+//! inner Container's `center_x` / `center_y` chrome — `Float`'s
+//! `translate` closure is reserved for future use; default scale and
+//! translate keep `Float` structurally inert at runtime while the
+//! migration carries the architectural commitment (R4 in
+//! iced-native-widgets v0.1.0).
 //!
 //! ## Principles compliance
 //!
@@ -45,7 +60,7 @@
 //! swap is mechanical.
 
 use iced::widget::{
-    button, container, Button, Column, Container, MouseArea, Row, Space, Stack, Text,
+    button, container, float, Button, Column, Container, Float, MouseArea, Row, Space, Stack, Text,
 };
 use iced::{Element, Length};
 
@@ -80,18 +95,28 @@ use super::num::fmt_usdt;
 /// modal width is a feature-specific contract, not a reusable design token.
 const MODAL_WIDTH_PX: u32 = 480;
 
-/// Render the modal as a `Stack` overlay on top of `content`.
+/// Render the modal as a `Float`-wrapped `Stack` overlay on top of `content`.
 ///
 /// `content` is the cockpit's existing main column — passed in as the
-/// bottom layer of the `Stack`. The top layer is the modal card on a
-/// `bg_overlay` backdrop. `close_msg` is the message emitted when the
-/// operator clicks the backdrop or the explicit `Close` button; T1206
-/// supplies the concrete `Message::TapeAuditModalClosed` variant. Keeping
-/// the close message generic lets this widget compile before T1206 lands
-/// the variant on `Message`.
+/// bottom layer of the inner `Stack`. The middle layer is the
+/// translucent backdrop (`MouseArea<Container<Space>>`, captures
+/// click-outside dismiss). The top layer is the modal card on a
+/// `bg_overlay` backdrop. The whole 3-layer Stack is wrapped in
+/// `iced::widget::float::Float` — R4 migration to the iced 0.14
+/// positioning primitive (Brief A, iced-native-widgets v0.1.0).
 ///
-/// Returns a `Stack` with the cockpit body underneath the modal — when
-/// the caller's `Cockpit.tape_audit_modal == None`, callers render
+/// `close_msg` is the message emitted when the operator clicks the
+/// backdrop or the explicit `Close` button; T1206 supplies the concrete
+/// `Message::TapeAuditModalClosed` variant. Keeping the close message
+/// generic lets this widget compile across the cockpit and cockpit_live
+/// callers. The third close path — `Esc` — is **not** wired in this
+/// widget: `Float` has zero keyboard participation (H-arch-A7b
+/// FALSIFIED, 2026-05-13). Escape stays in `bin/cockpit.rs::subscription`
+/// + `bin/cockpit_live.rs::subscription` (modal-open-gated keyboard
+/// recipe routing `Esc` to `Message::TapeAuditModalClosed`).
+///
+/// Returns a `Float<Stack>` with the cockpit body underneath the modal —
+/// when the caller's `Cockpit.tape_audit_modal == None`, callers render
 /// `content` directly without invoking this function (so the cockpit's
 /// rendered iced tree is byte-identical to the pre-modal world; existing
 /// snapshot tests stay green by construction).
@@ -107,7 +132,25 @@ where
     let backdrop = backdrop_layer(close_msg.clone());
     let card = modal_card(state, close_msg);
 
-    Stack::new().push(content).push(backdrop).push(card).into()
+    // The 3-layer Stack composes the cockpit content, click-outside
+    // dismiss backdrop, and centered modal card. The hand-rolled
+    // `MouseArea` backdrop is preserved as a sibling layer
+    // (H-arch-A7 RESOLVED-FALSIFIED — `Float` provides positioning
+    // only; click-outside dispatch must stay in the existing
+    // `MouseArea::new(Space).on_press(close_msg)` route).
+    let base = Stack::new().push(content).push(backdrop).push(card);
+
+    // Wrap in `Float` — the iced 0.14 positioning primitive. At default
+    // scale (1.0) and no `translate` closure, `Float` is structurally
+    // inert (`is_floating == false`), so the runtime tree is identical
+    // to the pre-migration `Stack`. The migration carries the
+    // architectural commitment for R4 in iced-native-widgets v0.1.0:
+    // future overlays inherit the upstream-blessed `Float` route. The
+    // `style` closure is the default no-shadow Style — Q3-sub PASS
+    // (closure-style, no Catalog adapter needed for `Float`).
+    Float::new(base)
+        .style(|_theme: &iced::Theme| float::Style::default())
+        .into()
 }
 
 // ── Layers ──────────────────────────────────────────────────────────────────
