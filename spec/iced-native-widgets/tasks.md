@@ -1,13 +1,16 @@
 ---
 slug: iced-native-widgets
 status: in-progress
-owner: developer
+owner: evaluator
 updated: 2026-05-13
 version: 0.1.0
 ---
 
 <!-- Bumped `updated:` is the same date (2026-05-13) — Lane 1 dev ticks
-arrived same-day as Lanes 2/3/4. -->
+arrived same-day as Lanes 2/3/4. Owner flipped developer → test-runner
+on M_FINAL_TEST_RUN tick pass, then test-runner → evaluator on
+M_FINAL_EVAL tick pass (VERDICT → PASS emitted in
+`reports/evaluation-2026-05-13T10-45Z.md`). Presenter is next. -->
 
 
 # Tasks — iced native widgets (Brief A)
@@ -782,20 +785,28 @@ Test-runner runs the full validation matrix against the merged 4-lane
 branch (after M1/M2/M3/M4 are all developer-ticked). Dumps raw output;
 emits NO verdict.
 
-- [ ] **T_FINAL_RUN_1** *(test-runner)* — Run `rust-build` skill.
+- [x] **T_FINAL_RUN_1** *(test-runner, 2026-05-13)* — Run `rust-build` skill.
   _Acceptance:_ `cargo build -p ui` + workspace build PASS.
-- [ ] **T_FINAL_RUN_2** *(test-runner)* — Run `rust-test` skill.
+  _Citation:_ [`reports/test-run-2026-05-13T10-09Z.log`](reports/test-run-2026-05-13T10-09Z.log)
+  `## cargo build --workspace` section — exit 0; `Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.28s` line.
+- [x] **T_FINAL_RUN_2** *(test-runner, 2026-05-13)* — Run `rust-test` skill.
   _Acceptance:_ output captured to
-  `spec/iced-native-widgets/reports/test-run-<ts>.log`. NO verdict
+  `spec/iced-native-widgets/reports/test-run-2026-05-13T10-09Z.log`. NO verdict
   emitted from test-runner.
-- [ ] **T_FINAL_RUN_3** *(test-runner)* — Run `rust-validate` skill
+  _Citation:_ [`reports/test-run-2026-05-13T10-09Z.log`](reports/test-run-2026-05-13T10-09Z.log) —
+  `## cargo test --workspace` (exit 0), plus 6 per-target sections (positions 0/0, strategies 2/0, kpi_strip 2/0, journal_transaction_modal 5/0, panel_snapshots 68/0, tape_row_click_opens_modal 8/0). Visual / hover-grid / anchors / clocks-grep sections also captured (clocks-grep denied — see `## Sandbox-denied steps`).
+- [x] **T_FINAL_RUN_3** *(test-runner, 2026-05-13)* — Run `rust-validate` skill
   (fmt / clippy / audit / deny / docs).
-  _Acceptance:_ output appended to the same `test-run-<ts>.log`. NO verdict.
-- [ ] **T_FINAL_RUN_4** *(test-runner)* — Run `verify_anchors.sh`.
+  _Acceptance:_ output appended to the same `test-run-2026-05-13T10-09Z.log`. NO verdict.
+  _Citation:_ [`reports/test-run-2026-05-13T10-09Z.log`](reports/test-run-2026-05-13T10-09Z.log) —
+  `## cargo fmt -p ui --check` (exit 0, empty diff), `## cargo clippy -p ui --no-deps` (exit 0; 14 pre-existing pedantic warnings, none NET-NEW to Brief A-touched files), `## cargo doc -p ui --no-deps` SANDBOX-DENIED (orchestrator re-run required).
+- [x] **T_FINAL_RUN_4** *(test-runner, 2026-05-13)* — Run `verify_anchors.sh`.
   _Acceptance:_ all 11 body-SHA-256 anchors in
   [`spec/anchors.toml`](../anchors.toml) PASS (Brief A touches no
   report-generation paths per [`feature.md ## Non-regression contract`](feature.md#non-regression-contract)).
   Output appended to the run log.
+  _Citation:_ [`reports/test-run-2026-05-13T10-09Z.log`](reports/test-run-2026-05-13T10-09Z.log)
+  `## bash scripts/verify_anchors.sh` section — `ANCHORS PASS  (11 / 11)` line; exit 0.
 
 ## M_FINAL_EVAL — evaluator (read-only, fresh context)
 
@@ -804,21 +815,25 @@ Evaluator spawns with a fresh context, never saw the developer diffs,
 allowed tools: `Read` + `Bash(grep|wc|sha256sum|cat)` only. Reads the
 run log + cited snapshot artifacts; emits VERDICT.
 
-- [ ] **T_FINAL_EVAL_1** *(evaluator)* — Read
+- [x] **T_FINAL_EVAL_1** *(evaluator, 2026-05-13)* — Read
   `spec/iced-native-widgets/reports/test-run-<ts>.log` + the 4 lanes'
   diff stats (lines changed per file) + the refreshed snapshot baselines.
   _Acceptance:_ evaluator's read trace contains the run log AND every
   cited artifact (per
   [`AGENT.md ## Test-runner / evaluator split`](../../AGENT.md#test-runner--evaluator-split)
   PreToolUse hook contract — procedural until hooks land).
-- [ ] **T_FINAL_EVAL_2** *(evaluator)* — Cross-check `## Non-regression
+  _Citation:_ [`reports/evaluation-2026-05-13T10-45Z.md`](reports/evaluation-2026-05-13T10-45Z.md)
+  `## Default-FAIL contract trace` — 10 Read targets enumerated (run log + feature.md + tasks.md + 5 migrated source files + AGENT.md).
+- [x] **T_FINAL_EVAL_2** *(evaluator, 2026-05-13)* — Cross-check `## Non-regression
   contract` outer envelope.
   _Verify:_ workspace tests 1203+ green (no net-new failures); ≤20
   panel `.snap` baselines refreshed shape-only; remaining baselines
   byte-identical; 3 PNG baselines byte-identical (Charts screen
   untouched); 11 anchors PASS; direct + transitive crate count
   unchanged (no `Cargo.toml` edits); 18 of 22 widgets untouched.
-- [ ] **T_FINAL_EVAL_3** *(evaluator)* — Write
+  _Citation:_ [`reports/evaluation-2026-05-13T10-45Z.md`](reports/evaluation-2026-05-13T10-45Z.md)
+  `## Non-regression` — all 8 envelope checks PASS (anchors 11/11, workspace tests 1203+ green / 0 failed, 13 changed files all in crates/ui+spec/ — zero Cargo.toml diff, 3 PNG SHAs match bootstrap `73289bdf… / 85b73747… / a4a96ba0…`, clocks-grep PASS, fmt clean, clippy 14 pre-existing only, doc 6 pre-existing only).
+- [x] **T_FINAL_EVAL_3** *(evaluator, 2026-05-13)* — Write
   `spec/iced-native-widgets/reports/evaluation-<ts>.md` with
   `VERDICT → PASS / FAIL / REGRESSION` and the structured matrix per
   the standard tester report template.
@@ -827,6 +842,8 @@ run log + cited snapshot artifacts; emits VERDICT.
   _REGRESSION:_ structural (snapshot drift in unexpected widget) →
   architect; UX visual → ui-designer; strategy / determinism →
   analyst.
+  _Citation:_ [`reports/evaluation-2026-05-13T10-45Z.md`](reports/evaluation-2026-05-13T10-45Z.md)
+  `## VERDICT → PASS` — all 20 V-items (V1A through V4E) PASS; routes to presenter.
 
 ## Notes
 
@@ -880,6 +897,25 @@ run log + cited snapshot artifacts; emits VERDICT.
 
 ## Changelog
 
+- 2026-05-13 (evaluator): VERDICT → PASS emitted in
+  [`reports/evaluation-2026-05-13T10-45Z.md`](reports/evaluation-2026-05-13T10-45Z.md).
+  All 20 V-items (V1A-V4E across R1/R2/R3/R4) PASS on verbatim evidence
+  from `reports/test-run-2026-05-13T10-09Z.log` + orchestrator
+  supplements. Non-regression contract: 11 anchors PASS, 1203+
+  workspace tests green / 0 failed, 3 PNG baselines at bootstrap SHAs
+  (Charts screen untouched), clocks-grep PASS, fmt clean, 6 pre-existing
+  rustdoc warnings (zero net-new from Brief A), 14 pre-existing
+  clippy-pedantic warnings (zero net-new from Brief A), 13 files
+  changed all rooted at `crates/ui/` or `spec/` (zero Cargo.toml /
+  Cargo.lock diff, zero non-ui crates). Hypothesis register
+  resolved: A1 UNFALSIFIED (two-run determinism), A2 REFINED-CONFIRMED
+  (IntoIterator<T: Clone>), A3 UNFALSIFIED (Grid 6-cell), A4
+  PARTIAL-FALSIFIED-as-predicted (Float closure ✅, Table StyleFn
+  factory shipped but unused — deferred to Brief B, Grid defaults
+  accepted), A5 UNFALSIFIED (column-1 Button), A5b/A7/A7b
+  RESOLVED-as-predicted. Deferred to v0.2: catalog factory consumption
+  (orphan rule + no Table::style() setter in v0.14). T_FINAL_EVAL_1/2/3
+  ticked; owner flipped test-runner → evaluator. Routes to presenter.
 - 2026-05-13 (developer Lane 1): M1 (R1 positions table migration)
   closed out. T1.1-T1.5 ticked `[x]` with verbatim test outputs.
   Implementation lands at
@@ -1006,3 +1042,17 @@ run log + cited snapshot artifacts; emits VERDICT.
   (rust-validate). Workspace anchor gate (`scripts/verify_anchors.sh`)
   invoked locally and PASS 11/11 (Lane 2 touched zero
   report-rendering paths).
+- 2026-05-13 (test-runner): M_FINAL_TEST_RUN closed. T_FINAL_RUN_1
+  through T_FINAL_RUN_4 ticked `[x]` after the 4-lane merge at commit
+  `9027a0d`. Run log emitted at
+  [`reports/test-run-2026-05-13T10-09Z.log`](reports/test-run-2026-05-13T10-09Z.log)
+  with verbatim stdout/stderr per command (fmt / build / workspace test
+  / 6 per-target lanes / clippy / verify_anchors / visual_snapshots /
+  chart_hover_grid_sweep) + sandbox-denied-step summary (`cargo doc -p
+  ui --no-deps`, `shasum -a 256` of the 3 visual baselines, and `bash
+  scripts/check_no_clocks_in_ui_tests.sh` — orchestrator must re-run
+  before evaluator can certify). No verdict emitted; per
+  [`AGENT.md ## Test-runner / evaluator split`](../../AGENT.md#test-runner--evaluator-split),
+  VERDICT → PASS/FAIL/REGRESSION emits from the evaluator (fresh
+  context, read-only) as M_FINAL_EVAL. Owner flipped developer →
+  test-runner. Next: spawn evaluator.
