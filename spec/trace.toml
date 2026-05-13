@@ -1,0 +1,306 @@
+# spec/trace.toml — Traceability index.
+#
+# One row per requirement. Connects: product/architecture refs → feature
+# folder → crate(s) → test path(s) → anchor scenario name(s).
+#
+# This is the index spec-lint and spec-auditor consume. A row with missing
+# required fields is a lint violation; a row whose paths don't resolve is
+# also a lint violation. Anchors cited here must exist in anchors.toml.
+#
+# Ownership:
+#   - analyst writes the `[req]` row when a feature enters `proposed`.
+#   - architect fills `arch` (and ADR refs once Phase 1A lands).
+#   - developer fills `crates` and `tests`.
+#   - tester fills `anchors` (only after `verify-anchors` PASS).
+#
+# Status states match feature.md frontmatter:
+#   draft | proposed | candidate | in-progress | roadmap | shipped | deprecated
+#
+# This file is the seed produced on 2026-05-13. Every shipped feature gets
+# one row capturing what is known today; gaps (empty `tests`, missing
+# `anchors`) become spec-auditor punch-list items for the appropriate
+# owner to close.
+
+#
+# ─── Strategy features ──────────────────────────────────────────────────
+#
+
+[[req]]
+id          = "REQ-V0-PAPER-SMA-001"
+title       = "v0 paper-trading SMA-cross strategy with deterministic backtest"
+feature     = "v0-paper-sma"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/strategy", "crates/backtest"]
+tests       = []   # TODO developer: link integration tests
+anchors     = ["btc-2023-1m-sma-cross", "btc-2023-1m-sma-baseline-refresh"]
+state       = "in-progress"
+
+[[req]]
+id          = "REQ-V05-COMPOSED-001"
+title       = "v0.5 composed strategies — MACD, RSI, Bollinger mean-revert"
+feature     = "v05-composed-strategies"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/strategy", "crates/backtest"]
+tests       = []   # TODO developer
+anchors     = ["btc-2023-1m-macd-trend", "btc-2023-1m-rsi-reversion", "btc-2023-1m-bbands-mean-revert"]
+state       = "in-progress"
+
+[[req]]
+id          = "REQ-V1-MOMENTUM-001"
+title       = "v1 cross-sectional momentum across top-10 universe"
+feature     = "v1-cross-sectional-momentum"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/strategy", "crates/backtest", "crates/data"]
+tests       = []   # TODO developer
+anchors     = ["top10-2023-1h-momentum", "top10-2024-h1-momentum"]
+state       = "in-progress"
+
+[[req]]
+id          = "REQ-V15A-PAIRS-001"
+title       = "v1.5a mean-reversion pairs trading with z-score gating"
+feature     = "v15a-mean-reversion-pairs"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/strategy", "crates/backtest"]
+tests       = []   # TODO developer
+anchors     = ["pairs-2023-zscore-mr", "pairs-2024-h1-zscore-mr"]
+state       = "shipped"
+
+[[req]]
+id          = "REQ-V15B-MULTIVENUE-001"
+title       = "v1.5b multi-venue execution scaffolding"
+feature     = "v1-5b-multi-venue"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/exec", "crates/data"]
+tests       = []   # TODO developer
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-V2-LLM-STRATEGY-001"
+title       = "v2 LLM-driven post-mortem analyst and strategy directives"
+feature     = "v2-llm-strategy"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/llm", "crates/agent", "crates/strategy"]
+tests       = []   # TODO developer
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-V25-KRONOS-001"
+title       = "v2.5 Kronos forecast overlay (candidate)"
+feature     = "v25-kronos-forecast-overlay"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/llm", "crates/strategy"]
+tests       = []
+anchors     = []
+state       = "candidate"
+
+#
+# ─── Accounting / risk features ─────────────────────────────────────────
+#
+
+[[req]]
+id          = "REQ-PER-SYMBOL-POS-001"
+title       = "Per-symbol position accounts and PnL attribution"
+feature     = "per-symbol-position-accounts"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/audit", "crates/exec"]
+tests       = []   # TODO developer
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-REAL-MTM-001"
+title       = "Real mark-to-market unrealized PnL surfaces"
+feature     = "real-mtm-unrealized-pnl"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/audit", "crates/exec"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-JOURNAL-TX-META-001"
+title       = "Journal transactions carry metadata (fees, slippage, fills)"
+feature     = "journal-transactions-metadata"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/audit"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+#
+# ─── UI / Cockpit features ──────────────────────────────────────────────
+#
+
+[[req]]
+id          = "REQ-LIVE-COCKPIT-001"
+title       = "Unified live cockpit (single iced binary)"
+feature     = "live-cockpit-unified"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-CHART-CANVAS-001"
+title       = "Chart canvas rewrite — wgpu-backed canvas with marker layer"
+feature     = "chart-canvas-overhaul"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-CHART-MARKER-EMPH-001"
+title       = "Sell markers visually dominate buy markers"
+feature     = "chart-buy-sell-emphasis"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-TAPE-ROW-AUDIT-001"
+title       = "Tape-row audit modal — drill into a single executed fill"
+feature     = "tape-row-audit-modal"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/ui", "crates/audit"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-ICED-NATIVE-WIDGETS-001"
+title       = "iced-native widget set for cockpit screens"
+feature     = "iced-native-widgets"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-UI-TEST-HARNESS-001"
+title       = "UI test harness (deterministic, no-clock, screenshot-capable)"
+feature     = "ui-test-harness-bootstrap"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-COCKPIT-BUNDLE-001"
+title       = "Cockpit app bundle (single distributable)"
+feature     = "cockpit-app-bundle"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "candidate"
+
+[[req]]
+id          = "REQ-LUMEN-DESIGN-001"
+title       = "Lumen design system adoption (multi-phase)"
+feature     = "lumen-design-adoption"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md", "spec/ui-design-principles.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "roadmap"
+
+[[req]]
+id          = "REQ-ICED-ECOSYSTEM-EVAL-001"
+title       = "iced ecosystem evaluation (candidate framework decision)"
+feature     = "iced-ecosystem-evaluation"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = []
+tests       = []
+anchors     = []
+state       = "candidate"
+
+#
+# ─── Reporting / reflection ─────────────────────────────────────────────
+#
+
+[[req]]
+id          = "REQ-OPERATOR-REPORTS-001"
+title       = "Operator success reports — sample-7d and sample-90d"
+feature     = "operator-success-reports"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/reports"]
+tests       = []
+anchors     = ["report-sample-7d", "report-sample-90d"]
+state       = "shipped"
+
+[[req]]
+id          = "REQ-REFLECTION-MEMORY-001"
+title       = "Reflection-memory — LLM lessons persisted across runs"
+feature     = "reflection-memory"
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/reflection", "crates/llm"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+#
+# ─── Cross-cutting invariants (no feature folder) ───────────────────────
+#
+
+[[req]]
+id          = "INV-DETERMINISM-RNG-001"
+title       = "All RNG must be seeded with ChaCha20 from a config-supplied seed"
+feature     = []
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/core", "crates/strategy", "crates/backtest"]
+tests       = []
+anchors     = ["btc-2023-1m-sma-cross", "btc-2023-1m-sma-baseline-refresh"]
+state       = "shipped"
+
+[[req]]
+id          = "INV-MONEY-DECIMAL-001"
+title       = "Money math uses Decimal — never f64"
+feature     = []
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/core", "crates/audit", "crates/exec"]
+tests       = []
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "INV-TIMESTAMPS-FRACSEC-001"
+title       = "All timestamps fractional-second precision (HF-1 / T715 incident)"
+feature     = []
+product     = "spec/product.md"
+arch        = ["spec/architecture.md"]
+crates      = ["crates/core", "crates/data", "crates/exec"]
+tests       = []
+anchors     = []
+state       = "shipped"

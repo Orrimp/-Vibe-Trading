@@ -131,17 +131,113 @@ to achieve actual concurrency. Sequential calls defeat the purpose.
   architect may push back to analyst; tester may route to any of the above.
   The orchestrator honors those routes rather than forcing linear progress.
 
+### Structured handoff envelope
+
+Alongside the prose `HANDOFF →` / `VERDICT →` line, every sub-agent emits a
+TOML envelope in a fenced ` ```toml ` block. The envelope makes the
+receiving agent's first-pass parse mechanical — it does not need to read the
+prose to know what was decided. The prose is still required; the envelope
+duplicates the *machine-readable* bits.
+
+Schema:
+
+```toml
+[handoff]
+from        = "<agent name>"          # analyst | architect | developer | ui-designer | tester | presenter
+to          = "<agent name>" | "human"
+feature     = "<slug>"                # spec/<slug>/feature.md folder name
+trace_refs  = ["REQ-...", ...]        # rows in spec/trace.toml; empty list ok until Phase 1B lands
+verdict     = "READY" | "PASS" | "FAIL" | "REGRESSION" | "BLOCKED"
+priority    = "P0" | "P1" | "P2"
+
+[inputs]
+brief       = "<path to spec-brief artifact, or 'inline'>"
+artifacts   = ["<spec path>", ...]    # files the sender read
+
+[outputs]
+spec_files  = ["<spec path>", ...]    # files the sender wrote via spec-update
+adrs_added  = ["<path to adr/*.md>", ...]   # post-Phase-1A; empty list ok before then
+
+[open_questions]
+items = [
+  "<one-line question for the next agent>",
+  ...
+]
+
+[assumptions]
+items = [
+  "<one-line assumption the sender made — receiver should challenge if false>",
+  ...
+]
+```
+
+Example (architect → developer):
+
+```toml
+[handoff]
+from        = "architect"
+to          = "developer"
+feature     = "chart-canvas-overhaul"
+trace_refs  = ["REQ-CHART-CANVAS-001", "REQ-CHART-CANVAS-002"]
+verdict     = "READY"
+priority    = "P1"
+
+[inputs]
+brief       = "/tmp/brief-chart-canvas-overhaul.md"
+artifacts   = ["spec/chart-canvas-overhaul/feature.md", "spec/architecture.md"]
+
+[outputs]
+spec_files  = ["spec/chart-canvas-overhaul/tasks.md"]
+adrs_added  = []
+
+[open_questions]
+items = [
+  "Does the marker-emphasis change require an anchor refresh on btc-2023-1m-sma-cross?",
+]
+
+[assumptions]
+items = [
+  "iced 0.13 stable for the duration of this feature",
+  "no new wgpu dependency",
+]
+```
+
+Adoption rule: every new report after the AGENT.md update date carries an
+envelope. Older reports are not retroactively edited. The presenter pre-tick
+gate may, in a future change, refuse to ship a feature whose latest sub-
+agent reports lack envelopes — track adoption first, enforce later.
+
 ## The vibe-coding loop
+
+**Before every sub-agent delegation**, the orchestrator assembles a brief:
+
+```bash
+scripts/spec_brief.py <slug> --out /tmp/brief-<slug>.md
+```
+
+and includes the brief path in the delegation prompt (e.g. "Read your brief
+at `/tmp/brief-<slug>.md` first."). This is the mechanism that keeps sub-
+agents off `spec/architecture.md` (296 KB) and on the curated 3-5k-token
+slice they actually need. For greenfield analyst work where no feature
+folder exists yet, the brief is skipped — analyst reads `CLAUDE.md` +
+`product.md` + the `INV-*` rows from `spec/trace.toml` instead. See
+`.claude/skills/spec-brief/SKILL.md` for the full contract.
+
+The loop:
 
 1. User states intent in plain language.
 2. Orchestrator opens/updates `spec/product.md` if needed, then:
    - spawns **analyst** (possibly fanned-out) to turn intent into a feature brief;
-3. Orchestrator reads the analyst's handoff, then:
-   - spawns **architect** (possibly fanned-out) for design + task list;
-4. Orchestrator spawns **developer** sub-agents in parallel across independent
+   - (greenfield case: no spec-brief; analyst reads invariants + product).
+3. Orchestrator reads the analyst's handoff envelope, then:
+   - generates `spec_brief.py <slug>` and includes the path in the prompt;
+   - spawns **architect** (possibly fanned-out) for design + task list.
+4. Orchestrator regenerates the brief (analyst+architect outputs now landed)
+   and spawns **developer** sub-agents in parallel across independent
    backend tasks. **In the same tool-use block**, if the feature has a UI
    surface, also spawns **ui-designer** for the `ui` crate work.
-5. Orchestrator spawns **tester** which fans out into parallel
+5. Orchestrator regenerates the brief one more time, then spawns **tester**
+   which fans out into parallel
    validate/test/bench/backtest and merges into one report;
 6. Orchestrator reads the verdict:
    - PASS → spawn **presenter** for `release` mode. Presenter assembles
@@ -158,6 +254,23 @@ to achieve actual concurrency. Sequential calls defeat the purpose.
    presenter routes back to the agent that owns the failure mode.
 8. At every step, the agent MUST write to the right spec file. The chat is a
    view, not a store.
+
+### Orchestrator-owned brief regeneration
+
+The brief is **not** generated once per feature; it's regenerated before
+each sub-agent delegation because each preceding agent's output may have
+materially changed the relevant spec. The contract:
+
+- Generate the brief immediately before calling the sub-agent.
+- Write to a path including the date or step number so reruns are
+  diffable: `/tmp/brief-<slug>-<step>.md` (e.g. `-arch`, `-dev`, `-test`).
+- Pass the path in the delegation prompt's first line.
+- If `spec_brief.py` reports >10k tokens, do not silently truncate —
+  surface the warning, file a `spec-auditor` triage item, and consider
+  whether the feature has outgrown a single-shot delegation.
+
+The orchestrator never reads `spec/architecture.md` directly either —
+it lets `spec_brief.py` do the relevant-section extraction.
 
 ## When does ui-designer get involved?
 

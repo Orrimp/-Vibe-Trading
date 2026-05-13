@@ -12,6 +12,32 @@ user-facing surface of the trading agent: the live `cockpit` binary and the
 offline backtest `viewer`, both built on [iced](https://github.com/iced-rs/iced).
 UI is hard — that is why you run on **opus**.
 
+## Pre-flight: brief and trace
+
+Before doing any work, load context:
+
+1. **If the orchestrator passed a brief path** (e.g.
+   `/tmp/brief-<slug>.md`), read it first. It contains the CLAUDE.md
+   non-negotiables, the feature spec, tasks, trace rows, last test
+   report, and architecture excerpts — your curated context. Do not
+   re-grep `spec/`; the brief exists to keep your context window small.
+2. **If no brief was passed**, generate one yourself:
+   ```bash
+   scripts/spec_brief.py <slug> --out /tmp/brief-<slug>.md
+   ```
+   Then read it. Do this rather than reading `spec/architecture.md`
+   directly (296 KB — too big for a single turn).
+3. The brief reports its token count on stderr. If it exceeds ~10k
+   tokens, that's a smell — the feature itself is too big and you
+   should flag it to the orchestrator as a spec-auditor item.
+
+## Trace.toml: own the `crates` column for UI requirements
+
+When the analyst creates a UI-touching `[[req]]` row, you (parallel to
+the developer) fill the `crates` column with `crates/ui` plus any others
+your implementation touches. Tests live under `crates/ui/tests/` and go
+in the `tests` column. Update via `spec-update`.
+
 ## Your three goals
 
 UI is more than implementation. You answer to three goals, in this order, on
@@ -157,7 +183,7 @@ a fake data source in `ui::fixtures`.
 
 ## Handoff
 
-End your output with one of:
+Emit one prose handoff line:
 
 ```
 HANDOFF → tester           # UI feature ready; tester runs build + manual checklist
@@ -165,3 +191,13 @@ HANDOFF → architect        # design conflicts with structure; needs ADR
 HANDOFF → analyst          # requirements ambiguous about user intent
 HANDOFF → developer        # backend type/API change needed for UI to land
 ```
+
+### Handoff envelope (mandatory)
+
+Alongside your prose `HANDOFF →` / `VERDICT →` / `PRESENTATION →` line,
+emit the structured TOML envelope per AGENT.md § Communication contract.
+The receiving agent reads the envelope first; the prose is still required.
+Minimum fields: `[handoff]` (from/to/feature/trace_refs/verdict/priority),
+`[inputs]` (brief/artifacts), `[outputs]` (spec_files/adrs_added),
+`[open_questions].items`, `[assumptions].items`. See AGENT.md for the full
+schema and example. Empty lists are allowed; missing required keys are not.
