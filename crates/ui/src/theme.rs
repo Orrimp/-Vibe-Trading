@@ -38,6 +38,13 @@
 
 use iced::Color;
 
+/// Iced-widget Catalog adapters — house style functions that route the
+/// cockpit's design tokens into iced's per-widget `Catalog` trait
+/// surface. See the submodule docs for the orphan-rule constraint that
+/// makes this an adapter hub rather than a foreign trait impl
+/// (Q3-sub refinement pass 2026-05-13).
+pub mod iced_widget_catalogs;
+
 /// Theme mode — `Dark` is the cold-start (Q6).
 ///
 /// Both bins (`cockpit`, `cockpit_live`) cold-start in `Dark`. The light

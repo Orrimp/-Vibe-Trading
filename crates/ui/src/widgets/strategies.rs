@@ -20,8 +20,8 @@
 //! from `ui::theme`. Consistency tests in `crates/ui/tests/consistency.rs`
 //! fail the build if a literal sneaks in here.
 
-use iced::widget::{button, Button, Column, Row, Scrollable, Text};
-use iced::{Border, Element};
+use iced::widget::{button, table, Button, Column, Container, Row, Text};
+use iced::{Border, Element, Length};
 
 use crate::state::{Cockpit, Message, PanelState, StrategyRow, StrategyStatus};
 use crate::strings::{
@@ -36,7 +36,7 @@ use crate::strings::{
 use crate::theme::{color, radius, space, text, ThemeMode};
 
 use super::focus_ring;
-use super::frame::{active_row, col_header, error_body, muted_body, panel};
+use super::frame::{col_header, error_body, muted_body, panel};
 use trading_core::{StrategyEventKind, StrategyEventView, StrategyId};
 
 /// Render the strategies panel.
@@ -60,26 +60,124 @@ fn ready_body<'a>(
     recent_events: &'a std::collections::VecDeque<StrategyEventView>,
     selected: Option<&'a trading_core::StrategyId>,
 ) -> Element<'a, Message> {
-    let header = Row::new()
-        .push(col_header(STRATEGIES_COL_ID))
-        .push(col_header(STRATEGIES_COL_HASH))
-        .push(col_header(STRATEGIES_COL_STATUS))
-        .push(col_header(STRATEGIES_COL_LAST_EVENT))
-        .push(col_header(STRATEGIES_COL_SIGNALS_60S))
-        .push(col_header(STRATEGIES_COL_POSITION))
-        .spacing(space::M);
+    // T2.1 — native `iced::widget::table::Table` replaces the previous
+    // hand-rolled `Row::new()` header + `Scrollable<Column>` body
+    // (removed: strategies.rs:63-70 header + strategies.rs:72-82 row
+    // loop + Scrollable wrap). The Table's Catalog impl
+    // (`iced_widget-0.14.2/src/table.rs:704-714`) ships the default
+    // class baked in at construction time; cockpit-tinted overrides
+    // are exposed via `crate::theme::iced_widget_catalogs::cockpit_table_style_fn`
+    // (T2.0) for future call sites.
+    //
+    // Q5 (committed): column 1's view lambda wraps the cell body in a
+    // `Button::on_press(Message::SelectStrategy(...))`. Columns 2-6
+    // stay plain `Element`; click bubbling from blank space inside the
+    // table cells lands on the column-1 Button via the Table's first-
+    // column primacy.
+    //
+    // Q6 / H-arch-A5b RESOLVED-CONFIRM (T2.2): the per-row error badge
+    // becomes a sibling `Column<error_badges>` below the Table — Table
+    // ships no row-decorator hook (`row_decorator | after_row | tail |
+    // on_row | row_overlay` all absent per `table.rs` grep).
+    //
+    // The selected-row 2 px ACCENT left-rule (T1507) routes through
+    // column 1's per-cell Container border (since Table's Style only
+    // carries `separator_x` / `separator_y` — no per-row indicator
+    // field). `selected` is cloned into `Option<StrategyId>` so the
+    // column view closures (`Fn(StrategyRow) -> Element + 'b`) capture
+    // owned data — the lambda body is invoked once per column-cell
+    // pair per `Table::new` at table.rs:118-127.
+    let selected_owned: Option<trading_core::StrategyId> = selected.cloned();
 
-    let mut table = Column::new().spacing(space::XS);
+    let columns = [
+        // Column 1 — ID. Wraps the cell body in a Button that emits
+        // `Message::SelectStrategy(...)`. Also carries the selected-row
+        // 2 px ACCENT left-rule via the Container border.
+        table::column(col_header(STRATEGIES_COL_ID), {
+            let selected = selected_owned.clone();
+            move |r: StrategyRow| {
+                let is_active = selected.as_ref() == Some(&r.id);
+                id_cell(r.id.clone(), r.id.to_string(), is_active)
+            }
+        }),
+        // Column 2 — HASH.
+        table::column(col_header(STRATEGIES_COL_HASH), |r: StrategyRow| {
+            let hash_label = if r.short_hash.is_empty() {
+                PLACEHOLDER_NONE.to_string()
+            } else {
+                r.short_hash.to_string()
+            };
+            cell(hash_label)
+        }),
+        // Column 3 — STATUS (colored).
+        table::column(col_header(STRATEGIES_COL_STATUS), |r: StrategyRow| {
+            let (status_label, status_color) = match &r.status {
+                StrategyStatus::Ready => (
+                    STRATEGIES_STATUS_READY,
+                    color::UP_500.current(ThemeMode::Dark),
+                ),
+                StrategyStatus::Loading => (
+                    STRATEGIES_STATUS_LOADING,
+                    color::FG_3.current(ThemeMode::Dark),
+                ),
+                StrategyStatus::Error(_) => (
+                    STRATEGIES_STATUS_ERROR,
+                    color::DOWN_500.current(ThemeMode::Dark),
+                ),
+            };
+            colored_cell(status_label.to_string(), status_color)
+        }),
+        // Column 4 — LAST_EVENT.
+        table::column(col_header(STRATEGIES_COL_LAST_EVENT), |r: StrategyRow| {
+            let last_event = r
+                .last_event
+                .as_ref()
+                .map_or(PLACEHOLDER_NONE, event_kind_label);
+            cell(last_event.to_string())
+        }),
+        // Column 5 — SIGNALS_60S.
+        table::column(col_header(STRATEGIES_COL_SIGNALS_60S), |r: StrategyRow| {
+            let signals_label = if matches!(r.status, StrategyStatus::Loading) && r.signals_60s == 0
+            {
+                PLACEHOLDER_NONE.to_string()
+            } else {
+                r.signals_60s.to_string()
+            };
+            cell(signals_label)
+        }),
+        // Column 6 — POSITION.
+        table::column(col_header(STRATEGIES_COL_POSITION), |r: StrategyRow| {
+            let position_label = if r.has_position {
+                STRATEGIES_POSITION_HELD
+            } else {
+                STRATEGIES_POSITION_FLAT
+            };
+            cell(position_label.to_string())
+        }),
+    ];
+
+    // `Table::new(columns, rows)` per H-arch-A2 REFINED signature:
+    // accepts `IntoIterator<Item = T> where T: Clone` directly — no
+    // intermediate `Vec` collect required. `StrategyRow` is `Clone`
+    // per `state.rs:535-536`.
+    let strategies_table = table::Table::new(columns, rows.iter().cloned()).width(Length::Fill);
+
+    // T2.2 — sibling `Column<error_badges>` below the table (Q6 /
+    // H-arch-A5b RESOLVED-CONFIRM, Option C committed). Best-effort
+    // horizontal alignment: badges render in the same outer column as
+    // the table; per-row pixel alignment with each error row drifts
+    // slightly vs the legacy inline placement (badge previously
+    // immediately followed the row inside the same Column; now lives
+    // below the entire table). This is the documented drift per the
+    // architect's Q6 rationale.
+    let mut error_badges = Column::new().spacing(space::XXS);
+    let mut has_badges = false;
     for r in rows {
-        let is_active = selected == Some(&r.id);
-        table = table.push(row_for(r, is_active));
-        // Per-row error badge — beneath the main row so the table lines up.
         if let StrategyStatus::Error(summary) = &r.status {
-            table = table.push(error_badge(summary.as_str()));
+            has_badges = true;
+            error_badges = error_badges.push(error_badge_text(summary.as_str()));
         }
     }
-
-    let scroll: Element<Message> = Scrollable::new(table).into();
 
     // Footer: recent events, newest first. Keep it compact — caption-sized
     // monospace-ish so it scans like a log.
@@ -88,91 +186,76 @@ fn ready_body<'a>(
         footer = footer.push(event_row(ev));
     }
 
-    Column::new()
-        .spacing(space::S)
-        .push(header)
-        .push(scroll)
-        .push(footer)
-        .into()
+    let mut outer = Column::new().spacing(space::S).push(strategies_table);
+    if has_badges {
+        outer = outer.push(error_badges);
+    }
+    outer.push(footer).into()
 }
 
-fn row_for(r: &StrategyRow, is_active: bool) -> Element<'_, Message> {
-    let (status_label, status_color) = match &r.status {
-        StrategyStatus::Ready => (
-            STRATEGIES_STATUS_READY,
-            color::UP_500.current(ThemeMode::Dark),
-        ),
-        StrategyStatus::Loading => (
-            STRATEGIES_STATUS_LOADING,
-            color::FG_3.current(ThemeMode::Dark),
-        ),
-        StrategyStatus::Error(_) => (
-            STRATEGIES_STATUS_ERROR,
-            color::DOWN_500.current(ThemeMode::Dark),
-        ),
-    };
-    let last_event = r
-        .last_event
-        .as_ref()
-        .map_or(PLACEHOLDER_NONE, event_kind_label);
-    let position_label = if r.has_position {
-        STRATEGIES_POSITION_HELD
+/// Column-1 cell — wraps the strategy id text in a Button that emits
+/// `Message::SelectStrategy(...)` (T1705 / R5.2 / Q11b compound
+/// dispatch; preserved across the T2.1 native-table migration).
+///
+/// When `is_active`, a leading 2 px `ACCENT` Container rule renders to
+/// the left of the Button — preserves the T1507 "2 px ACCENT left rule
+/// on the selected row" semantics. The legacy `frame::active_row`
+/// whole-row composition was incompatible with native Table's
+/// column-cell layout (Table renders cells, not whole rows), so the
+/// rule moves into column 1's per-cell content. Drift vs the legacy
+/// behaviour: previously the rule spanned the row's full height;
+/// post-migration it spans column 1's cell height only — acceptable
+/// per the Q5 / H-arch-A5b architect read.
+fn id_cell<'a>(id: StrategyId, label: String, is_active: bool) -> Element<'a, Message> {
+    let rule_color = if is_active {
+        color::ACCENT.current(ThemeMode::Dark)
     } else {
-        STRATEGIES_POSITION_FLAT
+        iced::Color::TRANSPARENT
     };
-    let hash_label = if r.short_hash.is_empty() {
-        PLACEHOLDER_NONE.to_string()
-    } else {
-        r.short_hash.to_string()
-    };
-    let signals_label = if matches!(r.status, StrategyStatus::Loading) && r.signals_60s == 0 {
-        PLACEHOLDER_NONE.to_string()
-    } else {
-        r.signals_60s.to_string()
-    };
+    let rule = Container::new(
+        iced::widget::Space::new()
+            .width(Length::Fixed(2.0))
+            .height(Length::Fill),
+    )
+    .width(Length::Fixed(2.0))
+    .height(Length::Fill)
+    .style(move |_theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(rule_color.into()),
+        ..Default::default()
+    });
 
-    let row_content = Row::new()
-        .push(cell(r.id.to_string()))
-        .push(cell(hash_label))
-        .push(colored_cell(status_label.to_string(), status_color))
-        .push(cell(last_event.to_string()))
-        .push(cell(signals_label))
-        .push(cell(position_label.to_string()))
-        .spacing(space::M);
-
-    // T1705 — Phase 3 cross-link: each row is a button that emits
-    // `Message::SelectStrategy(row.id.clone())` on press. The binary's
-    // update wrapper chains `Task::done(SwitchScreen(Strategies))` per
-    // R5.2 / Q11b compound dispatch when the click came from Home.
-    let row_button = Button::new(row_content)
-        .on_press(Message::SelectStrategy(r.id.clone()))
-        .padding(0)
-        .style(move |_theme: &iced::Theme, status: button::Status| {
-            let bg = match status {
-                button::Status::Hovered => {
-                    Some(color::PANEL_SUNKEN.current(ThemeMode::Dark).into())
-                }
-                _ => None,
-            };
-            button::Style {
-                background: bg,
-                text_color: color::FG_1.current(ThemeMode::Dark),
-                border: Border {
-                    radius: radius::R2.into(),
-                    ..Default::default()
-                },
+    let button = Button::new(
+        Text::new(label)
+            .size(text::BODY)
+            .color(color::FG_1.current(ThemeMode::Dark)),
+    )
+    .on_press(Message::SelectStrategy(id))
+    .padding(0)
+    .style(move |_theme: &iced::Theme, status: button::Status| {
+        let bg = match status {
+            button::Status::Hovered => Some(color::PANEL_SUNKEN.current(ThemeMode::Dark).into()),
+            _ => None,
+        };
+        button::Style {
+            background: bg,
+            text_color: color::FG_1.current(ThemeMode::Dark),
+            border: Border {
+                radius: radius::R2.into(),
                 ..Default::default()
-            }
-        });
+            },
+            ..Default::default()
+        }
+    });
 
-    // T1507: 2 px ACCENT left rule for the active (selected) row.
-    active_row(row_button.into(), is_active, ThemeMode::Dark)
+    Row::new().push(rule).push(button).spacing(space::XS).into()
 }
 
-/// Red-tinted one-line error badge rendered under a `StrategyStatus::Error`
-/// row. Reuses the semantic `NEG` color so it reads as "danger" without
-/// competing with the header-level panel error state.
-fn error_badge(summary: &str) -> Element<'_, Message> {
+/// Red-tinted one-line error badge text. Reuses the semantic `NEG`
+/// color so it reads as "danger" without competing with the
+/// header-level panel error state. Rendered in a sibling
+/// `Column<error_badges>` BELOW the table per Q6 / H-arch-A5b
+/// RESOLVED-CONFIRM (T2.2).
+fn error_badge_text<'a>(summary: &str) -> Element<'a, Message> {
     Text::new(summary.to_string())
         .size(text::MICRO)
         .color(color::DOWN_500.current(ThemeMode::Dark))

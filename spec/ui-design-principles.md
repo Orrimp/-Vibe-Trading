@@ -60,7 +60,13 @@ What we are **not**:
 - Not glassmorphic. Frosted blurs cost GPU and obscure numbers.
 - Not gradient-heavy. Solid surfaces only; gradients are a code smell.
 - Not animation-rich. Trading UIs that move when nothing has happened are
-  liars by construction. See `Motion` below.
+  liars by construction. **Bounded state transitions** (fade-in on first
+  paint, focus-ring pulse on tab, panel slide on screen change, spinner
+  during real I/O) are allowed when motion signals that something
+  specific has happened. Motion that runs continuously without an event
+  behind it stays forbidden. See `Motion` below. (Operator decision Q-O1
+  2026-05-13, recorded in
+  [`spec/iced-ecosystem-evaluation/feature.md`](iced-ecosystem-evaluation/feature.md).)
 - Not dark-mode-only by default of laziness. Both modes are first-class
   (see `Dark / light mode parity`).
 
