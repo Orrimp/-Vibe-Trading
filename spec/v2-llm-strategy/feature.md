@@ -1,8 +1,8 @@
 ---
 slug: v2-llm-strategy
-status: in-progress
-owner: architect
-updated: 2026-05-10
+status: shipped
+owner: shipped
+updated: 2026-05-13
 version: 2.0.0
 ---
 
@@ -2246,3 +2246,26 @@ overshoot bound that needs a regression test.
   architect's picks. No code or spec mutation pending; the
   architect's Design and T1901–T1945 task list are committed
   and ready for the developer to consume on resumption.
+- 2026-05-12 (orchestrator, RESUMED): operator confirmed
+  D1=A / D2=A / D3=C at orchestrator defaults. Developer
+  spawned across 6 multi-pass cycles.
+- 2026-05-12/13 (developer, 6 passes): T1901-T1945 (44/45
+  ticked; T1938 cockpit "LLM budget" tile deferred to v2.1).
+  Commits d0bcad2 (pass 1, T1901) → c61afa5 (pass 2, M2) →
+  441c136 (pass 3, M3+M4) → f1dbe05 (pass 4, M5 + T1912
+  flip) → f1128e9 (pass 5, M6 + T1913 flip) → faaaec1 (pass
+  6, M7). Two [~] partials flipped to [x] mid-cycle as their
+  dependencies landed.
+- 2026-05-13 (tester): T_FINAL_V2_LLM_STRATEGY VERDICT →
+  PASS (commit 8a41b47). Re-locked 2 report-sample-*
+  anchors to v2.0.0 SHAs. V1-V12 all PASS (V1 partial-non-
+  blocking: 2 pedantic clippy on audit/src/query.rs:219,221
+  queued for v2.1). Workspace 1203 passing, 0 failed.
+- 2026-05-13 (operator): **SHIPPED**. Approval recorded
+  in [`presentations/v2-llm-strategy-2026-05-13.md ## Approval`](presentations/v2-llm-strategy-2026-05-13.md#approval)
+  as `[x] Approved — ship`. Status flipped `in-progress →
+  shipped`. Foundation-only (Q1=A) — first consumer briefs
+  queued: reflection-memory-llm-enrichment +
+  reflection-memory-trader-wiring. Also unblocks Kronos
+  v2.5 + Lumen Phase 6 + the v2.1 follow-up cluster
+  (T1938 / T1915 / T1910 clippy).

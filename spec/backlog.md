@@ -65,20 +65,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **v2 LLM strategy** — **PAUSED 2026-05-10 at architect → developer
-  handoff.** Operator paused with *"Write it down for now. I will
-  come to this point a while later."* Resumption breadcrumb at
-  [`spec/v2-llm-strategy/orchestrator-scope-check-2026-05-10.md`](v2-llm-strategy/orchestrator-scope-check-2026-05-10.md)
-  — read that file FIRST when resuming; it holds the three
-  resumption-time decisions (Q4 bonus rename keep/defer, Q8 strict-
-  vs-best-effort replay, Q11 denominator bundle/defer) and the
-  recommended next move. Analyst draft + operator Q-resolutions
-  (Q1=A foundation-only, Q2=A Anthropic, Q3=C config-file,
-  Q10=strawman) + architect Design + 45 dev tasks T1901–T1945 are
-  all committed. **Pending: developer pass.** Brief at
-  [`spec/v2-llm-strategy/feature.md`](v2-llm-strategy/feature.md)
-  (status: in-progress, owner: architect). **Unblocks Lumen Phase 6**
-  (Assistant slot reserved until this ships).
+_(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
 
 ## Queue
 
@@ -159,6 +146,29 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Process / tooling
 
+- **v2.1 — Cockpit LLM-budget tile + tracing-Layer redactor +
+  pedantic clippy cleanup (`v2-llm-strategy-v21-followups`).**
+  _candidate, surfaced 2026-05-13 by v2-llm-strategy v2.0.0 ship_ —
+  three deferred items consolidated:
+  (a) **T1938 cockpit "LLM budget" tile** — was deferred in pass 6
+      because its dependency `audit::query::llm_spend_this_month`
+      isn't implemented. v2.1 ships the audit query helper +
+      the right-rail tile (three-color thresholds: green < 60%,
+      amber 60-80%, red ≥ 80%; auto-degrade at 80% per Q6).
+  (b) **T1915 tracing-Layer redactor half** — pure-fn `redact()`
+      landed in pass 3; the `tracing_subscriber::Layer` field-
+      visitor side needs `tracing_subscriber = "0.3"` (new dep).
+      v2.1 wires the Layer so structured logging redacts
+      `Bearer ...` / `sk-...` / `anthropic-...` patterns in
+      fields without requiring callers to invoke `redact()`
+      explicitly.
+  (c) **T1910 pedantic clippy cleanup** — 2 `cast_possible_truncation`
+      warnings on `crates/audit/src/query.rs:219, 221` from the
+      `cache_hit_ratio_since` query. Non-blocking per v2.0.0
+      brief §Critical constraints #2. v2.1 cleans these up via
+      `Decimal::try_from` or explicit clamp.
+  Analyst spawn when operator promotes; not urgent.
+
 - **Canvas-state seeding for snapshot tests
   (`ui-test-harness-canvas-state-seeding`).** _candidate, surfaced
   2026-05-12 by H2 operator review on `ui-test-harness-bootstrap`
@@ -216,6 +226,52 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **v2 LLM strategy (v2.0.0)** — shipped 2026-05-13
+  (operator approval recorded as `[x] Approved — ship` in
+  [`spec/v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md ## Approval`](v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md#approval);
+  tester `VERDICT → PASS` at
+  [`reports/test-2026-05-12-2219-v2-llm-strategy-final.md`](v2-llm-strategy/reports/test-2026-05-12-2219-v2-llm-strategy-final.md)
+  on commit `8a41b47`). Foundation-only per **Q1=A** —
+  `Strategy` trait unchanged; first consumer briefs queued
+  (reflection-memory-llm-enrichment + reflection-memory-trader-wiring).
+  Ships the LLM substrate as callable: real `LlmProvider`
+  trait + 3 provider impls (Anthropic / OpenAI-compat /
+  Ollama) + retry helper + Anthropic prompt-cache builder
+  + `BudgetedProvider` decorator enforcing the $200/mo
+  ceiling with auto-degrade at 80% (Q6 + Q11) + strict
+  SQLite replay cache (D2 / Q8) + 9-row fixture cache + V9
+  secrets grep + 3-provider × 3-role `llm-smoke` harness +
+  two operator runbooks (`spec/runbooks/llm-{cost,replay}.md`).
+  Q4 bonus rename **`cost::LlmProvider` enum → `ProviderKind`**
+  (D1) freed the `LlmProvider` name for the trait; 5 call
+  sites + serde wire shape preserved → zero on-disk ledger
+  byte change. Q5d "Cache hit ratio" System Health row +
+  Q11 denominator `$135 → $200` regenerated both
+  `success-fixed-report-sample-{7d,90d}.md` bodies; tester
+  re-locked the 2 corresponding anchors at T_FINAL
+  (`520b1f29…` / `c656414e…`). The 9 strategy backtest
+  anchors at `spec/anchors.toml:15-58` stay byte-identical
+  (R14.2 / V8 enforced by T1937 negative-invariant — 11/11
+  PASS).
+  **Workflow shape**: 6 multi-pass developer cycles
+  (`d0bcad2` → `c61afa5` → `441c136` → `f1dbe05` →
+  `f1128e9` → `faaaec1`) over 2 days + tester gate
+  (`8a41b47`). Two `[~]` partials flipped to `[x]` mid-
+  cycle as their dependencies landed (T1912 audit-memo in
+  pass 4; T1913 factory Research/Recording arms in pass 5).
+  **44/45 dev tasks ticked** (T1938 cockpit "LLM budget"
+  tile deferred to v2.1 + T1915 tracing-Layer half deferred
+  + 2 pedantic clippy on `audit/src/query.rs:219,221` to
+  v2.1 — all consolidated into `v2-llm-strategy-v21-followups`
+  candidate). **1203 workspace tests passing, 0 failed.**
+  **Unblocks**: Kronos v2.5 forecast overlay, Lumen Phase 6
+  Assistant slot, reflection-memory follow-up briefs.
+  Brief carries the architect-misdiagnosis-prevention
+  workflow rules (Capability boundaries amendment from
+  2026-05-12) only informally — the feature shipped on the
+  pre-amendment single-tester model; future features apply
+  the new test-runner/evaluator split.
 
 - **UI test harness bootstrap (v0.1)** — shipped 2026-05-12
   (operator approval recorded as `[x] Approved — ship` in
@@ -806,3 +862,15 @@ of which became skill-plumbing fixes that shipped in commit
   `ui-test-harness-canvas-state-seeding` candidate. Approval
   evidence:
   [`ui-test-harness-bootstrap/presentations/ui-test-harness-bootstrap-2026-05-12.md ## Approval`](ui-test-harness-bootstrap/presentations/ui-test-harness-bootstrap-2026-05-12.md#approval).
+
+- 2026-05-13 (operator): v2.0.0 SHIPPED — `v2-llm-strategy`.
+  Foundation-only per Q1=A. 6 dev passes (`d0bcad2` →
+  `faaaec1`) + tester (`8a41b47`). 44/45 dev tasks ticked +
+  T_FINAL [x]. 11/11 anchors PASS (2 report-sample-*
+  re-locked by tester to v2.0.0 SHAs; 9 strategy anchors
+  byte-identical). 1203 workspace tests passing. D1/D2/D3
+  operator-locked decisions honored. 3 deferred items
+  consolidated into `v2-llm-strategy-v21-followups`
+  candidate. Unblocks Kronos v2.5 + Lumen Phase 6 +
+  reflection-memory follow-ups. Approval evidence:
+  [`v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md ## Approval`](v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md#approval).

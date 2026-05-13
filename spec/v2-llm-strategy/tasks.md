@@ -1,8 +1,8 @@
 ---
 slug: v2-llm-strategy
-status: in-progress
-owner: developer
-updated: 2026-05-12
+status: shipped
+owner: shipped
+updated: 2026-05-13
 version: 2.0.0
 pass: 6
 ---
