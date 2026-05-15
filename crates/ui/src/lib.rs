@@ -47,12 +47,15 @@ pub mod fixtures;
 // rationale.
 pub mod test_support;
 
-// ui-gallery-bin v0.1 — widget gallery module. Gated under
-// `fixtures` feature (the bin requires `--features fixtures`); also
-// exposed under `test` so `gallery_snapshots.rs` can import it.
+// ui-gallery-bin v0.1 — widget gallery module. Always-compiled
+// (matches the `fixtures` + `test_support` pattern above) so
+// integration tests under `crates/ui/tests/gallery_*.rs` can import
+// it without `--features fixtures` — `cfg(test)` in the lib does NOT
+// propagate to integration-test crates. The bin
+// (`crates/ui/src/bin/ui_gallery.rs`) still requires `--features
+// fixtures` via `Cargo.toml [[bin]] required-features`.
 // Q-GALLERY-SCOPE: imports `crate::fixtures::*` directly; no local
 // state builders inside `gallery/`. See spec/ui-gallery-bin/feature.md.
-#[cfg(any(feature = "fixtures", test))]
 pub mod gallery;
 
 /// Live broadcast-bus subscription (T32). Gated behind the `live` feature
