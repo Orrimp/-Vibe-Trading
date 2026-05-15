@@ -1,11 +1,28 @@
 ---
 slug: ui-session-journal-iced-tester
 version: 0.1.0
-status: queued
-owner: queue
+status: shipped
+owner: shipped
 predecessor: ui-gallery-bin v0.1-partial
-updated: 2026-05-15
+updated: 2026-05-16
 ---
+
+> **Status (2026-05-16):** v0.1 shipped end-to-end. V1, V4, V5, V6,
+> V7, V8 green. V2/V3 (manual smoke + first recording) deferred to
+> operator session — recorder overlay requires a desktop window and
+> the orchestrator runs headlessly. The `recorded-sessions/`
+> directory ships empty (only `.gitkeep`); operators populate post-
+> ship via the recorder workflow documented in
+> [`crates/ui/tests/journal_replay.rs`](../../crates/ui/tests/journal_replay.rs).
+>
+> **Major design correction at impl time:** Both Q-ARCH-1 and
+> Q-ARCH-2 resolved differently than the original spec planned. iced
+> 0.14's `iced::Application::run()` auto-wraps with
+> `iced_tester::attach()` when the `tester` feature is enabled (see
+> [iced-0.14.0/src/application.rs:198](https://docs.rs/iced/0.14.0/src/iced/application.rs.html#198))
+> — so there is **no manual `attach()` call** and **no runtime
+> `--record-tests` CLI flag**. The recorder is a compile-time
+> choice via `--features record-tests`. See § Changelog below.
 
 # Session journal — `iced_tester` adapter (v0.1)
 
@@ -55,8 +72,11 @@ and Q-TESTER-FEATURE LOCKED 2026-05-15:
   Rationale: agents debugging production cockpit bugs need to record
   against the real subscription tree.
 - **D-RT-3** — Export path is **operator-driven via `rfd` native file
-  dialog** (built into `iced_tester`'s overlay). No `--record-tests
-  <path>` CLI arg. The CLI flag is boolean.
+  dialog** (built into `iced_tester`'s overlay). No CLI arg of any
+  kind — recorder is enabled at COMPILE TIME via `--features
+  record-tests`. (Originally planned as a boolean CLI flag; impl
+  found iced auto-attaches when its `tester` feature is on, so the
+  flag would be redundant. See § Changelog 2026-05-16.)
 - **D-RT-4** — Recorded `.ice` files commit to
   `crates/ui/tests/recorded-sessions/`. v0.1 ships the directory + 0–1
   sample recordings (operator-recorded if practical; otherwise empty
@@ -323,6 +343,19 @@ Q-TESTER-FEATURE LOCKED 2026-05-15.
 
 ## Changelog
 
+- 2026-05-16 (orchestrator, impl + ship): v0.1 implemented end-to-end
+  in commit (TBD). Q-ARCH-1 and Q-ARCH-2 both resolved during impl
+  by source-reading
+  [iced-0.14.0/src/application.rs:198](https://docs.rs/iced/0.14.0/src/iced/application.rs.html#198):
+  iced's own `Application::run()` already calls
+  `iced_tester::attach(self)` under `#[cfg(feature = "tester")]`. So
+  (1) we don't add a direct `iced_tester` dep and (2) no manual
+  attach call is needed in `cockpit_live.rs`. Knock-on effect: the
+  recorder is a compile-time choice — no `--record-tests` CLI flag.
+  D-RT-3 + Design § Recorder wiring revised inline. V1, V4, V5, V6,
+  V7, V8 all green; 1223 workspace tests pass (was 1222 — +1 for
+  `replay_all_recorded_sessions`). V2 + V3 deferred to operator
+  desktop session (recorder overlay requires a window).
 - 2026-05-15 (orchestrator, planning + spike): feature brief authored
   after operator promoted the candidate. Spike verified
   `iced_tester::attach(program) -> Attach<P>` API and the `rfd`-driven

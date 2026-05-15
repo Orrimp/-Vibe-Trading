@@ -157,6 +157,20 @@ struct Args {
     mode: Option<String>,
 }
 
+// ui-session-journal-iced-tester v0.1 (T02 — REVISED) — there is no
+// runtime `--record-tests` flag. iced 0.14's
+// `iced::Application::run()` auto-wraps with `iced_tester::attach()`
+// when the `tester` feature is enabled (see
+// iced-0.14.0/src/application.rs:198). The recorder is therefore a
+// compile-time choice via `--features record-tests`. Build the
+// recorder binary with:
+//
+//   cargo build --features live,record-tests --bin cockpit_live
+//
+// and every run of that binary opens with the overlay visible. Use
+// the default `--features live` build for production / non-recording
+// sessions.
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 /// Hard wall-clock bound for the side-thread join after the iced window
@@ -454,6 +468,13 @@ fn main() -> Result<()> {
         ledger: Arc::clone(&ledger),
         rt_handle: rt_handle.clone(),
     };
+
+    // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
+    // overlay is auto-attached by `iced::Application::run()` when the
+    // `record-tests` feature pulls `iced/tester`. No manual
+    // `iced_tester::attach()` call needed; no runtime gate.
+    #[cfg(feature = "record-tests")]
+    info!("iced_tester recorder overlay enabled (compile-time via --features record-tests)");
 
     let iced_result = iced::application(
         move || (app_state.clone(), iced::Task::none()),

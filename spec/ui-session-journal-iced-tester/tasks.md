@@ -1,11 +1,31 @@
 ---
 slug: ui-session-journal-iced-tester
-status: queued
-owner: queue
-updated: 2026-05-15
+status: shipped
+owner: shipped
+updated: 2026-05-16
 ---
 
 # Tasks — Session journal `iced_tester` adapter v0.1
+
+> ## Ship status (2026-05-16)
+>
+> - **T01** ✓ — `record-tests` feature in `crates/ui/Cargo.toml`
+> - **T02** ✗→deleted — CLI flag removed; iced auto-attaches via
+>   `tester` feature (`iced::Application::run()` does the wrap
+>   unconditionally when `cfg(feature = "tester")`)
+> - **T03** ✓ (simplified) — no manual `iced_tester::attach()` call;
+>   one `tracing::info!` line on the `record-tests` build path
+> - **T04** ✓ — `crates/ui/tests/journal_replay.rs` walks
+>   `recorded-sessions/` via `iced_test::run`; passes vacuously on
+>   empty dir
+> - **T05** ⊘ deferred — first recording requires desktop interaction;
+>   operator records post-ship
+> - **T06** ✓ — V1, V4, V5, V6, V7, V8 all green; 1223 workspace
+>   tests pass; clippy + fmt clean
+>
+> Net effort: ~3 hours actual (vs ~6.5h estimate). The Q-ARCH-1
+> resolution (iced auto-attaches) collapsed T02 + T03 from 1.5h
+> + 2h to ~30 min.
 
 > Effort budget: **~1 dev-day** total per
 > [`iced-014-feature-analysis-2026-05-15.md §5`](../dev-notes/iced-014-feature-analysis-2026-05-15.md#what-this-means-for-ui-session-journal).

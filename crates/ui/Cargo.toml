@@ -101,6 +101,13 @@ anyhow = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 
+# NOTE (ui-session-journal-iced-tester v0.1): we do NOT add a direct
+# `iced_tester` dep here. iced 0.14's `iced::Application::run()`
+# (iced-0.14.0/src/application.rs:198) auto-wraps the program with
+# `iced_tester::attach()` when `iced/tester` is enabled. Pulling the
+# crate happens transitively through the `record-tests` feature
+# below (`iced/tester` → `dep:iced_tester` inside iced's manifest).
+
 [dev-dependencies]
 insta = { version = "=1.47.2", features = ["yaml"] }
 # T32 integration test: needs tokio runtime to drive the live subscription.
@@ -200,3 +207,17 @@ live = [
 # is wired (i.e. inside `cockpit_live`); enabling cron without `live`
 # would compile to no behavior.
 in_process_cron = ["live", "agent/in_process_cron"]
+
+# `record-tests` — ui-session-journal-iced-tester v0.1 (T01). Enables
+# `iced_tester::attach()` recorder overlay in `cockpit_live` and
+# the `iced_test::run` replay path in `tests/journal_replay.rs`. Off
+# by default; production builds with `--features live` alone do NOT
+# pull `iced_tester` (verify with `cargo tree -p ui --features live |
+# grep iced_tester`). Pulls iced's own `tester` + `selector` +
+# `strict-assertions` features to align renderer invariants.
+# See `spec/ui-session-journal-iced-tester/feature.md ## Design`.
+record-tests = [
+    "iced/tester",
+    "iced/selector",
+    "iced/strict-assertions",
+]

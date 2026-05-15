@@ -412,11 +412,11 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   operator answers Q-MCP (default: defer).
 
 - **Recorded session journal — iced_tester adapter
-  (`ui-session-journal-iced-tester`).** _candidate, RESCOPED
+  (`ui-session-journal-iced-tester`).** _**v0.1 SHIPPED 2026-05-16**
+  ([feature.md](ui-session-journal-iced-tester/feature.md) ·
+  [tasks.md](ui-session-journal-iced-tester/tasks.md)) — RESCOPED
   2026-05-15 by
-  [`iced-014-feature-analysis-2026-05-15.md §5`](dev-notes/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator);
-  **feature spec + tasks authored 2026-05-15** at
-  [`spec/ui-session-journal-iced-tester/`](ui-session-journal-iced-tester/feature.md)_
+  [`iced-014-feature-analysis-2026-05-15.md §5`](dev-notes/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator)_
   — supersedes the original 4-dev-day `ui-session-journal`
   candidate. iced 0.14 already ships `iced_tester` (PR #3059) +
   `.ice` text format for record/replay. Adapter work is: enable the
