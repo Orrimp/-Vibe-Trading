@@ -36,8 +36,8 @@
 //!   (0x131820) < PANEL (0x1C2127) < PANEL_RAISED (0x2A3038)`
 //!   (pinned by `theme::tests::tier_ladder_dark`).  `PANEL_SUNKEN`
 //!   sits *two* tiers below `PANEL`, so the absolute luminance delta
-//!   |PANEL − PANEL_SUNKEN| (~17 units / channel) is meaningfully
-//!   larger than |PANEL − PANEL_RAISED| (~14 units / channel), and
+//!   |PANEL − `PANEL_SUNKEN`| (~17 units / channel) is meaningfully
+//!   larger than |PANEL − `PANEL_RAISED`| (~14 units / channel), and
 //!   the card now reads as a recessed well rather than a barely-raised
 //!   plate.
 //! - **Rung (b) — outline swap `BORDER_1 → BORDER_STRONG`.**  This

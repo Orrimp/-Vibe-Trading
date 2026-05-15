@@ -22,13 +22,13 @@
 //! `iced_widget-0.14.2/src/table.rs:704-714`). Lane 2's
 //! [`crate::theme::iced_widget_catalogs::cockpit_table_style_fn`] factory
 //! is consequently **not consumed** here — the cockpit-tinted separator
-//! StyleFn has no consumer on the native v0.14 `Table` until iced adds
+//! `StyleFn` has no consumer on the native v0.14 `Table` until iced adds
 //! a `Table::style(StyleFn)` setter or a `Themer` wrap lands. Positions
 //! ships with the default Catalog (palette-derived separator), tracked
 //! upstream as a deferred visual-parity item for v0.2.
 //!
 //! Column alignment per the pre-migration layout: SYMBOL left, the six
-//! numeric columns (QTY, COST, MARK, PNL, PNL_PCT, EXPOSURE) right via
+//! numeric columns (QTY, COST, MARK, PNL, `PNL_PCT`, EXPOSURE) right via
 //! `Column::align_x(alignment::Horizontal::Right)`. Width portions are
 //! not set explicitly — `Table::new` auto-promotes the first column to
 //! `Length::Fill` (`table.rs:129-133`) when no other column has Fill,

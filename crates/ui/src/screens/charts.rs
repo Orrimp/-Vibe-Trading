@@ -373,12 +373,12 @@ fn volume_tile<'a>(totals: &WindowVolumeTotals, mode: ThemeMode) -> crate::Eleme
     .into()
 }
 
-fn number_card<'a>(
-    label: &'a str,
+fn number_card(
+    label: &str,
     value: String,
     value_color: iced::Color,
     mode: ThemeMode,
-) -> crate::Element<'a> {
+) -> crate::Element<'_> {
     let lbl = Text::new(label)
         .size(text::SMALL)
         .color(color::FG_3.current(mode));

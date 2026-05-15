@@ -944,9 +944,7 @@ pub fn tooltip_view_for_signal(signal: &SignalView) -> ChartTooltipView {
 #[must_use]
 #[allow(dead_code)]
 pub(crate) fn strategy_label_or_none(strategy_id: Option<&SmolStr>) -> &str {
-    strategy_id
-        .map(smol_str::SmolStr::as_str)
-        .unwrap_or(CHART_TOOLTIP_STRATEGY_NONE)
+    strategy_id.map_or(CHART_TOOLTIP_STRATEGY_NONE, smol_str::SmolStr::as_str)
 }
 
 /// Test-only helper exposing the canvas `Program::update` pipeline to

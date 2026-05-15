@@ -808,10 +808,10 @@ pub fn synthetic_candles(seed: u64, venue: Venue, symbol: Symbol, count: usize) 
 /// the leftmost ~0.1% of the chart canvas — invisible to the operator.
 #[must_use]
 pub fn synthetic_fills_for(_venue: Venue, symbol: &Symbol, count: usize) -> Vec<FillView> {
-    let (start_price, _vol) = symbol_table(symbol);
-    let mut out = Vec::with_capacity(count);
     // 60 bars × 60s per bar — see `synthetic_candles` doc.
     const BAR_RANGE_SECS: i64 = 60 * 60;
+    let (start_price, _vol) = symbol_table(symbol);
+    let mut out = Vec::with_capacity(count);
     // `count` is fixture-sized (≤ 200); the cast is lossless.
     #[allow(clippy::cast_possible_wrap)]
     let denom = count as i64 + 1;
@@ -972,6 +972,101 @@ pub fn fake_journal_rows(count: usize) -> Vec<JournalRow> {
 }
 
 // ── Phase 4 (T1805 / T1806 / T1811) — viewer + sparkline fixtures ───────────
+
+// ── ui-gallery-bin v0.1 — new fixture helpers (design.md § State seeding contract) ──
+//
+// Four helpers required by the gallery route table (H-GAL-4 budget: ~70 LOC).
+// All are pure additions; no existing helper signature is changed.
+
+/// Gallery cell 21/22 — deterministic `VolumeBin` slice for the
+/// `volume_histogram` showcase cells. Mixed buy/sell notionals so every
+/// color path (`UP_500` / `DOWN_500`) is exercised.
+#[must_use]
+pub fn fake_volume_bins() -> Vec<crate::widgets::volume_histogram::VolumeBin> {
+    use crate::widgets::volume_histogram::VolumeBin;
+    vec![
+        VolumeBin {
+            buys_usdt: dec!(5_000),
+            sells_usdt: dec!(3_000),
+        },
+        VolumeBin {
+            buys_usdt: dec!(2_500),
+            sells_usdt: dec!(7_000),
+        },
+        VolumeBin {
+            buys_usdt: dec!(8_000),
+            sells_usdt: dec!(1_000),
+        },
+        VolumeBin {
+            buys_usdt: dec!(0),
+            sells_usdt: dec!(4_500),
+        },
+        VolumeBin {
+            buys_usdt: dec!(6_000),
+            sells_usdt: dec!(6_000),
+        },
+        VolumeBin {
+            buys_usdt: dec!(9_000),
+            sells_usdt: dec!(500),
+        },
+        VolumeBin {
+            buys_usdt: dec!(1_500),
+            sells_usdt: dec!(8_500),
+        },
+        VolumeBin {
+            buys_usdt: dec!(4_000),
+            sells_usdt: dec!(4_000),
+        },
+    ]
+}
+
+/// Gallery cell 24 — a deterministic `SignalView` fixture for the
+/// `chart_tooltip/signal_tooltip` cell. `n` offsets the timestamp so
+/// multiple signals can sit at distinct positions on the chart x-axis.
+#[must_use]
+pub fn fake_signal_view(n: i64) -> trading_core::SignalView {
+    use trading_core::{Quantity, Side, SignalView, StrategyId};
+    SignalView {
+        signal_id: smol_str::SmolStr::new(format!("fixture-signal-{n}")),
+        symbol: trading_core::Symbol::new("BTCUSDT"),
+        side: if n % 2 == 0 { Side::Buy } else { Side::Sell },
+        intended_qty: Quantity::new(dec!(0.1)).unwrap_or_else(|_| unreachable!()),
+        signal_ts: fixed_ts(n * 60),
+        strategy_id: StrategyId::new("btc_macd_trend"),
+        was_clamped: false,
+        clamp_reason: None,
+    }
+}
+
+/// Gallery cell 9 — `strategies/with_error_row`. Returns a cockpit
+/// whose `strategies` panel has three rows: one `Ready`, one `Loading`,
+/// and one `Error` — the same three-pill state set as `fake_strategy_rows`
+/// but with `StrategyStatus::Error` on the third row. Reuses the existing
+/// row builders + patches the first row to `Error` so the snapshot
+/// shows all three status pills in one column.
+///
+/// In practice, `fake_cockpit_with_strategies()` already seeds an Error
+/// row (via `fake_strategy_row_error()`) — this helper is a thin wrapper
+/// that makes the cell's intent explicit by name without duplicating code.
+#[must_use]
+pub fn fake_strategy_row_error_in_v1_set() -> Cockpit {
+    // `fake_cockpit_with_strategies` already seeds one Ready + one Loading
+    // + one Error row. Re-use it directly — no code duplication.
+    fake_cockpit_with_strategies()
+}
+
+/// Gallery cell 14 — `latency/degraded`. Returns a cockpit where the
+/// Binance venue has `MarketHealthState::Stale`, representing a degraded
+/// market-health state that the latency widget renders in its warn color.
+#[must_use]
+pub fn fake_market_health_degraded() -> Cockpit {
+    let mut c = fake_cockpit_ready();
+    c.market_health.insert(
+        trading_core::Venue::Binance,
+        crate::state::MarketHealthState::Stale,
+    );
+    c
+}
 
 /// Phase 4 (T1805) — deterministic `BacktestMetrics` matching the
 /// RSI sample: Total return -57.80 %, Sharpe -55.4257, Max DD

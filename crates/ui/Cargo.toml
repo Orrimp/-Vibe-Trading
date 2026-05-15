@@ -19,6 +19,14 @@ name = "cockpit"
 path = "src/bin/cockpit.rs"
 required-features = ["fixtures"]
 
+# ui-gallery-bin v0.1 (T01) — widget gallery binary for visual
+# regression testing and operator review. Fixtures-only: no `live`
+# dep, no window required in --smoke mode. See spec/ui-gallery-bin/.
+[[bin]]
+name = "ui-gallery"
+path = "src/bin/ui_gallery.rs"
+required-features = ["fixtures"]
+
 # `cockpit_live` — unified agent + iced cockpit binary (T904 /
 # live-cockpit-unified).  Builds a multi-thread tokio runtime on a
 # side thread, hosts `agent::runtime::run` there, and runs iced on

@@ -46,7 +46,7 @@ pub fn charts_screen_cockpit() -> Cockpit {
         (Venue::Binance, Symbol::new("ETHUSDT")),
         (Venue::Binance, Symbol::new("SOLUSDT")),
     ];
-    cockpit.universe = universe.clone();
+    cockpit.universe.clone_from(&universe);
     // Navigate the cockpit directly to the Charts screen — the visual
     // snapshot fires off this view, not Home.
     cockpit.current_screen = Screen::Charts;

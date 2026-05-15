@@ -108,7 +108,7 @@ const MODAL_WIDTH_PX: u32 = 480;
 /// `close_msg` is the message emitted when the operator clicks the
 /// backdrop or the explicit `Close` button; T1206 supplies the concrete
 /// `Message::TapeAuditModalClosed` variant. Keeping the close message
-/// generic lets this widget compile across the cockpit and cockpit_live
+/// generic lets this widget compile across the cockpit and `cockpit_live`
 /// callers. The third close path — `Esc` — is **not** wired in this
 /// widget: `Float` has zero keyboard participation (H-arch-A7b
 /// FALSIFIED, 2026-05-13). Escape stays in `bin/cockpit.rs::subscription`
