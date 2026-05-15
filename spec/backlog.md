@@ -414,18 +414,24 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
 - **Recorded session journal — iced_tester adapter
   (`ui-session-journal-iced-tester`).** _candidate, RESCOPED
   2026-05-15 by
-  [`iced-014-feature-analysis-2026-05-15.md §5`](dev-notes/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator)_
+  [`iced-014-feature-analysis-2026-05-15.md §5`](dev-notes/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator);
+  **feature spec + tasks authored 2026-05-15** at
+  [`spec/ui-session-journal-iced-tester/`](ui-session-journal-iced-tester/feature.md)_
   — supersedes the original 4-dev-day `ui-session-journal`
   candidate. iced 0.14 already ships `iced_tester` (PR #3059) +
-  `.ice` text format for record/replay. Adapter work is just:
-  enable the `record-tests` cargo feature
+  `.ice` text format for record/replay. Adapter work is: enable the
+  `record-tests` cargo feature
   ([Q-TESTER-FEATURE LOCKED](dev-notes/iced-014-feature-analysis-2026-05-15.md#migration-questions-for-the-operator)),
-  wire `iced_tester::attach()` into `cockpit_live --record-journal
-  <path>`, and add `cargo test --test journal_replay -- <path>`
-  that consumes the `.ice` file. **~1 dev-day** (down from 4) —
-  most of the engineering lives upstream now. Still lets operator
-  incident sessions become permanent regression fixtures. Analyst
-  spawn when operator promotes.
+  add `--record-tests` boolean flag to `cockpit_live`, wire
+  `iced_tester::attach()` around the existing `iced::application(...)`
+  call, and add a `tests/journal_replay.rs` walker over committed
+  `.ice` files. Export path is **operator-driven via `rfd` native
+  file dialog** (spike-corrected from the original `--record-tests
+  <path>` plan; see [feature.md ## Design](ui-session-journal-iced-tester/feature.md#design)).
+  **~1 dev-day / 6.5 hours.** Two open architect questions remain
+  (Q-ARCH-1 builder composition, Q-ARCH-2 replay signature) — both
+  carry 15-min M0 spikes before code lands. Status: queued, no spawn
+  trigger pulled. Developer pipeline at operator promotion.
 
 - **Mutation testing one-shot pass (`ui-mutants-pass`).**
   _candidate, surfaced 2026-05-15 by
