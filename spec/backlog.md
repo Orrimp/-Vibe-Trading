@@ -307,7 +307,12 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   **Per [`ui-testability-deep-dive-2026-05-15.md §5.3`](dev-notes/ui-testability-deep-dive-2026-05-15.md#53-keep--drop--replace-against-the-existing-weeks-2-4-plan)**
   the analyst recommends pairing this CI brief with the 1-day
   cross-platform falsifier (item O) to retire or confirm operator
-  decision D3 (macOS-only CI).
+  decision D3 (macOS-only CI). **CHEAPENED 2026-05-15:** down to
+  ~4 dev-days (from 5) per
+  [`iced-014-feature-analysis-2026-05-15.md §4`](dev-notes/iced-014-feature-analysis-2026-05-15.md#headless-mode).
+  iced 0.14's `iced_test::emulator::Emulator` (PR #2698) ships
+  embedded Fira Sans + a real headless runtime, so we don't need
+  to author font-fallback / xvfb plumbing.
 
 - **Operator UI legibility — WCAG contrast asserter
   (`ui-contrast-asserter`).** _candidate, surfaced 2026-05-15 by
@@ -406,18 +411,21 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   §5.2 — close more tactical coverage first. Analyst spawn when
   operator answers Q-MCP (default: defer).
 
-- **Recorded session journal (`ui-session-journal`).**
-  _candidate, surfaced 2026-05-15 by
-  [`ui-testability-deep-dive-2026-05-15.md §3.6`](dev-notes/ui-testability-deep-dive-2026-05-15.md#36-stretch--recorded-session-journal--ui-session-journal)_
-  — `cockpit_live --record-journal <path>` serialises every
-  dispatched `Message` to TOML. `cargo test --test journal_replay
-  -- <path>` deserialises + replays + asserts golden post-state.
-  Compares conceptually to
-  [Playwright Trace Viewer](https://playwright.dev/docs/trace-viewer)
-  and [Replay.io](https://docs.replay.io/) but for the iced
-  `Message` enum. Lets the operator's real incident sessions
-  become permanent regression fixtures. ~4 dev-days. Analyst spawn
-  when operator promotes.
+- **Recorded session journal — iced_tester adapter
+  (`ui-session-journal-iced-tester`).** _candidate, RESCOPED
+  2026-05-15 by
+  [`iced-014-feature-analysis-2026-05-15.md §5`](dev-notes/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator)_
+  — supersedes the original 4-dev-day `ui-session-journal`
+  candidate. iced 0.14 already ships `iced_tester` (PR #3059) +
+  `.ice` text format for record/replay. Adapter work is just:
+  enable the `record-tests` cargo feature
+  ([Q-TESTER-FEATURE LOCKED](dev-notes/iced-014-feature-analysis-2026-05-15.md#migration-questions-for-the-operator)),
+  wire `iced_tester::attach()` into `cockpit_live --record-journal
+  <path>`, and add `cargo test --test journal_replay -- <path>`
+  that consumes the `.ice` file. **~1 dev-day** (down from 4) —
+  most of the engineering lives upstream now. Still lets operator
+  incident sessions become permanent regression fixtures. Analyst
+  spawn when operator promotes.
 
 - **Mutation testing one-shot pass (`ui-mutants-pass`).**
   _candidate, surfaced 2026-05-15 by
@@ -445,6 +453,34 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   Analyst spawn when `ui-vlm-judge` or
   `ui-test-harness-viewport-matrix` schedules; pairs with whichever
   lands first.
+
+- **File the iced strategies-Table tiny-skia panic upstream
+  (`ui-iced-table-panic-upstream`).** _candidate, surfaced
+  2026-05-15 by
+  [`iced-014-feature-analysis-2026-05-15.md §6`](dev-notes/iced-014-feature-analysis-2026-05-15.md#the-strategies-table-panic)_
+  — minimal repro is already in-tree at
+  [`crates/ui/tests/gallery_bisect.rs`](../crates/ui/tests/gallery_bisect.rs).
+  Extract the minimal repro, file an issue against
+  [iced-rs/iced](https://github.com/iced-rs/iced/issues) modeled
+  on prior art issue
+  [#2311](https://github.com/iced-rs/iced/issues/2311) (closed via
+  PR [#2364](https://github.com/iced-rs/iced/pull/2364)), cite our
+  `gallery_bisect.rs` line ranges. **Q-PANEL-UPSTREAM LOCKED:**
+  bug report only, no fix PR. ~0.5 dev-day. Revisit by 2026-06-26
+  if no upstream activity. Unblocks V5+ of
+  [`ui-gallery-bin`](ui-gallery-bin/feature.md) eventually (via
+  upstream); the in-tree `ui-gallery-table-cell` workaround above
+  unblocks sooner. Analyst spawn at operator promotion.
+
+- **comet debugger evaluation (`ui-comet-eval`).** _candidate,
+  deferred 2026-05-15 by
+  [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
+  + Q-COMET-EVAL LOCKED_ — comet is pinned at iced
+  `0.15.0-dev` (master); does NOT compile against our `=0.14.0`
+  pin. **No spawn trigger today.** Revisit when (a) our iced pin
+  moves to 0.15.x, OR (b) `ui-inspect-mcp` /
+  `ui-session-journal-iced-tester` surface a gap comet would
+  close, OR (c) by 2026-11-15 (6-month calendar revisit).
 
 _(historical: the only previously queued item, the presenter smoke test against
 operator-success-reports, ran 2026-05-08; surfaced 4 findings, two
@@ -897,6 +933,20 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Changelog
 
+- 2026-05-15 (operator, iced-014 lock + re-sequence): locked all 5
+  Q-* migration questions from
+  [`iced-014-feature-analysis-2026-05-15.md`](dev-notes/iced-014-feature-analysis-2026-05-15.md)
+  at analyst defaults (Q-014-PIN, Q-COMET-EVAL, Q-TESTER-FEATURE,
+  Q-PANEL-UPSTREAM, Q-D3-RELITIGATE). Backlog impact: (a) RESCOPED
+  `ui-session-journal` → `ui-session-journal-iced-tester` (~4d →
+  ~1d) since iced 0.14 ships `iced_tester` + `.ice` format
+  natively; (b) CHEAPENED `ui-test-harness-ci` 5d → 4d via the
+  shipped `iced_test::emulator::Emulator` + embedded Fira Sans;
+  (c) PROMOTED new candidate `ui-iced-table-panic-upstream`
+  (0.5d) to file the strategies-Table tiny-skia panic upstream;
+  (d) ADDED `ui-comet-eval` as deferred-no-trigger candidate
+  (comet requires iced 0.15-dev, not compatible with our pinned
+  `=0.14.0`). All other queued items unchanged.
 - 2026-05-15 (analyst, ui-testability deep-dive): authored
   [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](dev-notes/ui-testability-deep-dive-2026-05-15.md)
   — a research dev-note critiquing the four-week plan in

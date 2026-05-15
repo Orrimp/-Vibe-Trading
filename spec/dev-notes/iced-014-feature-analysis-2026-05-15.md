@@ -468,6 +468,10 @@ ordering, with cost adjustment vs the deep-dive's §5.1 idea table:
 
 ## Migration questions for the operator
 
+> **DECIDED 2026-05-15 (operator):** All 5 analyst defaults
+> accepted as a block. Each Q-* below is marked `LOCKED → <default>`
+> inline. See Changelog entry of the same date.
+
 Same Q-* shape as the deep-dive's §6. All defaults pre-author the
 operator's likely yes; the tradeoff column is the honest "what could
 go wrong".
@@ -484,6 +488,9 @@ go wrong".
      pinning we don't get the fix for free.
    - *Recommended decision:* stay strict-pinned; bump manually only
      when the panel/baseline retake is scheduled.
+   - **LOCKED 2026-05-15 → stay strict-pinned at `=0.14.0`. Bump
+     manually when the strategies panel + baselines are
+     scheduled together.**
 
 2. **Q-COMET-EVAL — Schedule a 1-day eval of comet when iced 0.15
    ships, or defer indefinitely?**
@@ -496,6 +503,10 @@ go wrong".
      debugger and ships stable docs / port spec, deferring means
      building parallel infrastructure we could have re-used.
    - *Recommended decision:* defer with a 6-month revisit calendar.
+   - **LOCKED 2026-05-15 → defer indefinitely. `ui-comet-eval`
+     queued as a candidate without a spawn trigger; revisit if
+     `ui-inspect-mcp` or `ui-session-journal-iced-tester` surfaces
+     a gap comet would close, or by 2026-11-15 (6 months).**
 
 3. **Q-TESTER-FEATURE — Add `iced/tester` as an opt-in feature flag
    on `crates/ui/`?**
@@ -508,6 +519,10 @@ go wrong".
      feature combinatorics get hairier.
    - *Recommended decision:* yes — the feature surface is small and
      the alternative (rolling our own recorder) is strictly worse.
+   - **LOCKED 2026-05-15 → yes, add `record-tests` opt-in cargo
+     feature on `crates/ui/`. Wired only when
+     `ui-session-journal-iced-tester` is in flight; off by default
+     in production builds.**
 
 4. **Q-PANEL-UPSTREAM — File the strategies-Table panic upstream as
    a bug report only, or also draft the fix PR?**
@@ -524,6 +539,10 @@ go wrong".
      than we'd save.
    - *Recommended decision:* file only; revisit if no upstream
      activity in 6 weeks.
+   - **LOCKED 2026-05-15 → file bug report only with the
+     [gallery_bisect.rs](../../crates/ui/tests/gallery_bisect.rs)
+     repro; do NOT draft the fix PR. Revisit by 2026-06-26 if no
+     upstream activity.**
 
 5. **Q-D3-RELITIGATE — Has headless mode (PR #2698) changed enough
    about D3's tradeoffs to fold the cross-platform falsifier into
@@ -538,6 +557,9 @@ go wrong".
      out of the gate and save the spike. But "confident" is a
      belief, not a measurement — the spike *measures*.
    - *Recommended decision:* unchanged from deep-dive Q-D3-REVISIT.
+   - **LOCKED 2026-05-15 → unchanged. Keep the 1-day cross-platform
+     falsifier as a discrete cycle-3 spike per deep-dive §5.4. PR
+     #2698 raises prior likelihood, doesn't change test design.**
 
 ## Sources
 
@@ -585,6 +607,16 @@ sweep.
 
 ## Changelog
 
+- 2026-05-15 (operator, accepted as block): locked all 5
+  migration questions at their analyst defaults — Q-014-PIN
+  (strict-pinned `=0.14.0`), Q-COMET-EVAL (defer indefinitely;
+  6-month revisit), Q-TESTER-FEATURE (yes, add `record-tests`
+  opt-in feature), Q-PANEL-UPSTREAM (file bug only, no PR;
+  6-week revisit), Q-D3-RELITIGATE (unchanged from deep-dive
+  Q-D3-REVISIT — keep cycle-3 falsifier spike). §8 stanzas
+  annotated `LOCKED 2026-05-15`. Backlog re-sequenced in the
+  same orchestrator pass (see `spec/backlog.md` changelog entry
+  of the same date).
 - 2026-05-15 (analyst): initial draft. Targeted iced 0.14 changelog
   analysis. Headline findings: (1) the strategies-Table panic is
   unfixed and unmentioned upstream — file it + ship workaround (a) in
