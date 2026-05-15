@@ -2,8 +2,17 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-12
+updated: 2026-05-15
 ---
+<!-- updated 2026-05-15 (analyst, ui-testability deep-dive) — added
+     8 candidate features under Queue ## Process / tooling pointing
+     into the new `spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`
+     dev-note (ui-contrast-asserter, ui-update-proptest, ui-gallery-bin,
+     ui-a11y-shadow, ui-vlm-judge, ui-inspect-mcp, ui-session-journal,
+     ui-mutants-pass, plus a tester agent-contract addition for the
+     visual-fail HTML artifact). Annotated the existing
+     ui-test-harness-ci candidate with a cross-platform falsifier
+     recommendation to revisit operator decision D3. -->
 <!-- updated 2026-05-12 (analyst, second pass) — promoted
      `ui-test-harness-bootstrap` v0.1 from Queue ## Process / tooling
      → Active. First feature under the new
@@ -131,6 +140,82 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   Analyst spawn when v1.10.0 ships; not before. Full details
   deferred to the v1.11 brief's analyst.
 
+- **P1 — Cockpit performance + input responsiveness
+  (`cockpit-performance-and-input-responsiveness`).**
+  _proposed_ — surfaced 2026-05-15 by operator's live-cockpit
+  verification during `ui-quality-gate-overhaul v1.0.0` approval.
+  Two symptoms observed on the post-Brief-A + Brief-B + F1-fix
+  build:
+  1. **UI is slow** — sluggish redraw / frame pacing under
+     `--features fixtures` on macOS Apple Silicon.
+  2. **Input dispatch unreliable** — not every click is recognized.
+
+  Both pre-date the M1/M2 quality gates (live in Brief A's native
+  iced::widget::Table adoption + Brief B's `iced_aw::Spinner`
+  continuous-redraw subscription + the existing event-handling
+  surface), but they are NOT caught by any current gate — the new
+  cockpit-smoke gate (M1-A) checks first-frame panic only, real-
+  renderer snapshots (M1-B) test layout determinism not perf, and
+  proptest layout invariants (M1-C) don't probe runtime event flow.
+
+  **Hypothesis seeds for the analyst (orchestrator surface only —
+  analyst owns falsification):**
+  - H-PERF-1: `iced_aw::Spinner`'s 60 FPS `request_redraw_at`
+    subscription forces continuous full-cockpit repaint while ANY
+    panel is in `PanelState::Loading`. Even one loading panel
+    pulls the whole cockpit into 60 fps software-rasterized
+    (`iced_tiny_skia`) redraw. CPU cost compounds across the 8 B2
+    call sites.
+  - H-PERF-2: Native `iced::widget::Table` (Brief A R1/R2) has a
+    layout pass that recomputes per-cell bounds every redraw, not
+    cached. With ~12 strategy rows × 6 columns × 60 fps = 4320
+    layout calls/second.
+  - H-PERF-3: Click hit-test traverses the full widget tree (Home
+    screen = 4 panels × ~50 widgets each ≈ 200 hit-test candidates
+    per click). Missed clicks may correlate with a 60-fps redraw
+    landing during the same event-loop tick and starving the
+    `WindowEvent::CursorButtonPressed` dispatch.
+  - H-PERF-4: `iced_tiny_skia` is software-rasterized on the
+    operator's hardware; wgpu is off-table per
+    [`trading_ui_library_constraints.md`](dev-notes/trading_ui_library_constraints.md)
+    BUT the architect should revisit the constraint given the live
+    perf signal.
+  - H-PERF-5: M2-A `tracing` instrumentation (just shipped) is
+    behind `render-debug` and should NOT fire in default builds —
+    confirm via grep that no production code path emits spans.
+
+  **Scope when promoted:**
+  - **M0 (orchestrator-runnable):** profile a default-fixtures
+    cockpit boot using `samply` or `cargo flamegraph` for ~30s
+    and capture the top 10 hot frames. Identify whether spinner
+    redraw, Table layout, or click hit-test dominates.
+  - **M1:** fix the dominant hot path. Likely candidates: gate
+    `iced_aw::Spinner` redraw to a coarser cadence (e.g. 10 fps,
+    or only-while-visible); cache Table layout; or restructure
+    event dispatch.
+  - **M2:** add a `cockpit-perf-budget` regression test (CI gate
+    that asserts <budget> fps on a fixtures cold-start). The
+    `ui-quality-gate-overhaul` brief's M1-A cockpit-smoke skill
+    is the natural place to plug this — extend it to also record
+    frames-per-second over the 7-10s window.
+  - **M3:** input-responsiveness investigation — likely a separate
+    sub-thread. Use M2-A `tracing` spans on event dispatch to
+    pinpoint dropped clicks.
+
+  **Out of scope:**
+  - Renderer backend swap to wgpu (per architecture pin; if the
+    perf analysis forces it, that's a separate brief requiring
+    operator override of the existing constraint).
+  - Major iced version bump (still pinned at 0.14.0 per Brief B).
+
+  **Analyst spawn:** operator-triggered. Brief is `proposed`
+  state in trace.toml; analyst draft turns it into `draft`.
+  Predecessor: `ui-quality-gate-overhaul v1.0.0`. Trigger cite:
+  operator's 2026-05-15 live-cockpit observation during the
+  v1.0.0 approval pass, recorded in
+  [`spec/ui-quality-gate-overhaul/presentations/ui-quality-gate-overhaul-2026-05-15.md`](ui-quality-gate-overhaul/presentations/ui-quality-gate-overhaul-2026-05-15.md)
+  approval-with-notes block.
+
 - **TBD — Cockpit Windows / Linux support (`cockpit-cross-platform`).**
   _candidate_ — surfaced 2026-05-12 by operator decision D3 in
   [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md#section-9).
@@ -219,6 +304,137 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   triples on visual snapshot failures; presenter deck format gets a
   fixed "screenshot artifacts" section pointing at the CI artifact
   URL per [dev-note §6 week 4](dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
+  **Per [`ui-testability-deep-dive-2026-05-15.md §5.3`](dev-notes/ui-testability-deep-dive-2026-05-15.md#53-keep--drop--replace-against-the-existing-weeks-2-4-plan)**
+  the analyst recommends pairing this CI brief with the 1-day
+  cross-platform falsifier (item O) to retire or confirm operator
+  decision D3 (macOS-only CI).
+
+- **Operator UI legibility — WCAG contrast asserter
+  (`ui-contrast-asserter`).** _candidate, surfaced 2026-05-15 by
+  [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md §3.8`](dev-notes/ui-testability-deep-dive-2026-05-15.md#38-stretch--pure-rust-wcag-contrast-asserter--ui-contrast-asserter)_
+  — a `crates/ui/tests/contrast.rs` test that enumerates every
+  `(fg, bg)` token pair in
+  [`crates/ui/src/theme.rs`](../crates/ui/src/theme.rs) and asserts
+  WCAG 2.1 contrast ratios per
+  [`ui-design-principles.md ## Accessibility minimums`](ui-design-principles.md#accessibility-minimums)
+  (4.5:1 AA body, 7:1 AAA equity). Half-day analyzed work. Closes
+  an entire class of palette-refactor regression without rendering
+  a single pixel. Run in WARN mode for two weeks before promoting
+  to gate. Analyst spawn when operator promotes.
+
+- **Pure-state property tests — update + proptest harness
+  (`ui-update-proptest`).** _candidate, surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §3.4`](dev-notes/ui-testability-deep-dive-2026-05-15.md#34-stretch--update--property-based-state-machine-harness--ui-update-proptest)_
+  — drive `ui::state::update` with
+  [`proptest-state-machine`](https://crates.io/crates/proptest-state-machine)
+  over randomized `Message` sequences. Five invariants to start:
+  kill monotonicity, no cross-screen state leakage, PanelState arm
+  reachability, subscription-error recoverability, audit-write
+  idempotency. ~5 dev-days. Closes ~40 `Message` variants currently
+  not directly covered (analysis at
+  [`ui-testability-deep-dive-2026-05-15.md §2.10`](dev-notes/ui-testability-deep-dive-2026-05-15.md#210-state-invariant-tests-vs-view-tests--quantifying-the-gap)).
+  Analyst spawn when operator promotes; pairs naturally with
+  `ui-mutants-pass` below.
+
+- **Storybook-equivalent widget gallery bin
+  (`ui-gallery-bin`).** _candidate, surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §3.3`](dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)_
+  — `cargo run --bin ui-gallery` rendering every widget × every
+  state × every viewport on one scrolling page. ~3 dev-days. The
+  analyst flags this as the **highest-ROI agent-friendly artifact**
+  in the dev-note (§3.3, §2.13) — multiplies snapshot review density
+  ~10×, gives the VLM judge (`ui-vlm-judge` below) amortized cost,
+  and forces every new widget under `crates/ui/src/widgets/` to
+  declare its state matrix. Prerequisite for the existing
+  `ui-test-harness-viewport-matrix` brief (the analyst recommends
+  sequencing gallery FIRST). Analyst spawn when operator promotes.
+
+- **AccessKit shadow tree + kittest assertions
+  (`ui-a11y-shadow`).** _candidate, surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §3.5`](dev-notes/ui-testability-deep-dive-2026-05-15.md#35-stretch--accesskit-shadow-tree--ui-a11y-shadow)_
+  — author `crates/ui/src/a11y.rs` emitting an
+  [`accesskit::TreeUpdate`](https://docs.rs/accesskit) for the
+  cockpit's widget surface; wire to
+  [`kittest`](https://docs.rs/kittest/) for tree-based assertions
+  that render zero pixels. Establishes a Layer 2 "widget tree"
+  oracle (§2.14 of the dev-note) that catches half the failure
+  classes pixel-diff misses (contrast, reachability, focus, label
+  drift). ~7 dev-days. **Approach B (in-repo shadow), not
+  Approach A (PR iced upstream)** per
+  [dev-note §2.7](dev-notes/ui-testability-deep-dive-2026-05-15.md#27-accessibility-as-a-testing-surface--the-load-bearing-pivot)
+  + Q-ACCESSKIT default. Iced upstream
+  [issue #552](https://github.com/iced-rs/iced/issues/552)
+  remains unmerged as of May 2026.
+
+- **VLM-as-second-opinion judge (`ui-vlm-judge`).** _candidate,
+  surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §3.2`](dev-notes/ui-testability-deep-dive-2026-05-15.md#32-vlm-as-second-opinion-judge--ui-vlm-judge)_
+  — bolt a Claude Sonnet 4.6 vision-as-oracle onto the existing
+  `crates/ui/tests/fixtures/` test infrastructure, runs on
+  `matches_image` failure only as a second-opinion forensic. Three
+  locked claims: tooltip visibility, no-overlap, contrast ≥ 4.5:1
+  per text label. Pinned model + prompt SHA + N=3 majority vote.
+  Reuses [`crates/llm`](../crates/llm) provider trait +
+  `BudgetedProvider` cap ($0.50/test run). **Mandatory 2-week
+  shadow-mode period before any gating;** see dev-note §3.2 (d)
+  for the flakiness mitigation. ~3 dev-days. Analyst spawn when
+  operator answers Q-VLM (default: adopt for shadow only).
+
+- **Live-cockpit inspect MCP shim (`ui-inspect-mcp`).**
+  _candidate, surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §3.1`](dev-notes/ui-testability-deep-dive-2026-05-15.md#31-live-inspect-mcp-shim--ui-inspect-mcp)_
+  — feature-gated read-only MCP server inside `cockpit` /
+  `cockpit_live` exposing `get_widget_tree()`, `screenshot()`,
+  `find_by_label(s)`, `get_widget_bounds(id)`. Listens on
+  `127.0.0.1:<port>` + env-var-supplied auth token; off in
+  production. Mirrors
+  [Slint's testing backend MCP server](https://docs.rs/i-slint-backend-testing/latest/i_slint_backend_testing/).
+  Lets the orchestrator (capability-map owner of cockpit launches
+  per [AGENT.md ## Capability boundaries](../AGENT.md#capability-boundaries))
+  answer structural questions about a running cockpit without a
+  manual `Cmd+Shift+4`. ~4 dev-days. Defer to cycle 4+ per dev-note
+  §5.2 — close more tactical coverage first. Analyst spawn when
+  operator answers Q-MCP (default: defer).
+
+- **Recorded session journal (`ui-session-journal`).**
+  _candidate, surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §3.6`](dev-notes/ui-testability-deep-dive-2026-05-15.md#36-stretch--recorded-session-journal--ui-session-journal)_
+  — `cockpit_live --record-journal <path>` serialises every
+  dispatched `Message` to TOML. `cargo test --test journal_replay
+  -- <path>` deserialises + replays + asserts golden post-state.
+  Compares conceptually to
+  [Playwright Trace Viewer](https://playwright.dev/docs/trace-viewer)
+  and [Replay.io](https://docs.replay.io/) but for the iced
+  `Message` enum. Lets the operator's real incident sessions
+  become permanent regression fixtures. ~4 dev-days. Analyst spawn
+  when operator promotes.
+
+- **Mutation testing one-shot pass (`ui-mutants-pass`).**
+  _candidate, surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §3.7`](dev-notes/ui-testability-deep-dive-2026-05-15.md#37-stretch--mutation-testing-pass--ui-mutants-pass)_
+  — one-time `cargo mutants --package ui --file
+  crates/ui/src/state.rs` run. Produces a triage report of
+  surviving mutants in `ui::state::update`. Pairs with
+  `ui-update-proptest` above — proptest writes invariants;
+  cargo-mutants surfaces which arms still have surviving mutants.
+  ~1 dev-day for the run + triage. Quarterly cadence after the
+  one-shot lands. Analyst spawn after `ui-update-proptest` shadow
+  bedding-in (operator Q-MUTANTS-CADENCE default: one-shot, then
+  quarterly).
+
+- **Test reporter — visual-fail HTML artifact (agent contract
+  update).** _candidate, surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §4.1`](dev-notes/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose)_
+  — on any visual assertion FAIL, the test-runner additionally
+  writes a self-contained `spec/<slug>/reports/visual-fail-<ts>.html`
+  with baseline/actual/diff PNG triple inline, the assertion that
+  fired, file:line, and the VLM judge's verbatim verdict (if
+  enabled). Adds a stanza to
+  [`.claude/agents/tester.md`](../.claude/agents/tester.md) and a
+  ~50-LOC helper in `crates/ui/tests/fixtures/`. ~1 dev-day.
+  Analyst spawn when `ui-vlm-judge` or
+  `ui-test-harness-viewport-matrix` schedules; pairs with whichever
+  lands first.
 
 _(historical: the only previously queued item, the presenter smoke test against
 operator-success-reports, ran 2026-05-08; surfaced 4 findings, two
@@ -671,6 +887,29 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Changelog
 
+- 2026-05-15 (analyst, ui-testability deep-dive): authored
+  [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](dev-notes/ui-testability-deep-dive-2026-05-15.md)
+  — a research dev-note critiquing the four-week plan in
+  [`ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md),
+  surfacing 3 structural blind spots (canvas-state ownership
+  via H2 caveat, pixels-only oracle, no reachability coverage)
+  + 8 schedulable proposals across a re-shaped Layer 0..7
+  pyramid. Promoted 8 new candidate features into ## Queue ##
+  Process / tooling above (ui-contrast-asserter,
+  ui-update-proptest, ui-gallery-bin, ui-a11y-shadow,
+  ui-vlm-judge, ui-inspect-mcp, ui-session-journal,
+  ui-mutants-pass, plus a tester visual-fail HTML artifact
+  agent-contract update). Each item points to a specific §
+  anchor in the dev-note for the operator's "schedule which"
+  pick. Existing
+  [`ui-test-harness-ci`](#queue) candidate annotated with a
+  +1-day cross-platform falsifier to revisit operator decision
+  D3 (macOS-only CI) per dev-note §5.3 + §2.6. No code
+  changes; pure spec output. Six open operator questions
+  surfaced in dev-note §6 (Q-VLM, Q-ACCESSKIT, Q-MCP,
+  Q-GALLERY-SCOPE, Q-D3-REVISIT, Q-MUTANTS-CADENCE) — each
+  has a documented default so the operator may sequence
+  features without a separate Q&A round.
 - 2026-05-12 (analyst, second pass): promoted
   `ui-test-harness-bootstrap` v0.1 from Queue ## Process / tooling
   → Active. First feature under the new

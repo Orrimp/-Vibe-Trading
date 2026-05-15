@@ -29,6 +29,17 @@ fn widget_sources() -> Vec<PathBuf> {
         .map(|entry| entry.path())
         .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("rs"))
         // `num.rs`, `frame.rs` are allowed infrastructure; still scanned.
+        // ui-quality-gate-overhaul M2-B (2026-05-15): `debug_renderer.rs`
+        // is gated at file-floor by `#![cfg(feature = "render-debug")]`
+        // — it is diagnostic-only, compiled away on default builds, and
+        // its string literals are operator-facing panic messages /
+        // tracing event names, not user-facing UI copy. Skip it from
+        // the consistency audit.
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_none_or(|name| name != "debug_renderer.rs")
+        })
         .collect()
 }
 
@@ -76,6 +87,11 @@ fn is_structural_literal(lit: &str) -> bool {
 /// - doc-comments (`//`, `//!`, `///`),
 /// - attribute-line strings (`#[cfg(feature = "…")]`),
 /// - anything inside a `#[cfg(test)]` module (those are test-only literals).
+/// - lines that contain a `tracing::` macro call (trace_span!, error!,
+///   warn!, info!, debug!, trace!) — the first arg there is a span /
+///   event name, not user-visible UI copy. Added 2026-05-15 for the
+///   ui-quality-gate-overhaul M2-A instrumentation; see
+///   `spec/ui-quality-gate-overhaul/feature.md ## Q2`.
 ///
 /// This is not a full Rust parser, just good enough for the cockpit files
 /// which never use raw strings.
@@ -83,6 +99,11 @@ fn collect_string_literals(src: &str) -> Vec<(usize, String)> {
     let mut lits = Vec::new();
     let mut in_cfg_test = false;
     let mut cfg_test_depth = 0i32;
+    // Track multi-line `tracing::*!(...)` macro invocations: once we see
+    // `tracing::` open the macro, swallow string literals until the
+    // matching close-paren at depth 0.
+    let mut in_tracing_macro = false;
+    let mut tracing_paren_depth = 0i32;
     for (lineno, line) in src.lines().enumerate() {
         let trimmed = line.trim_start();
 
@@ -112,6 +133,41 @@ fn collect_string_literals(src: &str) -> Vec<(usize, String)> {
             continue;
         }
         if trimmed.starts_with("#![") || trimmed.starts_with("#[") {
+            continue;
+        }
+
+        // Track entry into / exit from a `tracing::*!(...)` macro call.
+        // The macro can span multiple lines; we count parens at depth 0
+        // (ignoring inside string literals — line content is fine since
+        // tracing fields don't carry close-paren inside strings).
+        if !in_tracing_macro
+            && (line.contains("tracing::trace_span!")
+                || line.contains("tracing::error!")
+                || line.contains("tracing::warn!")
+                || line.contains("tracing::info!")
+                || line.contains("tracing::debug!")
+                || line.contains("tracing::trace!"))
+        {
+            in_tracing_macro = true;
+            tracing_paren_depth = 0;
+        }
+        if in_tracing_macro {
+            for c in line.chars() {
+                match c {
+                    '(' => tracing_paren_depth += 1,
+                    ')' => {
+                        tracing_paren_depth -= 1;
+                        if tracing_paren_depth <= 0 {
+                            in_tracing_macro = false;
+                            tracing_paren_depth = 0;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // Skip the line entirely — every literal inside a tracing
+            // macro call is a span/event name or structured-field
+            // value, not user-visible UI copy.
             continue;
         }
         // Simple state machine: scan for `"..."` not preceded by `'`.

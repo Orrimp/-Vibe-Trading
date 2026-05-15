@@ -318,6 +318,7 @@ but those are technical artifacts — the presenter is the agile
 | `present-results`    | Assemble a `spec/<slug>/presentations/<slug>-<date>.md` from spec + tests + live bin runs |
 | `capture-screenshot` | Capture (or operator-instruct) a UI screenshot                |
 | `spec-update`        | Safe writer for `spec/` files                                 |
+| `cockpit-smoke`      | Orchestrator-only pre-tick gate: boots fixtures cockpit for 7s + greps stderr for panics (per ui-quality-gate-overhaul M1-A) |
 
 Agents invoke skills; the orchestrator does not need to call skills directly
 unless operating without sub-agents.
@@ -378,6 +379,25 @@ incident and a concrete tooling gate:
      `Rfc3339` second-precision causes SQLite ORDER BY ties.
    - All RNGs `ChaCha20Rng::from_seed(...)`. No `thread_rng`.
    - HashMap iteration sorted before any cross-run comparison.
+
+6. **UI brief pre-tick gate — `cockpit-smoke`.** Every UI brief's
+   evaluator `VERDICT → PASS` triggers the
+   [`cockpit-smoke`](.claude/skills/cockpit-smoke/SKILL.md) skill
+   before the presenter pre-tick gate runs. Skill exit `0` →
+   orchestrator continues to the presenter. Skill exit `1` → block
+   presenter, route `HANDOFF → developer` with the skill's
+   panic-grep output attached to the dev brief. Cadence is
+   **always-on** (operator ratified) — not scoped to
+   `crates/ui/src/widgets/` / `crates/ui/src/screens/` touches.
+   Any spec slug whose tester report cites `cargo test -p ui` runs
+   the skill. Invocation boundary: orchestrator-only per
+   [`## Capability boundaries`](#capability-boundaries) table row
+   `cargo run --bin cockpit with a live window`. *Why:* the F1
+   first-frame `fill_quad`/`unreachable!()` panic shipped past the
+   267-test panel-snapshot suite because no harness exercised the
+   iced render path against a live tiny-skia surface
+   (see `spec/cockpit-render-regression/feature.md` for the
+   incident). This rule closes that gap.
 
 ## Guardrails
 

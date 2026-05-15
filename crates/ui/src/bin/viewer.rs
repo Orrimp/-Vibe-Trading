@@ -27,12 +27,27 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser;
-use iced::widget::{container, Column, Container};
+use iced::widget::{button, container, Button, Column, Container, Text};
 use iced::{Element, Length};
+// Brief B M1 — `iced_aw::date_picker` primitive. **MUST NOT call
+// `iced_aw::core::date::Date::today()` or
+// `iced_aw::date_picker::State::reset()` from any code path reachable
+// in tests** — both invoke `chrono::Local::now()` per
+// `~/.cargo/registry/.../iced_aw-0.14.1/src/core/date.rs:31-34` +
+// `:173-175`, which would inject wall-clock into the viewer's
+// snapshot path. See `ui::viewer::VIEWER_PICKER_ANCHOR` docstring +
+// `spec/iced-aw-cherry-pick/feature.md ## Q3 — Determinism trap` for
+// the full rationale. The anchor below uses
+// `iced_aw::core::date::Date::from_ymd(...)` — a `const fn`, no
+// wall-clock involvement.
+use iced_aw::core::date::Date as PickerDate;
+use iced_aw::date_picker::DatePicker;
 use trading_core::{BacktestMetrics, EquitySeries, Money, Timestamp, Usdt};
 use ui::state::PanelState;
-use ui::theme::{color, layout, space, ThemeMode};
-use ui::viewer::{ReportFrontMatter, ReportLoadResult, ViewerMessage, ViewerModel};
+use ui::theme::{color, layout, space, text, ThemeMode};
+use ui::viewer::{
+    ReportFrontMatter, ReportLoadResult, ViewerMessage, ViewerModel, VIEWER_PICKER_ANCHOR,
+};
 use ui::widgets::{drawdown_band, equity_curve, kpi_strip};
 
 /// CLI args.
@@ -103,8 +118,10 @@ impl App {
         let curve = equity_curve::view(&self.model.equity, self.model.mode);
         let band = drawdown_band::view(&self.model.equity, self.model.mode);
         let body = body_render::view(&self.model.body_markdown, self.model.mode);
+        let picker = picker_block(&self.model);
         let stack = Column::new()
             .spacing(space::M)
+            .push(picker)
             .push(strip)
             .push(curve)
             .push(band)
@@ -257,6 +274,82 @@ fn strip_front_matter(raw: &str) -> &str {
         }
     }
     trimmed
+}
+
+/// Brief B M1 (T-M1-2 / T-M1-4) — `iced_aw::date_picker` primitive
+/// instantiation for the viewer bin.
+///
+/// **Determinism contract (T-M1-4):** the picker is constructed with
+/// `iced_aw::core::date::Date::from_ymd(...)` against the const
+/// `ui::viewer::VIEWER_PICKER_ANCHOR` — **NEVER**
+/// `iced_aw::core::date::Date::today()` or
+/// `iced_aw::date_picker::State::reset()`, both of which invoke
+/// `chrono::Local::now()` per `iced_aw-0.14.1/src/core/date.rs:31-34`
+/// and `:173-175`. The `on_submit` closure converts the
+/// `iced_aw::core::date::Date` payload to a `time::Date` (workspace's
+/// preferred date crate per the root `Cargo.toml`) via
+/// `time::Date::from_calendar_date(year, month, day)`; no
+/// `chrono::NaiveDate` reaches the workspace's public surface.
+///
+/// Scope: smoke-test consumer only. Full backtest-range wire-in is
+/// out-of-scope for Brief B per the analyst's brief (v1.11 / Phase 4
+/// future work).
+fn picker_block(model: &ViewerModel) -> Element<'_, ViewerMessage> {
+    // CLOCK-OK: `Date::from_ymd` is `const fn` with literal args; no
+    // wall-clock read. Verified at architect-pass via
+    // `iced_aw-0.14.1/src/core/date.rs:38-41`.
+    let (y, m, d) = VIEWER_PICKER_ANCHOR;
+    let anchor = PickerDate::from_ymd(y, m, d);
+
+    let underlay = Button::new(
+        Text::new("Pick backtest date")
+            .size(text::BODY)
+            .color(color::FG_1.current(model.mode)),
+    )
+    .on_press(ViewerMessage::PickerOpened)
+    .padding([space::XS as u16, space::S as u16])
+    .style(
+        move |_theme: &iced::Theme, _status: button::Status| button::Style {
+            background: Some(color::PANEL_RAISED.current(model.mode).into()),
+            text_color: color::FG_1.current(model.mode),
+            ..button::Style::default()
+        },
+    );
+
+    let picker: Element<'_, ViewerMessage> = DatePicker::new(
+        model.picker_open,
+        anchor,
+        underlay,
+        ViewerMessage::PickerCanceled,
+        |picked: PickerDate| {
+            // `time::Month::try_from(u8)` returns `Err` only for 0
+            // or 13+; `iced_aw::core::date::Date` constructs its
+            // `month` from chrono's 1..=12 range or
+            // `Date::from_ymd(_, m, _)` arithmetic. Defensive
+            // fallback to January if anyone ever wires a bad value.
+            // CLOCK-OK: `time::Date::from_calendar_date` is a pure
+            // numeric constructor — no wall-clock involvement.
+            #[allow(clippy::cast_possible_truncation)]
+            let month_u8 = picked.month as u8;
+            let month = time::Month::try_from(month_u8).unwrap_or(time::Month::January);
+            #[allow(clippy::cast_possible_truncation)]
+            let day_u8 = picked.day as u8;
+            let date =
+                time::Date::from_calendar_date(picked.year, month, day_u8).unwrap_or_else(|_| {
+                    // Fallback to the anchor const date — the picker's
+                    // UI shouldn't be able to surface invalid dates,
+                    // but the conversion is fallible so we route a
+                    // safe default through `update` rather than
+                    // panicking on a malformed payload.
+                    time::Date::from_calendar_date(2024, time::Month::January, 1)
+                        .expect("anchor fallback is always valid")
+                });
+            ViewerMessage::PickerDateSelected(date)
+        },
+    )
+    .into();
+
+    picker
 }
 
 // ── body_render — minimal markdown pre-pass ──────────────────────────────────

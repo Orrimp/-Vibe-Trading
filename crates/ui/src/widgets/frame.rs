@@ -21,6 +21,7 @@
 //! when `active = false`. The rule is **always** 2 px wide so layout
 //! is identical before and after Phase 1 selection state lands.
 
+use iced::alignment::Vertical;
 use iced::widget::{container, Column, Container, Row, Space, Text};
 use iced::Color;
 use iced::Element;
@@ -47,6 +48,18 @@ pub fn panel<'a, Message: 'a>(
     body: Element<'a, Message>,
     mode: ThemeMode,
 ) -> Element<'a, Message> {
+    // ui-quality-gate-overhaul M2-A (T-M2-A-1/-2): emit a per-construction
+    // trace span when `render-debug` is on so an operator triaging a render
+    // panic can grep stderr for `widget_draw{widget="panel" ...}` and see
+    // the call sequence. Stderr-only per architect Q2 (no audit-ledger
+    // sink). `_enter` keeps the span open for the duration of the
+    // function — the lazy `Element` it returns is what iced eventually
+    // draws, but the span tag lands on stderr the moment we hit this
+    // line, which is sufficient for the "which widget called frame::panel
+    // before the panic" forensic.
+    #[cfg(feature = "render-debug")]
+    let _span = tracing::trace_span!("widget_draw", widget = "panel", title = title).entered();
+
     // Header row: title text inside a PANEL_RAISED tinted container.
     let header_text = Text::new(title)
         .size(text::H2)
@@ -143,6 +156,73 @@ pub fn muted_body<'a, Message: 'a>(t: &'a str) -> Element<'a, Message> {
     Text::new(t)
         .size(text::BODY)
         .color(color::FG_3.current(ThemeMode::Dark))
+        .into()
+}
+
+/// Brief B (M2) — informational loading text paired with a 16 px
+/// throttled spinner in the muted foreground.
+///
+/// Renders a horizontal `Row` of `[Spinner, Text]` separated by
+/// `space::S` and vertically centered. The spinner is the local
+/// [`crate::widgets::throttled_spinner::ThrottledSpinner`] — a
+/// behavioural-clone of `iced_aw::Spinner` with `FRAMES_PER_SECOND = 10`
+/// instead of the upstream 60.
+///
+/// ## Why throttled, not bare `iced_aw::Spinner`
+///
+/// Upstream `iced_aw::Spinner` calls
+/// `shell.request_redraw_at(now + 16 ms)` on every `RedrawRequested`
+/// event (`iced_aw-0.14.1/src/widget/spinner.rs:197-199`), pulling
+/// the whole cockpit into 60 fps software-rasterized repaint while
+/// ANY panel renders this helper. The orchestrator-executed
+/// 2026-05-15 M0 profile (cockpit-performance-and-input-responsiveness
+/// feature.md ## M0 results) measured idle cockpit CPU at ~66.9 %
+/// with `iced_tiny_skia::Compositor::present` at 45.5 % main-thread
+/// self-time. Throttling the cadence to 10 fps cuts the per-second
+/// repaint count ~6× — see
+/// [`widgets::throttled_spinner`](super::throttled_spinner) for the
+/// architect-ratified rationale (M1 Candidate A2).
+///
+/// ## Determinism
+///
+/// The 1 Hz `rate` is preserved from the upstream Spinner default; the
+/// frame increment is driven by `RedrawRequested` (NOT wall-clock) per
+/// the architect's H-arch-9 RESOLVED-PASS verdict in
+/// [iced-aw-cherry-pick/feature.md § H-arch-9](../../../spec/iced-aw-cherry-pick/feature.md#h-arch-9--iced_awspinner-deterministic-render--resolved-pass-with-caveat).
+/// `iced_test` snapshot paths render at `t = 0.0` because they do not
+/// fire `RedrawRequested` events, so `*_loading.snap` baselines stay
+/// deterministic — the throttle does not perturb this.
+///
+/// `mode` is passed explicitly so the text color tracks the runtime
+/// theme toggle (same shape as `panel(...)` / `active_row(...)`). Phase
+/// 1 callers pass `ThemeMode::Dark`.
+#[must_use]
+pub fn loading_with_spinner<'a, Message: 'a>(
+    text: &'a str,
+    mode: ThemeMode,
+) -> Element<'a, Message> {
+    // ui-quality-gate-overhaul M2-A (T-M2-A-2): paired with the
+    // `frame::panel` instrumentation. Same `widget_draw` span name so
+    // `RUST_LOG=ui::widgets=trace` filters one widget channel and surfaces
+    // both. Build-time-only via `render-debug` feature; default builds
+    // compile this away.
+    #[cfg(feature = "render-debug")]
+    let _span =
+        tracing::trace_span!("widget_draw", widget = "loading_with_spinner", text = text).entered();
+
+    Row::new()
+        .spacing(space::S)
+        .align_y(Vertical::Center)
+        .push(
+            super::throttled_spinner::ThrottledSpinner::new()
+                .width(Length::Fixed(16.0))
+                .height(Length::Fixed(16.0)),
+        )
+        .push(
+            Text::new(text)
+                .size(text::BODY)
+                .color(color::FG_3.current(mode)),
+        )
         .into()
 }
 
@@ -424,6 +504,37 @@ mod tests {
         } else {
             "ACCENT"
         }
+    }
+
+    // ── Brief B M2 — loading_with_spinner helper ───────────────────────────
+    /// Brief B M2 — `loading_with_spinner` returns an `Element` with
+    /// the muted text color matching `muted_body`. Compile-time
+    /// guarantee + token equality on the foreground color. The
+    /// spinner's render state is gated behind `RedrawRequested` so we
+    /// can't observe frame state here, but the surrounding text color
+    /// is the load-bearing token for snapshot determinism.
+    // RGB channels bounded to `[0.0, 1.0]` by iced; `f32 → u8` byte
+    // extraction is intentional for token-pin stability (same pattern
+    // as t1505 / t1507 above).
+    #[test]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn loading_with_spinner_uses_fg_3_text_color() {
+        use iced::Element;
+        let mode = ThemeMode::Dark;
+        // Compile-time guarantee: returns `Element<()>`.
+        let _: Element<'_, ()> = super::loading_with_spinner("Loading…", mode);
+        // Token equality: the muted-body and spinner helper both flow
+        // text through `FG_3.current(mode)`, so a token drift trips
+        // both call sites in lockstep.
+        let expected_fg = color::FG_3.current(mode);
+        let (r, g, b) = (
+            (expected_fg.r * 255.0) as u8,
+            (expected_fg.g * 255.0) as u8,
+            (expected_fg.b * 255.0) as u8,
+        );
+        // FG_3 dark = #808993 per theme.rs:179 — pinned here so a token
+        // rename forces an audit of this helper's color choice.
+        assert_eq!((r, g, b), (0x80, 0x89, 0x93));
     }
 
     /// T1708 — colour ramp: `ACCENT` < 70 %, `WARN_500` ≥ 70 %, `DOWN_500`

@@ -199,6 +199,80 @@ anchors     = []
 state       = "shipped"
 
 [[req]]
+id          = "REQ-ICED-AW-001"
+title       = "iced_aw::date_picker enables operator-selectable backtest date range"
+feature     = "iced-aw-cherry-pick"
+product     = "spec/product.md"
+arch        = [
+  "spec/iced-aw-cherry-pick/feature.md#h-arch-4--iced_awdate_picker-feature-flag-isolation--resolved-pass",
+  "spec/iced-aw-cherry-pick/feature.md#q3--iced_awdate_picker-message-payload-iced_awcoredatedate",
+  "spec/iced-aw-cherry-pick/tasks.md#m1--b1-iced_awdate_picker-developer-single-lane",
+]
+crates      = [
+  "crates/ui/Cargo.toml",
+  "crates/ui/src/bin/viewer.rs",
+  "crates/ui/src/viewer.rs",
+]
+tests       = [
+  "crates/ui/src/viewer.rs",
+  "crates/ui/tests/panel_snapshots.rs",
+]
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-ICED-AW-002"
+title       = "iced_aw::spinner replaces plain-text Loading rendering in panel_state::Loading panels"
+feature     = "iced-aw-cherry-pick"
+product     = "spec/product.md"
+arch        = [
+  "spec/iced-aw-cherry-pick/feature.md#h-arch-9--iced_awspinner-deterministic-render--resolved-pass-with-caveat",
+  "spec/iced-aw-cherry-pick/feature.md#q4--exact-panel-set-for-b2-8-call-sites-across-5-files-analysts-8-panels-confirmed",
+  "spec/iced-aw-cherry-pick/tasks.md#m2--b2-iced_awspinner-developer-single-lane",
+]
+crates      = [
+  "crates/ui/Cargo.toml",
+  "crates/ui/src/theme.rs",
+  "crates/ui/src/widgets/frame.rs",
+  "crates/ui/src/screens/strategies.rs",
+  "crates/ui/src/screens/audit.rs",
+  "crates/ui/src/screens/risk.rs",
+  "crates/ui/src/widgets/positions.rs",
+  "crates/ui/src/widgets/strategies.rs",
+  "crates/ui/src/widgets/pnl.rs",
+  "crates/ui/src/widgets/agent_feed.rs",
+]
+tests       = [
+  "crates/ui/src/widgets/frame.rs",
+  "crates/ui/tests/panel_snapshots.rs",
+  "scripts/check_no_clocks_in_ui_tests.sh",
+]
+anchors     = []
+state       = "shipped"
+
+[[req]]
+id          = "REQ-ICED-AW-003"
+title       = "iced_aw::badge renders Lumen-tinted status chips on Strategies and Risk screens"
+feature     = "iced-aw-cherry-pick"
+product     = "spec/product.md"
+arch        = [
+  "spec/iced-aw-cherry-pick/feature.md#h-arch-10--iced_awbadge-catalog--stylefn-hook--resolved-pass",
+  "spec/iced-aw-cherry-pick/feature.md#q5--exact-file-set-for-b3-cratesuisrcwidgetsstrategiesrs-only-1-file-not-3",
+  "spec/iced-aw-cherry-pick/tasks.md#m3--b3-iced_awbadge-developer--ui-designer-single-lane",
+]
+crates      = [
+  "crates/ui/Cargo.toml",
+  "crates/ui/src/theme/iced_widget_catalogs.rs",
+  "crates/ui/src/widgets/strategies.rs",
+]
+tests       = [
+  "crates/ui/src/theme/iced_widget_catalogs.rs",
+  "crates/ui/tests/panel_snapshots.rs",
+]
+anchors     = []
+state       = "shipped"
+
+[[req]]
 id          = "REQ-UI-TEST-HARNESS-001"
 title       = "UI test harness (deterministic, no-clock, screenshot-capable)"
 feature     = "ui-test-harness-bootstrap"
@@ -269,6 +343,130 @@ anchors     = []
 state       = "shipped"
 
 #
+# ─── Cockpit render regression + UI quality-gate overhaul ──────────────
+# REQ-COCKPIT-PANIC-001       → cockpit-render-regression (shipped 2026-05-14)
+# REQ-UI-QUALITY-GATE-001/002 → ui-quality-gate-overhaul   (design 2026-05-14)
+# REQ-UI-INSTRUMENTATION-001  → ui-quality-gate-overhaul   (design 2026-05-14)
+# REQ-UI-DEBUG-RENDERER-001   → ui-quality-gate-overhaul   (design 2026-05-14)
+#
+
+[[req]]
+id          = "REQ-COCKPIT-PANIC-001"
+title       = "Cockpit boots without panic on first frame (cargo run --bin cockpit --features fixtures)"
+feature     = "cockpit-render-regression"
+product     = "spec/product.md"
+arch        = [
+  "spec/cockpit-render-regression/feature.md#m0--hypothesis-register-orchestrator-runnable-falsifiers",
+  "spec/cockpit-render-regression/feature.md#m0-results-orchestrator-executed-2026-05-14",
+  "spec/cockpit-render-regression/feature.md#m0-fix--h3-root-cause-fix-design",
+  "spec/cockpit-render-regression/feature.md#problem-statement",
+]
+crates      = [
+  "crates/ui/src/widgets/strategies.rs",
+  "crates/ui/src/theme.rs",
+]
+tests       = [
+  "crates/ui/tests/panel_snapshots.rs",
+  "crates/ui/tests/home_strategies_row_cross_link.rs",
+  "crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs",
+  "crates/ui/tests/visual_snapshots.rs",
+]
+anchors     = []
+state       = "shipped"   # operator-approved 2026-05-14 after evaluator VERDICT → PASS
+
+[[req]]
+id          = "REQ-UI-QUALITY-GATE-001"
+title       = "UI features cannot ship without a cargo run --bin cockpit smoke check (cockpit-smoke skill, mandatory pre-tick gate)"
+feature     = "ui-quality-gate-overhaul"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-quality-gate-overhaul/feature.md#m1-a--cockpit-smoke-skill-mandatory-orchestrator-pre-tick-gate",
+  "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
+  "spec/ui-quality-gate-overhaul/feature.md#h-a4--7s-cockpit-cold-start-budget--unverified-in-spec",
+  "spec/ui-quality-gate-overhaul/tasks.md#m1-a--cockpit-smoke-skill-orchestrator-pre-tick-gate",
+]
+# AGENT.md edits (skills catalog row + Process discipline rule 6) landed
+# by developer 2026-05-15. The `.claude/skills/cockpit-smoke/SKILL.md`
+# file itself was blocked by developer sandbox; orchestrator lands the
+# skill file from the developer's handoff envelope.
+crates      = ["AGENT.md", ".claude/skills/cockpit-smoke/SKILL.md"]
+tests       = []   # skill is orchestrator-run; not unit-testable
+anchors     = []
+state       = "shipped"   # operator-approved-with-notes 2026-05-15   # AGENT.md edits landed; SKILL.md file awaits orchestrator
+
+[[req]]
+id          = "REQ-UI-QUALITY-GATE-002"
+title       = "Replace text-summary panel_snapshot helpers with real-renderer iced_test::screenshot() + visual_diff::matches_screenshot (SSIM >= 0.99 vs PNG baseline)"
+feature     = "ui-quality-gate-overhaul"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-quality-gate-overhaul/feature.md#m1-b--real-renderer-snapshots-via-iced_testsimulator--headless",
+  "spec/ui-quality-gate-overhaul/feature.md#m1-c--proptest-layout-invariants",
+  "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
+  "spec/ui-quality-gate-overhaul/feature.md#h-a1--iced_testsimulator-rasterization-claim--falsified-with-refined-architecture",
+  "spec/ui-quality-gate-overhaul/feature.md#h-a3--proptest-workspace-dep-status--partially-falsified-confirmed",
+  "spec/ui-quality-gate-overhaul/tasks.md#m1-b--real-renderer-snapshots-iced_testscreenshot--existing-visual-diff-helper",
+  "spec/ui-quality-gate-overhaul/tasks.md#m1-c--proptest-layout-invariants",
+]
+crates      = [
+  "crates/ui/Cargo.toml",
+  "crates/ui/tests/render_snapshots.rs",
+  "crates/ui/tests/layout_invariants.rs",
+  "crates/ui/src/test_support.rs",
+  "crates/ui/src/widgets/strategies.rs",
+  "crates/ui/tests/consistency.rs",
+]
+tests       = [
+  "crates/ui/tests/render_snapshots.rs",
+  "crates/ui/tests/layout_invariants.rs",
+]
+anchors     = []
+state       = "shipped"   # operator-approved-with-notes 2026-05-15   # M1-B-2/-5/-C-1/-C-2/-C-3 done 2026-05-15; M1-B-3 partial; M1-B-4 awaits ui-designer review
+
+[[req]]
+id          = "REQ-UI-INSTRUMENTATION-001"
+title       = "Tracing spans on widget draw + layout lifecycle behind a render-debug feature flag"
+feature     = "ui-quality-gate-overhaul"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-quality-gate-overhaul/feature.md#m2-a--tracing-spans-around-widget-draw-lifecycle",
+  "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
+  "spec/ui-quality-gate-overhaul/feature.md#q2--m2-a-tracing-span-destination--stderr-only-via-tracing_subscriberfmt",
+  "spec/ui-quality-gate-overhaul/feature.md#q7--render-debug-cargo-feature-name--confirmed-render-debug",
+  "spec/ui-quality-gate-overhaul/tasks.md#m2-a--tracing-spans-on-widget-draw--layout-lifecycle",
+]
+crates      = [
+  "crates/ui/Cargo.toml",
+  "crates/ui/src/widgets/frame.rs",
+  "crates/ui/src/widgets/strategies.rs",
+  "crates/ui/src/bin/cockpit.rs",
+]
+tests       = []   # tracing is observability, not assertion-tested
+anchors     = []
+state       = "shipped"   # operator-approved-with-notes 2026-05-15
+
+[[req]]
+id          = "REQ-UI-DEBUG-RENDERER-001"
+title       = "Opt-in DebugRenderer newtype wrapping iced_tiny_skia::Renderer for diagnostic builds (intercepts zero-dim Quad with widget context)"
+feature     = "ui-quality-gate-overhaul"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-quality-gate-overhaul/feature.md#m2-b--debugrenderer-newtype-behind---features-render-debug",
+  "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
+  "spec/ui-quality-gate-overhaul/feature.md#q3--m2-b-debugrenderer-lifecycle--build-time-via-cfgfeature--render-debug",
+  "spec/ui-quality-gate-overhaul/feature.md#q7--render-debug-cargo-feature-name--confirmed-render-debug",
+  "spec/ui-quality-gate-overhaul/tasks.md#m2-b--debugrenderer-newtype",
+]
+crates      = [
+  "crates/ui/Cargo.toml",
+  "crates/ui/src/widgets/mod.rs",
+  "crates/ui/src/widgets/debug_renderer.rs",
+]
+tests       = ["crates/ui/src/widgets/debug_renderer.rs"]  # inline #[cfg(test)] mod
+anchors     = []
+state       = "shipped"   # operator-approved-with-notes 2026-05-15; runtime wiring DEFERRED — iced upstream change required (see tasks.md T-M2-B-2 divergence note + cockpit-performance follow-up)
+
+#
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #
 
@@ -293,6 +491,37 @@ crates      = ["crates/core", "crates/audit", "crates/exec"]
 tests       = []
 anchors     = []
 state       = "shipped"
+
+#
+# ─── Cockpit performance + input responsiveness (proposed 2026-05-15) ──
+#
+
+[[req]]
+id          = "REQ-COCKPIT-PERF-001"
+title       = "Cockpit redraw + input dispatch performance — laggy UI + dropped clicks under fixtures mode"
+feature     = "cockpit-performance-and-input-responsiveness"
+product     = "spec/product.md"
+arch        = [
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#problem-statement",
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#m0-profile-the-dominant-hot-path-orchestrator-runnable",
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#m1-fix-the-dominant-hot-path-developer--ui-designer",
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#m2-perf-budget-regression-gate-developer",
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#m3-input-dispatch-investigation-analyst--architect-re-spawn",
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#hypothesis-register",
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#design--architect-synthesis",
+  "spec/cockpit-performance-and-input-responsiveness/feature.md#m0-falsifier-batch--final-state-going-into-the-orchestrator-run",
+  "spec/cockpit-performance-and-input-responsiveness/tasks.md",
+]
+crates      = [
+  "crates/ui/src/widgets/throttled_spinner.rs",
+  "crates/ui/src/widgets/frame.rs",
+  "crates/ui/src/widgets/mod.rs",
+]   # M1 Candidate A landed 2026-05-15 (developer); M1 Candidate B/C and M2/M3 paths append on land
+tests       = [
+  "crates/ui/src/widgets/throttled_spinner.rs",  # unit-tests under `#[cfg(test)] mod tests` — 5 tests; locks FRAMES_PER_SECOND = 10 + visual-parity invariants
+]   # tester appends `T_FINAL_*` evidence post-developer
+anchors     = []
+state       = "shipped"   # operator-approved 2026-05-15; idle CPU 66.9% → 2.2-13.1% (~18× typical) via ThrottledSpinner 10fps (M1 Candidate A). Follow-ups held per operator request: M2 perf-budget gate, M3 input-dispatch verification, M0 root-cause re-engagement, Brief B amendment.
 
 [[req]]
 id          = "INV-TIMESTAMPS-FRACSEC-001"

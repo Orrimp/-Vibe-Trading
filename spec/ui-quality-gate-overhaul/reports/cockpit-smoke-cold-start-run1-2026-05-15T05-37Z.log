@@ -1,0 +1,3 @@
+   Compiling ui v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/ui)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.49s
+     Running `target/debug/cockpit`

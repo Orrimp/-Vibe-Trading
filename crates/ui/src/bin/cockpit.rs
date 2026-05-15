@@ -112,6 +112,31 @@ impl Recipe for ServerTimeRecipe {
 }
 
 fn main() -> iced::Result {
+    // ui-quality-gate-overhaul M2-A (T-M2-A-3): under `render-debug` the
+    // M2-A spans on `frame::panel`, `frame::loading_with_spinner`, and
+    // `strategies::id_cell` need a subscriber to actually surface on
+    // stderr. Initialise the workspace-default `tracing_subscriber::fmt`
+    // with `RUST_LOG`-driven filtering so operators run
+    // `RUST_LOG=ui=trace cargo run -p ui --bin cockpit --features
+    // fixtures,render-debug` to triage a render panic. Default builds
+    // (no feature) compile this away — the standalone fixtures cockpit
+    // does not need its own subscriber for the normal smoke path.
+    // Stderr-only per architect Q2 (no audit-ledger sink ships).
+    #[cfg(feature = "render-debug")]
+    {
+        // `try_init` so a host that already installed a subscriber
+        // (e.g. cockpit_live or a wrapping test harness) doesn't panic
+        // here. The fixtures cockpit is the dominant user under this
+        // feature, but defence-in-depth.
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("ui=trace")),
+            )
+            .with_writer(std::io::stderr)
+            .try_init();
+    }
+
     // T2028 + T2029 — Layout-β min-size floor + Lumen brand icon.
     // Shared with `cockpit_live` and `viewer` via
     // `ui::window_icon::standard_window_settings`.

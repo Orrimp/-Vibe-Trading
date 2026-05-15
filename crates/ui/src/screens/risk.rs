@@ -35,14 +35,14 @@ use crate::strings::{
     RISK_KILL_THRESHOLD_SECTION_TITLE, RISK_LOADING, RISK_PANEL_TITLE,
 };
 use crate::theme::{color, layout, space, text, ThemeMode};
-use crate::widgets::frame::{self, muted_body, panel, threshold_bar};
+use crate::widgets::frame::{self, loading_with_spinner, panel, threshold_bar};
 
 /// Render the Risk / Limits screen body.
 #[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let body: iced::Element<'_, Message> = match &model.risk_state {
-        PanelState::Loading | PanelState::Empty => muted_body(RISK_LOADING),
+        PanelState::Loading | PanelState::Empty => loading_with_spinner(RISK_LOADING, mode),
         PanelState::Error(e) => frame::error_body(RISK_FEED_UNAVAILABLE_PREFIX, e.as_str()),
         PanelState::Ready(state) => ready_body(state, mode),
     };

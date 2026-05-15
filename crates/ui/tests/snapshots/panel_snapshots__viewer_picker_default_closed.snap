@@ -1,0 +1,16 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: out
+---
+bin: viewer
+widget: iced_aw::date_picker
+anchor: 2024-01-01
+picker_open: false
+picked_date: 2024-01-01
+underlay: Button
+underlay_label: Pick backtest date
+on_press: ViewerMessage::PickerOpened
+on_submit: time::Date round-trip via from_calendar_date
+uses_Date_today: false
+uses_State_reset: false
+after_open_cancel_round_trip: picker_open=false

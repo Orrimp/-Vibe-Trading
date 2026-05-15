@@ -1,0 +1,1568 @@
+## cargo fmt -p ui --check
+## exit: 0
+
+## cargo build -p ui --tests
+warning: unused import: `trading_core::StrategyId`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:11:5
+   |
+11 | use trading_core::StrategyId;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `fake_cockpit_v15a_pairs_steady_state` and `fake_equity_series_for_sparkline`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:12:20
+   |
+12 | use ui::fixtures::{fake_cockpit_v15a_pairs_steady_state, fake_equity_series_for_sparkline};
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ui::screens::strategies`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:13:5
+   |
+13 | use ui::screens::strategies;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PanelState` and `Screen`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:14:17
+   |
+14 | use ui::state::{PanelState, Screen};
+   |                 ^^^^^^^^^^  ^^^^^^
+
+warning: unused import: `ui::theme::ThemeMode`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:15:5
+   |
+15 | use ui::theme::ThemeMode;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: `ui` (test "strategies_screen_sparkline_replaces_placeholder") generated 5 warnings (run `cargo fix --test "strategies_screen_sparkline_replaces_placeholder" -p ui` to apply 5 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.68s
+## exit: 0
+
+## cargo build -p ui --bin viewer
+   Compiling ui v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/ui)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.67s
+## exit: 0
+
+## cargo build -p ui --bin cockpit --features fixtures
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.68s
+## exit: 0
+
+## cargo build -p ui --bin cockpit_live --features live
+   Compiling ui v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/ui)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.90s
+## exit: 0
+
+## cargo test -p ui (run 1)
+warning: unused import: `trading_core::StrategyId`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:11:5
+   |
+11 | use trading_core::StrategyId;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `fake_cockpit_v15a_pairs_steady_state` and `fake_equity_series_for_sparkline`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:12:20
+   |
+12 | use ui::fixtures::{fake_cockpit_v15a_pairs_steady_state, fake_equity_series_for_sparkline};
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ui::screens::strategies`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:13:5
+   |
+13 | use ui::screens::strategies;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PanelState` and `Screen`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:14:17
+   |
+14 | use ui::state::{PanelState, Screen};
+   |                 ^^^^^^^^^^  ^^^^^^
+
+warning: unused import: `ui::theme::ThemeMode`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:15:5
+   |
+15 | use ui::theme::ThemeMode;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: `ui` (test "strategies_screen_sparkline_replaces_placeholder") generated 5 warnings (run `cargo fix --test "strategies_screen_sparkline_replaces_placeholder" -p ui` to apply 5 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.80s
+     Running unittests src/lib.rs (target/debug/deps/ui-6ad3b70fe32fddd0)
+
+running 154 tests
+test screens::charts::tests::chart_canvas_height_grows_with_body_height ... ok
+test screens::charts::tests::chart_counter_tile_empty_slice_zero_totals ... ok
+test screens::charts::tests::chart_counter_tile_sums ... ok
+test fixtures::tests::synthetic_fills_for_has_buy_and_sell ... ok
+test state::tests::kill_flow_accepts_exact_phrase ... ok
+test state::tests::kill_cancel_returns_to_idle ... ok
+test state::tests::audit_rows_loaded_ok_sets_ready_and_total_count ... ok
+test state::tests::fresh_cockpit_is_loading_everywhere ... ok
+test state::tests::audit_page_changed_marks_rows_loading ... ok
+test state::tests::execution_mode_selected_assigns_field ... ok
+test state::tests::focus_changed_assigns_focused_widget ... ok
+test screens::charts::tests::position_mirror_filters_to_active_symbol ... ok
+test state::tests::kill_flow_rejects_wrong_phrase ... ok
+test state::tests::audit_filter_changed_resets_page ... ok
+test state::tests::override_risk_veto_cancelled_returns_to_idle ... ok
+test state::tests::override_risk_veto_pressed_opens_confirming ... ok
+test state::tests::override_risk_veto_typed_updates_buffer ... ok
+test state::tests::pause_buffers_fills_and_resume_flushes ... ok
+test state::tests::override_risk_veto_confirmed_clears_event_and_returns_to_idle ... ok
+test state::tests::pnl_refresh_moves_to_ready ... ok
+test state::tests::positions_refresh_empty_moves_to_empty_not_ready ... ok
+test state::tests::risk_state_refresh_replaces_panel_state ... ok
+test state::tests::select_strategy_persists_across_screen_switch ... ok
+test state::tests::select_symbol_persists_across_screen_switch ... ok
+test state::tests::strategies_error_surfaces_message ... ok
+test state::tests::chart_buffer_keys_distinct_per_pair ... ok
+test state::tests::strategies_refreshed_empty_moves_to_empty_not_ready ... ok
+test state::tests::strategies_start_loading ... ok
+test state::tests::chart_buffer_evicts_at_capacity ... ok
+test state::tests::strategy_equity_refresh_err_inserts_error_panel_state ... ok
+test state::tests::strategy_equity_refresh_inserts_ready_panel_state ... ok
+test state::tests::strategy_pause_toggled_inserts_then_removes ... ok
+test strings::tests::all_values_non_empty ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_fn_is_a_valid_style_fn ... ok
+test state::tests::strategy_load_error_without_id_pushes_footer_only ... ok
+test state::tests::strategy_loaded_upserts_ready_row ... ok
+test state::tests::strategy_load_error_without_existing_row_creates_error_placeholder ... ok
+test state::tests::strategy_swapped_updates_hash_clears_error ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_uses_pill_radius_and_no_border ... ok
+test strings::tests::all_keys_unique ... ok
+test state::tests::switch_screen_is_pure ... ok
+test theme::iced_widget_catalogs::tests::cockpit_table_style_fn_is_a_valid_style_fn ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_disabled_scales_alpha ... ok
+test state::tests::strategy_signal_observed_increments_counter ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_non_disabled_states_match_active ... ok
+test theme::iced_widget_catalogs::tests::cockpit_table_style_separators_match_border_1 ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_routes_lumen_tokens_for_each_intent ... ok
+test theme::tests::border_strong_is_distinct_from_border ... ok
+test theme::tests::focus_ring_shape ... ok
+test theme::tests::color_for_delta_uses_lumen_ramp ... ok
+test theme::tests::color_for_latency_ms_uses_lumen_ramp ... ok
+test theme::tests::light_palette_present ... ok
+test theme::tests::overlay_is_darker_than_canvas ... ok
+test theme::tests::shadow_dark_is_more_black_than_light ... ok
+test theme::tests::t1501_motion_durations_pinned ... ok
+test theme::tests::t1501_palette_dark_hex_pinned ... ok
+test theme::tests::t1501_palette_light_hex_pinned ... ok
+test theme::tests::t1501_radii_ladder_pinned ... ok
+test theme::tests::t1501_spacing_ladder_complete ... ok
+test theme::tests::t1501_text_ladder_pinned ... ok
+test theme::tests::t1503_shadow_inset_returns_color_and_modes_distinct ... ok
+test theme::tests::t1503_shadow_ladder_dark ... ok
+test theme::tests::t1503_shadow_ladder_light ... ok
+test theme::tests::t3009_chart_canvas_overhaul_tokens_pinned ... ok
+test theme::tests::t3009_legend_card_fits_at_1280_floor ... ok
+test theme::tests::t3009_legend_card_height_clears_five_entries ... ok
+test theme::tests::tier_token_presence_test ... ok
+test viewer::tests::viewer_picker_anchor_is_a_valid_calendar_date ... ok
+test viewer::tests::viewer_picker_round_trip_open_cancel_submit ... ok
+test widgets::canvas_chart::tests::gridlines_emit_5_horizontal_lines ... ok
+test widgets::canvas_chart::tests::inner_rect_applies_gutter ... ok
+test widgets::canvas_chart::tests::inner_rect_clamps_negative_dims_to_zero ... ok
+test widgets::canvas_chart::tests::inner_rect_with_gutters_clamps_negative_dims ... ok
+test fixtures::tests::synthetic_candles_distinct_per_seed ... ok
+test widgets::canvas_chart::tests::inner_rect_with_gutters_subtracts_each_side ... ok
+test widgets::canvas_chart::tests::polyline_with_fill_alpha_emits_filled_polygon ... ok
+test widgets::canvas_chart::tests::chart_inner_rect_stays_within_canvas_bounds ... ok
+test widgets::canvas_chart::tests::inner_rect_with_gutters_zero_matches_base ... ok
+test widgets::canvas_chart::tests::polyline_with_fill_zero_alpha_emits_stroke_only ... ok
+test widgets::chart::tests::chart_draw_triangle_outline_and_shadow ... ok
+test widgets::chart::tests::chart_inner_rect_applies_four_sided_gutters ... ok
+test widgets::chart::tests::chart_marker_hit_rect_is_28px_centred ... ok
+test widgets::chart::tests::chart_tooltip_view_built_from_canvas_state_without_round_trip ... ok
+test widgets::chart::tests::local_offset_under_test_is_utc ... ok
+test widgets::chart::tests::time_axis_tick_count_adaptive ... ok
+test widgets::chart_legend::tests::legend_card_corner_radius_pinned ... ok
+test widgets::chart_legend::tests::legend_card_dimensions_match_tokens ... ok
+test widgets::chart_legend::tests::legend_glyphs_use_marker_palette ... ok
+test widgets::chart_legend::tests::legend_labels_route_through_strings ... ok
+test widgets::chart_legend::tests::legend_palette_resolves_for_light_mode ... ok
+test widgets::chart_legend::tests::legend_rows_fit_inside_card_height ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_flips_in_upper_right_quadrant ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_fill_variant_has_six_fields ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_ghost_clamped_renders_reason ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_ghost_variant_renders_no_price ... ok
+test widgets::chart_tooltip::tests::tooltip_card_pins_to_origin_when_wider_than_bounds ... ok
+test widgets::chart::tests::chart_marker_y_snaps_to_line ... ok
+test widgets::chart_tooltip::tests::tooltip_card_stays_inside_bounds_at_corners ... ok
+test widgets::focus_ring::tests::focus_traversal_advances_through_registered_widgets ... ok
+test widgets::focus_ring::tests::focus_traversal_assigns_focused_widget_id ... ok
+test widgets::focus_ring::tests::focus_halo_renders_on_focused ... ok
+test widgets::focus_ring::tests::override_veto_button_id_uses_stable_format ... ok
+test widgets::focus_ring::tests::strategy_pause_id_uses_stable_format ... ok
+test widgets::focus_ring::tests::subscription_none_is_inert ... ok
+test widgets::frame::tests::loading_with_spinner_uses_fg_3_text_color ... ok
+test fixtures::tests::synthetic_candles_deterministic ... ok
+test widgets::frame::tests::t1708_threshold_bar_color_ramp ... ok
+test widgets::human_control::tests::used_today_sentiment_neutral_when_pnl_loading ... ok
+test widgets::human_control::tests::mode_segment_renders_active_supervised ... ok
+test widgets::human_control::tests::human_control_limits_render_loading_state ... ok
+test widgets::human_control::tests::human_control_renders_with_default_cockpit ... ok
+test widgets::journal_transaction_modal::tests::debit_credit_formatting_matches_num_helper ... ok
+test widgets::journal_transaction_modal::tests::empty_renders_without_panic ... ok
+test widgets::journal_transaction_modal::tests::error_renders_without_panic ... ok
+test widgets::journal_transaction_modal::tests::loading_renders_without_panic ... ok
+test widgets::kill::tests::dialog_open_only_while_confirming ... ok
+test widgets::journal_transaction_modal::tests::ready_renders_without_panic ... ok
+test widgets::latency::tests::label_colors_never_coincide ... ok
+test widgets::latency::tests::thresholds_match_r6_2 ... ok
+test widgets::num::tests::pct_formats_cleanly ... ok
+test widgets::num::tests::signed_usdt_explicit_sign ... ok
+test widgets::num::tests::qty_strips_trailing_zeros ... ok
+test widgets::num::tests::thousands_sep_basic ... ok
+test widgets::num::tests::usdt_format_two_decimals ... ok
+test widgets::override_risk_veto::tests::override_risk_veto_modal_confirming_returns_some ... ok
+test widgets::override_risk_veto::tests::override_risk_veto_modal_idle_returns_none ... ok
+test widgets::override_risk_veto::tests::override_risk_veto_typed_confirm_round_trip_via_state ... ok
+test widgets::kpi_strip::tests::kpi_strip__sample_report ... ok
+test widgets::frame::tests::t1507_active_row_accent_rule ... ok
+test widgets::chart_legend::tests::legend_composition_snapshot_dark ... ok
+test widgets::drawdown_band::tests::drawdown_band__sample_report ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_charts ... ok
+test widgets::equity_curve::tests::equity_curve__sample_report ... ok
+test widgets::kpi_strip::tests::kpi_strip__metrics_unavailable ... ok
+test widgets::frame::tests::t1609_active_chip_accent_rule_bottom ... ok
+test widgets::frame::tests::t1505_panel_chrome_style_tokens ... ok
+test widgets::chart::tests::chart__btc_with_two_buys_one_sell ... ok
+test widgets::chart::tests::chart__with_ghosts_and_fills ... ok
+test widgets::chart::tests::chart__empty_state_no_data ... ok
+test widgets::equity_curve::tests::equity_curve__no_equity_data ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_audit ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_debug ... ok
+test widgets::volume_histogram::tests::volume_histogram_empty_renders_placeholder ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_risk ... ok
+test widgets::strategies::tests::pause_strategy_button_toggles_via_state_round_trip ... ok
+test widgets::strategies::tests::pause_strategy_button_label_when_idle_reads_pause ... ok
+test widgets::volume_histogram::tests::volume_histogram_zero_bins_render_placeholder ... ok
+test window_icon::tests::default_size_at_least_1920x1080 ... ok
+test window_icon::tests::window_icon_set_on_all_bins ... ok
+test window_icon::tests::min_window_size_set_on_all_bins ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_strategies ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__six_entries ... ok
+test widgets::volume_histogram::tests::volume_histogram__btc_three_buys_two_sells ... ok
+test widgets::sparkline::tests::sparkline__120pt ... ok
+
+test result: ok. 154 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running unittests src/bin/viewer.rs (target/debug/deps/viewer-cdd683762fd51da8)
+
+running 4 tests
+test tests::parse_front_matter_extracts_scenario ... ok
+test tests::cli_parser_accepts_report_path ... ok
+test tests::cli_parser_rejects_no_args ... ok
+test tests::cli_help_renders_without_lumen ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/audit_filter_chip_emits_filter_changed.rs (target/debug/deps/audit_filter_chip_emits_filter_changed-164bab7b55b5a248)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/audit_row_opens_modal.rs (target/debug/deps/audit_row_opens_modal-2ffd5f6f424adca6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_hover_grid_sweep.rs (target/debug/deps/chart_hover_grid_sweep-39602b893668f899)
+
+running 4 tests
+test sweep_helper_bounds_match_simulator_layout ... ok
+test v15_chart_canvas_overhaul_closure_at_operator_slot ... ok
+test marker_centroid_pixel_invariants_across_viewports ... ok
+test cursor_grid_sweeps_every_marker_at_three_viewports ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/chart_marker_click_opens_modal.rs (target/debug/deps/chart_marker_click_opens_modal-8305c5f8a7250865)
+
+running 2 tests
+test chart_marker_click_replaces_modal_on_second_click ... ok
+test chart_marker_click_opens_modal_with_clicked_tx_id ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_markers_from_audit_query.rs (target/debug/deps/chart_markers_from_audit_query-100ceb6277e65229)
+
+running 1 test
+test chart_markers_from_audit_query_fixtures_mode ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_tooltip_hover_fires.rs (target/debug/deps/chart_tooltip_hover_fires-e99511a7e00ce804)
+
+running 6 tests
+test cursor_moved_repeated_over_same_marker_publishes_once ... ok
+test cursor_moved_over_ghost_marker_publishes_signal_hover ... ok
+test cursor_moved_over_marker_publishes_hover_message ... ok
+test cursor_moved_then_leaving_publishes_hover_ended ... ok
+test cursor_moved_off_marker_does_not_publish_hover ... ok
+test cursor_leaving_canvas_while_hovering_publishes_hover_ended ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_tooltip_integration.rs (target/debug/deps/chart_tooltip_integration-87878d383a3f2791)
+
+running 7 tests
+test select_symbol_clears_tooltip_and_resets_panels ... ok
+test chart_signals_loaded_flips_panel_state ... ok
+test chart_marker_hovered_against_loading_slice_clears_tooltip ... ok
+test chart_marker_hovered_out_of_range_clears_tooltip ... ok
+test chart_marker_hover_ended_clears_tooltip ... ok
+test chart_marker_hovered_fill_populates_tooltip ... ok
+test chart_marker_hovered_signal_populates_ghost_tooltip ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cockpit_live_kill_button_writes_audit.rs (target/debug/deps/cockpit_live_kill_button_writes_audit-94372ad7d926f3a4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cockpit_live_modal_metadata_chain.rs (target/debug/deps/cockpit_live_modal_metadata_chain-a7d4969b756e8c2b)
+
+running 2 tests
+test t1304_v3b_unknown_tx_short_circuits_to_error ... ok
+test t1304_v3_chained_fetch_populates_view_header ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/consistency.rs (target/debug/deps/consistency-bc5582fb59b4cfc3)
+
+running 2 tests
+test no_inline_user_visible_strings_in_widgets ... ok
+test no_inline_hex_colors_in_widgets_or_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/home_strategies_row_cross_link.rs (target/debug/deps/home_strategies_row_cross_link-8c4bae86b56be9cc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/live_subscription.rs (target/debug/deps/live_subscription-f3f3d0b18ac0baf6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/live_subscription_full_bus.rs (target/debug/deps/live_subscription_full_bus-a6319eadfa975e19)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/panel_snapshots.rs (target/debug/deps/panel_snapshots-63d5572898335372)
+
+running 69 tests
+test agent_feed_audit_modal_loading ... ok
+test agent_feed_error ... ok
+test agent_feed_empty ... ok
+test agent_feed_audit_modal_ready_paper_fill ... ok
+test charts_screen__chip_row_active_eth ... ok
+test agent_feed_paused_banner_visible ... ok
+test charts_screen__chip_row_active_btc ... ok
+test agent_feed_ready_three_fills ... ok
+test agent_feed_audit_modal_error ... ok
+test agent_feed_loading ... ok
+test audit_screen__default_recent_24h ... ok
+test agent_feed_audit_modal_empty ... ok
+test audit_screen__pagination_page2 ... ok
+test audit_screen__filter_no_match ... ok
+test cockpit_layout_strategies_above_positions ... ok
+test charts_screen_with_counters_and_chart ... ok
+test focus_ring__focused_kill_button ... ok
+test human_control__auto_active ... ok
+test human_control__kill_armed ... ok
+test home_screen__default ... ok
+test cockpit_v15a_pairs_steady_state ... ok
+test debug_screen__without_kill ... ok
+test human_control__limits_loading ... ok
+test kill_idle ... ok
+test human_control__observe_default ... ok
+test latency_warn_at_500ms ... ok
+test pnl_loading ... ok
+test human_control__limits_error ... ok
+test human_control__supervised_active ... ok
+test kill_halted_banner ... ok
+test latency_halted_at_10000ms ... ok
+test latency_ok_below_500ms ... ok
+test latency_high_at_2000ms ... ok
+test kill_dialog_open_empty_input ... ok
+test latency_unknown ... ok
+test pnl_ready_positive_day ... ok
+test pnl_error ... ok
+test pnl_ready_negative_day_uses_neg_color ... ok
+test positions_empty ... ok
+test kill_dialog_open_correct_phrase_enables_confirm ... ok
+test positions_error ... ok
+test positions_ready_hides_zero_qty ... ok
+test risk_screen__warn_threshold ... ok
+test risk_screen__under_warn_threshold ... ok
+test positions_loading ... ok
+test positions_ready_negative_pnl_uses_neg_color ... ok
+test risk_screen__danger_threshold ... ok
+test kill_dialog_focused_input ... ok
+test status_bar_disconnected ... ok
+test kill_dialog_open_mismatched_phrase ... ok
+test status_bar_connected ... ok
+test status_bar_with_latency ... ok
+test positions_v1_three_rows ... ok
+test strategies_error ... ok
+test strategies_loading ... ok
+test strategies_empty ... ok
+test status_bar_reconnecting ... ok
+test strategies_ready_three_rows ... ok
+test strategies_per_row_error_badge ... ok
+test strategies_screen__empty_state ... ok
+test strategies_screen__override_button_idle ... ok
+test strategies_screen__override_confirm_modal ... ok
+test viewer__full_view__sample_report ... ok
+test viewer_picker_default_closed ... ok
+test strategies_screen__pause_button_paused ... ok
+test strategies_screen__pause_button_idle ... ok
+test strategies_screen__override_confirm_modal_matched ... ok
+test strategies_screen__sma_crossover_default ... ok
+test strategies_screen__sparkline_present ... ok
+
+test result: ok. 69 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/risk_telemetry_subscription.rs (target/debug/deps/risk_telemetry_subscription-a4c7cfd4d69107df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/shell_grid.rs (target/debug/deps/shell_grid-cfe4684e9eb63755)
+
+running 3 tests
+test shell_grid_phase_3_entries_are_six ... ok
+test shell_grid_reserves_right_rail ... ok
+test shell_grid_sidebar_width_pinned ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/strategies_screen_sparkline_replaces_placeholder.rs (target/debug/deps/strategies_screen_sparkline_replaces_placeholder-f89640705acfd485)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tape_row_click_opens_modal.rs (target/debug/deps/tape_row_click_opens_modal-983c7f972eba0d6e)
+
+running 8 tests
+test t1208_v5b_open_new_tx_replaces_modal ... ok
+test t1208_v5a_close_clears_modal ... ok
+test t1208_v3_empty_entries_renders_empty_state ... ok
+test t1208_determinism_two_runs_produce_identical_state_transitions ... ok
+test t1208_v4_query_failure_renders_error_state ... ok
+test t1208_v1_click_opens_modal_with_correct_tx_id ... ok
+test t1208_v5c_agent_halt_closes_modal ... ok
+test t1208_v1_loaded_view_populates_ready_state ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/viewer_read_only.rs (target/debug/deps/viewer_read_only-5599d2cad03a7d3c)
+
+running 1 test
+test viewer_bin_is_read_only_on_spec_tree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/visual_snapshots.rs (target/debug/deps/visual_snapshots-7042cb5edbed5006)
+
+running 4 tests
+test visual_diff_helper_writes_diff_png_on_mismatch ... ok
+test charts_screen_dark_floor ... ok
+test charts_screen_dark_typical ... ok
+test charts_screen_dark_operator ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.94s
+
+   Doc-tests ui
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+## exit: 0
+
+## cargo test -p ui (run 2 — determinism check)
+warning: unused import: `trading_core::StrategyId`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:11:5
+   |
+11 | use trading_core::StrategyId;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `fake_cockpit_v15a_pairs_steady_state` and `fake_equity_series_for_sparkline`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:12:20
+   |
+12 | use ui::fixtures::{fake_cockpit_v15a_pairs_steady_state, fake_equity_series_for_sparkline};
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ui::screens::strategies`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:13:5
+   |
+13 | use ui::screens::strategies;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PanelState` and `Screen`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:14:17
+   |
+14 | use ui::state::{PanelState, Screen};
+   |                 ^^^^^^^^^^  ^^^^^^
+
+warning: unused import: `ui::theme::ThemeMode`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:15:5
+   |
+15 | use ui::theme::ThemeMode;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: `ui` (test "strategies_screen_sparkline_replaces_placeholder") generated 5 warnings (run `cargo fix --test "strategies_screen_sparkline_replaces_placeholder" -p ui` to apply 5 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.62s
+     Running unittests src/lib.rs (target/debug/deps/ui-6ad3b70fe32fddd0)
+
+running 154 tests
+test screens::charts::tests::chart_canvas_height_grows_with_body_height ... ok
+test screens::charts::tests::chart_counter_tile_empty_slice_zero_totals ... ok
+test screens::charts::tests::chart_counter_tile_sums ... ok
+test fixtures::tests::synthetic_fills_for_has_buy_and_sell ... ok
+test state::tests::fresh_cockpit_is_loading_everywhere ... ok
+test state::tests::execution_mode_selected_assigns_field ... ok
+test state::tests::audit_rows_loaded_ok_sets_ready_and_total_count ... ok
+test state::tests::audit_page_changed_marks_rows_loading ... ok
+test state::tests::kill_flow_accepts_exact_phrase ... ok
+test state::tests::focus_changed_assigns_focused_widget ... ok
+test state::tests::kill_cancel_returns_to_idle ... ok
+test screens::charts::tests::position_mirror_filters_to_active_symbol ... ok
+test state::tests::audit_filter_changed_resets_page ... ok
+test state::tests::kill_flow_rejects_wrong_phrase ... ok
+test state::tests::override_risk_veto_cancelled_returns_to_idle ... ok
+test state::tests::override_risk_veto_pressed_opens_confirming ... ok
+test state::tests::override_risk_veto_typed_updates_buffer ... ok
+test state::tests::pnl_refresh_moves_to_ready ... ok
+test state::tests::positions_refresh_empty_moves_to_empty_not_ready ... ok
+test state::tests::risk_state_refresh_replaces_panel_state ... ok
+test state::tests::select_strategy_persists_across_screen_switch ... ok
+test state::tests::select_symbol_persists_across_screen_switch ... ok
+test state::tests::strategies_error_surfaces_message ... ok
+test state::tests::strategies_refreshed_empty_moves_to_empty_not_ready ... ok
+test state::tests::chart_buffer_keys_distinct_per_pair ... ok
+test state::tests::override_risk_veto_confirmed_clears_event_and_returns_to_idle ... ok
+test state::tests::strategies_start_loading ... ok
+test state::tests::pause_buffers_fills_and_resume_flushes ... ok
+test state::tests::chart_buffer_evicts_at_capacity ... ok
+test state::tests::strategy_equity_refresh_err_inserts_error_panel_state ... ok
+test state::tests::strategy_equity_refresh_inserts_ready_panel_state ... ok
+test state::tests::strategy_pause_toggled_inserts_then_removes ... ok
+test state::tests::strategy_load_error_without_existing_row_creates_error_placeholder ... ok
+test strings::tests::all_values_non_empty ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_fn_is_a_valid_style_fn ... ok
+test state::tests::strategy_loaded_upserts_ready_row ... ok
+test strings::tests::all_keys_unique ... ok
+test state::tests::strategy_load_error_without_id_pushes_footer_only ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_uses_pill_radius_and_no_border ... ok
+test state::tests::strategy_swapped_updates_hash_clears_error ... ok
+test theme::iced_widget_catalogs::tests::cockpit_table_style_fn_is_a_valid_style_fn ... ok
+test theme::iced_widget_catalogs::tests::cockpit_table_style_separators_match_border_1 ... ok
+test state::tests::switch_screen_is_pure ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_disabled_scales_alpha ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_routes_lumen_tokens_for_each_intent ... ok
+test theme::iced_widget_catalogs::tests::cockpit_badge_style_non_disabled_states_match_active ... ok
+test state::tests::strategy_signal_observed_increments_counter ... ok
+test theme::tests::light_palette_present ... ok
+test theme::tests::color_for_latency_ms_uses_lumen_ramp ... ok
+test theme::tests::color_for_delta_uses_lumen_ramp ... ok
+test theme::tests::border_strong_is_distinct_from_border ... ok
+test theme::tests::focus_ring_shape ... ok
+test theme::tests::overlay_is_darker_than_canvas ... ok
+test theme::tests::shadow_dark_is_more_black_than_light ... ok
+test theme::tests::t1501_motion_durations_pinned ... ok
+test theme::tests::t1501_palette_dark_hex_pinned ... ok
+test theme::tests::t1501_palette_light_hex_pinned ... ok
+test theme::tests::t1501_radii_ladder_pinned ... ok
+test theme::tests::t1501_spacing_ladder_complete ... ok
+test theme::tests::t1501_text_ladder_pinned ... ok
+test theme::tests::t1503_shadow_inset_returns_color_and_modes_distinct ... ok
+test theme::tests::t1503_shadow_ladder_dark ... ok
+test theme::tests::t1503_shadow_ladder_light ... ok
+test theme::tests::t3009_chart_canvas_overhaul_tokens_pinned ... ok
+test fixtures::tests::synthetic_candles_distinct_per_seed ... ok
+test theme::tests::t3009_legend_card_fits_at_1280_floor ... ok
+test theme::tests::t3009_legend_card_height_clears_five_entries ... ok
+test theme::tests::tier_token_presence_test ... ok
+test viewer::tests::viewer_picker_anchor_is_a_valid_calendar_date ... ok
+test viewer::tests::viewer_picker_round_trip_open_cancel_submit ... ok
+test widgets::canvas_chart::tests::gridlines_emit_5_horizontal_lines ... ok
+test widgets::canvas_chart::tests::chart_inner_rect_stays_within_canvas_bounds ... ok
+test widgets::canvas_chart::tests::inner_rect_applies_gutter ... ok
+test widgets::canvas_chart::tests::inner_rect_clamps_negative_dims_to_zero ... ok
+test widgets::canvas_chart::tests::inner_rect_with_gutters_clamps_negative_dims ... ok
+test widgets::canvas_chart::tests::inner_rect_with_gutters_subtracts_each_side ... ok
+test widgets::canvas_chart::tests::inner_rect_with_gutters_zero_matches_base ... ok
+test widgets::canvas_chart::tests::polyline_with_fill_alpha_emits_filled_polygon ... ok
+test widgets::canvas_chart::tests::polyline_with_fill_zero_alpha_emits_stroke_only ... ok
+test widgets::chart::tests::chart_inner_rect_applies_four_sided_gutters ... ok
+test widgets::chart::tests::chart_draw_triangle_outline_and_shadow ... ok
+test widgets::chart::tests::chart_marker_hit_rect_is_28px_centred ... ok
+test widgets::chart::tests::local_offset_under_test_is_utc ... ok
+test widgets::chart::tests::time_axis_tick_count_adaptive ... ok
+test widgets::chart_legend::tests::legend_card_corner_radius_pinned ... ok
+test widgets::chart_legend::tests::legend_card_dimensions_match_tokens ... ok
+test widgets::chart::tests::chart_tooltip_view_built_from_canvas_state_without_round_trip ... ok
+test widgets::chart_legend::tests::legend_glyphs_use_marker_palette ... ok
+test widgets::chart_legend::tests::legend_labels_route_through_strings ... ok
+test widgets::chart_legend::tests::legend_palette_resolves_for_light_mode ... ok
+test widgets::chart_legend::tests::legend_rows_fit_inside_card_height ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_flips_in_upper_right_quadrant ... ok
+test fixtures::tests::synthetic_candles_deterministic ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_fill_variant_has_six_fields ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_ghost_clamped_renders_reason ... ok
+test widgets::chart_tooltip::tests::chart_tooltip_ghost_variant_renders_no_price ... ok
+test widgets::chart_tooltip::tests::tooltip_card_pins_to_origin_when_wider_than_bounds ... ok
+test widgets::chart_tooltip::tests::tooltip_card_stays_inside_bounds_at_corners ... ok
+test widgets::chart::tests::chart_marker_y_snaps_to_line ... ok
+test widgets::focus_ring::tests::focus_traversal_advances_through_registered_widgets ... ok
+test widgets::focus_ring::tests::focus_traversal_assigns_focused_widget_id ... ok
+test widgets::focus_ring::tests::override_veto_button_id_uses_stable_format ... ok
+test widgets::focus_ring::tests::focus_halo_renders_on_focused ... ok
+test widgets::focus_ring::tests::strategy_pause_id_uses_stable_format ... ok
+test widgets::focus_ring::tests::subscription_none_is_inert ... ok
+test widgets::frame::tests::loading_with_spinner_uses_fg_3_text_color ... ok
+test widgets::frame::tests::t1708_threshold_bar_color_ramp ... ok
+test widgets::human_control::tests::used_today_sentiment_neutral_when_pnl_loading ... ok
+test widgets::human_control::tests::human_control_limits_render_loading_state ... ok
+test widgets::human_control::tests::mode_segment_renders_active_supervised ... ok
+test widgets::human_control::tests::human_control_renders_with_default_cockpit ... ok
+test widgets::journal_transaction_modal::tests::debit_credit_formatting_matches_num_helper ... ok
+test widgets::journal_transaction_modal::tests::empty_renders_without_panic ... ok
+test widgets::journal_transaction_modal::tests::error_renders_without_panic ... ok
+test widgets::journal_transaction_modal::tests::loading_renders_without_panic ... ok
+test widgets::kill::tests::dialog_open_only_while_confirming ... ok
+test widgets::journal_transaction_modal::tests::ready_renders_without_panic ... ok
+test widgets::latency::tests::label_colors_never_coincide ... ok
+test widgets::latency::tests::thresholds_match_r6_2 ... ok
+test widgets::num::tests::pct_formats_cleanly ... ok
+test widgets::num::tests::signed_usdt_explicit_sign ... ok
+test widgets::num::tests::thousands_sep_basic ... ok
+test widgets::num::tests::usdt_format_two_decimals ... ok
+test widgets::num::tests::qty_strips_trailing_zeros ... ok
+test widgets::override_risk_veto::tests::override_risk_veto_modal_confirming_returns_some ... ok
+test widgets::override_risk_veto::tests::override_risk_veto_modal_idle_returns_none ... ok
+test widgets::override_risk_veto::tests::override_risk_veto_typed_confirm_round_trip_via_state ... ok
+test widgets::chart::tests::chart__btc_with_two_buys_one_sell ... ok
+test widgets::drawdown_band::tests::drawdown_band__sample_report ... ok
+test widgets::equity_curve::tests::equity_curve__no_equity_data ... ok
+test widgets::frame::tests::t1505_panel_chrome_style_tokens ... ok
+test widgets::chart::tests::chart__empty_state_no_data ... ok
+test widgets::kpi_strip::tests::kpi_strip__metrics_unavailable ... ok
+test widgets::frame::tests::t1609_active_chip_accent_rule_bottom ... ok
+test widgets::chart::tests::chart__with_ghosts_and_fills ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_charts ... ok
+test widgets::equity_curve::tests::equity_curve__sample_report ... ok
+test widgets::chart_legend::tests::legend_composition_snapshot_dark ... ok
+test widgets::frame::tests::t1507_active_row_accent_rule ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_audit ... ok
+test widgets::kpi_strip::tests::kpi_strip__sample_report ... ok
+test widgets::strategies::tests::pause_strategy_button_label_when_idle_reads_pause ... ok
+test widgets::strategies::tests::pause_strategy_button_toggles_via_state_round_trip ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_debug ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_risk ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__active_strategies ... ok
+test widgets::volume_histogram::tests::volume_histogram_zero_bins_render_placeholder ... ok
+test widgets::volume_histogram::tests::volume_histogram_empty_renders_placeholder ... ok
+test widgets::sidebar_nav::tests::sidebar_nav__six_entries ... ok
+test window_icon::tests::default_size_at_least_1920x1080 ... ok
+test window_icon::tests::min_window_size_set_on_all_bins ... ok
+test window_icon::tests::window_icon_set_on_all_bins ... ok
+test widgets::volume_histogram::tests::volume_histogram__btc_three_buys_two_sells ... ok
+test widgets::sparkline::tests::sparkline__120pt ... ok
+
+test result: ok. 154 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+     Running unittests src/bin/viewer.rs (target/debug/deps/viewer-cdd683762fd51da8)
+
+running 4 tests
+test tests::parse_front_matter_extracts_scenario ... ok
+test tests::cli_parser_rejects_no_args ... ok
+test tests::cli_parser_accepts_report_path ... ok
+test tests::cli_help_renders_without_lumen ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/audit_filter_chip_emits_filter_changed.rs (target/debug/deps/audit_filter_chip_emits_filter_changed-164bab7b55b5a248)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/audit_row_opens_modal.rs (target/debug/deps/audit_row_opens_modal-2ffd5f6f424adca6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_hover_grid_sweep.rs (target/debug/deps/chart_hover_grid_sweep-39602b893668f899)
+
+running 4 tests
+test sweep_helper_bounds_match_simulator_layout ... ok
+test v15_chart_canvas_overhaul_closure_at_operator_slot ... ok
+test marker_centroid_pixel_invariants_across_viewports ... ok
+test cursor_grid_sweeps_every_marker_at_three_viewports ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/chart_marker_click_opens_modal.rs (target/debug/deps/chart_marker_click_opens_modal-8305c5f8a7250865)
+
+running 2 tests
+test chart_marker_click_replaces_modal_on_second_click ... ok
+test chart_marker_click_opens_modal_with_clicked_tx_id ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_markers_from_audit_query.rs (target/debug/deps/chart_markers_from_audit_query-100ceb6277e65229)
+
+running 1 test
+test chart_markers_from_audit_query_fixtures_mode ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_tooltip_hover_fires.rs (target/debug/deps/chart_tooltip_hover_fires-e99511a7e00ce804)
+
+running 6 tests
+test cursor_moved_over_marker_publishes_hover_message ... ok
+test cursor_leaving_canvas_while_hovering_publishes_hover_ended ... ok
+test cursor_moved_repeated_over_same_marker_publishes_once ... ok
+test cursor_moved_then_leaving_publishes_hover_ended ... ok
+test cursor_moved_over_ghost_marker_publishes_signal_hover ... ok
+test cursor_moved_off_marker_does_not_publish_hover ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chart_tooltip_integration.rs (target/debug/deps/chart_tooltip_integration-87878d383a3f2791)
+
+running 7 tests
+test chart_marker_hovered_against_loading_slice_clears_tooltip ... ok
+test select_symbol_clears_tooltip_and_resets_panels ... ok
+test chart_marker_hovered_out_of_range_clears_tooltip ... ok
+test chart_marker_hover_ended_clears_tooltip ... ok
+test chart_signals_loaded_flips_panel_state ... ok
+test chart_marker_hovered_signal_populates_ghost_tooltip ... ok
+test chart_marker_hovered_fill_populates_tooltip ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cockpit_live_kill_button_writes_audit.rs (target/debug/deps/cockpit_live_kill_button_writes_audit-94372ad7d926f3a4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cockpit_live_modal_metadata_chain.rs (target/debug/deps/cockpit_live_modal_metadata_chain-a7d4969b756e8c2b)
+
+running 2 tests
+test t1304_v3b_unknown_tx_short_circuits_to_error ... ok
+test t1304_v3_chained_fetch_populates_view_header ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/consistency.rs (target/debug/deps/consistency-bc5582fb59b4cfc3)
+
+running 2 tests
+test no_inline_user_visible_strings_in_widgets ... ok
+test no_inline_hex_colors_in_widgets_or_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/home_strategies_row_cross_link.rs (target/debug/deps/home_strategies_row_cross_link-8c4bae86b56be9cc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/live_subscription.rs (target/debug/deps/live_subscription-f3f3d0b18ac0baf6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/live_subscription_full_bus.rs (target/debug/deps/live_subscription_full_bus-a6319eadfa975e19)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/panel_snapshots.rs (target/debug/deps/panel_snapshots-63d5572898335372)
+
+running 69 tests
+test agent_feed_audit_modal_ready_paper_fill ... ok
+test agent_feed_audit_modal_loading ... ok
+test charts_screen__chip_row_active_btc ... ok
+test audit_screen__filter_no_match ... ok
+test agent_feed_paused_banner_visible ... ok
+test agent_feed_audit_modal_error ... ok
+test audit_screen__pagination_page2 ... ok
+test charts_screen__chip_row_active_eth ... ok
+test agent_feed_empty ... ok
+test agent_feed_error ... ok
+test agent_feed_audit_modal_empty ... ok
+test audit_screen__default_recent_24h ... ok
+test agent_feed_loading ... ok
+test agent_feed_ready_three_fills ... ok
+test charts_screen_with_counters_and_chart ... ok
+test human_control__limits_loading ... ok
+test focus_ring__focused_kill_button ... ok
+test cockpit_layout_strategies_above_positions ... ok
+test human_control__limits_error ... ok
+test human_control__kill_armed ... ok
+test cockpit_v15a_pairs_steady_state ... ok
+test human_control__auto_active ... ok
+test home_screen__default ... ok
+test human_control__observe_default ... ok
+test kill_idle ... ok
+test debug_screen__without_kill ... ok
+test latency_warn_at_500ms ... ok
+test pnl_loading ... ok
+test kill_halted_banner ... ok
+test human_control__supervised_active ... ok
+test latency_unknown ... ok
+test pnl_error ... ok
+test latency_halted_at_10000ms ... ok
+test latency_high_at_2000ms ... ok
+test latency_ok_below_500ms ... ok
+test kill_dialog_open_empty_input ... ok
+test positions_empty ... ok
+test pnl_ready_negative_day_uses_neg_color ... ok
+test pnl_ready_positive_day ... ok
+test positions_error ... ok
+test kill_dialog_open_correct_phrase_enables_confirm ... ok
+test positions_loading ... ok
+test positions_ready_hides_zero_qty ... ok
+test kill_dialog_open_mismatched_phrase ... ok
+test risk_screen__warn_threshold ... ok
+test kill_dialog_focused_input ... ok
+test positions_ready_negative_pnl_uses_neg_color ... ok
+test positions_v1_three_rows ... ok
+test status_bar_reconnecting ... ok
+test status_bar_disconnected ... ok
+test status_bar_connected ... ok
+test risk_screen__under_warn_threshold ... ok
+test status_bar_with_latency ... ok
+test strategies_error ... ok
+test risk_screen__danger_threshold ... ok
+test strategies_loading ... ok
+test strategies_empty ... ok
+test strategies_screen__empty_state ... ok
+test strategies_ready_three_rows ... ok
+test strategies_per_row_error_badge ... ok
+test strategies_screen__override_confirm_modal ... ok
+test strategies_screen__override_button_idle ... ok
+test strategies_screen__sma_crossover_default ... ok
+test viewer__full_view__sample_report ... ok
+test viewer_picker_default_closed ... ok
+test strategies_screen__sparkline_present ... ok
+test strategies_screen__pause_button_paused ... ok
+test strategies_screen__override_confirm_modal_matched ... ok
+test strategies_screen__pause_button_idle ... ok
+
+test result: ok. 69 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/risk_telemetry_subscription.rs (target/debug/deps/risk_telemetry_subscription-a4c7cfd4d69107df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/shell_grid.rs (target/debug/deps/shell_grid-cfe4684e9eb63755)
+
+running 3 tests
+test shell_grid_phase_3_entries_are_six ... ok
+test shell_grid_reserves_right_rail ... ok
+test shell_grid_sidebar_width_pinned ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/strategies_screen_sparkline_replaces_placeholder.rs (target/debug/deps/strategies_screen_sparkline_replaces_placeholder-f89640705acfd485)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tape_row_click_opens_modal.rs (target/debug/deps/tape_row_click_opens_modal-983c7f972eba0d6e)
+
+running 8 tests
+test t1208_v5b_open_new_tx_replaces_modal ... ok
+test t1208_v5c_agent_halt_closes_modal ... ok
+test t1208_v3_empty_entries_renders_empty_state ... ok
+test t1208_v4_query_failure_renders_error_state ... ok
+test t1208_v1_click_opens_modal_with_correct_tx_id ... ok
+test t1208_v5a_close_clears_modal ... ok
+test t1208_v1_loaded_view_populates_ready_state ... ok
+test t1208_determinism_two_runs_produce_identical_state_transitions ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/viewer_read_only.rs (target/debug/deps/viewer_read_only-5599d2cad03a7d3c)
+
+running 1 test
+test viewer_bin_is_read_only_on_spec_tree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/visual_snapshots.rs (target/debug/deps/visual_snapshots-7042cb5edbed5006)
+
+running 4 tests
+test visual_diff_helper_writes_diff_png_on_mismatch ... ok
+test charts_screen_dark_floor ... ok
+test charts_screen_dark_typical ... ok
+test charts_screen_dark_operator ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.37s
+
+   Doc-tests ui
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+## exit: 0
+
+## find crates/ui -name *.snap.new
+## exit: 0
+
+## cargo doc -p ui --no-deps
+warning: unresolved link to `widgets::chart`
+ --> crates/ui/src/widgets/chart_tooltip.rs:3:29
+  |
+3 | //! Final canvas pass for [`widgets::chart`], rendered on top of the marker
+  |                             ^^^^^^^^^^^^^^ no item named `widgets` in scope
+  |
+  = note: `#[warn(rustdoc::broken_intra_doc_links)]` on by default
+
+warning: unresolved link to `widgets::chart`
+  --> crates/ui/src/widgets/volume_histogram.rs:11:38
+   |
+11 | //! The widget is a **sibling** of [`widgets::chart`] (Q7-resolved Option
+   |                                      ^^^^^^^^^^^^^^ no item named `widgets` in scope
+
+warning: unresolved link to `canvas_chart`
+  --> crates/ui/src/widgets/volume_histogram.rs:13:7
+   |
+13 | //! [`canvas_chart`]'s `inner_rect` + `with_alpha` + `GRIDLINE_COUNT`
+   |       ^^^^^^^^^^^^ no item named `canvas_chart` in scope
+   |
+   = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+warning: unresolved link to `window_icon_set_on_all_bins`
+   --> crates/ui/src/window_icon.rs:119:29
+    |
+119 | /// crate and verified by [`window_icon_set_on_all_bins`] (T2029
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no item named `window_icon_set_on_all_bins` in scope
+    |
+    = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+warning: unresolved link to `iced_test::screenshot`
+ --> crates/ui/src/test_support.rs:4:7
+  |
+4 | //! [`iced_test::screenshot`] driven visual snapshots. Keeping this in a
+  |       ^^^^^^^^^^^^^^^^^^^^^ no item named `iced_test` in scope
+
+warning: unresolved link to `iced_test::screenshot`
+  --> crates/ui/src/test_support.rs:75:7
+   |
+75 | /// [`iced_test::screenshot`]. Returns an `impl iced::Program` so the
+   |       ^^^^^^^^^^^^^^^^^^^^^ no item named `iced_test` in scope
+
+warning: `ui` (lib doc) generated 6 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.59s
+   Generated /Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/target/doc/ui/index.html and 1 other file
+## exit: 0
+
+## cargo clippy -p ui --no-deps --lib --tests
+    Checking trading_core v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/core)
+    Checking audit v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/audit)
+    Checking features v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/features)
+    Checking risk v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/risk)
+    Checking reflection v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/reflection)
+    Checking cost v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/cost)
+    Checking data v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/data)
+    Checking strategy v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/strategy)
+    Checking exec v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/exec)
+    Checking llm v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/llm)
+    Checking reports v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/reports)
+    Checking backtest v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/backtest)
+    Checking ui v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/ui)
+    Checking agent v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/agent)
+warning: casting `u32` to `u16` may truncate the value
+   --> crates/ui/src/screens/charts.rs:362:14
+    |
+362 |     .padding(space::M as u16)
+    |              ^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#cast_possible_truncation
+note: the lint level is defined here
+   --> crates/ui/src/lib.rs:24:9
+    |
+ 24 | #![warn(clippy::pedantic)]
+    |         ^^^^^^^^^^^^^^^^
+    = note: `#[warn(clippy::cast_possible_truncation)]` implied by `#[warn(clippy::pedantic)]`
+help: ... or use `try_from` and handle the error accordingly
+    |
+362 -     .padding(space::M as u16)
+362 +     .padding(u16::try_from(space::M))
+    |
+
+warning: the following explicit lifetimes could be elided: 'a
+   --> crates/ui/src/screens/charts.rs:376:16
+    |
+376 | fn number_card<'a>(
+    |                ^^
+377 |     label: &'a str,
+    |             ^^
+...
+381 | ) -> crate::Element<'a> {
+    |                     ^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#elidable_lifetime_names
+    = note: `#[warn(clippy::elidable_lifetime_names)]` implied by `#[warn(clippy::pedantic)]`
+help: elide the lifetimes
+    |
+376 ~ fn number_card(
+377 ~     label: &str,
+378 |     value: String,
+379 |     value_color: iced::Color,
+380 |     mode: ThemeMode,
+381 ~ ) -> crate::Element<'_> {
+    |
+
+warning: casting `u32` to `u16` may truncate the value
+   --> crates/ui/src/screens/charts.rs:443:18
+    |
+443 |         .padding(space::M as u16)
+    |                  ^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+443 -         .padding(space::M as u16)
+443 +         .padding(u16::try_from(space::M))
+    |
+
+warning: this could be rewritten as `let...else`
+    --> crates/ui/src/state.rs:1667:13
+     |
+1667 | /             let fills = match &model.chart_markers {
+1668 | |                 PanelState::Ready(v) => v,
+1669 | |                 _ => return None,
+1670 | |             };
+     | |______________^ help: consider writing: `let PanelState::Ready(fills) = &model.chart_markers else { return None };`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_let_else
+     = note: `#[warn(clippy::manual_let_else)]` implied by `#[warn(clippy::pedantic)]`
+
+warning: this could be rewritten as `let...else`
+    --> crates/ui/src/state.rs:1686:13
+     |
+1686 | /             let signals = match &model.chart_signals {
+1687 | |                 PanelState::Ready(v) => v,
+1688 | |                 _ => return None,
+1689 | |             };
+     | |______________^ help: consider writing: `let PanelState::Ready(signals) = &model.chart_signals else { return None };`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_let_else
+
+warning: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+   --> crates/ui/src/widgets/chart.rs:947:5
+    |
+947 | /     strategy_id
+948 | |         .map(smol_str::SmolStr::as_str)
+949 | |         .unwrap_or(CHART_TOOLTIP_STRATEGY_NONE)
+    | |_______________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#map_unwrap_or
+    = note: `#[warn(clippy::map_unwrap_or)]` implied by `#[warn(clippy::pedantic)]`
+help: use `map_or(<a>, <f>)` instead
+    |
+948 -         .map(smol_str::SmolStr::as_str)
+949 -         .unwrap_or(CHART_TOOLTIP_STRATEGY_NONE)
+948 +         .map_or(CHART_TOOLTIP_STRATEGY_NONE, smol_str::SmolStr::as_str)
+    |
+
+warning: item in documentation is missing backticks
+  --> crates/ui/src/widgets/chart_legend.rs:39:16
+   |
+39 | //!   |PANEL − PANEL_SUNKEN| (~17 units / channel) is meaningfully
+   |                ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+   = note: `#[warn(clippy::doc_markdown)]` implied by `#[warn(clippy::pedantic)]`
+help: try
+   |
+39 - //!   |PANEL − PANEL_SUNKEN| (~17 units / channel) is meaningfully
+39 + //!   |PANEL − `PANEL_SUNKEN`| (~17 units / channel) is meaningfully
+   |
+
+warning: item in documentation is missing backticks
+  --> crates/ui/src/widgets/chart_legend.rs:40:28
+   |
+40 | //!   larger than |PANEL − PANEL_RAISED| (~14 units / channel), and
+   |                            ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+help: try
+   |
+40 - //!   larger than |PANEL − PANEL_RAISED| (~14 units / channel), and
+40 + //!   larger than |PANEL − `PANEL_RAISED`| (~14 units / channel), and
+   |
+
+warning: item in documentation is missing backticks
+   --> crates/ui/src/widgets/journal_transaction_modal.rs:111:61
+    |
+111 | /// generic lets this widget compile across the cockpit and cockpit_live
+    |                                                             ^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+help: try
+    |
+111 - /// generic lets this widget compile across the cockpit and cockpit_live
+111 + /// generic lets this widget compile across the cockpit and `cockpit_live`
+    |
+
+warning: doc list item without indentation
+   --> crates/ui/src/widgets/journal_transaction_modal.rs:116:5
+    |
+116 | /// recipe routing `Esc` to `Message::TapeAuditModalClosed`).
+    |     ^
+    |
+    = help: if this is supposed to be its own paragraph, add a blank line
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_lazy_continuation
+    = note: `#[warn(clippy::doc_lazy_continuation)]` on by default
+help: indent this line
+    |
+116 | ///   recipe routing `Esc` to `Message::TapeAuditModalClosed`).
+    |     ++
+
+warning: item in documentation is missing backticks
+  --> crates/ui/src/widgets/positions.rs:25:5
+   |
+25 | //! StyleFn has no consumer on the native v0.14 `Table` until iced adds
+   |     ^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+help: try
+   |
+25 - //! StyleFn has no consumer on the native v0.14 `Table` until iced adds
+25 + //! `StyleFn` has no consumer on the native v0.14 `Table` until iced adds
+   |
+
+warning: item in documentation is missing backticks
+  --> crates/ui/src/widgets/positions.rs:31:44
+   |
+31 | //! numeric columns (QTY, COST, MARK, PNL, PNL_PCT, EXPOSURE) right via
+   |                                            ^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+help: try
+   |
+31 - //! numeric columns (QTY, COST, MARK, PNL, PNL_PCT, EXPOSURE) right via
+31 + //! numeric columns (QTY, COST, MARK, PNL, `PNL_PCT`, EXPOSURE) right via
+   |
+
+warning: adding items after statements is confusing, since items exist from the start of the scope
+   --> crates/ui/src/fixtures.rs:814:5
+    |
+814 |     const BAR_RANGE_SECS: i64 = 60 * 60;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#items_after_statements
+    = note: `#[warn(clippy::items_after_statements)]` implied by `#[warn(clippy::pedantic)]`
+
+warning: assigning the result of `Clone::clone()` may be inefficient
+  --> crates/ui/src/test_support.rs:49:5
+   |
+49 |     cockpit.universe = universe.clone();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_from()`: `cockpit.universe.clone_from(&universe)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#assigning_clones
+   = note: `#[warn(clippy::assigning_clones)]` implied by `#[warn(clippy::pedantic)]`
+
+warning: `ui` (lib) generated 14 warnings (run `cargo clippy --fix --lib -p ui` to apply 7 suggestions)
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/ui/tests/chart_marker_click_opens_modal.rs:116:5
+    |
+116 |     cockpit.chart_markers = PanelState::Ready(vec![make_fill("tx-first"), make_fill("tx-second")]);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `ui::Cockpit { chart_markers: PanelState::Ready(vec![make_fill("tx-first"), make_fill("tx-second")]), ..Default::default() }` and removing relevant reassignments
+   --> crates/ui/tests/chart_marker_click_opens_modal.rs:115:5
+    |
+115 |     let mut cockpit = Cockpit::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+    = note: `#[warn(clippy::field_reassign_with_default)]` on by default
+
+warning: `ui` (test "chart_marker_click_opens_modal") generated 1 warning
+warning: field assignment outside of initializer for an instance created with Default::default()
+  --> crates/ui/tests/chart_tooltip_integration.rs:67:5
+   |
+67 |     cockpit.chart_markers = PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: consider initializing the variable with `ui::Cockpit { chart_markers: PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]), ..Default::default() }` and removing relevant reassignments
+  --> crates/ui/tests/chart_tooltip_integration.rs:66:5
+   |
+66 |     let mut cockpit = Cockpit::default();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+   = note: `#[warn(clippy::field_reassign_with_default)]` on by default
+
+warning: used `assert_eq!` with a literal bool
+  --> crates/ui/tests/chart_tooltip_integration.rs:87:5
+   |
+87 |     assert_eq!(tt.was_clamped, false);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#bool_assert_comparison
+   = note: `#[warn(clippy::bool_assert_comparison)]` on by default
+help: replace it with `assert!(..)`
+   |
+87 -     assert_eq!(tt.was_clamped, false);
+87 +     assert!(!tt.was_clamped);
+   |
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+  --> crates/ui/tests/chart_tooltip_integration.rs:95:5
+   |
+95 |     cockpit.chart_markers = PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: consider initializing the variable with `ui::Cockpit { chart_markers: PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]), ..Default::default() }` and removing relevant reassignments
+  --> crates/ui/tests/chart_tooltip_integration.rs:94:5
+   |
+94 |     let mut cockpit = Cockpit::default();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/ui/tests/chart_tooltip_integration.rs:112:5
+    |
+112 |     cockpit.chart_signals = PanelState::Ready(vec![make_signal(0, Side::Sell, true)]);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `ui::Cockpit { chart_signals: PanelState::Ready(vec![make_signal(0, Side::Sell, true)]), ..Default::default() }` and removing relevant reassignments
+   --> crates/ui/tests/chart_tooltip_integration.rs:111:5
+    |
+111 |     let mut cockpit = Cockpit::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/ui/tests/chart_tooltip_integration.rs:139:5
+    |
+139 |     cockpit.chart_markers = PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `ui::Cockpit { chart_markers: PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]), ..Default::default() }` and removing relevant reassignments
+   --> crates/ui/tests/chart_tooltip_integration.rs:138:5
+    |
+138 |     let mut cockpit = Cockpit::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/ui/tests/chart_tooltip_integration.rs:195:5
+    |
+195 |     cockpit.chart_markers = PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `ui::Cockpit { chart_markers: PanelState::Ready(vec![make_fill(0, Side::Buy, dec!(40_010))]), chart_signals: PanelState::Ready(vec![make_signal(0, Side::Buy, false)]), ..Default::default() }` and removing relevant reassignments
+   --> crates/ui/tests/chart_tooltip_integration.rs:194:5
+    |
+194 |     let mut cockpit = Cockpit::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: `ui` (test "chart_tooltip_integration") generated 6 warnings (run `cargo clippy --fix --test "chart_tooltip_integration" -p ui` to apply 1 suggestion)
+warning: binding's name is too similar to existing binding
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:300:13
+    |
+300 |         let positive_fg = color::UP_500.current(mode);
+    |             ^^^^^^^^^^^
+    |
+note: existing binding defined here
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:299:13
+    |
+299 |         let positive_bg: Background = color::UP_50.current(mode).into();
+    |             ^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#similar_names
+note: the lint level is defined here
+   --> crates/ui/src/lib.rs:24:9
+    |
+ 24 | #![warn(clippy::pedantic)]
+    |         ^^^^^^^^^^^^^^^^
+    = note: `#[warn(clippy::similar_names)]` implied by `#[warn(clippy::pedantic)]`
+
+warning: binding's name is too similar to existing binding
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:315:13
+    |
+315 |         let neutral_fg = color::FG_3.current(mode);
+    |             ^^^^^^^^^^
+    |
+note: existing binding defined here
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:314:13
+    |
+314 |         let neutral_bg: Background = color::ACCENT_SOFT.current(mode).into();
+    |             ^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#similar_names
+
+warning: binding's name is too similar to existing binding
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:333:13
+    |
+333 |         let negative_fg = color::DOWN_500.current(mode);
+    |             ^^^^^^^^^^^
+    |
+note: existing binding defined here
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:332:13
+    |
+332 |         let negative_bg: Background = color::DOWN_50.current(mode).into();
+    |             ^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#similar_names
+
+warning: casting `u32` to `u16` may truncate the value
+   --> crates/ui/src/screens/charts.rs:362:14
+    |
+362 |     .padding(space::M as u16)
+    |              ^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#cast_possible_truncation
+    = note: `#[warn(clippy::cast_possible_truncation)]` implied by `#[warn(clippy::pedantic)]`
+help: ... or use `try_from` and handle the error accordingly
+    |
+362 -     .padding(space::M as u16)
+362 +     .padding(u16::try_from(space::M))
+    |
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/ui/src/screens/charts.rs:580:9
+    |
+580 |         cockpit.positions = PanelState::Ready(vec![btc.clone(), eth.clone()]);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `state::Cockpit { positions: PanelState::Ready(vec![btc.clone(), eth.clone()]), ..Default::default() }` and removing relevant reassignments
+   --> crates/ui/src/screens/charts.rs:579:9
+    |
+579 |         let mut cockpit = Cockpit::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+    = note: `#[warn(clippy::field_reassign_with_default)]` on by default
+
+warning: item in documentation is missing backticks
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:276:41
+    |
+276 |     /// `iced_aw`'s `StyleFn` alias. If iced_aw bumps the closure shape
+    |                                         ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+    = note: `#[warn(clippy::doc_markdown)]` implied by `#[warn(clippy::pedantic)]`
+help: try
+    |
+276 -     /// `iced_aw`'s `StyleFn` alias. If iced_aw bumps the closure shape
+276 +     /// `iced_aw`'s `StyleFn` alias. If `iced_aw` bumps the closure shape
+    |
+
+warning: strict comparison of `f32` or `f64`
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:365:13
+    |
+365 |             assert_eq!(style.border_width, 0.0, "intent {intent:?} → zero border");
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#float_cmp
+    = note: `#[warn(clippy::float_cmp)]` implied by `#[warn(clippy::pedantic)]`
+    = note: this warning originates in the macro `assert_eq` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: item in documentation is missing backticks
+   --> crates/ui/src/theme/iced_widget_catalogs.rs:374:29
+    |
+374 |     /// to 0.5 — same shape iced_aw's stock `disabled()` helper at
+    |                             ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+help: try
+    |
+374 -     /// to 0.5 — same shape iced_aw's stock `disabled()` helper at
+374 +     /// to 0.5 — same shape `iced_aw`'s stock `disabled()` helper at
+    |
+
+warning: manual implementation of `midpoint` which can overflow
+    --> crates/ui/src/widgets/chart.rs:1346:22
+     |
+1346 |         let mid_ts = (t_left + t_right) / 2;
+     |                      ^^^^^^^^^^^^^^^^^^^^^^ help: use `i64::midpoint` instead: `i64::midpoint(t_left, t_right)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_midpoint
+     = note: `#[warn(clippy::manual_midpoint)]` implied by `#[warn(clippy::pedantic)]`
+
+error: used `expect()` on an `Option` value
+    --> crates/ui/src/widgets/chart.rs:1347:23
+     |
+1347 |         let snapped = snap_price_to_line(mid_ts, &bars).expect("midpoint snap");
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: if this value is `None`, it will panic
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#expect_used
+note: the lint level is defined here
+    --> crates/ui/src/lib.rs:23:30
+     |
+  23 | #![deny(clippy::unwrap_used, clippy::expect_used)]
+     |                              ^^^^^^^^^^^^^^^^^^^
+
+error: used `expect()` on an `Option` value
+    --> crates/ui/src/widgets/chart.rs:1352:25
+     |
+1352 |         let left_snap = snap_price_to_line(t_left, &bars).expect("left snap");
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: if this value is `None`, it will panic
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#expect_used
+
+error: used `expect()` on an `Option` value
+    --> crates/ui/src/widgets/chart.rs:1356:26
+     |
+1356 |         let right_snap = snap_price_to_line(t_right, &bars).expect("right snap");
+     |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: if this value is `None`, it will panic
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#expect_used
+
+error: used `expect()` on an `Option` value
+    --> crates/ui/src/widgets/chart.rs:1406:25
+     |
+1406 |           let view_fill = program
+     |  _________________________^
+1407 | |             .tooltip_view_from_hover(ChartMarkerIndex::Fill(0))
+1408 | |             .expect("fill index 0 should resolve");
+     | |__________________________________________________^
+     |
+     = note: if this value is `None`, it will panic
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#expect_used
+
+error: used `expect()` on an `Option` value
+    --> crates/ui/src/widgets/chart.rs:1417:24
+     |
+1417 |           let view_sig = program
+     |  ________________________^
+1418 | |             .tooltip_view_from_hover(ChartMarkerIndex::Signal(0))
+1419 | |             .expect("signal index 0 should resolve");
+     | |____________________________________________________^
+     |
+     = note: if this value is `None`, it will panic
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#expect_used
+
+warning: item in documentation is missing backticks
+  --> crates/ui/src/widgets/chart_legend.rs:39:16
+   |
+39 | //!   |PANEL − PANEL_SUNKEN| (~17 units / channel) is meaningfully
+   |                ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#doc_markdown
+help: try
+   |
+39 - //!   |PANEL − PANEL_SUNKEN| (~17 units / channel) is meaningfully
+39 + //!   |PANEL − `PANEL_SUNKEN`| (~17 units / channel) is meaningfully
+   |
+
+error: used `expect()` on an `Option` value
+   --> crates/ui/src/window_icon.rs:151:19
+    |
+151 |         let min = s.min_size.expect("standard settings set min_size");
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: if this value is `None`, it will panic
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#expect_used
+
+warning: variables can be used directly in the `format!` string
+   --> crates/ui/src/window_icon.rs:200:9
+    |
+200 | /         assert_eq!(
+201 | |             LUMEN_MARK_RGBA.len(),
+202 | |             (LUMEN_MARK_PX * LUMEN_MARK_PX * 4) as usize,
+203 | |             "embedded mark must be {}x{} RGBA (4 bytes per pixel)",
+204 | |             LUMEN_MARK_PX,
+205 | |             LUMEN_MARK_PX
+206 | |         );
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#uninlined_format_args
+    = note: `#[warn(clippy::uninlined_format_args)]` implied by `#[warn(clippy::pedantic)]`
+
+warning: `ui` (lib test) generated 23 warnings (12 duplicates)
+error: could not compile `ui` (lib test) due to 6 previous errors; 23 warnings emitted
+warning: build failed, waiting for other jobs to finish...
+warning: unused import: `trading_core::StrategyId`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:11:5
+   |
+11 | use trading_core::StrategyId;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `fake_cockpit_v15a_pairs_steady_state` and `fake_equity_series_for_sparkline`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:12:20
+   |
+12 | use ui::fixtures::{fake_cockpit_v15a_pairs_steady_state, fake_equity_series_for_sparkline};
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ui::screens::strategies`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:13:5
+   |
+13 | use ui::screens::strategies;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PanelState` and `Screen`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:14:17
+   |
+14 | use ui::state::{PanelState, Screen};
+   |                 ^^^^^^^^^^  ^^^^^^
+
+warning: unused import: `ui::theme::ThemeMode`
+  --> crates/ui/tests/strategies_screen_sparkline_replaces_placeholder.rs:15:5
+   |
+15 | use ui::theme::ThemeMode;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: `ui` (test "strategies_screen_sparkline_replaces_placeholder") generated 5 warnings (run `cargo clippy --fix --test "strategies_screen_sparkline_replaces_placeholder" -p ui` to apply 5 suggestions)
+## exit: 101
+
+## bash scripts/check_no_clocks_in_ui_tests.sh
+CLOCKS PASS  (8 files / 4 patterns)
+## exit: 0
+
+## git diff --stat HEAD spec/anchors.toml
+## exit: 0
+
+## ls -la /tmp/cockpit-postrefactor.log
+-rw-r--r--  1 Vitaliy.Schreibmann  wheel  108 May 14 19:14 /tmp/cockpit-postrefactor.log
+## exit: 0
+
+## grep -c panicked at|non-unwinding panic /tmp/cockpit-postrefactor.log
+0
+## exit: 1
+
+## grep -n STRATEGY_RULE_HEIGHT_PX crates/ui/src/theme.rs crates/ui/src/widgets/strategies.rs
+crates/ui/src/theme.rs:619:    pub const STRATEGY_RULE_HEIGHT_PX: f32 = 24.0;
+crates/ui/src/widgets/strategies.rs:222:    // `crate::theme::layout::STRATEGY_RULE_HEIGHT_PX` for the WHY, and
+crates/ui/src/widgets/strategies.rs:228:            .height(Length::Fixed(layout::STRATEGY_RULE_HEIGHT_PX)),
+crates/ui/src/widgets/strategies.rs:231:    .height(Length::Fixed(layout::STRATEGY_RULE_HEIGHT_PX))
+## exit: 0

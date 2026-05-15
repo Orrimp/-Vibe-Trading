@@ -13,13 +13,13 @@ use crate::strings::{
 };
 use crate::theme::{color, color_for_delta, space, text, ThemeMode};
 
-use super::frame::{error_body, muted_body, panel};
+use super::frame::{error_body, loading_with_spinner, muted_body, panel};
 use super::num::{fmt_usdt, fmt_usdt_signed};
 
 #[must_use]
 pub fn view(model: &Cockpit) -> Element<'_, Message> {
     let body: Element<Message> = match &model.pnl {
-        PanelState::Loading => muted_body(PNL_LOADING),
+        PanelState::Loading => loading_with_spinner(PNL_LOADING, ThemeMode::Dark),
         PanelState::Empty => muted_body(PNL_EMPTY),
         PanelState::Error(e) => error_body(PNL_ERROR_PREFIX, e.as_str()),
         PanelState::Ready(snap) => ready_body(snap),

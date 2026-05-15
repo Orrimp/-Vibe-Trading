@@ -7,6 +7,10 @@ updated: 2026-05-13
 
 <!-- M0 falsifier sub-agent pass 2026-05-13: T-M0-1 / T-M0-2 / T-M0-3
      ticked. Brief A (native table+grid+float+pin) is CLEAR-TO-SPAWN. -->
+<!-- Brief B handoff 2026-05-13 (architect): T-B-spawn ticked. Brief B
+     tasks.md published at spec/iced-aw-cherry-pick/tasks.md; status
+     `design`; H-arch-4/-9/-10 all RESOLVED-PASS inline; HANDOFF →
+     developer + ui-designer (parallel). -->
 
 
 # Tasks — iced ecosystem evaluation
@@ -98,19 +102,33 @@ Opens after T-M0-1 PASSES + operator confirms Q-O3 ordering.
 
 Opens after Brief A ships (operator approval recorded).
 
-- [ ] **T-B-spawn — Spawn analyst for Brief B** (`spec/iced-aw-cherry-pick/feature.md`).
+- [x] **T-B-spawn — Spawn analyst for Brief B** (`spec/iced-aw-cherry-pick/feature.md`).
   _Acceptance: analyst brief authored against per-candidate cost table in
   [`feature.md ## Brief B`](feature.md#brief-b--iced_aw-cherry-pick);
   status `draft`; predecessor pointer to Brief A's shipped state._
-  - Sub-targets (analyst expands): B1 date_picker (viewer bin / v1.11),
-    B2 spinner (panel_state::Loading replacement), B3 badge (status
-    chips).
-  - Files touched (estimate): viewer-bin + ~3 widget files + Cargo.toml
-    (+1 direct dep `iced_aw = "0.14"`), ~50-100 LOC retired + new
-    surface, ~13 `.snap` baselines refreshed, 0 PNG diff.
+  - Sub-targets (analyst expanded): B1 date_picker (viewer bin /
+    v1.11), B2 spinner (panel_state::Loading replacement), B3 badge
+    (status chips).
+  - **Closed 2026-05-13 (architect):** analyst brief landed at
+    [`spec/iced-aw-cherry-pick/feature.md`](../iced-aw-cherry-pick/feature.md)
+    on 2026-05-13 (v0.1.0). Architect synthesis pass same-day
+    elevated status `draft → design`, resolved all 7 analyst open
+    questions inline, ran H-arch-4 / H-arch-9 / H-arch-10 falsifiers
+    (all RESOLVED-PASS — H-arch-9 with a workspace-clocks-grep
+    scope caveat ticked at T-M2-4), and published
+    [`spec/iced-aw-cherry-pick/tasks.md`](../iced-aw-cherry-pick/tasks.md)
+    (3 lanes M1/M2/M3 + M_FINAL). HANDOFF → developer + ui-designer
+    (parallel).
+  - Files touched (architect-revised): viewer-bin (B1) + frame.rs +
+    8 call sites in 5 panel files (B2) + strategies.rs widget col 3
+    (B3) + Cargo.toml + iced_widget_catalogs.rs (`cockpit_badge_style_fn`).
+    Net **+103 LOC** (Brief B is a feature add, not a refactor;
+    analyst retirement budget overestimated). **~15** `.snap`
+    baselines refreshed. **0** PNG diff. **0** anchor risk.
   - Falsifier link: [H-arch-4](feature.md#hypothesis-register-architect-2026-05-13)
     (date_picker), H-arch-9 (spinner determinism), H-arch-10 (badge
-    styling).
+    styling) — all RESOLVED-PASS in
+    [`iced-aw-cherry-pick/feature.md ## Design — architect synthesis`](../iced-aw-cherry-pick/feature.md#design--architect-synthesis).
 
 ## M3 — Brief C: `iced_dialog` chrome (stub, gated)
 
@@ -183,6 +201,13 @@ Opens IF operator answers Q-O2 = ADOPT.
 
 ## Changelog
 
+- 2026-05-13 (architect): Brief B tasks.md published at
+  [`spec/iced-aw-cherry-pick/tasks.md`](../iced-aw-cherry-pick/tasks.md);
+  T-B-spawn closed (architect synthesis pass landed same-day —
+  status `design`, all 7 analyst open questions resolved,
+  H-arch-4 / H-arch-9 / H-arch-10 RESOLVED-PASS inline at
+  [`iced-aw-cherry-pick/feature.md ## Design — architect synthesis`](../iced-aw-cherry-pick/feature.md#design--architect-synthesis));
+  HANDOFF → developer + ui-designer (parallel).
 - 2026-05-13 (M0 falsifier sub-agent — orchestrator-routed, read-only
   sandbox): Ticked T-M0-1, T-M0-2, T-M0-3 with cite back to
   [feature.md ## Hypothesis register](feature.md#hypothesis-register-architect-2026-05-13).

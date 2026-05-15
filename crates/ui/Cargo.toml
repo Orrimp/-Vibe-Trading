@@ -68,6 +68,14 @@ clap = { workspace = true }
 # Do NOT use a range. Update in lockstep across ui/cockpit/viewer.
 iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas"] }
 
+# iced_aw — Brief B cherry-pick of three widgets only.  H-arch-4 falsifier
+# verified at architect-pass 2026-05-13 that the `default-features = false`
+# + named feature gate isolates the transitive set to exactly
+# `chrono + num-traits + once_cell` (no `menu` / `tab_bar` / `number_input`
+# pulls). See spec/iced-aw-cherry-pick/feature.md ## H-arch-4 for the
+# `cargo tree` evidence. License MIT, edition 2024.
+iced_aw = { version = "0.14", default-features = false, features = ["date_picker", "spinner", "badge"] }
+
 # `live` feature deps — Week 2 (T32). Only enabled when wiring the cockpit
 # against the real `agent::EventBus`. Pinned like iced to keep the live
 # path reproducible; the bus surface is a handoff contract (see
@@ -108,6 +116,12 @@ tempfile = { workspace = true }
 iced_test = "=0.14.0"
 image-compare = "=0.4"
 image = { version = "=0.25.6", default-features = false, features = ["png"] }
+# ui-quality-gate-overhaul M1-C (T-M1-C-1) — proptest layout invariants
+# at `tests/layout_invariants.rs`. Workspace pin already at
+# `Cargo.toml:77` (`proptest = { version = "1.6" }`); dev-only on the
+# `ui` crate per architect's H-A3 falsifier resolution
+# (`spec/ui-quality-gate-overhaul/feature.md ## H-A3`).
+proptest = { workspace = true }
 
 [features]
 # `fixtures` — enables ui::fixtures with deterministic in-memory generators.
@@ -116,6 +130,35 @@ image = { version = "=0.25.6", default-features = false, features = ["png"] }
 # `#[cfg(test)]` via a gate in `lib.rs` so snapshot tests see the module
 # without needing `--features fixtures` on every invocation.
 fixtures = []
+
+# `render-debug` — ui-quality-gate-overhaul M2-A + M2-B opt-in. Composes
+# two surfaces under one flag per architect Q7 resolution
+# (`spec/ui-quality-gate-overhaul/feature.md ## Q7`):
+#
+#   - **M2-A:** `#[cfg(feature = "render-debug")]`-gated
+#     `tracing::trace_span!` instrumentation on widget `panel(...)`,
+#     `loading_with_spinner(...)`, and `strategies::id_cell(...)`.
+#     `tracing` is already a non-optional production dep
+#     (line 58 `tracing.workspace = true`); the feature only gates
+#     the call sites, not the dep itself. Default builds compile the
+#     `#[cfg]` blocks away entirely — zero runtime cost.
+#   - **M2-B:** `#[cfg(feature = "render-debug")]`-gated
+#     `widgets::debug_renderer` module (newtype wrapping
+#     `iced_tiny_skia::Renderer` that intercepts zero-dim Quads with
+#     widget-context panics).
+#
+# Operator triage workflow: `cargo build -p ui --bin cockpit
+# --features fixtures,render-debug && RUST_LOG=ui=trace cargo run -p
+# ui --bin cockpit --features fixtures,render-debug`. Build-time-only
+# per architect Q3 (no `IcedSettings { renderer: enum {...} }` runtime
+# toggle ships).
+#
+# Pulls `tracing-subscriber` (optional dep, line 93) so the standalone
+# `cockpit` bin can initialise an fmt subscriber inside its `main()`.
+# The `live`-only `cockpit_live` bin already initialises its own
+# subscriber and so does not duplicate this on a default + render-debug
+# build (the `try_init` call in `cockpit.rs:main` is idempotent).
+render-debug = ["dep:tracing-subscriber"]
 
 # `live` — enables the real broadcast-bus subscription (T32). Without this
 # feature the `ui::live` module is not compiled; the cockpit falls back to

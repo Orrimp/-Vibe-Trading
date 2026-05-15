@@ -2,7 +2,7 @@
 slug: ui-design-principles
 status: living
 owner: ui-designer
-updated: 2026-05-04
+updated: 2026-05-13
 ---
 
 # UI Design Principles
@@ -390,6 +390,55 @@ gives a "things are getting worse" signal before the kill threshold.
 The same color is used for High and Halted by design — once the
 operator sees `DOWN_500`, they look at the label, not the color.
 
+### Status pill colors
+
+Status badges (the Strategies STATUS column, future Risk-band pills,
+future fill-health chips) follow a **soft-tint backdrop + saturated
+foreground label** pattern. The backdrop carries the visual edge so a
+column of all-same-status pills reads as a calm row instead of a wall
+of saturated colour; the label keeps the high-contrast signal because
+the **label** is what the operator's eye lands on.
+
+Three intents — `Positive` / `Neutral` / `Negative` — are routed via
+the [`BadgeIntent`](../crates/ui/src/theme/iced_widget_catalogs.rs)
+enum to the Lumen palette pairs below:
+
+| Intent     | Backdrop      | Label       | Examples                                    |
+|------------|---------------|-------------|---------------------------------------------|
+| `Positive` | `UP_50`       | `UP_500`    | Strategy `Ready`, future risk `Healthy`     |
+| `Neutral`  | `ACCENT_SOFT` | `FG_3`      | Strategy `Loading`, future "no signal yet"  |
+| `Negative` | `DOWN_50`     | `DOWN_500`  | Strategy `Error`, future risk `Tripped`     |
+
+Structural invariants (every intent, every interaction state):
+
+- **Radius** = `PILL` (999 px). Status badges are tags, not buttons.
+  The "tag" pattern from `## Border radii` applies: status indicators
+  are category labels the operator scans, not affordances they click.
+- **Border** = none (`border_width = 0.0`, `border_color = None`).
+  The soft-tint backdrop already separates the pill from the panel
+  chrome at the alpha values picked; a stroke would add visual
+  weight a category label does not earn.
+- **Interaction modifiers.** Status pills are informational, not
+  interactive. `Hovered` / `Pressed` / `Focused` / `Selected` MUST
+  render byte-identical to the `Active` (idle) state — a mouse hover
+  must never falsely imply a clickable target. `Disabled` follows
+  iced_aw's stock alpha-scale 0.5 on both axes (preserved for forward
+  compatibility with future "disabled-strategy filter" surfaces; not
+  fired by the v0.1 Strategies STATUS column).
+
+The palette mirrors the **P&L colour pair** (`UP_500` / `DOWN_500`)
+on purpose — operators read green-good / red-bad consistently across
+P&L cells, latency bands, and now status pills. The neutral case uses
+`ACCENT_SOFT` (the canonical chip-fill token from `## Color tokens`)
+rather than `FG_3` or a third "muted" colour, because `ACCENT_SOFT`
+is already cited as "chip/highlight fill, low-alpha" — re-using it
+keeps the chip surface budget at one canonical token.
+
+The mapping is enforced via the
+[`cockpit_badge_style_fn`](../crates/ui/src/theme/iced_widget_catalogs.rs)
+factory; widgets must NOT inline backdrop or label colours per the
+"no raw hex outside `theme.rs`" rule (Consistency enforcement).
+
 ### Kill-switch confirmations
 
 Already covered in `Confirm destructive actions`. Re-affirming the
@@ -703,3 +752,16 @@ are documented in this file or in `theme.rs`.
   at [features/lumen-phase-2-shell-ia-charts.md](features/lumen-phase-2-shell-ia-charts.md)
   through
   [features/lumen-phase-6-assistant-slot.md](features/lumen-phase-6-assistant-slot.md).
+- 2026-05-13 (ui-designer, `iced-aw-cherry-pick` B3/B2): added new
+  **"Status pill colors"** subsection under Trading-specific patterns,
+  pinning the three-intent palette (`Positive` → `UP_50`/`UP_500`,
+  `Neutral` → `ACCENT_SOFT`/`FG_3`, `Negative` → `DOWN_50`/`DOWN_500`),
+  the `PILL` radius + zero-border invariants, and the interaction-
+  modifier contract (Hover/Pressed/Focused/Selected = base; Disabled =
+  alpha-scale 0.5). Mapping is enforced by
+  [`cockpit_badge_style_fn`](../crates/ui/src/theme/iced_widget_catalogs.rs).
+  Also added the `SPINNER_TINT = FG_3` token (Brief B2) — pins the
+  `iced_aw::Spinner` tint to the same muted step `muted_body` uses so
+  the spinner + loading-text pair reads as one quiet "we are
+  waiting" surface; rationale documented inline at
+  `theme.rs` `pub const SPINNER_TINT`.

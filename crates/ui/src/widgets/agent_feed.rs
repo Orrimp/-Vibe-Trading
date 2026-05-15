@@ -30,14 +30,14 @@ use crate::strings::{
 };
 use crate::theme::{color, space, text, ThemeMode};
 
-use super::frame::{col_header, error_body, muted_body, panel};
+use super::frame::{col_header, error_body, loading_with_spinner, muted_body, panel};
 use super::num::{fmt_price, fmt_qty, fmt_usdt};
 
 /// Render the live agent-activity feed panel.
 #[must_use]
 pub fn view(model: &Cockpit) -> Element<'_, Message> {
     let body: Element<Message> = match &model.tape {
-        PanelState::Loading => muted_body(TAPE_LOADING),
+        PanelState::Loading => loading_with_spinner(TAPE_LOADING, ThemeMode::Dark),
         PanelState::Empty => muted_body(TAPE_EMPTY),
         PanelState::Error(e) => error_body(TAPE_ERROR_PREFIX, e.as_str()),
         PanelState::Ready(fills) => ready_body(model, fills),

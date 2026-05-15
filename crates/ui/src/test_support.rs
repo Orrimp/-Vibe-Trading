@@ -152,3 +152,34 @@ impl TestApp {
         crate::shell::view(&self.cockpit, ThemeMode::Dark)
     }
 }
+
+/// ui-quality-gate-overhaul M1-C — pub(crate) widget accessors lifted
+/// up to the always-compiled `pub` surface so the
+/// `tests/layout_invariants.rs` proptest can fuzz the F1-fix widget
+/// (`strategies::id_cell`) directly. Each helper is a thin wrapper
+/// that constructs the underlying widget — production builds never
+/// reach these accessors (they live in `test_support`, the same
+/// always-compiled tests-only module that already houses
+/// `program_from_cockpit`). See
+/// `spec/ui-quality-gate-overhaul/feature.md ## Q4` for the 6-widget
+/// scope.
+pub mod widgets_for_test {
+    use trading_core::StrategyId;
+
+    use crate::state::Message;
+
+    /// The strategies-table id-cell — the canonical F1 case
+    /// (`Length::Fill` collapses to 0 inside a Table cell). The
+    /// proptest at `tests/layout_invariants.rs` fuzzes the inputs
+    /// and asserts the resulting `Widget::layout` Node tree has no
+    /// zero-dim Node (per architect Q4 + M1-C-2 acceptance
+    /// criteria).
+    #[must_use]
+    pub fn strategies_id_cell<'a>(
+        id: StrategyId,
+        label: String,
+        is_active: bool,
+    ) -> iced::Element<'a, Message> {
+        crate::widgets::strategies::id_cell(id, label, is_active)
+    }
+}

@@ -41,7 +41,9 @@ use crate::strings::{
     STRATEGIES_SPARKLINE_LOADING, VIEWER_NO_EQUITY_DATA,
 };
 use crate::theme::{color, layout, radius, space, text, ThemeMode};
-use crate::widgets::frame::{self, active_chip, col_header, muted_body, panel};
+use crate::widgets::frame::{
+    self, active_chip, col_header, loading_with_spinner, muted_body, panel,
+};
 use crate::widgets::{focus_ring, override_risk_veto, sparkline, strategies as strategies_widget};
 
 /// Render the Strategies-detail screen body.
@@ -51,8 +53,8 @@ use crate::widgets::{focus_ring, override_risk_veto, sparkline, strategies as st
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let body: iced::Element<'_, Message> = match (&model.strategies, &model.strategies_config) {
-        // Strategies-config still loading or panel still loading → muted body.
-        (_, None) | (PanelState::Loading, _) => muted_body(STRATEGIES_LOADING),
+        // Strategies-config still loading or panel still loading → spinner + muted body.
+        (_, None) | (PanelState::Loading, _) => loading_with_spinner(STRATEGIES_LOADING, mode),
         (PanelState::Error(e), _) => {
             frame::error_body(crate::strings::STRATEGIES_ERROR_PREFIX, e.as_str())
         }
@@ -242,7 +244,7 @@ fn chip_row_with_sparkline<'a>(
             sparkline::view(series, mode)
         }
         (Some(_), Some(PanelState::Loading) | None) | (None, _) => {
-            muted_body(STRATEGIES_SPARKLINE_LOADING)
+            loading_with_spinner(STRATEGIES_SPARKLINE_LOADING, mode)
         }
         (Some(_), Some(PanelState::Empty | PanelState::Ready(_))) => {
             muted_body(VIEWER_NO_EQUITY_DATA)

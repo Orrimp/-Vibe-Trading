@@ -43,7 +43,9 @@ use crate::strings::{
 };
 use crate::theme::layout::AUDIT_PAGE_SIZE;
 use crate::theme::{color, layout, radius, space, text, ThemeMode};
-use crate::widgets::frame::{self, active_chip, col_header, muted_body, panel};
+use crate::widgets::frame::{
+    self, active_chip, col_header, loading_with_spinner, muted_body, panel,
+};
 
 /// Render the Audit / Journal screen body.
 #[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
@@ -52,7 +54,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let filter_row = filter_row_section(&model.audit_screen_state.filter, mode);
     let pagination = pagination_header(model, mode);
     let table = match &model.audit_screen_state.rows {
-        PanelState::Loading => muted_body(AUDIT_LOADING),
+        PanelState::Loading => loading_with_spinner(AUDIT_LOADING, mode),
         PanelState::Empty => muted_body(AUDIT_FILTER_NO_MATCH),
         PanelState::Error(e) => frame::error_body(AUDIT_QUERY_FAILED_PREFIX, e.as_str()),
         PanelState::Ready(rows) => {

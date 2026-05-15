@@ -22,6 +22,7 @@
 
 use iced::widget::{button, table, Button, Column, Container, Row, Text};
 use iced::{Border, Element, Length};
+use iced_aw::Badge;
 
 use crate::state::{Cockpit, Message, PanelState, StrategyRow, StrategyStatus};
 use crate::strings::{
@@ -33,17 +34,18 @@ use crate::strings::{
     STRATEGIES_STATUS_LOADING, STRATEGIES_STATUS_READY, STRATEGY_PAUSE_LABEL,
     STRATEGY_RESUME_LABEL,
 };
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::iced_widget_catalogs::{cockpit_badge_style_fn, BadgeIntent};
+use crate::theme::{color, layout, radius, space, text, ThemeMode};
 
 use super::focus_ring;
-use super::frame::{col_header, error_body, muted_body, panel};
+use super::frame::{col_header, error_body, loading_with_spinner, muted_body, panel};
 use trading_core::{StrategyEventKind, StrategyEventView, StrategyId};
 
 /// Render the strategies panel.
 #[must_use]
 pub fn view(model: &Cockpit) -> Element<'_, Message> {
     let body: Element<Message> = match &model.strategies {
-        PanelState::Loading => muted_body(STRATEGIES_LOADING),
+        PanelState::Loading => loading_with_spinner(STRATEGIES_LOADING, ThemeMode::Dark),
         PanelState::Empty => muted_body(STRATEGIES_EMPTY),
         PanelState::Error(e) => error_body(STRATEGIES_ERROR_PREFIX, e.as_str()),
         PanelState::Ready(rows) => ready_body(
@@ -109,23 +111,23 @@ fn ready_body<'a>(
             };
             cell(hash_label)
         }),
-        // Column 3 — STATUS (colored).
+        // Column 3 — STATUS (Brief B T-M3-2: `iced_aw::Badge` replaces
+        // the prior `colored_cell(label, status_color)` text-colour
+        // override). Routes Lumen `UP_50/UP_500` / `ACCENT_SOFT/FG_3` /
+        // `DOWN_50/DOWN_500` surface tokens through the Catalog adapter
+        // at `crate::theme::iced_widget_catalogs::cockpit_badge_style_fn`
+        // by mapping `StrategyStatus` onto the domain `BadgeIntent`
+        // enum (Ready→Positive, Loading→Neutral, Error→Negative). The
+        // label text colour is preserved via the Catalog adapter's
+        // `text_color` field — no hard-coded RGB triplet lands here
+        // (the brand-bleed grep gate stays green).
         table::column(col_header(STRATEGIES_COL_STATUS), |r: StrategyRow| {
-            let (status_label, status_color) = match &r.status {
-                StrategyStatus::Ready => (
-                    STRATEGIES_STATUS_READY,
-                    color::UP_500.current(ThemeMode::Dark),
-                ),
-                StrategyStatus::Loading => (
-                    STRATEGIES_STATUS_LOADING,
-                    color::FG_3.current(ThemeMode::Dark),
-                ),
-                StrategyStatus::Error(_) => (
-                    STRATEGIES_STATUS_ERROR,
-                    color::DOWN_500.current(ThemeMode::Dark),
-                ),
+            let (status_label, intent) = match &r.status {
+                StrategyStatus::Ready => (STRATEGIES_STATUS_READY, BadgeIntent::Positive),
+                StrategyStatus::Loading => (STRATEGIES_STATUS_LOADING, BadgeIntent::Neutral),
+                StrategyStatus::Error(_) => (STRATEGIES_STATUS_ERROR, BadgeIntent::Negative),
             };
-            colored_cell(status_label.to_string(), status_color)
+            status_badge_cell(status_label, intent)
         }),
         // Column 4 — LAST_EVENT.
         table::column(col_header(STRATEGIES_COL_LAST_EVENT), |r: StrategyRow| {
@@ -206,19 +208,49 @@ fn ready_body<'a>(
 /// behaviour: previously the rule spanned the row's full height;
 /// post-migration it spans column 1's cell height only — acceptable
 /// per the Q5 / H-arch-A5b architect read.
-fn id_cell<'a>(id: StrategyId, label: String, is_active: bool) -> Element<'a, Message> {
+/// Internal: construct the strategies-table id-cell. Pub(crate) so the
+/// ui-quality-gate-overhaul M1-C `layout_invariants.rs` proptest can
+/// import it via the `ui::test_support::widgets_for_test` re-export
+/// surface. Stays private to the crate boundary — the only public path
+/// to this widget is through `widgets::strategies::view`, which composes
+/// it inside a Table cell.
+pub(crate) fn id_cell<'a>(id: StrategyId, label: String, is_active: bool) -> Element<'a, Message> {
+    // ui-quality-gate-overhaul M2-A (T-M2-A-2): the F1-fix widget. If
+    // a future regression re-introduces the `Length::Fill` collapses
+    // to 0 inside a Table cell pattern, the panic trail will surface
+    // this span name immediately. The label and active flag are tagged
+    // so multiple strategy rows produce distinguishable trace lines.
+    // Stderr-only per architect Q2; build-time-only via `render-debug`
+    // per architect Q3.
+    #[cfg(feature = "render-debug")]
+    let _span = tracing::trace_span!(
+        "widget_draw",
+        widget = "strategies::id_cell",
+        strategy_id = %id,
+        is_active = is_active,
+    )
+    .entered();
+
     let rule_color = if is_active {
         color::ACCENT.current(ThemeMode::Dark)
     } else {
         iced::Color::TRANSPARENT
     };
+    // Rule height is pinned to a fixed pixel value rather than
+    // `Length::Fill` because the latter resolves to `0.0` during the
+    // first frame's `iced::widget::table::Table` cell-layout pass, which
+    // sends a zero-height styled fill_quad into `iced_tiny_skia`'s
+    // all-radii-zero fast-path and panics. See
+    // `crate::theme::layout::STRATEGY_RULE_HEIGHT_PX` for the WHY, and
+    // `spec/cockpit-render-regression/feature.md` `## M0-FIX` for the
+    // F1 falsifier that confirmed this fix (2026-05-14).
     let rule = Container::new(
         iced::widget::Space::new()
             .width(Length::Fixed(2.0))
-            .height(Length::Fill),
+            .height(Length::Fixed(layout::STRATEGY_RULE_HEIGHT_PX)),
     )
     .width(Length::Fixed(2.0))
-    .height(Length::Fill)
+    .height(Length::Fixed(layout::STRATEGY_RULE_HEIGHT_PX))
     .style(move |_theme: &iced::Theme| iced::widget::container::Style {
         background: Some(rule_color.into()),
         ..Default::default()
@@ -317,8 +349,26 @@ fn cell<'a>(s: String) -> Element<'a, Message> {
         .into()
 }
 
-fn colored_cell<'a>(s: String, c: iced::Color) -> Element<'a, Message> {
-    Text::new(s).size(text::BODY).color(c).into()
+/// Brief B T-M3-2 — STATUS column status pill.
+///
+/// Constructs an `iced_aw::Badge` carrying the status label text and
+/// routes the Lumen surface/foreground tokens through the
+/// [`cockpit_badge_style_fn`] Catalog adapter (see
+/// [`crate::theme::iced_widget_catalogs`]) by `intent`. The Badge's
+/// `text_color` field inside the Catalog style carries the label
+/// colour — no hard-coded RGB triplet lands here (brand-bleed gate
+/// stays green per the architect's design synthesis,
+/// [`feature.md ## Q5`](../../../spec/iced-aw-cherry-pick/feature.md#q5--exact-file-set-for-b3-cratesuisrcwidgetsstrategiesrs-only-1-file-not-3)).
+// `cast_possible_truncation`: `space::*` constants are `u32` with bounded
+// values 0..64; cast to `u16` padding is safe (same pattern as other
+// widget closures in this crate, e.g. `widgets::frame::panel` at
+// `frame.rs:43-44`).
+#[allow(clippy::cast_possible_truncation)]
+fn status_badge_cell<'a>(label: &'static str, intent: BadgeIntent) -> Element<'a, Message> {
+    Badge::new(Text::new(label).size(text::SMALL))
+        .padding(space::XS as u16)
+        .style(cockpit_badge_style_fn(intent))
+        .into()
 }
 
 /// Plain-language label for a strategy event kind. Exposed `pub(crate)` so

@@ -333,6 +333,26 @@ pub mod color {
         dark: rgb(0x40, 0x49, 0x54),
         light: rgb(0x9E, 0x97, 0x88), // warm-400
     };
+
+    // ── Loading / progress indicators ────────────────────────────────────
+    //
+    // Brief B (`iced-aw-cherry-pick`, T-M2-1) adds an `iced_aw::Spinner`
+    // alongside the existing `muted_body` loading-text helper. The
+    // spinner is paired in a `Row` with that text — pinning its tint to
+    // the same `FG_3` step keeps the indicator visually quiet and
+    // matches the "loading text fades into chrome, content is the
+    // signal" pattern from `spec/ui-design-principles.md ## Empty,
+    // loading, error states`. Using `ACCENT` would shout an "active"
+    // signal at a moment when the operator should be waiting; `UP_500`
+    // would falsely imply a positive result. `FG_3` is the only step
+    // that says "we know, we're waiting too" without lying.
+
+    /// Loading-indicator tint. Pinned to `FG_3` so `iced_aw::Spinner`
+    /// renders with the same muted weight as the `muted_body`
+    /// `Loading…` text it pairs with — see
+    /// [`crate::widgets::frame::muted_body`] which already routes
+    /// `FG_3` for body text inside loading panels.
+    pub const SPINNER_TINT: ModeColor = FG_3;
 }
 
 /// Shadow tokens — the whisper-shadow ladder.
@@ -574,6 +594,29 @@ pub mod layout {
     /// renders this column with `Length::Fixed(0.0)` until the v2-LLM
     /// Assistant ships in Phase 6. (Phase 2 Q7 — structural-now.)
     pub const RIGHT_RAIL_WIDTH_PX: f32 = 0.0;
+
+    /// Strategies-table column-1 active-row rule height in logical pixels.
+    ///
+    /// **Why a fixed value (and not `Length::Fill`):** inside an
+    /// `iced::widget::table::Table` cell, the layout pass briefly resolves
+    /// a `Length::Fill` height to `0.0` during the first frame's two-pass
+    /// measurement. A child Container styled with a non-`None` background
+    /// then emits a `fill_quad` with zero-height bounds, which the
+    /// `iced_tiny_skia` renderer's `rounded_rectangle` all-radii-zero
+    /// fast-path (`tiny_skia::Rect::from_xywh(x, y, w, 0.0)`) refuses with
+    /// `panic!("Build quad rectangle")`. Pinning the rule's height to a
+    /// concrete pixel value bypasses the zero-height transient.
+    ///
+    /// 24 px matches the cockpit's Table body row geometry
+    /// (`text::BODY = 14 px` + `space::S = 4 px` top + 4 px bottom + ~2 px
+    /// inter-cell breathing). Tune in 4 px steps if a future Lumen update
+    /// shifts row metrics.
+    ///
+    /// See [`spec/cockpit-render-regression/feature.md`](../../../spec/cockpit-render-regression/feature.md)
+    /// `## M0 results` for the bisect that pinned this trigger to the
+    /// rule Container inside [`widgets::strategies::id_cell`](crate::widgets::strategies),
+    /// and `## M0-FIX` for the F1 falsifier that confirmed the fix.
+    pub const STRATEGY_RULE_HEIGHT_PX: f32 = 24.0;
 
     /// Phase 3 — sidebar entry list — six entries in master-roadmap scan
     /// order (Q8). Inserts `Strategies / Risk / Audit` between `Debug`
