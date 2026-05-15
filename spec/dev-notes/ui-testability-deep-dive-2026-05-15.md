@@ -1226,6 +1226,10 @@ already proven by the bootstrap ship and need no revisit.
 
 ## 6. Open questions for the operator
 
+> **DECIDED 2026-05-15 (operator):** All 6 analyst defaults
+> accepted as a block. Each Q-* below is marked `LOCKED → <default>`
+> inline. See Changelog entry of the same date for the lock event.
+
 These shape the briefs of whichever items the operator schedules
 next.
 
@@ -1234,30 +1238,39 @@ next.
    committed" class). Two-week shadow mode would prove it for ~$10.
    *Default if operator silent: adopt for shadow mode only; promote
    only on operator review of disagreement log.*
+   **LOCKED 2026-05-15 → adopt for shadow mode only; no gating
+   promotion without operator review of the disagreement log.**
 
 2. **Q-ACCESSKIT — Approach A (PR iced upstream) or Approach B
    (in-repo shadow)?** Approach A unblocks community; Approach B
    ships in 7 days. *Default: B. Operator can revisit later if iced
    upstream lands AccessKit.*
+   **LOCKED 2026-05-15 → Approach B (in-repo shadow tree). Revisit
+   if upstream iced lands AccessKit.**
 
 3. **Q-MCP — `inspect-mcp` shim now or defer?** It's the most
    architecturally interesting proposal and the most security-
    sensitive. *Default: defer to cycle 4. Cycle 1-3 closes more
    tactical coverage gaps.*
+   **LOCKED 2026-05-15 → defer to cycle 4 or later.**
 
 4. **Q-GALLERY-SCOPE — Does the gallery render the LIVE cockpit
    state-builders or a frozen fixtures snapshot?** Live = drifts
    with the cockpit; frozen = matches its baselines forever. *Default:
    reuse `crates/ui/src/fixtures.rs` directly so the gallery and the
    cockpit see the same state-builders.*
+   **LOCKED 2026-05-15 → reuse `crates/ui/src/fixtures.rs` (live
+   state-builders, shared with cockpit).**
 
 5. **Q-D3-REVISIT — Run the cross-platform CI falsifier in cycle 3?**
    Cheap; either retires D3 uncertainty or confirms it. *Default:
    yes — 1 dev-day spike adds ~zero risk.*
+   **LOCKED 2026-05-15 → yes, run the 1-day falsifier in cycle 3.**
 
 6. **Q-MUTANTS-CADENCE — One-shot mutation testing or quarterly
    cadence?** *Default: one-shot now (item I), then quarterly only
    on `update` arms that grew since the last run.*
+   **LOCKED 2026-05-15 → one-shot now, quarterly delta-only after.**
 
 ## 7. Failure modes I want surfaced
 
@@ -1375,6 +1388,12 @@ sweep.
 
 ## Changelog
 
+- 2026-05-15 (operator, accepted as block): locked all 6 open
+  questions at their analyst defaults — Q-VLM (shadow only),
+  Q-ACCESSKIT (Approach B in-repo), Q-MCP (defer to cycle 4),
+  Q-GALLERY-SCOPE (reuse `fixtures.rs`), Q-D3-REVISIT (yes, 1-day
+  cycle-3 spike), Q-MUTANTS-CADENCE (one-shot now, quarterly
+  delta-only after). § 6 stanzas annotated `LOCKED 2026-05-15`.
 - 2026-05-15 (analyst): initial draft. Critiques the existing
   [`ui-testing-direction-2026-05-12.md`](ui-testing-direction-2026-05-12.md)
   4-week plan; surfaces 3 blind spots (canvas-state ownership,
