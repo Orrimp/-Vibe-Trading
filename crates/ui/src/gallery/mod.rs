@@ -176,18 +176,29 @@ mod tests {
     }
 
     /// V4 — every `pub mod` in `widgets/mod.rs` is listed in
-    /// `EXPECTED_WIDGETS`. Adding a module without updating this list
-    /// fails loudly.
+    /// `EXPECTED_WIDGETS` (or in `EXCLUDED_FROM_GALLERY`).
+    /// Adding a module without updating one list or the other fails
+    /// loudly.
     ///
     /// **Q-ARCH-2:** uses `include_str!` + pure-stdlib `strip_prefix`
     /// parse (no `regex` crate). `pub(crate) mod canvas_chart;` is
-    /// intentionally excluded because it starts with `pub(crate)`, not
-    /// `pub mod`.
+    /// auto-excluded because it starts with `pub(crate)`, not
+    /// `pub mod`. `EXCLUDED_FROM_GALLERY` is for `pub mod` entries
+    /// that are intentionally not gallery-displayable widgets
+    /// (renderer/animation helpers).
     #[test]
     fn every_widget_mod_is_listed_in_expected_widgets() {
+        // Renderer/animation helpers — `pub mod` for visibility within
+        // the crate but not "widgets" in the gallery-displayable sense.
+        // Added 2026-05-15 post-merge with ui-quality-gate-overhaul /
+        // cockpit-render-regression (which introduced both modules).
+        const EXCLUDED_FROM_GALLERY: &[&str] = &["debug_renderer", "throttled_spinner"];
+
         let mod_rs = include_str!("../widgets/mod.rs");
         let expected_set: std::collections::HashSet<&str> =
             EXPECTED_WIDGETS.iter().copied().collect();
+        let excluded_set: std::collections::HashSet<&str> =
+            EXCLUDED_FROM_GALLERY.iter().copied().collect();
 
         let mut unlisted: Vec<&str> = Vec::new();
         for line in mod_rs.lines() {
@@ -200,7 +211,7 @@ mod tests {
                 continue;
             };
             let name = name.trim();
-            if !expected_set.contains(name) {
+            if !expected_set.contains(name) && !excluded_set.contains(name) {
                 unlisted.push(name);
             }
         }
