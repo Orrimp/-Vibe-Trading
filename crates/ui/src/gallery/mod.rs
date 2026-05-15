@@ -47,7 +47,7 @@ pub mod routes;
 
 pub use cell::{view, GalleryCell, CELL_HEIGHT_PX};
 pub(crate) use routes::seed_for_all_cells;
-pub use routes::{EXPECTED_WIDGETS, GALLERY_CELLS, GALLERY_CELL_COUNT};
+pub use routes::{view_slice, EXPECTED_WIDGETS, GALLERY_CELLS, GALLERY_CELL_COUNT};
 
 use crate::state::{Cockpit, Message};
 
@@ -60,11 +60,10 @@ use crate::state::{Cockpit, Message};
 /// If cells overflow (R-DESIGN-5), bump this constant by the measured
 /// overflow and regenerate baselines.
 pub const GALLERY_LOGICAL_HEIGHT: u32 = {
-    // GALLERY_CELL_COUNT * CELL_HEIGHT_PX rounded to nearest u32.
+    // GALLERY_CELL_COUNT * CELL_HEIGHT_PX + padding headroom.
     // CELL_HEIGHT_PX = 260.0, GALLERY_CELL_COUNT = 36 cells.
-    // 36 * 260 = 9_360. Adding 200 px headroom for the outer container
-    // padding (space::S per cell * 2 sides = ~16 px * 36 = 576 px;
-    // we round up to 600 for safety).
+    // 36 * 260 = 9_360. Adding 600 px headroom for the outer container
+    // padding (space::S per cell * 2 sides = ~16 px * 36 = 576 px).
     9_960
 };
 

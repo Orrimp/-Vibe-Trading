@@ -496,6 +496,37 @@ otherwise lands on-budget per dev-note §5.1 row C.
 
 ## Changelog
 
+- **2026-05-15 (orchestrator, post-impl):** Developer-found deviation
+  during V5+ verification. The `GalleryCell::render` fn-pointer
+  signature `fn(&Cockpit) -> Element<'static, Message>` (per
+  Q-ARCH / Module layout) is structurally incompatible with iced
+  widgets that return borrowed `Element<'_, Message>` (most do,
+  including `positions::view`, `pnl::view`, `strategies::view`).
+  Forcing `'static` cascades into 22 lifetime errors + 8 E0515
+  errors in the implementation. Fix: `render` becomes `fn(&Cockpit)
+  -> Element<'_, Message>` (lifetime-elided HRTB-equivalent for
+  fn pointers); `cell::view` leaks the seeded cockpit to `'static`
+  via `Box::leak` (test-only binary, bounded leaks per render).
+  The Q-ARCH-3 / H-GAL-2 design remains intact — only the render
+  signature changes. **GalleryCell.seed retained** for now (used by
+  `cell::view` to build the cockpit before leak); future refactor
+  can remove it once per-cell state-injection patterns stabilize.
+- **2026-05-15 (orchestrator, post-impl):** V5+ BLOCKED. Tiny-skia
+  panics at render time on `GALLERY_CELLS[7]` (`strategies ::
+  ready_v1`) with "Build quad rectangle" at
+  `iced_tiny_skia-0.14.0/engine.rs:686`. iced 0.14's
+  `widget::table::Table` (used by `strategies::view`) produces a
+  degenerate-bounds quad when rendered inside a fixed-height
+  `cell::view` Container. Bumping `CELL_HEIGHT_PX` 260 → 500 does
+  not resolve. Diagnostic kept at
+  [`crates/ui/tests/gallery_bisect.rs`](../../crates/ui/tests/gallery_bisect.rs)
+  (`#[ignore]`d). V5+ snapshot tests at
+  [`crates/ui/tests/gallery_snapshots.rs`](../../crates/ui/tests/gallery_snapshots.rs)
+  are `#[ignore]`d with cross-refs. Suggested follow-up feature:
+  `ui-gallery-table-cell` — either replace strategies with a
+  non-table render in the gallery, or special-case the strategies
+  cell with a different wrapper (no `Container` height constraint,
+  or explicit `Length::Shrink`).
 - **2026-05-15 (architect):** Initial Design addendum. Six Q-ARCH-N
   resolutions documented. **H-GAL-2 FALSIFIED** via source-read
   of `iced_test-0.14.0/src/emulator.rs:444-498` (no spike run; the

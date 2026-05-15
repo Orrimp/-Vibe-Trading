@@ -337,17 +337,27 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   `ui-mutants-pass` below.
 
 - **Storybook-equivalent widget gallery bin
-  (`ui-gallery-bin`).** _candidate, surfaced 2026-05-15 by
-  [`ui-testability-deep-dive-2026-05-15.md §3.3`](dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)_
-  — `cargo run --bin ui-gallery` rendering every widget × every
-  state × every viewport on one scrolling page. ~3 dev-days. The
-  analyst flags this as the **highest-ROI agent-friendly artifact**
-  in the dev-note (§3.3, §2.13) — multiplies snapshot review density
-  ~10×, gives the VLM judge (`ui-vlm-judge` below) amortized cost,
-  and forces every new widget under `crates/ui/src/widgets/` to
-  declare its state matrix. Prerequisite for the existing
-  `ui-test-harness-viewport-matrix` brief (the analyst recommends
-  sequencing gallery FIRST). Analyst spawn when operator promotes.
+  (`ui-gallery-bin`).** _v0.1-partial shipped 2026-05-15_ —
+  V1-V4 green (build, smoke, widget cell exhaustiveness, mod-rs
+  cross-check). V5+ snapshot tests blocked on the iced Table cell-
+  bounds panic — see [`ui-gallery-bin/tasks.md` ## Status](ui-gallery-bin/tasks.md)
+  and the follow-up `ui-gallery-table-cell` candidate below.
+  Original brief: [`ui-testability-deep-dive-2026-05-15.md §3.3`](dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin).
+
+- **iced 0.14 Table cell-bounds fix
+  (`ui-gallery-table-cell`).** _candidate, surfaced 2026-05-15 by
+  the [`ui-gallery-bin` v0.1-partial deliverable](ui-gallery-bin/design.md#changelog)_
+  — `widgets::strategies::view` uses `iced::widget::table::Table`,
+  which produces a degenerate quad and panics `iced_tiny_skia` at
+  `engine.rs:686` ("Build quad rectangle") when rendered inside a
+  fixed-height `gallery::cell::view` Container. Diagnostic at
+  [`crates/ui/tests/gallery_bisect.rs`](../crates/ui/tests/gallery_bisect.rs)
+  pinpoints `GALLERY_CELLS[7]`. Two paths: (a) special-case the
+  strategies cell wrapper to drop the height constraint, or (b)
+  swap strategies for a non-table render in the gallery only. ~1
+  dev-day either way. Unblocks V5+ of `ui-gallery-bin` plus any
+  future gallery cells that wrap table-based widgets. Analyst spawn
+  when operator promotes.
 
 - **AccessKit shadow tree + kittest assertions
   (`ui-a11y-shadow`).** _candidate, surfaced 2026-05-15 by

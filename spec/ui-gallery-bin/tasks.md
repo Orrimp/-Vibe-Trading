@@ -1,11 +1,58 @@
 ---
 slug: ui-gallery-bin
-status: in-progress
-owner: analyst
+status: v0.1-partial
+owner: orchestrator
 updated: 2026-05-15
 ---
 
 # Tasks — widget gallery binary (`ui-gallery-bin`) v0.1
+
+> ## Status as of 2026-05-15 (orchestrator-led recovery)
+>
+> Developer agent halted on missing Bash permission after writing
+> ~885 LOC unverified. Orchestrator took over the verification loop
+> (commits `6fbeaff`, this follow-up).
+>
+> **Done (V-items green):**
+> - V1 — build (`cargo build -p ui --bin ui-gallery --features fixtures`)
+> - V2 — `--smoke` exits cleanly (`ui-gallery --smoke OK`)
+> - V3 — every widget in `EXPECTED_WIDGETS` has at least one gallery cell
+> - V4 — every `pub mod` in `widgets/mod.rs` is listed in `EXPECTED_WIDGETS`
+> - All 271 ui tests pass, 0 regressions
+>
+> **Blocked (V5+):**
+> - V5/V6/V7/V10 — snapshot tests at three viewports. Test file
+>   [`crates/ui/tests/gallery_snapshots.rs`](../../crates/ui/tests/gallery_snapshots.rs)
+>   is written but `#[ignore]`d. Root cause:
+>   [`crates/ui/tests/gallery_bisect.rs`](../../crates/ui/tests/gallery_bisect.rs)
+>   pinpoints `GALLERY_CELLS[7]` (`strategies :: ready_v1`) as the
+>   first cell that triggers a tiny-skia "Build quad rectangle"
+>   panic. The iced 0.14 `widget::table::Table` used by
+>   `widgets::strategies::view` interacts badly with the fixed-height
+>   `cell::view` container — bumping `CELL_HEIGHT_PX` 260 → 500 does
+>   NOT resolve. Needs a follow-up feature to either swap strategies
+>   for a non-table render in the gallery, or special-case the
+>   strategies cell wrapper. Suggested slug:
+>   `ui-gallery-table-cell` (or fold into a broader
+>   `ui-iced-table-cell-bounds-fix`).
+> - V8 (anchors PASS gate), V9 (workspace tests + clippy +
+>   fmt) — green for everything that landed; full V8 verdict gated
+>   on tester pass.
+> - T21 (README mention) — not done. Bin docstring at
+>   [`crates/ui/src/bin/ui_gallery.rs:7-18`](../../crates/ui/src/bin/ui_gallery.rs)
+>   has the `cargo run` recipe inline; README follow-up trivial.
+>
+> **Design-pass deviation (developer-found):**
+> - `GalleryCell::render` signature changed from `fn(&Cockpit) ->
+>   Element<'static, Message>` to `fn(&Cockpit) -> Element<'_,
+>   Message>` because the original signature is structurally
+>   incompatible with iced widgets that return borrowed Elements.
+>   `cell::view` leaks the seeded cockpit via `Box::leak`
+>   (test-only binary; bounded leak per render). Documented in
+>   [`design.md ## Changelog`](design.md#changelog).
+>
+> The original M0..M5 task table below is preserved for traceability
+> but is no longer the authoritative status.
 
 > **Status:** analyst initial draft (2026-05-15). Architect Design
 > pass owes Q-ARCH-1..6 resolutions

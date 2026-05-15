@@ -791,10 +791,20 @@ pub const GALLERY_CELL_COUNT: usize = GALLERY_CELLS.len();
 /// height is captured. The interactive bin wraps this in `scrollable(...)`.
 #[must_use]
 pub(crate) fn view_all(_model: &Cockpit) -> iced::Element<'_, Message> {
+    view_slice(0, GALLERY_CELLS.len())
+}
+
+/// Render a slice of `GALLERY_CELLS[start..end]` as a bare column.
+/// Used by the diagnostic snapshot bisection in
+/// `crates/ui/tests/gallery_snapshots.rs` to narrow down which cell
+/// triggers a tiny-skia render panic.
+#[must_use]
+pub fn view_slice(start: usize, end: usize) -> iced::Element<'static, Message> {
     let mode = ThemeMode::Dark;
-    let cells: Vec<iced::Element<'_, Message>> = GALLERY_CELLS
+    let end = end.min(GALLERY_CELLS.len());
+    let cells: Vec<iced::Element<'static, Message>> = GALLERY_CELLS[start..end]
         .iter()
-        .map(|cell| super::cell::view(cell))
+        .map(super::cell::view)
         .collect();
 
     let col = cells
