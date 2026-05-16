@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# ///
 """spec_brief.py — assemble a per-feature briefing pack for sub-agents.
 
 Goal: keep sub-agent context windows small. Instead of having a developer
@@ -28,10 +31,7 @@ import re
 import sys
 from pathlib import Path
 
-try:
-    import tomllib  # Python 3.11+
-except ImportError:  # pragma: no cover
-    import tomli as tomllib  # type: ignore
+import tomllib  # Python 3.11+ (enforced by PEP-723 header above)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEC_DIR = REPO_ROOT / "spec"
