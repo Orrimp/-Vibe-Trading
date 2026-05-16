@@ -4,6 +4,29 @@ status: living
 owner: orchestrator
 updated: 2026-05-16
 ---
+<!-- updated 2026-05-16 (analyst) — `v25-kronos-forecast-overlay`
+     promoted from Queue ## Strategy (candidate) → Active. Operator
+     greenlit the promotion now that v2 LLM shipped 2026-05-13 (the
+     only blocker, because v2.5 inherits v2's record/replay cache
+     pattern from `spec/v2-llm-strategy/feature.md` Q8 for
+     research-mode determinism). Analyst-authored brief at
+     `spec/v25-kronos-forecast-overlay/feature.md` v2.5.0 (status:
+     in-progress, predecessor: v2-llm-strategy v2.0.0). Integration
+     path resolved Option B (ONNX export + `tract`) over A
+     (subprocess + IPC) and C (candle native) on four axes
+     (determinism, anchor-byte stability, operational footprint,
+     speed-to-first-ship); see ## Integration-path argument.
+     Strategy shape: overlay-on-v1-momentum (not pure-Kronos).
+     Forecast horizon: single-bar next-bar. Two anchored backtest
+     scenarios: BS-1 BTC-USDT-top10 2024 H1, BS-2 BTC-USDT-top10
+     2024 H2; 1.05× Sharpe-lift gate vs v1 baseline. 9 strategy +
+     2 report-sample anchors stay byte-identical (R6.1 / R6.2); 2
+     new anchors lock at v2.5 ship (R6.3). 13 open questions total
+     (8 from the pre-eval + 5 new); Q1 (pre-trained vs fine-tuned)
+     and Q11 (fine-tuning in v2.5 vs v2.5.x) route to operator
+     before architect spawn. `tasks.md` skeleton landed with M0-M7
+     milestones. HANDOFF → architect (after operator answers Q1 +
+     Q11). -->
 <!-- updated 2026-05-16 (analyst, Wave 2a spec-hygiene) — three
      stalled strategy features (v0-paper-sma, v05-composed-strategies,
      v1-cross-sectional-momentum) flipped to shipped (bookkeeping;
@@ -82,35 +105,48 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-_(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
+- **v2.5 — Kronos foundation-model forecast overlay
+  (`v25-kronos-forecast-overlay`).** _in-progress_ — promoted
+  2026-05-16 from Queue ## Strategy (candidate) → Active.
+  Operator greenlit now that
+  [v2 LLM shipped 2026-05-13](v2-llm-strategy/feature.md) (the
+  only blocker). Analyst-authored brief at
+  [`spec/v25-kronos-forecast-overlay/feature.md`](v25-kronos-forecast-overlay/feature.md)
+  v2.5.0 (status: in-progress, predecessor: v2-llm-strategy
+  v2.0.0). Integration path locked **Option B — ONNX export +
+  `tract`** (in-process inference, no Python at runtime; subprocess
+  named as fallback if ONNX conversion blocks). Strategy shape:
+  **overlay on v1 cross-sectional momentum** (not pure-Kronos).
+  Forecast horizon: **single-bar next-bar** (1h granularity to
+  match v1 momentum). Pre-trained `base` checkpoint (102.3M
+  params, 512-ctx); fine-tuning deferred to v2.5.x. Backtest
+  scenarios: BS-1 top-10 USDT 2024 H1 + BS-2 top-10 USDT 2024 H2
+  with a **1.05× Sharpe-lift gate** vs the existing v1 baselines.
+  9 strategy + 2 report-sample anchors at
+  [`spec/anchors.toml`](anchors.toml) stay **byte-identical**
+  (R6.1 / R6.2); 2 new anchors lock at ship
+  (`top10-2024-h1-kronos-momentum` + `top10-2024-h2-kronos-momentum`).
+  Research-mode determinism inherits the
+  [v2-LLM record/replay cache](v2-llm-strategy/feature.md) Q8 pattern
+  (SQLite WAL + SHA-256 over canonical JSON of the request shape).
+  13 open questions total (8 from the
+  [pre-eval](dev-notes/kronos-evaluation-2026-05-10.md) + 5 new);
+  Q1 (pre-trained vs fine-tuned) + Q11 (fine-tuning in v2.5 vs
+  v2.5.x) route to operator before architect spawn.
+  Architect-anticipated tasks skeletoned at
+  [`spec/v25-kronos-forecast-overlay/tasks.md`](v25-kronos-forecast-overlay/tasks.md)
+  (M0 architect setup → M1 ONNX/tract loader → M2 replay cache →
+  M3 strategy + overlay → M4 cost telemetry → M5 backtest +
+  anchors → M6 non-regression sweep → M7 final gate). HANDOFF →
+  architect (after operator answers Q1 + Q11).
 
 ## Queue
 
 ### Strategy
 
-- **v2.5 — Kronos foundation-model forecast overlay.** _candidate_,
-  blocks on v2 LLM ship. Decoder-only Transformer pre-trained on
-  K-line data from 45+ exchanges (5 sizes, 4.1M–499M params, MIT
-  license, AAAI 2026 paper, 23.8k stars on
-  [shiyu-coder/Kronos](https://github.com/shiyu-coder/Kronos)). Slots
-  into the v2.5 DL-forecaster row in
-  [`spec/product.md`](product.md#strategy-library--roadmap)
-  (specialises the original "TCN or small Transformer" strawman with
-  a specific pre-trained model rather than training from scratch).
-  Pre-analyst technical evaluation at
-  [`spec/dev-notes/kronos-evaluation-2026-05-10.md`](dev-notes/kronos-evaluation-2026-05-10.md)
-  — license, three integration paths (subprocess / ONNX+tract /
-  candle), context-window caveats (512 / 2048 tokens), and 8 open
-  questions for the future analyst (pre-trained vs fine-tuned, model
-  size, integration path, forecast horizon, pure-strategy vs overlay
-  shape, determinism, anchor impact, cost telemetry). Stub feature
-  folder at
-  [`spec/v25-kronos-forecast-overlay/feature.md`](v25-kronos-forecast-overlay/feature.md)
-  (`status: candidate` — new status for "operator-flagged for future
-  evaluation"). Analyst spawn when the operator promotes from
-  candidate → in-progress; not before v2 LLM ships (v2.5's
-  research-mode determinism contract reuses v2's record/replay cache
-  pattern from `spec/v2-llm-strategy/feature.md` Q8).
+_(empty — v2.5 promoted to Active 2026-05-16; pre-eval breadcrumb
+remains at
+[`spec/dev-notes/kronos-evaluation-2026-05-10.md`](dev-notes/kronos-evaluation-2026-05-10.md))_
 
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 
