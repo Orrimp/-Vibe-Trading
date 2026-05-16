@@ -1,0 +1,20 @@
+# SHA-256 of kronos-base.onnx (NeoQuasar/Kronos-base, HF revision: main)
+#
+# This file is the pinned checksum gate. `crates/forecast/build.rs` asserts
+# that the on-disk SHA-256 of `crates/forecast/assets/kronos-base.onnx`
+# matches this value at build time.
+#
+# How to update:
+#   1. Run `scripts/dev/kronos_torch_to_onnx.py` to (re-)export the ONNX.
+#   2. Run `sha256sum crates/forecast/assets/kronos-base.onnx` (Linux) or
+#      `shasum -a 256 crates/forecast/assets/kronos-base.onnx` (macOS).
+#   3. Replace the hash below with the new value.
+#   4. Git LFS add + commit the new ONNX file.
+#
+# License: NeoQuasar/Kronos weights are MIT-licensed.
+# See: https://github.com/shiyu-coder/Kronos
+#
+# Status: PENDING — kronos-base.onnx not yet committed (git LFS bootstrap
+# required; see crates/forecast/README.md § LFS bootstrap).
+# The build.rs checksum gate is disabled when the ONNX file is absent.
+PENDING

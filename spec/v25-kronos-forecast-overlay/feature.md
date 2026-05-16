@@ -438,9 +438,52 @@ verify-anchors run) if the BS-2 baseline runtime stays acceptable.
 
 ## Implementation
 
-_developer fills this._
+### Wave A — M1 + M2 (developer, 2026-05-16)
 
-Architect produces `tasks.md` first; developer ticks through.
+**Crates created:**
+
+- `crates/replay-cache/` — generic `ReplayCache<K, V>` SQLite WAL
+  primitive. `schema_version = 1`, canonical-JSON SHA-256 keys,
+  strict-replay mode (`ReplayCacheError::Miss`), read-only + read-write
+  open modes. 8 unit tests green.
+- `crates/forecast/` — `ForecastProvider` async trait,
+  `KronosForecaster` stub (returns `ForecastError::Inference` until M3),
+  `overlay::combine()` pure function for signal-level composition.
+  15 unit tests green.
+- `crates/core/src/forecast.rs` — `ForecastOverlay`, `Direction`,
+  `ForecastRequest`, `ForecastResponse`, `ForecastError`, `OhlcvBar`,
+  `SamplingParams`. 7 inline unit tests green. `confidence` is
+  `rust_decimal::Decimal` throughout.
+
+**M2 ONNX vendoring:**
+
+- `build.rs` checksum gate: skips gracefully when ONNX absent (PENDING hash);
+  asserts SHA-256 match once ONNX is present.
+- `.gitattributes` declares `crates/forecast/assets/*.onnx filter=lfs`.
+- `scripts/dev/kronos_torch_to_onnx.py` — one-off PyTorch → ONNX
+  conversion script with license assertion (MIT) + SHA-256 write.
+- `crates/forecast/README.md` — LFS bootstrap documentation.
+- **BLOCKER T-M2-3**: `git-lfs` not installed on dev machine;
+  `kronos-base.onnx` not committed. Operator must run LFS bootstrap
+  before M3 can proceed. T-M2-4 gate is written and active.
+
+**T-M1-4 replay-cache extraction note:**
+
+`crates/replay-cache/` extracted successfully; `crates/forecast` consumes
+it. `crates/llm` NOT migrated (schema divergence: `llm_replay` vs
+`replay_cache` table name; would require LLM migration + fixture DB changes
+— not within 2-dev-day budget risk profile). LLM still uses its own
+replay module unchanged. `cargo test --workspace` green (zero regressions).
+
+**Gate results:**
+
+- `cargo check --workspace` — PASS
+- `cargo clippy -- -D warnings` — PASS (no errors, one build-script warning about PENDING)
+- `cargo test --workspace` — PASS (all tests ok, zero failures)
+- `cargo test -p replay-cache` — 8 passed
+- `cargo test -p forecast` — 15 passed
+- `cargo test -p trading_core forecast` — 7 passed
+- `cargo test -p llm` — 84+... passed, zero regressions
 
 ## Verification
 

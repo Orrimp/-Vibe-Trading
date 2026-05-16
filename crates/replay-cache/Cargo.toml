@@ -1,0 +1,34 @@
+[package]
+name = "replay-cache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Generic SQLite replay-cache primitive (ReplayCache<K, V>) shared by crates/llm and crates/forecast"
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+async-trait = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Hash (SHA-256 over canonical JSON)
+sha2 = { workspace = true }
+
+# SQLite WAL backend
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
+
+# Time (6-digit fractional timestamps)
+time = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+
+# Errors
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tempfile = { workspace = true }

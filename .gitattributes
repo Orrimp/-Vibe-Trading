@@ -1,0 +1,6 @@
+# Git LFS — large binary assets
+#
+# v2.5 Kronos ONNX checkpoint (~410 MB per ADR-0027 Q12).
+# Run `git lfs install` before checking out or committing ONNX files.
+# See crates/forecast/README.md § LFS bootstrap for the full procedure.
+crates/forecast/assets/*.onnx filter=lfs diff=lfs merge=lfs -text

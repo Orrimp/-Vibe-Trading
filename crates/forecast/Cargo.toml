@@ -1,0 +1,42 @@
+[package]
+name = "forecast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ForecastProvider trait + KronosForecaster stub (v2.5)"
+
+[dependencies]
+# Workspace siblings
+trading_core = { path = "../core" }
+replay-cache = { path = "../replay-cache" }
+
+# Async trait
+async-trait = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Numerics
+rust_decimal = { workspace = true }
+
+# IDs
+uuid = { workspace = true, features = ["serde", "v4"] }
+
+# Time
+time = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+
+# Errors
+thiserror = { workspace = true }
+
+[build-dependencies]
+# M2: checksum gate in build.rs
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = { workspace = true }
+rust_decimal_macros = { workspace = true }

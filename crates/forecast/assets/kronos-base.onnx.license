@@ -1,0 +1,4 @@
+SPDX-License-Identifier: MIT
+Source: https://huggingface.co/NeoQuasar/Kronos-base
+HF Revision: PENDING (update when kronos_torch_to_onnx.py is run)
+Upstream: https://github.com/shiyu-coder/Kronos (AAAI 2026)
