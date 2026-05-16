@@ -327,6 +327,23 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
   for the original analysis.
 
+  > **Attempted + aborted 2026-05-16.** Operator authorized the
+  > full bump (Q-014-PIN + Q-COMET-EVAL override). Two strikes
+  > surfaced before abort: (1) js-sys dep conflict (resolved with
+  > iced-master's Cargo.lock copy); (2) **23 iced 0.14→0.15 API
+  > churn errors in iced_aw alone**, with the same patterns
+  > (`Theme::extended_palette`, `Text` gained `ellipsis`+`hint_factor`
+  > fields, `Palette.text` removed, `Widget::update` arity changes,
+  > `Font::with_name` removed, `Overlay::update` arity change)
+  > guaranteed to recur across our ~30 widget/screen files.
+  > **iced_aw + iced_fonts BOTH still on iced 0.14**, confirming
+  > the ecosystem has not migrated yet. Revised cost estimate
+  > climbed 5-9d → 6-11d before mandatory-stop. Aborted at the
+  > operator's "Stop now" choice. Vendor work reverted (was
+  > uncommitted). The revisit trigger above remains the correct
+  > path — wait for iced 0.15.0 stable + iced_aw / iced_fonts
+  > ecosystem migration.
+
 - **Operator UI legibility — WCAG contrast asserter
   (`ui-contrast-asserter`).** _candidate, surfaced 2026-05-15 by
   [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md §3.8`](dev-notes/ui-testability-deep-dive-2026-05-15.md#38-stretch--pure-rust-wcag-contrast-asserter--ui-contrast-asserter)_
