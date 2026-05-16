@@ -76,13 +76,16 @@ clap = { workspace = true }
 # Do NOT use a range. Update in lockstep across ui/cockpit/viewer.
 iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas"] }
 
-# iced_aw — Brief B cherry-pick of three widgets only.  H-arch-4 falsifier
-# verified at architect-pass 2026-05-13 that the `default-features = false`
-# + named feature gate isolates the transitive set to exactly
-# `chrono + num-traits + once_cell` (no `menu` / `tab_bar` / `number_input`
-# pulls). See spec/iced-aw-cherry-pick/feature.md ## H-arch-4 for the
-# `cargo tree` evidence. License MIT, edition 2024.
-iced_aw = { version = "0.14", default-features = false, features = ["date_picker", "spinner", "badge"] }
+# iced_aw was dropped 2026-05-16 (ui-drop-iced-aw v0.1) to decouple
+# from third-party iced ecosystem cadence (iced_aw locked at 0.14;
+# transitively pulled Redhawk18/iced_fonts). The 3 cherry-picked
+# widgets are now: (a) spinner — self-replaced by
+# widgets/throttled_spinner.rs (pre-existing fork from
+# iced-aw-cherry-pick cycle); (b) badge — native Container+Text in
+# widgets/strategies.rs::status_badge_cell; (c) date_picker — was
+# smoke-test demo only per viewer bin docstring, removed without
+# replacement (v1.11 chart-x-axis-local-time may roll a real date
+# input later). See spec/ui-drop-iced-aw/feature.md.
 
 # `live` feature deps — Week 2 (T32). Only enabled when wiring the cockpit
 # against the real `agent::EventBus`. Pinned like iced to keep the live

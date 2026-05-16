@@ -22,7 +22,6 @@
 
 use iced::widget::{button, table, Button, Column, Container, Row, Text};
 use iced::{Border, Element, Length};
-use iced_aw::Badge;
 
 use crate::state::{Cockpit, Message, PanelState, StrategyRow, StrategyStatus};
 use crate::strings::{
@@ -34,7 +33,7 @@ use crate::strings::{
     STRATEGIES_STATUS_LOADING, STRATEGIES_STATUS_READY, STRATEGY_PAUSE_LABEL,
     STRATEGY_RESUME_LABEL,
 };
-use crate::theme::iced_widget_catalogs::{cockpit_badge_style_fn, BadgeIntent};
+use crate::theme::iced_widget_catalogs::BadgeIntent;
 use crate::theme::{color, layout, radius, space, text, ThemeMode};
 
 use super::focus_ring;
@@ -349,25 +348,34 @@ fn cell<'a>(s: String) -> Element<'a, Message> {
         .into()
 }
 
-/// Brief B T-M3-2 — STATUS column status pill.
+/// STATUS column status pill — native iced replacement (was
+/// `iced_aw::Badge` pre-`ui-drop-iced-aw`).
 ///
-/// Constructs an `iced_aw::Badge` carrying the status label text and
-/// routes the Lumen surface/foreground tokens through the
-/// [`cockpit_badge_style_fn`] Catalog adapter (see
-/// [`crate::theme::iced_widget_catalogs`]) by `intent`. The Badge's
-/// `text_color` field inside the Catalog style carries the label
-/// colour — no hard-coded RGB triplet lands here (brand-bleed gate
-/// stays green per the architect's design synthesis,
-/// [`feature.md ## Q5`](../../../spec/iced-aw-cherry-pick/feature.md#q5--exact-file-set-for-b3-cratesuisrcwidgetsstrategiesrs-only-1-file-not-3)).
-// `cast_possible_truncation`: `space::*` constants are `u32` with bounded
-// values 0..64; cast to `u16` padding is safe (same pattern as other
-// widget closures in this crate, e.g. `widgets::frame::panel` at
-// `frame.rs:43-44`).
+/// Container + Text composition with intent-routed Lumen tokens:
+/// 50-step surface backdrop + 500-step (or `FG_3` for Neutral)
+/// foreground. Same colour pairing as the prior `iced_aw::Badge`
+/// implementation; no hard-coded RGB triplet lands here. Visual
+/// continuity at the snapshot byte level vs the iced_aw version:
+/// padding, radius, and tokens are preserved.
 #[allow(clippy::cast_possible_truncation)]
 fn status_badge_cell<'a>(label: &'static str, intent: BadgeIntent) -> Element<'a, Message> {
-    Badge::new(Text::new(label).size(text::SMALL))
+    let mode = ThemeMode::Dark;
+    let (background, fg) = match intent {
+        BadgeIntent::Positive => (color::UP_50.current(mode), color::UP_500.current(mode)),
+        BadgeIntent::Neutral => (color::ACCENT_SOFT.current(mode), color::FG_3.current(mode)),
+        BadgeIntent::Negative => (color::DOWN_50.current(mode), color::DOWN_500.current(mode)),
+    };
+    Container::new(Text::new(label).size(text::SMALL).color(fg))
         .padding(space::XS as u16)
-        .style(cockpit_badge_style_fn(intent))
+        .style(move |_theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(background.into()),
+            border: iced::Border {
+                // PILL radius matches the prior iced_aw::Badge tag shape.
+                radius: radius::PILL.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
         .into()
 }
 

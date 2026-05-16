@@ -525,6 +525,22 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Recent (shipped)
 
+- **Drop iced_aw + iced_fonts (`ui-drop-iced-aw` v0.1.0)** — shipped
+  2026-05-16. Strategic decoupling from third-party iced ecosystem
+  cadence after the 2026-05-16 aborted comet bump made the
+  ecosystem-lag pattern explicit. spinner already self-replaced by
+  [`widgets/throttled_spinner`](../crates/ui/src/widgets/throttled_spinner.rs);
+  badge replaced with native Container+Text in
+  [`widgets/strategies::status_badge_cell`](../crates/ui/src/widgets/strategies.rs)
+  using the same Lumen palette pairs; date_picker (smoke-test demo
+  per docstring) removed entirely with its state, messages, and
+  snapshot test. `cargo tree -p ui` confirms zero iced_aw +
+  iced_fonts. 1216 workspace tests pass (-8 deleted-as-expected),
+  anchors 11/11 PASS. **Net effort: ~3h actual vs ~18h estimate** —
+  the date_picker docstring saved 2 dev-days of mistaken
+  reimplementation. See
+  [`spec/ui-drop-iced-aw/feature.md`](ui-drop-iced-aw/feature.md).
+
 - **headless emulator adapter (`ui-headless-emulator` v0.1.0)** —
   shipped 2026-05-16. Decomposed out of `ui-test-harness-ci` to
   close the unchecked "headless mode" cell from

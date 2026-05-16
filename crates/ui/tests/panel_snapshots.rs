@@ -1173,62 +1173,6 @@ fn viewer__full_view__sample_report() {
     );
 }
 
-// ── Brief B M1 — viewer date_picker default-closed (T-M1-3) ────────────────
-//
-// Captures the viewer's date-picker primitive in its cold-start
-// `picker_open = false` state. The summary records the const anchor
-// date (NOT `Date::today()`), the overlay-hidden flag, and the
-// round-trip behavior of the picker messages. iced_aw's actual
-// overlay render is gated on `picker_open`; this test pins the model-
-// side determinism contract per the architect's Q3 trap (any
-// regression that reaches for `Local::now()` flips the anchor).
-
-#[test]
-fn viewer_picker_default_closed() {
-    use ui::viewer::{
-        ReportFrontMatter, ReportLoadResult, ViewerMessage, ViewerModel, VIEWER_PICKER_ANCHOR,
-    };
-    let load = ReportLoadResult {
-        front_matter: ReportFrontMatter::default(),
-        metrics: PanelState::Empty,
-        equity: PanelState::Empty,
-        body_markdown: String::new(),
-    };
-    let mut model = ViewerModel::new(std::path::PathBuf::from("/dev/null"), load);
-
-    let mut out = String::new();
-    out.push_str("bin: viewer\n");
-    out.push_str("widget: iced_aw::date_picker\n");
-    out.push_str(&format!(
-        "anchor: {:04}-{:02}-{:02}\n",
-        VIEWER_PICKER_ANCHOR.0, VIEWER_PICKER_ANCHOR.1, VIEWER_PICKER_ANCHOR.2,
-    ));
-    out.push_str(&format!("picker_open: {}\n", model.picker_open));
-    out.push_str(&format!(
-        "picked_date: {:04}-{:02}-{:02}\n",
-        model.picked_date.year(),
-        model.picked_date.month() as u8,
-        model.picked_date.day(),
-    ));
-    out.push_str("underlay: Button\n");
-    out.push_str("underlay_label: Pick backtest date\n");
-    out.push_str("on_press: ViewerMessage::PickerOpened\n");
-    out.push_str("on_submit: time::Date round-trip via from_calendar_date\n");
-    out.push_str("uses_Date_today: false\n");
-    out.push_str("uses_State_reset: false\n");
-
-    // Two-run determinism gate at the message level: open + cancel + submit
-    // must produce identical model state across runs.
-    ui::viewer::update(&mut model, ViewerMessage::PickerOpened);
-    ui::viewer::update(&mut model, ViewerMessage::PickerCanceled);
-    out.push_str(&format!(
-        "after_open_cancel_round_trip: picker_open={}\n",
-        model.picker_open
-    ));
-
-    assert_snapshot!("viewer_picker_default_closed", out);
-}
-
 fn viewer_full_view_summary(
     metrics: &trading_core::BacktestMetrics,
     series: &trading_core::EquitySeries,
