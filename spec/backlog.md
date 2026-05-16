@@ -312,7 +312,20 @@ _(empty — v2 LLM strategy shipped 2026-05-13; see Recent below)_
   [`iced-014-feature-analysis-2026-05-15.md §4`](dev-notes/iced-014-feature-analysis-2026-05-15.md#headless-mode).
   iced 0.14's `iced_test::emulator::Emulator` (PR #2698) ships
   embedded Fira Sans + a real headless runtime, so we don't need
-  to author font-fallback / xvfb plumbing.
+  to author font-fallback / xvfb plumbing. **FURTHER DECOMPOSED
+  2026-05-16:** the Emulator adapter portion shipped standalone as
+  [`ui-headless-emulator` v0.1](ui-headless-emulator/feature.md);
+  remaining scope is CI workflow + cross-platform falsifier only.
+
+- **comet debugger revisit trigger (`ui-comet-eval`).** _candidate,
+  REVISIT-GATED 2026-05-16 by operator decision_ — Q-COMET-EVAL
+  LOCKED → defer indefinitely STILL APPLIES. Operator-acknowledged
+  revisit trigger added: when iced 0.15.0 **stable** releases (not
+  the current `0.15.0-dev` master pin), bump Q-014-PIN consideration
+  + re-evaluate this candidate. Until then: no spawn trigger, no
+  schedule. See
+  [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
+  for the original analysis.
 
 - **Operator UI legibility — WCAG contrast asserter
   (`ui-contrast-asserter`).** _candidate, surfaced 2026-05-15 by
@@ -494,6 +507,27 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **headless emulator adapter (`ui-headless-emulator` v0.1.0)** —
+  shipped 2026-05-16. Decomposed out of `ui-test-harness-ci` to
+  close the unchecked "headless mode" cell from
+  [`iced-014-feature-analysis-2026-05-15.md §4`](dev-notes/iced-014-feature-analysis-2026-05-15.md#headless-mode)
+  without waiting on viewport-matrix + evaluator prereqs. Single
+  test (`crates/ui/tests/headless_emulator_smoke.rs`) boots the
+  cockpit through `iced_test::emulator::Emulator`, drains events
+  until `Ready`, takes a 1280×720 screenshot — proves the FULL
+  iced subscription pump runs without a window server. 1224
+  workspace tests pass (+1). ~1 hour actual vs ~2.25h estimate.
+  See [`spec/ui-headless-emulator/feature.md`](ui-headless-emulator/feature.md).
+
+- **session journal — iced_tester adapter
+  (`ui-session-journal-iced-tester` v0.1.0)** — shipped 2026-05-16
+  (commit `218cab3`). Adapter for iced 0.14's `iced_tester::attach`
+  (recorder overlay) + `iced_test::run` (replay). Built with
+  `--features record-tests` auto-attaches overlay; production
+  builds untouched. Empty `recorded-sessions/` ships; operator
+  populates post-ship via the recorder workflow. See
+  [`spec/ui-session-journal-iced-tester/feature.md`](ui-session-journal-iced-tester/feature.md).
 
 - **iced native widgets (v0.1.0)** — shipped 2026-05-13
   (operator approval recorded as `[x] Approved — ship` in

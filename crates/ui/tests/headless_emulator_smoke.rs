@@ -1,0 +1,75 @@
+//! Headless Emulator smoke — `ui-headless-emulator` v0.1 (T01).
+//!
+//! Boots the cockpit through `iced_test::emulator::Emulator`, drains
+//! events until `Ready` (or a 10-event deadline), takes a screenshot
+//! at the floor viewport, and asserts dimensions. Proves the
+//! Emulator boots the FULL iced subscription pump headlessly — see
+//! [`spec/ui-headless-emulator/feature.md`](../../spec/ui-headless-emulator/feature.md)
+//! for what this unlocks vs. the existing
+//! [`visual_snapshots.rs`](visual_snapshots.rs) free-function pattern.
+
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
+use iced_test::emulator::{Emulator, Event, Mode};
+use iced_test::futures::futures::channel::mpsc;
+use iced_test::futures::futures::executor;
+use iced_test::futures::futures::StreamExt;
+
+use ui::test_support::{charts_screen_cockpit, program_from_cockpit};
+
+/// Bounded number of event-loop ticks before we give up waiting for
+/// `Event::Ready`. The cockpit's boot is single-shot (no async data
+/// fetch in fixtures mode), so a healthy boot resolves within 1-3
+/// events. 10 is comfortable headroom.
+const READY_DEADLINE_TICKS: usize = 10;
+
+#[test]
+fn headless_emulator_boots_cockpit_and_renders() {
+    let cockpit = charts_screen_cockpit();
+    let program = program_from_cockpit(cockpit);
+    let theme = iced::Theme::Dark;
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let mut emulator = Emulator::new(tx, &program, Mode::Zen, iced::Size::new(1280.0, 720.0));
+
+    // Drain events until Ready or deadline. Per Emulator docs:
+    // - Event::Action(action) → must call emulator.perform(&program, action)
+    // - Event::Ready → boot complete; safe to render
+    // - Event::Failed(_) → instruction failed (we don't dispatch any in v0.1)
+    executor::block_on(async {
+        for tick in 0..READY_DEADLINE_TICKS {
+            match rx.next().await {
+                Some(Event::Ready) => {
+                    eprintln!("emulator ready after {tick} tick(s)");
+                    break;
+                }
+                Some(Event::Action(action)) => {
+                    emulator.perform(&program, action);
+                }
+                Some(Event::Failed(instruction)) => {
+                    panic!("unexpected Event::Failed for instruction: {instruction:?}");
+                }
+                None => {
+                    eprintln!("event channel closed at tick {tick} before Ready");
+                    break;
+                }
+            }
+        }
+    });
+
+    let screenshot = emulator.screenshot(&program, &theme, 1.0);
+    assert_eq!(
+        screenshot.size.width, 1280,
+        "expected floor viewport width 1280, got {}",
+        screenshot.size.width
+    );
+    assert_eq!(
+        screenshot.size.height, 720,
+        "expected floor viewport height 720, got {}",
+        screenshot.size.height
+    );
+    assert!(
+        !screenshot.rgba.is_empty(),
+        "screenshot rgba buffer must be non-empty (boot + view loop ran)"
+    );
+}
