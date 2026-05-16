@@ -7,6 +7,38 @@ session acting as the orchestrator.
 > This project uses sub-agents and expects them to run in **parallel** whenever
 > their work is independent. Sequential handoffs are only for dependent work.
 
+## Branch & worktree policy (load-bearing)
+
+**All work happens directly on the `main` branch of the main repo at
+`/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading`. No feature
+branches. No git worktrees. No `claude/<slug>` branches.**
+
+Rules — read these before spawning anything:
+
+1. **Orchestrator CWD is the main repo.** Verify with `pwd` at session start.
+   Never operate from `.claude/worktrees/<name>/`. If a prior session left a
+   worktree behind, propose cleanup; do not silently use it.
+2. **Orchestrator HEAD is `main`.** Verify with `git branch --show-current`.
+   Never `git checkout -b`, never create a branch.
+3. **Sub-agents do NOT commit.** They write files; the orchestrator owns
+   `git add` + `git commit` + `git push origin main`. A sub-agent that ends
+   its run with a commit has violated the contract.
+4. **Brief sub-agents with `main` as the working branch.** When a sub-agent
+   prompt mentions a working directory or branch, it is the main repo path
+   and `main`. Do not pass `isolation: "worktree"` to the Agent tool.
+5. **No PRs unless the operator asks.** Push directly to `origin/main`.
+   `gh pr create` is reserved for explicit operator request — the
+   workflow does not assume code review on a PR surface.
+6. **Parallelism is preserved.** Multiple sub-agents still run in parallel
+   per `## Parallelism rules` below. Parallelism is about *concurrent work
+   in the same tree*, not about *parallel branches*. The orchestrator
+   serializes commits at the end of each wave.
+
+*Why:* (a) every prior worktree session ended with a fast-forward merge to
+main anyway — pure ceremony for a single-operator codebase. (b) Agents
+historically wrote to the wrong tree when CWD and brief paths diverged.
+(c) Established 2026-05-16 after the spec-hygiene remediation pass.
+
 ## The six agents
 
 | Agent        | Model  | File                                  | Primary role                              |
@@ -443,6 +475,11 @@ incident and a concrete tooling gate:
 - **Never** use `unsafe` Rust without a `// SAFETY:` comment.
 - **Never** commit secrets; exchange keys live in env vars or a secret store
   defined in `spec/architecture.md`.
+- **Never** create a git worktree, feature branch, or `claude/<slug>` branch.
+  All work commits directly to `main`. See `## Branch & worktree policy`
+  at the top of this file.
+- **Never** let a sub-agent run `git commit` or `git push`. Sub-agents
+  write files; the orchestrator commits + pushes.
 
 ## Capability boundaries (orchestrator vs. sub-agent)
 
