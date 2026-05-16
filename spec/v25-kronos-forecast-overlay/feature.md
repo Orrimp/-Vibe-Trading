@@ -1,7 +1,7 @@
 ---
 slug: v25-kronos-forecast-overlay
 status: in-progress
-owner: analyst
+owner: architect
 updated: 2026-05-16
 version: 2.5.0
 predecessor: v2-llm-strategy v2.0.0
@@ -248,35 +248,146 @@ where `Strategy` lives.
 
 ## Design
 
-_architect fills this._
+Architect pass landed 2026-05-16. The cross-cutting forecast-overlay
+pattern (signal-level composition, `ForecastProvider` trait,
+`ForecastOverlay` value type, audit-row shape) is documented in
+[`spec/architecture/12-forecast-overlay.md`](../architecture/12-forecast-overlay.md).
+The v2.5-specific resolutions (Q2 / Q3 / Q4 / Q5 / Q6 / Q7 / Q8) live in
+[ADR-0027](../architecture/adr/0027-kronos-onnx-tract-integration.md).
+This Design section is the per-feature summary; the ADR is canonical
+for conflicts.
 
-The architect's first pass should resolve at minimum:
+### Operator-locked decisions (LOCKED at architect spawn 2026-05-16)
 
-- Q9 (crate split — `crates/forecast/` vs absorb into `crates/strategy/`).
-- Q10 (`ForecastProvider` trait shape and whether to share a generic
-  `ReplayCache<K, V>` between LLM and Kronos).
-- Q12 (ONNX conversion build-script vs vendored `.onnx` artifact).
-- Q13 (overlay composition mechanism — does Kronos modulate at the
-  signal level (R2.1 strawman) or at the risk-clamp level?).
+| Q | Resolution | Source |
+|---|---|---|
+| Q1 | Pre-trained `base` only (102.3M params). No fine-tuning in v2.5. | Operator + R1 |
+| Q3 | Option B: ONNX export + `tract` in-process. Subprocess (Option A) is the named fallback. | Operator + R4 |
+| Q9 | New crate `crates/forecast/`. | Operator + R9 |
+| Q10 budget | Try to extract `crates/replay-cache/` generic `<K, V>` within **2 dev-days**; if exceeded, ship duplicate caches and open a v2.5.x follow-up. | Operator |
+| Q11 | Fine-tuning pipeline deferred to v2.5.x. | Operator |
+| Q12 | ONNX checkpoint vendored at `crates/forecast/assets/kronos-base.onnx` (git LFS). NOT download-on-first-use. | Operator |
+| Q13 | Overlay composition at **signal level** inside `Strategy::tick()`. NOT risk-clamp level. | Operator |
+| Backtest baseline | **BS-1 = 2023 full-year top-10 USDT; BS-2 = 2024 full-year top-10 USDT.** Overrides the analyst's H1/H2 default for regime-change evidence. | Operator |
+
+### Architect-decided resolutions (this pass)
+
+| Q | Resolution | One-line rationale |
+|---|---|---|
+| Q2 | `base` 102.3M / 512-ctx. | Analyst default accepted; mini too small, large 5× cost without K-line quality gain. |
+| Q4 | Single-bar (next-bar) horizon only. | 1-bar matches the 1h v1-momentum cadence; multi-bar ensembles deferred to v2.5.x if BS-1/BS-2 are noisy. |
+| Q5 | Overlay on v1 momentum (signal-level composition). | Matches v2 LLM news/sentiment overlay; pure-Kronos kept as v2.6 option, no rework cost. |
+| Q6 | Inherit v2 LLM record/replay wholesale (SHA-256 over canonical JSON, SQLite WAL, strict-replay-only in research mode). Sampling seed `0xC0FFEE` in cache key. | The v2.0.0 pattern shipped 2026-05-13; reuse beats reinvent. |
+| Q7 | 9 strategy + 2 report-sample anchors stay byte-identical; 2 new anchors lock at v2.5 ship (BS-1 + BS-2). Optional 3rd new anchor for BS-2 v1-baseline. | Kronos is additive; default `energy_cost_per_kwh = 0` keeps fixture reports identical. |
+| Q8 | `CostEvent::Infra { line: "kronos_inference", usd, period }` with `usd = 0` by default. No new variant; no new ledger account at default config. | Existing `Infra` variant is the right shape; opt-in non-zero energy cost is per-operator config. |
+
+### Crate layout
+
+- `crates/forecast/` — `ForecastProvider` trait + `tract` glue + ONNX
+  loader + tokenizer + replay-cache wiring (or shim into shared crate).
+- `crates/strategy/src/kronos_momentum.rs` — the consuming `Strategy`
+  impl. Composes v1 momentum signal with `ForecastOverlay` per Q13.
+- `crates/core/src/forecast.rs` — `ForecastOverlay` value type and
+  `Direction` enum, next to `Signal`.
+- `crates/replay-cache/` (conditional) — generic `ReplayCache<K, V>`
+  if the 2-day extraction budget succeeds; otherwise duplicate caches
+  in `crates/llm/src/replay.rs` and `crates/forecast/src/replay.rs`.
+- Explicitly **not** `crates/llm/` (Kronos is not an LLM); **not**
+  `crates/models/` (that slot is for `candle` training prototypes).
+
+### `tick()` flow — overlay composition
+
+```text
+fn tick(bar):
+    base_signal = v1_momentum_signal(bar)
+    request     = ForecastRequest::from_bar(bar, kronos_config)
+    forecast    = forecast_provider.forecast(request).await?
+    overlay     = ForecastOverlay::from(forecast)
+    signal      = combine(base_signal, overlay, threshold)
+    cost_sink.emit(CostEvent::Infra { line: "kronos_inference", usd, period })
+    audit.emit(JournalEntry::forecast_emitted(overlay, correlation_id))
+    return signal
+```
+
+Where `combine`:
+
+- `overlay.direction == base.direction && overlay.confidence ≥ threshold` → boost (`StrongBuy` / `StrongSell`).
+- `overlay.direction != base.direction && overlay.confidence ≥ threshold` → dampen (`Hold` or `Weak*`).
+- `overlay.direction == Flat || overlay.confidence < threshold` → pass through `base_signal` unchanged.
+
+Threshold is a `KronosConfig.overlay_confidence_threshold` knob
+(default `0.6`, operator-tunable, present in the cache key by
+construction because it's not a model input — it's a downstream
+combination parameter, so it does NOT need to be in the SHA-256
+cache key).
+
+### Audit row + correlation_id
+
+One `audit::journal` row per forecast call with
+`kind = "forecast_emitted"` (new open-set TEXT value per
+[architecture/02 § Cross-cutting rules](../architecture/02-strategy-registry.md#cross-cutting-rules-formalised-by-the-strategy-clusters))
+carrying the `ForecastOverlay` payload + `correlation_id`. The
+realised-outcome side of the join (forecast → trade close) is a
+**v2.5.x follow-up** (`reflection-kronos-residual` brief); v2.5 just
+emits the row so the future reflection-memory loop has the signal.
+
+### Out of scope for v2.5 (explicit deferrals)
+
+- Multi-bar rolling forecasts and ensemble-across-horizons (Q4 deferral).
+- Pure-Kronos strategy (Q5 deferral).
+- Fine-tuning pipeline (Q1 + Q11 deferral).
+- Risk-level forecast modulation (Q13 deferral).
+- Surface Kronos forecasts in operator success report System Health
+  section (per R6.2, a separate `reporting-kronos-signal-surface` brief).
+- `ForecastError::ReplayMiss` permissive fallback (strict-replay-only
+  at v2.5 ship per ADR-0019 Q8 precedent).
+- 1m-bar overlays (R3.2 deferral).
+- Mini / small / large checkpoint support (Q2 deferral — base only).
+
+### Risks the architect carries into developer handoff
+
+1. **ONNX op-set compatibility.** Kronos's decoder may use ops `tract`
+   doesn't support. M0 includes a thin conversion-spike subtask
+   (T-M0-7); if it fails, fallback to Option A or a `tract` upstream
+   PR per ADR-0027 Q3.
+2. **2-day replay-cache extraction budget.** Real risk the extraction
+   takes longer; T-M2-1 carries a hard budget exit so the developer
+   ships duplicate caches without blocking the milestone.
+3. **Git LFS for the 410 MB checkpoint.** Project hasn't used LFS
+   before; M1 includes an LFS-bootstrap subtask.
+4. **Tokenizer parity.** The Kronos Python tokenizer must round-trip
+   bit-identically with the Rust port; M1 includes a parity test
+   (T-M1-3) as a gate.
+5. **Strict-replay coverage.** Backtest tooling must populate the
+   cache from a fixture before BS-1/BS-2 run; M2 ships a fixture
+   build subtask (T-M2-3).
 
 ## Backtest Scenarios
+
+**Operator override at architect spawn 2026-05-16.** The analyst
+default (2024 H1 + H2) is overridden to **2023 full-year + 2024
+full-year** on the top-10 USDT universe. Rationale: two full years
+across distinct macro regimes (2023 = post-FTX recovery / spot-ETF
+speculation; 2024 = halving + spot-ETF launch) provide regime-change
+evidence that an intra-year H1/H2 split cannot. Captured in
+[ADR-0027 § Backtest scenarios](../architecture/adr/0027-kronos-onnx-tract-integration.md#backtest-scenarios--2023--2024-full-year-operator-override).
 
 Following the convention from
 [`spec/anchors.toml`](../anchors.toml) lines 40–58 and the v1
 momentum cadence ([v1-cross-sectional-momentum](../v1-cross-sectional-momentum.md)).
 
-### BS-1 — Kronos overlay on momentum, BTC-USDT 2024 H1
+### BS-1 — Kronos overlay on momentum, top-10 USDT 2023 full year
 
 | Field            | Value |
 |---|---|
 | Universe         | Top-10 USDT spot (matches v1 universe) |
-| Date range       | 2024-01-01T00:00:00Z → 2024-06-30T23:59:59Z |
+| Date range       | 2023-01-01T00:00:00Z → 2023-12-31T23:59:59Z |
 | Granularity      | 1h bars |
 | Base strategy    | v1 cross-sectional momentum (unchanged config) |
-| Overlay          | `kronos_forecast` with base checkpoint, 512-ctx, next-bar horizon |
+| Overlay          | `kronos_momentum` with base checkpoint, 512-ctx, next-bar horizon |
 | Sampling seed    | `0xC0FFEE` (matches the project's existing fixture seed) |
-| Anchor name      | `top10-2024-h1-kronos-momentum` |
-| Comparison       | Side-by-side vs anchor `top10-2024-h1-momentum` (v1, no overlay) |
+| Anchor name      | `top10-2023-fy-kronos-momentum` |
+| Comparison       | Side-by-side vs existing anchor `top10-2023-1h-momentum` (v1, no overlay) — already locked at line 41–43 |
 
 **Pass criterion (v2.5 ship gate):** Kronos overlay delivers
 Sharpe ≥ v1 baseline Sharpe × 1.05 on this scenario (5% lift, modest
@@ -284,24 +395,25 @@ because we're consuming a pre-trained base model with no fine-tuning).
 If the lift is negative or < 1.05×, the v2.5.x fine-tuning brief
 opens automatically.
 
-### BS-2 — Kronos overlay on momentum, BTC-USDT 2024 H2
+### BS-2 — Kronos overlay on momentum, top-10 USDT 2024 full year
 
 | Field            | Value |
 |---|---|
 | Universe         | Top-10 USDT spot |
-| Date range       | 2024-07-01T00:00:00Z → 2024-12-31T23:59:59Z |
+| Date range       | 2024-01-01T00:00:00Z → 2024-12-31T23:59:59Z |
 | Granularity      | 1h bars |
 | Base strategy    | v1 cross-sectional momentum |
 | Overlay          | Same Kronos config as BS-1 |
 | Sampling seed    | `0xC0FFEE` |
-| Anchor name      | `top10-2024-h2-kronos-momentum` |
-| Comparison       | vs a new v1 H2 baseline anchor (locked at the same tester pass) |
+| Anchor name      | `top10-2024-fy-kronos-momentum` |
+| Comparison       | vs a new v1 baseline anchor `top10-2024-fy-momentum` (architect-preferred: lock at the same tester pass so verify-anchors stays fast). Tester confirms or routes back. |
 
-**Pass criterion:** Same 1.05× Sharpe lift rule on BS-2. Two
-scenarios across two halves of 2024 give the operator two
-out-of-sample regimes (H1 2024 was the post-halving rally, H2 was
-mixed). If BS-1 passes but BS-2 fails, the operator + analyst
-discuss regime sensitivity before promoting.
+**Pass criterion:** Same 1.05× Sharpe lift rule on BS-2. The
+two-full-years frame (2023 vs 2024) gives the operator two distinct
+regime windows — 2023 was post-FTX recovery and spot-ETF
+anticipation, 2024 was the halving + spot-ETF launch macro shift. If
+BS-1 passes but BS-2 fails, the operator + analyst discuss regime
+sensitivity before promoting.
 
 ### BS-3 — Anchor non-regression sweep (mandatory)
 
@@ -310,14 +422,19 @@ v2.5 build to prove non-regression (R6.1 + R6.2). This is the
 existing `scripts/verify_anchors.sh` invocation; tester gate. No new
 anchor locked here.
 
-### Date-range alternatives (operator may override)
+### Anchor count summary (post-v2.5 ship)
 
-If the operator prefers a different period (e.g. 2023 H1 + 2023 H2
-to match the original v1 anchors at lines 41–43 + 51–53), the
-analyst defers — the choice is operator preference, not technical.
-Default = 2024 because it's the most recent full year and includes
-the post-halving regime shift Kronos's pre-training likely saw less
-of.
+| Anchor | Status |
+|---|---|
+| 9 existing strategy anchors (lines 15–58) | byte-identical |
+| 2 existing `report-sample-*` anchors (lines 75–83) | byte-identical |
+| `top10-2023-fy-kronos-momentum` (BS-1) | NEW, locked at tester pass |
+| `top10-2024-fy-kronos-momentum` (BS-2) | NEW, locked at tester pass |
+| `top10-2024-fy-momentum` (BS-2 baseline) | NEW conditional, locked if architect-preferred path |
+
+Architect-preferred count post-v2.5: **14 anchors**. Tester may
+choose 13 (no separate 2024 baseline anchor; computed live each
+verify-anchors run) if the BS-2 baseline runtime stays acceptable.
 
 ## Implementation
 
@@ -332,10 +449,12 @@ _tester fills this._
 Tester runs at minimum:
 
 - `cargo test -p forecast` (new crate unit tests).
-- `cargo test -p strategy kronos_forecast` (strategy integration).
+- `cargo test -p strategy kronos_momentum` (strategy integration).
 - `backtest` skill with BS-1, BS-2, BS-3 scenarios above.
-- `scripts/verify_anchors.sh` → **`ANCHORS PASS (13/13)`** including
-  the 2 new `top10-2024-h*-kronos-momentum` anchors.
+- `scripts/verify_anchors.sh` → **`ANCHORS PASS (13/13)` or
+  `ANCHORS PASS (14/14)`** depending on whether the tester locks the
+  optional BS-2 v1-baseline anchor — including the 2 new
+  `top10-{2023,2024}-fy-kronos-momentum` anchors.
 - `spec-lint` and `verify-anchors` mandatory pre-tick gates.
 
 ## Open questions
@@ -532,6 +651,23 @@ recommended B. The analyst confirms.
 
 ## Changelog
 
+- 2026-05-16 (architect): Design section authored, replacing the
+  analyst's stub. Q4 (single-bar horizon), Q5 (signal-level overlay
+  on v1 momentum), Q6 (inherit v2 LLM record/replay), Q7 (2 new
+  anchors at ship; 11 existing stay byte-identical), Q8
+  (`CostEvent::Infra` with default-zero usd) resolved with rationale.
+  Operator decisions Q1/Q3/Q9/Q10-budget/Q11/Q12/Q13 recorded
+  verbatim. Backtest Scenarios updated per operator override:
+  BS-1 = 2023 full-year top-10 USDT (was 2024 H1); BS-2 = 2024
+  full-year top-10 USDT (was 2024 H2). New cross-cutting
+  architecture file [`spec/architecture/12-forecast-overlay.md`](../architecture/12-forecast-overlay.md)
+  documents the `ForecastProvider` trait, `ForecastOverlay` value
+  type, and signal-level overlay composition pattern.
+  [ADR-0027](../architecture/adr/0027-kronos-onnx-tract-integration.md)
+  ratifies the v2.5 instantiation (Option B ONNX + `tract`, base
+  102.3M, 2-day replay-cache extraction budget). Frontmatter:
+  `owner: analyst → architect`, `updated: 2026-05-16`. HANDOFF →
+  developer.
 - 2026-05-16 (analyst): promoted from `candidate` → `in-progress`.
   Authored Why, Requirements (R1–R9), Backtest Scenarios (BS-1 to
   BS-3), and the 13 open questions (Q1–Q13). Integration path

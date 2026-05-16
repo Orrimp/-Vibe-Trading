@@ -72,6 +72,10 @@ read separately:
   execution scaffolding (Q1–Q12).
 - [ADR-0019](adr/0019-v2-llm-strategy.md) — v2 LLM strategy
   foundation (Q4–Q11).
+- [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) — v2.5
+  Kronos foundation-model forecast overlay (ONNX + tract). The
+  cross-cutting overlay pattern lives in
+  [12-forecast-overlay.md](12-forecast-overlay.md).
 
 ## Cross-cutting rules formalised by the strategy clusters
 
@@ -91,6 +95,10 @@ extractions:
   `kind` values accumulated across the strategy ADRs above.
 
 ## Changelog
+- 2026-05-16 (architect): added ADR-0027 (v2.5 Kronos overlay)
+  reference + cross-link to the new
+  [12-forecast-overlay.md](12-forecast-overlay.md) cross-cutting
+  pattern file.
 - 2026-05-13 (architect): body migrated from `spec/architecture.md`
   § Strategy registry & hot-loading during Phase 1A Session 12.
   The lifecycle-integration prose was the only current-state

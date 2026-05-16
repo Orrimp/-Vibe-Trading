@@ -13,13 +13,22 @@ its feature folder.
 
 ## ML / DL
 
-_Architect: pick `candle` vs `burn` vs `tract`+ONNX once the first model
-is chosen. Default assumption: `candle` for prototyping, ONNX via `tract`
-for serving production-trained models._
+Default stack: `candle` for prototyping, ONNX via `tract` for serving
+production-trained models (named in
+[10-foundation-libraries.md § Numerics & ML](10-foundation-libraries.md#numerics--ml)).
 
-This section is a deliberate stub pending the first ML-touching feature.
-The default-stack rationale lives here so the architect doesn't re-debate
-it under deadline pressure when that feature lands.
+The first concrete consumer landed at v2.5 with the Kronos
+foundation-model forecast overlay — see
+[12-forecast-overlay.md](12-forecast-overlay.md) for the cross-cutting
+`ForecastProvider` trait + signal-level overlay composition pattern,
+and [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) for the
+v2.5-specific Kronos resolutions (Option B ONNX + `tract`, base
+102.3M, inherited record/replay determinism contract).
+
+Future DL/ML model integrations should follow the
+[12-forecast-overlay.md](12-forecast-overlay.md) pattern as the
+default shape (forecast → overlay → strategy), departing only via a
+new ADR with explicit rationale.
 
 ## LLM integration
 
@@ -43,6 +52,12 @@ new architects know to look there before re-debating "should we
 re-inject prior session learnings".
 
 ## Changelog
+- 2026-05-16 (architect): replaced the ML/DL deliberate-stub paragraph
+  with the v2.5 Kronos pointer (cross-link to ADR-0027 and the new
+  cross-cutting [12-forecast-overlay.md](12-forecast-overlay.md)
+  pattern file). The candle-vs-burn-vs-tract default rationale is
+  retained in [10-foundation-libraries.md § Numerics & ML](10-foundation-libraries.md#numerics--ml)
+  so this file no longer carries it twice.
 - 2026-05-16 (architect): replaced the dangling
   `../architecture.md#v2--llm-strategy-resolutions-...` anchor (which
   no longer exists after the Phase 1A compression of the monolith)

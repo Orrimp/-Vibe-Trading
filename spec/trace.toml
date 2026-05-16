@@ -93,14 +93,24 @@ state       = "shipped"
 
 [[req]]
 id          = "REQ-V25-KRONOS-001"
-title       = "v2.5 Kronos forecast overlay (candidate)"
+title       = "v2.5 Kronos forecast overlay — signal-level overlay on v1 momentum"
 feature     = "v25-kronos-forecast-overlay"
 product     = "spec/product.md"
-arch        = ["spec/architecture.md"]
-crates      = ["crates/llm", "crates/strategy"]
-tests       = []
-anchors     = []
-state       = "candidate"
+arch        = [
+  "spec/architecture/12-forecast-overlay.md",
+  "spec/architecture/adr/0027-kronos-onnx-tract-integration.md",
+  "spec/architecture/02-strategy-registry.md",
+  "spec/architecture/05-llm-and-reflection.md",
+  "spec/architecture/10-foundation-libraries.md",
+  "spec/architecture/adr/0019-v2-llm-strategy.md",
+  "spec/architecture/adr/0002-rng-chacha20.md",
+  "spec/architecture/adr/0003-decimal-money-math.md",
+  "spec/architecture/adr/0004-fractional-second-timestamps.md",
+]
+crates      = ["crates/forecast", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
+tests       = []   # TODO developer: link integration tests at M3/M5 completion
+anchors     = ["top10-2023-fy-kronos-momentum", "top10-2024-fy-kronos-momentum"]
+state       = "in-progress"
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────
