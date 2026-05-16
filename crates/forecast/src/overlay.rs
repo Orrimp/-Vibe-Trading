@@ -10,7 +10,7 @@
 //! 1. Read the base strategy's Signal.
 //! 2. Call ForecastProvider::forecast() with the OHLCV window.
 //! 3. Combine: agree+confident → boost; disagree+confident → dampen; flat → pass-through.
-//! 4. Emit one CostEvent::Infra { line: "kronos_inference", … }.
+//! 4. Emit one CostEvent::Infra { line: "forecast_inference", … }.
 //! 5. Emit one audit row carrying ForecastOverlay + correlation_id.
 //! ```
 //!
@@ -40,8 +40,8 @@ use trading_core::signal::SignalKind;
 ///
 /// - `base`: the consuming strategy's raw signal kind.
 /// - `overlay`: the `ForecastOverlay` from the provider.
-/// - `confidence_threshold`: typically `KronosConfig::overlay_confidence_threshold`
-///   (default `0.6`).
+/// - `confidence_threshold`: forecaster-specific overlay-confidence threshold
+///   (typically `0.6`; concrete forecasters expose their own config struct).
 #[must_use]
 pub fn combine(
     base: SignalKind,

@@ -8,14 +8,15 @@ updated: 2026-05-16
 # Forecast overlays — `ForecastProvider`, overlay composition, replay
 
 This section formalises the cross-cutting overlay-strategy pattern
-introduced at v2.5 for the Kronos foundation-model forecaster. It is
-the canonical entry point for any future DL/ML forecaster that emits a
-distributional forecast and modulates an existing strategy's signal.
+introduced at v2.5 for the DL forecaster slot. It is the canonical entry
+point for any future DL/ML forecaster that emits a distributional forecast
+and modulates an existing strategy's signal.
 
-The v2.5 strategy-specific decisions (model size, ONNX vs subprocess,
+The v2.5 strategy-specific decisions (model family, training framework,
 crate placement, audit-row shape) live in
-[ADR-0027](adr/0027-kronos-onnx-tract-integration.md). This file is
-the shape; the ADR is the v2.5 instantiation.
+[ADR-0028](adr/0028-v25-dl-forecast-overlay-candle.md) — which superseded
+the original Kronos-targeted [ADR-0027](adr/0027-kronos-onnx-tract-integration.md)
+on 2026-05-16. This file is the *shape*; the ADR is the *v2.5 instantiation*.
 
 ## What is a forecast overlay
 
@@ -42,15 +43,14 @@ not at the risk-clamp level. The reasons:
    risk-level overlay would post inside `risk::size_portfolio_target`
    and contaminate the risk-clamp event taxonomy.
 
-Risk-level forecast modulation (e.g. "Kronos forecast lowers max
-position size for the next N bars") is a deliberate v2.5.x follow-up
-question, not a v2.5 commitment.
+Risk-level forecast modulation (e.g. "forecast lowers max position size
+for the next N bars") is a deliberate v2.5.x follow-up question, not a
+v2.5 commitment.
 
 ## `ForecastProvider` trait
 
 A new trait sits alongside `LlmProvider` in shape, lives in
-`crates/forecast/`, and is consumed by `crates/strategy/` impls via
-DI:
+`crates/forecast/`, and is consumed by `crates/strategy/` impls via DI:
 
 ```rust
 #[async_trait]
@@ -74,9 +74,9 @@ inference); no `Network` / `Auth` (local). `BudgetExceeded` is for
 the future `CostEvent::Infra` budget gate.
 
 `ForecastRequest` carries the OHLCV window, sampling parameters
-(temperature, top-p, top-k, seed), and the model revision (a
-Hugging Face SHA pin per
-[v25-kronos-forecast-overlay/feature.md § R1.2](../v25-kronos-forecast-overlay/feature.md#r1--pre-trained-base-model-only)).
+(temperature, top-p, top-k, seed), and the `model_revision` — a
+SHA-256 hash over the training-run artifacts (weights + config +
+training data span) so every prediction is provenance-pinned.
 
 `ForecastResponse` carries the forecasted OHLCV samples (the full
 distribution, not just the mean), the model revision actually used,
@@ -94,7 +94,7 @@ pub struct ForecastOverlay {
     pub confidence: rust_decimal::Decimal,  // [0, 1]
     pub direction: Direction,               // Up / Down / Flat
     pub horizon_bars: u32,                  // 1 at v2.5
-    pub model_revision: String,             // HF SHA pin
+    pub model_revision: String,             // training-run SHA
     pub sampled_at: time::OffsetDateTime,   // 6-digit fractional seconds
 }
 ```
@@ -116,11 +116,11 @@ A consuming strategy implements `Strategy::tick()` as:
 ```text
 1. Read the base strategy's Signal (e.g. v1 momentum's bar-cross signal).
 2. Call ForecastProvider::forecast() with the OHLCV window for the bar.
-3. Combine: if Kronos.direction agrees with base.direction AND
+3. Combine: if forecast.direction agrees with base.direction AND
    confidence ≥ threshold → boost (Strong*); if disagrees → dampen
    (Hold or Weak*); if Flat → pass-through.
 4. Emit the modulated Signal.
-5. Emit one CostEvent::Infra { line: "kronos_inference", … }.
+5. Emit one CostEvent::Infra { line: "forecast_inference", … }.
 6. Emit one audit row carrying the ForecastOverlay + correlation_id.
 ```
 
@@ -135,12 +135,17 @@ either hits the cache (deterministic) or fails with
 `ForecastError::ReplayMiss` (per [ADR-0019](adr/0019-v2-llm-strategy.md)
 Q8's strict-replay-only rule, which v2.5 inherits wholesale).
 
-## Replay cache — shared with v2 LLM?
+## Replay cache — shared with v2 LLM
 
-The operator-locked decision is: **try to extract a generic
-`crates/replay-cache/` crate within a 2-dev-day budget; if the
-extraction exceeds budget, keep two separate caches and revisit at
-v2.5.x.**
+Operator-locked decision (carried forward across ADR-0027 → ADR-0028):
+**a generic `crates/replay-cache/` crate is extracted within a 2-dev-day
+budget; if the extraction exceeds budget, two separate caches are kept
+and revisited at v2.5.x.**
+
+Wave A bootstrap (2026-05-16) shipped the extracted crate. The DL
+forecaster consumes it via `namespace = "forecast"`. The v2 LLM
+migration to the shared crate is deferred to v2.5.x (schema-divergence
+concern documented in the Wave A commit).
 
 Both caches share the substantive shape:
 
@@ -148,20 +153,13 @@ Both caches share the substantive shape:
 - Cache key = SHA-256 over canonical JSON of `(model_revision, inputs,
   sampling params, seed)`.
 - `schema_version` migration column.
-- Atomic-write contract via the `cost` crate's `atomic_write` helper.
+- Atomic-write contract.
 - Body-SHA-256 indexed lookup.
 
-Per-cache differences are small: the LLM cache values are
-`ChatResponse` (text + tool calls); the Kronos cache values are
-`ForecastResponse` (numeric arrays). A `ReplayCache<K, V>` generic
-absorbs both with `K = body-SHA`, `V: Serialize + DeserializeOwned`.
-
-If the extraction succeeds, `crates/llm/src/replay.rs` migrates to
-the shared crate **in the same v2.5 brief** (architect-side decision,
-not a v2.5.x follow-up). If the extraction fails, the two caches stay
-duplicated; the architect documents the duplication in
-[ADR-0027](adr/0027-kronos-onnx-tract-integration.md) Consequences
-and opens a `replay-cache-extraction` follow-up brief.
+The LLM cache values are `ChatResponse` (text + tool calls); the
+forecaster cache values are `ForecastResponse` (numeric arrays). The
+generic `ReplayCache<K, V>` absorbs both with `K = body-SHA`,
+`V: Serialize + DeserializeOwned`.
 
 ## Audit-row shape — forecast emission
 
@@ -172,7 +170,7 @@ A forecast call posts ONE journal entry to the audit ledger
 |---|---|
 | `kind`            | `forecast_emitted` (new TEXT value, additive)      |
 | `correlation_id`  | UUID — joins forecast → realised trade close       |
-| `strategy_id`     | The consuming strategy's id (e.g. `kronos_momentum`) |
+| `strategy_id`     | The consuming strategy's id (e.g. `dl_overlay_momentum`) |
 | `symbol`          | Bar symbol                                         |
 | `payload_json`    | `ForecastOverlay` serde JSON + cache-hit/miss flag |
 | `posted_at`       | 6-digit fractional-second timestamp                |
@@ -182,9 +180,9 @@ A forecast call posts ONE journal entry to the audit ledger
 — no schema migration needed.
 
 The realised-outcome side of the correlation is a v2.5.x follow-up
-(`reflection-kronos-residual` brief): once a trade closes, the
-reflection-memory loop joins `forecast_emitted` rows to the
-trade's `pnl_attribution` row by `correlation_id` and computes the
+(`reflection-forecast-residual` brief): once a trade closes, the
+reflection-memory loop joins `forecast_emitted` rows to the trade's
+`pnl_attribution` row by `correlation_id` and computes the
 forecast-vs-realised OHLCV residual as a lesson signal.
 
 ## Cost telemetry — `CostEvent::Infra` only
@@ -193,41 +191,44 @@ Every forecast call posts:
 
 ```rust
 CostEvent::Infra {
-    line: "kronos_inference".to_string(),
+    line: "forecast_inference".to_string(),
     usd: estimated_kwh * config.energy_cost_per_kwh,  // 0 by default
     period: CostPeriod::PerCall,
 }
 ```
 
-`KronosConfig.energy_cost_per_kwh` defaults to zero, which keeps the
-fixture backtest reports byte-identical (the cost line is present in
-the report but the dollar amount is `$0.00` and the LLM-spend
-denominator stays unchanged — see
-[ADR-0019](adr/0019-v2-llm-strategy.md) Q11). Operators who want
+`energy_cost_per_kwh` defaults to zero, which keeps the fixture backtest
+reports byte-identical (the cost line is present in the report but the
+dollar amount is `$0.00` and the LLM-spend denominator stays unchanged
+— see [ADR-0019](adr/0019-v2-llm-strategy.md) Q11). Operators who want
 non-zero energy accounting opt in via config; their reports diverge
 from the fixture anchors deterministically, which is correct because
 operator-config divergence is per-operator-config (not project-wide).
 
 No new `CostEvent` variant. No new ledger account at default config.
 If the operator opts in to non-zero energy cost, the existing
-`expense:infra:kronos_inference` posting path (which `cost::CostEvent::Infra`
-already routes through per [ADR-0022](adr/0022-cost-telemetry-crate.md))
-absorbs it without further plumbing.
+`expense:infra:forecast_inference` posting path (which
+`cost::CostEvent::Infra` already routes through per
+[ADR-0022](adr/0022-cost-telemetry-crate.md)) absorbs it without
+further plumbing.
 
 ## Crate placement
 
-- `crates/forecast/` — `ForecastProvider` trait, `tract` glue, ONNX
-  loader, tokenizer, replay-cache wiring (or extraction shim into the
-  shared crate). New crate per
-  [v25-kronos-forecast-overlay/feature.md § R9.1](../v25-kronos-forecast-overlay/feature.md#r9--crate-placement).
-- `crates/strategy/src/kronos_momentum.rs` — the consuming strategy
-  impl. Calls into `crates/forecast/` through the trait.
+- `crates/forecast/` — `ForecastProvider` trait, overlay-composition
+  helpers, replay-cache wiring. **Model-agnostic** — the concrete
+  forecaster (e.g. candle-trained Transformer/TCN for v2.5) plugs in
+  here.
+- `crates/strategy/src/<consumer>.rs` — the consuming strategy impl
+  (one per consuming base-strategy). Calls into `crates/forecast/`
+  through the trait.
 - `crates/core/src/forecast.rs` — `ForecastOverlay` value type +
-  `Direction` enum. Lives in `core` next to `Signal` because both are
-  domain types crossed by every consumer.
-- **Not** `crates/llm/` (Kronos is not an LLM); **not** `crates/models/`
-  (which is the slot for `candle`-prototyped training, deliberately
-  separate from ONNX serving).
+  `Direction` enum + `OhlcvBar` + `SamplingParams`. Lives in `core`
+  next to `Signal` because both are domain types crossed by every
+  consumer.
+- **Not** `crates/llm/` (forecasters are not LLMs); **not**
+  `crates/models/` (which is the slot for `candle` model definitions
+  + training loops, deliberately separate from the `forecast` runtime
+  serving boundary).
 
 ## Cross-references
 
@@ -236,18 +237,26 @@ absorbs it without further plumbing.
 - [architecture/05-llm-and-reflection.md](05-llm-and-reflection.md) —
   the LLM-side precedent for replay caching and provider traits.
 - [architecture/10-foundation-libraries.md § Numerics & ML](10-foundation-libraries.md#numerics--ml)
-  — `tract` named as the ONNX serving default; this section is the
-  first concrete consumer.
-- [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) — the v2.5
-  Kronos instantiation of this pattern.
-- [v25-kronos-forecast-overlay/feature.md](../v25-kronos-forecast-overlay/feature.md)
-  — the analyst's brief and the locked operator decisions.
+  — `candle` named as the prototyping framework; v2.5 is its first
+  concrete consumer.
+- [ADR-0028](adr/0028-v25-dl-forecast-overlay-candle.md) — the active
+  v2.5 instantiation of this pattern (small custom Transformer/TCN
+  trained in `candle`).
+- [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) — superseded
+  Kronos-targeted ADR (preserved for archaeology).
+- [v25-dl-forecast-overlay/feature.md](../v25-dl-forecast-overlay/feature.md)
+  — the active v2.5 brief.
 
 ## Changelog
+- 2026-05-16 (orchestrator): genericised after the Kronos→candle pivot
+  (ADR-0028 supersedes ADR-0027). Removed all Kronos-specific clauses
+  from the section; updated cost-event `line` from `"kronos_inference"`
+  to `"forecast_inference"`; updated crate-placement notes to flag
+  `crates/models/` as the future home for `candle` training loops.
+  The model-agnostic design (signal-level overlay, `ForecastProvider`
+  trait, replay-cache, audit-row shape) is unchanged.
 - 2026-05-16 (architect): file created. Captures the signal-level
-  overlay pattern (Q13), `ForecastProvider` trait shape (Q10),
-  shared `ReplayCache<K, V>` extraction policy with 2-day budget
-  (operator-locked Q10), `CostEvent::Infra` shape (Q8),
-  `ForecastOverlay` value type, audit-row shape, and crate placement
-  for v2.5. The v2.5-specific Kronos resolutions (model size,
-  ONNX path, anchor lock) are in ADR-0027.
+  overlay pattern, `ForecastProvider` trait shape, shared
+  `ReplayCache<K, V>` extraction policy with 2-day budget,
+  `CostEvent::Infra` shape, `ForecastOverlay` value type, audit-row
+  shape, and crate placement for v2.5.

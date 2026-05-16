@@ -92,13 +92,14 @@ anchors     = []
 state       = "shipped"
 
 [[req]]
-id          = "REQ-V25-KRONOS-001"
-title       = "v2.5 Kronos forecast overlay — signal-level overlay on v1 momentum"
-feature     = "v25-kronos-forecast-overlay"
+id          = "REQ-V25-DL-001"
+title       = "v2.5 DL forecast overlay — small custom Transformer/TCN trained in candle, signal-level overlay on v1 momentum"
+feature     = "v25-dl-forecast-overlay"
 product     = "spec/product.md"
 arch        = [
   "spec/architecture/12-forecast-overlay.md",
-  "spec/architecture/adr/0027-kronos-onnx-tract-integration.md",
+  "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md",
+  "spec/architecture/adr/0027-kronos-onnx-tract-integration.md",  # superseded, preserved
   "spec/architecture/02-strategy-registry.md",
   "spec/architecture/05-llm-and-reflection.md",
   "spec/architecture/10-foundation-libraries.md",
@@ -107,10 +108,10 @@ arch        = [
   "spec/architecture/adr/0003-decimal-money-math.md",
   "spec/architecture/adr/0004-fractional-second-timestamps.md",
 ]
-crates      = ["crates/forecast", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
-tests       = []   # TODO developer: link integration tests at M3/M5 completion
-anchors     = ["top10-2023-fy-kronos-momentum", "top10-2024-fy-kronos-momentum"]
-state       = "in-progress"
+crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
+tests       = []   # TODO developer: link integration tests at training-loop completion
+anchors     = ["top10-2023-fy-dl-overlay-momentum", "top10-2024-fy-dl-overlay-momentum"]
+state       = "draft"
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────

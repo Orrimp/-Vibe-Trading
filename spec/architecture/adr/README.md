@@ -99,6 +99,13 @@ finalisation.
   overlay — ONNX + `tract` integration, signal-level overlay on v1
   momentum). Cross-cutting overlay pattern landed in new section
   file `spec/architecture/12-forecast-overlay.md`.
+- 2026-05-16 (orchestrator): ADR-0028 supersedes ADR-0027 after Wave A
+  bootstrap surfaced (a) Kronos lives outside `transformers`,
+  (b) two-model architecture requires Rust-side sampling-loop
+  reimplementation, (c) crypto-fit was never validated. Operator
+  pivoted v2.5 to "train small custom Transformer/TCN in `candle`".
+  Wave A crates (forecast / replay-cache / core forecast types) are
+  model-agnostic and preserved; only Kronos-specific files removed.
 - 2026-05-13 (architect): ADRs 0021-0026 added (Foundation libraries
   substantive decisions) during Session 11. iced UI body migrated to
   06-ui-and-cockpit.md. All architectural decisions now in ADRs.

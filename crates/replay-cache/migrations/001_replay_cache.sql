@@ -14,7 +14,7 @@
 CREATE TABLE IF NOT EXISTS replay_cache (
     request_hash      TEXT PRIMARY KEY NOT NULL,   -- 64-char SHA-256 hex
     schema_version    INTEGER NOT NULL,            -- 1 at v2.5
-    namespace         TEXT NOT NULL,               -- e.g. "llm", "kronos" — discriminator
+    namespace         TEXT NOT NULL,               -- e.g. "llm", "forecast" — discriminator
     request_json      TEXT NOT NULL,               -- canonical JSON of request params (debug surface)
     response_json     TEXT NOT NULL,               -- serde_json of V (the response type)
     recorded_at       TEXT NOT NULL               -- 6-digit fractional ISO (RFC-3339)

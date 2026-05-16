@@ -1,4 +1,4 @@
-//! Forecast overlay domain types (v2.5 — Kronos).
+//! Forecast overlay domain types (v2.5 — DL forecaster, model-agnostic).
 //!
 //! These types live in `crates/core` next to `Signal` because they are
 //! domain primitives crossed by every consumer: `crates/forecast/`,
@@ -18,7 +18,7 @@
 //!
 //! Cross-references:
 //! - [`spec/architecture/12-forecast-overlay.md`](../../../spec/architecture/12-forecast-overlay.md)
-//! - [`spec/v25-kronos-forecast-overlay/feature.md`](../../../spec/v25-kronos-forecast-overlay/feature.md)
+//! - [`spec/v25-dl-forecast-overlay/feature.md`](../../../spec/v25-dl-forecast-overlay/feature.md)
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -89,10 +89,10 @@ pub struct OhlcvBar {
     pub ts: OffsetDateTime,
 }
 
-/// Sampling parameters for the Kronos forecaster.
+/// Sampling parameters for autoregressive forecasters (temperature / top-p / top-k).
 ///
 /// All parameters are part of the canonical-JSON cache key
-/// (including `sampling_seed`) per ADR-0027 Q6.
+/// (including `sampling_seed`) per the determinism contract.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SamplingParams {
     /// Softmax temperature. `1.0` = unscaled; `0.0` = argmax.

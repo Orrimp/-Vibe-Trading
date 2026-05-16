@@ -1,4 +1,14 @@
-# Kronos foundation model — pre-analyst evaluation (2026-05-10)
+# Kronos foundation model — pre-analyst evaluation (2026-05-10) [SUPERSEDED]
+
+> **Superseded 2026-05-16 by [ADR-0028](../architecture/adr/0028-v25-dl-forecast-overlay-candle.md).**
+> Kronos was investigated during Wave A bootstrap and dropped after surfacing
+> three load-bearing problems: (1) lives outside `transformers` (custom model
+> class required); (2) two-model architecture (KronosTokenizer + Kronos) with
+> Python sampling loop, not a single ONNX graph; (3) crypto-fit unvalidated.
+> v2.5 pivoted to "train small custom Transformer/TCN in `candle`" per the
+> reframed project goal ("real, working, auditable agent; operator learns
+> by building it"). This dev-note is preserved verbatim as a "what-not-to-do"
+> reference for the new v2.5 analyst.
 
 This is a **forward-compatibility breadcrumb** for the eventual analyst
 who picks up the v2.5 DL-forecaster strategy slot

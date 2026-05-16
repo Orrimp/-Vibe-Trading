@@ -801,7 +801,7 @@ visible UI behaviour, so it's exempt.
   - Created [`spec/cockpit-app-bundle/feature.md`](../cockpit-app-bundle/feature.md)
     (`status: candidate`, `owner: pending-analyst`, version `0.1.0`)
     matching the shape of
-    [`spec/v25-kronos-forecast-overlay/feature.md`](../v25-kronos-forecast-overlay/feature.md):
+    [`spec/v25-dl-forecast-overlay/feature.md`](../v25-dl-forecast-overlay/feature.md):
     seven open questions (tool choice, per-bin vs single bundle,
     icon-rasterisation pipeline, signing/notarisation, CI gate,
     Linux+Windows surface, determinism contract), promotion
@@ -1438,7 +1438,7 @@ arithmetic is a derived-state helper, not a widget edit)._
     (`## macOS dock icon limitation (T2031, M6.2)`); created
     `spec/cockpit-app-bundle/feature.md` (status: candidate,
     owner: pending-analyst) matching the
-    `spec/v25-kronos-forecast-overlay/feature.md` shape — seven
+    `spec/v25-dl-forecast-overlay/feature.md` shape — seven
     open questions for the analyst, promotion checklist, full
     cross-reference set back to this entry. Acceptance grep + ls
     both green. No runtime change.

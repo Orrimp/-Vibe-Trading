@@ -1,15 +1,25 @@
 ---
 adr: 0027
-title: v2.5 — Kronos foundation-model forecast overlay (ONNX + tract)
-status: accepted
+title: v2.5 — Kronos foundation-model forecast overlay (ONNX + tract) [SUPERSEDED]
+status: superseded
 date: 2026-05-16
 supersedes: none
-superseded-by: none
+superseded-by: 0028
 ---
 
-# ADR-0027: v2.5 — Kronos foundation-model forecast overlay (ONNX + tract)
+# ADR-0027: v2.5 — Kronos foundation-model forecast overlay (ONNX + tract) — SUPERSEDED
 
-## Context
+> **Superseded 2026-05-16 by [ADR-0028](0028-v25-dl-forecast-overlay-candle.md).**
+> Reason: discovery during Wave A bootstrap that Kronos (a) lives outside
+> `transformers` so requires vendoring upstream Python code, (b) is a two-model
+> setup (tokenizer + transformer) where the autoregressive sampling loop is
+> Python, not graph, requiring a re-implemented sampling loop in Rust, and
+> (c) was never validated against crypto K-line data despite the assumed
+> domain fit. Operator pivoted v2.5 to "train a small custom Transformer/TCN
+> in `candle`" — see ADR-0028 for the new decision and rationale. The
+> historical Kronos analysis below is preserved for archaeology.
+
+## Context (HISTORICAL — preserved for archaeology)
 
 v2.5 promotes the [Kronos](https://github.com/shiyu-coder/Kronos)
 foundation model from candidate to in-progress per

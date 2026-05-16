@@ -5,7 +5,7 @@
 //! `ReplayCache<K, V>` is a content-addressed key-value store backed by
 //! SQLite in WAL mode. It is the shared primitive extracted from the v2 LLM
 //! record/replay pattern (crates/llm/src/replay.rs) and reused by
-//! crates/forecast/ for Kronos inference caching.
+//! crates/forecast/ for DL forecaster inference caching.
 //!
 //! ## Cache key
 //!

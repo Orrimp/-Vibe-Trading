@@ -127,8 +127,8 @@ app packaging" (this candidate).
   — the pre-rasterised 64×64 RGBA blob already shipped for the
   iced-side icon path (precedent for "pre-rasterise once, ship in
   repo").
-- [`spec/v25-kronos-forecast-overlay/feature.md`](../v25-kronos-forecast-overlay/feature.md)
-  — sibling `status: candidate` stub; same shape.
+- [`spec/v25-dl-forecast-overlay/feature.md`](../v25-dl-forecast-overlay/feature.md)
+  — sibling `status: draft` stub (v2.5 DL forecaster brief).
 
 ## Changelog
 

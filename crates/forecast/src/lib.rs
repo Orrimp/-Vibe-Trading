@@ -1,4 +1,4 @@
-//! `crates/forecast` — ForecastProvider trait + KronosForecaster stub.
+//! `crates/forecast` — model-agnostic `ForecastProvider` trait + overlay logic.
 //!
 //! ## Overview
 //!
@@ -7,28 +7,21 @@
 //! - [`ForecastProvider`]: the async trait all forecast backends implement.
 //!   Shape mirrors `LlmProvider` but narrower (one method, no streaming,
 //!   no tool-use).
-//! - [`KronosForecaster`]: stub impl for the Kronos ONNX-backed provider.
-//!   M2/M3 owns the actual `tract` wiring; this stub compiles and holds the
-//!   trait contract.
+//! - [`overlay`]: pure-function combine logic for fusing a base-strategy
+//!   signal with a forecast overlay.
 //!
-//! ## Crate placement
-//!
-//! Per `spec/architecture/12-forecast-overlay.md § Crate placement`:
-//! - `ForecastProvider` + `ForecastOverlay` → `crates/forecast/` (this crate)
-//!   and `crates/core/` (value types).
-//! - `KronosForecaster` → `crates/forecast/src/kronos.rs` (stub here; full
-//!   impl in M2/M3).
-//! - Consuming strategy → `crates/strategy/src/kronos_momentum.rs` (M5).
+//! The concrete forecaster implementation lands per-feature. v2.5 targets
+//! a small custom Transformer/TCN trained in `candle` (the project's named
+//! prototyping framework per CLAUDE.md); the trait + overlay scaffolding
+//! here are intentionally model-agnostic.
 //!
 //! Cross-references:
-//! - `spec/architecture/12-forecast-overlay.md`
-//! - `spec/architecture/adr/0027-kronos-onnx-tract-integration.md`
-//! - `spec/v25-kronos-forecast-overlay/tasks.md` T-M1-3
+//! - `spec/architecture/12-forecast-overlay.md` — overlay design pattern.
+//! - `spec/v25-dl-forecast-overlay/feature.md` — current v2.5 brief.
 
 use async_trait::async_trait;
 use trading_core::forecast::{ForecastError, ForecastRequest, ForecastResponse};
 
-pub mod kronos;
 pub mod overlay;
 
 /// The async trait all forecast backends implement.

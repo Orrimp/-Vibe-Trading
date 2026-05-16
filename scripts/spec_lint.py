@@ -60,7 +60,7 @@ VALID_STATUSES = {
     "deprecated",
     # Project-specific additions observed in spec/ on 2026-05-13:
     "roadmap",   # multi-phase initiatives with phases under planning (lumen-design-adoption)
-    "candidate", # features being evaluated for inclusion (cockpit-app-bundle, iced-ecosystem-evaluation, v25-kronos-forecast-overlay)
+    "candidate", # features being evaluated for inclusion (cockpit-app-bundle, iced-ecosystem-evaluation)
     "active",    # in-progress phase of a multi-phase initiative (lumen-design-adoption sub-phases)
     "reserved",  # placeholder phase scheduled but not yet started (lumen phase-6-assistant-slot)
 }
