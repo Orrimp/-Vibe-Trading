@@ -241,8 +241,10 @@ mod tests {
         let agent_toml = td.path().join("agent.toml");
         fs::write(&agent_toml, "").unwrap();
 
-        let mut cfg = LlmConfig::default();
-        cfg.default_provider = "ollama".to_string();
+        let cfg = LlmConfig {
+            default_provider: "ollama".to_string(),
+            ..Default::default()
+        };
         let keys = load_keys_from_path(&cfg, &agent_toml).expect("ollama works without overlay");
         assert!(keys.inner.is_empty());
     }

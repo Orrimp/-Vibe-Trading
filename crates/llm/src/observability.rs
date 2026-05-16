@@ -6,6 +6,7 @@
 //! - increments two `metrics` counters labeled by role:
 //!   - `llm_cache_input_tokens_total{role}` — every billed input token.
 //!   - `llm_cache_hit_tokens_total{role}` — the subset served from cache.
+//!
 //!   The agent's `metrics-exporter-prometheus` exporter (T27) surfaces
 //!   them at `/metrics` as a counter pair the cockpit's Prometheus scrape
 //!   reads directly — no additional renderer-side ratio math needed.

@@ -311,10 +311,10 @@ pub(crate) fn parse_response(
         .ok_or_else(|| LlmError::InvalidResponse("openai response had no choices".into()))?;
 
     let mut content: Vec<ContentBlock> = Vec::new();
-    if let Some(text) = choice.message.content {
-        if !text.is_empty() {
-            content.push(ContentBlock::Text(text));
-        }
+    if let Some(text) = choice.message.content
+        && !text.is_empty()
+    {
+        content.push(ContentBlock::Text(text));
     }
     let had_tool_calls = choice.message.tool_calls.is_some();
     if let Some(calls) = choice.message.tool_calls {

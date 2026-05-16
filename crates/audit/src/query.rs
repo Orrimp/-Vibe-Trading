@@ -213,13 +213,16 @@ pub async fn cache_hit_ratio_since(
     if sum_in == 0 {
         return Ok(Decimal::ZERO);
     }
-    // u128 → Decimal: use `try_from` since `Decimal` only impls
-    // `From<u64>`/`From<i64>`. Saturate at u64::MAX for the (operator-
-    // unreachable) 18-quintillion-token case.
-    let sum_in_dec = Decimal::try_from(sum_in.min(u128::from(u64::MAX)) as u64)
-        .map_err(|e| LedgerError::Database(format!("cache_hit_ratio_since: sum_in: {e}")))?;
-    let sum_cached_dec = Decimal::try_from(sum_cached.min(u128::from(u64::MAX)) as u64)
-        .map_err(|e| LedgerError::Database(format!("cache_hit_ratio_since: sum_cached: {e}")))?;
+    // u128 → Decimal: `Decimal` impls `From<u64>` (infallible). Saturate at
+    // u64::MAX for the (operator-unreachable) 18-quintillion-token case, then
+    // convert via the infallible `u64::try_from` (succeeds because the min
+    // already guarantees the value fits).
+    let sum_in_u64 = u64::try_from(sum_in.min(u128::from(u64::MAX)))
+        .unwrap_or(u64::MAX);
+    let sum_in_dec = Decimal::from(sum_in_u64);
+    let sum_cached_u64 = u64::try_from(sum_cached.min(u128::from(u64::MAX)))
+        .unwrap_or(u64::MAX);
+    let sum_cached_dec = Decimal::from(sum_cached_u64);
     Ok(sum_cached_dec / sum_in_dec)
 }
 
@@ -433,6 +436,11 @@ async fn parse_fill_view_from_description(
 // the writer is never called and this reader naturally returns
 // `Ok(vec![])` against the empty `strategy_signals` table (V11c).
 
+// Tuple shape for `recent_signals`: (id, ts, strategy_id, side,
+// intended_qty_str, was_clamped, clamp_reason). Module-level to avoid
+// `clippy::items_after_statements` inside the async fn body.
+type SignalRow = (String, String, String, String, String, i64, Option<String>);
+
 /// chart-buy-sell-emphasis v1.9 (T2015) — return every `SignalView` for
 /// the supplied `(venue, symbol)` inside the half-open interval
 /// `[since, until)`, newest-first.
@@ -482,7 +490,6 @@ pub async fn recent_signals(
     // Tuple shape: (id, ts, strategy_id, side, intended_qty_str,
     // was_clamped, clamp_reason). Symbol and venue are filtered in the
     // WHERE; we don't need them back in the projection.
-    type SignalRow = (String, String, String, String, String, i64, Option<String>);
     let rows: Vec<SignalRow> = sqlx::query_as(
         "SELECT id, ts, strategy_id, side, intended_qty_str, was_clamped, clamp_reason \
          FROM strategy_signals \
@@ -1799,18 +1806,18 @@ pub async fn open_positions_at(
         // Any other value indicates a writer or renderer regression; emit
         // `tracing::warn!` and continue with the description-parsed symbol.
         // Never raises — description-parse is authoritative (Q4 primary).
-        if let Some(ref account_id) = position_account_id {
-            if account_id.starts_with("assets:position:") {
-                let expected_per_pair = format!("assets:position:{symbol}");
-                if account_id != "assets:position:BTC" && account_id.as_str() != expected_per_pair {
-                    tracing::warn!(
-                        target: "audit::query",
-                        account_id = %account_id,
-                        parsed_symbol = %symbol,
-                        "open_positions_at: account_id / description-symbol mismatch; \
-                         falling back to description-parsed symbol (Q4)"
-                    );
-                }
+        if let Some(ref account_id) = position_account_id
+            && account_id.starts_with("assets:position:")
+        {
+            let expected_per_pair = format!("assets:position:{symbol}");
+            if account_id != "assets:position:BTC" && account_id.as_str() != expected_per_pair {
+                tracing::warn!(
+                    target: "audit::query",
+                    account_id = %account_id,
+                    parsed_symbol = %symbol,
+                    "open_positions_at: account_id / description-symbol mismatch; \
+                     falling back to description-parsed symbol (Q4)"
+                );
             }
         }
 

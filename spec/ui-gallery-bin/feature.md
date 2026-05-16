@@ -1,11 +1,23 @@
 ---
 slug: ui-gallery-bin
-version: 0.1.0
-status: in-progress
+version: 0.1.0-partial-terminal
+status: shipped
 owner: analyst
 predecessor: ui-test-harness-bootstrap v0.1.0
-updated: 2026-05-15
+successor: ui-gallery-table-cell
+updated: 2026-05-16
 ---
+
+> **Superseded for V5+ by
+> [`ui-gallery-table-cell`](../ui-gallery-table-cell/feature.md)
+> (2026-05-16).** This feature shipped as **v0.1-partial, terminal**:
+> V1–V4 green (build, smoke, widget exhaustiveness, mod-rs parity);
+> V5+ blocked by a `tiny-skia` `Build quad rectangle` panic bisected
+> to `GALLERY_CELLS[7]` (strategies cell) in
+> `widget::table::Table`. Operator-accepted as terminal per
+> [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+> row A4. The remaining 39 task boxes have been moved to
+> the successor; do **not** tick them in this folder.
 
 # Widget gallery binary (`ui-gallery-bin`) — v0.1
 
@@ -685,6 +697,39 @@ The analyst surfaces these for the architect's Design pass. All are
 
 ## Changelog
 
+- 2026-05-16 (analyst, Wave 2a spec-hygiene): frontmatter
+  `status: in-progress → shipped`; `version: 0.1.0 →
+  0.1.0-partial-terminal`; added `successor: ui-gallery-table-cell`
+  field and a top-of-file supersession note. Operator decision per
+  [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+  row A4: accept v0.1-partial as **terminal** (V1–V4 green; V5+
+  blocked on `tiny-skia` `Build quad rectangle` panic bisected to
+  `GALLERY_CELLS[7]`). The 39 open tasks in
+  [tasks.md](tasks.md) were marked `[deferred to
+  ui-gallery-table-cell]` (not deleted — kept for trace). Successor
+  brief opened at
+  [`spec/ui-gallery-table-cell/feature.md`](../ui-gallery-table-cell/feature.md).
+  No edits to `reports/`, `anchors.toml`, or `trace.toml`.
+  - **Precedent proposal — `shipped-partial` status enum.** The
+    skill's status contract
+    ([`.claude/skills/spec-update/SKILL.md`](../../.claude/skills/spec-update/SKILL.md))
+    today reads `draft | in-progress | shipped | deprecated`; the
+    repo has informally added `candidate | reserved | roadmap`
+    (see `grep -rh '^status:' spec/*/feature.md`), and this
+    feature's `tasks.md` previously used the literal token
+    `v0.1-partial`. **None of those are part of the enum.** To
+    name the "shipped-but-not-feature-complete-and-a-successor-
+    owns-the-rest" case without inventing a new token in the
+    `status:` field, this edit takes the conservative route:
+    `status: shipped`, body header carries the supersession
+    note, and `version` carries the `-partial-terminal` modifier.
+    The architect / operator may choose to formally promote
+    `shipped-partial` into the enum at the next
+    `spec-update` skill revision; until then, future partial
+    finals should follow the convention applied here (shipped +
+    versioned `-partial-terminal` modifier + body header
+    supersession note + explicit successor brief). Tracked as an
+    open precedent question in the Wave-2a report.
 - 2026-05-15 (analyst): initial draft. Cycle-1 item C of the locked
   rollout from
   [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](../dev-notes/ui-testability-deep-dive-2026-05-15.md)

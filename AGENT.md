@@ -105,9 +105,12 @@ whenever their tasks are independent. Concrete patterns:
    side renders against `ui::fixtures` until the developer's real data
    source lands.
 
-5. **Tester fan-out.** Run `rust-validate`, `cargo test`, `rust-bench`, and
-   `backtest` as parallel sub-agents; the main tester merges their outputs
-   into a single report.
+5. **Tester fan-out.** Run `rust-validate`, `cargo test`, `rust-bench`,
+   `backtest`, and `spec-lint` as parallel sub-agents; the main tester merges
+   their outputs into a single report. `spec-lint` is mandatory at the
+   tester pre-VERDICT step — exit 0 is required for `VERDICT → PASS`.
+   Non-zero routes `HANDOFF → analyst` (or `developer` for source-path
+   violations) with the lint output attached.
 
 6. **Presenter is sequential, not fanned out.** Spawn the presenter
    AFTER the tester emits `VERDICT → PASS`. There is no presenter
@@ -328,11 +331,26 @@ unless operating without sub-agents.
 Small utilities that several agents share. Use them instead of inline
 Python or hand-typed pipelines.
 
-| Script                         | Purpose                                                  | Caller                       |
-|--------------------------------|----------------------------------------------------------|------------------------------|
-| `scripts/hash_report.py`       | Body-only SHA-256 of a YAML-front-mattered report file   | tester, developer, architect |
-| `scripts/verify_anchors.sh`    | Verify all 9 anchors in `spec/anchors.toml`              | tester (mandatory gate)      |
-| `scripts/precheck.sh`          | Stdlib-name clash check + task-tick summary              | architect, orchestrator      |
+| Script                                  | Purpose                                                       | Caller                       |
+|-----------------------------------------|---------------------------------------------------------------|------------------------------|
+| `scripts/hash_report.py`                | Body-only SHA-256 of a YAML-front-mattered report file        | tester, developer, architect |
+| `scripts/verify_anchors.sh`             | Verify all 9 anchors in `spec/anchors.toml`                   | tester (mandatory gate)      |
+| `scripts/precheck.sh`                   | Stdlib-name clash check + task-tick summary                   | architect, orchestrator      |
+| `scripts/spec_brief.py`                 | Generate per-feature curated context brief for sub-agent prompts | orchestrator                 |
+| `scripts/spec_lint.py`                  | Mechanical lint of `spec/` (frontmatter, trace, hygiene)      | spec-auditor (via `spec-lint` skill) |
+| `scripts/check_presentation.sh`         | Pre-tick guard for `spec/<slug>/presentations/*.md` shape     | presenter (via `present-results` skill) |
+| `scripts/capture_screenshot.sh`         | Darwin `screencapture` wrapper for cockpit/binary output      | tester, presenter (via `capture-screenshot` skill) |
+| `scripts/pre_stage_anchors.sh`          | Stage candidate anchor SHAs from a backtest run               | tester, architect (anchor refresh) |
+| `scripts/prune_backtest_duplicates.sh`  | Collapse duplicate backtest reports in `spec/*/reports/`      | tester (via `rust-test`, `verify-anchors`, `backtest` skills) |
+| `scripts/check_no_secrets_in_llm_artifacts.sh` | Guard: LLM artifacts contain no secrets                | tester, regression gate      |
+| `scripts/check_no_clocks_in_ui_tests.sh`| Guard: UI tests have no wall-clock dependency                 | tester, regression gate      |
+
+For the orchestrator-only `scripts/orch_*` set (cursor automation,
+screencapture, cockpit on/off, supplement-log, determinism check, TCC
+probe, PNG crop), see
+[`spec/dev-notes/orchestrator-tooling-2026-05-12.md`](spec/dev-notes/orchestrator-tooling-2026-05-12.md).
+Sub-agents must NOT call those — they wrap capabilities scoped to the
+orchestrator's lane.
 
 `spec/anchors.toml` is the single source of truth for locked anchor SHAs
 — never duplicate hashes into feature/task/report files. Update only via
@@ -399,6 +417,23 @@ incident and a concrete tooling gate:
    (see `spec/cockpit-render-regression/feature.md` for the
    incident). This rule closes that gap.
 
+7. **Spec-shape pre-tick gate — `spec-lint`.** Every feature's tester run
+   AND every presenter pre-tick MUST end with a clean
+   [`spec-lint`](.claude/skills/spec-lint/SKILL.md) (categories
+   `dead-link`, `missing-frontmatter`, `orphan-feature`, `bad-anchor`,
+   `unreferenced-anchor`, `shipped-no-tests`, `trace-broken-path`,
+   `adr-not-registered`). Invocation: `uv run scripts/spec_lint.py`
+   (PEP-723 header pins Python ≥ 3.11; macOS system Python 3.9 will
+   fail). Exit `0` → continue. Non-zero → block the verdict / pre-tick
+   and route `HANDOFF → analyst` (link / frontmatter / orphan
+   violations) or `HANDOFF → developer` (source-path violations under
+   `trace-broken-path`). Pairs with `verify-anchors` (content hashes)
+   to give the project two mechanical gates: shape stability here,
+   content stability there. *Why:* the 2026-05-16 spec-hygiene
+   remediation surfaced 708 dead intra-spec links and 11 shipped-
+   features-without-test-reports — both classes are mechanically
+   detectable, and without a wired-in gate they re-accumulate.
+
 ## Guardrails
 
 - **Never** let an agent silently diverge from `spec/architecture.md`. Drift
@@ -423,6 +458,7 @@ the orchestrator has, the sub-agent must escalate, not rationalize.
 |---|---|---|
 | `cargo fmt`, `cargo clippy`, `cargo test` (pure Rust) | sub-agent | yes |
 | `verify_anchors.sh` | sub-agent | yes |
+| `spec_lint.py` (via `uv run` or `python3 ≥ 3.11`) | sub-agent | yes |
 | `rust-build`, `rust-validate` skills | sub-agent | yes |
 | `spec-update` writes to `spec/<slug>/` | sub-agent | yes |
 | `cargo run --bin cockpit` with a live window | **orchestrator** | **no** |

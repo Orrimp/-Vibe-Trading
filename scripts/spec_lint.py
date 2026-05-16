@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# ///
 """spec_lint.py — structural integrity check for spec/.
 
 Companion to scripts/verify_anchors.sh (which checks content hashes).
@@ -9,9 +12,12 @@ Exit code = number of violation CATEGORIES that triggered (0 = clean).
 Pass --all to print every violation regardless of category count.
 
 Usage:
-    scripts/spec_lint.py                   # whole spec/ tree
-    scripts/spec_lint.py spec/<slug>       # restrict to one folder
-    scripts/spec_lint.py --all             # verbose
+    uv run scripts/spec_lint.py            # whole spec/ tree (preferred)
+    uv run scripts/spec_lint.py spec/<slug>  # restrict to one folder
+    uv run scripts/spec_lint.py --all      # verbose
+
+System Python (3.11+) also works:
+    python3 scripts/spec_lint.py
 """
 from __future__ import annotations
 
@@ -22,10 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-try:
-    import tomllib  # Python 3.11+
-except ImportError:  # pragma: no cover
-    import tomli as tomllib  # type: ignore
+import tomllib  # Python 3.11+ (enforced by PEP-723 header above)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEC_DIR = REPO_ROOT / "spec"

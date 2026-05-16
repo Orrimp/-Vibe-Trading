@@ -323,10 +323,10 @@ fn events_block<'a>(model: &'a Cockpit, mode: ThemeMode) -> iced::Element<'a, Me
     let mut col = Column::new().spacing(space::XS);
     let mut count = 0usize;
     for ev in &model.strategies_recent_events {
-        if let Some(selected) = &model.selected_strategy {
-            if ev.strategy_id.as_ref() != Some(selected) {
-                continue;
-            }
+        if let Some(selected) = &model.selected_strategy
+            && ev.strategy_id.as_ref() != Some(selected)
+        {
+            continue;
         }
         if count >= 50 {
             break;

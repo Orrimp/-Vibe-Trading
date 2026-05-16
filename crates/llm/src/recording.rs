@@ -77,15 +77,15 @@ impl<Inner: LlmProvider> RecordingProvider<Inner> {
     /// - [`LlmError::Provider`] when the SQLite file cannot be opened
     ///   OR the migration fails.
     pub async fn open(inner: Inner, path: &Path) -> Result<Self, LlmError> {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| LlmError::Provider {
-                        provider: ProviderKind::Other("replay".to_string()),
-                        message: format!("create parent dir {}: {e}", parent.display()),
-                    })?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| LlmError::Provider {
+                    provider: ProviderKind::Other("replay".to_string()),
+                    message: format!("create parent dir {}: {e}", parent.display()),
+                })?;
         }
 
         let opts = SqliteConnectOptions::new()

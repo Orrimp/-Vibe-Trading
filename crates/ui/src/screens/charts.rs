@@ -352,6 +352,9 @@ fn volume_tile<'a>(totals: &WindowVolumeTotals, mode: ThemeMode) -> crate::Eleme
         mode,
     );
 
+    #[allow(clippy::cast_precision_loss)]
+    // space::M = 12, which is exactly representable as f32
+    let padding_m = space::M as f32;
     Container::new(
         Row::new()
             .spacing(space::M)
@@ -359,7 +362,7 @@ fn volume_tile<'a>(totals: &WindowVolumeTotals, mode: ThemeMode) -> crate::Eleme
             .push(sells_cell)
             .push(net_cell),
     )
-    .padding(space::M as u16)
+    .padding(padding_m)
     .width(Length::FillPortion(2))
     .style(move |_t: &iced::Theme| container::Style {
         background: Some(color::PANEL.current(mode).into()),
@@ -439,8 +442,11 @@ fn position_mirror<'a>(p: Option<&PositionView>, mode: ThemeMode) -> crate::Elem
             .into(),
     };
 
+    #[allow(clippy::cast_precision_loss)]
+    // space::M = 12, exactly representable as f32
+    let padding_m2 = space::M as f32;
     Container::new(Column::new().spacing(space::XS).push(label).push(body))
-        .padding(space::M as u16)
+        .padding(padding_m2)
         .width(Length::FillPortion(3))
         .style(move |_t: &iced::Theme| container::Style {
             background: Some(color::PANEL.current(mode).into()),
@@ -576,8 +582,10 @@ mod tests {
             pnl_pct: dec!(-2.0),
             exposure_pct: dec!(5),
         };
-        let mut cockpit = Cockpit::default();
-        cockpit.positions = PanelState::Ready(vec![btc.clone(), eth.clone()]);
+        let cockpit = Cockpit {
+            positions: PanelState::Ready(vec![btc.clone(), eth.clone()]),
+            ..Default::default()
+        };
 
         let m = position_for_symbol(&cockpit, &Symbol::new("BTCUSDT"));
         assert!(m.is_some());

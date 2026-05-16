@@ -8,10 +8,15 @@
 //! deterministic 120-point series + the `fake_cockpit_v15a_pairs_steady_state`
 //! seed are available.
 
+#[cfg(feature = "fixtures")]
 use trading_core::StrategyId;
+#[cfg(feature = "fixtures")]
 use ui::fixtures::{fake_cockpit_v15a_pairs_steady_state, fake_equity_series_for_sparkline};
+#[cfg(feature = "fixtures")]
 use ui::screens::strategies;
+#[cfg(feature = "fixtures")]
 use ui::state::{PanelState, Screen};
+#[cfg(feature = "fixtures")]
 use ui::theme::ThemeMode;
 
 #[cfg(feature = "fixtures")]

@@ -13,6 +13,7 @@
 
 use rust_decimal::Decimal;
 use std::collections::VecDeque;
+use tracing::debug;
 
 // ── Streaming adapter (quantedge-ta semantics, Decimal arithmetic) ────────────
 
@@ -35,6 +36,7 @@ impl SmaStream {
     #[must_use]
     pub fn new(period: usize) -> Self {
         assert!(period > 0, "SMA period must be > 0");
+        debug!(period, "SmaStream created");
         Self {
             period,
             window: VecDeque::with_capacity(period),

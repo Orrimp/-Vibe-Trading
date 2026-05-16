@@ -463,10 +463,9 @@ impl canvas::Program<Message> for ChartProgram {
         // the dual-source-of-truth that produced the
         // flash-and-disappear race in the pre-T2033 version.
         if let (Some(idx), Some(anchor)) = (state.hovered_marker_idx, state.hovered_marker_centroid)
+            && let Some(view) = self.tooltip_view_from_hover(idx)
         {
-            if let Some(view) = self.tooltip_view_from_hover(idx) {
-                chart_tooltip::draw_tooltip(&mut frame, bounds, anchor, &view, self.mode);
-            }
+            chart_tooltip::draw_tooltip(&mut frame, bounds, anchor, &view, self.mode);
         }
 
         // Pass 8 — Legend overlay (R5, Q5 = top-right inset — T3017).
@@ -1163,7 +1162,8 @@ impl ChartHoverState {
 #[allow(
     clippy::format_push_string,
     clippy::useless_format,
-    clippy::uninlined_format_args
+    clippy::uninlined_format_args,
+    clippy::expect_used,
 )]
 mod tests {
     use super::*;
@@ -1341,7 +1341,7 @@ mod tests {
         let bars = vec![make_bar(0, dec!(100)), make_bar(10, dec!(200))];
         let t_left = bars[0].close_ts.unix_millis();
         let t_right = bars[1].close_ts.unix_millis();
-        let mid_ts = (t_left + t_right) / 2;
+        let mid_ts = i64::midpoint(t_left, t_right);
         let snapped = snap_price_to_line(mid_ts, &bars).expect("midpoint snap");
         // 100 + 0.5*(200-100) == 150 within float tolerance.
         assert!((snapped - 150.0).abs() < 0.5, "snapped={snapped}");

@@ -345,8 +345,10 @@ api_key  = "sk-ant-test-stub-12345"
     /// with no api_key in the providers map rejects.
     #[test]
     fn t1928_c_enabled_without_key_rejects() {
-        let mut cfg = LlmConfig::default();
-        cfg.enabled = true;
+        let mut cfg = LlmConfig {
+            enabled: true,
+            ..Default::default()
+        };
         cfg.providers.insert(
             "anthropic".into(),
             ProviderConfig {
@@ -378,9 +380,11 @@ api_key  = "sk-ant-test-stub-12345"
     /// (Ollama needs no auth — its `api_key` field is always `None`).
     #[test]
     fn t1928_ollama_enabled_without_key_passes() {
-        let mut cfg = LlmConfig::default();
-        cfg.enabled = true;
-        cfg.default_provider = "ollama".into();
+        let cfg = LlmConfig {
+            enabled: true,
+            default_provider: "ollama".into(),
+            ..Default::default()
+        };
         cfg.validate_keys()
             .expect("ollama needs no auth even when enabled");
     }

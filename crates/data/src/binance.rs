@@ -298,17 +298,16 @@ impl MarketDataSource for BinanceFeed {
                         // T805 — emit a `FeedReconnect` strategy event on
                         // re-establishment (skip the first connect).  Failure
                         // to write is warn-logged, never breaks the stream.
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                if let Err(e) = audit::journal::feed_reconnect(
-                                    ledger,
-                                    symbol_for_audit.0.as_str(),
-                                    Venue::Binance,
-                                    None,
-                                ).await {
-                                    warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
-                                }
-                            }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                            && let Err(e) = audit::journal::feed_reconnect(
+                                ledger,
+                                symbol_for_audit.0.as_str(),
+                                Venue::Binance,
+                                None,
+                            ).await
+                        {
+                            warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
                         }
                         is_reconnect = true;
                         loop {
@@ -410,17 +409,16 @@ impl MarketDataSource for BinanceFeed {
                     }
                     Ok(mut ws) => {
                         backoff_secs = 1;
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                if let Err(e) = audit::journal::feed_reconnect(
-                                    ledger,
-                                    symbol_for_audit.0.as_str(),
-                                    Venue::Binance,
-                                    None,
-                                ).await {
-                                    warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
-                                }
-                            }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                            && let Err(e) = audit::journal::feed_reconnect(
+                                ledger,
+                                symbol_for_audit.0.as_str(),
+                                Venue::Binance,
+                                None,
+                            ).await
+                        {
+                            warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
                         }
                         is_reconnect = true;
                         loop {
@@ -588,18 +586,18 @@ impl BinanceFeed {
                     }
                     Ok(mut ws) => {
                         backoff_secs = 1;
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                // Emit one feed_reconnect per subscribed symbol.
-                                for sym in &symbols_clone {
-                                    if let Err(e) = audit::journal::feed_reconnect(
-                                        ledger,
-                                        sym.0.as_str(),
-                                        Venue::Binance,
-                                        None,
-                                    ).await {
-                                        warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
-                                    }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                        {
+                            // Emit one feed_reconnect per subscribed symbol.
+                            for sym in &symbols_clone {
+                                if let Err(e) = audit::journal::feed_reconnect(
+                                    ledger,
+                                    sym.0.as_str(),
+                                    Venue::Binance,
+                                    None,
+                                ).await {
+                                    warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
                                 }
                             }
                         }
@@ -706,17 +704,17 @@ impl BinanceFeed {
                     }
                     Ok(mut ws) => {
                         backoff_secs = 1;
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                for sym in &symbols_clone {
-                                    if let Err(e) = audit::journal::feed_reconnect(
-                                        ledger,
-                                        sym.0.as_str(),
-                                        Venue::Binance,
-                                        None,
-                                    ).await {
-                                        warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
-                                    }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                        {
+                            for sym in &symbols_clone {
+                                if let Err(e) = audit::journal::feed_reconnect(
+                                    ledger,
+                                    sym.0.as_str(),
+                                    Venue::Binance,
+                                    None,
+                                ).await {
+                                    warn!(error = %e, "feed_reconnect audit write failed (non-fatal)");
                                 }
                             }
                         }

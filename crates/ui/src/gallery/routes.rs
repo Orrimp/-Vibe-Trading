@@ -495,12 +495,11 @@ fn render_sidebar_nav(model: &Cockpit) -> iced::Element<'_, Message> {
 
 fn render_sparkline(model: &Cockpit) -> iced::Element<'_, Message> {
     // Render the sparkline for the first strategy in the model.
-    if let PanelState::Ready(rows) = &model.strategies {
-        if let Some(row) = rows.first() {
-            if let Some(PanelState::Ready(series)) = model.strategy_equity.get(&row.id) {
-                return sparkline::view(series, ThemeMode::Dark);
-            }
-        }
+    if let PanelState::Ready(rows) = &model.strategies
+        && let Some(row) = rows.first()
+        && let Some(PanelState::Ready(series)) = model.strategy_equity.get(&row.id)
+    {
+        return sparkline::view(series, ThemeMode::Dark);
     }
     // Fallback: build a series directly and leak it to `'static`.
     let series: &'static _ = Box::leak(Box::new(fx::fake_equity_series_for_sparkline()));

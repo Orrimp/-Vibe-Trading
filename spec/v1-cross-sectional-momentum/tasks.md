@@ -1,8 +1,8 @@
 ---
 slug: v1-cross-sectional-momentum
-status: in-progress
+status: shipped
 owner: ui-designer
-updated: 2026-04-30
+updated: 2026-05-16
 ---
 
 # Tasks — v1 Cross-Sectional Momentum (Top-N) + Multi-Symbol Plumbing
@@ -530,9 +530,29 @@ Week 2 (multi-symbol, funding, backtest, e2e):
 - v1 stays in `research` stage at close. Promotion to `paper` is the
   analyst's next loop, contingent on Scenario 2's metrics per
   [product.md → Strategy lifecycle — promotion gates](../product.md#strategy-lifecycle--promotion-gates).
+- **v1 → v1.5 lineage (added 2026-05-16, Wave 2a spec-hygiene).**
+  v1 shipped with `T612` (multi-symbol live `BinanceFeed`) still
+  `[ ]`, marked `[DEFERRED TO v1.5 — 2026-04-29]` in-line above.
+  Operator-confirmed: T612 is NOT a v1 blocker; it stays open and
+  is owned by the v1.5 lineage. The active scope-carrier for that
+  deferral is
+  [`v1-5b-multi-venue`](../v1-5b-multi-venue/feature.md). When
+  v1.5b's tester pass lands T612 (or formally re-defers it again),
+  this `[ ]` may be ticked or retired — but it must NOT be ticked
+  inside the v1 feature folder, per honest-tick discipline
+  ([`AGENT.md ## Process discipline`](../../AGENT.md#process-discipline-lessons-from-v0--v15a)).
 
 ## Changelog
 
+- 2026-05-16 (analyst, Wave 2a spec-hygiene): frontmatter
+  `status: in-progress → shipped` to match the parent
+  [feature.md](feature.md) flip. Added the **v1 → v1.5 lineage**
+  bullet to `## Notes` documenting that the open T612 box stays
+  `[ ]` under v1.5 ownership (carrier =
+  [`v1-5b-multi-venue`](../v1-5b-multi-venue/feature.md)). No task
+  states changed (no ticks added or removed). Wave-2a is bookkeeping
+  only; T612 itself remains the deferred multi-symbol live
+  `BinanceFeed`.
 - 2026-04-29 (developer): v1 backend close-out audit — ticked T601–T611, T615–T622 verified green; T612/T613/T614 documented as incomplete; T_FINAL_A_v1 blocked on T614 (funding_poller_task not wired).
 - 2026-04-29 (developer): T613 + T614 + T_FINAL_A_v1 completed — funding poller mock-REST integration test (wiremock, 3 tests); audit::query::funding_rate_history added (6 tests); audit::journal::insert_funding_obs added; FundingConfig in agent config (default off); poller spawned in main.rs with CancellationToken + persistence sidecar; all 7 anchor hashes preserved; 306 tests green; T612 stays [ ] deferred to v1.5.
 - 2026-04-30 (ui-designer): T623 + T_FINAL_B_v1 ticked `[x]`. Pure ui-crate work — v1 fixtures (`fake_v1_three_symbol_portfolio`, `fake_v1_strategy_row_momentum`, `fake_cockpit_v1_steady_state`); cockpit binary's default fixture switched to the v1 steady-state; new `panel_snapshots__positions_v1_three_rows` snapshot. Smoke section appended to `spec/v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md`; v0 screenshots README §4.2 updated; feature file `## UI — v1` section appended. Zero widget edits, zero new strings, zero new theme tokens (R11 honored). UI default 57→58 tests; UI live unchanged at 71; workspace 50 test groups all green. T612 remains `[ ]` deferred to v1.5 (untouched).

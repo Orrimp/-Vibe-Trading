@@ -85,22 +85,22 @@ pub fn charts_screen_with_hovered_marker() -> Cockpit {
     // operator lock). Mirrors `state::build_tooltip_view` for a
     // Fill(0) hover: same six fields, derived from the fill the
     // fixture seeded via `synthetic_fills_for`.
-    if let PanelState::Ready(fills) = &cockpit.chart_markers {
-        if let Some(first) = fills.first() {
-            let price = first.price.get();
-            let qty = first.qty.get();
-            cockpit.chart_tooltip = Some(ChartTooltipView {
-                kind: ChartTooltipKind::Fill,
-                side: first.side,
-                price: Some(price),
-                qty,
-                notional: Some(price.saturating_mul(qty)),
-                ts: first.venue_ts,
-                strategy_id: None,
-                was_clamped: false,
-                clamp_reason: None,
-            });
-        }
+    if let PanelState::Ready(fills) = &cockpit.chart_markers
+        && let Some(first) = fills.first()
+    {
+        let price = first.price.get();
+        let qty = first.qty.get();
+        cockpit.chart_tooltip = Some(ChartTooltipView {
+            kind: ChartTooltipKind::Fill,
+            side: first.side,
+            price: Some(price),
+            qty,
+            notional: Some(price.saturating_mul(qty)),
+            ts: first.venue_ts,
+            strategy_id: None,
+            was_clamped: false,
+            clamp_reason: None,
+        });
     }
 
     // Defence-in-depth: BTC universe + Binance is the architect's

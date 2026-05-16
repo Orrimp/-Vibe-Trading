@@ -109,20 +109,14 @@ impl CachedSystemPrompt {
     }
 
     fn emit_anthropic(&self) -> Vec<SystemBlock> {
-        let mut out: Vec<SystemBlock> = Vec::with_capacity(3);
         // Empty sections are still emitted as their own block so the
         // wire-format builder can decide whether to skip them — keeps
         // the per-section identity stable for hash-keyed replay.
-        out.push(SystemBlock::Cached(
-            self.project_ctx.clone(),
-            CacheBreakpoint::Ephemeral,
-        ));
-        out.push(SystemBlock::Cached(
-            self.role_ctx.clone(),
-            CacheBreakpoint::Ephemeral,
-        ));
-        out.push(SystemBlock::Plain(self.dynamic_ctx.clone()));
-        out
+        vec![
+            SystemBlock::Cached(self.project_ctx.clone(), CacheBreakpoint::Ephemeral),
+            SystemBlock::Cached(self.role_ctx.clone(), CacheBreakpoint::Ephemeral),
+            SystemBlock::Plain(self.dynamic_ctx.clone()),
+        ]
     }
 
     fn emit_flattened(&self) -> Vec<SystemBlock> {

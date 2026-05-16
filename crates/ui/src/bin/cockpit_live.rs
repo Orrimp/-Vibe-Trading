@@ -314,17 +314,10 @@ fn main() -> Result<()> {
     };
 
     // ── Strategy registry ────────────────────────────────────────────────────
-    let registry = strategy::StrategyRegistry::new();
-    registry.register(Box::new(strategy::SmaCrossover::new(
-        cfg.strategies.sma_crossover.fast_len,
-        cfg.strategies.sma_crossover.slow_len,
-    )));
-    info!(
-        fast = cfg.strategies.sma_crossover.fast_len,
-        slow = cfg.strategies.sma_crossover.slow_len,
-        "strategy registry constructed",
-    );
-    let registry = Arc::new(registry);
+    // Delegated to `agent::runtime::build_registry` so the `ui` crate has
+    // no direct `strategy` dependency (architecture rule: ui depends only
+    // on `core`, `audit`, and `agent`).
+    let registry = agent::runtime::build_registry(&cfg);
 
     // ── Broadcast bus ────────────────────────────────────────────────────────
     let bus = Arc::new(EventBus::new(&cfg.bus));

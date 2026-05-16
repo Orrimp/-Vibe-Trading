@@ -2,11 +2,12 @@
 slug: iced-aw-cherry-pick
 status: shipped
 owner: presenter
-updated: 2026-05-14
+updated: 2026-05-16
 version: 1.0.0
 predecessor: iced-native-widgets v0.1.0
 parent: iced-ecosystem-evaluation v0.2.0
 unblocked_by: cockpit-render-regression v1.0.0 (shipped 2026-05-14)
+superseded_by: ui-drop-iced-aw v0.1.0 (shipped 2026-05-16)
 ---
 
 # iced_aw cherry-pick — Brief B (v0.1.0)
@@ -756,6 +757,11 @@ _Tester links reports here after the developer pass lands._
 
 ## Changelog
 
+- 2026-05-16 (orchestrator): added `superseded_by: ui-drop-iced-aw
+  v0.1.0` frontmatter cross-link per spec-hygiene F5. The adopt-then-
+  drop lifecycle (this feature cherry-picked 3 iced_aw widgets; the
+  successor removes the iced_aw dependency entirely) is now
+  discoverable from either side without reading commit history.
 - 2026-05-14 (presenter): frontmatter bump `status: design →
   in-progress`, `owner: architect → presenter`, `version: 0.1.0 →
   1.0.0`. Evaluator emitted `VERDICT → PASS` at

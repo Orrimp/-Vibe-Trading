@@ -146,10 +146,10 @@ pub fn resolve_rate(
     model: &str,
 ) -> Result<PricePerMillionTokens, LlmError> {
     let key = provider_key(provider);
-    if let Some(per_provider) = overrides.get(&key) {
-        if let Some(rate) = per_provider.get(model) {
-            return Ok(rate.clone());
-        }
+    if let Some(per_provider) = overrides.get(&key)
+        && let Some(rate) = per_provider.get(model)
+    {
+        return Ok(rate.clone());
     }
     base_rate(provider, model).ok_or_else(|| LlmError::Provider {
         provider: provider.clone(),

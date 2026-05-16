@@ -139,6 +139,7 @@ pub fn standard_window_settings() -> WindowSettings {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::uninlined_format_args)]
 mod tests {
     use super::*;
 

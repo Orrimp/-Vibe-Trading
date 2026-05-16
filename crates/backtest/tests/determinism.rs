@@ -185,29 +185,29 @@ async fn run_mini() -> RunResult {
                             .ok()
                         }),
                 };
-                if let Some(order) = ord {
-                    if let Ok(fills) = engine.step(bar, vec![order]).await {
-                        for fill in fills {
-                            trades += 1;
-                            match fill.side {
-                                Side::Buy => {
-                                    let notional = fill.qty.get() * fill.price.get();
-                                    cash -= notional + fill.fee.amount();
-                                    position_qty += fill.qty.get();
-                                    position_cost += notional;
-                                    position.base_qty = position_qty;
-                                    position.cost_basis = Money::from_decimal(position_cost);
+                if let Some(order) = ord
+                    && let Ok(fills) = engine.step(bar, vec![order]).await
+                {
+                    for fill in fills {
+                        trades += 1;
+                        match fill.side {
+                            Side::Buy => {
+                                let notional = fill.qty.get() * fill.price.get();
+                                cash -= notional + fill.fee.amount();
+                                position_qty += fill.qty.get();
+                                position_cost += notional;
+                                position.base_qty = position_qty;
+                                position.cost_basis = Money::from_decimal(position_cost);
+                            }
+                            Side::Sell => {
+                                let notional = fill.qty.get() * fill.price.get();
+                                cash += notional - fill.fee.amount();
+                                position_qty -= fill.qty.get();
+                                if position_qty < Decimal::ZERO {
+                                    position_qty = Decimal::ZERO;
+                                    position_cost = Decimal::ZERO;
                                 }
-                                Side::Sell => {
-                                    let notional = fill.qty.get() * fill.price.get();
-                                    cash += notional - fill.fee.amount();
-                                    position_qty -= fill.qty.get();
-                                    if position_qty < Decimal::ZERO {
-                                        position_qty = Decimal::ZERO;
-                                        position_cost = Decimal::ZERO;
-                                    }
-                                    position.base_qty = position_qty;
-                                }
+                                position.base_qty = position_qty;
                             }
                         }
                     }

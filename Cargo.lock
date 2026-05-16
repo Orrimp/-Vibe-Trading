@@ -7286,7 +7286,6 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "smol_str 0.3.6",
- "strategy",
  "tempfile",
  "thiserror 2.0.18",
  "time",

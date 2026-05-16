@@ -1,8 +1,8 @@
 ---
 slug: v0-paper-sma
-status: in-progress
+status: shipped
 owner: architect
-updated: 2026-04-19
+updated: 2026-05-16
 version: 0.1.0
 ---
 
@@ -1589,6 +1589,16 @@ cases: `quantity_negative_direct.rs` (private tuple field) and
   (16 `.txt` + 16 `.png`) into a single reference at
   `spec/v0-paper-sma/reports/screenshots/README.md`. Optimized for future
   AI validation / spec-driven development. Individual files removed.
+- 2026-05-16 (analyst, Wave 2a spec-hygiene): frontmatter
+  `status: in-progress → shipped` (bookkeeping flip per
+  [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+  row A1; tasks 0/35 with smoke checklist + two backtest reports
+  + locked anchor on disk; `T_FINAL_A` ticked since 2026-04-18).
+  Version held at `0.1.0` (no scope change). No edits to
+  `reports/`, `anchors.toml`, or `trace.toml`. The deferred T32
+  / T_FINAL_B note in the bottom-of-file deviation row remained
+  superseded by the 2026-04-19 ui-designer Week-2 close — already
+  reflected above.
 
 ## Implementation — backend (Week 2)
 

@@ -1,3 +1,4 @@
+#![deny(clippy::unwrap_used)]
 //! Trading agent binary — T31 (refactored T902).
 //!
 //! Usage: `cargo run --bin trading -- --config config/agent.toml --mode research`
@@ -53,8 +54,8 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("trading=info".parse().unwrap())
-                .add_directive("agent=info".parse().unwrap()),
+                .add_directive("trading=info".parse()?)
+                .add_directive("agent=info".parse()?),
         )
         .json()
         .init();
@@ -71,10 +72,10 @@ async fn main() -> Result<()> {
         agent::config::Config::default()
     };
 
-    if let Some(ref m) = args.mode {
-        if m.eq_ignore_ascii_case("live") {
-            anyhow::bail!("mode=live is rejected in v0");
-        }
+    if let Some(ref m) = args.mode
+        && m.eq_ignore_ascii_case("live")
+    {
+        anyhow::bail!("mode=live is rejected in v0");
     }
 
     info!(mode = %cfg.mode, "config loaded");
@@ -146,17 +147,10 @@ async fn main() -> Result<()> {
     info!(halt_file = %cfg.kill_switch.halt_file, "kill switch initialized (audit-wired)");
 
     // ── Strategy registry ─────────────────────────────────────────────────────
-    let registry = strategy::StrategyRegistry::new();
-    registry.register(Box::new(strategy::SmaCrossover::new(
-        cfg.strategies.sma_crossover.fast_len,
-        cfg.strategies.sma_crossover.slow_len,
-    )));
-    info!(
-        fast = cfg.strategies.sma_crossover.fast_len,
-        slow = cfg.strategies.sma_crossover.slow_len,
-        "strategy registry constructed",
-    );
-    let registry = Arc::new(registry);
+    // Construction (and the seeding tracing::info! call) is centralised in
+    // `agent::runtime::build_registry` so neither the `ui` crate nor any
+    // other downstream crate needs a direct `strategy` dependency.
+    let registry = agent::runtime::build_registry(&cfg);
 
     // ── Broadcast bus ─────────────────────────────────────────────────────────
     let bus = Arc::new(EventBus::new(&cfg.bus));

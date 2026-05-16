@@ -211,9 +211,11 @@ mod tests {
     /// so paper/research opens land in scratch storage (not the
     /// crate's real `data/`).
     fn cfg_with_replay_in(td: &tempfile::TempDir, default_provider: &str) -> Arc<LlmConfig> {
-        let mut cfg = LlmConfig::default();
-        cfg.default_provider = default_provider.to_string();
-        cfg.replay_cache_path = td.path().join("replay.db");
+        let cfg = LlmConfig {
+            default_provider: default_provider.to_string(),
+            replay_cache_path: td.path().join("replay.db"),
+            ..Default::default()
+        };
         Arc::new(cfg)
     }
 

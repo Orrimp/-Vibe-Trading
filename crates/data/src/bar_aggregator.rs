@@ -173,10 +173,10 @@ pub fn aggregate_one_second_iter<I: IntoIterator<Item = Tick>>(ticks: I, venue: 
             }
         }
     }
-    if let Some(prev) = current.take() {
-        if let Ok(bar) = finalize_bucket(&prev, venue) {
-            bars.push(bar);
-        }
+    if let Some(prev) = current.take()
+        && let Ok(bar) = finalize_bucket(&prev, venue)
+    {
+        bars.push(bar);
     }
     bars
 }

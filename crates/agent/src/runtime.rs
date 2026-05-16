@@ -112,6 +112,34 @@ pub struct RunHandles {
     pub boot_id: String,
 }
 
+/// Build a [`strategy::StrategyRegistry`] pre-seeded with the strategies
+/// declared in `cfg`.
+///
+/// Factored out of both the headless `trading` binary and the
+/// `cockpit_live` binary so that **neither the `ui` crate nor any other
+/// downstream crate needs a direct `strategy` dependency**. The `agent`
+/// crate already depends on `strategy`; callers obtain the registry
+/// opaquely as `Arc<strategy::StrategyRegistry>` via this function.
+///
+/// Currently seeds:
+/// - `SmaCrossover` with `cfg.strategies.sma_crossover.{fast_len,slow_len}`.
+///
+/// Additional strategies can be added here as they land without touching
+/// any binary's `main` function.
+pub fn build_registry(cfg: &Config) -> Arc<strategy::StrategyRegistry> {
+    let registry = strategy::StrategyRegistry::new();
+    registry.register(Box::new(strategy::SmaCrossover::new(
+        cfg.strategies.sma_crossover.fast_len,
+        cfg.strategies.sma_crossover.slow_len,
+    )));
+    tracing::info!(
+        fast = cfg.strategies.sma_crossover.fast_len,
+        slow = cfg.strategies.sma_crossover.slow_len,
+        "strategy registry constructed",
+    );
+    Arc::new(registry)
+}
+
 /// Run all agent tokio tasks until `cancel` is tripped or the kill
 /// switch flips to [`AgentMode::Halted`].  Returns `Ok(())` on
 /// graceful shutdown.

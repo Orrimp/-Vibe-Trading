@@ -264,24 +264,16 @@ impl Default for AuditConfig {
 /// 2026-05-08.md`); the signal-log gate stays off in v1.9 and will be
 /// re-evaluated for default-flip in a future brief once the live
 /// agent-runtime tap point lands and operators are ready.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SignalLogConfig {
     /// `false` (the v1.9 ship default) → no rows written; ghost layer
     /// renders empty. `true` → live signal-emit tap is active and one
     /// row lands in `strategy_signals` per emitted `Signal`.
+    // Architect Q1 — conservative-off default. Operator opts
+    // in via `[signal_log] enabled = true` once they want the
+    // ghost-layer audit trail.
     #[serde(default = "default_false")]
     pub enabled: bool,
-}
-
-impl Default for SignalLogConfig {
-    fn default() -> Self {
-        Self {
-            // Architect Q1 — conservative-off default. Operator opts
-            // in via `[signal_log] enabled = true` once they want the
-            // ghost-layer audit trail.
-            enabled: false,
-        }
-    }
 }
 
 /// Reflection-memory writer config (T1807 / Q3a / Q8).
@@ -576,12 +568,12 @@ impl Config {
         let mut local_path = path_ref.as_os_str().to_owned();
         local_path.push(".local");
         let local_path = PathBuf::from(local_path);
-        if local_path.exists() {
-            if let Ok(local_content) = std::fs::read_to_string(&local_path) {
-                merge_llm_local_overlay(&mut cfg.llm, &local_content).map_err(|e| {
-                    ConfigError::Parse(format!("{} overlay: {}", local_path.display(), e))
-                })?;
-            }
+        if local_path.exists()
+            && let Ok(local_content) = std::fs::read_to_string(&local_path)
+        {
+            merge_llm_local_overlay(&mut cfg.llm, &local_content).map_err(|e| {
+                ConfigError::Parse(format!("{} overlay: {}", local_path.display(), e))
+            })?;
         }
         // Re-validate after the overlay merged keys.
         cfg.validate_llm_keys()?;
@@ -599,10 +591,10 @@ impl Config {
         let raw: toml::Value =
             toml::from_str(toml).map_err(|e| ConfigError::Parse(e.to_string()))?;
 
-        if let Some(mode_str) = raw.get("mode").and_then(|v| v.as_str()) {
-            if mode_str.eq_ignore_ascii_case("live") {
-                return Err(ConfigError::UnsupportedMode(mode_str.to_string()));
-            }
+        if let Some(mode_str) = raw.get("mode").and_then(|v| v.as_str())
+            && mode_str.eq_ignore_ascii_case("live")
+        {
+            return Err(ConfigError::UnsupportedMode(mode_str.to_string()));
         }
 
         let cfg: Config = toml::from_str(toml).map_err(|e| ConfigError::Parse(e.to_string()))?;
@@ -725,7 +717,7 @@ fn merge_llm_local_overlay(llm: &mut LlmConfig, overlay_toml: &str) -> Result<()
                 let pc = llm
                     .providers
                     .entry(name)
-                    .or_insert_with(ProviderConfig::default);
+                    .or_default();
                 pc.api_key = Some(api_key);
             }
         }

@@ -20,7 +20,7 @@ use futures::stream::BoxStream;
 use polars::prelude::*;
 use std::path::PathBuf;
 use time::OffsetDateTime;
-use tracing::debug;
+use tracing::{debug, info};
 use trading_core::{Bar, FeedError, Price, Quantity, Symbol, Tick, Timeframe, Timestamp, Venue};
 
 use crate::source::{MarketDataSource, SymbolInfo};
@@ -37,8 +37,10 @@ impl ReplayFeed {
     /// Create a `ReplayFeed` pointing at `parquet_root`.
     #[must_use]
     pub fn new(parquet_root: impl Into<PathBuf>, fast: bool) -> Self {
+        let parquet_root = parquet_root.into();
+        info!(path = %parquet_root.display(), fast, "ReplayFeed initialised");
         Self {
-            parquet_root: parquet_root.into(),
+            parquet_root,
             fast,
         }
     }
@@ -335,16 +337,16 @@ impl MarketDataSource for ReplayFeed {
         let stream = async_stream::stream! {
             let mut prev_close: Option<Timestamp> = None;
             for bar in all_bars {
-                if !fast {
-                    if let Some(prev) = prev_close {
-                        let now = Timestamp::now();
-                        let bar_interval_ms = bar.close_ts.unix_millis() - prev.unix_millis();
-                        let elapsed_ms = now.unix_millis() - prev.unix_millis();
-                        if bar_interval_ms > elapsed_ms {
-                            let sleep_ms = u64::try_from(bar_interval_ms - elapsed_ms)
-                                .unwrap_or(0);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(sleep_ms)).await;
-                        }
+                if !fast
+                    && let Some(prev) = prev_close
+                {
+                    let now = Timestamp::now();
+                    let bar_interval_ms = bar.close_ts.unix_millis() - prev.unix_millis();
+                    let elapsed_ms = now.unix_millis() - prev.unix_millis();
+                    if bar_interval_ms > elapsed_ms {
+                        let sleep_ms = u64::try_from(bar_interval_ms - elapsed_ms)
+                            .unwrap_or(0);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(sleep_ms)).await;
                     }
                 }
                 prev_close = Some(bar.close_ts);

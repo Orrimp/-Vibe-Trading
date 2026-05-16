@@ -112,7 +112,7 @@ const MODAL_WIDTH_PX: u32 = 480;
 /// callers. The third close path — `Esc` — is **not** wired in this
 /// widget: `Float` has zero keyboard participation (H-arch-A7b
 /// FALSIFIED, 2026-05-13). Escape stays in `bin/cockpit.rs::subscription`
-/// + `bin/cockpit_live.rs::subscription` (modal-open-gated keyboard
+/// and `bin/cockpit_live.rs::subscription` (modal-open-gated keyboard
 /// recipe routing `Esc` to `Message::TapeAuditModalClosed`).
 ///
 /// Returns a `Float<Stack>` with the cockpit body underneath the modal —

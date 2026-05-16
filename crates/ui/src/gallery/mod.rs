@@ -154,7 +154,7 @@ impl GalleryApp {
 // ── Tests (V3 + V4 — exhaustiveness) ─────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::cast_precision_loss, clippy::uninlined_format_args)]
 mod tests {
     use super::*;
 

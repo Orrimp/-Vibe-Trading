@@ -31,9 +31,11 @@ fn write_overlay(td: &tempfile::TempDir, content: &str) -> std::path::PathBuf {
 }
 
 fn cfg_in(td: &tempfile::TempDir, default_provider: &str) -> Arc<LlmConfig> {
-    let mut cfg = LlmConfig::default();
-    cfg.default_provider = default_provider.to_string();
-    cfg.replay_cache_path = td.path().join("replay.db");
+    let cfg = LlmConfig {
+        default_provider: default_provider.to_string(),
+        replay_cache_path: td.path().join("replay.db"),
+        ..Default::default()
+    };
     Arc::new(cfg)
 }
 

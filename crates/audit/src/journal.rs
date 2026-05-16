@@ -418,7 +418,7 @@ pub async fn update_signal_clamp_status(
 /// `SignalKind` (risk engine, backtest binary) discriminate all six
 /// variants explicitly.
 fn signal_kind_to_side_str(signal: &Signal) -> Option<&'static str> {
-    use trading_core::SignalKind::*;
+    use trading_core::SignalKind::{Buy, ClosePair, Hold, OpenPairLong, PairShortObservation, Sell};
     match signal.kind {
         Buy | OpenPairLong => Some("buy"),
         Sell | ClosePair | PairShortObservation => Some("sell"),
@@ -1758,6 +1758,7 @@ mod tests {
         );
 
         // Field-by-field validation against the writer parameters.
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(
             String,
             String,
@@ -1843,7 +1844,7 @@ mod tests {
     }
 
     /// T2014 V3 — `Hold` signals write no row (the writer returns an
-    /// empty SmolStr and the table stays untouched). Defends against
+    /// empty `SmolStr` and the table stays untouched). Defends against
     /// accidentally polluting the ghost layer with Hold no-ops.
     #[tokio::test]
     async fn post_strategy_signal_skips_hold_kind() {

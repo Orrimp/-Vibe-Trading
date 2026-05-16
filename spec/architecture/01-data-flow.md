@@ -2,7 +2,7 @@
 slug: architecture-01-data-flow
 status: shipped
 owner: architect
-updated: 2026-05-13
+updated: 2026-05-16
 ---
 
 # Data flow
@@ -26,8 +26,10 @@ flowchart LR
   risk --> exec
   exec --> feed
   exec --> audit
+  exec -. lessons .-> reflection
   agent --> audit
   reports -. read-only .-> audit
+  reports -. lessons .-> reflection
 ```
 
 ## Crate dependency edges (runtime, non-test)
@@ -51,6 +53,18 @@ and exists for one explicit reason:
 - `reports → {trading_core, audit, data, cost}` — read-only
   consumers; no reverse edges (`crates/reports/` is leaf in the
   graph). v1+ addition.
+- `exec → reflection` — write edge. The `ReflectionWriterTap`
+  at `crates/exec/src/paper.rs:40` records per-fill outcome
+  facets (slippage, latency, post-fill drift) into the
+  reflection-memory store so the next session's prompt builder
+  can re-inject them. See T1807-Q8 for the architectural
+  rationale; `reflection` is a sink for `exec` the same way
+  `audit` is.
+- `reports → reflection` — read-only edge. Reports rendering
+  pulls cross-session lessons from the reflection store to
+  annotate operator-success reports with "what we learned
+  last session" footnotes. No reverse edge; `reflection`
+  knows nothing about `reports`.
 - `ui → {trading_core, audit}` — read-only consumer of
   `audit::query` for the cockpit's live-view widgets; no reverse
   edge (audit knows nothing about UI).
@@ -71,11 +85,19 @@ and exists for one explicit reason:
   depends only on stdlib + `rust_decimal` + `time` + `smol_str`
   (no reverse edges).
 
-The single rule: **audit is a sink** — it has zero outgoing
-runtime deps to any sibling crate. Anything that needs to write
-to the ledger imports `audit`; nothing that audit imports
-imports back. This keeps the reconciler invariant
-(Σ debits == Σ credits) provable from a single crate's source.
+The single rule: **audit imports nothing from sibling crates**
+— the `audit` crate's `[dependencies]` lists only `trading_core`
+(for shared domain types) plus third-party libs (`sqlx`,
+`rust_decimal`, `time`, …). Sibling crates (`data`, `exec`,
+`agent`, `reports`, `ui`, …) freely write into the ledger by
+importing `audit` and calling `audit::journal::*` /
+`audit::query::*` — those are inbound edges to `audit`, which
+the edge table above documents row-by-row (`data → audit`,
+`exec → audit`, `agent → audit`, `reports → audit` read-only,
+`ui → audit` read-only). The forbidden direction is the reverse:
+`audit` does not import any sibling crate, so the reconciler
+invariant (Σ debits == Σ credits) is provable from `audit`'s
+source alone without crossing a crate boundary.
 
 ## Public API surface — bin-shared agent runtime (live-cockpit-unified)
 
@@ -219,6 +241,18 @@ compat); a defensive `account_id` cross-check warns on mismatch.
 budget unchanged (11 / 11 byte-identical, Q7 re-verified).
 
 ## Changelog
+- 2026-05-16 (architect): D1 audit-sink rule reworded to use the
+  inverse-import direction ("audit imports nothing from sibling
+  crates") — the prior "audit is a sink, zero outgoing runtime
+  deps" wording contradicted the edge table, which explicitly
+  documents the inbound `data → audit`, `exec → audit`,
+  `agent → audit`, `reports → audit`, `ui → audit` writes. The
+  edge table is unchanged; only the summary rule prose moved.
+  D3 added two previously-undocumented edges to the edge table
+  and the mermaid diagram: `exec → reflection` (write — the
+  `ReflectionWriterTap` at `crates/exec/src/paper.rs:40`, see
+  T1807-Q8) and `reports → reflection` (read — used during
+  report rendering).
 - 2026-05-13 (architect): content migrated from
   `spec/architecture.md` lines 251–457 during Phase 1A Session 2.
   Two link rewrites applied: `features/real-mtm-unrealized-pnl.md`

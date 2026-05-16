@@ -104,10 +104,10 @@ pub fn view(cell: &GalleryCell) -> iced::Element<'static, Message> {
 mod tests {
     use super::*;
 
-    /// T02b — every cell has a Fixed height (no Length::Fill).
+    /// T02b — every cell has a Fixed height (no `Length::Fill`).
     /// This test cannot introspect iced Element sizing directly,
-    /// but it asserts the constant is non-zero and that CELL_HEIGHT_PX
-    /// is finite, ensuring the GALLERY_LOGICAL_HEIGHT arithmetic holds.
+    /// but it asserts the constant is non-zero and that `CELL_HEIGHT_PX`
+    /// is finite, ensuring the `GALLERY_LOGICAL_HEIGHT` arithmetic holds.
     #[test]
     fn cell_height_px_is_positive_and_finite() {
         assert!(

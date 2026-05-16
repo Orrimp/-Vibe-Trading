@@ -2,7 +2,7 @@
 slug: architecture-05-llm-and-reflection
 status: shipped
 owner: architect
-updated: 2026-05-13
+updated: 2026-05-16
 ---
 
 # ML / DL and LLM integration
@@ -23,20 +23,15 @@ it under deadline pressure when that feature lands.
 
 ## LLM integration
 
-_Foundation resolved at v2.0.0 — see
-[`spec/architecture.md` § v2 — LLM strategy resolutions (Q4–Q11) — confirmed 2026-05-10](../architecture.md#v2--llm-strategy-resolutions-q4q11--confirmed-2026-05-10)_.
+Foundation resolved at v2.0.0 in
+[ADR-0019 — v2 LLM strategy foundation (Q4–Q11)](adr/0019-v2-llm-strategy.md).
 
 The trait surface, three provider impls (Anthropic / OpenAI-compatible /
 Ollama), prompt-cache builder, budget gate with auto-degrade,
 record/replay for research mode, tool-use schemas, and rate-limit handling
 all land in v2.0.0 as foundation-only — no LLM consumers ship in v2.0.0;
-each consumer is its own follow-up brief.
-
-The v2 resolution block currently lives at lines 2384–2528 of
-`spec/architecture.md` (post-Session-2 numbering). It will be extracted
-to ADR-0019 in Phase 1A Session 7 per
-`outputs/architecture-split-proposal.md`. At that point this stub gains a
-direct ADR link instead of an in-architecture.md anchor.
+each consumer is its own follow-up brief. Reflection-memory is the
+canonical first consumer; see the cross-link below.
 
 ## Reflection-memory
 
@@ -48,6 +43,12 @@ new architects know to look there before re-debating "should we
 re-inject prior session learnings".
 
 ## Changelog
+- 2026-05-16 (architect): replaced the dangling
+  `../architecture.md#v2--llm-strategy-resolutions-...` anchor (which
+  no longer exists after the Phase 1A compression of the monolith)
+  with a direct link to `adr/0019-v2-llm-strategy.md`. Dropped the
+  "will be extracted to ADR-0019 in Session 7" note — ADR-0019 is
+  shipped.
 - 2026-05-13 (architect): content migrated from `spec/architecture.md`
   §§ ML/DL and LLM integration during Phase 1A Session 3. Added a brief
   pointer to the reflection-memory feature so this file is the canonical

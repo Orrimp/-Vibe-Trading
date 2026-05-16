@@ -162,10 +162,10 @@ impl CoinbaseFeed {
 pub fn coinbase_symbol_map(s: &Symbol) -> String {
     let raw = s.0.as_str().to_uppercase();
     for q in ["USDC", "USDT", "USD"] {
-        if let Some(base) = raw.strip_suffix(q) {
-            if !base.is_empty() {
-                return format!("{base}-{q}");
-            }
+        if let Some(base) = raw.strip_suffix(q)
+            && !base.is_empty()
+        {
+            return format!("{base}-{q}");
         }
     }
     // Defensive fallback: split at the third-from-last char.
@@ -419,17 +419,16 @@ impl MarketDataSource for CoinbaseFeed {
                             warn!(error = %e, "coinbase candles subscribe send failed");
                             continue;
                         }
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                if let Err(e) = audit::journal::feed_reconnect(
-                                    ledger,
-                                    symbol_for_audit.0.as_str(),
-                                    Venue::Coinbase,
-                                    None,
-                                ).await {
-                                    warn!(error = %e, "coinbase feed_reconnect audit write failed (non-fatal)");
-                                }
-                            }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                            && let Err(e) = audit::journal::feed_reconnect(
+                                ledger,
+                                symbol_for_audit.0.as_str(),
+                                Venue::Coinbase,
+                                None,
+                            ).await
+                        {
+                            warn!(error = %e, "coinbase feed_reconnect audit write failed (non-fatal)");
                         }
                         is_reconnect = true;
                         loop {
@@ -501,17 +500,16 @@ impl MarketDataSource for CoinbaseFeed {
                             warn!(error = %e, "coinbase market_trades subscribe send failed");
                             continue;
                         }
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                if let Err(e) = audit::journal::feed_reconnect(
-                                    ledger,
-                                    symbol_for_audit.0.as_str(),
-                                    Venue::Coinbase,
-                                    None,
-                                ).await {
-                                    warn!(error = %e, "coinbase feed_reconnect audit write failed (non-fatal)");
-                                }
-                            }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                            && let Err(e) = audit::journal::feed_reconnect(
+                                ledger,
+                                symbol_for_audit.0.as_str(),
+                                Venue::Coinbase,
+                                None,
+                            ).await
+                        {
+                            warn!(error = %e, "coinbase feed_reconnect audit write failed (non-fatal)");
                         }
                         is_reconnect = true;
                         loop {

@@ -182,14 +182,14 @@ fn build_rows(view: &ChartTooltipView) -> Vec<TooltipRow> {
     });
 
     // Optional clamp-reason sub-row (ghost variant only).
-    if matches!(view.kind, ChartTooltipKind::Signal) {
-        if let Some(reason) = view.clamp_reason.as_deref() {
-            rows.push(TooltipRow {
-                label: String::new(),
-                value: reason.to_string(),
-                accent: None,
-            });
-        }
+    if matches!(view.kind, ChartTooltipKind::Signal)
+        && let Some(reason) = view.clamp_reason.as_deref()
+    {
+        rows.push(TooltipRow {
+            label: String::new(),
+            value: reason.to_string(),
+            accent: None,
+        });
     }
 
     rows

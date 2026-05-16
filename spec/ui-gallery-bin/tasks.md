@@ -1,9 +1,18 @@
 ---
 slug: ui-gallery-bin
-status: v0.1-partial
+status: shipped
 owner: orchestrator
-updated: 2026-05-15
+updated: 2026-05-16
 ---
+
+> **All 39 open task boxes below are `[deferred to
+> ui-gallery-table-cell]` as of 2026-05-16** per
+> [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+> row A4 (Wave 2a spec-hygiene). v0.1-partial is operator-accepted
+> as terminal for this feature; V5+ work continues in
+> [`spec/ui-gallery-table-cell/tasks.md`](../ui-gallery-table-cell/tasks.md).
+> The boxes below are preserved verbatim for traceability — do
+> **not** tick them in this folder.
 
 # Tasks — widget gallery binary (`ui-gallery-bin`) v0.1
 

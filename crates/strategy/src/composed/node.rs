@@ -635,10 +635,9 @@ fn find_sma(states: &[IndicatorState], period: usize) -> Option<Decimal> {
         if let IndicatorState::Sma {
             period: p, latest, ..
         } = s
+            && *p == period
         {
-            if *p == period {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -649,10 +648,9 @@ fn find_ema(states: &[IndicatorState], period: u32) -> Option<Decimal> {
         if let IndicatorState::Ema {
             period: p, latest, ..
         } = s
+            && *p == period
         {
-            if *p == period {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -666,10 +664,10 @@ fn find_macd_line(states: &[IndicatorState], fast: u32, slow: u32) -> Option<Dec
             latest,
             ..
         } = s
+            && *f == fast
+            && *sl == slow
         {
-            if *f == fast && *sl == slow {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -689,10 +687,11 @@ fn find_macd_signal(
             latest,
             ..
         } = s
+            && *f == fast
+            && *sl == slow
+            && *sp == signal_period
         {
-            if *f == fast && *sl == slow && *sp == signal_period {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -712,10 +711,11 @@ fn find_macd_hist(
             latest,
             ..
         } = s
+            && *f == fast
+            && *sl == slow
+            && *sp == signal_period
         {
-            if *f == fast && *sl == slow && *sp == signal_period {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -726,10 +726,9 @@ fn find_rsi(states: &[IndicatorState], period: u32) -> Option<Decimal> {
         if let IndicatorState::Rsi {
             period: p, latest, ..
         } = s
+            && *p == period
         {
-            if *p == period {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -740,10 +739,9 @@ fn find_bollinger_upper(states: &[IndicatorState], period: u32) -> Option<Decima
         if let IndicatorState::BollingerUpper {
             period: p, latest, ..
         } = s
+            && *p == period as usize
         {
-            if *p == period as usize {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -754,10 +752,9 @@ fn find_bollinger_mid(states: &[IndicatorState], period: u32) -> Option<Decimal>
         if let IndicatorState::BollingerMid {
             period: p, latest, ..
         } = s
+            && *p == period as usize
         {
-            if *p == period as usize {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -768,10 +765,9 @@ fn find_bollinger_lower(states: &[IndicatorState], period: u32) -> Option<Decima
         if let IndicatorState::BollingerLower {
             period: p, latest, ..
         } = s
+            && *p == period as usize
         {
-            if *p == period as usize {
-                return *latest;
-            }
+            return *latest;
         }
         None
     })
@@ -791,10 +787,10 @@ fn find_rolling(
                 latest,
                 ..
             } = s
+                && f == field
+                && *w == window_size
             {
-                if f == field && *w == window_size {
-                    return *latest;
-                }
+                return *latest;
             }
             None
         }),
@@ -805,10 +801,10 @@ fn find_rolling(
                 latest,
                 ..
             } = s
+                && f == field
+                && *w == window_size
             {
-                if f == field && *w == window_size {
-                    return *latest;
-                }
+                return *latest;
             }
             None
         }),
@@ -819,10 +815,10 @@ fn find_rolling(
                 latest,
                 ..
             } = s
+                && f == field
+                && *w == window_size
             {
-                if f == field && *w == window_size {
-                    return *latest;
-                }
+                return *latest;
             }
             None
         }),

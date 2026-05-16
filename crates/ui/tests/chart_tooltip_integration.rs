@@ -1,3 +1,9 @@
+#![allow(
+    clippy::field_reassign_with_default,
+    clippy::expect_used,
+    clippy::bool_assert_comparison,
+    clippy::unwrap_used
+)]
 //! T2011 — Chart tooltip integration test (chart-buy-sell-emphasis v1.9).
 //!
 //! Drives the new `Message::ChartMarkerHovered` /
@@ -9,8 +15,6 @@
 //! widgets. Snapshot-style chart coverage lives in
 //! `crates/ui/src/widgets/chart.rs` `#[test]`s; this file is the V3
 //! cross-arm wiring gate.
-
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;

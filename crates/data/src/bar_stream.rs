@@ -40,21 +40,23 @@ where
     let stream = raw.map(move |res| {
         if let Ok(bar) = &res {
             let ticks = tick_collector(bar);
-            if !ticks.is_empty() {
-                let symbol: Symbol = bar.symbol.clone();
-                let tf: Timeframe = bar.tf;
-                if let Some(agg) = trade_aggregation(&ticks, symbol, tf) {
-                    if let Some(delta) = bar_cross_check_delta(bar, &agg) {
-                        if delta > dec!(0.00000001) {
-                            warn!(
-                                symbol = %bar.symbol,
-                                open_ts = %bar.open_ts,
-                                delta = %delta,
-                                "bar/trade-agg mismatch > 1 satoshi"
-                            );
-                        }
-                    }
-                }
+            let symbol: Symbol = bar.symbol.clone();
+            let tf: Timeframe = bar.tf;
+            let agg_opt = if ticks.is_empty() {
+                None
+            } else {
+                trade_aggregation(&ticks, symbol, tf)
+            };
+            if let Some(agg) = agg_opt
+                && let Some(delta) = bar_cross_check_delta(bar, &agg)
+                && delta > dec!(0.00000001)
+            {
+                warn!(
+                    symbol = %bar.symbol,
+                    open_ts = %bar.open_ts,
+                    delta = %delta,
+                    "bar/trade-agg mismatch > 1 satoshi"
+                );
             }
         }
         res

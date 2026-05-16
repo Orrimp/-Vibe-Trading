@@ -61,16 +61,16 @@ async fn recent_signals_returns_window_subset() {
     let s_outside = make_signal(SignalKind::Buy, "BTCUSDT", 5_000, "sma_crossover");
     let qty = Quantity::new(dec!(0.05)).expect("qty");
 
-    let _id1 = post_strategy_signal(&ledger, &s1, qty.clone(), None, Venue::Binance, false, None)
+    let _id1 = post_strategy_signal(&ledger, &s1, qty, None, Venue::Binance, false, None)
         .await
         .expect("post s1");
-    let _id2 = post_strategy_signal(&ledger, &s2, qty.clone(), None, Venue::Binance, false, None)
+    let _id2 = post_strategy_signal(&ledger, &s2, qty, None, Venue::Binance, false, None)
         .await
         .expect("post s2");
     let id3 = post_strategy_signal(
         &ledger,
         &s3,
-        qty.clone(),
+        qty,
         None,
         Venue::Binance,
         true,
@@ -81,7 +81,7 @@ async fn recent_signals_returns_window_subset() {
     let _id_outside = post_strategy_signal(
         &ledger,
         &s_outside,
-        qty.clone(),
+        qty,
         None,
         Venue::Binance,
         false,
@@ -242,7 +242,7 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
     let _ = post_strategy_signal(
         &ledger,
         &btc_binance,
-        qty.clone(),
+        qty,
         None,
         Venue::Binance,
         false,
@@ -253,7 +253,7 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
     let _ = post_strategy_signal(
         &ledger,
         &eth_binance,
-        qty.clone(),
+        qty,
         None,
         Venue::Binance,
         false,
@@ -264,7 +264,7 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
     let _ = post_strategy_signal(
         &ledger,
         &btc_coinbase,
-        qty.clone(),
+        qty,
         None,
         Venue::Coinbase,
         false,

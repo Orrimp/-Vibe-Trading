@@ -112,8 +112,10 @@ fn chart_marker_click_opens_modal_with_clicked_tx_id() {
 /// the modal state with the new tx-id (Q9 — only one modal at a time).
 #[test]
 fn chart_marker_click_replaces_modal_on_second_click() {
-    let mut cockpit = Cockpit::default();
-    cockpit.chart_markers = PanelState::Ready(vec![make_fill("tx-first"), make_fill("tx-second")]);
+    let mut cockpit = Cockpit {
+        chart_markers: PanelState::Ready(vec![make_fill("tx-first"), make_fill("tx-second")]),
+        ..Default::default()
+    };
 
     update(
         &mut cockpit,

@@ -1,8 +1,8 @@
 ---
 slug: v05-composed-strategies
-status: in-progress
+status: shipped
 owner: architect
-updated: 2026-04-19
+updated: 2026-05-16
 version: 0.5.0
 ---
 
@@ -1482,6 +1482,17 @@ feature-gated live tests: 32 lib + 2 consistency + 6 live_subscription
   `StrategyEventWrite` and `handle_fs_event_with_clock()`; new
   `t517_strategy_events_byte_identical_across_runs` test passes with
   `REPLAY_TS = "1970-05-27T19:07:10Z"`. All quality gates green.
+- 2026-05-16 (analyst, Wave 2a spec-hygiene): frontmatter
+  `status: in-progress → shipped`, reconciling the drift flagged in
+  [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+  row A2 — `tasks.md` already carried `status: shipped` from the
+  2026-04-20 close-out, and the 2026-04-19 (ui-designer, T_FINAL_B
+  resume) bullet above already wrote "frontmatter status already
+  `shipped` from developer T_FINAL_A" even though feature.md had
+  not yet been flipped. Tasks 0/30; four backtest reports
+  (`btc-2023-1m-macd-trend`, `rsi-reversion`, `bbands-mean-revert`,
+  baseline-refresh) on disk. Version held at `0.5.0`. No edits to
+  `reports/`, `anchors.toml`, or `trace.toml`.
 
 ### v0.5 repair pass (HF-1 + HF-2)
 

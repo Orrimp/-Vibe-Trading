@@ -83,17 +83,17 @@ impl SyncSlot {
         let max_lag = i64::from(max_staleness_minutes);
 
         // Drop stale cached legs.
-        if let Some((ts_a, _)) = self.leg_a {
-            if now.minutes_since(ts_a) > max_lag {
-                self.leg_a = None;
-                self.staleness_drops += 1;
-            }
+        if let Some((ts_a, _)) = self.leg_a
+            && now.minutes_since(ts_a) > max_lag
+        {
+            self.leg_a = None;
+            self.staleness_drops += 1;
         }
-        if let Some((ts_b, _)) = self.leg_b {
-            if now.minutes_since(ts_b) > max_lag {
-                self.leg_b = None;
-                self.staleness_drops += 1;
-            }
+        if let Some((ts_b, _)) = self.leg_b
+            && now.minutes_since(ts_b) > max_lag
+        {
+            self.leg_b = None;
+            self.staleness_drops += 1;
         }
 
         match (self.leg_a, self.leg_b) {

@@ -159,10 +159,10 @@ pub fn kraken_symbol_map(s: &Symbol) -> String {
 
 fn split_base_quote(raw: &str) -> (String, String) {
     for q in ["USDC", "USDT", "USD"] {
-        if let Some(base) = raw.strip_suffix(q) {
-            if !base.is_empty() {
-                return (base.to_string(), q.to_string());
-            }
+        if let Some(base) = raw.strip_suffix(q)
+            && !base.is_empty()
+        {
+            return (base.to_string(), q.to_string());
         }
     }
     if raw.len() > 3 {
@@ -416,17 +416,16 @@ impl MarketDataSource for KrakenFeed {
                             warn!(error = %e, "kraken ohlc subscribe send failed");
                             continue;
                         }
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                if let Err(e) = audit::journal::feed_reconnect(
-                                    ledger,
-                                    symbol_for_audit.0.as_str(),
-                                    Venue::Kraken,
-                                    None,
-                                ).await {
-                                    warn!(error = %e, "kraken feed_reconnect audit write failed (non-fatal)");
-                                }
-                            }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                            && let Err(e) = audit::journal::feed_reconnect(
+                                ledger,
+                                symbol_for_audit.0.as_str(),
+                                Venue::Kraken,
+                                None,
+                            ).await
+                        {
+                            warn!(error = %e, "kraken feed_reconnect audit write failed (non-fatal)");
                         }
                         is_reconnect = true;
                         loop {
@@ -505,17 +504,16 @@ impl MarketDataSource for KrakenFeed {
                             warn!(error = %e, "kraken trade subscribe send failed");
                             continue;
                         }
-                        if is_reconnect {
-                            if let Some(ledger) = ledger_for_stream.as_ref() {
-                                if let Err(e) = audit::journal::feed_reconnect(
-                                    ledger,
-                                    symbol_for_audit.0.as_str(),
-                                    Venue::Kraken,
-                                    None,
-                                ).await {
-                                    warn!(error = %e, "kraken feed_reconnect audit write failed (non-fatal)");
-                                }
-                            }
+                        if is_reconnect
+                            && let Some(ledger) = ledger_for_stream.as_ref()
+                            && let Err(e) = audit::journal::feed_reconnect(
+                                ledger,
+                                symbol_for_audit.0.as_str(),
+                                Venue::Kraken,
+                                None,
+                            ).await
+                        {
+                            warn!(error = %e, "kraken feed_reconnect audit write failed (non-fatal)");
                         }
                         is_reconnect = true;
                         loop {

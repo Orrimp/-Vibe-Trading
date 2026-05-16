@@ -2,7 +2,7 @@
 slug: architecture-06-ui-and-cockpit
 status: shipped
 owner: ui-designer
-updated: 2026-05-13
+updated: 2026-05-16
 ---
 
 # UI and cockpit architecture
@@ -67,11 +67,30 @@ the always-visible status bar at the bottom. See
 [Cockpit screen routing (Phase 2+ contract)](#cockpit-screen-routing-phase-2-contract--added-2026-05-04)
 below for the state shape and bus-path contract.
 
-Both cockpit binaries live in the `ui` crate and depend only on
-`core` (types), `audit` (read-only ledger queries), and `agent`
-(public-API surface for `cockpit_live`'s side-thread runtime) —
-never on `strategy`, `exec`, or `models`. This keeps the UI
-swappable without touching trading logic.
+**UI isolation rule.** The `ui` crate — both its library and every
+binary target it ships (`cockpit`, `cockpit_live`, `viewer`) — depends
+only on `core` (shared domain types), `audit` (read-only ledger queries
+via `audit::query`), and `agent` (the public `agent::runtime::run`
+surface plus the shared `Arc<EventBus>` / `Arc<KillSwitch>` /
+`Arc<StrategyRegistry>` handles `agent` constructs). It **never**
+depends — directly or transitively from any `crates/ui/src/` file,
+including `crates/ui/src/bin/*` — on `strategy`, `exec`, `models`,
+or `llm`.
+
+Bootstrap of `strategy::StrategyRegistry`, `exec::PaperEngine`,
+`models::*`, and `llm::*` happens in `agent` (typically inside the
+`agent::runtime::run` setup path). The UI receives them as already-
+constructed `Arc<…>` handles threaded through `RunHandles`. No UI
+file may `use strategy::…` / `use exec::…` / `use models::…` /
+`use llm::…`. There are no "for now" carveouts: if a cockpit
+feature needs a registry type, it consumes it through the
+`agent`-owned handle or via `audit::query` projections — never by
+adding a direct dependency edge from `ui` to those crates.
+
+This keeps the UI swappable without touching trading logic and
+keeps the dependency graph acyclic (`agent → ui` would be a cycle;
+`ui → strategy/exec/models/llm` would entangle render concerns with
+trading logic and make UI rebuilds drag the trading stack along).
 
 #### `audit::query` — the read-only surface for `ui` — confirmed 2026-04-17
 
@@ -1414,6 +1433,18 @@ gate.
 
 
 ## Changelog
+- 2026-05-16 (architect): D2 — strengthened the UI isolation rule
+  in § App layout. Prior wording said "Both cockpit binaries live
+  in the `ui` crate and depend only on `core` / `audit` / `agent` —
+  never on `strategy`, `exec`, or `models`." Replaced with an
+  unambiguous, carveout-free statement: the `ui` crate (lib + every
+  binary target) never depends on `strategy`, `exec`, `models`, or
+  `llm`; bootstrap of those types happens in `agent`, which threads
+  already-constructed `Arc<…>` handles into the UI via
+  `RunHandles`. Prepares for the developer-driven revert of the
+  `strategy::StrategyRegistry::new()` construction site at
+  `crates/ui/src/bin/cockpit_live.rs` (the code change itself is
+  the developer's, not this architect pass).
 - 2026-05-13 (architect / ui-designer): content migrated from
   `spec/architecture.md` § Foundation libraries — Frontend — iced
   during Phase 1A Session 11. The "why iced" decision was extracted

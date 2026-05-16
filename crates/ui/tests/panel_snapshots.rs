@@ -1097,10 +1097,10 @@ fn strategies_screen_summary(c: &Cockpit) -> String {
     out.push_str("events:\n");
     let mut count = 0usize;
     for ev in &c.strategies_recent_events {
-        if let Some(selected) = &c.selected_strategy {
-            if ev.strategy_id.as_ref() != Some(selected) {
-                continue;
-            }
+        if let Some(selected) = &c.selected_strategy
+            && ev.strategy_id.as_ref() != Some(selected)
+        {
+            continue;
         }
         if count >= 50 {
             break;

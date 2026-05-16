@@ -1,8 +1,8 @@
 ---
 slug: v1-cross-sectional-momentum
-status: in-progress
+status: shipped
 owner: ui-designer
-updated: 2026-04-30
+updated: 2026-05-16
 version: 1.0.0
 ---
 
@@ -1719,6 +1719,22 @@ is fixtures + smoke + snapshot only.
 
 ## Changelog
 
+- 2026-05-16 (analyst, Wave 2a spec-hygiene): frontmatter
+  `status: in-progress → shipped` per
+  [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+  row A3. `T_FINAL_A_v1` and `T_FINAL_B_v1` both ticked `[x]` since
+  2026-04-30; tasks 1/24 — the single open task is **T612**
+  (multi-symbol live `BinanceFeed`), explicitly
+  `[DEFERRED TO v1.5 — operator confirmed: T612 stays [ ] and is
+  NOT a v1 blocker]` in the body of
+  [tasks.md](tasks.md). T612 stays open under the v1.5 lineage; the
+  scope-carrier feature for that deferral is
+  [`v1-5b-multi-venue`](../v1-5b-multi-venue/feature.md) (its
+  Active→Recent move on 2026-05-03 already absorbed the T612
+  closeout per the backlog Changelog). Version held at `1.0.0`. No
+  edits to `reports/`, `anchors.toml`, or `trace.toml`. Cross-ref:
+  matching marker added to the `## Notes` section of
+  [tasks.md](tasks.md) under "v1 → v1.5 lineage".
 - 2026-04-20 (analyst): initial brief.
 - 2026-04-29 (developer): appended `## Implementation — v1 backend`; ticked 20/23 T6xx tasks; T612/T613/T614 deferred to next sprint (live ingest path); v1 scenario hashes locked; v0/v0.5 anchor regression PASS; 297 tests green; all quality gates PASS. Ownership transferred to developer; status remains `in-progress` pending T612–T614.
 - 2026-04-29 (developer): T613 + T614 + T_FINAL_A_v1 completed; appended `### v1 funding-poller close` subsection; ticked 22/23 tasks; T612 deferred to v1.5; 306 tests green; 7 anchor hashes preserved.

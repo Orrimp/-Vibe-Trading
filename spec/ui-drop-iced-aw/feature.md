@@ -4,6 +4,7 @@ version: 0.1.0
 status: shipped
 owner: shipped
 predecessor: ui-headless-emulator v0.1.0
+supersedes: iced-aw-cherry-pick v1.0.0 (shipped 2026-05-14)
 updated: 2026-05-16
 ---
 
@@ -135,6 +136,10 @@ clean, delete; if anything does, replace with iced 0.14's native
 
 ## Changelog
 
+- 2026-05-16 (orchestrator): added `supersedes: iced-aw-cherry-pick
+  v1.0.0` frontmatter cross-link per spec-hygiene F5. Sibling
+  feature carries matching `superseded_by` field. Documents the
+  adopt-then-drop lifecycle for future archaeology.
 - 2026-05-16 (orchestrator): feature spec authored after operator
   picked "drop all iced dependencies which pull the project down" in
   response to the aborted comet bump's ecosystem-lag analysis.

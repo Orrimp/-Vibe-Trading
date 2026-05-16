@@ -1,3 +1,4 @@
+#![deny(clippy::unwrap_used)]
 //! Backtest binary — T25, T516.
 //!
 //! Usage: `cargo run --release --bin backtest -- --scenario btc-2023-1m-sma-cross --seed 0xC0FFEE`
@@ -297,7 +298,9 @@ fn synthetic_bars(
     let epoch_base = {
         let date = time::Date::from_calendar_date(start_year, time::Month::January, 1)
             .unwrap_or_else(|_| {
-                time::Date::from_calendar_date(2023, time::Month::January, 1).unwrap()
+                // 2023-01-01 is always valid; unreachable branch
+                time::Date::from_calendar_date(2023, time::Month::January, 1)
+                    .unwrap_or_else(|e| unreachable!("2023-01-01 is always valid: {e}"))
             });
         OffsetDateTime::new_utc(date, time::Time::MIDNIGHT)
     };
@@ -329,7 +332,10 @@ fn synthetic_bars(
         let to_dec =
             |v: f64| -> Decimal { Decimal::try_from(v.max(0.01_f64)).unwrap_or(dec!(0.01)) };
         let price_or_one = |v: f64| -> Price {
-            Price::new(to_dec(v)).unwrap_or_else(|_| Price::new(dec!(1)).unwrap())
+            Price::new(to_dec(v)).unwrap_or_else(|_| {
+                // dec!(1) is always positive; this branch is unreachable
+                Price::new(dec!(1)).unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
+            })
         };
 
         bars.push(Bar {
@@ -342,7 +348,11 @@ fn synthetic_bars(
             low: price_or_one(low.min(open).min(next).max(0.01)),
             close: price_or_one(next),
             volume: Quantity::new(to_dec(vol_btc))
-                .unwrap_or_else(|_| Quantity::new(dec!(1)).unwrap()),
+                .unwrap_or_else(|_| {
+                    // dec!(1) is always positive; this branch is unreachable
+                    Quantity::new(dec!(1))
+                        .unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
+                }),
             trade_count: rng.random_range(10_u32..500_u32),
             local_recv_ts: close_ts,
             venue: Venue::Binance,
@@ -390,7 +400,9 @@ fn synthetic_bars_hourly(
     let epoch_base = {
         let date = time::Date::from_calendar_date(start_year, time::Month::January, 1)
             .unwrap_or_else(|_| {
-                time::Date::from_calendar_date(2023, time::Month::January, 1).unwrap()
+                // 2023-01-01 is always valid; unreachable branch
+                time::Date::from_calendar_date(2023, time::Month::January, 1)
+                    .unwrap_or_else(|e| unreachable!("2023-01-01 is always valid: {e}"))
             });
         OffsetDateTime::new_utc(date, time::Time::MIDNIGHT)
     };
@@ -424,7 +436,10 @@ fn synthetic_bars_hourly(
         let to_dec =
             |v: f64| -> Decimal { Decimal::try_from(v.max(0.01_f64)).unwrap_or(dec!(0.01)) };
         let price_or_one = |v: f64| -> Price {
-            Price::new(to_dec(v)).unwrap_or_else(|_| Price::new(dec!(1)).unwrap())
+            Price::new(to_dec(v)).unwrap_or_else(|_| {
+                // dec!(1) is always positive; this branch is unreachable
+                Price::new(dec!(1)).unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
+            })
         };
 
         bars.push(Bar {
@@ -437,7 +452,11 @@ fn synthetic_bars_hourly(
             low: price_or_one(low.min(open).min(next).max(0.01)),
             close: price_or_one(next),
             volume: Quantity::new(to_dec(vol_base))
-                .unwrap_or_else(|_| Quantity::new(dec!(1)).unwrap()),
+                .unwrap_or_else(|_| {
+                    // dec!(1) is always positive; this branch is unreachable
+                    Quantity::new(dec!(1))
+                        .unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
+                }),
             trade_count: rng.random_range(100_u32..5000_u32),
             local_recv_ts: close_ts,
             venue: Venue::Binance,
@@ -620,70 +639,66 @@ async fn run_momentum_backtest(
                     if qty_raw <= Decimal::ZERO {
                         continue;
                     }
-                    if let Ok(qty) = Quantity::new(qty_raw) {
-                        if let Ok(price) = Price::new(mark) {
-                            let pos_snap = Position::empty(sig.symbol.clone());
-                            if let Ok(ord) = Order::new(
-                                sig.strategy_id.clone(),
-                                sig.symbol.clone(),
-                                Side::Buy,
-                                qty,
-                                OrderKind::Market,
-                                TimeInForce::Ioc,
-                                &pos_snap,
-                                price,
-                                &risk_limits,
-                                equity,
-                            ) {
-                                if let Ok(fills) = engine.step(bar, vec![ord]).await {
-                                    for fill in fills {
-                                        let notional_fill = fill.qty.get() * fill.price.get();
-                                        cash -= notional_fill + fill.fee.amount();
-                                        *position_book
-                                            .entry(sig.symbol.clone())
-                                            .or_insert(Decimal::ZERO) += fill.qty.get();
-                                        total_fees += fill.fee.amount();
-                                        trades += 1;
-                                        buys += 1;
-                                    }
-                                }
-                            }
+                    let pos_snap = Position::empty(sig.symbol.clone());
+                    if let Ok(qty) = Quantity::new(qty_raw)
+                        && let Ok(price) = Price::new(mark)
+                        && let Ok(ord) = Order::new(
+                            sig.strategy_id.clone(),
+                            sig.symbol.clone(),
+                            Side::Buy,
+                            qty,
+                            OrderKind::Market,
+                            TimeInForce::Ioc,
+                            &pos_snap,
+                            price,
+                            &risk_limits,
+                            equity,
+                        )
+                        && let Ok(fills) = engine.step(bar, vec![ord]).await
+                    {
+                        for fill in fills {
+                            let notional_fill = fill.qty.get() * fill.price.get();
+                            cash -= notional_fill + fill.fee.amount();
+                            *position_book
+                                .entry(sig.symbol.clone())
+                                .or_insert(Decimal::ZERO) += fill.qty.get();
+                            total_fees += fill.fee.amount();
+                            trades += 1;
+                            buys += 1;
                         }
                     }
                 }
                 trading_core::SignalKind::Sell if current_qty > Decimal::ZERO => {
-                    if let Ok(qty) = Quantity::new(current_qty) {
-                        if let Ok(price) = Price::new(mark) {
-                            let pos_snap = Position::empty(sig.symbol.clone());
-                            if let Ok(ord) = Order::new(
-                                sig.strategy_id.clone(),
-                                sig.symbol.clone(),
-                                Side::Sell,
-                                qty,
-                                OrderKind::Market,
-                                TimeInForce::Ioc,
-                                &pos_snap,
-                                price,
-                                &risk_limits,
-                                equity,
-                            ) {
-                                if let Ok(fills) = engine.step(bar, vec![ord]).await {
-                                    for fill in fills {
-                                        let notional_fill = fill.qty.get() * fill.price.get();
-                                        cash += notional_fill - fill.fee.amount();
-                                        let qty_held = position_book
-                                            .entry(sig.symbol.clone())
-                                            .or_insert(Decimal::ZERO);
-                                        *qty_held -= fill.qty.get();
-                                        if *qty_held < Decimal::ZERO {
-                                            *qty_held = Decimal::ZERO;
-                                        }
-                                        total_fees += fill.fee.amount();
-                                        trades += 1;
-                                        sells += 1;
-                                    }
-                                }
+                    let pos_snap = Position::empty(sig.symbol.clone());
+                    if let Ok(qty) = Quantity::new(current_qty)
+                        && let Ok(price) = Price::new(mark)
+                        && let Ok(ord) = Order::new(
+                            sig.strategy_id.clone(),
+                            sig.symbol.clone(),
+                            Side::Sell,
+                            qty,
+                            OrderKind::Market,
+                            TimeInForce::Ioc,
+                            &pos_snap,
+                            price,
+                            &risk_limits,
+                            equity,
+                        )
+                        && let Ok(fills) = engine.step(bar, vec![ord]).await
+                    {
+                        for fill in fills {
+                            let notional_fill = fill.qty.get() * fill.price.get();
+                            cash += notional_fill - fill.fee.amount();
+                            let qty_held = position_book
+                                .entry(sig.symbol.clone())
+                                .or_insert(Decimal::ZERO);
+                            *qty_held -= fill.qty.get();
+                            if *qty_held < Decimal::ZERO {
+                                *qty_held = Decimal::ZERO;
                             }
+                            total_fees += fill.fee.amount();
+                            trades += 1;
+                            sells += 1;
                         }
                     }
                 }
@@ -1036,22 +1051,22 @@ async fn run_pairs_backtest(
                             price,
                             &risk_limits,
                             equity,
-                        ) {
-                            if let Ok(fills) = engine.step(bar, vec![ord]).await {
-                                for fill in fills {
-                                    let notional_fill = fill.qty.get() * fill.price.get();
-                                    cash -= notional_fill + fill.fee.amount();
-                                    *position_book
-                                        .entry(sig.symbol.clone())
-                                        .or_insert(Decimal::ZERO) += fill.qty.get();
-                                    total_fees += fill.fee.amount();
-                                    trades += 1;
-                                    buys += 1;
-                                    // Track pair-level trades via pair_key in metadata.
-                                    if let Some(meta) = &sig.pair_data {
-                                        let key_str = meta.pair_key.to_string();
-                                        *pair_trade_counts.entry(key_str).or_insert(0) += 1;
-                                    }
+                        )
+                            && let Ok(fills) = engine.step(bar, vec![ord]).await
+                        {
+                            for fill in fills {
+                                let notional_fill = fill.qty.get() * fill.price.get();
+                                cash -= notional_fill + fill.fee.amount();
+                                *position_book
+                                    .entry(sig.symbol.clone())
+                                    .or_insert(Decimal::ZERO) += fill.qty.get();
+                                total_fees += fill.fee.amount();
+                                trades += 1;
+                                buys += 1;
+                                // Track pair-level trades via pair_key in metadata.
+                                if let Some(meta) = &sig.pair_data {
+                                    let key_str = meta.pair_key.to_string();
+                                    *pair_trade_counts.entry(key_str).or_insert(0) += 1;
                                 }
                             }
                         }
@@ -1085,25 +1100,25 @@ async fn run_pairs_backtest(
                             price,
                             &risk_limits,
                             equity,
-                        ) {
-                            if let Ok(fills) = engine.step(bar, vec![ord]).await {
-                                for fill in fills {
-                                    let notional_fill = fill.qty.get() * fill.price.get();
-                                    cash += notional_fill - fill.fee.amount();
-                                    let qty_held = position_book
-                                        .entry(sig.symbol.clone())
-                                        .or_insert(Decimal::ZERO);
-                                    *qty_held -= fill.qty.get();
-                                    if *qty_held < Decimal::ZERO {
-                                        *qty_held = Decimal::ZERO;
-                                    }
-                                    total_fees += fill.fee.amount();
-                                    trades += 1;
-                                    sells += 1;
-                                    if let Some(meta) = &sig.pair_data {
-                                        let key_str = meta.pair_key.to_string();
-                                        *pair_trade_counts.entry(key_str).or_insert(0) += 1;
-                                    }
+                        )
+                            && let Ok(fills) = engine.step(bar, vec![ord]).await
+                        {
+                            for fill in fills {
+                                let notional_fill = fill.qty.get() * fill.price.get();
+                                cash += notional_fill - fill.fee.amount();
+                                let qty_held = position_book
+                                    .entry(sig.symbol.clone())
+                                    .or_insert(Decimal::ZERO);
+                                *qty_held -= fill.qty.get();
+                                if *qty_held < Decimal::ZERO {
+                                    *qty_held = Decimal::ZERO;
+                                }
+                                total_fees += fill.fee.amount();
+                                trades += 1;
+                                sells += 1;
+                                if let Some(meta) = &sig.pair_data {
+                                    let key_str = meta.pair_key.to_string();
+                                    *pair_trade_counts.entry(key_str).or_insert(0) += 1;
                                 }
                             }
                         }
@@ -1592,7 +1607,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("backtest=info".parse().unwrap()),
+                .add_directive("backtest=info".parse()?),
         )
         .init();
 

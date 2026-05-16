@@ -93,7 +93,6 @@ iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia",
 # spec/reports/dev-week2-broadcast-api-2026-04-18.md).
 agent = { path = "../agent", optional = true }
 audit = { path = "../audit", optional = true }
-strategy = { path = "../strategy", optional = true }
 tokio = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 async-stream = { workspace = true, optional = true }
@@ -184,15 +183,16 @@ render-debug = ["dep:tracing-subscriber"]
 #
 # T904 (live-cockpit-unified) extends `live` to also cover the deps
 # needed by the unified `cockpit_live` binary: `audit` (ledger
-# bootstrap + uptime open/close), `strategy` (registry seed),
-# `tokio-util` (CancellationToken), `anyhow`/`clap`/`tracing-subscriber`/
-# `uuid` (binary boilerplate).  `cockpit_live` declares
-# `required-features = ["live"]` so this stanza is the single source of
-# truth for everything the unified bin needs.
+# bootstrap + uptime open/close), `tokio-util` (CancellationToken),
+# `anyhow`/`clap`/`tracing-subscriber`/`uuid` (binary boilerplate).
+# Strategy registry construction is delegated to `agent::runtime::build_registry`
+# so the `ui` crate has no direct `strategy` dependency (architecture rule:
+# ui depends only on `core`, `audit`, and `agent`).
+# `cockpit_live` declares `required-features = ["live"]` so this stanza
+# is the single source of truth for everything the unified bin needs.
 live = [
     "dep:agent",
     "dep:audit",
-    "dep:strategy",
     "dep:tokio",
     "dep:futures",
     "dep:async-stream",

@@ -2,8 +2,16 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-15
+updated: 2026-05-16
 ---
+<!-- updated 2026-05-16 (analyst, Wave 2a spec-hygiene) — three
+     stalled strategy features (v0-paper-sma, v05-composed-strategies,
+     v1-cross-sectional-momentum) flipped to shipped (bookkeeping;
+     code + reports on disk weeks earlier). ui-gallery-bin
+     reclassified as shipped-partial-terminal (v0.1-partial); successor
+     brief `ui-gallery-table-cell` opened in draft to own the V5+
+     tiny-skia table-cell bounds fix. Full breakdown in the
+     Changelog entry below. Source: `spec/dev-notes/feature-triage-2026-05-16.md`. -->
 <!-- updated 2026-05-15 (analyst, ui-testability deep-dive) — added
      8 candidate features under Queue ## Process / tooling pointing
      into the new `spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`
@@ -1006,6 +1014,46 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Changelog
 
+- 2026-05-16 (analyst, Wave 2a spec-hygiene — bookkeeping flips
+  per [`spec/dev-notes/feature-triage-2026-05-16.md`](dev-notes/feature-triage-2026-05-16.md)):
+  five frontmatter / supersession updates landed, zero code touched,
+  zero anchors moved, zero `trace.toml` rows added.
+  - **v0-paper-sma** → `shipped` (was `in-progress`; row A1 —
+    tasks 0/35, smoke checklist + 2 backtest reports + locked
+    anchor on disk; bookkeeping flip).
+  - **v05-composed-strategies** → `shipped` (was `in-progress`;
+    row A2 — drift reconcile: `tasks.md` already carried
+    `status: shipped` from 2026-04-20; `feature.md` now matches).
+  - **v1-cross-sectional-momentum** → `shipped` (was
+    `in-progress`; row A3 — `T_FINAL_A_v1` / `T_FINAL_B_v1` both
+    ticked since 2026-04-30; the single open box **T612** —
+    multi-symbol live `BinanceFeed` — stays `[ ]` under v1.5
+    lineage with carrier
+    [`v1-5b-multi-venue`](v1-5b-multi-venue/feature.md); note
+    added to the v1 `tasks.md ## Notes`).
+  - **ui-gallery-bin** → `shipped` with body header marking
+    **v0.1-partial, terminal** + `version: 0.1.0 →
+    0.1.0-partial-terminal` + new `successor:
+    ui-gallery-table-cell` frontmatter field (row A4 — V5+
+    blocked by `tiny-skia` `Build quad rectangle` panic in
+    `widget::table::Table` bisected to `GALLERY_CELLS[7]`). The
+    39 open task boxes are marked `[deferred to
+    ui-gallery-table-cell]` at the top of
+    [`ui-gallery-bin/tasks.md`](ui-gallery-bin/tasks.md) and
+    preserved verbatim for trace. **Precedent question** raised
+    in the feature.md Changelog: the `spec-update` status enum
+    has no `shipped-partial`; this edit took the conservative
+    `status: shipped` + version-modifier route and proposed
+    formal enum promotion at the next skill revision.
+  - **ui-gallery-table-cell** → new draft (successor brief
+    opened at
+    [`spec/ui-gallery-table-cell/feature.md`](ui-gallery-table-cell/feature.md)
+    + [`tasks.md`](ui-gallery-table-cell/tasks.md)). Owns R1
+    (restore V5+ render path: full
+    `GALLERY_CELLS` set renders without panic). V5+ tasks
+    re-keyed `T1..T9` + `T-FINAL-*`; M0 architect block
+    re-spawned for Q-FIX-STRATEGY (special-case wrapper /
+    swap render / upstream fix). HANDOFF → architect.
 - 2026-05-15 (operator, iced-014 lock + re-sequence): locked all 5
   Q-* migration questions from
   [`iced-014-feature-analysis-2026-05-15.md`](dev-notes/iced-014-feature-analysis-2026-05-15.md)

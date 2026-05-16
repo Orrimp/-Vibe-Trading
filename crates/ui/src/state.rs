@@ -1227,23 +1227,23 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             }
         }
         Message::KillConfirmed => {
-            if let KillState::Confirming { typed } = &model.kill {
-                if typed == crate::strings::KILL_SAFETY_PHRASE {
-                    // T906: trip the real kill switch (when running under
-                    // `cockpit_live`'s wired-bus path). The closure spawns
-                    // `KillSwitch::trip` onto the side-thread tokio runtime
-                    // so the T809 dual-write (audit memo + strategy_events
-                    // row + incident-spawn helper) executes end-to-end.
-                    // `cockpit --features fixtures` boots with
-                    // `kill_switch = None`, preserving fixture-only
-                    // smoke-test behaviour: the UI flips to
-                    // `KillState::Flattening` without any agent contact.
-                    #[cfg(feature = "live")]
-                    if let Some(trip) = model.kill_switch.as_ref() {
-                        trip(agent::HaltReason::ManualOperator);
-                    }
-                    model.kill = KillState::Flattening;
+            if let KillState::Confirming { typed } = &model.kill
+                && typed == crate::strings::KILL_SAFETY_PHRASE
+            {
+                // T906: trip the real kill switch (when running under
+                // `cockpit_live`'s wired-bus path). The closure spawns
+                // `KillSwitch::trip` onto the side-thread tokio runtime
+                // so the T809 dual-write (audit memo + strategy_events
+                // row + incident-spawn helper) executes end-to-end.
+                // `cockpit --features fixtures` boots with
+                // `kill_switch = None`, preserving fixture-only
+                // smoke-test behaviour: the UI flips to
+                // `KillState::Flattening` without any agent contact.
+                #[cfg(feature = "live")]
+                if let Some(trip) = model.kill_switch.as_ref() {
+                    trip(agent::HaltReason::ManualOperator);
                 }
+                model.kill = KillState::Flattening;
             }
         }
         Message::KillCancelled => {
@@ -1315,10 +1315,10 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 .or_default();
             entry.push(ts);
             let count = entry.count_in_window(ts);
-            if let PanelState::Ready(rows) = &mut model.strategies {
-                if let Some(row) = rows.iter_mut().find(|r| r.id == id) {
-                    row.signals_60s = count;
-                }
+            if let PanelState::Ready(rows) = &mut model.strategies
+                && let Some(row) = rows.iter_mut().find(|r| r.id == id)
+            {
+                row.signals_60s = count;
             }
         }
         Message::TapeRowClicked(tx_id) => {
@@ -1539,12 +1539,12 @@ fn apply_strategy_load_error(model: &mut Cockpit, ev: &StrategyLoadError) {
     // If the row exists, flip its status to Error but keep the existing
     // hash / last_event. If it doesn't, create a placeholder `Error`-status
     // row so the operator sees what failed even on the very first load.
-    if let PanelState::Ready(rows) = &mut model.strategies {
-        if let Some(row) = rows.iter_mut().find(|r| r.id == id) {
-            row.status = StrategyStatus::Error(ev.error_summary.clone());
-            row.last_event = Some(view);
-            return;
-        }
+    if let PanelState::Ready(rows) = &mut model.strategies
+        && let Some(row) = rows.iter_mut().find(|r| r.id == id)
+    {
+        row.status = StrategyStatus::Error(ev.error_summary.clone());
+        row.last_event = Some(view);
+        return;
     }
 
     // No existing row — surface the error as a freshly-failed load.
@@ -1664,9 +1664,8 @@ fn strategy_event_view_from_load_error(ev: &StrategyLoadError) -> StrategyEventV
 fn build_tooltip_view(model: &Cockpit, idx: ChartMarkerIndex) -> Option<ChartTooltipView> {
     match idx {
         ChartMarkerIndex::Fill(i) => {
-            let fills = match &model.chart_markers {
-                PanelState::Ready(v) => v,
-                _ => return None,
+            let PanelState::Ready(fills) = &model.chart_markers else {
+                return None;
             };
             let fill = fills.get(i)?;
             let strategy_id = lookup_strategy_for_fill(model, fill);
@@ -1683,9 +1682,8 @@ fn build_tooltip_view(model: &Cockpit, idx: ChartMarkerIndex) -> Option<ChartToo
             })
         }
         ChartMarkerIndex::Signal(i) => {
-            let signals = match &model.chart_signals {
-                PanelState::Ready(v) => v,
-                _ => return None,
+            let PanelState::Ready(signals) = &model.chart_signals else {
+                return None;
             };
             let signal = signals.get(i)?;
             Some(ChartTooltipView {

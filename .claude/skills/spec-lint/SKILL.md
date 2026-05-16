@@ -11,11 +11,16 @@ for content stability (anchors) and one for shape stability (this).
 
 ## Procedure
 
-1. Run the linter from repo root:
+1. Run the linter from repo root via `uv` (recommended — `uv` auto-selects
+   a Python ≥ 3.11 per the script's PEP-723 header):
 
    ```bash
-   scripts/spec_lint.py
+   uv run scripts/spec_lint.py
    ```
+
+   System Python ≥ 3.11 also works (`python3 scripts/spec_lint.py`).
+   macOS system Python is 3.9 and will fail with `ModuleNotFoundError:
+   tomllib` — use `uv run` or `/opt/homebrew/bin/python3.11+`.
 
    Exit code 0 = clean. Non-zero = at least one structural violation; the
    exit code equals the number of categories with at least one violation
@@ -24,13 +29,13 @@ for content stability (anchors) and one for shape stability (this).
 2. To see all violations even after early failures, pass `--all`:
 
    ```bash
-   scripts/spec_lint.py --all
+   uv run scripts/spec_lint.py --all
    ```
 
 3. To restrict the check to one feature folder:
 
    ```bash
-   scripts/spec_lint.py spec/chart-canvas-overhaul
+   uv run scripts/spec_lint.py spec/chart-canvas-overhaul
    ```
 
 ## What it checks

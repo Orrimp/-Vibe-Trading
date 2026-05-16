@@ -355,7 +355,7 @@ fn cell<'a>(s: String) -> Element<'a, Message> {
 /// 50-step surface backdrop + 500-step (or `FG_3` for Neutral)
 /// foreground. Same colour pairing as the prior `iced_aw::Badge`
 /// implementation; no hard-coded RGB triplet lands here. Visual
-/// continuity at the snapshot byte level vs the iced_aw version:
+/// continuity at the snapshot byte level vs the `iced_aw` version:
 /// padding, radius, and tokens are preserved.
 #[allow(clippy::cast_possible_truncation)]
 fn status_badge_cell<'a>(label: &'static str, intent: BadgeIntent) -> Element<'a, Message> {
