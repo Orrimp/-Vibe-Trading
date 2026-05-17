@@ -2,8 +2,16 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-16
+updated: 2026-05-17
 ---
+<!-- updated 2026-05-17 (analyst, v25-tcn-overlay) — phase 1 of 4 DL
+     roadmap. Analyst pass landed on `v25-tcn-overlay`: Q1-Q8 closed
+     with defaults (R1-R12 in feature.md). Status flip _draft_ →
+     _in-progress_. Two operator-decide Qs surfaced (anchor checkpoint
+     storage; two-checkpoint backtest split). HANDOFF → operator-decide
+     → architect. Sources cited per Kronos-pivot lesson:
+     BKK18 (https://arxiv.org/abs/1803.01271), locuslab/TCN,
+     Keras-TCN, candle-transformers. -->
 <!-- updated 2026-05-16 (orchestrator) — Kronos→DL pivot. v2.5
      `v25-kronos-forecast-overlay` dropped after Wave A bootstrap
      surfaced: (a) Kronos lives outside `transformers` so requires
@@ -101,8 +109,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _draft_ — phase 1
-  of the [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
+- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress_ —
+  phase 1 of the [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
   (operator-locked 2026-05-17 after reading the
   [v25-dl-reading-list](dev-notes/v25-dl-reading-list-2026-05-16.md)
   and deciding to build all three model families for empirical bake-off).
@@ -113,13 +121,16 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   reuse; (c) deterministic inference (no autoregressive sampling) —
   easier to anchor and audit. Data prerequisite: 10 USDT pairs hourly
   2023+2024 bootstrapped via `cargo run -p data --bin fetch_binance_klines`
-  (~72s wallclock, ~15-20 MB). Brief stub at
-  [`spec/v25-tcn-overlay/feature.md`](v25-tcn-overlay/feature.md);
-  awaits analyst pass on TCN topology / model size / tokenisation /
-  context window / loss function / output shape / training schedule /
-  checkpoint provenance. Carry-forward backtest scenarios: BS-1
-  (2023 full-year top-10 USDT), BS-2 (2024 full-year top-10 USDT).
-  HANDOFF → analyst (operator-paced; bootstrap downloader run first).
+  (~72s wallclock, ~15-20 MB). **Analyst pass landed 2026-05-17**
+  ([`feature.md`](v25-tcn-overlay/feature.md) §Requirements R1–R12)
+  closing Q1-Q8 with defaults (TCN 8-block dilation `[1..128]`, k=3,
+  H=96 → ~4.4M params; 256-bar context; 5 features; continuous
+  log-return regression with Huber δ=0.001; OneCycle AdamW;
+  two-checkpoint walk-forward; SHA-256 provenance over arch+data+seed+weights).
+  Two operator-decide questions surface: anchor checkpoint storage
+  (LFS vs regen-from-seed) and two-checkpoint backtest split.
+  Carry-forward backtest scenarios: BS-1 (2023 full-year top-10 USDT),
+  BS-2 (2024 full-year top-10 USDT). HANDOFF → operator-decide → architect.
 
 ## Queue
 
