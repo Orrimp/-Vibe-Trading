@@ -1138,8 +1138,95 @@ with operator-review gates after each phase. The orchestration
 is week-scale, not month-scale, because each phase ships a
 *new screen the operator can use today*.
 
+## Addendum — Operator answers + investigations (2026-05-17)
+
+### Operator answers to the 8 questions (Section 5)
+
+| Q | Resolution |
+|---|-----------|
+| Q1 — Audit ledger covers Trail? | **Investigate** → resolved below |
+| Q2 — "Pause pair" as J5 affordance? | **Yes** |
+| Q3 — Backtest engine library-callable? | **Yes, should be — investigate** → resolved below |
+| Q4 — Lab persists `(strategy, pair, range, params)` tuple? | **Yes (default accepted)** |
+| Q5 — Models screen data source? | **Investigate** → resolved below |
+| Q6 — Phase-6 Assistant slot in this rethink? | **Stay deferred** (not in Phase A-E scope) |
+| Q7 — Pair-picker default order? | **XRP first, then ETH, then v1 universe alphabetical** (operator personal preference) |
+| Q8 — Compare matrix recompute foreground or background? | **Background** |
+
+### Investigation findings
+
+**Q1 — Audit ledger schema coverage for Trail (~70%, no cliff).**
+Migrations 001-009 already include strategy_events (002), strategy_signals (009),
+journal_transactions_strategy_id (004), strategy_events_venue (007), plus the
+financial ledger (001). "Bar → features → signal → fill → P&L" chain mostly
+covered. NOT first-class today: LLM prompt SHA, forecast overlay confidence,
+risk clamp reason. Phase D prep: either metadata-JSON convention OR small
+dedicated migration. Bounded extension, not a cliff.
+
+**Q3 — Backtest engine library-callable (yes, needs tightening).**
+`crates/backtest/Cargo.toml` declares the bin AND `lib.rs` exposes
+`pub mod engine; pub mod paper;`. Public surface today is sparse — needs
+~1 day of API tightening for `backtest::engine::run_scenario(strategy, pair,
+range, params) → Result<Report>` for inline Lab use. Phase B unblocked.
+
+**Q5 — Models screen data source (multi-source, all on disk already).**
+- Training-run provenance: `crates/forecast/checkpoints/anchors/*.{safetensors,metadata.json}` (TCN BS-1 present 2026-05-17; BS-2 imminent)
+- Reflection memory: `crates/reflection/src/store/`, lesson cards, embeddings, retrieval
+- Inference cache: `crates/replay-cache/` namespace `"forecast"` — calibration history
+
+No new backend work for the Models screen.
+
+### Operator-added constraint: charts are the door
+
+> *"Put a lot of work into charts. This is the door to me. I want to see on
+> the chart how successful the strategy select is. How much money is before,
+> after, and also compare it to result of other strategies. Also it would be
+> nice to have the overlay working for buy and sell positions."*
+
+The Lab screen becomes **chart-centric** with three overlay layers fused on
+a single canvas:
+
+| Overlay | Status | Effort |
+|---------|--------|--------|
+| Buy/sell markers on price | `chart-buy-sell-emphasis` v1.10.0 shipped 2026-05-12 — wire into Lab | trivial |
+| **Equity curve** (capital before/during/after this strategy run) | **NEW** — backtest engine emits per-bar equity; render as second Y-axis | medium |
+| **Multi-strategy comparison** (≤4 strategies' equity curves on same pair/range) | **NEW** — color-coded lines on same canvas | medium |
+
+Existing foundation: `chart.rs` (1537 LOC) + `chart_legend.rs` (565) +
+`chart_tooltip.rs` (562) + `screens/charts.rs` (597). Phase A adds overlay
+layers + data plumbing, not a rewrite.
+
+### Adjusted Phase A scope (chart-centric Lab)
+
+| Item | Effort |
+|------|-------:|
+| Rename `screens/charts.rs` → `screens/lab.rs`; set as default route | trivial |
+| Wire existing buy/sell markers onto Lab chart | trivial |
+| New widget: date-range picker pinching chart range | medium |
+| New widget: pair chip — **XRP, ETH, BTC, …v1-universe-alpha** ordering | small |
+| New widget: strategy chip on chart (port from registry) | small |
+| New widget: equity-curve overlay (second Y-axis, cached reports at Phase A) | medium |
+| New widget: comparison-line overlay (≤4 strategies, color-coded) | medium |
+| Read-only at Phase A — cached backtest reports + fixtures (Phase B wires live engine) | — |
+| Lab persists `(strategy, pair, range, params)` per Q4 | small |
+
+**Net Phase A effort:** ~2 weeks (unchanged from original), but deliverable
+is chart-centric with three named overlays — not generic Lab.
+
+### Next step
+
+HANDOFF → analyst to author the formal `ui-rethink-phase-a-lab` feature folder
+based on the locked direction above.
+
 ## Changelog
 
+- 2026-05-17 (orchestrator): addendum — operator answered 8 questions
+  (Q2/Q4/Q6/Q7/Q8 directly; Q1/Q3/Q5 delegated to orchestrator
+  investigation, all three resolved as "no cliff"). Operator added the
+  load-bearing **charts-as-door** constraint with three named overlays
+  (buy/sell markers, equity curve, multi-strategy comparison).
+  XRP-first pair ordering locked. Phase A scope re-cast as chart-centric
+  Lab.
 - 2026-05-17 (ui-designer): initial dev-note — screen-by-screen
   redesign proposal in response to operator critique
   "I don't like the UI very much. It does not seem like a good
