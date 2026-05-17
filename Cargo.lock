@@ -1424,9 +1424,11 @@ dependencies = [
 name = "data"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "async-trait",
  "audit",
+ "clap",
  "criterion",
  "futures",
  "metrics",
@@ -1445,6 +1447,7 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "trading_core",
  "wiremock",
 ]
