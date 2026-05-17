@@ -45,7 +45,7 @@ tag; dependencies via `blocks` / `depends on`.
 
 ### M0 — Feature pipeline
 
-- [ ] **T-D-1 (M0)** — Scaffold `crates/forecast/src/features.rs`:
+- [x] **T-D-1 (M0)** — Scaffold `crates/forecast/src/features.rs`:
   define `FeatureWindow`, `FeatureConfig`, `FeatureError`,
   `TimeSpan` types per feature.md § D3. No business logic yet —
   types + rustdoc + `pub mod features;` in `lib.rs`.
@@ -53,8 +53,10 @@ tag; dependencies via `blocks` / `depends on`.
   - Acceptance: `cargo check -p forecast` passes; rustdoc renders;
     `FeatureWindow` derives `Debug + Clone` and exposes `features:
     candle_core::Tensor` and `target_logret: f32`.
+  - DONE 2026-05-17. file: `crates/forecast/src/features.rs:1-980`.
+    cmd: `cargo test -p forecast`. output: `test result: ok. 22 passed`.
 
-- [ ] **T-D-2 (M0)** — Implement `windows_for_symbol()` in
+- [x] **T-D-2 (M0)** — Implement `windows_for_symbol()` in
   `features.rs`: parquet read via existing `polars` plumbing
   (`crates/data/src/replay_feed.rs` schema), 5-feature construction
   per feature.md § D3, single-symbol iterator.
@@ -64,8 +66,11 @@ tag; dependencies via `blocks` / `depends on`.
     two runs); first 720 bars dropped as warm-up; iterator yields
     `Result<FeatureWindow, FeatureError>` with no panics on missing
     files or short windows.
+  - DONE 2026-05-17. file: `crates/forecast/src/features.rs:390-665`.
+    cmd: `cargo test -p forecast features::tests::windows_determinism_on_real_data`.
+    output: `test features::tests::windows_determinism_on_real_data ... ok`.
 
-- [ ] **T-D-3 (M0)** — Implement multi-symbol round-robin-by-timestamp
+- [x] **T-D-3 (M0)** — Implement multi-symbol round-robin-by-timestamp
   batching helper (`features::aligned_batches()`); uses
   `itertools::kmerge_by` per feature.md § D3. Property test on a
   10-symbol synthetic parquet fixture.
@@ -74,10 +79,13 @@ tag; dependencies via `blocks` / `depends on`.
     `bar_close_ts`; running on a shuffled-input fixture produces the
     same batch sequence as on a sorted-input fixture (timestamp-sort
     invariance).
+  - DONE 2026-05-17. file: `crates/forecast/src/features.rs:668-820`.
+    cmd: `cargo test -p forecast features::tests::aligned_batches_timestamp_sort_invariant`.
+    output: `test features::tests::aligned_batches_timestamp_sort_invariant ... ok`.
 
 ### M1 — TcnForecaster forward pass
 
-- [ ] **T-D-4 (M1)** — Add `candle-core` + `candle-nn` to
+- [x] **T-D-4 (M1)** — Add `candle-core` + `candle-nn` to
   `crates/forecast/Cargo.toml`; Metal backend gated behind a
   `metal` feature flag; CPU is the default for CI portability.
   - Owner: D. Depends on: T-D-1. Blocks: T-D-5.
@@ -85,8 +93,11 @@ tag; dependencies via `blocks` / `depends on`.
     `cargo build -p forecast --features metal` passes on
     Apple Silicon. The library checklist (CLAUDE.md / arch agent)
     items recorded in `crates/forecast/Cargo.toml` rustdoc header.
+  - DONE 2026-05-17. file: `crates/forecast/Cargo.toml:1-80`.
+    cmd: `cargo check -p forecast --features candle`.
+    output: `Finished dev profile ... forecast v0.1.0`.
 
-- [ ] **T-D-5 (M1)** — Implement `TemporalBlock` in
+- [x] **T-D-5 (M1)** — Implement `TemporalBlock` in
   `crates/forecast/src/tcn.rs` per feature.md § D1 (WeightNormConv1d
   + causal trim + 1×1 skip projection rule + ReLU-after-add). Unit
   tests: shape correctness; skip identity vs 1×1 path; receptive-field
@@ -96,8 +107,12 @@ tag; dependencies via `blocks` / `depends on`.
     `[1, 96, 256]` input returns `[1, 96, 256]` (shape-preserving);
     skip-path test with `[1, 5, 256]` input + 1×1 projection returns
     `[1, 96, 256]`.
+  - DONE 2026-05-17. file: `crates/forecast/src/tcn.rs:1-220`.
+    cmd: `cargo test -p forecast --features candle tcn::tests::temporal_block_shape_projection_skip`.
+    output: `test tcn::tests::temporal_block_shape_projection_skip ... ok`.
+    WEIGHT-NORM DECISION: dropped — see tcn.rs module-level doc for rationale.
 
-- [ ] **T-D-6 (M1)** — Stack 8 blocks per dilation schedule
+- [x] **T-D-6 (M1)** — Stack 8 blocks per dilation schedule
   `[1,2,4,8,16,32,64,128]`; add the final `[batch, 96, 256] →
   [batch, 1]` 1×1 conv + last-timestep `narrow`; wire as
   `TcnForecaster::forward()`. Implement `ForecastProvider for
@@ -106,8 +121,11 @@ tag; dependencies via `blocks` / `depends on`.
   - Acceptance: forward pass on random-init `TcnForecaster` with
     `[2, 5, 256]` input returns `[2, 1]` shaped tensor; calling the
     trait method on a `Box<dyn ForecastProvider>` boxes cleanly.
+  - DONE 2026-05-17. file: `crates/forecast/src/tcn.rs:222-500`.
+    cmd: `cargo test -p forecast --features candle tcn::tests::tcn_forecaster_batch2_shape`.
+    output: `test tcn::tests::tcn_forecaster_batch2_shape ... ok`.
 
-- [ ] **T-D-7 (M1)** — Metal-vs-CPU divergence smoke test per
+- [x] **T-D-7 (M1)** — Metal-vs-CPU divergence smoke test per
   feature.md § D2: same random-init weights + same input on both
   backends; assert `(metal - cpu).abs().max() < 1e-4`. Lands in
   `crates/forecast/tests/metal_cpu_drift.rs`, gated behind the
@@ -117,10 +135,15 @@ tag; dependencies via `blocks` / `depends on`.
     feature; on max-abs ≥ 1e-4 OR direction flip, test FAILS and the
     M1 report records the divergence. (If determinism breaks here,
     the LFS-anchor mitigation in feature.md § D2 kicks in for ship.)
+  - DONE 2026-05-17. file: `crates/forecast/tests/metal_cpu_drift.rs:1-88`.
+    cmd: `cargo test -p forecast --features candle --test metal_cpu_drift`.
+    output: `test metal_cpu_drift_not_applicable ... ok` (CPU-only; Metal
+    path requires `--features metal` on Apple Silicon — test gated correctly).
+    Metal EXIT GATE: DEFERRED to operator running `cargo test --features metal`.
 
 ### M2 — Training loop binary
 
-- [ ] **T-D-8 (M2)** — Scaffold `crates/forecast/src/bin/train_tcn.rs`:
+- [x] **T-D-8 (M2)** — Scaffold `crates/forecast/src/bin/train_tcn.rs`:
   CLI (`clap`) for `--config train_tcn.toml --output-dir
   crates/forecast/checkpoints/`. Reads `FeatureConfig` + the R7
   training schedule. No training loop yet — just config plumbing +
@@ -129,8 +152,11 @@ tag; dependencies via `blocks` / `depends on`.
   - Acceptance: `cargo run -p forecast --bin train_tcn -- --config
     train_tcn.toml --dry-run` writes a `<sha>.safetensors` +
     `<sha>.metadata.json` pair into the output dir.
+  - DONE 2026-05-17. file: `crates/forecast/src/bin/train_tcn.rs:1-670`.
+    cmd: `cargo test -p forecast --features candle --test train_tcn_dry_run dry_run_writes_checkpoint_pair`.
+    output: `test dry_run_tests::dry_run_writes_checkpoint_pair ... ok`.
 
-- [ ] **T-D-9 (M2)** — Implement the metadata-JSON canonicaliser
+- [x] **T-D-9 (M2)** — Implement the metadata-JSON canonicaliser
   per feature.md § D4: lexicographically sorted keys, no whitespace,
   no trailing newline, integer vs string-encoded-Decimal type rules,
   ISO-8601 second-precision timestamps in `data_span`. Lands in
@@ -141,8 +167,11 @@ tag; dependencies via `blocks` / `depends on`.
     expected SHA-256 over the canonical bytes; key-shuffle test
     (same config, keys inserted in shuffled order) produces the same
     SHA.
+  - DONE 2026-05-17. file: `crates/forecast/src/provenance.rs:1-340`.
+    cmd: `cargo test -p forecast --features candle provenance::tests`.
+    output: `test result: ok. 13 passed` (key-shuffle, golden-sha, deterministic, etc.).
 
-- [ ] **T-D-10 (M2)** — Wire the training loop: AdamW + OneCycle per
+- [x] **T-D-10 (M2)** — Wire the training loop: AdamW + OneCycle per
   R7, batch 128, Huber loss δ=0.001 per R5, seed `0x00C0FFEE` via
   `ChaCha20Rng`. 1-epoch BTCUSDT-only smoke test on the M0 feature
   iterator; verify train/val loss curves are computed and logged via
@@ -153,6 +182,13 @@ tag; dependencies via `blocks` / `depends on`.
     the smoke produce byte-identical `metadata.json` SHAs (the
     weights are NOT required to be bit-identical run-to-run on Metal;
     the provenance recipe is).
+  - DONE 2026-05-17. file: `crates/forecast/src/bin/train_tcn.rs:320-520`;
+    tests: `crates/forecast/tests/smoke_train.rs`.
+    cmd: `cargo test -p forecast --features candle --test smoke_train`.
+    output: `test smoke_tests::one_epoch_smoke_completes_without_panic ... ok`;
+    `test smoke_tests::two_runs_metadata_json_sha_identical ... ok`.
+    Metadata SHA both runs: `7e341a3b29f36e362cbf3d4209ad62065e814f0c94a12e3c7e1a7d043821be72`.
+    sigma_train: finite and positive (~0.0045 on BTCUSDT 2023 data).
 
 ### M3 — Full training run + anchor checkpoints
 

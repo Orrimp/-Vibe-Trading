@@ -12,6 +12,11 @@
 *.toml.local
 config/*.local
 
+# TCN checkpoints — gitignored except LFS-tracked anchors.
+# Anchors live under crates/forecast/checkpoints/anchors/ (Wave C).
+crates/forecast/checkpoints/*.safetensors
+crates/forecast/checkpoints/*.metadata.json
+
 # OS / editor cruft
 .DS_Store
 *.swp

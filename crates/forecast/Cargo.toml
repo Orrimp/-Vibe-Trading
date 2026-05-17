@@ -3,7 +3,24 @@ name = "forecast"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "ForecastProvider trait + KronosForecaster stub (v2.5)"
+description = "ForecastProvider trait + TCN forecaster (v2.5)"
+
+# Checklist (CLAUDE.md / arch agent):
+# - candle-core + candle-nn: CPU default; Metal gated behind 'metal' feature (T-D-4).
+# - itertools: multi-symbol kmerge_by batching (T-D-3).
+# - polars: parquet read for feature pipeline (T-D-2).
+# - safetensors: checkpoint read/write (T-D-8).
+# - sha2: weight SHA-256 for provenance (T-D-9).
+# - rand_chacha: seeded RNG for training (T-D-10).
+# - clap: CLI for train_tcn binary (T-D-8).
+# - anyhow: error handling in binary (train_tcn.rs).
+
+[features]
+default = []
+# Enable candle Metal backend (Apple Silicon only).
+metal = ["candle-core/metal", "candle-nn/metal"]
+# Enable candle feature (CPU); required for TCN forward pass.
+candle = ["dep:candle-core", "dep:candle-nn"]
 
 [dependencies]
 # Workspace siblings
@@ -32,7 +49,36 @@ tracing = { workspace = true }
 # Errors
 thiserror = { workspace = true }
 
+# Data pipeline
+polars = { workspace = true }
+itertools = "0.14"
+
+# Deep learning (optional; candle feature gate)
+candle-core = { version = "0.9", optional = true }
+candle-nn = { version = "0.9", optional = true }
+
+# Checkpoint I/O
+safetensors = "0.4"
+
+# Hashing (provenance)
+sha2 = { workspace = true }
+
+# RNG (deterministic training)
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+
+# CLI (train_tcn binary)
+anyhow = { workspace = true }
+clap = { workspace = true }
+
+# Config (train_tcn.toml)
+toml = { workspace = true }
+
+# Logging (train_tcn binary)
+tracing-subscriber = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
 rust_decimal_macros = { workspace = true }
+proptest = { workspace = true }

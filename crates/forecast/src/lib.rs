@@ -22,7 +22,11 @@
 use async_trait::async_trait;
 use trading_core::forecast::{ForecastError, ForecastRequest, ForecastResponse};
 
+pub mod features;
 pub mod overlay;
+pub mod provenance;
+#[cfg(feature = "candle")]
+pub mod tcn;
 
 /// The async trait all forecast backends implement.
 ///

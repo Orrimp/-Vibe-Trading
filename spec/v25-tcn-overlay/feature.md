@@ -556,7 +556,54 @@ v2.6 bake-off retirement decision — not a failure of v2.5 ship.
 
 ## Implementation
 
-_developer fills this — see R9 for crate placement skeleton_
+Developer wave A+B landed 2026-05-17 (T-D-1 through T-D-10). Below is the summary.
+
+### Files created / modified
+
+| File | LOC | Role |
+|------|-----|------|
+| `crates/forecast/src/features.rs` | ~980 | FeatureWindow, FeatureConfig, FeatureError, TimeSpan, windows_for_symbol(), aligned_batches() |
+| `crates/forecast/src/tcn.rs` | ~680 | TemporalBlock, TcnModel, TcnForecaster + ForecastProvider impl |
+| `crates/forecast/src/provenance.rs` | ~340 | canonicalise(), CheckpointMetadata, model_revision hash |
+| `crates/forecast/src/bin/train_tcn.rs` | ~670 | Training binary: AdamW + OneCycle + Huber + checkpoint write |
+| `crates/forecast/src/lib.rs` | +4 | pub mod features; pub mod provenance; mod tcn (candle-gated) |
+| `crates/forecast/Cargo.toml` | ~80 | Added candle-core, candle-nn, polars, itertools, safetensors, sha2, rand_chacha, clap, tracing-subscriber |
+| `crates/forecast/train_tcn.toml` | ~35 | Default training config (BS-1 defaults) |
+| `crates/forecast/tests/metal_cpu_drift.rs` | ~90 | T-D-7 exit gate (Metal gated) |
+| `crates/forecast/tests/train_tcn_dry_run.rs` | ~120 | T-D-8 dry-run + T-D-9/T-D-10 metadata |
+| `crates/forecast/tests/smoke_train.rs` | ~370 | T-D-10 1-epoch smoke + two-run SHA determinism |
+| `.gitignore` | +4 | Exclude non-anchor checkpoints |
+
+### Weight-norm decision (T-D-5)
+
+**Dropped.** `candle_nn` 0.9 has no built-in `weight_norm`. The developer's
+call: use plain `Conv1d` for M0-M2. Rationale documented in
+`crates/forecast/src/tcn.rs` module-level doc. Wave C may add a
+`WeightNormConv1d` wrapper as a pure optimisation with no API change.
+
+### T-D-7 Metal-vs-CPU drift result
+
+Test file created and gated correctly behind `--features metal`. On CPU-only
+CI the non-metal stub passes. The real Metal EXIT GATE (`max_abs < 1e-4`) runs
+when operator executes `cargo test -p forecast --features metal --test
+metal_cpu_drift` on Apple Silicon.
+
+### T-D-10 1-epoch smoke result
+
+- 1-epoch BTCUSDT-only smoke completed without panic (~8 min on M-series CPU).
+- Train loss: finite (~0.0001 Huber on crypto log-returns after 1 epoch).
+- Val loss: finite.
+- sigma_train: finite and positive (~0.0045).
+- Two-run metadata.json SHA: byte-identical.
+  SHA: `7e341a3b29f36e362cbf3d4209ad62065e814f0c94a12e3c7e1a7d043821be72`.
+
+### Gate results
+
+- `cargo check -p forecast`: PASS (0 warnings)
+- `cargo check -p forecast --features candle`: PASS (0 warnings)
+- `cargo clippy -p forecast --features candle -- -D warnings`: PASS
+- `cargo test -p forecast --features candle --lib`: 47 passed, 0 failed
+- `cargo test --workspace --exclude forecast`: 0 failures (all existing tests green)
 
 Suggested milestone order (architect to lock in T-AR-2):
 

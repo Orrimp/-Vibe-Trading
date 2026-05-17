@@ -1,0 +1,38 @@
+# train_tcn.toml — TCN training configuration (v2.5 default)
+# Locked by architect per feature.md § R7.
+# Override any field on the command line; defaults match the spec exactly.
+
+[architecture]
+blocks   = 8
+channels = 96
+kernel   = 3
+dilations = [1, 2, 4, 8, 16, 32, 64, 128]
+dropout  = 0.1
+
+[tokenisation]
+context_bars    = 256
+features        = ["logret", "logrange", "logvol_z", "hour_sin", "hour_cos"]
+vol_z_lookback  = 720
+
+[training]
+optimiser    = "adamw"
+lr_max       = 0.001
+schedule     = "onecycle"
+batch        = 128
+epochs       = 30
+loss         = "huber"
+huber_delta  = 0.001
+seed         = 12648430   # 0x00C0FFEE — ADR-0002 project fixture seed
+patience     = 5          # early-stop patience in epochs
+
+[data]
+parquet_root = "data/binance"
+# BS-1 training span (T-OP-2)
+train_start  = "2023-01-01T00:00:00Z"
+train_end    = "2023-09-30T23:00:00Z"
+val_start    = "2023-10-01T00:00:00Z"
+val_end      = "2023-12-31T23:00:00Z"
+symbols      = ["ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT",
+                "DOTUSDT", "ETHUSDT", "LINKUSDT", "SOLUSDT", "XRPUSDT"]
+interval     = "1h"
+source       = "binance"
