@@ -22,6 +22,22 @@ metal = ["candle-core/metal", "candle-nn/metal"]
 # Enable candle feature (CPU); required for TCN forward pass.
 candle = ["dep:candle-core", "dep:candle-nn"]
 
+# `train_tcn` bin and `metal_cpu_drift` test depend on the candle-only `tcn`
+# module + `FeatureTensor = Tensor`. Without `--features candle`,
+# `FeatureTensor` resolves to `Vec<f32>` and these consumers fail to
+# compile. Mirror the cockpit-bin pattern: gate them at the cargo-target
+# level so default `cargo build` / `cargo test` skip them and they only
+# build with `--features candle`.
+[[bin]]
+name = "train_tcn"
+path = "src/bin/train_tcn.rs"
+required-features = ["candle"]
+
+[[test]]
+name = "metal_cpu_drift"
+path = "tests/metal_cpu_drift.rs"
+required-features = ["candle"]
+
 [dependencies]
 # Workspace siblings
 trading_core = { path = "../core" }

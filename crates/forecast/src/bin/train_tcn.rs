@@ -89,6 +89,31 @@ struct Cli {
     /// Override parquet root directory.
     #[arg(long)]
     parquet_root: Option<PathBuf>,
+
+    /// Training window start (ISO-8601, e.g. "2023-01-01").
+    /// Overrides [data].train_start in the config file.
+    #[arg(long)]
+    train_start: Option<String>,
+
+    /// Training window end (ISO-8601, e.g. "2023-09-30").
+    /// Overrides [data].train_end in the config file.
+    #[arg(long)]
+    train_end: Option<String>,
+
+    /// Validation window start (ISO-8601, e.g. "2023-10-01").
+    /// Overrides [data].val_start in the config file.
+    #[arg(long)]
+    val_start: Option<String>,
+
+    /// Validation window end (ISO-8601, e.g. "2023-12-31").
+    /// Overrides [data].val_end in the config file.
+    #[arg(long)]
+    val_end: Option<String>,
+
+    /// Scenario name embedded in checkpoint metadata (e.g. "bs1", "bs2").
+    /// Used to label the checkpoint without changing the provenance SHA.
+    #[arg(long)]
+    scenario: Option<String>,
 }
 
 // ── Config structs ────────────────────────────────────────────────────────────
@@ -187,6 +212,26 @@ fn parse_ts(s: &str) -> Result<time::OffsetDateTime> {
         .with_context(|| format!("invalid timestamp: {s}"))
 }
 
+/// Normalise a bare "YYYY-MM-DD" or full RFC-3339 string to
+/// "YYYY-MM-DDTOO:OO:OOZ" (midnight UTC) for window-start positions.
+fn normalise_date_to_rfc3339(s: &str) -> String {
+    if s.len() == 10 {
+        format!("{s}T00:00:00Z")
+    } else {
+        s.to_string()
+    }
+}
+
+/// Normalise a bare "YYYY-MM-DD" or full RFC-3339 string to
+/// "YYYY-MM-DDT23:00:00Z" (last complete hourly bar UTC) for window-end.
+fn normalise_date_to_rfc3339_end(s: &str) -> String {
+    if s.len() == 10 {
+        format!("{s}T23:00:00Z")
+    } else {
+        s.to_string()
+    }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
@@ -213,6 +258,22 @@ fn main() -> Result<()> {
     if let Some(pr) = cli.parquet_root {
         cfg.data.parquet_root = pr;
     }
+    // Per-scenario date window overrides (T-D-11 / T-D-12).
+    // Bare "YYYY-MM-DD" dates are normalised to RFC-3339 with midnight UTC.
+    if let Some(ts) = cli.train_start {
+        cfg.data.train_start = normalise_date_to_rfc3339(&ts);
+    }
+    if let Some(ts) = cli.train_end {
+        cfg.data.train_end = normalise_date_to_rfc3339_end(&ts);
+    }
+    if let Some(vs) = cli.val_start {
+        cfg.data.val_start = normalise_date_to_rfc3339(&vs);
+    }
+    if let Some(ve) = cli.val_end {
+        cfg.data.val_end = normalise_date_to_rfc3339_end(&ve);
+    }
+    // Scenario label (used in output file prefix for human readability).
+    let scenario_label = cli.scenario.unwrap_or_else(|| "default".to_string());
 
     info!(
         config = %cli.config.display(),
@@ -220,6 +281,11 @@ fn main() -> Result<()> {
         dry_run = cli.dry_run,
         epochs = cfg.training.epochs,
         symbols = ?cfg.data.symbols,
+        scenario = %scenario_label,
+        train_start = %cfg.data.train_start,
+        train_end = %cfg.data.train_end,
+        val_start = %cfg.data.val_start,
+        val_end = %cfg.data.val_end,
         "train_tcn starting"
     );
 
@@ -275,6 +341,7 @@ fn main() -> Result<()> {
                 final_train_loss: 0.0,
                 final_val_loss: 0.0,
                 epochs_trained: 0,
+                scenario: scenario_label.clone(),
             },
         )?;
         info!("--dry-run: done");
@@ -369,12 +436,14 @@ fn main() -> Result<()> {
     let mut final_train_loss = 0.0_f32;
     let mut final_val_loss = 0.0_f32;
     let mut all_r_hats: Vec<f32> = Vec::new(); // for sigma_train
+    let mut epochs_actually_trained = 0u32;
 
     // Seeded shuffle order (deterministic).
     let mut rng = ChaCha20Rng::seed_from_u64(cfg.training.seed);
     let n_train = train_windows.len();
 
     for epoch in 0..cfg.training.epochs {
+        epochs_actually_trained = epoch + 1;
         // Deterministic shuffle using Fisher-Yates with seeded RNG.
         let mut indices: Vec<usize> = (0..n_train).collect();
         use rand::seq::SliceRandom;
@@ -509,7 +578,8 @@ fn main() -> Result<()> {
             sigma_train,
             final_train_loss,
             final_val_loss,
-            epochs_trained: cfg.training.epochs,
+            epochs_trained: epochs_actually_trained,
+            scenario: scenario_label.clone(),
         },
     )?;
 
@@ -587,6 +657,7 @@ struct TrainingMetrics {
     final_train_loss: f32,
     final_val_loss: f32,
     epochs_trained: u32,
+    scenario: String,
 }
 
 fn write_checkpoint(
@@ -660,13 +731,21 @@ fn write_checkpoint(
     let sha = &meta.model_revision;
     info!(model_revision = sha, "checkpoint model_revision computed");
 
-    // Rename safetensors to <sha>.safetensors.
-    let weights_path = output_dir.join(format!("{sha}.safetensors"));
+    // Build filename prefix: "tcn-<scenario>-<sha>" when scenario is
+    // provided (e.g. "tcn-bs1-<sha>"), otherwise just "<sha>".
+    let prefix = if metrics.scenario.is_empty() || metrics.scenario == "default" {
+        sha.clone()
+    } else {
+        format!("tcn-{}-{sha}", metrics.scenario)
+    };
+
+    // Rename safetensors to <prefix>.safetensors.
+    let weights_path = output_dir.join(format!("{prefix}.safetensors"));
     std::fs::rename(&temp_path, &weights_path)
         .with_context(|| format!("renaming safetensors to {weights_path:?}"))?;
 
     // Write metadata JSON.
-    let meta_path = output_dir.join(format!("{sha}.metadata.json"));
+    let meta_path = output_dir.join(format!("{prefix}.metadata.json"));
     let meta_bytes = meta.to_canonical_bytes();
     std::fs::write(&meta_path, &meta_bytes)
         .with_context(|| format!("writing metadata to {meta_path:?}"))?;
@@ -675,6 +754,7 @@ fn write_checkpoint(
         safetensors = %weights_path.display(),
         metadata_json = %meta_path.display(),
         model_revision = sha,
+        scenario = %metrics.scenario,
         "checkpoint written"
     );
 
