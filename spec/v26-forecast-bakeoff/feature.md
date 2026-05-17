@@ -49,7 +49,27 @@ the bake-off concludes v2.5 doesn't ship as production; the project
 moves to v3 (RL policy) with the DL portfolio retained as research
 artifacts.
 
+## Open design option — LLM arbiter (sourced 2026-05-17)
+
+Per the external-code survey at
+[`spec/dev-notes/external-code-patterns-2026-05-17.md`](../dev-notes/external-code-patterns-2026-05-17.md),
+a candidate refinement worth considering when this phase activates:
+an **LLM arbiter** that reads all three forecasters' outputs (TCN /
+PatchTST / Vanilla Transformer) plus the operator's strategy params
+and produces a tie-break decision with a reasoning trace that lands
+in the audit ledger. Adapts the bull/bear adversarial pattern from
+[TradingAgents](https://github.com/TauricResearch/TradingAgents)
+(specifically the
+[`bull_researcher.py`](https://github.com/TauricResearch/TradingAgents/blob/main/tradingagents/agents/researchers/bull_researcher.py)
+debate-with-iteration-count discipline). Backlog entry queued at
+`spec/backlog.md ## Queue ## Process / tooling →
+v26-bakeoff-llm-arbiter`. The analyst weighs this against the simpler
+"pick by Sharpe-lift" approach when phase 4 promotes.
+
 ## Changelog
 
+- 2026-05-17 (orchestrator): added "LLM arbiter" open design option
+  sourced from the external-code-patterns survey. Backlog entry queued.
+  No status change.
 - 2026-05-17 (orchestrator): phase 4 stub opened. Status: roadmap
   (pending phases 1, 2, 3).

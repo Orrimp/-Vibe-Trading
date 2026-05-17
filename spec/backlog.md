@@ -323,6 +323,44 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Process / tooling
 
+- **`audit-tick-consumer-envelope`** (architecture follow-up) —
+  _candidate, sourced from
+  [`spec/dev-notes/external-code-patterns-2026-05-17.md`](dev-notes/external-code-patterns-2026-05-17.md)_.
+  Formalised by [ADR-0031](architecture/adr/0031-audit-tick-consumer-envelope.md)
+  (status `proposed`). Borrows the barter-rs `AuditTick<Event, Context>`
+  envelope so `crates/reflection`, future Lab `Trail` (Phase D), and
+  future v2.6 bake-off + v3 success-reports can subscribe to a single
+  audit broadcast instead of each requiring a dedicated write tap.
+  Strictly additive (existing taps coexist); zero hot-path impact; 11
+  anchors stay byte-identical. ~50 LOC addition in `crates/audit`
+  per ADR. Analyst spawn when operator chooses to promote.
+
+- **`v2x-trading-state-bus`** (v2 LLM evolution) —
+  _candidate, sourced from
+  [`spec/dev-notes/external-code-patterns-2026-05-17.md`](dev-notes/external-code-patterns-2026-05-17.md)_.
+  Replace ad-hoc parameter threading in the v2 LLM agent pipeline with
+  an owned `TradingState { fundamentals, sentiment, news, technical,
+  debate: Vec<Argument>, count: u32, … }` struct that each agent
+  destructures, mutates its slice, and passes on. Mirrors
+  [TradingAgents'](https://github.com/TauricResearch/TradingAgents)
+  LangGraph state-dict pattern but in Rust. Bull/Bear adversarial
+  researcher pattern (see below) plugs in cleanly. Not a v2.0 ship
+  enhancement (v2 already shipped 2026-05-13); a v2.1 or v2.2
+  feature. Analyst spawn when operator chooses.
+
+- **`v26-bakeoff-llm-arbiter`** (v2.6 enhancement) —
+  _candidate, sourced from
+  [`spec/dev-notes/external-code-patterns-2026-05-17.md`](dev-notes/external-code-patterns-2026-05-17.md)_.
+  After v2.5 / v2.5a / v2.5b ship as TCN / PatchTST / Vanilla
+  Transformer, an LLM arbiter reads all three forecasters' outputs
+  + the operator's strategy params and produces a tie-break decision
+  with a reasoning trace that lands in the audit ledger. Adapts the
+  [TradingAgents](https://github.com/TauricResearch/TradingAgents)
+  bull/bear adversarial researcher pattern to DL-forecast arbitration.
+  Plugs into [`spec/v26-forecast-bakeoff/feature.md`](v26-forecast-bakeoff/feature.md);
+  not a separate feature — a v2.6 design refinement the analyst
+  considers when the bake-off feature activates.
+
 - **v2.1 — Cockpit LLM-budget tile + tracing-Layer redactor +
   pedantic clippy cleanup (`v2-llm-strategy-v21-followups`).**
   _candidate, surfaced 2026-05-13 by v2-llm-strategy v2.0.0 ship_ —

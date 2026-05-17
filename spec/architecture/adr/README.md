@@ -78,6 +78,7 @@ the canonical table; the parent file links here.)
 | 0028  | v2.5 — DL forecast overlay trained in `candle` (supersedes 0027) | accepted | 2026-05-16 |
 | 0029  | v2.5 — Forecast-checkpoint provenance schema + LFS-anchor strategy | accepted | 2026-05-17 |
 | 0030  | Cockpit calls the backtest engine in-process via tightened API | accepted | 2026-05-17 |
+| 0031  | `AuditTick<Event, Context>` consumer envelope for audit ledger read path | proposed | 2026-05-17 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -121,5 +122,14 @@ finalisation.
 - 2026-05-17 (architect): ADR-0030 added (cockpit in-process backtest
   engine API). Opens the `ui → backtest` edge for the Lab Run button
   shipped by `ui-rethink-phase-a-lab` per operator-decision Q-A2.
+- 2026-05-17 (orchestrator): ADR-0031 added (status: proposed) —
+  `AuditTick<Event, Context>` consumer envelope for the audit ledger
+  read path. Borrowed from
+  [barter-rs](https://github.com/barter-rs/barter-rs) per the survey at
+  `spec/dev-notes/external-code-patterns-2026-05-17.md`. Decouples
+  consumer-side state replicas from producer's channel choice via
+  generic Iterator. Strictly additive (existing taps + broadcast tee
+  coexist); zero hot-path impact; 11 anchors stay byte-identical.
+  Implementation queued in `spec/backlog.md ## Queue`.
   Establishes the invocation pattern reused by Phase B / Phase E
   Compare matrix / v3 continuous-paper.
