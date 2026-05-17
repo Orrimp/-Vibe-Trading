@@ -101,35 +101,53 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **v2.5 — DL forecast overlay (`v25-dl-forecast-overlay`).**
-  _draft_ — replaces the dropped `v25-kronos-forecast-overlay`
-  per [ADR-0028](architecture/adr/0028-v25-dl-forecast-overlay-candle.md)
-  (Kronos superseded 2026-05-16). Direction: **train a small custom
-  Transformer or TCN on crypto K-line data using
-  [`candle`](https://github.com/huggingface/candle)**, the project's
-  named prototyping ML framework per [CLAUDE.md](../CLAUDE.md). No
-  pre-trained foundation model. No ONNX. No `tract`. No Python at
-  runtime. Operator-locked backtest baseline carries forward: BS-1
-  (2023 full-year top-10 USDT) and BS-2 (2024 full-year top-10 USDT);
-  2 new anchors lock at ship.
-  Wave A bootstrap (2026-05-16) shipped `crates/forecast/`,
-  `crates/replay-cache/`, and `crates/core/src/forecast.rs` — all
-  model-agnostic by design and preserved across the pivot. Only
-  Kronos-specific files (kronos.rs stub, ONNX assets, build.rs
-  checksum gate, torch→ONNX conversion script, *.onnx LFS rule)
-  were removed. Brief stub at
-  [`spec/v25-dl-forecast-overlay/feature.md`](v25-dl-forecast-overlay/feature.md);
-  awaits analyst pass on model family / size / tokenisation / data /
-  loss / horizon / success criterion / checkpoint storage / audit
-  integration. HANDOFF → analyst.
+- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _draft_ — phase 1
+  of the [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
+  (operator-locked 2026-05-17 after reading the
+  [v25-dl-reading-list](dev-notes/v25-dl-reading-list-2026-05-16.md)
+  and deciding to build all three model families for empirical bake-off).
+  Model family: Temporal Convolutional Network (Bai, Kolter, Koltun
+  2018). Selected first because (a) simplest architecture, fastest to
+  a working baseline; (b) establishes the training loop + audit +
+  replay infrastructure that v2.5a (PatchTST) and v2.5b (Transformer)
+  reuse; (c) deterministic inference (no autoregressive sampling) —
+  easier to anchor and audit. Data prerequisite: 10 USDT pairs hourly
+  2023+2024 bootstrapped via `cargo run -p data --bin fetch_binance_klines`
+  (~72s wallclock, ~15-20 MB). Brief stub at
+  [`spec/v25-tcn-overlay/feature.md`](v25-tcn-overlay/feature.md);
+  awaits analyst pass on TCN topology / model size / tokenisation /
+  context window / loss function / output shape / training schedule /
+  checkpoint provenance. Carry-forward backtest scenarios: BS-1
+  (2023 full-year top-10 USDT), BS-2 (2024 full-year top-10 USDT).
+  HANDOFF → analyst (operator-paced; bootstrap downloader run first).
 
 ## Queue
 
 ### Strategy
 
-_(empty — v2.5 promoted to Active 2026-05-16; pre-eval breadcrumb
-remains at
-[`spec/dev-notes/kronos-evaluation-2026-05-10.md`](dev-notes/kronos-evaluation-2026-05-10.md))_
+- **v2.5a — PatchTST / iTransformer forecast overlay
+  (`v25a-patchtst-overlay`).** _roadmap_ — phase 2 of the
+  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). Activates
+  after phase 1 (TCN) ships. Patch-based Transformer paradigm; reuses
+  training infrastructure from phase 1. Stub at
+  [`spec/v25a-patchtst-overlay/feature.md`](v25a-patchtst-overlay/feature.md).
+- **v2.5b — Vanilla decoder-only Transformer overlay
+  (`v25b-transformer-overlay`).** _roadmap_ — phase 3 of the
+  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). Activates
+  after phases 1+2 ship. Autoregressive Transformer over discretised
+  OHLCV tokens (the operator's hand-built Kronos-shape successor —
+  full provenance, no pre-trained weights). Stub at
+  [`spec/v25b-transformer-overlay/feature.md`](v25b-transformer-overlay/feature.md).
+- **v2.6 — Forecast bake-off + retirement (`v26-forecast-bakeoff`).**
+  _roadmap_ — phase 4 of the
+  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). After all
+  three phase-1/2/3 forecasters ship, run a head-to-head on BS-1+BS-2
+  with identical criteria. Pick the canonical v2.5 overlay; mark the
+  other two as research-mode only. Stub at
+  [`spec/v26-forecast-bakeoff/feature.md`](v26-forecast-bakeoff/feature.md).
+- **Pre-pivot breadcrumb:** the dropped Kronos approach is preserved at
+  [`spec/dev-notes/kronos-evaluation-2026-05-10.md`](dev-notes/kronos-evaluation-2026-05-10.md)
+  [SUPERSEDED] as a what-not-to-do reference.
 
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 

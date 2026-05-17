@@ -92,26 +92,71 @@ anchors     = []
 state       = "shipped"
 
 [[req]]
-id          = "REQ-V25-DL-001"
-title       = "v2.5 DL forecast overlay — small custom Transformer/TCN trained in candle, signal-level overlay on v1 momentum"
+id          = "REQ-V25-DL-000"
+title       = "v2.5 DL forecast overlay — 4-phase umbrella roadmap (TCN → PatchTST → Transformer → bake-off)"
 feature     = "v25-dl-forecast-overlay"
 product     = "spec/product.md"
 arch        = [
   "spec/architecture/12-forecast-overlay.md",
   "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md",
   "spec/architecture/adr/0027-kronos-onnx-tract-integration.md",  # superseded, preserved
+]
+crates      = ["crates/forecast", "crates/replay-cache", "crates/core"]
+tests       = []
+anchors     = []  # umbrella; per-phase anchors locked by sub-REQs
+state       = "roadmap"
+
+[[req]]
+id          = "REQ-V25-TCN-001"
+title       = "v2.5 TCN forecast overlay — phase 1 of 4 (Bai et al 2018 TCN trained in candle)"
+feature     = "v25-tcn-overlay"
+product     = "spec/product.md"
+arch        = [
+  "spec/architecture/12-forecast-overlay.md",
+  "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md",
   "spec/architecture/02-strategy-registry.md",
-  "spec/architecture/05-llm-and-reflection.md",
   "spec/architecture/10-foundation-libraries.md",
-  "spec/architecture/adr/0019-v2-llm-strategy.md",
   "spec/architecture/adr/0002-rng-chacha20.md",
   "spec/architecture/adr/0003-decimal-money-math.md",
   "spec/architecture/adr/0004-fractional-second-timestamps.md",
 ]
 crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
-tests       = []   # TODO developer: link integration tests at training-loop completion
-anchors     = ["top10-2023-fy-dl-overlay-momentum", "top10-2024-fy-dl-overlay-momentum"]
+tests       = []   # TODO developer: link at training-loop completion
+anchors     = ["top10-2023-fy-tcn-overlay", "top10-2024-fy-tcn-overlay"]
 state       = "draft"
+
+[[req]]
+id          = "REQ-V25A-PATCHTST-001"
+title       = "v2.5a PatchTST / iTransformer forecast overlay — phase 2 of 4"
+feature     = "v25a-patchtst-overlay"
+product     = "spec/product.md"
+arch        = ["spec/architecture/12-forecast-overlay.md", "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md"]
+crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
+tests       = []
+anchors     = ["top10-2023-fy-patchtst-overlay", "top10-2024-fy-patchtst-overlay"]
+state       = "roadmap"
+
+[[req]]
+id          = "REQ-V25B-TRANSFORMER-001"
+title       = "v2.5b Vanilla decoder-only Transformer forecast overlay — phase 3 of 4"
+feature     = "v25b-transformer-overlay"
+product     = "spec/product.md"
+arch        = ["spec/architecture/12-forecast-overlay.md", "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md"]
+crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
+tests       = []
+anchors     = ["top10-2023-fy-transformer-overlay", "top10-2024-fy-transformer-overlay"]
+state       = "roadmap"
+
+[[req]]
+id          = "REQ-V26-BAKEOFF-001"
+title       = "v2.6 Forecast bake-off + retirement — phase 4 of 4 (pick canonical v2.5 production overlay by evidence)"
+feature     = "v26-forecast-bakeoff"
+product     = "spec/product.md"
+arch        = ["spec/architecture/12-forecast-overlay.md", "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md"]
+crates      = ["crates/forecast", "crates/strategy", "crates/audit", "crates/reports"]
+tests       = []
+anchors     = ["top10-2023-fy-bakeoff-winner", "top10-2024-fy-bakeoff-winner"]
+state       = "roadmap"
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────
