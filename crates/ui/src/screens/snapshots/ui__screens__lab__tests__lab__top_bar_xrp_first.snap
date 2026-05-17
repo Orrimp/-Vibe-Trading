@@ -1,0 +1,6 @@
+---
+source: crates/ui/src/screens/lab.rs
+assertion_line: 634
+expression: summary
+---
+top_bar pairs=[XRPUSDT, ETHUSDT, BTCUSDT, ADAUSDT, AVAXUSDT, BNBUSDT, DOGEUSDT, DOTUSDT, LINKUSDT, SOLUSDT] first=XRPUSDT second=ETHUSDT third=BTCUSDT

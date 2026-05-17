@@ -226,6 +226,55 @@ pub mod color {
         light: rgb(0xEC, 0xF6, 0xF5), // accent-50
     };
 
+    // ── Comparison-overlay accent ramp (ACCENT_2..5) ────────────────────
+    //
+    // Four new tokens added for the multi-strategy comparison overlay
+    // (ui-rethink-phase-a-lab T-D-9 / Design § 7).  Hex values are
+    // verbatim from
+    // [`spec/dev-notes/lumen-accent-palette-extension-2026-05-17.md`].
+    // These tokens are the ONLY callers that use the new hues; all chart
+    // code and strategy_chip code must reference these constants so the
+    // Lumen Phase 1 hex-audit (`grep '#' …`) stays clean.
+
+    /// Comparison slot 0 — desaturated teal.
+    /// Dark: `accent-200` (#A6D5CF). Light: `accent-500` (#2A7B73).
+    pub const ACCENT_2: ModeColor = ModeColor {
+        dark: rgb(0xA6, 0xD5, 0xCF),
+        light: rgb(0x2A, 0x7B, 0x73),
+    };
+
+    /// Comparison slot 1 — cool blue.
+    /// Dark: #82AEDC. Light: #3D6BA8.
+    pub const ACCENT_3: ModeColor = ModeColor {
+        dark: rgb(0x82, 0xAE, 0xDC),
+        light: rgb(0x3D, 0x6B, 0xA8),
+    };
+
+    /// Comparison slot 2 — muted purple.
+    /// Dark: #B79BD4. Light: #6E4F9C.
+    pub const ACCENT_4: ModeColor = ModeColor {
+        dark: rgb(0xB7, 0x9B, 0xD4),
+        light: rgb(0x6E, 0x4F, 0x9C),
+    };
+
+    /// Comparison slot 3 — amber.
+    /// Dark: `warn-400` (#E0B45C). Light: `warn-600` (#A8842F).
+    pub const ACCENT_5: ModeColor = ModeColor {
+        dark: rgb(0xE0, 0xB4, 0x5C),
+        light: rgb(0xA8, 0x84, 0x2F),
+    };
+
+    /// Returns the four comparison-slot accent tokens in positional order
+    /// `[ACCENT_2, ACCENT_3, ACCENT_4, ACCENT_5]`. Used by `strategy_chip`
+    /// and the chart comparison-overlay draw pass.
+    ///
+    /// The unit test `accent_palette_slot_order_is_stable` pins this
+    /// ordering so any reorder shows up as a deliberate test edit.
+    #[must_use]
+    pub const fn accent_palette() -> [ModeColor; 4] {
+        [ACCENT_2, ACCENT_3, ACCENT_4, ACCENT_5]
+    }
+
     // ── Semantic ramps — sage / clay / warn / info ───────────────────────
     //
     // `colors_and_type.css:57–70` — light values
@@ -623,6 +672,10 @@ pub mod layout {
     /// and `Charts` per the analyst's ratified insertion point. Phase 2's
     /// `SIDEBAR_ENTRIES_PHASE_2` was removed atomically on Phase 3 ship —
     /// no forward-compat need.
+    ///
+    /// Uses deprecated `Screen` variants; kept for test-snapshot regression
+    /// baseline. Phase A shell uses `SIDEBAR_ENTRIES_PHASE_A`.
+    #[allow(deprecated)]
     pub const SIDEBAR_ENTRIES_PHASE_3: &[Screen] = &[
         Screen::Home,
         Screen::Debug,
@@ -636,6 +689,10 @@ pub mod layout {
     /// the 7th sidebar entry, appended to the end so the existing 6
     /// positions are preserved. The Phase 2 R1.6 sidebar widget API is
     /// parameterised — additive only.
+    ///
+    /// **Deprecated at Phase A** — use `SIDEBAR_ENTRIES_PHASE_A`.
+    /// Kept for one cycle for any call sites that reference it directly.
+    #[allow(deprecated)]
     pub const SIDEBAR_ENTRIES_PHASE_5: &[Screen] = &[
         Screen::Home,
         Screen::Debug,
@@ -644,6 +701,32 @@ pub mod layout {
         Screen::Audit,
         Screen::Charts,
         Screen::Control,
+    ];
+
+    /// Phase A (ui-rethink-phase-a-lab T-D-3) — Phase A workflow-group
+    /// sidebar shape per Design § 6 / R9.1. New three-group structure:
+    ///
+    /// ```text
+    /// Lab        ← default route (R1.2)
+    /// Live       ← renamed from Home
+    /// Compare    ← placeholder (Phase E)
+    /// ─────
+    /// Strategies ← unchanged
+    /// Memory     ← placeholder (Phase F)
+    /// Models     ← placeholder (Phase F)
+    /// Trail      ← renamed from Audit (Phase D body)
+    /// ─────
+    /// Settings   ← placeholder (Phase C rollup)
+    /// ```
+    pub const SIDEBAR_ENTRIES_PHASE_A: &[Screen] = &[
+        Screen::Lab,
+        Screen::Live,
+        Screen::Compare,
+        Screen::Strategies,
+        Screen::Memory,
+        Screen::Models,
+        Screen::Trail,
+        Screen::Settings,
     ];
 
     /// Phase 3 — Audit-screen pagination size (Q4 — fixed 250 rows / page).
@@ -1346,5 +1429,108 @@ mod tests {
             "LEGEND_CARD_HEIGHT_PX ({}) must clear 5 entries ({needed} px)",
             layout::LEGEND_CARD_HEIGHT_PX,
         );
+    }
+
+    // ── T-D-9 — Lumen ACCENT_2..5 tokens ────────────────────────────────
+
+    /// T-D-9 — pin `ACCENT_2..5` dark hex values verbatim from the
+    /// `lumen-accent-palette-extension-2026-05-17` dev-note. Any change
+    /// to these constants requires updating the dev-note and this test
+    /// simultaneously so the change is deliberate.
+    #[test]
+    fn accent_2_to_5_dark_hex_pinned() {
+        assert_eq!(
+            rgb8(color::ACCENT_2.current(ThemeMode::Dark)),
+            (0xA6, 0xD5, 0xCF),
+            "ACCENT_2 dark = accent-200 #A6D5CF"
+        );
+        assert_eq!(
+            rgb8(color::ACCENT_3.current(ThemeMode::Dark)),
+            (0x82, 0xAE, 0xDC),
+            "ACCENT_3 dark = cool-blue #82AEDC"
+        );
+        assert_eq!(
+            rgb8(color::ACCENT_4.current(ThemeMode::Dark)),
+            (0xB7, 0x9B, 0xD4),
+            "ACCENT_4 dark = muted-purple #B79BD4"
+        );
+        assert_eq!(
+            rgb8(color::ACCENT_5.current(ThemeMode::Dark)),
+            (0xE0, 0xB4, 0x5C),
+            "ACCENT_5 dark = amber #E0B45C"
+        );
+    }
+
+    /// T-D-9 — pin `ACCENT_2..5` light hex values verbatim from the
+    /// `lumen-accent-palette-extension-2026-05-17` dev-note.
+    #[test]
+    fn accent_2_to_5_light_hex_pinned() {
+        assert_eq!(
+            rgb8(color::ACCENT_2.current(ThemeMode::Light)),
+            (0x2A, 0x7B, 0x73),
+            "ACCENT_2 light = accent-500 #2A7B73"
+        );
+        assert_eq!(
+            rgb8(color::ACCENT_3.current(ThemeMode::Light)),
+            (0x3D, 0x6B, 0xA8),
+            "ACCENT_3 light = cool-blue #3D6BA8"
+        );
+        assert_eq!(
+            rgb8(color::ACCENT_4.current(ThemeMode::Light)),
+            (0x6E, 0x4F, 0x9C),
+            "ACCENT_4 light = muted-purple #6E4F9C"
+        );
+        assert_eq!(
+            rgb8(color::ACCENT_5.current(ThemeMode::Light)),
+            (0xA8, 0x84, 0x2F),
+            "ACCENT_5 light = amber #A8842F"
+        );
+    }
+
+    /// T-D-9 — `color::accent_palette()` returns the four tokens in
+    /// positional order `[ACCENT_2, ACCENT_3, ACCENT_4, ACCENT_5]`.
+    /// Reordering the slots requires a deliberate test edit.
+    #[test]
+    fn accent_palette_slot_order_is_stable() {
+        let palette = color::accent_palette();
+        assert_eq!(palette.len(), 4);
+        // Slot 0 — desaturated teal (ACCENT_2).
+        assert_eq!(
+            rgb8(palette[0].current(ThemeMode::Dark)),
+            (0xA6, 0xD5, 0xCF),
+            "slot 0 = ACCENT_2 dark"
+        );
+        // Slot 1 — cool blue (ACCENT_3).
+        assert_eq!(
+            rgb8(palette[1].current(ThemeMode::Dark)),
+            (0x82, 0xAE, 0xDC),
+            "slot 1 = ACCENT_3 dark"
+        );
+        // Slot 2 — muted purple (ACCENT_4).
+        assert_eq!(
+            rgb8(palette[2].current(ThemeMode::Dark)),
+            (0xB7, 0x9B, 0xD4),
+            "slot 2 = ACCENT_4 dark"
+        );
+        // Slot 3 — amber (ACCENT_5).
+        assert_eq!(
+            rgb8(palette[3].current(ThemeMode::Dark)),
+            (0xE0, 0xB4, 0x5C),
+            "slot 3 = ACCENT_5 dark"
+        );
+    }
+
+    /// T-D-9 — all four accent tokens differ across modes (both modes
+    /// are wired, per the `ModeColor` contract).
+    #[test]
+    fn accent_palette_modes_differ() {
+        for (i, token) in color::accent_palette().iter().enumerate() {
+            assert_ne!(
+                rgb8(token.current(ThemeMode::Dark)),
+                rgb8(token.current(ThemeMode::Light)),
+                "ACCENT_{} dark and light must differ",
+                i + 2,
+            );
+        }
     }
 }

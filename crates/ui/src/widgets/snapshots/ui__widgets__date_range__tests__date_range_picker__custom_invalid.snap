@@ -1,0 +1,6 @@
+---
+source: crates/ui/src/widgets/date_range.rs
+assertion_line: 409
+expression: summary
+---
+range=Custom start=not-a-date start_valid=false end=2024-06-30 end_valid=true error=Invalid date (use YYYY-MM-DD)

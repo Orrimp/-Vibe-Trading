@@ -18,10 +18,11 @@ use smol_str::SmolStr;
 use crate::fixtures as fx;
 use crate::state::{Cockpit, ExecutionMode, Message, OverrideRiskVetoState, PanelState, Screen};
 use crate::theme::ThemeMode;
+use crate::strings;
 use crate::widgets::{
-    agent_feed, chart, focus_ring, frame, human_control, journal_transaction_modal, kill,
-    kpi_strip, latency, num, override_risk_veto, pnl, positions, sidebar_nav, sparkline,
-    status_bar, strategies, volume_histogram,
+    agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
+    kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
+    sidebar_nav, sparkline, status_bar, strategies, strategy_chip, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -192,6 +193,22 @@ fn seed_frame() -> Cockpit {
     fx::fake_cockpit_ready()
 }
 
+fn seed_placeholder() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn seed_pair_chip() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn seed_strategy_chip() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn seed_date_range() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
 fn seed_journal_transaction_modal() -> Cockpit {
     let mut c = fx::fake_cockpit_ready();
     let rows = fx::fake_journal_rows(3);
@@ -288,13 +305,13 @@ fn render_strategies_with_one_veto(model: &Cockpit) -> iced::Element<'_, Message
 
 fn render_charts_hovered(model: &Cockpit) -> iced::Element<'_, Message> {
     // Render the chart widget view for the current screen + symbol.
-    use crate::screens::charts;
-    charts::view(model, ThemeMode::Dark)
+    use crate::screens::lab;
+    lab::view(model, ThemeMode::Dark)
 }
 
 fn render_charts_empty(model: &Cockpit) -> iced::Element<'_, Message> {
-    use crate::screens::charts;
-    charts::view(model, ThemeMode::Dark)
+    use crate::screens::lab;
+    lab::view(model, ThemeMode::Dark)
 }
 
 fn render_latency_healthy(model: &Cockpit) -> iced::Element<'_, Message> {
@@ -412,8 +429,8 @@ fn render_chart_legend(model: &Cockpit) -> iced::Element<'_, Message> {
     // chart_legend::draw_legend is canvas-only (no standalone view fn).
     // Render the full Charts screen as the representative cell — the legend
     // is embedded in the chart canvas.
-    use crate::screens::charts;
-    charts::view(model, ThemeMode::Dark)
+    use crate::screens::lab;
+    lab::view(model, ThemeMode::Dark)
 }
 
 fn render_drawdown_band(_model: &Cockpit) -> iced::Element<'_, Message> {
@@ -444,6 +461,52 @@ fn render_frame(_model: &Cockpit) -> iced::Element<'_, Message> {
     use iced::widget::Text;
     let body = Text::new("frame :: panel chrome example").into();
     frame::panel("frame :: panel", body, ThemeMode::Dark)
+}
+
+fn render_placeholder(_model: &Cockpit) -> iced::Element<'_, Message> {
+    placeholder::view(strings::COMPARE_PLACEHOLDER, ThemeMode::Dark)
+}
+
+fn render_pair_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::universe::xrp_first_universe_owned;
+    // Leak static data so the element's lifetime is `'static`, satisfying
+    // the gallery `fn(&Cockpit) -> Element<'_>` contract. This is acceptable
+    // in the test/gallery binary path — no production code follows this route.
+    let universe: &'static _ = Box::leak(Box::new(xrp_first_universe_owned()));
+    let selected: &'static _ = Box::leak(Box::new(universe.first().cloned()));
+    pair_chip::row(universe, selected.as_ref(), false, ThemeMode::Dark)
+}
+
+fn render_strategy_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::state::{StrategyFamily, COMPARE_SET_CAP};
+    use std::collections::HashMap;
+    use trading_core::StrategyId;
+
+    let ids: &'static _ = Box::leak(Box::new(vec![
+        StrategyId(smol_str::SmolStr::new("v1.momentum")),
+        StrategyId(smol_str::SmolStr::new("v0.5.macd")),
+    ]));
+    let mut families_map = HashMap::new();
+    families_map.insert(
+        StrategyId(smol_str::SmolStr::new("v1.momentum")),
+        StrategyFamily::Rule,
+    );
+    families_map.insert(
+        StrategyId(smol_str::SmolStr::new("v0.5.macd")),
+        StrategyFamily::Composed,
+    );
+    let families: &'static _ = Box::leak(Box::new(families_map));
+    let primary: &'static _ = Box::leak(Box::new(ids.first().cloned()));
+    let compare_set: &'static _ =
+        Box::leak(Box::new(vec![ids.get(1).cloned()]));
+    let _ = COMPARE_SET_CAP;
+    strategy_chip::row(ids, families, primary.as_ref(), compare_set, ThemeMode::Dark)
+}
+
+fn render_date_range(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::state::{DateRange, Preset};
+    let range: &'static _ = Box::leak(Box::new(DateRange::Preset(Preset::Last90d)));
+    date_range::view(range, None, ThemeMode::Dark)
 }
 
 fn render_journal_transaction_modal(_model: &Cockpit) -> iced::Element<'_, Message> {
@@ -706,6 +769,30 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         seed: seed_frame,
     },
     GalleryCell {
+        widget: "placeholder",
+        state: "compare_coming_soon",
+        render: render_placeholder,
+        seed: seed_placeholder,
+    },
+    GalleryCell {
+        widget: "pair_chip",
+        state: "xrp_first_row",
+        render: render_pair_chip,
+        seed: seed_pair_chip,
+    },
+    GalleryCell {
+        widget: "strategy_chip",
+        state: "primary_with_compare",
+        render: render_strategy_chip,
+        seed: seed_strategy_chip,
+    },
+    GalleryCell {
+        widget: "date_range",
+        state: "last90d_preset",
+        render: render_date_range,
+        seed: seed_date_range,
+    },
+    GalleryCell {
         widget: "journal_transaction_modal",
         state: "loading",
         render: render_journal_transaction_modal,
@@ -759,6 +846,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "chart",
     "chart_legend",
     "chart_tooltip",
+    "date_range",
     "drawdown_band",
     "equity_curve",
     "focus_ring",
@@ -770,12 +858,15 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "latency",
     "num",
     "override_risk_veto",
+    "pair_chip",
+    "placeholder",
     "pnl",
     "positions",
     "sidebar_nav",
     "sparkline",
     "status_bar",
     "strategies",
+    "strategy_chip",
     "volume_histogram",
 ];
 

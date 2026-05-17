@@ -1,0 +1,17 @@
+---
+source: crates/ui/src/widgets/sidebar_nav.rs
+assertion_line: 218
+expression: summary
+---
+widget: sidebar_nav
+width_px: 180
+active: Lab
+entries:
+  rule=ACCENT label=Lab screen=Lab fg=fg_1
+  rule=— label=Live screen=Live fg=fg_2
+  rule=— label=Compare screen=Compare fg=fg_2
+  rule=— label=Strategies screen=Strategies fg=fg_2
+  rule=— label=Memory screen=Memory fg=fg_2
+  rule=— label=Models screen=Models fg=fg_2
+  rule=— label=Trail screen=Trail fg=fg_2
+  rule=— label=Settings screen=Settings fg=fg_2

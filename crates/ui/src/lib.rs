@@ -24,6 +24,7 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod lab;
 pub mod screens;
 pub mod shell;
 pub mod state;
@@ -66,7 +67,7 @@ pub mod live;
 
 pub use state::{
     update, AgentMode, ChartBuffer, Cockpit, KillState, Latency, MarketHealthState, Message,
-    PanelState, Screen, CHART_BUFFER_CAPACITY,
+    PanelState, Screen, CHART_BUFFER_CAPACITY, LAB_PAIR_ORDER,
 };
 
 /// Crate-wide convenience: the iced `Element` type specialized to our

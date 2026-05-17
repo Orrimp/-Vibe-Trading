@@ -963,10 +963,88 @@ tester's regression contract is the existing 11 body-SHA anchors
 
 ## Implementation
 
-_developer fills this — task breakdown comes from the
-architect's `tasks.md`. Pre-baked milestones (M0–M-FINAL) seeded in
-[`tasks.md`](./tasks.md) for the architect to refine into ordered
-T-D-1..T-D-N rows with acceptance criteria._
+Wave 1 (M0 + M1) delivered by the developer agent on 2026-05-17.
+
+### What shipped
+
+**M0 — Screen rename + default-route flip (T-D-1, T-D-2, T-D-3)**
+
+- `Screen` enum extended with `Lab`, `Live`, `Compare`, `Memory`, `Models`,
+  `Trail`, `Settings` variants in `crates/ui/src/state.rs`. Six legacy
+  variants (`Home`, `Charts`, `Audit`, `Risk`, `Debug`, `Control`) are kept
+  as `#[deprecated]` aliases for one-cycle compat.
+- `screens/charts.rs` renamed in-place to `screens/lab.rs`.
+  `Cockpit::default()` boots into `Screen::Lab`.
+- `shell.rs` extended to a 12-arm `screen_body` match covering all Phase A
+  routes; deprecated aliases auto-route to successor bodies.
+- `SIDEBAR_ENTRIES_PHASE_A` constant added to `theme.rs`; three-group
+  ordering: Workflow (Lab / Live / Compare) → toolkit (Strategies / Memory /
+  Models / Trail) → Settings.
+- New widget `widgets::placeholder::view` renders a tier-2 empty-state card
+  for the five Phase A placeholder routes. All copy via `crate::strings`.
+- Snapshot `sidebar__phase_a_workflow_group` pinned.
+
+**M1 — Pair chip + strategy chip + date-range picker (T-D-4 through T-D-9)**
+
+- `crates/ui/src/lab/` module group created with:
+  - `lab/state.rs` — `LabState` struct with `compare_buf: [Option<StrategyId>; 4]`
+    (fixed array; no `smallvec` dep required), `toggle_compare()`, `DateRange`,
+    `Preset`, `StrategyFamily` enums, plus a full unit-test suite.
+  - `lab/universe.rs` — `XRP_FIRST_UNIVERSE: &'static [(Venue, &'static str)]`
+    in operator-locked order (XRPUSDT first, then ETHUSDT / BTCUSDT, then
+    alphabetical); re-exported as `LAB_PAIR_ORDER` from `crates/ui/src/lib.rs`.
+- `Cockpit` struct gains `pub lab_state: LabState`; `Message` gains six
+  `Lab*` variants; `fn update()` gains the corresponding arms.
+- `widgets::pair_chip` — `view()` + `row()` functions dispatching
+  `Message::LabSelectPair`. Active-state chip uses `color::ACCENT` left-rule
+  treatment; non-active uses default chip style. Zero inline hex / strings.
+  Snapshot `pair_chip__active_xrpusdt` pinned.
+- `widgets::strategy_chip` — `view()` + `row()` with two emit sites
+  (primary select → `LabSelectPrimaryStrategy`; compare toggle → `LabToggleCompare`).
+  ACCENT_2..5 color swatch by compare slot. Family badge. Snapshot
+  `strategy_chip__primary_with_compare_slot_1` pinned.
+- `widgets::date_range` — `is_valid_date()` pure function; four preset chips
+  + Custom path with inline two-field ISO-8601 editor; `color::DOWN_500`
+  error highlight; `narrowed_from` badge; `strings::DATE_RANGE_SEPARATOR`
+  em-dash. Snapshots `date_range_picker__presets` and
+  `date_range_picker__custom_invalid` pinned.
+- `theme.rs` extended with `ACCENT_2..5` `ModeColor` tokens and
+  `accent_palette()` const fn (4-element array in slot order). Hex values
+  match the architect's dev-note exactly.
+- `screens/lab.rs` top-bar wired: three rows — pair chips (XRP-first loop
+  over `XRP_FIRST_UNIVERSE`), strategy chips, date-range picker.
+  Snapshot `lab__top_bar_xrp_first` pinned.
+- Gallery registration: `placeholder`, `pair_chip`, `strategy_chip`,
+  `date_range` added to `gallery/routes.rs`; `GALLERY_LOGICAL_HEIGHT`
+  updated to 11 000 px (40 cells × 260 px + 600 px headroom).
+- Consistency tests (`cargo test -p ui --test consistency`) pass: zero inline
+  hex colors, zero user-visible strings outside `crate::strings`.
+
+### Deviations from spec
+
+1. **`LAB_PAIR_ORDER` type.** Spec declares `&[(Venue, Symbol)]`; implementation
+   is `&'static [(Venue, &'static str)]`. `Symbol` wraps `SmolStr` which is not
+   `const`-compatible. The raw `&str` form is functionally equivalent at all
+   current call sites. Flagged to architect for a Phase B type alias or
+   `const fn` wrapper.
+2. **`compare_buf` is a fixed array, not `SmallVec`.** `smallvec` is not a
+   dependency of the `ui` crate. `[Option<StrategyId>; COMPARE_SET_CAP]` + a
+   `compare_len: usize` counter is semantically identical and avoids a new dep.
+
+### Test summary (Wave 1, 2026-05-17)
+
+```
+cargo test -p ui --lib                      → test result: ok. 200 passed; 0 failed
+cargo test -p ui --test consistency          → test result: ok. 2 passed; 0 failed
+cargo test -p ui --test layout_invariants    → test result: ok. 6 passed; 0 failed
+cargo test -p ui --test panel_snapshots      → test result: ok. 68 passed; 0 failed
+```
+
+### Remaining (Wave 2+)
+
+T-D-10 through T-D-19 are out of scope for Wave 1 and remain unticked.
+They cover: equity loader, chart equity pass, backtest runner (ADR-0030),
+comparison overlay, persistence, Lumen audit, and visual A/B sweep.
 
 ## Verification
 

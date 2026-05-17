@@ -1,0 +1,6 @@
+---
+source: crates/ui/src/widgets/date_range.rs
+assertion_line: 393
+expression: summary
+---
+range=Last90d active=Last90d presets=[Last 30d, Last 90d, 2024 H1, 2024 H2] custom=Custom…

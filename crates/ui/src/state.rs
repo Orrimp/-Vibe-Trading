@@ -15,6 +15,14 @@ use trading_core::{
     StrategyLoaded, StrategySwapped, Symbol, Tick, Timestamp, Venue,
 };
 
+use crate::lab::state::{DateRange, LabState};
+
+/// Operator-locked XRP-first pair ordering (ui-rethink-phase-a-lab R3.2 /
+/// T-D-8). Re-exported from `lab::universe` so call sites can use
+/// `state::LAB_PAIR_ORDER` without knowing the internal module layout.
+/// Type: `&'static [(Venue, &'static str)]` — `Symbol` is not `const`-
+/// compatible (contains `SmolStr`), so the raw `&str` form is used.
+pub use crate::lab::universe::XRP_FIRST_UNIVERSE as LAB_PAIR_ORDER;
 use crate::theme::layout::TAPE_MAX_ROWS;
 
 /// Maximum number of recent strategy events kept in the cockpit's in-memory
@@ -37,26 +45,60 @@ pub const CHART_BUFFER_CAPACITY: usize = 60;
 /// dispatch) so Phase 3's enum extension is a backlog item, not an enum
 /// migration. Phase 5 adds `Control` (`HumanControl` panel — Q1 ratification:
 /// 7th sidebar entry). (Phase 2 Design Q-resolutions; R2.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// Phase A — screen routing variants. New variants added; legacy
+/// variants kept as `#[deprecated]` aliases that route to their
+/// successors via the `shell::screen_body` match for one cycle.
+/// (ui-rethink-phase-a-lab R9.3 / Design § 6.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
-    /// Phase 2 — pnl + positions + strategies + `agent_feed` grid.
-    #[default]
-    Home,
-    /// Phase 2 — kill + latency + market-health + version + logs stub.
-    /// Phase 5 (Q1) — kill widget migrates to the `HumanControl` bottom
-    /// action; the `Debug` screen no longer renders the kill panel.
-    Debug,
-    /// Phase 2 — chip-row + canvas chart with audit markers.
-    Charts,
-    /// Phase 3 — declared now; dispatch returns "Not yet" placeholder.
+    // ── Phase A active routes ─────────────────────────────────────────
+    /// Phase A default — chart-centric workshop (ex-`Charts`). Default
+    /// screen at cockpit boot per R1.2.
+    Lab,
+    /// Phase A — renamed from `Home`. Live-trading dashboard body
+    /// unchanged at Phase A.
+    Live,
+    /// Phase A placeholder — Compare view (Phase E body).
+    Compare,
+    /// Phase A placeholder — Memory view (Phase F body).
+    Memory,
+    /// Phase A placeholder — Model registry (Phase F body).
+    Models,
+    /// Phase A placeholder — Trail / audit journal (Phase D body).
+    Trail,
+    /// Phase A placeholder — Settings rollup (Phase C body).
+    Settings,
+
+    // ── Unchanged active route ────────────────────────────────────────
+    /// Strategies detail — unchanged from Phase 3.
     Strategies,
-    /// Phase 3 — declared now; dispatch returns "Not yet" placeholder.
-    Risk,
-    /// Phase 3 — declared now; dispatch returns "Not yet" placeholder.
+
+    // ── Deprecated aliases — kept for one cycle (Phase A → Phase C) ──
+    /// @deprecated — routes to `Live`. Kept for test-harness compat.
+    #[deprecated(since = "0.2.0", note = "use Screen::Live")]
+    Home,
+    /// @deprecated — routes to `Lab`. Kept for test-harness compat.
+    #[deprecated(since = "0.2.0", note = "use Screen::Lab")]
+    Charts,
+    /// @deprecated — routes to `Trail`. Kept for test-harness compat.
+    #[deprecated(since = "0.2.0", note = "use Screen::Trail")]
     Audit,
-    /// Phase 5 (Q1) — `HumanControl` panel (mode + 3 limit mirror rows
-    /// + kill bottom action). Sidebar's 7th entry.
+    /// @deprecated — routes to `Settings`. Kept for test-harness compat.
+    #[deprecated(since = "0.2.0", note = "use Screen::Settings")]
+    Risk,
+    /// @deprecated — routes to `Settings`. Kept for test-harness compat.
+    #[deprecated(since = "0.2.0", note = "use Screen::Settings")]
+    Debug,
+    /// @deprecated — routes to `Settings`. Kept for test-harness compat.
+    #[deprecated(since = "0.2.0", note = "use Screen::Settings")]
     Control,
+}
+
+impl Default for Screen {
+    /// Cold-start default: `Lab` per R1.2.
+    fn default() -> Self {
+        Screen::Lab
+    }
 }
 
 /// Per-`(Venue, Symbol)` rolling 60-bar buffer. Fed by the
@@ -695,10 +737,15 @@ pub struct Cockpit {
     pub kill_switch: Option<KillTripFn>,
 
     // ── Phase 2 — Shell IA + Charts ─────────────────────────────────────────
-    /// Active screen for the routed shell. Default `Home` so cold-start
-    /// lands the operator on trading data, not operations chrome.
+    /// Active screen for the routed shell. Default `Lab` (Phase A R1.2).
     /// (Phase 2 Q8 — session-scoped, no on-disk persistence.)
     pub current_screen: Screen,
+
+    // ── Phase A — Lab screen state (ui-rethink-phase-a-lab T-D-4) ───────
+    /// Lab screen per-session state: selected (strategy, pair, range,
+    /// params) + comparison set. Cold-start defaults to empty; Phase
+    /// M-FINAL adds persistence via `lab::persistence`.
+    pub lab_state: LabState,
 
     /// Configured `(Venue, Symbol)` universe — populated once at boot
     /// from `agent::config::Config` in live mode, hard-coded to the
@@ -827,6 +874,7 @@ impl std::fmt::Debug for Cockpit {
             &self.kill_switch.as_ref().map(|_| "<trip-fn>"),
         );
         dbg.field("current_screen", &self.current_screen)
+            .field("lab_state", &self.lab_state)
             .field("universe", &self.universe)
             .field("selected_symbol", &self.selected_symbol)
             .field("chart_buffer", &self.chart_buffer)
@@ -870,6 +918,7 @@ impl Default for Cockpit {
             #[cfg(feature = "live")]
             kill_switch: None,
             current_screen: Screen::default(),
+            lab_state: LabState::default(),
             universe: Vec::new(),
             selected_symbol: None,
             chart_buffer: ChartBuffer::default(),
@@ -943,6 +992,7 @@ impl Cockpit {
             #[cfg(feature = "live")]
             kill_switch: None,
             current_screen: Screen::default(),
+            lab_state: LabState::default(),
             universe: Vec::new(),
             selected_symbol: None,
             chart_buffer: ChartBuffer::default(),
@@ -1142,6 +1192,27 @@ pub enum Message {
     /// `widgets::focus_ring::subscription` on Tab / Arrow keypress.
     /// Pure assignment to `Cockpit::focused_widget`.
     FocusChanged(SmolStr),
+
+    // ── Phase A — Lab screen (ui-rethink-phase-a-lab T-D-4) ─────────────
+    /// Operator selected a `(Venue, Symbol)` pair chip on the Lab screen.
+    /// Pure assignment to `Cockpit::lab_state.pair`.
+    LabSelectPair(Venue, Symbol),
+    /// Operator clicked a primary-strategy chip on the Lab screen.
+    /// Pure assignment to `Cockpit::lab_state.strategy`.
+    LabSelectPrimaryStrategy(StrategyId),
+    /// Operator pressed the compare toggle on a strategy chip.
+    /// Delegates to `LabState::toggle_compare` — no-op when set is full
+    /// (returns `false`; caller emits a toast in M2.5 / Wave 2).
+    LabToggleCompare(StrategyId),
+    /// Operator selected a date-range preset or committed a custom range.
+    /// Pure assignment to `Cockpit::lab_state.range`.
+    LabSelectRange(DateRange),
+    /// Operator pressed "Run backtest". No-op at Wave 1 (runner is M2.5).
+    /// Stub arm exists so the `Message` enum is complete and the Lab view
+    /// can wire the button without `#[allow(dead_code)]`.
+    LabRunRequested,
+    /// Async backtest-run result. No-op at Wave 1 (runner is M2.5).
+    LabRunCompleted,
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1481,6 +1552,24 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::FocusChanged(id) => {
             model.focused_widget = Some(id);
         }
+
+        // ── Phase A — Lab screen (ui-rethink-phase-a-lab T-D-4) ─────────
+        Message::LabSelectPair(venue, symbol) => {
+            model.lab_state.pair = Some((venue, symbol));
+        }
+        Message::LabSelectPrimaryStrategy(id) => {
+            model.lab_state.strategy = Some(id);
+        }
+        Message::LabToggleCompare(id) => {
+            // Returns `false` when cap hit — caller (binary / Wave 2) will
+            // emit a toast. Wave 1: no-op on `false` return is acceptable.
+            let _changed = model.lab_state.toggle_compare(id);
+        }
+        Message::LabSelectRange(range) => {
+            model.lab_state.range = range;
+        }
+        // Wave 1 stubs — runner wiring is M2.5.
+        Message::LabRunRequested | Message::LabRunCompleted => {}
     }
 }
 

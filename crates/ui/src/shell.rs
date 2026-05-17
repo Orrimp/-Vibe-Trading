@@ -1,4 +1,4 @@
-//! Shell view — Phase 2 (T1603).
+//! Shell view — Phase 2 (T1603), extended Phase A (ui-rethink-phase-a-lab).
 //!
 //! Composes the screen-routed shell: `Row[sidebar | (body + status_bar) |
 //! reserved-right-rail]`. Both bins (`cockpit`, `cockpit_live`) call
@@ -14,23 +14,29 @@
 //! every screen (R3.3 / R14.2). Phase 1's banner trip logic is in the
 //! `kill::view` widget body and stays untouched.
 //!
+//! **Phase A (T-D-3):** `screen_body` gains 7-arm match covering the new
+//! active routes (Lab, Live, Compare, Memory, Models, Trail, Settings)
+//! plus the deprecated legacy aliases. Placeholder routes render the
+//! `widgets::placeholder` empty-state card per Design § 6.
+//!
 //! **Zero string literals** — strings via `crate::strings`.
 //! **Zero hex colours** — tokens via `crate::theme`.
 
 use iced::widget::{Column, Container, Row, Space};
 use iced::Length;
 
-use crate::screens::{audit, charts, control, debug, home, risk, strategies};
+use crate::screens::{audit, home, lab, strategies};
 use crate::state::{Cockpit, Screen};
-use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_5};
+use crate::strings;
+use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A};
 use crate::theme::{color, ThemeMode};
-use crate::widgets::{sidebar_nav, status_bar};
+use crate::widgets::{placeholder, sidebar_nav, status_bar};
 
 /// Render the full cockpit shell.
 #[allow(clippy::needless_pass_by_value, clippy::cast_possible_truncation)]
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
-    let sidebar = sidebar_nav::view(model.current_screen, SIDEBAR_ENTRIES_PHASE_5, mode);
+    let sidebar = sidebar_nav::view(model.current_screen, SIDEBAR_ENTRIES_PHASE_A, mode);
     let body = screen_body(model.current_screen, model, mode);
     let bar = status_bar::view(model);
 
@@ -63,18 +69,32 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 }
 
 /// Dispatch on `Cockpit::current_screen` to pick the screen body.
-/// Phase 3 wakes the Strategies / Risk / Audit branches; Phase 5 adds
-/// the Control branch (`HumanControl` panel).
-#[allow(clippy::needless_pass_by_value)]
+///
+/// Phase A (T-D-3) — 7-arm match for the new routes. Deprecated alias
+/// variants auto-route to their successors so the test harness doesn't
+/// need to migrate in one cycle (R9.3 / Design § 6).
+#[allow(clippy::needless_pass_by_value, deprecated)]
 #[must_use]
 pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     match screen {
-        Screen::Home => home::view(model, mode),
-        Screen::Debug => debug::view(model, mode),
-        Screen::Charts => charts::view(model, mode),
+        // ── Phase A active routes ─────────────────────────────────────
+        Screen::Lab => lab::view(model, mode),
+        Screen::Live => home::view(model, mode),
+        Screen::Compare => placeholder::view(strings::COMPARE_PLACEHOLDER, mode),
+        Screen::Memory => placeholder::view(strings::MEMORY_PLACEHOLDER, mode),
+        Screen::Models => placeholder::view(strings::MODELS_PLACEHOLDER, mode),
+        Screen::Trail => audit::view(model, mode),
+        Screen::Settings => placeholder::view(strings::SETTINGS_PLACEHOLDER, mode),
+
+        // ── Unchanged active route ────────────────────────────────────
         Screen::Strategies => strategies::view(model, mode),
-        Screen::Risk => risk::view(model, mode),
+
+        // ── Deprecated aliases — route to successors (R9.3) ──────────
+        Screen::Home => home::view(model, mode),
+        Screen::Charts => lab::view(model, mode),
         Screen::Audit => audit::view(model, mode),
-        Screen::Control => control::view(model, mode),
+        Screen::Risk | Screen::Debug | Screen::Control => {
+            placeholder::view(strings::SETTINGS_PLACEHOLDER, mode)
+        }
     }
 }

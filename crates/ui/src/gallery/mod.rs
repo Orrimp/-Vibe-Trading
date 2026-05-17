@@ -61,10 +61,11 @@ use crate::state::{Cockpit, Message};
 /// overflow and regenerate baselines.
 pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     // GALLERY_CELL_COUNT * CELL_HEIGHT_PX + padding headroom.
-    // CELL_HEIGHT_PX = 260.0, GALLERY_CELL_COUNT = 36 cells.
-    // 36 * 260 = 9_360. Adding 600 px headroom for the outer container
-    // padding (space::S per cell * 2 sides = ~16 px * 36 = 576 px).
-    9_960
+    // CELL_HEIGHT_PX = 260.0, GALLERY_CELL_COUNT = 40 cells (Phase A adds
+    // placeholder, pair_chip, strategy_chip, date_range = +4 from Phase 5).
+    // 40 * 260 = 10_400. Adding 600 px headroom for the outer container
+    // padding (space::S per cell * 2 sides = ~16 px * 40 = 640 px).
+    11_000
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

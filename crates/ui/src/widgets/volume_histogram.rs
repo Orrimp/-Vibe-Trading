@@ -34,7 +34,7 @@ use crate::theme::{color, text, ThemeMode};
 
 /// One histogram bin — paired buy + sell USDT-notional totals for a bar.
 /// Local to this widget; built at compose time in
-/// [`crate::screens::charts`] from `model.chart_markers` aggregated per
+/// [`crate::screens::lab`] from `model.chart_markers` aggregated per
 /// `Bar.close_ts`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct VolumeBin {

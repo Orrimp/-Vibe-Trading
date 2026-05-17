@@ -238,6 +238,77 @@ pub const SIDEBAR_NAV_STRATEGIES: &str = "Strategies";
 pub const SIDEBAR_NAV_RISK: &str = "Risk";
 pub const SIDEBAR_NAV_AUDIT: &str = "Audit";
 
+// ── Lab screen (Phase A — ui-rethink-phase-a-lab T-D-1) ─────────────────────
+//
+// New sidebar + placeholder copy for the Phase A IA. Additive only —
+// operator-locked Constraint 2 (no voice rewrite of existing copy)
+// preserved. All strings live here; widgets never inline literals.
+
+/// Sidebar nav label for the Phase A `Lab` screen (ex-`Charts`).
+pub const LAB_TITLE: &str = "Lab";
+/// Sidebar nav label for the Phase A `Live` screen (ex-`Home`).
+pub const LIVE_TITLE: &str = "Live";
+/// Sidebar nav label for the Phase A `Trail` screen (ex-`Audit`).
+pub const TRAIL_TITLE: &str = "Trail";
+/// Placeholder body copy for the `Compare` screen (Phase E body).
+pub const COMPARE_PLACEHOLDER: &str = "Compare view — coming in Phase E.";
+/// Placeholder body copy for the `Memory` screen (Phase F body).
+pub const MEMORY_PLACEHOLDER: &str = "Memory view — coming in Phase F.";
+/// Placeholder body copy for the `Models` screen (Phase F body).
+pub const MODELS_PLACEHOLDER: &str = "Models view — coming in Phase F.";
+/// Placeholder body copy for the `Settings` screen (Phase C body).
+pub const SETTINGS_PLACEHOLDER: &str = "Settings — coming in Phase C.";
+
+/// Sidebar nav label for the Phase A `Compare` screen.
+pub const SIDEBAR_NAV_COMPARE: &str = "Compare";
+/// Sidebar nav label for the Phase A `Memory` screen.
+pub const SIDEBAR_NAV_MEMORY: &str = "Memory";
+/// Sidebar nav label for the Phase A `Models` screen.
+pub const SIDEBAR_NAV_MODELS: &str = "Models";
+/// Sidebar nav label for the Phase A `Settings` screen.
+pub const SIDEBAR_NAV_SETTINGS: &str = "Settings";
+
+/// Badge rendered adjacent to the date-range picker when the loader
+/// fell back to a superset report (R5.4). Combined with the report
+/// name in the widget; the constant owns the prefix copy.
+pub const LAB_NARROWED_FROM_BADGE: &str = "Narrowed from";
+
+/// Tooltip / hint rendered on the `pair_chip` row when the Binance venue
+/// prefix is shown alongside the symbol label (R3.1 — venue suffix when
+/// ambiguous). Phase A universe is single-venue so the suffix is hidden by
+/// default; the constant exists so the widget has no inline literals.
+pub const PAIR_CHIP_VENUE_BINANCE: &str = "Binance";
+
+/// Empty-state hint shown in the Lab body when no strategy has been
+/// selected (cold start / R4.4). Rendered in the chart's centre overlay.
+pub const LAB_NO_STRATEGY_HINT: &str = "Pick a strategy to see fills and equity";
+
+/// Empty-state hint shown in the Lab body when no pair has been selected.
+pub const LAB_NO_PAIR_HINT: &str = "Pick a pair to get started";
+
+/// Date-range picker "Custom…" option label (R5.1 — Phase A text-field path).
+pub const DATE_RANGE_CUSTOM_LABEL: &str = "Custom\u{2026}";
+
+/// "+"-affordance label on strategy chips not in the compare set (T-D-6).
+/// Non-alphabetic single char — structural UI symbol, not prose.
+pub const STRATEGY_CHIP_COMPARE_ADD: &str = "+";
+/// "×"-affordance label on strategy chips already in the compare set (T-D-6).
+/// Using the Unicode multiplication sign U+00D7 (not an ASCII 'x').
+pub const STRATEGY_CHIP_COMPARE_REMOVE: &str = "\u{00D7}";
+/// Em-dash separator used in date-range picker between start and end fields.
+/// Non-alphabetic punctuation — structural separator, not prose.
+pub const DATE_RANGE_SEPARATOR: &str = "\u{2014}";
+
+/// Date-range custom start-field placeholder text.
+pub const DATE_RANGE_START_PLACEHOLDER: &str = "YYYY-MM-DD";
+
+/// Date-range custom end-field placeholder text.
+pub const DATE_RANGE_END_PLACEHOLDER: &str = "YYYY-MM-DD";
+
+/// Error copy shown on the start / end date fields when the input is not
+/// a valid ISO-8601 date (R5.1 parse-error highlight).
+pub const DATE_RANGE_INVALID_DATE: &str = "Invalid date (use YYYY-MM-DD)";
+
 // ── Charts screen (Phase 2 — T1608, T1610) ───────────────────────────────────
 
 /// Centred label rendered when the chart canvas has zero bars buffered.
@@ -799,6 +870,30 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             OVERRIDE_RISK_VETO_BUTTON_LABEL,
         ),
         ("SIDEBAR_NAV_CONTROL", SIDEBAR_NAV_CONTROL),
+        // Phase A — Lab screen IA
+        ("LAB_TITLE", LAB_TITLE),
+        ("LIVE_TITLE", LIVE_TITLE),
+        ("TRAIL_TITLE", TRAIL_TITLE),
+        ("COMPARE_PLACEHOLDER", COMPARE_PLACEHOLDER),
+        ("MEMORY_PLACEHOLDER", MEMORY_PLACEHOLDER),
+        ("MODELS_PLACEHOLDER", MODELS_PLACEHOLDER),
+        ("SETTINGS_PLACEHOLDER", SETTINGS_PLACEHOLDER),
+        ("SIDEBAR_NAV_COMPARE", SIDEBAR_NAV_COMPARE),
+        ("SIDEBAR_NAV_MEMORY", SIDEBAR_NAV_MEMORY),
+        ("SIDEBAR_NAV_MODELS", SIDEBAR_NAV_MODELS),
+        ("SIDEBAR_NAV_SETTINGS", SIDEBAR_NAV_SETTINGS),
+        ("LAB_NARROWED_FROM_BADGE", LAB_NARROWED_FROM_BADGE),
+        // Phase A — chip widget strings (T-D-5, T-D-6, T-D-7)
+        ("PAIR_CHIP_VENUE_BINANCE", PAIR_CHIP_VENUE_BINANCE),
+        ("LAB_NO_STRATEGY_HINT", LAB_NO_STRATEGY_HINT),
+        ("LAB_NO_PAIR_HINT", LAB_NO_PAIR_HINT),
+        ("STRATEGY_CHIP_COMPARE_ADD", STRATEGY_CHIP_COMPARE_ADD),
+        ("STRATEGY_CHIP_COMPARE_REMOVE", STRATEGY_CHIP_COMPARE_REMOVE),
+        ("DATE_RANGE_SEPARATOR", DATE_RANGE_SEPARATOR),
+        ("DATE_RANGE_CUSTOM_LABEL", DATE_RANGE_CUSTOM_LABEL),
+        ("DATE_RANGE_START_PLACEHOLDER", DATE_RANGE_START_PLACEHOLDER),
+        ("DATE_RANGE_END_PLACEHOLDER", DATE_RANGE_END_PLACEHOLDER),
+        ("DATE_RANGE_INVALID_DATE", DATE_RANGE_INVALID_DATE),
     ]
 }
 

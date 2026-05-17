@@ -1,0 +1,6 @@
+---
+source: crates/ui/src/widgets/pair_chip.rs
+assertion_line: 223
+expression: summary
+---
+venue=Binance symbol=XRPUSDT active=true show_venue=false mode=Dark

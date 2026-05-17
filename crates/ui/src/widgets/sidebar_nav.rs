@@ -1,9 +1,13 @@
-//! Sidebar nav widget — Phase 2 (T1602).
+//! Sidebar nav widget — Phase 2 (T1602), extended Phase A (T-D-3).
 //!
 //! Renders a fixed-width left rail with one row per `Screen` entry. Each
 //! row is a `button` carrying `Message::SwitchScreen(*screen)`, wrapped
 //! in `frame::active_row` so the T1507 left-rule applies to the
 //! currently-active screen.
+//!
+//! Phase A adds labels for the seven new `Screen` variants (Lab, Live,
+//! Compare, Memory, Models, Trail, Settings) and updates the active-row
+//! check to use `Screen::Lab` as the new default.
 //!
 //! Stateless — `current_screen` lives on `Cockpit`; the widget reads it
 //! as a parameter to know which row carries the active rule.
@@ -16,8 +20,10 @@ use iced::{Border, Length};
 
 use crate::state::{Message, Screen};
 use crate::strings::{
-    SIDEBAR_NAV_AUDIT, SIDEBAR_NAV_CHARTS, SIDEBAR_NAV_CONTROL, SIDEBAR_NAV_DEBUG,
-    SIDEBAR_NAV_HOME, SIDEBAR_NAV_RISK, SIDEBAR_NAV_STRATEGIES,
+    LAB_TITLE, LIVE_TITLE, SIDEBAR_NAV_AUDIT, SIDEBAR_NAV_CHARTS, SIDEBAR_NAV_COMPARE,
+    SIDEBAR_NAV_CONTROL, SIDEBAR_NAV_DEBUG, SIDEBAR_NAV_HOME, SIDEBAR_NAV_MEMORY,
+    SIDEBAR_NAV_MODELS, SIDEBAR_NAV_RISK, SIDEBAR_NAV_SETTINGS, SIDEBAR_NAV_STRATEGIES,
+    TRAIL_TITLE,
 };
 use crate::theme::{color, layout, radius, space, text, ThemeMode};
 use crate::widgets::frame;
@@ -25,12 +31,23 @@ use crate::widgets::frame;
 /// Stable label for a `Screen`. Pure function over the strings table so
 /// snapshot tests can pin the rendered text without going through iced.
 #[must_use]
+#[allow(deprecated)]
 pub const fn label_for(screen: Screen) -> &'static str {
     match screen {
+        // Phase A active routes
+        Screen::Lab => LAB_TITLE,
+        Screen::Live => LIVE_TITLE,
+        Screen::Compare => SIDEBAR_NAV_COMPARE,
+        Screen::Memory => SIDEBAR_NAV_MEMORY,
+        Screen::Models => SIDEBAR_NAV_MODELS,
+        Screen::Trail => TRAIL_TITLE,
+        Screen::Settings => SIDEBAR_NAV_SETTINGS,
+        Screen::Strategies => SIDEBAR_NAV_STRATEGIES,
+
+        // Deprecated aliases
         Screen::Home => SIDEBAR_NAV_HOME,
         Screen::Debug => SIDEBAR_NAV_DEBUG,
         Screen::Charts => SIDEBAR_NAV_CHARTS,
-        Screen::Strategies => SIDEBAR_NAV_STRATEGIES,
         Screen::Risk => SIDEBAR_NAV_RISK,
         Screen::Audit => SIDEBAR_NAV_AUDIT,
         Screen::Control => SIDEBAR_NAV_CONTROL,
@@ -39,12 +56,12 @@ pub const fn label_for(screen: Screen) -> &'static str {
 
 /// Render the sidebar nav.
 ///
-/// `entries` is the operator's scan-ordered nav list. Phase 2 passes
-/// `&[Screen::Home, Screen::Debug, Screen::Charts]`; Phase 3 inserts the
-/// remaining variants without changing this widget body.
+/// `entries` is the operator's scan-ordered nav list. Phase A passes
+/// `SIDEBAR_ENTRIES_PHASE_A` — the new workflow-group list. Phase 2/3
+/// constants still work for test scenarios.
 // `cast_possible_truncation`: space::* constants are u32 with bounded values;
 // cast to u16 padding is safe.
-#[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
+#[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value, deprecated)]
 #[must_use]
 pub fn view(current_screen: Screen, entries: &[Screen], mode: ThemeMode) -> crate::Element<'_> {
     let mut column = Column::new()
@@ -119,11 +136,12 @@ pub fn view(current_screen: Screen, entries: &[Screen], mode: ThemeMode) -> crat
 #[allow(
     clippy::format_push_string,
     clippy::useless_format,
-    clippy::uninlined_format_args
+    clippy::uninlined_format_args,
+    deprecated
 )]
 mod tests {
     use super::*;
-    use crate::theme::layout::SIDEBAR_ENTRIES_PHASE_3;
+    use crate::theme::layout::{SIDEBAR_ENTRIES_PHASE_3, SIDEBAR_ENTRIES_PHASE_A};
     use insta::assert_snapshot;
 
     /// Plain-text summary mirroring what the rendered sidebar shows. The
@@ -189,5 +207,33 @@ mod tests {
     fn sidebar_nav__active_audit() {
         let summary = sidebar_summary(Screen::Audit, SIDEBAR_ENTRIES_PHASE_3);
         assert_snapshot!("sidebar_nav__active_audit", summary);
+    }
+
+    /// T-D-3 — Phase A sidebar has the expected 8 entries in the correct
+    /// workflow-group order.
+    #[test]
+    #[allow(non_snake_case)]
+    fn sidebar__phase_a_workflow_group() {
+        let summary = sidebar_summary(Screen::Lab, SIDEBAR_ENTRIES_PHASE_A);
+        assert_snapshot!("sidebar__phase_a_workflow_group", summary);
+    }
+
+    /// T-D-2 — default boot screen (Screen::default()) is Lab.
+    #[test]
+    fn default_screen_is_lab() {
+        assert_eq!(Screen::default(), Screen::Lab);
+    }
+
+    /// T-D-3 — every Phase A entry has a non-empty label.
+    #[test]
+    fn all_phase_a_labels_non_empty() {
+        for screen in SIDEBAR_ENTRIES_PHASE_A {
+            let label = label_for(*screen);
+            assert!(
+                !label.is_empty(),
+                "empty label for screen {:?}",
+                screen
+            );
+        }
     }
 }

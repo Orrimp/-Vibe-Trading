@@ -1,4 +1,9 @@
-//! Charts screen — chart-buy-sell-emphasis v1.9 (M4 / T2025, Layout β).
+//! Lab screen — ui-rethink-phase-a-lab Phase A (ex-`charts.rs`).
+//!
+//! Renamed from `screens/charts.rs` per T-D-2 (verbatim move at M0 —
+//! no body changes). Phase A M1 extends this screen with the three-row
+//! top bar (pair chips → strategy chips → date-range picker); chart
+//! canvas extensions land in M2.
 //!
 //! Composes the chip row + the chart canvas + the post-v1.9 counter
 //! views:
@@ -19,12 +24,13 @@
 //! **Zero string literals** — copy via `crate::strings`.
 //! **Zero hex colours** — tokens via `crate::theme`.
 
-use iced::widget::{button, container, Button, Column, Container, Row, Text};
+use iced::widget::{container, Column, Container, Row, Text};
 use iced::{Border, Length};
 use rust_decimal::Decimal;
 use trading_core::{FillView, PositionView, Side, Symbol};
 
-use crate::state::{Cockpit, Message, PanelState};
+use crate::lab::state::StrategyFamily;
+use crate::state::{Cockpit, PanelState};
 use crate::strings::{
     CHART_POSITION_MIRROR_LABEL, CHART_POSITION_MIRROR_NONE, CHART_VOLUME_HISTOGRAM_LABEL,
     CHART_VOLUME_TILE_BUYS_LABEL, CHART_VOLUME_TILE_NET_LABEL, CHART_VOLUME_TILE_SELLS_LABEL,
@@ -33,7 +39,7 @@ use crate::strings::{
 use crate::theme::{color, color_for_delta, radius, space, text, ThemeMode};
 use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::volume_histogram::{self, VolumeBin};
-use crate::widgets::{chart, frame};
+use crate::widgets::{chart, date_range, pair_chip, strategy_chip};
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
 /// chart (R7.2 + Q5 — operator-locked at ~80 px).
@@ -50,6 +56,14 @@ const CHIP_ROW_HEIGHT_PX: f32 = 32.0;
 /// position mirror, both `space::M` padded with `text::H2`-sized values
 /// and a `text::SMALL` label above).
 const STATUS_STRIP_HEIGHT_PX: f32 = 80.0;
+
+/// Approximate strategy-chip row height (T-D-6 / T-D-8 — one row of
+/// `SMALL`-sized buttons with `XS`/`M` padding). Same budget as `CHIP_ROW_HEIGHT_PX`.
+const STRATEGY_ROW_HEIGHT_PX: f32 = 32.0;
+
+/// Approximate date-range picker row height (T-D-7 / T-D-8 — one row
+/// of preset chips at `SMALL` size with `XS`/`M` padding).
+const DATE_RANGE_ROW_HEIGHT_PX: f32 = 32.0;
 
 /// Approximate histogram-label height (`text::MICRO` + `space::XXS`
 /// gap) — the volume-histogram column's first child.
@@ -78,16 +92,20 @@ const HISTOGRAM_LABEL_HEIGHT_PX: f32 = 14.0;
 pub fn chart_canvas_height_for_body(body_height_px: f32) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let padding = (space::L as f32) * 2.0;
+    // 6 children: pair_row, strategy_row, date_range_row, status_strip,
+    // chart (Fill), histogram → 5 gaps between 6 children.
     #[allow(clippy::cast_precision_loss)]
-    let spacing = (space::M as f32) * 3.0; // 3 gaps between 4 children
+    let spacing = (space::M as f32) * 5.0;
     let fixed = CHIP_ROW_HEIGHT_PX
+        + STRATEGY_ROW_HEIGHT_PX
+        + DATE_RANGE_ROW_HEIGHT_PX
         + STATUS_STRIP_HEIGHT_PX
         + HISTOGRAM_LABEL_HEIGHT_PX
         + HISTOGRAM_HEIGHT_PX;
     (body_height_px - padding - spacing - fixed).max(0.0)
 }
 
-/// Render the Charts screen body.
+/// Render the Lab screen body.
 #[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
@@ -96,43 +114,54 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .clone()
         .or_else(|| model.universe.first().cloned());
 
-    // Chip row — unchanged from Phase 2.
-    let mut chip_row = Row::new().spacing(space::S);
-    for (venue, symbol) in &model.universe {
-        let pair_active = match &active {
-            Some((av, asym)) => av == venue && asym == symbol,
-            None => false,
-        };
-        let label = format!("{venue} \u{00b7} {symbol}");
-        let text_widget = Text::new(label).size(text::SMALL).color(if pair_active {
-            color::FG_1.current(mode)
-        } else {
-            color::FG_2.current(mode)
-        });
-        let chip_button = Button::new(text_widget)
-            .on_press(Message::SelectSymbol(*venue, symbol.clone()))
-            .padding([space::XS as u16, space::M as u16])
-            .style(move |_theme: &iced::Theme, status: button::Status| {
-                let bg = match status {
-                    button::Status::Hovered => Some(color::PANEL_SUNKEN.current(mode).into()),
-                    _ => None,
-                };
-                button::Style {
-                    background: bg,
-                    text_color: if pair_active {
-                        color::FG_1.current(mode)
-                    } else {
-                        color::FG_2.current(mode)
-                    },
-                    border: Border {
-                        radius: radius::R3.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            });
-        chip_row = chip_row.push(frame::active_chip(chip_button.into(), pair_active, mode));
+    // ── Phase A top-bar row 1: pair chips (T-D-5 / T-D-8) ──────────────
+    // Use XRP-first universe (operator-locked order per R3.2). The chips
+    // dispatch `LabSelectPair`; the chart canvas continues to read from
+    // `selected_symbol` (M2 will wire `lab_state.pair` → chart).
+    // Build each chip individually using `pair_chip::view` (which returns
+    // `'static` elements) to avoid borrowing a locally-owned universe Vec.
+    let mut pair_chip_row = Row::new().spacing(space::S);
+    for (v, s) in crate::lab::universe::XRP_FIRST_UNIVERSE {
+        let sym = Symbol::new(*s);
+        let is_active = model
+            .lab_state
+            .pair
+            .as_ref()
+            .map_or(false, |(pv, ps)| pv == v && ps == &sym);
+        pair_chip_row = pair_chip_row.push(pair_chip::view(*v, sym, is_active, false, mode));
     }
+    let chip_row = pair_chip_row;
+
+    // ── Phase A top-bar row 2: strategy chips (T-D-6 / T-D-8) ──────────
+    // Collect strategy ids from the strategies panel; fall back to empty
+    // at cold start (strategies panel is Loading). No family-registry at
+    // Phase A — all strategies default to `Rule` family.
+    let strategy_ids: Vec<trading_core::StrategyId> = match &model.strategies {
+        PanelState::Ready(rows) => rows.iter().map(|r| r.id.clone()).collect(),
+        _ => Vec::new(),
+    };
+    // Build a minimal family map: all Rule at Phase A (R4.1 — family pill
+    // requires a registry lookup which ships in Phase B). This is the
+    // Wave 1 stub; Phase B wires the real family map.
+    let families: std::collections::HashMap<trading_core::StrategyId, StrategyFamily> =
+        strategy_ids
+            .iter()
+            .map(|id| (id.clone(), StrategyFamily::default()))
+            .collect();
+    let strategy_row = strategy_chip::row(
+        &strategy_ids,
+        &families,
+        model.lab_state.strategy.as_ref(),
+        model.lab_state.compare_set(),
+        mode,
+    );
+
+    // ── Phase A top-bar row 3: date-range picker (T-D-7 / T-D-8) ───────
+    let range_picker = date_range::view(
+        &model.lab_state.range,
+        None, // narrowed_from badge is M2 (equity_loader)
+        mode,
+    );
 
     // Compute the per-active-symbol slices once.
     let active_markers: Vec<FillView> = match &model.chart_markers {
@@ -189,6 +218,8 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .padding(space::L as u16)
         .spacing(space::M)
         .push(chip_row)
+        .push(strategy_row)
+        .push(range_picker)
         .push(status_strip)
         // T2032 — defensive `.width(Length::Fill)` on the chart-body
         // container.
@@ -518,22 +549,7 @@ mod tests {
         assert_eq!(t.sell_count, 0);
     }
 
-    /// T2032 — chart canvas height MUST grow with body height.  The
-    /// operator's 2026-05-11 visual report ("chart crops on window
-    /// resize") reduced to a `Length` propagation issue in the
-    /// chart-body column.  The M6.2 fix gives the chart-body
-    /// container an explicit `.width(Length::Fill).height(Length::Fill)`
-    /// (see the comment in [`super::view`] for the corrected mechanic
-    /// — the M6.2 in-source rationale that blamed `Container::new`'s
-    /// default width was wrong per the iced 0.14 source).  With the
-    /// chart-body container occupying its full body allocation, the
-    /// canvas's vertical allocation is `body_height - fixed_siblings`
-    /// and therefore grows monotonically with body height.
-    ///
-    /// We pin the invariant via the pure arithmetic helper
-    /// [`chart_canvas_height_for_body`] — the real iced layout
-    /// engine resolves the actual pixel allocation at runtime, but
-    /// the budget math is what the column reasons against.
+    /// T2032 — chart canvas height MUST grow with body height.
     #[test]
     fn chart_canvas_height_grows_with_body_height() {
         let h_720 = chart_canvas_height_for_body(720.0);
@@ -542,15 +558,10 @@ mod tests {
             h_1080 > h_720,
             "chart canvas height MUST grow with body height: 720 → {h_720}, 1080 → {h_1080}"
         );
-        // Sanity: at 720 the chart still has room (≥ 50 % of body
-        // height after fixed siblings — the Q5 / Layout β floor that
-        // T2028's `MIN_WINDOW_HEIGHT_PX = 720` defends).
         assert!(
             h_720 > 0.0,
             "chart canvas must have non-zero allocation at the 720-px floor: got {h_720}"
         );
-        // The growth is exactly the body-height delta (fixed
-        // siblings + padding + spacing are body-invariant).
         let delta = h_1080 - h_720;
         assert!(
             (delta - 360.0).abs() < f32::EPSILON,
@@ -559,8 +570,7 @@ mod tests {
     }
 
     /// T2024 — `position_for_symbol` returns the matching position when
-    /// present, `None` otherwise. Skips zero-quantity rows (matches the
-    /// `widgets::positions` filter contract).
+    /// present, `None` otherwise.
     #[test]
     fn position_mirror_filters_to_active_symbol() {
         use trading_core::asset::Usdt;
@@ -593,5 +603,34 @@ mod tests {
 
         let m_none = position_for_symbol(&cockpit, &Symbol::new("SOLUSDT"));
         assert!(m_none.is_none());
+    }
+
+    /// T-D-2 — default screen is Lab per R1.2.
+    #[test]
+    fn default_screen_is_lab() {
+        use crate::state::Screen;
+        assert_eq!(Screen::default(), Screen::Lab);
+    }
+
+    /// T-D-8 — snapshot: `lab__top_bar_xrp_first`.
+    ///
+    /// Records the XRP-first pair ordering pinned from
+    /// `lab::universe::XRP_FIRST_UNIVERSE`. Since iced elements are opaque
+    /// structs, we snapshot the ordered pair labels as a descriptor — the
+    /// order comes from the `XRP_FIRST_UNIVERSE` const slice, not the
+    /// element. Any re-ordering of the universe breaks this snapshot
+    /// deliberately, surfacing the change for review.
+    #[test]
+    fn lab__top_bar_xrp_first() {
+        use crate::lab::universe::XRP_FIRST_UNIVERSE;
+        let pairs: Vec<&str> = XRP_FIRST_UNIVERSE.iter().map(|(_, s)| *s).collect();
+        let summary = format!(
+            "top_bar pairs=[{}] first={} second={} third={}",
+            pairs.join(", "),
+            pairs[0],
+            pairs[1],
+            pairs[2],
+        );
+        insta::assert_snapshot!("lab__top_bar_xrp_first", summary);
     }
 }

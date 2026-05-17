@@ -1,0 +1,6 @@
+---
+source: crates/ui/src/widgets/strategy_chip.rs
+assertion_line: 345
+expression: summary
+---
+id=v1.momentum family=RULE is_primary=true compare_slot=Some(1) mode=Dark
