@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-overlay
 status: in-progress
-owner: analyst
+owner: architect
 updated: 2026-05-17
 version: 2.5.0
 parent: v25-dl-forecast-overlay v2.5.0 (roadmap)
@@ -299,22 +299,234 @@ All other Q1-Q8 answers are architect-lockable without operator input.
 
 ## Design
 
-_architect fills this after analyst handoff_
+Architect pass landed 2026-05-17 against the R1-R12 analyst lock and
+the two T-OP-* operator decisions. The provenance schema (D4) is the
+contract v2.5a / v2.5b inherit — recorded at architecture level in
+[ADR-0029](../architecture/adr/0029-tcn-checkpoint-provenance.md).
 
-Carry-forward from [`architecture/12-forecast-overlay.md`](../architecture/12-forecast-overlay.md):
+Carry-forward (unchanged) from
+[`architecture/12-forecast-overlay.md`](../architecture/12-forecast-overlay.md):
+signal-level overlay on v1 cross-sectional momentum;
+`ForecastProvider::forecast()` async trait implemented by
+`TcnForecaster`; strict-replay determinism via `crates/replay-cache/`
+namespace `"forecast"` (cache key includes `model_revision`); audit row
+per call `JournalEntry { kind: "forecast_emitted", … }`.
 
-- Signal-level overlay on v1 cross-sectional momentum.
-- `ForecastProvider::forecast()` async trait implemented by `TcnForecaster`.
-- Strict-replay determinism via `crates/replay-cache/` (namespace
-  `"forecast"`); cache key includes `model_revision`.
-- Audit row per call: `JournalEntry { kind: "forecast_emitted", … }`.
+### D1 — Conv1d residual-block layout
 
-Architect to lock: Conv1d block class layout, residual-skip projection
-shape (1×1 vs identity), Metal-vs-CPU determinism strategy, parquet →
-feature-window iterator design, training-loop checkpointing cadence,
-metadata-JSON canonicalisation (sort_keys + no-whitespace),
-`tcn_overlay_momentum` confidence-threshold default
-(suggest `0.6` matching the existing `overlay::combine` test default).
+Per BKK18 § 3 and the locuslab `TemporalBlock` reference. One block in
+`crates/forecast/src/tcn.rs` is constructed as:
+
+```text
+struct TemporalBlock {
+    conv1: WeightNormConv1d,   // in_ch  → out_ch, k=3, dilation=d, padding=(k-1)*d (left-pad only)
+    conv2: WeightNormConv1d,   // out_ch → out_ch, same
+    skip:  SkipProjection,     // 1×1 Conv1d if in_ch != out_ch, else Identity
+    dropout: f32,              // 0.1
+}
+```
+
+Forward pass (input shape `[batch, channels_in, seq=256]`):
+
+```text
+y = conv1(x);                  // causal: right-trim (k-1)*d after conv
+y = relu(y);
+y = dropout(y, train);
+y = conv2(y);
+y = relu(y);
+y = dropout(y, train);
+s = skip(x);                   // 1×1 if channel-mismatch, else x.clone()
+out = relu(y + s);              // residual; ReLU after the add per locuslab
+```
+
+Concrete `candle` types: `candle_nn::Conv1d` with
+`Conv1dConfig { padding: (k-1)*d, stride: 1, dilation: d, groups: 1 }`.
+Causal trim (`narrow(2, 0, seq_len)`) drops the rightmost
+`(k-1)*d` elements so output time-axis matches input. Weight-norm is
+applied by reparameterising the kernel as `g * v / ||v||` at init
+(custom helper in `tcn.rs`; `candle-nn` has no built-in `weight_norm`
+as of the pinned commit — architect-flagged for developer to verify
+during M1 and either land a 30-line helper or drop weight-norm with a
+note in the M1 report).
+
+Skip-projection rule (matches the locuslab/BKK18 default):
+
+- If `in_ch == out_ch` (all blocks 2-8 in our config since H=96 is
+  fixed across blocks) → identity skip (`x.clone()`).
+- If `in_ch != out_ch` (block 1: in=5 features, out=96) → 1×1
+  `Conv1d` (no dilation, no padding) projecting 5 → 96. No weight-norm
+  on the skip projection.
+
+The final head is a `[batch, 96, 256] → [batch, 1]` 1×1 `Conv1d`
+followed by `narrow(2, seq_len-1, 1)` to read the last-timestep
+activation. This produces the single scalar `r_hat` per R6.
+
+### D2 — Metal-vs-CPU determinism strategy
+
+`candle` Metal kernels are **not formally bit-identical** to the CPU
+backend (Metal MPS uses non-deterministic reduction ordering on some
+ops; weight-norm and dropout RNG paths also differ in implementation).
+We do not block on bit-identity. Strategy:
+
+1. **CPU is the determinism oracle.** Anchor checkpoints are trained
+   on Metal (fast) but the *anchor verification* `cargo test` job runs
+   inference on CPU only. Metal stays for training and operator-facing
+   live inference where the small numerical drift is below the ε=0.0005
+   direction band.
+2. **M2 smoke test** (T-D-3 below): run the same forward pass with the
+   same input + same seed on both backends; assert
+   `(metal_tensor - cpu_tensor).abs().max() < 1e-4` (tolerance test,
+   not strict-equality). If max-abs drift ever exceeds 1e-4 OR a
+   Direction flip occurs (the load-bearing event), fail the test and
+   land a M1 incident report — at that point we re-train on CPU.
+3. **LFS-anchored mitigation** (T-OP-1 confirmed): anchor checkpoints
+   live under `crates/forecast/checkpoints/anchors/*.safetensors`,
+   LFS-tracked. Because Metal-vs-CPU is not bit-identical, retraining
+   from seed on a different operator's machine would NOT reproduce the
+   exact weights — so we ship the weights, not a recipe. The
+   provenance JSON (D4) still pins the recipe for audit and re-train.
+4. **Replay cache neutralises drift on the consumer side.** The
+   replay-cache row stores the `ForecastOverlay` (post-quantisation to
+   Direction + Decimal confidence), so two operators replaying the same
+   anchored backtest read identical overlays from the cache regardless
+   of which backend trained the underlying weights.
+
+ADR-0029 § Metal-vs-CPU determinism caveat captures this as a
+cross-phase invariant: v2.5a (PatchTST) and v2.5b (vanilla Transformer)
+inherit the same tolerance contract and LFS-anchor strategy.
+
+### D3 — Parquet → feature-window iterator (`features.rs`)
+
+API in `crates/forecast/src/features.rs`:
+
+```rust
+pub struct FeatureWindow {
+    pub features: candle_core::Tensor,  // shape [256, 5], dtype F32
+    pub target_logret: f32,              // r_{t+1} = ln(close_{t+1}/close_t)
+    pub symbol: trading_core::Symbol,
+    pub bar_close_ts: time::OffsetDateTime,  // close_t — the bar the window ends on
+}
+
+pub fn windows_for_symbol(
+    parquet_root: &Path,
+    symbol: &Symbol,
+    span: TimeSpan,                       // [start, end) — train vs val vs test
+    cfg: &FeatureConfig,                  // {context_bars=256, vol_z_lookback=720, …}
+) -> impl Iterator<Item = Result<FeatureWindow, FeatureError>>;
+```
+
+The iterator is **pure-function** (same input parquet → same output
+windows), reused verbatim by `train_tcn.rs` (training-time) and
+`TcnForecaster::forecast()` (inference-time). This is load-bearing for
+strict-replay determinism — the replay-cache key includes the OHLCV
+window, so any drift between training-time and inference-time feature
+construction would explode anchor verification.
+
+Feature construction per bar:
+
+- `logret = ln(close_t / close_{t-1})`
+- `logrange = ln(1 + (high_t - low_t) / close_t)`
+- `logvol_z = (ln(1 + volume_t) - mu_720h) / sigma_720h` where
+  `mu_720h`/`sigma_720h` are rolling 30-day means computed within-symbol
+  on the training span and pinned in checkpoint metadata for inference.
+- `hour_sin = sin(2π · hour_of_week / 168)`, `hour_cos =
+  cos(2π · hour_of_week / 168)`.
+
+The first 720 bars of the training span are warm-up (volume-z stats);
+the first 1 bar is consumed by `logret`. Window iteration starts at
+bar index 720, advancing by 1 bar per iteration, yielding context
+`[t-255 … t]` with target `r_{t+1}`.
+
+**Multi-symbol batching strategy** (M3): **round-robin interleave by
+bar timestamp**, NOT round-robin by symbol-position. The training
+binary opens 10 per-symbol iterators in parallel, draws one window
+from each per macro-step, advances all to `bar_close_ts > last_seen`,
+and emits a batch of 10 windows aligned at the same wall-clock hour.
+This avoids leaking late-2023 signal into a batch full of mid-2023
+windows from other symbols. At batch size 128 the trainer fills the
+batch with ~13 consecutive macro-steps. Implementation:
+`itertools::kmerge_by` on a sorted-by-timestamp key. Documented in
+`features.rs` rustdoc and tested with a 3-symbol property test (M0,
+T-D-2): same parquet input → same window order on two runs.
+
+### D4 — Metadata-JSON canonicalisation rules
+
+The R8 SHA must be byte-stable across operators (any drift breaks
+anchor verification). Canonical rules — locked at ADR-0029 and shared
+by v2.5a / v2.5b:
+
+1. **Serialiser**: `serde_json::to_vec` is NOT used (its key order is
+   insertion order). We use a custom `canonicalise(value: serde_json::Value) -> Vec<u8>`
+   helper that:
+   - Recursively sorts object keys lexicographically (UTF-8 byte order).
+   - Emits NO whitespace between tokens (no spaces, no newlines).
+   - Uses `\n` (LF, single byte) as the only newline if a trailing
+     newline is needed — but the canonical form has NO trailing newline.
+   - Renders numbers via `serde_json::Number`'s `Display` (which for
+     our integer-valued fields like `epochs: 30` emits `30`, not
+     `30.0`). Float fields are forbidden in the schema — see (2).
+2. **Type constraints**: every numeric field in the schema is either
+   an integer (`epochs`, `batch`, `seed`, `context_bars`, dilations,
+   blocks, channels, kernel) OR a `Decimal`-stringified float
+   (`lr_max: "0.001"`, `dropout: "0.1"`, `huber_delta: "0.001"`).
+   Strings, not raw floats, eliminate IEEE-754 rounding drift between
+   machines. The single allowed string-encoded float pattern:
+   `format!("{:.6}", value)` (six decimal places, no trailing zeros
+   stripped). Locked in ADR-0029.
+3. **Timestamps**: ISO-8601 with `T` separator and `Z` zone, second
+   precision in `data_span` (no fractional seconds — bar boundaries
+   are whole hours). Example: `"2023-01-01T00:00:00Z"`. Distinct from
+   the 6-digit fractional-second audit-row format (ADR-0004); that
+   format applies to journal posts, not provenance JSON.
+4. **`weights_sha256`** is computed BEFORE the metadata JSON is
+   assembled (over the safetensors file body, hex-lowercase, no
+   prefix). The full `model_revision` is then SHA-256 over the
+   canonical metadata bytes (which include `weights_sha256`).
+
+The precedent is v2 LLM Q8 (canonical-JSON cache-key contract) — same
+rule set, restated here so v2.5a and v2.5b need only cite ADR-0029
+rather than reverse-engineer the rules.
+
+### D5 — `tcn_overlay_momentum` strategy thresholds
+
+Strategy lives at `crates/strategy/src/tcn_overlay_momentum.rs`,
+authored at M5 (T-D-12). Two thresholds:
+
+- **`confidence_threshold = 0.6`** (Decimal, exact `dec!(0.6)`) —
+  matches the default already used in `crates/forecast/src/overlay.rs`
+  tests. Below this, the overlay passes the v1 momentum signal
+  through unchanged (rule from `architecture/12 § Combine`).
+- **`direction_epsilon = 0.0005`** (Decimal, exact `dec!(0.0005)`) —
+  the ε from R6. Lives inside `TcnForecaster::forecast()` (NOT inside
+  the strategy), because `Direction` is produced at the model boundary
+  and the strategy only ever sees a quantised `Up`/`Down`/`Flat`. If
+  the operator wants to widen ε to reduce churn, that's a forecaster
+  config change, not a strategy change.
+
+Interaction with sizing: the overlay does NOT change `SignalKind` from
+`Buy` to `StrongBuy` (no such variant — see
+`crates/forecast/src/overlay.rs` rustdoc). Agreement is a pass-through;
+disagreement at confidence ≥ threshold dampens to `Hold`. Sizing-level
+boost is deferred to a hypothetical v2.5.x sizing-weight extension
+that none of the four DL phases plan to ship. This keeps the v1
+risk-clamp surface uniform (architecture/12 § What is a forecast
+overlay, point 1) and the four phases comparable in v2.6's bake-off.
+
+Default config (lands in `crates/strategy/src/tcn_overlay_momentum.rs`
+and the operator override surface):
+
+```toml
+[strategy.tcn_overlay_momentum]
+base = "cross_sectional_momentum"
+confidence_threshold = "0.6"
+forecaster_id = "tcn-bs1"   # or "tcn-bs2" — selects which checkpoint
+```
+
+The `forecaster_id` indirection (one of `"tcn-bs1"`, `"tcn-bs2"`)
+matches the two-checkpoint operator decision (T-OP-2) — the
+backtest harness loads the appropriate anchor checkpoint for the
+scenario's evaluation period and pins its provenance SHA in the run
+manifest.
 
 ## Backtest Scenarios
 
@@ -385,6 +597,25 @@ Tester contract (per AGENT.md):
 
 ## Changelog
 
+- 2026-05-17 (architect): T-AR-1 — locked the Design section with D1
+  (Conv1d residual-block layout with WeightNormConv1d + causal trim
+  + 1×1 skip projection rule), D2 (Metal-vs-CPU determinism strategy:
+  CPU oracle + 1e-4 tolerance test + LFS-anchored mitigation),
+  D3 (parquet → feature-window iterator with round-robin-by-timestamp
+  multi-symbol batching), D4 (metadata-JSON canonicalisation rules,
+  cross-phase contract), D5 (`tcn_overlay_momentum` thresholds:
+  conf=0.6, ε=0.0005). T-AR-2 — decomposed M0-M7 into ordered T-D-1
+  … T-D-14 (14 developer tasks; see tasks.md). T-AR-3 — opened
+  [ADR-0029](../architecture/adr/0029-tcn-checkpoint-provenance.md)
+  locking the provenance schema as the cross-phase contract for
+  v2.5a / v2.5b; updated `architecture/12-forecast-overlay.md`
+  audit-row section to reference the schema; updated ADR registry.
+  Status: in-progress. Owner: analyst → architect.
+  HANDOFF → developer.
+- 2026-05-17 (operator): T-OP-1 — LFS-track anchor checkpoints under
+  `crates/forecast/checkpoints/anchors/`. T-OP-2 — two-checkpoint
+  strict-OOS backtest split confirmed (BS-1: train Jan-Sep 2023 /
+  val Oct-Dec 2023; BS-2: train 2023 / val Q1 2024 / test Q2-Q4 2024).
 - 2026-05-17 (analyst): full analyst pass. Closed Q1-Q8 with defaults
   (R1-R12). Two operator-decide questions surfaced (anchor checkpoint
   storage, two-checkpoint backtest split). Sources cited:

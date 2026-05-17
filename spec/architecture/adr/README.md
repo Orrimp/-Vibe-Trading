@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Architecture Decision Records (ADR) — Index
@@ -74,6 +74,8 @@ the canonical table; the parent file links here.)
 | 0025  | v0 hand-rolled Binance WS behind trait              | accepted   | 2026-04-17 |
 | 0026  | v0 simple paper engine; LOB deferred                | accepted   | 2026-04-17 |
 | 0027  | v2.5 — Kronos foundation-model forecast overlay (ONNX + tract) | accepted | 2026-05-16 |
+| 0028  | v2.5 — DL forecast overlay trained in `candle` (supersedes 0027) | accepted | 2026-05-16 |
+| 0029  | v2.5 — Forecast-checkpoint provenance schema + LFS-anchor strategy | accepted | 2026-05-17 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -109,3 +111,8 @@ finalisation.
 - 2026-05-13 (architect): ADRs 0021-0026 added (Foundation libraries
   substantive decisions) during Session 11. iced UI body migrated to
   06-ui-and-cockpit.md. All architectural decisions now in ADRs.
+- 2026-05-17 (architect): ADR-0029 added (TCN/forecaster checkpoint
+  provenance schema + LFS-anchor strategy — cross-phase contract for
+  v2.5 TCN, v2.5a PatchTST, v2.5b vanilla Transformer). Also
+  backfilled the registry table row for ADR-0028 (previously only in
+  changelog).

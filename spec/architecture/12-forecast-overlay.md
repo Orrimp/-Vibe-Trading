@@ -2,7 +2,7 @@
 slug: architecture-12-forecast-overlay
 status: shipped
 owner: architect
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Forecast overlays — `ForecastProvider`, overlay composition, replay
@@ -179,6 +179,16 @@ A forecast call posts ONE journal entry to the audit ledger
 [architecture/02 § Cross-cutting rules](02-strategy-registry.md#cross-cutting-rules-formalised-by-the-strategy-clusters)
 — no schema migration needed.
 
+The `model_revision` value in `payload_json` is SHA-256 over the
+canonical bytes of the forecaster's `<sha>.metadata.json` provenance
+file. The canonicalisation rules + schema shape are locked at
+[ADR-0029](adr/0029-tcn-checkpoint-provenance.md) as a cross-phase
+contract — v2.5 (TCN), v2.5a (PatchTST), and v2.5b (vanilla
+Transformer) all emit `model_revision` under the same rules. Inspectors
+can recompute the SHA from a checkpoint's metadata file without
+loading the safetensors body, which is the audit-trail property the
+schema is designed to preserve.
+
 The realised-outcome side of the correlation is a v2.5.x follow-up
 (`reflection-forecast-residual` brief): once a trade closes, the
 reflection-memory loop joins `forecast_emitted` rows to the trade's
@@ -248,6 +258,9 @@ further plumbing.
   — the active v2.5 brief.
 
 ## Changelog
+- 2026-05-17 (architect): audit-row § extended to reference ADR-0029
+  (cross-phase forecaster-checkpoint provenance schema). No shape
+  change to the journal table; `model_revision` semantics formalised.
 - 2026-05-16 (orchestrator): genericised after the Kronos→candle pivot
   (ADR-0028 supersedes ADR-0027). Removed all Kronos-specific clauses
   from the section; updated cost-event `line` from `"kronos_inference"`
