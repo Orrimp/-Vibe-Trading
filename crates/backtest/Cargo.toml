@@ -12,7 +12,7 @@ path = "src/main.rs"
 trading_core = { path = "../core" }
 data = { path = "../data" }
 features = { path = "../features" }
-strategy = { path = "../strategy" }
+strategy = { path = "../strategy", features = ["forecast"] }
 risk = { path = "../risk" }
 audit = { path = "../audit" }
 exec = { path = "../exec" }

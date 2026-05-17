@@ -1,0 +1,14 @@
+---
+source: crates/ui/src/widgets/chart.rs
+assertion_line: 1789
+expression: chart_overlay_summary(&bars, Some(&equity), &compare)
+---
+widget: chart
+bar_count: 60
+gridlines: 5
+equity_overlay: present points=60 fidelity=PerBar
+equity_axis: right_gutter
+equity_color: ACCENT_2
+compare_count: 1
+compare_slot_1: points=0 fidelity=PerBar
+compare_slot_1_color: ACCENT_2

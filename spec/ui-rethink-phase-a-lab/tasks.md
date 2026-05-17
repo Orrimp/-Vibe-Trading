@@ -355,6 +355,38 @@ T-D-1  (state.rs scaffolding)
 
 ## M-FINAL — Persistence + audits + non-regression sweep
 
+### [x] T-D-14b — Run button widget
+
+- **Owner:** D+T
+- **Milestone:** M2.5 / Wave 3
+- **Status:** DONE (2026-05-17)
+- **file:line:** `crates/ui/src/widgets/run_button.rs:1` (NEW — 230 LOC); `crates/ui/src/widgets/run_button.rs:34` (`RunState` enum); `crates/ui/src/widgets/run_button.rs:71` (`view` fn); `crates/ui/src/widgets/mod.rs` (re-export); `crates/ui/src/screens/lab.rs` (run_button_row inserted after date_range_row); `crates/ui/src/strings.rs` (`LAB_RUN_BUTTON_COMPLETED` + `LAB_RUN_BUTTON_FAILED`)
+- **Test command:** `cargo test -p ui --lib widgets::run_button`
+- **Output:** `test widgets::run_button::tests::run_button__idle ... ok; test widgets::run_button::tests::run_button__running ... ok; test widgets::run_button::tests::run_button_constructs_all_states ... ok; test widgets::run_button::tests::run_state_from_cockpit_mapping ... ok; test result: ok. 235 passed; 0 failed`
+- **Acceptance:** `RunState` enum (Idle/Running/Completed/Failed); `view` disabled when `run_handle_present`; label per state; on_press emits `Message::LabRunRequested`; 2 insta snapshots pinned (`run_button__idle`, `run_button__running`); wired into Lab screen; gallery cell added.
+- **Depends on:** T-D-14
+- **Files:**
+  - `crates/ui/src/widgets/run_button.rs` (NEW — 230 LOC)
+  - `crates/ui/src/widgets/mod.rs` (re-export)
+  - `crates/ui/src/widgets/snapshots/ui__widgets__run_button__tests__run_button__idle.snap` (NEW)
+  - `crates/ui/src/widgets/snapshots/ui__widgets__run_button__tests__run_button__running.snap` (NEW)
+  - `crates/ui/src/gallery/routes.rs` (render_run_button + seed_run_button + GalleryCell + EXPECTED_WIDGETS)
+  - `crates/ui/src/screens/lab.rs` (run_button_row + RUN_BUTTON_ROW_HEIGHT_PX + budget update)
+  - `crates/ui/src/strings.rs` (LAB_RUN_BUTTON_COMPLETED + LAB_RUN_BUTTON_FAILED)
+
+### [x] T-D-14c — Cockpit::boot persistence integration
+
+- **Owner:** D+T
+- **Milestone:** M-FINAL / Wave 3
+- **Status:** DONE (2026-05-17)
+- **file:line:** `crates/ui/src/state.rs:975` (`pub fn boot`); `crates/ui/src/state.rs:2615` (`boot_restores_persisted_state` test); `crates/ui/src/state.rs:2649` (`boot_cold_start_when_file_absent` test)
+- **Test command:** `cargo test -p ui --lib state::tests::boot_restores_persisted_state state::tests::boot_cold_start_when_file_absent`
+- **Output:** `test state::tests::boot_restores_persisted_state ... ok; test state::tests::boot_cold_start_when_file_absent ... ok; test result: ok. 235 passed; 0 failed`
+- **Acceptance:** `Cockpit::boot(override_path)` reads `cockpit-lab-state.json` → restores `LabState`; missing file → Q-A3 cold-start; `state_path_override` enables tempdir-based integration test.
+- **Depends on:** T-D-17
+- **Files:**
+  - `crates/ui/src/state.rs` (`Cockpit::boot` + 2 integration tests)
+
 ### [x] T-D-17 — `lab::persistence` (JSON + debounce + cold-start defaults)
 
 - **Owner:** D+T
@@ -363,9 +395,9 @@ T-D-1  (state.rs scaffolding)
 - **file:line:** `crates/ui/src/lab/persistence.rs:1` (NEW — full module); `crates/ui/src/lab/defaults.rs:1` (NEW — `LAB_DEFAULT_SEED`, cold-start builders); `crates/ui/src/lab/mod.rs` (re-exports)
 - **Test command:** `cargo test -p ui --lib lab::persistence`
 - **Output:** `test lab::persistence::tests::write_then_restore_roundtrip ... ok; test lab::persistence::tests::debouncer_force_flush_writes ... ok; test result: ok. 9 passed; 0 failed`
-- **Notes:** JSON schema `version: 1` implemented. `PersistenceDebouncer` with 500ms debounce. Cold-start defaults: v1.momentum × XRPUSDT × Last90d per Q-A3. `Cockpit::boot()` integration (`persistence::restore_or_default`) deferred — the fixture cockpit doesn't have a boot path; the live cockpit wires persistence in Phase B.
+- **Notes:** JSON schema `version: 1` implemented. `PersistenceDebouncer` with 500ms debounce. Cold-start defaults: v1.momentum × XRPUSDT × Last90d per Q-A3. `Cockpit::boot()` (persistence wiring) added in Wave 3 T-D-14c.
 - **Depends on:** T-D-4
-- **Blocks:** T-D-19
+- **Blocks:** T-D-14c, T-D-19
 - **Files:**
   - `crates/ui/src/lab/persistence.rs` (NEW — ~330 LOC)
   - `crates/ui/src/lab/defaults.rs` (NEW — ~70 LOC)
@@ -388,20 +420,66 @@ T-D-1  (state.rs scaffolding)
 
 - **Owner:** D+T (tester writes the final report)
 - **Milestone:** M-FINAL
+- **Status:** PARTIAL — developer delivered descriptor snapshots + tester gate prep; visual A/B deferred to operator-local run
 - **Acceptance:** Visual A/B captured on the operator's 3360×1890
   Retina: one before/after pair per overlay layer (buy/sell markers,
   equity curve, comparison overlay) saved to
   `spec/ui-rethink-phase-a-lab/reports/screenshots/`; `cargo test -p
-  ui` green (full suite, 267 baseline snapshots + the new Phase A
-  ones); `verify-anchors.sh` exit 0 (R11.1 — all 11 anchors
+  ui` green (full suite); `verify-anchors.sh` exit 0 (R11.1 — all 11 anchors
   byte-identical); tester report
   `test-<date>-ui-rethink-phase-a-lab.md` cites the four R11 gates
   + the visual A/B in its verdict.
-- **Depends on:** T-D-14, T-D-17, T-D-18
+
+#### Developer deliverables (Wave 3 — 2026-05-17)
+
+Descriptor-based insta snapshots (text summaries — iced renderer not
+available in CI): `chart__price_plus_equity_v1_momentum.snap`,
+`chart__compare_three_strategies.snap`, `chart__compare_pair_swap_no_data.snap`.
+All accepted and passing in `cargo test -p ui --lib`.
+
+Pre-existing `panel_snapshots.rs` compile failures from `screens::charts`
+references (Wave 1/2 rename residual) fixed. Consistency gate
+(`no_inline_user_visible_strings_in_widgets`) fixed — `"${:.0}K"` equity
+axis label routed via `CHART_EQUITY_AXIS_THOUSAND_SUFFIX` constant.
+
+#### Tester checklist (T-D-19 — ALL must pass before VERDICT → PASS)
+
+1. `cargo test -p ui --lib`
+   - **Expected:** ≥ 235 passed; 0 failed
+   - **Scope:** includes run_button snapshots, chart overlay snapshots, boot integration tests
+
+2. `cargo test --workspace` (excluding orchestrator-only backtest)
+   - **Expected:** 0 failures across all crates
+   - **Note:** determinism tests take ~42s; run them separately if needed
+
+3. `cargo test -p backtest --test determinism`
+   - **Expected:** 18/18 pass (11 body-SHA-256 anchors byte-identical)
+   - **Gate:** ANCHOR GATE — any failure is a REGRESSION, do not proceed
+
+4. `scripts/verify_anchors.sh`
+   - **Note:** ORCHESTRATOR-ONLY — emits the full 9-anchor verdict
+   - **Expected:** EXIT 0
+
+5. `cockpit-smoke` skill
+   - **Note:** ORCHESTRATOR-ONLY — manual smoke of the fixtures bin
+   - **Expected:** cockpit boots into Lab, run button visible, cold-start tuple `v1.momentum × XRPUSDT × Last 90d`
+
+6. Visual A/B captures at 3360×1890 Retina
+   - **Note:** ORCHESTRATOR-ONLY — operator runs locally
+   - **Command:** `cargo run -p ui --bin cockpit --features fixtures`
+   - **Expected captures:** buy/sell marker layer, equity curve overlay, compare overlay (3 strategies)
+   - **Save to:** `spec/ui-rethink-phase-a-lab/reports/screenshots/`
+
+- **Depends on:** T-D-14b, T-D-14c, T-D-17, T-D-18
 - **Blocks:** (closes M-FINAL → feature ship)
 - **Files:**
-  - `spec/ui-rethink-phase-a-lab/reports/test-<date>-ui-rethink-phase-a-lab.md`
-  - `spec/ui-rethink-phase-a-lab/reports/screenshots/*.png`
+  - `crates/ui/src/widgets/chart.rs` (3 new overlay snapshot tests + `CHART_EQUITY_AXIS_THOUSAND_SUFFIX` fix)
+  - `crates/ui/src/widgets/snapshots/ui__widgets__chart__tests__chart__price_plus_equity_v1_momentum.snap` (NEW)
+  - `crates/ui/src/widgets/snapshots/ui__widgets__chart__tests__chart__compare_three_strategies.snap` (NEW)
+  - `crates/ui/src/widgets/snapshots/ui__widgets__chart__tests__chart__compare_pair_swap_no_data.snap` (NEW)
+  - `crates/ui/tests/panel_snapshots.rs` (screens::charts → screens::lab path fix)
+  - `spec/ui-rethink-phase-a-lab/reports/test-<date>-ui-rethink-phase-a-lab.md` (tester writes)
+  - `spec/ui-rethink-phase-a-lab/reports/screenshots/*.png` (operator captures)
 
 ---
 

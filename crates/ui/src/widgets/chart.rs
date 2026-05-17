@@ -1245,7 +1245,11 @@ fn draw_equity_axis(
 
         // Label — right-aligned in the gutter.
         let label = if equity_at_y.abs() >= 1_000.0 {
-            format!("${:.0}K", equity_at_y / 1_000.0)
+            format!(
+                "${:.0}{}",
+                equity_at_y / 1_000.0,
+                crate::strings::CHART_EQUITY_AXIS_THOUSAND_SUFFIX
+            )
         } else {
             format!("${equity_at_y:.0}")
         };
@@ -1648,6 +1652,146 @@ mod tests {
         assert_snapshot!(
             "chart__with_ghosts_and_fills",
             chart_summary(&bars, &markers, &signals)
+        );
+    }
+
+    // ── T-D-19 overlay canvas snapshots ─────────────────────────────────────
+    //
+    // These three tests are **descriptor-based** (same text-summary pattern
+    // as the btc/empty/ghosts tests above) because the iced canvas renderer
+    // is not available in the test environment. The snapshots pin the
+    // ChartProgram's *input shape* — layer count, overlay types, fidelity,
+    // point counts — rather than pixels.
+    //
+    // **Operator visual A/B capture** is deferred to the operator-local
+    // cargo run (3360×1890 Retina). The manual capture command is:
+    //   cargo run -p ui --bin cockpit --features fixtures
+    // and the screenshots land in
+    //   spec/ui-rethink-phase-a-lab/reports/screenshots/
+    //
+    // See T-D-19 in spec/ui-rethink-phase-a-lab/tasks.md for the full gate.
+
+    /// Plain-text summary for overlay snapshot tests.
+    fn chart_overlay_summary(
+        bars: &[Bar],
+        equity: Option<&LabEquitySeries>,
+        compare: &[LabEquitySeries],
+    ) -> String {
+        let mut out = String::new();
+        out.push_str("widget: chart\n");
+        out.push_str(&format!("bar_count: {}\n", bars.len()));
+        out.push_str(&format!("gridlines: {GRIDLINE_COUNT}\n"));
+        // Equity overlay
+        if let Some(eq) = equity {
+            out.push_str(&format!(
+                "equity_overlay: present points={} fidelity={:?}\n",
+                eq.samples.len(),
+                eq.fidelity
+            ));
+            out.push_str("equity_axis: right_gutter\n");
+            out.push_str("equity_color: ACCENT_2\n");
+        } else {
+            out.push_str("equity_overlay: none\n");
+        }
+        // Compare overlays
+        out.push_str(&format!("compare_count: {}\n", compare.len()));
+        for (i, c) in compare.iter().enumerate() {
+            let slot = i + 1;
+            out.push_str(&format!(
+                "compare_slot_{slot}: points={} fidelity={:?}\n",
+                c.samples.len(),
+                c.fidelity
+            ));
+            let color_token = match i {
+                0 => "ACCENT_2",
+                1 => "ACCENT_3",
+                2 => "ACCENT_4",
+                _ => "ACCENT_5",
+            };
+            out.push_str(&format!("compare_slot_{slot}_color: {color_token}\n"));
+        }
+        out
+    }
+
+    fn make_equity_series(slug: &str, n_points: usize) -> LabEquitySeries {
+        use crate::lab::equity_loader::Fidelity;
+        let samples: Vec<(i64, Decimal)> = (0..n_points)
+            .map(|i| (1_705_320_000_000 + i as i64 * 60_000, dec!(100_000) + Decimal::from(i * 100)))
+            .collect();
+        LabEquitySeries {
+            samples,
+            source_report: smol_str::SmolStr::new(slug),
+            fidelity: Fidelity::PerBar,
+            narrowed_from: None,
+        }
+    }
+
+    fn make_equity_series_no_data(slug: &str) -> LabEquitySeries {
+        use crate::lab::equity_loader::Fidelity;
+        LabEquitySeries {
+            samples: Vec::new(), // no data for this pair/range
+            source_report: smol_str::SmolStr::new(slug),
+            fidelity: Fidelity::PerBar,
+            narrowed_from: None,
+        }
+    }
+
+    /// T-D-19 — snapshot: `chart__price_plus_equity_v1_momentum`.
+    ///
+    /// Equity overlay over baseline price for v1.momentum strategy.
+    /// Records: bar count, equity overlay presence + point count, right axis.
+    #[test]
+    #[allow(non_snake_case)]
+    fn chart__price_plus_equity_v1_momentum() {
+        let bars: Vec<Bar> = (0..60)
+            .map(|i| make_bar(i, dec!(40_000) + Decimal::from(i) * dec!(2.5)))
+            .collect();
+        let equity = make_equity_series("backtest-20260429-195243-top10-2024-h1-momentum.md", 60);
+        let compare: Vec<LabEquitySeries> = vec![];
+        assert_snapshot!(
+            "chart__price_plus_equity_v1_momentum",
+            chart_overlay_summary(&bars, Some(&equity), &compare)
+        );
+    }
+
+    /// T-D-19 — snapshot: `chart__compare_three_strategies`.
+    ///
+    /// 3-strategy comparison overlay. Records slot count + color assignment.
+    #[test]
+    #[allow(non_snake_case)]
+    fn chart__compare_three_strategies() {
+        let bars: Vec<Bar> = (0..60)
+            .map(|i| make_bar(i, dec!(40_000) + Decimal::from(i) * dec!(2.5)))
+            .collect();
+        let equity = make_equity_series("backtest-v1-momentum.md", 60);
+        let compare = vec![
+            make_equity_series("backtest-v0-sma.md", 60),
+            make_equity_series("backtest-v05-macd.md", 55),
+            make_equity_series("backtest-v15-pairs.md", 48),
+        ];
+        assert_snapshot!(
+            "chart__compare_three_strategies",
+            chart_overlay_summary(&bars, Some(&equity), &compare)
+        );
+    }
+
+    /// T-D-19 — snapshot: `chart__compare_pair_swap_no_data`.
+    ///
+    /// Compare strategy with no data for the current pair → faded chip +
+    /// no curve. Records zero-point series in slot 1.
+    #[test]
+    #[allow(non_snake_case)]
+    fn chart__compare_pair_swap_no_data() {
+        let bars: Vec<Bar> = (0..60)
+            .map(|i| make_bar(i, dec!(40_000) + Decimal::from(i) * dec!(2.5)))
+            .collect();
+        let equity = make_equity_series("backtest-v1-momentum.md", 60);
+        let compare = vec![
+            make_equity_series_no_data("compare-no-data-for-xrpusdt.md"),
+        ];
+        assert_snapshot!(
+            "chart__compare_pair_swap_no_data",
+            chart_overlay_summary(&bars, Some(&equity), &compare)
         );
     }
 

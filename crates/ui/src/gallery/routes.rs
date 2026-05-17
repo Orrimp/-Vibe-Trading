@@ -22,7 +22,7 @@ use crate::strings;
 use crate::widgets::{
     agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
     kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
-    sidebar_nav, sparkline, status_bar, strategies, strategy_chip, volume_histogram,
+    run_button, sidebar_nav, sparkline, status_bar, strategies, strategy_chip, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -509,6 +509,16 @@ fn render_date_range(_model: &Cockpit) -> iced::Element<'_, Message> {
     date_range::view(range, None, ThemeMode::Dark)
 }
 
+fn seed_run_button() -> Cockpit {
+    Cockpit::new()
+}
+
+fn render_run_button(model: &Cockpit) -> iced::Element<'_, Message> {
+    use run_button::RunState;
+    let state = RunState::from_cockpit(model.lab_run_inflight, None);
+    run_button::view(&state, model.lab_run_inflight, ThemeMode::Dark)
+}
+
 fn render_journal_transaction_modal(_model: &Cockpit) -> iced::Element<'_, Message> {
     // journal_transaction_modal::view takes (state, main_col, on_close).
     // Render it with a simple text column as the background. Leak the
@@ -817,6 +827,12 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         seed: seed_override_risk_veto,
     },
     GalleryCell {
+        widget: "run_button",
+        state: "idle_dark",
+        render: render_run_button,
+        seed: seed_run_button,
+    },
+    GalleryCell {
         widget: "sidebar_nav",
         state: "home_selected",
         render: render_sidebar_nav,
@@ -862,6 +878,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "placeholder",
     "pnl",
     "positions",
+    "run_button",
     "sidebar_nav",
     "sparkline",
     "status_bar",

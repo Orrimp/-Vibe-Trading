@@ -957,6 +957,25 @@ impl Cockpit {
         Self::default()
     }
 
+    /// Boot cockpit with persistence restore (T-D-14c).
+    ///
+    /// Identical to `new()` except that `lab_state` is populated from the
+    /// on-disk `cockpit-lab-state.json` (Design § 5). If the file is absent
+    /// or corrupt, falls back to the Q-A3 cold-start defaults
+    /// (`v1.momentum × XRPUSDT × Last 90d`).
+    ///
+    /// `state_path_override` redirects the state file to a caller-supplied
+    /// path (used by integration tests to point at a temp dir).
+    #[must_use]
+    pub fn boot(state_path_override: Option<&std::path::Path>) -> Self {
+        use crate::lab::persistence;
+        let path = persistence::lab_state_path(state_path_override);
+        let lab_state = persistence::restore_or_default(&path);
+        let mut c = Self::default();
+        c.lab_state = lab_state;
+        c
+    }
+
     /// Test / fixture constructor that boots every panel into Ready state
     /// with the provided data.
     #[must_use]
@@ -2591,5 +2610,80 @@ mod tests {
         assert!(c.focused_widget.is_none());
         update(&mut c, Message::FocusChanged(SmolStr::new("kill_button")));
         assert_eq!(c.focused_widget.as_deref(), Some("kill_button"));
+    }
+
+    // ── T-D-14c — Cockpit::boot persistence integration tests ────────────────
+
+    /// T-D-14c — boot with a pre-written state file restores the saved tuple.
+    ///
+    /// Writes a `cockpit-lab-state.json` to a temp dir, boots a `Cockpit` via
+    /// `boot(Some(&path))`, asserts the lab_state tuple matches.
+    #[test]
+    fn boot_restores_persisted_state() {
+        use crate::lab::persistence;
+        use crate::lab::state::{DateRange, Preset};
+        use trading_core::{StrategyId, Symbol, Venue};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("cockpit-lab-state.json");
+
+        // Build a non-default state and persist it.
+        let state = crate::lab::state::LabState::with_selection(
+            Some(StrategyId(smol_str::SmolStr::new("v0.5.macd"))),
+            Some((Venue::Binance, Symbol::new("ETHUSDT"))),
+            DateRange::Preset(Preset::H1_2024),
+        );
+        persistence::write_sync(&state, &path).unwrap();
+
+        // Boot with the override path.
+        let cockpit = Cockpit::boot(Some(&path));
+
+        assert_eq!(
+            cockpit.lab_state.strategy.as_ref().map(|s| s.0.as_str()),
+            Some("v0.5.macd"),
+            "boot must restore persisted strategy"
+        );
+        assert_eq!(
+            cockpit.lab_state.pair.as_ref().map(|(_, s)| s.0.as_str()),
+            Some("ETHUSDT"),
+            "boot must restore persisted pair"
+        );
+        assert_eq!(
+            cockpit.lab_state.range,
+            DateRange::Preset(Preset::H1_2024),
+            "boot must restore persisted range"
+        );
+    }
+
+    /// T-D-14c — boot with absent state file falls back to cold-start defaults.
+    ///
+    /// Removes the file (or uses a non-existent path), boots a `Cockpit`,
+    /// asserts the Q-A3 cold-start tuple.
+    #[test]
+    fn boot_cold_start_when_file_absent() {
+        use crate::lab::state::{DateRange, Preset};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("no-such-file.json");
+        // File does NOT exist.
+        assert!(!path.exists());
+
+        let cockpit = Cockpit::boot(Some(&path));
+
+        assert_eq!(
+            cockpit.lab_state.strategy.as_ref().map(|s| s.0.as_str()),
+            Some("v1.momentum"),
+            "absent file must yield cold-start strategy v1.momentum"
+        );
+        assert_eq!(
+            cockpit.lab_state.pair.as_ref().map(|(_, s)| s.0.as_str()),
+            Some("XRPUSDT"),
+            "absent file must yield cold-start symbol XRPUSDT"
+        );
+        assert_eq!(
+            cockpit.lab_state.range,
+            DateRange::Preset(Preset::Last90d),
+            "absent file must yield cold-start range Last90d"
+        );
     }
 }

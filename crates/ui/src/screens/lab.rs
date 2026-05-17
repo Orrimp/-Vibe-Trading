@@ -39,6 +39,7 @@ use crate::strings::{
 use crate::theme::{color, color_for_delta, radius, space, text, ThemeMode};
 use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::volume_histogram::{self, VolumeBin};
+use crate::widgets::run_button::{self, RunState};
 use crate::widgets::{chart, date_range, pair_chip, strategy_chip};
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
@@ -69,6 +70,10 @@ const DATE_RANGE_ROW_HEIGHT_PX: f32 = 32.0;
 /// gap) — the volume-histogram column's first child.
 const HISTOGRAM_LABEL_HEIGHT_PX: f32 = 14.0;
 
+/// Approximate Run button row height (T-D-14b — button in a Row with
+/// `space::M` spacing, `SMALL`-sized text, `S`/`L` padding).
+const RUN_BUTTON_ROW_HEIGHT_PX: f32 = 36.0;
+
 /// Pure calculation of the chart canvas's vertical allocation given a
 /// body height.  Mirrors the Layout β arithmetic this module's
 /// [`view`] composes: chip row + status strip + chart (Fill) + volume
@@ -92,13 +97,14 @@ const HISTOGRAM_LABEL_HEIGHT_PX: f32 = 14.0;
 pub fn chart_canvas_height_for_body(body_height_px: f32) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let padding = (space::L as f32) * 2.0;
-    // 6 children: pair_row, strategy_row, date_range_row, status_strip,
-    // chart (Fill), histogram → 5 gaps between 6 children.
+    // 7 children: pair_row, strategy_row, date_range_row, run_button_row,
+    // status_strip, chart (Fill), histogram → 6 gaps between 7 children.
     #[allow(clippy::cast_precision_loss)]
-    let spacing = (space::M as f32) * 5.0;
+    let spacing = (space::M as f32) * 6.0;
     let fixed = CHIP_ROW_HEIGHT_PX
         + STRATEGY_ROW_HEIGHT_PX
         + DATE_RANGE_ROW_HEIGHT_PX
+        + RUN_BUTTON_ROW_HEIGHT_PX
         + STATUS_STRIP_HEIGHT_PX
         + HISTOGRAM_LABEL_HEIGHT_PX
         + HISTOGRAM_HEIGHT_PX;
@@ -163,6 +169,14 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         mode,
     );
 
+    // ── Phase A top-bar row 4: Run button (T-D-14b) ──────────────────────
+    // Derive RunState from lab_run_inflight + (no prior outcome tracking at
+    // Phase A — Phase B adds last_run_ok field to LabState).
+    let run_state = RunState::from_cockpit(model.lab_run_inflight, None);
+    let run_button_row = Row::new()
+        .push(run_button::view(&run_state, model.lab_run_inflight, mode))
+        .width(Length::Fill);
+
     // Compute the per-active-symbol slices once.
     let active_markers: Vec<FillView> = match &model.chart_markers {
         PanelState::Ready(v) => v.clone(),
@@ -222,6 +236,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(chip_row)
         .push(strategy_row)
         .push(range_picker)
+        .push(run_button_row)
         .push(status_strip)
         // T2032 — defensive `.width(Length::Fill)` on the chart-body
         // container.

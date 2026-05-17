@@ -1,0 +1,6 @@
+---
+source: crates/ui/src/widgets/run_button.rs
+assertion_line: 220
+expression: summary
+---
+state=Running run_handle_present=true mode=Dark label="Running…"

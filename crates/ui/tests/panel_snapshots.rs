@@ -1688,7 +1688,7 @@ fn charts_screen_summary(c: &Cockpit) -> String {
         0
     };
     out.push_str(&format!("chart_bars: {bars}\n"));
-    let _ = Screen::Home;
+    let _ = Screen::Lab; // default screen (post Phase A rename)
     out
 }
 
@@ -1714,7 +1714,7 @@ fn charts_screen_full_summary(c: &Cockpit) -> String {
         PanelState::Ready(v) => v.clone(),
         _ => Vec::new(),
     };
-    let totals = ui::screens::charts::compute_window_volume(&markers);
+    let totals = ui::screens::lab::compute_window_volume(&markers);
     out.push_str(&format!(
         "tile: buys={} sells={} net={} buy_count={} sell_count={}\n",
         totals.buys_usdt, totals.sells_usdt, totals.net_usdt, totals.buy_count, totals.sell_count
@@ -1722,7 +1722,7 @@ fn charts_screen_full_summary(c: &Cockpit) -> String {
 
     // Open-position mirror (R7.3).
     let position_state = if let Some((_, sym)) = &c.selected_symbol {
-        match ui::screens::charts::position_for_symbol(c, sym) {
+        match ui::screens::lab::position_for_symbol(c, sym) {
             Some(p) => format!(
                 "position_mirror: symbol={} qty={} pnl={}",
                 p.symbol,
@@ -1764,8 +1764,8 @@ fn charts_screen_full_summary(c: &Cockpit) -> String {
     } else {
         Vec::new()
     };
-    let bins = ui::screens::charts::compute_volume_bins(&markers, &bars_v);
-    let active_bins = bins.iter().filter(|b| !b.is_empty()).count();
+    let bins = ui::screens::lab::compute_volume_bins(&markers, &bars_v);
+    let active_bins = bins.iter().filter(|b: &&ui::widgets::volume_histogram::VolumeBin| !b.is_empty()).count();
     out.push_str(&format!(
         "histogram_bins: {} active={active_bins}\n",
         bins.len()

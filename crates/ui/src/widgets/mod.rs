@@ -59,3 +59,7 @@ pub mod strategy_chip;
 /// Phase A (T-D-7) — date-range picker widget for the Lab top-bar.
 /// Preset chips + inline Custom editor with parse-error highlight (R5.1).
 pub mod date_range;
+/// Phase A (T-D-14b) — Run backtest button widget for the Lab screen.
+/// Big primary button per Lumen Phase 1 tokens; disabled while a run is
+/// in-flight (at-most-one-in-flight per Design § 4).
+pub mod run_button;

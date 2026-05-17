@@ -319,6 +319,12 @@ pub const LAB_RUN_BUTTON: &str = "Run";
 /// Label shown on the Run button while a backtest is in-flight (T-D-14).
 pub const LAB_RUN_BUTTON_RUNNING: &str = "Running\u{2026}";
 
+/// Label on the Run button after a successful run — operator can re-run (T-D-14b).
+pub const LAB_RUN_BUTTON_COMPLETED: &str = "Re-run";
+
+/// Label on the Run button after a failed run — operator can retry (T-D-14b).
+pub const LAB_RUN_BUTTON_FAILED: &str = "Retry";
+
 // ── Charts screen (Phase 2 — T1608, T1610) ───────────────────────────────────
 
 /// Centred label rendered when the chart canvas has zero bars buffered.
@@ -381,6 +387,11 @@ pub const CHART_LEGEND_EQUITY_LABEL: &str = "Equity";
 /// Faded "no data" label shown in the compare legend when no report exists for
 /// the selected pair (R8.4 / T-D-15).
 pub const CHART_LEGEND_COMPARE_NO_DATA: &str = "No data";
+
+/// Format suffix appended to equity axis labels when the value ≥ 1 000 (T-D-11).
+/// Full format: `format!("${:.0}K", value / 1_000.0)`.
+/// The `K` suffix is user-visible prose → routes through `strings`.
+pub const CHART_EQUITY_AXIS_THOUSAND_SUFFIX: &str = "K";
 
 // ── Debug screen (Phase 2 — T1605) ───────────────────────────────────────────
 
@@ -913,9 +924,13 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_COMPARE_CAP_HIT", LAB_COMPARE_CAP_HIT),
         ("LAB_RUN_BUTTON", LAB_RUN_BUTTON),
         ("LAB_RUN_BUTTON_RUNNING", LAB_RUN_BUTTON_RUNNING),
+        ("LAB_RUN_BUTTON_COMPLETED", LAB_RUN_BUTTON_COMPLETED),
+        ("LAB_RUN_BUTTON_FAILED", LAB_RUN_BUTTON_FAILED),
         // Phase A — equity + compare legend (T-D-15)
         ("CHART_LEGEND_EQUITY_LABEL", CHART_LEGEND_EQUITY_LABEL),
         ("CHART_LEGEND_COMPARE_NO_DATA", CHART_LEGEND_COMPARE_NO_DATA),
+        // Phase A — equity axis K-suffix (T-D-11)
+        ("CHART_EQUITY_AXIS_THOUSAND_SUFFIX", CHART_EQUITY_AXIS_THOUSAND_SUFFIX),
     ]
 }
 

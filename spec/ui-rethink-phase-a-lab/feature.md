@@ -1103,10 +1103,55 @@ cargo test -p backtest --lib           → test result: ok. 9 passed; 0 failed (
 ### Phase A deviations / Phase B items
 
 1. **`run_scenario` stub only**: The full extraction of `main.rs` logic into `engine::run_scenario` is Phase B — refactoring 2600 LOC `main.rs` without anchor risk requires dedicated work.
-2. **Snapshot tests deferred**: `chart__price_plus_equity_v1_momentum.snap`, `chart__compare_three_strategies.snap`, `chart__compare_pair_swap_no_data.snap` require canvas renderer path — tester gate item.
-3. **Run button widget**: `run_button.rs` + Run button in `lab.rs` deferred to Phase B (persistence wiring gates it).
-4. **`Cockpit::boot()` persistence**: `restore_or_default` integration into cockpit boot deferred to Phase B live cockpit.
-5. **`panel_snapshots.rs` pre-existing failures**: Three test references to `ui::screens::charts::*` (renamed to `screens::lab` in Wave 1) are pre-existing failures not caused by Wave 2 changes.
+2. **Visual canvas snapshots deferred**: `chart__price_plus_equity_v1_momentum.snap`, `chart__compare_three_strategies.snap`, `chart__compare_pair_swap_no_data.snap` use text-descriptor format (iced canvas renderer not available in CI). Wave 3 delivered descriptor snapshots accepted and pinned. Pixel-level visual A/B is operator-local.
+3. **`main.rs` refactor (T-D-13 real impl)**: Wave 3 brief asked for full extraction. Assessment: 2600-LOC `main.rs` with 4 heterogeneous strategy types; refactor would exceed 500 LOC threshold set in the brief; risk of anchor drift. Decision: kept as Phase B milestone per spec note. Current T-D-13 status `DONE` correctly reflects "anchor gate PASS" (not main.rs refactor).
+
+### Wave 3 (T-D-14b, T-D-14c, T-D-19) delivered by the developer agent on 2026-05-17
+
+**T-D-14b — Run button widget**
+
+- New `crates/ui/src/widgets/run_button.rs` (~230 LOC):
+  - `RunState` enum: `Idle / Running / Completed / Failed` with `from_cockpit()` mapping
+  - `view(state, run_handle_present, mode)` — big primary button per Lumen Phase 1 tokens
+  - Disabled when `run_handle_present` (at-most-one-in-flight per Design § 4)
+  - Labels: "Run" / "Running…" / "Re-run" / "Retry" — all routed through `crate::strings`
+  - Emits `Message::LabRunRequested` on press when enabled
+  - Gallery cell added (`render_run_button` + `seed_run_button`)
+  - Wired into `screens/lab.rs` as a 4th top-bar row between date-range and status-strip
+  - Insta snapshots: `run_button__idle.snap` + `run_button__running.snap` accepted
+  - New string constants: `LAB_RUN_BUTTON_COMPLETED` ("Re-run") + `LAB_RUN_BUTTON_FAILED` ("Retry")
+  - Budget calc updated: 7 children (was 6), 6 gaps (was 5)
+
+**T-D-14c — Cockpit::boot persistence integration**
+
+- `Cockpit::boot(state_path_override: Option<&Path>)` added to `crates/ui/src/state.rs`
+  - Reads `~/.config/trading/cockpit-lab-state.json` via `persistence::restore_or_default`
+  - Falls back to Q-A3 cold-start (`v1.momentum × XRPUSDT × Last90d`) on any error
+  - `state_path_override` redirects to tempdir for integration tests
+  - 2 integration tests in `state::tests`: `boot_restores_persisted_state` + `boot_cold_start_when_file_absent`
+
+**T-D-19 — Canvas snapshots + tester gate sweep prep**
+
+- Three descriptor-based insta snapshots added to `chart.rs` test module:
+  - `chart__price_plus_equity_v1_momentum` — equity overlay + right-axis + ACCENT_2 color
+  - `chart__compare_three_strategies` — 3-slot compare with ACCENT_2/3/4 colors
+  - `chart__compare_pair_swap_no_data` — zero-point series in slot 1 (faded chip treatment)
+- Pre-existing compile failures in `panel_snapshots.rs` fixed (`screens::charts::` → `screens::lab::`)
+- Consistency gate fix: `"${:.0}K"` equity axis format routed via `CHART_EQUITY_AXIS_THOUSAND_SUFFIX` constant
+- Stale visual baselines (`render_snapshots/chart_screen_dark_typical.png` + `strategies_ready_dark_typical.png`) regenerated (stale since Wave 1 added chip rows)
+- Tester gate checklist written into `tasks.md` T-D-19
+
+### Test summary (Wave 3, 2026-05-17)
+
+```
+cargo test -p ui --lib                      → test result: ok. 235 passed; 0 failed
+cargo test -p ui                            → test result: ok. (all integration tests pass)
+cargo test -p ui --test consistency         → test result: ok. 2 passed; 0 failed
+cargo test -p ui --test render_snapshots    → test result: ok. 2 passed; 5 ignored; 0 failed (baselines regenerated)
+cargo test -p backtest --test determinism   → test result: ok. 18 passed; 0 failed (all anchors pass)
+```
+
+**Test count progression:** Wave 1 → 200 | Wave 2 → 224 | Wave 3 → 235 (+11: run_button ×4, strings ×2, boot integration ×2, chart overlay snapshots ×3)
 
 ## Verification
 
