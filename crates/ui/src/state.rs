@@ -747,6 +747,15 @@ pub struct Cockpit {
     /// M-FINAL adds persistence via `lab::persistence`.
     pub lab_state: LabState,
 
+    /// `true` while a Lab backtest run is in-flight (T-D-14 / M2.5).
+    /// The Run button greys out while this is set; cleared on
+    /// `LabRunCompleted`.
+    pub lab_run_inflight: bool,
+
+    /// Currently displayed toast message, if any (T-D-16).
+    /// `None` when no toast is visible. Cleared by `Message::DismissToast`.
+    pub toast_message: Option<SmolStr>,
+
     /// Configured `(Venue, Symbol)` universe — populated once at boot
     /// from `agent::config::Config` in live mode, hard-coded to the
     /// 3-symbol Binance set in fixtures mode. Static for the session.
@@ -935,6 +944,8 @@ impl Default for Cockpit {
             override_risk_veto: OverrideRiskVetoState::default(),
             risk_veto_events: Vec::new(),
             focused_widget: None,
+            lab_run_inflight: false,
+            toast_message: None,
         }
     }
 }
@@ -1009,6 +1020,8 @@ impl Cockpit {
             override_risk_veto: OverrideRiskVetoState::default(),
             risk_veto_events: Vec::new(),
             focused_widget: None,
+            lab_run_inflight: false,
+            toast_message: None,
         }
     }
 }
@@ -1207,12 +1220,17 @@ pub enum Message {
     /// Operator selected a date-range preset or committed a custom range.
     /// Pure assignment to `Cockpit::lab_state.range`.
     LabSelectRange(DateRange),
-    /// Operator pressed "Run backtest". No-op at Wave 1 (runner is M2.5).
-    /// Stub arm exists so the `Message` enum is complete and the Lab view
-    /// can wire the button without `#[allow(dead_code)]`.
+    /// Operator pressed "Run backtest". Fires `lab::runner::spawn_lab_run`
+    /// on the binary side (M2.5 / T-D-14). Pure state marks `run_inflight`.
     LabRunRequested,
-    /// Async backtest-run result. No-op at Wave 1 (runner is M2.5).
-    LabRunCompleted,
+    /// Async backtest-run result (M2.5 / T-D-14).
+    /// Carries `Ok(RunSummary)` on success, `Err(message)` on failure.
+    LabRunCompleted(crate::lab::runner::LabRunResult),
+    /// Show a transient toast notification (R4.2 / T-D-16).
+    /// The string is a `&'static str` via `crate::strings`; no inline literals.
+    ShowToast(SmolStr),
+    /// Clear the currently shown toast (auto-fired after the display timeout).
+    DismissToast,
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1561,15 +1579,33 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             model.lab_state.strategy = Some(id);
         }
         Message::LabToggleCompare(id) => {
-            // Returns `false` when cap hit — caller (binary / Wave 2) will
-            // emit a toast. Wave 1: no-op on `false` return is acceptable.
-            let _changed = model.lab_state.toggle_compare(id);
+            // Returns `false` when cap hit — emit a toast (T-D-16 / R4.2).
+            let changed = model.lab_state.toggle_compare(id);
+            if !changed {
+                model.toast_message =
+                    Some(SmolStr::new(crate::strings::LAB_COMPARE_CAP_HIT));
+            }
         }
         Message::LabSelectRange(range) => {
             model.lab_state.range = range;
         }
-        // Wave 1 stubs — runner wiring is M2.5.
-        Message::LabRunRequested | Message::LabRunCompleted => {}
+        // Wave 2 (M2.5 / T-D-14) — run-inflight tracking.
+        // Pure state: the binary side wires the Task::perform.
+        Message::LabRunRequested => {
+            model.lab_run_inflight = true;
+        }
+        Message::LabRunCompleted(_outcome) => {
+            model.lab_run_inflight = false;
+            // The equity cache invalidation + repaint is triggered by the
+            // binary-side `update` wrapper after pure-state `update` returns.
+            // Pure state only clears the inflight flag here.
+        }
+        Message::ShowToast(msg) => {
+            model.toast_message = Some(msg);
+        }
+        Message::DismissToast => {
+            model.toast_message = None;
+        }
     }
 }
 

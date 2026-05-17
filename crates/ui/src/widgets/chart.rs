@@ -39,12 +39,24 @@ use super::canvas_chart::{
 };
 use super::chart_legend;
 use super::chart_tooltip;
+use crate::lab::equity_loader::LabEquitySeries;
 use crate::state::{ChartMarkerIndex, ChartTooltipKind, ChartTooltipView, Message};
 use crate::strings::{
     CHART_NO_DATA, CHART_TOOLTIP_SIDE_BUY, CHART_TOOLTIP_SIDE_SELL, CHART_TOOLTIP_STRATEGY_NONE,
 };
 use crate::theme::layout::{AXIS_GUTTER_PRICE_PX, AXIS_GUTTER_RIGHT_PX, AXIS_GUTTER_TIME_PX};
 use crate::theme::{color, shadow, space, text, ThemeMode};
+
+/// Right Y-axis gutter width when the equity overlay is active (Design § 3).
+/// Sized to match the left price gutter for visual symmetry (R2.2).
+pub(crate) const AXIS_GUTTER_EQUITY_PX: f32 = 56.0;
+
+/// Equity-line stroke width — 1.5 px (slightly thinner than the 2.0 px price
+/// line so price stays visually dominant; Design § 3).
+const EQUITY_STROKE_PX: f32 = 1.5;
+
+/// Number of right-axis ticks for the equity Y-axis (Design § 3).
+const EQUITY_AXIS_TICK_COUNT: usize = 5;
 
 /// Filled-marker triangle size for executed-fill markers (Q6, R1.1).
 pub(crate) const MARKER_SIZE_PX: f32 = 13.0;
@@ -79,6 +91,20 @@ pub(crate) fn chart_inner_rect(size: Size) -> Rectangle {
         size,
         AXIS_GUTTER_PRICE_PX,
         AXIS_GUTTER_RIGHT_PX,
+        0.0,
+        AXIS_GUTTER_TIME_PX,
+    )
+}
+
+/// Variant of `chart_inner_rect` that widens the right gutter to accommodate
+/// the equity Y-axis when the equity overlay is active (Design § 3 /
+/// `AXIS_GUTTER_EQUITY_PX = 56.0`).
+#[inline]
+pub(crate) fn chart_inner_rect_with_equity(size: Size) -> Rectangle {
+    inner_rect_with_gutters(
+        size,
+        AXIS_GUTTER_PRICE_PX,
+        AXIS_GUTTER_EQUITY_PX,
         0.0,
         AXIS_GUTTER_TIME_PX,
     )
@@ -157,7 +183,15 @@ pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
 
 /// Render the chart for the active `(venue, symbol)` against the current
 /// `bars` window. Returns gridlines + line series + ghost-signal markers +
-/// executed-fill markers + tooltip in one canvas.
+/// executed-fill markers + optional equity-curve overlays + tooltip in one
+/// canvas.
+///
+/// New Phase A parameters (Design § 3 / T-D-11):
+/// - `equity` — primary strategy equity curve; activates the right Y-axis
+///   gutter when `Some`. Pass `None` for the v1.10.0 price+markers shape
+///   (backward-compatible — all existing call sites remain pixel-identical).
+/// - `compare` — up to 4 comparison-strategy equity curves (M3 / T-D-15).
+///   Pass `vec![]` at all existing call sites.
 ///
 /// Takes owned `Vec`s rather than borrowed slices so the canvas `Program`
 /// impl can hold them across iced's render lifetime without borrowing from
@@ -170,6 +204,8 @@ pub fn view<'a>(
     markers: Vec<FillView>,
     signals: Vec<SignalView>,
     tooltip: Option<ChartTooltipView>,
+    equity: Option<LabEquitySeries>,
+    compare: Vec<LabEquitySeries>,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
     let program = ChartProgram {
@@ -177,6 +213,8 @@ pub fn view<'a>(
         markers,
         signals,
         tooltip,
+        equity,
+        compare,
         mode,
     };
     let canvas: Canvas<ChartProgram, Message> = Canvas::new(program)
@@ -211,6 +249,12 @@ pub(crate) struct ChartProgram {
     /// the draw pass.
     #[allow(dead_code)]
     pub(crate) tooltip: Option<ChartTooltipView>,
+    /// Primary equity-curve overlay (T-D-11 / Design § 3). `None` disables
+    /// the overlay and the right Y-axis gutter — backward-compatible.
+    pub(crate) equity: Option<LabEquitySeries>,
+    /// Comparison equity curves (T-D-15 / Design § 3). Empty vec disables
+    /// the comparison pass.
+    pub(crate) compare: Vec<LabEquitySeries>,
     pub(crate) mode: ThemeMode,
 }
 
@@ -252,7 +296,12 @@ impl canvas::Program<Message> for ChartProgram {
                         // Single source of truth keeps the visual
                         // and hit-test coordinate systems pinned to
                         // the same rectangle (R1.2 / V13).
-                        let inner = chart_inner_rect(bounds.size());
+                        let has_eq = self.equity.is_some() || !self.compare.is_empty();
+                        let inner = if has_eq {
+                            chart_inner_rect_with_equity(bounds.size())
+                        } else {
+                            chart_inner_rect(bounds.size())
+                        };
                         self.hit_test(p, inner)
                     }
                     None => None,
@@ -284,7 +333,12 @@ impl canvas::Program<Message> for ChartProgram {
                 let cursor_pos = cursor.position_in(bounds)?;
                 // T3010 — same inner-rect single-source-of-truth as
                 // the CursorMoved branch above.
-                let inner = chart_inner_rect(bounds.size());
+                let has_eq = self.equity.is_some() || !self.compare.is_empty();
+                let inner = if has_eq {
+                    chart_inner_rect_with_equity(bounds.size())
+                } else {
+                    chart_inner_rect(bounds.size())
+                };
                 let hit = self.hit_test(cursor_pos, inner)?;
                 // Ghosts have no transaction_id — click is a no-op (R5.6).
                 if let (ChartMarkerIndex::Fill(i), _) = hit {
@@ -316,7 +370,17 @@ impl canvas::Program<Message> for ChartProgram {
         // `chart_inner_rect` applies the brief's R4 gutters
         // (price-axis LEFT, margin RIGHT, time-axis BOTTOM) so the
         // visual content + hit-test math share one rectangle.
-        let inner = chart_inner_rect(bounds.size());
+        //
+        // T-D-11 — when an equity overlay is active, widen the right
+        // gutter to `AXIS_GUTTER_EQUITY_PX` (56 px) for the right Y-axis
+        // (Design § 3). `chart_inner_rect_with_equity` keeps the inner
+        // rect math as the single source of truth.
+        let has_equity = self.equity.is_some() || !self.compare.is_empty();
+        let inner = if has_equity {
+            chart_inner_rect_with_equity(bounds.size())
+        } else {
+            chart_inner_rect(bounds.size())
+        };
         let border = with_alpha(color::BORDER_1.current(self.mode), 0.4);
 
         // Pass 1 — Gridlines.
@@ -379,7 +443,67 @@ impl canvas::Program<Message> for ChartProgram {
                 .with_width(LINE_STROKE_PX),
         );
 
-        // Pass 5 — Ghost-signal triangles (R5.1, M3 — T2018).
+        // Pass 5 — Equity-curve overlay (T-D-11 / Design § 3 / R2.2, R2.3).
+        //
+        // Z-order: price line (Pass 4) → equity lines (here) → markers
+        // (Pass 6+) so buy/sell markers stay visually dominant (R2.4).
+        //
+        // The right Y-axis gutter was widened in the inner-rect calculation
+        // above when `has_equity` is true. The pass is a no-op when both
+        // `self.equity` and `self.compare` are empty — no gutter chrome
+        // appears and the chart degrades to the v1.10.0 shape (R2.5).
+        if has_equity {
+            // Compute the equity range across primary + compare series.
+            let equity_range = compute_equity_range(
+                self.equity.as_ref(),
+                &self.compare,
+                self.bars.first().map(|b| b.open_ts.unix_millis()),
+                self.bars.last().map(|b| b.close_ts.unix_millis()),
+            );
+
+            if let Some((min_eq, max_eq)) = equity_range {
+                // Draw primary equity curve (color::ACCENT — same as the
+                // price line accent, "I am the focused one"; Design § 3).
+                if let Some(ref eq) = self.equity {
+                    draw_equity_polyline(
+                        &mut frame,
+                        eq,
+                        &self.bars,
+                        min_eq,
+                        max_eq,
+                        inner,
+                        color::ACCENT.current(self.mode),
+                    );
+                }
+
+                // Draw comparison equity curves in positional ACCENT_2..5.
+                let palette = color::accent_palette();
+                for (i, compare_eq) in self.compare.iter().enumerate().take(4) {
+                    let line_color = palette[i].current(self.mode);
+                    draw_equity_polyline(
+                        &mut frame,
+                        compare_eq,
+                        &self.bars,
+                        min_eq,
+                        max_eq,
+                        inner,
+                        line_color,
+                    );
+                }
+
+                // Draw right Y-axis ticks + labels.
+                draw_equity_axis(
+                    &mut frame,
+                    bounds.size(),
+                    inner,
+                    min_eq,
+                    max_eq,
+                    self.mode,
+                );
+            }
+        }
+
+        // Pass 5b — Ghost-signal triangles (R5.1, M3 — T2018).
         //
         // Painted **before** the executed-fill layer so a fill atop a ghost
         // at the same bar visually wins. 60 % alpha + `_400` tier ramp
@@ -477,7 +601,33 @@ impl canvas::Program<Message> for ChartProgram {
         // marker palette + glyph helpers so any future tweak to
         // `draw_triangle` flows through automatically (single source
         // of truth for the marker glyph shape per R5.4 of the brief).
-        chart_legend::draw_legend(&mut frame, inner, self.mode);
+        //
+        // T-D-15 — when compare curves are active, extend the legend
+        // with per-compare rows showing the positional ACCENT_N color
+        // swatch + the strategy label ("no data" treatment for missing
+        // reports per R8.4).
+        if self.compare.is_empty() {
+            chart_legend::draw_legend(&mut frame, inner, self.mode);
+        } else {
+            let palette = color::accent_palette();
+            let compare_entries: Vec<chart_legend::CompareLegendEntry> = self
+                .compare
+                .iter()
+                .enumerate()
+                .take(4)
+                .map(|(i, eq)| chart_legend::CompareLegendEntry {
+                    label: eq.source_report.clone(),
+                    color: palette[i].current(self.mode),
+                    has_data: !eq.samples.is_empty(),
+                })
+                .collect();
+            chart_legend::draw_legend_with_compare(
+                &mut frame,
+                inner,
+                self.mode,
+                &compare_entries,
+            );
+        }
 
         vec![frame.into_geometry()]
     }
@@ -946,6 +1096,172 @@ pub(crate) fn strategy_label_or_none(strategy_id: Option<&SmolStr>) -> &str {
     strategy_id.map_or(CHART_TOOLTIP_STRATEGY_NONE, smol_str::SmolStr::as_str)
 }
 
+// ── Equity-overlay helpers (T-D-11 / Design § 3) ─────────────────────────────
+
+/// Compute `(min_equity, max_equity)` across primary + compare series,
+/// restricted to the timestamp window `[ts_start, ts_end]` (the visible
+/// bar window). Returns `None` when all series are empty or outside the
+/// window. Adds 5 % padding on each side for visual breathing room.
+fn compute_equity_range(
+    primary: Option<&LabEquitySeries>,
+    compare: &[LabEquitySeries],
+    ts_start: Option<i64>,
+    ts_end: Option<i64>,
+) -> Option<(f32, f32)> {
+    let (win_start, win_end) = match (ts_start, ts_end) {
+        (Some(s), Some(e)) => (s, e),
+        _ => (i64::MIN, i64::MAX),
+    };
+
+    let mut min_v: Option<f32> = None;
+    let mut max_v: Option<f32> = None;
+
+    let all = primary
+        .into_iter()
+        .chain(compare.iter());
+
+    for series in all {
+        for &(ts, ref equity) in &series.samples {
+            if ts >= win_start && ts <= win_end {
+                #[allow(clippy::cast_possible_truncation)]
+                let v = equity.to_f32().unwrap_or(0.0);
+                min_v = Some(min_v.map_or(v, |m: f32| m.min(v)));
+                max_v = Some(max_v.map_or(v, |m: f32| m.max(v)));
+            }
+        }
+    }
+
+    let min_v = min_v?;
+    let max_v = max_v?;
+
+    // Degenerate case: all equity values are the same.
+    let span = (max_v - min_v).max(1.0);
+    let pad = span * RANGE_PAD_FRACTION;
+    Some((min_v - pad, max_v + pad))
+}
+
+/// Draw a single equity polyline on the right Y-axis scale.
+fn draw_equity_polyline(
+    frame: &mut Frame,
+    series: &LabEquitySeries,
+    bars: &[Bar],
+    min_eq: f32,
+    max_eq: f32,
+    inner: Rectangle,
+    line_color: Color,
+) {
+    if series.samples.len() < 2 || bars.is_empty() {
+        return;
+    }
+
+    let min_bar_ts = bars.first().map_or(i64::MIN, |b| b.open_ts.unix_millis());
+    let max_bar_ts = bars.last().map_or(i64::MAX, |b| b.close_ts.unix_millis());
+
+    let mut path_started = false;
+    let polyline = Path::new(|builder| {
+        for &(ts, ref equity) in &series.samples {
+            // Clamp to visible window.
+            let ts_clamped = ts.clamp(min_bar_ts, max_bar_ts);
+            #[allow(clippy::cast_precision_loss)]
+            let x_frac = if max_bar_ts > min_bar_ts {
+                (ts_clamped - min_bar_ts) as f32 / (max_bar_ts - min_bar_ts) as f32
+            } else {
+                0.0
+            };
+            let x = inner.x + x_frac * inner.width;
+
+            #[allow(clippy::cast_possible_truncation)]
+            let eq_v = equity.to_f32().unwrap_or(0.0);
+            let span = (max_eq - min_eq).max(1e-6);
+            let y_frac = (eq_v - min_eq) / span;
+            let y = inner.y + (1.0 - y_frac) * inner.height;
+
+            if !path_started {
+                builder.move_to(Point::new(x, y));
+                path_started = true;
+            } else {
+                builder.line_to(Point::new(x, y));
+            }
+        }
+    });
+
+    if path_started {
+        frame.stroke(
+            &polyline,
+            Stroke::default()
+                .with_color(line_color)
+                .with_width(EQUITY_STROKE_PX),
+        );
+    }
+}
+
+/// Draw the right Y-axis ticks + equity value labels (Design § 3, pass 4).
+fn draw_equity_axis(
+    frame: &mut Frame,
+    canvas_size: Size,
+    inner: Rectangle,
+    min_eq: f32,
+    max_eq: f32,
+    mode: ThemeMode,
+) {
+    let _axis_right_x = inner.x + inner.width + AXIS_GUTTER_EQUITY_PX - 4.0;
+    let tick_x = inner.x + inner.width;
+    let axis_color = color::FG_3.current(mode);
+    let border = with_alpha(color::BORDER_1.current(mode), 0.4);
+    #[allow(clippy::cast_precision_loss)]
+    let micro = text::MICRO as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let label_gap = space::XS as f32;
+    let _ = canvas_size; // retained for future dpi-aware label sizing
+
+    // 1-px vertical axis line at the right edge of the inner rect.
+    let axis_line = Path::new(|builder| {
+        builder.move_to(Point::new(tick_x, inner.y));
+        builder.line_to(Point::new(tick_x, inner.y + inner.height));
+    });
+    frame.stroke(
+        &axis_line,
+        Stroke::default().with_color(border).with_width(1.0),
+    );
+
+    #[allow(clippy::cast_precision_loss)]
+    let denom = (EQUITY_AXIS_TICK_COUNT - 1) as f32;
+
+    for i in 0..EQUITY_AXIS_TICK_COUNT {
+        #[allow(clippy::cast_precision_loss)]
+        let frac = i as f32 / denom;
+        let y = inner.y + frac * inner.height;
+        let equity_at_y = max_eq - frac * (max_eq - min_eq);
+
+        // Tick mark — 4-px rightward stroke from axis into gutter.
+        let tick_path = Path::new(|builder| {
+            builder.move_to(Point::new(tick_x, y));
+            builder.line_to(Point::new(tick_x + AXIS_TICK_LEN_PX, y));
+        });
+        frame.stroke(
+            &tick_path,
+            Stroke::default().with_color(border).with_width(1.0),
+        );
+
+        // Label — right-aligned in the gutter.
+        let label = if equity_at_y.abs() >= 1_000.0 {
+            format!("${:.0}K", equity_at_y / 1_000.0)
+        } else {
+            format!("${equity_at_y:.0}")
+        };
+        #[allow(clippy::useless_conversion)]
+        frame.fill_text(CanvasText {
+            content: label,
+            position: Point::new(tick_x + AXIS_TICK_LEN_PX + label_gap, y),
+            color: axis_color,
+            size: micro.into(),
+            align_x: iced::alignment::Horizontal::Left.into(),
+            align_y: iced::alignment::Vertical::Center.into(),
+            ..CanvasText::default()
+        });
+    }
+}
+
 /// Test-only helper exposing the canvas `Program::update` pipeline to
 /// integration tests so the **actual hover-event-detection path** can be
 /// exercised without an iced runtime (T2030).
@@ -990,6 +1306,8 @@ pub fn dispatch_canvas_event_for_test(
         markers,
         signals,
         tooltip: None,
+        equity: None,
+        compare: vec![],
         mode: ThemeMode::Dark,
     };
     let cursor = mouse::Cursor::Available(cursor_pos);
@@ -1397,6 +1715,8 @@ mod tests {
             signals,
             // Decouple invariant — Cockpit-state round trip is None.
             tooltip: None,
+            equity: None,
+            compare: vec![],
             mode: ThemeMode::Dark,
         };
 

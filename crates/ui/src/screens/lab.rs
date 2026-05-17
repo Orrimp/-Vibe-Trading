@@ -196,10 +196,12 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
             active_markers,
             active_signals,
             model.chart_tooltip.clone(),
+            None,     // equity overlay — Phase B
+            vec![],   // compare curves — Phase B
             mode,
         )
     } else {
-        chart::view(Vec::new(), Vec::new(), Vec::new(), None, mode)
+        chart::view(Vec::new(), Vec::new(), Vec::new(), None, None, vec![], mode)
     };
 
     // Histogram below the chart — fixed 80 px tall.

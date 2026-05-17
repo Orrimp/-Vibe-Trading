@@ -54,6 +54,11 @@ trading_core = { path = "../core" }
 # `reports::csv_artifacts::read_equity_csv` over committed report
 # bodies. Read-only consumer; no write-path coupling.
 reports = { path = "../reports" }
+# ADR-0030 / T-D-14 — in-process backtest runner for the Lab Run button.
+# The `ui` crate depends on `backtest` to call `engine::run_scenario`.
+# This is the only cross-crate edge added by Phase A of ui-rethink-phase-a-lab;
+# no other new edges are permitted (see ADR-0030 § Consequences).
+backtest = { path = "../backtest" }
 rust_decimal_macros.workspace = true
 rand = { workspace = true }
 rand_chacha = { workspace = true }
@@ -63,6 +68,7 @@ rand_chacha = { workspace = true }
 # and swaps the Subscription from fixtures to live ledger reads.
 thiserror.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 rust_decimal.workspace = true
 time.workspace = true

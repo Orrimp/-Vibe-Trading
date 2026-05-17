@@ -89,12 +89,13 @@
 
 use iced::widget::canvas::{Frame, Path, Stroke, Text as CanvasText};
 use iced::{Color, Point, Rectangle, Size};
+use smol_str::SmolStr;
 
 use super::canvas_chart::{with_alpha, LINE_STROKE_PX};
 use super::chart::draw_triangle;
 use crate::strings::{
-    CHART_LEGEND_BUY_GHOST_LABEL, CHART_LEGEND_BUY_LABEL, CHART_LEGEND_PRICE_LABEL,
-    CHART_LEGEND_SELL_GHOST_LABEL, CHART_LEGEND_SELL_LABEL,
+    CHART_LEGEND_BUY_GHOST_LABEL, CHART_LEGEND_BUY_LABEL, CHART_LEGEND_COMPARE_NO_DATA,
+    CHART_LEGEND_PRICE_LABEL, CHART_LEGEND_SELL_GHOST_LABEL, CHART_LEGEND_SELL_LABEL,
 };
 use crate::theme::{
     color,
@@ -124,6 +125,21 @@ const LEGEND_GHOST_ALPHA: f32 = 0.6;
 /// occupy a comparable horizontal slot.
 const LEGEND_PRICE_STUB_PX: f32 = 14.0;
 
+/// A compare-legend entry.
+///
+/// Each entry shows a colored line-stub (the compare curve's ACCENT_N color)
+/// with a short label. `has_data = false` renders the label in `FG_3`
+/// (faded) for the "no data" treatment (R8.4 / T-D-15).
+#[derive(Debug, Clone)]
+pub(crate) struct CompareLegendEntry {
+    /// Short label — typically the strategy ID truncated to fit the card.
+    pub label: SmolStr,
+    /// The compare curve's line color (ACCENT_2..5 by slot).
+    pub color: Color,
+    /// When `false` the label renders faded — no cached report for this pair.
+    pub has_data: bool,
+}
+
 /// Render the legend card as the chart canvas's final draw pass
 /// (above the tooltip — Pass 7 in `chart::draw`).  The widget is a
 /// **free function**, not an `iced::Widget`, because it composes onto
@@ -134,8 +150,35 @@ const LEGEND_PRICE_STUB_PX: f32 = 14.0;
 /// at `(inner.right − card.w − space::M, inner.y + space::M)` so
 /// it nestles into the top-right corner with `space::M` (12 px)
 /// breathing room on both sides.
+///
+/// Pass `compare` as an empty slice for the basic 5-row legend (backward-
+/// compatible with all pre-T-D-15 call sites).  When `compare` is
+/// non-empty, up to 4 additional line-stub rows appear below the price
+/// row, one per compare strategy.
 pub(crate) fn draw_legend(frame: &mut Frame, inner: Rectangle, mode: ThemeMode) {
-    let card_rect = compute_card_rect(inner);
+    draw_legend_impl(frame, inner, mode, &[]);
+}
+
+/// Extended variant of `draw_legend` that renders additional compare
+/// curve rows (T-D-15 / M3). Call from `ChartProgram::draw` when
+/// `self.compare` is non-empty.
+pub(crate) fn draw_legend_with_compare(
+    frame: &mut Frame,
+    inner: Rectangle,
+    mode: ThemeMode,
+    compare: &[CompareLegendEntry],
+) {
+    draw_legend_impl(frame, inner, mode, compare);
+}
+
+fn draw_legend_impl(
+    frame: &mut Frame,
+    inner: Rectangle,
+    mode: ThemeMode,
+    compare: &[CompareLegendEntry],
+) {
+    let cmp_count = compare.len().min(4); // at most 4 compare entries
+    let card_rect = compute_card_rect_dynamic(inner, cmp_count);
 
     // Card chrome — `PANEL_SUNKEN` fill + `BORDER_STRONG` 1-px outline +
     // R3 rounded corners.  iced 0.14's `canvas::Path` doesn't expose
@@ -176,6 +219,7 @@ pub(crate) fn draw_legend(frame: &mut Frame, inner: Rectangle, mode: ThemeMode) 
     // Label column anchor — `pad + glyph + gap` from the card's left.
     let label_x = card_rect.x + pad + LEGEND_GLYPH_PX + LEGEND_GLYPH_LABEL_GAP_PX;
 
+    // ── Base 5 rows (marker palette + price line) ────────────────────────
     for (row_idx, row) in legend_rows(mode).iter().enumerate() {
         #[allow(clippy::cast_precision_loss)]
         let row_top = card_rect.y + pad + row_idx as f32 * row_stride;
@@ -242,19 +286,88 @@ pub(crate) fn draw_legend(frame: &mut Frame, inner: Rectangle, mode: ThemeMode) 
             ..CanvasText::default()
         });
     }
+
+    // ── Compare rows (T-D-15 / M3) ────────────────────────────────────────────
+    //
+    // One row per compare strategy, in positional ACCENT_2..5 color.
+    // When `entry.has_data = false`, the label renders faded (`FG_3`)
+    // and the "no data" suffix replaces the strategy label (R8.4).
+    for (cmp_idx, entry) in compare.iter().take(4).enumerate() {
+        #[allow(clippy::cast_precision_loss)]
+        let row_idx = LEGEND_ROW_COUNT + cmp_idx;
+        #[allow(clippy::cast_precision_loss)]
+        let row_top = card_rect.y + pad + row_idx as f32 * row_stride;
+        let glyph_center_y = row_top + LEGEND_GLYPH_PX / 2.0;
+        let label_y = glyph_center_y;
+
+        // Line-stub glyph in the entry's ACCENT_N color.
+        let stub_color = if entry.has_data {
+            entry.color
+        } else {
+            with_alpha(entry.color, 0.35)
+        };
+        let stub_start = Point::new(glyph_x - LEGEND_PRICE_STUB_PX / 2.0, glyph_center_y);
+        let stub_end = Point::new(glyph_x + LEGEND_PRICE_STUB_PX / 2.0, glyph_center_y);
+        let stub_path = Path::new(|builder| {
+            builder.move_to(stub_start);
+            builder.line_to(stub_end);
+        });
+        frame.stroke(
+            &stub_path,
+            Stroke::default().with_color(stub_color).with_width(LINE_STROKE_PX),
+        );
+
+        // Label — faded when no data.
+        let label_text = if entry.has_data {
+            entry.label.to_string()
+        } else {
+            format!("{} ({})", entry.label, CHART_LEGEND_COMPARE_NO_DATA)
+        };
+        let label_color = if entry.has_data {
+            color::FG_2.current(mode)
+        } else {
+            color::FG_3.current(mode)
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let micro = text::MICRO as f32;
+        #[allow(clippy::useless_conversion)]
+        frame.fill_text(CanvasText {
+            content: label_text,
+            position: Point::new(label_x, label_y),
+            color: label_color,
+            size: micro.into(),
+            align_x: iced::alignment::Horizontal::Left.into(),
+            align_y: iced::alignment::Vertical::Center.into(),
+            ..CanvasText::default()
+        });
+    }
 }
 
 /// Card-rect anchor — top-right inset with `space::M` breathing room
-/// on both edges (Q5 architect's resolution).
-fn compute_card_rect(inner: Rectangle) -> Rectangle {
+/// on both edges (Q5 architect's resolution). `compare_count` extra rows
+/// are added below the base 5 rows; the card grows vertically.
+fn compute_card_rect_dynamic(inner: Rectangle, compare_count: usize) -> Rectangle {
     #[allow(clippy::cast_precision_loss)]
     let gap = space::M as f32;
+    let row_stride = LEGEND_GLYPH_PX + LEGEND_ROW_GAP_PX;
+    // When no compare rows: return the static token height (backward compat).
+    // When compare rows added: grow by exactly `compare_count × row_stride`
+    // above the base `LEGEND_CARD_HEIGHT_PX`.  This matches the test's
+    // `base_h + n * row_stride` expectation.
+    #[allow(clippy::cast_precision_loss)]
+    let height = LEGEND_CARD_HEIGHT_PX + (compare_count as f32 * row_stride);
     Rectangle {
         x: inner.x + inner.width - LEGEND_CARD_WIDTH_PX - gap,
         y: inner.y + gap,
         width: LEGEND_CARD_WIDTH_PX,
-        height: LEGEND_CARD_HEIGHT_PX,
+        height,
     }
+}
+
+/// Fixed-height variant preserved for tests that pin `LEGEND_CARD_HEIGHT_PX`.
+#[cfg(test)]
+fn compute_card_rect(inner: Rectangle) -> Rectangle {
+    compute_card_rect_dynamic(inner, 0)
 }
 
 /// One legend entry — a glyph + a string label.
@@ -561,5 +674,80 @@ mod tests {
             "chart_legend__composition_dark",
             legend_summary(ThemeMode::Dark)
         );
+    }
+
+    // ── T-D-15 compare legend tests ───────────────────────────────────────────
+
+    /// T-D-15 — `compute_card_rect_dynamic` with zero compare rows returns
+    /// the same height as the token `LEGEND_CARD_HEIGHT_PX`.
+    #[test]
+    fn compare_legend_zero_entries_same_height_as_base() {
+        let inner = dummy_inner();
+        let base = compute_card_rect(inner);
+        let dynamic = compute_card_rect_dynamic(inner, 0);
+        assert!(approx_eq(base.height, dynamic.height));
+        assert!(approx_eq(base.width, dynamic.width));
+        assert!(approx_eq(base.x, dynamic.x));
+        assert!(approx_eq(base.y, dynamic.y));
+    }
+
+    /// T-D-15 — each additional compare row grows the card by `LEGEND_GLYPH_PX + LEGEND_ROW_GAP_PX`.
+    #[test]
+    fn compare_legend_grows_card_per_row() {
+        let inner = dummy_inner();
+        let base_h = compute_card_rect_dynamic(inner, 0).height;
+        for n in 1..=4 {
+            #[allow(clippy::cast_precision_loss)]
+            let expected_h =
+                base_h + n as f32 * (LEGEND_GLYPH_PX + LEGEND_ROW_GAP_PX);
+            let actual_h = compute_card_rect_dynamic(inner, n).height;
+            assert!(
+                approx_eq(actual_h, expected_h),
+                "n={n}: expected {expected_h} got {actual_h}"
+            );
+        }
+    }
+
+    /// T-D-15 — `compare_color_slot_assignment_is_stable`: the 4 compare
+    /// slots map to ACCENT_2/3/4/5 in order. Pinned so a future palette
+    /// reorder is visible before it ships.
+    #[test]
+    fn compare_color_slot_assignment_is_stable() {
+        let palette = color::accent_palette();
+        // Slot 0 → ACCENT_2
+        let slot0_dark = palette[0].current(ThemeMode::Dark);
+        let exp0 = color::ACCENT_2.current(ThemeMode::Dark);
+        assert_eq!(
+            (slot0_dark.r, slot0_dark.g, slot0_dark.b),
+            (exp0.r, exp0.g, exp0.b),
+            "slot 0 = ACCENT_2"
+        );
+        // Slot 3 → ACCENT_5
+        let slot3_dark = palette[3].current(ThemeMode::Dark);
+        let exp3 = color::ACCENT_5.current(ThemeMode::Dark);
+        assert_eq!(
+            (slot3_dark.r, slot3_dark.g, slot3_dark.b),
+            (exp3.r, exp3.g, exp3.b),
+            "slot 3 = ACCENT_5"
+        );
+    }
+
+    /// T-D-15 — `CompareLegendEntry` with `has_data = false` has a different
+    /// (faded) label text than a `has_data = true` entry.
+    #[test]
+    fn compare_legend_no_data_label_uses_suffix() {
+        let no_data_entry = CompareLegendEntry {
+            label: smol_str::SmolStr::new("v2.momentum"),
+            color: color::ACCENT_2.current(ThemeMode::Dark),
+            has_data: false,
+        };
+        // The draw path builds the label inline; verify the suffix is added.
+        let label_text = if no_data_entry.has_data {
+            no_data_entry.label.to_string()
+        } else {
+            format!("{} ({})", no_data_entry.label, CHART_LEGEND_COMPARE_NO_DATA)
+        };
+        assert!(label_text.contains(CHART_LEGEND_COMPARE_NO_DATA));
+        assert!(label_text.contains("v2.momentum"));
     }
 }

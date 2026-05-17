@@ -309,6 +309,16 @@ pub const DATE_RANGE_END_PLACEHOLDER: &str = "YYYY-MM-DD";
 /// a valid ISO-8601 date (R5.1 parse-error highlight).
 pub const DATE_RANGE_INVALID_DATE: &str = "Invalid date (use YYYY-MM-DD)";
 
+/// Toast shown when the operator tries to add a 5th comparison strategy
+/// (R8.2 / R4.2 / T-D-16): compare cap is 4.
+pub const LAB_COMPARE_CAP_HIT: &str = "Compare cap reached — deselect one to add another.";
+
+/// Label on the Run backtest button in the Lab screen (T-D-14).
+pub const LAB_RUN_BUTTON: &str = "Run";
+
+/// Label shown on the Run button while a backtest is in-flight (T-D-14).
+pub const LAB_RUN_BUTTON_RUNNING: &str = "Running\u{2026}";
+
 // ── Charts screen (Phase 2 — T1608, T1610) ───────────────────────────────────
 
 /// Centred label rendered when the chart canvas has zero bars buffered.
@@ -366,6 +376,11 @@ pub const CHART_LEGEND_BUY_GHOST_LABEL: &str = "Buy signal";
 pub const CHART_LEGEND_SELL_GHOST_LABEL: &str = "Sell signal";
 /// Legend row for the chart **price line** (`ACCENT` stroke).
 pub const CHART_LEGEND_PRICE_LABEL: &str = "Price";
+/// Equity legend row for the primary strategy equity curve (`ACCENT` line stub).
+pub const CHART_LEGEND_EQUITY_LABEL: &str = "Equity";
+/// Faded "no data" label shown in the compare legend when no report exists for
+/// the selected pair (R8.4 / T-D-15).
+pub const CHART_LEGEND_COMPARE_NO_DATA: &str = "No data";
 
 // ── Debug screen (Phase 2 — T1605) ───────────────────────────────────────────
 
@@ -894,6 +909,13 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("DATE_RANGE_START_PLACEHOLDER", DATE_RANGE_START_PLACEHOLDER),
         ("DATE_RANGE_END_PLACEHOLDER", DATE_RANGE_END_PLACEHOLDER),
         ("DATE_RANGE_INVALID_DATE", DATE_RANGE_INVALID_DATE),
+        // Phase A — Lab Run button + compare overflow toast (T-D-14, T-D-16)
+        ("LAB_COMPARE_CAP_HIT", LAB_COMPARE_CAP_HIT),
+        ("LAB_RUN_BUTTON", LAB_RUN_BUTTON),
+        ("LAB_RUN_BUTTON_RUNNING", LAB_RUN_BUTTON_RUNNING),
+        // Phase A — equity + compare legend (T-D-15)
+        ("CHART_LEGEND_EQUITY_LABEL", CHART_LEGEND_EQUITY_LABEL),
+        ("CHART_LEGEND_COMPARE_NO_DATA", CHART_LEGEND_COMPARE_NO_DATA),
     ]
 }
 

@@ -5,7 +5,10 @@
 pub mod engine;
 pub mod paper;
 
-pub use engine::MatchingEngine;
+pub use engine::{
+    BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,
+};
+pub use engine::run_scenario;
 pub use paper::PaperEngine;
 
 /// Compute the deterministic-content SHA-256 of a backtest report.

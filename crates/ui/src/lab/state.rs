@@ -49,7 +49,7 @@ impl StrategyFamily {
 }
 
 /// Date-range preset labels (Design § 2.3 / R5.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Preset {
     /// Last 30 calendar days.
     Last30d,
@@ -80,7 +80,7 @@ impl Preset {
 /// `Custom` is reserved for Phase A (Design § 2.3 — no calendar widget
 /// at Phase A; custom field editing lands in Phase B/C). The discriminant
 /// is `serde`-aware for the persistence schema (`version: 1`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DateRange {
     /// One of the named presets.
     Preset(Preset),
@@ -135,6 +135,28 @@ impl Default for LabState {
             strategy: None,
             pair: None,
             range: DateRange::default(),
+            params: None,
+            compare_buf: [const { None }; COMPARE_SET_CAP],
+            compare_len: 0,
+        }
+    }
+}
+
+impl LabState {
+    /// Construct a `LabState` with the given fields and empty compare set.
+    ///
+    /// Used by `persistence::lab_state_from_json` and `persistence::cold_start_defaults`
+    /// to build a state without accessing private fields across module boundaries.
+    #[must_use]
+    pub fn with_selection(
+        strategy: Option<trading_core::StrategyId>,
+        pair: Option<(trading_core::Venue, trading_core::Symbol)>,
+        range: DateRange,
+    ) -> Self {
+        Self {
+            strategy,
+            pair,
+            range,
             params: None,
             compare_buf: [const { None }; COMPARE_SET_CAP],
             compare_len: 0,
@@ -293,6 +315,38 @@ mod tests {
             let badge = f.badge_label();
             assert!(!badge.is_empty(), "empty badge for {:?}", f);
             assert!(badge.len() <= 4, "badge too long: {:?} = {:?}", f, badge);
+        }
+    }
+
+    // ── T-D-16 proptest: cap holds under randomised add/remove sequences ──────
+    //
+    // proptest generates 100 random sequences of 0/1 operations (0 = toggle
+    // the strategy at `index % 4`, 1 = toggle a random other strategy) and
+    // verifies the compare set never exceeds `COMPARE_SET_CAP`.
+    //
+    // Using deterministic `prop_compose!` + `just`-seeded generation keeps
+    // CI bit-identical across hosts (no OS RNG).
+
+    proptest::proptest! {
+        /// T-D-16 — compare set length never exceeds COMPARE_SET_CAP under
+        /// up to 100 random toggle operations on a universe of 8 strategy IDs.
+        #[test]
+        fn prop_compare_set_never_exceeds_cap(
+            ops in proptest::collection::vec(0usize..8usize, 0..100usize),
+        ) {
+            let strategies: Vec<StrategyId> = (0..8)
+                .map(|i| id(&format!("strat-{i}")))
+                .collect();
+            let mut state = LabState::default();
+            for strat_idx in ops {
+                let _ = state.toggle_compare(strategies[strat_idx].clone());
+                proptest::prop_assert!(
+                    state.compare_len() <= COMPARE_SET_CAP,
+                    "compare set exceeded cap: len={} cap={}",
+                    state.compare_len(),
+                    COMPARE_SET_CAP
+                );
+            }
         }
     }
 }

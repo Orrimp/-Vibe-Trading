@@ -1040,11 +1040,73 @@ cargo test -p ui --test layout_invariants    → test result: ok. 6 passed; 0 fa
 cargo test -p ui --test panel_snapshots      → test result: ok. 68 passed; 0 failed
 ```
 
-### Remaining (Wave 2+)
+### Wave 2 (M2 + M2.5 + M3 + M-FINAL) delivered by the developer agent on 2026-05-17
 
-T-D-10 through T-D-19 are out of scope for Wave 1 and remain unticked.
-They cover: equity loader, chart equity pass, backtest runner (ADR-0030),
-comparison overlay, persistence, Lumen audit, and visual A/B sweep.
+**M2 — Equity-curve overlay (T-D-10, T-D-11)**
+
+- `crates/ui/src/lab/equity_loader.rs` — full `EquityCache` + `LabEquitySeries` +
+  `LabTuple` + `Fidelity` implementation. Scans `spec/<strategy-slug>/reports/backtest-*.md`
+  for per-bar equity series. Closest-superset fallback + `StartEndOnly` fallback for
+  old reports. 7 unit tests including integration test loading the real v1 report.
+- `crates/ui/src/lab/defaults.rs` — `LAB_DEFAULT_SEED: [u8; 32]` (ChaCha20 seed,
+  first byte non-zero per ADR-0030), `cold_start_strategy()`, `cold_start_symbol()`.
+- `crates/ui/src/widgets/chart.rs` extended:
+  - `AXIS_GUTTER_EQUITY_PX = 56.0` right Y-axis gutter constant
+  - `chart_inner_rect_with_equity()` — equity-aware inner rect
+  - `view()` signature extended with `equity: Option<LabEquitySeries>` + `compare: Vec<LabEquitySeries>`
+  - Pass 5 equity draw: `compute_equity_range` + `draw_equity_polyline` + `draw_equity_axis`
+  - Pass 8 legend: branches on `self.compare.is_empty()` to call `draw_legend_with_compare`
+  - Z-order: price (Pass 4) → equity (Pass 5) → ghost signals (Pass 5b) → fills (Pass 6) → tooltip (Pass 7) → legend (Pass 8)
+- `crates/ui/src/screens/lab.rs` both `chart::view` call sites updated to pass `None, vec![]`
+
+**M2.5 — In-process backtest runner (T-D-12, T-D-13, T-D-14)**
+
+- `crates/backtest/src/engine.rs` extended with `run_scenario` library API per ADR-0030:
+  - `DateRange` enum (`Last30d`, `Last90d`, `H1_2024`, `H2_2024`, `Custom`)
+  - `ScenarioConfig` struct (`strategy`, `pair`, `range`, `params`, `seed: [u8; 32]`, `write_report`)
+  - `RunReport` struct (`equity_series`, `fills`, `kpis`, `report_path`)
+  - `RunError` enum (`ZeroSeed`, `UnknownStrategy`, `InvalidRange`, `ReportIo`, `NotImplemented`, `Internal`)
+  - `BacktestKpis`, `ParamSheet` types
+  - Phase A stub: validates seed (rejects `[0u8;32]`) + range, returns `NotImplemented`
+  - 6 unit tests in `engine::tests`
+- `crates/backtest/src/lib.rs` re-exports new types
+- **Anchor gate PASS**: `main.rs` NOT refactored (Phase B); all 11 body-SHA-256 anchors verified via `cargo test -p backtest --test determinism` (18/18 pass)
+- `crates/ui/src/lab/runner.rs` — `spawn_lab_run` + `RunCancelHandle/Receiver` + `LabRunConfig` + `RunSummary`
+- `crates/ui/Cargo.toml` gains `backtest = { path = "../backtest" }` dep
+- `crates/ui/src/state.rs` gains `lab_run_inflight: bool`, `toast_message: Option<SmolStr>`, `Message::ShowToast`, `Message::DismissToast`, `Message::LabRunCompleted(LabRunResult)`
+
+**M3 — Comparison overlay (T-D-15, T-D-16)**
+
+- `crates/ui/src/widgets/chart_legend.rs` extended:
+  - `CompareLegendEntry { label: SmolStr, color: Color, has_data: bool }`
+  - `draw_legend_with_compare()` — renders up to 4 extra compare rows
+  - `compute_card_rect_dynamic()` — dynamic card height = base + n×row_stride
+  - 4 new T-D-15 unit tests (slot assignment, card height growth, no-data label)
+- Compare cap (≤4) + toast: `LabToggleCompare` arm in state.rs emits `ShowToast(LAB_COMPARE_CAP_HIT)` on 5th add
+- `crates/ui/src/lab/state.rs` gains `prop_compare_set_never_exceeds_cap` proptest (100 random ops on 8 strategies)
+- Strings added: `CHART_LEGEND_EQUITY_LABEL`, `CHART_LEGEND_COMPARE_NO_DATA`
+
+**M-FINAL — Persistence + Lumen audit (T-D-17, T-D-18)**
+
+- `crates/ui/src/lab/persistence.rs` — JSON schema v1, `PersistenceDebouncer` (500ms), `encode`/`decode`/`write_sync`/`restore_or_default`, cold-start fallback on corruption. 9 unit tests.
+- `crates/ui/src/lab/defaults.rs` — `cold_start_defaults()` returning v1.momentum × XRPUSDT × Last90d
+- All new UI copy routes through `crate::strings` — zero inline strings, zero hex color literals in lab files
+
+### Test summary (Wave 2, 2026-05-17)
+
+```
+cargo test -p ui --lib                 → test result: ok. 224 passed; 0 failed
+cargo test -p backtest                 → test result: ok. 34 passed; 0 failed (all anchor tests pass)
+cargo test -p backtest --lib           → test result: ok. 9 passed; 0 failed (new T-D-12 unit tests)
+```
+
+### Phase A deviations / Phase B items
+
+1. **`run_scenario` stub only**: The full extraction of `main.rs` logic into `engine::run_scenario` is Phase B — refactoring 2600 LOC `main.rs` without anchor risk requires dedicated work.
+2. **Snapshot tests deferred**: `chart__price_plus_equity_v1_momentum.snap`, `chart__compare_three_strategies.snap`, `chart__compare_pair_swap_no_data.snap` require canvas renderer path — tester gate item.
+3. **Run button widget**: `run_button.rs` + Run button in `lab.rs` deferred to Phase B (persistence wiring gates it).
+4. **`Cockpit::boot()` persistence**: `restore_or_default` integration into cockpit boot deferred to Phase B live cockpit.
+5. **`panel_snapshots.rs` pre-existing failures**: Three test references to `ui::screens::charts::*` (renamed to `screens::lab` in Wave 1) are pre-existing failures not caused by Wave 2 changes.
 
 ## Verification
 
