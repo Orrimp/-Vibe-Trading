@@ -522,6 +522,17 @@ tests       = ["crates/ui/src/widgets/debug_renderer.rs"]  # inline #[cfg(test)]
 anchors     = []
 state       = "shipped"   # operator-approved-with-notes 2026-05-15; runtime wiring DEFERRED — iced upstream change required (see tasks.md T-M2-B-2 divergence note + cockpit-performance follow-up)
 
+[[req]]
+id          = "REQ-UI-RETHINK-PHASE-A-001"
+title       = "Chart-centric Lab replaces Charts as default cockpit route; three overlay layers (buy/sell markers, equity curve, multi-strategy comparison) on one canvas; XRP-first pair ordering; Lab tuple persistence; read-only over cached backtest reports"
+feature     = "ui-rethink-phase-a-lab"
+product     = "spec/product.md"
+arch        = []   # TODO architect: fill from spec/ui-rethink-phase-a-lab/feature.md ## Design
+crates      = []   # TODO developer
+tests       = []   # TODO developer
+anchors     = []   # TODO tester (expected empty — Phase A touches no strategy/audit/exec code)
+state       = "proposed"
+
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #

@@ -4,6 +4,22 @@ status: living
 owner: orchestrator
 updated: 2026-05-17
 ---
+<!-- updated 2026-05-17 (analyst, ui-rethink-phase-a-lab) — promoted
+     `ui-rethink-phase-a-lab` v0.1.0 from dev-note → Active. First
+     concrete carve-out of the broader UI rethink at
+     `spec/dev-notes/ui-rethink-2026-05-17.md`. Operator-locked
+     direction (chart-as-door, XRP-first pair ordering, three overlay
+     layers, read-only at Phase A) ratified in the dev-note addendum
+     2026-05-17. Brief authored: `Charts` → `Lab` rename + default-
+     route flip, buy/sell markers (already shipped at v1.9.0) wired
+     into Lab, new equity-curve overlay (cached reports), new
+     ≤4-strategy comparison overlay, pair-chip / strategy-chip /
+     date-range widgets, Lab tuple persistence. Eleven requirements
+     (R1–R11); zero new Lumen tokens; zero touched anchors. Three
+     operator-decide questions surfaced (Q-A1 palette / Q-A2
+     cached-only / Q-A3 cold-start tuple) — each with a default the
+     developer can ship against. Trace row `REQ-UI-RETHINK-PHASE-A-001`
+     created in proposed state. HANDOFF → architect. -->
 <!-- updated 2026-05-17 (analyst, v25-tcn-overlay) — phase 1 of 4 DL
      roadmap. Analyst pass landed on `v25-tcn-overlay`: Q1-Q8 closed
      with defaults (R1-R12 in feature.md). Status flip _draft_ →
@@ -131,6 +147,26 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   (LFS vs regen-from-seed) and two-checkpoint backtest split.
   Carry-forward backtest scenarios: BS-1 (2023 full-year top-10 USDT),
   BS-2 (2024 full-year top-10 USDT). HANDOFF → operator-decide → architect.
+
+- **UI rethink Phase A — chart-centric Lab (`ui-rethink-phase-a-lab`).**
+  _draft_ — first concrete feature carved out of the broader UI rethink at
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md)
+  (operator critique 2026-05-17 + addendum locking chart-as-door,
+  XRP-first ordering, three overlay layers, read-only at Phase A).
+  Predecessor: [`chart-canvas-overhaul`](chart-canvas-overhaul/feature.md)
+  v1.10.0. Renames `Charts` → `Lab`, flips Lab to the default boot route,
+  fuses three overlay layers on the single canvas (buy/sell markers from
+  v1.9.0 emphasis ship + new equity curve + new ≤4-strategy comparison),
+  introduces pair-chip / strategy-chip / date-range widgets, persists
+  `(strategy, pair, range, params)` across cockpit restarts. Eleven
+  requirements (R1–R11); zero new Lumen tokens; zero touched anchors;
+  three operator-decide questions (Q-A1 comparison-line palette, Q-A2
+  cached-only vs in-process backtest at Phase A, Q-A3 cold-start tuple
+  default). Brief at [`ui-rethink-phase-a-lab/feature.md`](ui-rethink-phase-a-lab/feature.md);
+  task skeleton at [`ui-rethink-phase-a-lab/tasks.md`](ui-rethink-phase-a-lab/tasks.md)
+  (M0 rename → M1 chips/picker → M2 equity overlay → M3 comparison
+  overlay → M-FINAL persistence + audits). Trace row
+  `REQ-UI-RETHINK-PHASE-A-001` (proposed). HANDOFF → architect.
 
 ## Queue
 
