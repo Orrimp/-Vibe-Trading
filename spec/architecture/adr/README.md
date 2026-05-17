@@ -5,6 +5,7 @@ owner: architect
 updated: 2026-05-17
 ---
 
+
 # Architecture Decision Records (ADR) — Index
 
 Every non-trivial architectural decision lives here as a dated,
@@ -76,6 +77,7 @@ the canonical table; the parent file links here.)
 | 0027  | v2.5 — Kronos foundation-model forecast overlay (ONNX + tract) | accepted | 2026-05-16 |
 | 0028  | v2.5 — DL forecast overlay trained in `candle` (supersedes 0027) | accepted | 2026-05-16 |
 | 0029  | v2.5 — Forecast-checkpoint provenance schema + LFS-anchor strategy | accepted | 2026-05-17 |
+| 0030  | Cockpit calls the backtest engine in-process via tightened API | accepted | 2026-05-17 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -116,3 +118,8 @@ finalisation.
   v2.5 TCN, v2.5a PatchTST, v2.5b vanilla Transformer). Also
   backfilled the registry table row for ADR-0028 (previously only in
   changelog).
+- 2026-05-17 (architect): ADR-0030 added (cockpit in-process backtest
+  engine API). Opens the `ui → backtest` edge for the Lab Run button
+  shipped by `ui-rethink-phase-a-lab` per operator-decision Q-A2.
+  Establishes the invocation pattern reused by Phase B / Phase E
+  Compare matrix / v3 continuous-paper.

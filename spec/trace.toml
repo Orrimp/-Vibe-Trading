@@ -524,14 +524,19 @@ state       = "shipped"   # operator-approved-with-notes 2026-05-15; runtime wir
 
 [[req]]
 id          = "REQ-UI-RETHINK-PHASE-A-001"
-title       = "Chart-centric Lab replaces Charts as default cockpit route; three overlay layers (buy/sell markers, equity curve, multi-strategy comparison) on one canvas; XRP-first pair ordering; Lab tuple persistence; read-only over cached backtest reports"
+title       = "Chart-centric Lab replaces Charts as default cockpit route; three overlay layers (buy/sell markers, equity curve, multi-strategy comparison) on one canvas; XRP-first pair ordering; Lab tuple persistence; in-process backtest runner (Q-A2 expansion); read-only over cached backtest reports + fresh runs"
 feature     = "ui-rethink-phase-a-lab"
 product     = "spec/product.md"
-arch        = []   # TODO architect: fill from spec/ui-rethink-phase-a-lab/feature.md ## Design
+arch        = [
+  "spec/ui-rethink-phase-a-lab/feature.md#design",
+  "spec/architecture/adr/0030-cockpit-in-process-backtest.md",
+  "spec/architecture/06-ui-and-cockpit.md",
+  "spec/dev-notes/lumen-accent-palette-extension-2026-05-17.md",
+]
 crates      = []   # TODO developer
 tests       = []   # TODO developer
-anchors     = []   # TODO tester (expected empty — Phase A touches no strategy/audit/exec code)
-state       = "proposed"
+anchors     = []   # TODO tester (expected empty — Phase A touches no strategy/audit/exec code; backtest engine refactor preserves 11 anchors per T-D-13)
+state       = "in-progress"
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

@@ -2,8 +2,8 @@
 slug: lumen-phase-1-foundation
 status: shipped
 owner: architect
-updated: 2026-05-04
-version: 2.0.0
+updated: 2026-05-17
+version: 2.0.1
 ---
 
 # Lumen design adoption — Phase 1: Foundation
@@ -1421,3 +1421,10 @@ the Phase 1 presentation under `spec/lumen-design-adoption/presentations/lumen-d
   with 14 T15xx tasks + tester `T_FINAL_LUMEN_PHASE_1` gate.
   HANDOFF → developer (T1501 foundation gate first; multi-way
   fan-out at T1503–T1508 + T1510 after T1502 lands).
+- 2026-05-17 (architect): additive palette extension — four new
+  comparison-line color tokens (`ACCENT_2`, `ACCENT_3`, `ACCENT_4`,
+  `ACCENT_5`) documented in
+  [`spec/dev-notes/lumen-accent-palette-extension-2026-05-17.md`](../../dev-notes/lumen-accent-palette-extension-2026-05-17.md).
+  Forced by `ui-rethink-phase-a-lab` operator-decision Q-A1; values
+  added to `crates/ui/src/theme.rs` as part of that feature's M1 work.
+  Phase 1 foundation contract is unchanged; only the palette grows.

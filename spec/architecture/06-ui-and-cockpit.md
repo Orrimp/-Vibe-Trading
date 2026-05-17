@@ -2,7 +2,7 @@
 slug: architecture-06-ui-and-cockpit
 status: shipped
 owner: ui-designer
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # UI and cockpit architecture
@@ -70,12 +70,16 @@ below for the state shape and bus-path contract.
 **UI isolation rule.** The `ui` crate — both its library and every
 binary target it ships (`cockpit`, `cockpit_live`, `viewer`) — depends
 only on `core` (shared domain types), `audit` (read-only ledger queries
-via `audit::query`), and `agent` (the public `agent::runtime::run`
+via `audit::query`), `agent` (the public `agent::runtime::run`
 surface plus the shared `Arc<EventBus>` / `Arc<KillSwitch>` /
-`Arc<StrategyRegistry>` handles `agent` constructs). It **never**
+`Arc<StrategyRegistry>` handles `agent` constructs), and — per
+[ADR-0030](adr/0030-cockpit-in-process-backtest.md) — `backtest`
+(the `backtest::engine::run_scenario` library API used by the Lab
+Run button shipped in `ui-rethink-phase-a-lab`). It **never**
 depends — directly or transitively from any `crates/ui/src/` file,
 including `crates/ui/src/bin/*` — on `strategy`, `exec`, `models`,
-or `llm`.
+or `llm`. The `backtest` crate encapsulates those edges on the UI's
+behalf; `ui` does not pierce through it.
 
 Bootstrap of `strategy::StrategyRegistry`, `exec::PaperEngine`,
 `models::*`, and `llm::*` happens in `agent` (typically inside the

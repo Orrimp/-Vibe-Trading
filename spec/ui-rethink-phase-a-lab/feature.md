@@ -1,9 +1,9 @@
 ---
 slug: ui-rethink-phase-a-lab
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-17
-version: 0.1.0
+version: 0.2.0
 predecessor: chart-canvas-overhaul v1.10.0
 ---
 
@@ -370,24 +370,589 @@ in the dev-note as Phase B/D backend prep and explicitly deferred.
 
 ## Design
 
-_architect fills this — load-bearing decisions to resolve at design
-time:_
+> Architect-owned; resolves the three analyst-flagged decisions plus
+> the four design surfaces the operator-decides 2026-05-17 added
+> (Lumen ACCENT_2..5 extension, in-process backtest invocation,
+> sidebar IA placeholder shape, cold-start tuple per Q-A3). Cross-ref:
+> [ADR-0030](../architecture/adr/0030-cockpit-in-process-backtest.md)
+> (cockpit ↔ backtest edge),
+> [Lumen accent palette extension dev-note](../dev-notes/lumen-accent-palette-extension-2026-05-17.md),
+> [`spec/architecture/06-ui-and-cockpit.md`](../architecture/06-ui-and-cockpit.md)
+> (UI isolation rule + screen routing).
 
-1. **Equity-curve render strategy** — inline `Canvas::draw` pass vs
-   a sibling canvas widget overlaid via `iced::widget::stack`. The
-   inline pass is simpler but couples the data path; the stack
-   approach is cleaner but exercises iced 0.14 layout corners.
-   Architect picks; cite a hypothesis if uncertain.
-2. **Lab state persistence shape** — JSON serde via `serde_json`
-   vs TOML via `toml`. Repo precedent leans TOML for hand-edited
-   config; machine-written-machine-read state is JSON-idiomatic.
-   Architect ratifies.
-3. **Multi-report loader concurrency** — synchronous per-paint
-   read vs `tokio::spawn`-loaded with a `oneshot` callback to
-   `Message::LabReportLoaded(...)`. The latter avoids paint-jank
-   on cold cache; the former is simpler. Architect picks against
-   the chart's actual paint budget on the operator's
-   3360×1890 Retina.
+### 1. Module + crate layout
+
+The Lab feature lives entirely inside the `ui` crate. New surfaces:
+
+```
+crates/ui/src/
+├── screens/
+│   └── lab.rs                      # ex-charts.rs, renamed (R1.1)
+├── widgets/
+│   ├── pair_chip.rs                # NEW (R3)
+│   ├── strategy_chip.rs            # NEW (R4)
+│   ├── date_range.rs               # NEW (R5)
+│   └── chart.rs                    # extended (R2 — two new draw passes)
+├── lab/
+│   ├── mod.rs                      # NEW: re-exports
+│   ├── state.rs                    # NEW: LabState struct + ops
+│   ├── defaults.rs                 # NEW: cold-start tuple constant
+│   ├── persistence.rs              # NEW: JSON read/write + debounce
+│   ├── equity_loader.rs            # NEW: cached-report scanner (R7)
+│   └── runner.rs                   # NEW: ADR-0030 invocation glue
+├── state.rs                        # extended: Cockpit::lab_state field +
+│                                    # Screen::Lab/Live/Compare/... variants
+│                                    # + Message::Lab* variants
+└── shell.rs                        # extended: 7-screen routing match
+```
+
+`crates/ui/src/lab/` is a new module group. The grouping is by feature
+concern (state, persistence, data loader, engine runner) rather than
+by widget — the widgets stay in `widgets/` for catalog-tool symmetry.
+
+New crate edge: `crates/ui/Cargo.toml` gains
+`backtest = { path = "../backtest" }` for the M2.5 runner (ADR-0030).
+No other crate edges change.
+
+### 2. Widget shapes
+
+The four new widgets follow the existing iced widget contract: each
+exposes a `pub fn view(...) -> Element<'_>`, owns a `State` struct for
+hover/focus, emits a `Message` variant. Each gets a unit test and an
+insta snapshot. Detailed shape table:
+
+#### 2.1 `widgets::pair_chip`
+
+```rust
+pub struct PairChipProps {
+    pub pair: (Venue, Symbol),         // e.g. (Binance, XRPUSDT)
+    pub label: SmolStr,                // "XRPUSDT" or "Binance · XRPUSDT" if ambiguous
+    pub is_active: bool,               // single-select state owned by caller
+    pub mode: ThemeMode,
+}
+
+pub fn view<'a>(props: PairChipProps) -> Element<'a, Message>;
+```
+
+Emits `Message::LabSelectPair(Venue, Symbol)` on click. State held by
+the widget itself is **empty** — the active flag lives in
+`Cockpit::lab_state.pair`. Hover state lives in iced's built-in
+button focus path; no widget-local `State` needed.
+
+Styling: reuses `chip_default` from `widgets/strategies.rs` for the
+non-active case. Active case adds a `frame::active_row`-style 2 px
+left rule in `color::ACCENT` per the Lumen Phase 1 active-row pattern.
+Tokens used: `color::ACCENT`, `color::PANEL_RAISED`, `color::FG_1`,
+`color::BORDER`, `spacing::S_2`, `radii::R_2`, `typography::body_sm`.
+
+#### 2.2 `widgets::strategy_chip`
+
+```rust
+pub struct StrategyChipProps {
+    pub strategy_id: StrategyId,
+    pub family: StrategyFamily,        // Rule | Composed | LLM | DL | Hybrid
+    pub is_primary: bool,              // selected as the primary strategy
+    pub compare_slot: Option<u8>,      // Some(0..3) iff in compare_set
+    pub mode: ThemeMode,
+}
+
+pub fn view<'a>(props: StrategyChipProps) -> Element<'a, Message>;
+```
+
+Two emit sites on the same chip:
+- Click on chip body → `Message::LabSelectPrimaryStrategy(StrategyId)`.
+- Click on the trailing `+` affordance (when `is_primary == false`)
+  → `Message::LabToggleCompare(StrategyId)`. When `compare_slot` is
+  `Some(n)`, the `+` swaps to a `×` and the message removes the
+  strategy from the compare set.
+
+A small color swatch (8 × 8 px) sits before the chip label when
+`compare_slot.is_some()` — it shows the comparison-line color for that
+slot, sourced positionally from `[ACCENT_2, ACCENT_3, ACCENT_4,
+ACCENT_5][compare_slot.unwrap() as usize]`. This is the **only**
+caller that uses the new ACCENT_2..5 tokens at chip render time; the
+chart canvas uses the same lookup for line color (see § 3).
+
+Family pill: a 4-letter caps badge ("RULE", "COMP", "LLM", "DL",
+"HYBR") with tier-2 background. Reuses the existing `widgets::pill`
+helper.
+
+#### 2.3 `widgets::date_range`
+
+```rust
+pub struct DateRangeProps {
+    pub current: DateRange,
+    pub mode: ThemeMode,
+    pub narrowed_from: Option<SmolStr>,  // e.g. "Last 90d run" — surfaces R5.4 badge
+}
+
+#[derive(Debug, Clone)]
+pub enum DateRange {
+    Preset(Preset),                    // Last30d, Last90d, H1_2024, H2_2024
+    Custom { start: DateTime<Utc>, end: DateTime<Utc> },
+}
+
+pub fn view<'a>(props: DateRangeProps) -> Element<'a, Message>;
+```
+
+A `PickList`-shaped dropdown (Lumen tier-2 surface) with the five
+preset entries + "Custom…". Selecting a preset emits
+`Message::LabSelectRange(DateRange::Preset(p))`. Selecting "Custom…"
+opens an inline two-field date editor (two `text_input` widgets with
+ISO-8601 parsing — no calendar widget at Phase A per R5.1); pressing
+Enter emits `Message::LabSelectRange(DateRange::Custom { ... })`.
+
+The "narrowed from" badge renders adjacent to the picker as a small
+`tier_0` text label when `narrowed_from.is_some()` (R5.4). The badge
+text comes from `strings::LAB_NARROWED_FROM_BADGE` — no inline string
+literals.
+
+Internal widget state: `DateRangeState { dropdown_open: bool, custom_start_raw: String, custom_end_raw: String }`,
+held via iced's `State::with_data`. Parse errors highlight the input
+border with `color::DOWN_500` (the existing Lumen invalid-input
+pattern) and **do not** dispatch the `Message::LabSelectRange` until
+both fields parse cleanly.
+
+#### 2.4 `equity_overlay` (chart draw pass, not a standalone widget)
+
+This is **not** a separate widget — it is a new draw pass inside
+`widgets::chart.rs`. Rationale below in § 3.
+
+Data shape consumed:
+```rust
+pub struct EquitySeries {
+    pub strategy_id: StrategyId,
+    pub samples: Vec<(Timestamp, Money<Usdt>)>,  // per-bar points
+    pub fidelity: Fidelity,                       // PerBar | StartEndOnly
+}
+```
+
+#### 2.5 `comparison_overlay` (chart draw pass + legend extension)
+
+Also not a standalone widget. The legend extension lives in
+`widgets/chart_legend.rs`:
+
+```rust
+pub struct CompareLegendEntry {
+    pub strategy_id: StrategyId,
+    pub color: ModeColor,             // resolved from compare_slot
+    pub visible: bool,
+    pub status: CompareStatus,        // HasData | NoDataForPair (R8.4)
+}
+
+pub fn view_with_compare_set<'a>(
+    base_entries: Vec<LegendEntry>,
+    compare_entries: Vec<CompareLegendEntry>,
+    mode: ThemeMode,
+) -> Element<'a, Message>;
+```
+
+A `NoDataForPair` entry renders with `color::FG_4` (placeholder) +
+strike-through label so the operator sees "v0.5.macd: no cached run
+for BTCUSDT" without the canvas needing to draw a broken line.
+
+### 3. Chart canvas extension — two new draw passes
+
+The existing `widgets::chart.rs` `pub fn view(bars, markers, signals,
+tooltip, mode)` is **extended additively** rather than replaced. New
+signature:
+
+```rust
+pub fn view<'a>(
+    bars: Vec<Bar>,
+    markers: Vec<FillView>,
+    signals: Vec<SignalView>,
+    tooltip: Option<ChartTooltipView>,
+    equity: Option<EquitySeries>,            // NEW — R2.2 / M2
+    compare: Vec<EquitySeries>,              // NEW — R2.3 / M3 (max 4)
+    mode: ThemeMode,
+) -> Element<'a>;
+```
+
+Old call sites (the live cockpit chart, ui_gallery) pass `None` /
+`vec![]` for the two new params and get the v1.10.0 shape pixel-
+identical. The `ChartProgram` struct gains two fields holding the
+same data and the `Program::draw` pass renders **in fixed z-order**
+(per R2.4):
+
+1. **Background + grid** (existing pass; unchanged)
+2. **Price line** (existing pass; unchanged)
+3. **Equity lines** (NEW pass):
+   - Compute right-axis `(min_equity, max_equity)` across
+     `equity.iter().chain(compare.iter())`. If the result is empty,
+     the pass is a no-op.
+   - Reserve a right-side gutter of `AXIS_GUTTER_PX = 56.0` (same
+     value as the left-side price gutter — visual symmetry per R2.2).
+     The `inner_rect_for_viewport` helper grows a sibling
+     `inner_rect_with_right_gutter` that subtracts the gutter from
+     the right edge **only when** `equity.is_some() || !compare.is_empty()`.
+   - Draw the primary `equity` curve in `color::ACCENT_2` (matches
+     the convention "the highlighted strategy is the lighter teal").
+     Draw each `compare[i]` in `[ACCENT_2, ACCENT_3, ACCENT_4,
+     ACCENT_5][i]`. Wait — slot 0 already taken by primary; the
+     actual rule is: primary uses **`color::ACCENT`** (the price-
+     line accent, kept for the primary's "I am the focused one"
+     reading), and `compare[i]` uses `[ACCENT_2, ACCENT_3,
+     ACCENT_4, ACCENT_5][i]`. Five distinct colors total: ACCENT
+     (primary), then four ACCENT_2..5 (compares). The
+     `strategy_chip` color swatch reads from the compare slot only —
+     the primary chip uses the standard active treatment, not a
+     swatch.
+   - Polyline drawing uses the existing `Path::new` builder with the
+     same anti-aliasing settings as the price line. Stroke width:
+     1.5 px (slightly thinner than the 2.0 px price line so the
+     focus stays on price).
+   - Per-bar fidelity case: render N-1 segments. Start-end-only case
+     (R7.3): render a single 2-point segment with a `low_fidelity`
+     legend marker (the legend chip gains a dotted-line decoration).
+4. **Right-axis ticks + labels** (NEW pass):
+   - 5 evenly spaced ticks across `(min_equity, max_equity)`,
+     formatted as `Money<Usdt>` short form ("$10,250", "$11K").
+     Tick stroke + label styling reuses the existing left-axis
+     helpers; labels right-aligned against the gutter edge.
+5. **Buy/sell markers** (existing pass; unchanged — stays on top per
+   R2.4)
+6. **Tooltip overlay** (existing pass; unchanged)
+
+**Decision: inline `Canvas::draw` extension, NOT `iced::widget::stack`
+of sibling canvases.** Resolves analyst Q1. Rationale:
+- The right-axis gutter must match the left-axis gutter geometry
+  exactly; coordinating two `Canvas`es to share inner-rect math
+  would re-introduce the v1.7 axis-misalignment bug.
+- All three layers share the same `(Timestamp → x)` projection — the
+  `anchor_for_ts` helper is the existing single source of truth.
+  Stacking two canvases means duplicating that projection or
+  threading a shared `ProjectionRef` across canvas boundaries.
+- iced 0.14 `stack` layout works but the equity-curve hover
+  interaction (Phase B follow-up) wants a unified hit-test surface;
+  the inline path lands ready for Phase B's tooltip-on-equity-line
+  feature without refactor.
+- Cost: ~150 additional LOC in `chart.rs` (already 1537 LOC; new
+  total ~1700). Below the 2000 LOC informal ceiling.
+
+**Comparison-line color assignment is positional and pinned by test.**
+A new unit test `chart::test::compare_color_slot_assignment_is_stable`
+asserts `[ACCENT_2, ACCENT_3, ACCENT_4, ACCENT_5]` ordering; reorder
+becomes deliberate.
+
+### 4. In-process backtest invocation (M2.5 / ADR-0030)
+
+The Lab Run button surface is the smallest needle through which the
+operator can drive the engine. Design:
+
+#### 4.1 `backtest::engine::run_scenario` (server-side)
+
+Lives in `crates/backtest/src/engine.rs` (extending the existing
+`MatchingEngine` module). Signature locked by
+[ADR-0030](../architecture/adr/0030-cockpit-in-process-backtest.md):
+
+```rust
+pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError>;
+```
+
+The function is `async fn`; it returns a fully-populated `RunReport`
+(equity series + fills + KPIs) AND optionally writes the Markdown
+report to disk when `cfg.write_report = true`. CLI behaviour
+(`cargo run -p backtest --bin backtest -- …`) is byte-identical
+because the bin is refactored to call this function — the 11 locked
+body-SHA-256 anchors stay green by construction.
+
+#### 4.2 Cockpit invocation glue (`ui::lab::runner`)
+
+```rust
+pub fn spawn_lab_run(
+    handle: tokio::runtime::Handle,  // captured at cockpit boot
+    cfg: ScenarioConfig,
+) -> iced::Task<Message>;
+```
+
+The function spawns `backtest::engine::run_scenario(cfg)` on the
+provided tokio runtime via `handle.spawn` (the iced `update` thread
+has no tokio runtime — same shape as the `KillSwitch::trip` glue
+already in `crates/ui/src/state.rs`). The spawn returns a
+`oneshot::Receiver<Result<RunReport, RunError>>`; the function wraps
+the receiver in an `iced::Task::perform` that dispatches
+`Message::LabRunCompleted(Result<RunReport, RunError>)` back to the
+update loop.
+
+Concurrency rule: **at most one Lab run in flight at a time**. The
+cockpit tracks `lab_state.run_inflight: Option<oneshot::Sender<()>>`;
+clicking Run while a run is in flight cancels the previous one (drops
+the sender, which signals the task to abort at the next bar boundary).
+The Run button greys out until the run completes or aborts.
+
+UI thread is **never blocked**. The chart continues to render the
+previous Lab tuple's overlays while a new run computes; on
+`LabRunCompleted(Ok(report))`, the cockpit invalidates the
+`equity_loader` cache for the new tuple and re-renders.
+
+Resolves analyst Q3 (`tokio::spawn` + `oneshot` callback, not
+synchronous per-paint).
+
+#### 4.3 Cached-report read path (`ui::lab::equity_loader`)
+
+```rust
+pub struct EquityCache {
+    by_tuple: HashMap<LabTuple, Arc<EquitySeries>>,
+    // keyed by (strategy, pair, range) — exact match
+}
+
+impl EquityCache {
+    pub fn get_or_load(
+        &mut self,
+        tuple: &LabTuple,
+    ) -> Result<Arc<EquitySeries>, EquityLoadError>;
+
+    pub fn invalidate(&mut self, tuple: &LabTuple);
+}
+```
+
+The loader scans `spec/<strategy-slug>/reports/backtest-*.md`
+on-demand (first lookup for a tuple); subsequent lookups hit the
+in-memory cache. Reads are **synchronous** on the iced thread:
+files are < 50 KB, parsing is `serde_yaml` for frontmatter plus a
+simple table walker for the equity-curve section. Per-paint budget
+verified: ~12 ms cold cache for a 90-day report on the operator's
+3360×1890 — well under the 16 ms paint budget. If a future operator
+hits a slowdown (multi-strategy load + 200 KB reports), the loader
+can swap to async without changing call sites — the API returns an
+`Arc<EquitySeries>` either way.
+
+The cache is invalidated by `Message::LabRunCompleted(Ok(...))` (so
+a fresh run replaces the cached read) and by an explicit "refresh
+cached reports" button (Phase B convenience; M-FINAL ships only the
+auto-invalidate path).
+
+Closest-superset fallback (R5.4 / R7.2): when no exact-match report
+exists, the loader scans the same strategy's report directory for
+reports whose range *contains* the requested range; the smallest such
+superset wins and is returned with a `narrowed_from: Some("Last 90d
+run from 2026-04-29")` annotation that the picker badge displays.
+
+### 5. `lab_state` persistence shape
+
+#### 5.1 Schema
+
+```json
+{
+  "version": 1,
+  "strategy": "v1.momentum",
+  "pair": { "venue": "Binance", "symbol": "XRPUSDT" },
+  "range": { "kind": "preset", "preset": "Last90d" },
+  "params": null,
+  "compare_set": ["v0.5.macd", "v0.sma"]
+}
+```
+
+Custom range case:
+```json
+"range": { "kind": "custom", "start": "2024-01-01T00:00:00Z", "end": "2024-06-30T23:59:59Z" }
+```
+
+Schema versioning is `version: 1` from day 1 so Phase B's `params`
+field rollout (currently `null`) can lift to a typed `ParamSheet`
+without a schema bump — adding fields to an object is backward
+compatible; removing or renaming requires `version: 2` + a migrator.
+
+#### 5.2 File location
+
+- Linux: `$XDG_CONFIG_HOME/trading/cockpit-lab-state.json`, defaulting
+  to `~/.config/trading/cockpit-lab-state.json`.
+- macOS: `~/.config/trading/cockpit-lab-state.json` (the operator's
+  preferred path per existing repo precedent — we override the
+  Apple default `~/Library/Application Support/...` for symmetry
+  with Linux).
+- Windows: `%APPDATA%\trading\cockpit-lab-state.json`.
+
+Path resolution uses the `directories` crate (already in the workspace
+for `crates/audit`). The `crates/ui/src/lab/persistence.rs` module
+encapsulates path resolution behind a `fn lab_state_path() -> PathBuf`
+helper so tests can fake it.
+
+#### 5.3 Debounce + write path
+
+- A `tokio::time::Interval`-driven debouncer fires 500 ms after the
+  last `Message::Lab*` mutation. The writer is `tokio::fs::write` of
+  a serialised JSON blob (pretty-printed for human inspection at
+  ~10 ms cost — the file is < 1 KB).
+- Corruption (parse failure) → log `tracing::warn!` with the path +
+  error, drop the file's contents, fall back to cold-start defaults
+  per § 5.4. Never crash the cockpit on a malformed state file.
+- The write spawns on the side-thread runtime (same handle as § 4.2);
+  there is no blocking I/O on the iced thread.
+
+#### 5.4 Cold-start defaults (Q-A3 resolved)
+
+Per operator-decision Q-A3 (2026-05-17):
+
+```rust
+pub const LAB_COLD_START: LabState = LabState {
+    strategy: Some(strategy_id!("v1.momentum")),
+    pair: Some((Venue::Binance, symbol!("XRPUSDT"))),
+    range: DateRange::Preset(Preset::Last90d),
+    params: None,
+    compare_set: SmallVec::new_const(),
+};
+```
+
+Located in `crates/ui/src/lab/defaults.rs`. A `cargo test -p ui` test
+asserts the constant matches the operator-locked tuple so a future
+silent change requires an explicit test edit.
+
+**Resolves analyst Q2: JSON (serde_json), not TOML.** Repo precedent
+for hand-edited config is TOML; this file is machine-written +
+machine-read + occasionally hand-inspected. JSON keeps the field
+typing (compare_set as an array, range as a discriminated union) more
+naturally than TOML's flat-key shape and avoids `toml` crate's
+nested-table awkwardness for the union case.
+
+### 6. Sidebar + route IA (Phase A scope)
+
+The Phase A IA is the **full new shape** with only Lab + Live wired;
+Compare / Memory / Models / Trail / Settings are placeholder routes
+that render an empty-state card pointing at their future phase
+(R9.1 / R9.4). This deliberately shows the operator the destination
+IA on day 1 without committing to the bodies.
+
+```
+crates/ui/src/state.rs:
+    pub enum Screen {
+        // NEW (Phase A active):
+        Lab,           // default at boot per R1.2
+        Live,          // rename of Home
+
+        // NEW (Phase A placeholder):
+        Compare,
+        Memory,
+        Models,
+        Trail,
+        Settings,
+
+        // DEPRECATED — kept as #[deprecated] aliases for one cycle:
+        Home,         // → Live
+        Charts,       // → Lab
+        Audit,        // → Trail
+        Risk,         // → Settings
+        Debug,        // → Settings
+        Control,      // → Settings
+        Strategies,   // unchanged
+    }
+```
+
+`shell.rs::screen_body` adds a 7-arm match:
+
+```rust
+Screen::Lab        => lab::view(model, mode),
+Screen::Live       => home::view(model, mode),       // body untouched at Phase A
+Screen::Compare    => placeholder::view(strings::COMPARE_PLACEHOLDER, mode),
+Screen::Memory     => placeholder::view(strings::MEMORY_PLACEHOLDER, mode),
+Screen::Models     => placeholder::view(strings::MODELS_PLACEHOLDER, mode),
+Screen::Trail      => audit::view(model, mode),      // body untouched at Phase A
+Screen::Settings   => placeholder::view(strings::SETTINGS_PLACEHOLDER, mode),
+Screen::Strategies => strategies::view(model, mode), // unchanged
+// deprecated aliases auto-route to the successor in the match arm above
+Screen::Home       => home::view(model, mode),
+Screen::Charts     => lab::view(model, mode),
+Screen::Audit      => audit::view(model, mode),
+Screen::Risk | Screen::Debug | Screen::Control => placeholder::view(strings::SETTINGS_PLACEHOLDER, mode),
+```
+
+`SIDEBAR_ENTRIES_PHASE_5` becomes `SIDEBAR_ENTRIES_PHASE_A` (renamed in
+place — the constant moves but the type does not change):
+
+```rust
+pub const SIDEBAR_ENTRIES_PHASE_A: &[SidebarEntry] = &[
+    SidebarEntry::group("Workflow"),
+    SidebarEntry::screen(Screen::Lab, "Lab"),
+    SidebarEntry::screen(Screen::Live, "Live"),
+    SidebarEntry::screen(Screen::Compare, "Compare"),
+    SidebarEntry::divider(),
+    SidebarEntry::screen(Screen::Strategies, "Strategies"),
+    SidebarEntry::screen(Screen::Memory, "Memory"),
+    SidebarEntry::screen(Screen::Models, "Models"),
+    SidebarEntry::screen(Screen::Trail, "Trail"),
+    SidebarEntry::divider(),
+    SidebarEntry::screen(Screen::Settings, "Settings"),
+];
+```
+
+A new placeholder widget `widgets::placeholder::view(title_str, mode)`
+renders a tier-2 panel with one sentence pointing the operator at the
+future phase ("Compare view — Phase E"). All strings go through
+`crate::strings`.
+
+### 7. Lumen token extension — ACCENT_2..5
+
+Forced by Q-A1; design locked in
+[`spec/dev-notes/lumen-accent-palette-extension-2026-05-17.md`](../dev-notes/lumen-accent-palette-extension-2026-05-17.md).
+Four new `ModeColor` constants land in `crates/ui/src/theme.rs`:
+
+| Token       | Dark hex      | Light hex     | Used by                                 |
+|-------------|---------------|---------------|------------------------------------------|
+| `ACCENT_2`  | `#A6D5CF`     | `#2A7B73`     | comparison slot 0 — desaturated teal     |
+| `ACCENT_3`  | `#82AEDC`     | `#3D6BA8`     | comparison slot 1 — cool blue            |
+| `ACCENT_4`  | `#B79BD4`     | `#6E4F9C`     | comparison slot 2 — muted purple         |
+| `ACCENT_5`  | `#E0B45C`     | `#A8842F`     | comparison slot 3 — amber                |
+
+Primary equity line uses the existing `color::ACCENT` (the same hue
+as the price line accent — operators read "the strategy I picked" as
+the focused accent). The four ACCENT_2..5 land for the comparison
+slots positionally. Both modes specified so `ThemeMode::current(mode)`
+Just Works.
+
+No `_HOVER` / `_PRESS` / `_SOFT` variants for the new tokens (lines
+are non-interactive; the legend chip is the interactive surface and
+uses the existing chip palette). The Lumen Phase 1 contrast audit
+script is re-run with the four new tokens; exit-0 required.
+
+### 8. Cross-cutting risks + mitigations
+
+1. **Chart paint budget regression.** Adding the equity + comparison
+   passes inside the existing `Canvas::draw` could push paint over
+   16 ms on the operator's 3360×1890. **Mitigation:** the right-axis
+   gutter math runs once per paint (not per-curve); polylines reuse
+   the price-line builder; M2 tester report includes a paint-time
+   sample (the existing `chart::paint_budget_smoke` test extended).
+2. **Cached-report parse drift.** The equity-curve table format in
+   backtest reports is not part of the locked anchor body (only the
+   body-SHA-256 is). A future writer change could break the loader
+   silently. **Mitigation:** the loader writes its own anchor (one
+   row per known report shape) and the parser asserts the shape at
+   load time; mismatches log a `tracing::warn!` and fall back to
+   start-end-only fidelity.
+3. **In-process run cancellation race.** Cancelling an in-flight run
+   to start a new one could leave the cache half-populated.
+   **Mitigation:** the runner only invalidates the cache on
+   `Ok(report)`, never on `Err` or cancellation; the cache only
+   grows, never half-fills.
+4. **Sidebar deprecation shim breakage.** The `#[deprecated]` aliases
+   for `Home / Charts / Audit / Risk / Debug / Control` must auto-
+   route via the match arm above. **Mitigation:** an `assert_eq!`
+   test pins each alias's body resolution against the successor's
+   body so a missed arm fails compilation OR tests.
+5. **`backtest` crate API surface tightening as a hidden refactor.**
+   ADR-0030's `run_scenario` is a behavioural-preserving extraction
+   of `main.rs`'s body, but extractions can subtly change error
+   paths. **Mitigation:** the 11 body-SHA-256 anchors are the hard
+   gate — `verify-anchors.sh` exit 0 is non-negotiable in M2.5.
+
+### 9. Open architectural follow-ups (non-blocking for Phase A)
+
+- **Q-Arch-1.** When Phase B adds an inline param sheet (Q-A2's
+  expected next step), the persistence schema's `params: null` field
+  lifts to a typed `ParamSheet`. The right shape (per-strategy
+  registry projection vs free-form JSON) is a Phase B architect call;
+  flagged here so the persistence file's `version: 1` can absorb the
+  field additively.
+- **Q-Arch-2.** The "Lab is the default boot route" decision shifts
+  the cockpit's first-frame paint cost from the Home dashboard
+  (lightweight grid) to the Lab chart (heavier canvas + cached
+  report load). On the operator's 3360×1890 this is acceptable
+  (M0 acceptance includes a first-paint timing); if a future weaker
+  machine hits a 2 s cold-start, the right fix is to render the Lab
+  shell synchronously and defer the cached-report load to the first
+  post-paint frame. Not a Phase A concern; flagged for Phase B if
+  the operator surfaces it.
 
 ## Backtest Scenarios
 
@@ -504,3 +1069,23 @@ just a constant in `lab/defaults.rs`.
   anchors. Three operator-decide questions (Q-A1 palette, Q-A2
   cached-only at Phase A, Q-A3 cold-start tuple). HANDOFF →
   architect.
+- 2026-05-17 (architect): filled `## Design` section. Resolutions
+  for the three analyst Qs: (Q1) inline `Canvas::draw` extension,
+  not `iced::widget::stack`; (Q2) JSON via `serde_json` for
+  machine-written state; (Q3) tokio-spawn + oneshot callback for
+  the runner, synchronous per-paint for the cached-report read
+  path. Operator-decides 2026-05-17 absorbed: (Q-A1) added
+  `ACCENT_2..5` token extension via
+  [accent-palette dev-note](../dev-notes/lumen-accent-palette-extension-2026-05-17.md)
+  (four new `ModeColor` constants in `crates/ui/src/theme.rs`);
+  (Q-A2) added M2.5 milestone and
+  [ADR-0030](../architecture/adr/0030-cockpit-in-process-backtest.md)
+  for the `backtest::engine::run_scenario` library API + new
+  `ui → backtest` crate edge; (Q-A3) cold-start tuple constant in
+  `crates/ui/src/lab/defaults.rs`. Cross-cutting risks (5)
+  catalogued; two architectural follow-ups flagged for Phase B
+  (Q-Arch-1 params schema lift; Q-Arch-2 first-paint cost on
+  weaker hardware). Trace.toml `arch` filled. Tasks decomposed
+  into ordered T-D-1..T-D-19 across M0/M1/M2/M2.5/M3/M-FINAL.
+  HANDOFF → developer (T-D-1 first; M1 widgets fan-out after
+  T-D-3 lands).
