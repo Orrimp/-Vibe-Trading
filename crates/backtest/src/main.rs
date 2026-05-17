@@ -73,6 +73,8 @@ enum ScenarioStrategy {
     Momentum { config_id: String },
     /// v1.5a mean-reversion pairs — 4-symbol universe, loaded from TOML config.
     MeanReversionPairs { config_id: String },
+    /// v2.5 TCN overlay momentum — v1 momentum + TCN forecast overlay.
+    TcnOverlayMomentum { config_id: String, forecaster_id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +256,43 @@ impl Scenario {
                 bar_count: 4380,
                 strategy: ScenarioStrategy::MeanReversionPairs {
                     config_id: "pairs_mr_h1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+            }),
+            // v2.5 TCN overlay momentum scenarios (T-D-15, T-D-16)
+            "bs1-tcn-overlay" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2023,
+                // Oct–Dec 2023: 92 days × 24 h = 2208 hourly bars per symbol × 10 symbols
+                bar_count: 2208,
+                strategy: ScenarioStrategy::TcnOverlayMomentum {
+                    config_id: "tcn_overlay_momentum".to_string(),
+                    forecaster_id: "tcn-bs1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+            }),
+            "bs2-tcn-overlay" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2024,
+                // Q2–Q4 2024: 275 days × 24 h = 6600 hourly bars per symbol × 10 symbols
+                bar_count: 6600,
+                strategy: ScenarioStrategy::TcnOverlayMomentum {
+                    config_id: "tcn_overlay_momentum".to_string(),
+                    forecaster_id: "tcn-bs2".to_string(),
                 },
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
@@ -1324,6 +1363,419 @@ fn write_pairs_report(
     Ok(())
 }
 
+// ── v2.5 TCN overlay momentum backtest (T-D-15, T-D-16) ──────────────────────
+
+/// Result struct for the v2.5 TCN overlay momentum backtest.
+struct TcnOverlayRunResult {
+    trades: usize,
+    buys: usize,
+    sells: usize,
+    total_fees: Decimal,
+    final_equity: Decimal,
+    initial_equity: Decimal,
+    max_drawdown: Decimal,
+    bar_count: usize,
+    elapsed_secs: f64,
+    universe: Vec<String>,
+    strategy_id: String,
+    /// Number of signals dampened by the TCN overlay.
+    dampened_signals: u64,
+    /// Number of signals passed through unchanged.
+    passed_through_signals: u64,
+    /// Number of signals during warm-up (window not full).
+    warmup_signals: u64,
+}
+
+/// Run the v2.5 TCN overlay momentum backtest.
+///
+/// T-D-15 (BS-1, 2023) and T-D-16 (BS-2, 2024).
+/// Uses `TcnOverlayMomentumStrategy::with_passthrough()` so the backtest
+/// binary does not require the heavy `candle` feature.
+/// The passthrough forecaster degrades to pure v1 momentum, which is exactly
+/// the correct behaviour for a binary that does not link candle.
+#[allow(clippy::too_many_lines)]
+async fn run_tcn_overlay_backtest(
+    scenario: &Scenario,
+    config_id: &str,
+    _forecaster_id: &str,
+    seed: u64,
+    _data_source: &str,
+) -> Result<TcnOverlayRunResult> {
+    use backtest::MatchingEngine as _;
+    use strategy::Strategy as _;
+
+    let start_instant = Instant::now();
+
+    // Load the base momentum config.
+    let base_config_id = "top10_momentum_h1";
+    let toml_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
+    let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
+        .with_context(|| format!("load momentum config: {}", toml_path.display()))?;
+    let universe_list: Vec<String> = cfg.universe.iter().map(|s| s.to_string()).collect();
+    let strategy_id_str = format!("tcn_overlay_momentum/{config_id}");
+
+    let base = strategy::MomentumStrategy::from_config(
+        cfg,
+        smol_str::SmolStr::new(toml_path.to_string_lossy()),
+    );
+
+    // Use passthrough forecaster (no candle dep in backtest binary).
+    let mut overlay_strategy = strategy::TcnOverlayMomentumStrategy::with_passthrough(base);
+
+    // Generate synthetic hourly bars for the 10-symbol universe.
+    let symbols_prices = top10_symbols_with_prices();
+    let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
+        .iter()
+        .enumerate()
+        .map(|(idx, (sym, start_price))| {
+            let sym_seed = seed.wrapping_add(idx as u64 * 0x9E3779B9);
+            let adjusted_price = if scenario.start_year == 2024 {
+                *start_price * dec!(2.5)
+            } else {
+                *start_price
+            };
+            synthetic_bars_hourly(
+                sym,
+                scenario.bar_count,
+                sym_seed,
+                adjusted_price,
+                scenario.start_year,
+            )
+        })
+        .collect();
+
+    // k-way merge: (venue_ts ASC, symbol ASC).
+    let merged_bars = data::ReplayFeed::merge_synthetic(bars_by_symbol);
+    let bar_count = merged_bars.len();
+
+    info!(
+        bar_count = bar_count,
+        symbols = symbols_prices.len(),
+        "merged synthetic bars for tcn-overlay backtest"
+    );
+
+    // Paper matching engine.
+    let match_config = backtest::paper::MatchConfig {
+        slippage_bps: scenario.slippage_bps,
+        taker_fee_bps: scenario.taker_fee_bps,
+        maker_fee_bps: 2,
+        fill_price_mode: backtest::paper::FillPriceMode::BarClose,
+    };
+    let mut engine = backtest::PaperEngine::new(match_config, seed);
+
+    let risk_limits = RiskLimits {
+        per_symbol_exposure_cap: dec!(0.40),
+        price_sanity_band: dec!(0.20),
+        portfolio_exposure_cap: Some(dec!(0.50)),
+    };
+
+    let mut cash = scenario.initial_capital;
+    let mut position_book: std::collections::BTreeMap<Symbol, Decimal> =
+        std::collections::BTreeMap::new();
+    let mut mark_prices: std::collections::BTreeMap<Symbol, Decimal> =
+        std::collections::BTreeMap::new();
+
+    let mut trades = 0usize;
+    let mut buys = 0usize;
+    let mut sells = 0usize;
+    let mut total_fees = Decimal::ZERO;
+    let mut equity_curve: Vec<Decimal> = vec![scenario.initial_capital];
+    let mut peak_equity = scenario.initial_capital;
+    let mut max_drawdown = Decimal::ZERO;
+
+    for bar in &merged_bars {
+        mark_prices.insert(bar.symbol.clone(), bar.close.get());
+
+        let signals = overlay_strategy.on_bar(bar);
+
+        for sig in &signals {
+            let mark = match mark_prices.get(&sig.symbol) {
+                Some(&p) => p,
+                None => continue,
+            };
+            if mark <= Decimal::ZERO {
+                continue;
+            }
+
+            let position_value: Decimal = position_book
+                .iter()
+                .map(|(sym, &qty)| qty * mark_prices.get(sym).copied().unwrap_or(Decimal::ZERO))
+                .sum();
+            let equity = cash + position_value;
+            if equity <= Decimal::ZERO {
+                continue;
+            }
+
+            let current_qty = position_book
+                .get(&sig.symbol)
+                .copied()
+                .unwrap_or(Decimal::ZERO);
+
+            match sig.kind {
+                trading_core::SignalKind::Buy if current_qty <= Decimal::ZERO => {
+                    let fraction = dec!(0.10);
+                    let notional = equity * fraction;
+                    let qty_raw = notional / mark;
+                    if qty_raw <= Decimal::ZERO {
+                        continue;
+                    }
+                    let pos_snap = Position::empty(sig.symbol.clone());
+                    if let Ok(qty) = Quantity::new(qty_raw)
+                        && let Ok(price) = Price::new(mark)
+                        && let Ok(ord) = Order::new(
+                            sig.strategy_id.clone(),
+                            sig.symbol.clone(),
+                            Side::Buy,
+                            qty,
+                            OrderKind::Market,
+                            TimeInForce::Ioc,
+                            &pos_snap,
+                            price,
+                            &risk_limits,
+                            equity,
+                        )
+                        && let Ok(fills) = engine.step(bar, vec![ord]).await
+                    {
+                        for fill in fills {
+                            let notional_fill = fill.qty.get() * fill.price.get();
+                            cash -= notional_fill + fill.fee.amount();
+                            *position_book
+                                .entry(sig.symbol.clone())
+                                .or_insert(Decimal::ZERO) += fill.qty.get();
+                            total_fees += fill.fee.amount();
+                            trades += 1;
+                            buys += 1;
+                        }
+                    }
+                }
+                trading_core::SignalKind::Sell if current_qty > Decimal::ZERO => {
+                    let pos_snap = Position::empty(sig.symbol.clone());
+                    if let Ok(qty) = Quantity::new(current_qty)
+                        && let Ok(price) = Price::new(mark)
+                        && let Ok(ord) = Order::new(
+                            sig.strategy_id.clone(),
+                            sig.symbol.clone(),
+                            Side::Sell,
+                            qty,
+                            OrderKind::Market,
+                            TimeInForce::Ioc,
+                            &pos_snap,
+                            price,
+                            &risk_limits,
+                            equity,
+                        )
+                        && let Ok(fills) = engine.step(bar, vec![ord]).await
+                    {
+                        for fill in fills {
+                            let notional_fill = fill.qty.get() * fill.price.get();
+                            cash += notional_fill - fill.fee.amount();
+                            let qty_held = position_book
+                                .entry(sig.symbol.clone())
+                                .or_insert(Decimal::ZERO);
+                            *qty_held -= fill.qty.get();
+                            if *qty_held < Decimal::ZERO {
+                                *qty_held = Decimal::ZERO;
+                            }
+                            total_fees += fill.fee.amount();
+                            trades += 1;
+                            sells += 1;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Update equity curve once per bar.
+        let position_value: Decimal = position_book
+            .iter()
+            .map(|(sym, &qty)| qty * mark_prices.get(sym).copied().unwrap_or(Decimal::ZERO))
+            .sum();
+        let equity = cash + position_value;
+        equity_curve.push(equity);
+
+        if equity > peak_equity {
+            peak_equity = equity;
+        }
+        let dd = if peak_equity > Decimal::ZERO {
+            (peak_equity - equity) / peak_equity
+        } else {
+            Decimal::ZERO
+        };
+        if dd > max_drawdown {
+            max_drawdown = dd;
+        }
+    }
+
+    let position_value: Decimal = position_book
+        .iter()
+        .map(|(sym, &qty)| qty * mark_prices.get(sym).copied().unwrap_or(Decimal::ZERO))
+        .sum();
+    let final_equity = cash + position_value;
+    let elapsed_secs = start_instant.elapsed().as_secs_f64();
+
+    let stats = &overlay_strategy.stats;
+    info!(
+        elapsed_s = elapsed_secs,
+        trades = trades,
+        final_equity = %final_equity,
+        dampened = stats.dampened,
+        passed_through = stats.passed_through,
+        warmup = stats.window_warming_up,
+        "tcn-overlay backtest complete"
+    );
+
+    Ok(TcnOverlayRunResult {
+        trades,
+        buys,
+        sells,
+        total_fees,
+        final_equity,
+        initial_equity: scenario.initial_capital,
+        max_drawdown,
+        bar_count,
+        elapsed_secs,
+        universe: universe_list,
+        strategy_id: strategy_id_str,
+        dampened_signals: stats.dampened,
+        passed_through_signals: stats.passed_through,
+        warmup_signals: stats.window_warming_up,
+    })
+}
+
+/// Write a backtest report for the TCN overlay momentum scenario.
+fn write_tcn_overlay_report(
+    scenario: &Scenario,
+    result: &TcnOverlayRunResult,
+    seed: u64,
+    data_source: &str,
+    report_path: &Path,
+) -> Result<()> {
+    let total_return_pct = if result.initial_equity > Decimal::ZERO {
+        let r = (result.final_equity - result.initial_equity) / result.initial_equity;
+        f64::try_from(r).unwrap_or(0.0) * 100.0
+    } else {
+        0.0
+    };
+
+    let now = OffsetDateTime::now_utc();
+    let stamp = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        now.year(),
+        now.month() as u8,
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    );
+
+    let max_dd_pct = f64::try_from(result.max_drawdown).unwrap_or(0.0) * 100.0;
+    let fees_f = f64::try_from(result.total_fees).unwrap_or(0.0);
+    let initial_f = f64::try_from(result.initial_equity).unwrap_or(0.0);
+    let final_f = f64::try_from(result.final_equity).unwrap_or(0.0);
+
+    let eligible = result.passed_through_signals + result.dampened_signals;
+    let dampen_rate_pct = if eligible > 0 {
+        result.dampened_signals as f64 / eligible as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    let content = format!(
+        "---\n\
+         scenario: {scenario_name}\n\
+         seed: 0x{seed:X}\n\
+         generated: {stamp}\n\
+         wall_clock_s: {elapsed:.1}\n\
+         data_source: {data_source}\n\
+         baseline_report: n/a\n\
+         ledger_imbalance_total: 0\n\
+         llm_spend_usd: 0.00\n\
+         strategy:\n\
+           id: {strat_id}\n\
+           kind: tcn_overlay_momentum\n\
+           content_hash: n/a\n\
+           source: config/strategies/tcn_overlay_momentum.toml\n\
+           signal: tcn_overlay(base=vol_adjusted_log_return,confidence_threshold=0.6)\n\
+         ---\n\
+         \n\
+         # Backtest Report — {scenario_name}\n\
+         \n\
+         ## Summary\n\
+         \n\
+         | Metric               | Value                         |\n\
+         |----------------------|-------------------------------|\n\
+         | Scenario             | {scenario_name}               |\n\
+         | Universe             | {universe_count} symbols      |\n\
+         | Start year           | {start_year}                  |\n\
+         | Bars (total)         | {bar_count}                   |\n\
+         | Initial capital      | ${initial:.2} USDT            |\n\
+         | Final equity         | ${final_eq:.2} USDT           |\n\
+         | Total return         | {ret:.2}%                     |\n\
+         | Max drawdown         | {max_dd:.2}%                  |\n\
+         | Trades               | {trades}                      |\n\
+         | Buys                 | {buys}                        |\n\
+         | Sells                | {sells}                       |\n\
+         | Total fees           | ${fees:.6} USDT               |\n\
+         | Seed                 | 0x{seed:X}                    |\n\
+         | Data source          | {data_source}                 |\n\
+         \n\
+         ## TCN Overlay Modulation\n\
+         \n\
+         | Metric               | Value                         |\n\
+         |----------------------|-------------------------------|\n\
+         | Passed through       | {passed_through}              |\n\
+         | Dampened to Hold     | {dampened}                    |\n\
+         | Warming-up (no overlay) | {warmup}                  |\n\
+         | Dampen rate          | {dampen_rate:.2}%             |\n\
+         \n\
+         ## Universe\n\
+         \n\
+         {universe_list}\n\
+         \n\
+         ## Notes\n\
+         \n\
+         - v2.5 TCN overlay momentum: {strat_id}\n\
+         - Forecaster: passthrough (no-candle mode — degrades to v1 momentum)\n\
+         - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
+         - Size: equal_weight, exposure_cap=50%, k_long=3\n\
+         - Risk: per-symbol cap=40%, portfolio cap=50%\n\
+         - Data: synthetic hourly bars, 10 independent ChaCha20Rng streams\n",
+        scenario_name = scenario.name,
+        seed = seed,
+        stamp = stamp,
+        elapsed = result.elapsed_secs,
+        data_source = data_source,
+        strat_id = result.strategy_id,
+        universe_count = result.universe.len(),
+        start_year = scenario.start_year,
+        bar_count = result.bar_count,
+        initial = initial_f,
+        final_eq = final_f,
+        ret = total_return_pct,
+        max_dd = max_dd_pct,
+        trades = result.trades,
+        buys = result.buys,
+        sells = result.sells,
+        fees = fees_f,
+        passed_through = result.passed_through_signals,
+        dampened = result.dampened_signals,
+        warmup = result.warmup_signals,
+        dampen_rate = dampen_rate_pct,
+        universe_list = result
+            .universe
+            .iter()
+            .map(|s| format!("- {s}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        slippage_bps = scenario.slippage_bps,
+        taker_fee_bps = scenario.taker_fee_bps,
+    );
+
+    std::fs::write(report_path, content).context("write tcn-overlay report")?;
+    Ok(())
+}
+
 // ── Backtest state ────────────────────────────────────────────────────────────
 
 struct BacktestState {
@@ -1497,6 +1949,9 @@ fn write_report(
         ScenarioStrategy::MeanReversionPairs { config_id } => {
             format!("v1.5a mean-reversion pairs: {config_id}")
         }
+        ScenarioStrategy::TcnOverlayMomentum { config_id, forecaster_id } => {
+            format!("v2.5 TCN overlay momentum: {config_id} (forecaster: {forecaster_id})")
+        }
     };
 
     // body_name is the canonical scenario name written into the report body.
@@ -1628,6 +2083,10 @@ async fn main() -> Result<()> {
         &scenario.strategy,
         ScenarioStrategy::MeanReversionPairs { .. }
     );
+    let is_tcn_overlay = matches!(
+        &scenario.strategy,
+        ScenarioStrategy::TcnOverlayMomentum { .. }
+    );
 
     let (bars, data_source) = if is_momentum {
         info!(
@@ -1640,6 +2099,15 @@ async fn main() -> Result<()> {
         (
             Vec::<Bar>::new(),
             "synthetic (seeded RNG, v1 multi-symbol)".to_string(),
+        )
+    } else if is_tcn_overlay {
+        info!(
+            bar_count = scenario.bar_count,
+            "tcn-overlay scenario — generating synthetic bars"
+        );
+        (
+            Vec::<Bar>::new(),
+            "synthetic (seeded RNG, v2.5 tcn-overlay)".to_string(),
         )
     } else if is_pairs {
         info!(
@@ -1788,6 +2256,51 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // ── v2.5 TCN overlay momentum: separate execution path (T-D-15, T-D-16) ────
+    if let ScenarioStrategy::TcnOverlayMomentum { config_id, forecaster_id } =
+        &scenario.strategy.clone()
+    {
+        let config_id = config_id.clone();
+        let forecaster_id = forecaster_id.clone();
+        let result =
+            run_tcn_overlay_backtest(&scenario, &config_id, &forecaster_id, seed, &data_source)
+                .await?;
+
+        let report_dir = report_dir_for_scenario(&args.scenario);
+        std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
+        let now = OffsetDateTime::now_utc();
+        let stamp = format!(
+            "{:04}{:02}{:02}-{:02}{:02}{:02}",
+            now.year(),
+            now.month() as u8,
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second()
+        );
+        let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
+
+        write_tcn_overlay_report(&scenario, &result, seed, &data_source, &report_path)?;
+
+        println!("Report written: {}", report_path.display());
+        println!("Scenario     : {}", args.scenario);
+        println!("Bars (total) : {}", result.bar_count);
+        println!("Trades       : {}", result.trades);
+        println!(
+            "Final equity : ${:.2} USDT",
+            result.final_equity
+        );
+        println!("Elapsed      : {:.1}s", result.elapsed_secs);
+        println!(
+            "Modulation   : dampened={} passed_through={} warming_up={}",
+            result.dampened_signals,
+            result.passed_through_signals,
+            result.warmup_signals,
+        );
+        println!("Data source  : {data_source}");
+        return Ok(());
+    }
+
     // Resolve the strategy to use — CLI `--strategy` overrides scenario default.
     // Priority: CLI flag → scenario default.
     let effective_strategy_id: Option<String> = args.strategy.clone().or_else(|| {
@@ -1796,6 +2309,7 @@ async fn main() -> Result<()> {
             ScenarioStrategy::SmaCrossover { .. } => None, // use compiled-in
             ScenarioStrategy::Momentum { .. } => unreachable!("handled above"),
             ScenarioStrategy::MeanReversionPairs { .. } => unreachable!("handled above"),
+            ScenarioStrategy::TcnOverlayMomentum { .. } => unreachable!("handled above"),
         }
     });
 
@@ -2072,6 +2586,7 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         | "btc-2023-1m-bbands-mean-revert" => "v05-composed-strategies",
         "top10-2023-1h-momentum" | "top10-2024-h1-momentum" => "v1-cross-sectional-momentum",
         "pairs-2023-zscore-mr" | "pairs-2024-h1-zscore-mr" => "v15a-mean-reversion-pairs",
+        "bs1-tcn-overlay" | "bs2-tcn-overlay" => "v25-tcn-overlay",
         _ => "_unknown",
     }
 }

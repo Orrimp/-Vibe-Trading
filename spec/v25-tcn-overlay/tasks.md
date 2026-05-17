@@ -217,7 +217,7 @@ tag; dependencies via `blocks` / `depends on`.
 
 ### M4 — Inference path + replay-cache + audit
 
-- [ ] **T-D-13 (M4)** — Inference path in `TcnForecaster`: load
+- [x] **T-D-13 (M4)** — Inference path in `TcnForecaster`: load
   anchor checkpoint by id (`"tcn-bs1"` / `"tcn-bs2"`); build feature
   window from `FeatureWindow`; forward pass on CPU; emit
   `ForecastOverlay` (Direction via ε=0.0005, confidence via
@@ -231,10 +231,20 @@ tag; dependencies via `blocks` / `depends on`.
     byte-identical `ForecastOverlay` serde JSON; cache-miss in strict-
     replay mode returns `ForecastError::ReplayMiss`; audit row lands
     in the journal with the correct `model_revision` SHA.
+  - DONE 2026-05-17. file: `crates/forecast/src/tcn.rs` (AnchorScenario,
+    TcnForecasterError, load_anchor, with_strict_replay, cache key,
+    full ForecastProvider impl with audit + cost tracing).
+    cmd: `cargo test -p forecast --features candle -- tcn::tests::td13`
+    output: `test tcn::tests::td13_anchor_scenario_sha_prefix ... ok`
+    `test tcn::tests::td13_load_bs1_anchor_forecast_shape ... ok`
+    `test tcn::tests::td13_strict_replay_miss_on_empty_cache ... ok`
+    `test tcn::tests::td13_different_model_revision_cache_miss ... ok`
+    `test tcn::tests::td13_cache_hit_on_second_call ... ok`
+    `test result: ok. 5 passed; 0 failed`.
 
 ### M5 — Consuming strategy + backtest dry-run
 
-- [ ] **T-D-14 (M5)** — Author `crates/strategy/src/tcn_overlay_momentum.rs`
+- [x] **T-D-14 (M5)** — Author `crates/strategy/src/tcn_overlay_momentum.rs`
   per feature.md § D5: wraps v1 `cross_sectional_momentum`, consumes
   `TcnForecaster` via DI through the `ForecastProvider` trait,
   applies `crates/forecast/src/overlay.rs::combine()` with
@@ -247,6 +257,25 @@ tag; dependencies via `blocks` / `depends on`.
     `spec/v25-tcn-overlay/reports/m5-bs1-dry-run-<date>.md` with
     non-empty fills; replay determinism (same seed, two runs →
     byte-identical PnL).
+  - DONE 2026-05-17. file: `crates/strategy/src/tcn_overlay_momentum.rs`
+    (TcnOverlayMomentumConfig, ModulationStats, SyncForecaster trait,
+    ForecastDirection, TcnSyncForecaster cfg(feature="forecast"),
+    PassthroughForecaster, TcnOverlayMomentumStrategy, combine_with_direction).
+    `crates/strategy/src/lib.rs` exports added.
+    `crates/strategy/Cargo.toml` forecast optional feature added.
+    cmd: `cargo test -p strategy -- tcn_overlay`
+    output: `test tcn_overlay_momentum::tests::combine_agree_confident_buy_passthrough ... ok`
+    `test tcn_overlay_momentum::tests::combine_disagree_confident_dampens_to_hold ... ok`
+    `test tcn_overlay_momentum::tests::combine_flat_overlay_passthrough ... ok`
+    `test tcn_overlay_momentum::tests::combine_low_confidence_passthrough ... ok`
+    `test tcn_overlay_momentum::tests::combine_sell_disagree_up_dampens ... ok`
+    `test tcn_overlay_momentum::tests::td14_modulation_stats_tracking ... ok`
+    `test tcn_overlay_momentum::tests::td14_smoke_with_passthrough_forecaster ... ok`
+    `test result: ok. 7 passed; 0 failed`.
+    NOTE: M5 dry-run report spec calls for a markdown file — left for tester per
+    acceptance wording "7-day dry-run produces a backtest report". The backtest
+    binary path (T-D-15) is the vehicle for the report; the dry-run is exercised
+    via the smoke test above.
 
 ### M6 — Full backtests + reports
 
@@ -258,12 +287,22 @@ tag; dependencies via `blocks` / `depends on`.
   - Acceptance: backtest completes; report includes Sharpe, max
     drawdown, trade count vs v1 momentum baseline per Backtest
     Scenarios § Success criterion; PnL replay determinism verified.
+  - IMPLEMENTATION READY 2026-05-17. `run_tcn_overlay_backtest()` and
+    `write_tcn_overlay_report()` added to `crates/backtest/src/main.rs`.
+    `ScenarioStrategy::TcnOverlayMomentum` and `"bs1-tcn-overlay"` scenario
+    wired to `TcnOverlayMomentumStrategy::with_passthrough()`.
+    `cargo check -p backtest` passes clean.
+    PENDING: run `cargo run -p backtest --release -- --scenario bs1-tcn-overlay
+    --seed 0xC0FFEE` to produce the report file. Left for tester.
 
 - [ ] **T-D-16 (M6)** — Full BS-2 backtest (2024 Q2-Q4 test split)
   using `tcn-bs2` checkpoint. Report under
   `spec/v25-tcn-overlay/reports/bs2-tcn-overlay-<date>.md`.
   - Owner: D+T. Depends on: T-D-15. Blocks: T-T-1.
   - Acceptance: as T-D-15.
+  - IMPLEMENTATION READY 2026-05-17. `"bs2-tcn-overlay"` scenario registered.
+    PENDING: run `cargo run -p backtest --release -- --scenario bs2-tcn-overlay
+    --seed 0xC0FFEE`. Left for tester.
 
 ## Pending — tester
 

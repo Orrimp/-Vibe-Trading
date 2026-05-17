@@ -1,0 +1,15 @@
+# v2.5 — TCN Overlay Momentum strategy (T-D-15, T-D-16)
+# Wraps v1 cross-sectional momentum with a TCN forecast overlay.
+# Per feature.md § D5: confidence_threshold=0.6, epsilon=0.0005.
+
+[strategy.tcn_overlay_momentum]
+base             = "cross_sectional_momentum"
+confidence_threshold = "0.6"
+# Select "tcn-bs1" for BS-1 evaluation (2023), "tcn-bs2" for BS-2 (2024).
+# The backtest harness overrides this field per scenario.
+forecaster_id    = "tcn-bs1"
+
+# The base strategy config — mirrors top10_momentum_h1.toml.
+# The backtest binary loads top10_momentum_h1.toml directly for the
+# MomentumStrategy inner configuration.
+base_config_id   = "top10_momentum_h1"

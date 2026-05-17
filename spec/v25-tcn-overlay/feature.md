@@ -597,13 +597,77 @@ metal_cpu_drift` on Apple Silicon.
 - Two-run metadata.json SHA: byte-identical.
   SHA: `7e341a3b29f36e362cbf3d4209ad62065e814f0c94a12e3c7e1a7d043821be72`.
 
-### Gate results
+### Gate results (Wave A+B — M0-M2)
 
 - `cargo check -p forecast`: PASS (0 warnings)
 - `cargo check -p forecast --features candle`: PASS (0 warnings)
 - `cargo clippy -p forecast --features candle -- -D warnings`: PASS
 - `cargo test -p forecast --features candle --lib`: 47 passed, 0 failed
 - `cargo test --workspace --exclude forecast`: 0 failures (all existing tests green)
+
+### Wave D — Developer Wave D landed 2026-05-17 (T-D-13 through T-D-16 implementation)
+
+#### T-D-13 (M4) — Full inference path in TcnForecaster
+
+Added to `crates/forecast/src/tcn.rs`:
+
+- `AnchorScenario` enum (`Bs1`, `Bs2`) with `sha_prefix()`, `model_revision()`,
+  `file_prefix()` methods; BS-1 SHA `d1c3696d…`, BS-2 SHA `3fabcabe…`.
+- `TcnForecasterError` enum (`CheckpointNotFound`, `SafetensorsLoad`, `MetadataParse`, `Candle`).
+- `TcnForecaster` updated with `sigma_train: f32`, `model_revision: String`,
+  `strict_replay: bool`, `cache_path: Option<PathBuf>` fields.
+- `load_anchor(scenario)` reads `crates/forecast/checkpoints/anchors/<prefix>.safetensors`
+  and `.metadata.json`, loads weights via `VarBuilder::from_buffered_safetensors`.
+- `with_strict_replay(cache_path)` / `with_cache(cache_path)` builder methods.
+- `ForecastProvider` impl: replay-cache lookup → strict-replay miss return → CPU inference
+  → audit tracing (`tracing::info!` target `forecast.audit`) → cost tracing
+  (target `forecast.cost`) → cache store.
+- Cache key: SHA-256 over `model_revision + close_prices + timestamps + sampling_seed`.
+- Direction epsilon: `DIRECTION_EPSILON = 0.0005` (5 bps, per feature.md D5/R6).
+- Confidence calibration: `clamp(|r_hat| / sigma_train, 0, 1)`.
+- 5 unit tests, all passing.
+
+Test cmd: `cargo test -p forecast --features candle -- tcn::tests::td13`
+Output: `test result: ok. 5 passed; 0 failed`
+
+#### T-D-14 (M5) — TcnOverlayMomentumStrategy
+
+New file `crates/strategy/src/tcn_overlay_momentum.rs` (~690 LOC):
+
+- `TcnOverlayMomentumConfig` struct (forecaster_id, confidence_threshold, base_config_path).
+- `ModulationStats` struct (passed_through, dampened, window_warming_up, total).
+- `SyncForecaster` trait (sync wrapper for use in `Strategy::on_bar()`).
+- `ForecastDirection` enum (Up, Down, Flat).
+- `TcnSyncForecaster` (`#[cfg(feature = "forecast")]`) — production forecaster wrapping
+  `forecast::tcn::TcnForecaster`, implements `SyncForecaster`.
+- `PassthroughForecaster` — always returns `(Flat, 0)` for graceful degradation.
+- `TcnOverlayMomentumStrategy` — wraps `MomentumStrategy` with TCN overlay, per-symbol
+  256-bar rolling window, `combine_with_direction()` modulation.
+- `with_passthrough(base)` constructor for use without the `forecast` feature.
+- `combine_with_direction()` implements the overlay composition rule (agree → passthrough,
+  disagree + confident → Hold).
+- `crates/strategy/src/lib.rs` exports updated.
+- `crates/strategy/Cargo.toml` `[features]` section added with `forecast` optional dep.
+- `config/strategies/tcn_overlay_momentum.toml` created.
+- 7 unit tests, all passing.
+
+Test cmd: `cargo test -p strategy -- tcn_overlay`
+Output: `test result: ok. 7 passed; 0 failed`
+
+#### T-D-15/T-D-16 (M6) — Backtest scenario wiring
+
+Added to `crates/backtest/src/main.rs`:
+
+- `ScenarioStrategy::TcnOverlayMomentum { config_id, forecaster_id }` variant.
+- `"bs1-tcn-overlay"` (2208 bars, 2023) and `"bs2-tcn-overlay"` (6600 bars, 2024) scenarios.
+- `TcnOverlayRunResult` struct with modulation stats fields.
+- `run_tcn_overlay_backtest()` async fn using `TcnOverlayMomentumStrategy::with_passthrough()`.
+- `write_tcn_overlay_report()` fn writing a report with a "TCN Overlay Modulation" section.
+- `scenario_to_feature()` maps both scenarios to `"v25-tcn-overlay"`.
+- `is_tcn_overlay` branch in data-source selection.
+- `cargo check -p backtest` passes clean.
+
+The actual report generation (binary run) is left for the tester to execute and anchor.
 
 Suggested milestone order (architect to lock in T-AR-2):
 

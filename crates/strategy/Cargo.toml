@@ -4,7 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Enable the `forecast` crate dependency for `TcnSyncForecaster`.
+# Requires `--features forecast` to enable the candle backend via forecast.
+forecast = ["dep:forecast", "forecast/candle", "dep:candle-core"]
+
 [dependencies]
+# Optional: TCN forecaster for tcn_overlay_momentum (v2.5)
+forecast = { path = "../forecast", optional = true }
+# Optional: candle-core for TcnSyncForecaster (pulled in by forecast feature)
+candle-core = { version = "0.9", optional = true }
 trading_core = { path = "../core" }
 features = { path = "../features" }
 audit = { path = "../audit" }
