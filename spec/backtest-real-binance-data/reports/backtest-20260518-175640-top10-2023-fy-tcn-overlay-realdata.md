@@ -1,8 +1,8 @@
 ---
 scenario: top10-2023-fy-tcn-overlay-realdata
 seed: 0xC0FFEE
-generated: 2026-05-18T17:34:35Z
-wall_clock_s: 22.6
+generated: 2026-05-18T17:56:40Z
+wall_clock_s: 24.9
 data_revision_sha: 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7
 data_source: real (Binance Vision via data/binance/, v2.6.0-realdata)
 baseline_report: n/a

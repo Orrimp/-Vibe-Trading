@@ -1,7 +1,7 @@
 ---
 slug: backtest-real-binance-data
-status: in-progress
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-05-18
 version: 0.1.0
 predecessor: v25-tcn-overlay v2.5.0
@@ -14,7 +14,7 @@ predecessor: v25-tcn-overlay v2.5.0
 > read real Binance hourly OHLCV from `data/binance/` instead of the
 > current `ChaCha20Rng` synthetic GBM.** Unblocks the alpha-evaluation
 > gap surfaced by
-> [`v25-tcn-overlay` M3](v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md)
+> [`v25-tcn-overlay` M3](../v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md)
 > (TCN's `r_hat` falls inside the ε=0.0005 deadband on i.i.d. Gaussian
 > returns → `dampened=0` → real-weights output byte-identical to
 > passthrough). Mandatory prerequisite for the
@@ -39,7 +39,7 @@ shipped (2026-05-18, commits `e85b25d` → `1e0b73d`). The two trained TCN
 checkpoints (`tcn-bs1`, `tcn-bs2`) — trained on **real Binance hourly
 OHLCV from `data/binance/`** with final val Huber loss ~1.5e-5 — produce
 **zero dampenings** on the synthetic backtest data. From
-[`m3-bs1-training-2026-05-18.md § Finding`](v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md):
+[`m3-bs1-training-2026-05-18.md § Finding`](../v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md):
 
 > The TCN model's output `r_hat` falls within the epsilon=0.0005
 > deadband for all synthetic bars, producing `Direction::Flat` for every
@@ -835,6 +835,22 @@ _tester fills this — the gate is:_
   arms (T-D-17). Revision-roundtrip bug root-caused: synthetic tempdir SHA ≠ real-data
   SHA after pin. Fix: determinism tests now run against workspace real data. 250-file
   TOML roundtrip regression test added. ANCHORS PASS (15/15). HANDOFF → tester.
+- 2026-05-18 (tester): **VERDICT PASS — feature shipped.** M-FINAL ship gate
+  complete. T-T-1A: four new anchors locked at `v2.6.0-realdata`:
+  `top10-2023-fy-tcn-overlay-realdata` →
+  `8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642`;
+  `top10-2024-fy-tcn-overlay-realdata` →
+  `fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3`;
+  `top10-2023-fy-tcn-overlay-weights-realdata` →
+  `552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70`;
+  `top10-2024-fy-tcn-overlay-weights-realdata` →
+  `2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c`.
+  K5 determinism: all 4 scenarios byte-identical across 2 independent runs.
+  K10 anchor neutrality: 15/15 pre-existing anchors byte-identical.
+  verify_anchors: ANCHORS PASS (19/19). cargo fmt/clippy/test: all PASS.
+  Wall-clock (candle runs): ~39-40s/scenario on Apple Silicon.
+  Status: in-progress → shipped. Owner: developer → operator.
+  HANDOFF → presenter.
 - 2026-05-18 (analyst): full analyst pass. Closed Q1-Q8 with defaults
   (R1-R10). Three operator-decide questions surfaced (Q1 in-place vs
   parallel `-realdata` family — strong recommendation: parallel; Q4

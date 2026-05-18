@@ -119,3 +119,30 @@ sha256   = "7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4"
 scenario = "top10-2024-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights"
 sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"
+
+# v2.6 backtest-real-binance-data scenarios (T-T-1A).  Locked by tester on
+# 2026-05-18 against the data/binance/ REVISION.toml manifest SHA
+# 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7.
+# Two independent runs of each scenario produced byte-identical body SHAs
+# (K5 determinism gate PASS).  Passthrough (no-candle) and real-weights
+# (candle) variants are separate rows as they use different dispatch paths.
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-realdata"
+version  = "v2.6.0-realdata"
+sha256   = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-realdata"
+version  = "v2.6.0-realdata"
+sha256   = "fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3"
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
+version  = "v2.6.0-realdata"
+sha256   = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
+version  = "v2.6.0-realdata"
+sha256   = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c"

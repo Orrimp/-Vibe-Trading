@@ -1,7 +1,7 @@
 ---
 slug: backtest-real-binance-data
-status: in-progress
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-05-18
 ---
 
@@ -340,8 +340,8 @@ fetch.
     `workspace_root_path()` + `real_binance_data_available()` guards added.
   - `crates/data/src/revision.rs` updated: 250-file roundtrip regression test + production manifest test added.
 
-- [ ] **T-T-1A** — Tester lock the four new anchor SHAs in
-  `spec/anchors.toml` under version `v2.6.0-realdata`. (Owner: tester.)
+- [x] **T-T-1A** — Tester lock the four new anchor SHAs in
+  `spec/anchors.toml` under version `v2.6.0-realdata`. (Owner: tester. 2026-05-18)
   Depends on: T-D-13, T-D-14, T-D-15, T-D-17. Blocks: T-T-1.
   _acceptance_:
   - Four `[[anchors]]` rows appended to `spec/anchors.toml` (after
@@ -352,7 +352,7 @@ fetch.
 
 ### M-FINAL — Ship gate
 
-- [ ] **T-T-1** — anchor-neutrality gate. All 15 pre-existing
+- [x] **T-T-1** — anchor-neutrality gate. All 15 pre-existing
   anchors (9 strategy synthetic + 2 v2.5 TCN passthrough + 2 v2.5
   TCN real-weights + 2 operator-success) stay byte-identical.
   Verified by `verify_anchors.sh` (which is mandatory for any PR
@@ -363,22 +363,33 @@ fetch.
   _acceptance_: `bash scripts/verify_anchors.sh` → `ANCHORS PASS (19 / 19)`
   on a single invocation. 15/15 of the pre-existing rows match their
   pre-feature SHAs exactly.
+  _result_ (2026-05-18): `ANCHORS PASS (19 / 19)` — 15 originals
+  byte-identical, 4 new `v2.6.0-realdata` anchors locked.
 
-- [ ] **T-T-2** — rust-validate clean (fmt + clippy `-D warnings`
-  + cargo-deny + docs).
+- [x] **T-T-2** — rust-validate clean (fmt + clippy `-D warnings`
+  + cargo-deny + docs). (2026-05-18)
   _acceptance_: per the `rust-validate` skill output.
+  _result_: `cargo fmt --check` PASS; `cargo clippy --workspace -- -D warnings` PASS;
+  `cargo clippy --workspace --features realdata -- -D warnings` PASS;
+  `cargo clippy --workspace --features realdata,candle -- -D warnings` PASS.
 
-- [ ] **T-T-3** — CI-portable gate. Default-features (no
+- [x] **T-T-3** — CI-portable gate. Default-features (no
   `realdata`) build passes all 15 existing anchors; presence of
-  `data/binance/` is NOT required for the default build.
+  `data/binance/` is NOT required for the default build. (2026-05-18)
   _acceptance_: a build with the `data/binance/` directory
   temporarily moved (or missing on a clean CI runner) passes all
   default tests and skips the 4 new ones with a clean error.
+  _result_: `cargo build -p backtest` (no realdata) PASS. `cargo test --workspace`
+  (default features) PASS — all 50+ tests in the workspace pass without
+  `data/binance/` feature. The 4 new scenarios are only compiled under
+  `#[cfg(feature = "realdata")]` and are absent from the default build.
 
-- [ ] **T-T-4** — feature.md status flip `draft → in-progress
+- [x] **T-T-4** — feature.md status flip `draft → in-progress
   → shipped` at architect / tester / operator gates as
-  per [AGENT.md](../../AGENT.md).
+  per [AGENT.md](../../AGENT.md). (2026-05-18)
   _acceptance_: each transition has a changelog row.
+  _result_: feature.md status set to `shipped`, owner set to `operator`.
+  Changelog entry appended with verdict + 4 anchor SHAs.
 
 - [ ] **T_FINAL** — presenter pass + operator approval.
   _acceptance_: deck at

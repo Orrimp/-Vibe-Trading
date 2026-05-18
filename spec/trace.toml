@@ -144,21 +144,21 @@ arch        = [
   "spec/backtest-real-binance-data/feature.md#design",
   "spec/backtest-real-binance-data/tasks.md#parallelism-map-for-the-orchestrator",
 ]
-crates      = []   # TODO developer: fill once Wave 1-5 lands. Expected:
-                   #   crates/backtest/src/realdata.rs                  (NEW; --features realdata)
-                   #   crates/backtest/src/main.rs                      (MOD; dispatch + Scenario fields + 4 new rows)
-                   #   crates/backtest/Cargo.toml                       (MOD; realdata feature)
-                   #   crates/data/src/revision.rs                      (NEW; manifest read/write helper)
-                   #   crates/data/src/bin/fetch_binance_klines.rs      (MOD; --emit-revision-manifest)
-tests       = []   # TODO developer: fill at M4. Expected:
-                   #   crates/backtest/tests/realdata_revision_verify.rs   (NEW; T-D-5)
-                   #   crates/backtest/tests/determinism.rs                (MOD; T-D-13/14/15 add 4 tests)
-anchors     = []   # TODO tester at M5 (T-T-1A); expected names:
-                   #   top10-2023-fy-tcn-overlay-realdata
-                   #   top10-2024-fy-tcn-overlay-realdata
-                   #   top10-2023-fy-tcn-overlay-weights-realdata
-                   #   top10-2024-fy-tcn-overlay-weights-realdata
-state       = "in-progress"
+crates      = [
+  "crates/backtest",
+  "crates/data",
+]
+tests       = [
+  "crates/backtest/tests/realdata_revision_verify.rs",
+  "crates/backtest/tests/determinism.rs",
+]
+anchors     = [
+  "top10-2023-fy-tcn-overlay-realdata",
+  "top10-2024-fy-tcn-overlay-realdata",
+  "top10-2023-fy-tcn-overlay-weights-realdata",
+  "top10-2024-fy-tcn-overlay-weights-realdata",
+]
+state       = "shipped"
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"
