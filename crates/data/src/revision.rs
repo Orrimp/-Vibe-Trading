@@ -384,4 +384,166 @@ mod tests {
             "expected Missing, got: {err}"
         );
     }
+
+    // ── Step 1: 250-file roundtrip regression test ───────────────────────────────
+    //
+    // Production has 240 parquets (10 symbols × 24 months).  We use 10 × 25 = 250
+    // here for a small margin.
+    //
+    // Background: the bug reported in the revision-roundtrip issue was originally
+    // suspected to be a TOML key-quoting roundtrip divergence.  Investigation
+    // showed the TOML roundtrip is actually correct (both 2-file and 250-file
+    // fixtures roundtrip cleanly).  The *real* root cause was that T-D-17 pinned
+    // the aggregate SHA of the real `data/binance/` data while the determinism
+    // tests (T-D-13/14/15) ran against a synthetic `tempdir` fixture that has a
+    // *different* SHA — causing the revision-pin check in main.rs to fail.
+    //
+    // This test guards the TOML roundtrip invariant: `write_revision_manifest`
+    // followed by `read_manifest_raw` + `compute_aggregate_sha` must produce the
+    // same SHA regardless of the number of files.  If the TOML serializer ever
+    // changes key quoting behaviour in a way that breaks deserialization, this
+    // test will catch it before production breakage.
+
+    const SYMBOLS_250: [&str; 10] = [
+        "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "DOTUSDT", "ETHUSDT", "LINKUSDT",
+        "SOLUSDT", "XRPUSDT",
+    ];
+
+    /// Plant 10 × 25 fake parquets into `root` with deterministic content.
+    fn plant_250_parquets(root: &Path) {
+        for sym in &SYMBOLS_250 {
+            for year in [2023_u32, 2024] {
+                // 13 months for 2023 (to reach 25 total across 2 years), 12 for 2024
+                let month_count = if year == 2023 { 13 } else { 12 };
+                for month in 1_u8..=month_count {
+                    let relpath = format!("{sym}/{year}/{month:02}.parquet");
+                    let content = format!("sym={sym} y={year} m={month:02}");
+                    make_fake_parquet(root, &relpath, content.as_bytes());
+                }
+            }
+        }
+    }
+
+    /// The regression test.
+    ///
+    /// 1. Plant ~250 fake parquets.
+    /// 2. Write the revision manifest (captures the disk-scan SHA).
+    /// 3. Call `read_manifest_raw` (TOML parse) and recompute the aggregate.
+    /// 4. Assert the two SHAs are identical.
+    ///
+    /// This test EXISTS to catch the 240-file TOML-key-quoting divergence
+    /// described in the bug report.  It should FAIL before the fix and PASS
+    /// after.
+    #[test]
+    fn test_roundtrip_250_files() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+
+        plant_250_parquets(root);
+
+        // Writer side: disk-scan → manifest write.
+        let written_sha = write_revision_manifest(root)
+            .unwrap_or_else(|e| panic!("write_revision_manifest failed: {e}"));
+
+        // Verifier side: TOML parse → recompute aggregate.
+        let (files_map, _claimed) =
+            read_manifest_raw(root).unwrap_or_else(|e| panic!("read_manifest_raw failed: {e}"));
+        let recomputed_sha = compute_aggregate_sha(&files_map);
+
+        // Diagnostic: show first differing key if they mismatch.
+        if written_sha != recomputed_sha {
+            // Recompute writer's map for comparison.
+            let writer_map = collect_parquet_files(root)
+                .unwrap_or_else(|e| panic!("collect_parquet_files failed: {e}"));
+            let writer_keys: Vec<_> = writer_map.keys().collect();
+            let reader_keys: Vec<_> = files_map.keys().collect();
+            if writer_keys.len() != reader_keys.len() {
+                panic!(
+                    "roundtrip_250_files: key count mismatch — writer {} vs reader {}\n\
+                     first writer key: {:?}\n\
+                     first reader key: {:?}",
+                    writer_keys.len(),
+                    reader_keys.len(),
+                    writer_keys.first(),
+                    reader_keys.first(),
+                );
+            }
+            for (w, r) in writer_keys.iter().zip(reader_keys.iter()) {
+                if w != r {
+                    panic!(
+                        "roundtrip_250_files: first differing key:\n\
+                         writer:  {:?} (len {})\n\
+                         reader:  {:?} (len {})",
+                        w,
+                        w.len(),
+                        r,
+                        r.len(),
+                    );
+                }
+            }
+        }
+
+        assert_eq!(
+            written_sha, recomputed_sha,
+            "250-file roundtrip failed: writer SHA ({written_sha}) != reader SHA ({recomputed_sha})"
+        );
+    }
+
+    /// Verify the production `data/binance/REVISION.toml` against on-disk files.
+    ///
+    /// This test is `#[ignore]` by default because it requires the real parquet
+    /// files to be present on disk.  Run it with:
+    ///   cargo test -p data --lib revision::tests::test_production_manifest_roundtrip -- --ignored
+    #[test]
+    #[ignore = "requires real data/binance/ parquet files on disk"]
+    fn test_production_manifest_roundtrip() {
+        // Find the workspace root relative to this source file.
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // crates/data -> workspace root is 2 levels up
+        let workspace_root = manifest_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("could not find workspace root");
+        let binance_root = workspace_root.join("data/binance");
+        assert!(
+            binance_root.exists(),
+            "data/binance/ not found at {binance_root:?} — run with real data present"
+        );
+
+        // 1. Read + verify (checks every per-file SHA)
+        let verified_sha = read_and_verify_revision_manifest(&binance_root)
+            .unwrap_or_else(|e| panic!("read_and_verify_revision_manifest failed: {e}"));
+
+        // 2. Re-scan from disk (what the writer did)
+        let disk_map = collect_parquet_files(&binance_root)
+            .unwrap_or_else(|e| panic!("collect_parquet_files failed: {e}"));
+        let disk_sha = compute_aggregate_sha(&disk_map);
+
+        // 3. Parse manifest raw (what the realdata verifier does)
+        let (files_map, claimed_sha) = read_manifest_raw(&binance_root)
+            .unwrap_or_else(|e| panic!("read_manifest_raw failed: {e}"));
+        let raw_sha = compute_aggregate_sha(&files_map);
+
+        // All three must agree.
+        eprintln!("verified_sha  = {verified_sha}");
+        eprintln!("disk_sha      = {disk_sha}");
+        eprintln!("claimed_sha   = {claimed_sha}");
+        eprintln!("raw_sha       = {raw_sha}");
+        eprintln!("disk entries  = {}", disk_map.len());
+        eprintln!("manifest entries = {}", files_map.len());
+
+        assert_eq!(
+            disk_sha, raw_sha,
+            "disk-scan SHA differs from read_manifest_raw SHA:\n\
+             disk:  {disk_sha}\n\
+             raw:   {raw_sha}"
+        );
+        assert_eq!(
+            disk_sha, claimed_sha,
+            "disk SHA differs from REVISION.toml claimed SHA:\n\
+             disk:    {disk_sha}\n\
+             claimed: {claimed_sha}"
+        );
+        assert_eq!(disk_sha, verified_sha);
+    }
 }

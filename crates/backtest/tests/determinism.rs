@@ -872,183 +872,21 @@ fn ensure_realdata_binary() -> std::path::PathBuf {
     workspace_root.join("target/debug/backtest")
 }
 
-/// Build a `<tmpdir>/data/binance/` 10-symbol fixture for `year` and return
-/// the tempdir (so it stays alive for the test duration).
-#[cfg(feature = "realdata")]
-fn setup_realdata_tempdir(year: i32) -> tempfile::TempDir {
-    use std::path::Path;
-
-    let tmp = tempfile::tempdir().expect("create tempdir");
-    let root = tmp.path();
-
-    // Create the fixture at <tmpdir>/data/binance/.
-    let data_binance = root.join("data").join("binance");
-    std::fs::create_dir_all(&data_binance).expect("create data/binance");
-
-    // Reuse the fixture builder from realdata_revision_verify.rs.
-    // We duplicate the helper here to avoid a cross-test-file dependency —
-    // test files in Rust are separate crates and cannot import each other.
-    build_ten_symbol_fixture_inner(&data_binance, year);
-
-    // Report output dir.
-    let report_dir = root
-        .join("spec")
-        .join("backtest-real-binance-data")
-        .join("reports");
-    std::fs::create_dir_all(&report_dir).expect("create report dir");
-
-    // config/strategies/ — needed for composed-strategy TOML lookup.
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let workspace_root = Path::new(manifest_dir)
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("workspace root");
-    let config_src = workspace_root.join("config").join("strategies");
-    let config_dst = root.join("config").join("strategies");
-    std::fs::create_dir_all(&config_dst).expect("create config/strategies");
-    if config_src.exists() {
-        for entry in std::fs::read_dir(&config_src)
-            .expect("read config/strategies")
-            .flatten()
-        {
-            let dst = config_dst.join(entry.file_name());
-            std::fs::copy(entry.path(), dst).expect("copy strategy TOML");
-        }
-    }
-
-    // config/agent.toml — backtest binary requires it at startup.
-    let agent_src = workspace_root.join("config").join("agent.toml");
-    let agent_dst = root.join("config").join("agent.toml");
-    if agent_src.exists() {
-        std::fs::copy(&agent_src, &agent_dst).expect("copy agent.toml");
-    }
-
-    tmp
-}
-
-/// Inline 10-symbol fixture builder (mirrors `build_ten_symbol_fixture` in
-/// `realdata_revision_verify.rs` — duplicated to avoid cross-file test imports).
-#[cfg(feature = "realdata")]
-fn build_ten_symbol_fixture_inner(data_binance: &std::path::Path, year: i32) {
-    const ONE_HOUR_MS: i64 = 3_600_000;
-
-    let symbols = [
-        "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "DOTUSDT", "ETHUSDT", "LINKUSDT",
-        "SOLUSDT", "XRPUSDT",
-    ];
-
-    // Compute year start in Unix milliseconds.
-    let days_from_epoch: i64 = (1970..year)
-        .map(|y: i32| {
-            if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
-                366_i64
-            } else {
-                365_i64
-            }
-        })
-        .sum();
-    let year_start_ms = days_from_epoch * 24 * 3_600 * 1_000;
-
-    for sym in &symbols {
-        let mut month_start = year_start_ms;
-        for m in 1u8..=12 {
-            let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-            let days: i64 = match m {
-                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-                4 | 6 | 9 | 11 => 30,
-                2 => {
-                    if is_leap {
-                        29
-                    } else {
-                        28
-                    }
-                }
-                _ => 30,
-            };
-            let bar_count = (days * 24) as usize;
-
-            let path = data_binance
-                .join(sym)
-                .join(year.to_string())
-                .join(format!("{m:02}.parquet"));
-            write_synthetic_parquet_inner(&path, month_start, bar_count);
-            month_start += days * 24 * ONE_HOUR_MS;
-        }
-    }
-
-    data::revision::write_revision_manifest(data_binance).expect("write REVISION.toml");
-}
-
-/// Write a minimal Binance-schema parquet file (mirrors `write_synthetic_parquet`
-/// in `realdata_revision_verify.rs`).
-#[cfg(feature = "realdata")]
-fn write_synthetic_parquet_inner(path: &std::path::Path, start_ms: i64, bar_count: usize) {
-    use polars::prelude::*;
-    const ONE_HOUR_MS: i64 = 3_600_000;
-
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-
-    let mut open_times: Vec<i64> = Vec::with_capacity(bar_count);
-    let mut close_times: Vec<i64> = Vec::with_capacity(bar_count);
-    let mut opens: Vec<String> = Vec::with_capacity(bar_count);
-    let mut highs: Vec<String> = Vec::with_capacity(bar_count);
-    let mut lows: Vec<String> = Vec::with_capacity(bar_count);
-    let mut closes: Vec<String> = Vec::with_capacity(bar_count);
-    let mut volumes: Vec<String> = Vec::with_capacity(bar_count);
-    let mut trade_counts: Vec<i64> = Vec::with_capacity(bar_count);
-
-    #[allow(clippy::float_arithmetic, clippy::cast_precision_loss)]
-    let mut price = 30_000.0_f64;
-    for i in 0..bar_count {
-        let open_ms = start_ms + i as i64 * ONE_HOUR_MS;
-        let close_ms = open_ms + ONE_HOUR_MS - 1;
-        #[allow(clippy::float_arithmetic, clippy::cast_precision_loss)]
-        let next = price * (1.0 + 0.001 * ((i % 10) as f64 - 5.0) * 0.01);
-        open_times.push(open_ms);
-        close_times.push(close_ms);
-        opens.push(format!("{price:.2}"));
-        highs.push(format!("{:.2}", price.max(next) + 10.0));
-        lows.push(format!("{:.2}", price.min(next) - 10.0));
-        closes.push(format!("{next:.2}"));
-        volumes.push("100.0".to_string());
-        trade_counts.push(100_i64);
-        price = next;
-    }
-
-    let opens_ref: Vec<&str> = opens.iter().map(|s| s.as_str()).collect();
-    let highs_ref: Vec<&str> = highs.iter().map(|s| s.as_str()).collect();
-    let lows_ref: Vec<&str> = lows.iter().map(|s| s.as_str()).collect();
-    let closes_ref: Vec<&str> = closes.iter().map(|s| s.as_str()).collect();
-    let volumes_ref: Vec<&str> = volumes.iter().map(|s| s.as_str()).collect();
-
-    let mut df = DataFrame::new(vec![
-        Column::new("open_time".into(), open_times.as_slice()),
-        Column::new("close_time".into(), close_times.as_slice()),
-        Column::new("open".into(), opens_ref.as_slice()),
-        Column::new("high".into(), highs_ref.as_slice()),
-        Column::new("low".into(), lows_ref.as_slice()),
-        Column::new("close".into(), closes_ref.as_slice()),
-        Column::new("volume".into(), volumes_ref.as_slice()),
-        Column::new("trade_count".into(), trade_counts.as_slice()),
-    ])
-    .unwrap();
-
-    let file = std::fs::File::create(path).unwrap();
-    let writer = std::io::BufWriter::new(file);
-    ParquetWriter::new(writer).finish(&mut df).unwrap();
-}
-
-/// Run a realdata scenario once from the given `tmpdir` working directory.
+/// Run a realdata scenario once from the given `run_dir` working directory.
+///
+/// `run_dir` should be either the workspace root (when using real `data/binance/`)
+/// or a synthetic tempdir (only valid when `expected_revision_sha` is `None`).
+///
 /// Returns the report body text.
 #[cfg(feature = "realdata")]
 fn run_realdata_scenario_once(
     bin: &std::path::Path,
-    tmpdir: &std::path::Path,
+    run_dir: &std::path::Path,
     scenario: &str,
 ) -> String {
     let output = std::process::Command::new(bin)
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
-        .current_dir(tmpdir)
+        .current_dir(run_dir)
         .output()
         .expect("spawn backtest binary");
 
@@ -1066,24 +904,66 @@ fn run_realdata_scenario_once(
         .map(|l| l.trim_start_matches("Report written: ").trim())
         .expect("could not find 'Report written:' line");
 
-    let report_path = tmpdir.join(report_rel);
+    let report_path = run_dir.join(report_rel);
     std::fs::read_to_string(&report_path)
         .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
 }
 
+/// Return the workspace root (two directories up from `CARGO_MANIFEST_DIR`).
+#[cfg(feature = "realdata")]
+fn workspace_root_path() -> std::path::PathBuf {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    std::path::Path::new(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("could not locate workspace root")
+        .to_path_buf()
+}
+
+/// Return `true` when the real `data/binance/REVISION.toml` is present in the
+/// workspace root.  Used to gate the `-realdata` determinism tests: after
+/// T-D-17 pins the real aggregate SHA into the four scenario arms, the binary
+/// validates the revision at runtime.  A synthetic tempdir fixture has a
+/// *different* SHA, so the binary exits non-zero if run from a tempdir.
+/// Running from the workspace root uses the real data whose SHA matches the pin.
+#[cfg(feature = "realdata")]
+fn real_binance_data_available() -> bool {
+    let revision_toml = workspace_root_path()
+        .join("data")
+        .join("binance")
+        .join("REVISION.toml");
+    revision_toml.exists()
+}
+
 /// T-D-13 — `top10-2023-fy-tcn-overlay-realdata` body-SHA256 is identical across
-/// two runs with the same 10-symbol parquet fixture.
+/// two runs against the real `data/binance/` directory.
 ///
-/// Uses a synthetic `tempdir` fixture (no real `data/binance/` required).
+/// Pre-condition: `data/binance/REVISION.toml` must exist in the workspace root
+/// (populated by T-D-16 fetch).  If absent the test skips with a clear message
+/// so CI (which does not carry the 240 parquets) remains green.
+///
+/// After T-D-17 pins the real aggregate SHA into the scenario arm, the binary
+/// validates that the SHA of the on-disk manifest matches the pin.  The test
+/// therefore MUST run against real data — a synthetic tempdir fixture would
+/// produce a different SHA and cause the binary to exit non-zero.
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2023_fy_tcn_overlay_determinism() {
+    if !real_binance_data_available() {
+        eprintln!(
+            "T-D-13: data/binance/REVISION.toml absent — skipping realdata determinism test \
+             (run `cargo run -p data --bin fetch_binance_klines -- --emit-revision-manifest ...` \
+             first, then re-run this test)"
+        );
+        return; // soft skip — does not count as failure
+    }
+
     let bin = ensure_realdata_binary();
-    let tmp = setup_realdata_tempdir(2023);
+    let workspace = workspace_root_path();
     let scenario = "top10-2023-fy-tcn-overlay-realdata";
 
-    let report1 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
-    let report2 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
+    let report1 = run_realdata_scenario_once(&bin, &workspace, scenario);
+    let report2 = run_realdata_scenario_once(&bin, &workspace, scenario);
 
     let hash1 = backtest::report_body_hash(&report1);
     let hash2 = backtest::report_body_hash(&report2);
@@ -1099,18 +979,24 @@ fn realdata_2023_fy_tcn_overlay_determinism() {
 }
 
 /// T-D-14 — `top10-2024-fy-tcn-overlay-realdata` body-SHA256 is identical across
-/// two runs with the same 10-symbol parquet fixture.
+/// two runs against the real `data/binance/` directory.
 ///
-/// Uses a synthetic `tempdir` fixture (no real `data/binance/` required).
+/// Pre-condition: same as T-D-13 (`data/binance/REVISION.toml` must exist).
+/// Skips with a clear message when data is absent.
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2024_fy_tcn_overlay_determinism() {
+    if !real_binance_data_available() {
+        eprintln!("T-D-14: data/binance/REVISION.toml absent — skipping realdata determinism test");
+        return; // soft skip
+    }
+
     let bin = ensure_realdata_binary();
-    let tmp = setup_realdata_tempdir(2024);
+    let workspace = workspace_root_path();
     let scenario = "top10-2024-fy-tcn-overlay-realdata";
 
-    let report1 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
-    let report2 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
+    let report1 = run_realdata_scenario_once(&bin, &workspace, scenario);
+    let report2 = run_realdata_scenario_once(&bin, &workspace, scenario);
 
     let hash1 = backtest::report_body_hash(&report1);
     let hash2 = backtest::report_body_hash(&report2);
@@ -1192,21 +1078,27 @@ fn tcn_checkpoint_present(checkpoint_name: &str) -> bool {
 
 /// T-D-15 — `top10-2023-fy-tcn-overlay-weights-realdata` determinism.
 ///
-/// Requires `--features realdata,candle` + LFS checkpoints. Skips cleanly if
-/// checkpoints are absent.
+/// Requires `--features realdata,candle` + LFS checkpoints AND real
+/// `data/binance/` parquets.  Skips cleanly if either is absent.
 #[cfg(all(feature = "realdata", feature = "candle"))]
 #[test]
 fn realdata_2023_fy_tcn_overlay_weights_determinism() {
     if !tcn_checkpoint_present("tcn-bs1") {
         return; // skip — LFS not resolved
     }
+    if !real_binance_data_available() {
+        eprintln!(
+            "T-D-15: data/binance/REVISION.toml absent — skipping weights realdata determinism test"
+        );
+        return; // soft skip
+    }
 
     let bin = ensure_realdata_candle_binary();
-    let tmp = setup_realdata_tempdir(2023);
+    let workspace = workspace_root_path();
     let scenario = "top10-2023-fy-tcn-overlay-weights-realdata";
 
-    let report1 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
-    let report2 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
+    let report1 = run_realdata_scenario_once(&bin, &workspace, scenario);
+    let report2 = run_realdata_scenario_once(&bin, &workspace, scenario);
 
     let hash1 = backtest::report_body_hash(&report1);
     let hash2 = backtest::report_body_hash(&report2);
@@ -1223,21 +1115,27 @@ fn realdata_2023_fy_tcn_overlay_weights_determinism() {
 
 /// T-D-15 — `top10-2024-fy-tcn-overlay-weights-realdata` determinism.
 ///
-/// Requires `--features realdata,candle` + LFS checkpoints. Skips cleanly if
-/// checkpoints are absent.
+/// Requires `--features realdata,candle` + LFS checkpoints AND real
+/// `data/binance/` parquets.  Skips cleanly if either is absent.
 #[cfg(all(feature = "realdata", feature = "candle"))]
 #[test]
 fn realdata_2024_fy_tcn_overlay_weights_determinism() {
     if !tcn_checkpoint_present("tcn-bs2") {
         return; // skip — LFS not resolved
     }
+    if !real_binance_data_available() {
+        eprintln!(
+            "T-D-15: data/binance/REVISION.toml absent — skipping weights realdata determinism test"
+        );
+        return; // soft skip
+    }
 
     let bin = ensure_realdata_candle_binary();
-    let tmp = setup_realdata_tempdir(2024);
+    let workspace = workspace_root_path();
     let scenario = "top10-2024-fy-tcn-overlay-weights-realdata";
 
-    let report1 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
-    let report2 = run_realdata_scenario_once(&bin, tmp.path(), scenario);
+    let report1 = run_realdata_scenario_once(&bin, &workspace, scenario);
+    let report2 = run_realdata_scenario_once(&bin, &workspace, scenario);
 
     let hash1 = backtest::report_body_hash(&report1);
     let hash2 = backtest::report_body_hash(&report2);

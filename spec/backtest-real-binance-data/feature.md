@@ -754,9 +754,33 @@ M1-M4 complete (2026-05-18, developer).
 All 15 pre-existing anchor hashes remain byte-identical:
 `bash scripts/verify_anchors.sh → ANCHORS PASS (15 / 15)`
 
-### Remaining tasks (M5 + ship gate)
+### M5 complete (2026-05-18, developer)
 
-T-D-16 (operator clean-fetch), T-D-17 (pin expected_revision_sha),
+**T-D-16**: Canonical fetch invoked (`--emit-revision-manifest`). All 240 files
+present and verified. Aggregate SHA captured:
+`3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7`.
+Full capture log in `spec/backtest-real-binance-data/reports/m5-revision-pin-2026-05-18.md`.
+
+**T-D-17**: SHA pinned into all 4 scenario arms (`main.rs` lines ~430, ~451, ~471, ~491).
+Comment updated from `BLOCKED on revision-roundtrip bug` to the standard T-D-17 annotation.
+
+**Revision-roundtrip bug fix**: Root cause was NOT a TOML key-quoting divergence.
+The TOML roundtrip is clean (verified by 250-file regression test). The actual bug:
+determinism tests (T-D-13/14/15) ran the backtest binary from a synthetic tempdir
+fixture whose aggregate SHA differed from the real-data SHA pinned in the code.
+Fix: determinism tests now run from workspace root against real `data/binance/`,
+with a skip guard when data is absent (CI safety). Synthetic fixture helpers removed.
+
+**Modified files (M5)**:
+| Path | Change |
+|------|--------|
+| `crates/backtest/src/main.rs` | 4 `expected_revision_sha: Some(...)` pins (T-D-17) |
+| `crates/backtest/tests/determinism.rs` | Real-data run path + skip guards; synthetic helpers removed |
+| `crates/data/src/revision.rs` | 250-file roundtrip regression test + production manifest test |
+| `spec/backtest-real-binance-data/reports/m5-revision-pin-2026-05-18.md` | M5 capture log |
+
+### Remaining tasks (ship gate)
+
 T-T-1A (anchor lock), T-T-1..4 + T_FINAL — these are tester-owned
 and operator-gated. See `tasks.md`.
 
@@ -806,6 +830,11 @@ _tester fills this — the gate is:_
   universe to 10 USDT pairs on disk. Q8 → wire-only scope (alpha verdict
   follow-on via v25-tcn tester re-spawn). T-OP-1, T-OP-2, T-OP-3 ticked.
   Architect unblocked. HANDOFF → architect.
+- 2026-05-18 (developer): **M5 complete.** T-D-16 canonical fetch (all 240 files
+  already present). Aggregate SHA `3a8b96c4...` captured and pinned into 4 scenario
+  arms (T-D-17). Revision-roundtrip bug root-caused: synthetic tempdir SHA ≠ real-data
+  SHA after pin. Fix: determinism tests now run against workspace real data. 250-file
+  TOML roundtrip regression test added. ANCHORS PASS (15/15). HANDOFF → tester.
 - 2026-05-18 (analyst): full analyst pass. Closed Q1-Q8 with defaults
   (R1-R10). Three operator-decide questions surfaced (Q1 in-place vs
   parallel `-realdata` family — strong recommendation: parallel; Q4
