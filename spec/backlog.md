@@ -4,6 +4,29 @@ status: living
 owner: orchestrator
 updated: 2026-05-18
 ---
+<!-- updated 2026-05-18 (analyst, backtest-real-binance-data) — analyst
+     pass landed for the just-promoted `backtest-real-binance-data`
+     feature (Active row above). Brief at
+     `spec/backtest-real-binance-data/feature.md` carries R1-R10
+     closing Q1-Q8 with strong analyst defaults; tasks skeleton at
+     `spec/backtest-real-binance-data/tasks.md` is M0-M-FINAL with
+     per-task `T-D-N` decomposition deferred to architect (T-AR-2).
+     Recommended direction: ADD a parallel `-realdata` scenario
+     family rather than replacing synthetic in-place (preserves the
+     15 existing anchors as a CI-on-empty-disk floor; new scenarios
+     anchor under version `v2.6.0-realdata`). Determinism contract
+     pinned via a new `data/binance/REVISION.toml` per-file-SHA
+     manifest (R7); data gaps > 0.5% hard-fail (R3); universe pinned
+     to the 10 USDT pairs currently on disk (R4); scope wire-only —
+     alpha verdict (Sharpe table vs v1 baseline) deferred to a
+     follow-on v25-tcn-overlay tester re-spawn (R8). Three operator-
+     decide Qs (Q1 in-place-vs-parallel, Q4 universe-snapshot, Q8
+     wire-only-vs-combined-alpha) surfaced — analyst-recommended
+     defaults documented for all three. Trace row
+     `REQ-BACKTEST-REALDATA-001` opened in proposed state. Non-
+     regression contract: 15 anchors stay byte-identical, 4 new
+     `-realdata` anchors lock at M-FINAL → 19 total at ship.
+     HANDOFF → operator-decide (3 Qs) → architect. -->
 <!-- updated 2026-05-18 (orchestrator, m3-finish-pass) — TCN M3 shipped
      T-D-11/T-D-12: two LFS checkpoints, two `-weights` scenarios, two
      new anchors under version `v2.5.0-tcn-weights`, 15/15 verify_anchors.
@@ -142,17 +165,28 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 - **Real-Binance-data backtest path (`backtest-real-binance-data`).** _draft —
-  promoted from Queue 2026-05-18 after M3 approval_. Wire the backtest
-  harness in [`crates/backtest/src/main.rs`](../crates/backtest/src/main.rs)
-  to read real Binance hourly parquet from `data/binance/` instead of the
-  current `ChaCha20Rng` synthetic GBM. Unblocks the M3 alpha gap
-  surfaced by [`v25-tcn-overlay`](v25-tcn-overlay/feature.md) and is a
-  prerequisite for the [v2.6 bake-off](v26-forecast-bakeoff/feature.md) —
-  three forecast families cannot be compared on synthetic GBM. Open
-  design questions (analyst-owned): replace synthetic in-place vs. add a
-  new `-realdata` scenario family; how to re-anchor existing TCN-weights
-  runs; how to handle missing data / time alignment. **HANDOFF →
-  analyst (next).**
+  promoted from Queue 2026-05-18 after M3 approval; analyst pass landed
+  same day_. Brief at
+  [`backtest-real-binance-data/feature.md`](backtest-real-binance-data/feature.md)
+  carries R1-R10 closing Q1-Q8 with strong analyst defaults; tasks
+  skeleton at
+  [`backtest-real-binance-data/tasks.md`](backtest-real-binance-data/tasks.md)
+  is M0 → M-FINAL with `T-D-N` decomposition deferred to architect
+  (T-AR-2). **Three operator-decide questions surfaced** before architect
+  can spawn: Q1 (parallel `-realdata` scenario family vs. in-place
+  replacement — analyst default: parallel; in-place would re-anchor 6
+  v1/v2.5 anchors), Q4 (universe snapshot strategy — analyst default:
+  pin to the 10 USDT pairs currently on disk), Q8 (wire-only scope vs.
+  combined alpha-verdict ship — analyst default: wire-only, deferring
+  Sharpe table to a v25-tcn-overlay tester re-spawn). Architect-lockable
+  defaults (no operator input needed): R2 anchor-version `v2.6.0-realdata`,
+  R3 0.5%-missing-bars hard-fail, R5 full-year × 10-symbol bar counts
+  (87 600 / 87 840), R6 1h direct read (no aggregation), R7
+  `data/binance/REVISION.toml` SHA pinning. Non-regression contract:
+  **15 existing anchors stay byte-identical, 4 new `-realdata` anchors
+  lock at M-FINAL → 19 total at ship**. Trace row
+  `REQ-BACKTEST-REALDATA-001` opened in proposed state. **HANDOFF →
+  operator-decide (3 Qs) → architect.**
 
 - **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress (CI-baseline
   + M3 real-weights gates approved 2026-05-18; awaiting
@@ -1165,6 +1199,42 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Changelog
 
+- 2026-05-18 (analyst, backtest-real-binance-data): full analyst pass
+  on the just-promoted feature.
+  [`feature.md`](backtest-real-binance-data/feature.md) ships R1-R10
+  closing Q1-Q8;
+  [`tasks.md`](backtest-real-binance-data/tasks.md) ships the M0 →
+  M-FINAL skeleton with `T-D-N` decomposition deferred to architect
+  (T-AR-2). Recommended direction across the eight design questions:
+  ADD a parallel `-realdata` scenario family (Q1, **operator-decide**
+  — strong analyst default; in-place would re-anchor 6 v1/v2.5
+  anchors); lock the new anchors under version `v2.6.0-realdata` (Q2,
+  architect-locks); hard-fail on > 0.5% missing bars across the
+  scenario span (Q3, architect-locks); pin the universe to the 10
+  USDT pairs currently on disk (Q4, **operator-decide** — soft
+  default; matches v1 hard-coded universe by happy coincidence); use
+  the full year × 10-symbol bar counts (87 600 / 87 840) for the new
+  scenarios while the 4 existing TCN synthetic anchors keep their
+  2 208 / 6 600 counts (Q5, architect-locks); read 1h parquet bars
+  directly with no aggregation (Q6, architect-locks); pin the data
+  revision SHA via a new `data/binance/REVISION.toml` manifest with
+  per-file SHAs, recorded once at fetch and verified on every read
+  (Q7, architect-locks); scope wire-only — defer the Sharpe-table
+  alpha verdict to a follow-on v25-tcn-overlay tester re-spawn (Q8,
+  **operator-decide** — strong analyst default; splits plumbing-
+  correctness review from signal-quality review). Non-regression
+  contract: the 15 existing anchors stay byte-identical (9 strategy
+  synthetic + 2 v2.5 passthrough TCN + 2 v2.5 real-weights TCN + 2
+  operator-success); 4 new `-realdata` anchors lock at M-FINAL; ship
+  count 19. Risk register K1-K10 surfaced (parquet schema drift, data
+  gaps, time-alignment ambiguity, REVISION-manifest drift, anchor
+  blast-radius on the synthetic paths, etc.) — each carries a named
+  mitigation. Trace row `REQ-BACKTEST-REALDATA-001` opened in
+  proposed state; `crates` / `tests` / `anchors` fields stubbed for
+  the appropriate later owners. Stub entry under
+  ## Queue ## Strategy and the placeholder Active row both updated
+  to reflect the locked recommendations. HANDOFF → operator-decide
+  (Q1 + Q4 + Q8) → architect.
 - 2026-05-16 (analyst, Wave 2a spec-hygiene — bookkeeping flips
   per [`spec/dev-notes/feature-triage-2026-05-16.md`](dev-notes/feature-triage-2026-05-16.md)):
   five frontmatter / supersession updates landed, zero code touched,

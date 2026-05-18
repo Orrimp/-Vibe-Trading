@@ -134,6 +134,21 @@ anchors     = [
 state       = "in-progress"
 
 [[req]]
+id          = "REQ-BACKTEST-REALDATA-001"
+title       = "Real-Binance-data backtest path (replace synthetic GBM with parquet read from data/binance/)"
+feature     = "backtest-real-binance-data"
+product     = "spec/product.md"
+arch        = []   # TODO architect (T-AR-1): list section / ADR refs once Design lands
+crates      = []   # TODO developer
+tests       = []   # TODO developer
+anchors     = []   # TODO tester at M5; expected names:
+                   #   top10-2023-fy-tcn-overlay-realdata
+                   #   top10-2024-fy-tcn-overlay-realdata
+                   #   top10-2023-fy-tcn-overlay-weights-realdata
+                   #   top10-2024-fy-tcn-overlay-weights-realdata
+state       = "proposed"
+
+[[req]]
 id          = "REQ-V25A-PATCHTST-001"
 title       = "v2.5a PatchTST / iTransformer forecast overlay — phase 2 of 4"
 feature     = "v25a-patchtst-overlay"
