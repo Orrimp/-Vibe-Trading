@@ -133,6 +133,48 @@ because run-varying values leaked into the body. Don't be HF-3.
   if you touched any scenario-affecting crate.
 - `scripts/precheck.sh <slug>` — surface unticked rows for the slug.
 
+## Long-running work: surface a `watch` recipe
+
+Whenever you kick off a long-running process the operator might want to
+track from their own terminal — model training (`cargo run -p forecast
+--bin train_tcn …`), full-year backtests (`cargo run -p backtest
+--release …`), criterion benches, anything plausibly >2 minutes — emit
+a copy-pasteable `watch` block in the SAME message that launches it.
+
+The block must:
+
+1. Pick the PID via `pgrep -f <binary-name> | head -1` (NOT a hardcoded
+   PID — the operator runs it in a separate shell, possibly minutes
+   later).
+2. Show forward progress in a single line: completed-units / total-units,
+   percentage, elapsed wallclock, estimated remaining.
+3. Read from a log file the launching command actually writes to. If the
+   process doesn't write a structured log, redirect its stderr to one
+   (`2>/tmp/<slug>-<phase>.log`) and reference that path in the watch
+   block.
+4. Be defensive: handle "process not running yet" and "zero progress
+   lines yet" without crashing the watch loop.
+
+Reference shape (the operator's canonical style — keep close to this):
+
+```
+watch -n 10 '
+PID=$(pgrep -f train_tcn | head -1)
+[ -z "$PID" ] && echo "train_tcn not running" && exit
+N=$(grep -c "epoch complete" /tmp/bs2-training.log)
+LAST=$(grep "epoch complete" /tmp/bs2-training.log | tail -1 | grep -oE "epoch=[0-9]+" | cut -d= -f2)
+ELAPSED=$(ps -o etime= -p $PID | awk "{gsub(/^ +/,\"\"); n=split(\$0,a,/[-:]/); if(n==2)print a[1]*60+a[2]; else if(n==3)print a[1]*3600+a[2]*60+a[3]; else if(n==4)print a[1]*86400+a[2]*3600+a[3]*60+a[4]}")
+[ "$N" -gt 0 ] && echo "epoch $LAST/30 ($((N*100/30))%), elapsed ${ELAPSED}s, remaining ~$(((30-N)*ELAPSED/N/60)) min" || echo "warmup: 0 epochs (elapsed=${ELAPSED}s)"
+'
+```
+
+Adapt: total-units (`30` here), the grep key (`"epoch complete"`), the
+extraction regex, and the log path. Everything else stays.
+
+You do not run `watch` yourself — that's an operator-side terminal tool.
+You only provide the recipe, in a fenced bash block, immediately after
+the message that starts the long-running task.
+
 ## Handoff to Tester
 
 Emit the prose handoff line:
