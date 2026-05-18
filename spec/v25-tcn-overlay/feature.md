@@ -754,6 +754,15 @@ Tester contract (per AGENT.md):
 
 ## Changelog
 
+- 2026-05-18 (operator): **M3 milestone gate APPROVED.** Approved via presenter deck
+  `presentations/v25-tcn-overlay-m3-2026-05-18.md` (commit `ef19869`). T-D-11 + T-D-12 stay
+  ticked; two `v2.5.0-tcn-weights` anchors stay locked. Synthetic-data `dampened=0` finding
+  acknowledged as a known limitation, not a regression. Feature status remains `in-progress`
+  (phase 1 of 4 in the DL roadmap). Next prerequisite: `backtest-real-binance-data` (now
+  queued in `spec/backlog.md ## Queue / Strategy`), then phase 2 `v25a-patchtst-overlay`.
+- 2026-05-18 (tester): M3 VERDICT → PASS (commit `e85b25d`). 22/22 candle determinism,
+  20/20 default determinism, 3/3 anchor smoke tests, 15/15 verify_anchors, fmt + clippy
+  clean, spec-lint 733/2 baseline. HANDOFF → presenter.
 - 2026-05-18 (developer): **M3 complete — real-weights anchor gate.** T-D-11 + T-D-12 ticked.
   Two new backtest scenarios (`top10-2023-fy-tcn-overlay-weights`, `top10-2024-fy-tcn-overlay-weights`)
   wired to BS-1 / BS-2 LFS checkpoints under `--features candle`. Anchor smoke tests in

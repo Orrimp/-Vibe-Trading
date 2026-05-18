@@ -354,7 +354,7 @@ Three concrete next-up items, in priority order:
 
 ## Approval
 
-- [ ] Approved — close M3 milestone gate
+- [x] Approved — close M3 milestone gate  _(operator, 2026-05-18)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — <add reason below>
 

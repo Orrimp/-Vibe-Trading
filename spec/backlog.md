@@ -142,7 +142,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 - **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress (CI-baseline
-  gate approved 2026-05-18; M3 next)_ — phase 1 of the
+  + M3 real-weights gates approved 2026-05-18; awaiting
+  `backtest-real-binance-data` before alpha eval)_ — phase 1 of the
   [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
   (operator-locked 2026-05-17 after reading the
   [v25-dl-reading-list](dev-notes/v25-dl-reading-list-2026-05-16.md)
