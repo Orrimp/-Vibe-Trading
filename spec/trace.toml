@@ -535,7 +535,7 @@ arch        = [
 ]
 crates      = []   # TODO developer
 tests       = []   # TODO developer
-anchors     = []   # TODO tester (expected empty — Phase A touches no strategy/audit/exec code; backtest engine refactor preserves 11 anchors per T-D-13)
+anchors     = []   # TESTER-VERIFIED 2026-05-18: Phase A touches no strategy/audit/exec code; all 11 body-SHA-256 anchors byte-identical (18/18 determinism tests PASS; git diff confirms success-report front-matter-only changes)
 state       = "in-progress"
 
 #
