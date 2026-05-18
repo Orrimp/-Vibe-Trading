@@ -4,6 +4,14 @@ status: living
 owner: orchestrator
 updated: 2026-05-18
 ---
+<!-- updated 2026-05-18 (orchestrator, m3-finish-pass) — TCN M3 shipped
+     T-D-11/T-D-12: two LFS checkpoints, two `-weights` scenarios, two
+     new anchors under version `v2.5.0-tcn-weights`, 15/15 verify_anchors.
+     M3 also surfaced a previously-hidden gap: the backtest harness uses
+     synthetic ChaCha20Rng GBM bars, so real-weights output == passthrough
+     on synthetic data (dampened=0). New `backtest-real-binance-data`
+     proposal queued under Strategy as the next prerequisite for v2.6
+     forecast bake-off. Tester gate next, then presenter. -->
 <!-- updated 2026-05-18 (orchestrator, operator-approval-pass) — operator
      approved both presenter decks at commit `ef8fb3c`.
      `ui-rethink-phase-a-lab v0.2.0` → SHIPPED (Active → Recent).
@@ -160,6 +168,27 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Queue
 
 ### Strategy
+
+- **Real-Binance-data backtest path (`backtest-real-binance-data`).**
+  _proposed_ — surfaced 2026-05-18 by `v25-tcn-overlay` M3 finish
+  (commit pending). The backtest harness in `crates/backtest/src/main.rs`
+  has always used `ChaCha20Rng` synthetic GBM bar generation; we did
+  not notice with passthrough scenarios (no model to evaluate) but
+  M3's real-weights `top10-{2023,2024}-fy-tcn-overlay-weights`
+  scenarios surfaced it — the trained TCN's `r_hat` falls within the
+  ε=0.0005 deadband on synthetic data, producing identical results
+  to passthrough (`dampened=0`). The forecast trains on real Binance
+  hourly parquet under `data/binance/` (per T-D-2 `windows_for_symbol()`),
+  but the backtest never replays that data. Scope when promoted:
+  wire `data/binance/` parquet → `BarStream` so the existing
+  `ScenarioStrategy` dispatch can run on real OHLCV; produce a new
+  family of `-realdata` scenarios (or replace synthetic in-place
+  depending on architect call); re-lock TCN-weights anchors against
+  the real-data behaviour. This is also a v2.6 bake-off prerequisite
+  — three forecast families can't be compared on synthetic GBM data.
+  Predecessor: `v25-tcn-overlay` M3 (2026-05-18). See M3 training
+  reports under `spec/v25-tcn-overlay/reports/m3-bs{1,2}-training-2026-05-18.md`
+  for the synthetic-vs-real distributional reasoning.
 
 - **v2.5a — PatchTST / iTransformer forecast overlay
   (`v25a-patchtst-overlay`).** _roadmap_ — phase 2 of the

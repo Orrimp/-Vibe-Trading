@@ -335,6 +335,36 @@ impl TcnOverlayMomentumStrategy {
     pub fn with_passthrough(base: MomentumStrategy) -> Self {
         Self::new(base, Box::new(PassthroughForecaster), dec!(0.6))
     }
+
+    /// Construct with the real BS-1 TCN anchor checkpoint.
+    ///
+    /// Loads `tcn-bs1-d1c3696d…` from `crates/forecast/checkpoints/anchors/`.
+    /// Requires the `forecast` feature (candle backend).
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the checkpoint is absent
+    /// or fails to decode.
+    #[cfg(feature = "forecast")]
+    pub fn with_tcn_bs1(base: MomentumStrategy) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs1()?;
+        Ok(Self::new(base, Box::new(forecaster), dec!(0.6)))
+    }
+
+    /// Construct with the real BS-2 TCN anchor checkpoint.
+    ///
+    /// Loads `tcn-bs2-3fabcabe…` from `crates/forecast/checkpoints/anchors/`.
+    /// Requires the `forecast` feature (candle backend).
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the checkpoint is absent
+    /// or fails to decode.
+    #[cfg(feature = "forecast")]
+    pub fn with_tcn_bs2(base: MomentumStrategy) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs2()?;
+        Ok(Self::new(base, Box::new(forecaster), dec!(0.6)))
+    }
 }
 
 // ── Strategy impl ─────────────────────────────────────────────────────────────

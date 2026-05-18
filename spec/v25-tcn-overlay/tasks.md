@@ -192,7 +192,7 @@ tag; dependencies via `blocks` / `depends on`.
 
 ### M3 — Full training run + anchor checkpoints
 
-- [ ] **T-D-11 (M3)** — Full BS-1 training run: train Jan-Sep 2023 /
+- [x] **T-D-11 (M3)** — Full BS-1 training run: train Jan-Sep 2023 /
   val Oct-Dec 2023, all 10 top-USDT symbols, 30 epochs with
   early-stop patience 5. Architect-led tune-up if val Huber plateaus
   at H=96 → bump to H=128 per R2. Output: `tcn-bs1-<sha>.safetensors`
@@ -207,13 +207,33 @@ tag; dependencies via `blocks` / `depends on`.
     `crates/forecast/checkpoints/anchors/`; `.gitattributes` updated
     with `crates/forecast/checkpoints/anchors/*.safetensors filter=lfs
     diff=lfs merge=lfs -text` rule.
+  - DONE 2026-05-18 (developer). Checkpoint: `crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d79933c8d97695e5fff671f645f810e7961becb2333475fb9cc44fcd2.safetensors`.
+    Smoke test: `crates/forecast/tests/anchors_load.rs:td11_bs1_anchor_loads_and_forward_ok`.
+    cmd: `cargo test -p forecast --features candle --test anchors_load -- td11_bs1`.
+    output: `test td11_bs1_anchor_loads_and_forward_ok ... ok`; `test td11_bs1_forward_deterministic ... ok`.
+    Training report: `spec/v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md`.
+    Backtest anchor locked in `spec/anchors.toml` at `7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4` (scenario `top10-2023-fy-tcn-overlay-weights`).
+    Determinism test: `m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged` in `crates/backtest/tests/determinism.rs:808`.
+    cmd: `cargo test -p backtest --test determinism --features candle -- m3_`.
+    output: `test m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged ... ok`.
+    verify_anchors.sh: 15/15 PASS.
 
-- [ ] **T-D-12 (M3)** — Same as T-D-11 but for BS-2: train 2023 full
+- [x] **T-D-12 (M3)** — Same as T-D-11 but for BS-2: train 2023 full
   year / val Q1 2024. Output: `tcn-bs2-<sha>.safetensors` +
   `.metadata.json` under the same anchors dir.
   - Owner: D. Depends on: T-D-11. Blocks: T-D-13.
   - Acceptance: as T-D-11, second checkpoint pair lands; M3 report
     extended with BS-2 curves.
+  - DONE 2026-05-18 (developer). Checkpoint: `crates/forecast/checkpoints/anchors/tcn-bs2-3fabcabecbee94d6acfbd6e8315627d43479359ce4d47287fb04b5dc42e5c21d.safetensors`.
+    Smoke test: `crates/forecast/tests/anchors_load.rs:td12_bs2_anchor_loads_and_forward_ok`.
+    cmd: `cargo test -p forecast --features candle --test anchors_load -- td12_bs2`.
+    output: `test td12_bs2_anchor_loads_and_forward_ok ... ok`.
+    Training report: `spec/v25-tcn-overlay/reports/m3-bs2-training-2026-05-18.md`.
+    Backtest anchor locked in `spec/anchors.toml` at `23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b` (scenario `top10-2024-fy-tcn-overlay-weights`).
+    Determinism test: `m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged` in `crates/backtest/tests/determinism.rs:826`.
+    cmd: `cargo test -p backtest --test determinism --features candle -- m3_`.
+    output: `test m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged ... ok`.
+    verify_anchors.sh: 15/15 PASS.
 
 ### M4 — Inference path + replay-cache + audit
 

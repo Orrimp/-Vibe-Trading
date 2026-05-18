@@ -120,10 +120,18 @@ arch        = [
   "spec/architecture/adr/0003-decimal-money-math.md",
   "spec/architecture/adr/0004-fractional-second-timestamps.md",
 ]
-crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
-tests       = []   # TODO developer: link at training-loop completion
-anchors     = ["top10-2023-fy-tcn-overlay", "top10-2024-fy-tcn-overlay"]
-state       = "draft"
+crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost", "crates/backtest"]
+tests       = [
+  "crates/forecast/tests/anchors_load.rs",
+  "crates/backtest/tests/determinism.rs",
+]
+anchors     = [
+  "top10-2023-fy-tcn-overlay",
+  "top10-2024-fy-tcn-overlay",
+  "top10-2023-fy-tcn-overlay-weights",
+  "top10-2024-fy-tcn-overlay-weights",
+]
+state       = "in-progress"
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"

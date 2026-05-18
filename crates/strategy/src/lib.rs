@@ -24,6 +24,8 @@ pub use registry::{
     flush_pending_to_ledger,
 };
 pub use sma_crossover::SmaCrossover;
+#[cfg(feature = "forecast")]
+pub use tcn_overlay_momentum::TcnSyncForecaster;
 pub use tcn_overlay_momentum::{
     ForecastDirection, ModulationStats, PassthroughForecaster, SyncForecaster,
     TcnOverlayMomentumConfig, TcnOverlayMomentumStrategy,

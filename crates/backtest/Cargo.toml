@@ -8,6 +8,12 @@ license.workspace = true
 name = "backtest"
 path = "src/main.rs"
 
+[features]
+# Enable real TCN-weights backtest scenarios (top10-*-tcn-overlay-weights).
+# Requires `--features candle` at build time; without it those scenarios emit
+# a clear compile-time-gated error rather than silently falling back.
+candle = ["strategy/forecast"]
+
 [dependencies]
 trading_core = { path = "../core" }
 data = { path = "../data" }

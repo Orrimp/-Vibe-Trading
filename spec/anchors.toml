@@ -101,3 +101,21 @@ sha256   = "01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5"
 scenario = "top10-2024-fy-tcn-overlay"
 version  = "v2.5.0"
 sha256   = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163"
+
+# v2.5 TCN overlay with REAL WEIGHTS scenarios (M3 / T-D-11 / T-D-12).
+# Locked by developer on 2026-05-18 after determinism verification.
+# Produced by `cargo run -p backtest --release --features candle -- --scenario <s> --seed 0xC0FFEE`.
+# These anchors capture the TcnSyncForecaster (real tcn-bs1/bs2 checkpoints) path.
+# NOTE: dampened=0 on both scenarios — the TCN model outputs Flat for all signals
+# on synthetic data (OHLCV distribution diverges from training data).  This is
+# honest reporting per the operator-locked M3 design goal.
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-weights"
+version  = "v2.5.0-tcn-weights"
+sha256   = "7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-weights"
+version  = "v2.5.0-tcn-weights"
+sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"

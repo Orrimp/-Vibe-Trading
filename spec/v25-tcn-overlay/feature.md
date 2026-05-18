@@ -679,6 +679,42 @@ Stale `bs1-tcn-overlay` / `bs2-tcn-overlay` report files deleted.
 
 `cargo check -p backtest` PASS. Determinism tests (`cargo test -p backtest --test determinism`) 20/20 PASS.
 
+#### M3 — Real-weights backtest scenarios (2026-05-18)
+
+Two new scenarios added using the LFS-tracked BS-1 and BS-2 anchor checkpoints (30-epoch training
+on real Binance hourly OHLCV, 10 top-USDT symbols):
+
+| Scenario | Forecaster | Checkpoint revision | Backtest anchor SHA |
+|----------|------------|---------------------|---------------------|
+| `top10-2023-fy-tcn-overlay-weights` | BS-1 (`tcn-bs1`) | `d1c3696d…` | `7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4` |
+| `top10-2024-fy-tcn-overlay-weights` | BS-2 (`tcn-bs2`) | `3fabcabe…` | `23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b` |
+
+Changes shipped:
+
+- `crates/forecast/tests/anchors_load.rs` — smoke test loading both anchor checkpoints under `--features candle`.
+  3 tests pass: `td11_bs1_anchor_loads_and_forward_ok`, `td12_bs2_anchor_loads_and_forward_ok`, `td11_bs1_forward_deterministic`.
+- `crates/strategy/src/tcn_overlay_momentum.rs` — added `with_tcn_bs1()` and `with_tcn_bs2()` constructors
+  (`#[cfg(feature = "forecast")]`), loading the LFS checkpoints and wiring them into `TcnOverlayMomentumStrategy`.
+- `crates/strategy/src/lib.rs` — re-exported `TcnSyncForecaster` under `#[cfg(feature = "forecast")]`.
+- `crates/backtest/Cargo.toml` — added `[features] candle = ["strategy/forecast"]`.
+- `crates/backtest/src/main.rs` — added `ScenarioStrategy::TcnOverlayMomentumWeights` variant,
+  `run_tcn_overlay_weights_backtest()` (errors explicitly when `candle` feature absent),
+  `TcnOverlayRunResult.forecaster_label`, and both `-weights` scenario names in `from_name()`.
+- `crates/backtest/tests/determinism.rs` — added `run_scenario_once_candle()` + two
+  `#[cfg(feature = "candle")] #[test]` anchor-regression tests (both pass in 690s).
+- `spec/anchors.toml` — 2 new `[[anchors]]` rows under version `v2.5.0-tcn-weights`.
+- Training reports: `spec/v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md` and
+  `spec/v25-tcn-overlay/reports/m3-bs2-training-2026-05-18.md`.
+
+**Honest comparison (passthrough vs real-weights on synthetic data):**
+Results are identical on the synthetic GBM backtest data. This is expected and correct:
+the TCN model is trained on real Binance OHLCV distribution; synthetic GBM bars fall
+entirely within the ε=0.0005 deadband → `dampened=0`, effectively identical to passthrough.
+Documented with explanation in both training reports.
+
+Gate results: `cargo test -p backtest --test determinism --features candle -- m3_` → 2/2 PASS.
+`bash scripts/verify_anchors.sh` → 15/15 PASS.
+
 Suggested milestone order (architect to lock in T-AR-2):
 
 - **M0** — Feature pipeline (parquet → 5-feature 256-bar window) +
@@ -718,6 +754,14 @@ Tester contract (per AGENT.md):
 
 ## Changelog
 
+- 2026-05-18 (developer): **M3 complete — real-weights anchor gate.** T-D-11 + T-D-12 ticked.
+  Two new backtest scenarios (`top10-2023-fy-tcn-overlay-weights`, `top10-2024-fy-tcn-overlay-weights`)
+  wired to BS-1 / BS-2 LFS checkpoints under `--features candle`. Anchor smoke tests in
+  `crates/forecast/tests/anchors_load.rs` (3/3 pass). Two `#[cfg(feature = "candle")]` determinism
+  tests added to `crates/backtest/tests/determinism.rs` (2/2 pass, 690s). Two new `[[anchors]]`
+  rows locked in `spec/anchors.toml` (version `v2.5.0-tcn-weights`). `bash scripts/verify_anchors.sh`:
+  15/15 PASS. Training reports with honest comparison table authored for BS-1 and BS-2.
+  HANDOFF → tester for T_FINAL verification.
 - 2026-05-18 (operator): **CI-baseline gate APPROVED.** Approved via presenter deck
   `presentations/v25-tcn-overlay-2026-05-18.md` (commit `ef8fb3c`). T-D-15, T-D-16,
   T-T-1 stay ticked; the two passthrough-path anchors stay locked. Status stays

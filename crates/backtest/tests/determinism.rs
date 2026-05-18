@@ -721,3 +721,116 @@ fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
          Expected: {ANCHOR}\nGot:      {hex}"
     );
 }
+
+// ── M3 real-weights anchor hash tests (candle feature required) ───────────────
+//
+// These tests require `--features candle` because the -weights scenarios call
+// `TcnSyncForecaster::load_bs1()` / `load_bs2()` at runtime.  They also
+// require the LFS checkpoints to be present on disk.
+//
+// The anchor hashes were locked by developer on 2026-05-18 after two
+// deterministic runs:
+//   top10-2023-fy-tcn-overlay-weights  7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4
+//   top10-2024-fy-tcn-overlay-weights  23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b
+//
+// NOTE: The existing 20 anchor tests (above) must remain --features candle
+// independent — this `#[cfg(feature = "candle")]` block is additive only.
+
+/// Build the backtest binary with --features candle and run `scenario` once.
+///
+/// Runs from the workspace root so that relative paths
+/// (`crates/forecast/checkpoints/anchors/`, `config/strategies/`) resolve
+/// correctly.  The report is written to `spec/<feature>/reports/` under the
+/// workspace root (the same path the production binary uses).
+///
+/// Returns the full report text so the caller can body-hash it.
+#[cfg(feature = "candle")]
+fn run_scenario_once_candle(scenario: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let workspace_root = std::path::Path::new(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("could not locate workspace root");
+
+    // Always rebuild with candle feature so the binary has real-weights support.
+    let status = std::process::Command::new("cargo")
+        .args(["build", "--bin", "backtest", "--features", "candle"])
+        .current_dir(workspace_root)
+        .status()
+        .expect("cargo build failed");
+    assert!(
+        status.success(),
+        "cargo build --bin backtest --features candle failed"
+    );
+
+    let bin_path = workspace_root.join("target/debug/backtest");
+
+    // Run from workspace root so checkpoint + config paths resolve correctly.
+    // The report is written to spec/<feature>/reports/ under the workspace root.
+    let output = std::process::Command::new(&bin_path)
+        .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
+        .current_dir(workspace_root)
+        .output()
+        .expect("spawn backtest binary");
+
+    assert!(
+        output.status.success(),
+        "backtest binary exited non-zero for scenario {scenario}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report_rel = stdout
+        .lines()
+        .find(|l| l.starts_with("Report written: "))
+        .map(|l| l.trim_start_matches("Report written: ").trim())
+        .expect("could not find 'Report written:' line");
+
+    // Report path is relative to workspace root.
+    let report_path = workspace_root.join(report_rel);
+    std::fs::read_to_string(&report_path)
+        .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
+}
+
+#[cfg(feature = "candle")]
+fn scenario_body_hex_candle(scenario: &str) -> String {
+    let report = run_scenario_once_candle(scenario);
+    let hash = backtest::report_body_hash(&report);
+    hash.iter().map(|b| format!("{b:02x}")).collect::<String>()
+}
+
+/// M3 — top10-2023-fy-tcn-overlay-weights real-weights anchor hash.
+///
+/// Requires `--features candle` + LFS checkpoints present on disk.
+/// Locked anchor: `7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4`
+#[cfg(feature = "candle")]
+#[test]
+fn m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged() {
+    const ANCHOR: &str = "7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4";
+    let hex = scenario_body_hex_candle("top10-2023-fy-tcn-overlay-weights");
+    assert_eq!(
+        hex, ANCHOR,
+        "M3 REGRESSION: top10-2023-fy-tcn-overlay-weights body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}\n\
+         This means the real-weights backtest output changed. Investigate \
+         TcnSyncForecaster, TcnOverlayMomentumStrategy, or the report writer."
+    );
+}
+
+/// M3 — top10-2024-fy-tcn-overlay-weights real-weights anchor hash.
+///
+/// Requires `--features candle` + LFS checkpoints present on disk.
+/// Locked anchor: `23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b`
+#[cfg(feature = "candle")]
+#[test]
+fn m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged() {
+    const ANCHOR: &str = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b";
+    let hex = scenario_body_hex_candle("top10-2024-fy-tcn-overlay-weights");
+    assert_eq!(
+        hex, ANCHOR,
+        "M3 REGRESSION: top10-2024-fy-tcn-overlay-weights body-SHA256 changed.\n\
+         Expected: {ANCHOR}\nGot:      {hex}\n\
+         This means the real-weights backtest output changed. Investigate \
+         TcnSyncForecaster, TcnOverlayMomentumStrategy, or the report writer."
+    );
+}
