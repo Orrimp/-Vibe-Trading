@@ -427,7 +427,7 @@ impl Scenario {
                 baseline_report: None,
                 data_root,
                 data_source: ScenarioDataSource::RealData,
-                expected_revision_sha: None, // tester fills at T-D-17
+                expected_revision_sha: None, // BLOCKED on revision-roundtrip bug; see /tmp/REVISION-2026-05-18-bug-evidence.toml
             }),
             #[cfg(feature = "realdata")]
             "top10-2024-fy-tcn-overlay-realdata" => Ok(Self {
@@ -448,7 +448,7 @@ impl Scenario {
                 baseline_report: None,
                 data_root,
                 data_source: ScenarioDataSource::RealData,
-                expected_revision_sha: None, // tester fills at T-D-17
+                expected_revision_sha: None, // BLOCKED on revision-roundtrip bug; see /tmp/REVISION-2026-05-18-bug-evidence.toml
             }),
             #[cfg(feature = "realdata")]
             "top10-2023-fy-tcn-overlay-weights-realdata" => Ok(Self {
@@ -468,7 +468,7 @@ impl Scenario {
                 baseline_report: None,
                 data_root,
                 data_source: ScenarioDataSource::RealData,
-                expected_revision_sha: None, // tester fills at T-D-17
+                expected_revision_sha: None, // BLOCKED on revision-roundtrip bug; see /tmp/REVISION-2026-05-18-bug-evidence.toml
             }),
             #[cfg(feature = "realdata")]
             "top10-2024-fy-tcn-overlay-weights-realdata" => Ok(Self {
@@ -488,7 +488,7 @@ impl Scenario {
                 baseline_report: None,
                 data_root,
                 data_source: ScenarioDataSource::RealData,
-                expected_revision_sha: None, // tester fills at T-D-17
+                expected_revision_sha: None, // BLOCKED on revision-roundtrip bug; see /tmp/REVISION-2026-05-18-bug-evidence.toml
             }),
             other => anyhow::bail!("unknown scenario: {other}"),
         }
