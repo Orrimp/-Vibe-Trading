@@ -13,6 +13,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+#[cfg(feature = "realdata")]
+use backtest::realdata::{RealDataBarSource, TimeSpan as RealDataTimeSpan};
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use rust_decimal::Decimal;
@@ -61,6 +64,22 @@ fn parse_seed(s: &str) -> Result<u64> {
 }
 
 // ── Scenario catalogue ────────────────────────────────────────────────────────
+
+/// Data source axis — orthogonal to `ScenarioStrategy` (ADR-0032 § 3).
+///
+/// All existing v0/v0.5/v1/v1.5a/v2.5 scenarios use `Synthetic`.
+/// The four new `-realdata` scenarios use `RealData` (feature-gated).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(feature = "realdata"), allow(dead_code))]
+enum ScenarioDataSource {
+    /// Seeded `ChaCha20Rng` GBM. Default for all existing scenarios.
+    /// No data-on-disk requirement.
+    Synthetic,
+    /// `data/binance/<SYM>/<YEAR>/<MM>.parquet` via `RealDataBarSource`.
+    /// Requires `--features realdata`; refuses to run without
+    /// `data/binance/REVISION.toml`.
+    RealData,
+}
 
 /// Whether the scenario uses the compiled-in SMA or a composed TOML strategy.
 #[derive(Debug, Clone)]
@@ -111,6 +130,15 @@ struct Scenario {
     baseline_report: Option<String>,
     #[allow(dead_code)]
     data_root: PathBuf,
+    /// Orthogonal data-source axis (ADR-0032 § 3). Default: `Synthetic`.
+    #[cfg_attr(not(feature = "realdata"), allow(dead_code))]
+    data_source: ScenarioDataSource,
+    /// Pinned aggregate SHA from `data/binance/REVISION.toml` at lock time.
+    /// `None` for `Synthetic` scenarios and for `RealData` scenarios before
+    /// the tester runs the M5 lock. When `Some`, every run asserts the
+    /// on-disk aggregate SHA matches. (Tester fills at T-D-17.)
+    #[cfg_attr(not(feature = "realdata"), allow(dead_code))]
+    expected_revision_sha: Option<String>,
 }
 
 impl Scenario {
@@ -138,6 +166,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "btc-2024-h1-sma-cross" => Ok(Self {
                 name: name.to_string(),
@@ -155,6 +185,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "btc-2023-1m-macd-trend" => Ok(Self {
                 name: name.to_string(),
@@ -171,6 +203,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "btc-2023-1m-rsi-reversion" => Ok(Self {
                 name: name.to_string(),
@@ -187,6 +221,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "btc-2023-1m-bbands-mean-revert" => Ok(Self {
                 name: name.to_string(),
@@ -203,6 +239,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             // v1 multi-symbol momentum scenarios (T617)
             "top10-2023-1h-momentum" => Ok(Self {
@@ -221,6 +259,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "top10-2024-h1-momentum" => Ok(Self {
                 name: name.to_string(),
@@ -238,6 +278,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             // v1.5a mean-reversion pairs scenarios (T715)
             "pairs-2023-zscore-mr" => Ok(Self {
@@ -256,6 +298,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "pairs-2024-h1-zscore-mr" => Ok(Self {
                 name: name.to_string(),
@@ -273,6 +317,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             // v2.5 TCN overlay momentum scenarios (T-D-15, T-D-16)
             // Canonical names per feature.md § Backtest Scenarios and trace.toml REQ-V25-TCN-001.
@@ -293,6 +339,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "top10-2024-fy-tcn-overlay" => Ok(Self {
                 name: name.to_string(),
@@ -311,6 +359,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             // M3 real-weights scenarios (v2.5.0-tcn-weights).
             // These require `--features candle`; without it the binary emits an
@@ -332,6 +382,8 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
             }),
             "top10-2024-fy-tcn-overlay-weights" => Ok(Self {
                 name: name.to_string(),
@@ -350,9 +402,104 @@ impl Scenario {
                 taker_fee_bps: 4,
                 baseline_report: None,
                 data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            // v2.6.0-realdata scenarios (ADR-0032). Feature-gated.
+            // These require `--features realdata`; without it the binary
+            // emits a clear error from the dispatch prelude (T-D-7).
+            #[cfg(feature = "realdata")]
+            "top10-2023-fy-tcn-overlay-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2023,
+                // Full 2023: 365 days × 24 h = 8760 hourly bars per symbol × 10 symbols.
+                bar_count: 8760,
+                strategy: ScenarioStrategy::TcnOverlayMomentum {
+                    config_id: "tcn_overlay_momentum".to_string(),
+                    forecaster_id: "tcn-bs1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                expected_revision_sha: None, // tester fills at T-D-17
+            }),
+            #[cfg(feature = "realdata")]
+            "top10-2024-fy-tcn-overlay-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2024,
+                // Full 2024 (leap year): 366 days × 24 h = 8784 hourly bars × 10 symbols.
+                bar_count: 8784,
+                strategy: ScenarioStrategy::TcnOverlayMomentum {
+                    config_id: "tcn_overlay_momentum".to_string(),
+                    forecaster_id: "tcn-bs2".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                expected_revision_sha: None, // tester fills at T-D-17
+            }),
+            #[cfg(feature = "realdata")]
+            "top10-2023-fy-tcn-overlay-weights-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2023,
+                bar_count: 8760,
+                strategy: ScenarioStrategy::TcnOverlayMomentumWeights {
+                    config_id: "tcn_overlay_momentum".to_string(),
+                    forecaster_id: "tcn-bs1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                expected_revision_sha: None, // tester fills at T-D-17
+            }),
+            #[cfg(feature = "realdata")]
+            "top10-2024-fy-tcn-overlay-weights-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2024,
+                bar_count: 8784,
+                strategy: ScenarioStrategy::TcnOverlayMomentumWeights {
+                    config_id: "tcn_overlay_momentum".to_string(),
+                    forecaster_id: "tcn-bs2".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                expected_revision_sha: None, // tester fills at T-D-17
             }),
             other => anyhow::bail!("unknown scenario: {other}"),
         }
+    }
+
+    /// Compute the calendar-year half-open span for this scenario.
+    ///
+    /// Returns `(start_ms, end_ms)` in Unix milliseconds.
+    #[cfg(feature = "realdata")]
+    fn span(&self) -> RealDataTimeSpan {
+        RealDataTimeSpan::full_year(self.start_year)
     }
 }
 
@@ -1443,6 +1590,9 @@ struct TcnOverlayRunResult {
 /// binary does not require the heavy `candle` feature.
 /// The passthrough forecaster degrades to pure v1 momentum, which is exactly
 /// the correct behaviour for a binary that does not link candle.
+///
+/// When `bars_override` is `Some`, the provided bars are used directly instead
+/// of generating synthetic bars. This is the `RealData` dispatch path (ADR-0032).
 #[allow(clippy::too_many_lines)]
 async fn run_tcn_overlay_backtest(
     scenario: &Scenario,
@@ -1450,6 +1600,7 @@ async fn run_tcn_overlay_backtest(
     _forecaster_id: &str,
     seed: u64,
     _data_source: &str,
+    bars_override: Option<Vec<Bar>>,
 ) -> Result<TcnOverlayRunResult> {
     use backtest::MatchingEngine as _;
     use strategy::Strategy as _;
@@ -1472,37 +1623,45 @@ async fn run_tcn_overlay_backtest(
     // Use passthrough forecaster (no candle dep in backtest binary).
     let mut overlay_strategy = strategy::TcnOverlayMomentumStrategy::with_passthrough(base);
 
-    // Generate synthetic hourly bars for the 10-symbol universe.
-    let symbols_prices = top10_symbols_with_prices();
-    let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
-        .iter()
-        .enumerate()
-        .map(|(idx, (sym, start_price))| {
-            let sym_seed = seed.wrapping_add(idx as u64 * 0x9E3779B9);
-            let adjusted_price = if scenario.start_year == 2024 {
-                *start_price * dec!(2.5)
-            } else {
-                *start_price
-            };
-            synthetic_bars_hourly(
-                sym,
-                scenario.bar_count,
-                sym_seed,
-                adjusted_price,
-                scenario.start_year,
-            )
-        })
-        .collect();
-
-    // k-way merge: (venue_ts ASC, symbol ASC).
-    let merged_bars = data::ReplayFeed::merge_synthetic(bars_by_symbol);
-    let bar_count = merged_bars.len();
-
-    info!(
-        bar_count = bar_count,
-        symbols = symbols_prices.len(),
-        "merged synthetic bars for tcn-overlay backtest"
-    );
+    // Generate synthetic hourly bars or use pre-loaded real bars.
+    let (merged_bars, bar_count) = if let Some(real_bars) = bars_override {
+        let n = real_bars.len();
+        info!(
+            bar_count = n,
+            "tcn-overlay realdata backtest — using pre-loaded real bars"
+        );
+        (real_bars, n)
+    } else {
+        let symbols_prices = top10_symbols_with_prices();
+        let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
+            .iter()
+            .enumerate()
+            .map(|(idx, (sym, start_price))| {
+                let sym_seed = seed.wrapping_add(idx as u64 * 0x9E3779B9);
+                let adjusted_price = if scenario.start_year == 2024 {
+                    *start_price * dec!(2.5)
+                } else {
+                    *start_price
+                };
+                synthetic_bars_hourly(
+                    sym,
+                    scenario.bar_count,
+                    sym_seed,
+                    adjusted_price,
+                    scenario.start_year,
+                )
+            })
+            .collect();
+        // k-way merge: (venue_ts ASC, symbol ASC).
+        let merged = data::ReplayFeed::merge_synthetic(bars_by_symbol);
+        let n = merged.len();
+        info!(
+            bar_count = n,
+            symbols = symbols_prices.len(),
+            "merged synthetic bars for tcn-overlay backtest"
+        );
+        (merged, n)
+    };
 
     // Paper matching engine.
     let match_config = backtest::paper::MatchConfig {
@@ -1698,6 +1857,9 @@ async fn run_tcn_overlay_backtest(
 ///
 /// Requires `--features candle` at compile time.  Without the feature the
 /// function returns an `anyhow::Error` with a clear message.
+///
+/// When `bars_override` is `Some`, the provided bars are used directly instead
+/// of generating synthetic bars. This is the `RealData` dispatch path (ADR-0032).
 #[allow(clippy::too_many_lines)]
 #[allow(unused_variables)] // params used in candle block only
 async fn run_tcn_overlay_weights_backtest(
@@ -1706,6 +1868,7 @@ async fn run_tcn_overlay_weights_backtest(
     forecaster_id: &str,
     seed: u64,
     _data_source: &str,
+    bars_override: Option<Vec<Bar>>,
 ) -> Result<TcnOverlayRunResult> {
     // ── Candle-gated forecaster construction ─────────────────────────────────
     // Without `--features candle` this produces a clear error rather than a
@@ -1748,37 +1911,46 @@ async fn run_tcn_overlay_weights_backtest(
         let mut overlay_strategy = overlay_strategy_result
             .map_err(|e| anyhow::anyhow!("load TCN anchor checkpoint: {e}"))?;
 
-        // Generate synthetic hourly bars for the 10-symbol universe.
-        let symbols_prices = top10_symbols_with_prices();
-        let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
-            .iter()
-            .enumerate()
-            .map(|(idx, (sym, start_price))| {
-                let sym_seed = seed.wrapping_add(idx as u64 * 0x9E3779B9);
-                let adjusted_price = if scenario.start_year == 2024 {
-                    *start_price * dec!(2.5)
-                } else {
-                    *start_price
-                };
-                synthetic_bars_hourly(
-                    sym,
-                    scenario.bar_count,
-                    sym_seed,
-                    adjusted_price,
-                    scenario.start_year,
-                )
-            })
-            .collect();
-
-        // k-way merge: (venue_ts ASC, symbol ASC).
-        let merged_bars = data::ReplayFeed::merge_synthetic(bars_by_symbol);
-        let bar_count = merged_bars.len();
-
-        info!(
-            bar_count = bar_count,
-            symbols = symbols_prices.len(),
-            "merged synthetic bars for tcn-overlay-weights backtest"
-        );
+        // Use pre-loaded real bars or generate synthetic bars.
+        let (merged_bars, bar_count) = if let Some(real_bars) = bars_override {
+            let n = real_bars.len();
+            info!(
+                bar_count = n,
+                "tcn-overlay-weights realdata backtest — using pre-loaded real bars"
+            );
+            (real_bars, n)
+        } else {
+            // Generate synthetic hourly bars for the 10-symbol universe.
+            let symbols_prices = top10_symbols_with_prices();
+            let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
+                .iter()
+                .enumerate()
+                .map(|(idx, (sym, start_price))| {
+                    let sym_seed = seed.wrapping_add(idx as u64 * 0x9E3779B9);
+                    let adjusted_price = if scenario.start_year == 2024 {
+                        *start_price * dec!(2.5)
+                    } else {
+                        *start_price
+                    };
+                    synthetic_bars_hourly(
+                        sym,
+                        scenario.bar_count,
+                        sym_seed,
+                        adjusted_price,
+                        scenario.start_year,
+                    )
+                })
+                .collect();
+            // k-way merge: (venue_ts ASC, symbol ASC).
+            let merged = data::ReplayFeed::merge_synthetic(bars_by_symbol);
+            let n = merged.len();
+            info!(
+                bar_count = n,
+                symbols = symbols_prices.len(),
+                "merged synthetic bars for tcn-overlay-weights backtest"
+            );
+            (merged, n)
+        };
 
         // Paper matching engine.
         let match_config = backtest::paper::MatchConfig {
@@ -1967,12 +2139,21 @@ async fn run_tcn_overlay_weights_backtest(
 }
 
 /// Write a backtest report for the TCN overlay momentum scenario.
+///
+/// T-D-10: adds `data_revision_sha:` to frontmatter (excluded from body hash).
+/// T-D-11: adds `## Data source` section to body for RealData scenarios only.
+#[allow(clippy::too_many_arguments)]
 fn write_tcn_overlay_report(
     scenario: &Scenario,
     result: &TcnOverlayRunResult,
     seed: u64,
     data_source: &str,
     report_path: &Path,
+    // T-D-10: aggregate SHA for frontmatter. "n/a" for Synthetic.
+    data_revision_sha: &str,
+    // T-D-11: (loaded_count, expected_count) for the ## Data source body section.
+    // None for Synthetic scenarios (section absent).
+    loaded_bar_info: Option<(usize, usize)>,
 ) -> Result<()> {
     let total_return_pct = if result.initial_equity > Decimal::ZERO {
         let r = (result.final_equity - result.initial_equity) / result.initial_equity;
@@ -2004,12 +2185,65 @@ fn write_tcn_overlay_report(
         0.0
     };
 
+    // T-D-11: build the ## Data source section (present only for RealData).
+    let data_source_section = if let Some((loaded, expected)) = loaded_bar_info {
+        let pct = if expected > 0 {
+            loaded as f64 / expected as f64 * 100.0
+        } else {
+            0.0
+        };
+        // Span label for the scenario's full year (half-open, UTC).
+        let span_start = format!("{:04}-01-01T00:00:00Z", scenario.start_year);
+        let span_end = format!("{:04}-01-01T00:00:00Z", scenario.start_year + 1);
+        format!(
+            "\n## Data source\n\
+             \n\
+             | {field:<20} | {value:<36} |\n\
+             |{dash_field:-<22}|{dash_value:-<38}|\n\
+             | {source:<20} | {source_val:<36} |\n\
+             | {rev_label:<20} | {rev_val:<36} |\n\
+             | {univ_label:<20} | {univ_val:<36} |\n\
+             | {interval_label:<20} | {interval_val:<36} |\n\
+             | {span_label:<20} | {span_val:<36} |\n\
+             | {exp_label:<20} | {exp_val:<36} |\n\
+             | {loaded_label:<20} | {loaded_val:<36} |\n",
+            field = "Field",
+            value = "Value",
+            dash_field = "",
+            dash_value = "",
+            source = "Source",
+            source_val = "Binance Vision via data/binance/",
+            rev_label = "Revision SHA",
+            rev_val = data_revision_sha,
+            univ_label = "Universe size",
+            univ_val = "10 symbols",
+            interval_label = "Bar interval",
+            interval_val = "1h",
+            span_label = "Span (UTC, half-open)",
+            span_val = format!("{span_start} .. {span_end}"),
+            exp_label = "Expected bars",
+            exp_val = expected.to_string(),
+            loaded_label = "Loaded bars",
+            loaded_val = format!("{loaded} ({pct:.2}% present)"),
+        )
+    } else {
+        String::new()
+    };
+
+    // T-D-11: `Data:` line varies by data source.
+    let data_notes_line = if loaded_bar_info.is_some() {
+        "Data: real Binance hourly OHLCV, see ## Data source section above."
+    } else {
+        "Data: synthetic hourly bars, 10 independent ChaCha20Rng streams"
+    };
+
     let content = format!(
         "---\n\
          scenario: {scenario_name}\n\
          seed: 0x{seed:X}\n\
          generated: {stamp}\n\
          wall_clock_s: {elapsed:.1}\n\
+         data_revision_sha: {data_revision_sha}\n\
          data_source: {data_source}\n\
          baseline_report: n/a\n\
          ledger_imbalance_total: 0\n\
@@ -2055,7 +2289,7 @@ fn write_tcn_overlay_report(
          ## Universe\n\
          \n\
          {universe_list}\n\
-         \n\
+         {data_source_section}\n\
          ## Notes\n\
          \n\
          - v2.5 TCN overlay momentum: {strat_id}\n\
@@ -2063,11 +2297,12 @@ fn write_tcn_overlay_report(
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
          - Size: equal_weight, exposure_cap=50%, k_long=3\n\
          - Risk: per-symbol cap=40%, portfolio cap=50%\n\
-         - Data: synthetic hourly bars, 10 independent ChaCha20Rng streams\n",
+         - {data_notes_line}\n",
         scenario_name = scenario.name,
         seed = seed,
         stamp = stamp,
         elapsed = result.elapsed_secs,
+        data_revision_sha = data_revision_sha,
         data_source = data_source,
         strat_id = result.strategy_id,
         universe_count = result.universe.len(),
@@ -2091,9 +2326,11 @@ fn write_tcn_overlay_report(
             .map(|s| format!("- {s}"))
             .collect::<Vec<_>>()
             .join("\n"),
+        data_source_section = data_source_section,
         slippage_bps = scenario.slippage_bps,
         taker_fee_bps = scenario.taker_fee_bps,
         forecaster_label = result.forecaster_label,
+        data_notes_line = data_notes_line,
     );
 
     std::fs::write(report_path, content).context("write tcn-overlay report")?;
@@ -2424,6 +2661,14 @@ async fn main() -> Result<()> {
             | ScenarioStrategy::TcnOverlayMomentumWeights { .. }
     );
 
+    // Pre-loaded real bars for TCN realdata path (ADR-0032 § 3).
+    // Set in the RealData arm of the is_tcn_overlay dispatch and passed to
+    // run_tcn_overlay_backtest / run_tcn_overlay_weights_backtest as bars_override.
+    let mut realdata_bars_for_tcn: Option<Vec<Bar>> = None;
+    // `mut` is required by the #[cfg(feature = "realdata")] arm; suppress without feature.
+    #[cfg_attr(not(feature = "realdata"), allow(unused_mut))]
+    let mut realdata_revision_sha_for_tcn: Option<String> = None;
+
     let (bars, data_source) = if is_momentum {
         info!(
             bar_count = scenario.bar_count,
@@ -2441,17 +2686,75 @@ async fn main() -> Result<()> {
             &scenario.strategy,
             ScenarioStrategy::TcnOverlayMomentumWeights { .. }
         );
-        let src = if is_weights {
-            "synthetic (seeded RNG, v2.5 tcn-overlay-weights)"
-        } else {
-            "synthetic (seeded RNG, v2.5 tcn-overlay)"
-        };
-        info!(
-            bar_count = scenario.bar_count,
-            weights = is_weights,
-            "tcn-overlay scenario — generating synthetic bars"
-        );
-        (Vec::<Bar>::new(), src.to_string())
+
+        // Branch on data source axis (ADR-0032 § 3).
+        match scenario.data_source {
+            ScenarioDataSource::Synthetic => {
+                let src = if is_weights {
+                    "synthetic (seeded RNG, v2.5 tcn-overlay-weights)"
+                } else {
+                    "synthetic (seeded RNG, v2.5 tcn-overlay)"
+                };
+                info!(
+                    bar_count = scenario.bar_count,
+                    weights = is_weights,
+                    "tcn-overlay scenario — generating synthetic bars"
+                );
+                (Vec::<Bar>::new(), src.to_string())
+            }
+            ScenarioDataSource::RealData => {
+                // realdata feature gate: clear error if not compiled in.
+                #[cfg(not(feature = "realdata"))]
+                anyhow::bail!(
+                    "scenario '{}' requires --features realdata. \
+                     Rebuild with: cargo run -p backtest --release --features realdata -- \
+                     --scenario {} --seed 0xC0FFEE",
+                    scenario.name,
+                    scenario.name,
+                );
+                #[cfg(feature = "realdata")]
+                {
+                    let expected_total = scenario.bar_count * top10_symbols_with_prices().len();
+                    let src = RealDataBarSource::new(
+                        data_root.clone(),
+                        top10_symbols_with_prices()
+                            .into_iter()
+                            .map(|(s, _)| s)
+                            .collect(),
+                    );
+                    let loaded = src
+                        .load(scenario.span(), expected_total, &scenario.name)
+                        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+                    // Assert pinned revision if set (T-D-17).
+                    if let Some(pinned) = &scenario.expected_revision_sha
+                        && pinned != &loaded.revision_sha
+                    {
+                        anyhow::bail!(
+                            "data revision mismatch: scenario pinned {} \
+                             but on-disk computed {}",
+                            pinned,
+                            loaded.revision_sha
+                        );
+                    }
+
+                    let data_src_str =
+                        "real (Binance Vision via data/binance/, v2.6.0-realdata)".to_string();
+                    info!(
+                        bar_count = loaded.loaded_count,
+                        revision_sha = %loaded.revision_sha,
+                        "tcn-overlay realdata bars loaded"
+                    );
+                    // Stash the real bars; they are passed to the run function below.
+                    // The `bars` variable is unused for TCN overlay (functions generate
+                    // bars internally — except for the RealData path which uses
+                    // `bars_override`).  We pass the bars via `realdata_bars_for_tcn`.
+                    realdata_bars_for_tcn = Some(loaded.bars);
+                    realdata_revision_sha_for_tcn = Some(loaded.revision_sha);
+                    (Vec::<Bar>::new(), data_src_str)
+                }
+            }
+        }
     } else if is_pairs {
         info!(
             bar_count = scenario.bar_count,
@@ -2607,9 +2910,15 @@ async fn main() -> Result<()> {
     {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
-        let result =
-            run_tcn_overlay_backtest(&scenario, &config_id, &forecaster_id, seed, &data_source)
-                .await?;
+        let result = run_tcn_overlay_backtest(
+            &scenario,
+            &config_id,
+            &forecaster_id,
+            seed,
+            &data_source,
+            realdata_bars_for_tcn.take(),
+        )
+        .await?;
 
         let report_dir = report_dir_for_scenario(&args.scenario);
         std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
@@ -2625,7 +2934,22 @@ async fn main() -> Result<()> {
         );
         let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
 
-        write_tcn_overlay_report(&scenario, &result, seed, &data_source, &report_path)?;
+        // T-D-10/11: pass revision SHA + loaded bar info.
+        let rev_sha = realdata_revision_sha_for_tcn.as_deref().unwrap_or("n/a");
+        let loaded_info = realdata_revision_sha_for_tcn.as_ref().map(|_| {
+            let expected = scenario.bar_count * top10_symbols_with_prices().len();
+            (result.bar_count, expected)
+        });
+
+        write_tcn_overlay_report(
+            &scenario,
+            &result,
+            seed,
+            &data_source,
+            &report_path,
+            rev_sha,
+            loaded_info,
+        )?;
 
         println!("Report written: {}", report_path.display());
         println!("Scenario     : {}", args.scenario);
@@ -2656,6 +2980,7 @@ async fn main() -> Result<()> {
             &forecaster_id,
             seed,
             &data_source,
+            realdata_bars_for_tcn.take(),
         )
         .await?;
 
@@ -2673,7 +2998,22 @@ async fn main() -> Result<()> {
         );
         let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
 
-        write_tcn_overlay_report(&scenario, &result, seed, &data_source, &report_path)?;
+        // T-D-10/11: pass revision SHA + loaded bar info.
+        let rev_sha = realdata_revision_sha_for_tcn.as_deref().unwrap_or("n/a");
+        let loaded_info = realdata_revision_sha_for_tcn.as_ref().map(|_| {
+            let expected = scenario.bar_count * top10_symbols_with_prices().len();
+            (result.bar_count, expected)
+        });
+
+        write_tcn_overlay_report(
+            &scenario,
+            &result,
+            seed,
+            &data_source,
+            &report_path,
+            rev_sha,
+            loaded_info,
+        )?;
 
         println!("Report written: {}", report_path.display());
         println!("Scenario     : {}", args.scenario);
@@ -2979,6 +3319,11 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         | "top10-2024-fy-tcn-overlay"
         | "top10-2023-fy-tcn-overlay-weights"
         | "top10-2024-fy-tcn-overlay-weights" => "v25-tcn-overlay",
+        // v2.6.0-realdata scenarios (ADR-0032).
+        "top10-2023-fy-tcn-overlay-realdata"
+        | "top10-2024-fy-tcn-overlay-realdata"
+        | "top10-2023-fy-tcn-overlay-weights-realdata"
+        | "top10-2024-fy-tcn-overlay-weights-realdata" => "backtest-real-binance-data",
         _ => "_unknown",
     }
 }

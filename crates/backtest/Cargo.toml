@@ -13,6 +13,14 @@ path = "src/main.rs"
 # Requires `--features candle` at build time; without it those scenarios emit
 # a clear compile-time-gated error rather than silently falling back.
 candle = ["strategy/forecast"]
+# Enable real-Binance-data backtest scenarios (top10-*-tcn-overlay-realdata).
+# Requires data/binance/REVISION.toml to be present at runtime.
+# See ADR-0032 and spec/backtest-real-binance-data/feature.md.
+realdata = ["dep:toml"]
+
+[dependencies.toml]
+workspace = true
+optional = true
 
 [dependencies]
 trading_core = { path = "../core" }
@@ -47,3 +55,5 @@ cost = { path = "../cost" }
 sha2.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+data = { path = "../data" }
+polars.workspace = true

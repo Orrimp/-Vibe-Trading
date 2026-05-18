@@ -30,6 +30,8 @@ metrics.workspace = true
 rust_decimal_macros.workspace = true
 clap.workspace = true
 anyhow.workspace = true
+sha2.workspace = true
+toml.workspace = true
 
 tokio-util.workspace = true
 

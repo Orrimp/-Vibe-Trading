@@ -14,6 +14,7 @@ pub mod kraken;
 #[cfg(any(test, feature = "fixtures"))]
 pub mod mock_feed;
 pub mod replay_feed;
+pub mod revision;
 pub mod source;
 
 pub use bar_aggregator::{aggregate_one_second, aggregate_one_second_iter};

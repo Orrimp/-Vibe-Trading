@@ -68,6 +68,12 @@ struct Cli {
     /// Overwrite existing files (default: skip existing)
     #[arg(long, default_value_t = false)]
     force: bool,
+
+    /// After all downloads complete, write (or overwrite) a `REVISION.toml`
+    /// manifest in `--out` with a SHA-256 for every Parquet file present.
+    /// See ADR-0032 and `data::revision::write_revision_manifest`.
+    #[arg(long, default_value_t = false)]
+    emit_revision_manifest: bool,
 }
 
 // ── Binance API types ─────────────────────────────────────────────────────────
@@ -540,6 +546,17 @@ async fn main() -> Result<()> {
         }
 
         info!(symbol = %symbol_upper, "finished download");
+    }
+
+    // T-D-3: emit REVISION.toml after all fetches complete.
+    if cli.emit_revision_manifest {
+        let agg_sha = data::revision::write_revision_manifest(&cli.out)
+            .with_context(|| format!("write REVISION.toml in {}", cli.out.display()))?;
+        println!(
+            "[REVISION] {} written — aggregate SHA: {}",
+            cli.out.join("REVISION.toml").display(),
+            agg_sha
+        );
     }
 
     Ok(())

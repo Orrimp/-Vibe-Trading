@@ -727,9 +727,38 @@ sufficient.
 
 ## Implementation
 
-_developer fills this — wave plan per architect's M0 → M-FINAL
-milestones, citing the T-D-N task IDs from
-[`tasks.md`](tasks.md)._
+M1-M4 complete (2026-05-18, developer).
+
+### New files
+
+| Path | Purpose |
+|------|---------|
+| `crates/data/src/revision.rs` | ADR-0032 aggregate-SHA writer/verifier (T-D-2). Functions: `write_revision_manifest`, `read_and_verify_revision_manifest`, `read_manifest_raw`, `compute_aggregate_sha`, `file_sha256`. 5 unit tests. |
+| `crates/backtest/src/realdata.rs` | `RealDataBarSource` with 7-step `load()` (T-D-4). Feature-gated `#[cfg(feature = "realdata")]`. Error types, `TimeSpan`, `LoadedBars`. |
+| `crates/backtest/tests/realdata_revision_verify.rs` | 4 integration tests (T-D-5): happy-path, tamper detection, missing manifest, 0.6% gap. |
+
+### Modified files
+
+| Path | Change |
+|------|--------|
+| `crates/data/src/lib.rs` | Added `pub mod revision;` |
+| `crates/data/src/bin/fetch_binance_klines.rs` | Added `--emit-revision-manifest` flag (T-D-3) |
+| `crates/data/Cargo.toml` | Added `sha2`, `toml` deps |
+| `crates/backtest/src/lib.rs` | Added `#[cfg(feature = "realdata")] pub mod realdata;` |
+| `crates/backtest/src/main.rs` | `ScenarioDataSource` enum (T-D-6); 4 new scenario arms under `#[cfg(feature = "realdata")]` (T-D-9); RealData dispatch branch (T-D-7); `scenario_to_feature` extended (T-D-8); `write_tcn_overlay_report` extended with `data_revision_sha` frontmatter (T-D-10) and `## Data source` body section (T-D-11) |
+| `crates/backtest/Cargo.toml` | Added `realdata = ["dep:toml"]` feature; added `data` + `polars` to dev-dependencies |
+| `crates/backtest/tests/determinism.rs` | Added T-D-13, T-D-14, T-D-15 determinism tests |
+
+### Anti-regression
+
+All 15 pre-existing anchor hashes remain byte-identical:
+`bash scripts/verify_anchors.sh → ANCHORS PASS (15 / 15)`
+
+### Remaining tasks (M5 + ship gate)
+
+T-D-16 (operator clean-fetch), T-D-17 (pin expected_revision_sha),
+T-T-1A (anchor lock), T-T-1..4 + T_FINAL — these are tester-owned
+and operator-gated. See `tasks.md`.
 
 ## Verification
 

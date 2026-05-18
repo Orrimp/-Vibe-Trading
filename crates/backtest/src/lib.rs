@@ -5,6 +5,9 @@
 pub mod engine;
 pub mod paper;
 
+#[cfg(feature = "realdata")]
+pub mod realdata;
+
 pub use engine::run_scenario;
 pub use engine::{
     BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,

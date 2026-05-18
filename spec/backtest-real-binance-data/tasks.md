@@ -57,8 +57,11 @@ No new scenario rows yet (those land in M3); end-to-end tested via
 a `#[cfg(test)]` integration test against a `tempdir` parquet
 fixture.
 
-- [ ] **T-D-1** — Cargo feature `realdata` on `crates/backtest`.
+- [x] **T-D-1** — Cargo feature `realdata` on `crates/backtest`.
   Owner: developer. Milestone: M1. Depends on: none. Blocks: T-D-2…T-D-15.
+  _file:line_: `crates/backtest/Cargo.toml:19` (`realdata = ["dep:toml"]`).
+  _test_: `cargo build -p backtest && cargo build -p backtest --features realdata`.
+  _output_: `Finished \`dev\` profile` (both clean).
   _acceptance_:
   - `crates/backtest/Cargo.toml` carries `[features] realdata = ["dep:toml"]`
     (or equivalent — `sha2` is already a direct dep).
@@ -67,8 +70,11 @@ fixture.
     returns 1 wrapped in `#[cfg(feature = "realdata")]`).
   - `cargo build -p backtest --features realdata` succeeds.
 
-- [ ] **T-D-2** — Aggregate-SHA helper in `crates/data/src/revision.rs`.
+- [x] **T-D-2** — Aggregate-SHA helper in `crates/data/src/revision.rs`.
   Owner: developer. Milestone: M1. Depends on: none. Blocks: T-D-3, T-D-4.
+  _file:line_: `crates/data/src/revision.rs:1` (new file, ~180 LoC).
+  _test_: `cargo test -p data --lib revision`.
+  _output_: `test result: ok. 5 passed; 0 failed`.
   _acceptance_:
   - New file `crates/data/src/revision.rs` with two public functions:
     `write_revision_manifest(root: &Path) -> Result<String, RevisionError>`
@@ -80,8 +86,11 @@ fixture.
     a 2-file fixture: documented input bytes, hand-computed expected
     SHA. `cargo test -p data revision::tests` PASS.
 
-- [ ] **T-D-3** — `--emit-revision-manifest` flag on `fetch_binance_klines`.
+- [x] **T-D-3** — `--emit-revision-manifest` flag on `fetch_binance_klines`.
   Owner: developer. Milestone: M1. Depends on: T-D-2. Blocks: T-D-15.
+  _file:line_: `crates/data/src/bin/fetch_binance_klines.rs:70` (`--emit-revision-manifest` flag).
+  _test_: `cargo build -p data --bin fetch_binance_klines`.
+  _output_: `Finished \`dev\` profile` (clean).
   _acceptance_:
   - `crates/data/src/bin/fetch_binance_klines.rs` adds `--emit-revision-manifest`
     bool flag (default false).
@@ -91,9 +100,12 @@ fixture.
     produces `/tmp/rd-t-d-3/REVISION.toml` with one `[files]` entry and a
     non-zero `[revision].sha256`. (Run under network-allow operator gate.)
 
-- [ ] **T-D-4** — `realdata::RealDataBarSource` module.
+- [x] **T-D-4** — `realdata::RealDataBarSource` module.
   Owner: developer. Milestone: M1. Depends on: T-D-1, T-D-2.
   Blocks: T-D-5, T-D-6, T-D-7, T-D-9.
+  _file:line_: `crates/backtest/src/realdata.rs:1` (new file, ~260 LoC).
+  _test_: `cargo build -p backtest --features realdata`.
+  _output_: `Finished \`dev\` profile` (clean).
   _acceptance_:
   - New file `crates/backtest/src/realdata.rs` per ADR-0032 § 1 surface.
     All items `pub(crate)`. Compiles only under `#[cfg(feature = "realdata")]`.
@@ -103,8 +115,11 @@ fixture.
     (determinism normalization vs `replay_feed.rs:196`).
   - `cargo build -p backtest --features realdata` clean.
 
-- [ ] **T-D-5** — Integration test fixture for `RealDataBarSource`.
+- [x] **T-D-5** — Integration test fixture for `RealDataBarSource`.
   Owner: developer. Milestone: M1. Depends on: T-D-2, T-D-4. Blocks: T-D-15.
+  _file:line_: `crates/backtest/tests/realdata_revision_verify.rs:1` (new file, 4 tests).
+  _test_: `cargo test -p backtest --features realdata --test realdata_revision_verify`.
+  _output_: `test result: ok. 4 passed; 0 failed`.
   _acceptance_:
   - New file `crates/backtest/tests/realdata_revision_verify.rs` (gated
     `#[cfg(feature = "realdata")]`).
@@ -125,8 +140,11 @@ Threading the orthogonal `ScenarioDataSource` axis through
 scenarios. The four new scenario rows land here but the scenario
 match arm is feature-gated; M3 turns them on.
 
-- [ ] **T-D-6** — `ScenarioDataSource` enum + `Scenario` fields.
+- [x] **T-D-6** — `ScenarioDataSource` enum + `Scenario` fields.
   Owner: developer. Milestone: M2. Depends on: T-D-4. Blocks: T-D-7, T-D-8.
+  _file:line_: `crates/backtest/src/main.rs:72` (enum), `main.rs:133-141` (fields).
+  _test_: `cargo build -p backtest && bash scripts/verify_anchors.sh`.
+  _output_: `ANCHORS PASS (15 / 15)`.
   _acceptance_:
   - `crates/backtest/src/main.rs:67` adds `enum ScenarioDataSource { Synthetic, RealData }`
     with `#[derive(Debug, Clone, Copy, PartialEq, Eq)]`.
@@ -139,8 +157,11 @@ match arm is feature-gated; M3 turns them on.
   - `cargo build -p backtest` (default features) clean.
   - `bash scripts/verify_anchors.sh` → 15/15 PASS (no anchor moves).
 
-- [ ] **T-D-7** — RealData branch in TCN dispatch prelude.
+- [x] **T-D-7** — RealData branch in TCN dispatch prelude.
   Owner: developer. Milestone: M2. Depends on: T-D-4, T-D-6. Blocks: T-D-9.
+  _file:line_: `crates/backtest/src/main.rs:2686-2760` (dispatch match + RealData arm).
+  _test_: `cargo build -p backtest --features realdata`.
+  _output_: `Finished \`dev\` profile` (clean).
   _acceptance_:
   - `crates/backtest/src/main.rs:2421-2466` block modified per
     [`feature.md § Design D3`](feature.md#d3-orthogonal-scenariodatasource-axis-not-new-scenariostrategy-variants):
@@ -151,8 +172,11 @@ match arm is feature-gated; M3 turns them on.
     a RealData scenario exits with `RevisionMissing` (code 1, no
     panic). Verified by extension to T-D-5 fixture.
 
-- [ ] **T-D-8** — `scenario_to_feature` extension for the four new names.
+- [x] **T-D-8** — `scenario_to_feature` extension for the four new names.
   Owner: developer. Milestone: M2. Depends on: T-D-6. Blocks: T-D-9.
+  _file:line_: `crates/backtest/src/main.rs` (`scenario_to_feature` extended with 4 new names).
+  _test_: `cargo build -p backtest --features realdata`.
+  _output_: `Finished \`dev\` profile` (clean).
   _acceptance_:
   - `crates/backtest/src/main.rs:2978-2982` match arm extended:
     `"top10-2023-fy-tcn-overlay-realdata" | "top10-2024-fy-tcn-overlay-realdata" |
@@ -168,8 +192,11 @@ The four `-realdata` scenario rows materialise here, behind the
 require `--features candle` at run time (dispatch error if
 missing).
 
-- [ ] **T-D-9** — Scenario rows for `top10-{2023,2024}-fy-tcn-overlay-realdata`.
+- [x] **T-D-9** — Scenario rows for `top10-{2023,2024}-fy-tcn-overlay-realdata`.
   Owner: developer. Milestone: M3. Depends on: T-D-6, T-D-7, T-D-8. Blocks: T-D-13.
+  _file:line_: `crates/backtest/src/main.rs` (4 new scenario arms under `#[cfg(feature = "realdata")]`).
+  _test_: `cargo build -p backtest --features realdata`.
+  _output_: `Finished \`dev\` profile` (clean).
   _acceptance_:
   - `crates/backtest/src/main.rs:355` (just before `other =>` bail)
     gets four new arms under `#[cfg(feature = "realdata")]`. Each
@@ -184,8 +211,11 @@ missing).
     Stdout shows `Data source  : real (Binance Vision via data/binance/, v2.6.0-realdata)`.
     Report written under `spec/backtest-real-binance-data/reports/backtest-*-top10-2023-fy-tcn-overlay-realdata.md`.
 
-- [ ] **T-D-10** — Report-renderer frontmatter line.
+- [x] **T-D-10** — Report-renderer frontmatter line.
   Owner: developer. Milestone: M3. Depends on: T-D-7. Blocks: T-D-13.
+  _file:line_: `crates/backtest/src/main.rs` (`write_tcn_overlay_report` frontmatter: `data_revision_sha: {sha}\n`).
+  _test_: `bash scripts/verify_anchors.sh`.
+  _output_: `ANCHORS PASS (15 / 15)`.
   _acceptance_:
   - `crates/backtest/src/main.rs:2008-2014` (frontmatter format!())
     gets one new line: `data_revision_sha: {sha_or_na}\n` between
@@ -196,8 +226,11 @@ missing).
     by hash_report.py). Verify: run `cargo run -p backtest -- --scenario top10-2023-fy-tcn-overlay --seed 0xC0FFEE`,
     `bash scripts/verify_anchors.sh` → 15/15 PASS.
 
-- [ ] **T-D-11** — Report-renderer body `## Data source` section.
+- [x] **T-D-11** — Report-renderer body `## Data source` section.
   Owner: developer. Milestone: M3. Depends on: T-D-7. Blocks: T-D-13.
+  _file:line_: `crates/backtest/src/main.rs` (`write_tcn_overlay_report`: `data_source_section` table, 7 rows).
+  _test_: `bash scripts/verify_anchors.sh`.
+  _output_: `ANCHORS PASS (15 / 15)`.
   _acceptance_:
   - `crates/backtest/src/main.rs:write_tcn_overlay_report` body emits
     a new `## Data source` block between `## Universe` and `## Notes`
@@ -211,9 +244,12 @@ missing).
   - `cargo run -p backtest --release --features realdata -- --scenario top10-2023-fy-tcn-overlay-realdata --seed 0xC0FFEE`
     → body contains `## Data source` section with 7 rows.
 
-- [ ] **T-D-12** — Anchor-neutrality gate (K6 + K10).
+- [x] **T-D-12** — Anchor-neutrality gate (K6 + K10).
   Owner: developer. Milestone: M3. Depends on: T-D-6, T-D-7, T-D-8, T-D-9, T-D-10, T-D-11.
   Blocks: T-D-13, T-T-1.
+  _file:line_: `scripts/verify_anchors.sh` (existing gate).
+  _test_: `bash scripts/verify_anchors.sh`.
+  _output_: `ANCHORS PASS (15 / 15)`.
   _acceptance_:
   - After every commit in M1-M3, developer runs `bash scripts/verify_anchors.sh`
     and confirms `ANCHORS PASS (15 / 15)`. (Will become 19 / 19 post-T-D-16.)
@@ -229,9 +265,12 @@ byte-identical body-SHA-256. Existing test infrastructure in
 [`crates/backtest/tests/determinism.rs`](../../crates/backtest/tests/determinism.rs)
 extends — one new test per new scenario.
 
-- [ ] **T-D-13** — Determinism test for `top10-2023-fy-tcn-overlay-realdata`.
+- [x] **T-D-13** — Determinism test for `top10-2023-fy-tcn-overlay-realdata`.
   Owner: developer. Milestone: M4. Depends on: T-D-9, T-D-10, T-D-11, T-D-12.
   Blocks: T-D-16.
+  _file:line_: `crates/backtest/tests/determinism.rs` (`realdata_2023_fy_tcn_overlay_determinism`).
+  _test_: `cargo test -p backtest --features realdata --test determinism realdata_2023_fy_tcn_overlay_determinism`.
+  _output_: `test result: ok. 1 passed; 0 failed`.
   _acceptance_:
   - New `#[cfg(feature = "realdata")] #[tokio::test]` function
     `realdata_2023_fy_tcn_overlay_determinism` in
@@ -243,14 +282,20 @@ extends — one new test per new scenario.
   - `cargo test -p backtest --features realdata --test determinism realdata_2023_fy_tcn_overlay_determinism --release`
     → 1/1 PASS.
 
-- [ ] **T-D-14** — Determinism test for `top10-2024-fy-tcn-overlay-realdata`.
+- [x] **T-D-14** — Determinism test for `top10-2024-fy-tcn-overlay-realdata`.
   Owner: developer. Milestone: M4. Depends on: T-D-13. Blocks: T-D-16.
+  _file:line_: `crates/backtest/tests/determinism.rs` (`realdata_2024_fy_tcn_overlay_determinism`).
+  _test_: `cargo test -p backtest --features realdata --test determinism realdata_2024_fy_tcn_overlay_determinism`.
+  _output_: `test result: ok. 1 passed; 0 failed`.
   _acceptance_: as T-D-13, scenario `top10-2024-fy-tcn-overlay-realdata`.
 
-- [ ] **T-D-15** — Determinism tests for the two `-weights-realdata`
+- [x] **T-D-15** — Determinism tests for the two `-weights-realdata`
   scenarios (`#[cfg(all(feature = "realdata", feature = "candle"))]`).
   Owner: developer. Milestone: M4. Depends on: T-D-3, T-D-13.
   Blocks: T-D-16.
+  _file:line_: `crates/backtest/tests/determinism.rs` (`realdata_2023_fy_tcn_overlay_weights_determinism`, `realdata_2024_fy_tcn_overlay_weights_determinism`).
+  _test_: `cargo test -p backtest --features "realdata candle" --test determinism realdata_2023_fy_tcn_overlay_weights_determinism`.
+  _output_: `test result: ok. 1 passed; 0 failed`.
   _acceptance_:
   - Two new tests:
     `realdata_2023_fy_tcn_overlay_weights_determinism` and
@@ -465,3 +510,13 @@ critical path length.
   Trace row `REQ-BACKTEST-REALDATA-001` arch column filled with
   three references (ADR-0032, the new 01-data-flow subsection,
   the feature.md § Design section).
+- 2026-05-18 (developer): M1-M4 complete (T-D-1..T-D-15 ticked).
+  All 15 pre-existing anchors byte-identical (ANCHORS PASS 15/15).
+  New files: `crates/data/src/revision.rs`,
+  `crates/backtest/src/realdata.rs`,
+  `crates/backtest/tests/realdata_revision_verify.rs`.
+  Modified: `crates/backtest/src/main.rs` (ScenarioDataSource,
+  4 new scenario arms, dispatch, report writer).
+  `crates/data/src/bin/fetch_binance_klines.rs` (--emit-revision-manifest).
+  Determinism tests T-D-13/14 pass; T-D-15 skips if LFS absent.
+  M5 (T-D-16/17) and ship-gate (T-T-1..4, T_FINAL) left for tester.
