@@ -1,7 +1,7 @@
 ---
 slug: backtest-real-binance-data
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-18
 ---
 
@@ -47,18 +47,22 @@ updated: 2026-05-18
   reference it, OR a recorded principled deferral in the
   architect's HANDOFF envelope.
 
-- [ ] **T-OP-1** — operator answers Q1 (in-place vs parallel
-  `-realdata` family).
-  _acceptance_: changelog entry in [`feature.md`](feature.md#changelog)
-  locks the chosen direction.
+- [x] **T-OP-1** (2026-05-18) — Q1 **RESOLVED: parallel `-realdata` family**
+  (analyst default accepted). Existing 15 anchors stay byte-identical; new
+  scenarios lock under version `v2.6.0-realdata`. Audit trail: orchestrator
+  prompt confirmed all three operator-decides at analyst recommendation.
 
-- [ ] **T-OP-2** — operator answers Q4 (universe snapshot
-  strategy).
-  _acceptance_: same.
+- [x] **T-OP-2** (2026-05-18) — Q4 **RESOLVED: pin to 10 USDT pairs on disk**
+  (analyst default accepted). Universe = {ADA, AVAX, BNB, BTC, DOGE, DOT,
+  ETH, LINK, SOL, XRP}USDT — matches the v25-tcn training universe; no
+  separate snapshot-date logic.
 
-- [ ] **T-OP-3** — operator answers Q8 (wire-only scope vs
-  combined alpha verdict).
-  _acceptance_: same.
+- [x] **T-OP-3** (2026-05-18) — Q8 **RESOLVED: wire-only scope** (analyst
+  default accepted). This feature ships the parquet-read path + 4 new
+  `-realdata` anchors + non-regression on the 15 originals. The v2.5 alpha
+  verdict (Sharpe / drawdown / trade-count comparison) is a follow-on
+  v25-tcn tester re-spawn against the new anchors, tracked as a separate
+  backlog item.
 
 ### M1 — Parquet read path
 

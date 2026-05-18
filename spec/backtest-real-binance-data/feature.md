@@ -1,7 +1,7 @@
 ---
 slug: backtest-real-binance-data
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-18
 version: 0.1.0
 predecessor: v25-tcn-overlay v2.5.0
@@ -377,6 +377,9 @@ data dependency in the synthetic paths). T-D-X verifies this.
 
 ### Operator-decide questions
 
+**STATUS: ALL THREE RESOLVED 2026-05-18 — operator confirmed analyst defaults.**
+Architect is unblocked. See Changelog entry below for the locked direction.
+
 The analyst surfaces three questions for operator-async lock before
 the architect spawns. Each has a recommended default; the operator
 may confirm-as-default or override.
@@ -530,6 +533,11 @@ _tester fills this — the gate is:_
 
 ## Changelog
 
+- 2026-05-18 (operator): **All three operator-decides confirmed at analyst
+  defaults.** Q1 → parallel `-realdata` family (NOT in-place). Q4 → pin
+  universe to 10 USDT pairs on disk. Q8 → wire-only scope (alpha verdict
+  follow-on via v25-tcn tester re-spawn). T-OP-1, T-OP-2, T-OP-3 ticked.
+  Architect unblocked. HANDOFF → architect.
 - 2026-05-18 (analyst): full analyst pass. Closed Q1-Q8 with defaults
   (R1-R10). Three operator-decide questions surfaced (Q1 in-place vs
   parallel `-realdata` family — strong recommendation: parallel; Q4
