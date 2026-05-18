@@ -547,8 +547,8 @@ tests       = [
   "crates/ui/tests/panel_snapshots.rs",
   "crates/ui/tests/gallery_snapshots.rs",
 ]
-anchors     = []   # TESTER-VERIFIED 2026-05-18: Phase A touches no strategy/audit/exec code; all 11 body-SHA-256 anchors byte-identical (18/18 determinism tests PASS; git diff confirms success-report front-matter-only changes)
-state       = "in-progress"
+anchors     = []   # TESTER-VERIFIED 2026-05-18: Phase A touches no strategy/audit/exec code; verify-anchors 13/13 PASS (scripts/verify_anchors.sh EXIT 0); 20/20 determinism tests PASS; all 11 original body-SHA-256 anchors byte-identical.
+state       = "shipped"
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

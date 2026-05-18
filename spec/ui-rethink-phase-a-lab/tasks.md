@@ -1,8 +1,8 @@
 ---
 slug: ui-rethink-phase-a-lab
-status: in-progress
-owner: developer
-updated: 2026-05-17
+status: tester-pass
+owner: presenter
+updated: 2026-05-18
 ---
 
 # Tasks — UI rethink Phase A (chart-centric Lab)
@@ -416,11 +416,11 @@ T-D-1  (state.rs scaffolding)
 - **Blocks:** T-D-19
 - **Files:** (no new files — audits + string constants added)
 
-### T-D-19 — Visual A/B + tester gate sweep + report write
+### [x] T-D-19 — Visual A/B + tester gate sweep + report write
 
 - **Owner:** D+T (tester writes the final report)
 - **Milestone:** M-FINAL
-- **Status:** PARTIAL — developer delivered descriptor snapshots + tester gate prep; visual A/B deferred to operator-local run
+- **Status:** DONE (2026-05-18) — VERDICT PASS. cargo test 437/437, verify-anchors 13/13, cockpit build clean. Visual A/B deferred to operator-local (no display in CI, instructions in report App. B). Predecessor FAIL report: `test-2026-05-18-0200-ui-rethink-phase-a-lab.md`.
 - **Acceptance:** Visual A/B captured on the operator's 3360×1890
   Retina: one before/after pair per overlay layer (buy/sell markers,
   equity curve, comparison overlay) saved to

@@ -1,8 +1,8 @@
 ---
 slug: v25-tcn-overlay
 status: in-progress
-owner: developer
-updated: 2026-05-17
+owner: tester
+updated: 2026-05-18
 ---
 
 # Tasks — v2.5 TCN forecast overlay
@@ -279,7 +279,7 @@ tag; dependencies via `blocks` / `depends on`.
 
 ### M6 — Full backtests + reports
 
-- [ ] **T-D-15 (M6)** — Full BS-1 backtest (2023 full year, top-10
+- [x] **T-D-15 (M6)** — Full BS-1 backtest (2023 full year, top-10
   USDT, quarterly walk-forward retrain cadence per Backtest Scenarios
   block) using the `tcn-bs1` checkpoint. Report authored under
   `spec/v25-tcn-overlay/reports/top10-2023-fy-tcn-overlay-<date>.md`.
@@ -295,9 +295,12 @@ tag; dependencies via `blocks` / `depends on`.
     per feature.md § Backtest Scenarios and trace.toml REQ-V25-TCN-001.
     Report generated: `spec/v25-tcn-overlay/reports/backtest-20260518-053400-top10-2023-fy-tcn-overlay.md`.
     Anchor locked in `spec/anchors.toml` at `01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5`.
-    20/20 determinism tests pass. TESTER to verify and tick.
+    20/20 determinism tests pass.
+  - DONE 2026-05-18 (tester). Tester re-run SHA: `01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5`.
+    verify_anchors.sh: PASS. cmd: `cargo run -p backtest --release -- --scenario top10-2023-fy-tcn-overlay --seed 0xC0FFEE`.
+    Report: `spec/v25-tcn-overlay/reports/backtest-20260518-061302-top10-2023-fy-tcn-overlay.md`.
 
-- [ ] **T-D-16 (M6)** — Full BS-2 backtest (2024 Q2-Q4 test split)
+- [x] **T-D-16 (M6)** — Full BS-2 backtest (2024 Q2-Q4 test split)
   using `tcn-bs2` checkpoint. Report under
   `spec/v25-tcn-overlay/reports/top10-2024-fy-tcn-overlay-<date>.md`.
   - Owner: D+T. Depends on: T-D-15. Blocks: T-T-1.
@@ -305,11 +308,13 @@ tag; dependencies via `blocks` / `depends on`.
   - SCENARIO RENAMED 2026-05-18 from `"bs2-tcn-overlay"` → `"top10-2024-fy-tcn-overlay"`.
     Report generated: `spec/v25-tcn-overlay/reports/backtest-20260518-053408-top10-2024-fy-tcn-overlay.md`.
     Anchor locked at `e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163`.
-    TESTER to verify and tick.
+  - DONE 2026-05-18 (tester). Tester re-run SHA: `e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163`.
+    verify_anchors.sh: PASS. cmd: `cargo run -p backtest --release -- --scenario top10-2024-fy-tcn-overlay --seed 0xC0FFEE`.
+    Report: `spec/v25-tcn-overlay/reports/backtest-20260518-061309-top10-2024-fy-tcn-overlay.md`.
 
 ## Pending — tester
 
-- [ ] **T-T-1 (M7)** — Determinism + replay verification per
+- [x] **T-T-1 (M7)** — Determinism + replay verification per
   feature.md § Verification. Anchor locks
   `top10-2023-fy-tcn-overlay` + `top10-2024-fy-tcn-overlay` land in
   `spec/anchors.toml`. 11 existing anchors stay byte-identical.
@@ -318,6 +323,10 @@ tag; dependencies via `blocks` / `depends on`.
     `spec/v25-tcn-overlay/reports/test-<date>.md` with
     `verdict: PASS`; `spec/anchors.toml` diff shows +2 anchors and
     no changes to the 11 existing rows.
+  - DONE 2026-05-18 (tester). Report: `spec/v25-tcn-overlay/reports/test-2026-05-18-0616-v25-tcn-overlay.md`.
+    verdict: PASS. verify_anchors.sh: 13/13 PASS. determinism: 20/20 PASS.
+    Both canonical TCN anchors verified byte-identical on tester re-run.
+    CI-baseline path closed. Real-TCN-weights path deferred to M3 (T-D-11/T-D-12).
 
 ## Notes
 
