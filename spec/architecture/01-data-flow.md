@@ -2,7 +2,7 @@
 slug: architecture-01-data-flow
 status: shipped
 owner: architect
-updated: 2026-05-16
+updated: 2026-05-18
 ---
 
 # Data flow
@@ -240,7 +240,64 @@ compat); a defensive `account_id` cross-check warns on mismatch.
 (shape mismatch — takes base assets, not pair symbols). Anchor
 budget unchanged (11 / 11 byte-identical, Q7 re-verified).
 
+## Backtest real-Binance-data path (v2.6.0-realdata)
+
+Added 2026-05-18 as part of the
+[backtest-real-binance-data](../backtest-real-binance-data/feature.md)
+feature. Full design in
+[ADR-0032](adr/0032-backtest-realdata-path-and-revision-pin.md).
+
+For the four new `top10-*-fy-tcn-overlay[-weights]-realdata`
+scenarios, the `backtest` binary reads real Binance hourly OHLCV
+from `data/binance/<SYM>/<YEAR>/<MM>.parquet` instead of generating
+synthetic GBM bars. The read path lives in a new private module
+`crates/backtest/src/realdata.rs` (cargo feature `realdata`,
+default off) and **reuses** the existing
+`data::ReplayFeed::merge_symbols()` parquet reader — no new
+cross-crate dependency and no duplicated polars code. The data axis
+is encoded on the `Scenario` struct via a new orthogonal
+`ScenarioDataSource::{Synthetic, RealData}` enum so the synthetic
+path stays byte-identical (existing 15 anchors).
+
+Every `-realdata` run is bound to a data revision by
+`data/binance/REVISION.toml` — a sorted (filename → SHA-256) map
+plus an aggregate `sha256` over that map. The aggregate
+`data_revision_sha` lands in two places:
+- **Report frontmatter** (forensics, excluded from anchor body
+  hash): `data_revision_sha: <64 hex>` next to `generated:` and
+  `wall_clock_s:`.
+- **Report body** (anchor integrity, covered by body hash): a new
+  `## Data source` section between `## Universe` and `## Notes`
+  with `Revision SHA`, expected-vs-loaded bar counts, span, and
+  bar interval.
+
+`crates/data/src/bin/fetch_binance_klines` gains a
+`--emit-revision-manifest` flag; the verifier in
+`backtest::realdata::RealDataBarSource::load()` enforces three
+gates in order: (1) `REVISION.toml` exists; (2) every parquet file
+the scenario will read has a matching on-disk SHA; (3) the
+aggregate SHA recomputed from the manifest's `[files]` map equals
+the manifest's claimed `[revision].sha256`. The `data_revision_sha`
+written into the report body is always the recomputed aggregate,
+never the manifest's claim. Missing-bar tolerance (R3): the
+scenario hard-fails if fewer than 99.5% of expected bars are
+present across the universe.
+
+The data edge table above is unchanged — `backtest → data` is an
+existing read edge (`ReplayFeed`). The new dependency is on `toml`
++ `sha2` (already in workspace) for the manifest read / verify
+path. No `backtest → forecast` edge is added (alternatives
+considered in ADR-0032).
+
 ## Changelog
+- 2026-05-18 (architect): added "Backtest real-Binance-data path
+  (v2.6.0-realdata)" subsection — cross-references ADR-0032 for
+  the full design. The `data → backtest` edge gains the new
+  `realdata` cargo-feature-gated callsite; no new crate-graph
+  edges (uses existing `backtest → data` read edge via
+  `ReplayFeed::merge_symbols`). Closes
+  `backtest-real-binance-data` T-AR-1 architecture-section
+  deliverable.
 - 2026-05-16 (architect): D1 audit-sink rule reworded to use the
   inverse-import direction ("audit imports nothing from sibling
   crates") — the prior "audit is a sink, zero outgoing runtime

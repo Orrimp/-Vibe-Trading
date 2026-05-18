@@ -1,7 +1,7 @@
 ---
 slug: backtest-real-binance-data
 status: in-progress
-owner: architect
+owner: developer
 updated: 2026-05-18
 version: 0.1.0
 predecessor: v25-tcn-overlay v2.5.0
@@ -410,10 +410,229 @@ all five have a recommended default that the architect ratifies
 
 ## Design
 
-_architect fills this — locks the parquet read pattern, the
-`ScenarioDataSource` axis (or equivalent), the REVISION.toml shape,
-the cargo-feature gate, and the M0 → M-FINAL milestone breakdown
-under `T-D-N` task IDs._
+Locked by architect 2026-05-18. Full rationale + alternatives lives in
+[ADR-0032](../architecture/adr/0032-backtest-realdata-path-and-revision-pin.md);
+this section is the developer's cheat sheet — the four orthogonal
+decisions plus the line-level file targets.
+
+### D1. Module placement: `crates/backtest/src/realdata.rs`
+
+A new private (`pub(crate)`) module in the **backtest** crate
+behind cargo feature `realdata` (off by default). The module wraps
+`data::ReplayFeed::merge_symbols()` — we do not duplicate polars
+code and we do not depend on `crates/forecast/`. See ADR-0032 § 1
+for the full surface and the rejection of the forecast-reuse and
+generic-trait alternatives.
+
+| File                                           | Disposition |
+|------------------------------------------------|-------------|
+| `crates/backtest/src/realdata.rs`              | **NEW** — `RealDataBarSource`, `LoadedBars`, `RealDataError` |
+| `crates/backtest/src/lib.rs`                   | **MODIFY** — `#[cfg(feature = "realdata")] pub(crate) mod realdata;` |
+| `crates/backtest/Cargo.toml`                   | **MODIFY** — add `realdata` feature; gate `toml` (workspace) + `sha2` (already present) under it |
+| `crates/data/src/replay_feed.rs:196`           | **MODIFY** — `RealDataBarSource::load()` overwrites `local_recv_ts = bar.close_ts` after `merge_symbols` returns so the synthetic and realdata bar shapes are byte-symmetric (synthetic uses `local_recv_ts = close_ts` at `main.rs:549`). No changes to `read_parquet_bars` itself — pure post-processing in the new module. |
+
+### D2. `REVISION.toml` schema + aggregate-SHA algorithm
+
+`data/binance/REVISION.toml` (not in git — `data/binance/` is
+already `.gitignore`-listed). Schema, generator, and the
+identical-writer / identical-verifier algorithm are locked verbatim
+in ADR-0032 § 2.
+
+| File                                             | Disposition |
+|--------------------------------------------------|-------------|
+| `data/binance/REVISION.toml`                     | **NEW** — generated locally by operator after `fetch_binance_klines --emit-revision-manifest` |
+| `crates/data/src/bin/fetch_binance_klines.rs`    | **MODIFY** — add `--emit-revision-manifest` flag (default off); writes `<out>/REVISION.toml`. On `--force` rewrite from scratch; on incremental fetch only update changed entries + recompute aggregate. |
+| `crates/data/src/lib.rs` or `crates/data/src/revision.rs` | **NEW (file)** — `pub fn write_revision_manifest(root: &Path) -> Result<(), RevisionError>` + `pub fn read_and_verify_revision_manifest(root: &Path) -> Result<String, RevisionError>` (returns aggregate SHA). The aggregate-SHA algorithm has exactly ONE implementation; both the binary's `--emit-revision-manifest` and `backtest::realdata::RealDataBarSource` call it. |
+
+### D3. Orthogonal `ScenarioDataSource` axis (NOT new `ScenarioStrategy` variants)
+
+Add `ScenarioDataSource::{Synthetic, RealData}` as a new field on
+`Scenario`. Existing `ScenarioStrategy::TcnOverlayMomentum` /
+`...Weights` are reused unchanged — the four new scenarios
+differ from their synthetic siblings ONLY in `data_source` and
+`expected_revision_sha`. Rationale in ADR-0032 § 3 (rejects the
+strategy-variant explosion).
+
+| File                                      | Disposition |
+|-------------------------------------------|-------------|
+| `crates/backtest/src/main.rs:67`          | **MODIFY** — add `ScenarioDataSource` enum above `ScenarioStrategy`. |
+| `crates/backtest/src/main.rs:91`          | **MODIFY** — add `data_source: ScenarioDataSource` + `expected_revision_sha: Option<String>` fields to `Scenario`. |
+| `crates/backtest/src/main.rs:117-356`     | **MODIFY** — every existing arm in `Scenario::from_name` adds `data_source: ScenarioDataSource::Synthetic, expected_revision_sha: None,`. ZERO body bytes for existing scenarios change because these fields are NOT serialised into the report body (only `data_source` text + revision SHA flow through the report-renderer's body for `RealData` branches). |
+| `crates/backtest/src/main.rs:355`         | **MODIFY** — add four new arms (`top10-2023-fy-tcn-overlay-realdata`, `top10-2024-...`, `...-weights-realdata` for 2023 / 2024) before the `other =>` bail. Each carries `bar_count = 8760` (2023) or `8784` (2024), `start_year`, `data_source: RealData`, `expected_revision_sha: None` (tester fills at M5 lock; until lock, the assertion is skipped). |
+| `crates/backtest/src/main.rs:2421-2466`   | **MODIFY** — TCN dispatch prelude: branch on `scenario.data_source`. Synthetic arm calls existing `synthetic_bars_hourly` per-symbol loop (UNCHANGED). RealData arm calls `realdata::RealDataBarSource::new(scenario.data_root, top10_symbols_with_prices().into_iter().map(|(s,_)| s).collect()).load(scenario.span())?`, then asserts `expected_revision_sha` if `Some`. |
+| `crates/backtest/src/main.rs:2978-2982`   | **MODIFY** — extend `scenario_to_feature` match arm to map the four new names → `"backtest-real-binance-data"`. Reports land under `spec/backtest-real-binance-data/reports/`. |
+
+A small helper `Scenario::span(&self) -> TimeSpan` (or inline:
+`(start_year, start_year + 1)` half-open at January 1 UTC) lives
+next to `Scenario` to compute the date span. The `bar_count`
+field on the realdata scenarios is the **expected** bar count
+used by R3 tolerance; loaded count must be ≥ 99.5% × `bar_count` ×
+`universe.len()` (i.e. `bars.len() >= (8760 * 10 * 995) / 1000 = 87 162` for 2023fy).
+
+### D4. Determinism contract surface — `data_revision_sha` placement
+
+Two distinct serialisation sites; only the second one is hashed.
+
+**Frontmatter (forensics, EXCLUDED from body-SHA):** add a new line
+between `wall_clock_s:` and `data_source:` in
+`write_tcn_overlay_report` (`crates/backtest/src/main.rs:2008-2014`):
+
+```text
+data_revision_sha: <64 hex chars OR "n/a">
+```
+
+`"n/a"` for Synthetic scenarios so the four existing synthetic TCN
+anchors stay byte-identical (the line is added but `"n/a"` is byte-
+stable). For `RealData` scenarios the value is the recomputed
+aggregate from `LoadedBars::revision_sha`.
+
+**Body (anchor integrity, INCLUDED in body-SHA):** the existing body
+flows from line 2024 (`# Backtest Report — {scenario_name}`) through
+`## Summary` (2027), `## TCN Overlay Modulation` (2046), `## Universe`
+(2055), `## Notes` (2059). For `RealData` scenarios ONLY, the developer
+inserts a new `## Data source` section between `## Universe` and
+`## Notes`:
+
+```markdown
+## Data source
+
+| Field                | Value                                |
+|----------------------|--------------------------------------|
+| Source               | Binance Vision via data/binance/     |
+| Revision SHA         | <64 hex>                             |
+| Universe size        | 10 symbols                           |
+| Bar interval         | 1h                                   |
+| Span (UTC, half-open)| 2023-01-01T00:00:00Z .. 2024-01-01T00:00:00Z |
+| Expected bars        | 87600                                |
+| Loaded bars          | 87600 (100.00% present)              |
+```
+
+Column widths and row order are fixed: `Field` left-padded to 20
+chars, `Value` left-padded to 36 chars. The `Loaded bars` row
+displays "{actual} ({pct:.2}% present)" with `pct` always rendered
+to two decimal places. For Synthetic scenarios this section is
+ABSENT (not "empty"); the renderer is a conditional, not a no-op.
+
+Additionally, the existing Summary table's `Data source` row
+(`main.rs:2044`) renders different strings:
+
+| Scenario family                          | Body text |
+|------------------------------------------|-----------|
+| `top10-*-fy-tcn-overlay` (Synthetic)     | `synthetic (seeded RNG, v2.5 tcn-overlay)` |
+| `top10-*-fy-tcn-overlay-weights` (Synthetic) | `synthetic (seeded RNG, v2.5 tcn-overlay-weights)` |
+| `top10-*-fy-tcn-overlay-realdata` (RealData) | `real (Binance Vision via data/binance/, v2.6.0-realdata)` |
+| `top10-*-fy-tcn-overlay-weights-realdata` (RealData) | `real (Binance Vision via data/binance/, v2.6.0-realdata)` |
+
+The existing two strings (rows 1 and 2) come from
+`main.rs:2445,2447`; do not modify them. The new two strings come
+from the RealData branch of the dispatch prelude added in D3.
+
+The closing `## Notes` line "Data: synthetic hourly bars, 10
+independent ChaCha20Rng streams" (`main.rs:2066`) stays for
+Synthetic. For RealData it becomes: `Data: real Binance hourly
+OHLCV, see ## Data source section above.`. This is the ONLY change
+to the Notes section; the other Notes lines (slippage, fees, size,
+risk) stay byte-identical.
+
+### D5. Time-alignment + missing-data — exact algorithm
+
+Locks R3 + K2 + K4 algorithmically:
+
+1. **Universe & symbols.** The 10 USDT pairs in
+   `top10_symbols_with_prices()` (`main.rs:578`). Hard-coded set;
+   any drift between this list and the parquet directories on disk
+   is caught by `ReplayFeed::merge_symbols` returning
+   `FeedError::Io` per missing symbol.
+2. **Span.** Calendar-year half-open `[Y-01-01T00:00:00Z, (Y+1)-01-01T00:00:00Z)`.
+   Same `OffsetDateTime` math as `synthetic_bars_hourly` at
+   `main.rs:489-497`.
+3. **Expected bar count.** `expected = bars_per_year(year) * 10`,
+   where `bars_per_year(2023) = 8760`, `bars_per_year(2024) =
+   8784` (leap year). Computed by the scenario row, not by the
+   loader.
+4. **Tolerance.** Cross-symbol: `loaded.len() >= ceil(expected * 995 / 1000)`.
+   Integer arithmetic — no floats. For 2023fy: `87162` bars
+   minimum.
+5. **"Missing" definition.** A bar is "missing" iff its
+   `(symbol, open_time_ms)` pair is absent from the merged
+   k-way-sorted output. The loader does NOT diff against an
+   expected timestamp grid — that would invent timestamps and
+   blur the K1 schema-drift signal. The cross-symbol cumulative
+   shortfall against `expected` is the only check.
+6. **Failure mode.** Single error type
+   `RealDataError::MissingData { scenario, expected, actual,
+   symbols, pct, span_start, span_end }` (ADR-0032 § 1) — the
+   user-facing message includes the percentage and the exact
+   half-open span. NO partial scenario continuation; one symbol
+   with 5% gaps fails the whole scenario via the cross-symbol
+   tolerance (analyst-locked default).
+7. **Time-key.** `open_ts` (Unix millis) is the alignment key —
+   same as `data::ReplayFeed::merge_symbols` already uses
+   (`replay_feed.rs:262`). All 10 symbol parquets confirmed to
+   share the same `open_time` cadence by inspection of
+   `crates/data/src/bin/fetch_binance_klines.rs` (writer is
+   single-source for all 10 symbols). K4 is closed by reuse.
+
+### D6. Risk-isolation invariants (K6 + K10)
+
+The realdata code path MUST NOT mutate any state observed by the
+synthetic path:
+
+- `crates/backtest/src/realdata.rs` is feature-gated; with
+  `--no-default-features` the file is not compiled at all (proven
+  at build time, not asserted at run time).
+- The synthetic bar pipeline (`synthetic_bars_hourly` at
+  `main.rs:476`) is **not modified** in M1-M5. No diff to
+  lines 476-557 across the whole feature.
+- The `Scenario::from_name` rows for the existing 11 multi-symbol
+  scenarios add the two new fields with the default-Synthetic
+  / None values and emit ZERO new body bytes (renderer's RealData
+  branch is conditional on `scenario.data_source == RealData`).
+- After every developer commit the dev runs `bash
+  scripts/verify_anchors.sh`; the gate (T-D-12 below) makes the
+  outcome a machine-verifiable acceptance, not a footnote.
+
+### D7. CI portability (K8 + K10)
+
+`cargo build -p backtest` with default features (no `realdata`,
+no `candle`) MUST succeed on a runner without `data/binance/`. The
+four new scenario rows in `from_name` are gated behind
+`#[cfg(feature = "realdata")]` — without the feature they are
+unreachable from the binary's match arms. A `cargo test
+--workspace` on default features runs the existing 9 backtest
+determinism tests + the 11 anchor-matched reports (15 anchors).
+
+With `--features realdata` and `data/binance/REVISION.toml` absent,
+each `-realdata` scenario fails with `RevisionMissing` at scenario
+load time (NOT a panic, NOT a silent fallback). Verified by a
+unit test in `crates/backtest/tests/realdata_revision_verify.rs`.
+
+### D8. Open questions deferred to developer judgement
+
+These are intentionally not pre-locked — the developer picks the
+local-best shape during M1, calls it out in the M1 handoff, and
+the next architect-spawn ratifies or principled-overrides. None
+of them moves an anchor.
+
+- **OQ-DEV-1.** Whether `RealDataBarSource::load` takes
+  `&self` or owned `self`. ADR-0032's sketch uses `&self` for
+  shared-state safety; if the developer needs `mut` for a streaming
+  reader, that is an implementation detail.
+- **OQ-DEV-2.** Whether the aggregate-SHA helper lives in a
+  new file `crates/data/src/revision.rs` or as a `mod revision;`
+  inside `crates/data/src/lib.rs`. D2 prefers the new file
+  for testability; developer may pick a module if a public
+  surface emerges.
+- **OQ-DEV-3.** Bytes-vs-mmap for SHA-256 of parquet files. For
+  ~25 KB files reading into memory is fine and matches `sha2`'s
+  default API; mmap is a perf optimisation if the manifest verify
+  step ever dominates wall-clock. Punt to M0 spike if it becomes
+  visible.
+- **OQ-DEV-4.** Whether `write_tcn_overlay_report` grows a
+  fifth parameter (e.g. `Option<&LoadedBars>`) or whether
+  `result.loaded_bars: Option<LoadedBars>` is threaded through
+  `TcnOverlayRunResult`. The latter is more local; the former
+  is more explicit. Both produce identical body bytes.
 
 ## Backtest Scenarios
 
@@ -533,6 +752,26 @@ _tester fills this — the gate is:_
 
 ## Changelog
 
+- 2026-05-18 (architect): **Design section landed.** Locks four
+  orthogonal decisions captured in
+  [ADR-0032](../architecture/adr/0032-backtest-realdata-path-and-revision-pin.md):
+  (D1) parquet-read path lives in a new private module
+  `crates/backtest/src/realdata.rs` behind cargo feature
+  `realdata`, reusing `data::ReplayFeed::merge_symbols` — no
+  cross-crate dep on `forecast`; (D2) `data/binance/REVISION.toml`
+  schema + sorted-map aggregate-SHA algorithm (identical writer
+  in `fetch_binance_klines --emit-revision-manifest` and verifier
+  in `RealDataBarSource::load`); (D3) orthogonal
+  `ScenarioDataSource::{Synthetic, RealData}` axis on `Scenario`
+  (NOT new `ScenarioStrategy` variants); (D4) `data_revision_sha`
+  in frontmatter (forensics) + a new `## Data source` body
+  section (anchor integrity). D5 locks the missing-data algorithm
+  (cross-symbol, integer math, no forward-fill). D6 spells out
+  the K6/K10 isolation invariants. D7 covers CI portability. D8
+  surfaces four open questions deferred to developer judgement.
+  Tasks T-AR-1/2/3 ticked. 17 T-D-N developer rows decomposed
+  in [`tasks.md`](tasks.md#m1--parquet-read-path-5-t-d-rows)
+  with parallelism map (6 waves). HANDOFF → developer.
 - 2026-05-18 (operator): **All three operator-decides confirmed at analyst
   defaults.** Q1 → parallel `-realdata` family (NOT in-place). Q4 → pin
   universe to 10 USDT pairs on disk. Q8 → wire-only scope (alpha verdict

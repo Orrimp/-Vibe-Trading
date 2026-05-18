@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-17
+updated: 2026-05-18
 ---
 
 
@@ -79,6 +79,7 @@ the canonical table; the parent file links here.)
 | 0029  | v2.5 — Forecast-checkpoint provenance schema + LFS-anchor strategy | accepted | 2026-05-17 |
 | 0030  | Cockpit calls the backtest engine in-process via tightened API | accepted | 2026-05-17 |
 | 0031  | `AuditTick<Event, Context>` consumer envelope for audit ledger read path | proposed | 2026-05-17 |
+| 0032  | Backtest real-Binance-data path + REVISION.toml data-revision pin | accepted | 2026-05-18 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -133,3 +134,16 @@ finalisation.
   Implementation queued in `spec/backlog.md ## Queue`.
   Establishes the invocation pattern reused by Phase B / Phase E
   Compare matrix / v3 continuous-paper.
+- 2026-05-18 (architect): ADR-0032 added — backtest real-Binance-data
+  path + `REVISION.toml` data-revision pin for the four new
+  `top10-*-fy-tcn-overlay[-weights]-realdata` scenarios. Locks
+  (a) module placement (`crates/backtest/src/realdata.rs`,
+  feature-gated `realdata`, reuses `data::ReplayFeed::merge_symbols`),
+  (b) `REVISION.toml` schema + aggregate-SHA algorithm,
+  (c) orthogonal `ScenarioDataSource` axis on `Scenario` (not new
+  `ScenarioStrategy` variants), (d) `data_revision_sha` in both
+  frontmatter (forensics, excluded from body hash) and a new
+  `## Data source` body section (anchor integrity, covered by body
+  hash). Existing 15 anchors stay byte-identical (K6 + K10).
+  Closes T-AR-1, T-AR-3 of
+  `spec/backtest-real-binance-data/tasks.md`.
