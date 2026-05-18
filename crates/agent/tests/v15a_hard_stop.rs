@@ -144,7 +144,7 @@ fn t710_hard_stop_close_pair_on_z_stop() {
 
 #[tokio::test]
 async fn t710_mean_reversion_stop_audit_event() {
-    use audit::{bootstrap, journal, query, Ledger};
+    use audit::{Ledger, bootstrap, journal, query};
     use trading_core::StrategyEventKind;
 
     let ledger = Ledger::in_memory().await.unwrap();

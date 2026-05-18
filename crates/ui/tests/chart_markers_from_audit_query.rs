@@ -6,7 +6,7 @@
 
 use trading_core::{Symbol, Venue};
 use ui::fixtures::synthetic_fills_for;
-use ui::state::{update, Cockpit, Message, PanelState, Screen};
+use ui::state::{Cockpit, Message, PanelState, Screen, update};
 
 #[test]
 fn chart_markers_from_audit_query_fixtures_mode() {

@@ -32,8 +32,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent::config::BusConfig;
 use agent::EventBus;
+use agent::config::BusConfig;
 use futures::StreamExt;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
@@ -47,7 +47,7 @@ use trading_core::{
 use ui::live::{
     stream_bars, stream_fills, stream_mode, stream_pnl, stream_positions, stream_ticks,
 };
-use ui::state::{update, AgentMode, Cockpit, KillState, Latency, PanelState};
+use ui::state::{AgentMode, Cockpit, KillState, Latency, PanelState, update};
 
 // ── Synthetic event factories ────────────────────────────────────────────────
 
@@ -256,7 +256,7 @@ async fn t911_full_bus_drives_every_panel_out_of_loading() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn t911_kill_button_round_trip_via_mode_forwarder() {
     use agent::{HaltReason, IncidentSpawner, KillSwitch, MockIncidentSpawner};
-    use audit::{bootstrap, Ledger};
+    use audit::{Ledger, bootstrap};
 
     let ledger = Arc::new(Ledger::in_memory().await.expect("in-memory"));
     bootstrap::chart_of_accounts(&ledger).await.expect("chart");

@@ -35,7 +35,7 @@
 //! and the table-level `.width(Length::Fill)` handles outer fit.
 
 use iced::alignment::Horizontal;
-use iced::widget::{table, Text};
+use iced::widget::{Text, table};
 use iced::{Element, Length};
 use rust_decimal::Decimal;
 
@@ -44,7 +44,7 @@ use crate::strings::{
     PANEL_POSITIONS_TITLE, POS_COL_COST, POS_COL_EXPOSURE, POS_COL_MARK, POS_COL_PNL,
     POS_COL_PNL_PCT, POS_COL_QTY, POS_COL_SYMBOL, POS_EMPTY, POS_ERROR_PREFIX, POS_LOADING,
 };
-use crate::theme::{color, color_for_delta, text, ThemeMode};
+use crate::theme::{ThemeMode, color, color_for_delta, text};
 
 use super::frame::{col_header, error_body, loading_with_spinner, muted_body, panel};
 use super::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};

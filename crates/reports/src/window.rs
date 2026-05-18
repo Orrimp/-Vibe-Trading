@@ -13,8 +13,8 @@
 //! | `inception`       | [`ReportWindow::Inception`] |
 
 use thiserror::Error;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::Timestamp;
 
 /// All accepted report windows for the operator-success-report binary

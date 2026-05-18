@@ -46,16 +46,13 @@ pub trait ForecastProvider: Send + Sync {
     ///
     /// See [`ForecastError`] for all failure modes. In strict-replay
     /// (backtest) mode, a cache miss returns `ForecastError::ReplayMiss`.
-    async fn forecast(
-        &self,
-        request: ForecastRequest,
-    ) -> Result<ForecastResponse, ForecastError>;
+    async fn forecast(&self, request: ForecastRequest) -> Result<ForecastResponse, ForecastError>;
 }
 
 /// Re-export core forecast types for consumers of this crate.
 pub use trading_core::forecast::{
-    Direction, ForecastOverlay, ForecastRequest as Request, ForecastResponse as Response,
-    OhlcvBar, SamplingParams,
+    Direction, ForecastOverlay, ForecastRequest as Request, ForecastResponse as Response, OhlcvBar,
+    SamplingParams,
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -142,7 +139,10 @@ mod tests {
             response: sample_response(),
         });
         let req = sample_request();
-        let resp = provider.forecast(req).await.expect("boxed trait object works");
+        let resp = provider
+            .forecast(req)
+            .await
+            .expect("boxed trait object works");
         assert_eq!(resp.overlay.direction, Direction::Up);
     }
 

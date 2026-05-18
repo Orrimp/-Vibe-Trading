@@ -10,8 +10,8 @@
 //! stays at 10; all 10 second-run upserts return `false`.
 
 use reflection::post_mortem_analyst::generate_card;
-use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::store::ReflectionStore;
+use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::types::{ClosedTrade, SymbolOrPair};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;

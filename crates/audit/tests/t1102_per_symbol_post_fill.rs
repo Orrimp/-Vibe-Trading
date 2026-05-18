@@ -19,7 +19,7 @@
 //!   the description-parsed symbol.
 
 use audit::query::open_positions_at;
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

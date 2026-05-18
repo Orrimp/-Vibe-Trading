@@ -9,7 +9,7 @@
 //!    and the reconciliation appendix.
 //! 3. Companion CSVs land in the artifacts directory.
 
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use reports::{FrozenMarkSource, ReportWindow};
 use tempfile::TempDir;
 use uuid::Uuid;

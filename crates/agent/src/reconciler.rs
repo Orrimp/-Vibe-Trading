@@ -18,8 +18,8 @@ use rust_decimal::Decimal;
 use tracing::info;
 use trading_core::{Money, PnlSnapshot, Timestamp};
 
-use crate::kill_switch::KillSwitch;
 use crate::EventBus;
+use crate::kill_switch::KillSwitch;
 
 /// Shared reconciliation state — updated by the trading loop each bar.
 #[derive(Debug, Clone)]
@@ -239,8 +239,8 @@ mod tests {
     /// from `after_bar_close`.
     #[tokio::test]
     async fn t903c_after_bar_close_publishes_pnl() {
-        use crate::config::BusConfig;
         use crate::EventBus;
+        use crate::config::BusConfig;
 
         let state = ReconcilerState {
             cash: dec!(100_000),

@@ -27,11 +27,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser;
-use iced::widget::{container, Column, Container};
+use iced::widget::{Column, Container, container};
 use iced::{Element, Length};
 use trading_core::{BacktestMetrics, EquitySeries, Money, Timestamp, Usdt};
 use ui::state::PanelState;
-use ui::theme::{color, layout, space, ThemeMode};
+use ui::theme::{ThemeMode, color, layout, space};
 use ui::viewer::{ReportFrontMatter, ReportLoadResult, ViewerMessage, ViewerModel};
 use ui::widgets::{drawdown_band, equity_curve, kpi_strip};
 
@@ -261,10 +261,10 @@ fn strip_front_matter(raw: &str) -> &str {
 
 // ── body_render — minimal markdown pre-pass ──────────────────────────────────
 mod body_render {
-    use iced::widget::{container, scrollable, Column, Text};
     use iced::Length;
+    use iced::widget::{Column, Text, container, scrollable};
 
-    use ui::theme::{color, space, text, ThemeMode};
+    use ui::theme::{ThemeMode, color, space, text};
     use ui::viewer::ViewerMessage;
 
     /// Render the report body verbatim with a tiny heading-level
@@ -314,7 +314,9 @@ mod tests {
         .expect("parser must accept positional report path");
         assert_eq!(
             args.report_path,
-            PathBuf::from("spec/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md")
+            PathBuf::from(
+                "spec/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md"
+            )
         );
     }
 

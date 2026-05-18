@@ -82,8 +82,10 @@ scenario = "report-sample-90d"
 version  = "v2.0.0"
 sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
 
-# v2.5 TCN overlay scenarios (T-T-1 / M7).  Locked by tester on 2026-05-18
-# against the passthrough-forecaster synthetic-RNG baseline runs produced by
+# v2.5 TCN overlay scenarios (T-T-1 / M7).  Locked by tester on 2026-05-18;
+# updated by developer on 2026-05-18 to canonical scenario names per feature.md
+# § Backtest Scenarios and trace.toml REQ-V25-TCN-001.
+# Against the passthrough-forecaster synthetic-RNG baseline runs produced by
 # `cargo run -p backtest --release -- --scenario <s> --seed 0xC0FFEE`.
 # NOTE: these anchors reflect the PassthroughForecaster path (candle feature
 # absent in CI).  A second lock for the real-TCN-weights path is required once
@@ -91,19 +93,11 @@ sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
 # verified on Apple Silicon (see T-D-11/T-D-12).
 
 [[anchors]]
-scenario = "bs1-tcn-overlay"
+scenario = "top10-2023-fy-tcn-overlay"
 version  = "v2.5.0"
-sha256   = "015aeed0b25808152c55b60186fe53cf6e329f89b91c86071e5516b7149bc636"
-
-# NOTE: The canonical anchor names per feature.md and trace.toml are
-# top10-2023-fy-tcn-overlay / top10-2024-fy-tcn-overlay.
-# The backtest binary currently uses scenario IDs bs1-tcn-overlay /
-# bs2-tcn-overlay, which produce report files with those names.
-# The developer MUST rename the scenarios in crates/backtest/src/main.rs
-# so that verify_anchors.sh can resolve these canonical names.
-# Tracking: HANDOFF -> developer — scenario-name/anchor-name alignment.
+sha256   = "01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5"
 
 [[anchors]]
-scenario = "bs2-tcn-overlay"
+scenario = "top10-2024-fy-tcn-overlay"
 version  = "v2.5.0"
-sha256   = "698f1ffb951e357b8708171107f6190be2d8c68fdddcbda8a0a731345a5a79ec"
+sha256   = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163"

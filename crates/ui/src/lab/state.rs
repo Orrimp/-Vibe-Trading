@@ -4,8 +4,8 @@
 //! for the Lab screen: selected strategy, selected pair, date range,
 //! params slot, and the comparison set (≤4 strategies).
 //!
-//! Also defines `StrategyFamily` (for the strategy_chip family pill),
-//! `DateRange` + `Preset` (for the date_range picker), and the
+//! Also defines `StrategyFamily` (for the `strategy_chip` family pill),
+//! `DateRange` + `Preset` (for the `date_range` picker), and the
 //! update-handler helpers for the `Message::Lab*` variants.
 //!
 //! **No persistence here** — persistence lives in `lab::persistence`
@@ -297,7 +297,12 @@ mod tests {
     /// T-D-4 — all Preset labels are non-empty.
     #[test]
     fn preset_labels_non_empty() {
-        for p in [Preset::Last30d, Preset::Last90d, Preset::H1_2024, Preset::H2_2024] {
+        for p in [
+            Preset::Last30d,
+            Preset::Last90d,
+            Preset::H1_2024,
+            Preset::H2_2024,
+        ] {
             assert!(!p.label().is_empty(), "empty label for {:?}", p);
         }
     }

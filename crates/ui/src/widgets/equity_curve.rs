@@ -16,21 +16,21 @@
 )]
 
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke, Text as CanvasText};
-use iced::widget::{container, Canvas, Container};
-use iced::{mouse, Length, Point, Rectangle, Renderer};
+use iced::widget::{Canvas, Container, container};
+use iced::{Length, Point, Rectangle, Renderer, mouse};
 use rust_decimal::prelude::ToPrimitive;
 use trading_core::EquitySeries;
 
 use super::canvas_chart::{
-    draw_gridlines, inner_rect_with_gutters, polyline_with_fill, with_alpha, GRIDLINE_COUNT,
-    RANGE_PAD_FRACTION,
+    GRIDLINE_COUNT, RANGE_PAD_FRACTION, draw_gridlines, inner_rect_with_gutters,
+    polyline_with_fill, with_alpha,
 };
 use super::chart::{local_offset_or_utc, time_axis_tick_count};
 use super::frame::muted_body;
 use crate::state::PanelState;
 use crate::strings::{VIEWER_EQUITY_UNAVAILABLE_PREFIX, VIEWER_NO_EQUITY_DATA};
 use crate::theme::layout::{AXIS_GUTTER_PRICE_PX, AXIS_GUTTER_RIGHT_PX, AXIS_GUTTER_TIME_PX};
-use crate::theme::{color, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, space, text};
 use crate::viewer::ViewerMessage;
 
 /// Fixed container height (R9.4 layout — ~240 px for the equity

@@ -16,7 +16,7 @@
 //! "slope" / "mean" lines and the upper bound of the confidence interval
 //! to discharge the R5.5 assertion.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use data::bar_aggregator::aggregate_one_second_iter;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;

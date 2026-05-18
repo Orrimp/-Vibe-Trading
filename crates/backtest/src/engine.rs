@@ -126,7 +126,7 @@ pub struct BacktestKpis {
 ///
 /// # Seed contract
 ///
-/// `seed` is a mandatory `[u8; 32]` ChaCha20 seed.
+/// `seed` is a mandatory `[u8; 32]` `ChaCha20` seed.
 /// Passing `[0u8; 32]` is a hard error — `run_scenario` returns
 /// `RunError::ZeroSeed`. The Lab default seed is defined in
 /// `crates/ui/src/lab/defaults.rs` as `LAB_DEFAULT_SEED`.
@@ -141,7 +141,7 @@ pub struct ScenarioConfig {
     /// Strategy parameter overrides. `None` uses strategy defaults.
     /// Phase A always passes `None`; Phase B exposes the param sheet.
     pub params: Option<ParamSheet>,
-    /// Mandatory ChaCha20 RNG seed (`[0u8; 32]` is rejected).
+    /// Mandatory `ChaCha20` RNG seed (`[0u8; 32]` is rejected).
     pub seed: [u8; 32],
     /// When `true`, write the Markdown report to
     /// `spec/<feature>/reports/backtest-<stamp>-<scenario>.md`.
@@ -224,12 +224,12 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
     }
 
     // Range sanity check — catch obvious operator errors early.
-    if let DateRange::Custom { start_ms, end_ms } = cfg.range {
-        if start_ms > end_ms {
-            return Err(RunError::InvalidRange(format!(
-                "Custom range start_ms ({start_ms}) > end_ms ({end_ms})"
-            )));
-        }
+    if let DateRange::Custom { start_ms, end_ms } = cfg.range
+        && start_ms > end_ms
+    {
+        return Err(RunError::InvalidRange(format!(
+            "Custom range start_ms ({start_ms}) > end_ms ({end_ms})"
+        )));
     }
 
     // Phase A stub — the lab runner catches this and resolves with a
@@ -272,13 +272,12 @@ mod tests {
         let result = run_scenario(cfg).await;
         assert!(
             matches!(result, Err(RunError::ZeroSeed)),
-            "zero seed must be rejected; got: {:?}",
-            result
+            "zero seed must be rejected; got: {result:?}"
         );
     }
 
     /// T-D-12 — non-zero seed passes seed validation (Phase A returns
-    /// NotImplemented as the next error level, not ZeroSeed).
+    /// `NotImplemented` as the next error level, not `ZeroSeed`).
     #[tokio::test]
     async fn run_scenario_accepts_non_zero_seed() {
         let cfg = config_with_seed(valid_seed());
@@ -286,8 +285,7 @@ mod tests {
         // Phase A stub returns NotImplemented, NOT ZeroSeed.
         assert!(
             matches!(result, Err(RunError::NotImplemented)),
-            "non-zero seed must NOT trigger ZeroSeed; got: {:?}",
-            result
+            "non-zero seed must NOT trigger ZeroSeed; got: {result:?}"
         );
     }
 
@@ -302,8 +300,7 @@ mod tests {
         let result = run_scenario(cfg).await;
         assert!(
             matches!(result, Err(RunError::InvalidRange(_))),
-            "start > end must be rejected; got: {:?}",
-            result
+            "start > end must be rejected; got: {result:?}"
         );
     }
 
@@ -318,13 +315,12 @@ mod tests {
         let result = run_scenario(cfg).await;
         assert!(
             matches!(result, Err(RunError::NotImplemented)),
-            "valid custom range must not be rejected; got: {:?}",
-            result
+            "valid custom range must not be rejected; got: {result:?}"
         );
     }
 
-    /// T-D-12 — All preset DateRange variants are handled (do not hit custom
-    /// range validation path). Phase A returns NotImplemented for all.
+    /// T-D-12 — All preset `DateRange` variants are handled (do not hit custom
+    /// range validation path). Phase A returns `NotImplemented` for all.
     #[tokio::test]
     async fn run_scenario_all_presets_reach_stub() {
         for range in [
@@ -338,9 +334,7 @@ mod tests {
             let result = run_scenario(cfg).await;
             assert!(
                 matches!(result, Err(RunError::NotImplemented)),
-                "preset {:?} must reach the stub (NotImplemented); got: {:?}",
-                range,
-                result
+                "preset {range:?} must reach the stub (NotImplemented); got: {result:?}"
             );
         }
     }

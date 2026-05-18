@@ -685,35 +685,39 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
 //
 // Locked by tester on 2026-05-18 against passthrough-forecaster synthetic-RNG
 // baseline runs (cargo run -p backtest --release -- --scenario <s> --seed 0xC0FFEE).
+// Renamed by developer on 2026-05-18 from bs1-tcn-overlay / bs2-tcn-overlay to
+// the canonical names per feature.md § Backtest Scenarios and trace.toml
+// REQ-V25-TCN-001.  Body hashes changed because the scenario name appears in
+// the report header line.
 //
 // NOTE: These anchors capture the PassthroughForecaster path (candle feature
 // absent in CI).  When the full M3 TCN training run completes and real TCN
 // checkpoints are verified on Apple Silicon, the developer must re-lock these
 // anchors with a new version tag (e.g. v2.5.0-tcn-weights) per ADR-0029.
 //
-//   bs1-tcn-overlay  015aeed0b25808152c55b60186fe53cf6e329f89b91c86071e5516b7149bc636
-//   bs2-tcn-overlay  698f1ffb951e357b8708171107f6190be2d8c68fdddcbda8a0a731345a5a79ec
+//   top10-2023-fy-tcn-overlay  01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5
+//   top10-2024-fy-tcn-overlay  e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163
 
-/// T-T-1 — bs1-tcn-overlay (2023 full-year top-10, passthrough mode) anchor hash.
+/// T-T-1 — top10-2023-fy-tcn-overlay (2023 full-year top-10, passthrough mode) anchor hash.
 #[test]
-fn tt1_bs1_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "015aeed0b25808152c55b60186fe53cf6e329f89b91c86071e5516b7149bc636";
-    let hex = scenario_body_hex("bs1-tcn-overlay");
+fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
+    const ANCHOR: &str = "01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5";
+    let hex = scenario_body_hex("top10-2023-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
-        "T-T-1 REGRESSION: bs1-tcn-overlay body-SHA256 changed.\n\
+        "T-T-1 REGRESSION: top10-2023-fy-tcn-overlay body-SHA256 changed.\n\
          Expected: {ANCHOR}\nGot:      {hex}"
     );
 }
 
-/// T-T-1 — bs2-tcn-overlay (2024 full-year top-10, passthrough mode) anchor hash.
+/// T-T-1 — top10-2024-fy-tcn-overlay (2024 full-year top-10, passthrough mode) anchor hash.
 #[test]
-fn tt1_bs2_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "698f1ffb951e357b8708171107f6190be2d8c68fdddcbda8a0a731345a5a79ec";
-    let hex = scenario_body_hex("bs2-tcn-overlay");
+fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
+    const ANCHOR: &str = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163";
+    let hex = scenario_body_hex("top10-2024-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
-        "T-T-1 REGRESSION: bs2-tcn-overlay body-SHA256 changed.\n\
+        "T-T-1 REGRESSION: top10-2024-fy-tcn-overlay body-SHA256 changed.\n\
          Expected: {ANCHOR}\nGot:      {hex}"
     );
 }

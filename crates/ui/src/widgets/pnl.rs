@@ -3,15 +3,15 @@
 //! Numbers come from `audit::query` (R3.6), never from a cockpit-local
 //! accumulator. Under fixtures, the feed is in `ui::fixtures`.
 
-use iced::widget::{Column, Row, Text};
 use iced::Element;
+use iced::widget::{Column, Row, Text};
 
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     PANEL_PNL_TITLE, PNL_EMPTY, PNL_ERROR_PREFIX, PNL_LABEL_CASH, PNL_LABEL_DAILY_RETURN,
     PNL_LABEL_EQUITY, PNL_LABEL_REALIZED, PNL_LABEL_UNREALIZED, PNL_LOADING,
 };
-use crate::theme::{color, color_for_delta, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, color_for_delta, space, text};
 
 use super::frame::{error_body, loading_with_spinner, muted_body, panel};
 use super::num::{fmt_usdt, fmt_usdt_signed};

@@ -31,7 +31,7 @@ mod smoke_tests {
         provenance::{
             ArchitectureConfig, CheckpointMetadata, DataSpan, TokenisationConfig, TrainingConfig,
         },
-        tcn::{TcnModel, INPUT_FEATURES},
+        tcn::{INPUT_FEATURES, TcnModel},
     };
     use rand::SeedableRng;
     use rand::seq::SliceRandom;
@@ -39,7 +39,6 @@ mod smoke_tests {
     use sha2::{Digest, Sha256};
 
     use time::macros::datetime;
-
 
     const SEED: u64 = 0x00C0_FFEE;
 
@@ -50,11 +49,7 @@ mod smoke_tests {
     }
 
     /// Huber loss helper (same as in the binary).
-    fn huber_loss(
-        pred: &Tensor,
-        target: &Tensor,
-        delta: f32,
-    ) -> candle_core::Result<Tensor> {
+    fn huber_loss(pred: &Tensor, target: &Tensor, delta: f32) -> candle_core::Result<Tensor> {
         let diff = (pred - target)?;
         let abs_diff = diff.abs()?;
         let delta_t = Tensor::full(delta, pred.shape(), pred.device())?;
@@ -89,19 +84,13 @@ mod smoke_tests {
             datetime!(2023-12-31 23:59 UTC),
         );
 
-        let mut train_windows = Vec::new();
-        for w in windows_for_symbol(&root, "BTCUSDT", train_span, &cfg) {
-            if let Ok(window) = w {
-                train_windows.push(window);
-            }
-        }
+        let train_windows: Vec<_> = windows_for_symbol(&root, "BTCUSDT", train_span, &cfg)
+            .filter_map(|w| w.ok())
+            .collect();
 
-        let mut val_windows = Vec::new();
-        for w in windows_for_symbol(&root, "BTCUSDT", val_span, &cfg) {
-            if let Ok(window) = w {
-                val_windows.push(window);
-            }
-        }
+        let val_windows: Vec<_> = windows_for_symbol(&root, "BTCUSDT", val_span, &cfg)
+            .filter_map(|w| w.ok())
+            .collect();
 
         if train_windows.is_empty() {
             return (f32::NAN, f32::NAN, f32::NAN, vec![]);
@@ -113,9 +102,9 @@ mod smoke_tests {
         // Small model for smoke speed.
         let model = TcnModel::with_config(
             INPUT_FEATURES,
-            16,    // smaller channels for speed
+            16, // smaller channels for speed
             3,
-            &[1, 2, 4, 8],  // 4 blocks for speed
+            &[1, 2, 4, 8], // 4 blocks for speed
             0.1,
             vb,
         )
@@ -155,7 +144,9 @@ mod smoke_tests {
             for &idx in batch_indices {
                 let w = &train_windows[idx];
                 // features is Tensor with layout [context, 5]; flatten to Vec<f32>.
-                let flat: Vec<f32> = w.features.flatten_all()
+                let flat: Vec<f32> = w
+                    .features
+                    .flatten_all()
                     .and_then(|t| t.to_vec1::<f32>())
                     .unwrap_or_default();
                 for c in 0..5 {
@@ -182,7 +173,11 @@ mod smoke_tests {
             }
         }
 
-        let final_train_loss = if n_batches > 0 { epoch_loss / n_batches as f32 } else { f32::NAN };
+        let final_train_loss = if n_batches > 0 {
+            epoch_loss / n_batches as f32
+        } else {
+            f32::NAN
+        };
 
         // Compute val loss.
         let mut val_loss_sum = 0.0_f32;
@@ -190,11 +185,15 @@ mod smoke_tests {
         for batch_start in (0..val_windows.len()).step_by(batch_size) {
             let batch_end = (batch_start + batch_size).min(val_windows.len());
             let actual_batch = batch_end - batch_start;
-            if actual_batch < 1 { break; }
+            if actual_batch < 1 {
+                break;
+            }
             let mut feat_data: Vec<f32> = Vec::with_capacity(actual_batch * 5 * context);
             let mut target_data: Vec<f32> = Vec::with_capacity(actual_batch);
             for w in &val_windows[batch_start..batch_end] {
-                let flat: Vec<f32> = w.features.flatten_all()
+                let flat: Vec<f32> = w
+                    .features
+                    .flatten_all()
                     .and_then(|t| t.to_vec1::<f32>())
                     .unwrap_or_default();
                 for c in 0..5 {
@@ -207,16 +206,18 @@ mod smoke_tests {
             if let (Ok(x), Ok(y)) = (
                 Tensor::from_vec(feat_data, (actual_batch, 5, context), &device),
                 Tensor::from_vec(target_data, (actual_batch, 1), &device),
-            ) {
-                if let Ok(pred) = model.forward(&x, false) {
-                    if let Ok(loss) = huber_loss(&pred, &y, delta) {
-                        val_loss_sum += loss.to_scalar::<f32>().unwrap_or(0.0);
-                        val_batches += 1;
-                    }
-                }
+            ) && let Ok(pred) = model.forward(&x, false)
+                && let Ok(loss) = huber_loss(&pred, &y, delta)
+            {
+                val_loss_sum += loss.to_scalar::<f32>().unwrap_or(0.0);
+                val_batches += 1;
             }
         }
-        let final_val_loss = if val_batches > 0 { val_loss_sum / val_batches as f32 } else { f32::NAN };
+        let final_val_loss = if val_batches > 0 {
+            val_loss_sum / val_batches as f32
+        } else {
+            f32::NAN
+        };
 
         // sigma_train.
         let sigma_train = if all_r_hats.len() > 1 {
@@ -243,8 +244,11 @@ mod smoke_tests {
             tokenisation: TokenisationConfig {
                 context_bars: 256,
                 features: vec![
-                    "logret".into(), "logrange".into(), "logvol_z".into(),
-                    "hour_sin".into(), "hour_cos".into(),
+                    "logret".into(),
+                    "logrange".into(),
+                    "logvol_z".into(),
+                    "hour_sin".into(),
+                    "hour_cos".into(),
                 ],
             },
             training: TrainingConfig {
@@ -271,7 +275,7 @@ mod smoke_tests {
             // byte-identical across two runs with the same config.
             weights_sha256: String::new(),
             model_revision: String::new(),
-            sigma_train: 0.0,     // excluded: depends on weights
+            sigma_train: 0.0,      // excluded: depends on weights
             final_train_loss: 0.0, // excluded: depends on weights
             final_val_loss: 0.0,   // excluded: depends on weights
             epochs_trained: 1,

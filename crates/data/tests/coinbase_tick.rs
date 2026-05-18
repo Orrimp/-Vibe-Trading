@@ -25,7 +25,7 @@
 
 use std::time::Duration;
 
-use data::{source::MarketDataSource, MockFeed};
+use data::{MockFeed, source::MarketDataSource};
 use futures::StreamExt;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

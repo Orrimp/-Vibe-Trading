@@ -24,15 +24,15 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+use crate::ProviderKind;
 use crate::error::LlmError;
 use crate::providers::anthropic::parse_retry_after;
-use crate::retry::{run_with_backoff, RetryError};
-use crate::tools::{validate_tool_use, ToolSchema};
+use crate::retry::{RetryError, run_with_backoff};
+use crate::tools::{ToolSchema, validate_tool_use};
 use crate::trait_def::{
     ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmProvider, MessageRole, ModelId,
     StopReason, SystemBlock, TokenUsage,
 };
-use crate::ProviderKind;
 
 /// OpenAI-compatible provider.
 ///

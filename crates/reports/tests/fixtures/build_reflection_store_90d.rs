@@ -10,13 +10,13 @@ use std::path::Path;
 
 use reflection::outcome::OutcomeClass;
 use reflection::regime::RegimeTag;
-use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::store::ReflectionStore;
+use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::types::{LessonCard, SymbolOrPair};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::{Money, PairKey, StrategyId, Symbol, Timestamp, Usdt};
 
 /// Build a sibling `reflection.db` at `path` for the 90d scenario.

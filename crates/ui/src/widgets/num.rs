@@ -8,7 +8,7 @@ use iced::Color;
 use rust_decimal::Decimal;
 
 use crate::strings::{MINUS_SIGN_LITERAL, UNIT_BTC, UNIT_USDT};
-use crate::theme::{color, ThemeMode};
+use crate::theme::{ThemeMode, color};
 
 /// Insert thousands separators into the integer part of a decimal string.
 /// Works on a pre-stringified `Decimal` to avoid reintroducing `f64`.

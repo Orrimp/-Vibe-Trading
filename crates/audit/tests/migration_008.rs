@@ -15,7 +15,7 @@
 //!   matching subset for any seeded venue (was previously `Ok(vec![])`).
 
 use audit::query::recent_fills_filtered;
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

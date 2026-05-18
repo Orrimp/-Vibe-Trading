@@ -472,8 +472,7 @@ impl TcnForecaster {
     pub fn load_anchor(scenario: AnchorScenario) -> Result<Self, TcnForecasterError> {
         // Resolve the checkpoint directory relative to the workspace root.
         // In tests and binaries, the CWD is the workspace root.
-        let anchors_dir =
-            PathBuf::from("crates/forecast/checkpoints/anchors");
+        let anchors_dir = PathBuf::from("crates/forecast/checkpoints/anchors");
         let prefix = scenario.file_prefix();
         let sha = scenario.sha_prefix();
 
@@ -506,28 +505,22 @@ impl TcnForecaster {
         metadata_path: &Path,
     ) -> Result<Self, TcnForecasterError> {
         // Parse metadata JSON.
-        let metadata_bytes = std::fs::read(metadata_path).map_err(|e| {
-            TcnForecasterError::CheckpointNotFound {
+        let metadata_bytes =
+            std::fs::read(metadata_path).map_err(|e| TcnForecasterError::CheckpointNotFound {
                 path: format!("{}: {e}", metadata_path.display()),
-            }
-        })?;
-        let metadata: serde_json::Value =
-            serde_json::from_slice(&metadata_bytes).map_err(|e| {
-                TcnForecasterError::MetadataParse(e.to_string())
             })?;
+        let metadata: serde_json::Value = serde_json::from_slice(&metadata_bytes)
+            .map_err(|e| TcnForecasterError::MetadataParse(e.to_string()))?;
 
-        let sigma_train = metadata["sigma_train"]
-            .as_f64()
-            .unwrap_or(1.0_f64) as f32;
+        let sigma_train = metadata["sigma_train"].as_f64().unwrap_or(1.0_f64) as f32;
         let model_revision = metadata["model_revision"]
             .as_str()
             .unwrap_or("unknown")
             .to_string();
 
         // Load safetensors weights.
-        let bytes = std::fs::read(safetensors_path).map_err(|e| {
-            TcnForecasterError::SafetensorsLoad(e.to_string())
-        })?;
+        let bytes = std::fs::read(safetensors_path)
+            .map_err(|e| TcnForecasterError::SafetensorsLoad(e.to_string()))?;
 
         let device = Device::Cpu;
         // Build a VarBuilder from the raw safetensors bytes using
@@ -680,9 +673,15 @@ fn build_feature_window_from_ohlcv(bars: &[OhlcvBar]) -> Vec<f32> {
         let hour_sin = (2.0 * PI * hour_of_week / 168.0).sin();
         let hour_cos = (2.0 * PI * hour_of_week / 168.0).cos();
 
-        // Channel-first indexing: feat_cf[c * n + t]
-        feat_cf[0 * n + t] = logret;
-        feat_cf[1 * n + t] = logrange;
+        // Channel-first indexing: feat_cf[c * n + t].
+        // The multiplications by 0 and 1 are intentional — they express the
+        // general formula `channel * n + t` with the channel index written
+        // explicitly so adding new channels (c=2…4 below) remains uniform.
+        #[allow(clippy::erasing_op, clippy::identity_op)]
+        {
+            feat_cf[0 * n + t] = logret;
+            feat_cf[1 * n + t] = logrange;
+        }
         feat_cf[2 * n + t] = logvol_z;
         feat_cf[3 * n + t] = hour_sin;
         feat_cf[4 * n + t] = hour_cos;
@@ -751,10 +750,7 @@ impl crate::ForecastProvider for TcnForecaster {
     /// Returns `ForecastError::InvalidInput` if the window is shorter than
     /// `CONTEXT_LEN`. Returns `ForecastError::ReplayMiss` on cache miss in
     /// strict-replay mode. Returns `ForecastError::Inference` on candle errors.
-    async fn forecast(
-        &self,
-        request: ForecastRequest,
-    ) -> Result<ForecastResponse, ForecastError> {
+    async fn forecast(&self, request: ForecastRequest) -> Result<ForecastResponse, ForecastError> {
         let window = &request.ohlcv_window;
 
         if window.len() < CONTEXT_LEN {
@@ -909,24 +905,21 @@ impl crate::ForecastProvider for TcnForecaster {
         );
 
         // ── Write to cache if configured ─────────────────────────────────────
-        if let Some(cache_path) = &self.cache_path {
-            if !self.strict_replay {
-                if let Ok(cache) = replay_cache::ReplayCache::<
-                    trading_core::forecast::ForecastRequest,
-                    ForecastResponse,
-                >::open_readwrite(cache_path, "forecast")
-                .await
-                {
-                    let req_json = serde_json::to_string(&request)
-                        .unwrap_or_else(|_| "{}".to_string());
-                    if let Err(e) = cache.store(&cache_key, &req_json, &response).await {
-                        tracing::warn!(
-                            cache_key = %cache_key,
-                            error = %e,
-                            "forecast cache write error — result not cached"
-                        );
-                    }
-                }
+        if let Some(cache_path) = &self.cache_path
+            && !self.strict_replay
+            && let Ok(cache) = replay_cache::ReplayCache::<
+                trading_core::forecast::ForecastRequest,
+                ForecastResponse,
+            >::open_readwrite(cache_path, "forecast")
+            .await
+        {
+            let req_json = serde_json::to_string(&request).unwrap_or_else(|_| "{}".to_string());
+            if let Err(e) = cache.store(&cache_key, &req_json, &response).await {
+                tracing::warn!(
+                    cache_key = %cache_key,
+                    error = %e,
+                    "forecast cache write error — result not cached"
+                );
             }
         }
 
@@ -952,19 +945,21 @@ mod tests {
     /// Input [1, 96, 256] → Output [1, 96, 256].
     #[test]
     fn temporal_block_shape_identity_skip() {
-        let block =
-            TemporalBlock::new(96, 96, KERNEL_SIZE, 1, 0.0, cpu_vb("tb")).unwrap();
+        let block = TemporalBlock::new(96, 96, KERNEL_SIZE, 1, 0.0, cpu_vb("tb")).unwrap();
         let x = Tensor::zeros((1, 96, 256), DType::F32, &Device::Cpu).unwrap();
         let y = block.forward(&x, false).unwrap();
-        assert_eq!(y.dims(), [1, 96, 256], "identity skip: shape must be preserved");
+        assert_eq!(
+            y.dims(),
+            [1, 96, 256],
+            "identity skip: shape must be preserved"
+        );
     }
 
     /// Shape test: block with 1×1 projection skip (in_ch != out_ch).
     /// Input [1, 5, 256] → Output [1, 96, 256].
     #[test]
     fn temporal_block_shape_projection_skip() {
-        let block =
-            TemporalBlock::new(5, 96, KERNEL_SIZE, 1, 0.0, cpu_vb("tb_proj")).unwrap();
+        let block = TemporalBlock::new(5, 96, KERNEL_SIZE, 1, 0.0, cpu_vb("tb_proj")).unwrap();
         let x = Tensor::zeros((1, 5, 256), DType::F32, &Device::Cpu).unwrap();
         let y = block.forward(&x, false).unwrap();
         assert_eq!(
@@ -978,8 +973,7 @@ mod tests {
     /// Zero input → all-zero output after relu (zeros + zeros = zeros).
     #[test]
     fn temporal_block_zero_input_identity_skip() {
-        let block =
-            TemporalBlock::new(96, 96, KERNEL_SIZE, 1, 0.0, cpu_vb("tb_zero")).unwrap();
+        let block = TemporalBlock::new(96, 96, KERNEL_SIZE, 1, 0.0, cpu_vb("tb_zero")).unwrap();
         let x = Tensor::zeros((1, 96, 256), DType::F32, &Device::Cpu).unwrap();
         let y = block.forward(&x, false).unwrap();
         let sum = y.sum_all().unwrap().to_scalar::<f32>().unwrap();
@@ -1002,8 +996,7 @@ mod tests {
     /// Large dilation (d=128) preserves sequence length.
     #[test]
     fn temporal_block_large_dilation_shape() {
-        let block =
-            TemporalBlock::new(96, 96, KERNEL_SIZE, 128, 0.0, cpu_vb("tb_d128")).unwrap();
+        let block = TemporalBlock::new(96, 96, KERNEL_SIZE, 128, 0.0, cpu_vb("tb_d128")).unwrap();
         let x = Tensor::zeros((2, 96, 256), DType::F32, &Device::Cpu).unwrap();
         let y = block.forward(&x, false).unwrap();
         assert_eq!(y.dims(), [2, 96, 256]);
@@ -1036,8 +1029,7 @@ mod tests {
     #[test]
     fn tcn_forecaster_forward_compiles() {
         let forecaster = TcnForecaster::random_init(Device::Cpu).unwrap();
-        let x = Tensor::zeros((1, INPUT_FEATURES, CONTEXT_LEN), DType::F32, &Device::Cpu)
-            .unwrap();
+        let x = Tensor::zeros((1, INPUT_FEATURES, CONTEXT_LEN), DType::F32, &Device::Cpu).unwrap();
         let y = forecaster.forward(&x, false).unwrap();
         assert_eq!(y.dims(), [1, 1]);
     }
@@ -1047,9 +1039,9 @@ mod tests {
     fn tcn_model_mini_config_shape() {
         let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
         let model = TcnModel::with_config(
-            5,  // in_features
-            16, // channels (small)
-            3,  // kernel
+            5,          // in_features
+            16,         // channels (small)
+            3,          // kernel
             &[1, 2, 4], // 3 blocks
             0.0,
             vb,
@@ -1074,7 +1066,6 @@ mod tests {
     /// T-D-6: `TcnForecaster` implements `ForecastProvider` and can be boxed.
     #[tokio::test]
     async fn tcn_forecaster_forecast_provider_boxed() {
-        use crate::ForecastProvider;
         use rust_decimal::Decimal;
         use trading_core::forecast::{OhlcvBar, SamplingParams};
         use uuid::Uuid;
@@ -1109,8 +1100,7 @@ mod tests {
     #[test]
     fn tcn_forecaster_batch2_shape() {
         let forecaster = TcnForecaster::random_init(Device::Cpu).unwrap();
-        let x = Tensor::zeros((2, INPUT_FEATURES, CONTEXT_LEN), DType::F32, &Device::Cpu)
-            .unwrap();
+        let x = Tensor::zeros((2, INPUT_FEATURES, CONTEXT_LEN), DType::F32, &Device::Cpu).unwrap();
         let y = forecaster.forward(&x, false).unwrap();
         assert_eq!(y.dims(), [2, 1], "batch=2 output shape must be [2, 1]");
     }
@@ -1132,7 +1122,9 @@ mod tests {
             Ok(f) => f,
             Err(TcnForecasterError::CheckpointNotFound { path }) => {
                 // Checkpoint not present in test env — skip.
-                eprintln!("SKIP td13_load_bs1_anchor_forecast_shape: checkpoint not found at {path}");
+                eprintln!(
+                    "SKIP td13_load_bs1_anchor_forecast_shape: checkpoint not found at {path}"
+                );
                 return;
             }
             Err(e) => panic!("unexpected error loading BS-1 anchor: {e}"),
@@ -1173,7 +1165,10 @@ mod tests {
             correlation_id: Uuid::new_v4(),
         };
 
-        let resp = forecaster.forecast(req).await.expect("forecast should succeed");
+        let resp = forecaster
+            .forecast(req)
+            .await
+            .expect("forecast should succeed");
 
         // ForecastOverlay shape assertions.
         assert_eq!(resp.overlay.horizon_bars, 1, "horizon_bars must be 1");
@@ -1325,7 +1320,10 @@ mod tests {
         };
 
         // Cache rev-a.
-        forecaster_a.forecast(req_a).await.expect("first call rev-a");
+        forecaster_a
+            .forecast(req_a)
+            .await
+            .expect("first call rev-a");
 
         // Second forecaster with model_revision "rev-b" — different cache key.
         let mut forecaster_b = TcnForecaster::random_init(Device::Cpu).unwrap();

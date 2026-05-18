@@ -17,5 +17,5 @@ pub use kill_switch::{
     MockIncidentSpawner,
 };
 pub use reconciler::ReconcilerTask;
-pub use runtime::{build_registry, paper_engine_publisher, run, shutdown_writer, RunHandles};
+pub use runtime::{RunHandles, build_registry, paper_engine_publisher, run, shutdown_writer};
 pub use watcher::run_strategy_watcher;

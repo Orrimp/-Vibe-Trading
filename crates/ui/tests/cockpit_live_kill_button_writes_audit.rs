@@ -57,7 +57,7 @@ use std::time::{Duration, Instant};
 
 use agent::{IncidentSpawner, KillSwitch, MockIncidentSpawner};
 use audit::query::{all_transaction_ids, strategy_events_since};
-use audit::{bootstrap, Ledger};
+use audit::{Ledger, bootstrap};
 use time::OffsetDateTime;
 use trading_core::{StrategyEventKind, Timestamp};
 use ui::state::{Cockpit, KillTripFn, Message};

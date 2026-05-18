@@ -22,7 +22,7 @@ use trading_core::{
     FeeTier, FillView, Money, Price, Quantity, Side, SignalView, StrategyId, Symbol, Timestamp,
 };
 
-use ui::state::{update, ChartMarkerIndex, ChartTooltipKind, Cockpit, Message, PanelState};
+use ui::state::{ChartMarkerIndex, ChartTooltipKind, Cockpit, Message, PanelState, update};
 
 fn fixed_ts(offset_secs: i64) -> Timestamp {
     let dt = time::OffsetDateTime::from_unix_timestamp(1_705_320_000 + offset_secs)

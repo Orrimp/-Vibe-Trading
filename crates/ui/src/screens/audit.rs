@@ -26,7 +26,7 @@
     clippy::needless_pass_by_value
 )]
 
-use iced::widget::{button, Button, Column, Container, Row, Text};
+use iced::widget::{Button, Column, Container, Row, Text, button};
 use iced::{Border, Length};
 
 use crate::state::{
@@ -39,10 +39,10 @@ use crate::strings::{
     AUDIT_FILTER_TIME_LABEL, AUDIT_FILTER_VENUE_LABEL, AUDIT_KIND_ALL, AUDIT_KIND_FILL,
     AUDIT_KIND_RECONCILIATION, AUDIT_KIND_STRATEGY_EVENT, AUDIT_LOADING, AUDIT_NEXT_LABEL,
     AUDIT_PANEL_TITLE, AUDIT_PREV_LABEL, AUDIT_QUERY_FAILED_PREFIX, AUDIT_TIME_LAST_1H,
-    AUDIT_TIME_LAST_24H, AUDIT_TIME_LAST_7D, PLACEHOLDER_NONE,
+    AUDIT_TIME_LAST_7D, AUDIT_TIME_LAST_24H, PLACEHOLDER_NONE,
 };
 use crate::theme::layout::AUDIT_PAGE_SIZE;
-use crate::theme::{color, layout, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, layout, radius, space, text};
 use crate::widgets::frame::{
     self, active_chip, col_header, loading_with_spinner, muted_body, panel,
 };

@@ -8,7 +8,7 @@
 //!    only that row's `passed == false`.
 //! 3. `to_failure_json` round-trips through `serde_json::Value`.
 
-use reports::{reconcile, ReconciliationInputs};
+use reports::{ReconciliationInputs, reconcile};
 use rust_decimal_macros::dec;
 
 fn balanced() -> ReconciliationInputs {

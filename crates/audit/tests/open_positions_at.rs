@@ -43,7 +43,7 @@
 //! fixture, plus the `t1005_q8_short_position_raises` named branch
 //! the architect's acceptance criteria pin.
 
-use audit::{journal, query, Ledger};
+use audit::{Ledger, journal, query};
 use rust_decimal_macros::dec;
 use tempfile::tempdir;
 use trading_core::{
@@ -55,8 +55,8 @@ use trading_core::{
 mod fixture;
 
 use fixture::{
-    build_ledger_with_open_positions_7d, fixture_period_end, parse_rfc3339, BTC_MARK_AT_PERIOD_END,
-    ETH_MARK_AT_PERIOD_END,
+    BTC_MARK_AT_PERIOD_END, ETH_MARK_AT_PERIOD_END, build_ledger_with_open_positions_7d,
+    fixture_period_end, parse_rfc3339,
 };
 
 // `BTC_MARK_AT_PERIOD_END` and `ETH_MARK_AT_PERIOD_END` are pulled in only

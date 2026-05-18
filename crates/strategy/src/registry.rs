@@ -370,8 +370,8 @@ mod tests {
     /// strategy (no panic, no partial state).
     #[test]
     fn t511_stress_20_swaps_no_torn_reads() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
         let reg = Arc::new(StrategyRegistry::new());
         reg.register(Box::new(crate::SmaCrossover::new(5, 20)));

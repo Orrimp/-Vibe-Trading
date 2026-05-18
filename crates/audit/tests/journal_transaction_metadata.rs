@@ -19,7 +19,7 @@
 //!   (legacy / pre-T802 row shape). Assert the reader returns
 //!   `Ok(Some(meta))` with `strategy_id: None`.
 
-use audit::{bootstrap, journal, query, Ledger};
+use audit::{Ledger, bootstrap, journal, query};
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{

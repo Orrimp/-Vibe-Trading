@@ -20,7 +20,7 @@ use trading_core::{
     Timestamp,
 };
 
-use ui::state::{update, Cockpit, JournalTransactionView, Message, PanelState};
+use ui::state::{Cockpit, JournalTransactionView, Message, PanelState, update};
 
 fn fixed_ts() -> Timestamp {
     let dt = time::OffsetDateTime::from_unix_timestamp(1_705_320_000)

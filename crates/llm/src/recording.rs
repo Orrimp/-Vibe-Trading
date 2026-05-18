@@ -26,14 +26,14 @@
 use std::path::Path;
 
 use async_trait::async_trait;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use tokio::sync::Mutex;
 
-use crate::error::LlmError;
-use crate::replay::{canonical_json_string, request_hash, SUPPORTED_SCHEMA_VERSION};
-use crate::trait_def::{ChatRequest, ChatResponse, LlmProvider};
 use crate::ProviderKind;
+use crate::error::LlmError;
+use crate::replay::{SUPPORTED_SCHEMA_VERSION, canonical_json_string, request_hash};
+use crate::trait_def::{ChatRequest, ChatResponse, LlmProvider};
 
 /// Decorator that wraps `inner`, records every successful
 /// `complete()` into the SQLite replay cache, and is otherwise
@@ -218,8 +218,8 @@ impl<Inner: LlmProvider> LlmProvider for RecordingProvider<Inner> {
 /// We avoid pulling in `chrono` here — `time::OffsetDateTime` is
 /// already in the workspace and matches the audit-side rendering.
 fn chrono_like_timestamp_or_default() -> String {
-    use time::format_description::well_known::Rfc3339;
     use time::OffsetDateTime;
+    use time::format_description::well_known::Rfc3339;
     let now = OffsetDateTime::now_utc();
     now.format(&Rfc3339)
         .unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"))

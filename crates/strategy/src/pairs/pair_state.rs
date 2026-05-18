@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use rust_decimal::Decimal;
 use trading_core::{Bar, PairKey, Signal, StopReason, StrategyId, Timestamp};
 
-use features::{rolling_zscore, spread, RingBuffer};
+use features::{RingBuffer, rolling_zscore, spread};
 
 /// Role of a leg in the pair (which leg this bar belongs to).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

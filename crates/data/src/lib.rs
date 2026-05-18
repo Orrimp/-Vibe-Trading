@@ -20,10 +20,10 @@ pub use bar_aggregator::{aggregate_one_second, aggregate_one_second_iter};
 pub use bar_stream::{bar_stream, bar_stream_with_cross_check};
 pub use binance::BinanceFeed;
 pub use clock_skew::{ClockSkewConfig, ClockSkewDetector, ObserveResult};
-pub use coinbase::{coinbase_symbol_map, CoinbaseFeed};
-pub use fake_feed::{bar_cross_check_delta, trade_aggregation, FakeFeed};
+pub use coinbase::{CoinbaseFeed, coinbase_symbol_map};
+pub use fake_feed::{FakeFeed, bar_cross_check_delta, trade_aggregation};
 pub use funding::{BinanceFundingClient, FundingPollError, FundingPoller};
-pub use kraken::{kraken_symbol_map, KrakenFeed};
+pub use kraken::{KrakenFeed, kraken_symbol_map};
 #[cfg(any(test, feature = "fixtures"))]
 pub use mock_feed::MockFeed;
 pub use replay_feed::ReplayFeed;

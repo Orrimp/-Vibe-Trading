@@ -22,8 +22,8 @@
 //!
 //! Both paths share the same per-second state machine and produce
 //! identical Bars given identical Tick sequences.
-use futures::stream::BoxStream;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use rust_decimal::Decimal;
 use tracing::warn;
 use trading_core::{Bar, FeedError, Price, Quantity, Symbol, Tick, Timeframe, Timestamp, Venue};
@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(b0.close.get(), Decimal::from(60_009));
         assert_eq!(b0.trade_count, 10);
         assert_eq!(b0.volume.get(), dec!(0.01)); // 10 × 0.001
-                                                 // Each subsequent bar has trade_count == 10.
+        // Each subsequent bar has trade_count == 10.
         for b in &bars {
             assert_eq!(b.trade_count, 10);
         }

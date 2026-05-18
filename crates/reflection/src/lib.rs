@@ -39,13 +39,13 @@ pub mod store;
 pub mod types;
 pub mod writer;
 
-pub use embedding::{cosine, embed, EMBEDDING_DIM, STRATEGY_SLOTS};
-pub use outcome::{classify_outcome, OutcomeClass, OUTCOME_THRESHOLD_PCT};
-pub use regime::{classify_regime, RegimeError, RegimeTag};
-pub use retrieval::{retrieve_top_k, RetrievalError};
+pub use embedding::{EMBEDDING_DIM, STRATEGY_SLOTS, cosine, embed};
+pub use outcome::{OUTCOME_THRESHOLD_PCT, OutcomeClass, classify_outcome};
+pub use regime::{RegimeError, RegimeTag, classify_regime};
+pub use retrieval::{RetrievalError, retrieve_top_k};
 pub use store::{ReflectionStore, ReflectionStoreError};
 pub use types::{
-    card_id, ClosedTrade, LessonCard, LessonCardWriteRequest, RetrievalQuery, SymbolOrPair,
+    ClosedTrade, LessonCard, LessonCardWriteRequest, RetrievalQuery, SymbolOrPair, card_id,
 };
 pub use writer::{ReflectionWriter, TryEnqueueError};
 

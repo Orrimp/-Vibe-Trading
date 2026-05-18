@@ -4,8 +4,8 @@
 //! provided, cross-checks each closed bar against the tick-aggregated OHLCV.
 //! On mismatch > 1 satoshi a warning is emitted but the bar is still forwarded.
 
-use futures::stream::BoxStream;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use tracing::warn;
 use trading_core::{Bar, FeedError, Symbol, Timeframe};
 

@@ -21,7 +21,7 @@
 )]
 
 use trading_core::StrategyId;
-use ui::state::{update, Cockpit, Message, PanelState, Screen};
+use ui::state::{Cockpit, Message, PanelState, Screen, update};
 
 #[test]
 fn select_strategy_from_home_persists_id() {

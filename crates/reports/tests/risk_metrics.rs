@@ -4,7 +4,7 @@
 //! Hand-computed Sharpe / max-DD / recovery-time on synthetic curves.
 
 use reports::render::risk_metrics::{
-    max_drawdown, recovery_bars, render, sharpe, RiskMetricsInputs,
+    RiskMetricsInputs, max_drawdown, recovery_bars, render, sharpe,
 };
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;

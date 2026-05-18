@@ -163,7 +163,7 @@ mod tests {
         let venue = 3000; // delta = 3000 ms > 2000 warn_ms
         assert_eq!(d.observe(local, venue), ObserveResult::Ok); // 1st
         assert_eq!(d.observe(local, venue), ObserveResult::Ok); // 2nd
-                                                                // 3rd consecutive — should warn
+        // 3rd consecutive — should warn
         assert!(matches!(
             d.observe(local, venue),
             ObserveResult::Warn { .. }

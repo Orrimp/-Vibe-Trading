@@ -39,10 +39,7 @@ impl ReplayFeed {
     pub fn new(parquet_root: impl Into<PathBuf>, fast: bool) -> Self {
         let parquet_root = parquet_root.into();
         info!(path = %parquet_root.display(), fast, "ReplayFeed initialised");
-        Self {
-            parquet_root,
-            fast,
-        }
+        Self { parquet_root, fast }
     }
 
     /// Collect all `.parquet` files for `<symbol>` under `parquet_root`,

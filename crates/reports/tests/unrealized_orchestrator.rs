@@ -29,14 +29,14 @@
 //! `crates/reports/tests/mark_unavailable_warns.rs`; both files share
 //! the T1004 fixture via `#[path = "fixtures/..."]`.
 
-use reports::{render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE, FrozenMarkSource, ReportWindow};
+use reports::{FrozenMarkSource, ReportWindow, render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE};
 use tempfile::TempDir;
 
 #[path = "fixtures/build_ledger_with_open_positions_7d.rs"]
 mod build_ledger_with_open_positions_7d;
 
 use crate::build_ledger_with_open_positions_7d::{
-    build_ledger_with_open_positions_7d, fixture_period_end, fixture_period_start, FIXTURE_SEED,
+    FIXTURE_SEED, build_ledger_with_open_positions_7d, fixture_period_end, fixture_period_start,
 };
 
 /// Slice off the front-matter and return the body bytes — same

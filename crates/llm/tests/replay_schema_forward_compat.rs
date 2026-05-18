@@ -19,8 +19,8 @@
 use std::path::{Path, PathBuf};
 
 use llm::{LlmError, ReplayProvider, SUPPORTED_SCHEMA_VERSION};
-use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::SqlitePool;
+use sqlx::sqlite::SqliteConnectOptions;
 
 fn workspace_root() -> PathBuf {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

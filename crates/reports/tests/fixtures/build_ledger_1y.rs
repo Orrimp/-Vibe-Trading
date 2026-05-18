@@ -24,7 +24,7 @@
 
 use std::path::Path;
 
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rust_decimal::Decimal;
@@ -111,11 +111,11 @@ pub async fn build_ledger_1y(
             let price = Decimal::from(price_int);
             let fee_int: u64 = rng.random_range(1..100);
             let fee = Decimal::from(fee_int) / dec!(100); // [0.01, 1.00]
-                                                          // Side alternates Buy/Sell **within the same
-                                                          // (symbol, strategy) group** so half the fills are Sells
-                                                          // (feeds `pnl_by_strategy`'s realized-P&L join) AND every
-                                                          // Sell zeroes the running qty rather than driving it
-                                                          // negative.
+            // Side alternates Buy/Sell **within the same
+            // (symbol, strategy) group** so half the fills are Sells
+            // (feeds `pnl_by_strategy`'s realized-P&L join) AND every
+            // Sell zeroes the running qty rather than driving it
+            // negative.
             let entry = group_state
                 .entry((symbol, strategy))
                 .or_insert((qty_drawn, 0));

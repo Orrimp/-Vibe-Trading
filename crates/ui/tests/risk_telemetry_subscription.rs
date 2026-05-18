@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent::config::BusConfig;
 use agent::EventBus;
+use agent::config::BusConfig;
 use futures::StreamExt;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -22,7 +22,7 @@ use tokio::time::timeout;
 use trading_core::{RiskTelemetry, Symbol, Venue};
 
 use ui::live::stream_risk_telemetry;
-use ui::state::{update, Cockpit, Message, PanelState};
+use ui::state::{Cockpit, Message, PanelState, update};
 
 fn synthetic_telemetry() -> RiskTelemetry {
     let mut exposure = HashMap::new();

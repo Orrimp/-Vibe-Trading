@@ -74,7 +74,10 @@ enum ScenarioStrategy {
     /// v1.5a mean-reversion pairs — 4-symbol universe, loaded from TOML config.
     MeanReversionPairs { config_id: String },
     /// v2.5 TCN overlay momentum — v1 momentum + TCN forecast overlay.
-    TcnOverlayMomentum { config_id: String, forecaster_id: String },
+    TcnOverlayMomentum {
+        config_id: String,
+        forecaster_id: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -264,7 +267,8 @@ impl Scenario {
                 data_root,
             }),
             // v2.5 TCN overlay momentum scenarios (T-D-15, T-D-16)
-            "bs1-tcn-overlay" => Ok(Self {
+            // Canonical names per feature.md § Backtest Scenarios and trace.toml REQ-V25-TCN-001.
+            "top10-2023-fy-tcn-overlay" => Ok(Self {
                 name: name.to_string(),
                 body_name: name.to_string(),
                 body_elapsed_override: None,
@@ -282,7 +286,7 @@ impl Scenario {
                 baseline_report: None,
                 data_root,
             }),
-            "bs2-tcn-overlay" => Ok(Self {
+            "top10-2024-fy-tcn-overlay" => Ok(Self {
                 name: name.to_string(),
                 body_name: name.to_string(),
                 body_elapsed_override: None,
@@ -386,12 +390,11 @@ fn synthetic_bars(
             high: price_or_one(high.max(open).max(next)),
             low: price_or_one(low.min(open).min(next).max(0.01)),
             close: price_or_one(next),
-            volume: Quantity::new(to_dec(vol_btc))
-                .unwrap_or_else(|_| {
-                    // dec!(1) is always positive; this branch is unreachable
-                    Quantity::new(dec!(1))
-                        .unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
-                }),
+            volume: Quantity::new(to_dec(vol_btc)).unwrap_or_else(|_| {
+                // dec!(1) is always positive; this branch is unreachable
+                Quantity::new(dec!(1))
+                    .unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
+            }),
             trade_count: rng.random_range(10_u32..500_u32),
             local_recv_ts: close_ts,
             venue: Venue::Binance,
@@ -490,12 +493,11 @@ fn synthetic_bars_hourly(
             high: price_or_one(high.max(open).max(next)),
             low: price_or_one(low.min(open).min(next).max(0.01)),
             close: price_or_one(next),
-            volume: Quantity::new(to_dec(vol_base))
-                .unwrap_or_else(|_| {
-                    // dec!(1) is always positive; this branch is unreachable
-                    Quantity::new(dec!(1))
-                        .unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
-                }),
+            volume: Quantity::new(to_dec(vol_base)).unwrap_or_else(|_| {
+                // dec!(1) is always positive; this branch is unreachable
+                Quantity::new(dec!(1))
+                    .unwrap_or_else(|e| unreachable!("dec!(1) is always valid: {e}"))
+            }),
             trade_count: rng.random_range(100_u32..5000_u32),
             local_recv_ts: close_ts,
             venue: Venue::Binance,
@@ -1090,8 +1092,7 @@ async fn run_pairs_backtest(
                             price,
                             &risk_limits,
                             equity,
-                        )
-                            && let Ok(fills) = engine.step(bar, vec![ord]).await
+                        ) && let Ok(fills) = engine.step(bar, vec![ord]).await
                         {
                             for fill in fills {
                                 let notional_fill = fill.qty.get() * fill.price.get();
@@ -1139,8 +1140,7 @@ async fn run_pairs_backtest(
                             price,
                             &risk_limits,
                             equity,
-                        )
-                            && let Ok(fills) = engine.step(bar, vec![ord]).await
+                        ) && let Ok(fills) = engine.step(bar, vec![ord]).await
                         {
                             for fill in fills {
                                 let notional_fill = fill.qty.get() * fill.price.get();
@@ -1949,7 +1949,10 @@ fn write_report(
         ScenarioStrategy::MeanReversionPairs { config_id } => {
             format!("v1.5a mean-reversion pairs: {config_id}")
         }
-        ScenarioStrategy::TcnOverlayMomentum { config_id, forecaster_id } => {
+        ScenarioStrategy::TcnOverlayMomentum {
+            config_id,
+            forecaster_id,
+        } => {
             format!("v2.5 TCN overlay momentum: {config_id} (forecaster: {forecaster_id})")
         }
     };
@@ -2257,8 +2260,10 @@ async fn main() -> Result<()> {
     }
 
     // ── v2.5 TCN overlay momentum: separate execution path (T-D-15, T-D-16) ────
-    if let ScenarioStrategy::TcnOverlayMomentum { config_id, forecaster_id } =
-        &scenario.strategy.clone()
+    if let ScenarioStrategy::TcnOverlayMomentum {
+        config_id,
+        forecaster_id,
+    } = &scenario.strategy.clone()
     {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
@@ -2286,16 +2291,11 @@ async fn main() -> Result<()> {
         println!("Scenario     : {}", args.scenario);
         println!("Bars (total) : {}", result.bar_count);
         println!("Trades       : {}", result.trades);
-        println!(
-            "Final equity : ${:.2} USDT",
-            result.final_equity
-        );
+        println!("Final equity : ${:.2} USDT", result.final_equity);
         println!("Elapsed      : {:.1}s", result.elapsed_secs);
         println!(
             "Modulation   : dampened={} passed_through={} warming_up={}",
-            result.dampened_signals,
-            result.passed_through_signals,
-            result.warmup_signals,
+            result.dampened_signals, result.passed_through_signals, result.warmup_signals,
         );
         println!("Data source  : {data_source}");
         return Ok(());
@@ -2586,7 +2586,7 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         | "btc-2023-1m-bbands-mean-revert" => "v05-composed-strategies",
         "top10-2023-1h-momentum" | "top10-2024-h1-momentum" => "v1-cross-sectional-momentum",
         "pairs-2023-zscore-mr" | "pairs-2024-h1-zscore-mr" => "v15a-mean-reversion-pairs",
-        "bs1-tcn-overlay" | "bs2-tcn-overlay" => "v25-tcn-overlay",
+        "top10-2023-fy-tcn-overlay" | "top10-2024-fy-tcn-overlay" => "v25-tcn-overlay",
         _ => "_unknown",
     }
 }

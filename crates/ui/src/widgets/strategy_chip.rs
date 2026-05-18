@@ -20,14 +20,14 @@
 //! **Zero hex literals** — all colors from `crate::theme`.
 //! **Zero string literals** — copy from `crate::strings`.
 
-use iced::widget::{button, container, Button, Row, Text};
+use iced::widget::{Button, Row, Text, button, container};
 use iced::{Border, Length};
 use trading_core::StrategyId;
 
 use crate::lab::state::StrategyFamily;
 use crate::state::Message;
 use crate::strings;
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, radius, space, text};
 
 /// Render a single strategy chip.
 ///
@@ -41,7 +41,11 @@ use crate::theme::{color, radius, space, text, ThemeMode};
 ///
 /// Returns a row element containing the chip body button and the
 /// compare toggle affordance.
-#[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::needless_pass_by_value,
+    clippy::too_many_lines
+)]
 #[must_use]
 pub fn view(
     id: StrategyId,
@@ -60,17 +64,18 @@ pub fn view(
         .size(text::MICRO)
         .color(badge_fg);
 
-    let badge_chip = container(badge)
-        .padding([1_u16, space::XS as u16])
-        .style(move |_t: &iced::Theme| container::Style {
-            background: Some(color::PANEL_RAISED.current(mode).into()),
-            border: Border {
-                color: color::BORDER_1.current(mode),
-                width: 1.0,
-                radius: radius::R2.into(),
-            },
-            ..Default::default()
-        });
+    let badge_chip =
+        container(badge)
+            .padding([1_u16, space::XS as u16])
+            .style(move |_t: &iced::Theme| container::Style {
+                background: Some(color::PANEL_RAISED.current(mode).into()),
+                border: Border {
+                    color: color::BORDER_1.current(mode),
+                    width: 1.0,
+                    radius: radius::R2.into(),
+                },
+                ..Default::default()
+            });
 
     // ── Color swatch (if in compare set) ────────────────────────────────
     let swatch = compare_slot.map(|slot| {
@@ -101,9 +106,7 @@ pub fn view(
     } else {
         color::FG_2.current(mode)
     };
-    let id_label = Text::new(id.0.to_string())
-        .size(text::BODY)
-        .color(id_fg);
+    let id_label = Text::new(id.0.to_string()).size(text::BODY).color(id_fg);
 
     // ── Chip body row ─────────────────────────────────────────────────────
     let mut chip_inner = Row::new()
@@ -163,9 +166,7 @@ pub fn view(
         color::FG_3.current(mode)
     };
 
-    let toggle_text = Text::new(toggle_label)
-        .size(text::SMALL)
-        .color(toggle_fg);
+    let toggle_text = Text::new(toggle_label).size(text::SMALL).color(toggle_fg);
 
     let toggle_container = container(toggle_text)
         .padding([space::XS as u16, space::S as u16])
@@ -202,7 +203,11 @@ pub fn view(
 ///
 /// `primary` is the currently-selected primary strategy (`lab_state.strategy`).
 /// `compare_set` is the current compare set — used to compute `compare_slot`.
-#[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::needless_pass_by_value,
+    clippy::implicit_hasher
+)]
 #[must_use]
 pub fn row<'a>(
     strategies: &[StrategyId],
@@ -217,7 +222,7 @@ pub fn row<'a>(
 
     for id in strategies {
         let family = families.get(id).copied().unwrap_or_default();
-        let is_primary = primary.map_or(false, |p| p == id);
+        let is_primary = primary == Some(id);
         let compare_slot = compare_set.iter().enumerate().find_map(|(i, slot)| {
             if slot.as_ref() == Some(id) {
                 Some(i)
@@ -320,8 +325,13 @@ mod tests {
         let _primary = super::view(s.clone(), StrategyFamily::Llm, true, None, ThemeMode::Dark);
         let _non_primary =
             super::view(s.clone(), StrategyFamily::Llm, false, None, ThemeMode::Dark);
-        let _with_compare =
-            super::view(s.clone(), StrategyFamily::Llm, true, Some(1), ThemeMode::Dark);
+        let _with_compare = super::view(
+            s.clone(),
+            StrategyFamily::Llm,
+            true,
+            Some(1),
+            ThemeMode::Dark,
+        );
     }
 
     /// T-D-6 — snapshot: `strategy_chip__primary_with_compare_slot_1`.

@@ -52,13 +52,13 @@ use std::path::Path;
 use async_trait::async_trait;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
+use crate::ProviderKind;
 use crate::error::LlmError;
 use crate::tools::ToolSchema;
 use crate::trait_def::{ChatMessage, ChatRequest, ChatResponse, LlmProvider, ModelId, SystemBlock};
-use crate::ProviderKind;
 
 /// Supported `schema_version` ceiling for the replay cache (Design § Q8b).
 ///

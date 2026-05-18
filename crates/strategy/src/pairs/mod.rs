@@ -14,4 +14,4 @@ pub mod pair_state;
 
 pub use config::{MeanReversionPairsConfig, PairsLoadError};
 pub use mean_reversion::MeanReversionPairsStrategy;
-pub use pair_state::{LegRole, PairState, PositionState, SyncSlot, PAIR_SYNC_DROPPED_TOTAL};
+pub use pair_state::{LegRole, PAIR_SYNC_DROPPED_TOTAL, PairState, PositionState, SyncSlot};

@@ -9,9 +9,9 @@
 //!    those rows do not crash. Verifies the architect's Q11 / R8 design
 //!    that the column is purely additive (NULLABLE, no default).
 
-use audit::{bootstrap, journal, Ledger};
-use sqlx::sqlite::SqlitePoolOptions;
+use audit::{Ledger, bootstrap, journal};
 use sqlx::Row;
+use sqlx::sqlite::SqlitePoolOptions;
 use trading_core::Venue;
 
 async fn open_ledger() -> Ledger {

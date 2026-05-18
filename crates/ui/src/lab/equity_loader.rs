@@ -124,6 +124,11 @@ impl EquityCache {
     ///
     /// `spec_root` should point to the repository's `spec/` directory. The
     /// loader searches `spec/<strategy-slug>/reports/backtest-*.md`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `EquityLoadError` when no matching report is found or the
+    /// report body cannot be parsed (see `load_equity`).
     pub fn get_or_load(
         &mut self,
         tuple: &LabTuple,
@@ -179,8 +184,14 @@ fn discover_reports(spec_root: &std::path::Path, slug: &str) -> Vec<PathBuf> {
         .filter(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.starts_with("backtest-") && n.ends_with(".md"))
-                .unwrap_or(false)
+                // Backtest report files are always written with lowercase ".md" extension.
+                .is_some_and(|n| {
+                    n.starts_with("backtest-") && {
+                        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+                        let ok = n.ends_with(".md");
+                        ok
+                    }
+                })
         })
         .collect();
     // Sort deterministically so the "first best" pick is reproducible.
@@ -250,12 +261,14 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
     // Symbol: look for single-symbol scenarios (not "multi").
     let symbol = parse_symbol_from_body(body).or_else(|| {
         // Fall back to scenario name heuristic.
-        let sym_candidates = ["XRPUSDT", "ETHUSDT", "BTCUSDT", "ADAUSDT", "AVAXUSDT",
-                               "BNBUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT", "SOLUSDT"];
+        let sym_candidates = [
+            "XRPUSDT", "ETHUSDT", "BTCUSDT", "ADAUSDT", "AVAXUSDT", "BNBUSDT", "DOGEUSDT",
+            "DOTUSDT", "LINKUSDT", "SOLUSDT",
+        ];
         sym_candidates
             .iter()
             .find(|&&s| scenario.to_ascii_uppercase().contains(s))
-            .map(|s| s.to_string())
+            .map(ToString::to_string)
     });
 
     let has_equity_section = body.contains("## Equity curve") || body.contains("## Equity Curve");
@@ -330,7 +343,7 @@ fn parse_summary_value(body: &str, field: &str) -> Option<Decimal> {
 fn report_matches(meta: &ReportMeta, sym: &str, range: &DateRange) -> MatchQuality {
     // Symbol check.
     let sym_match = match &meta.symbol {
-        Some(s) => s.to_ascii_uppercase() == sym.to_ascii_uppercase(),
+        Some(s) => s.eq_ignore_ascii_case(sym),
         None => true, // Multi-symbol reports: pass if symbol is in universe.
     };
 
@@ -342,7 +355,9 @@ fn report_matches(meta: &ReportMeta, sym: &str, range: &DateRange) -> MatchQuali
     if range_match == 0 {
         return MatchQuality::NoMatch;
     }
-    MatchQuality::Match { range_score: range_match }
+    MatchQuality::Match {
+        range_score: range_match,
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -364,15 +379,16 @@ fn range_score(meta: &ReportMeta, range: &DateRange) -> u32 {
                     None => 3,
                 }
             }
-            Preset::Last90d => {
-                match meta.year_hint {
-                    Some(2024) => 10,
-                    Some(_) => 5,
-                    None => 3,
-                }
-            }
+            Preset::Last90d => match meta.year_hint {
+                Some(2024) => 10,
+                Some(_) => 5,
+                None => 3,
+            },
             Preset::H1_2024 => {
-                if meta.scenario.contains("2024") || meta.scenario.contains("h1") || meta.scenario.contains("2024-h1") {
+                if meta.scenario.contains("2024")
+                    || meta.scenario.contains("h1")
+                    || meta.scenario.contains("2024-h1")
+                {
                     20
                 } else if meta.year_hint == Some(2024) {
                     10
@@ -381,7 +397,9 @@ fn range_score(meta: &ReportMeta, range: &DateRange) -> u32 {
                 }
             }
             Preset::H2_2024 => {
-                if meta.scenario.contains("2024") && (meta.scenario.contains("h2") || meta.scenario.contains("H2")) {
+                if meta.scenario.contains("2024")
+                    && (meta.scenario.contains("h2") || meta.scenario.contains("H2"))
+                {
                     20
                 } else if meta.year_hint == Some(2024) {
                     8
@@ -414,13 +432,24 @@ fn parse_equity_section(body: &str) -> Vec<(i64, Decimal)> {
                 break;
             }
             // Skip header rows and separator rows.
-            if trimmed.starts_with('|') && !trimmed.contains("---") && !trimmed.to_lowercase().contains("timestamp") {
+            if trimmed.starts_with('|')
+                && !trimmed.contains("---")
+                && !trimmed.to_lowercase().contains("timestamp")
+            {
                 let cols: Vec<&str> = trimmed.splitn(4, '|').collect();
                 // | ts_millis | equity |
                 if cols.len() >= 3 {
                     let ts_raw = cols[1].trim();
-                    let eq_raw = cols[2].trim().trim_start_matches('$').split_whitespace().next().unwrap_or("");
-                    if let (Ok(ts), Ok(eq)) = (ts_raw.parse::<i64>(), eq_raw.replace(',', "").parse::<Decimal>()) {
+                    let eq_raw = cols[2]
+                        .trim()
+                        .trim_start_matches('$')
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("");
+                    if let (Ok(ts), Ok(eq)) = (
+                        ts_raw.parse::<i64>(),
+                        eq_raw.replace(',', "").parse::<Decimal>(),
+                    ) {
                         points.push((ts, eq));
                     }
                 }
@@ -465,7 +494,7 @@ pub fn load_equity(
         };
         let quality = report_matches(&meta, &tuple.symbol, &tuple.range);
         if let MatchQuality::Match { range_score } = quality {
-            let is_better = best.as_ref().map_or(true, |(s, _)| range_score > *s);
+            let is_better = best.as_ref().is_none_or(|(s, _)| range_score > *s);
             if is_better {
                 best = Some((range_score, path.clone()));
             }
@@ -548,14 +577,18 @@ fn make_start_end_series(
     meta: &ReportMeta,
     path: &str,
 ) -> Result<Vec<(i64, Decimal)>, EquityLoadError> {
-    let initial = meta.initial_capital.ok_or_else(|| EquityLoadError::ParseError {
-        path: path.to_string(),
-        msg: "missing initial capital in Summary".to_string(),
-    })?;
-    let final_eq = meta.final_equity.ok_or_else(|| EquityLoadError::ParseError {
-        path: path.to_string(),
-        msg: "missing final equity in Summary".to_string(),
-    })?;
+    let initial = meta
+        .initial_capital
+        .ok_or_else(|| EquityLoadError::ParseError {
+            path: path.to_string(),
+            msg: "missing initial capital in Summary".to_string(),
+        })?;
+    let final_eq = meta
+        .final_equity
+        .ok_or_else(|| EquityLoadError::ParseError {
+            path: path.to_string(),
+            msg: "missing final equity in Summary".to_string(),
+        })?;
 
     // Use synthetic timestamps: 0 (epoch) and 1 for start/end so the
     // chart x-axis can always project two points. The real date-range
@@ -603,9 +636,8 @@ fn find_body_start(content: &str) -> usize {
 pub fn default_spec_root() -> PathBuf {
     // Walk up from the manifest directory to find the workspace root that
     // contains a `spec/` directory.
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."));
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").map_or_else(|_| PathBuf::from("."), PathBuf::from);
     // `crates/ui` → `crates` → workspace root.
     if let Some(root) = manifest_dir.parent().and_then(|p| p.parent()) {
         let candidate = root.join("spec");
@@ -716,7 +748,11 @@ data_source: synthetic
         };
 
         let series = load_equity(&tuple, &spec).unwrap();
-        assert_eq!(series.fidelity, Fidelity::PerBar, "expected per-bar fidelity");
+        assert_eq!(
+            series.fidelity,
+            Fidelity::PerBar,
+            "expected per-bar fidelity"
+        );
         assert_eq!(series.samples.len(), 4, "expected 4 equity points");
         // First sample: 100 000.00
         let (_, first_eq) = series.samples[0];
@@ -771,7 +807,10 @@ data_source: synthetic
         let mut cache = EquityCache::new();
         let first = cache.get_or_load(&tuple, &spec).unwrap();
         let second = cache.get_or_load(&tuple, &spec).unwrap();
-        assert!(Arc::ptr_eq(&first, &second), "expected same Arc on cache hit");
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "expected same Arc on cache hit"
+        );
     }
 
     /// T-D-10 — cache invalidate causes re-read.
@@ -791,7 +830,10 @@ data_source: synthetic
         cache.invalidate(&tuple);
         let after = cache.get_or_load(&tuple, &spec).unwrap();
         // Contents are the same (same file); Arc pointers differ after invalidation.
-        assert!(!Arc::ptr_eq(&first, &after), "expected new Arc after invalidation");
+        assert!(
+            !Arc::ptr_eq(&first, &after),
+            "expected new Arc after invalidation"
+        );
     }
 
     /// T-D-10 — NoReport error when strategy/pair combo doesn't exist.
@@ -828,7 +870,10 @@ data_source: synthetic
     #[test]
     fn strategy_slug_mapping() {
         assert_eq!(strategy_slug("v1.momentum"), "v1-cross-sectional-momentum");
-        assert_eq!(strategy_slug("top10_momentum_h1"), "v1-cross-sectional-momentum");
+        assert_eq!(
+            strategy_slug("top10_momentum_h1"),
+            "v1-cross-sectional-momentum"
+        );
         assert_eq!(strategy_slug("v0.sma"), "v0-paper-sma");
         assert_eq!(strategy_slug("v0.5.macd"), "v05-composed-strategies");
     }
@@ -839,7 +884,11 @@ data_source: synthetic
     #[test]
     fn integration_load_real_v1_report() {
         let spec = default_spec_root();
-        if !spec.join("v1-cross-sectional-momentum").join("reports").is_dir() {
+        if !spec
+            .join("v1-cross-sectional-momentum")
+            .join("reports")
+            .is_dir()
+        {
             eprintln!("skipped: spec/v1-cross-sectional-momentum/reports not found");
             return;
         }

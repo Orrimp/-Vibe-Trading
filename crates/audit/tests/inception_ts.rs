@@ -4,9 +4,9 @@
 //! transactions.
 
 use audit::query::ledger_inception_ts;
-use audit::{bootstrap, Ledger};
-use time::format_description::well_known::Rfc3339;
+use audit::{Ledger, bootstrap};
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::Timestamp;
 use uuid::Uuid;
 

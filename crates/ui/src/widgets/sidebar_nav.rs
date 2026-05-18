@@ -15,7 +15,7 @@
 //! **Zero string literals** — labels resolve via `crate::strings`.
 //! **Zero hex colours** — tokens come from `crate::theme`.
 
-use iced::widget::{button, container, Button, Column, Container, Space, Text};
+use iced::widget::{Button, Column, Container, Space, Text, button, container};
 use iced::{Border, Length};
 
 use crate::state::{Message, Screen};
@@ -25,7 +25,7 @@ use crate::strings::{
     SIDEBAR_NAV_MODELS, SIDEBAR_NAV_RISK, SIDEBAR_NAV_SETTINGS, SIDEBAR_NAV_STRATEGIES,
     TRAIL_TITLE,
 };
-use crate::theme::{color, layout, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, layout, radius, space, text};
 use crate::widgets::frame;
 
 /// Stable label for a `Screen`. Pure function over the strings table so
@@ -61,7 +61,11 @@ pub const fn label_for(screen: Screen) -> &'static str {
 /// constants still work for test scenarios.
 // `cast_possible_truncation`: space::* constants are u32 with bounded values;
 // cast to u16 padding is safe.
-#[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value, deprecated)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::needless_pass_by_value,
+    deprecated
+)]
 #[must_use]
 pub fn view(current_screen: Screen, entries: &[Screen], mode: ThemeMode) -> crate::Element<'_> {
     let mut column = Column::new()
@@ -229,11 +233,7 @@ mod tests {
     fn all_phase_a_labels_non_empty() {
         for screen in SIDEBAR_ENTRIES_PHASE_A {
             let label = label_for(*screen);
-            assert!(
-                !label.is_empty(),
-                "empty label for screen {:?}",
-                screen
-            );
+            assert!(!label.is_empty(), "empty label for screen {:?}", screen);
         }
     }
 }

@@ -41,21 +41,21 @@
 //! preserving every existing call site (factory, integration tests,
 //! unit tests) without churn.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use audit::journal::{post_llm_budget_event, BudgetEventKind};
 use audit::Ledger;
+use audit::journal::{BudgetEventKind, post_llm_budget_event};
 use cost::{CostBudget, CostEvent, CostSink, LlmTier};
 
+use crate::ProviderKind;
 use crate::config::LlmConfig;
 use crate::error::LlmError;
 use crate::observability::emit_cache_event;
 use crate::pricing::{cost_for_usage, estimate_cost, resolve_rate};
 use crate::trait_def::{ChatRequest, ChatResponse, LlmProvider};
-use crate::ProviderKind;
 
 /// Minimum spacing between successive block / degrade audit memos.
 ///

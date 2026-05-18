@@ -44,9 +44,9 @@ use sha2::{Digest, Sha256};
 use smol_str::SmolStr;
 use trading_core::{Bar, PairKey, Signal, StrategyId, Symbol, Tick};
 
+use crate::Strategy;
 use crate::pairs::config::MeanReversionPairsConfig;
 use crate::pairs::pair_state::{LegRole, PairState};
-use crate::Strategy;
 
 /// v1.5a mean-reversion pairs strategy.
 ///

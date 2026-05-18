@@ -42,24 +42,24 @@ pub mod strategies;
 // cockpit-performance-and-input-responsiveness M1 Candidate A — local
 // 10 fps wrap of `iced_aw::Spinner`. Used by `frame::loading_with_spinner`;
 // see `widgets/throttled_spinner.rs` for context.
-pub mod throttled_spinner;
-pub mod volume_histogram;
-/// Phase A (T-D-3) — empty-state placeholder card for routes not yet
-/// implemented. Used by `shell::screen_body` for Compare / Memory /
-/// Models / Trail / Settings.
-pub mod placeholder;
+/// Phase A (T-D-7) — date-range picker widget for the Lab top-bar.
+/// Preset chips + inline Custom editor with parse-error highlight (R5.1).
+pub mod date_range;
 /// Phase A (T-D-5) — pair chip widget for the Lab top-bar pair-chip row.
 /// Renders a `(Venue, Symbol)` as a Lumen chip; dispatches
 /// `Message::LabSelectPair` on press.
 pub mod pair_chip;
-/// Phase A (T-D-6) — strategy chip widget for the Lab strategy-chip row.
-/// Renders a strategy id + family badge; two emit paths (primary select +
-/// compare toggle).
-pub mod strategy_chip;
-/// Phase A (T-D-7) — date-range picker widget for the Lab top-bar.
-/// Preset chips + inline Custom editor with parse-error highlight (R5.1).
-pub mod date_range;
+/// Phase A (T-D-3) — empty-state placeholder card for routes not yet
+/// implemented. Used by `shell::screen_body` for Compare / Memory /
+/// Models / Trail / Settings.
+pub mod placeholder;
 /// Phase A (T-D-14b) — Run backtest button widget for the Lab screen.
 /// Big primary button per Lumen Phase 1 tokens; disabled while a run is
 /// in-flight (at-most-one-in-flight per Design § 4).
 pub mod run_button;
+/// Phase A (T-D-6) — strategy chip widget for the Lab strategy-chip row.
+/// Renders a strategy id + family badge; two emit paths (primary select +
+/// compare toggle).
+pub mod strategy_chip;
+pub mod throttled_spinner;
+pub mod volume_histogram;

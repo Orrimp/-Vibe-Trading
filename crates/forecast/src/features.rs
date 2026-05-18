@@ -229,10 +229,9 @@ impl RawBar {
 
     /// Hour-of-week (0..167) derived from the bar open time.
     pub fn hour_of_week(&self) -> u32 {
-        let ts = OffsetDateTime::from_unix_timestamp_nanos(
-            i128::from(self.open_time_ms) * 1_000_000,
-        )
-        .unwrap_or(OffsetDateTime::UNIX_EPOCH);
+        let ts =
+            OffsetDateTime::from_unix_timestamp_nanos(i128::from(self.open_time_ms) * 1_000_000)
+                .unwrap_or(OffsetDateTime::UNIX_EPOCH);
         let day_of_week = ts.weekday().number_days_from_monday() as u32; // 0=Mon
         let hour = ts.hour() as u32;
         day_of_week * 24 + hour
@@ -362,11 +361,7 @@ pub(crate) fn load_bars(
 
     bars.sort_by_key(|b| b.open_time_ms);
 
-    debug!(
-        symbol,
-        bar_count = bars.len(),
-        "loaded bars from parquet"
-    );
+    debug!(symbol, bar_count = bars.len(), "loaded bars from parquet");
 
     Ok(bars)
 }
@@ -395,8 +390,7 @@ fn collect_parquet_files(dir: &Path) -> Vec<std::path::PathBuf> {
 }
 
 fn parse_f64(s: &str, field: &str) -> Result<f64, FeatureError> {
-    f64::from_str(s.trim())
-        .map_err(|e| FeatureError::Parse(format!("{field}: {e} (input={s:?})")))
+    f64::from_str(s.trim()).map_err(|e| FeatureError::Parse(format!("{field}: {e} (input={s:?})")))
 }
 
 // ── Volume-z statistics ───────────────────────────────────────────────────────
@@ -412,10 +406,7 @@ pub(crate) fn compute_vol_stats(bars: &[RawBar], lookback: usize) -> VolStats {
             sigma: 1.0,
         };
     }
-    let log_vols: Vec<f64> = bars[..n]
-        .iter()
-        .map(|b| (1.0 + b.volume).ln())
-        .collect();
+    let log_vols: Vec<f64> = bars[..n].iter().map(|b| (1.0 + b.volume).ln()).collect();
     let mu = log_vols.iter().copied().sum::<f64>() / n as f64;
     let variance = log_vols.iter().map(|v| (v - mu).powi(2)).sum::<f64>() / n as f64;
     let sigma = variance.sqrt().max(1e-8);
@@ -542,7 +533,10 @@ impl WindowIterator {
             Err(e) => Self {
                 bars: vec![],
                 symbol,
-                vol_stats: VolStats { mu: 0.0, sigma: 1.0 },
+                vol_stats: VolStats {
+                    mu: 0.0,
+                    sigma: 1.0,
+                },
                 context,
                 // cursor > max_cursor ensures we stop after yielding the error.
                 cursor: 1,
@@ -555,7 +549,10 @@ impl WindowIterator {
                     return Self {
                         bars: vec![],
                         symbol,
-                        vol_stats: VolStats { mu: 0.0, sigma: 1.0 },
+                        vol_stats: VolStats {
+                            mu: 0.0,
+                            sigma: 1.0,
+                        },
                         context,
                         // cursor > max_cursor ensures we stop after yielding the error.
                         cursor: 1,
@@ -646,11 +643,7 @@ impl Iterator for WindowIterator {
         #[cfg(feature = "candle")]
         let features = {
             // Shape [context, FEATURE_DIM] on CPU.
-            match Tensor::from_vec(
-                feat_matrix,
-                (self.context, FEATURE_DIM),
-                &Device::Cpu,
-            ) {
+            match Tensor::from_vec(feat_matrix, (self.context, FEATURE_DIM), &Device::Cpu) {
                 Ok(t) => t,
                 Err(e) => {
                     self.cursor = self.max_cursor + 1;
@@ -844,7 +837,10 @@ mod tests {
                 volume: 2000.0,
             },
         ];
-        let stats = VolStats { mu: 7.0, sigma: 1.0 };
+        let stats = VolStats {
+            mu: 7.0,
+            sigma: 1.0,
+        };
         let f = bar_features(&bars, 1, &stats).unwrap();
         assert_eq!(f.len(), FEATURE_DIM);
         // logret = ln(101/100) ≈ 0.00995
@@ -872,14 +868,13 @@ mod tests {
             datetime!(2023-01-01 00:00 UTC),
             datetime!(2023-12-31 00:00 UTC),
         );
-        let results: Vec<_> = windows_for_symbol(
-            tmpdir.path(),
-            "NONEXISTENT",
-            span,
-            &cfg,
-        )
-        .collect();
-        assert_eq!(results.len(), 1, "should yield exactly one item (the error)");
+        let results: Vec<_> =
+            windows_for_symbol(tmpdir.path(), "NONEXISTENT", span, &cfg).collect();
+        assert_eq!(
+            results.len(),
+            1,
+            "should yield exactly one item (the error)"
+        );
         assert!(results[0].is_err(), "should be an error");
     }
 
@@ -904,7 +899,10 @@ mod tests {
             target_logret: 0.0,
             symbol: symbol.to_string(),
             bar_close_ts: ts,
-            vol_stats: VolStats { mu: 0.0, sigma: 1.0 },
+            vol_stats: VolStats {
+                mu: 0.0,
+                sigma: 1.0,
+            },
         }
     }
 
@@ -958,13 +956,29 @@ mod tests {
         let base_ts = 1_700_000_000_i64;
 
         // Order 1: BTC first
-        let btc_a = vec![Ok(make_window("BTC", base_ts)), Ok(make_window("BTC", base_ts + 3600))].into_iter();
-        let eth_a = vec![Ok(make_window("ETH", base_ts)), Ok(make_window("ETH", base_ts + 3600))].into_iter();
+        let btc_a = vec![
+            Ok(make_window("BTC", base_ts)),
+            Ok(make_window("BTC", base_ts + 3600)),
+        ]
+        .into_iter();
+        let eth_a = vec![
+            Ok(make_window("ETH", base_ts)),
+            Ok(make_window("ETH", base_ts + 3600)),
+        ]
+        .into_iter();
         let batches_a: Vec<_> = aligned_batches(vec![btc_a, eth_a]).collect();
 
         // Order 2: ETH first (shuffled)
-        let eth_b = vec![Ok(make_window("ETH", base_ts)), Ok(make_window("ETH", base_ts + 3600))].into_iter();
-        let btc_b = vec![Ok(make_window("BTC", base_ts)), Ok(make_window("BTC", base_ts + 3600))].into_iter();
+        let eth_b = vec![
+            Ok(make_window("ETH", base_ts)),
+            Ok(make_window("ETH", base_ts + 3600)),
+        ]
+        .into_iter();
+        let btc_b = vec![
+            Ok(make_window("BTC", base_ts)),
+            Ok(make_window("BTC", base_ts + 3600)),
+        ]
+        .into_iter();
         let batches_b: Vec<_> = aligned_batches(vec![eth_b, btc_b]).collect();
 
         assert_eq!(batches_a.len(), batches_b.len());
@@ -988,7 +1002,11 @@ mod tests {
             Err(FeatureError::Parse("boom".to_string())),
         ]
         .into_iter();
-        let btc = vec![Ok(make_window("BTC", base_ts)), Ok(make_window("BTC", base_ts + 3600))].into_iter();
+        let btc = vec![
+            Ok(make_window("BTC", base_ts)),
+            Ok(make_window("BTC", base_ts + 3600)),
+        ]
+        .into_iter();
 
         let batches: Vec<_> = aligned_batches(vec![err_iter, btc]).collect();
         // First batch succeeds (ts == base_ts from both).

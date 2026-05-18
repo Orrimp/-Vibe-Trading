@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use audit::{bootstrap, Ledger};
+use audit::{Ledger, bootstrap};
 use cost::{AgentRole, CostEvent, CostSink, LedgerCostSink, LlmTier, ProviderKind};
 use rust_decimal_macros::dec;
 use uuid::Uuid;

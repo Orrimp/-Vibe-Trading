@@ -20,7 +20,7 @@
 //! from `ui::theme`. Consistency tests in `crates/ui/tests/consistency.rs`
 //! fail the build if a literal sneaks in here.
 
-use iced::widget::{button, table, Button, Column, Container, Row, Text};
+use iced::widget::{Button, Column, Container, Row, Text, button, table};
 use iced::{Border, Element, Length};
 
 use crate::state::{Cockpit, Message, PanelState, StrategyRow, StrategyStatus};
@@ -34,7 +34,7 @@ use crate::strings::{
     STRATEGY_RESUME_LABEL,
 };
 use crate::theme::iced_widget_catalogs::BadgeIntent;
-use crate::theme::{color, layout, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, layout, radius, space, text};
 
 use super::focus_ring;
 use super::frame::{col_header, error_body, loading_with_spinner, muted_body, panel};

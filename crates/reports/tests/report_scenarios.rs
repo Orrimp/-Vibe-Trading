@@ -46,8 +46,8 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use reports::{FrozenMarkSource, ReportWindow};
@@ -60,8 +60,8 @@ mod build_ledger_7d;
 mod build_ledger_90d;
 
 use crate::build_ledger_7d::{
-    build_ledger_7d, fixture_period_end as fixture_7d_period_end,
-    fixture_period_start as fixture_7d_period_start, FIXTURE_SEED,
+    FIXTURE_SEED, build_ledger_7d, fixture_period_end as fixture_7d_period_end,
+    fixture_period_start as fixture_7d_period_start,
 };
 use crate::build_ledger_90d::{
     build_ledger_90d, fixture_period_end as fixture_90d_period_end,

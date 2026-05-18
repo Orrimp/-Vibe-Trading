@@ -17,7 +17,7 @@
 
 use audit::journal::{post_strategy_signal, update_signal_clamp_status};
 use audit::query::recent_signals;
-use audit::{bootstrap, Ledger};
+use audit::{Ledger, bootstrap};
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
@@ -78,17 +78,10 @@ async fn recent_signals_returns_window_subset() {
     )
     .await
     .expect("post s3");
-    let _id_outside = post_strategy_signal(
-        &ledger,
-        &s_outside,
-        qty,
-        None,
-        Venue::Binance,
-        false,
-        None,
-    )
-    .await
-    .expect("post outside");
+    let _id_outside =
+        post_strategy_signal(&ledger, &s_outside, qty, None, Venue::Binance, false, None)
+            .await
+            .expect("post outside");
 
     let since = ts_secs(0);
     let until = ts_secs(1_000);

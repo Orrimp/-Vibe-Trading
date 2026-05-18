@@ -133,8 +133,11 @@ mod tests {
         let body = render(&inputs);
         // alpha row present (real numbers); zeta no-activity row appended.
         assert!(body.contains("| alpha | 100.00 | 2 | 100.00% | 50.00 |"));
-        assert!(body
-            .contains("| zeta | (no activity) | (no activity) | (no activity) | (no activity) |"));
+        assert!(
+            body.contains(
+                "| zeta | (no activity) | (no activity) | (no activity) | (no activity) |"
+            )
+        );
     }
 
     #[test]

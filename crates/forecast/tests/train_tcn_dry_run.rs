@@ -116,7 +116,11 @@ mod dry_run_tests {
             "model_revision in metadata must match filename SHA"
         );
 
-        println!("[T-D-8] PASS: wrote {}.safetensors + {}.metadata.json", &sha[..8], &sha[..8]);
+        println!(
+            "[T-D-8] PASS: wrote {}.safetensors + {}.metadata.json",
+            &sha[..8],
+            &sha[..8]
+        );
     }
 
     /// T-D-10: two calls with identical config produce byte-identical metadata.json SHA.
@@ -132,8 +136,7 @@ mod dry_run_tests {
         let bytes2 = meta2.to_canonical_bytes();
 
         assert_eq!(
-            bytes1,
-            bytes2,
+            bytes1, bytes2,
             "byte-identical metadata.json required for two runs with same config"
         );
 
@@ -146,8 +149,14 @@ mod dry_run_tests {
         h2.update(&bytes2);
         let sha2 = format!("{:x}", h2.finalize());
 
-        assert_eq!(sha1, sha2, "metadata.json SHA must be byte-identical on two runs");
-        assert_eq!(meta1.model_revision, meta2.model_revision, "model_revision must match");
+        assert_eq!(
+            sha1, sha2,
+            "metadata.json SHA must be byte-identical on two runs"
+        );
+        assert_eq!(
+            meta1.model_revision, meta2.model_revision,
+            "model_revision must match"
+        );
 
         println!("[T-D-10] PASS: two-run metadata.json SHA = {sha1}");
     }
@@ -163,7 +172,10 @@ mod dry_run_tests {
         // Keys at the top level should be sorted.
         let first_brace = s.find('{').unwrap();
         assert_eq!(first_brace, 0);
-        println!("[T-D-9] canonical JSON (first 120 chars): {}", &s[..s.len().min(120)]);
+        println!(
+            "[T-D-9] canonical JSON (first 120 chars): {}",
+            &s[..s.len().min(120)]
+        );
     }
 }
 

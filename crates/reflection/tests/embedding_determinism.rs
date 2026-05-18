@@ -6,7 +6,7 @@
 //! - `embed(card_with_no_strategy)` puts 1.0 in slot 6 (`(unattributed)`).
 
 use proptest::prelude::*;
-use reflection::embedding::{cosine, embed, EMBEDDING_DIM, STRATEGY_SLOTS};
+use reflection::embedding::{EMBEDDING_DIM, STRATEGY_SLOTS, cosine, embed};
 use reflection::outcome::OutcomeClass;
 use reflection::regime::RegimeTag;
 use reflection::types::{LessonCard, SymbolOrPair};

@@ -15,8 +15,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent::config::BusConfig;
 use agent::EventBus;
+use agent::config::BusConfig;
 use futures::StreamExt;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
@@ -30,7 +30,7 @@ use ui::live::{
     stream_fills, stream_mode, stream_pnl, stream_positions, stream_strategy_error,
     stream_strategy_loaded, stream_strategy_swapped,
 };
-use ui::state::{update, Cockpit, PanelState, StrategyStatus};
+use ui::state::{Cockpit, PanelState, StrategyStatus, update};
 
 fn synthetic_fill(n: i64) -> Fill {
     Fill {

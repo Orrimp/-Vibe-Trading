@@ -7,7 +7,7 @@
 //! - -0.4% → Scratch
 //! - opening_capital == 0 → Scratch (defensive)
 
-use reflection::outcome::{classify_outcome, OutcomeClass, OUTCOME_THRESHOLD_PCT};
+use reflection::outcome::{OUTCOME_THRESHOLD_PCT, OutcomeClass, classify_outcome};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{Money, Usdt};

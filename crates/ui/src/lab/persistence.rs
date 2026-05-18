@@ -14,7 +14,7 @@
 //!   for symmetry with Linux (Design § 5.2).
 //! - **Corruption → cold-start fallback** — `tracing::warn!` + cold-start
 //!   defaults; never panic on a malformed state file (R6.3).
-//! - **`version: 1` schema** — `params: null` reserved for Phase B; compare_set
+//! - **`version: 1` schema** — `params: null` reserved for Phase B; `compare_set`
 //!   as an array so Phase B can extend additively (Design § 5.1).
 //!
 //! ## Thread safety
@@ -30,9 +30,9 @@ use smol_str::SmolStr;
 use tracing::warn;
 
 use crate::lab::defaults::{
-    cold_start_strategy, cold_start_symbol, LAB_COLD_START_RANGE, LAB_COLD_START_VENUE,
+    LAB_COLD_START_RANGE, LAB_COLD_START_VENUE, cold_start_strategy, cold_start_symbol,
 };
-use crate::lab::state::{DateRange, LabState, Preset, COMPARE_SET_CAP};
+use crate::lab::state::{COMPARE_SET_CAP, DateRange, LabState, Preset};
 
 // ── JSON schema (version: 1) ──────────────────────────────────────────────────
 
@@ -76,13 +76,10 @@ pub fn lab_state_path(override_path: Option<&Path>) -> PathBuf {
     if let Some(p) = override_path {
         return p.to_path_buf();
     }
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            dirs_home_dir()
-                .map(|h| h.join(".config"))
-                .unwrap_or_else(|| PathBuf::from(".config"))
-        });
+    let base = std::env::var("XDG_CONFIG_HOME").map_or_else(
+        |_| dirs_home_dir().map_or_else(|| PathBuf::from(".config"), |h| h.join(".config")),
+        PathBuf::from,
+    );
     base.join("trading").join("cockpit-lab-state.json")
 }
 
@@ -92,7 +89,7 @@ fn dirs_home_dir() -> Option<PathBuf> {
         .ok()
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
-        .or_else(|| {
+        .or({
             #[cfg(windows)]
             {
                 std::env::var("USERPROFILE").ok().map(PathBuf::from)
@@ -110,12 +107,15 @@ fn range_to_json(r: &DateRange) -> PersistRange {
     match r {
         DateRange::Preset(p) => PersistRange {
             kind: "preset".to_string(),
-            preset: Some(match p {
-                Preset::Last30d => "Last30d",
-                Preset::Last90d => "Last90d",
-                Preset::H1_2024 => "H1_2024",
-                Preset::H2_2024 => "H2_2024",
-            }.to_string()),
+            preset: Some(
+                match p {
+                    Preset::Last30d => "Last30d",
+                    Preset::Last90d => "Last90d",
+                    Preset::H1_2024 => "H1_2024",
+                    Preset::H2_2024 => "H2_2024",
+                }
+                .to_string(),
+            ),
             start: None,
             end: None,
         },
@@ -132,10 +132,10 @@ fn range_from_json(r: &PersistRange) -> DateRange {
     if r.kind == "preset" {
         let preset = match r.preset.as_deref() {
             Some("Last30d") => Preset::Last30d,
-            Some("Last90d") => Preset::Last90d,
             Some("H1_2024") => Preset::H1_2024,
             Some("H2_2024") => Preset::H2_2024,
-            _ => Preset::Last90d, // fallback
+            // "Last90d" and unknown/missing values all fall back to Last90d.
+            _ => Preset::Last90d,
         };
         DateRange::Preset(preset)
     } else {
@@ -205,10 +205,7 @@ pub fn decode(json: &str, source_hint: &str) -> LabState {
 fn lab_state_from_json(j: &LabStateJson) -> LabState {
     use trading_core::{StrategyId, Symbol, Venue};
 
-    let strategy = j
-        .strategy
-        .as_deref()
-        .map(|s| StrategyId(SmolStr::new(s)));
+    let strategy = j.strategy.as_deref().map(|s| StrategyId(SmolStr::new(s)));
 
     let pair = j.pair.as_ref().and_then(|p| {
         let venue = match p.venue.as_str() {
@@ -248,9 +245,8 @@ pub fn cold_start_defaults() -> LabState {
 /// # Errors
 /// Returns `std::io::Error` on filesystem failures.
 pub fn write_sync(state: &LabState, path: &Path) -> std::io::Result<()> {
-    let json = encode(state).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-    })?;
+    let json = encode(state)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -306,8 +302,7 @@ impl PersistenceDebouncer {
     #[must_use]
     pub fn is_due(&self) -> bool {
         self.dirty_since
-            .map(|t| t.elapsed().as_millis() >= u128::from(DEBOUNCE_MS))
-            .unwrap_or(false)
+            .is_some_and(|t| t.elapsed().as_millis() >= u128::from(DEBOUNCE_MS))
     }
 
     /// Write `state` to `path` if the debounce deadline has passed.
@@ -460,7 +455,10 @@ mod tests {
         d.mark_dirty();
         d.force_flush(&state, &path);
         assert!(path.exists(), "force_flush must write the file");
-        assert!(!d.is_dirty(), "dirty flag must be cleared after force_flush");
+        assert!(
+            !d.is_dirty(),
+            "dirty flag must be cleared after force_flush"
+        );
     }
 
     /// T-D-17 — proptest placeholder: rapid mutations result in ≤1 write per
@@ -486,11 +484,20 @@ mod tests {
         let json = encode(&state).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["version"].as_u64(), Some(1), "version must be 1");
-        assert!(v.get("strategy").is_some(), "strategy field must be present");
+        assert!(
+            v.get("strategy").is_some(),
+            "strategy field must be present"
+        );
         assert!(v.get("pair").is_some(), "pair field must be present");
         assert!(v.get("range").is_some(), "range field must be present");
-        assert!(v.get("compare_set").is_some(), "compare_set must be present");
-        assert!(v.get("params").is_some(), "params field must be present (reserved)");
+        assert!(
+            v.get("compare_set").is_some(),
+            "compare_set must be present"
+        );
+        assert!(
+            v.get("params").is_some(),
+            "params field must be present (reserved)"
+        );
     }
 
     /// T-D-17 — cold-start defaults encode cleanly and decode back to the

@@ -17,7 +17,7 @@
 
 use std::time::Duration;
 
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use reports::{FrozenMarkSource, ReportWindow};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;

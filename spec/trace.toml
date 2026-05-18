@@ -533,8 +533,20 @@ arch        = [
   "spec/architecture/06-ui-and-cockpit.md",
   "spec/dev-notes/lumen-accent-palette-extension-2026-05-17.md",
 ]
-crates      = []   # TODO developer
-tests       = []   # TODO developer
+crates      = ["crates/ui", "crates/backtest"]
+tests       = [
+  "crates/ui/src/lab/state.rs",
+  "crates/ui/src/lab/persistence.rs",
+  "crates/ui/src/lab/equity_loader.rs",
+  "crates/ui/src/lab/runner.rs",
+  "crates/ui/src/lab/defaults.rs",
+  "crates/ui/src/lab/universe.rs",
+  "crates/ui/src/widgets/run_button.rs",
+  "crates/ui/src/widgets/chart.rs",
+  "crates/backtest/tests/determinism.rs",
+  "crates/ui/tests/panel_snapshots.rs",
+  "crates/ui/tests/gallery_snapshots.rs",
+]
 anchors     = []   # TESTER-VERIFIED 2026-05-18: Phase A touches no strategy/audit/exec code; all 11 body-SHA-256 anchors byte-identical (18/18 determinism tests PASS; git diff confirms success-report front-matter-only changes)
 state       = "in-progress"
 

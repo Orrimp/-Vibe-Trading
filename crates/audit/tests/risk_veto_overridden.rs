@@ -10,7 +10,7 @@
 //! `error_summary`, `venue`).
 
 use audit::query::strategy_events_since;
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use time::OffsetDateTime;
 use trading_core::{StrategyEventKind, Timestamp};
 

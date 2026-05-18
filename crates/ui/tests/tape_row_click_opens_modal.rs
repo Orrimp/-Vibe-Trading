@@ -25,7 +25,7 @@
 use smol_str::SmolStr;
 use trading_core::{AccountId, JournalEntry, Money, StrategyId, Timestamp};
 
-use ui::state::{update, Cockpit, JournalModalState, JournalTransactionView, Message, PanelState};
+use ui::state::{Cockpit, JournalModalState, JournalTransactionView, Message, PanelState, update};
 use ui::strings::TAPE_AUDIT_MODAL_ERROR_PREFIX;
 
 // ── Fixture builders ─────────────────────────────────────────────────────────

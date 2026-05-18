@@ -20,7 +20,7 @@
     clippy::field_reassign_with_default
 )]
 
-use ui::state::{update, Cockpit, JournalModalState, Message, PanelState, Screen};
+use ui::state::{Cockpit, JournalModalState, Message, PanelState, Screen, update};
 
 #[test]
 fn audit_row_click_flips_modal_to_loading() {

@@ -12,10 +12,10 @@ use sha2::{Digest, Sha256};
 use smol_str::SmolStr;
 use trading_core::{Bar, Signal, SignalEvidence, SignalKind, StrategyId, Symbol, Tick, Timestamp};
 
+use crate::Strategy;
 use crate::cross_sectional::config::CrossSectionalMomentumConfig;
 use crate::cross_sectional::selector::top_k_long;
-use crate::Strategy;
-use features::{score_vol_adjusted_return, RingBuffer};
+use features::{RingBuffer, score_vol_adjusted_return};
 
 /// v1 cross-sectional momentum strategy.
 ///

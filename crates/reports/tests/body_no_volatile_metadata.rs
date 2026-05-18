@@ -21,7 +21,7 @@
 //! (`data_source` leak) each cost an anchor-rotation round; this
 //! invariant is the codified gate.
 
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use reports::{FrozenMarkSource, ReportWindow};
 use tempfile::TempDir;
 use uuid::Uuid;

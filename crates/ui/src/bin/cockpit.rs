@@ -89,13 +89,15 @@ impl Recipe for ServerTimeRecipe {
         _input: EventStream,
     ) -> futures::stream::BoxStream<'static, Self::Output> {
         let (tx, rx) = std::sync::mpsc::channel::<Message>();
-        std::thread::spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            if tx
-                .send(Message::ServerTimeTick(trading_core::Timestamp::now()))
-                .is_err()
-            {
-                break;
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                if tx
+                    .send(Message::ServerTimeTick(trading_core::Timestamp::now()))
+                    .is_err()
+                {
+                    break;
+                }
             }
         });
         // Convert the blocking mpsc receiver into a futures Stream.

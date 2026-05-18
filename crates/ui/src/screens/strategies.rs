@@ -30,7 +30,7 @@
     clippy::needless_pass_by_value
 )]
 
-use iced::widget::{button, Button, Column, Container, Row, Text};
+use iced::widget::{Button, Column, Container, Row, Text, button};
 use iced::{Border, Length};
 
 use crate::state::{Cockpit, Message, PanelState, StrategyRow};
@@ -40,7 +40,7 @@ use crate::strings::{
     STRATEGIES_PANEL_TITLE, STRATEGIES_PARAMS_TITLE, STRATEGIES_SELECT_PROMPT,
     STRATEGIES_SPARKLINE_LOADING, VIEWER_NO_EQUITY_DATA,
 };
-use crate::theme::{color, layout, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, layout, radius, space, text};
 use crate::widgets::frame::{
     self, active_chip, col_header, loading_with_spinner, muted_body, panel,
 };

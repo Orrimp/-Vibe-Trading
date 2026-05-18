@@ -7,7 +7,7 @@
 use std::net::SocketAddr;
 
 use anyhow::{Context, Result};
-use metrics::{counter, describe_counter, describe_gauge, gauge, Unit};
+use metrics::{Unit, counter, describe_counter, describe_gauge, gauge};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tracing::info;
 

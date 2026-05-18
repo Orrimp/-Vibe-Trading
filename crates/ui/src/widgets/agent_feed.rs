@@ -18,17 +18,17 @@
 //! visually identical to the pre-modal world (R11 / V7); the click
 //! handler is a pure interaction wrapper.
 
-use iced::widget::{button, Button, Column, Row, Scrollable, Text};
 use iced::Element;
 use iced::Length;
+use iced::widget::{Button, Column, Row, Scrollable, Text, button};
 
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     PANEL_AGENT_FEED_TITLE, SIDE_BUY, SIDE_SELL, TAPE_COL_FEE, TAPE_COL_PRICE, TAPE_COL_QTY,
     TAPE_COL_SIDE, TAPE_COL_SYMBOL, TAPE_COL_TIME, TAPE_EMPTY, TAPE_ERROR_PREFIX, TAPE_LOADING,
-    TAPE_PAUSED_BANNER, TAPE_PAUSE_LABEL, TAPE_RESUME_LABEL,
+    TAPE_PAUSE_LABEL, TAPE_PAUSED_BANNER, TAPE_RESUME_LABEL,
 };
-use crate::theme::{color, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, space, text};
 
 use super::frame::{col_header, error_body, loading_with_spinner, muted_body, panel};
 use super::num::{fmt_price, fmt_qty, fmt_usdt};

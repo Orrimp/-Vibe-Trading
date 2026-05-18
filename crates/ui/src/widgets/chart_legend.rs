@@ -91,16 +91,16 @@ use iced::widget::canvas::{Frame, Path, Stroke, Text as CanvasText};
 use iced::{Color, Point, Rectangle, Size};
 use smol_str::SmolStr;
 
-use super::canvas_chart::{with_alpha, LINE_STROKE_PX};
+use super::canvas_chart::{LINE_STROKE_PX, with_alpha};
 use super::chart::draw_triangle;
 use crate::strings::{
     CHART_LEGEND_BUY_GHOST_LABEL, CHART_LEGEND_BUY_LABEL, CHART_LEGEND_COMPARE_NO_DATA,
     CHART_LEGEND_PRICE_LABEL, CHART_LEGEND_SELL_GHOST_LABEL, CHART_LEGEND_SELL_LABEL,
 };
 use crate::theme::{
-    color,
+    ThemeMode, color,
     layout::{LEGEND_CARD_HEIGHT_PX, LEGEND_CARD_WIDTH_PX, LEGEND_GLYPH_PX},
-    radius, space, text, ThemeMode,
+    radius, space, text,
 };
 
 /// Number of legend rows.  Drives `LEGEND_CARD_HEIGHT_PX` arithmetic
@@ -127,14 +127,14 @@ const LEGEND_PRICE_STUB_PX: f32 = 14.0;
 
 /// A compare-legend entry.
 ///
-/// Each entry shows a colored line-stub (the compare curve's ACCENT_N color)
+/// Each entry shows a colored line-stub (the compare curve's `ACCENT_N` color)
 /// with a short label. `has_data = false` renders the label in `FG_3`
 /// (faded) for the "no data" treatment (R8.4 / T-D-15).
 #[derive(Debug, Clone)]
 pub(crate) struct CompareLegendEntry {
     /// Short label — typically the strategy ID truncated to fit the card.
     pub label: SmolStr,
-    /// The compare curve's line color (ACCENT_2..5 by slot).
+    /// The compare curve's line color (`ACCENT_2..5` by slot).
     pub color: Color,
     /// When `false` the label renders faded — no cached report for this pair.
     pub has_data: bool,
@@ -171,6 +171,7 @@ pub(crate) fn draw_legend_with_compare(
     draw_legend_impl(frame, inner, mode, compare);
 }
 
+#[allow(clippy::too_many_lines)]
 fn draw_legend_impl(
     frame: &mut Frame,
     inner: Rectangle,
@@ -314,7 +315,9 @@ fn draw_legend_impl(
         });
         frame.stroke(
             &stub_path,
-            Stroke::default().with_color(stub_color).with_width(LINE_STROKE_PX),
+            Stroke::default()
+                .with_color(stub_color)
+                .with_width(LINE_STROKE_PX),
         );
 
         // Label — faded when no data.
@@ -698,8 +701,7 @@ mod tests {
         let base_h = compute_card_rect_dynamic(inner, 0).height;
         for n in 1..=4 {
             #[allow(clippy::cast_precision_loss)]
-            let expected_h =
-                base_h + n as f32 * (LEGEND_GLYPH_PX + LEGEND_ROW_GAP_PX);
+            let expected_h = base_h + n as f32 * (LEGEND_GLYPH_PX + LEGEND_ROW_GAP_PX);
             let actual_h = compute_card_rect_dynamic(inner, n).height;
             assert!(
                 approx_eq(actual_h, expected_h),

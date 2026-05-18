@@ -44,7 +44,7 @@
 //! against the open-positions reader. Avoids fixture duplication and
 //! keeps T1105 V5 and T1106 V3 over the same source of ledger truth.
 
-use audit::{bootstrap, journal, query, Ledger};
+use audit::{Ledger, bootstrap, journal, query};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Deserialize;

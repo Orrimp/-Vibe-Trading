@@ -13,7 +13,7 @@
 //! Forward-compat: once T1917 lands, the same test will keep passing
 //! with no change because the query reads the same JSON shape.
 
-use audit::{bootstrap, query, Ledger};
+use audit::{Ledger, bootstrap, query};
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::Timestamp;

@@ -23,7 +23,7 @@
 )]
 
 use iced::widget::grid::Grid;
-use iced::widget::{container, Column, Container, Text};
+use iced::widget::{Column, Container, Text, container};
 use iced::{Border, Length};
 use trading_core::BacktestMetrics;
 
@@ -34,7 +34,7 @@ use crate::strings::{
     KPI_CAGR_LABEL, KPI_DASH_PLACEHOLDER, KPI_MAX_DD_LABEL, KPI_SHARPE_LABEL,
     KPI_TOTAL_RETURN_LABEL, KPI_TRADES_LABEL, KPI_WIN_RATE_LABEL, VIEWER_METRICS_UNAVAILABLE,
 };
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::viewer::ViewerMessage;
 
 /// Render the six-card KPI strip over a [`BacktestMetrics`] panel

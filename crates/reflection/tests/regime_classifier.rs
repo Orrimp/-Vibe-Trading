@@ -4,7 +4,7 @@
 //! Bull / Bear / Chop cases + boundary case + determinism gate
 //! (same fixture in twice → byte-identical output).
 
-use reflection::regime::{classify_regime, RegimeError, RegimeTag};
+use reflection::regime::{RegimeError, RegimeTag, classify_regime};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

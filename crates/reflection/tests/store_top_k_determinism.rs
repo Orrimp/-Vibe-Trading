@@ -7,10 +7,10 @@
 
 use reflection::outcome::OutcomeClass;
 use reflection::regime::RegimeTag;
-use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::store::ReflectionStore;
+use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::types::{LessonCard, RetrievalQuery, SymbolOrPair};
-use reflection::{retrieve_top_k, REPORT_TIME_TOP_K};
+use reflection::{REPORT_TIME_TOP_K, retrieve_top_k};
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{Money, StrategyId, Symbol, Timestamp, Usdt};

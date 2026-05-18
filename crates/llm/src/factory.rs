@@ -20,15 +20,15 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::auth::{load_keys_from_path, KeyMap};
+use crate::ProviderKind;
+use crate::auth::{KeyMap, load_keys_from_path};
 use crate::budgeted::BudgetedProvider;
-use crate::config::{provider_kind_from_name, LlmConfig};
+use crate::config::{LlmConfig, provider_kind_from_name};
 use crate::error::LlmError;
 use crate::providers::{AnthropicProvider, OllamaProvider, OpenAiProvider};
 use crate::recording::RecordingProvider;
 use crate::replay::ReplayProvider;
 use crate::trait_def::{ChatRequest, ChatResponse, LlmProvider};
-use crate::ProviderKind;
 use cost::{CostBudget, CostSink};
 
 /// Agent operating mode (mirrors `agent::config::Mode` once T1937

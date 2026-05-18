@@ -659,15 +659,25 @@ Output: `test result: ok. 7 passed; 0 failed`
 Added to `crates/backtest/src/main.rs`:
 
 - `ScenarioStrategy::TcnOverlayMomentum { config_id, forecaster_id }` variant.
-- `"bs1-tcn-overlay"` (2208 bars, 2023) and `"bs2-tcn-overlay"` (6600 bars, 2024) scenarios.
+- `"top10-2023-fy-tcn-overlay"` (2208 bars, 2023) and `"top10-2024-fy-tcn-overlay"` (6600 bars, 2024) scenarios.
+  (Renamed from provisional `"bs1-tcn-overlay"` / `"bs2-tcn-overlay"` — 2026-05-18 cleanup pass.)
 - `TcnOverlayRunResult` struct with modulation stats fields.
 - `run_tcn_overlay_backtest()` async fn using `TcnOverlayMomentumStrategy::with_passthrough()`.
 - `write_tcn_overlay_report()` fn writing a report with a "TCN Overlay Modulation" section.
 - `scenario_to_feature()` maps both scenarios to `"v25-tcn-overlay"`.
 - `is_tcn_overlay` branch in data-source selection.
-- `cargo check -p backtest` passes clean.
 
-The actual report generation (binary run) is left for the tester to execute and anchor.
+Reports generated and anchored (2026-05-18 cleanup pass):
+
+| Scenario | Report file | Body SHA-256 |
+|----------|-------------|--------------|
+| `top10-2023-fy-tcn-overlay` | `reports/backtest-20260518-053400-top10-2023-fy-tcn-overlay.md` | `01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5` |
+| `top10-2024-fy-tcn-overlay` | `reports/backtest-20260518-053408-top10-2024-fy-tcn-overlay.md` | `e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163` |
+
+Both anchors are locked in `spec/anchors.toml` (version `v2.5.0`).
+Stale `bs1-tcn-overlay` / `bs2-tcn-overlay` report files deleted.
+
+`cargo check -p backtest` PASS. Determinism tests (`cargo test -p backtest --test determinism`) 20/20 PASS.
 
 Suggested milestone order (architect to lock in T-AR-2):
 

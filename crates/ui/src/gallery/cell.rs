@@ -15,11 +15,11 @@
 
 #![allow(clippy::cast_possible_truncation)]
 
-use iced::widget::{container, Column, Container, Text};
 use iced::Length;
+use iced::widget::{Column, Container, Text, container};
 
 use crate::state::{Cockpit, Message};
-use crate::theme::{color, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, space, text};
 
 /// Per-cell height in logical pixels. Cells all share the same height so
 /// `GALLERY_LOGICAL_HEIGHT = CELL_COUNT * CELL_HEIGHT_PX` is exact.

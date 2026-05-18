@@ -13,12 +13,12 @@
 //! handling — this file re-asserts the acceptance contract from the
 //! crate's public-API edge.
 
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
-use llm::retry::{run_with_backoff, RetryError};
 use llm::LlmError;
+use llm::retry::{RetryError, run_with_backoff};
 
 #[tokio::test(start_paused = true)]
 async fn t1902_three_429s_then_success() {

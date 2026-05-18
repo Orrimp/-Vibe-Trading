@@ -6,8 +6,8 @@
 //! `Err(TryEnqueueError::BackPressure)`.  R7.1 hot-path invariant —
 //! never block the executor's submit-fill thread.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use thiserror::Error;
 use tokio::sync::mpsc;

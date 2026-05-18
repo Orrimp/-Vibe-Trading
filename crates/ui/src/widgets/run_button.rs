@@ -23,14 +23,14 @@
 //! **Zero hex literals** — all colors from `crate::theme`.
 //! **Zero string literals** — copy from `crate::strings`.
 
-use iced::widget::{button, Text};
 use iced::Length;
+use iced::widget::{Text, button};
 
 use crate::state::Message;
 use crate::strings::{
     LAB_RUN_BUTTON, LAB_RUN_BUTTON_COMPLETED, LAB_RUN_BUTTON_FAILED, LAB_RUN_BUTTON_RUNNING,
 };
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, radius, space, text};
 
 // ── RunState ──────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,11 @@ impl RunState {
 /// Emits `Message::LabRunRequested` on press when enabled.
 #[allow(clippy::cast_possible_truncation)]
 #[must_use]
-pub fn view(state: &RunState, run_handle_present: bool, mode: ThemeMode) -> crate::Element<'static> {
+pub fn view(
+    state: &RunState,
+    run_handle_present: bool,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
     let label_str: &'static str = match state {
         RunState::Idle => LAB_RUN_BUTTON,
         RunState::Running => LAB_RUN_BUTTON_RUNNING,
@@ -110,9 +114,7 @@ pub fn view(state: &RunState, run_handle_present: bool, mode: ThemeMode) -> crat
         color::ACCENT.current(mode)
     };
 
-    let label = Text::new(label_str)
-        .size(text::SMALL)
-        .color(fg);
+    let label = Text::new(label_str).size(text::SMALL).color(fg);
 
     let btn = button(label)
         .padding([space::S as u16, space::L as u16])
@@ -187,7 +189,10 @@ mod tests {
         assert_eq!(RunState::from_cockpit(false, None), RunState::Idle);
 
         // Not inflight, last ok → Completed
-        assert_eq!(RunState::from_cockpit(false, Some(true)), RunState::Completed);
+        assert_eq!(
+            RunState::from_cockpit(false, Some(true)),
+            RunState::Completed
+        );
 
         // Not inflight, last failed → Failed
         assert_eq!(RunState::from_cockpit(false, Some(false)), RunState::Failed);

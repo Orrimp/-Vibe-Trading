@@ -128,7 +128,7 @@ fn t712_new_strategy_has_clean_state_after_swap() {
 
 #[tokio::test]
 async fn t712_audit_load_swap_lifecycle() {
-    use audit::{bootstrap, journal, query, Ledger};
+    use audit::{Ledger, bootstrap, journal, query};
     use trading_core::StrategyEventKind;
 
     let ledger = Ledger::in_memory().await.unwrap();

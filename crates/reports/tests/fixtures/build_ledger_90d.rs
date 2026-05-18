@@ -29,7 +29,7 @@
 
 use std::path::Path;
 
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rust_decimal::Decimal;

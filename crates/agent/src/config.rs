@@ -714,10 +714,7 @@ fn merge_llm_local_overlay(llm: &mut LlmConfig, overlay_toml: &str) -> Result<()
     if let Some(section) = parsed.llm {
         for (name, entry) in section.providers {
             if let Some(api_key) = entry.api_key {
-                let pc = llm
-                    .providers
-                    .entry(name)
-                    .or_default();
+                let pc = llm.providers.entry(name).or_default();
                 pc.api_key = Some(api_key);
             }
         }

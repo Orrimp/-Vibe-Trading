@@ -25,4 +25,4 @@ pub mod state;
 pub mod universe;
 
 pub use equity_loader::{EquityCache, EquityLoadError, Fidelity, LabEquitySeries, LabTuple};
-pub use state::{DateRange, LabState, Preset, StrategyFamily, COMPARE_SET_CAP};
+pub use state::{COMPARE_SET_CAP, DateRange, LabState, Preset, StrategyFamily};

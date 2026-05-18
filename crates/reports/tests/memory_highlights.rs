@@ -11,7 +11,7 @@
 //! the v1+ placeholder body with the operator-locked Q7 empty-state.
 
 use reports::render::memory_highlights::{
-    render_with_decay, render_with_lessons, REFLECTION_MEMORY_EMPTY_STATE,
+    REFLECTION_MEMORY_EMPTY_STATE, render_with_decay, render_with_lessons,
 };
 
 #[test]

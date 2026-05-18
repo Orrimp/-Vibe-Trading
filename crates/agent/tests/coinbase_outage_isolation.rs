@@ -54,9 +54,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use agent::config::BusConfig;
-use agent::runtime::{spawn_market_health_watchdog, spawn_venue_supervisor, LastTickMap, NowFn};
 use agent::EventBus;
+use agent::config::BusConfig;
+use agent::runtime::{LastTickMap, NowFn, spawn_market_health_watchdog, spawn_venue_supervisor};
 use async_trait::async_trait;
 use data::{MarketDataSource, MockFeed};
 use futures::stream::BoxStream;

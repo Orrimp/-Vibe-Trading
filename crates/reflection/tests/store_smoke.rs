@@ -5,8 +5,8 @@
 
 use reflection::outcome::OutcomeClass;
 use reflection::regime::RegimeTag;
-use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::store::ReflectionStore;
+use reflection::store::sqlite::SqliteReflectionStore;
 use reflection::types::{LessonCard, SymbolOrPair};
 use rust_decimal_macros::dec;
 use tempfile::tempdir;

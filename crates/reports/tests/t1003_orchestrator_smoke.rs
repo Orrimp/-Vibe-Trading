@@ -30,7 +30,7 @@
 
 use std::path::Path;
 
-use reports::{render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE, FrozenMarkSource, ReportWindow};
+use reports::{FrozenMarkSource, ReportWindow, render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
@@ -41,7 +41,7 @@ mod build_ledger_7d;
 mod build_ledger_with_open_positions_7d;
 
 use crate::build_ledger_7d::{
-    build_ledger_7d, fixture_period_start as fixture_7d_period_start, FIXTURE_SEED,
+    FIXTURE_SEED, build_ledger_7d, fixture_period_start as fixture_7d_period_start,
 };
 use crate::build_ledger_with_open_positions_7d::{
     build_ledger_with_open_positions_7d, fixture_period_end as fixture_open_period_end,

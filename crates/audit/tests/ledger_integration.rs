@@ -5,7 +5,7 @@
 //! T06 acceptance: post 100 synthetic fills; `Σ debits == Σ credits` for every
 //!                 transaction.
 
-use audit::{bootstrap, journal, query, Ledger};
+use audit::{Ledger, bootstrap, journal, query};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{

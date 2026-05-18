@@ -19,7 +19,7 @@ mod build_reflection_store_90d;
 use reflection::regime::RegimeTag;
 use reflection::store::ReflectionStore;
 use reflection::types::RetrievalQuery;
-use reflection::{retrieve_top_k, REPORT_TIME_TOP_K};
+use reflection::{REPORT_TIME_TOP_K, retrieve_top_k};
 use reports::render::memory_highlights::render_with_lessons;
 use trading_core::{StrategyId, Symbol};
 

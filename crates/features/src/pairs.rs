@@ -22,7 +22,7 @@
 use rust_decimal::Decimal;
 use thiserror::Error;
 
-use crate::math::{decimal_ln, decimal_sqrt, MathError};
+use crate::math::{MathError, decimal_ln, decimal_sqrt};
 use crate::ring_buffer::RingBuffer;
 
 /// Error from [`spread`] or [`rolling_zscore`].

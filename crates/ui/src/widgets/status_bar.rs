@@ -22,7 +22,7 @@ use crate::strings::{
     STATUS_BAR_LATENCY_LABEL, STATUS_BAR_MS, STATUS_BAR_NO_LATENCY, STATUS_BAR_NO_SERVER_TIME,
     STATUS_BAR_RECONNECTING, STATUS_BAR_SERVER_LABEL, STATUS_BAR_UTC_SUFFIX, STATUS_BAR_VERSION,
 };
-use crate::theme::{color, color_for_latency_ms, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, color_for_latency_ms, radius, space, text};
 
 /// Height of the status bar in logical pixels.
 const BAR_HEIGHT: f32 = 24.0;

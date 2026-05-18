@@ -12,14 +12,14 @@
 //! `spec/reports/test-2026-05-02-2113-real-mtm-unrealized-pnl-final.md`
 //! § 3 for the root-cause writeup that motivated this split.
 
-use reports::{render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE, FrozenMarkSource, ReportWindow};
+use reports::{FrozenMarkSource, ReportWindow, render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE};
 use tempfile::TempDir;
 
 #[path = "fixtures/build_ledger_with_open_positions_7d.rs"]
 mod build_ledger_with_open_positions_7d;
 
 use crate::build_ledger_with_open_positions_7d::{
-    build_ledger_with_open_positions_7d, fixture_period_end, fixture_period_start, FIXTURE_SEED,
+    FIXTURE_SEED, build_ledger_with_open_positions_7d, fixture_period_end, fixture_period_start,
 };
 
 // ── frozen marks: BTCUSDT covered, ETHUSDT omitted ────────────────────────────

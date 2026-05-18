@@ -99,9 +99,9 @@ use ui::strings::{APP_TITLE, TAPE_AUDIT_MODAL_ERROR_PREFIX};
 use ui::theme::ThemeMode;
 use ui::widgets::journal_transaction_modal;
 
+use iced::Element;
 use iced::advanced::subscription::{EventStream, Hasher, Recipe};
 use iced::futures;
-use iced::Element;
 
 // ── Server-time recipe (T1509) ────────────────────────────────────────────────
 //

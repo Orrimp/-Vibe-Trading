@@ -11,7 +11,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use audit::{bootstrap, Ledger};
+use audit::{Ledger, bootstrap};
 use cost::{AgentRole, CostBudget, CostSink, LlmTier, NoopCostSink};
 use llm::{
     BudgetedProvider, ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmConfig, LlmError,

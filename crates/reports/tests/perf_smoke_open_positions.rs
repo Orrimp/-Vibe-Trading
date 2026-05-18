@@ -30,7 +30,7 @@
 
 use std::time::{Duration, Instant};
 
-use audit::{bootstrap, journal, query, Ledger};
+use audit::{Ledger, bootstrap, journal, query};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

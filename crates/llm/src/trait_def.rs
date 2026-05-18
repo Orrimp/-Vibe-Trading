@@ -9,9 +9,9 @@ use cost::{AgentRole, LlmTier};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::ProviderKind;
 use crate::error::LlmError;
 use crate::tools::ToolSchema;
-use crate::ProviderKind;
 
 /// Newtype around a provider-specific model identifier (e.g.
 /// `claude-3-5-sonnet-20241022`, `gpt-4o-mini`, `llama3:8b`).

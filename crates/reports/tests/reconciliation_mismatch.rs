@@ -20,7 +20,7 @@
 
 use std::process::Command;
 
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use reports::{FrozenMarkSource, ReportError, ReportWindow};
 use rust_decimal_macros::dec;
 use tempfile::TempDir;

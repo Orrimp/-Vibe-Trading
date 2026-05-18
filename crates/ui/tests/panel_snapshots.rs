@@ -26,9 +26,9 @@ use trading_core::{AccountId, JournalEntry, Money, StrategyId, Timestamp};
 
 use trading_core::{Symbol, Venue};
 use ui::state::{
-    update, AgentMode, Cockpit, ExecutionMode, JournalModalState, JournalTransactionView,
-    KillState, Latency, MarketHealthState, Message, OverrideRiskVetoState, PanelState, Screen,
-    StrategyStatus,
+    AgentMode, Cockpit, ExecutionMode, JournalModalState, JournalTransactionView, KillState,
+    Latency, MarketHealthState, Message, OverrideRiskVetoState, PanelState, Screen, StrategyStatus,
+    update,
 };
 use ui::strings;
 use ui::widgets::journal_transaction_modal;
@@ -1233,7 +1233,7 @@ fn risk_screen_summary(c: &Cockpit) -> String {
                 strings::RISK_EXPOSURE_SECTION_TITLE
             ));
             let mut keys: Vec<&(Venue, Symbol)> = state.per_symbol_exposure.keys().collect();
-            keys.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1 .0.cmp(&b.1 .0)));
+            keys.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.0.cmp(&b.1.0)));
             for k in keys {
                 let used = state
                     .per_symbol_exposure
@@ -1765,7 +1765,10 @@ fn charts_screen_full_summary(c: &Cockpit) -> String {
         Vec::new()
     };
     let bins = ui::screens::lab::compute_volume_bins(&markers, &bars_v);
-    let active_bins = bins.iter().filter(|b: &&ui::widgets::volume_histogram::VolumeBin| !b.is_empty()).count();
+    let active_bins = bins
+        .iter()
+        .filter(|b: &&ui::widgets::volume_histogram::VolumeBin| !b.is_empty())
+        .count();
     out.push_str(&format!(
         "histogram_bins: {} active={active_bins}\n",
         bins.len()
@@ -2181,7 +2184,7 @@ fn status_bar_summary(c: &Cockpit) -> String {
         STATUS_BAR_CONNECTED, STATUS_BAR_DISCONNECTED, STATUS_BAR_LATENCY_LABEL,
         STATUS_BAR_NO_LATENCY, STATUS_BAR_RECONNECTING, STATUS_BAR_SERVER_LABEL,
     };
-    use ui::theme::{color as t, color_for_latency_ms, ThemeMode};
+    use ui::theme::{ThemeMode, color as t, color_for_latency_ms};
 
     let dark = ThemeMode::Dark;
     let _fg3 = t::FG_3.current(dark);
@@ -2272,7 +2275,7 @@ fn status_bar_summary(c: &Cockpit) -> String {
 /// cockpit cold-starts in `ThemeMode::Dark` and all widgets resolve against
 /// dark-mode at render time.
 fn color_name(c: iced::Color) -> &'static str {
-    use ui::theme::{color as t, ThemeMode};
+    use ui::theme::{ThemeMode, color as t};
     let dark = ThemeMode::Dark;
     if c == t::UP_500.current(dark) {
         "pos"

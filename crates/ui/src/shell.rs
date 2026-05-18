@@ -22,14 +22,14 @@
 //! **Zero string literals** — strings via `crate::strings`.
 //! **Zero hex colours** — tokens via `crate::theme`.
 
-use iced::widget::{Column, Container, Row, Space};
 use iced::Length;
+use iced::widget::{Column, Container, Row, Space};
 
 use crate::screens::{audit, home, lab, strategies};
 use crate::state::{Cockpit, Screen};
 use crate::strings;
 use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A};
-use crate::theme::{color, ThemeMode};
+use crate::theme::{ThemeMode, color};
 use crate::widgets::{placeholder, sidebar_nav, status_bar};
 
 /// Render the full cockpit shell.
@@ -78,23 +78,18 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     match screen {
         // ── Phase A active routes ─────────────────────────────────────
-        Screen::Lab => lab::view(model, mode),
-        Screen::Live => home::view(model, mode),
+        // Deprecated aliases route to their successors (R9.3).
+        Screen::Lab | Screen::Charts => lab::view(model, mode),
+        Screen::Live | Screen::Home => home::view(model, mode),
         Screen::Compare => placeholder::view(strings::COMPARE_PLACEHOLDER, mode),
         Screen::Memory => placeholder::view(strings::MEMORY_PLACEHOLDER, mode),
         Screen::Models => placeholder::view(strings::MODELS_PLACEHOLDER, mode),
-        Screen::Trail => audit::view(model, mode),
-        Screen::Settings => placeholder::view(strings::SETTINGS_PLACEHOLDER, mode),
+        Screen::Trail | Screen::Audit => audit::view(model, mode),
+        Screen::Settings | Screen::Risk | Screen::Debug | Screen::Control => {
+            placeholder::view(strings::SETTINGS_PLACEHOLDER, mode)
+        }
 
         // ── Unchanged active route ────────────────────────────────────
         Screen::Strategies => strategies::view(model, mode),
-
-        // ── Deprecated aliases — route to successors (R9.3) ──────────
-        Screen::Home => home::view(model, mode),
-        Screen::Charts => lab::view(model, mode),
-        Screen::Audit => audit::view(model, mode),
-        Screen::Risk | Screen::Debug | Screen::Control => {
-            placeholder::view(strings::SETTINGS_PLACEHOLDER, mode)
-        }
     }
 }

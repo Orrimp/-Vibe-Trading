@@ -56,7 +56,7 @@ use iced::advanced::widget::tree::{State, Tag};
 use iced::advanced::widget::{Tree, Widget};
 use iced::advanced::{Clipboard, Layout, Shell};
 use iced::time::{Duration, Instant};
-use iced::{window, Border, Color, Element, Event, Length, Rectangle, Size, Vector};
+use iced::{Border, Color, Element, Event, Length, Rectangle, Size, Vector, window};
 
 /// A throttled spinner — same visual contract as `iced_aw::Spinner`,
 /// but re-schedules redraws at 10 fps instead of 60 fps.

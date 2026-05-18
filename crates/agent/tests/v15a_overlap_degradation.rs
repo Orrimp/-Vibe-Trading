@@ -134,7 +134,7 @@ fn t711_both_pairs_emit_open_pair_long_for_same_a_leg() {
 
 #[tokio::test]
 async fn t711_rebalance_rejected_written_on_breach() {
-    use audit::{bootstrap, journal, query, Ledger};
+    use audit::{Ledger, bootstrap, journal, query};
     use trading_core::StrategyEventKind;
 
     let ledger = Ledger::in_memory().await.unwrap();

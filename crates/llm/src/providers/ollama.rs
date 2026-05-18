@@ -18,13 +18,13 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use crate::ProviderKind;
 use crate::error::LlmError;
-use crate::tools::{validate_tool_use, ToolSchema};
+use crate::tools::{ToolSchema, validate_tool_use};
 use crate::trait_def::{
     ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmProvider, MessageRole, ModelId,
     StopReason, SystemBlock, TokenUsage,
 };
-use crate::ProviderKind;
 
 /// Ollama provider — local daemon, no auth.
 #[derive(Debug, Clone)]

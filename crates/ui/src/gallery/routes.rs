@@ -11,14 +11,14 @@
 
 #![allow(clippy::cast_possible_truncation)]
 
-use iced::widget::Column;
 use iced::Length;
+use iced::widget::Column;
 use smol_str::SmolStr;
 
 use crate::fixtures as fx;
 use crate::state::{Cockpit, ExecutionMode, Message, OverrideRiskVetoState, PanelState, Screen};
-use crate::theme::ThemeMode;
 use crate::strings;
+use crate::theme::ThemeMode;
 use crate::widgets::{
     agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
     kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
@@ -107,6 +107,7 @@ fn seed_charts_hovered() -> Cockpit {
     crate::test_support::charts_screen_cockpit()
 }
 
+#[allow(deprecated)] // Screen::Charts is a backwards-compat alias for Screen::Lab; gallery fixtures keep the old name intentionally (T-D-1)
 fn seed_charts_empty() -> Cockpit {
     let mut c = fx::fake_cockpit_ready();
     c.current_screen = Screen::Charts;
@@ -228,6 +229,7 @@ fn seed_override_risk_veto() -> Cockpit {
     fx::fake_cockpit_with_one_veto()
 }
 
+#[allow(deprecated)] // Screen::Home is a backwards-compat alias for Screen::Live; gallery fixtures keep the old name intentionally (T-D-1)
 fn seed_sidebar_nav() -> Cockpit {
     let mut c = fx::fake_cockpit_ready();
     c.current_screen = Screen::Home;
@@ -478,7 +480,7 @@ fn render_pair_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
 }
 
 fn render_strategy_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
-    use crate::lab::state::{StrategyFamily, COMPARE_SET_CAP};
+    use crate::lab::state::{COMPARE_SET_CAP, StrategyFamily};
     use std::collections::HashMap;
     use trading_core::StrategyId;
 
@@ -497,10 +499,15 @@ fn render_strategy_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
     );
     let families: &'static _ = Box::leak(Box::new(families_map));
     let primary: &'static _ = Box::leak(Box::new(ids.first().cloned()));
-    let compare_set: &'static _ =
-        Box::leak(Box::new(vec![ids.get(1).cloned()]));
+    let compare_set: &'static _ = Box::leak(Box::new(vec![ids.get(1).cloned()]));
     let _ = COMPARE_SET_CAP;
-    strategy_chip::row(ids, families, primary.as_ref(), compare_set, ThemeMode::Dark)
+    strategy_chip::row(
+        ids,
+        families,
+        primary.as_ref(),
+        compare_set,
+        ThemeMode::Dark,
+    )
 }
 
 fn render_date_range(_model: &Cockpit) -> iced::Element<'_, Message> {
@@ -553,6 +560,7 @@ fn render_override_risk_veto(_model: &Cockpit) -> iced::Element<'_, Message> {
         .unwrap_or_else(|| iced::widget::Text::new("override_risk_veto (Idle)").into())
 }
 
+#[allow(deprecated)] // deprecated Screen aliases kept intentionally in gallery fixtures (T-D-1 backwards-compat shims)
 fn render_sidebar_nav(model: &Cockpit) -> iced::Element<'_, Message> {
     let entries = &[
         Screen::Home,

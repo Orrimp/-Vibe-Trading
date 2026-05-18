@@ -27,9 +27,11 @@
 // Only compile the real test on metal + Apple Silicon targets.
 #[cfg(all(feature = "metal", target_os = "macos"))]
 mod metal_tests {
-    use candle_core::{Device, DType, Tensor};
+    use candle_core::{DType, Device, Tensor};
     use candle_nn::VarBuilder;
-    use forecast::tcn::{TcnModel, INPUT_FEATURES, CONTEXT_LEN, DIRECTION_EPSILON, r_hat_to_direction};
+    use forecast::tcn::{
+        CONTEXT_LEN, DIRECTION_EPSILON, INPUT_FEATURES, TcnModel, r_hat_to_direction,
+    };
 
     /// Absolute tolerance for Metal-vs-CPU comparison.
     const MAX_ABS_TOL: f32 = 1e-4;
@@ -59,19 +61,19 @@ mod metal_tests {
         )
         .unwrap();
 
-        let metal_input = Tensor::from_vec(
-            input_data,
-            (1, INPUT_FEATURES, CONTEXT_LEN),
-            &metal_device,
-        )
-        .unwrap();
+        let metal_input =
+            Tensor::from_vec(input_data, (1, INPUT_FEATURES, CONTEXT_LEN), &metal_device).unwrap();
 
         // 4. Forward pass on both backends.
         let cpu_out = cpu_model.forward(&cpu_input, false).expect("CPU forward");
-        let metal_out = metal_model.forward(&metal_input, false).expect("Metal forward");
+        let metal_out = metal_model
+            .forward(&metal_input, false)
+            .expect("Metal forward");
 
         // 5. Transfer Metal result to CPU for comparison.
-        let metal_on_cpu = metal_out.to_device(&Device::Cpu).expect("transfer Metal→CPU");
+        let metal_on_cpu = metal_out
+            .to_device(&Device::Cpu)
+            .expect("transfer Metal→CPU");
 
         // 6. Compute max absolute difference.
         let diff = (metal_on_cpu.clone() - cpu_out.clone())
@@ -96,11 +98,7 @@ mod metal_tests {
         );
 
         // 7. Direction flip check.
-        let cpu_r_hat = cpu_out
-            .flatten_all()
-            .unwrap()
-            .to_vec1::<f32>()
-            .unwrap()[0];
+        let cpu_r_hat = cpu_out.flatten_all().unwrap().to_vec1::<f32>().unwrap()[0];
         let metal_r_hat = metal_on_cpu
             .flatten_all()
             .unwrap()
@@ -111,8 +109,7 @@ mod metal_tests {
         let metal_dir = r_hat_to_direction(metal_r_hat, DIRECTION_EPSILON);
 
         assert_eq!(
-            cpu_dir,
-            metal_dir,
+            cpu_dir, metal_dir,
             "Metal-vs-CPU DIRECTION FLIP detected — T-D-7 EXIT GATE FAILED. \
              cpu_r_hat={cpu_r_hat:.6}, metal_r_hat={metal_r_hat:.6}. \
              Stop and report to architect."

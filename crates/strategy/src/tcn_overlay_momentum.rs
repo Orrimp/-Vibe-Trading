@@ -38,8 +38,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::{Bar, Signal, SignalKind, StrategyId, Symbol, Tick};
 
-use crate::cross_sectional::MomentumStrategy;
 use crate::Strategy;
+use crate::cross_sectional::MomentumStrategy;
 
 // ── TcnOverlayMomentumConfig ───────────────────────────────────────────────────
 
@@ -243,8 +243,14 @@ impl SyncForecaster for TcnSyncForecaster {
             let hour_sin = (2.0 * PI * hour_of_week / 168.0).sin();
             let hour_cos = (2.0 * PI * hour_of_week / 168.0).cos();
 
-            feat_cf[0 * n + t] = logret;
-            feat_cf[1 * n + t] = logrange;
+            // Channel-first layout: feat_cf[c * n + t].
+            // The multiplications by 0 and 1 express the channel index
+            // explicitly so all five assignments share the same formula.
+            #[allow(clippy::erasing_op, clippy::identity_op)]
+            {
+                feat_cf[0 * n + t] = logret;
+                feat_cf[1 * n + t] = logrange;
+            }
             feat_cf[2 * n + t] = logvol_z;
             feat_cf[3 * n + t] = hour_sin;
             feat_cf[4 * n + t] = hour_cos;
@@ -309,10 +315,8 @@ impl TcnOverlayMomentumStrategy {
         confidence_threshold: Decimal,
     ) -> Self {
         // Pre-populate the per-symbol window map with empty vecs.
-        let windows: BTreeMap<Symbol, Vec<Bar>> = base
-            .universe()
-            .map(|s| (s.clone(), Vec::new()))
-            .collect();
+        let windows: BTreeMap<Symbol, Vec<Bar>> =
+            base.universe().map(|s| (s.clone(), Vec::new())).collect();
 
         Self {
             id: StrategyId::new("tcn_overlay_momentum"),
@@ -329,11 +333,7 @@ impl TcnOverlayMomentumStrategy {
     /// Used when the `forecast` feature is not enabled.
     #[must_use]
     pub fn with_passthrough(base: MomentumStrategy) -> Self {
-        Self::new(
-            base,
-            Box::new(PassthroughForecaster),
-            dec!(0.6),
-        )
+        Self::new(base, Box::new(PassthroughForecaster), dec!(0.6))
     }
 }
 
@@ -497,12 +497,8 @@ mod tests {
 
     #[test]
     fn combine_agree_confident_buy_passthrough() {
-        let result = combine_with_direction(
-            SignalKind::Buy,
-            ForecastDirection::Up,
-            dec!(0.8),
-            dec!(0.6),
-        );
+        let result =
+            combine_with_direction(SignalKind::Buy, ForecastDirection::Up, dec!(0.8), dec!(0.6));
         assert_eq!(result, SignalKind::Buy);
     }
 
@@ -572,10 +568,7 @@ mod tests {
             }
         };
 
-        let base = MomentumStrategy::from_config(
-            cfg,
-            SmolStr::new(cfg_path.to_string_lossy()),
-        );
+        let base = MomentumStrategy::from_config(cfg, SmolStr::new(cfg_path.to_string_lossy()));
         let mut strategy = TcnOverlayMomentumStrategy::with_passthrough(base);
 
         assert_eq!(strategy.id().to_string(), "tcn_overlay_momentum");
@@ -638,15 +631,9 @@ mod tests {
                 return;
             }
         };
-        let base = MomentumStrategy::from_config(
-            cfg,
-            SmolStr::new(cfg_path.to_string_lossy()),
-        );
-        let mut strategy = TcnOverlayMomentumStrategy::new(
-            base,
-            Box::new(AlwaysDownForecaster),
-            dec!(0.6),
-        );
+        let base = MomentumStrategy::from_config(cfg, SmolStr::new(cfg_path.to_string_lossy()));
+        let mut strategy =
+            TcnOverlayMomentumStrategy::new(base, Box::new(AlwaysDownForecaster), dec!(0.6));
 
         let symbol = trading_core::Symbol::new("BTCUSDT");
         let base_ts = time::OffsetDateTime::UNIX_EPOCH;

@@ -14,14 +14,14 @@
 )]
 
 use iced::widget::canvas::{self, Frame, Geometry};
-use iced::widget::{container, Canvas, Container};
-use iced::{mouse, Length, Rectangle, Renderer};
+use iced::widget::{Canvas, Container, container};
+use iced::{Length, Rectangle, Renderer, mouse};
 use rust_decimal::prelude::ToPrimitive;
 use trading_core::EquitySeries;
 
 use super::canvas_chart::polyline_with_fill;
 use crate::state::Message;
-use crate::theme::{color, ThemeMode};
+use crate::theme::{ThemeMode, color};
 
 const SPARKLINE_WIDTH_PX: f32 = 120.0;
 const SPARKLINE_HEIGHT_PX: f32 = 36.0;

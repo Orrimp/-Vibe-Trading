@@ -66,8 +66,8 @@ pub mod gallery;
 pub mod live;
 
 pub use state::{
-    update, AgentMode, ChartBuffer, Cockpit, KillState, Latency, MarketHealthState, Message,
-    PanelState, Screen, CHART_BUFFER_CAPACITY, LAB_PAIR_ORDER,
+    AgentMode, CHART_BUFFER_CAPACITY, ChartBuffer, Cockpit, KillState, LAB_PAIR_ORDER, Latency,
+    MarketHealthState, Message, PanelState, Screen, update,
 };
 
 /// Crate-wide convenience: the iced `Element` type specialized to our

@@ -8,9 +8,9 @@
 //! > (Δ ≤ 1e-8). \[R11.1, Q10\]
 
 use audit::{
-    bootstrap,
-    journal::{post_llm_budget_event, BudgetEventKind},
-    query, Ledger,
+    Ledger, bootstrap,
+    journal::{BudgetEventKind, post_llm_budget_event},
+    query,
 };
 use rust_decimal_macros::dec;
 

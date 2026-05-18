@@ -11,9 +11,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use iced_test::emulator::{Emulator, Event, Mode};
+use iced_test::futures::futures::StreamExt;
 use iced_test::futures::futures::channel::mpsc;
 use iced_test::futures::futures::executor;
-use iced_test::futures::futures::StreamExt;
 
 use ui::test_support::{charts_screen_cockpit, program_from_cockpit};
 

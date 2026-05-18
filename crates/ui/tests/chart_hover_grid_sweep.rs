@@ -47,7 +47,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use iced::{event::Status, Point, Rectangle};
+use iced::{Point, Rectangle, event::Status};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;

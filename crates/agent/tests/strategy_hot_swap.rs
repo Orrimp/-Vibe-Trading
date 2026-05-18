@@ -13,7 +13,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent::{watcher, EventBus};
+use agent::{EventBus, watcher};
 use audit::{bootstrap, ledger::Ledger, query};
 use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 

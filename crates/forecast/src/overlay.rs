@@ -86,9 +86,9 @@ mod tests {
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use uuid::Uuid;
     use trading_core::forecast::ForecastOverlay;
     use trading_core::signal::SignalKind;
+    use uuid::Uuid;
 
     fn overlay(dir: Direction, confidence: Decimal) -> ForecastOverlay {
         ForecastOverlay {

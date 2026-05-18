@@ -14,10 +14,10 @@
 //! **Zero string literals** — all copy comes from `crate::strings`;
 //! callers pass a `&'static str` constant from that module.
 
-use iced::widget::{container, Column, Container, Text};
 use iced::Length;
+use iced::widget::{Column, Container, Text, container};
 
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, radius, space, text};
 
 /// Render a full-body placeholder card for a not-yet-implemented route.
 ///
@@ -30,7 +30,7 @@ use crate::theme::{color, radius, space, text, ThemeMode};
 /// The card fills the entire body allocation (`Length::Fill` on both
 /// axes) so it behaves identically regardless of which screen slot it
 /// occupies.
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::cast_possible_truncation)] // space constants are u32 < 256, cast to u16 is safe
 #[must_use]
 pub fn view(title: &'static str, mode: ThemeMode) -> crate::Element<'static> {
     let label = Text::new(title)

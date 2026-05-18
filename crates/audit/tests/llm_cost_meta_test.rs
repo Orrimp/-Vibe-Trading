@@ -12,7 +12,7 @@
 //! direction). This file pins the direct `audit::journal::post_cost_llm`
 //! contract so the audit crate's surface is testable in isolation.
 
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use rust_decimal_macros::dec;
 use uuid::Uuid;
 

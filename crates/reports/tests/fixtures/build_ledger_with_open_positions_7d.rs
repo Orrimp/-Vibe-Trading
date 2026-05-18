@@ -42,7 +42,7 @@
 
 use std::path::Path;
 
-use audit::{bootstrap, journal, query, Ledger};
+use audit::{Ledger, bootstrap, journal, query};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rust_decimal::Decimal;

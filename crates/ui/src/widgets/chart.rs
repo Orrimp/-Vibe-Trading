@@ -27,15 +27,15 @@
 //! **Zero hex colours** — tokens via `crate::theme`.
 
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke, Text as CanvasText};
-use iced::widget::{container, Canvas, Container};
-use iced::{mouse, Color, Length, Point, Rectangle, Renderer, Size, Vector};
+use iced::widget::{Canvas, Container, container};
+use iced::{Color, Length, Point, Rectangle, Renderer, Size, Vector, mouse};
 use rust_decimal::prelude::ToPrimitive;
 use smol_str::SmolStr;
 use trading_core::{Bar, FillView, Side, SignalView};
 
 use super::canvas_chart::{
-    draw_gridlines, inner_rect_with_gutters, with_alpha, GRIDLINE_COUNT, LINE_STROKE_PX,
-    RANGE_PAD_FRACTION,
+    GRIDLINE_COUNT, LINE_STROKE_PX, RANGE_PAD_FRACTION, draw_gridlines, inner_rect_with_gutters,
+    with_alpha,
 };
 use super::chart_legend;
 use super::chart_tooltip;
@@ -45,7 +45,7 @@ use crate::strings::{
     CHART_NO_DATA, CHART_TOOLTIP_SIDE_BUY, CHART_TOOLTIP_SIDE_SELL, CHART_TOOLTIP_STRATEGY_NONE,
 };
 use crate::theme::layout::{AXIS_GUTTER_PRICE_PX, AXIS_GUTTER_RIGHT_PX, AXIS_GUTTER_TIME_PX};
-use crate::theme::{color, shadow, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, shadow, space, text};
 
 /// Right Y-axis gutter width when the equity overlay is active (Design § 3).
 /// Sized to match the left price gutter for visual symmetry (R2.2).
@@ -357,6 +357,7 @@ impl canvas::Program<Message> for ChartProgram {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn draw(
         &self,
         state: &Self::State,
@@ -481,25 +482,12 @@ impl canvas::Program<Message> for ChartProgram {
                 for (i, compare_eq) in self.compare.iter().enumerate().take(4) {
                     let line_color = palette[i].current(self.mode);
                     draw_equity_polyline(
-                        &mut frame,
-                        compare_eq,
-                        &self.bars,
-                        min_eq,
-                        max_eq,
-                        inner,
-                        line_color,
+                        &mut frame, compare_eq, &self.bars, min_eq, max_eq, inner, line_color,
                     );
                 }
 
                 // Draw right Y-axis ticks + labels.
-                draw_equity_axis(
-                    &mut frame,
-                    bounds.size(),
-                    inner,
-                    min_eq,
-                    max_eq,
-                    self.mode,
-                );
+                draw_equity_axis(&mut frame, bounds.size(), inner, min_eq, max_eq, self.mode);
             }
         }
 
@@ -621,12 +609,7 @@ impl canvas::Program<Message> for ChartProgram {
                     has_data: !eq.samples.is_empty(),
                 })
                 .collect();
-            chart_legend::draw_legend_with_compare(
-                &mut frame,
-                inner,
-                self.mode,
-                &compare_entries,
-            );
+            chart_legend::draw_legend_with_compare(&mut frame, inner, self.mode, &compare_entries);
         }
 
         vec![frame.into_geometry()]
@@ -1116,9 +1099,7 @@ fn compute_equity_range(
     let mut min_v: Option<f32> = None;
     let mut max_v: Option<f32> = None;
 
-    let all = primary
-        .into_iter()
-        .chain(compare.iter());
+    let all = primary.into_iter().chain(compare.iter());
 
     for series in all {
         for &(ts, ref equity) in &series.samples {
@@ -1176,11 +1157,11 @@ fn draw_equity_polyline(
             let y_frac = (eq_v - min_eq) / span;
             let y = inner.y + (1.0 - y_frac) * inner.height;
 
-            if !path_started {
+            if path_started {
+                builder.line_to(Point::new(x, y));
+            } else {
                 builder.move_to(Point::new(x, y));
                 path_started = true;
-            } else {
-                builder.line_to(Point::new(x, y));
             }
         }
     });
@@ -1204,6 +1185,8 @@ fn draw_equity_axis(
     max_eq: f32,
     mode: ThemeMode,
 ) {
+    // axis_right_x reserved for future right-axis label placement
+    #[allow(clippy::no_effect_underscore_binding)]
     let _axis_right_x = inner.x + inner.width + AXIS_GUTTER_EQUITY_PX - 4.0;
     let tick_x = inner.x + inner.width;
     let axis_color = color::FG_3.current(mode);
@@ -1485,7 +1468,7 @@ impl ChartHoverState {
     clippy::format_push_string,
     clippy::useless_format,
     clippy::uninlined_format_args,
-    clippy::expect_used,
+    clippy::expect_used
 )]
 mod tests {
     use super::*;
@@ -1716,7 +1699,12 @@ mod tests {
     fn make_equity_series(slug: &str, n_points: usize) -> LabEquitySeries {
         use crate::lab::equity_loader::Fidelity;
         let samples: Vec<(i64, Decimal)> = (0..n_points)
-            .map(|i| (1_705_320_000_000 + i as i64 * 60_000, dec!(100_000) + Decimal::from(i * 100)))
+            .map(|i| {
+                (
+                    1_705_320_000_000 + i as i64 * 60_000,
+                    dec!(100_000) + Decimal::from(i * 100),
+                )
+            })
             .collect();
         LabEquitySeries {
             samples,
@@ -1786,9 +1774,7 @@ mod tests {
             .map(|i| make_bar(i, dec!(40_000) + Decimal::from(i) * dec!(2.5)))
             .collect();
         let equity = make_equity_series("backtest-v1-momentum.md", 60);
-        let compare = vec![
-            make_equity_series_no_data("compare-no-data-for-xrpusdt.md"),
-        ];
+        let compare = vec![make_equity_series_no_data("compare-no-data-for-xrpusdt.md")];
         assert_snapshot!(
             "chart__compare_pair_swap_no_data",
             chart_overlay_summary(&bars, Some(&equity), &compare)
@@ -1889,12 +1875,16 @@ mod tests {
 
         // Out-of-range index returns None — defence-in-depth across
         // the async refresh boundary.
-        assert!(program
-            .tooltip_view_from_hover(ChartMarkerIndex::Fill(99))
-            .is_none());
-        assert!(program
-            .tooltip_view_from_hover(ChartMarkerIndex::Signal(99))
-            .is_none());
+        assert!(
+            program
+                .tooltip_view_from_hover(ChartMarkerIndex::Fill(99))
+                .is_none()
+        );
+        assert!(
+            program
+                .tooltip_view_from_hover(ChartMarkerIndex::Signal(99))
+                .is_none()
+        );
     }
 
     /// T2008 — `marker_hit_rect` returns a 28-px square centred on the

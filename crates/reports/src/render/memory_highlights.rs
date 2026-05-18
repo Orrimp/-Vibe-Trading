@@ -171,7 +171,7 @@ fn pick_largest_abs_pnl_strategy(pnls: &[StrategyPnl]) -> Option<(&StrategyId, D
     }
     // Sort by abs PnL DESC; tie-break on strategy_id ASC.
     candidates.sort_by(|a, b| match b.1.cmp(&a.1) {
-        std::cmp::Ordering::Equal => a.0 .0.as_str().cmp(b.0 .0.as_str()),
+        std::cmp::Ordering::Equal => a.0.0.as_str().cmp(b.0.0.as_str()),
         other => other,
     });
     candidates.into_iter().next()

@@ -39,7 +39,7 @@ use crate::strings::{
     CHART_TOOLTIP_PRICE_LABEL, CHART_TOOLTIP_QTY_LABEL, CHART_TOOLTIP_STRATEGY_LABEL,
     CHART_TOOLTIP_STRATEGY_NONE, CHART_TOOLTIP_TS_LABEL,
 };
-use crate::theme::{color, text, ThemeMode};
+use crate::theme::{ThemeMode, color, text};
 
 use super::chart::{side_badge_color, side_badge_label};
 

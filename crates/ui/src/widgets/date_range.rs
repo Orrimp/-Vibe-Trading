@@ -26,14 +26,14 @@
 //! **Zero hex literals** — all colors from `crate::theme`.
 //! **Zero string literals** — copy from `crate::strings`.
 
-use iced::widget::{button, container, text_input, Column, Container, Row, Text};
+use iced::widget::{Column, Container, Row, Text, button, container, text_input};
 use iced::{Border, Length};
 use smol_str::SmolStr;
 
 use crate::lab::state::{DateRange, Preset};
 use crate::state::Message;
 use crate::strings;
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, radius, space, text};
 
 /// Validate an ISO-8601 date string `YYYY-MM-DD` — pure function, no I/O.
 ///
@@ -85,7 +85,12 @@ pub fn view<'a>(
     narrowed_from: Option<&'a SmolStr>,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
-    let presets = [Preset::Last30d, Preset::Last90d, Preset::H1_2024, Preset::H2_2024];
+    let presets = [
+        Preset::Last30d,
+        Preset::Last90d,
+        Preset::H1_2024,
+        Preset::H2_2024,
+    ];
 
     let mut preset_row = Row::new().spacing(space::S);
 
@@ -98,9 +103,7 @@ pub fn view<'a>(
     let custom_active = matches!(range, DateRange::Custom { .. });
     preset_row = preset_row.push(custom_chip(custom_active, mode));
 
-    let mut col = Column::new()
-        .spacing(space::S)
-        .push(preset_row);
+    let mut col = Column::new().spacing(space::S).push(preset_row);
 
     // Inline editor when Custom is active.
     if let DateRange::Custom { start_raw, end_raw } = range {
@@ -111,7 +114,7 @@ pub fn view<'a>(
         let end_sr = end_raw.to_string();
 
         let start_input = date_field(
-            start_sr.clone(),
+            &start_sr,
             strings::DATE_RANGE_START_PLACEHOLDER,
             start_valid || start_sr.is_empty(),
             move |s| {
@@ -127,7 +130,7 @@ pub fn view<'a>(
         let start_sr2 = start_raw.to_string();
 
         let end_input = date_field(
-            end_sr2.clone(),
+            &end_sr2,
             strings::DATE_RANGE_END_PLACEHOLDER,
             end_valid || end_sr2.is_empty(),
             move |s| {
@@ -139,7 +142,9 @@ pub fn view<'a>(
             mode,
         );
 
-        let dash = Text::new(strings::DATE_RANGE_SEPARATOR).size(text::BODY).color(color::FG_3.current(mode));
+        let dash = Text::new(strings::DATE_RANGE_SEPARATOR)
+            .size(text::BODY)
+            .color(color::FG_3.current(mode));
 
         let field_row = Row::new()
             .spacing(space::S)
@@ -181,6 +186,7 @@ pub fn view<'a>(
 }
 
 /// Render a single preset chip button.
+#[allow(clippy::cast_possible_truncation)] // space constants are u32 < 256, cast to u16 is safe
 fn preset_chip<'a>(p: Preset, active: bool, mode: ThemeMode) -> crate::Element<'a> {
     let fg = if active {
         color::FG_1.current(mode)
@@ -222,7 +228,8 @@ fn preset_chip<'a>(p: Preset, active: bool, mode: ThemeMode) -> crate::Element<'
         .into()
 }
 
-/// Render the "Custom…" chip button.
+/// Render the "Custom..." chip button.
+#[allow(clippy::cast_possible_truncation)] // space constants are u32 < 256, cast to u16 is safe
 fn custom_chip<'a>(active: bool, mode: ThemeMode) -> crate::Element<'a> {
     let fg = if active {
         color::FG_1.current(mode)
@@ -277,7 +284,7 @@ fn custom_chip<'a>(active: bool, mode: ThemeMode) -> crate::Element<'a> {
 /// `valid` controls the border color: valid/empty → `BORDER_1`; invalid →
 /// `DOWN_700` (red highlight per R5.1).
 fn date_field<'a, F>(
-    value: String,
+    value: &str,
     placeholder: &'static str,
     valid: bool,
     on_change: F,
@@ -292,7 +299,7 @@ where
         color::DOWN_500.current(mode)
     };
 
-    text_input(placeholder, &value)
+    text_input(placeholder, value)
         .on_input(on_change)
         .size(text::BODY)
         .width(Length::Fixed(120.0))
@@ -337,8 +344,8 @@ mod tests {
         assert!(!is_valid_date("2024-00-01")); // month 0
         assert!(!is_valid_date("2024-01-00")); // day 0
         assert!(!is_valid_date("2024-01-32")); // day 32
-        assert!(!is_valid_date("20240101"));   // no dashes
-        assert!(!is_valid_date("2024-1-1"));   // not zero-padded
+        assert!(!is_valid_date("20240101")); // no dashes
+        assert!(!is_valid_date("2024-1-1")); // not zero-padded
         assert!(!is_valid_date("abcd-01-01")); // non-digit year
     }
 
@@ -384,7 +391,12 @@ mod tests {
     #[test]
     fn date_range_picker__presets() {
         use crate::lab::state::Preset;
-        let presets = [Preset::Last30d, Preset::Last90d, Preset::H1_2024, Preset::H2_2024];
+        let presets = [
+            Preset::Last30d,
+            Preset::Last90d,
+            Preset::H1_2024,
+            Preset::H2_2024,
+        ];
         let labels: Vec<&str> = presets.iter().map(|p| p.label()).collect();
         let summary = format!(
             "range=Last90d active=Last90d presets=[{}] custom=Custom\u{2026}",

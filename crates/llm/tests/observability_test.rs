@@ -27,8 +27,8 @@ fn install_recorder() -> Snapshotter {
 /// Look up the cumulative value of `counter_name{role=role_label}` in the
 /// snapshot. Returns 0 if the counter wasn't touched.
 fn counter_value(snap: &Snapshotter, counter_name: &str, role_label: &str) -> u64 {
-    use metrics_util::debugging::DebugValue;
     use metrics_util::MetricKind;
+    use metrics_util::debugging::DebugValue;
 
     let entries = snap.snapshot().into_vec();
     for (key, _unit, _desc, value) in entries {

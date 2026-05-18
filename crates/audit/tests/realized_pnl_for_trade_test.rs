@@ -3,9 +3,9 @@
 //! 3 closed-trade fixture rows → 3 expected `Money<Usdt>` values; sum
 //! equals `realized_pnl_since(period_start)` to the satoshi.
 
+use audit::Ledger;
 use audit::bootstrap;
 use audit::query::{realized_pnl_for_trade, realized_pnl_since};
-use audit::Ledger;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

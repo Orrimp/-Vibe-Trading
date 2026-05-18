@@ -899,7 +899,9 @@ impl std::fmt::Debug for Cockpit {
             .field("paused_strategies", &self.paused_strategies)
             .field("override_risk_veto", &self.override_risk_veto)
             .field("risk_veto_events", &self.risk_veto_events)
-            .field("focused_widget", &self.focused_widget);
+            .field("focused_widget", &self.focused_widget)
+            .field("lab_run_inflight", &self.lab_run_inflight)
+            .field("toast_message", &self.toast_message);
         dbg.finish()
     }
 }
@@ -971,9 +973,10 @@ impl Cockpit {
         use crate::lab::persistence;
         let path = persistence::lab_state_path(state_path_override);
         let lab_state = persistence::restore_or_default(&path);
-        let mut c = Self::default();
-        c.lab_state = lab_state;
-        c
+        Self {
+            lab_state,
+            ..Self::default()
+        }
     }
 
     /// Test / fixture constructor that boots every panel into Ready state
@@ -1601,8 +1604,7 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Returns `false` when cap hit — emit a toast (T-D-16 / R4.2).
             let changed = model.lab_state.toggle_compare(id);
             if !changed {
-                model.toast_message =
-                    Some(SmolStr::new(crate::strings::LAB_COMPARE_CAP_HIT));
+                model.toast_message = Some(SmolStr::new(crate::strings::LAB_COMPARE_CAP_HIT));
             }
         }
         Message::LabSelectRange(range) => {

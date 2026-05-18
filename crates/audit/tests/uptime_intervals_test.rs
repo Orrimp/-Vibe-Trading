@@ -3,10 +3,10 @@
 //! Acceptance: full open / heartbeat / close cycle round-trips through
 //! `uptime_intervals_since` with the correct row shape.
 
-use audit::query::{uptime_intervals_since, UptimeInterval};
-use audit::{bootstrap, journal, Ledger};
-use time::format_description::well_known::Rfc3339;
+use audit::query::{UptimeInterval, uptime_intervals_since};
+use audit::{Ledger, bootstrap, journal};
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::Timestamp;
 
 async fn open_ledger() -> Ledger {

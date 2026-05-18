@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use agent::{HaltReason, IncidentSpawner, KillSwitch, MockIncidentSpawner};
 use audit::query::{all_transaction_ids, global_debit_credit_sum, strategy_events_since};
-use audit::{bootstrap, Ledger};
+use audit::{Ledger, bootstrap};
 use time::OffsetDateTime;
 use trading_core::{StrategyEventKind, Timestamp};
 

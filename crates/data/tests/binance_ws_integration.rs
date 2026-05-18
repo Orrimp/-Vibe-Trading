@@ -17,7 +17,7 @@
 //! They are counted against T08's acceptance criterion when run in the
 //! integration validation step.
 
-use data::{source::MarketDataSource, BinanceFeed};
+use data::{BinanceFeed, source::MarketDataSource};
 use futures::StreamExt;
 use std::time::Duration;
 use tokio::time::timeout;

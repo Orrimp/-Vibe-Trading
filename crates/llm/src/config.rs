@@ -24,9 +24,9 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
+use crate::ProviderKind;
 use crate::pricing::OverrideMap;
 use crate::trait_def::ModelId;
-use crate::ProviderKind;
 
 /// Per-tier model selection (deep_think vs quick_think — feature.md R12.1).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

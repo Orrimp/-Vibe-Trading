@@ -9,11 +9,11 @@
 //! **Zero string literals** — copy via `crate::strings`.
 //! **Zero hex colours** — tokens via `crate::theme`.
 
-use iced::widget::{Column, Row};
 use iced::Length;
+use iced::widget::{Column, Row};
 
 use crate::state::Cockpit;
-use crate::theme::{layout, space, ThemeMode};
+use crate::theme::{ThemeMode, layout, space};
 use crate::widgets::{agent_feed, pnl, positions, strategies};
 
 /// Render the Home screen body.

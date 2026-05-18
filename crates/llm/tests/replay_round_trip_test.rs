@@ -158,8 +158,8 @@ async fn t1925_fixture_cache_has_nine_rows() {
 
     // Direct SQL probe — bypass the LlmProvider surface so we can
     // SELECT COUNT(*) without crafting a hashed request.
-    use sqlx::sqlite::SqliteConnectOptions;
     use sqlx::SqlitePool;
+    use sqlx::sqlite::SqliteConnectOptions;
     let opts = SqliteConnectOptions::new()
         .filename(&fixture_path)
         .read_only(true);

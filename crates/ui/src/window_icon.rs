@@ -58,8 +58,8 @@
 //! [`lumen_window_icon`] already drives — `Info.plist`-style packaging
 //! is macOS-specific.
 
-use iced::window::{icon, Icon, Settings as WindowSettings};
 use iced::Size;
+use iced::window::{Icon, Settings as WindowSettings, icon};
 
 /// Minimum window width in logical pixels. Floor for **Layout β**
 /// (Q5) on the Charts screen: chart needs ≥ ~50 % of body height with

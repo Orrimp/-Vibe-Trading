@@ -9,11 +9,11 @@
 //! `crate::strings::HUMAN_CONTROL_*` / `crate::strings::EXECUTION_MODE_*`
 //! / `crate::strings::KILL_*` (preserved per Q12).
 
-use iced::widget::{Column, Container};
 use iced::Length;
+use iced::widget::{Column, Container};
 
 use crate::state::Cockpit;
-use crate::theme::{layout, space, ThemeMode};
+use crate::theme::{ThemeMode, layout, space};
 use crate::widgets::human_control;
 
 /// Render the Control screen body.

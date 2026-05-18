@@ -15,11 +15,11 @@ pub mod rsi;
 pub mod sma;
 
 pub use bbands::{Bbands, BbandsBatch, BbandsStream, BbandsValue};
-pub use cross_sectional::{decimal_std, score_vol_adjusted_return, ScoreError};
+pub use cross_sectional::{ScoreError, decimal_std, score_vol_adjusted_return};
 pub use ema::{Ema, EmaBatch, EmaStream};
 pub use macd::{Macd, MacdBatch, MacdStream, MacdValue};
-pub use math::{decimal_ln, decimal_sqrt, MathError};
-pub use pairs::{rolling_zscore, spread, PairScoreError};
+pub use math::{MathError, decimal_ln, decimal_sqrt};
+pub use pairs::{PairScoreError, rolling_zscore, spread};
 pub use ring_buffer::RingBuffer;
 pub use rsi::{Rsi, RsiBatch, RsiStream};
 pub use sma::{Sma, SmaBatch, SmaStream};

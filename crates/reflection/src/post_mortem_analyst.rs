@@ -10,8 +10,8 @@ use thiserror::Error;
 use trading_core::{Money, Timestamp, Usdt};
 
 use crate::outcome::classify_outcome;
-use crate::regime::{classify_regime, RegimeError};
-use crate::types::{card_id, ClosedTrade, LessonCard};
+use crate::regime::{RegimeError, classify_regime};
+use crate::types::{ClosedTrade, LessonCard, card_id};
 
 /// Errors from `generate_card`.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

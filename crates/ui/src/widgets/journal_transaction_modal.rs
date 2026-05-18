@@ -60,7 +60,7 @@
 //! swap is mechanical.
 
 use iced::widget::{
-    button, container, float, Button, Column, Container, Float, MouseArea, Row, Space, Stack, Text,
+    Button, Column, Container, Float, MouseArea, Row, Space, Stack, Text, button, container, float,
 };
 use iced::{Element, Length};
 
@@ -74,7 +74,7 @@ use crate::strings::{
     TAPE_AUDIT_MODAL_STRATEGY_LABEL, TAPE_AUDIT_MODAL_STRATEGY_NONE, TAPE_AUDIT_MODAL_TITLE,
     TAPE_AUDIT_MODAL_TS_LABEL, TAPE_AUDIT_MODAL_TX_LABEL,
 };
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, radius, space, text};
 
 use super::num::fmt_usdt;
 

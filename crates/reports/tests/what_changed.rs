@@ -4,10 +4,10 @@
 //! Verifies the lifecycle filter (R8.1) and the empty-period sentinel
 //! (R8.3).
 
-use reports::render::what_changed::{render, WhatChangedInputs};
+use reports::render::what_changed::{WhatChangedInputs, render};
 use smol_str::SmolStr;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::{StrategyEventKind, StrategyEventView, StrategyId, Timestamp};
 
 fn ev(kind: StrategyEventKind, sid: &str, ts_str: &str) -> StrategyEventView {

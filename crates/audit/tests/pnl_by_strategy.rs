@@ -11,8 +11,8 @@
 //!    `(unattributed)` row,
 //!    (e) running with `until = far_past` produces an empty `Vec`.
 
-use audit::query::{pnl_by_strategy, realized_pnl_since, StrategyPnl};
-use audit::{bootstrap, Ledger};
+use audit::query::{StrategyPnl, pnl_by_strategy, realized_pnl_since};
+use audit::{Ledger, bootstrap};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

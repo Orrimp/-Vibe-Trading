@@ -7,7 +7,7 @@
 //! `total_count` is `255`.
 
 use audit::query::recent_journal_filtered;
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
@@ -163,7 +163,8 @@ async fn recent_journal_filtered_filters_by_venue_set() {
     assert_eq!(total, 2, "two-venue predicate isolates 2 rows");
     assert_eq!(rows.len(), 2);
     assert!(rows.iter().all(|r| matches!(r.kind, AuditKindLabel::Fill)));
-    assert!(rows
-        .iter()
-        .all(|r| r.venue == Venue::Coinbase || r.venue == Venue::Kraken));
+    assert!(
+        rows.iter()
+            .all(|r| r.venue == Venue::Coinbase || r.venue == Venue::Kraken)
+    );
 }

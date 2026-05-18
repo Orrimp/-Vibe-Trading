@@ -33,7 +33,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use iced::widget::canvas;
-use iced::{event::Status, mouse, Point, Rectangle};
+use iced::{Point, Rectangle, event::Status, mouse};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
@@ -43,7 +43,7 @@ use trading_core::{
 };
 
 use ui::state::{ChartMarkerIndex, Message};
-use ui::widgets::chart::{dispatch_canvas_event_for_test, ChartHoverState};
+use ui::widgets::chart::{ChartHoverState, dispatch_canvas_event_for_test};
 
 // ── Fixture builders ───────────────────────────────────────────────────────
 

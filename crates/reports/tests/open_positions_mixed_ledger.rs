@@ -31,7 +31,7 @@
 //! established (so the audit-side T1005 and the reports-side T1106 share a
 //! single source of fixture truth).
 
-use audit::{bootstrap, query, Ledger};
+use audit::{Ledger, bootstrap, query};
 use rust_decimal_macros::dec;
 use tempfile::tempdir;
 use trading_core::{Money, OpenPosition, StrategyId, Symbol};

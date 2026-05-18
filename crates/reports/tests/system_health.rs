@@ -8,7 +8,7 @@
 //! $200` and a new `Cache hit ratio` row landed between `LLM spend`
 //! and the prior tail. The row count is now 7.
 
-use reports::render::system_health::{compute_uptime_pct, render, SystemHealthInputs};
+use reports::render::system_health::{SystemHealthInputs, compute_uptime_pct, render};
 use rust_decimal_macros::dec;
 
 #[test]

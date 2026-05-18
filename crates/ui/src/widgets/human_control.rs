@@ -25,7 +25,7 @@
 // values 0..64; the cast to u16 padding is safe by construction.
 #![allow(clippy::cast_possible_truncation)]
 
-use iced::widget::{button, Button, Column, Row, Text};
+use iced::widget::{Button, Column, Row, Text, button};
 use iced::{Border, Element};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -38,7 +38,7 @@ use crate::strings::{
     HUMAN_CONTROL_MAX_POSITION_LABEL, HUMAN_CONTROL_USED_TODAY_LABEL, PANEL_HUMAN_CONTROL_TITLE,
     PLACEHOLDER_NONE,
 };
-use crate::theme::{color, color_for_delta, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, color_for_delta, radius, space, text};
 
 use super::focus_ring;
 use super::frame::{muted_body, panel};

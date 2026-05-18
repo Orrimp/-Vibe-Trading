@@ -46,7 +46,7 @@ pub fn render(report: &ReconciliationReport, mark_unavailable: bool) -> String {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::reconcile::{compute, ReconciliationInputs};
+    use crate::reconcile::{ReconciliationInputs, compute};
     use rust_decimal_macros::dec;
 
     fn balanced() -> ReconciliationInputs {

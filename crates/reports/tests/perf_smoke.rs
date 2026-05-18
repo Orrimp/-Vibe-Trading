@@ -28,7 +28,7 @@ use tempfile::TempDir;
 use time::OffsetDateTime;
 use trading_core::Timestamp;
 
-use crate::build_ledger_1y::{build_ledger_1y, FIXTURE_SEED};
+use crate::build_ledger_1y::{FIXTURE_SEED, build_ledger_1y};
 
 /// R13.1 wall-clock budget — assert `< 10s`.
 const WALL_CLOCK_BUDGET: Duration = Duration::from_secs(10);

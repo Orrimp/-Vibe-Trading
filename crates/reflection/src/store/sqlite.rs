@@ -12,13 +12,13 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::ConnectOptions;
-use time::format_description::well_known::Rfc3339;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::{Money, PairKey, StrategyId, Symbol, Timestamp, Usdt};
 
-use crate::embedding::{cosine, embed, EMBEDDING_DIM};
+use crate::embedding::{EMBEDDING_DIM, cosine, embed};
 use crate::outcome::OutcomeClass;
 use crate::regime::RegimeTag;
 use crate::store::{ReflectionStore, ReflectionStoreError};

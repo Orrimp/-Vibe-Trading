@@ -3,7 +3,7 @@
 //! T707: `mean_reversion_stop` + `pair_short_observation` writers.
 //! T708: `pnl_by_pair` reader — single-pair and overlapping-`a` cases.
 
-use audit::{bootstrap, journal, query, Ledger};
+use audit::{Ledger, bootstrap, journal, query};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

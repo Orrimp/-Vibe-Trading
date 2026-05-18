@@ -44,7 +44,7 @@
 //! { is_hovered: _ }`) for redundancy.
 
 use iced::widget::{
-    button, container, text_input, Button, Column, Container, Row, Space, Text, TextInput,
+    Button, Column, Container, Row, Space, Text, TextInput, button, container, text_input,
 };
 use iced::{Border, Element, Length};
 
@@ -54,7 +54,7 @@ use crate::strings::{
     KILL_DIALOG_TITLE, KILL_HALTED_BANNER, KILL_HALTED_HINT, KILL_PHRASE_LABEL,
     KILL_PHRASE_MISMATCH_HINT, KILL_RUNBOOK_LINK_LABEL, KILL_SAFETY_PHRASE, PANEL_KILL_TITLE,
 };
-use crate::theme::{color, focus, radius, shadow, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, focus, radius, shadow, space, text};
 
 use super::focus_ring;
 use super::frame::{muted_body, panel};

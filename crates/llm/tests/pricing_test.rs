@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use llm::pricing::{base_rate, resolve_rate, OverrideMap, PricePerMillionTokens};
+use llm::pricing::{OverrideMap, PricePerMillionTokens, base_rate, resolve_rate};
 use llm::{LlmError, ProviderKind};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;

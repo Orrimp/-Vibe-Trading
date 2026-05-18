@@ -25,8 +25,8 @@
     clippy::needless_pass_by_value
 )]
 
-use iced::widget::{Column, Container, Row, Text};
 use iced::Length;
+use iced::widget::{Column, Container, Row, Text};
 use rust_decimal::Decimal;
 
 use crate::state::{Cockpit, Message, PanelState, RiskState};
@@ -34,7 +34,7 @@ use crate::strings::{
     RISK_DAILY_LOSS_SECTION_TITLE, RISK_EXPOSURE_SECTION_TITLE, RISK_FEED_UNAVAILABLE_PREFIX,
     RISK_KILL_THRESHOLD_SECTION_TITLE, RISK_LOADING, RISK_PANEL_TITLE,
 };
-use crate::theme::{color, layout, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, layout, space, text};
 use crate::widgets::frame::{self, loading_with_spinner, panel, threshold_bar};
 
 /// Render the Risk / Limits screen body.
@@ -75,7 +75,7 @@ fn exposure_section<'a>(state: &'a RiskState, mode: ThemeMode) -> iced::Element<
     // Sort keys for deterministic snapshot baselines.
     let mut keys: Vec<&(trading_core::Venue, trading_core::Symbol)> =
         state.per_symbol_exposure.keys().collect();
-    keys.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1 .0.cmp(&b.1 .0)));
+    keys.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.0.cmp(&b.1.0)));
 
     for key in keys {
         let used = state

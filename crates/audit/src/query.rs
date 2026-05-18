@@ -5,8 +5,8 @@
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::{
     AccountId, AuditKindFilter, AuditKindLabel, EquitySeries, FillView, FundingObs, JournalEntry,
     JournalEntryView, JournalRow, JournalTransactionMetadata, LedgerError, Money, OpenPosition,
@@ -217,11 +217,9 @@ pub async fn cache_hit_ratio_since(
     // u64::MAX for the (operator-unreachable) 18-quintillion-token case, then
     // convert via the infallible `u64::try_from` (succeeds because the min
     // already guarantees the value fits).
-    let sum_in_u64 = u64::try_from(sum_in.min(u128::from(u64::MAX)))
-        .unwrap_or(u64::MAX);
+    let sum_in_u64 = u64::try_from(sum_in.min(u128::from(u64::MAX))).unwrap_or(u64::MAX);
     let sum_in_dec = Decimal::from(sum_in_u64);
-    let sum_cached_u64 = u64::try_from(sum_cached.min(u128::from(u64::MAX)))
-        .unwrap_or(u64::MAX);
+    let sum_cached_u64 = u64::try_from(sum_cached.min(u128::from(u64::MAX))).unwrap_or(u64::MAX);
     let sum_cached_dec = Decimal::from(sum_cached_u64);
     Ok(sum_cached_dec / sum_in_dec)
 }
@@ -1045,7 +1043,7 @@ fn parse_strategy_event_view(
         other => {
             return Err(LedgerError::Database(format!(
                 "unknown strategy event kind: {other}"
-            )))
+            )));
         }
     };
 

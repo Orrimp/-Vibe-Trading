@@ -169,8 +169,8 @@ pub use error::LlmError;
 pub use prompt_cache::{CachedSystemPrompt, CachedSystemPromptBuilder};
 pub use providers::{AnthropicProvider, OllamaProvider, OpenAiProvider};
 pub use recording::RecordingProvider;
-pub use replay::{request_hash, ReplayProvider, SUPPORTED_SCHEMA_VERSION};
-pub use tools::{validate_tool_use, ToolSchema};
+pub use replay::{ReplayProvider, SUPPORTED_SCHEMA_VERSION, request_hash};
+pub use tools::{ToolSchema, validate_tool_use};
 pub use trait_def::{
     CacheBreakpoint, ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmProvider,
     MessageRole, ModelId, StopReason, SystemBlock, TokenUsage,

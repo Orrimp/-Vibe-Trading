@@ -6,8 +6,8 @@
 
 use audit::query::StrategyPnl;
 use reports::csv_artifacts::{
-    write_equity_csv, write_fills_csv, write_pnl_by_strategy_csv, write_pnl_by_symbol_csv,
-    write_strategy_events_csv, EquitySample,
+    EquitySample, write_equity_csv, write_fills_csv, write_pnl_by_strategy_csv,
+    write_pnl_by_symbol_csv, write_strategy_events_csv,
 };
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;

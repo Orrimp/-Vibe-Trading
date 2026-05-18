@@ -11,7 +11,7 @@
 //! consumer that exercises the builder end-to-end and can fail loudly if
 //! the row plan drifts.
 
-use audit::{query, Ledger};
+use audit::{Ledger, query};
 use tempfile::tempdir;
 
 #[path = "fixtures/build_ledger_with_open_positions_7d.rs"]

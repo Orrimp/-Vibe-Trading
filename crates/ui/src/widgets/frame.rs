@@ -21,13 +21,13 @@
 //! when `active = false`. The rule is **always** 2 px wide so layout
 //! is identical before and after Phase 1 selection state lands.
 
-use iced::alignment::Vertical;
-use iced::widget::{container, Column, Container, Row, Space, Text};
 use iced::Color;
 use iced::Element;
 use iced::Length;
+use iced::alignment::Vertical;
+use iced::widget::{Column, Container, Row, Space, Text, container};
 
-use crate::theme::{color, layout, radius, shadow, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, layout, radius, shadow, space, text};
 
 /// Wraps a panel body in the standard Tier-1 frame with a tinted header.
 ///
@@ -356,7 +356,7 @@ pub fn col_header<'a, Message: 'a>(t: &'a str) -> Element<'a, Message> {
 mod tests {
     use insta::assert_snapshot;
 
-    use crate::theme::{color, ThemeMode};
+    use crate::theme::{ThemeMode, color};
 
     // ── T1505 — panel chrome smoke ─────────────────────────────────────────
     /// Verify `panel` renders without panic with mode param (T1505).

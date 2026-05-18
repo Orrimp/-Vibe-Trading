@@ -365,10 +365,12 @@ mod tests {
     /// serialisation format; any change to the schema MUST update this test.
     #[test]
     fn canonical_json_golden_sha() {
-        let mut meta = CheckpointMetadata::default();
         // Set deterministic weights_sha256 for the golden test.
-        meta.weights_sha256 = "0".repeat(64);
-        meta.model_revision = String::new();
+        let meta = CheckpointMetadata {
+            weights_sha256: "0".repeat(64),
+            model_revision: String::new(),
+            ..CheckpointMetadata::default()
+        };
 
         let bytes = meta.to_canonical_bytes();
         let sha = model_revision(&bytes);
@@ -416,8 +418,10 @@ mod tests {
     /// `CheckpointMetadata::finalise()` sets a non-empty `model_revision`.
     #[test]
     fn checkpoint_metadata_finalise_sets_revision() {
-        let mut meta = CheckpointMetadata::default();
-        meta.weights_sha256 = "a".repeat(64);
+        let mut meta = CheckpointMetadata {
+            weights_sha256: "a".repeat(64),
+            ..CheckpointMetadata::default()
+        };
         meta.finalise();
         assert_eq!(meta.model_revision.len(), 64);
         assert!(meta.model_revision.chars().all(|c| c.is_ascii_hexdigit()));
@@ -426,12 +430,16 @@ mod tests {
     /// Two runs of `finalise()` on identical config produce the same revision.
     #[test]
     fn checkpoint_metadata_finalise_deterministic() {
-        let mut meta1 = CheckpointMetadata::default();
-        meta1.weights_sha256 = "b".repeat(64);
+        let mut meta1 = CheckpointMetadata {
+            weights_sha256: "b".repeat(64),
+            ..CheckpointMetadata::default()
+        };
         meta1.finalise();
 
-        let mut meta2 = CheckpointMetadata::default();
-        meta2.weights_sha256 = "b".repeat(64);
+        let mut meta2 = CheckpointMetadata {
+            weights_sha256: "b".repeat(64),
+            ..CheckpointMetadata::default()
+        };
         meta2.finalise();
 
         assert_eq!(

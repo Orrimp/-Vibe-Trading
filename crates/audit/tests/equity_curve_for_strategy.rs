@@ -10,11 +10,11 @@
 //! reference, downsample(120) preserves peak/trough.
 
 use audit::query::equity_curve_for_strategy;
-use audit::{bootstrap, Ledger};
+use audit::{Ledger, bootstrap};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use trading_core::{StrategyId, Timestamp};
 use uuid::Uuid;
 

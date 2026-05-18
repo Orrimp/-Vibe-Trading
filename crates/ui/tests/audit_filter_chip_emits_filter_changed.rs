@@ -19,7 +19,7 @@
 )]
 
 use trading_core::{AuditKindFilter, Symbol, Venue};
-use ui::state::{update, AuditFilter, AuditTimeRange, Cockpit, Message, PanelState, Screen};
+use ui::state::{AuditFilter, AuditTimeRange, Cockpit, Message, PanelState, Screen, update};
 
 #[test]
 fn audit_filter_changed_resets_page_and_rows_to_loading() {

@@ -22,7 +22,7 @@
 //!   `verify_balance` invariant re-asserted on reader output, guarding
 //!   against partial-row leak).
 
-use audit::{bootstrap, journal, query, Ledger};
+use audit::{Ledger, bootstrap, journal, query};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

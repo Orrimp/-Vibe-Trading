@@ -28,7 +28,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use polars::prelude::*;
 use reqwest::Client;
@@ -189,8 +189,7 @@ fn parse_date(s: &str) -> Result<Date> {
         .with_context(|| format!("bad day in date: {s}"))?;
     let month = Month::try_from(month_num)
         .map_err(|_| anyhow!("month {month_num} out of range in date: {s}"))?;
-    Date::from_calendar_date(year, month, day)
-        .map_err(|e| anyhow!("invalid date {s}: {e}"))
+    Date::from_calendar_date(year, month, day).map_err(|e| anyhow!("invalid date {s}: {e}"))
 }
 
 /// Convert a `Date` to Unix milliseconds at midnight UTC.
@@ -204,8 +203,7 @@ fn date_to_millis(d: Date) -> i64 {
 fn next_month_start(year: i32, month: Month) -> Date {
     let next_month_num = u8::from(month) % 12 + 1;
     let next_year = if next_month_num == 1 { year + 1 } else { year };
-    let next_month =
-        Month::try_from(next_month_num).expect("month arithmetic 1-12 always valid");
+    let next_month = Month::try_from(next_month_num).expect("month arithmetic 1-12 always valid");
     Date::from_calendar_date(next_year, next_month, 1).expect("first-of-month always valid")
 }
 
@@ -436,8 +434,8 @@ async fn main() -> Result<()> {
         return Err(anyhow!("--symbols must not be empty"));
     }
 
-    let start_date = parse_date(&cli.start)
-        .with_context(|| format!("parse --start date: {}", cli.start))?;
+    let start_date =
+        parse_date(&cli.start).with_context(|| format!("parse --start date: {}", cli.start))?;
     let end_date =
         parse_date(&cli.end).with_context(|| format!("parse --end date: {}", cli.end))?;
     if end_date < start_date {
@@ -459,8 +457,8 @@ async fn main() -> Result<()> {
         let mut month = start_date.month();
 
         loop {
-            let month_start = Date::from_calendar_date(year, month, 1)
-                .expect("month iteration always valid");
+            let month_start =
+                Date::from_calendar_date(year, month, 1).expect("month iteration always valid");
             let month_end_exclusive = next_month_start(year, month);
 
             // Skip months entirely before start_date or after end_date.
@@ -476,9 +474,7 @@ async fn main() -> Result<()> {
             let window_start = month_start.max(start_date);
             let window_end = month_end_exclusive.min(
                 // end_date is inclusive; add 1 day to make it exclusive.
-                end_date
-                    .next_day()
-                    .unwrap_or(end_date),
+                end_date.next_day().unwrap_or(end_date),
             );
 
             let start_ms = date_to_millis(window_start);
@@ -519,11 +515,7 @@ async fn main() -> Result<()> {
                 200, // 200ms between requests → ≤300 req/min, well under limit
             )
             .await
-            .with_context(|| {
-                format!(
-                    "fetch klines for {symbol_upper} {year}/{month_num:02}"
-                )
-            })?;
+            .with_context(|| format!("fetch klines for {symbol_upper} {year}/{month_num:02}"))?;
 
             if klines.is_empty() {
                 warn!(
@@ -534,9 +526,7 @@ async fn main() -> Result<()> {
                 );
             } else {
                 write_parquet(&klines, &parquet_path).with_context(|| {
-                    format!(
-                        "write parquet for {symbol_upper} {year}/{month_num:02}"
-                    )
+                    format!("write parquet for {symbol_upper} {year}/{month_num:02}")
                 })?;
                 println!(
                     "[OK] {symbol_upper}/{year}/{month_num:02}.parquet  ({} bars)",
@@ -562,8 +552,8 @@ fn advance_month(year: &mut i32, month: &mut Month, end_date: Date) -> bool {
     *month = Month::try_from(next_num).expect("1-12 always valid");
     *year = next_year;
     // Done when we advance past end_date's month.
-    let cur_month_start = Date::from_calendar_date(*year, *month, 1)
-        .expect("month-start always valid");
+    let cur_month_start =
+        Date::from_calendar_date(*year, *month, 1).expect("month-start always valid");
     cur_month_start > end_date
 }
 
@@ -684,10 +674,18 @@ mod tests {
             .await
             .expect("pagination should succeed");
 
-        assert_eq!(result.len(), 1005, "should collect all bars from both batches");
+        assert_eq!(
+            result.len(),
+            1005,
+            "should collect all bars from both batches"
+        );
 
         let calls = fetcher.recorded_calls();
-        assert_eq!(calls.len(), 2, "should have made exactly 2 requests (second batch < 1000 means done)");
+        assert_eq!(
+            calls.len(),
+            2,
+            "should have made exactly 2 requests (second batch < 1000 means done)"
+        );
 
         // Second call must use expected_next_cursor as startTime.
         assert!(

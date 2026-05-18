@@ -6,7 +6,7 @@
 //! - `decimal_ln` and `decimal_sqrt` hot paths.
 //! - `score_vol_adjusted_return` with lookback=60.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;

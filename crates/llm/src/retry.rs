@@ -145,8 +145,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU8, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU8, Ordering};
 
     /// T1902 acceptance (a): 3 × 429 then 200 succeeds within the retry
     /// budget. Uses `tokio::time::pause()` for deterministic time so the

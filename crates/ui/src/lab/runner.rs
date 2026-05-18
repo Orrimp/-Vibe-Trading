@@ -94,6 +94,7 @@ impl RunCancelReceiver {
     /// Returns `true` if the run has been cancelled (handle dropped or
     /// explicit cancellation signal sent).
     #[allow(dead_code)]
+    #[must_use]
     pub fn is_cancelled(&self) -> bool {
         matches!(
             self.rx.try_recv(),
@@ -103,6 +104,7 @@ impl RunCancelReceiver {
 }
 
 /// Build a new `(RunCancelHandle, RunCancelReceiver)` pair.
+#[must_use]
 pub fn cancellation_pair() -> (RunCancelHandle, RunCancelReceiver) {
     let (tx, rx) = std::sync::mpsc::sync_channel(0);
     (RunCancelHandle::new(tx), RunCancelReceiver { rx })
@@ -121,7 +123,7 @@ pub struct LabRunConfig {
     pub venue: SmolStr,
     /// Human-readable range label, e.g. "Last90d".
     pub range_label: SmolStr,
-    /// ChaCha20 seed per ADR-0030.
+    /// `ChaCha20` seed per ADR-0030.
     pub seed: [u8; 32],
     /// Write a Markdown report to `spec/<slug>/reports/…` on completion.
     pub write_report: bool,
@@ -153,7 +155,6 @@ pub type LabRunResult = Result<RunSummary, SmolStr>;
 /// returns a simulated success — the anchor gate is T-D-13's remit, not
 /// T-D-14's.
 #[allow(clippy::needless_pass_by_value)]
-#[must_use]
 pub fn spawn_lab_run(
     #[cfg(feature = "live")] rt_handle: Option<&tokio::runtime::Handle>,
     #[cfg(not(feature = "live"))] _rt_handle: Option<()>,
@@ -173,7 +174,7 @@ pub fn spawn_lab_run(
             symbol,
             report_path: None,
         };
-        return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
+        iced::Task::done(Message::LabRunCompleted(Ok(summary)))
     }
 
     #[cfg(feature = "live")]
@@ -227,7 +228,10 @@ mod tests {
         let (handle, receiver) = cancellation_pair();
         assert!(!receiver.is_cancelled(), "not yet cancelled before drop");
         drop(handle);
-        assert!(receiver.is_cancelled(), "receiver must see cancellation after handle drop");
+        assert!(
+            receiver.is_cancelled(),
+            "receiver must see cancellation after handle drop"
+        );
     }
 
     /// T-D-14 — cancellation pair: receiver is not cancelled when handle is live.

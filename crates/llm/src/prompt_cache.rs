@@ -19,8 +19,8 @@
 //! - **Byte-stable.** Same inputs → identical `Vec<SystemBlock>` bytes
 //!   across calls (verified by proptest in the integration test).
 
-use crate::trait_def::{CacheBreakpoint, SystemBlock};
 use crate::ProviderKind;
+use crate::trait_def::{CacheBreakpoint, SystemBlock};
 
 /// Composed system prompt ready for provider-specific emission.
 ///

@@ -26,7 +26,7 @@ use trading_core::{Symbol, Venue};
 use crate::fixtures::{
     fake_cockpit_v15a_pairs_steady_state, seed_for, synthetic_candles, synthetic_fills_for,
 };
-use crate::state::{update, Cockpit, Message, PanelState, Screen};
+use crate::state::{Cockpit, Message, PanelState, Screen, update};
 use crate::theme::ThemeMode;
 
 /// Construct a Charts-screen seeded `Cockpit` mirroring the
@@ -49,7 +49,11 @@ pub fn charts_screen_cockpit() -> Cockpit {
     cockpit.universe.clone_from(&universe);
     // Navigate the cockpit directly to the Charts screen — the visual
     // snapshot fires off this view, not Home.
-    cockpit.current_screen = Screen::Charts;
+    #[allow(deprecated)]
+    // Screen::Charts is a backwards-compat alias for Screen::Lab; gallery fixtures keep the old name intentionally (T-D-1)
+    {
+        cockpit.current_screen = Screen::Charts;
+    }
     let default_pair = universe[0].clone();
     cockpit.selected_symbol = Some(default_pair.clone());
 

@@ -8,7 +8,7 @@ use reflection::outcome::OutcomeClass;
 use reflection::regime::RegimeTag;
 use reflection::types::{LessonCard, SymbolOrPair};
 use reports::render::memory_highlights::{
-    render_with_decay, render_with_lessons, REFLECTION_MEMORY_EMPTY_STATE,
+    REFLECTION_MEMORY_EMPTY_STATE, render_with_decay, render_with_lessons,
 };
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

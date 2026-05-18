@@ -11,11 +11,11 @@
 //! All three cases must complete well under 5ms per pair-bar on a modern laptop.
 //! In practice, expect sub-microsecond for cases 1–2 and low-microsecond for 3.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
-use strategy::{pairs::mean_reversion::MeanReversionPairsStrategy, Strategy};
+use strategy::{Strategy, pairs::mean_reversion::MeanReversionPairsStrategy};
 use time::OffsetDateTime;
 use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
@@ -179,7 +179,7 @@ fn bench_spread_compute(c: &mut Criterion) {
 // ── Bench: z-score computation ────────────────────────────────────────────────
 
 fn bench_zscore_compute(c: &mut Criterion) {
-    use features::{rolling_zscore, RingBuffer};
+    use features::{RingBuffer, rolling_zscore};
 
     let mut buf = RingBuffer::new(61);
     for i in 0..60 {

@@ -21,8 +21,8 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use rust_decimal::Decimal;
 use tokio::time;
-use tokio_stream::wrappers::IntervalStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::IntervalStream;
 use trading_core::{Bar, FeedError, Symbol, Tick, Timeframe, Venue};
 
 use crate::source::{MarketDataSource, SymbolInfo};

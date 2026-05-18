@@ -45,9 +45,9 @@
 pub mod cell;
 pub mod routes;
 
-pub use cell::{view, GalleryCell, CELL_HEIGHT_PX};
+pub use cell::{CELL_HEIGHT_PX, GalleryCell, view};
 pub(crate) use routes::seed_for_all_cells;
-pub use routes::{view_slice, EXPECTED_WIDGETS, GALLERY_CELLS, GALLERY_CELL_COUNT};
+pub use routes::{EXPECTED_WIDGETS, GALLERY_CELL_COUNT, GALLERY_CELLS, view_slice};
 
 use crate::state::{Cockpit, Message};
 
@@ -155,7 +155,11 @@ impl GalleryApp {
 // ── Tests (V3 + V4 — exhaustiveness) ─────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::cast_precision_loss, clippy::uninlined_format_args)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::cast_precision_loss,
+    clippy::uninlined_format_args
+)]
 mod tests {
     use super::*;
 

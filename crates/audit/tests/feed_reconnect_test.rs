@@ -7,7 +7,7 @@
 //!  - reconciler `Σ debits == Σ credits` unchanged (no money columns).
 
 use audit::query::{global_debit_credit_sum, strategy_events_since};
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use time::OffsetDateTime;
 use trading_core::{StrategyEventKind, Timestamp, Venue};
 

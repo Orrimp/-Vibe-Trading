@@ -57,8 +57,8 @@
 use iced::widget::table::{Style, StyleFn};
 use iced::{Background, Theme};
 
-use super::color::{self};
 use super::ThemeMode;
+use super::color::{self};
 
 /// Domain-level "what does this status say" classification for status
 /// pills. Independent of `iced_aw::style::Status` (which is interaction

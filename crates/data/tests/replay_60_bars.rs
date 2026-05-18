@@ -12,7 +12,7 @@
 //! `crates/data/tests/fixtures/BTCUSDT/btc_1h_60bars.parquet` and point
 //! `ReplayFeed` at the parent directory.
 
-use data::{source::MarketDataSource, ReplayFeed};
+use data::{ReplayFeed, source::MarketDataSource};
 use futures::StreamExt;
 use polars::prelude::*;
 use std::{

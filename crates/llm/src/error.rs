@@ -174,14 +174,16 @@ mod tests {
         }
 
         // Sanity-check structured field rendering.
-        assert!(format!(
-            "{}",
-            LlmError::Provider {
-                provider: ProviderKind::OpenAi,
-                message: "rate".to_string()
-            }
-        )
-        .contains("OpenAi"));
+        assert!(
+            format!(
+                "{}",
+                LlmError::Provider {
+                    provider: ProviderKind::OpenAi,
+                    message: "rate".to_string()
+                }
+            )
+            .contains("OpenAi")
+        );
         assert!(format!("{}", LlmError::RateLimited { retries: 5 }).contains('5'));
     }
 }

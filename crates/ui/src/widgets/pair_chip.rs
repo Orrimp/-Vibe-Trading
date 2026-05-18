@@ -16,12 +16,12 @@
 //! **Zero hex literals** — all colors from `crate::theme`.
 //! **Zero string literals** — copy from `crate::strings`.
 
-use iced::widget::{button, container, Container, Row, Text};
+use iced::widget::{Container, Row, Text, button, container};
 use iced::{Border, Length};
 use trading_core::{Symbol, Venue};
 
 use crate::state::Message;
-use crate::theme::{color, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, radius, space, text};
 
 /// Render a single pair chip.
 ///
@@ -122,7 +122,7 @@ pub fn row<'a>(
     let mut chips = Row::new().spacing(space::S);
 
     for (v, s) in universe {
-        let active = selected.map_or(false, |(sv, ss)| sv == v && ss == s);
+        let active = selected.is_some_and(|(sv, ss)| sv == v && ss == s);
         chips = chips.push(view(*v, s.clone(), active, multi_venue, mode));
     }
 

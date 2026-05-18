@@ -53,7 +53,7 @@ use tracing_subscriber::EnvFilter;
 use forecast::{
     features::{FeatureConfig, FeatureWindow, TimeSpan, windows_for_symbol},
     provenance::{CheckpointMetadata, DataSpan},
-    tcn::{TcnModel, INPUT_FEATURES},
+    tcn::{INPUT_FEATURES, TcnModel},
 };
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -208,8 +208,7 @@ fn onecycle_lr(step: usize, total_steps: usize, lr_max: f64, pct_start: f64) -> 
 fn parse_ts(s: &str) -> Result<time::OffsetDateTime> {
     // Parse ISO-8601 "YYYY-MM-DDTHH:MM:SSZ" or "YYYY-MM-DDTHH:MM:SS+00:00".
     let format = time::format_description::well_known::Rfc3339;
-    time::OffsetDateTime::parse(s, &format)
-        .with_context(|| format!("invalid timestamp: {s}"))
+    time::OffsetDateTime::parse(s, &format).with_context(|| format!("invalid timestamp: {s}"))
 }
 
 /// Normalise a bare "YYYY-MM-DD" or full RFC-3339 string to
@@ -253,7 +252,10 @@ fn main() -> Result<()> {
         cfg.training.epochs = epochs;
     }
     if let Some(symbols_str) = &cli.symbols {
-        cfg.data.symbols = symbols_str.split(',').map(|s| s.trim().to_string()).collect();
+        cfg.data.symbols = symbols_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
     }
     if let Some(pr) = cli.parquet_root {
         cfg.data.parquet_root = pr;
@@ -312,7 +314,12 @@ fn main() -> Result<()> {
     let varmap = VarMap::new();
     let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
 
-    let dilations: Vec<usize> = cfg.architecture.dilations.iter().map(|&d| d as usize).collect();
+    let dilations: Vec<usize> = cfg
+        .architecture
+        .dilations
+        .iter()
+        .map(|&d| d as usize)
+        .collect();
     let model = TcnModel::with_config(
         INPUT_FEATURES,
         cfg.architecture.channels as usize,
@@ -353,10 +360,7 @@ fn main() -> Result<()> {
         parse_ts(&cfg.data.train_start)?,
         parse_ts(&cfg.data.train_end)?,
     );
-    let val_span = TimeSpan::new(
-        parse_ts(&cfg.data.val_start)?,
-        parse_ts(&cfg.data.val_end)?,
-    );
+    let val_span = TimeSpan::new(parse_ts(&cfg.data.val_start)?, parse_ts(&cfg.data.val_end)?);
 
     let feat_cfg = FeatureConfig {
         context_bars: cfg.tokenisation.context_bars,
@@ -395,12 +399,7 @@ fn main() -> Result<()> {
     info!("loading validation windows...");
     let mut val_windows: Vec<FeatureWindow> = Vec::new();
     for symbol in &cfg.data.symbols {
-        let iter = windows_for_symbol(
-            &cfg.data.parquet_root,
-            symbol,
-            val_span.clone(),
-            &feat_cfg,
-        );
+        let iter = windows_for_symbol(&cfg.data.parquet_root, symbol, val_span.clone(), &feat_cfg);
         for w in iter {
             match w {
                 Ok(window) => val_windows.push(window),
@@ -468,7 +467,9 @@ fn main() -> Result<()> {
                 let w = &train_windows[idx];
                 // Extract flat feature data from the window.
                 // features layout (row-major [context, 5]) — transpose to [5, context].
-                let flat: Vec<f32> = w.features.flatten_all()
+                let flat: Vec<f32> = w
+                    .features
+                    .flatten_all()
                     .and_then(|t| t.to_vec1::<f32>())
                     .unwrap_or_default();
                 // Transpose: flat[row=t, col=c] → feat_data[c * context + t]
@@ -515,14 +516,8 @@ fn main() -> Result<()> {
         final_train_loss = avg_train_loss;
 
         // Validation loss.
-        let avg_val_loss = compute_val_loss(
-            &model,
-            &val_windows,
-            &device,
-            context,
-            batch_size,
-            delta,
-        );
+        let avg_val_loss =
+            compute_val_loss(&model, &val_windows, &device, context, batch_size, delta);
         final_val_loss = avg_val_loss;
 
         info!(
@@ -564,9 +559,7 @@ fn main() -> Result<()> {
 
     info!(
         final_train_loss,
-        final_val_loss,
-        sigma_train,
-        "training complete"
+        final_val_loss, sigma_train, "training complete"
     );
 
     write_checkpoint(
@@ -613,7 +606,9 @@ fn compute_val_loss(
         let mut target_data: Vec<f32> = Vec::with_capacity(actual_batch);
 
         for w in &val_windows[batch_start..batch_end] {
-            let flat: Vec<f32> = w.features.flatten_all()
+            let flat: Vec<f32> = w
+                .features
+                .flatten_all()
                 .and_then(|t| t.to_vec1::<f32>())
                 .unwrap_or_default();
             for c in 0..5 {
@@ -671,9 +666,7 @@ fn write_checkpoint(
 
     // Write safetensors to a temp file to compute SHA.
     let temp_path = output_dir.join("_tmp_checkpoint.safetensors");
-    varmap
-        .save(&temp_path)
-        .context("saving safetensors")?;
+    varmap.save(&temp_path).context("saving safetensors")?;
 
     let weights_bytes = std::fs::read(&temp_path).context("reading temp safetensors")?;
     let w_sha = forecast::provenance::weights_sha256(&weights_bytes);
@@ -710,10 +703,15 @@ fn write_checkpoint(
         data_span: DataSpan {
             start: cfg.data.train_start.clone(),
             end: cfg.data.val_end.clone(),
-            symbols: cfg.data.symbols.iter().map(|s| {
-                // Strip "USDT" suffix for the canonical schema (matches R8 example).
-                s.trim_end_matches("USDT").to_string()
-            }).collect(),
+            symbols: cfg
+                .data
+                .symbols
+                .iter()
+                .map(|s| {
+                    // Strip "USDT" suffix for the canonical schema (matches R8 example).
+                    s.trim_end_matches("USDT").to_string()
+                })
+                .collect(),
             interval: cfg.data.interval.clone(),
             source: cfg.data.source.clone(),
         },

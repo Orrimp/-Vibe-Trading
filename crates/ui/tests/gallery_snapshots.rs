@@ -49,7 +49,7 @@ use std::time::Duration;
 mod fixtures;
 
 use fixtures::visual_diff::matches_screenshot;
-use ui::gallery::{program_from_cockpit, GalleryApp, GALLERY_LOGICAL_HEIGHT};
+use ui::gallery::{GALLERY_LOGICAL_HEIGHT, GalleryApp, program_from_cockpit};
 
 const SLOTS: &[(&str, u32, f32)] = &[
     ("floor", 1280, 1.0),

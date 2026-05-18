@@ -30,12 +30,12 @@
 //! 3. `widgets::strategies::pause_button` — per-strategy pause button.
 //! 4. `widgets::human_control::mode_segment` — three mode buttons.
 
-use iced::widget::{container, Container};
+use iced::widget::{Container, container};
 use iced::{Border, Element, Length};
 use smol_str::SmolStr;
 
 use crate::state::Message;
-use crate::theme::{focus, ThemeMode};
+use crate::theme::{ThemeMode, focus};
 
 /// Stable widget identifier (registration key) used by the focus-state
 /// machine. A `SmolStr` so per-strategy / per-veto identifiers can be
@@ -48,10 +48,10 @@ pub type WidgetId = SmolStr;
 // `src/widgets/` for inline user-visible strings, and `focus_ids::*`
 // are internal focus-state-machine keys, never operator-visible).
 pub use crate::state::focus_ids::{
-    override_veto_button_id, strategy_pause_id, EXECUTION_MODE_AUTO, EXECUTION_MODE_OBSERVE,
-    EXECUTION_MODE_SUPERVISED, KILL_BUTTON, KILL_CANCEL_BUTTON, KILL_CONFIRM_BUTTON,
-    KILL_CONFIRM_INPUT, OVERRIDE_RISK_VETO_CANCEL, OVERRIDE_RISK_VETO_CONFIRM,
-    OVERRIDE_RISK_VETO_INPUT,
+    EXECUTION_MODE_AUTO, EXECUTION_MODE_OBSERVE, EXECUTION_MODE_SUPERVISED, KILL_BUTTON,
+    KILL_CANCEL_BUTTON, KILL_CONFIRM_BUTTON, KILL_CONFIRM_INPUT, OVERRIDE_RISK_VETO_CANCEL,
+    OVERRIDE_RISK_VETO_CONFIRM, OVERRIDE_RISK_VETO_INPUT, override_veto_button_id,
+    strategy_pause_id,
 };
 
 /// Wrap `child` in a focus-ring `Container` overlay. When `focused ==

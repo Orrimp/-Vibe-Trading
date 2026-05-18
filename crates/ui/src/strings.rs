@@ -74,12 +74,10 @@ pub const KILL_BUTTON_LABEL: &str = "Stop trading";
 /// surface). Updated in T907 once T906 wired the button to the real
 /// `KillSwitch::trip` path: clicking it now actually halts the agent and
 /// writes an incident report — so the copy promises that explicitly.
-pub const KILL_BUTTON_HELP: &str =
-    "Halts the trading agent and writes an incident report. Cancels open orders and flattens \
+pub const KILL_BUTTON_HELP: &str = "Halts the trading agent and writes an incident report. Cancels open orders and flattens \
      every position. Requires a typed confirmation.";
 pub const KILL_DIALOG_TITLE: &str = "Confirm stop trading";
-pub const KILL_DIALOG_BODY: &str =
-    "This cancels every open order, sells each open position at market, and puts the agent \
+pub const KILL_DIALOG_BODY: &str = "This cancels every open order, sells each open position at market, and puts the agent \
      into a halted state. Type the phrase below to confirm.";
 pub const KILL_PHRASE_LABEL: &str = "Type HALT BTC to confirm";
 /// The exact phrase the operator must type to enable the Confirm button.
@@ -556,8 +554,7 @@ pub const SIDEBAR_NAV_CONTROL: &str = "Control";
 /// Shown in every panel's error state when the cockpit can't reach the agent
 /// process. Tells the operator exactly what to do — not just "connection
 /// failed".
-pub const CONNECTION_AGENT_UNREACHABLE: &str =
-    "Can't reach the trading agent. Start it with `cargo run --bin agent` and re-launch the \
+pub const CONNECTION_AGENT_UNREACHABLE: &str = "Can't reach the trading agent. Start it with `cargo run --bin agent` and re-launch the \
      cockpit.";
 /// Shown when the cockpit falls behind the broadcast and the channel lags.
 /// The agent keeps running; the cockpit skipped N events.
@@ -930,7 +927,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("CHART_LEGEND_EQUITY_LABEL", CHART_LEGEND_EQUITY_LABEL),
         ("CHART_LEGEND_COMPARE_NO_DATA", CHART_LEGEND_COMPARE_NO_DATA),
         // Phase A — equity axis K-suffix (T-D-11)
-        ("CHART_EQUITY_AXIS_THOUSAND_SUFFIX", CHART_EQUITY_AXIS_THOUSAND_SUFFIX),
+        (
+            "CHART_EQUITY_AXIS_THOUSAND_SUFFIX",
+            CHART_EQUITY_AXIS_THOUSAND_SUFFIX,
+        ),
     ]
 }
 

@@ -282,27 +282,30 @@ tag; dependencies via `blocks` / `depends on`.
 - [ ] **T-D-15 (M6)** — Full BS-1 backtest (2023 full year, top-10
   USDT, quarterly walk-forward retrain cadence per Backtest Scenarios
   block) using the `tcn-bs1` checkpoint. Report authored under
-  `spec/v25-tcn-overlay/reports/bs1-tcn-overlay-<date>.md`.
+  `spec/v25-tcn-overlay/reports/top10-2023-fy-tcn-overlay-<date>.md`.
   - Owner: D+T. Depends on: T-D-14. Blocks: T-D-16.
   - Acceptance: backtest completes; report includes Sharpe, max
     drawdown, trade count vs v1 momentum baseline per Backtest
     Scenarios § Success criterion; PnL replay determinism verified.
   - IMPLEMENTATION READY 2026-05-17. `run_tcn_overlay_backtest()` and
     `write_tcn_overlay_report()` added to `crates/backtest/src/main.rs`.
-    `ScenarioStrategy::TcnOverlayMomentum` and `"bs1-tcn-overlay"` scenario
+    `ScenarioStrategy::TcnOverlayMomentum` and `"top10-2023-fy-tcn-overlay"` scenario
     wired to `TcnOverlayMomentumStrategy::with_passthrough()`.
-    `cargo check -p backtest` passes clean.
-    PENDING: run `cargo run -p backtest --release -- --scenario bs1-tcn-overlay
-    --seed 0xC0FFEE` to produce the report file. Left for tester.
+    SCENARIO RENAMED 2026-05-18 from `"bs1-tcn-overlay"` → `"top10-2023-fy-tcn-overlay"`
+    per feature.md § Backtest Scenarios and trace.toml REQ-V25-TCN-001.
+    Report generated: `spec/v25-tcn-overlay/reports/backtest-20260518-053400-top10-2023-fy-tcn-overlay.md`.
+    Anchor locked in `spec/anchors.toml` at `01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5`.
+    20/20 determinism tests pass. TESTER to verify and tick.
 
 - [ ] **T-D-16 (M6)** — Full BS-2 backtest (2024 Q2-Q4 test split)
   using `tcn-bs2` checkpoint. Report under
-  `spec/v25-tcn-overlay/reports/bs2-tcn-overlay-<date>.md`.
+  `spec/v25-tcn-overlay/reports/top10-2024-fy-tcn-overlay-<date>.md`.
   - Owner: D+T. Depends on: T-D-15. Blocks: T-T-1.
   - Acceptance: as T-D-15.
-  - IMPLEMENTATION READY 2026-05-17. `"bs2-tcn-overlay"` scenario registered.
-    PENDING: run `cargo run -p backtest --release -- --scenario bs2-tcn-overlay
-    --seed 0xC0FFEE`. Left for tester.
+  - SCENARIO RENAMED 2026-05-18 from `"bs2-tcn-overlay"` → `"top10-2024-fy-tcn-overlay"`.
+    Report generated: `spec/v25-tcn-overlay/reports/backtest-20260518-053408-top10-2024-fy-tcn-overlay.md`.
+    Anchor locked at `e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163`.
+    TESTER to verify and tick.
 
 ## Pending — tester
 

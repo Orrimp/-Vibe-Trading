@@ -194,7 +194,7 @@ fn t709_pair_data_correct_legs() {
 
 #[tokio::test]
 async fn t709_audit_pair_short_observation_written_on_entry() {
-    use audit::{bootstrap, journal, query, Ledger};
+    use audit::{Ledger, bootstrap, journal, query};
     use trading_core::StrategyEventKind;
 
     let ledger = Ledger::in_memory().await.unwrap();

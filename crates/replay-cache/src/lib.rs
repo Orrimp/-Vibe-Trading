@@ -46,10 +46,10 @@
 use std::marker::PhantomData;
 use std::path::Path;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use tokio::sync::Mutex;
 use tracing::{debug, warn};
 
@@ -201,12 +201,11 @@ impl<K: Serialize, V: Serialize + DeserializeOwned> ReplayCache<K, V> {
 
         match row {
             Some((json,)) => {
-                let v: V = serde_json::from_str(&json).map_err(|e| {
-                    ReplayCacheError::Deserialize {
+                let v: V =
+                    serde_json::from_str(&json).map_err(|e| ReplayCacheError::Deserialize {
                         hash: key.to_string(),
                         detail: e.to_string(),
-                    }
-                })?;
+                    })?;
                 Ok(Some(v))
             }
             None => Ok(None),
@@ -392,8 +391,8 @@ fn hex_lower(bytes: &[u8]) -> String {
 
 /// Render a 6-digit fractional ISO-8601 UTC timestamp.
 fn timestamp_now() -> String {
-    use time::format_description::well_known::Rfc3339;
     use time::OffsetDateTime;
+    use time::format_description::well_known::Rfc3339;
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"))
@@ -401,10 +400,7 @@ fn timestamp_now() -> String {
 
 /// Assert `schema_version <= SUPPORTED_SCHEMA_VERSION` on the table.
 /// Empty tables (no rows) are accepted.
-async fn schema_version_gate(
-    pool: &SqlitePool,
-    namespace: &str,
-) -> Result<(), ReplayCacheError> {
+async fn schema_version_gate(pool: &SqlitePool, namespace: &str) -> Result<(), ReplayCacheError> {
     // Table may not exist if the file was just created by open_readonly
     // in a test — tolerate missing table gracefully.
     let row: Result<Option<(i64,)>, _> =
@@ -547,7 +543,9 @@ mod tests {
         let td = tempfile::tempdir().unwrap();
         let db_path = td.path().join("replay.db");
 
-        let cache: Cache = ReplayCache::open_readwrite(&db_path, "kronos").await.unwrap();
+        let cache: Cache = ReplayCache::open_readwrite(&db_path, "kronos")
+            .await
+            .unwrap();
 
         let req = sample_req(0);
         let key = canonical_key(&req).unwrap();

@@ -28,19 +28,19 @@
 
 use std::sync::{Arc, Mutex};
 
-use reports::{render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE, FrozenMarkSource, ReportWindow};
+use reports::{FrozenMarkSource, ReportWindow, render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE};
 use tempfile::TempDir;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
+use tracing_subscriber::Layer;
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::Layer;
 
 #[path = "fixtures/build_ledger_with_open_positions_7d.rs"]
 mod build_ledger_with_open_positions_7d;
 
 use crate::build_ledger_with_open_positions_7d::{
-    build_ledger_with_open_positions_7d, fixture_period_end, fixture_period_start, FIXTURE_SEED,
+    FIXTURE_SEED, build_ledger_with_open_positions_7d, fixture_period_end, fixture_period_start,
 };
 
 // ── tracing capture wiring ────────────────────────────────────────────────────

@@ -20,17 +20,17 @@
 //! **Zero hex colours** — tokens via `crate::theme`.
 
 use iced::widget::canvas::{self, Frame, Geometry, Path, Text as CanvasText};
-use iced::widget::{container, Canvas, Container};
-use iced::{mouse, Length, Point, Rectangle, Renderer, Size};
-use rust_decimal::prelude::ToPrimitive;
+use iced::widget::{Canvas, Container, container};
+use iced::{Length, Point, Rectangle, Renderer, Size, mouse};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 
 #[cfg(test)]
 use super::canvas_chart::GRIDLINE_COUNT;
 use super::canvas_chart::{inner_rect, with_alpha};
 use crate::state::Message;
 use crate::strings::KPI_DASH_PLACEHOLDER;
-use crate::theme::{color, text, ThemeMode};
+use crate::theme::{ThemeMode, color, text};
 
 /// One histogram bin — paired buy + sell USDT-notional totals for a bar.
 /// Local to this widget; built at compose time in

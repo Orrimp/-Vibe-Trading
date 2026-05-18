@@ -9,15 +9,15 @@
 //! **Zero string literals** — copy via `crate::strings`.
 //! **Zero hex colours** — tokens via `crate::theme`.
 
-use iced::widget::{Column, Container, Row, Text};
 use iced::Length;
+use iced::widget::{Column, Container, Row, Text};
 
 use crate::state::{Cockpit, MarketHealthState};
 use crate::strings::{
     DEBUG_LOGS_PLACEHOLDER, STATUS_BAR_NO_SERVER_TIME, STATUS_BAR_SERVER_LABEL,
     STATUS_BAR_UTC_SUFFIX, STATUS_BAR_VERSION,
 };
-use crate::theme::{color, layout, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, layout, space, text};
 use crate::widgets::{frame, latency};
 
 /// Render the Debug screen body.

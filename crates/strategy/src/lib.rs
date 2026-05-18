@@ -16,12 +16,12 @@ pub mod traits;
 
 pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, StrategyLoadError};
 pub use cross_sectional::{
-    top_k_long, CrossSectionalLoadError, CrossSectionalMomentumConfig, MomentumStrategy,
+    CrossSectionalLoadError, CrossSectionalMomentumConfig, MomentumStrategy, top_k_long,
 };
 pub use pairs::{MeanReversionPairsConfig, MeanReversionPairsStrategy, PairsLoadError};
 pub use registry::{
-    flush_pending_to_ledger, PendingJournalEvent, RegistryEventKind, StrategyRegistry,
-    StrategyTomlEntry,
+    PendingJournalEvent, RegistryEventKind, StrategyRegistry, StrategyTomlEntry,
+    flush_pending_to_ledger,
 };
 pub use sma_crossover::SmaCrossover;
 pub use tcn_overlay_momentum::{

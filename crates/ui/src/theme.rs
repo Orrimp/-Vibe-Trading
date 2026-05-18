@@ -413,7 +413,7 @@ pub mod color {
 /// the same colour budget. See Q3 / Phase 1 design notes for the
 /// rendering verification.
 pub mod shadow {
-    use super::{color::rgba, ThemeMode};
+    use super::{ThemeMode, color::rgba};
     use iced::{Color, Shadow, Vector};
 
     /// Tier 1 — panel chrome. `(offset_y, blur, alpha)` per design table.
@@ -486,7 +486,7 @@ pub mod shadow {
 /// blur. iced doesn't natively support box-shadow `spread`; the blur
 /// produces the same perceived halo at the alpha values Lumen specifies.
 pub mod focus {
-    use super::{color::rgba, ThemeMode};
+    use super::{ThemeMode, color::rgba};
     use iced::{Shadow, Vector};
 
     /// 3 px low-alpha accent ring. Layered on top of `BORDER_STRONG`
@@ -572,11 +572,9 @@ pub mod text {
 /// canonical Lumen stack when the runtime gains font loading.
 pub mod font {
     /// UI sans-serif stack: `Inter` → platform default.
-    pub const FONT_SANS: &str =
-        "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif";
+    pub const FONT_SANS: &str = "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif";
     /// Numerics monospace stack: `JetBrains Mono` → platform default.
-    pub const FONT_MONO: &str =
-        "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, \"Cascadia Mono\", Consolas, monospace";
+    pub const FONT_MONO: &str = "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, \"Cascadia Mono\", Consolas, monospace";
 }
 
 /// Border radii — the Lumen 6-step radii ladder.

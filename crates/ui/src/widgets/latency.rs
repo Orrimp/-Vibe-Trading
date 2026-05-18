@@ -3,15 +3,15 @@
 //! Thresholds live in `theme::latency`; color logic in
 //! `theme::color_for_latency_ms`. This module renders the label + value.
 
-use iced::widget::{Column, Row, Text};
 use iced::Element;
+use iced::widget::{Column, Row, Text};
 
 use crate::state::{AgentMode, Cockpit, Latency, Message};
 use crate::strings::{
     LATENCY_HALTED_LABEL, LATENCY_HELP, LATENCY_HIGH_LABEL, LATENCY_OK_LABEL, LATENCY_UNIT_MS,
     LATENCY_UNKNOWN, LATENCY_WARN_LABEL, PANEL_LATENCY_TITLE,
 };
-use crate::theme::{color, color_for_latency_ms, latency as lat, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, color_for_latency_ms, latency as lat, space, text};
 
 use super::frame::panel;
 

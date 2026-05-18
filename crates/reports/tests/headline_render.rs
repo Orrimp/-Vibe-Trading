@@ -4,7 +4,7 @@
 //! Asserts the rendered headline body matches a hand-computed string
 //! exactly, with both percentages + dollar figures at fixed precision.
 
-use reports::render::headline::{render, HeadlineInputs};
+use reports::render::headline::{HeadlineInputs, render};
 use rust_decimal_macros::dec;
 
 #[test]

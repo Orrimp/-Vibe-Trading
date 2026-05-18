@@ -28,14 +28,14 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+use crate::ProviderKind;
 use crate::error::LlmError;
-use crate::retry::{run_with_backoff, RetryError};
-use crate::tools::{validate_tool_use, ToolSchema};
+use crate::retry::{RetryError, run_with_backoff};
+use crate::tools::{ToolSchema, validate_tool_use};
 use crate::trait_def::{
     CacheBreakpoint, ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmProvider,
     MessageRole, ModelId, StopReason, SystemBlock, TokenUsage,
 };
-use crate::ProviderKind;
 
 /// Anthropic API version pinned at v2.0.0 ship time (latest stable
 /// per Anthropic's docs as of brief authoring).

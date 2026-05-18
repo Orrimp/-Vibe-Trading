@@ -24,7 +24,7 @@
 //! **Zero string literals** — copy via `crate::strings`.
 //! **Zero hex colours** — tokens via `crate::theme`.
 
-use iced::widget::{container, Column, Container, Row, Text};
+use iced::widget::{Column, Container, Row, Text, container};
 use iced::{Border, Length};
 use rust_decimal::Decimal;
 use trading_core::{FillView, PositionView, Side, Symbol};
@@ -36,10 +36,10 @@ use crate::strings::{
     CHART_VOLUME_TILE_BUYS_LABEL, CHART_VOLUME_TILE_NET_LABEL, CHART_VOLUME_TILE_SELLS_LABEL,
     CHART_VOLUME_TILE_TRADES_SUFFIX,
 };
-use crate::theme::{color, color_for_delta, radius, space, text, ThemeMode};
+use crate::theme::{ThemeMode, color, color_for_delta, radius, space, text};
 use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
-use crate::widgets::volume_histogram::{self, VolumeBin};
 use crate::widgets::run_button::{self, RunState};
+use crate::widgets::volume_histogram::{self, VolumeBin};
 use crate::widgets::{chart, date_range, pair_chip, strategy_chip};
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
@@ -112,7 +112,11 @@ pub fn chart_canvas_height_for_body(body_height_px: f32) -> f32 {
 }
 
 /// Render the Lab screen body.
-#[allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::needless_pass_by_value,
+    clippy::too_many_lines
+)]
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let active = model
@@ -133,7 +137,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
             .lab_state
             .pair
             .as_ref()
-            .map_or(false, |(pv, ps)| pv == v && ps == &sym);
+            .is_some_and(|(pv, ps)| pv == v && ps == &sym);
         pair_chip_row = pair_chip_row.push(pair_chip::view(*v, sym, is_active, false, mode));
     }
     let chip_row = pair_chip_row;
@@ -210,8 +214,8 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
             active_markers,
             active_signals,
             model.chart_tooltip.clone(),
-            None,     // equity overlay — Phase B
-            vec![],   // compare curves — Phase B
+            None,   // equity overlay — Phase B
+            vec![], // compare curves — Phase B
             mode,
         )
     } else {

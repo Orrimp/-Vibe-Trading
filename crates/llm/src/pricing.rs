@@ -21,8 +21,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
-use crate::error::LlmError;
 use crate::ProviderKind;
+use crate::error::LlmError;
 
 /// Per-million-token rate-card row.
 ///

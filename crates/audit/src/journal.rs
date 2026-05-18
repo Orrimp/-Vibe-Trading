@@ -418,7 +418,9 @@ pub async fn update_signal_clamp_status(
 /// `SignalKind` (risk engine, backtest binary) discriminate all six
 /// variants explicitly.
 fn signal_kind_to_side_str(signal: &Signal) -> Option<&'static str> {
-    use trading_core::SignalKind::{Buy, ClosePair, Hold, OpenPairLong, PairShortObservation, Sell};
+    use trading_core::SignalKind::{
+        Buy, ClosePair, Hold, OpenPairLong, PairShortObservation, Sell,
+    };
     match signal.kind {
         Buy | OpenPairLong => Some("buy"),
         Sell | ClosePair | PairShortObservation => Some("sell"),
@@ -1546,7 +1548,7 @@ pub async fn verify_balance(ledger: &Ledger, transaction_id: &str) -> Result<(),
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::{bootstrap, Ledger};
+    use crate::{Ledger, bootstrap};
 
     async fn open_ledger() -> Ledger {
         let ledger = Ledger::in_memory().await.expect("open in-memory ledger");

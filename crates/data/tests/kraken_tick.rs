@@ -28,7 +28,7 @@
 
 use std::time::Duration;
 
-use data::{kraken_symbol_map, source::MarketDataSource, MockFeed};
+use data::{MockFeed, kraken_symbol_map, source::MarketDataSource};
 use futures::StreamExt;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;

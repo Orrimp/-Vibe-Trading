@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use agent::{watcher, EventBus};
+use agent::{EventBus, watcher};
 use audit::{bootstrap, ledger::Ledger, query};
 use trading_core::Timestamp;
 

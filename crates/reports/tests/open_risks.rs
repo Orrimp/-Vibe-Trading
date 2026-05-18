@@ -5,7 +5,7 @@
 //! threshold + observed value; `Result::Err` cell renders `unknown
 //! — see logs` per R9.3.
 
-use reports::render::open_risks::{render, OpenRisksInputs, RiskOutcome};
+use reports::render::open_risks::{OpenRisksInputs, RiskOutcome, render};
 
 fn clear() -> Result<RiskOutcome, String> {
     Ok(RiskOutcome {

@@ -1,8 +1,8 @@
 ---
-scenario: bs2-tcn-overlay
+scenario: top10-2023-fy-tcn-overlay
 seed: 0xC0FFEE
-generated: 2026-05-17T21:51:07Z
-wall_clock_s: 2.7
+generated: 2026-05-18T05:34:00Z
+wall_clock_s: 0.9
 data_source: synthetic (seeded RNG, v2.5 tcn-overlay)
 baseline_report: n/a
 ledger_imbalance_total: 0
@@ -15,24 +15,24 @@ source: config/strategies/tcn_overlay_momentum.toml
 signal: tcn_overlay(base=vol_adjusted_log_return,confidence_threshold=0.6)
 ---
 
-# Backtest Report — bs2-tcn-overlay
+# Backtest Report — top10-2023-fy-tcn-overlay
 
 ## Summary
 
 | Metric               | Value                         |
 |----------------------|-------------------------------|
-| Scenario             | bs2-tcn-overlay               |
+| Scenario             | top10-2023-fy-tcn-overlay               |
 | Universe             | 10 symbols      |
-| Start year           | 2024                  |
-| Bars (total)         | 66000                   |
+| Start year           | 2023                  |
+| Bars (total)         | 22080                   |
 | Initial capital      | $100000.00 USDT            |
-| Final equity         | $44300.24 USDT           |
-| Total return         | -55.70%                     |
+| Final equity         | $30235.58 USDT           |
+| Total return         | -69.76%                     |
 | Max drawdown         | 87.48%                  |
-| Trades               | 3672                      |
-| Buys                 | 1838                        |
-| Sells                | 1834                       |
-| Total fees           | $3400.561225 USDT               |
+| Trades               | 1224                      |
+| Buys                 | 614                        |
+| Sells                | 610                       |
+| Total fees           | $2681.670646 USDT               |
 | Seed                 | 0xC0FFEE                    |
 | Data source          | synthetic (seeded RNG, v2.5 tcn-overlay)                 |
 
@@ -40,7 +40,7 @@ signal: tcn_overlay(base=vol_adjusted_log_return,confidence_threshold=0.6)
 
 | Metric               | Value                         |
 |----------------------|-------------------------------|
-| Passed through       | 3882              |
+| Passed through       | 1142              |
 | Dampened to Hold     | 0                    |
 | Warming-up (no overlay) | 105                  |
 | Dampen rate          | 0.00%             |

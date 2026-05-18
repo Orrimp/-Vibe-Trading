@@ -32,7 +32,7 @@
 //!    modal renders its existing error state.
 
 use audit::query::{journal_entries_for_transaction, journal_transaction_metadata};
-use audit::{bootstrap, journal, Ledger};
+use audit::{Ledger, bootstrap, journal};
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use time::OffsetDateTime;
