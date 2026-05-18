@@ -322,7 +322,7 @@ verdict below**.
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(operator, 2026-05-18)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

@@ -1,8 +1,8 @@
 ---
 slug: ui-rethink-phase-a-lab
-status: in-progress
-owner: architect
-updated: 2026-05-17
+status: shipped
+owner: operator
+updated: 2026-05-18
 version: 0.2.0
 predecessor: chart-canvas-overhaul v1.10.0
 ---
@@ -1242,6 +1242,9 @@ just a constant in `lab/defaults.rs`.
 
 ## Changelog
 
+- 2026-05-18 (operator): **SHIPPED v0.2.0.** Approved via presenter deck
+  `presentations/ui-rethink-phase-a-lab-2026-05-18.md` (commit `ef8fb3c`).
+  Status → `shipped`. Visual A/B captures remain a follow-on (operator-local).
 - 2026-05-17 (analyst): initial brief authored from
   [`ui-rethink-2026-05-17`](../dev-notes/ui-rethink-2026-05-17.md)
   §6 Phase A + operator addendum. Eleven requirements (R1–R11)

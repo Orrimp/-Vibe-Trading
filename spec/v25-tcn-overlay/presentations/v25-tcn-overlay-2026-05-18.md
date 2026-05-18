@@ -262,7 +262,7 @@ M3 lands)._
 
 ## Approval
 
-- [ ] Approved — close CI-baseline gate, schedule M3
+- [x] Approved — close CI-baseline gate, schedule M3  _(operator, 2026-05-18)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — <add reason below>
 

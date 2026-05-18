@@ -718,6 +718,11 @@ Tester contract (per AGENT.md):
 
 ## Changelog
 
+- 2026-05-18 (operator): **CI-baseline gate APPROVED.** Approved via presenter deck
+  `presentations/v25-tcn-overlay-2026-05-18.md` (commit `ef8fb3c`). T-D-15, T-D-16,
+  T-T-1 stay ticked; the two passthrough-path anchors stay locked. Status stays
+  `in-progress` — M3 (T-D-11/T-D-12) full TCN training + real-weights anchor lock
+  under version `v2.5.0-tcn-weights` is the next milestone.
 - 2026-05-18 (tester): VERDICT → PASS (second gate, commit `3fbae75`). T-D-15, T-D-16, T-T-1 ticked. CI-baseline anchor gate closed: both canonical TCN anchors (`top10-2023-fy-tcn-overlay` / `top10-2024-fy-tcn-overlay`) verified 13/13 by verify_anchors.sh + tester re-run body-SHA match. fmt PASS, clippy PASS, spec-lint 0 new regressions (733 violations, all pre-existing). Status remains `in-progress` — real-TCN-weights anchor lock deferred to M3 (T-D-11/T-D-12, separate v2.5.0-tcn-weights gate). HANDOFF → presenter.
 - 2026-05-17 (architect): T-AR-1 — locked the Design section with D1
   (Conv1d residual-block layout with WeightNormConv1d + causal trim

@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-a-lab
-status: in-progress
-owner: presenter
+status: shipped
+owner: operator
 updated: 2026-05-18
 ---
 

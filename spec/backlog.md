@@ -2,8 +2,16 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-17
+updated: 2026-05-18
 ---
+<!-- updated 2026-05-18 (orchestrator, operator-approval-pass) — operator
+     approved both presenter decks at commit `ef8fb3c`.
+     `ui-rethink-phase-a-lab v0.2.0` → SHIPPED (Active → Recent).
+     `v25-tcn-overlay v2.5.0` CI-baseline gate closed (passthrough path);
+     status stays _in-progress_ — M3 full TCN training (T-D-11/T-D-12) +
+     real-weights anchor lock under version `v2.5.0-tcn-weights` is the
+     next milestone. Spec-lint normalised at 733/2 (improvement of -1 vs
+     audit-2026-05-18 baseline). -->
 <!-- updated 2026-05-17 (analyst, ui-rethink-phase-a-lab) — promoted
      `ui-rethink-phase-a-lab` v0.1.0 from dev-note → Active. First
      concrete carve-out of the broader UI rethink at
@@ -125,8 +133,9 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress_ —
-  phase 1 of the [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
+- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress (CI-baseline
+  gate approved 2026-05-18; M3 next)_ — phase 1 of the
+  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
   (operator-locked 2026-05-17 after reading the
   [v25-dl-reading-list](dev-notes/v25-dl-reading-list-2026-05-16.md)
   and deciding to build all three model families for empirical bake-off).
@@ -147,26 +156,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   (LFS vs regen-from-seed) and two-checkpoint backtest split.
   Carry-forward backtest scenarios: BS-1 (2023 full-year top-10 USDT),
   BS-2 (2024 full-year top-10 USDT). HANDOFF → operator-decide → architect.
-
-- **UI rethink Phase A — chart-centric Lab (`ui-rethink-phase-a-lab`).**
-  _draft_ — first concrete feature carved out of the broader UI rethink at
-  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md)
-  (operator critique 2026-05-17 + addendum locking chart-as-door,
-  XRP-first ordering, three overlay layers, read-only at Phase A).
-  Predecessor: [`chart-canvas-overhaul`](chart-canvas-overhaul/feature.md)
-  v1.10.0. Renames `Charts` → `Lab`, flips Lab to the default boot route,
-  fuses three overlay layers on the single canvas (buy/sell markers from
-  v1.9.0 emphasis ship + new equity curve + new ≤4-strategy comparison),
-  introduces pair-chip / strategy-chip / date-range widgets, persists
-  `(strategy, pair, range, params)` across cockpit restarts. Eleven
-  requirements (R1–R11); zero new Lumen tokens; zero touched anchors;
-  three operator-decide questions (Q-A1 comparison-line palette, Q-A2
-  cached-only vs in-process backtest at Phase A, Q-A3 cold-start tuple
-  default). Brief at [`ui-rethink-phase-a-lab/feature.md`](ui-rethink-phase-a-lab/feature.md);
-  task skeleton at [`ui-rethink-phase-a-lab/tasks.md`](ui-rethink-phase-a-lab/tasks.md)
-  (M0 rename → M1 chips/picker → M2 equity overlay → M3 comparison
-  overlay → M-FINAL persistence + audits). Trace row
-  `REQ-UI-RETHINK-PHASE-A-001` (proposed). HANDOFF → architect.
 
 ## Queue
 
@@ -654,6 +643,19 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **UI rethink Phase A — chart-centric Lab (`ui-rethink-phase-a-lab` v0.2.0)** —
+  shipped 2026-05-18 (operator-approved via presenter deck
+  [`presentations/ui-rethink-phase-a-lab-2026-05-18.md`](ui-rethink-phase-a-lab/presentations/ui-rethink-phase-a-lab-2026-05-18.md)).
+  Predecessor: [`chart-canvas-overhaul`](chart-canvas-overhaul/feature.md) v1.10.0.
+  Renames `Charts → Lab`, flips Lab to the default boot route, fuses three
+  overlay layers on the single canvas (buy/sell markers + equity curve +
+  ≤4-strategy comparison), adds pair-chip / strategy-chip / date-range
+  widgets, persists `(strategy, pair, range, params)` with cold-start
+  defaults `v1.momentum × XRPUSDT × Last 90d` (Q-A3). 358/358 ui tests +
+  20/20 determinism + 13/13 anchors. Visual A/B captures deferred to
+  operator-local. See
+  [`spec/ui-rethink-phase-a-lab/feature.md`](ui-rethink-phase-a-lab/feature.md).
 
 - **Drop iced_aw + iced_fonts (`ui-drop-iced-aw` v0.1.0)** — shipped
   2026-05-16. Strategic decoupling from third-party iced ecosystem
