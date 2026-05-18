@@ -245,7 +245,7 @@ c. **Metal-vs-CPU drift exit gate (T-D-7 from v25-tcn-overlay backlog).**
 
 ## Approval
 
-- [ ] Approved — ship; queue alpha-verdict v25-tcn re-spawn
+- [x] Approved — ship; queue alpha-verdict v25-tcn re-spawn  _(operator, 2026-05-18)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — <add reason below>
 

@@ -27,6 +27,17 @@ updated: 2026-05-18
      regression contract: 15 anchors stay byte-identical, 4 new
      `-realdata` anchors lock at M-FINAL → 19 total at ship.
      HANDOFF → operator-decide (3 Qs) → architect. -->
+<!-- updated 2026-05-18 (orchestrator, backtest-real-binance-data ship) —
+     `backtest-real-binance-data v0.1.0` operator-approved (commit `664bb59`).
+     Moved Active → Recent. Real Binance hourly parquet now flows through the
+     backtest harness via a new opt-in `realdata` cargo feature; 4 new anchors
+     locked under `v2.6.0-realdata` → 19/19 verify_anchors. 15 originals stay
+     byte-identical. Open finding the operator approved with: TCN real-weights
+     produces `dampened=0` on real OHLCV too (not just synthetic), so the M3
+     alpha-evaluation gap is now diagnosable but unresolved. New
+     `v25-tcn-alpha-investigation` queued under Strategy as the next pre-v2.6
+     prerequisite (4 investigation buckets: ε/confidence tuning, horizon
+     mismatch, training-pathology hypothesis, Sharpe-table author). -->
 <!-- updated 2026-05-18 (orchestrator, m3-finish-pass) — TCN M3 shipped
      T-D-11/T-D-12: two LFS checkpoints, two `-weights` scenarios, two
      new anchors under version `v2.5.0-tcn-weights`, 15/15 verify_anchors.
@@ -164,33 +175,10 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **Real-Binance-data backtest path (`backtest-real-binance-data`).** _draft —
-  promoted from Queue 2026-05-18 after M3 approval; analyst pass landed
-  same day_. Brief at
-  [`backtest-real-binance-data/feature.md`](backtest-real-binance-data/feature.md)
-  carries R1-R10 closing Q1-Q8 with strong analyst defaults; tasks
-  skeleton at
-  [`backtest-real-binance-data/tasks.md`](backtest-real-binance-data/tasks.md)
-  is M0 → M-FINAL with `T-D-N` decomposition deferred to architect
-  (T-AR-2). **Three operator-decide questions surfaced** before architect
-  can spawn: Q1 (parallel `-realdata` scenario family vs. in-place
-  replacement — analyst default: parallel; in-place would re-anchor 6
-  v1/v2.5 anchors), Q4 (universe snapshot strategy — analyst default:
-  pin to the 10 USDT pairs currently on disk), Q8 (wire-only scope vs.
-  combined alpha-verdict ship — analyst default: wire-only, deferring
-  Sharpe table to a v25-tcn-overlay tester re-spawn). Architect-lockable
-  defaults (no operator input needed): R2 anchor-version `v2.6.0-realdata`,
-  R3 0.5%-missing-bars hard-fail, R5 full-year × 10-symbol bar counts
-  (87 600 / 87 840), R6 1h direct read (no aggregation), R7
-  `data/binance/REVISION.toml` SHA pinning. Non-regression contract:
-  **15 existing anchors stay byte-identical, 4 new `-realdata` anchors
-  lock at M-FINAL → 19 total at ship**. Trace row
-  `REQ-BACKTEST-REALDATA-001` opened in proposed state. **HANDOFF →
-  operator-decide (3 Qs) → architect.**
-
-- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress (CI-baseline
-  + M3 real-weights gates approved 2026-05-18; awaiting
-  `backtest-real-binance-data` before alpha eval)_ — phase 1 of the
+- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress
+  (CI-baseline + M3 real-weights gates approved 2026-05-18; real-data
+  wired but TCN dampened=0 on real OHLCV — alpha-verdict re-spawn
+  queued below)_ — phase 1 of the
   [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
   (operator-locked 2026-05-17 after reading the
   [v25-dl-reading-list](dev-notes/v25-dl-reading-list-2026-05-16.md)
@@ -217,10 +205,31 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Strategy
 
-- **Real-Binance-data backtest path (`backtest-real-binance-data`).**
-  _ACTIVE — promoted 2026-05-18 after M3 approval_. Now lives in the
-  Active section above. Stub retained here as the audit trail of the
-  trigger event.
+- **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
+  _proposed_ — queued 2026-05-18 by the
+  [`backtest-real-binance-data` ship](backtest-real-binance-data/feature.md).
+  M3 + the real-data backtest path both show TCN `r_hat` inside the
+  ε=0.0005 deadband on REAL Binance OHLCV → `dampened=0` everywhere
+  → real-weights output byte-identical to passthrough. The wire is
+  in; the model isn't producing usable signal at the current envelope.
+  Investigation buckets (analyst-owned at promotion):
+  (a) **ε / confidence-threshold tuning** — are the deadband (0.0005)
+      and gating-confidence (0.6) just too tight? Hist of `r_hat` and
+      `|r_hat|/sigma_train` across the 87 590 BS-1 bars should answer.
+  (b) **horizon mismatch** — TCN trained at next-1h log-return; v1
+      momentum operates on 20-bar lookback. Multi-step / multi-horizon
+      heads may be needed.
+  (c) **training pathology** — final val Huber = 1.5e-5 is suspiciously
+      tiny on real OHLCV; could be "predict ≈zero" collapse. Inspect
+      checkpoint outputs on held-out bars.
+  (d) **Sharpe / drawdown table** — even with current dampened=0,
+      author the v1-baseline-vs-TCN comparison report against the new
+      real-data anchors so the M3 deck's "alpha follow-on" deliverable
+      exists on disk.
+  Each bucket could be its own feature; analyst picks scope at promotion.
+  Predecessor: [`backtest-real-binance-data`](backtest-real-binance-data/feature.md)
+  v0.1.0. Blocks: v2.6 forecast bake-off (can't compare three model
+  families on data where all three may report dampened=0).
 
 - **v2.5a — PatchTST / iTransformer forecast overlay
   (`v25a-patchtst-overlay`).** _roadmap_ — phase 2 of the
@@ -704,6 +713,21 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **Real-Binance-data backtest path (`backtest-real-binance-data` v0.1.0)** —
+  shipped 2026-05-18 (operator-approved via presenter deck
+  [`presentations/backtest-real-binance-data-2026-05-18.md`](backtest-real-binance-data/presentations/backtest-real-binance-data-2026-05-18.md)).
+  Predecessor: [`v25-tcn-overlay`](v25-tcn-overlay/feature.md) v2.5.0 M3.
+  Wires the backtest harness to read real Binance hourly parquet from
+  `data/binance/` via a new `realdata` cargo feature (opt-in; default
+  build never compiles the new module). New `data::revision` module
+  emits + verifies a `REVISION.toml` per-file SHA-256 manifest. Four
+  new `-realdata` scenarios, four new anchors under version
+  `v2.6.0-realdata` (`top10-{2023,2024}-fy-tcn-overlay[-weights]-realdata`).
+  19/19 anchors total; 15 originals byte-identical. **Open finding:**
+  TCN real-weights produces `dampened=0` on real Binance OHLCV too —
+  not a regression but unblocks the next investigation (`v25-tcn-alpha-investigation`,
+  queued above). See [`spec/backtest-real-binance-data/feature.md`](backtest-real-binance-data/feature.md).
 
 - **UI rethink Phase A — chart-centric Lab (`ui-rethink-phase-a-lab` v0.2.0)** —
   shipped 2026-05-18 (operator-approved via presenter deck

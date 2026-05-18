@@ -805,6 +805,14 @@ _tester fills this — the gate is:_
 
 ## Changelog
 
+- 2026-05-18 (operator): **SHIPPED v0.1.0.** Approved via presenter deck
+  `presentations/backtest-real-binance-data-2026-05-18.md` (commit `664bb59`).
+  Wire-only scope held: real Binance hourly parquet flows through the
+  backtest harness; 4 new anchors locked under `v2.6.0-realdata`; 15 originals
+  byte-identical. Headline acknowledged finding: TCN real-weights produces
+  `dampened=0` on real Binance OHLCV too, not just synthetic — diagnosable but
+  unresolved. Queued the alpha-verdict v25-tcn-overlay re-spawn as the next
+  follow-on (see backlog ## Queue / Strategy).
 - 2026-05-18 (architect): **Design section landed.** Locks four
   orthogonal decisions captured in
   [ADR-0032](../architecture/adr/0032-backtest-realdata-path-and-revision-pin.md):
