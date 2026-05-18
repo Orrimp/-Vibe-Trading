@@ -4,6 +4,32 @@ status: living
 owner: orchestrator
 updated: 2026-05-18
 ---
+<!-- updated 2026-05-18 (analyst, v25-tcn-alpha-investigation) — analyst
+     pass landed for the just-promoted `v25-tcn-alpha-investigation`
+     feature. Brief at `spec/v25-tcn-alpha-investigation/feature.md`
+     (status: draft, owner: analyst, predecessor:
+     `backtest-real-binance-data v0.1.0`, parent: `v25-tcn-overlay
+     v2.5.0 (in-progress)`). Read-only investigation: forensic look at
+     why the BS-1 / BS-2 TCN checkpoints emit `r_hat` inside the
+     ε=0.0005 deadband on REAL Binance OHLCV (not just synthetic GBM),
+     producing `dampened=0` across all four v2.6.0-realdata anchor
+     scenarios. R1-R6 lock the deterministic-analysis bits: histogram
+     report family (R1) at `forecast-distribution-bs{1,2}-realdata`,
+     ≤3 new anchors under version `v2.6.0-alpha-investigation` (R2),
+     a new read-only `forecast_distribution` bin under
+     `crates/forecast/src/bin/` (R3, architect may relocate),
+     deterministic F1/F2/F3/F4 failure-mode taxonomy (R4) that maps
+     each verdict to a named follow-on feature, R5 Sharpe-comparison
+     table over the four `-realdata` anchors (closes bucket (d) of
+     the original 4-bucket framing), R6 anchor-neutrality contract
+     (19 originals stay byte-identical → 21 or 22 at ship). ONE
+     operator-decide Q: scope (minimal / diagnostic / full).
+     **Analyst-recommended: MINIMAL** (buckets (a) + (d) only, no
+     re-training, no checkpoint-internal inspection). Reason: bucket
+     (a)'s histogram cheaply distinguishes whether (b) or (c) are
+     even worth funding before paying for them. Promoted Queue
+     /Strategy → Active. Trace row `REQ-V25-TCN-ALPHA-001` opened
+     in proposed state. HANDOFF → operator-decide (1 Q) → architect. -->
 <!-- updated 2026-05-18 (analyst, backtest-real-binance-data) — analyst
      pass landed for the just-promoted `backtest-real-binance-data`
      feature (Active row above). Brief at
@@ -175,10 +201,36 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+- **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
+  _draft (analyst-recommended scope: MINIMAL; awaiting operator
+  scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
+  by analyst. Read-only, forensic investigation into the persistent
+  `dampened=0` finding from
+  [`backtest-real-binance-data v0.1.0`](backtest-real-binance-data/feature.md)
+  (commit `df73780`, four `-realdata` anchors locked under
+  `v2.6.0-realdata`, all reporting `dampened=0` on real Binance
+  hourly OHLCV — same as M3 reported on synthetic data, but now on
+  the training distribution itself which falsifies the M3 hypothesis).
+  Predecessor: `backtest-real-binance-data v0.1.0`. Parent (stays
+  `in-progress`): `v25-tcn-overlay v2.5.0`.
+  Brief at [`feature.md`](v25-tcn-alpha-investigation/feature.md)
+  carries R1-R6 + a four-case failure-mode taxonomy F1-F4 (R4) that
+  routes the verdict to a named follow-on feature. ONE
+  operator-decide Q: scope —
+  **minimal** (a + d: histogram + Sharpe-table, no re-training,
+  analyst-recommended); **diagnostic** (a + c + d: adds
+  checkpoint-internal inspection); or **full**
+  (a + b + c + d: adds horizon-bumped re-train, ~2-3 weeks).
+  Default if no answer: minimal. R6 non-regression contract: 19
+  originals byte-identical; ≤3 new anchors at ship under version
+  `v2.6.0-alpha-investigation`. Trace row
+  `REQ-V25-TCN-ALPHA-001` opened proposed.
+  HANDOFF → operator-decide (1 Q) → architect.
+
 - **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress
   (CI-baseline + M3 real-weights gates approved 2026-05-18; real-data
-  wired but TCN dampened=0 on real OHLCV — alpha-verdict re-spawn
-  queued below)_ — phase 1 of the
+  wired but TCN dampened=0 on real OHLCV — alpha-verdict investigation
+  promoted to Active above)_ — phase 1 of the
   [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
   (operator-locked 2026-05-17 after reading the
   [v25-dl-reading-list](dev-notes/v25-dl-reading-list-2026-05-16.md)
@@ -206,30 +258,34 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ### Strategy
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
-  _proposed_ — queued 2026-05-18 by the
-  [`backtest-real-binance-data` ship](backtest-real-binance-data/feature.md).
-  M3 + the real-data backtest path both show TCN `r_hat` inside the
-  ε=0.0005 deadband on REAL Binance OHLCV → `dampened=0` everywhere
-  → real-weights output byte-identical to passthrough. The wire is
-  in; the model isn't producing usable signal at the current envelope.
-  Investigation buckets (analyst-owned at promotion):
+  _moved Queue → Active 2026-05-18 (analyst pass)_ — see
+  [Active section](#active) for the live tracking row and
+  [`feature.md`](v25-tcn-alpha-investigation/feature.md) for the full
+  brief. The original 4-bucket framing is preserved here as a pivot
+  reference in case the analyst-recommended **minimal** scope (buckets
+  a + d) needs to be widened post-verdict:
   (a) **ε / confidence-threshold tuning** — are the deadband (0.0005)
-      and gating-confidence (0.6) just too tight? Hist of `r_hat` and
-      `|r_hat|/sigma_train` across the 87 590 BS-1 bars should answer.
+      and gating-confidence (0.6) too tight? Histograms of `r_hat`
+      and `|r_hat|/sigma_train` across 87 590 BS-1 + 87 840 BS-2 bars
+      answer this — covered by **R1 / R3** of the brief (MINIMAL scope).
   (b) **horizon mismatch** — TCN trained at next-1h log-return; v1
       momentum operates on 20-bar lookback. Multi-step / multi-horizon
-      heads may be needed.
+      heads may be needed — covered only under **FULL** scope (M-HORIZON
+      milestone); follow-on feature `v25-tcn-horizon-bump` if R4 returns
+      verdict F4 under minimal scope.
   (c) **training pathology** — final val Huber = 1.5e-5 is suspiciously
-      tiny on real OHLCV; could be "predict ≈zero" collapse. Inspect
-      checkpoint outputs on held-out bars.
-  (d) **Sharpe / drawdown table** — even with current dampened=0,
-      author the v1-baseline-vs-TCN comparison report against the new
-      real-data anchors so the M3 deck's "alpha follow-on" deliverable
-      exists on disk.
-  Each bucket could be its own feature; analyst picks scope at promotion.
+      tiny on real OHLCV; could be "predict ≈zero" collapse. Held-out
+      checkpoint inspection — covered only under **DIAGNOSTIC** scope
+      (M-DIAG milestone); follow-on feature `v25-tcn-retrain` if R4
+      returns verdict F1 under minimal scope.
+  (d) **Sharpe / drawdown table** — TCN vs v1-baseline on the four
+      `v2.6.0-realdata` anchors — covered by **R5 / M-SHARPE**
+      milestone (MINIMAL scope).
   Predecessor: [`backtest-real-binance-data`](backtest-real-binance-data/feature.md)
-  v0.1.0. Blocks: v2.6 forecast bake-off (can't compare three model
-  families on data where all three may report dampened=0).
+  v0.1.0. Blocks: v2.6 forecast bake-off (need a verdict on whether
+  TCN's `dampened=0` reflects an envelope-tuning issue, a training
+  pathology, or genuine no-signal; bake-off can't compare three
+  model families on data where any may report dampened=0).
 
 - **v2.5a — PatchTST / iTransformer forecast overlay
   (`v25a-patchtst-overlay`).** _roadmap_ — phase 2 of the

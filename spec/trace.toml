@@ -161,6 +161,23 @@ anchors     = [
 state       = "shipped"
 
 [[req]]
+id          = "REQ-V25-TCN-ALPHA-001"
+title       = "v2.5 TCN alpha-verdict investigation (read-only): forecast-distribution histogram + Sharpe-comparison table on real Binance OHLCV"
+feature     = "v25-tcn-alpha-investigation"
+product     = "spec/product.md"
+arch        = [
+  "spec/v25-tcn-alpha-investigation/feature.md",
+  "spec/v25-tcn-overlay/feature.md#r6--output--forecastoverlay-closes-q6",
+  "spec/v25-tcn-overlay/feature.md#d5--tcn_overlay_momentum-strategy-thresholds",
+  "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",
+  "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",
+]
+crates      = []  # architect fills (likely crates/forecast for the read-only inspector bin)
+tests       = []  # architect/developer fill at M-FINAL
+anchors     = []  # tester fills after M-FINAL — expected: forecast-distribution-bs1-realdata, forecast-distribution-bs2-realdata, optionally sharpe-comparison-realdata (under v2.6.0-alpha-investigation)
+state       = "proposed"
+
+[[req]]
 id          = "REQ-V25A-PATCHTST-001"
 title       = "v2.5a PatchTST / iTransformer forecast overlay — phase 2 of 4"
 feature     = "v25a-patchtst-overlay"
