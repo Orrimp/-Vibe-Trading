@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-alpha-investigation
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-18
 ---
 
@@ -22,13 +22,15 @@ updated: 2026-05-18
 
 ## Milestones
 
-- [ ] **M0 — Scope-decision gate.** Operator answers Q1 in
-      [`feature.md`](feature.md#operator-decide-questions-must-answer-before-architect-lock).
-      Architect locks the milestone list and emits `T-AR-N` task
-      decomposition into this file. _Acceptance: scope value
-      (minimal/diagnostic/full) recorded in feature.md changelog; the
-      remaining milestones list below is annotated with the active
-      / skipped tag per the chosen scope._
+- [x] **M0 — Scope-decision gate** (2026-05-18) — Operator answered Q1:
+      **MINIMAL SCOPE** (analyst-recommended default). Active buckets:
+      (a) M-R-HAT forecast-distribution inspector + (d) M-SHARPE comparison
+      table. **Skipped buckets** (will move to separate follow-on features
+      if M-R-HAT's R4 verdict demands): M-DIAG (bucket c, checkpoint
+      internals) and M-HORIZON (bucket b, multi-horizon retraining).
+      Anchor count grows 19 → 21 (R1 histogram) or 22 (R1 + R5 Sharpe table).
+      Audit trail: orchestrator AskUserQuestion 2026-05-18 confirmed
+      analyst default. HANDOFF → architect.
 
 - [ ] **M-R-HAT — Forecast-distribution inspector (bucket a).**
       Architect designs + developer ships the read-only forward-pass

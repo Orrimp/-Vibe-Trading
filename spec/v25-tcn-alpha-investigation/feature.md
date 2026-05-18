@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-alpha-investigation
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-18
 version: 0.1.0
 predecessor: backtest-real-binance-data v0.1.0
@@ -240,6 +240,12 @@ is **read-only** — we are looking at the model, not changing it.
 
 ### Operator-decide questions (must answer before architect lock)
 
+**STATUS: RESOLVED 2026-05-18 — operator picked MINIMAL scope** (analyst-
+recommended default). Active milestones: M-R-HAT (bucket a) + M-SHARPE
+(bucket d). Skipped milestones (move to follow-on features if R4's verdict
+demands): M-DIAG (bucket c) + M-HORIZON (bucket b). See Changelog below.
+Architect is unblocked.
+
 **Q1 — Scope of THIS feature (the only operator question).** Three
 candidate scopes, listed from cheap to expensive:
 
@@ -405,6 +411,14 @@ Sharpe-table)._
 
 ## Changelog
 
+- 2026-05-18 (operator): **Scope-decide Q1 resolved: MINIMAL** (analyst-
+  recommended default). Active milestones: M-R-HAT (bucket a, r_hat
+  histogram + F1-F4 verdict) + M-SHARPE (bucket d, comparison table vs
+  v1 baseline). Skipped milestones (move to follow-on features if R4's
+  F-verdict demands): M-DIAG (bucket c, checkpoint internals) and
+  M-HORIZON (bucket b, multi-horizon retraining). Status flipped
+  `draft → in-progress`. Owner flipped `analyst → architect`. T-OP-1
+  ticked in tasks.md.
 - 2026-05-18 (analyst): full analyst pass at commit `c43ca56`. Brief
   authored with R1-R6 and four failure-mode taxonomy F1-F4 (R4).
   One operator-decide Q (scope: minimal / diagnostic / full) with
