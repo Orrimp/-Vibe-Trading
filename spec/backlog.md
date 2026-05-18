@@ -141,6 +141,19 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+- **Real-Binance-data backtest path (`backtest-real-binance-data`).** _draft —
+  promoted from Queue 2026-05-18 after M3 approval_. Wire the backtest
+  harness in [`crates/backtest/src/main.rs`](../crates/backtest/src/main.rs)
+  to read real Binance hourly parquet from `data/binance/` instead of the
+  current `ChaCha20Rng` synthetic GBM. Unblocks the M3 alpha gap
+  surfaced by [`v25-tcn-overlay`](v25-tcn-overlay/feature.md) and is a
+  prerequisite for the [v2.6 bake-off](v26-forecast-bakeoff/feature.md) —
+  three forecast families cannot be compared on synthetic GBM. Open
+  design questions (analyst-owned): replace synthetic in-place vs. add a
+  new `-realdata` scenario family; how to re-anchor existing TCN-weights
+  runs; how to handle missing data / time alignment. **HANDOFF →
+  analyst (next).**
+
 - **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress (CI-baseline
   + M3 real-weights gates approved 2026-05-18; awaiting
   `backtest-real-binance-data` before alpha eval)_ — phase 1 of the
@@ -171,25 +184,9 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ### Strategy
 
 - **Real-Binance-data backtest path (`backtest-real-binance-data`).**
-  _proposed_ — surfaced 2026-05-18 by `v25-tcn-overlay` M3 finish
-  (commit pending). The backtest harness in `crates/backtest/src/main.rs`
-  has always used `ChaCha20Rng` synthetic GBM bar generation; we did
-  not notice with passthrough scenarios (no model to evaluate) but
-  M3's real-weights `top10-{2023,2024}-fy-tcn-overlay-weights`
-  scenarios surfaced it — the trained TCN's `r_hat` falls within the
-  ε=0.0005 deadband on synthetic data, producing identical results
-  to passthrough (`dampened=0`). The forecast trains on real Binance
-  hourly parquet under `data/binance/` (per T-D-2 `windows_for_symbol()`),
-  but the backtest never replays that data. Scope when promoted:
-  wire `data/binance/` parquet → `BarStream` so the existing
-  `ScenarioStrategy` dispatch can run on real OHLCV; produce a new
-  family of `-realdata` scenarios (or replace synthetic in-place
-  depending on architect call); re-lock TCN-weights anchors against
-  the real-data behaviour. This is also a v2.6 bake-off prerequisite
-  — three forecast families can't be compared on synthetic GBM data.
-  Predecessor: `v25-tcn-overlay` M3 (2026-05-18). See M3 training
-  reports under `spec/v25-tcn-overlay/reports/m3-bs{1,2}-training-2026-05-18.md`
-  for the synthetic-vs-real distributional reasoning.
+  _ACTIVE — promoted 2026-05-18 after M3 approval_. Now lives in the
+  Active section above. Stub retained here as the audit trail of the
+  trigger event.
 
 - **v2.5a — PatchTST / iTransformer forecast overlay
   (`v25a-patchtst-overlay`).** _roadmap_ — phase 2 of the
