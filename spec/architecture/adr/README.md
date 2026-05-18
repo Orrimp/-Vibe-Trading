@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-18
+updated: 2026-05-18 (ADR-0033 added)
 ---
 
 
@@ -80,6 +80,7 @@ the canonical table; the parent file links here.)
 | 0030  | Cockpit calls the backtest engine in-process via tightened API | accepted | 2026-05-17 |
 | 0031  | `AuditTick<Event, Context>` consumer envelope for audit ledger read path | proposed | 2026-05-17 |
 | 0032  | Backtest real-Binance-data path + REVISION.toml data-revision pin | accepted | 2026-05-18 |
+| 0033  | v2.5 TCN alpha-investigation report shape + F-verdict algorithm | accepted | 2026-05-18 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -147,3 +148,20 @@ finalisation.
   hash). Existing 15 anchors stay byte-identical (K6 + K10).
   Closes T-AR-1, T-AR-3 of
   `spec/backtest-real-binance-data/tasks.md`.
+- 2026-05-18 (architect): ADR-0033 added — v2.5 TCN alpha-investigation
+  report shape + F-verdict algorithm. Locks (a) read-path placement
+  (new bin `crates/forecast/src/bin/forecast_distribution.rs`, NOT
+  extension of `crates/backtest`'s TCN dispatch — preserves anchor
+  neutrality against the 4 byte-locked `-realdata` anchors and
+  generalises to v2.5a/v2.5b alpha-investigations), (b) report
+  frontmatter-vs-body discipline + floating-point canonicalisation
+  (`%.6f` / `%.9f` / `(x * 1e6) as i64` for bin edges) following the
+  ADR-0032 § D4 precedent, (c) F-verdict decision algorithm
+  (deterministic F1/F2/F3/F4 classifier over (abs_p95, std,
+  sigma_train, frac_inside_epsilon, confidence_gate_survival) with
+  F-MIXED escape hatch for BS-1 vs. BS-2 disagreement), (d) Sharpe /
+  Sortino / Calmar formulas (sqrt(24·365) hourly annualisation; new
+  helpers in the M-SHARPE bin, NOT reuse of `compute_sharpe` which is
+  minute-annualised). Existing 19 anchors stay byte-identical
+  (R6 non-regression contract). Closes T-AR-3 of
+  `spec/v25-tcn-alpha-investigation/tasks.md`.

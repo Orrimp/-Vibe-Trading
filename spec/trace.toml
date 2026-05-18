@@ -166,16 +166,30 @@ title       = "v2.5 TCN alpha-verdict investigation (read-only): forecast-distri
 feature     = "v25-tcn-alpha-investigation"
 product     = "spec/product.md"
 arch        = [
-  "spec/v25-tcn-alpha-investigation/feature.md",
+  "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md",
+  "spec/v25-tcn-alpha-investigation/feature.md#design",
+  "spec/v25-tcn-alpha-investigation/tasks.md#parallelism-map-for-the-orchestrator",
   "spec/v25-tcn-overlay/feature.md#r6--output--forecastoverlay-closes-q6",
   "spec/v25-tcn-overlay/feature.md#d5--tcn_overlay_momentum-strategy-thresholds",
   "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",
 ]
-crates      = []  # architect fills (likely crates/forecast for the read-only inspector bin)
-tests       = []  # architect/developer fill at M-FINAL
-anchors     = []  # tester fills after M-FINAL — expected: forecast-distribution-bs1-realdata, forecast-distribution-bs2-realdata, optionally sharpe-comparison-realdata (under v2.6.0-alpha-investigation)
-state       = "proposed"
+crates      = [
+  "crates/forecast",  # new bins: src/bin/forecast_distribution.rs, src/bin/sharpe_comparison.rs
+  "crates/backtest",  # additive `--emit-equity-bin` CLI flag (T-D-8); anchor bytes unchanged
+]
+tests       = [
+  "crates/forecast/tests/forecast_distribution_verdict.rs",       # T-D-4 (5 tests: F1/F2/F3/F4 fixtures + mutual-exclusivity property)
+  "crates/forecast/tests/forecast_distribution_bin_readonly.rs",  # T-D-5 (2 tests: no writes outside --out-dir; help surface lacks retrain flags)
+  "crates/forecast/tests/sharpe_comparison_determinism.rs",       # T-D-10 (1 test: render byte-identity on 2-run)
+  "crates/backtest/tests/backtest_sharpe_emit_equity_bin.rs",     # T-D-8 (anchor neutrality + bincode roundtrip for --emit-equity-bin)
+]
+anchors     = [
+  "forecast-distribution-bs1-realdata",   # mandatory (M-R-HAT close, T-T-1)
+  "forecast-distribution-bs2-realdata",   # mandatory (M-R-HAT close, T-T-1)
+  "sharpe-comparison-realdata",           # gated on determinism (T-D-10 / T-T-1)
+]
+state       = "in-progress"
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"

@@ -3,7 +3,7 @@ slug: v25-tcn-alpha-investigation
 status: in-progress
 owner: architect
 updated: 2026-05-18
-version: 0.1.0
+version: 0.2.0
 predecessor: backtest-real-binance-data v0.1.0
 parent: v25-tcn-overlay v2.5.0 (in-progress)
 ---
@@ -305,6 +305,195 @@ a standalone bin, the architect may instead extend
 side-effect path. That is an architect call at design time, not an
 analyst call.
 
+## Design
+
+> Architect-locked 2026-05-18. Full rationale + alternatives lives in
+> [ADR-0033](../architecture/adr/0033-tcn-alpha-investigation-report-shape.md).
+> The block below restates the four load-bearing choices for the
+> developer; cite ADR-0033 from `tasks.md` rows rather than re-deriving.
+
+### D1 — Read-path: standalone bin under `crates/forecast/src/bin/`
+
+Two read-only bins land in `crates/forecast/src/bin/`, mirroring the
+`train_tcn.rs` shape (clap-driven, single-purpose):
+
+- `forecast_distribution.rs` — R3 / M-R-HAT inspector. CLI:
+  `--scenario {bs1|bs2}` `--data-root data/binance/`
+  `--out-dir spec/v25-tcn-alpha-investigation/reports/`
+  `--span-start/--span-end` (default auto-derived from `--scenario`:
+  BS-1 → 2023 FY, BS-2 → 2024 FY).
+- `sharpe_comparison.rs` — R5 / M-SHARPE author. CLI:
+  `--out-dir spec/v25-tcn-alpha-investigation/reports/`
+  `--backtest-bin target/release/backtest` `--skip-rerun`.
+
+Architect chose **(A) new bin** over **(B) extend `crates/backtest`
+with `--emit-r-hat-histogram`** per ADR-0033 § D1. The decision is
+load-bearing for the R6 anchor-neutrality contract (touching
+`crates/backtest/src/main.rs` risks moving the 4 byte-locked
+`-realdata` anchors); for v2.5a/v2.5b generalisation (the bin shape
+extends to PatchTST + Transformer with one `AnchorScenario` rename);
+and for mockability (the bin's 4-arg surface is fixturable).
+
+Forward-pass call site: `TcnModel::forward()` directly — NOT
+`TcnForecaster::forecast()`, which runs quantisation + cache I/O.
+The raw scalar `r_hat` is what we're investigating; quantising loses
+the signal.
+
+Read-only enforcement: the bin writes only under `--out-dir`. A
+dedicated test (`tests/forecast_distribution_bin_readonly.rs`)
+asserts no `std::fs::write`, `OpenOptions::write(true)`, or
+analogous syscall lands outside the configured out-dir during a
+fixture run. K5 (retraining scope creep) is gated by the CLI surface:
+no `--retrain`, `--update-sigma`, or `--write-checkpoint` flag exists.
+
+### D2 — Report shape + canonicalisation
+
+Both report families follow the ADR-0032 § D4 precedent exactly:
+run-varying fields go in YAML frontmatter (excluded from
+`scripts/hash_report.py`'s body hash); deterministic content goes in
+the body (hashed by the anchor).
+
+**M-R-HAT bodies** (`forecast-distribution-bs{1,2}-realdata-YYYYMMDD.md`):
+
+- `## Checkpoint` — anchor scenario, model_revision, sigma_train, ε, τ.
+- `## Evaluation span` — source, revision SHA, span, symbols (10),
+  inference count.
+- `## Summary statistics — r_hat (raw, pre-direction-quantisation)`
+  — count, mean, std, min, p01/p05/p10/p25/p50/p75/p90/p95/p99, max;
+  abs_p50/abs_p95/abs_p99; gate-survival fractions
+  (`|r_hat| ≤ ε`, `|r_hat|/σ_train ≥ τ`).
+- `## Histogram — r_hat over [-3σ_train, +3σ_train]` — 100 fixed bins,
+  half-open `[low, high)`, ASCII table with bin_idx / bin_low / bin_high
+  (microreturn integers, see canonicalisation below) / count.
+- `## Confidence-gate survival — |r_hat|/σ_train per candidate τ` —
+  9-row table for τ ∈ {0.1, 0.2, …, 0.9}.
+- `## Verdict` — F-label, evidence string (citing the percentiles
+  this case triggered on), recommended follow-on feature name.
+- `## Notes` — ε / τ source citations, read-only assertion, format
+  canonicalisation pointer.
+
+**M-SHARPE body** (`sharpe-comparison-realdata-YYYYMMDD.md`):
+
+- `## Methodology` — annualisation factor √(24·365) = 92.601295,
+  zero risk-free, Sharpe / Sortino / Calmar / max-drawdown formulas
+  spelled out.
+- `## Comparison table` — 4 rows × {scenario, variant, bars, final
+  equity, total return, max drawdown, trades, dampen rate, Sharpe,
+  Sortino, Calmar}.
+- `## Verdict` — honest reading of `dampen rate = 0%` if that holds;
+  Sharpe delta between passthrough vs real-weights; follow-on
+  recommendation gated by M-R-HAT's F-verdict.
+- `## Notes` — read-only assertion, source paths.
+
+**Canonicalisation rules** (locked here to forestall K4 drift):
+
+| Field family             | Format                                        |
+|--------------------------|-----------------------------------------------|
+| ε, τ, σ_train, gates     | `format!("{:.6}", x)` (6 decimals)            |
+| Percentiles, abs_pNN, std, mean, min, max | `format!("{:.9}", x)` (9 decimals) |
+| Histogram bin edges      | `format!("{}", (x * 1e6) as i64)` (microreturns) |
+| Histogram bin counts     | `format!("{}", x)` (integer)                  |
+| Sharpe / Sortino / Calmar| `format!("{:.6}", x)` (6 decimals)            |
+| Returns, drawdown, dampen rate | `format!("{:.2}%", x * 100.0)` (2 decimals) |
+
+Percentile algorithm: **type-7 quantile** (linear interpolation between
+the two nearest order-stats). Sort by `f32::total_cmp`. ASCII-only,
+LF-only line endings.
+
+**Frontmatter fields (advisory, NOT hashed):** `generated`,
+`wall_clock_s`, `host`, `git_commit`, `model_revision` (also in body),
+`sigma_train` (also in body), `data_revision_sha` (also in body),
+`verdict` (also in body — frontmatter is a forensic mirror).
+
+### D3 — F-verdict decision algorithm (per checkpoint + joint)
+
+R4's verbal table becomes a deterministic priority-ordered classifier
+(see ADR-0033 § D3 for the full code-level spec):
+
+```text
+classify(stats) :=
+    if abs_p95 < 1e-6                                          → F1 (training collapse)
+    elif std > 0.1 * sigma_train AND
+         frac_passes_confidence_gate < 1e-6                    → F2 (sigma_train mis-calibration)
+    elif confidence_gate_survival[τ=0.6] >= 1e-4 AND
+         frac_inside_epsilon > 0.5                             → F3 (gating too tight)
+    else                                                       → F4 (no signal at 1h)
+```
+
+`F1 → v25-tcn-retrain`. `F2 → v25-tcn-recalibrate`.
+`F3 → v25-tcn-threshold-tuning`. `F4 → v25-tcn-horizon-bump-or-retire`
+(operator-decide).
+
+**Mutual exclusivity** — gates evaluate in priority order, first match
+wins. Test: `tests/forecast_distribution_verdict.rs` fixture grid
+asserts exactly one verdict per random `CheckpointStats`.
+
+**Joint (BS-1 + BS-2) verdict** — if both agree, the joint label is
+their shared label. If they disagree, the joint label is `F-MIXED` and
+the follow-on is "analyst triage." Joint disposition lives in
+`feature.md § Verification` at M-FINAL (one verdict per checkpoint
+report, joint label aggregated by the tester / orchestrator at the
+ship gate).
+
+K1 mitigation: every F-label cites a named follow-on feature in the
+`## Verdict` table — the operator gets a routing instruction, never a
+"no actionable next step" hand-off.
+
+### D4 — Sharpe / Sortino / Calmar formulas (M-SHARPE)
+
+Annualisation factor: **sqrt(24·365) = 92.601295** for hourly bars.
+
+> **Note**: the existing `crates/backtest::compute_sharpe()` annualises
+> by `sqrt(525_600)` (minute resolution) and IS NOT REUSED by this
+> feature. The M-SHARPE bin computes its own Sharpe / Sortino / Calmar
+> from the per-bar equity series. A dedicated `compute_sharpe_hourly`
+> helper module lives in `crates/forecast/src/bin/sharpe_comparison.rs`
+> (or a small shared module — developer call at T-D-7).
+
+Risk-free rate: `0.0` (constant, per analyst R5 default).
+
+Formulas:
+
+```text
+returns_t = (equity_{t+1} - equity_t) / equity_t            # per-bar arithmetic
+mean_r    = mean(returns_t)
+std_r     = sqrt(mean((returns_t - mean_r)^2))              # population stdev
+sharpe    = (mean_r - 0) / std_r * sqrt(24 * 365)
+downside  = sqrt(mean(min(returns_t - 0, 0)^2))             # downside half-stdev
+sortino   = (mean_r - 0) / downside * sqrt(24 * 365)
+cagr      = (final_equity / initial_equity)^(1 / years) - 1, years = bars / 8760
+max_dd    = max over t of (peak_equity_t - equity_t) / peak_equity_t
+calmar    = cagr / abs(max_dd)
+```
+
+Equity-series source: **re-run the four scenarios** under the
+M-SHARPE bin (Option α from ADR-0033 § D2.b.i), redirected to a
+tempdir so the four anchored `-realdata` reports are NOT touched.
+Wall-clock ~165s once at M-SHARPE close; the alternative (parsing
+final-equity scalars from anchored bodies) fails the analyst's
+"Sharpe annualised" contract.
+
+### D5 — Anchor scope + version
+
+New anchors land under `v2.6.0-alpha-investigation` (NOT the existing
+`v2.6.0-realdata`, per analyst R2):
+
+- `forecast-distribution-bs1-realdata` (mandatory; M-R-HAT close)
+- `forecast-distribution-bs2-realdata` (mandatory; M-R-HAT close)
+- `sharpe-comparison-realdata` (mandatory if body is byte-deterministic
+  on a 2-run check; otherwise ship un-anchored with a
+  `## Not anchorable` body section explaining the determinism gap)
+
+Anchor count progression:
+- Pre-feature: 19 (R6 contract).
+- Post M-R-HAT: 21.
+- Post M-SHARPE: 21 OR 22 (depending on Sharpe-report anchorability).
+
+The 19 existing anchors stay byte-identical throughout (R6); the
+inspector + comparison bins write only under
+`spec/v25-tcn-alpha-investigation/reports/` and to tempdirs (for the
+M-SHARPE re-run).
+
 ## Risk register
 
 | Risk | Mitigation |
@@ -411,6 +600,22 @@ Sharpe-table)._
 
 ## Changelog
 
+- 2026-05-18 (architect): § Design landed. Locks (D1) read-path =
+  new bin `crates/forecast/src/bin/forecast_distribution.rs` +
+  `sharpe_comparison.rs` (rejected: extend `crates/backtest` —
+  would couple strategy-eval to model-eval and risk moving the 4
+  byte-locked `-realdata` anchors); (D2) frontmatter-vs-body
+  discipline per ADR-0032 § D4 precedent + locked float-canonicalisation
+  (%.6f for σ/ε/τ/gates, %.9f for percentiles, microreturn-i64 for
+  bin edges); (D3) deterministic F-verdict classifier (priority-ordered
+  F1→F2→F3→F4 + F-MIXED escape hatch for BS-1/BS-2 disagreement)
+  with named follow-on feature per F-label (K1 mitigation);
+  (D4) sqrt(24·365) hourly annualisation, downside half-stdev Sortino,
+  CAGR/|max-DD| Calmar; (D5) anchors under `v2.6.0-alpha-investigation`,
+  19→21 (or 22) post-ship. ADR-0033 carries full rationale +
+  alternatives. T-AR-1 + T-AR-2 + T-AR-3 ticked in tasks.md. Status:
+  in-progress. Owner: architect → developer at handoff. Version
+  bumped 0.1.0 → 0.2.0.
 - 2026-05-18 (operator): **Scope-decide Q1 resolved: MINIMAL** (analyst-
   recommended default). Active milestones: M-R-HAT (bucket a, r_hat
   histogram + F1-F4 verdict) + M-SHARPE (bucket d, comparison table vs
