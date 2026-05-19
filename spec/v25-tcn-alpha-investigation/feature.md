@@ -675,6 +675,16 @@ horizon-bump retraining run — operator to decide which to prioritize.
   M-HORIZON (bucket b, multi-horizon retraining). Status flipped
   `draft → in-progress`. Owner flipped `analyst → architect`. T-OP-1
   ticked in tasks.md.
+- 2026-05-19 re-gate (tester at commit `5056739`): Second tester gate at commit `5056739`.
+  Fix 1 (`parse.rs` skip `presentations/` dirs) CONFIRMED FIXED: `all_anchored_reports_parse_ok` PASS.
+  Fix 2 (`determinism.rs` mutex + unique copy paths) PARTIALLY FIXED: 26/26 PASS under
+  `--features realdata,candle`, but the restructuring left `ensure_realdata_binary()` (line 882,
+  ungated) referencing `BACKTEST_BUILD_MU` (line 863, `#[cfg(feature = "realdata")]`). Under
+  default features (`cargo test --workspace`) the test file fails to compile with
+  `E0425: cannot find value BACKTEST_BUILD_MU in this scope`. This compile error did not
+  exist at `b8a29a8`. VERDICT → FAIL. HANDOFF → developer: add `#[cfg(feature = "realdata")]`
+  to `ensure_realdata_binary()`, `BACKTEST_COPY_COUNTER`, and `copy_to_unique()` (3-line fix).
+  Status remains `tester-blocked`. Owner remains `developer`.
 - 2026-05-19 (tester): T-T-1 complete at commit `b8a29a8`. Joint
   F-verdict: **F4** (both BS-1 and BS-2 agree; no F-MIXED). Evidence:
   the F-verdict algorithm classified F4 as the catch-all — neither

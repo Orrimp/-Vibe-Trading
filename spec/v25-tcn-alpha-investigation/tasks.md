@@ -495,9 +495,13 @@ updated: 2026-05-19
 ## T-T row — M-FINAL (tester-owned, 1 row)
 
 - [ ] **T-T-1** — Tester anchor lock + non-regression verification +
-  ship-gate report. _ANCHOR LOCK DONE (22/22). VERDICT FAIL — 2 pre-existing test
-  failures block PASS (see test report 2026-05-19-0900). Developer fixes needed
-  before tester re-runs gates 5+7._
+  ship-gate report. _ANCHOR LOCK DONE (22/22). VERDICT FAIL (re-gate 2026-05-19-1100) —
+  Fix 1 (parse.rs) CONFIRMED FIXED. Fix 2 (determinism.rs mutex) PARTIALLY FIXED:
+  26/26 PASS under --features realdata,candle, but introduced a NEW compile error under
+  default features (cargo test --workspace): `ensure_realdata_binary()` (line 882, ungated)
+  references `BACKTEST_BUILD_MU` (line 863, gated #[cfg(feature = "realdata")]) → E0425.
+  Developer must add `#[cfg(feature = "realdata")]` to ensure_realdata_binary(),
+  BACKTEST_COPY_COUNTER, and copy_to_unique() in determinism.rs._
   Owner: tester (blocked on developer fix). Milestone: M-FINAL. Depends on: T-D-5, T-D-10.
   Blocks: ship.
   _file:line_: `spec/anchors.toml` (3 new rows under
@@ -625,6 +629,15 @@ the body bytes differ.
 
 ## Changelog
 
+- 2026-05-19 (tester re-gate at 5056739): T-T-1 re-gated at commit 5056739.
+  Fix 1 (parse.rs skip presentations/) CONFIRMED FIXED: parse::tests::all_anchored_reports_parse_ok PASS.
+  Fix 2 (determinism.rs mutex + unique copy paths) PARTIALLY FIXED: 26/26 PASS under
+  --features realdata,candle, but introduces a new compile error under default features.
+  `ensure_realdata_binary()` (line 882, ungated) references `BACKTEST_BUILD_MU` (line 863,
+  #[cfg(feature = "realdata")]) → E0425 under `cargo test --workspace`. VERDICT → FAIL.
+  HANDOFF → developer: add #[cfg(feature = "realdata")] to ensure_realdata_binary(),
+  BACKTEST_COPY_COUNTER, and copy_to_unique() in crates/backtest/tests/determinism.rs.
+  3-line fix. Test report: spec/v25-tcn-alpha-investigation/reports/test-20260519-1100-v25-tcn-alpha-investigation.md
 - 2026-05-19 (tester): T-T-1 executed at commit b8a29a8. Anchor lock: 19→22 (22/22 PASS).
   All feature-specific tests PASS (fmt, clippy, 4 forecast tests, backtest_sharpe_emit_equity_bin,
   backtest --features realdata --test determinism 22/22). Two pre-existing failures found:

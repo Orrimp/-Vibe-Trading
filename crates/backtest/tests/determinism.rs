@@ -865,8 +865,10 @@ static BACKTEST_BUILD_MU: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// Monotonic counter so each `ensure_*_binary` call yields a unique
 /// `target/debug/backtest-realdata-<n>` (or `-candle-<n>`) path even when
 /// multiple tests of the same variant run in parallel.
+#[cfg(feature = "realdata")]
 static BACKTEST_COPY_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+#[cfg(feature = "realdata")]
 fn copy_to_unique(
     src: &std::path::Path,
     target_dir: &std::path::Path,
@@ -879,6 +881,7 @@ fn copy_to_unique(
     dst
 }
 
+#[cfg(feature = "realdata")]
 fn ensure_realdata_binary() -> std::path::PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let workspace_root = std::path::Path::new(manifest_dir)
