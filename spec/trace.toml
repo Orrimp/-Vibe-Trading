@@ -210,7 +210,7 @@ arch        = [
 crates      = ["crates/ui", "crates/audit", "crates/forecast", "crates/core"]
 tests       = []   # 18 cargo test invocations cited per-task in spec/cockpit-training-control/tasks.md (T-D-N1..N18); trace.toml tests field is file-path-shaped, not cargo-command-shaped
 anchors     = []  # ZERO new anchors by construction — see feature.md § R10.5 + ADR-0034 § Consequences (wall-clock + UUID inputs preclude byte-identity)
-state       = "in-progress"
+state       = "shipped"
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"

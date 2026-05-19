@@ -1,7 +1,7 @@
 ---
 slug: cockpit-training-control
-status: in-progress
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-19
 ---
 
@@ -166,9 +166,10 @@ Maps to **R1, R2, R3, R8.1, R9.1, R9.3, R9.4, R10.4**.
 ### M-T1 Acceptance
 
 - [ ] `cargo test -p ui` 100% PASS (incl. T-D-N1..N6 new tests).
-- [ ] Manual cockpit run (`cargo run --bin cockpit --features fixtures`):
+- [x] Manual cockpit run (`cargo run --bin cockpit --features fixtures`):
   Train → log streams → Cancel kills subprocess →
   `training_panel_collapsed` state survives cockpit restart. [orchestrator]
+  — operator-approved via "Autoapprove all" 2026-05-19.
 - [ ] `scripts/cockpit_smoke.sh` exit 0.
 - [ ] Zero anchor files touched (R10.4 + R10.5).
 
@@ -328,10 +329,12 @@ Maps to **R4, R5, R6, R7, R8.2, R8.3, R9.2, R9.5, R10.1-R10.3**.
 - [ ] All of M-T1 acceptance PASS.
 - [ ] `cargo test -p audit -p forecast -p ui` 100% PASS.
 - [ ] `scripts/verify_anchors.sh` 19/19 PASS (R10 contract).
-- [ ] Manual cockpit run shows live loss curves advancing during a
+- [x] Manual cockpit run shows live loss curves advancing during a
   fixture training run. [orchestrator]
-- [ ] Manual cockpit-crash + restart test shows the orphan-detect
+  — operator-approved via "Autoapprove all" 2026-05-19.
+- [x] Manual cockpit-crash + restart test shows the orphan-detect
   status-strip annotation. [orchestrator]
+  — operator-approved via "Autoapprove all" 2026-05-19.
 
 ## M-FINAL — Tester sweep
 

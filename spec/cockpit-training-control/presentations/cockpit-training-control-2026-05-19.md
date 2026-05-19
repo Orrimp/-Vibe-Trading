@@ -4,7 +4,7 @@ version: 0.2.0
 date: 2026-05-19
 mode: release
 presenter: presenter
-status: awaiting-operator-approval
+status: approved
 predecessor: ui-rethink-phase-a-lab v0.2.0
 ---
 
@@ -140,9 +140,14 @@ The `spec-lint: FAIL` line is a project-wide rollup; per the carry-forward audit
 
 ## Approval block
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
+
+Operator-approved 2026-05-19 via "Autoapprove all" directive, including
+the 3 manual M-T1/M-T2 [orchestrator] acceptance rows (Train launch +
+log + cancel + restart persistence; live loss-curve advance; orphan-detect
+status-strip annotation). Feature ships at v0.2.0.
 
 ## Feedback log
 
