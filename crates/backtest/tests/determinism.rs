@@ -851,6 +851,34 @@ fn m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged() {
 /// Build the backtest binary with `--features realdata` and return the binary
 /// path. Rebuilds if necessary but caches the binary between test runs.
 #[cfg(feature = "realdata")]
+/// Shared mutex over the `target/debug/backtest` filesystem path. Used by
+/// `ensure_realdata_binary` AND `ensure_realdata_candle_binary` to serialise
+/// the cargo-build sequence — without this, the two feature-variant builds
+/// race for the same output path under parallel test execution and one
+/// variant's binary leaks into the other variant's test invocation.
+///
+/// Each call additionally copies the freshly-built binary to a UNIQUE
+/// per-call path under `target/debug/` so that two tests of the same variant
+/// running in parallel cannot overwrite each other's binary mid-run.
+static BACKTEST_BUILD_MU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Monotonic counter so each `ensure_*_binary` call yields a unique
+/// `target/debug/backtest-realdata-<n>` (or `-candle-<n>`) path even when
+/// multiple tests of the same variant run in parallel.
+static BACKTEST_COPY_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn copy_to_unique(
+    src: &std::path::Path,
+    target_dir: &std::path::Path,
+    tag: &str,
+) -> std::path::PathBuf {
+    let n = BACKTEST_COPY_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let dst = target_dir.join(format!("backtest-{tag}-{n}"));
+    std::fs::copy(src, &dst)
+        .unwrap_or_else(|e| panic!("copy backtest -> backtest-{tag}-{n} failed: {e}"));
+    dst
+}
+
 fn ensure_realdata_binary() -> std::path::PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let workspace_root = std::path::Path::new(manifest_dir)
@@ -858,18 +886,30 @@ fn ensure_realdata_binary() -> std::path::PathBuf {
         .and_then(|p| p.parent())
         .expect("could not locate workspace root");
 
-    // Always rebuild so we pick up any changes.
-    let status = std::process::Command::new("cargo")
-        .args(["build", "--bin", "backtest", "--features", "realdata"])
-        .current_dir(workspace_root)
-        .status()
-        .expect("cargo build failed");
-    assert!(
-        status.success(),
-        "cargo build --bin backtest --features realdata failed"
-    );
+    let src = {
+        let _guard = BACKTEST_BUILD_MU.lock().unwrap_or_else(|p| p.into_inner());
 
-    workspace_root.join("target/debug/backtest")
+        // Always rebuild so we pick up any changes.
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--bin", "backtest", "--features", "realdata"])
+            .current_dir(workspace_root)
+            .status()
+            .expect("cargo build failed");
+        assert!(
+            status.success(),
+            "cargo build --bin backtest --features realdata failed"
+        );
+
+        // Copy to a unique per-call path BEFORE releasing the mutex so a
+        // concurrent rebuild (different feature set) cannot overwrite the
+        // source between our build and our copy.
+        copy_to_unique(
+            &workspace_root.join("target/debug/backtest"),
+            &workspace_root.join("target/debug"),
+            "realdata",
+        )
+    };
+    src
 }
 
 /// Run a realdata scenario once from the given `run_dir` working directory.
@@ -1030,23 +1070,31 @@ fn ensure_realdata_candle_binary() -> std::path::PathBuf {
         .and_then(|p| p.parent())
         .expect("workspace root");
 
-    let status = std::process::Command::new("cargo")
-        .args([
-            "build",
-            "--bin",
-            "backtest",
-            "--features",
-            "realdata,candle",
-        ])
-        .current_dir(workspace_root)
-        .status()
-        .expect("cargo build failed");
-    assert!(
-        status.success(),
-        "cargo build --bin backtest --features realdata,candle failed"
-    );
+    {
+        let _guard = BACKTEST_BUILD_MU.lock().unwrap_or_else(|p| p.into_inner());
 
-    workspace_root.join("target/debug/backtest")
+        let status = std::process::Command::new("cargo")
+            .args([
+                "build",
+                "--bin",
+                "backtest",
+                "--features",
+                "realdata,candle",
+            ])
+            .current_dir(workspace_root)
+            .status()
+            .expect("cargo build failed");
+        assert!(
+            status.success(),
+            "cargo build --bin backtest --features realdata,candle failed"
+        );
+
+        copy_to_unique(
+            &workspace_root.join("target/debug/backtest"),
+            &workspace_root.join("target/debug"),
+            "realdata-candle",
+        )
+    }
 }
 
 /// Check whether the TCN checkpoint files are present (LFS resolved).

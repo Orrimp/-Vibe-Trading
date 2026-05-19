@@ -3,7 +3,7 @@ slug: cockpit-training-control
 status: in-progress
 owner: architect
 updated: 2026-05-19
-version: 0.1.0
+version: 0.2.0
 predecessor: ui-rethink-phase-a-lab v0.2.0
 ---
 
@@ -660,7 +660,426 @@ for the determinism argument.
 
 ## Design
 
-_architect fills this_
+Architect synthesis, 2026-05-19. All operator decisions (Q1-Q4) confirmed
+ALL FOUR analyst defaults via orchestrator AskUserQuestion 2026-05-19.
+Cross-cutting decisions canonicalised in
+[ADR-0034](../architecture/adr/0034-cockpit-training-control.md).
+This section is the design surface bound to the developer's T-D-N
+decomposition in [tasks.md](tasks.md).
+
+### D1 — Audit-DB-as-seam (Q1 closes (a))
+
+Training events flow **`train_tcn` (writer subprocess) →
+`audit.sqlite training_events` table → cockpit subscription (reader)**.
+The seam is the audit DB; no IPC, no `agent::EventBus` extension. The
+audit DB IS the persistence layer for training history (per R8.2 —
+cockpit cold-start re-reads from disk via
+`query::latest_training_run`). See ADR-0034 § D1 for the full
+alternatives analysis (IPC, EventBus, audit-DB) and the rejection
+arguments. **Latent WAL-mode gap surfaced** in `Ledger::open`
+(`crates/audit/src/ledger.rs:20`): the `?mode=rwc` URL does not issue
+`PRAGMA journal_mode = WAL;`. Non-blocking for this feature because
+the training writer/reader cadence (≤ 1 INSERT / 5-30 min vs. 1 Hz
+indexed read) does not stress contention. Filed as a workspace-wide
+follow-up in `spec/backlog.md`.
+
+### D2 — `training_events` schema lock
+
+Migration `crates/audit/migrations/010_training_events.sql` ships with
+the analyst's R4.2 schema PLUS two refinements:
+
+1. **`scenario TEXT NOT NULL`** — `train_tcn` always knows its
+   scenario label (`"default"` if not overridden). Makes the value
+   type's field non-`Option<String>` and saves ~10 LOC of unwrap
+   handling.
+2. **NEW `pid INTEGER` column** — captured at `kind='start'` only.
+   Powers the orphan-detect query (D7) without external state.
+
+Primary key: `id TEXT PRIMARY KEY` (UUID v4) — matches every other
+audit table. Composite `(run_id, epoch)` was considered and rejected
+because `kind='start'` / `kind='failed'` rows have NULL epoch. See
+ADR-0034 § D2.
+
+### D3 — Module placement: `crates/ui/src/lab/trainer.rs` confirmed
+
+Confirmed the analyst R2.1 default verbatim. Sibling to
+`crates/ui/src/lab/runner.rs` (the `spawn_lab_run` host). The trainer
+reuses the cancellation-pair shape (`RunCancelHandle` /
+`RunCancelReceiver` from `runner.rs:71-104`) by import, NOT by copy.
+The spawn primitive differs: `tokio::process::Command` vs.
+`rt_handle.spawn(...)`. The cancellation semantic differs:
+`tokio::process::Child::kill()` (SIGKILL on Unix per Q2 = (a)) vs.
+cooperative `try_recv` at next bar boundary. Justifies sibling
+placement.
+
+Alternative rejected: new `crates/ui/src/training/` sibling-to-`lab/`.
+The operator's mental model has training as Lab work (per
+`ui-rethink-phase-a-lab` R1.2 "Lab is the cockpit-as-default workshop");
+sibling placement to `lab/` would split that. See ADR-0034 § D3.
+
+### D4 — `train_tcn --audit-db <PATH>` instrumentation contract
+
+**CLI signature.** New `--audit-db <PATH>` flag added at the **end of
+the existing arg list** in `crates/forecast/src/bin/train_tcn.rs::Cli`
+(after the existing `scenario: Option<String>` arg). Default omitted →
+preserves all existing CI / manual / scripted (`scripts/v25_tcn_bs1.sh`)
+behaviour byte-for-byte (R5.4 + R10.2).
+
+**Connection lifecycle:** short-lived, opened-per-run. `train_tcn`
+opens a fresh `Ledger` at the `start` emission edge (after config
+parsing, before training loop), holds it through all epoch emit edges,
+drops it at `finish` / `failed`. Per-emission reconnection rejected.
+Long-lived shared with the cockpit rejected (separate process, no
+shared handle).
+
+**Missing-file behaviour: hard-fail.** If `--audit-db <PATH>` points
+at a non-existent file, `train_tcn` exits non-zero with a clear error
+message before any training. The cockpit creates the file at its own
+boot via `Ledger::open` (existing behaviour). Auto-creating from
+`train_tcn` would silently swallow a typo'd path and produce an
+orphan DB the cockpit never sees.
+
+**WAL-mode requirement:** matches ADR-0024's documented intent.
+Verified non-blocking at this cadence; latent gap in `Ledger::open`
+recorded in D1 as a separate backlog item.
+
+**Fail-row survivability across panic / Err:** the `fn main() -> Result<()>`
+body is wrapped in `std::panic::catch_unwind` boundary. On either an
+`Err(_)` return OR a panic unwind, the boundary opens (if not already
+open) the Ledger and writes a `kind='failed'` row before re-raising.
+**SIGKILL is inherently unrecoverable** — no `kind='failed'` row is
+written on SIGKILL because user code never runs after the signal.
+The cockpit detects SIGKILL via its own `Child::wait()` ExitStatus
+(per R9.4) and renders "Failed: process killed (exit 137)" without
+needing a DB-side row.
+
+**Emit edges (R5.2 confirmed):** start / epoch / finish / failed. See
+ADR-0034 § D4 for the per-edge field-population table.
+
+**Audit-write runtime:** `train_tcn`'s `fn main()` is currently sync.
+The audit writers are `async fn`s. A per-run
+`tokio::runtime::Runtime::new()` is built at the `start` emission edge
+and used to `block_on` each audit write. Training-loop performance
+unaffected (the writes happen at edge points outside the inner loop).
+
+### D5 — `training_events` writers + readers + value types
+
+New writers (`crates/audit/src/journal.rs`):
+
+- `post_training_start(ledger, run_id, scenario, seed, pid)`
+- `post_training_epoch(ledger, run_id, epoch, total_epochs, train_loss, val_loss, wall_clock_ms, scenario, seed)`
+- `post_training_finish(ledger, run_id, epoch, total_epochs, final_train_loss, final_val_loss, total_wall_clock_ms, model_revision, scenario, seed)`
+- `post_training_failed(ledger, run_id, error_message, scenario, seed)`
+
+Each emits one INSERT, returns the generated UUID as `SmolStr`, and
+uses the same `#[instrument]` + `LedgerError` shape as
+`post_strategy_signal` (precedent in `journal.rs:266-300`). f32 values
+bound via `format!("{val}")` → TEXT column (Decimal-as-TEXT contract
+per ADR-0003).
+
+New readers (`crates/audit/src/query.rs`):
+
+- `recent_training_events(ledger, since, until) -> Vec<TrainingEventRow>`
+  — half-open `[since, until)` window; same RFC3339 binding shape as
+  `recent_signals` (`query.rs:470`).
+- `latest_training_run(ledger) -> Option<TrainingRunSummary>` —
+  convenience for the status strip.
+- `orphan_training_runs(ledger, fresh_window) -> Vec<OrphanTrainingRun>`
+  — the boot-time orphan-detect query (D7). Returns rows where
+  `kind='start'` exists, no `kind IN ('finish','failed')` matches the
+  same `run_id`, and the start `ts` is within `fresh_window`.
+
+The reader query for D7 ("list all in-flight training runs"):
+
+```sql
+SELECT s.run_id, s.ts, s.scenario, s.seed, s.pid
+FROM training_events s
+WHERE s.kind = 'start'
+  AND s.ts > ?fresh_window_lower_bound
+  AND NOT EXISTS (
+      SELECT 1 FROM training_events e
+      WHERE e.run_id = s.run_id
+        AND e.kind IN ('finish', 'failed')
+  )
+ORDER BY s.ts DESC;
+```
+
+The cockpit then layers a `pid_alive(pid)` check on each candidate
+to distinguish live orphan from dead orphan.
+
+Value types (`TrainingEventRow`, `TrainingRunSummary`,
+`OrphanTrainingRun`) land in `crates/core/src/lib.rs` next to
+`SignalView` / `FillView` / `StrategyEventView` per the
+public-types-in-core convention.
+
+### D6 — Cockpit subscription: 1 Hz `iced::Subscription` poller
+
+New `crates/ui/src/lab/training_subscription.rs`. The recipe wraps
+`iced::Subscription::run_with_id(("training_events", run_id), …)`,
+mirroring the identity-hashing pattern of `cockpit_live::subscription_for`.
+
+Internals:
+
+- **Polling cadence:** `tokio::time::interval(Duration::from_millis(1000))`
+  inside an `async_stream::stream!` block. Self-throttling; no
+  backpressure issues at 1 Hz.
+- **Last-seen-ts cursor:** `last_seen_ts: Timestamp` advances on each
+  non-empty fetch so subsequent polls only return new rows. Initial
+  value: `Timestamp::epoch()` (1970) so the first poll picks up any
+  rows already in the table — important for the orphan-detect re-arm
+  case where the cockpit reconnects to an existing `run_id`.
+- **Identity:** `(module_id, run_id)`. iced cancels the prior stream
+  when `run_id` changes — that gives R7.4's "subscription stops
+  automatically when `training_inflight = None`" for free.
+- **Shutdown:** when iced exits, the side-thread tokio runtime drops,
+  which drops the stream, which drops the `Ledger` handle's pool clone.
+  Clean reap. No explicit shutdown handshake needed.
+
+Event sequence into the Lab `TrainingState`:
+
+1. Operator clicks **Train** → `Message::TrainingPressed` →
+   `lab::trainer::spawn_training_run` → `TrainingHandle` stored in
+   `LabState::training_inflight` → subscription becomes live
+   (next view rebuild emits it via `Subscription::batch`).
+2. Each 1-Hz poll yields `Message::TrainingEventsRefreshed(Vec<TrainingEventRow>)`.
+3. `update()` appends rows to `LabState::training_events: VecDeque<TrainingEventRow>`
+   (bounded to last 1024 rows — well above any single-run row count;
+   the inner `VecDeque` is a memory-bound, NOT a window-filter).
+4. Status strip + training plot derive directly from
+   `LabState::training_events` (no separate cache).
+
+### D7 — Orphan-detect status-strip annotation (Q4 closes (a))
+
+Boot-time flow:
+
+1. Lab module init calls
+   `query::orphan_training_runs(&ledger, Duration::hours(24))`.
+2. For each returned `(run_id, ts, scenario, seed, pid)`:
+   - Call `pid_alive(pid) -> bool`. Unix:
+     `libc::kill(pid, 0)` returns `0` (alive) or `-1` with `errno =
+     ESRCH` (dead) / `EPERM` (alive but inaccessible — treat as
+     alive). Windows: `OpenProcess(SYNCHRONIZE, false, pid)` +
+     `GetExitCodeProcess` — same alive/dead semantic, gated via
+     `#[cfg(windows)]`.
+3. **Live orphan** (PID alive): cockpit chrome status strip renders
+   `"Orphan training run still writing: <scenario> (epoch N/M, pid <PID>) — click Train panel to tail"`.
+   Click-target: the existing **Train** header chip in the Lab
+   sub-panel (R1.2). Click expands the panel + spawns the
+   `training_events_subscription` against the orphan's `run_id`.
+4. **Dead orphan** (PID dead): cockpit chrome status strip renders
+   `"Last training run did not complete: <scenario> (last seen epoch N/M, <Ts ago>)"`.
+   Click-target: same chip; clicking just expands the panel (no
+   subscription — the audit DB has the last-known state already loaded
+   into `LabState::last_training_summary`).
+
+The annotation lives in **the cockpit chrome status strip** (NOT the
+Lab sub-panel's own status strip) so it survives panel-collapsed
+state per Q4 = (a) (operator does NOT want auto-route). The exact
+strings are factored into `crate::strings` per the no-string-literals
+rule (T-D-N16).
+
+### D8 — R6 live curve plot: NEW `widgets::training_plot` module
+
+The plot lives **inside the Train panel** (NOT on the main chart
+canvas) via a dedicated `crates/ui/src/widgets/training_plot.rs`
+module that reuses the canvas + tiny-skia rendering primitives as
+`widgets::chart` but with a narrower API surface:
+
+```rust
+pub struct TrainingPlot<'a> {
+    series: &'a [TrainingPlotPoint],   // (epoch: u32, train_loss: f32, val_loss: f32)
+    height_px: f32,                    // fixed ~160 px (R6.2)
+    theme: ThemeMode,
+}
+
+pub struct TrainingPlotPoint {
+    pub epoch: u32,
+    pub train_loss: f32,
+    pub val_loss: f32,
+}
+```
+
+Composition:
+
+- Data assembled by the Lab screen from
+  `LabState::training_events: VecDeque<TrainingEventRow>` filtered to
+  `kind='epoch'` → `Vec<TrainingPlotPoint>` (cheap O(N) map; N ≤ 100
+  epochs typical).
+- Passed into `TrainingPlot::view(...)` returning a `Canvas<'_>` that
+  renders inside the Train panel's column layout.
+- Two lines: `train_loss` (Lumen `color::ACCENT_2`), `val_loss`
+  (Lumen `color::ACCENT_3`). Same color discipline as
+  `ui-rethink-phase-a-lab` R2.3 (no new tokens).
+
+**Y-axis scaling:** auto-linear scaled to
+`[0, max(train_loss, val_loss) * 1.1]` per R6.3. **Log-y deferred.**
+Huber losses sit in a reasonable range; log obscures early-epoch
+progress. One-flag addition if the operator asks.
+
+**Before-first-epoch state** (run in flight but no `kind='epoch'` row
+yet — operator just clicked Train):
+
+- Centered Lumen `text::SMALL` "Warming up — first epoch landing
+  shortly".
+- `iced_aw::spinner` centered next to the text (precedent:
+  REQ-ICED-AW-002 / iced_aw cherry-pick spinner).
+- Status strip independently shows `"Training (warming up, t=Ts)"`
+  with elapsed-since-start wall clock so the operator sees the
+  subprocess is alive.
+
+**Empty / no-run-yet state:** centered Lumen `text::SMALL`
+"No training run in flight" — same dead-state-rendering shape as the
+equity-overlay empty state shipped at `ui-rethink-phase-a-lab`.
+
+Why NOT reuse `widgets::chart`: shape mismatch. Main chart axis is
+`Timestamp` (OHLCV bars indexed by time); training plot axis is
+integer-epoch (no time semantics). Cross-loading would either need
+synthesised timestamps per epoch (ugly + fragile when epoch durations
+vary 5-30 min) or a `ChartKind::TrainingCurves` variant (already
+rejected by R6.1).
+
+**Axis-helper consolidation (T-D-N17):** the ~30 LOC of axis-rendering
+helpers currently in `widgets::chart` (tick spacing, label
+formatting, line-tessellation) get extracted into a shared
+`crates/ui/src/widgets/axis.rs` (pub(crate)) so `widgets::chart` and
+`widgets::training_plot` both consume them. Net LOC delta is small;
+the shared module is value-add for future plot widgets.
+
+### D9 — K5 mitigation: golden-CLI CI diff snapshot
+
+**Chosen: CI golden snapshot.** A new test
+`crates/forecast/tests/train_tcn_cli_snapshot.rs` invokes
+`train_tcn --help` and asserts the output matches a checked-in
+`crates/forecast/tests/snapshots/forecast__train_tcn_cli_snapshot__help.snap`
+via `insta::assert_snapshot!`. Any change to the clap definition
+forces a snapshot review where the developer also updates the
+cockpit's trainer call site. Snapshot is ≤ 2 KB; human-readable.
+
+**Rejected: runtime `--print-config-schema`.** ~5× the LOC for the
+same drift-detection guarantee. Requires adding a new clap subcommand
+to `train_tcn`, a deserialization step on cockpit boot, and a
+versioning contract for the schema format.
+
+### D10 — Path resolution for the `train_tcn` binary
+
+Resolution order at cockpit boot (R2.2 ranked precedence):
+
+1. **Same-directory-as-cockpit lookup:** `current_exe().parent() / "train_tcn"`
+   — handles cargo-bundle + release paths.
+2. **Workspace-relative dev fallback:** if cockpit's `current_exe()`
+   lives inside `target/debug/` or `target/release/`, try
+   `<workspace_root> / "target" / "<profile>" / "train_tcn"`.
+3. **`cargo run` fallback** (dev only; gated `#[cfg(debug_assertions)]`):
+   construct `cargo run -p forecast --bin train_tcn --release -- <args>`.
+   Exists for the operator running cockpit via `cargo run` itself
+   without a pre-built `train_tcn` binary.
+
+If all three fail, `spawn_training_run` returns
+`Err("train_tcn binary not found at <paths tried>")` synchronously
+(R9.1). Status strip displays the error; no subprocess spawned;
+cockpit does not panic.
+
+### Module diagram
+
+```mermaid
+flowchart LR
+  subgraph Cockpit["Cockpit process (iced)"]
+    LS[LabState<br/>training_inflight<br/>training_events]
+    SCR[screens::lab::view]
+    SUB[lab::training_subscription<br/>1 Hz audit-DB poller]
+    TR[lab::trainer<br/>spawn_training_run / TrainingHandle]
+    PLOT[widgets::training_plot]
+    LOG[widgets::training_log<br/>200-line ring buffer]
+    STRIP[cockpit chrome status strip]
+  end
+  subgraph Subprocess["train_tcn subprocess"]
+    TCN[fn main<br/>--audit-db PATH]
+  end
+  subgraph DB["audit.sqlite (WAL)"]
+    TBL[training_events table<br/>migration 010]
+  end
+
+  LS --> SCR
+  LS --> PLOT
+  LS --> LOG
+  LS --> STRIP
+
+  SCR -- "TrainingPressed" --> TR
+  TR -- "tokio::process::Command" --> TCN
+  TCN -- "stdout pipe" --> LOG
+  TCN -- "start / epoch / finish / failed" --> TBL
+
+  TBL -- "SELECT ts > last_seen_ts" --> SUB
+  SUB -- "Message::TrainingEventsRefreshed(rows)" --> LS
+
+  TBL -- "boot-time orphan_training_runs query" --> STRIP
+```
+
+### Parallelism map for the orchestrator
+
+M-T1 and M-T2 are **NOT independent** — M-T2's plot wiring depends on
+M-T1's subprocess lifecycle being in place (the training plot only
+makes sense if a `TrainingHandle` can drive it). **Sequence M-T1 →
+M-T2** per the analyst-recommended approach noted in tasks.md M0.
+Operator validates the Tier 1 shape on the existing BS-1 / BS-2
+fixture before paying for Tier 2's audit-schema cost.
+
+Within each milestone there is parallelism:
+
+**M-T1 (Tier 1 — Wave A, B, C):**
+
+- **Wave A (parallel):** T-D-N1 (`lab::trainer.rs`),
+  T-D-N2 (`widgets::training_log.rs`). Both pure new modules; no shared
+  edits to existing files.
+- **Wave B (sequential after A):** T-D-N3 (Lab screen integration in
+  `screens::lab.rs`), T-D-N4 (Message arms wiring),
+  T-D-N5 (`LabStateJson` persistence). T-D-N3 + T-D-N4 are interleaved
+  edits in the same files — sequence them.
+- **Wave C (parallel; gated on B):** T-D-N6 (insta snapshots for Lab
+  panel + training_log).
+
+**M-T2 (Tier 2 — Wave D, E, F):**
+
+- **Wave D (parallel — three lanes):**
+  - Lane 1: T-D-N7 (migration 010), T-D-N8 (audit writers),
+    T-D-N9 (audit readers + value types).
+  - Lane 2: T-D-N10 (`train_tcn --audit-db` instrumentation +
+    `train_tcn_audit_emits.rs` integration test) — depends on Lane 1
+    landing T-D-N7-N8 so the SQL schema exists for the writers to
+    target.
+  - Lane 3: T-D-N17 (axis-helper extraction in `widgets::chart` →
+    `widgets::axis`) — purely additive refactor; can run independent
+    of Lanes 1-2.
+- **Wave E (sequential after D):** T-D-N11 (subscription),
+  T-D-N12 (`widgets::training_plot.rs` consuming the extracted axis
+  helpers), T-D-N13 (status strip wiring),
+  T-D-N14 (orphan-detect on boot), T-D-N16 (status-strip strings in
+  `crate::strings`).
+- **Wave F (parallel; gated on E):** T-D-N15 (full unit + integration
+  test sweep — `journal::tests::*`, `query::tests::*`,
+  `training_subscription::tests::*`, `train_tcn_no_audit_db_writes_nothing`),
+  T-D-N18 (insta snapshots for plot + cockpit-chrome orphan strip).
+
+Five waves total across the two milestones. Estimated developer time:
+M-T1 ≈ 4-5 days; M-T2 ≈ 6-7 days; total feature ≈ 2 wk (matches
+analyst estimate at spawn).
+
+### Anchors expected at ship
+
+**Zero new anchors** per R10.5. The 19 locked body-SHA-256 anchors (15
+originals + 4 `-realdata`) stay byte-identical:
+
+- Migration 010 is purely additive (R4.1 + R10.3).
+- `train_tcn`'s `<sha>.metadata.json` body bytes are byte-identical
+  with `--audit-db` enabled vs. disabled — the audit emit edges are
+  side-effects AFTER metadata canonicalization; they do NOT mutate
+  the metadata generator's input. The integration test T-D-N15
+  / R5 acceptance gate verifies byte-equal `<sha>.metadata.json`
+  outputs across the two modes.
+- Cockpit UI changes do not touch any anchored report body (R10.1).
+
+Verified by `scripts/verify_anchors.sh` 19/19 PASS at M-FINAL
+(tester's gate).
 
 ## Implementation
 
@@ -672,6 +1091,38 @@ _tester links to reports here_
 
 ## Changelog
 
+- 2026-05-19 (architect): § Design populated. Locked
+  (a) audit-DB-as-seam choice for training events (R7 → poll via
+  cockpit subscription; rejected IPC + EventBus alternatives) per
+  Q1=(a) operator-confirmed, (b) `training_events` schema in
+  `crates/audit/migrations/010_training_events.sql` with two
+  refinements vs. analyst R4.2 (`scenario NOT NULL`, new
+  `pid INTEGER` column for orphan-detect), (c) `crates/ui/src/lab/trainer.rs`
+  module placement (sibling to `lab::runner`), (d) `train_tcn
+  --audit-db <PATH>` CLI contract (end of arg list; hard-fail on
+  missing file; per-run short-lived connection; `catch_unwind` boundary
+  for `kind='failed'` survivability across panic), (e) 1 Hz cockpit
+  subscription via `iced::Subscription::run_with_id(("training_events",
+  run_id), …)` recipe identity, (f) `widgets::training_plot.rs` as
+  NEW module (NOT extension of `widgets::chart`); axis-rendering
+  helpers extracted into shared `widgets::axis` (`pub(crate)`),
+  (g) orphan-detect via `libc::kill(pid, 0)` PID-alive check +
+  cockpit-chrome status-strip annotation per Q4=(a) operator-
+  confirmed (NO auto-route), (h) K5 mitigation = golden-CLI insta
+  snapshot test (chosen over runtime `--print-config-schema`),
+  (i) `train_tcn` binary path resolution order (`current_exe`-relative
+  → workspace-relative → `cargo run` fallback). Surfaced a latent
+  WAL-mode gap in `Ledger::open` (`?mode=rwc` URL does not issue
+  `PRAGMA journal_mode = WAL;`) as a workspace-wide follow-up
+  backlog item (non-blocking for this feature). Authored
+  [ADR-0034](../architecture/adr/0034-cockpit-training-control.md)
+  capturing all D1-D10 decisions; updated ADR registry. T-AR-2
+  task decomposition replaces the M-T1/M-T2 stubs in tasks.md with
+  18 concrete T-D-N rows across 6 waves. T-AR-3 ADR closed.
+  Migration `010_training_events.sql` committed under
+  `crates/audit/migrations/`. trace.toml `REQ-COCKPIT-TRAIN-001.arch`
+  populated; status `proposed` → `in-progress`. Zero new anchors
+  expected at ship (R10.5 confirmed).
 - 2026-05-19 (analyst): initial draft — R1-R10 locked,
   4 operator-decide Qs surfaced (Q1-Q4 with analyst defaults),
   K1-K6 risk register, zero backtest scenarios, zero new anchors.

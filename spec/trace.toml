@@ -187,7 +187,7 @@ tests       = [
 anchors     = [
   "forecast-distribution-bs1-realdata",   # mandatory (M-R-HAT close, T-T-1)
   "forecast-distribution-bs2-realdata",   # mandatory (M-R-HAT close, T-T-1)
-  "sharpe-comparison-realdata",           # gated on determinism (T-D-10 / T-T-1)
+  "sharpe-comparison-realdata",           # locked by tester T-T-1 on 2026-05-19 (2-run byte-identical)
 ]
 state       = "in-progress"
 
@@ -196,11 +196,21 @@ id          = "REQ-COCKPIT-TRAIN-001"
 title       = "Cockpit training control — subprocess-spawned `train_tcn` launcher with log tail (Tier 1) + per-epoch audit train_events + live loss-curve plot (Tier 2); Lab sub-panel; anchor-byte-safe by construction (zero new anchors, 19 originals byte-identical)"
 feature     = "cockpit-training-control"
 product     = "spec/product.md"
-arch        = []  # architect fills at M0 — see spec/cockpit-training-control/tasks.md § M0
-crates      = []  # developer fills at M-T1 / M-T2 — expected: crates/ui, crates/audit, crates/forecast
+arch        = [
+  "spec/cockpit-training-control/feature.md#design",
+  "spec/cockpit-training-control/tasks.md#parallelism-map-for-the-orchestrator",
+  "spec/architecture/adr/0034-cockpit-training-control.md",
+  "spec/architecture/adr/0024-audit-sqlite-raw-sqlx.md",       # WAL-mode invariant + latent gap (ADR-0034 § D1)
+  "spec/architecture/adr/0030-cockpit-in-process-backtest.md", # lab::runner cancellation-pair precedent (ADR-0034 § D3)
+  "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",   # model_revision SHA on kind='finish' rows (ADR-0034 § D4)
+  "spec/architecture/adr/0004-fractional-second-timestamps.md",# 6-digit µs RFC3339 for ts column (ADR-0034 § D2)
+  "spec/architecture/adr/0003-decimal-money-math.md",          # f32-as-TEXT precedent for train_loss/val_loss (ADR-0034 § D5)
+  "crates/audit/migrations/010_training_events.sql",           # schema body (architect-committed at T-AR-6)
+]
+crates      = []  # developer fills at M-T1 / M-T2 — expected: crates/ui, crates/audit, crates/forecast, crates/core
 tests       = []  # developer fills at M-T1 / M-T2 (no anchor tests; unit + insta + integration)
-anchors     = []  # ZERO new anchors by construction — see feature.md § R10.5 (wall-clock + UUID inputs preclude byte-identity)
-state       = "proposed"
+anchors     = []  # ZERO new anchors by construction — see feature.md § R10.5 + ADR-0034 § Consequences (wall-clock + UUID inputs preclude byte-identity)
+state       = "in-progress"
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"

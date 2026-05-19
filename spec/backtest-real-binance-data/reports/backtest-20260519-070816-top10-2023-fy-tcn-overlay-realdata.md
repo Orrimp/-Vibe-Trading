@@ -1,8 +1,8 @@
 ---
-scenario: top10-2024-fy-tcn-overlay-realdata
+scenario: top10-2023-fy-tcn-overlay-realdata
 seed: 0xC0FFEE
-generated: 2026-05-18T17:56:42Z
-wall_clock_s: 25.7
+generated: 2026-05-19T07:08:16Z
+wall_clock_s: 24.9
 data_revision_sha: 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7
 data_source: real (Binance Vision via data/binance/, v2.6.0-realdata)
 baseline_report: n/a
@@ -16,24 +16,24 @@ source: config/strategies/tcn_overlay_momentum.toml
 signal: tcn_overlay(base=vol_adjusted_log_return,confidence_threshold=0.6)
 ---
 
-# Backtest Report — top10-2024-fy-tcn-overlay-realdata
+# Backtest Report — top10-2023-fy-tcn-overlay-realdata
 
 ## Summary
 
 | Metric               | Value                         |
 |----------------------|-------------------------------|
-| Scenario             | top10-2024-fy-tcn-overlay-realdata               |
+| Scenario             | top10-2023-fy-tcn-overlay-realdata               |
 | Universe             | 10 symbols      |
-| Start year           | 2024                  |
-| Bars (total)         | 87840                   |
+| Start year           | 2023                  |
+| Bars (total)         | 87590                   |
 | Initial capital      | $100000.00 USDT            |
-| Final equity         | $105214.25 USDT           |
-| Total return         | 5.21%                     |
-| Max drawdown         | 78.82%                  |
-| Trades               | 5917                      |
-| Buys                 | 2960                        |
-| Sells                | 2957                       |
-| Total fees           | $14224.582735 USDT               |
+| Final equity         | $113479.98 USDT           |
+| Total return         | 13.48%                     |
+| Max drawdown         | 73.73%                  |
+| Trades               | 6203                      |
+| Buys                 | 3103                        |
+| Sells                | 3100                       |
+| Total fees           | $17430.781215 USDT               |
 | Seed                 | 0xC0FFEE                    |
 | Data source          | real (Binance Vision via data/binance/, v2.6.0-realdata)                 |
 
@@ -41,9 +41,9 @@ signal: tcn_overlay(base=vol_adjusted_log_return,confidence_threshold=0.6)
 
 | Metric               | Value                         |
 |----------------------|-------------------------------|
-| Passed through       | 5800              |
+| Passed through       | 6070              |
 | Dampened to Hold     | 0                    |
-| Warming-up (no overlay) | 117                  |
+| Warming-up (no overlay) | 133                  |
 | Dampen rate          | 0.00%             |
 
 ## Universe
@@ -67,9 +67,9 @@ signal: tcn_overlay(base=vol_adjusted_log_return,confidence_threshold=0.6)
 | Revision SHA         | 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7 |
 | Universe size        | 10 symbols                           |
 | Bar interval         | 1h                                   |
-| Span (UTC, half-open) | 2024-01-01T00:00:00Z .. 2025-01-01T00:00:00Z |
-| Expected bars        | 87840                                |
-| Loaded bars          | 87840 (100.00% present)              |
+| Span (UTC, half-open) | 2023-01-01T00:00:00Z .. 2024-01-01T00:00:00Z |
+| Expected bars        | 87600                                |
+| Loaded bars          | 87590 (99.99% present)               |
 
 ## Notes
 

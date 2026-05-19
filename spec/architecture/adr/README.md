@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-18 (ADR-0033 added)
+updated: 2026-05-19 (ADR-0034 added)
 ---
 
 
@@ -81,6 +81,7 @@ the canonical table; the parent file links here.)
 | 0031  | `AuditTick<Event, Context>` consumer envelope for audit ledger read path | proposed | 2026-05-17 |
 | 0032  | Backtest real-Binance-data path + REVISION.toml data-revision pin | accepted | 2026-05-18 |
 | 0033  | v2.5 TCN alpha-investigation report shape + F-verdict algorithm | accepted | 2026-05-18 |
+| 0034  | Cockpit training control — audit-DB-as-seam, subprocess lifecycle, R6 in-panel curves | accepted | 2026-05-19 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -148,6 +149,26 @@ finalisation.
   hash). Existing 15 anchors stay byte-identical (K6 + K10).
   Closes T-AR-1, T-AR-3 of
   `spec/backtest-real-binance-data/tasks.md`.
+- 2026-05-19 (architect): ADR-0034 added — Cockpit training control.
+  Locks (a) audit-DB-as-seam (training events flow `train_tcn` writer
+  → SQLite `training_events` → 1 Hz cockpit subscription reader) over
+  alternatives (IPC, `agent::EventBus` channel) — Q1=(a) operator-
+  confirmed 2026-05-19, (b) additive migration
+  `010_training_events.sql` (anchor-byte-safe; 19 anchors stay
+  identical), (c) subprocess lifecycle (sibling `lab::trainer.rs` to
+  `lab::runner.rs`; SIGKILL-immediate on Cancel; PID column for
+  orphan-detect; hard-fail on missing `--audit-db` file;
+  `catch_unwind` boundary for `kind='failed'` row survivability),
+  (d) R6 in-panel `widgets::training_plot` (new module, NOT a
+  `ChartKind::TrainingCurves` extension of the main chart widget),
+  (e) K5 CLI-drift mitigation via `cargo run --bin train_tcn -- --help`
+  golden-snapshot test (NOT runtime `--print-config-schema`
+  validation), (f) Q4=(a) status-strip orphan annotation (no
+  auto-route). Surfaces a latent WAL-mode gap in
+  `Ledger::open` (the `?mode=rwc` URL does not issue
+  `PRAGMA journal_mode = WAL;`) as a follow-up backlog item;
+  non-blocking for this feature given the 1-write-per-5-30-min cadence.
+  Closes T-AR-3 of `spec/cockpit-training-control/tasks.md`.
 - 2026-05-18 (architect): ADR-0033 added — v2.5 TCN alpha-investigation
   report shape + F-verdict algorithm. Locks (a) read-path placement
   (new bin `crates/forecast/src/bin/forecast_distribution.rs`, NOT

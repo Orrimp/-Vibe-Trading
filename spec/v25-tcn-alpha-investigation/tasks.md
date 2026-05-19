@@ -1,8 +1,8 @@
 ---
 slug: v25-tcn-alpha-investigation
-status: in-progress
+status: tester-blocked
 owner: developer
-updated: 2026-05-18
+updated: 2026-05-19
 ---
 
 # Tasks — v2.5 TCN alpha-verdict investigation
@@ -49,7 +49,7 @@ updated: 2026-05-18
       Audit trail: orchestrator AskUserQuestion 2026-05-18 confirmed
       analyst default. HANDOFF → architect.
 
-- [ ] **M-R-HAT — Forecast-distribution inspector (bucket a).** See
+- [x] **M-R-HAT — Forecast-distribution inspector (bucket a).** See
       T-D-1 … T-D-5 below. Acceptance: two reports on disk for BS-1 and
       BS-2; both bodies byte-identical on a second run (K3 determinism);
       F-verdict label present in `## Verdict` section per ADR-0033 § D3;
@@ -64,7 +64,7 @@ updated: 2026-05-18
       activates only if those follow-ons need deeper checkpoint-internal
       evidence than M-R-HAT alone provides.
 
-- [ ] **M-SHARPE — Sharpe-comparison report (bucket d).** See
+- [x] **M-SHARPE — Sharpe-comparison report (bucket d).** See
       T-D-6 … T-D-10 below. Acceptance: report on disk under
       `sharpe-comparison-realdata-YYYYMMDD.md`; methodology table cites
       sqrt(24·365) annualisation; comparison table rows for the four
@@ -77,7 +77,7 @@ updated: 2026-05-18
 - [ ] **M-HORIZON — Horizon-bumped re-training pass (bucket b).**
       _Active only under FULL scope. Skipped under MINIMAL._
 
-- [ ] **M-FINAL — Ship gate.**
+- [ ] **M-FINAL — Ship gate.** _BLOCKED by pre-existing test failures (see T-T-1 note)._
       - Anchor neutrality (R6): `bash scripts/verify_anchors.sh` →
         `ANCHORS PASS (19/19)` PRE-lock and `21/21` (R1 only) or
         `22/22` (R1 + R5 Sharpe anchor) POST-lock. The 19 originals
@@ -495,8 +495,10 @@ updated: 2026-05-18
 ## T-T row — M-FINAL (tester-owned, 1 row)
 
 - [ ] **T-T-1** — Tester anchor lock + non-regression verification +
-  ship-gate report.
-  Owner: tester. Milestone: M-FINAL. Depends on: T-D-5, T-D-10.
+  ship-gate report. _ANCHOR LOCK DONE (22/22). VERDICT FAIL — 2 pre-existing test
+  failures block PASS (see test report 2026-05-19-0900). Developer fixes needed
+  before tester re-runs gates 5+7._
+  Owner: tester (blocked on developer fix). Milestone: M-FINAL. Depends on: T-D-5, T-D-10.
   Blocks: ship.
   _file:line_: `spec/anchors.toml` (3 new rows under
   `v2.6.0-alpha-investigation`) +
@@ -623,6 +625,14 @@ the body bytes differ.
 
 ## Changelog
 
+- 2026-05-19 (tester): T-T-1 executed at commit b8a29a8. Anchor lock: 19→22 (22/22 PASS).
+  All feature-specific tests PASS (fmt, clippy, 4 forecast tests, backtest_sharpe_emit_equity_bin,
+  backtest --features realdata --test determinism 22/22). Two pre-existing failures found:
+  (1) `parse::tests::all_anchored_reports_parse_ok` — presentation file naming collision from
+  commit 664bb59; (2) `realdata_2023/2024_fy_tcn_overlay_determinism` concurrent binary-clobber
+  race — exposed by LFS-resolved T-D-15 tests. Joint F4 verdict confirmed. VERDICT → FAIL.
+  HANDOFF → developer for pre-existing test infrastructure fixes. Feature investigation
+  itself is complete (F4, 3 anchors locked, Sharpe table published).
 - 2026-05-18 (architect): T-D decomposition landed. M-R-HAT broken
   into T-D-1..T-D-5 (5 rows: bin skeleton, forward-pass collection,
   hist::Stats math, F-verdict + renderer, end-to-end + read-only

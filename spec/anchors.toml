@@ -146,3 +146,23 @@ sha256   = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70"
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata"
 sha256   = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c"
+
+# v2.5 alpha-investigation reports (T-T-1).  Locked by tester on 2026-05-19
+# against the data/binance/ REVISION.toml manifest SHA
+# 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7.
+# All three reports are 2-run byte-identical (orchestrator-verified at b8a29a8).
+
+[[anchors]]
+scenario = "forecast-distribution-bs1-realdata"
+version  = "v2.6.0-alpha-investigation"
+sha256   = "ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54"
+
+[[anchors]]
+scenario = "forecast-distribution-bs2-realdata"
+version  = "v2.6.0-alpha-investigation"
+sha256   = "d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06"
+
+[[anchors]]
+scenario = "sharpe-comparison-realdata"
+version  = "v2.6.0-alpha-investigation"
+sha256   = "17d2e96c1bb79c0dad84c81daf4be333acb2b35a8c05b954ccaee7aa53370924"

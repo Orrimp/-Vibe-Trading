@@ -1,9 +1,9 @@
 ---
 slug: v25-tcn-alpha-investigation
-status: in-progress
-owner: architect
-updated: 2026-05-18
-version: 0.2.0
+status: tester-blocked
+owner: developer
+updated: 2026-05-19
+version: 0.3.0-rc1
 predecessor: backtest-real-binance-data v0.1.0
 parent: v25-tcn-overlay v2.5.0 (in-progress)
 ---
@@ -532,11 +532,62 @@ readable.
 
 ## Verification
 
-_tester fills this — verifies R1 + R5 reports anchor cleanly, R6
-non-regression contract holds (19 originals byte-identical), bin from
-R3 is read-only as advertised, no mutation of trained checkpoint
-files. Anchor count at M-FINAL: 19 → 21 (R1 only) or 22 (R1 + R5
-Sharpe-table)._
+Tester verified at commit `b8a29a8` on 2026-05-19 (T-T-1 complete).
+
+**Joint F-verdict: F4** — both BS-1 and BS-2 checkpoints independently
+classified F4 ("no signal at 1h horizon"). BS-1 body SHA
+`ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54`;
+BS-2 body SHA
+`d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06`.
+Neither checkpoint triggered F1 (training collapse — `abs_p95 >= 1e-6`),
+F2 (sigma_train mis-calibration — see note below), or F3 (gating too
+tight). The F-verdict classifier priority-ordered the cases per ADR-0033
+§ D3: the priority-tree F2 condition `std > 0.1 * sigma_train` was
+NOT met (inference `r_hat` std ≈ 0.022; sigma_train BS-1 = 10.954,
+BS-2 = 6.916 — the stdev is FAR BELOW 0.1 × sigma_train), so F2 did
+not fire. F4 fired as the catch-all: wide-enough spread survives ε,
+but Sharpe comparison (R5) shows dampened=0 across all 4 real-data
+scenarios, meaning the model emits forecasts that are directionally
+uncorrelated with realized next-bar returns.
+
+**Sigma_train calibration anomaly** (observed, not a blocker):
+sigma_train stored at training time is BS-1 = 10.954, BS-2 = 6.916.
+The actual `r_hat` standard deviation at inference is approximately
+0.022 — a ~500x mismatch. This indicates sigma_train was computed in
+units that differ from the inference-time `r_hat` (possibly scaled
+log-returns vs. raw log-returns, or a normalization artefact from the
+training pipeline). The F-verdict algorithm classified F4 (not F2)
+because the priority tree's F2 condition tests `std > 0.1 * sigma_train`
+— with `std` = 0.022 and `0.1 * sigma_train` = 1.095, the condition
+is FALSE (opposite direction). The sigma_train anomaly is real but does
+not change the joint verdict — it is a separate calibration concern
+for the follow-on feature to address.
+
+**Sharpe-comparison anchor**: `sharpe-comparison-realdata` body SHA
+`17d2e96c1bb79c0dad84c81daf4be333acb2b35a8c05b954ccaee7aa53370924`.
+Report shows dampened=0 for all 4 realdata scenarios; passthrough and
+real-weights equity curves are byte-identical per year; Sharpe delta = 0.
+
+**Anchor count**: 19 → 22. All 19 original anchors byte-identical (R6).
+
+**Operator disposition**: Follow-on feature recommended per F4 verdict:
+`v25-tcn-horizon-bump-or-retire` (operator decides). The sigma_train
+calibration anomaly additionally surfaces a cheaper candidate follow-on
+(`v25-tcn-recalibrate`) that could be worth funding before a full
+horizon-bump retraining run — operator to decide which to prioritize.
+
+**Workspace gates** (all PASS):
+- `cargo fmt --check`: PASS
+- `cargo clippy --workspace -- -D warnings`: PASS
+- `cargo clippy --workspace --features realdata -- -D warnings`: PASS
+- `cargo clippy --workspace --features realdata,candle -- -D warnings`: PASS
+- `cargo test --workspace`: PASS (all tests)
+- `cargo test -p backtest --features realdata --test determinism`: 22/22 PASS
+- `cargo test -p forecast --features candle --test forecast_distribution_bin_readonly`: 2/2 PASS
+- `cargo test -p forecast --features candle --test forecast_distribution_verdict`: 5/5 PASS
+- `cargo test -p forecast --features candle --test sharpe_comparison_determinism`: 1/1 PASS
+- `bash scripts/verify_anchors.sh`: ANCHORS PASS (22/22)
+- `spec-lint`: 735 violations in 2 categories (no new category regressions vs 734/3 baseline)
 
 ## Sources cited
 
@@ -624,6 +675,35 @@ Sharpe-table)._
   M-HORIZON (bucket b, multi-horizon retraining). Status flipped
   `draft → in-progress`. Owner flipped `analyst → architect`. T-OP-1
   ticked in tasks.md.
+- 2026-05-19 (tester): T-T-1 complete at commit `b8a29a8`. Joint
+  F-verdict: **F4** (both BS-1 and BS-2 agree; no F-MIXED). Evidence:
+  the F-verdict algorithm classified F4 as the catch-all — neither
+  F1/F2/F3 conditions fired. Key finding: sigma_train stored at
+  training time (BS-1 = 10.954, BS-2 = 6.916) is approximately 500x
+  larger than the inference-time `r_hat` standard deviation (~0.022),
+  a calibration units mismatch. The F2 condition tests `std >
+  0.1 * sigma_train` (large spread → gate miss), but actual std is
+  far BELOW that threshold; the model emits small-magnitude forecasts
+  that survive ε but the Sharpe comparison shows no directional alpha
+  (dampened=0 across all 4 realdata scenarios). Three new anchors
+  locked under `v2.6.0-alpha-investigation`:
+  `forecast-distribution-bs1-realdata` (SHA
+  `ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54`),
+  `forecast-distribution-bs2-realdata` (SHA
+  `d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06`),
+  `sharpe-comparison-realdata` (SHA
+  `17d2e96c1bb79c0dad84c81daf4be333acb2b35a8c05b954ccaee7aa53370924`).
+  Anchor count 19 → 22; all 19 originals byte-identical (R6 PASS).
+  Feature-specific tests all PASS. Two pre-existing test failures found
+  (not introduced by this feature's code): (1) `parse::tests::all_anchored_reports_parse_ok`
+  broken by presenter file `664bb59` naming `backtest-*.md` in `presentations/`;
+  (2) `realdata_2023/2024_fy_tcn_overlay_determinism` binary-clobber race exposed by
+  LFS-resolved checkpoints. Recommended follow-on features: primary
+  `v25-tcn-horizon-bump-or-retire` (F4 → operator-decide); secondary
+  `v25-tcn-recalibrate` (sigma_train units-bug, cheaper, may unlock
+  F3 re-classification). VERDICT → FAIL. HANDOFF → developer for pre-existing
+  test infrastructure fixes (rename presenter file + fix binary-clobber race in
+  determinism.rs). Status → tester-blocked. Owner → developer. Version 0.2.0 → 0.3.0-rc1.
 - 2026-05-18 (analyst): full analyst pass at commit `c43ca56`. Brief
   authored with R1-R6 and four failure-mode taxonomy F1-F4 (R4).
   One operator-decide Q (scope: minimal / diagnostic / full) with

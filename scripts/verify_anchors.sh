@@ -33,12 +33,16 @@ while IFS= read -r line; do
         # under per-feature folders:
         #     spec/<feature>/reports/backtest-<stamp>-<scenario>.md   (9 backtest)
         #     spec/<feature>/reports/success-<stamp>-<scenario>.md    (2 success, T816)
-        # The script picks whichever pattern resolves first; both finds
+        #     spec/<feature>/reports/<scenario>-<stamp>.md            (investigation reports, T-T-1)
+        # The script picks whichever pattern resolves first; all finds
         # are sorted independently and the lexicographically-largest
         # match wins (timestamp prefix → effectively "newest").
         latest="$(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" 2>/dev/null | sort | tail -1 || true)"
         if [[ -z "$latest" ]]; then
             latest="$(find "$root"/spec -type f -path "*/reports/success-*-$scenario.md" 2>/dev/null | sort | tail -1 || true)"
+        fi
+        if [[ -z "$latest" ]]; then
+            latest="$(find "$root"/spec -type f -path "*/reports/$scenario-*.md" 2>/dev/null | sort | tail -1 || true)"
         fi
         if [[ -z "$latest" ]]; then
             printf 'MISS  %-36s  no report on disk\n' "$scenario"

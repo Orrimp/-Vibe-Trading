@@ -326,8 +326,9 @@ PASS.
 
     /// Recursively walk `root` collecting every `*/reports/backtest-*.md`
     /// path. Skips well-known cross-cutting subtrees (`design`,
-    /// `archive`) so the walk doesn't descend into the design system or
-    /// the historical tarball.
+    /// `archive`) and presenter-deck dirs (`presentations`) so the walk
+    /// doesn't descend into non-anchored markdown that happens to share
+    /// the `backtest-` filename prefix.
     fn collect_backtest_reports(root: &Path, out: &mut Vec<PathBuf>) {
         let Ok(entries) = fs::read_dir(root) else {
             return;
@@ -337,7 +338,7 @@ PASS.
             let name = entry.file_name();
             let name = name.to_string_lossy();
             if path.is_dir() {
-                if name == "design" || name == "archive" {
+                if name == "design" || name == "archive" || name == "presentations" {
                     continue;
                 }
                 collect_backtest_reports(&path, out);
