@@ -56,5 +56,6 @@ pub use universe::{SymbolSet, Universe, UniverseError};
 pub use venue::{MarketHealth, ParseVenueError, RiskTelemetry, Venue};
 pub use views::{
     AuditKindFilter, AuditKindLabel, FillView, JournalEntry, JournalEntryView, JournalRow,
-    JournalTransactionMetadata, PnlSnapshot, PositionView, SignalView,
+    JournalTransactionMetadata, OrphanTrainingRun, PnlSnapshot, PositionView, SignalView,
+    TrainingEventRow, TrainingRunSummary,
 };

@@ -189,6 +189,94 @@ pub struct SignalView {
     pub clamp_reason: Option<SmolStr>,
 }
 
+// ── cockpit-training-control (T-D-N8 / T-D-N9) ───────────────────────────────
+
+/// A single row from the `training_events` table (R4.2).
+///
+/// All optional fields map to SQL `NULL` when absent. `train_loss` /
+/// `val_loss` are stored as TEXT in the DB (Decimal-as-TEXT contract per
+/// ADR-0003) and parsed back to `f32` at read time — lossless for the
+/// observability / plot surface they feed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrainingEventRow {
+    /// UUID v4 primary-key of this row.
+    pub id: SmolStr,
+    /// RFC3339 with 6-digit microsecond precision (ADR-0004).
+    pub ts: SmolStr,
+    /// UUID v4 that groups all events from one `train_tcn` invocation.
+    pub run_id: SmolStr,
+    /// `'start' | 'epoch' | 'finish' | 'failed'`.
+    pub kind: SmolStr,
+    /// `None` for `kind = 'start' | 'failed'`.
+    pub epoch: Option<i64>,
+    /// `None` for `kind = 'start' | 'failed'`.
+    pub total_epochs: Option<i64>,
+    /// Training loss at this epoch (parsed from TEXT). `None` for start/failed.
+    pub train_loss: Option<f32>,
+    /// Validation loss at this epoch. `None` for start/failed.
+    pub val_loss: Option<f32>,
+    /// Wall-clock milliseconds for this epoch / full run. `None` for start/failed.
+    pub wall_clock_ms: Option<i64>,
+    /// Canonical SHA from `CheckpointMetadata.model_revision`. `None` except on `kind='finish'`.
+    pub model_revision: Option<SmolStr>,
+    /// Scenario label (`'bs1' | 'bs2' | 'default' | operator label`).
+    pub scenario: SmolStr,
+    /// Training seed from `train_tcn.toml`.
+    pub seed: i64,
+    /// OS PID captured at `kind='start'` for orphan-detect. `None` on non-start rows.
+    pub pid: Option<i64>,
+    /// Error message on `kind='failed'`. `None` on all other kinds.
+    pub error_message: Option<SmolStr>,
+}
+
+/// Convenience summary for a single training run (the last row group), used by
+/// the panel status strip (`query::latest_training_run`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrainingRunSummary {
+    /// UUID v4 run identifier.
+    pub run_id: SmolStr,
+    /// Scenario label.
+    pub scenario: SmolStr,
+    /// Training seed.
+    pub seed: i64,
+    /// Start timestamp (RFC3339 microsecond).
+    pub started_at: SmolStr,
+    /// Latest epoch seen so far (0 if only the start row has been written).
+    pub latest_epoch: i64,
+    /// Total epochs from the start row (0 if not yet known).
+    pub total_epochs: i64,
+    /// Most recent training loss (from the last epoch row). `None` before first epoch.
+    pub latest_train_loss: Option<f32>,
+    /// Most recent validation loss. `None` before first epoch.
+    pub latest_val_loss: Option<f32>,
+    /// `model_revision` from the finish row. `None` if not yet finished.
+    pub model_revision: Option<SmolStr>,
+    /// Terminal status: `'running' | 'done' | 'failed' | 'cancelled'`.
+    /// Derived at read time — not stored directly.
+    pub status: SmolStr,
+    /// Error message if `status == 'failed'`.
+    pub error_message: Option<SmolStr>,
+    /// OS PID from the start row (for orphan-detect).
+    pub pid: Option<i64>,
+}
+
+/// A training run whose `kind='start'` row has no matching `kind='finish'` or
+/// `kind='failed'` row within `fresh_window`, and whose start row carries a PID
+/// that the caller can check for liveness (`query::orphan_training_runs`).
+///
+/// Used by the cockpit boot-time orphan-detect path (ADR-0034 § D7).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OrphanTrainingRun {
+    /// UUID v4 run identifier.
+    pub run_id: SmolStr,
+    /// Scenario label.
+    pub scenario: SmolStr,
+    /// Start timestamp (RFC3339 microsecond).
+    pub started_at: SmolStr,
+    /// OS PID from the start row (may be `None` for older rows without `pid`).
+    pub pid: Option<i64>,
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]

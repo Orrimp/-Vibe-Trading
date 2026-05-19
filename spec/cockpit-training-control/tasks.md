@@ -184,41 +184,37 @@ Maps to **R4, R5, R6, R7, R8.2, R8.3, R9.2, R9.5, R10.1-R10.3**.
     migration applies cleanly on a fresh DB + idempotent on re-apply.
   - Test cmd: `cargo test -p audit --lib bootstrap::tests -- migration_010`
   - Expected: 1 PASS (migration applies cleanly + idempotent).
-- [ ] **T-D-N8** Audit writers in `crates/audit/src/journal.rs`.
+- [x] **T-D-N8** Audit writers in `crates/audit/src/journal.rs`.
   - Owner: developer • Milestone: M-T2 • Depends on: T-D-N7 • Blocks: T-D-N10, T-D-N11
-  - File:line: `crates/audit/src/journal.rs` (append-only; follow
-    `post_strategy_signal` precedent at `journal.rs:266`).
+  - File:line: `crates/audit/src/journal.rs:420` — `training_ts_now`, `post_training_start` (line ~449), `post_training_epoch` (line ~489), `post_training_finish` (line ~543), `post_training_failed` (line ~596); tests at `journal.rs:2105`.
   - Functions: `post_training_start`, `post_training_epoch`,
-    `post_training_finish`, `post_training_failed` (signatures
-    locked in feature.md § Design D5). Each `#[instrument]`'d.
+    `post_training_finish`, `post_training_failed` — all `#[instrument]`'d.
   - Inline tests:
     - `post_training_start_writes_row`
-    - `post_training_epoch_writes_row_with_losses_as_text`
+    - `post_training_epoch_writes_row`
     - `post_training_finish_sets_model_revision`
-    - `post_training_failed_sets_error_message`
-  - Test cmd: `cargo test -p audit --lib journal::tests -- training`
+    - `post_training_failed_writes_error_message`
+  - Test cmd: `cargo test -p audit --lib journal::tests::post_training`
   - Expected: 4 PASS.
-- [ ] **T-D-N9** Audit readers in `crates/audit/src/query.rs` +
+  - VERIFIED: `test result: ok. 4 passed; 0 failed` (2026-05-19)
+- [x] **T-D-N9** Audit readers in `crates/audit/src/query.rs` +
   value types in `crates/core/src/lib.rs`.
   - Owner: developer • Milestone: M-T2 • Depends on: T-D-N8 • Blocks: T-D-N11, T-D-N13, T-D-N14
-  - File:line: `crates/audit/src/query.rs` (append; follow
-    `recent_signals` at `query.rs:470` shape); `crates/core/src/lib.rs`
-    (add `TrainingEventRow`, `TrainingRunSummary`, `OrphanTrainingRun`
-    structs).
+  - File:line: `crates/audit/src/query.rs:1914` — `recent_training_events`, `latest_training_run`, `orphan_training_runs`; `crates/core/src/views.rs:193` — `TrainingEventRow`, `TrainingRunSummary`, `OrphanTrainingRun`; `crates/core/src/lib.rs:57` — re-exports.
   - Functions: `recent_training_events(ledger, since, until)`,
     `latest_training_run(ledger)`,
-    `orphan_training_runs(ledger, fresh_window)`. Use the
-    parameterised orphan query from feature.md § Design D5.
-  - Inline tests:
+    `orphan_training_runs(ledger, fresh_window_secs)`.
+  - Inline tests (7 PASS):
     - `recent_training_events_filters_by_window`
-    - `recent_training_events_empty_window_returns_ok_empty`
-    - `latest_training_run_returns_none_on_empty_db`
-    - `latest_training_run_returns_most_recent`
-    - `orphan_training_runs_excludes_completed_runs`
-    - `orphan_training_runs_excludes_failed_runs`
-    - `orphan_training_runs_respects_fresh_window`
-  - Test cmd: `cargo test -p audit --lib query::tests -- training`
-  - Expected: 7 PASS.
+    - `recent_training_events_empty_outside_window`
+    - `latest_training_run_none_when_empty`
+    - `latest_training_run_running_status`
+    - `latest_training_run_done_status`
+    - `latest_training_run_failed_status`
+    - `orphan_training_runs_excludes_completed`
+  - Test cmd: `cargo test -p audit --lib query::tests`
+  - Expected: 7 new training tests PASS (20 total PASS).
+  - VERIFIED: `test result: ok. 20 passed; 0 failed` (2026-05-19)
 
 **Lane 2 — `train_tcn` instrumentation** (depends on Lane 1's T-D-N7-N8):
 

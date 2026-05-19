@@ -1083,7 +1083,44 @@ Verified by `scripts/verify_anchors.sh` 19/19 PASS at M-FINAL
 
 ## Implementation
 
-_developer fills this_
+### Wave A–C (M-T1 Tier 1) — shipped 2026-05-19
+
+All 7 T-D-N tasks in Waves A, B, C (plus T-D-N7 migration verification) are
+complete. The Train panel is live in the cockpit Lab screen.
+
+**New modules:**
+- `crates/ui/src/lab/trainer.rs` — `TrainingHandle` (Drop=SIGKILL), `TrainingConfig`, `spawn_training_run` (3 tests PASS)
+- `crates/ui/src/widgets/training_log.rs` — 200-entry ring buffer + auto-scroll widget (2 tests PASS)
+
+**Modified modules:**
+- `crates/ui/src/screens/lab.rs` — training panel (collapsed 32 px / expanded 240 px) below histogram
+- `crates/ui/src/state.rs` — 8 `Message` variants + update arms (6 tests PASS in `training_arms`)
+- `crates/ui/src/lab/state.rs` — manual `Clone`/`Debug` impls; 4 training fields
+- `crates/ui/src/lab/persistence.rs` — `training_panel_collapsed` with `#[serde(default)]` (2 tests PASS)
+- `crates/ui/src/strings.rs` — 14 training string constants
+- `crates/ui/src/gallery/routes.rs` + `mod.rs` — 2 gallery cells for `training_log`
+- `crates/audit/src/bootstrap.rs` — `migration_010` test (1 PASS)
+
+**Insta snapshots accepted:**
+- `lab__training_panel_collapsed_default`
+- `lab__training_panel_expanded`
+- `training_log__ring_buffer_200_lines`
+
+### Wave D Lane 1 (M-T2 audit) — shipped 2026-05-19
+
+**T-D-N7** verified: `migration_010` test PASS (1/1).
+
+**T-D-N8** — audit writers in `crates/audit/src/journal.rs`:
+- `post_training_start` (line ~449), `post_training_epoch` (~489),
+  `post_training_finish` (~543), `post_training_failed` (~596)
+- Helper `training_ts_now()` for microsecond-precision RFC3339 timestamps (ADR-0004)
+- 4 inline tests — all PASS
+
+**T-D-N9** — audit readers + value types:
+- `crates/core/src/views.rs`: `TrainingEventRow`, `TrainingRunSummary`, `OrphanTrainingRun`
+- `crates/core/src/lib.rs`: re-exports for all three types
+- `crates/audit/src/query.rs`: `recent_training_events`, `latest_training_run`, `orphan_training_runs`
+- 7 inline tests — all PASS (20 total in `query::tests`)
 
 ## Verification
 

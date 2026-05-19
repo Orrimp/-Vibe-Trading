@@ -401,6 +401,240 @@ pub async fn update_signal_clamp_status(
     Ok(())
 }
 
+// ── cockpit-training-control T-D-N8 ──────────────────────────────────────────
+
+/// Microsecond-precision RFC3339 timestamp string — matches the format used by
+/// `post_strategy_signal` and `uptime_ts_string` (HF-3 / ADR-0004 gate).
+///
+/// Two consecutive writes within the same wall-clock second still produce
+/// monotonically-ordered `ts` values under sub-second scheduling.
+fn training_ts_now() -> Result<String, LedgerError> {
+    let fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    time::OffsetDateTime::now_utc()
+        .format(&fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))
+}
+
+/// Write a `kind='start'` row to `training_events` (R4.4, ADR-0034 § D5).
+///
+/// Called once per `train_tcn` invocation, immediately after config parsing.
+/// Captures the OS `pid` of the subprocess so the orphan-detect reader
+/// (`query::orphan_training_runs`) can do a liveness check without
+/// round-tripping through external state.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL INSERT fails.
+#[instrument(
+    name = "ledger.post_training_start",
+    skip(ledger),
+    fields(run_id, scenario, seed)
+)]
+pub async fn post_training_start(
+    ledger: &Ledger,
+    run_id: &str,
+    scenario: &str,
+    seed: i64,
+    pid: Option<i64>,
+) -> Result<(), LedgerError> {
+    let id = Uuid::new_v4().to_string();
+    let ts = training_ts_now()?;
+
+    sqlx::query(
+        "INSERT INTO training_events \
+         (id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+          wall_clock_ms, model_revision, scenario, seed, pid, error_message) \
+         VALUES (?, ?, ?, 'start', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, NULL)",
+    )
+    .bind(&id)
+    .bind(&ts)
+    .bind(run_id)
+    .bind(scenario)
+    .bind(seed)
+    .bind(pid)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(run_id, scenario, seed, pid = ?pid, "training_start persisted");
+    Ok(())
+}
+
+/// Write a `kind='epoch'` row to `training_events` (R4.4, ADR-0034 § D5).
+///
+/// Called once per completed epoch at the `info!(epoch = ..., train_loss = …)`
+/// site in `train_tcn.rs`. `train_loss` / `val_loss` are stored as TEXT
+/// (Decimal-as-TEXT contract per ADR-0003) — lossless for the plot surface.
+/// `wall_clock_ms` is measured via `Instant::now() - epoch_start` at the call
+/// site; it is wall-clock only and does not affect model determinism (R5.2).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL INSERT fails.
+#[instrument(
+    name = "ledger.post_training_epoch",
+    skip(ledger),
+    fields(run_id, epoch, total_epochs)
+)]
+pub async fn post_training_epoch(
+    ledger: &Ledger,
+    run_id: &str,
+    epoch: i64,
+    total_epochs: i64,
+    train_loss: f32,
+    val_loss: f32,
+    wall_clock_ms: i64,
+) -> Result<(), LedgerError> {
+    let id = Uuid::new_v4().to_string();
+    let ts = training_ts_now()?;
+    let train_loss_str = train_loss.to_string();
+    let val_loss_str = val_loss.to_string();
+
+    sqlx::query(
+        "INSERT INTO training_events \
+         (id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+          wall_clock_ms, model_revision, scenario, seed, pid, error_message) \
+         VALUES (?, ?, ?, 'epoch', ?, ?, ?, ?, ?, NULL, \
+          (SELECT scenario FROM training_events WHERE run_id = ? AND kind = 'start' LIMIT 1), \
+          (SELECT seed    FROM training_events WHERE run_id = ? AND kind = 'start' LIMIT 1), \
+          NULL, NULL)",
+    )
+    .bind(&id)
+    .bind(&ts)
+    .bind(run_id)
+    .bind(epoch)
+    .bind(total_epochs)
+    .bind(&train_loss_str)
+    .bind(&val_loss_str)
+    .bind(wall_clock_ms)
+    .bind(run_id) // scenario subquery
+    .bind(run_id) // seed subquery
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(
+        run_id,
+        epoch,
+        total_epochs,
+        train_loss,
+        val_loss,
+        wall_clock_ms,
+        "training_epoch persisted"
+    );
+    Ok(())
+}
+
+/// Write a `kind='finish'` row to `training_events` (R4.4, ADR-0034 § D5).
+///
+/// Called once at the end of `write_checkpoint` with the canonical
+/// `model_revision` SHA from `CheckpointMetadata`. `total_wall_clock_ms` is
+/// the full run duration measured at the call site.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL INSERT fails.
+#[instrument(
+    name = "ledger.post_training_finish",
+    skip(ledger),
+    fields(run_id, model_revision)
+)]
+pub async fn post_training_finish(
+    ledger: &Ledger,
+    run_id: &str,
+    model_revision: &str,
+    final_train_loss: f32,
+    final_val_loss: f32,
+    total_wall_clock_ms: i64,
+) -> Result<(), LedgerError> {
+    let id = Uuid::new_v4().to_string();
+    let ts = training_ts_now()?;
+    let train_loss_str = final_train_loss.to_string();
+    let val_loss_str = final_val_loss.to_string();
+
+    sqlx::query(
+        "INSERT INTO training_events \
+         (id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+          wall_clock_ms, model_revision, scenario, seed, pid, error_message) \
+         VALUES (?, ?, ?, 'finish', \
+          (SELECT MAX(epoch) FROM training_events WHERE run_id = ? AND kind = 'epoch'), \
+          (SELECT MAX(total_epochs) FROM training_events WHERE run_id = ? AND kind = 'epoch'), \
+          ?, ?, ?, ?, \
+          (SELECT scenario FROM training_events WHERE run_id = ? AND kind = 'start' LIMIT 1), \
+          (SELECT seed    FROM training_events WHERE run_id = ? AND kind = 'start' LIMIT 1), \
+          NULL, NULL)",
+    )
+    .bind(&id)
+    .bind(&ts)
+    .bind(run_id)
+    .bind(run_id) // epoch subquery
+    .bind(run_id) // total_epochs subquery
+    .bind(&train_loss_str)
+    .bind(&val_loss_str)
+    .bind(total_wall_clock_ms)
+    .bind(model_revision)
+    .bind(run_id) // scenario subquery
+    .bind(run_id) // seed subquery
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(
+        run_id,
+        model_revision,
+        final_train_loss,
+        final_val_loss,
+        total_wall_clock_ms,
+        "training_finish persisted"
+    );
+    Ok(())
+}
+
+/// Write a `kind='failed'` row to `training_events` (R4.4, ADR-0034 § D5).
+///
+/// Called by the top-level error handler in `train_tcn::main()` when the
+/// training loop exits with an `Err`. The `error_message` carries the last
+/// fatal error string. This row is best-effort on `SIGKILL` — there may not
+/// be enough time to write it before the process is killed.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL INSERT fails.
+#[instrument(name = "ledger.post_training_failed", skip(ledger), fields(run_id))]
+pub async fn post_training_failed(
+    ledger: &Ledger,
+    run_id: &str,
+    error_message: &str,
+) -> Result<(), LedgerError> {
+    let id = Uuid::new_v4().to_string();
+    let ts = training_ts_now()?;
+
+    sqlx::query(
+        "INSERT INTO training_events \
+         (id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+          wall_clock_ms, model_revision, scenario, seed, pid, error_message) \
+         VALUES (?, ?, ?, 'failed', NULL, NULL, NULL, NULL, NULL, NULL, \
+          (SELECT scenario FROM training_events WHERE run_id = ? AND kind = 'start' LIMIT 1), \
+          (SELECT seed    FROM training_events WHERE run_id = ? AND kind = 'start' LIMIT 1), \
+          NULL, ?)",
+    )
+    .bind(&id)
+    .bind(&ts)
+    .bind(run_id)
+    .bind(run_id) // scenario subquery
+    .bind(run_id) // seed subquery
+    .bind(error_message)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(run_id, error_message, "training_failed persisted");
+    Ok(())
+}
+
 /// Project `Signal.kind` onto the `strategy_signals.side` TEXT column.
 ///
 /// Returns:
@@ -1894,5 +2128,151 @@ mod tests {
                 .await
                 .expect("select intended_price_str");
         assert_eq!(row.0.as_deref(), Some("45000.5"));
+    }
+
+    // ── cockpit-training-control T-D-N8 training writer tests ─────────────────
+
+    /// T-D-N8 V1 — `post_training_start` writes a `kind='start'` row with all
+    /// expected fields and the supplied pid.
+    #[tokio::test]
+    async fn post_training_start_writes_row() {
+        let ledger = open_ledger().await;
+        let run_id = "run-0001-0000-0000-0000-000000000001";
+
+        post_training_start(&ledger, run_id, "bs1", 42, Some(12345))
+            .await
+            .expect("post_training_start must succeed");
+
+        let row: (String, String, String, Option<i64>, Option<i64>, i64) = sqlx::query_as(
+            "SELECT run_id, kind, scenario, pid, epoch, seed FROM training_events WHERE run_id = ?",
+        )
+        .bind(run_id)
+        .fetch_one(ledger.pool())
+        .await
+        .expect("must have one row");
+
+        assert_eq!(row.0, run_id, "run_id matches");
+        assert_eq!(row.1, "start", "kind = 'start'");
+        assert_eq!(row.2, "bs1", "scenario = 'bs1'");
+        assert_eq!(row.3, Some(12345), "pid captured");
+        assert!(row.4.is_none(), "epoch is NULL for start rows");
+        assert_eq!(row.5, 42, "seed matches");
+    }
+
+    /// T-D-N8 V2 — `post_training_epoch` writes a `kind='epoch'` row that
+    /// inherits scenario/seed from the matching start row.
+    #[tokio::test]
+    async fn post_training_epoch_writes_row() {
+        let ledger = open_ledger().await;
+        let run_id = "run-0002-0000-0000-0000-000000000002";
+
+        // Seed start row first so the subqueries resolve.
+        post_training_start(&ledger, run_id, "bs2", 99, None)
+            .await
+            .expect("start");
+
+        post_training_epoch(&ledger, run_id, 1, 50, 0.42_f32, 0.38_f32, 5000)
+            .await
+            .expect("post_training_epoch must succeed");
+
+        let row: (
+            String,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            i64,
+            String,
+        ) = sqlx::query_as(
+            "SELECT kind, epoch, total_epochs, train_loss, val_loss, wall_clock_ms, scenario \
+                 FROM training_events WHERE run_id = ? AND kind = 'epoch'",
+        )
+        .bind(run_id)
+        .fetch_one(ledger.pool())
+        .await
+        .expect("must have epoch row");
+
+        assert_eq!(row.0, "epoch");
+        assert_eq!(row.1, 1, "epoch = 1");
+        assert_eq!(row.2, 50, "total_epochs = 50");
+        // TEXT fields: stored as the f32 Display representation.
+        assert!(
+            row.3.as_deref().unwrap_or("").starts_with("0.4"),
+            "train_loss stored"
+        );
+        assert!(
+            row.4.as_deref().unwrap_or("").starts_with("0.3"),
+            "val_loss stored"
+        );
+        assert_eq!(row.5, 5000, "wall_clock_ms");
+        assert_eq!(row.6, "bs2", "scenario inherited from start row");
+    }
+
+    /// T-D-N8 V3 — `post_training_finish` sets `model_revision` and populates
+    /// epoch / total_epochs from the latest epoch row.
+    #[tokio::test]
+    async fn post_training_finish_sets_model_revision() {
+        let ledger = open_ledger().await;
+        let run_id = "run-0003-0000-0000-0000-000000000003";
+        let model_rev = "abc123def456abc123def456abc123def456abc1";
+
+        post_training_start(&ledger, run_id, "default", 7, None)
+            .await
+            .expect("start");
+        post_training_epoch(&ledger, run_id, 5, 5, 0.10_f32, 0.11_f32, 1000)
+            .await
+            .expect("epoch");
+        post_training_finish(&ledger, run_id, model_rev, 0.10_f32, 0.11_f32, 8000)
+            .await
+            .expect("post_training_finish must succeed");
+
+        let row: (String, Option<String>, Option<i64>) = sqlx::query_as(
+            "SELECT kind, model_revision, epoch FROM training_events WHERE run_id = ? AND kind = 'finish'",
+        )
+        .bind(run_id)
+        .fetch_one(ledger.pool())
+        .await
+        .expect("must have finish row");
+
+        assert_eq!(row.0, "finish");
+        assert_eq!(
+            row.1.as_deref(),
+            Some(model_rev),
+            "model_revision persisted"
+        );
+        assert_eq!(row.2, Some(5), "epoch from latest epoch row");
+    }
+
+    /// T-D-N8 V4 — `post_training_failed` writes `kind='failed'` with the
+    /// error_message field populated and epoch/model_revision NULL.
+    #[tokio::test]
+    async fn post_training_failed_writes_error_message() {
+        let ledger = open_ledger().await;
+        let run_id = "run-0004-0000-0000-0000-000000000004";
+
+        post_training_start(&ledger, run_id, "bs1", 1, Some(9999))
+            .await
+            .expect("start");
+        post_training_failed(&ledger, run_id, "Metal device not found")
+            .await
+            .expect("post_training_failed must succeed");
+
+        let row: (String, Option<String>, Option<i64>, Option<String>) = sqlx::query_as(
+            "SELECT kind, error_message, epoch, model_revision \
+             FROM training_events WHERE run_id = ? AND kind = 'failed'",
+        )
+        .bind(run_id)
+        .fetch_one(ledger.pool())
+        .await
+        .expect("must have failed row");
+
+        assert_eq!(row.0, "failed");
+        assert_eq!(
+            row.1.as_deref(),
+            Some("Metal device not found"),
+            "error_message"
+        );
+        assert!(row.2.is_none(), "epoch is NULL");
+        assert!(row.3.is_none(), "model_revision is NULL");
     }
 }

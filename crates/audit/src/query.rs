@@ -10,8 +10,9 @@ use time::format_description::well_known::Rfc3339;
 use trading_core::{
     AccountId, AuditKindFilter, AuditKindLabel, EquitySeries, FillView, FundingObs, JournalEntry,
     JournalEntryView, JournalRow, JournalTransactionMetadata, LedgerError, Money, OpenPosition,
-    PairKey, PairMembership, Price, Quantity, Side, SignalView, StrategyEventKind,
-    StrategyEventView, StrategyId, Symbol, Timestamp, Usdt, Venue,
+    OrphanTrainingRun, PairKey, PairMembership, Price, Quantity, Side, SignalView,
+    StrategyEventKind, StrategyEventView, StrategyId, Symbol, Timestamp, TrainingEventRow,
+    TrainingRunSummary, Usdt, Venue,
 };
 
 use crate::Ledger;
@@ -1910,6 +1911,258 @@ pub async fn open_positions_at(
     Ok(out)
 }
 
+// ── cockpit-training-control T-D-N9 — training_events readers ────────────────
+
+/// Internal row type for `recent_training_events` and `latest_training_run`.
+///
+/// All fields map directly to the `training_events` columns. `train_loss` /
+/// `val_loss` are stored as TEXT in the DB; we parse them back to `f32` here.
+#[allow(clippy::type_complexity)]
+type TrainingEventSqlRow = (
+    String,         // id
+    String,         // ts
+    String,         // run_id
+    String,         // kind
+    Option<i64>,    // epoch
+    Option<i64>,    // total_epochs
+    Option<String>, // train_loss TEXT
+    Option<String>, // val_loss TEXT
+    Option<i64>,    // wall_clock_ms
+    Option<String>, // model_revision
+    String,         // scenario
+    i64,            // seed
+    Option<i64>,    // pid
+    Option<String>, // error_message
+);
+
+fn row_to_training_event(r: TrainingEventSqlRow) -> Result<TrainingEventRow, LedgerError> {
+    let (
+        id,
+        ts,
+        run_id,
+        kind,
+        epoch,
+        total_epochs,
+        train_loss_s,
+        val_loss_s,
+        wall_clock_ms,
+        model_revision,
+        scenario,
+        seed,
+        pid,
+        error_message,
+    ) = r;
+
+    let train_loss = train_loss_s
+        .as_deref()
+        .map(|s| {
+            s.parse::<f32>()
+                .map_err(|_| LedgerError::Database(format!("bad train_loss '{s}'")))
+        })
+        .transpose()?;
+    let val_loss = val_loss_s
+        .as_deref()
+        .map(|s| {
+            s.parse::<f32>()
+                .map_err(|_| LedgerError::Database(format!("bad val_loss '{s}'")))
+        })
+        .transpose()?;
+
+    Ok(TrainingEventRow {
+        id: SmolStr::new(&id),
+        ts: SmolStr::new(&ts),
+        run_id: SmolStr::new(&run_id),
+        kind: SmolStr::new(&kind),
+        epoch,
+        total_epochs,
+        train_loss,
+        val_loss,
+        wall_clock_ms,
+        model_revision: model_revision.map(|s| SmolStr::new(&s)),
+        scenario: SmolStr::new(&scenario),
+        seed,
+        pid,
+        error_message: error_message.map(|s| SmolStr::new(&s)),
+    })
+}
+
+/// Return all `training_events` rows in the half-open window `[since, until)`,
+/// newest-first (R4.5, ADR-0034 § D2).
+///
+/// `since` and `until` are RFC3339 strings. The half-open convention matches
+/// [`recent_signals`] and [`recent_fills_filtered`].
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn recent_training_events(
+    ledger: &Ledger,
+    since: &str,
+    until: &str,
+) -> Result<Vec<TrainingEventRow>, LedgerError> {
+    let rows: Vec<TrainingEventSqlRow> = sqlx::query_as(
+        "SELECT id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+                wall_clock_ms, model_revision, scenario, seed, pid, error_message \
+         FROM training_events \
+         WHERE ts >= ? AND ts < ? \
+         ORDER BY ts DESC, rowid DESC",
+    )
+    .bind(since)
+    .bind(until)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    rows.into_iter().map(row_to_training_event).collect()
+}
+
+/// Return a `TrainingRunSummary` for the most recent training run, or `None`
+/// if the `training_events` table is empty (R4.5 / panel status strip R3.5).
+///
+/// "Most recent" is determined by the latest `kind='start'` row's `ts`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse error.
+pub async fn latest_training_run(
+    ledger: &Ledger,
+) -> Result<Option<TrainingRunSummary>, LedgerError> {
+    // Find the most recent run_id (from the latest start row).
+    let start_row: Option<(String, String, String, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT run_id, ts, scenario, seed, pid \
+         FROM training_events \
+         WHERE kind = 'start' \
+         ORDER BY ts DESC, rowid DESC \
+         LIMIT 1",
+    )
+    .fetch_optional(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let Some((run_id, started_at, scenario, seed, pid)) = start_row else {
+        return Ok(None);
+    };
+
+    // Fetch the latest epoch row for this run.
+    let epoch_row: Option<(i64, i64, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT epoch, total_epochs, train_loss, val_loss \
+         FROM training_events \
+         WHERE run_id = ? AND kind = 'epoch' \
+         ORDER BY epoch DESC LIMIT 1",
+    )
+    .bind(&run_id)
+    .fetch_optional(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let (latest_epoch, total_epochs, latest_train_loss_s, latest_val_loss_s) =
+        epoch_row.unwrap_or((0, 0, None, None));
+
+    let latest_train_loss = latest_train_loss_s
+        .as_deref()
+        .map(|s| {
+            s.parse::<f32>()
+                .map_err(|_| LedgerError::Database(format!("bad train_loss '{s}'")))
+        })
+        .transpose()?;
+    let latest_val_loss = latest_val_loss_s
+        .as_deref()
+        .map(|s| {
+            s.parse::<f32>()
+                .map_err(|_| LedgerError::Database(format!("bad val_loss '{s}'")))
+        })
+        .transpose()?;
+
+    // Check for finish row.
+    let finish_row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT model_revision FROM training_events WHERE run_id = ? AND kind = 'finish' LIMIT 1",
+    )
+    .bind(&run_id)
+    .fetch_optional(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Check for failed row.
+    let failed_row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT error_message FROM training_events WHERE run_id = ? AND kind = 'failed' LIMIT 1",
+    )
+    .bind(&run_id)
+    .fetch_optional(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let (model_revision, status, error_message) = match (finish_row, failed_row) {
+        (Some((rev,)), _) => (rev.map(SmolStr::new), SmolStr::new("done"), None),
+        (_, Some((err,))) => (None, SmolStr::new("failed"), err.map(SmolStr::new)),
+        _ => (None, SmolStr::new("running"), None),
+    };
+
+    Ok(Some(TrainingRunSummary {
+        run_id: SmolStr::new(&run_id),
+        scenario: SmolStr::new(&scenario),
+        seed,
+        started_at: SmolStr::new(&started_at),
+        latest_epoch,
+        total_epochs,
+        latest_train_loss,
+        latest_val_loss,
+        model_revision,
+        status,
+        error_message,
+        pid,
+    }))
+}
+
+/// Return all training runs that have a `kind='start'` row but no
+/// `kind='finish'` or `kind='failed'` row within the given `fresh_window_secs`
+/// seconds (ADR-0034 § D7 orphan-detect).
+///
+/// A run is considered "orphaned" when:
+/// 1. Its `started_at` is more than `fresh_window_secs` seconds in the past, AND
+/// 2. There is no `finish` or `failed` row for the same `run_id`.
+///
+/// Callers can then do `libc::kill(pid, 0)` on the returned `pid` to determine
+/// whether the process is still alive (false-positive risk: PID reuse within
+/// the 24h orphan window — bounded per ADR-0034 § D7).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL error.
+pub async fn orphan_training_runs(
+    ledger: &Ledger,
+    fresh_window_secs: i64,
+) -> Result<Vec<OrphanTrainingRun>, LedgerError> {
+    // SQLite datetime arithmetic: use `strftime` + `unixepoch`.
+    // The cutoff is `now - fresh_window_secs` seconds.
+    // We compare against the `ts` column which is RFC3339 TEXT —
+    // lexicographic ordering works for ISO8601 strings at the same
+    // timezone (all our timestamps end in `Z`).
+    let rows: Vec<(String, String, String, Option<i64>)> = sqlx::query_as(
+        "SELECT run_id, ts, scenario, pid \
+         FROM training_events \
+         WHERE kind = 'start' \
+           AND ts < datetime('now', printf('-%d seconds', ?)) \
+           AND run_id NOT IN ( \
+               SELECT run_id FROM training_events WHERE kind IN ('finish', 'failed') \
+           ) \
+         ORDER BY ts DESC",
+    )
+    .bind(fresh_window_secs)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(run_id, started_at, scenario, pid)| OrphanTrainingRun {
+            run_id: SmolStr::new(&run_id),
+            scenario: SmolStr::new(&scenario),
+            started_at: SmolStr::new(&started_at),
+            pid,
+        })
+        .collect())
+}
+
 // ── T1606 — recent_fills_filtered unit tests (Phase 2 R12 / Q10) ─────────────
 
 #[cfg(test)]
@@ -2488,5 +2741,229 @@ mod tests {
         for f in &eth {
             assert_eq!(f.symbol, Symbol::new("ETHUSDT"));
         }
+    }
+
+    // ── cockpit-training-control T-D-N9 — training reader tests ───────────────
+
+    use crate::journal::{
+        post_training_epoch, post_training_failed, post_training_finish, post_training_start,
+    };
+
+    async fn seed_run(ledger: &Ledger, run_id: &str, scenario: &str, seed: i64, pid: Option<i64>) {
+        post_training_start(ledger, run_id, scenario, seed, pid)
+            .await
+            .expect("start");
+    }
+
+    /// T-D-N9 V1 — `recent_training_events` returns rows in the half-open
+    /// `[since, until)` window, newest-first.
+    #[tokio::test]
+    async fn recent_training_events_filters_by_window() {
+        let ledger = open_seeded_ledger().await;
+        let run_id = "qrec-0001-0000-0000-0000-000000000001";
+
+        seed_run(&ledger, run_id, "bs1", 1, None).await;
+        post_training_epoch(&ledger, run_id, 1, 10, 0.5_f32, 0.4_f32, 1000)
+            .await
+            .expect("epoch 1");
+        post_training_epoch(&ledger, run_id, 2, 10, 0.3_f32, 0.25_f32, 2000)
+            .await
+            .expect("epoch 2");
+
+        // Use a wide window that captures the inserts.
+        let since = "2000-01-01T00:00:00.000000Z";
+        let until = "2099-12-31T23:59:59.999999Z";
+        let rows = recent_training_events(&ledger, since, until)
+            .await
+            .expect("recent_training_events");
+
+        // start + 2 epochs = 3 rows total.
+        assert_eq!(rows.len(), 3, "must return all 3 rows in the window");
+        // Newest first: epoch rows have higher ts than start row (inserted after).
+        // The kind column tells us the order:
+        let kinds: Vec<&str> = rows.iter().map(|r| r.kind.as_str()).collect();
+        // epoch-2 or epoch-1 first (both after start), then start.
+        assert_eq!(
+            kinds.last(),
+            Some(&"start"),
+            "start is oldest → appears last"
+        );
+    }
+
+    /// T-D-N9 V2 — `recent_training_events` returns empty when the window
+    /// is before all rows (no rows in [past, past+1s)).
+    #[tokio::test]
+    async fn recent_training_events_empty_outside_window() {
+        let ledger = open_seeded_ledger().await;
+        let run_id = "qrec-0002-0000-0000-0000-000000000002";
+        seed_run(&ledger, run_id, "bs2", 7, None).await;
+
+        // Window entirely before Unix epoch (before any ts we'd insert).
+        let rows = recent_training_events(
+            &ledger,
+            "1970-01-01T00:00:00.000000Z",
+            "1970-01-01T00:00:01.000000Z",
+        )
+        .await
+        .expect("recent_training_events");
+        assert!(rows.is_empty(), "no rows before epoch window");
+    }
+
+    /// T-D-N9 V3 — `latest_training_run` returns `None` on an empty table.
+    #[tokio::test]
+    async fn latest_training_run_none_when_empty() {
+        let ledger = open_seeded_ledger().await;
+        let result = latest_training_run(&ledger)
+            .await
+            .expect("latest_training_run");
+        assert!(result.is_none(), "must be None on empty table");
+    }
+
+    /// T-D-N9 V4 — `latest_training_run` returns status='running' when
+    /// only a start row exists.
+    #[tokio::test]
+    async fn latest_training_run_running_status() {
+        let ledger = open_seeded_ledger().await;
+        let run_id = "qrun-0001-0000-0000-0000-000000000001";
+        seed_run(&ledger, run_id, "bs1", 42, Some(12345)).await;
+
+        let summary = latest_training_run(&ledger)
+            .await
+            .expect("latest_training_run")
+            .expect("must have Some");
+
+        assert_eq!(summary.run_id.as_str(), run_id);
+        assert_eq!(summary.status.as_str(), "running");
+        assert_eq!(summary.scenario.as_str(), "bs1");
+        assert_eq!(summary.seed, 42);
+        assert_eq!(summary.pid, Some(12345));
+        assert!(summary.model_revision.is_none());
+        assert_eq!(summary.latest_epoch, 0, "no epochs yet");
+    }
+
+    /// T-D-N9 V5 — `latest_training_run` returns status='done' after a
+    /// finish row is inserted, and `model_revision` is populated.
+    #[tokio::test]
+    async fn latest_training_run_done_status() {
+        let ledger = open_seeded_ledger().await;
+        let run_id = "qrun-0002-0000-0000-0000-000000000002";
+        let model_rev = "deadbeef1234deadbeef1234deadbeef12340001";
+
+        seed_run(&ledger, run_id, "bs2", 99, None).await;
+        post_training_epoch(&ledger, run_id, 1, 5, 0.4_f32, 0.35_f32, 3000)
+            .await
+            .expect("epoch");
+        post_training_finish(&ledger, run_id, model_rev, 0.4_f32, 0.35_f32, 10_000)
+            .await
+            .expect("finish");
+
+        let summary = latest_training_run(&ledger)
+            .await
+            .expect("latest_training_run")
+            .expect("must have Some");
+
+        assert_eq!(summary.status.as_str(), "done");
+        assert_eq!(summary.model_revision.as_deref(), Some(model_rev));
+        assert_eq!(summary.latest_epoch, 1);
+    }
+
+    /// T-D-N9 V6 — `latest_training_run` returns status='failed' after a
+    /// failed row is inserted, and `error_message` is populated.
+    #[tokio::test]
+    async fn latest_training_run_failed_status() {
+        let ledger = open_seeded_ledger().await;
+        let run_id = "qrun-0003-0000-0000-0000-000000000003";
+
+        seed_run(&ledger, run_id, "default", 1, None).await;
+        post_training_failed(&ledger, run_id, "CUDA out of memory")
+            .await
+            .expect("failed");
+
+        let summary = latest_training_run(&ledger)
+            .await
+            .expect("latest_training_run")
+            .expect("must have Some");
+
+        assert_eq!(summary.status.as_str(), "failed");
+        assert_eq!(summary.error_message.as_deref(), Some("CUDA out of memory"));
+        assert!(summary.model_revision.is_none());
+    }
+
+    /// T-D-N9 V7 — `orphan_training_runs` returns runs that started more
+    /// than `fresh_window_secs` ago with no finish/failed row. Completed
+    /// runs are excluded.
+    ///
+    /// We directly INSERT rows with a known past timestamp (2020-01-01) so
+    /// the window check (`ts < now - fresh_window_secs`) is deterministic
+    /// regardless of wall-clock timing. The completed run is also inserted
+    /// with a past timestamp but has a matching `finish` row.
+    #[tokio::test]
+    async fn orphan_training_runs_excludes_completed() {
+        let ledger = open_seeded_ledger().await;
+
+        let orphan_id = "qorp-0001-0000-0000-0000-000000000001";
+        let done_id = "qorp-0002-0000-0000-0000-000000000002";
+        // A fixed past timestamp well outside any reasonable fresh_window.
+        let past_ts = "2020-01-01T00:00:00.000000Z";
+
+        // Insert orphan start row directly (no finish/failed).
+        sqlx::query(
+            "INSERT INTO training_events \
+             (id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+              wall_clock_ms, model_revision, scenario, seed, pid, error_message) \
+             VALUES ('orphan-row-id-001', ?, ?, 'start', NULL, NULL, NULL, NULL, NULL, NULL, 'bs1', 1, 777, NULL)",
+        )
+        .bind(past_ts)
+        .bind(orphan_id)
+        .execute(ledger.pool())
+        .await
+        .expect("insert orphan start");
+
+        // Insert done start row + finish row.
+        sqlx::query(
+            "INSERT INTO training_events \
+             (id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+              wall_clock_ms, model_revision, scenario, seed, pid, error_message) \
+             VALUES ('done-row-id-start', ?, ?, 'start', NULL, NULL, NULL, NULL, NULL, NULL, 'bs2', 2, NULL, NULL)",
+        )
+        .bind(past_ts)
+        .bind(done_id)
+        .execute(ledger.pool())
+        .await
+        .expect("insert done start");
+
+        sqlx::query(
+            "INSERT INTO training_events \
+             (id, ts, run_id, kind, epoch, total_epochs, train_loss, val_loss, \
+              wall_clock_ms, model_revision, scenario, seed, pid, error_message) \
+             VALUES ('done-row-id-finish', ?, ?, 'finish', 5, 5, '0.1', '0.1', 1000, 'rev001', 'bs2', 2, NULL, NULL)",
+        )
+        .bind(past_ts)
+        .bind(done_id)
+        .execute(ledger.pool())
+        .await
+        .expect("insert done finish");
+
+        // fresh_window = 60 seconds: cutoff = now - 60s.
+        // Our rows have ts = 2020-01-01 which is far before the cutoff.
+        let orphans = orphan_training_runs(&ledger, 60)
+            .await
+            .expect("orphan_training_runs");
+
+        let orphan_ids: Vec<&str> = orphans.iter().map(|o| o.run_id.as_str()).collect();
+        assert!(
+            orphan_ids.contains(&orphan_id),
+            "orphan run must appear; got {orphan_ids:?}"
+        );
+        assert!(
+            !orphan_ids.contains(&done_id),
+            "completed run must not appear; got {orphan_ids:?}"
+        );
+        // Verify pid is captured.
+        let orphan_entry = orphans
+            .iter()
+            .find(|o| o.run_id.as_str() == orphan_id)
+            .unwrap();
+        assert_eq!(orphan_entry.pid, Some(777), "pid must be captured");
     }
 }
