@@ -4,6 +4,25 @@ status: living
 owner: orchestrator
 updated: 2026-05-19
 ---
+<!-- updated 2026-05-19 (analyst, ui-rethink-phase-b-lab-run M0 close) —
+     Analyst pass landed. feature.md (status: draft, owner: analyst,
+     version: 0.1.0) carries the full R1-R10 + K1-K8 + H1-H5 + Q1-Q5
+     registers. Critical architecture finding: `crates/backtest` is
+     already library-callable at the type-surface level (`lib.rs`
+     re-exports `run_scenario`, `RunReport`, `ScenarioConfig`,
+     `DateRange`, `ParamSheet`, `BacktestKpis`, `MatchingEngine`,
+     `RunError`) — Phase B work is BODY extraction from `main.rs`
+     (3417 LOC, 7 scenarios, 4 backtest paths), not API extraction.
+     `engine::run_scenario` body is currently a stub
+     (`engine.rs:236-240` returns `Err(RunError::NotImplemented)`).
+     All 22 anchors preserved by construction (H2 is the gate).
+     Cancellation pattern mirrors Phase A's mpsc-disconnect
+     (`runner.rs:108-111`), NOT trainer's subprocess SIGKILL. Q1-Q5
+     defaults locked: Q1=A in-memory return, Q2=A ThrottledSpinner
+     only, Q3=A disabled-while-running + internal cancel poll,
+     Q4=A session-local diff, Q5=A preserve all 22 anchors.
+     HANDOFF → operator-decide on Q1-Q5, then → architect for
+     M-T1 decomposition. -->
 <!-- updated 2026-05-19 (orchestrator, ui-rethink-phase-b-lab-run promotion) —
      Phase B of the UI rethink promoted Queue (implicit) → Active.
      Operator direction "1 then 2" — #1 (cockpit-performance-and-input-
@@ -264,29 +283,40 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 - **UI rethink Phase B — Lab Run button (`ui-rethink-phase-b-lab-run`).**
-  _proposed (2026-05-19) — awaiting analyst pass_. Second concrete
-  feature carved out of the broader UI rethink at
+  _draft (2026-05-19) — analyst pass landed; awaiting operator-decide
+  on Q1-Q5, then architect M-T1_. Second concrete feature carved out
+  of the broader UI rethink at
   [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
   Predecessor: [`ui-rethink-phase-a-lab v0.2.0`](ui-rethink-phase-a-lab/feature.md)
   shipped 2026-05-18. Promotes Phase A's Lab `Run` button from
-  "read cached report from `spec/<strategy>/reports/`" to "actually
-  run a backtest in-process," closing the operator's J2 workflow
-  end-to-end. Scope (dev-note §6 Phase B): confirm
-  `crates/backtest` library-callable (refactor to thin-binary-over-
-  library if not); wire Lab `Run` button to call the engine and
-  populate `lab_state.result` directly; add "compare to previous
-  run" affordance. Out of scope: Phases C/D/E/F, new engine
-  internals, multi-strategy batch runs, live/paper mode.
-  **5 analyst-surfaced Qs** (library-call shape; spinner / progress
-  UX; cancellation semantics; compare-against target; anchor
-  surface). **Non-regression contract:** 22 body-SHA anchors stay
-  byte-identical; `cockpit-smoke` stays green; the just-shipped
+  "stubbed `RunError::NotImplemented` + cached-report read" to
+  "actually run a backtest in-process and render the live result
+  on the chart," closing the operator's J2 workflow end-to-end.
+  **Refined scope** (post-analyst): `crates/backtest` already
+  library-callable at the type-surface (`lib.rs` re-exports
+  ADR-0030 types); Phase B work is BODY extraction from `main.rs`
+  (3417 LOC, 7 scenarios, 4 backtest paths) preserving all 22
+  body-SHA anchors by construction (H2). Wire `spawn_lab_run`'s
+  `#[cfg(feature = "live")]` arm to call real `run_scenario`
+  (currently TODO at `runner.rs:197-206`). Add `LabState.last_run_report`
+  + `LabState.prev_run_report` for the session-local "compare to
+  previous run" delta badge (Q4 default = in-memory only).
+  Out of scope: Phases C/D/E/F, new engine internals, multi-
+  strategy batch runs, live/paper mode, inline param sheet,
+  on-disk history walk. **5 operator-decide Qs with analyst-
+  recommended defaults** (Q1=A in-memory return; Q2=A
+  `ThrottledSpinner` only; Q3=A disabled-while-running + internal
+  cancel poll for shutdown safety; Q4=A session-local diff; Q5=A
+  preserve all 22 anchors). **Non-regression contract** (7 items):
+  22 body-SHA anchors byte-identical; Phase A surface unchanged;
+  `cockpit-smoke` PASS 0 panics;
   `cockpit-performance-and-input-responsiveness v1.0.0` idle-CPU
-  floor (≤13.1%) stays under budget. Cost estimate per dev-note:
-  **~1-2 weeks; low anchor risk** (new library-call path; no
-  committed report bodies change). Trace row
-  `REQ-UI-RETHINK-PHASE-B-001` opened in proposed state.
-  HANDOFF → analyst.
+  floor (≤13.1%) preserved at T+5s post-`LabRunCompleted`;
+  `spec-lint` exit 0; no new external crate deps; no new Lumen
+  tokens. Cost estimate per dev-note: **~1-2 weeks; medium anchor
+  risk** (K1 refactor drift is the dominant risk — `main.rs` 3417
+  LOC moves around). Trace row `REQ-UI-RETHINK-PHASE-B-001` in
+  draft state. HANDOFF → operator-decide on Q1-Q5, then → architect.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator

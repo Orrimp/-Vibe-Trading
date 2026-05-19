@@ -648,9 +648,21 @@ arch        = [
   "spec/architecture/adr/0030-cockpit-in-process-backtest.md",
 ]
 crates      = ["crates/ui", "crates/backtest"]
-tests       = []   # analyst-pass stub; populate at architect T-AR-2
-anchors     = []   # Phase B touches no strategy/audit/exec code; 22 originals stay byte-identical (R10 contract in feature.md)
-state       = "proposed"
+tests       = [
+  # ANALYST M0 (2026-05-19) — paths surfaced from R1-R10 in feature.md;
+  # architect tightens at M-T1 once Q1-Q5 close.
+  # Forward-looking paths (R8 run_delta_badge.rs, lab_run_engine.rs)
+  # land at developer wave and will be appended once on disk —
+  # lint-clean while in draft state.
+  "crates/backtest/src/engine.rs",                # R1 (run_scenario body + cancel poll + scenario dispatch)
+  "crates/backtest/src/main.rs",                  # R2 (thin CLI wrapper coverage)
+  "crates/backtest/tests/determinism.rs",         # R10.1 / H2 / H4 (anchor preservation)
+  "crates/ui/src/lab/runner.rs",                  # R3 (spawn_lab_run → real engine + LabRunConfig → ScenarioConfig mapping)
+  "crates/ui/src/lab/state.rs",                   # R4 (last_run_report / prev_run_report state machine)
+  "crates/ui/src/lab/equity_loader.rs",           # R5 (last_run_report-first routing; cache fallback)
+]
+anchors     = []   # Phase B touches no strategy/audit/exec code; 22 originals stay byte-identical (R10.1 contract in feature.md; H2 + H4 hypotheses guard)
+state       = "draft"  # ANALYST M0 closed 2026-05-19; awaiting operator-decide on Q1-Q5, then architect M-T1
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
