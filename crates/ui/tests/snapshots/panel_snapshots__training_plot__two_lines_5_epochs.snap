@@ -1,0 +1,12 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1954
+expression: training_plot_summary(&epochs)
+---
+widget: training_plot
+state: running
+epochs: 5
+y_scale: 0.8800
+last_train_loss: 0.2800
+last_val_loss: 0.3100
+last_epoch: 5

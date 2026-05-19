@@ -1,0 +1,8 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1964
+expression: "training_plot_state_summary(\"empty\", &[])"
+---
+widget: training_plot
+state: empty
+copy: No training run in flight

@@ -47,10 +47,35 @@ name = "metal_cpu_drift"
 path = "tests/metal_cpu_drift.rs"
 required-features = ["candle"]
 
+# K5 golden-CLI snapshot (ADR-0034 § D9). Requires `candle` so the binary
+# exists; uses `cargo run` internally.
+[[test]]
+name = "train_tcn_golden_cli"
+path = "tests/train_tcn_golden_cli.rs"
+required-features = ["candle"]
+
+# T-D-N10 audit-emits integration tests.
+[[test]]
+name = "train_tcn_audit_emits"
+path = "tests/train_tcn_audit_emits.rs"
+required-features = ["candle"]
+
+[[test]]
+name = "train_tcn_no_audit_db_writes_nothing"
+path = "tests/train_tcn_no_audit_db_writes_nothing.rs"
+required-features = ["candle"]
+
 [dependencies]
 # Workspace siblings
 trading_core = { path = "../core" }
 replay-cache = { path = "../replay-cache" }
+# Audit-DB sidecar for train_tcn --audit-db instrumentation (T-D-N10).
+# Compiled in always; the Ledger is only opened at runtime when --audit-db
+# is passed. Zero performance impact on normal training runs.
+audit = { path = "../audit" }
+
+# Async runtime for blocking audit writes in train_tcn's audit_writer helper.
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 # Async trait
 async-trait = { workspace = true }
@@ -106,6 +131,13 @@ tracing-subscriber = { workspace = true }
 tempfile = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# tokio is already in [dependencies]; rt-multi-thread is added here for tests.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 rust_decimal_macros = { workspace = true }
 proptest = { workspace = true }
+# For T-D-N10 integration tests that open the audit.db directly without tokio.
+rusqlite = { version = "0.32", features = ["bundled"] }
+# For the no-audit-db walkdir assertion.
+walkdir = "2"
+# For T-D-N10 metadata JSON validation.
+serde_json = { workspace = true }

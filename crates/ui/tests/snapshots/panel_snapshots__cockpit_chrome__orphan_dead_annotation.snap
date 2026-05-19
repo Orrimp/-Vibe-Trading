@@ -1,0 +1,6 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1999
+expression: annotation
+---
+Training orphan (run abc12345) — process gone, check logs

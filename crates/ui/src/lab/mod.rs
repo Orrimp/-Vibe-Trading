@@ -20,9 +20,15 @@
 pub mod defaults;
 pub mod equity_loader;
 pub mod persistence;
+/// cockpit-training-control T-D-N14 — cross-platform PID liveness check.
+pub mod pid_alive;
 pub mod runner;
 pub mod state;
 pub mod trainer;
+/// cockpit-training-control T-D-N11 — 1 Hz audit-DB poller subscription.
+/// Gated behind `live` because it requires the `audit` crate + `async-stream`.
+#[cfg(feature = "live")]
+pub mod training_subscription;
 pub mod universe;
 
 pub use equity_loader::{EquityCache, EquityLoadError, Fidelity, LabEquitySeries, LabTuple};

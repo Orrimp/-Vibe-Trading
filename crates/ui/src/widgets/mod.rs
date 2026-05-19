@@ -10,6 +10,10 @@
 //! - No hex colors or magic-number `Length::Units(N)` — use `crate::theme::*`.
 
 pub mod agent_feed;
+/// cockpit-training-control T-D-N17 — shared axis-rendering helpers.
+/// Tick spacing, label formatting, and coordinate mapping for use by
+/// `widgets::training_plot` and potentially `widgets::chart`.
+pub(crate) mod axis;
 pub(crate) mod canvas_chart;
 pub mod chart;
 pub mod chart_legend;
@@ -65,4 +69,7 @@ pub mod throttled_spinner;
 /// cockpit-training-control T-D-N2 — training log ring-buffer widget.
 /// 200-entry VecDeque<SmolStr> with auto-scroll + click-to-freeze.
 pub mod training_log;
+/// cockpit-training-control T-D-N12 — loss-curve plot inside Train panel.
+/// Renders (epoch, train_loss, val_loss) series as two lines.
+pub mod training_plot;
 pub mod volume_histogram;

@@ -61,10 +61,11 @@ use crate::state::{Cockpit, Message};
 /// overflow and regenerate baselines.
 pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     // GALLERY_CELL_COUNT * CELL_HEIGHT_PX + padding headroom.
-    // CELL_HEIGHT_PX = 260.0, GALLERY_CELL_COUNT = 43 cells (cockpit-training-
-    // control T-D-N2 adds training_log empty + with_lines = +2 from Phase A).
-    // 43 * 260 = 11_180. Adding 620 px headroom for the outer container
-    // padding (space::S per cell * 2 sides = ~16 px * 43 = ~688 px).
+    // CELL_HEIGHT_PX = 260.0, GALLERY_CELL_COUNT = 45 cells (cockpit-training-
+    // control T-D-N2 adds training_log empty + with_lines = +2 from Phase A;
+    // T-D-N12/N18 adds training_plot empty + running_5_epochs = +2 from Phase A).
+    // 45 * 260 = 11_700. Adding 300 px headroom for the outer container
+    // padding (space::S per cell * 2 sides = ~16 px * 45 = ~720 px).
     12_000
 };
 

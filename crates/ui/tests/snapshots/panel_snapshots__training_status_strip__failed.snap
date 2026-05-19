@@ -1,0 +1,11 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1893
+expression: "training_status_summary(&c, \"failed\")"
+---
+panel: training_status_strip
+scenario: failed
+inflight: false
+status_text: Idle
+log_line_count: 1
+last_log_line: [error] training failed: OOM

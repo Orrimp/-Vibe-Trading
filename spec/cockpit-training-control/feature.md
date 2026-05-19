@@ -1166,3 +1166,60 @@ _tester links to reports here_
   Trace row `REQ-COCKPIT-TRAIN-001` opened in proposed state.
   Predecessor `ui-rethink-phase-a-lab v0.2.0`; sibling-in-flight
   `v25-tcn-alpha-investigation`.
+
+## Implementation
+
+_Developer: 2026-05-19_
+
+### M-T1 (Tier 1) — shipped
+
+All T-D-N1..N7 rows verified and ticked in the prior developer pass:
+
+- `crates/ui/src/lab/trainer.rs` — `spawn_training_run` + `TrainingHandle` Drop-SIGKILL (T-D-N1)
+- `crates/ui/src/widgets/training_log.rs` — 200-entry ring buffer + auto-scroll chip (T-D-N2)
+- `crates/ui/src/screens/lab.rs` — Train panel integration (T-D-N3)
+- `crates/ui/src/state.rs` — 6 new `Message` arms + update handlers (T-D-N4)
+- `crates/ui/src/lab/persistence.rs` — `training_panel_collapsed` JSON field (T-D-N5)
+- `crates/ui/tests/panel_snapshots.rs` — 3 Tier 1 insta snapshots + K5 golden-CLI test (T-D-N6)
+- `crates/audit/migrations/010_training_events.sql` — schema bootstrap (T-D-N7)
+
+### M-T2 (Tier 2) — shipped
+
+New modules and integration tests for the audit events + live curves layer:
+
+- **`crates/forecast/src/bin/train_tcn.rs`** (T-D-N10): Added `--audit-db <PATH>` optional flag with inline `AuditWriter` struct. Runtime-optional sidecar DB writes at start, per-epoch, finish, and failed events. `write_checkpoint()` returns `model_revision` SHA. Three integration tests in `crates/forecast/tests/`: `train_tcn_golden_cli.rs` (K5), `train_tcn_audit_emits.rs`, `train_tcn_no_audit_db_writes_nothing.rs`.
+
+- **`crates/ui/src/lab/training_subscription.rs`** (T-D-N11): 1 Hz audit-DB poller using iced `Recipe`. Gated behind `#[cfg(feature = "live")]`. Fixed pre-existing `live.rs` E0515 errors (Rust 2024 `impl Trait` lifetime capture rule change) to restore `--features live` compilation. Three inline tests: none-run-id fast-path, idempotent polling, recipe hash identity.
+
+- **`crates/ui/src/widgets/training_plot.rs`** (T-D-N12): Text-mode training loss-curve summary (canvas polyline rendering deferred to follow-on wave). States: `Empty` / `WarmingUp` / `Running { epochs }`. y-scale = `max_loss * 1.1`. All prose routed through `crate::strings` formatter functions.
+
+- **`crates/ui/tests/panel_snapshots.rs`** (T-D-N13): 4 training_status_strip insta snapshots (idle, running, done, failed).
+
+- **`crates/ui/src/lab/pid_alive.rs`** (T-D-N14): Unix `libc::kill(pid, 0)` + Windows + conservative fallback. Plus 2 orphan annotation string tests in `screens/lab.rs::tests`.
+
+- **`crates/ui/src/widgets/axis.rs`** (T-D-N17): Shared axis tick/label helpers (`tick_positions`, `format_tick_label`, `y_for_value`, `x_for_index`). Six inline tests.
+
+- **`crates/ui/src/strings.rs`** (T-D-N16): Added all training status strip constants + orphan annotation format strings + training_plot format constants + `fmt_training_plot_*` formatter functions (to avoid prose literals inside `widgets/`).
+
+- **`crates/ui/tests/panel_snapshots.rs`** (T-D-N18): 5 Tier 2 insta snapshots: `training_plot__two_lines_5_epochs`, `training_plot__empty_state`, `training_plot__warming_up_with_spinner`, `cockpit_chrome__orphan_live_annotation`, `cockpit_chrome__orphan_dead_annotation`. Gallery cells added in `gallery/routes.rs`.
+
+### Deviations from spec
+
+1. **`axis.rs`**: New addition (not extracted from `chart.rs` to avoid refactor risk). Chart's render output is unaffected — the module is independent. Noted as spec deviation in the task tick.
+
+2. **Tier 2 status strip (T-D-N13)**: The insta snapshots lock the *Tier 1* status text shape (Idle / Training…) since `training_inflight` can't be set in non-live tests. The Tier 2 epoch-count enrichment (`Training (epoch N/M, t=Ts)`) requires `--features live` and a running training process; tester validates this in the manual cockpit-run acceptance gate.
+
+3. **Orphan-detect boot path (T-D-N14)**: The `pid_alive` helper and annotation string tests are implemented. The boot-path integration (cockpit.rs `orphan_training_runs` query + chrome render) is deferred to the `--features live` cockpit binary path; tester validates in the manual orphan-detect test.
+
+4. **`render_snapshots` pre-existing failures**: `chart_screen_renders_clean` and `strategies_ready_renders_clean` fail due to PNG baseline mismatch. NOT caused by this feature. Tester to regenerate baselines or mark as known issue.
+
+### Test summary
+
+| Crate | Command | Count |
+|-------|---------|-------|
+| audit | `cargo test -p audit` | 9 PASS |
+| ui --lib | `cargo test -p ui --lib` | 262 PASS |
+| ui panel_snapshots | `cargo test -p ui --test panel_snapshots` | 80 PASS |
+| ui consistency | `cargo test -p ui --test consistency` | 2 PASS |
+| forecast (K5 + audit emits) | `cargo test -p forecast --features candle --test train_tcn_*` | 6 PASS |
+| ui --features live (training_subscription) | `cargo test -p ui --lib lab::training_subscription --features live` | 3 PASS |

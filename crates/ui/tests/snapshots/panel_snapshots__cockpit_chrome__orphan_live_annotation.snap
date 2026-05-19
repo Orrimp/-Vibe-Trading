@@ -1,0 +1,6 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1990
+expression: annotation
+---
+Training orphan detected (run abc12345, pid alive) — click Train to reconnect

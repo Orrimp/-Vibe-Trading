@@ -1272,6 +1272,11 @@ pub enum Message {
     TrainingLogClicked,
     /// Operator clicked "Jump to bottom" chip — restores auto-scroll anchoring.
     TrainingLogJumpToBottom,
+    /// Audit-DB poller delivered new training-event rows (T-D-N11).
+    /// Appended to `LabState::training_events` (capacity 1024).
+    /// Only available with `--features live` (audit crate dependency).
+    #[cfg(feature = "live")]
+    TrainingEventsRefreshed(Vec<trading_core::views::TrainingEventRow>),
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1677,6 +1682,17 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         }
         Message::TrainingLogJumpToBottom => {
             model.lab_state.training_log_anchored = true;
+        }
+        #[cfg(feature = "live")]
+        Message::TrainingEventsRefreshed(rows) => {
+            // Append new rows to the ring buffer; evict oldest when over capacity.
+            const TRAINING_EVENTS_CAPACITY: usize = 1024;
+            for row in rows {
+                model.lab_state.training_events.push_back(row);
+                while model.lab_state.training_events.len() > TRAINING_EVENTS_CAPACITY {
+                    model.lab_state.training_events.pop_front();
+                }
+            }
         }
     }
 }

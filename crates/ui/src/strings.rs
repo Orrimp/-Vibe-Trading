@@ -372,6 +372,55 @@ pub const TRAINING_LOG_EMPTY: &str = "No training output yet — press Train to 
 /// "Jump to bottom" chip label for the training log when scroll is frozen.
 pub const TRAINING_LOG_JUMP_TO_BOTTOM: &str = "Jump to bottom";
 
+/// Empty state for the training loss-curve plot (no run in flight).
+pub const TRAINING_PLOT_EMPTY: &str = "No training run in flight";
+
+/// Warming-up state for the training plot (run started, no epoch data yet).
+pub const TRAINING_PLOT_WARMING_UP: &str = "Warming up \u{2014} first epoch landing shortly";
+
+/// Per-epoch row format in the training plot text summary.
+/// Substitutions: `epoch`, `train_loss`, `train_bar`, `val_loss`, `val_bar`.
+pub const TRAINING_PLOT_EPOCH_ROW_FMT: &str = "E{:>3}  T:{:.4} {}  V:{:.4} {}";
+
+/// Header line for the training plot running state.
+/// Substitutions: `n_epochs`, `y_scale`.
+pub const TRAINING_PLOT_HEADER_FMT: &str = "Loss curves \u{2014} {} epochs (y_scale: {})";
+
+/// Footer line showing the latest epoch's loss values.
+/// Substitutions: `train_loss`, `val_loss`, `epoch`.
+pub const TRAINING_PLOT_LATEST_FMT: &str = "Latest: train={:.4}  val={:.4}  (epoch {})";
+
+/// Build the per-epoch row string for the text-mode training plot.
+///
+/// Canonical format: `TRAINING_PLOT_EPOCH_ROW_FMT`.
+/// Called from `widgets::training_plot` to avoid prose literals inside `widgets/`.
+#[must_use]
+pub fn fmt_training_plot_epoch_row(
+    epoch: u32,
+    train: f32,
+    train_bar: &str,
+    val: f32,
+    val_bar: &str,
+) -> String {
+    format!("E{epoch:>3}  T:{train:.4} {train_bar}  V:{val:.4} {val_bar}")
+}
+
+/// Build the header line for the text-mode training plot running state.
+///
+/// Canonical format: `TRAINING_PLOT_HEADER_FMT`.
+#[must_use]
+pub fn fmt_training_plot_header(n_epochs: usize, y_scale_label: &str) -> String {
+    format!("Loss curves \u{2014} {n_epochs} epochs (y_scale: {y_scale_label})")
+}
+
+/// Build the latest-epoch footer for the text-mode training plot.
+///
+/// Canonical format: `TRAINING_PLOT_LATEST_FMT`.
+#[must_use]
+pub fn fmt_training_plot_latest(train_loss: f32, val_loss: f32, epoch: u32) -> String {
+    format!("Latest: train={train_loss:.4}  val={val_loss:.4}  (epoch {epoch})")
+}
+
 // ── Charts screen (Phase 2 — T1608, T1610) ───────────────────────────────────
 
 /// Centred label rendered when the chart canvas has zero bars buffered.
@@ -995,6 +1044,12 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("ORPHAN_DEAD_FMT", ORPHAN_DEAD_FMT),
         ("TRAINING_LOG_EMPTY", TRAINING_LOG_EMPTY),
         ("TRAINING_LOG_JUMP_TO_BOTTOM", TRAINING_LOG_JUMP_TO_BOTTOM),
+        // cockpit-training-control T-D-N12/N16 — training_plot format strings
+        ("TRAINING_PLOT_EMPTY", TRAINING_PLOT_EMPTY),
+        ("TRAINING_PLOT_WARMING_UP", TRAINING_PLOT_WARMING_UP),
+        ("TRAINING_PLOT_EPOCH_ROW_FMT", TRAINING_PLOT_EPOCH_ROW_FMT),
+        ("TRAINING_PLOT_HEADER_FMT", TRAINING_PLOT_HEADER_FMT),
+        ("TRAINING_PLOT_LATEST_FMT", TRAINING_PLOT_LATEST_FMT),
     ]
 }
 

@@ -23,12 +23,14 @@
 //! ## Determinism contract
 //!
 //! - Seed: `0x00C0FFEE` via `ChaCha20Rng` (ADR-0002).
-//! - No `SystemTime` / `Instant` / `chrono::Utc::now()` on any
-//!   backtest-replay path (the training loop does NOT touch live clocks).
+//! - `Instant::now()` is used ONLY for the audit `wall_clock_ms` sidecar
+//!   field (observability-only). It does NOT feed into model weights or
+//!   `<sha>.metadata.json`. The metadata JSON is fully deterministic.
 //! - Two runs with the same seed + same data produce byte-identical
-//!   `<sha>.metadata.json` files.  The safetensors weights may differ on
-//!   Metal (known limitation per D2), but the metadata JSON is deterministic
-//!   because it is computed from the config, not from the weights.
+//!   `<sha>.metadata.json` files regardless of `--audit-db` being set.
+//!   The safetensors weights may differ on Metal (known limitation per D2),
+//!   but the metadata JSON is deterministic because it is computed from
+//!   the config, not from the weights.
 //!
 //! ## Cross-references
 //!
@@ -39,6 +41,7 @@
 //! - `ADR-0029` — cross-phase provenance contract
 
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use candle_core::{DType, Device, Tensor};
@@ -49,6 +52,7 @@ use rand_chacha::ChaCha20Rng;
 use serde::Deserialize;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 use forecast::{
     features::{FeatureConfig, FeatureWindow, TimeSpan, windows_for_symbol},
@@ -114,6 +118,12 @@ struct Cli {
     /// Used to label the checkpoint without changing the provenance SHA.
     #[arg(long)]
     scenario: Option<String>,
+
+    /// Path to the audit SQLite database for training-event emission (T-D-N10,
+    /// ADR-0034 § D4). When omitted, no SQLite handle is opened and the binary
+    /// is byte-identical to a no-audit run. Default: OFF.
+    #[arg(long)]
+    audit_db: Option<PathBuf>,
 }
 
 // ── Config structs ────────────────────────────────────────────────────────────
@@ -231,6 +241,126 @@ fn normalise_date_to_rfc3339_end(s: &str) -> String {
     }
 }
 
+// ── Audit-DB writer (T-D-N10) ─────────────────────────────────────────────────
+
+/// Lazily opened audit-DB writer for `train_tcn` instrumentation.
+///
+/// When `--audit-db` is absent, every method is a no-op (zero overhead).
+/// When present, a blocking `tokio::runtime::Runtime` writes to the sidecar
+/// `training_events` table. Failures are logged as warnings and never abort
+/// training (R5 non-fatal contract).
+struct AuditWriter {
+    inner: Option<AuditInner>,
+}
+
+struct AuditInner {
+    rt: tokio::runtime::Runtime,
+    ledger: audit::Ledger,
+}
+
+impl AuditWriter {
+    fn disabled() -> Self {
+        Self { inner: None }
+    }
+
+    fn open(path: &Path) -> Result<Self, String> {
+        let db_path = path
+            .to_str()
+            .ok_or_else(|| format!("non-UTF-8 audit-db path: {}", path.display()))?
+            .to_owned();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("tokio runtime: {e}"))?;
+
+        let ledger = rt
+            .block_on(audit::Ledger::open(&db_path))
+            .map_err(|e| format!("ledger open at {db_path}: {e}"))?;
+
+        Ok(Self {
+            inner: Some(AuditInner { rt, ledger }),
+        })
+    }
+
+    fn write_start(&self, run_id: &str, scenario: &str, seed: i64) {
+        let Some(AuditInner { rt, ledger }) = &self.inner else {
+            return;
+        };
+        let pid = std::process::id() as i64;
+        if let Err(e) = rt.block_on(audit::journal::post_training_start(
+            ledger,
+            run_id,
+            scenario,
+            seed,
+            Some(pid),
+        )) {
+            warn!(run_id, %e, "audit write_start failed (non-fatal)");
+        }
+    }
+
+    fn write_epoch(
+        &self,
+        run_id: &str,
+        epoch: i64,
+        total_epochs: i64,
+        train_loss: f32,
+        val_loss: f32,
+        wall_clock_ms: i64,
+    ) {
+        let Some(AuditInner { rt, ledger }) = &self.inner else {
+            return;
+        };
+        if let Err(e) = rt.block_on(audit::journal::post_training_epoch(
+            ledger,
+            run_id,
+            epoch,
+            total_epochs,
+            train_loss,
+            val_loss,
+            wall_clock_ms,
+        )) {
+            warn!(run_id, epoch, %e, "audit write_epoch failed (non-fatal)");
+        }
+    }
+
+    fn write_finish(
+        &self,
+        run_id: &str,
+        model_revision: &str,
+        final_train_loss: f32,
+        final_val_loss: f32,
+        total_wall_clock_ms: i64,
+    ) {
+        let Some(AuditInner { rt, ledger }) = &self.inner else {
+            return;
+        };
+        if let Err(e) = rt.block_on(audit::journal::post_training_finish(
+            ledger,
+            run_id,
+            model_revision,
+            final_train_loss,
+            final_val_loss,
+            total_wall_clock_ms,
+        )) {
+            warn!(run_id, model_revision, %e, "audit write_finish failed (non-fatal)");
+        }
+    }
+
+    fn write_failed(&self, run_id: &str, error_message: &str) {
+        let Some(AuditInner { rt, ledger }) = &self.inner else {
+            return;
+        };
+        if let Err(e) = rt.block_on(audit::journal::post_training_failed(
+            ledger,
+            run_id,
+            error_message,
+        )) {
+            warn!(run_id, %e, "audit write_failed failed (non-fatal)");
+        }
+    }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
@@ -277,6 +407,26 @@ fn main() -> Result<()> {
     // Scenario label (used in output file prefix for human readability).
     let scenario_label = cli.scenario.unwrap_or_else(|| "default".to_string());
 
+    // ── Audit-DB writer (T-D-N10) ─────────────────────────────────────────
+    // Open only when --audit-db is given; falls back to disabled() on error
+    // so audit failures never abort training.
+    let audit = match &cli.audit_db {
+        Some(path) => match AuditWriter::open(path) {
+            Ok(w) => {
+                info!(path = %path.display(), "audit-db enabled");
+                w
+            }
+            Err(e) => {
+                warn!(%e, "audit-db open failed; continuing without audit (non-fatal)");
+                AuditWriter::disabled()
+            }
+        },
+        None => AuditWriter::disabled(),
+    };
+
+    // Unique run ID for correlating all events from this training run.
+    let run_id = Uuid::new_v4().to_string();
+
     info!(
         config = %cli.config.display(),
         output_dir = %cli.output_dir.display(),
@@ -288,8 +438,17 @@ fn main() -> Result<()> {
         train_end = %cfg.data.train_end,
         val_start = %cfg.data.val_start,
         val_end = %cfg.data.val_end,
+        audit_db = cli.audit_db.as_ref().map(|p| p.display().to_string()).as_deref().unwrap_or("disabled"),
+        %run_id,
         "train_tcn starting"
     );
+
+    // Wall-clock anchor: start immediately after the start-event is emitted.
+    // Observability only — does NOT affect model bytes or metadata JSON.
+    let training_start_instant = Instant::now();
+
+    // Emit start event after logging so the run_id is traceable.
+    audit.write_start(&run_id, &scenario_label, cfg.training.seed as i64);
 
     // Ensure output dir exists.
     std::fs::create_dir_all(&cli.output_dir)
@@ -338,7 +497,7 @@ fn main() -> Result<()> {
 
     if cli.dry_run {
         info!("--dry-run: writing random-init checkpoint (no training)");
-        write_checkpoint(
+        let model_revision = write_checkpoint(
             &model,
             &varmap,
             &cfg,
@@ -351,6 +510,14 @@ fn main() -> Result<()> {
                 scenario: scenario_label.clone(),
             },
         )?;
+        // Emit finish event for dry-run (0 wall-clock; no epoch rows).
+        audit.write_finish(
+            &run_id,
+            &model_revision,
+            0.0,
+            0.0,
+            training_start_instant.elapsed().as_millis() as i64,
+        );
         info!("--dry-run: done");
         return Ok(());
     }
@@ -392,7 +559,9 @@ fn main() -> Result<()> {
     }
 
     if train_windows.is_empty() {
-        anyhow::bail!("No training windows loaded. Check parquet_root and data spans.");
+        let msg = "No training windows loaded. Check parquet_root and data spans.";
+        audit.write_failed(&run_id, msg);
+        anyhow::bail!(msg);
     }
 
     // Load validation windows.
@@ -443,6 +612,7 @@ fn main() -> Result<()> {
 
     for epoch in 0..cfg.training.epochs {
         epochs_actually_trained = epoch + 1;
+        let epoch_start = Instant::now();
         // Deterministic shuffle using Fisher-Yates with seeded RNG.
         let mut indices: Vec<usize> = (0..n_train).collect();
         use rand::seq::SliceRandom;
@@ -520,13 +690,26 @@ fn main() -> Result<()> {
             compute_val_loss(&model, &val_windows, &device, context, batch_size, delta);
         final_val_loss = avg_val_loss;
 
+        let epoch_wall_ms = epoch_start.elapsed().as_millis() as i64;
+
         info!(
             epoch = epoch + 1,
             total_epochs = cfg.training.epochs,
             train_loss = avg_train_loss,
             val_loss = avg_val_loss,
             lr = optimizer.learning_rate(),
+            wall_clock_ms = epoch_wall_ms,
             "epoch complete"
+        );
+
+        // Emit audit epoch row (no-op when --audit-db not given).
+        audit.write_epoch(
+            &run_id,
+            (epoch + 1) as i64,
+            cfg.training.epochs as i64,
+            avg_train_loss,
+            avg_val_loss,
+            epoch_wall_ms,
         );
 
         // Early stopping.
@@ -562,7 +745,7 @@ fn main() -> Result<()> {
         final_val_loss, sigma_train, "training complete"
     );
 
-    write_checkpoint(
+    let model_revision = write_checkpoint(
         &model,
         &varmap,
         &cfg,
@@ -575,6 +758,15 @@ fn main() -> Result<()> {
             scenario: scenario_label.clone(),
         },
     )?;
+
+    // Emit finish audit row with the canonical model_revision SHA.
+    audit.write_finish(
+        &run_id,
+        &model_revision,
+        final_train_loss,
+        final_val_loss,
+        training_start_instant.elapsed().as_millis() as i64,
+    );
 
     Ok(())
 }
@@ -655,13 +847,15 @@ struct TrainingMetrics {
     scenario: String,
 }
 
+/// Returns the canonical `model_revision` SHA-256 so the caller can emit it
+/// to the audit-DB `finish` row without duplicating the computation.
 fn write_checkpoint(
     _model: &TcnModel,
     varmap: &VarMap,
     cfg: &TomlConfig,
     output_dir: &Path,
     metrics: TrainingMetrics,
-) -> Result<()> {
+) -> Result<String> {
     use forecast::provenance::{ArchitectureConfig, TokenisationConfig, TrainingConfig};
 
     // Write safetensors to a temp file to compute SHA.
@@ -756,5 +950,5 @@ fn write_checkpoint(
         "checkpoint written"
     );
 
-    Ok(())
+    Ok(sha.clone())
 }

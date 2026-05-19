@@ -156,6 +156,12 @@ pub struct LabState {
     /// Whether the Training panel is collapsed (header-chip only) or expanded.
     /// `true` = collapsed (default at cold start per R1.2 / Q4).
     pub training_panel_collapsed: bool,
+
+    /// Ring buffer of audit training-event rows delivered by the 1 Hz poller
+    /// (T-D-N11). Capacity 1024 per ADR-0034 § D6.
+    /// Only available with `--features live` (audit crate dependency).
+    #[cfg(feature = "live")]
+    pub training_events: std::collections::VecDeque<trading_core::views::TrainingEventRow>,
 }
 
 /// Manual `Clone` for `LabState` — `TrainingHandle` (an OS process handle)
@@ -176,6 +182,8 @@ impl Clone for LabState {
             training_log: self.training_log.clone(),
             training_log_anchored: self.training_log_anchored,
             training_panel_collapsed: self.training_panel_collapsed,
+            #[cfg(feature = "live")]
+            training_events: self.training_events.clone(),
         }
     }
 }
@@ -209,6 +217,8 @@ impl Default for LabState {
             training_log: VecDeque::new(),
             training_log_anchored: true,
             training_panel_collapsed: true,
+            #[cfg(feature = "live")]
+            training_events: std::collections::VecDeque::new(),
         }
     }
 }
@@ -235,6 +245,8 @@ impl LabState {
             training_log: VecDeque::new(),
             training_log_anchored: true,
             training_panel_collapsed: true,
+            #[cfg(feature = "live")]
+            training_events: std::collections::VecDeque::new(),
         }
     }
 }

@@ -1,0 +1,8 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1974
+expression: "training_plot_state_summary(\"warming_up\", &[])"
+---
+widget: training_plot
+state: warming_up
+copy: Warming up — first epoch landing shortly

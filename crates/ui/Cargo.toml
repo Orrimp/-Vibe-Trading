@@ -62,6 +62,8 @@ backtest = { path = "../backtest" }
 rust_decimal_macros.workspace = true
 rand = { workspace = true }
 rand_chacha = { workspace = true }
+# cockpit-training-control T-D-N14 — PID liveness check (Unix: kill(pid, 0)).
+libc = "0.2"
 # NOTE: The `audit` dep is intentionally not wired in Week 1. The cockpit
 # runs against `ui::fixtures` for T13–T20 and the real `audit::query` surface
 # (T07) has not landed yet. T32 (Week 2) adds `audit = { path = "../audit" }`

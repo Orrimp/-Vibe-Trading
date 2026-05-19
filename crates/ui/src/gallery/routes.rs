@@ -23,7 +23,7 @@ use crate::widgets::{
     agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
     kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
     run_button, sidebar_nav, sparkline, status_bar, strategies, strategy_chip, training_log,
-    volume_histogram,
+    training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -400,6 +400,54 @@ fn render_training_log_with_lines(model: &Cockpit) -> iced::Element<'_, Message>
     training_log::view(
         &model.lab_state.training_log,
         model.lab_state.training_log_anchored,
+        ThemeMode::Dark,
+    )
+}
+
+// ── training_plot gallery cells (cockpit-training-control T-D-N12 / T-D-N18) ─
+
+fn seed_training_plot() -> Cockpit {
+    Cockpit::default()
+}
+
+fn render_training_plot_empty(_model: &Cockpit) -> iced::Element<'_, Message> {
+    training_plot::view(training_plot::TrainingPlotState::Empty, ThemeMode::Dark)
+}
+
+fn render_training_plot_running(_model: &Cockpit) -> iced::Element<'_, Message> {
+    // Static 5-epoch fixture for gallery preview (deterministic, no live data).
+    static EPOCHS: std::sync::LazyLock<Vec<training_plot::EpochPoint>> =
+        std::sync::LazyLock::new(|| {
+            vec![
+                training_plot::EpochPoint {
+                    epoch: 1,
+                    train_loss: 0.80,
+                    val_loss: 0.78,
+                },
+                training_plot::EpochPoint {
+                    epoch: 2,
+                    train_loss: 0.65,
+                    val_loss: 0.64,
+                },
+                training_plot::EpochPoint {
+                    epoch: 3,
+                    train_loss: 0.50,
+                    val_loss: 0.52,
+                },
+                training_plot::EpochPoint {
+                    epoch: 4,
+                    train_loss: 0.38,
+                    val_loss: 0.40,
+                },
+                training_plot::EpochPoint {
+                    epoch: 5,
+                    train_loss: 0.28,
+                    val_loss: 0.31,
+                },
+            ]
+        });
+    training_plot::view(
+        training_plot::TrainingPlotState::Running { epochs: &EPOCHS },
         ThemeMode::Dark,
     )
 }
@@ -905,6 +953,19 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_training_log_with_lines,
         seed: seed_training_log_with_lines,
     },
+    // ── training_plot (cockpit-training-control T-D-N12 / T-D-N18) ─────────
+    GalleryCell {
+        widget: "training_plot",
+        state: "empty",
+        render: render_training_plot_empty,
+        seed: seed_training_plot,
+    },
+    GalleryCell {
+        widget: "training_plot",
+        state: "running_5_epochs",
+        render: render_training_plot_running,
+        seed: seed_training_plot,
+    },
 ];
 
 /// The canonical list of widget-module names the gallery is expected to
@@ -940,6 +1001,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "strategies",
     "strategy_chip",
     "training_log",
+    "training_plot",
     "volume_histogram",
 ];
 

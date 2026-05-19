@@ -1,0 +1,11 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1863
+expression: "training_status_summary(&c, \"running\")"
+---
+panel: training_status_strip
+scenario: running
+inflight: false
+status_text: Idle
+log_line_count: 1
+last_log_line: [info] training started

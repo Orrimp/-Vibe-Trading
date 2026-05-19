@@ -815,6 +815,48 @@ mod tests {
         assert_eq!(Screen::default(), Screen::Lab);
     }
 
+    // ── T-D-N14 — orphan annotation rendering tests ──────────────────────────
+
+    /// Orphan annotation renders when the pid is alive (current process).
+    ///
+    /// We test the pid_alive helper directly (the rendering itself is snapshot-
+    /// tested in T-D-N18). This verifies the liveness-check path that controls
+    /// whether we show ORPHAN_LIVE_FMT or ORPHAN_DEAD_FMT.
+    #[test]
+    fn orphan_annotation_renders_when_pid_alive() {
+        use crate::lab::pid_alive::pid_alive;
+        let my_pid = std::process::id() as i64;
+        assert!(
+            pid_alive(my_pid),
+            "orphan annotation path: pid_alive must return true for current process"
+        );
+        // The rendered string would use ORPHAN_LIVE_FMT.
+        // We test the string-building logic directly (not the iced element).
+        let run_prefix = "run-001";
+        let annotation = crate::strings::ORPHAN_LIVE_FMT.replace("{}", run_prefix);
+        assert!(
+            annotation.contains("run-001"),
+            "annotation must contain run_id prefix"
+        );
+    }
+
+    /// Orphan annotation renders "dead" when the pid is nonexistent.
+    #[test]
+    fn orphan_annotation_renders_dead_when_pid_dead() {
+        use crate::lab::pid_alive::pid_alive;
+        let impossible_pid = i64::from(i32::MAX);
+        assert!(
+            !pid_alive(impossible_pid),
+            "orphan annotation path: impossible pid must be dead"
+        );
+        let run_prefix = "run-001";
+        let annotation = crate::strings::ORPHAN_DEAD_FMT.replace("{}", run_prefix);
+        assert!(
+            annotation.contains("run-001"),
+            "dead annotation must contain run_id prefix"
+        );
+    }
+
     /// T-D-8 — snapshot: `lab__top_bar_xrp_first`.
     ///
     /// Records the XRP-first pair ordering pinned from
