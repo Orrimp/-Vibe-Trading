@@ -2,8 +2,48 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-18
+updated: 2026-05-19
 ---
+<!-- updated 2026-05-19 (analyst, cockpit-training-control) — analyst pass
+     landed. Brief at `spec/cockpit-training-control/feature.md` (status:
+     draft, owner: analyst, version: 0.1.0, predecessor:
+     `ui-rethink-phase-a-lab v0.2.0`). Tasks skeleton at
+     `spec/cockpit-training-control/tasks.md` with M0 (architect) →
+     M-T1 (Tier 1 — launch button + log tail) → M-T2 (Tier 2 — audit
+     train_events + live loss curves) → M-FINAL (tester). Per-task
+     `T-D-N` decomposition deferred to architect (M0). R1-R10 lock the
+     defaults: Lab sub-panel (collapsible, bottom of Lab column, R1);
+     new `lab::trainer::spawn_training_run` mirroring `lab::runner`
+     cancellation-handle shape but spawning via tokio::process::Command
+     (R2); 200-line ring-buffer log widget (R3); NEW `training_events`
+     SQLite table via additive migration 010 (R4); opt-in `--audit-db`
+     flag on `train_tcn` — default omitted so existing CI / manual
+     runs stay byte-identical (R5); REUSE chart widget for loss-curve
+     plot at fixed 160-px panel-internal slot (R6); NEW 1-Hz audit-DB
+     poller iced::Subscription recipe (R7); cold-start: only
+     `training_panel_collapsed` survives, the audit DB IS the training-
+     history persistence (R8); R9 error surface per failure mode;
+     R10 non-regression contract — 19 anchors byte-identical, zero new
+     anchors (training is non-replayable due to wall-clock + UUID
+     inputs). 4 operator-decide Qs surfaced: Q1 (new training_events
+     table vs. extend strategy_events — analyst-recommended **new
+     table**), Q2 (SIGKILL-immediate vs. SIGTERM-graceful 30s on
+     Cancel — analyst-recommended **SIGKILL**), Q3 (panel
+     hyperparameter editing — analyst-recommended **no, defer to
+     follow-on**), Q4 (auto-focus Train panel on orphan-detect —
+     analyst-recommended **no, status-strip annotation only**). K1-K6
+     risk register; ZERO backtest scenarios; ZERO new anchors. Trace
+     row `REQ-COCKPIT-TRAIN-001` opened in proposed state. HANDOFF →
+     operator-decide (4 Qs) → architect. -->
+<!-- updated 2026-05-19 (orchestrator, cockpit-training-control queue) —
+     Operator queued `cockpit-training-control` as the next task while the
+     v25-tcn-alpha-investigation BS-1 determinism re-run was finishing.
+     Scope locked at spawn: Tier 1 (launch button + log tail, ~1-2 days)
+     + Tier 2 (audit train_event stream + live loss-curve plot, ~1 wk
+     additional). Explicit anti-recommendation against Tier 3 (in-process
+     training). Total estimate ~2 wk. Analyst spawn in flight, parallel
+     with alpha-investigation. Will pair naturally with the v2.5
+     retraining follow-on the alpha-investigation's F4 verdict triggers. -->
 <!-- updated 2026-05-18 (analyst, v25-tcn-alpha-investigation) — analyst
      pass landed for the just-promoted `v25-tcn-alpha-investigation`
      feature. Brief at `spec/v25-tcn-alpha-investigation/feature.md`
@@ -200,6 +240,62 @@ Promote an item to real work by spawning the **analyst**, who turns it
 into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
+
+- **Cockpit training control (`cockpit-training-control`).** _draft —
+  analyst pass landed 2026-05-19 (commit pending); runs parallel with
+  v25-tcn-alpha-investigation_. Integrates `train_tcn` model training
+  into the cockpit UI as the natural workflow surface for the upcoming
+  v2.5 retraining cycle (F4 verdict on alpha-investigation strongly
+  suggests retraining is necessary) and the v2.5a/v2.5b future
+  training rounds (mandated by the 4-phase DL roadmap).
+  Brief at [`feature.md`](cockpit-training-control/feature.md).
+  Predecessor: [`ui-rethink-phase-a-lab`](ui-rethink-phase-a-lab/feature.md)
+  v0.2.0 (the Lab module that hosts the new training panel; the
+  `lab::runner::spawn_lab_run` precedent). Operator-locked scope: **Tier
+  1 + Tier 2 = one feature, ~2 wk estimate** (explicit
+  anti-recommendation against Tier 3 in-process training).
+  - **Tier 1 (M-T1, launch button + log tail, ~1-2 days):** Lab
+    sub-panel collapsible at the bottom of the Lab column (R1.2).
+    New `lab::trainer::spawn_training_run` (R2) mirroring the
+    runner's cancellation-handle pattern but spawning via
+    `tokio::process::Command` for OS subprocess management. 200-line
+    ring-buffer `training_log` widget (R3). Cancel default
+    SIGKILL-immediate (R2.3 / analyst-recommended Q2 default).
+  - **Tier 2 (M-T2, audit events + live curves, ~1 wk additional):**
+    NEW SQLite `training_events` table via additive migration 010
+    (R4 / Q1 analyst-default). NEW `--audit-db <PATH>` flag on
+    `train_tcn` — default omitted so existing CI / manual / scripted
+    runs stay byte-identical (R5 + R10.2). REUSE `widgets::chart`
+    for the loss-curve plot at a fixed ~160-px panel-internal slot,
+    NOT a new `ChartKind` (R6). NEW 1-Hz audit-DB poller iced
+    Subscription recipe under
+    `crates/ui/src/lab/training_subscription.rs` (R7).
+  - **Hard anti-recommendation reaffirmed:** NO in-process training
+    loop. Subprocess + audit events captures 95% of the operator
+    value at 10% of the architectural risk; an in-process candle
+    workload sharing the cockpit runtime is an architectural risk we
+    should not pay for.
+  - **Non-regression contract (R10):** 19 body-SHA-256 anchors stay
+    byte-identical (15 originals + 4 `-realdata`). **Zero new
+    anchors** by construction — training inputs include wall-clock
+    measurements and audit-row UUIDs that preclude byte-identity
+    (R10.5). Cockpit-smoke gate stays green (R10.4).
+  - **4 operator-decide Qs surfaced:** Q1 audit-DB shape (new
+    `training_events` table vs. extend `strategy_events` — analyst:
+    **new table**); Q2 Cancel semantics (SIGKILL-immediate vs.
+    SIGTERM-graceful — analyst: **SIGKILL**); Q3 hyperparameter
+    editing in the panel (analyst: **no, defer to follow-on**); Q4
+    auto-focus Train panel on orphan-detection (analyst: **no,
+    status-strip annotation only**). All defaults documented in the
+    brief; orchestrator runs AskUserQuestion before architect spawn.
+  - **K1-K6 risk register:** stdout/shutdown races (K1, accepted);
+    audit DB lock contention (K2, mitigated by SQLite WAL); orphan
+    PIDs on cockpit crash (K3, R2.4 `Drop` + R9.5 detection); plot
+    redraw cost (K4, 1 Hz capped); train_tcn CLI drift (K5, architect
+    picks mitigation at M0); Train-panel-obscures-chart muscle memory
+    (K6, R1.2 collapsed-default).
+  Trace row `REQ-COCKPIT-TRAIN-001` opened in proposed state.
+  HANDOFF → operator-decide (4 Qs) → architect.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator

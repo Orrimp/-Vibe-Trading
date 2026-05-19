@@ -192,6 +192,17 @@ anchors     = [
 state       = "in-progress"
 
 [[req]]
+id          = "REQ-COCKPIT-TRAIN-001"
+title       = "Cockpit training control — subprocess-spawned `train_tcn` launcher with log tail (Tier 1) + per-epoch audit train_events + live loss-curve plot (Tier 2); Lab sub-panel; anchor-byte-safe by construction (zero new anchors, 19 originals byte-identical)"
+feature     = "cockpit-training-control"
+product     = "spec/product.md"
+arch        = []  # architect fills at M0 — see spec/cockpit-training-control/tasks.md § M0
+crates      = []  # developer fills at M-T1 / M-T2 — expected: crates/ui, crates/audit, crates/forecast
+tests       = []  # developer fills at M-T1 / M-T2 (no anchor tests; unit + insta + integration)
+anchors     = []  # ZERO new anchors by construction — see feature.md § R10.5 (wall-clock + UUID inputs preclude byte-identity)
+state       = "proposed"
+
+[[req]]
 id          = "REQ-V25A-PATCHTST-001"
 title       = "v2.5a PatchTST / iTransformer forecast overlay — phase 2 of 4"
 feature     = "v25a-patchtst-overlay"
