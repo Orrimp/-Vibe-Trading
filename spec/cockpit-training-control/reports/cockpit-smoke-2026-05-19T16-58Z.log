@@ -1,0 +1,11 @@
+warning: use of deprecated unit variant `ui::Screen::Home`: use Screen::Live
+   --> crates/ui/src/bin/cockpit.rs:185:42
+    |
+185 |         cockpit.current_screen = Screen::Home;
+    |                                          ^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: `ui` (bin "cockpit") generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.74s
+     Running `target/debug/cockpit`

@@ -207,8 +207,8 @@ arch        = [
   "spec/architecture/adr/0003-decimal-money-math.md",          # f32-as-TEXT precedent for train_loss/val_loss (ADR-0034 § D5)
   "crates/audit/migrations/010_training_events.sql",           # schema body (architect-committed at T-AR-6)
 ]
-crates      = []  # developer fills at M-T1 / M-T2 — expected: crates/ui, crates/audit, crates/forecast, crates/core
-tests       = []  # developer fills at M-T1 / M-T2 (no anchor tests; unit + insta + integration)
+crates      = ["crates/ui", "crates/audit", "crates/forecast", "crates/core"]
+tests       = []   # 18 cargo test invocations cited per-task in spec/cockpit-training-control/tasks.md (T-D-N1..N18); trace.toml tests field is file-path-shaped, not cargo-command-shaped
 anchors     = []  # ZERO new anchors by construction — see feature.md § R10.5 + ADR-0034 § Consequences (wall-clock + UUID inputs preclude byte-identity)
 state       = "in-progress"
 

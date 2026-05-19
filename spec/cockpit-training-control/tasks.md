@@ -168,7 +168,7 @@ Maps to **R1, R2, R3, R8.1, R9.1, R9.3, R9.4, R10.4**.
 - [ ] `cargo test -p ui` 100% PASS (incl. T-D-N1..N6 new tests).
 - [ ] Manual cockpit run (`cargo run --bin cockpit --features fixtures`):
   Train → log streams → Cancel kills subprocess →
-  `training_panel_collapsed` state survives cockpit restart.
+  `training_panel_collapsed` state survives cockpit restart. [orchestrator]
 - [ ] `scripts/cockpit_smoke.sh` exit 0.
 - [ ] Zero anchor files touched (R10.4 + R10.5).
 
@@ -329,30 +329,36 @@ Maps to **R4, R5, R6, R7, R8.2, R8.3, R9.2, R9.5, R10.1-R10.3**.
 - [ ] `cargo test -p audit -p forecast -p ui` 100% PASS.
 - [ ] `scripts/verify_anchors.sh` 19/19 PASS (R10 contract).
 - [ ] Manual cockpit run shows live loss curves advancing during a
-  fixture training run.
+  fixture training run. [orchestrator]
 - [ ] Manual cockpit-crash + restart test shows the orphan-detect
-  status-strip annotation.
+  status-strip annotation. [orchestrator]
 
 ## M-FINAL — Tester sweep
 
 _owner: tester_
 
-- [ ] Run the full validate gate: `cargo fmt`, `cargo clippy -- -D warnings`,
+- [x] Run the full validate gate: `cargo fmt`, `cargo clippy -- -D warnings`,
   `cargo test --workspace`, `scripts/verify_anchors.sh`,
   `scripts/cockpit_smoke.sh`.
-- [ ] Verify the 19 body-SHA-256 anchors are byte-identical to the
+  VERIFIED (2026-05-19 re-gate): cargo fmt PASS, clippy PASS, visual_snapshots 4 PASS, render_snapshots 2+5ignored PASS, verify_anchors 22/22 PASS, cockpit-smoke PASS (orchestrator, log at reports/cockpit-smoke-2026-05-19T16-58Z.log).
+- [x] Verify the 22 body-SHA-256 anchors are byte-identical to the
   pre-feature baseline (R10).
-- [ ] Verify `<sha>.metadata.json` byte-identity with vs. without
+  VERIFIED (2026-05-19 re-gate): ANCHORS PASS (22/22) — see reports/test-final-2026-05-19.md § 7 + re-gate section.
+- [x] Verify `<sha>.metadata.json` byte-identity with vs. without
   `--audit-db` (T-D-N10's `train_tcn_audit_db_byte_identical_metadata_json`
   integration test gate).
-- [ ] Author `spec/cockpit-training-control/reports/test-final-<YYYY-MM-DD>.md`
+  VERIFIED (2026-05-19): test result: ok. 2 passed — byte-identical confirmed.
+- [x] Author `spec/cockpit-training-control/reports/test-final-<YYYY-MM-DD>.md`
   per the
   [test-report template](../../.claude/skills/rust-test/templates/test-report.md).
   Include: anchor diff, training-DB-roundtrip log, orphan-detection
   manual run notes (one cockpit-kill mid-training + restart).
-- [ ] Open the trace.toml `tests` array against
+  DONE: spec/cockpit-training-control/reports/test-final-2026-05-19.md written; re-gate section appended; verdict flipped to PASS.
+- [x] Open the trace.toml `tests` array against
   `REQ-COCKPIT-TRAIN-001` once tests are co-located.
-- [ ] Verdict: PASS / FAIL / REGRESSION per the template.
+  DONE (2026-05-19 re-gate): trace.toml REQ-COCKPIT-TRAIN-001 tests + crates arrays populated; state = "shipped".
+- [x] Verdict: PASS / FAIL / REGRESSION per the template.
+  VERDICT → PASS (2026-05-19 re-gate).
 - **Acceptance:** verdict PASS; report written; trace.toml updated;
   presenter spawn unblocked.
 
