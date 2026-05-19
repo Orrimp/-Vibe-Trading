@@ -1,9 +1,9 @@
 ---
 slug: ui-rethink-phase-b-lab-run
 status: draft
-owner: pending-architect
+owner: architect
 updated: 2026-05-19
-version: 0.1.0
+version: 0.2.0
 predecessor: ui-rethink-phase-a-lab v0.2.0
 ---
 
@@ -1119,6 +1119,293 @@ cockpit-smoke confirms Run produces a fresh chart.
 **Acceptance:** tester VERDICT → PASS; all 7 non-regression
 contract items confirmed.
 
+## Design
+
+> Architect M-T1 design lock (2026-05-19). Ratifies operator-decided
+> Q1-Q5 defaults. See [ADR-0035](../architecture/adr/0035-phase-b-scenario-dispatch-extraction.md)
+> for the extraction-pattern rationale + module layout. The wave map
+> and T-D-N decomposition live in
+> [`tasks.md`](tasks.md). This section pins the **shapes** the
+> developer must conform to.
+
+### D1 — Module layout under `crates/backtest/src/`
+
+```text
+crates/backtest/src/
+├── lib.rs                # unchanged (re-exports)
+├── engine.rs             # run_scenario body — dispatcher only
+├── paper.rs              # unchanged
+├── realdata.rs           # unchanged (feature-gated)
+├── scenarios/            # NEW — pub(crate) extracted bodies
+│   ├── mod.rs
+│   ├── sma_composed.rs   # SmaCrossover + Composed (inline loop @main.rs:3206-3305)
+│   ├── momentum.rs       # extracted run_momentum_backtest @main.rs:774
+│   ├── pairs.rs          # extracted run_pairs_backtest @main.rs:1163
+│   ├── tcn_overlay.rs    # extracted run_tcn_overlay_backtest @main.rs:1633
+│   └── tcn_overlay_weights.rs  # @main.rs:1902
+├── report/               # NEW — pub(crate) extracted writers
+│   ├── mod.rs
+│   ├── sma.rs            # extracted write_report @main.rs:2488
+│   ├── momentum.rs       # extracted write_momentum_report @main.rs:1026
+│   ├── pairs.rs          # extracted write_pairs_report @main.rs:1452
+│   └── tcn_overlay.rs    # extracted write_tcn_overlay_report @main.rs:2184
+└── main.rs               # collapses to ≤200 LOC CLI wrapper
+```
+
+`main.rs::main()` becomes: clap parse → seed/scenario decode →
+build `ScenarioConfig` → `engine::run_scenario(cfg).await` → `println!`
+of the `report_path`. The four `run_*_backtest` fns and three
+`write_*_report` fns move out of `main.rs` and into `scenarios/*` +
+`report/*`. `find_latest_report`, `scenario_to_feature`,
+`report_dir_for_scenario` (@main.rs:3362-3417) move into a new
+`engine::report_paths` sub-module so both the binary and the engine
+share path resolution.
+
+### D2 — `ScenarioConfig` enum mapping
+
+The 7 scenario variants from `main.rs::ScenarioStrategy` (@104-126)
+map to `backtest::ScenarioConfig.strategy: StrategyId` by string
+identity:
+
+| `StrategyId` value         | Maps to `ScenarioStrategy` variant            | Bodies extracted |
+|----------------------------|-----------------------------------------------|-----------------|
+| `sma_crossover`            | `SmaCrossover { fast_len, slow_len }`         | scenarios::sma_composed::run |
+| `<composed-toml-id>`       | `Composed { id }`                             | scenarios::sma_composed::run |
+| `v1.momentum`              | `Momentum { config_id }`                      | scenarios::momentum::run |
+| `v1.5a.mean_reversion_pairs` | `MeanReversionPairs { config_id }`         | scenarios::pairs::run |
+| `v2.5.tcn_overlay`         | `TcnOverlayMomentum { config_id, forecaster_id }` | scenarios::tcn_overlay::run |
+| `v2.5.tcn_overlay_weights` | `TcnOverlayMomentumWeights { config_id, forecaster_id }` | scenarios::tcn_overlay_weights::run |
+
+The dispatcher in `engine::run_scenario` reads `cfg.strategy.0` (the
+underlying `SmolStr`), matches against the table above, and delegates.
+Unknown strategies → `Err(RunError::UnknownStrategy(...))`.
+
+**CLI scenario name** (`btc-2023-1m-sma-cross`, etc.) is **separate**
+from `StrategyId`. The binary's `Scenario::from_name(...)` lookup
+table (@main.rs:163) builds the data-source axis + bar count +
+initial capital + slippage. Phase B keeps this in `main.rs` (CLI
+concern) and threads the resulting fields into `ScenarioConfig` via
+a new internal struct (architect call — likely
+`ScenarioConfig.cli_meta: Option<CliMeta>` or a parallel arg the
+binary passes alongside the public `ScenarioConfig`). Implementation
+detail; the public API of `run_scenario` stays as ADR-0030 locked.
+
+### D3 — `LabState` extensions for `last_run_report` / `prev_run_report`
+
+Two new fields on `crates/ui/src/lab/state.rs::LabState`:
+
+```rust
+pub last_run_report: Option<RunReportMirror>,
+pub prev_run_report: Option<RunReportMirror>,
+```
+
+`RunReportMirror` is defined in `crates/ui/src/lab/runner.rs` next to
+`RunSummary`:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct RunReportMirror {
+    pub tuple: LabTuple,                          // (strategy, pair, range)
+    pub equity_series: Arc<Vec<(Timestamp, Money<Usdt>)>>,
+    pub kpis: backtest::BacktestKpis,
+    pub generated_at: time::OffsetDateTime,       // for badge tooltip on later phases
+}
+```
+
+`Arc<Vec<...>>` keeps the equity series cheap to clone when both
+`last_run_report` and `prev_run_report` exist concurrently (K4
+mitigation — a TCN-overlay × FY-2024 series is ~12.6 MB per pair).
+The cockpit holds at most 2 mirrors alive at once per tuple.
+
+**Lifecycle (R4.5).** `Message::LabRunCompleted(Ok(summary))` handler
+in `crates/ui/src/state.rs` @1642:
+1. Build `RunReportMirror` from the engine's `RunReport` + the
+   current `LabTuple` snapshot.
+2. If `state.last_run_report.is_some() && last.tuple == new.tuple`:
+   `state.prev_run_report = state.last_run_report.take()`.
+3. `state.last_run_report = Some(new_mirror)`.
+4. On tuple change (any of `LabSelectStrategy`, `LabSelectPair`,
+   `LabSelectRange`): clear both fields.
+5. `LabRunCompleted(Err(_))`: leave both untouched.
+
+**Clone-skip.** `LabState::Clone` impl (state.rs:171-189) clones
+neither field — both reset to `None` in the cloned instance. Mirrors
+the existing `training_inflight: None` carve-out at @181.
+
+**Persistence-skip.** `crates/ui/src/lab/persistence.rs` does NOT
+serialize either field. Schema stays `version: 1`. Q4 default (no
+on-disk history) is encoded by this absence.
+
+### D4 — Chart equity-overlay routing change
+
+Today `crates/ui/src/screens/lab.rs::view` @243 passes `None` to
+`chart::view`'s `equity_overlay` slot (Phase A placeholder). Phase B
+routes through a new helper:
+
+```rust
+// in screens/lab.rs view()
+let equity_overlay = if let Some(mirror) = &model.lab_state.last_run_report
+    && mirror.tuple == current_tuple(model)
+{
+    Some(EquitySeries::from_mirror(mirror))           // hot path
+} else {
+    equity_loader::for_current_tuple(model)            // cold path → EquityCache
+};
+```
+
+The `equity_loader::for_current_tuple` helper preserves Phase A
+behaviour. The new routing checks the in-memory mirror **first**;
+falls back to the cache on miss or tuple mismatch.
+
+`EquityCache::invalidate(&tuple)` still fires on
+`LabRunCompleted(Ok(_))` (R5.2 — preserves cold-start determinism for
+the next cockpit launch).
+
+The R5.4 "narrowed from `<report_name>`" badge (Phase A
+`date_range::view` argument @screens/lab.rs:198) is suppressed when
+`last_run_report` is the source: the badge's optional arg is `None`
+on the hot path, `Some(<report_name>)` on the cache fallback.
+
+### D5 — `run_delta_badge` widget shape
+
+New widget `crates/ui/src/widgets/run_delta_badge.rs`:
+
+```rust
+pub fn view<'a>(
+    last: &RunReportMirror,
+    prev: &RunReportMirror,
+    mode: ThemeMode,
+) -> Element<'a, Message>;
+
+// Hidden when prev is None OR tuples mismatch. The caller in
+// screens/lab.rs handles the visibility gate; the widget itself
+// expects both `Some` + same-tuple.
+```
+
+Three rows: Δ P&L, Δ MaxDD, Δ Sharpe.
+
+- **Δ P&L** = `(last.kpis.final_equity − last.kpis.initial_equity) −
+  (prev.kpis.final_equity − prev.kpis.initial_equity)`. Color:
+  positive → `color::UP_500`, negative → `color::DOWN_500`, zero →
+  `color::FG_3`.
+- **Δ MaxDD** = `last.kpis.max_drawdown − prev.kpis.max_drawdown`.
+  Color **inverted** (smaller drawdown is improvement: negative Δ →
+  `UP_500`, positive Δ → `DOWN_500`, zero → `FG_3`).
+- **Δ Sharpe** = `compute_sharpe(last.equity_series_decimals) −
+  compute_sharpe(prev.equity_series_decimals)`. Positive → `UP_500`,
+  negative → `DOWN_500`, zero → `FG_3`. Uses
+  `backtest::compute_sharpe` (re-exported from `crates/backtest/src/lib.rs`
+  per ADR-0035 § Decision 8).
+
+**Layout placement.** In `screens/lab.rs::view` the badge inserts
+into the `run_button_row` (currently @206-208) as a second `Row`
+child to the right of the Run button:
+
+```rust
+let run_button_row = Row::new()
+    .push(run_button::view(&run_state, model.lab_run_inflight, mode))
+    .push_maybe(run_delta_badge_if_visible(&model.lab_state, mode))
+    .spacing(space::M)
+    .width(Length::Fill);
+```
+
+The badge is right-aligned via spacer or `Length::Fill` on the run
+button (architect call at developer wave). Width budget: ~180 px
+(three short rows of "Δ P&L: +$12.34"-shape text).
+
+**Snapshot baselines impacted (R10.7 / R8).** Visual baselines that
+include the Run button row need refresh:
+
+- `crates/ui/tests/visual-baselines/charts_screen_dark_floor.png`
+- `crates/ui/tests/visual-baselines/charts_screen_dark_typical.png`
+- `crates/ui/tests/visual-baselines/charts_screen_dark_operator.png`
+- Any `render_snapshots/*` for the Lab screen that crops the
+  top-bar.
+
+These are golden-image refreshes on first delta-badge render; they
+are NOT anchor-locked (they are pixel goldens, not body SHAs). The
+developer regenerates them at T-D-14 and the tester confirms parity.
+
+### D6 — Cancel-poll cadence (K3 mitigation)
+
+Each scenario's bar loop gets a single `cancel.is_cancelled()` check
+gated by a power-of-two bit-mask:
+
+```rust
+// inside scenarios/<family>.rs bar loop body
+for (bar_idx, bar) in bars.iter().enumerate() {
+    if bar_idx & 0x7F == 0 && cancel.is_cancelled() {
+        return Err(RunError::Cancelled);
+    }
+    // … existing bar work …
+}
+```
+
+`0x7F` = every 128 bars. For a 525_600-bar BTC-2023 backtest that's
+4106 polls (negligible CPU). The poll reads
+`std::sync::mpsc::Receiver::try_recv` (non-blocking, ~50 ns per
+call); aggregate cost <0.5 ms over the whole run.
+
+**Falsifiable load-bearing claim (H6 — added at M-T1).**
+
+> **If** `cancel.is_cancelled()` is polled at every 128-bar boundary
+> across the largest TCN-overlay × FY-2024 backtest, **then** the
+> end-to-end wall-clock latency stays within 2% of the unpolled
+> baseline (measured by `cargo run -p backtest --release --
+> --scenario top10-2024-fy-tcn-overlay-realdata --features
+> realdata`).
+
+**How to falsify:** run the TCN scenario with and without the poll
+(toggle via a `#[cfg(not(test))]` patch); compare wall-clock with
+`time` 5 times each; report median. Falsified when median delta > 2%.
+
+**Why it matters:** if H6 falsifies, the cadence must drop (every
+256 or 512 bars) — but the cancel latency on operator shutdown
+worsens linearly. K3 cockpit-shutdown safety has soft real-time
+requirements (<5 s tear-down). The default 128 is the architect's
+ratified midpoint.
+
+**`RunError::Cancelled` variant** is additive (ADR-0035 § Decision
+6). The runner's `format!("{e}")` covers any variant via `Display`;
+no enum-exhaustive match anywhere in `crates/ui` needs to change.
+
+### D7 — `Cockpit::lab_run_inflight: bool` storage (NOT promoted)
+
+Phase A's `bool` field (state.rs:752) stays. Cancellation in Phase B
+operates via the receiver moved into the spawned task; the handle
+returned by `cancellation_pair()` is dropped at function-exit on the
+binary side, which immediately signals cancellation on the receiver.
+For long-lived in-flight tracking the bool is sufficient.
+
+Promotion to `Option<RunCancelHandle>` is deferred to Phase C when a
+Cancel button surfaces (Q3 alternative B). At that point the trainer
+pattern (`LabState::training_inflight: Option<TrainingHandle>` at
+state.rs:146) is the precedent.
+
+### D8 — Hypothesis register additions (M-T1)
+
+Two new falsifiable hypotheses join H1-H5 from the analyst pass:
+
+- **H6** — Cancel-poll overhead ≤2% (specified above in D6).
+- **H7** — `Arc<Vec<...>>` mirror double-hold ≤32 MB RSS.
+
+**H7.** **If** the cockpit holds both `last_run_report` and
+`prev_run_report` for the heaviest scenario tuple (TCN-overlay ×
+FY-2024 × all 10 symbols, per K4 estimate ~12.6 MB per series),
+**then** the cockpit process RSS reading stays ≤32 MB above the
+post-launch baseline (measured by `ps -o rss` 5 s after the second
+Run completes).
+
+**How to falsify:** start cockpit, record baseline RSS, run two
+back-to-back TCN scenarios on the same tuple, measure RSS at T+5s
+post-second-run. Falsified when delta > 32 MB.
+
+**Why it matters:** if H7 falsifies, the `Vec` inside `Arc` is being
+cloned (not shared) — the developer has a refcount bug. Or the
+scenario produces >2× the analyst's estimate, in which case ADR-0035
+needs an amendment to specify a `EquitySeriesCompact` downsample for
+the mirror.
+
 ## Backtest Scenarios
 
 **N/A** — this is a UI + backend refactor feature. No new
@@ -1127,6 +1414,20 @@ preserving extraction over the existing 22 anchored scenarios.
 
 ## Changelog
 
+- 2026-05-19 (architect, M-T1 pass): ratified Q1-Q5 operator defaults
+  inline; locked the Design section (D1 module layout, D2 scenario
+  mapping, D3 `LabState` extensions, D4 chart routing, D5
+  `run_delta_badge` widget shape + visual-baseline impact, D6
+  cancel-poll cadence, D7 storage-stays-bool, D8 H6+H7 hypothesis
+  additions). Authored
+  [ADR-0035](../architecture/adr/0035-phase-b-scenario-dispatch-extraction.md)
+  extending ADR-0030. Updated `trace.toml` `arch` with the new ADR
+  + tasks.md row; appended developer-wave-created test paths
+  (`crates/ui/src/widgets/run_delta_badge.rs`,
+  `crates/ui/tests/lab_run_engine.rs`). `tasks.md` published with
+  T-D-N1..T-D-N15 + per-wave anchor gates. Status `draft` →
+  version bumped to `0.2.0`. Owner flipped `pending-architect` →
+  `architect`. HANDOFF → developer.
 - 2026-05-19 (orchestrator, operator-decide pass): operator accepted
   all 5 analyst-recommended defaults via "Autoapprove all" directive
   (Q1=A in-memory return; Q2=A ThrottledSpinner only; Q3=A disabled-
