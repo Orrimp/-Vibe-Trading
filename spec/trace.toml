@@ -637,6 +637,21 @@ tests       = [
 anchors     = []   # TESTER-VERIFIED 2026-05-18: Phase A touches no strategy/audit/exec code; verify-anchors 13/13 PASS (scripts/verify_anchors.sh EXIT 0); 20/20 determinism tests PASS; all 11 original body-SHA-256 anchors byte-identical.
 state       = "shipped"
 
+[[req]]
+id          = "REQ-UI-RETHINK-PHASE-B-001"
+title       = "Phase B of the UI rethink — wire the Lab Run button to an in-process backtest call (replacing Phase A's read-cached-report shortcut); confirm crates/backtest library-callable; add 'compare to previous run' affordance; preserve 22 body-SHA anchors + cockpit-smoke + cockpit idle-CPU budget"
+feature     = "ui-rethink-phase-b-lab-run"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-rethink-phase-b-lab-run/feature.md",
+  "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase B sequencing source-of-truth
+  "spec/architecture/adr/0030-cockpit-in-process-backtest.md",
+]
+crates      = ["crates/ui", "crates/backtest"]
+tests       = []   # analyst-pass stub; populate at architect T-AR-2
+anchors     = []   # Phase B touches no strategy/audit/exec code; 22 originals stay byte-identical (R10 contract in feature.md)
+state       = "proposed"
+
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #

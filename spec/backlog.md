@@ -4,6 +4,17 @@ status: living
 owner: orchestrator
 updated: 2026-05-19
 ---
+<!-- updated 2026-05-19 (orchestrator, ui-rethink-phase-b-lab-run promotion) —
+     Phase B of the UI rethink promoted Queue (implicit) → Active.
+     Operator direction "1 then 2" — #1 (cockpit-performance-and-input-
+     responsiveness) was already shipped 2026-05-15 (stale backlog
+     entry corrected in same sweep, moved Queue → Recent); #2 (Phase B)
+     stub authored at `spec/ui-rethink-phase-b-lab-run/feature.md`
+     (status: proposed, owner: pending-analyst, version: 0.1.0,
+     predecessor: ui-rethink-phase-a-lab v0.2.0). 5 analyst-surfaced Qs
+     (Q1 library-call shape; Q2 spinner UX; Q3 cancel semantics; Q4
+     compare target; Q5 anchor surface). Trace row
+     REQ-UI-RETHINK-PHASE-B-001 opened in proposed. HANDOFF → analyst. -->
 <!-- updated 2026-05-19 (orchestrator, cockpit-training-control ship) —
      `cockpit-training-control v0.2.0` operator-approved via "Autoapprove
      all" directive (presenter deck + 3 manual `[orchestrator]` acceptance
@@ -252,6 +263,31 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+- **UI rethink Phase B — Lab Run button (`ui-rethink-phase-b-lab-run`).**
+  _proposed (2026-05-19) — awaiting analyst pass_. Second concrete
+  feature carved out of the broader UI rethink at
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
+  Predecessor: [`ui-rethink-phase-a-lab v0.2.0`](ui-rethink-phase-a-lab/feature.md)
+  shipped 2026-05-18. Promotes Phase A's Lab `Run` button from
+  "read cached report from `spec/<strategy>/reports/`" to "actually
+  run a backtest in-process," closing the operator's J2 workflow
+  end-to-end. Scope (dev-note §6 Phase B): confirm
+  `crates/backtest` library-callable (refactor to thin-binary-over-
+  library if not); wire Lab `Run` button to call the engine and
+  populate `lab_state.result` directly; add "compare to previous
+  run" affordance. Out of scope: Phases C/D/E/F, new engine
+  internals, multi-strategy batch runs, live/paper mode.
+  **5 analyst-surfaced Qs** (library-call shape; spinner / progress
+  UX; cancellation semantics; compare-against target; anchor
+  surface). **Non-regression contract:** 22 body-SHA anchors stay
+  byte-identical; `cockpit-smoke` stays green; the just-shipped
+  `cockpit-performance-and-input-responsiveness v1.0.0` idle-CPU
+  floor (≤13.1%) stays under budget. Cost estimate per dev-note:
+  **~1-2 weeks; low anchor risk** (new library-call path; no
+  committed report bodies change). Trace row
+  `REQ-UI-RETHINK-PHASE-B-001` opened in proposed state.
+  HANDOFF → analyst.
+
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
@@ -397,82 +433,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   fallback; v1.11 closes the operator-friendly local-time landing.
   Analyst spawn when v1.10.0 ships; not before. Full details
   deferred to the v1.11 brief's analyst.
-
-- **P1 — Cockpit performance + input responsiveness
-  (`cockpit-performance-and-input-responsiveness`).**
-  _proposed_ — surfaced 2026-05-15 by operator's live-cockpit
-  verification during `ui-quality-gate-overhaul v1.0.0` approval.
-  Two symptoms observed on the post-Brief-A + Brief-B + F1-fix
-  build:
-  1. **UI is slow** — sluggish redraw / frame pacing under
-     `--features fixtures` on macOS Apple Silicon.
-  2. **Input dispatch unreliable** — not every click is recognized.
-
-  Both pre-date the M1/M2 quality gates (live in Brief A's native
-  iced::widget::Table adoption + Brief B's `iced_aw::Spinner`
-  continuous-redraw subscription + the existing event-handling
-  surface), but they are NOT caught by any current gate — the new
-  cockpit-smoke gate (M1-A) checks first-frame panic only, real-
-  renderer snapshots (M1-B) test layout determinism not perf, and
-  proptest layout invariants (M1-C) don't probe runtime event flow.
-
-  **Hypothesis seeds for the analyst (orchestrator surface only —
-  analyst owns falsification):**
-  - H-PERF-1: `iced_aw::Spinner`'s 60 FPS `request_redraw_at`
-    subscription forces continuous full-cockpit repaint while ANY
-    panel is in `PanelState::Loading`. Even one loading panel
-    pulls the whole cockpit into 60 fps software-rasterized
-    (`iced_tiny_skia`) redraw. CPU cost compounds across the 8 B2
-    call sites.
-  - H-PERF-2: Native `iced::widget::Table` (Brief A R1/R2) has a
-    layout pass that recomputes per-cell bounds every redraw, not
-    cached. With ~12 strategy rows × 6 columns × 60 fps = 4320
-    layout calls/second.
-  - H-PERF-3: Click hit-test traverses the full widget tree (Home
-    screen = 4 panels × ~50 widgets each ≈ 200 hit-test candidates
-    per click). Missed clicks may correlate with a 60-fps redraw
-    landing during the same event-loop tick and starving the
-    `WindowEvent::CursorButtonPressed` dispatch.
-  - H-PERF-4: `iced_tiny_skia` is software-rasterized on the
-    operator's hardware; wgpu is off-table per
-    [`trading_ui_library_constraints.md`](dev-notes/trading_ui_library_constraints.md)
-    BUT the architect should revisit the constraint given the live
-    perf signal.
-  - H-PERF-5: M2-A `tracing` instrumentation (just shipped) is
-    behind `render-debug` and should NOT fire in default builds —
-    confirm via grep that no production code path emits spans.
-
-  **Scope when promoted:**
-  - **M0 (orchestrator-runnable):** profile a default-fixtures
-    cockpit boot using `samply` or `cargo flamegraph` for ~30s
-    and capture the top 10 hot frames. Identify whether spinner
-    redraw, Table layout, or click hit-test dominates.
-  - **M1:** fix the dominant hot path. Likely candidates: gate
-    `iced_aw::Spinner` redraw to a coarser cadence (e.g. 10 fps,
-    or only-while-visible); cache Table layout; or restructure
-    event dispatch.
-  - **M2:** add a `cockpit-perf-budget` regression test (CI gate
-    that asserts <budget> fps on a fixtures cold-start). The
-    `ui-quality-gate-overhaul` brief's M1-A cockpit-smoke skill
-    is the natural place to plug this — extend it to also record
-    frames-per-second over the 7-10s window.
-  - **M3:** input-responsiveness investigation — likely a separate
-    sub-thread. Use M2-A `tracing` spans on event dispatch to
-    pinpoint dropped clicks.
-
-  **Out of scope:**
-  - Renderer backend swap to wgpu (per architecture pin; if the
-    perf analysis forces it, that's a separate brief requiring
-    operator override of the existing constraint).
-  - Major iced version bump (still pinned at 0.14.0 per Brief B).
-
-  **Analyst spawn:** operator-triggered. Brief is `proposed`
-  state in trace.toml; analyst draft turns it into `draft`.
-  Predecessor: `ui-quality-gate-overhaul v1.0.0`. Trigger cite:
-  operator's 2026-05-15 live-cockpit observation during the
-  v1.0.0 approval pass, recorded in
-  [`spec/ui-quality-gate-overhaul/presentations/ui-quality-gate-overhaul-2026-05-15.md`](ui-quality-gate-overhaul/presentations/ui-quality-gate-overhaul-2026-05-15.md)
-  approval-with-notes block.
 
 - **TBD — Cockpit Windows / Linux support (`cockpit-cross-platform`).**
   _candidate_ — surfaced 2026-05-12 by operator decision D3 in
@@ -820,6 +780,26 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **Cockpit performance + input responsiveness (`cockpit-performance-and-input-responsiveness` v1.0.0)** —
+  shipped 2026-05-15 (operator-approved via presenter deck
+  [`presentations/cockpit-performance-and-input-responsiveness-2026-05-15.md`](cockpit-performance-and-input-responsiveness/presentations/cockpit-performance-and-input-responsiveness-2026-05-15.md);
+  this backlog entry was stale until 2026-05-19 spec-hygiene sweep).
+  Predecessor: `ui-quality-gate-overhaul v1.0.0`. **Headline: idle CPU
+  dropped from ~66.9% → 2.2-13.1%** on the fixtures-mode cockpit
+  (~18× typical / 30× peak). M0 samply 0.13.1 profile identified the
+  dominant hot path as `iced_tiny_skia::Compositor::present` at 45.5%
+  inclusive + `draw_quad` at 20.5% + tiny-skia pixel pipeline at 27%+
+  — i.e. continuous full-frame software-rasterized repaints at idle.
+  H-PERF-1 CONFIRMED-INDIRECT, H-PERF-2 + H-PERF-4 CONFIRMED, H-PERF-3
+  deferred. **M1 fix (shipped):** new `crates/ui/src/widgets/throttled_spinner.rs`
+  wraps `iced_aw::Spinner` and gates its `RedrawRequested` subscription
+  from **60 fps → 10 fps** (the spinner still animates smoothly; the
+  cockpit's CPU stops melting). **M1B (Table memoization) + M1C
+  (hit-test) NOT shipped** — post-fix CPU was already in single-digit
+  range so they remain queued in tasks.md as conditional sub-targets
+  for any future regression. Evaluator PASS 15/15; 280 default-feature
+  tests + 286 under `--features render-debug` = 280/286 PASS.
 
 - **Cockpit training control (`cockpit-training-control` v0.2.0)** —
   shipped 2026-05-19 (operator-approved via "Autoapprove all" against
