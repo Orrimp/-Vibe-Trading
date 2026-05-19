@@ -1,0 +1,7 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1789
+expression: training_panel_summary(&c)
+---
+panel: training
+collapsed: true

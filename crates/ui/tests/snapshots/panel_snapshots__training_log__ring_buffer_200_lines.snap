@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1823
+expression: training_log_ring_summary(&c)
+---
+panel: training_log_ring_buffer
+lines_retained: 200
+first_line: log-line-50
+last_line: log-line-249

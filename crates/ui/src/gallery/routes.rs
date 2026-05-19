@@ -22,7 +22,8 @@ use crate::theme::ThemeMode;
 use crate::widgets::{
     agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
     kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
-    run_button, sidebar_nav, sparkline, status_bar, strategies, strategy_chip, volume_histogram,
+    run_button, sidebar_nav, sparkline, status_bar, strategies, strategy_chip, training_log,
+    volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -368,6 +369,39 @@ fn render_num(_model: &Cockpit) -> iced::Element<'_, Message> {
 
 fn render_volume_histogram_mixed(_model: &Cockpit) -> iced::Element<'_, Message> {
     volume_histogram::view(fx::fake_volume_bins(), ThemeMode::Dark)
+}
+
+// ── training_log gallery cells (cockpit-training-control T-D-N2) ─────────────
+
+fn seed_training_log_empty() -> Cockpit {
+    Cockpit::default()
+}
+
+fn seed_training_log_with_lines() -> Cockpit {
+    let mut c = Cockpit::default();
+    for i in 0..10usize {
+        training_log::push_line(
+            &mut c.lab_state.training_log,
+            smol_str::SmolStr::new(format!("[info] epoch {i} complete, loss=0.{i:02}")),
+        );
+    }
+    c
+}
+
+fn render_training_log_empty(model: &Cockpit) -> iced::Element<'_, Message> {
+    training_log::view(
+        &model.lab_state.training_log,
+        model.lab_state.training_log_anchored,
+        ThemeMode::Dark,
+    )
+}
+
+fn render_training_log_with_lines(model: &Cockpit) -> iced::Element<'_, Message> {
+    training_log::view(
+        &model.lab_state.training_log,
+        model.lab_state.training_log_anchored,
+        ThemeMode::Dark,
+    )
 }
 
 fn render_volume_histogram_empty(_model: &Cockpit) -> iced::Element<'_, Message> {
@@ -858,6 +892,19 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_status_bar,
         seed: seed_status_bar,
     },
+    // ── training_log (cockpit-training-control T-D-N2) ─────────────────────
+    GalleryCell {
+        widget: "training_log",
+        state: "empty",
+        render: render_training_log_empty,
+        seed: seed_training_log_empty,
+    },
+    GalleryCell {
+        widget: "training_log",
+        state: "with_lines",
+        render: render_training_log_with_lines,
+        seed: seed_training_log_with_lines,
+    },
 ];
 
 /// The canonical list of widget-module names the gallery is expected to
@@ -892,6 +939,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "status_bar",
     "strategies",
     "strategy_chip",
+    "training_log",
     "volume_histogram",
 ];
 

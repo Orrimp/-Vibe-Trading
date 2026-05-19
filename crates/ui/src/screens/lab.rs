@@ -74,6 +74,12 @@ const HISTOGRAM_LABEL_HEIGHT_PX: f32 = 14.0;
 /// `space::M` spacing, `SMALL`-sized text, `S`/`L` padding).
 const RUN_BUTTON_ROW_HEIGHT_PX: f32 = 36.0;
 
+/// Training panel header height when collapsed (header chip only, T-D-N3).
+const TRAINING_PANEL_COLLAPSED_HEIGHT_PX: f32 = 32.0;
+
+/// Training panel height when expanded (log + status strip + buttons, T-D-N3).
+const TRAINING_PANEL_EXPANDED_HEIGHT_PX: f32 = 240.0;
+
 /// Pure calculation of the chart canvas's vertical allocation given a
 /// body height.  Mirrors the Layout β arithmetic this module's
 /// [`view`] composes: chip row + status strip + chart (Fill) + volume
@@ -93,21 +99,41 @@ const RUN_BUTTON_ROW_HEIGHT_PX: f32 = 36.0;
 ///
 /// Returns `0.0` when the body height is smaller than the fixed-
 /// allocation siblings — pathological but defended.
+/// Compute the chart canvas's vertical allocation given a body height.
+///
+/// `training_collapsed` should be `model.lab_state.training_panel_collapsed`.
+/// When `true`, only the header chip (~32 px) is deducted; when `false`,
+/// the expanded panel (~240 px) is deducted instead.
 #[must_use]
 pub fn chart_canvas_height_for_body(body_height_px: f32) -> f32 {
+    chart_canvas_height_for_body_with_training(body_height_px, true)
+}
+
+/// Full version used by the view (accounts for training panel state).
+#[must_use]
+pub fn chart_canvas_height_for_body_with_training(
+    body_height_px: f32,
+    training_collapsed: bool,
+) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let padding = (space::L as f32) * 2.0;
-    // 7 children: pair_row, strategy_row, date_range_row, run_button_row,
-    // status_strip, chart (Fill), histogram → 6 gaps between 7 children.
+    // 8 children: pair_row, strategy_row, date_range_row, run_button_row,
+    // status_strip, chart (Fill), histogram, training_panel → 7 gaps.
     #[allow(clippy::cast_precision_loss)]
-    let spacing = (space::M as f32) * 6.0;
+    let spacing = (space::M as f32) * 7.0;
+    let training_height = if training_collapsed {
+        TRAINING_PANEL_COLLAPSED_HEIGHT_PX
+    } else {
+        TRAINING_PANEL_EXPANDED_HEIGHT_PX
+    };
     let fixed = CHIP_ROW_HEIGHT_PX
         + STRATEGY_ROW_HEIGHT_PX
         + DATE_RANGE_ROW_HEIGHT_PX
         + RUN_BUTTON_ROW_HEIGHT_PX
         + STATUS_STRIP_HEIGHT_PX
         + HISTOGRAM_LABEL_HEIGHT_PX
-        + HISTOGRAM_HEIGHT_PX;
+        + HISTOGRAM_HEIGHT_PX
+        + training_height;
     (body_height_px - padding - spacing - fixed).max(0.0)
 }
 
@@ -281,9 +307,165 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
                 .height(Length::Fill),
         )
         .push(histogram)
+        // cockpit-training-control T-D-N3 — Training panel (collapsed by
+        // default per R1.2 / Q4). Always rendered; collapsed = header-chip
+        // only (~32 px); expanded = header chip + log + status strip (~240 px).
+        .push(training_panel(model, mode))
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+// ── Training panel (cockpit-training-control T-D-N3) ─────────────────────────
+
+/// Render the Training panel.
+///
+/// Collapsed (default): a single header chip "Train ▶" dispatching
+/// `Message::TrainingPanelToggled`. Height ≈ 32 px.
+///
+/// Expanded: header chip + status strip + log + buttons.
+/// Height ≈ 240 px (fixed by `TRAINING_PANEL_EXPANDED_HEIGHT_PX`).
+///
+/// Buttons (R3.4):
+/// - **Train** — primary; disabled when `training_inflight.is_some()`.
+/// - **Cancel** — visible only when in-flight.
+/// - **Clear log** — always visible when expanded.
+///
+/// Status strip (R3.5, Tier 1): "Idle" / "Training…" / "Done" / "Failed: …"
+/// derived from `training_inflight` presence.
+#[must_use]
+#[allow(clippy::too_many_lines)]
+fn training_panel(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
+    use crate::state::Message;
+    use crate::strings;
+    use crate::widgets::training_log;
+
+    let collapsed = model.lab_state.training_panel_collapsed;
+    let inflight = model.lab_state.training_inflight.is_some();
+
+    let accent = color::ACCENT.current(mode);
+    let fg1 = color::FG_1.current(mode);
+    let fg3 = color::FG_3.current(mode);
+
+    // Header chip: shows "Train ▾" (expanded) or "Train ▸" (collapsed).
+    let arrow = if collapsed { " ▸" } else { " ▾" };
+    let header_label = format!("{}{arrow}", strings::TRAINING_PANEL_HEADER);
+    let header_chip =
+        iced::widget::button(iced::widget::text(header_label).size(12).style(move |_| {
+            iced::widget::text::Style {
+                color: Some(accent),
+            }
+        }))
+        .on_press(Message::TrainingPanelToggled)
+        .padding([4, 10])
+        .style(move |_theme, _status| iced::widget::button::Style {
+            background: Some(iced::Background::Color(color::PANEL.current(mode))),
+            border: iced::Border {
+                color: color::BORDER_1.current(mode),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            text_color: accent,
+            ..Default::default()
+        });
+
+    if collapsed {
+        // Collapsed: just the header chip.
+        iced::widget::row![header_chip]
+            .width(Length::Fill)
+            .height(Length::Fixed(TRAINING_PANEL_COLLAPSED_HEIGHT_PX))
+            .into()
+    } else {
+        // Status strip (Tier 1: Idle / Training… / Done / Failed: …).
+        let status_text = if inflight {
+            strings::TRAINING_STATUS_RUNNING.to_string()
+        } else {
+            strings::TRAINING_STATUS_IDLE.to_string()
+        };
+
+        let status_strip =
+            iced::widget::text(status_text)
+                .size(11)
+                .style(move |_| iced::widget::text::Style {
+                    color: Some(if inflight { accent } else { fg3 }),
+                });
+
+        // Buttons row.
+        let train_btn = {
+            let mut b = iced::widget::button(
+                iced::widget::text(strings::TRAINING_BUTTON_TRAIN)
+                    .size(12)
+                    .style(move |_| iced::widget::text::Style { color: Some(fg1) }),
+            )
+            .padding([4, 12])
+            .style(move |_theme, _status| iced::widget::button::Style {
+                background: Some(iced::Background::Color(color::ACCENT.current(mode))),
+                border: iced::Border::default(),
+                text_color: color::FG_ON_ACCENT.current(mode),
+                ..Default::default()
+            });
+            if !inflight {
+                b = b.on_press(Message::TrainingPressed);
+            }
+            b
+        };
+
+        let clear_btn = iced::widget::button(
+            iced::widget::text(strings::TRAINING_BUTTON_CLEAR_LOG)
+                .size(12)
+                .style(move |_| iced::widget::text::Style { color: Some(fg3) }),
+        )
+        .on_press(Message::TrainingClearLog)
+        .padding([4, 10])
+        .style(move |_theme, _status| iced::widget::button::Style {
+            background: Some(iced::Background::Color(color::PANEL.current(mode))),
+            border: iced::Border {
+                color: color::BORDER_1.current(mode),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            text_color: fg3,
+            ..Default::default()
+        });
+
+        let mut btn_row = iced::widget::row![train_btn, clear_btn].spacing(space::XS);
+
+        if inflight {
+            let cancel_btn = iced::widget::button(
+                iced::widget::text(strings::TRAINING_BUTTON_CANCEL)
+                    .size(12)
+                    .style(move |_| iced::widget::text::Style {
+                        color: Some(color::DOWN_400.current(mode)),
+                    }),
+            )
+            .on_press(Message::TrainingCancelPressed)
+            .padding([4, 10])
+            .style(move |_theme, _status| iced::widget::button::Style {
+                background: Some(iced::Background::Color(color::PANEL.current(mode))),
+                border: iced::Border {
+                    color: color::DOWN_400.current(mode),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                text_color: color::DOWN_400.current(mode),
+                ..Default::default()
+            });
+            btn_row = btn_row.push(cancel_btn);
+        }
+
+        // Log widget.
+        let log = training_log::view(
+            &model.lab_state.training_log,
+            model.lab_state.training_log_anchored,
+            mode,
+        );
+
+        iced::widget::column![header_chip, status_strip, btn_row, log,]
+            .spacing(space::XS)
+            .width(Length::Fill)
+            .height(Length::Fixed(TRAINING_PANEL_EXPANDED_HEIGHT_PX))
+            .into()
+    }
 }
 
 // ── Tile + mirror widget helpers (T2022, T2024) ─────────────────────────────

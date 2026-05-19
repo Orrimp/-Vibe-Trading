@@ -1,0 +1,14 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 1804
+expression: training_panel_summary(&c)
+---
+panel: training
+collapsed: false
+inflight: false
+status: Idle
+log_lines: 0
+log_anchored: true
+btn_train_enabled: true
+btn_cancel_visible: false
+btn_clear_log_visible: true

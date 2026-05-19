@@ -14,8 +14,12 @@
 //! **No I/O, no `SystemTime`, no `Instant`** — pure Rust, easily
 //! unit-testable.
 
+use std::collections::VecDeque;
+
 use smol_str::SmolStr;
 use trading_core::{StrategyId, Symbol, Venue};
+
+use crate::widgets::training_log::RingBuffer;
 
 /// Operator-facing strategy family labels (Design § 2.2 family pill).
 /// Four-char badge rendered on the strategy chip.
@@ -111,7 +115,10 @@ pub const COMPARE_SET_CAP: usize = 4;
 /// no heap allocation, no `SmallVec` dep needed.
 ///
 /// `params` is reserved-but-empty at Phase A (Design § 5.1 / R6.4).
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Note: derives removed in cockpit-training-control T-D-N4 because
+/// `TrainingHandle` (an OS process handle) is neither `Clone` nor `PartialEq`.
+/// Manual impls below cover the fields that are comparable / cloneable.
 pub struct LabState {
     /// Currently selected primary strategy. `None` on cold start.
     pub strategy: Option<StrategyId>,
@@ -127,6 +134,66 @@ pub struct LabState {
     compare_buf: [Option<StrategyId>; COMPARE_SET_CAP],
     /// Number of occupied slots in `compare_buf`.
     compare_len: usize,
+
+    // ── Training panel — cockpit-training-control T-D-N4 ─────────────────────
+    /// In-flight training subprocess handle. Held by `LabState`; dropping it
+    /// immediately SIGKILL's the subprocess (ADR-0034 / Q2 / R2.4).
+    /// `None` when no training run is in flight.
+    ///
+    /// The `TrainingHandle` is not `Clone` or `PartialEq` — `LabState` derives
+    /// `PartialEq` only for the non-training fields; training state is excluded.
+    #[allow(dead_code)] // Populated in T-D-N4; read in view/update.
+    pub training_inflight: Option<crate::lab::trainer::TrainingHandle>,
+
+    /// Ring buffer of training log lines (most-recent-at-back).
+    /// Populated by `Message::TrainingLogLine` via `push_line`.
+    pub training_log: RingBuffer,
+
+    /// Whether the training log scroll is anchored to the bottom (auto-scroll).
+    /// `true` by default. Frozen by `Message::TrainingLogClicked`.
+    pub training_log_anchored: bool,
+
+    /// Whether the Training panel is collapsed (header-chip only) or expanded.
+    /// `true` = collapsed (default at cold start per R1.2 / Q4).
+    pub training_panel_collapsed: bool,
+}
+
+/// Manual `Clone` for `LabState` — `TrainingHandle` (an OS process handle)
+/// is not `Clone`, so we exclude it. Cloning `LabState` resets
+/// `training_inflight` to `None` (the in-flight handle stays in the original;
+/// this clone is used only for snapshot/persistence operations).
+impl Clone for LabState {
+    fn clone(&self) -> Self {
+        Self {
+            strategy: self.strategy.clone(),
+            pair: self.pair.clone(),
+            range: self.range.clone(),
+            params: self.params,
+            compare_buf: self.compare_buf.clone(),
+            compare_len: self.compare_len,
+            // Training handle is NOT cloned — the clone starts with no handle.
+            training_inflight: None,
+            training_log: self.training_log.clone(),
+            training_log_anchored: self.training_log_anchored,
+            training_panel_collapsed: self.training_panel_collapsed,
+        }
+    }
+}
+
+impl std::fmt::Debug for LabState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LabState")
+            .field("strategy", &self.strategy)
+            .field("pair", &self.pair)
+            .field("range", &self.range)
+            .field("compare_buf", &self.compare_buf)
+            .field("compare_len", &self.compare_len)
+            .field("training_inflight", &self.training_inflight)
+            .field("training_log_len", &self.training_log.len())
+            .field("training_log_anchored", &self.training_log_anchored)
+            .field("training_panel_collapsed", &self.training_panel_collapsed)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for LabState {
@@ -138,6 +205,10 @@ impl Default for LabState {
             params: None,
             compare_buf: [const { None }; COMPARE_SET_CAP],
             compare_len: 0,
+            training_inflight: None,
+            training_log: VecDeque::new(),
+            training_log_anchored: true,
+            training_panel_collapsed: true,
         }
     }
 }
@@ -160,6 +231,10 @@ impl LabState {
             params: None,
             compare_buf: [const { None }; COMPARE_SET_CAP],
             compare_len: 0,
+            training_inflight: None,
+            training_log: VecDeque::new(),
+            training_log_anchored: true,
+            training_panel_collapsed: true,
         }
     }
 }

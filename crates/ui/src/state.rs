@@ -1253,6 +1253,25 @@ pub enum Message {
     ShowToast(SmolStr),
     /// Clear the currently shown toast (auto-fired after the display timeout).
     DismissToast,
+
+    // ── Training panel — cockpit-training-control T-D-N4 ─────────────────────
+    /// Operator pressed the Train button — start a new training run.
+    TrainingPressed,
+    /// Operator pressed the Cancel button — SIGKILL the in-flight subprocess.
+    TrainingCancelPressed,
+    /// A log line arrived from the `train_tcn` subprocess's stdout/stderr.
+    TrainingLogLine(SmolStr),
+    /// The `train_tcn` subprocess exited (success or failure).
+    TrainingExited(std::process::ExitStatus),
+    /// Operator toggled the Train panel collapsed/expanded header chip.
+    TrainingPanelToggled,
+    /// Operator pressed "Clear log" — clears the ring buffer without affecting
+    /// the in-flight subprocess.
+    TrainingClearLog,
+    /// Operator clicked inside the training log pane — freezes auto-scroll.
+    TrainingLogClicked,
+    /// Operator clicked "Jump to bottom" chip — restores auto-scroll anchoring.
+    TrainingLogJumpToBottom,
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1626,6 +1645,38 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         }
         Message::DismissToast => {
             model.toast_message = None;
+        }
+
+        // ── Training panel — cockpit-training-control T-D-N4 ─────────────────
+        Message::TrainingPressed => {
+            // Actual subprocess spawn lives in the binary (needs rt_handle).
+            // The update fn is pure — the Message is dispatched from the binary's
+            // `update` wrapper which calls `lab::trainer::spawn_training_run`
+            // before forwarding. Here we just ensure state is consistent.
+            // (No-op if already in-flight — button is disabled in that case.)
+        }
+        Message::TrainingCancelPressed => {
+            // Drop the handle — Drop impl calls start_kill() → SIGKILL.
+            model.lab_state.training_inflight = None;
+        }
+        Message::TrainingLogLine(line) => {
+            crate::widgets::training_log::push_line(&mut model.lab_state.training_log, line);
+        }
+        Message::TrainingExited(_status) => {
+            // Subprocess has exited; clear the inflight handle.
+            model.lab_state.training_inflight = None;
+        }
+        Message::TrainingPanelToggled => {
+            model.lab_state.training_panel_collapsed = !model.lab_state.training_panel_collapsed;
+        }
+        Message::TrainingClearLog => {
+            model.lab_state.training_log.clear();
+        }
+        Message::TrainingLogClicked => {
+            model.lab_state.training_log_anchored = false;
+        }
+        Message::TrainingLogJumpToBottom => {
+            model.lab_state.training_log_anchored = true;
         }
     }
 }
@@ -2655,6 +2706,100 @@ mod tests {
             DateRange::Preset(Preset::H1_2024),
             "boot must restore persisted range"
         );
+    }
+
+    // ── cockpit-training-control T-D-N4 training_arms ────────────────────────
+
+    mod training_arms {
+        use super::*;
+
+        /// T-D-N4 arm 1 — `TrainingPanelToggled` flips `training_panel_collapsed`.
+        #[test]
+        fn training_panel_toggled_flips_collapsed() {
+            let mut c = Cockpit::new();
+            assert!(
+                c.lab_state.training_panel_collapsed,
+                "panel must start collapsed"
+            );
+            update(&mut c, Message::TrainingPanelToggled);
+            assert!(
+                !c.lab_state.training_panel_collapsed,
+                "after toggle: panel must be expanded"
+            );
+            update(&mut c, Message::TrainingPanelToggled);
+            assert!(
+                c.lab_state.training_panel_collapsed,
+                "after second toggle: panel must be collapsed again"
+            );
+        }
+
+        /// T-D-N4 arm 2 — `TrainingLogLine` pushes to the ring buffer.
+        #[test]
+        fn training_log_line_pushes_to_ring_buffer() {
+            let mut c = Cockpit::new();
+            assert_eq!(c.lab_state.training_log.len(), 0, "log must start empty");
+            update(
+                &mut c,
+                Message::TrainingLogLine(SmolStr::new("[info] epoch 1 done")),
+            );
+            assert_eq!(c.lab_state.training_log.len(), 1, "log must have 1 line");
+            assert_eq!(
+                c.lab_state.training_log.front().unwrap().as_str(),
+                "[info] epoch 1 done"
+            );
+        }
+
+        /// T-D-N4 arm 3 — `TrainingCancelPressed` drops the inflight handle
+        /// (setting it to `None`). No handle is present in this test since
+        /// spawning a real process requires the `live` feature. We verify the
+        /// arm itself runs without panic and clears `None` cleanly.
+        #[test]
+        fn training_cancel_clears_inflight() {
+            let mut c = Cockpit::new();
+            // No inflight handle — cancel is a safe no-op.
+            update(&mut c, Message::TrainingCancelPressed);
+            assert!(c.lab_state.training_inflight.is_none());
+        }
+
+        /// T-D-N4 arm 4 — `TrainingClearLog` empties the ring buffer.
+        #[test]
+        fn training_clear_log_empties_buffer() {
+            let mut c = Cockpit::new();
+            update(&mut c, Message::TrainingLogLine(SmolStr::new("line1")));
+            update(&mut c, Message::TrainingLogLine(SmolStr::new("line2")));
+            assert_eq!(c.lab_state.training_log.len(), 2);
+            update(&mut c, Message::TrainingClearLog);
+            assert_eq!(
+                c.lab_state.training_log.len(),
+                0,
+                "clear log must empty buffer"
+            );
+        }
+
+        /// T-D-N4 arm 5 — `TrainingLogClicked` freezes auto-scroll.
+        #[test]
+        fn training_log_clicked_freezes_autoscroll() {
+            let mut c = Cockpit::new();
+            assert!(c.lab_state.training_log_anchored, "starts anchored");
+            update(&mut c, Message::TrainingLogClicked);
+            assert!(
+                !c.lab_state.training_log_anchored,
+                "after click: not anchored"
+            );
+        }
+
+        /// T-D-N4 arm 6 — `TrainingLogJumpToBottom` re-anchors.
+        #[test]
+        fn training_log_jump_to_bottom_re_anchors() {
+            let mut c = Cockpit::new();
+            update(&mut c, Message::TrainingLogClicked);
+            assert!(!c.lab_state.training_log_anchored);
+            update(&mut c, Message::TrainingLogJumpToBottom);
+            assert!(
+                c.lab_state.training_log_anchored,
+                "after jump-to-bottom: re-anchored"
+            );
+        }
     }
 
     /// T-D-14c — boot with absent state file falls back to cold-start defaults.

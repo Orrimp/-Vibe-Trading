@@ -323,6 +323,55 @@ pub const LAB_RUN_BUTTON_COMPLETED: &str = "Re-run";
 /// Label on the Run button after a failed run — operator can retry (T-D-14b).
 pub const LAB_RUN_BUTTON_FAILED: &str = "Retry";
 
+// ── Training panel — cockpit-training-control T-D-N1/N2/N3/N4/N16 ────────────
+
+/// Header chip label for the collapsed training panel.
+pub const TRAINING_PANEL_HEADER: &str = "Train";
+
+/// Train button label (primary action — starts training run).
+pub const TRAINING_BUTTON_TRAIN: &str = "Train";
+
+/// Cancel button label (visible only while training is in-flight).
+pub const TRAINING_BUTTON_CANCEL: &str = "Cancel";
+
+/// Clear log button label.
+pub const TRAINING_BUTTON_CLEAR_LOG: &str = "Clear log";
+
+/// Status strip — idle state.
+pub const TRAINING_STATUS_IDLE: &str = "Idle";
+
+/// Status strip — training in progress (Tier 1; no epoch counts).
+pub const TRAINING_STATUS_RUNNING: &str = "Training\u{2026}";
+
+/// Status strip — training in progress with epoch info (Tier 2 format string).
+/// Placeholder: `{}` = current epoch, `{}` = total epochs, `{}` = elapsed seconds.
+pub const TRAINING_STATUS_TRAINING_FMT: &str = "Training (epoch {}/{}, t={}s)";
+
+/// Status strip — training cancelled.
+pub const TRAINING_STATUS_CANCELLED: &str = "Cancelled";
+
+/// Status strip — training failed (format string). Placeholder: `{}` = error.
+pub const TRAINING_STATUS_FAILED_FMT: &str = "Failed: {}";
+
+/// Status strip — training completed successfully (format string).
+/// Placeholder: `{}` = short model revision SHA.
+pub const TRAINING_STATUS_DONE_FMT: &str = "Done: {}";
+
+/// Status strip — orphan run annotation, process still alive (Tier 2).
+/// Placeholder: `{}` = `run_id` short prefix.
+pub const ORPHAN_LIVE_FMT: &str =
+    "Training orphan detected (run {}, pid alive) — click Train to reconnect";
+
+/// Status strip — orphan run annotation, process dead (Tier 2).
+/// Placeholder: `{}` = `run_id` short prefix.
+pub const ORPHAN_DEAD_FMT: &str = "Training orphan (run {}) — process gone, check logs";
+
+/// Empty state for the training log ring buffer.
+pub const TRAINING_LOG_EMPTY: &str = "No training output yet — press Train to start.";
+
+/// "Jump to bottom" chip label for the training log when scroll is frozen.
+pub const TRAINING_LOG_JUMP_TO_BOTTOM: &str = "Jump to bottom";
+
 // ── Charts screen (Phase 2 — T1608, T1610) ───────────────────────────────────
 
 /// Centred label rendered when the chart canvas has zero bars buffered.
@@ -931,6 +980,21 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "CHART_EQUITY_AXIS_THOUSAND_SUFFIX",
             CHART_EQUITY_AXIS_THOUSAND_SUFFIX,
         ),
+        // cockpit-training-control T-D-N2/N16
+        ("TRAINING_PANEL_HEADER", TRAINING_PANEL_HEADER),
+        ("TRAINING_BUTTON_TRAIN", TRAINING_BUTTON_TRAIN),
+        ("TRAINING_BUTTON_CANCEL", TRAINING_BUTTON_CANCEL),
+        ("TRAINING_BUTTON_CLEAR_LOG", TRAINING_BUTTON_CLEAR_LOG),
+        ("TRAINING_STATUS_IDLE", TRAINING_STATUS_IDLE),
+        ("TRAINING_STATUS_RUNNING", TRAINING_STATUS_RUNNING),
+        ("TRAINING_STATUS_TRAINING_FMT", TRAINING_STATUS_TRAINING_FMT),
+        ("TRAINING_STATUS_CANCELLED", TRAINING_STATUS_CANCELLED),
+        ("TRAINING_STATUS_FAILED_FMT", TRAINING_STATUS_FAILED_FMT),
+        ("TRAINING_STATUS_DONE_FMT", TRAINING_STATUS_DONE_FMT),
+        ("ORPHAN_LIVE_FMT", ORPHAN_LIVE_FMT),
+        ("ORPHAN_DEAD_FMT", ORPHAN_DEAD_FMT),
+        ("TRAINING_LOG_EMPTY", TRAINING_LOG_EMPTY),
+        ("TRAINING_LOG_JUMP_TO_BOTTOM", TRAINING_LOG_JUMP_TO_BOTTOM),
     ]
 }
 

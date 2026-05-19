@@ -1776,6 +1776,114 @@ fn charts_screen_full_summary(c: &Cockpit) -> String {
     out
 }
 
+// ── Training panel — cockpit-training-control T-D-N3/N6 ─────────────────────
+
+/// T-D-N3 / T-D-N6 — Training panel in collapsed (default) state.
+///
+/// Cold start: `training_panel_collapsed = true` (R1.2 / Q4).
+/// The panel renders only the header chip; no log, no buttons visible.
+#[test]
+#[allow(non_snake_case)]
+fn lab__training_panel_collapsed_default() {
+    let c = Cockpit::new();
+    assert_snapshot!(
+        "lab__training_panel_collapsed_default",
+        training_panel_summary(&c)
+    );
+}
+
+/// T-D-N3 / T-D-N6 — Training panel in expanded state (no run in-flight).
+///
+/// Expanded: header chip + status strip ("Idle") + buttons (Train, Clear log).
+/// Cancel button absent (no run in-flight). Log area empty.
+#[test]
+#[allow(non_snake_case)]
+fn lab__training_panel_expanded() {
+    let mut c = Cockpit::new();
+    update(&mut c, Message::TrainingPanelToggled);
+    assert_snapshot!("lab__training_panel_expanded", training_panel_summary(&c));
+}
+
+/// T-D-N6 — Training log ring buffer: 250 lines pushed, 200 retained.
+///
+/// Exercises the ring-buffer eviction path: push 250 lines, verify
+/// the widget summary shows only 200 (oldest 50 evicted).
+/// This is the snapshot counterpart to the unit test in `training_log::tests`.
+#[test]
+#[allow(non_snake_case)]
+fn training_log__ring_buffer_200_lines() {
+    let mut c = Cockpit::new();
+    // Push 250 lines — ring buffer should evict oldest 50 to stay at 200.
+    for i in 0..250usize {
+        update(
+            &mut c,
+            Message::TrainingLogLine(smol_str::SmolStr::new(format!("log-line-{i}"))),
+        );
+    }
+    assert_snapshot!(
+        "training_log__ring_buffer_200_lines",
+        training_log_ring_summary(&c)
+    );
+}
+
+fn training_log_ring_summary(c: &Cockpit) -> String {
+    let mut out = String::new();
+    out.push_str("panel: training_log_ring_buffer\n");
+    let buf = &c.lab_state.training_log;
+    out.push_str(&format!("lines_retained: {}\n", buf.len()));
+    out.push_str(&format!(
+        "first_line: {}\n",
+        buf.front().map_or("—", |l| l.as_str())
+    ));
+    out.push_str(&format!(
+        "last_line: {}\n",
+        buf.back().map_or("—", |l| l.as_str())
+    ));
+    out
+}
+
+/// Plain-text summary of the Training panel state.
+///
+/// Captures: collapsed/expanded, inflight status, log line count,
+/// status text, button visibility.
+fn training_panel_summary(c: &Cockpit) -> String {
+    let mut out = String::new();
+    out.push_str("panel: training\n");
+    let collapsed = c.lab_state.training_panel_collapsed;
+    out.push_str(&format!(
+        "collapsed: {}\n",
+        if collapsed { "true" } else { "false" }
+    ));
+    if !collapsed {
+        let inflight = c.lab_state.training_inflight.is_some();
+        out.push_str(&format!(
+            "inflight: {}\n",
+            if inflight { "true" } else { "false" }
+        ));
+        let status = if inflight {
+            ui::strings::TRAINING_STATUS_RUNNING
+        } else {
+            ui::strings::TRAINING_STATUS_IDLE
+        };
+        out.push_str(&format!("status: {status}\n"));
+        out.push_str(&format!("log_lines: {}\n", c.lab_state.training_log.len()));
+        out.push_str(&format!(
+            "log_anchored: {}\n",
+            c.lab_state.training_log_anchored
+        ));
+        out.push_str(&format!(
+            "btn_train_enabled: {}\n",
+            if inflight { "false" } else { "true" }
+        ));
+        out.push_str(&format!(
+            "btn_cancel_visible: {}\n",
+            if inflight { "true" } else { "false" }
+        ));
+        out.push_str("btn_clear_log_visible: true\n");
+    }
+    out
+}
+
 // ── Summary helpers — plain-text state rendering ────────────────────────────
 
 fn tape_summary(c: &Cockpit) -> String {

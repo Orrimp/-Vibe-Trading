@@ -62,4 +62,7 @@ pub mod run_button;
 /// compare toggle).
 pub mod strategy_chip;
 pub mod throttled_spinner;
+/// cockpit-training-control T-D-N2 — training log ring-buffer widget.
+/// 200-entry VecDeque<SmolStr> with auto-scroll + click-to-freeze.
+pub mod training_log;
 pub mod volume_histogram;

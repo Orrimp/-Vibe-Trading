@@ -64,6 +64,19 @@ struct LabStateJson {
     params: Option<serde_json::Value>,
     #[serde(default)]
     compare_set: Vec<String>,
+    /// cockpit-training-control T-D-N5 — Training panel collapsed state.
+    /// Defaults to `true` (collapsed) when loading a pre-feature JSON file
+    /// that doesn't have this field (R8.1 / Q4 — panel stays closed on cold
+    /// start and on upgrade from a pre-feature cockpit state file).
+    #[serde(default = "default_training_panel_collapsed")]
+    training_panel_collapsed: bool,
+}
+
+/// Default function for `#[serde(default)]` on `training_panel_collapsed`.
+/// Returns `true` so that pre-feature JSON files (missing this field) load
+/// with the panel collapsed (R8.1 / Q4 contract).
+const fn default_training_panel_collapsed() -> bool {
+    true
 }
 
 // ── Path resolution ───────────────────────────────────────────────────────────
@@ -170,6 +183,8 @@ pub fn encode(state: &LabState) -> Result<String, serde_json::Error> {
             .flatten()
             .map(|id: &StrategyId| id.0.to_string())
             .collect(),
+        // cockpit-training-control T-D-N5 — persist training panel collapsed state.
+        training_panel_collapsed: state.training_panel_collapsed,
     };
     serde_json::to_string_pretty(&json)
 }
@@ -223,6 +238,9 @@ fn lab_state_from_json(j: &LabStateJson) -> LabState {
         let id = StrategyId(SmolStr::new(id_str));
         let _ = state.toggle_compare(id); // no-op if cap reached
     }
+
+    // cockpit-training-control T-D-N5 — restore training panel collapsed state.
+    state.training_panel_collapsed = j.training_panel_collapsed;
 
     state
 }
@@ -514,6 +532,57 @@ mod tests {
         assert_eq!(
             restored.pair.as_ref().map(|(_, s)| s.0.as_str()),
             Some("XRPUSDT")
+        );
+    }
+
+    // ── cockpit-training-control T-D-N5 ─────────────────────────────────────
+
+    /// T-D-N5 — `training_panel_collapsed` roundtrips through encode/decode.
+    ///
+    /// The field must survive a write → read cycle for both `true` (collapsed)
+    /// and `false` (expanded) values.
+    #[test]
+    fn training_panel_collapsed_roundtrips() {
+        // Collapsed = true (default).
+        let mut state = cold_start_defaults();
+        state.training_panel_collapsed = true;
+        let json = encode(&state).unwrap();
+        let restored = decode(&json, "test-collapsed");
+        assert!(
+            restored.training_panel_collapsed,
+            "collapsed=true must roundtrip"
+        );
+
+        // Expanded = false (operator opened the panel, then saved state).
+        state.training_panel_collapsed = false;
+        let json = encode(&state).unwrap();
+        let restored = decode(&json, "test-expanded");
+        assert!(
+            !restored.training_panel_collapsed,
+            "collapsed=false must roundtrip"
+        );
+    }
+
+    /// T-D-N5 — a pre-feature JSON file (missing `training_panel_collapsed`)
+    /// loads with `training_panel_collapsed = true` per R8.1 / Q4 contract.
+    ///
+    /// This simulates upgrading from a cockpit state file written before
+    /// this feature landed: the missing field defaults to `true` (collapsed).
+    #[test]
+    fn pre_feature_json_loads_collapsed_true() {
+        // Construct a v1 JSON blob WITHOUT the `training_panel_collapsed` field.
+        let pre_feature_json = r#"{
+            "version": 1,
+            "strategy": "v1.momentum",
+            "pair": { "venue": "Binance", "symbol": "XRPUSDT" },
+            "range": { "kind": "preset", "preset": "Last90d" },
+            "params": null,
+            "compare_set": []
+        }"#;
+        let restored = decode(pre_feature_json, "pre-feature-test");
+        assert!(
+            restored.training_panel_collapsed,
+            "pre-feature JSON must load with training_panel_collapsed=true (R8.1 / Q4)"
         );
     }
 }

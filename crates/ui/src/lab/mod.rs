@@ -22,6 +22,7 @@ pub mod equity_loader;
 pub mod persistence;
 pub mod runner;
 pub mod state;
+pub mod trainer;
 pub mod universe;
 
 pub use equity_loader::{EquityCache, EquityLoadError, Fidelity, LabEquitySeries, LabTuple};
