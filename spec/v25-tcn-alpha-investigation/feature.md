@@ -1,9 +1,9 @@
 ---
 slug: v25-tcn-alpha-investigation
-status: tester-blocked
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-05-19
-version: 0.3.0-rc1
+version: 0.3.0
 predecessor: backtest-real-binance-data v0.1.0
 parent: v25-tcn-overlay v2.5.0 (in-progress)
 ---
@@ -651,6 +651,9 @@ horizon-bump retraining run — operator to decide which to prioritize.
 
 ## Changelog
 
+- 2026-05-19 (orchestrator-inline): **M-FINAL re-gate VERDICT → PASS at commit `fd2642f`.** Closed out via orchestrator after the tester sub-agent hit a third Bash-permission denial. Test report at `reports/test-20260519-1100-v25-tcn-alpha-investigation-regate.md`. Frontmatter flipped `tester-blocked → shipped` (and `developer → operator`); trace.toml `REQ-V25-TCN-ALPHA-001` state → `shipped`. Joint F4 verdict + 3 new anchors under `v2.6.0-alpha-investigation` survive; 22/22 verify_anchors PASS; 19 originals byte-identical. Follow-ons queued: primary `v25-tcn-horizon-bump-or-retire`, secondary `v25-tcn-recalibrate` (the σ_train units-bug surfaced by R4). HANDOFF → presenter.
+- 2026-05-19 (orchestrator): Fixed two pre-existing infrastructure bugs that blocked the first tester gate (commit `5056739`): (a) `crates/reports/src/parse.rs` now skips `presentations/` dirs to stop globbing presenter decks as anchored backtest reports; (b) `crates/backtest/tests/determinism.rs` got a `BACKTEST_BUILD_MU` mutex + per-call unique-path copies (`target/debug/backtest-realdata-<N>` / `-candle-<N>`) to eliminate the concurrent binary-clobber race. Both fixes verified.
+- 2026-05-19 (orchestrator): Fixed self-inflicted compile error at `fd2642f` — added `#[cfg(feature = "realdata")]` to `BACKTEST_COPY_COUNTER`, `copy_to_unique`, and `ensure_realdata_binary`.
 - 2026-05-18 (architect): § Design landed. Locks (D1) read-path =
   new bin `crates/forecast/src/bin/forecast_distribution.rs` +
   `sharpe_comparison.rs` (rejected: extend `crates/backtest` —

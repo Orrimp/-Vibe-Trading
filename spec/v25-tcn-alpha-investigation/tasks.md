@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-alpha-investigation
-status: tester-blocked
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-05-19
 ---
 

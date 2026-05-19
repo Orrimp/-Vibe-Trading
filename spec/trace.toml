@@ -189,7 +189,7 @@ anchors     = [
   "forecast-distribution-bs2-realdata",   # mandatory (M-R-HAT close, T-T-1)
   "sharpe-comparison-realdata",           # locked by tester T-T-1 on 2026-05-19 (2-run byte-identical)
 ]
-state       = "in-progress"
+state       = "shipped"
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"
