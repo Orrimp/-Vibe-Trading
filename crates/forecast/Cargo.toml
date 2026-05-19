@@ -33,6 +33,15 @@ name = "train_tcn"
 path = "src/bin/train_tcn.rs"
 required-features = ["candle"]
 
+[[bin]]
+name = "forecast_distribution"
+path = "src/bin/forecast_distribution.rs"
+required-features = ["candle"]
+
+[[bin]]
+name = "sharpe_comparison"
+path = "src/bin/sharpe_comparison.rs"
+
 [[test]]
 name = "metal_cpu_drift"
 path = "tests/metal_cpu_drift.rs"
@@ -93,8 +102,10 @@ toml = { workspace = true }
 # Logging (train_tcn binary)
 tracing-subscriber = { workspace = true }
 
+# Temp dirs (sharpe_comparison binary)
+tempfile = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-tempfile = { workspace = true }
 rust_decimal_macros = { workspace = true }
 proptest = { workspace = true }

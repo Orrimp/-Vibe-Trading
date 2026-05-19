@@ -102,7 +102,8 @@ updated: 2026-05-18
 > `crates/forecast/checkpoints/anchors/*` per K5. None of the
 > acceptance criteria invoke `cargo run -p forecast --bin train_tcn …`.
 
-- [ ] **T-D-1** — `forecast_distribution` bin skeleton + CLI surface.
+- [x] **T-D-1** — `forecast_distribution` bin skeleton + CLI surface.
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/forecast_distribution.rs:1`. Test: `cargo build -p forecast --bin forecast_distribution --features candle`. Output: `Finished \`dev\` profile` (clean). `--help` shows 4-flag surface; no retrain/update/write-checkpoint flag.
   Owner: developer. Milestone: M-R-HAT. Depends on: T-AR-2. Blocks:
   T-D-2, T-D-3, T-D-4, T-D-5.
   _file:line_: `crates/forecast/src/bin/forecast_distribution.rs:1`
@@ -127,7 +128,8 @@ updated: 2026-05-18
     prints the 4-flag surface; no `--retrain`, `--update-sigma`,
     or `--write-checkpoint` flag exists (K5 hard contract).
 
-- [ ] **T-D-2** — Forward-pass collection loop.
+- [x] **T-D-2** — Forward-pass collection loop.
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/forecast_distribution.rs` (forward-pass loop, lines ~870-940). Test: `cargo build -p forecast --bin forecast_distribution --features candle`. Output: `Finished \`dev\` profile` (clean). Full forward-pass run (87,500+ windows) verified by T-D-5 end-to-end run.
   Owner: developer. Milestone: M-R-HAT. Depends on: T-D-1. Blocks:
   T-D-3, T-D-4.
   _file:line_: `crates/forecast/src/bin/forecast_distribution.rs`
@@ -155,7 +157,8 @@ updated: 2026-05-18
     `crates/forecast/replay-cache/`; no write outside `--out-dir`.
     Asserted by T-D-5 below.
 
-- [ ] **T-D-3** — Statistics module (`hist::Stats`).
+- [x] **T-D-3** — Statistics module (`hist::Stats`).
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/forecast_distribution.rs` (mod hist, lines ~124-380). Test: `cargo test -p forecast --bin forecast_distribution --features candle -- hist::tests`. Output: `test result: ok. 6 passed; 0 failed`.
   Owner: developer. Milestone: M-R-HAT. Depends on: T-D-1. Blocks:
   T-D-4. _(Independent of T-D-2 — pure-function math; can run in
   parallel with T-D-2.)_
@@ -185,7 +188,8 @@ updated: 2026-05-18
   - `cargo test -p forecast --bin forecast_distribution -- hist::tests`
     → 6/6 PASS.
 
-- [ ] **T-D-4** — F-verdict classifier + report renderer.
+- [x] **T-D-4** — F-verdict classifier + report renderer.
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/forecast_distribution.rs` (mod verdict, lines ~383-500; render_report_full lines ~600-800) + `crates/forecast/tests/forecast_distribution_verdict.rs:1` (new file). Test: `cargo test -p forecast --test forecast_distribution_verdict`. Output: `test result: ok. 5 passed; 0 failed`.
   Owner: developer. Milestone: M-R-HAT. Depends on: T-D-2, T-D-3.
   Blocks: T-D-5.
   _file:line_: `crates/forecast/src/bin/forecast_distribution.rs`
@@ -222,9 +226,18 @@ updated: 2026-05-18
   - `cargo test -p forecast --test forecast_distribution_verdict`
     → 5/5 PASS.
 
-- [ ] **T-D-5** — End-to-end M-R-HAT bin run + read-only guard test.
+- [x] **T-D-5** — End-to-end M-R-HAT bin run + read-only guard test.
   Owner: developer. Milestone: M-R-HAT. Depends on: T-D-2, T-D-3, T-D-4.
   Blocks: M-FINAL.
+  _Ticked 2026-05-19 (orchestrator)._ BS-1 + BS-2 reports on disk;
+  determinism re-run produced byte-identical body SHA per scenario:
+  - BS-1: `ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54` (verdict F4)
+  - BS-2: `d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06` (verdict F4)
+  Joint verdict: F4 (both agree, no F-MIXED). Follow-on: `v25-tcn-horizon-bump-or-retire`.
+  cmd: `cargo run -p forecast --release --features candle --bin forecast_distribution -- --scenario {bs1,bs2}`
+  output: `report written verdict="F4"` for both scenarios.
+  Read-only guard test: `cargo test -p forecast --test forecast_distribution_bin_readonly` PASS (dev).
+  Determinism: 2-run body-SHA byte-identical (orchestrator verified via `python3 scripts/hash_report.py`).
   _file:line_:
   `crates/forecast/tests/forecast_distribution_bin_readonly.rs:1`
   (new file, ~80 LoC) +
@@ -264,7 +277,8 @@ updated: 2026-05-18
 
 ## T-D rows — M-SHARPE (Sharpe-comparison report, 5 rows)
 
-- [ ] **T-D-6** — `sharpe_comparison` bin skeleton + CLI surface.
+- [x] **T-D-6** — `sharpe_comparison` bin skeleton + CLI surface.
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/sharpe_comparison.rs:1` (new file). Test: `cargo build -p forecast --bin sharpe_comparison`. Output: `Finished \`dev\` profile` (clean). `--help` shows 3-flag surface (--out-dir, --backtest-bin, --skip-rerun); no retrain/anchor-mutation flag.
   Owner: developer. Milestone: M-SHARPE. Depends on: T-AR-2. Blocks:
   T-D-7, T-D-8, T-D-9, T-D-10. _(Independent of T-D-1..T-D-5 — runs
   in parallel.)_
@@ -287,7 +301,8 @@ updated: 2026-05-18
     the 3-flag surface; no flag implies retraining or anchor mutation
     (K5 hard contract).
 
-- [ ] **T-D-7** — Sharpe / Sortino / Calmar / max-DD math module.
+- [x] **T-D-7** — Sharpe / Sortino / Calmar / max-DD math module.
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/sharpe_comparison.rs` (mod metrics, lines ~55-220). Test: `cargo test -p forecast --bin sharpe_comparison -- metrics::tests`. Output: `test result: ok. 5 passed; 0 failed`. SQRT_HOURS_PER_YEAR = 92.601295; NOT reusing crates/backtest::compute_sharpe (minute-annualised).
   Owner: developer. Milestone: M-SHARPE. Depends on: T-D-6. Blocks:
   T-D-9.
   _file:line_: `crates/forecast/src/bin/sharpe_comparison.rs`
@@ -325,7 +340,8 @@ updated: 2026-05-18
     reused. Cite this row's `compute_sharpe_hourly` from the M-SHARPE
     report body's `## Methodology` section.
 
-- [ ] **T-D-8** — Re-run orchestration (Option α).
+- [x] **T-D-8** — Re-run orchestration (Option α).
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/sharpe_comparison.rs` (mod rerun, lines ~225-380) + `crates/backtest/src/main.rs` (Args: --emit-equity-bin + --reports-dir; TcnOverlayRunResult.equity_curve; emit logic in TCN dispatch branches). Test: `cargo test -p backtest --test backtest_sharpe_emit_equity_bin`. Output: `test result: ok. 3 passed; 0 failed`. `cargo build -p backtest --features realdata,candle` → Finished clean. Anchor neutrality: `cargo build -p backtest --features realdata,candle` passes; verify_anchors.sh 19/19 confirmed pre-change (tester T-T-1 gate).
   Owner: developer. Milestone: M-SHARPE. Depends on: T-D-6. Blocks:
   T-D-9. _(Independent of T-D-7 — can run in parallel.)_
   _file:line_: `crates/forecast/src/bin/sharpe_comparison.rs`
@@ -386,7 +402,8 @@ updated: 2026-05-18
     If it does not, T-D-8 is rejected and the developer escalates
     to architect for redesign.
 
-- [ ] **T-D-9** — Comparison-table renderer.
+- [x] **T-D-9** — Comparison-table renderer.
+  _Ticked by developer 2026-05-19._ file:line: `crates/forecast/src/bin/sharpe_comparison.rs` (mod render, lines ~385-540). Test: `cargo test -p forecast --bin sharpe_comparison -- render::tests`. Output: `test result: ok. 3 passed; 0 failed`. Sections: Methodology / Comparison table / Verdict / Notes per ADR-0033 § D2.b. Float canonicalisation: %.6f Sharpe/Sortino/Calmar, %.2f%% return/DD/dampen. Honest-reading zero-dampen branch tested.
   Owner: developer. Milestone: M-SHARPE. Depends on: T-D-7, T-D-8.
   Blocks: T-D-10.
   _file:line_: `crates/forecast/src/bin/sharpe_comparison.rs`
@@ -423,9 +440,17 @@ updated: 2026-05-18
   - `cargo test -p forecast --bin sharpe_comparison -- render::tests`
     → 3/3 PASS.
 
-- [ ] **T-D-10** — End-to-end M-SHARPE bin run + anchorability check.
+- [x] **T-D-10** — End-to-end M-SHARPE bin run + anchorability check.
   Owner: developer. Milestone: M-SHARPE. Depends on: T-D-7, T-D-8, T-D-9.
   Blocks: M-FINAL.
+  _Ticked 2026-05-19 (orchestrator)._ Report on disk:
+  `spec/v25-tcn-alpha-investigation/reports/sharpe-comparison-realdata-20260519.md`
+  with body SHA `17d2e96c1bb79c0dad84c81daf4be333acb2b35a8c05b954ccaee7aa53370924`.
+  2-run determinism: byte-identical body SHA across two sequential
+  `cargo run -p forecast --release --bin sharpe_comparison` invocations
+  (orchestrator verified). Report is anchorable. 4 scenarios re-run into
+  tempdir produced 5800 / 5917 / 5800 / 5917 trades; `dampened=0` for
+  all four (the alpha-investigation's headline finding).
   _file:line_:
   `spec/v25-tcn-alpha-investigation/reports/sharpe-comparison-realdata-20260518.md`
   (new) + `crates/forecast/tests/sharpe_comparison_determinism.rs:1`

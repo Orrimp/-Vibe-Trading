@@ -1,7 +1,7 @@
 ---
 slug: cockpit-training-control
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-19
 version: 0.1.0
 predecessor: ui-rethink-phase-a-lab v0.2.0

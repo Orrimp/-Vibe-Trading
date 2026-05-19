@@ -52,6 +52,24 @@ struct Args {
     /// Path to agent.toml config
     #[arg(long, default_value = "config/agent.toml")]
     config: PathBuf,
+
+    /// Override the report output directory (default: resolved from scenario
+    /// name via `report_dir_for_scenario`).
+    /// When set, the report is written to `<reports_dir>/backtest-<stamp>-<scenario>.md`
+    /// instead. Useful for re-running into a tempdir without touching the
+    /// anchored reports under `spec/`.
+    ///
+    /// Strictly additive flag — default-disabled; existing behaviour unchanged.
+    #[arg(long)]
+    reports_dir: Option<PathBuf>,
+
+    /// When set, write the equity-curve as a plain text file (one f64 per line)
+    /// to the given path after the report is written.
+    ///
+    /// Strictly additive flag — default-disabled; the report body is unchanged
+    /// so anchor SHAs are byte-identical whether the flag is set or not.
+    #[arg(long)]
+    emit_equity_bin: Option<PathBuf>,
 }
 
 fn parse_seed(s: &str) -> Result<u64> {
@@ -1593,6 +1611,12 @@ struct TcnOverlayRunResult {
     /// Human-readable forecaster label written into the report body.
     /// e.g. "passthrough (no-candle mode)" or "real TCN weights (tcn-bs1, v2.5.0-tcn-weights)".
     forecaster_label: String,
+    /// Per-bar equity curve (length = bars + 1), starting at `initial_capital`.
+    ///
+    /// Populated when `--emit-equity-bin` is set; empty when it is not, to
+    /// avoid a large heap allocation on every run. The report body is NOT
+    /// affected by this field.
+    equity_curve: Vec<Decimal>,
 }
 
 /// Run the v2.5 TCN overlay momentum backtest.
@@ -1862,6 +1886,7 @@ async fn run_tcn_overlay_backtest(
         passed_through_signals: stats.passed_through,
         warmup_signals: stats.window_warming_up,
         forecaster_label: "passthrough (no-candle mode — degrades to v1 momentum)".to_string(),
+        equity_curve,
     })
 }
 
@@ -2146,6 +2171,7 @@ async fn run_tcn_overlay_weights_backtest(
             passed_through_signals: stats.passed_through,
             warmup_signals: stats.window_warming_up,
             forecaster_label,
+            equity_curve,
         })
     }
 }
@@ -2857,7 +2883,10 @@ async fn main() -> Result<()> {
             run_momentum_backtest(&scenario, &config_id, seed, bar_count, bars, &data_source)
                 .await?;
 
-        let report_dir = report_dir_for_scenario(&args.scenario);
+        let report_dir = args
+            .reports_dir
+            .clone()
+            .unwrap_or_else(|| report_dir_for_scenario(&args.scenario));
         std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
         let now = OffsetDateTime::now_utc();
         let stamp = format!(
@@ -2888,7 +2917,10 @@ async fn main() -> Result<()> {
         let config_id = config_id.clone();
         let result = run_pairs_backtest(&scenario, &config_id, seed).await?;
 
-        let report_dir = report_dir_for_scenario(&args.scenario);
+        let report_dir = args
+            .reports_dir
+            .clone()
+            .unwrap_or_else(|| report_dir_for_scenario(&args.scenario));
         std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
         let now = OffsetDateTime::now_utc();
         let stamp = format!(
@@ -2932,7 +2964,11 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        let report_dir = report_dir_for_scenario(&args.scenario);
+        // T-D-8: --reports-dir override (default: resolved from scenario name).
+        let report_dir = args
+            .reports_dir
+            .clone()
+            .unwrap_or_else(|| report_dir_for_scenario(&args.scenario));
         std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
         let now = OffsetDateTime::now_utc();
         let stamp = format!(
@@ -2962,6 +2998,18 @@ async fn main() -> Result<()> {
             rev_sha,
             loaded_info,
         )?;
+
+        // T-D-8: --emit-equity-bin (strictly additive; report body unchanged).
+        if let Some(ref eq_path) = args.emit_equity_bin {
+            let eq_text: String = result
+                .equity_curve
+                .iter()
+                .map(|d| format!("{d}\n"))
+                .collect();
+            std::fs::write(eq_path, eq_text)
+                .with_context(|| format!("writing equity bin to {}", eq_path.display()))?;
+            info!(path = %eq_path.display(), len = result.equity_curve.len(), "equity bin written");
+        }
 
         println!("Report written: {}", report_path.display());
         println!("Scenario     : {}", args.scenario);
@@ -2996,7 +3044,11 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        let report_dir = report_dir_for_scenario(&args.scenario);
+        // T-D-8: --reports-dir override (default: resolved from scenario name).
+        let report_dir = args
+            .reports_dir
+            .clone()
+            .unwrap_or_else(|| report_dir_for_scenario(&args.scenario));
         std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
         let now = OffsetDateTime::now_utc();
         let stamp = format!(
@@ -3026,6 +3078,18 @@ async fn main() -> Result<()> {
             rev_sha,
             loaded_info,
         )?;
+
+        // T-D-8: --emit-equity-bin (strictly additive; report body unchanged).
+        if let Some(ref eq_path) = args.emit_equity_bin {
+            let eq_text: String = result
+                .equity_curve
+                .iter()
+                .map(|d| format!("{d}\n"))
+                .collect();
+            std::fs::write(eq_path, eq_text)
+                .with_context(|| format!("writing equity bin to {}", eq_path.display()))?;
+            info!(path = %eq_path.display(), len = result.equity_curve.len(), "equity bin written");
+        }
 
         println!("Report written: {}", report_path.display());
         println!("Scenario     : {}", args.scenario);
@@ -3262,7 +3326,11 @@ async fn main() -> Result<()> {
         now.minute(),
         now.second()
     );
-    let report_dir = report_dir_for_scenario(&args.scenario);
+    // T-D-8: --reports-dir override (additive; default unchanged).
+    let report_dir = args
+        .reports_dir
+        .clone()
+        .unwrap_or_else(|| report_dir_for_scenario(&args.scenario));
     std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
     let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
 

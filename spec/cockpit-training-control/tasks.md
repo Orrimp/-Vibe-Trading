@@ -1,7 +1,7 @@
 ---
 slug: cockpit-training-control
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-19
 ---
 
@@ -16,9 +16,15 @@ updated: 2026-05-19
 
 _owner: architect_
 
-- [ ] Confirm or override the analyst defaults for Q1-Q4 (operator-decide
-  questions in `feature.md`). The orchestrator runs an AskUserQuestion
-  pass before this milestone opens.
+- [x] **T-OP-1..4** (2026-05-19) — Operator confirmed ALL FOUR analyst
+  defaults via orchestrator AskUserQuestion:
+  - **Q1** RESOLVED: new `training_events` table (additive migration
+    `010_training_events.sql`).
+  - **Q2** RESOLVED: SIGKILL-immediate on Cancel.
+  - **Q3** RESOLVED: no panel hyperparam editing; defer to a follow-on
+    `cockpit-training-hyperparams` feature if/when needed.
+  - **Q4** RESOLVED: no auto-focus on orphan-detect; status-strip
+    annotation only. Train panel stays closed on cold-start.
 - [ ] Translate R1-R10 into a `T-D-N` task graph in this file (replace
   the M-T1 / M-T2 / M-FINAL stubs below with concrete `T-D-N` rows).
 - [ ] Pick the `train_tcn` binary path-resolution strategy
