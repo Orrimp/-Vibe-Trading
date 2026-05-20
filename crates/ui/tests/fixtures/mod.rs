@@ -356,11 +356,7 @@ pub fn compare__steady_state_populated_cockpit() -> ui::state::Cockpit {
 
     // Helper: insert a cell for a given strategy + symbol.
     let mut insert_cell = |strategy: &str, sym: &str, sharpe: f64, is_multi: bool| {
-        let key = (
-            SmolStr::new(strategy),
-            Symbol::new(sym),
-            range.clone(),
-        );
+        let key = (SmolStr::new(strategy), Symbol::new(sym), range.clone());
         cache.insert(
             key,
             CachedCell {
@@ -369,9 +365,9 @@ pub fn compare__steady_state_populated_cockpit() -> ui::state::Cockpit {
                 max_drawdown_pct: -sharpe * 3.0,
                 trade_count: 42,
                 equity_curve_tail: (0..10).map(|i| 100.0 + i as f64 * sharpe).collect(),
-                source_report_path: SmolStr::new(
-                    format!("spec/{strategy}/reports/backtest-fixture.md"),
-                ),
+                source_report_path: SmolStr::new(format!(
+                    "spec/{strategy}/reports/backtest-fixture.md"
+                )),
                 generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
                 is_multi_symbol: is_multi,
             },
@@ -383,8 +379,10 @@ pub fn compare__steady_state_populated_cockpit() -> ui::state::Cockpit {
     // btc_macd: 1 BTC cell.
     insert_cell("btc_macd", "BTCUSDT", 0.87, false);
     // top10_momentum: 10 cells (multi-symbol).
-    let top10 = ["XRPUSDT","BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT",
-                 "ADAUSDT","DOTUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"];
+    let top10 = [
+        "XRPUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT", "DOTUSDT", "DOGEUSDT",
+        "LINKUSDT", "AVAXUSDT",
+    ];
     for (i, sym) in top10.iter().enumerate() {
         insert_cell("top10_momentum", sym, 0.9 + i as f64 * 0.02, true);
     }
@@ -447,7 +445,11 @@ pub fn compare__empty_cell_run_affordance_cockpit() -> ui::state::Cockpit {
 
     // btc_sma × BTCUSDT — populated.
     cache.insert(
-        (SmolStr::new("btc_sma"), Symbol::new("BTCUSDT"), range.clone()),
+        (
+            SmolStr::new("btc_sma"),
+            Symbol::new("BTCUSDT"),
+            range.clone(),
+        ),
         CachedCell {
             sharpe: 1.42,
             total_return_pct: 14.2,
@@ -461,10 +463,16 @@ pub fn compare__empty_cell_run_affordance_cockpit() -> ui::state::Cockpit {
     );
 
     // top10_momentum: first 6 symbols populated, last 4 leave the "Run" affordance.
-    let populated_syms = ["XRPUSDT","BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","ADAUSDT"];
+    let populated_syms = [
+        "XRPUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
+    ];
     for (i, sym) in populated_syms.iter().enumerate() {
         cache.insert(
-            (SmolStr::new("top10_momentum"), Symbol::new(*sym), range.clone()),
+            (
+                SmolStr::new("top10_momentum"),
+                Symbol::new(*sym),
+                range.clone(),
+            ),
             CachedCell {
                 sharpe: 0.8 + i as f64 * 0.1,
                 total_return_pct: 8.0 + i as f64 * 1.0,

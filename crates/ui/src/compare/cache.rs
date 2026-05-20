@@ -137,11 +137,7 @@ fn parse_frontmatter(content: &str) -> Option<BTreeMap<SmolStr, SmolStr>> {
         }
     }
 
-    if map.is_empty() {
-        None
-    } else {
-        Some(map)
-    }
+    if map.is_empty() { None } else { Some(map) }
 }
 
 /// Extract a `CachedCell` KPI snapshot from the Markdown body of a backtest
@@ -301,9 +297,7 @@ fn extract_equity_curve_tail(body: &str, max_points: usize) -> Vec<f64> {
 /// `spec_root` should be the absolute path to the repo's `spec/` directory.
 /// On parse failure the file is skipped with a `tracing::warn!` (K2 fail-soft).
 #[must_use]
-pub fn scan_spec_tree(
-    spec_root: &Path,
-) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> {
+pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> {
     use std::fs;
 
     let mut cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> = BTreeMap::new();
@@ -345,10 +339,7 @@ pub fn scan_spec_tree(
             }
 
             let Ok(content) = fs::read_to_string(&report_path) else {
-                tracing::warn!(
-                    "compare::cache: failed to read {}",
-                    report_path.display()
-                );
+                tracing::warn!("compare::cache: failed to read {}", report_path.display());
                 continue;
             };
 
@@ -386,13 +377,8 @@ pub fn scan_spec_tree(
                     |p| p.to_string_lossy().to_string(),
                 );
 
-            let Some(cell) =
-                extract_kpis_from_body(&content, &fm, &source_path, is_multi)
-            else {
-                tracing::warn!(
-                    "compare::cache: no KPI table in {}",
-                    report_path.display()
-                );
+            let Some(cell) = extract_kpis_from_body(&content, &fm, &source_path, is_multi) else {
+                tracing::warn!("compare::cache: no KPI table in {}", report_path.display());
                 continue;
             };
 
@@ -409,10 +395,9 @@ pub fn scan_spec_tree(
                 let key = (strategy_id.clone(), symbol.clone(), range.clone());
 
                 // R3.3: keep only the most-recent report per tuple.
-                if cache
-                    .get(&key)
-                    .is_some_and(|existing| cell.generated_at.as_str() <= existing.generated_at.as_str())
-                {
+                if cache.get(&key).is_some_and(|existing| {
+                    cell.generated_at.as_str() <= existing.generated_at.as_str()
+                }) {
                     continue;
                 }
                 cache.insert(key, cell.clone());
@@ -462,8 +447,14 @@ strategy:
     #[test]
     fn parses_flat_kv() {
         let fm = parse_frontmatter(FLAT_FRONTMATTER).expect("should parse");
-        assert_eq!(fm.get("scenario").map(|s| s.as_str()), Some("btc-2023-1m-sma-cross"));
-        assert_eq!(fm.get("generated").map(|s| s.as_str()), Some("2026-04-29T19:51:48Z"));
+        assert_eq!(
+            fm.get("scenario").map(|s| s.as_str()),
+            Some("btc-2023-1m-sma-cross")
+        );
+        assert_eq!(
+            fm.get("generated").map(|s| s.as_str()),
+            Some("2026-04-29T19:51:48Z")
+        );
         assert_eq!(fm.get("seed").map(|s| s.as_str()), Some("0xC0FFEE"));
     }
 

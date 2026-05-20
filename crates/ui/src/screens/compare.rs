@@ -20,8 +20,7 @@ use crate::compare::state::CompareKpiAxis;
 use crate::lab::state::DateRange;
 use crate::state::{Cockpit, Message};
 use crate::strings::{
-    COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE, COMPARE_TOOLBAR_KPI_LABEL,
-    COMPARE_TOOLBAR_RANGE_LABEL,
+    COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE, COMPARE_TOOLBAR_KPI_LABEL, COMPARE_TOOLBAR_RANGE_LABEL,
 };
 use crate::theme::{ThemeMode, color, space, text};
 use crate::widgets::matrix;
@@ -106,9 +105,9 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
 /// Build the date-range preset chip row (R6.4 — same presets as Lab).
 fn build_range_chips(selected: &DateRange, mode: ThemeMode) -> Element<'_, Message> {
     use crate::lab::state::Preset;
-    use iced::widget::{Button, button};
+    use crate::theme::radius;
     use iced::Border;
-    use crate::theme::{radius};
+    use iced::widget::{Button, button};
 
     let presets = [
         (Preset::Last30d, DateRange::Preset(Preset::Last30d)),
@@ -122,15 +121,11 @@ fn build_range_chips(selected: &DateRange, mode: ThemeMode) -> Element<'_, Messa
         let is_active = selected == &range;
         let label = preset.label();
         let range_clone = range;
-        let btn = Button::new(
-            Text::new(label)
-                .size(text::MICRO)
-                .color(if is_active {
-                    color::ACCENT.current(mode)
-                } else {
-                    color::FG_3.current(mode)
-                }),
-        )
+        let btn = Button::new(Text::new(label).size(text::MICRO).color(if is_active {
+            color::ACCENT.current(mode)
+        } else {
+            color::FG_3.current(mode)
+        }))
         .on_press(Message::CompareSelectRange(range_clone))
         .padding([2u16, space::XS as u16])
         .style(move |_: &iced::Theme, _: button::Status| button::Style {
@@ -162,9 +157,9 @@ fn build_range_chips(selected: &DateRange, mode: ThemeMode) -> Element<'_, Messa
 
 /// Build the KPI-axis chip row (R6.3 — 5 chips; only Sharpe wired at v0.1.0).
 fn build_kpi_chips(selected: CompareKpiAxis, mode: ThemeMode) -> Element<'static, Message> {
-    use iced::widget::{Button, button};
-    use iced::Border;
     use crate::theme::radius;
+    use iced::Border;
+    use iced::widget::{Button, button};
 
     let axes = [
         CompareKpiAxis::Sharpe,
@@ -178,15 +173,11 @@ fn build_kpi_chips(selected: CompareKpiAxis, mode: ThemeMode) -> Element<'static
     for axis in axes {
         let is_active = selected == axis;
         let label = axis.label();
-        let btn = Button::new(
-            Text::new(label)
-                .size(text::MICRO)
-                .color(if is_active {
-                    color::ACCENT.current(mode)
-                } else {
-                    color::FG_3.current(mode)
-                }),
-        )
+        let btn = Button::new(Text::new(label).size(text::MICRO).color(if is_active {
+            color::ACCENT.current(mode)
+        } else {
+            color::FG_3.current(mode)
+        }))
         .on_press(Message::CompareSelectKpiAxis(axis))
         .padding([2u16, space::XS as u16])
         .style(move |_: &iced::Theme, _: button::Status| button::Style {

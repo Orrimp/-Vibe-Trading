@@ -27,8 +27,7 @@ use crate::compare::state::CompareKpiAxis;
 use crate::lab::state::DateRange;
 use crate::state::{Cockpit, Message, StrategyConfigEntry};
 use crate::strings::{
-    COMPARE_CELL_BLANKED_LABEL, COMPARE_CELL_RUN_LABEL,
-    COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE,
+    COMPARE_CELL_BLANKED_LABEL, COMPARE_CELL_RUN_LABEL, COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 
@@ -128,9 +127,9 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
     // Since TOP10 is the superset, use it as the reference column order if
     // any strategy has it; otherwise fall back to the union of all per-strategy universes.
     let column_symbols: Vec<Symbol> = {
-        let has_top10 = all_strategies.iter().any(|s| {
-            s.id.0.as_str().starts_with("top10") || s.id.0.as_str().starts_with("tcn")
-        });
+        let has_top10 = all_strategies
+            .iter()
+            .any(|s| s.id.0.as_str().starts_with("top10") || s.id.0.as_str().starts_with("tcn"));
         if has_top10 {
             TOP10_SYMBOLS.iter().map(|s| Symbol::new(*s)).collect()
         } else {
@@ -206,12 +205,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
                     )
                 } else {
                     // Empty-but-legal cell — "Run" affordance.
-                    run_affordance_cell(
-                        strategy_id.clone(),
-                        col_sym.clone(),
-                        range.clone(),
-                        mode,
-                    )
+                    run_affordance_cell(strategy_id.clone(), col_sym.clone(), range.clone(), mode)
                 }
             } else {
                 // Blanked cell — pair not in this strategy's universe.
@@ -289,41 +283,37 @@ fn populated_cell<'a>(
     let sym_clone = symbol.clone();
     let range_clone = range.clone();
 
-    let inner = Button::new(
-        Text::new(sharpe_label)
-            .size(text::BODY)
-            .color(kpi_color),
-    )
-    .on_press(Message::OpenLabFromCompare {
-        strategy: trading_core::StrategyId::new(strat_clone),
-        pair: Some((Venue::Binance, sym_clone)),
-        range: range_clone,
-    })
-    .width(Length::Fixed(CELL_MIN_W))
-    .height(Length::Fixed(CELL_MIN_H))
-    .padding(Padding::from([space::XS as u16, space::S as u16]))
-    .style(move |_theme: &iced::Theme, status: button::Status| {
-        let bg = match status {
-            button::Status::Hovered | button::Status::Pressed => {
-                Some(color::PANEL_RAISED.current(mode).into())
+    let inner = Button::new(Text::new(sharpe_label).size(text::BODY).color(kpi_color))
+        .on_press(Message::OpenLabFromCompare {
+            strategy: trading_core::StrategyId::new(strat_clone),
+            pair: Some((Venue::Binance, sym_clone)),
+            range: range_clone,
+        })
+        .width(Length::Fixed(CELL_MIN_W))
+        .height(Length::Fixed(CELL_MIN_H))
+        .padding(Padding::from([space::XS as u16, space::S as u16]))
+        .style(move |_theme: &iced::Theme, status: button::Status| {
+            let bg = match status {
+                button::Status::Hovered | button::Status::Pressed => {
+                    Some(color::PANEL_RAISED.current(mode).into())
+                }
+                _ => None,
+            };
+            let border_color = match status {
+                button::Status::Hovered | button::Status::Pressed => color::ACCENT.current(mode),
+                _ => color::BORDER_1.current(mode),
+            };
+            button::Style {
+                background: bg,
+                text_color: kpi_color,
+                border: Border {
+                    color: border_color,
+                    width: 1.0,
+                    radius: radius::R1.into(),
+                },
+                ..Default::default()
             }
-            _ => None,
-        };
-        let border_color = match status {
-            button::Status::Hovered | button::Status::Pressed => color::ACCENT.current(mode),
-            _ => color::BORDER_1.current(mode),
-        };
-        button::Style {
-            background: bg,
-            text_color: kpi_color,
-            border: Border {
-                color: border_color,
-                width: 1.0,
-                radius: radius::R1.into(),
-            },
-            ..Default::default()
-        }
-    });
+        });
 
     if is_multi_symbol {
         // K7 tooltip — §1.4 of decomp.md.

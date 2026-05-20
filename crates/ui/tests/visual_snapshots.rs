@@ -261,18 +261,12 @@ fn run_compare_slot(fixture_name: &str) {
         .unwrap_or_else(|| panic!("unknown COMPARE_SLOTS key: {fixture_name}"));
 
     let cockpit = match fixture_name {
-        "compare__cold_boot_all_empty" => {
-            fixtures::compare__cold_boot_all_empty_cockpit()
-        }
-        "compare__steady_state_populated" => {
-            fixtures::compare__steady_state_populated_cockpit()
-        }
+        "compare__cold_boot_all_empty" => fixtures::compare__cold_boot_all_empty_cockpit(),
+        "compare__steady_state_populated" => fixtures::compare__steady_state_populated_cockpit(),
         "compare__empty_cell_run_affordance" => {
             fixtures::compare__empty_cell_run_affordance_cockpit()
         }
-        "compare__column_header_hover" => {
-            fixtures::compare__column_header_hover_cockpit()
-        }
+        "compare__column_header_hover" => fixtures::compare__column_header_hover_cockpit(),
         other => panic!("no fixture builder for: {other}"),
     };
 

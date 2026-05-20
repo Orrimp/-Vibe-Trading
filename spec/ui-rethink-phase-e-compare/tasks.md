@@ -435,9 +435,11 @@ updated: 2026-05-20
   authors `reports/test-final-2026-05-20.md` per
   `.claude/skills/rust-test/templates/test-report.md`.
 
-## M-FINAL — Tester sweep — PENDING
+## M-FINAL — Tester sweep — FAIL (T-F1 fmt gate)
 
-> Tester runs after Wave G closes. Gates per feature.md M-FINAL.
+> Tester ran 2026-05-20. 9/10 T-F gates green. T-F1 (`cargo fmt --check`) FAILS — 26 diff
+> hunks across 9 Phase E files (all cosmetic). Routing back to developer for `cargo fmt`.
+> Full report: `spec/ui-rethink-phase-e-compare/reports/test-final-2026-05-20.md`.
 
 - [ ] `cargo fmt --check` + `cargo clippy --workspace -- -D
       warnings` exit 0.

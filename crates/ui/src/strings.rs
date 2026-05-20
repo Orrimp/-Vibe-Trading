@@ -349,8 +349,7 @@ pub const RUN_DELTA_BADGE_DD_LABEL: &str = "DD";
 /// Rendered as a subtitle under the Compare-matrix toolbar AND as a
 /// per-cell tooltip on hover when the cell's source report is multi-symbol
 /// (§1.4 of decomp.md). Both surfaces ship at v0.1.0.
-pub const COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE: &str =
-    "KPI is universe-aggregate, not per-pair (multi-symbol scenario). \
+pub const COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE: &str = "KPI is universe-aggregate, not per-pair (multi-symbol scenario). \
      Per-pair decomposition is v0.2.0 follow-up.";
 
 /// Phase E — toolbar range-picker label (R1.2).

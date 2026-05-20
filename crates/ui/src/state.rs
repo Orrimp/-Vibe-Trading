@@ -3416,8 +3416,7 @@ mod tests {
             "OpenLabFromCompare must set lab_state.pair"
         );
         assert_eq!(
-            c.lab_state.range,
-            range,
+            c.lab_state.range, range,
             "OpenLabFromCompare must set lab_state.range"
         );
     }

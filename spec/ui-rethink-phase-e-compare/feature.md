@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-e-compare
 status: proposed
-owner: architect
+owner: tester
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ui-rethink-phase-d-trail-followup v0.1.1
