@@ -38,34 +38,88 @@ visual-diff refresh accepted the composition shift but the underlying
 it predates Phase B and v1.11. Operator surfaced it 2026-05-20 during
 the post-v1.11 live cockpit run.
 
-## Hypothesis seeds (analyst owns falsification)
+## Root cause (orchestrator diagnostic 2026-05-20)
 
-1. **H-CHART-1 — bar buffer underseeded.** `crates/ui/src/bin/cockpit.rs:190`
-   seeds 60 bars per symbol via `synthetic_candles`. `CHART_BUFFER_CAPACITY`
-   is 60. But the actively-displayed symbol's bars may only be the last
-   ~22 due to a venue/symbol key mismatch in `ChartBuffer.push_bar`
-   `(bar.venue, bar.symbol.clone())`.
-2. **H-CHART-2 — line draw pass iterates only visible-y-range bars.**
-   The y-axis auto-scale in `chart_canvas.rs` might compute the price
-   range from a subset (e.g. last N bars) and clamp earlier bars'
-   line segments off-canvas. The bars exist; they're just rendered
-   outside the visible y-band.
-3. **H-CHART-3 — `x_for_index` uses a different `count` than `bars.len()`.**
-   If `count` reflects "expected bars" (60) but the actual `bars`
-   Vec is shorter, indices 0..len() get plotted in the LEFT portion
-   of the inner rect — opposite of what the operator sees. **Probably
-   not this one** based on symptom direction.
-4. **H-CHART-4 — chart only draws lines between consecutive markers
-   that share a strategy-active window.** If a "strategy active"
-   window starts at bar idx ~38, only bars 38-59 get the price-line
-   pass. **Unlikely** — the chart should draw price for every bar.
-5. **H-CHART-5 — `BarReceived` evicts bars due to a stale
-   `chart_buffer.series` HashMap key.** If a re-keyed symbol causes
-   `push_bar` to create a NEW deque, the first batch is lost. The
-   fixtures boot path sends bars BEFORE the operator selects a
-   symbol — the resulting `(Venue::Binance, "BTCUSDT")` key gets
-   60 bars; but maybe the chart later renders against a different
-   `(venue, symbol)` tuple that has fewer bars.
+**Bug is in iced canvas rendering, NOT in chart data.** Probes
+exhaustively confirmed:
+
+1. `bars.len() == 60` at the chart's `draw()` call — all 60 bars
+   reach the canvas.
+2. `inner = (56, 8, 1628, 576)` in canvas-local coordinates — the
+   inner rect is correctly sized to span the full canvas minus
+   gutters.
+3. The path-construction loop at `crates/ui/src/widgets/chart.rs:443-454`
+   computes `(x, y)` for every bar correctly — idx=0 → (56, 70),
+   idx=30 → (884, 193), idx=59 → (1684, 551). Probe-dumped each
+   point.
+4. The canvas's reported `bounds = (196, 269, 1708, 616)` in screen
+   coordinates is correct.
+5. Frame-local → screen mapping is correct (a probe dot at frame
+   center (854, 308) appears at screen (1050, 577) = canvas origin
+   + frame center).
+
+**What's broken:** corner-dot probes drawn at frame-local (0,0),
+(w,0), (0,h), (w,h) — only the bottom-right corner dot renders.
+Center dot renders. Top-left, top-right, bottom-left dots are
+invisible. A red rectangle outline drawn around the full inner rect
+shows only its bottom-right ~quarter.
+
+The canvas frame is composing/clipping to roughly **(390, 540) to
+(1880, 855)** in screen coords — the bottom-right quarter of the
+canvas widget's reported bounds. Everything outside that region is
+not blitted to the surface, even though `frame.fill()` /
+`frame.stroke()` are called with valid coords.
+
+## Likely failure modes (architect to confirm)
+
+- **F-CHART-1 — iced 0.14 canvas/tiny-skia layout/render race.** The
+  `Container::new(canvas).width(Length::Fill).height(Length::Fill)`
+  wrap may be reporting wrong bounds to tiny-skia's compositor on
+  the first paint, causing it to scissor to a stale (smaller) rect.
+- **F-CHART-2 — `Frame::new(renderer, bounds.size())` viewport bug.**
+  The frame might be created with a smaller viewport than declared
+  and only blits the bottom-right portion that fits the smaller
+  viewport.
+- **F-CHART-3 — column/row layout interaction.** The Lab screen's
+  `Column` may give the chart `chart_body` a `Length::Fill` that
+  resolves to a different layout box than what iced's renderer
+  uses for the canvas scissor.
+
+## Investigation evidence on disk
+
+Probes were applied to `crates/ui/src/widgets/chart.rs` then
+reverted at the same commit. Re-running the probes after the
+revert by applying:
+
+```rust
+// At the top of `ChartProgram::draw`:
+eprintln!("CHART-DRAW bounds={:?}", bounds);
+// In the line-stroke pass, replace the `Path::new(...)` block with:
+let outline = Path::new(|b| {
+    b.move_to(Point::new(inner.x, inner.y));
+    b.line_to(Point::new(inner.x + inner.width, inner.y));
+    b.line_to(Point::new(inner.x + inner.width, inner.y + inner.height));
+    b.line_to(Point::new(inner.x, inner.y + inner.height));
+    b.line_to(Point::new(inner.x, inner.y));
+});
+frame.stroke(&outline, Stroke::default()
+    .with_color(iced::Color::from_rgb(1.0, 0.0, 0.0)).with_width(3.0));
+let frame_w = bounds.width;
+let frame_h = bounds.height;
+for (px, py, c) in [
+    (0.0_f32, 0.0, (1.0_f32, 1.0, 0.0)),
+    (frame_w, 0.0, (1.0, 0.5, 0.0)),
+    (0.0, frame_h, (0.0, 1.0, 1.0)),
+    (frame_w, frame_h, (1.0, 0.0, 1.0)),
+    (frame_w / 2.0, frame_h / 2.0, (0.0, 1.0, 0.0)),
+] {
+    let dot = Path::circle(Point::new(px, py), 20.0);
+    frame.fill(&dot, iced::Color::from_rgb(c.0, c.1, c.2));
+}
+```
+
+Then `cargo test -p ui --test visual_snapshots charts_screen_dark_typical
+-- --nocapture` and inspect `target/visual-diff/charts_screen_dark_typical-actual.png`.
 
 ## Scope when promoted
 
