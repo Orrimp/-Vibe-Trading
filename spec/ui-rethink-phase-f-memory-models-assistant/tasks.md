@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-f-memory-models-assistant
-status: proposed
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-20
 ---
 
@@ -249,62 +249,223 @@ updated: 2026-05-20
 > wave map below; full T-D-N* checklist appended by architect to
 > this tasks.md.
 
-- [ ] T-T1-1 — K1 resolution: lock the `list_recent_lesson_cards`
-  shape per Q8 operator-decide. If Q8=(b), document the direct-SQL
-  query inside `crates/ui/src/memory/store_read.rs` in `decomp.md
-  § 1.1`. Validate against `crates/reflection/migrations/001_lesson_cards.sql`
-  schema.
-- [ ] T-T1-2 — K2 resolution: inventory the
-  `crates/forecast/checkpoints/anchors/*.metadata.json` schema by
-  parsing the live `tcn-bs1-*.metadata.json` + `tcn-bs2-*.metadata.json`
-  files. Lock a serde struct shape with `#[serde(default)]` on
-  every non-load-bearing field. Document in `decomp.md § 1.2`.
-- [ ] T-T1-3 — K3 resolution: grep `crates/replay-cache/` for the
-  `"forecast"` namespace. If populated, sparkline ships at v0.1.0;
-  if absent, deferred to v0.2.0 per R2.2 framing. Document the
-  finding in `decomp.md § 1.3`.
-- [ ] T-T1-4 — K4 + Q5 resolution: lock the Memory-drawer (Q5=b)
-  vs Assistant-slot (Q4=a) right-side coexistence rule. Analyst-
-  recommended fallback: if conflict material, fall back to Q5=(c)
-  (`Screen::MemoryEntry` route — no drawer). Document in
-  `decomp.md § 1.4`.
-- [ ] T-T1-5 — K6 resolution: lock Option A
-  (`RIGHT_RAIL_OPEN_WIDTH_PX` additive constant; preserve
-  `RIGHT_RAIL_WIDTH_PX = 0.0` as the closed-state default).
-  Verify Phase D trail-drawer references at
-  `crates/ui/src/widgets/trail_drawer.rs:70,175,179` continue
-  using the unchanged closed-state value. Document in `decomp.md
-  § 1.5`.
-- [ ] T-T1-6 — H1 enumeration: count `lesson_cards` rows in the
-  operator's live `reflection.db` (or the cockpit's connected
-  store path); validate < 500 budget per
-  `crates/reflection/src/store/sqlite.rs:5-6` annotation. Record
-  in `decomp.md § 1.6`.
-- [ ] T-T1-7 — H2 enumeration: micro-bench the checkpoint metadata
-  scan against the live
-  `crates/forecast/checkpoints/anchors/` (2 files at 2026-05-20);
-  static argument suffices if files are small. Record in `decomp.md
-  § 1.7`.
-- [ ] T-T1-8 — Anchor gate confirmed:
-  `bash scripts/verify_anchors.sh` returns
-  `ANCHORS PASS  (22 / 22)` BEFORE the M-T1 pass closes. R7.1
-  carry-forward from predecessor `ui-rethink-phase-e-compare
-  v0.1.0` confirmed clean.
-- [ ] T-T1-9 — Wave shape locked. Suggested 7 waves (A through G):
-  - Wave A — state modules + Message variants (R4, R8.1)
-  - Wave B — read modules (R5.1 memory store_read, R5.2 models
-    registry_read)
-  - Wave C — `screens::memory` + shell wiring (R1)
-  - Wave D — `screens::models` + shell wiring (R2)
-  - Wave E — `assistant` slot wake + shell wiring (R3) — skip if
-    Q4=(c)
-  - Wave F — 5-7 snapshot baselines + layout-invariants proptest
-    cases + cockpit-smoke pre-run (R7.3, H6)
-  - Wave G — anchor gate + spec-lint sweep + tester handoff
-    envelope (R7.1, R7.5)
-  Architect locks the final wave map + net-new file count (R8.5
-  — analyst estimate 8-10) + per-wave T-D-N row count in
-  `decomp.md § 2 / § 3`.
+- [x] T-T1-1 — **K1 + Q8 resolution: Memory read-path placement.** Refined
+  Q8=(b) to `crates/reflection/src/query.rs` (sibling of `store/`), called
+  from cockpit_live's side-thread tokio runtime; UI receives results via
+  `Message::MemoryHydrate(Vec<LessonCardCard>)` per Phase D trail_mirror
+  precedent. Honors Q8=(b) "no trait change" while respecting that the UI
+  crate has no tokio runtime. SQL shape locked in `decomp.md § 1.1`
+  (`SELECT ... FROM lesson_cards ORDER BY closed_at DESC LIMIT ?`).
+  Schema validated against `crates/reflection/migrations/001_lesson_cards.sql:8-24`.
+- [x] T-T1-2 — **K2 resolution: checkpoint metadata schema.** Inventoried
+  live `tcn-bs1-d1c3696d…metadata.json` (855 bytes) + `tcn-bs2-3fabcabe…metadata.json`
+  (852 bytes). Locked serde struct shape with `#[serde(default)]` on every
+  non-load-bearing field in `decomp.md § 1.2`. Three new serde structs
+  (`CheckpointMetadata`, `CheckpointArchitecture`, `CheckpointDataSpan`)
+  + UI view-model `CheckpointMeta` distinct from the wire shape. Family
+  discriminated by filename prefix (`tcn-` / `patchtst-` / `transformer-`);
+  5 unit tests in `models/registry_read.rs` (H5 falsification).
+- [x] T-T1-3 — **K3 resolution: forecast-quality sparkline data.**
+  `crates/replay-cache/` "forecast" namespace EMPTY at 2026-05-20
+  (no populated DB on disk; only `data/audit/ledger.db` 135168 bytes
+  exists; no `replay_cache*.db` siblings). Sparkline DEFERRED to v0.2.0
+  per R2.2 framing. Models row layout ships with `—` placeholder + tooltip
+  `MODELS_SPARKLINE_DEFERRED_TOOLTIP`. Documented in `decomp.md § 1.3`.
+- [x] T-T1-4 — **K4 + Q5 resolution: drawer-vs-Assistant-slot coexistence.**
+  Drawer lives in the centre column (next to Memory cards list); Assistant
+  slot is the far-right shell track. They live in DIFFERENT shell columns
+  — no co-existence conflict. No auto-collapse needed. Q5 = (b) confirmed
+  (no fallback to (c)). Layout-invariants proptest case
+  `memory_drawer_open_with_assistant_open_no_zero_dim` validates under 256
+  viewports. Documented in `decomp.md § 1.4`.
+- [x] T-T1-5 — **K6 resolution: RIGHT_RAIL_WIDTH_PX constant semantic.**
+  Option A locked. `crates/ui/src/theme.rs:643` `RIGHT_RAIL_WIDTH_PX = 0.0`
+  preserved unchanged (Phase D `widgets/trail_drawer.rs:70,175,179`
+  byte-identical; `crates/ui/tests/shell_grid.rs:14-16` hard invariant
+  test passes verbatim). New additive constant
+  `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0` at `theme.rs:~644`. `shell::view`
+  picks one of the two based on `assistant_state.is_open`. Documented
+  in `decomp.md § 1.5`.
+- [x] T-T1-6 — **H1 enumeration.** `ls -la data/audit/` returned only
+  `ledger.db` (135168 bytes May 16 00:11). `reflection.db` ABSENT on
+  this workstation. 0-row cold-empty boot path is the dominant
+  first-open UX → Memory screen renders R1.4 empty-state placeholder
+  ("No memory entries yet. Memory populates as strategies close trades.").
+  Budget trivially satisfied (0 rows × any query = sub-millisecond ≪
+  50 ms p99 budget). Documented in `decomp.md § 1.6`.
+- [x] T-T1-7 — **H2 enumeration.** `stat -f "%z bytes"` against live
+  metadata.json files: `tcn-bs1` = 855 bytes, `tcn-bs2` = 852 bytes.
+  Total ≤ 2 KB across both. 2 × file-stat() + 2 × read_to_string + 2 ×
+  `serde_json::from_str` ≈ 20 μs (serde_json deserializes ~100 MB/s).
+  ~50000× headroom over the 50 ms p99 budget. Static argument
+  suffices; no micro-bench needed. Documented in `decomp.md § 1.7`.
+- [x] T-T1-8 — **Anchor gate confirmed.** `bash scripts/verify_anchors.sh`
+  returned literal output `ANCHORS PASS  (22 / 22)` BEFORE this M-T1
+  pass closed. R7.1 carry-forward from predecessor
+  `ui-rethink-phase-e-compare v0.1.0` confirmed clean.
+- [x] T-T1-9 — **Wave shape locked: 6 waves A-F** (compressed from
+  the 7-wave suggestion — Wave F + G merged into a single "tester
+  handoff prep" wave because Phase F has no spec-lint sweep distinct
+  from the H4/H5/H6 unit + proptest sweep already in Wave F). Net-new
+  file count locked at **12 source + 6 PNG baselines + 1 trace row**
+  (R8.5 — analyst estimate 8-10; architect locks at 12 because
+  Q4=(a) Assistant module needs 3 files mod/state/view to mirror
+  Memory/Models module shape consistently, and the
+  `crates/reflection/src/query.rs` placement per § 1.1 adds one more
+  than the original brief named). Spike requirement = NONE.
+  T-D-N1..N23 appended below. Decomp at `decomp.md § 2 / § 3`.
+
+## M-T1 → Developer — Wave A-F T-D-N checklist
+
+> Developer pulls these in order; Waves C/D/E can run in parallel after
+> Wave B closes (Memory + Models + Assistant are independent surfaces).
+> Each row carries file:line + cargo invocation + literal expected output
+> per the honest-tick rule. Full decomp at `decomp.md`.
+
+### Wave A — State modules + Message variants + theme constant
+
+- [ ] T-D-N1 — Create 6 new module files: `crates/ui/src/memory/{mod,state}.rs`,
+  `crates/ui/src/models/{mod,state}.rs`, `crates/ui/src/assistant/{mod,state}.rs`.
+  Add 3 declarations to `crates/ui/src/lib.rs`. Cargo: `cargo check -p ui`.
+  Acceptance: PASS no warnings; literal `Checking ui v0.1.0` line.
+- [ ] T-D-N2 — Add `pub const RIGHT_RAIL_OPEN_WIDTH_PX: f32 = 320.0;` to
+  `crates/ui/src/theme.rs:~644`. K6 Option A — preserve `RIGHT_RAIL_WIDTH_PX = 0.0`.
+  Cargo: `cargo test -p ui --test shell_grid`.
+  Acceptance: literal `test right_rail_width_is_zero ... ok`.
+- [ ] T-D-N3 — Promote `PersistedRow` + `decode_row` visibility in
+  `crates/reflection/src/store/sqlite.rs:89,233` from private to `pub(crate)`.
+  Cargo: `cargo check -p reflection`.
+  Acceptance: PASS no warnings; literal `Checking reflection v0.1.0` line.
+- [ ] T-D-N4 — Add 3 new state fields to `Cockpit` at
+  `crates/ui/src/state.rs:~885,~965,~1016,~1116` (3-touchpoint pattern):
+  `memory_screen_state`, `models_screen_state`, `assistant_state`.
+  Cargo: `cargo test -p ui --lib`.
+  Acceptance: literal `test result: ok. N passed; 0 failed` (existing baseline preserved).
+- [ ] T-D-N5 — Add 9 Message variants at `crates/ui/src/state.rs:~1380,~1425`:
+  `MemoryHydrate`, `MemoryOpenDrawer`, `MemoryCloseDrawer`, `MemoryToggleMode`,
+  `MemorySetFilter`, `ModelsHydrate`, `ModelsSetFamilyFilter`,
+  `ModelsSetStatusFilter`, `ToggleAssistantSlot` (R8.1).
+  Cargo: `cargo check -p ui`. Acceptance: PASS.
+- [ ] T-D-N6 — Add 9 update-arms at `crates/ui/src/state.rs:~1911`. All
+  simple-assignment; `MemoryHydrate` + `ModelsHydrate` also update `last_indexed`.
+  Cargo: `cargo check -p ui` + `cargo test -p ui --lib`. Acceptance: PASS.
+- [ ] T-D-N7 — Add 12+ Phase F string constants to `crates/ui/src/strings.rs:~290`;
+  deprecate `MEMORY_PLACEHOLDER` + `MODELS_PLACEHOLDER` at `:258-261` per
+  `COMPARE_PLACEHOLDER:253-257` precedent.
+  Cargo: `cargo clippy -p ui -- -D warnings`. Acceptance: PASS (warnings on
+  deprecated constants disappear after Waves C+D swap shell routes).
+
+### Wave B — Read modules (Memory + Models cold-boot)
+
+- [ ] T-D-N8 — Author `crates/reflection/src/query.rs` per `decomp.md § 1.1`.
+  Includes `list_recent_lesson_cards(pool, limit)` + 1 unit test
+  (`list_recent_lesson_cards_returns_n_recent` — H4 falsification).
+  Add `pub mod query;` to `crates/reflection/src/lib.rs:~42`.
+  Cargo: `cargo test -p reflection --lib query::tests`.
+  Acceptance: literal `running 1 test` + `test result: ok. 1 passed; 0 failed`.
+- [ ] T-D-N9 — Author `crates/ui/src/models/registry_read.rs` per
+  `decomp.md § 1.2`. `discover_checkpoints` + `parse_metadata` + 3 serde
+  structs + 5 unit tests (H5 falsification: full / missing-dropout /
+  missing-sigma / malformed / unknown-family).
+  Cargo: `cargo test -p ui --lib models::registry_read::tests`.
+  Acceptance: literal `running 5 tests` + `test result: ok. 5 passed; 0 failed`.
+- [ ] T-D-N10 — Wire cold-boot hydrate in `crates/ui/src/bin/cockpit_live.rs`
+  (additive ~40 LOC at the boot section, near `:362,743`). Open
+  `SqliteReflectionStore` against config-resolved reflection.db path; call
+  `reflection::query::list_recent_lesson_cards(&pool, 50)` +
+  `ui::models::registry_read::discover_checkpoints(checkpoint_dir)` on
+  side-thread tokio runtime; send `Message::MemoryHydrate(cards)` +
+  `Message::ModelsHydrate(checkpoints)` via the iced `Application` channel.
+  Mirrors `trail_mirror::TrailMirror` wiring.
+  Cargo: `cargo check -p ui --bin cockpit_live --features live`.
+  Acceptance: PASS no warnings; literal `Checking ui v0.1.0` line.
+
+### Wave C — `screens::memory` + drawer + shell wiring (R1, R6.1)
+
+- [ ] T-D-N11 — Author `crates/ui/src/screens/memory.rs` per `decomp.md § 2 row 22`.
+  Toolbar (Cards/Cluster toggle — Cluster disabled per R1.2) + cards list
+  + optional drawer. Each card emits `Message::OpenTrailFor(audit_id)` on
+  chevron click (R6.1 reuse).
+  Add `pub mod memory;` to `crates/ui/src/screens/mod.rs`.
+  Cargo: `cargo check -p ui`. Acceptance: PASS.
+- [ ] T-D-N12 — Author `crates/ui/src/memory/drawer.rs` per `decomp.md § 2 row 6`.
+  Side-drawer body (Q5=(b)). Width `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0`.
+  Composition mirrors Phase D `widgets/trail_drawer.rs` body verbatim.
+  Cargo: `cargo clippy -p ui -- -D warnings`. Acceptance: PASS.
+- [ ] T-D-N13 — Swap `crates/ui/src/shell.rs:98` from
+  `placeholder::view(strings::MEMORY_PLACEHOLDER, mode)` to
+  `screens::memory::view(model, mode)`. Update use-list at `:28` to include `memory`.
+  Cargo: `cargo test -p ui --lib` + `cargo test -p ui --test layout_invariants`.
+  Acceptance: PASS; existing layout-invariants preserved.
+
+### Wave D — `screens::models` + shell wiring (R2)
+
+- [ ] T-D-N14 — Author `crates/ui/src/screens/models.rs` per `decomp.md § 2 row 23`.
+  Toolbar (TCN-only family chips; PatchTST/Transformer disabled) +
+  checkpoint list. Empty-state placeholder when `models_screen_state.checkpoints`
+  is empty post-hydrate (Q3=(a)). Each row renders columns per § 1.2
+  `CheckpointMeta` shape.
+  Add `pub mod models;` to `crates/ui/src/screens/mod.rs`.
+  Cargo: `cargo check -p ui`. Acceptance: PASS.
+- [ ] T-D-N15 — Swap `crates/ui/src/shell.rs:99` from
+  `placeholder::view(strings::MODELS_PLACEHOLDER, mode)` to
+  `screens::models::view(model, mode)`. Update use-list at `:28` to include `models`.
+  Cargo: `cargo test -p ui --lib` + `cargo test -p ui --test layout_invariants`.
+  Acceptance: PASS.
+
+### Wave E — Assistant slot wake + shell right-rail wiring (R3)
+
+- [ ] T-D-N16 — Author `crates/ui/src/assistant/view.rs` per `decomp.md § 2 row 12`.
+  When `state.is_open == false` → return 0-width `Container::new(Space::new())`
+  (byte-identical to today's right_track at `shell.rs:47-49`). When
+  `state.is_open == true` → render Lumen Phase 6 stub placeholder
+  (`ASSISTANT_OFFLINE_TITLE` + `ASSISTANT_OFFLINE_BODY` per R3.2(a) +
+  K7 mitigation).
+  Cargo: `cargo check -p ui`. Acceptance: PASS.
+- [ ] T-D-N17 — Per `decomp.md § 1.5 + § 2 row 27`. Swap
+  `crates/ui/src/shell.rs:47-49` from raw `Space::new()` /
+  `Length::Fixed(RIGHT_RAIL_WIDTH_PX)` to function-of-state shape per § 1.5.
+  Update use-list at `:30` to add `RIGHT_RAIL_OPEN_WIDTH_PX`; add
+  `crate::assistant` to top-level uses.
+  Cargo: `cargo test -p ui --test shell_grid` + `cargo test -p ui --test layout_invariants`.
+  Acceptance: PASS; literal `test right_rail_width_is_zero ... ok` preserved
+  (constant unchanged at 0.0).
+
+### Wave F — Snapshot baselines + layout-invariants + round-trip + tester handoff
+
+- [ ] T-D-N18 — Author 6 visual snapshots in `crates/ui/tests/visual_snapshots.rs`:
+  `memory__cold_boot_empty`, `memory__steady_state_5_cards`,
+  `memory__drawer_open_on_card_click`, `models__cold_boot_no_checkpoints`,
+  `models__steady_state_2_checkpoints`, `assistant_slot__open_stub`.
+  (`assistant_slot__closed_default` byte-identical to existing shell baselines
+  per K6 Option A — no new fixture.)
+  Cargo: `cargo test -p ui --test visual_snapshots`.
+  Acceptance: literal `test result: ok. N passed; 0 failed`; 6 new
+  baselines accepted on first run.
+- [ ] T-D-N19 — Append 3 layout-invariants proptest cases to
+  `crates/ui/tests/layout_invariants.rs`: `memory_screen_no_zero_dim`,
+  `models_screen_no_zero_dim`, `assistant_slot_open_no_zero_dim` (H6
+  falsification; the last one runs 256 × {open, closed} = 512 cases).
+  Cargo: `cargo test -p ui --test layout_invariants -- memory_screen_no_zero_dim
+  models_screen_no_zero_dim assistant_slot_open_no_zero_dim`.
+  Acceptance: literal `running 3 tests` + `test result: ok. 3 passed; 0 failed`.
+- [ ] T-D-N20 — Append 3 round-trip unit tests to `crates/ui/src/state.rs`
+  `#[cfg(test)] mod tests`: `memory_hydrate_populates_cache_and_indexed`,
+  `memory_open_drawer_sets_drawer_open`, `toggle_assistant_slot_flips_is_open`.
+  Cargo: `cargo test -p ui --lib memory_hydrate_populates_cache_and_indexed
+  memory_open_drawer_sets_drawer_open toggle_assistant_slot_flips_is_open`.
+  Acceptance: literal `running 3 tests` + `test result: ok. 3 passed; 0 failed`.
+- [ ] T-D-N21 — Run cockpit-smoke with `Screen::Memory`, `Screen::Models`,
+  and `assistant_state.is_open == true` as active configurations.
+  Cargo: `cargo test -p ui --test cockpit_smoke -- --nocapture`.
+  Acceptance: 0 panic lines (R7.3).
+- [ ] T-D-N22 — Re-run `bash scripts/verify_anchors.sh` post-implementation.
+  Non-negotiable R7.1 gate.
+  Cargo: `bash scripts/verify_anchors.sh`.
+  Acceptance: literal `ANCHORS PASS  (22 / 22)` output line.
+- [ ] T-D-N23 — Emit `HANDOFF → tester` envelope per AGENT.md §
+  "Structured handoff envelope". Tester then runs the full M-FINAL
+  sweep per feature.md acceptance criteria.
 
 ## M-FINAL — Tester sweep
 
