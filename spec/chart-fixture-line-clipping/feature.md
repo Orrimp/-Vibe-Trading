@@ -85,6 +85,29 @@ not blitted to the surface, even though `frame.fill()` /
   resolves to a different layout box than what iced's renderer
   uses for the canvas scissor.
 
+## Failed fix attempts (orchestrator 2026-05-20)
+
+Two minimal-touch attempts to repair the clip were tried and reverted:
+
+1. **Remove the outer `Container::new(chart_body).width(Length::Fill).height(Length::Fill)`
+   wrap in `crates/ui/src/screens/lab.rs:338-341`** (the "belt-and-braces"
+   defensive wrap). **Result: NO CHANGE.** Bug persists with identical
+   clip pattern. Falsifies the "outer Container is the culprit" branch
+   of F-CHART-3.
+2. **Replace `Canvas::height(Length::Fill)` with
+   `Canvas::height(Length::Fixed(400.0))` (and the inner Container
+   match)** in `crates/ui/src/widgets/chart.rs:235-240`. **Result: bug
+   PERSISTS but visible area shrinks proportionally** — with a 400 px
+   canvas, only the rightmost ~100 px shows the line; with a 616 px
+   canvas, ~590 px shows. The clip is NOT Length::Fill-specific;
+   replacing with a fixed height makes the clip worse, not better.
+
+These narrow the fix scope: the bug is NOT a simple Length::Fill
+nesting issue in either `chart::view` or `lab::view`. It is somewhere
+deeper — likely in iced 0.14's `Canvas::draw` invocation, `Frame::new`,
+or tiny-skia's compositor scissor / clip-rect handling. An architect
+pass with access to iced 0.14 source is the right next step.
+
 ## Investigation evidence on disk
 
 Probes were applied to `crates/ui/src/widgets/chart.rs` then
