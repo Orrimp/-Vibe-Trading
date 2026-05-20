@@ -249,6 +249,17 @@ impl App {
         let cross_link_strategies = matches!(msg, Message::SelectStrategy(_))
             && self.cockpit.current_screen != Screen::Strategies;
 
+        // Phase B / cockpit-training-control follow-up — fixtures mode
+        // does NOT carry a tokio runtime so the real engine is unreachable
+        // (`cockpit_live.rs` owns `--features live`). Without a synthetic
+        // completion the Lab Run button hangs on "Running" forever because
+        // `LabRunCompleted` is never dispatched. Capture the request marker
+        // BEFORE `state::update` flips `lab_run_inflight = true`, then chain
+        // an immediate synthetic `LabRunCompleted(Ok(empty_summary))` so
+        // the UI returns to idle. Real backtest execution requires
+        // `cargo run -p ui --bin cockpit_live --features live`.
+        let lab_run_requested = matches!(msg, Message::LabRunRequested);
+
         ui::state::update(&mut self.cockpit, msg);
 
         if let Some((v, s)) = select_pair {
@@ -257,6 +268,31 @@ impl App {
         }
         if cross_link_strategies {
             return iced::Task::done(Message::SwitchScreen(Screen::Strategies));
+        }
+        if lab_run_requested {
+            // Synthetic completion — fixtures binary has no engine wired.
+            // Returns the same empty `RunSummary` shape `spawn_lab_run`
+            // produces in its no-runtime branch (`runner.rs:267-275`).
+            let strategy = self
+                .cockpit
+                .lab_state
+                .strategy
+                .as_ref()
+                .map(|s| s.0.clone())
+                .unwrap_or_else(|| smol_str::SmolStr::new_static(""));
+            let symbol = self
+                .cockpit
+                .lab_state
+                .pair
+                .as_ref()
+                .map(|(_, s)| s.0.clone())
+                .unwrap_or_else(|| smol_str::SmolStr::new_static(""));
+            let summary = ui::lab::runner::RunSummary {
+                strategy_id: strategy,
+                symbol,
+                report_path: None,
+            };
+            return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         }
         iced::Task::none()
     }
