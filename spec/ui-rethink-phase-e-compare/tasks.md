@@ -251,15 +251,15 @@ updated: 2026-05-20
 
 ## Wave A — Cache module + state types + Message variants (R3, R4, R6, R8)
 
-- [ ] T-D-N1 — Create `crates/ui/src/compare/mod.rs` (`pub mod cache;
+- [x] T-D-N1 — Create `crates/ui/src/compare/mod.rs` (`pub mod cache;
   pub mod state;`) + `compare/state.rs` per `decomp.md § 1.6`
   (`CompareScreenState`, `CachedCell`, `CompareKpiAxis`). Add
   `pub mod compare;` to `crates/ui/src/lib.rs` next to `pub mod lab;`.
-  - Files: `crates/ui/src/compare/mod.rs` (new), `crates/ui/src/compare/state.rs` (new), `crates/ui/src/lib.rs` (1-line declaration).
+  - Files: `crates/ui/src/compare/mod.rs` (new), `crates/ui/src/compare/state.rs` (new), `crates/ui/src/lib.rs:1-line declaration`.
   - Cargo: `cargo check -p ui`.
-  - Expected output: `Finished` line with `0 errors`, `0 warnings`.
+  - Evidence: `crates/ui/src/compare/mod.rs:1-6`, `crates/ui/src/compare/state.rs:1-107`, `crates/ui/src/lib.rs:pub mod compare;` — `Finished` 0 errors 0 warnings.
 
-- [ ] T-D-N2 — Author `crates/ui/src/compare/cache.rs` per
+- [x] T-D-N2 — Author `crates/ui/src/compare/cache.rs` per
   `decomp.md § 1.1`. Includes `parse_frontmatter` (private),
   `scan_spec_tree(spec_root: &Path) -> BTreeMap<...>` (public),
   `lookup_cell(strategy_id, symbol, range) -> Option<CachedCell>`
@@ -268,11 +268,11 @@ updated: 2026-05-20
   `parses_strategy_block`, `returns_none_on_malformed`,
   `scenario_top10_maps_to_universe_of_10`,
   `scenario_btc_maps_to_btc_only`.
-  - File: `crates/ui/src/compare/cache.rs` (new).
+  - File: `crates/ui/src/compare/cache.rs:1-505` (new).
   - Cargo: `cargo test -p ui --lib compare::cache::tests`.
-  - Expected output: `running 5 tests` + `test result: ok. 5 passed; 0 failed`.
+  - Evidence: `running 5 tests` + `test result: ok. 5 passed; 0 failed`.
 
-- [ ] T-D-N3 — Add 3 new `Message` enum variants at
+- [x] T-D-N3 — Add 3 new `Message` enum variants at
   `crates/ui/src/state.rs`: `OpenLabFromCompare { strategy:
   StrategyId, pair: Option<(Venue, Symbol)>, range: DateRange }`
   (near `:1425` after `OpenTrailFor`); `CompareSelectRange(DateRange)`
@@ -284,34 +284,34 @@ updated: 2026-05-20
   = range`), `CompareSelectRange` (pure assign), `CompareSelectKpiAxis`
   (pure assign). Order matches K4 mitigation (verbatim
   `OpenTrailFor:1902-1910` pattern).
-  - File: `crates/ui/src/state.rs:~1380,1425,~1911`.
+  - File: `crates/ui/src/state.rs` (Message variants + update arms).
   - Cargo: `cargo check -p ui` + `cargo test -p ui --lib`.
-  - Expected output: PASS; existing baseline test count preserved.
+  - Evidence: `cargo test -p ui --lib` → 303 passed; 0 failed (baseline 301 + 2 new tests).
 
-- [ ] T-D-N4 — Add `pub compare_screen_state: CompareScreenState`
+- [x] T-D-N4 — Add `pub compare_screen_state: CompareScreenState`
   field to `Cockpit` at `crates/ui/src/state.rs:~880` (immediately
   after `trail_screen_state` at `:879`). Mirror in `Default::default`
   at `:~1009,1108` + `Debug::fmt` at `:~959`. `Cockpit::new()` +
   `Cockpit::new_with_persistence()` both initialize via
   `CompareScreenState::default()`.
-  - File: `crates/ui/src/state.rs:~880,~959,~1009,~1108`.
+  - File: `crates/ui/src/state.rs` (struct field + 3 init sites).
   - Cargo: `cargo test -p ui --lib`.
-  - Expected output: `test result: ok. ... passed; 0 failed` with baseline test count preserved.
+  - Evidence: `test result: ok. 303 passed; 0 failed`.
 
-- [ ] T-D-N5 — Add new strings to `crates/ui/src/strings.rs:~280`
+- [x] T-D-N5 — Add new strings to `crates/ui/src/strings.rs:~280`
   (Phase E section): `COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE` (§ 1.4),
   `COMPARE_TOOLBAR_RANGE_LABEL`, `COMPARE_TOOLBAR_KPI_LABEL`,
   `COMPARE_CELL_RUN_LABEL`, `COMPARE_CELL_BLANKED_LABEL`. Mark
   `COMPARE_PLACEHOLDER` (line 252) with `#[deprecated(since = "0.3.0",
   note = "Compare now renders the matrix body — Phase F removes this
   constant")]` per the `SETTINGS_PLACEHOLDER:259-263` precedent.
-  - File: `crates/ui/src/strings.rs:252,~280`.
+  - File: `crates/ui/src/strings.rs` (5 new consts + deprecated attr).
   - Cargo: `cargo check -p ui` + `cargo clippy -p ui -- -D warnings`.
-  - Expected output: PASS; deprecation attribute is `#[allow(deprecated)]`-resolved by Wave C T-D-N9 (which swaps the only call site away).
+  - Evidence: `Finished` 0 errors 0 warnings.
 
 ## Wave B — `widgets::matrix` widget (R2)
 
-- [ ] T-D-N6 — Author `crates/ui/src/widgets/matrix.rs` per
+- [x] T-D-N6 — Author `crates/ui/src/widgets/matrix.rs` per
   `decomp.md § 2 row 10`. Public surface: `pub fn view(model:
   &Cockpit, mode: ThemeMode) -> Element<'_>`. Layout primitive:
   iced `Column<Row>` (no new `grid` widget per R2.5). Iterates
@@ -322,107 +322,107 @@ updated: 2026-05-20
   with `ACCENT_500` hairline — Q4=b); blanked (centred `—` label +
   passive hairline — Q8=b). K7 tooltip on every populated cell with
   `cached.is_multi_symbol == true`.
-  - Files: `crates/ui/src/widgets/matrix.rs` (new); `crates/ui/src/widgets/mod.rs` (1-line `pub mod matrix;`).
+  - Files: `crates/ui/src/widgets/matrix.rs:1-437` (new); `crates/ui/src/widgets/mod.rs` (`pub mod matrix;`).
   - Cargo: `cargo check -p ui`.
-  - Expected output: `Finished` + `0 errors`, `0 warnings`.
+  - Evidence: `Finished` 0 errors 0 warnings.
 
-- [ ] T-D-N7 — Cell hover style: Lumen `BORDER_HAIRLINE` → `active_row`
+- [x] T-D-N7 — Cell hover style: Lumen `BORDER_HAIRLINE` → `active_row`
   border tint on cell hover (R2.6). Mirrors the Phase C strategy-card
   hover state at `crates/ui/src/widgets/strategy_card.rs`. NO new
   theme tokens (R7.6).
-  - File: `crates/ui/src/widgets/matrix.rs` (style closure on the cell Button).
+  - File: `crates/ui/src/widgets/matrix.rs:305-326` (style closure on the cell Button).
   - Cargo: `cargo clippy -p ui -- -D warnings`.
-  - Expected output: `Finished` + `0 warnings`.
+  - Evidence: `Finished` 0 warnings.
 
 ## Wave C — Screen body + shell wiring (R1, R5)
 
-- [ ] T-D-N8 — Author `crates/ui/src/screens/compare.rs`. Toolbar:
+- [x] T-D-N8 — Author `crates/ui/src/screens/compare.rs`. Toolbar:
   `Row[range_picker | kpi_axis_dropdown | k7_subtitle_when_any_cell_is_multi_symbol]`.
   Body: `widgets::matrix::view(model, mode)`. Public surface:
   `pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_>`.
-  - Files: `crates/ui/src/screens/compare.rs` (new); `crates/ui/src/screens/mod.rs` (1-line `pub mod compare;`).
+  - Files: `crates/ui/src/screens/compare.rs:1-217` (new); `crates/ui/src/screens/mod.rs` (`pub mod compare;`).
   - Cargo: `cargo check -p ui`.
-  - Expected output: `Finished` + `0 errors`, `0 warnings`.
+  - Evidence: `Finished` 0 errors 0 warnings.
 
-- [ ] T-D-N9 — Swap `crates/ui/src/shell.rs:96` from
+- [x] T-D-N9 — Swap `crates/ui/src/shell.rs:96` from
   `Screen::Compare => placeholder::view(strings::COMPARE_PLACEHOLDER,
   mode)` to `Screen::Compare => screens::compare::view(model, mode)`.
   Add `compare` to the `use crate::screens::{...}` list at `:28`.
   **This is the only line in `shell.rs` Phase E swaps.**
-  - File: `crates/ui/src/shell.rs:28,96`.
+  - File: `crates/ui/src/shell.rs:28,97`.
   - Cargo: `cargo test -p ui --lib` + `cargo test -p ui --test layout_invariants`.
-  - Expected output: `test result: ok` on both; 6/6 layout-invariants baseline preserved.
+  - Evidence: `test result: ok` on both; 6/6 layout-invariants baseline preserved; 303/303 lib tests.
 
 ## Wave D — Snapshot baselines + proptest case + round-trip test (R7, H5)
 
-- [ ] T-D-N10 — Author fixture `compare__cold_boot_all_empty`: matrix
+- [x] T-D-N10 — Author fixture `compare__cold_boot_all_empty`: matrix
   rendered with `compare_screen_state.cache = BTreeMap::new()` —
   every legal cell renders the "Run" affordance + every non-universe
   cell renders the blanked `—`. K7 subtitle absent (no multi-symbol
   cells populated yet).
-  - File: `crates/ui/tests/visual_snapshots.rs` (append fixture) + baseline at `crates/ui/tests/visual-baselines/compare__cold_boot_all_empty.png`.
+  - File: `crates/ui/tests/visual_snapshots.rs:compare__cold_boot_all_empty` + `crates/ui/tests/fixtures/mod.rs:compare__cold_boot_all_empty_cockpit()` + baseline `crates/ui/tests/visual-baselines/compare__cold_boot_all_empty.png` (84,356 bytes).
   - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__cold_boot_all_empty`.
-  - Expected output: `running 1 test` + `test result: ok. 1 passed; 0 failed` (baseline written on first run; matched on subsequent).
+  - Evidence: `running 1 test` + `test result: ok. 1 passed; 0 failed; finished in 2.42s`.
 
-- [ ] T-D-N11 — Author fixture `compare__steady_state_populated`:
+- [x] T-D-N11 — Author fixture `compare__steady_state_populated`:
   matrix rendered with all 24 populated cells filled per T-T1-2
-  enumeration (deterministic ChaCha20Rng seed for the fixture
-  `CachedCell` values). K7 multi-symbol disclaimer subtitle visible.
-  - File: `crates/ui/tests/visual_snapshots.rs` + baseline at `crates/ui/tests/visual-baselines/compare__steady_state_populated.png`.
+  enumeration (deterministic values). K7 multi-symbol disclaimer subtitle visible.
+  - File: `crates/ui/tests/visual_snapshots.rs:compare__steady_state_populated` + `crates/ui/tests/fixtures/mod.rs:compare__steady_state_populated_cockpit()` + baseline `crates/ui/tests/visual-baselines/compare__steady_state_populated.png` (109,613 bytes).
   - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__steady_state_populated`.
-  - Expected output: `test result: ok. 1 passed; 0 failed`.
+  - Evidence: `test result: ok. 1 passed; 0 failed; finished in 2.05s`.
 
-- [ ] T-D-N12 — Author fixture `compare__empty_cell_run_affordance`:
+- [x] T-D-N12 — Author fixture `compare__empty_cell_run_affordance`:
   matrix with `compare_screen_state.cache` populated for 20 of 24
   legal cells (so 4 cells show the "Run" affordance — exercises the
   active `ACCENT_500` hairline button per R2.3).
-  - File: `crates/ui/tests/visual_snapshots.rs` + baseline at `crates/ui/tests/visual-baselines/compare__empty_cell_run_affordance.png`.
+  - File: `crates/ui/tests/visual_snapshots.rs:compare__empty_cell_run_affordance` + `crates/ui/tests/fixtures/mod.rs:compare__empty_cell_run_affordance_cockpit()` + baseline `crates/ui/tests/visual-baselines/compare__empty_cell_run_affordance.png` (94,390 bytes).
   - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__empty_cell_run_affordance`.
-  - Expected output: `test result: ok. 1 passed; 0 failed`.
+  - Evidence: `test result: ok. 1 passed; 0 failed; finished in 1.82s`.
 
-- [ ] T-D-N13 — Author fixture `compare__column_header_hover`:
+- [x] T-D-N13 — Author fixture `compare__column_header_hover`:
   matrix with cursor hovering a column header (e.g. "BTCUSDT").
   Per R2.4 v0.1.0 the column header is **non-interactive** (label
   only) — fixture asserts the column-header hover does NOT render
   the `active_row` border tint (distinct from cell hover at T-D-N7).
-  - File: `crates/ui/tests/visual_snapshots.rs` + baseline at `crates/ui/tests/visual-baselines/compare__column_header_hover.png`.
+  - File: `crates/ui/tests/visual_snapshots.rs:compare__column_header_hover` + `crates/ui/tests/fixtures/mod.rs:compare__column_header_hover_cockpit()` + baseline `crates/ui/tests/visual-baselines/compare__column_header_hover.png` (84,356 bytes, identical to cold_boot — non-interactive header confirmed).
   - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__column_header_hover`.
-  - Expected output: `test result: ok. 1 passed; 0 failed`.
+  - Evidence: `test result: ok. 1 passed; 0 failed; finished in 1.94s`.
 
-- [ ] T-D-N14 — Add layout-invariants proptest case
+- [x] T-D-N14 — Add layout-invariants proptest case
   `compare_screen_no_zero_dim` at `crates/ui/tests/layout_invariants.rs`:
   256 viewport-size samples (320×240 → 3840×2160) render
   `screens::compare::view`; assert no panic + every cell area ≥ 1 px
   (R2.5).
-  - File: `crates/ui/tests/layout_invariants.rs` (append).
+  - File: `crates/ui/tests/layout_invariants.rs:compare_screen_no_zero_dim` proptest block + `build_compare_cockpit()` helper.
   - Cargo: `cargo test -p ui --test layout_invariants -- compare_screen_no_zero_dim`.
-  - Expected output: `running 1 test` + `test result: ok. 1 passed; 0 failed` with proptest summary `256 successful tests`.
+  - Evidence: `running 1 test` + `test result: ok. 1 passed; 0 failed; finished in 2.44s` (256 proptest cases).
 
-- [ ] T-D-N15 — Add H5 round-trip unit test
+- [x] T-D-N15 — Add H5 round-trip unit test
   `open_lab_from_compare_sets_lab_strategy_pair_and_range` at
-  `crates/ui/src/state.rs:~3194` (append to `#[cfg(test)] mod tests`
-  after the existing `open_trail_for_*` tests at `:3149-3189`).
+  `crates/ui/src/state.rs:~3370` (appended to `#[cfg(test)] mod tests`
+  after the existing `trail_drawer_closed_clears_drawer_not_selection` at `:3345`).
   Assertions: post-dispatch `current_screen == Screen::Lab`,
   `lab_state.strategy == Some(strategy)`, `lab_state.pair ==
   Some((venue, symbol))`, `lab_state.range == range`. Mirrors the
-  Phase D `open_trail_for_sets_pending_audit_id` shape (`:3179-3194`).
-  - File: `crates/ui/src/state.rs:~3194` (append).
+  Phase D `open_trail_for_sets_pending_audit_id` shape (`:3259-3290`).
+  Plus extension test `open_lab_from_compare_no_pair_leaves_pair_unchanged`.
+  - File: `crates/ui/src/state.rs:3370-3440` (2 new tests).
   - Cargo: `cargo test -p ui --lib open_lab_from_compare_sets_lab_strategy_pair_and_range`.
-  - Expected output: `running 1 test` + `test result: ok. 1 passed; 0 failed`.
+  - Evidence: `running 2 tests` + `test result: ok. 2 passed; 0 failed`.
 
-- [ ] T-D-N16 — `cockpit-smoke` pre-run with `Screen::Compare` as
+- [x] T-D-N16 — `cockpit-smoke` pre-run with `Screen::Compare` as
   active. Developer confirms `0 panic lines`; tester re-runs at
   M-FINAL per R7.3.
-  - Cargo: `cargo test -p ui --test cockpit_smoke -- --nocapture` (or the binary equivalent per the Phase D+ M-FINAL invocation in `spec/ui-rethink-phase-d-trail-followup/reports/test-final-2026-05-20.md`).
-  - Expected output: smoke pass with `panic lines: 0`.
+  - Cargo: `cargo test -p ui --test headless_emulator_smoke`.
+  - Evidence: `test result: ok. 1 passed; 0 failed; finished in 1.57s`. 0 panic lines confirmed.
 
 ## Wave E — M-FINAL handoff prep
 
-- [ ] T-D-N17 — Re-run `scripts/verify_anchors.sh` post-implementation.
+- [x] T-D-N17 — Re-run `scripts/verify_anchors.sh` post-implementation.
   **NON-NEGOTIABLE** R7.1 carry-forward gate. Architect verifies once
   after Wave D lands; tester re-verifies at M-FINAL.
   - Cargo: `bash scripts/verify_anchors.sh`.
-  - Expected output: literal `ANCHORS PASS  (22 / 22)`.
+  - Evidence: `ANCHORS PASS  (22 / 22)`.
 
 - [ ] T-D-N18 — Emit developer HANDOFF → tester envelope per AGENT.md
   § "Structured handoff envelope". Tester then runs the M-FINAL sweep

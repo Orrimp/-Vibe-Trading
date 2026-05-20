@@ -750,8 +750,67 @@ Trace row `REQ-UI-RETHINK-PHASE-E-001` to be opened in `draft`
 state by this analyst pass. `arch`, `crates`, `tests`, `anchors`
 columns to be filled by architect / developer / tester respectively.
 
+## Implementation
+
+Developer pass completed 2026-05-20. All 18 T-D-N rows ticked N1-N17
+(N18 = tester handoff envelope); tester verifies at M-FINAL.
+
+### Net-new files (5)
+
+| File | Role |
+|------|------|
+| `crates/ui/src/compare/mod.rs` | Module root — re-exports `cache` + `state` |
+| `crates/ui/src/compare/state.rs` | `CompareScreenState`, `CachedCell`, `CompareKpiAxis` |
+| `crates/ui/src/compare/cache.rs` | `scan_spec_tree`, `lookup_cell`, `parse_frontmatter` + 5 unit tests |
+| `crates/ui/src/widgets/matrix.rs` | `pub fn view(model, mode) -> Element` — Column×Row matrix widget |
+| `crates/ui/src/screens/compare.rs` | `pub fn view(model, mode) -> Element` — toolbar + matrix body |
+
+### Modified files (7)
+
+| File | Change |
+|------|--------|
+| `crates/ui/src/lib.rs` | `pub mod compare;` |
+| `crates/ui/src/lab/state.rs` | `PartialOrd, Ord` derives on `Preset` + `DateRange` (BTreeMap key req) |
+| `crates/ui/src/state.rs` | `compare_screen_state` field on `Cockpit`; 3 Message variants; 3 update arms; 2 H5 tests |
+| `crates/ui/src/strings.rs` | 5 new Phase E constants; `COMPARE_PLACEHOLDER` deprecated |
+| `crates/ui/src/widgets/mod.rs` | `pub mod matrix;` |
+| `crates/ui/src/screens/mod.rs` | `pub mod compare;` |
+| `crates/ui/src/shell.rs` | `Screen::Compare` arm → `compare::view` (1-line swap) |
+
+### Test files (3 new + 2 modified)
+
+| File | Change |
+|------|--------|
+| `crates/ui/tests/fixtures/mod.rs` | 4 new compare cockpit fixture builders |
+| `crates/ui/tests/visual_snapshots.rs` | `COMPARE_SLOTS`, `run_compare_slot()`, 4 `#[test]` fns |
+| `crates/ui/tests/layout_invariants.rs` | `compare_screen_no_zero_dim` proptest (256 cases) + `build_compare_cockpit()` helper; pre-existing deprecated-Screen-variant lints fixed |
+
+### Visual baselines (4 new PNGs)
+
+| Baseline | Size | Fixture |
+|----------|------|---------|
+| `compare__cold_boot_all_empty.png` | 84,356 B | 2 strategies, empty cache — all Run affordances |
+| `compare__steady_state_populated.png` | 109,613 B | 5 strategies, 24 cells populated, K7 subtitle visible |
+| `compare__empty_cell_run_affordance.png` | 94,390 B | 2 strategies, 7/12 cells populated, 4 Run affordance cells |
+| `compare__column_header_hover.png` | 84,356 B | Non-interactive headers confirmed (same as cold_boot) |
+
+### Anchor gate
+
+`scripts/verify_anchors.sh` → `ANCHORS PASS  (22 / 22)` post-implementation.
+Phase E is purely additive UI surface; no anchored renderer touched (R7.7).
+
+### Deviations from architecture
+
+None. The implementation follows `decomp.md` Wave A-E exactly. The only
+minor deviation: `build_kpi_chips` returns `Element<'static, Message>` (not
+`'_`) because it has no borrowed arguments — the compiler required this
+since v0.1.0 of the widget; the lifetime is technically more lenient than
+`'_` and is fully correct per Rust lifetime elision rules.
+
 ## Changelog
 
+- 2026-05-20 (developer): implementation complete — 18 T-D-N rows N1-N17
+  ticked; 4 visual baselines written; 22 anchors verified; HANDOFF → tester.
 - 2026-05-20 (analyst): initial brief — R1-R8, Q1-Q8, K1-K8, H1-H5,
   non-regression contract; predecessor
   `ui-rethink-phase-d-trail-followup v0.1.1`; scope anchored to

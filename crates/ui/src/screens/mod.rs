@@ -8,6 +8,9 @@
 //! → `lab` and adds placeholder routes.
 
 pub mod audit;
+/// Phase E — Compare matrix screen (ui-rethink-phase-e-compare R1.1-R1.4).
+/// Toolbar + matrix body. Replaces the Phase A `placeholder::view` route.
+pub mod compare;
 pub mod control;
 pub mod debug;
 pub mod home;

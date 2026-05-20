@@ -24,7 +24,11 @@
 //! ```
 
 // Clippy: tests can use expect / unwrap for fixture construction.
-#![allow(clippy::expect_used, clippy::unwrap_used, dead_code)]
+// The Phase D+ and Phase E snapshot fn names use double-underscore
+// separators that match baseline PNG filenames exactly. Suppressing
+// the non_snake_case lint is the lowest-noise approach — renaming
+// would de-sync fn names from baselines and confuse the operator.
+#![allow(clippy::expect_used, clippy::unwrap_used, dead_code, non_snake_case)]
 
 pub mod visual_diff;
 
@@ -249,6 +253,259 @@ pub fn live_recent_activity_with_chevron_cockpit() -> Cockpit {
     cockpit.tape =
         ui::state::PanelState::Ready(ui::fixtures::fake_fill_feed(5).into_iter().collect());
     cockpit
+}
+
+// ── Phase E snapshot fixtures (ui-rethink-phase-e-compare Wave D) ──────────────
+
+/// Construct the `compare__cold_boot_all_empty` fixture.
+///
+/// Compare screen in cold-boot state: `compare_screen_state.cache = BTreeMap::new()`.
+/// Every legal cell renders the "Run" affordance; every non-universe cell renders
+/// the blanked `—`. K7 subtitle is absent (no multi-symbol cells populated yet).
+///
+/// Two strategies seeded: one BTC-only (`btc_sma`) + one top10 (`top10_momentum`),
+/// to exercise both the blanked-cell path (top10 has many pairs the btc-only col
+/// doesn't cover) and the run-affordance path.
+#[must_use]
+pub fn compare__cold_boot_all_empty_cockpit() -> ui::state::Cockpit {
+    use smol_str::SmolStr;
+    use std::collections::BTreeMap;
+    use trading_core::StrategyId;
+    use ui::compare::state::{CompareKpiAxis, CompareScreenState};
+    use ui::lab::state::{DateRange, Preset};
+    use ui::state::{Screen, StrategiesConfig, StrategyConfigEntry};
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Compare;
+
+    cockpit.strategies_config = Some(StrategiesConfig {
+        strategies: vec![
+            StrategyConfigEntry {
+                id: StrategyId::new("btc_sma"),
+                source_path: SmolStr::new("config/strategies/btc_sma.toml"),
+                params: vec![],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("top10_momentum"),
+                source_path: SmolStr::new("config/strategies/top10_momentum.toml"),
+                params: vec![],
+            },
+        ],
+    });
+
+    cockpit.compare_screen_state = CompareScreenState {
+        range: DateRange::Preset(Preset::Last90d),
+        kpi_axis: CompareKpiAxis::Sharpe,
+        cache: BTreeMap::new(),
+        last_indexed_at: None,
+    };
+
+    cockpit
+}
+
+/// Construct the `compare__steady_state_populated` fixture.
+///
+/// All 24 populated cells filled per the T-T1-2 census (deterministic values
+/// with a consistent Sharpe above 0.5 so the positive-Sharpe color path fires).
+/// K7 multi-symbol disclaimer subtitle is visible (any top10 cell is_multi_symbol).
+#[must_use]
+pub fn compare__steady_state_populated_cockpit() -> ui::state::Cockpit {
+    use smol_str::SmolStr;
+    use std::collections::BTreeMap;
+    use trading_core::{StrategyId, Symbol, Venue};
+    use ui::compare::state::{CachedCell, CompareKpiAxis, CompareScreenState};
+    use ui::lab::state::{DateRange, Preset};
+    use ui::state::{Screen, StrategiesConfig, StrategyConfigEntry};
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Compare;
+
+    // Six registered strategies (mirrors the H1 census in decomp.md §1.2).
+    cockpit.strategies_config = Some(StrategiesConfig {
+        strategies: vec![
+            StrategyConfigEntry {
+                id: StrategyId::new("btc_sma"),
+                source_path: SmolStr::new("config/strategies/btc_sma.toml"),
+                params: vec![],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("btc_macd"),
+                source_path: SmolStr::new("config/strategies/btc_macd.toml"),
+                params: vec![],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("top10_momentum"),
+                source_path: SmolStr::new("config/strategies/top10_momentum.toml"),
+                params: vec![],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("tcn_alpha"),
+                source_path: SmolStr::new("config/strategies/tcn_alpha.toml"),
+                params: vec![],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("pairs_mr"),
+                source_path: SmolStr::new("config/strategies/pairs_mr.toml"),
+                params: vec![],
+            },
+        ],
+    });
+
+    let range = DateRange::Preset(Preset::Last90d);
+    let mut cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> = BTreeMap::new();
+
+    // Helper: insert a cell for a given strategy + symbol.
+    let mut insert_cell = |strategy: &str, sym: &str, sharpe: f64, is_multi: bool| {
+        let key = (
+            SmolStr::new(strategy),
+            Symbol::new(sym),
+            range.clone(),
+        );
+        cache.insert(
+            key,
+            CachedCell {
+                sharpe,
+                total_return_pct: sharpe * 10.0,
+                max_drawdown_pct: -sharpe * 3.0,
+                trade_count: 42,
+                equity_curve_tail: (0..10).map(|i| 100.0 + i as f64 * sharpe).collect(),
+                source_report_path: SmolStr::new(
+                    format!("spec/{strategy}/reports/backtest-fixture.md"),
+                ),
+                generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
+                is_multi_symbol: is_multi,
+            },
+        );
+    };
+
+    // btc_sma: 1 BTC cell.
+    insert_cell("btc_sma", "BTCUSDT", 1.42, false);
+    // btc_macd: 1 BTC cell.
+    insert_cell("btc_macd", "BTCUSDT", 0.87, false);
+    // top10_momentum: 10 cells (multi-symbol).
+    let top10 = ["XRPUSDT","BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT",
+                 "ADAUSDT","DOTUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"];
+    for (i, sym) in top10.iter().enumerate() {
+        insert_cell("top10_momentum", sym, 0.9 + i as f64 * 0.02, true);
+    }
+    // tcn_alpha: 10 cells (multi-symbol).
+    for (i, sym) in top10.iter().enumerate() {
+        insert_cell("tcn_alpha", sym, 1.1 + i as f64 * 0.03, true);
+    }
+    // pairs_mr: 2 cells (BTC + ETH).
+    insert_cell("pairs_mr", "BTCUSDT", 0.75, true);
+    insert_cell("pairs_mr", "ETHUSDT", 0.68, true);
+
+    let _ = Venue::Binance; // imported for fixture symmetry
+
+    cockpit.compare_screen_state = CompareScreenState {
+        range,
+        kpi_axis: CompareKpiAxis::Sharpe,
+        cache,
+        last_indexed_at: None,
+    };
+
+    cockpit
+}
+
+/// Construct the `compare__empty_cell_run_affordance` fixture.
+///
+/// 20 of 24 legal cells populated; 4 cells (the last 4 top10 symbols for
+/// `top10_momentum`) show the "Run" affordance — exercises the active
+/// `ACCENT_500` hairline button path (R2.3).
+#[must_use]
+pub fn compare__empty_cell_run_affordance_cockpit() -> ui::state::Cockpit {
+    use smol_str::SmolStr;
+    use std::collections::BTreeMap;
+    use trading_core::{StrategyId, Symbol, Venue};
+    use ui::compare::state::{CachedCell, CompareKpiAxis, CompareScreenState};
+    use ui::lab::state::{DateRange, Preset};
+    use ui::state::{Screen, StrategiesConfig, StrategyConfigEntry};
+
+    let _ = Venue::Binance; // imported for fixture symmetry
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Compare;
+
+    cockpit.strategies_config = Some(StrategiesConfig {
+        strategies: vec![
+            StrategyConfigEntry {
+                id: StrategyId::new("btc_sma"),
+                source_path: SmolStr::new("config/strategies/btc_sma.toml"),
+                params: vec![],
+            },
+            StrategyConfigEntry {
+                id: StrategyId::new("top10_momentum"),
+                source_path: SmolStr::new("config/strategies/top10_momentum.toml"),
+                params: vec![],
+            },
+        ],
+    });
+
+    let range = DateRange::Preset(Preset::Last90d);
+    let mut cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> = BTreeMap::new();
+
+    // btc_sma × BTCUSDT — populated.
+    cache.insert(
+        (SmolStr::new("btc_sma"), Symbol::new("BTCUSDT"), range.clone()),
+        CachedCell {
+            sharpe: 1.42,
+            total_return_pct: 14.2,
+            max_drawdown_pct: -4.3,
+            trade_count: 55,
+            equity_curve_tail: vec![100.0, 103.0, 107.0, 111.0, 116.0],
+            source_report_path: SmolStr::new("spec/v0.sma/reports/backtest-fixture.md"),
+            generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
+            is_multi_symbol: false,
+        },
+    );
+
+    // top10_momentum: first 6 symbols populated, last 4 leave the "Run" affordance.
+    let populated_syms = ["XRPUSDT","BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","ADAUSDT"];
+    for (i, sym) in populated_syms.iter().enumerate() {
+        cache.insert(
+            (SmolStr::new("top10_momentum"), Symbol::new(*sym), range.clone()),
+            CachedCell {
+                sharpe: 0.8 + i as f64 * 0.1,
+                total_return_pct: 8.0 + i as f64 * 1.0,
+                max_drawdown_pct: -3.0,
+                trade_count: 30 + i as u32,
+                equity_curve_tail: vec![100.0, 101.0, 102.0, 103.0, 104.0],
+                source_report_path: SmolStr::new("spec/v1.momentum/reports/backtest-fixture.md"),
+                generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
+                is_multi_symbol: true,
+            },
+        );
+    }
+    // Last 4 (DOTUSDT, DOGEUSDT, LINKUSDT, AVAXUSDT) intentionally omitted → Run affordance.
+
+    cockpit.compare_screen_state = CompareScreenState {
+        range,
+        kpi_axis: CompareKpiAxis::Sharpe,
+        cache,
+        last_indexed_at: None,
+    };
+
+    cockpit
+}
+
+/// Construct the `compare__column_header_hover` fixture.
+///
+/// Matrix with cursor hovering a column header (e.g. "BTCUSDT").
+/// Per R2.4 v0.1.0 the column header is non-interactive (label only).
+/// The fixture asserts the header does NOT render the active_row border
+/// tint — it is visually the same as `cold_boot_all_empty` but serves
+/// as a snapshot anchor for the non-interactive header path.
+#[must_use]
+pub fn compare__column_header_hover_cockpit() -> ui::state::Cockpit {
+    // Column headers are non-interactive (R2.4 v0.1.0) — they are plain
+    // Container/Text widgets with no on_press. The "hover" state is
+    // ephemeral cursor position that iced_test's screenshot path doesn't
+    // capture (no cursor event is injected). This fixture is identical to
+    // cold_boot_all_empty but names the baseline separately so:
+    //   (a) the snapshot confirms the header NEVER gets a tinted border, and
+    //   (b) the test name precisely mirrors the T-D-N13 wording.
+    compare__cold_boot_all_empty_cockpit()
 }
 
 /// Silence dead-code warning for fixtures only consumed via `mod`

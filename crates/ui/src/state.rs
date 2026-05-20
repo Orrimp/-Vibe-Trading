@@ -878,6 +878,11 @@ pub struct Cockpit {
     /// `selected_audit_id = None` = list mode (cold-start, R2.5).
     pub trail_screen_state: TrailScreenState,
 
+    /// Phase E — Compare-screen per-session state (ui-rethink-phase-e-compare
+    /// R6.1 / T-D-N4). Sibling of `trail_screen_state` (Phase D) and
+    /// `lab_state` (Phase A). Cold-start: empty cache (R3.5 cold-boot-only).
+    pub compare_screen_state: crate::compare::state::CompareScreenState,
+
     // ── Phase 4 — Backtest-panel cross-link ─────────────────────────────
     /// Read-only mirror of `audit::query::equity_curve_for_strategy`
     /// results, keyed on `StrategyId`. Entry inserted at first
@@ -957,6 +962,7 @@ impl std::fmt::Debug for Cockpit {
             .field("risk_state", &self.risk_state)
             .field("audit_screen_state", &self.audit_screen_state)
             .field("trail_screen_state", &self.trail_screen_state)
+            .field("compare_screen_state", &self.compare_screen_state)
             .field("strategy_equity", &self.strategy_equity)
             .field("execution_mode", &self.execution_mode)
             .field("paused_strategies", &self.paused_strategies)
@@ -1007,6 +1013,7 @@ impl Default for Cockpit {
             risk_state: PanelState::Loading,
             audit_screen_state: AuditScreenState::default(),
             trail_screen_state: TrailScreenState::default(),
+            compare_screen_state: crate::compare::state::CompareScreenState::default(),
             strategy_equity: HashMap::new(),
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
@@ -1106,6 +1113,7 @@ impl Cockpit {
             risk_state: PanelState::Loading,
             audit_screen_state: AuditScreenState::default(),
             trail_screen_state: TrailScreenState::default(),
+            compare_screen_state: crate::compare::state::CompareScreenState::default(),
             strategy_equity: HashMap::new(),
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
@@ -1432,6 +1440,36 @@ pub enum Message {
     /// Carries the structured UI-local tick type (Q2 (b) — no direct
     /// `reflection` type in the `Message` API).
     TrailMirrorTick(TrailMirrorUiTick),
+
+    // ── Phase E — Compare matrix (ui-rethink-phase-e-compare) ────────────────
+    /// Compound dispatch: switches to Lab screen + seeds strategy/pair/range.
+    ///
+    /// Expands to: `SwitchScreen(Screen::Lab)` → `SelectStrategy(strategy)`
+    /// → `LabSelectPair(venue, symbol)` (when `pair` is `Some`) →
+    /// `LabSelectRange(range)`.
+    ///
+    /// Order matches K4 mitigation (verbatim `OpenTrailFor:1902-1910` pattern):
+    /// `SelectStrategy` clears `last_run_report`; the pair and range writes
+    /// happen after so the seeded Lab renders correctly.
+    ///
+    /// R4.1 / R4.2 / R4.3 — populated cell: no auto-run. Empty cell:
+    /// caller emits an additional `LabRunRequested` after this message.
+    OpenLabFromCompare {
+        strategy: StrategyId,
+        pair: Option<(Venue, Symbol)>,
+        range: crate::lab::state::DateRange,
+    },
+
+    /// Operator toggled the Compare date-range picker (R1.2 toolbar).
+    /// Pure assignment to `Cockpit::compare_screen_state.range` (R3.4
+    /// isolation — MUST NOT mutate `lab_state.range`).
+    CompareSelectRange(crate::lab::state::DateRange),
+
+    /// Operator selected a KPI axis from the Compare toolbar dropdown (R6.3).
+    /// Pure assignment to `Cockpit::compare_screen_state.kpi_axis`.
+    /// v0.1.0: only `Sharpe` is wired; other variants fall back to Sharpe
+    /// with a `tracing::warn!`.
+    CompareSelectKpiAxis(crate::compare::state::CompareKpiAxis),
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1925,6 +1963,48 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                     model.trail_screen_state.reconstructed_trail = None;
                 }
             }
+        }
+
+        // ── Phase E — Compare matrix (ui-rethink-phase-e-compare T-D-N3) ─────
+        Message::OpenLabFromCompare {
+            strategy,
+            pair,
+            range,
+        } => {
+            // Compound dispatch per R4.1 + K4 mitigation.
+            // Order is FIXED: screen + strategy first (SelectStrategy clears
+            // last_run_report at state.rs:~1793-1799); then pair; then range.
+            // Mirrors OpenTrailFor at state.rs:1902-1910 verbatim.
+            model.current_screen = Screen::Lab;
+            model.selected_strategy = Some(strategy.clone());
+            model.lab_state.strategy = Some(strategy);
+            // Clear last_run_report (K4 mitigation — SelectStrategy semantics).
+            model.lab_state.last_run_report = None;
+            model.lab_state.prev_run_report = None;
+            if let Some((venue, symbol)) = pair {
+                model.lab_state.pair = Some((venue, symbol));
+            }
+            model.lab_state.range = range.clone();
+            // R3.4 isolation: also write the range to compare_screen_state
+            // so subsequent Compare-screen opens reflect the last-used range.
+            model.compare_screen_state.range = range;
+        }
+        Message::CompareSelectRange(range) => {
+            // R3.4: pure assignment to compare_screen_state.range ONLY.
+            // MUST NOT touch lab_state.range.
+            model.compare_screen_state.range = range;
+        }
+        Message::CompareSelectKpiAxis(axis) => {
+            // R6.3: v0.1.0 wires Sharpe only; other variants accepted but
+            // the view falls back to Sharpe (tracing::warn! below).
+            #[allow(clippy::wildcard_enum_match_arm)]
+            if axis != crate::compare::state::CompareKpiAxis::Sharpe {
+                tracing::warn!(
+                    "CompareSelectKpiAxis: axis {:?} is not wired at v0.1.0 — falling back to Sharpe",
+                    axis
+                );
+            }
+            model.compare_screen_state.kpi_axis = axis;
         }
     }
 }
@@ -3286,5 +3366,91 @@ mod tests {
             c.trail_screen_state.selected_audit_id.is_some(),
             "TrailDrawerClosed must NOT clear selected_audit_id"
         );
+    }
+
+    // ── Phase E — Compare round-trip (T-D-N15 / H5) ──────────────────────────
+
+    /// T-D-N15 / H5 — `OpenLabFromCompare` atomically sets `current_screen =
+    /// Lab`, `lab_state.strategy`, `lab_state.pair`, and `lab_state.range`.
+    ///
+    /// This is the K4 mitigation test — mirrors the Phase D `OpenTrailFor`
+    /// round-trip pattern at `:3234-3254`. Falsifies H5 ("OpenLabFromCompare
+    /// round-trip is atomic with respect to the lab seeding contract").
+    #[test]
+    fn open_lab_from_compare_sets_lab_strategy_pair_and_range() {
+        use crate::lab::state::{DateRange, Preset};
+
+        let mut c = Cockpit::new();
+        // Cold start — on Lab screen by default.
+        assert_eq!(c.current_screen, Screen::default());
+        assert!(c.lab_state.strategy.is_none());
+        assert!(c.lab_state.pair.is_none());
+
+        let strategy = trading_core::StrategyId::new("top10_momentum_h1");
+        let venue = trading_core::Venue::Binance;
+        let symbol = trading_core::Symbol::new("XRPUSDT");
+        let range = DateRange::Preset(Preset::H1_2024);
+
+        update(
+            &mut c,
+            Message::OpenLabFromCompare {
+                strategy: strategy.clone(),
+                pair: Some((venue, symbol.clone())),
+                range: range.clone(),
+            },
+        );
+
+        assert_eq!(
+            c.current_screen,
+            Screen::Lab,
+            "OpenLabFromCompare must switch current_screen to Lab"
+        );
+        assert_eq!(
+            c.lab_state.strategy.as_ref().map(|s| s.0.as_str()),
+            Some("top10_momentum_h1"),
+            "OpenLabFromCompare must set lab_state.strategy"
+        );
+        assert_eq!(
+            c.lab_state.pair.as_ref().map(|(v, s)| (*v, s.clone())),
+            Some((trading_core::Venue::Binance, symbol.clone())),
+            "OpenLabFromCompare must set lab_state.pair"
+        );
+        assert_eq!(
+            c.lab_state.range,
+            range,
+            "OpenLabFromCompare must set lab_state.range"
+        );
+    }
+
+    /// T-D-N15 extension — `OpenLabFromCompare` with `pair = None` still
+    /// switches to Lab and sets strategy/range but leaves `lab_state.pair`
+    /// unchanged (no pair pre-selection when the caller passes None).
+    #[test]
+    fn open_lab_from_compare_no_pair_leaves_pair_unchanged() {
+        use crate::lab::state::{DateRange, Preset};
+
+        let mut c = Cockpit::new();
+        let range = DateRange::Preset(Preset::Last30d);
+
+        update(
+            &mut c,
+            Message::OpenLabFromCompare {
+                strategy: trading_core::StrategyId::new("btc_sma"),
+                pair: None,
+                range: range.clone(),
+            },
+        );
+
+        assert_eq!(c.current_screen, Screen::Lab);
+        assert_eq!(
+            c.lab_state.strategy.as_ref().map(|s| s.0.as_str()),
+            Some("btc_sma"),
+        );
+        // pair was None before and is still None — not mutated.
+        assert!(
+            c.lab_state.pair.is_none(),
+            "pair = None must leave lab_state.pair unchanged"
+        );
+        assert_eq!(c.lab_state.range, range);
     }
 }

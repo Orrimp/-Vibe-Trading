@@ -320,7 +320,10 @@ proptest! {
         // on positions, but the proptest's `n_rows` input keeps the
         // test seed-pinned and shrinkable).
         let _ = n_rows;
-        cockpit.current_screen = ui::Screen::Charts;
+        #[allow(deprecated)]
+        {
+            cockpit.current_screen = ui::Screen::Charts;
+        }
         let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
         check_element_layout(element).map_err(TestCaseError::fail)?;
     }
@@ -343,12 +346,50 @@ proptest! {
         screen_idx in 0u8..4,
     ) {
         let mut cockpit = ui::fixtures::fake_cockpit_ready();
-        cockpit.current_screen = match screen_idx % 4 {
+        #[allow(deprecated)]
+        let screen = match screen_idx % 4 {
             0 => ui::Screen::Home,
             1 => ui::Screen::Charts,
             2 => ui::Screen::Strategies,
             _ => ui::Screen::Audit,
         };
+        cockpit.current_screen = screen;
+        let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
+        check_element_layout(element).map_err(TestCaseError::fail)?;
+    }
+}
+
+// ─── Phase E — Compare-screen layout invariant (T-D-N14) ────────────────
+
+proptest! {
+    // Shell-composition cap: `screens::compare::view` runs the full matrix
+    // layout pass (6-row × ≤10-col grid). 32 cases stays within the
+    // T-M1-C-3 <60s aggregate budget. Per T-D-N14: assert no panic + every
+    // returned Element's root Node has area ≥ 1 px (R2.5).
+    #![proptest_config({
+        let mut cfg = proptest_config();
+        cfg.cases = 256;
+        cfg
+    })]
+
+    /// T-D-N14 — `screens::compare::view` layout-invariant.
+    ///
+    /// Fuzzes the compare screen's `CompareScreenState::cache` population
+    /// (empty / partially-populated / fully-populated) and asserts that the
+    /// resulting `Element` layout tree carries no zero-dim root Node under
+    /// the default 1920×1080 limits.
+    ///
+    /// Falsification: if the matrix widget ever returns a zero-dim root Node
+    /// (e.g. due to `Length::Fill` collapsing inside a Row with no siblings),
+    /// proptest will find and shrink to the minimal failing case.
+    #[test]
+    fn compare_screen_no_zero_dim(
+        // 0 = no strategies (empty_state path), 1+ = with strategies config.
+        has_strategies in any::<bool>(),
+        // 0 = empty cache, 1 = cold-boot all empty, 2 = partially populated.
+        cache_variant in 0u8..3,
+    ) {
+        let cockpit = build_compare_cockpit(has_strategies, cache_variant);
         let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
         check_element_layout(element).map_err(TestCaseError::fail)?;
     }
@@ -372,5 +413,76 @@ fn build_cockpit_with_positions(variant: u8, n_rows: usize, error_msg: &str) -> 
         2 => PanelState::Empty,
         _ => PanelState::Error(smol_str::SmolStr::new(error_msg)),
     };
+    cockpit
+}
+
+/// Build a Compare-screen cockpit for the T-D-N14 layout invariant.
+///
+/// `has_strategies`: if false, strategies_config = None (empty-state path).
+/// `cache_variant`:
+///   0 = empty cache (all "Run" affordance cells),
+///   1 = cold-boot empty (same as 0 — exercises the Q4=b path),
+///   2 = 1 populated cell (exercises the populated-cell path).
+fn build_compare_cockpit(has_strategies: bool, cache_variant: u8) -> ui::Cockpit {
+    use smol_str::SmolStr;
+    use std::collections::BTreeMap;
+    use trading_core::{StrategyId, Symbol};
+    use ui::compare::state::{CachedCell, CompareScreenState};
+    use ui::lab::state::{DateRange, Preset};
+    use ui::state::StrategiesConfig;
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = ui::Screen::Compare;
+
+    if has_strategies {
+        // Seed a small registry: one BTC-only strategy + one top10.
+        cockpit.strategies_config = Some(StrategiesConfig {
+            strategies: vec![
+                ui::state::StrategyConfigEntry {
+                    id: StrategyId::new("btc_sma"),
+                    source_path: SmolStr::new("config/strategies/btc_sma.toml"),
+                    params: vec![],
+                },
+                ui::state::StrategyConfigEntry {
+                    id: StrategyId::new("top10_momentum"),
+                    source_path: SmolStr::new("config/strategies/top10_momentum.toml"),
+                    params: vec![],
+                },
+            ],
+        });
+    } else {
+        cockpit.strategies_config = None;
+    }
+
+    let mut cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> = BTreeMap::new();
+    if cache_variant >= 2 {
+        // Populate one cell for btc_sma × BTCUSDT × Last90d.
+        let key = (
+            SmolStr::new("btc_sma"),
+            Symbol::new("BTCUSDT"),
+            DateRange::Preset(Preset::Last90d),
+        );
+        cache.insert(
+            key,
+            CachedCell {
+                sharpe: 1.23,
+                total_return_pct: 15.0,
+                max_drawdown_pct: -5.0,
+                trade_count: 42,
+                equity_curve_tail: vec![100.0, 102.0, 105.0, 108.0, 112.0],
+                source_report_path: SmolStr::new("spec/v0.sma/reports/backtest-fixture.md"),
+                generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
+                is_multi_symbol: false,
+            },
+        );
+    }
+
+    cockpit.compare_screen_state = CompareScreenState {
+        range: DateRange::Preset(Preset::Last90d),
+        kpi_axis: ui::compare::state::CompareKpiAxis::Sharpe,
+        cache,
+        last_indexed_at: None,
+    };
+
     cockpit
 }

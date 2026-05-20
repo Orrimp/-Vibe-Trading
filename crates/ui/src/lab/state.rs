@@ -53,7 +53,7 @@ impl StrategyFamily {
 }
 
 /// Date-range preset labels (Design § 2.3 / R5.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum Preset {
     /// Last 30 calendar days.
     Last30d,
@@ -84,7 +84,7 @@ impl Preset {
 /// `Custom` is reserved for Phase A (Design § 2.3 — no calendar widget
 /// at Phase A; custom field editing lands in Phase B/C). The discriminant
 /// is `serde`-aware for the persistence schema (`version: 1`).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DateRange {
     /// One of the named presets.
     Preset(Preset),

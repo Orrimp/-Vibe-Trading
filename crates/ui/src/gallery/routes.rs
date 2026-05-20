@@ -550,6 +550,7 @@ fn render_frame(_model: &Cockpit) -> iced::Element<'_, Message> {
 }
 
 fn render_placeholder(_model: &Cockpit) -> iced::Element<'_, Message> {
+    #[allow(deprecated)]
     placeholder::view(strings::COMPARE_PLACEHOLDER, ThemeMode::Dark)
 }
 
@@ -1152,7 +1153,28 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_trail_drawer_llm_placeholder,
         seed: seed_trail_drawer,
     },
+    // ── Phase E — matrix widget ────────────────────────────────────────────────
+    GalleryCell {
+        widget: "matrix",
+        state: "cold_boot_empty",
+        render: render_matrix_cold_boot,
+        seed: seed_matrix,
+    },
 ];
+
+// ── Phase E — matrix gallery cells ────────────────────────────────────────────
+
+fn seed_matrix() -> Cockpit {
+    let mut c = crate::fixtures::fake_cockpit_ready();
+    // Cold-boot: empty compare cache; strategies config seeded via fake_cockpit.
+    c.compare_screen_state = crate::compare::state::CompareScreenState::default();
+    c.current_screen = crate::state::Screen::Compare;
+    c
+}
+
+fn render_matrix_cold_boot(model: &Cockpit) -> iced::Element<'_, Message> {
+    crate::widgets::matrix::view(model, ThemeMode::Dark)
+}
 
 /// The canonical list of widget-module names the gallery is expected to
 /// cover. Sync this with `crates/ui/src/widgets/mod.rs` ANY time a new
@@ -1174,6 +1196,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "kill",
     "kpi_strip",
     "latency",
+    "matrix",
     "num",
     "override_risk_veto",
     "pair_chip",

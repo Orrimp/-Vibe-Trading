@@ -24,6 +24,10 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+/// Phase E — Compare-matrix feature module (ui-rethink-phase-e-compare).
+/// Houses `compare::state` (CompareScreenState / CachedCell / CompareKpiAxis)
+/// and `compare::cache` (scan_spec_tree + lookup_cell + parse_frontmatter).
+pub mod compare;
 pub mod lab;
 pub mod screens;
 pub mod shell;

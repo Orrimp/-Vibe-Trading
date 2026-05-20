@@ -235,6 +235,99 @@ fn live__recent_activity_with_chevron() {
     run_trail_slot("live__recent_activity_with_chevron");
 }
 
+/// Snapshot slots for the Phase E compare baselines
+/// (Wave D — T-D-N10, T-D-N11, T-D-N12, T-D-N13).  All use the
+/// `typical` viewport (1920×1080 @ 1.0x) — the T3022 default.
+const COMPARE_SLOTS: &[(&str, u32, u32, f32)] = &[
+    ("compare__cold_boot_all_empty", 1920, 1080, 1.0),
+    ("compare__steady_state_populated", 1920, 1080, 1.0),
+    ("compare__empty_cell_run_affordance", 1920, 1080, 1.0),
+    ("compare__column_header_hover", 1920, 1080, 1.0),
+];
+
+/// Drive `iced_test::screenshot` for a Phase E compare snapshot slot
+/// identified by `fixture_name`, then route through `matches_screenshot`.
+///
+/// `fixture_name` must be one of the keys in `COMPARE_SLOTS`. Baseline
+/// PNGs live at `crates/ui/tests/visual-baselines/<fixture_name>.png`.
+/// On first run the baseline is auto-written; subsequent runs byte-compare.
+fn run_compare_slot(fixture_name: &str) {
+    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+
+    let (_, w, h, scale) = COMPARE_SLOTS
+        .iter()
+        .find(|(s, _, _, _)| *s == fixture_name)
+        .copied()
+        .unwrap_or_else(|| panic!("unknown COMPARE_SLOTS key: {fixture_name}"));
+
+    let cockpit = match fixture_name {
+        "compare__cold_boot_all_empty" => {
+            fixtures::compare__cold_boot_all_empty_cockpit()
+        }
+        "compare__steady_state_populated" => {
+            fixtures::compare__steady_state_populated_cockpit()
+        }
+        "compare__empty_cell_run_affordance" => {
+            fixtures::compare__empty_cell_run_affordance_cockpit()
+        }
+        "compare__column_header_hover" => {
+            fixtures::compare__column_header_hover_cockpit()
+        }
+        other => panic!("no fixture builder for: {other}"),
+    };
+
+    let program = program_from_cockpit(cockpit);
+    let theme = iced::Theme::Dark;
+
+    let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);
+
+    let baseline = format!(
+        "{}/tests/visual-baselines/{fixture_name}.png",
+        env!("CARGO_MANIFEST_DIR")
+    );
+
+    matches_screenshot(&screenshot, &baseline, fixture_name).unwrap_or_else(|err| {
+        panic!(
+            "visual snapshot mismatch for `{fixture_name}`:\n{err}\n\n\
+             Review the baseline / actual / diff triple, then either:\n  \
+             (a) accept: delete baseline + rerun (auto-rewritten), or\n  \
+             (b) reject: fix the producing widget code."
+        )
+    });
+}
+
+/// T-D-N10 — Compare screen cold-boot: every legal cell shows the "Run"
+/// affordance, every non-universe cell shows `—`. K7 subtitle absent.
+/// Baseline auto-written on first run.
+#[test]
+fn compare__cold_boot_all_empty() {
+    run_compare_slot("compare__cold_boot_all_empty");
+}
+
+/// T-D-N11 — Compare screen steady-state: all 24 populated cells filled
+/// per the T-T1-2 census. K7 multi-symbol disclaimer subtitle visible.
+/// Baseline auto-written on first run.
+#[test]
+fn compare__steady_state_populated() {
+    run_compare_slot("compare__steady_state_populated");
+}
+
+/// T-D-N12 — Compare screen with 20 of 24 cells populated: 4 cells
+/// show the "Run" affordance, exercising the `ACCENT_500` hairline
+/// button path (R2.3). Baseline auto-written on first run.
+#[test]
+fn compare__empty_cell_run_affordance() {
+    run_compare_slot("compare__empty_cell_run_affordance");
+}
+
+/// T-D-N13 — Compare screen column-header hover: column headers are
+/// non-interactive (R2.4 v0.1.0). Snapshot confirms no hover tint.
+/// Baseline auto-written on first run.
+#[test]
+fn compare__column_header_hover() {
+    run_compare_slot("compare__column_header_hover");
+}
+
 /// V9 — the perceptual-diff helper materialises a diff PNG on
 /// mismatch (R6.1 — R6.4). Drives the helper with two known-
 /// different `RgbImage` buffers (solid red vs. solid green 8x8) and

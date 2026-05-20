@@ -248,7 +248,12 @@ pub const LAB_TITLE: &str = "Lab";
 pub const LIVE_TITLE: &str = "Live";
 /// Sidebar nav label for the Phase A `Trail` screen (ex-`Audit`).
 pub const TRAIL_TITLE: &str = "Trail";
-/// Placeholder body copy for the `Compare` screen (Phase E body).
+/// Placeholder body copy for the `Compare` screen.
+/// Phase E wires the real matrix body; this constant is retained for one cycle.
+#[deprecated(
+    since = "0.3.0",
+    note = "Compare now renders the matrix body — Phase F removes this constant"
+)]
 pub const COMPARE_PLACEHOLDER: &str = "Compare view — coming in Phase E.";
 /// Placeholder body copy for the `Memory` screen (Phase F body).
 pub const MEMORY_PLACEHOLDER: &str = "Memory view — coming in Phase F.";
@@ -337,6 +342,30 @@ pub const RUN_DELTA_BADGE_PNL_LABEL: &str = "P&L";
 /// Short label for the max-drawdown delta column of the `run_delta_badge` (R8.2 / D5).
 /// Shows the change in max drawdown between the last two runs on the same tuple.
 pub const RUN_DELTA_BADGE_DD_LABEL: &str = "DD";
+
+// ── Phase E — Compare matrix (ui-rethink-phase-e-compare T-D-N5) ─────────────
+
+/// Phase E — universe-aggregate KPI disclaimer (R2.3 / K7 mitigation).
+/// Rendered as a subtitle under the Compare-matrix toolbar AND as a
+/// per-cell tooltip on hover when the cell's source report is multi-symbol
+/// (§1.4 of decomp.md). Both surfaces ship at v0.1.0.
+pub const COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE: &str =
+    "KPI is universe-aggregate, not per-pair (multi-symbol scenario). \
+     Per-pair decomposition is v0.2.0 follow-up.";
+
+/// Phase E — toolbar range-picker label (R1.2).
+pub const COMPARE_TOOLBAR_RANGE_LABEL: &str = "Range";
+
+/// Phase E — toolbar KPI-axis dropdown label (R1.2 / R6.3).
+pub const COMPARE_TOOLBAR_KPI_LABEL: &str = "KPI";
+
+/// Phase E — centred label on empty-but-legal matrix cells (Q4=b). The
+/// active `ACCENT_500` hairline border distinguishes this from blanked cells.
+pub const COMPARE_CELL_RUN_LABEL: &str = "Run";
+
+/// Phase E — centred label on blanked matrix cells (Q8=b — outside strategy
+/// universe). Passive hairline border; distinguishable from the "Run" affordance.
+pub const COMPARE_CELL_BLANKED_LABEL: &str = "\u{2014}"; // em-dash
 
 /// Short label for the Sharpe ratio delta column of the `run_delta_badge` (R8.2 / D5).
 /// Shows the change in annualised Sharpe ratio between the last two runs.

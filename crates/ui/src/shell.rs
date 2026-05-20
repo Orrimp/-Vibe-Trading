@@ -25,7 +25,7 @@
 use iced::Length;
 use iced::widget::{Column, Container, Row, Space};
 
-use crate::screens::{lab, live, settings, strategy_registry, trail};
+use crate::screens::{compare, lab, live, settings, strategy_registry, trail};
 use crate::state::{Cockpit, Screen};
 use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C};
 use crate::theme::{ThemeMode, color};
@@ -93,7 +93,8 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         Screen::Lab | Screen::Charts => lab::view(model, mode),
         // Phase C: Live routes to the new §J6 layout; Home is the compat alias.
         Screen::Live | Screen::Home => live::view(model, mode),
-        Screen::Compare => placeholder::view(strings::COMPARE_PLACEHOLDER, mode),
+        // Phase E: Compare routes to the matrix screen (replaces Phase A placeholder).
+        Screen::Compare => compare::view(model, mode),
         Screen::Memory => placeholder::view(strings::MEMORY_PLACEHOLDER, mode),
         Screen::Models => placeholder::view(strings::MODELS_PLACEHOLDER, mode),
         // Phase D: Trail routes to the new trail::view which delegates to

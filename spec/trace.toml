@@ -782,10 +782,16 @@ arch        = [
   "spec/ui-rethink-phase-e-compare/decomp.md",                   # M-T1 architect decomposition (2026-05-20) — K3 hand-parse resolution, H1=40 % first-open hit-rate, H4 ≤ 15 ms p99 static argument, Q6 sub-decision (subtitle + per-cell tooltip), state location locked at `state.rs:~880`, 5-wave shape A-E with T-D-N1..N18, spike requirement = NONE
   "spec/dev-notes/ui-rethink-2026-05-17.md",                     # §6 Phase E sequencing source-of-truth (lines 1082-1096) + §J3 (lines 340-390) + §3 IA (lines 651-744)
 ]
-crates      = []   # developer to fill per Wave A-E ship — expected: crates/ui (screens/compare.rs + widgets/matrix.rs + compare/cache.rs + compare/state.rs + compare/mod.rs). Phase E is UI-only (R7.1-R7.7 contract: no backtest binary changes, no anchored renderer touch)
-tests       = []   # developer / tester to fill per Wave D / M-FINAL; expected: crates/ui/src/state.rs::open_lab_from_compare_sets_lab_strategy_pair_and_range, crates/ui/src/compare/cache.rs::tests (5 unit tests), crates/ui/tests/visual_snapshots.rs (4 new baselines: cold_boot_all_empty / steady_state_populated / empty_cell_run_affordance / column_header_hover), crates/ui/tests/layout_invariants.rs::compare_screen_no_zero_dim
-anchors     = []   # Phase E touches no strategy/audit/exec/report-renderer code; 22 originals stay byte-identical (R7.1 contract in feature.md; carry-forward H2 from predecessor ui-rethink-phase-d-trail-followup v0.1.1); architect M-T1 re-verified `bash scripts/verify_anchors.sh` → ANCHORS PASS (22 / 22) 2026-05-20 before decomp pass
-state       = "in-progress"   # analyst M0 + operator-decide resolved 2026-05-20 (Q1-Q8 = analyst defaults via "Autoapprove all"); architect M-T1 decomposition shipped 2026-05-20 (decomp.md); Wave A-E T-D-N1..N18 awaiting developer
+crates      = ["crates/ui"]   # Phase E is UI-only (R7.1-R7.7 contract: no backtest binary changes, no anchored renderer touch). Files: src/compare/mod.rs, src/compare/state.rs, src/compare/cache.rs, src/widgets/matrix.rs, src/screens/compare.rs, src/state.rs, src/strings.rs, src/lib.rs, src/shell.rs, src/widgets/mod.rs, src/screens/mod.rs, src/lab/state.rs
+tests       = [
+  "crates/ui/src/compare/cache.rs",            # 5 unit tests: parses_flat_kv, parses_strategy_block, returns_none_on_malformed, scenario_top10_maps_to_universe_of_10, scenario_btc_maps_to_btc_only
+  "crates/ui/src/state.rs",                    # H5 round-trip: open_lab_from_compare_sets_lab_strategy_pair_and_range + open_lab_from_compare_no_pair_leaves_pair_unchanged
+  "crates/ui/tests/layout_invariants.rs",      # T-D-N14: compare_screen_no_zero_dim (256 proptest cases)
+  "crates/ui/tests/visual_snapshots.rs",       # T-D-N10..N13: compare__cold_boot_all_empty, compare__steady_state_populated, compare__empty_cell_run_affordance, compare__column_header_hover
+  "crates/ui/tests/fixtures/mod.rs",           # Fixture builders for the 4 compare snapshots
+]
+anchors     = []   # Phase E touches no strategy/audit/exec/report-renderer code; 22 originals stay byte-identical (R7.1 contract). Developer post-implementation verified: ANCHORS PASS (22 / 22) 2026-05-20.
+state       = "in-progress"   # developer Wave A-E complete; HANDOFF → tester for M-FINAL sweep
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

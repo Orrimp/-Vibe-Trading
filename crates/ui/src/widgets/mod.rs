@@ -79,6 +79,9 @@ pub mod strategy_card;
 /// compare toggle).
 pub mod strategy_chip;
 pub mod throttled_spinner;
+/// Phase E — Compare matrix widget (ui-rethink-phase-e-compare R2.1-R2.6).
+/// Strategies-as-rows × pairs-as-columns; populated / empty / blanked cells.
+pub mod matrix;
 /// Phase D — Trail side-drawer widget (ui-rethink-phase-d-trail R4.1-R4.4).
 /// Renders Fill / Signal / Forecast / LLM-placeholder drawer bodies.
 pub mod trail_drawer;
