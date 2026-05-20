@@ -303,29 +303,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **UI rethink Phase C — Sidebar IA flip + Live + Strategy registry
-  (`ui-rethink-phase-c-sidebar-ia`).** _proposed (2026-05-20) —
-  awaiting analyst pass_. Third concrete feature in the UI rethink at
-  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
-  Predecessor: [`ui-rethink-phase-b-lab-run v0.2.0`](ui-rethink-phase-b-lab-run/feature.md)
-  shipped 2026-05-19. Replaces the seven-screen sidebar with the
-  three-group IA from dev-note §3 (Lab / Live / Trail / Compare —
-  work zone; Strategies / Memory / Models — library zone; Settings
-  + Phase 6 Assistant slot — chrome zone). Lands `Live` as the
-  redesigned Home (replaces deprecated `Screen::Home`), `Strategy
-  registry` as the redesigned Strategies, and `Settings` as a Risk
-  + Control + Debug rollup. One-cycle `#[deprecated]` compat shim
-  for `Message::SwitchScreen(Screen::{Home,Risk,Control,Debug})`.
-  **5 analyst-surfaced Qs** (shim retirement cycle; Settings tab
-  ordering; Strategy registry empty-state; Live ticker-strip mini-
-  chart; sidebar visual grouping). **Non-regression contract:** 22
-  anchors byte-identical (zero anchor risk per dev-note §6);
-  cockpit-smoke green; cockpit-performance v1.0.0 idle-CPU floor
-  (≤13.1%) preserved; spec-lint contribution = 0. Cost estimate:
-  **~2-3 weeks** per dev-note. Trace row
-  `REQ-UI-RETHINK-PHASE-C-001` opened in proposed state.
-  HANDOFF → analyst.
-
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
@@ -784,6 +761,39 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **UI rethink Phase C — Sidebar IA flip + Live + Strategy registry + Settings rollup (`ui-rethink-phase-c-sidebar-ia` v0.1.0)** —
+  shipped 2026-05-20 (operator-approved via "Autoapprove all" against
+  presenter deck
+  [`presentations/ui-rethink-phase-c-sidebar-ia-2026-05-20.md`](ui-rethink-phase-c-sidebar-ia/presentations/ui-rethink-phase-c-sidebar-ia-2026-05-20.md);
+  K1/K2 gut-check questions accepted as not-blockers — revisitable in
+  Phase D). Predecessor:
+  [`ui-rethink-phase-b-lab-run v0.2.0`](ui-rethink-phase-b-lab-run/feature.md).
+  Third concrete feature in the UI rethink at
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
+  Lands the **three-group sidebar IA** (Work zone Lab · Live ·
+  Compare; Library zone Strategies · Memory · Models · Trail; Chrome
+  zone Settings) with hairline `BORDER_1` dividers — entries
+  unchanged from `SIDEBAR_ENTRIES_PHASE_A`, only their visual
+  relationship changed. **`Live` screen** replaces the deprecated
+  `Home` 2×2 grid with the dev-note §J6 layout (system-health strip
+  + equity curve + KPI strip + positions + activity + placeholder
+  LLM tile). **`Strategy registry`** replaces the panel-style
+  `strategies::view` with a list-of-cards layout (status pill +
+  universe + last-anchor + last-live-run + "Open in Lab" action).
+  **`Settings` rollup** revives the dead-code `risk::view` /
+  `control::view` / `debug::view` bodies under a three-tab wrapper
+  (Risk · Control · Debug, default tab = Risk). One-cycle compat
+  shim for deprecated `Screen::*` variants — Phase D prunes per Q1a.
+  **5 net-new files** (3 screens + 2 widgets); **1 new public
+  Message variant** (`SwitchSettingsTab(SettingsTab)`); no ADR
+  (UI-layout scope). **22 body-SHA anchors byte-identical** (zero
+  anchor risk by construction); 287 lib + 101 integration tests
+  PASS; 6 new snapshot baselines + 5 refreshed; cockpit-smoke 0
+  panics; spec-lint Phase C contribution = 0. **Real-world
+  confirmation:** operator exercised the live cockpit this session
+  and confirmed chart + hovering work end-to-end (post chart-fixture-
+  line-clipping v1.0.0).
 
 - **Audit tick consumer envelope (`audit-tick-consumer-envelope` v0.1.0)** —
   shipped 2026-05-20 (operator-approved via "Autoapprove all" against

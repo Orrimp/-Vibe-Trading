@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-c-sidebar-ia
-status: in-progress
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ui-rethink-phase-b-lab-run v0.2.0

@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-c-sidebar-ia
-status: in-progress
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-20
 ---
 
