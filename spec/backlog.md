@@ -303,25 +303,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **Audit tick consumer envelope (`audit-tick-consumer-envelope`).**
-  _proposed (2026-05-20) — awaiting analyst pass_. Promoted from
-  Queue/Process-tooling. Canonical design at
-  [ADR-0031](architecture/adr/0031-audit-tick-consumer-envelope.md).
-  Adds a thin read-direction envelope (`AuditTick<E, C>`) over the
-  existing audit journal: every `journal::*` writer also enqueues an
-  `AuditTick` into a `tokio::broadcast` channel; `crates/reflection`,
-  future Lab Trail (Phase D), and v2.6 bake-off subscribe via
-  `Iterator<Item = AuditTick<AuditEvent>>` instead of each requiring
-  a dedicated write tap. **Strictly additive** — existing producer
-  taps coexist; zero hot-path impact (broadcast send is
-  constant-time); **22 body-SHA anchors stay byte-identical** by
-  construction (read-only over the journal). ~50 LOC addition in
-  `crates/audit`. **5 analyst-surfaced Qs** (channel bounded/N;
-  producer-side tee location; broadcast exposure via Ledger or
-  hidden; iced consumer pattern; AuditContext.agent_pid source).
-  Trace row `REQ-AUDIT-TICK-001` opened in proposed state.
-  HANDOFF → analyst.
-
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
@@ -780,6 +761,29 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **Audit tick consumer envelope (`audit-tick-consumer-envelope` v0.1.0)** —
+  shipped 2026-05-20 (operator-approved via "Autoapprove all" against
+  presenter deck
+  [`presentations/audit-tick-consumer-envelope-2026-05-20.md`](audit-tick-consumer-envelope/presentations/audit-tick-consumer-envelope-2026-05-20.md);
+  open Q on T-D-14 deferred to Phase D per presenter's recommendation).
+  Predecessor: ADR-0031 (status `proposed → accepted` at architect
+  M-T1). Adds a thin read-direction envelope (`AuditTick<E, C>`) over
+  the existing audit journal: 8 in-scope `journal::*` writers enqueue
+  `AuditTick`s into a `tokio::broadcast` channel; `crates/reflection`
+  carries an observation-only stub consumer (gated by
+  `[reflection].audit_tick_consumer_enabled = false` — keeps default
+  behaviour bit-identical). **Opt-in by construction:** `Ledger::open`
+  produces no tee; only the new `Ledger::open_with_tick_bus`
+  constructor wires the channel. **22 body-SHA-256 anchors
+  byte-identical**; spec-lint feature contribution = 0; 6 new test
+  files + 1 bench file under `crates/audit/`; ForecastEmitted call
+  site pinned at `crates/forecast/src/tcn.rs:786-795` (cache-hit) +
+  `:889-898` (post-inference), feature-gated `audit-tick`. **Deferred
+  runtime wiring** — T-D-14 (`strategy` crate optional `Ledger`
+  handle) waits until Lab Trail (Phase D) needs ForecastEmitted at
+  runtime; no current consumer reads it, so closing earlier would
+  land dead code. ADR-0031 + `01-data-flow.md` updated.
 
 - **Chart fixture line clipping (`chart-fixture-line-clipping` v1.0.0)** —
   shipped 2026-05-20 (operator-directed overnight fix). **Root cause:**

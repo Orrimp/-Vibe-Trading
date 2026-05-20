@@ -249,7 +249,7 @@ tests       = [
   "crates/reflection/tests/audit_tick_consumer_stub.rs",
 ]
 anchors     = []   # additive read-side feature; 22 originals stay byte-identical (R10.1); verify-anchors 22/22 PASS 2026-05-20
-state       = "tested"
+state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"

@@ -1,7 +1,7 @@
 ---
 slug: audit-tick-consumer-envelope
-status: draft
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ADR-0031
