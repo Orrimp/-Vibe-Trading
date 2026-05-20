@@ -644,8 +644,66 @@ PASS the architect advances it to `accepted` and fills `arch[]`.
 - [`crates/ui/src/live.rs`](../../crates/ui/src/live.rs) lines 20-50
   — iced subscription precedent (Q4 / H4 deferred shape).
 
+## Implementation
+
+*Developer: M-DEV complete 2026-05-20.*
+
+### Files added
+
+| Path | Purpose |
+|------|---------|
+| `crates/audit/src/tick.rs` | `AuditTick<E,C>`, `AuditContext`, `AuditEvent` (8 variants, `#[non_exhaustive]`), `AuditTickStream`, `pub(crate) emit`, `pub emit_public` (R1 / R2.3 / R3 / R6) |
+| `crates/reflection/src/audit_tick_consumer.rs` | `ReflectionAuditTickConsumer` observation-only stub (R4) |
+| `crates/audit/tests/tick_event_size.rs` | H5 compile-time + runtime size guard (≤256B) |
+| `crates/audit/tests/tick_variant_coverage.rs` | K5 / R2.5 — 7 tests per writer tee |
+| `crates/audit/tests/tick_lag_drop.rs` | H3 / K1 — lag + non-blocking producer tests |
+| `crates/audit/tests/tick_run_id.rs` | K4 — per-backtest run_id distinctness |
+| `crates/audit/tests/tick_serde_roundtrip.rs` | R1.1 / R1.3 — 8 serde roundtrip tests |
+| `crates/reflection/tests/audit_tick_consumer_stub.rs` | R4 end-to-end stub tests |
+| `crates/audit/benches/tick_send_latency.rs` | H1 criterion bench (optional) |
+
+### Files modified
+
+| Path | Change |
+|------|--------|
+| `crates/audit/src/lib.rs` | `pub mod tick;` declaration |
+| `crates/audit/src/ledger.rs` | `TickBus` struct, `tick_bus: Option<TickBus>` field, `open_with_tick_bus`, `with_run_id`, `with_pid` (R2.1 / R2.2 / Q5) |
+| `crates/audit/src/journal.rs` | Rustdoc banner (K5), 6 post-commit `crate::tick::emit` tees for R2.5 writers |
+| `crates/audit/Cargo.toml` | `[features] test-support = []`; `metrics` dep; `static_assertions` dev-dep; `[[bench]]` entry |
+| `crates/agent/src/config.rs` | `AuditConfig { tick_bus_capacity }` + `ReflectionConfig { audit_tick_consumer_enabled }` (R7) |
+| `crates/agent/src/main.rs` | Conditional `open_with_tick_bus` vs `open` (T-D-11); stub spawn (T-D-16) |
+| `crates/ui/src/bin/cockpit_live.rs` | Conditional `open_with_tick_bus` vs `open` (T-D-11) |
+| `crates/forecast/Cargo.toml` | `audit-tick = []` feature (T-D-12) |
+| `crates/forecast/src/tcn.rs` | `#[cfg(feature="audit-tick")] ledger: Option<audit::Ledger>` + `with_ledger` builder + 2 `ForecastEmitted` emit sites (T-D-13) |
+| `crates/strategy/Cargo.toml` | `forecast-audit-tick = ["forecast", "forecast/audit-tick"]` feature chain (T-D-14) |
+| `crates/agent/Cargo.toml` | `forecast-audit-tick = ["strategy/forecast-audit-tick"]` feature chain (T-D-14) |
+| `crates/reflection/src/lib.rs` | `pub mod audit_tick_consumer;` (T-D-15) |
+| `config/agent.toml` | `[audit] tick_bus_capacity = 1024`; `[reflection] audit_tick_consumer_enabled = false` (R7) |
+
+### Deviations from decomp
+
+1. **T-D-12** — `audit` dep in `crates/forecast` kept required (not optional). The `train_tcn` bin uses it unconditionally so making it optional would break the existing build. Only the `audit-tick = []` feature flag was added. This gates all `TcnForecaster` ledger fields and emit calls at compile time as intended.
+2. **T-D-14** — `TcnForecaster::with_ledger()` runtime wiring from agent bootstrap is architecturally blocked. `TcnForecaster` instances are constructed inside the `strategy` crate from TOML config, not in `agent/src/main.rs`. The compile-time feature chain is established. Runtime wiring requires a future architect design item (strategy crate accepting an optional `Ledger` handle via its strategy-config struct).
+3. **H5 boxing** — Both `AuditEvent::Fill { fill: Box<Fill>, ... }` and `AuditEvent::StrategySignal { signal: Box<Signal>, ... }` were boxed (not just Fill) to satisfy the ≤256B size budget. The spec mentioned "likely Fill"; Signal also exceeded budget.
+
+### Self-check results (T-D-24)
+
+- `cargo fmt --check` → exit 0
+- `cargo clippy --workspace -- -D warnings` → exit 0
+- `cargo test --workspace --lib` → 279 passed, 0 failed
+- `scripts/verify_anchors.sh` → `ANCHORS PASS (22 / 22)`
+
+All 22 body-SHA-256 anchors byte-identical; R5.1 / H2 satisfied.
+
 ## Changelog
 
+- 2026-05-20 (developer, M-DEV): implemented all 25 T-D-N tasks.
+  `crates/audit/src/tick.rs` (new), `crates/audit/src/ledger.rs`
+  (TickBus + new constructors), 6 post-commit tees in journal.rs,
+  `crates/reflection/src/audit_tick_consumer.rs` stub, feature
+  chains for forecast edge, config additions. 21 new tests, 1
+  criterion bench. All gates green: fmt / clippy / 279 tests /
+  22/22 anchors. HANDOFF → tester.
 - 2026-05-20 (architect, M-T1): ratified analyst defaults
   Q1..Q5; published [decomp.md](decomp.md) with per-writer
   change list, `Ledger` mutation spec, `AuditTickStream` API

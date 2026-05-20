@@ -95,15 +95,26 @@ async fn main() -> Result<()> {
     if let Some(parent) = std::path::Path::new(db_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let ledger = Arc::new(
-        audit::Ledger::open(db_path)
+    // T-D-11: conditionally wire the broadcast tick bus (R7.1 / decomp §6).
+    // `tick_bus_capacity = 0` → tee dormant (Ledger::open); any positive
+    // value → Ledger::open_with_tick_bus. The sender is held for the
+    // process lifetime so broadcast receivers stay live (K6).
+    let (ledger, tick_bus_sender) = if cfg.audit.tick_bus_capacity > 0 {
+        let (l, s) = audit::Ledger::open_with_tick_bus(db_path, cfg.audit.tick_bus_capacity)
             .await
-            .context("open audit ledger")?,
-    );
+            .context("open audit ledger with tick bus")?;
+        (l, Some(s))
+    } else {
+        let l = audit::Ledger::open(db_path)
+            .await
+            .context("open audit ledger")?;
+        (l, None)
+    };
+    let ledger = Arc::new(ledger);
     audit::bootstrap::chart_of_accounts(&ledger)
         .await
         .context("bootstrap chart of accounts")?;
-    info!(db = %db_path, "audit ledger initialized");
+    info!(db = %db_path, tick_bus = cfg.audit.tick_bus_capacity > 0, "audit ledger initialized");
 
     // ── Reflection store + writer task (T1807 / Q8) ────────────────────────────
     // Internal mpsc — not a bus channel (R8.3, hard constraint #4).
@@ -131,6 +142,28 @@ async fn main() -> Result<()> {
         info!("reflection writer disabled (cfg.reflection.enable_writer = false)");
         None
     };
+
+    // ── Reflection audit-tick consumer stub (T-D-16 / R4.3) ─────────────────────
+    // Spawned only when `[reflection].audit_tick_consumer_enabled = true` (default
+    // false). Uses the broadcast sender from T-D-11; no-ops when tick bus is
+    // disabled or config gate is off. Observation-only at v0.1.0 (R4.1).
+    if cfg.reflection.audit_tick_consumer_enabled {
+        if let Some(ref sender) = tick_bus_sender {
+            let rx = sender.subscribe();
+            let stream = audit::tick::AuditTickStream::new(rx, "reflection");
+            // Store is shared with the existing ReflectionWriter task if enabled.
+            // For the stub we open a separate in-memory-compat store reference;
+            // observation-only so we can share a placeholder unit type.
+            let stub = reflection::audit_tick_consumer::ReflectionAuditTickConsumer::new(
+                stream,
+                std::sync::Arc::new(()),
+            );
+            tokio::spawn(async move { stub.run().await });
+            info!("reflection audit-tick consumer stub spawned (observation-only)");
+        } else {
+            warn!("audit_tick_consumer_enabled = true but tick_bus_capacity = 0; stub skipped");
+        }
+    }
 
     // ── Kill switch ───────────────────────────────────────────────────────────
     // T809 — wire the audit ledger + production incident spawner.  On

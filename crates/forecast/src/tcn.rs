@@ -431,6 +431,11 @@ pub struct TcnForecaster {
     /// Optional path to the replay-cache SQLite file.
     /// When `None`, replay-cache is disabled (live inference only).
     pub cache_path: Option<PathBuf>,
+    /// Optional audit ledger for `ForecastEmitted` tick emission (T-D-13 /
+    /// decomp §5A). Set via `with_ledger(ledger)`. Guarded by the
+    /// `audit-tick` feature so training bins never carry the tick path.
+    #[cfg(feature = "audit-tick")]
+    pub(crate) ledger: Option<audit::Ledger>,
 }
 
 impl TcnForecaster {
@@ -453,6 +458,8 @@ impl TcnForecaster {
             model_revision: "random-init".to_string(),
             strict_replay: false,
             cache_path: None,
+            #[cfg(feature = "audit-tick")]
+            ledger: None,
         })
     }
 
@@ -543,6 +550,8 @@ impl TcnForecaster {
             model_revision,
             strict_replay: false,
             cache_path: None,
+            #[cfg(feature = "audit-tick")]
+            ledger: None,
         })
     }
 
@@ -553,6 +562,16 @@ impl TcnForecaster {
     pub fn with_strict_replay(mut self, cache_path: PathBuf) -> Self {
         self.strict_replay = true;
         self.cache_path = Some(cache_path);
+        self
+    }
+
+    /// Attach an audit ledger so `ForecastEmitted` ticks are emitted on the
+    /// broadcast tick bus (T-D-13 / decomp §5A). Only available when the
+    /// `audit-tick` feature is enabled.
+    #[cfg(feature = "audit-tick")]
+    #[must_use]
+    pub fn with_ledger(mut self, ledger: audit::Ledger) -> Self {
+        self.ledger = Some(ledger);
         self
     }
 
@@ -799,6 +818,17 @@ impl crate::ForecastProvider for TcnForecaster {
                             line = "forecast_inference",
                             usd = 0u64,
                         );
+                        // T-D-13 — ForecastEmitted tick (cache-hit, decomp §5A).
+                        #[cfg(feature = "audit-tick")]
+                        if let Some(l) = self.ledger.as_ref() {
+                            audit::tick::emit_public(
+                                l,
+                                audit::tick::AuditEvent::ForecastEmitted {
+                                    overlay: cached.overlay.clone(),
+                                    cache_hit: true,
+                                },
+                            );
+                        }
                         return Ok(cached);
                     }
                     Ok(None) => {
@@ -903,6 +933,18 @@ impl crate::ForecastProvider for TcnForecaster {
             line = "forecast_inference",
             usd = 0u64,
         );
+
+        // T-D-13 — ForecastEmitted tick (post-inference, decomp §5A).
+        #[cfg(feature = "audit-tick")]
+        if let Some(l) = self.ledger.as_ref() {
+            audit::tick::emit_public(
+                l,
+                audit::tick::AuditEvent::ForecastEmitted {
+                    overlay: overlay.clone(),
+                    cache_hit: false,
+                },
+            );
+        }
 
         // ── Write to cache if configured ─────────────────────────────────────
         if let Some(cache_path) = &self.cache_path

@@ -13,5 +13,6 @@ pub mod bootstrap;
 pub mod journal;
 pub mod ledger;
 pub mod query;
+pub mod tick;
 
 pub use ledger::Ledger;

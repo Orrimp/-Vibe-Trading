@@ -18,6 +18,9 @@ path = "src/lib.rs"
 # at the configured cron expression (default Mondays 09:00).  Default
 # build is **unchanged** — the cron scheduler is opt-in only.
 in_process_cron = ["dep:tokio-cron-scheduler", "dep:reports"]
+# T-D-14 — propagate ForecastEmitted audit-tick feature to strategy/forecast.
+# Enables `TcnForecaster::with_ledger` and the two emit sites in tcn.rs.
+forecast-audit-tick = ["strategy/forecast-audit-tick"]
 
 [dependencies]
 trading_core = { path = "../core" }

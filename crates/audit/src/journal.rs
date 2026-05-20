@@ -3,6 +3,15 @@
 //! Every fill writes a balanced double-entry transaction atomically.
 //! Debits == Credits is enforced per transaction.
 //!
+//! # Tee opt-in convention (K5 mitigation — audit-tick-consumer-envelope v0.1.0)
+//!
+//! Every writer that calls `db_txn.commit()` (or `execute(...)` on a
+//! single-shot row) and represents an event a consumer might care about MUST
+//! grow a `crate::tick::emit(ledger, AuditEvent::…)` call **after** the
+//! commit. The in-scope writers at v0.1.0 are enumerated in
+//! `spec/audit-tick-consumer-envelope/decomp.md §3`. Adding a new variant
+//! requires an ADR amendment.
+//!
 //! ## chart-buy-sell-emphasis v1.9 — strategy-signal writers (T2014)
 //!
 //! [`post_strategy_signal`] and [`update_signal_clamp_status`] write to
@@ -220,6 +229,14 @@ pub async fn post_fill(
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
+    // Post-commit tee — fires after the SQL transaction is durable (H2 / R2.3).
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::Fill {
+            fill: Box::new(fill.clone()),
+            fees: fee,
+        },
+    );
     tracing::debug!(fill_id = %fill.id, side = %fill.side, notional = %notional, "fill journaled");
     Ok(SmolStr::new(&txn_id))
 }
@@ -344,6 +361,14 @@ pub async fn post_strategy_signal(
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
+    // Post-commit tee — Hold branch returns early above (no SQL row → no tick).
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::StrategySignal {
+            strategy_id: signal.strategy_id.clone(),
+            signal: Box::new(signal.clone()),
+        },
+    );
     tracing::debug!(
         row_id = %row_id,
         strategy_id = %signal.strategy_id,
@@ -861,6 +886,13 @@ pub async fn kill_switch_tripped(
         .commit()
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    // Post-commit tee (R2.3 / T-D-6).
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::KillSwitchTripped {
+            reason: smol_str::SmolStr::new(reason),
+        },
+    );
     Ok(())
 }
 
@@ -1377,6 +1409,14 @@ pub async fn strategy_event(
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
+    // Post-execute tee — covers the 4 delegating writers automatically (T-D-7).
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::StrategyEvent {
+            kind: smol_str::SmolStr::new(write.kind),
+            payload_json: write.error_summary.unwrap_or("").to_string(),
+        },
+    );
     tracing::debug!(
         row_id = %row_id,
         kind = write.kind,
@@ -1634,6 +1674,16 @@ pub async fn open_uptime_interval(
     .execute(&ledger.pool)
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    // Post-execute tee (T-D-8).
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::UptimeIntervalOpened {
+            run_id: ledger
+                .tick_bus
+                .as_ref()
+                .map_or(uuid::Uuid::nil(), |b| b.run_id),
+        },
+    );
     Ok(())
 }
 
@@ -1677,12 +1727,42 @@ pub async fn close_uptime_interval(
     ts: Option<&str>,
 ) -> Result<(), LedgerError> {
     let ts_str = uptime_ts_string(ts)?;
+    // SELECT started_at before UPDATE so we can compute duration_s for the tee
+    // (decomp §3 row-10 note). Single-row read — no transaction needed.
+    let started_at_row: Option<(String,)> =
+        sqlx::query_as("SELECT started_at FROM agent_uptime WHERE boot_id = ?")
+            .bind(boot_id)
+            .fetch_optional(&ledger.pool)
+            .await
+            .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
     sqlx::query("UPDATE agent_uptime SET stopped_at = ? WHERE boot_id = ?")
         .bind(&ts_str)
         .bind(boot_id)
         .execute(&ledger.pool)
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    // Post-execute tee (T-D-9). Compute duration_s from started_at, default 0.
+    let duration_s = started_at_row
+        .and_then(|(s,)| {
+            let fmt = time::format_description::parse(
+                "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+            )
+            .ok()?;
+            let started = time::OffsetDateTime::parse(&s, &fmt).ok()?;
+            let secs = (time::OffsetDateTime::now_utc() - started).whole_seconds();
+            Some(u64::try_from(secs).unwrap_or(0))
+        })
+        .unwrap_or(0u64);
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::UptimeIntervalClosed {
+            run_id: ledger
+                .tick_bus
+                .as_ref()
+                .map_or(uuid::Uuid::nil(), |b| b.run_id),
+            duration_s,
+        },
+    );
     Ok(())
 }
 

@@ -21,6 +21,11 @@ default = []
 metal = ["candle-core/metal", "candle-nn/metal"]
 # Enable candle feature (CPU); required for TCN forward pass.
 candle = ["dep:candle-core", "dep:candle-nn"]
+# Gate the optional audit::Ledger field on TcnForecaster and the
+# ForecastEmitted broadcast tee (T-D-12 / decomp §5A). The `audit` crate is
+# already an unconditional dep (train_tcn bin uses it); this feature gates
+# only the tick-emit code path in TcnForecaster.
+audit-tick = []
 
 # `train_tcn` bin and `metal_cpu_drift` test depend on the candle-only `tcn`
 # module + `FeatureTensor = Tensor`. Without `--features candle`,

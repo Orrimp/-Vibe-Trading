@@ -234,18 +234,29 @@ fn main() -> Result<()> {
     if let Some(parent) = std::path::Path::new(db_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let ledger = bootstrap_rt
-        .block_on(async {
+    // T-D-11: conditionally wire the broadcast tick bus (R7.1 / decomp §6).
+    // Sender is held for the process lifetime so broadcast receivers stay live.
+    let (ledger, _tick_bus_sender) = bootstrap_rt.block_on(async {
+        if cfg.audit.tick_bus_capacity > 0 {
+            let (l, s) = audit::Ledger::open_with_tick_bus(db_path, cfg.audit.tick_bus_capacity)
+                .await
+                .context("open audit ledger with tick bus")?;
+            audit::bootstrap::chart_of_accounts(&l)
+                .await
+                .context("bootstrap chart of accounts")?;
+            Ok::<_, anyhow::Error>((l, Some(s)))
+        } else {
             let l = audit::Ledger::open(db_path)
                 .await
                 .context("open audit ledger")?;
             audit::bootstrap::chart_of_accounts(&l)
                 .await
                 .context("bootstrap chart of accounts")?;
-            Ok::<_, anyhow::Error>(l)
-        })
-        .map(Arc::new)?;
-    info!(db = %db_path, "audit ledger initialized");
+            Ok::<_, anyhow::Error>((l, None))
+        }
+    })?;
+    let ledger = Arc::new(ledger);
+    info!(db = %db_path, tick_bus = cfg.audit.tick_bus_capacity > 0, "audit ledger initialized");
 
     // ── Observability ────────────────────────────────────────────────────────
     // Same gate as the headless `trading` bin: the prometheus exporter

@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Expose test-only helpers (e.g. Ledger::with_pid) to downstream integration
+# tests that need deterministic audit-context assertions.
+test-support = []
+
 [dependencies]
 trading_core = { path = "../core" }
 thiserror.workspace = true
@@ -18,6 +23,7 @@ tokio.workspace = true
 smol_str.workspace = true
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 sha2.workspace = true
+metrics.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
@@ -41,3 +47,11 @@ toml.workspace = true
 # and `strategy_events__risk_veto_overridden_row.snap`) that lock the
 # format of the operator-write strategy_events rows (Q10).
 insta = { version = "1.42", features = ["yaml"] }
+# tick tests
+serde_json.workspace = true
+static_assertions = "1.1"
+criterion = { workspace = true }
+
+[[bench]]
+name = "tick_send_latency"
+harness = false

@@ -229,6 +229,16 @@ impl Default for BacktestConfig {
 pub struct AuditConfig {
     pub ledger_db_path: String,
     pub reconciliation_tolerance_usdt: f64,
+    /// Capacity of the broadcast tick bus (R7.1 / Q1). `0` disables the tick
+    /// bus entirely (uses `Ledger::open`); any positive value uses
+    /// `Ledger::open_with_tick_bus(path, cap)`.
+    /// Default: `1024` — matches `agent::bus::EventBus::fills_tx` capacity.
+    #[serde(default = "default_tick_bus_capacity")]
+    pub tick_bus_capacity: usize,
+}
+
+fn default_tick_bus_capacity() -> usize {
+    1024
 }
 
 impl Default for AuditConfig {
@@ -236,6 +246,7 @@ impl Default for AuditConfig {
         Self {
             ledger_db_path: "./data/audit/ledger.db".into(),
             reconciliation_tolerance_usdt: 0.01,
+            tick_bus_capacity: default_tick_bus_capacity(),
         }
     }
 }
@@ -290,6 +301,12 @@ pub struct ReflectionConfig {
     pub path: PathBuf,
     pub channel_capacity: usize,
     pub enable_writer: bool,
+    /// v0.1.0 stub — observation-only broadcast consumer (R7.2 / R4.3).
+    /// Default `false` → stub never runs; v2.x production write path
+    /// (`ReflectionWriter` mpsc tap) is bit-identical. Flip to `true`
+    /// to enable the `ReflectionAuditTickConsumer` stub.
+    #[serde(default)]
+    pub audit_tick_consumer_enabled: bool,
 }
 
 impl Default for ReflectionConfig {
@@ -302,6 +319,7 @@ impl Default for ReflectionConfig {
             // that need the writer off override to `false` in their
             // local config.
             enable_writer: true,
+            audit_tick_consumer_enabled: false,
         }
     }
 }

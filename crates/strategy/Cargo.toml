@@ -8,6 +8,10 @@ license.workspace = true
 # Enable the `forecast` crate dependency for `TcnSyncForecaster`.
 # Requires `--features forecast` to enable the candle backend via forecast.
 forecast = ["dep:forecast", "forecast/candle", "dep:candle-core"]
+# Enable ForecastEmitted audit-tick tee on TcnForecaster (T-D-14 / decomp §5A).
+# Requires the `forecast` feature. Propagates `audit-tick` to the forecast crate
+# so `TcnForecaster::with_ledger` is available.
+forecast-audit-tick = ["forecast", "forecast/audit-tick"]
 
 [dependencies]
 # Optional: TCN forecaster for tcn_overlay_momentum (v2.5)

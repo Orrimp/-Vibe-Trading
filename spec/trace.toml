@@ -240,7 +240,14 @@ arch        = [
   "spec/architecture/01-data-flow.md",
 ]
 crates      = ["crates/audit", "crates/reflection", "crates/forecast"]
-tests       = []   # populate at developer wave
+tests       = [
+  "crates/audit/tests/tick_event_size.rs",
+  "crates/audit/tests/tick_variant_coverage.rs",
+  "crates/audit/tests/tick_lag_drop.rs",
+  "crates/audit/tests/tick_run_id.rs",
+  "crates/audit/tests/tick_serde_roundtrip.rs",
+  "crates/reflection/tests/audit_tick_consumer_stub.rs",
+]
 anchors     = []   # additive read-side feature; 22 originals stay byte-identical (R10.1)
 state       = "accepted"
 

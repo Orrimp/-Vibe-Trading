@@ -30,6 +30,7 @@
 //! compile error.  The cosine helper at `embedding::cosine` and every
 //! `Decimal` helper used here is `Decimal`-only.
 
+pub mod audit_tick_consumer;
 pub mod embedding;
 pub mod outcome;
 pub mod post_mortem_analyst;

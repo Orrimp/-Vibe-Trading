@@ -33,6 +33,8 @@ initial_capital_usdt = 100000
 [audit]
 ledger_db_path                = "./data/audit/ledger.db"
 reconciliation_tolerance_usdt = 0.01
+# capacity of the broadcast tick bus; 0 disables (R7.1 / Q1=1024 default).
+tick_bus_capacity = 1024
 
 [kill_switch]
 halt_file             = "./.halt"
@@ -117,3 +119,8 @@ base_url = "http://localhost:11434"
 #   output_usd       = "75.0"
 #   cached_input_usd = "1.5"
 [llm.pricing]
+
+# v0.1.0 observation-only broadcast consumer (R7.2 / R4.3).
+# Default false — stub never runs; v2.x production write path is bit-identical.
+[reflection]
+audit_tick_consumer_enabled = false
