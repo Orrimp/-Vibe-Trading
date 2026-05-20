@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-c-sidebar-ia
-status: draft
-owner: pending-architect
+status: accepted
+owner: architect
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ui-rethink-phase-b-lab-run v0.2.0
@@ -763,6 +763,309 @@ orchestrator promotion pass (2026-05-20). Analyst pass leaves it
 `proposed` — architect transitions to `accepted` after operator
 unblocks Q1-Q5.
 
+## Design
+
+> Architect pass 2026-05-20. Operator unblocked Q1-Q5 via "Autoapprove
+> all" → analyst defaults; this Design section locks shapes the developer
+> needs before opening an editor. Anchor risk remains zero by
+> construction.
+
+### A1 — Sidebar divider: inline in `sidebar_nav::view`, no new widget
+
+The divider is a 6-line `Container { width=Fill, height=Fixed(1.0),
+background=BORDER_1 }` — identical construction to the existing
+right-edge hairline (`crates/ui/src/widgets/sidebar_nav.rs:116-122`).
+A separate `widgets::sidebar_divider.rs` would add a net-new module,
+import surface, and `mod.rs` entry for **one** call site (the sidebar
+itself). Inline keeps cyclomatic complexity in one file and matches the
+analyst's "recommended (cleaner)" framing.
+
+**Net-new file count: 5** (3 screens + 2 widgets — `strategy_card`,
+`settings_tabs`). Down from the analyst's optional 6th.
+
+### A2 — Group composition: `&[&[Screen]]` slice-of-slices
+
+New const in `crates/ui/src/theme.rs` next to `SIDEBAR_ENTRIES_PHASE_A`
+(line 719):
+
+```rust
+/// Phase C — three-group sidebar IA. `flatten()` over this slice must
+/// equal `SIDEBAR_ENTRIES_PHASE_A` (asserted by
+/// `sidebar_groups_phase_c__flatten_matches_phase_a` test).
+pub const SIDEBAR_GROUPS_PHASE_C: &[&[Screen]] = &[
+    &[Screen::Lab, Screen::Live, Screen::Compare],            // work
+    &[Screen::Strategies, Screen::Memory, Screen::Models, Screen::Trail], // library
+    &[Screen::Settings],                                       // chrome
+];
+```
+
+`sidebar_nav::view` accepts `groups: &[&[Screen]]` as a new parameter
+(additive). The existing `entries: &[Screen]` parameter is **kept** for
+one cycle as deprecated input (call sites that pass it auto-route to a
+single-group rendering for backwards-compat). Phase D removes the flat
+parameter once all call sites migrate.
+
+Alternative considered: flat slice + group-boundary indices. Rejected —
+boundary-index encoding is error-prone and requires runtime bounds
+checks; slice-of-slices is the iced-native shape.
+
+### A3 — Public `Message` surface: one new variant only
+
+```rust
+/// Wave D — Settings sub-tab switch. Pure assignment; no I/O.
+SwitchSettingsTab(SettingsTab),
+```
+
+R3.4 "Open in Lab" uses the existing two-message chain
+(`SwitchScreen(Screen::Lab)` + `SelectStrategy(id)`) dispatched from the
+binary's `Task::done` wrapper — same pattern as
+`home_strategies_row_cross_link.rs:48-56`. **No** `Message::OpenInLab`
+variant. The chain lives in the bin layer (`bin/cockpit.rs`,
+`bin/cockpit_live.rs`), not in `update`.
+
+Alternative considered: `Message::OpenInLab(StrategyId)`. Rejected — adds
+a second variant for a flow the precedent already covers in one message
+chain; constraint pins one max.
+
+### A4 — Deep-link tab pre-selection: extend the existing `SwitchScreen` arm
+
+R5.2 requires `Screen::Risk` / `Screen::Debug` / `Screen::Control` deep
+links to land the operator on the Settings screen with the matching tab
+pre-selected. Implementation: extend `update`'s `SwitchScreen` arm
+(`crates/ui/src/state.rs:1520-1522`):
+
+```rust
+Message::SwitchScreen(s) => {
+    model.current_screen = s;
+    // R5.2 deep-link: deprecated Risk/Debug/Control aliases pre-select
+    // the matching Settings tab on the way through.
+    #[allow(deprecated)]
+    match s {
+        Screen::Risk    => model.settings_active_tab = SettingsTab::Risk,
+        Screen::Control => model.settings_active_tab = SettingsTab::Control,
+        Screen::Debug   => model.settings_active_tab = SettingsTab::Debug,
+        _ => {}
+    }
+}
+```
+
+Side-effect colocated with the routing decision; no new message variant
+for the deep-link path. The shell match continues to route
+`Settings | Risk | Debug | Control` → `settings::view` — the body reads
+`model.settings_active_tab` to pick which sub-body to render.
+
+Alternative considered: a separate `Message::OpenSettingsTab(SettingsTab)`
+variant emitted from the bin's `SwitchScreen` interceptor. Rejected —
+splits one logical operator action across two messages and makes the
+single-message `cargo test --workspace --lib` round-trip harder.
+
+### A5 — `SettingsTab` enum shape
+
+New enum in `crates/ui/src/state.rs` adjacent to `Screen` (insert after
+the `Screen` enum at line 95):
+
+```rust
+/// Phase C — Settings rollup sub-tab selector. Renders the three
+/// existing screen bodies (Risk / Control / Debug) unchanged inside
+/// `screens::settings::view`. Cold-start default `Risk` per Q2a.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsTab {
+    /// Risk / limits (most-consulted) — `screens::risk::view`.
+    #[default]
+    Risk,
+    /// HumanControl (mode toggle + kill) — `screens::control::view`.
+    Control,
+    /// Operations chrome (latency, market health, server time, logs) —
+    /// `screens::debug::view`.
+    Debug,
+}
+```
+
+`Default::Risk` per Q2a. `Cockpit::settings_active_tab: SettingsTab`
+field added at line 745 (immediately after `current_screen`) so the
+struct stays grouped by feature.
+
+### A6 — Strategy status: literal "shipped" for every row at Phase C
+
+Per Q5a / R8.3b, the registry card status pill renders
+`STRATEGY_REGISTRY_STATUS_SHIPPED` for every `StrategyRow`. No
+`Cockpit::strategies_config.entries[*].status` field added; no
+`StrategyStatus::*` extension. Status discrimination
+(shipped/candidate/archived) is Phase D registry-content work.
+
+Implication: `STRATEGY_REGISTRY_STATUS_CANDIDATE` and
+`STRATEGY_REGISTRY_STATUS_ARCHIVED` constants from R7.2 still ship
+(unused) so Phase D's registry-content ticket has the copy ready —
+deprecation-attribute pattern follows `SETTINGS_PLACEHOLDER` precedent.
+
+### A7 — Live equity-curve: PanelState::Loading placeholder (no new state)
+
+`screens::live::view` renders the equity curve via the existing
+`widgets::equity_curve::view(series, mode)` but feeds it
+`&PanelState::Loading` — the widget's existing
+`empty_with_label(VIEWER_NO_EQUITY_DATA, mode)` arm
+(`equity_curve.rs:47`) is the placeholder. No new `Cockpit` field;
+no new subscription; no new periodic redraw. Phase F (or a sibling
+backend ticket) wires the live paper-session equity feed.
+
+**Message-type adapter.** `widgets::equity_curve::view` and
+`widgets::kpi_strip::view` return `Element<'_, ViewerMessage>` (verified
+at `equity_curve.rs:45` / `kpi_strip.rs:46`). The Live screen returns
+`Element<'_, Message>` — the gallery precedent at
+`crates/ui/src/gallery/routes.rs:533, 657` shows the
+`.map(|_| Message::ServerTimeTick(...))` adapter pattern. Live uses
+the same `.map(|_| <no-op msg>)` to bridge. **No new `Message` variant
+needed for the bridge.**
+
+### A8 — KPI strip: same Loading-placeholder treatment
+
+`widgets::kpi_strip::view(metrics, mode)` is fed
+`&PanelState::Loading` for the same reason — there is no
+`Cockpit::today_metrics: PanelState<BacktestMetrics>` field. The
+widget's `unavailable_strip(mode)` arm
+(`kpi_strip.rs:48-49`) is the placeholder surface. Wires up the day
+the paper-session metrics aggregator lands (Phase F sibling).
+
+### A9 — Live LLM-spend tile: text-only placeholder
+
+Per Q4b, the tile is a `Text::new(LIVE_LLM_SPEND_PLACEHOLDER)` cell
+sitting alongside the KPI strip. No `Cockpit::llm_spend_today` field;
+no LLM-budget-tracker subscription. Phase F wires the real spend
+source. Cost: one `pub const LIVE_LLM_SPEND_PLACEHOLDER: &str = "—";`
+in `strings.rs` (the `PLACEHOLDER_NONE` constant at line 719 may be
+reused if the analyst-suggested name is too narrow — developer picks).
+
+### A10 — `widgets::settings_tabs` shape
+
+Three-tab chrome strip. Reuses `widgets::frame::active_chip`
+(`frame.rs:238`) — same T1609 bottom-edge accent rule the
+`screens::strategies::view` chip row uses. Signature:
+
+```rust
+pub fn view(active: SettingsTab, mode: ThemeMode) -> Element<'_, Message>
+```
+
+Renders three buttons in a `Row` with `space::M` spacing; each carries
+`Message::SwitchSettingsTab(<tab>)`. **No new Lumen tokens.**
+Snapshot tests pin each active state.
+
+### A11 — `widgets::strategy_card` shape
+
+Tier-2 surface card composing existing primitives. Signature:
+
+```rust
+pub fn view<'a>(
+    row: &'a StrategyRow,
+    config: Option<&'a StrategyConfigEntry>,  // universe / params lookup
+    last_anchor: Option<(&'a str, &'a str)>,  // (scenario_name, sha256_prefix)
+    last_run_ts: Option<Timestamp>,
+    mode: ThemeMode,
+) -> Element<'a, Message>
+```
+
+Composition (top → bottom inside `frame::panel`):
+- Header row: ID + display name + status pill (`STRATEGY_REGISTRY_STATUS_SHIPPED`).
+- Universe line: `STRATEGY_REGISTRY_UNIVERSE_PREFIX` + truncated symbols.
+- Anchor line: `STRATEGY_REGISTRY_LAST_ANCHOR_PREFIX` + scenario + sha7.
+- Run line: `STRATEGY_REGISTRY_LAST_RUN_PREFIX` + relative timestamp
+  (`Cockpit::strategies_recent_events` newest `Run` event for this
+  `strategy_id`).
+- Footer button: `STRATEGY_REGISTRY_OPEN_IN_LAB_LABEL` →
+  `Message::SelectStrategy(row.id.clone())` (the bin layer chains
+  `Message::SwitchScreen(Screen::Lab)` via `Task::done` — A3 precedent).
+
+**No new Lumen tokens.** Last-anchor lookup is a constant-time map
+read keyed by `StrategyId` from `spec/anchors.toml` data already
+loaded at boot (or `None` if no anchor recorded — render
+`PLACEHOLDER_NONE`).
+
+### A12 — Compat-shim discipline (R5)
+
+Six `#[deprecated]` `Screen::*` variants stay for one cycle (Q1a).
+Phase D's prune ticket starts from the deprecated-variant census
+(currently ~30 references in 8 test files + ~47 elsewhere per analyst
+M0 audit — total ~77 workspace-wide). Phase C's M-FINAL gate writes
+the census number into the test report so Phase D has a hard target.
+
+**No new `#[deprecated]` markers added at Phase C.** The
+`SETTINGS_PLACEHOLDER` constant (`strings.rs:258`) is the one existing
+deprecation that Phase C's body wiring obsoletes — it gains a
+`#[deprecated(since = "0.3.0", note = "Settings now renders the rollup body")]`
+attribute in Wave E. Phase D removes the constant entirely.
+
+### Net-new file inventory (final, post-A1)
+
+1. `crates/ui/src/screens/live.rs` (Wave B)
+2. `crates/ui/src/screens/strategy_registry.rs` (Wave C)
+3. `crates/ui/src/screens/settings.rs` (Wave D)
+4. `crates/ui/src/widgets/strategy_card.rs` (Wave C)
+5. `crates/ui/src/widgets/settings_tabs.rs` (Wave D)
+
+**No** `crates/ui/src/widgets/sidebar_divider.rs` (inlined per A1).
+
+### Existing files modified
+
+- `crates/ui/src/widgets/sidebar_nav.rs` — Wave A: `view` learns
+  `groups: &[&[Screen]]` parameter; inline divider rendering between
+  groups. Existing `entries: &[Screen]` parameter retained for compat.
+- `crates/ui/src/shell.rs` — Wave B/C/D: `screen_body` match arms
+  rewritten (lines 82-95 in current source); `Screen::Settings` /
+  `Risk` / `Debug` / `Control` route to `settings::view`;
+  `Screen::Live` / `Home` route to `live::view`;
+  `Screen::Strategies` routes to `strategy_registry::view`.
+- `crates/ui/src/screens/mod.rs` — Wave B/C/D: three new `pub mod`
+  declarations (`live`, `strategy_registry`, `settings`).
+- `crates/ui/src/state.rs` — Wave E: `SettingsTab` enum at line 96
+  (after `Screen`); `Cockpit::settings_active_tab` field at line 745
+  (after `current_screen`); `Message::SwitchSettingsTab` variant at
+  line ~1146 (next to `SwitchScreen`); `update` arm at line 1520
+  extended with deep-link pre-selection per A4.
+- `crates/ui/src/strings.rs` — Wave E: ~15 new constants per R7.2;
+  `SETTINGS_PLACEHOLDER` gains `#[deprecated]` attribute.
+- `crates/ui/src/theme.rs` — Wave A: `SIDEBAR_GROUPS_PHASE_C` const at
+  line 729 (after `SIDEBAR_ENTRIES_PHASE_A`).
+
+### Sequencing constraints
+
+- **Wave E lands first** (state + strings table changes). Waves A-D
+  reference those symbols.
+- **Wave A** (sidebar) is independent of B/C/D — can land in parallel
+  with E.
+- **Wave B/C/D** depend on Wave E only (specifically the
+  `SettingsTab` enum + `Cockpit::settings_active_tab` field +
+  `Message::SwitchSettingsTab` variant + new strings).
+- **Wave F** (test-migration audit) is the last gate — runs after all
+  code waves to capture the post-flip deprecated-variant census.
+
+### Compat / deprecation gates
+
+- `cargo clippy --workspace -- -D warnings` exit 0 — Phase C **must
+  not** introduce new `Screen::Home/Charts/Audit/Risk/Debug/Control`
+  references in net-new code. The deprecation warning is the canary.
+  Test files keep their existing refs (R5.3 explicit exception).
+- `#[allow(deprecated)]` is acceptable in `update` (already present at
+  line 76 of `shell.rs` and required for the deep-link pre-select
+  match arm) — but **not** in net-new code.
+
+### Snapshot baseline plan
+
+| Snapshot                                          | Owner test file              | Source row |
+|---------------------------------------------------|------------------------------|------------|
+| `sidebar_nav__phase_c_three_groups`               | `widgets/sidebar_nav.rs#mod tests` | R1.5 |
+| `sidebar__phase_a_workflow_group` (kept or `.snap.disabled`) | `widgets/sidebar_nav.rs#mod tests` | R1.6 |
+| `live_snapshot__steady_state`                     | `tests/panel_snapshots.rs` (new mod block) | R2.6 |
+| `strategy_registry_snapshot__empty`               | `tests/panel_snapshots.rs` (new mod block) | R3.8 |
+| `strategy_registry_snapshot__three_strategies`    | `tests/panel_snapshots.rs` (new mod block) | R3.8 |
+| `settings_snapshot__risk_tab_active`              | `tests/panel_snapshots.rs` (new mod block) | R4.6 |
+| `settings_snapshot__control_tab_active`           | `tests/panel_snapshots.rs` (new mod block) | R4.6 |
+| `settings_snapshot__debug_tab_active`             | `tests/panel_snapshots.rs` (new mod block) | R4.6 |
+
+Tester decides whether `sidebar__phase_a_workflow_group` migrates to
+`.snap.disabled` or stays green (R1.6). The Phase A flat-group test
+should stay green because Wave A is **additive** — the sidebar still
+accepts the flat `entries: &[Screen]` parameter and renders identically
+when the `groups` parameter is omitted.
+
 ## Changelog
 
 - 2026-05-20 (orchestrator): promoted from dev-note §6 Phase C to
@@ -773,3 +1076,12 @@ unblocks Q1-Q5.
   with analyst defaults; K1-K6 risk register and H1-H5 hypothesis
   register populated; tasks.md M0 + M-FINAL gates refined. Five Qs
   blocked on operator before architect spawn.
+- 2026-05-20 (operator): "Autoapprove all" — Q1a / Q2a / Q3a / Q4b /
+  Q5a locked. Architect unblocked.
+- 2026-05-20 (architect): M-T1 decomposition — Design § A1-A12 added
+  with file:line anchors; 18 `T-D-N` rows seeded across Waves A-F in
+  tasks.md; net-new file count locked at 5 (sidebar divider inlined per
+  A1); one new public Message variant only (`SwitchSettingsTab`); deep-
+  link tab pre-selection colocated in the existing `SwitchScreen` arm
+  per A4. Trace row → `accepted`. Status frontmatter → `accepted` /
+  owner → architect.

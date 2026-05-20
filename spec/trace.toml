@@ -712,13 +712,14 @@ title       = "UI rethink Phase C — sidebar IA flip + Live screen + Strategy r
 feature     = "ui-rethink-phase-c-sidebar-ia"
 product     = "spec/product.md"
 arch        = [
-  "spec/ui-rethink-phase-c-sidebar-ia/feature.md",
-  "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase C sequencing source-of-truth + §3 IA
+  "spec/ui-rethink-phase-c-sidebar-ia/feature.md",         # R1-R10 contract + Design § A1-A12 (architect M-T1)
+  "spec/ui-rethink-phase-c-sidebar-ia/tasks.md",           # Waves A-F + T-D-N01-N25 (architect M-T1)
+  "spec/dev-notes/ui-rethink-2026-05-17.md",               # §6 Phase C sequencing source-of-truth + §3 IA + §J6 Live sketch
 ]
 crates      = ["crates/ui"]
-tests       = []   # analyst-pass stub; populate at architect M-T1
+tests       = []   # populate at M-FINAL (snapshot baselines + cockpit-smoke)
 anchors     = []   # Phase C touches no strategy/audit/exec/report path; 22 originals stay byte-identical (R10.1)
-state       = "proposed"
+state       = "accepted"
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
