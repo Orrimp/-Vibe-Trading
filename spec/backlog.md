@@ -422,7 +422,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   Phase 2 reserved the right-rail column-track in the shell grid
   at `Length::Fixed(0.0)`; the actual Phase 6 brief lands when v2
   LLM is approved. Until then, no analyst spawn. Stub at
-  [`features/lumen-phase-6-assistant-slot.md`](features/lumen-phase-6-assistant-slot.md).
+  [`features/lumen-phase-6-assistant-slot.md`](lumen-design-adoption/phase-6-assistant-slot/feature.md).
   _(Phases 1–5 of the lumen-design-adoption initiative are shipped
   and live in the Recent section; this Queue entry is the only
   remaining initiative work, gated on v2 LLM.)_
@@ -1240,7 +1240,7 @@ of which became skill-plumbing fixes that shipped in commit
   (first-pass FAIL on fmt drift) and
   [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
   (second-pass PASS); brief at
-  [`features/lumen-phase-5-humancontrol-agentfeed.md`](features/lumen-phase-5-humancontrol-agentfeed.md)
+  [`features/lumen-phase-5-humancontrol-agentfeed.md`](lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md)
   (status: `shipped`); presenter deck at
   [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   **First phase to ship net-new operator-write surfaces since v0**:
@@ -1279,7 +1279,7 @@ of which became skill-plumbing fixes that shipped in commit
   (first-pass FAIL on `clippy::match_same_arms`) and
   [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
   (second-pass PASS); brief at
-  [`features/lumen-phase-4-backtest-panel.md`](features/lumen-phase-4-backtest-panel.md)
+  [`features/lumen-phase-4-backtest-panel.md`](lumen-design-adoption/phase-4-backtest-panel/feature.md)
   (status: `shipped`); presenter deck at
   [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds the new `viewer` binary at `crates/ui/src/bin/viewer.rs`
@@ -1312,7 +1312,7 @@ of which became skill-plumbing fixes that shipped in commit
   2026-05-06). Tester report at
   [`spec/lumen-design-adoption/phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md`](lumen-design-adoption/phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md);
   brief at
-  [`features/lumen-phase-3-detail-screens.md`](features/lumen-phase-3-detail-screens.md)
+  [`features/lumen-phase-3-detail-screens.md`](lumen-design-adoption/phase-3-detail-screens/feature.md)
   (status: `shipped`); presenter deck at
   [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds Strategies / Risk / Audit sidebar entries (3 → 6) + per-screen
@@ -1342,7 +1342,7 @@ of which became skill-plumbing fixes that shipped in commit
   Tester first-pass `VERDICT → PASS`; report at
   [`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md).
   Brief at
-  [`features/lumen-phase-2-shell-ia-charts.md`](features/lumen-phase-2-shell-ia-charts.md)
+  [`features/lumen-phase-2-shell-ia-charts.md`](lumen-design-adoption/phase-2-shell-ia-charts/feature.md)
   (status: `shipped`). Presenter deck approved by operator at
   [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md).
   Adds left-sidebar shell (fixed 180 px, T1507-styled, no icons),
@@ -1372,7 +1372,7 @@ of which became skill-plumbing fixes that shipped in commit
   shipped 2026-05-04. Tester third-pass `VERDICT → PASS`; report at
   [`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md).
   Brief at
-  [`features/lumen-phase-1-foundation.md`](features/lumen-phase-1-foundation.md)
+  [`features/lumen-phase-1-foundation.md`](lumen-design-adoption/phase-1-foundation/feature.md)
   (status: `shipped`). Replaced the 12-token theme with the full
   Lumen palette (warm + cool neutrals, accent ramp, sage / clay /
   warn / info semantics, both light and dark modes); added Tier
@@ -1396,7 +1396,7 @@ of which became skill-plumbing fixes that shipped in commit
   roadmap revision (4 → 6 phases).
 - **v1.5b multi-venue + 1s aggregated trades** — shipped 2026-05-03.
   Brief at
-  [`features/v1-5b-multi-venue.md`](features/v1-5b-multi-venue.md).
+  [`features/v1-5b-multi-venue.md`](v1-5b-multi-venue/feature.md).
   Coinbase + Kraken adapters, USDC pair mirror set (10 symbols),
   T612 multi-symbol live `BinanceFeed`, 1 s aggregated trades,
   `Venue` enum on `Tick` / `Bar`, per-venue feed-reconnect
@@ -1672,17 +1672,17 @@ of which became skill-plumbing fixes that shipped in commit
   live-cockpit-unified to Active.
 - 2026-05-01 (analyst): live-cockpit-unified Active line updated to
   reference the just-written
-  [`features/live-cockpit-unified.md`](features/live-cockpit-unified.md)
+  [`features/live-cockpit-unified.md`](live-cockpit-unified/feature.md)
   brief.
 - 2026-05-02 (analyst): promoted "Real mark-to-market unrealized P&L"
   from Queue → Active. Brief at
-  [`features/real-mtm-unrealized-pnl.md`](features/real-mtm-unrealized-pnl.md);
+  [`features/real-mtm-unrealized-pnl.md`](real-mtm-unrealized-pnl/feature.md);
   HANDOFF → architect.
 - 2026-05-02 (analyst): promoted "R10 follow-up:
   per-symbol-position-accounts" from the implicit Queue (deferral
   note in `real-mtm-unrealized-pnl.md` Design § Q3 / R10 verdict) →
   Active. Brief at
-  [`features/per-symbol-position-accounts.md`](features/per-symbol-position-accounts.md);
+  [`features/per-symbol-position-accounts.md`](per-symbol-position-accounts/feature.md);
   HANDOFF → architect.
 - 2026-05-03 (orchestrator): new UI / cockpit subsection. Added
   `tape-row-audit-modal` per operator decision on UI principles Q4
@@ -1690,7 +1690,7 @@ of which became skill-plumbing fixes that shipped in commit
   → developer pipeline standard.
 - 2026-05-03 (analyst): promoted `tape-row-audit-modal` from Queue
   (UI / cockpit) → Active. Brief at
-  [`features/tape-row-audit-modal.md`](features/tape-row-audit-modal.md).
+  [`features/tape-row-audit-modal.md`](tape-row-audit-modal/feature.md).
   First feature to land against
   [`ui-design-principles.md`](ui-design-principles.md) (the "Show
   the why" cockpit click-through-to-audit path begins here). 15
@@ -1700,9 +1700,9 @@ of which became skill-plumbing fixes that shipped in commit
   been removed; future UI additions will recreate it.
 - 2026-05-03 (analyst): added `journal-transactions-metadata` to
   Active. Brief at
-  [`features/journal-transactions-metadata.md`](features/journal-transactions-metadata.md).
+  [`features/journal-transactions-metadata.md`](journal-transactions-metadata/feature.md).
   Closes the T1206 deviation note in the just-shipped
-  [`features/tape-row-audit-modal.md`](features/tape-row-audit-modal.md)
+  [`features/tape-row-audit-modal.md`](tape-row-audit-modal/feature.md)
   (Implementation § Async dispatch, lines 625–635) — live cockpit's
   modal header is empty because T1202's reader stays narrow
   (entries-only). New sibling reader + `core::JournalTransactionMetadata`
@@ -1711,7 +1711,7 @@ of which became skill-plumbing fixes that shipped in commit
   read-only). HANDOFF → architect.
 - 2026-05-03 (analyst): promoted `v1.5b multi-venue + 1s aggregated
   trades` from Queue (Strategy) → Active. Brief at
-  [`features/v1-5b-multi-venue.md`](features/v1-5b-multi-venue.md).
+  [`features/v1-5b-multi-venue.md`](v1-5b-multi-venue/feature.md).
   **Largest queued backend feature.** Coinbase + Kraken adapters,
   USDC pair mirror set (10 symbols), T612 multi-symbol live
   `BinanceFeed` (the v1 closeout deferral lands here), 1s
@@ -1729,9 +1729,9 @@ of which became skill-plumbing fixes that shipped in commit
 - 2026-05-03 (analyst): `v1.5b multi-venue + 1s aggregated
   trades` shipped (verdict PASS, presenter approved). Moved
   Active → Recent. Promoted the
-  [`lumen-design-adoption`](features/lumen-design-adoption.md)
+  [`lumen-design-adoption`](lumen-design-adoption/feature.md)
   master roadmap + the
-  [`lumen-phase-1-foundation`](features/lumen-phase-1-foundation.md)
+  [`lumen-phase-1-foundation`](lumen-design-adoption/phase-1-foundation/feature.md)
   first-phase brief to Active. Master roadmap covers the 4-phase
   Lumen design-system adoption: Phase 1 Foundation (Active —
   tokens + tiers + status bar + principles supersede), Phase 2

@@ -1334,9 +1334,9 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
     report bodies — out of Phase 5 scope by construction).
   - _ticked 2026-05-07 (tester, second pass)._
   - **Closing block (tester second-pass PASS):**
-    - **Report:** [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
+    - **Report:** [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
       (first-pass FAIL preserved on disk at
-      [`test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md`](../reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md)
+      [`test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md`](reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md)
       for audit; `b` suffix per Phase 1 third-pass / Phase 4
       second-pass precedent).
     - **Eight gate results (inline):**

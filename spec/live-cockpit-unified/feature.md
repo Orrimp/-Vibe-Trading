@@ -930,7 +930,7 @@ This subsection enumerates which agent producers must be wired so
 finding #1 closes. Match against the
 [bus.rs publisher API](../../crates/agent/src/bus.rs) (lines
 116–166) and the
-[dev-week2-broadcast-api](../reports/dev-week2-broadcast-api-2026-04-18.md)
+[dev-week2-broadcast-api](../v0-paper-sma/reports/dev-week2-broadcast-api-2026-04-18.md)
 six-channel spec.
 
 | Channel | Producer (today) | Producer (after this feature) | Task |

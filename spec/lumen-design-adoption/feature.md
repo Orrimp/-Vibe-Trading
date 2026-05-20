@@ -148,7 +148,7 @@ operator-pre-decided constraints.
 **Status: Shipped 2026-05-04.** Tester third-pass `VERDICT → PASS` —
 all 8 gates green; `T_FINAL_LUMEN_PHASE_1` ratified; brief
 frontmatter bumped to `shipped`. Report at
-[`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](../reports/test-2026-05-04c-lumen-phase-1-foundation.md).
+[`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md).
 Scope:
 
 - Replace the 12-token palette in
@@ -361,7 +361,7 @@ metrics; the body-SHA hash is unchanged.
 
 **Status: Shipped 2026-05-07** (tester second-pass `VERDICT → PASS`,
 operator-approved 2026-05-08). Reports at
-[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md).
+[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md).
 Brief frontmatter bumped to `shipped`. **First phase to ship net-new
 operator-write surfaces since v0**: HumanControl panel (execution-
 mode toggle + limits + kill bottom action) on a new "Control"
@@ -1165,11 +1165,11 @@ initiative absent v2 LLM.**
 
 | Phase | Status | Shipped | Approval | Tester report |
 |---|---|---|---|---|
-| 1 — Foundation | ✅ Shipped | 2026-05-04 | 2026-05-04 | [`test-2026-05-04c-lumen-phase-1-foundation.md`](../reports/test-2026-05-04c-lumen-phase-1-foundation.md) |
-| 2 — Shell IA + Charts | ✅ Shipped | 2026-05-05 | 2026-05-05 | [`test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](../reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md) |
-| 3 — Detail screens | ✅ Shipped | 2026-05-05 | 2026-05-06 | [`test-2026-05-05-lumen-phase-3-detail-screens.md`](../reports/test-2026-05-05-lumen-phase-3-detail-screens.md) |
-| 4 — Backtest panel | ✅ Shipped | 2026-05-06 | 2026-05-06 | [`test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md) |
-| 5 — HumanControl + AgentFeed | ✅ Shipped | 2026-05-07 | 2026-05-08 | [`test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md) |
+| 1 — Foundation | ✅ Shipped | 2026-05-04 | 2026-05-04 | [`test-2026-05-04c-lumen-phase-1-foundation.md`](phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md) |
+| 2 — Shell IA + Charts | ✅ Shipped | 2026-05-05 | 2026-05-05 | [`test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md) |
+| 3 — Detail screens | ✅ Shipped | 2026-05-05 | 2026-05-06 | [`test-2026-05-05-lumen-phase-3-detail-screens.md`](phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md) |
+| 4 — Backtest panel | ✅ Shipped | 2026-05-06 | 2026-05-06 | [`test-2026-05-06b-lumen-phase-4-backtest-panel.md`](phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md) |
+| 5 — HumanControl + AgentFeed | ✅ Shipped | 2026-05-07 | 2026-05-08 | [`test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md) |
 | 6 — Assistant slot | _Reserved_ | _gated on v2 LLM_ | — | — |
 
 **Cumulative numbers as of Phase 5 ship:** 896 tests passed across

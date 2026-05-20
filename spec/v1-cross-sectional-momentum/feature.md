@@ -67,7 +67,7 @@ Numbered, testable, derived from
 [product.md → Universe & data fidelity ladder](../product.md#universe--data-fidelity-ladder),
 [architecture.md → Strategy registry & hot-loading](../architecture.md#strategy-registry--hot-loading),
 and the v0 + v0.5 ship state in
-[spec/v0-paper-sma/reports/screenshots/README.md](../reports/screenshots/v0-paper-sma/README.md).
+[spec/v0-paper-sma/reports/screenshots/README.md](../v0-paper-sma/reports/screenshots/README.md).
 Each ends with a one-line **acceptance** the tester can verify. All
 requirements preserve the v0 `Strategy` trait shape (no trait changes)
 and the v0.5 audit / broadcast / strategies-panel surfaces (no schema
@@ -454,7 +454,7 @@ changes).
   continue to run unchanged and produce **byte-identical reports**
   — anchor SHA `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c`
   for the v0 sma-cross run per
-  [spec/v0-paper-sma/reports/screenshots/README.md](../reports/screenshots/v0-paper-sma/README.md)
+  [spec/v0-paper-sma/reports/screenshots/README.md](../v0-paper-sma/reports/screenshots/README.md)
   must not move.
 - **R9.5** The backtest's `MatchingEngine` (v0 `PaperEngine` —
   bps slippage + taker fee + bar-VWAP, ChaCha20Rng-seeded) is
@@ -1439,7 +1439,7 @@ Reports written to:
 | `cargo test -p audit` | PASS |
 | `cargo build --workspace --release` | PASS — 13s |
 
-Closeout notes: [spec/v1-cross-sectional-momentum/reports/dev-v1-closeout-notes-2026-04-29.md](../reports/dev-v1-closeout-notes-2026-04-29.md)
+Closeout notes: [spec/v1-cross-sectional-momentum/reports/dev-v1-closeout-notes-2026-04-29.md](reports/dev-v1-closeout-notes-2026-04-29.md)
 
 ### v1 funding-poller close (T613 + T614 + T_FINAL_A_v1)
 
@@ -1589,7 +1589,7 @@ requirements is explicit so the tester's report can cross-reference.
     by the operator (capture screenshot under
     `spec/<slug>/reports/screenshots/v1-cross-sectional-momentum/` per
     the v0 pattern in
-    [spec/v0-paper-sma/reports/screenshots/README.md](../reports/screenshots/v0-paper-sma/README.md)).
+    [spec/v0-paper-sma/reports/screenshots/README.md](../v0-paper-sma/reports/screenshots/README.md)).
   - Strategies panel (v0.5 R5) shows one row for the v1 strategy;
     `Holds position = yes`; `Signals / 60s = 3` immediately after
     a rebalance bar.
@@ -1597,7 +1597,7 @@ requirements is explicit so the tester's report can cross-reference.
   pass at the locked anchor hashes. Specifically:
   - `btc-2023-1m-sma-cross` body-SHA256 stays at
     `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c`
-    per [v0 ship reference](../reports/screenshots/v0-paper-sma/README.md).
+    per [v0 ship reference](../v0-paper-sma/reports/screenshots/README.md).
   - `btc-2023-1m-sma-baseline-refresh` matches the same anchor
     (it's the same code path).
   - `btc-2023-1m-macd-trend`, `btc-2023-1m-rsi-reversion`,
@@ -1649,11 +1649,11 @@ is fixtures + smoke + snapshot only.
   v0/v0.5 fixtures are untouched and still callable from tests.
 - **T_FINAL_B_v1** — V8 smoke. Appended `## v1 — multi-symbol
   positions smoke` to
-  [`spec/v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md`](../reports/ui-week2-smoke-checklist-2026-04-18.md);
+  [`spec/v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md`](../v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md);
   added the new snapshot test
   `panel_snapshots__positions_v1_three_rows` that pins the
   three-row layout and the per-row color tokens; updated
-  [`screenshots/v0-paper-sma/README.md` §4.2](../reports/screenshots/v0-paper-sma/README.md#42-positions--open-positions)
+  [`screenshots/v0-paper-sma/README.md` §4.2](../v0-paper-sma/reports/screenshots/README.md#42-positions--open-positions)
   to note the v1 up-to-3-rows steady state; queued the deferred
   PNG `screenshot-v1-positions-three-rows.png` for the operator
   capture.

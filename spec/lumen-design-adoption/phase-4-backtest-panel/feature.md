@@ -251,7 +251,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   non-existent path → exit code 3.
 - **R1.3** Window title `"Backtest report — <scenario>"` —
   `<scenario>` from the report's front-matter at
-  [sample report line 2](../reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md).
+  [sample report line 2](../../v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md).
   Master Constraint 1 — **no `"Lumen"`** in the title.
 - **R1.4** Window 1200 × 800 initial; resizable. Tier 0
   `CANVAS` outside panel; Tier 1 `PANEL` inside report shell.
@@ -303,7 +303,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   no `f64`. `Decimal::from_str` only.
 - **R3.4** Existing-report compatibility — all 11 anchored
   reports parse without modification (sample summary table at
-  [RSI report lines 22–41](../reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md)).
+  [RSI report lines 22–41](../../v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md)).
 - **R3.5** Missing-field tolerance — older reports without
   CAGR → `Ok(BacktestMetrics { cagr_pct: Decimal::ZERO,
   cagr_present: false, … })` so the strip renders `—` per

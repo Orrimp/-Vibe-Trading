@@ -937,7 +937,7 @@ for the full message types + channel additions. Summary:
   `strategy_error` broadcast channels (capacity 32 each).
 - Backpressure: `RecvError::Lagged(n)` → log-and-continue in the UI
   subscriber, identical to existing v0 pattern per
-  [dev-week2-broadcast-api-2026-04-18.md](../reports/dev-week2-broadcast-api-2026-04-18.md).
+  [dev-week2-broadcast-api-2026-04-18.md](../v0-paper-sma/reports/dev-week2-broadcast-api-2026-04-18.md).
 - `RecvError::Closed` → UI flips the Strategies panel into
   `PanelState::Error(STRATEGIES_CONNECTION_CLOSED)`.
 
@@ -1215,7 +1215,7 @@ _developer fills this during build._
 _Partial fill by ui-designer (2026-04-19). T522–T525 + T527 + T528 landed
 against `trading_core`'s v0.5 types (T501). T526 (live subscribers) and
 T_FINAL_B (smoke extension) remain blocked on developer T512 — see
-[ui-v05-blockers-2026-04-19.md](../reports/ui-v05-blockers-2026-04-19.md)._
+[ui-v05-blockers-2026-04-19.md](reports/ui-v05-blockers-2026-04-19.md)._
 
 ### Panel landed — strategies
 
@@ -1305,7 +1305,7 @@ Expected counts — non-zero on either would be a fail.
   run --bin cockpit --features fixtures` once T526 lands and
   `--features live` can drive a replay swap. Manual smoke checklist
   entry to be appended to
-  [ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md)
+  [ui-week2-smoke-checklist-2026-04-18.md](../v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md)
   at T_FINAL_B time.
 
 ### Test counts (after T522–T525 + T527 + T528)
@@ -1375,13 +1375,13 @@ Developer T_FINAL_A landed the four v0.5 backtest reports under
 
 With those in place the smoke-checklist extension is now authored and
 committed at
-[ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md)
+[ui-week2-smoke-checklist-2026-04-18.md](../v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md)
 — new `## v0.5 — strategies panel smoke + hot-swap drill` section
 covering:
 
 - Four-state fixtures walkthrough (loading / empty / error / ready) that
   points the operator at section 4.5 of
-  [screenshots/v0-paper-sma/README.md](../reports/screenshots/v0-paper-sma/README.md#45-strategies--loaded-strategies--swap-log)
+  [screenshots/v0-paper-sma/README.md](../v0-paper-sma/reports/screenshots/README.md#45-strategies--loaded-strategies--swap-log)
   as the visual contract (T528 output).
 - **R7 hot-swap observation drill** — operator boots agent + cockpit
   against `--features live`, edits `config/strategies/btc_macd_trend.toml`
@@ -1449,7 +1449,7 @@ feature-gated live tests: 32 lib + 2 consistency + 6 live_subscription
   layout wiring, screenshots README row). Zero new theme tokens; zero
   inline strings / hex (consistency audit green). T526 + T_FINAL_B deferred
   pending developer T512 — blocker writeup at
-  [ui-v05-blockers-2026-04-19.md](../reports/ui-v05-blockers-2026-04-19.md).
+  [ui-v05-blockers-2026-04-19.md](reports/ui-v05-blockers-2026-04-19.md).
   via [spec/v05-composed-strategies/tasks.md](../tasks/v05-composed-strategies.md).
 - 2026-04-19 (ui-designer, resume): T512 landed; T526 closed out. Three
   `ui::live` subscribers (`stream_strategy_loaded` / `_swapped` / `_error`)
@@ -1462,10 +1462,10 @@ feature-gated live tests: 32 lib + 2 consistency + 6 live_subscription
   checklist cannot be finalised against a live event stream.
 - 2026-04-19 (ui-designer, T_FINAL_B resume): developer T_FINAL_A landed
   the four v0.5 backtest reports; T_FINAL_B closed. Smoke checklist
-  [ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md)
+  [ui-week2-smoke-checklist-2026-04-18.md](../v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md)
   gained a `## v0.5 — strategies panel smoke + hot-swap drill` section
   (four-state fixtures walkthrough pointing at
-  [`screenshots/v0-paper-sma/README.md` §4.5](../reports/screenshots/v0-paper-sma/README.md#45-strategies--loaded-strategies--swap-log),
+  [`screenshots/v0-paper-sma/README.md` §4.5](../v0-paper-sma/reports/screenshots/README.md#45-strategies--loaded-strategies--swap-log),
   R7 hot-swap live drill, R8 invalid-config drill, five deferred PNG
   entries, acceptance checklist). Tasks file ticks T_FINAL_B `[x]`;
   frontmatter status already `shipped` from developer T_FINAL_A. No

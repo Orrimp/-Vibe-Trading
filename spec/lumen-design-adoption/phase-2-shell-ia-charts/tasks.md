@@ -818,7 +818,7 @@ reviews the diff in one pass.
     site → developer; structural regressions → architect.
   - _ticked 2026-05-05 (tester)._
     - Report:
-      [`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](../reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md)
+      [`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md)
       — `VERDICT → PASS`, all 8 gates green.
     - **Gate 1 — Honest-tick audit:** PASS — T1601–T1616 each carry
       file:line + test cmd + output; T1613 visual-diff attestation

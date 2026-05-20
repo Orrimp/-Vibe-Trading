@@ -347,7 +347,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   `btc-2023-1m-sma-baseline-refresh`, `btc-2023-1m-macd-trend`,
   `btc-2023-1m-rsi-reversion`, `btc-2023-1m-bbands-mean-revert`)
   through the v1-extended workspace. Body-SHA256s must match the
-  locked anchors per V9 / [v0 README §3](../reports/screenshots/v0-paper-sma/README.md#3-canonical-backtest-runs). —
+  locked anchors per V9 / [v0 README §3](../v0-paper-sma/reports/screenshots/README.md#3-canonical-backtest-runs). —
   _acceptance: all five v0/v0.5 reports produce byte-identical bodies
   to their locked anchors:
   `btc-2023-1m-sma-cross` =
@@ -421,7 +421,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
     `spec/<slug>/reports/screenshots/v1-cross-sectional-momentum/`
     (sibling to the v0 dir per the v0 README pattern), or — if
     architect agrees — a single row appended to the existing
-    [v0 README §3](../reports/screenshots/v0-paper-sma/README.md#3-canonical-backtest-runs)
+    [v0 README §3](../v0-paper-sma/reports/screenshots/README.md#3-canonical-backtest-runs)
     table linking the new v1 reports.
   - Strategies panel (v0.5) shows one row for `top10_momentum_h1`;
     `Holds position = yes`; `Signals / 60s` non-zero immediately

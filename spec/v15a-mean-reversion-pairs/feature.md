@@ -1871,7 +1871,7 @@ requirements above.
   exercising both new v1.5a `StrategyEventKind` variants.
 - T_FINAL_B_v15a: smoke section `## v1.5a — pairs strategy smoke`
   appended to
-  [spec/v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md);
+  [spec/v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md](../v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md);
   new multi-pair snapshot test
   `panel_snapshots__cockpit_v15a_pairs_steady_state` in
   `crates/ui/tests/panel_snapshots.rs`; screenshots README §3

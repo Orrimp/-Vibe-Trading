@@ -107,14 +107,14 @@ status bar at the bottom of the shell.
 
 ### Tester report
 
-[`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](../reports/test-2026-05-04c-lumen-phase-1-foundation.md)
+[`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](../phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md)
 (third-pass PASS). First two FAIL reports preserved on disk:
-[`-04b…md`](../reports/test-2026-05-04b-lumen-phase-1-foundation.md)
+[`-04b…md`](../phase-1-foundation/reports/test-2026-05-04b-lumen-phase-1-foundation.md)
 + second FAIL preserved in git history.
 
 ### Screenshots
 
-[`spec/lumen-design-adoption/phase-1-foundation/reports/screenshots/README.md`](../reports/screenshots/lumen-phase-1-foundation/README.md)
+[`spec/lumen-design-adoption/phase-1-foundation/reports/screenshots/README.md`](../phase-1-foundation/reports/screenshots/README.md)
 — operator-runnable capture commands for `cockpit-fixtures.png` and
 `cockpit-live.png`. (Sandbox lacked screen-recording permission;
 captures pending operator.)
@@ -173,11 +173,11 @@ surfaced at the 2026-05-04 session.
 
 ### Tester report
 
-[`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](../reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md)
+[`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](../phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md)
 
 ### Screenshots
 
-[`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/screenshots/README.md`](../reports/screenshots/lumen-phase-2-shell-ia-charts/README.md)
+[`spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/screenshots/README.md`](../phase-2-shell-ia-charts/reports/screenshots/README.md)
 — 4 capture commands (`cockpit-home`, `cockpit-debug`,
 `cockpit-charts-with-markers`, `cockpit-live-home`).
 
@@ -235,11 +235,11 @@ and 250-row pagination.
 
 ### Tester report
 
-[`spec/lumen-design-adoption/phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md`](../reports/test-2026-05-05-lumen-phase-3-detail-screens.md)
+[`spec/lumen-design-adoption/phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md`](../phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md)
 
 ### Screenshots
 
-[`spec/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/README.md`](../reports/screenshots/lumen-phase-3-detail-screens/README.md)
+[`spec/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/README.md`](../phase-3-detail-screens/reports/screenshots/README.md)
 — 4 capture commands (`cockpit-strategies`, `cockpit-risk`,
 `cockpit-audit`, `cockpit-live-six-entries`).
 
@@ -301,13 +301,13 @@ shared `core::EquitySeries` primitive.
 
 ### Tester reports
 
-[`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
+[`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
 (second-pass PASS). First-pass FAIL preserved at
-[`-2026-05-06-…md`](../reports/test-2026-05-06-lumen-phase-4-backtest-panel.md).
+[`-2026-05-06-…md`](../phase-4-backtest-panel/reports/test-2026-05-06-lumen-phase-4-backtest-panel.md).
 
 ### Screenshots
 
-[`spec/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/README.md`](../reports/screenshots/lumen-phase-4-backtest-panel/README.md)
+[`spec/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/README.md`](../phase-4-backtest-panel/reports/screenshots/README.md)
 — 4 capture commands (`viewer-full-report`, `viewer-drawdown`,
 `cockpit-strategies-sparkline`, `cockpit-live-strategies-sparkline`).
 
@@ -368,13 +368,13 @@ hatch. The `tape` widget renames to `AgentFeed` (module-level only).
 
 ### Tester reports
 
-[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
+[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
 (second-pass PASS). First-pass FAIL preserved at
-[`-2026-05-07-…md`](../reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md).
+[`-2026-05-07-…md`](../phase-5-humancontrol-agentfeed/reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md).
 
 ### Screenshots
 
-[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/README.md`](../reports/screenshots/lumen-phase-5-humancontrol-agentfeed/README.md)
+[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/README.md`](../phase-5-humancontrol-agentfeed/reports/screenshots/README.md)
 — 4 capture commands (`cockpit-control`, `cockpit-strategies-pause-
 override`, `cockpit-override-modal`, `cockpit-focus-ring`).
 
@@ -408,11 +408,11 @@ OR compliance requirement.
 
 | Phase | Status | Shipped | Approval | Tester report |
 |---|---|---|---|---|
-| 1 — Foundation | ✅ Shipped | 2026-05-04 | 2026-05-04 | [`test-2026-05-04c-lumen-phase-1-foundation.md`](../reports/test-2026-05-04c-lumen-phase-1-foundation.md) |
-| 2 — Shell IA + Charts | ✅ Shipped | 2026-05-05 | 2026-05-05 | [`test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](../reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md) |
-| 3 — Detail screens | ✅ Shipped | 2026-05-05 | 2026-05-06 | [`test-2026-05-05-lumen-phase-3-detail-screens.md`](../reports/test-2026-05-05-lumen-phase-3-detail-screens.md) |
-| 4 — Backtest panel | ✅ Shipped | 2026-05-06 | 2026-05-06 | [`test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md) |
-| 5 — HumanControl + AgentFeed | ✅ Shipped | 2026-05-07 | 2026-05-08 | [`test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md) |
+| 1 — Foundation | ✅ Shipped | 2026-05-04 | 2026-05-04 | [`test-2026-05-04c-lumen-phase-1-foundation.md`](../phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md) |
+| 2 — Shell IA + Charts | ✅ Shipped | 2026-05-05 | 2026-05-05 | [`test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](../phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md) |
+| 3 — Detail screens | ✅ Shipped | 2026-05-05 | 2026-05-06 | [`test-2026-05-05-lumen-phase-3-detail-screens.md`](../phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md) |
+| 4 — Backtest panel | ✅ Shipped | 2026-05-06 | 2026-05-06 | [`test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md) |
+| 5 — HumanControl + AgentFeed | ✅ Shipped | 2026-05-07 | 2026-05-08 | [`test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md) |
 | 6 — Assistant slot | _Reserved_ | _gated on v2 LLM_ | — | — |
 
 Master roadmap at [`spec/lumen-design-adoption/feature.md`](../feature.md).

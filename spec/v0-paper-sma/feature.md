@@ -1343,7 +1343,7 @@ _Filled by ui-designer at end of Week 2 (T32 + T_FINAL_B)._
 
 **New module: `ui::live`** (gated behind `--features live`). Subscribes the
 cockpit to the `agent::EventBus` six broadcast channels listed in
-[dev-week2-broadcast-api-2026-04-18.md](../reports/dev-week2-broadcast-api-2026-04-18.md)
+[dev-week2-broadcast-api-2026-04-18.md](reports/dev-week2-broadcast-api-2026-04-18.md)
 and converts each event into the existing cockpit `Message` enum:
 
 | Channel     | Bus type                    | Cockpit `Message`                         | Close behavior                                     |
@@ -1412,7 +1412,7 @@ contract ("most additions are a code smell").
 
 ### Smoke checklist location
 
-[`spec/v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md`](../reports/ui-week2-smoke-checklist-2026-04-18.md) —
+[`spec/v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md`](reports/ui-week2-smoke-checklist-2026-04-18.md) —
 contains:
 - Sandbox-verifiable gate table (build + test commands).
 - Fixtures-driven walkthrough (8 steps).
@@ -1422,7 +1422,7 @@ contains:
 - Deferred PNG capture list with instructions.
 
 Panel state reference (compacted 2026-04-19) at
-[`spec/v0-paper-sma/reports/screenshots/README.md`](../reports/screenshots/v0-paper-sma/README.md):
+[`spec/v0-paper-sma/reports/screenshots/README.md`](reports/screenshots/README.md):
 single document covering `tape|positions|pnl|kill` × `loading|empty|error|ready`,
 each with rendered copy, `strings::*` keys, and `theme::*` color tokens.
 

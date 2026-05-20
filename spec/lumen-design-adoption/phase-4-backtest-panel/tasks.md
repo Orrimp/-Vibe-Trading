@@ -1406,7 +1406,7 @@ widget). T1812 (snapshot accept) is the narrow point.
     Visual regressions → ui-designer; missed wiring call site →
     developer; structural regressions → architect.
   - _ticked 2026-05-06 (tester, second pass)._
-    - Report: [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
+    - Report: [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
       (`b` suffix preserves the first-pass FAIL report
       `test-2026-05-06-lumen-phase-4-backtest-panel.md` on disk
       for audit — Phase 1 third-pass precedent).

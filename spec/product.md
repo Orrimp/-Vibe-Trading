@@ -447,7 +447,7 @@ into [architecture.md](architecture.md).
 The cockpit (live + fixtures bins) is the operator's one-screen view of
 the system. From v0 it has been a single-page layout: tape + positions
 + P&L + kill switch. The
-[`lumen-design-adoption`](features/lumen-design-adoption.md) initiative
+[`lumen-design-adoption`](lumen-design-adoption/feature.md) initiative
 splits it into a **navigated multi-screen shell** so trading data and
 operations data don't share the primary scan.
 
@@ -512,7 +512,7 @@ screens:
 ### Phasing reference
 
 The IA above lands across Phases 2 / 3 / 4 / 5 / 6 of the
-[lumen-design-adoption](features/lumen-design-adoption.md) master
+[lumen-design-adoption](lumen-design-adoption/feature.md) master
 roadmap. Phase 1 (shipped 2026-05-04) ships the design tokens, Tier 1
 chrome, and the always-visible status bar that anchors the bottom of
 every screen above. The product spec doesn't pin per-phase scope
@@ -577,7 +577,7 @@ scope) can render inline.
   Strategies / Risk / Audit / Debug screens, separate viewer Backtest
   surface, reserved right-rail Assistant for v2 LLM. The IA lands
   across Phases 2 / 3 / 4 / 5 / 6 of the
-  [`lumen-design-adoption`](features/lumen-design-adoption.md) master
+  [`lumen-design-adoption`](lumen-design-adoption/feature.md) master
   roadmap (revised same day from 4 to 6 phases at operator request).
   Phase 1 (shipped) provides the design tokens + Tier 1 chrome +
   status-bar anchor that every screen sits on.

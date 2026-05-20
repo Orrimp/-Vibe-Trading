@@ -440,7 +440,7 @@ Week 2 (watcher, UI live, backtest, e2e):
 - 2026-04-19 (ui-designer): partial landing — T522, T523, T524, T525,
   T527, T528 ticked as complete. T526 (live subscribers) and T_FINAL_B
   (UI smoke extension) remain open pending developer T512; full
-  writeup in [ui-v05-blockers-2026-04-19.md](../reports/ui-v05-blockers-2026-04-19.md).
+  writeup in [ui-v05-blockers-2026-04-19.md](reports/ui-v05-blockers-2026-04-19.md).
 - 2026-04-19 (ui-designer, resume): T512 landed; T526 now ticked — three
   new `ui::live` subscribers (`strategy_loaded`, `strategy_swapped`,
   `strategy_error`) wired with eager-subscribe and shared
@@ -470,7 +470,7 @@ Week 2 (watcher, UI live, backtest, e2e):
 - 2026-04-19 (ui-designer, resume): T_FINAL_B ticked. Smoke checklist
   extended with a `## v0.5 — strategies panel smoke + hot-swap drill`
   section in
-  [ui-week2-smoke-checklist-2026-04-18.md](../reports/ui-week2-smoke-checklist-2026-04-18.md):
+  [ui-week2-smoke-checklist-2026-04-18.md](../v0-paper-sma/reports/ui-week2-smoke-checklist-2026-04-18.md):
   four-state fixtures walkthrough referencing
   `screenshots/v0-paper-sma/README.md#45`, R7 hot-swap drill (edit
   `config/strategies/btc_macd_trend.toml`, observe swap within 2s), R8

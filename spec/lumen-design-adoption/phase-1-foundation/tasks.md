@@ -944,7 +944,7 @@ and T1511 (snapshot accept).
     (re-run T1502 sweep); structural regressions → architect.
   - **Ratification (third pass):** `VERDICT → PASS`. All 8 gates
     green. Report:
-    [`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](../reports/test-2026-05-04c-lumen-phase-1-foundation.md).
+    [`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](reports/test-2026-05-04c-lumen-phase-1-foundation.md).
     First two passes (`…-04…md` fmt+clippy FAIL, `…-04b…md` rustdoc
     FAIL) preserved on disk for audit. Tally:
     - `cargo test --workspace --all-targets` → 757 passed, 0 failed,

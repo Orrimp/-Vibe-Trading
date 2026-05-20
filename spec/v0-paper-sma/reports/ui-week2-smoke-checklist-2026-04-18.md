@@ -10,7 +10,7 @@ scope: T_FINAL_B (v0) + T_FINAL_B (v0.5) + T_FINAL_B_v1 + T_FINAL_B_v15a — coc
 
 This is the operator-run checklist for Week 2's cockpit acceptance.
 It pairs the **panel state reference** in
-[`screenshots/v0-paper-sma/README.md`](screenshots/v0-paper-sma/README.md)
+[`screenshots/README.md`](screenshots/README.md)
 (compacted from 16 per-state artifacts) with the two runtime smokes
 (fixtures-driven and live against a running agent).
 
@@ -40,7 +40,7 @@ Each of these must pass before the operator runs the manual steps below.
 ## Panel state reference (committed)
 
 All 16 panel-state descriptions (`tape|positions|pnl|kill` × `loading|empty|error|ready`) now live in a single compacted document:
-[`spec/v0-paper-sma/reports/screenshots/README.md`](screenshots/v0-paper-sma/README.md).
+[`spec/v0-paper-sma/reports/screenshots/README.md`](screenshots/README.md).
 
 That README captures, for each state, the exact copy shown, the `strings::*`
 key backing each label, and the `theme::*` tokens driving each color.
@@ -230,7 +230,7 @@ All gates above must be green before running the manual steps below.
 ### Manual steps — fixtures walkthrough (four-state contract)
 
 Visual contract for each state: section 4.5 of the panel-state reference
-in [`screenshots/v0-paper-sma/README.md`](./screenshots/v0-paper-sma/README.md#45-strategies--loaded-strategies--swap-log)
+in [`screenshots/README.md`](./screenshots/README.md#45-strategies--loaded-strategies--swap-log)
 (the v0.5 addition you read before running this drill). Copy keys
 (`STRATEGIES_*`) and theme tokens are pinned there; compare the render
 against that table line-by-line.
@@ -374,7 +374,7 @@ ui-designer's call on PR review):
 
 - [ ] Four-state fixtures walkthrough performed
   (`cargo run --bin cockpit --features fixtures`); render matches
-  `screenshots/v0-paper-sma/README.md` §4.5 line-by-line.
+  `screenshots/README.md` §4.5 line-by-line.
 - [ ] R7 hot-swap drill performed against `--features live`; swap
   visible in the strategies panel within 2 seconds of the TOML
   rewrite; `StrategySwapped` event visible in the recent-events
