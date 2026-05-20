@@ -1,6 +1,6 @@
 ---
 slug: ui-rethink-phase-c-sidebar-ia
-status: accepted
+status: in-progress
 owner: architect
 updated: 2026-05-20
 ---
@@ -385,30 +385,30 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
 
 ### Build + lint
 
-- [ ] `cargo fmt --check` exit 0.
-- [ ] `cargo clippy --workspace -- -D warnings` exit 0 (R10.5).
-- [ ] No new `#[allow(deprecated)]` in net-new Phase C code (Wave E
+- [x] `cargo fmt --check` exit 0.
+- [x] `cargo clippy --workspace -- -D warnings` exit 0 (R10.5).
+- [x] No new `#[allow(deprecated)]` in net-new Phase C code (Wave E
   state additions should not require it).
 
 ### Tests
 
-- [ ] `cargo test --workspace --lib` 100 % PASS (R10.6).
-- [ ] `cargo test -p ui --test render_snapshots` — Phase A baselines
+- [x] `cargo test --workspace --lib` 100 % PASS (R10.6).
+- [x] `cargo test -p ui --test render_snapshots` — Phase A baselines
   + new Live / Strategy registry / Settings additions land green.
-- [ ] `cargo test -p ui --test visual_snapshots` green.
-- [ ] `cargo test -p ui --test panel_snapshots` — Risk / Audit / Debug
+- [x] `cargo test -p ui --test visual_snapshots` green.
+- [x] `cargo test -p ui --test panel_snapshots` — Risk / Audit / Debug
   panel-body baselines stay byte-identical (H5 falsifier).
-- [ ] `cargo test -p ui --test layout_invariants` green —
+- [x] `cargo test -p ui --test layout_invariants` green —
   `Screen::Charts` / `Home` / `Audit` arms still pass via compat
   shim (R5.3).
-- [ ] `cargo test -p ui --test home_strategies_row_cross_link` green —
+- [x] `cargo test -p ui --test home_strategies_row_cross_link` green —
   `Screen::Home` → cross-link to `Screen::Strategies` (now Strategy
   registry) still works (R5.3).
-- [ ] `cargo test -p ui --test audit_filter_chip_emits_filter_changed
+- [x] `cargo test -p ui --test audit_filter_chip_emits_filter_changed
   --test audit_row_opens_modal --test chart_markers_from_audit_query`
   green — deprecated `Screen::Audit` / `Screen::Charts` routes stay
   alive (R5.3).
-- [ ] New snapshot baselines committed:
+- [x] New snapshot baselines committed:
   - `sidebar_nav__phase_c_three_groups` (R1.5)
   - `live_snapshot__steady_state` (R2.6)
   - `strategy_registry_snapshot__empty` (R3.8)
@@ -419,28 +419,28 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
 
 ### Anchors (non-negotiable)
 
-- [ ] `scripts/verify_anchors.sh` → ANCHORS PASS (22 / 22) — H1
+- [x] `scripts/verify_anchors.sh` → ANCHORS PASS (22 / 22) — H1
   falsifier; R10.1.
 
 ### Runtime + performance
 
-- [ ] `cockpit-smoke` PASS — 0 panic lines in 8 s window (R10.3).
-- [ ] Cockpit-performance v1.0.0 idle-CPU floor ≤ 13.1 % verified
+- [x] `cockpit-smoke` PASS — 0 panic lines in 8 s window (R10.3).
+- [x] Cockpit-performance v1.0.0 idle-CPU floor ≤ 13.1 % verified
   post-flip (three-run median) — H2 falsifier; R10.4.
-- [ ] Settings tab switch < 10 ms wall-clock (H3 falsifier) — measured
+- [x] Settings tab switch < 10 ms wall-clock (H3 falsifier) — measured
   via cockpit-smoke instrumentation if available, else qualitative
   in test report.
 
 ### Spec hygiene
 
-- [ ] `scripts/spec_lint.py` → Phase C contribution = 0 (R10.8;
+- [x] `scripts/spec_lint.py` → Phase C contribution = 0 (R10.8;
   baseline 87 carry-forward).
-- [ ] Deprecated-variant usage census — grep
+- [x] Deprecated-variant usage census — grep
   `Screen::(Home|Charts|Audit|Risk|Debug|Control)` count + per-file
   breakdown appended to the test report (K6 mitigation; Phase D
   prune budget). Current baseline: 8 test files; ~77 references
   workspace-wide per analyst's M0 audit.
-- [ ] Author
+- [x] Author
   `spec/ui-rethink-phase-c-sidebar-ia/reports/test-final-<YYYY-MM-DD>.md`
   per `.claude/skills/rust-test/templates/test-report.md`.
 

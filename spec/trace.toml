@@ -730,7 +730,7 @@ tests       = [
                                                      # settings_screen::* (3)
 ]
 anchors     = []   # Phase C touches no strategy/audit/exec/report path; 22 originals stay byte-identical (R10.1)
-state       = "shipped"
+state       = "tested"   # tester re-gate PASS 2026-05-20; presenter next
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
