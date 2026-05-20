@@ -4,7 +4,7 @@ feature: ui-rethink-phase-e-compare
 run_id: 2026-05-20-2230-UTC
 commit: fbc74e41f9344b0872f3fb56e762e7dead105d10
 agent: tester
-verdict: FAIL
+verdict: PASS
 ---
 
 # Test Report — ui-rethink-phase-e-compare — 2026-05-20
@@ -31,32 +31,28 @@ verdict: FAIL
 
 | Check                                               | Result | Notes                                            |
 |-----------------------------------------------------|--------|--------------------------------------------------|
-| `cargo fmt --check`                                 | **FAIL** | 26 diff hunks across 9 Phase E files (see §2.1) |
+| `cargo fmt --check`                                 | **PASS** | Exit 0, no output — re-gate 2026-05-20 (see §2.1) |
 | `cargo clippy --workspace -- -D warnings`           | PASS   | Exit 0, `Finished dev profile [unoptimized + debuginfo] target(s) in 4.21s` |
 | `cargo clippy -p ui --features live -- -D warnings` | PASS   | Exit 0, `Finished dev profile [unoptimized + debuginfo] target(s) in 4.50s` (T-F9) |
 | `cargo audit`                                       | N/A    | `cargo-audit` not installed — pre-existing gap   |
 | `cargo deny`                                        | N/A    | Not in scope for this run                        |
 
-### 2.1 — `cargo fmt --check` failure detail (T-F1 FAIL)
+### 2.1 — `cargo fmt --check` re-gate (T-F1 PASS — 2026-05-20)
 
 **Command:** `cargo fmt --check`
-**Exit code:** 1
+**Exit code:** 0 (no output)
 
-Affected files (all Phase E additions — no pre-existing file diffs):
+The orchestrator ran `cargo fmt` on the 9 Phase E files that had failed the
+initial sweep (26 whitespace/line-length diff hunks across `compare/cache.rs`,
+`screens/compare.rs`, `state.rs`, `strings.rs`, `widgets/matrix.rs`,
+`widgets/mod.rs`, `tests/fixtures/mod.rs`, `tests/visual_snapshots.rs`).
+The fix was purely cosmetic — no semantic change.
 
-| File | Hunk count | Representative diff |
-|------|-----------|---------------------|
-| `crates/ui/src/compare/cache.rs` | 6 | `if/else` collapsed → one line; multi-line `fn` sig compressed; multi-line `tracing::warn!` compressed; closure body reshaped; assert multiline |
-| `crates/ui/src/screens/compare.rs` | 5 | import reorder; multi-line `Button::new` body compressed; trailing long lines reformatted |
-| `crates/ui/src/state.rs` | 1 | Test assertion reformatted |
-| `crates/ui/src/strings.rs` | 1 | Long const string line wrap |
-| `crates/ui/src/widgets/matrix.rs` | 4 | import sort; multi-line struct-init → compact; closure body reformatted |
-| `crates/ui/src/widgets/mod.rs` | 2 | Doc-comment line reformatted |
-| `crates/ui/tests/fixtures/mod.rs` | 5 | Array literals reformatted; struct-init multiline compressed; `SmolStr::new` + `format!` inverted |
-| `crates/ui/tests/visual_snapshots.rs` | 2 | Match arm collapsing |
+Re-gate confirmation: `cargo fmt --check` exits 0 with no output. T-F1 is now PASS.
 
-All 26 diff hunks are purely whitespace / line-length formatting differences (no semantic change).
-The fix is a single `cargo fmt` invocation. **This blocks T-F1 (a hard gate).**
+The orchestrator also confirmed that `cargo test --workspace --lib` still reports
+303 ui lib tests passing (946 total, 0 failed) and `bash scripts/verify_anchors.sh`
+still reports `ANCHORS PASS (22 / 22)` after the fmt-only change.
 
 Pre-existing `--features live` clippy note from Phase D+ (13 `needless_pass_by_value` errors at
 `live.rs:159-428`) was fixed in commit `b61164d` before Phase E implementation. The `cargo clippy
@@ -394,7 +390,7 @@ post-sweep) constitutes the tester's anchor-column certification.
 
 | Gate | Command | Result | Notes |
 |------|---------|--------|-------|
-| **T-F1** | `cargo fmt --check` | **FAIL** | 26 fmt diff hunks across 9 Phase E files (§2.1) |
+| **T-F1** | `cargo fmt --check` | **PASS** | Re-gate 2026-05-20: exit 0, no output (§2.1) |
 | T-F1b | `cargo clippy --workspace -- -D warnings` | PASS | Exit 0 |
 | T-F2 | `cargo test --workspace --lib` | PASS | 946/946, 0 failed |
 | T-F3 | `cargo test -p ui --test visual_snapshots -- compare__` ×2 | PASS | 4/4 both runs, deterministic |
@@ -418,28 +414,37 @@ post-sweep) constitutes the tester's anchor-column certification.
 
 ---
 
-## 18. Verdict
+## 18. Re-gate Note (2026-05-20)
 
-**`FAIL`**
+The orchestrator ran `cargo fmt` to resolve the 26 whitespace/line-length diff hunks across
+9 Phase E files that caused the initial T-F1 FAIL. The change is purely cosmetic — no logic,
+no test, no strategy code touched. Tester re-ran:
 
-9 of 10 T-F gates are green. T-F1 (`cargo fmt --check`) fails with 26 formatting diff hunks
-across 9 Phase E new/modified files. All diffs are purely cosmetic (line-length, wrapping, import
-ordering) — no semantic change. Clippy (`-D warnings`) passes cleanly, including the previously
-deferred `--features live` gate. All other hard gates (T-F2/F4/F5/F7/F8) are green. The anchor
-gate passes 22/22 both pre- and post-sweep. 946 lib tests pass (939 → 946, +7 new). 4 snapshot
-baselines are deterministic across 2 runs. 256 proptest cases survive. Both H5 round-trip tests
-pass. The fmt failure is the sole blocking issue; a single `cargo fmt` invocation on the Phase E
-files resolves it.
+- `cargo fmt --check` → exit 0, no output (T-F1 now PASS)
+- `bash scripts/verify_anchors.sh` → `ANCHORS PASS (22 / 22)` (unchanged)
+
+Orchestrator also confirmed `cargo test --workspace --lib` → 946 passed (303 ui), 0 failed.
+
+All 10 T-F gates are now green.
 
 ---
 
-## 19. Routing
+## 19. Verdict
 
-`HANDOFF → developer` — run `cargo fmt` on the 9 Phase E files listed in §2.1
-(`compare/cache.rs`, `screens/compare.rs`, `state.rs`, `strings.rs`, `widgets/matrix.rs`,
-`widgets/mod.rs`, `tests/fixtures/mod.rs`, `tests/visual_snapshots.rs`) then re-submit to tester
-for T-F1 re-check. All other T-F gates are green and need not be re-run unless the fmt fix
-accidentally alters compilation.
+**`PASS`**
 
-Once T-F1 passes: tester will flip `VERDICT → PASS` (all 10 gates green), tick the T-FINAL rows,
-and route to presenter.
+All 10 T-F gates are green. T-F1 (`cargo fmt --check`) re-gated PASS (exit 0, no output) after
+the orchestrator applied a cosmetic-only `cargo fmt` to the 9 Phase E files. No semantic change.
+Clippy (`-D warnings`) passes cleanly, including the `--features live` gate (T-F9). All hard gates
+(T-F2/F4/F5/F7/F8) remain green. The anchor gate passes 22/22. 946 lib tests pass (939 → 946,
++7 new). 4 snapshot baselines are deterministic across 2 runs. 256 proptest cases survive.
+Both H5 round-trip tests pass. Spec-lint PASS (87 violations, 0 new regressions).
+
+No deferrals. Feature is ready for presenter.
+
+---
+
+## 20. Routing
+
+`VERDICT → PASS` — route to presenter to assemble the operator approval deck for
+`ui-rethink-phase-e-compare`.
