@@ -37,6 +37,9 @@ pub mod post_mortem_analyst;
 pub mod regime;
 pub mod retrieval;
 pub mod store;
+/// Phase D (ui-rethink-phase-d-trail T-D-N24) — trail-mirror task.
+/// Hot in-memory LRU cache + broadcast-tick subscriber for the Trail view.
+pub mod trail_mirror;
 pub mod types;
 pub mod writer;
 

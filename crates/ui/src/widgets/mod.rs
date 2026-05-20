@@ -79,6 +79,13 @@ pub mod strategy_card;
 /// compare toggle).
 pub mod strategy_chip;
 pub mod throttled_spinner;
+/// Phase D — Trail side-drawer widget (ui-rethink-phase-d-trail R4.1-R4.4).
+/// Renders Fill / Signal / Forecast / LLM-placeholder drawer bodies.
+pub mod trail_drawer;
+/// Phase D — Trail node widget (ui-rethink-phase-d-trail R3.1-R3.5).
+/// One node per pipeline stage; vertical stack; chevron button emits
+/// `Message::TrailNodeChevronClicked(TrailNodeKind)`.
+pub mod trail_node;
 /// cockpit-training-control T-D-N2 — training log ring-buffer widget.
 /// 200-entry VecDeque<SmolStr> with auto-scroll + click-to-freeze.
 pub mod training_log;

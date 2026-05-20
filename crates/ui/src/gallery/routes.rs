@@ -734,6 +734,66 @@ fn render_strategy_card_empty_anchor(model: &Cockpit) -> iced::Element<'_, Messa
     frame::muted_body("no strategy rows in fixture")
 }
 
+// ── Phase D — trail_node widget ───────────────────────────────────────────────
+
+fn seed_trail_node() -> Cockpit {
+    fx::fake_cockpit_v15a_pairs_steady_state()
+}
+
+fn render_trail_node_fill_unselected(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::widgets::trail_node::{TrailNode, TrailNodeKind, view as trail_node_view};
+    let node: &'static TrailNode = Box::leak(Box::new(TrailNode {
+        kind: TrailNodeKind::Fill,
+        timestamp: Some("12:34:56.789".to_string()),
+        actor: Some("strategy:tcn_overlay_momentum".to_string()),
+        headline: Some("Buy 0.05 BTCUSDT @ 50000".to_string()),
+    }));
+    trail_node_view(node, false, ThemeMode::Dark)
+}
+
+fn render_trail_node_forecast_selected(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::widgets::trail_node::{TrailNode, TrailNodeKind, view as trail_node_view};
+    let node: &'static TrailNode = Box::leak(Box::new(TrailNode {
+        kind: TrailNodeKind::Forecast,
+        timestamp: Some("12:34:55.001".to_string()),
+        actor: Some("tcn:d1c3696d".to_string()),
+        headline: Some("Up 0.75 confidence".to_string()),
+    }));
+    trail_node_view(node, true, ThemeMode::Dark)
+}
+
+fn render_trail_node_empty_stage(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::widgets::trail_node::{TrailNode, TrailNodeKind, view as trail_node_view};
+    let node: &'static TrailNode = Box::leak(Box::new(TrailNode {
+        kind: TrailNodeKind::Signal,
+        timestamp: None,
+        actor: None,
+        headline: None,
+    }));
+    trail_node_view(node, false, ThemeMode::Dark)
+}
+
+// ── Phase D — trail_drawer widget ─────────────────────────────────────────────
+
+fn seed_trail_drawer() -> Cockpit {
+    fx::fake_cockpit_v15a_pairs_steady_state()
+}
+
+fn render_trail_drawer_fill(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::widgets::trail_drawer::{DrawerPayload, view as drawer_view};
+    use crate::widgets::trail_node::TrailNodeKind;
+    let payload: &'static DrawerPayload = Box::leak(Box::new(DrawerPayload::Fill {
+        metadata_json: r#"{"side":"Buy","qty":"0.05","price":"50000"}"#.to_string(),
+    }));
+    drawer_view(TrailNodeKind::Fill, Some(payload), ThemeMode::Dark)
+}
+
+fn render_trail_drawer_llm_placeholder(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::widgets::trail_drawer::view as drawer_view;
+    use crate::widgets::trail_node::TrailNodeKind;
+    drawer_view(TrailNodeKind::LlmDebate, None, ThemeMode::Dark)
+}
+
 // ── GALLERY_CELLS const ───────────────────────────────────────────────────────
 
 /// The canonical `(widget, state)` gallery matrix. 24 primary cells
@@ -1060,6 +1120,38 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_strategy_card_empty_anchor,
         seed: seed_strategy_card,
     },
+    // ── Phase D — trail_node (ui-rethink-phase-d-trail T-D-N7) ───────────────
+    GalleryCell {
+        widget: "trail_node",
+        state: "fill_unselected",
+        render: render_trail_node_fill_unselected,
+        seed: seed_trail_node,
+    },
+    GalleryCell {
+        widget: "trail_node",
+        state: "forecast_selected",
+        render: render_trail_node_forecast_selected,
+        seed: seed_trail_node,
+    },
+    GalleryCell {
+        widget: "trail_node",
+        state: "signal_empty_stage",
+        render: render_trail_node_empty_stage,
+        seed: seed_trail_node,
+    },
+    // ── Phase D — trail_drawer (ui-rethink-phase-d-trail T-D-N13) ────────────
+    GalleryCell {
+        widget: "trail_drawer",
+        state: "fill_payload",
+        render: render_trail_drawer_fill,
+        seed: seed_trail_drawer,
+    },
+    GalleryCell {
+        widget: "trail_drawer",
+        state: "llm_placeholder",
+        render: render_trail_drawer_llm_placeholder,
+        seed: seed_trail_drawer,
+    },
 ];
 
 /// The canonical list of widget-module names the gallery is expected to
@@ -1098,6 +1190,8 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "strategy_card",
     "strategy_chip",
     "training_log",
+    "trail_drawer",
+    "trail_node",
     "training_plot",
     "volume_histogram",
 ];

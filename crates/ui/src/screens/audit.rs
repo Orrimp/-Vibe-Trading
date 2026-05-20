@@ -362,7 +362,7 @@ fn row_for<'a>(r: &'a JournalRow, mode: ThemeMode) -> iced::Element<'a, Message>
         .push(cell(description, mode))
         .push(cell(strategy_id, mode));
 
-    Button::new(row_content)
+    let row_btn = Button::new(row_content)
         .on_press(Message::TapeRowClicked(r.tx_id.clone()))
         .padding([space::XS as u16, space::S as u16])
         .style(move |_theme: &iced::Theme, status: button::Status| {
@@ -379,7 +379,39 @@ fn row_for<'a>(r: &'a JournalRow, mode: ThemeMode) -> iced::Element<'a, Message>
                 },
                 ..Default::default()
             }
-        })
+        });
+
+    // Phase D R5.1 — adjacent Trail chevron button (T-D-N18).
+    // Emits `Message::OpenTrailFor(tx_id)` → compound-dispatch to
+    // SwitchScreen(Trail) + SelectTrailRow(id).
+    let trail_tx_id = r.tx_id.clone();
+    let chevron = Button::new(
+        Text::new("›")
+            .size(text::SMALL)
+            .color(color::ACCENT.current(mode)),
+    )
+    .on_press(Message::OpenTrailFor(trail_tx_id))
+    .padding([space::XS as u16, space::XS as u16])
+    .style(move |_theme: &iced::Theme, status: button::Status| {
+        let bg = match status {
+            button::Status::Hovered => Some(color::PANEL_SUNKEN.current(mode).into()),
+            _ => None,
+        };
+        button::Style {
+            background: bg,
+            text_color: color::ACCENT.current(mode),
+            border: Border {
+                radius: radius::R2.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    });
+
+    Row::new()
+        .push(row_btn)
+        .push(chevron)
+        .spacing(space::XS)
         .into()
 }
 

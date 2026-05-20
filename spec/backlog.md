@@ -303,28 +303,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **UI rethink Phase D — Trail view (J4) (`ui-rethink-phase-d-trail`).**
-  _proposed (2026-05-20) — awaiting analyst pass_. Fourth concrete
-  feature in the UI rethink at
-  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
-  Predecessor: [`ui-rethink-phase-c-sidebar-ia v0.1.0`](ui-rethink-phase-c-sidebar-ia/feature.md)
-  shipped 2026-05-20. Lands the **decision-trail visualisation** of
-  the multi-agent pipeline — Fill → Signal → Forecast → LLM debate
-  as a stacked node graph using new `widgets::trail_node`. Side-
-  drawer for raw artifacts (LLM prompt, debate transcript, forecast
-  tensor). Trail chevron in Live's recent-activity panel +
-  `screens::trail::view`'s row-list mode. **First downstream
-  consumer of `audit-tick-consumer-envelope v0.1.0`** — closes the
-  deferred T-D-14 (`TcnForecaster::with_ledger` runtime wiring).
-  **5 analyst-surfaced Qs** (schema gap; node ordering; drawer
-  trigger; broadcast vs counter scope; chevron visibility).
-  **Non-regression contract:** 22 anchors byte-identical (LOW
-  anchor risk — additive audit writers only); cockpit-smoke green;
-  cockpit-performance v1.0.0 idle-CPU floor (≤13.1%) preserved.
-  Cost estimate: **~3-4 weeks** per dev-note (depends on Q1 schema
-  gap). Trace row `REQ-UI-RETHINK-PHASE-D-001` opened in proposed
-  state. HANDOFF → analyst.
-
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
@@ -783,6 +761,35 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **UI rethink Phase D — Trail view (J4) (`ui-rethink-phase-d-trail` v0.1.0)** —
+  shipped 2026-05-20 (operator-approved via "Autoapprove all" against
+  presenter deck
+  [`presentations/ui-rethink-phase-d-trail-2026-05-20.md`](ui-rethink-phase-d-trail/presentations/ui-rethink-phase-d-trail-2026-05-20.md);
+  five deferred items — T-D-N26 Iced Subscription bridge, T-D-N27 3
+  snapshot baselines, T-D-N29 H5 backfill-latency bench, T-F6 idle-CPU
+  floor, T-F7 K7 paper-mode counter — explicitly accepted as Phase D+
+  v0.1.1 follow-up scope; wiring confirmed by inspection).
+  Predecessor: [`ui-rethink-phase-c-sidebar-ia v0.1.0`](ui-rethink-phase-c-sidebar-ia/feature.md).
+  Fourth concrete feature in the UI rethink at
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
+  Lands the **decision-trail visualisation** of the multi-agent pipeline
+  — Fill → Signal → Forecast as a stacked node graph via new
+  `widgets::trail_node` + `widgets::trail_drawer` + `screens::trail`.
+  Universal Trail chevron in Live recent-activity + audit table rows.
+  **First downstream consumer of `audit-tick-consumer-envelope v0.1.0`**
+  — closes T-D-14 via `TcnForecaster::with_ledger` runtime wiring at
+  `crates/strategy/src/tcn_overlay_momentum.rs:417-420,434-437` +
+  `post_forecast_event` emits at `crates/forecast/src/tcn.rs:861-879,997-1010`.
+  **Mig 011 (anchor-safe additive)** — 4 ALTERs (NULL-default) + new
+  `forecast_events` table + 4 indexes — `ANCHORS PASS (22/22)` post-mig
+  (H2 confirmed). 937 lib + integration tests PASS; trail-reconstruction
+  3/3 PASS; M1-C layout invariants 6/6 PASS (CI-safe cockpit-smoke
+  proxy); fmt + clippy clean; spec-lint Phase D contribution = 0 new
+  categories (91 violations / 2 categories vs 734/3 baseline). ADR
+  amendment at
+  [`adr/0031-audit-tick-consumer-envelope.md`](architecture/adr/0031-audit-tick-consumer-envelope.md)
+  § "Phase D amendment (2026-05-20)".
 
 - **UI rethink Phase C — Sidebar IA flip + Live + Strategy registry + Settings rollup (`ui-rethink-phase-c-sidebar-ia` v0.1.0)** —
   shipped 2026-05-20 (operator-approved via "Autoapprove all" against

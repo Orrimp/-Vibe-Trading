@@ -1,3 +1,4 @@
+#![allow(clippy::cast_possible_truncation)]
 //! Live agent activity feed — last 200 fills, most recent on top (R6.2).
 //!
 //! Phase 5 (Lumen Q6 / R11) renamed this module from `tape.rs` to
@@ -119,10 +120,28 @@ fn row_for(fill: &trading_core::FillView) -> Element<'_, Message> {
     // its default chrome (no background, no border) so the rendered tape
     // is visually identical to the pre-modal world — existing
     // `panel_snapshots__agent_feed_*` snapshots stay byte-identical (R11 / V7).
-    Button::new(row_content)
+    let row_btn = Button::new(row_content)
         .on_press(Message::TapeRowClicked(fill.transaction_id.clone()))
         .padding(0)
-        .style(transparent_row_button)
+        .style(transparent_row_button);
+
+    // Phase D R5.1 — adjacent Trail chevron button (Q5 = every row).
+    // Emits `Message::OpenTrailFor(audit_id)` which compound-dispatches
+    // to `SwitchScreen(Trail)` + `SelectTrailRow(id)`.
+    let trail_audit_id = fill.transaction_id.clone();
+    let chevron = Button::new(
+        Text::new("›")
+            .size(text::BODY)
+            .color(color::ACCENT.current(ThemeMode::Dark)),
+    )
+    .on_press(Message::OpenTrailFor(trail_audit_id))
+    .padding([0, space::XS as u16])
+    .style(transparent_row_button);
+
+    Row::new()
+        .push(row_btn)
+        .push(chevron)
+        .spacing(space::XS)
         .into()
 }
 

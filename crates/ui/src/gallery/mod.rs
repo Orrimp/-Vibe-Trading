@@ -62,10 +62,10 @@ use crate::state::{Cockpit, Message};
 pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     // GALLERY_CELL_COUNT * CELL_HEIGHT_PX + padding headroom.
     // CELL_HEIGHT_PX = 260.0.
-    // Phase C (ui-rethink-phase-c-sidebar-ia T-D-N15/N19) adds 4 new cells:
-    //   settings_tabs (3 states) + strategy_card (1 state) = 4 cells.
-    // 50 * 260 = 13_000. Adding 300 px headroom for outer container padding.
-    13_500
+    // Phase D (ui-rethink-phase-d-trail T-D-N7/N13) adds 5 new cells:
+    //   trail_node (3 states) + trail_drawer (2 states) = 5 cells.
+    // 55 * 260 = 14_300. Adding 300 px headroom for outer container padding.
+    14_600
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

@@ -25,7 +25,7 @@
 use iced::Length;
 use iced::widget::{Column, Container, Row, Space};
 
-use crate::screens::{audit, lab, live, settings, strategy_registry};
+use crate::screens::{lab, live, settings, strategy_registry, trail};
 use crate::state::{Cockpit, Screen};
 use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C};
 use crate::theme::{ThemeMode, color};
@@ -96,7 +96,11 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         Screen::Compare => placeholder::view(strings::COMPARE_PLACEHOLDER, mode),
         Screen::Memory => placeholder::view(strings::MEMORY_PLACEHOLDER, mode),
         Screen::Models => placeholder::view(strings::MODELS_PLACEHOLDER, mode),
-        Screen::Trail | Screen::Audit => audit::view(model, mode),
+        // Phase D: Trail routes to the new trail::view which delegates to
+        // audit::view in list mode (R2.2 byte-identity gate) and renders
+        // the upstream node stack in trail mode (R2.3).
+        // Screen::Audit is the deprecated alias (R2.4) — routes to the same body.
+        Screen::Trail | Screen::Audit => trail::view(model, mode),
         // Phase C: Settings rollup wraps risk/control/debug sub-tabs.
         // R5.2: deprecated Risk/Debug/Control aliases route here too —
         // the active tab is pre-selected by the `SwitchScreen` arm in `update`.

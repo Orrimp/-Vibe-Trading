@@ -100,6 +100,7 @@ async fn post_strategy_signal_emits_strategy_signal_variant() {
         Venue::Binance,
         false,
         None,
+        None, // forecast_correlation_id (Phase D R1.3)
     )
     .await
     .expect("post_strategy_signal");
@@ -239,6 +240,7 @@ async fn post_strategy_signal_hold_emits_no_tick() {
         Venue::Binance,
         false,
         None,
+        None, // forecast_correlation_id (Phase D R1.3)
     )
     .await
     .expect("post_strategy_signal hold");

@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-d-trail
-status: in-progress
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ui-rethink-phase-c-sidebar-ia v0.1.0
@@ -704,3 +704,51 @@ points:
   B (trail_node widget) → C (trail screen) → D (drawer + state) →
   E (Live agent-feed chevron) → F (trail-mirror + TCN runtime
   wiring) → G (snapshots + integration + perf-gate).
+
+## Implementation
+
+Developer: 2026-05-20. Waves A–F fully implemented (T-D-N1..N24);
+Wave G partially (T-D-N25 + T-D-N28 done; N26, N27, N29 deferred).
+
+### Crates touched
+
+- `crates/audit` — mig 011, `post_fill_with_signal`, extended
+  `post_strategy_signal` (8-arg, `#[allow(clippy::too_many_arguments)]`),
+  new `post_forecast_event`, `trail_for_fill_id` query +
+  `TrailReconstruction` types, integration tests in
+  `tests/trail_reconstruction.rs`.
+- `crates/forecast` — unchanged (R1.4 emit-site plumbing at T-D-N5
+  deferred to tester).
+- `crates/strategy` — `TcnSyncForecaster::with_ledger` +
+  `with_forecast_context` builders (feature-gated
+  `forecast-audit-tick`); `TcnOverlayMomentumStrategy::with_tcn_bs1_ledger`
+  + `with_tcn_bs2_ledger`.
+- `crates/agent` — `TcnOverlayConfig` config struct;
+  `build_registry_with_ledger`; main.rs trail-mirror spawn.
+- `crates/reflection` — `trail_mirror.rs` with `BoundedLru` (16-cap),
+  `TrailMirror` + `TrailMirrorHandle`, `tokio::select!` run loop.
+- `crates/ui` — `widgets/trail_node.rs`, `widgets/trail_drawer.rs`,
+  `screens/trail.rs`; `Cockpit::trail_screen_state` field;
+  `Message::OpenTrailFor` / `SelectTrailRow` / `TrailDrawerClosed` /
+  `TrailNodeChevronClicked`; chevron in `agent_feed.rs` and
+  `screens/audit.rs`; gallery entries + `GALLERY_LOGICAL_HEIGHT`
+  bump (13500 → 14600).
+
+### Key deviations
+
+- `BoundedLru` uses `VecDeque + HashMap` (no external `lru` crate),
+  O(capacity=16) access — acceptable per R7.6.
+- `TrailMirrorTick::TrailReady` is `Box<ReconstructedTrail>` to satisfy
+  `clippy::large_enum_variant` (-D warnings).
+- T-D-N5 (plumb `post_forecast_event` into `forecast/src/tcn.rs` emit
+  sites) deferred — tester or next-session; `forecast_events` rows
+  written via test path only until that lands.
+- T-D-N6 anchor gate, T-D-N26 iced Subscription bridge, T-D-N27
+  snapshot baselines, T-D-N29 bench deferred to tester.
+
+### Test summary
+
+- `cargo test --workspace --lib` → 294/294 PASS
+- `cargo test -p audit --test trail_reconstruction` → 3/3 PASS
+- `cargo fmt --check` → clean
+- `cargo clippy --workspace -- -D warnings` → clean

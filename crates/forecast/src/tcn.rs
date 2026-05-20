@@ -436,6 +436,14 @@ pub struct TcnForecaster {
     /// `audit-tick` feature so training bins never carry the tick path.
     #[cfg(feature = "audit-tick")]
     pub(crate) ledger: Option<audit::Ledger>,
+    /// Optional strategy id for the `post_forecast_event` SQL writer
+    /// (Phase D R1.4 — ui-rethink-phase-d-trail). Set alongside `ledger`
+    /// via `with_ledger`; left `None` in backtest/training paths.
+    #[cfg(feature = "audit-tick")]
+    pub(crate) forecast_strategy_id: Option<String>,
+    /// Optional symbol for the `post_forecast_event` SQL writer (Phase D R1.4).
+    #[cfg(feature = "audit-tick")]
+    pub(crate) forecast_symbol: Option<String>,
 }
 
 impl TcnForecaster {
@@ -460,6 +468,10 @@ impl TcnForecaster {
             cache_path: None,
             #[cfg(feature = "audit-tick")]
             ledger: None,
+            #[cfg(feature = "audit-tick")]
+            forecast_strategy_id: None,
+            #[cfg(feature = "audit-tick")]
+            forecast_symbol: None,
         })
     }
 
@@ -552,6 +564,10 @@ impl TcnForecaster {
             cache_path: None,
             #[cfg(feature = "audit-tick")]
             ledger: None,
+            #[cfg(feature = "audit-tick")]
+            forecast_strategy_id: None,
+            #[cfg(feature = "audit-tick")]
+            forecast_symbol: None,
         })
     }
 
@@ -572,6 +588,20 @@ impl TcnForecaster {
     #[must_use]
     pub fn with_ledger(mut self, ledger: audit::Ledger) -> Self {
         self.ledger = Some(ledger);
+        self
+    }
+
+    /// Attach the `strategy_id` and `symbol` context for the Phase D
+    /// `post_forecast_event` SQL writer (R1.4 — ui-rethink-phase-d-trail).
+    ///
+    /// Called alongside `with_ledger`; only available when the `audit-tick`
+    /// feature is enabled. Both fields are `None` in backtest/training paths,
+    /// meaning the SQL writer branch is skipped (H2 anchor invariant holds).
+    #[cfg(feature = "audit-tick")]
+    #[must_use]
+    pub fn with_forecast_context(mut self, strategy_id: String, symbol: String) -> Self {
+        self.forecast_strategy_id = Some(strategy_id);
+        self.forecast_symbol = Some(symbol);
         self
     }
 
@@ -828,6 +858,24 @@ impl crate::ForecastProvider for TcnForecaster {
                                     cache_hit: true,
                                 },
                             );
+                            // Phase D R1.4 — persist to forecast_events alongside tick.
+                            if let (Some(sid), Some(sym)) = (
+                                self.forecast_strategy_id.as_deref(),
+                                self.forecast_symbol.as_deref(),
+                            ) && let Err(e) = audit::journal::post_forecast_event(
+                                l,
+                                &cached.overlay,
+                                sid,
+                                sym,
+                                true,
+                            )
+                            .await
+                            {
+                                tracing::warn!(
+                                    error = %e,
+                                    "post_forecast_event cache-hit failed (non-fatal)"
+                                );
+                            }
                         }
                         return Ok(cached);
                     }
@@ -944,6 +992,18 @@ impl crate::ForecastProvider for TcnForecaster {
                     cache_hit: false,
                 },
             );
+            // Phase D R1.4 — persist to forecast_events alongside tick.
+            if let (Some(sid), Some(sym)) = (
+                self.forecast_strategy_id.as_deref(),
+                self.forecast_symbol.as_deref(),
+            ) && let Err(e) =
+                audit::journal::post_forecast_event(l, &overlay, sid, sym, false).await
+            {
+                tracing::warn!(
+                    error = %e,
+                    "post_forecast_event post-inference failed (non-fatal)"
+                );
+            }
         }
 
         // ── Write to cache if configured ─────────────────────────────────────

@@ -165,6 +165,30 @@ async fn main() -> Result<()> {
         }
     }
 
+    // ── Trail-mirror task (Phase D T-D-N24 / R6.1-R6.3) ─────────────────────────
+    // Spawned only when the tick bus is active (tick_bus_capacity > 0). The
+    // trail-mirror subscribes to the broadcast bus via the same sender used
+    // by the reflection audit-tick consumer (R7.7 — subscriber-side only, no
+    // producer change). Mirrors the `audit_tick_consumer_enabled` cfg-gate
+    // convention: here we gate on `tick_bus_capacity > 0` (the tick bus must
+    // be armed for the stream to carry events).
+    //
+    // The `TrailMirrorHandle` is kept as `_trail_mirror_handle` at v0.1.0
+    // (the iced Subscription bridge T-D-N26 wires it into the cockpit's
+    // subscription batch in a follow-up). The handle's `req_tx` / `tick_tx`
+    // are accessible if the cockpit binary needs them.
+    let _trail_mirror_handle = if let Some(ref sender) = tick_bus_sender {
+        let rx = sender.subscribe();
+        let (mirror, handle) = reflection::trail_mirror::TrailMirror::new(rx, Arc::clone(&ledger));
+        tokio::spawn(async move { mirror.run().await });
+        info!("trail mirror task spawned");
+        Some(handle)
+    } else {
+        // Tick bus disabled → trail mirror is a no-op; cockpit Trail view
+        // degrades to SQL-backfill-only mode (R3.4 empty-stage fallback).
+        None
+    };
+
     // ── Kill switch ───────────────────────────────────────────────────────────
     // T809 — wire the audit ledger + production incident spawner.  On
     // trip the kill switch dual-writes the audit memo + `strategy_events`
@@ -180,10 +204,21 @@ async fn main() -> Result<()> {
     info!(halt_file = %cfg.kill_switch.halt_file, "kill switch initialized (audit-wired)");
 
     // ── Strategy registry ─────────────────────────────────────────────────────
-    // Construction (and the seeding tracing::info! call) is centralised in
-    // `agent::runtime::build_registry` so neither the `ui` crate nor any
-    // other downstream crate needs a direct `strategy` dependency.
-    let registry = agent::runtime::build_registry(&cfg);
+    // Phase D (T-D-N22): paper mode with tcn_overlay_momentum.enabled = true
+    // uses `build_registry_with_ledger` so the TCN overlay strategy receives
+    // the tick-bus-armed ledger for `forecast_events` SQL durability. All
+    // other modes / configs use the baseline `build_registry`.
+    //
+    // `Ledger` is `Clone` (SQLite pool is Arc-backed; tick_bus sender is cheap).
+    // We clone before the Arc-wrap since `build_registry_with_ledger` takes
+    // ownership. Backtest call sites NEVER reach this arm (they exit through
+    // `agent::backtest_entry`, not here) — H2 anchor invariant preserved.
+    let registry =
+        if cfg.mode == agent::config::Mode::Paper && cfg.strategies.tcn_overlay_momentum.enabled {
+            agent::runtime::build_registry_with_ledger(&cfg, (*ledger).clone())
+        } else {
+            agent::runtime::build_registry(&cfg)
+        };
 
     // ── Broadcast bus ─────────────────────────────────────────────────────────
     let bus = Arc::new(EventBus::new(&cfg.bus));

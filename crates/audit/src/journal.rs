@@ -40,42 +40,33 @@ use uuid::Uuid;
 
 use crate::Ledger;
 
-/// Post a fill as balanced double-entry journal entries (R3.3).
+/// Phase D extension of [`post_fill`] (R1.1 + R1.2 — ui-rethink-phase-d-trail).
 ///
-/// Buy fill of `q SYMBOL` @ `p` USDT with fee `f` USDT:
-/// - Dr `assets:position:<SYMBOL>`  `q * p`  (T1102 — per-symbol-position-accounts)
-/// - Cr `assets:cash:USDT`          `q * p`
-/// - Dr `expense:fees:taker`        `f`
-/// - Cr `assets:cash:USDT`          `f`
+/// Threads the upstream `signal_id` (from `strategy_signals.id` — the row id
+/// returned by [`post_strategy_signal`]) into the
+/// `journal_transactions.signal_id` column and persists the canonical
+/// `fill.id` into `journal_transactions.fill_id` (separate from the
+/// synthesised `journal_transactions.id` UUID the writer mints internally).
 ///
-/// Sell fill is the mirror.
-///
-/// `<SYMBOL>` is the full Binance pair (e.g. `BTCUSDT`, `ETHUSDT`). The chart
-/// of accounts row is seeded by migration `006_per_symbol_position_accounts.sql`
-/// for the universe at `config/agent.toml [funding].universe`.
-///
-/// `strategy_id` (T802 — operator success reports R5.3 / Q2) tags the
-/// fill with the strategy that emitted the signal so per-strategy
-/// attribution can roll up over `[since, until]`.  `None` writes SQL
-/// NULL — those rows surface in the report under the synthetic
-/// `(unattributed)` bucket.  The column is storage-only; it must NOT
-/// surface in the backtest report body bytes (V6 anchor gate).
+/// `post_fill(ledger, fill, venue, strategy_id)` is a thin
+/// `post_fill_with_signal(ledger, fill, venue, strategy_id, None)`
+/// wrapper — backwards-compatible per mig 004's `strategy_id` precedent (R1.2).
 ///
 /// Returns the generated `journal_transactions.id` (a UUID v4 string wrapped
-/// in [`SmolStr`]) so the caller can stamp `Fill.transaction_id` on the
-/// in-memory fill before announcing it to the engine
-/// (tape-row-audit-modal Q5).
+/// in [`SmolStr`]).
 ///
 /// # Errors
 ///
 /// Returns [`LedgerError::TransactionFailed`] if the SQL transaction fails.
 #[allow(clippy::too_many_lines)] // double-entry for buy and sell requires this length
-#[instrument(name = "ledger.post_fill", skip(ledger, fill), fields(fill_id = %fill.id, venue = %venue, strategy_id = ?strategy_id))]
-pub async fn post_fill(
+#[instrument(name = "ledger.post_fill_with_signal", skip(ledger, fill, signal_id),
+    fields(fill_id = %fill.id, venue = %venue, strategy_id = ?strategy_id))]
+pub async fn post_fill_with_signal(
     ledger: &Ledger,
     fill: &Fill,
     venue: Venue,
     strategy_id: Option<&str>,
+    signal_id: Option<&str>,
 ) -> Result<SmolStr, LedgerError> {
     let txn_id = Uuid::new_v4().to_string();
     let ts = fill
@@ -97,6 +88,8 @@ pub async fn post_fill(
     // description-parse stays the primary symbol source for backwards-compat
     // (Q4); the structural account-id is a defensive cross-check.
     let position_account_id = format!("assets:position:{}", fill.symbol);
+    // Phase D: persist fill.id (the canonical Fill correlation id from mig 011).
+    let fill_id_str = fill.id.to_string();
 
     let mut db_txn = ledger
         .pool
@@ -105,18 +98,20 @@ pub async fn post_fill(
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
 
     // Insert transaction header. The `strategy_id` column was added in
-    // migration 004; pre-migration rows are NULL.  The column is bound
-    // verbatim and is storage-only — it never surfaces in the rendered
-    // backtest report body.
+    // migration 004; `fill_id` and `signal_id` added in mig 011. All are
+    // storage-only — they never surface in the rendered backtest report body.
     sqlx::query(
-        "INSERT INTO journal_transactions (id, ts, description, strategy_id, venue) \
-         VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO journal_transactions \
+         (id, ts, description, strategy_id, venue, fill_id, signal_id) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&txn_id)
     .bind(&ts)
     .bind(&description)
     .bind(strategy_id)
     .bind(venue.to_string())
+    .bind(&fill_id_str)
+    .bind(signal_id)
     .execute(&mut *db_txn)
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
@@ -241,6 +236,37 @@ pub async fn post_fill(
     Ok(SmolStr::new(&txn_id))
 }
 
+/// Post a fill as balanced double-entry journal entries (R3.3).
+///
+/// Buy fill of `q SYMBOL` @ `p` USDT with fee `f` USDT:
+/// - Dr `assets:position:<SYMBOL>`  `q * p`  (T1102 — per-symbol-position-accounts)
+/// - Cr `assets:cash:USDT`          `q * p`
+/// - Dr `expense:fees:taker`        `f`
+/// - Cr `assets:cash:USDT`          `f`
+///
+/// Sell fill is the mirror.
+///
+/// Thin wrapper over [`post_fill_with_signal`] with `signal_id = None`
+/// for backwards-compatibility (mig 004 `strategy_id` precedent). All
+/// callers that do not have a `signal_id` call this directly; callers
+/// that thread signal lineage through use [`post_fill_with_signal`].
+///
+/// Returns the generated `journal_transactions.id` (a UUID v4 string wrapped
+/// in [`SmolStr`]).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL transaction fails.
+#[instrument(name = "ledger.post_fill", skip(ledger, fill), fields(fill_id = %fill.id, venue = %venue, strategy_id = ?strategy_id))]
+pub async fn post_fill(
+    ledger: &Ledger,
+    fill: &Fill,
+    venue: Venue,
+    strategy_id: Option<&str>,
+) -> Result<SmolStr, LedgerError> {
+    post_fill_with_signal(ledger, fill, venue, strategy_id, None).await
+}
+
 // ── chart-buy-sell-emphasis v1.9 (T2014) — strategy_signals writers ──────────
 
 /// chart-buy-sell-emphasis v1.9 (T2014) — INSERT one row into
@@ -290,6 +316,7 @@ pub async fn post_fill(
         was_clamped,
     )
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn post_strategy_signal(
     ledger: &Ledger,
     signal: &Signal,
@@ -298,6 +325,7 @@ pub async fn post_strategy_signal(
     venue: Venue,
     was_clamped: bool,
     clamp_reason: Option<&str>,
+    forecast_correlation_id: Option<Uuid>, // Phase D R1.3 — NEW; existing callers pass None
 ) -> Result<SmolStr, LedgerError> {
     // Hold signals carry no actionable intent; the ghost layer has
     // nothing to render. Caller can rely on the empty SmolStr to mean
@@ -326,6 +354,8 @@ pub async fn post_strategy_signal(
     let intended_price_str = intended_price.map(|p| p.get().to_string());
     let venue_str = venue.to_string();
     let was_clamped_i = i64::from(was_clamped);
+    // Phase D R1.3 — bind the upstream forecast correlation id (mig 011 new column).
+    let forecast_corr_id_str = forecast_correlation_id.map(|u| u.to_string());
 
     // Atomic — sibling of post_fill. No new on-disk write path; reuses
     // the established `ledger.pool.begin() / commit()` shape (hard-
@@ -339,8 +369,8 @@ pub async fn post_strategy_signal(
     sqlx::query(
         "INSERT INTO strategy_signals \
          (id, ts, strategy_id, venue, symbol, side, intended_qty_str, \
-          intended_price_str, was_clamped, clamp_reason) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          intended_price_str, was_clamped, clamp_reason, forecast_correlation_id) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&row_id)
     .bind(&ts)
@@ -352,6 +382,7 @@ pub async fn post_strategy_signal(
     .bind(&intended_price_str)
     .bind(was_clamped_i)
     .bind(clamp_reason)
+    .bind(forecast_corr_id_str)
     .execute(&mut *db_txn)
     .await
     .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
@@ -423,6 +454,87 @@ pub async fn update_signal_clamp_status(
         .commit()
         .await
         .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    Ok(())
+}
+
+// ── ui-rethink-phase-d-trail Wave A — forecast_events writer (R1.4) ──────────
+
+/// Phase D writer (R1.4 — ui-rethink-phase-d-trail). Persists a
+/// [`trading_core::ForecastOverlay`] to the `forecast_events` table (mig 011)
+/// and fires the **existing** `AuditEvent::ForecastEmitted` tick (no new
+/// variant — the payload already carries `overlay.correlation_id`).
+///
+/// Call sites: the two existing `crates/forecast/src/tcn.rs` emit sites
+/// (cache-hit at L822-831 and post-inference at L937-947) invoke this
+/// **alongside** the existing tick-emit; the tick path stays the broadcast
+/// contract for live consumers while the SQL row closes the durability gap
+/// (K6 — restart-consumer backfill).
+///
+/// **Idempotent on `correlation_id` PK.** `INSERT OR IGNORE` — cache-hit and
+/// post-inference branches may both fire for the same `correlation_id` on a
+/// replay-warm cache; the second emit is a no-op at the SQL layer.
+///
+/// **Determinism gate.** This writer takes a `&Ledger`. In backtests the ledger
+/// is constructed via `Ledger::open` (no tick bus → `tick.rs:104-107`
+/// static-branch tee dormant); the SQL row still lands. Pre-existing 22
+/// anchors do not read this table → anchor-safe.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL INSERT fails.
+#[instrument(name = "ledger.post_forecast_event", skip(ledger, overlay),
+    fields(correlation_id = %overlay.correlation_id, strategy_id, symbol, cache_hit))]
+pub async fn post_forecast_event(
+    ledger: &Ledger,
+    overlay: &trading_core::ForecastOverlay,
+    strategy_id: &str,
+    symbol: &str,
+    cache_hit: bool,
+) -> Result<(), LedgerError> {
+    // 6-digit microsecond ts — mirrors post_strategy_signal (HF-3 / ADR-0004
+    // determinism gate).
+    let ts_fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    let ts = overlay
+        .sampled_at
+        .format(&ts_fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    let direction_str = match overlay.direction {
+        trading_core::Direction::Up => "up",
+        trading_core::Direction::Down => "down",
+        trading_core::Direction::Flat => "flat",
+    };
+    let confidence_str = overlay.confidence.to_string();
+    let cache_hit_i = i64::from(cache_hit);
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO forecast_events \
+         (correlation_id, ts, strategy_id, symbol, direction, \
+          confidence, model_revision, cache_hit) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(overlay.correlation_id.to_string())
+    .bind(&ts)
+    .bind(strategy_id)
+    .bind(symbol)
+    .bind(direction_str)
+    .bind(&confidence_str)
+    .bind(&overlay.model_revision)
+    .bind(cache_hit_i)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(
+        correlation_id = %overlay.correlation_id,
+        strategy_id,
+        symbol,
+        cache_hit,
+        "forecast_event persisted"
+    );
     Ok(())
 }
 
@@ -2058,10 +2170,18 @@ mod tests {
 
         let signal = fixture_signal(TSignalKind::Buy, "BTCUSDT", 1_700_000_000);
         let qty = TQuantity::new(dec_lit!(0.05)).expect("qty");
-        let row_id =
-            post_strategy_signal(&ledger, &signal, qty, None, TVenue::Binance, false, None)
-                .await
-                .expect("post_strategy_signal");
+        let row_id = post_strategy_signal(
+            &ledger,
+            &signal,
+            qty,
+            None,
+            TVenue::Binance,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("post_strategy_signal");
         assert!(!row_id.is_empty(), "writer must return a non-empty row id");
 
         let count_after: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM strategy_signals")
@@ -2130,10 +2250,18 @@ mod tests {
 
         let signal = fixture_signal(TSignalKind::Sell, "ETHUSDT", 1_700_000_100);
         let qty = TQuantity::new(dec_lit!(0.10)).expect("qty");
-        let row_id =
-            post_strategy_signal(&ledger, &signal, qty, None, TVenue::Binance, false, None)
-                .await
-                .expect("INSERT");
+        let row_id = post_strategy_signal(
+            &ledger,
+            &signal,
+            qty,
+            None,
+            TVenue::Binance,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("INSERT");
 
         // Sanity: pre-UPDATE state is `was_clamped = 0, clamp_reason = NULL`.
         let pre: (i64, Option<String>) =
@@ -2168,9 +2296,18 @@ mod tests {
 
         let signal = fixture_signal(TSignalKind::Hold, "BTCUSDT", 1_700_000_000);
         let qty = TQuantity::new(dec_lit!(0)).expect("qty");
-        let id = post_strategy_signal(&ledger, &signal, qty, None, TVenue::Binance, false, None)
-            .await
-            .expect("post_strategy_signal Hold");
+        let id = post_strategy_signal(
+            &ledger,
+            &signal,
+            qty,
+            None,
+            TVenue::Binance,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("post_strategy_signal Hold");
         assert!(id.is_empty(), "Hold must return an empty row id");
 
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM strategy_signals")
@@ -2197,6 +2334,7 @@ mod tests {
             TVenue::Binance,
             false,
             None,
+            None, // forecast_correlation_id (Phase D R1.3)
         )
         .await
         .expect("post w/ intended_price");

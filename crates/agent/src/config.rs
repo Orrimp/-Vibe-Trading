@@ -171,6 +171,11 @@ impl Default for SmaCrossoverConfig {
 pub struct StrategiesConfig {
     #[serde(default)]
     pub sma_crossover: SmaCrossoverConfig,
+    /// Phase D (ui-rethink-phase-d-trail T-D-N19) — TCN overlay audit gate.
+    /// Opt-in via `[strategies.tcn_overlay_momentum] enabled = true` in
+    /// `agent.toml`. Default `enabled = false` (conservative-off).
+    #[serde(default)]
+    pub tcn_overlay_momentum: TcnOverlayConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,6 +254,25 @@ impl Default for AuditConfig {
             tick_bus_capacity: default_tick_bus_capacity(),
         }
     }
+}
+
+/// Phase D (ui-rethink-phase-d-trail T-D-N19) — TCN overlay audit gate.
+///
+/// Controls whether `TcnSyncForecaster` writes `forecast_events` rows
+/// to the audit ledger. Default `enabled = false` (conservative-off;
+/// operators opt in once they want the Trail view populated with
+/// forecast-event rows). When `false` the `TcnSyncForecaster` wraps
+/// forecasts in fire-and-forget mode with no ledger write.
+///
+/// Setting `[tcn_overlay] enabled = true` in `agent.toml` enables the
+/// full Phase D trail correlation chain (Forecast → Signal → Fill).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TcnOverlayConfig {
+    /// `false` (ship default) → no forecast_events rows written; Trail
+    /// view's Forecast node renders empty-stage placeholder. `true` →
+    /// ledger write is active and forecast rows land per infer/cache-hit.
+    #[serde(default = "default_false")]
+    pub enabled: bool,
 }
 
 /// chart-buy-sell-emphasis v1.9 (T2016) — strategy-signal-log writer
@@ -1167,5 +1191,42 @@ base_url = "https://api.anthropic.com/v1"
         assert!(!cfg.llm.enabled, "default disabled");
         // validate_llm_keys would be called inside load(); replicate here.
         cfg.llm.validate_keys().expect("no-op when disabled");
+    }
+
+    // ── T-D-N19 — TcnOverlayConfig round-trip tests ───────────────────────────
+
+    /// T-D-N19 (a) — `[strategies.tcn_overlay_momentum]` section omitted from
+    /// `agent.toml` must default `enabled = false` (conservative-off per
+    /// architect Q1). Hard-asserts the Phase D shipping default.
+    #[test]
+    fn config_tcn_overlay_default_off() {
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse minimal");
+        assert!(
+            !cfg.strategies.tcn_overlay_momentum.enabled,
+            "tcn_overlay_momentum.enabled must default to false (conservative-off); \
+             flipping the default requires a follow-up brief + operator approval"
+        );
+    }
+
+    /// T-D-N19 (b) — explicit `[strategies.tcn_overlay_momentum] enabled = true`
+    /// round-trips through serde. Defends against the field being dropped
+    /// by serde (a regression vector if the field were ever renamed).
+    #[test]
+    fn config_tcn_overlay_explicit_enable_round_trips() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[strategies.tcn_overlay_momentum]
+enabled = true
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse tcn-overlay opt-in");
+        assert!(
+            cfg.strategies.tcn_overlay_momentum.enabled,
+            "explicit `enabled = true` must round-trip through serde"
+        );
     }
 }

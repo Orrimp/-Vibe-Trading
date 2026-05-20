@@ -61,10 +61,10 @@ async fn recent_signals_returns_window_subset() {
     let s_outside = make_signal(SignalKind::Buy, "BTCUSDT", 5_000, "sma_crossover");
     let qty = Quantity::new(dec!(0.05)).expect("qty");
 
-    let _id1 = post_strategy_signal(&ledger, &s1, qty, None, Venue::Binance, false, None)
+    let _id1 = post_strategy_signal(&ledger, &s1, qty, None, Venue::Binance, false, None, None)
         .await
         .expect("post s1");
-    let _id2 = post_strategy_signal(&ledger, &s2, qty, None, Venue::Binance, false, None)
+    let _id2 = post_strategy_signal(&ledger, &s2, qty, None, Venue::Binance, false, None, None)
         .await
         .expect("post s2");
     let id3 = post_strategy_signal(
@@ -75,13 +75,22 @@ async fn recent_signals_returns_window_subset() {
         Venue::Binance,
         true,
         Some("per_symbol_cap"),
+        None, // forecast_correlation_id (Phase D R1.3)
     )
     .await
     .expect("post s3");
-    let _id_outside =
-        post_strategy_signal(&ledger, &s_outside, qty, None, Venue::Binance, false, None)
-            .await
-            .expect("post outside");
+    let _id_outside = post_strategy_signal(
+        &ledger,
+        &s_outside,
+        qty,
+        None,
+        Venue::Binance,
+        false,
+        None,
+        None,
+    )
+    .await
+    .expect("post outside");
 
     let since = ts_secs(0);
     let until = ts_secs(1_000);
@@ -126,7 +135,7 @@ async fn recent_signals_empty_window_returns_ok_empty() {
     // Seed a row outside the queried window.
     let s = make_signal(SignalKind::Buy, "BTCUSDT", 100, "sma_crossover");
     let qty = Quantity::new(dec!(0.1)).expect("qty");
-    let _ = post_strategy_signal(&ledger, &s, qty, None, Venue::Binance, false, None)
+    let _ = post_strategy_signal(&ledger, &s, qty, None, Venue::Binance, false, None, None)
         .await
         .expect("post seed");
 
@@ -181,7 +190,7 @@ async fn recent_signals_reflects_post_update_clamp_status() {
 
     let s = make_signal(SignalKind::Sell, "ETHUSDT", 150, "alpha");
     let qty = Quantity::new(dec!(0.25)).expect("qty");
-    let id = post_strategy_signal(&ledger, &s, qty, None, Venue::Binance, false, None)
+    let id = post_strategy_signal(&ledger, &s, qty, None, Venue::Binance, false, None, None)
         .await
         .expect("INSERT");
 
@@ -240,6 +249,7 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
         Venue::Binance,
         false,
         None,
+        None, // forecast_correlation_id (Phase D R1.3)
     )
     .await
     .expect("post btc/binance");
@@ -251,6 +261,7 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
         Venue::Binance,
         false,
         None,
+        None, // forecast_correlation_id (Phase D R1.3)
     )
     .await
     .expect("post eth/binance");
@@ -262,6 +273,7 @@ async fn recent_signals_isolates_by_venue_and_symbol() {
         Venue::Coinbase,
         false,
         None,
+        None, // forecast_correlation_id (Phase D R1.3)
     )
     .await
     .expect("post btc/coinbase");

@@ -678,6 +678,24 @@ pub struct ChartTooltipView {
     pub clamp_reason: Option<SmolStr>,
 }
 
+// ── Phase D — Trail screen state (ui-rethink-phase-d-trail T-D-N14) ─────────
+
+/// Trail-screen sub-state (Phase D R2.3-R2.5 / decomp §4 Wave D).
+///
+/// `selected_audit_id = None` → list mode (cold-start default, R2.5).
+/// `selected_audit_id = Some(id)` → trail mode: vertical node stack rendered.
+/// `drawer_selected_node = Some(kind)` → side-drawer open to that node.
+///
+/// The LRU cache lives in the trail-mirror crate (crates/reflection), NOT
+/// here — this struct holds only the rendering selection state.
+#[derive(Debug, Clone, Default)]
+pub struct TrailScreenState {
+    /// The audit-row id currently showing in trail mode. `None` = list mode.
+    pub selected_audit_id: Option<SmolStr>,
+    /// Which node's side-drawer is open. `None` = drawer closed.
+    pub drawer_selected_node: Option<crate::widgets::trail_node::TrailNodeKind>,
+}
+
 /// Root cockpit model. Owned by the iced `Application`.
 ///
 /// `Debug` and `Clone` are implemented manually so the optional
@@ -845,6 +863,10 @@ pub struct Cockpit {
     /// over `&Cockpit`.
     pub audit_screen_state: AuditScreenState,
 
+    /// Phase D — Trail-screen sub-state (R2.3-R2.5 / T-D-N14).
+    /// `selected_audit_id = None` = list mode (cold-start, R2.5).
+    pub trail_screen_state: TrailScreenState,
+
     // ── Phase 4 — Backtest-panel cross-link ─────────────────────────────
     /// Read-only mirror of `audit::query::equity_curve_for_strategy`
     /// results, keyed on `StrategyId`. Entry inserted at first
@@ -923,6 +945,7 @@ impl std::fmt::Debug for Cockpit {
             .field("strategies_config", &self.strategies_config)
             .field("risk_state", &self.risk_state)
             .field("audit_screen_state", &self.audit_screen_state)
+            .field("trail_screen_state", &self.trail_screen_state)
             .field("strategy_equity", &self.strategy_equity)
             .field("execution_mode", &self.execution_mode)
             .field("paused_strategies", &self.paused_strategies)
@@ -972,6 +995,7 @@ impl Default for Cockpit {
             strategies_config: None,
             risk_state: PanelState::Loading,
             audit_screen_state: AuditScreenState::default(),
+            trail_screen_state: TrailScreenState::default(),
             strategy_equity: HashMap::new(),
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
@@ -1070,6 +1094,7 @@ impl Cockpit {
             strategies_config: None,
             risk_state: PanelState::Loading,
             audit_screen_state: AuditScreenState::default(),
+            trail_screen_state: TrailScreenState::default(),
             strategy_equity: HashMap::new(),
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
@@ -1317,6 +1342,24 @@ pub enum Message {
     /// Only available with `--features live` (audit crate dependency).
     #[cfg(feature = "live")]
     TrainingEventsRefreshed(Vec<trading_core::views::TrainingEventRow>),
+
+    // ── Phase D — Trail view (ui-rethink-phase-d-trail) ──────────────────────
+    /// Operator clicked the chevron on a trail node widget. Opens / focuses
+    /// the side-drawer to that node's payload (R4.3 / Q3 = chevron-click).
+    TrailNodeChevronClicked(crate::widgets::trail_node::TrailNodeKind),
+    /// Operator clicked the Trail chevron on an agent-feed row or audit-table row.
+    /// Compound dispatch: expands to `SelectTrailRow(id)` + `SwitchScreen(Trail)`.
+    /// The **only** new public-surface Message variant (R5.3).
+    OpenTrailFor(SmolStr),
+    /// Internal: select a trail row by `audit_id` (part of compound dispatch from
+    /// `OpenTrailFor`; not emitted directly from UI widgets).
+    SelectTrailRow(SmolStr),
+    /// Operator dismissed the trail side-drawer. Clears `drawer_selected_node`
+    /// but preserves `selected_audit_id` so the trail node stack stays visible.
+    TrailDrawerClosed,
+    /// Trail-mirror tick delivered via the iced Subscription bridge (Wave F).
+    /// Placeholder at v0.1.0; carries a string description of the event.
+    TrailMirrorTick(SmolStr),
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1761,6 +1804,38 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                     model.lab_state.training_events.pop_front();
                 }
             }
+        }
+
+        // ── Phase D — Trail view (ui-rethink-phase-d-trail T-D-N15, N17) ─────
+        Message::TrailNodeChevronClicked(kind) => {
+            // Chevron on a trail node → open / toggle the side-drawer (R4.3).
+            model.trail_screen_state.drawer_selected_node = Some(kind);
+        }
+        Message::SelectTrailRow(id) => {
+            // Internal: select a trail row by audit_id; part of compound dispatch
+            // from `OpenTrailFor`. Not emitted directly from UI widgets (R5.3).
+            // Empty SmolStr is the "back to list" sentinel emitted by the
+            // breadcrumb button in `screens::trail` — clears the selection.
+            if id.is_empty() {
+                model.trail_screen_state.selected_audit_id = None;
+                model.trail_screen_state.drawer_selected_node = None;
+            } else {
+                model.trail_screen_state.selected_audit_id = Some(id);
+            }
+        }
+        Message::TrailDrawerClosed => {
+            // Dismiss drawer; preserve selected_audit_id so trail stack stays visible.
+            model.trail_screen_state.drawer_selected_node = None;
+        }
+        Message::OpenTrailFor(id) => {
+            // Compound dispatch per R5.1 + Phase C `OpenStrategyInLab` precedent.
+            // Expands to: SelectTrailRow(id) + SwitchScreen(Trail).
+            model.trail_screen_state.selected_audit_id = Some(id);
+            model.current_screen = Screen::Trail;
+        }
+        Message::TrailMirrorTick(_desc) => {
+            // Subscription bridge tick (Wave F). Placeholder at v0.1.0 — no
+            // state mutation needed until the trail-mirror LRU backfill lands.
         }
     }
 }
@@ -2978,5 +3053,85 @@ mod tests {
         let mut c = Cockpit::new();
         update(&mut c, Message::SwitchScreen(Screen::Control));
         assert_eq!(c.settings_active_tab, SettingsTab::Control);
+    }
+
+    // ── T-D-N28 — Trail compound-dispatch round-trip (K6 gate) ──────────────
+
+    /// T-D-N28 (a) — `OpenTrailFor(uuid)` sets `current_screen == Trail`
+    /// AND `trail_screen_state.selected_audit_id == Some(uuid)`.
+    ///
+    /// This is the K6 mitigation test — identical pattern to Phase C's
+    /// `OpenStrategyInLab` round-trip (tasks.md ref).
+    #[test]
+    fn open_trail_for_sets_screen_and_selected_audit_id() {
+        let mut c = Cockpit::new();
+        // Cold start: list mode (no row selected).
+        assert!(c.trail_screen_state.selected_audit_id.is_none());
+        assert_eq!(c.current_screen, Screen::default());
+
+        let uuid = smol_str::SmolStr::new("test-audit-id-abc123");
+        update(&mut c, Message::OpenTrailFor(uuid.clone()));
+
+        assert_eq!(
+            c.current_screen,
+            Screen::Trail,
+            "current_screen must switch to Trail"
+        );
+        assert_eq!(
+            c.trail_screen_state.selected_audit_id.as_deref(),
+            Some("test-audit-id-abc123"),
+            "selected_audit_id must match the dispatched id"
+        );
+    }
+
+    /// T-D-N28 (b) — `SelectTrailRow(empty)` clears `selected_audit_id` (back-to-list).
+    #[test]
+    fn select_trail_row_empty_clears_selection() {
+        let mut c = Cockpit::new();
+        // Put it into trail mode first.
+        let uuid = smol_str::SmolStr::new("some-audit-id");
+        update(&mut c, Message::OpenTrailFor(uuid));
+        assert!(c.trail_screen_state.selected_audit_id.is_some());
+
+        // Send empty sentinel → back to list mode.
+        update(
+            &mut c,
+            Message::SelectTrailRow(smol_str::SmolStr::default()),
+        );
+        assert!(
+            c.trail_screen_state.selected_audit_id.is_none(),
+            "empty SelectTrailRow must clear selected_audit_id (back-to-list)"
+        );
+        // Drawer should also be cleared.
+        assert!(
+            c.trail_screen_state.drawer_selected_node.is_none(),
+            "drawer_selected_node must be cleared on back-to-list"
+        );
+    }
+
+    /// T-D-N28 (c) — `TrailDrawerClosed` clears `drawer_selected_node` but
+    /// preserves `selected_audit_id`.
+    #[test]
+    fn trail_drawer_closed_clears_drawer_not_selection() {
+        use crate::widgets::trail_node::TrailNodeKind;
+        let mut c = Cockpit::new();
+        let uuid = smol_str::SmolStr::new("some-audit-id");
+        update(&mut c, Message::OpenTrailFor(uuid));
+        // Open the drawer.
+        update(
+            &mut c,
+            Message::TrailNodeChevronClicked(TrailNodeKind::Fill),
+        );
+        assert!(c.trail_screen_state.drawer_selected_node.is_some());
+        // Close the drawer.
+        update(&mut c, Message::TrailDrawerClosed);
+        assert!(
+            c.trail_screen_state.drawer_selected_node.is_none(),
+            "TrailDrawerClosed must clear drawer_selected_node"
+        );
+        assert!(
+            c.trail_screen_state.selected_audit_id.is_some(),
+            "TrailDrawerClosed must NOT clear selected_audit_id"
+        );
     }
 }

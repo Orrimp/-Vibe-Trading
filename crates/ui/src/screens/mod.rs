@@ -27,3 +27,7 @@ pub mod strategies;
 /// Phase C — Strategy registry (ui-rethink-phase-c-sidebar-ia R3.1).
 /// List-of-cards replacing the legacy `strategies::view` detail panel.
 pub mod strategy_registry;
+/// Phase D — Trail view screen (ui-rethink-phase-d-trail R2.1-R2.5).
+/// List mode delegates verbatim to `screens::audit::view` (R10.1 byte-identity gate).
+/// Trail mode renders the upstream node stack + side-drawer.
+pub mod trail;

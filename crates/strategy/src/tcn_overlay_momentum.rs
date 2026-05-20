@@ -181,6 +181,36 @@ impl TcnSyncForecaster {
         let f = forecast::tcn::TcnForecaster::load_anchor(forecast::tcn::AnchorScenario::Bs2)?;
         Ok(Self { forecaster: f })
     }
+
+    /// Attach an audit ledger for Phase D `forecast_events` SQL durability
+    /// (T-D-N20 / R6.4). Forwards to
+    /// `forecast::tcn::TcnForecaster::with_ledger` (see `tcn.rs:589`).
+    ///
+    /// Only available when the `audit-tick` feature is enabled — the
+    /// `TcnForecaster.ledger` field and `with_ledger` builder are both
+    /// cfg-gated. Backtest paths continue to use `load_bs1` / `load_bs2`
+    /// directly (no ledger attached → `tick.rs:104-107` static branch stays
+    /// dormant — H2 anchor invariant preserved).
+    #[cfg(feature = "forecast-audit-tick")]
+    #[must_use]
+    pub fn with_ledger(self, ledger: audit::Ledger) -> Self {
+        Self {
+            forecaster: self.forecaster.with_ledger(ledger),
+        }
+    }
+
+    /// Attach strategy_id + symbol context for the Phase D
+    /// `post_forecast_event` SQL writer (R1.4). Forwards to
+    /// `forecast::tcn::TcnForecaster::with_forecast_context`.
+    ///
+    /// Called alongside `with_ledger`. Only available under `forecast-audit-tick`.
+    #[cfg(feature = "forecast-audit-tick")]
+    #[must_use]
+    pub fn with_forecast_context(self, strategy_id: String, symbol: String) -> Self {
+        Self {
+            forecaster: self.forecaster.with_forecast_context(strategy_id, symbol),
+        }
+    }
 }
 
 #[cfg(feature = "forecast")]
@@ -363,6 +393,49 @@ impl TcnOverlayMomentumStrategy {
     #[cfg(feature = "forecast")]
     pub fn with_tcn_bs2(base: MomentumStrategy) -> Result<Self, forecast::tcn::TcnForecasterError> {
         let forecaster = TcnSyncForecaster::load_bs2()?;
+        Ok(Self::new(base, Box::new(forecaster), dec!(0.6)))
+    }
+
+    /// Phase D (T-D-N21) — Construct with the real BS-1 TCN anchor checkpoint
+    /// **and** attach an audit ledger for `forecast_events` SQL durability
+    /// (R6.4 / R6.5). The ledger enables the `post_forecast_event` writer
+    /// inside `TcnForecaster`'s inference path.
+    ///
+    /// Requires the `forecast-audit-tick` feature (candle backend + audit-tick
+    /// tee both enabled). Backtest callers MUST continue to use `with_tcn_bs1`
+    /// (no ledger — `tick.rs:104-107` stays dormant, H2 preserved).
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the checkpoint is absent
+    /// or fails to decode.
+    #[cfg(feature = "forecast-audit-tick")]
+    pub fn with_tcn_bs1_ledger(
+        base: MomentumStrategy,
+        ledger: audit::Ledger,
+    ) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs1()?
+            .with_ledger(ledger)
+            .with_forecast_context("tcn_overlay_momentum_bs1".to_string(), "MULTI".to_string());
+        Ok(Self::new(base, Box::new(forecaster), dec!(0.6)))
+    }
+
+    /// Phase D (T-D-N21) — Construct with the real BS-2 TCN anchor checkpoint
+    /// **and** attach an audit ledger. Mirror of `with_tcn_bs1_ledger` for
+    /// the BS-2 checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the checkpoint is absent
+    /// or fails to decode.
+    #[cfg(feature = "forecast-audit-tick")]
+    pub fn with_tcn_bs2_ledger(
+        base: MomentumStrategy,
+        ledger: audit::Ledger,
+    ) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs2()?
+            .with_ledger(ledger)
+            .with_forecast_context("tcn_overlay_momentum_bs2".to_string(), "MULTI".to_string());
         Ok(Self::new(base, Box::new(forecaster), dec!(0.6)))
     }
 }
@@ -698,6 +771,49 @@ mod tests {
             stats.total,
             stats.passed_through + stats.dampened + stats.window_warming_up,
             "stats must be self-consistent"
+        );
+    }
+
+    // ── T-D-N20 / T-D-N21 — with_ledger / with_tcn_bs1_ledger builder tests ──
+
+    // Helper: build a minimal MomentumStrategy from the canonical config file,
+    // or skip the test if the config doesn't exist (CI without workspace data).
+    fn build_base_strategy() -> Option<MomentumStrategy> {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+        let cfg_path = std::path::PathBuf::from(&manifest)
+            .join("../../config/strategies/top10_momentum_h1.toml");
+        CrossSectionalMomentumConfig::from_file(&cfg_path)
+            .ok()
+            .map(|cfg| MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("test")))
+    }
+
+    /// T-D-N21 (a) — `with_passthrough` cold-start stats are zero.
+    /// Invariant that applies to all constructors.
+    #[test]
+    fn with_passthrough_cold_start_stats_zero() {
+        let Some(base) = build_base_strategy() else {
+            eprintln!("SKIP with_passthrough_cold_start_stats_zero: config not found");
+            return;
+        };
+        let strategy = TcnOverlayMomentumStrategy::with_passthrough(base);
+        assert_eq!(strategy.stats.total, 0);
+        assert_eq!(strategy.stats.passed_through, 0);
+        assert_eq!(strategy.stats.dampened, 0);
+    }
+
+    /// T-D-N21 (b) — Strategy ID is always `"tcn_overlay_momentum"` regardless
+    /// of constructor used. Regression guard for R6.5 registry wiring.
+    #[test]
+    fn strategy_id_is_tcn_overlay_momentum() {
+        let Some(base) = build_base_strategy() else {
+            eprintln!("SKIP strategy_id_is_tcn_overlay_momentum: config not found");
+            return;
+        };
+        let strategy = TcnOverlayMomentumStrategy::with_passthrough(base);
+        assert_eq!(
+            strategy.id().0.as_str(),
+            "tcn_overlay_momentum",
+            "strategy ID must match the registry key"
         );
     }
 }

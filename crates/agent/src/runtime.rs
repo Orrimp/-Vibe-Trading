@@ -140,6 +140,91 @@ pub fn build_registry(cfg: &Config) -> Arc<strategy::StrategyRegistry> {
     Arc::new(registry)
 }
 
+/// Phase D (T-D-N22 / R6.5) — Construct the strategy registry with an
+/// audit ledger threaded through to the TCN overlay strategy.
+///
+/// This is the paper-mode sibling of [`build_registry`]. It:
+/// 1. Always registers `SmaCrossover` (same as `build_registry`).
+/// 2. When `cfg.strategies.tcn_overlay_momentum.enabled = true`, attempts
+///    to load the BS-1 TCN checkpoint and attach `ledger` for the Phase D
+///    `forecast_events` SQL writer. On checkpoint load failure, logs a
+///    warning and falls back to `SmaCrossover`-only (graceful degradation).
+///
+/// **Backtest determinism invariant (H2):** backtests continue to call
+/// `build_registry(cfg)` (no ledger). This function is paper-mode only.
+/// The ledger passed here must have been constructed via
+/// `Ledger::open_with_tick_bus` (tick-bus armed) — the static-branch
+/// tee at `crates/audit/src/tick.rs:104-107` stays dormant when
+/// `tick_bus = None` (the `Ledger::open` backtest path).
+///
+/// The `forecast-audit-tick` feature gate on the TCN wiring is checked at
+/// compile time via `#[cfg]`; when the feature is absent the TCN arm is
+/// elided and the function degrades to an exact copy of `build_registry`.
+pub fn build_registry_with_ledger(
+    cfg: &Config,
+    ledger: audit::Ledger,
+) -> Arc<strategy::StrategyRegistry> {
+    let registry = strategy::StrategyRegistry::new();
+
+    // Always register SmaCrossover (baseline strategy).
+    registry.register(Box::new(strategy::SmaCrossover::new(
+        cfg.strategies.sma_crossover.fast_len,
+        cfg.strategies.sma_crossover.slow_len,
+    )));
+    tracing::info!(
+        fast = cfg.strategies.sma_crossover.fast_len,
+        slow = cfg.strategies.sma_crossover.slow_len,
+        "strategy registry: SmaCrossover registered",
+    );
+
+    // TCN overlay strategy — opt-in via [strategies.tcn_overlay_momentum] enabled = true.
+    // Guard: cfg-gated on the `forecast-audit-tick` combined feature so that builds
+    // without candle/audit-tick are unaffected.
+    #[cfg(feature = "forecast-audit-tick")]
+    if cfg.strategies.tcn_overlay_momentum.enabled {
+        // Load the base momentum config from the canonical strategy config path.
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+        let cfg_path = std::path::PathBuf::from(&manifest_dir)
+            .join("../../config/strategies/top10_momentum_h1.toml");
+
+        match strategy::CrossSectionalMomentumConfig::from_file(&cfg_path) {
+            Ok(momentum_cfg) => {
+                let base = strategy::MomentumStrategy::from_config(
+                    momentum_cfg,
+                    smol_str::SmolStr::new(cfg_path.to_string_lossy()),
+                );
+                match strategy::TcnOverlayMomentumStrategy::with_tcn_bs1_ledger(base, ledger) {
+                    Ok(tcn_strategy) => {
+                        registry.register(Box::new(tcn_strategy));
+                        tracing::info!(
+                            "strategy registry: TcnOverlayMomentum (BS-1 + ledger) registered"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "strategy registry: TcnOverlayMomentum skipped (checkpoint load failed)"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "strategy registry: TcnOverlayMomentum skipped (momentum config load failed)"
+                );
+            }
+        }
+    }
+
+    // When `forecast-audit-tick` is not enabled, the TCN arm is elided and the
+    // `ledger` param is unused. Suppress the unused-variable lint.
+    #[cfg(not(feature = "forecast-audit-tick"))]
+    let _ = ledger;
+
+    Arc::new(registry)
+}
+
 /// Run all agent tokio tasks until `cancel` is tripped or the kill
 /// switch flips to [`AgentMode::Halted`].  Returns `Ok(())` on
 /// graceful shutdown.

@@ -745,9 +745,9 @@ arch        = [
   "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",   # § "Phase D amendment (2026-05-20)" closes T-D-14
 ]
 crates      = ["crates/ui", "crates/audit", "crates/reflection", "crates/strategy", "crates/forecast", "crates/agent"]   # ui = screens + widgets; audit = mig 011 + writers; reflection = trail_mirror module; strategy = TcnSyncForecaster::with_ledger; forecast = post_forecast_event calls at emit sites; agent = build_registry_with_ledger + config knob
-tests       = []   # populate at developer Wave G / tester M-FINAL
-anchors     = []   # Phase D adds audit writers only additively; 22 originals stay byte-identical (R7.1 / H2 — Wave A T-D-N6 anchor gate; mirrors mig 008/009/010 precedent)
-state       = "accepted"
+tests       = []   # `tests` field is path-bearing per spec-lint; cargo invocations live in tester report + presentations/ (see test-final-2026-05-20.md): cargo test --workspace --lib (937/937), cargo test -p audit --test trail_reconstruction (3/3), cargo test -p ui --test layout_invariants (6/6 M1-C cockpit-smoke proxy)
+anchors     = []   # Phase D is additive-only (mig 011 NULL ALTERs + new table); 22 original anchors verified PASS (22/22) post-mig — no new anchor scenarios required; all existing anchors serve as the non-regression gate (R7.1 / H2 confirmed 2026-05-20)
+state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20 (presenter deck approved)
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

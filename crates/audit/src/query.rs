@@ -2163,6 +2163,203 @@ pub async fn orphan_training_runs(
         .collect())
 }
 
+// ── Phase D (T-D-N25) — Trail reconstruction ──────────────────────────────────
+
+/// One row from `journal_transactions` as seen by the trail reconstructor.
+///
+/// Only the columns relevant to the trail chain are captured; other columns
+/// live in [`JournalRow`] which is the general-purpose read model.
+#[derive(Debug, Clone, Default)]
+pub struct TrailFillRow {
+    /// `journal_transactions.id`
+    pub id: String,
+    /// `journal_transactions.fill_id` (mig 011 — NULL on pre-mig rows).
+    pub fill_id: Option<String>,
+    /// `journal_transactions.signal_id` (mig 011 — NULL on pre-mig rows).
+    pub signal_id: Option<String>,
+    /// `journal_transactions.ts` formatted as RFC3339.
+    pub ts: String,
+    /// `journal_transactions.description`
+    pub description: String,
+}
+
+/// One row from `strategy_signals` as seen by the trail reconstructor.
+#[derive(Debug, Clone)]
+pub struct TrailSignalRow {
+    /// `strategy_signals.id`
+    pub id: String,
+    /// `strategy_signals.side` ("Buy" or "Sell")
+    pub side: String,
+    /// `strategy_signals.intended_qty_str`
+    pub intended_qty: String,
+    /// `strategy_signals.intended_price_str`
+    pub intended_price: Option<String>,
+    /// `strategy_signals.was_clamped`
+    pub was_clamped: bool,
+    /// `strategy_signals.clamp_reason`
+    pub clamp_reason: Option<String>,
+    /// `strategy_signals.forecast_correlation_id` (mig 011).
+    pub forecast_correlation_id: Option<String>,
+    /// `strategy_signals.ts`
+    pub ts: String,
+}
+
+/// One row from `forecast_events` as seen by the trail reconstructor.
+#[derive(Debug, Clone)]
+pub struct TrailForecastRow {
+    /// `forecast_events.correlation_id` (primary key)
+    pub correlation_id: String,
+    /// `forecast_events.ts`
+    pub ts: String,
+    /// `forecast_events.direction` ("up", "down", "flat")
+    pub direction: String,
+    /// `forecast_events.confidence`
+    pub confidence: String,
+    /// `forecast_events.model_revision`
+    pub model_revision: String,
+    /// `forecast_events.cache_hit`
+    pub cache_hit: bool,
+}
+
+/// Four-stage trail reconstruction result.
+///
+/// All stages are `Option` — absent when the relevant row does not exist (R3.4).
+/// `debate` is always `None` at v0.1.0 (R1.5 — `debate_events` not yet wired).
+#[derive(Debug, Clone, Default)]
+pub struct TrailReconstruction {
+    /// Fill stage — the `journal_transactions` row for this fill's audit entry.
+    pub fill: Option<TrailFillRow>,
+    /// Signal stage — the `strategy_signals` row linked via `signal_id`.
+    pub signal: Option<TrailSignalRow>,
+    /// Forecast stage — the `forecast_events` row linked via `forecast_correlation_id`.
+    pub forecast: Option<TrailForecastRow>,
+    /// LLM debate — always `None` at v0.1.0.
+    pub debate: Option<()>,
+}
+
+/// Phase D (T-D-N25) — Reconstruct the four-stage trail for a given
+/// fill audit id.
+///
+/// Performs 4 indexed point-lookups:
+/// 1. `journal_transactions WHERE id = fill_audit_id` → fill row + `signal_id`.
+/// 2. `strategy_signals WHERE id = signal_id` → signal row + `forecast_correlation_id`.
+/// 3. `forecast_events WHERE correlation_id = forecast_correlation_id` → forecast row.
+/// 4. `debate_events WHERE ...` → always `None` at v0.1.0 (R1.5).
+///
+/// All four indexes are from mig 011. Each lookup is O(log n) — H5 invariant
+/// (p99 < 50 ms at ≥10⁵ rows). Pre-mig rows return `None` for stages 2–4.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL error.
+pub async fn trail_for_fill_id(
+    ledger: &Ledger,
+    fill_audit_id: &str,
+) -> Result<TrailReconstruction, LedgerError> {
+    // ── Stage 1: journal_transactions ────────────────────────────────────────
+    #[allow(clippy::type_complexity)]
+    let fill_row: Option<(String, Option<String>, Option<String>, String, String)> =
+        sqlx::query_as(
+            "SELECT id, fill_id, signal_id, ts, description \
+             FROM journal_transactions \
+             WHERE id = ?",
+        )
+        .bind(fill_audit_id)
+        .fetch_optional(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let Some((id, fill_id, signal_id, ts, description)) = fill_row else {
+        return Ok(TrailReconstruction::default());
+    };
+
+    let fill = TrailFillRow {
+        id,
+        fill_id,
+        signal_id: signal_id.clone(),
+        ts,
+        description,
+    };
+
+    // ── Stage 2: strategy_signals ────────────────────────────────────────────
+    let signal = if let Some(ref sid) = signal_id {
+        #[allow(clippy::type_complexity)]
+        let row: Option<(
+            String,
+            String,
+            String,
+            Option<String>,
+            bool,
+            Option<String>,
+            Option<String>,
+            String,
+        )> = sqlx::query_as(
+            "SELECT id, side, intended_qty_str, intended_price_str, \
+                    was_clamped, clamp_reason, forecast_correlation_id, ts \
+             FROM strategy_signals \
+             WHERE id = ?",
+        )
+        .bind(sid)
+        .fetch_optional(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+        row.map(
+            |(id, side, qty, price, clamped, clamp_reason, fcast_id, ts)| TrailSignalRow {
+                id,
+                side,
+                intended_qty: qty,
+                intended_price: price,
+                was_clamped: clamped,
+                clamp_reason,
+                forecast_correlation_id: fcast_id,
+                ts,
+            },
+        )
+    } else {
+        None
+    };
+
+    // ── Stage 3: forecast_events ─────────────────────────────────────────────
+    let forecast_correlation_id = signal
+        .as_ref()
+        .and_then(|s| s.forecast_correlation_id.clone());
+    let forecast = if let Some(ref fid) = forecast_correlation_id {
+        let row: Option<(String, String, String, String, String, bool)> = sqlx::query_as(
+            "SELECT correlation_id, ts, direction, confidence, model_revision, cache_hit \
+             FROM forecast_events \
+             WHERE correlation_id = ?",
+        )
+        .bind(fid)
+        .fetch_optional(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+        row.map(
+            |(corr_id, ts, direction, confidence, model_rev, cache_hit)| TrailForecastRow {
+                correlation_id: corr_id,
+                ts,
+                direction,
+                confidence,
+                model_revision: model_rev,
+                cache_hit,
+            },
+        )
+    } else {
+        None
+    };
+
+    // ── Stage 4: LLM debate — always None at v0.1.0 (R1.5) ─────────────────
+    let debate = None;
+
+    Ok(TrailReconstruction {
+        fill: Some(fill),
+        signal,
+        forecast,
+        debate,
+    })
+}
+
 // ── T1606 — recent_fills_filtered unit tests (Phase 2 R12 / Q10) ─────────────
 
 #[cfg(test)]
