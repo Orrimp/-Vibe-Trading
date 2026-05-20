@@ -303,6 +303,29 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+- **UI rethink Phase C — Sidebar IA flip + Live + Strategy registry
+  (`ui-rethink-phase-c-sidebar-ia`).** _proposed (2026-05-20) —
+  awaiting analyst pass_. Third concrete feature in the UI rethink at
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
+  Predecessor: [`ui-rethink-phase-b-lab-run v0.2.0`](ui-rethink-phase-b-lab-run/feature.md)
+  shipped 2026-05-19. Replaces the seven-screen sidebar with the
+  three-group IA from dev-note §3 (Lab / Live / Trail / Compare —
+  work zone; Strategies / Memory / Models — library zone; Settings
+  + Phase 6 Assistant slot — chrome zone). Lands `Live` as the
+  redesigned Home (replaces deprecated `Screen::Home`), `Strategy
+  registry` as the redesigned Strategies, and `Settings` as a Risk
+  + Control + Debug rollup. One-cycle `#[deprecated]` compat shim
+  for `Message::SwitchScreen(Screen::{Home,Risk,Control,Debug})`.
+  **5 analyst-surfaced Qs** (shim retirement cycle; Settings tab
+  ordering; Strategy registry empty-state; Live ticker-strip mini-
+  chart; sidebar visual grouping). **Non-regression contract:** 22
+  anchors byte-identical (zero anchor risk per dev-note §6);
+  cockpit-smoke green; cockpit-performance v1.0.0 idle-CPU floor
+  (≤13.1%) preserved; spec-lint contribution = 0. Cost estimate:
+  **~2-3 weeks** per dev-note. Trace row
+  `REQ-UI-RETHINK-PHASE-C-001` opened in proposed state.
+  HANDOFF → analyst.
+
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18

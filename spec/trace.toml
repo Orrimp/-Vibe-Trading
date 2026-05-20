@@ -706,6 +706,20 @@ tests       = [
 anchors     = []   # Phase B touches no strategy/audit/exec code; 22 originals stay byte-identical (R10.1 contract in feature.md; H2 + H4 hypotheses guard)
 state       = "shipped"  # operator-approved via "Autoapprove all" 2026-05-19
 
+[[req]]
+id          = "REQ-UI-RETHINK-PHASE-C-001"
+title       = "UI rethink Phase C — sidebar IA flip + Live screen + Strategy registry + Settings rollup; Home/Risk/Control/Debug demoted via one-cycle compat shim; 22 body-SHA anchors stay byte-identical (zero anchor risk per dev-note §6)"
+feature     = "ui-rethink-phase-c-sidebar-ia"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-rethink-phase-c-sidebar-ia/feature.md",
+  "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase C sequencing source-of-truth + §3 IA
+]
+crates      = ["crates/ui"]
+tests       = []   # analyst-pass stub; populate at architect M-T1
+anchors     = []   # Phase C touches no strategy/audit/exec/report path; 22 originals stay byte-identical (R10.1)
+state       = "proposed"
+
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #
