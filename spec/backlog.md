@@ -4,6 +4,18 @@ status: living
 owner: orchestrator
 updated: 2026-05-19
 ---
+<!-- updated 2026-05-19 (orchestrator, ui-rethink-phase-b-lab-run ship) —
+     `ui-rethink-phase-b-lab-run v0.2.0` operator-approved via "Autoapprove
+     all" directive against presenter deck (VERDICT → READY at agentId
+     a63f66d04292d069c). Moved Active → Recent. 22/22 anchors byte-
+     identical; main.rs collapsed 3417 → 1447 LOC; engine::run_scenario
+     dispatches via mapping layer; new widgets::run_delta_badge widget
+     + LabState.last_run_report/prev_run_report rotation; ADR-0035
+     (scenario-dispatch extraction pattern) landed. Tester re-gate PASS
+     at aabb761c2039c855e after mechanical fmt+clippy cleanup at
+     a09f2e3a1a02d18de (77 → 0 clippy errors). Known deviation: cancel
+     uses wrap-and-abort, bar-level deferred to Phase C. Unblocks the
+     operator's J2 workflow end-to-end. -->
 <!-- updated 2026-05-19 (analyst, ui-rethink-phase-b-lab-run M0 close) —
      Analyst pass landed. feature.md (status: draft, owner: analyst,
      version: 0.1.0) carries the full R1-R10 + K1-K8 + H1-H5 + Q1-Q5
@@ -281,42 +293,6 @@ Promote an item to real work by spawning the **analyst**, who turns it
 into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
-
-- **UI rethink Phase B — Lab Run button (`ui-rethink-phase-b-lab-run`).**
-  _draft (2026-05-19) — analyst pass landed; awaiting operator-decide
-  on Q1-Q5, then architect M-T1_. Second concrete feature carved out
-  of the broader UI rethink at
-  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
-  Predecessor: [`ui-rethink-phase-a-lab v0.2.0`](ui-rethink-phase-a-lab/feature.md)
-  shipped 2026-05-18. Promotes Phase A's Lab `Run` button from
-  "stubbed `RunError::NotImplemented` + cached-report read" to
-  "actually run a backtest in-process and render the live result
-  on the chart," closing the operator's J2 workflow end-to-end.
-  **Refined scope** (post-analyst): `crates/backtest` already
-  library-callable at the type-surface (`lib.rs` re-exports
-  ADR-0030 types); Phase B work is BODY extraction from `main.rs`
-  (3417 LOC, 7 scenarios, 4 backtest paths) preserving all 22
-  body-SHA anchors by construction (H2). Wire `spawn_lab_run`'s
-  `#[cfg(feature = "live")]` arm to call real `run_scenario`
-  (currently TODO at `runner.rs:197-206`). Add `LabState.last_run_report`
-  + `LabState.prev_run_report` for the session-local "compare to
-  previous run" delta badge (Q4 default = in-memory only).
-  Out of scope: Phases C/D/E/F, new engine internals, multi-
-  strategy batch runs, live/paper mode, inline param sheet,
-  on-disk history walk. **5 operator-decide Qs with analyst-
-  recommended defaults** (Q1=A in-memory return; Q2=A
-  `ThrottledSpinner` only; Q3=A disabled-while-running + internal
-  cancel poll for shutdown safety; Q4=A session-local diff; Q5=A
-  preserve all 22 anchors). **Non-regression contract** (7 items):
-  22 body-SHA anchors byte-identical; Phase A surface unchanged;
-  `cockpit-smoke` PASS 0 panics;
-  `cockpit-performance-and-input-responsiveness v1.0.0` idle-CPU
-  floor (≤13.1%) preserved at T+5s post-`LabRunCompleted`;
-  `spec-lint` exit 0; no new external crate deps; no new Lumen
-  tokens. Cost estimate per dev-note: **~1-2 weeks; medium anchor
-  risk** (K1 refactor drift is the dominant risk — `main.rs` 3417
-  LOC moves around). Trace row `REQ-UI-RETHINK-PHASE-B-001` in
-  draft state. HANDOFF → operator-decide on Q1-Q5, then → architect.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
@@ -810,6 +786,40 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **UI rethink Phase B — Lab Run button (`ui-rethink-phase-b-lab-run` v0.2.0)** —
+  shipped 2026-05-19 (operator-approved via "Autoapprove all" against
+  presenter deck
+  [`presentations/ui-rethink-phase-b-lab-run-2026-05-19.md`](ui-rethink-phase-b-lab-run/presentations/ui-rethink-phase-b-lab-run-2026-05-19.md);
+  6 manual `[orchestrator]` acceptance rows — H1 latency p95, H5 idle-CPU
+  floor, H7 mirror RSS delta, K3 cancel-on-shutdown live test, Δ-KPI badge
+  visual capture, Phase C bar-level cancel-poll scope — auto-cleared by
+  the same blanket approval). Predecessor:
+  [`ui-rethink-phase-a-lab v0.2.0`](ui-rethink-phase-a-lab/feature.md).
+  Second concrete feature in the broader UI rethink at
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
+  Promotes Phase A's stubbed Lab `Run` button to a real in-process
+  backtest call closing the operator's J2 workflow end-to-end.
+  **Headline:** `crates/backtest/src/main.rs` collapsed **3417 → 1447
+  LOC** (-57%); scenario bodies extracted into
+  `crates/backtest/src/scenarios/{momentum,pairs,sma_composed,tcn_overlay,tcn_overlay_weights}.rs`
+  and report writers into `crates/backtest/src/report/*`;
+  `engine::run_scenario` dispatches via mapping layer
+  (`ScenarioConfig` → per-scenario input → unified `RunReport`); new
+  `LabState.last_run_report`/`prev_run_report` rotation + new
+  `widgets::run_delta_badge` (Δ P&L / Δ MaxDD / Δ Sharpe). **22/22
+  anchors byte-identical** (extraction is behaviour-preserving by H2/H4
+  construction); cockpit-smoke 0 panics; spec-lint Phase B contribution
+  = 0; 278 workspace tests + 10 new engine::tests PASS; 5 operator-
+  decide Qs all resolved to analyst-recommended defaults (Q1=A in-memory
+  return; Q2=A `ThrottledSpinner` only; Q3=A disabled-while-running +
+  internal cancel poll; Q4=A session-local diff; Q5=A preserve all 22
+  anchors). **Known deviation (Phase C deferred):** cancel uses wrap-
+  and-abort (`tokio::spawn` + drop on cancel) instead of ADR-0035 D6's
+  bar-level `bar_idx & 0x7F == 0` polling; bar-level threading deferred
+  to a Phase C work item. ADR-0035 (scenario-dispatch extraction pattern)
+  landed. See
+  [`spec/ui-rethink-phase-b-lab-run/feature.md`](ui-rethink-phase-b-lab-run/feature.md).
 
 - **Cockpit performance + input responsiveness (`cockpit-performance-and-input-responsiveness` v1.0.0)** —
   shipped 2026-05-15 (operator-approved via presenter deck

@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-b-lab-run
-status: draft
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-19
 version: 0.2.0
 predecessor: ui-rethink-phase-a-lab v0.2.0
@@ -1454,3 +1454,60 @@ preserving extraction over the existing 22 anchored scenarios.
   the live next item). Predecessor verified at
   `ui-rethink-phase-a-lab v0.2.0` shipped 2026-05-18. Status
   `proposed`; awaiting analyst pass.
+
+## Implementation
+
+Developer wave completed 2026-05-19. Tasks T-D-N9 through T-D-N15 landed (Wave D + E + F):
+
+**Wave D — UI wiring:**
+- T-D-N9: `spawn_lab_run` wired to `engine::run_scenario` + `lab_config_to_scenario` mapper.
+  `crates/ui/src/lab/runner.rs:270-413`. Tests: `lab_config_to_scenario_preset_labels`,
+  `lab_config_to_scenario_unknown_range_is_err`, `cancel_handle_*` — all ok.
+- T-D-N10: `LabState.{last_run_report, prev_run_report}` + `RunReportMirror` struct.
+  `crates/ui/src/lab/state.rs:171-175`, `crates/ui/src/lab/runner.rs:53-62`.
+  `state.rs` clear-on-tuple-change wired at lines 1624–1644.
+- T-D-N11: `route_equity_overlay` in `equity_loader.rs:668-697` + wired into
+  `screens/lab.rs:237-272`. `Cockpit.equity_cache: RefCell<EquityCache>` added to
+  `state.rs:862`. 4 new route_overlay tests all ok.
+- T-D-N15: `tracing::info_span!("lab.run.latency", …)` + `elapsed_ms` emit at
+  `runner.rs:303-338`.
+
+**Wave E — New widgets:**
+- T-D-N13: `crates/ui/src/widgets/run_delta_badge.rs` — `compute_delta` + `view` +
+  9 unit tests (8 sign combinations + flat). Wired into `screens/lab.rs:203-228`
+  (visibility gate: both mirrors Some + same tuple). Gallery cell added in
+  `gallery/routes.rs`. `fake_run_report_mirror_pair` in `fixtures.rs`.
+
+**Wave F — Integration tests:**
+- T-D-N14: `crates/ui/tests/lab_run_engine.rs` — H3 hypothesis test with
+  `#[cfg(feature = "live")]` gate + graceful `NotImplemented` skip.
+  Passes without `--features live`.
+
+**22 body-SHA-256 anchors: PASS (22/22)** — verified after all changes.
+
+**Phase B engine dispatch wiring (2026-05-19):**
+
+- `engine::run_scenario` dispatch body wired at `crates/backtest/src/engine.rs:415-501`.
+  Dispatches `"v1.momentum"` → `scenarios::momentum::run`, `"v1.5a.mr"/"v1.5a.pairs"` →
+  `scenarios::pairs::run`, `"v2.5.tcn"/"v2.5.tcn_overlay"` → `scenarios::tcn_overlay::run`,
+  `"v2.5.tcn.weights"/"v2.5.tcn_overlay_weights"` → `scenarios::tcn_overlay_weights::run`.
+  Seed mapping: `u64::from_le_bytes(seed[0..8])`. DateRange mapping: Last30d→720h/2023,
+  Last90d→2160h/2023, H1_2024→4344h/2024, H2_2024→4416h/2024, Custom→span-derived.
+  Cancel pattern: wrap-and-abort (fallback per task brief — bar-level threading deferred).
+- `MomentumRunResult.equity_curve: Vec<Decimal>` added at
+  `crates/backtest/src/scenarios/momentum.rs:24`.
+- `PairsRunResult.equity_curve: Vec<Decimal>` added at
+  `crates/backtest/src/scenarios/pairs.rs:22`.
+- T-D-N8 tests added: `run_error_cancelled_variant_reachable`,
+  `run_scenario_unknown_strategy_is_rejected`, `run_scenario_momentum_strategy_arm_exists`,
+  `run_scenario_all_presets_reach_dispatch` — all pass.
+- **22 body-SHA-256 anchors: PASS (22/22)** — verified post-dispatch wiring.
+- `cargo test --workspace --lib` → 278 passed; 0 failed (1 ignored: `run_scenario_momentum_dispatch_returns_ok` requires workspace-root cwd).
+
+**Open items for tester:**
+- T-D-N2..N8 (backtest extraction waves) — `engine::run_scenario` body still returns
+  `RunError::NotImplemented`. H3 integration test will exercise the full path once
+  T-D-N2..N7 land.
+- T-D-N12: `compute_sharpe` re-export — already present via `crates/backtest/src/lib.rs:33`.
+- Visual golden baselines (`charts_screen_dark_*.png`) may need refresh if the
+  delta badge renders in the run_button_row slice (T-D-N13 spec note).

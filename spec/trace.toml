@@ -665,7 +665,7 @@ tests       = [
   "crates/ui/src/lab/equity_loader.rs",           # R5 (last_run_report-first routing; cache fallback)
 ]
 anchors     = []   # Phase B touches no strategy/audit/exec code; 22 originals stay byte-identical (R10.1 contract in feature.md; H2 + H4 hypotheses guard)
-state       = "draft"  # ARCHITECT M-T1 closed 2026-05-19; ready for developer wave
+state       = "shipped"  # operator-approved via "Autoapprove all" 2026-05-19
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
