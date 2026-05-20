@@ -154,7 +154,7 @@ pub fn resolve_train_tcn_path() -> PathBuf {
 #[cfg(feature = "live")]
 pub fn spawn_training_run(
     rt_handle: Option<&tokio::runtime::Handle>,
-    cfg: TrainingConfig,
+    cfg: &TrainingConfig,
     _cancel: RunCancelReceiver,
     line_tx: std::sync::mpsc::SyncSender<TrainingLogLine>,
 ) -> Result<TrainingHandle, SmolStr> {
@@ -168,11 +168,12 @@ pub fn spawn_training_run(
     };
 
     // Build the argument list.
-    let mut args: Vec<std::ffi::OsString> = Vec::new();
-    args.push("--config".into());
-    args.push(cfg.config_path.as_os_str().to_owned());
-    args.push("--output-dir".into());
-    args.push(cfg.output_dir.as_os_str().to_owned());
+    let mut args: Vec<std::ffi::OsString> = vec![
+        "--config".into(),
+        cfg.config_path.as_os_str().to_owned(),
+        "--output-dir".into(),
+        cfg.output_dir.as_os_str().to_owned(),
+    ];
     if cfg.dry_run {
         args.push("--dry-run".into());
     }
@@ -241,7 +242,7 @@ pub fn spawn_training_run(
 #[cfg(not(feature = "live"))]
 pub fn spawn_training_run(
     _rt_handle: Option<()>,
-    _cfg: TrainingConfig,
+    _cfg: &TrainingConfig,
     _cancel: RunCancelReceiver,
     _line_tx: std::sync::mpsc::SyncSender<TrainingLogLine>,
 ) -> Result<TrainingHandle, SmolStr> {
@@ -399,7 +400,7 @@ mod tests {
         #[cfg(feature = "live")]
         {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let result = spawn_training_run(Some(rt.handle()), cfg, cancel_rx, line_tx);
+            let result = spawn_training_run(Some(rt.handle()), &cfg, cancel_rx, line_tx);
             assert!(
                 result.is_err(),
                 "spawn with missing binary must return Err, not Ok"
@@ -408,7 +409,7 @@ mod tests {
 
         #[cfg(not(feature = "live"))]
         {
-            let result = spawn_training_run(None, cfg, cancel_rx, line_tx);
+            let result = spawn_training_run(None, &cfg, cancel_rx, line_tx);
             assert!(
                 result.is_err(),
                 "non-live build must return Err for training"

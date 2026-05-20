@@ -127,23 +127,24 @@ impl Recipe for BusRecipe {
     fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
         let BusRecipe { channel, bus } = *self;
         // Eagerly subscribe each channel before the stream is first polled.
-        // Each stream function takes an owned `Arc<EventBus>` so the resulting
-        // stream is `'static` (no reference to a local variable).
-        // The receiver keeps the underlying `broadcast::Sender` alive via the
-        // bus's internal Weak<->Strong wiring, so dropping `bus` after
-        // subscription inside the stream function is safe.
+        // Each `stream_*` function only needs `&EventBus` to call `bus.fills()`
+        // etc. — those methods return an owned `broadcast::Receiver<T>` that
+        // doesn't borrow from `bus`. The receiver keeps the underlying
+        // `broadcast::Sender` alive via the bus's internal Weak<->Strong
+        // wiring, so dropping `bus` after subscription is safe. The returned
+        // `impl Stream + 'static` only captures `rx`, never `bus`.
         match channel {
-            Channel::Fills => Box::pin(stream_fills(bus)),
-            Channel::Positions => Box::pin(stream_positions(bus)),
-            Channel::Pnl => Box::pin(stream_pnl(bus)),
-            Channel::Ticks => Box::pin(stream_ticks(bus)),
-            Channel::Bars => Box::pin(stream_bars(bus)),
-            Channel::Mode => Box::pin(stream_mode(bus)),
-            Channel::StrategyLoaded => Box::pin(stream_strategy_loaded(bus)),
-            Channel::StrategySwapped => Box::pin(stream_strategy_swapped(bus)),
-            Channel::StrategyError => Box::pin(stream_strategy_error(bus)),
-            Channel::MarketHealth => Box::pin(stream_market_health(bus)),
-            Channel::RiskTelemetry => Box::pin(stream_risk_telemetry(bus)),
+            Channel::Fills => Box::pin(stream_fills(&bus)),
+            Channel::Positions => Box::pin(stream_positions(&bus)),
+            Channel::Pnl => Box::pin(stream_pnl(&bus)),
+            Channel::Ticks => Box::pin(stream_ticks(&bus)),
+            Channel::Bars => Box::pin(stream_bars(&bus)),
+            Channel::Mode => Box::pin(stream_mode(&bus)),
+            Channel::StrategyLoaded => Box::pin(stream_strategy_loaded(&bus)),
+            Channel::StrategySwapped => Box::pin(stream_strategy_swapped(&bus)),
+            Channel::StrategyError => Box::pin(stream_strategy_error(&bus)),
+            Channel::MarketHealth => Box::pin(stream_market_health(&bus)),
+            Channel::RiskTelemetry => Box::pin(stream_risk_telemetry(&bus)),
         }
     }
 }
@@ -156,7 +157,7 @@ impl Recipe for BusRecipe {
 /// the async stream. This is critical: if we only subscribed inside the
 /// `stream!` body, events published before the first `.next().await`
 /// would be lost. Eager subscription closes that race.
-pub fn stream_fills(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_fills(bus: &EventBus) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.fills();
     stream! {
         loop {
@@ -179,7 +180,7 @@ pub fn stream_fills(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 
 
 /// Positions → stateful `PositionsRefreshed(Vec<PositionView>)` — keeps a
 /// per-subscription `HashMap` so the UI always sees the full snapshot.
-pub fn stream_positions(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_positions(bus: &EventBus) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.positions();
     stream! {
         let mut book: HashMap<trading_core::Symbol, PositionView> = HashMap::new();
@@ -209,7 +210,7 @@ pub fn stream_positions(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Sen
 }
 
 /// P&L → `PnlRefreshed`, `PnlError` on close.
-pub fn stream_pnl(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_pnl(bus: &EventBus) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.pnl();
     stream! {
         loop {
@@ -229,7 +230,7 @@ pub fn stream_pnl(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 's
 
 /// Ticks → `TickReceived` (drives latency badge). Lag is routine on the
 /// tick channel (8192-deep) — debug-log only, never surface an error.
-pub fn stream_ticks(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_ticks(bus: &EventBus) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.ticks();
     stream! {
         loop {
@@ -253,7 +254,7 @@ pub fn stream_ticks(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 
 /// Bars → `BarClose(close_ts)` + `BarReceived(bar)`. Both messages are
 /// emitted so the state machine's `last_bar_ts` and panel refresh triggers
 /// stay in sync.
-pub fn stream_bars(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_bars(bus: &EventBus) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.bars();
     stream! {
         loop {
@@ -277,7 +278,7 @@ pub fn stream_bars(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + '
 
 /// Agent mode → `AgentModeChanged` or `AgentHaltedExternally` when the
 /// kill switch trips outside the cockpit (e.g. `.halt` file on disk).
-pub fn stream_mode(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_mode(bus: &EventBus) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.mode();
     stream! {
         loop {
@@ -318,7 +319,9 @@ pub fn stream_mode(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + '
 // than three simultaneous red stripes saying the same thing.
 
 /// `strategy_loaded` → `Message::StrategyLoaded`.
-pub fn stream_strategy_loaded(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_strategy_loaded(
+    bus: &EventBus,
+) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.strategy_loaded();
     stream! {
         loop {
@@ -339,7 +342,9 @@ pub fn stream_strategy_loaded(bus: Arc<EventBus>) -> impl Stream<Item = Message>
 }
 
 /// `strategy_swapped` → `Message::StrategySwapped`.
-pub fn stream_strategy_swapped(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_strategy_swapped(
+    bus: &EventBus,
+) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.strategy_swapped();
     stream! {
         loop {
@@ -362,7 +367,9 @@ pub fn stream_strategy_swapped(bus: Arc<EventBus>) -> impl Stream<Item = Message
 /// `strategy_error` → `Message::StrategyLoadError`. The per-row error path
 /// (`Reject` event) uses `StrategyLoadError`; the panel-wide closed-channel
 /// path still yields `StrategiesError`.
-pub fn stream_strategy_error(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_strategy_error(
+    bus: &EventBus,
+) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.strategy_error();
     stream! {
         loop {
@@ -393,7 +400,9 @@ pub fn stream_strategy_error(bus: Arc<EventBus>) -> impl Stream<Item = Message> 
 // the connection dot in the status bar will show the last known state.
 
 /// `market_health` → `Message::MarketHealthUpdated`.
-pub fn stream_market_health(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_market_health(
+    bus: &EventBus,
+) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.market_health();
     stream! {
         loop {
@@ -425,7 +434,9 @@ pub fn stream_market_health(bus: Arc<EventBus>) -> impl Stream<Item = Message> +
 // `Loading`); we log at `warn` and stop the stream.
 
 /// `risk_telemetry` → `Message::RiskStateRefreshed`.
-pub fn stream_risk_telemetry(bus: Arc<EventBus>) -> impl Stream<Item = Message> + Send + 'static {
+pub fn stream_risk_telemetry(
+    bus: &EventBus,
+) -> impl Stream<Item = Message> + Send + use<> + 'static {
     let mut rx = bus.risk_telemetry();
     stream! {
         loop {
@@ -699,7 +710,7 @@ mod tests {
     #[tokio::test]
     async fn fills_stream_emits_fill_received() {
         let bus = Arc::new(EventBus::new(&BusConfig::default()));
-        let mut s = Box::pin(stream_fills(Arc::clone(&bus)));
+        let mut s = Box::pin(stream_fills(&bus));
         // Give the subscriber a tick to register.
         tokio::task::yield_now().await;
         bus.publish_fill(make_fill());
@@ -713,7 +724,7 @@ mod tests {
     #[tokio::test]
     async fn pnl_stream_emits_pnl_refreshed() {
         let bus = Arc::new(EventBus::new(&BusConfig::default()));
-        let mut s = Box::pin(stream_pnl(Arc::clone(&bus)));
+        let mut s = Box::pin(stream_pnl(&bus));
         tokio::task::yield_now().await;
         bus.publish_pnl(make_pnl());
         let msg = tokio::time::timeout(std::time::Duration::from_secs(2), s.next())
@@ -726,7 +737,7 @@ mod tests {
     #[tokio::test]
     async fn positions_stream_aggregates_into_full_snapshot() {
         let bus = Arc::new(EventBus::new(&BusConfig::default()));
-        let mut s = Box::pin(stream_positions(Arc::clone(&bus)));
+        let mut s = Box::pin(stream_positions(&bus));
         tokio::task::yield_now().await;
         bus.publish_position(make_position(dec!(0.25)));
         let msg = tokio::time::timeout(std::time::Duration::from_secs(2), s.next())
@@ -742,7 +753,7 @@ mod tests {
     #[tokio::test]
     async fn positions_stream_removes_flat() {
         let bus = Arc::new(EventBus::new(&BusConfig::default()));
-        let mut s = Box::pin(stream_positions(Arc::clone(&bus)));
+        let mut s = Box::pin(stream_positions(&bus));
         tokio::task::yield_now().await;
         bus.publish_position(make_position(dec!(0.25)));
         let _first = tokio::time::timeout(std::time::Duration::from_secs(2), s.next())

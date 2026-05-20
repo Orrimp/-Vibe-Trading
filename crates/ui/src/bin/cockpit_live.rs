@@ -208,10 +208,10 @@ fn main() -> Result<()> {
         agent::config::Config::default()
     };
 
-    if let Some(ref m) = args.mode {
-        if m.eq_ignore_ascii_case("live") {
-            anyhow::bail!("mode=live is rejected in v0");
-        }
+    if let Some(ref m) = args.mode
+        && m.eq_ignore_ascii_case("live")
+    {
+        anyhow::bail!("mode=live is rejected in v0");
     }
     info!(mode = %cfg.mode, "config loaded");
 
@@ -491,7 +491,7 @@ fn main() -> Result<()> {
 
     let mut cockpit = Cockpit::new();
     cockpit.kill_switch = Some(trip);
-    cockpit.current_screen = Screen::Home;
+    cockpit.current_screen = Screen::Live;
     cockpit.universe = universe_pairs.clone();
     if let Some(first) = universe_pairs.first() {
         cockpit.selected_symbol = Some(first.clone());
