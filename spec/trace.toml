@@ -732,6 +732,21 @@ tests       = [
 anchors     = []   # Phase C touches no strategy/audit/exec/report path; 22 originals stay byte-identical (R10.1)
 state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20
 
+[[req]]
+id          = "REQ-UI-RETHINK-PHASE-D-001"
+title       = "UI rethink Phase D — Trail view (J4): decision-trail visualisation of the agent pipeline (Fill→Signal→Forecast→LLM debate); new screens/trail.rs + widgets/trail_node.rs; side-drawer for raw artifacts; Live recent-activity Trail chevron; first downstream consumer of audit-tick-consumer-envelope (closes T-D-14)"
+feature     = "ui-rethink-phase-d-trail"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-rethink-phase-d-trail/feature.md",
+  "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase D + §J4 Trail contract
+  "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",   # Phase D consumes the broadcast
+]
+crates      = ["crates/ui", "crates/audit", "crates/reflection"]   # ui = screens + widgets; audit = potential additive migration; reflection = consumer stub becomes load-bearing
+tests       = []   # analyst-pass stub; populate at architect M-T1
+anchors     = []   # Phase D adds audit writers only additively; 22 originals stay byte-identical (R10.1 — low anchor risk per dev-note §6)
+state       = "proposed"
+
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #
