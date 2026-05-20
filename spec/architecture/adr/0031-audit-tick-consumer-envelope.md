@@ -150,3 +150,142 @@ send is constant-time).
 - [`barter-rs` engine/audit module](https://github.com/barter-rs/barter-rs/blob/main/barter/src/engine/audit/mod.rs) — pattern source.
 - [`spec/architecture/01-data-flow.md`](../01-data-flow.md) — edge table this ADR extends.
 - [`crates/audit/src/journal.rs`](../../../crates/audit/src/journal.rs) — primary write surface this ADR augments.
+
+## Phase D amendment (2026-05-20)
+
+> Closes deferred `T-D-14` from the predecessor
+> `audit-tick-consumer-envelope v0.1.0`. K5 spike outcome
+> documented in
+> [`spec/ui-rethink-phase-d-trail/decomp.md §1`](../../ui-rethink-phase-d-trail/decomp.md);
+> per-wave T-D-N rows in
+> [`spec/ui-rethink-phase-d-trail/tasks.md`](../../ui-rethink-phase-d-trail/tasks.md).
+
+### Context
+
+The v0.1.0 predecessor landed `TcnForecaster::with_ledger` at
+[`crates/forecast/src/tcn.rs:571-576`](../../../crates/forecast/src/tcn.rs)
+and the two emit sites at `tcn.rs:822-831` (cache-hit) and `:937-947`
+(post-inference). However, the v0.1.0 runtime construction path
+(`agent::runtime::build_registry` at
+[`crates/agent/src/runtime.rs:129-141`](../../../crates/agent/src/runtime.rs))
+registers `SmaCrossover` only — `TcnOverlayMomentumStrategy` is never
+constructed at live-agent runtime. Consequently
+`AuditEvent::ForecastEmitted` ticks are sourced from zero call sites
+in production, leaving the broadcast bus's most informative event
+empty.
+
+Phase D's trail-mirror needs `ForecastEmitted` ticks (R6.4) to close
+the four-stage `Fill → Signal → Forecast → LLM-debate`
+correlation chain. The wiring shape below closes T-D-14 without
+breaking the H2 anchor invariant or the backtest determinism gate.
+
+### Decision (Phase D)
+
+Add **two** new functions; modify **zero** existing function
+signatures:
+
+1. **`TcnSyncForecaster::with_ledger(self, ledger: audit::Ledger) -> Self`**
+   in `crates/strategy/src/tcn_overlay_momentum.rs` (sibling of
+   `load_bs1` / `load_bs2`). Forwards to the existing
+   `forecast::tcn::TcnForecaster::with_ledger` at `tcn.rs:573`.
+   Feature-gated on `audit-tick` (the `strategy` crate already
+   enables this feature for the `forecast` dep per
+   `crates/strategy/Cargo.toml:13`).
+2. **`agent::runtime::build_registry_with_ledger(cfg, ledger) -> Arc<StrategyRegistry>`**
+   in `crates/agent/src/runtime.rs` (sibling of `build_registry`).
+   Identical to `build_registry` plus a guarded
+   `TcnOverlayMomentumStrategy::with_tcn_bs1_ledger(base, ledger)`
+   registration when
+   `cfg.strategies.tcn_overlay_momentum.enabled == true`. The new
+   config knob defaults to `false` (mirrors the `[signal_log]`
+   precedent at `crates/agent/src/config.rs:284`).
+
+The paper-mode binary at
+[`crates/agent/src/main.rs:184-186`](../../../crates/agent/src/main.rs)
+switches to the new sibling; backtests and tests keep calling the
+zero-ledger `build_registry(cfg)` and stay determinism-clean.
+
+### Determinism / anchor invariants (preserved)
+
+- **H2 anchor argument.** Backtests open the ledger via
+  `audit::Ledger::open(path)` at `crates/audit/src/ledger.rs:33,59`
+  which sets `tick_bus = None`. The static-branch tee at
+  `crates/audit/src/tick.rs:104-107` returns early. Any new
+  `tick::emit_public(...)` call inside the TCN runtime path is a
+  no-op under backtest. The 22 body-SHA-256 anchors in
+  `spec/anchors.toml` remain byte-identical by construction —
+  Wave A exit gate is `scripts/verify_anchors.sh → 22/22 PASS`.
+- **Paper-mode tick-bus liveness.** Paper mode uses
+  `Ledger::open_with_tick_bus(path, cap)` at `main.rs:103`. The
+  ledger's `tick_bus = Some(TickBus { … })` and the static-branch
+  tee fires. `build_registry_with_ledger` is invoked one call frame
+  later (`main.rs:184`), so the TCN strategy receives a
+  tick-bus-armed ledger by construction.
+- **Compile-time enforcement.** `build_registry(cfg)` is the
+  zero-ledger sibling; `build_registry_with_ledger(cfg, ledger)`
+  requires the `Arc<audit::Ledger>` parameter. Calling the wrong
+  sibling at a backtest call site is a compile error class — the
+  parameter is required.
+
+### Anchor-safe schema co-deliverable: mig 011
+
+Phase D ships SQL migration `011_trail_correlation_chain.sql` as the
+durable side of the four-stage chain. The migration is
+**strictly additive**: 4 `ALTER TABLE … ADD COLUMN` (all
+NULL-default), 1 `CREATE TABLE IF NOT EXISTS forecast_events`,
+4 `CREATE INDEX IF NOT EXISTS`. The shape mirrors migrations
+008 / 009 / 010 — all three precedents are anchor-safe and the same
+proof carries forward. See
+[`decomp.md §2`](../../ui-rethink-phase-d-trail/decomp.md) for the
+column-level SQL and §5 for the anchor-preservation proof sketch.
+
+### Consequences (Phase D-specific)
+
+- **New consumer-side state.** `crates/reflection` gains a
+  `trail_mirror.rs` module (sibling of
+  `audit_tick_consumer.rs:30-32`) holding an LRU<UUID,
+  ReconstructedTrail> capped at N=16 (H4 falsification gate). The
+  mirror is the second concrete broadcast consumer; the first
+  (audit-tick-consumer stub) stays untouched.
+- **Architecture edge unchanged.** ADR-0031 § "Architecture
+  invariants" already permits `reflection → audit (via AuditTick
+  stream)`. The trail-mirror lives behind that same edge. No new
+  edge introduced; `ui → audit` direct edge is **not** added (the
+  UI talks to the trail-mirror via a `tokio::sync::mpsc` request
+  channel + a `tokio::sync::broadcast` snapshot channel surfaced
+  as an iced Subscription — see
+  [`decomp.md §3`](../../ui-rethink-phase-d-trail/decomp.md)).
+- **No new external crates.** The amendment uses
+  `tokio::sync::broadcast` (already imported), `audit::Ledger`
+  (already in scope), and the existing `with_ledger` builder. LRU
+  capacity is enforced via the workspace `lru` crate; if absent,
+  Wave F falls back to a hand-rolled `IndexMap` eviction (cheap at
+  N=16).
+
+### Alternatives considered (Phase D)
+
+1. **Eager ledger threading through `TcnSyncForecaster::load_bs1`.**
+   Rejected — would force every backtest call site (Wave-A grep
+   confirms `with_tcn_bs1` is the dominant ctor and is used in 4+
+   test files) to pass a ledger argument they don't have. The
+   sibling-builder pattern (`with_tcn_bs1` keeps current sig;
+   `with_tcn_bs1_ledger` is new) is backwards-compatible.
+2. **Downcast `Box<dyn SyncForecaster>` to concrete
+   `TcnSyncForecaster`.** Rejected — fragile, type-unsafe, and
+   contradicts the existing trait-object pattern. The builder mirror
+   stays type-safe.
+3. **Defer T-D-14 again** (fallback path). Documented in
+   [`decomp.md §1.4`](../../ui-rethink-phase-d-trail/decomp.md). Not
+   exercised — the spike succeeded.
+
+### Test gates (Phase D)
+
+- **K7 / M-FINAL T-F7.** Counter
+  `reflection_audit_tick_seen_total{variant="ForecastEmitted"} >= 1`
+  observed in a paper-mode TCN-overlay smoke. Asserts the wiring is
+  live end-to-end.
+- **H2 / M-FINAL T-F4.** `scripts/verify_anchors.sh → 22/22 PASS`.
+  Non-negotiable.
+- **R7.4 / H3 / M-FINAL T-F6.** Cockpit-performance v1.0.0 idle-CPU
+  ≤13.6% (13.1% floor + 0.5% Phase D budget) with the trail-mirror
+  subscriber running + universal chevron on every audit/Live row.

@@ -739,13 +739,15 @@ feature     = "ui-rethink-phase-d-trail"
 product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-d-trail/feature.md",
+  "spec/ui-rethink-phase-d-trail/decomp.md",   # M-T1 architect deliverable: K5 spike result + mig 011 SQL + trail-mirror location
+  "spec/ui-rethink-phase-d-trail/tasks.md",    # T-D-N1..N29 per-wave (A-G) checklist
   "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase D + §J4 Trail contract
-  "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",   # Phase D consumes the broadcast
+  "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",   # § "Phase D amendment (2026-05-20)" closes T-D-14
 ]
-crates      = ["crates/ui", "crates/audit", "crates/reflection"]   # ui = screens + widgets; audit = potential additive migration; reflection = consumer stub becomes load-bearing
-tests       = []   # analyst-pass stub; populate at architect M-T1
-anchors     = []   # Phase D adds audit writers only additively; 22 originals stay byte-identical (R10.1 — low anchor risk per dev-note §6)
-state       = "proposed"
+crates      = ["crates/ui", "crates/audit", "crates/reflection", "crates/strategy", "crates/forecast", "crates/agent"]   # ui = screens + widgets; audit = mig 011 + writers; reflection = trail_mirror module; strategy = TcnSyncForecaster::with_ledger; forecast = post_forecast_event calls at emit sites; agent = build_registry_with_ledger + config knob
+tests       = []   # populate at developer Wave G / tester M-FINAL
+anchors     = []   # Phase D adds audit writers only additively; 22 originals stay byte-identical (R7.1 / H2 — Wave A T-D-N6 anchor gate; mirrors mig 008/009/010 precedent)
+state       = "accepted"
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

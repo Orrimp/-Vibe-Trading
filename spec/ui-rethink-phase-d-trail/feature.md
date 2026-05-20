@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-d-trail
-status: draft
-owner: pending-architect
+status: in-progress
+owner: architect
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ui-rethink-phase-c-sidebar-ia v0.1.0
@@ -606,17 +606,20 @@ trail screen open or to widen the LRU pre-warm policy.
 - [x] Trace row `REQ-UI-RETHINK-PHASE-D-001` in `proposed` state
       (already opened by orchestrator promotion pass).
 
-### M-T1 — Architect decomposition (next pass)
-- [ ] Architect resolves K5 spike → ADR amendment to
+### M-T1 — Architect decomposition (this pass)
+- [x] Architect resolves K5 spike → ADR amendment to
       `0031-audit-tick-consumer-envelope.md` documenting the chosen
-      TcnForecaster runtime-wiring shape.
-- [ ] Architect decomposes R1-R7 into ordered T-tasks with
-      acceptance gates per task.
-- [ ] Architect confirms mig 011's exact column / index shape and
-      writer-signature changes (R1.1-R1.5).
-- [ ] Architect confirms trail-mirror lives in `crates/ui` vs.
-      `crates/reflection` (R6.1 either-or).
-- [ ] Spec-lint clean.
+      TcnForecaster runtime-wiring shape. **Spike verdict: SUCCESS.**
+      See [decomp.md §1](decomp.md).
+- [x] Architect decomposes R1-R7 into ordered T-tasks with
+      acceptance gates per task. Per-wave T-D-N1..N29 in
+      [tasks.md](tasks.md) (Waves A-G).
+- [x] Architect confirms mig 011's exact column / index shape and
+      writer-signature changes (R1.1-R1.5). See
+      [decomp.md §2](decomp.md).
+- [x] Architect confirms trail-mirror lives in `crates/reflection`
+      (NOT `crates/ui`) per [decomp.md §3](decomp.md).
+- [ ] Spec-lint clean (deferred to M-FINAL tester sweep).
 
 ### M-FINAL — Tester sweep
 - [ ] `cargo fmt --check` + `cargo clippy --workspace -- -D
@@ -658,3 +661,46 @@ filled by architect / developer / tester respectively.
   unknown — architect M-T1 spike required. K7 added by analyst
   (ForecastEmitted not currently sourced from production runtime).
   H1-H5 falsifiable hypotheses. Status: `proposed` → `draft`.
+- 2026-05-20 (operator, "Autoapprove all"): Q1-Q5 resolved to
+  analyst-recommended defaults. Architect advances M-T1.
+- 2026-05-20 (architect, M-T1): K5 spike SUCCESS — full
+  `TcnSyncForecaster::with_ledger` + `build_registry_with_ledger`
+  wiring shape locked. ADR amendment landed in
+  [`adr/0031-audit-tick-consumer-envelope.md`](../architecture/adr/0031-audit-tick-consumer-envelope.md)
+  § "Phase D amendment (2026-05-20)". Mig 011 SQL shape locked in
+  [decomp.md §2](decomp.md). Trail-mirror location pinned to
+  `crates/reflection` per [decomp.md §3](decomp.md). 29 T-D-N rows
+  (Waves A-G) landed in [tasks.md](tasks.md). Status: `draft` →
+  `in-progress`. Owner: `pending-architect` → `architect`. Trace
+  row state: `proposed` → `accepted` with `arch[]` extended to
+  `decomp.md`.
+
+## Design
+
+See [decomp.md](decomp.md) for the full architect-pass output. Key
+points:
+
+- **K5 spike result: SUCCESS** ([decomp.md §1](decomp.md)). Wiring
+  shape is two additive functions:
+    - `TcnSyncForecaster::with_ledger(self, ledger) -> Self` in
+      `crates/strategy/src/tcn_overlay_momentum.rs`.
+    - `agent::runtime::build_registry_with_ledger(cfg, ledger)`
+      sibling of `build_registry`.
+  Backtest determinism preserved via the `Ledger::open` (no tick
+  bus) vs. `Ledger::open_with_tick_bus` (paper mode) split — the
+  static-branch tee at `crates/audit/src/tick.rs:104-107` stays
+  dormant under backtest by construction.
+- **Mig 011 SQL** ([decomp.md §2](decomp.md)): 4 ALTER + 1 CREATE
+  TABLE IF NOT EXISTS + 4 CREATE INDEX. Mirrors mig 008 / 009 / 010
+  precedent. H2 anchor-preservation argument holds by construction.
+- **Trail-mirror location** ([decomp.md §3](decomp.md)):
+  `crates/reflection/src/trail_mirror.rs`. Architecture invariant
+  (ADR-0031 § "Architecture invariants") preserved — no new
+  `ui → audit` edge; the trail-mirror lives behind the same
+  `reflection → audit (via AuditTick stream)` edge as the
+  predecessor's audit-tick consumer stub.
+- **Per-wave T-D-N1..N29** ([decomp.md §4](decomp.md) +
+  [tasks.md](tasks.md)): Waves A (mig + writers, anchor gate) →
+  B (trail_node widget) → C (trail screen) → D (drawer + state) →
+  E (Live agent-feed chevron) → F (trail-mirror + TCN runtime
+  wiring) → G (snapshots + integration + perf-gate).
