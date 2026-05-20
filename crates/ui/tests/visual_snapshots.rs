@@ -79,7 +79,7 @@ fn run_slot(slot_name: &str) {
     // SAFETY: `set_var` is unsafe in edition 2024; this is a test-only
     // single-threaded init before iced_test::screenshot — no other
     // thread observes the env at this point.
-    unsafe { std::env::set_var("UI_CHART_FORCE_UTC", "1") };
+    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
 
     let (_, (w, h), scale) = SLOTS
         .iter()

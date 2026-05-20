@@ -380,6 +380,16 @@ pub const ORPHAN_LIVE_FMT: &str =
 /// Placeholder: `{}` = `run_id` short prefix.
 pub const ORPHAN_DEAD_FMT: &str = "Training orphan (run {}) — process gone, check logs";
 
+/// chart-x-axis-local-time v1.11 / chart-fixture-line-clipping v1.0.0 —
+/// env-var name that integration test runners
+/// (`tests/render_snapshots.rs`, `tests/visual_snapshots.rs`) set before
+/// invoking `iced_test::screenshot`. The production
+/// `widgets::chart::local_offset_or_utc` checks this env var to force
+/// `UtcOffset::UTC` and keep visual baselines machine-independent. NOT
+/// operator-visible — internal contract between chart canvas + test
+/// harness.
+pub const CHART_FORCE_UTC_ENV: &str = "UI_CHART_FORCE_UTC";
+
 /// Empty state for the training log ring buffer.
 pub const TRAINING_LOG_EMPTY: &str = "No training output yet — press Train to start.";
 

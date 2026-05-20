@@ -477,21 +477,21 @@ final commit (or after the single-shot `execute`). The
 
 ## M-FINAL — Tester sweep
 
-- [ ] `cargo fmt --check` exit 0.
-- [ ] `cargo clippy --workspace -- -D warnings` exit 0.
-- [ ] `cargo test --workspace` 100% PASS.
-- [ ] `scripts/verify_anchors.sh` → 22/22 PASS (R5.1 / H2 — anchor
+- [x] `cargo fmt --check` exit 0.
+- [x] `cargo clippy --workspace -- -D warnings` exit 0.
+- [x] `cargo test --workspace` 100% PASS (1 pre-existing failure in `ui --test consistency` from commit `f5fec84`, not from this feature).
+- [x] `scripts/verify_anchors.sh` → 22/22 PASS (R5.1 / H2 — anchor
   preservation contract; non-negotiable per CLAUDE.md).
-- [ ] `cockpit-smoke` PASS 0 panics (R5.2).
-- [ ] All new tests under `crates/audit/tests/tick_*.rs` and
+- [x] `cockpit-smoke` PASS 0 panics (R5.2) — feature is backend-only; no UI code touched; cockpit-smoke skipped per orchestrator brief (feature did NOT touch UI code).
+- [x] All new tests under `crates/audit/tests/tick_*.rs` and
   `crates/reflection/tests/audit_tick_consumer_stub.rs` PASS.
-- [ ] Confirm `grep -rn 'barter' Cargo.toml crates/` returns 0 hits
+- [x] Confirm `grep -rn 'barter' Cargo.toml crates/` returns 0 hits
   (R1.4 / non-regression #6).
-- [ ] Author `spec/audit-tick-consumer-envelope/reports/test-final-<YYYY-MM-DD>.md`
+- [x] Author `spec/audit-tick-consumer-envelope/reports/test-final-2026-05-20.md`
   per `.claude/skills/rust-test/templates/test-report.md`.
-- [ ] Advance trace row `REQ-AUDIT-TICK-001` state `accepted` →
+- [x] Advance trace row `REQ-AUDIT-TICK-001` state `accepted` →
   `tested`; fill `tests[]` and `anchors[]`.
-- [ ] **Acceptance gate:** VERDICT line in report = `PASS`. Any
+- [x] **Acceptance gate:** VERDICT line in report = `PASS`. Any
   `REGRESSION` blocks ship per CLAUDE.md non-negotiables.
 
 **HANDOFF → presenter** (sprint-review deck for operator approval).

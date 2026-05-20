@@ -248,8 +248,8 @@ tests       = [
   "crates/audit/tests/tick_serde_roundtrip.rs",
   "crates/reflection/tests/audit_tick_consumer_stub.rs",
 ]
-anchors     = []   # additive read-side feature; 22 originals stay byte-identical (R10.1)
-state       = "accepted"
+anchors     = []   # additive read-side feature; 22 originals stay byte-identical (R10.1); verify-anchors 22/22 PASS 2026-05-20
+state       = "tested"
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"

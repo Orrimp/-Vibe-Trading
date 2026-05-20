@@ -187,7 +187,7 @@ pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
 #[cfg(not(test))]
 pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
     // Integration-test snapshot determinism: see doc comment above.
-    if std::env::var_os("UI_CHART_FORCE_UTC").is_some() {
+    if std::env::var_os(crate::strings::CHART_FORCE_UTC_ENV).is_some() {
         // CLOCK-OK: env-var override for integration tests.
         return time::UtcOffset::UTC;
     }
