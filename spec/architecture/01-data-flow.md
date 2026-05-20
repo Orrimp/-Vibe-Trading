@@ -65,6 +65,29 @@ and exists for one explicit reason:
   annotate operator-success reports with "what we learned
   last session" footnotes. No reverse edge; `reflection`
   knows nothing about `reports`.
+- `reflection → audit (via AuditTick stream)` — read-only edge.
+  At v0.1.0 the `reflection` crate already lists `audit` under
+  `[dependencies]` (existing edge — used by the
+  `ReflectionWriter` mpsc tap path). The audit-tick consumer
+  envelope (see
+  [`spec/audit-tick-consumer-envelope/decomp.md`](../audit-tick-consumer-envelope/decomp.md))
+  re-uses this edge symmetrically: `reflection` subscribes to a
+  `broadcast::Receiver<AuditTick<AuditEvent>>` exposed by
+  `audit::tick::AuditTickStream`. The new
+  `ReflectionAuditTickConsumer` is observation-only at v0.1.0;
+  the existing mpsc-tap write path stays unchanged (R4.2). No
+  reverse edge; `audit` continues to import nothing from
+  sibling crates.
+- `forecast → audit (via AuditTick emit, feature-gated)` —
+  optional write edge, **gated behind the `audit-tick` cargo
+  feature** on the `forecast` crate (default off). Enabled by
+  the agent and unified-cockpit bins so the `TcnForecaster`
+  can emit `AuditEvent::ForecastEmitted` ticks on cache-hit
+  and post-inference. Training bins (`train_tcn`,
+  `forecast_distribution`) do NOT enable this feature — they
+  have no `Ledger`. See
+  [`spec/audit-tick-consumer-envelope/decomp.md §5A`](../audit-tick-consumer-envelope/decomp.md).
+  No reverse edge.
 - `ui → {trading_core, audit}` — read-only consumer of
   `audit::query` for the cockpit's live-view widgets; no reverse
   edge (audit knows nothing about UI).
@@ -94,7 +117,9 @@ importing `audit` and calling `audit::journal::*` /
 `audit::query::*` — those are inbound edges to `audit`, which
 the edge table above documents row-by-row (`data → audit`,
 `exec → audit`, `agent → audit`, `reports → audit` read-only,
-`ui → audit` read-only). The forbidden direction is the reverse:
+`ui → audit` read-only, `reflection → audit` read-only via
+`AuditTickStream`, `forecast → audit` write under
+`audit-tick` feature). The forbidden direction is the reverse:
 `audit` does not import any sibling crate, so the reconciler
 invariant (Σ debits == Σ credits) is provable from `audit`'s
 source alone without crossing a crate boundary.

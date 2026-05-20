@@ -235,12 +235,14 @@ feature     = "audit-tick-consumer-envelope"
 product     = "spec/product.md"
 arch        = [
   "spec/audit-tick-consumer-envelope/feature.md",
+  "spec/audit-tick-consumer-envelope/decomp.md",
   "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",
+  "spec/architecture/01-data-flow.md",
 ]
-crates      = ["crates/audit", "crates/reflection"]
+crates      = ["crates/audit", "crates/reflection", "crates/forecast"]
 tests       = []   # populate at developer wave
 anchors     = []   # additive read-side feature; 22 originals stay byte-identical (R10.1)
-state       = "proposed"
+state       = "accepted"
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"

@@ -1,10 +1,11 @@
 ---
 slug: audit-tick-consumer-envelope
 status: draft
-owner: pending-architect
+owner: architect
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ADR-0031
+decomp: spec/audit-tick-consumer-envelope/decomp.md
 ---
 
 # Audit tick consumer envelope (`audit-tick-consumer-envelope`)
@@ -645,6 +646,20 @@ PASS the architect advances it to `accepted` and fills `arch[]`.
 
 ## Changelog
 
+- 2026-05-20 (architect, M-T1): ratified analyst defaults
+  Q1..Q5; published [decomp.md](decomp.md) with per-writer
+  change list, `Ledger` mutation spec, `AuditTickStream` API
+  surface, `ReflectionAuditTickConsumer` stub spec, config
+  additions, anchor-preservation discipline, and landing
+  order. Pinned `ForecastEmitted` to choice 5A (gated
+  `forecast → audit` edge). Flipped ADR-0031 status
+  `proposed` → `accepted`. Updated
+  [01-data-flow.md](../architecture/01-data-flow.md) edge
+  table (added `reflection → audit (via AuditTick stream)`
+  and `forecast → audit (audit-tick feature)`). Advanced
+  trace row `REQ-AUDIT-TICK-001` state `proposed` →
+  `accepted`. Owner `pending-architect` → `architect`.
+  HANDOFF → developer.
 - 2026-05-20 (analyst, M0): replaced proposed stub with full
   R1..R7 / Q1..Q5 / K1..K6 / H1..H5 contract. Status `proposed`
   → `draft`, owner `pending-analyst` → `analyst`. HANDOFF →

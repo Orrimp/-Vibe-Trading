@@ -1,11 +1,23 @@
 ---
 adr: 0031
 title: `AuditTick<Event, Context>` consumer envelope for audit ledger read path
-status: proposed
+status: accepted
 date: 2026-05-17
+accepted-on: 2026-05-20
 supersedes: none
 superseded-by: none
+refined-by: spec/audit-tick-consumer-envelope/feature.md
+decomposed-by: spec/audit-tick-consumer-envelope/decomp.md
 ---
+
+> **Status `accepted` on 2026-05-20.** All five operator-decide
+> questions resolved to analyst defaults via "Autoapprove all"
+> directive. Implementation contract is at
+> [`spec/audit-tick-consumer-envelope/feature.md`](../../audit-tick-consumer-envelope/feature.md);
+> per-writer change list + ForecastEmitted call-site pin are at
+> [`spec/audit-tick-consumer-envelope/decomp.md`](../../audit-tick-consumer-envelope/decomp.md).
+> ADR remains source-of-truth for the direction; the brief +
+> decomp are source-of-truth for the v0.1.0 contract.
 
 # ADR-0031: `AuditTick<Event, Context>` consumer envelope for audit ledger read path
 
