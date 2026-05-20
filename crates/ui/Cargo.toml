@@ -101,6 +101,14 @@ iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia",
 # spec/reports/dev-week2-broadcast-api-2026-04-18.md).
 agent = { path = "../agent", optional = true }
 audit = { path = "../audit", optional = true }
+# Phase D+ (ui-rethink-phase-d-trail-followup T-D-N1) — `reflection` is an
+# optional dep gated behind the existing `live` feature stanza (same shape as
+# `agent` and `audit` above). The `ui` crate's default build (fixtures, viewer)
+# never sees `reflection`; only `--features live` pulls it in. This satisfies
+# ADR-0031 "zero new architecture edges" because `ui → reflection` under
+# `--features live` is structurally equivalent to the existing
+# `ui → agent → reflection` transitive edge (agent already re-exports reflection).
+reflection = { path = "../reflection", optional = true }
 tokio = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 async-stream = { workspace = true, optional = true }
@@ -201,6 +209,10 @@ render-debug = ["dep:tracing-subscriber"]
 live = [
     "dep:agent",
     "dep:audit",
+    # Phase D+ (ui-rethink-phase-d-trail-followup T-D-N1) — reflection pulled in
+    # under `live` so the trail-mirror Subscription bridge can access
+    # `reflection::trail_mirror::TrailMirrorHandle` and `TrailMirrorTick`.
+    "dep:reflection",
     "dep:tokio",
     "dep:futures",
     "dep:async-stream",

@@ -763,9 +763,13 @@ arch        = [
   "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",                           # carry-forward; § "Phase D amendment (2026-05-20)" applies verbatim, no new ADR
 ]
 crates      = ["crates/ui", "crates/reflection", "crates/audit"]   # ui = Subscription bridge + Message payload + Cockpit field + 3 new snapshot baselines; reflection = benches/trail_mirror.rs (new) + TrailMirrorTick re-export per Q2; audit = bench fixture (in-memory ledger seeding 10⁵ rows)
-tests       = []   # developer fills; analyst leaves empty per the lint-clean-while-draft convention
-anchors     = []   # Phase D+ is additive-only (Subscription bridge + 3 NEW snapshot baselines + 1 NEW bench); 22 anchored bodies stay byte-identical (H2 carry-forward from predecessor)
-state       = "in-progress"   # architect M-T1 pass 2026-05-20: Q2=(b) UI-local wrapper enum; Q3=(c) handle on AppState in cockpit_live.rs; Q4=(a) macOS `top` sampler; spike requirement NONE; anchor baseline 22/22 PASS pre-handoff; decomp.md emitted; tasks.md flipped owner=developer status=in-progress; awaiting developer Wave A T-D-N1
+tests       = [
+  "crates/ui/src/state.rs",            # open_trail_for_sets_pending_audit_id + trail_mirror_tick_updated_clears_reconstructed_trail (2 new unit tests, Wave A)
+  "crates/ui/tests/visual_snapshots.rs",  # trail__steady_state + trail__side_drawer_open + live__recent_activity_with_chevron (Wave C)
+  "crates/reflection/benches/trail_mirror.rs",  # trail_mirror_open H5 bench p99 < 50 ms (Wave D)
+]
+anchors     = []   # Phase D+ is additive-only (Subscription bridge + 3 NEW snapshot baselines + 1 NEW bench); 22 anchored bodies stay byte-identical (H2 carry-forward from predecessor); tester-verified 2026-05-20: verify-anchors PASS (22/22) pre- and post-sweep
+state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20 (presenter deck approved); T-F6/T-F7 deferred to v0.1.2 (sandbox display-server + deployment-side BS-1 probe)
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

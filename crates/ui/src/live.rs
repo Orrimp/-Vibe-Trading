@@ -511,6 +511,139 @@ pub fn position_to_view(pos: &Position) -> PositionView {
     }
 }
 
+// ── Phase D+ — Trail-mirror Subscription bridge (ui-rethink-phase-d-trail-followup) ─
+//
+// R1.1: `trail_mirror_subscription` builds an iced `Subscription` wrapping the
+// `TrailMirrorHandle::tick_tx` broadcast sender.  Mirrors `BusRecipe` above.
+//
+// R1.2: The `From<reflection::trail_mirror::TrailMirrorTick> for TrailMirrorUiTick`
+// conversion lives here (under `#[cfg(feature = "live")]`) so `state.rs` (the
+// `Message` API) never sees a `reflection` import.
+
+use crate::state::{ReconstructedTrailUi, TrailMirrorUiTick, TrailStageUi};
+use crate::widgets::trail_node::{TrailNode, TrailNodeKind};
+use reflection::trail_mirror::TrailMirrorHandle;
+
+/// Build an iced `Subscription` that delivers `Message::TrailMirrorTick`
+/// messages from the trail-mirror's broadcast channel.
+///
+/// Returns `iced::Subscription::none()` if the handle is `None` (mirror not
+/// armed — e.g. `tick_bus_capacity = 0` in config).
+pub fn trail_mirror_subscription(handle: TrailMirrorHandle) -> iced::Subscription<Message> {
+    iced::advanced::subscription::from_recipe(TrailMirrorRecipe { handle })
+}
+
+/// iced `Recipe` wrapping the `TrailMirrorHandle::tick_tx` broadcast sender.
+/// One recipe, batched alongside `BusRecipe` + `ServerTimeRecipe`.
+struct TrailMirrorRecipe {
+    handle: TrailMirrorHandle,
+}
+
+impl Recipe for TrailMirrorRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        // Stable identity: one recipe per subscription batch.
+        TypeId::of::<Self>().hash(state);
+        // Static discriminant so iced never merges this with BusRecipe.
+        0xD0_05u16.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        // Subscribe eagerly (before the stream is first polled) to avoid the
+        // publish-before-subscribe race — mirrors BusRecipe's pattern.
+        let mut rx = self.handle.tick_tx.subscribe();
+        Box::pin(async_stream::stream! {
+            loop {
+                match rx.recv().await {
+                    Ok(tick) => yield Message::TrailMirrorTick(TrailMirrorUiTick::from(tick)),
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(channel = "trail_mirror", skipped = n, "broadcast lagged — dropping");
+                        // Continue: lag is not fatal; the cockpit re-fetches on
+                        // the next visible chevron click (R1.5 drop-on-lag policy).
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        // Mirror task exited (agent shutdown or config disabled).
+                        debug!(channel = "trail_mirror", "broadcast closed — stopping recipe");
+                        break;
+                    }
+                }
+            }
+        })
+    }
+}
+
+/// Crate-boundary conversion: `reflection::trail_mirror::TrailMirrorTick`
+/// → `crate::state::TrailMirrorUiTick`.
+///
+/// Lives here (under `#[cfg(feature = "live")]`) so `state.rs` never imports
+/// `reflection::*` types (Q2 (b) resolution).
+impl From<reflection::trail_mirror::TrailMirrorTick> for TrailMirrorUiTick {
+    fn from(tick: reflection::trail_mirror::TrailMirrorTick) -> Self {
+        match tick {
+            reflection::trail_mirror::TrailMirrorTick::TrailReady(boxed) => {
+                let fill = trail_stage_to_ui(&boxed.fill);
+                let signal = trail_stage_to_ui(&boxed.signal);
+                let forecast = trail_stage_to_ui(&boxed.forecast);
+                let debate = trail_stage_to_ui(&boxed.debate);
+                // Pre-build TrailNode structs (upstream-first: Forecast, LlmDebate, Signal, Fill)
+                // so screens::trail::view can borrow &TrailNode with the Cockpit's lifetime
+                // (trail_node::view<'a>(node: &'a TrailNode) -> Element<'a>).
+                let nodes = vec![
+                    TrailNode {
+                        kind: TrailNodeKind::Forecast,
+                        timestamp: forecast.timestamp.clone(),
+                        actor: forecast.actor.clone(),
+                        headline: forecast.headline.clone(),
+                    },
+                    TrailNode {
+                        kind: TrailNodeKind::LlmDebate,
+                        timestamp: debate.timestamp.clone(),
+                        actor: debate.actor.clone(),
+                        headline: debate.headline.clone(),
+                    },
+                    TrailNode {
+                        kind: TrailNodeKind::Signal,
+                        timestamp: signal.timestamp.clone(),
+                        actor: signal.actor.clone(),
+                        headline: signal.headline.clone(),
+                    },
+                    TrailNode {
+                        kind: TrailNodeKind::Fill,
+                        timestamp: fill.timestamp.clone(),
+                        actor: fill.actor.clone(),
+                        headline: fill.headline.clone(),
+                    },
+                ];
+                TrailMirrorUiTick::TrailReady(Box::new(ReconstructedTrailUi {
+                    audit_id: SmolStr::new(&boxed.audit_id),
+                    fill,
+                    signal,
+                    forecast,
+                    debate,
+                    nodes,
+                }))
+            }
+            reflection::trail_mirror::TrailMirrorTick::TrailUpdated(s) => {
+                TrailMirrorUiTick::TrailUpdated(SmolStr::new(s))
+            }
+        }
+    }
+}
+
+fn trail_stage_to_ui(stage: &reflection::trail_mirror::TrailStage) -> TrailStageUi {
+    // TrailStageUi fields are Option<String> (not SmolStr) so trail.rs can
+    // borrow them from model with the Cockpit's lifetime (avoids E0515).
+    TrailStageUi {
+        timestamp: stage.timestamp.clone(),
+        actor: stage.actor.clone(),
+        headline: stage.headline.clone(),
+        raw_payload: stage.raw_payload.clone(),
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

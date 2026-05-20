@@ -694,6 +694,17 @@ pub struct TrailScreenState {
     pub selected_audit_id: Option<SmolStr>,
     /// Which node's side-drawer is open. `None` = drawer closed.
     pub drawer_selected_node: Option<crate::widgets::trail_node::TrailNodeKind>,
+    /// Phase D+ (ui-rethink-phase-d-trail-followup R1.4) — last reconstructed
+    /// trail delivered by `Message::TrailMirrorTick(TrailReady(...))`.
+    /// `None` while the trail has not yet been hydrated by the mirror (list
+    /// mode or chevron click not yet answered). `Some(trail)` once the mirror
+    /// responds; rendered by `screens::trail` trail-mode body.
+    pub reconstructed_trail: Option<ReconstructedTrailUi>,
+    /// Phase D+ (ui-rethink-phase-d-trail-followup R1.4) — set when the
+    /// operator clicks the chevron (`OpenTrailFor` arm); cleared when the
+    /// mirror responds with `TrailReady`. While `Some`, the trail-mode body
+    /// renders a `frame::loading_body` placeholder (R3.4 reuse).
+    pub pending_trail_audit_id: Option<SmolStr>,
 }
 
 /// Root cockpit model. Owned by the iced `Application`.
@@ -1108,6 +1119,66 @@ impl Cockpit {
     }
 }
 
+// ── Phase D+ — UI-local trail-mirror types (ui-rethink-phase-d-trail-followup) ─
+//
+// Q2 resolution (b): these types mirror `reflection::trail_mirror::{TrailMirrorTick,
+// ReconstructedTrail, TrailStage}` at a UI-local boundary so the `Message` enum
+// carries no direct `reflection` type. The `Message` variant thus stays in the
+// default (non-`live`) ui-crate build's public API without dragging a `reflection`
+// dep into it. The crate-boundary `From` conversion lives in `crates/ui/src/live.rs`
+// under `#[cfg(feature = "live")]`.
+
+/// UI-local mirror of `reflection::trail_mirror::TrailMirrorTick` (Q2 (b)).
+///
+/// Keeps the `Message` payload free of a direct `reflection` type so the
+/// default (non-`live`) ui-crate build retains the v0.1.0 edge set
+/// (`ui → {trading_core, audit, agent, backtest, reports}`). The
+/// crate-boundary conversion lives in `crates/ui/src/live.rs` under
+/// `#[cfg(feature = "live")]`.
+#[derive(Debug, Clone)]
+pub enum TrailMirrorUiTick {
+    /// A reconstructed trail is ready (LRU hit or SQL backfill completed).
+    /// Boxed for parity with the upstream enum (`large_enum_variant`).
+    TrailReady(Box<ReconstructedTrailUi>),
+    /// Steady-state update: re-fetch the trail for this `audit_id`.
+    TrailUpdated(SmolStr),
+}
+
+/// UI-local mirror of `reflection::trail_mirror::TrailStage`.
+///
+/// `raw_payload` stores the full drawer payload forwarded to the side-drawer.
+/// Other fields use `Option<String>` matching `TrailNode`'s field types.
+#[derive(Debug, Clone, Default)]
+pub struct TrailStageUi {
+    pub timestamp: Option<String>,
+    pub actor: Option<String>,
+    pub headline: Option<String>,
+    pub raw_payload: Option<String>,
+}
+
+/// UI-local mirror of `reflection::trail_mirror::ReconstructedTrail`.
+///
+/// Also contains pre-built `TrailNode` structs (Phase D+ T-D-N10) so
+/// `screens::trail::view` can borrow `&TrailNode` with the Cockpit's lifetime
+/// rather than from a local variable — `trail_node::view<'a>(node: &'a TrailNode)`
+/// returns `Element<'a>` so the element must borrow from something that outlives
+/// the `view` function's return. Storing nodes here achieves that.
+#[derive(Debug, Clone, Default)]
+pub struct ReconstructedTrailUi {
+    pub audit_id: SmolStr,
+    pub fill: TrailStageUi,
+    pub signal: TrailStageUi,
+    pub forecast: TrailStageUi,
+    pub debate: TrailStageUi,
+    /// Pre-built trail nodes for the four stages, in upstream-first order:
+    /// `[Forecast, LlmDebate, Signal, Fill]`. Populated alongside the stage
+    /// fields from the same mirror tick. Borrowing `&self.nodes[i]` from a
+    /// `ReconstructedTrailUi` stored in `Cockpit` gives the correct `'model`
+    /// lifetime for `trail_node::view<'a>(node: &'a TrailNode) -> Element<'a>`.
+    /// `Vec` (not array) because `TrailNode` doesn't derive `Default`.
+    pub nodes: Vec<crate::widgets::trail_node::TrailNode>,
+}
+
 /// Every possible state mutation. Exhaustive by construction — `update`
 /// matches on this enum with no catch-all arm.
 #[derive(Debug, Clone)]
@@ -1357,9 +1428,10 @@ pub enum Message {
     /// Operator dismissed the trail side-drawer. Clears `drawer_selected_node`
     /// but preserves `selected_audit_id` so the trail node stack stays visible.
     TrailDrawerClosed,
-    /// Trail-mirror tick delivered via the iced Subscription bridge (Wave F).
-    /// Placeholder at v0.1.0; carries a string description of the event.
-    TrailMirrorTick(SmolStr),
+    /// Trail-mirror tick delivered via the iced Subscription bridge (Phase D+).
+    /// Carries the structured UI-local tick type (Q2 (b) — no direct
+    /// `reflection` type in the `Message` API).
+    TrailMirrorTick(TrailMirrorUiTick),
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1830,12 +1902,29 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::OpenTrailFor(id) => {
             // Compound dispatch per R5.1 + Phase C `OpenStrategyInLab` precedent.
             // Expands to: SelectTrailRow(id) + SwitchScreen(Trail).
+            // Phase D+ (R1.4): also set pending_trail_audit_id so the trail-mode
+            // body renders a loading placeholder until the mirror responds.
+            model.trail_screen_state.pending_trail_audit_id = Some(id.clone());
             model.trail_screen_state.selected_audit_id = Some(id);
             model.current_screen = Screen::Trail;
         }
-        Message::TrailMirrorTick(_desc) => {
-            // Subscription bridge tick (Wave F). Placeholder at v0.1.0 — no
-            // state mutation needed until the trail-mirror LRU backfill lands.
+        Message::TrailMirrorTick(tick) => {
+            // Phase D+ — Subscription bridge tick (ui-rethink-phase-d-trail-followup R1.2).
+            // Two real branches per Q2 (b) resolution:
+            //   TrailReady   → hydrate trail_screen_state.reconstructed_trail + clear pending
+            //   TrailUpdated → mark cached audit_id stale (flag for re-fetch on next render)
+            match tick {
+                TrailMirrorUiTick::TrailReady(boxed_trail) => {
+                    model.trail_screen_state.pending_trail_audit_id = None;
+                    model.trail_screen_state.reconstructed_trail = Some(*boxed_trail);
+                }
+                TrailMirrorUiTick::TrailUpdated(_audit_id) => {
+                    // Steady-state update: the trail for this audit_id has new data.
+                    // Clear reconstructed_trail so the next render re-fetches from the
+                    // mirror via TrailMirrorRequest::Open (R1.2 stale-flag policy).
+                    model.trail_screen_state.reconstructed_trail = None;
+                }
+            }
         }
     }
 }
@@ -3081,6 +3170,70 @@ mod tests {
             c.trail_screen_state.selected_audit_id.as_deref(),
             Some("test-audit-id-abc123"),
             "selected_audit_id must match the dispatched id"
+        );
+    }
+
+    /// Phase D+ T-D-N4 — `OpenTrailFor` sets `pending_trail_audit_id` alongside
+    /// `selected_audit_id`. Cleared by `TrailMirrorTick(TrailReady)`.
+    #[test]
+    fn open_trail_for_sets_pending_audit_id() {
+        let mut c = Cockpit::new();
+        assert!(c.trail_screen_state.pending_trail_audit_id.is_none());
+
+        let uuid = smol_str::SmolStr::new("pending-id-xyz");
+        update(&mut c, Message::OpenTrailFor(uuid.clone()));
+
+        assert_eq!(
+            c.trail_screen_state.pending_trail_audit_id.as_deref(),
+            Some("pending-id-xyz"),
+            "pending_trail_audit_id must be set after OpenTrailFor"
+        );
+
+        // Simulate TrailReady response — should clear pending.
+        let trail = Box::new(ReconstructedTrailUi {
+            audit_id: uuid.clone(),
+            ..Default::default()
+        });
+        update(
+            &mut c,
+            Message::TrailMirrorTick(TrailMirrorUiTick::TrailReady(trail)),
+        );
+
+        assert!(
+            c.trail_screen_state.pending_trail_audit_id.is_none(),
+            "pending_trail_audit_id must be cleared after TrailReady"
+        );
+        assert!(
+            c.trail_screen_state.reconstructed_trail.is_some(),
+            "reconstructed_trail must be populated by TrailReady"
+        );
+    }
+
+    /// Phase D+ T-D-N3 — `TrailMirrorTick(TrailUpdated)` clears reconstructed_trail.
+    #[test]
+    fn trail_mirror_tick_updated_clears_reconstructed_trail() {
+        let mut c = Cockpit::new();
+        // Seed a trail first.
+        let trail = Box::new(ReconstructedTrailUi {
+            audit_id: smol_str::SmolStr::new("some-id"),
+            ..Default::default()
+        });
+        update(
+            &mut c,
+            Message::TrailMirrorTick(TrailMirrorUiTick::TrailReady(trail)),
+        );
+        assert!(c.trail_screen_state.reconstructed_trail.is_some());
+
+        // Updated tick should clear it.
+        update(
+            &mut c,
+            Message::TrailMirrorTick(TrailMirrorUiTick::TrailUpdated(smol_str::SmolStr::new(
+                "some-id",
+            ))),
+        );
+        assert!(
+            c.trail_screen_state.reconstructed_trail.is_none(),
+            "TrailUpdated must clear reconstructed_trail to trigger re-fetch"
         );
     }
 

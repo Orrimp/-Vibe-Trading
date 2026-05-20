@@ -347,6 +347,26 @@ fn main() -> Result<()> {
         }
     });
 
+    // ── Phase D+ — Trail-mirror construction (ui-rethink-phase-d-trail-followup
+    //              T-D-N6 / Q3 = (c) construct in cockpit_live bootstrap)
+    // `TrailMirror::new` is sync (channel allocations only). The `mirror.run()`
+    // task is spawned on the side-thread runtime at T-D-N7 below.
+    // Construction is gated on `tick_bus_capacity > 0` — if the tick bus is
+    // disabled (e.g. in fixture smoke runs), no mirror is created. The
+    // `_tick_bus_sender` must stay alive here so `subscribe()` gets a live sender.
+    #[cfg(feature = "live")]
+    let (trail_mirror_task, trail_mirror_handle) = {
+        if let Some(ref sender) = _tick_bus_sender {
+            let rx = sender.subscribe();
+            let (mirror, handle) =
+                reflection::trail_mirror::TrailMirror::new(rx, Arc::clone(&ledger));
+            info!("trail mirror constructed (Phase D+ subscription bridge)");
+            (Some(mirror), Some(handle))
+        } else {
+            (None, None)
+        }
+    };
+
     // Drop the bootstrap runtime — the side thread builds its own.
     drop(bootstrap_rt);
 
@@ -410,6 +430,18 @@ fn main() -> Result<()> {
                         }
                     });
 
+                    // Phase D+ T-D-N7 — spawn the trail-mirror task onto the
+                    // side-thread runtime (mirrors must `await run()` inside a
+                    // tokio context; the bootstrap_rt is already dropped here).
+                    #[cfg(feature = "live")]
+                    if let Some(mirror) = trail_mirror_task {
+                        tokio::spawn(async move {
+                            info!("trail mirror task spawned");
+                            mirror.run().await;
+                            info!("trail mirror task exited");
+                        });
+                    }
+
                     if let Err(e) = agent::runtime::run(handles, cancel).await {
                         warn!(error = %e, "agent runtime exited with error");
                     }
@@ -471,6 +503,10 @@ fn main() -> Result<()> {
         kill_switch: Arc::clone(&kill_switch),
         ledger: Arc::clone(&ledger),
         rt_handle: rt_handle.clone(),
+        // Phase D+ T-D-N8 — wire the trail-mirror handle into AppState so
+        // subscription() can build the TrailMirrorRecipe from it.
+        #[cfg(feature = "live")]
+        trail_mirror_handle,
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -576,6 +612,15 @@ struct AppState {
     /// route through `rt_handle.spawn(...)` so the future runs on the
     /// agent runtime.
     rt_handle: tokio::runtime::Handle,
+    /// Phase D+ (ui-rethink-phase-d-trail-followup T-D-N8 / Q3 = (c)).
+    /// Trail-mirror handle for the iced Subscription bridge (Wave B).
+    /// `None` when `tick_bus_capacity = 0` (mirror not spawned).
+    /// The bridge recipe in `ui::live::trail_mirror_subscription` reads
+    /// `handle.tick_tx.subscribe()`. Cloned cheaply (Arcs inside).
+    /// Only present when compiled with `--features live`.
+    #[cfg(feature = "live")]
+    #[allow(dead_code)] // accessed via subscription() only
+    trail_mirror_handle: Option<reflection::trail_mirror::TrailMirrorHandle>,
 }
 
 impl AppState {
@@ -869,10 +914,21 @@ impl AppState {
         // than `iced::time::every` which requires iced's `tokio` feature flag.
         let time_sub = iced::advanced::subscription::from_recipe(ServerTimeRecipe);
 
+        // Phase D+ T-D-N9 — trail-mirror Subscription bridge (R1.3 / R1.5).
+        // Batched alongside bus_sub + time_sub in both modal-open and
+        // modal-closed branches. `trail_sub` is `Subscription::none()` when
+        // the handle is absent (tick_bus_capacity = 0 in config).
+        let trail_sub = self
+            .trail_mirror_handle
+            .as_ref()
+            .map(|h| ui::live::trail_mirror_subscription(h.clone()))
+            .unwrap_or_else(iced::Subscription::none);
+
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![
                 bus_sub,
                 time_sub,
+                trail_sub,
                 iced::event::listen_with(|event, _status, _window| match event {
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
@@ -882,7 +938,7 @@ impl AppState {
                 }),
             ])
         } else {
-            iced::Subscription::batch(vec![bus_sub, time_sub])
+            iced::Subscription::batch(vec![bus_sub, time_sub, trail_sub])
         }
     }
 

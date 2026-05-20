@@ -41,6 +41,11 @@
 //!   `crates/ui/tests/visual-baselines/`. (Orchestrator-only check.)
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
+// The Phase D+ snapshot fn names use double-underscore separators that match
+// the baseline PNG filenames exactly (e.g. `trail__steady_state.png`).
+// Suppressing the lint here is the lowest-noise approach — renaming would
+// de-sync fn names from baselines and confuse the operator.
+#![allow(non_snake_case)]
 
 use std::time::Duration;
 
@@ -50,6 +55,18 @@ mod fixtures;
 use fixtures::charts_screen_with_hovered_marker;
 use fixtures::visual_diff::matches_screenshot;
 use ui::test_support::program_from_cockpit;
+
+/// Snapshot slots for the three Phase D+ trail / live baselines
+/// (Wave C — T-D-N12, T-D-N13, T-D-N14).  Each entry is a
+/// `(fixture_name, logical_w, logical_h, scale)` tuple.  These all
+/// use the `typical` viewport (1920×1080 @ 1.0x) — the T3022 default
+/// that the operator daily-drives and that the trail-screen ship
+/// decision was made against.
+const TRAIL_SLOTS: &[(&str, u32, u32, f32)] = &[
+    ("trail__steady_state", 1920, 1080, 1.0),
+    ("trail__side_drawer_open", 1920, 1080, 1.0),
+    ("live__recent_activity_with_chevron", 1920, 1080, 1.0),
+];
 
 /// Slot → (logical width, logical height, scale_factor) — operator-
 /// locked Q10. Adding a fourth slot is one row plus one `#[test] fn`.
@@ -149,6 +166,73 @@ fn charts_screen_dark_typical() {
 #[test]
 fn charts_screen_dark_operator() {
     run_slot("operator");
+}
+
+/// Drive `iced_test::screenshot` for a Phase D+ trail/live snapshot slot
+/// identified by `fixture_name`, then route through `matches_screenshot`.
+///
+/// `fixture_name` must be one of the keys in `TRAIL_SLOTS`.  Baseline PNGs
+/// live at `crates/ui/tests/visual-baselines/<fixture_name>.png`.  On the
+/// first run the baseline is auto-written; subsequent runs byte-compare.
+fn run_trail_slot(fixture_name: &str) {
+    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+
+    let (_, w, h, scale) = TRAIL_SLOTS
+        .iter()
+        .find(|(s, _, _, _)| *s == fixture_name)
+        .copied()
+        .unwrap_or_else(|| panic!("unknown TRAIL_SLOTS key: {fixture_name}"));
+
+    let cockpit = match fixture_name {
+        "trail__steady_state" => fixtures::trail_steady_state_cockpit(),
+        "trail__side_drawer_open" => fixtures::trail_side_drawer_open_cockpit(),
+        "live__recent_activity_with_chevron" => {
+            fixtures::live_recent_activity_with_chevron_cockpit()
+        }
+        other => panic!("no fixture builder for: {other}"),
+    };
+
+    let program = program_from_cockpit(cockpit);
+    let theme = iced::Theme::Dark;
+
+    let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);
+
+    let baseline = format!(
+        "{}/tests/visual-baselines/{fixture_name}.png",
+        env!("CARGO_MANIFEST_DIR")
+    );
+
+    matches_screenshot(&screenshot, &baseline, fixture_name).unwrap_or_else(|err| {
+        panic!(
+            "visual snapshot mismatch for `{fixture_name}`:\n{err}\n\n\
+             Review the baseline / actual / diff triple, then either:\n  \
+             (a) accept: delete baseline + rerun (auto-rewritten), or\n  \
+             (b) reject: fix the producing widget code."
+        )
+    });
+}
+
+/// T-D-N12 — Trail screen in list mode (delegates byte-identically to
+/// `screens::audit::view` per R2.2).  Baseline auto-written on first run.
+#[test]
+fn trail__steady_state() {
+    run_trail_slot("trail__steady_state");
+}
+
+/// T-D-N13 — Trail screen in trail mode: Forecast-stage payload + side-
+/// drawer open.  Exercises the full node stack + `trail_drawer::view`.
+/// Baseline auto-written on first run.
+#[test]
+fn trail__side_drawer_open() {
+    run_trail_slot("trail__side_drawer_open");
+}
+
+/// T-D-N14 — Live screen with 5-row recent-activity tape.  Exercises
+/// `screens::live::view` with the universal chevron on every row (R5.1).
+/// Baseline auto-written on first run.
+#[test]
+fn live__recent_activity_with_chevron() {
+    run_trail_slot("live__recent_activity_with_chevron");
 }
 
 /// V9 — the perceptual-diff helper materialises a diff PNG on

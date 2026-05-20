@@ -303,50 +303,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
-- **UI rethink Phase D+ — Trail follow-up (`ui-rethink-phase-d-trail-followup`).**
-  _draft (analyst pass 2026-05-20)_ — promoted from
-  `ui-rethink-phase-d-trail v0.1.0` presenter deck § 8
-  ("Next-up follow-up brief, Phase D+, v0.1.1") and tester
-  report § 11 (deferred-items list). Closes the **five items**
-  explicitly deferred at Phase D ship (presenter deck approved
-  via "Autoapprove all" 2026-05-20):
-  (1) **T-D-N26** — iced `Subscription` bridge wiring
-      `TrailMirrorTick` from the already-spawned `TrailMirror`
-      task (`crates/agent/src/main.rs:179-185`) into
-      `Cockpit::subscription` (placeholder at
-      `crates/ui/src/state.rs:1362,1836`);
-  (2) **T-D-N27** — 3 new `insta` snapshot baselines
-      (`trail__steady_state`, `trail__side_drawer_open`,
-      `live__recent_activity_with_chevron`) — NEW baselines, not
-      changes to any of the 22 anchored body-SHAs;
-  (3) **T-D-N29 / T-F9** — H5 backfill-latency bench
-      (`crates/reflection/benches/trail_mirror.rs`); p99 < 50 ms
-      at ≥ 10⁵ audit rows; falsification triggers R6.3 pre-fetch
-      redesign (Phase D++ scope);
-  (4) **T-F6** — H3 idle-CPU floor (≤ 13.6 %; 13.1 % cockpit-
-      performance v1.0.0 floor + 0.5 % Phase D+ headroom) under
-      the new Subscription + universal chevron;
-  (5) **T-F7** — K7 paper-mode counter assertion
-      `reflection_audit_tick_seen_total{variant="ForecastEmitted"}` ≥ 1
-      after 60 s with `[strategies.tcn_overlay_momentum] enabled =
-      true` + BS-1 checkpoint + live feed.
-  Predecessor: `ui-rethink-phase-d-trail v0.1.0` shipped
-  2026-05-20. **ONE operator-decide Q surfaces (hard blocker for
-  T-F7):** is a BS-1 (or BS-2) TCN checkpoint + paper-mode feed
-  available in the deployment environment? **No safe analyst
-  default** — if YES, R5 ships as scoped (counter ≥ 1 is the
-  gate); if NO, R5 demotes to structural-only re-verify and
-  routes to a deployment-cycle ticket while v0.1.1 still ships
-  R1-R4. ADR carry-forward:
-  [`0031-audit-tick-consumer-envelope.md`](architecture/adr/0031-audit-tick-consumer-envelope.md)
-  § "Phase D amendment (2026-05-20)" applies verbatim; no new
-  ADR. Non-regression: 22 anchors stay byte-identical (H2
-  carry-forward); 937 lib tests + all Phase A/B/C/D-shipped
-  surfaces preserved. Brief at
-  [`feature.md`](ui-rethink-phase-d-trail-followup/feature.md);
-  trace row `REQ-UI-RETHINK-PHASE-D-FOLLOWUP-001` opened in
-  `draft`.
-  HANDOFF → operator-decide (1 Q) → architect.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
@@ -806,6 +762,36 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **UI rethink Phase D+ — Trail follow-up (`ui-rethink-phase-d-trail-followup` v0.1.1)** —
+  shipped 2026-05-20 (operator-approved via "Autoapprove all" against
+  presenter deck
+  [`presentations/ui-rethink-phase-d-trail-followup-2026-05-20.md`](ui-rethink-phase-d-trail-followup/presentations/ui-rethink-phase-d-trail-followup-2026-05-20.md)).
+  Predecessor: [`ui-rethink-phase-d-trail v0.1.0`](ui-rethink-phase-d-trail/feature.md).
+  Closes T-D-N26 (iced **Subscription bridge** wiring
+  `reflection::trail_mirror::TrailMirrorTick` into `Cockpit::subscription`;
+  Q3=(c) — handle constructed in `cockpit_live.rs` bootstrap + stored on
+  `AppState`), T-D-N27 (**3 new insta snapshot baselines** —
+  `trail__steady_state`, `trail__side_drawer_open`,
+  `live__recent_activity_with_chevron`; NEW baselines, not changes
+  to anchored body-SHAs), and T-D-N29 (**H5 backfill-latency bench**
+  `crates/reflection/benches/trail_mirror.rs` — p99 = **0.021 ms** ≪
+  50 ms; H5 NOT falsified, ~2380× headroom). UI-local wrapper types
+  (`TrailMirrorUiTick` / `TrailStageUi` / `ReconstructedTrailUi`) at
+  `crates/ui/src/state.rs:~1340` keep `ui`'s default-build edge graph
+  free of `reflection` (Q2=(b)); `reflection` joins as `optional = true`
+  behind the existing `live` feature stanza — **zero new architecture
+  edges** in the data-flow sense, ADR-0031 carry-forward honored.
+  Idle-CPU sampler `scripts/bench_idle_cpu.sh` (Q4=(a) macOS `top`).
+  **Deferred to v0.1.2** (sandbox display-server class, same as
+  predecessor): T-F6 idle-CPU 60-s sustained probe + T-F7 K7 paper-
+  mode ForecastEmitted counter (Q1=YES — deployment-side run by
+  operator) + `--features live` clippy hygiene (13 pre-existing
+  `needless_pass_by_value` in `crates/ui/src/live.rs:159-428`).
+  **939 lib tests PASS** (≥ 937 baseline; +2 new state-tests);
+  **ANCHORS PASS (22/22)** pre- AND post-sweep; layout_invariants
+  6/6 PASS; 3 snapshot tests deterministic-on-rerun; fmt + default
+  clippy clean; spec-lint 87 (0 regression vs predecessor baseline).
 
 - **UI rethink Phase D — Trail view (J4) (`ui-rethink-phase-d-trail` v0.1.0)** —
   shipped 2026-05-20 (operator-approved via "Autoapprove all" against

@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-d-trail-followup
-status: proposed
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-20
 version: 0.1.1
 predecessor: ui-rethink-phase-d-trail v0.1.0
@@ -705,3 +705,32 @@ respectively.
   `ui-rethink-phase-d-trail v0.1.0` shipped 2026-05-20. Awaiting
   operator-decide on Q1 (R5 hard blocker) and architect M-T1 on
   Q2-Q5.
+
+## Implementation
+
+Developer pass completed 2026-05-20. All 19 T-D-N rows ticked (Waves A → E).
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `crates/ui/Cargo.toml` | `reflection = { path = "../reflection", optional = true }` + `"dep:reflection"` in `live` feature |
+| `crates/ui/src/state.rs` | `TrailMirrorUiTick`, `TrailStageUi`, `ReconstructedTrailUi`; `Message::TrailMirrorTick(TrailMirrorUiTick)`; `TrailScreenState.reconstructed_trail` + `pending_trail_audit_id`; 2 new unit tests |
+| `crates/ui/src/live.rs` | `trail_mirror_subscription` + `TrailMirrorRecipe` + `From<TrailMirrorTick>` (under `#[cfg(feature = "live")]`) |
+| `crates/ui/src/bin/cockpit_live.rs` | `TrailMirror::new` construction + `mirror.run()` spawn + `trail_mirror_handle: Option<TrailMirrorHandle>` on `AppState` + `trail_sub` in `subscription()` |
+| `crates/ui/src/screens/trail.rs` | Loading placeholder; module-level `FALLBACK_NODES: LazyLock<Vec<TrailNode>>`; `map_or` borrow |
+| `crates/ui/tests/visual_snapshots.rs` | `trail__steady_state`, `trail__side_drawer_open`, `live__recent_activity_with_chevron` snapshot tests |
+| `crates/ui/tests/fixtures/mod.rs` | `trail_steady_state_cockpit`, `trail_side_drawer_open_cockpit`, `live_recent_activity_with_chevron_cockpit` fixture builders |
+| `crates/ui/tests/visual-baselines/*.png` | 3 new baseline PNGs (deterministic, 2-run verified) |
+| `crates/reflection/Cargo.toml` | `criterion`, `rand`, `rand_chacha`, `smol_str`, `uuid` dev-deps; `[[bench]] name = "trail_mirror"` |
+| `crates/reflection/benches/trail_mirror.rs` | H5 bench: 10⁵ rows, 100 Open requests, p99 = 0.020 ms < 50 ms gate |
+| `scripts/bench_idle_cpu.sh` | macOS `top` idle-CPU sampler (Q4 tooling) |
+
+### Key decisions
+
+- `trail__steady_state` fixture seeds `AuditScreenState::Ready` (not `Loading`) to prevent `ThrottledSpinner` non-determinism across consecutive `iced_test::screenshot` runs.
+- `FALLBACK_NODES: LazyLock` moved to module level in `trail.rs` to satisfy `clippy::items_after_statements` under `-D warnings`.
+- Bench seed `0xD005_D5C0_FFEE_BC01` (spec had non-hex `BCH1` typo).
+- `cargo clippy --workspace -- -D warnings` and `cargo fmt --check` clean.
+- `cargo test --workspace --lib`: 939 passed (937+ baseline satisfied).
+- `bash scripts/verify_anchors.sh`: ANCHORS PASS (22/22).

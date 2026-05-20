@@ -19,6 +19,42 @@ use crate::state::{Cockpit, Message};
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::trail_node::{self, TrailNode, TrailNodeKind};
 
+/// Static fallback nodes (all-`None`) used when `reconstructed_trail` is
+/// `None` (SQL backfill not yet completed). All-`None` fields resolve to
+/// `'static` string literals inside `trail_node::view` — no lifetime issue.
+///
+/// Module-level placement required by `clippy::items_after_statements`
+/// (items inside fn bodies after any statement are prohibited under
+/// `-D warnings`).
+static FALLBACK_NODES: std::sync::LazyLock<Vec<TrailNode>> = std::sync::LazyLock::new(|| {
+    vec![
+        TrailNode {
+            kind: TrailNodeKind::Forecast,
+            timestamp: None,
+            actor: None,
+            headline: None,
+        },
+        TrailNode {
+            kind: TrailNodeKind::LlmDebate,
+            timestamp: None,
+            actor: None,
+            headline: None,
+        },
+        TrailNode {
+            kind: TrailNodeKind::Signal,
+            timestamp: None,
+            actor: None,
+            headline: None,
+        },
+        TrailNode {
+            kind: TrailNodeKind::Fill,
+            timestamp: None,
+            actor: None,
+            headline: None,
+        },
+    ]
+});
+
 /// Render the Trail screen body.
 ///
 /// In list mode (`trail_screen_state.selected_audit_id == None`) delegates
@@ -31,17 +67,32 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
         return crate::screens::audit::view(model, mode);
     }
 
-    // ── Trail mode: vertical node stack + side-drawer (R2.3) ──────────────
-
     let audit_id = model
         .trail_screen_state
         .selected_audit_id
         .as_deref()
         .unwrap_or("");
 
+    // Phase D+ (T-D-N10) — while `pending_trail_audit_id` is set (chevron
+    // clicked but mirror hasn't responded yet), render a loading placeholder
+    // per R3.4 of the predecessor.  We construct the `Text` widget inline
+    // (not via `frame::loading_with_spinner`) so the owned `String` does not
+    // produce an E0515 "borrows local" lifetime error on early return.
+    if model.trail_screen_state.pending_trail_audit_id.is_some()
+        && model.trail_screen_state.reconstructed_trail.is_none()
+    {
+        let loading_text = format!("Loading trail for {audit_id}\u{2026}");
+        return Text::new(loading_text)
+            .size(text::BODY)
+            .color(color::FG_3.current(mode))
+            .into();
+    }
+
+    // ── Trail mode: vertical node stack + side-drawer (R2.3) ──────────────
+
     // Back-to-list breadcrumb button.
     let back_btn = Button::new(
-        Text::new("‹ Back to list")
+        Text::new("\u{2039} Back to list")
             .size(text::SMALL)
             .color(color::ACCENT.current(mode)),
     )
@@ -86,61 +137,50 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
     });
 
     let breadcrumb = Row::new().spacing(space::M).push(back_btn).push(
-        Text::new(format!("Trail · {audit_id}"))
+        Text::new(format!("Trail \u{00b7} {audit_id}"))
             .size(text::SMALL)
             .color(color::FG_4.current(mode)),
     );
 
-    // Build placeholder trail nodes for the four stages.
-    // At v0.1.0 these are empty stubs — the trail-mirror backfill
-    // (Wave F) populates them. Empty-stage rendering per R3.4.
-    // Upstream-at-top (Q2 analyst default): Forecast → LLM → Signal → Fill.
+    // Build trail nodes for the four stages.
+    //
+    // Phase D+ (T-D-N10): `ReconstructedTrailUi::nodes` is a `Vec<TrailNode>`
+    // stored WITHIN `Cockpit`, so borrowing `&nodes[i]` gives a reference with
+    // the Cockpit's lifetime (`'_`). This avoids E0515: `trail_node::view<'a>`
+    // returns `Element<'a>` bound to `&'a TrailNode`; the borrow must outlive
+    // the returned `Element<'_>` from this function, which it does when the
+    // nodes live inside `model`.
+    //
+    // When `reconstructed_trail` is `None` (SQL backfill not yet completed),
+    // fall back to the four static empty-stub nodes per R3.4. The static nodes
+    // use all-`None` string fields which resolve to `'static` string literals
+    // inside `trail_node::view` — no lifetime issue.
     let drawer_selected = model.trail_screen_state.drawer_selected_node;
 
-    // Build each node view inline to avoid borrowing from a local Vec
-    // (the Element type's lifetime must not be bound to a local).
-    let node_col = Column::new()
-        .spacing(space::M)
-        .push(trail_node::view(
-            &TrailNode {
-                kind: TrailNodeKind::Forecast,
-                timestamp: None,
-                actor: None,
-                headline: None,
-            },
-            drawer_selected == Some(TrailNodeKind::Forecast),
-            mode,
-        ))
-        .push(trail_node::view(
-            &TrailNode {
-                kind: TrailNodeKind::LlmDebate,
-                timestamp: None,
-                actor: None,
-                headline: None,
-            },
-            drawer_selected == Some(TrailNodeKind::LlmDebate),
-            mode,
-        ))
-        .push(trail_node::view(
-            &TrailNode {
-                kind: TrailNodeKind::Signal,
-                timestamp: None,
-                actor: None,
-                headline: None,
-            },
-            drawer_selected == Some(TrailNodeKind::Signal),
-            mode,
-        ))
-        .push(trail_node::view(
-            &TrailNode {
-                kind: TrailNodeKind::Fill,
-                timestamp: None,
-                actor: None,
-                headline: None,
-            },
-            drawer_selected == Some(TrailNodeKind::Fill),
-            mode,
-        ));
+    // Borrow the pre-built node slice from `reconstructed_trail` if hydrated;
+    // fall back to the module-level `FALLBACK_NODES` (all-`None`) per R3.4.
+    let nodes: &[TrailNode] = model
+        .trail_screen_state
+        .reconstructed_trail
+        .as_ref()
+        .map_or(FALLBACK_NODES.as_slice(), |t| t.nodes.as_slice());
+
+    // Build node views. Each `trail_node::view(&nodes[i])` returns
+    // `Element<'a>` where `'a` is the Cockpit's lifetime (correct).
+    let mut node_col = Column::new().spacing(space::M);
+    for (i, kind) in [
+        TrailNodeKind::Forecast,
+        TrailNodeKind::LlmDebate,
+        TrailNodeKind::Signal,
+        TrailNodeKind::Fill,
+    ]
+    .iter()
+    .enumerate()
+    {
+        if let Some(node) = nodes.get(i) {
+            node_col = node_col.push(trail_node::view(node, drawer_selected == Some(*kind), mode));
+        }
+    }
 
     // Optional side-drawer.
     let main_area: Element<'_, Message> = if let Some(node_kind) = drawer_selected {

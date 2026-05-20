@@ -123,6 +123,134 @@ pub fn charts_screen_with_hovered_marker() -> Cockpit {
     cockpit
 }
 
+// ── Phase D+ snapshot fixtures (ui-rethink-phase-d-trail-followup Wave C) ─────
+
+/// Construct the `trail__steady_state` fixture: Trail screen in list mode
+/// (byte-identical to `audit::view` per R2.2).
+///
+/// The cockpit is set to `Screen::Trail` with `selected_audit_id = None`
+/// so the trail screen delegates to `screens::audit::view` (list mode).
+/// Seeded with 5 journal rows so the audit table renders `PanelState::Ready`
+/// (avoids the `ThrottledSpinner` whose frame counter is non-deterministic
+/// across consecutive `iced_test::screenshot` calls).
+#[must_use]
+pub fn trail_steady_state_cockpit() -> Cockpit {
+    use ui::state::{AuditScreenState, Screen};
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Trail;
+    // Ensure list mode (no row selected).
+    cockpit.trail_screen_state = Default::default();
+    // Seed Ready rows — prevents the loading spinner (non-deterministic
+    // frame position) from appearing and invalidating the baseline.
+    cockpit.audit_screen_state = AuditScreenState {
+        rows: PanelState::Ready(ui::fixtures::fake_journal_rows(5)),
+        total_count: Some(5),
+        ..Default::default()
+    };
+    cockpit
+}
+
+/// Construct the `trail__side_drawer_open` fixture: Trail screen in trail
+/// mode with a Forecast-stage payload and the side-drawer open.
+///
+/// Uses a deterministic `ReconstructedTrailUi` fixture (fixed-seed strings).
+/// Drawer is open to `TrailNodeKind::Forecast`.
+#[must_use]
+pub fn trail_side_drawer_open_cockpit() -> Cockpit {
+    use smol_str::SmolStr;
+    use ui::state::{ReconstructedTrailUi, Screen, TrailScreenState, TrailStageUi};
+    use ui::widgets::trail_node::{TrailNode, TrailNodeKind};
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Trail;
+
+    // Build a deterministic reconstructed trail fixture.
+    let fill_ts = SmolStr::new("12:34:56.789");
+    let sig_ts = SmolStr::new("12:34:55.123");
+    let fc_ts = SmolStr::new("12:34:54.001");
+
+    let fill = TrailStageUi {
+        timestamp: Some(fill_ts.to_string()),
+        actor: Some("strategy:sma_crossover".to_string()),
+        headline: Some("Buy 0.05 BTCUSDT @ 42000.00".to_string()),
+        raw_payload: Some(r#"{"fill_id":"abc123","qty":0.05}"#.to_string()),
+    };
+    let signal = TrailStageUi {
+        timestamp: Some(sig_ts.to_string()),
+        actor: Some("strategy:sma_crossover".to_string()),
+        headline: Some("Buy signal triggered (SMA crossover)".to_string()),
+        raw_payload: Some(r#"{"signal_id":"sig001"}"#.to_string()),
+    };
+    let forecast = TrailStageUi {
+        timestamp: Some(fc_ts.to_string()),
+        actor: Some("tcn:abc12345".to_string()),
+        headline: Some("Bullish p=0.72 horizon=15m".to_string()),
+        raw_payload: Some(r#"{"forecast_id":"fc001","confidence":0.72}"#.to_string()),
+    };
+    let debate = TrailStageUi::default();
+
+    // Pre-build nodes (upstream-first: Forecast, LlmDebate, Signal, Fill).
+    let nodes = vec![
+        TrailNode {
+            kind: TrailNodeKind::Forecast,
+            timestamp: forecast.timestamp.clone(),
+            actor: forecast.actor.clone(),
+            headline: forecast.headline.clone(),
+        },
+        TrailNode {
+            kind: TrailNodeKind::LlmDebate,
+            timestamp: None,
+            actor: None,
+            headline: None,
+        },
+        TrailNode {
+            kind: TrailNodeKind::Signal,
+            timestamp: signal.timestamp.clone(),
+            actor: signal.actor.clone(),
+            headline: signal.headline.clone(),
+        },
+        TrailNode {
+            kind: TrailNodeKind::Fill,
+            timestamp: fill.timestamp.clone(),
+            actor: fill.actor.clone(),
+            headline: fill.headline.clone(),
+        },
+    ];
+
+    let trail = ReconstructedTrailUi {
+        audit_id: SmolStr::new("fixture-audit-id-001"),
+        fill,
+        signal,
+        forecast,
+        debate,
+        nodes,
+    };
+
+    cockpit.trail_screen_state = TrailScreenState {
+        selected_audit_id: Some(SmolStr::new("fixture-audit-id-001")),
+        drawer_selected_node: Some(TrailNodeKind::Forecast),
+        reconstructed_trail: Some(trail),
+        pending_trail_audit_id: None,
+    };
+    cockpit
+}
+
+/// Construct the `live__recent_activity_with_chevron` fixture: Live screen
+/// with 5 rows in `agent_feed::ready_body` (the recent-activity tape) and
+/// the universal chevron rendered on every row (Phase D R5.1).
+///
+/// The cockpit is set to `Screen::Live` with 5 fill rows in `tape`.
+#[must_use]
+pub fn live_recent_activity_with_chevron_cockpit() -> Cockpit {
+    use ui::state::Screen;
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Live;
+    // 5-row tape — matches the R2.3 fixture spec.
+    cockpit.tape =
+        ui::state::PanelState::Ready(ui::fixtures::fake_fill_feed(5).into_iter().collect());
+    cockpit
+}
+
 /// Silence dead-code warning for fixtures only consumed via `mod`
 /// glob in integration tests. (Cargo runs each `tests/*.rs` as a
 /// separate crate, so some fixture exports look unused per-target
