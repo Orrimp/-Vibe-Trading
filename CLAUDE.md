@@ -89,6 +89,22 @@ Agents use these via the Skill tool; humans reference them by name:
 - [`backtest`](.claude/skills/backtest/SKILL.md)
 - [`spec-update`](.claude/skills/spec-update/SKILL.md)
 
+## Vendored dependencies
+
+- `vendor/iced_tiny_skia/` is a **long-term local fork** of
+  `iced_tiny_skia 0.14.0` plus the upstream canvas-clip fix from
+  iced master commit `76b32d4906` (Jan 28, 2026). Wired via
+  `[patch.crates-io]` in the workspace `Cargo.toml`. **Operator-
+  locked 2026-05-20** — no iced 0.14.x patch branch exists; no
+  iced upgrade expected near-term. See
+  [`spec/chart-fixture-line-clipping/feature.md`](spec/chart-fixture-line-clipping/feature.md)
+  for the maintenance contract — any future iced bump MUST audit
+  the `Transformation::scale(scale_factor) * group.transformation()`
+  ordering before retiring the fork.
+- Any change to `vendor/*` other than the documented patch is out
+  of scope — those files are upstream source. Bug reports go
+  upstream.
+
 ## Non-negotiables
 
 - No secrets in git. Keys in env / secret store per architecture.md.

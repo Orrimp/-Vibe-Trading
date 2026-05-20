@@ -784,12 +784,14 @@ of which became skill-plumbing fixes that shipped in commit
   of the canvas widget bounds. **Fix:** backport iced master commit
   [`76b32d4906`](https://github.com/iced-rs/iced/commit/76b32d4906)
   (Jan 28, 2026) via `vendor/iced_tiny_skia/` + workspace
-  `[patch.crates-io]`. The vendored copy carries iced 0.14.0 source +
-  the upstream patch (2 lines in `layer.rs`, 3 lines in `lib.rs`); will
-  retire when iced ships a 0.14.x release or we upgrade. **Verification:**
-  4 visual_snapshots baselines refreshed (chart line now spans full
-  12:00→12:59 width); 22/22 anchors byte-identical; 279 workspace tests
-  PASS; cockpit-smoke 0 panics. Diagnostic trail in
+  `[patch.crates-io]`. **Operator-locked 2026-05-20:** the vendored
+  fork is the long-term canonical fix (no iced 0.14.x patch branch
+  exists; no upgrade expected near-term). Any future iced bump audits
+  the `Transformation::scale(scale_factor) * group.transformation()`
+  ordering before retiring the fork. **Verification:** 4 visual_snapshots
+  baselines refreshed (chart line now spans full 12:00→12:59 width);
+  22/22 anchors byte-identical; 279 workspace tests PASS; cockpit-smoke
+  0 panics. Diagnostic trail in
   [`spec/chart-fixture-line-clipping/feature.md`](chart-fixture-line-clipping/feature.md)
   preserves the orchestrator's 5-hypothesis probe register + 2 falsified
   fix attempts + final root-cause analysis.

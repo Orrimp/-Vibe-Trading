@@ -197,10 +197,34 @@ the canvas widget bounds.
 remove the duplicate `group.transformation()` multiplier on the
 clip bounds intersection).
 
-**Local backport:** `vendor/iced_tiny_skia/` carries iced 0.14.0
-source plus the upstream patch. Wired via `[patch.crates-io]` in
-the workspace `Cargo.toml`. The vendored copy will retire once
-iced ships a 0.14.x patch release or we upgrade to a newer minor.
+**Local fork (long-term, operator-locked 2026-05-20):**
+`vendor/iced_tiny_skia/` carries iced 0.14.0 source plus the
+upstream patch. Wired via `[patch.crates-io]` in the workspace
+`Cargo.toml`.
+
+**The vendored fork is the canonical fix, NOT a temporary
+workaround.** iced does not maintain a 0.14.x patch branch; no
+0.14.1 release is expected. We own this patched copy until we
+upgrade the iced major (which carries its own larger work).
+
+**Maintenance contract:**
+
+- Any future `iced` version bump MUST audit the upstream
+  `tiny_skia/src/{layer,lib}.rs` to confirm the
+  `Transformation::scale(scale_factor) * group.transformation()`
+  ordering is preserved AND that `Item::Cached` returns
+  `vec![*bounds]` (no `* *transformation` multiplier).
+- If the upstream still carries the broken order, the vendored
+  fork stays. If the new upstream already has the fix, the
+  vendored fork retires.
+- Any change to `vendor/iced_tiny_skia/` other than the 5-line
+  fix is OUT OF SCOPE — the file is iced's source. Bug reports
+  against iced go upstream.
+
+`crates/ui/tests/visual-baselines/charts_screen_dark_*.png` ship
+the post-fix rendering as the regression contract. A future iced
+bump that re-broke the canvas clip would break these baselines
+immediately.
 
 **Verification:** all 4 visual_snapshots baselines refreshed
 (`charts_screen_dark_{floor,typical,operator}.png` +

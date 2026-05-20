@@ -94,7 +94,10 @@ Orchestrator commits + pushes; backlog updated; bug closed.
 
 ## 10. Out-of-band followups
 
-- **Vendored iced_tiny_skia retirement.** When iced ships a 0.14.x patch
-  release containing commit 76b32d4906, OR when we upgrade to a newer
-  iced minor, drop `vendor/iced_tiny_skia/` and the `[patch.crates-io]`
-  directive.
+- **None at this time.** The vendored `iced_tiny_skia` is operator-
+  locked as the long-term fix (2026-05-20) — iced does not maintain
+  a 0.14.x patch branch. The fork retires only when we upgrade the
+  iced major (a separate work item carrying its own changes). The
+  maintenance contract — *"any iced bump audits the
+  `Transformation::scale * group.transformation()` ordering before
+  retiring the fork"* — is documented in `feature.md ## Resolution`.
