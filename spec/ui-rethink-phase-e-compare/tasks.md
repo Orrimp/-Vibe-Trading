@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-e-compare
-status: in-progress
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-05-20
 ---
 

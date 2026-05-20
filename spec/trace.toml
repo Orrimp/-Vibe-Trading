@@ -791,7 +791,7 @@ tests       = [
   "crates/ui/tests/fixtures/mod.rs",           # Fixture builders for the 4 compare snapshots
 ]
 anchors     = []   # Phase E touches no strategy/audit/exec/report-renderer code; 22 originals stay byte-identical (R7.1 contract). Developer post-implementation verified: ANCHORS PASS (22 / 22) 2026-05-20.
-state       = "in-progress"   # developer Wave A-E complete; HANDOFF → tester for M-FINAL sweep
+state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20 (presenter deck approved); tester VERDICT → PASS, no deferrals
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
