@@ -4,6 +4,36 @@ status: living
 owner: orchestrator
 updated: 2026-05-20
 ---
+<!-- updated 2026-05-20 (analyst, ui-rethink-phase-f-memory-models-assistant M0
+     close) — Analyst pass landed for the sixth and final phase of the UI
+     rethink. Brief at
+     `spec/ui-rethink-phase-f-memory-models-assistant/feature.md` (status:
+     draft, owner: analyst, version: 0.1.0, predecessor:
+     `ui-rethink-phase-e-compare v0.1.0`) carries R1-R8 + Q1-Q8 + K1-K8 +
+     H1-H6 + 8-item non-regression contract. Three independently-shippable
+     surfaces: (i) `screens::memory` over `crates/reflection` lesson-cards
+     store (J7); (ii) `screens::models` over `crates/forecast/checkpoints/anchors/`
+     (J8 — BS-1 + BS-2 TCN checkpoints confirmed on disk at 2026-05-20);
+     (iii) right-rail Lumen Phase 6 Assistant slot wake (v2-llm-strategy
+     v2.0.0 shipped 2026-05-13 — wake condition met). **Eight operator-
+     decide Qs surfaced**, all with analyst-recommended defaults; analyst-
+     recommended Q4 = a (stub-only Assistant slot wake — light the slot
+     structurally without scope-creeping into LLM plumbing; v0.2.0 wires
+     the body). K4 (Assistant-slot + Memory-drawer right-side coexistence)
+     + K6 (RIGHT_RAIL_WIDTH_PX constant semantic change) flagged as the
+     load-bearing cross-feature traps; both with analyst-recommended
+     fallback paths (K4 → Q5=c route fallback; K6 → Option A
+     RIGHT_RAIL_OPEN_WIDTH_PX additive constant). Anchor risk zero by
+     construction (no backtest binary changes, no anchored renderer touch,
+     no audit writer touch, no reflection writer touch). Predecessors
+     audited: Phase C sidebar IA reserves both `Screen::Memory` +
+     `Screen::Models` (theme.rs:741-750); shell.rs:98-99 placeholder routes;
+     shell.rs:47-49 right-rail reservation. Trace row
+     `REQ-UI-RETHINK-PHASE-F-001` opened draft. Cost estimate: ~3-4 weeks
+     (~4-5 weeks if Q4=(b) full v2 LLM wire chosen). HANDOFF → operator-
+     decide → architect for M-T1. Per dev-note §6 line 1110 ("Final sweep
+     — anything missing?") Phase F closes the rethink unless operator
+     review surfaces a J9+ gap. -->
 <!-- updated 2026-05-20 (analyst, ui-rethink-phase-e-compare M0 close) —
      Analyst pass landed for the next phase of the UI rethink. Brief at
      `spec/ui-rethink-phase-e-compare/feature.md` (status: draft, owner:
@@ -328,6 +358,51 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+
+- **UI rethink Phase F — Memory + Models + Phase-6 Assistant slot
+  (`ui-rethink-phase-f-memory-models-assistant`).**
+  _draft (analyst-authored 2026-05-20; awaiting operator-decide on
+  Q1-Q8)_ — sixth and final concrete feature in the UI rethink at
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md).
+  Predecessor: [`ui-rethink-phase-e-compare v0.1.0`](ui-rethink-phase-e-compare/feature.md)
+  shipped 2026-05-20. Lands the three deferred surfaces named in
+  dev-note §6 Phase F (lines 1098-1112):
+  (i) **Memory screen** (J7) — `screens::memory` over `crates/reflection`
+      `lesson_cards` store; reverse-chronological cards list (Q1=a)
+      with Memory→Trail chevron cross-link (Q6=c);
+  (ii) **Models screen** (J8) — `screens::models` over
+      `crates/forecast/checkpoints/anchors/` (BS-1 + BS-2 TCN
+      checkpoints already on disk as of 2026-05-20 — confirmed in
+      analyst pass); flat per-checkpoint list (Q2=a) with honest
+      "no models loaded" placeholder when checkpoints absent (Q3=a);
+  (iii) **Right-rail Lumen Phase 6 Assistant slot** — wake condition
+      met (v2-llm-strategy v2.0.0 shipped 2026-05-13); analyst-
+      recommended Q4=(a) **stub-only wake** at v0.1.0 (light the
+      reserved slot structurally without scope-creeping into LLM
+      plumbing — v0.2.0 wires the body). Sidebar entries already
+      reserved by Phase C `SIDEBAR_GROUPS_PHASE_C` Library zone
+      (`theme.rs:741-750`); placeholders at `shell.rs:98-99` swap to
+      real bodies. Right-rail reservation at `shell.rs:47-49` +
+      `theme.rs:640-643` picks up a function-of-state under K6
+      Option A. Brief at
+      [`feature.md`](ui-rethink-phase-f-memory-models-assistant/feature.md)
+      carries R1-R8 + Q1-Q8 (operator-decide) + K1-K8 (K4 + K6 are
+      the load-bearing UX/coupling traps) + H1-H6 (per-screen latency
+      budgets + data-shape robustness + layout invariance) +
+      8-item non-regression contract. **Anchor risk: zero** by
+      construction (no backtest binary changes, no anchored renderer
+      touch, no audit writer touch, no reflection writer touch).
+      Trace row `REQ-UI-RETHINK-PHASE-F-001` opened `draft`.
+      Per dev-note §6 line 1134 (**"No cliffs at C, E, F — each phase
+      is independently shippable and independently reversible"**)
+      Phase F is purely additive UI surface; the three deliverables
+      are themselves independently shippable inside Phase F (Memory
+      ↔ Models ↔ Assistant slot have zero coupling). Presenter sweep
+      per dev-note §6 line 1110 (**"Final sweep — anything missing?"**)
+      gates the operator's last gap-review before the rethink closes.
+      Cost estimate: ~3-4 weeks (~4-5 weeks if Q4=(b) full v2 LLM
+      wire is chosen instead of analyst-recommended Q4=(a) stub-only).
+      HANDOFF → operator-decide (Q1-Q8) → architect for M-T1.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
