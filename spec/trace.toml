@@ -749,6 +749,23 @@ tests       = []   # `tests` field is path-bearing per spec-lint; cargo invocati
 anchors     = []   # Phase D is additive-only (mig 011 NULL ALTERs + new table); 22 original anchors verified PASS (22/22) post-mig — no new anchor scenarios required; all existing anchors serve as the non-regression gate (R7.1 / H2 confirmed 2026-05-20)
 state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20 (presenter deck approved)
 
+[[req]]
+id          = "REQ-UI-RETHINK-PHASE-D-FOLLOWUP-001"
+title       = "UI rethink Phase D+ — Trail follow-up (v0.1.1 patch): closes 5 deferred items from Phase D v0.1.0 — iced Subscription bridge wiring TrailMirrorTick into Cockpit::subscription (T-D-N26); 3 new insta snapshot baselines (trail__steady_state, trail__side_drawer_open, live__recent_activity_with_chevron — T-D-N27); H5 backfill-latency bench p99 < 50 ms at 10⁵ rows (T-D-N29); H3 idle-CPU floor ≤ 13.6 % under new Subscription + universal chevron (T-F6); K7 paper-mode ForecastEmitted counter ≥ 1 probe (T-F7, hard-infrastructure-blocked on BS-1 checkpoint + live feed availability)"
+feature     = "ui-rethink-phase-d-trail-followup"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-rethink-phase-d-trail-followup/feature.md",
+  "spec/ui-rethink-phase-d-trail-followup/tasks.md",
+  "spec/ui-rethink-phase-d-trail/presentations/ui-rethink-phase-d-trail-2026-05-20.md",   # § 5 deferred-items rationale + § 8 next-up follow-up brief — scope source-of-truth
+  "spec/ui-rethink-phase-d-trail/reports/test-final-2026-05-20.md",                       # § 11 deferred-items table
+  "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",                           # carry-forward; § "Phase D amendment (2026-05-20)" applies verbatim, no new ADR
+]
+crates      = ["crates/ui", "crates/reflection", "crates/audit"]   # ui = Subscription bridge + Message payload + Cockpit field + 3 new snapshot baselines; reflection = benches/trail_mirror.rs (new) + TrailMirrorTick re-export per Q2; audit = bench fixture (in-memory ledger seeding 10⁵ rows)
+tests       = []   # developer fills; analyst leaves empty per the lint-clean-while-draft convention
+anchors     = []   # Phase D+ is additive-only (Subscription bridge + 3 NEW snapshot baselines + 1 NEW bench); 22 anchored bodies stay byte-identical (H2 carry-forward from predecessor)
+state       = "proposed"   # analyst pass 2026-05-20; operator-decide resolved 2026-05-20 (Q1 = YES — full K7 probe; Q5 = (a) 4 Hz coalescing fallback); awaiting architect M-T1
+
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #
