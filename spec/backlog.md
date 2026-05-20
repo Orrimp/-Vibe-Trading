@@ -303,6 +303,25 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+- **Audit tick consumer envelope (`audit-tick-consumer-envelope`).**
+  _proposed (2026-05-20) — awaiting analyst pass_. Promoted from
+  Queue/Process-tooling. Canonical design at
+  [ADR-0031](architecture/adr/0031-audit-tick-consumer-envelope.md).
+  Adds a thin read-direction envelope (`AuditTick<E, C>`) over the
+  existing audit journal: every `journal::*` writer also enqueues an
+  `AuditTick` into a `tokio::broadcast` channel; `crates/reflection`,
+  future Lab Trail (Phase D), and v2.6 bake-off subscribe via
+  `Iterator<Item = AuditTick<AuditEvent>>` instead of each requiring
+  a dedicated write tap. **Strictly additive** — existing producer
+  taps coexist; zero hot-path impact (broadcast send is
+  constant-time); **22 body-SHA anchors stay byte-identical** by
+  construction (read-only over the journal). ~50 LOC addition in
+  `crates/audit`. **5 analyst-surfaced Qs** (channel bounded/N;
+  producer-side tee location; broadcast exposure via Ledger or
+  hidden; iced consumer pattern; AuditContext.agent_pid source).
+  Trace row `REQ-AUDIT-TICK-001` opened in proposed state.
+  HANDOFF → analyst.
+
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
@@ -441,18 +460,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   hardware) appears.
 
 ### Process / tooling
-
-- **`audit-tick-consumer-envelope`** (architecture follow-up) —
-  _candidate, sourced from
-  [`spec/dev-notes/external-code-patterns-2026-05-17.md`](dev-notes/external-code-patterns-2026-05-17.md)_.
-  Formalised by [ADR-0031](architecture/adr/0031-audit-tick-consumer-envelope.md)
-  (status `proposed`). Borrows the barter-rs `AuditTick<Event, Context>`
-  envelope so `crates/reflection`, future Lab `Trail` (Phase D), and
-  future v2.6 bake-off + v3 success-reports can subscribe to a single
-  audit broadcast instead of each requiring a dedicated write tap.
-  Strictly additive (existing taps coexist); zero hot-path impact; 11
-  anchors stay byte-identical. ~50 LOC addition in `crates/audit`
-  per ADR. Analyst spawn when operator chooses to promote.
 
 - **`v2x-trading-state-bus`** (v2 LLM evolution) —
   _candidate, sourced from

@@ -229,6 +229,20 @@ anchors     = []   # v1.11 touches no strategy/audit/exec/report path; 22 body-S
 state       = "shipped"  # operator-approved via "Autoapprove all" 2026-05-20
 
 [[req]]
+id          = "REQ-AUDIT-TICK-001"
+title       = "Audit tick consumer envelope — read-direction broadcast over the audit journal (additive; per-consumer mutations of `crates/audit`/`exec`/`agent` retire); 22 body-SHA anchors stay byte-identical"
+feature     = "audit-tick-consumer-envelope"
+product     = "spec/product.md"
+arch        = [
+  "spec/audit-tick-consumer-envelope/feature.md",
+  "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",
+]
+crates      = ["crates/audit", "crates/reflection"]
+tests       = []   # populate at developer wave
+anchors     = []   # additive read-side feature; 22 originals stay byte-identical (R10.1)
+state       = "proposed"
+
+[[req]]
 id          = "REQ-V25A-PATCHTST-001"
 title       = "v2.5a PatchTST / iTransformer forecast overlay — phase 2 of 4"
 feature     = "v25a-patchtst-overlay"
