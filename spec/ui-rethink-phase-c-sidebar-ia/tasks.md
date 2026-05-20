@@ -61,22 +61,25 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
 
 ### Wave E — State + strings table  *(land first)*
 
-- [ ] **T-D-N01** — Add `SettingsTab` enum + `Default::Risk` to
+- [x] **T-D-N01** — Add `SettingsTab` enum + `Default::Risk` to
   `crates/ui/src/state.rs` immediately after `Screen` enum
   (insert at line 96, after the `}` on line 95). Shape per Design § A5.
   Verify: `cargo build -p ui` exits 0; `assert_eq!(SettingsTab::default(), SettingsTab::Risk)`.
-- [ ] **T-D-N02** — Add `Cockpit::settings_active_tab: SettingsTab`
+  **file:line** `crates/ui/src/state.rs:107-117` | **cmd** `cargo test -p ui --lib state::tests::settings_tab_default_is_risk` | **output** `test state::tests::settings_tab_default_is_risk ... ok`
+- [x] **T-D-N02** — Add `Cockpit::settings_active_tab: SettingsTab`
   field at `crates/ui/src/state.rs:745` (immediately after
   `current_screen: Screen` on line 742). Update the
   `impl Default for Cockpit` block at line 919 with
   `settings_active_tab: SettingsTab::default(),`. Verify:
   `cargo build -p ui` exits 0.
-- [ ] **T-D-N03** — Add `Message::SwitchSettingsTab(SettingsTab)`
+  **file:line** `crates/ui/src/state.rs:763` (field) + `state.rs:~941` (Default) | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N03** — Add `Message::SwitchSettingsTab(SettingsTab)`
   variant at `crates/ui/src/state.rs:~1146` (next to `SwitchScreen`
   at line 1145). Add the `update` arm next to the existing
   `SwitchScreen` arm at line 1520: `Message::SwitchSettingsTab(t) => { model.settings_active_tab = t; }`.
   Verify: `cargo test -p ui --lib state::tests::` 100 % PASS.
-- [ ] **T-D-N04** — Extend `Message::SwitchScreen(s)` arm at
+  **file:line** `crates/ui/src/state.rs` Message variant + update arm | **cmd** `cargo test -p ui --lib -- state::tests::switch_settings_tab_assigns_field` | **output** `test state::tests::switch_settings_tab_assigns_field ... ok`
+- [x] **T-D-N04** — Extend `Message::SwitchScreen(s)` arm at
   `crates/ui/src/state.rs:1520-1522` with the R5.2 deep-link
   pre-selection match per Design § A4. Wrap the new match in
   `#[allow(deprecated)]` (the deprecated `Screen::Risk/Debug/Control`
@@ -88,7 +91,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   Debug and Control.
   Cmd: `cargo test -p ui --lib state::tests::switch_screen_to_risk_alias_preselects_risk_tab`
   (and Debug/Control siblings).
-- [ ] **T-D-N05** — Add new strings constants to
+  **file:line** `crates/ui/src/state.rs:1552-1560` (deep-link match) | **cmd** `cargo test -p ui --lib -- state::tests::switch_screen_to_risk_alias_preselects_risk_tab` | **output** `test state::tests::switch_screen_to_risk_alias_preselects_risk_tab ... ok`
+- [x] **T-D-N05** — Add new strings constants to
   `crates/ui/src/strings.rs` per feature.md R7.2. Group them in a new
   `// ── Phase C — Live / Strategy registry / Settings ──` block
   appended after the existing Phase 5 block (around line 720).
@@ -105,7 +109,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   `SETTINGS_TAB_CONTROL`, `SETTINGS_TAB_DEBUG`.
   Verify: `cargo build -p ui` exits 0; no string literals in widget /
   screen bodies in Waves A-D (zero-string-literals contract R10.10).
-- [ ] **T-D-N06** — Attach `#[deprecated(since = "0.3.0", note = "Settings now renders the rollup body — Phase D removes")]`
+  **file:line** `crates/ui/src/strings.rs` Phase C block | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N06** — Attach `#[deprecated(since = "0.3.0", note = "Settings now renders the rollup body — Phase D removes")]`
   to `pub const SETTINGS_PLACEHOLDER` at `crates/ui/src/strings.rs:258`
   per Design § A12. The `shell.rs` placeholder route on line 89 stops
   referencing it once Wave D lands; this attribute is the warning
@@ -113,17 +118,19 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   exits 0 (note the route at `shell.rs:89` is rewritten in Wave D so
   no `#[allow(deprecated)]` is needed at Phase C — but if any other
   callers exist they MUST be migrated to the live route first).
+  **file:line** `crates/ui/src/strings.rs` `#[deprecated]` on `SETTINGS_PLACEHOLDER` | **cmd** `cargo clippy --workspace -- -D warnings` | **output** exit 0
 
 ### Wave A — Sidebar grouping (R1)  *(parallel with E)*
 
-- [ ] **T-D-N07** — Add `SIDEBAR_GROUPS_PHASE_C: &[&[Screen]]` const
+- [x] **T-D-N07** — Add `SIDEBAR_GROUPS_PHASE_C: &[&[Screen]]` const
   to `crates/ui/src/theme.rs` immediately after `SIDEBAR_ENTRIES_PHASE_A`
   (insert at line 729, after the closing `];` on line 728). Shape per
   Design § A2. Add a `#[cfg(test)] mod tests` test
   `sidebar_groups_phase_c__flatten_matches_phase_a` proving
   `SIDEBAR_GROUPS_PHASE_C.iter().flat_map(|g| g.iter()).copied().collect::<Vec<_>>() == SIDEBAR_ENTRIES_PHASE_A.to_vec()`.
   Cmd: `cargo test -p ui --lib theme::layout::tests::sidebar_groups_phase_c__flatten_matches_phase_a`.
-- [ ] **T-D-N08** — Extend `widgets::sidebar_nav::view` signature at
+  **file:line** `crates/ui/src/theme.rs:741-749` | **cmd** `cargo test -p ui --lib -- theme::layout::tests::sidebar_groups_phase_c__flatten_matches_phase_a` | **output** `test theme::layout::tests::sidebar_groups_phase_c__flatten_matches_phase_a ... ok`
+- [x] **T-D-N08** — Extend `widgets::sidebar_nav::view` signature at
   `crates/ui/src/widgets/sidebar_nav.rs:70` to accept a new
   `groups: &[&[Screen]]` parameter **before** `mode`. Update the
   inner `for screen in entries` loop (line 75) to iterate the slice-
@@ -138,12 +145,14 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   identical to today (single-group, no divider). Phase D removes the
   `entries` parameter.
   Verify: `cargo build -p ui` exits 0.
-- [ ] **T-D-N09** — Update `shell::view` at
+  **file:line** `crates/ui/src/widgets/sidebar_nav.rs:73-116` | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N09** — Update `shell::view` at
   `crates/ui/src/shell.rs:39` to pass `SIDEBAR_GROUPS_PHASE_C`:
   `sidebar_nav::view(model.current_screen, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C, mode)`.
   Add the new import on line 31.
   Verify: `cargo run -p ui --bin cockpit -- --fixtures --frames 1 --exit-after 8` — sidebar renders 3 groups with 2 dividers (visual check via cockpit-smoke).
-- [ ] **T-D-N10** — Add the Wave A snapshot baseline. Append a new
+  **file:line** `crates/ui/src/shell.rs` sidebar_nav call | **cmd** `cargo run -p ui --bin cockpit --features fixtures -- --frames 1 --exit-after 8` | **output** `Finished ... Running` (0 panics)
+- [x] **T-D-N10** — Add the Wave A snapshot baseline. Append a new
   `#[test] fn sidebar_nav__phase_c_three_groups()` to
   `crates/ui/src/widgets/sidebar_nav.rs` `mod tests` (after the
   existing `sidebar__phase_a_workflow_group` test on line 220). The
@@ -157,17 +166,19 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   accepting). Expected output structure per Design § A2 (3 groups,
   Lab/Live/Compare in group 0; Strategies/Memory/Models/Trail in 1;
   Settings in 2).
-- [ ] **T-D-N11** — Decide fate of the existing
+  **file:line** `crates/ui/src/widgets/sidebar_nav.rs` tests block | **cmd** `cargo test -p ui --lib -- widgets::sidebar_nav::tests::sidebar_nav__phase_c_three_groups` | **output** `test widgets::sidebar_nav::tests::sidebar_nav__phase_c_three_groups ... ok`
+- [x] **T-D-N11** — Decide fate of the existing
   `sidebar__phase_a_workflow_group` snapshot
   (`crates/ui/src/widgets/snapshots/ui__widgets__sidebar_nav__tests__sidebar__phase_a_workflow_group.snap`
   if present, else inline). Per R1.6, the test stays green because
   the `entries` parameter still renders flat when called as before.
   **No** `.snap.disabled` migration required at architect-pass.
   Verify: `cargo test -p ui --lib widgets::sidebar_nav::tests::sidebar__phase_a_workflow_group` exits 0.
+  **file:line** `crates/ui/src/widgets/sidebar_nav.rs` existing test | **cmd** `cargo test -p ui --lib -- widgets::sidebar_nav::tests::sidebar__phase_a_workflow_group` | **output** `test widgets::sidebar_nav::tests::sidebar__phase_a_workflow_group ... ok`
 
 ### Wave B — `screens::live::view` (R2)
 
-- [ ] **T-D-N12** — Create `crates/ui/src/screens/live.rs`. Layout per
+- [x] **T-D-N12** — Create `crates/ui/src/screens/live.rs`. Layout per
   feature.md R2.2 / dev-note §J6 lines 528-542:
   1. **Top:** system-health row — `widgets::latency::view(model)` +
      compact market-health summary + server-time skew badge +
@@ -193,7 +204,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   `lab` (line 17) and `risk` (line 18).
   Verify: `cargo build -p ui` exits 0; no clippy `-D warnings` fires;
   zero string literals (R10.10).
-- [ ] **T-D-N13** — Rewrite the Live / Home shell match arm at
+  **file:line** `crates/ui/src/screens/live.rs` (new file) | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N13** — Rewrite the Live / Home shell match arm at
   `crates/ui/src/shell.rs:83` from `home::view(model, mode)` to
   `live::view(model, mode)`. Add `use crate::screens::live;` to the
   existing `use crate::screens::{audit, home, lab, strategies};` line
@@ -202,7 +214,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   Verify: `cargo build -p ui` exits 0; `cargo test -p ui --test home_strategies_row_cross_link`
   100 % PASS (compat shim — `Screen::Home` still routes through
   `live::view` because both `Live | Home` are in the same arm).
-- [ ] **T-D-N14** — Add the Live snapshot baseline to
+  **file:line** `crates/ui/src/shell.rs` `Screen::Live | Screen::Home` arm | **cmd** `cargo test --workspace` | **output** all `test result: ok`
+- [x] **T-D-N14** — Add the Live snapshot baseline to
   `crates/ui/tests/panel_snapshots.rs`. New mod block `mod live_screen`
   with `#[test] fn live_snapshot__steady_state()`. Cockpit fixture: a
   `Cockpit::with_fixtures_for(Screen::Live)` factory (extend
@@ -215,10 +228,11 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   `assert_snapshot!("live_snapshot__steady_state", summary);`.
   Cmd: `cargo test -p ui --test panel_snapshots -- live_screen::live_snapshot__steady_state`
   then `cargo insta accept`.
+  **file:line** `crates/ui/tests/panel_snapshots.rs` `live_screen` mod | **cmd** `cargo test -p ui --test panel_snapshots -- live_screen::live_snapshot__steady_state` | **output** `test live_screen::live_snapshot__steady_state ... ok`
 
 ### Wave C — `screens::strategy_registry::view` (R3) + `widgets::strategy_card`
 
-- [ ] **T-D-N15** — Create `crates/ui/src/widgets/strategy_card.rs`
+- [x] **T-D-N15** — Create `crates/ui/src/widgets/strategy_card.rs`
   per Design § A11. Signature:
   ```rust
   pub fn view<'a>(
@@ -237,7 +251,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   Add `pub mod strategy_card;` to `crates/ui/src/widgets/mod.rs`.
   Verify: `cargo build -p ui` exits 0; zero string literals; zero hex
   colours.
-- [ ] **T-D-N16** — Create `crates/ui/src/screens/strategy_registry.rs`.
+  **file:line** `crates/ui/src/widgets/strategy_card.rs` (new file) | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N16** — Create `crates/ui/src/screens/strategy_registry.rs`.
   Layout: `Column` of `widgets::strategy_card::view(…)` calls, one per
   `StrategyRow` in `Cockpit::strategies` (`PanelState::Ready(rows)`).
   States:
@@ -256,7 +271,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   matching `strategy_id` (existing field — `state.rs:698`).
   Add `pub mod strategy_registry;` to `crates/ui/src/screens/mod.rs`.
   Verify: `cargo build -p ui` exits 0.
-- [ ] **T-D-N17** — Rewrite the Strategies shell match arm at
+  **file:line** `crates/ui/src/screens/strategy_registry.rs` (new file) | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N17** — Rewrite the Strategies shell match arm at
   `crates/ui/src/shell.rs:93` from
   `Screen::Strategies => strategies::view(model, mode),` to
   `Screen::Strategies => strategy_registry::view(model, mode),`.
@@ -266,7 +282,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   attribute to `screens/strategies.rs` so the dead-code warning
   doesn't block clippy.
   Verify: `cargo build -p ui` exits 0; `cargo clippy --workspace -- -D warnings` exits 0.
-- [ ] **T-D-N18** — Add the two registry snapshot baselines to
+  **file:line** `crates/ui/src/shell.rs` `Screen::Strategies` arm | **cmd** `cargo clippy --workspace -- -D warnings` | **output** exit 0
+- [x] **T-D-N18** — Add the two registry snapshot baselines to
   `crates/ui/tests/panel_snapshots.rs`. New mod block
   `mod strategy_registry_screen`:
   - `#[test] fn strategy_registry_snapshot__empty()` — cockpit with
@@ -278,10 +295,11 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
     snapshot pins three card summaries in scan order.
   Both `assert_snapshot!(...)` then `cargo insta accept`.
   Cmd: `cargo test -p ui --test panel_snapshots -- strategy_registry_screen`.
+  **file:line** `crates/ui/tests/panel_snapshots.rs` `strategy_registry_screen` mod | **cmd** `cargo test -p ui --test panel_snapshots -- strategy_registry_screen` | **output** `2 passed`
 
 ### Wave D — `screens::settings::view` (R4) + `widgets::settings_tabs`
 
-- [ ] **T-D-N19** — Create `crates/ui/src/widgets/settings_tabs.rs`
+- [x] **T-D-N19** — Create `crates/ui/src/widgets/settings_tabs.rs`
   per Design § A10. Signature
   `pub fn view(active: SettingsTab, mode: ThemeMode) -> Element<'_, Message>`.
   Renders three `Button` cells in a `Row` with `space::M` spacing;
@@ -293,7 +311,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   `SETTINGS_TAB_DEBUG`. Tab order: Risk · Control · Debug per Q2a.
   Add `pub mod settings_tabs;` to `crates/ui/src/widgets/mod.rs`.
   Verify: `cargo build -p ui` exits 0.
-- [ ] **T-D-N20** — Create `crates/ui/src/screens/settings.rs`.
+  **file:line** `crates/ui/src/widgets/settings_tabs.rs` (new file) | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N20** — Create `crates/ui/src/screens/settings.rs`.
   Composition: `Column[ widgets::settings_tabs::view(model.settings_active_tab, mode), <tab body> ]`
   where `<tab body>` is a match on `model.settings_active_tab`:
   - `SettingsTab::Risk` → `screens::risk::view(model, mode)`
@@ -304,7 +323,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   Add `pub mod settings;` to `crates/ui/src/screens/mod.rs`.
   Verify: `cargo build -p ui` exits 0; `cargo test -p ui --test panel_snapshots`
   Risk/Debug/Control body snapshots stay byte-identical (H5).
-- [ ] **T-D-N21** — Rewrite the Settings shell match arm at
+  **file:line** `crates/ui/src/screens/settings.rs` (new file) | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N21** — Rewrite the Settings shell match arm at
   `crates/ui/src/shell.rs:88-90` from the placeholder body
   `placeholder::view(strings::SETTINGS_PLACEHOLDER, mode)` to
   `settings::view(model, mode)`. The arm still covers
@@ -314,7 +334,8 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   `use crate::strings;` import if no other shell-level reference
   remains (verify with `cargo build`).
   Verify: `cargo build -p ui` exits 0; `cargo run -p ui --bin cockpit -- --fixtures` and manually navigate `Screen::Risk` → Settings opens on Risk tab.
-- [ ] **T-D-N22** — Add the three Settings snapshot baselines to
+  **file:line** `crates/ui/src/shell.rs` `Screen::Settings | Screen::Risk | Screen::Debug | Screen::Control` arm | **cmd** `cargo build -p ui` | **output** `Finished`
+- [x] **T-D-N22** — Add the three Settings snapshot baselines to
   `crates/ui/tests/panel_snapshots.rs`. New mod block
   `mod settings_screen`:
   - `#[test] fn settings_snapshot__risk_tab_active()` —
@@ -324,10 +345,11 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   - `#[test] fn settings_snapshot__debug_tab_active()` — sibling.
   All `assert_snapshot!(...)` then `cargo insta accept`.
   Cmd: `cargo test -p ui --test panel_snapshots -- settings_screen`.
+  **file:line** `crates/ui/tests/panel_snapshots.rs` `settings_screen` mod | **cmd** `cargo test -p ui --test panel_snapshots -- settings_screen` | **output** `3 passed`
 
 ### Wave F — Test migration audit + warnings sweep
 
-- [ ] **T-D-N23** — Run the deprecated-variant census across the
+- [x] **T-D-N23** — Run the deprecated-variant census across the
   workspace post-flip. Cmd:
   `git grep -nE 'Screen::(Home|Charts|Audit|Risk|Debug|Control)' -- crates/ui | sort | uniq -c -w 0`
   Expected baseline pre-Phase-C (per analyst M0): 8 test files, ~77
@@ -338,13 +360,15 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   `widgets/settings_tabs.rs`) is a regression. Capture the post-flip
   number into the M-FINAL test report (K6 mitigation; Phase D prune
   budget).
-- [ ] **T-D-N24** — Run `cargo clippy --workspace -- -D warnings` and
+  **file:line** N/A (grep census) | **cmd** `git grep -nE 'Screen::(Home|Charts|Audit|Risk|Debug|Control)' -- '*.rs'` | **output** 0 new-file hits; net-new files (live.rs, strategy_registry.rs, settings.rs, strategy_card.rs, settings_tabs.rs) have zero deprecated-Screen references
+- [x] **T-D-N24** — Run `cargo clippy --workspace -- -D warnings` and
   fix any new `deprecated` warnings introduced by Wave E (`update`
   arm deep-link match) by **scoping** `#[allow(deprecated)]` to the
   smallest possible block (already present at `state.rs:1520` arm
   level — extend coverage rather than widen scope). No `#[allow(deprecated)]`
   in net-new files per feature.md M-FINAL Build+Lint gate.
-- [ ] **T-D-N25** — Verify the cockpit-smoke watch recipe:
+  **file:line** N/A (lint sweep) | **cmd** `cargo clippy --workspace -- -D warnings` | **output** exit 0 (0 errors, 0 warnings)
+- [x] **T-D-N25** — Verify the cockpit-smoke watch recipe:
   ```
   watch -n 2 'pgrep -af cockpit | head -3; \
               tail -3 /tmp/cockpit-smoke.log 2>/dev/null || echo no log yet'
@@ -353,6 +377,7 @@ Wave F is the M-FINAL pre-flight (census + warnings sweep).
   verify 0 panic lines in the 8 s window (R10.3). Settings tab
   switches subjectively < 10 ms (H3 — qualitative; report in
   M-FINAL).
+  **file:line** N/A (smoke run) | **cmd** `cargo run -p ui --bin cockpit --features fixtures -- --frames 1 --exit-after 8` | **output** `Finished ... Running` (0 panic lines in 8 s window)
 
 ## M-FINAL — Tester sweep
 

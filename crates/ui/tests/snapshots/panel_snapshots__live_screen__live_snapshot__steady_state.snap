@@ -1,0 +1,13 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: live_screen_summary(&c)
+---
+screen: Live
+headline: Live
+system_health_label: System health
+equity_curve: No equity data placeholder
+kpi_strip: Backtest metrics unavailable
+llm_spend_label: LLM spend
+llm_spend_tile: —
+bottom_left: positions (state=loading)
+bottom_right: agent_feed (state=loading)

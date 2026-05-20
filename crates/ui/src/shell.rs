@@ -25,10 +25,9 @@
 use iced::Length;
 use iced::widget::{Column, Container, Row, Space};
 
-use crate::screens::{audit, home, lab, strategies};
+use crate::screens::{audit, lab, live, settings, strategy_registry};
 use crate::state::{Cockpit, Screen};
-use crate::strings;
-use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A};
+use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C};
 use crate::theme::{ThemeMode, color};
 use crate::widgets::{placeholder, sidebar_nav, status_bar};
 
@@ -36,7 +35,12 @@ use crate::widgets::{placeholder, sidebar_nav, status_bar};
 #[allow(clippy::needless_pass_by_value, clippy::cast_possible_truncation)]
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
-    let sidebar = sidebar_nav::view(model.current_screen, SIDEBAR_ENTRIES_PHASE_A, mode);
+    let sidebar = sidebar_nav::view(
+        model.current_screen,
+        SIDEBAR_ENTRIES_PHASE_A,
+        SIDEBAR_GROUPS_PHASE_C,
+        mode,
+    );
     let body = screen_body(model.current_screen, model, mode);
     let bar = status_bar::view(model);
 
@@ -73,23 +77,34 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 /// Phase A (T-D-3) — 7-arm match for the new routes. Deprecated alias
 /// variants auto-route to their successors so the test harness doesn't
 /// need to migrate in one cycle (R9.3 / Design § 6).
+///
+/// Phase C (ui-rethink-phase-c-sidebar-ia) — Live routes to `live::view`;
+/// Settings/Risk/Debug/Control route to `settings::view` (with tab
+/// pre-selected by `update`'s `SwitchScreen` arm per Design § A4);
+/// Strategies routes to `strategy_registry::view`.
+///
+/// `home::view` is retained as a source file for one cycle (R2.4 / Q1a).
 #[allow(clippy::needless_pass_by_value, deprecated)]
 #[must_use]
 pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
+    use crate::strings;
     match screen {
-        // ── Phase A active routes ─────────────────────────────────────
-        // Deprecated aliases route to their successors (R9.3).
+        // ── Phase C active routes ─────────────────────────────────────────
         Screen::Lab | Screen::Charts => lab::view(model, mode),
-        Screen::Live | Screen::Home => home::view(model, mode),
+        // Phase C: Live routes to the new §J6 layout; Home is the compat alias.
+        Screen::Live | Screen::Home => live::view(model, mode),
         Screen::Compare => placeholder::view(strings::COMPARE_PLACEHOLDER, mode),
         Screen::Memory => placeholder::view(strings::MEMORY_PLACEHOLDER, mode),
         Screen::Models => placeholder::view(strings::MODELS_PLACEHOLDER, mode),
         Screen::Trail | Screen::Audit => audit::view(model, mode),
+        // Phase C: Settings rollup wraps risk/control/debug sub-tabs.
+        // R5.2: deprecated Risk/Debug/Control aliases route here too —
+        // the active tab is pre-selected by the `SwitchScreen` arm in `update`.
         Screen::Settings | Screen::Risk | Screen::Debug | Screen::Control => {
-            placeholder::view(strings::SETTINGS_PLACEHOLDER, mode)
+            settings::view(model, mode)
         }
 
-        // ── Unchanged active route ────────────────────────────────────
-        Screen::Strategies => strategies::view(model, mode),
+        // Phase C: Strategy registry replaces the old detail panel.
+        Screen::Strategies => strategy_registry::view(model, mode),
     }
 }

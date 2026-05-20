@@ -1,0 +1,9 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: registry_summary(&c)
+---
+screen: strategy_registry
+panel_title: Strategy registry
+state: ready
+cards: 1
+  card id=pairs_mr_h1 status=shipped

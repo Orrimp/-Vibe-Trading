@@ -727,6 +727,28 @@ pub mod layout {
         Screen::Settings,
     ];
 
+    /// Phase C — Three-group sidebar IA.
+    ///
+    /// Groups: `work` (Lab · Live · Compare) / `library` (Strategies ·
+    /// Memory · Models · Trail) / `chrome` (Settings). A 1-px `BORDER_1`
+    /// hairline divider is rendered between each group in
+    /// `widgets::sidebar_nav::view` (Design § A1/A2).
+    ///
+    /// Invariant: `SIDEBAR_GROUPS_PHASE_C.iter().flat_map(|g| g.iter())
+    /// .copied().collect::<Vec<_>>()` must equal
+    /// `SIDEBAR_ENTRIES_PHASE_A.to_vec()` — verified by
+    /// `theme::layout::tests::sidebar_groups_phase_c__flatten_matches_phase_a`.
+    pub const SIDEBAR_GROUPS_PHASE_C: &[&[Screen]] = &[
+        &[Screen::Lab, Screen::Live, Screen::Compare], // work
+        &[
+            Screen::Strategies,
+            Screen::Memory,
+            Screen::Models,
+            Screen::Trail,
+        ], // library
+        &[Screen::Settings],                           // chrome
+    ];
+
     /// Phase 3 — Audit-screen pagination size (Q4 — fixed 250 rows / page).
     /// Bins use this constant when issuing `recent_journal_filtered`
     /// (`LIMIT 250 OFFSET page * 250`); the screen pagination header
@@ -1530,5 +1552,26 @@ mod tests {
                 i + 2,
             );
         }
+    }
+
+    // ── Phase C — Sidebar IA grouping (T-D-N07) ──────────────────────────────
+
+    /// T-D-N07 — `SIDEBAR_GROUPS_PHASE_C` flattened must equal
+    /// `SIDEBAR_ENTRIES_PHASE_A` element-for-element. Validates the
+    /// group-composition invariant documented in Design § A2.
+    #[test]
+    #[allow(non_snake_case)]
+    fn sidebar_groups_phase_c__flatten_matches_phase_a() {
+        use layout::{SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C};
+        let flat: Vec<crate::state::Screen> = SIDEBAR_GROUPS_PHASE_C
+            .iter()
+            .flat_map(|g| g.iter())
+            .copied()
+            .collect();
+        assert_eq!(
+            flat,
+            SIDEBAR_ENTRIES_PHASE_A.to_vec(),
+            "SIDEBAR_GROUPS_PHASE_C flattened must equal SIDEBAR_ENTRIES_PHASE_A"
+        );
     }
 }

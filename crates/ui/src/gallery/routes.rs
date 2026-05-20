@@ -16,14 +16,16 @@ use iced::widget::Column;
 use smol_str::SmolStr;
 
 use crate::fixtures as fx;
-use crate::state::{Cockpit, ExecutionMode, Message, OverrideRiskVetoState, PanelState, Screen};
+use crate::state::{
+    Cockpit, ExecutionMode, Message, OverrideRiskVetoState, PanelState, Screen, SettingsTab,
+};
 use crate::strings;
 use crate::theme::ThemeMode;
 use crate::widgets::{
     agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
     kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
-    run_button, run_delta_badge, sidebar_nav, sparkline, status_bar, strategies, strategy_chip,
-    training_log, training_plot, volume_histogram,
+    run_button, run_delta_badge, settings_tabs, sidebar_nav, sparkline, status_bar, strategies,
+    strategy_card, strategy_chip, training_log, training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -679,7 +681,7 @@ fn render_sidebar_nav(model: &Cockpit) -> iced::Element<'_, Message> {
         Screen::Debug,
         Screen::Control,
     ];
-    sidebar_nav::view(model.current_screen, entries, ThemeMode::Dark)
+    sidebar_nav::view(model.current_screen, entries, &[], ThemeMode::Dark)
 }
 
 fn render_sparkline(model: &Cockpit) -> iced::Element<'_, Message> {
@@ -697,6 +699,39 @@ fn render_sparkline(model: &Cockpit) -> iced::Element<'_, Message> {
 
 fn render_status_bar(model: &Cockpit) -> iced::Element<'_, Message> {
     status_bar::view(model)
+}
+
+// ── Phase C — settings_tabs widget ────────────────────────────────────────────
+
+fn seed_settings_tabs_risk() -> Cockpit {
+    fx::fake_cockpit_v15a_pairs_steady_state()
+}
+
+fn render_settings_tabs_risk(_model: &Cockpit) -> iced::Element<'_, Message> {
+    settings_tabs::view(SettingsTab::Risk, ThemeMode::Dark)
+}
+
+fn render_settings_tabs_control(_model: &Cockpit) -> iced::Element<'_, Message> {
+    settings_tabs::view(SettingsTab::Control, ThemeMode::Dark)
+}
+
+fn render_settings_tabs_debug(_model: &Cockpit) -> iced::Element<'_, Message> {
+    settings_tabs::view(SettingsTab::Debug, ThemeMode::Dark)
+}
+
+// ── Phase C — strategy_card widget ────────────────────────────────────────────
+
+fn seed_strategy_card() -> Cockpit {
+    fx::fake_cockpit_v15a_pairs_steady_state()
+}
+
+fn render_strategy_card_empty_anchor(model: &Cockpit) -> iced::Element<'_, Message> {
+    if let PanelState::Ready(rows) = &model.strategies
+        && let Some(row) = rows.first()
+    {
+        return strategy_card::view(row, None, None, None, ThemeMode::Dark);
+    }
+    frame::muted_body("no strategy rows in fixture")
 }
 
 // ── GALLERY_CELLS const ───────────────────────────────────────────────────────
@@ -999,6 +1034,32 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_training_plot_running,
         seed: seed_training_plot,
     },
+    // ── Phase C — settings_tabs (ui-rethink-phase-c-sidebar-ia T-D-N19) ──────
+    GalleryCell {
+        widget: "settings_tabs",
+        state: "risk_active",
+        render: render_settings_tabs_risk,
+        seed: seed_settings_tabs_risk,
+    },
+    GalleryCell {
+        widget: "settings_tabs",
+        state: "control_active",
+        render: render_settings_tabs_control,
+        seed: seed_settings_tabs_risk,
+    },
+    GalleryCell {
+        widget: "settings_tabs",
+        state: "debug_active",
+        render: render_settings_tabs_debug,
+        seed: seed_settings_tabs_risk,
+    },
+    // ── Phase C — strategy_card (ui-rethink-phase-c-sidebar-ia T-D-N15) ──────
+    GalleryCell {
+        widget: "strategy_card",
+        state: "no_anchor_no_run",
+        render: render_strategy_card_empty_anchor,
+        seed: seed_strategy_card,
+    },
 ];
 
 /// The canonical list of widget-module names the gallery is expected to
@@ -1032,7 +1093,9 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "sidebar_nav",
     "sparkline",
     "status_bar",
+    "settings_tabs",
     "strategies",
+    "strategy_card",
     "strategy_chip",
     "training_log",
     "training_plot",

@@ -27,8 +27,8 @@ use trading_core::{AccountId, JournalEntry, Money, StrategyId, Timestamp};
 use trading_core::{Symbol, Venue};
 use ui::state::{
     AgentMode, Cockpit, ExecutionMode, JournalModalState, JournalTransactionView, KillState,
-    Latency, MarketHealthState, Message, OverrideRiskVetoState, PanelState, Screen, StrategyStatus,
-    update,
+    Latency, MarketHealthState, Message, OverrideRiskVetoState, PanelState, Screen, SettingsTab,
+    StrategyStatus, update,
 };
 use ui::strings;
 use ui::widgets::journal_transaction_modal;
@@ -2627,5 +2627,185 @@ fn color_name(c: iced::Color) -> &'static str {
         "border"
     } else {
         "unknown"
+    }
+}
+
+// ── Phase C — Live screen snapshots (ui-rethink-phase-c-sidebar-ia T-D-N14) ──
+
+mod live_screen {
+    use super::*;
+
+    fn live_screen_summary(c: &Cockpit) -> String {
+        let mut out = String::new();
+        out.push_str("screen: Live\n");
+        out.push_str(&format!("headline: {}\n", ui::strings::LIVE_HEADLINE));
+        out.push_str(&format!(
+            "system_health_label: {}\n",
+            ui::strings::LIVE_SYSTEM_HEALTH_LABEL
+        ));
+        // equity_curve is in PanelState::Loading → renders VIEWER_NO_EQUITY_DATA placeholder.
+        out.push_str(&format!(
+            "equity_curve: {} placeholder\n",
+            ui::strings::VIEWER_NO_EQUITY_DATA
+        ));
+        // kpi_strip is in PanelState::Loading → renders unavailable_strip.
+        out.push_str(&format!(
+            "kpi_strip: {}\n",
+            ui::strings::VIEWER_METRICS_UNAVAILABLE
+        ));
+        out.push_str(&format!(
+            "llm_spend_label: {}\n",
+            ui::strings::LIVE_LLM_SPEND_LABEL
+        ));
+        out.push_str(&format!(
+            "llm_spend_tile: {}\n",
+            ui::strings::LIVE_LLM_SPEND_PLACEHOLDER
+        ));
+        out.push_str(&format!(
+            "bottom_left: positions (state={})\n",
+            c.positions.variant_name()
+        ));
+        out.push_str(&format!(
+            "bottom_right: agent_feed (state={})\n",
+            c.tape.variant_name()
+        ));
+        out
+    }
+
+    /// T-D-N14 — Live screen steady-state snapshot (R2.6).
+    #[test]
+    #[allow(non_snake_case)]
+    fn live_snapshot__steady_state() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Live;
+        assert_snapshot!("live_snapshot__steady_state", live_screen_summary(&c));
+    }
+}
+
+// ── Phase C — Strategy registry snapshots (ui-rethink-phase-c-sidebar-ia T-D-N18) ──
+
+mod strategy_registry_screen {
+    use super::*;
+
+    fn registry_summary(c: &Cockpit) -> String {
+        let mut out = String::new();
+        out.push_str("screen: strategy_registry\n");
+        out.push_str(&format!(
+            "panel_title: {}\n",
+            ui::strings::STRATEGY_REGISTRY_PANEL_TITLE
+        ));
+        match &c.strategies {
+            PanelState::Loading => {
+                out.push_str(&format!("state: loading\n"));
+                out.push_str(&format!("copy: {}\n", ui::strings::STRATEGIES_LOADING));
+            }
+            PanelState::Empty => {
+                out.push_str("state: empty\n");
+                out.push_str(&format!("copy: {}\n", ui::strings::STRATEGY_REGISTRY_EMPTY));
+            }
+            PanelState::Error(e) => {
+                out.push_str("state: error\n");
+                out.push_str(&format!("error: {e}\n"));
+            }
+            PanelState::Ready(rows) => {
+                out.push_str(&format!("state: ready\n"));
+                out.push_str(&format!("cards: {}\n", rows.len()));
+                for row in rows {
+                    out.push_str(&format!(
+                        "  card id={} status={}\n",
+                        row.id,
+                        ui::strings::STRATEGY_REGISTRY_STATUS_SHIPPED
+                    ));
+                }
+            }
+        }
+        out
+    }
+
+    /// T-D-N18 — Strategy registry empty-state snapshot (R3.8).
+    #[test]
+    #[allow(non_snake_case)]
+    fn strategy_registry_snapshot__empty() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Strategies;
+        c.strategies = PanelState::Empty;
+        assert_snapshot!("strategy_registry_snapshot__empty", registry_summary(&c));
+    }
+
+    /// T-D-N18 — Strategy registry three-strategies snapshot (R3.8).
+    #[test]
+    #[allow(non_snake_case)]
+    fn strategy_registry_snapshot__three_strategies() {
+        let mut c = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
+        c.current_screen = Screen::Strategies;
+        // `fake_cockpit_v15a_pairs_steady_state` populates strategies.
+        assert_snapshot!(
+            "strategy_registry_snapshot__three_strategies",
+            registry_summary(&c)
+        );
+    }
+}
+
+// ── Phase C — Settings screen snapshots (ui-rethink-phase-c-sidebar-ia T-D-N22) ──
+
+mod settings_screen {
+    use super::*;
+
+    fn settings_summary(c: &Cockpit) -> String {
+        let mut out = String::new();
+        out.push_str("screen: settings\n");
+        let tab_name = match c.settings_active_tab {
+            SettingsTab::Risk => ui::strings::SETTINGS_TAB_RISK,
+            SettingsTab::Control => ui::strings::SETTINGS_TAB_CONTROL,
+            SettingsTab::Debug => ui::strings::SETTINGS_TAB_DEBUG,
+        };
+        out.push_str(&format!("active_tab: {tab_name}\n"));
+        out.push_str(&format!(
+            "tabs: {} · {} · {}\n",
+            ui::strings::SETTINGS_TAB_RISK,
+            ui::strings::SETTINGS_TAB_CONTROL,
+            ui::strings::SETTINGS_TAB_DEBUG,
+        ));
+        // Tab body indicator.
+        let body = match c.settings_active_tab {
+            SettingsTab::Risk => format!("body: risk (state={})", c.risk_state.variant_name()),
+            SettingsTab::Control => "body: control (human_control panel)".to_string(),
+            SettingsTab::Debug => "body: debug (latency + market_health + server_time)".to_string(),
+        };
+        out.push_str(&format!("{body}\n"));
+        out
+    }
+
+    /// T-D-N22 — Settings screen Risk tab active snapshot (R4.6).
+    #[test]
+    #[allow(non_snake_case)]
+    fn settings_snapshot__risk_tab_active() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Settings;
+        c.settings_active_tab = SettingsTab::Risk;
+        assert_snapshot!("settings_snapshot__risk_tab_active", settings_summary(&c));
+    }
+
+    /// T-D-N22 — Settings screen Control tab active snapshot (R4.6).
+    #[test]
+    #[allow(non_snake_case)]
+    fn settings_snapshot__control_tab_active() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Settings;
+        c.settings_active_tab = SettingsTab::Control;
+        assert_snapshot!(
+            "settings_snapshot__control_tab_active",
+            settings_summary(&c)
+        );
+    }
+
+    /// T-D-N22 — Settings screen Debug tab active snapshot (R4.6).
+    #[test]
+    #[allow(non_snake_case)]
+    fn settings_snapshot__debug_tab_active() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Settings;
+        c.settings_active_tab = SettingsTab::Debug;
+        assert_snapshot!("settings_snapshot__debug_tab_active", settings_summary(&c));
     }
 }

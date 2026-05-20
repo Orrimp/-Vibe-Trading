@@ -255,6 +255,11 @@ pub const MEMORY_PLACEHOLDER: &str = "Memory view — coming in Phase F.";
 /// Placeholder body copy for the `Models` screen (Phase F body).
 pub const MODELS_PLACEHOLDER: &str = "Models view — coming in Phase F.";
 /// Placeholder body copy for the `Settings` screen (Phase C body).
+/// Phase C wires the real rollup body; this constant is retained for one cycle.
+#[deprecated(
+    since = "0.3.0",
+    note = "Settings now renders the rollup body — Phase D removes this constant"
+)]
 pub const SETTINGS_PLACEHOLDER: &str = "Settings — coming in Phase C.";
 
 /// Sidebar nav label for the Phase A `Compare` screen.
@@ -726,7 +731,7 @@ pub const PLACEHOLDER_NONE: &str = "—";
 /// `too_many_lines` lint disagrees, we disagree back. Splitting this into
 /// per-section helpers would obscure the single-source-of-truth shape
 /// and force tests to call multiple accessors.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, deprecated)]
 #[must_use]
 pub fn all() -> &'static [(&'static str, &'static str)] {
     &[
@@ -1080,6 +1085,59 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TRAINING_PLOT_LATEST_FMT", TRAINING_PLOT_LATEST_FMT),
     ]
 }
+
+// ── Phase C — Live / Strategy registry / Settings ────────────────────────────
+// ui-rethink-phase-c-sidebar-ia T-D-N05
+
+/// Headline / page title for the Live screen (R7.2).
+pub const LIVE_HEADLINE: &str = "Live";
+
+/// Section label for the system-health strip at the top of the Live screen.
+pub const LIVE_SYSTEM_HEALTH_LABEL: &str = "System health";
+
+/// KPI strip label for the LLM daily spend tile (R7.2).
+pub const LIVE_LLM_SPEND_LABEL: &str = "LLM spend";
+
+/// Placeholder value for the LLM daily spend tile when the budget tracker
+/// is not yet wired (Q4b — Phase F wires the real source).
+pub const LIVE_LLM_SPEND_PLACEHOLDER: &str = "\u{2014}";
+
+/// Panel title for the Strategy registry screen (R7.2).
+pub const STRATEGY_REGISTRY_PANEL_TITLE: &str = "Strategy registry";
+
+/// Empty-state copy for the Strategy registry screen (R3.6 / K3 mitigation).
+pub const STRATEGY_REGISTRY_EMPTY: &str =
+    "No strategies registered. Run a backtest in Lab to register one.";
+
+/// Label on the primary action button of each strategy card (R3.4).
+pub const STRATEGY_REGISTRY_OPEN_IN_LAB_LABEL: &str = "Open in Lab";
+
+/// Status pill copy for a shipped strategy (A6 — uniform at Phase C).
+pub const STRATEGY_REGISTRY_STATUS_SHIPPED: &str = "shipped";
+
+/// Status pill copy for a candidate strategy (unused at Phase C; ready for Phase D).
+pub const STRATEGY_REGISTRY_STATUS_CANDIDATE: &str = "candidate";
+
+/// Status pill copy for an archived strategy (unused at Phase C; ready for Phase D).
+pub const STRATEGY_REGISTRY_STATUS_ARCHIVED: &str = "archived";
+
+/// Prefix for the last backtest anchor line on a strategy card.
+pub const STRATEGY_REGISTRY_LAST_ANCHOR_PREFIX: &str = "Anchor: ";
+
+/// Prefix for the last live-run timestamp line on a strategy card.
+pub const STRATEGY_REGISTRY_LAST_RUN_PREFIX: &str = "Last run: ";
+
+/// Prefix for the universe (symbols list) line on a strategy card.
+pub const STRATEGY_REGISTRY_UNIVERSE_PREFIX: &str = "Universe: ";
+
+/// Tab label for the Risk sub-tab inside the Settings rollup (Q2a).
+pub const SETTINGS_TAB_RISK: &str = "Risk";
+
+/// Tab label for the Control sub-tab inside the Settings rollup (Q2a).
+pub const SETTINGS_TAB_CONTROL: &str = "Control";
+
+/// Tab label for the Debug sub-tab inside the Settings rollup (Q2a).
+pub const SETTINGS_TAB_DEBUG: &str = "Debug";
 
 #[cfg(test)]
 mod tests {

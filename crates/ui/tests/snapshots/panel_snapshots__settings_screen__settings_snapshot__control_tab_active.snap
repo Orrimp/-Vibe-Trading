@@ -1,0 +1,8 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: settings_summary(&c)
+---
+screen: settings
+active_tab: Control
+tabs: Risk · Control · Debug
+body: control (human_control panel)

@@ -43,6 +43,20 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .into()
 }
 
+/// Compact server-time badge for the Live screen system-health strip.
+/// Returns a single `Text` node with the current server time (HH:MM:SS UTC)
+/// or "— UTC" when no tick has arrived yet.
+pub(crate) fn server_time_compact(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
+    server_time_row(model, mode)
+}
+
+/// Compact market-health summary for the Live screen system-health strip.
+/// Returns the full `market_health_section` column — Live shows it inline
+/// in its health strip.
+pub(crate) fn market_health_compact(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
+    market_health_section(model, mode)
+}
+
 fn market_health_section(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let mut col = Column::new().spacing(space::S);
     let mut entries: Vec<(_, MarketHealthState)> =

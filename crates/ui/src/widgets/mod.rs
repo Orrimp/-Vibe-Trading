@@ -67,6 +67,13 @@ pub mod run_button;
 /// when both `lab_state.last_run_report` and `lab_state.prev_run_report` are Some
 /// and share the same tuple.
 pub mod run_delta_badge;
+/// Phase C — settings tab-strip widget (ui-rethink-phase-c-sidebar-ia T-D-N19).
+/// Three-tab chrome strip: Risk · Control · Debug, with T1609 active-chip
+/// bottom-edge accent on the active tab.
+pub mod settings_tabs;
+/// Phase C — strategy registry card widget (ui-rethink-phase-c-sidebar-ia T-D-N15).
+/// One card per registered strategy in the registry list view (R6.1).
+pub mod strategy_card;
 /// Phase A (T-D-6) — strategy chip widget for the Lab strategy-chip row.
 /// Renders a strategy id + family badge; two emit paths (primary select +
 /// compare toggle).

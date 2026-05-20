@@ -1,5 +1,14 @@
 //! Strategies-detail screen — Phase 3 (T1704, T1706).
 //!
+//! **Phase C (ui-rethink-phase-c-sidebar-ia Q5a):** This module is kept as a
+//! source file for one cycle but is no longer reached by the shell router
+//! (`Screen::Strategies` now routes to `screens::strategy_registry::view`).
+//! Phase D prunes this file per the Q5a decision. The `dead_code` lint is
+//! suppressed here rather than at the crate level so the canary fires if any
+//! *new* production code accidentally references this module.
+#![allow(dead_code)]
+//!
+//!
 //! Layout (Phase 3 Design § Strategies-detail screen contract):
 //!
 //! 1. **Strategy chip row.** One chip per loaded strategy from

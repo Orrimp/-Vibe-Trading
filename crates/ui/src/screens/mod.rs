@@ -15,5 +15,15 @@ pub mod home;
 /// (R1.2). The legacy `Screen::Charts` variant auto-routes to `lab::view`
 /// via the shell match arm (deprecated alias for backward compatibility).
 pub mod lab;
+/// Phase C — Live trading dashboard (ui-rethink-phase-c-sidebar-ia R2.1).
+/// Replaces the legacy `home::view` 2×2 grid for the `Screen::Live` route.
+/// `Screen::Home` (deprecated) also routes here via the compat shim (R5.2).
+pub mod live;
 pub mod risk;
+/// Phase C — Settings rollup (ui-rethink-phase-c-sidebar-ia R4.1).
+/// Three-tab chrome wrapping `risk::view`, `control::view`, `debug::view`.
+pub mod settings;
 pub mod strategies;
+/// Phase C — Strategy registry (ui-rethink-phase-c-sidebar-ia R3.1).
+/// List-of-cards replacing the legacy `strategies::view` detail panel.
+pub mod strategy_registry;

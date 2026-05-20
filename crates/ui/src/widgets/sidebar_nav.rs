@@ -56,59 +56,63 @@ pub const fn label_for(screen: Screen) -> &'static str {
 
 /// Render the sidebar nav.
 ///
-/// `entries` is the operator's scan-ordered nav list. Phase A passes
-/// `SIDEBAR_ENTRIES_PHASE_A` — the new workflow-group list. Phase 2/3
-/// constants still work for test scenarios.
+/// `entries` is the operator's scan-ordered nav list (Phase 2/3 compat path).
+/// `groups` is the Phase C three-group composition (`SIDEBAR_GROUPS_PHASE_C`).
+/// When `groups` is non-empty, the sidebar renders each group's entries in
+/// scan order with a 1-px `BORDER_1` hairline divider between groups
+/// (Design § A1/A2). When `groups` is empty, falls back to the flat `entries`
+/// list as a single group (backwards compat for older test scenarios).
 // `cast_possible_truncation`: space::* constants are u32 with bounded values;
 // cast to u16 padding is safe.
 #[allow(
     clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
     clippy::needless_pass_by_value,
     deprecated
 )]
 #[must_use]
-pub fn view(current_screen: Screen, entries: &[Screen], mode: ThemeMode) -> crate::Element<'_> {
+pub fn view<'a>(
+    current_screen: Screen,
+    entries: &'a [Screen],
+    groups: &'a [&'a [Screen]],
+    mode: ThemeMode,
+) -> crate::Element<'a> {
     let mut column = Column::new()
         .padding([space::M as u16, 0_u16])
         .spacing(space::S);
 
-    for screen in entries {
-        let active = current_screen == *screen;
-        let row_text = Text::new(label_for(*screen))
-            .size(text::BODY)
-            .color(if active {
-                color::FG_1.current(mode)
-            } else {
-                color::FG_2.current(mode)
-            });
+    // Resolve the effective groups: use `groups` when non-empty, otherwise
+    // treat `entries` as one implicit group (no dividers).
+    let effective: &[&[Screen]] = if groups.is_empty() { &[] } else { groups };
 
-        // Button carries the SwitchScreen message; styling renders no fill
-        // for inactive rows and a subtle PANEL_SUNKEN tint on hover only.
-        let button = Button::new(row_text)
-            .on_press(Message::SwitchScreen(*screen))
-            .padding([space::XS as u16, space::M as u16])
-            .width(Length::Fill)
-            .style(move |_theme: &iced::Theme, status: button::Status| {
-                let bg = match status {
-                    button::Status::Hovered => Some(color::PANEL_SUNKEN.current(mode).into()),
-                    _ => None,
-                };
-                button::Style {
-                    background: bg,
-                    text_color: if active {
-                        color::FG_1.current(mode)
-                    } else {
-                        color::FG_2.current(mode)
-                    },
-                    border: Border {
-                        radius: radius::R2.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            });
-
-        column = column.push(frame::active_row(button.into(), active, mode));
+    // Single-group flat rendering (Phase 2/3 compat) when groups is empty.
+    if effective.is_empty() {
+        for screen in entries {
+            column = column.push(nav_row(*screen, current_screen, mode));
+        }
+    } else {
+        // Multi-group rendering with inline BORDER_1 dividers (Phase C).
+        for (group_idx, group) in effective.iter().enumerate() {
+            // Insert hairline divider between groups (not before the first).
+            if group_idx > 0 {
+                let divider =
+                    Container::new(Space::new().width(Length::Fill).height(Length::Fixed(1.0)))
+                        .width(Length::Fill)
+                        .height(Length::Fixed(1.0))
+                        .style(move |_theme: &iced::Theme| container::Style {
+                            background: Some(color::BORDER_1.current(mode).into()),
+                            ..Default::default()
+                        });
+                // Add vertical spacing before divider, then the divider itself.
+                column = column
+                    .push(Space::new().width(Length::Fill).height(space::XS as f32))
+                    .push(divider)
+                    .push(Space::new().width(Length::Fill).height(space::XS as f32));
+            }
+            for screen in *group {
+                column = column.push(nav_row(*screen, current_screen, mode));
+            }
+        }
     }
 
     // 1 px right-edge BORDER_1 hairline, rendered via the same Container
@@ -134,6 +138,48 @@ pub fn view(current_screen: Screen, entries: &[Screen], mode: ThemeMode) -> crat
             ..Default::default()
         })
         .into()
+}
+
+/// Build a single nav row button for `screen`.
+// `cast_possible_truncation`: space constants are bounded u32; cast to u16 is safe.
+#[allow(clippy::cast_possible_truncation)]
+fn nav_row(screen: Screen, current_screen: Screen, mode: ThemeMode) -> crate::Element<'static> {
+    let active = current_screen == screen;
+    let row_text = Text::new(label_for(screen))
+        .size(text::BODY)
+        .color(if active {
+            color::FG_1.current(mode)
+        } else {
+            color::FG_2.current(mode)
+        });
+
+    // Button carries the SwitchScreen message; styling renders no fill
+    // for inactive rows and a subtle PANEL_SUNKEN tint on hover only.
+    let button = Button::new(row_text)
+        .on_press(Message::SwitchScreen(screen))
+        .padding([space::XS as u16, space::M as u16])
+        .width(Length::Fill)
+        .style(move |_theme: &iced::Theme, status: button::Status| {
+            let bg = match status {
+                button::Status::Hovered => Some(color::PANEL_SUNKEN.current(mode).into()),
+                _ => None,
+            };
+            button::Style {
+                background: bg,
+                text_color: if active {
+                    color::FG_1.current(mode)
+                } else {
+                    color::FG_2.current(mode)
+                },
+                border: Border {
+                    radius: radius::R2.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        });
+
+    frame::active_row(button.into(), active, mode)
 }
 
 #[cfg(test)]
@@ -235,5 +281,67 @@ mod tests {
             let label = label_for(*screen);
             assert!(!label.is_empty(), "empty label for screen {:?}", screen);
         }
+    }
+
+    // ── Phase C — Three-group sidebar IA (T-D-N10/N11) ──────────────────────
+
+    /// Helper: produce a grouped sidebar summary for snapshot testing.
+    ///
+    /// Format:
+    /// ```text
+    /// widget: sidebar_nav
+    /// width_px: <N>
+    /// active: <Screen>
+    /// --- group 0 ---
+    ///   rule=ACCENT label=<label> screen=<Screen> fg=fg_1
+    ///   ...
+    /// --- group 1 ---
+    ///   ...
+    /// ```
+    fn sidebar_grouped_summary(current: Screen, groups: &[&[Screen]]) -> String {
+        let mut out = String::new();
+        out.push_str("widget: sidebar_nav\n");
+        out.push_str(&format!("width_px: {}\n", layout::SIDEBAR_WIDTH_PX));
+        out.push_str(&format!("active: {:?}\n", current));
+        for (gi, group) in groups.iter().enumerate() {
+            out.push_str(&format!("--- group {} ---\n", gi));
+            for s in *group {
+                let marker = if *s == current { "ACCENT" } else { "—" };
+                let fg = if *s == current { "fg_1" } else { "fg_2" };
+                out.push_str(&format!(
+                    "  rule={} label={} screen={:?} fg={}\n",
+                    marker,
+                    label_for(*s),
+                    s,
+                    fg,
+                ));
+            }
+        }
+        out
+    }
+
+    /// T-D-N10 — Phase C three-group sidebar snapshot (R1.5).
+    ///
+    /// Active screen = Lab (default boot). Expected: 3 groups (work /
+    /// library / chrome) with 2 dividers; Lab carries the ACCENT rule.
+    #[test]
+    #[allow(non_snake_case)]
+    fn sidebar_nav__phase_c_three_groups() {
+        use crate::theme::layout::SIDEBAR_GROUPS_PHASE_C;
+        let summary = sidebar_grouped_summary(Screen::Lab, SIDEBAR_GROUPS_PHASE_C);
+        insta::assert_snapshot!("sidebar_nav__phase_c_three_groups", summary);
+    }
+
+    /// T-D-N11 — Phase A flat sidebar stays byte-identical (R1.6).
+    ///
+    /// `sidebar__phase_a_workflow_group` test exercises the flat `entries`
+    /// parameter path — identical output because Wave A is additive.
+    #[test]
+    #[allow(non_snake_case)]
+    fn sidebar_nav__phase_a_still_passes() {
+        // Re-run the Phase A test to confirm flat path unchanged.
+        let summary = sidebar_summary(Screen::Lab, SIDEBAR_ENTRIES_PHASE_A);
+        // Must match the existing Phase A snapshot byte-for-byte.
+        insta::assert_snapshot!("sidebar__phase_a_workflow_group", summary);
     }
 }

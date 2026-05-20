@@ -61,12 +61,11 @@ use crate::state::{Cockpit, Message};
 /// overflow and regenerate baselines.
 pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     // GALLERY_CELL_COUNT * CELL_HEIGHT_PX + padding headroom.
-    // CELL_HEIGHT_PX = 260.0, GALLERY_CELL_COUNT = 45 cells (cockpit-training-
-    // control T-D-N2 adds training_log empty + with_lines = +2 from Phase A;
-    // T-D-N12/N18 adds training_plot empty + running_5_epochs = +2 from Phase A).
-    // 45 * 260 = 11_700. Adding 300 px headroom for the outer container
-    // padding (space::S per cell * 2 sides = ~16 px * 45 = ~720 px).
-    12_000
+    // CELL_HEIGHT_PX = 260.0.
+    // Phase C (ui-rethink-phase-c-sidebar-ia T-D-N15/N19) adds 4 new cells:
+    //   settings_tabs (3 states) + strategy_card (1 state) = 4 cells.
+    // 50 * 260 = 13_000. Adding 300 px headroom for outer container padding.
+    13_500
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

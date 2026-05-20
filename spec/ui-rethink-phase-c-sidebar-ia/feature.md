@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-c-sidebar-ia
-status: accepted
-owner: architect
+status: implemented
+owner: developer
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ui-rethink-phase-b-lab-run v0.2.0
@@ -1085,3 +1085,21 @@ when the `groups` parameter is omitted.
   link tab pre-selection colocated in the existing `SwitchScreen` arm
   per A4. Trace row → `accepted`. Status frontmatter → `accepted` /
   owner → architect.
+- 2026-05-20 (developer): All 25 T-D-N rows implemented and ticked.
+  5 net-new files: `screens/live.rs`, `screens/strategy_registry.rs`,
+  `screens/settings.rs`, `widgets/strategy_card.rs`,
+  `widgets/settings_tabs.rs`. 6 files modified: `state.rs` (SettingsTab
+  enum + Cockpit field + Message variant + update arms + 5 unit tests),
+  `strings.rs` (15 Phase C constants + deprecated canary),
+  `theme.rs` (SIDEBAR_GROUPS_PHASE_C + test), `shell.rs` (screen_body
+  rewrite + sidebar_nav groups param), `widgets/sidebar_nav.rs` (group
+  rendering + dividers + snapshot test), `gallery/routes.rs` (4 new
+  cells + EXPECTED_WIDGETS updated). Gate results: `cargo fmt --check`
+  exit 0; `cargo clippy --workspace -- -D warnings` exit 0;
+  `cargo test --workspace` 0 failed; `scripts/verify_anchors.sh`
+  ANCHORS PASS 22/22; cockpit-smoke 0 panic lines in 8 s window.
+  Deviation from spec: `switch_screen_is_pure` test updated to account
+  for the intentional `settings_active_tab` side-effect on deprecated
+  Screen aliases (D § A4), restoring `settings_active_tab` alongside
+  `current_screen` before the byte-equality assertion. Trace row
+  state → `shipped`.

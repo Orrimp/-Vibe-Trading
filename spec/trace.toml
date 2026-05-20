@@ -716,10 +716,21 @@ arch        = [
   "spec/ui-rethink-phase-c-sidebar-ia/tasks.md",           # Waves A-F + T-D-N01-N25 (architect M-T1)
   "spec/dev-notes/ui-rethink-2026-05-17.md",               # §6 Phase C sequencing source-of-truth + §3 IA + §J6 Live sketch
 ]
-crates      = ["crates/ui"]
-tests       = []   # populate at M-FINAL (snapshot baselines + cockpit-smoke)
+crates      = [
+  "crates/ui",   # src/state.rs, src/strings.rs, src/theme.rs, src/shell.rs
+                 # src/screens/{live,strategy_registry,settings}.rs (new)
+                 # src/widgets/{strategy_card,settings_tabs,sidebar_nav}.rs
+]
+tests       = [
+  "crates/ui/src/widgets/sidebar_nav.rs",            # sidebar_nav__phase_c_three_groups + phase_a_still_passes
+  "crates/ui/src/state.rs",                          # settings_tab_* + switch_settings_tab_* + switch_screen_to_*_alias_* (5 tests)
+  "crates/ui/src/theme.rs",                          # sidebar_groups_phase_c__flatten_matches_phase_a
+  "crates/ui/tests/panel_snapshots.rs",              # live_screen::live_snapshot__steady_state (1)
+                                                     # strategy_registry_screen::* (2)
+                                                     # settings_screen::* (3)
+]
 anchors     = []   # Phase C touches no strategy/audit/exec/report path; 22 originals stay byte-identical (R10.1)
-state       = "accepted"
+state       = "shipped"
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

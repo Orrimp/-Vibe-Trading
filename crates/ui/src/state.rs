@@ -101,6 +101,21 @@ impl Default for Screen {
     }
 }
 
+/// Phase C — Settings rollup sub-tab selector. Renders the three
+/// existing screen bodies (Risk / Control / Debug) unchanged inside
+/// `screens::settings::view`. Cold-start default `Risk` per Q2a.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsTab {
+    /// Risk / limits (most-consulted) — `screens::risk::view`.
+    #[default]
+    Risk,
+    /// `HumanControl` (mode toggle + kill) — `screens::control::view`.
+    Control,
+    /// Operations chrome (latency, market health, server time, logs) —
+    /// `screens::debug::view`.
+    Debug,
+}
+
 /// Per-`(Venue, Symbol)` rolling 60-bar buffer. Fed by the
 /// `Message::BarReceived` arm; evicts the oldest bar on push when at
 /// capacity. (Phase 2 Design — `ChartBuffer shape`.)
@@ -741,6 +756,12 @@ pub struct Cockpit {
     /// (Phase 2 Q8 — session-scoped, no on-disk persistence.)
     pub current_screen: Screen,
 
+    // ── Phase C — Settings rollup sub-tab (ui-rethink-phase-c-sidebar-ia) ──
+    /// Active sub-tab inside the Settings rollup screen.
+    /// Cold-start default `Risk` per Q2a; session-scoped (no persistence
+    /// in Phase C).
+    pub settings_active_tab: SettingsTab,
+
     // ── Phase A — Lab screen state (ui-rethink-phase-a-lab T-D-4) ───────
     /// Lab screen per-session state: selected (strategy, pair, range,
     /// params) + comparison set. Cold-start defaults to empty; Phase
@@ -910,7 +931,8 @@ impl std::fmt::Debug for Cockpit {
             .field("focused_widget", &self.focused_widget)
             .field("lab_run_inflight", &self.lab_run_inflight)
             .field("toast_message", &self.toast_message)
-            .field("equity_cache", &"<EquityCache>");
+            .field("equity_cache", &"<EquityCache>")
+            .field("settings_active_tab", &self.settings_active_tab);
         dbg.finish()
     }
 }
@@ -938,6 +960,7 @@ impl Default for Cockpit {
             #[cfg(feature = "live")]
             kill_switch: None,
             current_screen: Screen::default(),
+            settings_active_tab: SettingsTab::default(),
             lab_state: LabState::default(),
             universe: Vec::new(),
             selected_symbol: None,
@@ -1035,6 +1058,7 @@ impl Cockpit {
             #[cfg(feature = "live")]
             kill_switch: None,
             current_screen: Screen::default(),
+            settings_active_tab: SettingsTab::default(),
             lab_state: LabState::default(),
             universe: Vec::new(),
             selected_symbol: None,
@@ -1143,6 +1167,11 @@ pub enum Message {
     // ── Phase 2 — Shell IA + Charts ─────────────────────────────────────────
     /// Sidebar-nav row click. Pure assignment; no side effects.
     SwitchScreen(Screen),
+
+    // ── Phase C — Settings rollup sub-tab (ui-rethink-phase-c-sidebar-ia) ──
+    /// Settings tab-strip click. Pure assignment to
+    /// `Cockpit::settings_active_tab`; no I/O.
+    SwitchSettingsTab(SettingsTab),
 
     /// Symbol-selector chip click. Sets `selected_symbol` and resets the
     /// marker panel to `Loading`; the binary's `Task::perform` shim then
@@ -1519,6 +1548,20 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         // ── Phase 2 — Shell IA + Charts ─────────────────────────────────────
         Message::SwitchScreen(s) => {
             model.current_screen = s;
+            // R5.2 deep-link: deprecated Risk/Debug/Control aliases pre-select
+            // the matching Settings tab on the way through (Design § A4).
+            #[allow(deprecated)]
+            match s {
+                Screen::Risk => model.settings_active_tab = SettingsTab::Risk,
+                Screen::Control => model.settings_active_tab = SettingsTab::Control,
+                Screen::Debug => model.settings_active_tab = SettingsTab::Debug,
+                _ => {}
+            }
+        }
+
+        // ── Phase C — Settings rollup sub-tab ────────────────────────────────
+        Message::SwitchSettingsTab(t) => {
+            model.settings_active_tab = t;
         }
         Message::SelectSymbol(venue, symbol) => {
             model.selected_symbol = Some((venue, symbol));
@@ -2349,8 +2392,10 @@ mod tests {
         }
     }
 
-    /// T1601 — `Message::SwitchScreen` mutates only `current_screen`.
-    /// All other fields stay byte-identical (compared via `Debug`-format).
+    /// T1601 — `Message::SwitchScreen` mutates `current_screen` and
+    /// (for deprecated Screen aliases) `settings_active_tab` as a deep-link
+    /// pre-selection side-effect (Design § Q2a). All other fields are
+    /// byte-identical (compared via `Debug`-format).
     #[test]
     fn switch_screen_is_pure() {
         for target in [
@@ -2365,10 +2410,11 @@ mod tests {
             let mut after = baseline.clone();
             update(&mut after, Message::SwitchScreen(target));
             assert_eq!(after.current_screen, target);
-            // Force every other field to be byte-equal by overwriting the
-            // mutated field on `after` and comparing the Debug rendering.
+            // Force the two intentionally-mutated fields back so the
+            // Debug comparison covers every other field.
             let mut restored = after.clone();
             restored.current_screen = baseline.current_screen;
+            restored.settings_active_tab = baseline.settings_active_tab;
             assert_eq!(format!("{baseline:?}"), format!("{restored:?}"));
         }
     }
@@ -2873,5 +2919,64 @@ mod tests {
             DateRange::Preset(Preset::Last90d),
             "absent file must yield cold-start range Last90d"
         );
+    }
+
+    // ── Phase C — Settings rollup (ui-rethink-phase-c-sidebar-ia T-D-N03/04) ──
+
+    /// T-D-N03 — Default settings_active_tab is Risk.
+    #[test]
+    fn settings_tab_default_is_risk() {
+        assert_eq!(SettingsTab::default(), SettingsTab::Risk);
+        let c = Cockpit::new();
+        assert_eq!(c.settings_active_tab, SettingsTab::Risk);
+    }
+
+    /// T-D-N03 — `SwitchSettingsTab` assigns the field.
+    #[test]
+    fn switch_settings_tab_assigns_field() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::SwitchSettingsTab(SettingsTab::Control));
+        assert_eq!(c.settings_active_tab, SettingsTab::Control);
+        update(&mut c, Message::SwitchSettingsTab(SettingsTab::Debug));
+        assert_eq!(c.settings_active_tab, SettingsTab::Debug);
+        update(&mut c, Message::SwitchSettingsTab(SettingsTab::Risk));
+        assert_eq!(c.settings_active_tab, SettingsTab::Risk);
+    }
+
+    /// T-D-N04 — `SwitchScreen(Screen::Risk)` pre-selects Risk tab.
+    #[test]
+    #[allow(deprecated)]
+    fn switch_screen_to_risk_alias_preselects_risk_tab() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::SwitchSettingsTab(SettingsTab::Debug)); // move away
+        update(&mut c, Message::SwitchScreen(Screen::Risk));
+        assert_eq!(
+            c.current_screen,
+            Screen::Risk,
+            "current_screen must be set to the deprecated Risk variant"
+        );
+        assert_eq!(
+            c.settings_active_tab,
+            SettingsTab::Risk,
+            "settings_active_tab must be pre-selected to Risk"
+        );
+    }
+
+    /// T-D-N04 — `SwitchScreen(Screen::Debug)` pre-selects Debug tab.
+    #[test]
+    #[allow(deprecated)]
+    fn switch_screen_to_debug_alias_preselects_debug_tab() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::SwitchScreen(Screen::Debug));
+        assert_eq!(c.settings_active_tab, SettingsTab::Debug);
+    }
+
+    /// T-D-N04 — `SwitchScreen(Screen::Control)` pre-selects Control tab.
+    #[test]
+    #[allow(deprecated)]
+    fn switch_screen_to_control_alias_preselects_control_tab() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::SwitchScreen(Screen::Control));
+        assert_eq!(c.settings_active_tab, SettingsTab::Control);
     }
 }
