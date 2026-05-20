@@ -114,3 +114,10 @@ parking_lot = { version = "0.12.3" }
 
 # HTTP mock server (dev-only — T613 mock REST integration test)
 wiremock = { version = "0.6.2" }
+
+# chart-fixture-line-clipping bug — backport iced master commit 76b32d4906
+# (Jan 28, 2026) "Fix transformation of `canvas` primitives in `tiny_skia`"
+# into our pinned iced 0.14.0. The fix lives in `vendor/iced_tiny_skia/`
+# and only touches `src/layer.rs` and `src/lib.rs` (2 hunks total).
+[patch.crates-io]
+iced_tiny_skia = { path = "vendor/iced_tiny_skia" }

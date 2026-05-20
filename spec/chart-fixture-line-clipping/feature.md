@@ -1,9 +1,9 @@
 ---
 slug: chart-fixture-line-clipping
-status: proposed
-owner: pending-analyst
+status: shipped
+owner: operator
 updated: 2026-05-20
-version: 0.0.1
+version: 1.0.0
 predecessor: chart-canvas-overhaul v1.10.0
 ---
 
@@ -174,9 +174,49 @@ Then `cargo test -p ui --test visual_snapshots charts_screen_dark_typical
 
 Trace row pending; opens proposed when analyst spawn fires.
 
+## Resolution (2026-05-20)
+
+**Root cause:** iced 0.14.0 `tiny_skia` backend has a transformation
+order bug in `Renderer::draw_primitives`: when a `Group` of canvas
+primitives is rendered, the transformation order is
+`group.transformation() * Transformation::scale(scale_factor)`
+instead of the correct
+`Transformation::scale(scale_factor) * group.transformation()`.
+Additionally `clip_bounds * transformation * scale_factor` is
+double-applied. The result: canvas geometry's effective clip rect
+is wrong, hiding everything outside a bottom-right sub-region of
+the canvas widget bounds.
+
+**Upstream fix:** iced master commit
+[`76b32d4906`](https://github.com/iced-rs/iced/commit/76b32d4906)
+(Jan 28, 2026) — *"Fix transformation of `canvas` primitives in
+`tiny_skia`"* by Héctor Ramón Jiménez. Two-line fix in
+`tiny_skia/src/layer.rs` (drop the unused transformation on
+`Item::Cached` bounds) plus three lines in `tiny_skia/src/lib.rs`
+(swap transformation order in both primitive and text draw passes,
+remove the duplicate `group.transformation()` multiplier on the
+clip bounds intersection).
+
+**Local backport:** `vendor/iced_tiny_skia/` carries iced 0.14.0
+source plus the upstream patch. Wired via `[patch.crates-io]` in
+the workspace `Cargo.toml`. The vendored copy will retire once
+iced ships a 0.14.x patch release or we upgrade to a newer minor.
+
+**Verification:** all 4 visual_snapshots baselines refreshed
+(`charts_screen_dark_{floor,typical,operator}.png` +
+`render_snapshots/chart_screen_dark_typical.png`), and the price
+line now spans the **full** chart-axis width from 12:00 to 12:59.
+22/22 anchors byte-identical; 279 workspace tests PASS;
+cockpit-smoke 0 panics.
+
 ## Changelog
 
+- 2026-05-20 (orchestrator, **shipped**): root cause identified as
+  iced 0.14.0 tiny_skia transformation bug; upstream fix located
+  (commit 76b32d4906); backported via vendored `iced_tiny_skia` +
+  `[patch.crates-io]`. All visual baselines refreshed. Status flipped
+  to shipped.
 - 2026-05-20 (orchestrator, bug filed): operator surfaced during
   live cockpit run post-v1.11. Bug is pre-existing — committed
-  visual baselines reproduce. Promoted to candidate; analyst spawn
-  when operator triggers.
+  visual baselines reproduced. Filed with diagnostic + 2 falsified
+  fix attempts; analyst spawn deferred to operator promotion.

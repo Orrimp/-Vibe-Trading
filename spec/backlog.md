@@ -774,6 +774,26 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Recent (shipped)
 
+- **Chart fixture line clipping (`chart-fixture-line-clipping` v1.0.0)** —
+  shipped 2026-05-20 (operator-directed overnight fix). **Root cause:**
+  iced 0.14.0 `tiny_skia` backend has a transformation-order bug in
+  `Renderer::draw_primitives` (canvas group primitives applied with
+  `group.transformation() * scale_factor` instead of
+  `scale_factor * group.transformation()`, plus duplicate clip_bounds
+  multiplier). The bug clips canvas geometry to a bottom-right sub-region
+  of the canvas widget bounds. **Fix:** backport iced master commit
+  [`76b32d4906`](https://github.com/iced-rs/iced/commit/76b32d4906)
+  (Jan 28, 2026) via `vendor/iced_tiny_skia/` + workspace
+  `[patch.crates-io]`. The vendored copy carries iced 0.14.0 source +
+  the upstream patch (2 lines in `layer.rs`, 3 lines in `lib.rs`); will
+  retire when iced ships a 0.14.x release or we upgrade. **Verification:**
+  4 visual_snapshots baselines refreshed (chart line now spans full
+  12:00→12:59 width); 22/22 anchors byte-identical; 279 workspace tests
+  PASS; cockpit-smoke 0 panics. Diagnostic trail in
+  [`spec/chart-fixture-line-clipping/feature.md`](chart-fixture-line-clipping/feature.md)
+  preserves the orchestrator's 5-hypothesis probe register + 2 falsified
+  fix attempts + final root-cause analysis.
+
 - **Chart x-axis local time (`chart-x-axis-local-time` v1.11.0)** —
   shipped 2026-05-20 (operator-approved via "Autoapprove all"
   against presenter deck

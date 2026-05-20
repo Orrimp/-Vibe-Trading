@@ -1,7 +1,7 @@
 ---
 slug: chart-fixture-line-clipping
-status: proposed
-owner: pending-analyst
+status: shipped
+owner: operator
 updated: 2026-05-20
 ---
 

@@ -25,7 +25,10 @@
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
+/// // `tick_positions` is `pub(crate)` so the example is illustrative
+/// // only; it cannot be invoked from outside the `ui` crate. Real
+/// // coverage lives in the inline unit tests below the function.
 /// use ui::widgets::axis::tick_positions;
 /// let ticks = tick_positions(1.0, 5);
 /// // Expected: [0.0, 0.25, 0.5, 0.75, 1.0] or similar
