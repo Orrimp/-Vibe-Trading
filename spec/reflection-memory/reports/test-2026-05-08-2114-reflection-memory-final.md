@@ -25,7 +25,7 @@ across two scenario re-runs at seed `0xC0FFEE`.
   dependency). Report-only retrieval (Q4 = report-only this round).
 - **Spec refs:** `spec/reflection-memory/feature.md`,
   `spec/reflection-memory/tasks.md`,
-  `spec/dev-notes/memory-anchor-relock-TBD.md`.
+  `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`.
 - **Commit SHA:** `7650c7b8f173a91c0f6680901111a9bda667ce68`
   (`feat(reflection-memory): T1801–T1814 implementation`).
 - **Rust toolchain:** `rustc 1.94.1 (e408947bf 2026-03-25)`.
@@ -142,7 +142,7 @@ boundary instead:
 
 The architect-approved one-time anchor rotation defined at
 `spec/reflection-memory/feature.md § Verification — V6` and
-`spec/dev-notes/memory-anchor-relock-TBD.md`.
+`spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`.
 
 ### Determinism (R5.4 — byte-stability across two re-runs at seed 0xC0FFEE)
 
@@ -236,7 +236,7 @@ constraint upheld). Five spot-checked developer tick citations
 (T1801, T1805, T1807, T1810, T1814 — across all five milestones)
 all proven honest: file:line exists, acceptance command passes
 verbatim. The dev-note footer at
-`spec/dev-notes/memory-anchor-relock-TBD.md` is appended;
+`spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md` is appended;
 `feature.md` and `tasks.md` frontmatter flipped from `in-progress`
 to `shipped`; `T_FINAL_REFLECTION_MEMORY` ticked.
 

@@ -725,7 +725,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
     `spec/v15a-mean-reversion-pairs/tasks.md` as the precedent for
     re-locking anchors.
   - **Optional but recommended:** open a stub TODO file
-    `spec/dev-notes/memory-anchor-relock-TBD.md` (a plain note, NOT
+    `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md` (a plain note, NOT
     a feature brief) that the eventual reflection-memory architect
     grep'd-for-marker. —
   _acceptance: decay computation produces correct fire/no-fire on
@@ -747,7 +747,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
   - Locked placeholder constant `PLACEHOLDER` at
     `crates/reports/src/render/memory_highlights.rs:35` (byte-stable
     across runs).
-  - Stub note file at `spec/dev-notes/memory-anchor-relock-TBD.md`
+  - Stub note file at `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`
     documents the relock contract (not a feature brief — a TODO marker
     for the eventual reflection-memory architect).
   - 7 unit tests at

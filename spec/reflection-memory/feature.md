@@ -28,7 +28,7 @@ The contract this feature inherits is set by three documents:
    SHA-256 anchors (`report-sample-7d`, `report-sample-90d`) in
    [`spec/anchors.toml`](../anchors.toml) lines 67–75 are locked over
    that placeholder.
-2. [`spec/dev-notes/memory-anchor-relock-TBD.md`](../dev-notes/memory-anchor-relock-TBD.md)
+2. [`spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`](../dev-notes/memory-anchor-relock-completed-2026-05-08.md)
    is a forward-compat breadcrumb that names the **anchor re-lock
    pattern** (the same precedent v1.5a applied to the top10-momentum
    anchors at task **T717** of
@@ -317,7 +317,7 @@ schema (additive only — see Q3), the public `audit::query::*` surface
   operator-success-reports.
 - **R5.2** **Anchor re-lock as the last gate before VERDICT → PASS.**
   Per the breadcrumb at
-  [`spec/dev-notes/memory-anchor-relock-TBD.md`](../dev-notes/memory-anchor-relock-TBD.md),
+  [`spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`](../dev-notes/memory-anchor-relock-completed-2026-05-08.md),
   the v1+ entries at
   [`spec/anchors.toml`](../anchors.toml) lines 67–75 are **replaced**
   with the new body-SHA-256s captured by the tester at the first
@@ -332,8 +332,8 @@ schema (additive only — see Q3), the public `audit::query::*` surface
   `data_source:`.
 - **R5.4** **Re-lock procedure** — the architect's design step
   enumerates exactly the sequence in
-  [`spec/dev-notes/memory-anchor-relock-TBD.md` → "What the eventual
-  architect must do"](../dev-notes/memory-anchor-relock-TBD.md#what-the-eventual-architect-must-do).
+  [`spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md` → "What the eventual
+  architect must do"](../dev-notes/memory-anchor-relock-completed-2026-05-08.md#what-the-eventual-architect-must-do).
   Tester executes that sequence as the final task of the feature.
 - **Acceptance:** the two scenarios re-run, the tester captures the
   new body-SHA-256s, the values are written into
@@ -1357,7 +1357,7 @@ lines 67–75. The 9 strategy backtest anchors at lines 15–58 are
   and edits lines 67–75 only — same pattern as v1+ T816 and
   v1.5a T717.
 - The dev-note at
-  `spec/dev-notes/memory-anchor-relock-TBD.md:1` gains a
+  `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md:1` gains a
   "completed at <date>" footer pointing to this feature's
   `tasks.md` once the tester closes V6.
 
@@ -1489,7 +1489,7 @@ top-to-bottom from M1 to M5.
 | `crates/reports/tests/fixtures/build_ledger_7d.rs:1`                  | T1811   | Extend to produce 3 closed trades across 2 strategies (Q3g 7d shape).                                                              |
 | `crates/reports/tests/fixtures/build_ledger_90d.rs:1`                 | T1811   | Extend to produce 10 closed trades across 3 strategies × 6×9 outcome × regime coverage.                                            |
 | `crates/reports/tests/fixtures/build_ledger_1y.rs:1`                  | T1811   | Extend to seed `reflection-1y.db` for the perf-smoke fixture.                                                                      |
-| `spec/dev-notes/memory-anchor-relock-TBD.md`                          | T_FINAL | Append "completed at 2026-05-08 — see spec/reflection-memory/tasks.md" footer.                                                     |
+| `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`                          | T_FINAL | Append "completed at 2026-05-08 — see spec/reflection-memory/tasks.md" footer.                                                     |
 | `spec/anchors.toml:67-75`                                             | T_FINAL | **Tester only** — replace the two v1+ entries with the new captured SHA-256s. The 9 strategy anchors at lines 15–58 are byte-identical (negative invariant). |
 
 **Existing files explicitly NOT modified (negative invariants):**
@@ -1613,7 +1613,7 @@ substrings (`generated:`, `run_id:`, `wall_clock_s:`,
   defer), distillation deferred (Q5), two-anchor re-lock scope (Q6
   confirm). Nine open questions (Q1–Q9) for architect / operator
   resolution. Cross-references the v1+ R6 placeholder lifecycle
-  contract and the `memory-anchor-relock-TBD.md` breadcrumb. Owner
+  contract and the `memory-anchor-relock-completed-2026-05-08.md` breadcrumb. Owner
   → analyst; status → in-progress; awaiting architect signoff on
   Q-resolutions before task expansion.
 - 2026-05-08 (orchestrator, operator-relayed via chat): operator
