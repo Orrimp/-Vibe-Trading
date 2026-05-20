@@ -2,8 +2,33 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-19
+updated: 2026-05-20
 ---
+<!-- updated 2026-05-20 (analyst, ui-rethink-phase-e-compare M0 close) —
+     Analyst pass landed for the next phase of the UI rethink. Brief at
+     `spec/ui-rethink-phase-e-compare/feature.md` (status: draft, owner:
+     analyst, version: 0.1.0, predecessor:
+     `ui-rethink-phase-d-trail-followup v0.1.1`) carries R1-R8 + Q1-Q8 +
+     K1-K8 + H1-H5 + 8-item non-regression contract. Read-only matrix
+     surface: `screens::compare` + `widgets::matrix` over the existing
+     report-cache (`spec/<strategy>/reports/` frontmatter); cell-click
+     → Lab seeded via new `Message::OpenLabFromCompare` (mirrors Phase C
+     `OpenStrategyInLab` and Phase D `OpenTrailFor` compound-dispatch
+     precedents). **Eight operator-decide Qs surfaced**, all with
+     analyst-recommended defaults; analyst-recommended Q2 = c
+     (report-cache only with manual recompute via Lab — no new
+     orchestration at v0.1.0; the dev-note §1154 background-cadence
+     resolution applies only IF/WHEN orchestration ships, which we defer
+     to v0.2.0). **Anchor risk zero by construction** — no backtest
+     binary changes, no anchored renderer touch; sidebar entry already
+     reserved by Phase C IA (`SIDEBAR_GROUPS_PHASE_C` Work zone). Cost
+     ~2-3 weeks per dev-note §6 line 1096; no cliffs; independently
+     shippable. Trace row `REQ-UI-RETHINK-PHASE-E-001` opened in
+     `draft`. K6 (Compare/Lab range divergence) + K7 (universe-aggregate
+     semantic confusion) surfaced as load-bearing UX traps. Promoted
+     Queue/UI (implicit — Phase E was next per dev-note ordering
+     A→B→C→D→E→F) → Active. HANDOFF → operator-decide (Q1-Q8) →
+     architect for M-T1 decomposition. -->
 <!-- updated 2026-05-20 (orchestrator, chart-x-axis-local-time ship) —
      `chart-x-axis-local-time v1.11.0` operator-approved via "Autoapprove
      all" directive (overnight session ship). Moved Queue/UI → Recent.
@@ -303,6 +328,46 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+
+- **UI rethink Phase E — Compare matrix (`ui-rethink-phase-e-compare`).**
+  _draft (analyst pass landed 2026-05-20; awaiting operator-decide on
+  Q1-Q8)_ — fifth concrete feature carved out of
+  [`spec/dev-notes/ui-rethink-2026-05-17.md`](dev-notes/ui-rethink-2026-05-17.md)
+  §6 Phase E (lines 1082-1096). Predecessor:
+  [`ui-rethink-phase-d-trail-followup v0.1.1`](ui-rethink-phase-d-trail-followup/feature.md)
+  shipped 2026-05-20 (with Phase D v0.1.0 Trail surface already live).
+  Lands a **read-only 6×10 strategy × pair matrix** (`screens::compare`
+  + `widgets::matrix`) that consumes existing report frontmatter under
+  `spec/<strategy>/reports/`; **no live recompute on screen-open**;
+  cell-click → Lab seeded (`Message::OpenLabFromCompare { strategy,
+  pair, range }`); empty cells expose a per-cell **Run** affordance
+  that routes through the Phase B Lab Run round-trip (no new
+  orchestration; analyst-recommended Q2 = c). **Anchor risk zero by
+  construction** — no backtest binary changes, no anchored renderer
+  touch; 22-anchor regression gate carry-forward from predecessor.
+  Sidebar entry already reserved by Phase C `SIDEBAR_GROUPS_PHASE_C`
+  Work zone (`crates/ui/src/theme.rs:742`); only the body route swaps
+  from `placeholder::view` to `screens::compare::view`. Brief at
+  [`feature.md`](ui-rethink-phase-e-compare/feature.md) carries
+  R1-R8 + Q1-Q8 + K1-K8 + H1-H5 + 8-item non-regression contract;
+  tasks skeleton at
+  [`tasks.md`](ui-rethink-phase-e-compare/tasks.md) carries M0 T-A1..T-A12
+  + M-OD / M-T1 / M-FINAL placeholders. **Eight operator-decide Qs**
+  (all with analyst-recommended defaults): Q1 axis orientation
+  (default a — strategies as rows); Q2 recompute cadence
+  (default c — report-cache only, no orchestration); Q3 cell KPI
+  (default a — Sharpe); Q4 empty cell behavior (default b — Run
+  affordance); Q5 entry point (default a — sidebar only); Q6
+  multi-symbol universe-aggregate semantic (default a + tooltip,
+  per-pair-decomp deferred to v0.2.0 as `v25-tcn-per-pair-decomp`
+  follow-up); Q7 strategy enumeration source (default a — registry);
+  Q8 pair enumeration source (default b — universe gating).
+  K6 (Compare/Lab range divergence) + K7 (universe-aggregate semantic
+  confusion) surfaced as load-bearing UX traps for operator review at
+  M-FINAL. Cost estimate per dev-note §6: **~2-3 weeks**; no cliffs;
+  independently shippable; independently reversible. Trace row
+  `REQ-UI-RETHINK-PHASE-E-001` opened in `draft` state. HANDOFF →
+  operator-decide (Q1-Q8) → architect for M-T1 decomposition.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator

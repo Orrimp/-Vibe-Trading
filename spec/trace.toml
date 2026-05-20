@@ -771,6 +771,21 @@ tests       = [
 anchors     = []   # Phase D+ is additive-only (Subscription bridge + 3 NEW snapshot baselines + 1 NEW bench); 22 anchored bodies stay byte-identical (H2 carry-forward from predecessor); tester-verified 2026-05-20: verify-anchors PASS (22/22) pre- and post-sweep
 state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20 (presenter deck approved); T-F6/T-F7 deferred to v0.1.2 (sandbox display-server + deployment-side BS-1 probe)
 
+[[req]]
+id          = "REQ-UI-RETHINK-PHASE-E-001"
+title       = "UI rethink Phase E — Compare matrix (J3): new screens/compare.rs + widgets/matrix.rs renders a 6×10 strategy × pair grid; report-cache lookup over spec/<strategy>/reports/ frontmatter (read-only, no live recompute); cell-click → Lab seeded (strategy + pair + range pre-filled); empty cells expose a per-cell Run affordance routed through the Phase B in-process Lab Run; sidebar entry already reserved by Phase C SIDEBAR_GROUPS_PHASE_C Work zone — only the body route swaps from placeholder::view to screens::compare::view; 22 body-SHA anchors stay byte-identical (anchor risk zero by construction: no backtest binary changes, no anchored renderer touch)"
+feature     = "ui-rethink-phase-e-compare"
+product     = "spec/product.md"
+arch        = [
+  "spec/ui-rethink-phase-e-compare/feature.md",                  # M0 analyst deliverable — R1-R8 + Q1-Q8 + K1-K8 + H1-H5 + non-regression contract (2026-05-20)
+  "spec/ui-rethink-phase-e-compare/tasks.md",                    # M0 analyst T-A1..T-A12 + M-OD / M-T1 / M-FINAL placeholders
+  "spec/dev-notes/ui-rethink-2026-05-17.md",                     # §6 Phase E sequencing source-of-truth (lines 1082-1096) + §J3 (lines 340-390) + §3 IA (lines 651-744)
+]
+crates      = []   # architect M-T1 to fill — expected: crates/ui (screens/compare.rs + widgets/matrix.rs + compare/cache.rs + compare/state.rs). Phase E is UI-only (R7.1-R7.7 contract: no backtest binary changes, no anchored renderer touch)
+tests       = []   # architect M-T1 / developer to fill per Wave decomposition; expected: crates/ui/src/state.rs (OpenLabFromCompare round-trip), crates/ui/src/compare/cache.rs (lookup_cell tests), crates/ui/tests/panel_snapshots.rs (4 new baselines), crates/ui/tests/layout_invariants.rs (matrix cell zero-dim proptest)
+anchors     = []   # Phase E touches no strategy/audit/exec/report-renderer code; 22 originals stay byte-identical (R7.1 contract in feature.md; carry-forward H2 from predecessor ui-rethink-phase-d-trail-followup v0.1.1)
+state       = "proposed"   # analyst M0 + operator-decide resolved 2026-05-20 (Q1-Q8 = analyst defaults via "Autoapprove all"); awaiting architect M-T1 decomposition
+
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #
