@@ -367,7 +367,7 @@ updated: 2026-05-12
   (same-line OR preceding-line marker). The watchlist covers:
   - `crates/ui/src/widgets/chart.rs`
   - `crates/ui/src/widgets/canvas_chart.rs`
-  - `crates/ui/src/screens/charts.rs`
+  - `crates/ui/src/screens/lab.rs`
   - `crates/ui/src/test_support.rs`
   - `crates/ui/tests/visual_snapshots.rs`
   - `crates/ui/tests/chart_hover_grid_sweep.rs`
@@ -382,7 +382,7 @@ updated: 2026-05-12
   ```
   $ grep -n "SystemTime::now\|Instant::now\|thread_rng\|UtcOffset::current_local_offset" \
       crates/ui/src/widgets/chart.rs crates/ui/src/widgets/canvas_chart.rs \
-      crates/ui/src/screens/charts.rs crates/ui/src/test_support.rs \
+      crates/ui/src/screens/lab.rs crates/ui/src/test_support.rs \
       crates/ui/tests/visual_snapshots.rs crates/ui/tests/chart_hover_grid_sweep.rs \
       crates/ui/tests/fixtures/mod.rs crates/ui/tests/fixtures/visual_diff.rs
   crates/ui/src/widgets/chart.rs:153:    // `time::UtcOffset::current_local_offset()` while preserving the

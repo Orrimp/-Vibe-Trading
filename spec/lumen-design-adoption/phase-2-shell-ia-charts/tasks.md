@@ -11,9 +11,9 @@ updated: 2026-05-04
 
 # Tasks — Lumen design adoption · Phase 2 (Shell IA + Charts)
 
-> Spec context: [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](../features/lumen-phase-2-shell-ia-charts.md)
-> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md)
-> · Architecture: [`spec/architecture.md`](../architecture.md)
+> Spec context: [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](feature.md)
+> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md)
+> · Architecture: [`spec/architecture.md`](../../architecture.md)
 >
 > **T16xx range** (T15xx Phase 1 shipped; T1601–T1616 + `T_FINAL_LUMEN_PHASE_2`).
 > Phase 2 ships **sidebar nav** (`widgets::sidebar_nav`), the **screen-routed
@@ -41,7 +41,7 @@ updated: 2026-05-04
 
 ## Honest-tick discipline
 
-Per [`AGENT.md`](../../AGENT.md) Process discipline #1: do not mark a
+Per [`AGENT.md`](../../../AGENT.md) Process discipline #1: do not mark a
 task `[x]` without citing **(a)** the file:line where the change
 landed, **(b)** the test command exercising it, **(c)** the test-output
 line proving it passed. If you cannot cite all three, leave the tick
@@ -433,7 +433,7 @@ reviews the diff in one pass.
 
 ### T1610 — Charts screen body wiring (chip row + chart + marker fetch)
 
-- [x] T1610 — New module `crates/ui/src/screens/charts.rs`.
+- [x] T1610 — New module `crates/ui/src/screens/lab.rs`.
   - Composes (top-to-bottom): symbol selector chip row + price
     chart filling the remaining vertical space.
   - Chip row reads `model.universe`, renders one chip per `(Venue,
@@ -477,7 +477,7 @@ reviews the diff in one pass.
   - _acceptance:_ `cargo test -p ui --features fixtures charts_screen`
     PASS. Maps to R6, R7, R8, R9.
   - _ticked 2026-05-04 (developer)._
-    - `crates/ui/src/screens/charts.rs:1-90` — chip row + chart canvas; chips dispatch `Message::SelectSymbol`.
+    - `crates/ui/src/screens/lab.rs:1-90` — chip row + chart canvas; chips dispatch `Message::SelectSymbol`.
     - `crates/ui/src/bin/cockpit.rs:153-175` — fixtures bin re-seeds `chart_markers` via `synthetic_fills_for` on `SelectSymbol`.
     - `crates/ui/src/bin/cockpit_live.rs:496-540` — live bin issues `recent_fills_filtered` async fetch on `SelectSymbol`, mapping result to `ChartMarkersLoaded`.
     - `crates/ui/tests/panel_snapshots.rs` — two new snapshots (`charts_screen__chip_row_active_btc`, `..._eth`).
@@ -813,7 +813,7 @@ reviews the diff in one pass.
      chip-row visuals). **The ui-designer ticks this row in the
      tester report; the tester does not tick it on their behalf.**
   - On all-green: `VERDICT → PASS` → presenter spawn.
-  - On any FAIL: route per the [AGENT.md verdict map](../../AGENT.md).
+  - On any FAIL: route per the [AGENT.md verdict map](../../../AGENT.md).
     Visual regressions → ui-designer; missed shell-rewiring call
     site → developer; structural regressions → architect.
   - _ticked 2026-05-05 (tester)._
@@ -891,7 +891,7 @@ crates/ui/src/widgets/frame.rs                 [+active_chip helper — T1609]
 crates/ui/src/widgets/chart.rs                 [NEW — T1608]
 crates/ui/src/screens/home.rs                  [NEW — T1604]
 crates/ui/src/screens/debug.rs                 [NEW — T1605]
-crates/ui/src/screens/charts.rs                [NEW — T1610]
+crates/ui/src/screens/lab.rs                [NEW — T1610]
 crates/ui/src/screens/mod.rs                   [NEW — module index]
 crates/ui/src/shell.rs                         [NEW — shared shell::view — T1603]
 crates/ui/src/fixtures.rs                      [+synthetic_candles, +seed_for,
@@ -942,16 +942,16 @@ spec/architecture.md                           [Q1–Q11 ratification block appe
 
 ### Cross-references
 
-- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md).
-- Phase 2 brief: [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](../features/lumen-phase-2-shell-ia-charts.md).
+- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md).
+- Phase 2 brief: [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](feature.md).
 - Phase 1 task list (template + T-numbering precedent):
-  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](lumen-phase-1-foundation.md).
+  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](../phase-1-foundation/feature.md).
 - Architecture (Phase 2+ contract):
-  [`spec/architecture.md` § Cockpit screen routing (Phase 2+ contract)](../architecture.md).
+  [`spec/architecture.md` § Cockpit screen routing (Phase 2+ contract)](../../architecture.md).
 - UI principles (Charts + Information architecture):
-  [`spec/ui-design-principles.md`](../ui-design-principles.md).
+  [`spec/ui-design-principles.md`](../../ui-design-principles.md).
 - Audit query module (extension point):
-  [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs).
+  [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs).
 - v1.5b multi-venue (`MarketHealth` + `Cockpit::market_health`
   source):
-  [`spec/v1-5b-multi-venue/feature.md`](../features/v1-5b-multi-venue.md).
+  [`spec/v1-5b-multi-venue/feature.md`](../../v1-5b-multi-venue/feature.md).

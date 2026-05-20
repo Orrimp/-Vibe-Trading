@@ -24,7 +24,7 @@ The agent now reads market data from Binance + Coinbase + Kraken (3 venues, 6 st
 
 ## Why
 
-Today's single-venue topology is fragile (a Binance outage halts the whole agent) and crypto USDC liquidity is concentrated on Coinbase / Kraken, not Binance. v1.5b is the data-plumbing sibling deliberately split out of v1.5 by the analyst's `## Why` ([`spec/v1-5b-multi-venue/feature.md`](../features/v1-5b-multi-venue.md)) so multi-venue infra and the v1.5a strategy edge fail independently. With the venue-tagged Tick/Bar primitives in place, v1.5b is the foundation that future cross-venue arbitrage strategies (v2+) sit on, and a Binance outage no longer takes the whole feed down.
+Today's single-venue topology is fragile (a Binance outage halts the whole agent) and crypto USDC liquidity is concentrated on Coinbase / Kraken, not Binance. v1.5b is the data-plumbing sibling deliberately split out of v1.5 by the analyst's `## Why` ([`spec/v1-5b-multi-venue/feature.md`](../feature.md)) so multi-venue infra and the v1.5a strategy edge fail independently. With the venue-tagged Tick/Bar primitives in place, v1.5b is the foundation that future cross-venue arbitrage strategies (v2+) sit on, and a Binance outage no longer takes the whole feed down.
 
 ## What you can do now
 

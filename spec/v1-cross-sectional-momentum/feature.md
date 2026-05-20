@@ -16,7 +16,7 @@ composed recipes (`btc_macd_trend`, `btc_rsi_reversion`,
 `btc_bbands_mean_revert`) were tracer bullets — their analyst hypotheses
 explicitly expected weak or negative Sharpe and "any positive number is a
 red flag to recheck the fee model" (v0.5 Scenario 2 hypothesis,
-[v05-composed-strategies.md](v05-composed-strategies.md)). Cross-sectional
+[v05-composed-strategies.md](../v05-composed-strategies/feature.md)). Cross-sectional
 momentum is the first **plausible edge candidate** on the roadmap and the
 first feature that genuinely requires the harness to run **multiple symbols
 at once**. Per [product.md → Universe & data fidelity ladder](../product.md#universe--data-fidelity-ladder),
@@ -34,7 +34,7 @@ The locked moat bet — **persistent memory + double-entry audit** per
 v1 finally lets pay off in a measurable way. Per-symbol P&L attribution
 becomes meaningful for the first time: the audit ledger's `Position` rows
 are already keyed by `Symbol` (v0 R3.2, R3.3 — see
-[v0-paper-sma.md](v0-paper-sma.md)) so the schema needs no change, but
+[v0-paper-sma.md](../v0-paper-sma/feature.md)) so the schema needs no change, but
 v0 only ever exercised a single key (`BTC`). v1 turns that single row
 into ten and makes a query like "ETH momentum signal explained 40% of
 last week's realized P&L" a real ledger slice rather than a hypothetical.
@@ -43,7 +43,7 @@ into a system that has signal: lesson cards can now correlate per-symbol
 outcomes ("long ETH on a negative funding-flip in a positive-momentum
 regime ended in chop with fee drag") in a way single-symbol BTC could
 not. The strategies panel that v0.5 added to the cockpit
-([v05-composed-strategies.md → R5](v05-composed-strategies.md), tasks
+([v05-composed-strategies.md → R5](../v05-composed-strategies/feature.md), tasks
 T522–T528) already accepts multi-strategy state but in v1 sees its
 first multi-symbol position roster from a single strategy.
 
@@ -166,7 +166,7 @@ changes).
   floor into the `risk` crate as a universal numerical-safety
   constant.
 - **R3.3** Implementation reuses the v0.5 indicator-tree pattern
-  ([v05-composed-strategies.md → R1](v05-composed-strategies.md))
+  ([v05-composed-strategies.md → R1](../v05-composed-strategies/feature.md))
   where economical, but the cross-sectional reduction (rank N
   symbols by score per bar) is **not** expressible in the v0.5 rule
   DSL (the DSL is per-symbol, scalar-comparison-shaped). v1 ships a
@@ -319,7 +319,7 @@ changes).
 - **R7.1** v1 strategy ships as a fresh `Strategy` impl in
   `crates/strategy/src/cross_sectional/momentum.rs` —
   **not** as a `ComposedStrategy` recipe. The v0.5 rule DSL
-  (per [v05-composed-strategies.md → R2](v05-composed-strategies.md))
+  (per [v05-composed-strategies.md → R2](../v05-composed-strategies/feature.md))
   is per-symbol scalar-comparison shaped; cross-sectional ranking
   ("rank these N symbols by score, take top K") does not fit the
   grammar without a redesign. v1 adds a third `Strategy`
@@ -655,8 +655,8 @@ Translates R1–R12 into crate / module additions, Rust types, TOML schema,
 new audit/broadcast surfaces, and test strategy. All decisions anchor to
 [architecture.md → v1 cross-sectional momentum resolutions (Q1–Q6)](../architecture.md#v1--cross-sectional-momentum-resolutions-q1q6--confirmed-2026-04-29)
 and the v0/v0.5 Design sections in
-[v0-paper-sma.md → Design](v0-paper-sma.md#design) +
-[v05-composed-strategies.md → Design](v05-composed-strategies.md#design).
+[v0-paper-sma.md → Design](../v0-paper-sma/feature.md#design) +
+[v05-composed-strategies.md → Design](../v05-composed-strategies/feature.md#design).
 This section is **strategy + multi-symbol plumbing + per-symbol P&L
 attribution + funding observation-only**; v0 / v0.5 crate surfaces stay
 untouched except for additive extensions.

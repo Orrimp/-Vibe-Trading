@@ -8,18 +8,18 @@ updated: 2026-05-03
 # Tasks — v1.5b Multi-venue + 1s aggregated trades
 
 Ordered, testable task list derived from
-[spec/v1-5b-multi-venue/feature.md → Design](../features/v1-5b-multi-venue.md#design)
+[spec/v1-5b-multi-venue/feature.md → Design](feature.md#design)
 and the twelve architect resolutions (Q1–Q12) recorded in that
 Design section. Cross-references to the analyst's R / V items use
 the format `Rn` / `Vn`; cross-references to the architect's
 resolutions use `Qn`.
 
-T8xx is taken by [operator-success-reports](operator-success-reports.md);
-T9xx is taken by [live-cockpit-unified](live-cockpit-unified.md);
-T10xx is taken by [real-mtm-unrealized-pnl](real-mtm-unrealized-pnl.md);
-T11xx is taken by [per-symbol-position-accounts](per-symbol-position-accounts.md);
-T12xx is taken by [tape-row-audit-modal](tape-row-audit-modal.md);
-T13xx is taken by [journal-transactions-metadata](journal-transactions-metadata.md);
+T8xx is taken by [operator-success-reports](../operator-success-reports/feature.md);
+T9xx is taken by [live-cockpit-unified](../live-cockpit-unified/feature.md);
+T10xx is taken by [real-mtm-unrealized-pnl](../real-mtm-unrealized-pnl/feature.md);
+T11xx is taken by [per-symbol-position-accounts](../per-symbol-position-accounts/feature.md);
+T12xx is taken by [tape-row-audit-modal](../tape-row-audit-modal/feature.md);
+T13xx is taken by [journal-transactions-metadata](../journal-transactions-metadata/feature.md);
 this feature uses **T1401–T1415** + `T_FINAL_V15B`.
 
 Owner tags:
@@ -165,8 +165,8 @@ tasks plus the tester gate.
 
 - [x] **T1401** [developer] — `core::Venue` enum + `Tick.venue`
   + `Bar.venue` + `Timeframe::OneSecond` per
-  [Design → Q1 / Q4](../features/v1-5b-multi-venue.md#q1--venue-shape-closed-enum)
-  + [Crate map delta](../features/v1-5b-multi-venue.md#crate-map-delta):
+  [Design → Q1 / Q4](feature.md#q1--venue-shape-closed-enum)
+  + [Crate map delta](feature.md#crate-map-delta):
 
   - **NEW** `crates/core/src/venue.rs` with `Venue` enum (closed,
     three variants: `Binance`, `Coinbase`, `Kraken`), `MarketHealth`
@@ -233,7 +233,7 @@ tasks plus the tester gate.
 
 - [x] **T1402** [developer] — Audit migration `007` +
   `feed_reconnect(symbol, venue)` signature change per
-  [Design → Q11](../features/v1-5b-multi-venue.md#q11--t805-schema-migration-007_strategy_events_venuesql--writer-signature):
+  [Design → Q11](feature.md#q11--t805-schema-migration-007_strategy_events_venuesql--writer-signature):
   - file:line — migration `crates/audit/migrations/007_strategy_events_venue.sql:21`
     (`ALTER TABLE strategy_events ADD COLUMN venue TEXT;`); writer
     signature change `crates/audit/src/journal.rs:663` (now takes
@@ -314,7 +314,7 @@ tasks plus the tester gate.
   T1410; deps: T1401]**
 
 - [x] **T1403** [developer] — `data::CoinbaseFeed` impl per
-  [Design → Q2 / Q8 / R1 / R15](../features/v1-5b-multi-venue.md#q2--coinbase-api-advanced-trade-ws):
+  [Design → Q2 / Q8 / R1 / R15](feature.md#q2--coinbase-api-advanced-trade-ws):
   - **NEW** `crates/data/src/coinbase.rs` — `CoinbaseFeed`
     struct. Same shape as `BinanceFeed`:
     - Fields: `ws_url: String`, `rest_url: String`,
@@ -339,7 +339,7 @@ tasks plus the tester gate.
         ship if the operator opts in).
       - `subscribe_trades(symbol)` — WS subscribe to
         `market_trades` channel. Parse per
-        [Design § Sample on-wire payloads](../features/v1-5b-multi-venue.md#sample-on-wire-payloads-r15-normalization-reference).
+        [Design § Sample on-wire payloads](feature.md#sample-on-wire-payloads-r15-normalization-reference).
         Construct `Tick { ..., venue: Venue::Coinbase }`.
         Aggressor side: `side: "BUY"` → `Side::Buy`;
         `side: "SELL"` → `Side::Sell`.
@@ -397,7 +397,7 @@ tasks plus the tester gate.
   - Clippy / fmt: `cargo clippy --workspace --all-targets --all-features -- -D warnings` clean; `cargo fmt --check` clean.
 
 - [x] **T1404** [developer] — `data::KrakenFeed` impl per
-  [Design → R2 / R15](../features/v1-5b-multi-venue.md#q1--venue-shape-closed-enum):
+  [Design → R2 / R15](feature.md#q1--venue-shape-closed-enum):
   - **NEW** `crates/data/src/kraken.rs` — `KrakenFeed` struct.
     Same shape as `BinanceFeed` / `CoinbaseFeed`:
     - Fields: `ws_url`, `rest_url`, `ledger: Option<Arc<...>>`,
@@ -466,7 +466,7 @@ tasks plus the tester gate.
 
 - [x] **T1405** [developer] — `data::BinanceFeed` multi-symbol
   fan-out (T612 finally lands) per
-  [Design → R4](../features/v1-5b-multi-venue.md#crate-map-delta):
+  [Design → R4](feature.md#crate-map-delta):
   - **MOD** `crates/data/src/binance.rs` — add two new methods
     to `impl BinanceFeed`:
     ```rust
@@ -547,7 +547,7 @@ tasks plus the tester gate.
 
 - [x] **T1406** [developer] — `data::bar_aggregator` 1s
   client-side aggregator per
-  [Design → Q5](../features/v1-5b-multi-venue.md#q5--1s-bar-aggregation-client-side):
+  [Design → Q5](feature.md#q5--1s-bar-aggregation-client-side):
   - **NEW** `crates/data/src/bar_aggregator.rs` — public function:
     ```rust
     pub fn aggregate_one_second(
@@ -613,7 +613,7 @@ tasks plus the tester gate.
   - Build / clippy / fmt: clean (workspace).
 
 - [x] **T1407** [developer] — `data::MockFeed` test harness per
-  [Design → Q10](../features/v1-5b-multi-venue.md#q10--test-harness-mockfeed-over-wiremock):
+  [Design → Q10](feature.md#q10--test-harness-mockfeed-over-wiremock):
   - **NEW** `crates/data/src/mock_feed.rs` — `MockFeed` struct.
     Constructors:
     ```rust
@@ -703,8 +703,8 @@ tasks plus the tester gate.
     constructor) + `:175-219` (from_toggles loader truth-table).
   - file:line `crates/core/src/universe.rs:280-360` (4 acceptance tests
     incl. defensive both-disabled).
-  [Design → Q6](../features/v1-5b-multi-venue.md#q6--usdc-universe-doubled-operator-gated)
-  + [Configuration TOML shape](../features/v1-5b-multi-venue.md#configuration-toml-shape):
+  [Design → Q6](feature.md#q6--usdc-universe-doubled-operator-gated)
+  + [Configuration TOML shape](feature.md#configuration-toml-shape):
   - **MOD** `config/agent.toml` — append the `[universe]`
     section with `usdt_enabled = true`, `usdc_enabled = false`,
     `usdt_symbols = […]` (the 10 from `[funding].universe`),
@@ -748,7 +748,7 @@ tasks plus the tester gate.
 
 - [x] **T1408** [developer] — `agent::runtime::run` per-venue
   `JoinSet` topology per
-  [Design → Q3 / R14](../features/v1-5b-multi-venue.md#q3--ingest-topology-per-venue-tokio-task):
+  [Design → Q3 / R14](feature.md#q3--ingest-topology-per-venue-tokio-task):
   - **MOD** `crates/agent/src/runtime.rs::run` — replace the
     today's single-venue ingest loop with a per-venue
     `tokio::task::JoinSet`. Each enabled venue (read from
@@ -855,7 +855,7 @@ tasks plus the tester gate.
 
 - [x] **T1409** [developer] — Bus `MarketHealth` channel +
   stale-data watchdog per
-  [Design → Q7 / `MarketHealth` event shape](../features/v1-5b-multi-venue.md#markethealth-event-shape--bus-channel):
+  [Design → Q7 / `MarketHealth` event shape](feature.md#markethealth-event-shape--bus-channel):
   - **MOD** `crates/agent/src/bus.rs` (or wherever `EventBus` is
     defined) — add `pub market_health: broadcast::Sender<MarketHealth>`
     field, capacity 64. Initialize via
@@ -970,7 +970,7 @@ tasks plus the tester gate.
 ## Wave 4 — verification tests (parallel)
 
 - [x] **T1411** [developer] — V1 + V2 + V3 Tick tests per
-  [Design → Test strategy](../features/v1-5b-multi-venue.md#test-strategy--per-v-item):
+  [Design → Test strategy](feature.md#test-strategy--per-v-item):
   - **V1 — Binance regression.** No new test code; ensure
     `cargo test -p data binance::` exercises every existing
     binance test path. The new `subscribe_*_multi` methods
@@ -1063,7 +1063,7 @@ tasks plus the tester gate.
   - **Library checklist:** ✅ no new dep — only test files added.
 
 - [x] **T1412** [developer] — V5 1s bar aggregation test per
-  [Design → R5](../features/v1-5b-multi-venue.md#q5--1s-bar-aggregation-client-side):
+  [Design → R5](feature.md#q5--1s-bar-aggregation-client-side):
   - **NEW** `crates/data/tests/bar_aggregator_synth.rs` —
     consumes a synthetic 100-tick fixture across 10 seconds.
     Fixture shape: 10 ticks per second × 10 seconds; prices
@@ -1135,7 +1135,7 @@ tasks plus the tester gate.
 
 - [x] **T1413** [developer] — V6 multi-symbol fan-out test
   (T612 finally verified) per
-  [Design → R4](../features/v1-5b-multi-venue.md#crate-map-delta):
+  [Design → R4](feature.md#crate-map-delta):
   - **NEW** `crates/data/tests/binance_multi_symbol.rs` —
     constructs a `MockFeed::new_multi(events_map,
     Duration::from_millis(50), Venue::Binance)` where
@@ -1224,7 +1224,7 @@ tasks plus the tester gate.
 
 - [x] **T1414** [developer] — V7 Coinbase outage isolation
   test per
-  [Design → R14 / Q3](../features/v1-5b-multi-venue.md#q3--ingest-topology-per-venue-tokio-task):
+  [Design → R14 / Q3](feature.md#q3--ingest-topology-per-venue-tokio-task):
   - **NEW** `crates/agent/tests/coinbase_outage_isolation.rs`
     — integration test spawning `agent::runtime::run` with
     three `MockFeed`s (one for each venue). Coinbase's
@@ -1378,7 +1378,7 @@ tasks plus the tester gate.
   end-to-end.
 
   invariant verification per
-  [Design → Invariants preserved](../features/v1-5b-multi-venue.md#invariants-preserved-across-prior-features):
+  [Design → Invariants preserved](feature.md#invariants-preserved-across-prior-features):
   - **V8 — Anchor regression.** Run `bash
     scripts/verify_anchors.sh` against the locked 11 anchors;
     must exit 0 with `ANCHORS PASS  (11 / 11)`. Q12 confirms
@@ -1576,7 +1576,7 @@ tasks plus the tester gate.
 
 - [x] **T_FINAL_V15B** [tester] — Full v1.5b verification pass
   per
-  [spec/v1-5b-multi-venue/feature.md → Verification](../features/v1-5b-multi-venue.md#verification-v-items):
+  [spec/v1-5b-multi-venue/feature.md → Verification](feature.md#verification-v-items):
 
   **Tester citations (2026-05-03 19:46 UTC):**
   - Test report: `spec/archive/test-2026-05-03-1946-v1-5b-multi-venue-final.md (archived; see spec/archive/README.md)`
@@ -1610,7 +1610,7 @@ tasks plus the tester gate.
     `spec/reports/test-2026-MM-DD-HHMM-v1-5b-multi-venue-final.md`
     per the rust-test report template.
   - Verdict routing per
-    [Verification — failure routing](../features/v1-5b-multi-venue.md#verification-v-items):
+    [Verification — failure routing](feature.md#verification-v-items):
     - Static / test / bench failure → developer.
     - Anchor regression → developer with body diff.
     - Architecture surface change required → architect.

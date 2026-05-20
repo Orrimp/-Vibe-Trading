@@ -510,7 +510,7 @@ histogram in v1.9 (R7 strawman scope).
   `grep -n 'CHART_VOLUME\|CHART_POSITION' crates/ui/src/strings.rs`
   returns 7 lines.
 - [x] **T2022 [D]** — Add tile-arithmetic helper to
-  `crates/ui/src/screens/charts.rs` (or a private sibling
+  `crates/ui/src/screens/lab.rs` (or a private sibling
   module if size warrants): `compute_window_volume(markers:
   &[FillView]) -> (buys_usdt: Decimal, sells_usdt: Decimal,
   net_usdt: Decimal, buy_count: usize, sell_count: usize)`.
@@ -544,7 +544,7 @@ histogram in v1.9 (R7 strawman scope).
   `position_mirror_filters_to_active_symbol` green — fixture:
   positions in `BTCUSDT` and `ETHUSDT`; mirror filtered to
   `BTCUSDT` shows the BTC row and omits ETH.
-- [x] **T2025 [D+U]** — Reshape `crates/ui/src/screens/charts.rs`
+- [x] **T2025 [D+U]** — Reshape `crates/ui/src/screens/lab.rs`
   for Layout (β) (Q5-operator-resolved): chip row → tile-strip
   + open-position mirror in a horizontal strip → chart canvas
   (`Length::Fill`) → fixed 80-px histogram below. Compute
@@ -850,7 +850,7 @@ visible UI behaviour, so it's exempt.
   correctly declares
   `Canvas::new(...).width(Length::Fill).height(Length::Fill)` wrapped
   in a `Container` with both axes Fill. The bug was one level up:
-  in [`crates/ui/src/screens/charts.rs`](../../crates/ui/src/screens/charts.rs)
+  in [`crates/ui/src/screens/lab.rs`](../../crates/ui/src/screens/lab.rs)
   at the pre-fix line `Container::new(chart_body).height(Length::Fill)`
   — **missing `.width(Length::Fill)`**. The default Container width
   in iced 0.14 is `Length::Shrink`, and a `Shrink` parent collapses
@@ -870,14 +870,14 @@ visible UI behaviour, so it's exempt.
             .height(Length::Fill))
   ```
   at
-  [`crates/ui/src/screens/charts.rs:152-167`](../../crates/ui/src/screens/charts.rs)
+  [`crates/ui/src/screens/lab.rs:152-167`](../../crates/ui/src/screens/lab.rs)
   with an in-source comment explaining the `Shrink`-default trap so
   the next reader doesn't reintroduce the regression.
 
   **Unit test.** Added
-  [`screens::charts::tests::chart_canvas_height_grows_with_body_height`](../../crates/ui/src/screens/charts.rs)
+  [`screens::charts::tests::chart_canvas_height_grows_with_body_height`](../../crates/ui/src/screens/lab.rs)
   per the acceptance contract. Backed by a new pure helper
-  [`chart_canvas_height_for_body(f32) -> f32`](../../crates/ui/src/screens/charts.rs)
+  [`chart_canvas_height_for_body(f32) -> f32`](../../crates/ui/src/screens/lab.rs)
   that mirrors the Layout β budget arithmetic (chip row + status
   strip + chart Fill + histogram label + 80-px histogram canvas, in
   a Column with `space::M` spacing and `space::L` padding). Asserts:
@@ -960,11 +960,11 @@ visible UI behaviour, so it's exempt.
      itself likely worked via a different mechanism (cache
      invalidation from re-typing the container, or simply the
      forced relayout pass that editing this code triggered).  The
-     in-source rationale in `crates/ui/src/screens/charts.rs` has
+     in-source rationale in `crates/ui/src/screens/lab.rs` has
      been rewritten to reflect this corrected mechanic.
 
   **Files touched (T2032):**
-  - [`crates/ui/src/screens/charts.rs`](../../crates/ui/src/screens/charts.rs)
+  - [`crates/ui/src/screens/lab.rs`](../../crates/ui/src/screens/lab.rs)
     — two-axis Container fix, new `chart_canvas_height_for_body`
     helper, new `chart_canvas_height_grows_with_body_height` test;
     M6.2 fixup pass rewrote the inline + docstring rationale to
@@ -1443,7 +1443,7 @@ arithmetic is a derived-state helper, not a widget edit)._
     cross-reference set back to this entry. Acceptance grep + ls
     both green. No runtime change.
   - T2032: diagnosed the chart-crop-on-resize bug to the chart-
-    body `Container` in `crates/ui/src/screens/charts.rs` having
+    body `Container` in `crates/ui/src/screens/lab.rs` having
     only `.height(Length::Fill)` — its default `width(Length::Shrink)`
     collapsed the Fill-width inner canvas. Fix: added explicit
     `.width(Length::Fill)`. Added pure helper

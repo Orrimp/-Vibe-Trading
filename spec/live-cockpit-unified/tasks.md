@@ -56,7 +56,7 @@ Changelog:
 # Tasks — Live cockpit unified single-process binary
 
 Ordered, testable task list derived from
-[spec/live-cockpit-unified/feature.md → Design](../features/live-cockpit-unified.md#design)
+[spec/live-cockpit-unified/feature.md → Design](feature.md#design)
 and the eight architect resolutions (Q1–Q8) recorded in the same
 Design section. Cross-references to the analyst's R/V items use the
 format `Rn` / `Vn`; cross-references to the architect's open
@@ -72,7 +72,7 @@ Owner tags:
 - `[both — parallel-safe]` — the task touches a clean crate
   boundary (no shared file with another concurrent task).
 
-T8xx is taken by [operator-success-reports](operator-success-reports.md);
+T8xx is taken by [operator-success-reports](../operator-success-reports/feature.md);
 this feature uses **T901–T912**.
 
 **Parallelism gates** (shared files — only one task at a time
@@ -124,7 +124,7 @@ T8xx namespaces stay intact.
 ## Week 1 — config + extraction + bus producer wiring
 
 - [x] **T901** [developer] — Config + observability `prometheus_enabled`
-  toggle per [Design → Q4](../features/live-cockpit-unified.md#q4--config-sourcing):
+  toggle per [Design → Q4](feature.md#q4--config-sourcing):
   - **Honest tick — Wave 1 developer (2026-05-02)**:
     - file:line — `crates/agent/src/config.rs:196-216` (ObservabilityConfig.prometheus_enabled with `#[serde(default = "default_true")]`); `crates/agent/src/observability.rs:106-123` (start_prometheus_exporter short-circuits when disabled and emits `prometheus_listener_disabled`); `config/agent.toml:42-46` (documented but unset).
     - test cmd — `cargo test -p agent --lib config::tests::t901_prometheus_enabled_defaults_true_when_omitted`; `cargo test -p agent --lib observability::tests::t901_disabled_skips_listener`.
@@ -153,7 +153,7 @@ T8xx namespaces stay intact.
 
 - [x] **T902** [developer] — Extract `agent::runtime::run` +
   `RunHandles` per
-  [Design → Q1 — `agent::run` signature](../features/live-cockpit-unified.md#q1--binary-placement-name-agentrun-extraction):
+  [Design → Q1 — `agent::run` signature](feature.md#q1--binary-placement-name-agentrun-extraction):
   - **Honest tick — Wave 1 developer (2026-05-02)**:
     - file:line — `crates/agent/src/runtime.rs:61-83` (`pub struct RunHandles`); `crates/agent/src/runtime.rs:117-363` (`pub async fn run`); `crates/agent/src/runtime.rs:373-379` (`pub async fn shutdown_writer`); `crates/agent/src/lib.rs:11,20` (mod + re-export); `crates/agent/src/main.rs:48-180` (slimmed entry point delegates to `agent::runtime::run`); fix to `crates/agent/src/watcher.rs:106-134` so the `notify` blocking thread polls `recv_timeout` + watches `tx.is_closed()` so the tokio blocking-pool drains cleanly on cancel — without this the smoke test hung in `BlockingPool::shutdown`.
     - test cmd — `cargo test -p agent --lib runtime::tests::t902_runtime_run_returns_clean_on_cancel`; `cargo test -p agent`; `cargo test -p agent --test kill_switch_trip_writes_both`; `cargo build -p agent --features in_process_cron`; `./target/release/trading --config config/agent.toml --mode research` then SIGINT.
@@ -204,7 +204,7 @@ T8xx namespaces stay intact.
 
 - [x] **T903a** [developer] — Paper engine publishes fills + positions
   per
-  [Design → Bus producer wiring](../features/live-cockpit-unified.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
+  [Design → Bus producer wiring](feature.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
   - **Honest tick — Wave 2 developer A (2026-05-01)**:
     - file:line — `crates/exec/src/publisher.rs:36-42` (`pub trait FillPublisher` with `publish_fill` + `publish_position`); `crates/exec/src/publisher.rs:49-63` (`NullPublisher` no-op default impl + `FillPublisher` impl); `crates/exec/src/paper.rs:42-91` (`PaperEnginePublisher` wrapping `Arc<dyn FillPublisher>` with `new()`/`with_publisher()` constructors and `on_fill(&Fill, &Position)` shim, plus `Default`); `crates/exec/src/lib.rs:5-11` (`pub mod paper`/`publisher` + re-exports of `PaperEnginePublisher`/`FillPublisher`/`NullPublisher`); `crates/exec/Cargo.toml:15-18` (dev-deps `rust_decimal`, `rust_decimal_macros`, `time`); new integration test at `crates/exec/tests/paper_engine_publishes.rs:62-94`.
     - test cmd — `cargo test -p exec`; `cargo build -p exec`; `cargo clippy -p exec --tests -- -D warnings`; `cargo fmt --check -p exec`.
@@ -268,7 +268,7 @@ T8xx namespaces stay intact.
 
 - [x] **T903b** [developer] — Data feed publishes bars + ticks
   per
-  [Design → Bus producer wiring](../features/live-cockpit-unified.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
+  [Design → Bus producer wiring](feature.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
   - **Honest tick — Wave 2 developer-B (2026-05-01)**:
     - file:line — `crates/agent/src/runtime.rs:430-510` (`spawn_feed_taps` helper consuming `MarketDataSource::subscribe_bars` / `subscribe_trades` and republishing via `bus.publish_bar` / `bus.publish_tick`); `crates/agent/src/runtime.rs:317-365` (helper invocation inside `run()` for both Research replay and Paper Binance modes; symbol BTCUSDT / Timeframe::OneMinute hardcoded to match `config/agent.toml` SMA strategy); `crates/agent/src/runtime.rs:680-744` (unit test `t903b_taps_publish_bars_and_ticks` against `data::FakeFeed` with 5 bars + 20 ticks).
     - test cmd — `cargo test -p agent --lib -- runtime::tests::t903b_taps_publish_bars_and_ticks`.
@@ -302,7 +302,7 @@ T8xx namespaces stay intact.
 
 - [x] **T903c** [developer] — Reconciler publishes PnL snapshots
   per
-  [Design → Bus producer wiring](../features/live-cockpit-unified.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
+  [Design → Bus producer wiring](feature.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
   - **Honest tick — Wave 2 developer-B (2026-05-01)**:
     - file:line — `crates/agent/src/reconciler.rs:64-73` (`ReconcilerTask.bus: Option<Arc<EventBus>>` field); `crates/agent/src/reconciler.rs:91-97` (`with_bus` builder helper); `crates/agent/src/reconciler.rs:99-124` (`pub fn after_bar_close(&self) -> PnlSnapshot` builds a `PnlSnapshot` using `Money::from_decimal(...)` for cash/unrealized/realized/total_equity/daily_return — all `Decimal` math, no `f64` — and conditionally calls `bus.publish_pnl(snap.clone())`); `crates/agent/src/reconciler.rs:35-46` (extra fields `realized_pnl`, `cost_basis` on `ReconcilerState`); `crates/agent/src/reconciler.rs:55-60` (`unrealized()` Decimal helper); `crates/agent/src/reconciler.rs:240-289` (unit test `t903c_after_bar_close_publishes_pnl` covering both bus-wired and bus-less reconciler paths).
     - test cmd — `cargo test -p agent --lib -- reconciler::tests::t903c_after_bar_close_publishes_pnl`.
@@ -329,7 +329,7 @@ T8xx namespaces stay intact.
 
 - [x] **T903d** [developer] — Bus-drop test — verify bus drains on
   shutdown per
-  [Design → Risks + mitigations #6](../features/live-cockpit-unified.md#risks--mitigations):
+  [Design → Risks + mitigations #6](feature.md#risks--mitigations):
   - **Honest tick — Wave 3 developer (2026-05-01)**:
     - file:line — `crates/agent/tests/bus_drops_on_shutdown.rs:1-124`
       (new integration test `t903d_bus_strong_count_collapses_on_cancel`
@@ -366,7 +366,7 @@ T8xx namespaces stay intact.
   **[parallel-safe with T904]**
 
 - [x] **T905** [developer] — Mode-broadcast forwarder per
-  [Design → Bus producer wiring (mode channel)](../features/live-cockpit-unified.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
+  [Design → Bus producer wiring (mode channel)](feature.md#bus-producer-wiring-six-channels--three-v05-strategy-lifecycle-channels):
   - **Honest tick — Wave 2 developer-B (2026-05-01)**:
     - file:line — `crates/agent/src/runtime.rs:513-540` (`spawn_mode_forwarder` helper subscribing to `KillSwitch::subscribe()` and forwarding each `AgentMode` event to `bus.publish_mode(...)`; the kill-switch boundary stays clean — bus knowledge does not leak into `KillSwitch`); `crates/agent/src/runtime.rs:373-378` (helper invocation inside `run()` after the data-feed init so the forwarder is part of the JoinSet drain on `cancel.cancel()` — closes cleanly via `cancel.child_token()` plus `RecvError::Closed` path); `crates/agent/src/runtime.rs:749-803` (unit test `t905_kill_switch_trip_emits_to_bus_mode` driving `KillSwitch::trip(HaltReason::Test)` against a `KillSwitch::new` instance and asserting the bus's `mode` subscriber receives `AgentMode::Halted` within 500 ms; second-trip assertion confirms sticky-trip semantics — no duplicate event reaches the bus).
     - test cmd — `cargo test -p agent --lib -- runtime::tests::t905_kill_switch_trip_emits_to_bus_mode`.
@@ -409,7 +409,7 @@ T8xx namespaces stay intact.
 ## Week 2 — unified bin + UI wiring + retirement
 
 - [x] **T904** [developer] — `cockpit_live` bin skeleton per
-  [Design → Q1 + Q2](../features/live-cockpit-unified.md#q1--binary-placement-name-agentrun-extraction):
+  [Design → Q1 + Q2](feature.md#q1--binary-placement-name-agentrun-extraction):
   - **Honest tick — Wave 2 developer-D (2026-05-01)**:
     - file:line — `crates/ui/src/bin/cockpit_live.rs:1-464` (new file: `SHUTDOWN_DEADLINE` const at line 117, `fn main()` at line 119, short-lived bootstrap `current_thread` runtime at line 163 driving `audit::Ledger::open` + `chart_of_accounts` + `open_uptime_interval` synchronously before the side-thread runtime starts, side-thread spawn at line 255 with `Builder::new_multi_thread().enable_all()` + Ctrl-C bridge + `agent::runtime::run` + `shutdown_writer`, `AppState` constructed at line 326 carrying `Arc<EventBus>` + `Arc<KillSwitch>`, `iced::application(..).run()` on main thread at line 332, post-`iced::run` `cancel.cancel()` + `join_with_deadline(..., SHUTDOWN_DEADLINE)` + force-exit on timeout at line 348, `fn join_with_deadline` poll-loop helper at line 375, `impl AppState` (title/update/view/theme + `subscription(&self) -> ui::live::subscription(Arc::clone(&self.bus))`) at line 411); `crates/ui/Cargo.toml:11-21` (new `[[bin]] cockpit_live` with `required-features = ["live"]`); `crates/ui/Cargo.toml:50-58` (added `audit`/`strategy`/`tokio-util`/`anyhow`/`clap`/`tracing-subscriber`/`uuid` as optional deps); `crates/ui/Cargo.toml:78-101` (`live` feature pulls all new optional deps; new `in_process_cron = ["live", "agent/in_process_cron"]` pass-through per Design Q5).
     - test cmd — `cargo build -p ui --features live --bin cockpit_live`; `cargo build -p ui --features in_process_cron --bin cockpit_live`; `cargo build --release --bin cockpit_live --features ui/live`; `cargo build --release --bin cockpit_live --features ui/in_process_cron`; `cargo test -p ui --features live`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`; `cargo build --release --bin trading` (Wave 1 invariant); `cargo build --release --bin trading --features agent/in_process_cron` (T810 invariant).
@@ -474,8 +474,8 @@ T8xx namespaces stay intact.
 
 - [x] **T906** [ui-designer] — Cockpit kill-button trips real
   KillSwitch per
-  [Design → Q6 — kill-switch unification](../features/live-cockpit-unified.md#q6--kill-switch-unification)
-  + [Risks #1](../features/live-cockpit-unified.md#risks--mitigations):
+  [Design → Q6 — kill-switch unification](feature.md#q6--kill-switch-unification)
+  + [Risks #1](feature.md#risks--mitigations):
   - **Honest tick — Wave 3 ui-designer (2026-05-01)**:
     - file:line — `crates/ui/src/state.rs:91-103` (new `KillTripFn`
       type alias under `#[cfg(feature = "live")]` + design rationale
@@ -664,7 +664,7 @@ T8xx namespaces stay intact.
   **[gate for T907, T911]**
 
 - [x] **T907** [ui-designer] — Kill-button tooltip update per
-  [Design → Q8](../features/live-cockpit-unified.md#q8--ui-designer-touchpoints):
+  [Design → Q8](feature.md#q8--ui-designer-touchpoints):
   - **Honest tick — Wave 3 ui-designer (2026-05-01)**:
     - file:line — `crates/ui/src/strings.rs:69-75` (`KILL_BUTTON_HELP`
       reworded to "Halts the trading agent and writes an incident
@@ -733,7 +733,7 @@ T8xx namespaces stay intact.
 
 - [x] **T908** [ui-designer] — Retire `cockpit --features live`
   per
-  [Design → Q7](../features/live-cockpit-unified.md#q7--keep-two-binary-path-alive):
+  [Design → Q7](feature.md#q7--keep-two-binary-path-alive):
   - **Honest tick — Wave 3 ui-designer (2026-05-01)**:
     - file:line — `crates/ui/src/bin/cockpit.rs:1-29, 31-58`
       (rewrote header doc-comment to explain the retirement +
@@ -882,7 +882,7 @@ T8xx namespaces stay intact.
 
 - [x] **T910** [developer] — Subprocess-based shutdown timing test
   (V3a / V9) per
-  [Design → Test strategy V3](../features/live-cockpit-unified.md#test-strategy--per-v-item):
+  [Design → Test strategy V3](feature.md#test-strategy--per-v-item):
   - **Honest tick — Wave 3 developer (2026-05-01)**:
     - file:line — `crates/agent/tests/unified_uptime_test.rs:1-156`
       (new integration test `t910_v3_graceful_shutdown_within_two_seconds_with_close_uptime_row`
@@ -961,7 +961,7 @@ T8xx namespaces stay intact.
   **[parallel-safe with T907, T908]**
 
 - [x] **T911** [developer] — Live-bus regression test per
-  [Design → Risks #2](../features/live-cockpit-unified.md#risks--mitigations):
+  [Design → Risks #2](feature.md#risks--mitigations):
   - **Honest tick — Wave 3 developer (2026-05-01)**:
     - file:line — `crates/ui/tests/live_subscription_full_bus.rs:1-300`
       (new integration test file with two tests:
@@ -1032,7 +1032,7 @@ T8xx namespaces stay intact.
   **[parallel-safe with T910, T912]**
 
 - [x] **T912** [developer] — Prometheus toggle test (V10) per
-  [Design → Q4](../features/live-cockpit-unified.md#q4--config-sourcing):
+  [Design → Q4](feature.md#q4--config-sourcing):
   - **Honest tick — Wave 3 developer (2026-05-01)**:
     - file:line — `crates/agent/tests/prometheus_toggle_test.rs:1-180`
       (new integration test file with three subtests:

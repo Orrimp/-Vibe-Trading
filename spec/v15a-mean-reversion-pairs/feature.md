@@ -21,7 +21,7 @@ aggregated trades". On top of that the v1 architect's Q4 resolution
 ([architecture.md → v1 Q4 — multi-venue: single-venue (Binance) for v1](../architecture.md#v1-q4--multi-venue-single-venue-binance-for-v1))
 parks Coinbase + Kraken at v1.5, and the v1 closeout deferred T612
 (multi-symbol live `BinanceFeed`) to v1.5 as well
-([v1-cross-sectional-momentum.md → T612 status](v1-cross-sectional-momentum.md#t612-status)).
+([v1-cross-sectional-momentum.md → T612 status](../v1-cross-sectional-momentum/feature.md#t612-status)).
 
 **Scope decision: Option B — split.** This brief (`v15a`) covers the
 **mean-reversion pairs strategy on the existing Binance USDT universe
@@ -94,7 +94,7 @@ Numbered, testable, derived from
 [product.md → Universe & data fidelity ladder](../product.md#universe--data-fidelity-ladder),
 [architecture.md → v1 Q1–Q6 resolutions](../architecture.md#v1--cross-sectional-momentum-resolutions-q1q6--confirmed-2026-04-29),
 and the v1 ship state in
-[v1-cross-sectional-momentum.md → Implementation — v1 backend](v1-cross-sectional-momentum.md#implementation--v1-backend).
+[v1-cross-sectional-momentum.md → Implementation — v1 backend](../v1-cross-sectional-momentum/feature.md#implementation--v1-backend).
 Each ends with a one-line **acceptance** the tester can verify. All
 requirements preserve the v0 `Strategy` trait shape (no trait changes)
 and the v0.5 / v1 audit / broadcast / strategies-panel surfaces (no
@@ -190,7 +190,7 @@ schema changes).
 - **R3.1** Per-bar, per-pair **spread**:
   `spread(p, t) = decimal_ln(close_a[t]) - β · decimal_ln(close_b[t])`
   using the v1
-  [`features::math::decimal_ln`](v1-cross-sectional-momentum.md#r3--momentum-score)
+  [`features::math::decimal_ln`](../v1-cross-sectional-momentum/feature.md#r3--momentum-score)
   shipped at v1 R3.5. **No new math primitives needed** — `decimal_ln`
   + `decimal_sqrt` cover everything.
 - **R3.2** Per-bar, per-pair **rolling z-score** over a configurable
@@ -297,7 +297,7 @@ schema changes).
   the v1 `risk.cross_sectional.exposure_cap` total of `0.50` would
   be too tight, so v1.5a introduces (or extends) a **per-strategy
   portfolio cap** read from the existing
-  [`RiskLimits.portfolio_exposure_cap`](v1-cross-sectional-momentum.md#r5--position-sizing)
+  [`RiskLimits.portfolio_exposure_cap`](../v1-cross-sectional-momentum/feature.md#r5--position-sizing)
   (added in v1 R5.5). Default for v1.5a: `portfolio_exposure_cap = 0.75`.
   Architect's call: same `RiskLimits` field reused, or a
   pair-specific sibling? Analyst preference: **reuse the v1 field**
@@ -313,7 +313,7 @@ schema changes).
   populates the audit trail v2's perp executor will consume, without
   any v1.5a money-side change.
 - **R5.4** **Vector-order semantics:** v1.5a reuses the v1
-  [`risk::size_portfolio_target`](v1-cross-sectional-momentum.md#vector-order-sizer-r5)
+  [`risk::size_portfolio_target`](../v1-cross-sectional-momentum/feature.md#vector-order-sizer-r5)
   vector-order sizer. The strategy emits a `Vec<ProposedOrder>` on
   any rebalance bar (entry / exit / stop), and the risk gate
   validates the portfolio exposure cap atomically (R5.2). Either the
@@ -350,7 +350,7 @@ schema changes).
   the pair (insertion order, **not** sorted — `(BTC, ETH)` and
   `(ETH, BTC)` are distinct because the `a` leg is traded). Lives
   alongside the v1
-  [`pnl_by_symbol`](v1-cross-sectional-momentum.md#r8--per-symbol-pl-attribution)
+  [`pnl_by_symbol`](../v1-cross-sectional-momentum/feature.md#r8--per-symbol-pl-attribution)
   in `crates/audit/src/query.rs`. Returns one row per pair with
   non-zero realized P&L in the window, sorted by `PairKey`
   alphabetical-on-`a`-then-`b`.
@@ -477,7 +477,7 @@ schema changes).
   - `pairs-2024-h1-zscore-mr` — out-of-sample on H1 2024.
 - **R8.2** Same Binance USDT data source as v1 — uses the v1
   multi-symbol replay (`ReplayFeed::merge_symbols`,
-  [v1 design — multi-symbol bar interleave](v1-cross-sectional-momentum.md#multi-symbol-bar-interleave-r2-r12))
+  [v1 design — multi-symbol bar interleave](../v1-cross-sectional-momentum/feature.md#multi-symbol-bar-interleave-r2-r12))
   with the union of pair legs as the universe. For the default
   3-pair list, the universe is
   `{BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT}` (4 distinct symbols).
@@ -507,7 +507,7 @@ schema changes).
   `research → paper` rule (Sharpe > 1.0 OOS).
 - **R8.5** **Backtest report writer** is extended to surface a
   per-pair metrics section (mirrors v1's per-symbol section per
-  [v1 R9.3](v1-cross-sectional-momentum.md#r9--multi-symbol-backtest-harness)):
+  [v1 R9.3](../v1-cross-sectional-momentum/feature.md#r9--multi-symbol-backtest-harness)):
   per-pair total return, trade count, hit rate, avg trade P&L,
   contribution to total Sharpe, average holding minutes, max
   consecutive losses. Format matches the existing report template.
@@ -721,7 +721,7 @@ schema, new audit surfaces, and test strategy. All decisions anchor
 to [architecture.md → v1.5a mean-reversion pairs resolutions
 (Q1–Q10)](../architecture.md#v15a--mean-reversion-pairs-resolutions-q1q10--confirmed-2026-04-30)
 and the v1 Design section in
-[v1-cross-sectional-momentum.md → Design](v1-cross-sectional-momentum.md#design).
+[v1-cross-sectional-momentum.md → Design](../v1-cross-sectional-momentum/feature.md#design).
 This section is **strategy + spread/z-score primitives + per-pair
 P&L attribution + observation-only short signal**; v0 / v0.5 / v1
 crate surfaces stay untouched except for additive extensions.

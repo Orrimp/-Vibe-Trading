@@ -27,7 +27,7 @@ of XRP.
 
 ## What changed
 
-- **R1 — Charts -> Lab + default-route flip.** `crates/ui/src/screens/charts.rs`
+- **R1 — Charts -> Lab + default-route flip.** `crates/ui/src/screens/lab.rs`
   renamed to `lab.rs`; `Cockpit::default()` returns `Screen::Lab`;
   sidebar lists `Lab / Live / Compare / Strategies / Memory / Models /
   Trail / Settings` per the Phase A IA; the six legacy `Screen::*`

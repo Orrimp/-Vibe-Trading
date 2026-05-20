@@ -192,7 +192,7 @@ Scope:
 badges may need band-name reconcile (Phase 1 Q8); colour mapping
 stays compatible.
 
-**Open questions:** ~9 (see [`lumen-phase-1-foundation.md`](lumen-phase-1-foundation.md)).
+**Open questions:** ~9 (see [`lumen-phase-1-foundation.md`](../lumen-design-adoption/phase-1-foundation/feature.md)).
 
 ### Phase 2 — Shell IA + Charts (sidebar nav + Home/Debug/Charts screens)
 
@@ -716,7 +716,7 @@ named in T1504 (kill trigger, kill confirm, modal close); ACCENT
 border-shift (`BORDER_2 → ACCENT`, 1 px) on the kill confirm input
 when focused. Documented in `crates/ui/src/widgets/kill.rs`
 module-level doc + the T1504/T1506 honest-tick rows in
-[tasks/lumen-phase-1-foundation.md](../tasks/lumen-phase-1-foundation.md).
+[tasks/lumen-phase-1-foundation.md](phase-1-foundation/tasks.md).
 
 **Upgrade triggers** (any one promotes the follow-up brief):
 
@@ -754,7 +754,7 @@ hover-state ring + ACCENT input border-shift continue as the
 shipped approximation. Next re-evaluation: **Phase 3 (Detail
 screens) analyst kickoff**, post Phase 2 ship. Resolved as Phase 2
 Q11 in
-[`features/lumen-phase-2-shell-ia-charts.md`](lumen-phase-2-shell-ia-charts.md).
+[`features/lumen-phase-2-shell-ia-charts.md`](../lumen-design-adoption/phase-2-shell-ia-charts/feature.md).
 
 **2026-05-05 design-pass verification (Phase 3 architect).** Re-
 verified [`crates/ui/Cargo.toml:52`](../../crates/ui/Cargo.toml)
@@ -1120,20 +1120,20 @@ ship):
 
 - **`lumen-phase-2-shell-ia-charts`** — promotes next (Phase 1
   shipped). Status: queued.
-  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](lumen-phase-2-shell-ia-charts.md)
+  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](../lumen-design-adoption/phase-2-shell-ia-charts/feature.md)
 - **`lumen-phase-3-detail-screens`** — promotes on Phase 2 ship.
   Status: queued.
-  [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](lumen-phase-3-detail-screens.md)
+  [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](../lumen-design-adoption/phase-3-detail-screens/feature.md)
 - **`lumen-phase-4-backtest-panel`** — promotes on Phase 3 ship.
   Status: queued. (Was originally Phase 2.)
-  [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](lumen-phase-4-backtest-panel.md)
+  [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](../lumen-design-adoption/phase-4-backtest-panel/feature.md)
 - **`lumen-phase-5-humancontrol-agentfeed`** — promotes on Phase 4
   ship. Status: queued. (Was originally Phase 3.)
-  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](lumen-phase-5-humancontrol-agentfeed.md)
+  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](../lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md)
 - **`lumen-phase-6-assistant-slot`** — `_reserved_`, linked to v2
   LLM. No analyst spawn until v2 LLM is approved. (Was originally
   Phase 4.)
-  [`spec/lumen-design-adoption/phase-6-assistant-slot/feature.md`](lumen-phase-6-assistant-slot.md)
+  [`spec/lumen-design-adoption/phase-6-assistant-slot/feature.md`](../lumen-design-adoption/phase-6-assistant-slot/feature.md)
 
 ### Recent (shipped)
 
@@ -1258,7 +1258,7 @@ file does not commit a path until it is taken.
   (2026-05-03). Operator-locked constraints documented:
   no brand adoption, no voice rewrite, sequential ordering,
   Phase 4 forward-compat only. Phase 1 brief at
-  [`lumen-phase-1-foundation.md`](lumen-phase-1-foundation.md);
+  [`lumen-phase-1-foundation.md`](../lumen-design-adoption/phase-1-foundation/feature.md);
   Phases 2 / 3 / 4 are queued / queued / reserved.
   HANDOFF → architect (Phase 1 first; master roadmap for
   orientation).

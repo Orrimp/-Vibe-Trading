@@ -29,7 +29,7 @@ this pair AND this date range, and see on the chart how successful the
 selection is" — see [`product.md` § Differentiator](../product.md#differentiator)
 and the 2026-05-17 operator critique captured in
 [`ui-rethink-2026-05-17`](../dev-notes/ui-rethink-2026-05-17.md). The
-current `Charts` screen (`crates/ui/src/screens/charts.rs`, 597 LOC) is
+current `Charts` screen (`crates/ui/src/screens/lab.rs`, 597 LOC) is
 the only operator-aligned working surface in the cockpit, but it is
 strategy-blind: the chart shows price + buy/sell markers + window-
 volume tiles but cannot answer "how much capital did I have before /
@@ -59,7 +59,7 @@ in the dev-note as Phase B/D backend prep and explicitly deferred.
 
 ### R1 — Lab screen replaces Charts as the default route
 
-- **R1.1** `crates/ui/src/screens/charts.rs` → `crates/ui/src/screens/lab.rs`
+- **R1.1** `crates/ui/src/screens/lab.rs` → `crates/ui/src/screens/lab.rs`
   (rename + module move; `Charts` screen variant removed from
   `state::Screen`; new variant `Lab` added; the in-place rename
   follows the dev-note §4 "Keep — Refactored" disposition).

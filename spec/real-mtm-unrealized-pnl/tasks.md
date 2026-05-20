@@ -8,14 +8,14 @@ updated: 2026-05-02
 # Tasks — Real mark-to-market unrealized P&L
 
 Ordered, testable task list derived from
-[spec/real-mtm-unrealized-pnl/feature.md → Design](../features/real-mtm-unrealized-pnl.md#design)
+[spec/real-mtm-unrealized-pnl/feature.md → Design](feature.md#design)
 and the eight architect resolutions (Q1–Q8) + R10 deferral recorded
 in the same Design section. Cross-references to the analyst's R/V
 items use the format `Rn` / `Vn`; cross-references to the
 architect's open questions use `Qn`.
 
-T8xx is taken by [operator-success-reports](operator-success-reports.md);
-T9xx is taken by [live-cockpit-unified](live-cockpit-unified.md);
+T8xx is taken by [operator-success-reports](../operator-success-reports/feature.md);
+T9xx is taken by [live-cockpit-unified](../live-cockpit-unified/feature.md);
 this feature uses **T1001–T1008**.
 
 Owner tags:
@@ -75,7 +75,7 @@ T8xx, live-cockpit-unified T9xx namespaces stay intact.
 ## Week 1 — types, reader, orchestrator, fixture
 
 - [x] **T1001** [developer] — `trading_core::OpenPosition` struct
-  per [Design → Q2](../features/real-mtm-unrealized-pnl.md#q2--openposition-struct-fields-and-location):
+  per [Design → Q2](feature.md#q2--openposition-struct-fields-and-location):
   - New module `crates/core/src/position.rs` containing
     `pub struct OpenPosition { symbol: Symbol, qty: Decimal,
     avg_cost_basis: Money<Usdt>, opened_at: Timestamp,
@@ -122,7 +122,7 @@ T8xx, live-cockpit-unified T9xx namespaces stay intact.
 
 - [x] **T1002** [developer] — `audit::query::open_positions_at`
   reader per
-  [Design → Q1, Q3, Q7, Q8](../features/real-mtm-unrealized-pnl.md#q1--reader-signature-shape):
+  [Design → Q1, Q3, Q7, Q8](feature.md#q1--reader-signature-shape):
   - New `pub async fn open_positions_at(ledger: &Ledger, ts:
     Timestamp) -> Result<Vec<OpenPosition>, LedgerError>` appended
     to `crates/audit/src/query.rs`.
@@ -138,12 +138,12 @@ T8xx, live-cockpit-unified T9xx namespaces stay intact.
   - Per-`(symbol, strategy_id)` `BTreeMap<(Symbol,
     Option<StrategyId>), (running_qty, running_notional,
     first_buy_ts)>` accumulator. Per-fill update per
-    [Design → Q7](../features/real-mtm-unrealized-pnl.md#q7--cost-basis-weighted-average-with-proportional-release).
+    [Design → Q7](feature.md#q7--cost-basis-weighted-average-with-proportional-release).
   - End-of-scan: emit `OpenPosition` for each group with
     `running_qty > 0`. Net-zero groups skipped. `running_qty < 0`
     raises `LedgerError::Database("open_positions_at:
     net-negative qty for group …")` per
-    [Q8](../features/real-mtm-unrealized-pnl.md#q8--long-only-at-v1-short--malformed-ledger-error).
+    [Q8](feature.md#q8--long-only-at-v1-short--malformed-ledger-error).
   - Sort the emitted Vec by `(symbol ASC, strategy_id ASC, None
     last)` for determinism (R6).
   - **No new SQL index** (Q3). If V8 fails, follow-up
@@ -196,7 +196,7 @@ T8xx, live-cockpit-unified T9xx namespaces stay intact.
 
 - [x] **T1003** [developer] — Orchestrator integration in
   `crates/reports/src/lib.rs::generate(...)` per
-  [Design → Orchestrator integration](../features/real-mtm-unrealized-pnl.md#orchestrator-integration--the-exact-diff):
+  [Design → Orchestrator integration](feature.md#orchestrator-integration--the-exact-diff):
   - Replace the hardcoded `let unrealized: Decimal = Decimal::ZERO;`
     block (lib.rs:135–150) with the open-positions loop documented
     in Design § Orchestrator integration.
@@ -320,7 +320,7 @@ T8xx, live-cockpit-unified T9xx namespaces stay intact.
 
 - [x] **T1004** [developer] — Fixture
   `build_ledger_with_open_positions_7d.rs` per
-  [Design → Q5](../features/real-mtm-unrealized-pnl.md#q5--fixture-choice-add-a-third-test-only-non-anchored):
+  [Design → Q5](feature.md#q5--fixture-choice-add-a-third-test-only-non-anchored):
   - New file
     `crates/reports/tests/fixtures/build_ledger_with_open_positions_7d.rs`.
   - Constants mirror `build_ledger_7d.rs`: `FIXTURE_SEED =
@@ -904,7 +904,7 @@ T8xx, live-cockpit-unified T9xx namespaces stay intact.
   The report's verification matrix MUST cover all 8 V-items
   + 11/11 anchor gate + the 5 operator-success-reports
   invariants from
-  [Design → Operator-success-reports invariants](../features/real-mtm-unrealized-pnl.md#operator-success-reports-invariants-that-must-hold):
+  [Design → Operator-success-reports invariants](feature.md#operator-success-reports-invariants-that-must-hold):
 
   | Gate | Test |
   |------|------|

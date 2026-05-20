@@ -208,7 +208,7 @@ match what the iced layout system is allocating. Two candidate
 hypotheses:
 
 1. **Padding leak.** The Charts screen at
-   [`crates/ui/src/screens/charts.rs:188-235`](../../crates/ui/src/screens/charts.rs)
+   [`crates/ui/src/screens/lab.rs:188-235`](../../crates/ui/src/screens/lab.rs)
    uses `.padding(space::L as u16)` (16 px) and `.spacing(space::M)`
    (12 px) on the outer `Column`. The chart-body `Container::new(
    chart_body).width(Length::Fill).height(Length::Fill)` then
@@ -480,7 +480,7 @@ stays green:
   on the left (or right) reshapes the chart canvas's horizontal
   budget by `AXIS_GUTTER_PX` — architect re-derives the
   `chart_canvas_height_for_body` helper in
-  [`crates/ui/src/screens/charts.rs:78-88`](../../crates/ui/src/screens/charts.rs)
+  [`crates/ui/src/screens/lab.rs:78-88`](../../crates/ui/src/screens/lab.rs)
   to account for the new gutter. Existing test
   `chart_canvas_height_grows_with_body_height` either updates or
   splits into a width-and-height pair.
@@ -1440,7 +1440,7 @@ the audit trail.
 | `crates/ui/src/widgets/drawdown_band.rs`                 | Same as equity_curve.                                                  | unit + snapshot             |
 | `crates/ui/src/widgets/sparkline.rs`                     | **No change.**  Out of viewer-parity scope (Q7).                       | regression-stays-green only |
 | `crates/ui/src/widgets/chart_legend.rs` *(new)*          | Standalone draw helper for the 5-entry legend card.  Re-uses `chart::draw_triangle` at `text::MICRO` glyph size.  Exposed as a free function `draw_legend(frame, inner, mode)` — single canvas pass, no widget tree. | unit + snapshot             |
-| `crates/ui/src/screens/charts.rs`                        | No structural change; the chart canvas's allocation arithmetic stays.  Time-axis height is consumed inside the canvas, not the Column — `chart_canvas_height_for_body` stays correct. | existing unit                |
+| `crates/ui/src/screens/lab.rs`                        | No structural change; the chart canvas's allocation arithmetic stays.  Time-axis height is consumed inside the canvas, not the Column — `chart_canvas_height_for_body` stays correct. | existing unit                |
 | `crates/ui/src/bin/viewer.rs`                            | No structural change — `equity_curve::view` / `drawdown_band::view` upgrade in place. | existing snapshot           |
 | `crates/ui/src/window_icon.rs`                           | `standard_window_settings()` — `size = Size::new(1920.0, 1080.0)` (was `MIN_*`).  `min_size` unchanged. | unit                        |
 | `crates/ui/src/theme.rs`                                 | New tokens in `theme::layout` (below).                                  | unit                        |

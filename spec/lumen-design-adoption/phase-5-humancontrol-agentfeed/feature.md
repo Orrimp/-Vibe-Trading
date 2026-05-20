@@ -9,7 +9,7 @@ version: 2.4.0
 # Lumen design adoption — Phase 5: HumanControl + AgentFeed rename
 
 > **Phase 5 of 6** in the
-> [`lumen-design-adoption`](lumen-design-adoption.md) initiative. Master
+> [`lumen-design-adoption`](../feature.md) initiative. Master
 > roadmap is the orientation; this brief is the **shippable feature**.
 > Operator-locked constraints (no brand, no voice rewrite, sequential
 > phases, Phase 6 reserved) are documented in the master file and apply
@@ -41,7 +41,7 @@ Phase 3 detail screens over read-only backend data; Phase 4 offline
 viewer + read-only equity query). The kill switch is the only
 operator-write surface in the shipped tree and predates this
 initiative
-([`crates/ui/src/widgets/kill.rs:140–155`](../../crates/ui/src/widgets/kill.rs)).
+([`crates/ui/src/widgets/kill.rs:140–155`](../../../crates/ui/src/widgets/kill.rs)).
 
 **Phase 5 introduces three new operator-write paths:**
 
@@ -51,24 +51,24 @@ initiative
    Phase 5 ships only the UI as a runtime flag on `Cockpit`. **Not
    destructive** — gates future trades, doesn't reverse past ones;
    no typed-confirm needed
-   ([`HumanControl.jsx:11–32`](../design/project/ui_kits/desktop/HumanControl.jsx)).
+   ([`HumanControl.jsx:11–32`](../../design/project/ui_kits/desktop/HumanControl.jsx)).
 2. **Pause-strategy** — operator pauses a single strategy without
    halting the agent. Per-strategy button. **Bounded destructive**
    (a paused strategy skips signals it would otherwise take); but
    reversible — the principles doc's "undo where possible" rule
-   ([`spec/ui-design-principles.md:275–278`](../ui-design-principles.md))
+   ([`spec/ui-design-principles.md:275–278`](../../ui-design-principles.md))
    recommends single-click pause + single-click resume.
 3. **Override-risk-veto** — operator overrides a risk-engine veto.
    **Maximally destructive** — the veto exists precisely to stop
    the order. The principles doc reserves `OVERRIDE` for this
    surface
-   ([`spec/ui-design-principles.md:268`](../ui-design-principles.md)).
+   ([`spec/ui-design-principles.md:268`](../../ui-design-principles.md)).
 
 ### Plus the AgentFeed rename — vocabulary alignment
 
 [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs)
 (147 lines) renders the live fills panel. Lumen's
-[`AgentFeed.jsx`](../design/project/ui_kits/desktop/AgentFeed.jsx)
+[`AgentFeed.jsx`](../../design/project/ui_kits/desktop/AgentFeed.jsx)
 is the operator vocabulary alignment for the same surface. **Visual
 upgrade is deferred** — Phase 5 is module-level rename only; the
 per-event sparkline / agent column / event-kind icons stay
@@ -78,7 +78,7 @@ out-of-scope so the rename ripple is isolated and reviewable.
 
 The master roadmap's TD-1 row (true keyboard-focus ring) has been
 restated four phases in a row. Verified at this kickoff:
-[`crates/ui/Cargo.toml:69`](../../crates/ui/Cargo.toml) still pins
+[`crates/ui/Cargo.toml:69`](../../../crates/ui/Cargo.toml) still pins
 `iced = "=0.14.0"` (line was 52 in pre-Phase-4 architect notes; the
 viewer-bin block shifted it to 69, pin unchanged). Neither named
 upgrade trigger has fired.
@@ -115,7 +115,7 @@ restatement.
 - **Two new audit writers** (Q2 / Q3) — `strategy_paused` and
   `risk_veto_overridden` event_kinds, sibling of the existing
   `kill_switch_tripped` pattern
-  ([`crates/audit/src/journal.rs:316–407`](../../crates/audit/src/journal.rs)).
+  ([`crates/audit/src/journal.rs:316–407`](../../../crates/audit/src/journal.rs)).
   Schema unchanged (`strategy_events.kind` is `TEXT`).
 - **Module rename** — `tape.rs` → `agent_feed.rs`; mod-decl + import
   ripple + the 9 `tape_*.snap` baseline filename renames (Q6).
@@ -132,7 +132,7 @@ restatement.
   agent-side veto-emit is a Phase-N+ task (Q13).
 - **No new audit migration.** The two new writers extend the
   `kind` enum at the application layer; the column is `TEXT`
-  ([`crates/audit/migrations/002_strategy_events.sql`](../../crates/audit/migrations/002_strategy_events.sql)).
+  ([`crates/audit/migrations/002_strategy_events.sql`](../../../crates/audit/migrations/002_strategy_events.sql)).
 - **No anchor budget.** Audit writer additions are additive; no
   committed report body re-renders.
 - **No `cockpit_live` chrome change** beyond HumanControl
@@ -144,7 +144,7 @@ Phase 4 shipped 2026-05-06 / approved 2026-05-06. Phase 5 inherits
 Phase 1's typed-confirm modal pattern + kill widget; Phase 2's
 sidebar (HumanControl placement Q1); Phase 3's `RiskTelemetry`
 channel + thread-isolation rule
-([`crates/agent/src/runtime.rs:1023–1090`](../../crates/agent/src/runtime.rs))
+([`crates/agent/src/runtime.rs:1023–1090`](../../../crates/agent/src/runtime.rs))
 for the new pause/override bus channels; Phase 4's
 `EquitySeries` if a HumanControl mini-card needs it. Two write
 surfaces (pause + override) share audit-writer plumbing — landing
@@ -182,9 +182,9 @@ The full R-item list is below. High-level grouping:
 + new operator-write surfaces. The two new audit writers
 (`strategy_paused`, `risk_veto_overridden`) are **additive** —
 they extend the `strategy_events.kind` enum
-([`crates/core/src/strategy_events.rs:99–113`](../../crates/core/src/strategy_events.rs))
+([`crates/core/src/strategy_events.rs:99–113`](../../../crates/core/src/strategy_events.rs))
 with two new PascalCase variants and add two new sibling functions
-in [`crates/audit/src/journal.rs`](../../crates/audit/src/journal.rs)
+in [`crates/audit/src/journal.rs`](../../../crates/audit/src/journal.rs)
 that follow the `kill_switch_tripped` pattern verbatim. No existing
 row's body is altered; no committed report body re-renders; no
 backtest scenario is affected. The 11/11 backtest body-SHA-256
@@ -248,23 +248,23 @@ Phase 1 Q2 / Phase 2 V11 / Phase 3 V12 / Phase 4 V12 precedent.
 ## Requirements
 
 Numbered, testable, derived from
-[`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../design/project/ui_kits/desktop/HumanControl.jsx),
-[`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../design/project/ui_kits/desktop/AgentFeed.jsx),
+[`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../../design/project/ui_kits/desktop/HumanControl.jsx),
+[`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../../design/project/ui_kits/desktop/AgentFeed.jsx),
 the
-[Phase 1 typed-confirm precedent](lumen-phase-1-foundation.md),
+[Phase 1 typed-confirm precedent](../phase-1-foundation/feature.md),
 the
-[Phase 3 RiskTelemetry channel](lumen-phase-3-detail-screens.md),
+[Phase 3 RiskTelemetry channel](../phase-3-detail-screens/feature.md),
 the existing
-[`crates/ui/src/widgets/kill.rs`](../../crates/ui/src/widgets/kill.rs),
+[`crates/ui/src/widgets/kill.rs`](../../../crates/ui/src/widgets/kill.rs),
 [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs),
-[`crates/ui/src/state.rs`](../../crates/ui/src/state.rs),
-[`crates/audit/src/journal.rs`](../../crates/audit/src/journal.rs),
-[`crates/core/src/strategy_events.rs`](../../crates/core/src/strategy_events.rs),
+[`crates/ui/src/state.rs`](../../../crates/ui/src/state.rs),
+[`crates/audit/src/journal.rs`](../../../crates/audit/src/journal.rs),
+[`crates/core/src/strategy_events.rs`](../../../crates/core/src/strategy_events.rs),
 and
-[`spec/architecture.md` § Frontend](../architecture.md). Each ends
+[`spec/architecture.md` § Frontend](../../architecture.md). Each ends
 with a one-line **acceptance** the tester can verify. Operator-locked
 constraints inherited from the
-[master roadmap](lumen-design-adoption.md) (no brand, no voice
+[master roadmap](../feature.md) (no brand, no voice
 rewrite, sequential phases, Q11–Q14) apply throughout.
 
 ### R1 — HumanControl panel widget scaffold
@@ -275,7 +275,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   (R9 mode + R3 limits + R2 kill).
 - **R1.2** Panel title `"You're in control"` and sub-title
   `"Human-in-the-loop"` per
-  [`HumanControl.jsx:9`](../design/project/ui_kits/desktop/HumanControl.jsx)
+  [`HumanControl.jsx:9`](../../design/project/ui_kits/desktop/HumanControl.jsx)
   via new `PANEL_HUMAN_CONTROL_TITLE` / `PANEL_HUMAN_CONTROL_META`
   constants.
 - **R1.3** Placement TBD at Q1; analyst recommends 7th sidebar
@@ -292,14 +292,14 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 
 - **R2.1** Phase 1 kill button moves into HumanControl as the
   bottom action per
-  [`HumanControl.jsx:49–51`](../design/project/ui_kits/desktop/HumanControl.jsx)
+  [`HumanControl.jsx:49–51`](../../design/project/ui_kits/desktop/HumanControl.jsx)
   via direct `widgets::kill::view(model)` call — no flow
   duplication.
 - **R2.2** Debug-screen kill placement preserved if Q1 picks
   sidebar-entry. If Q1 picks Home-card or footer, Debug-screen
   kill becomes redundant; architect resolves at Q1.
 - **R2.3** Kill widget public surface unchanged
-  ([`crates/ui/src/widgets/kill.rs:52, 227`](../../crates/ui/src/widgets/kill.rs)).
+  ([`crates/ui/src/widgets/kill.rs:52, 227`](../../../crates/ui/src/widgets/kill.rs)).
 - **R2.4** `KILL_BUTTON_LABEL` copy preserved per Q12 / Master
   Constraint 2 (no voice rewrite). Lumen `"Halt all agents"`
   cited but not adopted.
@@ -309,16 +309,16 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 ### R3 — Mirrored limits and used-today P&L
 
 - **R3.1** Three label-value rows above the kill button per
-  [`HumanControl.jsx:34–47`](../design/project/ui_kits/desktop/HumanControl.jsx):
+  [`HumanControl.jsx:34–47`](../../design/project/ui_kits/desktop/HumanControl.jsx):
   `Daily loss limit` / `Max position` / `Used today`.
 - **R3.2** Daily-loss reads `risk_state.daily_loss_cap_pct`; max
   position derives from `risk_state.per_symbol_caps`; used-today
   reads from `Cockpit::pnl`. `RiskState` is the Phase 3
   `PanelState<RiskState>` mirror
-  ([`crates/ui/src/state.rs:563`](../../crates/ui/src/state.rs)).
+  ([`crates/ui/src/state.rs:563`](../../../crates/ui/src/state.rs)).
 - **R3.3** Used-today coloured `UP_500` / `DOWN_500` by sign per
   P&L-colouring rule
-  ([`spec/ui-design-principles.md:344–357`](../ui-design-principles.md)).
+  ([`spec/ui-design-principles.md:344–357`](../../ui-design-principles.md)).
 - **R3.4** Loading → three muted `—` dashes; Error →
   `frame::muted_body(strings::HUMAN_CONTROL_LIMITS_UNAVAILABLE)`.
 - **R3.5** New `strings::*` constants are net-new copy, not edits
@@ -337,13 +337,13 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 - **R4.3** Click emits `Message::StrategyPauseToggled(StrategyId)`;
   pure `update` flips `Cockpit::paused_strategies:
   HashSet<StrategyId>` set membership (sibling of `tape_paused`
-  at [`state.rs:455`](../../crates/ui/src/state.rs)).
+  at [`state.rs:455`](../../../crates/ui/src/state.rs)).
 - **R4.4** Single-click both directions (Q8). No typed-confirm.
 - **R4.5** Home → Strategies-summary panel reuses the same
   per-row button via the shared widget helper.
 - **R4.6** Live mode adds bus channel `pause_strategy_tx:
   broadcast::Sender<(StrategyId, bool)>` (sibling of kill-switch
-  closure pattern, [`architecture.md:319–324`](../architecture.md));
+  closure pattern, [`architecture.md:319–324`](../../architecture.md));
   agent runtime's registry subscribes and skips `on_bar` /
   `on_tick` for paused strategies. Fixtures mode is UI-only.
 - **Acceptance:** click toggles label both directions; baselines
@@ -353,10 +353,10 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 
 - **R5.1** New `audit::journal::strategy_paused(ledger,
   strategy_id, paused: bool, operator)` in
-  [`crates/audit/src/journal.rs`](../../crates/audit/src/journal.rs).
+  [`crates/audit/src/journal.rs`](../../../crates/audit/src/journal.rs).
   Sibling of `kill_switch_tripped` (line 316–407).
 - **R5.2** New `StrategyEventKind::StrategyPaused` variant at
-  [`strategy_events.rs:99`](../../crates/core/src/strategy_events.rs);
+  [`strategy_events.rs:99`](../../../crates/core/src/strategy_events.rs);
   no payload; pause direction encodes in `error_summary`
   (`"paused"` / `"resumed"`).
 - **R5.3** Atomic dual-write — same SQL shape as
@@ -364,7 +364,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   txn). Memo description: `"strategy:StrategyPaused:<id>:<paused|resumed>"`.
 - **R5.4** No migration — `strategy_events.kind` is already
   `TEXT`
-  ([002_strategy_events.sql](../../crates/audit/migrations/002_strategy_events.sql)).
+  ([002_strategy_events.sql](../../../crates/audit/migrations/002_strategy_events.sql)).
 - **R5.5** Live cockpit-side wiring — bus channel from R4.6
   drives a separate audit-write task on the agent runtime
   thread; fixtures mode skips. Pure `update` preserved.
@@ -403,7 +403,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   blocked signal.
 - **R7.4** Click opens typed-confirm modal with `"OVERRIDE"`
   phrase per
-  [principles doc table](../ui-design-principles.md#confirm-destructive-actions).
+  [principles doc table](../../ui-design-principles.md#confirm-destructive-actions).
 - **R7.5** New widget `crates/ui/src/widgets/override_risk_veto.rs`
   reusing the kill-confirm visual contract (sunken input,
   mismatch hint, confirm-disabled-until-matched) — separate
@@ -418,7 +418,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   veto_id, strategy_id, reason, operator)`. Sibling of
   `kill_switch_tripped`.
 - **R8.2** New `StrategyEventKind::RiskVetoOverridden` variant
-  ([`strategy_events.rs`](../../crates/core/src/strategy_events.rs)).
+  ([`strategy_events.rs`](../../../crates/core/src/strategy_events.rs)).
 - **R8.3** Atomic dual-write per `kill_switch_tripped`. Memo
   desc: `"strategy:RiskVetoOverridden:<id>:<reason>"`;
   `error_code = "risk_veto_overridden"`; `error_summary` carries
@@ -438,14 +438,14 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   Auto }` in `core::views`; `Default = Observe` (Q4 — safest
   cold-start).
 - **R9.2** Three-option segmented control per
-  [`HumanControl.jsx:14–32`](../design/project/ui_kits/desktop/HumanControl.jsx);
+  [`HumanControl.jsx:14–32`](../../design/project/ui_kits/desktop/HumanControl.jsx);
   active mode highlighted via Phase 1 active-row pattern.
 - **R9.3** Click emits
   `Message::ExecutionModeSelected(ExecutionMode)`; pure `update`
   arm flips `Cockpit::execution_mode`.
 - **R9.4** Three new mode-hint constants
   (`EXECUTION_MODE_{OBSERVE,SUPERVISED,AUTO}_HINT`) per
-  [`HumanControl.jsx:27–31`](../design/project/ui_kits/desktop/HumanControl.jsx).
+  [`HumanControl.jsx:27–31`](../../design/project/ui_kits/desktop/HumanControl.jsx).
 - **R9.5** No typed-confirm — mode gates *future* trades only;
   not destructive in the typed-confirm sense (master roadmap
   operator-impact bound).
@@ -473,7 +473,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 - **R11.1** `git mv crates/ui/src/widgets/tape.rs
   crates/ui/src/widgets/agent_feed.rs`; module doc-comment
   retitles to "Live agent activity feed".
-- **R11.2** [`widgets/mod.rs:28`](../../crates/ui/src/widgets/mod.rs)
+- **R11.2** [`widgets/mod.rs:28`](../../../crates/ui/src/widgets/mod.rs)
   `pub mod tape;` → `pub mod agent_feed;`.
 - **R11.3** Import-site ripple — `use crate::widgets::tape` →
   `agent_feed` across `state.rs`, `bin/cockpit.rs`,
@@ -484,7 +484,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   doesn't.
 - **R11.5** Strings — `PANEL_TAPE_TITLE` →
   `PANEL_AGENT_FEED_TITLE` (`"Agent activity"` per
-  [`AgentFeed.jsx:71`](../design/project/ui_kits/desktop/AgentFeed.jsx)).
+  [`AgentFeed.jsx:71`](../../design/project/ui_kits/desktop/AgentFeed.jsx)).
   Net-new constant; not a Master-Constraint-2 voice-rewrite
   edit.
 - **R11.6** No visual change beyond title copy.
@@ -497,7 +497,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   `agent_feed_*` (5 panel-states + 4 audit-modal variants) per
   Q6.
 - **R12.2** Consistency test globs `*.rs` under `src/widgets/`
-  ([`tests/consistency.rs:24–33`](../../crates/ui/tests/consistency.rs))
+  ([`tests/consistency.rs:24–33`](../../../crates/ui/tests/consistency.rs))
   — rename auto-picks up; no test-code update needed.
 - **R12.3** Title-string change (R11.5) is the only body-content
   diff; rest is filename-only.
@@ -606,7 +606,7 @@ Numbered, each with a precise test command + expected output.
   trading-core strategy_events::tests::pascal_case_for_new_variants`
   PASS — `StrategyPaused` / `RiskVetoOverridden` serialise
   per existing contract
-  ([`strategy_events.rs:120–135`](../../crates/core/src/strategy_events.rs)).
+  ([`strategy_events.rs:120–135`](../../../crates/core/src/strategy_events.rs)).
   (R5.2, R8.2.)
 - **V10 — TD-1 path verified.** Per Q5 ratification:
   - Path (a): `Cargo.toml` carries `iced = "=0.15.x"`;
@@ -628,7 +628,7 @@ Numbered, each with a precise test command + expected output.
   warnings` / `deny check` / `audit` all PASS. New widgets
   inherit lints; `ExecutionMode` derives `Debug + Clone +
   Copy + PartialEq + Eq` per `AgentMode`
-  ([`state.rs:89–96`](../../crates/ui/src/state.rs)).
+  ([`state.rs:89–96`](../../../crates/ui/src/state.rs)).
 - **V15 — `rust-build` PASS.** `cargo build -p ui --bins` /
   `audit` / `trading-core` all PASS.
 
@@ -700,7 +700,7 @@ Phase 2/3 IA (every surface is a sidebar entry); panel is too tall
 for footer (~6–8 rows); Home-card breaks the four-panel grid +
 hides kill behind a click. Lumen reference describes HumanControl
 as "always visible"
-([`HumanControl.jsx:2`](../design/project/ui_kits/desktop/HumanControl.jsx)).
+([`HumanControl.jsx:2`](../../design/project/ui_kits/desktop/HumanControl.jsx)).
 
 **Alternatives:** (b) Home-card — breaks grid; (c) footer — too
 tall for status-bar-adjacent slot.
@@ -713,12 +713,12 @@ writer?
 
 **Recommended: new audit writer.** Operator decisions belong in
 the ledger; sibling of `kill_switch_tripped`
-([`crates/audit/src/journal.rs:316–407`](../../crates/audit/src/journal.rs)).
+([`crates/audit/src/journal.rs:316–407`](../../../crates/audit/src/journal.rs)).
 Pause-resume timeline reconstructible from `strategy_events`.
 
 **Alternatives:** runtime-only — leaves no audit trail; violates
 "audit ledger is the canonical why" rule
-([`spec/ui-design-principles.md:282–284`](../ui-design-principles.md)).
+([`spec/ui-design-principles.md:282–284`](../../ui-design-principles.md)).
 
 ### Q3 — Override-risk-veto persistence
 
@@ -751,7 +751,7 @@ escape hatch / (c) final restatement with hard Phase 6 deadline?
 
 **Recommended:** Architect verifies iced version on disk at Q5
 ratification (current pin
-[`crates/ui/Cargo.toml:69`](../../crates/ui/Cargo.toml) is
+[`crates/ui/Cargo.toml:69`](../../../crates/ui/Cargo.toml) is
 `iced = "=0.14.0"`). **If iced 0.15+ has shipped**, commit to
 **(a)** — fold-in. **If not**, commit to **(b)** — custom-widget
 escape hatch. **(c) is analyst-rejected** — Phase 6 is gated on v2
@@ -779,7 +779,7 @@ mechanical.
 trimmed?
 
 **Recommended: full Lumen set per
-[`HumanControl.jsx:6–55`](../design/project/ui_kits/desktop/HumanControl.jsx).**
+[`HumanControl.jsx:6–55`](../../design/project/ui_kits/desktop/HumanControl.jsx).**
 All three limit fields read from existing `Cockpit::risk_state` +
 `Cockpit::pnl`; no new backend wiring needed.
 
@@ -794,7 +794,7 @@ strategy too, or single-click resume?
 **Recommended: single-click resume.** Pausing requires conscious
 action; resume returns to default state, principles-doc "undo
 where physically possible" case
-([`spec/ui-design-principles.md:275–278`](../ui-design-principles.md)).
+([`spec/ui-design-principles.md:275–278`](../../ui-design-principles.md)).
 Pause is bounded-destructive (skips future signals; doesn't
 reverse past decisions) so the typed-confirm gate is even less
 load-bearing on the pause side.
@@ -847,15 +847,15 @@ coupled visual work is overhead without value.
 ### Q12 — Kill button copy in HumanControl
 
 **Question:** R2.4 — adopt Lumen `"Halt all agents"`
-([`HumanControl.jsx:50`](../design/project/ui_kits/desktop/HumanControl.jsx))
+([`HumanControl.jsx:50`](../../design/project/ui_kits/desktop/HumanControl.jsx))
 or preserve shipped `"Stop trading"`
-([`crates/ui/src/strings.rs`](../../crates/ui/src/strings.rs)
+([`crates/ui/src/strings.rs`](../../../crates/ui/src/strings.rs)
 `KILL_BUTTON_LABEL`)?
 
 **Recommended: preserve `"Stop trading"`.** Master Constraint 2
 (no voice rewrite) + principles doc "exact phrase not negotiable
 mid-session"
-([`spec/ui-design-principles.md:391–393`](../ui-design-principles.md)).
+([`spec/ui-design-principles.md:391–393`](../../ui-design-principles.md)).
 
 **Alternatives:** adopt Lumen copy — rejected by Master
 Constraint 2.
@@ -885,7 +885,7 @@ override surface.
 
 **Recommended: preserve `Cockpit::tape` field name.** Field is
 referenced by every Phase 1–4 test fixture and the
-[`tape-row-audit-modal`](tape-row-audit-modal.md) modal-trigger
+[`tape-row-audit-modal`](../../tape-row-audit-modal/feature.md) modal-trigger
 import path; rename would ripple through ~100+ test sites for
 cosmetic value. Phase 5 is module rename, not state-shape rename.
 Mismatch documented in the widget's module doc-comment.
@@ -942,12 +942,12 @@ R-cluster-pointing summary; Open questions are replaced by
 the architect Q-items below; Acceptance criteria are extended
 to trace each bullet to its R-cluster. Master roadmap
 reference unchanged: see
-[`lumen-design-adoption.md` Phase 5 section](lumen-design-adoption.md).
+[`lumen-design-adoption.md` Phase 5 section](../feature.md).
 
 ## Cross-phase technical-debt — TD-1 keyboard focus ring
 
 **TD-1 status check at Phase 5 analyst kickoff (2026-05-06).**
-Verified [`crates/ui/Cargo.toml:69`](../../crates/ui/Cargo.toml)
+Verified [`crates/ui/Cargo.toml:69`](../../../crates/ui/Cargo.toml)
 still pins `iced = "=0.14.0"` (line number shifted 52 → 69 in
 Phase 4 when the viewer bin block landed; pin unchanged). Neither
 named upgrade trigger has fired.
@@ -1021,7 +1021,7 @@ the ergonomic gap regardless.
   T1906 / T1911 share HumanControl skeleton + focus-ring → T1907 /
   T1908 / T1910 share audit writers + focus-ring → narrow at T1913
   snapshot accept → T1914–T1916 → T_FINAL. Task list at
-  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/tasks.md`](../tasks/lumen-phase-5-humancontrol-agentfeed.md)
+  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/tasks.md`](tasks.md)
   with 16 T19xx tasks + tester `T_FINAL_LUMEN_PHASE_5` gate. Brief
   status `active`; owner bumped `analyst` → `architect`. HANDOFF →
   developer ‖ ui-designer (developer takes T1901–T1916 implementation;
@@ -1070,7 +1070,7 @@ _Architect-owned. Resolves Q1–Q15 — every recommendation lands as
 **ratified** unless flagged "Architect override". The analyst sections
 above are immutable; this section is the design contract the developer
 reads alongside the task list at
-[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/tasks.md`](../tasks/lumen-phase-5-humancontrol-agentfeed.md)._
+[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/tasks.md`](tasks.md)._
 
 ### Q-item resolutions
 
@@ -1088,7 +1088,7 @@ short and lean on "sibling of …" framing throughout.
 | Q   | Question                                              | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Ratifies        |
 |-----|-------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
 | Q1  | HumanControl panel placement                          | **(a) — 7th sidebar entry.** Ratified per analyst. Consistency with the Phase 2 / 3 IA (every cockpit surface is a sidebar entry) + Lumen's "always visible" framing. The Phase 2 R1.6 sidebar widget API is parameterised; absorbing a 7th entry is an additive `.entries.push(SidebarEntry { id: "control", … })` in the binary's sidebar build. Implication: the existing Debug-screen kill placement migrates into HumanControl as the bottom action (R2.1); Debug-screen kill row retires (one extra snapshot regenerates per R12.1's row 11 budget). Home-screen header card rejected (breaks the four-panel grid); footer rejected (panel is ~6–8 rows tall, exceeds status-bar-adjacent slot). | R1.3, R2.2      |
-| Q2  | Pause-strategy persistence                            | **New `audit::journal::strategy_paused` writer.** Ratified per analyst. Operator decisions belong in the ledger; sibling of `kill_switch_tripped` ([`crates/audit/src/journal.rs:316–407`](../../crates/audit/src/journal.rs)). Pause / resume timeline is reconstructible from `strategy_events` rows. Runtime-only rejected — leaves no audit trail; bisects the principles-doc "audit ledger is the canonical why" rule. Exact signature in the **Audit writer additions** sub-section below.                                                                                  | R5.1–R5.5       |
+| Q2  | Pause-strategy persistence                            | **New `audit::journal::strategy_paused` writer.** Ratified per analyst. Operator decisions belong in the ledger; sibling of `kill_switch_tripped` ([`crates/audit/src/journal.rs:316–407`](../../../crates/audit/src/journal.rs)). Pause / resume timeline is reconstructible from `strategy_events` rows. Runtime-only rejected — leaves no audit trail; bisects the principles-doc "audit ledger is the canonical why" rule. Exact signature in the **Audit writer additions** sub-section below.                                                                                  | R5.1–R5.5       |
 | Q3  | Override-risk-veto persistence                        | **New `audit::journal::risk_veto_overridden` writer.** Ratified per analyst. Compliance-bounded — overriding a risk veto is exactly the kind of decision regulators and the operator's future self look back on. Reason preserved verbatim in `error_summary`. Exact signature in **Audit writer additions** below. Runtime-only rejected — compliance-bounded.                                                                                                                                                                                                                  | R8.1–R8.5       |
 | Q4  | Execution-mode persistence                            | **Runtime-only for v1.** Ratified per analyst. Cold-start = `Observe` (safest default; v0–v4 are config-driven, so introducing a UI-write-to-disk surface for session ergonomics is out of bounds). No `config/agent.toml` write; no audit writer (mode is prospective, not a decision). `config/agent.toml` write rejected — bisects the "config-driven, no UI-write-to-disk" non-goal; corruption-on-crash risk.                                                                                                                                                              | R10.1–R10.4     |
 | Q5  | TD-1 resolution (load-bearing)                        | **Path (b) — custom-widget escape hatch.** Verified at this design pass: `crates/ui/Cargo.toml:69` reads `iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas"] }`. iced 0.15+ has not landed; neither `button::Status::Focused` nor `text_input::Style.shadow` is available. Path (a) fold-in is therefore not on the table this phase. Path (c) restate-with-deadline is **rejected**: Phase 6 is gated on v2 LLM (which may take quarters); a fifth restatement is operationally indefinite, and Phase 5 is exactly the moment the cost/benefit tightened (three new operator-write surfaces). The architect commits to **(b)** — see the **TD-1 resolution** sub-section for the concrete `crates/ui/src/widgets/focus_ring.rs` shape. | R13.1, R13.3, R13.5 |

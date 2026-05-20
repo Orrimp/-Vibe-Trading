@@ -415,7 +415,7 @@ OR compliance requirement.
 | 5 — HumanControl + AgentFeed | ✅ Shipped | 2026-05-07 | 2026-05-08 | [`test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md) |
 | 6 — Assistant slot | _Reserved_ | _gated on v2 LLM_ | — | — |
 
-Master roadmap at [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md).
+Master roadmap at [`spec/lumen-design-adoption/feature.md`](../feature.md).
 Feature briefs at `spec/features/lumen-phase-{1..6}-*.md` (all `status:
 shipped` except Phase 6 `status: reserved`).
 
@@ -446,7 +446,7 @@ The lumen-design-adoption initiative reaches a natural pause point at
    pipeline. Largest queued backend feature. When v2 LLM ships,
    Phase 6 (Assistant slot) unlocks.
 2. **Promote a different Active backlog item.** Current
-   [`spec/backlog.md`](../backlog.md) Active section is empty after
+   [`spec/backlog.md`](../../backlog.md) Active section is empty after
    the 2026-05-08 cleanup. Queue currently holds Reflection memory
    (v1.5a Q1 follow-up) and v2 LLM strategy as the genuinely-next
    non-Lumen non-Phase-6 candidates.

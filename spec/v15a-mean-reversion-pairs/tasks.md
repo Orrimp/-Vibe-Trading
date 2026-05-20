@@ -8,7 +8,7 @@ updated: 2026-04-29
 # Tasks — v1.5a Mean-Reversion on Z-Scored Pairs
 
 Ordered, testable task list derived from
-[spec/v15a-mean-reversion-pairs/feature.md → Design](../features/v15a-mean-reversion-pairs.md#design)
+[spec/v15a-mean-reversion-pairs/feature.md → Design](feature.md#design)
 and the ten architect resolutions (v1.5a Q1–Q10) locked in
 [spec/architecture.md → v1.5a mean-reversion pairs resolutions](../architecture.md#v15a--mean-reversion-pairs-resolutions-q1q10--confirmed-2026-04-30).
 
@@ -46,7 +46,7 @@ smaller than v1's.
 ## Week 1 — types, primitives, strategy core, audit
 
 - [x] **T701** [developer] — `trading_core` v1.5a type additions per
-  [Design → Pair types](../features/v15a-mean-reversion-pairs.md#pair-types-r1-r2):
+  [Design → Pair types](feature.md#pair-types-r1-r2):
   - `Pair`, `PairKey`, `PairMembership`, `PairError` in
     `crates/core/src/pair.rs`.
   - Three new `Signal` variants: `OpenPairLong`, `ClosePair`,
@@ -64,7 +64,7 @@ smaller than v1's.
   **[gate for ui-designer]** once merged, UI types are stable.
 
 - [x] **T702** [developer] — `features::pairs` module per
-  [Design → Spread + z-score primitives](../features/v15a-mean-reversion-pairs.md#spread--z-score-primitives-r3):
+  [Design → Spread + z-score primitives](feature.md#spread--z-score-primitives-r3):
   `spread(price_a, price_b, beta) -> Result<Decimal, PairScoreError>`
   and `rolling_zscore(history, n, vol_floor) -> Result<Decimal,
   PairScoreError>`. Reuses v1 `features::math::decimal_ln` /
@@ -80,7 +80,7 @@ smaller than v1's.
 
 - [x] **T703** [developer] — Per-pair state machine
   `strategy::pairs::pair_state` per
-  [Design → Per-pair state machine](../features/v15a-mean-reversion-pairs.md#meanreversionpairsstrategy-r7-r4-r5):
+  [Design → Per-pair state machine](feature.md#meanreversionpairsstrategy-r7-r4-r5):
   `SyncSlot`, `PairState`, `LegRole`, `PositionState`, `decide(..)`
   function. Sync slot caches one leg until partner arrives at the
   same `venue_ts`; staleness clamp drops cached legs older than
@@ -96,7 +96,7 @@ smaller than v1's.
 
 - [x] **T704** [developer] — Pair-bar sync + max-staleness clamp
   test (Q10) per
-  [Design → Pair-bar sync](../features/v15a-mean-reversion-pairs.md#pair-bar-sync-r75-q10).
+  [Design → Pair-bar sync](feature.md#pair-bar-sync-r75-q10).
   Dedicated test exercising: (a) both legs at same `venue_ts` →
   pair tick fires; (b) one leg cached, partner arrives 3 minutes
   later (under clamp) → spread compute fires on partner's bar with
@@ -111,7 +111,7 @@ smaller than v1's.
 
 - [x] **T705** [developer] — `MeanReversionPairsConfig` TOML serde
   + parser per
-  [Design → TOML schema](../features/v15a-mean-reversion-pairs.md#toml-schema-for-v15a-strategy-config-r76).
+  [Design → TOML schema](feature.md#toml-schema-for-v15a-strategy-config-r76).
   `kind = "mean_reversion_pairs"` discriminator routes loader.
   Validation rules per the Design error-code table (`invalid_pairs`,
   `unknown_symbol`, `invalid_beta`, `unsupported_quote`,
@@ -126,7 +126,7 @@ smaller than v1's.
   **[deps: T701]**
 
 - [x] **T706** [developer] — `MeanReversionPairsStrategy` core (R7)
-  per [Design → MeanReversionPairsStrategy](../features/v15a-mean-reversion-pairs.md#meanreversionpairsstrategy-r7-r4-r5).
+  per [Design → MeanReversionPairsStrategy](feature.md#meanreversionpairsstrategy-r7-r4-r5).
   Implements v0 `Strategy` trait verbatim (`id`, `on_bar`, `on_tick`,
   `config_schema`); `on_tick` returns `vec![]` (R7.2). Strategy-side
   universe filter (Q5 / R7.3): out-of-universe bars early-return
@@ -143,7 +143,7 @@ smaller than v1's.
 
 - [x] **T707** [developer] — `audit::journal::mean_reversion_stop`
   + `audit::journal::pair_short_observation` writers per
-  [Design → Spot-only formulation C wiring](../features/v15a-mean-reversion-pairs.md#spot-only-formulation-c-wiring-r5-q3)
+  [Design → Spot-only formulation C wiring](feature.md#spot-only-formulation-c-wiring-r5-q3)
   and architecture.md Q8. Uses the existing `strategy_events` table
   (no SQL migration); writes one row per call with the appropriate
   `kind` value. Reconciler invariant preserved (no money columns). —
@@ -154,7 +154,7 @@ smaller than v1's.
   **[deps: T701]**
 
 - [x] **T708** [developer] — `audit::query::pnl_by_pair` reader per
-  [Design → `pnl_by_pair` reader](../features/v15a-mean-reversion-pairs.md#pnl_by_pair-reader-r6-q4).
+  [Design → `pnl_by_pair` reader](feature.md#pnl_by_pair-reader-r6-q4).
   Composes `pnl_by_symbol` (v1) against the `&[PairMembership]`
   captured at strategy-load time. Returns
   `Vec<(PairKey, Money<Usdt>)>` lex-sorted; zero-P&L rows omitted.
@@ -171,7 +171,7 @@ smaller than v1's.
 ## Week 2 — backtest scenarios, integration, e2e
 
 - [x] **T709** [developer] — Long-only formulation-C verification
-  integration test per [Design → Spot-only formulation C wiring](../features/v15a-mean-reversion-pairs.md#spot-only-formulation-c-wiring-r5-q3).
+  integration test per [Design → Spot-only formulation C wiring](feature.md#spot-only-formulation-c-wiring-r5-q3).
   Single pair `(BTCUSDT, ETHUSDT)` round-trip in agent driver:
   paper trade emits ONLY long-leg `Order` rows (BTCUSDT-only, never
   ETHUSDT); ledger has matching `pair_short_observation`
@@ -239,7 +239,7 @@ smaller than v1's.
 
 - [x] **T714** [developer] — Canonical v1.5a strategy TOML
   `config/strategies/pairs_mr_h1.toml` per
-  [Design → TOML schema](../features/v15a-mean-reversion-pairs.md#toml-schema-for-v15a-strategy-config-r76).
+  [Design → TOML schema](feature.md#toml-schema-for-v15a-strategy-config-r76).
   Default 3-pair list `(BTCUSDT, ETHUSDT)`, `(ETHUSDT, SOLUSDT)`,
   `(BNBUSDT, BTCUSDT)`; `lookback_minutes = 60`;
   `cooldown_minutes = 60`; `z_entry = 2.0`; `z_exit = 0.5`;
@@ -260,7 +260,7 @@ smaller than v1's.
 - [x] **T715** [developer] — `backtest` binary new
   `--scenario pairs-2023-zscore-mr` and
   `--scenario pairs-2024-h1-zscore-mr` wiring per
-  [feature → Backtest Scenarios](../features/v15a-mean-reversion-pairs.md#backtest-scenarios).
+  [feature → Backtest Scenarios](feature.md#backtest-scenarios).
   Scenario config carries the 4-symbol universe and
   `parquet_root_template = "./data/binance/{symbol}/{year}"` that
   expands per universe symbol. Backtest engine drives v1's
@@ -306,7 +306,7 @@ smaller than v1's.
 
 - [x] **T718** [developer] — Criterion benches
   `crates/strategy/benches/pairs_mean_reversion.rs` per
-  [Design → Performance plan](../features/v15a-mean-reversion-pairs.md#performance-plan-r12-v7).
+  [Design → Performance plan](feature.md#performance-plan-r12-v7).
   Three cases: sync-incomplete bar (cache write only), sync-
   complete no-decision bar (spread + zscore), sync-complete decision
   bar (entry or exit). Multi-symbol backtest throughput bench under

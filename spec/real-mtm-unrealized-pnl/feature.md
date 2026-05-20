@@ -10,7 +10,7 @@ version: 1.3.0
 
 ## Why
 
-[`operator-success-reports`](operator-success-reports.md) shipped at v1+
+[`operator-success-reports`](../operator-success-reports/feature.md) shipped at v1+
 with a documented degeneracy: the orchestrator at
 `crates/reports/src/lib.rs` lines 135–150 hardcodes
 `let unrealized: Decimal = Decimal::ZERO;` because the `audit::query`

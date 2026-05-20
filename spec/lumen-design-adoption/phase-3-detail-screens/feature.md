@@ -9,7 +9,7 @@ version: 2.2.0
 # Lumen Phase 3 — Detail screens (Strategies / Risk / Audit)
 
 > **Phase 3 of 6** in the
-> [`lumen-design-adoption`](lumen-design-adoption.md) initiative.
+> [`lumen-design-adoption`](../feature.md) initiative.
 > Master roadmap is the orientation; this brief is the **shippable
 > feature**. Operator-locked constraints (no brand, no voice rewrite,
 > sequential phases, Phase 6 reserved, no icons until needed) are
@@ -26,7 +26,7 @@ version: 2.2.0
 >   the `ChartBuffer` for the optional Strategies-detail equity-
 >   since-deploy sparkline (Q6 below); fixtures parity is preserved.
 > - **Q13** — buy/sell marker query method placement = **extend
->   [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs)**.
+>   [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs)**.
 >   Phase 3 follows the same pattern: any new audit-read additions
 >   land in `query.rs` next to `recent_fills_filtered` (Phase 2
 >   R12), not in a new module.
@@ -64,7 +64,7 @@ UI surface today.
    is the kill switch tripping — no early warning.
 3. **Audit / journal.** The ledger holds every fill / strategy
    event / reconciliation row since inception. The
-   [`tape-row-audit-modal`](tape-row-audit-modal.md) flow surfaces
+   [`tape-row-audit-modal`](../../tape-row-audit-modal/feature.md) flow surfaces
    per-row detail for rows in the current tape; there is no full-
    ledger browser. "Every fill on Coinbase yesterday" requires
    hand-querying SQLite today.
@@ -143,14 +143,14 @@ Phase 1 Q2 / Phase 2 V11 precedent.
 
 Numbered, testable, derived from the master roadmap's Phase 3
 scope, the architecture-level **Cockpit screen routing (Phase 2+
-contract)** in [architecture.md § 3272](../architecture.md), the
-[`spec/product.md` § Cockpit information architecture](../product.md)
+contract)** in [architecture.md § 3272](../../architecture.md), the
+[`spec/product.md` § Cockpit information architecture](../../product.md)
 contract, and the **Information architecture** + **Charts**
-sections of [`spec/ui-design-principles.md`](../ui-design-principles.md).
+sections of [`spec/ui-design-principles.md`](../../ui-design-principles.md).
 Each R-item ends with a one-line acceptance the tester verifies.
 Every R-item preserves the operator-locked constraints and the
 cross-feature invariants in the
-[master roadmap](lumen-design-adoption.md#cross-feature-invariants).
+[master roadmap](../feature.md#cross-feature-invariants).
 
 ### R1 — Sidebar nav extends from 3 to 6 entries
 
@@ -159,15 +159,15 @@ cross-feature invariants in the
   Strategies → Risk → Audit → Charts**. (Q8 below ratifies the
   insertion order.)
 - **R1.2** The sidebar widget body
-  ([`crates/ui/src/widgets/sidebar_nav.rs:48`](../../crates/ui/src/widgets/sidebar_nav.rs))
+  ([`crates/ui/src/widgets/sidebar_nav.rs:48`](../../../crates/ui/src/widgets/sidebar_nav.rs))
   is **unchanged**. Phase 2 R1.6 parameterised the entry list;
   Phase 3 adds a `SIDEBAR_ENTRIES_PHASE_3` constant and the bin
   call-sites swap from `_PHASE_2` to `_PHASE_3`.
 - **R1.3** Label strings already exist
-  ([`crates/ui/src/strings.rs:230–235`](../../crates/ui/src/strings.rs)
+  ([`crates/ui/src/strings.rs:230–235`](../../../crates/ui/src/strings.rs)
   ships all six `SIDEBAR_NAV_*` constants per Phase 2 forward-compat
   declare-now); the `label_for(Screen)` match arm
-  ([`sidebar_nav.rs:28`](../../crates/ui/src/widgets/sidebar_nav.rs))
+  ([`sidebar_nav.rs:28`](../../../crates/ui/src/widgets/sidebar_nav.rs))
   already handles all six variants. Phase 3 wakes the dormant
   strings — **no `ui::strings` rewrite** (operator-locked Constraint 2).
 - **R1.4** T1507 active-row pattern continues — 2 px ACCENT left
@@ -182,7 +182,7 @@ cross-feature invariants in the
 ### R2 — Screen routing dispatches the three new screens
 
 - **R2.1** The `Screen` enum already declares `Strategies / Risk /
-  Audit` ([state.rs:47–51](../../crates/ui/src/state.rs)) per
+  Audit` ([state.rs:47–51](../../../crates/ui/src/state.rs)) per
   Phase 2's declare-now decision. **Phase 3 adds zero enum
   variants** — only the dispatch changes.
 - **R2.2** The shell's `screen_body(current_screen, &cockpit)`
@@ -192,13 +192,13 @@ cross-feature invariants in the
   `crates/ui/src/screens/`: `strategies.rs`, `risk.rs`, `audit.rs`,
   each exposing `pub fn view(state: &Cockpit, mode: ThemeMode) ->
   Element<Message>` matching the Phase 2 shape
-  ([`crates/ui/src/screens/mod.rs`](../../crates/ui/src/screens/mod.rs)).
+  ([`crates/ui/src/screens/mod.rs`](../../../crates/ui/src/screens/mod.rs)).
 - **R2.4** `Message::SwitchScreen(Screen)` stays a pure assignment;
   Phase 2's `state::tests::switch_screen_is_pure` inherits unchanged.
 - **R2.5** Screens read data **straight from `Cockpit`** — no
   on-entry async load. Bus owns freshness;
   [`spec/ui-design-principles.md` § Screens are pure render
-  dispatches](../ui-design-principles.md) carries forward.
+  dispatches](../../ui-design-principles.md) carries forward.
 - **Acceptance:** both bins launch; clicking each new sidebar
   entry renders a non-placeholder screen (verified by absence of
   the Phase 2 `SCREEN_NOT_YET_PLACEHOLDER` string).
@@ -210,8 +210,8 @@ cross-feature invariants in the
   `crates/ui/src/theme/layout.rs` next to the existing Phase 2
   constant.
 - **R3.2** Both bins
-  ([`bin/cockpit.rs`](../../crates/ui/src/bin/cockpit.rs),
-  [`bin/cockpit_live.rs`](../../crates/ui/src/bin/cockpit_live.rs))
+  ([`bin/cockpit.rs`](../../../crates/ui/src/bin/cockpit.rs),
+  [`bin/cockpit_live.rs`](../../../crates/ui/src/bin/cockpit_live.rs))
   swap their sidebar call-site to pass `SIDEBAR_ENTRIES_PHASE_3`.
 - **R3.3** Remove `SIDEBAR_ENTRIES_PHASE_2` on Phase 3 ship —
   no forward-compat need.
@@ -250,7 +250,7 @@ cross-feature invariants in the
 ### R5 — Strategies-detail data path
 
 - **R5.1** Add `pub selected_strategy: Option<StrategyId>` to
-  `Cockpit` ([`crates/ui/src/state.rs`](../../crates/ui/src/state.rs))
+  `Cockpit` ([`crates/ui/src/state.rs`](../../../crates/ui/src/state.rs))
   with default `None`. Session-scoped persistence per Phase 2 Q8
   (no on-disk state).
 - **R5.2** Two selection paths, both ending in `Message::SelectStrategy(StrategyId)`:
@@ -262,7 +262,7 @@ cross-feature invariants in the
      this is compound dispatch or a new `OpenStrategy` variant.)
 - **R5.3** Params source — `pub strategies_config: Option<StrategiesConfig>`
   on `Cockpit`, populated once at boot from
-  [`agent::config::Config.strategies`](../../crates/agent/src/config.rs)
+  [`agent::config::Config.strategies`](../../../crates/agent/src/config.rs)
   (live) or `StrategiesConfig::default()` (fixtures). Static for
   the session per Phase 2 `universe` precedent.
 - **R5.4** Signal-events source — Q2 ratification: filter the
@@ -337,7 +337,7 @@ cross-feature invariants in the
 - **R8.2** Live wiring — Q3 ratification: **new tokio channel** from
   the agent runtime to the cockpit, mirroring Phase 1 `MarketHealth`.
   The risk engine
-  ([`crates/risk/src/portfolio.rs`](../../crates/risk/src/portfolio.rs))
+  ([`crates/risk/src/portfolio.rs`](../../../crates/risk/src/portfolio.rs))
   publishes a `RiskTelemetry` snapshot on the bus at 1 Hz; the
   cockpit subscription emits `Message::RiskStateRefreshed(RiskState)`.
 - **R8.3** Fixtures wiring — pre-seed `cockpit.risk_state =
@@ -386,7 +386,7 @@ cross-feature invariants in the
 ### R10 — Audit screen data path + state
 
 - **R10.1** Add to
-  [`crates/ui/src/state.rs`](../../crates/ui/src/state.rs):
+  [`crates/ui/src/state.rs`](../../../crates/ui/src/state.rs):
 
   ```rust
   pub struct AuditScreenState {
@@ -423,7 +423,7 @@ cross-feature invariants in the
 - **R11.1** Per-row click emits `Message::TapeRowClicked(tx_id)`
   (Phase 1 variant — row-click semantics are venue-agnostic). The
   existing
-  [`widgets/journal_transaction_modal.rs`](../../crates/ui/src/widgets/journal_transaction_modal.rs)
+  [`widgets/journal_transaction_modal.rs`](../../../crates/ui/src/widgets/journal_transaction_modal.rs)
   opens unchanged.
 - **R11.2** Modal stays wrapped at the shell level (Phase 2 R3.3) —
   Audit rows open it identically to Home tape rows.
@@ -439,7 +439,7 @@ cross-feature invariants in the
 ### R12 — Audit-query method extension for non-fill rows
 
 - **R12.1** Add to
-  [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs)
+  [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs)
   alongside Phase 2's `recent_fills_filtered`:
 
   ```rust
@@ -481,7 +481,7 @@ cross-feature invariants in the
 - **R13.1** Phase 2's `recent_fills_filtered` returns `Ok(vec![])`
   for `venue != Binance` because `journal_transactions` carries no
   venue column today
-  ([`crates/audit/src/query.rs:191`](../../crates/audit/src/query.rs)).
+  ([`crates/audit/src/query.rs:191`](../../../crates/audit/src/query.rs)).
   Phase 3's Audit screen needs multi-venue fills — the migration is
   a Phase 3 prerequisite. Q1 ratifies whether to ship in Phase 3
   or split as Phase 3.5.
@@ -512,33 +512,33 @@ cross-feature invariants in the
 
 ### R14 — Cross-feature invariants
 
-- **R14.1** [`tape-row-audit-modal`](tape-row-audit-modal.md): Audit
+- **R14.1** [`tape-row-audit-modal`](../../tape-row-audit-modal/feature.md): Audit
   screen rows open the same modal as tape rows; trigger preserved
   per Phase 2 R14.5.
-- **R14.2** [`journal-tx-metadata`](journal-transactions-metadata.md):
+- **R14.2** [`journal-tx-metadata`](../../journal-transactions-metadata/feature.md):
   modal continues to render `description` + `strategy_id`. Audit
   screen's filter row surfaces `strategy_id` as a column (R9.2);
   same metadata reader.
-- **R14.3** [`v1.5b-multi-venue`](v1-5b-multi-venue.md): venue
+- **R14.3** [`v1.5b-multi-venue`](../../v1-5b-multi-venue/feature.md): venue
   dimension surfaces on Audit filter chips + Risk exposure section.
   R13 migration completes v1.5b's "fills carry venue" story.
-- **R14.4** [`live-cockpit-unified`](live-cockpit-unified.md):
+- **R14.4** [`live-cockpit-unified`](../../live-cockpit-unified/feature.md):
   halted-banner trigger preserved (shell-level per Phase 2 R3.3).
-- **R14.5** [`real-mtm-unrealized-pnl`](real-mtm-unrealized-pnl.md):
+- **R14.5** [`real-mtm-unrealized-pnl`](../../real-mtm-unrealized-pnl/feature.md):
   PnL card unchanged. Strategies-detail sparkline (R6, if cheap
   path lands) reads from `Cockpit::pnl` buffer; no `color_for_delta`
   signature change.
-- **R14.6** [`per-symbol-position-accounts`](per-symbol-position-accounts.md):
+- **R14.6** [`per-symbol-position-accounts`](../../per-symbol-position-accounts/feature.md):
   Positions widget unchanged. Risk-screen exposure reads
   `Cockpit::positions` + the new `risk_state` mirror (R8.1).
-- **R14.7** [`operator-success-reports`](operator-success-reports.md):
+- **R14.7** [`operator-success-reports`](../../operator-success-reports/feature.md):
   Debug-screen latency badge colour mapping unchanged.
 - **Acceptance:** tester's per-feature invariant table = 7 / 7 PASS.
 
 ### R15 — Anchor regression
 
 - **R15.1** All 11 backtest body-SHA-256 anchors in
-  [`spec/anchors.toml`](../anchors.toml) verify byte-identical
+  [`spec/anchors.toml`](../../anchors.toml) verify byte-identical
   post-Phase 3.
 - **R15.2** No new anchor scenarios; no re-lock budget; zero
   exceptions. The `journal_transactions.venue` migration (R13)
@@ -719,7 +719,7 @@ cockpit restarts, or **in-session only** (in-memory)?
 
 **Recommended (analyst):** **in-session only**. Matches Phase 2 Q8
 ("the cockpit is an instrument, not a browser") + the
-[`spec/ui-design-principles.md` § Persistence](../ui-design-principles.md)
+[`spec/ui-design-principles.md` § Persistence](../../ui-design-principles.md)
 session-scoped rule. No `~/.cockpit-state.json`; no serialization on
 `Drop`.
 
@@ -737,7 +737,7 @@ Phase 4** if **expensive** (new
 **Recommended (analyst):** **cheap path if the existing
 `Cockpit::pnl` buffer carries per-strategy data; defer to Phase 4
 otherwise**. `pnl_by_strategy(ledger, strategy_id, since, until)`
-at [`crates/audit/src/query.rs:769`](../../crates/audit/src/query.rs)
+at [`crates/audit/src/query.rs:769`](../../../crates/audit/src/query.rs)
 already computes per-strategy P&L; architect's design pass measures
 whether wiring a 60-bar sparkline buffer costs <50 LOC (cheap) or
 requires a new bus subscription (defer).
@@ -798,7 +798,7 @@ magnitude.
 
 **Recommended (analyst):** **read-only**. Matches
 [`spec/product.md` § Cockpit information architecture → What stays
-out of the cockpit IA → Configuration editor](../product.md):
+out of the cockpit IA → Configuration editor](../../product.md):
 "`config/agent.toml` is hand-edited; the cockpit never writes
 config. (Risk and execution-mode toggles in Phase 5 are exceptions
 ratified there.)" Phase 3 holds the line; Phase 5 HumanControl
@@ -862,7 +862,7 @@ replaced by the R-item-pointing summary; Open questions are
 replaced by the architect Q-items below; Acceptance criteria
 are extended to trace each bullet to its R-cluster. Master
 roadmap reference unchanged: see
-[`lumen-design-adoption.md` Phase 3 section](lumen-design-adoption.md).
+[`lumen-design-adoption.md` Phase 3 section](../feature.md).
 
 ## Design
 
@@ -870,7 +870,7 @@ _Architect-owned. Resolves Q1–Q11 — every recommendation lands as
 **ratified** unless flagged "Architect override". The analyst sections
 above are immutable; this section is the design contract the developer
 reads alongside the task list at
-[`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](../tasks/lumen-phase-3-detail-screens.md)._
+[`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](tasks.md)._
 
 ### Q-item resolutions
 
@@ -1078,7 +1078,7 @@ pub fn view(current_screen: Screen, entries: &[Screen], mode: ThemeMode)
 ```
 
 Phase 3 changes are constant-only. The widget body at
-[`crates/ui/src/widgets/sidebar_nav.rs:48`](../../crates/ui/src/widgets/sidebar_nav.rs)
+[`crates/ui/src/widgets/sidebar_nav.rs:48`](../../../crates/ui/src/widgets/sidebar_nav.rs)
 is **untouched**. The `label_for(Screen)` match arm at the same file
 already enumerates all six variants (Phase 2 declare-now). The six
 `SIDEBAR_NAV_*` constants already ship in `crates/ui/src/strings.rs`.
@@ -1598,7 +1598,7 @@ land before the operator reviews the diff in one pass.
 ## Implementation
 
 _developer fills this — task list at
-[`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](../tasks/lumen-phase-3-detail-screens.md)._
+[`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](tasks.md)._
 
 ## Verification — links
 
@@ -1645,7 +1645,7 @@ the Phase 3 presentation under `spec/lumen-design-adoption/presentations/lumen-d
   parallelism map: T1701 foundation gate → fan-out across
   T1702–T1712 → narrow at T1713 snapshot accept → T_FINAL. Task
   list at
-  [`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](../tasks/lumen-phase-3-detail-screens.md)
+  [`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](tasks.md)
   with 16 T17xx tasks + tester `T_FINAL_LUMEN_PHASE_3` gate.
   HANDOFF → developer ‖ ui-designer (developer takes T1701–T1716
   implementation; ui-designer takes the visual-diff attestation at

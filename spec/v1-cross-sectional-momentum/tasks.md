@@ -8,7 +8,7 @@ updated: 2026-05-16
 # Tasks — v1 Cross-Sectional Momentum (Top-N) + Multi-Symbol Plumbing
 
 Ordered, testable task list derived from
-[spec/v1-cross-sectional-momentum/feature.md → Design](../features/v1-cross-sectional-momentum.md#design)
+[spec/v1-cross-sectional-momentum/feature.md → Design](feature.md#design)
 and the six architect resolutions (v1 Q1–Q6) locked in
 [spec/architecture.md → v1 cross-sectional momentum resolutions](../architecture.md#v1--cross-sectional-momentum-resolutions-q1q6--confirmed-2026-04-29).
 
@@ -47,7 +47,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
 ## Week 1 — types, score, selector, sizer, audit
 
 - [x] **T601** [developer] — `trading_core` v1 type additions per
-  [Design → Universe types](../features/v1-cross-sectional-momentum.md#universe-types-r1)
+  [Design → Universe types](feature.md#universe-types-r1)
   and the `RiskLimits` extension:
   - `Universe`, `SymbolSet` (BTreeSet-backed for deterministic
     iteration), `UniverseError`.
@@ -76,7 +76,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
 
 - [x] **T603** [developer] — `features::cross_sectional` module:
   `score_vol_adjusted_return(history, n, vol_floor) -> Result<Decimal,
-  ScoreError>` per [Design → Score module](../features/v1-cross-sectional-momentum.md#momentumstrategy-r3-r4-r6-r7).
+  ScoreError>` per [Design → Score module](feature.md#momentumstrategy-r3-r4-r6-r7).
   Implementation reuses the v0.5 `RingBuffer<Decimal>` primitive; pure
   Decimal; no new TA-crate dependency. `decimal_std` helper sits next
   to it. —
@@ -88,7 +88,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
 
 - [x] **T604** [developer] — `strategy::cross_sectional::selector`
   module: `top_k_long(scores, k, exposure_cap) -> BTreeMap<Symbol,
-  Decimal>` per [Design → Selector module](../features/v1-cross-sectional-momentum.md#momentumstrategy-r3-r4-r6-r7).
+  Decimal>` per [Design → Selector module](feature.md#momentumstrategy-r3-r4-r6-r7).
   Filters warmup-incomplete entries (None scores), sorts descending
   with alphabetical tie-break (stable sort over a `BTreeMap` iter),
   takes first K, weights `exposure_cap / k`. —
@@ -100,7 +100,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
 
 - [x] **T605** [developer] — `strategy::cross_sectional::config` —
   `CrossSectionalMomentumConfig` serde deserialize per
-  [Design → TOML schema](../features/v1-cross-sectional-momentum.md#toml-schema-for-v1-strategy-config-r75).
+  [Design → TOML schema](feature.md#toml-schema-for-v1-strategy-config-r75).
   Validation rules per the Design error-code table (`invalid_universe`,
   `unknown_symbol`, `invalid_lookback`, `invalid_rebalance`,
   `invalid_k_long`, `unsupported_short_sizing`, `invalid_exposure_cap`,
@@ -127,7 +127,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   **[deps: T604, T605]**
 
 - [x] **T607** [developer] — `risk::size_portfolio_target` vector-
-  order sizer per [Design → Vector-order sizer](../features/v1-cross-sectional-momentum.md#vector-order-sizer-r5).
+  order sizer per [Design → Vector-order sizer](feature.md#vector-order-sizer-r5).
   Computes per-leg Hold / Open / Close / Resize from current position
   vs target weight; aggregates Σ long notional vs
   `RiskLimits.portfolio_exposure_cap`; per-symbol cap still applies
@@ -141,7 +141,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   **[deps: T601]**
 
 - [x] **T608** [developer] — `audit::journal::rebalance_rejected(..)`
-  writer per [Design → RebalanceRejected audit surface](../features/v1-cross-sectional-momentum.md#rebalancerejected-audit-surface-r65-q6).
+  writer per [Design → RebalanceRejected audit surface](feature.md#rebalancerejected-audit-surface-r65-q6).
   Uses the existing `strategy_events` table (no SQL migration); writes
   one row with `kind = "rebalance_rejected"`, `error_code`,
   `error_summary`, `strategy_id`, `ts`. Reconciler invariant
@@ -152,7 +152,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   **[deps: T601]**
 
 - [x] **T609** [developer] — `audit::query::pnl_by_symbol(since,
-  until)` reader per [Design → Per-symbol P&L attribution](../features/v1-cross-sectional-momentum.md#per-symbol-pl-attribution-r8).
+  until)` reader per [Design → Per-symbol P&L attribution](feature.md#per-symbol-pl-attribution-r8).
   SQL aggregation over `journal_entries` joined to per-fill symbol
   metadata; returns `Vec<(Symbol, Money<Usdt>)>` sorted alphabetically;
   zero-P&L symbols omitted. R8.5 sum-equals-scalar invariant. —
@@ -176,7 +176,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
 ## Week 2 — multi-symbol ingest, funding, backtest, hot-swap
 
 - [x] **T611** [developer] — `data::ReplayFeed::merge_symbols` per
-  [Design → Multi-symbol bar interleave](../features/v1-cross-sectional-momentum.md#multi-symbol-bar-interleave-r2-r12).
+  [Design → Multi-symbol bar interleave](feature.md#multi-symbol-bar-interleave-r2-r12).
   k-way merge of N per-symbol bar streams; sort key
   `(venue_ts ASC, symbol ASC)`; small per-symbol head buffer. Streaming
   output as `BoxStream<Bar>`. Memory bound proven by an integration
@@ -202,7 +202,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   Operator confirmed: T612 stays `[ ]` and is NOT a v1 blocker.
 
 - [x] **T613** [developer] — `data::funding::FundingPoller` per
-  [Design → Funding-rate observation-only ingest](../features/v1-cross-sectional-momentum.md#funding-rate-observation-only-ingest-q2).
+  [Design → Funding-rate observation-only ingest](feature.md#funding-rate-observation-only-ingest-q2).
   REST GET against `https://fapi.binance.com/fapi/v1/premiumIndex` for
   each universe symbol once per hour; emits `FundingObs` on the new
   `funding_obs` broadcast channel; persists rows to the new
@@ -250,7 +250,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
 
 - [x] **T615** [developer] — Canonical v1 strategy TOML
   `config/strategies/top10_momentum_h1.toml` per
-  [Design → TOML schema](../features/v1-cross-sectional-momentum.md#toml-schema-for-v1-strategy-config-r75).
+  [Design → TOML schema](feature.md#toml-schema-for-v1-strategy-config-r75).
   Default universe: `BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, XRPUSDT,
   ADAUSDT, DOGEUSDT, AVAXUSDT, DOTUSDT, LINKUSDT`; `lookback_minutes
   = 60`; `rebalance_minutes = 60`; `k_long = 3`; `k_short = 0`;
@@ -282,7 +282,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
 
 - [x] **T617** [developer] — `backtest` binary new
   `--scenario top10-2023-1h-momentum` and
-  `--scenario top10-2024-h1-momentum` wiring per [feature → Backtest Scenarios](../features/v1-cross-sectional-momentum.md#backtest-scenarios).
+  `--scenario top10-2024-h1-momentum` wiring per [feature → Backtest Scenarios](feature.md#backtest-scenarios).
   Scenario config carries `universe: [...]` array and
   `parquet_root_template = "./data/binance/{symbol}/{year}"` that
   expands per universe symbol. Backtest engine drives
@@ -330,7 +330,7 @@ T0xx and v0.5 T5xx namespaces stay intact.
   **[deps: T607, T608, T615]**
 
 - [x] **T621** [developer] — Criterion benches
-  `crates/strategy/benches/cross_sectional.rs` per [Design → Performance plan](../features/v1-cross-sectional-momentum.md#performance-plan-r104-v7).
+  `crates/strategy/benches/cross_sectional.rs` per [Design → Performance plan](feature.md#performance-plan-r104-v7).
   Three cases: warmup-only bar, no-diff rebalance bar (all hold),
   full-rotation rebalance bar (close 3 + open 3). Multi-symbol
   backtest throughput bench under `crates/backtest/benches/`.

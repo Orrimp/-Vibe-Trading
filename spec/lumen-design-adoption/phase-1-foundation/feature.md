@@ -9,7 +9,7 @@ version: 2.0.1
 # Lumen design adoption — Phase 1: Foundation
 
 > **Phase 1 of 4** in the
-> [`lumen-design-adoption`](lumen-design-adoption.md) initiative. Master
+> [`lumen-design-adoption`](../feature.md) initiative. Master
 > roadmap is the orientation; this brief is the **shippable feature**.
 > Operator-locked constraints (no brand, no voice rewrite, sequential
 > phases, Phase 4 reserved) are documented in the master file and apply
@@ -18,7 +18,7 @@ version: 2.0.1
 ## Why
 
 The shipped cockpit's design surface is **operator-correct** (the
-[principles doc](../ui-design-principles.md) codifies what is) and
+[principles doc](../../ui-design-principles.md) codifies what is) and
 **system-thin** (the implementation is 12 tokens + 6 widgets + flat
 elevation). Phase 1 closes the system gap by adopting the
 purpose-built Lumen design system's foundational primitives:
@@ -29,9 +29,9 @@ the **always-visible status bar**.
 ### What's missing today, concretely
 
 1. **No light-mode hex palette is wired.** The
-   [principles doc lines 97–110](../ui-design-principles.md) propose a
+   [principles doc lines 97–110](../../ui-design-principles.md) propose a
    light table but no hex constant lands in
-   [`crates/ui/src/theme.rs`](../../crates/ui/src/theme.rs). A future
+   [`crates/ui/src/theme.rs`](../../../crates/ui/src/theme.rs). A future
    light-mode ship would have to invent values; Phase 1 wires the
    Lumen-derived values now.
 2. **No elevation language.** Every panel today uses the same
@@ -43,13 +43,13 @@ the **always-visible status bar**.
    palette".
 3. **No whisper-shadow tokens.** Today's panels are flat. The Lumen
    spec calls for whisper shadows
-   ([colors_and_type.css:96–104](../design/project/colors_and_type.css))
+   ([colors_and_type.css:96–104](../../design/project/colors_and_type.css))
    that are **barely there** but read as elevation in
    peripheral vision. iced 0.14 supports container shadows; the
    token is missing.
 4. **No focus ring.** The principles doc commits to "focus rings use
    `border_strong`, not `accent`"
-   ([principles line 354](../ui-design-principles.md)). The Lumen
+   ([principles line 354](../../ui-design-principles.md)). The Lumen
    focus-ring token (3 px low-alpha accent) is the proper pattern;
    Phase 1 adopts the Lumen ring **on top of** the principles
    border-strong rule (see Q7: principles supersede).
@@ -57,17 +57,17 @@ the **always-visible status bar**.
    row (when one is selected) renders by token-tinting the row fill.
    The Lumen pattern is a 2 px left rule in `accent`, **no fill
    change**
-   ([desktop.css:357–360](../design/project/ui_kits/desktop/desktop.css))
+   ([desktop.css:357–360](../../design/project/ui_kits/desktop/desktop.css))
    — this preserves the column-of-numbers rhythm the operator scans.
 6. **No status bar.** The cockpit shell has a header (panel titles)
    and a body (panel grid) but nothing at the bottom. Connection
    state lives in a small badge inside the latency widget; account
    identity has no surface; server time has no surface. The Lumen
    status bar
-   ([Shell.jsx:67–81](../design/project/ui_kits/desktop/Shell.jsx))
+   ([Shell.jsx:67–81](../../design/project/ui_kits/desktop/Shell.jsx))
    gives the operator a fixed eye-anchor between scans.
 7. **No motion-token semantics.** The principles doc's motion table
-   ([principles lines 215–223](../ui-design-principles.md)) is correct
+   ([principles lines 215–223](../../ui-design-principles.md)) is correct
    but unwired — the kill-confirm modal, for example, is timeless
    (no transition). Lumen's motion ladder
    (`dur_1=80 / dur_2=140 / dur_3=220 / dur_4=320 ms` +
@@ -122,7 +122,7 @@ the **always-visible status bar**.
 ### Why now
 
 The
-[v1.5b multi-venue feature](v1-5b-multi-venue.md) shipped
+[v1.5b multi-venue feature](../../v1-5b-multi-venue/feature.md) shipped
 2026-05-03 — closing the largest queued backend feature. The cockpit
 is now **stable on the data side** (3 venues, 20-symbol USDT+USDC
 universe, 1 s aggregated trades) and the **right time** to refresh
@@ -135,21 +135,21 @@ would conflict with a UI refresh. Phase 1 is in a clean window.
 ## Requirements
 
 Numbered, testable, derived from
-[`spec/design/project/colors_and_type.css`](../design/project/colors_and_type.css),
-[`spec/design/project/ui_kits/desktop/desktop.css`](../design/project/ui_kits/desktop/desktop.css),
-the [Lumen brand book](../design/project/README.md), and the existing
-[`crates/ui/src/theme.rs`](../../crates/ui/src/theme.rs) +
-[`crates/ui/src/widgets/`](../../crates/ui/src/widgets/) shape. Each
+[`spec/design/project/colors_and_type.css`](../../design/project/colors_and_type.css),
+[`spec/design/project/ui_kits/desktop/desktop.css`](../../design/project/ui_kits/desktop/desktop.css),
+the [Lumen brand book](../../design/project/README.md), and the existing
+[`crates/ui/src/theme.rs`](../../../crates/ui/src/theme.rs) +
+[`crates/ui/src/widgets/`](../../../crates/ui/src/widgets/) shape. Each
 ends with a one-line **acceptance** the tester can verify. All
 requirements preserve the operator-locked constraints (no brand,
 no voice rewrite) and the cross-feature invariants in the
-[master roadmap](lumen-design-adoption.md#cross-feature-invariants).
+[master roadmap](../feature.md#cross-feature-invariants).
 
 ### R1 — Replace `theme::color` palette with Lumen tokens
 
 - **R1.1** Replace the dark-mode hex constants in
   `crates/ui/src/theme.rs` with the Lumen dark palette
-  ([`spec/design/project/colors_and_type.css:113–160`](../design/project/colors_and_type.css)):
+  ([`spec/design/project/colors_and_type.css:113–160`](../../design/project/colors_and_type.css)):
   `canvas = cool-800 (#131820)`, `panel = cool-700 (#1C2127)`,
   `panel_raised = cool-600 (#2A3038)`, `panel_sunken = cool-900
   (#0B0F15)`, `overlay = rgba(0,0,0,0.55)`, `fg_1 = #E8ECF1`,
@@ -168,7 +168,7 @@ no voice rewrite) and the cross-feature invariants in the
   are the public API.
 - **R1.4** Add the **accent ramp** `accent-50 / 100 / 200 / 300 /
   400 / 500 / 600 / 700 / 800 / 900`
-  ([colors_and_type.css:18–27](../design/project/colors_and_type.css)).
+  ([colors_and_type.css:18–27](../../design/project/colors_and_type.css)).
   The dark-mode `accent` is `accent-300`; the light-mode
   `accent` is `accent-400`.
 - **R1.5** Add the **semantic ramps** `up-{50,400,500}` (sage),
@@ -177,7 +177,7 @@ no voice rewrite) and the cross-feature invariants in the
   = #FFC45A`, `INFO = #7BC2FF` constants — see R9 for the
   rename strategy.
 - **Acceptance:** every hex literal in `theme.rs` is sourced from
-  [`spec/design/project/colors_and_type.css`](../design/project/colors_and_type.css);
+  [`spec/design/project/colors_and_type.css`](../../design/project/colors_and_type.css);
   zero hex literals appear in `theme.rs` that aren't in the
   Lumen source CSS; the
   `tests::*_has_principles_dark_hex` tests update to assert the
@@ -209,13 +209,13 @@ no voice rewrite) and the cross-feature invariants in the
 
 - **R3.1** New `theme::shadow::SHADOW_1`, `SHADOW_2`, `SHADOW_3` —
   three soft elevation levels. Spec values from
-  [colors_and_type.css:96–104](../design/project/colors_and_type.css)
+  [colors_and_type.css:96–104](../../design/project/colors_and_type.css)
   (light) and `:150–155` (dark).
 - **R3.2** New `theme::shadow::SHADOW_INSET` — sunken inset shadow
   for input fields and table stripes.
 - **R3.3** Shadows in dark mode are darker (more black-alpha), not
   bigger — Lumen's specific guidance
-  ([README.md:97–98](../design/project/README.md)).
+  ([README.md:97–98](../../design/project/README.md)).
 - **R3.4** Define a `theme::shadow::Spec` struct holding offset_x /
   offset_y / blur_radius / colour alpha for each shadow, in a
   shape that maps directly to iced 0.14's
@@ -229,7 +229,7 @@ no voice rewrite) and the cross-feature invariants in the
 ### R4 — Add focus-ring token
 
 - **R4.1** New `theme::FOCUS_RING` — Lumen's `0 0 0 3px <accent at
-  low alpha>` ([colors_and_type.css:107](../design/project/colors_and_type.css)).
+  low alpha>` ([colors_and_type.css:107](../../design/project/colors_and_type.css)).
   Light mode uses `rgba(63, 150, 141, 0.28)`; dark mode uses
   `rgba(166, 213, 207, 0.30)`.
 - **R4.2** The focus ring is a **box-shadow-equivalent ring**
@@ -250,7 +250,7 @@ no voice rewrite) and the cross-feature invariants in the
 
 - **R5.1** Replace `space::XS / S / M / L / XL / XXL` (4 / 8 / 12
   / 16 / 24 / 32) with the Lumen 13-step ladder
-  ([colors_and_type.css:165–178](../design/project/colors_and_type.css)):
+  ([colors_and_type.css:165–178](../../design/project/colors_and_type.css)):
   `0 / 2 / 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64`.
   Naming convention: `theme::space::{ZERO, TICK, XS, XXS, S, M, L,
   L_PLUS, XL, XXL, XXXL, HUGE, MASSIVE}` — see Q10 for the
@@ -273,7 +273,7 @@ no voice rewrite) and the cross-feature invariants in the
 
 - **R6.1** Replace `radius::SMALL = 2.0` and `radius::MEDIUM = 4.0`
   with the Lumen 5-step radii ladder
-  ([colors_and_type.css:181–186](../design/project/colors_and_type.css)):
+  ([colors_and_type.css:181–186](../../design/project/colors_and_type.css)):
   `radius_1 = 2 px (dense table inputs)`, `radius_2 = 4 px
   (default control)`, `radius_3 = 6 px (buttons + chips)`,
   `radius_4 = 8 px (cards + panels)`, `radius_5 = 12 px (modals)`,
@@ -287,7 +287,7 @@ no voice rewrite) and the cross-feature invariants in the
 ### R7 — Add the typography ladder
 
 - **R7.1** Add the Lumen 7-step typography ladder
-  ([colors_and_type.css:215–222](../design/project/colors_and_type.css)):
+  ([colors_and_type.css:215–222](../../design/project/colors_and_type.css)):
   `fs_display = 32 px`, `fs_h1 = 24 px`, `fs_h2 = 18 px`, `fs_h3 =
   15 px`, `fs_body = 13 px`, `fs_small = 12 px`, `fs_micro = 11 px`.
 - **R7.2** Reconcile with the existing 4-step ladder (`caption =
@@ -317,7 +317,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R8.1** New `theme::motion::DUR_1 = 80 ms` (tap feedback),
   `DUR_2 = 140 ms` (hover / focus), `DUR_3 = 220 ms` (panel
   reveal), `DUR_4 = 320 ms` (modal enter)
-  ([colors_and_type.css:198–201](../design/project/colors_and_type.css)).
+  ([colors_and_type.css:198–201](../../design/project/colors_and_type.css)).
 - **R8.2** New `theme::motion::EASE_OUT =
   cubic_bezier(0.22, 0.61, 0.36, 1)` and `EASE_IN_OUT =
   cubic_bezier(0.4, 0, 0.2, 1)`. Encoded as constant arrays of
@@ -329,7 +329,7 @@ no voice rewrite) and the cross-feature invariants in the
   modal-enter duration). Operator-visible **only on the modal
   open** — every other widget is timeless or already at 140 ms.
 - **R8.4** No bounces, no spring physics
-  ([README.md:111](../design/project/README.md)). Existing
+  ([README.md:111](../../design/project/README.md)). Existing
   principles "trading UI must never feel kinetic" stays.
 - **Acceptance:** `theme::motion::*` exposes the four durations
   + two easings; the journal-tx-modal open transition uses
@@ -360,7 +360,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R9.3** The `theme::color_for_delta` helper signature is
   unchanged; internally it returns `UP_500 / DOWN_500 / FG_2`
   instead of `POS / NEG / FG_MUTED`. Cross-feature invariant:
-  the [`real-mtm-unrealized-pnl`](real-mtm-unrealized-pnl.md)
+  the [`real-mtm-unrealized-pnl`](../../real-mtm-unrealized-pnl/feature.md)
   feature's positive / negative / zero rendering is preserved
   (semantically identical, hex values shift to sage / clay).
 - **R9.4** The `theme::color_for_latency_ms` helper is preserved
@@ -383,7 +383,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R10.2** Panel headers ("Tape", "Positions", etc.) adopt the
   `panel_raised` background tint (Tier 2), one step lighter than
   the panel body — matches
-  [desktop.css:174–181](../design/project/ui_kits/desktop/desktop.css).
+  [desktop.css:174–181](../../design/project/ui_kits/desktop/desktop.css).
 - **R10.3** The kill-switch panel (`widgets::kill`) adopts Tier 1
   styling identical to other panels; it is no longer visually
   distinct as "the dangerous one" — the **typed-confirm phrase**
@@ -400,7 +400,7 @@ no voice rewrite) and the cross-feature invariants in the
   - `border = 1 px solid BORDER_2`
   - `box_shadow = SHADOW_INSET`
   - `border_radius = radius_2 (4 px)`
-  Matches [desktop.css:478–485](../design/project/ui_kits/desktop/desktop.css).
+  Matches [desktop.css:478–485](../../design/project/ui_kits/desktop/desktop.css).
 - **R11.2** On focus, the input gains the `FOCUS_RING` outline
   (R4.1) and the border shifts to `accent`.
 - **R11.3** No other input field exists in the shipped cockpit
@@ -417,7 +417,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R12.1** `widgets::positions` and `widgets::strategies` add an
   **active-row indicator**: a 2 px left rule in `accent`, **no
   fill change** to the row
-  ([desktop.css:357–360](../design/project/ui_kits/desktop/desktop.css)).
+  ([desktop.css:357–360](../../design/project/ui_kits/desktop/desktop.css)).
 - **R12.2** "Active" semantics:
   - Positions: the row whose symbol is currently selected via
     keyboard navigation (when keyboard nav lands; Phase 1
@@ -428,7 +428,7 @@ no voice rewrite) and the cross-feature invariants in the
     `tape-row-audit-modal` flow).
 - **R12.3** The indicator is **additive**: hover styling
   (`PANEL_SUNKEN` row tint per
-  [desktop.css:357](../design/project/ui_kits/desktop/desktop.css))
+  [desktop.css:357](../../design/project/ui_kits/desktop/desktop.css))
   stacks below the active rule; an actively-selected hovered
   row shows both.
 - **Acceptance:** when the strategies panel has a selection,
@@ -442,7 +442,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R13.2** Layout: horizontal flexbox, 24 px tall,
   `background = PANEL`, `border-top = 1 px BORDER_1`,
   `font-size = fs_micro (11 px)`, `color = FG_3`. Matches
-  [desktop.css:124–134](../design/project/ui_kits/desktop/desktop.css).
+  [desktop.css:124–134](../../design/project/ui_kits/desktop/desktop.css).
 - **R13.3** Four primary fields, left-to-right:
   - **Connection** — a 6 px coloured dot + a label.
     Connected (data feed up) → `up_500` dot + "Connected ·
@@ -510,7 +510,7 @@ no voice rewrite) and the cross-feature invariants in the
   chip background uses `accent_soft` (a new derived token —
   see Q10) for accent in light mode; in dark mode, the chip
   uses `rgba(111, 182, 174, 0.12)`
-  ([colors_and_type.css:134](../design/project/colors_and_type.css)).
+  ([colors_and_type.css:134](../../design/project/colors_and_type.css)).
 - **R15.5** `tape-row-audit-modal` modal frame: the modal adopts
   Tier 3 styling (`PANEL_RAISED + SHADOW_3 + radius_5`); the
   modal-trigger flow (click any tape row → modal opens) is
@@ -527,7 +527,7 @@ no voice rewrite) and the cross-feature invariants in the
 ### R16 — Anchor regression
 
 - **R16.1** All 11 backtest body-SHA-256 anchors in
-  [`spec/anchors.toml`](../anchors.toml) verify byte-identical
+  [`spec/anchors.toml`](../../anchors.toml) verify byte-identical
   post-Phase 1.
 - **R16.2** No new anchor scenarios; no re-lock budget; zero
   exceptions.
@@ -596,7 +596,7 @@ The tester gates Phase 1 ship against these V-items.
 _n/a — UI feature, no new backtest scenarios._
 
 The 11 locked backtest body-SHA-256 anchors in
-[`spec/anchors.toml`](../anchors.toml) are preserved byte-identical
+[`spec/anchors.toml`](../../anchors.toml) are preserved byte-identical
 post-Phase 1 (R16.1, architect-confirmed grep gate R16.3). Phase 1
 does not introduce a new strategy, does not modify the report
 renderer, does not touch any code path the anchored scenarios
@@ -714,11 +714,11 @@ bar.
 **The question:** does Phase 1 ship with **dark as default** (the
 existing principles-doc lock) or **toggle on first run**? The
 Lumen brand book says light + dark are "equal weight"
-([README.md:23](../design/project/README.md)).
+([README.md:23](../../design/project/README.md)).
 
 **Recommended (analyst):** **dark stays the default** per the
 principles doc's
-[long-session justification](../ui-design-principles.md#dark--light-mode-parity).
+[long-session justification](../../ui-design-principles.md#dark--light-mode-parity).
 Lumen's "equal weight" is about both modes being maintained,
 not about which is the cold-start default. Architect ratifies.
 
@@ -728,7 +728,7 @@ is long and dim-room-biased; light at midnight is hostile.
 ### Q7 — Principles-doc supersede shape
 
 **The question:** the existing 599-line
-[`spec/ui-design-principles.md`](../ui-design-principles.md) gets
+[`spec/ui-design-principles.md`](../../ui-design-principles.md) gets
 **replaced** with a Lumen-anchored rewrite (~300–400 lines,
 single-file replace), or **split** into two files (Lumen tokens
 in a new file; project-specific patterns stay in the existing)?
@@ -770,7 +770,7 @@ has to read two files.
 ### Q8 — Latency-band-name reconcile
 
 **The question:**
-[`operator-success-reports`](operator-success-reports.md) R7
+[`operator-success-reports`](../../operator-success-reports/feature.md) R7
 latency badges use the labels "OK / Slow / High / Halted" with
 green / yellow / red colour mapping. Lumen's voice and labels are
 not directly specified for latency badges. Does Phase 1:
@@ -789,7 +789,7 @@ latency badge is a **continuous-band measurement** (OK / Slow /
 High / Halted). Different vocabularies because different
 semantics. This matches the Lumen status bar's status-dot
 pattern
-([Shell.jsx:71](../design/project/ui_kits/desktop/Shell.jsx))
+([Shell.jsx:71](../../design/project/ui_kits/desktop/Shell.jsx))
 and preserves the operator-success-reports R7 contract.
 
 ### Q9 — Existing kill-switch tooltip / dialog scope
@@ -810,7 +810,7 @@ gains the focus ring per R4. Behavior, copy, phrase: untouched.
 _Architect-owned. Resolves Q1–Q9 + the cross-cutting master Q10 (token
 naming convention) — every recommendation lands as **ratified** unless
 called out under "Architect override". Task breakdown lives at
-[`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](../tasks/lumen-phase-1-foundation.md);
+[`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](tasks.md);
 this section is the design contract the developer reads alongside it._
 
 ### Open-question resolutions
@@ -1369,7 +1369,7 @@ visual lands).
 ## Implementation
 
 _developer fills this — task list at
-[`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](../tasks/lumen-phase-1-foundation.md)._
+[`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](tasks.md)._
 
 ## Verification — links
 
@@ -1390,7 +1390,7 @@ the Phase 1 presentation under `spec/lumen-design-adoption/presentations/lumen-d
   motion), Tier 1 panel styling, sunken inputs, active-row
   pattern, status bar widget, principles-doc supersede.
   Operator-locked constraints inherited from the
-  [master roadmap](lumen-design-adoption.md): no brand,
+  [master roadmap](../feature.md): no brand,
   no voice rewrite, sequential phasing, dark-default. Anchor
   risk: zero — UI feature, no backtest path touched. 36
   panel snapshot baselines refresh once. Cross-feature
@@ -1417,7 +1417,7 @@ the Phase 1 presentation under `spec/lumen-design-adoption/presentations/lumen-d
   `CARGO_PKG_VERSION`. 10 risks with mitigations; cross-
   feature invariants wired per R15 row. Anchor risk verified
   zero by construction (no `crates/strategy/audit/exec/backtest/`
-  touch). Task list at [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](../tasks/lumen-phase-1-foundation.md)
+  touch). Task list at [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](tasks.md)
   with 14 T15xx tasks + tester `T_FINAL_LUMEN_PHASE_1` gate.
   HANDOFF → developer (T1501 foundation gate first; multi-way
   fan-out at T1503–T1508 + T1510 after T1502 lands).

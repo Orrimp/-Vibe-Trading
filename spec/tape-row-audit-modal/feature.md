@@ -241,7 +241,7 @@ report-rendering path (unlikely), re-lock per v1.5a T717 precedent
 ### R13 — Operator-success-reports invariants must hold
 
 T802 / T805 / T806 / T809 / T810 (precedent in
-[per-symbol-position-accounts § R8](per-symbol-position-accounts.md)).
+[per-symbol-position-accounts § R8](../per-symbol-position-accounts/feature.md)).
 This feature touches none of those code paths; invariants hold by
 inspection. Verification = existing tests stay green.
 

@@ -8,15 +8,15 @@ updated: 2026-05-03
 # Tasks — Tape-row → audit modal
 
 Ordered, testable task list derived from
-[spec/tape-row-audit-modal/feature.md → Design](../features/tape-row-audit-modal.md#design)
+[spec/tape-row-audit-modal/feature.md → Design](feature.md#design)
 and the nine architect resolutions (Q1–Q9) recorded in that Design
 section. Cross-references to the analyst's R/V items use the format
 `Rn` / `Vn`; cross-references to the architect's resolutions use `Qn`.
 
-T8xx is taken by [operator-success-reports](operator-success-reports.md);
-T9xx is taken by [live-cockpit-unified](live-cockpit-unified.md);
-T10xx is taken by [real-mtm-unrealized-pnl](real-mtm-unrealized-pnl.md);
-T11xx is taken by [per-symbol-position-accounts](per-symbol-position-accounts.md);
+T8xx is taken by [operator-success-reports](../operator-success-reports/feature.md);
+T9xx is taken by [live-cockpit-unified](../live-cockpit-unified/feature.md);
+T10xx is taken by [real-mtm-unrealized-pnl](../real-mtm-unrealized-pnl/feature.md);
+T11xx is taken by [per-symbol-position-accounts](../per-symbol-position-accounts/feature.md);
 this feature uses **T1201–T1209** + `T_FINAL_TAPE_MODAL`.
 
 Owner tags:
@@ -116,9 +116,9 @@ dep.
 
 - [x] **T1201** [developer] — Add `JournalEntry`, `FillView::transaction_id`,
   `Fill::transaction_id` per
-  [Design → Crate map delta](../features/tape-row-audit-modal.md#crate-map-delta)
-  and [Q2](../features/tape-row-audit-modal.md#q2--journalentry-un-collapsed-lives-in-trading_core)
-  and [Q5](../features/tape-row-audit-modal.md#q5--transaction_id-plumbing-path):
+  [Design → Crate map delta](feature.md#crate-map-delta)
+  and [Q2](feature.md#q2--journalentry-un-collapsed-lives-in-trading_core)
+  and [Q5](feature.md#q5--transaction_id-plumbing-path):
   - Edit `crates/core/src/views.rs`:
     - Add `pub struct JournalEntry { pub account: AccountId,
       pub debit: Money<Usdt>, pub credit: Money<Usdt>,
@@ -165,9 +165,9 @@ dep.
 - [x] **T1202** [developer] — `audit::query::journal_entries_for_transaction`
   + `recent_fills` populates `transaction_id` + `post_fill` returns
   `txn_id` + `agent::runtime` stamps `Fill.transaction_id` per
-  [Design → Crate map delta](../features/tape-row-audit-modal.md#crate-map-delta)
-  and [Q5](../features/tape-row-audit-modal.md#q5--transaction_id-plumbing-path)
-  and [Q8 V11](../features/tape-row-audit-modal.md#q8--test-plan):
+  [Design → Crate map delta](feature.md#crate-map-delta)
+  and [Q5](feature.md#q5--transaction_id-plumbing-path)
+  and [Q8 V11](feature.md#q8--test-plan):
   - **Reader side** — at `crates/audit/src/query.rs`, add
     `pub async fn journal_entries_for_transaction(ledger: &Ledger,
     tx_id: &str) -> Result<Vec<JournalEntry>, LedgerError>`. SQL:
@@ -260,7 +260,7 @@ dep.
 
 - [x] **T1203** [ui-designer] — Add `bg_overlay`, `info`,
   `border_strong` theme tokens per
-  [Q3](../features/tape-row-audit-modal.md#q3--theme-tokens-land-in-this-feature)
+  [Q3](feature.md#q3--theme-tokens-land-in-this-feature)
   and the
   [principles color palette dark-mode table](../ui-design-principles.md#dark-mode-default):
   - Edit `crates/ui/src/theme.rs::color`:
@@ -316,7 +316,7 @@ dep.
 
 - [x] **T1204** [ui-designer] — Add modal-copy strings to
   `ui::strings` per
-  [R7](../features/tape-row-audit-modal.md#r7--strings-all-modal-copy-in-uistrings-zero-inline):
+  [R7](feature.md#r7--strings-all-modal-copy-in-uistrings-zero-inline):
   - Edit `crates/ui/src/strings.rs`:
     - Add 13 `pub const &str` constants in a new
       `// ── Tape audit modal ────────────────────────────────────`
@@ -374,9 +374,9 @@ dep.
 
 - [x] **T1205** [ui-designer] — Add `widgets::journal_transaction_modal`
   per
-  [Q1](../features/tape-row-audit-modal.md#q1--iced-014-modal-pattern-icedwidgetstack)
+  [Q1](feature.md#q1--iced-014-modal-pattern-icedwidgetstack)
   and
-  [Q7](../features/tape-row-audit-modal.md#q7--specific-journaltransactionmodal-widget):
+  [Q7](feature.md#q7--specific-journaltransactionmodal-widget):
   - New file
     `crates/ui/src/widgets/journal_transaction_modal.rs`. Exports:
     ```rust
@@ -493,9 +493,9 @@ dep.
 - [x] **T1206** [ui-designer] — Wire `Message::TapeRowClicked` /
   `TapeAuditModalClosed` / `TapeAuditEntriesLoaded`, `Cockpit.tape_audit_modal`,
   tape-row click handler, keyboard subscription per
-  [Design → Modal state shape](../features/tape-row-audit-modal.md#modal-state-shape)
+  [Design → Modal state shape](feature.md#modal-state-shape)
   and
-  [Q6](../features/tape-row-audit-modal.md#q6--keyboard-absorption-subscription-on-modal-open):
+  [Q6](feature.md#q6--keyboard-absorption-subscription-on-modal-open):
   - **Edit `crates/ui/src/state.rs`**:
     - Add `pub struct JournalModalState { pub tx_id: SmolStr,
       pub entries: PanelState<JournalTransactionView> }` and
@@ -677,7 +677,7 @@ dep.
 
 - [x] **T1207** [ui-designer] — Modal snapshot test in compact
   density per
-  [Q8 V8 / V2](../features/tape-row-audit-modal.md#q8--test-plan):
+  [Q8 V8 / V2](feature.md#q8--test-plan):
   - Edit `crates/ui/tests/panel_snapshots.rs` to add a new
     `#[test] fn tape_audit_modal_ready_paper_fill()` function
     that builds a fixture `JournalModalState::Ready` with a
@@ -802,7 +802,7 @@ dep.
 
 - [x] **T1208** [ui-designer] — Tape-row click → modal integration
   test per
-  [Q8 V1 / V3 / V4 / V5](../features/tape-row-audit-modal.md#q8--test-plan):
+  [Q8 V1 / V3 / V4 / V5](feature.md#q8--test-plan):
   - New file `crates/ui/tests/tape_row_click_opens_modal.rs`.
     Six `#[test]` functions:
     - `t1208_v1_click_opens_modal_with_correct_tx_id` — boot
@@ -944,8 +944,8 @@ dep.
   backtest path; reports do not render `FillView::transaction_id`;
   architect Q-resolution preserved. Ready for tester gate.
   verification per
-  [Design → Risks & mitigations § 6](../features/tape-row-audit-modal.md#risks--mitigations)
-  and [V6](../features/tape-row-audit-modal.md#v6--anchors-1111-pass):
+  [Design → Risks & mitigations § 6](feature.md#risks--mitigations)
+  and [V6](feature.md#v6--anchors-1111-pass):
   - Run `bash scripts/verify_anchors.sh`. Expect
     `ANCHORS PASS  (11 / 11)`.
   - On any FAIL: do NOT tick T1209. Route `HANDOFF → architect`

@@ -44,7 +44,7 @@ a Python PoC.
 
 This feature is **non-strategy and non-validation**. No edge claim, no
 trading-logic change, no impact on the 9 locked anchor hashes
-([v1.5a body-SHA256 anchors](v15a-mean-reversion-pairs.md#v15a-body-sha256-hashes-seed-0xc0ffee)).
+([v1.5a body-SHA256 anchors](../v15a-mean-reversion-pairs/feature.md#v15a-body-sha256-hashes-seed-0xc0ffee)).
 Success is "the report renders deterministically and reconciles to the
 ledger to the cent". Zero LLM tokens, zero strategy code touched, zero
 new bus channels. The reconciliation invariant (R11) is the load-bearing
@@ -257,7 +257,7 @@ channels** and consumes **no LLM tokens**.
   - **LLM spend**: the `cost` crate's `CostBudget` view; through
     v1.5a all `expense:llm:*` ledger accounts are zero, so this
     is `$0.00` until v2 ships. (Confirmed in v1.5a verification
-    V10 — see [v15a → V10](v15a-mean-reversion-pairs.md#verification).)
+    V10 — see [v15a → V10](../v15a-mean-reversion-pairs/feature.md#verification).)
 - **R7.3** Render as a 6-row table; cells with no data print
   `n/a` rather than `0` so an absent metric is distinguishable
   from a zero metric.
@@ -414,7 +414,7 @@ channels** and consumes **no LLM tokens**.
     Σ_realized_pnl_in_period` (closed trades only).
   - **Per-symbol P&L sum** (R5 cross-check): `Σ pnl_by_symbol ==
     Σ_realized_pnl_in_period` — already invariant V4 of v1
-    ([v1 V4](v1-cross-sectional-momentum.md#verification)).
+    ([v1 V4](../v1-cross-sectional-momentum/feature.md#verification)).
   - **Cash + position value = equity**: same v0 R3.5 invariant —
     `cash_balance + Σ_symbol(position[symbol] × mark[symbol]) =
     equity` at the report's `period_end` timestamp.
@@ -1770,10 +1770,10 @@ cross-reference.
     `d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3`
   - `top10-2023-1h-momentum` →
     `a20431e3f5765cefbdfed7d1157654bcbec90d90e4bd178cdd37ce084cba55af`
-    ([re-locked at v1.5a T717](v15a-mean-reversion-pairs.md#t717-anchor-note))
+    ([re-locked at v1.5a T717](../v15a-mean-reversion-pairs/feature.md#t717-anchor-note))
   - `top10-2024-h1-momentum` →
     `38b576335c9a7a45b7f4a74ecf82ca8310b89ae025c2ba33c56f79e62c22ba2c`
-    ([re-locked at v1.5a T717](v15a-mean-reversion-pairs.md#t717-anchor-note))
+    ([re-locked at v1.5a T717](../v15a-mean-reversion-pairs/feature.md#t717-anchor-note))
   - `pairs-2023-zscore-mr` →
     `90591a0ecc5d56c8ff93834b127a3780a31f51634f38f12c3c412391116abbd0`
   - `pairs-2024-h1-zscore-mr` →

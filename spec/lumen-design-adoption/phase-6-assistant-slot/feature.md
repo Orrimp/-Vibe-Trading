@@ -9,7 +9,7 @@ version: 2.5.0
 # Lumen Phase 6 — Assistant slot (forward-compat reservation only)
 
 > **Phase 6 of 6** in the
-> [`lumen-design-adoption`](lumen-design-adoption.md) initiative.
+> [`lumen-design-adoption`](../feature.md) initiative.
 > Master roadmap is the orientation; this brief is the **shippable
 > feature** at the time it lands. Operator-locked constraints apply
 > without re-litigation.
@@ -24,7 +24,7 @@ version: 2.5.0
 
 The Lumen `Assistant.jsx` and Shell `right-side AI assistant panel`
 is **opt-in, collapsible, and remembers state**
-([`spec/design/project/README.md:131`](../design/project/README.md)).
+([`spec/design/project/README.md:131`](../../design/project/README.md)).
 The execution-mode toggle in Phase 5's HumanControl
 (Observe / Supervised / Auto) maps directly onto the v2 LLM gate —
 Supervised = trade-by-trade approval, Auto = within-envelope
@@ -37,7 +37,7 @@ time.
 - **Right-rail collapsible panel slot** in the shell, hidden by
   default, revealed when the v2 LLM strategy is enabled.
 - **Composer + message-list widget pattern** aligned to
-  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../design/project/ui_kits/desktop/Assistant.jsx).
+  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../../design/project/ui_kits/desktop/Assistant.jsx).
 - **Wires into the v2 LLM trait** the architect defines at v2
   kickoff.
 - **Coexists with the Phase 2 sidebar nav** (assistant rail on
@@ -48,10 +48,10 @@ time.
 
 **Zero shipped UI.** Phase 2's shell grid reserves the right-rail
 column-track in advance — see
-[`lumen-phase-2-shell-ia-charts.md`](lumen-phase-2-shell-ia-charts.md)
+[`lumen-phase-2-shell-ia-charts.md`](../phase-2-shell-ia-charts/feature.md)
 for the column-track contract. No widget, no module, no token; just
 the layout reservation in the Phase 2 shell. The
-[architecture.md](../architecture.md) Frontend section gets a two-
+[architecture.md](../../architecture.md) Frontend section gets a two-
 line forward-compat note documenting the slot at Phase 2 landing.
 
 ## Anchor risk

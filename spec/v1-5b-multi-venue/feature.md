@@ -13,7 +13,7 @@ version: 1.2.0
 This is the **largest queued backend feature** on the
 [backlog](../backlog.md), explicitly carved out of v1.5 by the v1.5a
 analyst's split decision
-([v15a-mean-reversion-pairs.md → Why, lines 25–44](v15a-mean-reversion-pairs.md))
+([v15a-mean-reversion-pairs.md → Why, lines 25–44](../v15a-mean-reversion-pairs/feature.md))
 and the architect's v1 Q4 resolution
 ([architecture.md → v1 Q4 — Multi-venue: single-venue (Binance) for v1, lines 855–884](../architecture.md#v1-q4--multi-venue-single-venue-binance-for-v1)).
 v1.5a shipped the mean-reversion pairs strategy on the existing
@@ -56,7 +56,7 @@ gaps motivate v1.5b:
 - **Binance** — already the v0/v0.5/v1/v1.5a baseline. v1.5b
   finishes T612 (multi-symbol live `BinanceFeed`) per the v1
   closeout's explicit deferral
-  ([v1-cross-sectional-momentum.md → T612 status, lines 1516–1521](v1-cross-sectional-momentum.md#t612-status)).
+  ([v1-cross-sectional-momentum.md → T612 status, lines 1516–1521](../v1-cross-sectional-momentum/feature.md#t612-status)).
   Today's `BinanceFeed::subscribe_bars` /
   `subscribe_trades` opens **one WS connection per symbol**;
   v1's 10-symbol universe in paper mode would mean 10 idle
@@ -242,7 +242,7 @@ seeds), and — critically — the 9 locked backtest anchor hashes
 - **R3.3** v1.5a's `MeanReversionPairsStrategy` USDC-pair rejection
   (the `unsupported_quote` error in
   [v15a-mean-reversion-pairs.md, R1.3 USDT-only constraint, lines
-  113–120](v15a-mean-reversion-pairs.md)) is **lifted** — the strategy
+  113–120](../v15a-mean-reversion-pairs/feature.md)) is **lifted** — the strategy
   loader now accepts USDC pair tuples. v1.5b carries the explicit
   deliverable from
   [architecture.md → v1.5a Q5, lines 1146–1150](../architecture.md#v15a-q5--usdc-pairs-blocked-on-v15b-multi-venue):
@@ -256,7 +256,7 @@ seeds), and — critically — the 9 locked backtest anchor hashes
 - **Acceptance:** a paper-fill cycle on `BTCUSDC` (Coinbase) writes
   rows to the audit DB whose `account_id` is
   `assets:position:BTCUSDC` (per
-  [features/per-symbol-position-accounts.md → R1, lines 30–60](per-symbol-position-accounts.md));
+  [features/per-symbol-position-accounts.md → R1, lines 30–60](../per-symbol-position-accounts/feature.md));
   `audit::query::pnl_by_symbol` returns a row for `BTCUSDC`.
 
 ### R4 — T612 multi-symbol live BinanceFeed
@@ -270,7 +270,7 @@ seeds), and — critically — the 9 locked backtest anchor hashes
   one WS connection serves N symbols.
 - **R4.2** Per-symbol `clock_skew_ms{feed,symbol}` Prometheus label
   emission, deferred at v1 closeout
-  ([v1-cross-sectional-momentum.md → T612 status, lines 1518–1520](v1-cross-sectional-momentum.md#t612-status)).
+  ([v1-cross-sectional-momentum.md → T612 status, lines 1518–1520](../v1-cross-sectional-momentum/feature.md#t612-status)).
 - **R4.3** Testnet smoke test (also deferred at v1 closeout) — a
   Binance Spot Testnet WS URL constant + a smoke test that
   connects against testnet and asserts at least one Tick per
@@ -281,7 +281,7 @@ seeds), and — critically — the 9 locked backtest anchor hashes
   → BoxStream<Result<Bar>>`) — the merged stream emits Bars in
   `(venue_ts ASC, symbol ASC)` order, matching the v1 multi-symbol
   replay determinism contract
-  ([v1-cross-sectional-momentum.md → R12.2 / R12.4](v1-cross-sectional-momentum.md)).
+  ([v1-cross-sectional-momentum.md → R12.2 / R12.4](../v1-cross-sectional-momentum/feature.md)).
   Architect can decide single-method-with-list vs new-method.
 - **Acceptance:** `cargo test --workspace -p data` includes a 10-symbol
   combined-stream test (mocked WS server) that emits one bar per

@@ -112,7 +112,7 @@ Numbered, testable, derived from the seven operator-confirmed scope
 decisions in the orchestrator's spawn message + the existing Phase 2
 chart shape at
 [`crates/ui/src/widgets/chart.rs`](../../crates/ui/src/widgets/chart.rs)
-+ [`crates/ui/src/screens/charts.rs`](../../crates/ui/src/screens/charts.rs).
++ [`crates/ui/src/screens/lab.rs`](../../crates/ui/src/screens/lab.rs).
 Each ends with a one-line **Acceptance** clause the tester can verify by
 running a specific command.
 
@@ -1353,7 +1353,7 @@ that splits the inner rect 50/50 (signed two-color stacked).
   LOC, sibling shape of `chart.rs`).
 - `crates/ui/src/widgets/mod.rs`: `pub mod volume_histogram;`
   declaration added.
-- `crates/ui/src/screens/charts.rs`: consume the widget below the
+- `crates/ui/src/screens/lab.rs`: consume the widget below the
   chart via `.push(volume_histogram::view(bins, mode))` inside a
   `Container::new(...).height(Length::Fixed(80.0))`.
 - `crates/ui/src/widgets/snapshots/`: new
@@ -1489,7 +1489,7 @@ assertion).
 | `crates/ui/src/widgets/chart.rs` | +200 | `MARKER_SIZE_PX = 13.0`; `GHOST_MARKER_SIZE_PX = 8.0`; `snap_price_to_line` helper; `ChartProgram::State` → `ChartState`; `ChartProgram::update` implemented; `draw_triangle` gains outline + shadow params; new ghost-layer pre-pass; final tooltip pass via `chart_tooltip::draw_tooltip`; `chart_summary` test helper extended to include `draw_order`, `ghost_count`, `fill_count`, and `marker_size_px` fields. |
 | `crates/ui/src/widgets/mod.rs` | +2 | `pub mod chart_tooltip;`, `pub mod volume_histogram;`. |
 | `crates/ui/src/state.rs` | +60 | New `Cockpit.chart_signals: PanelState<Vec<SignalView>>`, `Cockpit.chart_tooltip: Option<ChartTooltipView>`. New `ChartTooltipView`, `ChartMarkerIndex` types. New `Message::ChartSignalsLoaded`, `Message::ChartMarkerHovered`, `Message::ChartMarkerHoverEnded` arms. `update` arms: pure assignments. |
-| `crates/ui/src/screens/charts.rs` | +60 | Layout (β) implementation per Q5: chip row → tile-strip-with-position-mirror → chart → histogram. Compute `Vec<VolumeBin>` from `chart_markers` + `chart_buffer.bars(...)` at compose time. Compute the position-mirror's filtered slice via `model.positions.filter_to(symbol)`. |
+| `crates/ui/src/screens/lab.rs` | +60 | Layout (β) implementation per Q5: chip row → tile-strip-with-position-mirror → chart → histogram. Compute `Vec<VolumeBin>` from `chart_markers` + `chart_buffer.bars(...)` at compose time. Compute the position-mirror's filtered slice via `model.positions.filter_to(symbol)`. |
 | `crates/ui/src/strings.rs` | +20 | New `CHART_TOOLTIP_*`, `CHART_VOLUME_TILE_*`, `CHART_VOLUME_HISTOGRAM_LABEL`, `CHART_POSITION_MIRROR_LABEL`, `CHART_POSITION_MIRROR_NONE` constants per R4.7 + R7.7. Plus the dual entries in the `strings.rs::tests::all_strings_present` table. |
 | `crates/ui/src/bin/cockpit_live.rs` | +30 | New `Task::perform` shim after `SelectSymbol` + after `BarClose` issuing `audit::query::recent_signals` and dispatching `Message::ChartSignalsLoaded`. Sibling of the existing `recent_fills_filtered` shim at lines 610–637. |
 

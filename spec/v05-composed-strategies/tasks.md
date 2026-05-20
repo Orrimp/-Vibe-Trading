@@ -8,7 +8,7 @@ updated: 2026-04-20
 # Tasks — v0.5 Composed Strategies (Hot-Load A) + Multi-Indicator Rules
 
 Ordered, testable task list derived from
-[spec/v05-composed-strategies/feature.md → Design](../features/v05-composed-strategies.md#design)
+[spec/v05-composed-strategies/feature.md → Design](feature.md#design)
 and the five architect resolutions (Q1–Q5) locked in
 [spec/architecture.md Changelog 2026-04-19](../architecture.md#changelog).
 
@@ -42,7 +42,7 @@ v0 T0xx namespace stays intact.
 ## Week 1 — parser, engine, audit, new types
 
 - [x] **T501** [developer] — `trading_core` new message types +
-  read-side views per [Design → New broadcast events](../features/v05-composed-strategies.md#new-broadcast-events-q5-resolution).
+  read-side views per [Design → New broadcast events](feature.md#new-broadcast-events-q5-resolution).
   Add `StrategyLoaded`, `StrategySwapped`, `StrategyLoadError`,
   `StrategyEventView`, `StrategyEventKind` (all `Serialize` + `Deserialize`
   + `Clone` + `Debug`). No new edges; `trading_core` is upstream. —
@@ -66,7 +66,7 @@ v0 T0xx namespace stays intact.
   `strategy::composed::dsl`. Recursive-descent parser (or `winnow`
   combinators — developer-owned dep choice, no new *runtime* dep) that
   turns a signal string into a `RuleAst`. Covers every production in
-  [Design → Rule DSL grammar](../features/v05-composed-strategies.md#rule-dsl-grammar--toml-schema). —
+  [Design → Rule DSL grammar](feature.md#rule-dsl-grammar--toml-schema). —
   _acceptance: unit tests parse each of the six R2.3 example rules to
   the expected AST shape; 1 000-case proptest of generated valid rules
   round-trips parse → canonicalize → re-parse with identical AST._
@@ -75,14 +75,14 @@ v0 T0xx namespace stays intact.
 - [x] **T504** [developer] — `strategy::composed::typecheck` —
   arity / unknown-indicator / unknown-param / invalid-range /
   invalid-stage / unsupported-sizing detection with distinct
-  `StrategyLoadError::error_code` values per [Design → Error codes](../features/v05-composed-strategies.md#rule-dsl-grammar--toml-schema). —
+  `StrategyLoadError::error_code` values per [Design → Error codes](feature.md#rule-dsl-grammar--toml-schema). —
   _acceptance: 10 negative-fixture TOML files under
   `crates/strategy/tests/fixtures/bad_strategies/` each produce a
   distinct non-panic `StrategyLoadError`; error codes match the table._
   **[deps: T503]**
 
 - [x] **T505** [developer] — `strategy::composed::node` — indicator
-  node + rule node evaluators per [Design → ComposedStrategy type](../features/v05-composed-strategies.md#composedstrategy-type-r1).
+  node + rule node evaluators per [Design → ComposedStrategy type](feature.md#composedstrategy-type-r1).
   Ring buffers sized at construction; `on_bar` is allocation-free on
   the hot path (verified by a `#[test]` under `cargo test --features
   heap-track` against a 10_000-bar fixture). —
@@ -111,7 +111,7 @@ v0 T0xx namespace stays intact.
   **[deps: T505, T506]**
 
 - [x] **T508** [developer] — `audit` schema migration
-  `migrations/0003_strategy_events.sql` per [Design → Strategy-event audit schema](../features/v05-composed-strategies.md#strategy-event-audit-schema-r4-q1-resolution).
+  `migrations/0003_strategy_events.sql` per [Design → Strategy-event audit schema](feature.md#strategy-event-audit-schema-r4-q1-resolution).
   Backwards-compatible — `sqlx::migrate!` applies it on next boot. —
   _acceptance: integration test opens an empty ledger, runs migrations,
   `sqlite_master` contains `strategy_events` table with the five
@@ -119,7 +119,7 @@ v0 T0xx namespace stays intact.
 
 - [x] **T509** [developer] — `audit::journal::strategy_event(..)`
   writer + `audit::query::{strategy_events_since, strategy_history}`
-  readers per [Design → Strategy-event audit schema](../features/v05-composed-strategies.md#strategy-event-audit-schema-r4-q1-resolution).
+  readers per [Design → Strategy-event audit schema](feature.md#strategy-event-audit-schema-r4-q1-resolution).
   No `sqlx` types in the `audit::query` public surface. —
   _acceptance: integration test writes one of each kind (Load / Swap /
   Unload / Reject) and asserts `strategy_history(id)` returns them in
@@ -153,7 +153,7 @@ v0 T0xx namespace stays intact.
 
 - [x] **T512** [developer] — `agent::EventBus` three new broadcast
   channels: `strategy_loaded`, `strategy_swapped`, `strategy_error`
-  (capacity 32 each) per [Design → New broadcast events](../features/v05-composed-strategies.md#new-broadcast-events-q5-resolution).
+  (capacity 32 each) per [Design → New broadcast events](feature.md#new-broadcast-events-q5-resolution).
   Publisher methods infallible, identical pattern to v0 fills /
   positions / bars. Update
   `spec/v0-paper-sma/reports/dev-week2-broadcast-api-2026-04-18.md` with a
@@ -166,7 +166,7 @@ v0 T0xx namespace stays intact.
 - [x] **T513** [developer] — `agent::watcher::run_strategy_watcher`
   task: `notify` watcher on `config/strategies/`, 250ms debounce,
   dispatch to `load_and_swap` / `unload`; writes `strategy_event`
-  rows; publishes to the three new bus channels per [Design → File watcher + atomic swap](../features/v05-composed-strategies.md#file-watcher--atomic-swap-r3).
+  rows; publishes to the three new bus channels per [Design → File watcher + atomic swap](feature.md#file-watcher--atomic-swap-r3).
   Parse + typecheck + construct happen **outside** the registry
   write-guard (guard held only for the pointer swap). —
   _acceptance: unit test against a `tempdir` simulates Create / Modify
@@ -198,7 +198,7 @@ v0 T0xx namespace stays intact.
   **[deps: T507, T513]**
 
 - [x] **T516** [developer] — `backtest` binary `--strategy <id>` flag
-  per [Design → Backtest harness alignment](../features/v05-composed-strategies.md#backtest-harness-alignment-r9).
+  per [Design → Backtest harness alignment](feature.md#backtest-harness-alignment-r9).
   Resolves compiled-in first, then `config/strategies/<id>.toml`.
   Report writer's new `Strategy` subsection emits id + kind + full
   hash + source path + signal string. —
@@ -242,12 +242,12 @@ v0 T0xx namespace stays intact.
   shape), 5-rule (R10.2 mixed case). Baselines committed to
   `criterion_baselines/v05-composed-strategies/`. —
   _acceptance: `cargo bench -p strategy --bench composed_strategies`
-  shows p99 `on_bar` under the budgets in [Design → Performance budget](../features/v05-composed-strategies.md#performance-budget);
+  shows p99 `on_bar` under the budgets in [Design → Performance budget](feature.md#performance-budget);
   `cargo bench` with the baseline delta step passes._
   **[deps: T507]**
 
 - [x] **T520** [developer] — Four backtest scenarios execution per
-  [feature → Backtest Scenarios](../features/v05-composed-strategies.md#backtest-scenarios):
+  [feature → Backtest Scenarios](feature.md#backtest-scenarios):
   1. `btc-2023-1m-sma-baseline-refresh` (must byte-match v0 report
      body sha256 to confirm additive changes didn't drift SMA output);
   2. `btc-2023-1m-macd-trend`;
@@ -271,7 +271,7 @@ v0 T0xx namespace stays intact.
   **[deps: T520]**
 
 - [x] **T522** [ui-designer] — `ui::strings` additions per
-  [Design → Cockpit strategies panel](../features/v05-composed-strategies.md#cockpit-strategies-panel-r5-q4-resolution).
+  [Design → Cockpit strategies panel](feature.md#cockpit-strategies-panel-r5-q4-resolution).
   All `STRATEGIES_*` keys landed; `ui::strings::all()` still returns a
   stable deduplicated list; `crates/ui/tests/consistency.rs` still
   fails the build if any widget inlines a string. —
@@ -327,7 +327,7 @@ v0 T0xx namespace stays intact.
 - [x] **T527** [ui-designer] — Cockpit layout update: `widgets::strategies`
   placed in the right column above Open positions per Q4 decision. v0
   layout for the left column (P&L, latency, kill switch) unchanged.
-  Wireframe matches [Design → Cockpit strategies panel](../features/v05-composed-strategies.md#cockpit-strategies-panel-r5-q4-resolution). —
+  Wireframe matches [Design → Cockpit strategies panel](feature.md#cockpit-strategies-panel-r5-q4-resolution). —
   _acceptance: `insta` snapshot of the full cockpit view (fixtures
   mode) matches the committed golden; consistency test still passes._
   **[deps: T524, T527-prev-snap]**

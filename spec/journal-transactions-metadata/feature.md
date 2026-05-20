@@ -10,7 +10,7 @@ version: 1.6.1
 
 ## Why
 
-The just-shipped [`tape-row-audit-modal`](tape-row-audit-modal.md)
+The just-shipped [`tape-row-audit-modal`](../tape-row-audit-modal/feature.md)
 renders journal entries correctly, but in **live mode** the modal's
 header is empty: `description` displays as `""` and `strategy_id`
 falls through to `TAPE_AUDIT_MODAL_STRATEGY_NONE` (`—`). The
@@ -21,7 +21,7 @@ falls through to `TAPE_AUDIT_MODAL_STRATEGY_NONE` (`—`). The
 
 The gap was flagged at T1206 ship.
 [`tape-row-audit-modal.md` Implementation § Async dispatch (lines
-625–635)](tape-row-audit-modal.md):
+625–635)](../tape-row-audit-modal/feature.md):
 
 > The view's header fields (`description`, `strategy_id`) default
 > to empty / `None` until a follow-up adds the journal_transactions
@@ -670,7 +670,7 @@ live mode. No new strings, no new tokens, no new widgets._
 - 2026-05-03 (analyst): initial draft. Promoted from the T1206
   deviation note in
   [`tape-row-audit-modal.md` Implementation § Async dispatch
-  (lines 625–635)](tape-row-audit-modal.md). 7 R-items, 5
+  (lines 625–635)](../tape-row-audit-modal/feature.md). 7 R-items, 5
   V-items, 6 open questions for the architect. Anchor risk:
   zero — additive read-only feature; no write path, no rendering
   path, no anchored code path consumed by the new reader.

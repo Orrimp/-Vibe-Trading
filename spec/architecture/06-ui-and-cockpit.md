@@ -512,7 +512,7 @@ otherwise stateless — `current_screen` lives on `Cockpit`.
 **Right-rail track reservation for Phase 6** — Phase 2's shell grid
 **reserves** a right column-track for the Phase 6 Assistant slot
 (see
-[`lumen-phase-6-assistant-slot.md`](../lumen-phase-6-assistant-slot/feature.md)).
+[`lumen-phase-6-assistant-slot.md`](../lumen-design-adoption/phase-6-assistant-slot/feature.md)).
 Reservation = the column exists in the grid spec but has zero
 width when the v2 LLM strategy is not enabled. No widget renders
 in it; no token references it; the layout simply doesn't consume
@@ -530,7 +530,7 @@ every screen (see [`widgets::status_bar`](#cockpit--auditquery)).
 Architect's Phase 2 design landing for the
 [lumen-design-adoption](../lumen-design-adoption/feature.md) initiative,
 ratifying the analyst's brief at
-[lumen-phase-2-shell-ia-charts](../lumen-phase-2-shell-ia-charts/feature.md).
+[lumen-phase-2-shell-ia-charts](../lumen-design-adoption/phase-2-shell-ia-charts/feature.md).
 Phase 2 is the second of six sequential phases; only Phase 2 ships
 through this gate. Phases 3 / 4 / 5 are queued; Phase 6 is reserved
 for the v2 LLM strategy. **11 / 11 architect Q-items ratified; zero
@@ -695,7 +695,7 @@ construction.
 - Lucide icons explicitly out of scope (master Constraint).
 
 **Tasks.** `T1601–T1616` + `T_FINAL_LUMEN_PHASE_2` filed at
-[tasks/lumen-phase-2-shell-ia-charts.md](../lumen-phase-2-shell-ia-charts/tasks.md).
+[tasks/lumen-phase-2-shell-ia-charts.md](../lumen-design-adoption/phase-2-shell-ia-charts/tasks.md).
 T1601 is the foundation gate (state additions); T1602 (sidebar nav
 widget) and T1603 (shell rewiring) sequence after. After T1603,
 eight tasks fan out (T1604 Home / T1605 Debug / T1606 audit query
@@ -709,7 +709,7 @@ close out before the tester gate.
 Architect's Phase 3 design landing for the
 [lumen-design-adoption](../lumen-design-adoption/feature.md) initiative,
 ratifying the analyst's brief at
-[lumen-phase-3-detail-screens](../lumen-phase-3-detail-screens/feature.md).
+[lumen-phase-3-detail-screens](../lumen-design-adoption/phase-3-detail-screens/feature.md).
 Phase 3 is the third of six sequential phases (Phase 1 + Phase 2
 shipped 2026-05-04 / 2026-05-05); Phases 4 / 5 are queued; Phase 6
 is reserved for the v2 LLM strategy. **11 / 11 architect Q-items
@@ -902,7 +902,7 @@ alter any committed report body by construction.
 - Lucide icons explicitly out of scope (master Constraint).
 
 **Tasks.** `T1701–T1716` + `T_FINAL_LUMEN_PHASE_3` filed at
-[tasks/lumen-phase-3-detail-screens.md](../lumen-phase-3-detail-screens/tasks.md).
+[tasks/lumen-phase-3-detail-screens.md](../lumen-design-adoption/phase-3-detail-screens/tasks.md).
 T1701 is the foundation gate (state additions). T1702 (`008`
 migration + writer wiring), T1703 (sidebar swap), T1707
 (`RiskTelemetry` channel), T1709 (audit filter row), and T1712
@@ -918,7 +918,7 @@ before the tester gate.
 Architect's Phase 4 design landing for the
 [lumen-design-adoption](../lumen-design-adoption/feature.md) initiative,
 ratifying the analyst's brief at
-[lumen-phase-4-backtest-panel](../lumen-phase-4-backtest-panel/feature.md).
+[lumen-phase-4-backtest-panel](../lumen-design-adoption/phase-4-backtest-panel/feature.md).
 Phase 4 is the fourth of six sequential phases (Phases 1 / 2 / 3
 shipped 2026-05-04 / 2026-05-05 / 2026-05-06; Phase 5 queued; Phase 6
 reserved for the v2 LLM strategy). **12 / 12 architect Q-items
@@ -1159,7 +1159,7 @@ the curve / band; the audit query addition is for the cockpit-side
 sparkline consumer, not the viewer).
 
 **Tasks.** `T1801–T1815` + `T_FINAL_LUMEN_PHASE_4` filed at
-[tasks/lumen-phase-4-backtest-panel.md](../lumen-phase-4-backtest-panel/tasks.md).
+[tasks/lumen-phase-4-backtest-panel.md](../lumen-design-adoption/phase-4-backtest-panel/tasks.md).
 T1801 is the foundation gate (`core::EquitySeries` + `BacktestMetrics`
 + `Cockpit::strategy_equity` field + `Message::StrategyEquityRefreshed`
 variant). T1802 (audit query), T1803 (viewer skeleton), T1804
@@ -1178,7 +1178,7 @@ tester gate.
 Architect's Phase 5 design landing for the
 [lumen-design-adoption](../lumen-design-adoption/feature.md) initiative,
 ratifying the analyst's brief at
-[lumen-phase-5-humancontrol-agentfeed](../lumen-phase-5-humancontrol-agentfeed/feature.md).
+[lumen-phase-5-humancontrol-agentfeed](../lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md).
 Phase 5 is the fifth of six sequential phases (Phases 1–4 shipped
 2026-05-04 / 2026-05-05 / 2026-05-06 / 2026-05-06; Phase 6 reserved
 for the v2 LLM strategy). **15 / 15 architect Q-items ratified; zero
@@ -1421,7 +1421,7 @@ post-Phase 5.
 - Lucide icons explicitly out of scope (master Constraint).
 
 **Tasks.** `T1901–T1916` + `T_FINAL_LUMEN_PHASE_5` filed at
-[tasks/lumen-phase-5-humancontrol-agentfeed.md](../lumen-phase-5-humancontrol-agentfeed/tasks.md).
+[tasks/lumen-phase-5-humancontrol-agentfeed.md](../lumen-design-adoption/phase-5-humancontrol-agentfeed/tasks.md).
 T1901 is the foundation gate (Cockpit state additions). After T1901,
 **five** tasks fan out in parallel: T1902 (audit writers — separate
 crate, no UI dep), T1903 (`tape` → `agent_feed` rename via `git mv`

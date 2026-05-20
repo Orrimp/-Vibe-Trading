@@ -8,7 +8,7 @@ updated: 2026-04-19
 # Tasks — v0 paper-trading SMA tracer bullet
 
 Ordered, testable task list derived from
-[spec/v0-paper-sma/feature.md → Design](../features/v0-paper-sma.md#design).
+[spec/v0-paper-sma/feature.md → Design](feature.md#design).
 Owner tags: `[developer]` for backend Rust work, `[ui-designer]` for the
 `ui` crate. The two can proceed **in parallel** once the `core` type
 contract (T02) is in; the UI side builds against `ui::fixtures` until the
@@ -36,7 +36,7 @@ what the tester will verify.
   `cargo deny check` passes an initial config._
 
 - [x] **T02** [developer] — Implement `core` crate types per
-  [feature design → Core types](../features/v0-paper-sma.md#core-types-r2):
+  [feature design → Core types](feature.md#core-types-r2):
   `Symbol`, `Asset`, `Currency` + `Money<C>`, `Price`, `Quantity`, `Side`,
   `Bar`, `Tick`, `Signal` + `SignalKind` + `SignalEvidence`, `Decision`,
   `Order` (private fields, `new()` only), `Fill`, `Position`, `StrategyId`,
@@ -65,7 +65,7 @@ what the tester will verify.
 - [x] **T05** [developer] — `audit` crate: pin `sqlx-ledger` version,
   confirm SQLite feature flag, implement `audit::bootstrap::chart_of_accounts`
   creating all accounts listed in
-  [feature design → Chart of accounts](../features/v0-paper-sma.md#chart-of-accounts-bootstrapped-in-auditbootstrapchart_of_accounts). —
+  [feature design → Chart of accounts](feature.md#chart-of-accounts-bootstrapped-in-auditbootstrapchart_of_accounts). —
   _acceptance: integration test creates an empty SQLite ledger, bootstraps
   the chart, and `audit::query::account_list()` returns all 13 v0 accounts._
   _repair 2026-04-17: count updated from 10 → 13 (added `expense:infra`,
@@ -73,7 +73,7 @@ what the tester will verify.
 
 - [x] **T06** [developer] — `audit::journal` fill-writing API:
   `post_fill(&Fill)` transactionally writes the buy/sell entry patterns
-  from [feature design → Journal entry shape per fill](../features/v0-paper-sma.md#journal-entry-shape-per-fill-r33). —
+  from [feature design → Journal entry shape per fill](feature.md#journal-entry-shape-per-fill-r33). —
   _acceptance: a unit test posts 100 synthetic fills and asserts
   `Σ debits == Σ credits` per-transaction and aggregate, for both
   buy and sell legs including realized P&L sign._
@@ -126,7 +126,7 @@ what the tester will verify.
 
 - [x] **T12** [developer] — `Config::load()` with validation, defaults
   exactly matching the schema in
-  [feature design → Config schema](../features/v0-paper-sma.md#config-schema-r8).
+  [feature design → Config schema](feature.md#config-schema-r8).
   Reject `mode = "live"` with `UnsupportedMode`. —
   _acceptance: unit test loads a minimal TOML, asserts defaults; a second
   test asserts `mode = "live"` is rejected._
@@ -222,7 +222,7 @@ what the tester will verify.
 
 - [x] **T24** [developer] — `backtest::MatchingEngine` trait +
   `PaperEngine` per
-  [feature design → MatchingEngine + PaperEngine](../features/v0-paper-sma.md#matchingengine-trait--v0-paperengine-r5).
+  [feature design → MatchingEngine + PaperEngine](feature.md#matchingengine-trait--v0-paperengine-r5).
   Seeded `ChaCha20Rng`. —
   _acceptance: unit test with `slippage_bps=2`, `taker_fee_bps=4`,
   `bar.close=40_000`, buy `0.1 BTC` produces
@@ -241,7 +241,7 @@ what the tester will verify.
   (seeded Box-Muller GBM, deterministic)._
 
 - [x] **T26** [developer] — Minute-boundary reconciler task (R3.5) per
-  [feature design → Minute-boundary reconciliation](../features/v0-paper-sma.md#minute-boundary-reconciliation-r35).
+  [feature design → Minute-boundary reconciliation](feature.md#minute-boundary-reconciliation-r35).
   Runs as a tokio task, trips kill switch on imbalance. —
   _acceptance: unit test synthesizes an imbalance > tolerance, asserts
   `LedgerImbalance` event emitted and kill switch state is `Tripped`._

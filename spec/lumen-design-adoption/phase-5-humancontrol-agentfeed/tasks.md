@@ -13,9 +13,9 @@ updated: 2026-05-07
 
 # Tasks — Lumen design adoption · Phase 5 (HumanControl + AgentFeed rename)
 
-> Spec context: [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](../features/lumen-phase-5-humancontrol-agentfeed.md)
-> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md)
-> · Architecture: [`spec/architecture.md`](../architecture.md)
+> Spec context: [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](feature.md)
+> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md)
+> · Architecture: [`spec/architecture.md`](../../architecture.md)
 >
 > **T19xx range** (T15xx Phase 1 shipped; T16xx Phase 2 shipped;
 > T17xx Phase 3 shipped; T18xx Phase 4 shipped; T1901–T1916 +
@@ -65,7 +65,7 @@ updated: 2026-05-07
 
 ## Honest-tick discipline
 
-Per [`AGENT.md`](../../AGENT.md) Process discipline #1: do not mark a
+Per [`AGENT.md`](../../../AGENT.md) Process discipline #1: do not mark a
 task `[x]` without citing **(a)** the file:line where the change
 landed, **(b)** the test command exercising it, **(c)** the test-output
 line proving it passed. If you cannot cite all three, leave the tick
@@ -171,7 +171,7 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
     SmolStr, typed: String }, Submitting { veto_id: SmolStr } }`.
     Derives: `Debug + Clone + Default` (manual `Default = Idle`).
     Mirror of `KillState::Confirming { typed }` at
-    [state.rs](../../crates/ui/src/state.rs).
+    [state.rs](../../../crates/ui/src/state.rs).
   - Add `pub struct VetoEvent { veto_id: SmolStr, ts: Timestamp,
     strategy_id: StrategyId, reason: SmolStr, blocked_signal: Signal
     }` with `Debug + Clone + PartialEq + Eq + Serialize +
@@ -437,7 +437,7 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
     `Space::new()` spacers awaiting the per-block tasks.
   - Net-new strings (additive — Constraint 2 unchanged):
     - `PANEL_HUMAN_CONTROL_TITLE = "You're in control"` per
-      [`HumanControl.jsx:9`](../design/project/ui_kits/desktop/HumanControl.jsx).
+      [`HumanControl.jsx:9`](../../design/project/ui_kits/desktop/HumanControl.jsx).
     - `PANEL_HUMAN_CONTROL_META = "Human-in-the-loop"`.
     - `HUMAN_CONTROL_LIMITS_UNAVAILABLE = "Risk limits unavailable"`
       (R3.4 error-state copy).
@@ -474,7 +474,7 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
     on the right (coloured per `sentiment`).
   - Daily-loss row: reads `risk_state.daily_loss_cap_pct` from the
     Phase 3 `PanelState<RiskState>` mirror at
-    [`crates/ui/src/state.rs:563`](../../crates/ui/src/state.rs);
+    [`crates/ui/src/state.rs:563`](../../../crates/ui/src/state.rs);
     `sentiment = None` (FG_1 neutral).
   - Max-position row: derives from `risk_state.per_symbol_caps`;
     `sentiment = None`.
@@ -674,14 +674,14 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
     Option<Element<'_, Message>>` returning `None` when `Idle`,
     `Some` when `Confirming` or `Submitting`.
   - Modal body — **mirror of kill-confirm at
-    [`widgets/kill.rs:92–155`](../../crates/ui/src/widgets/kill.rs)**:
+    [`widgets/kill.rs:92–155`](../../../crates/ui/src/widgets/kill.rs)**:
     title + explanatory body + sunken `text_input` (border `BORDER_2 →
     ACCENT` on focus) + cancel + confirm buttons.
   - Confirm button **disabled until `typed == OVERRIDE_RISK_VETO_PHRASE`**;
     emits `Message::OverrideRiskVetoConfirmed(veto_id)`. Cancel emits
     `Message::OverrideRiskVetoCancelled` (always enabled).
   - Net-new strings (additive — per the principles-doc table at
-    [`spec/ui-design-principles.md`](../ui-design-principles.md)
+    [`spec/ui-design-principles.md`](../../ui-design-principles.md)
     "Confirm destructive actions"):
     - `OVERRIDE_RISK_VETO_PHRASE = "OVERRIDE"`
     - `OVERRIDE_RISK_VETO_DIALOG_TITLE = "Override risk veto"`
@@ -789,7 +789,7 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
   - Per-mode hint copy below the segment row, rendered via
     `frame::muted_body(...)` against the active mode's hint constant.
   - Net-new hint constants (additive — per
-    [`HumanControl.jsx:27–31`](../design/project/ui_kits/desktop/HumanControl.jsx)):
+    [`HumanControl.jsx:27–31`](../../design/project/ui_kits/desktop/HumanControl.jsx)):
     - `EXECUTION_MODE_OBSERVE_HINT = "Watch only — no orders sent."`
     - `EXECUTION_MODE_SUPERVISED_HINT = "Each decision needs your approval."`
     - `EXECUTION_MODE_AUTO_HINT = "Within-envelope autonomy."`
@@ -1327,7 +1327,7 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
      T1913's eight attestation points. **The ui-designer ticks the
      T1913 sub-block; the tester does not tick it on their behalf.**
   - On all-green: `VERDICT → PASS` → presenter spawn.
-  - On any FAIL: route per the [AGENT.md verdict map](../../AGENT.md).
+  - On any FAIL: route per the [AGENT.md verdict map](../../../AGENT.md).
     Visual regressions → ui-designer; missed wiring call site →
     developer; structural regressions → architect; anchor FAIL →
     analyst (any anchor drift means a path is touching committed
@@ -1496,11 +1496,11 @@ spec/architecture.md                           [Q1–Q15 ratification block (Pha
   no new backtest scenarios.
 - `crates/audit/migrations/` — **no new SQL migration**. The
   `strategy_events.kind` column at
-  [`002_strategy_events.sql`](../../crates/audit/migrations/002_strategy_events.sql)
+  [`002_strategy_events.sql`](../../../crates/audit/migrations/002_strategy_events.sql)
   is `TEXT`; new variants extend the enum at the application layer
   only.
 - The existing 11 backtest body-SHA-256 anchors in
-  [`spec/anchors.toml`](../anchors.toml) — no anchor changes;
+  [`spec/anchors.toml`](../../anchors.toml) — no anchor changes;
   no re-lock budget. The two new audit writers are read-only over
   the existing schema; the rename is module-path + snapshot-filename
   only.
@@ -1552,28 +1552,28 @@ spec/architecture.md                           [Q1–Q15 ratification block (Pha
 
 ### Cross-references
 
-- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md).
-- Phase 5 brief: [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](../features/lumen-phase-5-humancontrol-agentfeed.md).
+- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md).
+- Phase 5 brief: [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](feature.md).
 - Phase 4 task list (template + T-numbering precedent + sub-block
   ui-designer-attestation pattern):
-  [`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](lumen-phase-4-backtest-panel.md).
+  [`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](../phase-4-backtest-panel/feature.md).
 - Phase 1 task list (T1504/T1506 TD-1 origin precedent):
-  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](lumen-phase-1-foundation.md).
+  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](../phase-1-foundation/feature.md).
 - Architecture (Phase 4 ratification + `Cockpit ← Arc<KillSwitch>`
   closure pattern):
-  [`spec/architecture.md`](../architecture.md).
+  [`spec/architecture.md`](../../architecture.md).
 - UI principles (typed-confirm `OVERRIDE` phrase + audit-ledger
-  rule): [`spec/ui-design-principles.md`](../ui-design-principles.md).
+  rule): [`spec/ui-design-principles.md`](../../ui-design-principles.md).
 - Audit journal module (sibling-of-`kill_switch_tripped` extension
   point):
-  [`crates/audit/src/journal.rs`](../../crates/audit/src/journal.rs).
+  [`crates/audit/src/journal.rs`](../../../crates/audit/src/journal.rs).
 - StrategyEventKind enum (extension point):
-  [`crates/core/src/strategy_events.rs`](../../crates/core/src/strategy_events.rs).
+  [`crates/core/src/strategy_events.rs`](../../../crates/core/src/strategy_events.rs).
 - Kill widget (typed-confirm precedent for override modal):
-  [`crates/ui/src/widgets/kill.rs`](../../crates/ui/src/widgets/kill.rs).
+  [`crates/ui/src/widgets/kill.rs`](../../../crates/ui/src/widgets/kill.rs).
 - Tape widget (rename target):
   [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs).
 - Lumen HumanControl reference component (visual contract source):
-  [`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../design/project/ui_kits/desktop/HumanControl.jsx).
+  [`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../../design/project/ui_kits/desktop/HumanControl.jsx).
 - Lumen AgentFeed reference component (rename source):
-  [`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../design/project/ui_kits/desktop/AgentFeed.jsx).
+  [`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../../design/project/ui_kits/desktop/AgentFeed.jsx).

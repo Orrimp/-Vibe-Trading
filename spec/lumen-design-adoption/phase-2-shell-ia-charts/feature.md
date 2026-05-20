@@ -11,7 +11,7 @@ version: 2.1.0
 # Lumen Phase 2 — Shell IA + Charts (sidebar nav · Home/Debug/Charts screens · price chart)
 
 > **Phase 2 of 6** in the
-> [`lumen-design-adoption`](lumen-design-adoption.md) initiative.
+> [`lumen-design-adoption`](../feature.md) initiative.
 > Master roadmap is the orientation; this brief is the **shippable
 > feature**. Operator-locked constraints (no brand, no voice rewrite,
 > sequential phases, Phase 6 reserved, no icons until needed) are
@@ -26,7 +26,7 @@ version: 2.1.0
 >   into the existing `bars_tx` channel; fixtures bin uses
 >   deterministic synthetic candles in `ui::fixtures`.
 > - **Q13** — buy/sell marker query method placement = **extend
->   [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs)**
+>   [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs)**
 >   (additive, not a new module). Working name
 >   `recent_fills_filtered(venue, symbol, time_range)`. Architect
 >   ratifies the exact signature at design (see Q4 below).
@@ -63,7 +63,7 @@ a **per-symbol price chart with buy/sell markers** as the new
 third screen. The chart is a read-only cross-check surface: it
 shows what the audit ledger says happened against the price the
 market printed, with no order-entry, drawing tools, or annotations
-([`spec/ui-design-principles.md`](../ui-design-principles.md) §
+([`spec/ui-design-principles.md`](../../ui-design-principles.md) §
 Charts — price plot with audit-anchored markers).
 
 ## Scope (high-level)
@@ -99,7 +99,7 @@ R14–R15 invariants + anchors.
 committed audit data + UI shell + a new read-only widget:
 
 - `recent_fills_filtered` is a generalisation of the existing
-  `recent_fills(limit)` ([`crates/audit/src/query.rs:134`](../../crates/audit/src/query.rs))
+  `recent_fills(limit)` ([`crates/audit/src/query.rs:134`](../../../crates/audit/src/query.rs))
   — same description-prefixed-rows scan, narrower predicate. It
   does not alter committed report bodies, does not introduce a
   new report-rendering path, does not write the ledger.
@@ -122,14 +122,14 @@ Debug screen body) for a total of ≈ 41 baselines, accepted in one
 
 Numbered, testable, derived from the master roadmap's Phase 2
 scope, the architecture-level **Cockpit screen routing (Phase 2+
-contract)** in [architecture.md § 3272](../architecture.md), and
+contract)** in [architecture.md § 3272](../../architecture.md), and
 the **Charts** + **Information architecture** sections of
-[`spec/ui-design-principles.md`](../ui-design-principles.md). Each
+[`spec/ui-design-principles.md`](../../ui-design-principles.md). Each
 R-item ends with a one-line acceptance the tester verifies. Every
 R-item preserves the operator-locked constraints (no brand, no
 voice rewrite, no icons, sequential phases) and the cross-feature
 invariants in the
-[master roadmap](lumen-design-adoption.md#cross-feature-invariants).
+[master roadmap](../feature.md#cross-feature-invariants).
 
 ### R1 — Sidebar nav widget (new)
 
@@ -178,7 +178,7 @@ invariants in the
   assignment** — `model.current_screen = s;` — no side effects,
   no async work, no mutation of any other field. Matches
   [`spec/ui-design-principles.md` § Information architecture →
-  Screens are pure render dispatches](../ui-design-principles.md).
+  Screens are pure render dispatches](../../ui-design-principles.md).
 - **R2.5** Sidebar nav writes `Message::SwitchScreen` only;
   **never** an audit writer, never a bus event, never an agent
   state change. Mirrors the `audit::query` one-way contract:
@@ -212,17 +212,17 @@ invariants in the
   data straight from `Cockpit` (data freshness is the bus's job;
   the screen switch is instantaneous). See
   [`spec/ui-design-principles.md` § Screens are pure render
-  dispatches](../ui-design-principles.md).
+  dispatches](../../ui-design-principles.md).
 - **R3.3** Status bar continues to span the bottom of every
   screen — Phase 1's `widgets::status_bar` is unchanged. The
   halted-banner contract from
-  [`live-cockpit-unified`](live-cockpit-unified.md) renders
+  [`live-cockpit-unified`](../../live-cockpit-unified/feature.md) renders
   **above the screen body, below the title bar** so it remains
   visible regardless of the active screen.
 - **R3.4** Both binaries adopt the new shell:
-  [`crates/ui/src/bin/cockpit.rs`](../../crates/ui/src/bin/cockpit.rs)
+  [`crates/ui/src/bin/cockpit.rs`](../../../crates/ui/src/bin/cockpit.rs)
   (fixtures) and
-  [`crates/ui/src/bin/cockpit_live.rs`](../../crates/ui/src/bin/cockpit_live.rs)
+  [`crates/ui/src/bin/cockpit_live.rs`](../../../crates/ui/src/bin/cockpit_live.rs)
   (unified live). Same shell code in both; shell lives in a
   shared module the bins import (architect picks the module
   location at design — most likely `crates/ui/src/shell.rs` new).
@@ -241,7 +241,7 @@ invariants in the
   (`space::M = 12 px` between panels; `space::L = 16 px` outer
   padding) carry over verbatim — only the surrounding chrome
   shifts, not the panel internals.
-- **R4.3** Tape-row → audit modal (T1208 / [`tape-row-audit-modal`](tape-row-audit-modal.md))
+- **R4.3** Tape-row → audit modal (T1208 / [`tape-row-audit-modal`](../../tape-row-audit-modal/feature.md))
   trigger is preserved unchanged. The modal continues to render
   via the existing `widgets::journal_transaction_modal` and is
   reachable from the Home screen's tape rows.
@@ -267,8 +267,8 @@ invariants in the
 - **R5.2** The kill switch widget itself is **unchanged** —
   `crates/ui/src/widgets/kill.rs` keeps the typed-confirm phrase
   `HALT BTC` (operator-locked from
-  [`live-cockpit-unified`](live-cockpit-unified.md) +
-  [`spec/ui-design-principles.md`](../ui-design-principles.md)),
+  [`live-cockpit-unified`](../../live-cockpit-unified/feature.md) +
+  [`spec/ui-design-principles.md`](../../ui-design-principles.md)),
   the Phase 1 Tier 1 chrome, the Phase 1 sunken-input on the
   confirm field. **Phase 2 only changes where the widget renders,
   not how it behaves.**
@@ -281,7 +281,7 @@ invariants in the
   last-tick-age in seconds.
 - **R5.4** Server-time detail = the `Cockpit::server_time_now`
   field Phase 1 already populates via the 1 Hz `ServerTimeRecipe`
-  ([`crates/ui/src/bin/cockpit.rs:76`](../../crates/ui/src/bin/cockpit.rs)).
+  ([`crates/ui/src/bin/cockpit.rs:76`](../../../crates/ui/src/bin/cockpit.rs)).
   Render in tabular figures via `widgets::num`. No new clock source.
 - **R5.5** Latency detail surfaces the same `Cockpit::latency`
   field the Phase 1 status bar consumes; the band-name vocabulary
@@ -330,7 +330,7 @@ invariants in the
   ratified at architecture.md § 3297). Persistence is **session-
   scoped** — cleared on cockpit restart per
   [`spec/ui-design-principles.md` § Persistence: selected symbol,
-  current screen](../ui-design-principles.md).
+  current screen](../../ui-design-principles.md).
 - **R6.5** First entry to the Charts screen with no symbol
   selected defaults to the first chip (alphabetic by symbol,
   ties broken by venue name ASC) — `Cockpit::selected_symbol`
@@ -349,7 +349,7 @@ invariants in the
 - **R7.2** Background = `PANEL` (Tier 1); horizontal gridlines =
   `BORDER_1` at 1 px low-alpha (no vertical grid — vertical
   noise competes with marker triangles per
-  [`spec/ui-design-principles.md` § Charts](../ui-design-principles.md)).
+  [`spec/ui-design-principles.md` § Charts](../../ui-design-principles.md)).
 - **R7.3** Default plot style: architect-resolved at design (see
   Q1 below). Both must be supportable from the same
   `ChartBuffer` shape (R10):
@@ -366,7 +366,7 @@ invariants in the
   z-order as (or above) the price series. The colour pair
   carries over from the P&L card so the operator's "green = my
   side won" mental model is consistent
-  ([`spec/ui-design-principles.md` § Charts](../ui-design-principles.md)).
+  ([`spec/ui-design-principles.md` § Charts](../../ui-design-principles.md)).
 - **R7.5** **Visible window** = fixed **60 minutes of 1-minute
   bars** for Phase 2 (master roadmap). Pan/zoom is **out of
   scope** for Phase 2 (Q2 below).
@@ -375,7 +375,7 @@ invariants in the
   very first second, or in live mode for a never-traded
   symbol), the chart renders gridlines + a centred `FG_3` "No
   data" label. **Never blank**; matches the
-  [`spec/ui-design-principles.md`](../ui-design-principles.md)
+  [`spec/ui-design-principles.md`](../../ui-design-principles.md)
   no-blank-screens rule.
 - **R7.7** The chart is **read-only**: no order entry, no draw
   tools, no annotations, no tooltip on hover (hover-tooltip is
@@ -400,7 +400,7 @@ invariants in the
   query returns, not what the cockpit thinks happened. Any
   ledger / chart divergence is a data bug surfacing through
   the visual cross-check the chart was added to enable
-  ([`spec/ui-design-principles.md` § Charts](../ui-design-principles.md)).
+  ([`spec/ui-design-principles.md` § Charts](../../ui-design-principles.md)).
 - **R8.2** Marker fetch is async, dispatched via
   `iced::Task::perform`, and routed back as a new
   `Message::ChartMarkersLoaded(Vec<FillView>, Range<Timestamp>)`
@@ -442,7 +442,7 @@ invariants in the
   the binary's `Task::perform` shim, not from `update` itself
   — same pattern as the existing `TapeRowClicked` →
   `journal_entries_for_transaction` flow at
-  [`crates/ui/src/state.rs:665`](../../crates/ui/src/state.rs).
+  [`crates/ui/src/state.rs:665`](../../../crates/ui/src/state.rs).
 - **R9.3** Sidebar-nav switch to a non-Charts screen does **not**
   drop `Cockpit::selected_symbol` (session persistence per
   R6.4); switching back to Charts re-renders the same active
@@ -480,13 +480,13 @@ invariants in the
   or as a sibling of `STRATEGIES_RECENT_EVENT_CAP` in `state.rs`.
 - **R10.4** **Live mode wiring**: extend the existing
   `Message::BarReceived(Bar)` arm at
-  [`crates/ui/src/state.rs:503`](../../crates/ui/src/state.rs)
+  [`crates/ui/src/state.rs:503`](../../../crates/ui/src/state.rs)
   to push the bar into
   `chart_buffer.series.entry((bar.venue, bar.symbol)).or_default()`
   before updating `last_bar_ts`. **No new bus channel** — the
   existing `bars_tx` carries every produced `Bar` already. See
   the streaming subscriber at
-  [`crates/ui/src/live.rs:247`](../../crates/ui/src/live.rs).
+  [`crates/ui/src/live.rs:247`](../../../crates/ui/src/live.rs).
 - **R10.5** **Fixtures mode wiring**: see R11.
 - **R10.6** Memory bound: 60 bars × ~200 bytes/Bar × N symbols
   ≈ 12 KB / symbol × ≤ 20 symbols ≤ 250 KB. Trivially within
@@ -502,7 +502,7 @@ invariants in the
 
 - **R11.1** Add `pub fn synthetic_candles(seed: u64, venue: Venue,
   symbol: Symbol, count: usize) -> Vec<Bar>` to
-  [`crates/ui/src/fixtures.rs`](../../crates/ui/src/fixtures.rs).
+  [`crates/ui/src/fixtures.rs`](../../../crates/ui/src/fixtures.rs).
   Deterministic random walk: `ChaCha20Rng::from_seed(seed)`,
   per-bar drift `dec!(0.0)`, per-bar vol `dec!(50.0)`, OHLC
   derived from `(prev_close, drift, vol, rng)` so each bar's
@@ -516,7 +516,7 @@ invariants in the
   distinct shapes; single-seed alternative produces three
   identical traces which is visually misleading).
 - **R11.3** The fixtures bin's existing fake-bus shim
-  ([`crates/ui/src/bin/cockpit.rs`](../../crates/ui/src/bin/cockpit.rs))
+  ([`crates/ui/src/bin/cockpit.rs`](../../../crates/ui/src/bin/cockpit.rs))
   pre-seeds the chart buffer at boot by calling
   `synthetic_candles` once per fixture-universe symbol and
   pushing each bar through `Message::BarReceived` (so the
@@ -541,7 +541,7 @@ invariants in the
 ### R12 — Audit query extension: `recent_fills_filtered`
 
 - **R12.1** Add to
-  [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs)
+  [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs)
   alongside the existing `recent_fills(limit)` (operator-locked
   Q13 — extend, do not split into a new module):
 
@@ -578,16 +578,16 @@ invariants in the
   that v1.5b T817 introduced).
 - **R12.4** Symbol filtering reuses the existing
   `extract_symbol_from_description` helper at
-  [`crates/audit/src/query.rs:649`](../../crates/audit/src/query.rs).
+  [`crates/audit/src/query.rs:649`](../../../crates/audit/src/query.rs).
   No new symbol-tagging path.
 - **R12.5** Determinism: rows ordered `ORDER BY ts DESC, rowid
   DESC` (matching `recent_journal` precedent at
-  [`crates/audit/src/query.rs:241`](../../crates/audit/src/query.rs)).
+  [`crates/audit/src/query.rs:241`](../../../crates/audit/src/query.rs)).
   No `f64`; `Decimal` arithmetic only.
 - **R12.6** Empty result: returns `Ok(vec![])` for windows
   with no fills — never `Err`. Mirrors
   `journal_entries_for_transaction`'s empty-result contract
-  ([`crates/audit/src/query.rs:288`](../../crates/audit/src/query.rs)).
+  ([`crates/audit/src/query.rs:288`](../../../crates/audit/src/query.rs)).
 - **R12.7** **Mandatory unit test** in
   `crates/audit/src/query.rs::tests` (or a sibling module if
   the architect prefers): seed a fixture ledger with N fills
@@ -635,30 +635,30 @@ invariants in the
 
 ### R14 — Cross-feature invariants
 
-- **R14.1** [`operator-success-reports`](operator-success-reports.md)
+- **R14.1** [`operator-success-reports`](../../operator-success-reports/feature.md)
   R7 latency badges: latency badge **moves to Debug screen**;
   colour mapping unchanged (Phase 1 R15.1 + Phase 1 Q8
   reconcile). Tester verifies the band-name-to-colour mapping
   still renders correctly under Debug.
-- **R14.2** [`live-cockpit-unified`](live-cockpit-unified.md):
+- **R14.2** [`live-cockpit-unified`](../../live-cockpit-unified/feature.md):
   `cockpit_live` bin launches against the agent runtime;
   halted-banner trips on file watch / kill / heartbeat. The
   banner renders **above the screen body, below the title bar**
   (R3.3) so it's visible regardless of `current_screen`.
   Banner trigger preserved.
-- **R14.3** [`real-mtm-unrealized-pnl`](real-mtm-unrealized-pnl.md):
+- **R14.3** [`real-mtm-unrealized-pnl`](../../real-mtm-unrealized-pnl/feature.md):
   PnL card lives on Home screen; `color_for_delta` signature
   unchanged.
-- **R14.4** [`per-symbol-position-accounts`](per-symbol-position-accounts.md):
+- **R14.4** [`per-symbol-position-accounts`](../../per-symbol-position-accounts/feature.md):
   Positions widget lives on Home screen; row contract +
   strategy-id chip styling unchanged.
-- **R14.5** [`tape-row-audit-modal`](tape-row-audit-modal.md):
+- **R14.5** [`tape-row-audit-modal`](../../tape-row-audit-modal/feature.md):
   modal continues to be reachable from any tape row on the
   Home screen; modal trigger preserved. Phase 3's Audit
   screen will reuse the same modal.
 - **R14.6** [`journal-tx-metadata`](journal-tx-metadata.md):
   modal-header rendering unchanged.
-- **R14.7** [`v1.5b-multi-venue`](v1-5b-multi-venue.md): venue
+- **R14.7** [`v1.5b-multi-venue`](../../v1-5b-multi-venue/feature.md): venue
   dimension surfaces in **Debug screen** (per-venue
   market-health rows R5.3) and on the Charts screen's
   **chip row** (per-`(Venue, Symbol)` chip R6.2). Existing
@@ -669,7 +669,7 @@ invariants in the
 ### R15 — Anchor regression
 
 - **R15.1** All 11 backtest body-SHA-256 anchors in
-  [`spec/anchors.toml`](../anchors.toml) verify byte-identical
+  [`spec/anchors.toml`](../../anchors.toml) verify byte-identical
   post-Phase 2.
 - **R15.2** No new anchor scenarios; no re-lock budget; zero
   exceptions. The new `recent_fills_filtered` query is
@@ -844,7 +844,7 @@ screen?
 **Recommended (analyst):** **(a) line series**. Phase 2's
 chart is a cross-check surface, not a primary trading chart
 (the cockpit is paper-trading, observation-only — see
-[`spec/product.md`](../product.md)). The operator's question
+[`spec/product.md`](../../product.md)). The operator's question
 is "did the marker land on or near the line at the right
 time", which a line plot answers most directly. Candles add
 visual density without answering a question Phase 2 needs
@@ -998,7 +998,7 @@ master Constraint 4 supersedes that. Architect ratifies.
 ### Q8 — Sidebar nav state persistence implementation
 
 **The question:** [`spec/ui-design-principles.md` § Persistence:
-selected symbol, current screen](../ui-design-principles.md)
+selected symbol, current screen](../../ui-design-principles.md)
 locks `current_screen` and `selected_symbol` as **session-
 scoped** persistence. R2.2 + R6.4 implement that with
 `Cockpit::current_screen` (default `Home`) and
@@ -1133,7 +1133,7 @@ sentence; Scope is replaced by the R-item-pointing summary;
 Open questions are replaced by the architect Q-items below;
 Acceptance criteria are extended to trace each bullet to
 its R-cluster. Master roadmap reference unchanged: see
-[`lumen-design-adoption.md` Phase 2 section](lumen-design-adoption.md).
+[`lumen-design-adoption.md` Phase 2 section](../feature.md).
 
 ## Design
 
@@ -1141,7 +1141,7 @@ _Architect-owned. Resolves Q1–Q11 — every recommendation lands as
 **ratified** unless flagged "Architect override". The analyst sections
 above are immutable; this section is the design contract the developer
 reads alongside the task list at
-[`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](../tasks/lumen-phase-2-shell-ia-charts.md)._
+[`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](tasks.md)._
 
 ### Q-item resolutions
 
@@ -1158,7 +1158,7 @@ resolution lands.
 | Q5  | Chip-row active rule placement                          | **Bottom-edge variant of the T1507 active-row pattern.** The active-row concept is "2 px ACCENT, no fill change"; the literal edge depends on widget orientation. Sidebar nav rows are vertical → left rule; chip row is horizontal → bottom rule. The `frame::active_row` helper grows a sibling `active_chip` helper that prepends a 2 px bottom rule (`Column::push(content).push(rule_2px_bottom)` rather than `Row::push(rule_2px_left).push(content)`). One-line note in the Phase 2 principles-doc append documents the variant. | R6.3       |
 | Q6  | Synthetic-candle seed convention                        | **Per-symbol seed.** `seed = hash(format!("{venue:?}/{symbol}"))` via `std::hash::DefaultHasher` (zero new dep, deterministic across runs because `DefaultHasher` is the workspace default and the hash key is a stable string). Each chip's chart looks distinct in fixtures mode; the ui-designer's daily-driver dev tool no longer hides per-symbol layout issues. The `synthetic_candles` API takes a `seed: u64` parameter and the fixtures-bin caller computes the per-symbol seed at the call-site. | R11.1, R11.2 |
 | Q7  | Right-rail track: structural now or deferred            | **Structural now.** The shell `Row` literally contains a third column with `Length::Fixed(0.0)` when the v2-LLM gate is off. Master roadmap Constraint 4 is unambiguous; a `Length::Fixed(0.0)` column is the cheapest honest reservation (zero render cost, zero dead code — a single `Length` constant), and Phase 6 swaps the constant to the real width without restructuring the shell. **No `cfg!(feature = "v2-llm")` gate** — the gate doesn't exist yet, and adding a feature flag for one zero-pixel column is more dead code than the column itself. | R13.1, R13.2 |
-| Q8  | Sidebar nav state persistence implementation            | **Two-field addition only — no on-disk persistence.** `Cockpit::current_screen: Screen` (default `Home`) + `Cockpit::selected_symbol: Option<(Venue, Symbol)>` (default `None`). Both session-scoped per [`spec/ui-design-principles.md` § Persistence](../ui-design-principles.md). No `~/.cockpit-state.json`, no `serde::Serialize` on `Cockpit`, no `Drop` impl writing state. The cockpit is an instrument, not a browser. | R2.2, R6.4 |
+| Q8  | Sidebar nav state persistence implementation            | **Two-field addition only — no on-disk persistence.** `Cockpit::current_screen: Screen` (default `Home`) + `Cockpit::selected_symbol: Option<(Venue, Symbol)>` (default `None`). Both session-scoped per [`spec/ui-design-principles.md` § Persistence](../../ui-design-principles.md). No `~/.cockpit-state.json`, no `serde::Serialize` on `Cockpit`, no `Drop` impl writing state. The cockpit is an instrument, not a browser. | R2.2, R6.4 |
 | Q9  | Debug screen logs/metrics output stub scope             | **(a) Placeholder.** A single `frame::muted_body("Logs surface lands with a future metrics brief")` row at the bottom of the Debug screen body, with the copy added to `ui::strings` per the no-inline-prose rule. Zero new code paths; honest about the scope boundary. Defer to a future "structured metrics surface" brief when the operator names a specific gap. | R5.7       |
 | Q10 | `recent_fills_filtered` integration test required       | **Unit test only is required; integration test is optional in Phase 2.** The unit test in `crates/audit/src/query.rs::tests` exercises the SQL projection + the description-parse against a fixture ledger seeded inline (the existing `crates/audit/tests/journal_entries_for_transaction.rs` precedent shows the boilerplate is ~30 lines). Phase 3's Audit screen will need the multi-venue / multi-symbol / multi-kind integration anyway, so the integration test promotes naturally one phase later. Phase 2's gate is the unit test + V3 manual run. | R12.7, R12.8 |
 | Q11 | TD-1 re-evaluation: iced 0.15+ focus-ring API           | **Restate the deferral.** Verified at design pass: `crates/ui/Cargo.toml:50` pins `iced = { version = "=0.14.0", ... }`. iced 0.15+ has not landed on disk; the `button::Status::Focused` variant and `text_input::Style.shadow` field are not available. Phase 2 ships **no focus-ring upgrade**. TD-1 row in the master roadmap stands. **Named upgrade trigger** unchanged: any iced version bump that exposes both fields promotes the ~30-line one-file sweep across `widgets/kill.rs` (two button styles + one input) and `widgets/journal_transaction_modal.rs` (one button style); next re-evaluation at Phase 3 analyst kickoff. The kill-switch destructive flow stays typed-confirm gated; the focus halo remains a secondary signal. | TD-1       |
@@ -1413,7 +1413,7 @@ edge of the printed range are visible.
 **Gridline rules.** Five horizontal gridlines, equally spaced
 across the price range, drawn in `BORDER_1` at 0.4 alpha (the "1 px
 low-alpha horizontals only" rule from
-[`spec/ui-design-principles.md` § Charts](../ui-design-principles.md)).
+[`spec/ui-design-principles.md` § Charts](../../ui-design-principles.md)).
 **No vertical grid** — vertical noise competes with marker
 triangles. Gridline labels (the price values) render in `text::MICRO
 (11 px)` `FG_3`, right-aligned in the left gutter.
@@ -1763,7 +1763,7 @@ flow is typed-confirm gated, the modal close button is read-only.
 
 **Master-roadmap follow-up flagged.** The TD-1 row at
 [`spec/lumen-design-adoption/feature.md` § Cross-phase technical-
-debt items](lumen-design-adoption.md#td-1--true-keyboard-focus-ring-phase-1-q11-deviation-ratified-2026-05-04)
+debt items](../feature.md#td-1--true-keyboard-focus-ring-phase-1-q11-deviation-ratified-2026-05-04)
 should be appended with a 2026-05-04 line under "Promotion
 timing" noting:
 
@@ -1909,7 +1909,7 @@ T1606's signature. T1613 (snapshot accept) is the narrow point.
 ## Implementation
 
 _developer fills this — task list at
-[`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](../tasks/lumen-phase-2-shell-ia-charts.md)._
+[`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](tasks.md)._
 
 ## Verification — links
 
@@ -1955,7 +1955,7 @@ the Phase 2 presentation under `spec/lumen-design-adoption/presentations/lumen-d
   re-affirmed. Implementation parallelism map: T1601 foundation
   gate → fan-out across T1602–T1610 → narrow at T1613 snapshot
   accept → T_FINAL. Task list at
-  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](../tasks/lumen-phase-2-shell-ia-charts.md)
+  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](tasks.md)
   with 16 T16xx tasks + tester `T_FINAL_LUMEN_PHASE_2` gate.
   HANDOFF → developer ‖ ui-designer (developer takes T1601–T1616
   implementation; ui-designer takes the visual-diff attestation

@@ -11,9 +11,9 @@ updated: 2026-05-05
 
 # Tasks — Lumen design adoption · Phase 3 (Detail screens — Strategies / Risk / Audit)
 
-> Spec context: [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](../features/lumen-phase-3-detail-screens.md)
-> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md)
-> · Architecture: [`spec/architecture.md`](../architecture.md)
+> Spec context: [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](feature.md)
+> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md)
+> · Architecture: [`spec/architecture.md`](../../architecture.md)
 >
 > **T17xx range** (T15xx Phase 1 shipped; T16xx Phase 2 shipped;
 > T1701–T1716 + `T_FINAL_LUMEN_PHASE_3`). Phase 3 ships **three new
@@ -49,7 +49,7 @@ updated: 2026-05-05
 
 ## Honest-tick discipline
 
-Per [`AGENT.md`](../../AGENT.md) Process discipline #1: do not mark a
+Per [`AGENT.md`](../../../AGENT.md) Process discipline #1: do not mark a
 task `[x]` without citing **(a)** the file:line where the change
 landed, **(b)** the test command exercising it, **(c)** the test-output
 line proving it passed. If you cannot cite all three, leave the tick
@@ -1155,7 +1155,7 @@ accept) is the narrow point.
      this row in the tester report; the tester does not tick it
      on their behalf.**
   - On all-green: `VERDICT → PASS` → presenter spawn.
-  - On any FAIL: route per the [AGENT.md verdict map](../../AGENT.md).
+  - On any FAIL: route per the [AGENT.md verdict map](../../../AGENT.md).
     Visual regressions → ui-designer; missed wiring call site →
     developer; structural regressions → architect.
   - _ticked 2026-05-05 (tester)._
@@ -1429,21 +1429,21 @@ sidebar-nav tests). Both bins build clean
 
 ### Cross-references
 
-- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md).
-- Phase 3 brief: [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](../features/lumen-phase-3-detail-screens.md).
+- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md).
+- Phase 3 brief: [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](feature.md).
 - Phase 2 task list (template + T-numbering precedent):
-  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](lumen-phase-2-shell-ia-charts.md).
+  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](../phase-2-shell-ia-charts/feature.md).
 - Phase 1 task list (T1511 ui-designer attestation pattern):
-  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](lumen-phase-1-foundation.md).
+  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](../phase-1-foundation/feature.md).
 - Architecture (Phase 2+ contract + Phase 3 ratification):
-  [`spec/architecture.md` § Cockpit screen routing (Phase 2+ contract)](../architecture.md).
+  [`spec/architecture.md` § Cockpit screen routing (Phase 2+ contract)](../../architecture.md).
 - UI principles (Information architecture):
-  [`spec/ui-design-principles.md`](../ui-design-principles.md).
+  [`spec/ui-design-principles.md`](../../ui-design-principles.md).
 - Audit query module (extension point):
-  [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs).
+  [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs).
 - Audit migrations directory:
-  [`crates/audit/migrations/`](../../crates/audit/migrations/).
+  [`crates/audit/migrations/`](../../../crates/audit/migrations/).
 - Risk engine (RiskTelemetry publisher):
-  [`crates/risk/src/portfolio.rs`](../../crates/risk/src/portfolio.rs).
+  [`crates/risk/src/portfolio.rs`](../../../crates/risk/src/portfolio.rs).
 - Agent config (RiskConfig + KillSwitchConfig):
-  [`crates/agent/src/config.rs`](../../crates/agent/src/config.rs).
+  [`crates/agent/src/config.rs`](../../../crates/agent/src/config.rs).

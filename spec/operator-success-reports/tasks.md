@@ -57,7 +57,7 @@ changelog:
 # Tasks — Operator success reports
 
 Ordered, testable task list derived from
-[spec/operator-success-reports/feature.md → Design](../features/operator-success-reports.md#design)
+[spec/operator-success-reports/feature.md → Design](feature.md#design)
 and the nine architect resolutions (Q1–Q9) recorded in the same Design
 section. Cross-references to the analyst's R/V items use the format
 `Rn` / `Vn`; cross-references to the analyst's open questions use
@@ -100,7 +100,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T801** [developer] — `trading_core` v1+ `StrategyEventKind`
   variant additions per
-  [Design → Q-resolution Q8](../features/operator-success-reports.md#q-resolution-summary):
+  [Design → Q-resolution Q8](feature.md#q-resolution-summary):
   - `StrategyEventKind::KillSwitchTripped` variant.
   - `StrategyEventKind::FeedReconnect` variant.
   - `Display` arms for both.
@@ -144,7 +144,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 - [x] **T802** [developer] — Audit schema migration
   `004_journal_transactions_strategy_id.sql` + `post_fill` signature
   change per
-  [Design → Q2 — `pnl_by_strategy` query design + schema migration](../features/operator-success-reports.md#q2--pnl_by_strategy-query-design--schema-migration):
+  [Design → Q2 — `pnl_by_strategy` query design + schema migration](feature.md#q2--pnl_by_strategy-query-design--schema-migration):
   - New file `crates/audit/migrations/004_journal_transactions_strategy_id.sql`
     with the `ALTER TABLE journal_transactions ADD COLUMN strategy_id TEXT;`
     and the `journal_transactions_sid_idx` index.
@@ -211,7 +211,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T803** [developer] — `audit::query::pnl_by_strategy` reader
   per
-  [Design → Q2](../features/operator-success-reports.md#q2--pnl_by_strategy-query-design--schema-migration).
+  [Design → Q2](feature.md#q2--pnl_by_strategy-query-design--schema-migration).
   Lives in `crates/audit/src/query.rs` (preferred per Q1 — keeps
   the query API in one place). Returns
   `Vec<StrategyPnl>` (struct, not tuple). Sorted by `realized` DESC,
@@ -256,7 +256,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T804** [developer] — `audit::query::ledger_snapshot_sha` +
   `audit::query::ledger_inception_ts` helpers per
-  [Design → Public lib API + ReportWindow resolves](../features/operator-success-reports.md#reportwindow-resolves-to-since-until):
+  [Design → Public lib API + ReportWindow resolves](feature.md#reportwindow-resolves-to-since-until):
   - `ledger_snapshot_sha(db_path: &Path) -> Result<[u8; 32], LedgerError>`
     streams the SQLite file via `sha2::Sha256` (no full-file load
     in memory).
@@ -292,7 +292,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T805** [developer] — `audit::journal::feed_reconnect` writer
   + `kind = "FeedReconnect"` parser arm per
-  [Design → R7.1 — uptime / clock-skew / feed-reconnect provenance](../features/operator-success-reports.md#r71--uptime--clock-skew--feed-reconnect-provenance).
+  [Design → R7.1 — uptime / clock-skew / feed-reconnect provenance](feature.md#r71--uptime--clock-skew--feed-reconnect-provenance).
   - `pub async fn feed_reconnect(ledger, symbol, ts: Option<&str>) -> Result<(), LedgerError>`
     writes a `strategy_events` row with `kind = "FeedReconnect"`,
     `strategy_id = None`, `error_summary = "<symbol>"`.
@@ -341,7 +341,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T806** [developer] — Audit schema migration
   `005_uptime_intervals.sql` + `agent_uptime` table per
-  [Design → R7.1](../features/operator-success-reports.md#r71--uptime--clock-skew--feed-reconnect-provenance):
+  [Design → R7.1](feature.md#r71--uptime--clock-skew--feed-reconnect-provenance):
   - New table `agent_uptime` (boot_id TEXT PRIMARY KEY, started_at
     TEXT NOT NULL, last_heartbeat_at TEXT NOT NULL, stopped_at TEXT
     NULL).
@@ -406,7 +406,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 ## Week 2 — reports crate skeleton, render modules, atomic write
 
 - [x] **T807** [developer] — `crates/reports/` skeleton per
-  [Design → `crates/reports/` layout](../features/operator-success-reports.md#cratesreports-layout):
+  [Design → `crates/reports/` layout](feature.md#cratesreports-layout):
   - `Cargo.toml` (lib + bin); workspace member added to root
     `Cargo.toml`.
   - `src/lib.rs` exporting `generate`, `ReportWindow`,
@@ -415,14 +415,14 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
     7 accepted shapes parse; 4 rejected shapes return
     `WindowParseError::Malformed`.
   - `src/atomic_write.rs` per
-    [Design → Atomic write](../features/operator-success-reports.md#atomic-write-r122--q3).
+    [Design → Atomic write](feature.md#atomic-write-r122--q3).
   - `src/run_id.rs` per
-    [Design → Run-id hash](../features/operator-success-reports.md#run-id-hash-r34).
+    [Design → Run-id hash](feature.md#run-id-hash-r34).
   - `src/sparkline.rs` per
-    [Design → Sparkline encoding](../features/operator-success-reports.md#sparkline-encoding-r32--q4).
+    [Design → Sparkline encoding](feature.md#sparkline-encoding-r32--q4).
   - `src/render/front_matter.rs` writes the 12-field front-matter
     in the fixed order per
-    [Design → Front-matter schema](../features/operator-success-reports.md#front-matter-schema-r101--q7).
+    [Design → Front-matter schema](feature.md#front-matter-schema-r101--q7).
   - Stub render modules (`headline`, `equity_curve`, `risk_metrics`,
     `strategy_attribution`, `memory_highlights`, `system_health`,
     `what_changed`, `open_risks`, `reconciliation`) each
@@ -487,7 +487,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T808** [developer] — Reconciliation engine
   `crates/reports/src/reconcile.rs` per
-  [Design → Reconciliation engine](../features/operator-success-reports.md#reconciliation-engine-r11--q6):
+  [Design → Reconciliation engine](feature.md#reconciliation-engine-r11--q6):
   - `ReconciliationReport`, `ReconciliationRow` structs.
   - `compute(...)` function takes the four identity inputs and
     returns the populated report.
@@ -496,7 +496,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
     string with `PASS` / `FAIL` cells.
   - `to_failure_json(run_id, ledger_sha, period, period_start, period_end)`
     serializes the failing rows per the schema in
-    [Design → Reconciliation engine](../features/operator-success-reports.md#reconciliation-engine-r11--q6).
+    [Design → Reconciliation engine](feature.md#reconciliation-engine-r11--q6).
   - On any `Δ != 0`, the renderer (T813) prepends the FAIL banner
     line above R9. —
   _acceptance: unit test `crates/reports/tests/reconciliation.rs`
@@ -540,7 +540,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T809** [developer] — Kill-switch trip → audit + incident
   report wiring per
-  [Design → Q8 (cont.) — Kill-switch incident report wiring](../features/operator-success-reports.md#q8-cont--kill-switch-incident-report-wiring-r121c):
+  [Design → Q8 (cont.) — Kill-switch incident report wiring](feature.md#q8-cont--kill-switch-incident-report-wiring-r121c):
   - **Audit-side change:** rewrite `audit::journal::kill_switch_tripped`
     so it writes BOTH the existing zero-amount memo journal row
     (v0 backwards compat) AND a `strategy_events` row with
@@ -558,7 +558,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
     and `--output spec/operator-success-reports/reports/incident-<ts>.md`. Spawn
     is fire-and-forget (no await); failure is warn-logged.
   - All four tests in
-    [Design → Test strategy](../features/operator-success-reports.md#test-strategy)
+    [Design → Test strategy](feature.md#test-strategy)
     that touch this path use a mocked spawn helper so the test
     suite does not actually compile-and-launch the reports binary.
   —
@@ -637,7 +637,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T810** [developer] — Optional in-process cron under feature
   flag `--features in_process_cron` per
-  [Design → Q7 — Cron trigger](../features/operator-success-reports.md#q7--cron-trigger-r121b):
+  [Design → Q7 — Cron trigger](feature.md#q7--cron-trigger-r121b):
   - Add `tokio_cron_scheduler` as an **optional** dep under the
     new feature flag (NOT enabled by default).
   - Behind the flag, `agent::main` spawns a scheduler that runs
@@ -710,7 +710,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T811** [developer] — Strategy decay heuristic + R7
   reflection-memory placeholder lifecycle note per
-  [Design → R9 — Open risks (5 thresholds)](../features/operator-success-reports.md#r9--open-risks-5-thresholds)
+  [Design → R9 — Open risks (5 thresholds)](feature.md#r9--open-risks-5-thresholds)
   and Q9 carry-forward:
   - Implement the per-strategy decay computation: for each strategy
     in the active set, compose the equity curve restricted to that
@@ -770,7 +770,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T812** [developer] — `MarkSource` trait + `ParquetMarkSource`
   + `FrozenMarkSource` (test) per
-  [Design → Mark-to-market source](../features/operator-success-reports.md#mark-to-market-source-r111-r44):
+  [Design → Mark-to-market source](feature.md#mark-to-market-source-r111-r44):
   - Trait + trait method signatures in `crates/reports/src/marks.rs`.
   - `ParquetMarkSource` reads `data/binance/<symbol>/<year>/*.parquet`
     via Polars LazyFrame; LRU caches the last 4096 (symbol, ts)
@@ -827,7 +827,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T813** [developer] — Render modules R2–R9 per the brief +
   per
-  [Design → `crates/reports/` layout](../features/operator-success-reports.md#cratesreports-layout):
+  [Design → `crates/reports/` layout](feature.md#cratesreports-layout):
   - **R2** `headline.rs`: strategy return + BTC buy-and-hold
     baseline; format per R2.3 to two decimal places of percent +
     cents-precise USDT.
@@ -844,7 +844,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
   - **R6** `memory_highlights.rs`: emit the literal placeholder
     string per R6.1 — byte-stable across runs (R6.3).
   - **R7** `system_health.rs`: 6-row table per R7.1; sources per
-    [Design → R7.1](../features/operator-success-reports.md#r71--uptime--clock-skew--feed-reconnect-provenance).
+    [Design → R7.1](feature.md#r71--uptime--clock-skew--feed-reconnect-provenance).
   - **R8** `what_changed.rs`: chronological bullet list of
     `Load`/`Swap`/`Unload`/`Reject` events; `_no strategy
     lifecycle events in this period._` if empty (R8.3).
@@ -856,7 +856,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
     function); the `lib::generate` orchestrator does the I/O once
     per query and hands `Decimal` / `Vec<…>` slices to the renderers.
   - All companion CSVs written via `csv_artifacts.rs` per
-    [Design → CSV artifact column schemas](../features/operator-success-reports.md#csv-artifact-column-schemas-r33--q5). —
+    [Design → CSV artifact column schemas](feature.md#csv-artifact-column-schemas-r33--q5). —
   _acceptance: unit tests under `crates/reports/tests/` (one per
   R-item) assert exact-string match on hand-computed fixture
   ledgers; all CSVs produced with the documented columns; cargo
@@ -901,7 +901,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T814** [developer] — Determinism + body-no-volatile-metadata +
   reconciliation FAIL integration tests per
-  [Design → Test strategy](../features/operator-success-reports.md#test-strategy):
+  [Design → Test strategy](feature.md#test-strategy):
   - `crates/reports/tests/determinism.rs` runs `report-sample-7d`
     twice 10s apart against the same fixture at seed `0xC0FFEE`;
     asserts front-matter `generated:` differs but body-SHA256
@@ -967,7 +967,7 @@ extension pattern, so v1+'s task count is comparable to v1.5a's.
 
 - [x] **T816** [developer] — Report scenarios `report-sample-7d` +
   `report-sample-90d` per
-  [feature → Backtest Scenarios](../features/operator-success-reports.md#backtest-scenarios):
+  [feature → Backtest Scenarios](feature.md#backtest-scenarios):
   - `crates/reports/tests/fixtures/build_ledger_7d.rs` constructs
     the deterministic 7-day SQLite snapshot per the brief
     Scenario `report-sample-7d` description (≥1 strategy `Load`,

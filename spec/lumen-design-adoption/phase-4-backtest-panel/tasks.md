@@ -13,9 +13,9 @@ updated: 2026-05-06
 
 # Tasks — Lumen design adoption · Phase 4 (Backtest panel — `viewer` bin)
 
-> Spec context: [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](../features/lumen-phase-4-backtest-panel.md)
-> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md)
-> · Architecture: [`spec/architecture.md`](../architecture.md)
+> Spec context: [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](feature.md)
+> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md)
+> · Architecture: [`spec/architecture.md`](../../architecture.md)
 >
 > **T18xx range** (T15xx Phase 1 shipped; T16xx Phase 2 shipped;
 > T17xx Phase 3 shipped; T1801–T1815 + `T_FINAL_LUMEN_PHASE_4`).
@@ -55,7 +55,7 @@ updated: 2026-05-06
 
 ## Honest-tick discipline
 
-Per [`AGENT.md`](../../AGENT.md) Process discipline #1: do not mark a
+Per [`AGENT.md`](../../../AGENT.md) Process discipline #1: do not mark a
 task `[x]` without citing **(a)** the file:line where the change
 landed, **(b)** the test command exercising it, **(c)** the test-output
 line proving it passed. If you cannot cite all three, leave the tick
@@ -1326,9 +1326,9 @@ widget). T1812 (snapshot accept) is the narrow point.
       `Generated … target/doc/agent/index.html and 16 other files`.
       Zero errors, zero warnings. Doc-gate cleared. Anchor risk:
       zero (doc-comment-only edits). Files touched:
-      [`crates/ui/src/state.rs:571`](../../crates/ui/src/state.rs#L571),
-      [`crates/ui/src/state.rs:850`](../../crates/ui/src/state.rs#L850),
-      [`crates/ui/src/bin/viewer.rs:7`](../../crates/ui/src/bin/viewer.rs#L7).
+      [`crates/ui/src/state.rs:571`](../../../crates/ui/src/state.rs#L571),
+      [`crates/ui/src/state.rs:850`](../../../crates/ui/src/state.rs#L850),
+      [`crates/ui/src/bin/viewer.rs:7`](../../../crates/ui/src/bin/viewer.rs#L7).
     - `cargo test --workspace --all-targets` — developer-pass
       sandbox stalled the wrapping invocation; per-crate runs
       covered the target set. **Orchestrator re-ran 2026-05-06
@@ -1402,7 +1402,7 @@ widget). T1812 (snapshot accept) is the narrow point.
      T1812's seven attestation points. **The ui-designer ticks the
      T1812 sub-block; the tester does not tick it on their behalf.**
   - On all-green: `VERDICT → PASS` → presenter spawn.
-  - On any FAIL: route per the [AGENT.md verdict map](../../AGENT.md).
+  - On any FAIL: route per the [AGENT.md verdict map](../../../AGENT.md).
     Visual regressions → ui-designer; missed wiring call site →
     developer; structural regressions → architect.
   - _ticked 2026-05-06 (tester, second pass)._
@@ -1529,7 +1529,7 @@ spec/architecture.md                           [Q1–Q12 ratification block (Pha
   + `write_equity_csv` are read-only consumed; **zero schema
   change**.
 - The existing 11 backtest body-SHA-256 anchors in
-  [`spec/anchors.toml`](../anchors.toml) — no anchor changes;
+  [`spec/anchors.toml`](../../anchors.toml) — no anchor changes;
   no re-lock budget. Reading existing reports' bodies + companion
   CSVs is read-only by construction.
 - `crates/ui/Cargo.toml` iced version — still pinned `=0.14.0`;
@@ -1578,27 +1578,27 @@ spec/architecture.md                           [Q1–Q12 ratification block (Pha
 
 ### Cross-references
 
-- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md).
-- Phase 4 brief: [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](../features/lumen-phase-4-backtest-panel.md).
+- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md).
+- Phase 4 brief: [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](feature.md).
 - Phase 3 task list (template + T-numbering precedent + sub-block
   ui-designer-attestation pattern):
-  [`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](lumen-phase-3-detail-screens.md).
+  [`spec/lumen-design-adoption/phase-3-detail-screens/tasks.md`](../phase-3-detail-screens/feature.md).
 - Phase 2 task list (canvas-chart Phase 2 widget T1608 precedent):
-  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](lumen-phase-2-shell-ia-charts.md).
+  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/tasks.md`](../phase-2-shell-ia-charts/feature.md).
 - Phase 1 task list (T1511 ui-designer attestation original pattern):
-  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](lumen-phase-1-foundation.md).
+  [`spec/lumen-design-adoption/phase-1-foundation/tasks.md`](../phase-1-foundation/feature.md).
 - Architecture (Phase 2+ contract + Phase 4 ratification):
   [`spec/architecture.md` § Cockpit screen routing (Phase 2+
-  contract)](../architecture.md).
+  contract)](../../architecture.md).
 - UI principles (Information architecture):
-  [`spec/ui-design-principles.md`](../ui-design-principles.md).
+  [`spec/ui-design-principles.md`](../../ui-design-principles.md).
 - Audit query module (extension point):
-  [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs).
+  [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs).
 - Reports companion-CSV writer (R11.2 source):
-  [`crates/reports/src/csv_artifacts.rs`](../../crates/reports/src/csv_artifacts.rs).
+  [`crates/reports/src/csv_artifacts.rs`](../../../crates/reports/src/csv_artifacts.rs).
 - Phase 2 chart widget (refactor target):
-  [`crates/ui/src/widgets/chart.rs`](../../crates/ui/src/widgets/chart.rs).
+  [`crates/ui/src/widgets/chart.rs`](../../../crates/ui/src/widgets/chart.rs).
 - Phase 3 Strategies-detail screen (sparkline replacement target):
-  [`crates/ui/src/screens/strategies.rs`](../../crates/ui/src/screens/strategies.rs).
+  [`crates/ui/src/screens/strategies.rs`](../../../crates/ui/src/screens/strategies.rs).
 - Lumen Backtest reference component (visual contract source):
-  [`spec/design/project/ui_kits/desktop/Backtest.jsx`](../design/project/ui_kits/desktop/Backtest.jsx).
+  [`spec/design/project/ui_kits/desktop/Backtest.jsx`](../../design/project/ui_kits/desktop/Backtest.jsx).

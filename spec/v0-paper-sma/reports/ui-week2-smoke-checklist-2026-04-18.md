@@ -197,7 +197,7 @@ into `spec/v0-paper-sma/reports/screenshots/`:
 Scope extension for **T_FINAL_B (v0.5)**. Adds operator verification for
 the new `strategies` panel (tasks T522–T528) plus the R7 hot-swap and R8
 invalid-config drills from
-[v05-composed-strategies.md → Verification V7](../features/v05-composed-strategies.md#verification).
+[v05-composed-strategies.md → Verification V7](../../v05-composed-strategies/feature.md#verification).
 
 The developer's T_FINAL_A landed four v0.5 backtest reports under
 `spec/reports/`, unblocking this section:
@@ -403,7 +403,7 @@ ui-designer's call on PR review):
 ## v1 — multi-symbol positions smoke
 
 Scope extension for **T_FINAL_B_v1** (V8 from
-[v1-cross-sectional-momentum.md → Verification](../features/v1-cross-sectional-momentum.md#verification)).
+[v1-cross-sectional-momentum.md → Verification](../../v1-cross-sectional-momentum/feature.md#verification)).
 This is a **negative-confirmation drill** for R11 — the v0 positions
 panel already supports N rows; v1 ships zero widget code. Acceptance is
 "the cockpit shows up to 3 simultaneous rows in the steady state of the
@@ -496,7 +496,7 @@ All gates above must be green before running the manual steps.
 ## v1.5a — pairs strategy smoke
 
 Scope extension for **T_FINAL_B_v15a** (V8 from
-[v15a-mean-reversion-pairs.md → Verification](../features/v15a-mean-reversion-pairs.md#verification)).
+[v15a-mean-reversion-pairs.md → Verification](../../v15a-mean-reversion-pairs/feature.md#verification)).
 This is a **negative-confirmation drill** for R11 — the v0 multi-row
 positions panel and the v0.5 strategies panel already render the v1.5a
 steady state without a widget code change. T719 ships a new fixtures

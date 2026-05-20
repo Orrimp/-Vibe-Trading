@@ -11,7 +11,7 @@ version: 1.5.0
 ## Why
 
 The current two-binary live path is **dishonest**. The
-[v0-paper-sma → "What wired up"](v0-paper-sma.md) section
+[v0-paper-sma → "What wired up"](../v0-paper-sma/feature.md) section
 (lines 1338–1400) documents the deferral: v0 wired the cockpit's
 `ui::live::subscription` against an `Arc<EventBus>` shared inside one
 process — but no production binary actually creates that shared
@@ -32,7 +32,7 @@ cargo run --bin trading --config config/agent.toml
 
 runs the full backend (broadcast bus + all tokio tasks) but its bus
 is a *different* `Arc<EventBus>` — the two never meet.
-[v0-paper-sma.md lines 1437–1441](v0-paper-sma.md) explicitly defers
+[v0-paper-sma.md lines 1437–1441](../v0-paper-sma/feature.md) explicitly defers
 the unified binary to "v0.5"; v0.5, v1, and v1.5a all shipped without
 landing it. The
 [ui::strings::CONNECTION_AGENT_UNREACHABLE](../../crates/ui/src/strings.rs)
@@ -441,7 +441,7 @@ in parentheses; the architect may override.
   remove the standalone `cockpit --features live` codepath
   (which today only constructs an empty bus and sits in
   `Loading`) and update
-  [v0-paper-sma.md lines 1338–1400 + 1437–1441](v0-paper-sma.md)
+  [v0-paper-sma.md lines 1338–1400 + 1437–1441](../v0-paper-sma/feature.md)
   with a "superseded by live-cockpit-unified" pointer. Architect
   may instead keep the path alive as a no-op for symmetry; the
   cost is one chunk of dead `cfg(feature = "live")` code in the
@@ -896,7 +896,7 @@ without touching this design.
 
 Also a deferred-screenshot sanity check: the v0/v0.5 manual
 screenshot capture decisions in
-[v0-paper-sma.md](v0-paper-sma.md) all use `--features fixtures`,
+[v0-paper-sma.md](../v0-paper-sma/feature.md) all use `--features fixtures`,
 not `--features live` — confirmed by reading that brief. So
 removing the live arm of the `cockpit` bin does not invalidate any
 shipped screenshot or any screenshot the deferred-screenshot
@@ -1566,7 +1566,7 @@ addresses it here._
   `analyst → architect`.
 - 2026-05-01 (analyst): initial draft. Promotes the deferred
   same-process unified binary from
-  [v0-paper-sma.md → "What wired up"](v0-paper-sma.md) (lines
+  [v0-paper-sma.md → "What wired up"](../v0-paper-sma/feature.md) (lines
   1338–1400 + 1437–1441) into its own feature brief. Documents
   the operator gap (cockpit + agent never share a bus today),
   enumerates 15 R-items + 10 V-items, and lists 8 Open Questions

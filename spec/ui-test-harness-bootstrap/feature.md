@@ -384,7 +384,7 @@ scripts/check_no_clocks_in_ui_tests.sh          # NEW — V4 grep gate (Q7)
   shell-grep allow-list is precise: forbid `SystemTime::now`,
   `Instant::now`, `thread_rng`, `UtcOffset::current_local_offset`
   reachable from `crates/ui/src/widgets/chart.rs` (rendering path)
-  and `crates/ui/src/screens/charts.rs` (Charts-screen path), with
+  and `crates/ui/src/screens/lab.rs` (Charts-screen path), with
   an explicit whitelist comment marker (`// CLOCK-OK:`) for
   intentional uses. Compile-fail (`trybuild`) is over-engineering.
 

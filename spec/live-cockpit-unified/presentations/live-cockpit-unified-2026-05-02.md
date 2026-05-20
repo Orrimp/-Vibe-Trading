@@ -23,7 +23,7 @@ A new `cockpit_live` binary runs the trading agent and the iced cockpit in one p
 
 ## Why
 
-The two-binary live path was structurally broken: the cockpit constructed its own empty `EventBus` at boot ([crates/ui/src/bin/cockpit.rs old path](../features/live-cockpit-unified.md#why)), and the agent built a *different* `Arc<EventBus>` — the two never met, so every live panel sat in `Loading` forever. The cockpit kill button only mutated a UI state field and never reached the real `KillSwitch`. Five operator-success-reports landings in Wave 1 (T805 feed-reconnect, T806 uptime intervals, T809 kill-switch dual-write, T810 in-process cron) all assume an operator is *watching* the agent — without a working live cockpit those signals had no human readout. The unified binary is plumbing-only: one bus, one kill switch, two halves of one process. See `spec/live-cockpit-unified/feature.md` (lines 10–73).
+The two-binary live path was structurally broken: the cockpit constructed its own empty `EventBus` at boot ([crates/ui/src/bin/cockpit.rs old path](../feature.md#why)), and the agent built a *different* `Arc<EventBus>` — the two never met, so every live panel sat in `Loading` forever. The cockpit kill button only mutated a UI state field and never reached the real `KillSwitch`. Five operator-success-reports landings in Wave 1 (T805 feed-reconnect, T806 uptime intervals, T809 kill-switch dual-write, T810 in-process cron) all assume an operator is *watching* the agent — without a working live cockpit those signals had no human readout. The unified binary is plumbing-only: one bus, one kill switch, two halves of one process. See `spec/live-cockpit-unified/feature.md` (lines 10–73).
 
 ## What you can do now
 

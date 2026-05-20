@@ -8,9 +8,9 @@ updated: 2026-05-04
 
 # Tasks — Lumen design adoption · Phase 1 (Foundation)
 
-> Spec context: [`spec/lumen-design-adoption/phase-1-foundation/feature.md`](../features/lumen-phase-1-foundation.md)
-> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md)
-> · Architecture: [`spec/architecture.md`](../architecture.md)
+> Spec context: [`spec/lumen-design-adoption/phase-1-foundation/feature.md`](feature.md)
+> · Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md)
+> · Architecture: [`spec/architecture.md`](../../architecture.md)
 >
 > **T15xx range** (T8xx–T14xx are taken). Phase 1 ships **Tier 0/1/2/3
 > + Sunken** elevation language, **whisper-shadow** ladder, **focus
@@ -28,7 +28,7 @@ updated: 2026-05-04
 
 ## Honest-tick discipline
 
-Per [`AGENT.md`](../../AGENT.md) Process discipline #1: do not mark a
+Per [`AGENT.md`](../../../AGENT.md) Process discipline #1: do not mark a
 task `[x]` without citing **(a)** the file:line where the change
 landed, **(b)** the test command exercising it, **(c)** the test-output
 line proving it passed. If you cannot cite all three, leave the tick
@@ -646,7 +646,7 @@ and T1511 (snapshot accept).
     1 t1505_panel_chrome_style_tokens (T1505 net-new). Pending snap
     count: **0** (`find ... -name '*.pending-snap' | wc -l = 0`).
   - **`color_name()` helper attestation** —
-    [`crates/ui/tests/panel_snapshots.rs:1032–1056`](../../crates/ui/tests/panel_snapshots.rs)
+    [`crates/ui/tests/panel_snapshots.rs:1032–1056`](../../../crates/ui/tests/panel_snapshots.rs)
     confirmed to use NEW Lumen tokens internally (`t::UP_500`,
     `t::DOWN_500`, `t::WARN_500`, `t::FG_1`, `t::FG_3`, `t::ACCENT`,
     `t::CANVAS`, `t::PANEL`, `t::BORDER_1`) while emitting OLD
@@ -748,7 +748,7 @@ and T1511 (snapshot accept).
 ### T1513 — Anchor regression
 
 - [x] T1513 — Run `verify-anchors`. Per
-  [`spec/anchors.toml`](../anchors.toml), 11 backtest body-SHA-256
+  [`spec/anchors.toml`](../../anchors.toml), 11 backtest body-SHA-256
   anchors must verify byte-identical post-Phase 1.
   - `scripts/verify_anchors.sh` — must PASS 11 / 11.
   - Architect grep gate (R16.3): `grep -rni "lumen\|panel-raised\|panel-sunken\|cool-800" spec/reports/`
@@ -766,7 +766,7 @@ and T1511 (snapshot accept).
     `scripts/verify_anchors.sh` from
     `/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/`
     and confirm `ANCHORS PASS  (11 / 11)` before T_FINAL is ticked.
-    The 11 anchors in [`spec/anchors.toml`](../anchors.toml) are:
+    The 11 anchors in [`spec/anchors.toml`](../../anchors.toml) are:
     `btc-2023-1m-sma-cross` (v0), `btc-2023-1m-sma-baseline-refresh`
     (v0), `btc-2023-1m-macd-trend` (v0.5), `btc-2023-1m-rsi-reversion`
     (v0.5), `btc-2023-1m-bbands-mean-revert` (v0.5),
@@ -832,7 +832,7 @@ and T1511 (snapshot accept).
   - **Modal flow (R17.4)** — covered programmatically by
     `cargo test -p ui --features live --test tape_row_click_opens_modal`
     (run during T1512):
-    [`crates/ui/tests/tape_row_click_opens_modal.rs:86`](../../crates/ui/tests/tape_row_click_opens_modal.rs)
+    [`crates/ui/tests/tape_row_click_opens_modal.rs:86`](../../../crates/ui/tests/tape_row_click_opens_modal.rs)
     `fn t1208_v1_click_opens_modal_with_correct_tx_id` and 7 sibling
     tests — `test result: ok. 8 passed; 0 failed; 0 ignored; 0
     measured; 0 filtered out; finished in 0.00s`. The programmatic
@@ -855,37 +855,37 @@ and T1511 (snapshot accept).
     with `cargo fmt --check` from project root → no output (clean).
   - **clippy fixes:**
     1. f32→u8 cast in test snapshot summary —
-       [`crates/ui/src/widgets/frame.rs:181`](../../crates/ui/src/widgets/frame.rs#L181)
+       [`crates/ui/src/widgets/frame.rs:181`](../../../crates/ui/src/widgets/frame.rs#L181)
        `t1505_panel_chrome_style_tokens` and
-       [`crates/ui/src/widgets/frame.rs:225`](../../crates/ui/src/widgets/frame.rs#L225)
+       [`crates/ui/src/widgets/frame.rs:225`](../../../crates/ui/src/widgets/frame.rs#L225)
        `t1507_active_row_accent_rule` — added comment-above
        `#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]`
        (RGB channels are bounded 0.0..=1.0 by iced; intentional byte
        extraction for snapshot stability).
     2. `redundant_closure_for_method_calls` —
-       [`crates/ui/src/widgets/status_bar.rs:201`](../../crates/ui/src/widgets/status_bar.rs#L201)
+       [`crates/ui/src/widgets/status_bar.rs:201`](../../../crates/ui/src/widgets/status_bar.rs#L201)
        changed `|v| v.to_string()` → `ToString::to_string`.
     3. `match_same_arms` —
-       [`crates/ui/src/state.rs:702`](../../crates/ui/src/state.rs#L702)
+       [`crates/ui/src/state.rs:702`](../../../crates/ui/src/state.rs#L702)
        collapsed `Fresh` + `Recovered` arms with `|` pattern.
     4. `cast_possible_truncation` u32→u16 padding casts —
-       [`crates/ui/src/widgets/frame.rs:43`](../../crates/ui/src/widgets/frame.rs#L43)
+       [`crates/ui/src/widgets/frame.rs:43`](../../../crates/ui/src/widgets/frame.rs#L43)
        `panel` and
-       [`crates/ui/src/widgets/status_bar.rs:44`](../../crates/ui/src/widgets/status_bar.rs#L44)
+       [`crates/ui/src/widgets/status_bar.rs:44`](../../../crates/ui/src/widgets/status_bar.rs#L44)
        `view` — comment-above `#[allow(clippy::cast_possible_truncation)]`
        (space::* constants are u32 bounded 0..64).
     5. `cast_precision_loss` u32→f32 width cast —
-       [`crates/ui/src/widgets/frame.rs:111`](../../crates/ui/src/widgets/frame.rs#L111)
+       [`crates/ui/src/widgets/frame.rs:111`](../../../crates/ui/src/widgets/frame.rs#L111)
        `active_row` — comment-above `#[allow(clippy::cast_precision_loss)]`.
     6. `doc_markdown` (3 occurrences) — `frame.rs` doc comments
        wrapped `PANEL`, `BORDER_1`, `shadow_1`, `PANEL_RAISED` in
        backticks.
     7. `eq_op` —
-       [`crates/ui/tests/panel_snapshots.rs:1001`](../../crates/ui/tests/panel_snapshots.rs#L1001)
+       [`crates/ui/tests/panel_snapshots.rs:1001`](../../../crates/ui/tests/panel_snapshots.rs#L1001)
        simplified `if fg3 == fg3 { "fg_muted" } else { … }` →
        `"fg_muted"` direct.
     8. `unused_variables` —
-       [`crates/ui/tests/panel_snapshots.rs:947`](../../crates/ui/tests/panel_snapshots.rs#L947)
+       [`crates/ui/tests/panel_snapshots.rs:947`](../../../crates/ui/tests/panel_snapshots.rs#L947)
        renamed `fg3` → `_fg3`.
   - **consistency-test false-positive cleanup:** the
     `no_inline_user_visible_strings_in_widgets` regex flagged
@@ -908,13 +908,13 @@ and T1511 (snapshot accept).
     not Phase 1 regressions; surfaced because `rust-validate` step 5
     runs `RUSTDOCFLAGS="-D warnings" cargo doc`). Cleared by replacing
     intra-doc links with plain backticks at:
-    - [`crates/audit/src/query.rs:1109`](../../crates/audit/src/query.rs#L1109)
+    - [`crates/audit/src/query.rs:1109`](../../../crates/audit/src/query.rs#L1109)
       — `[`extract_symbol_from_description`]` →
       `` `extract_symbol_from_description` ``.
-    - [`crates/agent/src/runtime.rs:80`](../../crates/agent/src/runtime.rs#L80)
+    - [`crates/agent/src/runtime.rs:80`](../../../crates/agent/src/runtime.rs#L80)
       — `[`spawn_feed_taps_with_observer`]` →
       `` `spawn_feed_taps_with_observer` ``.
-    - [`crates/agent/src/runtime.rs:708`](../../crates/agent/src/runtime.rs#L708)
+    - [`crates/agent/src/runtime.rs:708`](../../../crates/agent/src/runtime.rs#L708)
       — `[`spawn_feed_taps`]` → `` `spawn_feed_taps` ``.
     Re-ran `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps`
     → `Finished dev profile … in 6.15s`; `Generated … target/doc/agent/index.html
@@ -939,7 +939,7 @@ and T1511 (snapshot accept).
   8. The tester report includes the visual-diff attestation row
      (ui-designer reviewed all 36 refreshed snapshots).
   - On all-green: `VERDICT → PASS` → presenter spawn.
-  - On any FAIL: route per the [AGENT.md verdict map](../../AGENT.md).
+  - On any FAIL: route per the [AGENT.md verdict map](../../../AGENT.md).
     UX/visual regressions → ui-designer; missed call site → developer
     (re-run T1502 sweep); structural regressions → architect.
   - **Ratification (third pass):** `VERDICT → PASS`. All 8 gates
@@ -1005,12 +1005,12 @@ spec/lumen-design-adoption/phase-1-foundation/tasks.md    [NEW — this file]
 
 ### Cross-references
 
-- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../features/lumen-design-adoption.md).
-- Phase 1 brief: [`spec/lumen-design-adoption/phase-1-foundation/feature.md`](../features/lumen-phase-1-foundation.md).
-- Architecture: [`spec/architecture.md`](../architecture.md).
-- Lumen tokens: [`spec/design/project/colors_and_type.css`](../design/project/colors_and_type.css).
-- Lumen brand book: [`spec/design/project/README.md`](../design/project/README.md).
-- Lumen desktop CSS: [`spec/design/project/ui_kits/desktop/desktop.css`](../design/project/ui_kits/desktop/desktop.css).
-- Lumen Shell: [`spec/design/project/ui_kits/desktop/Shell.jsx`](../design/project/ui_kits/desktop/Shell.jsx).
-- Operator-success-reports R7 latency band contract: [`spec/operator-success-reports/feature.md`](../features/operator-success-reports.md).
-- v1.5b multi-venue (MarketHealth source): [`spec/v1-5b-multi-venue/feature.md`](../features/v1-5b-multi-venue.md).
+- Master roadmap: [`spec/lumen-design-adoption/feature.md`](../feature.md).
+- Phase 1 brief: [`spec/lumen-design-adoption/phase-1-foundation/feature.md`](feature.md).
+- Architecture: [`spec/architecture.md`](../../architecture.md).
+- Lumen tokens: [`spec/design/project/colors_and_type.css`](../../design/project/colors_and_type.css).
+- Lumen brand book: [`spec/design/project/README.md`](../../design/project/README.md).
+- Lumen desktop CSS: [`spec/design/project/ui_kits/desktop/desktop.css`](../../design/project/ui_kits/desktop/desktop.css).
+- Lumen Shell: [`spec/design/project/ui_kits/desktop/Shell.jsx`](../../design/project/ui_kits/desktop/Shell.jsx).
+- Operator-success-reports R7 latency band contract: [`spec/operator-success-reports/feature.md`](../../operator-success-reports/feature.md).
+- v1.5b multi-venue (MarketHealth source): [`spec/v1-5b-multi-venue/feature.md`](../../v1-5b-multi-venue/feature.md).

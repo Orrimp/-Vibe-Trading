@@ -9,7 +9,7 @@ version: 2.3.0
 # Lumen design adoption — Phase 4: Backtest panel (`viewer` bin)
 
 > **Phase 4 of 6** in the
-> [`lumen-design-adoption`](lumen-design-adoption.md) initiative. Master
+> [`lumen-design-adoption`](../feature.md) initiative. Master
 > roadmap is the orientation; this brief is the **shippable feature**.
 > Operator-locked constraints (no brand, no voice rewrite, sequential
 > phases, Phase 6 reserved) are documented in the master file and apply
@@ -27,13 +27,13 @@ version: 2.3.0
 
 The `viewer` binary today renders a markdown report from
 `spec/*/reports/backtest-*.md`. The Lumen
-[`Backtest.jsx`](../design/project/ui_kits/desktop/Backtest.jsx)
+[`Backtest.jsx`](../../design/project/ui_kits/desktop/Backtest.jsx)
 pattern (purpose-built for this project at the design conversation —
 see master roadmap "The Lumen bundle is purpose-built for this
 project") is materially richer: **KPI strip + equity curve +
 drawdown band**, with a "Deploy live" CTA explicitly excluded
 (paper-only product non-goal). Phase 2's canvas chart primitives
-([`crates/ui/src/widgets/chart.rs`](../../crates/ui/src/widgets/chart.rs))
+([`crates/ui/src/widgets/chart.rs`](../../../crates/ui/src/widgets/chart.rs))
 and Phase 3's read-only data discipline make the visual upgrade
 affordable.
 
@@ -45,13 +45,13 @@ Phase 4 closes **two** related surfaces in one ship:
    names (offline, reads from `spec/*/reports/backtest-*.md`).
 2. **The cockpit Strategies-detail equity-since-deploy sparkline** —
    the surface
-   [Phase 3 deferred at Q6](lumen-phase-3-detail-screens.md) because
+   [Phase 3 deferred at Q6](../phase-3-detail-screens/feature.md) because
    the cheap path didn't exist on the current state shape (Phase 3
    architect: "`Cockpit::pnl: PanelState<PnlSnapshot>` is a single
    snapshot, not a historical buffer"). Phase 3 shipped a
    `frame::muted_body(strings::STRATEGIES_SPARKLINE_DEFERRED)`
    placeholder reading **"Equity sparkline lands with Phase 4"** at
-   [`crates/ui/src/strings.rs:261`](../../crates/ui/src/strings.rs).
+   [`crates/ui/src/strings.rs:261`](../../../crates/ui/src/strings.rs).
    Phase 4 honours that placeholder.
 
 Both surfaces consume the **same shape of data** (a sequence of
@@ -82,7 +82,7 @@ reuse it without re-litigation.
    ticks, not equity. Strategies-detail needs equity history keyed
    on `StrategyId` over a different time grid — sibling buffer.
 4. **No equity-history audit query.** Phase 3's
-   [`pnl_by_strategy`](../../crates/audit/src/query.rs) returns a
+   [`pnl_by_strategy`](../../../crates/audit/src/query.rs) returns a
    single aggregate; the sparkline needs a **vector** over the
    deploy-to-now window. Phase 4 adds an additive
    `audit::query::equity_curve_for_strategy` method (operator-
@@ -123,7 +123,7 @@ reuse it without re-litigation.
   **out of scope** — paper-only product, deployment is
   config-driven.
 - **No re-anchor.** 11 backtest body-SHA-256 anchors in
-  [`spec/anchors.toml`](../anchors.toml) stay byte-identical;
+  [`spec/anchors.toml`](../../anchors.toml) stay byte-identical;
   viewer reads existing reports, cockpit-side consumer reads
   the audit ledger; no committed body re-rendered.
 - **No new backtest scenarios.** Phase 4 is UI + additive read
@@ -138,7 +138,7 @@ reuse it without re-litigation.
 - **No 1-min equity-curve render budget.** 90-day 1-min ~129 600
   points is impractical; Phase 4 assumes report-side
   downsampling (the existing
-  [`render/equity_curve.rs`](../../crates/reports/src/render/equity_curve.rs)
+  [`render/equity_curve.rs`](../../../crates/reports/src/render/equity_curve.rs)
   ships 60-cell sparklines / 1m / 5m cadence). Expected
   N ∈ [60, 2000]. Q5 ratifies the cap.
 - **No re-litigation of operator-locked constraints.**
@@ -225,18 +225,18 @@ precedent.
 ## Requirements
 
 Numbered, testable, derived from
-[`spec/design/project/ui_kits/desktop/Backtest.jsx`](../design/project/ui_kits/desktop/Backtest.jsx),
+[`spec/design/project/ui_kits/desktop/Backtest.jsx`](../../design/project/ui_kits/desktop/Backtest.jsx),
 the
-[Phase 2 chart-widget contract](lumen-phase-2-shell-ia-charts.md),
+[Phase 2 chart-widget contract](../phase-2-shell-ia-charts/feature.md),
 the
-[Phase 3 sparkline deferral note](lumen-phase-3-detail-screens.md),
+[Phase 3 sparkline deferral note](../phase-3-detail-screens/feature.md),
 the existing
-[`crates/ui/src/widgets/chart.rs`](../../crates/ui/src/widgets/chart.rs),
-[`crates/audit/src/query.rs`](../../crates/audit/src/query.rs), and
-[`spec/architecture.md` § Frontend](../architecture.md). Each ends
+[`crates/ui/src/widgets/chart.rs`](../../../crates/ui/src/widgets/chart.rs),
+[`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs), and
+[`spec/architecture.md` § Frontend](../../architecture.md). Each ends
 with a one-line **acceptance** the tester can verify. Operator-
 locked constraints inherited from the
-[master roadmap](lumen-design-adoption.md) (no brand, no voice
+[master roadmap](../feature.md) (no brand, no voice
 rewrite, sequential phases, Q11–Q14) apply throughout.
 
 ### R1 — Viewer binary scaffold
@@ -326,7 +326,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 - **R4.2** Canvas-based; X = time oldest-left → newest-right, Y
   = equity USDT low-bottom → high-top; Y range
   `(min_equity, max_equity)` + 5 % padding (mirrors
-  [`chart.rs:45`](../../crates/ui/src/widgets/chart.rs)).
+  [`chart.rs:45`](../../../crates/ui/src/widgets/chart.rs)).
 - **R4.3** **Polyline in `ACCENT`** (1.5 px). Aligns with the
   design-principles' default line-series colour
   (ui-design-principles.md:419) and Phase 2 precedent; leaves
@@ -337,7 +337,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   + Phase 2's line-fill style).
 - **R4.5** **Five horizontal gridlines** `BORDER_1 @ 0.4`
   (mirror Phase 2
-  [`draw_gridlines`](../../crates/ui/src/widgets/chart.rs)
+  [`draw_gridlines`](../../../crates/ui/src/widgets/chart.rs)
   at line 187). No vertical grid.
 - **R4.6** Read-only — no hover / click / pan / zoom. Future
   phase may add hover.
@@ -481,12 +481,12 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 - **R11.2** **Companion CSV reuse** — equity-points source is
   the existing companion CSV at `<report-stem>__equity.csv`
   (written by
-  [`csv_artifacts::write_equity_csv`](../../crates/reports/src/csv_artifacts.rs)).
+  [`csv_artifacts::write_equity_csv`](../../../crates/reports/src/csv_artifacts.rs)).
   `EquitySample` rows carry `ts + equity_total`; Phase 4 maps
   each row to `(ts, Money::<Usdt>::from(decimal))` into
   `EquitySeries::points`. **Zero schema change** — read-only
   consumer. The body's "Equity curve" sparkline section
-  ([`render/equity_curve.rs`](../../crates/reports/src/render/equity_curve.rs))
+  ([`render/equity_curve.rs`](../../../crates/reports/src/render/equity_curve.rs))
   is too coarse (60 chars) for Phase 4's curve regardless of
   Q3 ratification, so the CSV is the load-bearing source.
 - **R11.3** Reports without a companion CSV (older, pre-
@@ -501,7 +501,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 ### R12 — Online source — `audit::query::equity_curve_for_strategy`
 
 - **R12.1** New `pub async fn` in
-  [`crates/audit/src/query.rs`](../../crates/audit/src/query.rs).
+  [`crates/audit/src/query.rs`](../../../crates/audit/src/query.rs).
   Sibling of `recent_fills_filtered` (line 180) and
   `recent_journal_filtered` (line 313). Master Q13 — extend
   `audit::query` for read additions.
@@ -517,7 +517,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   `until = None` means "to now". Returns `EquitySeries`
   directly (Q1 — query owns the drawdown computation).
 - **R12.3** Reuses
-  [`pnl_by_strategy`](../../crates/audit/src/query.rs) (line
+  [`pnl_by_strategy`](../../../crates/audit/src/query.rs) (line
   933) algorithm but emits a vector of bar-close samples
   rather than a single aggregate. Typical 1-day at 1m =
   1440 samples — below the R6.3 cap.
@@ -562,7 +562,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   `frame::muted_body(strings::STRATEGIES_SPARKLINE_LOADING)`
   ("Loading equity history…"); net-new constant. Phase 3's
   `STRATEGIES_SPARKLINE_DEFERRED` retires from
-  [`crates/ui/src/strings.rs:261`](../../crates/ui/src/strings.rs);
+  [`crates/ui/src/strings.rs:261`](../../../crates/ui/src/strings.rs);
   consistency-test fixture allow-list updates same commit.
 - **R13.8** Empty / error — empty series renders R4.7-style
   empty state at sparkline footprint;
@@ -1005,13 +1005,13 @@ deferral; Scope is replaced by the R-cluster-pointing summary;
 Open questions are replaced by the architect Q-items below;
 Acceptance criteria are extended to trace each bullet to its
 R-cluster. Master roadmap reference unchanged: see
-[`lumen-design-adoption.md` Phase 4 section](lumen-design-adoption.md).
+[`lumen-design-adoption.md` Phase 4 section](../feature.md).
 
 ## Cross-phase technical-debt — TD-1 keyboard focus ring
 
 **TD-1 status check at Phase 4 analyst kickoff (2026-05-06).**
 Re-verified
-[`crates/ui/Cargo.toml:52`](../../crates/ui/Cargo.toml) still
+[`crates/ui/Cargo.toml:52`](../../../crates/ui/Cargo.toml) still
 pins `iced = "=0.14.0"`. Neither upgrade trigger named in the
 master roadmap's TD-1 row has fired (iced 0.15+ has not
 shipped to crates.io with `button::Status::Focused` and
@@ -1037,7 +1037,7 @@ _Architect-owned. Resolves Q1–Q12 — every recommendation lands as
 **ratified** unless flagged "Architect override". The analyst sections
 above are immutable; this section is the design contract the developer
 reads alongside the task list at
-[`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](../tasks/lumen-phase-4-backtest-panel.md)._
+[`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](tasks.md)._
 
 ### Q-item resolutions
 
@@ -1857,7 +1857,7 @@ the sparkline widget. T1812 (snapshot accept) is the narrow point.
 ## Implementation
 
 - 2026-05-06 (developer): T1801–T1815 ticked with honest evidence in
-  [`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](../tasks/lumen-phase-4-backtest-panel.md).
+  [`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](tasks.md).
   Phase 4 ships:
   - `crates/core/src/equity_series.rs` (NEW) — cross-phase
     `EquitySeries` + `EquityPoint` + `BacktestMetrics` primitives
@@ -1980,7 +1980,7 @@ the Phase 4 presentation under `spec/lumen-design-adoption/presentations/lumen-d
   T1804 canvas-chart core → narrow at T1810 viewer composition +
   T1811 cockpit sparkline → T1812 snapshot accept narrow point →
   T1813–T1815 → T_FINAL. Task list at
-  [`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](../tasks/lumen-phase-4-backtest-panel.md)
+  [`spec/lumen-design-adoption/phase-4-backtest-panel/tasks.md`](tasks.md)
   with 15 T18xx tasks + tester `T_FINAL_LUMEN_PHASE_4` gate.
   HANDOFF → developer ‖ ui-designer (developer takes T1801–T1815
   implementation; ui-designer takes the visual-diff attestation

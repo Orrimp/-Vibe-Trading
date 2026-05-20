@@ -8,16 +8,16 @@ updated: 2026-05-03
 # Tasks — Journal-transactions metadata reader
 
 Ordered, testable task list derived from
-[spec/journal-transactions-metadata/feature.md → Design](../features/journal-transactions-metadata.md#design)
+[spec/journal-transactions-metadata/feature.md → Design](feature.md#design)
 and the six architect resolutions (Q1–Q6) recorded there.
 Cross-references to the analyst's R/V items use the format `Rn` /
 `Vn`; cross-references to the architect's resolutions use `Qn`.
 
-T8xx is taken by [operator-success-reports](operator-success-reports.md);
-T9xx is taken by [live-cockpit-unified](live-cockpit-unified.md);
-T10xx is taken by [real-mtm-unrealized-pnl](real-mtm-unrealized-pnl.md);
-T11xx is taken by [per-symbol-position-accounts](per-symbol-position-accounts.md);
-T12xx is taken by [tape-row-audit-modal](tape-row-audit-modal.md);
+T8xx is taken by [operator-success-reports](../operator-success-reports/feature.md);
+T9xx is taken by [live-cockpit-unified](../live-cockpit-unified/feature.md);
+T10xx is taken by [real-mtm-unrealized-pnl](../real-mtm-unrealized-pnl/feature.md);
+T11xx is taken by [per-symbol-position-accounts](../per-symbol-position-accounts/feature.md);
+T12xx is taken by [tape-row-audit-modal](../tape-row-audit-modal/feature.md);
 this feature uses **T1301–T1305** + `T_FINAL_TX_METADATA`.
 
 Owner tags:
@@ -78,8 +78,8 @@ the whole chain to land in one parallel pass after T1302.
 
 - [x] **T1301** [developer] — Add `JournalTransactionMetadata`
   struct per
-  [Design → Q1](../features/journal-transactions-metadata.md#q1--type-home-new-corejournaltransactionmetadata)
-  and [Design → Public API additions](../features/journal-transactions-metadata.md#public-api-additions):
+  [Design → Q1](feature.md#q1--type-home-new-corejournaltransactionmetadata)
+  and [Design → Public API additions](feature.md#public-api-additions):
   - Edit `crates/core/src/views.rs`:
     - Add the new struct alongside the existing `JournalEntry`
       view (added in T1201). Place after `JournalEntry` in
@@ -165,9 +165,9 @@ the whole chain to land in one parallel pass after T1302.
 
 - [x] **T1302** [developer] — `audit::query::journal_transaction_metadata`
   reader + V1/V2 unit tests per
-  [Design → SQL shape](../features/journal-transactions-metadata.md#sql-shape)
-  and [Design → Q2](../features/journal-transactions-metadata.md#q2--two-separate-readers-keep-separate)
-  and [V1 / V2](../features/journal-transactions-metadata.md#v1--reader-returns-expected-metadata-for-an-existing-transaction):
+  [Design → SQL shape](feature.md#sql-shape)
+  and [Design → Q2](feature.md#q2--two-separate-readers-keep-separate)
+  and [V1 / V2](feature.md#v1--reader-returns-expected-metadata-for-an-existing-transaction):
   - Edit `crates/audit/src/query.rs`:
     - At the top-of-file `use trading_core::{...}` import block (line
       10–14), extend with `JournalTransactionMetadata`.
@@ -185,7 +185,7 @@ the whole chain to land in one parallel pass after T1302.
       - "Mirrors the empty-result contract of T1202's
         `journal_entries_for_transaction`."
       - Determinism / errors blocks per existing pattern.
-    - SQL: see [Design → SQL shape](../features/journal-transactions-metadata.md#sql-shape).
+    - SQL: see [Design → SQL shape](feature.md#sql-shape).
       Body shape:
       ```rust
       let row: Option<(String, String, String, Option<String>)> = sqlx::query_as(
@@ -306,8 +306,8 @@ the whole chain to land in one parallel pass after T1302.
 - [x] **T1303** [ui-designer] — Replace partial-view construction
   in cockpit_live's `Task::perform` with chained metadata→entries
   fetch per
-  [Design → Q4](../features/journal-transactions-metadata.md#q4--sequential-await-not-tokiojoin)
-  and [Q6](../features/journal-transactions-metadata.md#q6--partial-failure-semantics-any-err--error-state):
+  [Design → Q4](feature.md#q4--sequential-await-not-tokiojoin)
+  and [Q6](feature.md#q6--partial-failure-semantics-any-err--error-state):
   - Edit `crates/ui/src/bin/cockpit_live.rs:496-535`. The current
     block at lines 496–535 awaits ONLY
     `journal_entries_for_transaction` and constructs a partial
@@ -445,8 +445,8 @@ the whole chain to land in one parallel pass after T1302.
 ## Wave 4 — Wiring smoke test (parallel-safe with T1303)
 
 - [x] **T1304** [ui-designer] — Add chained-fetch smoke test per
-  [Design → Q5](../features/journal-transactions-metadata.md#q5--snapshot-strategy-re-verify-t1207s-4-snapshots-add-wiring-smoke-test-no-new-snap)
-  and [V3](../features/journal-transactions-metadata.md#v3--live-cockpit-modal-shows-full-description--strategy_id):
+  [Design → Q5](feature.md#q5--snapshot-strategy-re-verify-t1207s-4-snapshots-add-wiring-smoke-test-no-new-snap)
+  and [V3](feature.md#v3--live-cockpit-modal-shows-full-description--strategy_id):
   - New file `crates/ui/tests/cockpit_live_modal_metadata_chain.rs`.
     The test boots an in-memory ledger, posts one paper Buy, drives
     the chained-fetch closure (or directly invokes the two readers
@@ -571,9 +571,9 @@ the whole chain to land in one parallel pass after T1302.
 
 - [x] **T1305** [developer] — Anchor regression + workspace test
   sweep per
-  [V4](../features/journal-transactions-metadata.md#v4--anchors-1111-pass)
-  and [V5](../features/journal-transactions-metadata.md#v5--operator-success--live-cockpit-invariants-hold)
-  and [Design → Risks #3](../features/journal-transactions-metadata.md#risks):
+  [V4](feature.md#v4--anchors-1111-pass)
+  and [V5](feature.md#v5--operator-success--live-cockpit-invariants-hold)
+  and [Design → Risks #3](feature.md#risks):
   - Run `bash scripts/verify_anchors.sh`. Expected:
     `ANCHORS PASS  (11 / 11)`. (V4.)
   - Run `cargo test --workspace --all-features`. Expected: all

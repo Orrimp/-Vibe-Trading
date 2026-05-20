@@ -8,15 +8,15 @@ updated: 2026-05-03
 # Tasks — Per-symbol position accounts
 
 Ordered, testable task list derived from
-[spec/per-symbol-position-accounts/feature.md → Design](../features/per-symbol-position-accounts.md#design)
+[spec/per-symbol-position-accounts/feature.md → Design](feature.md#design)
 and the eight architect resolutions (Q1–Q8) recorded in that
 Design section. Cross-references to the analyst's R/V items use the
 format `Rn` / `Vn`; cross-references to the architect's resolutions
 use `Qn`.
 
-T8xx is taken by [operator-success-reports](operator-success-reports.md);
-T9xx is taken by [live-cockpit-unified](live-cockpit-unified.md);
-T10xx is taken by [real-mtm-unrealized-pnl](real-mtm-unrealized-pnl.md);
+T8xx is taken by [operator-success-reports](../operator-success-reports/feature.md);
+T9xx is taken by [live-cockpit-unified](../live-cockpit-unified/feature.md);
+T10xx is taken by [real-mtm-unrealized-pnl](../real-mtm-unrealized-pnl/feature.md);
 this feature uses **T1101–T1107** + `T_FINAL_PER_SYMBOL`.
 
 Owner tags:
@@ -73,7 +73,7 @@ table — no new types, no new public API, no new render path.
 
 - [x] **T1101** [developer] — Migration
   `006_per_symbol_position_accounts.sql` per
-  [Design → Migration shape — exact SQL](../features/per-symbol-position-accounts.md#migration-shape--exact-sql):
+  [Design → Migration shape — exact SQL](feature.md#migration-shape--exact-sql):
   - New file `crates/audit/migrations/006_per_symbol_position_accounts.sql`.
     Pure SQL — 10 `INSERT OR IGNORE INTO accounts (id, kind, currency)
     VALUES (?, ?, ?)` lines, one per pair-symbol in
@@ -129,8 +129,8 @@ table — no new types, no new public API, no new render path.
 
 - [x] **T1102** [developer] — `post_fill` writes per-pair account
   + readers gain Q4 defensive cross-check per
-  [Design → Crate map delta](../features/per-symbol-position-accounts.md#crate-map-delta)
-  and [Q4](../features/per-symbol-position-accounts.md#q4--reader-keep-description-parse-as-primary-account-id-as-defensive-cross-check):
+  [Design → Crate map delta](feature.md#crate-map-delta)
+  and [Q4](feature.md#q4--reader-keep-description-parse-as-primary-account-id-as-defensive-cross-check):
   - **Writer side** — at `crates/audit/src/journal.rs:82` (Buy
     debit) and line 135 (Sell credit), replace the literal
     `"assets:position:BTC"` with a hoisted local:
@@ -230,7 +230,7 @@ table — no new types, no new public API, no new render path.
     confirmed byte-identical).
 
 - [x] **T1103** [developer] — `seed_universe_accounts` deprecation
-  per [Q8](../features/per-symbol-position-accounts.md#q8--seed_universe_accounts-deprecate-do-not-delete-migration-is-the-source-of-truth):
+  per [Q8](feature.md#q8--seed_universe_accounts-deprecate-do-not-delete-migration-is-the-source-of-truth):
   - Done 2026-05-01 (developer). `#[deprecated(since = "1.6.0",
     note = "...")]` attribute landed at
     `crates/audit/src/bootstrap.rs:64-71`, immediately above the
@@ -298,7 +298,7 @@ table — no new types, no new public API, no new render path.
 - [x] **T1104** [developer] — Extend
   `build_ledger_with_open_positions_7d` fixture with mixed
   legacy/new rows per
-  [Q6](../features/per-symbol-position-accounts.md#q6--fixture-extend-build_ledger_with_open_positions_7d):
+  [Q6](feature.md#q6--fixture-extend-build_ledger_with_open_positions_7d):
 
   **Citation (developer, 2026-05-01):**
   - **fixture extension file:**
@@ -413,7 +413,7 @@ table — no new types, no new public API, no new render path.
 
 - [x] **T1105** [developer] — V1 + V2 + V5 + V8 tests in
   `crates/audit/tests/per_symbol_post_fill.rs` per
-  [Design → Test strategy](../features/per-symbol-position-accounts.md#test-strategy-per-v-item):
+  [Design → Test strategy](feature.md#test-strategy-per-v-item):
 
   **Citation (developer, 2026-05-01):**
   - **test file:**
@@ -551,7 +551,7 @@ table — no new types, no new public API, no new render path.
 
 - [x] **T1106** [developer] — V3 + V7 tests in
   `crates/reports/tests/open_positions_mixed_ledger.rs` per
-  [Design → Test strategy](../features/per-symbol-position-accounts.md#test-strategy-per-v-item):
+  [Design → Test strategy](feature.md#test-strategy-per-v-item):
 
   **Citation (developer, 2026-05-01):**
   - **test file:**
@@ -645,7 +645,7 @@ table — no new types, no new public API, no new render path.
 
 - [x] **T1107** [developer] — Anchor regression sweep + V4
   verification per
-  [Design → Risks & mitigations § 5](../features/per-symbol-position-accounts.md#risks--mitigations):
+  [Design → Risks & mitigations § 5](feature.md#risks--mitigations):
 
   **Citation (developer, 2026-05-01):**
   - **freshly-rendered v1+ reports (T816 fixture re-run produced

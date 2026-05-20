@@ -51,7 +51,7 @@ that future readers may or may not use.
 The `real-mtm-unrealized-pnl` architect explicitly punted this work
 to a follow-up brief
 ([real-mtm-unrealized-pnl.md `## Design` § Q3 / R10 verdict, lines
-386–401, 541–554](real-mtm-unrealized-pnl.md)) citing two risks:
+386–401, 541–554](../real-mtm-unrealized-pnl/feature.md)) citing two risks:
 chart-of-accounts migration risk + 9-anchor regression sensitivity.
 This brief is that follow-up.
 
@@ -1010,7 +1010,7 @@ that signature unchanged. No ui-designer involvement._
 - 2026-05-02 (analyst): initial draft. Promotes "R10 follow-up:
   per-symbol-position-accounts" from the implicit Queue (deferral
   noted in
-  [`real-mtm-unrealized-pnl.md` Design § Q3 / R10 verdict](real-mtm-unrealized-pnl.md))
+  [`real-mtm-unrealized-pnl.md` Design § Q3 / R10 verdict](../real-mtm-unrealized-pnl/feature.md))
   into Active. Plumbing-only feature: chart-of-accounts migration +
   `post_fill` writer change + (optional) `open_positions_at` reader
   optimization. 11 R-items, 8 V-items, 8 open questions for

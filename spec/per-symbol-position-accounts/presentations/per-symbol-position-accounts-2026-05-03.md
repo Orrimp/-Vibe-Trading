@@ -43,7 +43,7 @@ fees) would have silently broken every reader that depended on it
 accounts make symbol attribution structural — carried by an indexed FK
 column — and turn description-parse into an internal optimization the
 chart of accounts no longer relies on. See
-[spec/per-symbol-position-accounts/feature.md § Why](../features/per-symbol-position-accounts.md#why).
+[spec/per-symbol-position-accounts/feature.md § Why](../feature.md#why).
 
 ## What you can do now
 
