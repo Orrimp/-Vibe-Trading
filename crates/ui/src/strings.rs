@@ -323,6 +323,20 @@ pub const LAB_RUN_BUTTON_COMPLETED: &str = "Re-run";
 /// Label on the Run button after a failed run — operator can retry (T-D-14b).
 pub const LAB_RUN_BUTTON_FAILED: &str = "Retry";
 
+// ── Run delta badge — ui-rethink-phase-b-lab-run T-D-N13 ─────────────────────
+
+/// Short label for the `PnL` delta column of the `run_delta_badge` (R8.2 / D5).
+/// Shows the change in total return between the last two runs on the same tuple.
+pub const RUN_DELTA_BADGE_PNL_LABEL: &str = "P&L";
+
+/// Short label for the max-drawdown delta column of the `run_delta_badge` (R8.2 / D5).
+/// Shows the change in max drawdown between the last two runs on the same tuple.
+pub const RUN_DELTA_BADGE_DD_LABEL: &str = "DD";
+
+/// Short label for the Sharpe ratio delta column of the `run_delta_badge` (R8.2 / D5).
+/// Shows the change in annualised Sharpe ratio between the last two runs.
+pub const RUN_DELTA_BADGE_SHARPE_LABEL: &str = "SR";
+
 // ── Training panel — cockpit-training-control T-D-N1/N2/N3/N4/N16 ────────────
 
 /// Header chip label for the collapsed training panel.
@@ -1021,6 +1035,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_RUN_BUTTON_RUNNING", LAB_RUN_BUTTON_RUNNING),
         ("LAB_RUN_BUTTON_COMPLETED", LAB_RUN_BUTTON_COMPLETED),
         ("LAB_RUN_BUTTON_FAILED", LAB_RUN_BUTTON_FAILED),
+        // Phase B — run delta badge (T-D-N13)
+        ("RUN_DELTA_BADGE_PNL_LABEL", RUN_DELTA_BADGE_PNL_LABEL),
+        ("RUN_DELTA_BADGE_DD_LABEL", RUN_DELTA_BADGE_DD_LABEL),
+        ("RUN_DELTA_BADGE_SHARPE_LABEL", RUN_DELTA_BADGE_SHARPE_LABEL),
         // Phase A — equity + compare legend (T-D-15)
         ("CHART_LEGEND_EQUITY_LABEL", CHART_LEGEND_EQUITY_LABEL),
         ("CHART_LEGEND_COMPARE_NO_DATA", CHART_LEGEND_COMPARE_NO_DATA),

@@ -171,6 +171,25 @@ pub fn format_count(value: u64) -> String {
     with_thousands_sep(&value.to_string())
 }
 
+/// Format a signed percentage delta with explicit `+` / `-` sign.
+///
+/// Used by `run_delta_badge` for max-drawdown and other pct deltas (T-D-N13).
+/// Input is a decimal fraction (e.g. `0.024` = 2.4 %). Output: `"+2.40%"` / `"-2.40%"`.
+#[must_use]
+pub fn fmt_pct_signed(d: Decimal) -> String {
+    // Convert fraction to percentage points then round.
+    let pct = d * Decimal::ONE_HUNDRED;
+    let rounded = pct.round_dp(2);
+    let padded = pad_fractional(&rounded.abs().to_string(), 2);
+    if d.is_zero() {
+        format!("{padded}%")
+    } else if d.is_sign_positive() {
+        format!("+{padded}%")
+    } else {
+        format!("-{padded}%")
+    }
+}
+
 /// Format a signed delta in USDT with explicit `+` / `-` sign.
 #[must_use]
 pub fn fmt_usdt_signed(d: Decimal) -> String {

@@ -1139,6 +1139,77 @@ pub fn fake_equity_series_for_sparkline() -> EquitySeries {
     EquitySeries::from_points(pts).unwrap_or_else(|_| unreachable!())
 }
 
+/// Phase B (T-D-N13) — two deterministic `RunReportMirror` instances for
+/// the `run_delta_badge` gallery cell and unit tests.
+///
+/// Returns `(last, prev)` where `last` has better P&L and lower drawdown than
+/// `prev` — the badge should show UP/UP for P&L and DD columns.
+#[must_use]
+pub fn fake_run_report_mirror_pair() -> (
+    crate::lab::runner::RunReportMirror,
+    crate::lab::runner::RunReportMirror,
+) {
+    use crate::lab::equity_loader::LabTuple;
+    use crate::lab::runner::RunReportMirror;
+    use crate::lab::state::{DateRange, Preset};
+    use backtest::engine::BacktestKpis;
+    use rust_decimal_macros::dec;
+    use std::sync::Arc;
+
+    let tuple = LabTuple {
+        strategy: SmolStr::new("v1.momentum"),
+        symbol: SmolStr::new("XRPUSDT"),
+        range: DateRange::Preset(Preset::H1_2024),
+    };
+
+    // Last run: +$3 200 P&L, 8% max DD, rising equity.
+    // Timestamps are milliseconds since epoch (i64), not Timestamp.
+    let last_series: Vec<(i64, Decimal)> = (0..10)
+        .map(|i: i64| {
+            (
+                FIXED_EPOCH_SECS * 1000 + i * 3_600_000,
+                dec!(100_000) + Decimal::from(i * 320),
+            )
+        })
+        .collect();
+    let last = RunReportMirror {
+        tuple: tuple.clone(),
+        equity_series: Arc::new(last_series),
+        kpis: BacktestKpis {
+            final_equity: Money::<Usdt>::from_decimal(dec!(103_200)),
+            initial_equity: Money::<Usdt>::from_decimal(dec!(100_000)),
+            max_drawdown: dec!(0.08),
+            trade_count: 12,
+            total_fees: Money::<Usdt>::from_decimal(dec!(4.80)),
+        },
+        generated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+
+    // Prev run: +$1 200 P&L, 14% max DD, slower rise.
+    let prev_series: Vec<(i64, Decimal)> = (0..10)
+        .map(|i: i64| {
+            (
+                FIXED_EPOCH_SECS * 1000 + i * 3_600_000,
+                dec!(100_000) + Decimal::from(i * 120),
+            )
+        })
+        .collect();
+    let prev = RunReportMirror {
+        tuple,
+        equity_series: Arc::new(prev_series),
+        kpis: BacktestKpis {
+            final_equity: Money::<Usdt>::from_decimal(dec!(101_200)),
+            initial_equity: Money::<Usdt>::from_decimal(dec!(100_000)),
+            max_drawdown: dec!(0.14),
+            trade_count: 8,
+            total_fees: Money::<Usdt>::from_decimal(dec!(3.20)),
+        },
+        generated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+
+    (last, prev)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

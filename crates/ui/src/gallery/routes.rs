@@ -22,8 +22,8 @@ use crate::theme::ThemeMode;
 use crate::widgets::{
     agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
     kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
-    run_button, sidebar_nav, sparkline, status_bar, strategies, strategy_chip, training_log,
-    training_plot, volume_histogram,
+    run_button, run_delta_badge, sidebar_nav, sparkline, status_bar, strategies, strategy_chip,
+    training_log, training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -608,6 +608,32 @@ fn render_run_button(model: &Cockpit) -> iced::Element<'_, Message> {
     run_button::view(&state, model.lab_run_inflight, ThemeMode::Dark)
 }
 
+// ── run_delta_badge (Phase B T-D-N13) ────────────────────────────────────────
+
+fn seed_run_delta_badge() -> Cockpit {
+    // Leak the mirror pair so it lives for `'static`.
+    let (last, prev) = fx::fake_run_report_mirror_pair();
+    let last: &'static _ = Box::leak(Box::new(last));
+    let prev: &'static _ = Box::leak(Box::new(prev));
+    let mut cockpit = Cockpit::new();
+    // Point lab_state to the leaked mirrors so render_run_delta_badge can borrow them.
+    // We store them on the cockpit via last_run_report + prev_run_report.
+    cockpit.lab_state.last_run_report = Some(last.clone());
+    cockpit.lab_state.prev_run_report = Some(prev.clone());
+    cockpit
+}
+
+fn render_run_delta_badge(model: &Cockpit) -> iced::Element<'_, Message> {
+    if let (Some(last), Some(prev)) = (
+        model.lab_state.last_run_report.as_ref(),
+        model.lab_state.prev_run_report.as_ref(),
+    ) {
+        run_delta_badge::view(last, prev, ThemeMode::Dark)
+    } else {
+        iced::widget::text("run_delta_badge: no data").into()
+    }
+}
+
 fn render_journal_transaction_modal(_model: &Cockpit) -> iced::Element<'_, Message> {
     // journal_transaction_modal::view takes (state, main_col, on_close).
     // Render it with a simple text column as the background. Leak the
@@ -922,6 +948,13 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_run_button,
         seed: seed_run_button,
     },
+    // ── run_delta_badge (Phase B T-D-N13) ────────────────────────────────────
+    GalleryCell {
+        widget: "run_delta_badge",
+        state: "pnl_up_dd_down",
+        render: render_run_delta_badge,
+        seed: seed_run_delta_badge,
+    },
     GalleryCell {
         widget: "sidebar_nav",
         state: "home_selected",
@@ -995,6 +1028,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "pnl",
     "positions",
     "run_button",
+    "run_delta_badge",
     "sidebar_nav",
     "sparkline",
     "status_bar",

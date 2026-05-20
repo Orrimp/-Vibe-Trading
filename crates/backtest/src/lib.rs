@@ -5,6 +5,17 @@
 pub mod engine;
 pub mod paper;
 
+/// Shared CLI-scenario types used by `main.rs` and the extracted modules.
+/// Made `pub` so that the backtest binary can access them.
+pub mod cli_types;
+/// Phase B extracted report writers (ADR-0035 / T-D-N1).
+pub mod report;
+/// Phase B extracted scenario execution bodies (ADR-0035 / T-D-N1).
+/// Made `pub` so that the backtest binary (`main.rs`) can access these
+/// modules. These are internal to the backtest crate — not part of the
+/// stable public API surface.
+pub mod scenarios;
+
 #[cfg(feature = "realdata")]
 pub mod realdata;
 
@@ -13,6 +24,13 @@ pub use engine::{
     BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,
 };
 pub use paper::PaperEngine;
+
+/// Annualised Sharpe ratio from a minute-resolution equity curve.
+///
+/// Re-exported from `scenarios::sma_composed` per ADR-0035 § Decision 8 (T-D-N12).
+/// Single source of truth — `main.rs` calls `backtest::compute_sharpe` so there
+/// is no duplication. Signature locked: `pub fn compute_sharpe(equity_curve: &[Decimal]) -> f64`.
+pub use scenarios::sma_composed::compute_sharpe;
 
 /// Compute the deterministic-content SHA-256 of a backtest report.
 ///

@@ -34,7 +34,32 @@
 //! we bridge via `rt_handle.spawn()` (same pattern as the audit-ledger
 //! queries in `cockpit_live.rs`).
 
+use std::sync::Arc;
+
+use rust_decimal::Decimal;
 use smol_str::SmolStr;
+use trading_core::{Symbol, Venue};
+
+use crate::lab::equity_loader::LabTuple;
+
+// ── RunReportMirror (T-D-N10) ─────────────────────────────────────────────────
+
+/// In-memory mirror of a completed backtest run result.
+///
+/// Held in `LabState.last_run_report` / `prev_run_report` (T-D-N10 / D3).
+/// `Arc<Vec<...>>` for cheap clone — the equity series may be large.
+/// NOT serialized (persistence schema `version: 1` is unchanged).
+#[derive(Debug, Clone)]
+pub struct RunReportMirror {
+    /// Tuple that produced this result (identifies the run).
+    pub tuple: LabTuple,
+    /// Per-bar equity series ordered oldest-first `(timestamp_millis, equity_usdt)`.
+    pub equity_series: Arc<Vec<(i64, Decimal)>>,
+    /// KPI summary: final equity, initial equity, max drawdown, trade count, fees.
+    pub kpis: backtest::BacktestKpis,
+    /// Wall-clock time when the run completed.
+    pub generated_at: time::OffsetDateTime,
+}
 
 // ── Run status types ──────────────────────────────────────────────────────────
 
@@ -132,6 +157,78 @@ pub struct LabRunConfig {
 /// Outcome of the in-process run for `iced::Task::perform`.
 pub type LabRunResult = Result<RunSummary, SmolStr>;
 
+// ── LabRunConfig → ScenarioConfig mapper (T-D-N9 / R3.1–R3.5) ───────────────
+
+/// Map a `LabRunConfig` to a `backtest::ScenarioConfig`.
+///
+/// The `range_label` `SmolStr` maps to `backtest::engine::DateRange` presets.
+/// `Custom` ranges are parsed from ISO-8601 strings to epoch-milliseconds.
+///
+/// Returns `Err(SmolStr)` if the range label is unrecognised or a custom
+/// date string fails to parse.
+///
+/// # Errors
+///
+/// - Unrecognised `range_label` → `Err("unknown range: <label>")`
+/// - Invalid ISO-8601 custom date → `Err("invalid custom date: <msg>")`
+pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioConfig, SmolStr> {
+    use backtest::engine::DateRange;
+    use trading_core::StrategyId;
+
+    let range = match cfg.range_label.as_str() {
+        "Last30d" | "Last 30d" => DateRange::Last30d,
+        "Last90d" | "Last 90d" => DateRange::Last90d,
+        "H1_2024" | "2024 H1" => DateRange::H1_2024,
+        "H2_2024" | "2024 H2" => DateRange::H2_2024,
+        other => {
+            // Try to parse as "Custom:start_raw:end_raw" encoded form.
+            // Phase A range labels are always presets; custom falls through
+            // to this branch when a user manually types a range.
+            if let Some(rest) = other.strip_prefix("Custom:") {
+                let parts: Vec<&str> = rest.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let parse_ms = |s: &str| -> Result<i64, SmolStr> {
+                        // Accept full ISO-8601 or date-only "YYYY-MM-DD".
+                        let dt = time::OffsetDateTime::parse(
+                            s,
+                            &time::format_description::well_known::Rfc3339,
+                        )
+                        .or_else(|_| {
+                            // Try date-only: append T00:00:00Z
+                            let padded = format!("{s}T00:00:00Z");
+                            time::OffsetDateTime::parse(
+                                &padded,
+                                &time::format_description::well_known::Rfc3339,
+                            )
+                        })
+                        .map_err(|e| SmolStr::new(format!("invalid custom date '{s}': {e}")))?;
+                        Ok(dt.unix_timestamp() * 1000)
+                    };
+                    let start_ms = parse_ms(parts[0])?;
+                    let end_ms = parse_ms(parts[1])?;
+                    DateRange::Custom { start_ms, end_ms }
+                } else {
+                    return Err(SmolStr::new(format!("unknown range: {other}")));
+                }
+            } else {
+                return Err(SmolStr::new(format!("unknown range: {other}")));
+            }
+        }
+    };
+
+    Ok(backtest::ScenarioConfig {
+        strategy: StrategyId(cfg.strategy_id.as_str().into()),
+        pair: (
+            Venue::Binance, // Phase A: single-venue universe
+            Symbol::new(cfg.symbol.as_str()),
+        ),
+        range,
+        params: None,
+        seed: cfg.seed,
+        write_report: cfg.write_report,
+    })
+}
+
 /// Build an `iced::Task` that spawns a Lab run and posts the result back to
 /// the iced update loop as `Message::LabRunCompleted`.
 ///
@@ -188,27 +285,61 @@ pub fn spawn_lab_run(
             return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         };
 
+        // T-D-N9: Map LabRunConfig → backtest::ScenarioConfig.
+        // Returns Err immediately if the range label is unrecognised.
+        let scenario_cfg = match lab_config_to_scenario(&cfg) {
+            Ok(c) => c,
+            Err(e) => {
+                return iced::Task::done(Message::LabRunCompleted(Err(e)));
+            }
+        };
+
         let rt = handle.clone();
         let strat = cfg.strategy_id.clone();
         let sym = cfg.symbol.clone();
         iced::Task::perform(
             async move {
+                // T-D-N9 + T-D-N15: tracing latency span around the engine call.
+                let span = tracing::info_span!(
+                    "lab.run.latency",
+                    strategy = %strat,
+                    symbol = %sym
+                );
+                let _enter = span.enter();
+                let start = std::time::Instant::now();
+
                 let join = rt.spawn(async move {
-                    // TODO-backtest-dep: wire backtest::engine::run_scenario here
-                    // once T-D-13 lands. The simulated success below drives the
-                    // EquityCache invalidation path in the cockpit so manual smoke
-                    // tests can exercise the Run button.
-                    let summary = RunSummary {
-                        strategy_id: strat,
-                        symbol: sym,
-                        report_path: None,
-                    };
-                    Ok::<RunSummary, SmolStr>(summary)
+                    // T-D-N9: Call the real engine (R3.1).
+                    // Phase B: engine::run_scenario dispatches to the extracted
+                    // scenario modules (T-D-N2..N6). If NotImplemented is returned,
+                    // the error propagates as Err(SmolStr) and the Run button shows
+                    // "Retry".
+                    match backtest::engine::run_scenario(scenario_cfg).await {
+                        Ok(report) => {
+                            let path = report.report_path.clone();
+                            Ok(RunSummary {
+                                strategy_id: strat,
+                                symbol: sym,
+                                report_path: path,
+                            })
+                        }
+                        Err(e) => Err(SmolStr::new(format!("{e}"))),
+                    }
                 });
-                match join.await {
+                let result = match join.await {
                     Ok(result) => result,
                     Err(e) => Err(SmolStr::new(format!("join error: {e}"))),
-                }
+                };
+
+                // T-D-N15: emit latency span on exit.
+                let elapsed_ms = start.elapsed().as_millis();
+                tracing::info!(
+                    target = "lab.run.latency",
+                    elapsed_ms = elapsed_ms,
+                    "lab run completed"
+                );
+
+                result
             },
             Message::LabRunCompleted,
         )
@@ -241,6 +372,69 @@ mod tests {
         // Keep handle alive.
         assert!(!receiver.is_cancelled());
         let _ = handle; // drop here — compiler warning suppressed
+    }
+
+    /// T-D-N9 — lab_config_to_scenario maps preset range labels correctly.
+    #[test]
+    fn lab_config_to_scenario_preset_labels() {
+        let labels = [
+            ("Last30d", "Last30d"),
+            ("Last 30d", "Last30d"),
+            ("Last90d", "Last90d"),
+            ("Last 90d", "Last90d"),
+            ("H1_2024", "H1_2024"),
+            ("2024 H1", "H1_2024"),
+            ("H2_2024", "H2_2024"),
+            ("2024 H2", "H2_2024"),
+        ];
+        for (input, _expected) in &labels {
+            let cfg = LabRunConfig {
+                strategy_id: SmolStr::new("v1.momentum"),
+                symbol: SmolStr::new("XRPUSDT"),
+                venue: SmolStr::new("Binance"),
+                range_label: SmolStr::new(*input),
+                seed: crate::lab::defaults::LAB_DEFAULT_SEED,
+                write_report: false,
+            };
+            let result = lab_config_to_scenario(&cfg);
+            assert!(
+                result.is_ok(),
+                "range_label {input:?} must map to a valid DateRange; got: {result:?}"
+            );
+        }
+    }
+
+    /// T-D-N9 — lab_config_to_scenario returns Err on unknown range label.
+    #[test]
+    fn lab_config_to_scenario_unknown_range_is_err() {
+        let cfg = LabRunConfig {
+            strategy_id: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            venue: SmolStr::new("Binance"),
+            range_label: SmolStr::new("NotAPreset"),
+            seed: crate::lab::defaults::LAB_DEFAULT_SEED,
+            write_report: false,
+        };
+        let result = lab_config_to_scenario(&cfg);
+        assert!(result.is_err(), "unknown range label must return Err");
+    }
+
+    /// T-D-N9 — lab_config_to_scenario passes seed and write_report through.
+    #[test]
+    fn lab_config_to_scenario_passthrough_fields() {
+        let seed = crate::lab::defaults::LAB_DEFAULT_SEED;
+        let cfg = LabRunConfig {
+            strategy_id: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            venue: SmolStr::new("Binance"),
+            range_label: SmolStr::new("Last90d"),
+            seed,
+            write_report: true,
+        };
+        let sc = lab_config_to_scenario(&cfg).unwrap();
+        assert_eq!(sc.seed, seed);
+        assert!(sc.write_report);
+        assert_eq!(sc.pair.1.to_string(), "XRPUSDT");
     }
 
     /// T-D-14 — spawn_lab_run without a runtime resolves immediately.

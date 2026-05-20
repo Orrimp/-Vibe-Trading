@@ -29,6 +29,7 @@ use iced::{Border, Length};
 use rust_decimal::Decimal;
 use trading_core::{FillView, PositionView, Side, Symbol};
 
+use crate::lab::equity_loader::{LabTuple, route_equity_overlay};
 use crate::lab::state::StrategyFamily;
 use crate::state::{Cockpit, PanelState};
 use crate::strings::{
@@ -199,13 +200,31 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         mode,
     );
 
-    // ── Phase A top-bar row 4: Run button (T-D-14b) ──────────────────────
+    // ── Phase A top-bar row 4: Run button (T-D-14b) + delta badge (T-D-N13) ─
     // Derive RunState from lab_run_inflight + (no prior outcome tracking at
     // Phase A — Phase B adds last_run_ok field to LabState).
     let run_state = RunState::from_cockpit(model.lab_run_inflight, None);
-    let run_button_row = Row::new()
-        .push(run_button::view(&run_state, model.lab_run_inflight, mode))
-        .width(Length::Fill);
+    // T-D-N13: show delta badge when both last + prev reports are present
+    // and share the same tuple (same (strategy, pair, range) selection).
+    let delta_badge = if let (Some(last), Some(prev)) = (
+        model.lab_state.last_run_report.as_ref(),
+        model.lab_state.prev_run_report.as_ref(),
+    ) {
+        if last.tuple == prev.tuple {
+            Some(crate::widgets::run_delta_badge::view(last, prev, mode))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let mut run_button_row = Row::new()
+        .spacing(crate::theme::space::M)
+        .push(run_button::view(&run_state, model.lab_run_inflight, mode));
+    if let Some(badge) = delta_badge {
+        run_button_row = run_button_row.push(badge);
+    }
+    let run_button_row = run_button_row.width(Length::Fill);
 
     // Compute the per-active-symbol slices once.
     let active_markers: Vec<FillView> = match &model.chart_markers {
@@ -234,13 +253,27 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .width(Length::Fill);
 
     // Chart canvas — full width, fills remaining vertical space.
+    // T-D-N11: route equity overlay from in-memory last_run_report first,
+    // then fall through to EquityCache (Phase A behaviour). Uses interior
+    // mutability (RefCell) so `view` can stay `&Cockpit` (immutable).
+    let equity_overlay = if let (Some(strategy), Some((venue, symbol))) = (
+        model.lab_state.strategy.as_ref(),
+        model.lab_state.pair.as_ref(),
+    ) {
+        let current_tuple = LabTuple::new(strategy, *venue, symbol, model.lab_state.range.clone());
+        let spec_root = crate::lab::equity_loader::default_spec_root();
+        let mut cache = model.equity_cache.borrow_mut();
+        route_equity_overlay(&model.lab_state, &mut cache, &current_tuple, &spec_root)
+    } else {
+        None
+    };
     let chart_body = if let Some((_, _)) = active {
         chart::view(
             bars,
             active_markers,
             active_signals,
             model.chart_tooltip.clone(),
-            None,   // equity overlay — Phase B
+            equity_overlay,
             vec![], // compare curves — Phase B
             mode,
         )

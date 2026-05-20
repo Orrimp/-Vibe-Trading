@@ -61,6 +61,12 @@ pub mod placeholder;
 /// Big primary button per Lumen Phase 1 tokens; disabled while a run is
 /// in-flight (at-most-one-in-flight per Design § 4).
 pub mod run_button;
+/// Phase B (T-D-N13) — Run delta badge showing signed Δ(P&L / MaxDD / SR)
+/// between the last two completed runs on the same (strategy, pair, range) tuple.
+/// Rendered to the right of the Run button in `screens/lab.rs::run_button_row`
+/// when both `lab_state.last_run_report` and `lab_state.prev_run_report` are Some
+/// and share the same tuple.
+pub mod run_delta_badge;
 /// Phase A (T-D-6) — strategy chip widget for the Lab strategy-chip row.
 /// Renders a strategy id + family badge; two emit paths (primary select +
 /// compare toggle).

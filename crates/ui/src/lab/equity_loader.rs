@@ -107,7 +107,7 @@ pub enum EquityLoadError {
 /// All reads are synchronous. The cache grows monotonically; individual
 /// tuples are invalidated via [`EquityCache::invalidate`] (called on
 /// `Message::LabRunCompleted(Ok(...))`).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EquityCache {
     by_tuple: HashMap<LabTuple, Arc<LabEquitySeries>>,
 }
@@ -648,6 +648,53 @@ pub fn default_spec_root() -> PathBuf {
     PathBuf::from("spec")
 }
 
+// ── route_equity_overlay (T-D-N11 / R5.1–R5.4) ──────────────────────────────
+
+/// Route the chart equity-overlay data source.
+///
+/// ## Priority (R5.1 / Design § D4)
+///
+/// 1. If `lab_state.last_run_report` is `Some` **and** its `tuple` matches
+///    `current_tuple`, return a `LabEquitySeries` built from the in-memory
+///    `equity_series` (no I/O). The `narrowed_from` field is `None` (exact
+///    match by construction — R5.3 suppresses the narrowed-from badge).
+/// 2. Otherwise fall through to `EquityCache::get_or_load` (Phase A
+///    behaviour — R5.4 / R10.2). If the cache miss returns an error, returns
+///    `None` so the chart renders with no equity overlay (graceful degradation).
+///
+/// `cache` is mutated only on cache misses (existing Phase A behaviour
+/// unchanged).
+#[must_use]
+pub fn route_equity_overlay(
+    lab_state: &crate::lab::state::LabState,
+    cache: &mut EquityCache,
+    current_tuple: &LabTuple,
+    spec_root: &std::path::Path,
+) -> Option<LabEquitySeries> {
+    // Hot path: in-memory mirror from the most recent completed run.
+    if let Some(ref mirror) = lab_state.last_run_report
+        && &mirror.tuple == current_tuple
+    {
+        // Build LabEquitySeries from the Arc<Vec<(i64, Decimal)>>.
+        // `clone()` on Arc is cheap (ref-count increment only).
+        let samples: Vec<(i64, rust_decimal::Decimal)> = mirror.equity_series.as_ref().clone();
+        if !samples.is_empty() {
+            return Some(LabEquitySeries {
+                samples,
+                source_report: SmolStr::new("in-memory (last run)"),
+                fidelity: Fidelity::PerBar,
+                narrowed_from: None, // exact match — R5.3 suppresses badge
+            });
+        }
+    }
+
+    // Cold path: fall through to EquityCache (Phase A behaviour).
+    cache
+        .get_or_load(current_tuple, spec_root)
+        .ok()
+        .map(|arc| arc.as_ref().clone())
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -876,6 +923,136 @@ data_source: synthetic
         );
         assert_eq!(strategy_slug("v0.sma"), "v0-paper-sma");
         assert_eq!(strategy_slug("v0.5.macd"), "v05-composed-strategies");
+    }
+
+    // ── route_equity_overlay tests (T-D-N11) ────────────────────────────────
+
+    /// Build a minimal `LabState` with `last_run_report` set to the given
+    /// mirror, leaving all other fields at default.
+    fn lab_state_with_mirror(
+        mirror: crate::lab::runner::RunReportMirror,
+    ) -> crate::lab::state::LabState {
+        let mut s = crate::lab::state::LabState::default();
+        s.last_run_report = Some(mirror);
+        s
+    }
+
+    /// Build a minimal `RunReportMirror` for the given tuple and equity samples.
+    fn make_mirror(
+        tuple: LabTuple,
+        samples: Vec<(i64, rust_decimal::Decimal)>,
+    ) -> crate::lab::runner::RunReportMirror {
+        use backtest::engine::BacktestKpis;
+        use rust_decimal::Decimal;
+        use std::sync::Arc;
+        use trading_core::{Money, Usdt};
+        crate::lab::runner::RunReportMirror {
+            tuple,
+            equity_series: Arc::new(samples),
+            kpis: BacktestKpis {
+                final_equity: Money::<Usdt>::from_decimal(Decimal::from(100_000)),
+                initial_equity: Money::<Usdt>::from_decimal(Decimal::from(100_000)),
+                max_drawdown: Decimal::ZERO,
+                trade_count: 0,
+                total_fees: Money::<Usdt>::from_decimal(Decimal::ZERO),
+            },
+            generated_at: time::OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    /// T-D-N11 hot path: when `last_run_report` tuple matches, returns the
+    /// in-memory series without touching the disk cache.
+    #[test]
+    fn route_overlay_hot_path_in_memory() {
+        let tuple = LabTuple {
+            strategy: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            range: DateRange::Preset(Preset::H1_2024),
+        };
+        let samples = vec![
+            (0i64, Decimal::from(100_000)),
+            (1i64, Decimal::from(102_000)),
+        ];
+        let mirror = make_mirror(tuple.clone(), samples.clone());
+        let lab_state = lab_state_with_mirror(mirror);
+        let mut cache = EquityCache::new();
+        // Spec root points nowhere — any disk read would fail.
+        let spec_root = std::path::Path::new("/nonexistent/spec");
+
+        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, spec_root);
+        let series = result.expect("expected Some from hot path");
+        assert_eq!(series.samples.len(), 2, "should have both equity points");
+        assert_eq!(series.source_report, SmolStr::new("in-memory (last run)"));
+        assert_eq!(series.fidelity, Fidelity::PerBar);
+        assert!(
+            series.narrowed_from.is_none(),
+            "exact match: no narrowed_from badge"
+        );
+    }
+
+    /// T-D-N11 hot path: when the mirror's tuple does NOT match current_tuple,
+    /// falls through to the disk cache (returns None when spec root is absent).
+    #[test]
+    fn route_overlay_hot_path_tuple_mismatch_falls_through() {
+        let current_tuple = LabTuple {
+            strategy: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            range: DateRange::Preset(Preset::H1_2024),
+        };
+        let mirror_tuple = LabTuple {
+            strategy: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("BTCUSDT"), // different pair
+            range: DateRange::Preset(Preset::H1_2024),
+        };
+        let mirror = make_mirror(mirror_tuple, vec![(0, Decimal::from(100_000))]);
+        let lab_state = lab_state_with_mirror(mirror);
+        let mut cache = EquityCache::new();
+        // Spec root doesn't exist → cache miss → None.
+        let spec_root = std::path::Path::new("/nonexistent/spec");
+
+        let result = route_equity_overlay(&lab_state, &mut cache, &current_tuple, spec_root);
+        assert!(
+            result.is_none(),
+            "tuple mismatch must fall through to cache (returns None here)"
+        );
+    }
+
+    /// T-D-N11 cold path: when no `last_run_report`, uses the cache/disk path.
+    #[test]
+    fn route_overlay_cold_path_uses_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let spec = setup_fixture_dir(&tmp);
+        let tuple = LabTuple {
+            strategy: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            range: DateRange::Preset(Preset::H1_2024),
+        };
+        let lab_state = crate::lab::state::LabState::default(); // no last_run_report
+        let mut cache = EquityCache::new();
+
+        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, &spec);
+        let series = result.expect("expected Some from disk cache");
+        assert_eq!(series.samples.len(), 4, "fixture has 4 equity points");
+        assert_eq!(series.fidelity, Fidelity::PerBar);
+    }
+
+    /// T-D-N11: empty equity_series in mirror is not returned (falls through to cache).
+    #[test]
+    fn route_overlay_empty_in_memory_series_falls_through() {
+        let tuple = LabTuple {
+            strategy: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            range: DateRange::Preset(Preset::H1_2024),
+        };
+        // Mirror matches tuple but has empty samples.
+        let mirror = make_mirror(tuple.clone(), vec![]);
+        let lab_state = lab_state_with_mirror(mirror);
+        let mut cache = EquityCache::new();
+        let spec_root = std::path::Path::new("/nonexistent/spec");
+
+        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, spec_root);
+        // Empty samples → falls through to disk; disk absent → None.
+        assert!(result.is_none(), "empty mirror series must fall through");
     }
 
     /// T-D-10 — integration test: load the real v1 report from spec/.

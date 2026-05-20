@@ -852,6 +852,14 @@ pub struct Cockpit {
     /// Owned by the `widgets::focus_ring` Subscription wrapper. `None`
     /// when nothing is focused (cold-start; mouse-only interaction).
     pub focused_widget: Option<SmolStr>,
+
+    // ── Phase B — Lab equity overlay cache (T-D-N11) ────────────────────
+    /// In-memory cache for loaded equity series from backtest reports.
+    /// `RefCell` provides interior mutability so the cache can be filled
+    /// on cache-miss during a `view(&Cockpit, …)` call, which borrows
+    /// `Cockpit` immutably. The iced update/view cycle is single-threaded
+    /// (only the iced thread ever calls `view`), so `RefCell` is safe here.
+    pub equity_cache: std::cell::RefCell<crate::lab::equity_loader::EquityCache>,
 }
 
 impl std::fmt::Debug for Cockpit {
@@ -901,7 +909,8 @@ impl std::fmt::Debug for Cockpit {
             .field("risk_veto_events", &self.risk_veto_events)
             .field("focused_widget", &self.focused_widget)
             .field("lab_run_inflight", &self.lab_run_inflight)
-            .field("toast_message", &self.toast_message);
+            .field("toast_message", &self.toast_message)
+            .field("equity_cache", &"<EquityCache>");
         dbg.finish()
     }
 }
@@ -948,6 +957,7 @@ impl Default for Cockpit {
             focused_widget: None,
             lab_run_inflight: false,
             toast_message: None,
+            equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
         }
     }
 }
@@ -1044,6 +1054,7 @@ impl Cockpit {
             focused_widget: None,
             lab_run_inflight: false,
             toast_message: None,
+            equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
         }
     }
 }
@@ -1620,9 +1631,15 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         // ── Phase A — Lab screen (ui-rethink-phase-a-lab T-D-4) ─────────
         Message::LabSelectPair(venue, symbol) => {
             model.lab_state.pair = Some((venue, symbol));
+            // T-D-N10: tuple changed — clear both run report mirrors.
+            model.lab_state.last_run_report = None;
+            model.lab_state.prev_run_report = None;
         }
         Message::LabSelectPrimaryStrategy(id) => {
             model.lab_state.strategy = Some(id);
+            // T-D-N10: tuple changed — clear both run report mirrors.
+            model.lab_state.last_run_report = None;
+            model.lab_state.prev_run_report = None;
         }
         Message::LabToggleCompare(id) => {
             // Returns `false` when cap hit — emit a toast (T-D-16 / R4.2).
@@ -1633,6 +1650,9 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         }
         Message::LabSelectRange(range) => {
             model.lab_state.range = range;
+            // T-D-N10: tuple changed — clear both run report mirrors.
+            model.lab_state.last_run_report = None;
+            model.lab_state.prev_run_report = None;
         }
         // Wave 2 (M2.5 / T-D-14) — run-inflight tracking.
         // Pure state: the binary side wires the Task::perform.
@@ -1641,9 +1661,14 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         }
         Message::LabRunCompleted(_outcome) => {
             model.lab_run_inflight = false;
-            // The equity cache invalidation + repaint is triggered by the
-            // binary-side `update` wrapper after pure-state `update` returns.
+            // T-D-N10: The equity cache invalidation + repaint is triggered by
+            // the binary-side `update` wrapper after pure-state `update` returns.
             // Pure state only clears the inflight flag here.
+            // NOTE: RunReportMirror rotation (last→prev, set last=new) is done
+            // by the binary-side update wrapper which has access to the full
+            // RunSummary + equity series. The pure update cannot build a
+            // RunReportMirror because it has no equity data or BacktestKpis
+            // (those come from the async run result stored in the binary layer).
         }
         Message::ShowToast(msg) => {
             model.toast_message = Some(msg);

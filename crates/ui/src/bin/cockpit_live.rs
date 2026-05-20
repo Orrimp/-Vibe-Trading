@@ -613,6 +613,44 @@ impl AppState {
             _ => None,
         };
 
+        // T-D-N9: capture LabRunRequested BEFORE state::update mutates the
+        // cockpit (lab_run_inflight flips to true inside state::update). We
+        // need the pre-update LabState to build LabRunConfig.
+        let lab_run_requested = matches!(msg, Message::LabRunRequested);
+        let lab_run_cfg = if lab_run_requested {
+            // Build LabRunConfig from current LabState before state::update.
+            use smol_str::SmolStr;
+            use ui::lab::runner::LabRunConfig;
+            use ui::lab::state::DateRange as LabDateRange;
+            use ui::lab::state::Preset;
+            let ls = &self.cockpit.lab_state;
+            if let (Some(strategy), Some((venue, symbol))) =
+                (ls.strategy.as_ref(), ls.pair.as_ref())
+            {
+                let range_label = match &ls.range {
+                    LabDateRange::Preset(Preset::Last30d) => SmolStr::new("Last30d"),
+                    LabDateRange::Preset(Preset::Last90d) => SmolStr::new("Last90d"),
+                    LabDateRange::Preset(Preset::H1_2024) => SmolStr::new("H1_2024"),
+                    LabDateRange::Preset(Preset::H2_2024) => SmolStr::new("H2_2024"),
+                    LabDateRange::Custom { start_raw, end_raw } => {
+                        SmolStr::new(format!("Custom:{start_raw}:{end_raw}"))
+                    }
+                };
+                Some(LabRunConfig {
+                    strategy_id: SmolStr::new(&strategy.0),
+                    symbol: SmolStr::new(symbol.0.as_str()),
+                    venue: SmolStr::new(format!("{venue:?}")),
+                    range_label,
+                    seed: ui::lab::defaults::LAB_DEFAULT_SEED,
+                    write_report: true,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         ui::state::update(&mut self.cockpit, msg);
 
         if let Some(ref id) = select_strategy_id {
@@ -785,6 +823,12 @@ impl AppState {
             }
         } else if cross_link_strategies {
             iced::Task::done(Message::SwitchScreen(Screen::Strategies))
+        } else if let Some(run_cfg) = lab_run_cfg {
+            // T-D-N9: LabRunRequested with a valid (strategy, pair) selection.
+            // Spawn the real backtest engine call and post LabRunCompleted back
+            // to the iced update loop.
+            let (_, cancel_recv) = ui::lab::runner::cancellation_pair();
+            ui::lab::runner::spawn_lab_run(Some(&self.rt_handle), run_cfg, cancel_recv)
         } else {
             iced::Task::none()
         }

@@ -162,6 +162,17 @@ pub struct LabState {
     /// Only available with `--features live` (audit crate dependency).
     #[cfg(feature = "live")]
     pub training_events: std::collections::VecDeque<trading_core::views::TrainingEventRow>,
+
+    // ── Phase B — Lab run results (ui-rethink-phase-b-lab-run T-D-N10) ──────
+    /// Most-recent completed run result mirror. `None` on cold start and after
+    /// a tuple change (`LabSelectStrategy` / `LabSelectPair` / `LabSelectRange`).
+    /// NOT cloned (set to `None` in `LabState::clone`) and NOT serialized
+    /// (schema stays `version: 1`).
+    pub last_run_report: Option<crate::lab::runner::RunReportMirror>,
+    /// Previous completed run result for the same tuple (enables `run_delta_badge`).
+    /// Rotated from `last_run_report` when a second run on the same tuple completes.
+    /// Same carve-out rules as `last_run_report`.
+    pub prev_run_report: Option<crate::lab::runner::RunReportMirror>,
 }
 
 /// Manual `Clone` for `LabState` — `TrainingHandle` (an OS process handle)
@@ -184,6 +195,10 @@ impl Clone for LabState {
             training_panel_collapsed: self.training_panel_collapsed,
             #[cfg(feature = "live")]
             training_events: self.training_events.clone(),
+            // T-D-N10: run report mirrors are NOT cloned (large Arc allocation;
+            // only needed in the live session instance, not in snapshots/persistence clones).
+            last_run_report: None,
+            prev_run_report: None,
         }
     }
 }
@@ -200,6 +215,14 @@ impl std::fmt::Debug for LabState {
             .field("training_log_len", &self.training_log.len())
             .field("training_log_anchored", &self.training_log_anchored)
             .field("training_panel_collapsed", &self.training_panel_collapsed)
+            .field(
+                "last_run_report",
+                &self.last_run_report.as_ref().map(|_| "<RunReportMirror>"),
+            )
+            .field(
+                "prev_run_report",
+                &self.prev_run_report.as_ref().map(|_| "<RunReportMirror>"),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -219,6 +242,8 @@ impl Default for LabState {
             training_panel_collapsed: true,
             #[cfg(feature = "live")]
             training_events: std::collections::VecDeque::new(),
+            last_run_report: None,
+            prev_run_report: None,
         }
     }
 }
@@ -247,6 +272,8 @@ impl LabState {
             training_panel_collapsed: true,
             #[cfg(feature = "live")]
             training_events: std::collections::VecDeque::new(),
+            last_run_report: None,
+            prev_run_report: None,
         }
     }
 }
