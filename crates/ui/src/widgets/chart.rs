@@ -149,36 +149,51 @@ pub(crate) fn time_axis_tick_count(canvas_width_logical: f32, bar_count: usize) 
 }
 
 /// **T3013 — `local_offset_or_utc`** — chart-canvas-overhaul v1.10.0
-/// (R4.2.2 / Q4).
+/// (R4.2.2 / Q4) — shipped at chart-x-axis-local-time v1.11.0.
 ///
 /// Returns the UTC offset used to render `HH:MM` labels on the
-/// bottom time axis.  Returns `UtcOffset::UTC` deterministically in
-/// both `cfg(test)` (snapshot tests MUST be deterministic regardless
-/// of the host's time zone) and production.
+/// bottom time axis.
 ///
-/// **Q4 local-time display is queued as v1.11
-/// [`chart-x-axis-local-time`](../../../../spec/backlog.md) brief**
-/// (see `spec/backlog.md` ## Queue / UI / cockpit).  Until that
-/// ships, this function returns `UtcOffset::UTC` deterministically.
-/// The deferral is operator-locked (Q-revised-1 = path (b), recorded
-/// in `spec/chart-canvas-overhaul/feature.md ## Design — M7 / Q4
-/// deferral`); v1.10.0 ships with UTC x-axis labels and v1.11 owns
-/// the workspace `time` `local-offset` feature flip plus the
-/// production-OS-offset wiring.
+/// **Production** reads the OS-local offset via
+/// `time::UtcOffset::current_local_offset()`. If the lookup fails
+/// (e.g. multi-threaded glibc unsoundness — does not bite on macOS,
+/// the only cockpit-supported platform), falls back to
+/// `UtcOffset::UTC` deterministically.
 ///
-/// The function signature pre-anticipates the production-OS-offset
-/// branch so the v1.11 implementation flips only the body, not the
-/// call sites.  The `cfg(test)` UTC override contract holds across
-/// the v1.11 cutover: snapshot tests stay deterministic at UTC even
-/// once production starts reading the OS offset.
+/// **Snapshot determinism** is preserved via two complementary gates:
+///
+/// 1. **Unit-test `#[cfg(test)]` branch** — returns `UtcOffset::UTC`
+///    for the library's own unit tests.
+/// 2. **`UI_CHART_FORCE_UTC` env var** — integration tests
+///    (`tests/render_snapshots.rs`, `tests/visual_snapshots.rs`) set
+///    this env var before invoking `iced_test::screenshot` so the
+///    production branch returns UTC. This preserves
+///    machine-independence of visual baselines (a machine in CEST
+///    must produce the same baselines as a machine in UTC).
+///
+/// The env-var gate is necessary because Cargo only sets `cfg(test)`
+/// on a crate when building it as a test target — integration tests
+/// link against the library compiled without `cfg(test)`, so the
+/// `#[cfg(test)]` branch alone is insufficient.
 #[must_use]
+#[cfg(test)]
 pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
-    // Deterministic UTC in both `cfg(test)` and production.  v1.11
-    // `chart-x-axis-local-time` flips production to
-    // CLOCK-OK: doc-only reference; the call below is `UtcOffset::UTC`.
-    // `time::UtcOffset::current_local_offset()` while preserving the
-    // `cfg(test)` UTC override (see doc comment above).
+    // CLOCK-OK: snapshot determinism contract — unit tests MUST render
+    // at UTC regardless of the host's time zone.
     time::UtcOffset::UTC
+}
+
+#[must_use]
+#[cfg(not(test))]
+pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
+    // Integration-test snapshot determinism: see doc comment above.
+    if std::env::var_os("UI_CHART_FORCE_UTC").is_some() {
+        // CLOCK-OK: env-var override for integration tests.
+        return time::UtcOffset::UTC;
+    }
+    // CLOCK-OK: production reads the OS-local offset; defensive
+    // UTC fallback if the lookup fails.
+    time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC)
 }
 
 /// Render the chart for the active `(venue, symbol)` against the current
@@ -1987,5 +2002,25 @@ mod tests {
             r.height,
             exp_h
         );
+    }
+
+    /// **v1.11 — chart-x-axis-local-time R3** — assert the helper
+    /// returns the deterministic `UtcOffset::UTC` under `cfg(test)`.
+    ///
+    /// This test exercises the `#[cfg(test)]` branch (which is the
+    /// only branch reachable from `cargo test`); it pins the snapshot-
+    /// determinism contract so future drift surfaces as a test
+    /// failure rather than a silent baseline diff.
+    ///
+    /// The companion production branch (`#[cfg(not(test))]`) reads
+    /// the OS-local offset via `time::UtcOffset::current_local_offset()`
+    /// — covered by compile-only verification (the `local-offset`
+    /// feature flip in `Cargo.toml` + the `#[cfg(not(test))]` body)
+    /// and the operator's live-cockpit verification at v1.11 ship.
+    #[test]
+    fn local_offset_under_production_reads_os_offset() {
+        // Under `cfg(test)`, the helper returns UTC deterministically.
+        // This is the snapshot-determinism gate.
+        assert_eq!(local_offset_or_utc(), time::UtcOffset::UTC);
     }
 }

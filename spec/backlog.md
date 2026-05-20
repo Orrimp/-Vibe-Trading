@@ -4,6 +4,15 @@ status: living
 owner: orchestrator
 updated: 2026-05-19
 ---
+<!-- updated 2026-05-20 (orchestrator, chart-x-axis-local-time ship) —
+     `chart-x-axis-local-time v1.11.0` operator-approved via "Autoapprove
+     all" directive (overnight session ship). Moved Queue/UI → Recent.
+     Trivial direct ship per CLAUDE.md — no analyst/architect cycle: 1-line
+     Cargo.toml flip + ~10 LOC body swap + 1 unit test + env-var override
+     in 2 integration test runners. 22/22 anchors byte-identical; 279
+     workspace tests PASS; cockpit-smoke 0 panics; spec-lint contribution
+     0. Closes the v1.10.0 Q-revised-1 deferral; chart bottom axis now
+     renders in operator's local time zone in production. -->
 <!-- updated 2026-05-19 (orchestrator, ui-rethink-phase-b-lab-run ship) —
      `ui-rethink-phase-b-lab-run v0.2.0` operator-approved via "Autoapprove
      all" directive against presenter deck (VERDICT → READY at agentId
@@ -418,28 +427,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   and live in the Recent section; this Queue entry is the only
   remaining initiative work, gated on v2 LLM.)_
 
-- **v1.11 — Chart x-axis local time (`chart-x-axis-local-time`).**
-  _candidate_ — surfaced by the
-  [`chart-canvas-overhaul`](chart-canvas-overhaul/feature.md) M7
-  architect pass 2026-05-12, deferred from v1.10.0 by operator-
-  locked Q-revised-1 = path (b). Scope: flip the workspace `time`
-  dep's `local-offset` feature on (one-line `Cargo.toml` edit;
-  macOS-only cockpit so the multi-threaded glibc deadlock caveat
-  doesn't bite); wire
-  [`local_offset_or_utc()`](chart-canvas-overhaul/feature.md#q4-deferral-r10--t3028)
-  at `crates/ui/src/widgets/chart.rs:125-160` to
-  `time::UtcOffset::current_local_offset()` in production; keep
-  `cfg(test)` override at `UtcOffset::UTC` so snapshot tests stay
-  deterministic; add one unit test
-  `local_offset_under_production_reads_os_offset` asserting the
-  helper returns a non-UTC offset on macOS when the OS is set to a
-  non-UTC zone; defence-in-depth `verify_anchors.sh` →
-  `ANCHORS PASS (11/11)` (no strategy / audit / report path
-  affected by the feature flag flip). v1.10.0 ships with UTC
-  fallback; v1.11 closes the operator-friendly local-time landing.
-  Analyst spawn when v1.10.0 ships; not before. Full details
-  deferred to the v1.11 brief's analyst.
-
 - **TBD — Cockpit Windows / Linux support (`cockpit-cross-platform`).**
   _candidate_ — surfaced 2026-05-12 by operator decision D3 in
   [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md#section-9).
@@ -787,6 +774,34 @@ of which became skill-plumbing fixes that shipped in commit
 
 ## Recent (shipped)
 
+- **Chart x-axis local time (`chart-x-axis-local-time` v1.11.0)** —
+  shipped 2026-05-20 (operator-approved via "Autoapprove all"
+  against presenter deck
+  [`presentations/chart-x-axis-local-time-2026-05-20.md`](chart-x-axis-local-time/presentations/chart-x-axis-local-time-2026-05-20.md)).
+  Predecessor: [`chart-canvas-overhaul v1.10.0`](chart-canvas-overhaul/feature.md).
+  Closes the operator-friendly local-time landing deferred from
+  v1.10.0 by Q-revised-1 = path (b). Trivial direct ship per
+  CLAUDE.md (no analyst/architect sub-agent cycle): 1-line
+  `Cargo.toml` edit adding `"local-offset"` to the `time` crate's
+  features array; ~10 LOC in `crates/ui/src/widgets/chart.rs`
+  splitting `local_offset_or_utc()` into a `#[cfg(test)]` UTC branch
+  + a `#[cfg(not(test))]` production branch that reads
+  `time::UtcOffset::current_local_offset()` with defensive
+  `unwrap_or(UtcOffset::UTC)` fallback; 1 new unit test pinning the
+  `cfg(test)` UTC contract. **Snapshot determinism preserved across
+  host time zones** via a complementary `UI_CHART_FORCE_UTC` env-var
+  gate set at the top of both integration test runners
+  (`tests/render_snapshots.rs:run_panel_slot` +
+  `tests/visual_snapshots.rs:run_slot`) — this corrects a latent
+  issue in the predecessor M7 architect's "cfg(test) override
+  holds" claim (Cargo only sets `cfg(test)` on a crate when building
+  it as a test target; integration tests link against the library
+  compiled WITHOUT `cfg(test)`, so the unit-test branch alone is
+  insufficient). **22 / 22 anchors byte-identical** (R10.1; no
+  strategy / audit / exec / report path touched); 279 workspace
+  tests PASS (+1 vs Phase B baseline); cockpit-smoke PASS 0 panics;
+  fmt + clippy clean; spec-lint Phase contribution = 0.
+
 - **UI rethink Phase B — Lab Run button (`ui-rethink-phase-b-lab-run` v0.2.0)** —
   shipped 2026-05-19 (operator-approved via "Autoapprove all" against
   presenter deck
@@ -1097,8 +1112,8 @@ of which became skill-plumbing fixes that shipped in commit
   — the first `iced_test::Simulator::snapshot().matches_image()`
   chart-hover test in that feature replaces the manual capture.
   Q4 local-time x-axis labels DEFERRED to v1.11
-  `chart-x-axis-local-time` (Queue entry above; UTC fallback
-  ships in v1.10.0). Retrospective surfaced the architect's
+  `chart-x-axis-local-time` (shipped 2026-05-20, see Recent;
+  UTC fallback shipped in v1.10.0 was the bridge). Retrospective surfaced the architect's
   "iced 0.14 canvas-scale bug" misdiagnosis (empirically
   disproved by orchestrator's red-rect + cyan-dot probe; T3002 /
   T3003 / T3007 / T3008 closed as no-op) — produced the

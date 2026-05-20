@@ -70,6 +70,17 @@ const SLOTS: &[(&str, (u32, u32), f32)] = &[
 /// paths message on mismatch — see `fixtures::visual_diff` for the
 /// failure forensic flow.
 fn run_slot(slot_name: &str) {
+    // v1.11 chart-x-axis-local-time: integration tests link against
+    // the library compiled WITHOUT `cfg(test)`, so the `cfg(test)`
+    // UTC override in `widgets::chart::local_offset_or_utc` does not
+    // fire here. The env-var gate (`UI_CHART_FORCE_UTC`) preserves
+    // snapshot determinism across host time zones — see the function's
+    // doc comment for the full contract.
+    // SAFETY: `set_var` is unsafe in edition 2024; this is a test-only
+    // single-threaded init before iced_test::screenshot — no other
+    // thread observes the env at this point.
+    unsafe { std::env::set_var("UI_CHART_FORCE_UTC", "1") };
+
     let (_, (w, h), scale) = SLOTS
         .iter()
         .find(|(s, _, _)| *s == slot_name)

@@ -213,6 +213,22 @@ anchors     = []  # ZERO new anchors by construction — see feature.md § R10.5
 state       = "shipped"
 
 [[req]]
+id          = "REQ-CHART-X-AXIS-LOCAL-TIME-001"
+title       = "v1.11 — Chart x-axis local time: flip workspace `time` `local-offset` feature; wire production-OS-offset in `local_offset_or_utc()`; preserve `cfg(test)` UTC override + 22 body-SHA anchors byte-identical"
+feature     = "chart-x-axis-local-time"
+product     = "spec/product.md"
+arch        = [
+  "spec/chart-x-axis-local-time/feature.md",
+  "spec/chart-canvas-overhaul/feature.md#q4-deferral-r10--t3028",   # M7 deferral source-of-truth
+]
+crates      = ["crates/ui"]
+tests       = [
+  "crates/ui/src/widgets/chart.rs",   # local_offset_or_utc() body + unit test
+]
+anchors     = []   # v1.11 touches no strategy/audit/exec/report path; 22 body-SHA anchors stay byte-identical (R10.1 contract)
+state       = "shipped"  # operator-approved via "Autoapprove all" 2026-05-20
+
+[[req]]
 id          = "REQ-V25A-PATCHTST-001"
 title       = "v2.5a PatchTST / iTransformer forecast overlay — phase 2 of 4"
 feature     = "v25a-patchtst-overlay"
