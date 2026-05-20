@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-e-compare
-status: proposed
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-20
 ---
 
@@ -151,30 +151,289 @@ updated: 2026-05-20
 - [x] T-OD8 — Q8 = (b) per-strategy universe with blanked-grey cells
   outside (honest about which cells are legal).
 
-## M-T1 — Architect decomposition — PENDING
+## M-T1 — Architect decomposition — RESOLVED 2026-05-20
 
-> Architect inherits this file at M-T1 and appends T-T1-* + waves
-> A-G with T-D-N* rows per the predecessor pattern. Until the
-> architect runs, no T-T or T-D-N rows are listed below; the
-> developer must not pull a T-D-N row before the architect locks it.
+> Architect resolved K3 (hand-parse YAML; no `serde_yaml` workspace
+> dep, no ADR), enumerated H1 statically (24/60 cells = 40 % first-
+> open hit-rate ≥ 30 % threshold), budgeted H4 by static argument
+> (≤ 15 ms p99 over 32 reports; 3× under the 50 ms target),
+> consolidated Q6 sub-decision (universe-aggregate disclaimer =
+> subtitle + per-cell tooltip), and locked the state location
+> (sibling field on `Cockpit` at `state.rs:~880`). Five Waves (A-E)
+> with 18 T-D-N rows; full decomp at
+> [`decomp.md`](decomp.md). Anchor baseline
+> `ANCHORS PASS  (22 / 22)` re-verified before this pass.
 
-> Architect M-T1 suggested deliverables (analyst pre-list, not
-> binding):
-> - K3 `serde_yaml` presence/absence resolution.
-> - H1 cache-hit enumeration against live `spec/` tree.
-> - H4 cache scan micro-bench.
-> - R8.5 net-new file count (1 screen + 1 widget + 1-2 module files
->   + optional 1 helper).
-> - Wave decomposition (suggested A-G):
->   - Wave A — `crates/ui/src/compare/cache.rs` module (R3).
->   - Wave B — `crates/ui/src/compare/state.rs` state plumbing (R6).
->   - Wave C — `crates/ui/src/widgets/matrix.rs` widget (R2).
->   - Wave D — `crates/ui/src/screens/compare.rs` body + shell
->     wiring (R1).
->   - Wave E — `Message::OpenLabFromCompare` + Lab seed round-trip
->     (R4).
->   - Wave F — Snapshot baselines + cockpit-smoke (M-FINAL prep).
->   - Wave G — Spec-lint sweep + trace.toml fill-in.
+- [x] T-T1-1 — **K3 resolution.** `cargo tree -e features --workspace
+  2>/dev/null | grep -i yaml` returned only `yaml-rust2 v0.8.1`
+  (transitive via `insta` dev-dep + `config` runtime dep); `serde_yaml`
+  is **not** in the workspace. `grep -rn "serde_yaml\|serde-yaml"
+  --include=Cargo.toml` returned empty. Architect-decide: (b) hand-
+  parse the flat YAML frontmatter — ~30 LOC, no new external dep, no
+  ADR. Documented in `decomp.md` § 1.1 with parser shape + locked
+  `parse_frontmatter` contract.
+  _Output: `decomp.md § 1.1` locked the parser shape; no Cargo.toml
+  diff._
+
+- [x] T-T1-2 — **H1 enumeration.** Counted backtest reports under
+  `spec/<strategy>/reports/` via `find spec -type f -name 'backtest-*.md'`
+  = 32 total, distributed across 6 spec folders. Mapped scenarios to
+  legal cells per Q8=(b) universe gating (BTC-only for v0.sma /
+  v0.5.composed; top10 for v1.momentum / v2.5.tcn; (BTC,ETH) for
+  v1.5a.pairs; v2.llm not yet registered). **Result: 24 / 60 cells
+  populated = 40 % hit-rate** (1+1+10+2+0+10), passes H1 ≥ 30 %
+  threshold by a comfortable margin. K7 universe-aggregate semantic
+  applies to 20/24 = 83 % of the populated surface (v1.momentum +
+  v2.5.tcn rows). Documented in `decomp.md § 1.2`.
+  _Output: `decomp.md § 1.2` carries the per-strategy cell census
+  table; first-open UX implication = "Run" affordance dominates only
+  the v2.llm row at v0.1.0._
+
+- [x] T-T1-3 — **H4 cache-scan budget.** Static argument: 32 reports
+  × ~640 B header / file = 20 KB total head-read. Shell-level glob +
+  `head -20` × 32 measured at 0.12 s wall (`/usr/bin/time -p sh -c
+  'find ... -exec head -20 {} \;'` — 32 fork+exec roundtrips). Pure
+  Rust streaming read + hand-parse: ≤ 15 ms (10× faster than
+  shell-fork). **Result: ≤ 15 ms p99**, well under the 50 ms H4
+  budget (3× headroom). If H4 falsifies at M-FINAL, K5 mitigation
+  lifts: `tokio::spawn` cache scan at cockpit boot (~10 LOC, no
+  anchor risk). Documented in `decomp.md § 1.3`.
+  _Output: `decomp.md § 1.3` carries the static argument; no Rust
+  bench needed at architect time (would be circular — code does not
+  yet exist)._
+
+- [x] T-T1-4 — **Q6 sub-decision: universe-aggregate disclaimer
+  surface.** Architect-decide: subtitle under the matrix toolbar
+  (always visible when ≥ 1 multi-symbol cell is in view) + per-cell
+  tooltip on hover for every populated multi-symbol cell. Both
+  reference a single new string constant
+  `strings::COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE`. Rationale: K7
+  applies to 83 % of populated cells per T-T1-2; a single corner-
+  tooltip insufficient. Documented in `decomp.md § 1.4`.
+  _Output: `decomp.md § 1.4` locked the disclaimer shape; new string
+  constant added to the Wave A change-map._
+
+- [x] T-T1-5 — **State location.** `pub compare_screen_state:
+  CompareScreenState` field on `Cockpit` at
+  `crates/ui/src/state.rs:~880` (immediately after
+  `pub trail_screen_state: TrailScreenState` at line 879). Mirrors
+  the `lab_state` (`:798`) + `trail_screen_state` (`:879`)
+  3-touchpoint pattern (struct field declaration + `Default` impl at
+  `:1009,1108` + `Debug` impl at `:959`). `CompareScreenState` lives
+  in a new `crates/ui/src/compare/state.rs` module. Documented in
+  `decomp.md § 1.6`.
+  _Output: `decomp.md § 1.6` carries the full locked shape including
+  `CachedCell` + `CompareKpiAxis` types + `BTreeMap` rationale
+  (deterministic snapshot ordering)._
+
+- [x] T-T1-6 — **Anchor gate confirmed.** `bash scripts/verify_anchors.sh`
+  re-run 2026-05-20 BEFORE the M-T1 pass; literal output line:
+  `ANCHORS PASS  (22 / 22)`. R7.1 carry-forward from predecessor
+  ui-rethink-phase-d-trail-followup v0.1.1 (and v0.1.0 before that)
+  confirmed clean. Phase E is purely additive UI by construction; no
+  anchored renderer touched (R7.7).
+  _Output: `cargo` invocation `bash scripts/verify_anchors.sh` →
+  literal `ANCHORS PASS  (22 / 22)` line; trace.toml
+  REQ-UI-RETHINK-PHASE-E-001 `anchors = []` carry-forward stays empty._
+
+- [x] T-T1-7 — **Wave shape locked: A → B → C → D → E.** 5 waves;
+  net-new file count = 5 (resolves R8.5 — analyst estimated 4-5;
+  architect locks at 5: `compare/mod.rs`, `compare/state.rs`,
+  `compare/cache.rs`, `widgets/matrix.rs`, `screens/compare.rs`).
+  Wave A = data + dispatch scaffolding; Wave B = matrix widget;
+  Wave C = screen body + shell wiring (single-line `shell.rs:96`
+  swap); Wave D = 4 snapshot baselines + 1 layout-invariants
+  proptest case + 1 H5 round-trip unit test + cockpit-smoke pre-run;
+  Wave E = anchor gate + tester handoff. Spike requirement = NONE
+  (all structural primitives carry-forward from Phase D+).
+  _Output: `decomp.md § 1.5` + `§ 3` carry the wave table and the
+  ordered T-D-N1..N18 checklist below._
+
+## Wave A — Cache module + state types + Message variants (R3, R4, R6, R8)
+
+- [ ] T-D-N1 — Create `crates/ui/src/compare/mod.rs` (`pub mod cache;
+  pub mod state;`) + `compare/state.rs` per `decomp.md § 1.6`
+  (`CompareScreenState`, `CachedCell`, `CompareKpiAxis`). Add
+  `pub mod compare;` to `crates/ui/src/lib.rs` next to `pub mod lab;`.
+  - Files: `crates/ui/src/compare/mod.rs` (new), `crates/ui/src/compare/state.rs` (new), `crates/ui/src/lib.rs` (1-line declaration).
+  - Cargo: `cargo check -p ui`.
+  - Expected output: `Finished` line with `0 errors`, `0 warnings`.
+
+- [ ] T-D-N2 — Author `crates/ui/src/compare/cache.rs` per
+  `decomp.md § 1.1`. Includes `parse_frontmatter` (private),
+  `scan_spec_tree(spec_root: &Path) -> BTreeMap<...>` (public),
+  `lookup_cell(strategy_id, symbol, range) -> Option<CachedCell>`
+  (public), and the scenario→universe mapper (R3.2). 5 in-module
+  unit tests under `#[cfg(test)] mod tests`: `parses_flat_kv`,
+  `parses_strategy_block`, `returns_none_on_malformed`,
+  `scenario_top10_maps_to_universe_of_10`,
+  `scenario_btc_maps_to_btc_only`.
+  - File: `crates/ui/src/compare/cache.rs` (new).
+  - Cargo: `cargo test -p ui --lib compare::cache::tests`.
+  - Expected output: `running 5 tests` + `test result: ok. 5 passed; 0 failed`.
+
+- [ ] T-D-N3 — Add 3 new `Message` enum variants at
+  `crates/ui/src/state.rs`: `OpenLabFromCompare { strategy:
+  StrategyId, pair: Option<(Venue, Symbol)>, range: DateRange }`
+  (near `:1425` after `OpenTrailFor`); `CompareSelectRange(DateRange)`
+  + `CompareSelectKpiAxis(CompareKpiAxis)` (near `:1380` toolbar
+  Messages). Add 3 update-arms at `:~1911` after the `OpenTrailFor`
+  arm: `OpenLabFromCompare` (compound dispatch — set
+  `current_screen = Lab` → `lab_state.strategy = Some(...)` →
+  `lab_state.pair = Some(...)` when arg is `Some` → `lab_state.range
+  = range`), `CompareSelectRange` (pure assign), `CompareSelectKpiAxis`
+  (pure assign). Order matches K4 mitigation (verbatim
+  `OpenTrailFor:1902-1910` pattern).
+  - File: `crates/ui/src/state.rs:~1380,1425,~1911`.
+  - Cargo: `cargo check -p ui` + `cargo test -p ui --lib`.
+  - Expected output: PASS; existing baseline test count preserved.
+
+- [ ] T-D-N4 — Add `pub compare_screen_state: CompareScreenState`
+  field to `Cockpit` at `crates/ui/src/state.rs:~880` (immediately
+  after `trail_screen_state` at `:879`). Mirror in `Default::default`
+  at `:~1009,1108` + `Debug::fmt` at `:~959`. `Cockpit::new()` +
+  `Cockpit::new_with_persistence()` both initialize via
+  `CompareScreenState::default()`.
+  - File: `crates/ui/src/state.rs:~880,~959,~1009,~1108`.
+  - Cargo: `cargo test -p ui --lib`.
+  - Expected output: `test result: ok. ... passed; 0 failed` with baseline test count preserved.
+
+- [ ] T-D-N5 — Add new strings to `crates/ui/src/strings.rs:~280`
+  (Phase E section): `COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE` (§ 1.4),
+  `COMPARE_TOOLBAR_RANGE_LABEL`, `COMPARE_TOOLBAR_KPI_LABEL`,
+  `COMPARE_CELL_RUN_LABEL`, `COMPARE_CELL_BLANKED_LABEL`. Mark
+  `COMPARE_PLACEHOLDER` (line 252) with `#[deprecated(since = "0.3.0",
+  note = "Compare now renders the matrix body — Phase F removes this
+  constant")]` per the `SETTINGS_PLACEHOLDER:259-263` precedent.
+  - File: `crates/ui/src/strings.rs:252,~280`.
+  - Cargo: `cargo check -p ui` + `cargo clippy -p ui -- -D warnings`.
+  - Expected output: PASS; deprecation attribute is `#[allow(deprecated)]`-resolved by Wave C T-D-N9 (which swaps the only call site away).
+
+## Wave B — `widgets::matrix` widget (R2)
+
+- [ ] T-D-N6 — Author `crates/ui/src/widgets/matrix.rs` per
+  `decomp.md § 2 row 10`. Public surface: `pub fn view(model:
+  &Cockpit, mode: ThemeMode) -> Element<'_>`. Layout primitive:
+  iced `Column<Row>` (no new `grid` widget per R2.5). Iterates
+  rows over `model.strategies_config.strategies` (Q7=a) × columns
+  over `strategy.universe()` (Q8=b). Per-cell match: populated
+  (`cache.get(...).is_some()` → KPI text + sparkline + hairline-
+  bordered Button on hover); empty-but-legal (centred "Run" Button
+  with `ACCENT_500` hairline — Q4=b); blanked (centred `—` label +
+  passive hairline — Q8=b). K7 tooltip on every populated cell with
+  `cached.is_multi_symbol == true`.
+  - Files: `crates/ui/src/widgets/matrix.rs` (new); `crates/ui/src/widgets/mod.rs` (1-line `pub mod matrix;`).
+  - Cargo: `cargo check -p ui`.
+  - Expected output: `Finished` + `0 errors`, `0 warnings`.
+
+- [ ] T-D-N7 — Cell hover style: Lumen `BORDER_HAIRLINE` → `active_row`
+  border tint on cell hover (R2.6). Mirrors the Phase C strategy-card
+  hover state at `crates/ui/src/widgets/strategy_card.rs`. NO new
+  theme tokens (R7.6).
+  - File: `crates/ui/src/widgets/matrix.rs` (style closure on the cell Button).
+  - Cargo: `cargo clippy -p ui -- -D warnings`.
+  - Expected output: `Finished` + `0 warnings`.
+
+## Wave C — Screen body + shell wiring (R1, R5)
+
+- [ ] T-D-N8 — Author `crates/ui/src/screens/compare.rs`. Toolbar:
+  `Row[range_picker | kpi_axis_dropdown | k7_subtitle_when_any_cell_is_multi_symbol]`.
+  Body: `widgets::matrix::view(model, mode)`. Public surface:
+  `pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_>`.
+  - Files: `crates/ui/src/screens/compare.rs` (new); `crates/ui/src/screens/mod.rs` (1-line `pub mod compare;`).
+  - Cargo: `cargo check -p ui`.
+  - Expected output: `Finished` + `0 errors`, `0 warnings`.
+
+- [ ] T-D-N9 — Swap `crates/ui/src/shell.rs:96` from
+  `Screen::Compare => placeholder::view(strings::COMPARE_PLACEHOLDER,
+  mode)` to `Screen::Compare => screens::compare::view(model, mode)`.
+  Add `compare` to the `use crate::screens::{...}` list at `:28`.
+  **This is the only line in `shell.rs` Phase E swaps.**
+  - File: `crates/ui/src/shell.rs:28,96`.
+  - Cargo: `cargo test -p ui --lib` + `cargo test -p ui --test layout_invariants`.
+  - Expected output: `test result: ok` on both; 6/6 layout-invariants baseline preserved.
+
+## Wave D — Snapshot baselines + proptest case + round-trip test (R7, H5)
+
+- [ ] T-D-N10 — Author fixture `compare__cold_boot_all_empty`: matrix
+  rendered with `compare_screen_state.cache = BTreeMap::new()` —
+  every legal cell renders the "Run" affordance + every non-universe
+  cell renders the blanked `—`. K7 subtitle absent (no multi-symbol
+  cells populated yet).
+  - File: `crates/ui/tests/visual_snapshots.rs` (append fixture) + baseline at `crates/ui/tests/visual-baselines/compare__cold_boot_all_empty.png`.
+  - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__cold_boot_all_empty`.
+  - Expected output: `running 1 test` + `test result: ok. 1 passed; 0 failed` (baseline written on first run; matched on subsequent).
+
+- [ ] T-D-N11 — Author fixture `compare__steady_state_populated`:
+  matrix rendered with all 24 populated cells filled per T-T1-2
+  enumeration (deterministic ChaCha20Rng seed for the fixture
+  `CachedCell` values). K7 multi-symbol disclaimer subtitle visible.
+  - File: `crates/ui/tests/visual_snapshots.rs` + baseline at `crates/ui/tests/visual-baselines/compare__steady_state_populated.png`.
+  - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__steady_state_populated`.
+  - Expected output: `test result: ok. 1 passed; 0 failed`.
+
+- [ ] T-D-N12 — Author fixture `compare__empty_cell_run_affordance`:
+  matrix with `compare_screen_state.cache` populated for 20 of 24
+  legal cells (so 4 cells show the "Run" affordance — exercises the
+  active `ACCENT_500` hairline button per R2.3).
+  - File: `crates/ui/tests/visual_snapshots.rs` + baseline at `crates/ui/tests/visual-baselines/compare__empty_cell_run_affordance.png`.
+  - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__empty_cell_run_affordance`.
+  - Expected output: `test result: ok. 1 passed; 0 failed`.
+
+- [ ] T-D-N13 — Author fixture `compare__column_header_hover`:
+  matrix with cursor hovering a column header (e.g. "BTCUSDT").
+  Per R2.4 v0.1.0 the column header is **non-interactive** (label
+  only) — fixture asserts the column-header hover does NOT render
+  the `active_row` border tint (distinct from cell hover at T-D-N7).
+  - File: `crates/ui/tests/visual_snapshots.rs` + baseline at `crates/ui/tests/visual-baselines/compare__column_header_hover.png`.
+  - Cargo: `cargo test -p ui --test visual_snapshots -- --exact compare__column_header_hover`.
+  - Expected output: `test result: ok. 1 passed; 0 failed`.
+
+- [ ] T-D-N14 — Add layout-invariants proptest case
+  `compare_screen_no_zero_dim` at `crates/ui/tests/layout_invariants.rs`:
+  256 viewport-size samples (320×240 → 3840×2160) render
+  `screens::compare::view`; assert no panic + every cell area ≥ 1 px
+  (R2.5).
+  - File: `crates/ui/tests/layout_invariants.rs` (append).
+  - Cargo: `cargo test -p ui --test layout_invariants -- compare_screen_no_zero_dim`.
+  - Expected output: `running 1 test` + `test result: ok. 1 passed; 0 failed` with proptest summary `256 successful tests`.
+
+- [ ] T-D-N15 — Add H5 round-trip unit test
+  `open_lab_from_compare_sets_lab_strategy_pair_and_range` at
+  `crates/ui/src/state.rs:~3194` (append to `#[cfg(test)] mod tests`
+  after the existing `open_trail_for_*` tests at `:3149-3189`).
+  Assertions: post-dispatch `current_screen == Screen::Lab`,
+  `lab_state.strategy == Some(strategy)`, `lab_state.pair ==
+  Some((venue, symbol))`, `lab_state.range == range`. Mirrors the
+  Phase D `open_trail_for_sets_pending_audit_id` shape (`:3179-3194`).
+  - File: `crates/ui/src/state.rs:~3194` (append).
+  - Cargo: `cargo test -p ui --lib open_lab_from_compare_sets_lab_strategy_pair_and_range`.
+  - Expected output: `running 1 test` + `test result: ok. 1 passed; 0 failed`.
+
+- [ ] T-D-N16 — `cockpit-smoke` pre-run with `Screen::Compare` as
+  active. Developer confirms `0 panic lines`; tester re-runs at
+  M-FINAL per R7.3.
+  - Cargo: `cargo test -p ui --test cockpit_smoke -- --nocapture` (or the binary equivalent per the Phase D+ M-FINAL invocation in `spec/ui-rethink-phase-d-trail-followup/reports/test-final-2026-05-20.md`).
+  - Expected output: smoke pass with `panic lines: 0`.
+
+## Wave E — M-FINAL handoff prep
+
+- [ ] T-D-N17 — Re-run `scripts/verify_anchors.sh` post-implementation.
+  **NON-NEGOTIABLE** R7.1 carry-forward gate. Architect verifies once
+  after Wave D lands; tester re-verifies at M-FINAL.
+  - Cargo: `bash scripts/verify_anchors.sh`.
+  - Expected output: literal `ANCHORS PASS  (22 / 22)`.
+
+- [ ] T-D-N18 — Emit developer HANDOFF → tester envelope per AGENT.md
+  § "Structured handoff envelope". Tester then runs the M-FINAL sweep
+  per `spec/ui-rethink-phase-e-compare/feature.md ## Acceptance
+  criteria § M-FINAL`: `cargo fmt --check`, `cargo clippy
+  --workspace -- -D warnings`, `cargo test --workspace --lib`, the 4
+  new visual snapshots (T-D-N10..N13), the new layout-invariants case
+  (T-D-N14), the H5 round-trip (T-D-N15), `scripts/verify_anchors.sh`,
+  cockpit-performance v1.0.0 idle-CPU floor ≤ 13.6 % preserved, and
+  authors `reports/test-final-2026-05-20.md` per
+  `.claude/skills/rust-test/templates/test-report.md`.
 
 ## M-FINAL — Tester sweep — PENDING
 
