@@ -2,7 +2,7 @@
 slug: ui-test-harness-bootstrap
 version: 0.1.0
 status: shipped
-owner: shipped
+owner: operator
 predecessor: chart-canvas-overhaul v1.10.0
 updated: 2026-05-12
 ---

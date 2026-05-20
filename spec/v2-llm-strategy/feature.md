@@ -1,7 +1,7 @@
 ---
 slug: v2-llm-strategy
 status: shipped
-owner: shipped
+owner: operator
 updated: 2026-05-13
 version: 2.0.0
 ---

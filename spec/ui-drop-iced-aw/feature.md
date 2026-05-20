@@ -2,7 +2,7 @@
 slug: ui-drop-iced-aw
 version: 0.1.0
 status: shipped
-owner: shipped
+owner: operator
 predecessor: ui-headless-emulator v0.1.0
 supersedes: iced-aw-cherry-pick v1.0.0 (shipped 2026-05-14)
 updated: 2026-05-16

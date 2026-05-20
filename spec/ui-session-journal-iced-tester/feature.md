@@ -2,7 +2,7 @@
 slug: ui-session-journal-iced-tester
 version: 0.1.0
 status: shipped
-owner: shipped
+owner: operator
 predecessor: ui-gallery-bin v0.1-partial
 updated: 2026-05-16
 ---

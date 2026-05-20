@@ -1,7 +1,7 @@
 ---
 slug: chart-canvas-overhaul
 status: shipped
-owner: shipped
+owner: operator
 updated: 2026-05-12
 version: 1.10.0
 predecessor: chart-buy-sell-emphasis (1.9.0)

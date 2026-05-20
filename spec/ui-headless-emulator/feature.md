@@ -2,7 +2,7 @@
 slug: ui-headless-emulator
 version: 0.1.0
 status: shipped
-owner: shipped
+owner: operator
 predecessor: ui-session-journal-iced-tester v0.1.0
 updated: 2026-05-16
 ---

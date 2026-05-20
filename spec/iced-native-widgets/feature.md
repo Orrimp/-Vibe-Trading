@@ -1,7 +1,7 @@
 ---
 slug: iced-native-widgets
 status: shipped
-owner: shipped
+owner: operator
 updated: 2026-05-13
 version: 0.1.0
 predecessor: iced-ecosystem-evaluation v0.2.0
