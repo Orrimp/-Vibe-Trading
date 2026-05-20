@@ -756,6 +756,7 @@ feature     = "ui-rethink-phase-d-trail-followup"
 product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-d-trail-followup/feature.md",
+  "spec/ui-rethink-phase-d-trail-followup/decomp.md",                                      # M-T1 architect deliverable: Q2/Q3/Q4 resolutions + change-map + Wave A-E decomposition + rollback shape (2026-05-20)
   "spec/ui-rethink-phase-d-trail-followup/tasks.md",
   "spec/ui-rethink-phase-d-trail/presentations/ui-rethink-phase-d-trail-2026-05-20.md",   # § 5 deferred-items rationale + § 8 next-up follow-up brief — scope source-of-truth
   "spec/ui-rethink-phase-d-trail/reports/test-final-2026-05-20.md",                       # § 11 deferred-items table
@@ -764,7 +765,7 @@ arch        = [
 crates      = ["crates/ui", "crates/reflection", "crates/audit"]   # ui = Subscription bridge + Message payload + Cockpit field + 3 new snapshot baselines; reflection = benches/trail_mirror.rs (new) + TrailMirrorTick re-export per Q2; audit = bench fixture (in-memory ledger seeding 10⁵ rows)
 tests       = []   # developer fills; analyst leaves empty per the lint-clean-while-draft convention
 anchors     = []   # Phase D+ is additive-only (Subscription bridge + 3 NEW snapshot baselines + 1 NEW bench); 22 anchored bodies stay byte-identical (H2 carry-forward from predecessor)
-state       = "proposed"   # analyst pass 2026-05-20; operator-decide resolved 2026-05-20 (Q1 = YES — full K7 probe; Q5 = (a) 4 Hz coalescing fallback); awaiting architect M-T1
+state       = "in-progress"   # architect M-T1 pass 2026-05-20: Q2=(b) UI-local wrapper enum; Q3=(c) handle on AppState in cockpit_live.rs; Q4=(a) macOS `top` sampler; spike requirement NONE; anchor baseline 22/22 PASS pre-handoff; decomp.md emitted; tasks.md flipped owner=developer status=in-progress; awaiting developer Wave A T-D-N1
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
