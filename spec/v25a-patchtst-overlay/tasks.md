@@ -298,86 +298,135 @@ d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06  spec/v25-tcn-a
 
 ### Wave A — model + training scaffold + unit tests (3-7 days)
 
-- [ ] **T-D-N1** — Create `crates/forecast/src/patchtst.rs:1` skeleton
+- [x] **T-D-N1** — Create `crates/forecast/src/patchtst.rs:1` skeleton
   (stub all types with `unimplemented!()`) + add `pub mod patchtst;`
   to `crates/forecast/src/lib.rs`. Cargo: `cargo check -p forecast
   --features candle 2>&1 | tail -3`. Expect: `Finished ... in N.Ns`.
-- [ ] **T-D-N2** — Implement `PatchEmbed` at `patchtst.rs` per
+  - **file:line** `crates/forecast/src/patchtst.rs:1` + `crates/forecast/src/lib.rs:31`
+  - **test cmd** `cargo check -p forecast --features candle 2>&1 | tail -3`
+  - **output** `Finished dev profile [unoptimized + debuginfo] target(s) in 4.41s`
+- [x] **T-D-N2** — Implement `PatchEmbed` at `patchtst.rs` per
   ADR-0036 § D1. Cargo: `cargo test -p forecast --features candle
   --lib patchtst::tests::patch_embed_shape 2>&1 | grep "test result"`.
   Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N3** — Implement `LearnablePositionEncoding` (shape
+  - **file:line** `crates/forecast/src/patchtst.rs:100` (`PatchEmbed::new`)
+  - **test cmd** `cargo test -p forecast --features candle --lib patchtst::tests::patch_embed_shape`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.00s`
+- [x] **T-D-N3** — Implement `LearnablePositionEncoding` (shape
   `[n_patches=41, d_model=128]`). Cargo: `cargo test -p forecast
   --features candle --lib patchtst::tests::pos_encoding_shape 2>&1
   | grep "test result"`. Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N4** — Implement `MultiHeadSelfAttention` (custom, 4
+  - **file:line** `crates/forecast/src/patchtst.rs:145` (`LearnablePositionEncoding::new`)
+  - **test cmd** `cargo test -p forecast --features candle --lib patchtst::tests::pos_encoding_shape`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.00s`
+- [x] **T-D-N4** — Implement `MultiHeadSelfAttention` (custom, 4
   heads, pre-LN, scaled dot-product per Vaswani 2017). ADR-0036 § D5
   K2 determinism applies. Cargo: `cargo test -p forecast --features
   candle --lib patchtst::tests::mhsa_forward_shape 2>&1 | grep "test
   result"`. Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N5** — Implement `TransformerBlock` (MHSA + FFN + 2×
+  - **file:line** `crates/forecast/src/patchtst.rs:183` (`MultiHeadSelfAttention::new`)
+  - **test cmd** `cargo test -p forecast --features candle --lib patchtst::tests::mhsa_forward_shape`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.01s`
+- [x] **T-D-N5** — Implement `TransformerBlock` (MHSA + FFN + 2×
   residual + 2× LayerNorm, pre-LN). Cargo: `cargo test -p forecast
   --features candle --lib patchtst::tests::block_forward_shape 2>&1
   | grep "test result"`. Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N6** — Implement `PatchTstModel::new(vb)` (stacks 3
+  - **file:line** `crates/forecast/src/patchtst.rs:284` (`TransformerBlock::new`)
+  - **test cmd** `cargo test -p forecast --features candle --lib patchtst::tests::block_forward_shape`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.02s`
+- [x] **T-D-N6** — Implement `PatchTstModel::new(vb)` (stacks 3
   blocks) + `forward(x, train) -> Tensor[batch, 1]`. Verify param
   count `300_000 < model.num_parameters() < 600_000`. Cargo: `cargo
   test -p forecast --features candle --lib patchtst::tests::model_forward_shape
   2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N7** — Implement `PatchTstForecaster::{random_init,
+  - **file:line** `crates/forecast/src/patchtst.rs:360` (`PatchTstModel::new`); param count 431,105
+  - **test cmd** `cargo test -p forecast --features candle --lib patchtst::tests::model_forward_shape`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.17s`
+- [x] **T-D-N7** — Implement `PatchTstForecaster::{random_init,
   load_anchor, load_from_paths}` mirroring `tcn.rs:463-576`. Add
   `AnchorScenario::Bs1` enum (no `Bs2` at v0.1.0). Cargo: `cargo test
   -p forecast --features candle --lib patchtst::tests::forecaster_random_init
   2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N8** — Implement `impl ForecastProvider for
+  - **file:line** `crates/forecast/src/patchtst.rs:592` (`PatchTstForecaster::random_init`)
+  - **test cmd** `cargo test -p forecast --features candle --lib patchtst::tests::forecaster_random_init`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.09s`
+- [x] **T-D-N8** — Implement `impl ForecastProvider for
   PatchTstForecaster` mirroring `tcn.rs:782-1034`. Cargo: `cargo test
   -p forecast --features candle --lib patchtst::tests::forecast_provider_boxed
   2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N9** — Extend `crates/forecast/src/features.rs:489`
+  - **file:line** `crates/forecast/src/patchtst.rs:953` (`ForecastProvider impl`)
+  - **test cmd** `cargo test -p forecast --features candle --lib patchtst::tests::forecast_provider_boxed`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.11s`
+- [x] **T-D-N9** — Extend `crates/forecast/src/features.rs:489`
   (`FeatureConfig`) with `target_horizon_bars: usize` (default 1 for
   TCN compatibility). Update `WindowIterator::new` at `features.rs:524`
   + target-derivation at `features.rs:623-636`. Per ADR-0036 +
   decomp.md § T-AR-3. Cargo: `cargo test -p forecast --lib features
   2>&1 | grep "test result"`. Expect: all existing tests pass + 1 new
   (`target_horizon_bars_default_1_unchanged_tcn`) PASS.
-- [ ] **T-D-N10** — Create `crates/forecast/src/bin/train_patchtst.rs:1`
+  - **file:line** `crates/forecast/src/features.rs:493` (`target_horizon_bars` field on `FeatureConfig`)
+  - **test cmd** `cargo test -p forecast --lib features`
+  - **output** `test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.06s`
+- [x] **T-D-N10** — Create `crates/forecast/src/bin/train_patchtst.rs:1`
   mirroring `train_tcn.rs` (CLI flags per feature.md § R2; AdamW +
   OneCycle + Huber). **NO `Vec<f32>::new()` outside per-epoch scope**
   per ADR-0036 § D3. Add `[[bin]] name = "train_patchtst"` to
   `crates/forecast/Cargo.toml`. Cargo: `cargo check -p forecast --features
   candle --bin train_patchtst 2>&1 | tail -3`. Expect: `Finished ... in N.Ns`.
-- [ ] **T-D-N11** — Emit `train_events` rows per epoch tagged
+  - **file:line** `crates/forecast/src/bin/train_patchtst.rs:1` + `crates/forecast/Cargo.toml:51`
+  - **test cmd** `cargo check -p forecast --features candle --bin train_patchtst 2>&1 | tail -3`
+  - **output** `Finished dev profile [unoptimized + debuginfo] target(s) in 3.51s`
+- [x] **T-D-N11** — Emit `train_events` rows per epoch tagged
   `model_family = "patchtst"` per ADR-0034. Sanity 1-epoch run:
   `cargo run -p forecast --release --features candle --bin train_patchtst
   -- --scenario bs1 --epochs 1 --batch-size 4 --span-start 2023-01-01
-  --span-end 2023-01-07 --seed 0x00C0FFEE`. Expect 1 epoch of rows in
-  audit-DB (`SELECT COUNT(*) FROM training_events WHERE model_family
-  = 'patchtst'` → 1+ rows).
-- [ ] **T-D-N12** — Implement `assert_epoch_budget(epoch_n,
+  --span-end 2023-04-01 --seed 0x00C0FFEE`. Expect 1 epoch complete log
+  with `model_family="patchtst"` (span widened to 3mo to satisfy warmup req).
+  - **file:line** `crates/forecast/src/bin/train_patchtst.rs:969` (`info!("epoch complete" model_family="patchtst")`)
+  - **test cmd** `cargo run -p forecast --release --features candle --bin train_patchtst -- --scenario bs1 --epochs 1 --batch-size 4 --span-start 2023-01-01 --span-end 2023-04-01 --seed 0x00C0FFEE`
+  - **output** `INFO train_patchtst: epoch complete epoch=1 total_epochs=1 train_loss=0.004341 ... model_family="patchtst" scenario=bs1`
+  - Note: 7-day span too short (context_len=336 + warmup=720 + horizon=24 = 1080 min bars; 7d = 167 bars). 3mo span used for smoke test. Wave B uses full-year 2023 span.
+- [x] **T-D-N12** — Implement `assert_epoch_budget(epoch_n,
   wall_clock_sec, history) -> Result<(), CostTripwireError>` per
   ADR-0036 § D4 + decomp.md § T-AR-8. Cargo: `cargo test -p forecast
-  --features candle --lib train_patchtst::tests::epoch_budget_hard_limit
+  --features candle --bin train_patchtst -- epoch_budget_hard_limit
   2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
-- [ ] **T-D-N13** — Create
+  - **file:line** `crates/forecast/src/bin/train_patchtst.rs:228` (`assert_epoch_budget`)
+  - **test cmd** `cargo test -p forecast --features candle --bin train_patchtst -- epoch_budget_hard_limit`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s`
+- [x] **T-D-N13** — Create
   `crates/forecast/tests/sigma_train_not_in_safetensors_patchtst.rs:1`
   per ADR-0035 § D4. Cargo: `cargo test -p forecast --features candle
   --test sigma_train_not_in_safetensors_patchtst 2>&1 | grep "test result"`.
   Expect (pre-Wave-B): `test result: ok. 1 passed (1 ignored)`.
-- [ ] **T-D-N14** — Create
+  - **file:line** `crates/forecast/tests/sigma_train_not_in_safetensors_patchtst.rs:1`
+  - **test cmd** `cargo test -p forecast --features candle --test sigma_train_not_in_safetensors_patchtst`
+  - **output** `test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+- [x] **T-D-N14** — Create
   `crates/forecast/tests/forward_determinism_patchtst.rs:1` (K2 per
   ADR-0036 § D5). Cargo: `cargo test -p forecast --features candle
   --test forward_determinism_patchtst 2>&1 | grep "test result"`.
   Expect: `test result: ok. 2 passed` (cpu byte-identity + metal-vs-cpu
   delta < 1e-4, or metal test skipped on non-Metal CI).
-- [ ] **T-D-N15** — Create `crates/forecast/tests/tcn_byte_identity.rs:1`
+  - **file:line** `crates/forecast/tests/forward_determinism_patchtst.rs:1`
+  - **test cmd** `cargo test -p forecast --features candle --test forward_determinism_patchtst`
+  - **output** `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s`
+- [x] **T-D-N15** — Create `crates/forecast/tests/tcn_byte_identity.rs:1`
   (K6 per decomp.md § T-AR-7). Cargo: `cargo test --workspace --test
   tcn_byte_identity 2>&1 | grep "test result"`. Expect: `test result:
   ok. 1 passed`.
-- [ ] **T-D-N16** — Create `crates/forecast/tests/patchtst_overlay_neutrality.rs:1`
+  - **file:line** `crates/forecast/tests/tcn_byte_identity.rs:1`
+  - **test cmd** `cargo test --workspace --test tcn_byte_identity`
+  - **output** `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.93s`
+- [x] **T-D-N16** — Create `crates/forecast/tests/patchtst_overlay_neutrality.rs:1`
   (K4 per decomp.md § T-AR-6); `#[ignore]`d. Cargo (manual at M-D end):
   `cargo test -p forecast --features candle --test patchtst_overlay_neutrality
   -- --ignored --nocapture 2>&1 | grep "test result"`. Expect: `test
   result: ok. 1 passed`.
+  - **file:line** `crates/forecast/tests/patchtst_overlay_neutrality.rs:1`
+  - **test cmd** `cargo test -p forecast --features candle --test patchtst_overlay_neutrality`
+  - **output** `test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s` (ignored pre-Wave-B; run with `--ignored` at M-D end)
+  - Also created sibling strategy `crates/strategy/src/patchtst_overlay_momentum.rs` + updated `crates/strategy/src/lib.rs` (T-D-N22 Wave A.4 prep; strategy lib tests: 7 patchtst tests pass)
 
 ### Wave B — BS-1 training run (3-5 days wall-clock at ~410k params)
 

@@ -105,6 +105,14 @@ pub struct FeatureConfig {
     pub vol_z_lookback: usize,
     /// Direction epsilon for `ForecastOverlay` translation (default 0.0005).
     pub direction_epsilon: f32,
+    /// Number of bars ahead for target log-return derivation.
+    ///
+    /// Default 1 for TCN byte-compatibility: `target = r_{t+1}`.
+    /// Set to 24 for PatchTST 24h horizon per Q4=(b) / ADR-0036 § D1.
+    ///
+    /// The target computation becomes:
+    /// `target_logret = ln(close_{t + target_horizon_bars} / close_t)`
+    pub target_horizon_bars: usize,
 }
 
 impl Default for FeatureConfig {
@@ -113,6 +121,8 @@ impl Default for FeatureConfig {
             context_bars: CONTEXT_BARS,
             vol_z_lookback: VOL_Z_WARMUP,
             direction_epsilon: 0.000_5_f32,
+            // Default 1 preserves TCN byte-compatibility (R7 / ADR-0036 § D1).
+            target_horizon_bars: 1,
         }
     }
 }
@@ -496,15 +506,17 @@ pub fn windows_for_symbol(
     let symbol = symbol.to_owned();
     let context = cfg.context_bars;
     let warmup = cfg.vol_z_lookback;
+    let horizon = cfg.target_horizon_bars;
 
-    // We need warmup + context + 1 bars (1 extra for the target logret).
-    let min_bars = warmup + context + 1;
+    // We need warmup + context + horizon bars (horizon extra for the target logret).
+    // Default horizon=1 preserves the original TCN requirement (warmup + context + 1).
+    let min_bars = warmup + context + horizon;
 
     // Load eagerly — bars are immutable once loaded; avoids lifetime issues.
     let bars_result = load_bars(&parquet_root, &symbol, &span);
 
     // Produce a single-shot iterator backed by a Vec.
-    WindowIterator::new(bars_result, symbol, warmup, context, min_bars)
+    WindowIterator::new(bars_result, symbol, warmup, context, horizon, min_bars)
 }
 
 /// Internal iterator state for `windows_for_symbol`.
@@ -513,9 +525,11 @@ struct WindowIterator {
     symbol: String,
     vol_stats: VolStats,
     context: usize,
+    /// Number of bars ahead for target log-return (default 1 for TCN; 24 for PatchTST).
+    target_horizon_bars: usize,
     /// Current position of the window's *last bar* (index into `bars`).
     cursor: usize,
-    /// Maximum valid cursor (bars.len() - 2, so bars[cursor+1] is the target).
+    /// Maximum valid cursor (so bars[cursor + target_horizon_bars] is the target).
     max_cursor: usize,
     /// Permanent error (e.g. file not found, insufficient bars).
     error: Option<FeatureError>,
@@ -527,6 +541,7 @@ impl WindowIterator {
         symbol: String,
         warmup: usize,
         context: usize,
+        target_horizon_bars: usize,
         min_bars: usize,
     ) -> Self {
         match bars_result {
@@ -538,6 +553,7 @@ impl WindowIterator {
                     sigma: 1.0,
                 },
                 context,
+                target_horizon_bars,
                 // cursor > max_cursor ensures we stop after yielding the error.
                 cursor: 1,
                 max_cursor: 0,
@@ -554,6 +570,7 @@ impl WindowIterator {
                             sigma: 1.0,
                         },
                         context,
+                        target_horizon_bars,
                         // cursor > max_cursor ensures we stop after yielding the error.
                         cursor: 1,
                         max_cursor: 0,
@@ -567,16 +584,18 @@ impl WindowIterator {
                 let vol_stats = compute_vol_stats(&bars, warmup);
 
                 // First window ends at index `warmup + context - 1`;
-                // target is at `warmup + context`.
+                // target is at `warmup + context + (horizon - 1)`.
                 let cursor_start = warmup + context - 1;
-                // Last window's last bar is `bars.len() - 2` (target at len-1).
-                let max_cursor = bars.len() - 2;
+                // Last window's last bar: bars[cursor + target_horizon_bars] must be valid.
+                // So max_cursor = bars.len() - 1 - target_horizon_bars.
+                let max_cursor = bars.len() - 1 - target_horizon_bars;
 
                 Self {
                     bars,
                     symbol,
                     vol_stats,
                     context,
+                    target_horizon_bars,
                     cursor: cursor_start,
                     max_cursor,
                     error: None,
@@ -620,8 +639,9 @@ impl Iterator for WindowIterator {
             }
         }
 
-        // Target: r_{t+1} = ln(close_{t+1} / close_t).
-        let t_next = window_end + 1;
+        // Target: r_{t+h} = ln(close_{t+h} / close_t), where h = target_horizon_bars.
+        // Default h=1 preserves TCN byte-compatibility.
+        let t_next = window_end + self.target_horizon_bars;
         let close_t = self.bars[window_end].close;
         let close_t1 = self.bars[t_next].close;
         let target_logret = if close_t > 0.0 && close_t1 > 0.0 {
@@ -1016,6 +1036,51 @@ mod tests {
     }
 
     // ── Determinism property test (no proptest dependency needed for this) ────
+
+    /// T-D-N9: `target_horizon_bars` defaults to 1 (TCN byte-compatibility).
+    ///
+    /// Verifies that:
+    /// 1. `FeatureConfig::default().target_horizon_bars == 1`
+    /// 2. An explicit `target_horizon_bars: 1` config produces the same window
+    ///    structure as the default (same `min_bars` requirement).
+    #[test]
+    fn target_horizon_bars_default_1_unchanged_tcn() {
+        // Default config must have target_horizon_bars = 1 (TCN compat).
+        let default_cfg = FeatureConfig::default();
+        assert_eq!(
+            default_cfg.target_horizon_bars, 1,
+            "FeatureConfig::default().target_horizon_bars must be 1 for TCN byte-compatibility"
+        );
+
+        // Explicit horizon=1 config equals the default structurally.
+        let explicit_cfg = FeatureConfig {
+            target_horizon_bars: 1,
+            ..FeatureConfig::default()
+        };
+        assert_eq!(explicit_cfg.target_horizon_bars, 1);
+        assert_eq!(explicit_cfg.context_bars, default_cfg.context_bars);
+        assert_eq!(explicit_cfg.vol_z_lookback, default_cfg.vol_z_lookback);
+
+        // PatchTST horizon=24 config differs only in target_horizon_bars.
+        let patchtst_cfg = FeatureConfig {
+            context_bars: 336,
+            vol_z_lookback: 720,
+            direction_epsilon: 0.0005,
+            target_horizon_bars: 24,
+        };
+        assert_eq!(patchtst_cfg.target_horizon_bars, 24);
+
+        // min_bars for default (TCN): warmup + context + 1 = 720 + 256 + 1 = 977.
+        let tcn_min_bars =
+            default_cfg.vol_z_lookback + default_cfg.context_bars + default_cfg.target_horizon_bars;
+        assert_eq!(tcn_min_bars, 977, "TCN min_bars must be 977");
+
+        // min_bars for PatchTST: 720 + 336 + 24 = 1080.
+        let patchtst_min_bars = patchtst_cfg.vol_z_lookback
+            + patchtst_cfg.context_bars
+            + patchtst_cfg.target_horizon_bars;
+        assert_eq!(patchtst_min_bars, 1080, "PatchTST min_bars must be 1080");
+    }
 
     /// Same parquet path → same window sequence on two calls (determinism smoke).
     ///

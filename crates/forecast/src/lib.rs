@@ -24,6 +24,8 @@ use trading_core::forecast::{ForecastError, ForecastRequest, ForecastResponse};
 
 pub mod features;
 pub mod overlay;
+#[cfg(feature = "candle")]
+pub mod patchtst;
 pub mod provenance;
 #[cfg(feature = "candle")]
 pub mod tcn;

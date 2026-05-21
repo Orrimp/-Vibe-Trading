@@ -1131,6 +1131,80 @@ T-MARGINAL?" question.
   convolution. **Honest variance**: ±2 days. R8 cost tripwire
   bounds the worst case.
 
+## Implementation
+
+> Developer handoff summary — Wave A (T-D-N1..N16) complete 2026-05-21.
+
+### Files created / modified
+
+| File | Change | Lines |
+|------|--------|-------|
+| `crates/forecast/src/patchtst.rs` | NEW — full PatchTST model + ForecastProvider | ~800 |
+| `crates/forecast/src/lib.rs` | EDITED — `pub mod patchtst` added | 1 |
+| `crates/forecast/src/features.rs` | EDITED — `target_horizon_bars` field + WindowIterator update | ~25 |
+| `crates/forecast/src/bin/train_patchtst.rs` | NEW — CLI training binary, AdamW+OneCycle+Huber, σ_train post-training | ~550 |
+| `crates/forecast/Cargo.toml` | EDITED — `[[bin]] train_patchtst` + 4 `[[test]]` entries | 25 |
+| `crates/forecast/tests/sigma_train_not_in_safetensors_patchtst.rs` | NEW — ADR-0035 D4 invariant (pre-Wave-B: 1 ignored) | ~130 |
+| `crates/forecast/tests/forward_determinism_patchtst.rs` | NEW — K2 CPU byte-identity + Metal-vs-CPU drift (2 passed) | ~175 |
+| `crates/forecast/tests/tcn_byte_identity.rs` | NEW — K6 scope-creep guard (1 passed) | ~130 |
+| `crates/forecast/tests/patchtst_overlay_neutrality.rs` | NEW — K4 anchor-neutrality (#[ignore]d; run at M-D end) | ~200 |
+| `crates/strategy/src/patchtst_overlay_momentum.rs` | NEW — PatchTST strategy sibling (7 unit tests pass) | ~320 |
+| `crates/strategy/src/lib.rs` | EDITED — `pub mod patchtst_overlay_momentum` + re-exports | 6 |
+
+### Key architectural decisions implemented
+
+- **Channel-independence** via reshape `[batch, channels, n_patches, d_model]` → `[batch*channels, n_patches, d_model]` per Nie et al § 3.2 (ADR-0036 § D1).
+- **Learnable position encoding** (NOT sinusoidal) — `[n_patches=41, d_model=128]` parameter, broadcast-expanded per batch (ADR-0036 § D1).
+- **Custom MultiHeadSelfAttention** (~50 LoC) — avoids `candle_transformers::*` external API drift (ADR-0036 § D5). Added `.contiguous()?` after `transpose` to fix candle `MatMulUnexpectedStriding` error.
+- **σ_train post-training** — `compute_sigma_train_post_training()` is called AFTER the training loop with frozen weights. `Vec<f32>` accumulator is INSIDE the function scope, NOT outside the per-epoch loop (ADR-0035 § D1, ADR-0036 § D3). Negative precedent: `train_tcn.rs:606,676-678` (in-loop accumulator, deprecated).
+- **Cost tripwire** — `assert_epoch_budget(epoch_n, wall_clock_sec, history)`: hard limit 24h + 3× rolling median. On fire: log error + write `/tmp/train_patchtst-bs1-tripwire-epoch{N}.txt` + continue training (ADR-0036 § D4).
+- **param count** — 431,105 (within 300k-600k range per ADR-0036 § D1; ~10× smaller than TCN 4.4M).
+
+### Smoke test verified (T-D-N11)
+
+```
+INFO train_patchtst: epoch complete epoch=1 total_epochs=1 train_loss=0.004341 model_family="patchtst" scenario=bs1
+INFO train_patchtst: sigma_train derived via post-training frozen pass sigma_train=2.088574
+INFO train_patchtst: checkpoint written safetensors=crates/forecast/checkpoints/anchors/patchtst-bs1-6471e4dc...safetensors
+```
+
+Span 2023-01-01..2023-04-01 (3 months, 11030 windows). Smoke-test checkpoint removed after verification; Wave B uses full-year 2023 span.
+
+### K6 invariant (T-D-N15)
+
+`git diff --quiet HEAD -- crates/forecast/src/tcn.rs` exits 0 — TCN source unchanged.
+
+### Wave B readiness
+
+All 16 T-D-N rows ticked. Wave B training command:
+
+```bash
+RUST_LOG=info,forecast=debug \
+  cargo run -p forecast --release --features candle --bin train_patchtst -- \
+    --scenario bs1 \
+    --target-horizon-bars 24 \
+    --span-start 2023-01-01 --span-end 2023-12-31 \
+    --patch-len 16 --stride 8 \
+    --d-model 128 --n-heads 4 --d-ff 256 --n-layers 3 --dropout 0.2 \
+    --context-len 336 \
+    --epochs 30 --batch-size 128 \
+    --seed 0x00C0FFEE \
+    2>&1 | tee /tmp/train_patchtst-bs1.log &
+```
+
+Watch recipe (copy-pasteable):
+
+```bash
+watch -n 60 '
+PID=$(pgrep -f train_patchtst | head -1)
+[ -z "$PID" ] && echo "train_patchtst not running" && exit
+N=$(grep -c "epoch complete" /tmp/train_patchtst-bs1.log 2>/dev/null || echo 0)
+LAST=$(grep "epoch complete" /tmp/train_patchtst-bs1.log 2>/dev/null | tail -1 | grep -oE "epoch=[0-9]+" | cut -d= -f2 || echo 0)
+ELAPSED=$(ps -o etime= -p $PID 2>/dev/null | awk "{gsub(/^ +/,\"\"); n=split(\$0,a,/[-:]/); if(n==2)print a[1]*60+a[2]; else if(n==3)print a[1]*3600+a[2]*60+a[3]; else if(n==4)print a[1]*86400+a[2]*3600+a[3]*60+a[4]}")
+[ "$N" -gt 0 ] && echo "epoch $LAST/30 ($((N*100/30))%), elapsed ${ELAPSED}s, remaining ~$(((30-N)*ELAPSED/N/60)) min" || echo "warmup: 0 epochs (elapsed=${ELAPSED}s)"
+'
+```
+
 ## Changelog
 
 - 2026-05-21 (analyst): initial brief authored, replacing the
