@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-recalibrate
-status: in-progress
-owner: tester
+status: shipped
+owner: operator
 updated: 2026-05-21
 ---
 

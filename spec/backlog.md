@@ -359,38 +359,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
-- **v2.5 TCN σ_train recalibration (`v25-tcn-recalibrate`).**
-  _draft (analyst pass 2026-05-21; awaiting operator-decide on Q1-Q5,
-  standing autoapprove → defaults ship)_ — promoted Queue/Strategy →
-  Active 2026-05-21 by analyst, citing the
-  [predecessor presenter deck](v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md)
-  § "The bigger finding — σ_train calibration anomaly" + § "Open
-  decisions" (ranked follow-on (a): "`v25-tcn-recalibrate` first —
-  metadata-only fix to σ_train at training-time (no retraining), then
-  re-run `forecast_distribution` to see whether gate-survival jumps
-  from 0% to something non-zero. Wall-clock estimate: hours, not weeks.").
-  Predecessor:
-  [`v25-tcn-alpha-investigation v0.1.0`](v25-tcn-alpha-investigation/feature.md)
-  (joint F4 verdict + σ_train units bug surfaced as load-bearing).
-  Parent (stays `in-progress`): `v25-tcn-overlay v2.5.0`.
-  Brief at [`feature.md`](v25-tcn-recalibrate/feature.md) — R1-R8
-  + hypothesis register H1-H3 + risk register K1-K5 + Q1-Q5 (operator-
-  decide with analyst defaults). Diagnostic finding cited:
-  `crates/forecast/src/bin/train_tcn.rs:606,676-678,733-741` —
-  σ_train accumulator collects per-batch r_hat across ALL 30 training
-  epochs without inter-epoch reset → final std dominated by
-  pre-convergence trajectory variance (10.95 / 6.92), NOT the
-  converged-model prediction variance (~0.018 / 0.010). Metadata-only
-  fix feasible per ADR-0029 — σ_train lives in `.metadata.json` only,
-  never enters the safetensors weight stream. Anchor-additive only:
-  22 pre-feature anchors stay byte-identical; 2 new anchors
-  `forecast-distribution-bs{1,2}-realdata-recalibrated` under new version
-  `v2.6.1-alpha-investigation-recalibrated`. Cost estimate: ~4-5 hours
-  wall-clock (vs multi-week alternative
-  `v25-tcn-horizon-bump-or-retire`). Trace row
-  `REQ-V25-TCN-RECALIBRATE-001` opened in draft.
-  HANDOFF → operator-decide (Q1-Q5) → architect.
-
 <!-- updated 2026-05-21 (analyst, v25-tcn-recalibrate) — analyst pass
      landed for the cheap-first follow-on to v25-tcn-alpha-investigation
      v0.1.0. Brief at `spec/v25-tcn-recalibrate/feature.md` carries
@@ -862,6 +830,58 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **v2.5 TCN σ_train recalibration (`v25-tcn-recalibrate` v0.1.0)** —
+  shipped 2026-05-21 (operator-approved via presenter deck
+  [`presentations/v25-tcn-recalibrate-2026-05-21.md`](v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md);
+  Q1-Q5 = analyst defaults via "Autoapprove all"; tester VERDICT →
+  PASS clean — all hard gates green). Predecessor:
+  [`v25-tcn-alpha-investigation v0.1.0`](v25-tcn-alpha-investigation/feature.md).
+  Parent (stays `in-progress`): `v25-tcn-overlay v2.5.0`. Metadata-
+  only fix to the σ_train scalar in the BS-1 + BS-2 TCN anchored
+  checkpoints — the predecessor's F-verdict investigation surfaced a
+  **608× / 580× σ_train inflation** caused by an in-loop accumulator
+  pattern at [`train_tcn.rs:606,676-678,733-741`](../crates/forecast/src/bin/train_tcn.rs)
+  that never reset `all_r_hats` between epochs, so the final scalar
+  was dominated by pre-convergence trajectory variance instead of
+  the converged-model prediction std. Lands a NEW
+  [`crates/forecast/src/bin/recalibrate_sigma_train.rs`](../crates/forecast/src/bin/recalibrate_sigma_train.rs)
+  (~490 LoC, `--features candle`-gated) + additive `--metadata-path`
+  flag on `forecast_distribution.rs` (default behaviour byte-identical
+  → 22 anchor SHAs preserved) + 3 new unit tests
+  (`recalibrate_sigma_train_readonly`,
+  `recalibrate_sigma_train_field_invariance`,
+  `sigma_train_not_in_safetensors`). New anchors locked under version
+  `v2.6.1-alpha-investigation-recalibrated`: 4 total — 2 forecast-
+  distribution recalibrated bodies + 2 derivation reports. Original
+  `.metadata.json` + `.safetensors` files **byte-identical**
+  (verified: `git diff HEAD -- crates/forecast/checkpoints/anchors/*.metadata.json`
+  empty). [ADR-0035](architecture/adr/0035-tcn-sigma-train-recalibration.md)
+  codifies the cross-phase σ_train recalibration contract (overlay
+  file convention + on-disk JSON number divergence from ADR-0029 §2
+  rule 5 + σ_train-not-in-safetensors invariant) so the same bug
+  shape can't reappear in v2.5a PatchTST / v2.5b Transformer
+  training scaffolds. **Substantive findings:**
+  (i) σ_train bug confirmed real, eliminated (BS-1: 10.954 → 0.018;
+  BS-2: 6.916 → 0.012). Both recalibrated values in expected
+  0.005..0.025 range. (ii) **F-verdict stays F4** per immutable
+  [ADR-0033 § D3](architecture/adr/0033-tcn-alpha-investigation-report-shape.md)
+  priority tree (`frac_inside_epsilon` 0.031 / 0.057 < 0.5 F3
+  threshold). (iii) **BUT gate-survival jumps dramatically**:
+  BS-1 τ=0.6: **0% → 40.1%**; BS-1 τ=0.1: **0% → 88.8%**; BS-2
+  similar magnitude. Surfaced standalone per Q4=(c) as the
+  `## Recalibration delta` section in each recalibrated report.
+  σ_train is no longer a confounding variable in the v2.5 TCN model
+  assessment. **Routing decided 2026-05-21 — option (c)**: queue
+  both `v25-tcn-threshold-tuning` (cheap τ-sweep, hours-not-weeks)
+  and `v25-tcn-horizon-bump-or-retire` (multi-week retrain or
+  retire v2.5 TCN for v2.5a PatchTST); threshold-tuning ships
+  first; horizon-bump-or-retire as fallback if τ-sweep finds no
+  alpha. **Anchor risk zero** — 22 originals byte-identical;
+  cargo fmt + workspace clippy + `--features candle` clippy all
+  clean; 7 new integration tests PASS; spec-lint 87/2 = baseline
+  (0 new categories). Trace row `REQ-V25-TCN-RECALIBRATE-001`
+  flipped `draft → shipped`.
 
 - **UI rethink Phase F — Memory + Models + Phase-6 Assistant slot
   (`ui-rethink-phase-f-memory-models-assistant` v0.1.0)** —

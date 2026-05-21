@@ -217,7 +217,7 @@ anchors     = [
   "recalibrate-sigma-train-bs1",                      # v2.6.1-alpha-investigation-recalibrated; SHA baa658fb…; locked by tester 2026-05-21 (derivation report determinism PASS)
   "recalibrate-sigma-train-bs2",                      # v2.6.1-alpha-investigation-recalibrated; SHA bfa8104a…; locked by tester 2026-05-21 (derivation report determinism PASS)
 ]
-state       = "shipped"   # tester Waves C+D complete 2026-05-21; VERDICT → PASS; all gates green
+state       = "shipped"   # operator-approved via presenter deck 2026-05-21; routing (c) chosen — queue v25-tcn-threshold-tuning + v25-tcn-horizon-bump-or-retire; tester VERDICT → PASS; σ_train bug eliminated (BS-1 608× / BS-2 580× inflation); gate-survival τ=0.6: 0%→40.1% (BS-1) / 34.5% (BS-2); F4 stays per immutable ADR-0033 § D3
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"
