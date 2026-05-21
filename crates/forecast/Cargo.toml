@@ -44,6 +44,11 @@ path = "src/bin/forecast_distribution.rs"
 required-features = ["candle"]
 
 [[bin]]
+name = "recalibrate_sigma_train"
+path = "src/bin/recalibrate_sigma_train.rs"
+required-features = ["candle"]
+
+[[bin]]
 name = "sharpe_comparison"
 path = "src/bin/sharpe_comparison.rs"
 
@@ -68,6 +73,23 @@ required-features = ["candle"]
 [[test]]
 name = "train_tcn_no_audit_db_writes_nothing"
 path = "tests/train_tcn_no_audit_db_writes_nothing.rs"
+required-features = ["candle"]
+
+# T-D-N5 read-only enforcement + help surface tests for recalibrate_sigma_train.
+[[test]]
+name = "recalibrate_sigma_train_readonly"
+path = "tests/recalibrate_sigma_train_readonly.rs"
+required-features = ["candle"]
+
+# T-D-N5 field-invariance test (JSON overlay logic in isolation — no forward pass).
+[[test]]
+name = "recalibrate_sigma_train_field_invariance"
+path = "tests/recalibrate_sigma_train_field_invariance.rs"
+
+# T-D-N6 σ_train-not-in-safetensors invariant (ADR-0035 D4).
+[[test]]
+name = "sigma_train_not_in_safetensors"
+path = "tests/sigma_train_not_in_safetensors.rs"
 required-features = ["candle"]
 
 [dependencies]

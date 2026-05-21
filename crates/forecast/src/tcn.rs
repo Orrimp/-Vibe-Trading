@@ -377,7 +377,11 @@ impl AnchorScenario {
         self.sha_prefix()
     }
 
-    fn file_prefix(&self) -> &'static str {
+    /// The file-name prefix for this anchor scenario (e.g. `"tcn-bs1"`).
+    ///
+    /// Used to construct checkpoint paths:
+    /// `<anchors_dir>/<file_prefix>-<sha_prefix>.{safetensors,metadata.json}`.
+    pub fn file_prefix(&self) -> &'static str {
         match self {
             AnchorScenario::Bs1 => "tcn-bs1",
             AnchorScenario::Bs2 => "tcn-bs2",

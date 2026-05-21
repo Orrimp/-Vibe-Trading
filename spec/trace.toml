@@ -203,10 +203,16 @@ arch        = [
   "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md", # F-verdict algorithm (IMMUTABLE per Q4 = (a))
   "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",     # metadata canonicaliser (D2 diverges intentionally; documented in ADR-0035)
 ]
-crates      = []   # developer fills at T-D-N; expected: crates/forecast (new bin recalibrate_sigma_train.rs + additive --metadata-path flag on forecast_distribution.rs)
-tests       = []   # developer + tester fill; expected: crates/forecast/tests/{recalibrate_sigma_train_readonly,recalibrate_sigma_train_field_invariance,sigma_train_not_in_safetensors}.rs + 2-run determinism gate
+crates      = [
+  "crates/forecast",  # new bin recalibrate_sigma_train.rs; additive --metadata-path flag on forecast_distribution.rs; pub file_prefix() on AnchorScenario in tcn.rs
+]
+tests       = [
+  "crates/forecast/tests/recalibrate_sigma_train_readonly.rs",
+  "crates/forecast/tests/recalibrate_sigma_train_field_invariance.rs",
+  "crates/forecast/tests/sigma_train_not_in_safetensors.rs",
+]
 anchors     = []   # tester fills at T-T-1; expected: forecast-distribution-bs{1,2}-realdata-recalibrated under version v2.6.1-alpha-investigation-recalibrated (anchor-additive only; 22 pre-feature anchors stay byte-identical)
-state       = "in-progress"   # M-T1 (architect decomposition) landed 2026-05-21; awaiting developer Wave A
+state       = "in-progress"   # developer Wave A+B complete (2026-05-21); awaiting tester Waves C+D
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"

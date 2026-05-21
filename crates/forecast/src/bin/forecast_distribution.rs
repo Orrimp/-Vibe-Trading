@@ -117,6 +117,19 @@ struct Args {
     /// Evaluation span upper bound (UTC exclusive). Defaults to scenario default.
     #[arg(long)]
     span_end: Option<String>,
+
+    /// Optional path to a .metadata.recalibrated.json overlay (ADR-0035 D3).
+    ///
+    /// If provided, the bin loads the checkpoint via
+    /// `TcnForecaster::load_from_paths(safetensors_path, metadata_path)`,
+    /// using this file as the metadata source. The safetensors weights still
+    /// come from the anchor.
+    ///
+    /// When omitted (default), the bin uses `TcnForecaster::load_anchor(scenario)`
+    /// and the default behaviour is byte-identical to the predecessor — all 22
+    /// original anchor SHAs are preserved.
+    #[arg(long)]
+    metadata_path: Option<PathBuf>,
 }
 
 // ── Statistics module ─────────────────────────────────────────────────────────
@@ -559,6 +572,64 @@ pub mod verdict {
 
 // ── Report context ────────────────────────────────────────────────────────────
 
+/// Pre-recalibration gate survival values for the `## Recalibration delta`
+/// section (per Q4=(c) of the v25-tcn-recalibrate feature).
+///
+/// Values are read from the predecessor's anchored report bodies
+/// (anchor-locked per `spec/anchors.toml`).  Pre-recal values are 0.000000
+/// for all τ across both BS-1 and BS-2 (per F4 evidence reports).
+///
+/// `sigma_train_original` and `verdict_original` are also from the predecessor
+/// anchored reports.
+struct RecalDelta {
+    /// The anchored pre-recal report SHA (for citation).
+    predecessor_sha: &'static str,
+    /// The predecessor report anchor scenario name (for citation).
+    predecessor_scenario: &'static str,
+    /// σ_train in the original metadata (pre-recalibration).
+    sigma_train_original: f64,
+    /// Gate survival at τ=0.1 in the original metadata (pre-recalibration).
+    gate_tau01_orig: f64,
+    /// Gate survival at τ=0.5 in the original metadata (pre-recalibration).
+    gate_tau05_orig: f64,
+    /// Gate survival at τ=0.6 in the original metadata (pre-recalibration).
+    gate_tau06_orig: f64,
+    /// Gate survival at τ=0.9 in the original metadata (pre-recalibration).
+    gate_tau09_orig: f64,
+    /// F-verdict label from the original metadata (pre-recalibration).
+    verdict_orig: &'static str,
+}
+
+impl RecalDelta {
+    /// Pre-recal values for BS-1 (from anchored report `ef73cb8d…`).
+    fn bs1() -> Self {
+        Self {
+            predecessor_sha: "ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54",
+            predecessor_scenario: "forecast-distribution-bs1-realdata-20260519.md",
+            sigma_train_original: 10.95425033569336,
+            gate_tau01_orig: 0.0,
+            gate_tau05_orig: 0.0,
+            gate_tau06_orig: 0.0,
+            gate_tau09_orig: 0.0,
+            verdict_orig: "F4",
+        }
+    }
+
+    /// Pre-recal values for BS-2 (from anchored report `d7cd08e6…`).
+    fn bs2() -> Self {
+        Self {
+            predecessor_sha: "d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06",
+            predecessor_scenario: "forecast-distribution-bs2-realdata-20260519.md",
+            sigma_train_original: 6.916285514831543,
+            gate_tau01_orig: 0.0,
+            gate_tau05_orig: 0.0,
+            gate_tau06_orig: 0.0,
+            gate_tau09_orig: 0.0,
+            verdict_orig: "F4",
+        }
+    }
+}
+
 /// Run-varying fields stored in frontmatter (excluded from body hash).
 struct ReportContext {
     generated: String,
@@ -574,16 +645,31 @@ struct ReportContext {
     symbols: Vec<String>,
     total_inferences: usize,
     verdict_label: String,
+    /// When Some: this is a recalibrated run (metadata_path was provided).
+    /// The frontmatter slug + scenario + filename get the `-recalibrated` suffix
+    /// and the body gets a `## Recalibration delta` section.
+    recal_delta: Option<RecalDelta>,
 }
 
 // ── Report renderer ───────────────────────────────────────────────────────────
 
 /// Render the YAML frontmatter (NOT included in body hash).
 fn render_frontmatter(ctx: &ReportContext) -> String {
+    let (slug, scenario_suffix) = if ctx.recal_delta.is_some() {
+        (
+            "v25-tcn-recalibrate",
+            format!("{}-realdata-recalibrated", ctx.scenario_label),
+        )
+    } else {
+        (
+            "v25-tcn-alpha-investigation",
+            format!("{}-realdata", ctx.scenario_label),
+        )
+    };
     format!(
         "---\n\
-         slug: v25-tcn-alpha-investigation\n\
-         scenario: forecast-distribution-{}-realdata\n\
+         slug: {slug}\n\
+         scenario: forecast-distribution-{scenario_suffix}\n\
          generated: {}\n\
          wall_clock_s: {:.1}\n\
          host: {}\n\
@@ -593,7 +679,6 @@ fn render_frontmatter(ctx: &ReportContext) -> String {
          data_revision_sha: {}\n\
          verdict: {}\n\
          ---\n",
-        ctx.scenario_label,
         ctx.generated,
         ctx.wall_clock_s,
         ctx.host,
@@ -671,9 +756,28 @@ fn main() -> Result<()> {
     };
     let span = TimeSpan::new(span_start, span_end);
 
-    // Load checkpoint.
+    // Load checkpoint (ADR-0035 D3: opt-in via additive --metadata-path flag).
     let anchor = args.scenario.to_anchor();
-    let forecaster = TcnForecaster::load_anchor(anchor).context("loading anchor checkpoint")?;
+    let forecaster = match &args.metadata_path {
+        Some(meta_path) => {
+            // Override only the metadata source; safetensors weights from anchor.
+            let anchors_dir = PathBuf::from("crates/forecast/checkpoints/anchors");
+            let prefix = anchor.file_prefix();
+            let sha = anchor.sha_prefix();
+            let safetensors_path = anchors_dir.join(format!("{prefix}-{sha}.safetensors"));
+            info!(
+                metadata_path = %meta_path.display(),
+                safetensors_path = %safetensors_path.display(),
+                "loading checkpoint with recalibrated metadata overlay (ADR-0035 D3)"
+            );
+            TcnForecaster::load_from_paths(&safetensors_path, meta_path)
+                .context("loading checkpoint from explicit paths")?
+        }
+        None => {
+            // Default path: byte-identical to predecessor (22 anchor SHAs preserved).
+            TcnForecaster::load_anchor(anchor).context("loading anchor checkpoint")?
+        }
+    };
 
     info!(
         model_revision = %forecaster.model_revision,
@@ -791,6 +895,16 @@ fn main() -> Result<()> {
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| "unknown".to_string());
 
+    // Build RecalDelta when a metadata overlay was supplied (ADR-0035 D3).
+    let recal_delta: Option<RecalDelta> = if args.metadata_path.is_some() {
+        Some(match args.scenario {
+            ScenarioArg::Bs1 => RecalDelta::bs1(),
+            ScenarioArg::Bs2 => RecalDelta::bs2(),
+        })
+    } else {
+        None
+    };
+
     let ctx = ReportContext {
         generated,
         wall_clock_s,
@@ -805,6 +919,7 @@ fn main() -> Result<()> {
         symbols: symbols.iter().map(|s| s.to_string()).collect(),
         total_inferences,
         verdict_label: v.label().to_string(),
+        recal_delta,
     };
 
     // Render report (frontmatter excluded from body hash).
@@ -831,11 +946,19 @@ fn main() -> Result<()> {
         .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
         format!("{}{:02}{:02}", dt.year(), dt.month() as u8, dt.day())
     };
-    let filename = format!(
-        "forecast-distribution-{}-realdata-{}.md",
-        args.scenario.label(),
-        today
-    );
+    let filename = if ctx.recal_delta.is_some() {
+        format!(
+            "forecast-distribution-{}-realdata-recalibrated-{}.md",
+            args.scenario.label(),
+            today
+        )
+    } else {
+        format!(
+            "forecast-distribution-{}-realdata-{}.md",
+            args.scenario.label(),
+            today
+        )
+    };
     let out_path = args.out_dir.join(&filename);
     std::fs::write(&out_path, full_report)
         .with_context(|| format!("writing report to {:?}", out_path))?;
@@ -1040,6 +1163,93 @@ fn render_report_full(
         v.follow_on()
     )
     .unwrap();
+
+    // ── § Recalibration delta (only when metadata overlay was used) ───────────
+    if let Some(rd) = &ctx.recal_delta {
+        writeln!(&mut body, "\n## Recalibration delta\n").unwrap();
+        writeln!(
+            &mut body,
+            "Predecessor report: `{}` (body-SHA-256 `{}`).",
+            rd.predecessor_scenario, rd.predecessor_sha
+        )
+        .unwrap();
+        writeln!(&mut body).unwrap();
+        writeln!(
+            &mut body,
+            "| Metric                   | Pre-recalibration      | Post-recalibration     | Delta                  |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|--------------------------|------------------------|------------------------|------------------------|"
+        )
+        .unwrap();
+        let sigma_recal = ctx.sigma_train as f64;
+        let sigma_delta = sigma_recal - rd.sigma_train_original;
+        writeln!(
+            &mut body,
+            "| σ_train                  | {:.9} | {:.9} | {:+.9} |",
+            rd.sigma_train_original, sigma_recal, sigma_delta
+        )
+        .unwrap();
+        // Gate survival changes.
+        let tau01_recal = gate[0] as f64;
+        let tau05_recal = gate[4] as f64;
+        let tau06_recal = gate[5] as f64;
+        let tau09_recal = gate[8] as f64;
+        writeln!(
+            &mut body,
+            "| gate survival τ=0.1      | {:.6}          | {:.6}          | {:+.6}          |",
+            rd.gate_tau01_orig,
+            tau01_recal,
+            tau01_recal - rd.gate_tau01_orig
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| gate survival τ=0.5      | {:.6}          | {:.6}          | {:+.6}          |",
+            rd.gate_tau05_orig,
+            tau05_recal,
+            tau05_recal - rd.gate_tau05_orig
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| gate survival τ=0.6      | {:.6}          | {:.6}          | {:+.6}          |",
+            rd.gate_tau06_orig,
+            tau06_recal,
+            tau06_recal - rd.gate_tau06_orig
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| gate survival τ=0.9      | {:.6}          | {:.6}          | {:+.6}          |",
+            rd.gate_tau09_orig,
+            tau09_recal,
+            tau09_recal - rd.gate_tau09_orig
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| F-verdict                | {}                       | {}                       | —                      |",
+            rd.verdict_orig,
+            v.label()
+        )
+        .unwrap();
+        writeln!(&mut body).unwrap();
+        writeln!(
+            &mut body,
+            "σ_train ratio (original / recalibrated): {:.1}×.",
+            rd.sigma_train_original / sigma_recal
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "The original σ_train was computed from an accumulation bug in `train_tcn.rs` \
+             (all-epochs buffer, never reset) — see ADR-0035 § Root-cause."
+        )
+        .unwrap();
+    }
 
     // ── § Notes ───────────────────────────────────────────────────────────────
     writeln!(&mut body, "\n## Notes\n").unwrap();

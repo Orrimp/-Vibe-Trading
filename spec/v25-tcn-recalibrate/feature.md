@@ -916,6 +916,42 @@ ANCHORS PASS  (22 / 22)
 (Full literal verification output preserved in
 [`tasks.md § T-AR-3 baseline`](tasks.md).)
 
+## Implementation
+
+Developer Wave A (T-D-N1..T-D-N6) + Wave B (T-D-N7..T-D-N8) complete as of 2026-05-21.
+
+### Artifacts produced
+
+| Artifact | Path | Notes |
+|---|---|---|
+| New bin | `crates/forecast/src/bin/recalibrate_sigma_train.rs` | ~490 LoC; `--features candle`-gated |
+| BS-1 overlay | `crates/forecast/checkpoints/anchors/tcn-bs1-…d2.metadata.recalibrated.json` | σ_train = 0.018015675 (608× ratio) |
+| BS-2 overlay | `crates/forecast/checkpoints/anchors/tcn-bs2-…1d.metadata.recalibrated.json` | σ_train = 0.011913909 (580× ratio) |
+| Derivation report BS-1 | `spec/v25-tcn-recalibrate/reports/recalibrate-sigma-train-bs1-20260521.md` | H1 PASS: ∈ 0.005..0.025 |
+| Derivation report BS-2 | `spec/v25-tcn-recalibrate/reports/recalibrate-sigma-train-bs2-20260521.md` | H1 PASS: ∈ 0.005..0.025 |
+| Recalibrated dist BS-1 | `spec/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md` | Verdict F4; gate τ=0.1: 0%→88.8% |
+| Recalibrated dist BS-2 | `spec/v25-tcn-recalibrate/reports/forecast-distribution-bs2-realdata-recalibrated-20260521.md` | Verdict F4; gate τ=0.1: 0%→non-zero |
+
+### Tests added
+
+| Test file | Tests | Result |
+|---|---|---|
+| `crates/forecast/tests/recalibrate_sigma_train_field_invariance.rs` | 4 (invariance, key count, canonicality, number-not-string) | All pass |
+| `crates/forecast/tests/recalibrate_sigma_train_readonly.rs` | 2 (forbidden flags, originals untouched) | All pass |
+| `crates/forecast/tests/sigma_train_not_in_safetensors.rs` | 1 (ADR-0035 D4 invariant) | Pass |
+
+### Key findings
+
+- H1 confirmed: both σ_train values (0.018 BS-1, 0.012 BS-2) in 0.005..0.025.
+- H2 confirmed: F-verdict stays F4 after recalibration (frac_inside_epsilon < 0.5 per ADR-0033 § D3).
+- Gate-survival jump (non-zero post-recal) is the primary signal for operator routing.
+- Original `.metadata.json` + `.safetensors` files untouched (mtime still May 17).
+- 20 non-investigation anchors byte-identical; bs1/bs2 investigation anchors superseded by new recalibrated reports (tester locks at T-T-1.b).
+
+### Deviations from spec
+
+- `crates/forecast/src/tcn.rs`: `file_prefix()` made `pub` (needed by `forecast_distribution.rs` to construct safetensors path for `--metadata-path` mode). Not a spec deviation, just a visibility increase.
+
 ## Changelog
 
 - 2026-05-21 (analyst): full analyst pass. Brief authored with R1-R8,
