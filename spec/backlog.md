@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-20
+updated: 2026-05-21
 ---
 <!-- updated 2026-05-20 (analyst, ui-rethink-phase-f-memory-models-assistant M0
      close) — Analyst pass landed for the sixth and final phase of the UI
@@ -359,18 +359,50 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
-<!-- updated 2026-05-21 (analyst, v25-tcn-recalibrate) — analyst pass
-     landed for the cheap-first follow-on to v25-tcn-alpha-investigation
-     v0.1.0. Brief at `spec/v25-tcn-recalibrate/feature.md` carries
-     R1-R8, H1-H3, K1-K5, Q1-Q5 with analyst-recommended defaults.
-     Promoted Queue → Active above v25-tcn-alpha-investigation per
-     the predecessor's presenter-deck ranked recommendation
-     (`v25-tcn-recalibrate` first, then `v25-tcn-horizon-bump-or-retire`
-     only if F4 survives recalibration). Trace row
-     `REQ-V25-TCN-RECALIBRATE-001` opened `draft`. Diagnostic finding:
-     training-time σ_train accumulator at `train_tcn.rs:606,676-678,733-741`
-     never resets between epochs → final scalar = std of training
-     trajectory, not of converged-model predictions. -->
+<!-- updated 2026-05-21 (analyst, v25-tcn-threshold-tuning) — analyst
+     pass landed for the cheap-first follow-on to v25-tcn-recalibrate
+     v0.1.0 (shipped 2026-05-21, operator routing (c) chosen). Brief
+     at `spec/v25-tcn-threshold-tuning/feature.md` carries R1-R9, H1-H3,
+     K1-K6, Q1-Q6 with analyst-recommended defaults. Trace row
+     `REQ-V25-TCN-THRESHOLD-TUNING-001` opened `draft`. Fallback stub
+     `v25-tcn-horizon-bump-or-retire` added under Queue § Strategy below,
+     activation gated on this feature's joint T-verdict (T-NO-ALPHA →
+     fund horizon-bump; T-ALPHA-UNLOCKED → ship tuned cell + close out).
+     Substantive motivation: predecessor recalibrate ship eliminated
+     the σ_train 608× / 580× inflation but joint F-verdict legitimately
+     stays F4 under immutable ADR-0033 § D3 (`frac_inside_epsilon`
+     0.031 / 0.057 < 0.5 threshold). HOWEVER gate-survival jumps from
+     0% to 40.1% (BS-1 τ=0.6) / 34.5% (BS-2 τ=0.6) / 88.8% (BS-1 τ=0.1) /
+     86.4% (BS-2 τ=0.1) — necessary-but-not-sufficient for alpha.
+     The τ × ε sweep is the cheap empirical answer. -->
+
+- **v2.5 TCN threshold tuning (`v25-tcn-threshold-tuning`).**
+  _draft (analyst-recommended Q1-Q6 defaults; awaiting operator-decide
+  via standing "Autoapprove all" directive)_ — promoted Queue → Active
+  2026-05-21 by analyst, the cheap τ × ε sweep half of operator-decided
+  routing (c) from the
+  [recalibrate presenter deck](v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
+  shipped 2026-05-21. Predecessor: `v25-tcn-recalibrate v0.1.0`
+  (shipped — joint F-verdict F4 under immutable
+  [ADR-0033 § D3](architecture/adr/0033-tcn-alpha-investigation-report-shape.md),
+  but gate-survival jumped 0% → 40-89% under recalibrated σ_train).
+  Parent (stays `in-progress`): `v25-tcn-overlay v2.5.0`. Brief at
+  [`feature.md`](v25-tcn-threshold-tuning/feature.md) carries R1-R9
+  (sweep tool, heatmap report shape, T-classifier verdict, lock-winner
+  contract, no retraining, realdata-only backtest, anchor-additive,
+  non-regression, determinism), H1-H3 (alpha-unlock, surface convexity,
+  cheap-vs-fallback dichotomy), K1-K6, Q1-Q6 with analyst defaults.
+  9 × 5 grid (τ ∈ {0.1..0.9} integer-tenths × ε ∈ {0.0001, 0.0005
+  baseline, 0.001, 0.005, 0.01}) = 45 cells × 2 checkpoints = 90
+  realdata backtest runs (~45 min single-threaded; ~12 min 4-way local).
+  Heatmap reports anchor-additively under new version string
+  `v2.6.2-threshold-tuning`; +2 tuned-backtest anchors if joint
+  T-verdict = `T-ALPHA-UNLOCKED`. 26 predecessor anchor bodies stay
+  byte-identical (R8 load-bearing invariant). Cost estimate: ~6-10
+  hours wall-clock (vs multi-week `v25-tcn-horizon-bump-or-retire`
+  fallback under § Strategy). Trace row
+  `REQ-V25-TCN-THRESHOLD-TUNING-001` opened `draft`. HANDOFF →
+  operator-decide (Q1-Q6) → architect.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
@@ -427,6 +459,41 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Queue
 
 ### Strategy
+
+- **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire`).**
+  _stub — fallback follow-on, activation gated on
+  [`v25-tcn-threshold-tuning`](v25-tcn-threshold-tuning/feature.md)
+  joint T-verdict at M-FINAL_ — added 2026-05-21 by analyst as the
+  "expensive retrain" half of operator-decided routing (c) from the
+  [`v25-tcn-recalibrate` presenter deck](v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
+  (shipped 2026-05-21). Predecessor stack:
+  `v25-tcn-threshold-tuning v0.1.0` (currently draft under Active; the
+  cheap τ × ε sweep half of the same routing decision). Parent (stays
+  `in-progress`): `v25-tcn-overlay v2.5.0`. **Activation condition**:
+  this stub is promoted Queue → Active iff the threshold-tuning
+  feature's joint T-verdict at M-FINAL is `T-NO-ALPHA` OR
+  `T-MARGINAL` (operator-decide); see
+  [`v25-tcn-threshold-tuning/feature.md § R3`](v25-tcn-threshold-tuning/feature.md)
+  for the routing table. If `T-ALPHA-UNLOCKED` lands, the additive
+  `with_tcn_bs{1,2}_ledger_tuned(τ, ε)` builder + 2 tuned anchors ship
+  in the threshold-tuning feature itself and THIS stub is DELETED (not
+  promoted) — alpha was extracted without retraining. **Scope when
+  promoted**: (a) horizon-bump retrain — extend the v2.5 TCN training
+  scaffold (`crates/forecast/src/bin/train_tcn.rs`) to support a multi-
+  step / multi-horizon head; re-train BS-1 + BS-2 on a 24h or 1-day
+  target rather than 1h log-return; re-run alpha-investigation against
+  the new checkpoints. Cost: ~2-3 weeks wall-clock on Apple Silicon
+  Metal (predecessor `v25-tcn-overlay` reported ~4-5 days per single
+  checkpoint at 1h horizon; horizon-bump roughly 2× cost + tuning loop).
+  OR (b) retire v2.5 TCN — promote `v25a-patchtst-overlay` (Queue §
+  Strategy below) and `v25b-transformer-overlay` (also Queue § Strategy
+  below) and rely on the v2.6 bake-off to pick the canonical forecaster.
+  Analyst-recommended default at promotion time: (a) if the recalibrated
+  `r_hat` distribution shows directional signal (mean significantly
+  non-zero or skewed) that just didn't make it through the (τ, ε)
+  surface; (b) if the recalibrated distribution looks isotropic-random
+  (predict-near-zero). Analyst spawn deferred until activation
+  condition fires.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _moved Queue → Active 2026-05-18 (analyst pass)_ — see

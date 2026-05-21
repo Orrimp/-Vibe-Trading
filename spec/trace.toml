@@ -220,6 +220,17 @@ anchors     = [
 state       = "shipped"   # operator-approved via presenter deck 2026-05-21; routing (c) chosen — queue v25-tcn-threshold-tuning + v25-tcn-horizon-bump-or-retire; tester VERDICT → PASS; σ_train bug eliminated (BS-1 608× / BS-2 580× inflation); gate-survival τ=0.6: 0%→40.1% (BS-1) / 34.5% (BS-2); F4 stays per immutable ADR-0033 § D3
 
 [[req]]
+id          = "REQ-V25-TCN-THRESHOLD-TUNING-001"
+title       = "v2.5 TCN threshold tuning — cheap τ × ε sweep over recalibrated checkpoints; 9 × 5 heatmap per checkpoint; T-classifier verdict ranks Sharpe-delta vs v1 momentum baseline; additive _tuned(τ, ε) builder if alpha unlocked; no retraining, no σ_train change, no weight modification"
+feature     = "v25-tcn-threshold-tuning"
+product     = "spec/product.md"
+arch        = []   # architect fills at M-T1
+crates      = []   # developer fills at M-D
+tests       = []   # developer fills at M-D
+anchors     = []   # tester fills at M-FINAL (target 2 sweep heatmaps under `v2.6.2-threshold-tuning`; +2 tuned backtests if R4 fires)
+state       = "proposed"   # analyst pass landed 2026-05-21; operator-decide resolved 2026-05-21 (Q1-Q6 = analyst defaults via "Autoapprove all"); awaiting architect M-T1
+
+[[req]]
 id          = "REQ-COCKPIT-TRAIN-001"
 title       = "Cockpit training control — subprocess-spawned `train_tcn` launcher with log tail (Tier 1) + per-epoch audit train_events + live loss-curve plot (Tier 2); Lab sub-panel; anchor-byte-safe by construction (zero new anchors, 19 originals byte-identical)"
 feature     = "cockpit-training-control"
