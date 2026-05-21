@@ -4,6 +4,11 @@ status: living
 owner: orchestrator
 updated: 2026-05-21
 ---
+<!-- updated 2026-05-21 (analyst, v25a-patchtst-overlay activation pass) —
+     see Active section for the v25a-patchtst-overlay v0.1.0 brief
+     activated by operator's Q1=(b) RETIRE v2.5 TCN decision at
+     v25-tcn-horizon-bump-or-retire M-OD 2026-05-21. -->
+
 <!-- updated 2026-05-20 (analyst, ui-rethink-phase-f-memory-models-assistant M0
      close) — Analyst pass landed for the sixth and final phase of the UI
      rethink. Brief at
@@ -359,6 +364,42 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-21 (analyst, v25a-patchtst-overlay) —
+     analyst pass landed for phase 2 of the 4-phase DL roadmap
+     activated by operator's Q1=(b) RETIRE v2.5 TCN decision at
+     v25-tcn-horizon-bump-or-retire M-OD 2026-05-21. Brief at
+     `spec/v25a-patchtst-overlay/feature.md` (status: draft,
+     owner: analyst, version: 0.1.0, predecessor:
+     v25-tcn-horizon-bump-or-retire v0.1.0, parent:
+     v25-dl-forecast-overlay v0.0.0 roadmap) carries R1-R10
+     requirements (PatchTST model in candle + training scaffold
+     with ADR-0035 § D1 post-training σ_train contract from the
+     start + ForecastProvider impl + 1 BS-1 anchored checkpoint
+     + sibling strategy + backtest scenario + alpha-investigation
+     cycle reusing ADR-0033 § D3 immutable F-verdict). H1-H4
+     hypothesis register (paradigm signal vs TCN; session-level
+     attention; 4-6 week feasibility; 24h horizon SNR). K1-K6
+     risk register (compute over-run; candle-attention bugs;
+     F4-on-PatchTST routes to v2.6; anchor regression; default
+     hyperparameters; scope creep into v2.5 TCN crate). Q1-Q8
+     operator-decide ALL WITH ANALYST-RECOMMENDED DEFAULTS:
+     Q1=(a) PatchTST, Q2=(a) full MVP, Q3=(a) patch_len=16
+     stride=8, Q4=(b) 24h horizon, Q5=(c) carry-forward
+     5-feature input, Q6=(a) BS-1 2023 span, Q7=(a) anchor
+     under v2.5a.0-patchtst, Q8=(a) sibling strategy.
+     "Autoapprove" activates the bundle; defaults are internally
+     consistent. Trace row REQ-V25A-PATCHTST-001 promoted
+     roadmap → draft. Promoted Queue/Strategy → Active 2026-05-21
+     (ACTIVATION TRIGGERED tag cleared). Anchor baseline
+     26 PASS + 2 known-FAIL (carry-forward from
+     v25-tcn-horizon-bump-or-retire); POST under Q7=(a) + Q8=(a)
+     expects 28 PASS + 2 known-FAIL. Cost ~3-5 weeks best case;
+     ~5-7 weeks with one Wave-B retry. Apple Silicon Metal
+     bound; PatchTST/42 small config (~1.5-2M params) targets
+     ~5-7 days per training run. HANDOFF → operator-decide
+     (Q1-Q8) → architect for M-T1 / ADR-0036
+     PatchTST-training-contract. -->
+
 <!-- updated 2026-05-21 (analyst, v25-tcn-horizon-bump-or-retire) —
      analyst pass landed for the multi-week fallback after the
      v25-tcn-threshold-tuning v0.1.0 (shipped 2026-05-21) joint
@@ -392,6 +433,44 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      0% to 40.1% (BS-1 τ=0.6) / 34.5% (BS-2 τ=0.6) / 88.8% (BS-1 τ=0.1) /
      86.4% (BS-2 τ=0.1) — necessary-but-not-sufficient for alpha.
      The τ × ε sweep is the cheap empirical answer. -->
+
+- **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay`).**
+  _draft v0.1.0 (analyst-recommended scope: Q2=(a) full MVP;
+  awaiting operator-decide on Q1-Q8 — all defaults activate via
+  "autoapprove")_ — promoted Queue/Strategy → Active 2026-05-21
+  by analyst, activated by operator's Q1=(b) RETIRE v2.5 TCN
+  decision at
+  [`v25-tcn-horizon-bump-or-retire`](v25-tcn-horizon-bump-or-retire/feature.md)
+  M-OD 2026-05-21. Phase 2 of the
+  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md).
+  Predecessor: `v25-tcn-horizon-bump-or-retire v0.1.0`.
+  Parent: `v25-dl-forecast-overlay v0.0.0 (roadmap)`.
+  Brief at [`feature.md`](v25a-patchtst-overlay/feature.md)
+  carries R1-R10 (PatchTST model in candle + training scaffold
+  with ADR-0035 § D1 post-training σ_train pattern from the
+  start + ForecastProvider impl + 1 BS-1 anchored checkpoint
+  + sibling strategy + backtest scenario + alpha-investigation
+  cycle reusing ADR-0033 § D3 immutable F-verdict) + H1-H4
+  hypothesis register + K1-K6 risk register + Q1-Q8
+  operator-decide questions (ALL with analyst-recommended
+  defaults: Q1=(a) PatchTST, Q2=(a) full MVP, Q3=(a)
+  `patch_len=16, stride=8`, Q4=(b) 24h horizon, Q5=(c)
+  carry-forward 5-feature input, Q6=(a) BS-1 2023 span,
+  Q7=(a) anchor under `v2.5a.0-patchtst`, Q8=(a) sibling
+  strategy). MVP per Q2=(a): code + 1 trained BS-1 PatchTST
+  checkpoint + F-verdict report + Sharpe-comparison report +
+  sibling strategy `patchtst_overlay_momentum.rs` + 2 anchors
+  (`forecast-distribution-patchtst-bs1-realdata` +
+  `top10-2023-fy-patchtst-overlay-realdata`). Anchor risk LOW
+  by construction — additive sibling files only; 28 originals
+  (26 PASS + 2 pre-existing glob-collision FAIL) byte-identical.
+  Trace row `REQ-V25A-PATCHTST-001` promoted `roadmap → draft`.
+  Cost estimate: ~3-5 weeks best case; ~5-7 weeks with one
+  Wave-B retry. Apple Silicon Metal compute-bound; PatchTST/42
+  small config (~1.5-2M params) targets ~5-7 days per training
+  run. HANDOFF → operator-decide (Q1-Q8 with autoapprove
+  bundle) → architect for M-T1 / ADR-0036
+  PatchTST-training-contract.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
@@ -489,24 +568,16 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   pathology, or genuine no-signal; bake-off can't compare three
   model families on data where any may report dampened=0).
 
-- **v2.5a — PatchTST / iTransformer forecast overlay
-  (`v25a-patchtst-overlay`).** _**ACTIVATION TRIGGERED 2026-05-21** —
-  operator decided routing (b) at the
-  [`v25-tcn-horizon-bump-or-retire`](v25-tcn-horizon-bump-or-retire/feature.md)
-  scope-decision step: retire v2.5 TCN at 1h horizon; pivot the
-  multi-week budget to PatchTST. **Promotes Queue → Active on next
-  "next" directive** for analyst pass._ Phase 2 of the
-  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). v2.5 TCN
-  predecessor stack (alpha-investigation → recalibrate →
-  threshold-tuning) all shipped 2026-05-19..21 with final verdict:
-  σ_train bug eliminated but 1h-horizon TCN does not extract alpha
-  on real Binance OHLCV (Joint T-MARGINAL +0.018 / +0.045 Sharpe-
-  delta, below +0.10 threshold). Patch-based Transformer paradigm;
-  reuses training infrastructure from phase 1 (training scaffold at
-  `crates/forecast/src/bin/train_tcn.rs`, anchors at
-  `crates/forecast/checkpoints/anchors/`, ADR-0035 σ_train cross-
-  phase contract). Estimated ~4-6 weeks wall-clock. Stub at
-  [`spec/v25a-patchtst-overlay/feature.md`](v25a-patchtst-overlay/feature.md).
+- **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay`).**
+  _moved Queue → Active 2026-05-21 (analyst pass)_ — see
+  [Active section](#active) for the live tracking row and
+  [`feature.md`](v25a-patchtst-overlay/feature.md) for the
+  full v0.1.0 brief (R1-R10, H1-H4, K1-K6, Q1-Q8 with
+  analyst-recommended defaults). MVP scope per Q2=(a):
+  code + 1 trained BS-1 PatchTST checkpoint + F-verdict report
+  + Sharpe-comparison + sibling strategy + 2 anchors under
+  `v2.5a.0-patchtst`. Cost ~3-5 weeks best case; ~5-7 weeks with
+  one Wave-B retry.
 - **v2.5b — Vanilla decoder-only Transformer overlay
   (`v25b-transformer-overlay`).** _roadmap_ — phase 3 of the
   [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). Activates

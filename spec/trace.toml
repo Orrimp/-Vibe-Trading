@@ -319,14 +319,22 @@ state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-20
 
 [[req]]
 id          = "REQ-V25A-PATCHTST-001"
-title       = "v2.5a PatchTST / iTransformer forecast overlay — phase 2 of 4"
+title       = "v2.5a PatchTST forecast overlay v0.1.0 — phase 2 of 4 (PatchTST per Nie et al 2022; candle pure-Rust; activated by operator Q1=(b) retire-promote at v25-tcn-horizon-bump-or-retire 2026-05-21); MVP scope per Q2=(a): code + 1 BS-1 PatchTST checkpoint + F-verdict report + Sharpe-comparison + sibling strategy + 2 anchors under v2.5a.0-patchtst; predecessor chain REQ-V25-TCN-HORIZON-BUMP-OR-RETIRE-001 → REQ-V25-TCN-THRESHOLD-TUNING-001 → REQ-V25-TCN-RECALIBRATE-001 → REQ-V25-TCN-ALPHA-001 → REQ-V25-TCN-OVERLAY-001"
 feature     = "v25a-patchtst-overlay"
 product     = "spec/product.md"
-arch        = ["spec/architecture/12-forecast-overlay.md", "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md"]
-crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
-tests       = []
-anchors     = ["top10-2023-fy-patchtst-overlay", "top10-2024-fy-patchtst-overlay"]
-state       = "roadmap"
+arch        = [
+  "spec/architecture/12-forecast-overlay.md",
+  "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md",  # candle ML framework (covers all 4 phases)
+  "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",       # canonical-arch descriptor extended additively for PatchTST fields
+  "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",  # PatchTST scenarios inherit realdata path
+  "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md",     # § D3 F-verdict IMMUTABLE; PatchTST reports use same priority tree
+  "spec/architecture/adr/0034-cockpit-training-control.md",        # train_events emission for PatchTST training run
+  "spec/architecture/adr/0035-tcn-sigma-train-recalibration.md",   # § D1 post-training σ_train pattern — CROSS-PHASE: applies to PatchTST explicitly
+]
+crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/backtest", "crates/core", "crates/audit", "crates/cost"]
+tests       = []   # architect fills at M-T1 (sigma_train_not_in_safetensors_patchtst + forward_determinism_patchtst + tcn_byte_identity + patchtst_overlay_neutrality + forecast_distribution_verdict re-pass); developer + tester refine at M-D / M-FINAL
+anchors     = []   # tester fills at M-FINAL after PASS; Q7=(a) + Q8=(a) defaults: forecast-distribution-patchtst-bs1-realdata + top10-2023-fy-patchtst-overlay-realdata under v2.5a.0-patchtst
+state       = "proposed"   # analyst pass 2026-05-21 + operator-decide resolved 2026-05-21 (Q1-Q8 = analyst defaults via "Autoapprove all"); awaiting architect M-T1 + ADR-0036 PatchTST-training-contract. Cost ~3-5 weeks best case; ~5-7 weeks with one Wave-B retry.
 
 [[req]]
 id          = "REQ-V25B-TRANSFORMER-001"
