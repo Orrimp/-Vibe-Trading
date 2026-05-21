@@ -1,7 +1,7 @@
 ---
 slug: v25a-patchtst-overlay
-status: proposed
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-21
 ---
 
@@ -179,178 +179,291 @@ updated: 2026-05-21
 > proposed`, `owner: analyst → architect`. The architect spawn
 > proceeds from M-T1 with the T-AR rows below.
 
-## Architect rows (T-AR) — locked at M-T1
+## Architect rows (T-AR) — locked at M-T1 (2026-05-21)
 
 > All T-AR rows below assume the analyst-recommended Q-default
-> bundle. If operator overrides Q1 = (b) iTransformer or Q2 = (b)
-> code only, the architect re-decomposes accordingly.
+> bundle (operator "Autoapprove all" 2026-05-21).
 
-- [ ] **T-AR-1** — Lock § Design block in `feature.md`. Wave A
-  (model + training scaffold + 4 unit tests). Wave B (training run;
-  orchestrator-monitored). Wave C (σ_train derivation folded into
-  Wave B). Wave D (forecast_distribution + sharpe_comparison +
-  backtest scenario + strategy integration). Wave E (tester gate).
-  Wave F (presenter deck).
-- [ ] **T-AR-2** — Author `spec/v25a-patchtst-overlay/decomp.md`
-  with T-D / T-T row decomposition into Waves A-D.
-- [ ] **T-AR-3** — Author **ADR-0036** at
-  `spec/architecture/adr/0036-patchtst-training-contract.md`.
-  Codifies:
-  - **D1** — PatchTST architecture skeleton (patch embed +
-    positional embedding + pre-LN transformer encoder +
-    projection head to scalar `r_hat`). Hyperparameter defaults
-    per R1 (PatchTST/42 small config). Channel-independence per
-    Nie et al § 3.2.
-  - **D2** — Canonical-arch descriptor extension (ADR-0029-compat).
-    PatchTST-specific fields enter the SHA: `patch_len, stride,
-    d_model, n_heads, d_ff, n_layers, dropout, context_len,
-    target_horizon_bars`. Existing TCN checkpoints' SHAs unchanged.
-  - **D3** — σ_train post-training derivation (reference ADR-0035
-    § D1 verbatim). No in-loop accumulator. Architect adds a
-    code-review check: `train_patchtst.rs` contains zero
-    `Vec<f32>::new()` declarations outside the inner-most epoch
-    loop scope.
-  - **D4** — Cost tripwire (single epoch > 24h wall-clock OR
-    epoch N > 3× rolling median of epochs 1..N-1 → escalate).
-  - **D5** — K2 candle-attention determinism gate (CPU + Metal
-    byte-identical forward pass on a fixed-seed input).
-  - **D6** — Anchor strategy: `v2.5a.0-patchtst` version pin;
-    `forecast-distribution-patchtst-bs1-realdata` +
-    `top10-2023-fy-patchtst-overlay-realdata` (Q7=(a) + Q8=(a)
-    defaults).
-  - **D7** — Strategy-integration shape (sibling
-    `patchtst_overlay_momentum.rs`; not a refactor of
-    `tcn_overlay_momentum.rs`).
-- [ ] **T-AR-4** — Decompose Wave A into T-D rows
-  (developer-callable). Estimated 8-12 T-D rows: PatchTST
-  model + patch embed + position embed + attention block +
-  encoder + projection head + 4 unit tests + training scaffold +
-  audit emission.
-- [ ] **T-AR-5** — Decompose Wave D into T-D rows. Estimated
-  6-8 T-D rows: forecast_distribution PatchTST dispatch +
-  sharpe_comparison PatchTST extension + backtest scenario file +
-  strategy builders + 2 report-determinism tests.
-- [ ] **T-AR-6** — K4 anchor-neutrality unit test designed.
-  CI gate at M-FINAL runs `verify_anchors.sh` PRE and POST and
-  asserts 28 originals byte-identical.
-- [ ] **T-AR-7** — K6 tcn.rs-byte-identity unit test designed.
-  CI gate at M-FINAL asserts `git diff HEAD --
-  crates/forecast/src/tcn.rs` is empty.
-- [ ] **T-AR-8** — R8 watch recipe template + R8 cost-tripwire
-  invariant formalised. Developer-callable `assert_epoch_budget`
-  helper specified.
+- [x] **T-AR-1** (2026-05-21) — PatchTST topology + Wave A-F lock.
+  Hyperparameters confirmed at `patch_len=16, stride=8, d_model=128,
+  n_heads=4, d_ff=256, n_layers=3, dropout=0.2, context_len=336,
+  target_horizon_bars=24`; n_patches=41 (no extra reflection-pad);
+  param-count target ~410k (~10× smaller than TCN's 4.4M; well under
+  the ADR-0028 5-10M ceiling). Wave A: model + scaffold + 4 unit tests
+  (T-D-N1..N16). Wave B: BS-1 training run on Apple Silicon Metal
+  (T-D-N17..N19; ~3-5 days wall-clock at ~410k params, ahead of the
+  analyst-pessimistic 5-7 day estimate). Wave C: σ_train derivation
+  folded into Wave B terminal phase (no separate T-D row). Wave D:
+  forecast_distribution + strategy + backtest + sharpe (T-D-N20..N26).
+  Wave E: tester M-FINAL. Wave F: presenter M-PRESENTER. Cited:
+  `spec/v25a-patchtst-overlay/decomp.md § T-AR-1` + § Wave A-F.
+- [x] **T-AR-2** (2026-05-21) — `spec/v25a-patchtst-overlay/decomp.md`
+  authored. 10 sections: T-AR-1..T-AR-8 resolutions; module/file
+  change-map; Wave A-F ordered with file:line + cargo + literal-output
+  targets; parallelism map; spike requirement (NONE — PatchTST
+  well-documented; K2-fallback is planned, not pre-emptive); rollback
+  shapes per wave; anchor gate baseline (clean modulo 2 pre-existing
+  glob-collision FAILs); test surface; architect's residual decisions
+  (position-encoding=learnable; attention=custom; channel-independence
+  via reshape; σ_train post-training); cross-references.
+- [x] **T-AR-3** (2026-05-21) — `spec/architecture/adr/0036-patchtst-training-contract.md`
+  authored (status: `proposed`). D1-D7 per the feature.md M-T1
+  milestone. Registered in `spec/architecture/adr/README.md` registry
+  table (row 0036) + changelog. Cross-refs ADR-0028 (candle), ADR-0029
+  (provenance — extended additively per § D2), ADR-0033 (F-verdict
+  IMMUTABLE), ADR-0034 (train_events), ADR-0035 (§ D1 σ_train
+  post-training pattern — cited verbatim per § D3).
+- [x] **T-AR-4** (2026-05-21) — Wave A decomposed into 16 T-D rows
+  (T-D-N1..N16; mix of sequential model-build N1..N8 + parallel-
+  capable tests N13..N16). See `decomp.md § Wave A` for the
+  ordered list with file:line entry points + cargo invocations +
+  expected literal output. Total LoC estimate: ~700 model + ~600
+  training-scaffold + ~260 across 4 unit tests.
+- [x] **T-AR-5** (2026-05-21) — Wave D decomposed into 7 T-D rows
+  (T-D-N20..N26). Parallelism map: N20-N21 (forecast_distribution;
+  serial); N22 (strategy; parallel with N20-N21); N23 (backtest scenario;
+  parallel with N20-N22); N24-N25 (backtest run; serial after N22+N23);
+  N26 (sharpe; serial after N24-N25). Total wall-clock estimate: 1-2
+  days. See `decomp.md § Wave D`.
+- [x] **T-AR-6** (2026-05-21) — K4 anchor-neutrality test designed at
+  `crates/forecast/tests/patchtst_overlay_neutrality.rs` (T-D-N16).
+  Re-runs the existing TCN-only scenario `top10-2023-fy-tcn-overlay-realdata`
+  via `cargo run -p backtest --release --features "candle realdata" --
+  --scenario top10-2023-fy-tcn-overlay-realdata --seed 0xC0FFEE`, hashes
+  the report body via `scripts/hash_report.py`, asserts SHA
+  `8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642`.
+  Test is `#[ignore]`d in CI (5-min backtest); developer runs at M-D
+  end; tester runs at M-FINAL. Cited: `decomp.md § T-AR-7` + § Test
+  surface.
+- [x] **T-AR-7** (2026-05-21) — K6 `tcn.rs`-byte-identity test designed
+  at `crates/forecast/tests/tcn_byte_identity.rs` (T-D-N15). Runs
+  `git diff --quiet HEAD -- crates/forecast/src/tcn.rs` via
+  `std::process::Command::new("git")`; asserts exit 0. Same diff for
+  the 8 TCN anchored checkpoint files (`tcn-bs{1,2}-<sha>.{safetensors,
+  metadata.json,metadata.recalibrated.json}`). Cited: `decomp.md § T-AR-7`.
+- [x] **T-AR-8** (2026-05-21) — R8 watch recipe + cost-tripwire helper
+  formalised. `assert_epoch_budget(epoch_n, wall_clock_sec, history) ->
+  Result<(), CostTripwireError>` shipped at `train_patchtst.rs`
+  (T-D-N12 lands the helper; T-D-N17 wires it into the training loop).
+  Hard limit 24 h; median-multiple limit 3× rolling median of
+  epochs 1..N-1. On fire: `tracing::error!` + write diagnostic file
+  `/tmp/train_patchtst-bs1-tripwire-epoch{N}.txt` + `train_events` row
+  with `kind = "tripwire_warning"` per ADR-0034 + **continue training**
+  (operator owns stop/continue decision). Cited: `decomp.md § T-AR-8`
+  + ADR-0036 § D4.
 
-## Developer rows (T-D) — placeholders for Wave A
+### Cargo invocations / literal output produced at M-T1
 
-> Architect locks the final T-D row set at M-T1; the placeholders
-> below sketch the analyst's expected decomposition.
+```
+$ ls -1 spec/v25a-patchtst-overlay/decomp.md spec/architecture/adr/0036-patchtst-training-contract.md
+spec/architecture/adr/0036-patchtst-training-contract.md
+spec/v25a-patchtst-overlay/decomp.md
+```
+
+```
+$ grep -c '^| 0036' spec/architecture/adr/README.md
+1
+```
+
+```
+$ bash scripts/verify_anchors.sh 2>&1 | grep -c '^PASS'
+26
+$ bash scripts/verify_anchors.sh 2>&1 | grep -c '^FAIL'
+2
+$ python3 scripts/hash_report.py spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs1-realdata-20260519.md
+ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54  spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs1-realdata-20260519.md
+$ python3 scripts/hash_report.py spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs2-realdata-20260519.md
+d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06  spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs2-realdata-20260519.md
+```
+
+> **Architect's anchor-baseline verdict (2026-05-21).** All 28 body-SHAs
+> are byte-immutable. The 2 FAILs from `verify_anchors.sh` are
+> resolver-glob collisions in the script (the `<scenario>-*.md | sort
+> | tail -1` picks the lexicographically-later `...-realdata-recalibrated-20260521.md`
+> instead of the original `...-realdata-20260519.md`). Direct hashing
+> of the intended source reports confirms `ef73cb8d…` (bs1) and
+> `d7cd08e6…` (bs2), matching the anchored SHAs. **Equivalent to
+> `ANCHORS PASS (28 / 28)` for the body-SHA-immutability invariant.**
+> Inherited verbatim from `v25-tcn-horizon-bump-or-retire` tasks.md
+> § Anchor gate baseline. A separate spec-auditor item is queued for
+> the resolver-glob fix (out-of-scope here per CLAUDE.md non-negotiables
+> on `scripts/verify_anchors.sh` changes).
+
+## Developer rows (T-D) — architect-locked at M-T1 (2026-05-21)
+
+> Architect-locked T-D-N1..N26 per `decomp.md § Wave A-F`.
+> Every row carries file:line entry + cargo invocation + expected
+> literal output. Developer ticks honestly with the literal cargo
+> output appended on close.
 
 ### Wave A — model + training scaffold + unit tests (3-7 days)
 
-- [ ] **T-D-N1** — Create `crates/forecast/src/patchtst.rs` skeleton:
-  `PatchTstModel` struct (patches, embedding, attention, encoder,
-  projection); `PatchTstForecaster` struct with `load_anchor` /
-  `load_from_paths` mirroring TCN.
-- [ ] **T-D-N2** — Implement patch embedding + positional encoding.
-  Input `[batch, channels, time]` → patches
-  `[batch, channels, n_patches, patch_len]` → linear projection
-  `[batch, channels, n_patches, d_model]` + learnable position
-  encoding.
-- [ ] **T-D-N3** — Implement multi-head self-attention block (custom
-  or via `candle_transformers::*`). Pre-LN ordering. Heads=4,
-  d_model=128.
-- [ ] **T-D-N4** — Implement transformer encoder (3 layers of MHSA
-  + feed-forward + residual + pre-LN).
-- [ ] **T-D-N5** — Implement projection head (flatten encoder
-  output, linear → scalar `r_hat`).
-- [ ] **T-D-N6** — Implement `impl ForecastProvider for
-  PatchTstForecaster` mirroring TCN's body (forward → r_hat →
-  direction quantisation via ε deadband → confidence via
-  |r_hat|/σ_train clamp).
-- [ ] **T-D-N7** — Create `crates/forecast/src/bin/train_patchtst.rs`.
-  CLI flags per R2. AdamW + OneCycle + Huber. NO in-loop
-  σ_train accumulator (ADR-0035 § D1). Post-training σ_train
-  frozen-forward-pass derivation at training-complete writes
-  `<file_prefix>-<sha>.metadata.json` per ADR-0029.
-- [ ] **T-D-N8** — `train_events` row emission per epoch per
-  ADR-0034 (existing audit infrastructure; only `model_family`
-  field changes to `"patchtst"`).
-- [ ] **T-D-N9** — Unit test:
-  `crates/forecast/tests/sigma_train_not_in_safetensors_patchtst.rs`
-  per ADR-0035 § D4.
-- [ ] **T-D-N10** — Unit test:
-  `crates/forecast/tests/forward_determinism_patchtst.rs` — CPU +
-  Metal byte-identical forward pass on fixed-seed input (K2
-  determinism gate).
-- [ ] **T-D-N11** — Unit test:
-  `crates/forecast/tests/tcn_byte_identity.rs` — asserts
-  `git diff HEAD -- crates/forecast/src/tcn.rs` empty + the
-  TCN BS-1 / BS-2 anchored checkpoint files byte-identical (K6
-  scope-creep guard).
-- [ ] **T-D-N12** — Unit test:
-  `crates/forecast/tests/patchtst_overlay_neutrality.rs` — asserts
-  the TCN-only `top10-2023-fy-tcn-overlay-realdata` scenario's
-  body bytes match the anchored SHA (K4 anchor neutrality).
+- [ ] **T-D-N1** — Create `crates/forecast/src/patchtst.rs:1` skeleton
+  (stub all types with `unimplemented!()`) + add `pub mod patchtst;`
+  to `crates/forecast/src/lib.rs`. Cargo: `cargo check -p forecast
+  --features candle 2>&1 | tail -3`. Expect: `Finished ... in N.Ns`.
+- [ ] **T-D-N2** — Implement `PatchEmbed` at `patchtst.rs` per
+  ADR-0036 § D1. Cargo: `cargo test -p forecast --features candle
+  --lib patchtst::tests::patch_embed_shape 2>&1 | grep "test result"`.
+  Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N3** — Implement `LearnablePositionEncoding` (shape
+  `[n_patches=41, d_model=128]`). Cargo: `cargo test -p forecast
+  --features candle --lib patchtst::tests::pos_encoding_shape 2>&1
+  | grep "test result"`. Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N4** — Implement `MultiHeadSelfAttention` (custom, 4
+  heads, pre-LN, scaled dot-product per Vaswani 2017). ADR-0036 § D5
+  K2 determinism applies. Cargo: `cargo test -p forecast --features
+  candle --lib patchtst::tests::mhsa_forward_shape 2>&1 | grep "test
+  result"`. Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N5** — Implement `TransformerBlock` (MHSA + FFN + 2×
+  residual + 2× LayerNorm, pre-LN). Cargo: `cargo test -p forecast
+  --features candle --lib patchtst::tests::block_forward_shape 2>&1
+  | grep "test result"`. Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N6** — Implement `PatchTstModel::new(vb)` (stacks 3
+  blocks) + `forward(x, train) -> Tensor[batch, 1]`. Verify param
+  count `300_000 < model.num_parameters() < 600_000`. Cargo: `cargo
+  test -p forecast --features candle --lib patchtst::tests::model_forward_shape
+  2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N7** — Implement `PatchTstForecaster::{random_init,
+  load_anchor, load_from_paths}` mirroring `tcn.rs:463-576`. Add
+  `AnchorScenario::Bs1` enum (no `Bs2` at v0.1.0). Cargo: `cargo test
+  -p forecast --features candle --lib patchtst::tests::forecaster_random_init
+  2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N8** — Implement `impl ForecastProvider for
+  PatchTstForecaster` mirroring `tcn.rs:782-1034`. Cargo: `cargo test
+  -p forecast --features candle --lib patchtst::tests::forecast_provider_boxed
+  2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N9** — Extend `crates/forecast/src/features.rs:489`
+  (`FeatureConfig`) with `target_horizon_bars: usize` (default 1 for
+  TCN compatibility). Update `WindowIterator::new` at `features.rs:524`
+  + target-derivation at `features.rs:623-636`. Per ADR-0036 +
+  decomp.md § T-AR-3. Cargo: `cargo test -p forecast --lib features
+  2>&1 | grep "test result"`. Expect: all existing tests pass + 1 new
+  (`target_horizon_bars_default_1_unchanged_tcn`) PASS.
+- [ ] **T-D-N10** — Create `crates/forecast/src/bin/train_patchtst.rs:1`
+  mirroring `train_tcn.rs` (CLI flags per feature.md § R2; AdamW +
+  OneCycle + Huber). **NO `Vec<f32>::new()` outside per-epoch scope**
+  per ADR-0036 § D3. Add `[[bin]] name = "train_patchtst"` to
+  `crates/forecast/Cargo.toml`. Cargo: `cargo check -p forecast --features
+  candle --bin train_patchtst 2>&1 | tail -3`. Expect: `Finished ... in N.Ns`.
+- [ ] **T-D-N11** — Emit `train_events` rows per epoch tagged
+  `model_family = "patchtst"` per ADR-0034. Sanity 1-epoch run:
+  `cargo run -p forecast --release --features candle --bin train_patchtst
+  -- --scenario bs1 --epochs 1 --batch-size 4 --span-start 2023-01-01
+  --span-end 2023-01-07 --seed 0x00C0FFEE`. Expect 1 epoch of rows in
+  audit-DB (`SELECT COUNT(*) FROM training_events WHERE model_family
+  = 'patchtst'` → 1+ rows).
+- [ ] **T-D-N12** — Implement `assert_epoch_budget(epoch_n,
+  wall_clock_sec, history) -> Result<(), CostTripwireError>` per
+  ADR-0036 § D4 + decomp.md § T-AR-8. Cargo: `cargo test -p forecast
+  --features candle --lib train_patchtst::tests::epoch_budget_hard_limit
+  2>&1 | grep "test result"`. Expect: `test result: ok. 1 passed`.
+- [ ] **T-D-N13** — Create
+  `crates/forecast/tests/sigma_train_not_in_safetensors_patchtst.rs:1`
+  per ADR-0035 § D4. Cargo: `cargo test -p forecast --features candle
+  --test sigma_train_not_in_safetensors_patchtst 2>&1 | grep "test result"`.
+  Expect (pre-Wave-B): `test result: ok. 1 passed (1 ignored)`.
+- [ ] **T-D-N14** — Create
+  `crates/forecast/tests/forward_determinism_patchtst.rs:1` (K2 per
+  ADR-0036 § D5). Cargo: `cargo test -p forecast --features candle
+  --test forward_determinism_patchtst 2>&1 | grep "test result"`.
+  Expect: `test result: ok. 2 passed` (cpu byte-identity + metal-vs-cpu
+  delta < 1e-4, or metal test skipped on non-Metal CI).
+- [ ] **T-D-N15** — Create `crates/forecast/tests/tcn_byte_identity.rs:1`
+  (K6 per decomp.md § T-AR-7). Cargo: `cargo test --workspace --test
+  tcn_byte_identity 2>&1 | grep "test result"`. Expect: `test result:
+  ok. 1 passed`.
+- [ ] **T-D-N16** — Create `crates/forecast/tests/patchtst_overlay_neutrality.rs:1`
+  (K4 per decomp.md § T-AR-6); `#[ignore]`d. Cargo (manual at M-D end):
+  `cargo test -p forecast --features candle --test patchtst_overlay_neutrality
+  -- --ignored --nocapture 2>&1 | grep "test result"`. Expect: `test
+  result: ok. 1 passed`.
 
-### Wave B — BS-1 training run (5-7 days wall-clock)
+### Wave B — BS-1 training run (3-5 days wall-clock at ~410k params)
 
-- [ ] **T-D-N13** — Run training (LONG-RUNNING). Developer MUST
-  emit watch recipe per R8 / MEMORY.md:
+- [ ] **T-D-N17** — Kick off Wave B training:
+  ```bash
+  RUST_LOG=info,forecast=debug \
+    cargo run -p forecast --release --features candle --bin train_patchtst -- \
+      --scenario bs1 \
+      --target-horizon-bars 24 \
+      --span-start 2023-01-01 \
+      --span-end 2023-12-31 \
+      --patch-len 16 --stride 8 \
+      --d-model 128 --n-heads 4 --d-ff 256 --n-layers 3 --dropout 0.2 \
+      --context-len 336 \
+      --epochs 30 --batch-size 128 \
+      --seed 0x00C0FFEE \
+      2>&1 | tee /tmp/train_patchtst-bs1.log &
+  ```
+  MANDATORY watch recipe per MEMORY.md (per ADR-0036 § D4 + R8):
   ```bash
   watch -n 60 'tail -30 /tmp/train_patchtst-bs1.log && \
                echo "---" && \
-               ps -p <PID> -o pcpu,pmem,etime,command | tail -2 && \
+               ps -p $(pgrep -f train_patchtst) -o pcpu,pmem,etime,command | tail -2 && \
                echo "---" && \
                ls -lh crates/forecast/checkpoints/anchors/patchtst-bs1-*.safetensors 2>/dev/null || echo "(checkpoint not yet written)"'
   ```
-  Developer monitors via the cockpit training-control panel
-  (ADR-0034). Cost-tripwire per T-AR-8 fires if epoch > 24h OR
-  epoch N > 3× rolling median.
-- [ ] **T-D-N14** — On training-complete: emit
-  `patchtst-bs1-<sha>.safetensors` + `.metadata.json` under
-  `crates/forecast/checkpoints/anchors/`. σ_train scalar
-  derived via the post-training frozen forward-pass over the
-  training-data span (ADR-0035 § D1).
-- [ ] **T-D-N15** — Verify 2-run byte-identity of
-  `patchtst-bs1-<sha>.safetensors` given identical CLI args +
-  seed (R2 determinism contract).
+  Expect (start): `[INFO train_patchtst] Loaded 87234 training windows
+  for span 2023-01-01..2023-12-31 (overlapping 24h targets, 10 symbols)`.
+  Expect (end ~3-5 days): `[INFO train_patchtst] Training complete:
+  epochs=30, final_train_huber=<f>, final_val_huber=<f>, sigma_train=<f>,
+  safetensors=crates/forecast/checkpoints/anchors/patchtst-bs1-<sha>.safetensors`.
+- [ ] **T-D-N18** — Verify checkpoint files. Cargo: `ls -lh
+  crates/forecast/checkpoints/anchors/patchtst-bs1-*`. Expect: 2 files
+  (~5 MB safetensors + ~1 KB metadata.json). Verify σ_train: `python3 -c
+  "import json; d=json.load(open('crates/forecast/checkpoints/anchors/patchtst-bs1-<sha>.metadata.json'));
+  print(d['sigma_train'], d['model_revision'], d['weights_sha256'])"`.
+- [ ] **T-D-N19** — Verify 2-run byte-identity of
+  `patchtst-bs1-<sha>.safetensors`. Re-run T-D-N17 in a separate
+  workspace clone with identical CLI + seed; expect `sha256sum
+  patchtst-bs1-<sha>.safetensors` (run 1) == `sha256sum
+  patchtst-bs1-<sha>.safetensors` (run 2). R2 determinism contract.
 
 ### Wave D — alpha-investigation + strategy integration (1-2 days)
 
-- [ ] **T-D-N16** — Extend
-  `crates/forecast/src/bin/forecast_distribution.rs` with additive
-  PatchTST dispatch (enum variant `PatchtstBs1` OR string
-  dispatch — architect M-T1 decides). Architect-confirm: default
-  invocation `--scenario bs1` produces byte-identical body to
-  the anchored `forecast-distribution-bs1-realdata` report.
-- [ ] **T-D-N17** — Run
-  `forecast_distribution --scenario patchtst-bs1` against the
-  new checkpoint; emit
-  `spec/v25a-patchtst-overlay/reports/forecast-distribution-patchtst-bs1-realdata-<date>.md`.
-  F-verdict per the immutable ADR-0033 § D3 algorithm recorded
-  in body.
-- [ ] **T-D-N18** — Create
-  `crates/strategy/src/patchtst_overlay_momentum.rs` with
-  `with_patchtst_bs1(base) → Result<Self, …>`,
-  `with_patchtst_bs1_ledger(base, ledger) → …` (behind
-  `feature = "forecast-audit-tick"`),
-  `with_patchtst_bs1_tuned(base, tau, epsilon)`,
-  `with_patchtst_bs1_ledger_tuned(...)`. Sibling pattern to
-  `tcn_overlay_momentum.rs`; ZERO touch on the TCN file.
-- [ ] **T-D-N19** — Create
-  `crates/backtest/src/scenarios/patchtst_overlay_weights.rs`
-  mirroring `tcn_overlay_weights.rs`. Per ADR-0032 realdata path.
-- [ ] **T-D-N20** — Run `backtest --scenario
-  top10-2023-fy-patchtst-overlay-realdata`; emit
-  `spec/v25a-patchtst-overlay/reports/top10-2023-fy-patchtst-overlay-realdata-<date>.md`.
-- [ ] **T-D-N21** — Extend
-  `crates/forecast/src/bin/sharpe_comparison.rs` with additive
-  PatchTST source-paths in its frontmatter `sources` list. Run
-  + emit
-  `spec/v25a-patchtst-overlay/reports/sharpe-comparison-patchtst-bs1-realdata-<date>.md`.
-- [ ] **T-D-N22** — 2-run byte-identity gate on both new reports
-  (M-FORECAST-DIST + M-SHARPE outputs); developer locks the
-  anchor SHAs at this step.
+- [ ] **T-D-N20** — Extend `crates/forecast/src/bin/forecast_distribution.rs`
+  with additive enum variant `Scenario::PatchtstBs1`. F-verdict algorithm
+  IMMUTABLE per ADR-0033 § D3. Cargo: `cargo run -p forecast --release
+  --features candle --bin forecast_distribution -- --scenario patchtst-bs1
+  --output spec/v25a-patchtst-overlay/reports/forecast-distribution-patchtst-bs1-realdata-20260521.md`.
+  Expect: report file emitted + literal log `[INFO forecast_distribution]
+  F-verdict: F<N> (priority: <X>, frac_inside_epsilon=<f>, ...)`.
+- [ ] **T-D-N21** — Verify 2-run byte-identity of
+  `forecast-distribution-patchtst-bs1-realdata-20260521.md`. Re-run
+  T-D-N20; hash via `python3 scripts/hash_report.py`; expect equal
+  hex SHAs.
+- [ ] **T-D-N22** — Create `crates/strategy/src/patchtst_sync.rs`
+  (sync wrapper, ~80 LoC, mirror of `tcn_sync.rs`) +
+  `crates/strategy/src/patchtst_overlay_momentum.rs` (~250 LoC, mirror
+  of `tcn_overlay_momentum.rs:466-624` per ADR-0036 § D7 + decomp.md
+  § T-AR-4) + update `crates/strategy/src/lib.rs` (+2 `pub mod`
+  decls). Cargo: `cargo check -p strategy --features forecast 2>&1
+  | tail -3`. Expect: `Finished ... in N.Ns`.
+- [ ] **T-D-N23** — Create `crates/backtest/src/scenarios/patchtst_overlay_weights.rs`
+  (~180 LoC, mirror of `tcn_overlay_weights.rs`). Register
+  `Scenario::Top10_2023FyPatchtstOverlayRealdata` in `scenarios/mod.rs`
+  (additive enum arm). Cargo: `cargo check -p backtest --features
+  "candle realdata" 2>&1 | tail -3`. Expect: `Finished ... in N.Ns`.
+- [ ] **T-D-N24** — Run backtest:
+  ```bash
+  cargo run -p backtest --release --features "candle realdata" -- \
+    --scenario top10-2023-fy-patchtst-overlay-realdata \
+    --seed 0xC0FFEE 2>&1 | tee /tmp/backtest-patchtst-bs1.log
+  ```
+  Expect: `spec/v25a-patchtst-overlay/reports/top10-2023-fy-patchtst-overlay-realdata-20260521.md`
+  emitted with standard body shape per ADR-0032.
+- [ ] **T-D-N25** — Verify 2-run byte-identity of
+  `top10-2023-fy-patchtst-overlay-realdata-20260521.md`. Re-run T-D-N24;
+  hash via `python3 scripts/hash_report.py`; expect equal hex SHAs.
+- [ ] **T-D-N26** — Extend `crates/forecast/src/bin/sharpe_comparison.rs`
+  `sources` list with PatchTST source-paths. Run:
+  ```bash
+  cargo run -p forecast --release --features candle --bin sharpe_comparison -- \
+    --output spec/v25a-patchtst-overlay/reports/sharpe-comparison-patchtst-bs1-realdata-20260521.md
+  ```
+  Verify new comparison row includes PatchTST alongside v1 baseline +
+  TCN. Verify 2-run byte-identity.
 
 ## Tester rows (T-T) — locked at M-FINAL
 
@@ -422,37 +535,30 @@ updated: 2026-05-21
   `status: in-progress → shipped`; trace row + backlog flip
   Active → Recent.
 
-## Parallelism map for the orchestrator
+## Parallelism map (architect M-T1 lock 2026-05-21)
 
 ```
-M-OD (Q1-Q8) ── [operator] ────► M-T1 (architect) ────► M-D
-                                                          │
-                                                          ├─ Wave A — model + scaffold + tests (3-7 days)
-                                                          │   └─ T-D-N1..N12 (sequential within wave;
-                                                          │       N9-N12 unit tests parallel after N1-N8)
-                                                          │
-                                                          ├─ Wave B — BS-1 training run (5-7 days; serial)
-                                                          │   └─ T-D-N13..N15
-                                                          │
-                                                          └─ Wave D — alpha-investigation + strategy
-                                                              ├─ T-D-N16..N17 (forecast_distribution; serial)
-                                                              ├─ T-D-N18..N19 (strategy + scenario; parallel
-                                                              │   with N16-N17 — different files)
-                                                              ├─ T-D-N20 (backtest; sequential after N18-N19)
-                                                              └─ T-D-N21..N22 (sharpe + determinism; sequential)
-                                                          ▼
-                                                       M-FINAL (tester)
-                                                          ▼
-                                                       M-PRESENTER (presenter)
-                                                          ▼
-                                                       operator approval
+M-OD ───► M-T1 ───► Wave A ──────────────► Wave B ──► Wave D ────► Wave E ──► Wave F
+(done)    (done)    │                       (sole       │
+                    │                       serial       │
+                    ├ T-D-N1..N8 (model    long-runner) ├ T-D-N20..N21 (forecast_distribution; serial)
+                    │  sequential)         T-D-N17..N19 ├ T-D-N22 (strategy; parallel with N20-N21)
+                    ├ T-D-N9 (features.rs)              ├ T-D-N23 (backtest scenario; parallel with N20-N22)
+                    ├ T-D-N10-N12 (train scaffold)      ├ T-D-N24-N25 (backtest run; serial after N22+N23)
+                    ├ T-D-N13-N16 (4 unit tests;        └ T-D-N26 (sharpe; serial after N24-N25)
+                    │  parallel AFTER N1-N8 land —
+                    │  exercise different code
+                    │  surfaces concurrently)
 ```
 
-Wave A unit tests T-D-N9..N12 can run in parallel after T-D-N1..N8
-land (they exercise different code surfaces). Wave D's T-D-N18-N19
-(strategy + scenario files) can be authored in parallel with
-T-D-N16-N17 (forecast_distribution dispatch) since they touch
-different files. Architect refines the parallelism map at M-T1.
+Architect-locked at M-T1 (decomp.md § Parallelism map). Wave A unit
+tests T-D-N13..N16 run in parallel after T-D-N1..N8 land (they exercise
+different code surfaces). Wave D's T-D-N22 (strategy) + T-D-N23 (backtest
+scenario) authored in parallel with T-D-N20..N21 (forecast_distribution).
+T-D-N24..N25 (backtest run) serialise after N22+N23 because they depend
+on both the strategy + scenario being shipped. **Critical path**: Wave B's
+3-5 day BS-1 training run is the single longest path; Waves D-F combined
+are ~2-3.5 days.
 
 ## Watch recipe for long-running tasks (per MEMORY.md)
 

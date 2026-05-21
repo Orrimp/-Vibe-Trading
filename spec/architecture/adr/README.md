@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-21 (ADR-0035 added)
+updated: 2026-05-21 (ADR-0036 added)
 ---
 
 
@@ -83,6 +83,7 @@ the canonical table; the parent file links here.)
 | 0033  | v2.5 TCN alpha-investigation report shape + F-verdict algorithm | accepted | 2026-05-18 |
 | 0034  | Cockpit training control — audit-DB-as-seam, subprocess lifecycle, R6 in-panel curves | accepted | 2026-05-19 |
 | 0035  | Post-training σ_train recalibration via metadata overlay (v2.5 cross-phase contract) | accepted | 2026-05-21 |
+| 0036  | PatchTST training contract — patch-embed shape, σ_train post-training, candle attention determinism gate, cost tripwire (v2.5a) | proposed | 2026-05-21 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -203,3 +204,23 @@ finalisation.
   (F-verdict algorithm stays immutable per `v25-tcn-recalibrate`
   Q4 = (a)). Closes T-AR-2 of
   `spec/v25-tcn-recalibrate/tasks.md`.
+- 2026-05-21 (architect, M-T1): ADR-0036 added (status: proposed) —
+  PatchTST training contract for v2.5a phase-2 ship. Locks (D1) PatchTST
+  layer skeleton (patch embed + learnable PE + pre-LN transformer
+  encoder + projection head; channel-independence per Nie et al § 3.2;
+  PatchTST/42 small config = ~410k params), (D2) ADR-0029 canonical-arch
+  descriptor extended additively with PatchTST architecture fields
+  (model_family, patch_len, stride, d_model, n_heads, d_ff, n_layers,
+  dropout, context_len) + tokenisation.target_horizon_bars; existing
+  TCN model_revision SHAs unchanged, (D3) σ_train post-training
+  derivation per ADR-0035 § D1 cross-phase contract verbatim — no
+  in-loop accumulator; architect's grep-based code-review check codified,
+  (D4) cost tripwire (24h hard limit + 3× median multiple) with
+  continue-on-fire + escalation policy, (D5) K2 candle-attention
+  determinism gate (CPU byte-identity + Metal-vs-CPU drift < 1e-4 per
+  ADR-0029 § 4), (D6) anchor strategy under version `v2.5a.0-patchtst`
+  (2 anchors additively; 28 predecessor anchors byte-immutable),
+  (D7) sibling strategy `patchtst_overlay_momentum.rs` (NOT a model-
+  agnostic refactor of `tcn_overlay_momentum.rs` — K6 scope-creep
+  guard). Sibling deliverable: `spec/v25a-patchtst-overlay/decomp.md`.
+  Closes T-AR-2 of `spec/v25a-patchtst-overlay/tasks.md`.

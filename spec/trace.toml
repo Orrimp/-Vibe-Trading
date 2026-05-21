@@ -323,18 +323,27 @@ title       = "v2.5a PatchTST forecast overlay v0.1.0 — phase 2 of 4 (PatchTST
 feature     = "v25a-patchtst-overlay"
 product     = "spec/product.md"
 arch        = [
+  "spec/v25a-patchtst-overlay/feature.md",
+  "spec/v25a-patchtst-overlay/decomp.md",                          # architect M-T1 decomp 2026-05-21 (Wave A-F + T-AR-1..T-AR-8 resolutions + parallelism map + rollback shapes)
   "spec/architecture/12-forecast-overlay.md",
   "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md",  # candle ML framework (covers all 4 phases)
-  "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",       # canonical-arch descriptor extended additively for PatchTST fields
+  "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",       # canonical-arch descriptor extended additively for PatchTST fields (per ADR-0036 § D2)
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",  # PatchTST scenarios inherit realdata path
   "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md",     # § D3 F-verdict IMMUTABLE; PatchTST reports use same priority tree
   "spec/architecture/adr/0034-cockpit-training-control.md",        # train_events emission for PatchTST training run
-  "spec/architecture/adr/0035-tcn-sigma-train-recalibration.md",   # § D1 post-training σ_train pattern — CROSS-PHASE: applies to PatchTST explicitly
+  "spec/architecture/adr/0035-tcn-sigma-train-recalibration.md",   # § D1 post-training σ_train pattern — CROSS-PHASE: applies to PatchTST explicitly (per ADR-0036 § D3)
+  "spec/architecture/adr/0036-patchtst-training-contract.md",      # NEW (architect M-T1 2026-05-21, status: proposed) — D1-D7 PatchTST contract
 ]
 crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/backtest", "crates/core", "crates/audit", "crates/cost"]
-tests       = []   # architect fills at M-T1 (sigma_train_not_in_safetensors_patchtst + forward_determinism_patchtst + tcn_byte_identity + patchtst_overlay_neutrality + forecast_distribution_verdict re-pass); developer + tester refine at M-D / M-FINAL
+tests       = [
+  "crates/forecast/tests/sigma_train_not_in_safetensors_patchtst.rs",   # ADR-0035 § D4 invariant for PatchTST (Wave A.5 / T-D-N13)
+  "crates/forecast/tests/forward_determinism_patchtst.rs",              # K2 candle-attention determinism (CPU + Metal); ADR-0036 § D5 (Wave A.5 / T-D-N14)
+  "crates/forecast/tests/tcn_byte_identity.rs",                          # K6 scope-creep guard — TCN files byte-immutable through PatchTST ship (Wave A.5 / T-D-N15)
+  "crates/forecast/tests/patchtst_overlay_neutrality.rs",                # K4 anchor neutrality — re-runs top10-2023-fy-tcn-overlay-realdata; asserts SHA 8fa47f49 (Wave A.5 / T-D-N16)
+  "crates/forecast/tests/forecast_distribution_verdict.rs",              # ADR-0033 § D3 F-verdict IMMUTABLE re-pass after PatchTST dispatch extension (Wave E.4)
+]   # architect M-T1 2026-05-21; developer ships at Wave A.5 / E; tester verifies at M-FINAL
 anchors     = []   # tester fills at M-FINAL after PASS; Q7=(a) + Q8=(a) defaults: forecast-distribution-patchtst-bs1-realdata + top10-2023-fy-patchtst-overlay-realdata under v2.5a.0-patchtst
-state       = "proposed"   # analyst pass 2026-05-21 + operator-decide resolved 2026-05-21 (Q1-Q8 = analyst defaults via "Autoapprove all"); awaiting architect M-T1 + ADR-0036 PatchTST-training-contract. Cost ~3-5 weeks best case; ~5-7 weeks with one Wave-B retry.
+state       = "in-progress"   # architect M-T1 landed 2026-05-21 (decomp.md + ADR-0036 + tasks.md T-AR-1..T-AR-8 ticked); owner flipped architect → developer; awaiting Wave A start. Cost ~3-5 weeks best case; ~5-7 weeks with one Wave-B retry.
 
 [[req]]
 id          = "REQ-V25B-TRANSFORMER-001"
