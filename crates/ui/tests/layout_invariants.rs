@@ -395,6 +395,84 @@ proptest! {
     }
 }
 
+// ─── Phase F — Memory / Models / Assistant layout invariants (T-D-N19) ─────
+
+proptest! {
+    #![proptest_config({
+        let mut cfg = proptest_config();
+        cfg.cases = 256;
+        cfg
+    })]
+
+    /// T-D-N19 (H6 falsification) — `screens::memory::view` layout-invariant.
+    ///
+    /// Fuzzes the memory screen's `MemoryScreenState::cache` population
+    /// (0..=8 cards) and `drawer_open` presence, and asserts that the
+    /// resulting `Element` layout tree carries no zero-dim root Node under
+    /// the default 1920×1080 limits. Covers both the empty-state path
+    /// (R1.4 placeholder) and the populated list + optional drawer path (Q5=(b)).
+    #[test]
+    fn memory_screen_no_zero_dim(
+        n_cards in 0usize..=8,
+        drawer_open in any::<bool>(),
+    ) {
+        let cockpit = build_memory_cockpit(n_cards, drawer_open);
+        let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
+        check_element_layout(element).map_err(TestCaseError::fail)?;
+    }
+}
+
+proptest! {
+    #![proptest_config({
+        let mut cfg = proptest_config();
+        cfg.cases = 256;
+        cfg
+    })]
+
+    /// T-D-N19 (H6 falsification) — `screens::models::view` layout-invariant.
+    ///
+    /// Fuzzes the models screen's `ModelsScreenState::checkpoints` population
+    /// (0..=4 checkpoints) and asserts that the resulting `Element` layout tree
+    /// carries no zero-dim root Node. Covers the empty-state path (Q3=(a)
+    /// placeholder) and the populated list path.
+    #[test]
+    fn models_screen_no_zero_dim(
+        n_checkpoints in 0usize..=4,
+    ) {
+        let cockpit = build_models_cockpit(n_checkpoints);
+        let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
+        check_element_layout(element).map_err(TestCaseError::fail)?;
+    }
+}
+
+proptest! {
+    // 256 cases × {open, closed} = 512 cases per H6.
+    // Uses the standard 256-case config; the `is_open` boolean doubles the
+    // effective coverage: proptest will exercise both branches in ~50% of cases.
+    #![proptest_config({
+        let mut cfg = proptest_config();
+        cfg.cases = 256;
+        cfg
+    })]
+
+    /// T-D-N19 (H6 falsification) — `assistant_slot__open_no_zero_dim`.
+    ///
+    /// Fuzzes the assistant slot's `AssistantState::is_open` flag over 256
+    /// viewports (proptest varied) with both open and closed states asserted.
+    /// When `is_open = true`, the right-rail renders at `RIGHT_RAIL_OPEN_WIDTH_PX`;
+    /// when `is_open = false`, it collapses to `RIGHT_RAIL_WIDTH_PX = 0.0`
+    /// (K6 Option A). The root Node must never be zero-dim for either branch.
+    #[test]
+    fn assistant_slot_open_no_zero_dim(
+        is_open in any::<bool>(),
+        screen_idx in 0u8..=5,
+    ) {
+        let cockpit = build_assistant_slot_cockpit(is_open, screen_idx);
+        let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
+        check_element_layout(element).map_err(TestCaseError::fail)?;
+    }
+}
+
 // ─── Cockpit builder helpers ────────────────────────────────────────────
 
 /// Build a cockpit with the positions panel set to one of the four
@@ -484,5 +562,106 @@ fn build_compare_cockpit(has_strategies: bool, cache_variant: u8) -> ui::Cockpit
         last_indexed_at: None,
     };
 
+    cockpit
+}
+
+/// Build a Memory-screen cockpit for the T-D-N19 layout invariant.
+///
+/// `n_cards`: 0 = empty-state placeholder; >0 = populated list.
+/// `drawer_open`: if true and n_cards > 0, the first card's drawer is open.
+fn build_memory_cockpit(n_cards: usize, drawer_open: bool) -> ui::Cockpit {
+    use smol_str::SmolStr;
+    use ui::memory::state::{LessonCardCard, MemoryScreenState};
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = ui::Screen::Memory;
+
+    let cards: Vec<LessonCardCard> = (0..n_cards)
+        .map(|i| LessonCardCard {
+            card_id: SmolStr::new(format!("card_{i}")),
+            symbol_or_pair: SmolStr::new("BTCUSDT"),
+            closed_at: SmolStr::new("2026-01-01T00:00:00Z"),
+            strategy_id: SmolStr::new("v1.momentum"),
+            signed_pnl_display: SmolStr::new("+10.00 USDT"),
+            outcome_class: SmolStr::new("Win"),
+            note: None,
+            close_transaction_id: None,
+        })
+        .collect();
+
+    let first_card_id = cards.first().map(|c| c.card_id.clone());
+    let drawer = if drawer_open && n_cards > 0 {
+        first_card_id
+    } else {
+        None
+    };
+
+    cockpit.memory_screen_state = MemoryScreenState {
+        cache: cards,
+        drawer_open: drawer,
+        ..MemoryScreenState::default()
+    };
+    cockpit
+}
+
+/// Build a Models-screen cockpit for the T-D-N19 layout invariant.
+///
+/// `n_checkpoints`: 0 = empty-state placeholder; >0 = populated list.
+fn build_models_cockpit(n_checkpoints: usize) -> ui::Cockpit {
+    use smol_str::SmolStr;
+    use ui::models::state::{CheckpointMeta, ModelFamily, ModelStatus, ModelsScreenState};
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = ui::Screen::Models;
+
+    let checkpoints: Vec<CheckpointMeta> = (0..n_checkpoints)
+        .map(|i| CheckpointMeta {
+            model_revision: SmolStr::new(format!("rev{i:064}")),
+            family: ModelFamily::Tcn,
+            data_span_start: SmolStr::new("2023-01-01"),
+            data_span_end: SmolStr::new("2024-12-31"),
+            interval: SmolStr::new("1h"),
+            symbols_count: 10,
+            final_val_loss: 0.03,
+            final_train_loss: 0.025,
+            sigma_train: 0.08,
+            weights_sha256: SmolStr::new("abcd1234"),
+            file_size_bytes: 855,
+            status: ModelStatus::Staged,
+            source_path: std::path::PathBuf::from(format!("fixture_{i}.metadata.json")),
+        })
+        .collect();
+
+    cockpit.models_screen_state = ModelsScreenState {
+        checkpoints,
+        ..ModelsScreenState::default()
+    };
+    cockpit
+}
+
+/// Build an Assistant-slot cockpit for the T-D-N19 layout invariant (H6).
+///
+/// `is_open`: true = right-rail open at `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0`;
+///            false = right-rail collapsed at `RIGHT_RAIL_WIDTH_PX = 0.0`.
+/// `screen_idx`: picks a screen to route through (any is fine; right-rail is shell-level).
+fn build_assistant_slot_cockpit(is_open: bool, screen_idx: u8) -> ui::Cockpit {
+    use ui::assistant::state::{AssistantMode, AssistantState};
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    #[allow(deprecated)]
+    {
+        cockpit.current_screen = match screen_idx % 6 {
+            0 => ui::Screen::Memory,
+            1 => ui::Screen::Models,
+            2 => ui::Screen::Live,
+            3 => ui::Screen::Compare,
+            4 => ui::Screen::Trail,
+            _ => ui::Screen::Strategies,
+        };
+    }
+    cockpit.assistant_state = AssistantState {
+        is_open,
+        mode: AssistantMode::Offline,
+    };
     cockpit
 }

@@ -883,6 +883,21 @@ pub struct Cockpit {
     /// `lab_state` (Phase A). Cold-start: empty cache (R3.5 cold-boot-only).
     pub compare_screen_state: crate::compare::state::CompareScreenState,
 
+    /// Phase F — Memory-screen per-session state (ui-rethink-phase-f-memory-models-assistant
+    /// R4.1 / T-D-N4). Sibling of `compare_screen_state` (Phase E). Cold-start:
+    /// empty cache (R5.3 cold-boot-only); real screen body replaces Phase A placeholder.
+    pub memory_screen_state: crate::memory::state::MemoryScreenState,
+
+    /// Phase F — Models-screen per-session state (ui-rethink-phase-f-memory-models-assistant
+    /// R4.2 / T-D-N4). Sibling of `memory_screen_state` (Phase F). Cold-start:
+    /// empty checkpoints list (R5.3 cold-boot-only).
+    pub models_screen_state: crate::models::state::ModelsScreenState,
+
+    /// Phase F — Assistant-slot state (Lumen Phase 6 wake, Q4=(a) stub-only,
+    /// R4.3 / T-D-N4). Right-rail slot is closed by default; K6 Option A:
+    /// `RIGHT_RAIL_WIDTH_PX = 0.0` preserved; `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0` added.
+    pub assistant_state: crate::assistant::state::AssistantState,
+
     // ── Phase 4 — Backtest-panel cross-link ─────────────────────────────
     /// Read-only mirror of `audit::query::equity_curve_for_strategy`
     /// results, keyed on `StrategyId`. Entry inserted at first
@@ -963,6 +978,9 @@ impl std::fmt::Debug for Cockpit {
             .field("audit_screen_state", &self.audit_screen_state)
             .field("trail_screen_state", &self.trail_screen_state)
             .field("compare_screen_state", &self.compare_screen_state)
+            .field("memory_screen_state", &self.memory_screen_state)
+            .field("models_screen_state", &self.models_screen_state)
+            .field("assistant_state", &self.assistant_state)
             .field("strategy_equity", &self.strategy_equity)
             .field("execution_mode", &self.execution_mode)
             .field("paused_strategies", &self.paused_strategies)
@@ -1014,6 +1032,9 @@ impl Default for Cockpit {
             audit_screen_state: AuditScreenState::default(),
             trail_screen_state: TrailScreenState::default(),
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
+            memory_screen_state: crate::memory::state::MemoryScreenState::default(),
+            models_screen_state: crate::models::state::ModelsScreenState::default(),
+            assistant_state: crate::assistant::state::AssistantState::default(),
             strategy_equity: HashMap::new(),
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
@@ -1114,6 +1135,9 @@ impl Cockpit {
             audit_screen_state: AuditScreenState::default(),
             trail_screen_state: TrailScreenState::default(),
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
+            memory_screen_state: crate::memory::state::MemoryScreenState::default(),
+            models_screen_state: crate::models::state::ModelsScreenState::default(),
+            assistant_state: crate::assistant::state::AssistantState::default(),
             strategy_equity: HashMap::new(),
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
@@ -1440,6 +1464,32 @@ pub enum Message {
     /// Carries the structured UI-local tick type (Q2 (b) — no direct
     /// `reflection` type in the `Message` API).
     TrailMirrorTick(TrailMirrorUiTick),
+
+    // ── Phase F — Memory + Models + Assistant (ui-rethink-phase-f-memory-models-assistant) ──
+    /// Cold-boot hydrate: reflection DB read result delivered via the side-thread
+    /// tokio runtime in `cockpit_live`. Populates `memory_screen_state.cache`
+    /// and sets `last_indexed` to the current ISO-8601 timestamp (K1 + Q8=(b)
+    /// architect-refined placement in `crates/reflection/src/query.rs`).
+    MemoryHydrate(Vec<crate::memory::state::LessonCardCard>),
+    /// Memory card chevron clicked — open the side-drawer for `card_id` (Q5=(b)).
+    MemoryOpenDrawer(smol_str::SmolStr),
+    /// Memory drawer close button clicked — collapse the drawer (Q5=(b) / K4).
+    MemoryCloseDrawer,
+    /// Memory toolbar view-mode toggle (R8.1). Pure assignment.
+    MemoryToggleMode(crate::memory::state::MemoryViewMode),
+    /// Memory toolbar filter chip toggled (R8.1). `None` = clear filter.
+    MemorySetFilter(Option<crate::memory::state::MemoryFilter>),
+    /// Cold-boot hydrate: checkpoint discovery result delivered via the side-thread
+    /// tokio runtime in `cockpit_live`. Populates `models_screen_state.checkpoints`
+    /// and sets `last_indexed` (R5.2 / T-D-N9).
+    ModelsHydrate(Vec<crate::models::state::CheckpointMeta>),
+    /// Models toolbar family filter updated (R8.1). Pure assignment.
+    ModelsSetFamilyFilter(Vec<crate::models::state::ModelFamily>),
+    /// Models toolbar status filter updated (R8.1). Pure assignment.
+    ModelsSetStatusFilter(Vec<crate::models::state::ModelStatus>),
+    /// Toggle the right-rail Assistant slot open/closed (R3.3 / R8.1).
+    /// K6 Option A: flips `assistant_state.is_open`; shell picks width.
+    ToggleAssistantSlot,
 
     // ── Phase E — Compare matrix (ui-rethink-phase-e-compare) ────────────────
     /// Compound dispatch: switches to Lab screen + seeds strategy/pair/range.
@@ -1963,6 +2013,46 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                     model.trail_screen_state.reconstructed_trail = None;
                 }
             }
+        }
+
+        // ── Phase F — Memory + Models + Assistant (ui-rethink-phase-f-memory-models-assistant T-D-N6) ──
+        Message::MemoryHydrate(cards) => {
+            // Cold-boot hydrate: store the lesson cards + record indexed timestamp.
+            let now = time::OffsetDateTime::now_utc()
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_else(|_| String::from("unknown"));
+            model.memory_screen_state.cache = cards;
+            model.memory_screen_state.last_indexed = Some(smol_str::SmolStr::new(&now));
+        }
+        Message::MemoryOpenDrawer(card_id) => {
+            model.memory_screen_state.drawer_open = Some(card_id);
+        }
+        Message::MemoryCloseDrawer => {
+            model.memory_screen_state.drawer_open = None;
+        }
+        Message::MemoryToggleMode(mode) => {
+            model.memory_screen_state.mode = mode;
+        }
+        Message::MemorySetFilter(filter) => {
+            model.memory_screen_state.filter = filter;
+        }
+        Message::ModelsHydrate(checkpoints) => {
+            // Cold-boot hydrate: store the checkpoint list + record indexed timestamp.
+            let now = time::OffsetDateTime::now_utc()
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_else(|_| String::from("unknown"));
+            model.models_screen_state.checkpoints = checkpoints;
+            model.models_screen_state.last_indexed = Some(smol_str::SmolStr::new(&now));
+        }
+        Message::ModelsSetFamilyFilter(filter) => {
+            model.models_screen_state.family_filter = filter;
+        }
+        Message::ModelsSetStatusFilter(filter) => {
+            model.models_screen_state.status_filter = filter;
+        }
+        Message::ToggleAssistantSlot => {
+            // K6 Option A: flip is_open; shell picks RIGHT_RAIL_OPEN_WIDTH_PX vs 0.0.
+            model.assistant_state.is_open = !model.assistant_state.is_open;
         }
 
         // ── Phase E — Compare matrix (ui-rethink-phase-e-compare T-D-N3) ─────
@@ -3451,5 +3541,126 @@ mod tests {
             "pair = None must leave lab_state.pair unchanged"
         );
         assert_eq!(c.lab_state.range, range);
+    }
+
+    // ── Phase F round-trip tests (T-D-N20) ──────────────────────────────────
+
+    /// T-D-N20 (1/3) — `MemoryHydrate` populates cache + sets `last_indexed`.
+    ///
+    /// Sends 3 fixture `LessonCardCard` items via `Message::MemoryHydrate`.
+    /// Asserts: `cache.len() == 3`, `cache[0].card_id == "card_e"`,
+    /// `last_indexed` is `Some(...)`.
+    #[test]
+    fn memory_hydrate_populates_cache_and_indexed() {
+        use smol_str::SmolStr;
+        let mut c = Cockpit::new();
+        assert!(
+            c.memory_screen_state.cache.is_empty(),
+            "pre-hydrate cache must be empty"
+        );
+        assert!(
+            c.memory_screen_state.last_indexed.is_none(),
+            "pre-hydrate last_indexed must be None"
+        );
+
+        let cards = vec![
+            crate::memory::state::LessonCardCard {
+                card_id: SmolStr::new("card_e"),
+                symbol_or_pair: SmolStr::new("BTCUSDT"),
+                closed_at: SmolStr::new("2026-01-05T12:00:00Z"),
+                strategy_id: SmolStr::new("v1.momentum"),
+                signed_pnl_display: SmolStr::new("+85.00 USDT"),
+                outcome_class: SmolStr::new("Win"),
+                note: None,
+                close_transaction_id: None,
+            },
+            crate::memory::state::LessonCardCard {
+                card_id: SmolStr::new("card_d"),
+                symbol_or_pair: SmolStr::new("ETHUSDT"),
+                closed_at: SmolStr::new("2026-01-04T09:30:00Z"),
+                strategy_id: SmolStr::new("v1.momentum"),
+                signed_pnl_display: SmolStr::new("-23.50 USDT"),
+                outcome_class: SmolStr::new("Loss"),
+                note: None,
+                close_transaction_id: None,
+            },
+            crate::memory::state::LessonCardCard {
+                card_id: SmolStr::new("card_c"),
+                symbol_or_pair: SmolStr::new("SOLUSDT"),
+                closed_at: SmolStr::new("2026-01-03T15:00:00Z"),
+                strategy_id: SmolStr::new("sma_crossover"),
+                signed_pnl_display: SmolStr::new("+2.10 USDT"),
+                outcome_class: SmolStr::new("Scratch"),
+                note: None,
+                close_transaction_id: None,
+            },
+        ];
+
+        update(&mut c, Message::MemoryHydrate(cards));
+
+        assert_eq!(
+            c.memory_screen_state.cache.len(),
+            3,
+            "post-hydrate cache must have 3 cards"
+        );
+        assert_eq!(c.memory_screen_state.cache[0].card_id.as_str(), "card_e");
+        assert!(
+            c.memory_screen_state.last_indexed.is_some(),
+            "last_indexed must be Some(...) after hydrate"
+        );
+    }
+
+    /// T-D-N20 (2/3) — `MemoryOpenDrawer` sets `drawer_open`.
+    ///
+    /// Sends `Message::MemoryOpenDrawer(SmolStr::new("card_e"))`.
+    /// Asserts: `drawer_open == Some("card_e")`.
+    /// Then sends `Message::MemoryCloseDrawer`.
+    /// Asserts: `drawer_open == None`.
+    #[test]
+    fn memory_open_drawer_sets_drawer_open() {
+        use smol_str::SmolStr;
+        let mut c = Cockpit::new();
+        assert!(
+            c.memory_screen_state.drawer_open.is_none(),
+            "pre-open drawer_open must be None"
+        );
+
+        update(&mut c, Message::MemoryOpenDrawer(SmolStr::new("card_e")));
+        assert_eq!(
+            c.memory_screen_state.drawer_open.as_deref(),
+            Some("card_e"),
+            "after MemoryOpenDrawer, drawer_open must be Some('card_e')"
+        );
+
+        update(&mut c, Message::MemoryCloseDrawer);
+        assert!(
+            c.memory_screen_state.drawer_open.is_none(),
+            "after MemoryCloseDrawer, drawer_open must be None"
+        );
+    }
+
+    /// T-D-N20 (3/3) — `ToggleAssistantSlot` flips `is_open`.
+    ///
+    /// Starting from `is_open = false`, one toggle sets it to `true`;
+    /// a second toggle returns it to `false`.
+    #[test]
+    fn toggle_assistant_slot_flips_is_open() {
+        let mut c = Cockpit::new();
+        assert!(
+            !c.assistant_state.is_open,
+            "default assistant is_open must be false"
+        );
+
+        update(&mut c, Message::ToggleAssistantSlot);
+        assert!(
+            c.assistant_state.is_open,
+            "after first toggle, is_open must be true"
+        );
+
+        update(&mut c, Message::ToggleAssistantSlot);
+        assert!(
+            !c.assistant_state.is_open,
+            "after second toggle, is_open must return to false"
+        );
     }
 }

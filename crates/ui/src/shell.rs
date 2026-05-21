@@ -23,13 +23,16 @@
 //! **Zero hex colours** — tokens via `crate::theme`.
 
 use iced::Length;
-use iced::widget::{Column, Container, Row, Space};
+use iced::widget::{Column, Container, Row};
 
-use crate::screens::{compare, lab, live, settings, strategy_registry, trail};
+use crate::assistant;
+use crate::screens::{compare, lab, live, memory, models, settings, strategy_registry, trail};
 use crate::state::{Cockpit, Screen};
-use crate::theme::layout::{RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C};
+use crate::theme::layout::{
+    RIGHT_RAIL_OPEN_WIDTH_PX, RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C,
+};
 use crate::theme::{ThemeMode, color};
-use crate::widgets::{placeholder, sidebar_nav, status_bar};
+use crate::widgets::{sidebar_nav, status_bar};
 
 /// Render the full cockpit shell.
 #[allow(clippy::needless_pass_by_value, clippy::cast_possible_truncation)]
@@ -44,8 +47,24 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let body = screen_body(model.current_screen, model, mode);
     let bar = status_bar::view(model);
 
-    let right_track = Container::new(Space::new())
-        .width(Length::Fixed(RIGHT_RAIL_WIDTH_PX))
+    // Phase F T-D-N17 — Assistant slot wake (K6 Option A).
+    // When `assistant_state.is_open == false`, `assistant::view::view` returns a
+    // 0-width Container (byte-identical to the old `Space::new()` path) using the
+    // shell's outer Fixed width (set below). When open it returns a rendered stub
+    // placeholder at `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0`.
+    //
+    // The outer Container picks the width based on `is_open`; the inner
+    // `assistant::view::view` element fills its parent. This preserves the
+    // `RIGHT_RAIL_WIDTH_PX = 0.0` constant (the shell_grid invariant test
+    // reads the constant — it does NOT measure the rendered pixel width at
+    // runtime — so K6 is satisfied).
+    let rail_width = if model.assistant_state.is_open {
+        Length::Fixed(RIGHT_RAIL_OPEN_WIDTH_PX)
+    } else {
+        Length::Fixed(RIGHT_RAIL_WIDTH_PX)
+    };
+    let right_track = Container::new(assistant::view::view(&model.assistant_state, mode))
+        .width(rail_width)
         .height(Length::Fill);
 
     let centre = Column::new()
@@ -87,7 +106,6 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 #[allow(clippy::needless_pass_by_value, deprecated)]
 #[must_use]
 pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
-    use crate::strings;
     match screen {
         // ── Phase C active routes ─────────────────────────────────────────
         Screen::Lab | Screen::Charts => lab::view(model, mode),
@@ -95,8 +113,10 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         Screen::Live | Screen::Home => live::view(model, mode),
         // Phase E: Compare routes to the matrix screen (replaces Phase A placeholder).
         Screen::Compare => compare::view(model, mode),
-        Screen::Memory => placeholder::view(strings::MEMORY_PLACEHOLDER, mode),
-        Screen::Models => placeholder::view(strings::MODELS_PLACEHOLDER, mode),
+        // Phase F: Memory routes to the full memory screen (replaces Phase A placeholder).
+        Screen::Memory => memory::view(model, mode),
+        // Phase F: Models routes to the full models screen (replaces Phase A placeholder).
+        Screen::Models => models::view(model, mode),
         // Phase D: Trail routes to the new trail::view which delegates to
         // audit::view in list mode (R2.2 byte-identity gate) and renders
         // the upstream node stack in trail mode (R2.3).

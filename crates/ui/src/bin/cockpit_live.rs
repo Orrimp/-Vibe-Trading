@@ -397,6 +397,16 @@ fn main() -> Result<()> {
         .context("build side-thread tokio runtime")?;
     let rt_handle = agent_runtime.handle().clone();
 
+    // ── Phase F T-D-N10 — save paths before cfg is moved into RunHandles ────────
+    // `cfg.reflection.path` is consumed by `Arc::new(cfg)` below; capture a
+    // clone so the iced init closure can open the reflection pool at boot.
+    // The checkpoint dir follows the workspace convention used by
+    // `crates/forecast/src/tcn.rs:494` and `strategy/src/tcn_overlay_momentum.rs`.
+    #[cfg(feature = "live")]
+    let reflection_db_path: PathBuf = cfg.reflection.path.clone();
+    #[cfg(feature = "live")]
+    let checkpoint_dir: PathBuf = PathBuf::from("crates/forecast/checkpoints/anchors");
+
     // ── Side thread: own the runtime, drive agent::runtime::run on it ────────
     let agent_handle = {
         let cancel = cancel.clone();
@@ -516,8 +526,103 @@ fn main() -> Result<()> {
     #[cfg(feature = "record-tests")]
     info!("iced_tester recorder overlay enabled (compile-time via --features record-tests)");
 
+    // Phase F T-D-N10 — cold-boot hydrate tasks.
+    // Capture paths + rt_handle before the `app_state` move into the iced
+    // init closure. Each task mirrors the `TapeRowClicked` / `SelectSymbol`
+    // pattern: `rt_handle.spawn(async { … })` bridges iced's main thread
+    // (no tokio runtime) to the side-thread tokio runtime.
+    #[cfg(feature = "live")]
+    let boot_rt_for_memory = rt_handle.clone();
+    #[cfg(feature = "live")]
+    let boot_reflection_db_path = reflection_db_path;
+    #[cfg(feature = "live")]
+    let boot_checkpoint_dir = checkpoint_dir;
+
     let iced_result = iced::application(
-        move || (app_state.clone(), iced::Task::none()),
+        move || {
+            let state = app_state.clone();
+
+            // Phase F T-D-N10 — boot-time Memory hydrate task.
+            // Delegates pool-open + query to `reflection::query::open_and_list_recent`
+            // so sqlx stays within the reflection crate boundary (the `ui` crate has
+            // no direct sqlx dep). Fail-soft: on missing file `open_and_list_recent`
+            // returns `Ok(vec![])` immediately; on other errors the warn! is logged
+            // inside the reflection crate and `Message::MemoryHydrate(vec![])` fires
+            // — the Memory screen renders the R1.4 empty-state placeholder.
+            #[cfg(feature = "live")]
+            let memory_task = {
+                use ui::memory::state::LessonCardCard;
+                let rt = boot_rt_for_memory.clone();
+                let db_path = boot_reflection_db_path.clone();
+                iced::Task::perform(
+                    async move {
+                        let join = rt.spawn(async move {
+                            match reflection::query::open_and_list_recent(&db_path, 50).await {
+                                Ok(cards) => cards
+                                    .into_iter()
+                                    .map(|c| LessonCardCard {
+                                        card_id: SmolStr::new(&c.card_id),
+                                        symbol_or_pair: SmolStr::new(format!(
+                                            "{}",
+                                            c.symbol_or_pair
+                                        )),
+                                        closed_at: SmolStr::new(format!("{}", c.closed_at)),
+                                        strategy_id: SmolStr::new(c.strategy_id.0.as_str()),
+                                        signed_pnl_display: SmolStr::new(format!(
+                                            "{}",
+                                            c.signed_pnl
+                                        )),
+                                        outcome_class: SmolStr::new(format!("{}", c.outcome_class)),
+                                        note: c.note.as_deref().map(SmolStr::new),
+                                        // v0.1.0: close_transaction_id not stored in
+                                        // LessonCard (LLM-enrichment follow-up).
+                                        close_transaction_id: None,
+                                    })
+                                    .collect(),
+                                Err(e) => {
+                                    warn!(
+                                        error = %e,
+                                        "memory cold-boot: query failed (empty-state path)"
+                                    );
+                                    vec![]
+                                }
+                            }
+                        });
+                        match join.await {
+                            Ok(cards) => cards,
+                            Err(e) => {
+                                warn!(error = %e, "memory cold-boot: task join error");
+                                vec![]
+                            }
+                        }
+                    },
+                    Message::MemoryHydrate,
+                )
+            };
+
+            // Phase F T-D-N10 — boot-time Models hydrate task.
+            // Synchronous filesystem scan: `discover_checkpoints` does only
+            // `read_dir` + `read_to_string` + `serde_json::from_str`.  The
+            // H2 static argument shows total cost ≈ 20 μs for 2 checkpoints
+            // (well within the 50 ms p99 budget), so we wrap in an
+            // `iced::Task::perform` simply to keep the iced init closure
+            // synchronous and return the result via the message loop.
+            #[cfg(feature = "live")]
+            let models_task = {
+                let dir = boot_checkpoint_dir.clone();
+                iced::Task::perform(
+                    async move { ui::models::registry_read::discover_checkpoints(&dir) },
+                    Message::ModelsHydrate,
+                )
+            };
+
+            #[cfg(feature = "live")]
+            let boot_task = iced::Task::batch([memory_task, models_task]);
+            #[cfg(not(feature = "live"))]
+            let boot_task = iced::Task::none();
+
+            (state, boot_task)
+        },
         AppState::update,
         AppState::view,
     )

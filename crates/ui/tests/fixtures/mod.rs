@@ -516,6 +516,215 @@ pub fn compare__column_header_hover_cockpit() -> ui::state::Cockpit {
     compare__cold_boot_all_empty_cockpit()
 }
 
+// ── Phase F snapshot fixtures (ui-rethink-phase-f-memory-models-assistant Wave F) ──
+
+/// Construct the `memory__cold_boot_empty` fixture.
+///
+/// Memory screen with no lesson cards loaded — the dominant first-open
+/// UX path (H1 enumeration — `reflection.db` absent on a fresh workstation).
+/// `MemoryScreenState::cache` is empty; `drawer_open` is `None`.
+/// The R1.4 empty-state placeholder "No memory entries yet…" renders.
+#[must_use]
+pub fn memory__cold_boot_empty_cockpit() -> ui::state::Cockpit {
+    use ui::memory::state::MemoryScreenState;
+    use ui::state::Screen;
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Memory;
+    cockpit.memory_screen_state = MemoryScreenState::default(); // empty cache
+    cockpit
+}
+
+/// Construct the `memory__steady_state_5_cards` fixture.
+///
+/// Memory screen with 5 lesson cards loaded (H4 falsification fixture shape:
+/// mix of Win / Loss / Scratch outcomes, two strategies, three symbols).
+/// `drawer_open` is `None` — list mode.
+#[must_use]
+pub fn memory__steady_state_5_cards_cockpit() -> ui::state::Cockpit {
+    use smol_str::SmolStr;
+    use ui::memory::state::{LessonCardCard, MemoryScreenState};
+    use ui::state::Screen;
+
+    let cards = vec![
+        LessonCardCard {
+            card_id: SmolStr::new("card_e"),
+            symbol_or_pair: SmolStr::new("BTCUSDT"),
+            closed_at: SmolStr::new("2026-01-05T12:00:00Z"),
+            strategy_id: SmolStr::new("v1.momentum"),
+            signed_pnl_display: SmolStr::new("+85.00 USDT"),
+            outcome_class: SmolStr::new("Win"),
+            note: Some(SmolStr::new("Trend continuation confirmed.")),
+            close_transaction_id: Some(SmolStr::new("tx-e001")),
+        },
+        LessonCardCard {
+            card_id: SmolStr::new("card_d"),
+            symbol_or_pair: SmolStr::new("ETHUSDT"),
+            closed_at: SmolStr::new("2026-01-04T09:30:00Z"),
+            strategy_id: SmolStr::new("v1.momentum"),
+            signed_pnl_display: SmolStr::new("-23.50 USDT"),
+            outcome_class: SmolStr::new("Loss"),
+            note: None,
+            close_transaction_id: None,
+        },
+        LessonCardCard {
+            card_id: SmolStr::new("card_c"),
+            symbol_or_pair: SmolStr::new("SOLUSDT"),
+            closed_at: SmolStr::new("2026-01-03T15:00:00Z"),
+            strategy_id: SmolStr::new("sma_crossover"),
+            signed_pnl_display: SmolStr::new("+2.10 USDT"),
+            outcome_class: SmolStr::new("Scratch"),
+            note: None,
+            close_transaction_id: None,
+        },
+        LessonCardCard {
+            card_id: SmolStr::new("card_b"),
+            symbol_or_pair: SmolStr::new("BTCUSDT"),
+            closed_at: SmolStr::new("2026-01-02T08:00:00Z"),
+            strategy_id: SmolStr::new("v1.momentum"),
+            signed_pnl_display: SmolStr::new("+140.00 USDT"),
+            outcome_class: SmolStr::new("Win"),
+            note: Some(SmolStr::new("Double top breakout.")),
+            close_transaction_id: None,
+        },
+        LessonCardCard {
+            card_id: SmolStr::new("card_a"),
+            symbol_or_pair: SmolStr::new("ETHUSDT"),
+            closed_at: SmolStr::new("2026-01-01T06:00:00Z"),
+            strategy_id: SmolStr::new("sma_crossover"),
+            signed_pnl_display: SmolStr::new("-11.00 USDT"),
+            outcome_class: SmolStr::new("Loss"),
+            note: None,
+            close_transaction_id: None,
+        },
+    ];
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Memory;
+    cockpit.memory_screen_state = MemoryScreenState {
+        cache: cards,
+        last_indexed: Some(SmolStr::new("2026-01-05T12:01:00Z")),
+        ..MemoryScreenState::default()
+    };
+    cockpit
+}
+
+/// Construct the `memory__drawer_open_on_card_click` fixture.
+///
+/// Memory screen with 3 cards; the first card's drawer is open (`drawer_open
+/// = Some("card_e")`). Exercises the Q5=(b) side-drawer path.
+#[must_use]
+pub fn memory__drawer_open_on_card_click_cockpit() -> ui::state::Cockpit {
+    use smol_str::SmolStr;
+    use ui::memory::state::MemoryScreenState;
+    use ui::state::Screen;
+
+    let mut cockpit = memory__steady_state_5_cards_cockpit();
+    cockpit.current_screen = Screen::Memory;
+    cockpit.memory_screen_state = MemoryScreenState {
+        drawer_open: Some(SmolStr::new("card_e")),
+        ..cockpit.memory_screen_state
+    };
+    cockpit
+}
+
+/// Construct the `models__cold_boot_no_checkpoints` fixture.
+///
+/// Models screen with no checkpoints loaded. The Q3=(a) empty-state
+/// placeholder `MODELS_EMPTY_STATE` renders.
+#[must_use]
+pub fn models__cold_boot_no_checkpoints_cockpit() -> ui::state::Cockpit {
+    use ui::models::state::ModelsScreenState;
+    use ui::state::Screen;
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Models;
+    cockpit.models_screen_state = ModelsScreenState::default(); // empty checkpoints
+    cockpit
+}
+
+/// Construct the `models__steady_state_2_checkpoints` fixture.
+///
+/// Models screen with 2 TCN checkpoints loaded — mirrors the live state
+/// on this workstation (`tcn-bs1` + `tcn-bs2` from H2 enumeration).
+/// Both render as `Staged` per Q7=(c).
+#[must_use]
+pub fn models__steady_state_2_checkpoints_cockpit() -> ui::state::Cockpit {
+    use smol_str::SmolStr;
+    use ui::models::state::{CheckpointMeta, ModelFamily, ModelStatus, ModelsScreenState};
+    use ui::state::Screen;
+
+    let checkpoints = vec![
+        CheckpointMeta {
+            model_revision: SmolStr::new(
+                "d1c3696d1f2a8e3b5c7d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+            ),
+            family: ModelFamily::Tcn,
+            data_span_start: SmolStr::new("2023-01-01"),
+            data_span_end: SmolStr::new("2024-12-31"),
+            interval: SmolStr::new("1h"),
+            symbols_count: 10,
+            final_val_loss: 0.0312,
+            final_train_loss: 0.0287,
+            sigma_train: 0.085,
+            weights_sha256: SmolStr::new("d1c3696d"),
+            file_size_bytes: 855,
+            status: ModelStatus::Staged,
+            source_path: std::path::PathBuf::from(
+                "crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d.metadata.json",
+            ),
+        },
+        CheckpointMeta {
+            model_revision: SmolStr::new(
+                "3fabcabe4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
+            ),
+            family: ModelFamily::Tcn,
+            data_span_start: SmolStr::new("2023-06-01"),
+            data_span_end: SmolStr::new("2025-02-28"),
+            interval: SmolStr::new("1h"),
+            symbols_count: 10,
+            final_val_loss: 0.0298,
+            final_train_loss: 0.0271,
+            sigma_train: 0.079,
+            weights_sha256: SmolStr::new("3fabcabe"),
+            file_size_bytes: 852,
+            status: ModelStatus::Staged,
+            source_path: std::path::PathBuf::from(
+                "crates/forecast/checkpoints/anchors/tcn-bs2-3fabcabe.metadata.json",
+            ),
+        },
+    ];
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Models;
+    cockpit.models_screen_state = ModelsScreenState {
+        checkpoints,
+        last_indexed: Some(SmolStr::new("2026-05-20T10:00:00Z")),
+        ..ModelsScreenState::default()
+    };
+    cockpit
+}
+
+/// Construct the `assistant_slot__open_stub` fixture.
+///
+/// Shell with `assistant_state.is_open = true`. The Phase 6 stub
+/// placeholder renders in the right-rail (`ASSISTANT_OFFLINE_TITLE` +
+/// `ASSISTANT_OFFLINE_BODY`). K6 Option A: `RIGHT_RAIL_OPEN_WIDTH_PX`
+/// governs the slot width.
+#[must_use]
+pub fn assistant_slot__open_stub_cockpit() -> ui::state::Cockpit {
+    use ui::assistant::state::AssistantState;
+    use ui::state::Screen;
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Memory; // any screen is fine; right-rail is shell-level
+    cockpit.assistant_state = AssistantState {
+        is_open: true,
+        mode: ui::assistant::state::AssistantMode::Offline,
+    };
+    cockpit
+}
+
 /// Silence dead-code warning for fixtures only consumed via `mod`
 /// glob in integration tests. (Cargo runs each `tests/*.rs` as a
 /// separate crate, so some fixture exports look unused per-target

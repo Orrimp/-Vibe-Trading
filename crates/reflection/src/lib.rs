@@ -34,6 +34,14 @@ pub mod audit_tick_consumer;
 pub mod embedding;
 pub mod outcome;
 pub mod post_mortem_analyst;
+/// Phase F (ui-rethink-phase-f-memory-models-assistant T-D-N8) — Memory read-path.
+///
+/// `list_recent_lesson_cards` queries the `lesson_cards` table ordered by
+/// `closed_at DESC`. Lives as a sibling of `store/` per architect Q8=(b)
+/// refinement: bypasses the `ReflectionStore` trait surface (which stays at
+/// 3 methods: `upsert / top_k / count`). Called by `cockpit_live` at the
+/// async/sync boundary; results pushed to the UI via `Message::MemoryHydrate`.
+pub mod query;
 pub mod regime;
 pub mod retrieval;
 pub mod store;

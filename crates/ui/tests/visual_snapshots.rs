@@ -322,6 +322,112 @@ fn compare__column_header_hover() {
     run_compare_slot("compare__column_header_hover");
 }
 
+// ── Phase F snapshots (ui-rethink-phase-f-memory-models-assistant Wave F T-D-N18) ──
+
+/// Phase F snapshot slot table.
+/// All use the `typical` viewport (1920×1080 @ 1.0x) — the T3022 default.
+const PHASE_F_SLOTS: &[(&str, u32, u32, f32)] = &[
+    ("memory__cold_boot_empty", 1920, 1080, 1.0),
+    ("memory__steady_state_5_cards", 1920, 1080, 1.0),
+    ("memory__drawer_open_on_card_click", 1920, 1080, 1.0),
+    ("models__cold_boot_no_checkpoints", 1920, 1080, 1.0),
+    ("models__steady_state_2_checkpoints", 1920, 1080, 1.0),
+    ("assistant_slot__open_stub", 1920, 1080, 1.0),
+];
+
+/// Drive a Phase F snapshot slot.
+fn run_phase_f_slot(fixture_name: &str) {
+    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+
+    let (_, w, h, scale) = PHASE_F_SLOTS
+        .iter()
+        .find(|(s, _, _, _)| *s == fixture_name)
+        .copied()
+        .unwrap_or_else(|| panic!("unknown PHASE_F_SLOTS key: {fixture_name}"));
+
+    let cockpit = match fixture_name {
+        "memory__cold_boot_empty" => fixtures::memory__cold_boot_empty_cockpit(),
+        "memory__steady_state_5_cards" => fixtures::memory__steady_state_5_cards_cockpit(),
+        "memory__drawer_open_on_card_click" => {
+            fixtures::memory__drawer_open_on_card_click_cockpit()
+        }
+        "models__cold_boot_no_checkpoints" => fixtures::models__cold_boot_no_checkpoints_cockpit(),
+        "models__steady_state_2_checkpoints" => {
+            fixtures::models__steady_state_2_checkpoints_cockpit()
+        }
+        "assistant_slot__open_stub" => fixtures::assistant_slot__open_stub_cockpit(),
+        other => panic!("no fixture builder for: {other}"),
+    };
+
+    let program = program_from_cockpit(cockpit);
+    let theme = iced::Theme::Dark;
+
+    let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);
+
+    let baseline = format!(
+        "{}/tests/visual-baselines/{fixture_name}.png",
+        env!("CARGO_MANIFEST_DIR")
+    );
+
+    matches_screenshot(&screenshot, &baseline, fixture_name).unwrap_or_else(|err| {
+        panic!(
+            "visual snapshot mismatch for `{fixture_name}`:\n{err}\n\n\
+             Review the baseline / actual / diff triple, then either:\n  \
+             (a) accept: delete baseline + rerun (auto-rewritten), or\n  \
+             (b) reject: fix the producing widget code."
+        )
+    });
+}
+
+/// T-D-N18 (1/6) — Memory screen cold-boot: empty cache renders R1.4 placeholder.
+/// Baseline auto-written on first run.
+#[test]
+fn memory__cold_boot_empty() {
+    run_phase_f_slot("memory__cold_boot_empty");
+}
+
+/// T-D-N18 (2/6) — Memory screen steady-state: 5 lesson cards (mix of Win /
+/// Loss / Scratch). List mode; drawer closed.
+/// Baseline auto-written on first run.
+#[test]
+fn memory__steady_state_5_cards() {
+    run_phase_f_slot("memory__steady_state_5_cards");
+}
+
+/// T-D-N18 (3/6) — Memory screen with side-drawer open on first card click.
+/// Exercises Q5=(b) drawer path.
+/// Baseline auto-written on first run.
+#[test]
+fn memory__drawer_open_on_card_click() {
+    run_phase_f_slot("memory__drawer_open_on_card_click");
+}
+
+/// T-D-N18 (4/6) — Models screen cold-boot: no checkpoints loaded renders
+/// Q3=(a) empty-state placeholder.
+/// Baseline auto-written on first run.
+#[test]
+fn models__cold_boot_no_checkpoints() {
+    run_phase_f_slot("models__cold_boot_no_checkpoints");
+}
+
+/// T-D-N18 (5/6) — Models screen steady-state: 2 TCN checkpoints loaded
+/// (mirrors the live `tcn-bs1` + `tcn-bs2` on disk). Both render as `staged`
+/// per Q7=(c).
+/// Baseline auto-written on first run.
+#[test]
+fn models__steady_state_2_checkpoints() {
+    run_phase_f_slot("models__steady_state_2_checkpoints");
+}
+
+/// T-D-N18 (6/6) — Assistant slot open stub: right-rail renders
+/// `ASSISTANT_OFFLINE_TITLE` + `ASSISTANT_OFFLINE_BODY` at Phase 6 wake.
+/// K6 Option A: `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0` governs the slot width.
+/// Baseline auto-written on first run.
+#[test]
+fn assistant_slot__open_stub() {
+    run_phase_f_slot("assistant_slot__open_stub");
+}
+
 /// V9 — the perceptual-diff helper materialises a diff PNG on
 /// mismatch (R6.1 — R6.4). Drives the helper with two known-
 /// different `RgbImage` buffers (solid red vs. solid green 8x8) and

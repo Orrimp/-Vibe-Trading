@@ -804,10 +804,21 @@ arch        = [
   "spec/ui-rethink-phase-f-memory-models-assistant/decomp.md",    # M-T1 architect decomposition (2026-05-20) — K1+Q8 refined to crates/reflection/src/query.rs (sibling of store/; honors "no trait change" while respecting cockpit_live as async/sync boundary), K2 full serde shape with #[serde(default)] (inventoried live tcn-bs1/bs2 metadata.json), K3 forecast namespace EMPTY → sparkline deferred to v0.2.0, K4 drawer + Assistant slot live in different shell columns (no co-existence conflict, no auto-collapse), K6 Option A (RIGHT_RAIL_OPEN_WIDTH_PX = 320.0 additive; RIGHT_RAIL_WIDTH_PX = 0.0 preserved; trail_drawer byte-identical), H1 reflection.db ABSENT at 2026-05-20 → 0-row cold-empty path dominant, H2 ≤ 1 ms by static argument over 2 × ≤ 1 KB JSON. 6-wave A-F shape with T-D-N1..N23. Net-new file count: 12 source + 6 PNG baselines + 1 trace row. Spike requirement = NONE.
   "spec/dev-notes/ui-rethink-2026-05-17.md",                      # §6 Phase F sequencing source-of-truth (lines 1098-1112) + §J7 (lines 561-595, reflection memory) + §J8 (lines 596-637, model versions) + §6 Phase ordering (lines 1114-1140)
 ]
-crates      = ["crates/ui"]   # Phase F is UI-only (R7.1-R7.7 contract: no backtest binary changes, no anchored renderer touch, no audit/reflection writer touch). Architect M-T1 to lock the final file list; analyst estimate: src/memory/{mod,state,store_read}.rs, src/models/{mod,state,registry_read}.rs, src/assistant/{mod,state}.rs (gated on Q4≠c), src/screens/{memory,models}.rs, src/shell.rs (right-rail wake), src/state.rs (3 state fields + Message variants), src/strings.rs (new constants), src/theme.rs (RIGHT_RAIL_OPEN_WIDTH_PX gated on Q4≠c), src/widgets/mod.rs, src/lib.rs.
-tests       = []   # developer + tester fill at Wave F/G — anticipated: crates/ui/src/memory/store_read.rs (H4 unit test list_recent_lesson_cards_returns_n_recent), crates/ui/src/models/registry_read.rs (H5 unit test discover_checkpoints_tolerates_schema_drift), crates/ui/tests/layout_invariants.rs (H6 proptest assistant_slot_open_no_zero_dim + screen-active proptests), crates/ui/tests/visual_snapshots.rs (5-7 new baselines per M-FINAL acceptance criteria), crates/ui/tests/fixtures/mod.rs (memory/models/assistant fixture builders).
-anchors     = []   # Phase F touches no strategy/audit/exec/report-renderer code; 22 originals stay byte-identical (R7.1 carry-forward H2 from Phase D+/E predecessors). Architect re-verified 2026-05-20 BEFORE M-T1: bash scripts/verify_anchors.sh → literal ANCHORS PASS (22 / 22); tester re-verifies at M-FINAL.
-state       = "in-progress"   # architect M-T1 closed 2026-05-20 (decomp.md emitted; K1-K6 resolved; H1-H2 enumerated; Wave A-F locked with T-D-N1..N23); awaiting developer Wave A start
+crates      = [
+  "crates/ui",          # src/memory/{mod,state,drawer}.rs src/models/{mod,state,registry_read}.rs src/assistant/{mod,state,view}.rs src/screens/{memory,models}.rs src/shell.rs src/state.rs src/strings.rs src/theme.rs src/lib.rs src/bin/cockpit_live.rs
+  "crates/reflection",  # src/query.rs (open_and_list_recent + list_recent_lesson_cards — H4 implementation; keeps sqlx encapsulated inside reflection crate)
+]
+tests       = [
+  "crates/reflection/src/query.rs",                   # H4 unit test: list_recent_lesson_cards_returns_n_recent (in-memory sqlite 5 fixtures → 3 most-recent by closed_at DESC)
+  "crates/ui/src/models/registry_read.rs",            # H5 unit tests: full_schema / missing_dropout / missing_sigma / malformed / unknown_family (5 cases)
+  "crates/ui/src/state.rs",                           # round-trip unit tests: memory_hydrate_populates_cache_and_indexed / memory_open_drawer_sets_drawer_open / toggle_assistant_slot_flips_is_open (3 cases)
+  "crates/ui/tests/visual_snapshots.rs",              # 6 Phase F baselines: memory__cold_boot_empty memory__steady_state_5_cards memory__drawer_open_on_card_click models__cold_boot_no_checkpoints models__steady_state_2_checkpoints assistant_slot__open_stub
+  "crates/ui/tests/fixtures/mod.rs",                  # 6 Phase F fixture builders for visual_snapshots
+  "crates/ui/tests/layout_invariants.rs",             # H6 proptests: memory_screen_no_zero_dim models_screen_no_zero_dim assistant_slot_open_no_zero_dim (3 × 256 cases = 768 total)
+  "crates/ui/tests/shell_grid.rs",                    # shell_grid_reserves_right_rail invariant (RIGHT_RAIL_WIDTH_PX = 0.0 preserved — K6 Option A)
+]
+anchors     = []   # Phase F touches no strategy/audit/exec/report-renderer code; 22 originals stay byte-identical (R7.1 carry-forward H2 from Phase D+/E predecessors). Tester M-FINAL verified: bash scripts/verify_anchors.sh → ANCHORS PASS (22 / 22) both pre- and post-sweep 2026-05-21. All 22 scenario names listed in anchors.toml carry forward unchanged; no new anchors added (additive-UI-only feature by construction).
+state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-21 (presenter deck approved); tester VERDICT → PASS clean. PHASE F CLOSES THE UI RETHINK (6 of 6 phases shipped).
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

@@ -28,6 +28,21 @@
 /// Houses `compare::state` (CompareScreenState / CachedCell / CompareKpiAxis)
 /// and `compare::cache` (scan_spec_tree + lookup_cell + parse_frontmatter).
 pub mod compare;
+
+/// Phase F — Memory-screen feature module (ui-rethink-phase-f-memory-models-assistant).
+/// Houses `memory::state` (MemoryScreenState / LessonCardCard / MemoryViewMode /
+/// MemoryFilter) and `memory::drawer` (Memory entry side-drawer widget).
+pub mod memory;
+
+/// Phase F — Models-screen feature module (ui-rethink-phase-f-memory-models-assistant).
+/// Houses `models::state` (ModelsScreenState / CheckpointMeta / ModelFamily / ModelStatus)
+/// and `models::registry_read` (discover_checkpoints + CheckpointMetadata serde structs).
+pub mod models;
+
+/// Phase F — Assistant-slot feature module (Lumen Phase 6 wake, Q4=(a) stub-only).
+/// Houses `assistant::state` (AssistantState / AssistantMode) and
+/// `assistant::view` (right-rail slot view fn).
+pub mod assistant;
 pub mod lab;
 pub mod screens;
 pub mod shell;

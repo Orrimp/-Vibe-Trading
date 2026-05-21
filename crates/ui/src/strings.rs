@@ -370,6 +370,79 @@ pub const COMPARE_CELL_BLANKED_LABEL: &str = "\u{2014}"; // em-dash
 /// Shows the change in annualised Sharpe ratio between the last two runs.
 pub const RUN_DELTA_BADGE_SHARPE_LABEL: &str = "SR";
 
+// ── Phase F — Memory + Models + Assistant (ui-rethink-phase-f-memory-models-assistant T-D-N7) ──
+
+/// Phase F — Memory screen: empty-state placeholder copy (R1.4).
+/// Rendered when the reflection DB has zero lesson cards (cold-boot).
+pub const MEMORY_EMPTY_STATE: &str =
+    "No memory entries yet. Memory populates as strategies close trades.";
+
+/// Phase F — Memory screen: toolbar Cards mode button label (Q1=(a)).
+pub const MEMORY_TOOLBAR_CARDS_LABEL: &str = "Cards";
+
+/// Phase F — Memory screen: toolbar Cluster mode button label (R1.2 reserved).
+pub const MEMORY_TOOLBAR_CLUSTER_LABEL: &str = "Cluster";
+
+/// Phase F — Memory screen: Cluster mode disabled tooltip (R1.2 v0.2.0 reservation).
+pub const MEMORY_CLUSTER_MODE_DISABLED_TOOLTIP: &str =
+    "Cluster view ships when distillation lands (v0.2.0)";
+
+/// Phase F — Memory screen: card chevron tooltip / button label (R6.1).
+pub const MEMORY_CARD_TRAIL_LINK_LABEL: &str = "View in Trail \u{2192}";
+
+/// Phase F — Models screen: empty-state placeholder copy (R2.4 / Q3=(a)).
+pub const MODELS_EMPTY_STATE: &str = "No models loaded yet. See `spec/v25-tcn-overlay/feature.md` for how to train v2.5.0 TCN checkpoints.";
+
+/// Phase F — Models screen: sparkline deferred placeholder (K3 / R2.2).
+pub const MODELS_SPARKLINE_DEFERRED_TOOLTIP: &str =
+    "Forecast quality ships when residual cache populates (v0.2.0)";
+
+/// Phase F — Models screen: sparkline em-dash placeholder cell value (K3).
+pub const MODELS_SPARKLINE_PLACEHOLDER: &str = "\u{2014}";
+
+/// Phase F — Models screen: status pill tooltip for Staged v0.1.0 (Q7=(c)).
+pub const MODELS_STATUS_STAGED_TOOLTIP: &str = "Lifecycle classification ships in v0.2.0";
+
+/// Phase F — Models screen: family chip "disabled" tooltip for `PatchTST`.
+pub const MODELS_FAMILY_PATCHTST_DISABLED_TOOLTIP: &str = "Family ships in v2.5a";
+
+/// Phase F — Models screen: family chip "disabled" tooltip for Transformer.
+pub const MODELS_FAMILY_TRANSFORMER_DISABLED_TOOLTIP: &str = "Family ships in v2.5b";
+
+/// Phase F — Models screen: toolbar family filter label.
+pub const MODELS_TOOLBAR_FAMILY_LABEL: &str = "Family";
+
+/// Phase F — Models screen: toolbar status filter label.
+pub const MODELS_TOOLBAR_STATUS_LABEL: &str = "Status";
+
+/// Phase F — Assistant slot: stub title (R3.2(a) / K7 mitigation).
+pub const ASSISTANT_OFFLINE_TITLE: &str = "Assistant offline";
+
+/// Phase F — Assistant slot: stub body copy (R3.2(a) / K7 mitigation).
+pub const ASSISTANT_OFFLINE_BODY: &str = "v2 LLM wiring lands in v0.2.0. \
+     See spec/v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md \
+     for what shipped 2026-05-13.";
+
+/// Phase F — status bar toggle button label when Assistant slot is closed.
+pub const ASSISTANT_TOGGLE_OPEN_LABEL: &str = "Assistant (coming soon)";
+
+/// Phase F — status bar toggle button label when Assistant slot is open.
+pub const ASSISTANT_TOGGLE_CLOSE_LABEL: &str = "Close Assistant";
+
+/// Phase F — deprecated `MEMORY_PLACEHOLDER` (Phase A placeholder — replaced by real body).
+#[deprecated(
+    since = "0.4.0",
+    note = "Memory now renders the real body — replaced by screens::memory::view"
+)]
+pub const MEMORY_PLACEHOLDER_DEPRECATED: &str = "Memory view — coming in Phase F.";
+
+/// Phase F — deprecated `MODELS_PLACEHOLDER` (Phase A placeholder — replaced by real body).
+#[deprecated(
+    since = "0.4.0",
+    note = "Models now renders the real body — replaced by screens::models::view"
+)]
+pub const MODELS_PLACEHOLDER_DEPRECATED: &str = "Models view — coming in Phase F.";
+
 // ── Training panel — cockpit-training-control T-D-N1/N2/N3/N4/N16 ────────────
 
 /// Header chip label for the collapsed training panel.
@@ -1090,6 +1163,36 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "CHART_EQUITY_AXIS_THOUSAND_SUFFIX",
             CHART_EQUITY_AXIS_THOUSAND_SUFFIX,
         ),
+        // Phase F — Memory + Models + Assistant (ui-rethink-phase-f-memory-models-assistant T-D-N7)
+        ("MEMORY_EMPTY_STATE", MEMORY_EMPTY_STATE),
+        ("MEMORY_TOOLBAR_CARDS_LABEL", MEMORY_TOOLBAR_CARDS_LABEL),
+        ("MEMORY_TOOLBAR_CLUSTER_LABEL", MEMORY_TOOLBAR_CLUSTER_LABEL),
+        (
+            "MEMORY_CLUSTER_MODE_DISABLED_TOOLTIP",
+            MEMORY_CLUSTER_MODE_DISABLED_TOOLTIP,
+        ),
+        ("MEMORY_CARD_TRAIL_LINK_LABEL", MEMORY_CARD_TRAIL_LINK_LABEL),
+        ("MODELS_EMPTY_STATE", MODELS_EMPTY_STATE),
+        (
+            "MODELS_SPARKLINE_DEFERRED_TOOLTIP",
+            MODELS_SPARKLINE_DEFERRED_TOOLTIP,
+        ),
+        ("MODELS_SPARKLINE_PLACEHOLDER", MODELS_SPARKLINE_PLACEHOLDER),
+        ("MODELS_STATUS_STAGED_TOOLTIP", MODELS_STATUS_STAGED_TOOLTIP),
+        (
+            "MODELS_FAMILY_PATCHTST_DISABLED_TOOLTIP",
+            MODELS_FAMILY_PATCHTST_DISABLED_TOOLTIP,
+        ),
+        (
+            "MODELS_FAMILY_TRANSFORMER_DISABLED_TOOLTIP",
+            MODELS_FAMILY_TRANSFORMER_DISABLED_TOOLTIP,
+        ),
+        ("MODELS_TOOLBAR_FAMILY_LABEL", MODELS_TOOLBAR_FAMILY_LABEL),
+        ("MODELS_TOOLBAR_STATUS_LABEL", MODELS_TOOLBAR_STATUS_LABEL),
+        ("ASSISTANT_OFFLINE_TITLE", ASSISTANT_OFFLINE_TITLE),
+        ("ASSISTANT_OFFLINE_BODY", ASSISTANT_OFFLINE_BODY),
+        ("ASSISTANT_TOGGLE_OPEN_LABEL", ASSISTANT_TOGGLE_OPEN_LABEL),
+        ("ASSISTANT_TOGGLE_CLOSE_LABEL", ASSISTANT_TOGGLE_CLOSE_LABEL),
         // cockpit-training-control T-D-N2/N16
         ("TRAINING_PANEL_HEADER", TRAINING_PANEL_HEADER),
         ("TRAINING_BUTTON_TRAIN", TRAINING_BUTTON_TRAIN),

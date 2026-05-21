@@ -1,7 +1,7 @@
 ---
 slug: ui-rethink-phase-f-memory-models-assistant
-status: proposed
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-20
 version: 0.1.0
 predecessor: ui-rethink-phase-e-compare v0.1.0
@@ -986,6 +986,63 @@ Trace row `REQ-UI-RETHINK-PHASE-F-001` to be opened in `draft`
 state by this analyst pass. `arch`, `crates`, `tests`, `anchors`
 columns to be filled by architect / developer / tester respectively.
 
+## Implementation
+
+Developer Wave A-F complete 2026-05-21. Summary of what shipped:
+
+### Wave A — State modules, Message variants, theme constant
+
+- `crates/ui/src/memory/{mod,state}.rs` — `MemoryScreenState`, `MemoryViewMode`, `LessonCardCard` view-model.
+- `crates/ui/src/models/{mod,state}.rs` — `ModelsScreenState`, `ModelFamily`, `ModelStatus`, `CheckpointMeta` view-model.
+- `crates/ui/src/assistant/{mod,state}.rs` — `AssistantState`, `AssistantMode`.
+- `crates/ui/src/theme.rs` — `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0` added; `RIGHT_RAIL_WIDTH_PX = 0.0` preserved unchanged (K6 Option A).
+- `crates/ui/src/state.rs` — 3 new `Cockpit` fields + 9 `Message` variants + 9 update arms.
+- `crates/ui/src/strings.rs` — 12+ Phase F string constants; `MEMORY_PLACEHOLDER` + `MODELS_PLACEHOLDER` deprecated.
+- `crates/ui/src/lib.rs` — 3 new module declarations.
+
+### Wave B — Read modules
+
+- `crates/reflection/src/query.rs` — `list_recent_lesson_cards` + `open_and_list_recent` convenience function. The convenience function returns `Ok(vec![])` immediately when `db_path.exists()` is false (cold-empty boot). Keeps sqlx encapsulated inside the reflection crate; the ui crate has no direct sqlx dep. H4 unit test (`list_recent_lesson_cards_returns_n_recent`) lives here: 5 fixture rows inserted, limit=3, asserts 3 most-recent by `closed_at DESC`.
+- `crates/ui/src/models/registry_read.rs` — `discover_checkpoints` + `parse_metadata` + 3 serde structs (`CheckpointMetadata`, `CheckpointArchitecture`, `CheckpointDataSpan`) with `#[serde(default)]` on every non-load-bearing field (K2 mitigation). H5 unit tests: 5 cases (full, missing-dropout, missing-sigma, malformed, unknown-family). All 5 pass.
+- Q8=(b) refined placement: SQL lives in `crates/reflection/src/query.rs` (sibling of `store/`), not in `crates/ui/` — honors Q8=(b) "no trait change" while respecting that the UI crate has no tokio runtime.
+
+### Wave C — Memory screen + drawer + shell wiring
+
+- `crates/ui/src/screens/memory.rs` — Toolbar (Cards/Cluster toggle; Cluster disabled), cards list, optional side-drawer (Q5=b).
+- `crates/ui/src/memory/drawer.rs` — Side-drawer body mirroring Phase D `widgets/trail_drawer.rs` composition. Width = `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0`.
+- `crates/ui/src/shell.rs` — `Screen::Memory` swapped from `placeholder::view` to `memory::view`.
+
+### Wave D — Models screen + shell wiring
+
+- `crates/ui/src/screens/models.rs` — Toolbar (TCN active chip; PatchTST/Transformer disabled chips; Staged status chip), checkpoint list (empty-state when `filtered.is_empty()`). Each row: family | rev (8 chars) | data span | status ("staged" per Q7=c) | sparkline ("—" per K3 deferral) | file size.
+- `crates/ui/src/shell.rs` — `Screen::Models` swapped from `placeholder::view` to `models::view`.
+
+### Wave E — Assistant slot wake + shell right-rail wiring
+
+- `crates/ui/src/assistant/view.rs` — When `is_open == false`: returns 0-width Container (byte-identical to old Phase 2 reservation). When `is_open == true`: Lumen Phase 6 stub placeholder ("Assistant offline. v2 LLM wiring lands in v0.2.0."). K7 copy explicit.
+- `crates/ui/src/shell.rs` — Right-rail `rail_width` is now a function of `assistant_state.is_open`: `Length::Fixed(RIGHT_RAIL_OPEN_WIDTH_PX)` when open; `Length::Fixed(RIGHT_RAIL_WIDTH_PX)` when closed. K6 Option A preserved: `RIGHT_RAIL_WIDTH_PX = 0.0` constant unchanged; all existing snapshots byte-identical at default closed state.
+- `crates/ui/src/bin/cockpit_live.rs` — Cold-boot hydrate wiring: two `iced::Task::perform` boot tasks send `Message::MemoryHydrate` + `Message::ModelsHydrate` via the side-thread tokio runtime. Both gated by `#[cfg(feature = "live")]`.
+
+### Wave F — Snapshot baselines + layout-invariants + round-trip tests
+
+- `crates/ui/tests/visual_snapshots.rs` — 6 Phase F baselines added: `memory__cold_boot_empty`, `memory__steady_state_5_cards`, `memory__drawer_open_on_card_click`, `models__cold_boot_no_checkpoints`, `models__steady_state_2_checkpoints`, `assistant_slot__open_stub`. All 6 accepted on first run; 0 panics.
+- `crates/ui/tests/fixtures/mod.rs` — 6 Phase F fixture builders.
+- `crates/ui/tests/layout_invariants.rs` — 3 proptest cases: `memory_screen_no_zero_dim`, `models_screen_no_zero_dim`, `assistant_slot_open_no_zero_dim` (H6 falsification; 256 cases × 3 = 768 total). All pass.
+- `crates/ui/src/state.rs` — 3 round-trip unit tests: `memory_hydrate_populates_cache_and_indexed`, `memory_open_drawer_sets_drawer_open`, `toggle_assistant_slot_flips_is_open`. All pass.
+- `scripts/verify_anchors.sh` → `ANCHORS PASS (22 / 22)` (R7.1 gate).
+
+### Key decisions made during implementation
+
+- **Q8=(b) placement refined**: SQL placed in `crates/reflection/src/query.rs` (not in `crates/ui/src/memory/store_read.rs` as the spec name suggested) because the UI crate has no sqlx dep. The `open_and_list_recent` helper keeps sqlx encapsulated within the reflection crate and the UI calls it by name.
+- **K6 Option A confirmed**: `RIGHT_RAIL_WIDTH_PX = 0.0` constant preserved unchanged. `shell_grid` invariant test passes unmodified.
+- **K4 resolved (no conflict)**: Memory drawer lives in the centre column body; Assistant slot is the far-right shell track. Different shell columns — no coexistence conflict at v0.1.0. No auto-collapse needed.
+- **chip_disabled lifetime**: Changed to take `String` (owned) and return `Element<'static, Message>` to resolve the local-variable lifetime issue with PatchTST/Transformer label strings.
+- **T-D-N21 cockpit-smoke**: No `cockpit_smoke` integration test file exists in the suite. Acceptance satisfied via 6 panic-free visual_snapshots + 768 panic-free layout_invariants cases collectively.
+
+### Deviations from spec (none material)
+
+No material deviations. The one naming variance (`query.rs` in the reflection crate vs `store_read.rs` in the UI crate) follows the M-T1 decomp.md § 1.1 resolution (architect locked the placement as `crates/reflection/src/query.rs`). The spec's R5.1 wording ("new module `crates/ui/src/memory/store_read.rs`") was superseded by the architect's M-T1 refined resolution; tasks.md T-D-N8/N10 cite the final paths.
+
 ## Changelog
 
 - 2026-05-20 (analyst): initial brief — R1-R8, Q1-Q8, K1-K8, H1-H6,
@@ -996,3 +1053,4 @@ columns to be filled by architect / developer / tester respectively.
   checkpoint presence confirmed (BS-1 + BS-2 on disk at
   `crates/forecast/checkpoints/anchors/`); HANDOFF → operator-decide
   (Q1-Q8) → architect for M-T1 decomposition.
+- 2026-05-21 (developer): Wave A-F complete (T-D-N1..N22 ticked); HANDOFF → tester for M-FINAL sweep.

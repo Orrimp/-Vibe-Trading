@@ -85,8 +85,14 @@ impl SqliteReflectionStore {
 }
 
 /// Persisted row → `LessonCard` materialisation.
+///
+/// Phase F (ui-rethink-phase-f-memory-models-assistant T-D-N3):
+/// promoted from `struct` to `pub(crate)` so that the sibling
+/// `crates/reflection/src/query.rs` module can reuse this type in the
+/// `list_recent_lesson_cards` implementation. Additive visibility
+/// change only — no behaviour change.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-struct PersistedRow {
+pub(crate) struct PersistedRow {
     card_id: String,
     closed_at: String,
     symbol_or_pair: String,
@@ -230,7 +236,9 @@ fn encode_embedding(v: &[Decimal; EMBEDDING_DIM]) -> String {
     s
 }
 
-fn decode_row(row: PersistedRow) -> Result<LessonCard, ReflectionStoreError> {
+/// Phase F (ui-rethink-phase-f-memory-models-assistant T-D-N3):
+/// promoted to `pub(crate)` so `crates/reflection/src/query.rs` can reuse it.
+pub(crate) fn decode_row(row: PersistedRow) -> Result<LessonCard, ReflectionStoreError> {
     let closed_at = OffsetDateTime::parse(&row.closed_at, &Rfc3339)
         .map_err(|e| ReflectionStoreError::Encoding(e.to_string()))?;
     let signed_pnl: Decimal = row

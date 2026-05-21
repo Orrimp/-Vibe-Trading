@@ -640,7 +640,35 @@ pub mod layout {
     /// Phase 2 — right-rail Phase 6 Assistant slot reservation. The shell
     /// renders this column with `Length::Fixed(0.0)` until the v2-LLM
     /// Assistant ships in Phase 6. (Phase 2 Q7 — structural-now.)
+    ///
+    /// **K6 Option A (Phase F):** this constant is PRESERVED at `0.0` to
+    /// keep `shell_grid.rs:14-16` hard invariant + Phase D `trail_drawer`
+    /// body byte-identical. A NEW constant `RIGHT_RAIL_OPEN_WIDTH_PX` is
+    /// introduced for the open-state width. The shell picks one of the two
+    /// constants based on `assistant_state.is_open`.
     pub const RIGHT_RAIL_WIDTH_PX: f32 = 0.0;
+
+    /// Phase F — right-rail width when the Assistant slot is OPEN (K6 Option A).
+    ///
+    /// `RIGHT_RAIL_WIDTH_PX = 0.0` stays as the CLOSED-state default (Phase 2
+    /// Q7 ratification; preserved by K6 Option A for byte-identical Phase D
+    /// `trail_drawer` body + the `shell_grid.rs:14-16` hard invariant).
+    ///
+    /// At Phase F, `shell::view` picks one of the two constants based on
+    /// `assistant_state.is_open`:
+    ///
+    /// ```rust,ignore
+    /// let right_rail_width = if model.assistant_state.is_open {
+    ///     RIGHT_RAIL_OPEN_WIDTH_PX
+    /// } else {
+    ///     RIGHT_RAIL_WIDTH_PX  // == 0.0
+    /// };
+    /// ```
+    ///
+    /// 320 px is the Lumen Phase 6 sketch width; also the width used by the
+    /// Memory drawer (Q5=(b)) so the operator's mental model of "right-side
+    /// panels are 320 px wide" is consistent.
+    pub const RIGHT_RAIL_OPEN_WIDTH_PX: f32 = 320.0;
 
     /// Strategies-table column-1 active-row rule height in logical pixels.
     ///
