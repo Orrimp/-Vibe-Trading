@@ -192,6 +192,17 @@ anchors     = [
 state       = "shipped"
 
 [[req]]
+id          = "REQ-V25-TCN-RECALIBRATE-001"
+title       = "v2.5 TCN σ_train recalibration — metadata-only fix to the per-batch-accumulated σ_train scalar; re-run forecast_distribution; re-classify F4 verdict"
+feature     = "v25-tcn-recalibrate"
+product     = "spec/product.md"
+arch        = []   # architect fills at T-AR-1; will reference ADR-0033 § D3 (immutable F-verdict algorithm) + optional ADR-0035 (F3' branch per Q4) + ADR-0029 (metadata canonicaliser)
+crates      = []   # developer fills at T-D-N; expected: crates/forecast (new bin recalibrate_sigma_train.rs)
+tests       = []   # developer + tester fill; expected: crates/forecast/tests/recalibrate_sigma_train_readonly.rs + 2-run determinism gate
+anchors     = []   # tester fills at T-T-1; expected: forecast-distribution-bs{1,2}-realdata-recalibrated under version v2.6.1-alpha-investigation-recalibrated (anchor-additive only; 22 pre-feature anchors stay byte-identical)
+state       = "proposed"   # analyst pass landed 2026-05-21; operator-decide resolved 2026-05-21 (Q1-Q5 = analyst defaults via "Autoapprove all"); awaiting architect M-T1
+
+[[req]]
 id          = "REQ-COCKPIT-TRAIN-001"
 title       = "Cockpit training control — subprocess-spawned `train_tcn` launcher with log tail (Tier 1) + per-epoch audit train_events + live loss-curve plot (Tier 2); Lab sub-panel; anchor-byte-safe by construction (zero new anchors, 19 originals byte-identical)"
 feature     = "cockpit-training-control"
