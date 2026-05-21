@@ -196,11 +196,17 @@ id          = "REQ-V25-TCN-RECALIBRATE-001"
 title       = "v2.5 TCN σ_train recalibration — metadata-only fix to the per-batch-accumulated σ_train scalar; re-run forecast_distribution; re-classify F4 verdict"
 feature     = "v25-tcn-recalibrate"
 product     = "spec/product.md"
-arch        = []   # architect fills at T-AR-1; will reference ADR-0033 § D3 (immutable F-verdict algorithm) + optional ADR-0035 (F3' branch per Q4) + ADR-0029 (metadata canonicaliser)
-crates      = []   # developer fills at T-D-N; expected: crates/forecast (new bin recalibrate_sigma_train.rs)
-tests       = []   # developer + tester fill; expected: crates/forecast/tests/recalibrate_sigma_train_readonly.rs + 2-run determinism gate
+arch        = [
+  "spec/v25-tcn-recalibrate/decomp.md",                          # architect M-T1 decomposition (2026-05-21)
+  "spec/v25-tcn-recalibrate/feature.md#design",                  # § Design block locked at M-T1
+  "spec/architecture/adr/0035-tcn-sigma-train-recalibration.md", # post-training σ_train recalibration via metadata overlay (NEW at M-T1)
+  "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md", # F-verdict algorithm (IMMUTABLE per Q4 = (a))
+  "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",     # metadata canonicaliser (D2 diverges intentionally; documented in ADR-0035)
+]
+crates      = []   # developer fills at T-D-N; expected: crates/forecast (new bin recalibrate_sigma_train.rs + additive --metadata-path flag on forecast_distribution.rs)
+tests       = []   # developer + tester fill; expected: crates/forecast/tests/{recalibrate_sigma_train_readonly,recalibrate_sigma_train_field_invariance,sigma_train_not_in_safetensors}.rs + 2-run determinism gate
 anchors     = []   # tester fills at T-T-1; expected: forecast-distribution-bs{1,2}-realdata-recalibrated under version v2.6.1-alpha-investigation-recalibrated (anchor-additive only; 22 pre-feature anchors stay byte-identical)
-state       = "proposed"   # analyst pass landed 2026-05-21; operator-decide resolved 2026-05-21 (Q1-Q5 = analyst defaults via "Autoapprove all"); awaiting architect M-T1
+state       = "in-progress"   # M-T1 (architect decomposition) landed 2026-05-21; awaiting developer Wave A
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"

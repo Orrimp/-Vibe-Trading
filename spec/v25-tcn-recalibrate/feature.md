@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-recalibrate
-status: proposed
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-21
 version: 0.1.0
 predecessor: v25-tcn-alpha-investigation v0.1.0
@@ -772,6 +772,150 @@ is confirmed.
   training loop itself. This feature is exactly that post-training
   forward pass.
 
+## Design
+
+> **Locked by architect on 2026-05-21 (M-T1).** This section
+> cross-points to the canonical decomposition at
+> [`decomp.md`](decomp.md); only load-bearing summary lives here.
+> Q1-Q5 operator-decide rolled forward as analyst defaults via
+> "Autoapprove all" on 2026-05-21.
+
+### D-AR-1 — Recalibration tool
+
+- **New bin** at
+  [`crates/forecast/src/bin/recalibrate_sigma_train.rs`](../../crates/forecast/src/bin/recalibrate_sigma_train.rs)
+  (developer-emitted at T-D-N1..T-D-N4). Mirrors
+  [`forecast_distribution.rs`](../../crates/forecast/src/bin/forecast_distribution.rs)
+  CLI + read-only-contract shape per
+  [ADR-0033 § D1.a-c](../architecture/adr/0033-tcn-alpha-investigation-report-shape.md).
+- **CLI surface** (4 args): `--scenario {bs1|bs2}`, `--data-root`,
+  `--out-dir`, `--anchor-dir`. No retrain / update / write-checkpoint
+  flags. See [decomp.md § D-AR-1.b](decomp.md#d-ar-1b--cli-surface-5-args-mirrors-forecast_distribution).
+- **Forward-pass span**: read from the original metadata's `data_span`
+  field (NOT `forecast_distribution::default_span`; the two differ for
+  BS-2 — see [decomp.md § D-AR-1.c](decomp.md#d-ar-1c--forward-pass-span-q1--a)).
+- **σ_train formula**: population std with f64 intermediates +
+  `1e-8` floor, mirroring the existing
+  [`train_tcn.rs:733-741`](../../crates/forecast/src/bin/train_tcn.rs)
+  formula. The load-bearing difference vs. the bug site is that the
+  buffer contains **only converged-model outputs** (no per-epoch
+  trajectory garbage).
+
+### D-AR-2 — Metadata overlay file shape (Q2 = (a))
+
+- **Overlay file path**:
+  `crates/forecast/checkpoints/anchors/tcn-bs{1,2}-<sha>.metadata.recalibrated.json`
+  co-located with the original. Original `.metadata.json` +
+  `.safetensors` files stay byte-identical (R7 hard invariant).
+- **Body**: full copy of the original metadata JSON with **exactly one
+  field substituted** (`sigma_train`). All 9 other top-level fields
+  copied verbatim. K5 enforcement via unit test at T-D-N5.
+- **On-disk JSON number convention**: `sigma_train` is a JSON number
+  (matches the existing on-disk shape:
+  `"sigma_train":10.95425033569336`). This **intentionally diverges**
+  from [ADR-0029 § 2 rule 5](../architecture/adr/0029-tcn-checkpoint-provenance.md)
+  (string-encoded canonical form) because the inference-time read site
+  at [`tcn.rs:534`](../../crates/forecast/src/tcn.rs) uses
+  `.as_f64()` which works on JSON numbers, not strings. The divergence
+  is load-bearing and codified in
+  [ADR-0035 § D2](../architecture/adr/0035-tcn-sigma-train-recalibration.md#d2-metadata-overlay-file-naming--on-disk-json-number-convention).
+- **Key ordering + whitespace**: ADR-0029 canonicaliser
+  ([`crates/forecast/src/provenance.rs::canonicalise`](../../crates/forecast/src/provenance.rs))
+  re-used verbatim for byte stability across operators.
+
+### D-AR-3 — Consumer loader integration (additive only)
+
+[`forecast_distribution.rs`](../../crates/forecast/src/bin/forecast_distribution.rs)
+gains **one additive CLI flag**:
+
+```rust
+/// Optional path to a .metadata.recalibrated.json overlay.
+#[arg(long)]
+metadata_path: Option<PathBuf>,
+```
+
+Default behavior (flag omitted) is **byte-identical** to the existing
+shipped path; predecessor F4-evidence reports remain re-runnable
+verbatim. With the flag provided, the bin calls
+[`TcnForecaster::load_from_paths`](../../crates/forecast/src/tcn.rs)
+(shipped public API) to override only the metadata source. The
+safetensors weights still come from the anchor.
+
+Rejected alternative (auto-prefer `.metadata.recalibrated.json` inside
+`load_anchor`): would flip the predecessor's anchor SHAs the moment the
+overlay file lands on disk. See
+[ADR-0035 § D3](../architecture/adr/0035-tcn-sigma-train-recalibration.md#d3-loader-side-opt-in-via-additive-cli-flag-never-auto-prefer).
+
+### D-AR-4 — F-verdict algorithm immutable (Q4 = (a))
+
+The F-verdict classifier defined at
+[ADR-0033 § D3](../architecture/adr/0033-tcn-alpha-investigation-report-shape.md#d3-f-verdict-decision-algorithm)
+stays **immutable across this feature**. Per H2-refined analysis (see
+§ Hypothesis register § H2), the F3 trigger requires
+`frac_inside_epsilon > 0.5` and the F4-evidence reports show
+`frac_inside_epsilon ≈ 0.031 / 0.057` (BS-1 / BS-2) — both well below
+0.5. The classifier may very well stay F4 even after recalibration.
+
+### D-AR-5 — Recalibration delta as standalone body section (Q4 = (c))
+
+The new
+`forecast-distribution-bs{1,2}-realdata-recalibrated-20260521.md`
+reports include a standalone `## Recalibration delta` body section
+between `## Verdict` and `## Notes`. The section diffs `σ_train`,
+gate-survival at 4 τ-points, and F-verdict label between pre-recal
+(predecessor's anchored body) and post-recal (this report's body).
+The pre-recal values are **read directly from the predecessor's anchored
+report body**, NOT re-computed — this preserves the anchor-citation
+chain and lets the operator route on the **joint signal**, not the
+F-verdict alone. See [decomp.md § Wave B](decomp.md#wave-b--re-run-forecast_distribution--new-reports-orchestrator).
+
+### D-AR-6 — Determinism (Q5 = (a))
+
+The 2-run byte-identity gate from
+[`tests/forecast_distribution_bin_readonly.rs`](../../crates/forecast/tests/forecast_distribution_bin_readonly.rs)
+carries forward verbatim: the bin's code does not change (only the
+new `--metadata-path` flag is additive), so determinism is preserved by
+construction. A parallel guard at the recalibrate bin lives in the new
+[`tests/recalibrate_sigma_train_readonly.rs`](../../crates/forecast/tests/recalibrate_sigma_train_readonly.rs)
++ [`tests/recalibrate_sigma_train_field_invariance.rs`](../../crates/forecast/tests/recalibrate_sigma_train_field_invariance.rs)
+files (T-D-N5).
+
+### D-AR-7 — Anchor strategy (Q3 = (a))
+
+- **Anchor-additive only**: 2 new anchors land under version
+  `v2.6.1-alpha-investigation-recalibrated`:
+  - `forecast-distribution-bs1-realdata-recalibrated`
+  - `forecast-distribution-bs2-realdata-recalibrated`
+- **22 originals stay byte-identical** (R7 hard invariant).
+- Optional 2 more anchors for the recalibrate-derivation reports if
+  T-T-1.a determinism gate passes (tester-decide at M-FINAL).
+- Anchor count progression: 22 → 24 (or 26 if derivation anchors
+  ship).
+
+### D-AR-8 — Documentation
+
+Architect emits **ADR-0035** at
+[`spec/architecture/adr/0035-tcn-sigma-train-recalibration.md`](../architecture/adr/0035-tcn-sigma-train-recalibration.md)
+(M-T1). The ADR codifies (D1) post-training-frozen-forward-pass as
+the canonical σ_train semantic, (D2) overlay-file naming + on-disk
+JSON number convention, (D3) additive CLI flag on consumers, (D4)
+σ_train-not-in-safetensors invariant. Cross-phase applicability:
+v2.5a PatchTST + v2.5b Transformer inherit verbatim.
+
+### Architect handoff to developer
+
+Wave A (T-D-N1..T-D-N6) runs first; Wave B (T-D-N7..T-D-N8) follows.
+Waves C+D are tester-owned at M-FINAL. The 22-anchor baseline
+captured at architect-spawn time:
+
+```
+$ bash scripts/verify_anchors.sh 2>&1 | tail -1
+ANCHORS PASS  (22 / 22)
+```
+
+(Full literal verification output preserved in
+[`tasks.md § T-AR-3 baseline`](tasks.md).)
+
 ## Changelog
 
 - 2026-05-21 (analyst): full analyst pass. Brief authored with R1-R8,
@@ -786,3 +930,16 @@ is confirmed.
   wall-clock; analyst-recommended scope confirmed feasible vs the
   multi-week `v25-tcn-horizon-bump-or-retire` alternative. HANDOFF →
   operator-decide (Q1-Q5) → architect.
+- 2026-05-21 (architect, M-T1): § Design locked. Decomposition at
+  [`decomp.md`](decomp.md); new ADR-0035 at
+  [`spec/architecture/adr/0035-tcn-sigma-train-recalibration.md`](../architecture/adr/0035-tcn-sigma-train-recalibration.md).
+  Q1-Q5 operator-defaults preserved via "Autoapprove all". Bin name
+  `recalibrate_sigma_train` confirmed. Overlay-file convention
+  `.metadata.recalibrated.json` locked (R3). Consumer integration via
+  additive `--metadata-path` flag on `forecast_distribution`
+  (default-behavior byte-identical → 22 anchor SHAs preserved). F-verdict
+  algorithm stays immutable (Q4=(a)) AND recalibration delta surfaces
+  as standalone body section (Q4=(c)). 8 T-D rows across Waves A-D.
+  Anchor baseline: `ANCHORS PASS (22 / 22)`. Frontmatter flipped
+  `status: proposed → in-progress`, `owner: architect → developer`.
+  HANDOFF → developer (Wave A first).

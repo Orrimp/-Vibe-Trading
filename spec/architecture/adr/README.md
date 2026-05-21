@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-19 (ADR-0034 added)
+updated: 2026-05-21 (ADR-0035 added)
 ---
 
 
@@ -82,6 +82,7 @@ the canonical table; the parent file links here.)
 | 0032  | Backtest real-Binance-data path + REVISION.toml data-revision pin | accepted | 2026-05-18 |
 | 0033  | v2.5 TCN alpha-investigation report shape + F-verdict algorithm | accepted | 2026-05-18 |
 | 0034  | Cockpit training control — audit-DB-as-seam, subprocess lifecycle, R6 in-panel curves | accepted | 2026-05-19 |
+| 0035  | Post-training σ_train recalibration via metadata overlay (v2.5 cross-phase contract) | accepted | 2026-05-21 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -186,3 +187,19 @@ finalisation.
   minute-annualised). Existing 19 anchors stay byte-identical
   (R6 non-regression contract). Closes T-AR-3 of
   `spec/v25-tcn-alpha-investigation/tasks.md`.
+- 2026-05-21 (architect): ADR-0035 added — Post-training σ_train
+  recalibration via metadata overlay (cross-phase contract for v2.5
+  TCN, v2.5a PatchTST, v2.5b vanilla Transformer). Locks (a) σ_train
+  must be derived in a frozen-weights post-training forward pass, NOT
+  via in-loop accumulation (the `train_tcn.rs:606,676-678,733-741`
+  bug pattern is deprecated), (b) overlay-file convention
+  (`.metadata.recalibrated.json` co-located with the original; original
+  stays byte-identical), (c) on-disk JSON number convention for
+  `sigma_train` (intentional divergence from ADR-0029 § 2 rule 5's
+  string-encoded form — load-bearing for `.as_f64()` parity at the
+  inference read site), (d) additive `--metadata-path` CLI flag on
+  consumers (never auto-prefer overlay), (e) σ_train-not-in-safetensors
+  invariant codified as test. Does NOT supersede ADR-0033 § D3
+  (F-verdict algorithm stays immutable per `v25-tcn-recalibrate`
+  Q4 = (a)). Closes T-AR-2 of
+  `spec/v25-tcn-recalibrate/tasks.md`.
