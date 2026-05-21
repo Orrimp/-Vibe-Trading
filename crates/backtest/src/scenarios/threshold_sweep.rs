@@ -1,44 +1,70 @@
-//! v2.5 TCN overlay momentum with real anchor weights — Phase B T-D-N6.
+//! Thin `run_cell` helper for the threshold-sweep bin (D-AR-1.c).
 //!
-//! Extracted from `main.rs::run_tcn_overlay_weights_backtest` @1902. Behaviour-preserving.
-//! TCN weights extracted last per K2 mitigation.
+//! Behaviorally-preserving extraction of `tcn_overlay_weights::run` with the
+//! strategy-construction block replaced by a caller-supplied
+//! `TcnOverlayMomentumStrategy` instance. The existing `tcn_overlay_weights::run`
+//! is byte-identical for all 26 predecessor anchors; this module adds only the
+//! per-cell hook without touching that function.
 //!
-//! Requires `--features candle` at compile time. Without the feature the
-//! function returns an error rather than a silent passthrough fallback.
+//! ## Why a separate module
+//!
+//! `tcn_overlay_weights::run` accepts `TcnScenarioInput` and constructs its own
+//! strategy from `input.forecaster_id`. The sweep bin needs to pass an already-
+//! constructed strategy with explicit (τ, ε) so each of the 45 cells gets
+//! a fresh `TcnOverlayMomentumStrategy::with_tcn_bs{1,2}_tuned(τ, ε)` instance.
+//! Extracting a thin helper avoids any change to the anchor-load-bearing
+//! `tcn_overlay_weights::run` body (R8 / ADR-0032 § D4).
+//!
+//! ## Anchor invariant
+//!
+//! This module contains NO `run()` function that shares a name with
+//! `tcn_overlay_weights::run`. The existing anchored backtest scenarios call
+//! `scenarios::tcn_overlay_weights::run` directly; those callers are unaffected.
+//!
+//! ## Cross-references
+//!
+//! - `spec/v25-tcn-threshold-tuning/decomp.md § D-AR-1.c` — helper design.
+//! - `crates/backtest/src/scenarios/tcn_overlay_weights.rs` — source of truth for
+//!   the bar-loop body (replicated here for the caller-supplied strategy path).
+//! - `crates/forecast/src/bin/threshold_sweep.rs` — sweep bin that calls `run_cell`.
 
 use anyhow::Result;
 
 use crate::cli_types::TcnScenarioInput;
 use crate::scenarios::tcn_overlay::TcnOverlayRunResult;
 
-// ── Run function ──────────────────────────────────────────────────────────────
+// ── run_cell ──────────────────────────────────────────────────────────────────
 
-/// Run the v2.5 TCN overlay momentum backtest with real anchor weights.
+/// Run one (τ, ε) cell of the threshold sweep with a caller-supplied strategy.
 ///
-/// Extracted from `main.rs::run_tcn_overlay_weights_backtest` @1902. Behaviour-preserving.
-/// Requires `--features candle`. Without the feature returns `Err(...)`.
+/// Mirrors `tcn_overlay_weights::run` exactly, EXCEPT:
+/// - The strategy is caller-supplied (already constructed with the cell's τ + ε).
+/// - The function does NOT load any checkpoint itself (load-once-use-45-times
+///   pattern is handled at the sweep bin level).
+///
+/// Requires `--features candle` + `--features realdata` at the `backtest` crate
+/// level (real bars come from `input.bars_override`). Without the feature flag
+/// the function returns a clear error.
 ///
 /// # Errors
 ///
-/// Returns `Err` if `--features candle` is not enabled, if the TCN anchor
-/// checkpoint cannot be loaded, or if an unknown `forecaster_id` is supplied.
-// `async` is required by the `#[cfg(feature = "candle")]` block which calls
-// `engine.step(...).await`. Without the feature the compiler sees no `.await`
-// and flags `unused_async`; the suppression is intentional.
+/// Returns `Err` if the momentum config cannot be loaded, or if the bar-loop
+/// encounters an engine error.
 #[allow(clippy::too_many_lines)]
 #[allow(unused_variables)]
 #[allow(clippy::unused_async)]
-pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResult> {
-    // ── Candle-gated forecaster construction ─────────────────────────────────
-    // Without `--features candle` this produces a clear error rather than a
-    // silent fallback — per the operator-locked decision in the M3 punch list.
+pub async fn run_cell(
+    input: TcnScenarioInput,
+    seed: u64,
+    overlay_strategy: strategy::TcnOverlayMomentumStrategy,
+) -> Result<TcnOverlayRunResult> {
+    // Without `--features candle` this produces a clear error matching the
+    // existing `tcn_overlay_weights::run` pattern.
     #[cfg(not(feature = "candle"))]
     {
         anyhow::bail!(
-            "scenario '{name}' requires --features candle (real TCN weights). \
-             Rebuild with: cargo run -p backtest --release --features candle -- \
-             --scenario {name} --seed 0xC0FFEE",
-            name = input.scenario_name,
+            "threshold_sweep::run_cell requires --features candle. \
+             Rebuild with: cargo run -p backtest --release --features candle,realdata -- …"
         )
     }
     #[cfg(feature = "candle")]
@@ -56,46 +82,32 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
         use crate::engine::MatchingEngine as _;
         use crate::scenarios::momentum::{synthetic_bars_hourly, top10_symbols_with_prices};
         use strategy::Strategy as _;
+
         let start_instant = Instant::now();
 
-        // Load the base momentum config.
+        // Load the base momentum config to derive universe + strategy_id.
         let base_config_id = "top10_momentum_h1";
         let toml_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
         let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
             .with_context(|| format!("load momentum config: {}", toml_path.display()))?;
         let universe_list: Vec<String> = cfg.universe.iter().map(ToString::to_string).collect();
-        let strategy_id_str = format!("tcn_overlay_momentum_weights/{}", input.config_id);
+        let strategy_id_str = format!("threshold_sweep/{}", input.config_id);
+        let forecaster_label = format!("threshold_sweep tuned cell ({})", input.forecaster_id);
 
-        let base = strategy::MomentumStrategy::from_config(
-            cfg,
-            smol_str::SmolStr::new(toml_path.to_string_lossy()),
-        );
+        // Use the caller-supplied strategy (already constructed with this cell's τ + ε).
+        let mut strategy = overlay_strategy;
 
-        // Load real anchor checkpoint.
-        let forecaster_label = format!(
-            "real TCN weights ({}, v2.5.0-tcn-weights)",
-            input.forecaster_id
-        );
-        let overlay_strategy_result = match input.forecaster_id.as_str() {
-            "tcn-bs1" => strategy::TcnOverlayMomentumStrategy::with_tcn_bs1(base),
-            "tcn-bs2" => strategy::TcnOverlayMomentumStrategy::with_tcn_bs2(base),
-            other => anyhow::bail!("unknown forecaster_id: {other}"),
-        };
-        let mut overlay_strategy = overlay_strategy_result
-            .map_err(|e| anyhow::anyhow!("load TCN anchor checkpoint: {e}"))?;
-
-        // Use pre-loaded real bars or generate synthetic bars.
+        // Use pre-loaded real bars (bars_override MUST be set for the sweep path).
         let (merged_bars, bar_count) = if let Some(real_bars) = input.bars_override {
             let n = real_bars.len();
-            tracing::info!(
+            tracing::debug!(
                 bar_count = n,
-                "tcn-overlay-weights realdata backtest — using pre-loaded real bars"
+                "threshold_sweep::run_cell — using pre-loaded real bars"
             );
             (real_bars, n)
         } else {
-            // Generate synthetic hourly bars for the 10-symbol universe.
+            // Synthetic fallback (for unit tests / CI without real data).
             let symbols_prices = top10_symbols_with_prices();
-            // SAFETY: idx is at most 9 (10-symbol universe); cast to u64 is safe.
             #[allow(clippy::cast_possible_wrap)]
             let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
                 .iter()
@@ -116,18 +128,16 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
                     )
                 })
                 .collect();
-            // k-way merge: (venue_ts ASC, symbol ASC).
             let merged = data::ReplayFeed::merge_synthetic(bars_by_symbol);
             let n = merged.len();
-            tracing::info!(
+            tracing::debug!(
                 bar_count = n,
-                symbols = symbols_prices.len(),
-                "merged synthetic bars for tcn-overlay-weights backtest"
+                "threshold_sweep::run_cell — synthetic fallback bars"
             );
             (merged, n)
         };
 
-        // Paper matching engine.
+        // Paper matching engine — same config as `tcn_overlay_weights::run`.
         let match_config = crate::paper::MatchConfig {
             slippage_bps: input.slippage_bps,
             taker_fee_bps: input.taker_fee_bps,
@@ -147,7 +157,6 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
             std::collections::BTreeMap::new();
         let mut mark_prices: std::collections::BTreeMap<Symbol, Decimal> =
             std::collections::BTreeMap::new();
-
         let mut trades = 0usize;
         let mut buys = 0usize;
         let mut sells = 0usize;
@@ -159,7 +168,7 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
         for bar in &merged_bars {
             mark_prices.insert(bar.symbol.clone(), bar.close.get());
 
-            let signals = overlay_strategy.on_bar(bar);
+            let signals = strategy.on_bar(bar);
 
             for sig in &signals {
                 let Some(&mark) = mark_prices.get(&sig.symbol) else {
@@ -281,15 +290,15 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
         let final_equity = cash + position_value;
         let elapsed_secs = start_instant.elapsed().as_secs_f64();
 
-        let stats = &overlay_strategy.stats;
-        tracing::info!(
+        let stats = &strategy.stats;
+        tracing::debug!(
             elapsed_s = elapsed_secs,
             trades = trades,
             final_equity = %final_equity,
             dampened = stats.dampened,
             passed_through = stats.passed_through,
             warmup = stats.window_warming_up,
-            "tcn-overlay-weights backtest complete"
+            "threshold_sweep::run_cell complete"
         );
 
         Ok(TcnOverlayRunResult {

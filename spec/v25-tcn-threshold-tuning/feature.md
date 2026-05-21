@@ -1037,8 +1037,95 @@ runs at T-D-N7 (background + watch recipe REQUIRED).
   confirms exact line range at M-T1) — the `combine_with_direction`
   gate body that consumes `confidence_threshold` + ε.
 
+## Implementation
+
+Developer Wave A + Wave B completed 2026-05-21.
+
+### Architectural deviation from D-AR-1.a
+
+The `threshold_sweep` bin was placed at
+`crates/backtest/src/bin/threshold_sweep.rs` instead of
+`crates/forecast/src/bin/threshold_sweep.rs` (D-AR-1.a spec'd the latter).
+
+Root cause: `crates/forecast/src/bin/threshold_sweep.rs` would need
+`backtest` as a dependency (for `RealDataBarSource`, `run_cell`). But
+`backtest → strategy → forecast` already exists. Adding `forecast → backtest`
+would create a cycle. Moving the bin to `backtest` breaks the cycle cleanly —
+`backtest` already depends on `strategy` (which depends on `forecast` via
+the `forecast` feature), so `backtest::bin::threshold_sweep` can use
+`strategy::TcnSyncForecaster::load_from_paths_with_epsilon` with no new
+crate-level dependency.
+
+Two new constructors were added to `TcnSyncForecaster` in
+`crates/strategy/src/tcn_overlay_momentum.rs` to avoid the `backtest` bin
+needing a direct `forecast::tcn::TcnForecaster` import:
+- `load_from_paths_with_epsilon(safetensors, metadata, epsilon) -> Result<Self>`
+- `from_forecaster_with_epsilon(forecaster: TcnForecaster, epsilon: Decimal) -> Self`
+
+This deviation is noted here and in `spec/architecture.md` under the relevant
+crate section.
+
+### Files changed
+
+| File | Status | Purpose |
+|------|--------|---------|
+| `crates/strategy/src/tcn_overlay_momentum.rs` | modified | `direction_epsilon: Option<f32>` field, 4 `_tuned` builders, getters, `load_from_paths_with_epsilon` |
+| `crates/strategy/Cargo.toml` | modified | `[[test]]` entry for `tcn_overlay_tuned_builder` |
+| `crates/strategy/tests/tcn_overlay_tuned_builder.rs` | new | 5 unit tests, all pass |
+| `crates/backtest/src/bin/threshold_sweep.rs` | new | Sweep bin (~970 lines): CLI, parallel 45-cell sweep, heatmap renderer |
+| `crates/backtest/src/scenarios/threshold_sweep.rs` | new | `run_cell` helper (~325 lines) |
+| `crates/backtest/src/scenarios/mod.rs` | modified | `pub mod threshold_sweep;` added |
+| `crates/backtest/Cargo.toml` | modified | `[[bin]]`, `[[test]]`, `rayon` + `pollster` dep |
+| `Cargo.toml` (workspace) | modified | `rayon = { version = "1.10" }` + `pollster = { version = "0.3" }` added |
+| `crates/backtest/tests/threshold_sweep_readonly.rs` | new | 2 read-only enforcement tests, all pass |
+| `crates/backtest/src/scenarios/tcn_overlay_weights.rs` | modified | Fixed 2 pre-existing clippy errors (redundant_closure + manual_let_else) |
+
+### Wave A test results
+
+- `cargo test -p strategy --features forecast --test tcn_overlay_tuned_builder`:
+  `running 5 tests … test result: ok. 5 passed; 0 failed; 0 ignored`
+- `cargo test -p backtest --features candle,realdata --test threshold_sweep_readonly`:
+  `running 2 tests … test result: ok. 2 passed; 0 failed; 0 ignored`
+- `cargo fmt --check`: exits 0
+- `cargo clippy --workspace --features candle,realdata,forecast,forecast-audit-tick -- -D warnings`:
+  `Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 1.07s` — 0 errors
+
+### Wave B results (T-D-N7/N10/N11)
+
+Both BS-1 and BS-2 sweeps ran to completion. `pollster::block_on` replaced
+`futures::executor::block_on` to fix "EnterError: cannot execute LocalPool
+executor from within another executor" in rayon worker threads when candle is
+also using the futures executor.
+
+**BS-1 sweep** (2023 FY, 45 cells, 428.8s wall-clock):
+- Headline cell: τ=0.100, ε=0.001, Sharpe-delta=+0.018
+- Verdict: **T-MARGINAL**
+- Report: `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs1-realdata-recalibrated-20260521.md`
+- Body SHA-256: `551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c`
+
+**BS-2 sweep** (2024 FY, 45 cells, 224.6s wall-clock):
+- Headline cell: τ=0.100, ε=0.001, Sharpe-delta=+0.045
+- Verdict: **T-MARGINAL**
+- Report: `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs2-realdata-recalibrated-20260521.md`
+- Body SHA-256: `755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3`
+
+**Determinism gate** (T-D-N10): Both reports run twice — body SHAs identical
+across runs. Cell sort by `(τ, ε)` before render is order-invariant.
+
+**Anchor gate** (T-D-N11): 24 predecessor anchors PASS. The 2 FAILs
+(`forecast-distribution-bs{1,2}-realdata`) are pre-existing glob-collision
+from v25-tcn-recalibrate — NOT introduced by this feature (documented in
+`decomp.md § 6` and the `## Anchor gate baseline` note in tasks.md).
+
 ## Changelog
 
+- 2026-05-21 (developer): Wave A + Wave B complete. Bin at
+  `crates/backtest/src/bin/threshold_sweep.rs` (architectural deviation from
+  D-AR-1.a — circular dep). 7 tests pass. Workspace clippy + fmt clean.
+  BS-1: T-MARGINAL (Sharpe-delta +0.018 at τ=0.1/ε=0.001).
+  BS-2: T-MARGINAL (Sharpe-delta +0.045 at τ=0.1/ε=0.001).
+  Body SHAs deterministic across 2 runs. 24/26 predecessor anchors PASS (2
+  pre-existing glob-collision FAILs). HANDOFF → tester.
 - 2026-05-21 (analyst): initial brief authored. R1-R9, H1-H3, K1-K6,
   Q1-Q6 with analyst-recommended defaults. Predecessor:
   `v25-tcn-recalibrate v0.1.0`. Parent: `v25-tcn-overlay v2.5.0

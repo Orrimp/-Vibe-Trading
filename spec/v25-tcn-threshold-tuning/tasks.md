@@ -198,123 +198,125 @@ See `decomp.md § 6` for the full root-cause analysis.
 
 ## Developer rows (T-D) — Wave A (developer at M-D)
 
-- [ ] **T-D-N1** — `with_direction_epsilon` builder + `direction_epsilon:
+- [x] **T-D-N1** — `with_direction_epsilon` builder + `direction_epsilon:
   Option<f32>` field on `TcnSyncForecaster`. `infer()` lines 305-307:
   `let eps = self.direction_epsilon.unwrap_or(forecast::tcn::DIRECTION_EPSILON);
   if r_hat > eps { … }`. File:line:
-  `crates/strategy/src/tcn_overlay_momentum.rs:158-214,305-307`
-  (modify). Cargo:
-  `cargo build -p strategy --features forecast`. Expected:
-  `Compiling strategy …` then `Finished … profile [optimized] target(s)
-  in <Ns>` — no warnings.
+  `crates/strategy/src/tcn_overlay_momentum.rs` — `direction_epsilon: Option<f32>`
+  field in struct, `with_direction_epsilon()` builder, `infer()` epsilon override.
+  Cargo: `cargo build -p strategy --features forecast`.
+  Output: `Finished … profile [unoptimized + debuginfo] target(s) in …` — no errors.
 
-- [ ] **T-D-N2** — 4 `_tuned` builders: `with_tcn_bs{1,2}_tuned(τ, ε)`
+- [x] **T-D-N2** — 4 `_tuned` builders: `with_tcn_bs{1,2}_tuned(τ, ε)`
   under `feature = "forecast"` + `with_tcn_bs{1,2}_ledger_tuned(ledger,
-  τ, ε)` under `feature = "forecast-audit-tick"`. Additive after line
-  440. File:line: `crates/strategy/src/tcn_overlay_momentum.rs:441-530`
-  (new). Cargo:
-  `cargo build -p strategy --features forecast,forecast-audit-tick`.
-  Expected: `Compiling strategy …` `Finished … in <Ns>`.
+  τ, ε)` under `feature = "forecast-audit-tick"`. Additive after existing
+  builders. File:line: `crates/strategy/src/tcn_overlay_momentum.rs` —
+  `with_tcn_bs1_tuned`, `with_tcn_bs2_tuned`, `with_tcn_bs1_ledger_tuned`,
+  `with_tcn_bs2_ledger_tuned` (new additive builders).
+  Cargo: `cargo build -p strategy --features forecast,forecast-audit-tick`.
+  Output: `Finished … profile [unoptimized + debuginfo] target(s) in …` — no errors.
 
-- [ ] **T-D-N3** — Unit tests for builder default-invariance +
+- [x] **T-D-N3** — Unit tests for builder default-invariance +
   tuned-passthrough. 5 tests: (1) `with_tcn_bs1.confidence_threshold
   == dec!(0.6)`; (2) `with_tcn_bs1.direction_epsilon == None` (probe
   via getter or `Debug`); (3) `with_tcn_bs1_tuned(τ,
   ε).confidence_threshold == τ`; (4) `with_tcn_bs1_tuned(τ,
   ε).direction_epsilon == Some(ε.to_f32())`; (5) ditto for BS-2.
-  File:line: `crates/strategy/tests/tcn_overlay_tuned_builder.rs:1-120`
-  (new). Cargo:
-  `cargo test -p strategy --features forecast --test tcn_overlay_tuned_builder`.
-  Expected: `running 5 tests … test result: ok. 5 passed; 0 failed`.
+  File:line: `crates/strategy/tests/tcn_overlay_tuned_builder.rs` (new).
+  Cargo: `cargo test -p strategy --features forecast --test tcn_overlay_tuned_builder`.
+  Output: `running 5 tests … test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`.
 
-- [ ] **T-D-N4** — Bin skeleton + CLI surface per D-AR-1.d. Add
-  `[[bin]]` entry to `crates/forecast/Cargo.toml` mirror of
-  `recalibrate_sigma_train`. File:line:
-  `crates/forecast/src/bin/threshold_sweep.rs:1-130` (new) +
-  `crates/forecast/Cargo.toml:+5`. Cargo:
-  `cargo run -p forecast --features candle --bin threshold_sweep -- --help`.
-  Expected: help text containing `--scenario`, `--data-root`,
-  `--metadata-path`, `--out-dir`, `--expected-revision-sha`; NO
-  `retrain`/`update`/`write-checkpoint`/`write-metadata` substrings.
+- [x] **T-D-N4** — Bin skeleton + CLI surface per D-AR-1.d. **Deviation
+  from D-AR-1.a**: bin placed at `crates/backtest/src/bin/threshold_sweep.rs`
+  (not `crates/forecast/src/bin/`) due to circular-dep resolution (see
+  decomp.md architectural note). File:line:
+  `crates/backtest/src/bin/threshold_sweep.rs` (new, ~970 lines) +
+  `crates/backtest/Cargo.toml:+[[bin]]`. Cargo:
+  `cargo run -p backtest --features candle,realdata --bin threshold_sweep -- --help`.
+  Output: help text contains `--scenario`, `--data-root`, `--metadata-path`,
+  `--out-dir`, `--expected-revision-sha`; NO `retrain`/`update`/
+  `write-checkpoint`/`write-metadata` substrings (verified by
+  `test_help_no_forbidden_flags`).
 
-- [ ] **T-D-N5** — Thin `run_cell` helper in `crates/backtest/src/scenarios/threshold_sweep.rs`
+- [x] **T-D-N5** — Thin `run_cell` helper in `crates/backtest/src/scenarios/threshold_sweep.rs`
   (D-AR-1.c). Behavior-preserving copy of `tcn_overlay_weights::run`
   with caller-supplied strategy. Re-uses
   `momentum::top10_symbols_with_prices` + the realdata bar loader.
-  File:line: `crates/backtest/src/scenarios/threshold_sweep.rs:1-110`
-  (new) + `crates/backtest/src/scenarios/mod.rs:+1`. Cargo:
-  `cargo build -p backtest --features candle,realdata`. Expected:
-  `Compiling backtest …` `Finished … in <Ns>`.
+  File:line: `crates/backtest/src/scenarios/threshold_sweep.rs` (new, ~325 lines) +
+  `crates/backtest/src/scenarios/mod.rs` (`pub mod threshold_sweep;` added).
+  Cargo: `cargo build -p backtest --features candle,realdata`.
+  Output: `Finished … profile [unoptimized + debuginfo] target(s) in …` — no errors.
 
-- [ ] **T-D-N6** — Bin body — grid enumeration (D-AR-1.e) + parallel
+- [x] **T-D-N6** — Bin body — grid enumeration (D-AR-1.e) + parallel
   cell execution (D-AR-1.j). `rayon::par_iter` over 45 cells; fresh
-  forecaster per cell; sort by `(τ, ε)` BEFORE render. File:line:
-  `crates/forecast/src/bin/threshold_sweep.rs:130-300` (new). Cargo:
-  `cargo build -p forecast --features candle --bin threshold_sweep`.
-  Expected: `Compiling forecast …` `Finished … in <Ns>` — no warnings.
+  `TcnSyncForecaster` per cell via `strategy::TcnSyncForecaster::load_from_paths_with_epsilon`;
+  sort by `(τ, ε)` BEFORE render. File:line:
+  `crates/backtest/src/bin/threshold_sweep.rs` (main grid/parallel body).
+  Cargo: `cargo build -p backtest --features candle,realdata --bin threshold_sweep`.
+  Output: `Finished … profile [unoptimized + debuginfo] target(s) in …` — no warnings.
 
-- [ ] **T-D-N7** — Heatmap renderer (D-AR-1.h). Reads pre-recal v1-momentum
-  baseline metrics from anchored body
-  `spec/v1-cross-sectional-momentum/reports/backtest-*-top10-2023-1h-momentum.md`
-  (resolves via the anchor name; uses
-  `crates/reports/src/parse.rs::Metrics` parser). Reads
-  `confidence_gate_survival` table from anchored predecessor
-  `spec/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md`.
-  Emits the markdown report. **Long-running (~8-12min at 4-way) —
-  background + watch recipe required.** File:line:
-  `crates/forecast/src/bin/threshold_sweep.rs:300-450` (new). Cargo:
-  ```
-  cargo run -p forecast --features candle,realdata --release --bin threshold_sweep -- \
-      --scenario bs1 \
-      --metadata-path crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d79933c8d97695e5fff671f645f810e7961becb2333475fb9cc44fcd2.metadata.recalibrated.json
-  ```
-  AND same with `--scenario bs2 --metadata-path …tcn-bs2-3fabcabe…metadata.recalibrated.json`.
-  Expected: `INFO threshold_sweep: scenario=bs1 cells=45 headline_tau=<%.6f>
-  headline_eps=<%.6f> sharpe_delta=<%+.6f> verdict=T-<LABEL>
-  wall_clock_s=<%.1f>` AND markdown files at
-  `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs{1,2}-realdata-recalibrated-20260521.md`.
-
-  **Watch recipe (REQUIRED for >2min cargo runs per MEMORY.md):**
-  ```bash
-  watch -n 30 'tail -n 60 /tmp/threshold-sweep-bs1.log; \
-               echo "---"; \
-               ls -la spec/v25-tcn-threshold-tuning/reports/ 2>/dev/null'
-  ```
-
-- [ ] **T-D-N8** — Read-only enforcement tests for the new bin.
-  Mirror of `recalibrate_sigma_train_readonly.rs`: (1) help surface
-  has no `retrain|write|update` substrings; (2) `tcn-bs{1,2}-<sha>.{safetensors,metadata.json,metadata.recalibrated.json}`
-  mtimes unchanged after a sweep run (use a small fixture run or a
-  CLI dry-mode if added). File:line:
-  `crates/forecast/tests/threshold_sweep_readonly.rs:1-120` (new).
+- [x] **T-D-N7** — Heatmap renderer (D-AR-1.h). Run both BS-1 + BS-2 sweeps
+  with real data.
+  **Executor fix**: replaced `futures::executor::block_on` (caused "EnterError:
+  cannot execute LocalPool from within another executor" in rayon workers) with
+  `pollster::block_on` — a minimal future poller with no executor-context
+  thread-local guard.
+  File:line: `crates/backtest/src/bin/threshold_sweep.rs:49` (`pollster::block_on` import) +
+  `Cargo.toml:79` (`pollster = { version = "0.3" }`) +
+  `crates/backtest/Cargo.toml:52` (`pollster = { workspace = true }`).
+  Results:
+  - BS-1: 45 cells, 428.8s, headline τ=0.1 ε=0.001, Sharpe-delta=+0.018, **T-MARGINAL**
+  - BS-2: 45 cells, 224.6s, headline τ=0.1 ε=0.001, Sharpe-delta=+0.045, **T-MARGINAL**
+  Reports written:
+  - `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs1-realdata-recalibrated-20260521.md`
+  - `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs2-realdata-recalibrated-20260521.md`
   Cargo:
-  `cargo test -p forecast --features candle,realdata --test threshold_sweep_readonly`.
-  Expected: `running 2 tests … test result: ok. 2 passed; 0 failed`.
+  ```
+  ./target/release/threshold_sweep --scenario bs1 \
+    --metadata-path crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d79933c8d97695e5fff671f645f810e7961becb2333475fb9cc44fcd2.metadata.recalibrated.json \
+    --out-dir spec/v25-tcn-threshold-tuning/reports/
+  ```
+  Output: `threshold_sweep: DONE scenario="bs1" cells=45 headline_tau=0.1 headline_eps=0.001 sharpe_delta=0.01825385497726537 verdict="T-MARGINAL"`
 
-- [ ] **T-D-N9** — Workspace clippy + fmt gate.
-  File:line: workspace-wide. Cargo:
+- [x] **T-D-N8** — Read-only enforcement tests for the new bin.
+  (1) help surface has no `retrain|write|update` substrings;
+  (2) anchor checkpoint files unchanged after sweep invocation.
+  **Deviation**: tests placed at `crates/backtest/tests/threshold_sweep_readonly.rs`
+  (not `crates/forecast/tests/`) since bin was moved to `backtest`.
+  File:line: `crates/backtest/tests/threshold_sweep_readonly.rs` (new).
+  Cargo: `cargo test -p backtest --features candle,realdata --test threshold_sweep_readonly`.
+  Output: `running 2 tests … test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.63s`.
+
+- [x] **T-D-N9** — Workspace clippy + fmt gate.
+  File:line: workspace-wide — fixed pre-existing errors in
+  `crates/backtest/src/scenarios/tcn_overlay_weights.rs` (lines 66, 165:
+  redundant closure + manual let-else) AND new file clippy nits in
+  `crates/backtest/src/bin/threshold_sweep.rs` (collapsible if,
+  useless format). Cargo:
   `cargo fmt --check` then
   `cargo clippy --workspace --features candle,realdata,forecast,forecast-audit-tick -- -D warnings`.
-  Expected: both commands exit 0; clippy ends with
-  `Checking … Finished `dev` profile [unoptimized + debuginfo]
-  target(s) in <Ns>` and zero warnings.
+  Output: `cargo fmt --check` exits 0; clippy ends with
+  `Checking backtest … Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.07s` — zero warnings/errors.
 
 ## Developer / orchestrator rows — Wave B (orchestrator at M-D)
 
-- [ ] **T-D-N10** — 2-run determinism prep (orchestrator). Re-run
-  T-D-N7 against both BS-1 + BS-2; compare body-SHAs against the first
-  run. File:line: `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs{1,2}-realdata-recalibrated-20260521.md`.
+- [x] **T-D-N10** — 2-run determinism prep. Re-ran T-D-N7 against both
+  BS-1 + BS-2; body-SHAs byte-identical across 2 runs.
+  File:line: `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs{1,2}-realdata-recalibrated-20260521.md`.
   Cargo: `python3 scripts/hash_report.py spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs{1,2}-realdata-recalibrated-20260521.md`
-  (twice; SHAs match). Expected: `<64hex>  threshold-sweep-bs1-realdata-recalibrated-20260521.md`
-  literal-stable.
+  Output (run 1 = run 2):
+  - BS-1: `551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c`
+  - BS-2: `755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3`
 
-- [ ] **T-D-N11** — Post-Wave-A anchor verification. Captures literal
-  output. File:line: (script). Cargo: `bash scripts/verify_anchors.sh`.
-  Expected: 24 PASS rows of the M-T1 baseline + 2 PASS rows for new
-  heatmaps (`threshold-sweep-bs{1,2}-realdata-recalibrated`) ⇒ 26 PASS
-  + 2 pre-existing spurious FAILs (per § 6 glob collision) until the
-  spec-auditor punch-list item is closed. If glob fixed first: 28/28
-  PASS clean.
+- [x] **T-D-N11** — Post-Wave-B anchor verification. File:line: (script).
+  Cargo: `bash scripts/verify_anchors.sh`.
+  Output: 24/26 PASS for predecessor anchors (the 2 pre-existing FAILs
+  are `forecast-distribution-bs{1,2}-realdata` glob-collision from v25-tcn-recalibrate —
+  see § Anchor gate baseline note above; NOT introduced by this feature).
+  New heatmap reports are not yet in `anchors.toml` (that is tester row T-T-1.b).
+  Pre-existing FAIL file bodies are byte-identical to their locked SHAs:
+  - `spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs1-realdata-20260519.md` → `ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54` (matches locked SHA)
+  - `spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs2-realdata-20260519.md` → `d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06` (matches locked SHA)
 
 ## Tester rows (T-T) — Wave C (tester at M-FINAL)
 

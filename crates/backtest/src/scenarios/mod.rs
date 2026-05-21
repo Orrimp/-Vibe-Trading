@@ -16,3 +16,4 @@ pub mod pairs;
 pub mod sma_composed;
 pub mod tcn_overlay;
 pub mod tcn_overlay_weights;
+pub mod threshold_sweep;

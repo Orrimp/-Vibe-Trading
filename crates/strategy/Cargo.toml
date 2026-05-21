@@ -41,6 +41,11 @@ proptest.workspace = true
 criterion.workspace = true
 time.workspace = true
 
+[[test]]
+name = "tcn_overlay_tuned_builder"
+path = "tests/tcn_overlay_tuned_builder.rs"
+required-features = ["forecast"]
+
 [[bench]]
 name = "composed_strategies"
 harness = false

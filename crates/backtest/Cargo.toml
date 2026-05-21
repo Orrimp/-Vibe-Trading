@@ -8,6 +8,11 @@ license.workspace = true
 name = "backtest"
 path = "src/main.rs"
 
+[[bin]]
+name = "threshold_sweep"
+path = "src/bin/threshold_sweep.rs"
+required-features = ["candle", "realdata"]
+
 [features]
 # Enable real TCN-weights backtest scenarios (top10-*-tcn-overlay-weights).
 # Requires `--features candle` at build time; without it those scenarios emit
@@ -44,10 +49,17 @@ tokio-stream = { workspace = true, features = ["full"] }
 rand.workspace = true
 rand_chacha.workspace = true
 anyhow.workspace = true
+rayon = { workspace = true }
+pollster = { workspace = true }
 time.workspace = true
 sha2.workspace = true
 clap.workspace = true
 smol_str.workspace = true
+
+[[test]]
+name = "threshold_sweep_readonly"
+path = "tests/threshold_sweep_readonly.rs"
+required-features = ["candle", "realdata"]
 
 [dev-dependencies]
 criterion.workspace = true

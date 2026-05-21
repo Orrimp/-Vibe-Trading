@@ -232,10 +232,16 @@ arch        = [
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md", # realdata seed + revision pin (D4 determinism gate inherited)
   # ADR-0036 explicitly NOT written per Q4 = (c) — T-classifier embeds in report body until H1 outcome warrants codification
 ]
-crates      = []   # developer fills at M-D (target: crates/forecast, crates/strategy, crates/backtest)
-tests       = []   # developer fills at M-D (target: crates/strategy/tests/tcn_overlay_tuned_builder.rs + crates/forecast/tests/threshold_sweep_readonly.rs)
+crates      = [
+  "crates/strategy",   # TcnSyncForecaster: direction_epsilon field + _tuned builders + load_from_paths_with_epsilon
+  "crates/backtest",   # threshold_sweep bin + run_cell scenario helper; tcn_overlay_weights clippy fixes
+]
+tests       = [
+  "crates/strategy/tests/tcn_overlay_tuned_builder.rs",   # 5 unit tests — builder invariance
+  "crates/backtest/tests/threshold_sweep_readonly.rs",     # 2 read-only enforcement tests
+]
 anchors     = []   # tester fills at M-FINAL (target 2 sweep heatmaps under `v2.6.2-threshold-tuning`; tuned-winner anchors deferred to follow-on v2.5.1 if T-ALPHA-UNLOCKED fires)
-state       = "in-progress"   # architect M-T1 landed 2026-05-21: decomp.md + § Design block + tasks.md T-AR-1..T-AR-6 ticked + 8 T-D rows + 6 T-T rows decomposed; no ADR-0036 (Q4=(c)); 26 predecessor anchors byte-identical at body level (pre-existing verify_anchors.sh glob-collision flagged to spec-auditor — decomp.md § 6); HANDOFF → developer Wave A
+state       = "in-progress"   # developer Wave A+B complete 2026-05-21: crates + tests populated; bin at crates/backtest/src/bin/threshold_sweep.rs (architectural deviation from D-AR-1.a — circular dep); 7 tests pass; workspace clippy + fmt clean; BS-1 T-MARGINAL (Sharpe-delta +0.018), BS-2 T-MARGINAL (Sharpe-delta +0.045); body-SHAs deterministic; HANDOFF → tester
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"

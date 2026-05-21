@@ -123,6 +123,25 @@ and is preserved in git history at the pre-Session-12 commit. Each
 historical decision in the archive maps to one of the 26 numbered
 ADRs above.
 
+## Developer deviations
+
+Architectural deviations discovered during implementation. Each entry
+references the original spec and the reason for the divergence.
+
+- 2026-05-21 (developer): **`threshold_sweep` bin location** —
+  D-AR-1.a (decomp.md) specified `crates/forecast/src/bin/threshold_sweep.rs`.
+  Actual location: `crates/backtest/src/bin/threshold_sweep.rs`.
+  Reason: placing the bin in `crates/forecast` would create a circular
+  dependency (`forecast → backtest → strategy → forecast`). The bin needs
+  `backtest` for `RealDataBarSource`, `run_cell`, and `PaperEngine`; adding
+  `forecast → backtest` closes a dep cycle. Moving to `backtest` is
+  functionally equivalent — the bin is an in-process orchestrator for
+  backtest scenarios and `backtest` already depends on `strategy` (which
+  depends on `forecast` via the `forecast` feature). Two new constructors
+  (`load_from_paths_with_epsilon`, `from_forecaster_with_epsilon`) were added
+  to `strategy::TcnSyncForecaster` to avoid the `backtest` bin needing a
+  direct `forecast::tcn::TcnForecaster` import. Flagged to architect.
+
 ## Changelog
 
 Architecture-level meta events only — file splits, ADR-numbering

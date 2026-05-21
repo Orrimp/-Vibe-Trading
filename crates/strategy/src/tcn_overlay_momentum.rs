@@ -158,6 +158,12 @@ pub enum ForecastDirection {
 #[cfg(feature = "forecast")]
 pub struct TcnSyncForecaster {
     forecaster: forecast::tcn::TcnForecaster,
+    /// Optional per-instance direction deadband ε.
+    ///
+    /// `None` ⇒ use `forecast::tcn::DIRECTION_EPSILON` (const-fold-identical to
+    /// the pre-tuning path — existing anchor bodies stay byte-identical).
+    /// `Some(eps)` ⇒ override for threshold-sweep cells (T-D-N1 / D-AR-1.g).
+    direction_epsilon: Option<f32>,
 }
 
 #[cfg(feature = "forecast")]
@@ -169,7 +175,10 @@ impl TcnSyncForecaster {
     /// Returns `forecast::tcn::TcnForecasterError` if the checkpoint is absent.
     pub fn load_bs1() -> Result<Self, forecast::tcn::TcnForecasterError> {
         let f = forecast::tcn::TcnForecaster::load_anchor(forecast::tcn::AnchorScenario::Bs1)?;
-        Ok(Self { forecaster: f })
+        Ok(Self {
+            forecaster: f,
+            direction_epsilon: None,
+        })
     }
 
     /// Load the BS-2 anchor checkpoint.
@@ -179,7 +188,81 @@ impl TcnSyncForecaster {
     /// Returns `forecast::tcn::TcnForecasterError` if the checkpoint is absent.
     pub fn load_bs2() -> Result<Self, forecast::tcn::TcnForecasterError> {
         let f = forecast::tcn::TcnForecaster::load_anchor(forecast::tcn::AnchorScenario::Bs2)?;
-        Ok(Self { forecaster: f })
+        Ok(Self {
+            forecaster: f,
+            direction_epsilon: None,
+        })
+    }
+
+    /// Return the per-instance direction epsilon override (if any).
+    ///
+    /// `None` means the default `forecast::tcn::DIRECTION_EPSILON` const is used.
+    /// Used in tests (T-D-N3) to verify that default builders leave the field unset.
+    #[must_use]
+    pub fn direction_epsilon(&self) -> Option<f32> {
+        self.direction_epsilon
+    }
+
+    /// Construct from an already-loaded `TcnForecaster` with an explicit
+    /// direction epsilon override.
+    ///
+    /// Used by the `threshold_sweep` bin which loads the forecaster from
+    /// `--metadata-path` (recalibrated overlay) rather than the anchor dir.
+    /// This avoids `load_anchor` (which resolves the standard metadata JSON
+    /// path) and lets the sweep supply the recalibrated σ_train directly.
+    ///
+    /// # Parameters
+    ///
+    /// - `forecaster`: a `TcnForecaster` already loaded via `load_from_paths`.
+    /// - `direction_epsilon`: the ε override for this sweep cell; converted to
+    ///   `f32` via `Decimal::to_f32()`.
+    #[must_use]
+    pub fn from_forecaster_with_epsilon(
+        forecaster: forecast::tcn::TcnForecaster,
+        direction_epsilon: rust_decimal::Decimal,
+    ) -> Self {
+        use rust_decimal::prelude::ToPrimitive;
+        let eps = direction_epsilon
+            .to_f32()
+            .unwrap_or(forecast::tcn::DIRECTION_EPSILON);
+        Self {
+            forecaster,
+            direction_epsilon: Some(eps),
+        }
+    }
+
+    /// Load from explicit safetensors + metadata paths with a direction epsilon override.
+    ///
+    /// Used by the `threshold_sweep` bin to load from `--metadata-path`
+    /// (recalibrated overlay) for each sweep cell. Thin wrapper over
+    /// `TcnForecaster::load_from_paths` + `from_forecaster_with_epsilon`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `TcnForecasterError` on file I/O or parse failure.
+    pub fn load_from_paths_with_epsilon(
+        safetensors_path: &std::path::Path,
+        metadata_path: &std::path::Path,
+        direction_epsilon: rust_decimal::Decimal,
+    ) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let f = forecast::tcn::TcnForecaster::load_from_paths(safetensors_path, metadata_path)?;
+        Ok(Self::from_forecaster_with_epsilon(f, direction_epsilon))
+    }
+
+    /// Override the direction deadband ε for threshold-sweep cells (D-AR-1.g).
+    ///
+    /// `None` (default, set by `load_bs1` / `load_bs2`) means use
+    /// `forecast::tcn::DIRECTION_EPSILON` — const-fold-identical to the pre-
+    /// tuning path; all 26 predecessor anchors stay byte-identical.
+    /// `Some(eps)` overrides for the sweep bin's per-cell strategy instances.
+    ///
+    /// `eps` is supplied as `Decimal` to avoid f32 rounding at the call site
+    /// (the caller already has the grid value as `Decimal`).
+    #[must_use]
+    pub fn with_direction_epsilon(mut self, eps: rust_decimal::Decimal) -> Self {
+        use rust_decimal::prelude::ToPrimitive;
+        self.direction_epsilon = Some(eps.to_f32().unwrap_or(forecast::tcn::DIRECTION_EPSILON));
+        self
     }
 
     /// Attach an audit ledger for Phase D `forecast_events` SQL durability
@@ -196,6 +279,7 @@ impl TcnSyncForecaster {
     pub fn with_ledger(self, ledger: audit::Ledger) -> Self {
         Self {
             forecaster: self.forecaster.with_ledger(ledger),
+            direction_epsilon: self.direction_epsilon,
         }
     }
 
@@ -209,6 +293,7 @@ impl TcnSyncForecaster {
     pub fn with_forecast_context(self, strategy_id: String, symbol: String) -> Self {
         Self {
             forecaster: self.forecaster.with_forecast_context(strategy_id, symbol),
+            direction_epsilon: self.direction_epsilon,
         }
     }
 }
@@ -302,9 +387,12 @@ impl SyncForecaster for TcnSyncForecaster {
             Err(_) => return (ForecastDirection::Flat, Decimal::ZERO),
         };
 
-        let direction = if r_hat > forecast::tcn::DIRECTION_EPSILON {
+        let eps = self
+            .direction_epsilon
+            .unwrap_or(forecast::tcn::DIRECTION_EPSILON);
+        let direction = if r_hat > eps {
             ForecastDirection::Up
-        } else if r_hat < -forecast::tcn::DIRECTION_EPSILON {
+        } else if r_hat < -eps {
             ForecastDirection::Down
         } else {
             ForecastDirection::Flat
@@ -356,6 +444,15 @@ impl TcnOverlayMomentumStrategy {
             confidence_threshold,
             stats: ModulationStats::default(),
         }
+    }
+
+    /// Return the confidence threshold for this strategy instance.
+    ///
+    /// Used in tests to assert builder values without round-tripping through
+    /// the full backtest path. (T-D-N3 / D-AR-1.f invariance assertions.)
+    #[must_use]
+    pub fn confidence_threshold(&self) -> Decimal {
+        self.confidence_threshold
     }
 
     /// Construct with a `PassthroughForecaster` (degrades to pure v1 momentum).
@@ -437,6 +534,93 @@ impl TcnOverlayMomentumStrategy {
             .with_ledger(ledger)
             .with_forecast_context("tcn_overlay_momentum_bs2".to_string(), "MULTI".to_string());
         Ok(Self::new(base, Box::new(forecaster), dec!(0.6)))
+    }
+
+    // ── Threshold-sweep tuned builders (D-AR-1.f, v25-tcn-threshold-tuning) ────
+    //
+    // These 4 builders are ADDITIVE and do NOT change the 4 existing
+    // `with_tcn_bs{1,2}{,_ledger}` builders (those keep their `dec!(0.6)` literal).
+    // All 26 predecessor anchor bodies stay byte-identical (R8 / K4).
+    //
+    // Explicit (τ, ε) args required — no Option<Decimal> defaults (D-AR-1.f).
+
+    /// Sweep-path BS-1 builder — no ledger, explicit (confidence_threshold, direction_epsilon).
+    ///
+    /// Used by `threshold_sweep` bin for the 45-cell BS-1 backtest grid.
+    /// Requires `feature = "forecast"`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the BS-1 checkpoint is absent.
+    #[cfg(feature = "forecast")]
+    pub fn with_tcn_bs1_tuned(
+        base: MomentumStrategy,
+        confidence_threshold: rust_decimal::Decimal,
+        direction_epsilon: rust_decimal::Decimal,
+    ) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs1()?.with_direction_epsilon(direction_epsilon);
+        Ok(Self::new(base, Box::new(forecaster), confidence_threshold))
+    }
+
+    /// Sweep-path BS-2 builder — no ledger, explicit (confidence_threshold, direction_epsilon).
+    ///
+    /// Used by `threshold_sweep` bin for the 45-cell BS-2 backtest grid.
+    /// Requires `feature = "forecast"`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the BS-2 checkpoint is absent.
+    #[cfg(feature = "forecast")]
+    pub fn with_tcn_bs2_tuned(
+        base: MomentumStrategy,
+        confidence_threshold: rust_decimal::Decimal,
+        direction_epsilon: rust_decimal::Decimal,
+    ) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs2()?.with_direction_epsilon(direction_epsilon);
+        Ok(Self::new(base, Box::new(forecaster), confidence_threshold))
+    }
+
+    /// Audit-path BS-1 builder with ledger + explicit (confidence_threshold, direction_epsilon).
+    ///
+    /// For production audit paths where forecast_events SQL durability is
+    /// required alongside a tuned (τ, ε). Requires `feature = "forecast-audit-tick"`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the BS-1 checkpoint is absent.
+    #[cfg(feature = "forecast-audit-tick")]
+    pub fn with_tcn_bs1_ledger_tuned(
+        base: MomentumStrategy,
+        ledger: audit::Ledger,
+        confidence_threshold: rust_decimal::Decimal,
+        direction_epsilon: rust_decimal::Decimal,
+    ) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs1()?
+            .with_ledger(ledger)
+            .with_forecast_context("tcn_overlay_momentum_bs1".to_string(), "MULTI".to_string())
+            .with_direction_epsilon(direction_epsilon);
+        Ok(Self::new(base, Box::new(forecaster), confidence_threshold))
+    }
+
+    /// Audit-path BS-2 builder with ledger + explicit (confidence_threshold, direction_epsilon).
+    ///
+    /// Mirror of `with_tcn_bs1_ledger_tuned` for BS-2. Requires `feature = "forecast-audit-tick"`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `forecast::tcn::TcnForecasterError` if the BS-2 checkpoint is absent.
+    #[cfg(feature = "forecast-audit-tick")]
+    pub fn with_tcn_bs2_ledger_tuned(
+        base: MomentumStrategy,
+        ledger: audit::Ledger,
+        confidence_threshold: rust_decimal::Decimal,
+        direction_epsilon: rust_decimal::Decimal,
+    ) -> Result<Self, forecast::tcn::TcnForecasterError> {
+        let forecaster = TcnSyncForecaster::load_bs2()?
+            .with_ledger(ledger)
+            .with_forecast_context("tcn_overlay_momentum_bs2".to_string(), "MULTI".to_string())
+            .with_direction_epsilon(direction_epsilon);
+        Ok(Self::new(base, Box::new(forecaster), confidence_threshold))
     }
 }
 

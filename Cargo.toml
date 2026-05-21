@@ -75,6 +75,12 @@ polars = { version = "0.46", features = ["parquet", "lazy"] }
 rand = { version = "0.9" }
 rand_chacha = { version = "0.9" }
 
+# Parallelism (threshold_sweep + candle training paths)
+rayon = { version = "1.10" }
+
+# Minimal future executor — no executor-context thread-local, safe from rayon workers
+pollster = { version = "0.3" }
+
 # Testing
 proptest = { version = "1.6" }
 trybuild = { version = "1.0" }
