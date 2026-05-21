@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-threshold-tuning
-status: in-progress
-owner: tester
+status: shipped
+owner: operator
 updated: 2026-05-21
 ---
 

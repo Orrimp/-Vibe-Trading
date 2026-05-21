@@ -244,7 +244,7 @@ anchors     = [
   "threshold-sweep-bs1-realdata-recalibrated",
   "threshold-sweep-bs2-realdata-recalibrated",
 ]
-state       = "tester-pass"   # tester M-FINAL 2026-05-21: all hard gates green; joint T-MARGINAL+T-MARGINAL (+0.018 BS-1 / +0.045 BS-2 Sharpe-delta); 26→28 anchors locked; fmt+clippy+test PASS; 2-run byte-identity PASS; spec-lint 87/2 baseline maintained; HANDOFF → presenter
+state       = "shipped"   # operator-approved via presenter deck 2026-05-21; routing (c) — ship advisory + queue v25-tcn-horizon-bump-or-retire (Queue→Active follows); joint T-MARGINAL+T-MARGINAL (+0.018 BS-1 / +0.045 BS-2 Sharpe-delta; no alpha unlock at +0.10 threshold); 26→28 anchors; additive `_tuned` builders shipped for opt-in live validation; existing `_ledger` builders byte-identical (R-3 const-fold-default preserved)
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"

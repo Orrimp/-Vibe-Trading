@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-threshold-tuning
-status: in-progress
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-05-21
 version: 0.1.0
 predecessor: v25-tcn-recalibrate v0.1.0

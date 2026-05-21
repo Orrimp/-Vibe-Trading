@@ -376,34 +376,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      86.4% (BS-2 τ=0.1) — necessary-but-not-sufficient for alpha.
      The τ × ε sweep is the cheap empirical answer. -->
 
-- **v2.5 TCN threshold tuning (`v25-tcn-threshold-tuning`).**
-  _draft (analyst-recommended Q1-Q6 defaults; awaiting operator-decide
-  via standing "Autoapprove all" directive)_ — promoted Queue → Active
-  2026-05-21 by analyst, the cheap τ × ε sweep half of operator-decided
-  routing (c) from the
-  [recalibrate presenter deck](v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
-  shipped 2026-05-21. Predecessor: `v25-tcn-recalibrate v0.1.0`
-  (shipped — joint F-verdict F4 under immutable
-  [ADR-0033 § D3](architecture/adr/0033-tcn-alpha-investigation-report-shape.md),
-  but gate-survival jumped 0% → 40-89% under recalibrated σ_train).
-  Parent (stays `in-progress`): `v25-tcn-overlay v2.5.0`. Brief at
-  [`feature.md`](v25-tcn-threshold-tuning/feature.md) carries R1-R9
-  (sweep tool, heatmap report shape, T-classifier verdict, lock-winner
-  contract, no retraining, realdata-only backtest, anchor-additive,
-  non-regression, determinism), H1-H3 (alpha-unlock, surface convexity,
-  cheap-vs-fallback dichotomy), K1-K6, Q1-Q6 with analyst defaults.
-  9 × 5 grid (τ ∈ {0.1..0.9} integer-tenths × ε ∈ {0.0001, 0.0005
-  baseline, 0.001, 0.005, 0.01}) = 45 cells × 2 checkpoints = 90
-  realdata backtest runs (~45 min single-threaded; ~12 min 4-way local).
-  Heatmap reports anchor-additively under new version string
-  `v2.6.2-threshold-tuning`; +2 tuned-backtest anchors if joint
-  T-verdict = `T-ALPHA-UNLOCKED`. 26 predecessor anchor bodies stay
-  byte-identical (R8 load-bearing invariant). Cost estimate: ~6-10
-  hours wall-clock (vs multi-week `v25-tcn-horizon-bump-or-retire`
-  fallback under § Strategy). Trace row
-  `REQ-V25-TCN-THRESHOLD-TUNING-001` opened `draft`. HANDOFF →
-  operator-decide (Q1-Q6) → architect.
-
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
@@ -461,9 +433,14 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ### Strategy
 
 - **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire`).**
-  _stub — fallback follow-on, activation gated on
-  [`v25-tcn-threshold-tuning`](v25-tcn-threshold-tuning/feature.md)
-  joint T-verdict at M-FINAL_ — added 2026-05-21 by analyst as the
+  _**ACTIVATION TRIGGERED 2026-05-21**_ — `v25-tcn-threshold-tuning v0.1.0`
+  shipped 2026-05-21 with joint **T-MARGINAL + T-MARGINAL** verdict
+  (BS-1 +0.018 / BS-2 +0.045 Sharpe-delta at τ=0.1/ε=0.001; below the
+  +0.10 T-ALPHA-UNLOCKED threshold). Operator decided routing (c) at
+  presenter approval → **this stub will be promoted Queue → Active on
+  the next "next" directive** (analyst pass to scope (a) horizon-bump
+  retrain vs (b) retire-for-v2.5a PatchTST). Originally added 2026-05-21
+  by analyst as the
   "expensive retrain" half of operator-decided routing (c) from the
   [`v25-tcn-recalibrate` presenter deck](v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
   (shipped 2026-05-21). Predecessor stack:
@@ -897,6 +874,53 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **v2.5 TCN threshold tuning (`v25-tcn-threshold-tuning` v0.1.0)** —
+  shipped 2026-05-21 (operator-approved via presenter deck
+  [`presentations/v25-tcn-threshold-tuning-2026-05-21.md`](v25-tcn-threshold-tuning/presentations/v25-tcn-threshold-tuning-2026-05-21.md);
+  Q1-Q6 = analyst defaults via "Autoapprove all"; tester VERDICT →
+  PASS clean — all 9 T-F + 6 T-T gates green). Predecessor:
+  [`v25-tcn-recalibrate v0.1.0`](v25-tcn-recalibrate/feature.md).
+  Parent (stays `in-progress`): `v25-tcn-overlay v2.5.0`. **Cheap τ × ε
+  sweep follow-on** to the recalibrate ship — ran 90 backtests (9 τ ×
+  5 ε × 2 checkpoints) over the recalibrated TCN checkpoints on real
+  Binance OHLCV. **Substantive finding: Joint T-MARGINAL + T-MARGINAL**
+  — headline cell on BOTH checkpoints is τ=0.1 / ε=0.001 with BS-1
+  Sharpe-delta = **+0.018** and BS-2 = **+0.045**; both below the
+  +0.10 T-ALPHA-UNLOCKED threshold. **No (τ, ε) tuple unlocks alpha.**
+  F-verdict stays F4 per immutable
+  [ADR-0033 § D3](architecture/adr/0033-tcn-alpha-investigation-report-shape.md);
+  σ_train recalibration was necessary but not sufficient. Lands NEW
+  [`crates/backtest/src/bin/threshold_sweep.rs`](../crates/backtest/src/bin/threshold_sweep.rs)
+  (4-way `rayon::par_iter`, `(τ, ε)`-sorted assembly for byte-
+  deterministic output) + NEW
+  [`crates/backtest/src/scenarios/threshold_sweep.rs`](../crates/backtest/src/scenarios/threshold_sweep.rs)
+  per-cell helper + **4 additive `_tuned` builders** on
+  [`tcn_overlay_momentum.rs`](../crates/strategy/src/tcn_overlay_momentum.rs)
+  (`with_tcn_bs{1,2}_tuned` + `with_tcn_bs{1,2}_ledger_tuned`; explicit
+  args required; `TcnSyncForecaster::with_direction_epsilon` builder +
+  `direction_epsilon: Option<f32>` field with const-fold-default fallback
+  so existing `_ledger` builders stay **literal `dec!(0.6)` + literal
+  `forecast::tcn::DIRECTION_EPSILON`** — 26 predecessor anchors stay
+  byte-identical, R-3 const-fold-default contract preserved). 2 new
+  anchors locked under version `v2.6.2-threshold-tuning`:
+  `threshold-sweep-bs1-realdata-recalibrated` (SHA `551cc2ab…`) +
+  `threshold-sweep-bs2-realdata-recalibrated` (SHA `755bc380…`). T-
+  classifier (T-ALPHA-UNLOCKED ≥+0.10 / T-MARGINAL [0, +0.10) /
+  T-NO-ALPHA <0) embedded in report body per Q4=(c); ADR-0036 NOT
+  written (deferred until empirical alpha-unlock evidence justifies
+  codification). **Operator decided routing (c)** at presenter approval
+  — ship advisory (additive `_tuned` builders + 2 new anchors) AND
+  queue [`v25-tcn-horizon-bump-or-retire`](#queue) (currently
+  ACTIVATION-TRIGGERED in Queue § Strategy; promotes on next "next"
+  directive). H1 FALSIFIED (no tuple unlocked alpha); H2 confirmed
+  (heatmap smoothness statistic in body); H3 confirmed (cheap sweep
+  delivered clear verdict in hours). Anchor risk zero — 26 originals
+  byte-identical; 28 total; cargo fmt + workspace clippy +
+  `--features candle,realdata,forecast,forecast-audit-tick` clippy
+  all clean; spec-lint 87/2 = baseline; 2-run determinism gate PASS;
+  `git diff` over `crates/forecast/checkpoints/anchors/*.metadata*.json
+  + *.safetensors` empty (ADR-0035 D4 invariant).
 
 - **v2.5 TCN σ_train recalibration (`v25-tcn-recalibrate` v0.1.0)** —
   shipped 2026-05-21 (operator-approved via presenter deck
