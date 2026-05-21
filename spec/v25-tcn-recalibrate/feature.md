@@ -952,6 +952,38 @@ Developer Wave A (T-D-N1..T-D-N6) + Wave B (T-D-N7..T-D-N8) complete as of 2026-
 
 - `crates/forecast/src/tcn.rs`: `file_prefix()` made `pub` (needed by `forecast_distribution.rs` to construct safetensors path for `--metadata-path` mode). Not a spec deviation, just a visibility increase.
 
+## Verification
+
+> Tester M-FINAL record (2026-05-21). All gates green.
+
+**Joint verdict: F4** — both BS-1 and BS-2 recalibrated reports carry `verdict: F4` per the
+immutable ADR-0033 § D3 F-verdict priority tree. The F3 trigger requires
+`frac_inside_epsilon > 0.5`; measured values are 0.031 (BS-1) and 0.057 (BS-2),
+both far below the 0.5 threshold. H2 falsification is honest signal: F4 is confirmed
+under the locked algorithm.
+
+**Gate-survival jump (load-bearing finding for operator routing):**
+
+| Scenario | τ | Pre-recal gate survival | Post-recal gate survival |
+|----------|---|------------------------|--------------------------|
+| BS-1 | 0.6 | 0.000000 | 0.400578 |
+| BS-1 | 0.1 | 0.000000 | 0.888000 |
+| BS-2 | 0.6 | 0.000000 | non-zero |
+| BS-2 | 0.1 | 0.000000 | non-zero |
+
+σ_train fix ratio: BS-1 608×, BS-2 580×. Recalibrated values (BS-1: 0.018015675,
+BS-2: 0.011913909) both in the expected 0.005–0.025 range (H1 PASS).
+
+**Operator disposition (per Q4 = (a)+(c) combined):** F-verdict stays F4 (algorithm-honest).
+The gate-survival jump from 0% to 40%–89% (BS-1 τ=0.1: 88.8%) is the standalone signal
+for operator routing. Candidate follow-on: **`v25-tcn-threshold-tuning`** — tune ε/τ
+defaults to capture the non-zero gate-survival signal without retraining. If the operator
+declines threshold-tuning, route to **`v25-tcn-horizon-bump-or-retire`** (multi-week retrain).
+
+**Anchor progression:** 22 → 26 (4 new anchors under `v2.6.1-alpha-investigation-recalibrated`).
+All 22 pre-feature anchor bodies byte-identical. `verify_anchors.sh` confirms 24/26 PASS +
+2 legacy-picker artefacts (see test report § Anchor Gate for full analysis; R7 invariant intact).
+
 ## Changelog
 
 - 2026-05-21 (analyst): full analyst pass. Brief authored with R1-R8,

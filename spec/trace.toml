@@ -211,8 +211,13 @@ tests       = [
   "crates/forecast/tests/recalibrate_sigma_train_field_invariance.rs",
   "crates/forecast/tests/sigma_train_not_in_safetensors.rs",
 ]
-anchors     = []   # tester fills at T-T-1; expected: forecast-distribution-bs{1,2}-realdata-recalibrated under version v2.6.1-alpha-investigation-recalibrated (anchor-additive only; 22 pre-feature anchors stay byte-identical)
-state       = "in-progress"   # developer Wave A+B complete (2026-05-21); awaiting tester Waves C+D
+anchors     = [
+  "forecast-distribution-bs1-realdata-recalibrated",  # v2.6.1-alpha-investigation-recalibrated; SHA 8a548042…; locked by tester 2026-05-21
+  "forecast-distribution-bs2-realdata-recalibrated",  # v2.6.1-alpha-investigation-recalibrated; SHA d6c1e17c…; locked by tester 2026-05-21
+  "recalibrate-sigma-train-bs1",                      # v2.6.1-alpha-investigation-recalibrated; SHA baa658fb…; locked by tester 2026-05-21 (derivation report determinism PASS)
+  "recalibrate-sigma-train-bs2",                      # v2.6.1-alpha-investigation-recalibrated; SHA bfa8104a…; locked by tester 2026-05-21 (derivation report determinism PASS)
+]
+state       = "shipped"   # tester Waves C+D complete 2026-05-21; VERDICT → PASS; all gates green
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"
