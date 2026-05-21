@@ -535,13 +535,16 @@ impl AnchorScenario {
         }
     }
 
-    /// Placeholder SHA prefix — populated after Wave B training.
+    /// SHA prefix of the anchored checkpoint file.
     ///
-    /// This returns `""` at Wave A (no checkpoint exists yet).
-    /// Wave B updates this to the actual SHA after training completes.
+    /// Updated at Wave B completion (T-D-N18) with the actual file SHA.
+    /// Model revision: `62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d`
+    /// (σ_train = 0.007053 per patchtst-bs1-*.metadata.json).
     pub fn sha_prefix(&self) -> &'static str {
         match self {
-            AnchorScenario::Bs1 => "",
+            AnchorScenario::Bs1 => {
+                "62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d"
+            }
         }
     }
 }

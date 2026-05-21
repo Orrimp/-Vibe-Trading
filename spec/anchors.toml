@@ -213,3 +213,25 @@ sha256   = "551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c"
 scenario = "threshold-sweep-bs2-realdata-recalibrated"
 version  = "v2.6.2-threshold-tuning"
 sha256   = "755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3"
+
+# v2.5a PatchTST overlay scenarios (T-T-1.b / M-FINAL).  Locked by tester on 2026-05-22
+# against the PatchTST BS-1 checkpoint (model_revision
+# 62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d,
+# sigma_train=0.007053) and the data/binance/ REVISION.toml manifest SHA
+# 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7.
+# Both reports are 2-run byte-identical (developer-verified T-D-N21/N25 +
+# tester re-verified at M-FINAL by SHA comparison).
+# F-verdict: F4.  Sharpe-delta vs v1 passthrough baseline: +0.006144 (below +0.10 T-ALPHA-UNLOCKED).
+# The 28 pre-feature anchors above stay byte-immutable (anchor-additive only per Q7=(a)).
+# NOTE: sharpe-comparison-patchtst-bs1-realdata is NOT anchored at v0.1.0 per
+# decomp.md § Anchor gate (defer to v2.6 bake-off; see note in § D-AR-1.h equivalent).
+
+[[anchors]]
+scenario = "forecast-distribution-patchtst-bs1-realdata"
+version  = "v2.5a.0-patchtst"
+sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
+
+[[anchors]]
+scenario = "top10-2023-fy-patchtst-overlay-realdata"
+version  = "v2.5a.0-patchtst"
+sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"

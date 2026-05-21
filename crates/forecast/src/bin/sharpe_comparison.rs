@@ -1,5 +1,5 @@
 //! `sharpe_comparison` — M-SHARPE Sharpe/Sortino/Calmar/drawdown comparison
-//! report across the four `-realdata` backtest scenarios.
+//! report across the five `-realdata` backtest scenarios (four TCN + one PatchTST BS-1).
 //!
 //! ## Usage
 //!
@@ -45,15 +45,15 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(
     name = "sharpe_comparison",
-    about = "M-SHARPE: Sharpe/Sortino/Calmar comparison table for the four -realdata scenarios",
-    long_about = "Re-runs the four -realdata backtest scenarios into a tempdir,\n\
+    about = "M-SHARPE: Sharpe/Sortino/Calmar comparison table for the five -realdata scenarios",
+    long_about = "Re-runs the five -realdata backtest scenarios (four TCN + one PatchTST BS-1) into a tempdir,\n\
                   computes hourly-annualised Sharpe/Sortino/Calmar/max-DD from\n\
                   the equity curves, and emits a deterministic markdown report.\n\n\
-                  Read-only contract: the four anchored -realdata reports are never touched."
+                  Read-only contract: the five anchored -realdata reports are never touched."
 )]
 struct Args {
     /// Output directory for the report.
-    #[arg(long, default_value = "spec/v25-tcn-alpha-investigation/reports/")]
+    #[arg(long, default_value = "spec/v25a-patchtst-overlay/reports/")]
     out_dir: PathBuf,
 
     /// Backtest binary path (must be built with --features realdata,candle).
@@ -331,16 +331,23 @@ mod rerun {
         pub dampen_rate: f64,
     }
 
-    /// The four -realdata scenario names in table order.
-    pub const SCENARIOS: [&str; 4] = [
+    /// The five -realdata scenario names in table order.
+    ///
+    /// Additive extension at Wave D T-D-N26: `top10-2023-fy-patchtst-overlay-realdata`
+    /// is the new PatchTST BS-1 scenario (v2.5a.0-patchtst).
+    pub const SCENARIOS: [&str; 5] = [
         "top10-2023-fy-tcn-overlay-realdata",
         "top10-2024-fy-tcn-overlay-realdata",
         "top10-2023-fy-tcn-overlay-weights-realdata",
         "top10-2024-fy-tcn-overlay-weights-realdata",
+        // v2.5a PatchTST BS-1 (24h horizon, 2023-FY, real Binance data).
+        "top10-2023-fy-patchtst-overlay-realdata",
     ];
 
     fn variant_label(name: &str) -> &'static str {
-        if name.contains("weights") {
+        if name.contains("patchtst") {
+            "patchtst-real-weights"
+        } else if name.contains("weights") {
             "real-weights"
         } else {
             "passthrough"
@@ -500,14 +507,16 @@ mod render {
     /// - total return / max drawdown / dampen rate: `{:.2}%`
     /// - final equity: `${:.2}`
     /// - bar/trade counts: integer
-    pub fn render_report(results: &[RerunResult; 4], _ctx: &ReportContext) -> String {
+    ///
+    /// `results[4]` is the PatchTST BS-1 2023-FY scenario (additive at Wave D T-D-N26).
+    pub fn render_report(results: &[RerunResult; 5], _ctx: &ReportContext) -> String {
         use std::fmt::Write as FmtWrite;
         let mut body = String::with_capacity(4096);
 
         // ── Header ────────────────────────────────────────────────────────────
         writeln!(
             &mut body,
-            "# Sharpe / drawdown comparison — v2.6.0-realdata scenarios"
+            "# Sharpe / drawdown comparison — v2.6.0-realdata + v2.5a-patchtst-overlay scenarios"
         )
         .unwrap();
 
@@ -525,7 +534,7 @@ mod render {
         .unwrap();
         writeln!(
             &mut body,
-            "| Source equity     | Re-run of the four -realdata scenarios (Option α per ADR-0033 § D2.b.i). |"
+            "| Source equity     | Re-run of the five -realdata scenarios (four TCN + one PatchTST BS-1, Option α per ADR-0033 § D2.b.i). |"
         )
         .unwrap();
         writeln!(&mut body, "| Bar interval      | 1h |").unwrap();
@@ -621,7 +630,7 @@ mod render {
         if all_zero_dampen {
             writeln!(
                 &mut body,
-                "| Honest reading    | dampen rate = 0.00% across all four scenarios — TCN overlay is a no-op; equity curves are byte-identical between passthrough and real-weights variants per year. |"
+                "| Honest reading    | dampen rate = 0.00% across all five scenarios — overlay models are no-ops; equity curves are byte-identical between passthrough and real-weights variants per year. |"
             )
             .unwrap();
         } else {
@@ -631,32 +640,40 @@ mod render {
                 .fold(f64::NEG_INFINITY, f64::max);
             writeln!(
                 &mut body,
-                "| Honest reading    | TCN overlay is partially active (max dampen rate = {:.2}%). Sharpe lift vs baseline requires M-R-HAT verdict cross-reference. |",
+                "| Honest reading    | Overlay is partially active (max dampen rate = {:.2}%). Sharpe lift vs baseline requires F-verdict cross-reference. |",
                 max_dr * 100.0
             )
             .unwrap();
         }
 
-        // Sharpe delta: passthrough-2023 vs real-weights-2023; passthrough-2024 vs real-weights-2024.
+        // Sharpe delta: passthrough-2023 vs real-weights-2023; passthrough-2024 vs real-weights-2024;
+        // passthrough-2023 vs patchtst-2023.
         let sharpe_pass_2023 = metrics::compute_sharpe_hourly(&results[0].equity);
         let sharpe_weights_2023 = metrics::compute_sharpe_hourly(&results[2].equity);
         let sharpe_pass_2024 = metrics::compute_sharpe_hourly(&results[1].equity);
         let sharpe_weights_2024 = metrics::compute_sharpe_hourly(&results[3].equity);
+        let sharpe_patchtst_2023 = metrics::compute_sharpe_hourly(&results[4].equity);
         writeln!(
             &mut body,
-            "| Sharpe delta      | {:.6} (passthrough vs. real-weights, 2023) / {:.6} (2024) |",
+            "| Sharpe delta (TCN)      | {:.6} (passthrough vs. real-weights, 2023) / {:.6} (2024) |",
             sharpe_weights_2023 - sharpe_pass_2023,
             sharpe_weights_2024 - sharpe_pass_2024,
         )
         .unwrap();
         writeln!(
             &mut body,
-            "| Conclusion        | TCN at v2.5 / v2.6.0-realdata produces no alpha lift over the v1 momentum baseline. Verdict gated by M-R-HAT's F-verdict (this report alone cannot diagnose why). |"
+            "| Sharpe delta (PatchTST) | {:.6} (passthrough-2023 vs. patchtst-bs1-2023) |",
+            sharpe_patchtst_2023 - sharpe_pass_2023,
         )
         .unwrap();
         writeln!(
             &mut body,
-            "| Recommended follow-on | (a) wait for M-R-HAT verdict; (b) if M-R-HAT lands F4, fund v25-tcn-horizon-bump OR retire TCN at v2.6 bake-off. |"
+            "| Conclusion        | TCN and PatchTST at v2.5a produce no alpha lift over the v1 momentum baseline. PatchTST F-verdict: F4 (see forecast-distribution-patchtst-bs1 report). |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Recommended follow-on | (a) if both models land F4, fund v25-tcn-horizon-bump OR retire TCN at v2.6 bake-off; (b) PatchTST 24h horizon may need longer backtest burn-in (336-bar warmup). |"
         )
         .unwrap();
 
@@ -664,12 +681,12 @@ mod render {
         writeln!(&mut body, "\n## Notes\n").unwrap();
         writeln!(
             &mut body,
-            "- Read-only against the four -realdata reports listed in frontmatter."
+            "- Read-only against the five -realdata reports listed in frontmatter."
         )
         .unwrap();
         writeln!(
             &mut body,
-            "- This report re-runs the four backtest scenarios (Option α per ADR-0033 § D2.b.i)."
+            "- This report re-runs five backtest scenarios (four TCN + one PatchTST BS-1, Option α per ADR-0033 § D2.b.i)."
         )
         .unwrap();
         writeln!(
@@ -690,8 +707,8 @@ mod render {
             .collect();
         format!(
             "---\n\
-             slug: v25-tcn-alpha-investigation\n\
-             scenario: sharpe-comparison-realdata\n\
+             slug: v25a-patchtst-overlay\n\
+             scenario: sharpe-comparison-patchtst-bs1-realdata\n\
              generated: {}\n\
              wall_clock_s: {:.1}\n\
              host: {}\n\
@@ -727,7 +744,7 @@ mod render {
             v
         }
 
-        fn make_fixture() -> [RerunResult; 4] {
+        fn make_fixture() -> [RerunResult; 5] {
             let eq = make_equity(100_000.0, 8760);
             let r = RerunResult {
                 name: "top10-2023-fy-tcn-overlay-realdata".to_string(),
@@ -755,6 +772,12 @@ mod render {
                 RerunResult {
                     name: "top10-2024-fy-tcn-overlay-weights-realdata".to_string(),
                     variant: "real-weights".to_string(),
+                    ..r.clone()
+                },
+                // PatchTST BS-1 2023-FY (additive at Wave D T-D-N26).
+                RerunResult {
+                    name: "top10-2023-fy-patchtst-overlay-realdata".to_string(),
+                    variant: "patchtst-real-weights".to_string(),
                     ..r
                 },
             ]
@@ -800,6 +823,10 @@ mod render {
             assert!(
                 body.contains("real-weights"),
                 "missing real-weights label in comparison table"
+            );
+            assert!(
+                body.contains("patchtst-real-weights"),
+                "missing patchtst-real-weights label in comparison table"
             );
         }
 
@@ -881,13 +908,13 @@ fn main() -> Result<()> {
     let t_start = std::time::Instant::now();
 
     // Re-run scenarios (or skip).
-    let results: [rerun::RerunResult; 4] = if args.skip_rerun {
+    let results: [rerun::RerunResult; 5] = if args.skip_rerun {
         anyhow::bail!("--skip-rerun is not yet implemented; run without it.");
     } else {
         // Each scenario re-run goes into a tempdir to preserve anchor safety.
         let tmpdir = tempfile::TempDir::new().context("creating tempdir")?;
 
-        let mut scenario_results = Vec::with_capacity(4);
+        let mut scenario_results = Vec::with_capacity(5);
         for &name in &rerun::SCENARIOS {
             info!(scenario = name, "running scenario");
             let result = rerun::rerun_scenario(name, &args.backtest_bin, tmpdir.path())
@@ -903,7 +930,7 @@ fn main() -> Result<()> {
 
         scenario_results
             .try_into()
-            .map_err(|_| anyhow::anyhow!("expected exactly 4 scenario results"))?
+            .map_err(|_| anyhow::anyhow!("expected exactly 5 scenario results"))?
     };
 
     let wall_clock_s = t_start.elapsed().as_secs_f64();
@@ -952,7 +979,7 @@ fn main() -> Result<()> {
             .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
         format!("{}{:02}{:02}", dt.year(), dt.month() as u8, dt.day())
     };
-    let filename = format!("sharpe-comparison-realdata-{today}.md");
+    let filename = format!("sharpe-comparison-patchtst-bs1-realdata-{today}.md");
     let out_path = args.out_dir.join(&filename);
     std::fs::write(&out_path, full_report)
         .with_context(|| format!("writing report to {:?}", out_path))?;

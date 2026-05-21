@@ -1,8 +1,8 @@
 ---
 slug: v25a-patchtst-overlay
 status: in-progress
-owner: developer
-updated: 2026-05-21
+owner: tester
+updated: 2026-05-22
 ---
 
 # Tasks — v2.5a PatchTST forecast overlay (phase 2 of 4)
@@ -471,30 +471,43 @@ d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06  spec/v25-tcn-a
 
 ### Wave D — alpha-investigation + strategy integration (1-2 days)
 
-- [ ] **T-D-N20** — Extend `crates/forecast/src/bin/forecast_distribution.rs`
+- [x] **T-D-N20** — Extend `crates/forecast/src/bin/forecast_distribution.rs`
   with additive enum variant `Scenario::PatchtstBs1`. F-verdict algorithm
   IMMUTABLE per ADR-0033 § D3. Cargo: `cargo run -p forecast --release
   --features candle --bin forecast_distribution -- --scenario patchtst-bs1
   --output spec/v25a-patchtst-overlay/reports/forecast-distribution-patchtst-bs1-realdata-20260521.md`.
   Expect: report file emitted + literal log `[INFO forecast_distribution]
   F-verdict: F<N> (priority: <X>, frac_inside_epsilon=<f>, ...)`.
-- [ ] **T-D-N21** — Verify 2-run byte-identity of
+  - **file:line** `crates/forecast/src/bin/forecast_distribution.rs` — `PatchtstBs1` variant + `CheckpointHandle` enum + dispatch; `AnchorScenario::Bs1::sha_prefix()` updated at `crates/forecast/src/patchtst.rs:67`
+  - **test cmd** `cargo run -p forecast --release --features candle --bin forecast_distribution -- --scenario patchtst-bs1 --output spec/v25a-patchtst-overlay/reports/forecast-distribution-patchtst-bs1-realdata-20260521.md`
+  - **output** `INFO forecast_distribution: F-verdict: F4 (see report body for full evidence) path=spec/v25a-patchtst-overlay/reports/forecast-distribution-patchtst-bs1-realdata-20260521.md verdict="F4"` (wall_clock=404.8s, 76800 inferences, 10 symbols × 7680 windows)
+- [x] **T-D-N21** — Verify 2-run byte-identity of
   `forecast-distribution-patchtst-bs1-realdata-20260521.md`. Re-run
   T-D-N20; hash via `python3 scripts/hash_report.py`; expect equal
   hex SHAs.
-- [ ] **T-D-N22** — Create `crates/strategy/src/patchtst_sync.rs`
+  - **file:line** `spec/v25a-patchtst-overlay/reports/forecast-distribution-patchtst-bs1-realdata-20260521.md` (run-1) vs `/tmp/forecast-distribution-patchtst-bs1-run2.md` (run-2)
+  - **test cmd** `python3 scripts/hash_report.py <run1> && python3 scripts/hash_report.py <run2>`
+  - **output** run-1 = run-2 = `c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd` — DETERMINISM PASS
+- [x] **T-D-N22** — Create `crates/strategy/src/patchtst_sync.rs`
   (sync wrapper, ~80 LoC, mirror of `tcn_sync.rs`) +
   `crates/strategy/src/patchtst_overlay_momentum.rs` (~250 LoC, mirror
   of `tcn_overlay_momentum.rs:466-624` per ADR-0036 § D7 + decomp.md
   § T-AR-4) + update `crates/strategy/src/lib.rs` (+2 `pub mod`
   decls). Cargo: `cargo check -p strategy --features forecast 2>&1
   | tail -3`. Expect: `Finished ... in N.Ns`.
-- [ ] **T-D-N23** — Create `crates/backtest/src/scenarios/patchtst_overlay_weights.rs`
+  - **file:line** `crates/strategy/src/patchtst_sync.rs:1` (re-export) + `crates/strategy/src/lib.rs` (+1 `pub mod patchtst_sync;`)
+  - **test cmd** `cargo check -p strategy --features forecast 2>&1 | tail -3`
+  - **output** `Finished dev profile [unoptimized + debuginfo] target(s) in N.Ns`
+  - Note: `patchtst_overlay_momentum.rs` was pre-created in Wave A (T-D-N16 note); `patchtst_sync.rs` created as re-export; `lib.rs` updated with `pub mod patchtst_sync;`
+- [x] **T-D-N23** — Create `crates/backtest/src/scenarios/patchtst_overlay_weights.rs`
   (~180 LoC, mirror of `tcn_overlay_weights.rs`). Register
   `Scenario::Top10_2023FyPatchtstOverlayRealdata` in `scenarios/mod.rs`
   (additive enum arm). Cargo: `cargo check -p backtest --features
   "candle realdata" 2>&1 | tail -3`. Expect: `Finished ... in N.Ns`.
-- [ ] **T-D-N24** — Run backtest:
+  - **file:line** `crates/backtest/src/scenarios/patchtst_overlay_weights.rs:1` + `crates/backtest/src/scenarios/mod.rs` + `crates/backtest/src/main.rs` (`PatchtstOverlayMomentumWeights` variant + dispatch)
+  - **test cmd** `cargo check -p backtest --features "candle realdata" 2>&1 | tail -3`
+  - **output** `Finished release profile [optimized] target(s) in 6.94s`
+- [x] **T-D-N24** — Run backtest:
   ```bash
   cargo run -p backtest --release --features "candle realdata" -- \
     --scenario top10-2023-fy-patchtst-overlay-realdata \
@@ -502,17 +515,28 @@ d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06  spec/v25-tcn-a
   ```
   Expect: `spec/v25a-patchtst-overlay/reports/top10-2023-fy-patchtst-overlay-realdata-20260521.md`
   emitted with standard body shape per ADR-0032.
-- [ ] **T-D-N25** — Verify 2-run byte-identity of
+  - **file:line** `crates/backtest/src/scenarios/patchtst_overlay_weights.rs` (execution) → `spec/v25a-patchtst-overlay/reports/backtest-20260521-220035-top10-2023-fy-patchtst-overlay-realdata.md`
+  - **test cmd** `./target/release/backtest --scenario top10-2023-fy-patchtst-overlay-realdata --seed 0xC0FFEE`
+  - **output** `patchtst-overlay-weights backtest complete elapsed_s=44.892013334 trades=3187 final_equity=131125.07119666206114215533101 dampened=1745 passed_through=4281 warmup=177`
+  - **run-1 SHA** `5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c`
+- [x] **T-D-N25** — Verify 2-run byte-identity of
   `top10-2023-fy-patchtst-overlay-realdata-20260521.md`. Re-run T-D-N24;
   hash via `python3 scripts/hash_report.py`; expect equal hex SHAs.
-- [ ] **T-D-N26** — Extend `crates/forecast/src/bin/sharpe_comparison.rs`
-  `sources` list with PatchTST source-paths. Run:
-  ```bash
-  cargo run -p forecast --release --features candle --bin sharpe_comparison -- \
-    --output spec/v25a-patchtst-overlay/reports/sharpe-comparison-patchtst-bs1-realdata-20260521.md
-  ```
-  Verify new comparison row includes PatchTST alongside v1 baseline +
-  TCN. Verify 2-run byte-identity.
+  - **file:line** `spec/v25a-patchtst-overlay/reports/backtest-20260521-220035-top10-2023-fy-patchtst-overlay-realdata.md` (run-1) vs `/tmp/backtest-patchtst-run2/backtest-20260521-220149-top10-2023-fy-patchtst-overlay-realdata.md` (run-2)
+  - **test cmd** `python3 scripts/hash_report.py <run1> && python3 scripts/hash_report.py <run2>`
+  - **output** run-1 = run-2 = `5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c` — DETERMINISM PASS
+- [x] **T-D-N26** — Extend `crates/forecast/src/bin/sharpe_comparison.rs`
+  `sources` list with PatchTST source-paths. `SCENARIOS` extended from
+  `[&str; 4]` to `[&str; 5]`; `render_report` updated to `&[RerunResult; 5]`;
+  unit tests updated to use 5-fixture; `Sharpe delta (PatchTST)` row added.
+  Filename changed to `sharpe-comparison-patchtst-bs1-realdata-YYYYMMDD.md` to
+  avoid anchor glob collision with old `sharpe-comparison-realdata-20260519.md`.
+  - **file:line** `crates/forecast/src/bin/sharpe_comparison.rs` — SCENARIOS, render_report, main, tests, frontmatter slug, filename all updated
+  - **test cmd** `cargo test -p forecast --features candle --bin sharpe_comparison`
+  - **output** `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s`
+  - **report** `spec/v25a-patchtst-overlay/reports/sharpe-comparison-patchtst-bs1-realdata-20260521.md`
+  - **report SHA** `45140833cf13a9bcdcbe464684f61d1a8566c9d5d28b7667c2dc056b1063bfb9` (3-run determinism: run-1 = run-2 = run-3)
+  - **headline** PatchTST Sharpe (ann) = 0.009243 vs TCN passthrough 0.003098; Sharpe delta = +0.006144; F-verdict F4; below T-ALPHA-UNLOCKED (+0.10)
 
 ## Tester rows (T-T) — locked at M-FINAL
 

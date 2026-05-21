@@ -1133,7 +1133,7 @@ T-MARGINAL?" question.
 
 ## Implementation
 
-> Developer handoff summary — Wave A (T-D-N1..N16) complete 2026-05-21.
+> Developer handoff summary — Wave A (T-D-N1..N16) + Wave D (T-D-N20..N26) complete 2026-05-21/22.
 
 ### Files created / modified
 
@@ -1173,6 +1173,30 @@ Span 2023-01-01..2023-04-01 (3 months, 11030 windows). Smoke-test checkpoint rem
 ### K6 invariant (T-D-N15)
 
 `git diff --quiet HEAD -- crates/forecast/src/tcn.rs` exits 0 — TCN source unchanged.
+
+### Wave D results (T-D-N20..N26) — developer complete 2026-05-21/22
+
+| Report | SHA (body, deterministic) | F-verdict / headline |
+|--------|--------------------------|----------------------|
+| `forecast-distribution-patchtst-bs1-realdata-20260521.md` | `c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd` | **F4** — no collapse; σ_train calibrated; 55.8% bars survive confidence gate |
+| `backtest-20260521-220035-top10-2023-fy-patchtst-overlay-realdata.md` | `5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c` | +31.13% total return; dampened=1745/6203 signals; Sharpe (ann) 0.009243 |
+| `sharpe-comparison-patchtst-bs1-realdata-20260521.md` | `45140833cf13a9bcdcbe464684f61d1a8566c9d5d28b7667c2dc056b1063bfb9` | Sharpe delta (PatchTST vs v1 baseline): **+0.006144** — below +0.10 T-ALPHA-UNLOCKED |
+
+**Candidate anchor SHAs for tester:**
+- `forecast-distribution-patchtst-bs1-realdata`: `c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd`
+- `top10-2023-fy-patchtst-overlay-realdata`: `5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c`
+
+Wave D files modified/created:
+- `crates/forecast/src/bin/forecast_distribution.rs` — `PatchtstBs1` variant + `CheckpointHandle` dispatch
+- `crates/forecast/src/patchtst.rs` — `AnchorScenario::Bs1::sha_prefix()` fixed to actual Wave B SHA
+- `crates/strategy/src/patchtst_sync.rs` — NEW re-export module
+- `crates/strategy/src/lib.rs` — `pub mod patchtst_sync` added
+- `crates/backtest/src/scenarios/patchtst_overlay_weights.rs` — NEW backtest scenario
+- `crates/backtest/src/scenarios/mod.rs` — `pub mod patchtst_overlay_weights` added
+- `crates/backtest/src/main.rs` — `PatchtstOverlayMomentumWeights` variant + dispatch + `report_dir_for_scenario` mapping
+- `crates/forecast/src/bin/sharpe_comparison.rs` — `SCENARIOS[5]`, `render_report(&[RerunResult;5])`, PatchTST verdict row, renamed filename to `sharpe-comparison-patchtst-bs1-realdata-*.md`
+
+Anchors verified: 28/28 PASS via `scripts/verify_anchors.sh`.
 
 ### Wave B readiness
 

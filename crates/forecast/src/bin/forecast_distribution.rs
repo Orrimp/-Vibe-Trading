@@ -43,8 +43,10 @@ use clap::Parser;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+use candle_core::Tensor;
 use forecast::{
     features::{FeatureConfig, TimeSpan, windows_for_symbol},
+    patchtst::{AnchorScenario as PatchtstAnchorScenario, PatchTstForecaster},
     tcn::{AnchorScenario, TcnForecaster},
 };
 
@@ -53,20 +55,17 @@ use forecast::{
 /// Which anchored checkpoint to inspect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum ScenarioArg {
-    /// BS-1: trained Jan–Sep 2023, evaluated 2023-01-01..2024-01-01.
+    /// BS-1: trained Jan–Sep 2023, evaluated 2023-01-01..2024-01-01 (TCN).
     Bs1,
-    /// BS-2: trained 2023 full year, evaluated 2024-01-01..2025-01-01.
+    /// BS-2: trained 2023 full year, evaluated 2024-01-01..2025-01-01 (TCN).
     Bs2,
+    /// PatchTST BS-1: trained 2023 full year, 24h horizon,
+    /// evaluated 2023-01-01..2024-01-01 (ADR-0036).
+    #[value(name = "patchtst-bs1")]
+    PatchtstBs1,
 }
 
 impl ScenarioArg {
-    fn to_anchor(self) -> AnchorScenario {
-        match self {
-            ScenarioArg::Bs1 => AnchorScenario::Bs1,
-            ScenarioArg::Bs2 => AnchorScenario::Bs2,
-        }
-    }
-
     /// Default evaluation span (UTC, half-open) for each checkpoint.
     fn default_span(self) -> (time::OffsetDateTime, time::OffsetDateTime) {
         match self {
@@ -78,6 +77,11 @@ impl ScenarioArg {
                 time::macros::datetime!(2024-01-01 00:00:00 UTC),
                 time::macros::datetime!(2025-01-01 00:00:00 UTC),
             ),
+            // PatchTST BS-1 trained on 2023-FY; evaluate the same year.
+            ScenarioArg::PatchtstBs1 => (
+                time::macros::datetime!(2023-01-01 00:00:00 UTC),
+                time::macros::datetime!(2024-01-01 00:00:00 UTC),
+            ),
         }
     }
 
@@ -85,7 +89,12 @@ impl ScenarioArg {
         match self {
             ScenarioArg::Bs1 => "bs1",
             ScenarioArg::Bs2 => "bs2",
+            ScenarioArg::PatchtstBs1 => "patchtst-bs1",
         }
+    }
+
+    fn is_patchtst(self) -> bool {
+        matches!(self, ScenarioArg::PatchtstBs1)
     }
 }
 
@@ -130,6 +139,15 @@ struct Args {
     /// original anchor SHAs are preserved.
     #[arg(long)]
     metadata_path: Option<PathBuf>,
+
+    /// Full output path override for the report.
+    ///
+    /// When supplied, the report is written to this exact path (parent dirs
+    /// are created automatically). When absent, the existing `--out-dir` +
+    /// auto-generated filename logic applies. Additive — existing TCN
+    /// scenarios that do NOT pass `--output` are unaffected.
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 // ── Statistics module ─────────────────────────────────────────────────────────
@@ -660,6 +678,12 @@ fn render_frontmatter(ctx: &ReportContext) -> String {
             "v25-tcn-recalibrate",
             format!("{}-realdata-recalibrated", ctx.scenario_label),
         )
+    } else if ctx.scenario_label.starts_with("patchtst") {
+        // PatchTST reports go under the v25a-patchtst-overlay slug (T-D-N20).
+        (
+            "v25a-patchtst-overlay",
+            format!("{}-realdata", ctx.scenario_label),
+        )
     } else {
         (
             "v25-tcn-alpha-investigation",
@@ -756,51 +780,115 @@ fn main() -> Result<()> {
     };
     let span = TimeSpan::new(span_start, span_end);
 
-    // Load checkpoint (ADR-0035 D3: opt-in via additive --metadata-path flag).
-    let anchor = args.scenario.to_anchor();
-    let forecaster = match &args.metadata_path {
-        Some(meta_path) => {
-            // Override only the metadata source; safetensors weights from anchor.
-            let anchors_dir = PathBuf::from("crates/forecast/checkpoints/anchors");
-            let prefix = anchor.file_prefix();
-            let sha = anchor.sha_prefix();
-            let safetensors_path = anchors_dir.join(format!("{prefix}-{sha}.safetensors"));
-            info!(
-                metadata_path = %meta_path.display(),
-                safetensors_path = %safetensors_path.display(),
-                "loading checkpoint with recalibrated metadata overlay (ADR-0035 D3)"
-            );
-            TcnForecaster::load_from_paths(&safetensors_path, meta_path)
-                .context("loading checkpoint from explicit paths")?
+    // ── Checkpoint load ───────────────────────────────────────────────────────
+    // For PatchTST scenarios, dispatch to PatchTstForecaster.
+    // For TCN scenarios, use TcnForecaster (ADR-0035 D3: opt-in via --metadata-path).
+    // This is ADDITIVE — the TCN dispatch path is byte-identical to the predecessor.
+
+    // Trait-erased handles so the rest of the function can share the forward-pass loop.
+    enum CheckpointHandle {
+        Tcn(TcnForecaster),
+        Patchtst(PatchTstForecaster),
+    }
+
+    impl CheckpointHandle {
+        fn model_revision(&self) -> &str {
+            match self {
+                CheckpointHandle::Tcn(f) => &f.model_revision,
+                CheckpointHandle::Patchtst(f) => &f.model_revision,
+            }
         }
-        None => {
-            // Default path: byte-identical to predecessor (22 anchor SHAs preserved).
-            TcnForecaster::load_anchor(anchor).context("loading anchor checkpoint")?
+        fn sigma_train(&self) -> f32 {
+            match self {
+                CheckpointHandle::Tcn(f) => f.sigma_train,
+                CheckpointHandle::Patchtst(f) => f.sigma_train,
+            }
         }
+        fn forward(&self, x: &Tensor) -> anyhow::Result<Tensor> {
+            match self {
+                CheckpointHandle::Tcn(f) => f.forward(x, false).context("TCN forward pass"),
+                CheckpointHandle::Patchtst(f) => {
+                    f.forward(x, false).context("PatchTST forward pass")
+                }
+            }
+        }
+    }
+
+    let forecaster: CheckpointHandle = if args.scenario.is_patchtst() {
+        // PatchTST dispatch (additive arm; T-D-N20 Wave D).
+        let f = PatchTstForecaster::load_anchor(PatchtstAnchorScenario::Bs1)
+            .context("loading PatchTST anchor checkpoint")?;
+        info!(
+            model_revision = %f.model_revision,
+            sigma_train = f.sigma_train,
+            scenario = args.scenario.label(),
+            "PatchTST checkpoint loaded"
+        );
+        CheckpointHandle::Patchtst(f)
+    } else {
+        // TCN dispatch — byte-identical to the predecessor (22 anchor SHAs preserved).
+        let anchor = match args.scenario {
+            ScenarioArg::Bs1 => AnchorScenario::Bs1,
+            ScenarioArg::Bs2 => AnchorScenario::Bs2,
+            ScenarioArg::PatchtstBs1 => unreachable!("handled by is_patchtst() branch"),
+        };
+        let tcn = match &args.metadata_path {
+            Some(meta_path) => {
+                let anchors_dir = PathBuf::from("crates/forecast/checkpoints/anchors");
+                let prefix = anchor.file_prefix();
+                let sha = anchor.sha_prefix();
+                let safetensors_path = anchors_dir.join(format!("{prefix}-{sha}.safetensors"));
+                info!(
+                    metadata_path = %meta_path.display(),
+                    safetensors_path = %safetensors_path.display(),
+                    "loading checkpoint with recalibrated metadata overlay (ADR-0035 D3)"
+                );
+                TcnForecaster::load_from_paths(&safetensors_path, meta_path)
+                    .context("loading checkpoint from explicit paths")?
+            }
+            None => TcnForecaster::load_anchor(anchor).context("loading anchor checkpoint")?,
+        };
+        info!(
+            model_revision = %tcn.model_revision,
+            sigma_train = tcn.sigma_train,
+            scenario = args.scenario.label(),
+            "TCN checkpoint loaded"
+        );
+        CheckpointHandle::Tcn(tcn)
     };
 
-    info!(
-        model_revision = %forecaster.model_revision,
-        sigma_train = forecaster.sigma_train,
-        scenario = args.scenario.label(),
-        "checkpoint loaded"
-    );
-
-    // The forward-pass collection loop and report write are in the
-    // Wave 2/3 implementation (T-D-2, T-D-4). In this skeleton we
-    // parse args and prove the CLI surface compiles.
-    //
     // Ensure out_dir exists.
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("creating out_dir {:?}", args.out_dir))?;
+    // Also create the parent of --output if supplied.
+    if let Some(ref out_path) = args.output
+        && let Some(parent) = out_path.parent()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating output parent dir {:?}", parent))?;
+    }
 
-    // ── Forward-pass collection loop (T-D-2) ──────────────────────────────────
+    // ── Forward-pass collection loop ──────────────────────────────────────────
     let symbols = [
         "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "DOTUSDT", "ETHUSDT", "LINKUSDT",
         "SOLUSDT", "XRPUSDT",
     ];
 
-    let feat_cfg = FeatureConfig::default();
+    // PatchTST uses a 24-bar horizon in the feature windows; TCN uses 1-bar horizon.
+    // The FeatureConfig target_horizon_bars determines which bars are skippable at
+    // the tail of the iterator — we set it per scenario so windows_for_symbol returns
+    // the correct count without off-by-one at year boundaries.
+    let feat_cfg = if args.scenario.is_patchtst() {
+        // PatchTST uses 336-bar context window (14 days) and 24-bar horizon.
+        FeatureConfig {
+            context_bars: 336,
+            target_horizon_bars: 24,
+            ..FeatureConfig::default()
+        }
+    } else {
+        FeatureConfig::default()
+    };
+
     let mut r_hat_all: Vec<f32> = Vec::with_capacity(90_000);
     let t_start = std::time::Instant::now();
 
@@ -819,7 +907,7 @@ fn main() -> Result<()> {
                 .unsqueeze(0)
                 .context("unsqueeze batch dim")?;
 
-            let out = forecaster.forward(&x, false).context("TCN forward pass")?;
+            let out = forecaster.forward(&x)?;
             let vals: Vec<f32> = out
                 .flatten_all()
                 .context("flatten output")?
@@ -840,7 +928,7 @@ fn main() -> Result<()> {
     );
 
     // ── Statistics ────────────────────────────────────────────────────────────
-    let sigma_train = forecaster.sigma_train;
+    let sigma_train = forecaster.sigma_train();
     let epsilon = 0.0005_f32;
     let tau = 0.60_f32;
 
@@ -896,21 +984,24 @@ fn main() -> Result<()> {
         .unwrap_or_else(|_| "unknown".to_string());
 
     // Build RecalDelta when a metadata overlay was supplied (ADR-0035 D3).
-    let recal_delta: Option<RecalDelta> = if args.metadata_path.is_some() {
-        Some(match args.scenario {
-            ScenarioArg::Bs1 => RecalDelta::bs1(),
-            ScenarioArg::Bs2 => RecalDelta::bs2(),
-        })
-    } else {
-        None
-    };
+    // PatchTST never uses the recal-delta section (no .metadata.recalibrated.json at v0.1.0).
+    let recal_delta: Option<RecalDelta> =
+        if args.metadata_path.is_some() && !args.scenario.is_patchtst() {
+            Some(match args.scenario {
+                ScenarioArg::Bs1 => RecalDelta::bs1(),
+                ScenarioArg::Bs2 => RecalDelta::bs2(),
+                ScenarioArg::PatchtstBs1 => unreachable!("is_patchtst() guards this"),
+            })
+        } else {
+            None
+        };
 
     let ctx = ReportContext {
         generated,
         wall_clock_s,
         host,
         git_commit,
-        model_revision: forecaster.model_revision.clone(),
+        model_revision: forecaster.model_revision().to_string(),
         sigma_train,
         data_revision_sha,
         scenario_label: args.scenario.label().to_string(),
@@ -959,10 +1050,20 @@ fn main() -> Result<()> {
             today
         )
     };
-    let out_path = args.out_dir.join(&filename);
+    // Use --output (full path) if supplied; otherwise fall back to out_dir + filename.
+    let out_path = args
+        .output
+        .clone()
+        .unwrap_or_else(|| args.out_dir.join(&filename));
     std::fs::write(&out_path, full_report)
         .with_context(|| format!("writing report to {:?}", out_path))?;
 
+    info!(
+        path = %out_path.display(),
+        verdict = v.label(),
+        "F-verdict: {} (see report body for full evidence)",
+        v.label()
+    );
     info!(
         path = %out_path.display(),
         verdict = v.label(),

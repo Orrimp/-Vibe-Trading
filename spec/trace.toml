@@ -341,9 +341,13 @@ tests       = [
   "crates/forecast/tests/tcn_byte_identity.rs",                          # K6 scope-creep guard — TCN files byte-immutable through PatchTST ship (Wave A.5 / T-D-N15)
   "crates/forecast/tests/patchtst_overlay_neutrality.rs",                # K4 anchor neutrality — re-runs top10-2023-fy-tcn-overlay-realdata; asserts SHA 8fa47f49 (Wave A.5 / T-D-N16)
   "crates/forecast/tests/forecast_distribution_verdict.rs",              # ADR-0033 § D3 F-verdict IMMUTABLE re-pass after PatchTST dispatch extension (Wave E.4)
-]   # architect M-T1 2026-05-21; developer ships at Wave A.5 / E; tester verifies at M-FINAL
-anchors     = []   # tester fills at M-FINAL after PASS; Q7=(a) + Q8=(a) defaults: forecast-distribution-patchtst-bs1-realdata + top10-2023-fy-patchtst-overlay-realdata under v2.5a.0-patchtst
-state       = "in-progress"   # architect M-T1 landed 2026-05-21 (decomp.md + ADR-0036 + tasks.md T-AR-1..T-AR-8 ticked); owner flipped architect → developer; awaiting Wave A start. Cost ~3-5 weeks best case; ~5-7 weeks with one Wave-B retry.
+  "crates/forecast/src/bin/sharpe_comparison.rs",                        # Wave D T-D-N26 unit tests (8 pass): metrics + render determinism + 5-fixture render
+]   # developer Wave A+D complete 2026-05-21/22; tester verifies at M-FINAL
+anchors     = [
+  "forecast-distribution-patchtst-bs1-realdata",   # c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd; locked tester M-FINAL 2026-05-22; 2-run byte-identical (T-D-N21 + tester T-F8 re-verify)
+  "top10-2023-fy-patchtst-overlay-realdata",        # 5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c; locked tester M-FINAL 2026-05-22; 2-run byte-identical (T-D-N25 + tester T-F8 re-verify)
+]   # tester-locked at M-FINAL 2026-05-22 per spec/anchors.toml additive rows under v2.5a.0-patchtst; anchors stay locked regardless of K4 fix
+state       = "in-progress"   # K4 test bug blocks tester-pass; HANDOFF → developer to fix patchtst_overlay_neutrality.rs (missing --bin backtest; multi-binary backtest crate conflict)
 
 [[req]]
 id          = "REQ-V25B-TRANSFORMER-001"

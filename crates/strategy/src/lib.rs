@@ -11,6 +11,7 @@ pub mod composed;
 pub mod cross_sectional;
 pub mod pairs;
 pub mod patchtst_overlay_momentum;
+pub mod patchtst_sync;
 pub mod registry;
 pub mod sma_crossover;
 pub mod tcn_overlay_momentum;
