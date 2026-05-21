@@ -196,3 +196,20 @@ sha256   = "baa658fb7ad96796f643d8fecab9156362b17faad97afc37be77867850336ad9"
 scenario = "recalibrate-sigma-train-bs2"
 version  = "v2.6.1-alpha-investigation-recalibrated"
 sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
+
+# v2.6.2 τ × ε threshold-tuning sweep reports (T-T-1.b / M-FINAL).  Locked by tester
+# on 2026-05-21 against the recalibrated checkpoint forward passes (BS-1 2023 FY /
+# BS-2 2024 FY; REVISION.toml SHA 3a8b96c4…).  Both reports are 2-run byte-identical
+# (tester-verified at M-FINAL).  Joint verdict: T-MARGINAL + T-MARGINAL (see
+# spec/v25-tcn-threshold-tuning/feature.md § Verification).  The 26 pre-feature
+# anchors above stay byte-identical (anchor-additive only, per R7 / R8).
+
+[[anchors]]
+scenario = "threshold-sweep-bs1-realdata-recalibrated"
+version  = "v2.6.2-threshold-tuning"
+sha256   = "551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c"
+
+[[anchors]]
+scenario = "threshold-sweep-bs2-realdata-recalibrated"
+version  = "v2.6.2-threshold-tuning"
+sha256   = "755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3"

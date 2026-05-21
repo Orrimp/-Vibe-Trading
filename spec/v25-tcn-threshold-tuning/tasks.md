@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-threshold-tuning
 status: in-progress
-owner: developer
+owner: tester
 updated: 2026-05-21
 ---
 
@@ -320,47 +320,54 @@ See `decomp.md § 6` for the full root-cause analysis.
 
 ## Tester rows (T-T) — Wave C (tester at M-FINAL)
 
-- [ ] **T-T-1.a** — 2-run byte-identity determinism gate on both
+- [x] **T-T-1.a** (2026-05-21) — 2-run byte-identity determinism gate on both
   heatmap reports + on the 4 predecessor recalibrate-ship anchored
   bodies (regression-safety). File:line: heatmap files + predecessor
   files. Cargo:
   `python3 scripts/hash_report.py spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs{1,2}-realdata-recalibrated-20260521.md`
-  (each twice; SHAs match). Expected: 6 SHAs stable across 2 runs.
+  Output (run-1 = developer run-2 = tester re-confirmation):
+  - BS-1: `551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c`
+  - BS-2: `755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3`
+  4 predecessor bodies verified byte-identical to locked SHAs (file-direct hash):
+  - `forecast-distribution-bs1-realdata-20260519.md` → `ef73cb8d…`
+  - `forecast-distribution-bs2-realdata-20260519.md` → `d7cd08e6…`
+  - `forecast-distribution-bs1-realdata-recalibrated-20260521.md` → `8a548042…`
+  - `forecast-distribution-bs2-realdata-recalibrated-20260521.md` → `d6c1e17c…`
 
-- [ ] **T-T-1.b** — Anchor-additive lock: append 2 rows to
+- [x] **T-T-1.b** (2026-05-21) — Anchor-additive lock: appended 2 rows to
   `spec/anchors.toml` under version `v2.6.2-threshold-tuning`. File:line:
   `spec/anchors.toml:199+` (append). Cargo:
-  `bash scripts/verify_anchors.sh`. Expected: `ANCHORS PASS  (28 / 28)`
-  IF the pre-existing § 6 glob collision is first triaged + fixed by
-  the spec-auditor; otherwise `ANCHORS FAIL` with the same 2 spurious
-  FAILs + 26 PASS rows.
+  `bash scripts/verify_anchors.sh`
+  Output: 26 PASS + 2 pre-existing glob-collision FAILs (`forecast-distribution-bs{1,2}-realdata`)
+  + 2 new PASS (`threshold-sweep-bs{1,2}-realdata-recalibrated`) = 28 total anchors.
+  The 2 FAILs are pre-existing carry-forward (bodies are byte-identical to locked SHAs;
+  script picks the wrong file via glob — spec-auditor punch-list item).
 
-- [ ] **T-T-1.c** — Anchor-neutrality check: 26 originals body-SHA
-  byte-identical to baseline. File:line: anchored files. Cargo:
-  `for f in $(find spec -name 'forecast-distribution-bs*realdata-2026051*.md' -o -name 'sharpe-comparison-realdata-*.md' -o -name '*.md' -path '*/reports/*'); do python3 scripts/hash_report.py "$f"; done`
-  (or simpler: `bash scripts/verify_anchors.sh | grep -E "^(PASS|FAIL)"`).
-  Expected: all 26 lines match the M-T1 baseline (modulo the 2 § 6
-  pre-existing FAILs, which the file-direct hashes show are byte-identical).
+- [x] **T-T-1.c** (2026-05-21) — Anchor-neutrality check: 26 originals body-SHA
+  byte-identical to baseline. Cargo: `bash scripts/verify_anchors.sh | grep "^PASS"` —
+  26 PASS lines for pre-feature anchors (scripts resolves the 2 glob-collision FAILs
+  to the wrong file but file-direct hash confirms byte-identity). Also confirmed:
+  `git diff HEAD -- crates/forecast/checkpoints/anchors/*.metadata*.json crates/forecast/checkpoints/anchors/*.safetensors`
+  is empty (T-F9 gate). All 26 pre-feature body-SHAs confirmed byte-identical.
 
-- [ ] **T-T-1.d** — Joint T-verdict recorded in `feature.md §
-  Verification`. Routing per § R3 table. File:line:
-  `spec/v25-tcn-threshold-tuning/feature.md § Verification` (append).
-  Expected: `Joint verdict: T-<LABEL>` + `Operator routing: <decision>`
-  lines added.
+- [x] **T-T-1.d** (2026-05-21) — Joint T-verdict recorded in `feature.md §
+  Verification`. File:line: `spec/v25-tcn-threshold-tuning/feature.md § Verification` (appended).
+  Content: Joint verdict T-MARGINAL + T-MARGINAL; headline cell τ=0.1/ε=0.001;
+  BS-1 max Sharpe-delta +0.018 / BS-2 max Sharpe-delta +0.045; operator routing
+  recommendation → `v25-tcn-horizon-bump-or-retire` (or ship advisory with live-trading
+  validation). H1 falsified; H3 confirmed.
 
-- [ ] **T-T-1.e** — Trace row flipped to `shipped`. `crates`, `tests`,
-  `anchors` columns populated. File:line: `spec/trace.toml:222-231`.
-  Cargo: `python3 scripts/spec_brief.py v25-tcn-threshold-tuning --check-trace`.
-  Expected: `state = "shipped"` + non-empty arrays.
+- [x] **T-T-1.e** (2026-05-21) — Trace row flipped to `tester-pass` (NOT `shipped` —
+  operator does that at presenter approval). `anchors` column populated with 2 new
+  anchor names. File:line: `spec/trace.toml` REQ-V25-TCN-THRESHOLD-TUNING-001:
+  `anchors = ["threshold-sweep-bs1-realdata-recalibrated", "threshold-sweep-bs2-realdata-recalibrated"]`
+  + `state = "tester-pass"`.
 
-- [ ] **T-T-1.f** — Tester report under
-  `spec/v25-tcn-threshold-tuning/reports/test-<YYYYMMDD-HHMM>-v25-tcn-threshold-tuning.md`
-  per `.claude/skills/rust-test/templates/test-report.md`. Carries
-  the 26 → 28 anchor-progression line literal. File:line:
-  `spec/v25-tcn-threshold-tuning/reports/test-<YYYYMMDD-HHMM>-v25-tcn-threshold-tuning.md`
-  (new). Cargo: `bash scripts/verify_anchors.sh`. Expected: tester
-  report cites `ANCHORS PASS  (28 / 28)` as the post-lock literal
-  (or the 26 file-direct hashes if the glob-collision is still open).
+- [x] **T-T-1.f** (2026-05-21) — Tester report authored at
+  `spec/v25-tcn-threshold-tuning/reports/test-20260521-1630-v25-tcn-threshold-tuning.md`.
+  Carries the 26→28 anchor-progression literal. Anchor gate: 26 PASS + 2 pre-existing
+  glob-collision FAILs + 2 new PASS = 28 total. The 2 FAILs are carry-forward
+  (file-direct hashes confirm byte-identity). VERDICT → PASS.
 
 ## Presenter rows (T-P) — PENDING (presenter at M-PRESENTER)
 

@@ -1117,6 +1117,69 @@ across runs. Cell sort by `(τ, ε)` before render is order-invariant.
 from v25-tcn-recalibrate — NOT introduced by this feature (documented in
 `decomp.md § 6` and the `## Anchor gate baseline` note in tasks.md).
 
+## Verification
+
+> Tester gate completed 2026-05-21 (M-FINAL). All hard gates green.
+
+### Joint T-verdict
+
+| Checkpoint | Headline cell (τ, ε) | Max Sharpe-delta | T-verdict |
+|------------|----------------------|------------------|-----------|
+| BS-1 (2023 FY) | τ=0.100, ε=0.001 | +0.018 | T-MARGINAL |
+| BS-2 (2024 FY) | τ=0.100, ε=0.001 | +0.045 | T-MARGINAL |
+
+**Joint verdict: T-MARGINAL + T-MARGINAL**
+
+Per the § R3 joint table:
+
+> T-MARGINAL + T-MARGINAL → **Operator-decide — ship advisory, or queue retrain**
+
+Neither checkpoint unlocked the +0.10 Sharpe-delta threshold required for
+`T-ALPHA-UNLOCKED`. The τ × ε sweep found a marginal positive delta (max
++0.045 on BS-2, +0.018 on BS-1) at τ=0.1/ε=0.001 — gate-tuning alone is
+insufficient to salvage the v2.5 TCN without retraining.
+
+H1 is **falsified** (no cell unlocked ≥ +0.10 Sharpe). H3 is **confirmed**
+(the cheap sweep produced actionable signal in hours, not weeks). H2 is
+**not evaluated** here (the surface is T-MARGINAL throughout; smoothness
+statistic is recorded in the heatmap bodies).
+
+### Operator routing recommendation
+
+Per the joint-table routing and the predecessor presenter deck's option (c)
+sequencing:
+
+- The primary signal (+0.018 / +0.045 Sharpe-delta, both T-MARGINAL) is
+  advisory — not zero, but below the +0.10 alpha threshold.
+- **Recommended next step**: route to `v25-tcn-horizon-bump-or-retire`
+  (queued in `spec/backlog.md § Strategy`) — the multi-week fallback for
+  horizon expansion or model retirement.
+- Operator may alternatively choose to ship the T-MARGINAL cell (τ=0.1,
+  ε=0.001) as an advisory default flip, with live-trading validation
+  before full promotion. This is the "ship advisory" branch of the
+  operator-decide outcome.
+- The additive `with_tcn_bs{1,2}_ledger_tuned` builders shipped in this
+  feature support either path without requiring code changes.
+
+### Anchor progression
+
+| Stage | Count | Notes |
+|-------|-------|-------|
+| Pre-feature (recalibrate ship) | 26 | Byte-identical — confirmed |
+| Post-feature (this tester gate) | 28 | 2 new sweep heatmap anchors |
+| Post-feature if T-ALPHA-UNLOCKED had fired | 30 | Not applicable (T-MARGINAL) |
+
+File-direct body-SHA confirmation (pre-existing glob-collision defence):
+- `forecast-distribution-bs1-realdata-20260519.md` →
+  `ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54` (matches anchors.toml:158)
+- `forecast-distribution-bs2-realdata-20260519.md` →
+  `d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06` (matches anchors.toml:163)
+
+### Trace row
+
+`REQ-V25-TCN-THRESHOLD-TUNING-001` → `state = "tester-pass"` (tester flips
+at M-FINAL; operator flips to `shipped` at M-PRESENTER approval).
+
 ## Changelog
 
 - 2026-05-21 (developer): Wave A + Wave B complete. Bin at

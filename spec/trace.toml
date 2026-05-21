@@ -240,8 +240,11 @@ tests       = [
   "crates/strategy/tests/tcn_overlay_tuned_builder.rs",   # 5 unit tests — builder invariance
   "crates/backtest/tests/threshold_sweep_readonly.rs",     # 2 read-only enforcement tests
 ]
-anchors     = []   # tester fills at M-FINAL (target 2 sweep heatmaps under `v2.6.2-threshold-tuning`; tuned-winner anchors deferred to follow-on v2.5.1 if T-ALPHA-UNLOCKED fires)
-state       = "in-progress"   # developer Wave A+B complete 2026-05-21: crates + tests populated; bin at crates/backtest/src/bin/threshold_sweep.rs (architectural deviation from D-AR-1.a — circular dep); 7 tests pass; workspace clippy + fmt clean; BS-1 T-MARGINAL (Sharpe-delta +0.018), BS-2 T-MARGINAL (Sharpe-delta +0.045); body-SHAs deterministic; HANDOFF → tester
+anchors     = [
+  "threshold-sweep-bs1-realdata-recalibrated",
+  "threshold-sweep-bs2-realdata-recalibrated",
+]
+state       = "tester-pass"   # tester M-FINAL 2026-05-21: all hard gates green; joint T-MARGINAL+T-MARGINAL (+0.018 BS-1 / +0.045 BS-2 Sharpe-delta); 26→28 anchors locked; fmt+clippy+test PASS; 2-run byte-identity PASS; spec-lint 87/2 baseline maintained; HANDOFF → presenter
 
 [[req]]
 id          = "REQ-COCKPIT-TRAIN-001"

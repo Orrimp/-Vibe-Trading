@@ -27,8 +27,9 @@ architecture reference; feature.md § Design is a cross-pointer.
 #### D-AR-1.a — Bin name + location
 
 The sweep tool ships at
-[`crates/forecast/src/bin/threshold_sweep.rs`](../../crates/forecast/src/bin/threshold_sweep.rs)
-(new file). Analyst's suggested name confirmed because:
+[`crates/backtest/src/bin/threshold_sweep.rs`](../../crates/backtest/src/bin/threshold_sweep.rs)
+(new file; developer placed in `crates/backtest/` per T-D-N4 circular-dep resolution — see
+§ 6 architectural deviation note). Analyst's suggested name confirmed because:
 
 - Co-locates with the existing investigation-bin family:
   [`forecast_distribution.rs`](../../crates/forecast/src/bin/forecast_distribution.rs),
