@@ -247,6 +247,17 @@ anchors     = [
 state       = "shipped"   # operator-approved via presenter deck 2026-05-21; routing (c) — ship advisory + queue v25-tcn-horizon-bump-or-retire (Queue→Active follows); joint T-MARGINAL+T-MARGINAL (+0.018 BS-1 / +0.045 BS-2 Sharpe-delta; no alpha unlock at +0.10 threshold); 26→28 anchors; additive `_tuned` builders shipped for opt-in live validation; existing `_ledger` builders byte-identical (R-3 const-fold-default preserved)
 
 [[req]]
+id          = "REQ-V25-TCN-HORIZON-BUMP-OR-RETIRE-001"
+title       = "v2.5 TCN horizon-bump or retire — scope-decision-grade analyst pass; Q1 (a horizon-bump / b retire-promote-PatchTST / c both / d defer-on-live) HARD BLOCKER no safe default; predecessor chain REQ-V25-TCN-THRESHOLD-TUNING-001 → REQ-V25-TCN-RECALIBRATE-001 → REQ-V25-TCN-ALPHA-001 → REQ-V25-TCN-OVERLAY-001"
+feature     = "v25-tcn-horizon-bump-or-retire"
+product     = "spec/product.md"
+arch        = []   # architect fills at M-T1 (scope-dependent); ADR-0037 (horizon-bump training contract) on scope a/c OR ADR-0036 (retire decision-record) on scope b OR ADR-0036-alt (defer-on-live) on scope d
+crates      = []   # developer fills at M-D; scope (a)/(c): crates/forecast (train_tcn --target-horizon-bars + features.rs target derivation extension); scope (b)/(d): zero code change
+tests       = []   # developer fills at M-D; scope (a)/(c): K5 topology-immutability + K6 anchor-neutrality + default-invariance + horizon-bumps-target-derivation; scope (b)/(d): no new tests beyond anchor-neutrality
+anchors     = []   # tester fills at M-FINAL after PASS; scope (a) at Q3=(a): forecast-distribution-bs1-h<Q2>-realdata + top10-2023-fy-tcn-overlay-h<Q2>-realdata under v2.7.0-horizon-bump; scope (b)/(d): no new anchors
+state       = "shipped"   # operator-decided Q1=(b) RETIRE 2026-05-21 — pivot the multi-week budget to v2.5a PatchTST (phase 2 of 4-phase DL roadmap); Q2-Q7 MOOT under (b); zero code change; zero new anchors; 28 existing anchors byte-identical; decision documented in feature.md / tasks.md; next-step is v25a-patchtst-overlay Queue→Active promotion + analyst pass
+
+[[req]]
 id          = "REQ-COCKPIT-TRAIN-001"
 title       = "Cockpit training control — subprocess-spawned `train_tcn` launcher with log tail (Tier 1) + per-epoch audit train_events + live loss-curve plot (Tier 2); Lab sub-panel; anchor-byte-safe by construction (zero new anchors, 19 originals byte-identical)"
 feature     = "cockpit-training-control"

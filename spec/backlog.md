@@ -359,6 +359,23 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-21 (analyst, v25-tcn-horizon-bump-or-retire) —
+     analyst pass landed for the multi-week fallback after the
+     v25-tcn-threshold-tuning v0.1.0 (shipped 2026-05-21) joint
+     T-MARGINAL + T-MARGINAL verdict (BS-1 +0.018 / BS-2 +0.045
+     Sharpe-delta at τ=0.1/ε=0.001; below the +0.10
+     T-ALPHA-UNLOCKED threshold). Brief at
+     `spec/v25-tcn-horizon-bump-or-retire/feature.md` is
+     SCOPE-DECISION-GRADE — Q1 (primary scope: a horizon-bump /
+     b retire-promote-PatchTST / c both in parallel / d defer-on-
+     live) is HARD BLOCKER with NO safe analyst default. R1-R8
+     scope-dependent; H1-H3 hypothesis register; K1-K7 risk
+     register; Q1-Q7 operator-decide. Trace row
+     `REQ-V25-TCN-HORIZON-BUMP-OR-RETIRE-001` opened `draft`.
+     Cost framing: (a) ~7-10 days / (b) ~4-6 weeks /
+     (c) ~6-9 weeks / (d) ~30-90 days. Promoted Queue/Strategy →
+     Active 2026-05-21 (ACTIVATION TRIGGERED tag cleared). -->
+
 <!-- updated 2026-05-21 (analyst, v25-tcn-threshold-tuning) — analyst
      pass landed for the cheap-first follow-on to v25-tcn-recalibrate
      v0.1.0 (shipped 2026-05-21, operator routing (c) chosen). Brief
@@ -433,44 +450,14 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ### Strategy
 
 - **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire`).**
-  _**ACTIVATION TRIGGERED 2026-05-21**_ — `v25-tcn-threshold-tuning v0.1.0`
-  shipped 2026-05-21 with joint **T-MARGINAL + T-MARGINAL** verdict
-  (BS-1 +0.018 / BS-2 +0.045 Sharpe-delta at τ=0.1/ε=0.001; below the
-  +0.10 T-ALPHA-UNLOCKED threshold). Operator decided routing (c) at
-  presenter approval → **this stub will be promoted Queue → Active on
-  the next "next" directive** (analyst pass to scope (a) horizon-bump
-  retrain vs (b) retire-for-v2.5a PatchTST). Originally added 2026-05-21
-  by analyst as the
-  "expensive retrain" half of operator-decided routing (c) from the
-  [`v25-tcn-recalibrate` presenter deck](v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
-  (shipped 2026-05-21). Predecessor stack:
-  `v25-tcn-threshold-tuning v0.1.0` (currently draft under Active; the
-  cheap τ × ε sweep half of the same routing decision). Parent (stays
-  `in-progress`): `v25-tcn-overlay v2.5.0`. **Activation condition**:
-  this stub is promoted Queue → Active iff the threshold-tuning
-  feature's joint T-verdict at M-FINAL is `T-NO-ALPHA` OR
-  `T-MARGINAL` (operator-decide); see
-  [`v25-tcn-threshold-tuning/feature.md § R3`](v25-tcn-threshold-tuning/feature.md)
-  for the routing table. If `T-ALPHA-UNLOCKED` lands, the additive
-  `with_tcn_bs{1,2}_ledger_tuned(τ, ε)` builder + 2 tuned anchors ship
-  in the threshold-tuning feature itself and THIS stub is DELETED (not
-  promoted) — alpha was extracted without retraining. **Scope when
-  promoted**: (a) horizon-bump retrain — extend the v2.5 TCN training
-  scaffold (`crates/forecast/src/bin/train_tcn.rs`) to support a multi-
-  step / multi-horizon head; re-train BS-1 + BS-2 on a 24h or 1-day
-  target rather than 1h log-return; re-run alpha-investigation against
-  the new checkpoints. Cost: ~2-3 weeks wall-clock on Apple Silicon
-  Metal (predecessor `v25-tcn-overlay` reported ~4-5 days per single
-  checkpoint at 1h horizon; horizon-bump roughly 2× cost + tuning loop).
-  OR (b) retire v2.5 TCN — promote `v25a-patchtst-overlay` (Queue §
-  Strategy below) and `v25b-transformer-overlay` (also Queue § Strategy
-  below) and rely on the v2.6 bake-off to pick the canonical forecaster.
-  Analyst-recommended default at promotion time: (a) if the recalibrated
-  `r_hat` distribution shows directional signal (mean significantly
-  non-zero or skewed) that just didn't make it through the (τ, ε)
-  surface; (b) if the recalibrated distribution looks isotropic-random
-  (predict-near-zero). Analyst spawn deferred until activation
-  condition fires.
+  _moved Queue → Active 2026-05-21 (analyst pass)_ — see
+  [Active section](#active) for the live tracking row and
+  [`feature.md`](v25-tcn-horizon-bump-or-retire/feature.md) for the
+  full brief. The original 4-bucket scope framing is preserved here
+  as a pivot reference: (a) horizon-bump retrain (~5-21 days);
+  (b) retire-promote-PatchTST (~4-6 weeks); (c) both in parallel
+  (~6-9 weeks); (d) defer-on-live (~30-90 days). Q1 (primary scope)
+  is operator-decide HARD BLOCKER with no safe analyst default.
 
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _moved Queue → Active 2026-05-18 (analyst pass)_ — see
@@ -503,10 +490,22 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   model families on data where any may report dampened=0).
 
 - **v2.5a — PatchTST / iTransformer forecast overlay
-  (`v25a-patchtst-overlay`).** _roadmap_ — phase 2 of the
-  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). Activates
-  after phase 1 (TCN) ships. Patch-based Transformer paradigm; reuses
-  training infrastructure from phase 1. Stub at
+  (`v25a-patchtst-overlay`).** _**ACTIVATION TRIGGERED 2026-05-21** —
+  operator decided routing (b) at the
+  [`v25-tcn-horizon-bump-or-retire`](v25-tcn-horizon-bump-or-retire/feature.md)
+  scope-decision step: retire v2.5 TCN at 1h horizon; pivot the
+  multi-week budget to PatchTST. **Promotes Queue → Active on next
+  "next" directive** for analyst pass._ Phase 2 of the
+  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). v2.5 TCN
+  predecessor stack (alpha-investigation → recalibrate →
+  threshold-tuning) all shipped 2026-05-19..21 with final verdict:
+  σ_train bug eliminated but 1h-horizon TCN does not extract alpha
+  on real Binance OHLCV (Joint T-MARGINAL +0.018 / +0.045 Sharpe-
+  delta, below +0.10 threshold). Patch-based Transformer paradigm;
+  reuses training infrastructure from phase 1 (training scaffold at
+  `crates/forecast/src/bin/train_tcn.rs`, anchors at
+  `crates/forecast/checkpoints/anchors/`, ADR-0035 σ_train cross-
+  phase contract). Estimated ~4-6 weeks wall-clock. Stub at
   [`spec/v25a-patchtst-overlay/feature.md`](v25a-patchtst-overlay/feature.md).
 - **v2.5b — Vanilla decoder-only Transformer overlay
   (`v25b-transformer-overlay`).** _roadmap_ — phase 3 of the
@@ -874,6 +873,33 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire` v0.1.0)** —
+  shipped 2026-05-21 as a **policy/decision feature** (no code change,
+  no new anchors). Operator-decided Q1=(b) at the hard-blocker scope
+  prompt: **retire v2.5 TCN at 1h horizon; pivot the multi-week budget
+  to v2.5a PatchTST** (phase 2 of the 4-phase DL roadmap). Q2-Q7 MOOT
+  under (b) — no retrain, no checkpoint, no new training anchor. The
+  v2.5 TCN journey across 3 substantive ships
+  ([alpha-investigation v0.1.0](v25-tcn-alpha-investigation/feature.md) F4 verdict +
+  [recalibrate v0.1.0](v25-tcn-recalibrate/feature.md) σ_train bug eliminated +
+  [threshold-tuning v0.1.0](v25-tcn-threshold-tuning/feature.md) Joint T-MARGINAL
+  +0.018 / +0.045) established that 1h-horizon TCN cannot extract alpha
+  on real Binance OHLCV. **Decision rationale**: marginal +0.018 / +0.045
+  Sharpe-delta is below the +0.10 alpha-unlock threshold AND a noise-floor
+  question; ~4-6 weeks of PatchTST investigation is higher EV than ~2-3
+  more weeks chasing a 24h-horizon TCN retrain when we already have
+  evidence the model family struggles on hourly crypto bars. **What
+  stays**: 28 existing anchors byte-identical (8 v2.5 TCN anchors +
+  4 backtest-realdata + 4 v2.6.1-alpha-investigation-recalibrated +
+  2 v2.6.2-threshold-tuning + 10 non-TCN); additive
+  `with_tcn_bs{1,2}_ledger_tuned` builders shipped at threshold-tuning;
+  ADR-0033 § D3 F-verdict + ADR-0035 σ_train recalibration contract
+  remain in force as cross-phase invariants. **What promotes**:
+  [`v25a-patchtst-overlay`](#queue) flagged ACTIVATION TRIGGERED in
+  Queue § Strategy — promotes Queue → Active on next "next" directive.
+  Trace row `REQ-V25-TCN-HORIZON-BUMP-OR-RETIRE-001` flipped
+  draft → shipped (operator-decide as the load-bearing M-FINAL).
 
 - **v2.5 TCN threshold tuning (`v25-tcn-threshold-tuning` v0.1.0)** —
   shipped 2026-05-21 (operator-approved via presenter deck
