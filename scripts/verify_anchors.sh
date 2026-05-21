@@ -37,12 +37,23 @@ while IFS= read -r line; do
         # The script picks whichever pattern resolves first; all finds
         # are sorted independently and the lexicographically-largest
         # match wins (timestamp prefix → effectively "newest").
+        #
+        # Pattern 3 (investigation reports) requires a digit-only suffix
+        # `<scenario>-[0-9]+.md` so that derivative report families with
+        # extra word-segments before the timestamp (e.g.
+        # `forecast-distribution-bs1-realdata-recalibrated-<date>.md`
+        # shipped by v25-tcn-recalibrate) DON'T collide with the base
+        # scenario's anchor when the base scenario name is a prefix of
+        # the derivative's filename. Each derivative locks its own anchor
+        # under its own scenario string.
         latest="$(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" 2>/dev/null | sort | tail -1 || true)"
         if [[ -z "$latest" ]]; then
             latest="$(find "$root"/spec -type f -path "*/reports/success-*-$scenario.md" 2>/dev/null | sort | tail -1 || true)"
         fi
         if [[ -z "$latest" ]]; then
-            latest="$(find "$root"/spec -type f -path "*/reports/$scenario-*.md" 2>/dev/null | sort | tail -1 || true)"
+            latest="$(find "$root"/spec -type f -path "*/reports/$scenario-*.md" 2>/dev/null \
+                | grep -E "/reports/${scenario}-[0-9]+\.md$" \
+                | sort | tail -1 || true)"
         fi
         if [[ -z "$latest" ]]; then
             printf 'MISS  %-36s  no report on disk\n' "$scenario"
