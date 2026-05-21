@@ -1,7 +1,7 @@
 ---
 slug: v25-tcn-threshold-tuning
-status: proposed
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-21
 version: 0.1.0
 predecessor: v25-tcn-recalibrate v0.1.0
@@ -92,7 +92,7 @@ off; the sweep extends to 9 backtests per checkpoint.
 
 The ε knob is the deadband for the OVERLAY direction (combined with
 the base momentum signal — see
-[`crates/strategy/src/overlay.rs::combine`](../../crates/strategy/src/overlay.rs)).
+[`crates/forecast/src/overlay.rs::combine`](../../crates/forecast/src/overlay.rs)).
 When `|combined_direction| ≤ ε`, the overlay is silent (no position
 change). ε = 0.0005 was sized to the synthetic-GBM forecasts' typical
 magnitude; the real-data forecasts have p95(|r_hat|) ≈ 0.032 / 0.020
@@ -786,6 +786,179 @@ Metal: ~2-3 weeks per the predecessor's analyst notes), this is
 **1-2 orders of magnitude cheaper**. The presenter deck's "hours, not
 weeks" framing from the recalibrate ship carries forward.
 
+## Design
+
+> Architect lock at M-T1 (2026-05-21). Canonical decomposition lives
+> at [`decomp.md`](decomp.md); this section is a cross-pointer. All
+> Q1-Q6 = analyst defaults consumed (operator "Autoapprove all"
+> 2026-05-21).
+
+### Bin location + shape
+
+- **New bin**: `crates/forecast/src/bin/threshold_sweep.rs` — sits
+  next to `forecast_distribution.rs`, `sharpe_comparison.rs`, and
+  `recalibrate_sigma_train.rs`. Keeps the predecessor's 4 anchored
+  forecast-distribution + recalibrate-derivation bodies byte-identical
+  by construction.
+- **Shape**: in-process orchestrator (loads model once, loads bars
+  once, runs 45 cells per checkpoint in-process via `rayon::par_iter`)
+  — NOT a shell-out-to-`backtest` wrapper. Saves ~5-7min of per-shell-out
+  load overhead. See [`decomp.md § D-AR-1.b`](decomp.md).
+
+### CLI surface
+
+```
+threshold_sweep --scenario <bs1|bs2> \
+                --data-root data/binance/ \
+                --metadata-path crates/forecast/checkpoints/anchors/tcn-<bs>-<sha>.metadata.recalibrated.json \
+                --out-dir spec/v25-tcn-threshold-tuning/reports/ \
+                --expected-revision-sha 3a8b96c4…
+```
+
+`--metadata-path` is REQUIRED (no default) — forces the operator to
+point at the recalibrated overlay file. Detail at
+[`decomp.md § D-AR-1.d`](decomp.md).
+
+### τ × ε grid (Q1=(a) + Q2=(a))
+
+| Axis | Cells | Values                                              |
+|------|-------|-----------------------------------------------------|
+| τ    | 9     | 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9         |
+| ε    | 5     | 0.0001, 0.0005 (baseline), 0.001, 0.005, 0.01       |
+
+45 cells per checkpoint × 2 checkpoints = **90 backtest runs**.
+
+### Strategy builders (Q5=(c))
+
+4 NEW additive builders on `TcnOverlayMomentumStrategy` —
+**explicit args required**, no `Option<Decimal>` cascading defaults:
+
+| Builder | Feature gate | Signature |
+|---------|--------------|-----------|
+| `with_tcn_bs1_tuned`         | `forecast`            | `(base, τ, ε) -> Result<Self>` |
+| `with_tcn_bs2_tuned`         | `forecast`            | `(base, τ, ε) -> Result<Self>` |
+| `with_tcn_bs1_ledger_tuned`  | `forecast-audit-tick` | `(base, ledger, τ, ε) -> Result<Self>` |
+| `with_tcn_bs2_ledger_tuned`  | `forecast-audit-tick` | `(base, ledger, τ, ε) -> Result<Self>` |
+
+The existing 4 builders (`with_tcn_bs{1,2}`,
+`with_tcn_bs{1,2}_ledger`) stay byte-identical (literal `dec!(0.6)`
+pass-through; literal `forecast::tcn::DIRECTION_EPSILON` for ε). The
+26 predecessor anchors stay byte-identical (K4 / R8).
+
+ε plumbing: a new additive `with_direction_epsilon(eps)` builder on
+`TcnSyncForecaster` + new `direction_epsilon: Option<f32>` field.
+`infer()` body at lines 305-307 reads `self.direction_epsilon.unwrap_or(forecast::tcn::DIRECTION_EPSILON)`.
+The `pub const DIRECTION_EPSILON: f32 = 0.000_5_f32` at
+[`crates/forecast/src/tcn.rs:653`](../../crates/forecast/src/tcn.rs)
+stays byte-identical. Detail at
+[`decomp.md § D-AR-1.f`](decomp.md) + [`§ D-AR-1.g`](decomp.md).
+
+### Backtest helper (D-AR-1.c)
+
+A thin `crates/backtest/src/scenarios/threshold_sweep.rs::run_cell`
+helper extracts the runtime loop from `tcn_overlay_weights::run` and
+accepts a pre-constructed strategy. The existing `tcn_overlay_weights::run`
+stays byte-identical (zero behavioral delta for the 4 anchored
+`top10-{2023,2024}-fy-tcn-overlay-{,weights-}realdata` bodies).
+
+### Parallelism contract (R9 / K3)
+
+4-way `rayon::par_iter` over 45 cells per checkpoint. Determinism
+invariants the parallelism preserves:
+
+1. Per-cell `seed = 0xC0FFEE` (ADR-0032 § D4).
+2. Bars shared read-only.
+3. Forecaster cloned fresh per cell (load ~150-300ms × 45 ≈ ~7-14s
+   overhead — accepted).
+4. **Cell assembly sorted by `(τ, ε)` lexicographic key BEFORE
+   render** — order-invariant body across runs regardless of
+   execution order.
+
+Tester at M-FINAL runs the 2-run byte-identity gate
+(T-T-1.a in [`tasks.md`](tasks.md)).
+
+### Report shape (R2 — locked at M-T1)
+
+Two heatmap reports under
+`spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs{1,2}-realdata-recalibrated-20260521.md`.
+Body has 4 heatmaps (Sharpe-delta, return-delta, max-DD, gate-survivor 1D),
+headline cell, smoothness statistic (H2 guard), T-classifier verdict.
+Floating-point format rules locked at
+[`decomp.md § D-AR-1.h`](decomp.md):
+
+- τ, ε, σ_train, Sharpe, Sortino, Calmar, smoothness ratio → `%.6f`
+- Sharpe delta → `%+.6f` (signed)
+- Returns / drawdowns / dampen rate → `%.2f%%` (2-dp percentage)
+- Return / drawdown deltas → `%+.2f%%` (signed 2-dp pct)
+- Trades / bar / gate-survivor counts → `%d`
+- ASCII-only, LF-only, fixed-precision (inherits ADR-0033 § D2.a).
+
+### T-classifier (Q4=(c) — embedded in body, NOT a new ADR)
+
+```
+T-ALPHA-UNLOCKED ⇔ max(Sharpe_delta over (τ, ε)) ≥ +0.10
+T-MARGINAL       ⇔ max-cell ∈ [0.0, +0.10)
+T-NO-ALPHA       ⇔ max-cell < 0.0
+```
+
+Joint verdict (computed at tester / presenter time per § R3 table)
+is the routing trigger. ADR-0036 explicitly NOT written at M-T1 —
+the 3-label classifier is small enough to live in the report body
+per Q4=(c). If H1 fires + the follow-on v2.5.1 wants to codify a
+tuned-promotion contract, that's the trigger to author ADR-0036
+WITH empirical evidence in hand (cheap path, information-preserving).
+
+### Anchor strategy (Q6=(a))
+
+| Anchor | Version | Path |
+|--------|---------|------|
+| `threshold-sweep-bs1-realdata-recalibrated` | `v2.6.2-threshold-tuning` | `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs1-realdata-recalibrated-20260521.md` |
+| `threshold-sweep-bs2-realdata-recalibrated` | `v2.6.2-threshold-tuning` | `spec/v25-tcn-threshold-tuning/reports/threshold-sweep-bs2-realdata-recalibrated-20260521.md` |
+
+**Tuned-winner anchors NOT in scope of this feature.** If
+`T-ALPHA-UNLOCKED` fires (joint), a follow-on v2.5.1 feature
+(`v25-tcn-tuned-promotion`, not yet authored) locks the per-cell
+backtest bodies under a separate version pin. Architect authors
+the follow-on only after this feature's M-FINAL outcome.
+
+Anchor count progression: 26 (pre) → 28 (post), regardless of T-verdict.
+
+### Non-regression contract (carries forward from § R8)
+
+| Invariant | Mechanism |
+|-----------|-----------|
+| 26 predecessor anchors byte-identical | Additive-only diff; existing 4 builders untouched; `DIRECTION_EPSILON` const unchanged; `tcn_overlay_weights::run` byte-identical |
+| Original `.safetensors` byte-identical | Sweep is read-only |
+| Original `.metadata.json` byte-identical | Sweep is read-only |
+| `.metadata.recalibrated.json` byte-identical | Sweep is read-only |
+| `top10-{2023,2024}-fy-tcn-overlay-{,weights-}realdata` byte-identical at default invocation | Existing 4 builders unchanged + new helper is independent |
+
+T-D-N3 codifies the builder default-invariance as a unit test
+(`with_tcn_bs1.confidence_threshold == dec!(0.6)`,
+`with_tcn_bs1.direction_epsilon == None`).
+
+### ADR-0036 decision (Q4=(c))
+
+**NOT WRITTEN.** Rationale: the T-classifier has only 3 labels and
+may collapse to "always T-NO-ALPHA" if H1 falsifies. Codifying it
+as an ADR is overkill until we have empirical evidence of multiple
+unlocking cells across multiple feature spawns. If H1 fires, a
+follow-on v2.5.1 ADRs the T-classifier with evidence in hand. The
+F-verdict at [ADR-0033 § D3](../architecture/adr/0033-tcn-alpha-investigation-report-shape.md#d3-f-verdict-decision-algorithm)
+stays IMMUTABLE across this feature.
+
+### Wave decomposition (T-AR-5 → [`tasks.md`](tasks.md))
+
+```
+Wave A: T-D-N1..T-D-N9   (developer — builders + bin + helper + tests)
+Wave B: T-D-N10..T-D-N11 (orchestrator — determinism prep + anchor verify)
+Wave C: T-T-1.a..T-T-1.f (tester at M-FINAL — anchor lock + verdict)
+```
+
+Critical path: T-D-N1 → T-D-N2 → T-D-N6 → T-D-N7 → T-T-1.b →
+T-T-1.f. ~3-4 hr wall-clock; most of it is the 2 × ~8-12min sweep
+runs at T-D-N7 (background + watch recipe REQUIRED).
+
 ## Out of scope
 
 - **No retraining.** Weights stay byte-identical. If H1 falsifies, the
@@ -858,7 +1031,7 @@ weeks" framing from the recalibrate ship carries forward.
   shipped `with_tcn_bs1_ledger` + `with_tcn_bs2_ledger` builders;
   passing `dec!(0.6)` to `Self::new` is the τ-default the additive
   `_tuned` builder replaces with a CLI-driven arg.
-- `crates/strategy/src/overlay.rs` — `combine()` semantics for the
+- `crates/forecast/src/overlay.rs` — `combine()` semantics for the
   deadband ε (the zero-band where the overlay is silent).
 - `crates/strategy/src/tcn_overlay_momentum.rs:~145-170` (architect
   confirms exact line range at M-T1) — the `combine_with_direction`
