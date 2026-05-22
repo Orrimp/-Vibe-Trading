@@ -373,6 +373,91 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-22 (analyst, v3-volatility-forecaster-rebaseline) —
+     **Routing (b) RE-BASELINE FIRST** spawned from
+     `v3-volatility-forecaster` v0.1.0 presenter deck approval on
+     2026-05-22. The parent shipped with joint advisory verdict
+     **V3 × T-VOL-NO-ALPHA → MODEL-BROKEN / NO-ALPHA**; the
+     sharpe-comparison carrying T-VOL-NO-ALPHA uses a SYNTHETIC GBM
+     un-targeted v1 momentum baseline against a REAL Binance overlay,
+     and the operator picked (b) over (a) RETIRE-C1 / (c) DEBUG-V3 /
+     (d) v0.1.1 GARCH refit to disambiguate the data caveat before
+     committing multi-week budget.
+
+     Brief at `spec/v3-volatility-forecaster-rebaseline/feature.md`
+     (status: proposed, owner: analyst, version: 0.1.0, parent:
+     v3-volatility-forecaster v0.1.0 shipped-with-MODEL-BROKEN-NO-ALPHA-
+     advisory). R1–R5 tight 1-day-scoped requirements:
+     R1 baseline MUST be real-data; R2 baseline provenance pinned per
+     ADR-0032 (revision_sha 3a8b96c43f…); R3 T-classifier re-evaluated
+     against new net_delta per ADR-0038 § D1.c; R4 anchor-additive
+     through report emission, +1 anchor at M-FINAL under NEW
+     `[v3.0.0-volatility-rebaseline]` namespace block (existing 3
+     `[v3.0.0-volatility]` anchors stay byte-immutable per ADR-0038
+     § D6); R5 2-run byte-identity determinism carries forward from
+     parent R11.9 / R11.10. K-rebase-1..4 risks (anchored-report-reuse
+     CLOSED; T-VOL-NO-ALPHA still possible; T-classifier flip possible;
+     determinism fail recoverable). H-rebase-1..2 hypotheses (real-vs-
+     real net_delta WILL move, magnitude/direction unknown; V3 finding
+     survives independently regardless of T-classifier outcome).
+
+     **Investigation findings embedded** (analyst T-A2): the parent's
+     `--scenario vol-target-bs1` dispatch hard-codes the synthetic
+     baseline at
+     `crates/forecast/src/bin/sharpe_comparison.rs:1293`; no real-data
+     un-targeted v1 momentum scenario exists in
+     `crates/backtest/src/main.rs::Scenario::from_name` today (only
+     `top10-2023-1h-momentum` and `top10-2024-h1-momentum`, both
+     `data_source: Synthetic`); no anchored realdata momentum report
+     exists in `spec/backtest-real-binance-data/reports/` or anywhere
+     else under `spec/`. Net: cheapest path (report-reuse) CLOSED;
+     developer must add a new `top10-2023-fy-momentum-realdata`
+     scenario (~25 LoC additive, mirrors existing `-realdata` pattern;
+     ~40s backtest wall-clock; no design churn).
+
+     **Q1–Q3 operator-decide ALL WITH ANALYST-RECOMMENDED DEFAULTS:**
+     Q1=(b) introduce `top10-2023-fy-momentum-realdata` scenario
+     (Q1=(a) anchored-report-reuse structurally REJECTED by T-A2
+     finding #3); Q2=(a) anchor
+     `sharpe-comparison-vol-target-bs1-realbaseline` under NEW
+     `[v3.0.0-volatility-rebaseline]` namespace, N_new = +1;
+     Q3=(a) deliverable lands at
+     `spec/v3-volatility-forecaster-rebaseline/reports/`.
+
+     **Standing Autoapprove** from operator's 2026-05-22 prior session
+     applies to Q1–Q3 defaults; orchestrator may auto-tick T-OD1..3
+     before spawning architect for M-T1. Trace row
+     `REQ-V3-VOL-FORECASTER-REBASELINE-001` opened `proposed` (parent
+     = REQ-V3-VOL-FORECASTER-001).
+
+     **Anchor projection:** 33 PASS (post-parent-ship) → **34 PASS**
+     at M-FINAL under Q2=(a) default, or 35 PASS if operator opts in
+     on Q2=(b) (anchor both the new sharpe-comparison AND the new
+     baseline backtest). Net anchor-additive — zero churn on the
+     existing 33.
+
+     **Cost framing:** ~1 day end-to-end per (b) routing rationale —
+     scenario add ~10 min + sharpe-comparison.rs patch ~10 min +
+     backtest re-run ~40s + sharpe-comparison re-run ~10s + 2-run
+     byte-identity ~25s + tester gates + presenter pass. <2 hours of
+     developer time; the rest is architect M-T1 + tester M-FINAL +
+     presenter assembly.
+
+     **Pre-drawn 4-cell routing tree (presenter inherits):**
+     R-O1 T-VOL-NO-ALPHA + PASS → (a) RETIRE C1, promote C2 or C5;
+     R-O2 T-VOL-MARGINAL + PASS → (d) v0.1.1 GARCH refit;
+     R-O3 T-VOL-ALPHA-UNLOCKED + PASS → (c) DEBUG V3 (spawn
+     `v3-garch-calibration-tune`); re-opens v0.1.0 retirement
+     question;
+     R-O4 (any) + FAIL determinism → back to developer for fix; if
+     iteration overflows, operator-decide extend-budget vs (a).
+
+     HANDOFF → operator-decide (Q1..Q3, standing-Autoapproved) →
+     architect M-T1 → developer Wave A+B (parallel-safe: scenario add
+     + sharpe-comparison.rs patch can land in one PR) → tester →
+     presenter → operator next-decision keyed to R-O1..4 verdict
+     cell. -->
+
 <!-- updated 2026-05-22 (analyst, v3-volatility-forecaster) —
      **C1 / 3 hybrid-sequence analyst passes** triggered by operator's
      2026-05-22 routing post v25a-patchtst-overlay v0.1.0 ship

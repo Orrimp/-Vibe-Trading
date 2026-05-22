@@ -414,6 +414,39 @@ anchors     = [
 ]
 state       = "shipped"   # TESTER M-FINAL closed 2026-05-22 — T-T1 cargo gates PASS; anchor lock 30/30 → 33/33; V3 × T-VOL-NO-ALPHA advisory verdict (MODEL-BROKEN / NO-ALPHA) recorded in feature.md § Verification; test report at spec/v3-volatility-forecaster/reports/test-final-2026-05-22.md; HANDOFF → presenter
 
+# v3-volatility-forecaster-rebaseline v0.1.0 — analyst 2026-05-22.
+# Spawned by operator routing pick (b) RE-BASELINE FIRST on the parent's
+# presenter deck (spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md).
+# Tightly-scoped 1-day re-baseline pass that swaps the synthetic GBM v1
+# momentum baseline (used in the parent's sharpe-comparison report) for
+# a real-data un-targeted v1 momentum baseline + re-evaluates the
+# ADR-0038 § D1.c T-classifier on the new net_delta. Parent REQ stays
+# `shipped`; this row is `proposed` pending operator-decide Q1–Q3
+# (standing Autoapprove applies to defaults).
+
+[[req]]
+id          = "REQ-V3-VOL-FORECASTER-REBASELINE-001"
+title       = "v3 volatility forecaster RE-BASELINE pass — spawned 2026-05-22 by operator routing pick (b) RE-BASELINE FIRST on parent v3-volatility-forecaster v0.1.0 (shipped 2026-05-22 with joint advisory verdict V3 × T-VOL-NO-ALPHA → MODEL-BROKEN / NO-ALPHA). Parent's sharpe-comparison-vol-target-bs1-realdata uses SYNTHETIC GBM v1 momentum baseline (top10-2023-1h-momentum, data_source=Synthetic) against REAL Binance vol-target overlay (top10-2023-fy-vol-target-overlay-realdata, data_source=RealData) — the T-VOL-NO-ALPHA reading (net_delta = 0.029868) may be a data-mismatch artifact. This pass introduces top10-2023-fy-momentum-realdata scenario (Q1=(b) default; Q1=(a) anchored-report-reuse structurally REJECTED by analyst T-A2 investigation #3 — no anchored realdata momentum baseline report exists anywhere in spec/), re-runs sharpe-comparison against the new baseline, and re-evaluates T-classifier per ADR-0038 § D1.c. R1–R5 tight: R1 real-data baseline scenario; R2 baseline provenance pinned per ADR-0032 (revision_sha 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7); R3 T-classifier re-evaluated against new net_delta (V-verdict carries forward — V3 mean_calibration_ratio is a GARCH-only diagnostic, baseline-independent); R4 anchor-additive +1 under NEW [v3.0.0-volatility-rebaseline] namespace (existing 3 [v3.0.0-volatility] anchors stay byte-immutable per ADR-0038 § D6); R5 2-run byte-identity determinism carries forward from parent R11.9/R11.10. Q1–Q3 operator-decide with analyst-recommended defaults (Q1=(b) introduce realdata scenario, Q2=(a) anchor as sharpe-comparison-vol-target-bs1-realbaseline under [v3.0.0-volatility-rebaseline], Q3=(a) deliverable under spec/v3-volatility-forecaster-rebaseline/reports/); standing Autoapprove applies. Cost ~1 day end-to-end per (b) routing rationale (presenter recommendation ratified by operator). 4-cell routing tree pre-drawn: R-O1 T-VOL-NO-ALPHA + PASS → (a) RETIRE C1 promote C2/C5; R-O2 T-VOL-MARGINAL + PASS → (d) v0.1.1 GARCH refit; R-O3 T-VOL-ALPHA-UNLOCKED + PASS → (c) DEBUG V3 spawn v3-garch-calibration-tune (re-opens v0.1.0 retirement question); R-O4 determinism FAIL → developer fix iteration. Predecessor: v3-volatility-forecaster v0.1.0 (parent; shipped-with-MODEL-BROKEN-NO-ALPHA-advisory). Sibling-deferred picks v3-regime-classifier (C2) + v3-llm-forecaster (C5) remain gated on this pass's verdict cell."
+feature     = "v3-volatility-forecaster-rebaseline"
+parent      = "REQ-V3-VOL-FORECASTER-001"
+product     = "spec/product.md"
+arch        = [
+  "spec/v3-volatility-forecaster-rebaseline/feature.md",
+  "spec/v3-volatility-forecaster/feature.md",                       # parent — § Verification carries joint advisory verdict + data caveat
+  "spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md", # parent deck — routing pick (b) ratified
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",       # § D1.c T-classifier threshold grid (reused unchanged) + § D6 anchor-additive contract
+  "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md", # new baseline scenario inherits the same revision pin
+]
+crates      = [
+  "crates/backtest",        # additive: top10-2023-fy-momentum-realdata scenario in Scenario::from_name (mirrors existing -realdata pattern at lines 450-475; ~25 LoC, #[cfg(feature = "realdata")] gated)
+  "crates/forecast",        # additive: sharpe_comparison.rs hard-coded array swap at line 1293 + 3 string-literal updates at 975/1049/1082 + output path mapping at line 1243 + filename template at line 1327; no CLI flag (architect rejects scope creep per T-AR-3 default)
+]
+tests       = []     # tester M-FINAL: 2-run byte-identity (R5) + anchor-lock 33 → 34 PASS (or → 35 under Q2=(b)) + T-classifier verdict cell recorded against R-O1..4 routing table
+anchors     = [
+  "sharpe-comparison-vol-target-bs1-realbaseline",  # Q2=(a) default, NEW namespace [v3.0.0-volatility-rebaseline]
+]
+state       = "proposed"   # ANALYST T-A1..T-A3 closed 2026-05-22; awaits operator-decide T-OD1..T-OD3 (standing Autoapprove applies) → architect M-T1
+
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"
 title       = "v3 regime classifier (Candidate 2 of strategy-reformulation-survey-2026-05-22) — predict regime label not μ; spec-only design exploration at v0.1.0 per Q-SEQ HYBRID — DEFERRED until C1 verdict lands OR operator promotes; extends pre-existing pure-fn 3-state BTC daily-close tagger at crates/reflection/src/regime.rs (Bull/Bear/Chop, ±2% threshold, REGIME_THRESHOLD_RATIO const, classify_regime fn) — 7+ downstream test files + lesson-card embedding + Phase F UI renderer depend on byte-identity of that seed; analyst-pass Qs Q1-Q7 surfaced with defaults (Q1=(a) extend-3-state, Q2=(a) statistical HMM with (d) rule-based fallback, Q3=(a) nowcast, Q4=(a) regime-conditional position sizing on v1 momentum, Q5 new sibling-ADR-0037 not ADR-0033 extension, Q6=v2.7.0-regime anchor pin, Q7=(a) extend-in-place); cost ~4-6 weeks from activation gate; predecessor strategy-reformulation-survey-2026-05-22 § Candidate 2; sibling picks v3-volatility-forecast (C1, ships first) + v3-llm-as-forecaster (C5, parallel analyst)"
