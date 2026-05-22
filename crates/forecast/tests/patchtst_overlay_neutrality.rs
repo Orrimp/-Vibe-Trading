@@ -110,6 +110,8 @@ fn patchtst_overlay_does_not_regress_tcn_scenario() {
             "run",
             "-p",
             "backtest",
+            "--bin",
+            "backtest",
             "--release",
             "--features",
             "candle realdata",
@@ -139,24 +141,25 @@ fn patchtst_overlay_does_not_regress_tcn_scenario() {
         );
     }
 
-    // Locate the generated report.
-    let reports_dir = ws_root.join("spec/v25a-patchtst-overlay/reports");
+    // Locate the generated report. Realdata scenarios land in
+    // `spec/backtest-real-binance-data/reports/` per the backtest crate's
+    // `report_dir_for_scenario` mapping; older shipped reports may live in
+    // `spec/v25-tcn-overlay/reports/` or the v2.5a feature folder.
     let report_pattern = "top10-2023-fy-tcn-overlay-realdata";
-    let report_path = find_latest_report(&reports_dir, report_pattern);
-
-    let report_path = match report_path {
-        Some(p) => p,
-        None => {
-            // Fall back: look in the TCN feature's reports dir too.
-            let alt_dir = ws_root.join("spec/v25-tcn-overlay/reports");
-            find_latest_report(&alt_dir, report_pattern).unwrap_or_else(|| {
-                panic!(
-                    "No report matching '{report_pattern}' found under \
-                     spec/v25a-patchtst-overlay/reports or spec/v25-tcn-overlay/reports"
-                )
-            })
-        }
-    };
+    let candidates = [
+        "spec/backtest-real-binance-data/reports",
+        "spec/v25a-patchtst-overlay/reports",
+        "spec/v25-tcn-overlay/reports",
+    ];
+    let report_path = candidates
+        .iter()
+        .find_map(|dir| find_latest_report(&ws_root.join(dir), report_pattern))
+        .unwrap_or_else(|| {
+            panic!(
+                "No report matching '{report_pattern}' found under any of: {}",
+                candidates.join(", ")
+            )
+        });
 
     println!(
         "[patchtst_overlay_neutrality] Report written to {}",
