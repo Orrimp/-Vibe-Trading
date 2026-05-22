@@ -54,7 +54,8 @@ struct GarchEntry {
 /// # Errors
 ///
 /// Returns `Err` if the file cannot be read or the JSON is malformed.
-fn load_garch_checkpoint() -> anyhow::Result<std::collections::BTreeMap<String, strategy::GarchParams>> {
+fn load_garch_checkpoint()
+-> anyhow::Result<std::collections::BTreeMap<String, strategy::GarchParams>> {
     use std::path::PathBuf;
 
     // Anchored filename — hash locked at v3.0.0-volatility T-D-N11.
@@ -101,7 +102,10 @@ fn load_garch_checkpoint() -> anyhow::Result<std::collections::BTreeMap<String, 
 #[allow(clippy::too_many_lines)]
 #[allow(unused_variables)]
 #[allow(clippy::unused_async)]
-pub async fn run(input: crate::cli_types::TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResult> {
+pub async fn run(
+    input: crate::cli_types::TcnScenarioInput,
+    seed: u64,
+) -> Result<TcnOverlayRunResult> {
     use std::path::PathBuf;
     use std::time::Instant;
 

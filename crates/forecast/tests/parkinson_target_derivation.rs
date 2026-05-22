@@ -115,7 +115,10 @@ fn parkinson_formula_single_bar_closed_form() {
 
     // Case 4: equal high/low → ln(1) = 0 → sigma = 0
     let got4 = parkinson_sigma_single_bar(1.5, 1.5);
-    assert_eq!(got4, 0.0_f32, "Case 4 zero spread: expected 0.0, got {got4}");
+    assert_eq!(
+        got4, 0.0_f32,
+        "Case 4 zero spread: expected 0.0, got {got4}"
+    );
 
     // Case 5: high = e, low = 1.0 → ln(e/1) = 1 → sigma = 1/sqrt(4*ln2)
     let got5 = parkinson_sigma_single_bar(std::f64::consts::E, 1.0);
@@ -126,9 +129,7 @@ fn parkinson_formula_single_bar_closed_form() {
         (got5 - expected5).abs()
     );
 
-    println!(
-        "[parkinson_formula_single_bar_closed_form] PASS — 5 cases within tol={tol:.0e}"
-    );
+    println!("[parkinson_formula_single_bar_closed_form] PASS — 5 cases within tol={tol:.0e}");
 }
 
 /// T-D-N10 (multi-bar): Parkinson formula over H=3 bars, closed-form check.
@@ -179,14 +180,8 @@ fn parkinson_sigma_monotone_in_spread() {
     let medium = parkinson_sigma_single_bar(1.05, 1.0);
     let large = parkinson_sigma_single_bar(2.0, 1.0);
 
-    assert!(
-        small < medium,
-        "Expected small({small}) < medium({medium})"
-    );
-    assert!(
-        medium < large,
-        "Expected medium({medium}) < large({large})"
-    );
+    assert!(small < medium, "Expected small({small}) < medium({medium})");
+    assert!(medium < large, "Expected medium({medium}) < large({large})");
 
     println!(
         "[parkinson_sigma_monotone_in_spread] PASS — small={small:.6}, medium={medium:.6}, large={large:.6}"
@@ -207,7 +202,8 @@ fn parkinson_sigma_sign_invariant() {
     let sigma_normal = parkinson_sigma_single_bar(high, low);
     // Manually compute with inverted ratio: ln(low/high) = -ln(high/low), squared = same.
     let ln_hl_inverted = (low / high).ln();
-    let parkinson_var_inv = (1.0_f64 / (4.0_f64 * f64::ln(2.0))) * (ln_hl_inverted * ln_hl_inverted);
+    let parkinson_var_inv =
+        (1.0_f64 / (4.0_f64 * f64::ln(2.0))) * (ln_hl_inverted * ln_hl_inverted);
     let sigma_inverted = parkinson_var_inv.sqrt() as f32;
 
     assert!(

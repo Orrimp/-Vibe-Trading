@@ -95,10 +95,13 @@ impl ScenarioArg {
             })
             .collect();
         matches.sort();
-        matches
-            .into_iter()
-            .next_back()
-            .with_context(|| format!("no garch-{}-*.json found in {}", self.label(), anchors_dir.display()))
+        matches.into_iter().next_back().with_context(|| {
+            format!(
+                "no garch-{}-*.json found in {}",
+                self.label(),
+                anchors_dir.display()
+            )
+        })
     }
 }
 
@@ -216,14 +219,24 @@ fn compute_aggregate(per_symbol: &[PerSymbolStats]) -> AggregateStats {
     let n = per_symbol.len() as f64;
     let qlike_garch_mean = per_symbol.iter().map(|s| s.qlike_garch).sum::<f64>() / n;
     let qlike_constant_mean = per_symbol.iter().map(|s| s.qlike_constant).sum::<f64>() / n;
-    let qlike_garch_max = per_symbol.iter().map(|s| s.qlike_garch).fold(f64::NEG_INFINITY, f64::max);
-    let qlike_garch_min = per_symbol.iter().map(|s| s.qlike_garch).fold(f64::INFINITY, f64::min);
+    let qlike_garch_max = per_symbol
+        .iter()
+        .map(|s| s.qlike_garch)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let qlike_garch_min = per_symbol
+        .iter()
+        .map(|s| s.qlike_garch)
+        .fold(f64::INFINITY, f64::min);
     let qlike_dispersion = if qlike_garch_min > 1e-12 {
         qlike_garch_max / qlike_garch_min
     } else {
         f64::INFINITY
     };
-    let mean_calibration_ratio = per_symbol.iter().map(|s| s.calibration_ratio()).sum::<f64>() / n;
+    let mean_calibration_ratio = per_symbol
+        .iter()
+        .map(|s| s.calibration_ratio())
+        .sum::<f64>()
+        / n;
     let n_symbols_improving = per_symbol
         .iter()
         .filter(|s| (s.qlike_constant - s.qlike_garch) / s.qlike_constant.max(1e-12) >= 0.10)
@@ -245,11 +258,26 @@ fn compute_aggregate(per_symbol: &[PerSymbolStats]) -> AggregateStats {
 /// V-verdict variants per ADR-0038 § D1.b.
 #[derive(Debug, Clone, PartialEq)]
 enum Verdict {
-    V1 { evidence: String, follow_on: &'static str },
-    V2 { evidence: String, follow_on: &'static str },
-    V3 { evidence: String, follow_on: &'static str },
-    V4 { evidence: String, follow_on: &'static str },
-    V5 { evidence: String, follow_on: &'static str },
+    V1 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V2 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V3 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V4 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V5 {
+        evidence: String,
+        follow_on: &'static str,
+    },
 }
 
 impl Verdict {
@@ -431,22 +459,40 @@ fn render_report(
     // ── Body (deterministic, hashed) ──────────────────────────────────────────
     let mut body = String::new();
 
-    body.push_str("# Vol-forecast V-verdict report — BS-1 (real Binance hourly OHLCV, GARCH(1,1))\n\n");
+    body.push_str(
+        "# Vol-forecast V-verdict report — BS-1 (real Binance hourly OHLCV, GARCH(1,1))\n\n",
+    );
 
     // Checkpoint section.
     body.push_str("## Checkpoint\n\n");
     body.push_str("| Field               | Value                                          |\n");
     body.push_str("|---------------------|------------------------------------------------|\n");
-    body.push_str(&format!("| Anchor scenario     | garch-{}                                       |\n", "bs1"));
-    body.push_str(&format!("| checkpoint_revision | {checkpoint_revision} |\n"));
-    body.push_str(&format!("| target_kind         | {}                                             |\n", checkpoint.target_kind));
-    body.push_str(&format!("| target_horizon_bars | {}                                              |\n", checkpoint.target_horizon_bars));
+    body.push_str(&format!(
+        "| Anchor scenario     | garch-{}                                       |\n",
+        "bs1"
+    ));
+    body.push_str(&format!(
+        "| checkpoint_revision | {checkpoint_revision} |\n"
+    ));
+    body.push_str(&format!(
+        "| target_kind         | {}                                             |\n",
+        checkpoint.target_kind
+    ));
+    body.push_str(&format!(
+        "| target_horizon_bars | {}                                              |\n",
+        checkpoint.target_horizon_bars
+    ));
     body.push_str(&format!(
         "| evaluation_span     | {} .. {}   |\n",
         checkpoint.train_span_start, checkpoint.train_span_end
     ));
-    body.push_str(&format!("| n_symbols           | {}                                              |\n", UNIVERSE.len()));
-    body.push_str(&format!("| n_predictions_total | {n_predictions_total}                                          |\n"));
+    body.push_str(&format!(
+        "| n_symbols           | {}                                              |\n",
+        UNIVERSE.len()
+    ));
+    body.push_str(&format!(
+        "| n_predictions_total | {n_predictions_total}                                          |\n"
+    ));
     body.push('\n');
 
     // Per-symbol QLIKE table.
@@ -479,22 +525,49 @@ fn render_report(
     body.push_str("## Aggregate statistics\n\n");
     body.push_str("| Field                       | Value      |\n");
     body.push_str("|-----------------------------|------------|\n");
-    body.push_str(&format!("| qlike_garch_mean            | {:.6}   |\n", agg.qlike_garch_mean));
-    body.push_str(&format!("| qlike_constant_mean         | {:.6}   |\n", agg.qlike_constant_mean));
-    body.push_str(&format!("| qlike_garch_max             | {:.6}   |\n", agg.qlike_garch_max));
-    body.push_str(&format!("| qlike_garch_min             | {:.6}   |\n", agg.qlike_garch_min));
-    body.push_str(&format!("| qlike_dispersion            | {:.6}   |\n", agg.qlike_dispersion));
-    body.push_str(&format!("| mean_calibration_ratio      | {:.6}   |\n", agg.mean_calibration_ratio));
-    body.push_str(&format!("| n_symbols_improving_≥10pct  | {}          |\n", agg.n_symbols_improving));
+    body.push_str(&format!(
+        "| qlike_garch_mean            | {:.6}   |\n",
+        agg.qlike_garch_mean
+    ));
+    body.push_str(&format!(
+        "| qlike_constant_mean         | {:.6}   |\n",
+        agg.qlike_constant_mean
+    ));
+    body.push_str(&format!(
+        "| qlike_garch_max             | {:.6}   |\n",
+        agg.qlike_garch_max
+    ));
+    body.push_str(&format!(
+        "| qlike_garch_min             | {:.6}   |\n",
+        agg.qlike_garch_min
+    ));
+    body.push_str(&format!(
+        "| qlike_dispersion            | {:.6}   |\n",
+        agg.qlike_dispersion
+    ));
+    body.push_str(&format!(
+        "| mean_calibration_ratio      | {:.6}   |\n",
+        agg.mean_calibration_ratio
+    ));
+    body.push_str(&format!(
+        "| n_symbols_improving_≥10pct  | {}          |\n",
+        agg.n_symbols_improving
+    ));
     body.push('\n');
 
     // Verdict section.
     body.push_str("## Verdict\n\n");
     body.push_str("| Field             | Value                                          |\n");
     body.push_str("|-------------------|------------------------------------------------|\n");
-    body.push_str(&format!("| Case              | {}                                             |\n", verdict.label()));
+    body.push_str(&format!(
+        "| Case              | {}                                             |\n",
+        verdict.label()
+    ));
     body.push_str(&format!("| Trigger evidence  | {} |\n", verdict.evidence()));
-    body.push_str(&format!("| Routes to         | {} |\n", verdict.routes_to()));
+    body.push_str(&format!(
+        "| Routes to         | {} |\n",
+        verdict.routes_to()
+    ));
     body.push('\n');
 
     // Notes section.
@@ -684,8 +757,8 @@ fn main() -> Result<()> {
 
     // ── Feature config: Parkinson target + 24-bar horizon ─────────────────────
     let feat_cfg = FeatureConfig {
-        context_bars: 336,             // PatchTST-style 336-bar context window
-        target_horizon_bars: 24,       // 24-bar Parkinson horizon (ADR-0038 § D3)
+        context_bars: 336,       // PatchTST-style 336-bar context window
+        target_horizon_bars: 24, // 24-bar Parkinson horizon (ADR-0038 § D3)
         vol_target_kind: Some(VolTargetKind::Parkinson),
         ..FeatureConfig::default()
     };
@@ -716,8 +789,7 @@ fn main() -> Result<()> {
         let mut r_prev = 0.0_f64; // initial log-return (treat warm-up as zero)
 
         for window_result in iter {
-            let window =
-                window_result.with_context(|| format!("feature window for {symbol}"))?;
+            let window = window_result.with_context(|| format!("feature window for {symbol}"))?;
 
             // sigma_hat: GARCH forecast using r_prev and sigma_prev.
             let sigma_hat = model.forecast_step(r_prev, sigma_prev);
@@ -881,11 +953,7 @@ fn main() -> Result<()> {
     std::fs::write(&out_path, &report)
         .with_context(|| format!("write report {}", out_path.display()))?;
 
-    println!(
-        "wrote {} (body-SHA256 = {})",
-        out_path.display(),
-        body_sha
-    );
+    println!("wrote {} (body-SHA256 = {})", out_path.display(), body_sha);
 
     Ok(())
 }
@@ -924,10 +992,10 @@ mod tests {
                 let base = 0.001 * (i as f64 + 1.0);
                 make_stats(
                     &format!("SYM{i}USDT"),
-                    0.10 + base,        // qlike_garch
-                    0.20 + base,        // qlike_constant (10% improvement)
-                    0.01 + 0.001 * i as f64,  // mean_sigma_hat
-                    0.011 + 0.001 * i as f64, // mean_sigma_realized
+                    0.10 + base,               // qlike_garch
+                    0.20 + base,               // qlike_constant (10% improvement)
+                    0.01 + 0.001 * i as f64,   // mean_sigma_hat
+                    0.011 + 0.001 * i as f64,  // mean_sigma_realized
                     0.002 + 0.0001 * i as f64, // std_sigma_hat (high CoV)
                     0.003,
                 )
@@ -970,18 +1038,22 @@ mod tests {
             .map(|i| {
                 make_stats(
                     &format!("SYM{i}"),
-                    0.10,   // qlike_garch
-                    0.20,   // qlike_constant
-                    0.01,   // mean_sigma_hat
-                    0.011,  // mean_sigma_realized
-                    0.0,    // std_sigma_hat = 0 → CoV = 0
+                    0.10,  // qlike_garch
+                    0.20,  // qlike_constant
+                    0.01,  // mean_sigma_hat
+                    0.011, // mean_sigma_realized
+                    0.0,   // std_sigma_hat = 0 → CoV = 0
                     0.003,
                 )
             })
             .collect();
         let agg = compute_aggregate(&per_symbol);
         let v = classify_verdict(&agg, &per_symbol);
-        assert!(matches!(v, Verdict::V1 { .. }), "expected V1, got {}", v.label());
+        assert!(
+            matches!(v, Verdict::V1 { .. }),
+            "expected V1, got {}",
+            v.label()
+        );
     }
 
     #[test]
@@ -993,7 +1065,11 @@ mod tests {
         let agg = compute_aggregate(&per_symbol);
         assert!(agg.qlike_dispersion > 3.0, "dispersion should be > 3");
         let v = classify_verdict(&agg, &per_symbol);
-        assert!(matches!(v, Verdict::V2 { .. }), "expected V2, got {}", v.label());
+        assert!(
+            matches!(v, Verdict::V2 { .. }),
+            "expected V2, got {}",
+            v.label()
+        );
     }
 
     #[test]
@@ -1002,13 +1078,9 @@ mod tests {
         let per_symbol: Vec<PerSymbolStats> = (0..10)
             .map(|_| {
                 make_stats(
-                    "SYMXUSDT",
-                    0.10,
-                    0.20,
+                    "SYMXUSDT", 0.10, 0.20,
                     0.050, // mean_sigma_hat >> mean_sigma_realized → ratio > 1.4
-                    0.010,
-                    0.002,
-                    0.003,
+                    0.010, 0.002, 0.003,
                 )
             })
             .collect();
@@ -1018,7 +1090,11 @@ mod tests {
             "calibration_ratio should > 1.4"
         );
         let v = classify_verdict(&agg, &per_symbol);
-        assert!(matches!(v, Verdict::V3 { .. }), "expected V3, got {}", v.label());
+        assert!(
+            matches!(v, Verdict::V3 { .. }),
+            "expected V3, got {}",
+            v.label()
+        );
     }
 
     #[test]
@@ -1028,7 +1104,7 @@ mod tests {
             .map(|i| {
                 make_stats(
                     &format!("SYM{i}"),
-                    0.20,  // qlike_garch == qlike_constant → 0% improvement
+                    0.20, // qlike_garch == qlike_constant → 0% improvement
                     0.20,
                     0.01,
                     0.010,
@@ -1039,15 +1115,17 @@ mod tests {
             .collect();
         let agg = compute_aggregate(&per_symbol);
         let v = classify_verdict(&agg, &per_symbol);
-        assert!(matches!(v, Verdict::V4 { .. }), "expected V4, got {}", v.label());
+        assert!(
+            matches!(v, Verdict::V4 { .. }),
+            "expected V4, got {}",
+            v.label()
+        );
     }
 
     #[test]
     fn verdict_exactly_one_fires() {
         // Property: exactly one verdict fires for all test fixtures.
-        let fixtures: &[&dyn Fn() -> Vec<PerSymbolStats>] = &[
-            &healthy_stats,
-        ];
+        let fixtures: &[&dyn Fn() -> Vec<PerSymbolStats>] = &[&healthy_stats];
         for f in fixtures {
             let per_symbol = f();
             let agg = compute_aggregate(&per_symbol);

@@ -25,8 +25,8 @@ use strategy::{
     cross_sectional::CrossSectionalMomentumConfig,
 };
 use time::OffsetDateTime;
-use trading_core::{Bar, Price, Quantity, Timeframe, Timestamp, Venue};
 use trading_core::symbol::Symbol;
+use trading_core::{Bar, Price, Quantity, Timeframe, Timestamp, Venue};
 
 // ── Helper builders ───────────────────────────────────────────────────────────
 
@@ -63,9 +63,7 @@ fn stub_model() -> GarchParams {
 
 /// Build a minimal bar with the given symbol and close price.
 fn make_bar(sym: &str, close: Decimal, offset_minutes: i64) -> Bar {
-    let ts = Timestamp::new(
-        OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(offset_minutes),
-    );
+    let ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(offset_minutes));
     Bar {
         symbol: Symbol::new(sym),
         tf: Timeframe::OneMinute,
@@ -88,8 +86,7 @@ fn make_bar(sym: &str, close: Decimal, offset_minutes: i64) -> Bar {
 #[test]
 fn overlay_id_differs_from_inner_id() {
     let models: BTreeMap<String, GarchParams> = BTreeMap::new();
-    let overlay =
-        VolTargetingOverlay::new(stub_momentum(), models, VolTargetingConfig::default());
+    let overlay = VolTargetingOverlay::new(stub_momentum(), models, VolTargetingConfig::default());
     let oid = overlay.id();
     assert_ne!(
         oid.0.as_str(),
@@ -107,8 +104,7 @@ fn overlay_id_differs_from_inner_id() {
 #[test]
 fn scale_clamp_invariant_tiny_sigma() {
     let cfg = VolTargetingConfig::default();
-    let overlay =
-        VolTargetingOverlay::new(stub_momentum(), BTreeMap::new(), cfg.clone());
+    let overlay = VolTargetingOverlay::new(stub_momentum(), BTreeMap::new(), cfg.clone());
     // Tiny sigma → should hit clamp_max.
     let scale = overlay.compute_scale(1e-30);
     assert_eq!(
@@ -122,8 +118,7 @@ fn scale_clamp_invariant_tiny_sigma() {
 #[test]
 fn scale_clamp_invariant_huge_sigma() {
     let cfg = VolTargetingConfig::default();
-    let overlay =
-        VolTargetingOverlay::new(stub_momentum(), BTreeMap::new(), cfg.clone());
+    let overlay = VolTargetingOverlay::new(stub_momentum(), BTreeMap::new(), cfg.clone());
     // Huge sigma → should hit clamp_min.
     let scale = overlay.compute_scale(1_000.0);
     assert_eq!(
@@ -174,12 +169,20 @@ fn on_bar_no_model_increments_counter() {
 
     // Feed 10 symbols × 10 rounds.
     let symbols = [
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
-        "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT",
+        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
+        "DOTUSDT", "LINKUSDT",
     ];
     let prices = [
-        dec!(50000), dec!(2000), dec!(300), dec!(100), dec!(1),
-        dec!(0.5), dec!(0.08), dec!(20), dec!(5), dec!(15),
+        dec!(50000),
+        dec!(2000),
+        dec!(300),
+        dec!(100),
+        dec!(1),
+        dec!(0.5),
+        dec!(0.08),
+        dec!(20),
+        dec!(5),
+        dec!(15),
     ];
     for round in 0..10_i64 {
         for (i, sym) in symbols.iter().enumerate() {
@@ -192,7 +195,10 @@ fn on_bar_no_model_increments_counter() {
         overlay.stats.bars_no_model > 0,
         "bars_no_model should be > 0 when no GARCH model is registered"
     );
-    assert_eq!(overlay.stats.bars_total, 100, "10 symbols × 10 rounds = 100 bars");
+    assert_eq!(
+        overlay.stats.bars_total, 100,
+        "10 symbols × 10 rounds = 100 bars"
+    );
 }
 
 /// R11.6 GarchParams::init_sigma is positive and deterministic.
@@ -210,7 +216,10 @@ fn garch_params_init_sigma_positive() {
 fn garch_params_forecast_step_floored() {
     let m = stub_model();
     let sigma = m.forecast_step(0.0, 0.0);
-    assert!(sigma > 0.0, "forecast_step(0,0) must be positive via omega floor, got {sigma}");
+    assert!(
+        sigma > 0.0,
+        "forecast_step(0,0) must be positive via omega floor, got {sigma}"
+    );
     let expected = m.omega.sqrt();
     assert!(
         (sigma - expected).abs() < 1e-12,

@@ -171,15 +171,16 @@ impl Strategy for VolKillSwitchOverlay {
 
         // Determine if the kill-switch is active for this symbol.
         let kill_active = if let Some(model) = self.models.get(&bar.symbol) {
-            let state = self.state.entry(bar.symbol.clone()).or_insert_with(|| {
-                KillSwitchState {
+            let state = self
+                .state
+                .entry(bar.symbol.clone())
+                .or_insert_with(|| KillSwitchState {
                     r_prev: 0.0,
                     sigma_prev: model.init_sigma(),
                     prev_close: 0.0,
                     sigma_buffer: Vec::with_capacity(self.config.rolling_window),
                     cooldown_remaining: 0,
-                }
-            });
+                });
 
             // Compute log-return.
             use rust_decimal::prelude::ToPrimitive;
@@ -205,8 +206,8 @@ impl Strategy for VolKillSwitchOverlay {
             state.prev_close = close_f64;
 
             // Check kill-switch condition.
-            let median_sigma = Self::rolling_median(&state.sigma_buffer)
-                .max(self.config.min_median_floor);
+            let median_sigma =
+                Self::rolling_median(&state.sigma_buffer).max(self.config.min_median_floor);
             let threshold = self.config.threshold_multiplier * median_sigma;
 
             if state.cooldown_remaining > 0 {
@@ -287,7 +288,10 @@ mod tests {
     fn rolling_median_even() {
         let buf = [1.0, 2.0, 3.0, 4.0];
         let m = VolKillSwitchOverlay::rolling_median(&buf);
-        assert!((m - 2.5).abs() < 1e-9, "median of [1,2,3,4] is 2.5, got {m}");
+        assert!(
+            (m - 2.5).abs() < 1e-9,
+            "median of [1,2,3,4] is 2.5, got {m}"
+        );
     }
 
     #[test]

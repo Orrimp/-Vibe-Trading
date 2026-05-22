@@ -263,13 +263,14 @@ impl Strategy for VolTargetingOverlay {
 
         // Update GARCH state for this bar's symbol.
         let sigma_hat = if let Some(model) = self.models.get(&bar.symbol) {
-            let state = self.state.entry(bar.symbol.clone()).or_insert_with(|| {
-                PerSymbolGarchState {
-                    r_prev: 0.0,
-                    sigma_prev: model.init_sigma(),
-                    prev_close: 0.0,
-                }
-            });
+            let state =
+                self.state
+                    .entry(bar.symbol.clone())
+                    .or_insert_with(|| PerSymbolGarchState {
+                        r_prev: 0.0,
+                        sigma_prev: model.init_sigma(),
+                        prev_close: 0.0,
+                    });
 
             // Compute log-return from prev_close.
             let close_f64 = bar.close.get().to_f64().unwrap_or(0.0);
@@ -410,13 +411,14 @@ mod tests {
         // When sigma_hat == target_vol, scale should be 1.0.
         let config = VolTargetingConfig::default();
         let models = BTreeMap::new();
-        let inner = MomentumStrategy::from_config(
-            strategy_stub_config(),
-            smol_str::SmolStr::new("stub"),
-        );
+        let inner =
+            MomentumStrategy::from_config(strategy_stub_config(), smol_str::SmolStr::new("stub"));
         let overlay = VolTargetingOverlay::new(inner, models, config.clone());
         let scale = overlay.compute_scale(config.target_vol);
-        assert!((scale - 1.0).abs() < 1e-9, "scale at target_vol should be 1.0, got {scale}");
+        assert!(
+            (scale - 1.0).abs() < 1e-9,
+            "scale at target_vol should be 1.0, got {scale}"
+        );
     }
 
     #[test]
@@ -424,13 +426,14 @@ mod tests {
         // When sigma_hat is very small, scale should be clamped to max.
         let config = VolTargetingConfig::default();
         let models = BTreeMap::new();
-        let inner = MomentumStrategy::from_config(
-            strategy_stub_config(),
-            smol_str::SmolStr::new("stub"),
-        );
+        let inner =
+            MomentumStrategy::from_config(strategy_stub_config(), smol_str::SmolStr::new("stub"));
         let overlay = VolTargetingOverlay::new(inner, models, config.clone());
         let scale = overlay.compute_scale(1e-12); // tiny sigma
-        assert_eq!(scale, config.scale_clamp_max, "scale should be clamped to max");
+        assert_eq!(
+            scale, config.scale_clamp_max,
+            "scale should be clamped to max"
+        );
     }
 
     #[test]
@@ -438,20 +441,24 @@ mod tests {
         // When sigma_hat is very large, scale should be clamped to min.
         let config = VolTargetingConfig::default();
         let models = BTreeMap::new();
-        let inner = MomentumStrategy::from_config(
-            strategy_stub_config(),
-            smol_str::SmolStr::new("stub"),
-        );
+        let inner =
+            MomentumStrategy::from_config(strategy_stub_config(), smol_str::SmolStr::new("stub"));
         let overlay = VolTargetingOverlay::new(inner, models, config.clone());
         let scale = overlay.compute_scale(100.0); // huge sigma
-        assert_eq!(scale, config.scale_clamp_min, "scale should be clamped to min");
+        assert_eq!(
+            scale, config.scale_clamp_min,
+            "scale should be clamped to min"
+        );
     }
 
     #[test]
     fn garch_forecast_step_positive() {
         let m = stub_model();
         let sigma = m.forecast_step(0.01, 0.005);
-        assert!(sigma > 0.0, "GARCH forecast_step must be positive, got {sigma}");
+        assert!(
+            sigma > 0.0,
+            "GARCH forecast_step must be positive, got {sigma}"
+        );
     }
 
     #[test]
@@ -470,13 +477,13 @@ mod tests {
     fn vol_targeting_overlay_new_initialises_state() {
         let mut models = BTreeMap::new();
         models.insert("BTCUSDT".to_string(), stub_model());
-        let inner = MomentumStrategy::from_config(
-            strategy_stub_config(),
-            smol_str::SmolStr::new("stub"),
-        );
+        let inner =
+            MomentumStrategy::from_config(strategy_stub_config(), smol_str::SmolStr::new("stub"));
         let overlay = VolTargetingOverlay::new(inner, models, VolTargetingConfig::default());
         let sym = Symbol::new("BTCUSDT");
-        let state = overlay.state(&sym).expect("BTCUSDT state must be initialised");
+        let state = overlay
+            .state(&sym)
+            .expect("BTCUSDT state must be initialised");
         assert!(state.sigma_prev > 0.0, "sigma_prev should be > 0 on init");
         assert_eq!(state.r_prev, 0.0);
     }

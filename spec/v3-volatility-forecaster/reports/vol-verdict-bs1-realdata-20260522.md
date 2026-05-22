@@ -1,10 +1,10 @@
 ---
 slug: v3-volatility-forecaster
 scenario: vol-verdict-bs1-realdata
-generated: 2026-05-22T08:10:05Z
-wall_clock_s: 0.6
+generated: 2026-05-22T08:47:37Z
+wall_clock_s: 0.7
 host: M022517718D
-git_commit: af64141392096269f7d4a90dfbd4df79e3a4d16f
+git_commit: 625fb336e7faeb96aa1040343dab34e02115b72f
 checkpoint_revision: 991324772ba077355731c2f551e3412430070b76468f6044261161a9160c0c71
 data_revision_sha: 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7
 verdict: V3

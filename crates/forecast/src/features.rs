@@ -614,7 +614,15 @@ pub fn windows_for_symbol(
     let bars_result = load_bars(&parquet_root, &symbol, &span);
 
     // Produce a single-shot iterator backed by a Vec.
-    WindowIterator::new(bars_result, symbol, warmup, context, horizon, min_bars, vol_target_kind)
+    WindowIterator::new(
+        bars_result,
+        symbol,
+        warmup,
+        context,
+        horizon,
+        min_bars,
+        vol_target_kind,
+    )
 }
 
 /// Internal iterator state for `windows_for_symbol`.
@@ -789,9 +797,9 @@ impl Iterator for WindowIterator {
                 let parkinson_var = (1.0 / (4.0 * f64::ln(2.0))) * (sum_sq / h as f64);
                 Some(parkinson_var.sqrt() as f32)
             }
-            Some(VolTargetKind::RealizedVol) => unimplemented!(
-                "VolTargetKind::RealizedVol not implemented until v0.1.1"
-            ),
+            Some(VolTargetKind::RealizedVol) => {
+                unimplemented!("VolTargetKind::RealizedVol not implemented until v0.1.1")
+            }
             None => None,
         };
 

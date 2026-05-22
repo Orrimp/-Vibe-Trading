@@ -103,10 +103,7 @@ impl VolMeanReversionStrategy {
         let state: BTreeMap<Symbol, MeanRevState> = symbols
             .iter()
             .map(|&sym| {
-                let sigma_init = models
-                    .get(sym)
-                    .map(GarchParams::init_sigma)
-                    .unwrap_or(1e-4);
+                let sigma_init = models.get(sym).map(GarchParams::init_sigma).unwrap_or(1e-4);
                 (
                     Symbol::new(sym),
                     MeanRevState {
@@ -164,13 +161,14 @@ impl Strategy for VolMeanReversionStrategy {
             return vec![];
         };
 
-        let state = self.state.entry(bar.symbol.clone()).or_insert_with(|| {
-            MeanRevState {
+        let state = self
+            .state
+            .entry(bar.symbol.clone())
+            .or_insert_with(|| MeanRevState {
                 r_prev: 0.0,
                 sigma_prev: model.init_sigma(),
                 prev_close: 0.0,
-            }
-        });
+            });
 
         // Compute log-return.
         let r_curr = if state.prev_close > 0.0 && close_f64 > 0.0 {
@@ -247,7 +245,10 @@ mod tests {
         // high=e, low=1 → ln(e/1)=1 → sigma = 1/sqrt(4*ln2)
         let sigma = VolMeanReversionStrategy::parkinson_single_bar(std::f64::consts::E, 1.0);
         let expected = 1.0 / (4.0 * f64::ln(2.0)).sqrt();
-        assert!((sigma - expected).abs() < 1e-10, "got {sigma}, expected {expected}");
+        assert!(
+            (sigma - expected).abs() < 1e-10,
+            "got {sigma}, expected {expected}"
+        );
     }
 
     #[test]
@@ -258,8 +259,17 @@ mod tests {
 
     #[test]
     fn parkinson_single_bar_invalid_guard() {
-        assert_eq!(VolMeanReversionStrategy::parkinson_single_bar(0.0, 1.0), 0.0);
-        assert_eq!(VolMeanReversionStrategy::parkinson_single_bar(1.0, 0.0), 0.0);
-        assert_eq!(VolMeanReversionStrategy::parkinson_single_bar(0.5, 1.0), 0.0); // high < low
+        assert_eq!(
+            VolMeanReversionStrategy::parkinson_single_bar(0.0, 1.0),
+            0.0
+        );
+        assert_eq!(
+            VolMeanReversionStrategy::parkinson_single_bar(1.0, 0.0),
+            0.0
+        );
+        assert_eq!(
+            VolMeanReversionStrategy::parkinson_single_bar(0.5, 1.0),
+            0.0
+        ); // high < low
     }
 }

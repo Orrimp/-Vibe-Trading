@@ -1068,12 +1068,7 @@ mod render_vol_target {
             net_delta
         )
         .unwrap();
-        writeln!(
-            &mut body,
-            "| T-classifier        | {} |",
-            verdict.label()
-        )
-        .unwrap();
+        writeln!(&mut body, "| T-classifier        | {} |", verdict.label()).unwrap();
         writeln!(
             &mut body,
             "| V-verdict (joint)   | V3 (mean_calibration_ratio = 2.952191 outside [0.7, 1.4] — see vol-verdict-bs1-realdata report) |"
@@ -1118,11 +1113,7 @@ mod render_vol_target {
              git_commit: {}\n\
              data_revision_sha: {}\n\
              ---\n",
-            ctx.generated,
-            ctx.wall_clock_s,
-            ctx.host,
-            ctx.git_commit,
-            ctx.data_revision_sha,
+            ctx.generated, ctx.wall_clock_s, ctx.host, ctx.git_commit, ctx.data_revision_sha,
         )
     }
 
@@ -1133,7 +1124,11 @@ mod render_vol_target {
 
         fn make_result(name: &str, sharpe_up: bool) -> RerunResult {
             let mut eq = vec![dec!(100_000)];
-            let factor = if sharpe_up { dec!(1.0012) } else { dec!(1.0005) };
+            let factor = if sharpe_up {
+                dec!(1.0012)
+            } else {
+                dec!(1.0005)
+            };
             for _ in 0..8760 {
                 let last = *eq.last().unwrap();
                 eq.push(last * factor);
@@ -1175,7 +1170,10 @@ mod render_vol_target {
             };
             let body = render_report(&baseline, &overlay, &ctx);
             assert!(body.contains("## Methodology"), "missing Methodology");
-            assert!(body.contains("## Comparison table"), "missing Comparison table");
+            assert!(
+                body.contains("## Comparison table"),
+                "missing Comparison table"
+            );
             assert!(body.contains("## Verdict"), "missing Verdict");
             assert!(body.contains("T-VOL-"), "missing T-classifier label");
         }
@@ -1193,7 +1191,10 @@ mod render_vol_target {
             };
             let b1 = render_report(&baseline, &overlay, &ctx);
             let b2 = render_report(&baseline, &overlay, &ctx);
-            assert_eq!(b1, b2, "render_vol_target::render_report must be deterministic");
+            assert_eq!(
+                b1, b2,
+                "render_vol_target::render_report must be deterministic"
+            );
         }
     }
 }
@@ -1239,9 +1240,7 @@ fn main() -> Result<()> {
 
     // Resolve out_dir based on scenario family.
     let out_dir: PathBuf = args.out_dir.clone().unwrap_or_else(|| match args.scenario {
-        ScenarioFamily::VolTarget => {
-            PathBuf::from("spec/v3-volatility-forecaster/reports/")
-        }
+        ScenarioFamily::VolTarget => PathBuf::from("spec/v3-volatility-forecaster/reports/"),
         ScenarioFamily::Tcn => PathBuf::from("spec/v25a-patchtst-overlay/reports/"),
     });
 
@@ -1254,8 +1253,7 @@ fn main() -> Result<()> {
     );
 
     // Ensure out_dir exists.
-    std::fs::create_dir_all(&out_dir)
-        .with_context(|| format!("creating out_dir {:?}", out_dir))?;
+    std::fs::create_dir_all(&out_dir).with_context(|| format!("creating out_dir {:?}", out_dir))?;
 
     let t_start = std::time::Instant::now();
 

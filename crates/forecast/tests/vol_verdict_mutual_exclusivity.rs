@@ -35,11 +35,26 @@ use rand_chacha::ChaCha20Rng;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Verdict {
-    V1 { evidence: String, follow_on: &'static str },
-    V2 { evidence: String, follow_on: &'static str },
-    V3 { evidence: String, follow_on: &'static str },
-    V4 { evidence: String, follow_on: &'static str },
-    V5 { evidence: String, follow_on: &'static str },
+    V1 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V2 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V3 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V4 {
+        evidence: String,
+        follow_on: &'static str,
+    },
+    V5 {
+        evidence: String,
+        follow_on: &'static str,
+    },
 }
 
 impl Verdict {
@@ -74,8 +89,14 @@ struct AggregateStats {
 
 fn compute_aggregate(per_symbol: &[PerSymbolStats]) -> AggregateStats {
     let n = per_symbol.len() as f64;
-    let qlike_garch_max = per_symbol.iter().map(|s| s.qlike_garch).fold(f64::NEG_INFINITY, f64::max);
-    let qlike_garch_min = per_symbol.iter().map(|s| s.qlike_garch).fold(f64::INFINITY, f64::min);
+    let qlike_garch_max = per_symbol
+        .iter()
+        .map(|s| s.qlike_garch)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let qlike_garch_min = per_symbol
+        .iter()
+        .map(|s| s.qlike_garch)
+        .fold(f64::INFINITY, f64::min);
     let qlike_dispersion = if qlike_garch_min > 1e-12 {
         qlike_garch_max / qlike_garch_min
     } else {
@@ -198,8 +219,8 @@ fn healthy_10() -> Vec<PerSymbolStats> {
             let base = 0.001 * (i as f64 + 1.0);
             make_sym(
                 &format!("SYM{i}USDT"),
-                0.10 + base,              // qlike_garch
-                0.20 + base,              // qlike_constant (50% improvement → > 10%)
+                0.10 + base,               // qlike_garch
+                0.20 + base,               // qlike_constant (50% improvement → > 10%)
                 0.010 + 0.0005 * i as f64, // mean_sigma_hat
                 0.011 + 0.0005 * i as f64, // mean_sigma_realized  (calib ratio ≈ 0.9)
                 0.003 + 0.0001 * i as f64, // std_sigma_hat (CoV ≈ 0.3 > 1e-3)
@@ -227,8 +248,19 @@ fn v1_fixture_fires_v1() {
         .collect();
     let agg = compute_aggregate(&per_symbol);
     let v = classify_verdict(&agg, &per_symbol);
-    assert_eq!(v.label(), "V1", "V1 fixture must fire V1, got {}", v.label());
-    println!("[v1_fixture_fires_v1] PASS — evidence: {}", match &v { Verdict::V1 { evidence, .. } => evidence, _ => "N/A" });
+    assert_eq!(
+        v.label(),
+        "V1",
+        "V1 fixture must fire V1, got {}",
+        v.label()
+    );
+    println!(
+        "[v1_fixture_fires_v1] PASS — evidence: {}",
+        match &v {
+            Verdict::V1 { evidence, .. } => evidence,
+            _ => "N/A",
+        }
+    );
 }
 
 /// V2 fixture: qlike_dispersion > 3.0 (no V1, yes V2).
@@ -250,10 +282,21 @@ fn v2_fixture_fires_v2() {
     per_symbol[0].qlike_garch = 1.0;
     per_symbol[1].qlike_garch = 0.10; // min
     let agg = compute_aggregate(&per_symbol);
-    assert!(agg.qlike_dispersion > 3.0, "dispersion should be > 3 for V2 fixture");
+    assert!(
+        agg.qlike_dispersion > 3.0,
+        "dispersion should be > 3 for V2 fixture"
+    );
     let v = classify_verdict(&agg, &per_symbol);
-    assert_eq!(v.label(), "V2", "V2 fixture must fire V2, got {}", v.label());
-    println!("[v2_fixture_fires_v2] PASS — dispersion={:.4}", agg.qlike_dispersion);
+    assert_eq!(
+        v.label(),
+        "V2",
+        "V2 fixture must fire V2, got {}",
+        v.label()
+    );
+    println!(
+        "[v2_fixture_fires_v2] PASS — dispersion={:.4}",
+        agg.qlike_dispersion
+    );
 }
 
 /// V3 fixture: mean_calibration_ratio > 1.4 (no V1/V2, yes V3).
@@ -262,21 +305,32 @@ fn v3_fixture_fires_v3() {
     let per_symbol: Vec<PerSymbolStats> = (0..10)
         .map(|_| {
             make_sym(
-                "SYMXUSDT",
-                0.10,
-                0.20,
-                0.05,  // mean_sigma_hat >> mean_sigma_realized → calib_ratio ≈ 5.0 > 1.4
-                0.01,
-                0.005, // CoV > 1e-3 so V1 doesn't fire
+                "SYMXUSDT", 0.10, 0.20,
+                0.05, // mean_sigma_hat >> mean_sigma_realized → calib_ratio ≈ 5.0 > 1.4
+                0.01, 0.005, // CoV > 1e-3 so V1 doesn't fire
             )
         })
         .collect();
     let agg = compute_aggregate(&per_symbol);
-    assert!(agg.qlike_dispersion <= 3.0, "dispersion should be ≤3 for V3 fixture (no V2)");
-    assert!(agg.mean_calibration_ratio > 1.4, "calib ratio should > 1.4 for V3 fixture");
+    assert!(
+        agg.qlike_dispersion <= 3.0,
+        "dispersion should be ≤3 for V3 fixture (no V2)"
+    );
+    assert!(
+        agg.mean_calibration_ratio > 1.4,
+        "calib ratio should > 1.4 for V3 fixture"
+    );
     let v = classify_verdict(&agg, &per_symbol);
-    assert_eq!(v.label(), "V3", "V3 fixture must fire V3, got {}", v.label());
-    println!("[v3_fixture_fires_v3] PASS — calib_ratio={:.4}", agg.mean_calibration_ratio);
+    assert_eq!(
+        v.label(),
+        "V3",
+        "V3 fixture must fire V3, got {}",
+        v.label()
+    );
+    println!(
+        "[v3_fixture_fires_v3] PASS — calib_ratio={:.4}",
+        agg.mean_calibration_ratio
+    );
 }
 
 /// V4 fixture: n_symbols_improving < 7 (no V1/V2/V3, yes V4).
@@ -285,20 +339,27 @@ fn v4_fixture_fires_v4() {
     let per_symbol: Vec<PerSymbolStats> = (0..10)
         .map(|_| {
             make_sym(
-                "SYMXUSDT",
-                0.20, // qlike_garch == qlike_constant → 0% improvement → V4
-                0.20,
-                0.010,
-                0.011,
-                0.005, // CoV > 1e-3 so V1 doesn't fire
+                "SYMXUSDT", 0.20, // qlike_garch == qlike_constant → 0% improvement → V4
+                0.20, 0.010, 0.011, 0.005, // CoV > 1e-3 so V1 doesn't fire
             )
         })
         .collect();
     let agg = compute_aggregate(&per_symbol);
-    assert_eq!(agg.n_symbols_improving, 0, "n_improving should be 0 for V4 fixture");
+    assert_eq!(
+        agg.n_symbols_improving, 0,
+        "n_improving should be 0 for V4 fixture"
+    );
     let v = classify_verdict(&agg, &per_symbol);
-    assert_eq!(v.label(), "V4", "V4 fixture must fire V4, got {}", v.label());
-    println!("[v4_fixture_fires_v4] PASS — n_improving={}", agg.n_symbols_improving);
+    assert_eq!(
+        v.label(),
+        "V4",
+        "V4 fixture must fire V4, got {}",
+        v.label()
+    );
+    println!(
+        "[v4_fixture_fires_v4] PASS — n_improving={}",
+        agg.n_symbols_improving
+    );
 }
 
 /// V5 fixture: healthy stats (no V1..V4 fires).
@@ -307,7 +368,12 @@ fn v5_fixture_fires_v5() {
     let per_symbol = healthy_10();
     let agg = compute_aggregate(&per_symbol);
     let v = classify_verdict(&agg, &per_symbol);
-    assert_eq!(v.label(), "V5", "healthy fixture must fire V5, got {}", v.label());
+    assert_eq!(
+        v.label(),
+        "V5",
+        "healthy fixture must fire V5, got {}",
+        v.label()
+    );
     println!(
         "[v5_fixture_fires_v5] PASS — n_improving={}, dispersion={:.4}, calib={:.4}",
         agg.n_symbols_improving, agg.qlike_dispersion, agg.mean_calibration_ratio
@@ -352,9 +418,7 @@ fn v1_v2_v3_v4_v5_all_distinct() {
             ("V4", per_symbol)
         },
         // V5 fixture
-        {
-            ("V5", healthy_10())
-        },
+        { ("V5", healthy_10()) },
     ];
 
     for (expected, per_symbol) in &fixtures {
@@ -385,7 +449,14 @@ fn property_exactly_one_verdict_on_random_stats() {
                 let mean_sh = rng.random_range(1e-4_f64..0.1);
                 let mean_sr = rng.random_range(1e-4_f64..0.1);
                 let std_sh = rng.random_range(0.0_f64..0.01);
-                make_sym(&format!("SYM{i}"), qlike_garch, qlike_constant, mean_sh, mean_sr, std_sh)
+                make_sym(
+                    &format!("SYM{i}"),
+                    qlike_garch,
+                    qlike_constant,
+                    mean_sh,
+                    mean_sr,
+                    std_sh,
+                )
             })
             .collect();
 
