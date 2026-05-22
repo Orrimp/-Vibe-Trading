@@ -103,6 +103,11 @@ pub fn base_rate(provider: &ProviderKind, model: &str) -> Option<PricePerMillion
             output_usd: dec!(5.00),
             cached_input_usd: dec!(0.10),
         }),
+        (ProviderKind::Anthropic, "claude-sonnet-4-6") => Some(PricePerMillionTokens {
+            input_usd: dec!(3.00),
+            output_usd: dec!(15.00),
+            cached_input_usd: dec!(0.30),
+        }),
         (ProviderKind::OpenAi, "gpt-5") => Some(PricePerMillionTokens {
             input_usd: dec!(10.00),
             output_usd: dec!(40.00),
@@ -220,6 +225,7 @@ mod tests {
     fn t1911_base_rate_covers_supported_set() {
         for (provider, model) in [
             (ProviderKind::Anthropic, "claude-opus-4-7"),
+            (ProviderKind::Anthropic, "claude-sonnet-4-6"),
             (ProviderKind::Anthropic, "claude-haiku-4-5-20251001"),
             (ProviderKind::OpenAi, "gpt-5"),
             (ProviderKind::OpenAi, "gpt-5-mini"),

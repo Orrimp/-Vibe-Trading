@@ -10,9 +10,13 @@
 //!   - `with_garch_vol_overlay_momentum` (R6.a primary — vol-targeting overlay).
 //!   - `with_garch_vol_kill_switch` (R6.b secondary — kill-switch overlay).
 //!   - `with_garch_vol_strategy` (R6.c tertiary — standalone mean-reversion).
+//!
+//! v3.0.0-llm-forecaster adds `LlmForecasterStrategy` (Wave A foundation);
+//! see `crates/strategy/src/llm_forecaster/` for the module layout.
 
 pub mod composed;
 pub mod cross_sectional;
+pub mod llm_forecaster;
 pub mod pairs;
 pub mod patchtst_overlay_momentum;
 pub mod patchtst_sync;

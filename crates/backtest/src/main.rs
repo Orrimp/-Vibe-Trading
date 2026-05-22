@@ -788,14 +788,18 @@ async fn main() -> Result<()> {
             }
             ScenarioDataSource::RealData => {
                 // realdata feature gate: clear error if not compiled in.
+                // Uses `return Err(...)` so the (non-realdata) branch is `!`-typed
+                // and the cfg-gated realdata block is the only producing branch in
+                // realdata builds; eliminates the trailing `unreachable!()` that
+                // clippy flagged as dead code under `-D warnings`.
                 #[cfg(not(feature = "realdata"))]
-                anyhow::bail!(
+                return Err(anyhow::anyhow!(
                     "scenario '{}' requires --features realdata. \
                      Rebuild with: cargo run -p backtest --release --features realdata -- \
                      --scenario {} --seed 0xC0FFEE",
                     scenario.name,
                     scenario.name,
-                );
+                ));
                 #[cfg(feature = "realdata")]
                 {
                     let expected_total = scenario.bar_count
@@ -836,8 +840,6 @@ async fn main() -> Result<()> {
                             .to_string(),
                     )
                 }
-                #[cfg(not(feature = "realdata"))]
-                unreachable!()
             }
         }
     } else if is_tcn_overlay {

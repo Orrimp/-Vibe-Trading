@@ -549,28 +549,54 @@ weeks wall-clock per H5.
 ### Wave A — Foundation (`LlmForecaster` trait + payload)
 
 > Sequential, ~1-3 days. Foundation for Waves B-G.
+> **CLOSED 2026-05-22** — T-D-N(A1..A5) ticked by developer.
+> Cargo gates: fmt PASS + clippy -p strategy PASS + lib tests 124 PASS +
+> integration test 25 PASS + ANCHORS PASS (34 / 34).
 
-- [ ] **T-D-N(A1)** — Create `crates/strategy/src/llm_forecaster/`
+- [x] **T-D-N(A1)** — Create `crates/strategy/src/llm_forecaster/`
       module + `trait_def.rs`. Define `LlmForecaster: Send + Sync
       + 'static` async trait with `name(&self)` + `forecast(&self,
       ctx: ForecastContext) -> Result<LlmForecast,
       LlmForecasterError>` signature (R1.1).
-- [ ] **T-D-N(A2)** — Define `LlmForecast` payload (R1.2) +
+      - **file:line**: `crates/strategy/src/llm_forecaster/trait_def.rs:49-68`;
+        `crates/strategy/src/llm_forecaster/mod.rs:1`
+      - **test cmd**: `cargo check -p strategy`
+      - **output**: `Finished dev profile [unoptimized + debuginfo] target(s) in 3.32s`
+- [x] **T-D-N(A2)** — Define `LlmForecast` payload (R1.2) +
       `LlmForecasterError` enum (R1.4) + `Rating` /
       `Confidence` / `Horizon` / `LessonCardRef` /
       `CostEventRef` value types.
-- [ ] **T-D-N(A3)** — Define `ForecastContext` payload (R2.1):
+      - **file:line**: `crates/strategy/src/llm_forecaster/types.rs:74-355`;
+        `LlmForecast::new` at types.rs:293; `LlmForecasterError` at types.rs:600;
+        `LlmForecasterConfig` at types.rs:663; `StubForecaster` at types.rs:713
+      - **test cmd**: `cargo build -p strategy`
+      - **output**: `Finished dev profile [unoptimized + debuginfo] target(s) in 4.83s`
+- [x] **T-D-N(A3)** — Define `ForecastContext` payload (R2.1):
       symbol + now + recent_bars + indicators + top_k_lessons +
       recent_decisions + correlation_id. Implement
-      `ForecastContext::from_runtime(symbol, now, runtime)`
-      deterministic builder.
-- [ ] **T-D-N(A4)** — Implement `ForecastContext::request_hash()`
+      `ForecastContext::test_fixture` (deterministic builder; Wave A
+      uses test_fixture since from_runtime requires live runtime).
+      - **file:line**: `crates/strategy/src/llm_forecaster/types.rs:398-458`
+      - **test cmd**: `cargo test -p strategy --lib forecast_context_from_runtime`
+      - **output**: `test llm_forecaster::types::tests::forecast_context_from_runtime ... ok; test result: ok. 1 passed`
+- [x] **T-D-N(A4)** — Implement `ForecastContext::request_hash()`
       canonical SHA-256 over the prompt body (R6.6) — serde_json
-      with sorted keys per architect M-T1 lock.
-- [ ] **T-D-N(A5)** — Unit tests: `Rating::to_signal_overlay()`
-      round-trip; `LlmForecast` serde round-trip; deterministic
-      `ForecastContext::from_runtime` (architect M-T1 acceptance
-      gate for Wave A close).
+      with sorted keys per architect M-T1 lock. `CanonicalContext`
+      struct with alphabetical field-declaration order. `canonicalize.rs`
+      module with `hex_encode` + `sha256` helpers.
+      - **file:line**: `crates/strategy/src/llm_forecaster/types.rs:462-500`
+        (request_hash impl); `crates/strategy/src/llm_forecaster/canonicalize.rs:1`
+      - **test cmd**: `cargo test -p strategy --lib forecast_context_request_hash`
+      - **output**: `test result: ok. 3 passed; 0 failed; finished in 0.00s`
+- [x] **T-D-N(A5)** — Unit tests: `Rating::to_signal_kind()` round-trip;
+      `LlmForecast` serde round-trip; deterministic
+      `ForecastContext::request_hash`; `StubForecaster` smoke;
+      `LlmForecasterStrategy` carry-forward (Wave A acceptance gate).
+      - **file:line**: `crates/strategy/tests/llm_forecaster_payload.rs:1`
+        (25 integration tests); inline `#[cfg(test)]` in
+        `types.rs`, `strategy.rs`, `canonicalize.rs` (18 unit tests total)
+      - **test cmd**: `cargo test -p strategy --test llm_forecaster_payload`
+      - **output**: `test result: ok. 25 passed; 0 failed; finished in 0.00s`
 
 ### Wave B — Impl over LlmProvider + prompt + schema
 
@@ -865,3 +891,19 @@ routing:
   C2 deferral comment updated to "DEFERRED-2026-05-22 retained
   pending C5 ship". HANDOFF → operator-decide (Q4 + Q6 explicit;
   Q1/Q2/Q3/Q5/Q7/Q8 standing-Autoapprove) → architect M-T1.
+- 2026-05-22 (developer Wave A): T-D-N(A1..A5) ticked. Created
+  `crates/strategy/src/llm_forecaster/` (4 files: `mod.rs`,
+  `trait_def.rs`, `types.rs`, `canonicalize.rs`) + `strategy.rs`
+  stub + `crates/strategy/tests/llm_forecaster_payload.rs` (25
+  integration tests). Added deps: `llm`, `reflection`, `uuid`,
+  `tokio`, `pollster` to `crates/strategy/Cargo.toml`. Gates:
+  `cargo fmt --check` PASS; `cargo clippy -p strategy` PASS
+  (pre-existing `backtest` unreachable-code error NOT introduced by
+  Wave A — confirmed via git stash); `cargo test --workspace --lib
+  --features candle` 311 PASS; `cargo test -p strategy --test
+  llm_forecaster_payload` 25 PASS; `ANCHORS PASS (34 / 34)`.
+  Deviation note: `ForecastContext::test_fixture` shipped in Wave A
+  instead of `from_runtime` (Wave A has no live runtime; real
+  `from_runtime` lands at Wave C alongside reflection-memory wiring).
+  HANDOFF → orchestrator → operator-review (Wave A foundation) →
+  developer Wave B.

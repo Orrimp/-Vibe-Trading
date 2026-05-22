@@ -21,6 +21,14 @@ candle-core = { version = "0.9", optional = true }
 trading_core = { path = "../core" }
 features = { path = "../features" }
 audit = { path = "../audit" }
+# v3-llm-forecaster Wave A: LlmProvider trait + LlmError + reflection types
+llm = { path = "../llm" }
+reflection = { path = "../reflection" }
+uuid.workspace = true
+# v3-llm-forecaster: tokio Handle for block_on in on_bar sync path
+tokio = { workspace = true, features = ["rt"] }
+# v3-llm-forecaster: pollster for test-mode block_on without a tokio handle
+pollster.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -40,6 +48,8 @@ tokio = { workspace = true, features = ["test-util"] }
 proptest.workspace = true
 criterion.workspace = true
 time.workspace = true
+uuid.workspace = true
+pollster.workspace = true
 
 [[test]]
 name = "tcn_overlay_tuned_builder"

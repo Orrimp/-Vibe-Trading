@@ -309,7 +309,7 @@ impl ForecastContext {
             recent_decision_ids: self.recent_decisions.iter()
                 .map(|d| d.audit_id.as_str())
                 .collect::<Vec<_>>(),
-            model_id: &self.model_id,           // e.g. "claude-3-5-haiku-20241022"
+            model_id: &self.model_id,           // e.g. "claude-haiku-4-5-20251001" (D3 fix per spike 2026-05-22)
             temperature: 0,                      // pinned per R3.4
             prompt_template_version: PROMPT_TEMPLATE_VERSION,  // u32 const
         };
@@ -484,9 +484,9 @@ hashed into body).
 
 | Provider tier              | Per-call max USD | Rationale                                       |
 |----------------------------|------------------|-------------------------------------------------|
-| Anthropic Haiku            | $0.01            | Analyst-strawman; ~6k input + 500 output × pricing $0.25/$1.25 per M tokens ≈ $0.0021 per call (cache-cold) → $0.01 is 5× safety margin. |
-| Anthropic Sonnet           | $0.05            | Analyst-strawman; ~6k input + 500 output × pricing $3.00/$15.00 per M tokens ≈ $0.025 per call (cache-cold) → $0.05 is 2× safety margin. |
-| Anthropic Opus             | $0.15            | Bench at spike T-AR-8; ~6k input + 500 output × pricing $15.00/$75.00 per M tokens ≈ $0.13 per call (cache-cold) → $0.15 is 1.15× safety margin. |
+| Anthropic Haiku 4.5        | $0.05            | Spike-corrected D2 2026-05-22; ~6k input + 500 output × current pricing $1.00/$5.00 per M tokens ≈ $0.0085 per call (cache-cold) → $0.05 is ~6× safety margin. |
+| Anthropic Sonnet 4.6       | $0.10            | Spike-corrected; ~6k input + 500 output × pricing $3.00/$15.00 per M tokens ≈ $0.0255 per call (cache-cold) → $0.10 is ~4× safety margin. |
+| Anthropic Opus 4.7         | $0.30            | ~6k input + 500 output × pricing $15.00/$75.00 per M tokens ≈ $0.1275 per call (cache-cold) → $0.30 is ~2.4× safety margin. |
 | Ollama (local)             | $0.00            | Local inference; zero LLM-API cost. Latency/CPU cost not in budget gate. |
 
 The per-call cap is enforced by the existing
@@ -502,10 +502,10 @@ opt-in, the budget gate is automatically active.
 
 | Scenario                                          | Cost cap USD | Rationale                                                                          |
 |---------------------------------------------------|--------------|------------------------------------------------------------------------------------|
-| `top10-2023-fy-llm-forecaster-realdata` (Haiku)   | $25          | 87,600 bars / 24 fire_cadence / 10 symbols ≈ 3,650 calls × $0.0021 ≈ $7.66 cold-record; ~$0.50 cache-warm. $25 cap = ~3× cold-record safety. |
-| `top10-2024-fy-llm-forecaster-realdata` (Haiku)   | $25          | Same math; same cap.                                                               |
-| Either scenario (Sonnet)                          | $100         | ~$25 cold-record on Sonnet; $100 cap = 4× safety. Tier opt-in via config.          |
-| Either scenario (Opus)                            | $300         | ~$75 cold-record on Opus; $300 cap = 4× safety. Tier opt-in via config.            |
+| `top10-2023-fy-llm-forecaster-realdata` (Haiku 4.5) | $100       | Spike-corrected D2 2026-05-22; ~3,650 calls × $0.0085 ≈ $31 cold-record (vs prior $7.66 stale-pricing estimate); $100 cap = ~3× safety. Operator-approved 2026-05-22. |
+| `top10-2024-fy-llm-forecaster-realdata` (Haiku 4.5) | $100       | Same math; same cap.                                                               |
+| Either scenario (Sonnet 4.6)                       | $300         | ~3,650 × $0.0255 ≈ $93 cold-record; $300 cap = ~3× safety. Tier opt-in via config.        |
+| Either scenario (Opus 4.7)                         | $1000        | ~3,650 × $0.1275 ≈ $465 cold-record; $1000 cap = ~2× safety. Tier opt-in via config.      |
 
 The per-backtest cap lives at
 `config.llm_forecaster.cost_cap_usd_per_backtest`. Exceeding triggers
@@ -537,9 +537,9 @@ date: <YYYY-MM-DD>
 n_bars_evaluated: 168          # 1-week × 24-hour
 n_symbols: 10                  # full 10-symbol universe
 n_calls: 728                   # 168 / 24 fire_cadence × 10 + warm-up rounding
-provider_tier: Haiku           # default tier
-cost_actual_usd: 1.53          # measured (cold-record path)
-cost_per_call_usd: 0.0021      # cost_actual / n_calls
+provider_tier: Haiku           # default tier (claude-haiku-4-5-20251001)
+cost_actual_usd: 6.19          # measured (cold-record path) — spike-corrected D2 (was stale 1.53)
+cost_per_call_usd: 0.0085      # cost_actual / n_calls — spike-corrected D2 (was stale 0.0021)
 input_tokens_p50: 5_876        # input-token histogram
 input_tokens_p99: 6_421
 output_tokens_p50: 412

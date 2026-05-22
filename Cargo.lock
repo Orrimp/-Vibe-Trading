@@ -7079,8 +7079,11 @@ dependencies = [
  "criterion",
  "features",
  "forecast",
+ "llm",
  "parking_lot",
+ "pollster 0.3.0",
  "proptest",
+ "reflection",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
@@ -7093,6 +7096,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "trading_core",
+ "uuid",
 ]
 
 [[package]]

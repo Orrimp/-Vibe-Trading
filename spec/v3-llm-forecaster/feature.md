@@ -1364,6 +1364,43 @@ median).
 >
 > **Route recommendation**: Route B (proceed with Wave A + delta-patch D1/D3 first).
 
+### Wave A implementation (developer agent, 2026-05-22)
+
+**T-D-N(A1..A5) COMPLETE.** Wave A foundation shipped. Summary:
+
+**Files created:**
+- `crates/strategy/src/llm_forecaster/mod.rs` — module root + re-exports.
+- `crates/strategy/src/llm_forecaster/trait_def.rs` — `LlmForecaster: Send + Sync + 'static` async trait.
+- `crates/strategy/src/llm_forecaster/types.rs` — `LlmForecast`, `Rating`, `Confidence`, `Horizon`,
+  `ForecastContext`, `LlmForecasterError`, `LlmForecasterConfig`, `StubForecaster`, `CanonicalContext`,
+  `TechnicalIndicators`, `RecentDecision`, `LessonCardRef`, `CostEventRef`. All with `Serialize + Deserialize`.
+- `crates/strategy/src/llm_forecaster/canonicalize.rs` — `hex_encode`, `sha256`, `versions_coherent` helpers.
+- `crates/strategy/src/llm_forecaster/strategy.rs` — `LlmForecasterStrategy: Strategy` Wave A skeleton
+  with disabled guard (R9.3), carry-forward (R5.4), fire-cadence (N=24 default), `StubForecaster` wiring.
+- `crates/strategy/tests/llm_forecaster_payload.rs` — 25 integration tests (Wave A acceptance gate).
+
+**lib.rs updated:** `pub mod llm_forecaster;` added.
+**Cargo.toml updated:** `llm`, `reflection`, `uuid`, `tokio` (rt), `pollster` added to dependencies.
+
+**Wave A deviations from decomp.md:**
+1. `ForecastContext::test_fixture()` shipped instead of `ForecastContext::from_runtime()`. The `from_runtime`
+   method requires live runtime state (reflection-store + indicator cache + audit ledger) which is not wired
+   until Wave C. The `test_fixture` builder covers all Wave A testing needs. `from_runtime` lands at Wave C.
+2. `strategy.rs` in Wave A (not Wave C). The architect's decomp placed `strategy.rs` under Wave C because
+   it depends on `LlmForecasterImpl` (Wave B). However, the Wave A skeleton of `strategy.rs` does NOT use
+   `LlmForecasterImpl` — it takes `Arc<dyn LlmForecaster>` and works with `StubForecaster`. This is pure
+   type scaffolding and advances the Wave C spec cleanly without creating a real LLM dependency.
+3. `ForecastContext` does NOT derive `PartialEq + Eq` because `trading_core::Bar` does not implement them.
+   Cache-key equality is served by `request_hash()` which is the architect-specified contract.
+
+**Cargo checkpoint (verified 2026-05-22):**
+- `cargo fmt --check` — PASS.
+- `cargo clippy -p strategy -- -D warnings` — PASS (note: pre-existing `backtest::main.rs` unreachable-code
+  error exists in the workspace; NOT introduced by Wave A — confirmed via git stash).
+- `cargo test --workspace --lib --features candle` — 311 PASS (0 failures).
+- `cargo test -p strategy --test llm_forecaster_payload` — 25 PASS.
+- `bash scripts/verify_anchors.sh` — `ANCHORS PASS (34 / 34)` (additive-zero confirmed).
+
 ## Changelog
 
 - 2026-05-22 (developer agent, spike T-AR-8): Spike dev-note written (PARTIAL —
