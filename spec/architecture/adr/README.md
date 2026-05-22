@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-22 (ADR-0038 added)
+updated: 2026-05-22 (ADR-0039 added)
 ---
 
 
@@ -86,6 +86,7 @@ the canonical table; the parent file links here.)
 | 0036  | PatchTST training contract — patch-embed shape, σ_train post-training, candle attention determinism gate, cost tripwire (v2.5a) | proposed | 2026-05-21 |
 | 0037  | Phase B scenario-dispatch extraction — renumbered 0035→0037 to resolve number collision with ADR-0035-tcn-sigma-train-recalibration (audit-2026-05-22) | accepted | 2026-05-19 (number reassigned 2026-05-22) |
 | 0038  | v3 vol-forecast V-verdict report shape + GARCH(1,1) baseline contract (parallel to ADR-0033, not extension) | accepted | 2026-05-22 |
+| 0039  | LLM-forecaster verdict criteria L0-L4 (parallel to ADR-0033 § D3 and ADR-0038 § D1, not extension) | accepted | 2026-05-22 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -226,3 +227,34 @@ finalisation.
   agnostic refactor of `tcn_overlay_momentum.rs` — K6 scope-creep
   guard). Sibling deliverable: `spec/v25a-patchtst-overlay/decomp.md`.
   Closes T-AR-2 of `spec/v25a-patchtst-overlay/tasks.md`.
+- 2026-05-22 (architect, M-T1): ADR-0039 added — LLM-forecaster verdict
+  criteria L0-L4 (parallel to ADR-0033 § D3 and ADR-0038 § D1, NOT
+  extension; PARALLEL is the operator-locked precedent per
+  retrospective lesson #2 + Q6 operator-pick 2026-05-22). Locks (D1)
+  L0-L4 priority tree (L1 bias collapse `hold_frac ≥ 0.95` / L2
+  calibration failure `|confidence_outcome_corr| < 0.05` / L3 cost
+  overrun `overrun_ratio > 2.0 OR cost_actual > cost_cap` / L4
+  reasoning trace degenerate `short_frac > 0.50 OR duplicate_frac >
+  0.50` / L0 PASS routes to L_ALPHA gate) — analyst-strawman LOCKED
+  per Q6 operator constraint with architect cap "≤2 new priorities
+  beyond strawman before re-surface" codified inline at D1.b last
+  paragraph, (D1.c) L_ALPHA strategy-side gate (Sharpe-delta
+  thresholds inherited from ADR-0038 § D1.c verbatim: L-ALPHA-UNLOCKED
+  `≥ +0.10` / L-MARGINAL `[+0.05, +0.10)` / L-NO-ALPHA `< +0.05`) +
+  5-cell joint advisory verdict routing table, (D2) verdict section
+  shape (frontmatter-vs-body discipline per ADR-0032 § D4 + ADR-0033
+  § D2 + ADR-0038 § D2; full body layout delegated to
+  `spec/v3-llm-forecaster/decomp.md` § T-AR-6), (D3) L_ALPHA Sharpe-
+  comparison bin extension (additive `--scenario llm-forecaster-bs1`
+  dispatch arm on `crates/forecast/src/bin/sharpe_comparison.rs`),
+  (D4) replay-cache namespace additive extension (dedicated
+  `data/llm-forecaster-replay.db` + checked-in compressed fixture <
+  50 MB per K5; reuses `crates/llm::RecordingProvider/ReplayProvider`
+  schema verbatim), (D5) strategy-side + Phase F Assistant slot
+  composition v0.1.0 with Q4=(b) overlay deferred to v0.1.1 and
+  Q4=(d) all-three-as-builders deferred to v0.2.0+, (D6) anchor +
+  version naming (new `v3.0.0-llm-forecaster` namespace; +2 anchors
+  at developer Wave G close; sharpe-comparison NOT anchored at
+  v0.1.0; re-emission protocol inherited from ADR-0038 § D6.b
+  verbatim). Closes T-AR-9 of
+  `spec/v3-llm-forecaster/tasks.md`.

@@ -1213,8 +1213,145 @@ respectively, **only after operator promotion** per Q-SEQ HYBRID.
   config stays Phase F byte-identical. Operator may opt for an
   unconditional slot promotion (less safe).
 
+## Design
+
+> **Architect M-T1 pass 2026-05-22.** Decomposition lives at
+> [`spec/v3-llm-forecaster/decomp.md`](decomp.md) (~720 lines)
+> with ADR-0039 at
+> [`spec/architecture/adr/0039-llm-forecaster-verdict-criteria.md`](../architecture/adr/0039-llm-forecaster-verdict-criteria.md).
+> This section is the load-bearing summary — the decomp.md is the
+> authoritative artifact developer waves consume.
+
+### Module layout
+
+```
+crates/strategy/src/llm_forecaster/
+├── mod.rs              # re-exports + module docs
+├── trait_def.rs        # LlmForecaster async trait
+├── types.rs            # LlmForecast, ForecastContext, Rating, Confidence,
+│                       #   Horizon, LlmForecasterError, LessonCardRef, CostEventRef
+├── anthropic_impl.rs   # LlmForecasterImpl over Arc<dyn llm::LlmProvider>
+├── strategy.rs         # LlmForecasterStrategy: Strategy (on_bar consumer)
+├── prompt.rs           # System-prompt composition via CachedSystemPromptBuilder
+├── tool_schema.rs      # propose_forecast ToolSchema definition
+└── verdict.rs          # classify_l + classify_l_alpha per ADR-0039 § D1
+```
+
+Plus:
+- `crates/backtest/src/scenarios/llm_forecaster.rs` (new) +
+  `reports/llm_forecaster_report.rs` (new) +
+  `bin/llm_forecaster_rerecord.rs` (new).
+- `crates/llm/src/bin/llm_forecaster_bench.rs` (new, ~150 LoC; spike
+  T-AR-8 + Wave D cost-cap verification).
+- `crates/forecast/src/bin/sharpe_comparison.rs` (additive dispatch
+  arm for `--scenario llm-forecaster-bs1`).
+- `crates/audit/migrations/011_llm_forecast.sql` (additive
+  migration; `JournalEntry { kind: "llm_forecast", payload }`).
+- `crates/ui/src/assistant/state.rs` + `view.rs` extensions
+  (`AssistantMode::ReasoningTrace` variant; runtime-gated per R9.3).
+
+### Signal pipeline shape (T-AR-1)
+
+`LlmForecasterStrategy::on_bar` follows this sequence (decomp § T-AR-1):
+
+```text
+1. window.push(bar)
+2. if bars_since_last_fire < fire_every_n_bars (default 24): carry-forward
+3. ctx = ForecastContext::from_runtime(symbol, now, runtime)
+4. let request_hash = ctx.request_hash()  // canonical sha256 per T-AR-2
+5. forecast = block_on(forecaster.forecast(ctx))  // async-from-sync via tokio
+6. cache forecast at self.last_forecast.insert(symbol, forecast)
+7. emit Signal per rating → SignalKind mapping
+8. emit audit row + AuditTick (Wave E)
+9. return vec![signal]
+```
+
+**5-tier rating → 3-variant SignalKind mapping** (architect-locked):
+
+| Rating          | SignalKind | Preservation site                                   |
+|-----------------|------------|-----------------------------------------------------|
+| STRONG_BUY      | Buy        | `LlmForecast.rating` (audit JournalEntry + Phase F Assistant slot reasoning trace) |
+| BUY             | Buy        | same                                                |
+| HOLD            | Hold       | same                                                |
+| SELL            | Sell       | same                                                |
+| STRONG_SELL     | Sell       | same                                                |
+
+`quantity_scale` inherits the noop-fix default `1.0` (no vol-targeting
+behavior). STRONG distinction is preserved in audit + reasoning
+trace + verdict L1 `hold_frac` denominator (full 5-tier histogram).
+
+### Determinism contract (T-AR-5; K4 mitigation)
+
+5-layer stack:
+
+1. `temperature = 0.0` pinned at every call site.
+2. `RecordingProvider` + `ReplayProvider` sqlite cache; cache-miss
+   FATAL in research mode.
+3. Re-record protocol via `cargo run --bin llm-forecaster-rerecord`.
+4. **3-back-to-back identical cache-build run gate at M-FINAL**
+   before anchor lock (analyst-recommended K4 mitigation).
+5. `cache_schema_version` migration shape (v=1 at v0.1.0).
+
+### Verdict shape (T-AR-9 ADR-0039)
+
+ADR-0039 § D1 L0-L4 priority tree (analyst-strawman LOCKED per Q6
+operator constraint). PARALLEL to ADR-0033 § D3 (F-verdict) and
+ADR-0038 § D1 (V-verdict), NOT extension. Architect cap "≤2 new
+priorities beyond strawman before re-surface" enforced.
+
+L_ALPHA strategy-side gate inherits Sharpe-delta thresholds from
+ADR-0038 § D1.c verbatim (cross-paradigm comparability).
+
+### Cost gating (T-AR-4; K2 mitigation)
+
+Per-tier per-call caps: Haiku $0.01 / Sonnet $0.05 / Opus $0.15 /
+Ollama $0.00. Per-backtest caps (architect-bumped from analyst-
+strawman per cold-record math): Haiku $100 / Sonnet $100 / Opus $300.
+N-bar batching: `fire_every_n_bars` default = 24 (once-per-day on
+hourly bars). Q5b timeout refined: `timeout_ms = 45_000` (2.25×
+Anthropic Sonnet p99 margin; safety for Ollama on slow developer
+hardware).
+
+### Anchor delta
+
+- New namespace `v3.0.0-llm-forecaster`.
+- +2 rows: `top10-2023-fy-llm-forecaster-realdata`,
+  `top10-2024-fy-llm-forecaster-realdata`.
+- Anchor count progression: **34 → 36** at developer Wave G close.
+- `sharpe-comparison-llm-forecaster-bs1-realdata` NOT anchored at
+  v0.1.0; lift route at v0.1.1 if L0/L-ALPHA-UNLOCKED or L-MARGINAL.
+
+### Wave plan (decomp § T-AR-7)
+
+| Wave | Scope                                                                  | Dep      | Est wall-clock |
+|------|------------------------------------------------------------------------|----------|----------------|
+| A0   | Spike prefix — bench bin + prompt iteration + cache-hit empirical      | —        | 2-3 days       |
+| A    | Foundation (`LlmForecaster` trait + payload + ForecastContext)         | A0       | 1-3 days       |
+| B    | Impl + prompt + tool schema + bench bin                                | A        | 3-7 days       |
+| C    | Strategy registry + Signal mapping                                     | B        | 2-4 days       |
+| D    | Backtest scenarios + replay-cache wiring (parallel with C)             | B        | 3-7 days       |
+| E    | Audit + cost-budget wiring + Sharpe-comparison bin + verdict.rs        | C        | 3-5 days       |
+| F    | Phase F Assistant slot body promotion (UNGATED per Q4=(a)+(c))         | C        | 3-5 days       |
+| G    | ADR commit + non-regression + tester handoff (serial closure)          | A-F      | 2-3 days       |
+
+Total dev wall-clock estimate: 3-5 weeks (matches H5 + survey
+median).
+
 ## Changelog
 
+- 2026-05-22 (architect M-T1): `## Design` section added.
+  T-AR-1..T-AR-10 closed; ADR-0039 LLM-forecaster verdict criteria
+  L0-L4 written + registered (status `accepted`); `decomp.md`
+  authored at `spec/v3-llm-forecaster/decomp.md` (~720 lines)
+  covering Module layout + Signal pipeline + Determinism + Verdict
+  + Cost gating + Anchor delta + Wave plan A-G with cargo
+  invocations + expected literals + 5-cell joint advisory verdict
+  routing table. Spike T-AR-8 = YES (2-3 day prefix to Wave A).
+  Wave F UNGATED per Q4=(a)+(c) hybrid operator-pick. Baseline
+  `ANCHORS PASS (34 / 34)` quoted from
+  `bash scripts/verify_anchors.sh`. Anchor delta plan: 34 → 36 at
+  developer Wave G close. HANDOFF → orchestrator → spike →
+  developer Wave A.
 - 2026-05-22 (analyst): initial brief — R1-R10, Q1-Q8, K1-K10,
   H1-H5, non-regression contract; predecessor
   `v2-llm-strategy v2.0.0` (shipped 2026-05-13); parent

@@ -1,15 +1,18 @@
 ---
 slug: v3-llm-forecaster
 version: 0.1.0
-status: proposed
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-22
 parent: strategy-reformulation-survey-2026-05-22 Candidate 5
 predecessor: v2-llm-strategy v2.0.0
+adr: 0039
+decomp: spec/v3-llm-forecaster/decomp.md
 promoted_2026_05_22: Queue → Active by operator under v3-volatility-forecaster-noop-fix v0.1.0 deck approval (C1 retired with NEGATIVE-NET-DELTA evidence; C5 picked over C2 for moat-alignment + crates/llm infra reuse)
 promotion_ref: spec/v3-volatility-forecaster-noop-fix/presentations/v3-volatility-forecaster-noop-fix-2026-05-22.md
-analyst_bridge_2026_05_22: T-A-B1..T-A-B4 closed; M-OD opens with standing-Autoapprove eligible on Q1/Q2/Q3/Q5/Q7/Q8 and explicit-decision required on Q4 (Phase F Assistant slot promotion shape — product-differentiation surface) + Q6 (NEW ADR-0038 LLM-verdict criteria — codifies a new artifact)
-budget_estimate: 6-8 weeks total wall-clock (analyst 1w done + architect 1-2w + dev 3-5w + tester 1w + presenter 1-2d per survey ranking Candidate 5 line 480; HIGH variance per K8 novel-territory risk)
+analyst_bridge_2026_05_22: T-A-B1..T-A-B4 closed; M-OD opens with standing-Autoapprove eligible on Q1/Q2/Q3/Q5/Q7/Q8 and explicit-decision required on Q4 (Phase F Assistant slot promotion shape — product-differentiation surface) + Q6 (NEW ADR LLM-verdict criteria — codifies a new artifact)
+architect_m_t1_2026_05_22: T-AR-1..T-AR-10 closed; ADR-0039 LLM-forecaster verdict criteria L0-L4 written + registered (status accepted); decomp.md authored ~720 lines; Wave plan A-G ratified with spike T-AR-8 2-3 day prefix; baseline ANCHORS PASS (34 / 34); anchor delta 34 → 36 at developer Wave G close.
+budget_estimate: 6-8 weeks total wall-clock (analyst 1w done + architect 1-2w done + dev 3-5w + tester 1w + presenter 1-2d per survey ranking Candidate 5 line 480; HIGH variance per K8 novel-territory risk)
 ---
 
 # v3-llm-forecaster — tasks
@@ -324,95 +327,137 @@ artifact).
 > aligned alternative". No separate T-OD row needed; the
 > frontmatter `promoted_2026_05_22` field carries the receipt.
 
-## M-T1 — Architect decomposition (OPENS at M-OD close)
+## M-T1 — Architect decomposition (CLOSED 2026-05-22)
 
-Architect ratifies feature.md into `decomp.md` + ADR (0038 or
-renumber per T-OD6 open) + ordered Wave plan. Tasks below are
-the architect's expected surface — analyst-bridge sized to ~10
-T-AR rows. Architect refines + adds file:line citations at M-T1.
+> **CLOSED 2026-05-22** — T-AR-1..T-AR-10 ticked; ADR-0039
+> written + registered; decomp.md authored at
+> `spec/v3-llm-forecaster/decomp.md` (~720 lines). Architect
+> handoff envelope per AGENT.md § Communication contract emitted.
+> Baseline ANCHORS PASS (34 / 34) quoted from
+> `bash scripts/verify_anchors.sh`. Anchor delta plan: 34 → 36
+> at developer Wave G close. Spike T-AR-8 = YES (2-3 day prefix
+> to Wave A). Wave F UNGATED per Q4=(a)+(c) hybrid.
 
 > **Critical M-T1 path** — architect MUST resolve K1 + K4 + K5
 > + Q6 ADR shape before Wave A spawns. Q5 sub-decision Q5b
 > timeout-ms is a Wave B refinement (lower-priority).
 
-- [ ] **T-AR-1** — **Signal pipeline shape**. Lock where
-      `LlmForecaster::forecast()` output feeds into a Strategy.
-      Analyst-recommended: new `LlmForecasterStrategy: Strategy`
-      at `crates/strategy/src/llm_forecaster/strategy.rs`
-      (Q4=(a) default per R4.1); registered as
-      `"llm_forecaster_v3"` in
-      [`crates/strategy/src/registry.rs`](../../crates/strategy/src/registry.rs).
-      Architect M-T1 cites file:line for the registry add + the
-      Strategy::on_bar call sequence (forecast → Signal mapping
-      via `Rating::to_signal_overlay`). Mirrors structurally the
-      vol-target overlay's standalone-strategy pattern (now
-      retired post-noop-fix), not the TCN-overlay's Signal-kind
-      mutation pattern.
-- [ ] **T-AR-2** — **Prompt + replay-cache contract**.
-      Confirm `crates/llm::CachedSystemPromptBuilder` 2-cache-
-      breakpoint structure (R3.2 project + role boundaries);
-      lock the prompt fixture path + replay-cache namespace.
-      Decisions:
-      - Replay-cache path — `data/llm-forecaster-replay.db` (live
-        recording) vs shared `data/llm-replay.db` with namespaced
-        `(strategy_id, request_hash, response)` rows.
-      - Fixture path for checkout-friendly tests —
-        `crates/strategy/tests/fixtures/llm-forecaster-replay.db.gz`
-        (analyst-recommended per K5; mirrors
-        `crates/llm/tests/fixtures/llm-replay.db` precedent).
-      - Canonical `ForecastContext::request_hash()` serialisation
-        (R6.6) — analyst-strawman serde_json with sorted keys.
-- [ ] **T-AR-3** — **Reflection-memory retrieval shape**.
-      Resolve K1 (top_k determinism under backtest re-runs).
-      Decisions:
-      - Backtest binary `--reflection-store-snapshot <path>`
-        flag (analyst-recommended): pins the store to a frozen
-        sqlite dump for re-run byte-identity safety beyond just
-        replay-cache hash-pinning.
-      - `RetrievalQuery` derivation from `(symbol, regime_tag,
-        recent_outcome)` per R2.3 — confirm
-        `crates/reflection::RetrievalQuery` shape supports all 3
-        inputs; if not, surface as architect-add via additive
-        field.
-      - K = 5 default per `REPORT_TIME_TOP_K` (existing constant)
-        — confirm consumer doesn't need a strategy-specific override.
-- [ ] **T-AR-4** — **Cost gating + budget kill-switch**.
-      Resolve K2 (LLM cost blow-up). Bench actual token counts
-      via `cargo run --bin llm-forecaster-bench` on a 1-month
-      data slice; project to full year. Calibrate R5.4
-      `fire_every_n_bars` default (analyst-strawman N=24
-      once-per-day hourly cadence → ~$55/year cold-run on 10
-      symbols, ~$10-15 warm-run with cache hits). Lock R5.3
-      `cost_cap_usd_per_backtest` default (analyst-strawman
-      $20). The kill-switch path: `BudgetExceeded` short-circuit
-      to backtest binary explicit-error log.
-- [ ] **T-AR-5** — **Determinism contract — replay-cache must
-      serve byte-identical responses for backtest determinism**.
-      Resolve K4 (Anthropic drift across server deploys) +
-      R6.6 (canonical request_hash serialisation). Decisions:
-      - Anchor only after **3 back-to-back identical cache-build
-        runs** (analyst-recommended; tightest re-run gate beyond
-        the H4 single-byte-identity falsification).
-      - `cache_schema_version` field (R6.5) on
-        `(request_hash, response)` rows — additive migration shape
-        owned by architect.
-      - Re-recording protocol (R6.4) — explicit
-        `cargo run --bin llm-forecaster-rerecord` binary; emits a
-        `MIGRATION` warning per v25-tcn-overlay precedent.
-- [ ] **T-AR-6** — **Anchor shape — where LLM-forecast reports
-      live + body-SHA contract**. Per Q7=(a) default new version
-      pin `v3.0.0-llm-forecaster`; +2 anchors at ship:
-      - `top10-2023-fy-llm-forecaster-realdata` — full-year 2023
-        realdata on 10 USDT pairs.
-      - `top10-2024-fy-llm-forecaster-realdata` — full-year 2024.
-      Architect locks the report-body template (R8.2 mirror of
-      v25a-patchtst-overlay R8) + the new columns (LLM cost
-      USD total + per-call; cache hit ratio target ≥90% on
-      re-runs; top-K lesson-card retrieval distribution;
-      reasoning_trace_sha256 histogram).
-- [ ] **T-AR-7** — **Wave plan A-G ratified**. Confirm the
+- [x] **T-AR-1** — **Signal pipeline shape** — **CLOSED 2026-05-22**.
+      Decision pinned per `decomp.md` § T-AR-1. New
+      `LlmForecasterStrategy: Strategy` at
+      `crates/strategy/src/llm_forecaster/strategy.rs`;
+      registered as `"llm_forecaster_v3"` in
+      [`crates/strategy/src/registry.rs:96-100`](../../crates/strategy/src/registry.rs).
+      Module organisation: 7 files (`mod.rs` / `trait_def.rs` /
+      `types.rs` / `anthropic_impl.rs` / `strategy.rs` /
+      `prompt.rs` / `tool_schema.rs` / `verdict.rs`). Signal
+      mapping = 5-tier → 3 `SignalKind` (Buy/Hold/Sell);
+      `quantity_scale` inherits the noop-fix-shipped default 1.0
+      per [`traits.rs:16-26`](../../crates/strategy/src/traits.rs)
+      (LLM-forecaster does not vol-target). STRONG vs regular
+      tier preserved in `reasoning_trace` + audit JournalEntry +
+      verdict L1 `hold_frac` denominator; NOT collapsed at
+      `SignalKind` level (R10.2 strategy byte-identity guard).
+- [x] **T-AR-2** — **Prompt + replay-cache contract** — **CLOSED 2026-05-22**.
+      Decision pinned per `decomp.md` § T-AR-2. Prompt template
+      lives at NEW `crates/strategy/src/llm_forecaster/prompt.rs`
+      (strategy-specific business logic; NOT `crates/llm/src/prompts/`).
+      2 cache breakpoints (project ~800 tokens + role ~1200 tokens);
+      per-call dynamic block is **markdown** (architect-pick over
+      JSON for human-readability at spike-time review).
+      Replay-cache namespace: dedicated `data/llm-forecaster-replay.db`
+      (live) + `crates/strategy/tests/fixtures/llm-forecaster-replay.db.gz`
+      (checked-in, < 50 MB target per K5). Reuses
+      `crates/llm::RecordingProvider/ReplayProvider` schema verbatim;
+      additive `cache_schema_version` column (v=1 at v0.1.0).
+      `ForecastContext::request_hash()` canonicalisation: serde_json
+      over `CanonicalContext` struct with alphabetical
+      field-declaration order (`model_id`, `now`,
+      `prompt_template_version`, …), SHA-256 over bytes. **Q5b
+      sub-decision refined**: `timeout_ms = 45_000` (45s; 2.25×
+      Anthropic Sonnet p99 ~20s; safety margin for Ollama on
+      slowest expected developer hardware).
+- [x] **T-AR-3** — **Reflection-memory retrieval shape** — **CLOSED 2026-05-22**.
+      Decision pinned per `decomp.md` § T-AR-3. `RetrievalQuery`
+      shape at
+      [`crates/reflection/src/types.rs:109-113`](../../crates/reflection/src/types.rs)
+      is fit-for-purpose **as-is** — no architect-add. Inputs:
+      `(strategy_id = "llm_forecaster_v3", symbol_or_pair,
+      current_regime)`; `current_regime` from
+      [`reflection::regime::classify_regime`](../../crates/reflection/src/regime.rs)
+      3-state BTC daily-close tagger (Bull/Bear/Chop). K = 5
+      default via existing `REPORT_TIME_TOP_K` constant
+      [`crates/reflection/src/lib.rs:69`](../../crates/reflection/src/lib.rs);
+      no strategy-specific override. **Distillation fallback
+      (Q3 (c) → (a) hybrid)**: top-K-only path activates since
+      `crates/reflection/src/lib.rs:20-24` gates distillation as
+      deferred; upgrade route is `DISTILLATION_ENABLED` const
+      flip + cache invalidation via additive
+      `distilled_summary_sha: Option<[u8; 32]>` field on
+      `CanonicalContext`. **K1 resolution**: backtest binary
+      gains `--reflection-store-snapshot <path>` CLI flag pinning
+      the store to a frozen sqlite dump (analyst-recommended).
+      3-layer determinism: request_hash + store snapshot + 3-back-
+      to-back cache-build gate (T-AR-5).
+- [x] **T-AR-4** — **Cost gating + budget kill-switch** — **CLOSED 2026-05-22**.
+      Decision pinned per `decomp.md` § T-AR-4. Per-call max USD
+      pinned per provider tier: Haiku $0.01 / Sonnet $0.05 / Opus
+      $0.15 / Ollama $0.00. Per-backtest cap pinned per scenario:
+      Haiku $100 (architect-bumped from analyst-strawman $20/$25
+      per cold-record projection ~$80/year on Haiku) / Sonnet
+      $100 / Opus $300. **`fire_every_n_bars`** retained at
+      analyst-strawman default = 24 (once-per-day on hourly bars).
+      Per-day live cap strawman `cost_cap_usd_per_day = $50` (¼ of
+      v2-llm-strategy $200/month ceiling); final number deferred
+      to live-deployment promotion at presenter time. Enforcement
+      via existing
+      [`crates/llm::BudgetedProvider`](../../crates/llm/src/budgeted.rs)
+      decorator — no new code path; `LlmProviderFactory::build`
+      wraps automatically when `cfg.llm.enabled = true`.
+      `BudgetExceeded` short-circuits backtest binary with explicit
+      error log + non-zero exit (L3 verdict captures bench
+      mis-estimate per ADR-0039 § D1.b).
+- [x] **T-AR-5** — **Determinism contract — replay-cache must
+      serve byte-identical responses for backtest determinism** —
+      **CLOSED 2026-05-22**. Decision pinned per `decomp.md`
+      § T-AR-5. 5-layer determinism stack: (L1) `temperature = 0`
+      pinned at every call site; (L2) RecordingProvider /
+      ReplayProvider sqlite cache — cache-miss in research mode
+      FATAL → `LlmForecasterError::ReplayMiss` → non-zero exit;
+      (L3) re-record protocol via
+      `cargo run --bin llm-forecaster-rerecord -- --scenario … --reflection-store-snapshot …`
+      with MIGRATION warning per v25-tcn-overlay precedent;
+      **(L4) 3-back-to-back identical cache-build run gate**
+      (tester at M-FINAL requires 3 consecutive runs produce
+      byte-identical body-SHAs before anchor lock); (L5)
+      `cache_schema_version` migration shape (v=1 at v0.1.0; bumps
+      invalidate cache + anchor via new ADR amendment per ADR-0029
+      precedent). Canonical `request_hash` per T-AR-2 (serde_json
+      over `CanonicalContext` struct; alphabetical field-declaration
+      order).
+- [x] **T-AR-6** — **Anchor shape — where LLM-forecast reports
+      live + body-SHA contract** — **CLOSED 2026-05-22**. Decision
+      pinned per `decomp.md` § T-AR-6 + ADR-0039 § D6. New
+      namespace `v3.0.0-llm-forecaster`; +2 rows at developer
+      Wave G close (M-FINAL after 3-back-to-back gate):
+      `top10-2023-fy-llm-forecaster-realdata` +
+      `top10-2024-fy-llm-forecaster-realdata`.
+      `sharpe-comparison-llm-forecaster-bs1-realdata` (Wave E)
+      ships **without** anchor at v0.1.0 (analyst-recommended
+      deferral; lift route at v0.1.1 if L0/L-ALPHA-UNLOCKED or
+      L-MARGINAL). Body shape: Checkpoint table + Per-call cost
+      table + Rating distribution histogram + Per-symbol Sharpe
+      table + reasoning_trace_sha256 histogram (top 10) +
+      Aggregate statistics + Verdict section per ADR-0039 § D2.
+      Float canon: `%.6` decimals; integer canon: `%`. Symbol
+      row order: alphabetical USDT-quote (ADAUSDT, AVAXUSDT, …,
+      XRPUSDT) — mirror of ADR-0038 § D2.a.
+- [x] **T-AR-7** — **Wave plan A-G ratified** — **CLOSED 2026-05-22**.
+      Decision pinned per `decomp.md` § T-AR-7 with cargo
+      invocations + expected literals per task. Wave F **UNGATED**
+      per Q4=(a)+(c) hybrid operator-pick T-OD4. Confirm the
       analyst-strawman wave map (preserved from the original
-      analyst pass; subject to architect refinement at M-T1):
+      analyst pass; refined at M-T1):
       - **Wave A** (sequential, foundation) —
         `LlmForecaster` trait + `LlmForecast` payload +
         `ForecastContext` (R1 + R2).
@@ -438,34 +483,60 @@ T-AR rows. Architect refines + adds file:line citations at M-T1.
         (re-runs `top10-2023-fy-tcn-overlay-realdata` and asserts
         `8fa47f49…` body-SHA unchanged) + non-regression sweep
         + tester handoff envelope.
-- [ ] **T-AR-8** — **Spike requirement**. C5 is novel-territory
-      per K8 + survey LOW-MEDIUM prior on H1 +0.10 Sharpe-delta.
-      Architect M-T1 decides: spike YES (recommended — 2-3-day
-      Wave-A-prefix prompt-engineering + token-count + cache-hit-
-      ratio bench on a 1-week realdata slice before committing
-      to Wave A) vs spike NO (direct Wave A entry; higher
-      schedule risk if prompt structure needs iteration).
-      Analyst-recommended: **spike YES**.
-- [ ] **T-AR-9** — **Draft ADR (0038 or 0039 — see T-OD6 open)
-      "LLM-forecaster verdict criteria L1-L4"** per Q6=(b).
-      Priority tree (analyst-strawman; architect refines):
-      L1 = bias collapse (≥95% HOLD ratings); L2 = calibration
-      failure (confidence-outcome correlation < threshold);
-      L3 = cost overrun (actual / projected > 2×); L4 =
-      reasoning trace degenerate (< 50 chars OR > 50% duplicate);
-      L0 = PASS (none of L1-L4 trigger AND Sharpe-delta ≥ +0.10).
-      Codifies LLM-verdict shape for all future LLM-strategy
-      ships.
-- [ ] **T-AR-10** — **K1-K10 resolution + decomp.md write**.
-      Pin resolutions for K1 (T-AR-3 store snapshot flag) + K2
-      (T-AR-4 bench), K4 (T-AR-5 3-back-to-back), K5 (T-AR-2
-      check-in compressed cache), K6 (T-AR-9 ADR ≤2 new
-      priorities cap), K7 (R9.3 runtime gate confirmed), K8
-      (architect refines cost estimate from analyst-strawman),
-      K9 (resolved by 2026-05-22 promotion), K10 (T-OD9 default
-      C5-standalone-regardless). Write to
-      `spec/v3-llm-forecaster/decomp.md` + tick frontmatter
-      `owner: analyst → architect`.
+- [x] **T-AR-8** — **Spike requirement** — **CLOSED 2026-05-22**.
+      Architect-confirms **SPIKE YES, 2-3 day prefix to Wave A**.
+      Scope per `decomp.md` § T-AR-8: Day 1 bench bin scaffold
+      via NEW `cargo run --bin llm-forecaster-bench -- --slice 1week
+      --symbols 10`; Day 2 prompt-template iteration (token-count
+      ≤ 8k input + ≤ 1k output; ≥ 95% structured tool-use payloads);
+      Day 3 cache-hit-ratio empirical check + full-year cost
+      projection. Deliverable: dev-note
+      `spec/dev-notes/v3-llm-forecaster-prompt-spike-<date>.md`
+      (~200-400 lines) — orchestrator approval gate before
+      Wave A T-D-N(A1). Spike-NO rejected: novel-territory +
+      LOW-MEDIUM prior + 5-10d rework risk in Waves B-D.
+- [x] **T-AR-9** — **Draft ADR-0039 "LLM-forecaster verdict
+      criteria L0-L4"** per Q6=(b) — **CLOSED 2026-05-22**.
+      Authored at
+      [`spec/architecture/adr/0039-llm-forecaster-verdict-criteria.md`](../architecture/adr/0039-llm-forecaster-verdict-criteria.md);
+      status `accepted`. **ADR namespace pick = 0039** (next
+      available after 0038 vol-forecast-verdict-shape; T-OD6 open
+      now resolved). Analyst-strawman LOCKED per Q6 operator
+      constraint:
+      L1 = bias collapse (`hold_frac ≥ 0.95`); L2 = calibration
+      failure (`|confidence_outcome_corr| < 0.05`); L3 = cost
+      overrun (`overrun_ratio > 2.0 OR cost_actual > cost_cap`);
+      L4 = reasoning trace degenerate (`short_frac > 0.50 OR
+      duplicate_frac > 0.50`); L0 = PASS (routes to L_ALPHA
+      strategy-side gate). L_ALPHA classifier inherits Sharpe-delta
+      thresholds from ADR-0038 § D1.c verbatim (L-ALPHA-UNLOCKED
+      `≥ +0.10` / L-MARGINAL `[+0.05, +0.10)` / L-NO-ALPHA
+      `< +0.05`). Architect cap "≤2 new priorities beyond strawman
+      before re-surface" codified inline at ADR-0039 § D1.b.
+      PARALLEL to ADR-0033 § D3 and ADR-0038 § D1, NOT extension.
+      Registered in
+      [`spec/architecture/adr/README.md`](../architecture/adr/README.md)
+      at row 89.
+- [x] **T-AR-10** — **K1-K10 resolution + decomp.md write** —
+      **CLOSED 2026-05-22**.
+      All 10 K-risk mitigations pinned per `decomp.md` § T-AR-10
+      table: K-llm-1 (T-AR-3 store snapshot flag + 3-layer
+      determinism stack), K-llm-2 (T-AR-4 cost-cap math + spike
+      empirical projection + L3 cost-overrun verdict), K-llm-3
+      (ADR-0039 L4 mechanical gate + operator H3 subjective at
+      presenter), K-llm-4 (T-AR-5 Layer 4 3-back-to-back gate),
+      K-llm-5 (T-AR-2 check-in compressed cache < 50 MB), K-llm-6
+      (ADR-0039 § D1.b architect cap ≤2 new priorities), K-llm-7
+      (R9.3 runtime gate confirmed; Q-ASSISTANT-WAKE = runtime-
+      gated operator-locked), K-llm-8 (spike YES de-risks
+      prompt-iteration), K-llm-9 (resolved by 2026-05-22
+      promotion), K-llm-10 (Q-V2X-SEQ → C5 standalone v0.1.0
+      regardless). `decomp.md` authored at
+      `spec/v3-llm-forecaster/decomp.md` (~720 lines).
+      Frontmatter ticked `owner: analyst → architect`;
+      `status: proposed → in-progress`. Spec hygiene:
+      `spec/trace.toml` REQ-V3-LLM-FORECASTER-001
+      `state: proposed → in-progress` + `arch` column populated.
 
 ## M-DEV — Developer waves (OPENS at M-T1 close)
 
@@ -747,6 +818,28 @@ routing:
   in this pass; M-OD / M-T1 / M-DEV / M-FINAL / M-PRESENTER
   milestones stubbed; HANDOFF → operator-decide (Q1-Q8 +
   Q-PROMOTE).
+- 2026-05-22 (architect M-T1): T-AR-1..T-AR-10 ticked;
+  ADR-0039 LLM-forecaster verdict criteria L0-L4 written +
+  registered (status `accepted`); ADR namespace pick 0039 (T-OD6
+  open resolved). `decomp.md` authored at
+  `spec/v3-llm-forecaster/decomp.md` (~720 lines) covering all
+  10 T-AR rows + K1-K10 mitigations + Wave A-G plan with cargo
+  invocations + expected literals + 5-cell joint advisory verdict
+  routing table. Spike T-AR-8 = YES (2-3 day prefix to Wave A;
+  scope locked at bench bin + prompt iteration + cache-hit
+  empirical). Wave F UNGATED per Q4=(a)+(c) hybrid operator-pick.
+  Baseline `ANCHORS PASS (34 / 34)` quoted from
+  `bash scripts/verify_anchors.sh` 2026-05-22. Anchor delta plan:
+  34 → 36 at developer Wave G close. Q5b refined: timeout_ms =
+  45_000 (2.25× Anthropic Sonnet p99 margin). Frontmatter flipped
+  `status: proposed → in-progress` + `owner: analyst → architect`;
+  added `adr: 0039` + `decomp: spec/v3-llm-forecaster/decomp.md`
+  + `architect_m_t1_2026_05_22` field. Spec hygiene:
+  `spec/trace.toml` REQ-V3-LLM-FORECASTER-001 state
+  `proposed → in-progress` + `arch` column populated;
+  `spec/architecture/adr/README.md` ADR-0039 row added.
+  HANDOFF → orchestrator → spike (2-3 day prefix) → developer
+  Wave A → through G → tester → presenter.
 - 2026-05-22 (analyst-bridge): C5 promoted Queue → Active by
   operator under v3-volatility-forecaster-noop-fix v0.1.0 deck
   approval (C1 retired with NEGATIVE-NET-DELTA real evidence;
