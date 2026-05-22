@@ -1431,6 +1431,71 @@ median).
 - `cargo test -p strategy --test llm_forecaster_wiremock` — 17 PASS.
 - `bash scripts/verify_anchors.sh` — `ANCHORS PASS (34 / 34)` (additive-zero confirmed).
 
+### Wave E implementation (developer agent, 2026-05-22)
+
+**T-D-N(E1..E6) COMPLETE.** Wave E audit + cost-budget wiring shipped. Summary:
+
+**Files created:**
+- `crates/audit/migrations/012_llm_forecast.sql` — additive migration creating
+  `llm_forecast_entries` table. Numbered 012 (not 011) because
+  `011_trail_correlation_chain.sql` already existed. Key: `correlation_id TEXT NOT NULL UNIQUE`
+  enables idempotent `INSERT OR IGNORE` on replay-warm re-runs.
+- `crates/audit/tests/journal_llm_forecast_round_trip.rs` — 4 T-D-N(E1) tests:
+  round-trip, idempotency (INSERT OR IGNORE), tick emission, all 5 rating variants.
+- `crates/strategy/tests/llm_forecaster_cost_event.rs` — 3 T-D-N(E2) tests:
+  `CaptureCostSink` captures exactly 1 `CostEvent::Llm` on success, 0 on failure (R9.3),
+  `cost_usd > 0` after token spend.
+- `crates/strategy/tests/llm_forecaster_audit_tick.rs` — 4 T-D-N(E3) tests:
+  `AuditEvent::LlmForecastEmitted` fields match write, no-bus no-panic, 2 calls = 2 ticks.
+- `crates/strategy/tests/llm_forecaster_budget_gate.rs` — 4 T-D-N(E4) tests:
+  80% degrade (DeepThink→QuickThink succeeds), 100% block (`BudgetExceeded`, 0 HTTP requests),
+  backtest-fatal assertion, healthy budget passthrough.
+- `crates/strategy/tests/llm_forecaster_cost_cap_short_circuit.rs` — 3 T-D-N(E5) tests:
+  cap exceeded at 100% (whole-dollar amounts to avoid sub-cent truncation), backtest-fatal
+  assertion, sixth-call-blocked simulation.
+- `crates/strategy/tests/llm_forecaster_wiremock_wave_e.rs` — 2 T-D-N(E6) tests:
+  full-stack wiremock: 1 HTTP request + 1 `llm_forecast_entries` row + 1 `AuditTick::LlmForecastEmitted`.
+  Duplicate correlation_id test: 2 calls → INSERT OR IGNORE → 1 row.
+
+**Files modified:**
+- `crates/audit/src/tick.rs` — added `AuditEvent::LlmForecastEmitted { symbol, rating, confidence,
+  correlation_id, cost_usd }` variant (slim SmolStr/Uuid fields; 256-byte budget H5). Added
+  `"LlmForecastEmitted"` to `variant_label` match arm.
+- `crates/audit/src/journal.rs` — added `LlmForecastWrite<'a>` struct (all `&str`/`Decimal`/`Uuid` — no
+  strategy crate dep). Added `post_llm_forecast()` async fn: `INSERT OR IGNORE` into
+  `llm_forecast_entries`, then `tick::emit(ledger, AuditEvent::LlmForecastEmitted { ... })`.
+  Fields `tokens_in/out/cached_in` typed as `i64` (SQLite-native; `spawn_audit_row` casts from `u64`).
+- `crates/strategy/src/llm_forecaster/anthropic_impl.rs` — added `audit_ledger: Option<Arc<audit::Ledger>>`
+  field + `with_audit_ledger()` constructor. Added `spawn_audit_row()` (fire-and-forget `tokio::spawn`
+  calling `post_llm_forecast`). Modified `forecast()` to clone response before `decode_response` (preserves
+  token counts). `cost_usd = dec!(0)` in audit row — the double-entry ledger via `LedgerCostSink` is
+  authoritative; `llm_forecast_entries.cost_usd` is advisory.
+- `crates/strategy/Cargo.toml` — added 5 `[[test]]` entries for Wave E test files + `sqlx` dev-dependency.
+
+**Key design decisions:**
+- Migration numbered 012 (not 011 as written in decomp) — additive, no conflict.
+- `LlmForecastWrite<'a>` uses `&str` borrowing to prevent circular dep (strategy → audit).
+- `CostBudget` stores in whole cents (u64). Sub-cent amounts truncate to 0. Test seeds use
+  whole-dollar amounts to reliably exercise blocking behaviour.
+- Fire-and-forget `tokio::spawn` for both `LedgerCostSink.record()` and `spawn_audit_row()` —
+  hot path not blocked on SQL.
+
+**Cargo gate (verified 2026-05-22):**
+- `cargo fmt --check` — PASS (auto-corrected `crates/ui/src/state.rs` formatting from Wave F).
+- `cargo clippy --workspace --features candle -- -D warnings` — PASS (fixed doc-comment backticks
+  and `u64→i64` cast lints in `tick.rs` + `journal.rs`).
+- `cargo test --workspace --lib --features candle` — 324 PASS (0 failures; +13 vs Wave C from Wave F lib tests).
+- `cargo test -p strategy --test llm_forecaster_wiremock_wave_e` — 2 PASS.
+- `bash scripts/verify_anchors.sh` — ANCHORS PASS (34 / 34).
+
+**All 20 Wave E tests pass:**
+- `journal_llm_forecast_round_trip`: 4/4 PASS
+- `llm_forecaster_cost_event`: 3/3 PASS
+- `llm_forecaster_audit_tick`: 4/4 PASS
+- `llm_forecaster_budget_gate`: 4/4 PASS
+- `llm_forecaster_cost_cap_short_circuit`: 3/3 PASS
+- `llm_forecaster_wiremock_wave_e`: 2/2 PASS
+
 ## Changelog
 
 - 2026-05-22 (developer agent, spike T-AR-8): Spike dev-note written (PARTIAL —

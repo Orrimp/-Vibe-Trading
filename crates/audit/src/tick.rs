@@ -94,6 +94,24 @@ pub enum AuditEvent {
     UptimeIntervalOpened { run_id: Uuid },
     /// Emitted from `journal::close_uptime_interval` (R2.5).
     UptimeIntervalClosed { run_id: Uuid, duration_s: u64 },
+    /// Emitted from `journal::post_llm_forecast` (R7.1.3 — v3-llm-forecaster Wave E).
+    ///
+    /// Fired after the SQL row commits, carrying the fields needed by the
+    /// Phase F Assistant slot consumer (symbol, rating, `correlation_id`). The
+    /// full `reasoning_trace` lives in the `llm_forecast_entries` SQL table;
+    /// the tick is intentionally slim to stay inside the 256-byte budget (H5).
+    LlmForecastEmitted {
+        /// The symbol that was forecast (e.g. `"BTCUSDT"`).
+        symbol: SmolStr,
+        /// 5-tier rating as `SCREAMING_SNAKE_CASE` string (e.g. `"BUY"`).
+        rating: SmolStr,
+        /// Confidence [0, 1] as TEXT (Decimal string).
+        confidence: SmolStr,
+        /// Correlation ID echoed from `ForecastContext`.
+        correlation_id: Uuid,
+        /// Actual cost in USD for this call (Decimal as TEXT).
+        cost_usd: SmolStr,
+    },
 }
 
 // ── pub(crate) helper: journal-side tee (single-line call at each writer) ──
@@ -137,6 +155,7 @@ fn variant_label(event: &AuditEvent) -> &'static str {
         AuditEvent::FeedReconnect { .. } => "FeedReconnect",
         AuditEvent::UptimeIntervalOpened { .. } => "UptimeIntervalOpened",
         AuditEvent::UptimeIntervalClosed { .. } => "UptimeIntervalClosed",
+        AuditEvent::LlmForecastEmitted { .. } => "LlmForecastEmitted",
         _ => "Unknown",
     }
 }

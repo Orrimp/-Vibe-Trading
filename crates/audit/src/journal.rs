@@ -1467,6 +1467,151 @@ pub async fn post_llm_budget_event(
     Ok(())
 }
 
+// ── v3-llm-forecaster Wave E — llm_forecast_entries writer (T-D-N(E1)) ────────
+
+/// Payload for [`post_llm_forecast`]. All fields come from `LlmForecast`
+/// (strategy crate) after a successful `LlmForecaster::forecast()` call.
+///
+/// The struct uses `&str` / `rust_decimal::Decimal` to avoid pulling the
+/// strategy crate into audit (circular dep). Callers stringify the relevant
+/// `LlmForecast` fields before constructing this struct.
+#[derive(Debug)]
+pub struct LlmForecastWrite<'a> {
+    /// `"llm_forecaster_v3"` (`StrategyId::0`).
+    pub strategy_id: &'a str,
+    /// Symbol string e.g. `"BTCUSDT"`.
+    pub symbol: &'a str,
+    /// UUID v4 echoed from `ForecastContext::correlation_id`.
+    pub correlation_id: uuid::Uuid,
+    /// 5-tier rating as `SCREAMING_SNAKE_CASE` e.g. `"BUY"`.
+    pub rating: &'a str,
+    /// Confidence value in `[0, 1]`.
+    pub confidence: rust_decimal::Decimal,
+    /// Horizon string e.g. `"one_hour"`.
+    pub horizon: &'a str,
+    /// Full reasoning trace text.
+    pub reasoning_trace: &'a str,
+    /// Lowercase 64-hex SHA-256 of `reasoning_trace`.
+    pub trace_sha256: &'a str,
+    /// JSON-serialized array of cited lesson card IDs e.g. `["lc_abc"]`.
+    pub cited_lesson_ids_json: &'a str,
+    /// Input tokens billed.
+    pub tokens_in: i64,
+    /// Output tokens billed.
+    pub tokens_out: i64,
+    /// Cache-read tokens (Anthropic `cache_read_input_tokens`).
+    pub tokens_cached_in: i64,
+    /// Actual cost for this call in USD.
+    pub cost_usd: rust_decimal::Decimal,
+    /// Name of the forecaster implementation e.g. `"llm_forecaster_impl"`.
+    pub forecaster_name: &'a str,
+    /// Model ID string e.g. `"claude-haiku-4-5-20251001"`.
+    pub model_id: &'a str,
+    /// Caller-supplied timestamp (RFC3339 microsecond precision). When `None`
+    /// the writer stamps wall-clock time.
+    pub ts: Option<&'a str>,
+}
+
+/// Persist one `LlmForecast` row to `llm_forecast_entries` (mig 012) and
+/// fire `AuditEvent::LlmForecastEmitted` (R7.1.3 — v3-llm-forecaster Wave E).
+///
+/// The SQL INSERT is not wrapped in a double-entry transaction — the
+/// `llm_forecast_entries` table is an event log (no balance sheet impact).
+/// The corresponding billing cost was already posted via `post_cost_llm` by
+/// the `BudgetedProvider` post-call reconcile step.
+///
+/// **Idempotent on `correlation_id`** — `INSERT OR IGNORE` guards against
+/// duplicate emissions on replay-cache warm re-runs.
+///
+/// **Determinism note.** In backtest mode the ledger has no tick bus
+/// (`tick.rs:104-107` static-branch dormant). The SQL row still lands.
+/// Existing 34 anchors do not read this table → anchor-safe.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(
+    name = "ledger.post_llm_forecast",
+    skip(ledger, write),
+    fields(
+        symbol = write.symbol,
+        rating = write.rating,
+        correlation_id = %write.correlation_id,
+    )
+)]
+pub async fn post_llm_forecast(
+    ledger: &Ledger,
+    write: &LlmForecastWrite<'_>,
+) -> Result<(), LedgerError> {
+    let ts_fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    let ts = if let Some(t) = write.ts {
+        t.to_owned()
+    } else {
+        time::OffsetDateTime::now_utc()
+            .format(&ts_fmt)
+            .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?
+    };
+
+    let row_id = Uuid::new_v4().to_string();
+    let confidence_str = write.confidence.to_string();
+    let cost_usd_str = write.cost_usd.to_string();
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO llm_forecast_entries \
+         (id, ts, strategy_id, symbol, correlation_id, rating, confidence, \
+          horizon, reasoning_trace, trace_sha256, cited_lesson_ids, \
+          tokens_in, tokens_out, tokens_cached_in, cost_usd, \
+          forecaster_name, model_id) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&row_id)
+    .bind(&ts)
+    .bind(write.strategy_id)
+    .bind(write.symbol)
+    .bind(write.correlation_id.to_string())
+    .bind(write.rating)
+    .bind(&confidence_str)
+    .bind(write.horizon)
+    .bind(write.reasoning_trace)
+    .bind(write.trace_sha256)
+    .bind(write.cited_lesson_ids_json)
+    .bind(write.tokens_in)
+    .bind(write.tokens_out)
+    .bind(write.tokens_cached_in)
+    .bind(&cost_usd_str)
+    .bind(write.forecaster_name)
+    .bind(write.model_id)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(
+        symbol = write.symbol,
+        rating = write.rating,
+        correlation_id = %write.correlation_id,
+        cost_usd = %write.cost_usd,
+        "llm_forecast_entry persisted"
+    );
+
+    // Fire AuditTick post-commit (R7.1.3).
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::LlmForecastEmitted {
+            symbol: write.symbol.into(),
+            rating: write.rating.into(),
+            confidence: confidence_str.into(),
+            correlation_id: write.correlation_id,
+            cost_usd: cost_usd_str.into(),
+        },
+    );
+
+    Ok(())
+}
+
 /// Write a strategy lifecycle event to the `strategy_events` table (T509, Q1).
 ///
 /// This table is separate from `journal_entries` — it carries no debit/credit

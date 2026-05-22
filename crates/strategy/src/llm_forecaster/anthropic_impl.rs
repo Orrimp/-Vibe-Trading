@@ -53,8 +53,8 @@ use rust_decimal_macros::dec;
 use tracing::{debug, warn};
 
 use llm::{
-    ChatMessage, ChatRequest, ContentBlock, LlmError, LlmProvider, MessageRole, ModelId,
-    validate_tool_use,
+    ChatMessage, ChatRequest, ChatResponse, ContentBlock, LlmError, LlmProvider, MessageRole,
+    ModelId, validate_tool_use,
 };
 
 use super::{
@@ -76,6 +76,7 @@ use super::{
 /// - `propose_forecast` tool-schema enforcement.
 /// - `temperature = Some(0.0)` pin (R3.4).
 /// - Response decoding into `LlmForecast`.
+/// - Audit-row emission via `audit::journal::post_llm_forecast` (Wave E, R7.1).
 ///
 /// In tests, inject an `AnthropicProvider::with_base_url(wiremock_uri, ...)` to
 /// avoid real API calls. In production, inject via `LlmProviderFactory::build`.
@@ -87,6 +88,11 @@ pub struct LlmForecasterImpl {
     tier: LlmTier,
     /// `AgentRole` attribution for the cost-event row.
     role: AgentRole,
+    /// Optional audit ledger handle. When `Some`, every successful `forecast()`
+    /// call fires a `post_llm_forecast` audit row (R7.1.2) + `LlmForecastEmitted`
+    /// tick (R7.1.3) via `tokio::spawn` (fire-and-forget). When `None`, no audit
+    /// row is written (backtest replay or test mode without a ledger).
+    audit_ledger: Option<Arc<audit::Ledger>>,
 }
 
 impl std::fmt::Debug for LlmForecasterImpl {
@@ -105,6 +111,9 @@ impl LlmForecasterImpl {
     ///   production; bare `AnthropicProvider::with_base_url(wiremock_uri)` in tests).
     /// - `model_id`: the model to use (e.g. `"claude-haiku-4-5-20251001"`).
     /// - `tier`: `LlmTier::QuickThink` for Haiku; `LlmTier::DeepThink` for Opus.
+    ///
+    /// No audit ledger wired — `post_llm_forecast` is not called on forecast
+    /// calls. Use [`Self::with_audit_ledger`] to add audit wiring.
     #[must_use]
     pub fn new(provider: Arc<dyn LlmProvider>, model_id: impl Into<String>, tier: LlmTier) -> Self {
         Self {
@@ -112,7 +121,95 @@ impl LlmForecasterImpl {
             model_id: ModelId::new(model_id),
             tier,
             role: AgentRole::Trader,
+            audit_ledger: None,
         }
+    }
+
+    /// Construct an `LlmForecasterImpl` with an audit ledger wired.
+    ///
+    /// Every successful `forecast()` call fires `post_llm_forecast` (R7.1.2)
+    /// via `tokio::spawn` (fire-and-forget). The tick (R7.1.3) fires from
+    /// inside `post_llm_forecast`. See [`audit::journal::post_llm_forecast`].
+    #[must_use]
+    pub fn with_audit_ledger(
+        provider: Arc<dyn LlmProvider>,
+        model_id: impl Into<String>,
+        tier: LlmTier,
+        audit_ledger: Arc<audit::Ledger>,
+    ) -> Self {
+        Self {
+            provider,
+            model_id: ModelId::new(model_id),
+            tier,
+            role: AgentRole::Trader,
+            audit_ledger: Some(audit_ledger),
+        }
+    }
+
+    /// Fire-and-forget audit row emission after a successful forecast.
+    ///
+    /// Spawns a tokio task to call `post_llm_forecast`. No-op when
+    /// `audit_ledger` is `None`.
+    fn spawn_audit_row(&self, forecast: &LlmForecast, response: &ChatResponse) {
+        let Some(ledger) = self.audit_ledger.as_ref() else {
+            return;
+        };
+        let ledger = Arc::clone(ledger);
+
+        // Extract fields needed for post_llm_forecast.
+        let strategy_id = "llm_forecaster_v3";
+        let symbol = forecast.symbol.0.to_string();
+        let correlation_id = forecast.correlation_id;
+        let rating = forecast.rating.as_str().to_string();
+        let confidence = forecast.confidence.value();
+        let horizon = "one_hour";
+        let reasoning_trace = forecast.reasoning_trace.clone();
+        let trace_sha256 = forecast.reasoning_trace_sha256_hex();
+        let cited_json = serde_json::to_string(
+            &forecast
+                .cited_lessons
+                .iter()
+                .map(|l| &l.card_id)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_or_else(|_| "[]".to_string());
+        let tokens_in = response.usage.tokens_in as i64;
+        let tokens_out = response.usage.tokens_out as i64;
+        let tokens_cached_in = response.usage.tokens_cached_in as i64;
+        // Cost = 0 here — the actual cost is tracked by BudgetedProvider +
+        // LedgerCostSink. The `cost_usd` field in the audit row is advisory
+        // (the double-entry ledger is authoritative). Populate with 0 for now.
+        let cost_usd = dec!(0);
+        let forecaster_name = self.name().to_string();
+        let model_id = response.model.as_str().to_string();
+
+        tokio::spawn(async move {
+            let write = audit::journal::LlmForecastWrite {
+                strategy_id,
+                symbol: &symbol,
+                correlation_id,
+                rating: &rating,
+                confidence,
+                horizon,
+                reasoning_trace: &reasoning_trace,
+                trace_sha256: &trace_sha256,
+                cited_lesson_ids_json: &cited_json,
+                tokens_in,
+                tokens_out,
+                tokens_cached_in,
+                cost_usd,
+                forecaster_name: &forecaster_name,
+                model_id: &model_id,
+                ts: None,
+            };
+            if let Err(e) = audit::journal::post_llm_forecast(&ledger, &write).await {
+                tracing::error!(
+                    target: "llm_forecaster::impl",
+                    error = %e,
+                    "post_llm_forecast failed; forecast was recorded but audit row missing"
+                );
+            }
+        });
     }
 
     /// Build the `ChatRequest` for this `ForecastContext`.
@@ -318,7 +415,15 @@ impl LlmForecaster for LlmForecasterImpl {
             .await
             .map_err(|e| Self::map_provider_error(e, timeout_ms))?;
 
-        self.decode_response(response, &ctx)
+        // Decode the response. Keep a reference to the raw response for audit
+        // emission (token counts, model id) — `decode_response` clones what it
+        // needs but does not take ownership of the whole response.
+        let forecast = self.decode_response(response.clone(), &ctx)?;
+
+        // Wave E: emit audit row + AuditTick (R7.1.2 + R7.1.3). Fire-and-forget.
+        self.spawn_audit_row(&forecast, &response);
+
+        Ok(forecast)
     }
 }
 

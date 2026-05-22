@@ -1490,6 +1490,20 @@ pub enum Message {
     /// Toggle the right-rail Assistant slot open/closed (R3.3 / R8.1).
     /// K6 Option A: flips `assistant_state.is_open`; shell picks width.
     ToggleAssistantSlot,
+    /// v3-llm-forecaster Wave F (T-D-N(F3)) — a new LLM forecast was
+    /// produced upstream and should be rendered in the Assistant slot
+    /// reasoning-trace body.
+    ///
+    /// The arm:
+    /// - Sets `assistant_state.last_forecast = Some(view)`.
+    /// - Prepends the previous `last_forecast` (if any) onto
+    ///   `assistant_state.history`, capped at
+    ///   `assistant::state::HISTORY_CAP` (R9.2 bullet 5).
+    /// - Does **not** flip `assistant_state.mode` — the runtime gate
+    ///   (R9.3) is owned by the `cockpit_live` boot path that sets
+    ///   `mode == ReasoningTrace` once when it observes the
+    ///   `llm_forecaster_v3` strategy enabled in agent config.
+    AssistantReasoningTraceUpdate(crate::assistant::state::LlmForecastView),
 
     // ── Phase E — Compare matrix (ui-rethink-phase-e-compare) ────────────────
     /// Compound dispatch: switches to Lab screen + seeds strategy/pair/range.
@@ -2053,6 +2067,23 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::ToggleAssistantSlot => {
             // K6 Option A: flip is_open; shell picks RIGHT_RAIL_OPEN_WIDTH_PX vs 0.0.
             model.assistant_state.is_open = !model.assistant_state.is_open;
+        }
+        Message::AssistantReasoningTraceUpdate(view) => {
+            // v3-llm-forecaster Wave F T-D-N(F3) — new forecast arrived.
+            // Prepend previous `last_forecast` onto history (most-recent
+            // first); cap at HISTORY_CAP. Mode is NOT flipped here — it
+            // is set once at boot by `cockpit_live` when it observes the
+            // `llm_forecaster_v3` strategy enabled (R9.3 runtime gate).
+            if let Some(prev) = model.assistant_state.last_forecast.take() {
+                model.assistant_state.history.insert(0, prev);
+                if model.assistant_state.history.len() > crate::assistant::state::HISTORY_CAP {
+                    model
+                        .assistant_state
+                        .history
+                        .truncate(crate::assistant::state::HISTORY_CAP);
+                }
+            }
+            model.assistant_state.last_forecast = Some(view);
         }
 
         // ── Phase E — Compare matrix (ui-rethink-phase-e-compare T-D-N3) ─────
@@ -3662,5 +3693,118 @@ mod tests {
             !c.assistant_state.is_open,
             "after second toggle, is_open must return to false"
         );
+    }
+
+    /// v3-llm-forecaster Wave F (T-D-N(F3)) —
+    /// `AssistantReasoningTraceUpdate` sets `last_forecast` and rotates
+    /// the previous forecast onto `history` (most-recent first).
+    #[test]
+    fn assistant_reasoning_trace_update_rotates_history() {
+        use crate::assistant::state::LlmForecastView;
+
+        fn make(rating: &str) -> LlmForecastView {
+            LlmForecastView {
+                symbol: smol_str::SmolStr::new("BTCUSDT"),
+                rating: smol_str::SmolStr::new(rating),
+                confidence_display: smol_str::SmolStr::new("0.50"),
+                reasoning_trace: smol_str::SmolStr::new("trace"),
+                cited_lesson_ids: vec![],
+                cost_line: None,
+                audit_id: None,
+            }
+        }
+
+        let mut c = Cockpit::new();
+        assert!(c.assistant_state.last_forecast.is_none());
+        assert!(c.assistant_state.history.is_empty());
+
+        update(&mut c, Message::AssistantReasoningTraceUpdate(make("BUY")));
+        assert_eq!(
+            c.assistant_state
+                .last_forecast
+                .as_ref()
+                .map(|f| f.rating.as_str()),
+            Some("BUY"),
+        );
+        assert!(c.assistant_state.history.is_empty());
+
+        update(&mut c, Message::AssistantReasoningTraceUpdate(make("HOLD")));
+        assert_eq!(
+            c.assistant_state
+                .last_forecast
+                .as_ref()
+                .map(|f| f.rating.as_str()),
+            Some("HOLD"),
+        );
+        assert_eq!(c.assistant_state.history.len(), 1);
+        assert_eq!(c.assistant_state.history[0].rating.as_str(), "BUY");
+    }
+
+    /// v3-llm-forecaster Wave F (T-D-N(F3)) — history is capped at
+    /// `HISTORY_CAP = 20` to bound memory.
+    #[test]
+    fn assistant_reasoning_trace_update_caps_history() {
+        use crate::assistant::state::{HISTORY_CAP, LlmForecastView};
+
+        fn make(idx: usize) -> LlmForecastView {
+            LlmForecastView {
+                symbol: smol_str::SmolStr::new("BTCUSDT"),
+                rating: smol_str::SmolStr::new("HOLD"),
+                confidence_display: smol_str::SmolStr::new(format!("0.{idx:02}")),
+                reasoning_trace: smol_str::SmolStr::new("trace"),
+                cited_lesson_ids: vec![],
+                cost_line: None,
+                audit_id: None,
+            }
+        }
+
+        let mut c = Cockpit::new();
+        for i in 0..(HISTORY_CAP + 5) {
+            update(&mut c, Message::AssistantReasoningTraceUpdate(make(i)));
+        }
+        assert_eq!(
+            c.assistant_state.history.len(),
+            HISTORY_CAP,
+            "history must cap at HISTORY_CAP"
+        );
+        assert!(
+            c.assistant_state.last_forecast.is_some(),
+            "last_forecast must always carry the most-recent value"
+        );
+    }
+
+    /// v3-llm-forecaster Wave F (T-D-N(F4)) — Runtime gate sanity:
+    /// `AssistantReasoningTraceUpdate` does NOT flip
+    /// `assistant_state.mode`. The mode is owned by the boot-path
+    /// runtime gate (R9.3); a stray update from the message bus must
+    /// not force the slot into `ReasoningTrace`.
+    #[test]
+    fn assistant_runtime_gate_preserves_offline_default() {
+        use crate::assistant::state::{AssistantMode, LlmForecastView};
+
+        let mut c = Cockpit::new();
+        assert_eq!(c.assistant_state.mode, AssistantMode::Offline);
+
+        update(
+            &mut c,
+            Message::AssistantReasoningTraceUpdate(LlmForecastView {
+                symbol: smol_str::SmolStr::new("BTCUSDT"),
+                rating: smol_str::SmolStr::new("BUY"),
+                confidence_display: smol_str::SmolStr::new("0.80"),
+                reasoning_trace: smol_str::SmolStr::new("trace"),
+                cited_lesson_ids: vec![],
+                cost_line: None,
+                audit_id: None,
+            }),
+        );
+        assert_eq!(
+            c.assistant_state.mode,
+            AssistantMode::Offline,
+            "AssistantReasoningTraceUpdate must NOT flip mode — runtime gate owns it"
+        );
+        // The forecast is still stored in `last_forecast`, but the
+        // `Offline` view fn doesn't read it (the byte-identity guard
+        // short-circuits before touching the payload).
+        assert!(c.assistant_state.last_forecast.is_some());
     }
 }

@@ -711,6 +711,12 @@ pub fn models__steady_state_2_checkpoints_cockpit() -> ui::state::Cockpit {
 /// placeholder renders in the right-rail (`ASSISTANT_OFFLINE_TITLE` +
 /// `ASSISTANT_OFFLINE_BODY`). K6 Option A: `RIGHT_RAIL_OPEN_WIDTH_PX`
 /// governs the slot width.
+///
+/// **R9.3 byte-identity:** with `mode == Offline`, this fixture renders
+/// the v0.1.0 Phase F placeholder body verbatim. The
+/// `assistant_slot__open_stub.png` baseline (locked 2026-05-21) MUST
+/// stay byte-identical after the v3-llm-forecaster Wave F view-fn
+/// extension landed.
 #[must_use]
 pub fn assistant_slot__open_stub_cockpit() -> ui::state::Cockpit {
     use ui::assistant::state::AssistantState;
@@ -721,7 +727,102 @@ pub fn assistant_slot__open_stub_cockpit() -> ui::state::Cockpit {
     cockpit.assistant_state = AssistantState {
         is_open: true,
         mode: ui::assistant::state::AssistantMode::Offline,
+        last_forecast: None,
+        history: Vec::new(),
     };
+    cockpit
+}
+
+/// v3-llm-forecaster Wave F (T-D-N(F5)) — Construct the
+/// `assistant_slot__llm_forecaster_disabled__placeholder` fixture.
+///
+/// **R9.3 byte-identity guard fixture.** Differs from
+/// `assistant_slot__open_stub_cockpit` only in name + intent; both
+/// render the same Offline placeholder body. The dedicated name lets
+/// the snapshot test express "v3-llm-forecaster disabled \u{2192} placeholder
+/// renders" as a first-class baseline, and the cross-fixture identity
+/// check at the test layer asserts the byte-identity invariant in code
+/// form (see `assistant_slot__llm_forecaster_disabled__placeholder` in
+/// `tests/visual_snapshots.rs`).
+#[must_use]
+pub fn assistant_slot__llm_forecaster_disabled__placeholder_cockpit() -> ui::state::Cockpit {
+    use ui::assistant::state::AssistantState;
+    use ui::state::Screen;
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Memory;
+    cockpit.assistant_state = AssistantState {
+        is_open: true,
+        // R9.3: strategy-disabled config keeps mode = Offline.
+        mode: ui::assistant::state::AssistantMode::Offline,
+        last_forecast: None,
+        history: Vec::new(),
+    };
+    cockpit
+}
+
+/// v3-llm-forecaster Wave F (T-D-N(F5)) — Construct the
+/// `assistant_slot__llm_forecaster_active__most_recent_trace` fixture.
+///
+/// Right-rail open + `AssistantMode::ReasoningTrace` + one populated
+/// `LlmForecastView` in `last_forecast` + one cited lesson card hydrated
+/// in `memory_screen_state.cache` (so the cited-lessons section
+/// exercises the matched-card branch).
+///
+/// Deterministic strings only (no timestamps that drift across runs).
+#[must_use]
+pub fn assistant_slot__llm_forecaster_active__most_recent_trace_cockpit() -> ui::state::Cockpit {
+    use ui::assistant::state::{AssistantMode, AssistantState, LlmForecastView};
+    use ui::memory::state::LessonCardCard;
+    use ui::state::Screen;
+
+    let forecast = LlmForecastView {
+        symbol: SmolStr::new("BTCUSDT"),
+        rating: SmolStr::new("BUY"),
+        confidence_display: SmolStr::new("0.74"),
+        reasoning_trace: SmolStr::new(
+            "RSI=58 with MACD crossover above zero suggests continuation. \
+             Bollinger band squeeze tightening over last 3 bars. Recent \
+             similar setup at lesson_abc closed Win +1.2%.",
+        ),
+        cited_lesson_ids: vec![SmolStr::new("card_abc"), SmolStr::new("card_xyz")],
+        cost_line: Some(SmolStr::new("$0.42 of $100.00 today")),
+        audit_id: Some(SmolStr::new("audit_001")),
+    };
+
+    let prior_forecast = LlmForecastView {
+        symbol: SmolStr::new("BTCUSDT"),
+        rating: SmolStr::new("HOLD"),
+        confidence_display: SmolStr::new("0.51"),
+        reasoning_trace: SmolStr::new("Sideways action; awaiting breakout."),
+        cited_lesson_ids: vec![],
+        cost_line: Some(SmolStr::new("$0.38 of $100.00 today")),
+        audit_id: Some(SmolStr::new("audit_000")),
+    };
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = Screen::Memory;
+    cockpit.assistant_state = AssistantState {
+        is_open: true,
+        mode: AssistantMode::ReasoningTrace,
+        last_forecast: Some(forecast),
+        history: vec![prior_forecast],
+    };
+    // Seed one matching lesson card so the cited-lessons section
+    // renders the compact `LessonCardCard`-driven row for `card_abc`.
+    // `card_xyz` stays unhydrated to exercise the `_LESSON_PENDING_FMT`
+    // fallback branch alongside the matched-card branch in the same
+    // baseline.
+    cockpit.memory_screen_state.cache = vec![LessonCardCard {
+        card_id: SmolStr::new("card_abc"),
+        symbol_or_pair: SmolStr::new("BTCUSDT"),
+        closed_at: SmolStr::new("2026-05-01T00:00:00Z"),
+        strategy_id: SmolStr::new("llm_forecaster_v3"),
+        signed_pnl_display: SmolStr::new("+1.20 USDT"),
+        outcome_class: SmolStr::new("Win"),
+        note: None,
+        close_transaction_id: None,
+    }];
     cockpit
 }
 

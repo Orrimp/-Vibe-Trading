@@ -473,6 +473,47 @@ proptest! {
     }
 }
 
+proptest! {
+    // v3-llm-forecaster Wave F T-D-N(F6) — 256 cases × {Offline, ReasoningTrace, Live}
+    // × {Some(forecast), None} × {0, 1, 5} history rows. Bounded combinatorial space
+    // ensures every render branch (R9.2 + R9.3 + warming-up) is exercised at least
+    // 30 times per run.
+    #![proptest_config({
+        let mut cfg = proptest_config();
+        cfg.cases = 256;
+        cfg
+    })]
+
+    /// v3-llm-forecaster Wave F (T-D-N(F6)) —
+    /// `assistant_slot_llm_forecaster_no_zero_dim`.
+    ///
+    /// Fuzzes the Assistant slot under the three modes (`Offline` /
+    /// `ReasoningTrace` / `Live`) crossed with `Some(forecast)` / `None`
+    /// crossed with a varying history depth. The root layout Node must
+    /// never be zero-dim. Covers:
+    ///
+    /// - **R9.3 byte-identity**: `Offline` + any forecast/history.
+    /// - **R9.2 reasoning body**: `ReasoningTrace` + Some(forecast).
+    /// - **R9.3 warming-up**: `ReasoningTrace` + None.
+    /// - **v0.2.0 reserved**: `Live` falls back to Offline.
+    #[test]
+    fn assistant_slot_llm_forecaster_no_zero_dim(
+        mode_idx in 0u8..=2,
+        has_forecast in any::<bool>(),
+        history_depth in 0usize..=5,
+        n_cited in 0usize..=3,
+    ) {
+        let cockpit = build_assistant_llm_forecaster_cockpit(
+            mode_idx,
+            has_forecast,
+            history_depth,
+            n_cited,
+        );
+        let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
+        check_element_layout(element).map_err(TestCaseError::fail)?;
+    }
+}
+
 // ─── Cockpit builder helpers ────────────────────────────────────────────
 
 /// Build a cockpit with the positions panel set to one of the four
@@ -662,6 +703,67 @@ fn build_assistant_slot_cockpit(is_open: bool, screen_idx: u8) -> ui::Cockpit {
     cockpit.assistant_state = AssistantState {
         is_open,
         mode: AssistantMode::Offline,
+        last_forecast: None,
+        history: Vec::new(),
+    };
+    cockpit
+}
+
+/// v3-llm-forecaster Wave F (T-D-N(F6)) — Build an Assistant-slot
+/// cockpit under one of the three `AssistantMode` variants with
+/// `last_forecast` populated or not and `history` of varying depth.
+///
+/// Always `is_open == true` so the layout invariant exercises the
+/// rendered body (not the 0-width collapsed path which T-D-N19 already
+/// covers).
+fn build_assistant_llm_forecaster_cockpit(
+    mode_idx: u8,
+    has_forecast: bool,
+    history_depth: usize,
+    n_cited: usize,
+) -> ui::Cockpit {
+    use smol_str::SmolStr;
+    use ui::assistant::state::{AssistantMode, AssistantState, LlmForecastView};
+
+    let mode = match mode_idx % 3 {
+        0 => AssistantMode::Offline,
+        1 => AssistantMode::ReasoningTrace,
+        _ => AssistantMode::Live,
+    };
+
+    let cited_ids: Vec<SmolStr> = (0..n_cited)
+        .map(|i| SmolStr::new(format!("card_{i}")))
+        .collect();
+
+    let make_view = |idx: usize| LlmForecastView {
+        symbol: SmolStr::new("BTCUSDT"),
+        rating: SmolStr::new(match idx % 5 {
+            0 => "STRONG_BUY",
+            1 => "BUY",
+            2 => "HOLD",
+            3 => "SELL",
+            _ => "STRONG_SELL",
+        }),
+        confidence_display: SmolStr::new("0.50"),
+        reasoning_trace: SmolStr::new("Reasoning trace text for layout fuzz."),
+        cited_lesson_ids: cited_ids.clone(),
+        cost_line: Some(SmolStr::new("$0.10 of $100.00 today")),
+        audit_id: Some(SmolStr::new(format!("audit_{idx}"))),
+    };
+
+    let last_forecast = if has_forecast {
+        Some(make_view(0))
+    } else {
+        None
+    };
+    let history: Vec<LlmForecastView> = (1..=history_depth).map(make_view).collect();
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.assistant_state = AssistantState {
+        is_open: true,
+        mode,
+        last_forecast,
+        history,
     };
     cockpit
 }

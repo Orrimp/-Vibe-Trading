@@ -429,6 +429,76 @@ pub const ASSISTANT_TOGGLE_OPEN_LABEL: &str = "Assistant (coming soon)";
 /// Phase F — status bar toggle button label when Assistant slot is open.
 pub const ASSISTANT_TOGGLE_CLOSE_LABEL: &str = "Close Assistant";
 
+// ── Phase F — Assistant slot reasoning-trace body (v3-llm-forecaster Wave F) ──
+//
+// Strings for the `AssistantMode::ReasoningTrace` body composition (R9.2).
+// Runtime-gated per R9.3: only rendered when `llm_forecaster_v3` is enabled
+// in agent config — the default-disabled cockpit keeps the
+// `ASSISTANT_OFFLINE_*` strings + byte-identical Phase F baseline.
+
+/// Phase F — Assistant slot: panel title in reasoning-trace mode.
+pub const ASSISTANT_REASONING_TITLE: &str = "Forecast";
+
+/// Phase F — Assistant slot: header format string for the most-recent
+/// forecast summary. Three placeholders: `{symbol}` / `{rating}` /
+/// `{confidence}` (R9.2 bullet 1).
+pub const ASSISTANT_REASONING_HEADER_FMT: &str =
+    "{symbol} \u{00b7} {rating} \u{00b7} conf {confidence}";
+
+/// Phase F — Assistant slot: cost line label (precedes the cumulative
+/// spend display, R9.2 bullet 2).
+pub const ASSISTANT_REASONING_COST_LABEL: &str = "LLM spend";
+
+/// Phase F — Assistant slot: cost line fallback when no cost-event has
+/// fired yet (cold-boot / first-warmup).
+pub const ASSISTANT_REASONING_COST_PENDING: &str = "Awaiting first forecast";
+
+/// Phase F — Assistant slot: section header above the reasoning-trace
+/// card body (R9.2 bullet 3).
+pub const ASSISTANT_REASONING_TRACE_LABEL: &str = "Reasoning";
+
+/// Phase F — Assistant slot: section header above the cited-lessons
+/// list (R9.2 bullet 4).
+pub const ASSISTANT_REASONING_LESSONS_LABEL: &str = "Cited lessons";
+
+/// Phase F — Assistant slot: empty-state copy when the LLM did not cite
+/// any lessons in its forecast (the prompt allows the model to return
+/// an empty `cited_lesson_ids` array if it found no relevant priors).
+pub const ASSISTANT_REASONING_NO_LESSONS: &str = "No prior trades cited";
+
+/// Phase F — Assistant slot: prefix for a cited-lesson reference row
+/// when the operator's Memory cache has not yet hydrated the matching
+/// card body (lookup miss). Keeps the row visible so the operator can
+/// see what the model cited even before Memory loads.
+pub const ASSISTANT_REASONING_LESSON_PENDING_FMT: &str = "{card_id} (loading\u{2026})";
+
+/// Phase F — Assistant slot: history section header (R9.2 bullet 5).
+pub const ASSISTANT_REASONING_HISTORY_LABEL: &str = "History";
+
+/// Phase F — Assistant slot: history-empty fallback when only the
+/// most-recent forecast exists.
+pub const ASSISTANT_REASONING_HISTORY_EMPTY: &str = "No prior forecasts yet";
+
+/// Phase F — Assistant slot: history-row format string. Two
+/// placeholders: `{rating}` / `{confidence}` (compact list per R9.2).
+pub const ASSISTANT_REASONING_HISTORY_ROW_FMT: &str = "{rating} \u{00b7} conf {confidence}";
+
+/// Phase F — Assistant slot: chevron / trail-link affordance label.
+/// Click opens the audit row for the underlying journal entry
+/// (R9.2 bullet 6).
+pub const ASSISTANT_REASONING_TRAIL_LINK_LABEL: &str = "Open audit trail";
+
+/// Phase F — Assistant slot: warming-up empty state title when
+/// `ReasoningTrace` mode is active but no forecast has fired yet
+/// (R9.3 mode-on / data-empty path).
+pub const ASSISTANT_REASONING_WARMING_TITLE: &str = "Warming up";
+
+/// Phase F — Assistant slot: warming-up empty state body copy. Tells
+/// the operator the LLM strategy is enabled but waiting for the first
+/// fire (24-bar default cadence).
+pub const ASSISTANT_REASONING_WARMING_BODY: &str =
+    "LLM forecaster is enabled. The first forecast fires after the warm-up window completes.";
+
 /// Phase F — deprecated `MEMORY_PLACEHOLDER` (Phase A placeholder — replaced by real body).
 #[deprecated(
     since = "0.4.0",
@@ -1193,6 +1263,60 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("ASSISTANT_OFFLINE_BODY", ASSISTANT_OFFLINE_BODY),
         ("ASSISTANT_TOGGLE_OPEN_LABEL", ASSISTANT_TOGGLE_OPEN_LABEL),
         ("ASSISTANT_TOGGLE_CLOSE_LABEL", ASSISTANT_TOGGLE_CLOSE_LABEL),
+        // v3-llm-forecaster Wave F (T-D-N(F2)) — reasoning-trace body strings
+        ("ASSISTANT_REASONING_TITLE", ASSISTANT_REASONING_TITLE),
+        (
+            "ASSISTANT_REASONING_HEADER_FMT",
+            ASSISTANT_REASONING_HEADER_FMT,
+        ),
+        (
+            "ASSISTANT_REASONING_COST_LABEL",
+            ASSISTANT_REASONING_COST_LABEL,
+        ),
+        (
+            "ASSISTANT_REASONING_COST_PENDING",
+            ASSISTANT_REASONING_COST_PENDING,
+        ),
+        (
+            "ASSISTANT_REASONING_TRACE_LABEL",
+            ASSISTANT_REASONING_TRACE_LABEL,
+        ),
+        (
+            "ASSISTANT_REASONING_LESSONS_LABEL",
+            ASSISTANT_REASONING_LESSONS_LABEL,
+        ),
+        (
+            "ASSISTANT_REASONING_NO_LESSONS",
+            ASSISTANT_REASONING_NO_LESSONS,
+        ),
+        (
+            "ASSISTANT_REASONING_LESSON_PENDING_FMT",
+            ASSISTANT_REASONING_LESSON_PENDING_FMT,
+        ),
+        (
+            "ASSISTANT_REASONING_HISTORY_LABEL",
+            ASSISTANT_REASONING_HISTORY_LABEL,
+        ),
+        (
+            "ASSISTANT_REASONING_HISTORY_EMPTY",
+            ASSISTANT_REASONING_HISTORY_EMPTY,
+        ),
+        (
+            "ASSISTANT_REASONING_HISTORY_ROW_FMT",
+            ASSISTANT_REASONING_HISTORY_ROW_FMT,
+        ),
+        (
+            "ASSISTANT_REASONING_TRAIL_LINK_LABEL",
+            ASSISTANT_REASONING_TRAIL_LINK_LABEL,
+        ),
+        (
+            "ASSISTANT_REASONING_WARMING_TITLE",
+            ASSISTANT_REASONING_WARMING_TITLE,
+        ),
+        (
+            "ASSISTANT_REASONING_WARMING_BODY",
+            ASSISTANT_REASONING_WARMING_BODY,
+        ),
         // cockpit-training-control T-D-N2/N16
         ("TRAINING_PANEL_HEADER", TRAINING_PANEL_HEADER),
         ("TRAINING_BUTTON_TRAIN", TRAINING_BUTTON_TRAIN),

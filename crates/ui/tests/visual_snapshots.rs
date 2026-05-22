@@ -333,6 +333,24 @@ const PHASE_F_SLOTS: &[(&str, u32, u32, f32)] = &[
     ("models__cold_boot_no_checkpoints", 1920, 1080, 1.0),
     ("models__steady_state_2_checkpoints", 1920, 1080, 1.0),
     ("assistant_slot__open_stub", 1920, 1080, 1.0),
+    // v3-llm-forecaster Wave F (T-D-N(F5)) — two new baselines.
+    // The `_disabled__placeholder` baseline asserts R9.3 byte-identity:
+    // when the v3-llm-forecaster strategy is disabled (default), the
+    // Assistant slot body renders the Phase F placeholder verbatim.
+    // The `_active__most_recent_trace` baseline locks the new reasoning-
+    // trace body composition (R9.2).
+    (
+        "assistant_slot__llm_forecaster_disabled__placeholder",
+        1920,
+        1080,
+        1.0,
+    ),
+    (
+        "assistant_slot__llm_forecaster_active__most_recent_trace",
+        1920,
+        1080,
+        1.0,
+    ),
 ];
 
 /// Drive a Phase F snapshot slot.
@@ -356,6 +374,12 @@ fn run_phase_f_slot(fixture_name: &str) {
             fixtures::models__steady_state_2_checkpoints_cockpit()
         }
         "assistant_slot__open_stub" => fixtures::assistant_slot__open_stub_cockpit(),
+        "assistant_slot__llm_forecaster_disabled__placeholder" => {
+            fixtures::assistant_slot__llm_forecaster_disabled__placeholder_cockpit()
+        }
+        "assistant_slot__llm_forecaster_active__most_recent_trace" => {
+            fixtures::assistant_slot__llm_forecaster_active__most_recent_trace_cockpit()
+        }
         other => panic!("no fixture builder for: {other}"),
     };
 
@@ -426,6 +450,38 @@ fn models__steady_state_2_checkpoints() {
 #[test]
 fn assistant_slot__open_stub() {
     run_phase_f_slot("assistant_slot__open_stub");
+}
+
+/// v3-llm-forecaster Wave F (T-D-N(F5)) — R9.3 byte-identity guard.
+///
+/// When the v3-llm-forecaster strategy is *disabled* (the default per
+/// `LlmForecasterConfig::default().enabled = false`), the cockpit_live
+/// boot path leaves `assistant_state.mode = Offline` and the right-
+/// rail renders the Phase F placeholder verbatim — byte-identical to
+/// the `assistant_slot__open_stub` baseline. Baseline auto-written on
+/// first run; subsequent runs assert byte-identity.
+///
+/// The dedicated baseline (vs reusing `assistant_slot__open_stub`)
+/// makes the regression intent explicit: when the v3-llm-forecaster
+/// view code mutates (say, adds a new `AssistantMode` variant), this
+/// baseline catches any incidental drift on the default-disabled path
+/// even when the original Phase F baseline stays green.
+#[test]
+fn assistant_slot__llm_forecaster_disabled__placeholder() {
+    run_phase_f_slot("assistant_slot__llm_forecaster_disabled__placeholder");
+}
+
+/// v3-llm-forecaster Wave F (T-D-N(F5)) — active reasoning-trace body.
+///
+/// `AssistantMode::ReasoningTrace` with one populated `LlmForecastView`
+/// in `last_forecast`, one prior forecast in `history`, and one
+/// matching `LessonCardCard` hydrated in `memory_screen_state.cache`
+/// (the cited-lessons section exercises both matched-card and
+/// pending-card branches in a single baseline). Baseline auto-written
+/// on first run.
+#[test]
+fn assistant_slot__llm_forecaster_active__most_recent_trace() {
+    run_phase_f_slot("assistant_slot__llm_forecaster_active__most_recent_trace");
 }
 
 /// V9 — the perceptual-diff helper materialises a diff PNG on

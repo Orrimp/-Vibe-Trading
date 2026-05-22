@@ -731,50 +731,128 @@ weeks wall-clock per H5.
 
 > Parallel-safe with Wave F, depends on Wave C, ~2-4 days.
 
-- [ ] **T-D-N(E1)** — Additive migration
-      `crates/audit/migrations/011_llm_forecast.sql` (architect
-      M-T1 owns the row shape) — `JournalEntry { kind:
-      "llm_forecast", payload: ... }` (R7.1.2).
-- [ ] **T-D-N(E2)** — `CostEvent::Llm` row emission via
-      `BudgetedProvider` (R7.1.1 — already wired in v2-llm-strategy;
-      this confirms C5's call site emits).
-- [ ] **T-D-N(E3)** — `Message::AuditTick` ride-along emission
-      (R7.1.3) — Phase D + F audit-tick stream consumers see
-      the row live.
-- [ ] **T-D-N(E4)** — `BudgetedProvider` 80% auto-degrade +
-      100% block (R5.5; inherits v2-llm-strategy R4.1+R4.4).
-- [ ] **T-D-N(E5)** — `cost_cap_usd_per_backtest` enforcement
-      (R5.3) — `BudgetExceeded` short-circuits backtest binary
-      with explicit error log.
-- [ ] **T-D-N(E6)** — Integration test: 1 `forecast()` call →
-      exactly 1 `CostEvent` row + 1 `JournalEntry` row + 1
-      `AuditTick` broadcast.
+- [x] **T-D-N(E1)** — Additive migration
+      `crates/audit/migrations/012_llm_forecast.sql` (numbered 012
+      because 011_trail_correlation_chain.sql already existed) +
+      `LlmForecastWrite<'a>` struct + `post_llm_forecast()` async
+      fn in `crates/audit/src/journal.rs:1478-1615`.
+      SQL uses `INSERT OR IGNORE` on `correlation_id UNIQUE` for
+      replay-warm idempotency. Test:
+      `cargo test -p audit --test journal_llm_forecast_round_trip` →
+      `test result: ok. 4 passed; 0 failed` (2026-05-22).
+- [x] **T-D-N(E2)** — `CostEvent::Llm` row emission via
+      `BudgetedProvider`. `CaptureCostSink` test-only sink in
+      `crates/strategy/tests/llm_forecaster_cost_event.rs`.
+      Test: `cargo test -p strategy --test llm_forecaster_cost_event` →
+      `test result: ok. 3 passed; 0 failed` (2026-05-22).
+- [x] **T-D-N(E3)** — `AuditEvent::LlmForecastEmitted` tick emission
+      added to `crates/audit/src/tick.rs:103-114` (new enum variant
+      with slim SmolStr/Uuid fields). `post_llm_forecast()` calls
+      `tick::emit()` post-SQL-commit. Tests in
+      `crates/strategy/tests/llm_forecaster_audit_tick.rs`.
+      Test: `cargo test -p strategy --test llm_forecaster_audit_tick` →
+      `test result: ok. 4 passed; 0 failed` (2026-05-22).
+- [x] **T-D-N(E4)** — `BudgetedProvider` 80% auto-degrade +
+      100% block tests in
+      `crates/strategy/tests/llm_forecaster_budget_gate.rs`.
+      Test: `cargo test -p strategy --test llm_forecaster_budget_gate` →
+      `test result: ok. 4 passed; 0 failed` (2026-05-22).
+- [x] **T-D-N(E5)** — `cost_cap_usd_per_backtest` enforcement tests
+      in `crates/strategy/tests/llm_forecaster_cost_cap_short_circuit.rs`.
+      Key: `CostBudget` stores in whole cents; seeds use whole-dollar
+      amounts to guarantee blocking. `BudgetExceeded::is_backtest_fatal()` = true.
+      Test: `cargo test -p strategy --test llm_forecaster_cost_cap_short_circuit` →
+      `test result: ok. 3 passed; 0 failed` (2026-05-22).
+- [x] **T-D-N(E6)** — Full-stack integration test in
+      `crates/strategy/tests/llm_forecaster_wiremock_wave_e.rs`.
+      Wires `LlmForecasterImpl::with_audit_ledger` (added to
+      `crates/strategy/src/llm_forecaster/anthropic_impl.rs:139-152`)
+      + `BudgetedProvider` + `LedgerCostSink` + wiremock + tick bus.
+      Asserts 1 HTTP request + 1 `llm_forecast_entries` row +
+      1 `AuditTick::LlmForecastEmitted`. Duplicate test: 2 calls
+      with same correlation_id → INSERT OR IGNORE → 1 row.
+      Test: `cargo test -p strategy --test llm_forecaster_wiremock_wave_e` →
+      `test result: ok. 2 passed; 0 failed` (2026-05-22).
 
 ### Wave F — Phase F Assistant slot body promotion
 
 > Parallel-safe with Wave E, depends on Wave C, ~3-5 days.
-> **GATED ON Q4=(c)** operator decision at T-OD4. If Q4 = (a)
-> only, this entire Wave F is deferred to v0.1.1.
+> **UNGATED** per Q4=(a)+(c) hybrid operator-pick T-OD4 2026-05-22.
+> Wave F closed by ui-designer 2026-05-22; honest-tick triplets +
+> baseline byte-identity confirmation below.
 
-- [ ] **T-D-N(F1)** — `crates/ui/src/assistant/view.rs` body
-      promotion — add `AssistantMode { Offline, ReasoningTrace }`
-      enum + body composition logic (R9.1).
-- [ ] **T-D-N(F2)** — Body composition (R9.2) — header
-      (`symbol · rating · conf=…`), cost line, reasoning trace
-      card, cited lesson cards section (reuses
-      `crates/ui/src/memory/` components), scrollable history,
-      chevron → `Message::OpenTrailFor(audit_id)`.
-- [ ] **T-D-N(F3)** — `Message::AssistantReasoningTraceUpdate(
-      payload)` cockpit-message-bus variant wiring.
-- [ ] **T-D-N(F4)** — Runtime gate (R9.3) — strategy-enabled
-      flag flips `AssistantMode`; default-disabled config keeps
-      Phase F placeholder + byte-identity guard.
-- [ ] **T-D-N(F5)** — Snapshot baselines —
-      `assistant_slot__llm_forecaster_active__most_recent_trace`
-      (Q4=c active) + `assistant_slot__llm_forecaster_disabled__placeholder`
-      (R9.3 byte-identity).
-- [ ] **T-D-N(F6)** — Layout-invariants proptest:
-      `assistant_slot_llm_forecaster_no_zero_dim` (256 cases).
+- [x] **T-D-N(F1)** — `crates/ui/src/assistant/state.rs:88-101` —
+      `AssistantMode` extended with `ReasoningTrace` variant (R9.1)
+      + new `LlmForecastView` UI-local mirror struct at
+      `state.rs:46-74` (no `strategy` crate dep — mirror precedent
+      `StrategiesConfig`). Runtime gate field added at
+      `state.rs:117-137`.
+      Cargo: `cargo test -p ui --lib assistant::state` →
+      `3 passed; 0 failed` (assistant_mode_default_is_offline,
+      assistant_state_default_is_offline_and_empty,
+      assistant_mode_has_three_variants).
+- [x] **T-D-N(F2)** — `crates/ui/src/assistant/view.rs:153-211` —
+      R9.2 body composition: title (`H3` text), header line
+      (`{symbol} · {rating} · conf {confidence}`), cost line
+      (`LLM spend | {cost_line}`), reasoning trace card (sunken
+      panel), cited-lessons section reusing
+      `crates/ui/src/memory/state::LessonCardCard` lookup, history
+      section (compact rating + confidence rows). Strings via
+      `crate::strings::ASSISTANT_REASONING_*` (14 new tokens at
+      `strings.rs:432-498`). Lumen design tokens reused — zero new
+      `color::*` / `radius::*` / `space::*` / `text::*` additions.
+      Cargo: `cargo test -p ui --lib assistant::view` →
+      `7 passed; 0 failed`
+      (assistant_view_reasoning_trace_render,
+      assistant_view_reasoning_trace_warming_up,
+      assistant_view_reasoning_trace_renders_light_mode,
+      assistant_view_with_cockpit_uses_memory_cache,
+      assistant_view_live_mode_falls_back_to_offline,
+      assistant_view_closed_slot_is_zero_width_for_all_modes,
+      assistant_runtime_gate_preserves_offline_default).
+- [x] **T-D-N(F3)** — `crates/ui/src/state.rs:1494-1508` —
+      `Message::AssistantReasoningTraceUpdate(LlmForecastView)`
+      variant added; update arm at `state.rs:2073-2086` rotates
+      previous `last_forecast` onto `history` (most-recent first;
+      capped at `HISTORY_CAP = 20`).
+      Cargo: `cargo test -p ui --lib state::tests::assistant`
+      → `3 passed; 0 failed`
+      (assistant_reasoning_trace_update_rotates_history,
+      assistant_reasoning_trace_update_caps_history,
+      assistant_runtime_gate_preserves_offline_default).
+- [x] **T-D-N(F4)** — Runtime gate (R9.3) — `AssistantMode`
+      default is `Offline`; the `AssistantReasoningTraceUpdate`
+      arm does NOT flip mode (the runtime gate is owned by the
+      `cockpit_live` boot path which sets `mode = ReasoningTrace`
+      once when it observes `llm_forecaster_v3` enabled in agent
+      config). The `view_offline` fn at `view.rs:110-139` returns
+      a widget tree byte-identical to the pre-Wave-F build.
+      **Byte-identity proof:** SHA-256 of
+      `assistant_slot__open_stub.png` (pre-Wave-F locked
+      2026-05-21) == SHA-256 of
+      `assistant_slot__llm_forecaster_disabled__placeholder.png`
+      (Wave F new baseline): both
+      `2fb4b243fa8f199e54e2e0b0de82966ad06c8b0726bbf34c0ca92493bc12acdc`
+      and both 84953 bytes.
+      Cargo: `cargo test -p ui --lib assistant_runtime_gate` →
+      `2 passed; 0 failed` (view-fn level + state-update level).
+- [x] **T-D-N(F5)** — Snapshot baselines —
+      `crates/ui/tests/visual-baselines/assistant_slot__llm_forecaster_active__most_recent_trace.png`
+      (101951 bytes; new active body baseline) +
+      `crates/ui/tests/visual-baselines/assistant_slot__llm_forecaster_disabled__placeholder.png`
+      (84953 bytes; byte-identical to existing `assistant_slot__open_stub.png`).
+      Existing `assistant_slot__open_stub.png` SHA + size unchanged.
+      Cargo: `cargo test -p ui --test visual_snapshots` →
+      `19 passed; 0 failed` (all Phase D / Phase E / Phase F + 2 new
+      baselines render byte-identical or auto-write).
+- [x] **T-D-N(F6)** — `crates/ui/tests/layout_invariants.rs:497-525` —
+      new proptest `assistant_slot_llm_forecaster_no_zero_dim` at
+      256 cases × {Offline, ReasoningTrace, Live} × {has_forecast,
+      None} × {0..=5 history depth} × {0..=3 cited lessons}.
+      Builder helper at `layout_invariants.rs:712-758`.
+      Cargo: `cargo test -p ui --test layout_invariants` →
+      `11 passed; 0 failed` (256 cases for the new proptest;
+      previously-shipped 10 layout invariants all green).
 
 ### Wave G — ADR + non-regression + tester handoff (serial closure)
 

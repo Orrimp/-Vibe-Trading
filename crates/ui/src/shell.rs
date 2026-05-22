@@ -63,7 +63,12 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     } else {
         Length::Fixed(RIGHT_RAIL_WIDTH_PX)
     };
-    let right_track = Container::new(assistant::view::view(&model.assistant_state, mode))
+    // v3-llm-forecaster Wave F (T-D-N(F2)) — switch to the Cockpit-aware
+    // entry point so the reasoning-trace body can look up cited-lesson
+    // bodies in `memory_screen_state.cache`. The `Offline` mode (R9.3
+    // default-disabled) short-circuits before touching the cache, so the
+    // existing `assistant_slot__open_stub` baseline stays byte-identical.
+    let right_track = Container::new(assistant::view::view_with_cockpit(model, mode))
         .width(rail_width)
         .height(Length::Fill);
 

@@ -55,6 +55,8 @@ pollster.workspace = true
 # v3-llm-forecaster Wave B: wiremock for LlmForecasterImpl integration tests
 wiremock.workspace = true
 cost = { path = "../cost" }
+# v3-llm-forecaster Wave E: sqlx for direct DB assertions in Wave E integration tests
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 
 [[test]]
 name = "llm_forecaster_wiremock"
@@ -63,6 +65,27 @@ path = "tests/llm_forecaster_wiremock.rs"
 [[test]]
 name = "llm_forecaster_signal_mapping"
 path = "tests/llm_forecaster_signal_mapping.rs"
+
+# Wave E tests
+[[test]]
+name = "llm_forecaster_cost_event"
+path = "tests/llm_forecaster_cost_event.rs"
+
+[[test]]
+name = "llm_forecaster_audit_tick"
+path = "tests/llm_forecaster_audit_tick.rs"
+
+[[test]]
+name = "llm_forecaster_budget_gate"
+path = "tests/llm_forecaster_budget_gate.rs"
+
+[[test]]
+name = "llm_forecaster_wiremock_wave_e"
+path = "tests/llm_forecaster_wiremock_wave_e.rs"
+
+[[test]]
+name = "llm_forecaster_cost_cap_short_circuit"
+path = "tests/llm_forecaster_cost_cap_short_circuit.rs"
 
 [[test]]
 name = "tcn_overlay_tuned_builder"
