@@ -1337,8 +1337,38 @@ hardware).
 Total dev wall-clock estimate: 3-5 weeks (matches H5 + survey
 median).
 
+## Implementation
+
+> **Spike T-AR-8 (developer agent, 2026-05-22)**: PARTIAL spike complete.
+> Full dev-note at
+> [`spec/dev-notes/v3-llm-forecaster-prompt-spike-2026-05-22.md`](../dev-notes/v3-llm-forecaster-prompt-spike-2026-05-22.md).
+>
+> **Status**: `ANTHROPIC_API_KEY` not configured — empirical sections (latency
+> measurements, quality assessment, tier comparison) are BLOCKED pending operator
+> supplying the key. Analytical sections are complete:
+>
+> - Prompt template v3 designed (verbatim in dev-note).
+> - Cost projections from first principles: Haiku 4.5 cold-record ~$24–$30/year
+>   at N=24 cadence (vs architect $80 strawman — architect's number was based on
+>   older model pricing; see dev-note § D2).
+> - Infrastructure confirmed fit-for-purpose via code inspection (no blocker).
+> - 6-item delta-list surfaced: D1 (CRITICAL: Sonnet not in pricing table), D2
+>   (stale cost math in decomp), D3 (model ID alignment risk), D4 (minor n_calls
+>   typo in decomp example), D5 (prompt renderer must omit absent distillation
+>   heading), D6 (CanonicalContext field order confirmed correct).
+>
+> **Operator action required before Wave A empirical phase**: create
+> `config/agent.toml.local` with real Anthropic API key.
+> Wave A type-level tasks (T-D-N(A1)–T-D-N(A5)) may proceed WITHOUT the key.
+> Wave B onwards requires it for `LlmForecasterImpl` end-to-end testing.
+>
+> **Route recommendation**: Route B (proceed with Wave A + delta-patch D1/D3 first).
+
 ## Changelog
 
+- 2026-05-22 (developer agent, spike T-AR-8): Spike dev-note written (PARTIAL —
+  empirical sections blocked; analytical sections complete). `## Implementation`
+  section added. Delta-list D1–D6 surfaced. Route B recommended.
 - 2026-05-22 (architect M-T1): `## Design` section added.
   T-AR-1..T-AR-10 closed; ADR-0039 LLM-forecaster verdict criteria
   L0-L4 written + registered (status `accepted`); `decomp.md`
