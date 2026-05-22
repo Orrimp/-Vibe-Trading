@@ -4,7 +4,7 @@ status: shipped
 owner: tester
 updated: 2026-05-22
 version: 0.1.0
-disposition_2026_05_22: provisionally-invalidated-pending-rewire
+disposition_2026_05_22: invalidated-then-retired-with-real-evidence; see v3-volatility-forecaster-noop-fix
 invalidation_ref: spec/v3-volatility-forecaster-noop-fix/feature.md
 parent: (none — new strategy lane; first ship in post-v2.5 reformulation)
 predecessor: v25a-patchtst-overlay v0.1.0 (RETIRED-evidence-source)

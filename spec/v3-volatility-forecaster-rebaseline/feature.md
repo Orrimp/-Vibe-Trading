@@ -7,7 +7,7 @@ updated: 2026-05-22
 parent: v3-volatility-forecaster
 parent_version: 0.1.0
 parent_disposition: shipped-with-MODEL-BROKEN-NO-ALPHA-advisory
-disposition_2026_05_22: provisionally-invalidated-pending-rewire
+disposition_2026_05_22: invalidated-then-retired-with-real-evidence; see v3-volatility-forecaster-noop-fix
 invalidation_ref: spec/v3-volatility-forecaster-noop-fix/feature.md
 ---
 

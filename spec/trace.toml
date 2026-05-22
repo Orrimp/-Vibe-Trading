@@ -500,7 +500,7 @@ anchors     = [
   "sharpe-comparison-vol-target-bs1-realbaseline",                           # current SHA d561fed5… → new (T-D-N10)
   # `vol-verdict-bs1-realdata` (99c21892…) stays byte-identical — body is GARCH-only per T-AR-5 audit; part of negative invariant on 31 unchanged rows.
 ]
-state       = "in-progress"   # architect M-T1 lock 2026-05-22; decomp.md + ADR-0038 § D6.b amendment text + Wave A/B/C decomposition complete; HANDOFF → developer Wave A
+state       = "shipped"   # tester M-FINAL 2026-05-22; VERDICT PASS (code); MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA advisory; net_delta (real-vs-real) = -0.021719; routing R-O1 → (a) RETIRE C1; ANCHORS PASS (34/34) — 3 SHAs re-emitted in-place; spec-lint HANDOFF → developer (5 dead-links in decomp.md)
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"

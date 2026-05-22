@@ -1,15 +1,15 @@
 ---
 slug: v3-volatility-forecaster-noop-fix
 version: 0.1.0
-status: in-progress
-owner: architect
+status: shipped
+owner: tester
 updated: 2026-05-22
 priority: P0
 parent: v3-volatility-forecaster
 parent_version: 0.1.1
-parent_disposition: provisionally-invalidated-pending-rewire
+parent_disposition: invalidated-then-retired-with-real-evidence; see v3-volatility-forecaster-noop-fix
 sibling: v3-volatility-forecaster-rebaseline
-sibling_disposition: provisionally-invalidated-pending-rewire
+sibling_disposition: invalidated-then-retired-with-real-evidence; see v3-volatility-forecaster-noop-fix
 ---
 
 # v3 volatility forecaster — no-op wire-up FIX
@@ -595,6 +595,73 @@ ANCHORS PASS  (34 / 34)
 
 (Output of `bash scripts/verify_anchors.sh` at architect M-T1 open, 2026-05-22, pre-fix. Captured in [`decomp.md § Baseline gate`](decomp.md). This is the entry condition; Wave B preserves it post-fix with 3 SHAs re-emitted in-place.)
 
+## Verification
+
+> Tester M-FINAL, 2026-05-22. Commit `72c1466`.
+
+### Joint advisory verdict (post-fix, on REAL overlay evidence)
+
+| Field                  | Value                                                                                            |
+|------------------------|--------------------------------------------------------------------------------------------------|
+| V-verdict              | **V3** (mean_calibration_ratio = 2.952191 outside [0.7, 1.4] — GARCH-only; unchanged per H2)    |
+| T-classifier           | **T-VOL-NO-ALPHA** (ADR-0038 § D1.c: net_delta < +0.05 on BOTH comparisons)                     |
+| net_delta (synthetic baseline) | `+0.008149` (sharpe-comparison-vol-target-bs1-realdata — overlay vs synthetic v1 momentum) |
+| net_delta (real baseline) | `-0.021719` (sharpe-comparison-vol-target-bs1-realbaseline — overlay vs real v1 momentum, real-vs-real) |
+| Joint classification   | **MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA**                                                 |
+| Post-fix overlay equity | $62,807.89 (vs no-op $113,479.98 — the fix REVEALED the negative signal)                       |
+| Routing                | **R-O1** — (a) RETIRE C1 with REAL evidence, now backed by NEGATIVE-NET-DELTA strength           |
+| Cargo gate             | PASS — fmt/clippy/test/anchors all clean; 34/34 PASS                                             |
+
+**Mechanism** (architecturally explainable): GARCH under-predicts realized vol by ~3x
+(mean_calibration_ratio = 2.952191) → `target_vol / sigma_hat` is inflated → upper clamp at
+2.0x → positions over-leveraged relative to true risk → drawdowns amplified. The overlay
+actively HURTS at v0.1.0 calibration scale.
+
+**Architecture deviation note**: the developer placed `scale_cache.insert` (line 310 of
+`crates/strategy/src/vol_targeting_overlay.rs`) BEFORE the `if base_signals.is_empty()`
+early-return guard (line 315). This is intentional and required for warm-up bars when the inner
+strategy emits no signals. Verified consistent with R6 unit tests
+(`scale_cache_populates_after_on_bar`, `quantity_scale_default_for_unseen_symbol` in
+`crates/strategy/tests/vol_targeting_overlay.rs:236-301`). Documented as **dev-extended architect
+contract; verified non-controversial**.
+
+**ADR-0038 § D6.b**: wiring-bug-fix re-emission protocol amendment landed at
+`spec/architecture/adr/0038-vol-forecast-verdict-shape.md` line 608 (before
+`## Alternatives considered`).
+
+**Cross-refs**: [sharpe-comparison-vol-target-bs1-realdata-20260522](../v3-volatility-forecaster/reports/sharpe-comparison-vol-target-bs1-realdata-20260522.md) |
+[sharpe-comparison-vol-target-bs1-realbaseline-20260522](../v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-20260522.md) |
+[backtest-20260522-123339-top10-2023-fy-vol-target-overlay-realdata](../v3-volatility-forecaster/reports/backtest-20260522-123339-top10-2023-fy-vol-target-overlay-realdata.md) |
+[vol-verdict-bs1-realdata-20260522](../v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md) |
+[ADR-0038](../architecture/adr/0038-vol-forecast-verdict-shape.md) |
+[v3-vol-overlay-noop-discovery-2026-05-22](../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) |
+[Test report](reports/test-final-2026-05-22.md)
+
+## Post-fix retrospective
+
+The no-op overlay fortuitously produced a T-VOL-NO-ALPHA verdict in both the v0.1.0 and
+v0.1.1 (rebaseline) parent ships, but for the wrong reason. The no-op overlay output equalled
+the un-targeted baseline output byte-for-byte; the zero net_delta was the signature of a no-op,
+not a genuine T-VOL-NO-ALPHA measurement.
+
+Post-fix, the T-VOL-NO-ALPHA classification is confirmed on REAL overlay evidence:
+- v0.1.0 (synthetic baseline): net_delta = +0.008149 → T-VOL-NO-ALPHA (positive but below
+  the +0.05 threshold; the wiring fix reduced equity from $113,479.98 to $62,807.89, exposing
+  that the overlay adds negative value at v0.1.0 GARCH calibration scale).
+- v0.1.1 (real baseline, real-vs-real): net_delta = -0.021719 → T-VOL-NO-ALPHA (strongly
+  negative; the apples-to-apples comparison confirms the NEGATIVE-NET-DELTA strength).
+
+The prior rebaseline-deck routing pick (a) RETIRE C1 is REINSTATED with real-evidence backing.
+The advisory has STRENGTHENED: the no-op masked a NEGATIVE-NET-DELTA signal. The overlay at
+v0.1.0 calibration scale does not merely fail to add alpha — it actively destroys equity.
+
+The (a) RETIRE C1 routing pick now rests on:
+1. V3 GARCH miscalibration (mean_calibration_ratio = 2.952191 — unchanged, GARCH-only).
+2. T-VOL-NO-ALPHA on REAL overlay evidence (net_delta = -0.021719 on real-vs-real).
+3. NEGATIVE-NET-DELTA: the wiring fix changed equity from the no-op $113,479.98 to $62,807.89
+   (a 44.6% equity drop), confirming the overlay actively amplifies drawdowns via the
+   GARCH-under-prediction × upper-clamp mechanism.
+
 ## Changelog
 
 - 2026-05-22 (analyst): brief authored at v0.1.0 / status=proposed.
@@ -652,3 +719,17 @@ ANCHORS PASS  (34 / 34)
   - Frontmatter flipped `status: proposed → in-progress`, `owner: analyst → architect`.
   - `spec/trace.toml` state flipped `proposed → in-progress`; `arch` / `tests` / `anchors` columns populated.
   - HANDOFF → orchestrator → developer (Wave A).
+- 2026-05-22 (tester): M-FINAL gate complete. Commit `72c1466`.
+  - `cargo fmt --check` PASS; `cargo clippy --workspace --features candle,realdata` PASS (0 warnings);
+    `cargo test --workspace --lib --features candle` PASS (311 passed, 0 failed).
+  - `cargo test -p strategy --test vol_targeting_overlay_end_to_end` PASS (1 passed, 0 failed).
+  - `bash scripts/verify_anchors.sh` PASS: `ANCHORS PASS (34 / 34)` — 3 SHAs updated in-place,
+    31 byte-identical (negative invariant confirmed; `vol-verdict-bs1-realdata` 99c21892... unchanged).
+  - 3 SHAs independently verified via `python3 scripts/hash_report.py`: all 3 match developer claims.
+  - Joint verdict recorded: MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA (V3 + T-VOL-NO-ALPHA on real evidence).
+  - net_delta (real-vs-real) = -0.021719; net_delta (synthetic baseline) = +0.008149.
+  - Routing: R-O1 → (a) RETIRE C1 with REAL evidence (NEGATIVE-NET-DELTA strength confirmed).
+  - scale_cache.insert placement BEFORE early-return guard verified — dev-extended architect contract.
+  - spec-lint: FAIL (90 dead-links; +5 new from decomp.md relative-path errors).
+  - HANDOFF → developer (spec-lint regression: 5 new dead-links in decomp.md).
+  - Frontmatter flipped: `status: in-progress → shipped`, `owner: developer → tester`.
