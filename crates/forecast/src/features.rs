@@ -91,6 +91,36 @@ impl TimeSpan {
     }
 }
 
+// ── VolTargetKind ─────────────────────────────────────────────────────────────
+
+/// Which realized-volatility estimator to use for the vol-target label.
+///
+/// Added additively in v3.0.0-volatility (T-D-N9 / ADR-0038 § D3 / T-AR-3).
+/// Existing TCN / PatchTST callers pass `vol_target_kind: None`, so their
+/// `FeatureWindow::target_parkinson_vol` is `None` and all byte outputs are
+/// unchanged (R11.7 + R11.8 guards).
+///
+/// ## Parkinson formula (Q1=(b) operator default; locked in ADR-0038 § D3)
+///
+/// ```text
+/// σ̂_P² = (1 / (4 · ln 2)) · mean over k of (ln(high_k / low_k))²
+/// σ̂_P  = sqrt(σ̂_P²)
+/// ```
+///
+/// where `k` ranges over the H target-horizon bars immediately following
+/// the context window (`window_end+1 ..= window_end+H`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VolTargetKind {
+    /// (Default) Parkinson realized-vol over the next H bars.
+    ///
+    /// Formula: `σ̂_P = sqrt((1/(4·ln 2)) · mean over k of (ln(high_k/low_k))²)`.
+    /// H = `FeatureConfig::target_horizon_bars` (default 24).
+    Parkinson,
+    /// (v0.1.1) Realized-vol from close-to-close returns.
+    #[allow(dead_code)]
+    RealizedVol,
+}
+
 // ── FeatureConfig ─────────────────────────────────────────────────────────────
 
 /// Configuration for feature construction.
@@ -113,6 +143,14 @@ pub struct FeatureConfig {
     /// The target computation becomes:
     /// `target_logret = ln(close_{t + target_horizon_bars} / close_t)`
     pub target_horizon_bars: usize,
+    /// Optional realized-vol target kind (v3.0.0-volatility additive field).
+    ///
+    /// `None` (default) → no `target_parkinson_vol` emitted — TCN / PatchTST
+    /// callers are unaffected (anchor-additive-zero contract, R11.7 + R11.8).
+    ///
+    /// `Some(VolTargetKind::Parkinson)` → emit Parkinson σ in
+    /// `FeatureWindow::target_parkinson_vol`.
+    pub vol_target_kind: Option<VolTargetKind>,
 }
 
 impl Default for FeatureConfig {
@@ -123,6 +161,8 @@ impl Default for FeatureConfig {
             direction_epsilon: 0.000_5_f32,
             // Default 1 preserves TCN byte-compatibility (R7 / ADR-0036 § D1).
             target_horizon_bars: 1,
+            // Default None: no vol target — TCN/PatchTST callers unaffected.
+            vol_target_kind: None,
         }
     }
 }
@@ -167,6 +207,13 @@ pub struct FeatureWindow {
     pub features: FeatureTensor,
     /// Next-bar log-return target: `r_{t+1} = ln(close_{t+1} / close_t)`.
     pub target_logret: f32,
+    /// Parkinson realized-vol target over the next H bars (v3.0.0-volatility additive).
+    ///
+    /// `None` when `FeatureConfig::vol_target_kind` is `None` (TCN / PatchTST callers).
+    /// `Some(sigma)` when `vol_target_kind == Some(VolTargetKind::Parkinson)`.
+    ///
+    /// Formula: `σ̂_P = sqrt((1/(4·ln 2)) · mean over k of (ln(high_k/low_k))²)`.
+    pub target_parkinson_vol: Option<f32>,
     /// Symbol these bars belong to.
     pub symbol: String,
     /// Bar-close timestamp of the last bar in the context window (bar `t`).
@@ -471,6 +518,56 @@ pub(crate) fn bar_features(
     Ok([logret, logrange, logvol_z, hour_sin, hour_cos])
 }
 
+// ── load_bars_pub ─────────────────────────────────────────────────────────────
+
+/// Public OHLCV bar type for callers outside the `forecast` crate (e.g. `train_garch`).
+#[derive(Debug, Clone)]
+pub struct OhlcvBarRaw {
+    /// Bar open timestamp (Unix ms).
+    pub open_time_ms: i64,
+    /// Bar close timestamp (Unix ms).
+    pub close_time_ms: i64,
+    /// Open price.
+    pub open: f64,
+    /// High price.
+    pub high: f64,
+    /// Low price.
+    pub low: f64,
+    /// Close price.
+    pub close: f64,
+    /// Volume.
+    pub volume: f64,
+}
+
+/// Load raw OHLCV bars for a symbol, sorted by `open_time` ascending.
+///
+/// Public wrapper over the internal `load_bars` function.  Used by the
+/// `train_garch` binary (and `vol_verdict` bin) to access bars directly
+/// without going through the full `FeatureWindow` pipeline.
+///
+/// # Errors
+///
+/// See [`FeatureError`] variants.
+pub fn load_bars_pub(
+    parquet_root: &Path,
+    symbol: &str,
+    span: &TimeSpan,
+) -> Result<Vec<OhlcvBarRaw>, FeatureError> {
+    let raw = load_bars(parquet_root, symbol, span)?;
+    Ok(raw
+        .into_iter()
+        .map(|b| OhlcvBarRaw {
+            open_time_ms: b.open_time_ms,
+            close_time_ms: b.close_time_ms,
+            open: b.open,
+            high: b.high,
+            low: b.low,
+            close: b.close,
+            volume: b.volume,
+        })
+        .collect())
+}
+
 // ── windows_for_symbol ────────────────────────────────────────────────────────
 
 /// Return an iterator over `FeatureWindow` values for a single symbol.
@@ -507,6 +604,7 @@ pub fn windows_for_symbol(
     let context = cfg.context_bars;
     let warmup = cfg.vol_z_lookback;
     let horizon = cfg.target_horizon_bars;
+    let vol_target_kind = cfg.vol_target_kind;
 
     // We need warmup + context + horizon bars (horizon extra for the target logret).
     // Default horizon=1 preserves the original TCN requirement (warmup + context + 1).
@@ -516,7 +614,7 @@ pub fn windows_for_symbol(
     let bars_result = load_bars(&parquet_root, &symbol, &span);
 
     // Produce a single-shot iterator backed by a Vec.
-    WindowIterator::new(bars_result, symbol, warmup, context, horizon, min_bars)
+    WindowIterator::new(bars_result, symbol, warmup, context, horizon, min_bars, vol_target_kind)
 }
 
 /// Internal iterator state for `windows_for_symbol`.
@@ -527,6 +625,11 @@ struct WindowIterator {
     context: usize,
     /// Number of bars ahead for target log-return (default 1 for TCN; 24 for PatchTST).
     target_horizon_bars: usize,
+    /// Optional realized-vol target kind (v3.0.0-volatility additive field).
+    ///
+    /// `None` → no Parkinson computation, `target_parkinson_vol` stays `None`.
+    /// `Some(VolTargetKind::Parkinson)` → compute Parkinson σ over H bars.
+    vol_target_kind: Option<VolTargetKind>,
     /// Current position of the window's *last bar* (index into `bars`).
     cursor: usize,
     /// Maximum valid cursor (so bars[cursor + target_horizon_bars] is the target).
@@ -543,6 +646,7 @@ impl WindowIterator {
         context: usize,
         target_horizon_bars: usize,
         min_bars: usize,
+        vol_target_kind: Option<VolTargetKind>,
     ) -> Self {
         match bars_result {
             Err(e) => Self {
@@ -554,6 +658,7 @@ impl WindowIterator {
                 },
                 context,
                 target_horizon_bars,
+                vol_target_kind,
                 // cursor > max_cursor ensures we stop after yielding the error.
                 cursor: 1,
                 max_cursor: 0,
@@ -571,6 +676,7 @@ impl WindowIterator {
                         },
                         context,
                         target_horizon_bars,
+                        vol_target_kind,
                         // cursor > max_cursor ensures we stop after yielding the error.
                         cursor: 1,
                         max_cursor: 0,
@@ -596,6 +702,7 @@ impl WindowIterator {
                     vol_stats,
                     context,
                     target_horizon_bars,
+                    vol_target_kind,
                     cursor: cursor_start,
                     max_cursor,
                     error: None,
@@ -655,6 +762,39 @@ impl Iterator for WindowIterator {
             0.0_f32
         };
 
+        // Parkinson realized-vol target over bars[window_end+1 ..= window_end+H].
+        // Locked formula (ADR-0038 § D3 / T-AR-3):
+        //   σ̂_P = sqrt( (1 / (4·ln 2)) · mean_k(ln(high_k/low_k)²) )
+        // Only computed when vol_target_kind == Some(Parkinson).
+        // None for TCN/PatchTST callers — anchor-additive-zero contract (R11.7/R11.8).
+        let target_parkinson_vol: Option<f32> = match self.vol_target_kind {
+            Some(VolTargetKind::Parkinson) => {
+                let h = self.target_horizon_bars;
+                let mut sum_sq = 0.0_f64;
+                for k in 1..=h {
+                    let bar = &self.bars[window_end + k];
+                    if bar.high > 0.0 && bar.low > 0.0 && bar.high >= bar.low {
+                        let ln_hl = (bar.high / bar.low).ln();
+                        sum_sq += ln_hl * ln_hl;
+                    } else {
+                        warn!(
+                            symbol = self.symbol,
+                            cursor = self.cursor,
+                            k,
+                            "invalid high/low for Parkinson target; treating as 0 contribution"
+                        );
+                    }
+                }
+                // σ̂_P = sqrt( (1/(4·ln2)) · (sum_sq / H) )
+                let parkinson_var = (1.0 / (4.0 * f64::ln(2.0))) * (sum_sq / h as f64);
+                Some(parkinson_var.sqrt() as f32)
+            }
+            Some(VolTargetKind::RealizedVol) => unimplemented!(
+                "VolTargetKind::RealizedVol not implemented until v0.1.1"
+            ),
+            None => None,
+        };
+
         let bar_close_ts = self.bars[window_end].close_ts();
         let vol_stats = self.vol_stats.clone();
         let symbol = self.symbol.clone();
@@ -680,6 +820,7 @@ impl Iterator for WindowIterator {
         Some(Ok(FeatureWindow {
             features,
             target_logret,
+            target_parkinson_vol,
             symbol,
             bar_close_ts,
             vol_stats,
@@ -917,6 +1058,7 @@ mod tests {
             #[cfg(not(feature = "candle"))]
             features: vec![0.0_f32; 256 * 5],
             target_logret: 0.0,
+            target_parkinson_vol: None,
             symbol: symbol.to_string(),
             bar_close_ts: ts,
             vol_stats: VolStats {
@@ -1067,6 +1209,7 @@ mod tests {
             vol_z_lookback: 720,
             direction_epsilon: 0.0005,
             target_horizon_bars: 24,
+            vol_target_kind: None,
         };
         assert_eq!(patchtst_cfg.target_horizon_bars, 24);
 

@@ -34,6 +34,14 @@ audit-tick = []
 # level so default `cargo build` / `cargo test` skip them and they only
 # build with `--features candle`.
 [[bin]]
+name = "train_garch"
+path = "src/bin/train_garch.rs"
+
+[[bin]]
+name = "vol_verdict"
+path = "src/bin/vol_verdict.rs"
+
+[[bin]]
 name = "train_tcn"
 path = "src/bin/train_tcn.rs"
 required-features = ["candle"]
@@ -109,10 +117,31 @@ name = "forward_determinism_patchtst"
 path = "tests/forward_determinism_patchtst.rs"
 required-features = ["candle"]
 
-# T-D-N15 TCN byte-identity guard (K6 scope-creep).
+# T-D-N5 GARCH fit determinism (R11.4 / ADR-0038 § D3).
+[[test]]
+name = "garch_fit_determinism"
+path = "tests/garch_fit_determinism.rs"
+
+# T-D-N6 TCN byte-identity guard for vol ship (R11.7 / K-vol-3).
+# NOTE: reuses the existing tcn_byte_identity.rs test file — same guard.
 [[test]]
 name = "tcn_byte_identity"
 path = "tests/tcn_byte_identity.rs"
+
+# T-D-N7 PatchTST byte-identity guard for vol ship (R11.8 / K-vol-3).
+[[test]]
+name = "patchtst_byte_identity"
+path = "tests/patchtst_byte_identity.rs"
+
+# T-D-N10 Parkinson target derivation closed-form accuracy check (ADR-0038 § D3 / T-AR-3).
+[[test]]
+name = "parkinson_target_derivation"
+path = "tests/parkinson_target_derivation.rs"
+
+# T-D-N13 V-verdict mutual exclusivity test (R11.5 / ADR-0038 § D1.b).
+[[test]]
+name = "vol_verdict_mutual_exclusivity"
+path = "tests/vol_verdict_mutual_exclusivity.rs"
 
 # T-D-N16 PatchTST overlay anchor-neutrality (K4); #[ignore]d — run manually at M-D end.
 [[test]]

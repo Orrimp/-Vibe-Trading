@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-21 (ADR-0036 added)
+updated: 2026-05-22 (ADR-0038 added)
 ---
 
 
@@ -85,6 +85,7 @@ the canonical table; the parent file links here.)
 | 0035  | Post-training σ_train recalibration via metadata overlay (v2.5 cross-phase contract) | accepted | 2026-05-21 |
 | 0036  | PatchTST training contract — patch-embed shape, σ_train post-training, candle attention determinism gate, cost tripwire (v2.5a) | proposed | 2026-05-21 |
 | 0037  | Phase B scenario-dispatch extraction — renumbered 0035→0037 to resolve number collision with ADR-0035-tcn-sigma-train-recalibration (audit-2026-05-22) | accepted | 2026-05-19 (number reassigned 2026-05-22) |
+| 0038  | v3 vol-forecast V-verdict report shape + GARCH(1,1) baseline contract (parallel to ADR-0033, not extension) | accepted | 2026-05-22 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body

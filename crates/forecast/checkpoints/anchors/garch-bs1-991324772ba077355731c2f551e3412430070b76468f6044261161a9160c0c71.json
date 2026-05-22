@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "target_kind": "Parkinson",
+  "target_horizon_bars": 24,
+  "train_span_start": "2023-01-01T00:00:00Z",
+  "train_span_end": "2024-01-01T00:00:00Z",
+  "data_revision_sha": "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7",
+  "params": {
+    "ADAUSDT": {
+      "omega": 1.43361387630402e-6,
+      "alpha": 0.15597352303306972,
+      "beta": 0.8265608942305408,
+      "unconditional_var": 0.00008208222410564554,
+      "log_likelihood": 39507.625613582706,
+      "n_iters": 500,
+      "converged": false
+    },
+    "AVAXUSDT": {
+      "omega": 1.7396108104850808e-6,
+      "alpha": 0.2154211179611243,
+      "beta": 0.7845788669385672,
+      "unconditional_var": 115.20365982423921,
+      "log_likelihood": 38070.72197523047,
+      "n_iters": 500,
+      "converged": false
+    },
+    "BNBUSDT": {
+      "omega": 1.1670498450049313e-6,
+      "alpha": 0.1958720469987716,
+      "beta": 0.775970742228373,
+      "unconditional_var": 0.000041447636785459294,
+      "log_likelihood": 42661.62230653616,
+      "n_iters": 500,
+      "converged": false
+    },
+    "BTCUSDT": {
+      "omega": 1.117686827415243e-6,
+      "alpha": 0.33174134000429156,
+      "beta": 0.6633708920062631,
+      "unconditional_var": 0.00022867018848455524,
+      "log_likelihood": 43752.520124980045,
+      "n_iters": 500,
+      "converged": false
+    },
+    "DOGEUSDT": {
+      "omega": 3.2278210695053385e-6,
+      "alpha": 0.370558376289471,
+      "beta": 0.6294416235193566,
+      "unconditional_var": 16884.355452749016,
+      "log_likelihood": 39241.47586954314,
+      "n_iters": 500,
+      "converged": false
+    },
+    "DOTUSDT": {
+      "omega": 9.59366624498954e-7,
+      "alpha": 0.20514501249155812,
+      "beta": 0.794854987196302,
+      "unconditional_var": 3073.515171303337,
+      "log_likelihood": 39937.96464729861,
+      "n_iters": 500,
+      "converged": false
+    },
+    "ETHUSDT": {
+      "omega": 1.6758667669142466e-6,
+      "alpha": 0.3101402653346313,
+      "beta": 0.6633506299329047,
+      "unconditional_var": 0.00006321853505908547,
+      "log_likelihood": 42765.67343575362,
+      "n_iters": 500,
+      "converged": false
+    },
+    "LINKUSDT": {
+      "omega": 2.347741524791042e-6,
+      "alpha": 0.20647220395525945,
+      "beta": 0.7720976767899868,
+      "unconditional_var": 0.00010955335791098069,
+      "log_likelihood": 38708.35673764851,
+      "n_iters": 500,
+      "converged": false
+    },
+    "SOLUSDT": {
+      "omega": 1.0444403690764167e-6,
+      "alpha": 0.06413243898094244,
+      "beta": 0.92746211659334,
+      "unconditional_var": 0.00012425760211807658,
+      "log_likelihood": 36642.402000599686,
+      "n_iters": 500,
+      "converged": false
+    },
+    "XRPUSDT": {
+      "omega": 0.000011311644308463964,
+      "alpha": 0.3410802808736811,
+      "beta": 0.4940775978904919,
+      "unconditional_var": 0.00006862107951329535,
+      "log_likelihood": 39010.72392117735,
+      "n_iters": 500,
+      "converged": false
+    }
+  }
+}

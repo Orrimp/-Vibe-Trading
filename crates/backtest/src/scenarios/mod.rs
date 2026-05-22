@@ -11,6 +11,7 @@
 //! compute. The 22 body-SHA-256 anchors in `spec/anchors.toml` must stay
 //! byte-identical after this extraction (H2 / H4 / R10.1).
 
+pub mod garch_vol_target_overlay;
 pub mod momentum;
 pub mod pairs;
 pub mod patchtst_overlay_weights;

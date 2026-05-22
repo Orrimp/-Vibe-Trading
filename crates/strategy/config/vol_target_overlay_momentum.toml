@@ -1,0 +1,13 @@
+# Vol-targeting overlay config for the cross-sectional momentum base strategy.
+# ADR-0038 § D5 — R6.a primary anchor target.
+# Moreira & Muir 2017 default parameters.
+
+[vol_targeting]
+target_vol       = 0.02
+scale_clamp_min  = 0.5
+scale_clamp_max  = 2.0
+min_sigma_floor  = 1e-8
+
+[base]
+momentum_config_id = "top10_momentum"
+forecaster_id      = "garch-bs1"

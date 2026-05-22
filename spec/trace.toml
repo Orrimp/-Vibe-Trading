@@ -387,6 +387,7 @@ feature     = "v3-volatility-forecaster"
 product     = "spec/product.md"
 arch        = [
   "spec/v3-volatility-forecaster/feature.md",
+  "spec/v3-volatility-forecaster/decomp.md",                      # ARCHITECT M-T1 2026-05-22 — T-AR-1..T-AR-10 resolved with file:line citations + Wave A-E ordered breakdown + rollback shape per wave
   "spec/dev-notes/strategy-reformulation-survey-2026-05-22.md",   # § Candidate 1 cost / EV / reuse scoping — analyst inherits
   "spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md",    # § Lessons learned (cheap-first, F-verdict immutability, σ_train load-bearing) + § What COULD next chase (vol-target head item)
   "spec/architecture/12-forecast-overlay.md",                     # forecast lane infra carries forward; consumer shape (strategy-side vs risk-engine) is K-vol-2 ADR amendment territory
@@ -395,7 +396,7 @@ arch        = [
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",  # vol-target backtest scenarios inherit realdata path
   "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md",     # § D3 F-verdict IMMUTABLE — vol uses NEW ADR-0038 V-verdict NOT extension (Q4=(b) analyst default)
   "spec/architecture/adr/0035-tcn-sigma-train-recalibration.md",   # § D1 post-training σ_train pattern — applies to DL refinement under Q2 ≠ (a); N/A under Q2=(a) GARCH-only (GARCH has no σ_train concept)
-  # ADR-0038 vol-forecast-verdict-shape — NEW at M-T1 (architect-decide); analyst proposes V1-V5 + V_ALPHA priority tree shape in feature.md § R5; ADR-0033 stays IMMUTABLE
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",      # ARCHITECT M-T1 2026-05-22 — V-verdict V1-V5 + V_ALPHA priority tree + GARCH(1,1) hand-rolled MLE contract + JSON checkpoint schema + replay-cache namespace extension + strategy-side composition lock; PARALLEL to ADR-0033 § D3 (not extension); Q4=(b) operator default
 ]
 crates      = [
   "crates/forecast",        # NEW: vol.rs (trait+types) + garch.rs (GARCH fitter) + vol_verdict.rs bin; features.rs additive Parkinson target derivation; sharpe_comparison.rs additive `--scenario vol-target-bs1` dispatch
@@ -407,7 +408,7 @@ crates      = [
 ]
 tests       = []     # developer fills at M-D — garch_fit_determinism + vol_target_derivation + vol_verdict_mutual_exclusivity + tcn_byte_identity_after_vol_ship + patchtst_byte_identity_after_vol_ship + vol_targeting_overlay; tester augments at M-FINAL per R11 (12 verification gates)
 anchors     = []     # tester locks at M-FINAL — analyst-default Q5=(a) ships N_new=3 under v3.0.0-volatility: vol-verdict-bs1-realdata + top10-2023-fy-vol-target-overlay-realdata + sharpe-comparison-vol-target-bs1-realdata; under Q-anchors=(a) +1 = top10-2023-fy-vol-killswitch-overlay-realdata; 30 v2.5-chain anchors STAY BYTE-IDENTICAL per R10
-state       = "proposed"   # operator-decide resolved 2026-05-22 (Q1-Q6 + Q-anchors-sub + Q3-sub = analyst defaults via "Autoapprove all"); awaiting architect M-T1 + ADR-0038 V-verdict shape
+state       = "in-progress"   # ARCHITECT M-T1 closed 2026-05-22 — decomp.md + ADR-0038 landed; T-AR-1..T-AR-10 ticked; tasks.md flipped to owner=developer; Wave A-E T-D-N1..T-D-N28 rows queued; baseline anchor gate confirmed PASS (30/30); developer takes Wave A start
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"

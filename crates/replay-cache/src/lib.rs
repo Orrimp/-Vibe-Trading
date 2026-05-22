@@ -57,6 +57,59 @@ pub use error::ReplayCacheError;
 
 pub mod error;
 
+// ── CacheNamespace ────────────────────────────────────────────────────────────
+
+/// Typed namespace discriminators for the replay cache.
+///
+/// A single SQLite file may serve multiple namespaces; this enum provides
+/// type-safe namespace selection so callers don't pass raw string literals.
+///
+/// ## Additive extension (ADR-0038 § D4)
+///
+/// Existing namespaces:
+/// - `Forecast` — v2.5 TCN / PatchTST direction forecaster inference results.
+///   String value: `"forecast"` — **byte-identical** to all existing cache keys.
+///
+/// Added in v3.0.0-volatility:
+/// - `VolForecast` — GARCH(1,1) vol-forecast results per (symbol, timestamp,
+///   checkpoint_revision). String value: `"vol_forecast"`.
+///
+/// ## Why an enum?
+///
+/// Prevents namespace string drift across callers.  The ADR-0038 § D4 contract
+/// locks the string values; the enum makes the lock machine-checkable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CacheNamespace {
+    /// v2.5 TCN / PatchTST direction forecaster namespace.
+    ///
+    /// String value: `"forecast"`.
+    Forecast,
+    /// v3.0.0-volatility GARCH(1,1) vol-forecast namespace.
+    ///
+    /// String value: `"vol_forecast"`.
+    VolForecast,
+}
+
+impl CacheNamespace {
+    /// Return the canonical string key used in the SQLite `namespace` column.
+    ///
+    /// **Byte-stable:** once set, these strings must not change (they are
+    /// embedded in existing SQLite replay DBs).
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CacheNamespace::Forecast => "forecast",
+            CacheNamespace::VolForecast => "vol_forecast",
+        }
+    }
+}
+
+impl std::fmt::Display for CacheNamespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// `schema_version` ceiling asserted on [`ReplayCache::open_readonly`] and
 /// [`ReplayCache::open_readwrite`]. Bump to `2` when a column is added via
 /// a new migration.

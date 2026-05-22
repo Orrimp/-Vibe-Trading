@@ -40,21 +40,42 @@ use clap::Parser;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+// ── ScenarioFamily ────────────────────────────────────────────────────────────
+
+/// Which family of scenarios to compare.
+///
+/// `Tcn` (default) → existing 5-scenario TCN + PatchTST run (byte-identical).
+/// `VolTarget` → new v3.0.0-volatility: v1 momentum baseline + vol-targeting overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum ScenarioFamily {
+    /// TCN + PatchTST BS-1 (default; 5 scenarios).
+    Tcn,
+    /// GARCH vol-targeting overlay vs v1 momentum baseline (2 scenarios).
+    #[value(name = "vol-target-bs1")]
+    VolTarget,
+}
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
 #[command(
     name = "sharpe_comparison",
-    about = "M-SHARPE: Sharpe/Sortino/Calmar comparison table for the five -realdata scenarios",
-    long_about = "Re-runs the five -realdata backtest scenarios (four TCN + one PatchTST BS-1) into a tempdir,\n\
-                  computes hourly-annualised Sharpe/Sortino/Calmar/max-DD from\n\
-                  the equity curves, and emits a deterministic markdown report.\n\n\
-                  Read-only contract: the five anchored -realdata reports are never touched."
+    about = "M-SHARPE: Sharpe/Sortino/Calmar comparison report (TCN or vol-target family)",
+    long_about = "Runs one of two scenario families:\n\
+                  - tcn (default): five -realdata scenarios (4 TCN + 1 PatchTST BS-1).\n\
+                  - vol-target-bs1: v1 momentum baseline + GARCH vol-targeting overlay.\n\n\
+                  Read-only contract: anchored reports are never touched."
 )]
 struct Args {
+    /// Scenario family to compare.
+    #[arg(long, default_value = "tcn")]
+    scenario: ScenarioFamily,
+
     /// Output directory for the report.
-    #[arg(long, default_value = "spec/v25a-patchtst-overlay/reports/")]
-    out_dir: PathBuf,
+    /// Defaults: tcn → spec/v25a-patchtst-overlay/reports/,
+    ///           vol-target-bs1 → spec/v3-volatility-forecaster/reports/.
+    #[arg(long)]
+    out_dir: Option<PathBuf>,
 
     /// Backtest binary path (must be built with --features realdata,candle).
     #[arg(long, default_value = "target/release/backtest")]
@@ -855,6 +876,328 @@ mod render {
     }
 }
 
+// ── Vol-target render module ──────────────────────────────────────────────────
+
+/// Rendering for the `vol-target-bs1` scenario family (T-D-N27, ADR-0038 § D1.c).
+///
+/// Compares v1 momentum baseline vs GARCH vol-targeting overlay and
+/// emits a T-classifier verdict: T-VOL-ALPHA-UNLOCKED / MARGINAL / NO-ALPHA.
+mod render_vol_target {
+    use super::metrics;
+    use super::rerun::RerunResult;
+
+    /// T-classifier verdict per ADR-0038 § D1.c.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum TClassifier {
+        /// net_delta >= +0.10
+        AlphaUnlocked,
+        /// net_delta in [+0.05, +0.10)
+        Marginal,
+        /// net_delta < +0.05
+        NoAlpha,
+    }
+
+    impl TClassifier {
+        pub fn label(self) -> &'static str {
+            match self {
+                Self::AlphaUnlocked => "T-VOL-ALPHA-UNLOCKED",
+                Self::Marginal => "T-VOL-MARGINAL",
+                Self::NoAlpha => "T-VOL-NO-ALPHA",
+            }
+        }
+
+        pub fn classify(net_delta: f64) -> Self {
+            if net_delta >= 0.10 {
+                Self::AlphaUnlocked
+            } else if net_delta >= 0.05 {
+                Self::Marginal
+            } else {
+                Self::NoAlpha
+            }
+        }
+    }
+
+    /// Run-varying context for the frontmatter.
+    #[derive(Debug, Clone)]
+    pub struct ReportContext {
+        pub generated: String,
+        pub wall_clock_s: f64,
+        pub host: String,
+        pub git_commit: String,
+        pub data_revision_sha: String,
+    }
+
+    /// Render the vol-target comparison report body.
+    ///
+    /// `baseline` is `top10-2023-1h-momentum` (synthetic v1).
+    /// `overlay` is `top10-2023-fy-vol-target-overlay-realdata`.
+    pub fn render_report(
+        baseline: &RerunResult,
+        overlay: &RerunResult,
+        _ctx: &ReportContext,
+    ) -> String {
+        use std::fmt::Write as FmtWrite;
+        let mut body = String::with_capacity(4096);
+
+        let sharpe_baseline = metrics::compute_sharpe_hourly(&baseline.equity);
+        let sharpe_overlay = metrics::compute_sharpe_hourly(&overlay.equity);
+        let sortino_baseline = metrics::compute_sortino_hourly(&baseline.equity);
+        let sortino_overlay = metrics::compute_sortino_hourly(&overlay.equity);
+        let calmar_baseline = metrics::compute_calmar(&baseline.equity);
+        let calmar_overlay = metrics::compute_calmar(&overlay.equity);
+
+        let gross_delta = sharpe_overlay - sharpe_baseline;
+        // Net delta (same as gross for our simplified case — turnover cost not modelled).
+        let net_delta = gross_delta;
+        let verdict = TClassifier::classify(net_delta);
+
+        // ── Header ──────────────────────────────────────────────────────────────
+        writeln!(
+            &mut body,
+            "# Sharpe / drawdown comparison — v3.0.0-volatility GARCH vol-targeting overlay"
+        )
+        .unwrap();
+
+        // ── § Methodology ───────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Methodology\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Field             | Value                                          |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|-------------------|------------------------------------------------|"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Baseline scenario | top10-2023-1h-momentum (v1 cross-sectional momentum, synthetic) |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Overlay scenario  | top10-2023-fy-vol-target-overlay-realdata (GARCH BS-1 vol-targeting, real Binance data) |"
+        )
+        .unwrap();
+        writeln!(&mut body, "| Bar interval      | 1h |").unwrap();
+        writeln!(
+            &mut body,
+            "| Annualisation     | sqrt(24*365) = {:.6} (hourly -> annual) |",
+            metrics::SQRT_HOURS_PER_YEAR
+        )
+        .unwrap();
+        writeln!(&mut body, "| Risk-free rate    | 0.000000 (constant) |").unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(24*365) |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| T-classifier      | ADR-0038 D1.c: net_delta >= 0.10 -> T-VOL-ALPHA-UNLOCKED, [0.05,0.10) -> T-VOL-MARGINAL, <0.05 -> T-VOL-NO-ALPHA |"
+        )
+        .unwrap();
+
+        // ── § Comparison table ───────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Comparison table\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Scenario | Bars | Final equity | Total return | Max drawdown | Trades | Sharpe (ann) | Sortino (ann) | Calmar |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|----------|------|--------------|--------------|--------------|--------|--------------|---------------|--------|"
+        )
+        .unwrap();
+
+        for (r, sharpe, sortino, calmar) in [
+            (baseline, sharpe_baseline, sortino_baseline, calmar_baseline),
+            (overlay, sharpe_overlay, sortino_overlay, calmar_overlay),
+        ] {
+            writeln!(
+                &mut body,
+                "| {} | {} | ${:.2} | {:.2}% | {:.2}% | {} | {:.6} | {:.6} | {:.6} |",
+                r.name,
+                r.bars,
+                r.final_equity,
+                r.total_return * 100.0,
+                r.max_drawdown * 100.0,
+                r.trades,
+                sharpe,
+                sortino,
+                calmar,
+            )
+            .unwrap();
+        }
+
+        // ── § Verdict ────────────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Verdict\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Field               | Value                                          |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|---------------------|------------------------------------------------|"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe baseline     | {:.6} (top10-2023-1h-momentum) |",
+            sharpe_baseline
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe overlay      | {:.6} (top10-2023-fy-vol-target-overlay-realdata) |",
+            sharpe_overlay
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Gross Sharpe delta  | {:.6} (overlay - baseline) |",
+            gross_delta
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Net Sharpe delta    | {:.6} (gross delta, no turnover cost modelled) |",
+            net_delta
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| T-classifier        | {} |",
+            verdict.label()
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| V-verdict (joint)   | V3 (mean_calibration_ratio = 2.952191 outside [0.7, 1.4] — see vol-verdict-bs1-realdata report) |"
+        )
+        .unwrap();
+
+        // ── § Notes ──────────────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Notes\n").unwrap();
+        writeln!(
+            &mut body,
+            "- Baseline (top10-2023-1h-momentum) uses synthetic GBM bars; overlay uses real Binance 2023 data."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- V-verdict V3 fires because GARCH unconditioned-var overflow on AVAX/DOGE/DOT (non-convergence at 500 iters)."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- Follow-on: v3-garch-calibration-tune to improve GARCH fitting for non-convergent symbols."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- ASCII-only, LF-only line endings; floats %.6f (Sharpe/Sortino/Calmar) or %.2f%% (returns/drawdown); integer bar/trade counts."
+        )
+        .unwrap();
+
+        body
+    }
+
+    /// Render YAML frontmatter (excluded from body hash).
+    pub fn render_frontmatter(ctx: &ReportContext) -> String {
+        format!(
+            "---\n\
+             slug: v3-volatility-forecaster\n\
+             scenario: sharpe-comparison-vol-target-bs1-realdata\n\
+             generated: {}\n\
+             wall_clock_s: {:.1}\n\
+             host: {}\n\
+             git_commit: {}\n\
+             data_revision_sha: {}\n\
+             ---\n",
+            ctx.generated,
+            ctx.wall_clock_s,
+            ctx.host,
+            ctx.git_commit,
+            ctx.data_revision_sha,
+        )
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use rust_decimal_macros::dec;
+
+        fn make_result(name: &str, sharpe_up: bool) -> RerunResult {
+            let mut eq = vec![dec!(100_000)];
+            let factor = if sharpe_up { dec!(1.0012) } else { dec!(1.0005) };
+            for _ in 0..8760 {
+                let last = *eq.last().unwrap();
+                eq.push(last * factor);
+            }
+            let final_eq = *eq.last().unwrap();
+            RerunResult {
+                name: name.to_string(),
+                variant: "test".to_string(),
+                equity: eq,
+                bars: 8760,
+                trades: 1000,
+                final_equity: final_eq,
+                total_return: 0.1,
+                max_drawdown: 0.05,
+                dampen_rate: 0.0,
+            }
+        }
+
+        #[test]
+        fn t_classifier_thresholds() {
+            assert_eq!(TClassifier::classify(0.10), TClassifier::AlphaUnlocked);
+            assert_eq!(TClassifier::classify(0.15), TClassifier::AlphaUnlocked);
+            assert_eq!(TClassifier::classify(0.07), TClassifier::Marginal);
+            assert_eq!(TClassifier::classify(0.05), TClassifier::Marginal);
+            assert_eq!(TClassifier::classify(0.04), TClassifier::NoAlpha);
+            assert_eq!(TClassifier::classify(-0.5), TClassifier::NoAlpha);
+        }
+
+        #[test]
+        fn render_contains_required_sections() {
+            let baseline = make_result("top10-2023-1h-momentum", false);
+            let overlay = make_result("top10-2023-fy-vol-target-overlay-realdata", true);
+            let ctx = ReportContext {
+                generated: "2026-05-22T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+            let body = render_report(&baseline, &overlay, &ctx);
+            assert!(body.contains("## Methodology"), "missing Methodology");
+            assert!(body.contains("## Comparison table"), "missing Comparison table");
+            assert!(body.contains("## Verdict"), "missing Verdict");
+            assert!(body.contains("T-VOL-"), "missing T-classifier label");
+        }
+
+        #[test]
+        fn render_is_deterministic() {
+            let baseline = make_result("top10-2023-1h-momentum", false);
+            let overlay = make_result("top10-2023-fy-vol-target-overlay-realdata", true);
+            let ctx = ReportContext {
+                generated: "2026-05-22T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+            let b1 = render_report(&baseline, &overlay, &ctx);
+            let b2 = render_report(&baseline, &overlay, &ctx);
+            assert_eq!(b1, b2, "render_vol_target::render_report must be deterministic");
+        }
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn read_git_commit() -> String {
@@ -894,18 +1237,127 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
 
+    // Resolve out_dir based on scenario family.
+    let out_dir: PathBuf = args.out_dir.clone().unwrap_or_else(|| match args.scenario {
+        ScenarioFamily::VolTarget => {
+            PathBuf::from("spec/v3-volatility-forecaster/reports/")
+        }
+        ScenarioFamily::Tcn => PathBuf::from("spec/v25a-patchtst-overlay/reports/"),
+    });
+
     info!(
-        scenarios = ?rerun::SCENARIOS,
+        scenario_family = ?args.scenario,
         backtest_bin = %args.backtest_bin.display(),
+        out_dir = %out_dir.display(),
         skip_rerun = args.skip_rerun,
         "sharpe_comparison starting"
     );
 
     // Ensure out_dir exists.
-    std::fs::create_dir_all(&args.out_dir)
-        .with_context(|| format!("creating out_dir {:?}", args.out_dir))?;
+    std::fs::create_dir_all(&out_dir)
+        .with_context(|| format!("creating out_dir {:?}", out_dir))?;
 
     let t_start = std::time::Instant::now();
+
+    // Build shared time/host context (used in both dispatch arms).
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let generated = {
+        let dt = time::OffsetDateTime::from_unix_timestamp(now_secs as i64)
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+        dt.format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_else(|_| "unknown".to_string())
+    };
+    let host = std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_string()));
+    let today = {
+        let dt = time::OffsetDateTime::from_unix_timestamp(now_secs as i64)
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+        format!("{}{:02}{:02}", dt.year(), dt.month() as u8, dt.day())
+    };
+
+    // ── vol-target-bs1 dispatch ───────────────────────────────────────────────
+    if args.scenario == ScenarioFamily::VolTarget {
+        if args.skip_rerun {
+            anyhow::bail!("--skip-rerun is not implemented for vol-target-bs1.");
+        }
+        let tmpdir = tempfile::TempDir::new().context("creating tempdir")?;
+
+        // Re-run v1 momentum baseline (synthetic) and vol-target overlay (realdata).
+        let vol_target_scenarios = [
+            "top10-2023-1h-momentum",
+            "top10-2023-fy-vol-target-overlay-realdata",
+        ];
+
+        let mut vt_results: Vec<rerun::RerunResult> = Vec::with_capacity(2);
+        for &name in &vol_target_scenarios {
+            info!(scenario = name, "running vol-target scenario");
+            let result = rerun::rerun_scenario(name, &args.backtest_bin, tmpdir.path())
+                .with_context(|| format!("rerunning scenario {name}"))?;
+            info!(
+                scenario = name,
+                bars = result.bars,
+                trades = result.trades,
+                "scenario complete"
+            );
+            vt_results.push(result);
+        }
+
+        let wall_clock_s = t_start.elapsed().as_secs_f64();
+        let baseline = vt_results.remove(0);
+        let overlay = vt_results.remove(0);
+
+        let ctx = render_vol_target::ReportContext {
+            generated,
+            wall_clock_s,
+            host,
+            git_commit: read_git_commit(),
+            data_revision_sha: read_data_revision_sha(),
+        };
+
+        let body = render_vol_target::render_report(&baseline, &overlay, &ctx);
+        let frontmatter = render_vol_target::render_frontmatter(&ctx);
+        let full_report = format!("{frontmatter}{body}");
+
+        let filename = format!("sharpe-comparison-vol-target-bs1-realdata-{today}.md");
+        let out_path = out_dir.join(&filename);
+        std::fs::write(&out_path, full_report)
+            .with_context(|| format!("writing report to {:?}", out_path))?;
+
+        // Compute T-classifier for stdout banner.
+        let sharpe_baseline = metrics::compute_sharpe_hourly(&baseline.equity);
+        let sharpe_overlay = metrics::compute_sharpe_hourly(&overlay.equity);
+        let net_delta = sharpe_overlay - sharpe_baseline;
+        let verdict = render_vol_target::TClassifier::classify(net_delta);
+
+        info!(
+            path = %out_path.display(),
+            wall_clock_s = format!("{:.1}", wall_clock_s),
+            t_classifier = verdict.label(),
+            "vol-target report written"
+        );
+
+        println!(
+            "wrote {}; T-classifier = {}",
+            out_path.display(),
+            verdict.label()
+        );
+
+        return Ok(());
+    }
+
+    // ── TCN / PatchTST dispatch (default; byte-identical to prior runs) ────────
+    info!(
+        scenarios = ?rerun::SCENARIOS,
+        "starting TCN/PatchTST comparison"
+    );
 
     // Re-run scenarios (or skip).
     let results: [rerun::RerunResult; 5] = if args.skip_rerun {
@@ -941,25 +1393,6 @@ fn main() -> Result<()> {
         .map(|s| format!("spec/backtest-real-binance-data/reports/backtest-…-{s}.md"))
         .collect();
 
-    // Build report context.
-    let now_secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let generated = {
-        let dt = time::OffsetDateTime::from_unix_timestamp(now_secs as i64)
-            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
-        dt.format(&time::format_description::well_known::Rfc3339)
-            .unwrap_or_else(|_| "unknown".to_string())
-    };
-    let host = std::process::Command::new("hostname")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_string()));
-
     let ctx = render::ReportContext {
         generated,
         wall_clock_s,
@@ -974,13 +1407,8 @@ fn main() -> Result<()> {
     let full_report = format!("{frontmatter}{body}");
 
     // Write report.
-    let today = {
-        let dt = time::OffsetDateTime::from_unix_timestamp(now_secs as i64)
-            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
-        format!("{}{:02}{:02}", dt.year(), dt.month() as u8, dt.day())
-    };
     let filename = format!("sharpe-comparison-patchtst-bs1-realdata-{today}.md");
-    let out_path = args.out_dir.join(&filename);
+    let out_path = out_dir.join(&filename);
     std::fs::write(&out_path, full_report)
         .with_context(|| format!("writing report to {:?}", out_path))?;
 

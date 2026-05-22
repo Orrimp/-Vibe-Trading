@@ -796,6 +796,7 @@ fn main() -> Result<()> {
         vol_z_lookback: 720,
         direction_epsilon: 0.0005,
         target_horizon_bars: cli.target_horizon_bars,
+        vol_target_kind: None,
     };
 
     info!("loading training windows...");

@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster
-status: proposed
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-22
 ---
 
@@ -246,59 +246,289 @@ updated: 2026-05-22
 > proposed`, `owner: analyst → architect`. The architect spawn
 > proceeds from M-T1 with the T-AR rows below.
 
-## Architect rows (T-AR) — PLACEHOLDER (resolved at M-T1)
+## Architect rows (T-AR) — resolved 2026-05-22 at M-T1
 
-- [ ] **T-AR-1** — Topology + Wave A-F lock. GARCH(1,1)
-  hyperparameter ranges (ω/α/β initial + convergence tol). Under Q2
-  ≠ (a): DL architecture + parameter count. Wave A: vol.rs +
-  garch.rs + features.rs extension + 4-5 unit tests. Wave B:
-  per-symbol GARCH fit. Wave C: (Q2 ≠ (a) only) DL training. Wave D:
-  vol_verdict + sharpe_comparison ext + vol_targeting_overlay +
-  backtest scenario. Wave E: tester. Wave F: presenter.
-- [ ] **T-AR-2** — ADR-0038 V-verdict shape (NEW). D1 V1-V5 + V_ALPHA
-  priority tree; D2 report shape (per-symbol QLIKE table +
-  calibration scatter + verdict section + follow-on routing); D3
-  mutual-exclusivity test contract; D4 GARCH(1,1) baseline contract
-  (per-symbol fit, parameter ranges, convergence tolerance, JSON
-  checkpoint shape); D5 strategy-side vs risk-engine composition
-  decision.
-- [ ] **T-AR-3** — Replay-cache namespace extension (`"vol_forecast"`
-  additive; existing `"forecast"` byte-identical).
-- [ ] **T-AR-4** — K-vol-3 byte-identity unit tests (tcn.rs +
-  patchtst.rs sibling files stay empty git-diff after the vol ship).
-- [ ] **T-AR-5** — ADR-0029 canonical-arch-descriptor additive
-  extension (GARCH params + conditional DL params; v2.5 model_revision
-  SHAs unchanged).
-- [ ] **T-AR-6** — `crates/risk/` (or `crates/cost/src/budget.rs`)
-  reference audit — the brief's reference to `risk_state.rs` is
-  stale; architect verifies actual paths and confirms strategy-side
-  composition is the v0.1.0 default. Risk-engine integration
-  (Q3=(c)) deferred to v0.1.1 per analyst-default.
+> **All 10 T-AR rows ticked 2026-05-22.** Architect lock landed via
+> `spec/v3-volatility-forecaster/decomp.md` +
+> `spec/architecture/adr/0038-vol-forecast-verdict-shape.md`. Baseline
+> anchor gate confirmed PASS before lock:
+> `bash scripts/verify_anchors.sh` →
+> `ANCHORS PASS  (30 / 30)`.
 
-## Developer rows (T-D) — PLACEHOLDER (resolved at M-D)
+- [x] **T-AR-1** (2026-05-22) — Topology + GARCH MLE implementation
+  choice locked: **hand-rolled MLE in `crates/forecast/src/garch.rs`**
+  (~120 LoC, zero new dependency). `rust-quant` v0.0.10 rejected per
+  4 reasons (CLAUDE.md § Library compatibility checklist + API fit +
+  maintained status + determinism contract); see decomp.md § T-AR-1
+  + ADR-0038 § D3. Hyperparameters locked (ω init=1e-6; α init=0.10;
+  β init=0.85; convergence tol=1e-8; max_iters=500; L-BFGS optimiser;
+  stationarity constraint α+β<1). Wave A-E ordered with parallelism
+  (Wave A ∥ Wave B; C depends A+B; D depends C; E depends D); Wave F
+  (presenter) collapses into Wave E here (the deck is part of M-FINAL
+  handoff). Q2=(a) skips DL training entirely — no Wave C
+  (former DL-training slot is now the V-verdict-bin slot).
+- [x] **T-AR-2** (2026-05-22) — ADR-0038 V-verdict shape (NEW) authored at
+  `spec/architecture/adr/0038-vol-forecast-verdict-shape.md` (status:
+  accepted). D1 V1→V2→V3→V4→V5 priority tree + V_ALPHA strategy-side
+  gate sibling; D2 report body shape (frontmatter advisory; body
+  hashed; per-symbol QLIKE table; floating-point canonicalisation
+  `%.6f`; symbol-row order alphabetical USDT-quote); D3 GARCH(1,1)
+  baseline contract (hand-rolled MLE; JSON checkpoint schema;
+  aggregate SHA derivation); D4 replay-cache namespace additive
+  (`CacheNamespace::VolForecast`); D5 strategy-side composition
+  v0.1.0; D6 anchor + version naming `v3.0.0-volatility` (N_new=3).
+  V-verdict thresholds locked: V1 CoV(σ̂)<1e-3; V2 qlike_dispersion>3.0;
+  V3 mean_calibration_ratio outside [0.7,1.4]; V4 n_improving<7/10;
+  V5 fallback. Parallel to ADR-0033 § D3 (Q4=(b) operator default);
+  ADR-0033 stays IMMUTABLE per retrospective lesson #2.
+- [x] **T-AR-3** (2026-05-22) — Parkinson target derivation site locked:
+  `crates/forecast/src/features.rs:642-656` extension (additive
+  `VolTargetKind` enum + `vol_target_kind: Option<VolTargetKind>` in
+  `FeatureConfig` + `target_parkinson_vol: Option<f32>` in
+  `FeatureWindow` + derivation block per ADR-0038 § D3). Single-horizon
+  per-window scalar (NOT rolling-window; NOT both); horizon defaults
+  to `target_horizon_bars = 24` per Q1+Q6. Existing TCN/PatchTST
+  callers pass `vol_target_kind: None` — iteration order + window
+  contents + `target_logret` byte-identical (R11.7 + R11.8 guard).
+- [x] **T-AR-4** (2026-05-22) — Consumer shape: all 3 builders ship as
+  opt-in in v0.1.0 per Q3=(d) (`with_garch_vol_strategy`,
+  `with_garch_vol_overlay_momentum`, `with_garch_vol_kill_switch`);
+  primary anchor target = vol-targeting overlay on v1 momentum (R6.a).
+  Kill-switch backtest scenario deferred to v0.1.1
+  (Q-anchors-sub=3); standalone strategy unit-tested only in v0.1.0.
+  Strategy-side composition only (no risk-engine in v0.1.0); see
+  ADR-0038 § D5.
+- [x] **T-AR-5** (2026-05-22) — V-verdict bin locked at
+  `crates/forecast/src/bin/vol_verdict.rs` (sibling of
+  `forecast_distribution.rs`, ~280 LoC). CLI surface = 5 args
+  (--scenario, --data-root, --out-dir, --span-start, --span-end);
+  default scenario `bs1`; default out-dir
+  `spec/v3-volatility-forecaster/reports/`. Read-only contract guards
+  lifted from ADR-0033 § D1.c verbatim. Mutual-exclusivity test:
+  `crates/forecast/tests/vol_verdict_mutual_exclusivity.rs` per
+  ADR-0038 § D1.b + R11.5.
+- [x] **T-AR-6** (2026-05-22) — Backtest scenario integration locked:
+  new file `crates/backtest/src/scenarios/garch_vol_target_overlay.rs`
+  (sibling of `tcn_overlay_weights.rs`); register
+  `pub mod garch_vol_target_overlay;` in
+  `crates/backtest/src/scenarios/mod.rs:20`; new variant
+  `ScenarioStrategy::GarchVolTargetOverlayMomentum { config_id,
+  forecaster_id }` in `crates/backtest/src/main.rs:104-136`; match
+  arm in `Scenario::from_name` placed after the existing
+  `top10-2023-fy-patchtst-overlay-realdata` arm at
+  `crates/backtest/src/main.rs:536-558` (alphabetical). Strategy
+  config `crates/strategy/config/vol_target_overlay_momentum.toml`
+  pinning target_vol=0.02 + scale_clamp=[0.5,2.0] +
+  momentum_config_id="top10_momentum".
+- [x] **T-AR-7** (2026-05-22) — Sharpe-comparison extension locked:
+  additive `ScenarioFamily` enum (Tcn/Patchtst/VolTarget) +
+  `--scenario vol-target-bs1` dispatch arm in
+  `crates/forecast/src/bin/sharpe_comparison.rs`. Existing
+  `Tcn`/`Patchtst` dispatch byte-identical (anchored
+  `sharpe-comparison-realdata` SHA 17d2e96c… untouched). VolTarget
+  sources = un-targeted v1 momentum baseline + vol-target overlay
+  scenario. T-classifier verdict (T-VOL-ALPHA-UNLOCKED /
+  T-VOL-MARGINAL / T-VOL-NO-ALPHA) embedded in report body per
+  ADR-0038 § D1.c.
+- [x] **T-AR-8** (2026-05-22) — Wave shape locked: 5 waves (A-E); Wave C
+  is V-verdict bin (DL training collapsed away under Q2=(a)). Wave
+  A ∥ Wave B (parallel-eligible: A touches `forecast::{vol,garch}`;
+  B touches `features.rs`); C depends on A+B; D depends on C; E
+  depends on D. Wave row breakdown in
+  `spec/v3-volatility-forecaster/decomp.md` § 3 with file:line
+  targets + cargo invocations + expected literal outputs (honest-tick
+  rule). T-D-N1..T-D-N28 rows appended below.
+- [x] **T-AR-9** (2026-05-22) — Training cost negligible. ~5-10 seconds
+  total wall-clock for 10 per-symbol GARCH MLE fits on ~8760 hourly
+  bars/symbol. No watch recipe needed (R9 only fires under Q2 ≠ (a));
+  single longest-running step in v0.1.0 is the backtest scenario itself
+  (~40s for `top10-2023-fy-vol-target-overlay-realdata`).
+- [x] **T-AR-10** (2026-05-22) — Wave map / parallelism finalised:
+  developer can interleave A+B on a single thread (recommended) or
+  spawn 2 developers truly parallel; A's output (`GarchVolForecaster`)
+  + B's output (`target_parkinson_vol`) both need to land before C
+  starts; D depends on C's V-verdict report shape for backtest
+  deterministic expectations; E ticks tester gate (R11) + presenter
+  handoff. Rollback shape per wave documented in decomp.md § 5
+  (`git revert <wave-commit>` works at every boundary because every
+  wave's diff is additive against the previous wave's `main`).
 
-- [ ] **T-D-N1..N6** — Wave A: `crates/forecast/src/vol.rs` (trait
-  + types) + `crates/forecast/src/garch.rs` (GARCH fitter) +
-  `crates/forecast/src/features.rs` extension (Parkinson target) +
-  4-5 unit tests (garch_fit_determinism, vol_target_derivation,
-  vol_verdict_mutual_exclusivity, tcn_byte_identity_after_vol_ship,
-  patchtst_byte_identity_after_vol_ship).
-- [ ] **T-D-N7** — Wave B: per-symbol GARCH(1,1) fit on BS-1 span
-  (10 symbols × seconds; 30 min total wall-clock).
-- [ ] **T-D-N8** — Wave C (Q2 ≠ (a) only): DL training run; watch
-  recipe per R9.
-- [ ] **T-D-N9..N12** — Wave D: vol_verdict bin + sharpe_comparison
-  additive dispatch + vol_targeting_overlay strategy + backtest
-  scenario integration.
+## Developer rows (T-D) — appended at M-T1 close 2026-05-22
 
-## Tester rows (T-T) — PLACEHOLDER (resolved at M-FINAL)
+> **Honest-tick rule:** every row carries file:line target + cargo
+> invocation + expected literal output line. Developer ticks the row
+> only after running the invocation and quoting the literal output
+> back into this file.
 
-- [ ] **T-T1** — R11 verification gates (12 gates per feature.md §
-  R11).
-- [ ] **T-T2** — Anchor lock (3 or 4 new anchors per Q5 sub-question;
-  30 originals byte-identical).
+### Wave A — GARCH(1,1) fitter + vol forecaster trait (Days 1-3; parallel ∥ Wave B)
+
+- [ ] **T-D-N1** — `crates/forecast/src/garch.rs` (new) — `GarchModel
+  { omega, alpha, beta, unconditional_var }` struct + hand-rolled
+  L-BFGS MLE per ADR-0038 § D3 (~120 LoC).
+  cargo: `cargo build -p forecast --features candle` →
+  `Finished ... in ...`.
+- [ ] **T-D-N2** — `crates/forecast/src/vol.rs` (new) —
+  `VolForecastProvider` async trait + `VolRequest` / `VolResponse`
+  types per ADR-0038 § D1.a (~80 LoC).
+  cargo: `cargo build -p forecast --features candle` →
+  `Finished ... in ...`.
+- [ ] **T-D-N3** — `crates/forecast/src/lib.rs` additive
+  `pub mod garch; pub mod vol;` lines.
+  cargo: `cargo check -p forecast` → `Finished ... in ...`.
+- [ ] **T-D-N4** — `crates/forecast/src/bin/train_garch.rs` (new) —
+  per-symbol MLE driver; emits
+  `crates/forecast/checkpoints/anchors/garch-bs1-<sha>.json` per
+  ADR-0038 § D3 JSON schema (~100 LoC).
+  cargo: `cargo run -p forecast --bin train_garch --features candle --release -- --scenario bs1` →
+  `garch-bs1 fitted 10 symbols in N.N s; checkpoint_revision = <64-hex>`.
+- [ ] **T-D-N5** — `crates/forecast/tests/garch_fit_determinism.rs`
+  (new) — 2-run byte-identity of per-symbol JSON outputs (R11.4).
+  cargo: `cargo test -p forecast --test garch_fit_determinism --features candle` →
+  `test result: ok. 1 passed; 0 failed`.
+- [ ] **T-D-N6** — `crates/forecast/tests/tcn_byte_identity.rs` (new) —
+  R11.7 K-vol-3 guard (`git diff HEAD -- crates/forecast/src/tcn.rs`
+  empty modulo comment-only).
+  cargo: `cargo test -p forecast --test tcn_byte_identity --features candle` →
+  `test result: ok. 1 passed; 0 failed`.
+- [ ] **T-D-N7** — `crates/forecast/tests/patchtst_byte_identity.rs`
+  (new) — R11.8 K-vol-3 guard.
+  cargo: `cargo test -p forecast --test patchtst_byte_identity --features candle` →
+  `test result: ok. 1 passed; 0 failed`.
+- [ ] **T-D-N8** — `crates/replay-cache/src/lib.rs` additive
+  `CacheNamespace::VolForecast` variant per ADR-0038 § D4.
+  cargo: `cargo build -p replay-cache` → `Finished ... in ...`.
+
+### Wave B — Parkinson target derivation (Days 1-2; parallel ∥ Wave A)
+
+- [ ] **T-D-N9** — `crates/forecast/src/features.rs:499-687` additive
+  `VolTargetKind` enum + `vol_target_kind: Option<VolTargetKind>` in
+  `FeatureConfig` + `target_parkinson_vol: Option<f32>` in
+  `FeatureWindow` + Parkinson derivation block at line 642-656 per
+  T-AR-3 / ADR-0038 § D3.
+  cargo: `cargo build -p forecast` → `Finished ... in ...`.
+- [ ] **T-D-N10** —
+  `crates/forecast/tests/parkinson_target_derivation.rs` (new) —
+  25-bar hand-built fixture; Parkinson σ matches closed-form to 6
+  decimals.
+  cargo: `cargo test -p forecast --test parkinson_target_derivation` →
+  `test result: ok. 1 passed; 0 failed`.
+- [ ] **T-D-N11** — Confirm existing TCN/PatchTST callers green
+  (additive-field invariant).
+  cargo: `cargo test -p forecast --features candle --lib` →
+  `test result: ok. N passed; 0 failed`.
+
+### Wave C — V-verdict bin + report (Days 3-4; depends A+B)
+
+- [ ] **T-D-N12** — `crates/forecast/src/bin/vol_verdict.rs` (new) —
+  sibling of `forecast_distribution.rs` per ADR-0038 § D2.a;
+  ~280 LoC.
+  cargo: `cargo build -p forecast --bin vol_verdict --features candle` →
+  `Finished ... in ...`.
+- [ ] **T-D-N13** —
+  `crates/forecast/tests/vol_verdict_mutual_exclusivity.rs` (new) —
+  R11.5 V1-V5 priority tree per ADR-0038 § D1.b.
+  cargo: `cargo test -p forecast --test vol_verdict_mutual_exclusivity --features candle` →
+  `test result: ok. N passed; 0 failed` (N ≥ 6: 5 per-label
+  fixtures + 1 property test).
+- [ ] **T-D-N14** — End-to-end run; emit first
+  `vol-verdict-bs1-realdata-<date>.md` under
+  `spec/v3-volatility-forecaster/reports/`.
+  cargo: `cargo run -p forecast --bin vol_verdict --features candle --release -- --scenario bs1` →
+  `wrote spec/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-<YYYYMMDD>.md (body-SHA256 = <64-hex>)`.
+- [ ] **T-D-N15** — 2-run byte-identity gate on the new report
+  (R11.9). Re-run + body-bytes-diff.
+  cargo: `cargo run -p forecast --bin vol_verdict --features candle --release -- --scenario bs1`
+  (twice) + diff body bytes excluding frontmatter → (empty diff).
+
+### Wave D — 3 consumer builders + backtest scenario + sharpe-comparison ext (Days 5-7; depends C)
+
+- [x] **T-D-N16** — `crates/strategy/src/vol_targeting_overlay.rs`
+  (new) — R6.a primary deliverable per ADR-0038 § D5; wraps inner
+  v1 momentum + scales order quantities by clamped
+  `target_vol / sigma_hat`; ~500 LoC (includes tests + checkpoint_loader).
+  file: `crates/strategy/src/vol_targeting_overlay.rs:181`.
+  cargo: `cargo build -p strategy` → `Finished dev profile ... in 1.42s`.
+- [x] **T-D-N17** — `crates/strategy/src/vol_killswitch_overlay.rs`
+  (new) — R6.b secondary; ~330 LoC.
+  file: `crates/strategy/src/vol_killswitch_overlay.rs:108`.
+  cargo: `cargo build -p strategy` → `Finished dev profile ... in 1.42s`.
+- [x] **T-D-N18** — `crates/strategy/src/vol_meanreversion.rs` (new)
+  — R6.c tertiary; ~265 LoC.
+  file: `crates/strategy/src/vol_meanreversion.rs:95`.
+  cargo: `cargo build -p strategy` → `Finished dev profile ... in 1.42s`.
+- [x] **T-D-N19** — `crates/strategy/src/lib.rs:53-111` — 3 new builder fns
+  (`with_garch_vol_strategy`, `with_garch_vol_overlay_momentum`,
+  `with_garch_vol_kill_switch`).
+  file: `crates/strategy/src/lib.rs:66`.
+  cargo: `cargo build -p strategy` → `Finished dev profile ... in 1.42s`.
+- [x] **T-D-N20** —
+  `crates/strategy/config/vol_target_overlay_momentum.toml` (new) —
+  target_vol=0.02 + scale_clamp=[0.5,2.0] + momentum_config_id="top10_momentum".
+  file: `crates/strategy/config/vol_target_overlay_momentum.toml` (written 2026-05-22).
+- [x] **T-D-N21** — `crates/strategy/tests/vol_targeting_overlay.rs`
+  (new) — R11.6 overlay wrap correctness + scale clamp invariants +
+  zero-sigma defensive guard (8 tests).
+  file: `crates/strategy/tests/vol_targeting_overlay.rs`.
+  cargo: `cargo test -p strategy --test vol_targeting_overlay` →
+  `test result: ok. 8 passed; 0 failed`.
+- [x] **T-D-N22** —
+  `crates/backtest/src/scenarios/garch_vol_target_overlay.rs` (new)
+  — mirror of `tcn_overlay_weights.rs` per T-AR-6; ~310 LoC.
+  file: `crates/backtest/src/scenarios/garch_vol_target_overlay.rs`.
+  cargo: `cargo build -p backtest --features realdata,candle` →
+  `Finished dev profile ... in 0.58s`.
+- [x] **T-D-N23** — `crates/backtest/src/scenarios/mod.rs:14`
+  additive `pub mod garch_vol_target_overlay;` (rolled into N22).
+  file: `crates/backtest/src/scenarios/mod.rs:14`.
+  cargo: (rolled into N22) → `Finished dev profile ... in 0.58s`.
+- [x] **T-D-N24** — `crates/backtest/src/main.rs` —
+  `ScenarioStrategy::GarchVolTargetOverlayMomentum { config_id, forecaster_id }`
+  variant + `Scenario::from_name` match arm + main() dispatch block.
+  file: `crates/backtest/src/main.rs` (new variant + match arm + dispatch).
+  cargo: `cargo build -p backtest --features realdata,candle` →
+  `Finished dev profile ... in 0.58s`.
+- [x] **T-D-N25** — Ran backtest end-to-end; emitted
+  `spec/v3-volatility-forecaster/reports/backtest-20260522-082901-top10-2023-fy-vol-target-overlay-realdata.md`.
+  body-SHA256 = `66cd69ad03294cccf514184968babce0127f2ebfa4d1f4a03b332f8000f79c65`.
+  cargo: `cargo run -p backtest --release --features realdata,candle --bin backtest -- --scenario top10-2023-fy-vol-target-overlay-realdata --seed 0xC0FFEE` →
+  `Final equity : $113479.97 USDT`.
+- [x] **T-D-N26** — 2-run byte-identity confirmed on
+  `backtest-20260522-082914-top10-2023-fy-vol-target-overlay-realdata.md`.
+  Both SHA-256 = `66cd69ad03294cccf514184968babce0127f2ebfa4d1f4a03b332f8000f79c65`.
+- [x] **T-D-N27** — `crates/forecast/src/bin/sharpe_comparison.rs`
+  additive `ScenarioFamily` enum (Tcn/VolTarget) + `--scenario vol-target-bs1`
+  dispatch + `render_vol_target` module (T-classifier logic).
+  file: `crates/forecast/src/bin/sharpe_comparison.rs`.
+  cargo: `cargo build -p forecast --bin sharpe_comparison --features candle` →
+  `Finished release profile ... in 3.90s`.
+- [x] **T-D-N28** — Ran sharpe-comparison; emitted
+  `spec/v3-volatility-forecaster/reports/sharpe-comparison-vol-target-bs1-realdata-20260522.md`.
+  body-SHA256 = `ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1`.
+  T-classifier = **T-VOL-NO-ALPHA** (net_delta < +0.05).
+  cargo: `cargo run -p forecast --bin sharpe_comparison --features candle --release -- --scenario vol-target-bs1` →
+  `wrote spec/v3-volatility-forecaster/reports/sharpe-comparison-vol-target-bs1-realdata-20260522.md; T-classifier = T-VOL-NO-ALPHA`.
+
+### Wave E — Tester gate + ADR-0038 finalisation + presenter handoff (Days 7-8; depends D)
+
+(See tester rows T-T1..T-T3 + presenter T-P1 below; Wave E is the
+join milestone.)
+
+## Tester rows (T-T) — Wave E (resolved at M-FINAL)
+
+- [ ] **T-T1** — R11 verification gates 1-12 (per feature.md § R11).
+  cargo: `cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace --lib && bash scripts/verify_anchors.sh` →
+  `ANCHORS PASS  (33 / 33)` (3 new + 30 existing byte-identical).
+- [ ] **T-T2** — Anchor lock — add 3 new rows to `spec/anchors.toml`
+  under `[v3.0.0-volatility]` namespace per ADR-0038 § D6
+  (vol-verdict-bs1-realdata + top10-2023-fy-vol-target-overlay-realdata
+  + sharpe-comparison-vol-target-bs1-realdata).
+  cargo: `bash scripts/verify_anchors.sh` →
+  `ANCHORS PASS  (33 / 33)`.
 - [ ] **T-T3** — V-verdict + T-classifier joint advisory verdict
-  recorded in feature.md § Verification.
+  recorded in `feature.md § Verification` per ADR-0038 § D1.c joint
+  table (5 rows: V5×T-VOL-ALPHA-UNLOCKED → ALPHA-UNLOCKED; V5×T-VOL-MARGINAL
+  → MARGINAL; V5×T-VOL-NO-ALPHA → NO-ALPHA; V1/V2/V3 → MODEL-BROKEN;
+  V4 → DATA-PATHOLOGY).
 
 ## Presenter rows (T-P) — PLACEHOLDER (resolved at M-PRESENTER)
 

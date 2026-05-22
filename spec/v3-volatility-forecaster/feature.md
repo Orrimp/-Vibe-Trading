@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster
-status: proposed
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-22
 version: 0.1.0
 parent: (none — new strategy lane; first ship in post-v2.5 reformulation)
@@ -1082,6 +1082,86 @@ refinement as a follow-on if v0.1.0 finishes T-VOL-MARGINAL.
   - `spec/v3-regime-classifier/feature.md` (C2)
   - `spec/v3-llm-overlay/feature.md` (C5)
 
+## Design (architect M-T1 — 2026-05-22)
+
+> **M-T1 architect lock closed 2026-05-22.** Full decomposition lives
+> at [`spec/v3-volatility-forecaster/decomp.md`](decomp.md); ADR-0038
+> codifies the V-verdict shape + GARCH(1,1) baseline contract at
+> [`spec/architecture/adr/0038-vol-forecast-verdict-shape.md`](../architecture/adr/0038-vol-forecast-verdict-shape.md).
+> The section below summarises the architect-decide resolutions; the
+> primary sources are decomp.md + ADR-0038.
+
+### Baseline anchor gate (pre-feature)
+
+`bash scripts/verify_anchors.sh` reports `ANCHORS PASS  (30 / 30)`
+on 2026-05-22 (quoted literal output line from the architect's run).
+The 30 SHAs stay byte-identical through this ship; N_new=3 added at
+M-FINAL per Q5=(a) + Q-anchors-sub=3.
+
+### Architect-decide resolutions (T-AR-1..T-AR-10)
+
+| # | Decision | Source |
+|---|----------|--------|
+| T-AR-1 | **Hand-rolled GARCH(1,1) MLE** in `crates/forecast/src/garch.rs` (~120 LoC, zero new dep); `rust-quant` v0.0.10 rejected per 4 reasons (no-new-dep + API fit + maintained status + determinism contract) | ADR-0038 § D3; decomp.md § T-AR-1 |
+| T-AR-2 | **ADR-0038 NEW** — V1→V2→V3→V4→V5 + V_ALPHA priority tree; parallel to ADR-0033 § D3 (not extension); ADR-0033 stays IMMUTABLE | ADR-0038 § D1 |
+| T-AR-3 | **Parkinson target derivation** extends `features.rs:642-656` additively; `VolTargetKind` enum + Optional fields; existing TCN/PatchTST callers byte-identical | decomp.md § T-AR-3 |
+| T-AR-4 | **All 3 consumer builders** ship in v0.1.0 per Q3=(d) (`with_garch_vol_strategy` / `with_garch_vol_overlay_momentum` / `with_garch_vol_kill_switch`); primary anchor target = R6.a vol-targeting overlay; kill-switch backtest scenario deferred to v0.1.1 | decomp.md § T-AR-4; ADR-0038 § D5 |
+| T-AR-5 | **V-verdict bin** at `crates/forecast/src/bin/vol_verdict.rs` (sibling of `forecast_distribution.rs`, ~280 LoC) | decomp.md § T-AR-5; ADR-0038 § D2.a |
+| T-AR-6 | **Backtest scenario** `top10-2023-fy-vol-target-overlay-realdata` lands via new scenarios/garch_vol_target_overlay.rs + additive `ScenarioStrategy::GarchVolTargetOverlayMomentum` variant | decomp.md § T-AR-6 |
+| T-AR-7 | **Sharpe-comparison extension** — additive `ScenarioFamily` enum + `--scenario vol-target-bs1` dispatch arm; existing TCN/PatchTST dispatch byte-identical | decomp.md § T-AR-7; ADR-0038 § D2.b |
+| T-AR-8 | **5-wave shape**: A ∥ B (parallel-eligible) → C (V-verdict bin) → D (3 builders + scenario + sharpe-ext) → E (tester + presenter). Wave C was former DL-training slot; Q2=(a) GARCH-only drops the slot. | decomp.md § 3 |
+| T-AR-9 | **Training cost negligible** (~5-10s wall-clock total for 10 per-symbol GARCH fits). No watch recipe needed (R9 moot under Q2=(a)) | decomp.md § T-AR-9 |
+| T-AR-10 | **Wave map + parallelism + rollback shape per wave** documented in decomp.md § 5 (every wave's diff is additive against the previous wave's main) | decomp.md § 5 |
+
+### Risk-engine integration (K-vol-2 lock)
+
+ADR-0038 § D5 locks **strategy-side composition only for v0.1.0**.
+Risk-engine integration deferred to v0.1.1 (`crates/cost/src/risk_state.rs`
+does NOT exist on disk — closest is `crates/cost/src/budget.rs`;
+analyst brief reference was stale). The Q3=(d) kill-switch builder
+still ships in v0.1.0 — but as a `Strategy` wrapper
+(`VolKillSwitchOverlay<S>`), not a risk-engine hook. The kill-switch
+fires inside `on_bar()`, not inside the cost-crate event loop. This
+keeps the v0.1.0 ship anchor-additive against `crates/cost/`
+(zero modification).
+
+### Replay-cache namespace (D4)
+
+`CacheNamespace::VolForecast` variant lands additively in
+`crates/replay-cache/src/lib.rs`. Existing `"forecast"` namespace
+byte-identical (v2.5 TCN / v2.5a PatchTST cache entries unchanged).
+
+### Anchor naming (Q5=(a) + Q-anchors-sub=3)
+
+3 new anchors under version `v3.0.0-volatility`:
+
+1. `vol-verdict-bs1-realdata` (M-V-VERDICT)
+2. `top10-2023-fy-vol-target-overlay-realdata` (M-SHARPE primary)
+3. `sharpe-comparison-vol-target-bs1-realdata` (M-SHARPE comparison)
+
+Kill-switch backtest scenario ships without an anchor in v0.1.0;
+added in v0.1.1 if byte-deterministic.
+
+### Joint advisory verdict (V × T) — recorded at M-FINAL
+
+| V-verdict | T-classifier | Joint advisory verdict | Operator routing |
+|-----------|--------------|------------------------|------------------|
+| V5 | T-VOL-ALPHA-UNLOCKED | **ALPHA-UNLOCKED** | Ship; promote C2 + C5. |
+| V5 | T-VOL-MARGINAL | **MARGINAL** | Spawn `v3-vol-target-tuning`. |
+| V5 | T-VOL-NO-ALPHA | **NO-ALPHA** | Analyst spawn for C1 retirement; route budget to C2. |
+| V1/V2/V3 | (any) | **MODEL-BROKEN** | Follow V-verdict's `follow_on`. |
+| V4 | (any) | **DATA-PATHOLOGY** | Spawn `v3-data-vol-investigation`; foreclose on H1/H2 jointly. |
+
+(Source: ADR-0038 § D1.c.)
+
+### HANDOFF status
+
+- **M-T1 closed 2026-05-22.** Architect lock complete.
+- **HANDOFF → developer** for Wave A start. See
+  [`tasks.md`](tasks.md) T-D-N1..T-D-N28 for the ordered T-D row
+  breakdown with file:line + cargo + literal-output honest-tick
+  contract.
+
 ## Changelog
 
 - 2026-05-22 (analyst): authored v0.1.0 brief — R1-R12 / H1-H4 /
@@ -1095,3 +1175,27 @@ refinement as a follow-on if v0.1.0 finishes T-VOL-MARGINAL.
   Why + cost estimate. Trace row `REQ-V3-VOL-FORECASTER-001` opened
   `draft`; backlog Active entry added. HANDOFF → operator-decide
   (Q1-Q6) → architect for M-T1 / ADR-0038.
+- 2026-05-22 (operator): autoapprove-all on Q1-Q6 + Q-anchors-sub
+  + Q3-sub. Bundle locked: Q1=(b) Parkinson + Q2=(a) GARCH-only-MVP
+  + Q3=(d) all-3-builders + Q4=(b) ADR-0038 NEW + Q5=(a)
+  v3.0.0-volatility + Q6=(a) BS-1 train + BS-2 val + Q-anchors-sub=3
+  + Q3-sub clamp [0.5,2.0] / target_vol=0.02 / kill-switch-mult=3.0.
+  HANDOFF → architect for M-T1.
+- 2026-05-22 (architect): M-T1 closed.
+  [`decomp.md`](decomp.md) authored (T-AR-1..T-AR-10 resolved with
+  file:line citations + Wave A-E ordered + rollback shape per wave
+  + NO spike required).
+  [`ADR-0038`](../architecture/adr/0038-vol-forecast-verdict-shape.md)
+  authored (V-verdict V1-V5 + V_ALPHA priority tree; hand-rolled
+  GARCH(1,1) MLE contract; JSON checkpoint schema; replay-cache
+  namespace extension; strategy-side composition lock; anchor
+  naming under v3.0.0-volatility N_new=3). PARALLEL to ADR-0033
+  § D3, NOT extension (Q4=(b) operator default; retrospective
+  lesson #2 honored). Frontmatter `status: proposed → in-progress`,
+  `owner: architect → developer`. tasks.md T-AR-1..T-AR-10 ticked;
+  T-D-N1..T-D-N28 Wave A-E rows queued. Trace row state flipped
+  `proposed → in-progress`; ADR-0038 + decomp.md added to `arch`
+  column. ADR-0038 registered in
+  [`spec/architecture/adr/README.md`](../architecture/adr/README.md)
+  registry table. Baseline anchor gate confirmed PASS pre-handoff:
+  `ANCHORS PASS  (30 / 30)`. HANDOFF → developer for Wave A start.

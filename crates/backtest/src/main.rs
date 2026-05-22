@@ -133,6 +133,16 @@ enum ScenarioStrategy {
         config_id: String,
         forecaster_id: String,
     },
+    /// v3.0.0-volatility GARCH vol-targeting overlay on v1 momentum (R6.a primary).
+    ///
+    /// Requires `--features realdata` for real-data bar loading.
+    /// Does NOT require `--features candle` — GARCH params are loaded from a
+    /// plain JSON checkpoint.
+    #[cfg_attr(not(feature = "realdata"), allow(dead_code))]
+    GarchVolTargetOverlayMomentum {
+        config_id: String,
+        forecaster_id: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -556,6 +566,30 @@ impl Scenario {
                     "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
                 ),
             }),
+            // v3.0.0-volatility: GARCH vol-targeting overlay on v1 momentum (R6.a primary).
+            // Full 2023: 365 days × 24 h = 8760 hourly bars per symbol × 10 symbols.
+            "top10-2023-fy-vol-target-overlay-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2023,
+                bar_count: 8760,
+                strategy: ScenarioStrategy::GarchVolTargetOverlayMomentum {
+                    config_id: "vol_target_overlay_momentum".to_string(),
+                    forecaster_id: "garch-bs1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                // Same dataset as the TCN realdata scenarios — pinned 2026-05-18.
+                expected_revision_sha: Some(
+                    "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
+                ),
+            }),
             other => anyhow::bail!("unknown scenario: {other}"),
         }
     }
@@ -689,6 +723,7 @@ async fn main() -> Result<()> {
         ScenarioStrategy::TcnOverlayMomentum { .. }
             | ScenarioStrategy::TcnOverlayMomentumWeights { .. }
             | ScenarioStrategy::PatchtstOverlayMomentumWeights { .. }
+            | ScenarioStrategy::GarchVolTargetOverlayMomentum { .. }
     );
 
     // Pre-loaded real bars for TCN realdata path (ADR-0032 § 3).
@@ -723,10 +758,18 @@ async fn main() -> Result<()> {
             ScenarioStrategy::PatchtstOverlayMomentumWeights { .. }
         );
 
+        // Detect GARCH vol-target overlay.
+        let is_garch_vol_target = matches!(
+            &scenario.strategy,
+            ScenarioStrategy::GarchVolTargetOverlayMomentum { .. }
+        );
+
         // Branch on data source axis (ADR-0032 § 3).
         match scenario.data_source {
             ScenarioDataSource::Synthetic => {
-                let src = if is_patchtst_overlay {
+                let src = if is_garch_vol_target {
+                    "synthetic (seeded RNG, v3.0.0 garch-vol-target-overlay)"
+                } else if is_patchtst_overlay {
                     "synthetic (seeded RNG, v2.5a patchtst-overlay-weights)"
                 } else if is_weights {
                     "synthetic (seeded RNG, v2.5 tcn-overlay-weights)"
@@ -737,7 +780,8 @@ async fn main() -> Result<()> {
                     bar_count = scenario.bar_count,
                     weights = is_weights,
                     patchtst = is_patchtst_overlay,
-                    "tcn/patchtst-overlay scenario — generating synthetic bars"
+                    garch_vol_target = is_garch_vol_target,
+                    "tcn/patchtst/garch-overlay scenario — generating synthetic bars"
                 );
                 (Vec::<Bar>::new(), src.to_string())
             }
@@ -778,7 +822,9 @@ async fn main() -> Result<()> {
                         );
                     }
 
-                    let data_src_str = if is_patchtst_overlay {
+                    let data_src_str = if is_garch_vol_target {
+                        "real (Binance Vision via data/binance/, v3.0.0-volatility)".to_string()
+                    } else if is_patchtst_overlay {
                         "real (Binance Vision via data/binance/, v2.5a.0-patchtst)".to_string()
                     } else {
                         "real (Binance Vision via data/binance/, v2.6.0-realdata)".to_string()
@@ -786,7 +832,7 @@ async fn main() -> Result<()> {
                     info!(
                         bar_count = loaded.loaded_count,
                         revision_sha = %loaded.revision_sha,
-                        "tcn-overlay realdata bars loaded"
+                        "tcn/patchtst/garch-overlay realdata bars loaded"
                     );
                     // Stash the real bars; they are passed to the run function below.
                     // The `bars` variable is unused for TCN overlay (functions generate
@@ -913,6 +959,18 @@ async fn main() -> Result<()> {
         let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
 
         backtest::report::momentum::write(&input, &result, seed, &data_source, &report_path)?;
+
+        // T-D-N27: additive --emit-equity-bin for sharpe-comparison vol-target baseline.
+        if let Some(ref eq_path) = args.emit_equity_bin {
+            let eq_text: String = result
+                .equity_curve
+                .iter()
+                .map(|d| format!("{d}\n"))
+                .collect();
+            std::fs::write(eq_path, eq_text)
+                .with_context(|| format!("writing equity bin to {}", eq_path.display()))?;
+            info!(path = %eq_path.display(), len = result.equity_curve.len(), "equity bin written");
+        }
 
         println!("Report written: {}", report_path.display());
         println!("Scenario     : {}", args.scenario);
@@ -1256,6 +1314,101 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // ── GARCH vol-targeting overlay dispatch ───────────────────────────────────
+    // v3.0.0-volatility R6.a primary — GARCH(1,1) vol-targeting overlay on v1 momentum.
+    if let ScenarioStrategy::GarchVolTargetOverlayMomentum {
+        config_id,
+        forecaster_id,
+    } = &scenario.strategy.clone()
+    {
+        let config_id = config_id.clone();
+        let forecaster_id = forecaster_id.clone();
+        let vol_target_input = backtest::cli_types::TcnScenarioInput {
+            scenario_name: scenario.name.clone(),
+            start_year: scenario.start_year,
+            bar_count: scenario.bar_count,
+            initial_capital: scenario.initial_capital,
+            slippage_bps: scenario.slippage_bps,
+            taker_fee_bps: scenario.taker_fee_bps,
+            config_id: config_id.clone(),
+            forecaster_id: forecaster_id.clone(),
+            bars_override: realdata_bars_for_tcn.take(),
+            emit_equity_bin: args.emit_equity_bin.clone(),
+        };
+        let vol_target_input_for_report = backtest::cli_types::TcnScenarioInput {
+            scenario_name: scenario.name.clone(),
+            start_year: scenario.start_year,
+            bar_count: scenario.bar_count,
+            initial_capital: scenario.initial_capital,
+            slippage_bps: scenario.slippage_bps,
+            taker_fee_bps: scenario.taker_fee_bps,
+            config_id,
+            forecaster_id,
+            bars_override: None,
+            emit_equity_bin: None,
+        };
+        let result =
+            backtest::scenarios::garch_vol_target_overlay::run(vol_target_input, seed).await?;
+
+        let report_dir = args
+            .reports_dir
+            .clone()
+            .unwrap_or_else(|| report_dir_for_scenario(&args.scenario));
+        std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
+        let now = OffsetDateTime::now_utc();
+        let stamp = format!(
+            "{:04}{:02}{:02}-{:02}{:02}{:02}",
+            now.year(),
+            now.month() as u8,
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second()
+        );
+        let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
+
+        let rev_sha = realdata_revision_sha_for_tcn.as_deref().unwrap_or("n/a");
+        let loaded_info = realdata_revision_sha_for_tcn.as_ref().map(|_| {
+            let expected = scenario.bar_count
+                * backtest::scenarios::momentum::top10_symbols_with_prices().len();
+            (result.bar_count, expected)
+        });
+
+        backtest::report::tcn_overlay::write(
+            &vol_target_input_for_report,
+            &result,
+            seed,
+            &data_source,
+            &report_path,
+            rev_sha,
+            loaded_info,
+        )?;
+
+        if let Some(ref eq_path) = args.emit_equity_bin {
+            let eq_text: String = result
+                .equity_curve
+                .iter()
+                .map(|d| format!("{d}\n"))
+                .collect();
+            std::fs::write(eq_path, eq_text)
+                .with_context(|| format!("writing equity bin to {}", eq_path.display()))?;
+            info!(path = %eq_path.display(), len = result.equity_curve.len(), "equity bin written");
+        }
+
+        println!("Report written: {}", report_path.display());
+        println!("Scenario     : {}", args.scenario);
+        println!("Bars (total) : {}", result.bar_count);
+        println!("Trades       : {}", result.trades);
+        println!("Final equity : ${:.2} USDT", result.final_equity);
+        println!("Elapsed      : {:.1}s", result.elapsed_secs);
+        println!(
+            "Vol-target   : signals_scaled={} passthrough={} no_model={}",
+            result.dampened_signals, result.passed_through_signals, result.warmup_signals,
+        );
+        println!("Data source  : {data_source}");
+        return Ok(());
+    }
+
     // Resolve the strategy to use — CLI `--strategy` overrides scenario default.
     // Priority: CLI flag → scenario default.
     let effective_strategy_id: Option<String> = args.strategy.clone().or_else(|| {
@@ -1267,6 +1420,9 @@ async fn main() -> Result<()> {
             ScenarioStrategy::TcnOverlayMomentum { .. } => unreachable!("handled above"),
             ScenarioStrategy::TcnOverlayMomentumWeights { .. } => unreachable!("handled above"),
             ScenarioStrategy::PatchtstOverlayMomentumWeights { .. } => {
+                unreachable!("handled above")
+            }
+            ScenarioStrategy::GarchVolTargetOverlayMomentum { .. } => {
                 unreachable!("handled above")
             }
         }
@@ -1585,6 +1741,8 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         | "top10-2024-fy-tcn-overlay-weights-realdata" => "backtest-real-binance-data",
         // v2.5a PatchTST overlay realdata scenario (T-D-N23).
         "top10-2023-fy-patchtst-overlay-realdata" => "v25a-patchtst-overlay",
+        // v3.0.0-volatility GARCH vol-targeting overlay realdata scenario (T-D-N24).
+        "top10-2023-fy-vol-target-overlay-realdata" => "v3-volatility-forecaster",
         _ => "_unknown",
     }
 }
