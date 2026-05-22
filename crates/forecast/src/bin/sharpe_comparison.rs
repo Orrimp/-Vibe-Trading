@@ -46,13 +46,19 @@ use tracing_subscriber::EnvFilter;
 ///
 /// `Tcn` (default) → existing 5-scenario TCN + PatchTST run (byte-identical).
 /// `VolTarget` → new v3.0.0-volatility: v1 momentum baseline + vol-targeting overlay.
+/// `VolTargetRebaseline` → v3.0.0-volatility-rebaseline: real-data momentum baseline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum ScenarioFamily {
     /// TCN + PatchTST BS-1 (default; 5 scenarios).
     Tcn,
-    /// GARCH vol-targeting overlay vs v1 momentum baseline (2 scenarios).
+    /// GARCH vol-targeting overlay vs SYNTHETIC v1 momentum baseline (parent;
+    /// v3.0.0-volatility anchor `ef048366...`; byte-immutable).
     #[value(name = "vol-target-bs1")]
     VolTarget,
+    /// GARCH vol-targeting overlay vs REAL-data v1 momentum baseline
+    /// (v3.0.0-volatility-rebaseline; 2026-05-22+ T-AR-2 lock).
+    #[value(name = "vol-target-bs1-rebaseline")]
+    VolTargetRebaseline,
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -1199,6 +1205,354 @@ mod render_vol_target {
     }
 }
 
+// ── render_vol_target_rebaseline ──────────────────────────────────────────────
+//
+// Sibling of `render_vol_target`. Emits the body for the
+// `sharpe-comparison-vol-target-bs1-realbaseline` report (v3.0.0-volatility-
+// rebaseline). Advisory string differences from the parent module (per
+// decomp.md § T-AR-2 lock):
+//   - Site 1 (Methodology table): baseline name changed from synthetic to realdata.
+//   - Site 2 (Verdict table): Sharpe baseline label updated accordingly.
+//   - Site 3 (Notes): data-source note updated (both baseline and overlay use
+//     real Binance 2023 hourly data — apples-to-apples).
+// The parent `render_vol_target` module is NOT modified — its body bytes
+// remain identical so the parent anchor `ef048366...` continues to verify.
+
+mod render_vol_target_rebaseline {
+    use super::metrics;
+    use super::rerun::RerunResult;
+
+    /// T-classifier verdict per ADR-0038 § D1.c.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum TClassifier {
+        /// net_delta >= +0.10
+        AlphaUnlocked,
+        /// net_delta in [+0.05, +0.10)
+        Marginal,
+        /// net_delta < +0.05
+        NoAlpha,
+    }
+
+    impl TClassifier {
+        pub fn label(self) -> &'static str {
+            match self {
+                Self::AlphaUnlocked => "T-VOL-ALPHA-UNLOCKED",
+                Self::Marginal => "T-VOL-MARGINAL",
+                Self::NoAlpha => "T-VOL-NO-ALPHA",
+            }
+        }
+
+        pub fn classify(net_delta: f64) -> Self {
+            if net_delta >= 0.10 {
+                Self::AlphaUnlocked
+            } else if net_delta >= 0.05 {
+                Self::Marginal
+            } else {
+                Self::NoAlpha
+            }
+        }
+    }
+
+    /// Run-varying context for the frontmatter.
+    #[derive(Debug, Clone)]
+    pub struct ReportContext {
+        pub generated: String,
+        pub wall_clock_s: f64,
+        pub host: String,
+        pub git_commit: String,
+        pub data_revision_sha: String,
+    }
+
+    /// Render the vol-target-rebaseline comparison report body.
+    ///
+    /// `baseline` is `top10-2023-fy-momentum-realdata` (real-data un-targeted v1).
+    /// `overlay` is `top10-2023-fy-vol-target-overlay-realdata`.
+    ///
+    /// Advisory string differences vs `render_vol_target::render_report`:
+    ///   - Site 1 (line ~975 parent): baseline scenario label updated.
+    ///   - Site 2 (line ~1049 parent): Sharpe baseline label updated.
+    ///   - Site 3 (line ~1082 parent): Notes data-source text updated.
+    pub fn render_report(
+        baseline: &RerunResult,
+        overlay: &RerunResult,
+        _ctx: &ReportContext,
+    ) -> String {
+        use std::fmt::Write as FmtWrite;
+        let mut body = String::with_capacity(4096);
+
+        let sharpe_baseline = metrics::compute_sharpe_hourly(&baseline.equity);
+        let sharpe_overlay = metrics::compute_sharpe_hourly(&overlay.equity);
+        let sortino_baseline = metrics::compute_sortino_hourly(&baseline.equity);
+        let sortino_overlay = metrics::compute_sortino_hourly(&overlay.equity);
+        let calmar_baseline = metrics::compute_calmar(&baseline.equity);
+        let calmar_overlay = metrics::compute_calmar(&overlay.equity);
+
+        let gross_delta = sharpe_overlay - sharpe_baseline;
+        // Net delta (same as gross for our simplified case — turnover cost not modelled).
+        let net_delta = gross_delta;
+        let verdict = TClassifier::classify(net_delta);
+
+        // ── Header ──────────────────────────────────────────────────────────────
+        writeln!(
+            &mut body,
+            "# Sharpe / drawdown comparison — v3.0.0-volatility-rebaseline GARCH vol-targeting overlay"
+        )
+        .unwrap();
+
+        // ── § Methodology ───────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Methodology\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Field             | Value                                          |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|-------------------|------------------------------------------------|"
+        )
+        .unwrap();
+        // Advisory swap #1 (decomp.md § T-AR-2 site 975):
+        // parent: "top10-2023-1h-momentum (v1 cross-sectional momentum, synthetic)"
+        // rebaseline: "top10-2023-fy-momentum-realdata (v1 cross-sectional momentum, real Binance data)"
+        writeln!(
+            &mut body,
+            "| Baseline scenario | top10-2023-fy-momentum-realdata (v1 cross-sectional momentum, real Binance data) |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Overlay scenario  | top10-2023-fy-vol-target-overlay-realdata (GARCH BS-1 vol-targeting, real Binance data) |"
+        )
+        .unwrap();
+        writeln!(&mut body, "| Bar interval      | 1h |").unwrap();
+        writeln!(
+            &mut body,
+            "| Annualisation     | sqrt(24*365) = {:.6} (hourly -> annual) |",
+            metrics::SQRT_HOURS_PER_YEAR
+        )
+        .unwrap();
+        writeln!(&mut body, "| Risk-free rate    | 0.000000 (constant) |").unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(24*365) |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| T-classifier      | ADR-0038 D1.c: net_delta >= 0.10 -> T-VOL-ALPHA-UNLOCKED, [0.05,0.10) -> T-VOL-MARGINAL, <0.05 -> T-VOL-NO-ALPHA |"
+        )
+        .unwrap();
+
+        // ── § Comparison table ───────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Comparison table\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Scenario | Bars | Final equity | Total return | Max drawdown | Trades | Sharpe (ann) | Sortino (ann) | Calmar |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|----------|------|--------------|--------------|--------------|--------|--------------|---------------|--------|"
+        )
+        .unwrap();
+
+        for (r, sharpe, sortino, calmar) in [
+            (baseline, sharpe_baseline, sortino_baseline, calmar_baseline),
+            (overlay, sharpe_overlay, sortino_overlay, calmar_overlay),
+        ] {
+            writeln!(
+                &mut body,
+                "| {} | {} | ${:.2} | {:.2}% | {:.2}% | {} | {:.6} | {:.6} | {:.6} |",
+                r.name,
+                r.bars,
+                r.final_equity,
+                r.total_return * 100.0,
+                r.max_drawdown * 100.0,
+                r.trades,
+                sharpe,
+                sortino,
+                calmar,
+            )
+            .unwrap();
+        }
+
+        // ── § Verdict ────────────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Verdict\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Field               | Value                                          |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|---------------------|------------------------------------------------|"
+        )
+        .unwrap();
+        // Advisory swap #2 (decomp.md § T-AR-2 site 1049):
+        // parent: "Sharpe baseline     | {:.6} (top10-2023-1h-momentum)"
+        // rebaseline: "Sharpe baseline     | {:.6} (top10-2023-fy-momentum-realdata)"
+        writeln!(
+            &mut body,
+            "| Sharpe baseline     | {:.6} (top10-2023-fy-momentum-realdata) |",
+            sharpe_baseline
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe overlay      | {:.6} (top10-2023-fy-vol-target-overlay-realdata) |",
+            sharpe_overlay
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Gross Sharpe delta  | {:.6} (overlay - baseline) |",
+            gross_delta
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Net Sharpe delta    | {:.6} (gross delta, no turnover cost modelled) |",
+            net_delta
+        )
+        .unwrap();
+        writeln!(&mut body, "| T-classifier        | {} |", verdict.label()).unwrap();
+        writeln!(
+            &mut body,
+            "| V-verdict (joint)   | V3 (mean_calibration_ratio = 2.952191 outside [0.7, 1.4] — see vol-verdict-bs1-realdata report) |"
+        )
+        .unwrap();
+
+        // ── § Notes ──────────────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Notes\n").unwrap();
+        // Advisory swap #3 (decomp.md § T-AR-2 site 1082):
+        // parent: "Baseline (top10-2023-1h-momentum) uses synthetic GBM bars; overlay uses real Binance 2023 data."
+        // rebaseline: both use real data — apples-to-apples per v0.1.0-rebaseline disambiguation.
+        writeln!(
+            &mut body,
+            "- Baseline (top10-2023-fy-momentum-realdata) and overlay (top10-2023-fy-vol-target-overlay-realdata) both use real Binance 2023 hourly data — apples-to-apples comparison per v0.1.0-rebaseline disambiguation."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- V-verdict V3 fires because GARCH unconditioned-var overflow on AVAX/DOGE/DOT (non-convergence at 500 iters)."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- Follow-on: v3-garch-calibration-tune to improve GARCH fitting for non-convergent symbols."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- ASCII-only, LF-only line endings; floats %.6f (Sharpe/Sortino/Calmar) or %.2f%% (returns/drawdown); integer bar/trade counts."
+        )
+        .unwrap();
+
+        body
+    }
+
+    /// Render YAML frontmatter (excluded from body hash).
+    pub fn render_frontmatter(ctx: &ReportContext) -> String {
+        format!(
+            "---\n\
+             slug: v3-volatility-forecaster-rebaseline\n\
+             scenario: sharpe-comparison-vol-target-bs1-realbaseline\n\
+             generated: {}\n\
+             wall_clock_s: {:.1}\n\
+             host: {}\n\
+             git_commit: {}\n\
+             data_revision_sha: {}\n\
+             ---\n",
+            ctx.generated, ctx.wall_clock_s, ctx.host, ctx.git_commit, ctx.data_revision_sha,
+        )
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use rust_decimal_macros::dec;
+
+        fn make_result(name: &str, sharpe_up: bool) -> RerunResult {
+            let mut eq = vec![dec!(100_000)];
+            let factor = if sharpe_up {
+                dec!(1.0012)
+            } else {
+                dec!(1.0005)
+            };
+            for _ in 0..8760 {
+                let last = *eq.last().unwrap();
+                eq.push(last * factor);
+            }
+            let final_eq = *eq.last().unwrap();
+            RerunResult {
+                name: name.to_string(),
+                variant: "test".to_string(),
+                equity: eq,
+                bars: 8760,
+                trades: 1000,
+                final_equity: final_eq,
+                total_return: 0.1,
+                max_drawdown: 0.05,
+                dampen_rate: 0.0,
+            }
+        }
+
+        #[test]
+        fn t_classifier_thresholds() {
+            assert_eq!(TClassifier::classify(0.10), TClassifier::AlphaUnlocked);
+            assert_eq!(TClassifier::classify(0.15), TClassifier::AlphaUnlocked);
+            assert_eq!(TClassifier::classify(0.07), TClassifier::Marginal);
+            assert_eq!(TClassifier::classify(0.05), TClassifier::Marginal);
+            assert_eq!(TClassifier::classify(0.04), TClassifier::NoAlpha);
+            assert_eq!(TClassifier::classify(-0.5), TClassifier::NoAlpha);
+        }
+
+        #[test]
+        fn render_contains_required_sections() {
+            let baseline = make_result("top10-2023-fy-momentum-realdata", false);
+            let overlay = make_result("top10-2023-fy-vol-target-overlay-realdata", true);
+            let ctx = ReportContext {
+                generated: "2026-05-22T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+            let body = render_report(&baseline, &overlay, &ctx);
+            assert!(body.contains("## Methodology"), "missing Methodology");
+            assert!(
+                body.contains("## Comparison table"),
+                "missing Comparison table"
+            );
+            assert!(body.contains("## Verdict"), "missing Verdict");
+            assert!(body.contains("T-VOL-"), "missing T-classifier label");
+            assert!(
+                body.contains("top10-2023-fy-momentum-realdata"),
+                "missing real-data baseline name"
+            );
+        }
+
+        #[test]
+        fn render_is_deterministic() {
+            let baseline = make_result("top10-2023-fy-momentum-realdata", false);
+            let overlay = make_result("top10-2023-fy-vol-target-overlay-realdata", true);
+            let ctx = ReportContext {
+                generated: "2026-05-22T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+            let b1 = render_report(&baseline, &overlay, &ctx);
+            let b2 = render_report(&baseline, &overlay, &ctx);
+            assert_eq!(
+                b1, b2,
+                "render_vol_target_rebaseline::render_report must be deterministic"
+            );
+        }
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn read_git_commit() -> String {
@@ -1241,6 +1595,9 @@ fn main() -> Result<()> {
     // Resolve out_dir based on scenario family.
     let out_dir: PathBuf = args.out_dir.clone().unwrap_or_else(|| match args.scenario {
         ScenarioFamily::VolTarget => PathBuf::from("spec/v3-volatility-forecaster/reports/"),
+        ScenarioFamily::VolTargetRebaseline => {
+            PathBuf::from("spec/v3-volatility-forecaster-rebaseline/reports/")
+        }
         ScenarioFamily::Tcn => PathBuf::from("spec/v25a-patchtst-overlay/reports/"),
     });
 
@@ -1280,6 +1637,77 @@ fn main() -> Result<()> {
             .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
         format!("{}{:02}{:02}", dt.year(), dt.month() as u8, dt.day())
     };
+
+    // ── vol-target-bs1-rebaseline dispatch ───────────────────────────────────
+    if args.scenario == ScenarioFamily::VolTargetRebaseline {
+        if args.skip_rerun {
+            anyhow::bail!("--skip-rerun is not implemented for vol-target-bs1-rebaseline.");
+        }
+        let tmpdir = tempfile::TempDir::new().context("creating tempdir")?;
+
+        // Re-run REAL-DATA v1 momentum baseline + vol-target overlay (realdata).
+        let vol_target_scenarios = [
+            "top10-2023-fy-momentum-realdata", // Swap #1: T-AR-1 new real-data scenario
+            "top10-2023-fy-vol-target-overlay-realdata", // Unchanged: byte-identical to parent
+        ];
+
+        let mut vt_results: Vec<rerun::RerunResult> = Vec::with_capacity(2);
+        for &name in &vol_target_scenarios {
+            info!(scenario = name, "running vol-target-rebaseline scenario");
+            let result = rerun::rerun_scenario(name, &args.backtest_bin, tmpdir.path())
+                .with_context(|| format!("rerunning scenario {name}"))?;
+            info!(
+                scenario = name,
+                bars = result.bars,
+                trades = result.trades,
+                "scenario complete"
+            );
+            vt_results.push(result);
+        }
+
+        let wall_clock_s = t_start.elapsed().as_secs_f64();
+        let baseline = vt_results.remove(0);
+        let overlay = vt_results.remove(0);
+
+        let ctx = render_vol_target_rebaseline::ReportContext {
+            generated,
+            wall_clock_s,
+            host,
+            git_commit: read_git_commit(),
+            data_revision_sha: read_data_revision_sha(),
+        };
+
+        let body = render_vol_target_rebaseline::render_report(&baseline, &overlay, &ctx);
+        let frontmatter = render_vol_target_rebaseline::render_frontmatter(&ctx);
+        let full_report = format!("{frontmatter}{body}");
+
+        // Swap #2: filename template — "realdata" → "realbaseline" (Q2=(a) default).
+        let filename = format!("sharpe-comparison-vol-target-bs1-realbaseline-{today}.md");
+        let out_path = out_dir.join(&filename);
+        std::fs::write(&out_path, full_report)
+            .with_context(|| format!("writing report to {:?}", out_path))?;
+
+        // Compute T-classifier for stdout banner.
+        let sharpe_baseline = metrics::compute_sharpe_hourly(&baseline.equity);
+        let sharpe_overlay = metrics::compute_sharpe_hourly(&overlay.equity);
+        let net_delta = sharpe_overlay - sharpe_baseline;
+        let verdict = render_vol_target_rebaseline::TClassifier::classify(net_delta);
+
+        info!(
+            path = %out_path.display(),
+            wall_clock_s = format!("{:.1}", wall_clock_s),
+            t_classifier = verdict.label(),
+            "vol-target-rebaseline report written"
+        );
+
+        println!(
+            "wrote {}; T-classifier = {}",
+            out_path.display(),
+            verdict.label()
+        );
+
+        return Ok(());
+    }
 
     // ── vol-target-bs1 dispatch ───────────────────────────────────────────────
     if args.scenario == ScenarioFamily::VolTarget {

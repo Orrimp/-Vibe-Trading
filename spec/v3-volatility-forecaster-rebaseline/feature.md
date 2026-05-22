@@ -349,6 +349,52 @@ anchors stay byte-immutable per ADR-0038 § D6).
 
 _tester links to reports here after M-FINAL_
 
+## Implementation
+
+Developer completed Waves A + B + C on 2026-05-22.
+
+### Wave A — New realdata baseline scenario
+
+Added `top10-2023-fy-momentum-realdata` to `Scenario::from_name`
+(`crates/backtest/src/main.rs`, before line 546, alphabetical placement).
+Extended `MomentumScenarioInput` with `bars_override: Option<Vec<Bar>>`
+and `data_revision_sha: Option<String>` (`crates/backtest/src/cli_types.rs:44`).
+Updated `momentum::run` to use `bars_override` when provided
+(`crates/backtest/src/scenarios/momentum.rs:200`). Extended `is_momentum`
+dispatch in `main.rs` to load Binance parquet data for `RealData` scenarios.
+Updated `report::momentum::write` to include `data_revision_sha` in frontmatter.
+Added scenario to `scenario_to_feature` routing table.
+
+Report emitted: `spec/v3-volatility-forecaster-rebaseline/reports/backtest-20260522-095222-top10-2023-fy-momentum-realdata.md`.
+Confirmed `data_revision_sha: 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7`.
+
+### Wave B — Extend sharpe_comparison.rs
+
+Added `ScenarioFamily::VolTargetRebaseline` variant
+(`crates/forecast/src/bin/sharpe_comparison.rs:59`). Added out-dir match arm
+(line 1247-1249). Added new dispatch arm `if args.scenario == VolTargetRebaseline`
+(inserted before `VolTarget` arm, line ~1288). Added `render_vol_target_rebaseline`
+sibling module (~250 LoC; no shared-extract needed; parent `render_vol_target` is
+byte-identical per anchor-additive contract ADR-0038 § D6). Three advisory string
+swaps per decomp.md § T-AR-2 lock. Parent anchor
+`ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1` confirmed
+byte-identical after wave.
+
+### Wave C — End-to-end results
+
+- Report: `spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-20260522.md`
+- T-classifier: **T-VOL-NO-ALPHA** (net_delta < 0.05)
+- Body-SHA256 (canonical, 2-run byte-identical): `d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8`
+- All 4 hygiene gates pass: fmt / clippy / 311 tests / ANCHORS PASS (33 / 33)
+
+### Architecture deviation note
+
+The decomp.md § T-AR-1 estimated ~25 LoC for Wave A. Actual diff was ~100 LoC
+across 4 files because the `Momentum` strategy dispatch had no real-data path;
+the `MomentumScenarioInput` needed two new fields; `momentum::run` needed
+`bars_override` support; and `report::momentum::write` needed `data_revision_sha`
+frontmatter emission. This is additive-only; no existing behavior was mutated.
+
 ## Changelog
 
 - 2026-05-22 (analyst): brief authored at v0.1.0 / status=proposed.
@@ -356,3 +402,7 @@ _tester links to reports here after M-FINAL_
   anchored-report-reuse path; Q2=(a) default; Q3=(a) default). Q1–Q3
   carry analyst-recommended defaults; standing Autoapprove applies.
   HANDOFF → operator-decide (Q1..Q3) → architect M-T1.
+- 2026-05-22 (developer): Waves A + B + C complete. T-D-N1..T-D-N12
+  ticked. T-classifier = T-VOL-NO-ALPHA. 2-run body-SHA256 =
+  d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8.
+  33 parent anchors byte-identical confirmed. HANDOFF → tester M-FINAL.

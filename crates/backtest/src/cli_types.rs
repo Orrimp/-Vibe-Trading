@@ -51,6 +51,14 @@ pub struct MomentumScenarioInput {
     pub taker_fee_bps: u32,
     /// Strategy config ID, e.g. `"top10_momentum_h1"`.
     pub config_id: String,
+    /// Pre-loaded real bars (`RealData` path). `None` → generate synthetic bars.
+    ///
+    /// Added for `v3.0.0-volatility-rebaseline` (`top10-2023-fy-momentum-realdata`)
+    /// to support real Binance data as the un-targeted v1 momentum baseline.
+    pub bars_override: Option<Vec<trading_core::Bar>>,
+    /// Dataset revision SHA (from `data/binance/REVISION.toml`) for the
+    /// `data_revision_sha:` frontmatter field. `None` for synthetic scenarios.
+    pub data_revision_sha: Option<String>,
 }
 
 // ── Pairs scenario input ───────────────────────────────────────────────────────

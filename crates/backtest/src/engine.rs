@@ -445,6 +445,8 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 slippage_bps: 2,
                 taker_fee_bps: 4,
                 config_id: "top10_momentum_h1".to_string(),
+                bars_override: None,
+                data_revision_sha: None,
             };
             let result = crate::scenarios::momentum::run(&input, seed_u64)
                 .await

@@ -441,7 +441,10 @@ crates      = [
   "crates/backtest",        # additive: top10-2023-fy-momentum-realdata scenario in Scenario::from_name (mirrors existing -realdata pattern at lines 450-475; ~25 LoC, #[cfg(feature = "realdata")] gated)
   "crates/forecast",        # additive: sharpe_comparison.rs hard-coded array swap at line 1293 + 3 string-literal updates at 975/1049/1082 + output path mapping at line 1243 + filename template at line 1327; no CLI flag (architect rejects scope creep per T-AR-3 default)
 ]
-tests       = []     # tester M-FINAL: 2-run byte-identity (R5) + anchor-lock 33 → 34 PASS (or → 35 under Q2=(b)) + T-classifier verdict cell recorded against R-O1..4 routing table
+tests       = [
+  "crates/backtest/src/scenarios/momentum.rs",                 # lib: render_vol_target_rebaseline unit tests (t_classifier_thresholds, render_contains_required_sections, render_is_deterministic) added
+  "crates/forecast/src/bin/sharpe_comparison.rs",              # lib: render_vol_target_rebaseline::tests::t_classifier_thresholds + render_contains_required_sections + render_is_deterministic (3 tests; all passed under cargo test --workspace --lib --features candle,realdata)
+]
 anchors     = [
   "sharpe-comparison-vol-target-bs1-realbaseline",  # Q2=(a) default, NEW namespace [v3.0.0-volatility-rebaseline]; M-FINAL gate: ANCHORS PASS (34 / 34)
 ]

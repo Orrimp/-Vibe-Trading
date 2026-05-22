@@ -540,6 +540,35 @@ impl Scenario {
                     "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
                 ),
             }),
+            // v3.0.0-volatility-rebaseline: un-targeted v1 cross-sectional momentum on
+            // real Binance hourly data. Sibling baseline for the
+            // sharpe-comparison-vol-target-bs1-realbaseline report (Q1=(b) default).
+            // Same dataset SHA + initial_capital + slippage + fees as the parent
+            // vol-target-overlay-realdata scenario for apples-to-apples Sharpe delta.
+            #[cfg(feature = "realdata")]
+            "top10-2023-fy-momentum-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2023,
+                // Full 2023: 365 days × 24 h = 8760 hourly bars per symbol × 10 symbols.
+                bar_count: 8760,
+                strategy: ScenarioStrategy::Momentum {
+                    config_id: "top10_momentum_h1".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                // Same dataset SHA as the parent vol-target-realdata scenario — pinned
+                // 2026-05-18 per ADR-0032.
+                expected_revision_sha: Some(
+                    "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
+                ),
+            }),
             // v2.5a PatchTST overlay — realdata scenario (ADR-0036 § D7, T-D-N23).
             // Requires `--features realdata candle`.
             #[cfg(feature = "realdata")]
@@ -734,18 +763,83 @@ async fn main() -> Result<()> {
     #[cfg_attr(not(feature = "realdata"), allow(unused_mut))]
     let mut realdata_revision_sha_for_tcn: Option<String> = None;
 
+    // Pre-loaded real bars for the momentum realdata path (v3.0.0-volatility-rebaseline).
+    // Set in the RealData arm of the is_momentum dispatch and passed to momentum::run
+    // via MomentumScenarioInput::bars_override.
+    let mut realdata_bars_for_momentum: Option<Vec<Bar>> = None;
+    // `mut` is required by the #[cfg(feature = "realdata")] arm; suppress without feature.
+    #[cfg_attr(not(feature = "realdata"), allow(unused_mut))]
+    let mut realdata_revision_sha_for_momentum: Option<String> = None;
+
     let (bars, data_source) = if is_momentum {
-        info!(
-            bar_count = scenario.bar_count,
-            "multi-symbol scenario — generating synthetic bars"
-        );
-        // Momentum scenarios: data_source string is part of the v1 ship contract
-        // (locked anchor hashes 3b60ef07… / 1f33534f…).  Must stay byte-for-byte
-        // identical to what v1 emitted.  Do NOT change this string.
-        (
-            Vec::<Bar>::new(),
-            "synthetic (seeded RNG, v1 multi-symbol)".to_string(),
-        )
+        match scenario.data_source {
+            ScenarioDataSource::Synthetic => {
+                info!(
+                    bar_count = scenario.bar_count,
+                    "multi-symbol scenario — generating synthetic bars"
+                );
+                // Momentum scenarios: data_source string is part of the v1 ship contract
+                // (locked anchor hashes 3b60ef07… / 1f33534f…).  Must stay byte-for-byte
+                // identical to what v1 emitted.  Do NOT change this string.
+                (
+                    Vec::<Bar>::new(),
+                    "synthetic (seeded RNG, v1 multi-symbol)".to_string(),
+                )
+            }
+            ScenarioDataSource::RealData => {
+                // realdata feature gate: clear error if not compiled in.
+                #[cfg(not(feature = "realdata"))]
+                anyhow::bail!(
+                    "scenario '{}' requires --features realdata. \
+                     Rebuild with: cargo run -p backtest --release --features realdata -- \
+                     --scenario {} --seed 0xC0FFEE",
+                    scenario.name,
+                    scenario.name,
+                );
+                #[cfg(feature = "realdata")]
+                {
+                    let expected_total = scenario.bar_count
+                        * backtest::scenarios::momentum::top10_symbols_with_prices().len();
+                    let src = RealDataBarSource::new(
+                        data_root.clone(),
+                        backtest::scenarios::momentum::top10_symbols_with_prices()
+                            .into_iter()
+                            .map(|(s, _)| s)
+                            .collect(),
+                    );
+                    let loaded = src
+                        .load(scenario.span(), expected_total, &scenario.name)
+                        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+                    // Assert pinned revision if set (ADR-0032).
+                    if let Some(pinned) = &scenario.expected_revision_sha
+                        && pinned != &loaded.revision_sha
+                    {
+                        anyhow::bail!(
+                            "data revision mismatch: scenario pinned {} \
+                             but on-disk computed {}",
+                            pinned,
+                            loaded.revision_sha
+                        );
+                    }
+
+                    info!(
+                        bar_count = loaded.loaded_count,
+                        revision_sha = %loaded.revision_sha,
+                        "momentum realdata bars loaded"
+                    );
+                    realdata_bars_for_momentum = Some(loaded.bars);
+                    realdata_revision_sha_for_momentum = Some(loaded.revision_sha);
+                    (
+                        Vec::<Bar>::new(),
+                        "real (Binance Vision via data/binance/, v3.0.0-volatility-rebaseline)"
+                            .to_string(),
+                    )
+                }
+                #[cfg(not(feature = "realdata"))]
+                unreachable!()
+            }
+        }
     } else if is_tcn_overlay {
         let is_weights = matches!(
             &scenario.strategy,
@@ -938,6 +1032,8 @@ async fn main() -> Result<()> {
             slippage_bps: scenario.slippage_bps,
             taker_fee_bps: scenario.taker_fee_bps,
             config_id,
+            bars_override: realdata_bars_for_momentum.take(),
+            data_revision_sha: realdata_revision_sha_for_momentum.clone(),
         };
         let result = backtest::scenarios::momentum::run(&input, seed).await?;
 
@@ -960,7 +1056,8 @@ async fn main() -> Result<()> {
 
         backtest::report::momentum::write(&input, &result, seed, &data_source, &report_path)?;
 
-        // T-D-N27: additive --emit-equity-bin for sharpe-comparison vol-target baseline.
+        // Emit equity bin (moved to MomentumScenarioInput; kept here for
+        // backwards-compat with the --emit-equity-bin flag path used by sharpe_comparison).
         if let Some(ref eq_path) = args.emit_equity_bin {
             let eq_text: String = result
                 .equity_curve
@@ -1743,6 +1840,8 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         "top10-2023-fy-patchtst-overlay-realdata" => "v25a-patchtst-overlay",
         // v3.0.0-volatility GARCH vol-targeting overlay realdata scenario (T-D-N24).
         "top10-2023-fy-vol-target-overlay-realdata" => "v3-volatility-forecaster",
+        // v3.0.0-volatility-rebaseline: un-targeted v1 momentum on real Binance data.
+        "top10-2023-fy-momentum-realdata" => "v3-volatility-forecaster-rebaseline",
         _ => "_unknown",
     }
 }

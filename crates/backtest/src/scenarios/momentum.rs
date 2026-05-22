@@ -195,42 +195,52 @@ pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRun
         })
     };
 
-    // Generate synthetic bars for each universe symbol.
+    // Generate synthetic bars for each universe symbol, or use pre-loaded real bars.
     let symbols_prices = top10_symbols_with_prices();
-    // Each symbol gets a unique seed derived from the master seed + index.
-    // Sensitive line — must be preserved verbatim (per T-D-N3 risk note).
-    // SAFETY: idx is at most 9 (10-symbol universe); cast to u64 is safe.
-    #[allow(clippy::cast_possible_wrap)]
-    let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
-        .iter()
-        .enumerate()
-        .map(|(idx, (sym, start_price))| {
-            let sym_seed = seed.wrapping_add(idx as u64 * 0x9E37_79B9);
-            // For 2024 scenario, scale start prices up.
-            let adjusted_price = if input.start_year == 2024 {
-                *start_price * dec!(2.5)
-            } else {
-                *start_price
-            };
-            synthetic_bars_hourly(
-                sym,
-                input.bar_count,
-                sym_seed,
-                adjusted_price,
-                input.start_year,
-            )
-        })
-        .collect();
+    let (merged_bars, bar_count) = if let Some(real_bars) = input.bars_override.clone() {
+        // v3.0.0-volatility-rebaseline: real Binance data pre-loaded by caller.
+        let n = real_bars.len();
+        tracing::info!(
+            bar_count = n,
+            "momentum realdata backtest — using pre-loaded real bars"
+        );
+        (real_bars, n)
+    } else {
+        // Each symbol gets a unique seed derived from the master seed + index.
+        // Sensitive line — must be preserved verbatim (per T-D-N3 risk note).
+        // SAFETY: idx is at most 9 (10-symbol universe); cast to u64 is safe.
+        #[allow(clippy::cast_possible_wrap)]
+        let bars_by_symbol: Vec<Vec<Bar>> = symbols_prices
+            .iter()
+            .enumerate()
+            .map(|(idx, (sym, start_price))| {
+                let sym_seed = seed.wrapping_add(idx as u64 * 0x9E37_79B9);
+                // For 2024 scenario, scale start prices up.
+                let adjusted_price = if input.start_year == 2024 {
+                    *start_price * dec!(2.5)
+                } else {
+                    *start_price
+                };
+                synthetic_bars_hourly(
+                    sym,
+                    input.bar_count,
+                    sym_seed,
+                    adjusted_price,
+                    input.start_year,
+                )
+            })
+            .collect();
 
-    // k-way merge: (venue_ts ASC, symbol ASC).
-    let merged_bars = data::ReplayFeed::merge_synthetic(bars_by_symbol);
-    let bar_count = merged_bars.len();
-
-    tracing::info!(
-        bar_count = bar_count,
-        symbols = symbols_prices.len(),
-        "merged synthetic bars for momentum backtest"
-    );
+        // k-way merge: (venue_ts ASC, symbol ASC).
+        let merged = data::ReplayFeed::merge_synthetic(bars_by_symbol);
+        let n = merged.len();
+        tracing::info!(
+            bar_count = n,
+            symbols = symbols_prices.len(),
+            "merged synthetic bars for momentum backtest"
+        );
+        (merged, n)
+    };
 
     // ── Paper matching engine ─────────────────────────────────────────────────
     let match_config = crate::paper::MatchConfig {

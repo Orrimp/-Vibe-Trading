@@ -22,6 +22,9 @@ use crate::scenarios::momentum::MomentumRunResult;
 #[allow(clippy::float_arithmetic)]
 // Decimal → f64 cast for display; precision loss is acceptable here.
 #[allow(clippy::cast_precision_loss)]
+// Format string is a single long report body — refactoring would reduce
+// legibility; the function does one thing: write a report.
+#[allow(clippy::too_many_lines)]
 pub fn write(
     input: &MomentumScenarioInput,
     result: &MomentumRunResult,
@@ -52,6 +55,13 @@ pub fn write(
     let initial_f = f64::try_from(result.initial_equity).unwrap_or(0.0);
     let final_f = f64::try_from(result.final_equity).unwrap_or(0.0);
 
+    // Optional data_revision_sha line (only present for realdata scenarios).
+    let rev_sha_line = input
+        .data_revision_sha
+        .as_deref()
+        .map(|sha| format!("data_revision_sha: {sha}\n"))
+        .unwrap_or_default();
+
     let content = format!(
         "---\n\
          scenario: {scenario_name}\n\
@@ -59,6 +69,7 @@ pub fn write(
          generated: {stamp}\n\
          wall_clock_s: {elapsed:.1}\n\
          data_source: {data_source}\n\
+         {rev_sha_line}\
          baseline_report: n/a\n\
          ledger_imbalance_total: 0\n\
          llm_spend_usd: 0.00\n\
