@@ -1,8 +1,8 @@
 ---
 slug: v3-volatility-forecaster-noop-fix
 version: 0.1.0
-status: proposed
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-22
 priority: P0
 parent: v3-volatility-forecaster
@@ -557,6 +557,44 @@ feature.
   rebaseline § Verification amendment blocks cross-reference the
   new verdict cell.
 
+## Design
+
+> Architect lock at M-T1 (2026-05-22). The load-bearing decisions
+> + Wave-by-Wave decomposition + cargo invocations + expected
+> literal outputs + the ADR-0038 § D6.b amendment text all live in
+> [`decomp.md`](decomp.md). This § Design is a cross-pointer; do not
+> duplicate the worked numbers here.
+
+### Architectural decisions (locked in [`decomp.md`](decomp.md))
+
+- **D-AR-1 — `Strategy::quantity_scale` defaulted trait method** (Q1=(ii) per operator standing Autoapprove). Signature `fn quantity_scale(&self, _symbol: &Symbol) -> f64 { 1.0 }` at [`crates/strategy/src/traits.rs:8-15`](../../crates/strategy/src/traits.rs). `&self`/`&Symbol` (read-only accessor; scale cached in `on_bar`; no clone at call site). All 9 existing `impl Strategy` blocks auto-inherit `1.0` without code change.
+- **D-AR-2 — Sizing-pipeline hook at the vol-target scenario only.** Site is [`crates/backtest/src/scenarios/garch_vol_target_overlay.rs:262-265`](../../crates/backtest/src/scenarios/garch_vol_target_overlay.rs) (Buy arm). Hook reads `scale = overlay_strategy.quantity_scale(&sig.symbol)`, converts via `Decimal::try_from(scale).unwrap_or(Decimal::ONE)` (NaN/Inf defensive floor — CLAUDE.md money-math rule), multiplies into `notional = equity * fraction * scale_dec`. Sell arm is **NOT** scaled (close-by-full-position; scaling would leak residual exposure). No other scenario invokes the hook; default-`1.0` inherit is never queried outside `garch_vol_target_overlay.rs` → the 30 non-vol-target anchors stay byte-identical by construction.
+- **D-AR-3 — `VolTargetingOverlay::scale_cache: BTreeMap<Symbol, f64>`.** Field added to the struct; populated in `on_bar` after `compute_scale` (replaces the dead-end `if/else` block at lines 305-319); read in the new `quantity_scale` override. Misleading "diagnostic only" inline comment removed. Existing 8 unit tests in `crates/strategy/tests/vol_targeting_overlay.rs` stay green (math-only; unchanged).
+- **D-AR-4 — R2 end-to-end regression test (the missing gate).** New file `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`; test `overlay_quantity_scale_reflects_computed_factor` drives 5 `on_bar` calls with a low-sigma rigged GARCH model + asserts `quantity_scale` returns clamp_max (~2.0). **Forensic gate**: the test is run against current main BEFORE the fix lands (developer T-D-N3a); expected pre-fix output is `test result: FAILED. 0 passed; 1 failed; ...` with the literal panic `'vol-target overlay produced scale=1 after 5 on_bar calls — expected ≠ 1.0 (no-op signature)'`. Developer captures this verbatim into Wave A status update.
+- **D-AR-5 — `vol-verdict-bs1-realdata` audit closed.** Body is GARCH-only (Checkpoint + Per-symbol QLIKE + Aggregate stats + Verdict + Notes; no overlay equity citations per walk of [`crates/forecast/src/bin/vol_verdict.rs:428-587`](../../crates/forecast/src/bin/vol_verdict.rs)). Row stays byte-identical post-fix; SHA `99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21` is part of the negative invariant on 31 unchanged rows.
+- **D-AR-6 — TCN overlay re-audit closed (Q3=(b) confirmed).** TCN overlay inherits the defaulted `1.0` without touching its impl block; TCN scenarios do not call `quantity_scale` in their sizing pipelines; all 8 TCN anchors stay byte-identical. T-A2 finding holds.
+- **D-AR-7 — ADR-0038 § D6.b amendment text drafted** (R5 deliverable). ~35 lines, 5-clause re-emission protocol (enumerate + cite bug-site + would-have-caught test + architect sign-off + negative invariant). Lands verbatim at developer T-D-N14 at end of § D6 (before `## Alternatives considered`). Full text in [`decomp.md § T-AR-7`](decomp.md).
+
+### Anchor delta (locked at M-T1)
+
+- **Re-emit (3 rows, in-place under existing namespaces per Q2=(a))**: `top10-2023-fy-vol-target-overlay-realdata` (66cd69ad…), `sharpe-comparison-vol-target-bs1-realdata` (ef048366…), `sharpe-comparison-vol-target-bs1-realbaseline` (d561fed5…).
+- **Stay byte-identical (31 rows — negative invariant)**: `vol-verdict-bs1-realdata` (99c21892…) + 30 pre-v3 anchors.
+- **Total post-fix gate**: `ANCHORS PASS (34 / 34)` with the 3 fresh SHAs locked at developer T-D-N12.
+
+### Wave shape (locked at M-T1)
+
+- **Wave A** (sequential, ~80-150 LoC, ~45-75 min wall-clock): T-D-N1 trait method add → T-D-N2 overlay refactor → T-D-N3a/3b forensic-gate FAIL/PASS bracket → T-D-N4 sizing-pipeline hook → T-D-N5 R6 unit tests → T-D-N6 workspace gate.
+- **Wave B** (sequential after A, ~5 min): T-D-N7..N13 — re-emit 3 anchors with 2-run determinism + lock SHAs in `spec/anchors.toml` + verify_anchors PASS.
+- **Wave C** (parallel-safe with B, ~15 min): T-D-N14 ADR-0038 § D6.b amendment + T-D-N15 trace.toml polish + T-D-N16 owner flip.
+
+### Baseline gate (quoted from M-T1)
+
+```
+ANCHORS PASS  (34 / 34)
+```
+
+(Output of `bash scripts/verify_anchors.sh` at architect M-T1 open, 2026-05-22, pre-fix. Captured in [`decomp.md § Baseline gate`](decomp.md). This is the entry condition; Wave B preserves it post-fix with 3 SHAs re-emitted in-place.)
+
 ## Changelog
 
 - 2026-05-22 (analyst): brief authored at v0.1.0 / status=proposed.
@@ -566,3 +604,15 @@ feature.
   4 affected anchors enumerated (3 expected to change, 1 audit-
   pending); Q1=(ii), Q2=(a), Q3=(b) defaults locked under standing
   Autoapprove. HANDOFF → operator-decide (Q1..Q3) → architect M-T1.
+- 2026-05-22 (architect): M-T1 lock complete.
+  - § Design block appended (cross-pointer to [`decomp.md`](decomp.md)).
+  - T-AR-1..T-AR-8 closed (decisions D-AR-1..D-AR-7 above).
+  - Q1=(ii) defaulted trait method locked at `crates/strategy/src/traits.rs:8-15`.
+  - Sizing-pipeline hook site identified at `crates/backtest/src/scenarios/garch_vol_target_overlay.rs:262-265` (Buy arm only; Sell arm gets inline comment).
+  - `vol-verdict-bs1-realdata` audit closed: row stays byte-identical (GARCH-only body).
+  - Final anchor delta: **3 re-emit, 31 stay byte-identical, total 34/34**.
+  - ADR-0038 § D6.b amendment text drafted (5-clause re-emission protocol).
+  - TCN overlay re-audit confirmed Q3=(b) holds (no parallel bug; auto-inherits default 1.0).
+  - Frontmatter flipped `status: proposed → in-progress`, `owner: analyst → architect`.
+  - `spec/trace.toml` state flipped `proposed → in-progress`; `arch` / `tests` / `anchors` columns populated.
+  - HANDOFF → orchestrator → developer (Wave A).

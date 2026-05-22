@@ -477,9 +477,10 @@ parent      = "REQ-V3-VOL-FORECASTER-001"
 product     = "spec/product.md"
 arch        = [
   "spec/v3-volatility-forecaster-noop-fix/feature.md",
+  "spec/v3-volatility-forecaster-noop-fix/decomp.md",                          # architect M-T1 lock 2026-05-22 — T-AR-1..T-AR-8 decisions + Wave A/B/C cargo invocations + expected literals + ADR-0038 § D6.b amendment text
   "spec/v3-volatility-forecaster/feature.md",                                  # parent — provisionally invalidated; amendment block in § Verification
   "spec/v3-volatility-forecaster-rebaseline/feature.md",                       # sibling — provisionally invalidated; amendment block in § Verification
-  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",                  # § D5 strategy-side composition (wire-incomplete contract — bug site) + § D6 anchor-additive contract (needs wiring-bug-fix exception clause per R5)
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",                  # § D5 strategy-side composition (wire-incomplete contract — bug site) + § D6 anchor-additive contract (gets § D6.b wiring-bug-fix amendment at developer T-D-N14 per R5)
   "spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md",                # diagnostic chain: caveman probe → byte-identical → code review → smoking gun
 ]
 crates      = [
@@ -488,9 +489,18 @@ crates      = [
   "crates/backtest",   # sizing pipeline reads the new wire (call site TBD at T-AR-1)
   "crates/exec",       # OR sizing pipeline lives here (architect identifies at T-AR-1)
 ]
-tests       = []   # TODO developer — R6 unit + integration + R2 end-to-end test; existing crates/strategy/tests/vol_targeting_overlay.rs gets new test rows
-anchors     = []   # 3-4 anchors will re-emit post-fix under existing [v3.0.0-volatility] + [v3.0.0-volatility-rebaseline] namespaces (Q2=(a) default); fresh SHAs locked at tester M-FINAL
-state       = "proposed"   # analyst pass complete 2026-05-22; HANDOFF → operator-decide (Q1..Q3 standing-Autoapproved defaults) → architect M-T1
+tests       = [
+  "crates/strategy/tests/vol_targeting_overlay.rs",                          # +2 R6 unit-test rows: scale_cache_populates_after_on_bar + quantity_scale_default_for_unseen_symbol (T-D-N5)
+  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",               # NEW R2 e2e test (T-D-N3a forensic gate + T-D-N3b post-fix PASS) — `overlay_quantity_scale_reflects_computed_factor`
+]
+anchors     = [
+  # 3 anchors re-emit in-place under existing namespaces (Q2=(a)); fresh SHAs locked at developer T-D-N12, tester verifies at M-FINAL T-T2.
+  "top10-2023-fy-vol-target-overlay-realdata",                               # current SHA 66cd69ad… → new (T-D-N7)
+  "sharpe-comparison-vol-target-bs1-realdata",                               # current SHA ef048366… → new (T-D-N9)
+  "sharpe-comparison-vol-target-bs1-realbaseline",                           # current SHA d561fed5… → new (T-D-N10)
+  # `vol-verdict-bs1-realdata` (99c21892…) stays byte-identical — body is GARCH-only per T-AR-5 audit; part of negative invariant on 31 unchanged rows.
+]
+state       = "in-progress"   # architect M-T1 lock 2026-05-22; decomp.md + ADR-0038 § D6.b amendment text + Wave A/B/C decomposition complete; HANDOFF → developer Wave A
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"

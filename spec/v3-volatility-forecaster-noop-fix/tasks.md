@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster-noop-fix
-status: proposed
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-22
 priority: P0
 ---
@@ -58,41 +58,20 @@ auto-tick all three.
   Default: **(b)** vol-target-only fix; TCN audit deferred (no
   evidence of a parallel bug per T-A2). — **Resolved 2026-05-22 → (b)** by orchestrator under standing Autoapprove (T-A2 investigation confirmed TCN overlay mutates load-bearing `Signal.kind`; no parallel bug; scope stays tight).
 
-## T-AR — Architect (M-T1)
+## T-AR — Architect (M-T1) — CLOSED 2026-05-22
 
-Stubs — architect fills file:line citations, wave shape, and rollback
-plan at M-T1. Replace each `<…>` placeholder.
+Architect lock per [`decomp.md`](decomp.md). All file:line citations,
+the wave shape, the ADR amendment text, and the forensic-gate
+protocol live there; this list ticks the rows + cites the load-bearing
+output.
 
-- [ ] **T-AR-1** — Lock the Q1-selected fix shape with file:line
-  citations. If Q1=(ii): the new `Strategy::quantity_scale` method
-  signature; the call site in the sizing pipeline (`crates/exec/?`
-  or `crates/backtest/src/engine.rs` — architect identifies); the
-  vol-target overlay impl that returns the per-symbol cached scale.
-  If Q1=(i): the new `trading_core::Signal.quantity_scale` field
-  shape; the executor / sizing consumer that reads it; the audit /
-  journal serialization implications (default-on-omit).
-- [ ] **T-AR-2** — Audit `vol-verdict-bs1-realdata` to confirm
-  whether its body cites overlay equity (will change post-fix) or
-  only GARCH internals (stays byte-identical). Record finding in
-  this tasks.md.
-- [ ] **T-AR-3** — Draft the ADR-0038 § D6 amendment subsection text
-  for R5. ~30 lines. The 4-clause protocol: (a) enumerate affected
-  anchors, (b) cite bug site with file:line, (c) include the would-
-  have-caught test, (d) architect signs off on re-emission delta.
-- [ ] **T-AR-4** — Re-audit `tcn_overlay_momentum.rs` for any
-  adjacent assumption that breaks under the Q1 fix (e.g. if Q1=(i)
-  Signal-field change, does TCN overlay's `Signal { kind:
-  modulated_kind, ..sig }` spread correctly carry the new field?).
-  Q3=(b) default applies unless architect finds something.
-- [ ] **T-AR-5** — Decompose the developer waves (T-D-N1..T-D-Nx)
-  per the locked fix shape. Wave A: code fix + tests. Wave B:
-  anchor re-emission + ADR amendment. Worst-case estimate <2 days.
-- [ ] **T-AR-6** — Verify that R2's proposed end-to-end equity-
-  divergence test would FAIL under pre-fix code (run it once before
-  the fix lands; capture the failure as evidence the test is
-  meaningful).
-- [ ] **T-AR-7** — Frontmatter flip: `status: proposed → in-progress`,
-  `owner: analyst → architect → developer`.
+- [x] **T-AR-1** — Q1=(ii) locked: defaulted `Strategy::quantity_scale(&self, _symbol: &Symbol) -> f64 { 1.0 }` at [`crates/strategy/src/traits.rs:8-15`](../../crates/strategy/src/traits.rs) (+7 LoC inside trait + 1-line import addition). Receiver `&self` (read-only accessor; scale cached during `on_bar`); parameter `&Symbol` (already in scope at the call site, no clone). 9 existing `impl Strategy` blocks auto-inherit `1.0` without code change. Sizing-pipeline call site identified at [`crates/backtest/src/scenarios/garch_vol_target_overlay.rs:262-265`](../../crates/backtest/src/scenarios/garch_vol_target_overlay.rs) (Buy arm only; Sell arm closes the full position and scale does NOT apply — documented in decomp.md § T-AR-2). VolTargetingOverlay gains `scale_cache: BTreeMap<Symbol, f64>` field; populates in `on_bar`; reads in `quantity_scale` override. Misleading "diagnostic only" inline comment at lines 315-317 of `vol_targeting_overlay.rs` removed. See [`decomp.md § T-AR-1`](decomp.md), [`§ T-AR-2`](decomp.md), [`§ T-AR-3`](decomp.md).
+- [x] **T-AR-2** — `vol-verdict-bs1-realdata` audit closed: body is GARCH-only. Sections (Checkpoint table + Per-symbol QLIKE table + Aggregate statistics + Verdict + Notes) cite `qlike_garch`, `qlike_constant`, `mean_sigma_hat`, `mean_sigma_realized`, `calibration_ratio`, `improvement_pct`, `qlike_dispersion`, `mean_calibration_ratio`, `n_symbols_improving`, `verdict.label`, `verdict.evidence`, `verdict.routes_to` — **none load the overlay or any equity curve**. Anchor SHA `99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21` stays byte-identical post-fix. Walk of [`crates/forecast/src/bin/vol_verdict.rs:428-587`](../../crates/forecast/src/bin/vol_verdict.rs) in [`decomp.md § T-AR-5`](decomp.md). Final anchor delta: **3 SHAs re-emit, 1 GARCH-only row stays byte-identical**.
+- [x] **T-AR-3** — ADR-0038 § D6.b amendment subsection drafted (~35 lines, 5-clause protocol: enumerate + cite + would-have-caught test + architect sign-off + negative invariant). Lands verbatim at developer T-D-N14 via spec-update at end of § D6 (after the existing "Anchor count progression" block at line 606 of `0038-vol-forecast-verdict-shape.md`, before `## Alternatives considered`). Text in [`decomp.md § T-AR-7`](decomp.md).
+- [x] **T-AR-4** — TCN overlay re-audit under Q1=(ii): no adjacent break. The defaulted trait method auto-inherits `1.0`; TCN overlay's `Signal { kind: modulated_kind, ..sig }` spread is unchanged; TCN scenarios (`tcn_overlay.rs`, `tcn_overlay_weights.rs`) do NOT call `quantity_scale` in their sizing pipelines (per decomp.md § T-AR-2 scenario-by-scenario table); all 8 TCN anchors stay byte-identical. Q3=(b) confirmed; no follow-on filed. See [`decomp.md § T-AR-8`](decomp.md).
+- [x] **T-AR-5** — Developer waves decomposed in [`decomp.md § T-AR-6`](decomp.md). **Wave A** (sequential, ~80-150 LoC, ~45-75 min): T-D-N1 trait method add → T-D-N2 overlay refactor → T-D-N3a forensic-gate pre-fix FAIL run → T-D-N3b post-fix PASS → T-D-N4 sizing-pipeline hook → T-D-N5 R6 unit tests → T-D-N6 workspace gate. **Wave B** (sequential after A, ~5 min): T-D-N7 + T-D-N8 (top10-2023-fy-vol-target-overlay-realdata re-emit + 2-run determinism) → T-D-N9 (sharpe-comparison realdata) → T-D-N10 (sharpe-comparison realbaseline) → T-D-N11 (determinism re-confirm) → T-D-N12 (lock SHAs in anchors.toml) → T-D-N13 (verify_anchors.sh `ANCHORS PASS (34 / 34)`). **Wave C** (parallel-safe with B, ~15 min): T-D-N14 ADR-0038 § D6.b amendment → T-D-N15 trace.toml state flip → T-D-N16 feature.md § Design append. Worst-case wall-clock: <3 hours total dev work.
+- [x] **T-AR-6** — Forensic-gate protocol locked in [`decomp.md § T-AR-4`](decomp.md) + [`§ T-AR-6 Wave A T-D-N3a/3b`](decomp.md). The R2 e2e test (`overlay_quantity_scale_reflects_computed_factor` in new file `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`) is run against current main BEFORE the fix lands. Expected pre-fix output: `test result: FAILED. 0 passed; 1 failed; ...` with the literal panic `'vol-target overlay produced scale=1 after 5 on_bar calls — expected ≠ 1.0 (no-op signature)'`. Developer captures this verbatim into Wave A status update at T-D-N3a. Expected post-fix output (T-D-N3b): `test result: ok. 1 passed; 0 failed; ...`. If pre-fix run PASSES, the test is wrong (false negative) and Wave A halts pending architect re-audit.
+- [x] **T-AR-7** — Frontmatter flipped: `status: proposed → in-progress`, `owner: analyst → architect`. Developer T-D-N16 flips `owner: architect → developer` at Wave A start. Baseline gate captured in decomp.md § Baseline gate: `ANCHORS PASS  (34 / 34)` quoted verbatim from `bash scripts/verify_anchors.sh` at M-T1 open (2026-05-22, pre-fix).
 
 ## T-D-N — Developer (Waves stubbed; architect refines at T-AR-5)
 
