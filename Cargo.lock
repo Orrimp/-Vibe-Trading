@@ -7073,9 +7073,11 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "strategy"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "audit",
  "candle-core",
+ "clap",
  "cost",
  "criterion",
  "features",
@@ -7085,6 +7087,7 @@ dependencies = [
  "pollster 0.3.0",
  "proptest",
  "reflection",
+ "rusqlite",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
@@ -7097,6 +7100,7 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
+ "tracing-subscriber",
  "trading_core",
  "uuid",
  "wiremock",

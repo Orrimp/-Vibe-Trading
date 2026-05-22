@@ -60,8 +60,8 @@ pub mod tool_schema;
 pub mod trait_def;
 pub mod types;
 
-// Wave C / D / E / F files (deferred):
-// pub mod verdict;  // Wave G — ADR-0039 L0-L4 classifier
+// Wave G — ADR-0039 L0-L4 verdict classifier (T-D-N(G1..G5))
+pub mod verdict;
 
 // ── Public re-exports ─────────────────────────────────────────────────────────
 
@@ -75,3 +75,4 @@ pub use types::{
     LlmForecasterConfig, LlmForecasterError, PROMPT_TEMPLATE_VERSION, Rating, RecentDecision,
     StubForecaster, TOP_K_LESSONS, TechnicalIndicators, UnknownRating,
 };
+pub use verdict::{LVerdict, LlmForecastRow, LlmWindowStats, aggregate_rows, classify_l};

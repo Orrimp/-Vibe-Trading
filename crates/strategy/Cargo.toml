@@ -44,6 +44,11 @@ sha2.workspace = true
 
 time.workspace = true
 rust_decimal_macros.workspace = true
+# Wave G: llm_verdict bin — direct DB reads from llm_forecast_entries
+rusqlite = { version = "0.32", features = ["bundled"] }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "rt-multi-thread", "macros"] }
@@ -57,6 +62,11 @@ wiremock.workspace = true
 cost = { path = "../cost" }
 # v3-llm-forecaster Wave E: sqlx for direct DB assertions in Wave E integration tests
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+
+# Wave G: L0-L4 verdict report bin (ADR-0039)
+[[bin]]
+name = "llm_verdict"
+path = "src/bin/llm_verdict.rs"
 
 [[test]]
 name = "llm_forecaster_wiremock"
@@ -86,6 +96,16 @@ path = "tests/llm_forecaster_wiremock_wave_e.rs"
 [[test]]
 name = "llm_forecaster_cost_cap_short_circuit"
 path = "tests/llm_forecaster_cost_cap_short_circuit.rs"
+
+# Wave G: L0-L4 verdict priority-tree integration tests (ADR-0039)
+[[test]]
+name = "llm_verdict_priority_tree"
+path = "tests/llm_verdict_priority_tree.rs"
+
+# Wave G: LLM-forecaster registry-add neutrality gate (R10.2)
+[[test]]
+name = "llm_forecaster_neutrality"
+path = "tests/llm_forecaster_neutrality.rs"
 
 [[test]]
 name = "tcn_overlay_tuned_builder"

@@ -1496,6 +1496,120 @@ median).
 - `llm_forecaster_cost_cap_short_circuit`: 3/3 PASS
 - `llm_forecaster_wiremock_wave_e`: 2/2 PASS
 
+### Wave G implementation (developer agent, 2026-05-22)
+
+**T-D-N(G1..G5) COMPLETE.** Wave G L0-L4 verdict bin + tests + presenter scaffolding shipped. Summary:
+
+**Files created:**
+- `crates/strategy/src/llm_forecaster/verdict.rs` — `LlmWindowStats`, `LlmForecastRow`,
+  `LVerdict` enum (L0/L1/L2/L3/L4), `classify_l()` priority tree (L1 → L2 → L3 → L4 → L0),
+  `aggregate_rows()` helper. Unit tests inlined (18 inline tests covering all fixtures).
+- `crates/strategy/src/bin/llm_verdict.rs` — `llm_verdict` binary. CLI with `--audit-db`,
+  `--window-bars`, `--out-dir`, `--cost-projected-usd`, `--cost-cap-usd`,
+  `--confidence-outcome-corr`, `--window-label`. Reads `llm_forecast_entries` via `rusqlite`.
+  Frontmatter advisory (generated, wall_clock_s, host, git_commit, audit_db) + deterministic
+  body (window stats, rating histogram, computed metrics, verdict section per ADR-0039 § D2).
+  `body_sha256()` strips frontmatter before hashing (mirrors `scripts/hash_report.py`).
+- `crates/strategy/tests/llm_verdict_priority_tree.rs` — 20 integration tests:
+  L0 PASS, L1/L2/L3/L4 positive + negative fixtures, priority order (L1>L2, L2>L3, L3>L4),
+  mutual exclusivity (5 fixtures × exact verdict), 2-run byte-identity.
+- `crates/strategy/tests/llm_forecaster_neutrality.rs` — R10.2 neutrality gate
+  (`#[ignore]`; re-runs `top10-2023-fy-tcn-overlay-realdata` + asserts body-SHA
+  `8fa47f49…` unchanged after registry add).
+
+**Files modified:**
+- `crates/strategy/src/llm_forecaster/mod.rs` — uncommented `pub mod verdict;` + added
+  re-exports `LVerdict, LlmForecastRow, LlmWindowStats, aggregate_rows, classify_l`.
+- `crates/strategy/Cargo.toml` — added `rusqlite`, `clap`, `anyhow`, `tracing-subscriber`
+  deps (for `llm_verdict` bin); added `[[bin]]` entry; added `[[test]]` entries for
+  `llm_verdict_priority_tree` + `llm_forecaster_neutrality`.
+
+**T-D-N(G1) — ADR-0039 already authored at M-T1:**
+ADR-0039 confirmed in registry: `grep '^| 0039' spec/architecture/adr/README.md` → row present
+with status `accepted` (row added at architect M-T1 pass). Deviance = 0 (no code changes needed).
+
+**Wave G deviations from decomp.md:**
+1. Verdict bin placed in `crates/strategy/src/bin/llm_verdict.rs` (not `crates/strategy/src/bin/`
+   as a separate crate). Rationale: strategy crate already has all the verdict logic; a separate
+   crate would duplicate deps with no benefit.
+2. `confidence_outcome_corr` is supplied as a CLI flag (not computed inside the bin) because
+   computing Pearson correlation requires realised returns, which are not in the audit DB.
+   The bin defaults to 0.0 (conservative fallback that triggers L2). When the tester runs M-FINAL
+   with actual backtest data, the correlation is passed via `--confidence-outcome-corr`.
+3. `rusqlite` (not `sqlx`) for the DB read in the binary — lighter weight for a standalone
+   read-only tool; mirrors the pattern in `crates/forecast/src/bin/` bins.
+
+**Cargo checkpoint (verified 2026-05-22):**
+- `cargo fmt --check` — PASS (all 5 new/modified files clean).
+- `cargo clippy --workspace -- -D warnings` — PASS.
+- `cargo test --workspace --lib --features candle` — 324 PASS (0 failures; up from 168 at Wave E).
+- `cargo test -p strategy --test llm_verdict_priority_tree` — 20 PASS.
+- `cargo test -p strategy --test llm_forecaster_neutrality` — 1 SKIP (ignored, requires realdata).
+- `bash scripts/verify_anchors.sh` — `ANCHORS PASS (34 / 34)` (additive-zero; Wave D deferred).
+
+**Wave D deferral (v0.1.1 scope):**
+Wave D backtest scenarios (`top10-2023-fy-llm-forecaster-realdata` + `top10-2024-fy-llm-forecaster-realdata`)
+require canonical cache fixtures + `ANTHROPIC_API_KEY` configuration which is not available in
+this environment. The 2-anchor delta (34 → 36) is deferred to v0.1.1. v0.1.0 ships as
+**PARTIAL**: Waves A+B+C+E+F+G complete; Wave D deferred.
+
+## Verification
+
+> **Placeholder for tester M-FINAL.** This section is populated by the tester after
+> running the M-FINAL gate. Template adapted from ADR-0039 § D1.c joint table.
+
+### Cargo gate results (T-T1..T-T3)
+
+| Gate                              | Status  | Notes                                      |
+|-----------------------------------|---------|--------------------------------------------|
+| `cargo fmt --check`               | TBD     | Tester runs at M-FINAL                     |
+| `cargo clippy --workspace`        | TBD     |                                            |
+| `cargo test --workspace --lib`    | TBD     |                                            |
+| `llm_verdict_priority_tree` (20)  | TBD     |                                            |
+| `llm_forecaster_neutrality`       | TBD     | `#[ignore]`; needs realdata + checkpoints  |
+
+### L-verdict (T-T9)
+
+| Field            | Value                        |
+|------------------|------------------------------|
+| L-verdict case   | TBD (L0 / L1 / L2 / L3 / L4)|
+| Trigger evidence | TBD                          |
+| Routes to        | TBD                          |
+| L_ALPHA gate     | TBD (UNLOCKED / MARGINAL / NO-ALPHA) |
+
+### Anchor gate (T-T5)
+
+| Gate                        | Status | Count  |
+|-----------------------------|--------|--------|
+| `scripts/verify_anchors.sh` | TBD    | 34/34  |
+| Wave D anchors (+2)         | DEFERRED (v0.1.1) | pending API key |
+
+### 3-run byte-identity (T-T7)
+
+| Run | body-SHA-256 | Match |
+|-----|-------------|-------|
+| 1   | TBD         | —     |
+| 2   | TBD         | —     |
+| 3   | TBD         | —     |
+
+### V0.1.0 ship verdict
+
+> **Wave D deferral note**: v0.1.0 ships as **PARTIAL**. Wave D backtest scenarios
+> depend on canonical cache fixtures + `ANTHROPIC_API_KEY` configuration. Deferred
+> to v0.1.1 scope. The 2-anchor delta (34 → 36) ships with v0.1.1 under the
+> canonical-record path. Waves A+B+C+E+F+G are complete and cargo-gated.
+
+| Dimension                        | v0.1.0 Status             |
+|----------------------------------|---------------------------|
+| Wave A (foundation)              | COMPLETE                  |
+| Wave B (impl + prompt + schema)  | COMPLETE                  |
+| Wave C (strategy registry)       | COMPLETE                  |
+| Wave D (backtest scenarios)      | DEFERRED → v0.1.1         |
+| Wave E (audit + cost)            | COMPLETE                  |
+| Wave F (Phase F Assistant slot)  | COMPLETE                  |
+| Wave G (verdict bin + non-regr.) | COMPLETE                  |
+| Anchor delta (34 → 36)           | DEFERRED → v0.1.1         |
+
 ## Changelog
 
 - 2026-05-22 (developer agent, spike T-AR-8): Spike dev-note written (PARTIAL —
