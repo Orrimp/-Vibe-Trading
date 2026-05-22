@@ -541,22 +541,40 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   `v2.5a.0-patchtst`. Cost ~3-5 weeks best case; ~5-7 weeks with
   one Wave-B retry.
 - **v2.5b — Vanilla decoder-only Transformer overlay
-  (`v25b-transformer-overlay`).** _roadmap_ — phase 3 of the
-  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). Activates
-  after phases 1+2 ship. Autoregressive Transformer over discretised
-  OHLCV tokens (the operator's hand-built Kronos-shape successor —
-  full provenance, no pre-trained weights). Stub at
-  [`spec/v25b-transformer-overlay/feature.md`](v25b-transformer-overlay/feature.md).
+  (`v25b-transformer-overlay`).** **_RETIRED 2026-05-22_** — operator
+  routing (a) at
+  [`v25a-patchtst-overlay`](v25a-patchtst-overlay/feature.md) ship.
+  Phase 3 of the [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md);
+  was activation-gated on phases 1+2 shipping. Phase 1 (TCN) shipped
+  with F4-T-MARGINAL; phase 2 (PatchTST) shipped with F4-T-MARGINAL
+  scoring LOWER than TCN. Joint F4-F4-F4 across 2 model families
+  exhausted the prior for "next architecture family unlocks alpha";
+  v2.5b vanilla decoder Transformer would not justify the ~3-5 week
+  compute commitment. Stub feature folder
+  [`spec/v25b-transformer-overlay/feature.md`](v25b-transformer-overlay/feature.md)
+  preserved for archeology. Re-activation gated on a substantive
+  reformulation of the forecast task itself (e.g. volatility / regime /
+  168h trend) and operator-decide on whether DL paradigm tests deserve
+  another budget allocation.
 - **v2.6 — Forecast bake-off + retirement (`v26-forecast-bakeoff`).**
-  _roadmap_ — phase 4 of the
-  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md). After all
-  three phase-1/2/3 forecasters ship, run a head-to-head on BS-1+BS-2
-  with identical criteria. Pick the canonical v2.5 overlay; mark the
-  other two as research-mode only. Stub at
-  [`spec/v26-forecast-bakeoff/feature.md`](v26-forecast-bakeoff/feature.md).
+  **_RETIRED 2026-05-22_** — operator routing (a) at
+  [`v25a-patchtst-overlay`](v25a-patchtst-overlay/feature.md) ship.
+  Phase 4 of the [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md);
+  was the canonical retirement gate for the 4-phase DL umbrella. The
+  bake-off premise (head-to-head TCN vs PatchTST vs vanilla Transformer)
+  is moot now that 2 of 3 paradigms have F4'd. Stub feature folder
+  [`spec/v26-forecast-bakeoff/feature.md`](v26-forecast-bakeoff/feature.md)
+  preserved for archeology. The retirement decision itself is the
+  bake-off — operator chose "all 3 v2.5 paradigms retire as F4
+  no-alpha" rather than waiting for v2.5b to confirm.
 - **Pre-pivot breadcrumb:** the dropped Kronos approach is preserved at
   [`spec/dev-notes/kronos-evaluation-2026-05-10.md`](dev-notes/kronos-evaluation-2026-05-10.md)
-  [SUPERSEDED] as a what-not-to-do reference.
+  [SUPERSEDED] as a what-not-to-do reference. **v2.5 DL umbrella also
+  retired 2026-05-22 (F4-F4-F4 verdict + operator routing (a))** —
+  [`spec/v25-dl-forecast-overlay/feature.md`](v25-dl-forecast-overlay/feature.md)
+  preserved as another what-not-to-do reference (DL overlay at 1h/24h
+  log-return horizon on hourly crypto bars does not extract +0.10
+  Sharpe-delta on the v1 cross-sectional momentum baseline).
 
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 

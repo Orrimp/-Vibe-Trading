@@ -103,8 +103,8 @@ arch        = [
 ]
 crates      = ["crates/forecast", "crates/replay-cache", "crates/core"]
 tests       = []
-anchors     = []  # umbrella; per-phase anchors locked by sub-REQs
-state       = "roadmap"
+anchors     = []  # umbrella; per-phase anchors locked by sub-REQs (4 v2.5 TCN + 2 v2.5a PatchTST = 6 phase anchors landed before retirement)
+state       = "deprecated"   # RETIRED 2026-05-22 — operator routing (a) at v25a-patchtst-overlay v0.1.0 ship. Joint F4-F4-F4 verdict across TCN BS-1/BS-2 @ 1h (+0.018/+0.045) + PatchTST BS-1 @ 24h (+0.006) exhausted prior for "next architecture unlocks alpha"; v25b + v26 retired without shipping. See v25-dl-forecast-overlay/feature.md retired_reason for full evidence chain.
 
 [[req]]
 id          = "REQ-V25-TCN-001"
@@ -357,8 +357,8 @@ product     = "spec/product.md"
 arch        = ["spec/architecture/12-forecast-overlay.md", "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md"]
 crates      = ["crates/forecast", "crates/replay-cache", "crates/strategy", "crates/core", "crates/audit", "crates/cost"]
 tests       = []
-anchors     = ["top10-2023-fy-transformer-overlay", "top10-2024-fy-transformer-overlay"]
-state       = "roadmap"
+anchors     = []   # NEVER shipped; planned anchor names {top10-2023,2024}-fy-transformer-overlay are reserved-but-unused
+state       = "deprecated"   # RETIRED 2026-05-22 — operator routing (a) at v25a-patchtst-overlay v0.1.0 ship. Joint F4-F4-F4 across 2 model families exhausted prior for "3rd architecture unlocks alpha"; ~3-5 week compute budget pivots elsewhere. Stub preserved for archeology.
 
 [[req]]
 id          = "REQ-V26-BAKEOFF-001"
@@ -368,8 +368,8 @@ product     = "spec/product.md"
 arch        = ["spec/architecture/12-forecast-overlay.md", "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md"]
 crates      = ["crates/forecast", "crates/strategy", "crates/audit", "crates/reports"]
 tests       = []
-anchors     = ["top10-2023-fy-bakeoff-winner", "top10-2024-fy-bakeoff-winner"]
-state       = "roadmap"
+anchors     = []   # NEVER shipped; planned anchor names {top10-2023,2024}-fy-bakeoff-winner are reserved-but-unused
+state       = "deprecated"   # RETIRED 2026-05-22 — bake-off premise moot when 2 of 3 paradigms have already F4'd. The retirement decision itself IS the bake-off result: all v2.5 paradigms retire as F4 no-alpha. Stub preserved for archeology.
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────
