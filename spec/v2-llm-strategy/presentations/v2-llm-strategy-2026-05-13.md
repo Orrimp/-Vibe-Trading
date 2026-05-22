@@ -21,7 +21,7 @@ a 3-provider × 3-role `llm-smoke` harness, and two operator
 runbooks. Per operator decision Q1=A this is **foundation-only**
 — no strategy code wires to LLM in v2.0.0; the first consumer
 brief is queued post-ship
-([reflection-memory-llm-enrichment](../reflection-memory/feature.md#q1--llm-driven-post_mortem_analyst-vs-deterministic-v1)
+([reflection-memory-llm-enrichment](../../reflection-memory/feature.md#q1--llm-driven-post_mortem_analyst-vs-deterministic-v1)
 + reflection-memory-trader-wiring). Tester `VERDICT → PASS` on
 commit `8a41b47` with **1203 / 0 tests across 158 binaries**
 and **ANCHORS PASS (11 / 11)** including the 2 re-locked

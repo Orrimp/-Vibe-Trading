@@ -17,7 +17,7 @@ updated: 2026-05-16
 > Decomposed out of `ui-test-harness-ci` (~4d) per operator decision
 > 2026-05-16: ship the headless-emulator portion standalone (~1d) so
 > the unchecked "headless mode" cell from
-> [`iced-014-feature-analysis-2026-05-15.md §4`](../dev-notes/iced-014-feature-analysis-2026-05-15.md#headless-mode)
+> [`iced-014-feature-analysis-2026-05-15.md §4`](../dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#headless-mode)
 > closes without waiting on `ui-test-harness-viewport-matrix` +
 > `ui-test-harness-evaluator`. The CI workflow piece + cross-platform
 > falsifier remain queued under `ui-test-harness-ci`.

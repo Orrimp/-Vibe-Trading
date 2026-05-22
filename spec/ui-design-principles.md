@@ -749,9 +749,9 @@ are documented in this file or in `theme.rs`.
   never writes to backend; right-rail Assistant slot reservation for
   Phase 6). Locks the design rules every Phase 2 / 3 / 4 / 5 / 6
   widget plugs into; per-phase R-items live in the per-phase briefs
-  at [features/lumen-phase-2-shell-ia-charts.md](../../lumen-design-adoption/phase-2-shell-ia-charts/feature.md)
+  at [features/lumen-phase-2-shell-ia-charts.md](lumen-design-adoption/phase-2-shell-ia-charts/feature.md)
   through
-  [features/lumen-phase-6-assistant-slot.md](../../lumen-design-adoption/phase-6-assistant-slot/feature.md).
+  [features/lumen-phase-6-assistant-slot.md](lumen-design-adoption/phase-6-assistant-slot/feature.md).
 - 2026-05-13 (ui-designer, `iced-aw-cherry-pick` B3/B2): added new
   **"Status pill colors"** subsection under Trading-specific patterns,
   pinning the three-intent palette (`Positive` → `UP_50`/`UP_500`,

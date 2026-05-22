@@ -11,7 +11,7 @@ This is a research dev-note, not a feature brief. Its audience is the
 operator deciding what to schedule next, and any future analyst who
 opens a `ui-test-*` feature brief from `spec/backlog.md`. It builds on
 top of and where necessary critiques the canonical
-[`ui-testing-direction-2026-05-12.md`](ui-testing-direction-2026-05-12.md)
+[`ui-testing-direction-2026-05-12.md`](archive/2026-Q2/ui-testing-direction-2026-05-12.md)
 strategy doc and the v0.1 retrospective at
 [`spec/ui-test-harness-bootstrap/reports/evaluation-2026-05-12T13-15Z.md`](../ui-test-harness-bootstrap/reports/evaluation-2026-05-12T13-15Z.md).
 
@@ -70,7 +70,7 @@ Reasoning below.
 ## 1. Reading the existing plan with fresh eyes
 
 The four-week plan in
-[`ui-testing-direction-2026-05-12.md §6`](ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan)
+[`ui-testing-direction-2026-05-12.md §6`](archive/2026-Q2/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan)
 ships:
 
 - Week 1: `iced_test` smoke + 1 snapshot at 3 viewports. **SHIPPED v0.1**.
@@ -100,7 +100,7 @@ sparkline if they migrate from `tiny_skia` direct-draw to
 `canvas::Program`) has the same gap.
 
 The strategy plan does not name this. The Layer 1..N model in
-[`dev-note §3`](ui-testing-direction-2026-05-12.md#3-ui-testing--concrete-recommended-stack)
+[`dev-note §3`](archive/2026-Q2/ui-testing-direction-2026-05-12.md#3-ui-testing--concrete-recommended-stack)
 assumes `for_charts_screen_test_program()` exposes everything the
 operator sees. It doesn't, and won't, for canvas-owning widgets.
 
@@ -142,7 +142,7 @@ evaluator can read.
 
 ### 1.3 The plan's §7 "what this won't fix" is honest but incomplete
 
-`§7` ([dev-note §7](ui-testing-direction-2026-05-12.md#7-what-this-wont-fix))
+`§7` ([dev-note §7](archive/2026-Q2/ui-testing-direction-2026-05-12.md#7-what-this-wont-fix))
 correctly lists: macOS NSWindow rendering, Retina ambiguity, font
 drift, architect misdiagnosis class, computer-use. It misses:
 
@@ -1395,7 +1395,7 @@ sweep.
   cycle-3 spike), Q-MUTANTS-CADENCE (one-shot now, quarterly
   delta-only after). § 6 stanzas annotated `LOCKED 2026-05-15`.
 - 2026-05-15 (analyst): initial draft. Critiques the existing
-  [`ui-testing-direction-2026-05-12.md`](ui-testing-direction-2026-05-12.md)
+  [`ui-testing-direction-2026-05-12.md`](archive/2026-Q2/ui-testing-direction-2026-05-12.md)
   4-week plan; surfaces 3 blind spots (canvas-state ownership,
   pixels-only oracle, no reachability coverage); proposes 8 new
   ideas across layers L0..L7 of a re-shaped pyramid (pure state /

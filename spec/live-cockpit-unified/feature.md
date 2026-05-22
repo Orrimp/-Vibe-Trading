@@ -471,9 +471,9 @@ This Design section resolves the eight Open Questions, ratifies the
 analyst's two findings, and locks the runtime topology + test strategy
 + risk register the developer + tester will work to. Task numbers
 quoted here are forward references into
-[spec/live-cockpit-unified/tasks.md](../tasks/live-cockpit-unified.md).
+[spec/live-cockpit-unified/tasks.md](tasks.md).
 Anchor IDs (T9xx) are taken from the namespace freed by
-[operator-success-reports tasks](../tasks/operator-success-reports.md)
+[operator-success-reports tasks](../operator-success-reports/tasks.md)
 which used T801–T817.
 
 ### Q-resolution summary

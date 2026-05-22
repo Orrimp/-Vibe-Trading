@@ -235,7 +235,7 @@ land. The operator may need to ratify some of these.
 - **Q10.** Beyond the surveyed crates, is there an iced-adjacent **MCP
   server / accessibility / introspection tool** the architect would want?
   The HN discussion on iced 0.14 (cited in
-  [`ui-testing-direction-2026-05-12.md ## 7`](../dev-notes/ui-testing-direction-2026-05-12.md#7-what-this-wont-fix))
+  [`ui-testing-direction-2026-05-12.md ## 7`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#7-what-this-wont-fix))
   flagged accessibility as "WIP in iced." [AccessKit](https://accesskit.dev/)
   is the standard cross-toolkit a11y crate but iced 0.14 does not yet ship
   a first-class adapter. Out of scope for this survey, but worth raising.
@@ -803,7 +803,7 @@ Explicit non-goals for this survey:
 
 - **Non-iced Rust GUI alternatives** (egui, slint, gpui, dioxus, makepad,
   floem, ribir). The
-  [`ui-testing-direction-2026-05-12.md`](../dev-notes/ui-testing-direction-2026-05-12.md)
+  [`ui-testing-direction-2026-05-12.md`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)
   dev-note covered that territory. This brief is iced-ecosystem-only.
 - **The wgpu vs tiny-skia decision.** Locked to tiny-skia per chart-canvas-
   overhaul retrospective and [`ui-test-harness-bootstrap` v0.1](../ui-test-harness-bootstrap/feature.md);
@@ -811,7 +811,7 @@ Explicit non-goals for this survey:
   `iced_plot` row).
 - **Cross-platform (Windows/Linux).** The cockpit is macOS-only per
   operator decision D3 in
-  [`ui-testing-direction-2026-05-12.md ## 9`](../dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator).
+  [`ui-testing-direction-2026-05-12.md ## 9`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator).
   Candidate evaluation does not score cross-platform reach.
 - **The 34-crate transitive baseline.** Orchestrator-verified at commit
   `d8c3a99`; analyst does NOT re-survey.

@@ -139,7 +139,7 @@ authors these.
 - ADR-0027 (superseded) — Kronos ONNX + `tract` decision.
 - [`spec/v25-dl-forecast-overlay/feature.md`](../../v25-dl-forecast-overlay/feature.md)
   — active v2.5 brief.
-- [`spec/dev-notes/kronos-evaluation-2026-05-10.md`](../../dev-notes/kronos-evaluation-2026-05-10.md)
+- [`spec/dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md`](../../dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md)
   — preserved as "what-not-to-do" reference for the new analyst.
 - [CLAUDE.md](../../../CLAUDE.md) — `candle` named as the project's
   prototyping ML framework.

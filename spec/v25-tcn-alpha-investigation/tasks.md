@@ -91,7 +91,7 @@ updated: 2026-05-19
         and any test-suite invariants land green.
       - Tester writes the test report at
         `spec/v25-tcn-alpha-investigation/reports/test-<YYYYMMDD-HHMM>-v25-tcn-alpha-investigation.md`
-        per the [tester template](../.claude/skills/rust-test/templates/test-report.md).
+        per the [tester template](../../.claude/skills/rust-test/templates/test-report.md).
       - Trace row `REQ-V25-TCN-ALPHA-001` flips
         `proposed` → `in-progress` → `shipped` and gets its
         `crates`, `tests`, `anchors` columns filled by the tester.

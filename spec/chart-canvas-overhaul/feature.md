@@ -2052,7 +2052,7 @@ operator approves on the presenter deck at
     V2 + V4 + V5 + V6 + V9 in one frame alongside V14.
 - **V15 — Tooltip-hover live screenshot (new, R10 / R1.2) — DEFERRED.**
   Per operator decision D4
-  ([`spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)),
+  ([`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)),
   V15 acceptance moves to the first
   `iced_test::Simulator::snapshot().matches_image()` chart-hover test
   at 3360×1890 in the `ui-test-harness-bootstrap` v0.1 feature
@@ -2152,7 +2152,7 @@ output._
   (`m7-legend-after-3360x1890.png` + `m7-charts-screen-3360x1890.png`).
   **V15 DEFERRED** to `ui-test-harness-bootstrap` v0.1 per operator
   decision D4 in
-  [`spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)
+  [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)
   — first `iced_test::Simulator::snapshot().matches_image()`
   chart-hover test at 3360×1890 in that feature becomes the new V15
   acceptance artifact. Existing `m7-tooltip-hover-3360x1890.png`

@@ -1870,7 +1870,7 @@ above (Q1–Q12).
   grep (Q12). No external SDK / no `Cargo.toml` change — all
   three feeds reuse `tokio_tungstenite` + `serde_json` +
   `reqwest`. Task list at
-  [`spec/v1-5b-multi-venue/tasks.md`](../tasks/v1-5b-multi-venue.md).
+  [`spec/v1-5b-multi-venue/tasks.md`](tasks.md).
   HANDOFF → developer (T1401 foundation gate first; ~7 parallel
   tasks fan out after).
 - 2026-05-01 (developer): T1408 landed — per-venue `JoinSet`

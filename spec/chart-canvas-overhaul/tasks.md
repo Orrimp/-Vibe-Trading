@@ -631,7 +631,7 @@ All three tasks gate on operator decisions before architect spawn.
       operator (Track B capture if Accessibility unresolved)._
       **DEFERRED to `ui-test-harness-bootstrap` v0.1 per operator
       decision D4 (2026-05-12,
-      [`spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)).**
+      [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)).**
       V15 acceptance moves to the first
       `iced_test::Simulator::snapshot().matches_image()` chart-hover
       test at 3360×1890 in that feature
@@ -772,7 +772,7 @@ shape.
       strip, USD price labels on left, HH:MM UTC labels on bottom — V2 +
       V4 + V5 + V6 + V9 satisfied in one capture); V15 DEFERRED to
       `ui-test-harness-bootstrap` v0.1 per operator decision D4
-      ([`spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)),
+      ([`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)),
       backlog entry [`spec/backlog.md ## Process / tooling`](../backlog.md#process--tooling).
       Anchors `bash scripts/verify_anchors.sh` →_ `ANCHORS PASS  (11 / 11)`
       _(verbatim, run 2026-05-12 from presenter). Operator approval

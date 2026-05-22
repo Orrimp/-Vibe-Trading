@@ -13,7 +13,7 @@ updated: 2026-05-12
 > [AGENT.md ## Capability boundaries](../../AGENT.md#capability-boundaries)
 > regime (adopted 2026-05-12). Implements **week 1 only** of the 4-week
 > adoption plan in
-> [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](../dev-notes/ui-testing-direction-2026-05-12.md).
+> [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md).
 > Weeks 2-4 are separate features queued in the backlog after this ships.
 > The week-1 snapshot test ALSO closes V15 of
 > [`spec/chart-canvas-overhaul/feature.md`](../chart-canvas-overhaul/feature.md)
@@ -29,7 +29,7 @@ feature whose operator-verification step was a manual 30-second
 `Cmd+Shift+4`. Two specific failures motivate this feature:
 
 1. **The audit's single most damning finding** (per
-   [dev-note §1](../dev-notes/ui-testing-direction-2026-05-12.md#1-what-broke--evidence)):
+   [dev-note §1](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#1-what-broke--evidence)):
    walking the 818-test suite, **no test would have caught the
    tooltip-invisible-at-3360×1890 bug**.
    [`crates/ui/tests/chart_tooltip_hover_fires.rs`](../../crates/ui/tests/chart_tooltip_hover_fires.rs)
@@ -63,7 +63,7 @@ changes, no anchor changes, no non-UI crate changes.**
 ## Scope locked
 
 Per operator decision block in
-[dev-note §9](../dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator):
+[dev-note §9](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator):
 
 - **D1** — adopt all 5 TL;DR recommendations as a **single block**
   (they are load-bearing on each other). v0.1 lands the foundation
@@ -883,7 +883,7 @@ tester cycle, not a precondition for the architect handoff.
 - [`spec/chart-canvas-overhaul/feature.md`](../chart-canvas-overhaul/feature.md)
   — the retrospective that motivates this feature. V15 closes here
   via V8 above.
-- [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](../dev-notes/ui-testing-direction-2026-05-12.md)
+- [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)
   — the strategy doc. This feature implements §3 Layers 1 + 4 only;
   Layers 2 (`insta` binary snapshots) lands in support of L1 here;
   Layers 3 (full viewport matrix across all widgets) and 5
@@ -904,7 +904,7 @@ tester cycle, not a precondition for the architect handoff.
 ## Changelog
 
 - 2026-05-12 (analyst): initial draft. Scope locked to week-1 only
-  of the [dev-note §6 adoption plan](../dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
+  of the [dev-note §6 adoption plan](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
   10 open questions for the architect / operator. H1 seeded in
   Hypothesis register. Non-regression contract: 11 anchors stay
   byte-identical, 818 tests stay green, zero non-UI-crate changes.

@@ -1004,7 +1004,7 @@ that signature unchanged. No ui-designer involvement._
   follow-up. The migration is the canonical seed (no Rust-side
   defensive seed needed; `Ledger::open` runs migrations on every
   binary boot). Tasks T1101–T1107 + T_FINAL_PER_SYMBOL filed at
-  [spec/per-symbol-position-accounts/tasks.md](../tasks/per-symbol-position-accounts.md).
+  [spec/per-symbol-position-accounts/tasks.md](tasks.md).
   Status flips draft → in-progress; owner architect → developer
   on T1101 spawn.
 - 2026-05-02 (analyst): initial draft. Promotes "R10 follow-up:

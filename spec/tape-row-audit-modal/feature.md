@@ -1046,7 +1046,7 @@ hooks: "Show the why" (Q4 promotion), color tokens `bg_overlay` /
   `fill_to_view`; backtests construct `PaperEnginePublisher` with
   `NullPublisher` (no live-mode side effect into report bodies).
   Tasks T1201–T1209 + `T_FINAL_TAPE_MODAL` filed at
-  [tasks/tape-row-audit-modal.md](../tasks/tape-row-audit-modal.md).
+  [tasks/tape-row-audit-modal.md](tasks.md).
   HANDOFF → orchestrator (spawn dev for T1201 → T1202 backend
   critical path; UI-designer for T1203–T1208 once T1201 lands).
 - 2026-05-03 (tester): FINAL gate green; status bumped

@@ -354,7 +354,7 @@ spec-lint: FAIL (733 violations in 2 categories)
 ```
 
 Category breakdown — improvement of -1 vs. the baseline in
-[`spec/dev-notes/audit-2026-05-18.md`](../../dev-notes/audit-2026-05-18.md)
+[`spec/dev-notes/archive/2026-Q2/audit-2026-05-18.md`](../../dev-notes/archive/2026-Q2/audit-2026-05-18.md)
 (orchestrator normalised this feature's `tasks.md` frontmatter status
 `'tester-pass'` -> `'in-progress'` post-tester, closing out the
 `missing-frontmatter` category entirely):

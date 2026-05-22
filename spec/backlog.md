@@ -318,7 +318,7 @@ updated: 2026-05-22
      Scope locked to week-1 only of the dev-note 4-week plan:
      `iced_test` smoke + `insta` binary snapshots + canvas hit-test
      grid sweep at three viewport sizes. Operator decisions D1-D5 from
-     `spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`
+     `spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`
      LOCKED (analyst does not revisit). Brief at
      `spec/ui-test-harness-bootstrap/feature.md` (status: in-progress,
      version: 0.1.0, predecessor: chart-canvas-overhaul v1.10.0). 10
@@ -910,7 +910,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   bake-off — operator chose "all 3 v2.5 paradigms retire as F4
   no-alpha" rather than waiting for v2.5b to confirm.
 - **Pre-pivot breadcrumb:** the dropped Kronos approach is preserved at
-  [`spec/dev-notes/kronos-evaluation-2026-05-10.md`](dev-notes/kronos-evaluation-2026-05-10.md)
+  [`spec/dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md`](dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md)
   [SUPERSEDED] as a what-not-to-do reference. **v2.5 DL umbrella also
   retired 2026-05-22 (F4-F4-F4 verdict + operator routing (a))** —
   [`spec/v25-dl-forecast-overlay/feature.md`](v25-dl-forecast-overlay/feature.md)
@@ -1000,7 +1000,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 - **TBD — Cockpit Windows / Linux support (`cockpit-cross-platform`).**
   _candidate_ — surfaced 2026-05-12 by operator decision D3 in
-  [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md#section-9).
+  [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#section-9).
   Today the cockpit is macOS-only (Retina assumptions, `screencapture` +
   TCC dependencies, `iced_tiny_skia` chosen partly for CPU determinism on
   Apple Silicon). Scope when promoted: validate `iced_tiny_skia` rendering
@@ -1089,7 +1089,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   `ui-test-harness-bootstrap` v0.1 ship_ — extends the v0.1 Charts-only
   three-viewport snapshot harness across ALL widget tests (panels,
   modals, status bar, agent feed, debug screen) per
-  [dev-note §6 week 2](dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
+  [dev-note §6 week 2](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
   Analyst spawn when v0.1 ships and H1 (tiny-skia byte determinism)
   is unfalsified.
 
@@ -1098,7 +1098,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   `ui-test-harness-bootstrap` v0.1 ship_ — splits the tester role
   into test-runner (writeable) + evaluator (read-only, fresh
   context, default-FAIL PreToolUse hook) per
-  [dev-note §4.2](dev-notes/ui-testing-direction-2026-05-12.md#42-default-fail-evaluator-subagent)
+  [dev-note §4.2](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#42-default-fail-evaluator-subagent)
   and
   [`AGENT.md ## Test-runner / evaluator split`](../AGENT.md#test-runner--evaluator-split).
   Wires the PreToolUse hooks for `screencapture`, `osascript`, and
@@ -1111,13 +1111,13 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   ship_ — macOS runner workflow uploading baseline+actual+diff PNG
   triples on visual snapshot failures; presenter deck format gets a
   fixed "screenshot artifacts" section pointing at the CI artifact
-  URL per [dev-note §6 week 4](dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
+  URL per [dev-note §6 week 4](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
   **Per [`ui-testability-deep-dive-2026-05-15.md §5.3`](dev-notes/ui-testability-deep-dive-2026-05-15.md#53-keep--drop--replace-against-the-existing-weeks-2-4-plan)**
   the analyst recommends pairing this CI brief with the 1-day
   cross-platform falsifier (item O) to retire or confirm operator
   decision D3 (macOS-only CI). **CHEAPENED 2026-05-15:** down to
   ~4 dev-days (from 5) per
-  [`iced-014-feature-analysis-2026-05-15.md §4`](dev-notes/iced-014-feature-analysis-2026-05-15.md#headless-mode).
+  [`iced-014-feature-analysis-2026-05-15.md §4`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#headless-mode).
   iced 0.14's `iced_test::emulator::Emulator` (PR #2698) ships
   embedded Fira Sans + a real headless runtime, so we don't need
   to author font-fallback / xvfb plumbing. **FURTHER DECOMPOSED
@@ -1132,7 +1132,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   the current `0.15.0-dev` master pin), bump Q-014-PIN consideration
   + re-evaluate this candidate. Until then: no spawn trigger, no
   schedule. See
-  [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
+  [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
   for the original analysis.
 
   > **Attempted + aborted 2026-05-16.** Operator authorized the
@@ -1254,12 +1254,12 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   ([feature.md](ui-session-journal-iced-tester/feature.md) ·
   [tasks.md](ui-session-journal-iced-tester/tasks.md)) — RESCOPED
   2026-05-15 by
-  [`iced-014-feature-analysis-2026-05-15.md §5`](dev-notes/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator)_
+  [`iced-014-feature-analysis-2026-05-15.md §5`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator)_
   — supersedes the original 4-dev-day `ui-session-journal`
   candidate. iced 0.14 already ships `iced_tester` (PR #3059) +
   `.ice` text format for record/replay. Adapter work is: enable the
   `record-tests` cargo feature
-  ([Q-TESTER-FEATURE LOCKED](dev-notes/iced-014-feature-analysis-2026-05-15.md#migration-questions-for-the-operator)),
+  ([Q-TESTER-FEATURE LOCKED](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#migration-questions-for-the-operator)),
   add `--record-tests` boolean flag to `cockpit_live`, wire
   `iced_tester::attach()` around the existing `iced::application(...)`
   call, and add a `tests/journal_replay.rs` walker over committed
@@ -1301,7 +1301,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 - **File the iced strategies-Table tiny-skia panic upstream
   (`ui-iced-table-panic-upstream`).** _candidate, surfaced
   2026-05-15 by
-  [`iced-014-feature-analysis-2026-05-15.md §6`](dev-notes/iced-014-feature-analysis-2026-05-15.md#the-strategies-table-panic)_
+  [`iced-014-feature-analysis-2026-05-15.md §6`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#the-strategies-table-panic)_
   — minimal repro is already in-tree at
   [`crates/ui/tests/gallery_bisect.rs`](../crates/ui/tests/gallery_bisect.rs).
   Extract the minimal repro, file an issue against
@@ -1318,7 +1318,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 - **comet debugger evaluation (`ui-comet-eval`).** _candidate,
   deferred 2026-05-15 by
-  [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
+  [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
   + Q-COMET-EVAL LOCKED_ — comet is pinned at iced
   `0.15.0-dev` (master); does NOT compile against our `=0.14.0`
   pin. **No spawn trigger today.** Revisit when (a) our iced pin
@@ -1332,6 +1332,48 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+### 2026-05-22 cohort
+
+> 4 ships that day: 1 partial + 2 retire-with-evidence + 1 P0 wiring-fix.
+> The Active blocks above (lines 376-742) carry full details; this section
+> is the chronological pointer for future audits.
+
+- **v3-llm-forecaster v0.1.0-PARTIAL** — shipped 2026-05-22 (operator-approved).
+  First-of-kind `shipped-partial` precedent (code gates clean; Wave D deferred
+  to v0.1.1 pending ANTHROPIC_API_KEY). 6 waves clean (A+B+C+E+F+G); 34/34
+  anchors byte-identical; R9.3 byte-identity proven via SHA-256 match. ADR-0039
+  LLM-forecaster verdict criteria L0-L4 codified. Wave D paused indefinitely
+  per operator routing pick 2026-05-22. See `spec/v3-llm-forecaster/feature.md`.
+
+- **v3-volatility-forecaster-noop-fix v0.1.0 (P0)** — shipped 2026-05-22.
+  P0 wiring-bug fix: GARCH vol-target overlay was a no-op
+  (`scale` computed but never applied to fill quantities). Discovery via
+  orchestrator caveman probe (σ_hat × 2.95 → byte-identical equity → code review).
+  Fix: `Strategy::quantity_scale` defaulted trait method; sizing hook at Buy arm;
+  scale_cache + R2 forensic-gate test. ADR-0038 § D6.b anchor re-emission protocol
+  amendment. 3 anchors re-emitted in-place (top10-2023-fy-vol-target-overlay-realdata
+  + 2 sharpe-comparisons); vol-verdict-bs1-realdata stayed byte-identical.
+  Post-fix equity: $113,479.98 → $62,807.89 (overlay actively destroys equity
+  via GARCH-under-prediction × upper-clamp saturation; NEGATIVE-NET-DELTA confirmed).
+  See `spec/v3-volatility-forecaster-noop-fix/feature.md`.
+
+- **v3-volatility-forecaster v0.1.0** — shipped 2026-05-22; RETIRED same day.
+  Hand-rolled GARCH(1,1) MLE + Parkinson estimator + V-verdict + 3 strategy
+  builders + backtest scenario. Joint MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA
+  verdict under real-wired overlay (post-noop-fix); operator routing R-O1 = (a)
+  RETIRE C1. Code stays in tree; anchors locked. ADR-0038 V-verdict shape
+  (now historical). See `spec/v3-volatility-forecaster/feature.md`.
+
+- **v3-volatility-forecaster-rebaseline v0.1.0** — shipped 2026-05-22; RETIRED
+  same day (with parent). Re-baseline pass per operator (b) routing pick
+  from parent deck: new `top10-2023-fy-momentum-realdata` scenario + 1 anchor
+  re-emitted. Architect locked NEW `ScenarioFamily::VolTargetRebaseline` to
+  preserve parent anchor immutability (ADR-0038 § D6 contract held).
+  Confirmed NO-ALPHA on real-vs-real comparison BEFORE the noop-fix discovery
+  (the rebaseline verdict was correct conclusion, fortuitously — the noop-fix
+  caveman probe later revealed the underlying bug). See
+  `spec/v3-volatility-forecaster-rebaseline/feature.md`.
 
 - **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay` v0.1.0)** —
   shipped 2026-05-22 (operator-approved via presenter deck
@@ -1918,7 +1960,7 @@ of which became skill-plumbing fixes that shipped in commit
 - **headless emulator adapter (`ui-headless-emulator` v0.1.0)** —
   shipped 2026-05-16. Decomposed out of `ui-test-harness-ci` to
   close the unchecked "headless mode" cell from
-  [`iced-014-feature-analysis-2026-05-15.md §4`](dev-notes/iced-014-feature-analysis-2026-05-15.md#headless-mode)
+  [`iced-014-feature-analysis-2026-05-15.md §4`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#headless-mode)
   without waiting on viewport-matrix + evaluator prereqs. Single
   test (`crates/ui/tests/headless_emulator_smoke.rs`) boots the
   cockpit through `iced_test::emulator::Emulator`, drains events
@@ -2091,7 +2133,7 @@ of which became skill-plumbing fixes that shipped in commit
   clamp to inner-rect bounds. V15 (live tooltip-hover screenshot
   at 3360×1890) DEFERRED to the queued
   `ui-test-harness-bootstrap` v0.1 feature per operator decision
-  D4 in [`spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`](dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)
+  D4 in [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator)
   — the first `iced_test::Simulator::snapshot().matches_image()`
   chart-hover test in that feature replaces the manual capture.
   Q4 local-time x-axis labels DEFERRED to v1.11
@@ -2101,7 +2143,7 @@ of which became skill-plumbing fixes that shipped in commit
   disproved by orchestrator's red-rect + cyan-dot probe; T3002 /
   T3003 / T3007 / T3008 closed as no-op) — produced the
   `AGENT.md ## Capability boundaries` amendment (D5,
-  load-bearing) + [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md)
+  load-bearing) + [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)
   strategy document + `ui-test-harness-bootstrap` v0.1 follow-on
   feature now in Active. Anchor neutrality preserved: 11/11
   byte-identical (`bash scripts/verify_anchors.sh → ANCHORS PASS
@@ -2458,7 +2500,7 @@ of which became skill-plumbing fixes that shipped in commit
     swap render / upstream fix). HANDOFF → architect.
 - 2026-05-15 (operator, iced-014 lock + re-sequence): locked all 5
   Q-* migration questions from
-  [`iced-014-feature-analysis-2026-05-15.md`](dev-notes/iced-014-feature-analysis-2026-05-15.md)
+  [`iced-014-feature-analysis-2026-05-15.md`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md)
   at analyst defaults (Q-014-PIN, Q-COMET-EVAL, Q-TESTER-FEATURE,
   Q-PANEL-UPSTREAM, Q-D3-RELITIGATE). Backlog impact: (a) RESCOPED
   `ui-session-journal` → `ui-session-journal-iced-tester` (~4d →
@@ -2473,7 +2515,7 @@ of which became skill-plumbing fixes that shipped in commit
 - 2026-05-15 (analyst, ui-testability deep-dive): authored
   [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](dev-notes/ui-testability-deep-dive-2026-05-15.md)
   — a research dev-note critiquing the four-week plan in
-  [`ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md),
+  [`ui-testing-direction-2026-05-12.md`](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md),
   surfacing 3 structural blind spots (canvas-state ownership
   via H2 caveat, pixels-only oracle, no reachability coverage)
   + 8 schedulable proposals across a re-shaped Layer 0..7
@@ -2498,7 +2540,7 @@ of which became skill-plumbing fixes that shipped in commit
   → Active. First feature under the new
   [`AGENT.md ## Capability boundaries`](../AGENT.md#capability-boundaries)
   regime. Scope locked to **week-1 only** of the
-  [dev-note §6 4-week plan](dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan)
+  [dev-note §6 4-week plan](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan)
   per operator decisions D1–D5; weeks 2 / 3 / 4 are separate
   candidate features queued under ## Queue ## Process / tooling for
   later analyst spawn. The week-1 grid-sweep test at 3360×1890
@@ -2720,7 +2762,7 @@ of which became skill-plumbing fixes that shipped in commit
   retrospective produced
   [`AGENT.md ## Capability boundaries`](../AGENT.md#capability-boundaries-orchestrator-vs-sub-agent)
   amendment +
-  [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](dev-notes/ui-testing-direction-2026-05-12.md)
+  [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)
   strategy document + queued `ui-test-harness-bootstrap` v0.1
   feature now in Active per operator decisions D1-D5. Anchors
   PASS 11/11 (verbatim line in deck `## Live demo` block).

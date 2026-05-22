@@ -18,7 +18,7 @@ updated: 2026-05-16
 > `iced::core::Size` → `iced::Size`.
 
 > Effort budget: **~1 dev-day** per
-> [`iced-014-feature-analysis-2026-05-15.md §4`](../dev-notes/iced-014-feature-analysis-2026-05-15.md#headless-mode).
+> [`iced-014-feature-analysis-2026-05-15.md §4`](../dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#headless-mode).
 > Standalone scope (decomposed from `ui-test-harness-ci`).
 
 ## M1 — Smoke test (1.5h)

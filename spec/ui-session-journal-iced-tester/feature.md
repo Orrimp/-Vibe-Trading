@@ -32,7 +32,7 @@ updated: 2026-05-16
 > [`iced_test::ice`](https://docs.rs/iced_test/0.14.0/iced_test/ice/index.html)
 > natively — this feature is a ~1-day adapter that wires those upstream
 > pieces into our `cockpit_live` bin and `crates/ui/tests/` suite. See
-> [`spec/dev-notes/iced-014-feature-analysis-2026-05-15.md §5`](../dev-notes/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator)
+> [`spec/dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md §5`](../dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#recorder--emulator--iced_testsimulator)
 > for the prescription.
 
 ## Why
@@ -61,7 +61,7 @@ locked rollout** (post-`ui-iced-table-panic-upstream` and the in-flight
 
 ## Scope locked
 
-Per [`iced-014-feature-analysis-2026-05-15.md §5`](../dev-notes/iced-014-feature-analysis-2026-05-15.md#what-this-means-for-ui-session-journal)
+Per [`iced-014-feature-analysis-2026-05-15.md §5`](../dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#what-this-means-for-ui-session-journal)
 and Q-TESTER-FEATURE LOCKED 2026-05-15:
 
 - **D-RT-1** — Add `record-tests` opt-in cargo feature on

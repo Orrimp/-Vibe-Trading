@@ -303,7 +303,7 @@ verdict: F1                                      # OR F2 / F3 / F4 — mirror of
 - Histogram representation: 100 fixed bins over [-3·σ_train, +3·σ_train],
   ASCII-only, LF-only line endings, integer counts, fixed-precision
   floats (%.6f for stats, %.6f for gate fractions, %d for counts).
-- F-verdict algorithm: see [ADR-0033 § D3](../architecture/adr/0033-tcn-alpha-investigation-report-shape.md#d3-f-verdict-decision-algorithm).
+- F-verdict algorithm: see [ADR-0033 § D3](#d3-f-verdict-decision-algorithm).
 ```
 
 **Floating-point canonicalisation** (locked here to forestall K4 drift):

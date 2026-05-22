@@ -1751,7 +1751,7 @@ is fixtures + smoke + snapshot only.
   No change to the v0 `Strategy` trait or v0.5 audit / broadcast
   surfaces. Status `draft → in-progress`; ownership shifts from
   analyst to architect for the duration of T6xx execution. Task list at
-  [tasks/v1-cross-sectional-momentum.md](../tasks/v1-cross-sectional-momentum.md).
+  [tasks/v1-cross-sectional-momentum.md](tasks.md).
 
 ## Notes — open questions for architect
 

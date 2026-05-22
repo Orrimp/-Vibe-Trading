@@ -1955,7 +1955,7 @@ requirements above.
   Appended `## Design` section translating R1–R12 into crate /
   module / Rust-types / TOML / test-strategy. Status flipped to
   `in-progress`, owner to `architect`. Task list lives in
-  [spec/v15a-mean-reversion-pairs/tasks.md](../tasks/v15a-mean-reversion-pairs.md).
+  [spec/v15a-mean-reversion-pairs/tasks.md](tasks.md).
 - 2026-04-30 (analyst): initial brief — Option B split chosen
   (pairs-strategy-only here; multi-venue + USDC + 1s + T612 queued
   in sibling `v15b-multi-venue-live-ingest`). Spot-only formulation

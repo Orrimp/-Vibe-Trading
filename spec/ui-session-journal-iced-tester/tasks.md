@@ -28,7 +28,7 @@ updated: 2026-05-16
 > + 2h to ~30 min.
 
 > Effort budget: **~1 dev-day** total per
-> [`iced-014-feature-analysis-2026-05-15.md §5`](../dev-notes/iced-014-feature-analysis-2026-05-15.md#what-this-means-for-ui-session-journal).
+> [`iced-014-feature-analysis-2026-05-15.md §5`](../dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#what-this-means-for-ui-session-journal).
 > Task estimates below sum to **6.0 hours** (one focused dev day).
 >
 > Honest-tick discipline (per

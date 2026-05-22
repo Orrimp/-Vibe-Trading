@@ -27,7 +27,7 @@ updated: 2026-05-17
 > **Predecessors not re-litigated:**
 > [`ui-testability-deep-dive-2026-05-15`](ui-testability-deep-dive-2026-05-15.md)
 > (test-harness shape — orthogonal, holds);
-> [`ui-testing-direction-2026-05-12`](ui-testing-direction-2026-05-12.md)
+> [`ui-testing-direction-2026-05-12`](archive/2026-Q2/ui-testing-direction-2026-05-12.md)
 > (test-stack picks — holds);
 > [`lumen-design-adoption/feature.md`](../lumen-design-adoption/feature.md)
 > (Phase 1-5 design-system contracts — holds);

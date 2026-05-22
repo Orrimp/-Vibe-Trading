@@ -33,7 +33,7 @@ Kronos is a decoder-only Transformer pre-trained on K-line data from
 resolves here (Q4 / Q5 / Q6 / Q7 / Q8).
 
 Three integration paths were on the table from the
-[2026-05-10 pre-eval](../../dev-notes/kronos-evaluation-2026-05-10.md):
+[2026-05-10 pre-eval](../../dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md):
 (A) subprocess + IPC to a Python `KronosPredictor`, (B) ONNX export
 plus in-process `tract` inference, (C) pure-Rust re-implementation
 in `candle`. All five operator decisions (notably Q3 — Option B) and

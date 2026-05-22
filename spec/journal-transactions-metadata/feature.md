@@ -320,7 +320,7 @@ fused `(Metadata, Vec<JournalEntry>)` reader.
 
 **Rationale:**
 - Preserves T1202's "one reader, one job" pattern documented in
-  [tape-row-audit-modal.md → Open questions for architect Q2](tape-row-audit-modal.md#q2--journalentry-un-collapsed-lives-in-trading_core).
+  [tape-row-audit-modal.md → Open questions for architect Q2](../tape-row-audit-modal/feature.md#q2--journalentry-un-collapsed-lives-in-trading_core).
   Each reader is a single SQL statement against a single table —
   trivially auditable.
 - Snapshot tests can construct a header-only metadata fixture
@@ -722,7 +722,7 @@ live mode. No new strings, no new tokens, no new widgets._
   `PanelState::Error`); pre-T802 ledgers surface `strategy_id:
   None` (not a bug, mirrors `(unattributed)` bucket). Tasks
   T1301–T1305 + `T_FINAL_TX_METADATA` filed at
-  [tasks/journal-transactions-metadata.md](../tasks/journal-transactions-metadata.md).
+  [tasks/journal-transactions-metadata.md](tasks.md).
   HANDOFF → orchestrator.
 - 2026-05-01 (developer): **T1301 done.** Added
   `pub struct JournalTransactionMetadata` at

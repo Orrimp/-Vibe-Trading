@@ -402,7 +402,7 @@ DOT, ETH, LINK, SOL, XRP (alphabetical USDT-quote universe).
   imperfect volatility proxies* — robust to noise in the Parkinson
   σ_realized proxy; preferred over MSE for vol forecasts.
 - Parkinson realized-vol target: `σ̂_P² = (1/(4·ln 2)) · mean over k of (ln(high_k/low_k))²`.
-- V-verdict algorithm: see [ADR-0038 § D1](../architecture/adr/0038-vol-forecast-verdict-shape.md#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension).
+- V-verdict algorithm: see [ADR-0038 § D1](#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension).
 ```
 
 **Floating-point canonicalisation** (locked here to forestall K3 drift;

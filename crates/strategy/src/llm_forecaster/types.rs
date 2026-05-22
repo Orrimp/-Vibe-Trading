@@ -442,7 +442,8 @@ pub struct ForecastContext {
     /// Technical indicators computed over `recent_bars`.
     pub indicators: TechnicalIndicators,
     /// Top-K lesson cards retrieved from `crates/reflection` for this
-    /// `(symbol, regime)`. `// TODO Wave C: retrieve top-K from reflection-memory`
+    /// `(symbol, regime)`. Wiring lands at Wave C (`ForecastContext::from_runtime`);
+    /// runtime retrieval uses `reflection::retrieve_top_k(query, REPORT_TIME_TOP_K)`.
     pub top_k_lessons: Vec<reflection::types::LessonCard>,
     /// Last N=10 past forecast decisions on this symbol (from audit ledger).
     pub recent_decisions: Vec<RecentDecision>,

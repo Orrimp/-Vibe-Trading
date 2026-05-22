@@ -109,6 +109,6 @@ All 6 scripts PASS end-to-end smoke test:
 
 ## Related
 
-- [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](ui-testing-direction-2026-05-12.md) — the strategy doc that motivated the capability-boundaries amendment these scripts complement
+- [`spec/dev-notes/ui-testing-direction-2026-05-12.md`](archive/2026-Q2/ui-testing-direction-2026-05-12.md) — the strategy doc that motivated the capability-boundaries amendment these scripts complement
 - [`AGENT.md ## Capability boundaries`](../../AGENT.md#capability-boundaries-orchestrator-vs-sub-agent) — the load-bearing rule that scopes these tools to the orchestrator
 - Existing project scripts (`scripts/verify_anchors.sh`, `scripts/check_no_clocks_in_ui_tests.sh`, `scripts/capture_screenshot.sh`, etc.) — same `scripts/` directory, callable from sub-agents (no capability-boundary concern)

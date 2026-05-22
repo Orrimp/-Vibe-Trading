@@ -55,7 +55,7 @@ verdict: L2
 
 ## Notes
 
-- L-verdict algorithm: see [ADR-0039 § D1](../architecture/adr/0039-llm-forecaster-verdict-criteria.md#d1-l-verdict-priority-tree).
+- L-verdict algorithm: see [ADR-0039 § D1](../../architecture/adr/0039-llm-forecaster-verdict-criteria.md#d1-l-verdict-priority-tree).
 - Read-only against the audit DB; no writes to any table.
 - `confidence_outcome_corr` requires realised returns (not in audit DB). Pass via `--confidence-outcome-corr` if known from a backtest run; default 0.0 triggers L2 as a conservative fallback.
 - **WARNING**: zero rows found in `llm_forecast_entries`. The audit DB may not have migration 012 applied or the LLM forecaster has not been run yet. L-verdict result reflects an empty window.

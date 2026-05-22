@@ -1450,7 +1450,7 @@ feature-gated live tests: 32 lib + 2 consistency + 6 live_subscription
   inline strings / hex (consistency audit green). T526 + T_FINAL_B deferred
   pending developer T512 — blocker writeup at
   [ui-v05-blockers-2026-04-19.md](reports/ui-v05-blockers-2026-04-19.md).
-  via [spec/v05-composed-strategies/tasks.md](../tasks/v05-composed-strategies.md).
+  via [spec/v05-composed-strategies/tasks.md](tasks.md).
 - 2026-04-19 (ui-designer, resume): T512 landed; T526 closed out. Three
   `ui::live` subscribers (`stream_strategy_loaded` / `_swapped` / `_error`)
   wired with eager-subscribe + shared `CONNECTION_CHANNEL_CLOSED` copy;

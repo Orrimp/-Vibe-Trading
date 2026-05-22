@@ -1564,7 +1564,7 @@ cases: `quantity_negative_direct.rs` (private tuple field) and
   wiring, v0 config TOML, observability + cost scaffold, performance
   budgets, and test strategy. Bumped `owner: architect`, `status:
   in-progress`. Task list for developer + ui-designer lives in
-  [spec/v0-paper-sma/tasks.md](../tasks/v0-paper-sma.md).
+  [spec/v0-paper-sma/tasks.md](tasks.md).
 - 2026-04-17 (ui-designer): T13–T20 landed. Added `## UI — Week 1`
   section with wireframe, panel list, strings + theme token tables,
   accessibility notes, consistency self-audit, and Week 2 handoff

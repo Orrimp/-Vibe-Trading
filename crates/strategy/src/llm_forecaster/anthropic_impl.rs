@@ -407,7 +407,7 @@ impl LlmForecaster for LlmForecasterImpl {
         );
 
         let request = self.build_request(&ctx);
-        let timeout_ms = 45_000u64; // Q5b default; TODO Wave C: from config
+        let timeout_ms = 45_000u64; // Q5b architect-locked (45s; Anthropic Sonnet p99 + safety)
 
         let response = self
             .provider

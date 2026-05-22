@@ -633,8 +633,8 @@ anchors only.
   step list) per
   [Design → Q6](feature.md#reflection-memory-q6--anchor-re-lock-cadence-confirmed-scope-is-the-two-report-sample--v1-anchors-only):
   - Per
-    [`spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md` → "What the
-    eventual architect must do"](../dev-notes/memory-anchor-relock-completed-2026-05-08.md#what-the-eventual-architect-must-do),
+    [`spec/dev-notes/archive/2026-Q2/memory-anchor-relock-completed-2026-05-08.md` → "What the
+    eventual architect must do"](../dev-notes/archive/2026-Q2/memory-anchor-relock-completed-2026-05-08.md#what-the-eventual-architect-must-do),
     run the two scenarios twice 10s apart at seed `0xC0FFEE`:
     1. `cargo run -p reports --bin report -- --period 7d
        --ledger target/test-ledgers/sample-7d.db --output
@@ -648,7 +648,7 @@ anchors only.
     task body so the tester can copy-paste them into
     `spec/anchors.toml:67-75`.
   - The developer also **prepares the dev-note footer**:
-    `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md` gains a
+    `spec/dev-notes/archive/2026-Q2/memory-anchor-relock-completed-2026-05-08.md` gains a
     "completed at 2026-05-08 — see spec/reflection-memory/tasks.md"
     footer line (the actual edit happens at
     `T_FINAL_REFLECTION_MEMORY` after the SHAs land). —
@@ -752,7 +752,7 @@ the loop.
     / 11)` with the new SHAs locked.
   - Tester appends the "completed at 2026-05-08 — see
     spec/reflection-memory/tasks.md" footer to
-    `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`.
+    `spec/dev-notes/archive/2026-Q2/memory-anchor-relock-completed-2026-05-08.md`.
   - V1–V10 from the feature's Verification section all pass.
   - Status flip `in-progress → shipped`; owner flip `architect →
     shipped`; appended Changelog row.
@@ -783,7 +783,7 @@ the loop.
     Anchors re-locked at `spec/anchors.toml:67-75`;
     `bash scripts/verify_anchors.sh` →
     `ANCHORS PASS  (11 / 11)`. Dev-note footer appended at
-    `spec/dev-notes/memory-anchor-relock-completed-2026-05-08.md`. Tester report:
+    `spec/dev-notes/archive/2026-Q2/memory-anchor-relock-completed-2026-05-08.md`. Tester report:
     `spec/reflection-memory/reports/test-2026-05-08-2114-reflection-memory-final.md`.
 
 ## Parallelism map

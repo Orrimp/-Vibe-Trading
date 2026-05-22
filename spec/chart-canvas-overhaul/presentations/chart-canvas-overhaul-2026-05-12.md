@@ -53,7 +53,7 @@ queued `ui-test-harness-bootstrap` v0.1 feature per operator decision D4.
   in the `ui-test-harness-bootstrap` v0.1 feature
   ([`spec/backlog.md ## Process / tooling`](../../backlog.md#process--tooling)).
   Operator decision D4 in
-  [`spec/dev-notes/ui-testing-direction-2026-05-12.md ## Section 9`](../../dev-notes/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator).
+  [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`](../../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator).
 - **Q4 local-time x-axis labels (R10)** — UTC ships in v1.10.0;
   local-time follow-up queued as v1.11 `chart-x-axis-local-time` brief
   (operator decision recorded in Q-revised-1, T3028 landing note at
@@ -240,7 +240,7 @@ Two operator-facing outputs landed from that retrospective:
    `cwc-long-running-agents` reference harness) and the
    "architect = hypothesis only" rule.
 
-2. **[`spec/dev-notes/ui-testing-direction-2026-05-12.md`](../../dev-notes/ui-testing-direction-2026-05-12.md)**
+2. **[`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`](../../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)**
    — the full retrospective with five TL;DR decisions (adopt
    `iced_test`, extend `insta` to binary snapshots, codify the
    capability asymmetry, replace tester-self-grades with read-only

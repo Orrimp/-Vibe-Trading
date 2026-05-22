@@ -106,7 +106,7 @@ Copy is the exact operator-facing text. String keys reference the `strings.rs` c
 
 ### 4.5 `strategies` — loaded strategies + swap log
 
-v0.5 addition (tasks T522–T528). Placement: **right column, above Open positions** per the Q4 resolution in [architecture.md § v0.5 cockpit strategies panel layout](../../architecture.md#v05--cockpit-strategies-panel-layout-q4--confirmed-2026-04-19). Columns: `Strategy`, `Hash`, `Status`, `Last event`, `Signals / 60s`, `Holds position`. Footer: last ten `StrategyEventView`s colored by event kind (Load → `ACCENT`, Swap → `WARN`, Unload → `FG_MUTED`, Reject → `NEG`).
+v0.5 addition (tasks T522–T528). Placement: **right column, above Open positions** per the Q4 resolution in [architecture.md § v0.5 cockpit strategies panel layout](../../../architecture.md#v05--cockpit-strategies-panel-layout-q4--confirmed-2026-04-19). Columns: `Strategy`, `Hash`, `Status`, `Last event`, `Signals / 60s`, `Holds position`. Footer: last ten `StrategyEventView`s colored by event kind (Load → `ACCENT`, Swap → `WARN`, Unload → `FG_MUTED`, Reject → `NEG`).
 
 | State | Copy | Key visual |
 |---|---|---|
@@ -132,7 +132,7 @@ Source of truth: `ui::theme::latency` in `crates/ui/src/theme.rs`.
 
 ## 6. Kill-switch safety phrase
 
-Typed-confirm phrase: **`HALT BTC`** (from `strings::KILL_SAFETY_PHRASE`). iced renders Confirm disabled (`on_press = None`) unless typed input exactly equals the phrase. See R7 and [kill-switch runbook](../../runbooks/kill-switch.md).
+Typed-confirm phrase: **`HALT BTC`** (from `strings::KILL_SAFETY_PHRASE`). iced renders Confirm disabled (`on_press = None`) unless typed input exactly equals the phrase. See R7 and [kill-switch runbook](../../../runbooks/kill-switch.md).
 
 ## 7. For future AI sessions — validation hints
 

@@ -18,7 +18,7 @@ re-spawns ui-designer once T512 is merged.
 ## Scope reminder
 
 v0.5 ui-designer scope (from
-[spec/v05-composed-strategies/tasks.md](../tasks/v05-composed-strategies.md)):
+[spec/v05-composed-strategies/tasks.md](../tasks.md)):
 
 | Task | Status |
 |---|---|

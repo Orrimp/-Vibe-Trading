@@ -655,7 +655,7 @@ Top 3 risks for this feature. Mitigation plan inline.
   developer pass and test-runner pass — orchestrator's
   one-touch operator-input gate.
 - Weeks 2 / 3 / 4 of the
-  [dev-note §6 plan](../dev-notes/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan)
+  [dev-note §6 plan](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan)
   are separate features queued in
   [`spec/backlog.md`](../backlog.md). Week 2 candidate work
   includes the deferred `insta` binary-snapshot integration

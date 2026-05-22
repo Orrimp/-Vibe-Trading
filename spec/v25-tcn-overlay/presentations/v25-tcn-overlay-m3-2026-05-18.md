@@ -312,7 +312,7 @@ strategy-layer module; cockpit consumes it transparently)._
 4. **Pre-existing spec debt unchanged.** 727 dead-links + 6 future-phase
    `trace-broken-path` rows persist. None are caused by this feature; both
    buckets are tracked in
-   [`spec/dev-notes/audit-2026-05-18.md`](../../dev-notes/audit-2026-05-18.md).
+   [`spec/dev-notes/archive/2026-Q2/audit-2026-05-18.md`](../../dev-notes/archive/2026-Q2/audit-2026-05-18.md).
    M3 introduced **zero** new spec-lint violations.
 5. **`cargo audit` not installed; `cargo deny` pre-existing FAIL** —
    `RUSTSEC-2024-0436` (`paste` unmaintained), `MIT-0` license violations.
@@ -377,7 +377,7 @@ spec-lint: FAIL (733 violations in 2 categories)
 
 Spec-lint result `733 / 2` is **identical** to the tester's baseline at
 `VERDICT → PASS` (test report §2.1). No new categories, no new counts. The
-`spec/dev-notes/audit-2026-05-18.md` baseline was originally 734 / 3; the
+`spec/dev-notes/archive/2026-Q2/audit-2026-05-18.md` baseline was originally 734 / 3; the
 delta (−1 violation, −1 category) is the `ui-rethink-phase-a-lab/tasks.md`
 `missing-frontmatter` having been resolved on an unrelated feature in the
 meantime. No regression introduced since `VERDICT → PASS`.
