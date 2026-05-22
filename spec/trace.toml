@@ -372,6 +372,55 @@ anchors     = []   # NEVER shipped; planned anchor names {top10-2023,2024}-fy-ba
 state       = "deprecated"   # RETIRED 2026-05-22 — bake-off premise moot when 2 of 3 paradigms have already F4'd. The retirement decision itself IS the bake-off result: all v2.5 paradigms retire as F4 no-alpha. Stub preserved for archeology.
 
 #
+# ─── v3 post-DL strategy reformulation (3 picks under operator-decide 2026-05-22) ──
+#
+# Q-PICK = {C1 volatility + C2 regime + C5 LLM-as-forecaster}; Q-BUDGET ~6-8w
+# total; Q-SEQ = HYBRID (C1 builds first; C2 + C5 produce spec-only analyst
+# briefs in parallel; activation of C2 / C5 waves gated on C1 verdict OR
+# operator promote). Q-PROCESS = 3 analysts in parallel.
+#
+
+[[req]]
+id          = "REQ-V3-VOL-FORECASTER-001"
+title       = "v3 volatility forecaster (Candidate 1 of strategy-reformulation-survey-2026-05-22; HIGHEST EV per wall-clock week — predict σ not μ; orthogonal-to-v2.5-F4-F4-F4 task framing); FIRST-OF-3 to build under operator Q-SEQ HYBRID — analyst-pass v0.1.0 lands 2026-05-22; analyst-recommended Q-bundle = Q1=(b) Parkinson estimator + Q2=(a) GARCH(1,1)-only-MVP (cheap-first per retrospective lesson #1; defers DL refinement to v0.1.1) + Q3=(d) all-3-consumer-builders (vol-targeting overlay + kill-switch + standalone) with primary anchor target = vol-targeting overlay on v1 momentum + Q4=(b) NEW ADR-0038 V-verdict (ADR-0033 STAYS IMMUTABLE per retrospective lesson #2) + Q5=(a) anchor under v3.0.0-volatility (N_new = 3 anchors) + Q6=(a) BS-1 train + BS-2 val span; cost ~2-3 weeks best case (Q2=(a) GARCH-only), ~4-6 weeks under Q2 ≠ (a) DL refinement; H2 alpha-unlock test = vol-targeting Sharpe-delta ≥ +0.10 vs un-targeted v1 baseline (net of rebalancing turnover); MEDIUM-HIGH prior per Moreira-Muir-2017 vol-targeting precedent on equity factor portfolios; predecessor v25a-patchtst-overlay v0.1.0 (RETIRED 2026-05-22 evidence-source); sibling picks v3-regime-classifier (C2; spec-only analyst-pass parallel) + v3-llm-forecaster (C5; spec-only analyst-pass parallel)"
+feature     = "v3-volatility-forecaster"
+product     = "spec/product.md"
+arch        = [
+  "spec/v3-volatility-forecaster/feature.md",
+  "spec/dev-notes/strategy-reformulation-survey-2026-05-22.md",   # § Candidate 1 cost / EV / reuse scoping — analyst inherits
+  "spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md",    # § Lessons learned (cheap-first, F-verdict immutability, σ_train load-bearing) + § What COULD next chase (vol-target head item)
+  "spec/architecture/12-forecast-overlay.md",                     # forecast lane infra carries forward; consumer shape (strategy-side vs risk-engine) is K-vol-2 ADR amendment territory
+  "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md", # candle ML framework — covers DL vol refinement under Q2 ≠ (a); N/A under Q2=(a) GARCH-only
+  "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",      # canonical-arch descriptor — extended additively for GARCH (per-symbol JSON) + conditional DL params; v2.5 TCN/PatchTST model_revision SHAs unchanged
+  "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",  # vol-target backtest scenarios inherit realdata path
+  "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md",     # § D3 F-verdict IMMUTABLE — vol uses NEW ADR-0038 V-verdict NOT extension (Q4=(b) analyst default)
+  "spec/architecture/adr/0035-tcn-sigma-train-recalibration.md",   # § D1 post-training σ_train pattern — applies to DL refinement under Q2 ≠ (a); N/A under Q2=(a) GARCH-only (GARCH has no σ_train concept)
+  # ADR-0038 vol-forecast-verdict-shape — NEW at M-T1 (architect-decide); analyst proposes V1-V5 + V_ALPHA priority tree shape in feature.md § R5; ADR-0033 stays IMMUTABLE
+]
+crates      = [
+  "crates/forecast",        # NEW: vol.rs (trait+types) + garch.rs (GARCH fitter) + vol_verdict.rs bin; features.rs additive Parkinson target derivation; sharpe_comparison.rs additive `--scenario vol-target-bs1` dispatch
+  "crates/strategy",        # NEW: vol_targeting_overlay.rs (R6.a primary) + vol_killswitch_overlay.rs (R6.b secondary) + vol_meanreversion.rs (R6.c tertiary) — all siblings; zero refactor of existing strategy files
+  "crates/backtest",        # NEW: top10-2023-fy-vol-target-overlay-realdata scenario per ADR-0032 (additive); optional kill-switch scenario under Q-anchors=(a)
+  "crates/replay-cache",    # NEW namespace "vol_forecast"; existing "forecast" namespace byte-identical
+  "crates/audit",           # additive JournalEntry { kind: "vol_forecast_emitted", … } row variant
+  "crates/core",            # additive types if Q4=(a) sibling VolForecastProvider trait lands in core
+]
+tests       = []     # developer fills at M-D — garch_fit_determinism + vol_target_derivation + vol_verdict_mutual_exclusivity + tcn_byte_identity_after_vol_ship + patchtst_byte_identity_after_vol_ship + vol_targeting_overlay; tester augments at M-FINAL per R11 (12 verification gates)
+anchors     = []     # tester locks at M-FINAL — analyst-default Q5=(a) ships N_new=3 under v3.0.0-volatility: vol-verdict-bs1-realdata + top10-2023-fy-vol-target-overlay-realdata + sharpe-comparison-vol-target-bs1-realdata; under Q-anchors=(a) +1 = top10-2023-fy-vol-killswitch-overlay-realdata; 30 v2.5-chain anchors STAY BYTE-IDENTICAL per R10
+state       = "draft"   # analyst-pass v0.1.0 complete 2026-05-22 (first-of-3 hybrid-sequence parallel analyst passes; this is the only one with code commitment in v0.1.0 — C2/C5 stay spec-only); next gate is M-OD operator-decide Q1-Q6; under Q-bundle autoapprove, status flips draft → proposed → in-progress at M-T1
+
+[[req]]
+id          = "REQ-V3-REGIME-CLASSIFIER-001"
+title       = "v3 regime classifier (Candidate 2 of strategy-reformulation-survey-2026-05-22) — predict regime label not μ; spec-only design exploration at v0.1.0 per Q-SEQ HYBRID — DEFERRED until C1 verdict lands OR operator promotes; extends pre-existing pure-fn 3-state BTC daily-close tagger at crates/reflection/src/regime.rs (Bull/Bear/Chop, ±2% threshold, REGIME_THRESHOLD_RATIO const, classify_regime fn) — 7+ downstream test files + lesson-card embedding + Phase F UI renderer depend on byte-identity of that seed; analyst-pass Qs Q1-Q7 surfaced with defaults (Q1=(a) extend-3-state, Q2=(a) statistical HMM with (d) rule-based fallback, Q3=(a) nowcast, Q4=(a) regime-conditional position sizing on v1 momentum, Q5 new sibling-ADR-0037 not ADR-0033 extension, Q6=v2.7.0-regime anchor pin, Q7=(a) extend-in-place); cost ~4-6 weeks from activation gate; predecessor strategy-reformulation-survey-2026-05-22 § Candidate 2; sibling picks v3-volatility-forecast (C1, ships first) + v3-llm-as-forecaster (C5, parallel analyst)"
+feature     = "v3-regime-classifier"
+product     = "spec/product.md"
+arch        = []    # architect M-T1 DEFERRED per Q-SEQ HYBRID; activation gate = C1 ships AND (promote-C2 OR Sharpe-delta on C1 ≥ +0.10)
+crates      = []    # developer waves DEFERRED
+tests       = []    # tester DEFERRED
+anchors     = []    # planned under v2.7.0-regime pin (Q6 default): regime-classifier-bs{1,2}-realdata + regime-overlay-momentum-bs{1,2}-realdata — reserved-but-unused until activation
+state       = "draft"   # analyst pass complete 2026-05-22; spec-only design exploration; NO code commitment until activation gate fires
+
+#
 # ─── Accounting / risk features ─────────────────────────────────────────
 #
 
@@ -906,6 +955,17 @@ tests       = [
 ]
 anchors     = []   # Phase F touches no strategy/audit/exec/report-renderer code; 22 originals stay byte-identical (R7.1 carry-forward H2 from Phase D+/E predecessors). Tester M-FINAL verified: bash scripts/verify_anchors.sh → ANCHORS PASS (22 / 22) both pre- and post-sweep 2026-05-21. All 22 scenario names listed in anchors.toml carry forward unchanged; no new anchors added (additive-UI-only feature by construction).
 state       = "shipped"   # operator-approved via "Autoapprove all" 2026-05-21 (presenter deck approved); tester VERDICT → PASS clean. PHASE F CLOSES THE UI RETHINK (6 of 6 phases shipped).
+
+[[req]]
+id          = "REQ-V3-LLM-FORECASTER-001"
+title       = "v3 LLM-as-forecaster — reflection-memory + audit-trail-anchored signal (survey Candidate 5 / Sequence-B head pick by novelty + best product.md moat-statement alignment per § Differentiator line 79-83 'moat = (2) + (4)' persistent reflection memory + auditable double-entry); SPEC-ONLY DESIGN EXPLORATION per operator Q-SEQ HYBRID 2026-05-22 — architect M-T1 + developer waves DEFERRED until C1 (v3-volatility-forecasting) ships its verdict OR operator promotes ahead of C1; v0.1.0 default Q4 = (a)+(c) hybrid — standalone LlmForecasterStrategy emitting 5-tier discrete rating + confidence + reasoning trace + cited lesson cards AND Phase F right-rail Assistant slot body promotion (runtime-gated by strategy-enabled flag per R9.3 so Phase F default-disabled config stays byte-identical); Q5 = (b) replay-cache around LLM calls via crates/llm::RecordingProvider/ReplayProvider (already shipped at v2-llm-strategy v2.0.0 — extends usage, no new infra); Q6 = (b) new ADR-0038 LLM-forecaster verdict criteria L1-L4 (L1 bias collapse / L2 calibration failure / L3 cost overrun / L4 reasoning trace degenerate / L0 PASS); Q7 = (a) new version pin v3.0.0-llm-forecaster; Q8 = (b) standalone v0.1.0 with v0.1.1 lift to v2x-trading-state-bus TradingState substrate if both ship; predecessor chain REQ-V2-LLM-STRATEGY-001 + REQ-UI-RETHINK-PHASE-F-001"
+feature     = "v3-llm-forecaster"
+product     = "spec/product.md"
+arch        = []   # architect M-T1 deferred per Q-SEQ HYBRID; lands at promotion. Will include feature.md + decomp.md + ADR-0038 (LLM-forecaster verdict criteria) + survey/retrospective cross-references.
+crates      = []   # developer waves deferred per Q-SEQ HYBRID; lands at promotion. Expected: crates/strategy (new src/llm_forecaster/ subfolder), crates/llm (consumer), crates/reflection (top_k consumer), crates/audit (additive migration 011), crates/ui (Assistant slot body promotion), crates/forecast (new bin/llm_forecaster_bench.rs), crates/backtest (new scenarios).
+tests       = []   # developer + tester waves deferred per Q-SEQ HYBRID; lands at promotion. Expected: crates/strategy/tests/llm_forecaster_neutrality.rs (re-runs top10-2023-fy-tcn-overlay-realdata + asserts 8fa47f49… body-SHA unchanged); H1-H5 falsification protocol tests (byte-identity, cost, Sharpe-delta, trace quality, schedule).
+anchors     = []   # spec-only at this pass; v0.1.0 ship plans to add 2 anchors top10-2023-fy-llm-forecaster-realdata + top10-2024-fy-llm-forecaster-realdata under new version pin v3.0.0-llm-forecaster (30 existing → 32 at ship). Anchor risk MEDIUM per H4 LLM determinism + replay-cache pre-condition.
+state       = "draft"   # analyst pass 2026-05-22 surveyed C5 from strategy-reformulation-survey-2026-05-22.md; brief authored at spec/v3-llm-forecaster/feature.md with R1-R10 + Q1-Q8 + K1-K10 + H1-H5 + 8-item non-regression contract; analyst-recommended defaults locked; backlog Queue § Strategy entry added (NOT Active per operator Q-SEQ HYBRID); HANDOFF → operator-decide-after-C1-ships (Q-PROMOTE + Q1-Q8 + Q-V2X-SEQ + Q-ASSISTANT-WAKE).
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────

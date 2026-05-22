@@ -373,6 +373,88 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-22 (analyst, v3-volatility-forecaster) —
+     **C1 / 3 hybrid-sequence analyst passes** triggered by operator's
+     2026-05-22 routing post v25a-patchtst-overlay v0.1.0 ship
+     (joint F4-F4-F4 across TCN BS-1/BS-2 @ 1h + PatchTST BS-1 @ 24h
+     retired the v2.5 DL forecast overlay umbrella). Q-PICK = C1
+     (volatility) + C2 (regime) + C5 (LLM-as-forecaster) = 3 picks;
+     Q-BUDGET ~6-8 weeks total cap; Q-SEQ = HYBRID (build C1 first;
+     C2 + C5 analyst-only spec parallel-authored same day, no code
+     commitment until C1 verdict OR operator promote); Q-PROCESS =
+     3 analysts in parallel. This entry is **C1 — the only code-
+     committing pick at this gate**.
+
+     Brief at `spec/v3-volatility-forecaster/feature.md` (status:
+     draft, owner: analyst, version: 0.1.0, predecessor:
+     v25a-patchtst-overlay v0.1.0 RETIRED-evidence-source, parent:
+     NONE — new strategy lane signaled by v3.0.0 anchor pin)
+     carries R1-R12 requirements (vol target derivation via
+     Parkinson estimator + GARCH(1,1) baseline + conditional DL
+     refinement + vol forecaster trait/impl + V-verdict algorithm
+     + NEW ADR-0038 + vol-targeting overlay strategy on v1
+     momentum + kill-switch + standalone + backtest scenario +
+     Sharpe-comparison + watch recipe + non-regression contract
+     + verification gates + risk-engine integration deferral).
+     H1-H4 hypothesis register: H1 DL beats GARCH ≥5% QLIKE;
+     **H2 vol-targeting Sharpe-delta ≥ +0.10 vs un-targeted v1
+     baseline (THE alpha-unlock test)**; H3 3-4 week cheap-first
+     ship under Q2=(a); H4 hourly crypto vol IS predictable.
+     K-vol-1..6 risk register (turnover eats lift; strategy-side
+     vs risk-engine ADR amendment; scope creep guard; H4
+     falsification; V-verdict disagreement; cheap-first under-
+     delivers).
+
+     **Q1-Q6 operator-decide ALL WITH ANALYST-RECOMMENDED
+     DEFAULTS:** Q1=(b) Parkinson estimator (5-7× more sample-
+     efficient than realized-vol-from-close per Parkinson 1980;
+     reuses existing high/low columns; zero new data sourcing);
+     **Q2=(a) GARCH(1,1)-only-MVP** (cheap-first per
+     retrospective lesson #1; defers DL refinement to v0.1.1 if
+     v0.1.0 finishes T-VOL-MARGINAL); Q3=(d) all-3-consumer-
+     builders (vol-targeting overlay on v1 momentum as PRIMARY
+     anchor target + kill-switch + standalone, all opt-in via
+     builders); **Q4=(b) NEW ADR-0038 V-verdict** (V1-V5
+     priority tree + V_ALPHA; **ADR-0033 stays IMMUTABLE per
+     retrospective lesson #2**); Q5=(a) anchor under
+     `v3.0.0-volatility` (signals strategy-lane shift; mirrors
+     `v2.5a.0-patchtst` naming; N_new = 3 anchors); Q6=(a) BS-1
+     train + BS-2 val span (apples-to-apples vs v2.5 scenario
+     surface).
+
+     "Autoapprove" activates the bundle; defaults are internally
+     consistent. Trace row `REQ-V3-VOL-FORECASTER-001` opened
+     `draft`. Promoted Queue/Strategy → Active 2026-05-22 (first
+     ship in v3 post-DL strategy reformulation lane).
+
+     **Anchor baseline:** 28 PASS + 2 known-FAIL (carry-forward
+     from v25a-patchtst-overlay v0.1.0 ship; 30 anchors total
+     including the 2 v2.5a.0-patchtst additions). POST under
+     Q5=(a) expects **28 + 3 = 31 PASS + 2 known-FAIL** (or 32
+     PASS + 2 FAIL if Q-anchors sub picks kill-switch anchor).
+
+     **Cost framing:** Q2=(a) GARCH-only ~2-3 weeks best case
+     (~3-4 weeks with one retry); Q2 ≠ (a) DL refinement ~4-6
+     weeks. Operator's 6-8 week cap holds either way; Q2=(a)
+     leaves ~3-4 weeks for promoting one of C2/C5 to code after
+     C1 verdict, **Q2 ≠ (a) leaves only ~2-3 weeks** — operator
+     should weight Q2 default heavily.
+
+     **Prior probability of clearing H2 +0.10 Sharpe-delta:**
+     MEDIUM-HIGH per Moreira-Muir-2017 vol-targeting precedent
+     on equity factor portfolios (reported Sharpe lifts 0.15-0.40
+     on momentum); crypto-at-hourly-cadence transaction-cost
+     drag is the load-bearing empirical unknown; analyst's prior
+     is alpha SURVIVES the turnover net cost given the [0.5×,
+     2×] scale clamp default.
+
+     HANDOFF → operator-decide (Q1-Q6) → architect for M-T1 /
+     ADR-0038 V-verdict shape. Sibling analyst passes (no code):
+     `spec/v3-regime-classifier/feature.md` (C2) +
+     `spec/v3-llm-forecaster/feature.md` (C5) under Queue §
+     Strategy with `status: draft` + activation gated on C1
+     verdict. -->
+
 <!-- updated 2026-05-21 (analyst, v25a-patchtst-overlay) —
      analyst pass landed for phase 2 of the 4-phase DL roadmap
      activated by operator's Q1=(b) RETIRE v2.5 TCN decision at
@@ -547,6 +629,107 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   preserved as another what-not-to-do reference (DL overlay at 1h/24h
   log-return horizon on hourly crypto bars does not extract +0.10
   Sharpe-delta on the v1 cross-sectional momentum baseline).
+
+- **v3 — Regime classifier (`v3-regime-classifier`).**
+  _Queued DEFERRED 2026-05-22 (analyst pass) — NOT Active._ Candidate 2
+  of three picks ({C1 volatility + C2 regime + C5 LLM-as-forecaster})
+  from the
+  [strategy-reformulation survey](dev-notes/strategy-reformulation-survey-2026-05-22.md)
+  resolution. Per operator-decide Q-SEQ = **HYBRID**: C1 (volatility)
+  ships first; this Candidate-2 analyst pass produced a spec-only
+  design brief at
+  [`feature.md`](v3-regime-classifier/feature.md) (R1-R8, H1-H6,
+  Q1-Q7 with analyst-recommended defaults, 8-item non-regression
+  contract, deferred-milestone activation contract) and a `[[req]]`
+  row `REQ-V3-REGIME-CLASSIFIER-001` in `draft` state. **Architect
+  M-T1 + developer waves DEFERRED** — activation gate is C1 verdict
+  landed AND (operator routing = promote-C2 OR Sharpe-delta on C1
+  ≥ +0.10 auto-progression). **Load-bearing finding:**
+  [`crates/reflection/src/regime.rs`](../crates/reflection/src/regime.rs)
+  already ships a pure-fn 3-state BTC daily-close regime tagger
+  (`RegimeTag { Bull, Bear, Chop }`, `REGIME_THRESHOLD_RATIO =
+  dec!(0.02)`, `classify_regime` fn) which 7+ downstream test files
+  + lesson-card embedding + Phase F Memory/Models renderer depend on
+  byte-identically; the feature extends rather than reinvents.
+  Q1-Q7 surfaced: regime taxonomy, classifier architecture (analyst
+  default HMM with rule-based fallback), nowcast vs forecast horizon,
+  strategy consumer shape (default regime-conditional position
+  sizing on v1 momentum), verdict shape (analyst proposes new
+  sibling ADR-0037 NOT ADR-0033 extension), anchor pin (default
+  `v2.7.0-regime`), and in-place vs sibling-file vs new-crate
+  disposition (default extend-in-place to preserve lesson-card
+  embedding determinism). Cost ~4-6 weeks from activation gate;
+  cumulative budget across {C1 + C2 + C5} cap ~16 weeks per
+  Q-BUDGET. Sibling picks: `v3-volatility-forecast` (C1, ships
+  first) + `v3-llm-as-forecaster` (C5, parallel analyst pass).
+
+- **v3 — LLM-as-forecaster (`v3-llm-forecaster`).**
+  _Queued DEFERRED 2026-05-22 (analyst pass) — NOT Active._ Candidate 5
+  of three picks ({C1 volatility + C2 regime + C5 LLM-as-forecaster})
+  from the
+  [strategy-reformulation survey](dev-notes/strategy-reformulation-survey-2026-05-22.md#candidate-5--reflection-memory-as-forecaster-v2-llm-signal).
+  Per operator-decide Q-SEQ = **HYBRID**: C1 (volatility) ships first;
+  this Candidate-5 analyst pass produced a spec-only design brief at
+  [`feature.md`](v3-llm-forecaster/feature.md) (R1-R10, H1-H5, Q1-Q8
+  with analyst-recommended defaults, K1-K10 risk register, 8-item
+  non-regression contract, deferred-milestone activation contract) and
+  a `[[req]]` row `REQ-V3-LLM-FORECASTER-001` in `draft` state.
+  **Architect M-T1 + developer waves DEFERRED** — activation gate is
+  C1 verdict landed AND (operator routing = promote-C5 OR Sharpe-delta
+  on C1 ≥ +0.10 auto-progression).
+  **Load-bearing alignment**: this candidate is the **only** survey
+  row whose hypothesis is information-theoretically independent of
+  the v2.5 F4-F4-F4 chain AND whose signal source IS the
+  [product.md § Differentiator line 79-83](product.md#differentiator)
+  moat `(2) + (4)` (persistent reflection memory + auditable
+  double-entry ledger). Survey rated C5 highest-novelty / best-
+  moat-statement-alignment / HIGH-variance EV (LOW-MEDIUM prior on
+  ≥+0.10 Sharpe-delta; could be 0 or > 0.2). Wake conditions all met:
+  `v2-llm-strategy v2.0.0` shipped 2026-05-13 (LlmProvider trait +
+  BudgetedProvider + RecordingProvider/ReplayProvider +
+  CachedSystemPromptBuilder + ToolSchema); `reflection-memory v0.1.0`
+  + Phase F Memory screen shipped (lesson-card store + top_k);
+  `crates/audit/` Phase D shipped (audit-tick stream); Phase F
+  right-rail Assistant slot wakened structurally at v0.1.0
+  (Q4=(a) stub placeholder). Q1-Q8 surfaced:
+  Q1 signal shape (default discrete 5-tier rating + confidence +
+  reasoning trace), Q2 input shape (default all-of-the-above —
+  OHLCV + indicators + top-K lesson cards + recent audit decisions),
+  Q3 memory consumption (default top-K + distilled summary hybrid;
+  fallback to top-K-only until `reflection-memory-distillation`
+  ships), Q4 consumer shape (default standalone LlmForecasterStrategy
+  + Phase F Assistant slot body promotion runtime-gated;
+  overlay-on-momentum deferred to v0.2.0), Q5 determinism (default
+  replay-cache + `temperature=0` — extends shipped
+  `crates/llm::RecordingProvider/ReplayProvider`, no new infra),
+  Q6 verdict shape (default new ADR-0038 LLM-forecaster verdict
+  criteria L1-L4 — NOT ADR-0033 extension since F1-F4 priorities
+  are μ-prediction-specific N/A here), Q7 anchor pin (default
+  new `v3.0.0-llm-forecaster` version; +2 anchors; 30 → 32 at ship),
+  Q8 `v2x-trading-state-bus` sequencing (default standalone v0.1.0;
+  lift to TradingState substrate v0.1.1 if both ship). Load-bearing
+  risks: K1 reflection-store top_k determinism under backtest re-runs
+  (mitigated by replay-cache request_hash canonicalisation R6.6),
+  K2 LLM cost-blow-up (mitigated by N-bar batching R5.4 default
+  N=24 once-per-day → ~$55/year cold-run, ~$10-15 warm-run), K4
+  Anthropic API drift across server deploys (mitigated by 3-back-
+  to-back-identical cache-build runs before anchor lock), K5
+  replay-cache checkout-friendliness (default check-in compressed
+  cache mirror of v2-llm-strategy's `crates/llm/tests/fixtures/`
+  precedent), K8 5-9w cost variance (HIGH per survey K-llm-3 novel
+  territory), K9 sequencing-on-C1-verdict, K10 v2x-bus sequencing
+  ambiguity. Cost ~6-9 weeks from activation gate (analyst 1w done,
+  architect 1-2w, dev 3-5w, tester 1w, presenter 1-2d); cumulative
+  budget across {C1 + C2 + C5} cap ~16 weeks per Q-BUDGET; if H1
+  Sharpe-delta returns positive, operator likely promotes Q4=(b)
+  overlay + Q4=(d) all-three-as-builders as v0.2.0 follow-ons
+  (~2-3 additional weeks). Sibling picks: `v3-volatility-forecast`
+  (C1, ships first) + `v3-regime-classifier` (C2, parallel analyst
+  pass). **The biggest product-differentiation surface in C5 is the
+  Phase F right-rail Assistant slot body promotion** (R9 of the
+  brief) — the operator *sees* the LLM reasoning + retrieved lesson
+  cards + audit correlation live; if this lights up, the moat
+  becomes operator-visible.
 
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 
