@@ -213,11 +213,15 @@ output.
 
 ## T-P — Presenter (M-PRESENTER)
 
-- [ ] **T-P1** — Assemble
-  `spec/v3-volatility-forecaster-noop-fix/presentations/v3-volatility-forecaster-noop-fix-<YYYY-MM-DD>.md`.
-  Carry the 4-cell route table; recommend the (a) RETIRE-C1 (R-O1) /
-  (a) RETIRE or (d) refit (R-O2) / reopen + V3 repair (R-O3) decision
-  per the verdict cell. Operator ticks approval.
+- [x] **T-P1** — Assemble
+  `spec/v3-volatility-forecaster-noop-fix/presentations/v3-volatility-forecaster-noop-fix-2026-05-22.md`.
+  Carries 4-cell route table; recommends (a) RETIRE C1 (R-O1) on
+  REAL-wired-overlay evidence (net_delta −0.021719 real-vs-real;
+  equity drop 44.6%; mechanism = GARCH-under-prediction × upper-clamp
+  saturation). Joint advisory strengthened to MODEL-BROKEN /
+  NO-ALPHA / NEGATIVE-NET-DELTA. Mechanical gates PASS at baseline
+  85 / 1; pre-tick guard PASS (approval block UN-ticked). HANDOFF →
+  orchestrator → operator-approve.
 
 ## Watch recipes (per MEMORY.md)
 
@@ -239,3 +243,13 @@ from rebaseline pass).
   bracket confirmed. Wave B 3 anchors re-emitted with 2-run byte-identity
   (R11.9/R11.10 PASS). ANCHORS PASS (34/34). Wave C ADR-0038 § D6.b
   amendment landed verbatim. HANDOFF → tester.
+- 2026-05-22 (presenter): T-P1 ticked. Release deck assembled at
+  `spec/v3-volatility-forecaster-noop-fix/presentations/v3-volatility-forecaster-noop-fix-2026-05-22.md`.
+  Carries 3-cycle evidence comparison (no-op v0.1.0 / no-op
+  rebaseline / post-fix REAL); recommends (a) RETIRE C1 with
+  categorically stronger evidence than the rebaseline pass
+  (NEGATIVE-NET-DELTA mechanism documented). Promotion-candidate
+  pick (C2 / C5 / Neither) left to operator with one-sentence C5
+  lean on infra/moat compounding. Mechanical gates PASS: pre-tick
+  guard UN-ticked; spec-lint at baseline 85 / 1 (no new categories).
+  HANDOFF → orchestrator → operator-approve.

@@ -1,12 +1,14 @@
 ---
 slug: v3-volatility-forecaster-rebaseline
 version: 0.1.0
-status: shipped
-owner: tester
+status: retired
+owner: operator
 updated: 2026-05-22
 parent: v3-volatility-forecaster
 parent_version: 0.1.0
-parent_disposition: shipped-with-MODEL-BROKEN-NO-ALPHA-advisory
+parent_disposition: retired
+retired_2026_05_22: retired together with parent under v3-volatility-forecaster-noop-fix v0.1.0 deck approval 2026-05-22; the rebaseline pass served its purpose (confirmed the synthetic-vs-real caveat was the wrong axis to investigate; the actual issue was the overlay's no-op wiring, surfaced via the orchestrator's caveman probe later that day).
+retired_ref: spec/v3-volatility-forecaster-noop-fix/presentations/v3-volatility-forecaster-noop-fix-2026-05-22.md
 disposition_2026_05_22: invalidated-then-retired-with-real-evidence; see v3-volatility-forecaster-noop-fix
 invalidation_ref: spec/v3-volatility-forecaster-noop-fix/feature.md
 ---
