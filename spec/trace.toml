@@ -443,9 +443,9 @@ crates      = [
 ]
 tests       = []     # tester M-FINAL: 2-run byte-identity (R5) + anchor-lock 33 → 34 PASS (or → 35 under Q2=(b)) + T-classifier verdict cell recorded against R-O1..4 routing table
 anchors     = [
-  "sharpe-comparison-vol-target-bs1-realbaseline",  # Q2=(a) default, NEW namespace [v3.0.0-volatility-rebaseline]
+  "sharpe-comparison-vol-target-bs1-realbaseline",  # Q2=(a) default, NEW namespace [v3.0.0-volatility-rebaseline]; M-FINAL gate: ANCHORS PASS (34 / 34)
 ]
-state       = "proposed"   # ANALYST T-A1..T-A3 closed 2026-05-22; awaits operator-decide T-OD1..T-OD3 (standing Autoapprove applies) → architect M-T1
+state       = "in-progress"   # ARCHITECT M-T1 closed 2026-05-22; decomp.md authored at spec/v3-volatility-forecaster-rebaseline/decomp.md; T-AR-2 corrected from hard-coded swap to NEW ScenarioFamily::VolTargetRebaseline variant (anchor-additive per ADR-0038 § D6); Wave A ∥ Wave B → developer; baseline gate: ANCHORS PASS (33 / 33)
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"

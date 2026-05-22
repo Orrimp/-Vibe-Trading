@@ -1,8 +1,8 @@
 ---
 slug: v3-volatility-forecaster-rebaseline
 version: 0.1.0
-status: proposed
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-22
 parent: v3-volatility-forecaster
 parent_version: 0.1.0
@@ -87,7 +87,7 @@ the next agents own.
 
 ## Architect (M-T1; spawned after T-OD1..3 close)
 
-- [ ] T-AR-1 — Lock the new scenario shape in
+- [x] T-AR-1 — Lock the new scenario shape in
       `Scenario::from_name`: name = `top10-2023-fy-momentum-realdata`;
       `start_year = 2023`; `bar_count = 8760`; `strategy =
       ScenarioStrategy::Momentum { config_id: "top10_momentum_h1" }`;
@@ -95,91 +95,173 @@ the next agents own.
       `taker_fee_bps = 4`; `data_source =
       ScenarioDataSource::RealData`; `expected_revision_sha =
       Some("3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into())`;
-      `#[cfg(feature = "realdata")]` gated. Cite the exact insertion
-      point at `crates/backtest/src/main.rs` (recommended: after the
-      synthetic `top10-2024-h1-momentum` arm at line 321, alongside
-      the other `-realdata` momentum block). — _acceptance: decomp.md
-      Wave A lists the scenario insertion as additive (no refactor)
-      and reviewers can apply the patch without consulting the
-      analyst's findings._
+      `#[cfg(feature = "realdata")]` gated. — **DONE 2026-05-22**:
+      decomp.md § T-AR-1 locks the verbatim Rust block. Architect
+      revised the brief's "after line 321" insertion-point hint to
+      **immediately before `top10-2023-fy-patchtst-overlay-realdata`
+      at line 546** — alphabetical placement within the existing
+      realdata-cfg-gated cluster (lines 449-592) is the file's
+      load-bearing documentation contract. Every non-strategy field
+      verified by-value equal to the parent vol-target-realdata arm
+      (lines 571-592) for apples-to-apples comparison; only `strategy`
+      diverges (`Momentum { config_id: "top10_momentum_h1" }` per the
+      un-targeted v1 baseline) — by design.
 
-- [ ] T-AR-2 — Lock the `sharpe_comparison.rs` patch shape. Three
-      surface changes: (i) swap the hard-coded
-      `vol_target_scenarios` array entry at line 1293 from
-      `"top10-2023-1h-momentum"` to
-      `"top10-2023-fy-momentum-realdata"`; (ii) update the three
-      string-literal advisory lines at 975 / 1049 / 1082 to read
-      "real-data" (NOT "synthetic GBM"); (iii) update the report
-      filename template at line 1327 from
-      `"sharpe-comparison-vol-target-bs1-realdata-{today}.md"` to
-      `"sharpe-comparison-vol-target-bs1-realbaseline-{today}.md"`
-      AND the output dir mapping at line 1243 to
-      `spec/v3-volatility-forecaster-rebaseline/reports/`. — _accept:
-      decomp.md Wave B captures all 6 patch sites with file:line._
+- [x] T-AR-2 — Lock the `sharpe_comparison.rs` patch shape. — **DONE
+      2026-05-22 with CRITICAL CORRECTION to the brief's default**:
+      hard-coded swap REJECTED (would mutate the body bytes of the
+      parent `sharpe-comparison-vol-target-bs1-realdata` report and
+      thus the parent anchor SHA `ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1` —
+      violates ADR-0038 § D6 anchor-additive contract). Replaced
+      with **NEW `ScenarioFamily::VolTargetRebaseline` enum variant**
+      (~30 LoC additive) alongside the existing `VolTarget`; new
+      dispatch arm clones the parent body verbatim except for (a)
+      `vol_target_scenarios[0] = "top10-2023-fy-momentum-realdata"`,
+      (b) `filename = "sharpe-comparison-vol-target-bs1-realbaseline-{today}.md"`,
+      (c) calls into a sibling `render_vol_target_rebaseline` module
+      with the 3 advisory string-literal swaps (sites 975 / 1049 /
+      1082). Parent `VolTarget` arm stays byte-identical; parent
+      anchor re-verifies on every CI run. The 20-LoC delta vs the
+      original hard-coded approach is the non-negotiable cost of
+      anchor-immutability. decomp.md § T-AR-2 + Wave B captures the
+      full file:line patch set.
 
-- [ ] T-AR-3 — Decide whether to add a CLI flag (e.g.
-      `--baseline-scenario <name>`) for future re-baseline
-      flexibility OR keep the hard-coded swap (cheapest). Analyst
-      recommendation: **hard-coded swap** — adding a CLI flag is
-      scope creep against the 1-day budget. Architect ratifies at
-      M-T1. — _acceptance: decomp.md § Scope explicitly rejects the
-      CLI flag for this pass._
+- [x] T-AR-3 — Decide whether to add a CLI flag for future re-baseline
+      flexibility OR keep the hard-coded swap. — **DONE 2026-05-22**:
+      REJECT `--baseline-scenario <name>` CLI flag. Replaced the
+      brief's hard-coded-swap-vs-flag binary with a NEW-enum-variant
+      shape (per T-AR-2): the new `--scenario vol-target-bs1-rebaseline`
+      keyword is a discrete `ScenarioFamily` enum extension, not a
+      parameterized flag. Rationale: (a) only one re-baseline pass is
+      queued; (b) 1-day budget; (c) enum variants are the load-bearing
+      precedent in this bin (`Tcn` / `VolTarget` already follow the
+      pattern). decomp.md § T-AR-3 documents the cost/benefit reject.
 
-- [ ] T-AR-4 — Lock the anchor namespace block shape in
-      `spec/anchors.toml`. New block header preamble mirrors the
-      existing `[v3.0.0-volatility]` block at line 239: 1-line title
-      ("v3.0.0-volatility-rebaseline sharpe-comparison re-baseline
-      pass, T-T2 / M-FINAL 2026-05-23+"), the data_revision_sha
-      callout, the V-verdict carry-forward note, the T-classifier
-      new-net-delta callout, the anchor-additive contract reference.
-      — _acceptance: decomp.md § Anchors Wave shows the block
-      verbatim._
+- [x] T-AR-4 — Lock the anchor namespace block shape in
+      `spec/anchors.toml`. — **DONE 2026-05-22**: new
+      `[v3.0.0-volatility-rebaseline]` block (mirrors parent
+      `[v3.0.0-volatility]` shape at lines 239-263 verbatim);
+      preamble carries data_revision_sha callout, V-verdict
+      carry-forward note (per H-rebase-2), T-classifier
+      new-net-delta note (per ADR-0038 § D1.c), anchor-additive
+      contract reference. Single anchor row:
+      `sharpe-comparison-vol-target-bs1-realbaseline` (Q2=(a) default;
+      baseline-backtest anchor NOT included — operator did not opt
+      into Q2=(b)). N_new = +1; M-FINAL gate: `ANCHORS PASS  (34 /
+      34)`. decomp.md § 6 quotes the block verbatim. Pre-feature
+      baseline gate: `ANCHORS PASS  (33 / 33)` (architect's run
+      2026-05-22).
 
-## Developer (spawned after architect M-T1)
+## Developer (Waves A + B parallel-eligible; Wave C depends on both)
 
-- [ ] T-DEV-1 (Wave A) — Add `top10-2023-fy-momentum-realdata`
-      scenario per T-AR-1. Run `cargo run -p backtest --release
-      --features candle,realdata --bin backtest -- --scenario
-      top10-2023-fy-momentum-realdata --seed 0xC0FFEE` to verify
-      backtest succeeds end-to-end and emits a report. Use the
-      copy-pasteable watch recipe below to monitor wall-clock if the
-      run exceeds 2 minutes.
+> Honest-tick rule: developer ticks the row only after running the
+> invocation and quoting the literal output back into this file.
 
-- [ ] T-DEV-2 (Wave B) — Apply T-AR-2 patches to `sharpe_comparison.rs`.
-      Run `cargo run -p forecast --release --features candle,realdata
-      --bin sharpe_comparison -- --scenario vol-target-bs1` and verify
-      a new report lands under
-      `spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-<YYYYMMDD>.md`.
+### Wave A — Add realdata baseline scenario (Day 1; parallel-eligible with Wave B)
 
-- [ ] T-DEV-3 — Run 2-run byte-identity determinism check (R5). Two
-      clean tempdir runs, hash both bodies via
-      `scripts/hash_report.py`, assert match.
+- [ ] T-D-N1 — `crates/backtest/src/main.rs` — insert
+      `#[cfg(feature = "realdata")] "top10-2023-fy-momentum-realdata"
+      => Ok(Self { ... })` arm immediately before line 546 per
+      decomp.md § T-AR-1. ~25 LoC additive. — _accept:_ `cargo build
+      -p backtest --features realdata,candle` → `Finished ... in ...`.
 
-- [ ] T-DEV-4 — Emit `cargo fmt --check`, `cargo clippy --workspace
-      --features candle,realdata -- -D warnings`, `cargo test
-      --workspace --lib --features candle,realdata` PASS before
-      handing off to tester.
+- [ ] T-D-N2 — Run backtest end-to-end; emit
+      `backtest-<YYYYMMDD>-<HHMMSS>-top10-2023-fy-momentum-realdata.md`
+      under `spec/v3-volatility-forecaster-rebaseline/reports/`. —
+      _accept:_ `cargo run -p backtest --release --features
+      candle,realdata --bin backtest -- --scenario
+      top10-2023-fy-momentum-realdata --seed 0xC0FFEE` →
+      `BACKTEST PASS  top10-2023-fy-momentum-realdata  body-SHA256 =
+      <64-hex>`.
 
-## Tester (M-FINAL after developer waves)
+- [ ] T-D-N3 — Confirm `data_revision_sha =
+      3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7`
+      appears in the new report frontmatter (R2 acceptance). —
+      _accept:_ `grep '^data_revision_sha:'
+      spec/v3-volatility-forecaster-rebaseline/reports/backtest-*-top10-2023-fy-momentum-realdata.md`
+      → literal SHA line.
 
-- [ ] T-T-1 — Run T-T1 cargo gates per parent feature's R11.x
-      contracts: `cargo fmt --check`, `cargo clippy -- -D warnings`,
-      `cargo test --workspace --lib --features candle,realdata`.
+- [ ] T-D-N4 — Anchor-additive guard: confirm 33 existing anchors
+      stay byte-identical after the Wave A change. — _accept:_
+      `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (33 / 33)`.
+
+### Wave B — Extend `sharpe_comparison.rs` (Day 1; parallel-eligible with Wave A)
+
+- [ ] T-D-N5 — `crates/forecast/src/bin/sharpe_comparison.rs:50-56`
+      — additive `ScenarioFamily::VolTargetRebaseline` variant per
+      decomp.md § T-AR-2. — _accept:_ `cargo build -p forecast --bin
+      sharpe_comparison --features candle,realdata` → `Finished ...
+      in ...`.
+
+- [ ] T-D-N6 — `sharpe_comparison.rs:1242-1245` — additive out-dir
+      match arm: `ScenarioFamily::VolTargetRebaseline =>
+      PathBuf::from("spec/v3-volatility-forecaster-rebaseline/reports/")`.
+      (Rolled into N5 build.)
+
+- [ ] T-D-N7 — `sharpe_comparison.rs` insert before line 1284 — new
+      dispatch arm `if args.scenario ==
+      ScenarioFamily::VolTargetRebaseline { ... }` cloning parent
+      arm body verbatim except (a) `vol_target_scenarios[0] =
+      "top10-2023-fy-momentum-realdata"`, (b) `filename =
+      "sharpe-comparison-vol-target-bs1-realbaseline-{today}.md"`,
+      (c) calls `render_vol_target_rebaseline::render_report`. ~50
+      LoC additive. (Rolled into N5 build.)
+
+- [ ] T-D-N8 — New `render_vol_target_rebaseline` sibling module:
+      near-copy of `render_vol_target` with 3 advisory string deltas
+      at sites mirroring 975 / 1049 / 1082 per decomp.md § T-AR-2
+      table. ~50-250 LoC depending on duplication-vs-extract; if
+      duplication >60% the developer factors out a shared
+      `render_vol_target_common` module. (Rolled into N5 build.)
+
+- [ ] T-D-N9 — Anchor-neutrality guard for Wave B: re-run the parent
+      `--scenario vol-target-bs1` dispatch to confirm byte-identity
+      → existing parent anchor `ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1`
+      still verifies. — _accept:_ `cargo run -p forecast --release
+      --features candle,realdata --bin sharpe_comparison -- --scenario
+      vol-target-bs1 && bash scripts/verify_anchors.sh` →
+      `ANCHORS PASS  (33 / 33)`.
+
+### Wave C — End-to-end + hand to tester (Day 1; depends on Wave A + B)
+
+- [ ] T-D-N10 — Run new sharpe-comparison end-to-end. — _accept:_
+      `cargo run -p forecast --release --features candle,realdata
+      --bin sharpe_comparison -- --scenario vol-target-bs1-rebaseline`
+      → `wrote spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-<YYYYMMDD>.md;
+      T-classifier = T-VOL-{ALPHA-UNLOCKED|MARGINAL|NO-ALPHA}`.
+
+- [ ] T-D-N11 — 2-run byte-identity (R5). Re-run the sharpe-comparison
+      bin a second time; compare body-SHA-256 via
+      `scripts/hash_report.py`. — _accept:_ matching SHA-256 across
+      both runs (host/timestamp normalised by hash_report.py rules).
+
+- [ ] T-D-N12 — Spec hygiene gates. — _accept:_ `cargo fmt --check`
+      (no output), `cargo clippy --workspace --features
+      candle,realdata -- -D warnings` (Finished), `cargo test
+      --workspace --lib --features candle,realdata` (`test result:
+      ok. N passed; 0 failed`).
+
+## Tester (M-FINAL after Wave C; depends on T-D-N1..N12)
+
+- [ ] T-T-1 — Re-run all four cargo hygiene gates per T-D-N12 and
+      quote each literal output line into
+      `spec/v3-volatility-forecaster-rebaseline/reports/test-final-<YYYY-MM-DD>.md`.
 
 - [ ] T-T-2 — Compute the new report body-SHA-256 via
-      `scripts/hash_report.py` and write the new
-      `[v3.0.0-volatility-rebaseline]` block in
-      `spec/anchors.toml`. Confirm anchor count goes 33 → 34 PASS
-      (or 33 → 35 PASS if the operator opted in on T-OD2 (b)).
+      `python3 scripts/hash_report.py spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-*.md`
+      and write the new `[v3.0.0-volatility-rebaseline]` block in
+      `spec/anchors.toml` per decomp.md § 6 verbatim shape (append
+      after line 263). — _accept:_ `bash scripts/verify_anchors.sh`
+      → `ANCHORS PASS  (34 / 34)`.
 
 - [ ] T-T-3 — Re-evaluate the joint advisory verdict cell against
       the routing table in `feature.md` § Routes. Record the verdict
-      cell (R-O1 / R-O2 / R-O3 / R-O4) in the test report. Emit the
-      report at `spec/v3-volatility-forecaster-rebaseline/reports/test-final-<YYYY-MM-DD>.md`.
+      cell (R-O1 / R-O2 / R-O3 / R-O4) in the test report at
+      `spec/v3-volatility-forecaster-rebaseline/reports/test-final-<YYYY-MM-DD>.md`.
 
 - [ ] T-T-4 — HANDOFF → presenter. Presenter inherits the 4-cell
-      routing tree; the operator's next decision is mechanical
-      given the verdict cell.
+      routing tree; the operator's next decision is mechanical given
+      the verdict cell.
 
 ## Notes / Watch recipes
 
@@ -214,3 +296,18 @@ mechanical call.
   T-A1..T-A3 ticked (analyst work closed). T-OD1..T-OD3 carry
   defaults under standing Autoapprove. Architect / developer / tester
   rows are stubs; the next agents own them.
+- 2026-05-22 (architect): M-T1 closed. T-AR-1..T-AR-4 ticked with
+  decision rationale per row; decomp.md authored at
+  `spec/v3-volatility-forecaster-rebaseline/decomp.md`. CRITICAL
+  correction to T-AR-2 default — hard-coded swap rejected (would
+  mutate parent anchor `ef048366...`); replaced with NEW
+  `ScenarioFamily::VolTargetRebaseline` enum variant (preserves
+  anchor-additive contract per ADR-0038 § D6). Wave A ∥ Wave B
+  parallel-safe; Wave C M-FINAL depends on both. Anchor delta: +1
+  at M-FINAL (33 → 34 PASS). Developer T-DEV-* rows expanded into
+  T-D-N1..T-D-N12 with file:line + cargo invocation + expected
+  literal triplets; tester T-T-1..T-T-4 unchanged in scope, anchor
+  count delta locked at +1. Pre-feature baseline gate quoted
+  literal: `ANCHORS PASS  (33 / 33)`. Frontmatter flipped: status
+  `proposed → in-progress`, owner `analyst → architect`. HANDOFF →
+  developer Wave A + Wave B parallel start.
