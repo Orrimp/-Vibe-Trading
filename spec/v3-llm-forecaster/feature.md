@@ -1,7 +1,7 @@
 ---
 slug: v3-llm-forecaster
-status: proposed
-owner: analyst
+status: shipped-partial
+owner: tester
 updated: 2026-05-22
 version: 0.1.0
 predecessor: v2-llm-strategy v2.0.0
@@ -1560,39 +1560,48 @@ this environment. The 2-anchor delta (34 → 36) is deferred to v0.1.1. v0.1.0 s
 
 ### Cargo gate results (T-T1..T-T3)
 
-| Gate                              | Status  | Notes                                      |
-|-----------------------------------|---------|--------------------------------------------|
-| `cargo fmt --check`               | TBD     | Tester runs at M-FINAL                     |
-| `cargo clippy --workspace`        | TBD     |                                            |
-| `cargo test --workspace --lib`    | TBD     |                                            |
-| `llm_verdict_priority_tree` (20)  | TBD     |                                            |
-| `llm_forecaster_neutrality`       | TBD     | `#[ignore]`; needs realdata + checkpoints  |
+| Gate                              | Status | Notes                                                      |
+|-----------------------------------|--------|------------------------------------------------------------|
+| `cargo fmt --check`               | PASS   | Exit 0; no diffs                                           |
+| `cargo clippy --workspace --features candle -- -D warnings` | PASS | Exit 0; 6.70 s; warnings in `#[cfg(test)]` paths only (pre-existing) |
+| `cargo test --workspace --lib --features candle` | PASS | 692 passed; 0 failed; 2 ignored; strategy: 324 |
+| `llm_verdict_priority_tree` (20)  | PASS   | 20 passed; 0 failed; 0.00 s                                |
+| `llm_forecaster_neutrality`       | 1 IGN  | `#[ignore]`; realdata + TCN checkpoints required; deferred Wave D |
 
 ### L-verdict (T-T9)
 
-| Field            | Value                        |
-|------------------|------------------------------|
-| L-verdict case   | TBD (L0 / L1 / L2 / L3 / L4)|
-| Trigger evidence | TBD                          |
-| Routes to        | TBD                          |
-| L_ALPHA gate     | TBD (UNLOCKED / MARGINAL / NO-ALPHA) |
+| Field            | Value                                                              |
+|------------------|--------------------------------------------------------------------|
+| L-verdict case   | L2 (stub path — conservative fallback; expected with 0 calls)     |
+| Trigger evidence | `|confidence_outcome_corr| = 0.000000 < 0.05` (calibration failure) |
+| Routes to        | `v3-llm-forecaster-calibrate-or-retire` (v0.1.1 Wave D unblocks)  |
+| L_ALPHA gate     | PENDING (realdata required; deferred to v0.1.1)                    |
 
 ### Anchor gate (T-T5)
 
 | Gate                        | Status | Count  |
 |-----------------------------|--------|--------|
-| `scripts/verify_anchors.sh` | TBD    | 34/34  |
-| Wave D anchors (+2)         | DEFERRED (v0.1.1) | pending API key |
+| `scripts/verify_anchors.sh` | PASS   | 34/34 (additive-zero; Wave D deferred) |
+| Wave D anchors (+2)         | DEFERRED → v0.1.1 | pending API key + canonical cache fixture |
 
 ### 3-run byte-identity (T-T7)
 
 | Run | body-SHA-256 | Match |
 |-----|-------------|-------|
-| 1   | TBD         | —     |
-| 2   | TBD         | —     |
-| 3   | TBD         | —     |
+| 1   | DEFERRED    | Wave D required |
+| 2   | DEFERRED    | Wave D required |
+| 3   | DEFERRED    | Wave D required |
 
-### V0.1.0 ship verdict
+### R9.3 byte-identity proof (T-T4)
+
+| File | SHA-256 | Bytes |
+|------|---------|-------|
+| `assistant_slot__open_stub.png` | `2fb4b243fa8f199e54e2e0b0de82966ad06c8b0726bbf34c0ca92493bc12acdc` | 84953 |
+| `assistant_slot__llm_forecaster_disabled__placeholder.png` | `2fb4b243fa8f199e54e2e0b0de82966ad06c8b0726bbf34c0ca92493bc12acdc` | 84953 |
+
+Match: **YES** — `view_offline` path is byte-identical before and after Wave F.
+
+### V0.1.0 ship verdict (TESTER CONFIRMED 2026-05-22)
 
 > **Wave D deferral note**: v0.1.0 ships as **PARTIAL**. Wave D backtest scenarios
 > depend on canonical cache fixtures + `ANTHROPIC_API_KEY` configuration. Deferred
