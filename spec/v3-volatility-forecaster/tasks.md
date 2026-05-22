@@ -542,15 +542,21 @@ join milestone.)
   - feature.md frontmatter flipped: status → shipped; owner → tester.
   Written to `spec/v3-volatility-forecaster/feature.md § Verification`.
 
-## Presenter rows (T-P) — PLACEHOLDER (resolved at M-PRESENTER)
+## Presenter rows (T-P) — Wave E close 2026-05-22
 
-- [ ] **T-P1** — Presenter deck at
-  `spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-<YYYY-MM-DD>.md`
+- [x] **T-P1** (2026-05-22) — Presenter deck at
+  `spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md`
   carrying joint advisory verdict + recommended next routing per §
   M-PRESENTER (T-VOL-ALPHA-UNLOCKED → ship + promote C2/C5 to
   active; T-VOL-MARGINAL → spawn `v3-vol-target-tuning`;
   T-VOL-NO-ALPHA → analyst spawn for C1 retirement decision + route
   budget to C2).
+  literal output: `wrote spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md (advisory: MODEL-BROKEN / NO-ALPHA; routing pending operator decision)`.
+  4 routing options surfaced (a) RETIRE C1 / (b) RE-BASELINE FIRST
+  [presenter-recommended] / (c) DEBUG V3 / (d) v0.1.1 GARCH refit.
+  Mechanical gates: `check_presentation.sh` PASS (approval block
+  UN-ticked); `spec_lint.py` baseline match 85/1 (no new categories
+  or count growth introduced).
 
 ## Notes
 
