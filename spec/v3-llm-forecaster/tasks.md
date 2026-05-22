@@ -243,7 +243,7 @@ artifact).
       currently isn't — `crates/reflection/src/lib.rs:20-24`
       gates distillation as a deferred follow-up brief)]`.
       (b) full ledger rejected on cost grounds per K-llm-2. — **Resolved 2026-05-22 → (c) with (a) fallback** by orchestrator under standing Autoapprove.
-- [ ] **T-OD4** — Resolve **Q4 — Consumer shape**.
+- [x] **T-OD4** — Resolve **Q4 — Consumer shape**.
       `[EXPLICIT-DECISION-REQUIRED — biggest product-
       differentiation surface in v0.1.0; analyst default is
       (a)+(c) hybrid — standalone LlmForecasterStrategy +
@@ -253,7 +253,7 @@ artifact).
       (d) all-three-as-builders deferred to v0.2.0+. **Operator
       may opt to ship Q4 = (a) only** (defer Q4=(c) Assistant
       slot promotion to v0.1.1) to tighten the v0.1.0 scope at
-      the cost of losing the moat-visible surface]`.
+      the cost of losing the moat-visible surface]`. — **Resolved 2026-05-22 → (a)+(c) hybrid** by operator. Both standalone LlmForecasterStrategy AND Phase F Assistant slot body promotion ship in v0.1.0 (runtime-gated per R9.3). Wave F UNGATED.
 - [x] **T-OD5** — Resolve **Q5 — Determinism contract**.
       `[STANDING-AUTOAPPROVE — analyst default (b) replay-cache +
       `temperature = 0` (extends shipped `crates/llm::
@@ -265,7 +265,7 @@ artifact).
       **Sub-decision Q5b** (`config.llm_forecaster.timeout_ms`
       per-call wall-clock budget): analyst-strawman 30_000 ms;
       architect M-T1 refines. — **Resolved 2026-05-22 → (b) + Q5b strawman 30_000 ms** by orchestrator under standing Autoapprove; architect M-T1 confirms Q5b at decomp.md.
-- [ ] **T-OD6** — Resolve **Q6 — Verdict shape**.
+- [x] **T-OD6** — Resolve **Q6 — Verdict shape**.
       `[EXPLICIT-DECISION-REQUIRED — analyst default (b) new
       ADR-0038 "LLM-forecaster verdict criteria L1-L4" (L1 bias
       collapse / L2 calibration failure / L3 cost overrun / L4
@@ -275,7 +275,7 @@ artifact).
       is fragile across future LLM-strategy ships. **Operator
       decision codifies a new durable artifact spanning future
       LLM-strategy work** — explicit gate worth the operator's
-      attention]`.
+      attention]`. — **Resolved 2026-05-22 → (b) NEW ADR with analyst-strawman L1-L4 priorities LOCKED** by operator. No expansion authorization at M-T1; architect cap "≤2 new priorities beyond analyst-strawman before re-surface" enforced. ADR namespace: architect M-T1 confirms renumber (ADR-0038 occupied by retired C1 lane; default → ADR-0039 unless another ADR landed since the analyst pass).
       > **Open**: a NEW ADR-0038 conflicts with the existing
       > `0038-vol-forecast-verdict-shape.md` from C1 v3-volatility-
       > forecaster (also retired with NEGATIVE-NET-DELTA). The
