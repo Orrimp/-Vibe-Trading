@@ -61,6 +61,10 @@ name = "llm_forecaster_wiremock"
 path = "tests/llm_forecaster_wiremock.rs"
 
 [[test]]
+name = "llm_forecaster_signal_mapping"
+path = "tests/llm_forecaster_signal_mapping.rs"
+
+[[test]]
 name = "tcn_overlay_tuned_builder"
 path = "tests/tcn_overlay_tuned_builder.rs"
 required-features = ["forecast"]

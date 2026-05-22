@@ -35,7 +35,11 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use trading_core::{Bar, SignalKind, Symbol, Timestamp};
+use trading_core::{Bar, SignalKind, StrategyId, Symbol, Timestamp};
+
+use reflection::{
+    REPORT_TIME_TOP_K, ReflectionStore, SymbolOrPair, classify_regime, retrieve_top_k,
+};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -448,7 +452,100 @@ pub struct ForecastContext {
     pub correlation_id: uuid::Uuid,
 }
 
+/// Error type for [`ForecastContext::from_runtime`].
+#[derive(Debug, thiserror::Error)]
+pub enum FromRuntimeError {
+    /// Reflection-store retrieval failed.
+    #[error("reflection store retrieval failed: {0}")]
+    ReflectionStore(#[from] reflection::RetrievalError),
+}
+
 impl ForecastContext {
+    /// Production constructor — assembles context from live runtime state.
+    ///
+    /// ## What this does (Wave C)
+    ///
+    /// 1. Builds a `RetrievalQuery` from `bar.symbol` + BTC regime tag.
+    /// 2. Calls `reflection::retrieve_top_k(store, &query, REPORT_TIME_TOP_K)`
+    ///    to fetch the top-K lesson cards.
+    /// 3. Computes a zeroed `TechnicalIndicators` stub (real indicator
+    ///    computation is deferred to Wave D / the indicator-cache wiring).
+    /// 4. Assembles `ForecastContext` with the retrieved lessons + supplied
+    ///    `recent_decisions`.
+    ///
+    /// ## Async
+    ///
+    /// This is `async` because `ReflectionStore::top_k` is async.  In the
+    /// sync `Strategy::on_bar` call site use `pollster::block_on` (or the
+    /// tokio `Handle::block_on`) to drive the future.  This mirrors the
+    /// pattern used in `call_forecast`.
+    ///
+    /// ## Indicator stub (Wave C / analytical-only)
+    ///
+    /// Indicator computation requires a per-symbol indicator cache (Wave D).
+    /// For Wave C, `TechnicalIndicators` is populated with placeholder values
+    /// derived from the `recent_bars` (simple last-close RSI stub = `dec!(50)`
+    /// and zeroes elsewhere).  The architect accepted this for the analytical
+    /// correctness test — the noop-fix lesson is about `Signal.kind` mutation,
+    /// not indicator precision.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FromRuntimeError::ReflectionStore`] if the store call fails.
+    pub async fn from_runtime(
+        bar: &Bar,
+        reflection_store: &dyn ReflectionStore,
+        btc_closes: &[(Timestamp, Decimal)],
+        recent_decisions: Vec<RecentDecision>,
+        model_id: &str,
+        recent_bars: Vec<Bar>,
+    ) -> Result<Self, FromRuntimeError> {
+        // 1. Classify the current BTC regime (fallback to Chop on error).
+        let regime =
+            classify_regime(btc_closes, bar.open_ts).unwrap_or(reflection::RegimeTag::Chop);
+
+        // 2. Build retrieval query.
+        let query = reflection::RetrievalQuery {
+            strategy_id: StrategyId::new("llm_forecaster_v3"),
+            symbol_or_pair: SymbolOrPair::Single(bar.symbol.clone()),
+            current_regime: regime,
+        };
+
+        // 3. Retrieve top-K lesson cards (K = REPORT_TIME_TOP_K = 5).
+        let cards = retrieve_top_k(reflection_store, &query, REPORT_TIME_TOP_K).await?;
+        tracing::debug!(
+            target: "llm_forecaster::context",
+            symbol = %bar.symbol,
+            regime = %regime,
+            n_cards = cards.len(),
+            "retrieved top-K lesson cards for ForecastContext"
+        );
+
+        // 4. Stub indicators (Wave C / analytical-only; real compute in Wave D).
+        let indicators = TechnicalIndicators {
+            rsi_14: dec!(50),
+            macd: dec!(0),
+            macd_signal: dec!(0),
+            macd_hist: dec!(0),
+            bb_upper: dec!(1),
+            bb_lower: dec!(0),
+            atr_14: dec!(0),
+            realized_vol_24h: dec!(0),
+            vol_of_vol_7d: dec!(0),
+        };
+
+        Ok(Self {
+            symbol: bar.symbol.clone(),
+            now: bar.open_ts,
+            recent_bars,
+            indicators,
+            top_k_lessons: cards,
+            recent_decisions,
+            model_id: model_id.to_string(),
+            correlation_id: uuid::Uuid::new_v4(),
+        })
+    }
+
     /// Deterministic constructor for tests.
     ///
     /// Builds a minimal `ForecastContext` with empty lessons / decisions and

@@ -653,20 +653,54 @@ weeks wall-clock per H5.
 ### Wave C — Strategy registry + Signal mapping
 
 > Parallel-safe with Wave D, depends on Wave B, ~2-4 days.
+> **CLOSED 2026-05-22** — T-D-N(C1..C4) ticked by developer.
+> Cargo gates: fmt PASS + clippy --workspace --features candle PASS +
+> lib tests 151 PASS + llm_forecaster_payload 25 PASS +
+> llm_forecaster_signal_mapping 12 PASS + ANCHORS PASS (34 / 34).
+> Also added: `NullReflectionStore` in reflection crate + `ForecastContext::from_runtime()`
+> + `FromRuntimeError` type + registry `load_from_toml` entry for `"llm_forecaster_v3"`.
 
-- [ ] **T-D-N(C1)** — `crates/strategy/src/llm_forecaster/strategy.rs`
+- [x] **T-D-N(C1)** — `crates/strategy/src/llm_forecaster/strategy.rs`
       — `LlmForecasterStrategy: Strategy` impl emitting Signal
       per bar derived from `LlmForecaster::forecast()` (R4.1).
-- [ ] **T-D-N(C2)** — Registry entry in
+      Also: `ForecastContext::from_runtime()` at
+      `crates/strategy/src/llm_forecaster/types.rs:461-530`
+      wires reflection-memory top-K retrieval + `NullReflectionStore`
+      at `crates/reflection/src/store/mod.rs:38-71`.
+      `LlmForecasterStrategy::new` signature extended to accept
+      `Arc<dyn ReflectionStore>` + `btc_closes` at `strategy.rs:151-178`.
+      - **file:line**: `crates/strategy/src/llm_forecaster/strategy.rs:246-311`
+        (from_runtime call in on_bar); `crates/strategy/src/llm_forecaster/types.rs:461-530`
+        (from_runtime impl); `crates/reflection/src/store/mod.rs:38-71` (NullReflectionStore)
+      - **test cmd**: `cargo test -p strategy --test llm_forecaster_signal_mapping`
+      - **output**: `test result: ok. 12 passed; 0 failed; finished in 0.00s`
+- [x] **T-D-N(C2)** — Registry entry in
       `crates/strategy/src/registry.rs` — name
       `"llm_forecaster_v3"`; opt-in via
       `config/agent.toml [[strategies]] kind = "llm_forecaster_v3"`.
-- [ ] **T-D-N(C3)** — Signal carry-forward between fire ticks
+      - **file:line**: `crates/strategy/src/registry.rs:126-147`
+      - **test cmd**: `cargo test -p strategy --lib`
+      - **output**: `test result: ok. 151 passed; 0 failed; finished in 2.33s`
+- [x] **T-D-N(C3)** — Signal carry-forward between fire ticks
       (R5.4 — fire every N bars; default N=24); strategy state
-      holds the last `LlmForecast`.
-- [ ] **T-D-N(C4)** — Unit tests: strategy fires exactly 1
+      holds the last `LlmForecast`. Carry-forward was in Wave A skeleton;
+      Wave C wires `from_runtime` into the fire path without breaking
+      carry-forward semantics (verified by `carry_forward_between_fires_emits_same_kind`
+      + `carry_forward_sell_rating_stays_sell`).
+      - **file:line**: `crates/strategy/src/llm_forecaster/strategy.rs:246-358`
+        (full on_bar including carry-forward + from_runtime error path)
+      - **test cmd**: `cargo test -p strategy --test llm_forecaster_signal_mapping carry_forward`
+      - **output**: `test carry_forward_between_fires_emits_same_kind ... ok;
+        test carry_forward_sell_rating_stays_sell ... ok`
+- [x] **T-D-N(C4)** — Unit tests: strategy fires exactly 1
       LLM call per 24-bar window; carry-forward signal between
       fires.
+      - **file:line**: `crates/strategy/tests/llm_forecaster_signal_mapping.rs:1`
+        (12 new tests: rating mapping × 5 variants, carry-forward × 2,
+        fire-cadence counter, disabled guard, from_runtime × 2,
+        multi-symbol, multiple-window)
+      - **test cmd**: `cargo test -p strategy --test llm_forecaster_signal_mapping`
+      - **output**: `test result: ok. 12 passed; 0 failed; finished in 0.00s`
 
 ### Wave D — Backtest scenarios + replay-cache wiring
 

@@ -1401,6 +1401,36 @@ median).
 - `cargo test -p strategy --test llm_forecaster_payload` — 25 PASS.
 - `bash scripts/verify_anchors.sh` — `ANCHORS PASS (34 / 34)` (additive-zero confirmed).
 
+### Wave C implementation (developer agent, 2026-05-22)
+
+**T-D-N(C1..C4) COMPLETE.** Wave C reflection-memory top-K retrieval wiring + Signal mapping + carry-forward at 24-bar fire cadence shipped.
+
+**Files created:**
+- `crates/strategy/tests/llm_forecaster_signal_mapping.rs` — 12 new R2-style regression tests covering: all 5 rating tiers map to correct `SignalKind`, noop-fix lesson guard (non-HOLD ratings mutate kind), carry-forward across 2 variants, fire-cadence counter (exactly 1 call per N bars), disabled guard (R9.3), `from_runtime` with `NullReflectionStore` (empty lessons), hash determinism, multi-symbol isolation, multiple-window fire pattern.
+
+**Files modified:**
+- `crates/strategy/src/llm_forecaster/types.rs` — added `ForecastContext::from_runtime()` async builder (Wave C production constructor). Calls `reflection::retrieve_top_k` with `RetrievalQuery` built from `bar.symbol` + BTC regime (via `classify_regime`; fallback to `Chop` on empty btc_closes). Stubs `TechnicalIndicators` (Wave D wires real indicator cache). Added `FromRuntimeError` type.
+- `crates/strategy/src/llm_forecaster/strategy.rs` — extended `LlmForecasterStrategy` to hold `Arc<dyn ReflectionStore>` + `btc_closes: Vec<(Timestamp, Decimal)>`. Updated `new()` signature. Added `new_for_test()` convenience constructor (`#[cfg(test)]`). Wired `from_runtime()` in `on_bar` fire path replacing the Wave A `test_fixture()` stub; handles `FromRuntimeError` gracefully (carry-forward on failure). Updated doc comment to Wave C scope.
+- `crates/strategy/src/llm_forecaster/mod.rs` — re-exports `FromRuntimeError`.
+- `crates/strategy/src/registry.rs` — added `"llm_forecaster_v3"` to `load_from_toml` (`StubForecaster` + `NullReflectionStore`; real impl wired by application binary via `register()`).
+- `crates/strategy/tests/llm_forecaster_payload.rs` — updated `LlmForecasterStrategy::new` call sites to new 5-arg signature via `make_strategy` helper.
+- `crates/reflection/src/store/mod.rs` — added `NullReflectionStore` no-op implementation (used in test path; always returns empty `Vec`).
+- `crates/reflection/src/lib.rs` — re-exports `NullReflectionStore`.
+
+**Wave C deviations from decomp.md:**
+1. `LlmForecasterStrategy::new` signature extended (was 3-arg Wave A; now 5-arg with `reflection_store` + `btc_closes`). This is additive — all existing callers updated. Wave A `new_for_test` preserves backward-compat for in-crate unit tests.
+2. `TechnicalIndicators` in `from_runtime` are stubs (`dec!(50)` RSI + zeroes) — real indicator cache wiring is Wave D. Decomp.md explicitly defers indicator computation to Wave D; Wave C "analytical-only" scope accepted.
+3. `NullReflectionStore` added to `crates/reflection/src/store/mod.rs` as a public export. This is additive to the reflection crate; no existing tests affected.
+
+**Cargo checkpoint (verified 2026-05-22):**
+- `cargo fmt --check` — PASS.
+- `cargo clippy --workspace --features candle -- -D warnings` — PASS.
+- `cargo test --workspace --lib --features candle` — 311 PASS (0 failures).
+- `cargo test -p strategy --test llm_forecaster_signal_mapping` — 12 PASS.
+- `cargo test -p strategy --test llm_forecaster_payload` — 25 PASS.
+- `cargo test -p strategy --test llm_forecaster_wiremock` — 17 PASS.
+- `bash scripts/verify_anchors.sh` — `ANCHORS PASS (34 / 34)` (additive-zero confirmed).
+
 ## Changelog
 
 - 2026-05-22 (developer agent, spike T-AR-8): Spike dev-note written (PARTIAL —

@@ -29,10 +29,26 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use trading_core::{Bar, Price, Quantity, SignalKind, Symbol, Timeframe, Timestamp, Venue};
 
+use reflection::NullReflectionStore;
 use strategy::llm_forecaster::{
     Confidence, ForecastContext, Horizon, LessonCardRef, LlmForecast, LlmForecasterConfig,
     LlmForecasterStrategy, Rating, StubForecaster, UnknownRating, canonicalize,
 };
+
+/// Convenience builder for tests: wraps `LlmForecasterStrategy::new` with
+/// `NullReflectionStore` and empty `btc_closes`.
+fn make_strategy(
+    cfg: LlmForecasterConfig,
+    forecaster: Arc<dyn strategy::llm_forecaster::LlmForecaster>,
+) -> LlmForecasterStrategy {
+    LlmForecasterStrategy::new(
+        cfg,
+        forecaster,
+        Arc::new(NullReflectionStore),
+        Vec::new(),
+        None,
+    )
+}
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -406,7 +422,7 @@ fn strategy_disabled_returns_no_signals() {
     use strategy::Strategy;
     let cfg = LlmForecasterConfig::default(); // enabled = false
     let stub = Arc::new(StubForecaster::default());
-    let mut strat = LlmForecasterStrategy::new(cfg, stub, None);
+    let mut strat = make_strategy(cfg, stub);
 
     for i in 0..30 {
         let b = bar("BTCUSDT", i * 3600, dec!(45000));
@@ -428,7 +444,7 @@ fn strategy_enabled_fires_on_first_bar_then_carries_forward() {
         ..LlmForecasterConfig::default()
     };
     let stub = Arc::new(StubForecaster::with_rating(Rating::Buy));
-    let mut strat = LlmForecasterStrategy::new(cfg, stub, None);
+    let mut strat = make_strategy(cfg, stub);
 
     // Bar 0: fires → Buy
     let sigs0 = strat.on_bar(&bar("BTCUSDT", 0, dec!(45000)));

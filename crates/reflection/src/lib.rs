@@ -55,7 +55,7 @@ pub use embedding::{EMBEDDING_DIM, STRATEGY_SLOTS, cosine, embed};
 pub use outcome::{OUTCOME_THRESHOLD_PCT, OutcomeClass, classify_outcome};
 pub use regime::{RegimeError, RegimeTag, classify_regime};
 pub use retrieval::{RetrievalError, retrieve_top_k};
-pub use store::{ReflectionStore, ReflectionStoreError};
+pub use store::{NullReflectionStore, ReflectionStore, ReflectionStoreError};
 pub use types::{
     ClosedTrade, LessonCard, LessonCardWriteRequest, RetrievalQuery, SymbolOrPair, card_id,
 };

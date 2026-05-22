@@ -71,7 +71,7 @@ pub use tool_schema::{PROPOSE_FORECAST_TOOL_NAME, propose_forecast_schema};
 pub use trait_def::LlmForecaster;
 pub use types::{
     CACHE_SCHEMA_VERSION, Confidence, CostEventRef, DEFAULT_FIRE_EVERY_N_BARS, DEFAULT_MODEL_ID,
-    DEFAULT_TIMEOUT_MS, ForecastContext, Horizon, LessonCardRef, LlmForecast, LlmForecasterConfig,
-    LlmForecasterError, PROMPT_TEMPLATE_VERSION, Rating, RecentDecision, StubForecaster,
-    TOP_K_LESSONS, TechnicalIndicators, UnknownRating,
+    DEFAULT_TIMEOUT_MS, ForecastContext, FromRuntimeError, Horizon, LessonCardRef, LlmForecast,
+    LlmForecasterConfig, LlmForecasterError, PROMPT_TEMPLATE_VERSION, Rating, RecentDecision,
+    StubForecaster, TOP_K_LESSONS, TechnicalIndicators, UnknownRating,
 };

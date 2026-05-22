@@ -33,3 +33,37 @@ pub trait ReflectionStore: Send + Sync {
     ) -> Result<Vec<LessonCard>, ReflectionStoreError>;
     async fn count(&self) -> Result<u64, ReflectionStoreError>;
 }
+
+// ── NullReflectionStore ───────────────────────────────────────────────────────
+
+/// A no-op `ReflectionStore` implementation that always returns empty results.
+///
+/// Used in unit tests and analytical Wave C builds where no real lesson cards
+/// are available. The strategy falls through cleanly — top-K returns `[]`,
+/// the `ForecastContext::top_k_lessons` is empty, and the LLM prompt skips
+/// the lesson-cards section.
+///
+/// ## Thread safety
+///
+/// Trivially `Send + Sync` — zero mutable state.
+#[derive(Debug, Default)]
+pub struct NullReflectionStore;
+
+#[async_trait]
+impl ReflectionStore for NullReflectionStore {
+    async fn upsert(&self, _card: &LessonCard) -> Result<bool, ReflectionStoreError> {
+        Ok(false)
+    }
+
+    async fn top_k(
+        &self,
+        _query: &RetrievalQuery,
+        _k: usize,
+    ) -> Result<Vec<LessonCard>, ReflectionStoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn count(&self) -> Result<u64, ReflectionStoreError> {
+        Ok(0)
+    }
+}

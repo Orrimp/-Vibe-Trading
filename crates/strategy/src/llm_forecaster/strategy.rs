@@ -1,11 +1,14 @@
 //! `LlmForecasterStrategy: Strategy` — the `on_bar` consumer.
 //!
-//! ## Wave A scope
+//! ## Wave C: real `on_bar` loop wired
 //!
-//! This file contains the type skeleton only. `on_bar` returns
-//! `Vec::new()` when the strategy is disabled (R9.3 default) or when
-//! the carry-forward is active. The real LLM call path lands in Wave C
-//! after `LlmForecasterImpl` (Wave B) is wired.
+//! This file now contains the complete Wave C implementation:
+//! - `ForecastContext::from_runtime()` is called on every fire-cadence bar,
+//!   retrieving top-K lesson cards from the reflection store.
+//! - The `LlmForecaster::forecast()` result maps to a `Signal` via
+//!   `Rating::to_signal_kind()` (noop-fix lesson: `Signal.kind` is
+//!   the load-bearing field — NOT metadata).
+//! - Carry-forward (R5.4) is active between fire-cadence bars.
 //!
 //! ## Signal pipeline (T-AR-1)
 //!
@@ -13,7 +16,7 @@
 //! on_bar(bar):
 //!   1. Push bar to per-symbol rolling OHLCV window (R2.1).
 //!   2. If not yet at fire cadence → carry forward last LlmForecast.
-//!   3. ForecastContext::test_fixture()/from_runtime() → request_hash().
+//!   3. ForecastContext::from_runtime(bar, store, btc_closes, ...) → ctx.
 //!   4. forecaster.forecast(ctx) → LlmForecast.
 //!   5. Cache last_forecast.insert(symbol, forecast).
 //!   6. Emit Signal per Rating::to_signal_kind() mapping (T-AR-1).
@@ -28,6 +31,12 @@
 //! per day on hourly bars). The `bars_since_last_fire` counter resets
 //! on every fire.
 //!
+//! ## Noop-fix lesson
+//!
+//! `Signal.kind` MUST be set to `Buy`/`Hold`/`Sell`. The executor reads
+//! `kind`; quantity-scale metadata does NOT reach the executor. See
+//! `crates/strategy/src/tcn_overlay_momentum.rs` for the precedent pattern.
+//!
 //! ## Cross-references
 //!
 //! - `spec/v3-llm-forecaster/decomp.md § T-AR-1` — call sequence.
@@ -37,12 +46,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use trading_core::{Bar, Signal, SignalEvidence, StrategyId, Symbol, Tick};
+use rust_decimal::Decimal;
+use trading_core::{Bar, Signal, SignalEvidence, StrategyId, Symbol, Tick, Timestamp};
 
 use crate::Strategy;
 
 use super::trait_def::LlmForecaster;
-use super::types::{ForecastContext, LlmForecast, LlmForecasterConfig, LlmForecasterError, Rating};
+use super::types::{
+    ForecastContext, LlmForecast, LlmForecasterConfig, LlmForecasterError, Rating, RecentDecision,
+};
 
 /// Strategy ID registered in the registry under name `"llm_forecaster_v3"`.
 pub const STRATEGY_ID: &str = "llm_forecaster_v3";
@@ -86,17 +98,30 @@ impl SymbolState {
 /// `config.fire_every_n_bars` bars, carrying forward the last forecast
 /// between fires (R5.4).
 ///
-/// ## Wave A note
+/// ## Wave C wiring
 ///
-/// In Wave A `on_bar` returns `Vec::new()` for all bars when
-/// `config.enabled = false` (the default). When enabled with a
-/// `StubForecaster`, it exercises the carry-forward / fire-cadence path
-/// without making real LLM calls.
+/// `on_bar` now calls `ForecastContext::from_runtime()` on every fire-cadence
+/// bar, retrieving top-K lesson cards from the injected `reflection_store`.
+/// The `btc_closes` series is used to classify the current BTC regime for
+/// the `RetrievalQuery` (fallback to `Chop` if the series is too short).
+///
+/// ## Reflection store
+///
+/// The store is behind `Arc<dyn reflection::ReflectionStore>` so both the
+/// real sqlite store and an in-memory fake (for tests) are accepted. The
+/// store is read-only from the strategy's perspective (R10.8 read-only
+/// consumer contract).
 pub struct LlmForecasterStrategy {
     /// Configuration (model ID, fire cadence, cost caps, enabled flag).
     config: LlmForecasterConfig,
-    /// The underlying LLM forecaster (stub at Wave A; real impl at Wave C).
+    /// The underlying LLM forecaster (stub in tests; real `LlmForecasterImpl` in prod).
     forecaster: Arc<dyn LlmForecaster>,
+    /// Read-only reflection store for top-K lesson-card retrieval (Wave C).
+    reflection_store: Arc<dyn reflection::ReflectionStore>,
+    /// BTC daily-close series for regime classification.
+    /// Entries: `(timestamp, close_price)` in ascending order.
+    /// May be empty for tests; classifier falls back to `Chop` when empty.
+    btc_closes: Vec<(Timestamp, Decimal)>,
     /// Per-symbol rolling state.
     symbol_state: HashMap<Symbol, SymbolState>,
     /// Tokio runtime handle for `block_on` in the sync `on_bar` path.
@@ -113,23 +138,49 @@ impl std::fmt::Debug for LlmForecasterStrategy {
 }
 
 impl LlmForecasterStrategy {
-    /// Construct a new strategy.
+    /// Construct a new strategy with a reflection store.
+    ///
+    /// This is the primary Wave C constructor. Pass `btc_closes` as an
+    /// ascending `(timestamp, close)` series for regime classification.
+    /// Pass an empty `Vec` to fall back to `Chop` (test / stub path).
     ///
     /// `rt` is the tokio runtime handle for `block_on`. Pass `None` in
     /// unit tests when using a stub forecaster (the test runtime handles
-    /// blocking automatically).
+    /// blocking automatically via `pollster::block_on`).
     #[must_use]
     pub fn new(
         config: LlmForecasterConfig,
         forecaster: Arc<dyn LlmForecaster>,
+        reflection_store: Arc<dyn reflection::ReflectionStore>,
+        btc_closes: Vec<(Timestamp, Decimal)>,
         rt: Option<tokio::runtime::Handle>,
     ) -> Self {
         Self {
             config,
             forecaster,
+            reflection_store,
+            btc_closes,
             symbol_state: HashMap::new(),
             rt,
         }
+    }
+
+    /// Convenience constructor for tests that don't need real reflection store.
+    ///
+    /// Uses an in-memory empty store and empty `btc_closes`. Equivalent to
+    /// the Wave A `new(config, forecaster, rt)` signature — kept for test
+    /// backward-compatibility.
+    #[cfg(test)]
+    #[must_use]
+    pub fn new_for_test(
+        config: LlmForecasterConfig,
+        forecaster: Arc<dyn LlmForecaster>,
+        rt: Option<tokio::runtime::Handle>,
+    ) -> Self {
+        use std::sync::Arc;
+
+        let store = Arc::new(reflection::store::NullReflectionStore);
+        Self::new(config, forecaster, store, Vec::new(), rt)
     }
 
     /// Get or insert the per-symbol state.
@@ -213,13 +264,51 @@ impl Strategy for LlmForecasterStrategy {
         };
 
         if should_fire {
-            // Step 3: build ForecastContext.
-            // TODO Wave C: retrieve top-K from reflection-memory.
+            // Step 3: build ForecastContext via from_runtime (Wave C).
             let recent_bars = {
                 let state = self.symbol_state.get(&sym).expect("just inserted");
                 state.recent_bars.clone()
             };
-            let ctx = ForecastContext::test_fixture(sym.clone(), bar.open_ts, recent_bars);
+            let recent_decisions: Vec<RecentDecision> = Vec::new(); // Wave E wires audit ledger
+            let reflection_store = Arc::clone(&self.reflection_store);
+            let btc_closes = self.btc_closes.clone();
+            let model_id = self.config.model_id.clone();
+
+            // Build context async via block_on (mirrors call_forecast pattern).
+            let ctx_result = {
+                let bar_ref = bar.clone();
+                let fut = ForecastContext::from_runtime(
+                    &bar_ref,
+                    reflection_store.as_ref(),
+                    &btc_closes,
+                    recent_decisions,
+                    &model_id,
+                    recent_bars,
+                );
+                if let Some(handle) = &self.rt {
+                    handle.block_on(fut)
+                } else {
+                    pollster::block_on(fut)
+                }
+            };
+
+            let ctx = match ctx_result {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!(
+                        target: "llm_forecaster::strategy",
+                        symbol = %sym,
+                        error = %e,
+                        "ForecastContext::from_runtime failed; carrying forward last signal"
+                    );
+                    let state = self.symbol_state.get(&sym).expect("just inserted");
+                    return if let Some(forecast) = &state.last_forecast {
+                        vec![self.rating_to_signal(forecast.rating, bar)]
+                    } else {
+                        vec![self.rating_to_signal(Rating::Hold, bar)]
+                    };
+                }
+            };
 
             // Step 4: call forecaster.
             match self.call_forecast(ctx) {
@@ -345,7 +434,7 @@ mod tests {
     fn disabled_strategy_returns_no_signals() {
         let cfg = LlmForecasterConfig::default(); // enabled = false
         let forecaster = Arc::new(StubForecaster::default());
-        let mut strat = LlmForecasterStrategy::new(cfg, forecaster, None);
+        let mut strat = LlmForecasterStrategy::new_for_test(cfg, forecaster, None);
         let bar = make_bar("BTCUSDT", 1_700_000_000);
         let signals = strat.on_bar(&bar);
         assert!(
@@ -359,7 +448,7 @@ mod tests {
     fn first_bar_fires_forecaster() {
         let cfg = enabled_config(24);
         let stub = Arc::new(StubForecaster::with_rating(Rating::Buy));
-        let mut strat = LlmForecasterStrategy::new(cfg, stub, None);
+        let mut strat = LlmForecasterStrategy::new_for_test(cfg, stub, None);
         let bar = make_bar("BTCUSDT", 1_700_000_000);
         let signals = strat.on_bar(&bar);
         assert_eq!(signals.len(), 1);
@@ -372,7 +461,7 @@ mod tests {
         let fire_every = 3u32;
         let cfg = enabled_config(fire_every);
         let stub = Arc::new(StubForecaster::with_rating(Rating::Sell));
-        let mut strat = LlmForecasterStrategy::new(cfg, stub, None);
+        let mut strat = LlmForecasterStrategy::new_for_test(cfg, stub, None);
         let sym = "BTCUSDT";
 
         // Bar 0 (ts=0): fires → Sell
@@ -411,7 +500,7 @@ mod tests {
         ] {
             let cfg = enabled_config(1);
             let stub = Arc::new(StubForecaster::with_rating(rating));
-            let mut strat = LlmForecasterStrategy::new(cfg, stub, None);
+            let mut strat = LlmForecasterStrategy::new_for_test(cfg, stub, None);
             let signals = strat.on_bar(&make_bar(sym, 1_700_000_000));
             assert_eq!(
                 signals[0].kind, expected_kind,
