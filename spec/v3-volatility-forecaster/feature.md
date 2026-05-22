@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster
-status: in-progress
-owner: developer
+status: shipped
+owner: tester
 updated: 2026-05-22
 version: 0.1.0
 parent: (none — new strategy lane; first ship in post-v2.5 reformulation)
@@ -1199,3 +1199,101 @@ added in v0.1.1 if byte-deterministic.
   [`spec/architecture/adr/README.md`](../architecture/adr/README.md)
   registry table. Baseline anchor gate confirmed PASS pre-handoff:
   `ANCHORS PASS  (30 / 30)`. HANDOFF → developer for Wave A start.
+
+## Verification
+
+> Tester-authored at M-FINAL 2026-05-22. All 4 T-T1 gates PASS; anchor
+> lock 30/30 → 33/33 PASS. Joint advisory verdict recorded below per
+> ADR-0038 § D1.b + § D1.c. This is an advisory classification, NOT a
+> test failure — the model trained, evaluated, and ran the backtest
+> deterministically; it does not extract alpha.
+
+### V-verdict: V3 — MODEL-BROKEN
+
+| Field                   | Value                                                                  |
+|-------------------------|------------------------------------------------------------------------|
+| V-verdict case          | V3                                                                     |
+| Trigger threshold       | mean_calibration_ratio outside [0.7, 1.4]                             |
+| Evidence                | mean_calibration_ratio = 2.952191                                      |
+| Contributing symbols    | AVAXUSDT (calib_ratio=2.307620), DOGEUSDT (10.247541), DOTUSDT (10.096677) — GARCH non-convergence at 500 iters |
+| Source report           | `spec/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md` |
+| ADR reference           | ADR-0038 § D1.b (V1-V5 priority tree); V3 fires before V4/V5        |
+
+The GARCH(1,1) fitter did not converge within 500 iterations for AVAX,
+DOGE, and DOT, resulting in `sigma_hat` overflow (unconditional variance
+blowup). The elevated calibration ratio is entirely attributable to these
+3 non-convergent symbols. The 7 remaining symbols show calibration ratios
+comfortably within [0.7, 1.4] (range: 0.963859–1.009649).
+
+### T-classifier: T-VOL-NO-ALPHA
+
+| Field                   | Value                                                                  |
+|-------------------------|------------------------------------------------------------------------|
+| T-classifier            | T-VOL-NO-ALPHA                                                         |
+| Threshold               | net_delta < +0.05                                                      |
+| Evidence                | net_delta = 0.029868 (Sharpe_overlay − Sharpe_baseline = 0.003098 − (−0.026770)) |
+| Sharpe baseline         | -0.026770 (top10-2023-1h-momentum, synthetic GBM bars)                |
+| Sharpe overlay          | 0.003098 (top10-2023-fy-vol-target-overlay-realdata, real Binance data)|
+| Source report           | `spec/v3-volatility-forecaster/reports/sharpe-comparison-vol-target-bs1-realdata-20260522.md` |
+| ADR reference           | ADR-0038 § D1.c T-classifier thresholds                               |
+
+### Joint classification: MODEL-BROKEN / NO-ALPHA
+
+| V-verdict | T-classifier         | Joint classification   |
+|-----------|----------------------|------------------------|
+| V3        | T-VOL-NO-ALPHA       | MODEL-BROKEN / NO-ALPHA |
+
+Per ADR-0038 § D1.c joint table: any V1/V2/V3 verdict collapses to
+MODEL-BROKEN regardless of the T-classifier value. The T-VOL-NO-ALPHA
+T-classifier is recorded for completeness but the dominant signal is the
+GARCH calibration failure (V3).
+
+### Data caveat — synthetic-vs-real comparison artifact
+
+The sharpe-comparison report body explicitly notes:
+
+> "Baseline (top10-2023-1h-momentum) uses synthetic GBM bars; overlay
+> uses real Binance 2023 data."
+
+This means the Sharpe comparison is NOT apples-to-apples: the baseline
+Sharpe (-0.026770) is computed on synthetic GBM data (via the v1
+passthrough forecaster), while the overlay Sharpe (0.003098) is computed
+on real Binance hourly OHLCV. The T-VOL-NO-ALPHA reading could therefore
+be a synthetic-vs-real comparison artifact rather than a true no-alpha
+signal. The net_delta of +0.029868 may understate or overstate the true
+vol-targeting lift.
+
+Operator interpretation note: before concluding T-VOL-NO-ALPHA is
+definitive, a re-run with a real-data v1 momentum baseline is advisable
+(follow-on item under v3-garch-calibration-tune or equivalent). The
+presenter will surface this to the operator.
+
+### Routing implication (recorded; not decided by tester)
+
+The following routing options are recorded for the presenter to surface to
+the operator — the tester does NOT make the retirement decision:
+
+- **C1 retirement candidate**: V3 × MODEL-BROKEN under synthetic-vs-real
+  comparison uncertainty. Operator may choose to retire C1 or spawn
+  `v3-garch-calibration-tune` (per-symbol hyperparameter search / more
+  GARCH iterations for non-convergent symbols).
+- **C2 (v3-regime-classifier) promotion candidate**: per HYBRID
+  sequencing, C2 is queued for operator promotion after C1 verdict.
+- **C5 (v3-llm-forecaster) promotion candidate**: same as C2.
+- **V0.1.1 GARCH refit**: if operator chooses to debug V3 rather than
+  retire, per-symbol hyperparameter search (max_iters > 500; tighter
+  convergence tol) or switch to Garman-Klass estimator for non-convergent
+  symbols.
+
+### Anchor delta (T-T2)
+
+3 new rows added to `spec/anchors.toml` under `[v3.0.0-volatility]`
+namespace:
+
+| Scenario                                    | SHA-256                                                                  |
+|---------------------------------------------|--------------------------------------------------------------------------|
+| vol-verdict-bs1-realdata                    | 99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21       |
+| top10-2023-fy-vol-target-overlay-realdata   | 66cd69ad03294cccf514184968babce0127f2ebfa4d1f4a03b332f8000f79c65       |
+| sharpe-comparison-vol-target-bs1-realdata   | ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1       |
+
+Anchor gate post-T-T2: `ANCHORS PASS  (33 / 33)`.

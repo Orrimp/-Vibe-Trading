@@ -235,3 +235,29 @@ sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
 version  = "v2.5a.0-patchtst"
 sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"
+
+# v3.0.0-volatility GARCH vol-targeting scenarios (T-T2 / M-FINAL).  Locked by
+# tester on 2026-05-22 against data/binance/ REVISION.toml manifest SHA
+# 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7.
+# All 3 reports are 2-run byte-identical (orchestrator-verified via
+# hash_report.py; developer confirmed R11.9 + R11.10 byte-identity).
+# V-verdict: V3 (mean_calibration_ratio = 2.952191 outside [0.7, 1.4]).
+# T-classifier: T-VOL-NO-ALPHA (net_delta = 0.029868 < +0.05).
+# Joint: MODEL-BROKEN / NO-ALPHA (advisory; not a test failure).
+# The 30 pre-feature anchors above stay byte-immutable (anchor-additive
+# only per ADR-0038 § D6 + Q5=(a)).
+
+[[anchors]]
+scenario = "vol-verdict-bs1-realdata"
+version  = "v3.0.0-volatility"
+sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
+
+[[anchors]]
+scenario = "top10-2023-fy-vol-target-overlay-realdata"
+version  = "v3.0.0-volatility"
+sha256   = "66cd69ad03294cccf514184968babce0127f2ebfa4d1f4a03b332f8000f79c65"
+
+[[anchors]]
+scenario = "sharpe-comparison-vol-target-bs1-realdata"
+version  = "v3.0.0-volatility"
+sha256   = "ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1"

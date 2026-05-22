@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster
-status: in-progress
-owner: developer
+status: shipped
+owner: tester
 updated: 2026-05-22
 ---
 
@@ -515,20 +515,32 @@ join milestone.)
 
 ## Tester rows (T-T) — Wave E (resolved at M-FINAL)
 
-- [ ] **T-T1** — R11 verification gates 1-12 (per feature.md § R11).
-  cargo: `cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace --lib && bash scripts/verify_anchors.sh` →
-  `ANCHORS PASS  (33 / 33)` (3 new + 30 existing byte-identical).
-- [ ] **T-T2** — Anchor lock — add 3 new rows to `spec/anchors.toml`
-  under `[v3.0.0-volatility]` namespace per ADR-0038 § D6
-  (vol-verdict-bs1-realdata + top10-2023-fy-vol-target-overlay-realdata
-  + sharpe-comparison-vol-target-bs1-realdata).
-  cargo: `bash scripts/verify_anchors.sh` →
-  `ANCHORS PASS  (33 / 33)`.
-- [ ] **T-T3** — V-verdict + T-classifier joint advisory verdict
+- [x] **T-T1** — R11 verification gates 1-12 (per feature.md § R11).
+  cargo gate outputs (2026-05-22, commit 625fb33 post-fmt):
+  1. `cargo fmt --check` → (no output; clean)
+  2. `cargo clippy --workspace --features candle -- -D warnings` →
+     `Finished dev profile [unoptimized + debuginfo] target(s) in 9.80s`
+  3. `cargo test --workspace --lib --features candle` →
+     17 test suites; all `test result: ok`; aggregate 52+36+13+9+47+6+55+69+84+0+12+8+103+10+105+72+311 = 992 passed; 0 failed; 2 ignored
+  4. `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (30 / 30)`
+     (pre-T-T2 baseline; 3 new rows not yet inserted).
+- [x] **T-T2** — Anchor lock — add 3 new rows to `spec/anchors.toml`
+  under `[v3.0.0-volatility]` namespace per ADR-0038 § D6.
+  Canonical SHAs verified by tester via `python3 scripts/hash_report.py`:
+  - vol-verdict-bs1-realdata → `99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21`
+  - top10-2023-fy-vol-target-overlay-realdata → `66cd69ad03294cccf514184968babce0127f2ebfa4d1f4a03b332f8000f79c65`
+  - sharpe-comparison-vol-target-bs1-realdata → `ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1`
+  cargo: `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (33 / 33)`.
+- [x] **T-T3** — V-verdict + T-classifier joint advisory verdict
   recorded in `feature.md § Verification` per ADR-0038 § D1.c joint
-  table (5 rows: V5×T-VOL-ALPHA-UNLOCKED → ALPHA-UNLOCKED; V5×T-VOL-MARGINAL
-  → MARGINAL; V5×T-VOL-NO-ALPHA → NO-ALPHA; V1/V2/V3 → MODEL-BROKEN;
-  V4 → DATA-PATHOLOGY).
+  table.
+  - V-verdict: V3 (mean_calibration_ratio = 2.952191 outside [0.7, 1.4])
+  - T-classifier: T-VOL-NO-ALPHA (net_delta = 0.029868 < +0.05)
+  - Joint: MODEL-BROKEN / NO-ALPHA
+  - Data caveat embedded: baseline uses synthetic GBM bars; overlay uses
+    real Binance data — explicitly stated in sharpe-comparison report body.
+  - feature.md frontmatter flipped: status → shipped; owner → tester.
+  Written to `spec/v3-volatility-forecaster/feature.md § Verification`.
 
 ## Presenter rows (T-P) — PLACEHOLDER (resolved at M-PRESENTER)
 

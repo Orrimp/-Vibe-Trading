@@ -406,9 +406,13 @@ crates      = [
   "crates/audit",           # additive JournalEntry { kind: "vol_forecast_emitted", … } row variant
   "crates/core",            # additive types if Q4=(a) sibling VolForecastProvider trait lands in core
 ]
-tests       = []     # developer fills at M-D — garch_fit_determinism + vol_target_derivation + vol_verdict_mutual_exclusivity + tcn_byte_identity_after_vol_ship + patchtst_byte_identity_after_vol_ship + vol_targeting_overlay; tester augments at M-FINAL per R11 (12 verification gates)
-anchors     = []     # tester locks at M-FINAL — analyst-default Q5=(a) ships N_new=3 under v3.0.0-volatility: vol-verdict-bs1-realdata + top10-2023-fy-vol-target-overlay-realdata + sharpe-comparison-vol-target-bs1-realdata; under Q-anchors=(a) +1 = top10-2023-fy-vol-killswitch-overlay-realdata; 30 v2.5-chain anchors STAY BYTE-IDENTICAL per R10
-state       = "in-progress"   # ARCHITECT M-T1 closed 2026-05-22 — decomp.md + ADR-0038 landed; T-AR-1..T-AR-10 ticked; tasks.md flipped to owner=developer; Wave A-E T-D-N1..T-D-N28 rows queued; baseline anchor gate confirmed PASS (30/30); developer takes Wave A start
+tests       = []     # tester M-FINAL 2026-05-22: cargo fmt --check PASS; cargo clippy --workspace --features candle -D warnings PASS; cargo test --workspace --lib --features candle → 992 passed 0 failed; garch_fit_determinism PASS; vol_verdict_mutual_exclusivity PASS; parkinson_target_derivation PASS; tcn_byte_identity PASS; patchtst_byte_identity PASS; vol_targeting_overlay 8/8 PASS
+anchors     = [
+  "vol-verdict-bs1-realdata",
+  "top10-2023-fy-vol-target-overlay-realdata",
+  "sharpe-comparison-vol-target-bs1-realdata",
+]
+state       = "shipped"   # TESTER M-FINAL closed 2026-05-22 — T-T1 cargo gates PASS; anchor lock 30/30 → 33/33; V3 × T-VOL-NO-ALPHA advisory verdict (MODEL-BROKEN / NO-ALPHA) recorded in feature.md § Verification; test report at spec/v3-volatility-forecaster/reports/test-final-2026-05-22.md; HANDOFF → presenter
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"
