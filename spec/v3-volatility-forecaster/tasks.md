@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster
-status: draft
-owner: analyst
+status: proposed
+owner: architect
 updated: 2026-05-22
 ---
 
@@ -205,30 +205,42 @@ updated: 2026-05-22
   wall-clock week; retrospective's "could usefully chase"
   vol-forecaster head item) cited as motivating context.
 
-## M-OD — Operator-decide (Q1-Q6) — PENDING
+## M-OD — Operator-decide (Q1-Q6) — resolved 2026-05-22
 
-> **Soft blocker.** Q1-Q6 carry analyst-recommended defaults.
-> "Autoapprove" activates all defaults in one tick. The default
-> bundle is internally consistent (Q1=(b) Parkinson + Q2=(a)
-> GARCH-only-MVP + Q3=(d) all-3-builders + Q4=(b) ADR-0038 NEW +
-> Q5=(a) v3.0.0-volatility + Q6=(a) BS-1 train + BS-2 val).
+> All 8 analyst-recommended defaults accepted in one tick via the
+> operator's standing "Autoapprove all" directive (confirmed
+> 2026-05-22 against the analyst hand-off envelope). Internally
+> consistent bundle: Q1=(b) Parkinson + Q2=(a) GARCH-only-MVP +
+> Q3=(d) all-3-builders + Q4=(b) ADR-0038 NEW + Q5=(a) v3.0.0-
+> volatility + Q6=(a) BS-1 train + BS-2 val + Q-anchors-sub=3 new
+> + Q3-sub analyst defaults.
 
-- [ ] **T-OD1** — Q1 vol target choice (analyst default (b)
-  Parkinson).
-- [ ] **T-OD2** — Q2 architecture choice (analyst default (a)
-  GARCH-only-MVP per cheap-first lesson).
-- [ ] **T-OD3** — Q3 consumer shape (analyst default (d) all 3
-  builders; primary anchor target = vol-targeting overlay).
-- [ ] **T-OD4** — Q4 verdict shape (analyst default (b) ADR-0038
-  NEW; ADR-0033 stays IMMUTABLE).
-- [ ] **T-OD5** — Q5 anchor strategy + version pin (analyst default
-  (a) `v3.0.0-volatility`; N_new = 3 anchors).
-- [ ] **T-OD6** — Q6 training-data span (analyst default (a) BS-1
-  train + BS-2 val; mirrors v2.5 convention).
-- [ ] **T-OD-Q3-sub** — Vol-targeting clamp + target_vol + kill-switch
-  threshold sub-parameters (analyst defaults: [0.5×, 2×] clamp;
-  target_vol = 0.02 daily-equivalent; kill-switch threshold = 3×
-  median).
+- [x] **T-OD1** — Q1 = (b) Parkinson estimator (high/low-based
+  realized vol; OHLCV high+low columns already present).
+- [x] **T-OD2** — Q2 = (a) **GARCH(1,1)-only-MVP** per cheap-first
+  lesson from v25-tcn-journey retrospective. Defer DL refinement
+  to v0.1.1 if H1 GARCH baseline passes but vol-targeting H2
+  marginally misses +0.10.
+- [x] **T-OD3** — Q3 = (d) all 3 builders shipped as opt-in
+  (`with_garch_vol_strategy`, `with_garch_vol_overlay_momentum`,
+  `with_garch_vol_kill_switch`); primary anchor target =
+  vol-targeting overlay on v1 momentum.
+- [x] **T-OD4** — Q4 = (b) **NEW ADR-0038 V-verdict** (V1-V5 +
+  V_ALPHA parallel-tree shape mirrors ADR-0033 § D3 structure).
+  ADR-0033 § D3 stays IMMUTABLE per retrospective lesson #2.
+- [x] **T-OD5** — Q5 = (a) version `v3.0.0-volatility`; N_new = 3
+  anchors at ship (vol-forecast-distribution-bs1 + vol-overlay-
+  momentum-bs1-realdata + sharpe-comparison-volatility).
+- [x] **T-OD6** — Q6 = (a) BS-1 (2023) train + BS-2 (2024) val
+  span; mirrors v2.5 convention for apples-to-apples comparison
+  vs retired v2.5 baseline.
+- [x] **T-OD-Q3-sub** — Q3-sub analyst defaults accepted:
+  vol-targeting clamp `[0.5×, 2×]`; target_vol = 0.02
+  daily-equivalent; kill-switch threshold = 3× per-symbol median σ̂.
+- [x] **T-OD-Q-anchors-sub** — N_new = 3 anchors at v0.1.0; the
+  4th-anchor option (kill-switch backtest) deferred to v0.1.1 if
+  Q3=(d) kill-switch builder lands but its anchor body isn't
+  byte-deterministic at v0.1.0 ship time.
 
 > **Once Q1-Q6 resolve**, frontmatter flips `status: draft →
 > proposed`, `owner: analyst → architect`. The architect spawn

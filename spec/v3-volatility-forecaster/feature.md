@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster
-status: draft
-owner: analyst
+status: proposed
+owner: architect
 updated: 2026-05-22
 version: 0.1.0
 parent: (none — new strategy lane; first ship in post-v2.5 reformulation)

@@ -407,7 +407,7 @@ crates      = [
 ]
 tests       = []     # developer fills at M-D — garch_fit_determinism + vol_target_derivation + vol_verdict_mutual_exclusivity + tcn_byte_identity_after_vol_ship + patchtst_byte_identity_after_vol_ship + vol_targeting_overlay; tester augments at M-FINAL per R11 (12 verification gates)
 anchors     = []     # tester locks at M-FINAL — analyst-default Q5=(a) ships N_new=3 under v3.0.0-volatility: vol-verdict-bs1-realdata + top10-2023-fy-vol-target-overlay-realdata + sharpe-comparison-vol-target-bs1-realdata; under Q-anchors=(a) +1 = top10-2023-fy-vol-killswitch-overlay-realdata; 30 v2.5-chain anchors STAY BYTE-IDENTICAL per R10
-state       = "draft"   # analyst-pass v0.1.0 complete 2026-05-22 (first-of-3 hybrid-sequence parallel analyst passes; this is the only one with code commitment in v0.1.0 — C2/C5 stay spec-only); next gate is M-OD operator-decide Q1-Q6; under Q-bundle autoapprove, status flips draft → proposed → in-progress at M-T1
+state       = "proposed"   # operator-decide resolved 2026-05-22 (Q1-Q6 + Q-anchors-sub + Q3-sub = analyst defaults via "Autoapprove all"); awaiting architect M-T1 + ADR-0038 V-verdict shape
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"
