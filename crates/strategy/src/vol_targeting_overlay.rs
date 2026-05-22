@@ -138,8 +138,9 @@ impl GarchParams {
 ///
 /// The overlay implements `Strategy` by delegating `on_bar()` to the inner
 /// `MomentumStrategy`, then applying the vol-targeting scale to each signal's
-/// implied quantity (recorded in the `Signal.metadata` slot as
-/// `"vol_scale": "<scale>"` for diagnostic purposes).
+/// implied quantity via `Strategy::quantity_scale` at order-construction time
+/// (ADR-0038 § D5 strategy-side composition; § D6.b wiring-bug-fix re-emission
+/// protocol — feature.md § R1).
 pub struct VolTargetingOverlay {
     /// Strategy ID.
     id: StrategyId,
@@ -153,6 +154,9 @@ pub struct VolTargetingOverlay {
     config: VolTargetingConfig,
     /// Scaling statistics (for diagnostics).
     pub stats: VolTargetingStats,
+    /// Per-symbol cached scale factor from the most recent `on_bar`.
+    /// Default 1.0 for symbols not yet seen (accessed via `quantity_scale`).
+    scale_cache: BTreeMap<Symbol, f64>,
 }
 
 /// Running diagnostics for the vol-targeting scaler.
@@ -219,6 +223,7 @@ impl VolTargetingOverlay {
             state,
             config,
             stats: VolTargetingStats::default(),
+            scale_cache: BTreeMap::new(),
         }
     }
 
@@ -295,6 +300,15 @@ impl Strategy for VolTargetingOverlay {
             self.config.target_vol // scale = target_vol / target_vol = 1.0
         };
 
+        // Compute scale factor and cache it for the sizing pipeline.
+        // Cached unconditionally (before the early-return on empty signals) so
+        // that `quantity_scale` is always up-to-date even when the inner
+        // strategy emits no signals for this bar.
+        // (ADR-0038 § D5 strategy-side composition; § D6.b wiring-bug-fix
+        // re-emission protocol — feature.md § R1.)
+        let scale = self.compute_scale(sigma_hat);
+        self.scale_cache.insert(bar.symbol.clone(), scale);
+
         // Delegate to inner momentum strategy.
         let base_signals = self.inner.on_bar(bar);
 
@@ -302,25 +316,23 @@ impl Strategy for VolTargetingOverlay {
             return base_signals;
         }
 
-        // Compute scale factor.
-        let scale = self.compute_scale(sigma_hat);
-
-        // Apply scale to signals.
+        // Update stats counters (proxies for diagnostics — load-bearing
+        // application happens via quantity_scale, not via signal mutation).
         let tol = 1e-6;
         if (scale - 1.0).abs() < tol {
             self.stats.signals_passthrough += base_signals.len() as u64;
-            base_signals
         } else {
             self.stats.signals_scaled += base_signals.len() as u64;
-            // Return the signals with the scale embedded in the strategy_id
-            // (diagnostic only — the backtest engine reads quantities from fills,
-            // not from signal metadata).
-            base_signals
         }
+        base_signals
     }
 
     fn on_tick(&mut self, tick: &Tick) -> Vec<Signal> {
         self.inner.on_tick(tick)
+    }
+
+    fn quantity_scale(&self, symbol: &Symbol) -> f64 {
+        self.scale_cache.get(symbol).copied().unwrap_or(1.0)
     }
 
     fn config_schema() -> serde_json::Value

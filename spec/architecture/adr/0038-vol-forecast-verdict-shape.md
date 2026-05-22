@@ -605,6 +605,24 @@ Anchor count progression:
 - Post M-V-VERDICT: 31 (+ vol-verdict-bs1-realdata).
 - Post M-SHARPE: 33 (+ vol-target-overlay-realdata + sharpe-comparison).
 
+### D6.b — Wiring-bug-fix re-emission protocol (amendment, 2026-05-22)
+
+Adopted under [v3-volatility-forecaster-noop-fix](../../v3-volatility-forecaster-noop-fix/feature.md) v0.1.0 (P0). The original D6 contract reads "existing anchors stay byte-identical." That spirit is **don't silently mutate historical evidence**. When the recorded body reflects a demonstrated wiring bug (the contract being witnessed is materially different from what was intended), re-emission is legitimate **under the following protocol**:
+
+1. **Enumerate affected anchors** with current SHA-256 in the feature brief's § Investigation findings. The architect confirms the enumeration is exhaustive at M-T1 (e.g. via cross-grep of the report-body sources for the load-bearing observable; see [v3-volatility-forecaster-noop-fix decomp.md § T-AR-5](../../v3-volatility-forecaster-noop-fix/decomp.md) for the worked example — 4 candidates audited, 1 ruled out as GARCH-only).
+2. **Cite the bug site with `file:line`** in the feature brief's § Smoking gun. The dev-note captures the diagnostic chain that surfaced the bug (cf. [v3-vol-overlay-noop-discovery-2026-05-22.md](../../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) — caveman probe + byte-identical surfacing).
+3. **Include the would-have-caught test** as a feature requirement (e.g. R2 in the worked example). The test MUST be run against the **pre-fix** code BEFORE the fix lands; the architect captures the literal pre-fix FAIL output as evidence the gate is meaningful (cf. [v3-volatility-forecaster-noop-fix decomp.md § T-AR-4 forensic gate](../../v3-volatility-forecaster-noop-fix/decomp.md)).
+4. **Architect signs off on the re-emission delta**. The new SHAs land in `spec/anchors.toml` **in-place under the existing namespaces** (Q2=(a) default — never bifurcate the namespace; never silently delete a row). A comment block above the affected rows cites the fix-feature slug + the dev-note slug.
+5. **Negative invariant**: the unchanged rows MUST stay byte-identical. Tester M-FINAL captures the diff at `spec/<fix-feature>/reports/test-final-<date>.md` showing every changed row + the count of unchanged rows. The wave-B verify_anchors.sh output (`ANCHORS PASS (N / N)`) is the gate; a regression to `FAIL` halts the ship.
+
+**Allowed re-emission scope**: only rows whose body cites the load-bearing observable that the bug perturbed. Rows that cite orthogonal observables (e.g. GARCH-only model diagnostics for an overlay-wiring fix) stay byte-identical and are part of the negative invariant.
+
+**Not in scope of this protocol**: silent mutations (forbidden by D6 spirit), namespace bifurcation (a `*-postfix` namespace was rejected at Q2 — bifurcation invites future readers to consume stale bodies), row deletion (forbidden — historical evidence stays linked even after re-emission via the dev-note + feature.md cross-references).
+
+**Live-exec parity follow-on**: the v0.1.0 vol-target wire-up landed at the **backtest-only** sizing-pipeline site (`crates/backtest/src/scenarios/garch_vol_target_overlay.rs`). Live execution (when wired in `crates/exec/` post-v0.1.1) MUST add an equivalent `Strategy::quantity_scale` query at the live order-construction site. Parity gap is flagged in [v3-volatility-forecaster-noop-fix decomp.md § T-AR-2](../../v3-volatility-forecaster-noop-fix/decomp.md) and tracked as a v0.1.1 follow-on item.
+
+**Precedent**: this is the **first** invocation of D6.b. Future wiring-bug discoveries inherit the 5-step protocol verbatim. If the protocol itself needs revision (e.g. multi-overlay wire-up bugs requiring batched re-emissions), the revision lands as **D6.c** (additive amendment subsection, not in-place mutation of D6.b).
+
 ## Alternatives considered
 
 1. **Extend ADR-0033 § D3 with vol-classifier branches.** Rejected

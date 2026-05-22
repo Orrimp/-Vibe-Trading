@@ -613,6 +613,42 @@ ANCHORS PASS  (34 / 34)
   - Final anchor delta: **3 re-emit, 31 stay byte-identical, total 34/34**.
   - ADR-0038 § D6.b amendment text drafted (5-clause re-emission protocol).
   - TCN overlay re-audit confirmed Q3=(b) holds (no parallel bug; auto-inherits default 1.0).
+- 2026-05-22 (developer): Waves A + B + C complete. T-D-N1..T-D-N16 ticked.
+  - **Wave A wire-up** (sequential): `Strategy::quantity_scale` defaulted trait method added at
+    [`crates/strategy/src/traits.rs:14`](../../crates/strategy/src/traits.rs)
+    (signature `fn quantity_scale(&self, _symbol: &Symbol) -> f64 { 1.0 }`; imports `Symbol`).
+    `VolTargetingOverlay` refactored at
+    [`crates/strategy/src/vol_targeting_overlay.rs`](../../crates/strategy/src/vol_targeting_overlay.rs):
+    added `scale_cache: BTreeMap<Symbol, f64>` field; `on_bar` populates cache unconditionally
+    before the early-return guard (critical: cache must populate even when inner strategy emits
+    no signals); `quantity_scale` override reads from cache. Misleading "diagnostic only"
+    inline comment removed. Sizing-pipeline hook at
+    [`crates/backtest/src/scenarios/garch_vol_target_overlay.rs:262`](../../crates/backtest/src/scenarios/garch_vol_target_overlay.rs):
+    `scale = overlay_strategy.quantity_scale(&sig.symbol)` + `Decimal::try_from(scale).unwrap_or(Decimal::ONE)` +
+    `notional = equity * fraction * scale_dec`. Sell arm gets inline comment (no scale — close-by-full-position).
+  - **Forensic gate** (T-D-N3a/3b): new test file
+    [`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`](../../crates/strategy/tests/vol_targeting_overlay_end_to_end.rs)
+    run pre-fix → FAILED with literal panic
+    `"vol-target overlay produced scale=1 after 5 on_bar calls — expected != 1.0 (no-op signature)"`;
+    run post-fix → `test result: ok. 1 passed; 0 failed`.
+    See [`decomp.md § T-AR-4`](decomp.md) for full forensic-gate protocol.
+  - **R6 unit tests** (T-D-N5): +2 new test rows in
+    [`crates/strategy/tests/vol_targeting_overlay.rs`](../../crates/strategy/tests/vol_targeting_overlay.rs):
+    `scale_cache_populates_after_on_bar` + `quantity_scale_default_for_unseen_symbol`. Total: 10 passed.
+  - **Wave B anchor re-emission** (sequential): 3 SHAs re-emitted in-place with 2-run
+    byte-identity confirmed.
+    `top10-2023-fy-vol-target-overlay-realdata` → `9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f`;
+    `sharpe-comparison-vol-target-bs1-realdata` → `d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31`;
+    `sharpe-comparison-vol-target-bs1-realbaseline` → `ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9`.
+    `vol-verdict-bs1-realdata` (99c21892…) — negative invariant confirmed PASS. `ANCHORS PASS (34 / 34)`.
+  - **Wave C ADR amendment** (T-D-N14): § D6.b 5-clause wiring-bug-fix re-emission protocol
+    appended to [`spec/architecture/adr/0038-vol-forecast-verdict-shape.md`](../architecture/adr/0038-vol-forecast-verdict-shape.md)
+    at end of § D6 (before `## Alternatives considered`), verbatim from [`decomp.md § T-AR-7`](decomp.md).
+  - **T-classifier post-fix**: T-VOL-NO-ALPHA (confirmed on real overlay — equity $62,807.89
+    vs $113,479.98 baseline; the overlay DID change equity, validating the fix, but Sharpe
+    delta is negative). V-verdict: V3 (mean_calibration_ratio = 2.952191 — GARCH-only,
+    unchanged per H2). Joint verdict: **T-VOL-NO-ALPHA / V3** on REAL overlay evidence.
+    Routing: R-O1 → (a) RETIRE C1 with real overlay evidence this time.
   - Frontmatter flipped `status: proposed → in-progress`, `owner: analyst → architect`.
   - `spec/trace.toml` state flipped `proposed → in-progress`; `arch` / `tests` / `anchors` columns populated.
   - HANDOFF → orchestrator → developer (Wave A).

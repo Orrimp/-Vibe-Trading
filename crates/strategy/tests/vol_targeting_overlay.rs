@@ -226,3 +226,76 @@ fn garch_params_forecast_step_floored() {
         "expected sqrt(omega)={expected}, got {sigma}"
     );
 }
+
+/// R6 — scale_cache populates after on_bar is called.
+///
+/// After at least one `on_bar` call for a symbol with a GARCH model rigged to
+/// produce sigma << target_vol (so scale hits clamp_max = 2.0), `quantity_scale`
+/// must return a value != 1.0.
+#[test]
+fn scale_cache_populates_after_on_bar() {
+    // Rig a model where sigma_hat is tiny → compute_scale hits clamp_max = 2.0.
+    let mut models = BTreeMap::new();
+    models.insert(
+        "BTCUSDT".to_string(),
+        GarchParams {
+            omega: 1e-10,
+            alpha: 0.05,
+            beta: 0.90,
+            unconditional_var: 1e-10 / (1.0 - 0.05 - 0.90),
+        },
+    );
+    let mut overlay =
+        VolTargetingOverlay::new(stub_momentum(), models, VolTargetingConfig::default());
+    let btc = Symbol::new("BTCUSDT");
+
+    // Before any on_bar: default 1.0.
+    assert_eq!(
+        overlay.quantity_scale(&btc),
+        1.0,
+        "quantity_scale must return 1.0 before any on_bar"
+    );
+
+    // Feed one bar to populate the cache.
+    let bar = make_bar("BTCUSDT", dec!(50_000), 0);
+    let _ = overlay.on_bar(&bar);
+
+    // After on_bar: scale should be clamp_max = 2.0 (sigma tiny → scale big).
+    let scale = overlay.quantity_scale(&btc);
+    assert!(
+        (scale - 1.0).abs() >= 0.01,
+        "scale_cache should reflect computed factor != 1.0 after on_bar; got {scale}"
+    );
+    assert!(
+        (scale - 2.0).abs() < 0.01,
+        "expected scale ~= 2.0 (clamp_max); got {scale}"
+    );
+}
+
+/// R6 — quantity_scale returns 1.0 for a symbol not in the GARCH checkpoint.
+///
+/// When `on_bar` is called for a symbol that has no GARCH model, the no-model
+/// branch fires (`bars_no_model` ticks) and `scale_cache` records scale = 1.0
+/// (because sigma_hat = target_vol → compute_scale = 1.0). Calling
+/// `quantity_scale` for a completely different symbol that was never seen
+/// must also return 1.0 (the default-on-miss path).
+#[test]
+fn quantity_scale_default_for_unseen_symbol() {
+    // Register a model only for BTCUSDT.
+    let mut models = BTreeMap::new();
+    models.insert("BTCUSDT".to_string(), stub_model());
+    let mut overlay =
+        VolTargetingOverlay::new(stub_momentum(), models, VolTargetingConfig::default());
+
+    // Feed a bar for BTCUSDT.
+    let bar = make_bar("BTCUSDT", dec!(50_000), 0);
+    let _ = overlay.on_bar(&bar);
+
+    // ETHUSDT was never given an on_bar call → cache miss → must return 1.0.
+    let eth = Symbol::new("ETHUSDT");
+    assert_eq!(
+        overlay.quantity_scale(&eth),
+        1.0,
+        "unseen symbol must return default 1.0 from quantity_scale"
+    );
+}

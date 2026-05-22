@@ -261,7 +261,16 @@ pub async fn run(
             match sig.kind {
                 trading_core::SignalKind::Buy if current_qty <= Decimal::ZERO => {
                     let fraction = dec!(0.10);
-                    let notional = equity * fraction;
+                    // Query the vol-targeting scale for this symbol from the overlay.
+                    // The scale is cached from the most recent `on_bar` call above
+                    // (ADR-0038 § D5 / § D6.b wiring-bug-fix — feature.md § R1).
+                    let scale = overlay_strategy.quantity_scale(&sig.symbol);
+                    // Convert f64 scale to Decimal for exact-cent compatibility
+                    // (CLAUDE.md money-math rule). rust_decimal::Decimal::try_from(f64)
+                    // handles NaN/Inf by returning Err; defensively floor to 1.0
+                    // (treat as no-op) if conversion fails.
+                    let scale_dec = Decimal::try_from(scale).unwrap_or(Decimal::ONE);
+                    let notional = equity * fraction * scale_dec;
                     let qty_raw = notional / mark;
                     if qty_raw <= Decimal::ZERO {
                         continue;
@@ -296,6 +305,9 @@ pub async fn run(
                     }
                 }
                 trading_core::SignalKind::Sell if current_qty > Decimal::ZERO => {
+                    // Sell-to-close: full-position exit — vol-target scale does NOT apply
+                    // (would leak residual exposure on regime spikes; we exit the entire
+                    // open position, not a notional fraction). ADR-0038 § D6.b / T-AR-2.
                     let pos_snap = Position::empty(sig.symbol.clone());
                     if let Ok(qty) = Quantity::new(current_qty)
                         && let Ok(price) = Price::new(mark)

@@ -1,7 +1,7 @@
 ---
 slug: v3-volatility-forecaster-noop-fix
 status: in-progress
-owner: architect
+owner: developer
 updated: 2026-05-22
 priority: P0
 ---
@@ -73,47 +73,107 @@ output.
 - [x] **T-AR-6** — Forensic-gate protocol locked in [`decomp.md § T-AR-4`](decomp.md) + [`§ T-AR-6 Wave A T-D-N3a/3b`](decomp.md). The R2 e2e test (`overlay_quantity_scale_reflects_computed_factor` in new file `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`) is run against current main BEFORE the fix lands. Expected pre-fix output: `test result: FAILED. 0 passed; 1 failed; ...` with the literal panic `'vol-target overlay produced scale=1 after 5 on_bar calls — expected ≠ 1.0 (no-op signature)'`. Developer captures this verbatim into Wave A status update at T-D-N3a. Expected post-fix output (T-D-N3b): `test result: ok. 1 passed; 0 failed; ...`. If pre-fix run PASSES, the test is wrong (false negative) and Wave A halts pending architect re-audit.
 - [x] **T-AR-7** — Frontmatter flipped: `status: proposed → in-progress`, `owner: analyst → architect`. Developer T-D-N16 flips `owner: architect → developer` at Wave A start. Baseline gate captured in decomp.md § Baseline gate: `ANCHORS PASS  (34 / 34)` quoted verbatim from `bash scripts/verify_anchors.sh` at M-T1 open (2026-05-22, pre-fix).
 
-## T-D-N — Developer (Waves stubbed; architect refines at T-AR-5)
+## T-D-N — Developer (Waves A + B + C — per architect decomp.md T-AR-6)
 
 ### Wave A — Wire-up fix + tests
 
-- [ ] **T-D-N1** — Implement the Q1-locked fix at the strategy → executor
-  handoff.
-- [ ] **T-D-N2** — Implement R6 unit test: `scale != 1.0` causes
-  returned Signal (or queried `Strategy::quantity_scale`) to carry
-  the computed scale.
-- [ ] **T-D-N3** — Implement R6 integration test at the engine
-  boundary: two fills under `compute_scale → 1.7` differ in
-  quantity from two fills under `scale = 1.0`.
-- [ ] **T-D-N4** — Implement R2 end-to-end test:
-  `vol_targeting_overlay::overlay_changes_equity_vs_untargeted_baseline`.
-  Synthetic-or-fixture data stream with a rigged sigma_hat sequence.
-  Assert equity divergence ≥ 1 bp + trade-count ≈ identical.
-- [ ] **T-D-N5** — Run `cargo test --workspace --features candle`;
-  confirm green. Run `cargo clippy --workspace --features candle -D
-  warnings`; confirm green.
+- [x] **T-D-N1** — Add `Strategy::quantity_scale` defaulted trait method at
+  `crates/strategy/src/traits.rs:14` (+7 LoC, +1 import `Symbol`).
+  - file:line: `crates/strategy/src/traits.rs:14`
+  - test cmd: `cargo check -p strategy`
+  - output: `Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 4.57s`
 
-### Wave B — Anchor re-emission + ADR amendment
+- [x] **T-D-N2** — Refactor `VolTargetingOverlay` at
+  `crates/strategy/src/vol_targeting_overlay.rs`: add `scale_cache: BTreeMap<Symbol, f64>` field;
+  populate in `on_bar` (unconditionally, before early-return guard);
+  override `quantity_scale`. Misleading "diagnostic only" comment removed.
+  - file:line: `crates/strategy/src/vol_targeting_overlay.rs:143-336`
+  - test cmd: `cargo test -p strategy --test vol_targeting_overlay`
+  - output: `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
 
-- [ ] **T-D-N6** — Re-run `top10-2023-fy-vol-target-overlay-realdata`
-  backtest; emit new report; capture new body-SHA-256. Determinism:
-  2-run byte-identity per R11.9 / R11.10 carry-forward.
-- [ ] **T-D-N7** — Re-run `sharpe-comparison-vol-target-bs1-realdata`;
-  emit new report; capture new body-SHA-256. Re-evaluate T-classifier
-  on the new net_delta.
-- [ ] **T-D-N8** — Re-run `sharpe-comparison-vol-target-bs1-realbaseline`
-  (rebaseline-namespace anchor); emit new report; capture new
-  body-SHA-256.
-- [ ] **T-D-N9** — (Conditional on T-AR-2 finding) Re-run
-  `vol-verdict-bs1-realdata` if its body cites overlay equity;
-  otherwise leave byte-identical.
-- [ ] **T-D-N10** — Update `spec/anchors.toml` with the new SHAs
-  under existing namespace blocks (Q2=(a) default). Add a comment
-  block referencing this feature and the dev-note.
-- [ ] **T-D-N11** — Land the ADR-0038 § D6 amendment subsection
-  (T-AR-3 text). Spec-update via the skill.
-- [ ] **T-D-N12** — Run `scripts/verify_anchors.sh`; confirm
-  ANCHORS PASS (34 / 34) with 3-4 fresh + 30-31 unchanged.
+- [x] **T-D-N3a** — FORENSIC GATE (pre-fix): Create `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`
+  and run BEFORE T-D-N2 completion. Test FAILS with expected panic.
+  - file:line: `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs:126`
+  - test cmd: `cargo test -p strategy --test vol_targeting_overlay_end_to_end -- --nocapture`
+  - output (literal pre-fix FAIL): `thread 'overlay_quantity_scale_reflects_computed_factor' panicked at crates/strategy/tests/vol_targeting_overlay_end_to_end.rs:126:5: vol-target overlay produced scale=1 after 5 on_bar calls — expected != 1.0 (no-op signature). This is the R2 forensic gate; under the pre-fix code this assertion FAILS because quantity_scale returns the default 1.0 regardless of GARCH state.` / `test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`
+
+- [x] **T-D-N3b** — FORENSIC GATE (post-fix): Re-apply T-D-N2 + re-run e2e test. PASS.
+  - file:line: `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`
+  - test cmd: `cargo test -p strategy --test vol_targeting_overlay_end_to_end`
+  - output: `test overlay_quantity_scale_reflects_computed_factor ... ok` / `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+
+- [x] **T-D-N4** — Sizing-pipeline hook at
+  `crates/backtest/src/scenarios/garch_vol_target_overlay.rs:262-265` (Buy arm).
+  Sell arm gets inline comment (no scale — close-by-full-position).
+  - file:line: `crates/backtest/src/scenarios/garch_vol_target_overlay.rs:262-278`
+  - test cmd: `cargo check -p backtest --features candle,realdata`
+  - output: `Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 8.08s`
+
+- [x] **T-D-N5** — Add R6 unit test rows to `crates/strategy/tests/vol_targeting_overlay.rs`:
+  `scale_cache_populates_after_on_bar` + `quantity_scale_default_for_unseen_symbol`.
+  - file:line: `crates/strategy/tests/vol_targeting_overlay.rs:229-310`
+  - test cmd: `cargo test -p strategy --test vol_targeting_overlay`
+  - output: `test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+
+- [x] **T-D-N6** — Workspace gate: `cargo fmt --check` + `cargo clippy --workspace --features candle,realdata -- -D warnings` + `cargo test --workspace --features candle,realdata`.
+  - test cmd: `cargo clippy --workspace --features candle,realdata -- -D warnings`
+  - output: `Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 8.53s` (0 warnings)
+  - workspace tests: all binaries `0 failed` (confirmed via background run)
+
+### Wave B — Anchor re-emission
+
+- [x] **T-D-N7** — Re-emit `top10-2023-fy-vol-target-overlay-realdata` (run 1).
+  - cmd: `cargo run -p backtest --release --features candle,realdata --bin backtest -- --scenario top10-2023-fy-vol-target-overlay-realdata --seed 0xC0FFEE`
+  - report: `spec/v3-volatility-forecaster/reports/backtest-20260522-123254-top10-2023-fy-vol-target-overlay-realdata.md`
+  - SHA: `9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f`
+  - equity changed from no-op $113,479.98 → $62,807.89 (fix validated)
+
+- [x] **T-D-N8** — Re-emit `top10-2023-fy-vol-target-overlay-realdata` (run 2, byte-identity gate).
+  - SHA run 2: `9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f`
+  - run1 == run2: CONFIRMED byte-identical
+
+- [x] **T-D-N9** — Re-emit `sharpe-comparison-vol-target-bs1-realdata` (run 1).
+  - cmd: `cargo run -p forecast --release --bin sharpe_comparison --features candle -- --scenario vol-target-bs1`
+  - report: `spec/v3-volatility-forecaster/reports/sharpe-comparison-vol-target-bs1-realdata-20260522.md`
+  - SHA: `d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31`
+  - T-classifier: T-VOL-NO-ALPHA
+
+- [x] **T-D-N10** — Re-emit `sharpe-comparison-vol-target-bs1-realbaseline` (run 1).
+  - cmd: `cargo run -p forecast --release --bin sharpe_comparison --features candle -- --scenario vol-target-bs1-rebaseline`
+  - report: `spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-20260522.md`
+  - SHA: `ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9`
+  - T-classifier: T-VOL-NO-ALPHA
+
+- [x] **T-D-N11** — Determinism re-confirm: run T-D-N9 + T-D-N10 second time each.
+  - sharpe-comparison-vol-target-bs1-realdata run2 SHA: `d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31` (byte-identical)
+  - sharpe-comparison-vol-target-bs1-realbaseline run2 SHA: `ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9` (byte-identical)
+  - R11.9 / R11.10 byte-identity gate: PASS
+
+- [x] **T-D-N12** — Lock 3 new SHAs in `spec/anchors.toml` in-place under existing namespaces.
+  Add comment block referencing fix-feature slug + dev-note slug.
+  - file:line: `spec/anchors.toml` (lines replacing v3.0.0-volatility + v3.0.0-volatility-rebaseline rows)
+  - `vol-verdict-bs1-realdata` (99c21892…) — NOT re-emitted (GARCH-only body per T-AR-5)
+
+- [x] **T-D-N13** — `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS  (34 / 34)` with 3 fresh SHAs + 31 unchanged
+
+### Wave C — ADR amendment + spec hygiene
+
+- [x] **T-D-N14** — ADR-0038 § D6.b amendment appended to
+  `spec/architecture/adr/0038-vol-forecast-verdict-shape.md` end of § D6
+  (before `## Alternatives considered`). Architect's verbatim text from decomp.md § T-AR-7.
+  - file:line: `spec/architecture/adr/0038-vol-forecast-verdict-shape.md` (after line 606)
+  - No cargo invocation needed (text edit only)
+
+- [x] **T-D-N15** — `spec/trace.toml` REQ-V3-VOL-FORECASTER-NOOP-FIX-001 state verified
+  `in-progress` (flipped by architect at M-T1). `crates` / `tests` / `anchors` columns
+  pre-populated by architect. Tester flips to `shipped` at M-FINAL.
+  - file:line: `spec/trace.toml:503`
+
+- [x] **T-D-N16** — Developer changelog entry appended to
+  `spec/v3-volatility-forecaster-noop-fix/feature.md § Changelog`
+  with implementation notes, forensic gate evidence, 3 new SHAs, T-classifier post-fix.
+  - file:line: `spec/v3-volatility-forecaster-noop-fix/feature.md` (Changelog section)
 
 ## T-T — Tester (M-FINAL)
 
@@ -158,3 +218,8 @@ from rebaseline pass).
   at HANDOFF; T-OD1..T-OD3 carry standing-Autoapprove defaults
   (Q1=(ii), Q2=(a), Q3=(b)); T-AR / T-D-N / T-T / T-P stubs left
   for architect / developer / tester / presenter refinement.
+- 2026-05-22 (developer): T-D-N1..T-D-N16 ticked with literal outputs.
+  Wave A wire-up fix + R2/R6 tests complete. Forensic gate FAIL/PASS
+  bracket confirmed. Wave B 3 anchors re-emitted with 2-run byte-identity
+  (R11.9/R11.10 PASS). ANCHORS PASS (34/34). Wave C ADR-0038 § D6.b
+  amendment landed verbatim. HANDOFF → tester.

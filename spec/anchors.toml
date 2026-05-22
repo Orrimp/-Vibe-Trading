@@ -246,6 +246,15 @@ sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"
 # Joint: MODEL-BROKEN / NO-ALPHA (advisory; not a test failure).
 # The 30 pre-feature anchors above stay byte-immutable (anchor-additive
 # only per ADR-0038 § D6 + Q5=(a)).
+#
+# RE-EMISSION 2026-05-22 (v3-volatility-forecaster-noop-fix v0.1.0, P0):
+# The vol-targeting overlay's `compute_scale` was wired as a no-op in
+# v3.0.0-volatility v0.1.0 (smoking gun: vol_targeting_overlay.rs:305-319).
+# 3 SHAs re-emitted in-place under existing namespaces per ADR-0038 § D6.b
+# wiring-bug-fix protocol (Q2=(a) default; architect signed off at M-T1).
+# vol-verdict-bs1-realdata (SHA 99c2189210...) is GARCH-only — stays
+# byte-identical (negative invariant). Diagnostic chain in:
+# spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md.
 
 [[anchors]]
 scenario = "vol-verdict-bs1-realdata"
@@ -255,12 +264,12 @@ sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility"
-sha256   = "66cd69ad03294cccf514184968babce0127f2ebfa4d1f4a03b332f8000f79c65"
+sha256   = "9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f"
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
 version  = "v3.0.0-volatility"
-sha256   = "ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1"
+sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
 
 # v3.0.0-volatility-rebaseline: 1-day re-baseline pass swapping the
 # synthetic v1 momentum baseline for a real-data un-targeted v1 momentum
@@ -280,8 +289,13 @@ sha256   = "ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1"
 # The 33 pre-rebaseline anchors above stay byte-immutable
 # (anchor-additive only per ADR-0038 § D6 + parent Q5=(a) +
 # rebaseline Q2=(a)).
+#
+# RE-EMISSION 2026-05-22 (v3-volatility-forecaster-noop-fix v0.1.0, P0):
+# SHA re-emitted in-place under existing namespace per ADR-0038 § D6.b
+# wiring-bug-fix protocol. Diagnostic chain in:
+# spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md.
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
 version  = "v3.0.0-volatility-rebaseline"
-sha256   = "d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8"
+sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
