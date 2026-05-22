@@ -382,20 +382,24 @@ artifact debt, not a presenter-introduced regression.
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
+
+**Operator decision 2026-05-22:** approve v0.1.0 with the MODEL-BROKEN / NO-ALPHA advisory recorded. Routing pick = **(b)**.
 
 ### Routing pick (operator selects exactly one)
 
 - [ ] (a) RETIRE C1 — accept joint verdict; promote C2 _or_ C5 from
   Queue → Active (note which one below)
-- [ ] (b) RE-BASELINE FIRST — re-run sharpe-comparison vs REAL v1
+- [x] (b) RE-BASELINE FIRST — re-run sharpe-comparison vs REAL v1
   momentum baseline before further routing (presenter-recommended)
 - [ ] (c) DEBUG V3 — spawn `v3-garch-calibration-tune` for per-symbol
   hyperparameter search
 - [ ] (d) v0.1.1 GARCH refit + return — in-place fitter iteration;
   bump version → v0.1.1
+
+**Follow-on feature spawned:** `v3-volatility-forecaster-rebaseline` v0.1.0 — analyst pass authoring the feature brief next; expected ~1 day budget per the deck's (b) row. C2 / C5 stay in Queue pending the (b) outcome.
 
 ### Notes / feedback
 
