@@ -7076,6 +7076,7 @@ dependencies = [
  "async-trait",
  "audit",
  "candle-core",
+ "cost",
  "criterion",
  "features",
  "forecast",
@@ -7097,6 +7098,7 @@ dependencies = [
  "tracing",
  "trading_core",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]

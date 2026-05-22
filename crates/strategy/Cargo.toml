@@ -24,6 +24,8 @@ audit = { path = "../audit" }
 # v3-llm-forecaster Wave A: LlmProvider trait + LlmError + reflection types
 llm = { path = "../llm" }
 reflection = { path = "../reflection" }
+# v3-llm-forecaster Wave B: AgentRole + LlmTier for ChatRequest construction
+cost = { path = "../cost" }
 uuid.workspace = true
 # v3-llm-forecaster: tokio Handle for block_on in on_bar sync path
 tokio = { workspace = true, features = ["rt"] }
@@ -44,12 +46,19 @@ time.workspace = true
 rust_decimal_macros.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util"] }
+tokio = { workspace = true, features = ["test-util", "rt-multi-thread", "macros"] }
 proptest.workspace = true
 criterion.workspace = true
 time.workspace = true
 uuid.workspace = true
 pollster.workspace = true
+# v3-llm-forecaster Wave B: wiremock for LlmForecasterImpl integration tests
+wiremock.workspace = true
+cost = { path = "../cost" }
+
+[[test]]
+name = "llm_forecaster_wiremock"
+path = "tests/llm_forecaster_wiremock.rs"
 
 [[test]]
 name = "tcn_overlay_tuned_builder"

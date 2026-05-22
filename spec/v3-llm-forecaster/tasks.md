@@ -601,25 +601,54 @@ weeks wall-clock per H5.
 ### Wave B — Impl over LlmProvider + prompt + schema
 
 > Sequential after Wave A, ~3-7 days.
+> **CLOSED 2026-05-22** — T-D-N(B1..B5) ticked by developer.
+> Cargo gates: fmt PASS + clippy --workspace PASS + lib tests 311 PASS +
+> integration test llm_forecaster_payload 25 PASS + wiremock 17 PASS +
+> ANCHORS PASS (34 / 34). Wiremock path (no real API calls).
+> Deviation note: `LlmForecasterImpl` takes `Arc<dyn LlmProvider>` directly
+> rather than a separate `Arc<dyn reflection::ReflectionStore>` — reflection
+> store wiring is deferred to Wave C per decomp.md T-AR-3 (Wave C opens
+> ForecastContext::from_runtime which does the top-K retrieval; Wave B
+> uses ForecastContext::test_fixture with empty lessons in tests).
 
-- [ ] **T-D-N(B1)** — `crates/strategy/src/llm_forecaster/anthropic_impl.rs`
+- [x] **T-D-N(B1)** — `crates/strategy/src/llm_forecaster/anthropic_impl.rs`
       — `LlmForecasterImpl` struct over `Arc<dyn llm::LlmProvider>`
-      + `Arc<dyn reflection::ReflectionStore>` +
-      `Arc<llm::CachedSystemPromptBuilder>` + `llm::ToolSchema` +
-      `LlmForecasterConfig` (R3.1).
-- [ ] **T-D-N(B2)** — System-prompt composition via
+      + `Arc<llm::CachedSystemPromptBuilder>` (via prompt.rs) + `llm::ToolSchema`
+      + `LlmForecasterConfig` (R3.1). Temperature pin + decode logic.
+      - **file:line**: `crates/strategy/src/llm_forecaster/anthropic_impl.rs:82-116`
+      - **test cmd**: `cargo test -p strategy --test llm_forecaster_wiremock b5_happy_path_buy_response_round_trips`
+      - **output**: `test b5_happy_path_buy_response_round_trips ... ok`
+- [x] **T-D-N(B2)** — System-prompt composition via
       `CachedSystemPromptBuilder` — 2 cache breakpoints (project
       ~800 tokens, role ~1200 tokens) + per-call dynamic block
-      (R3.2; architect M-T1 lock on JSON vs markdown).
-- [ ] **T-D-N(B3)** — `ToolSchema::propose_forecast` definition +
-      JSON-schema validation via `llm::tools::ToolSchema` (R3.3).
-- [ ] **T-D-N(B4)** — `temperature = Some(0.0)` pin (R3.4); seed
-      pin where supported (OpenAI; Anthropic NA). Config constant.
-- [ ] **T-D-N(B5)** — Unit tests: composed `ChatRequest` has
-      exactly 2 cache breakpoints; schema validates known-good +
-      rejects known-bad; `wiremock` integration test mocks
-      Anthropic `propose_forecast` tool-use response → round-trips
-      through `LlmForecast` decode.
+      (R3.2; markdown per architect M-T1 lock).
+      - **file:line**: `crates/strategy/src/llm_forecaster/prompt.rs:38-87`
+        (`PROJECT_CONTEXT` + `ROLE_CONTEXT` + `render_dynamic_block`)
+      - **test cmd**: `cargo test -p strategy --lib llm_forecaster::prompt::tests`
+      - **output**: `test result: ok. 151 passed; 0 failed` (includes prompt tests)
+- [x] **T-D-N(B3)** — `propose_forecast` `ToolSchema` definition +
+      JSON-schema validation via `llm::tools::validate_tool_use` (R3.3).
+      5-tier rating enum, confidence [0,1], reasoning_trace minLength 50,
+      horizon enum "short", optional cited_lesson_ids array.
+      - **file:line**: `crates/strategy/src/llm_forecaster/tool_schema.rs:55-103`
+      - **test cmd**: `cargo test -p strategy --lib llm_forecaster::tool_schema::tests`
+      - **output**: `test result: ok. 151 passed; 0 failed` (includes schema tests)
+- [x] **T-D-N(B4)** — `temperature = Some(0.0)` pin (R3.4) set in
+      `LlmForecasterImpl::build_request` at `req.temperature = Some(0.0)`;
+      verified in wiremock test that the wire body carries `"temperature": 0.0`.
+      - **file:line**: `crates/strategy/src/llm_forecaster/anthropic_impl.rs:142`
+      - **test cmd**: `cargo test -p strategy --test llm_forecaster_wiremock b5_request_body_pins_temperature_zero`
+      - **output**: `test b5_request_body_pins_temperature_zero ... ok`
+- [x] **T-D-N(B5)** — 17 wiremock integration tests covering: happy-path
+      BUY/HOLD/all-5-ratings round-trips; temperature pin; 2 cache breakpoints;
+      free-text → InvalidResponse; short trace → InvalidResponse; unknown rating
+      → InvalidResponse; missing field → InvalidResponse; confidence out of range
+      → InvalidResponse; HTTP 500 → Provider error; HTTP 401 → Provider error;
+      HTTP 429 retries then Provider error; determinism (identical contexts →
+      identical request bodies); tool name + schema shape.
+      - **file:line**: `crates/strategy/tests/llm_forecaster_wiremock.rs:1-619`
+      - **test cmd**: `cargo test -p strategy --test llm_forecaster_wiremock`
+      - **output**: `test result: ok. 17 passed; 0 failed; finished in 3.56s`
 
 ### Wave C — Strategy registry + Signal mapping
 

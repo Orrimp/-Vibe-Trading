@@ -1,6 +1,6 @@
 //! LLM-based directional forecasting strategy (v3-llm-forecaster v0.1.0).
 //!
-//! ## Module layout (Wave A foundation)
+//! ## Module layout (Wave B — `LlmForecasterImpl` + prompt + schema)
 //!
 //! ```text
 //! crates/strategy/src/llm_forecaster/
@@ -10,17 +10,19 @@
 //! │                          `Confidence`, `Horizon`, `LlmForecasterError`,
 //! │                          `LessonCardRef`, `CostEventRef`, `StubForecaster`
 //! ├── canonicalize.rs     ← `request_hash` SHA-256 helpers
-//! └── strategy.rs         ← `LlmForecasterStrategy: Strategy` (Wave A skeleton)
+//! ├── strategy.rs         ← `LlmForecasterStrategy: Strategy` (Wave A skeleton)
+//! ├── anthropic_impl.rs   ← `LlmForecasterImpl` over `Arc<dyn LlmProvider>` (Wave B)
+//! ├── prompt.rs           ← system-prompt composition via `CachedSystemPromptBuilder` (Wave B)
+//! └── tool_schema.rs      ← `propose_forecast` ToolSchema definition (Wave B)
 //! ```
 //!
 //! ## Wave plan summary
 //!
-//! - **Wave A** (this file): type-level foundation. `on_bar` is a stub
-//!   returning `Vec::new()` when disabled (default) or delegating to
-//!   `StubForecaster` in tests. No real LLM calls.
-//! - **Wave B**: `anthropic_impl.rs` — real `LlmForecasterImpl` over
-//!   `Arc<dyn llm::LlmProvider>` + prompt composition + tool-schema.
-//! - **Wave C**: registry wiring + real `on_bar` loop.
+//! - **Wave A** (foundation): type-level + `LlmForecasterStrategy` skeleton.
+//! - **Wave B** (this update): `LlmForecasterImpl` over `Arc<dyn llm::LlmProvider>`
+//!   + prompt composition (2 cache breakpoints) + `propose_forecast` tool schema
+//!   + temperature pin (`temperature = Some(0.0)`) + wiremock integration tests.
+//! - **Wave C**: reflection-memory top-K retrieval wiring + real `on_bar` loop.
 //! - **Waves D-G**: backtest scenarios, audit wiring, Phase F UI, non-regression.
 //!
 //! ## Strategy ID
@@ -50,20 +52,22 @@
 //! - `crates/llm/src/trait_def.rs` — `LlmProvider` trait (infra layer).
 //! - `crates/reflection/src/lib.rs` — lesson-card retrieval (Wave C).
 
+pub mod anthropic_impl;
 pub mod canonicalize;
+pub mod prompt;
 pub mod strategy;
+pub mod tool_schema;
 pub mod trait_def;
 pub mod types;
 
-// Wave B / C files (stubs — created when those waves open):
-// pub mod anthropic_impl;
-// pub mod prompt;
-// pub mod tool_schema;
-// pub mod verdict;
+// Wave C / D / E / F files (deferred):
+// pub mod verdict;  // Wave G — ADR-0039 L0-L4 classifier
 
 // ── Public re-exports ─────────────────────────────────────────────────────────
 
+pub use anthropic_impl::LlmForecasterImpl;
 pub use strategy::{LlmForecasterStrategy, STRATEGY_ID};
+pub use tool_schema::{PROPOSE_FORECAST_TOOL_NAME, propose_forecast_schema};
 pub use trait_def::LlmForecaster;
 pub use types::{
     CACHE_SCHEMA_VERSION, Confidence, CostEventRef, DEFAULT_FIRE_EVERY_N_BARS, DEFAULT_MODEL_ID,
