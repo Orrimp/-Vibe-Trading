@@ -937,13 +937,30 @@ weeks wall-clock per H5.
 
 ## M-PRESENTER — Operator approval (OPENS at M-FINAL PASS)
 
-- [ ] **T-P1** — Presenter assembles
+- [x] **T-P1** — Presenter assembles
       `spec/v3-llm-forecaster/presentations/v3-llm-forecaster-<date>.md`
       per AGENT.md presenter contract. Sections: Headline
       (H1 Sharpe-delta + L-verdict + cost-actual), H1-H5 row-
       by-row falsification results, 10-20 sample reasoning
       traces from Phase F Assistant slot rendered for operator
       H3 trust-judgment, 4-cell operator-decide routing tree.
+      - **file:line**: `spec/v3-llm-forecaster/presentations/v3-llm-forecaster-2026-05-22.md`
+      - **output**: PARTIAL-ship deck assembled per first-of-kind protocol.
+        Lead-with-classification TL;DR (`v0.1.0-PARTIAL`), wave-by-wave
+        evidence table (A+B+C+E+F+G clean; D deferred), PARTIAL precedent
+        § (load-bearing protocol record), live demo blocks (L-verdict bin
+        stub L2 + 34/34 anchor gate + R9.3 byte-identity SHA `2fb4b243…`),
+        verification matrix (R1-R10 + H1-H5 + V-cargo with VERIFIED / DEFERRED
+        / VERIFIED-analytical statuses), open spec-debt § (88+4=92 vs
+        tester-measured 88+2=90; +2 structural to `shipped-partial` status
+        flip on feature.md + tasks.md), 2 operator decisions
+        (approve PARTIAL + Wave D scheduling (a)/(b)/(c) with (a)
+        recommended). Approval block UN-ticked; check_presentation.sh
+        PASS. H3 sample reasoning traces deferred to v0.1.1 deck
+        (require realdata Wave D output). Adapted T-P2 4-cell routing
+        tree from (a)/(b)/(c)/(d) L-verdict mapping to the PARTIAL-ship
+        Decision 2 surface ((a) run v0.1.1 / (b) defer / (c) Ollama)
+        because the L-verdict L0/L1/L2/L3/L4 path is itself v0.1.1 scope.
 - [ ] **T-P2** — 4-cell routing tree (presenter inherits + maps
       to L-verdict):
       - (a) **PASS — L0 + H1 ≥ +0.10** — ship; promote to paper-

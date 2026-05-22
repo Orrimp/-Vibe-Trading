@@ -63,6 +63,14 @@ VALID_STATUSES = {
     "candidate", # features being evaluated for inclusion (cockpit-app-bundle, iced-ecosystem-evaluation)
     "active",    # in-progress phase of a multi-phase initiative (lumen-design-adoption sub-phases)
     "reserved",  # placeholder phase scheduled but not yet started (lumen phase-6-assistant-slot)
+    # 2026-05-22 additions:
+    "shipped-partial",  # first-of-kind precedent from v3-llm-forecaster v0.1.0 — code gates clean,
+                        # one wave deferred due to external-dependency resolution (API key, vendor
+                        # account, third-party data, etc.). See spec/v3-llm-forecaster/reports/
+                        # test-final-2026-05-22.md § 14 for the protocol.
+    "retired",          # research-line closure (not deletion). Used by v3-volatility-forecaster +
+                        # v3-volatility-forecaster-rebaseline after the noop-fix retire decision
+                        # 2026-05-22. Code stays in the tree; anchors stay locked; no further effort.
 }
 
 # Categories — used both for grouping output and computing exit code.
