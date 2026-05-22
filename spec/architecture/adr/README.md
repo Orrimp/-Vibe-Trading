@@ -84,6 +84,7 @@ the canonical table; the parent file links here.)
 | 0034  | Cockpit training control — audit-DB-as-seam, subprocess lifecycle, R6 in-panel curves | accepted | 2026-05-19 |
 | 0035  | Post-training σ_train recalibration via metadata overlay (v2.5 cross-phase contract) | accepted | 2026-05-21 |
 | 0036  | PatchTST training contract — patch-embed shape, σ_train post-training, candle attention determinism gate, cost tripwire (v2.5a) | proposed | 2026-05-21 |
+| 0037  | Phase B scenario-dispatch extraction — renumbered 0035→0037 to resolve number collision with ADR-0035-tcn-sigma-train-recalibration (audit-2026-05-22) | accepted | 2026-05-19 (number reassigned 2026-05-22) |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body

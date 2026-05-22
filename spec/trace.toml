@@ -34,7 +34,7 @@ arch        = ["spec/architecture.md"]
 crates      = ["crates/strategy", "crates/backtest"]
 tests       = []   # TODO developer: link integration tests
 anchors     = ["btc-2023-1m-sma-cross", "btc-2023-1m-sma-baseline-refresh"]
-state       = "in-progress"
+state       = "shipped"   # flipped 2026-05-22 per audit-2026-05-22 P1.3 — feature.md shipped; anchors locked
 
 [[req]]
 id          = "REQ-V05-COMPOSED-001"
@@ -45,7 +45,7 @@ arch        = ["spec/architecture.md"]
 crates      = ["crates/strategy", "crates/backtest"]
 tests       = []   # TODO developer
 anchors     = ["btc-2023-1m-macd-trend", "btc-2023-1m-rsi-reversion", "btc-2023-1m-bbands-mean-revert"]
-state       = "in-progress"
+state       = "shipped"   # flipped 2026-05-22 per audit-2026-05-22 P1.3 — feature.md shipped; anchors locked
 
 [[req]]
 id          = "REQ-V1-MOMENTUM-001"
@@ -56,7 +56,7 @@ arch        = ["spec/architecture.md"]
 crates      = ["crates/strategy", "crates/backtest", "crates/data"]
 tests       = []   # TODO developer
 anchors     = ["top10-2023-1h-momentum", "top10-2024-h1-momentum"]
-state       = "in-progress"
+state       = "shipped"   # flipped 2026-05-22 per audit-2026-05-22 P1.3 — feature.md shipped; anchors locked
 
 [[req]]
 id          = "REQ-V15A-PAIRS-001"
@@ -131,7 +131,7 @@ anchors     = [
   "top10-2023-fy-tcn-overlay-weights",
   "top10-2024-fy-tcn-overlay-weights",
 ]
-state       = "in-progress"
+state       = "shipped"   # flipped 2026-05-22 per audit-2026-05-22 P1.2 — F4 verdict reached, 4 strategy + 4 realdata anchors locked; parent umbrella v25-dl-forecast-overlay deprecated 2026-05-22; production deployment NOT recommended
 
 [[req]]
 id          = "REQ-BACKTEST-REALDATA-001"
@@ -773,7 +773,7 @@ arch        = [
   "spec/ui-rethink-phase-b-lab-run/tasks.md",  # ARCHITECT M-T1 (2026-05-19) — wave map + T-D-N decomposition
   "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase B sequencing source-of-truth
   "spec/architecture/adr/0030-cockpit-in-process-backtest.md",
-  "spec/architecture/adr/0035-phase-b-scenario-dispatch-extraction.md",  # ARCHITECT M-T1 — extends ADR-0030
+  "spec/architecture/adr/0037-phase-b-scenario-dispatch-extraction.md",  # ARCHITECT M-T1 — extends ADR-0030; renumbered 0035→0037 in audit-2026-05-22 (collision with 0035-tcn-sigma-train-recalibration)
 ]
 crates      = ["crates/ui", "crates/backtest"]
 tests       = [

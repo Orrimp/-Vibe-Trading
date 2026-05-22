@@ -67,7 +67,7 @@ operator-readable, all Qs have defaults. **PASSED 2026-05-19.**
   cancel poll; Q4=A session-local in-memory diff; Q5=A bytes-identical
   preserving 22 anchors).
 - [x] Authored
-  [ADR-0035](../architecture/adr/0035-phase-b-scenario-dispatch-extraction.md)
+  [ADR-0037](../architecture/adr/0037-phase-b-scenario-dispatch-extraction.md)
   extending ADR-0030. Locks the per-scenario commit discipline,
   module layout under `crates/backtest/src/`, cancel-poll cadence
   (128-bar bitmask), `RunError::Cancelled` additive variant, and
@@ -78,7 +78,7 @@ operator-readable, all Qs have defaults. **PASSED 2026-05-19.**
   chart-overlay routing, `run_delta_badge` widget shape, cancel-poll
   cadence, storage-stays-bool, hypothesis additions H6+H7).
 - [x] Updated `spec/trace.toml` row `REQ-UI-RETHINK-PHASE-B-001`
-  `arch` array with ADR-0035 + tasks.md; appended forward-listed
+  `arch` array with ADR-0037 + tasks.md; appended forward-listed
   test paths (`crates/ui/src/widgets/run_delta_badge.rs`,
   `crates/ui/tests/lab_run_engine.rs`).
 - [x] Published T-D-N1..T-D-N15 below — 15 ordered T-D rows with
@@ -494,7 +494,7 @@ architect handoff line emitted with filled TOML envelope. **PASSED
 - **Test command:** `cargo test -p backtest --lib && scripts/verify_anchors.sh`
 - **R-anchor:** R8.1 (architect chose "re-export" over "duplicate").
 - **K-risk:** K8 (`compute_sharpe` becomes part of public surface —
-  recorded in ADR-0035 § Decision 8).
+  recorded in ADR-0037 § Decision 8).
 
 #### T-D-N13 — Land `widgets/run_delta_badge.rs` + 8-sign unit test + insta snapshot (DONE 2026-05-19)
 
@@ -580,7 +580,7 @@ architect handoff line emitted with filled TOML envelope. **PASSED
 - **R-anchor:** H3 falsifiability gate.
 - **K-risk:** K1 (cumulative — if H3 falsifies after all Wave B
   extractions land, the single-source-of-truth contract from
-  ADR-0035 § Decision 1 is violated; developer fixes the writer
+  ADR-0037 § Decision 1 is violated; developer fixes the writer
   side).
 
 #### T-D-N15 — Tracing latency span + H1 measurement instrumentation (optional but high-value) (DONE 2026-05-19)
@@ -637,7 +637,7 @@ non-negotiable.
   `cargo test --workspace --lib` 278 passed, 0 failed.
 - [x] Verify the **22 body-SHA-256 anchors** stay byte-identical
   (R10.1 / H2 / H4) — `scripts/verify_anchors.sh` exit 0 against
-  the full anchor set. **NON-NEGOTIABLE** per ADR-0035 § Consequences
+  the full anchor set. **NON-NEGOTIABLE** per ADR-0037 § Consequences
   and operator-decided Q5.
   **Result:** 22/22 PASS — byte-identical after all clippy/fmt cleanup.
 - [x] Run `cockpit-smoke` (PASS 0 panics; all snapshots green;
@@ -695,7 +695,7 @@ Operator approval pending (presenter step gates ship).
 - Non-regression contract enumerated in feature.md § Non-regression
   contract (7 items: anchors, Phase A surface, cockpit-smoke,
   idle-CPU floor, spec-lint, no new deps, no new Lumen tokens).
-- Design lock in feature.md § Design (D1-D8) and ADR-0035
+- Design lock in feature.md § Design (D1-D8) and ADR-0037
   (extraction-pattern rationale).
 - Watch recipes (per MEMORY.md `feedback_watch_recipe_for_long_running`):
   - Anchor verification during extraction waves (T-D-N2 onwards):

@@ -1122,7 +1122,7 @@ contract items confirmed.
 ## Design
 
 > Architect M-T1 design lock (2026-05-19). Ratifies operator-decided
-> Q1-Q5 defaults. See [ADR-0035](../architecture/adr/0035-phase-b-scenario-dispatch-extraction.md)
+> Q1-Q5 defaults. See [ADR-0037](../architecture/adr/0037-phase-b-scenario-dispatch-extraction.md)
 > for the extraction-pattern rationale + module layout. The wave map
 > and T-D-N decomposition live in
 > [`tasks.md`](tasks.md). This section pins the **shapes** the
@@ -1295,7 +1295,7 @@ Three rows: Δ P&L, Δ MaxDD, Δ Sharpe.
   compute_sharpe(prev.equity_series_decimals)`. Positive → `UP_500`,
   negative → `DOWN_500`, zero → `FG_3`. Uses
   `backtest::compute_sharpe` (re-exported from `crates/backtest/src/lib.rs`
-  per ADR-0035 § Decision 8).
+  per ADR-0037 § Decision 8).
 
 **Layout placement.** In `screens/lab.rs::view` the badge inserts
 into the `run_button_row` (currently @206-208) as a second `Row`
@@ -1365,7 +1365,7 @@ worsens linearly. K3 cockpit-shutdown safety has soft real-time
 requirements (<5 s tear-down). The default 128 is the architect's
 ratified midpoint.
 
-**`RunError::Cancelled` variant** is additive (ADR-0035 § Decision
+**`RunError::Cancelled` variant** is additive (ADR-0037 § Decision
 6). The runner's `format!("{e}")` covers any variant via `Display`;
 no enum-exhaustive match anywhere in `crates/ui` needs to change.
 
@@ -1402,7 +1402,7 @@ post-second-run. Falsified when delta > 32 MB.
 
 **Why it matters:** if H7 falsifies, the `Vec` inside `Arc` is being
 cloned (not shared) — the developer has a refcount bug. Or the
-scenario produces >2× the analyst's estimate, in which case ADR-0035
+scenario produces >2× the analyst's estimate, in which case ADR-0037
 needs an amendment to specify a `EquitySeriesCompact` downsample for
 the mirror.
 
@@ -1420,7 +1420,7 @@ preserving extraction over the existing 22 anchored scenarios.
   `run_delta_badge` widget shape + visual-baseline impact, D6
   cancel-poll cadence, D7 storage-stays-bool, D8 H6+H7 hypothesis
   additions). Authored
-  [ADR-0035](../architecture/adr/0035-phase-b-scenario-dispatch-extraction.md)
+  [ADR-0037](../architecture/adr/0037-phase-b-scenario-dispatch-extraction.md)
   extending ADR-0030. Updated `trace.toml` `arch` with the new ADR
   + tasks.md row; appended developer-wave-created test paths
   (`crates/ui/src/widgets/run_delta_badge.rs`,

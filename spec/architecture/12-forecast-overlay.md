@@ -7,6 +7,20 @@ updated: 2026-05-17
 
 # Forecast overlays — `ForecastProvider`, overlay composition, replay
 
+> **Status note (2026-05-22):** The v2.5 DL forecaster programme was
+> RETIRED 2026-05-22 after joint F4-F4-F4 evidence across TCN BS-1/BS-2
+> @ 1h horizon and PatchTST BS-1 @ 24h horizon. The overlay-composition
+> pattern documented here remains the canonical shape for any future
+> DL/ML forecaster — but the v2.5 instantiation (TCN @ 1h, PatchTST @
+> 24h, vanilla Transformer @ TBD, bake-off) did NOT extract +0.10
+> Sharpe-delta vs the v1 momentum baseline. See
+> [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)
+> for the full evidence chain and "what NOT to chase" guardrails.
+> Future forecaster designs (volatility forecasting, regime
+> classification, longer horizons, crypto-specific features) can reuse
+> this overlay shape; the constraint is on the prediction task, not
+> the architecture pattern.
+
 This section formalises the cross-cutting overlay-strategy pattern
 introduced at v2.5 for the DL forecaster slot. It is the canonical entry
 point for any future DL/ML forecaster that emits a distributional forecast
@@ -16,7 +30,8 @@ The v2.5 strategy-specific decisions (model family, training framework,
 crate placement, audit-row shape) live in
 [ADR-0028](adr/0028-v25-dl-forecast-overlay-candle.md) — which superseded
 the original Kronos-targeted [ADR-0027](adr/0027-kronos-onnx-tract-integration.md)
-on 2026-05-16. This file is the *shape*; the ADR is the *v2.5 instantiation*.
+on 2026-05-16. This file is the *shape*; the v2.5 instantiation is now
+retired (see status note above).
 
 ## What is a forecast overlay
 

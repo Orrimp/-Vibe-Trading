@@ -2,12 +2,21 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-21
+updated: 2026-05-22
 ---
+<!-- updated 2026-05-22 (orchestrator, audit-2026-05-22 P2.5 cleanup) —
+     v25-tcn-alpha-investigation shipped 2026-05-19; v25-tcn-overlay
+     parent flipped shipped 2026-05-22 (F4 disposition); v25a-patchtst-overlay
+     shipped 2026-05-22 + entire 4-phase DL roadmap retired per operator
+     routing (a). Stale Active rows reflecting in-flight state removed;
+     historical HTML-comment changelog entries left in place as
+     archeology. -->
+
 <!-- updated 2026-05-21 (analyst, v25a-patchtst-overlay activation pass) —
      see Active section for the v25a-patchtst-overlay v0.1.0 brief
      activated by operator's Q1=(b) RETIRE v2.5 TCN decision at
-     v25-tcn-horizon-bump-or-retire M-OD 2026-05-21. -->
+     v25-tcn-horizon-bump-or-retire M-OD 2026-05-21. [SUPERSEDED 2026-05-22
+     — v25a shipped + DL roadmap retired] -->
 
 <!-- updated 2026-05-20 (analyst, ui-rethink-phase-f-memory-models-assistant M0
      close) — Analyst pass landed for the sixth and final phase of the UI
@@ -434,57 +443,20 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      86.4% (BS-2 τ=0.1) — necessary-but-not-sufficient for alpha.
      The τ × ε sweep is the cheap empirical answer. -->
 
-- **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
-  _draft (analyst-recommended scope: MINIMAL; awaiting operator
-  scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
-  by analyst. Read-only, forensic investigation into the persistent
-  `dampened=0` finding from
-  [`backtest-real-binance-data v0.1.0`](backtest-real-binance-data/feature.md)
-  (commit `df73780`, four `-realdata` anchors locked under
-  `v2.6.0-realdata`, all reporting `dampened=0` on real Binance
-  hourly OHLCV — same as M3 reported on synthetic data, but now on
-  the training distribution itself which falsifies the M3 hypothesis).
-  Predecessor: `backtest-real-binance-data v0.1.0`. Parent (stays
-  `in-progress`): `v25-tcn-overlay v2.5.0`.
-  Brief at [`feature.md`](v25-tcn-alpha-investigation/feature.md)
-  carries R1-R6 + a four-case failure-mode taxonomy F1-F4 (R4) that
-  routes the verdict to a named follow-on feature. ONE
-  operator-decide Q: scope —
-  **minimal** (a + d: histogram + Sharpe-table, no re-training,
-  analyst-recommended); **diagnostic** (a + c + d: adds
-  checkpoint-internal inspection); or **full**
-  (a + b + c + d: adds horizon-bumped re-train, ~2-3 weeks).
-  Default if no answer: minimal. R6 non-regression contract: 19
-  originals byte-identical; ≤3 new anchors at ship under version
-  `v2.6.0-alpha-investigation`. Trace row
-  `REQ-V25-TCN-ALPHA-001` opened proposed.
-  HANDOFF → operator-decide (1 Q) → architect.
-
-- **v2.5 — TCN forecast overlay (`v25-tcn-overlay`).** _in-progress
-  (CI-baseline + M3 real-weights gates approved 2026-05-18; real-data
-  wired but TCN dampened=0 on real OHLCV — alpha-verdict investigation
-  promoted to Active above)_ — phase 1 of the
-  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md)
-  (operator-locked 2026-05-17 after reading the
-  [v25-dl-reading-list](dev-notes/v25-dl-reading-list-2026-05-16.md)
-  and deciding to build all three model families for empirical bake-off).
-  Model family: Temporal Convolutional Network (Bai, Kolter, Koltun
-  2018). Selected first because (a) simplest architecture, fastest to
-  a working baseline; (b) establishes the training loop + audit +
-  replay infrastructure that v2.5a (PatchTST) and v2.5b (Transformer)
-  reuse; (c) deterministic inference (no autoregressive sampling) —
-  easier to anchor and audit. Data prerequisite: 10 USDT pairs hourly
-  2023+2024 bootstrapped via `cargo run -p data --bin fetch_binance_klines`
-  (~72s wallclock, ~15-20 MB). **Analyst pass landed 2026-05-17**
-  ([`feature.md`](v25-tcn-overlay/feature.md) §Requirements R1–R12)
-  closing Q1-Q8 with defaults (TCN 8-block dilation `[1..128]`, k=3,
-  H=96 → ~4.4M params; 256-bar context; 5 features; continuous
-  log-return regression with Huber δ=0.001; OneCycle AdamW;
-  two-checkpoint walk-forward; SHA-256 provenance over arch+data+seed+weights).
-  Two operator-decide questions surface: anchor checkpoint storage
-  (LFS vs regen-from-seed) and two-checkpoint backtest split.
-  Carry-forward backtest scenarios: BS-1 (2023 full-year top-10 USDT),
-  BS-2 (2024 full-year top-10 USDT). HANDOFF → operator-decide → architect.
+<!-- Removed 2026-05-22 (audit-2026-05-22 P2.5 cleanup):
+     - `v25-tcn-alpha-investigation` Active row — shipped 2026-05-19;
+       moved to Recent (shipped) section.
+     - `v25-tcn-overlay` Active row — flipped status: shipped 2026-05-22
+       per audit P1.2 (F4 disposition). The entry pointed at children
+       that have since shipped (alpha-investigation, recalibrate,
+       threshold-tuning, horizon-bump-or-retire, v25a-patchtst-overlay)
+       and to a now-retired roadmap. Historical context preserved in
+       the v2.5 DL journey retrospective:
+       `spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`.
+     The Queue § Strategy stubs below (v25-tcn-horizon-bump-or-retire,
+     v25-tcn-alpha-investigation pivot-reference) are preserved as
+     archeology of the operator-decide choice flow that produced the
+     7-ship journey + joint F4-F4-F4 retirement decision. -->
 
 ## Queue
 
