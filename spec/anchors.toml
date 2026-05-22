@@ -261,3 +261,27 @@ sha256   = "66cd69ad03294cccf514184968babce0127f2ebfa4d1f4a03b332f8000f79c65"
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
 version  = "v3.0.0-volatility"
 sha256   = "ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1"
+
+# v3.0.0-volatility-rebaseline: 1-day re-baseline pass swapping the
+# synthetic v1 momentum baseline for a real-data un-targeted v1 momentum
+# baseline.  Spawned 2026-05-22 by operator routing pick (b) RE-BASELINE
+# FIRST on parent v3-volatility-forecaster v0.1.0 (joint advisory verdict
+# V3 × T-VOL-NO-ALPHA → MODEL-BROKEN / NO-ALPHA shipped with data
+# caveat).  Locked by tester on 2026-05-22 against data/binance/
+# REVISION.toml manifest SHA
+# 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7.
+# 2-run byte-identical (tester-verified via hash_report.py).
+# V-verdict carries forward verbatim from parent: V3
+# (mean_calibration_ratio = 2.952191 outside [0.7, 1.4]) — GARCH-only
+# diagnostic, baseline-independent per H-rebase-2.
+# T-classifier re-evaluated against new net_delta = sharpe_overlay -
+# sharpe_real_baseline; cell recorded in feature.md § Verification per
+# the 4-row R-O1..R-O4 routing table.
+# The 33 pre-rebaseline anchors above stay byte-immutable
+# (anchor-additive only per ADR-0038 § D6 + parent Q5=(a) +
+# rebaseline Q2=(a)).
+
+[[anchors]]
+scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
+version  = "v3.0.0-volatility-rebaseline"
+sha256   = "d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8"

@@ -1,10 +1,9 @@
 ---
 slug: v3-volatility-forecaster-rebaseline
 version: 0.1.0
-status: in-progress
-owner: architect
+status: shipped
+owner: tester
 updated: 2026-05-22
-owner: developer
 parent: v3-volatility-forecaster
 parent_version: 0.1.0
 ---
@@ -250,21 +249,39 @@ the next agents own.
 
 ## Tester (M-FINAL after Wave C; depends on T-D-N1..N12)
 
-- [ ] T-T-1 — Re-run all four cargo hygiene gates per T-D-N12 and
+- [x] T-T-1 — Re-run all four cargo hygiene gates per T-D-N12 and
       quote each literal output line into
-      `spec/v3-volatility-forecaster-rebaseline/reports/test-final-<YYYY-MM-DD>.md`.
+      `spec/v3-volatility-forecaster-rebaseline/reports/test-final-2026-05-22.md`.
+      — `cargo fmt --check` → (no output, PASS);
+      `cargo clippy --workspace --features candle,realdata -- -D warnings`
+      → `Finished 'dev' profile [unoptimized + debuginfo] target(s) in 1.18s`;
+      `cargo test --workspace --lib --features candle`
+      → `test result: ok. 311 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s`;
+      `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (33 / 33)` (pre-T-T2;
+      parent anchor `ef048366ac5433173016e937dce0871b4b8da368ad6d4b17621b29faacea2ab1`
+      verified byte-identical — T-AR-2 anchor-immutability contract holds). — **PASS 2026-05-22 (tester)**.
 
-- [ ] T-T-2 — Compute the new report body-SHA-256 via
+- [x] T-T-2 — Compute the new report body-SHA-256 via
       `python3 scripts/hash_report.py spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-*.md`
       and write the new `[v3.0.0-volatility-rebaseline]` block in
       `spec/anchors.toml` per decomp.md § 6 verbatim shape (append
       after line 263). — _accept:_ `bash scripts/verify_anchors.sh`
       → `ANCHORS PASS  (34 / 34)`.
+      — `python3 scripts/hash_report.py ...` →
+      `d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8`
+      (matches developer's claim — 2-run byte-identity PASS R5 confirmed);
+      anchors.toml `[v3.0.0-volatility-rebaseline]` block appended after line 263;
+      `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (34 / 34)`. — **PASS 2026-05-22 (tester)**.
 
-- [ ] T-T-3 — Re-evaluate the joint advisory verdict cell against
+- [x] T-T-3 — Re-evaluate the joint advisory verdict cell against
       the routing table in `feature.md` § Routes. Record the verdict
       cell (R-O1 / R-O2 / R-O3 / R-O4) in the test report at
-      `spec/v3-volatility-forecaster-rebaseline/reports/test-final-<YYYY-MM-DD>.md`.
+      `spec/v3-volatility-forecaster-rebaseline/reports/test-final-2026-05-22.md`.
+      — net_delta = 0.000000 < +0.05 → T-VOL-NO-ALPHA + PASS → **R-O1**
+      → (a) RETIRE C1; promote C2 or C5 from Queue → Active.
+      feature.md § Verification updated with full hypothesis disposition,
+      joint advisory verdict, architecture deviation note, and cross-refs.
+      — **PASS 2026-05-22 (tester)**.
 
 - [ ] T-T-4 — HANDOFF → presenter. Presenter inherits the 4-cell
       routing tree; the operator's next decision is mechanical given

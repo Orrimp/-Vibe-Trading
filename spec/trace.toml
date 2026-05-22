@@ -448,7 +448,7 @@ tests       = [
 anchors     = [
   "sharpe-comparison-vol-target-bs1-realbaseline",  # Q2=(a) default, NEW namespace [v3.0.0-volatility-rebaseline]; M-FINAL gate: ANCHORS PASS (34 / 34)
 ]
-state       = "in-progress"   # ARCHITECT M-T1 closed 2026-05-22; decomp.md authored at spec/v3-volatility-forecaster-rebaseline/decomp.md; T-AR-2 corrected from hard-coded swap to NEW ScenarioFamily::VolTargetRebaseline variant (anchor-additive per ADR-0038 § D6); Wave A ∥ Wave B → developer; baseline gate: ANCHORS PASS (33 / 33)
+state       = "shipped"   # TESTER M-FINAL closed 2026-05-22; VERDICT PASS; ANCHORS PASS (34/34); T-classifier = T-VOL-NO-ALPHA confirmed on real-vs-real; joint advisory MODEL-BROKEN / NO-ALPHA data-caveat RULED OUT; routing R-O1 → (a) RETIRE C1
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"

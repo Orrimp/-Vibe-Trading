@@ -1,8 +1,8 @@
 ---
 slug: v3-volatility-forecaster-rebaseline
 version: 0.1.0
-status: proposed
-owner: analyst
+status: shipped
+owner: tester
 updated: 2026-05-22
 parent: v3-volatility-forecaster
 parent_version: 0.1.0
@@ -347,7 +347,87 @@ anchors stay byte-immutable per ADR-0038 § D6).
 
 ## Verification
 
-_tester links to reports here after M-FINAL_
+**Tester M-FINAL close — 2026-05-22**
+
+### V-verdict: V3 (UNCHANGED)
+
+`mean_calibration_ratio = 2.952191` — outside the `[0.7, 1.4]` envelope. GARCH
+non-convergence on AVAX/DOGE/DOT at 500 MLE iterations. This is a **GARCH-only
+diagnostic** independent of the baseline choice (confirmed H-rebase-2: V3
+survives the baseline swap verbatim).
+
+Source: `spec/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-*.md`
+(anchor `99c2189210d2091...`, byte-immutable through this pass per ADR-0038 § D6).
+
+### T-classifier: T-VOL-NO-ALPHA (UNCHANGED — data caveat RULED OUT)
+
+New report: `spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-20260522.md`
+Body-SHA256: `d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8`
+(Tester-independently-verified; matches developer's 2-run claim.)
+
+| Field               | Value                                         |
+|---------------------|-----------------------------------------------|
+| Sharpe baseline     | 0.003098 (top10-2023-fy-momentum-realdata)    |
+| Sharpe overlay      | 0.003098 (top10-2023-fy-vol-target-overlay-realdata) |
+| Gross Sharpe delta  | 0.000000                                      |
+| Net Sharpe delta    | **0.000000** (< +0.05 threshold)             |
+| T-classifier        | **T-VOL-NO-ALPHA**                            |
+| V-verdict (joint)   | **V3** (mean_calibration_ratio = 2.952191)   |
+
+**The synthetic-vs-real data caveat is RULED OUT.** Both columns are now
+real Binance 2023 hourly data (apples-to-apples). T-VOL-NO-ALPHA stands on
+real-vs-real evidence.
+
+### Joint classification: MODEL-BROKEN / NO-ALPHA
+
+Now confirmed under apples-to-apples real-data comparison. The data caveat
+from the parent feature's presenter deck no longer applies.
+
+### Hypothesis disposition
+
+| Hypothesis | Status | Evidence |
+|------------|--------|----------|
+| **H-rebase-1** — real-vs-real comparison will reveal SOME net_delta movement | **CONFIRMED** | Parent net_delta = 0.029868; new net_delta = 0.000000 (delta moved by −0.029868). T-classifier unchanged (still T-VOL-NO-ALPHA), but the net_delta shifted substantially. |
+| **H-rebase-2** — V3 calibration ratio is GARCH-only diagnostic; survives baseline swap | **CONFIRMED** | V3 verdict (`mean_calibration_ratio = 2.952191`) carries forward byte-identical from parent; baseline swap does not affect GARCH calibration diagnostics. |
+
+### Routing landing: R-O1
+
+T-VOL-NO-ALPHA + PASS → **(a) RETIRE C1** (v3-volatility-forecaster).
+Promote C2 (`v3-regime-classifier`) or C5 (`v3-llm-forecaster`) from Queue
+to Active per the parent deck's HYBRID sequencing.
+
+Alt path: operator may route to **(c) DEBUG V3** if GARCH calibration
+repair is the priority before promotion.
+
+### Architecture deviation note
+
+Wave A required ~100 LoC across 4 files instead of the decomp.md-estimated
+~25 LoC because `MomentumScenarioInput` had no real-data path. Developer
+added `bars_override: Option<Vec<Bar>>` and `data_revision_sha: Option<String>`
+parameters to `MomentumScenarioInput` (cli_types.rs:44-66), updated
+`momentum::run` to use `bars_override` when provided
+(scenarios/momentum.rs:200-242), extended `main.rs` `is_momentum` dispatch
+for `RealData` scenarios, and updated `report::momentum::write` to emit
+`data_revision_sha` in frontmatter. Change is **additive-only across 4
+files**; no existing behavior was mutated; synthetic path is byte-identical;
+all 33 parent anchors verified byte-identical. The T-AR-1 by-value-equal
+contract (all non-strategy fields match the parent vol-target-realdata arm)
+still holds. Flagged for the next audit pass — non-blocking.
+
+### Anchor delta
+
++1 row under `[v3.0.0-volatility-rebaseline]` namespace in `spec/anchors.toml`:
+- `sharpe-comparison-vol-target-bs1-realbaseline` — SHA `d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8`
+
+Total: 33 → **34 PASS** (tester-verified `bash scripts/verify_anchors.sh`).
+
+### Cross-references
+
+- New sharpe-comparison report: `spec/v3-volatility-forecaster-rebaseline/reports/sharpe-comparison-vol-target-bs1-realbaseline-20260522.md`
+- New baseline backtest report: `spec/v3-volatility-forecaster-rebaseline/reports/backtest-20260522-095222-top10-2023-fy-momentum-realdata.md`
+- ADR-0038 § D1.c — T-classifier threshold grid (unchanged)
+- ADR-0038 § D6 — anchor-additive contract (parent anchor `ef048366...` byte-immutable)
+- Test report: `spec/v3-volatility-forecaster-rebaseline/reports/test-final-2026-05-22.md`
 
 ## Implementation
 
