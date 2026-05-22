@@ -1,7 +1,7 @@
 ---
 slug: v25a-patchtst-overlay
-status: proposed
-owner: architect
+status: shipped
+owner: operator
 updated: 2026-05-21
 version: 0.1.0
 parent: v25-dl-forecast-overlay v0.0.0 (roadmap)

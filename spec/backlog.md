@@ -434,44 +434,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      86.4% (BS-2 τ=0.1) — necessary-but-not-sufficient for alpha.
      The τ × ε sweep is the cheap empirical answer. -->
 
-- **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay`).**
-  _draft v0.1.0 (analyst-recommended scope: Q2=(a) full MVP;
-  awaiting operator-decide on Q1-Q8 — all defaults activate via
-  "autoapprove")_ — promoted Queue/Strategy → Active 2026-05-21
-  by analyst, activated by operator's Q1=(b) RETIRE v2.5 TCN
-  decision at
-  [`v25-tcn-horizon-bump-or-retire`](v25-tcn-horizon-bump-or-retire/feature.md)
-  M-OD 2026-05-21. Phase 2 of the
-  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md).
-  Predecessor: `v25-tcn-horizon-bump-or-retire v0.1.0`.
-  Parent: `v25-dl-forecast-overlay v0.0.0 (roadmap)`.
-  Brief at [`feature.md`](v25a-patchtst-overlay/feature.md)
-  carries R1-R10 (PatchTST model in candle + training scaffold
-  with ADR-0035 § D1 post-training σ_train pattern from the
-  start + ForecastProvider impl + 1 BS-1 anchored checkpoint
-  + sibling strategy + backtest scenario + alpha-investigation
-  cycle reusing ADR-0033 § D3 immutable F-verdict) + H1-H4
-  hypothesis register + K1-K6 risk register + Q1-Q8
-  operator-decide questions (ALL with analyst-recommended
-  defaults: Q1=(a) PatchTST, Q2=(a) full MVP, Q3=(a)
-  `patch_len=16, stride=8`, Q4=(b) 24h horizon, Q5=(c)
-  carry-forward 5-feature input, Q6=(a) BS-1 2023 span,
-  Q7=(a) anchor under `v2.5a.0-patchtst`, Q8=(a) sibling
-  strategy). MVP per Q2=(a): code + 1 trained BS-1 PatchTST
-  checkpoint + F-verdict report + Sharpe-comparison report +
-  sibling strategy `patchtst_overlay_momentum.rs` + 2 anchors
-  (`forecast-distribution-patchtst-bs1-realdata` +
-  `top10-2023-fy-patchtst-overlay-realdata`). Anchor risk LOW
-  by construction — additive sibling files only; 28 originals
-  (26 PASS + 2 pre-existing glob-collision FAIL) byte-identical.
-  Trace row `REQ-V25A-PATCHTST-001` promoted `roadmap → draft`.
-  Cost estimate: ~3-5 weeks best case; ~5-7 weeks with one
-  Wave-B retry. Apple Silicon Metal compute-bound; PatchTST/42
-  small config (~1.5-2M params) targets ~5-7 days per training
-  run. HANDOFF → operator-decide (Q1-Q8 with autoapprove
-  bundle) → architect for M-T1 / ADR-0036
-  PatchTST-training-contract.
-
 - **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
   _draft (analyst-recommended scope: MINIMAL; awaiting operator
   scope-decision on Q1)_ — promoted Queue/Strategy → Active 2026-05-18
@@ -944,6 +906,64 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+- **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay` v0.1.0)** —
+  shipped 2026-05-22 (operator-approved via presenter deck
+  [`presentations/v25a-patchtst-overlay-2026-05-22.md`](v25a-patchtst-overlay/presentations/v25a-patchtst-overlay-2026-05-22.md);
+  Q1-Q8 = analyst defaults via "Autoapprove all"; tester VERDICT →
+  PASS after one-line K4 test-harness fix). Phase 2 of the
+  [4-phase DL roadmap](v25-dl-forecast-overlay/feature.md).
+  Predecessor: [`v25-tcn-horizon-bump-or-retire v0.1.0`](v25-tcn-horizon-bump-or-retire/feature.md).
+  Parent: `v25-dl-forecast-overlay v0.0.0` (now → terminal-retired per
+  routing (a); see follow-on commit). **Substantive finding: F-verdict
+  F4 with Sharpe-delta only +0.006144 vs v1 momentum baseline** — well
+  below the +0.10 T-ALPHA-UNLOCKED threshold AND LOWER than retired
+  v2.5 TCN (BS-1 @ 1h: +0.018; BS-2 @ 1h: +0.045). **Joint F4-F4-F4
+  verdict across 3 model checkpoints / 2 model families (convolutional
+  TCN + patch-attention PatchTST) / 2 horizons (1h + 24h)** establishes
+  high-confidence retirement of the entire 4-phase DL forecast overlay
+  roadmap (operator-decided routing (a) at presenter approval).
+  Lands NEW [`crates/forecast/src/patchtst.rs`](../crates/forecast/src/patchtst.rs)
+  (PatchTST model in candle; d_model=128, n_heads=4, n_layers=3,
+  d_ff=256, patch_len=16, stride=8, context_len=336, dropout=0.2;
+  ~431k params) + NEW
+  [`crates/forecast/src/bin/train_patchtst.rs`](../crates/forecast/src/bin/train_patchtst.rs)
+  (training scaffold with ADR-0035 § D1 post-training σ_train pattern
+  from the start — NOT the deprecated in-loop accumulator) + 4
+  unit tests (forward_determinism / sigma_train_not_in_safetensors /
+  tcn_byte_identity / patchtst_overlay_neutrality K4 anchor-
+  neutrality test) + NEW `crates/strategy/src/patchtst_sync.rs` +
+  NEW `crates/strategy/src/patchtst_overlay_momentum.rs` (sibling
+  strategy mirror of `tcn_overlay_momentum.rs`) + NEW
+  `crates/backtest/src/scenarios/patchtst_overlay_weights.rs`
+  (sibling backtest scenario) + additive enum variants in
+  `forecast_distribution.rs` + `sharpe_comparison.rs` + `backtest`
+  Scenario enum. **2 new anchors locked under version
+  `v2.5a.0-patchtst`** (30 total; 28 originals byte-identical):
+  `forecast-distribution-patchtst-bs1-realdata` SHA `c55c6c51…` +
+  `top10-2023-fy-patchtst-overlay-realdata` SHA `5f303cc0…`.
+  Training stats: 30 epochs / 7h 45min wall-clock on Apple Silicon
+  Metal / final train_loss 2.6e-5 (67× from epoch 1) / σ_train
+  derived post-training 0.007053 (well-calibrated; in expected
+  0.005-0.025 range). Checkpoint SHA `62520db9…` at
+  `crates/forecast/checkpoints/anchors/patchtst-bs1-62520db9….{safetensors,metadata.json}`.
+  [ADR-0036](architecture/adr/0036-patchtst-training-contract.md)
+  codifies the PatchTST training contract.
+  **Hypothesis status:** H1 (24h horizon unlocks signal where 1h
+  failed) **FALSIFIED** — PatchTST @ 24h scored LOWER than TCN @ 1h
+  on Sharpe-delta. H2 (attention captures session structure) =
+  INCONCLUSIVE; F4 stays. H3 (4-6 week scope feasible) = CONFIRMED
+  (actual <1 day end-to-end). H4 (σ_train post-training pattern
+  works) = CONFIRMED. **Strategic implication**: v2.5-era DL
+  approaches exhausted; pivot research budget per routing (a).
+  Anchor risk zero — 28 originals + TCN checkpoint files byte-
+  identical (verified via K4 neutrality test PASS on TCN scenario
+  body SHA `8fa47f49…`); cargo fmt + workspace clippy +
+  `--features candle` clippy + `--features candle,realdata`
+  clippy + `--features forecast,forecast-audit-tick` clippy all
+  clean; spec-lint 86/3 = baseline (0 new regressions); 2-run
+  determinism PASS on all 3 substantive reports
+  (forecast_distribution + backtest + sharpe_comparison).
 
 - **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire` v0.1.0)** —
   shipped 2026-05-21 as a **policy/decision feature** (no code change,

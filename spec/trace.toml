@@ -347,7 +347,7 @@ anchors     = [
   "forecast-distribution-patchtst-bs1-realdata",   # c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd; locked tester M-FINAL 2026-05-22; 2-run byte-identical (T-D-N21 + tester T-F8 re-verify)
   "top10-2023-fy-patchtst-overlay-realdata",        # 5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c; locked tester M-FINAL 2026-05-22; 2-run byte-identical (T-D-N25 + tester T-F8 re-verify)
 ]   # tester-locked at M-FINAL 2026-05-22 per spec/anchors.toml additive rows under v2.5a.0-patchtst; anchors stay locked regardless of K4 fix
-state       = "in-progress"   # K4 test bug blocks tester-pass; HANDOFF → developer to fix patchtst_overlay_neutrality.rs (missing --bin backtest; multi-binary backtest crate conflict)
+state       = "shipped"   # operator-approved via presenter deck 2026-05-22; routing (a) — RETIRE entire 4-phase DL forecast overlay project given joint F4-F4-F4 verdict (TCN BS-1/BS-2 @ 1h: +0.018/+0.045 Sharpe-delta; PatchTST BS-1 @ 24h: +0.006); H1 24h-horizon-hypothesis FALSIFIED; 28→30 anchors locked under v2.5a.0-patchtst; K4 test harness fixed inline; v25b/v26/umbrella retirement bookkeeping in follow-on commit
 
 [[req]]
 id          = "REQ-V25B-TRANSFORMER-001"

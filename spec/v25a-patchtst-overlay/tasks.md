@@ -1,7 +1,7 @@
 ---
 slug: v25a-patchtst-overlay
-status: in-progress
-owner: tester
+status: shipped
+owner: operator
 updated: 2026-05-22
 ---
 
