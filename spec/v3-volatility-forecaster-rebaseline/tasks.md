@@ -283,9 +283,21 @@ the next agents own.
       joint advisory verdict, architecture deviation note, and cross-refs.
       — **PASS 2026-05-22 (tester)**.
 
-- [ ] T-T-4 — HANDOFF → presenter. Presenter inherits the 4-cell
+- [x] T-T-4 — HANDOFF → presenter. Presenter inherits the 4-cell
       routing tree; the operator's next decision is mechanical given
       the verdict cell.
+
+## Presenter (T-P1; spawned after tester PASS)
+
+- [x] T-P1 — Assemble operator-facing presentation deck. — wrote
+      spec/v3-volatility-forecaster-rebaseline/presentations/v3-volatility-forecaster-rebaseline-2026-05-22.md
+      (advisory: MODEL-BROKEN / NO-ALPHA; routing R-O1 = (a) RETIRE C1
+      pending operator confirmation + promotion-candidate pick).
+      Mechanical gates both PASS: `check_presentation.sh` →
+      `PRESENTATION CHECK PASS … approval block UN-ticked`; `python3.14
+      scripts/spec_lint.py` → `spec-lint: FAIL (85 violations in 1
+      categories)` — identical to tester baseline. HANDOFF →
+      orchestrator → operator-approve.
 
 ## Notes / Watch recipes
 

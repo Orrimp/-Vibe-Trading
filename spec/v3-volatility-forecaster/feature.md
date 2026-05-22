@@ -4,6 +4,8 @@ status: shipped
 owner: tester
 updated: 2026-05-22
 version: 0.1.0
+disposition_2026_05_22: provisionally-invalidated-pending-rewire
+invalidation_ref: spec/v3-volatility-forecaster-noop-fix/feature.md
 parent: (none — new strategy lane; first ship in post-v2.5 reformulation)
 predecessor: v25a-patchtst-overlay v0.1.0 (RETIRED-evidence-source)
 ---
@@ -1199,8 +1201,54 @@ added in v0.1.1 if byte-deterministic.
   [`spec/architecture/adr/README.md`](../architecture/adr/README.md)
   registry table. Baseline anchor gate confirmed PASS pre-handoff:
   `ANCHORS PASS  (30 / 30)`. HANDOFF → developer for Wave A start.
+- 2026-05-22 (analyst, post-ship): **provisional invalidation flag
+  added** at the head of § Verification. Orchestrator caveman probe
+  determined the GARCH vol-targeting overlay at
+  `crates/strategy/src/vol_targeting_overlay.rs:305-319` is a no-op
+  (scale computed correctly but never applied to fill quantities).
+  The shipped v0.1.0 evidence is recorded but invalidated for
+  routing decisions until the wire-up fix lands. Follow-on feature:
+  [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../v3-volatility-forecaster-noop-fix/feature.md)
+  (P0, v0.1.0, status: proposed). Frontmatter gains
+  `disposition_2026_05_22: provisionally-invalidated-pending-rewire`.
+  Discovery dev-note at
+  [`spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md).
 
 ## Verification
+
+> **PROVISIONALLY INVALIDATED 2026-05-22 — see `spec/v3-volatility-forecaster-noop-fix v0.1.0`.**
+>
+> Post-ship caveman probe (orchestrator, 2026-05-22 ~11:44Z)
+> determined that the GARCH vol-targeting overlay at
+> [`crates/strategy/src/vol_targeting_overlay.rs:305-319`](../../crates/strategy/src/vol_targeting_overlay.rs)
+> is a **no-op**: `compute_scale` returns the correct scale factor
+> but the `else` branch increments a stats counter and returns
+> `base_signals` unmodified. The recorded
+> `top10-2023-fy-vol-target-overlay-realdata` body
+> (anchor `66cd69ad…`) is byte-identical to the rebaseline pass's
+> un-targeted `top10-2023-fy-momentum-realdata` baseline — the
+> overlay output equals the baseline output, the unambiguous
+> signature of a no-op.
+>
+> The joint advisory **V3 × T-VOL-NO-ALPHA → MODEL-BROKEN / NO-ALPHA**
+> recorded below is **not real alpha evidence** at v0.1.0. The
+> T-VOL-NO-ALPHA T-classifier is an artifact of the wiring failure;
+> the V3 calibration finding (mean_calibration_ratio = 2.952191)
+> survives the fix verbatim because it is a GARCH-only diagnostic
+> measured before the overlay tries to apply the scale.
+>
+> The (a) RETIRE-C1 routing pick (from the
+> `v3-volatility-forecaster-rebaseline` presenter deck) is
+> **invalidated and on hold** until the wire-up fix lands and the
+> re-emission produces a real verdict. See
+> [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../v3-volatility-forecaster-noop-fix/feature.md)
+> and the discovery dev-note
+> [`spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md).
+> Post-fix verdict cell (R-O1 / R-O2 / R-O3) will be cross-referenced
+> here at the fix feature's M-FINAL.
+>
+> The body below is preserved as a historical record of the no-op
+> evidence — do NOT use for routing decisions until the fix lands.
 
 > Tester-authored at M-FINAL 2026-05-22. All 4 T-T1 gates PASS; anchor
 > lock 30/30 → 33/33 PASS. Joint advisory verdict recorded below per

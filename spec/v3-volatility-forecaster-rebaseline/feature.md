@@ -7,6 +7,8 @@ updated: 2026-05-22
 parent: v3-volatility-forecaster
 parent_version: 0.1.0
 parent_disposition: shipped-with-MODEL-BROKEN-NO-ALPHA-advisory
+disposition_2026_05_22: provisionally-invalidated-pending-rewire
+invalidation_ref: spec/v3-volatility-forecaster-noop-fix/feature.md
 ---
 
 # v3 volatility forecaster — re-baseline pass
@@ -347,6 +349,40 @@ anchors stay byte-immutable per ADR-0038 § D6).
 
 ## Verification
 
+> **PROVISIONALLY INVALIDATED 2026-05-22 — see `spec/v3-volatility-forecaster-noop-fix v0.1.0`.**
+>
+> The exact byte-identity between this pass's two equity readings
+> (`Sharpe baseline = 0.003098` for `top10-2023-fy-momentum-realdata`
+> and `Sharpe overlay = 0.003098` for
+> `top10-2023-fy-vol-target-overlay-realdata` — `net_delta = 0.000000`)
+> is the **load-bearing signal** that the GARCH vol-targeting overlay
+> at
+> [`crates/strategy/src/vol_targeting_overlay.rs:305-319`](../../crates/strategy/src/vol_targeting_overlay.rs)
+> is a **no-op**: when the overlay's output is byte-identical to the
+> un-targeted baseline's output, the overlay isn't doing anything.
+> The orchestrator's caveman probe (2026-05-22 ~11:44Z) confirmed
+> this via a `sigma_hat × 2.95` perturbation that left equity
+> byte-identical to the parent anchor `66cd69ad…` — the scale flows
+> nowhere.
+>
+> The **T-VOL-NO-ALPHA confirmed on real-vs-real evidence** verdict
+> recorded below is therefore **not** a real-vs-real T-classifier
+> reading; it is the byte-identity signature of two identical
+> executions. The (a) RETIRE-C1 routing pick (from the original
+> presenter deck) is **invalidated and on hold** until the wire-up
+> fix lands and the re-emission produces a real verdict.
+>
+> See [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../v3-volatility-forecaster-noop-fix/feature.md)
+> for the fix scope and [`spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md)
+> for the diagnostic chain. Post-fix verdict cell (R-O1 / R-O2 / R-O3)
+> will be cross-referenced here at the fix feature's M-FINAL.
+>
+> H-rebase-2 still holds: the V3 verdict
+> (mean_calibration_ratio = 2.952191) is a GARCH-only diagnostic and
+> survives the fix verbatim. The body below is preserved as a
+> historical record of the no-op signature — do NOT use for routing
+> decisions until the fix lands.
+
 **Tester M-FINAL close — 2026-05-22**
 
 ### V-verdict: V3 (UNCHANGED)
@@ -486,3 +522,19 @@ frontmatter emission. This is additive-only; no existing behavior was mutated.
   ticked. T-classifier = T-VOL-NO-ALPHA. 2-run body-SHA256 =
   d561fed564166f8c907cc9dda98fd2d56eb03333bd5aea16a0f6425924a2afb8.
   33 parent anchors byte-identical confirmed. HANDOFF → tester M-FINAL.
+- 2026-05-22 (analyst, post-ship): **provisional invalidation flag
+  added** at the head of § Verification. The exact byte-identity
+  between overlay equity and un-targeted baseline equity (Sharpe
+  0.003098 / 0.003098 / net_delta 0.000000) recorded as the
+  T-VOL-NO-ALPHA "real-vs-real" verdict is in fact the load-bearing
+  signature of a no-op vol-targeting overlay (caveman probe
+  confirmed; bug site at
+  `crates/strategy/src/vol_targeting_overlay.rs:305-319`). The (a)
+  RETIRE-C1 routing pick is invalidated and on hold pending the
+  wire-up fix at
+  [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../v3-volatility-forecaster-noop-fix/feature.md).
+  Frontmatter gains
+  `disposition_2026_05_22: provisionally-invalidated-pending-rewire`.
+  Discovery dev-note at
+  [`spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md).
+  H-rebase-2 (V3 carries forward) survives the fix verbatim.

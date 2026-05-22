@@ -448,7 +448,49 @@ tests       = [
 anchors     = [
   "sharpe-comparison-vol-target-bs1-realbaseline",  # Q2=(a) default, NEW namespace [v3.0.0-volatility-rebaseline]; M-FINAL gate: ANCHORS PASS (34 / 34)
 ]
-state       = "shipped"   # TESTER M-FINAL closed 2026-05-22; VERDICT PASS; ANCHORS PASS (34/34); T-classifier = T-VOL-NO-ALPHA confirmed on real-vs-real; joint advisory MODEL-BROKEN / NO-ALPHA data-caveat RULED OUT; routing R-O1 → (a) RETIRE C1
+state       = "shipped"   # TESTER M-FINAL closed 2026-05-22; VERDICT PASS; ANCHORS PASS (34/34); T-classifier = T-VOL-NO-ALPHA confirmed on real-vs-real; joint advisory MODEL-BROKEN / NO-ALPHA data-caveat RULED OUT; routing R-O1 → (a) RETIRE C1 [PROVISIONALLY-INVALIDATED 2026-05-22 — vol-targeting overlay determined to be a no-op at crates/strategy/src/vol_targeting_overlay.rs:305-319; see REQ-V3-VOL-FORECASTER-NOOP-FIX-001 — net_delta = 0.000000 is the no-op signature, NOT a true real-vs-real T-VOL-NO-ALPHA verdict]
+
+# v3-volatility-forecaster-noop-fix v0.1.0 — analyst 2026-05-22.
+# P0 wiring-bug discovery: the GARCH vol-targeting overlay's
+# compute_scale is correct but the scale is NEVER APPLIED to anything
+# that affects fill quantities or equity. The `else` branch at
+# crates/strategy/src/vol_targeting_overlay.rs:309-319 increments the
+# stats counter and returns base_signals unmodified. Caveman probe
+# (sigma_hat × 2.95 perturbation) produces byte-identical equity to the
+# parent anchor 66cd69ad…; the rebaseline pass's un-targeted baseline
+# produces byte-identical equity to the overlay output. Diagnostic
+# chain documented in spec/dev-notes/v3-vol-overlay-noop-discovery-
+# 2026-05-22.md. Parent REQ-V3-VOL-FORECASTER-001 + rebaseline
+# REQ-V3-VOL-FORECASTER-REBASELINE-001 both provisionally invalidated
+# until the wire-up fix lands and re-emission produces a real verdict.
+# Standing Autoapprove applies to Q1=(ii) defaulted trait method +
+# Q2=(a) re-emit in-place under existing namespaces + ADR-0038 § D6
+# amendment + Q3=(b) vol-target-only fix (TCN overlay structurally
+# different — dampen-to-Hold mutates Signal.kind which IS load-bearing,
+# no parallel bug per T-A2 finding).
+
+[[req]]
+id          = "REQ-V3-VOL-FORECASTER-NOOP-FIX-001"
+title       = "v3 volatility forecaster NO-OP WIRE-UP FIX (P0) — spawned 2026-05-22 by orchestrator caveman-probe discovery that the GARCH vol-targeting overlay at crates/strategy/src/vol_targeting_overlay.rs:305-319 is a no-op: compute_scale returns the correct scale factor but the `else` branch increments a stats counter and returns base_signals unmodified, with an inline comment admitting the scale is 'diagnostic only — the backtest engine reads quantities from fills, not from signal metadata.' Three diagnostic observations collapse to the same root cause: (1) caveman probe with sigma_hat × 2.95 perturbation produces byte-identical equity to the parent anchor (66cd69ad…) at $113,479.98 / 13.48% / 73.73% DD / 6203 trades; (2) the rebaseline pass's un-targeted top10-2023-fy-momentum-realdata baseline produces the byte-identical same equity tuple — overlay output == baseline output; (3) stats.signals_scaled = 6203 ticks for every signal but the signals are returned unmodified. Both shipped parents (v3-volatility-forecaster v0.1.0 + v3-volatility-forecaster-rebaseline v0.1.0) are provisionally invalidated until the wire-up fix lands. R1–R6 tight: R1 wire-up fix at strategy → executor handoff (architect Q1 picks (i) Signal.quantity_scale field vs (ii) defaulted Strategy::quantity_scale trait method; analyst default (ii) per K2 minimum blast-radius); R2 end-to-end equity-divergence regression test (overlay equity ≠ un-targeted baseline equity by ≥ 1 bp when scale ≠ 1.0) — the missing gate that would have caught the no-op; R3 affected anchors re-emit (3-4 rows: top10-2023-fy-vol-target-overlay-realdata + sharpe-comparison-vol-target-bs1-realdata + sharpe-comparison-vol-target-bs1-realbaseline change for sure; vol-verdict-bs1-realdata audit-pending at T-AR-2); R4 amendment blocks in parent + rebaseline feature.md § Verification; R5 ADR-0038 § D6 wiring-bug-fix exception clause documenting the legitimate re-emission protocol (Q2=(a) default); R6 unit + integration regression tests guarding scale != 1.0 propagation. K1 TCN overlay parallel bug RULED OUT (T-A2: TCN dampen-to-Hold mutates Signal.kind which is load-bearing); K2 Signal-field change blast radius (mitigation: Q1=(ii) default); K3 anchor re-emission precedent-setting (mitigation: R5 ADR amendment). H1 post-fix Sharpe delta direction unknown (H1.a positive lift, H1.b negative, H1.c near-zero); H2 V3 calibration ratio = 2.952191 survives the fix verbatim (GARCH-only diagnostic). 4-cell routing tree pre-drawn: R-O1 T-VOL-NO-ALPHA + PASS → (a) RETIRE C1 with REAL evidence; R-O2 T-VOL-MARGINAL + PASS → (a) RETIRE or (d) v0.1.2 GARCH refit; R-O3 T-VOL-ALPHA-UNLOCKED + PASS → reopen v3-volatility-forecaster as live candidate + spawn v3-garch-calibration-tune for V3 repair; R-O4 FAIL → developer fix iteration. Standing Autoapprove applies to Q1=(ii) + Q2=(a) + Q3=(b) defaults. Estimated budget ~1-3 days depending on architect Q1 fix-shape pick. Predecessor: v3-volatility-forecaster v0.1.0 (parent; provisionally-invalidated-pending-rewire). Sibling: v3-volatility-forecaster-rebaseline v0.1.0 (provisionally-invalidated-pending-rewire). Sibling-deferred picks v3-regime-classifier (C2) + v3-llm-forecaster (C5) remain gated on this fix landing AND post-fix verdict cell."
+feature     = "v3-volatility-forecaster-noop-fix"
+parent      = "REQ-V3-VOL-FORECASTER-001"
+product     = "spec/product.md"
+arch        = [
+  "spec/v3-volatility-forecaster-noop-fix/feature.md",
+  "spec/v3-volatility-forecaster/feature.md",                                  # parent — provisionally invalidated; amendment block in § Verification
+  "spec/v3-volatility-forecaster-rebaseline/feature.md",                       # sibling — provisionally invalidated; amendment block in § Verification
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",                  # § D5 strategy-side composition (wire-incomplete contract — bug site) + § D6 anchor-additive contract (needs wiring-bug-fix exception clause per R5)
+  "spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md",                # diagnostic chain: caveman probe → byte-identical → code review → smoking gun
+]
+crates      = [
+  "crates/strategy",   # bug site at vol_targeting_overlay.rs:305-319; fix lands here (Q1=(ii) defaulted trait method) or expands to trading_core::Signal (Q1=(i) field)
+  "crates/core",       # IF Q1=(i): additive `quantity_scale: f64` field on Signal (default 1.0; #[serde(default)] keeps existing JSON shape); IF Q1=(ii): potentially the Strategy trait surface if it lives here
+  "crates/backtest",   # sizing pipeline reads the new wire (call site TBD at T-AR-1)
+  "crates/exec",       # OR sizing pipeline lives here (architect identifies at T-AR-1)
+]
+tests       = []   # TODO developer — R6 unit + integration + R2 end-to-end test; existing crates/strategy/tests/vol_targeting_overlay.rs gets new test rows
+anchors     = []   # 3-4 anchors will re-emit post-fix under existing [v3.0.0-volatility] + [v3.0.0-volatility-rebaseline] namespaces (Q2=(a) default); fresh SHAs locked at tester M-FINAL
+state       = "proposed"   # analyst pass complete 2026-05-22; HANDOFF → operator-decide (Q1..Q3 standing-Autoapproved defaults) → architect M-T1
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"
