@@ -110,3 +110,16 @@ Agents use these via the Skill tool; humans reference them by name:
 - No secrets in git. Keys in env / secret store per architecture.md.
 - No shipping on a `REGRESSION` verdict without an explicit human override.
 - No silent divergence from `spec/architecture.md`.
+- **Every strategy overlay or sizing-modifier ships with a baseline-equity-divergence
+  end-to-end test from day 1.** Per the `v3-volatility-forecaster-noop-fix` 2026-05-22
+  precedent (see [`spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md)),
+  unit tests on the math layer + anchored backtest reports are NOT sufficient to catch
+  a no-op overlay where `scale` is computed but never applied. The required gate is an
+  e2e test that asserts the overlay's output equity diverges from the un-targeted
+  baseline equity by ≥ 1 bp (or some testable epsilon) when the strategy decision
+  variable is non-trivial. Pattern reference: [`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`](crates/strategy/tests/vol_targeting_overlay_end_to_end.rs).
+- **Anchored report files in `spec/*/reports/` are byte-immutable.** Per ADR-0038 § D6
+  anchor-additive contract, even mechanical link-fix edits mutate the body-SHA and
+  break the regression gate. Documentation-link cleanup sweeps MUST exclude anchored
+  report files OR invoke the ADR-0038 § D6.b wiring-bug-fix re-emission protocol
+  (or its future § D6.c documentation-link-fix variant once codified).

@@ -73,6 +73,7 @@ universe      = [
 usdt_enabled = true
 usdc_enabled = false  # opt-in to USDC mirror set
 
+
 # v2-llm-strategy v2.0.0 (T1929 / R12.1) — LLM subsystem.
 # Foundation-only at v2.0.0 (Q1 = Option A); `enabled = false` keeps the
 # subsystem off so a fresh checkout does not require any API keys. Flip
@@ -83,7 +84,7 @@ usdc_enabled = false  # opt-in to USDC mirror set
 # `config/agent.toml.local` (git-ignored). See `spec/runbooks/llm-cost.md`
 # and `spec/runbooks/llm-replay.md` for operator workflow.
 [llm]
-enabled              = false  # foundation-only at v2.0.0
+enabled              = true  # foundation-only at v2.0.0
 default_provider     = "anthropic"
 budget_usd_month     = 200.0
 replay_cache_path    = "./data/llm-replay.db"
@@ -98,6 +99,7 @@ model    = "claude-haiku-4-5-20251001"
 
 [llm.providers.anthropic]
 base_url = "https://api.anthropic.com/v1"
+api_key = "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"
 
 [llm.providers.openai]
 base_url = "https://api.openai.com/v1"
