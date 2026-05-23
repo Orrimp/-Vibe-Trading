@@ -16,6 +16,20 @@
 //! impl that drives an async stream. The stream polls the audit DB at 1 Hz
 //! using `tokio::time::interval`. When the run terminates (`training_inflight`
 //! becomes `None`), the poller stops by returning `None` from the stream.
+//!
+//! ## Runtime-context note (P1 bug fix — 2026-05-23)
+//!
+//! iced 0.14 with `thread-pool` feature uses `futures::executor::ThreadPool`
+//! for subscriptions — NO tokio reactor. Calling `tokio::time::interval()`
+//! inside a `Recipe::stream()` body panics with "there is no reactor running".
+//!
+//! Fix: the `rt_handle` field carries the agent-runtime `Handle`. In
+//! `stream()`, we call `rt_handle.enter()` synchronously before creating the
+//! interval, then immediately drop the guard. `tokio::time::Interval` captures
+//! a reference to the tokio time driver at construction; subsequent `tick()`
+//! calls do not need the thread-local context.
+//!
+//! See also: `ServerTimeRecipe` in `crates/ui/src/bin/cockpit_live.rs`.
 
 use std::hash::Hash;
 use std::sync::Arc;
@@ -37,10 +51,13 @@ use crate::Message;
 /// - `run_id` — the UUID of the current training run. `None` → no polling.
 /// - `last_seen_ts` — RFC3339 timestamp of the last event row already delivered;
 ///   used to avoid re-emitting rows.
+/// - `rt_handle` — the agent-runtime `Handle`, needed to enter tokio context
+///   when creating `tokio::time::Interval` inside iced's `ThreadPool` executor.
 pub fn training_events_subscription(
     ledger: Arc<audit::Ledger>,
     run_id: Option<String>,
     last_seen_ts: String,
+    rt_handle: tokio::runtime::Handle,
 ) -> iced::Subscription<Message> {
     match run_id {
         None => iced::Subscription::none(),
@@ -48,6 +65,7 @@ pub fn training_events_subscription(
             ledger,
             run_id: rid,
             last_seen_ts: Arc::new(Mutex::new(last_seen_ts)),
+            rt_handle,
         }),
     }
 }
@@ -57,6 +75,8 @@ struct TrainingPoller {
     ledger: Arc<audit::Ledger>,
     run_id: String,
     last_seen_ts: Arc<Mutex<String>>,
+    /// Agent-runtime handle — see module-level runtime-context note.
+    rt_handle: tokio::runtime::Handle,
 }
 
 impl Recipe for TrainingPoller {
@@ -77,8 +97,15 @@ impl Recipe for TrainingPoller {
         let run_id = self.run_id.clone();
         let last_seen_ts = self.last_seen_ts.clone();
 
+        // Enter the tokio context to create the interval, then immediately
+        // drop the guard so the stream future remains `Send + 'static`.
+        // See module-level runtime-context note for full rationale.
+        let mut ticker = {
+            let _guard = self.rt_handle.enter();
+            interval(Duration::from_secs(1))
+        };
+
         Box::pin(async_stream::stream! {
-            let mut ticker = interval(Duration::from_secs(1));
             ticker.tick().await; // First tick is immediate; wait for second.
 
             loop {
@@ -139,7 +166,14 @@ mod tests {
         // With None run_id, the code path is `iced::Subscription::none()` —
         // a statically-typed no-op subscription. No ledger is needed.
         let ledger = Arc::new(audit::Ledger::in_memory().await.unwrap());
-        let sub = training_events_subscription(ledger, None, "2026-01-01T00:00:00Z".to_string());
+        // `#[tokio::test]` provides a running runtime, so `Handle::current()` works.
+        let rt_handle = tokio::runtime::Handle::current();
+        let sub = training_events_subscription(
+            ledger,
+            None,
+            "2026-01-01T00:00:00Z".to_string(),
+            rt_handle,
+        );
         // We can't easily inspect `sub`'s internals, but if we get here without
         // panic, the None path works.
         drop(sub);

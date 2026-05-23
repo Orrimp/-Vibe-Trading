@@ -108,8 +108,29 @@ use iced::futures;
 // Emits `Message::ServerTimeTick` every second using a `tokio::time::interval`.
 // The `live` feature brings `tokio` as a direct dep, so
 // `tokio::time::interval` is available here.
+//
+// ## Runtime-context note (P1 bug fix — 2026-05-23)
+//
+// iced 0.14 uses `futures::executor::ThreadPool` when the `thread-pool`
+// feature is active (see `crates/ui/Cargo.toml` iced feature list).
+// That executor has NO tokio reactor context — calling
+// `tokio::time::interval()` or `tokio::time::sleep()` directly inside a
+// `Recipe::stream()` body panics with
+// "there is no reactor running, must be called from the context of a
+// Tokio 1.x runtime".
+//
+// Fix: carry the agent-runtime `Handle` into the recipe. At the start of
+// `stream()`, enter the handle with `handle.enter()` and keep the
+// `EnterGuard` alive for the entire duration of the stream (it is `'static`
+// — it lives inside the `Box::pin(async_stream::stream! {...})` future).
+// `Handle::enter()` is safe to call from any thread; the guard sets a
+// thread-local that `tokio::time::*` reads to find the reactor.
 
-struct ServerTimeRecipe;
+struct ServerTimeRecipe {
+    /// Agent-runtime handle so the stream body can call `tokio::time::interval`
+    /// inside the iced `futures::ThreadPool` subscription executor.
+    rt_handle: tokio::runtime::Handle,
+}
 
 impl Recipe for ServerTimeRecipe {
     type Output = Message;
@@ -124,8 +145,23 @@ impl Recipe for ServerTimeRecipe {
         self: Box<Self>,
         _input: EventStream,
     ) -> futures::stream::BoxStream<'static, Self::Output> {
+        // Enter the tokio runtime context to create the interval, then
+        // immediately drop the guard. `tokio::time::interval()` captures a
+        // reference to the tokio time driver at construction time
+        // (`Handle::current()` is called inside `interval()`). After the
+        // `Interval` is created it does NOT need the thread-local runtime
+        // context to be active during `tick().await` — the driver reference
+        // is embedded in the `Interval` struct.
+        //
+        // Dropping the guard before the `Box::pin(...)` call avoids the
+        // `!Send` constraint that `EnterGuard` would otherwise impose on the
+        // returned `BoxStream<'static, T>` (which must be `Send + 'static`
+        // on native platforms per iced_futures platform definition).
+        let mut interval = {
+            let _guard = self.rt_handle.enter();
+            tokio::time::interval(Duration::from_secs(1))
+        };
         Box::pin(async_stream::stream! {
-            let mut interval = tokio::time::interval(Duration::from_secs(1));
             // Skip the first (immediate) tick so the first ServerTimeTick
             // arrives ~1 s after subscription, not immediately at boot.
             interval.tick().await;
@@ -1017,7 +1053,12 @@ impl AppState {
         // 1 Hz server-time tick — drives the status-bar clock (T1509).
         // Uses `ServerTimeRecipe` (tokio interval via tokio_stream) rather
         // than `iced::time::every` which requires iced's `tokio` feature flag.
-        let time_sub = iced::advanced::subscription::from_recipe(ServerTimeRecipe);
+        // The rt_handle is passed so the recipe can enter the tokio runtime
+        // context before calling `tokio::time::interval` (P1 bug fix — see
+        // ServerTimeRecipe struct comment above for full rationale).
+        let time_sub = iced::advanced::subscription::from_recipe(ServerTimeRecipe {
+            rt_handle: self.rt_handle.clone(),
+        });
 
         // Phase D+ T-D-N9 — trail-mirror Subscription bridge (R1.3 / R1.5).
         // Batched alongside bus_sub + time_sub in both modal-open and
