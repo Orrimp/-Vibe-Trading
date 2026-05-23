@@ -99,7 +99,7 @@ model    = "claude-haiku-4-5-20251001"
 
 [llm.providers.anthropic]
 base_url = "https://api.anthropic.com/v1"
-api_key = "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"
+api_key = "api-key"
 
 [llm.providers.openai]
 base_url = "https://api.openai.com/v1"
@@ -125,4 +125,7 @@ base_url = "http://localhost:11434"
 # v0.1.0 observation-only broadcast consumer (R7.2 / R4.3).
 # Default false — stub never runs; v2.x production write path is bit-identical.
 [reflection]
+path = "./data/reflection/reflection.db"
+channel_capacity = 1024
+enable_writer = false
 audit_tick_consumer_enabled = false

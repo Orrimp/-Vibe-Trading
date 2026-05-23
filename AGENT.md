@@ -4,6 +4,11 @@ This document is the contract for how the six specialist agents collaborate
 on the Rust crypto trading agent. It is **required reading** for any Claude
 session acting as the orchestrator.
 
+> **File precedence for AI agents**: read [README.md](README.md) first
+> (project orientation + status snapshot + feature groups + quickstart),
+> then [CLAUDE.md](CLAUDE.md) (coding rules + non-negotiables), then this
+> file (orchestration). AGENT.md is the third file in the chain.
+
 > This project uses sub-agents and expects them to run in **parallel** whenever
 > their work is independent. Sequential handoffs are only for dependent work.
 

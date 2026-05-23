@@ -3,6 +3,16 @@
 This repository is a **Rust crypto trading agent** driven by a spec-driven,
 multi-agent workflow. Before doing anything non-trivial, read [AGENT.md](AGENT.md).
 
+## Where to start (file precedence for AI agents)
+
+1. **[README.md](README.md)** — human-facing project overview + quickstart + status snapshot + feature groups. Read this first to get oriented.
+2. **CLAUDE.md** (this file) — coding rules + skills + non-negotiables.
+3. **[AGENT.md](AGENT.md)** — multi-agent orchestration contract (analyst → architect → developer ‖ ui-designer → tester → presenter).
+4. **[spec/product.md](spec/product.md)** — what this project IS and ISN'T (analyst-owned).
+5. **[spec/architecture.md](spec/architecture.md)** — system design (architect-owned).
+6. **[spec/backlog.md](spec/backlog.md)** — Active / Queue / Recent.
+7. **[spec/dev-notes/feature-state-table-2026-05-22.md](spec/dev-notes/feature-state-table-2026-05-22.md)** — 54-feature comprehensive inventory.
+
 ## TL;DR for Claude
 
 - The canonical workflow is **analyst → architect → (developer ‖ ui-designer)
