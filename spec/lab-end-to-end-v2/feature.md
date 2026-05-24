@@ -95,6 +95,47 @@ wants the slice closed before any further Phase work on Lab.
 - Param-sheet editor (Phase B Out-of-scope; remains so).
 - Multi-strategy / multi-pair batch runs.
 
+## Roadmap follow-ons (deferred from v0.1.0)
+
+### D-2.5 — Cross-sectional per-pair exposure (v0.2.0 scope; operator-flagged 2026-05-24)
+
+**Why**: after Wave D-1.1 landed, the operator verified the cockpit
+and reported: "I see the chart. It is currently impossible to
+interpret. ... Buys/Sells = 0.0 (no buys, no sells?) ... Per bar Volume
+empty ... No open position. We had hover overlays — where are they?"
+
+Cause: cross-sectional engine scenarios (`v1.momentum`, `v1.5a.pairs`,
+`v2.5.tcn*`) operate over a hardcoded top-10 universe and return
+ONLY a portfolio equity curve. They do NOT expose per-pair bars, per-pair
+fills, or per-pair position state for the user-selected pair.
+
+After Wave D-2 (single-symbol scenarios `v0.sma` / `v0.5.macd` /
+`v0.5.rsi` / `v0.5.bbands`) lands, picking a single-symbol strategy +
+BTCUSDT will render price bars + buy/sell triangles + volume histogram
++ hover overlays + open-position indicator. But cross-sectional
+strategies will still render equity-only.
+
+**D-2.5 closes the gap for cross-sectional**:
+- Each cross-sectional scenario subsets its universe by the
+  user-selected pair AND emits per-pair `FillView` records + per-pair
+  bar slices alongside the portfolio-level equity_series.
+- `RunReport` gains optional `per_pair: HashMap<Symbol, PairResult>`
+  where `PairResult { bars: Vec<Bar>, fills: Vec<FillView>, position_curve: Vec<i32> }`.
+- Lab UI reads `last_run_report.per_pair.get(&selected_symbol)` to
+  populate the chart's price line + markers + volume + position
+  mirror for the selected pair.
+- Anchor risk: medium (cross-sectional anchored reports may need
+  re-emit under ADR-0038 § D6.b protocol if per_pair derivation
+  changes the body bytes — investigate at architect M-T1).
+
+**Operator decision 2026-05-24**: D-2.5 deferred to v0.2.0; v0.1.0
+ships Wave D-2 (single-symbol scenarios) which closes the BTCUSDT-only
+UX for the 4 simple strategies. Cross-sectional strategies remain
+equity-only-rendering in v0.1.0; the equity curve renders correctly
+post-F9 fix.
+
+Estimated budget: ~3-5 days when promoted.
+
 ## Architecture findings
 
 ### F1 — Binary-side update wrapper is missing
