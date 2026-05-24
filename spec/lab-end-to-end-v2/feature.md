@@ -551,6 +551,53 @@ and the 692 lib tests baseline.
   to a non-cancellation-instrumented run. The bar-loop polls are
   read-only (no RNG impact).
 
+### R-KPI — Lab KPI strip (Wave D-1.1 F8)
+
+- **R-KPI.1** A KPI strip is rendered between `status_strip` and the chart
+  canvas in the Lab screen. It shows 6 cards: Return%, Max DD, Trades, Fees,
+  Sharpe, Final Equity.
+- **R-KPI.2** Source: `model.lab_state.last_run_report.as_ref().map(|m| &m.kpis)`
+  mapped to `BacktestKpis`. When `None`, all 6 cards render an em-dash
+  placeholder (no error, no blank space).
+- **R-KPI.3** Sharpe always shows em-dash (Phase C follow-up for real Sharpe
+  computation). No regression when `kpis.total_fees` is zero.
+- **Acceptance:** `kpi_strip::view_for_lab(None, Dark)` constructs without
+  panic; `kpi_strip::view_for_lab(Some(&kpis), Dark)` renders numeric values.
+  Verified by `cargo test -p ui --lib widgets::kpi_strip`.
+
+### R-EQUITY — Equity overlay on empty chart (Wave D-1.1 F9)
+
+- **R-EQUITY.1** When `bars.is_empty() && has_equity`, the chart canvas
+  renders the equity curve using the equity series' own timestamp axis
+  (no price bars required as x-axis anchor).
+- **R-EQUITY.2** `draw_equity_polyline_standalone` is the rendering function;
+  it takes `(frame, series, min_eq, max_eq, inner, line_color)` and maps
+  sample timestamps linearly across the canvas width using `series.min_ts` /
+  `series.max_ts` bounds.
+- **R-EQUITY.3** `tracing::trace!` diagnostics emitted at `lab.chart.equity`
+  target (opt-in at `RUST_LOG=trace`) covering: equity_present, bars_in_chart,
+  equity_range, and standalone-path selected.
+- **Acceptance:** after a successful backtest on a pair with no live bars in
+  `chart_buffer`, the equity polyline is visible in the chart canvas.
+  Verified by `cargo test -p ui --lib widgets::chart`.
+
+### R-GATE — Run button pre-flight selection gate (Wave D-1.1 F10)
+
+- **R-GATE.1** `RunState::Disabled` is a new variant in `run_button.rs`.
+  When rendered, the button shows `LAB_RUN_BUTTON_DISABLED` ("Select pair &
+  strategy") and is non-interactive (`on_press(None)` path).
+- **R-GATE.2** `RunState::from_cockpit_with_selection(inflight, last_run_ok,
+  strategy_selected, pair_selected)` returns `Disabled` when either
+  `strategy_selected` or `pair_selected` is `false`. `Running` (inflight) has
+  precedence over `Disabled`.
+- **R-GATE.3** `screens/lab.rs` calls `from_cockpit_with_selection` with
+  `model.lab_state.strategy.is_some()` and `model.lab_state.pair.is_some()`.
+  `Message::LabRunRequested` can never fire when either is `None`.
+- **Acceptance:** `from_cockpit_with_selection(false, None, false, false)`
+  returns `Disabled`; `(false, None, true, true)` returns `Idle`; `(true, None,
+  false, false)` returns `Running`. Verified by
+  `cargo test -p ui --lib widgets::run_button::tests::run_state_disabled_when_selection_incomplete`.
+
 ## Operator decision questions
 
 Each Q has an **analyst-recommended default** the architect should
@@ -940,6 +987,50 @@ Pre-drawn so the presenter can route the operator approval cleanly:
 - `cargo test --workspace --lib`: 1070 passed, 0 failed
 - `bash scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
 
+### Wave D-1.1 — P1 fixpack (2026-05-24, developer)
+
+**Operator findings closed:**
+
+- **F8 (no KPI strip)**: New `kpi_strip::view_for_lab` function in
+  `crates/ui/src/widgets/kpi_strip.rs`. Renders 6 cards (Return%, Max DD,
+  Trades, Fees, Sharpe always em-dash, Final Equity) sourced from
+  `BacktestKpis`. When `kpis = None` renders placeholder em-dashes.
+  Inserted between `status_strip` and chart canvas in `screens/lab.rs`.
+  Layout adjusted: `LAB_KPI_STRIP_HEIGHT_PX = 80.0`, gap count incremented
+  to 8 for correct height accounting.
+
+- **F9 (equity overlay not drawing on empty bars)**: Root cause: `chart.rs`
+  `draw()` had an early `return` when `bars.is_empty()` that rendered "No data"
+  BEFORE the equity overlay pass (Pass 5). Fix: new
+  `draw_equity_polyline_standalone` function that renders equity using
+  its own timestamp axis. The `bars.is_empty()` block now checks `has_equity`
+  first; if true, runs a full equity-only render path (primary + compare
+  polylines + axis) before returning. `tracing::trace!` diagnostics added at
+  4 points under `lab.chart.equity` target (opt-in at `RUST_LOG=trace`).
+  Also added `tracing::trace!` at `lab.equity_overlay` in `screens/lab.rs`
+  to log routing result.
+
+- **F10 (run button enabled before selections)**: `RunState::Disabled` variant
+  added to `run_button.rs`. New `from_cockpit_with_selection` method returns
+  `Disabled` when either `strategy_selected` or `pair_selected` is `false`.
+  Running takes precedence over Disabled (inflight gate checked first, per
+  state-machine spec). `screens/lab.rs` updated to call
+  `from_cockpit_with_selection` with live flags from `model.lab_state`.
+  String constant `LAB_RUN_BUTTON_DISABLED = "Select pair & strategy"` added.
+
+**Tests added (D-1.1):**
+- `crates/ui/src/widgets/run_button.rs::tests::run_state_disabled_when_selection_incomplete`
+- `crates/ui/src/widgets/run_button.rs::tests::run_button_disabled_state_constructs`
+- `crates/ui/src/widgets/run_button.rs::tests::run_button__disabled` (insta snapshot)
+- All existing `run_button` tests continue to pass (backward compat of `from_cockpit`)
+
+**Gate results (D-1.1):**
+- `cargo fmt --check`: PASS
+- `cargo clippy --workspace --features candle,live -- -D warnings`: PASS
+- `cargo test --workspace --lib --features candle`: 329 passed (ui), all crates PASS
+- `cargo test -p ui --test lab_run_integration`: 2 passed
+- `bash scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
+
 ## Changelog
 
 - 2026-05-24 (analyst): initial v0.1.0 brief; closes the
@@ -948,3 +1039,6 @@ Pre-drawn so the presenter can route the operator approval cleanly:
 - 2026-05-24 (developer): Wave D-1 complete — F1 + F2 + Q6 + R4 integration
   test. "Running indefinitely + no chart" regression closed for
   cross-sectional strategies.
+- 2026-05-24 (developer): Wave D-1.1 complete — F8 (KPI strip) + F9
+  (equity overlay standalone path) + F10 (run-button disabled gate).
+  All 5 gate checks PASS; 34/34 anchors preserved.

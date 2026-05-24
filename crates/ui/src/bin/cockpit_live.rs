@@ -543,6 +543,42 @@ fn main() -> Result<()> {
         cockpit.selected_symbol = Some(first.clone());
     }
 
+    // F7 fix 2026-05-24 — seed the strategy registry from the engine's
+    // dispatched ScenarioStrategy ids so the Lab chip row is non-empty
+    // at cold boot. Without this seed, model.strategies stays at
+    // PanelState::Loading forever (no subscription bridges the agent's
+    // strategy_watcher into the UI) and the Lab screen renders no
+    // strategy chips for the operator to pick. This is a stop-gap until
+    // a proper strategies_subscription Recipe is wired in a future wave.
+    {
+        use trading_core::StrategyId;
+        use ui::state::{PanelState, StrategyRow, StrategyStatus};
+        let seed_rows: Vec<StrategyRow> = [
+            ("v1.momentum", "config/strategies/top10_momentum_h1.toml"),
+            ("v1.5a.pairs", "config/strategies/pairs_mr_h1.toml"),
+            ("v2.5.tcn", "config/strategies/tcn_overlay_momentum.toml"),
+            (
+                "v2.5.tcn.weights",
+                "config/strategies/tcn_overlay_momentum.toml",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, path)| StrategyRow {
+            id: StrategyId(id.into()),
+            short_hash: smol_str::SmolStr::new("0000000"),
+            full_hash: smol_str::SmolStr::new(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            ),
+            status: StrategyStatus::Ready,
+            last_event: None,
+            signals_60s: 0,
+            has_position: false,
+            source_path: smol_str::SmolStr::new(path),
+        })
+        .collect();
+        cockpit.strategies = PanelState::Ready(seed_rows);
+    }
+
     let app_state = AppState {
         cockpit,
         bus: Arc::clone(&bus),

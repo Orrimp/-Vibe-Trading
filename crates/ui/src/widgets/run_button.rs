@@ -7,6 +7,7 @@
 //! ## State machine
 //!
 //! ```text
+//! Disabled    → [operator selects all required fields] → Idle
 //! Idle        → [click] → Running
 //! Running     → [completed ok] → Completed
 //! Running     → [completed err] → Failed
@@ -20,6 +21,14 @@
 //! the authoritative gate. When `true`, `on_press` is cleared so iced won't
 //! fire the message.
 //!
+//! ## F10 — pre-flight gate (lab-end-to-end-v2 Wave D-1.1)
+//!
+//! `RunState::Disabled` is emitted by `from_cockpit_with_selection` when any
+//! of the required Lab fields (strategy, pair) is `None`. The button shows
+//! `LAB_RUN_BUTTON_DISABLED` and is non-interactive at the iced level
+//! (`.on_press(None)` path — the `Message::LabRunRequested` arm is never
+//! fired, so no state-level guard is needed).
+//!
 //! **Zero hex literals** — all colors from `crate::theme`.
 //! **Zero string literals** — copy from `crate::strings`.
 
@@ -28,7 +37,8 @@ use iced::widget::{Text, button};
 
 use crate::state::Message;
 use crate::strings::{
-    LAB_RUN_BUTTON, LAB_RUN_BUTTON_COMPLETED, LAB_RUN_BUTTON_FAILED, LAB_RUN_BUTTON_RUNNING,
+    LAB_RUN_BUTTON, LAB_RUN_BUTTON_COMPLETED, LAB_RUN_BUTTON_DISABLED, LAB_RUN_BUTTON_FAILED,
+    LAB_RUN_BUTTON_RUNNING,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 
@@ -37,7 +47,11 @@ use crate::theme::{ThemeMode, color, radius, space, text};
 /// State of the Lab run button.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum RunState {
-    /// No run in flight; first boot.
+    /// Not all required selections (pair, strategy) are made — button
+    /// is shown greyed out with a hint label.
+    /// lab-end-to-end-v2 Wave D-1.1 F10.
+    Disabled,
+    /// No run in flight; first boot or all selections were cleared.
     #[default]
     Idle,
     /// A backtest is currently in flight.
@@ -68,6 +82,38 @@ impl RunState {
             None => Self::Idle,
         }
     }
+
+    /// Derive `RunState` with pre-flight selection gate (F10).
+    ///
+    /// When `strategy_selected` or `pair_selected` is `false`, returns
+    /// `Disabled` (regardless of inflight state — in practice inflight
+    /// cannot be `true` when selections are absent because `LabRunRequested`
+    /// is only dispatched after both are `Some`; the guard here is a belt-
+    /// and-braces safeguard for test scenarios and state-machine consistency).
+    ///
+    /// Order of precedence:
+    /// 1. `Running` (inflight gate)
+    /// 2. `Disabled` (selection gate)
+    /// 3. outcome-based (Completed / Failed / Idle)
+    #[must_use]
+    pub fn from_cockpit_with_selection(
+        inflight: bool,
+        last_run_ok: Option<bool>,
+        strategy_selected: bool,
+        pair_selected: bool,
+    ) -> Self {
+        if inflight {
+            return Self::Running;
+        }
+        if !strategy_selected || !pair_selected {
+            return Self::Disabled;
+        }
+        match last_run_ok {
+            Some(true) => Self::Completed,
+            Some(false) => Self::Failed,
+            None => Self::Idle,
+        }
+    }
 }
 
 // ── view ──────────────────────────────────────────────────────────────────────
@@ -88,13 +134,15 @@ pub fn view(
     mode: ThemeMode,
 ) -> crate::Element<'static> {
     let label_str: &'static str = match state {
+        RunState::Disabled => LAB_RUN_BUTTON_DISABLED,
         RunState::Idle => LAB_RUN_BUTTON,
         RunState::Running => LAB_RUN_BUTTON_RUNNING,
         RunState::Completed => LAB_RUN_BUTTON_COMPLETED,
         RunState::Failed => LAB_RUN_BUTTON_FAILED,
     };
 
-    let is_disabled = run_handle_present || *state == RunState::Running;
+    let is_disabled =
+        run_handle_present || *state == RunState::Running || *state == RunState::Disabled;
 
     let fg = if is_disabled {
         color::FG_3.current(mode)
@@ -149,6 +197,7 @@ mod tests {
     #[test]
     fn run_button_constructs_all_states() {
         for state in [
+            RunState::Disabled,
             RunState::Idle,
             RunState::Running,
             RunState::Completed,
@@ -198,6 +247,49 @@ mod tests {
         assert_eq!(RunState::from_cockpit(false, Some(false)), RunState::Failed);
     }
 
+    /// F10 — `RunState::from_cockpit_with_selection` returns Disabled when
+    /// strategy or pair is not selected.
+    #[test]
+    fn run_state_disabled_when_selection_incomplete() {
+        // No strategy, no pair → Disabled
+        assert_eq!(
+            RunState::from_cockpit_with_selection(false, None, false, false),
+            RunState::Disabled
+        );
+        // Strategy selected but no pair → Disabled
+        assert_eq!(
+            RunState::from_cockpit_with_selection(false, None, true, false),
+            RunState::Disabled
+        );
+        // Pair selected but no strategy → Disabled
+        assert_eq!(
+            RunState::from_cockpit_with_selection(false, None, false, true),
+            RunState::Disabled
+        );
+        // Both selected, no prior run → Idle
+        assert_eq!(
+            RunState::from_cockpit_with_selection(false, None, true, true),
+            RunState::Idle
+        );
+        // Both selected, last ok → Completed
+        assert_eq!(
+            RunState::from_cockpit_with_selection(false, Some(true), true, true),
+            RunState::Completed
+        );
+        // Inflight overrides selection gate → Running even with missing selection
+        assert_eq!(
+            RunState::from_cockpit_with_selection(true, None, false, false),
+            RunState::Running
+        );
+    }
+
+    /// F10 — `RunState::Disabled` view renders without panic.
+    #[test]
+    fn run_button_disabled_state_constructs() {
+        let _el = view(&RunState::Disabled, false, ThemeMode::Dark);
+        let _el2 = view(&RunState::Disabled, false, ThemeMode::Light);
+    }
+
     /// T-D-14b — snapshot: `run_button__idle`.
     #[test]
     fn run_button__idle() {
@@ -224,5 +316,19 @@ mod tests {
         );
 
         insta::assert_snapshot!("run_button__running", summary);
+    }
+
+    /// F10 — snapshot: `run_button__disabled`.
+    #[test]
+    fn run_button__disabled() {
+        let state = RunState::Disabled;
+        let run_handle_present = false;
+        let mode = ThemeMode::Dark;
+
+        let summary = format!(
+            "state={state:?} run_handle_present={run_handle_present} mode={mode:?} label={LAB_RUN_BUTTON_DISABLED:?}"
+        );
+
+        insta::assert_snapshot!("run_button__disabled", summary);
     }
 }

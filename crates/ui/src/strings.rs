@@ -333,6 +333,10 @@ pub const LAB_RUN_BUTTON_COMPLETED: &str = "Re-run";
 /// Label on the Run button after a failed run — operator can retry (T-D-14b).
 pub const LAB_RUN_BUTTON_FAILED: &str = "Retry";
 
+/// Label on the Run button when not all selections (pair + strategy + range)
+/// are made — button is disabled (lab-end-to-end-v2 Wave D-1.1 F10).
+pub const LAB_RUN_BUTTON_DISABLED: &str = "Select pair & strategy";
+
 // ── Run delta badge — ui-rethink-phase-b-lab-run T-D-N13 ─────────────────────
 
 /// Short label for the `PnL` delta column of the `run_delta_badge` (R8.2 / D5).
@@ -727,6 +731,20 @@ pub const KPI_MAX_DD_LABEL: &str = "Max DD";
 pub const KPI_WIN_RATE_LABEL: &str = "Win rate";
 pub const KPI_TRADES_LABEL: &str = "Trades";
 
+// ── Lab single-run KPI strip (lab-end-to-end-v2 Wave D-1.1 F8) ───────────────
+/// Label for the "Final equity" card in the Lab single-run KPI strip.
+pub const LAB_KPI_FINAL_EQUITY_LABEL: &str = "Final equity";
+/// Label for the "Max DD" card in the Lab single-run KPI strip (matches viewer).
+pub const LAB_KPI_MAX_DD_LABEL: &str = "Max DD";
+/// Label for the "Trades" card in the Lab single-run KPI strip.
+pub const LAB_KPI_TRADES_LABEL: &str = "Trades";
+/// Label for the "Fees" card in the Lab single-run KPI strip.
+pub const LAB_KPI_FEES_LABEL: &str = "Fees";
+/// Label for the "Sharpe" card — always shows em-dash (Phase C follow-up).
+pub const LAB_KPI_SHARPE_LABEL: &str = "Sharpe";
+/// Label for the "Return" card in the Lab single-run KPI strip.
+pub const LAB_KPI_RETURN_LABEL: &str = "Return";
+
 /// Rendered below the KPI strip when the parser returned a
 /// `BacktestMetrics::all_absent()` shape OR the `metrics` panel state
 /// is `Error` (R2.6 / Q3 graceful fallback).
@@ -1084,6 +1102,12 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("KPI_MAX_DD_LABEL", KPI_MAX_DD_LABEL),
         ("KPI_WIN_RATE_LABEL", KPI_WIN_RATE_LABEL),
         ("KPI_TRADES_LABEL", KPI_TRADES_LABEL),
+        ("LAB_KPI_FINAL_EQUITY_LABEL", LAB_KPI_FINAL_EQUITY_LABEL),
+        ("LAB_KPI_MAX_DD_LABEL", LAB_KPI_MAX_DD_LABEL),
+        ("LAB_KPI_TRADES_LABEL", LAB_KPI_TRADES_LABEL),
+        ("LAB_KPI_FEES_LABEL", LAB_KPI_FEES_LABEL),
+        ("LAB_KPI_SHARPE_LABEL", LAB_KPI_SHARPE_LABEL),
+        ("LAB_KPI_RETURN_LABEL", LAB_KPI_RETURN_LABEL),
         ("VIEWER_METRICS_UNAVAILABLE", VIEWER_METRICS_UNAVAILABLE),
         ("VIEWER_NO_EQUITY_DATA", VIEWER_NO_EQUITY_DATA),
         (
@@ -1221,6 +1245,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_RUN_BUTTON_RUNNING", LAB_RUN_BUTTON_RUNNING),
         ("LAB_RUN_BUTTON_COMPLETED", LAB_RUN_BUTTON_COMPLETED),
         ("LAB_RUN_BUTTON_FAILED", LAB_RUN_BUTTON_FAILED),
+        ("LAB_RUN_BUTTON_DISABLED", LAB_RUN_BUTTON_DISABLED),
         // Phase B — run delta badge (T-D-N13)
         ("RUN_DELTA_BADGE_PNL_LABEL", RUN_DELTA_BADGE_PNL_LABEL),
         ("RUN_DELTA_BADGE_DD_LABEL", RUN_DELTA_BADGE_DD_LABEL),

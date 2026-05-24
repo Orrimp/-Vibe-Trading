@@ -403,23 +403,67 @@ impl canvas::Program<Message> for ChartProgram {
         draw_gridlines(&mut frame, inner, border);
 
         if self.bars.is_empty() {
-            let centre = Point::new(inner.x + inner.width / 2.0, inner.y + inner.height / 2.0);
-            #[allow(clippy::cast_precision_loss)]
-            let micro_size = text::MICRO as f32;
-            // `useless_conversion`: `align_x`/`align_y` field types are
-            // crate-private aliases distinct from iced's enums — the
-            // `.into()` is load-bearing for iced 0.14's API. clippy
-            // disagrees.
-            #[allow(clippy::useless_conversion)]
-            frame.fill_text(CanvasText {
-                content: CHART_NO_DATA.to_string(),
-                position: centre,
-                color: color::FG_3.current(self.mode),
-                size: micro_size.into(),
-                align_x: iced::alignment::Horizontal::Center.into(),
-                align_y: iced::alignment::Vertical::Center.into(),
-                ..CanvasText::default()
-            });
+            // F9 (lab-end-to-end-v2 Wave D-1.1) — when bars are absent but an
+            // equity overlay is present (backtest result on a pair with no live
+            // bars yet), render the equity curve using its own timestamp window
+            // instead of falling through to the "No data" early return.
+            // Only the equity pass fires; price axis, time axis, and markers are
+            // all skipped (no bar data to anchor them).
+            if has_equity {
+                let equity_range = compute_equity_range(
+                    self.equity.as_ref(),
+                    &self.compare,
+                    None, // no bar-window clamp — use full equity extent
+                    None,
+                );
+                let equity_range_present = equity_range.is_some();
+                if let Some((min_eq, max_eq)) = equity_range {
+                    if let Some(ref eq) = self.equity {
+                        draw_equity_polyline_standalone(
+                            &mut frame,
+                            eq,
+                            min_eq,
+                            max_eq,
+                            inner,
+                            color::ACCENT.current(self.mode),
+                        );
+                    }
+                    let palette = color::accent_palette();
+                    for (i, compare_eq) in self.compare.iter().enumerate().take(4) {
+                        let line_color = palette[i].current(self.mode);
+                        draw_equity_polyline_standalone(
+                            &mut frame, compare_eq, min_eq, max_eq, inner, line_color,
+                        );
+                    }
+                    draw_equity_axis(&mut frame, bounds.size(), inner, min_eq, max_eq, self.mode);
+                }
+                tracing::trace!(
+                    target: "lab.chart.equity",
+                    equity_present = self.equity.is_some(),
+                    compare_count = self.compare.len(),
+                    equity_range_present,
+                    "chart::draw equity-only path (no bars)"
+                );
+            } else {
+                // Truly no data — render the "No data" placeholder.
+                let centre = Point::new(inner.x + inner.width / 2.0, inner.y + inner.height / 2.0);
+                #[allow(clippy::cast_precision_loss)]
+                let micro_size = text::MICRO as f32;
+                // `useless_conversion`: `align_x`/`align_y` field types are
+                // crate-private aliases distinct from iced's enums — the
+                // `.into()` is load-bearing for iced 0.14's API. clippy
+                // disagrees.
+                #[allow(clippy::useless_conversion)]
+                frame.fill_text(CanvasText {
+                    content: CHART_NO_DATA.to_string(),
+                    position: centre,
+                    color: color::FG_3.current(self.mode),
+                    size: micro_size.into(),
+                    align_x: iced::alignment::Horizontal::Center.into(),
+                    align_y: iced::alignment::Vertical::Center.into(),
+                    ..CanvasText::default()
+                });
+            }
             return vec![frame.into_geometry()];
         }
 
@@ -1137,6 +1181,61 @@ fn compute_equity_range(
 }
 
 /// Draw a single equity polyline on the right Y-axis scale.
+/// Draw a single equity polyline using the equity series' own timestamp range
+/// as the X-axis.  Called when `bars` is empty (F9 — backtest result with no
+/// live price bars available yet).
+/// lab-end-to-end-v2 Wave D-1.1 F9.
+fn draw_equity_polyline_standalone(
+    frame: &mut Frame,
+    series: &LabEquitySeries,
+    min_eq: f32,
+    max_eq: f32,
+    inner: Rectangle,
+    line_color: Color,
+) {
+    if series.samples.len() < 2 {
+        return;
+    }
+
+    let min_ts = series.samples.first().map_or(0, |s| s.0);
+    let max_ts = series.samples.last().map_or(min_ts + 1, |s| s.0);
+
+    let mut path_started = false;
+    let polyline = Path::new(|builder| {
+        for &(ts, ref equity) in &series.samples {
+            #[allow(clippy::cast_precision_loss)]
+            let x_frac = if max_ts > min_ts {
+                (ts - min_ts) as f32 / (max_ts - min_ts) as f32
+            } else {
+                0.0
+            };
+            let x = inner.x + x_frac * inner.width;
+
+            #[allow(clippy::cast_possible_truncation)]
+            let eq_v = equity.to_f32().unwrap_or(0.0);
+            let span = (max_eq - min_eq).max(1e-6);
+            let y_frac = (eq_v - min_eq) / span;
+            let y = inner.y + (1.0 - y_frac) * inner.height;
+
+            if path_started {
+                builder.line_to(Point::new(x, y));
+            } else {
+                builder.move_to(Point::new(x, y));
+                path_started = true;
+            }
+        }
+    });
+
+    if path_started {
+        frame.stroke(
+            &polyline,
+            Stroke::default()
+                .with_color(line_color)
+                .with_width(EQUITY_STROKE_PX),
+        );
+    }
+}
+
 fn draw_equity_polyline(
     frame: &mut Frame,
     series: &LabEquitySeries,

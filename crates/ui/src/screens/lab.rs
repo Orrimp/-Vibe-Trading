@@ -41,7 +41,7 @@ use crate::theme::{ThemeMode, color, color_for_delta, radius, space, text};
 use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::run_button::{self, RunState};
 use crate::widgets::volume_histogram::{self, VolumeBin};
-use crate::widgets::{chart, date_range, pair_chip, strategy_chip};
+use crate::widgets::{chart, date_range, kpi_strip, pair_chip, strategy_chip};
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
 /// chart (R7.2 + Q5 — operator-locked at ~80 px).
@@ -74,6 +74,12 @@ const HISTOGRAM_LABEL_HEIGHT_PX: f32 = 14.0;
 /// Approximate Run button row height (T-D-14b — button in a Row with
 /// `space::M` spacing, `SMALL`-sized text, `S`/`L` padding).
 const RUN_BUTTON_ROW_HEIGHT_PX: f32 = 36.0;
+
+/// Approximate Lab single-run KPI strip height (two text lines per card
+/// + M padding on each side ≈ 80 px; same budget as `STATUS_STRIP_HEIGHT_PX`).
+///
+/// lab-end-to-end-v2 Wave D-1.1 F8.
+const LAB_KPI_STRIP_HEIGHT_PX: f32 = 80.0;
 
 /// Training panel header height when collapsed (header chip only, T-D-N3).
 const TRAINING_PANEL_COLLAPSED_HEIGHT_PX: f32 = 32.0;
@@ -118,10 +124,12 @@ pub fn chart_canvas_height_for_body_with_training(
 ) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let padding = (space::L as f32) * 2.0;
-    // 8 children: pair_row, strategy_row, date_range_row, run_button_row,
-    // status_strip, chart (Fill), histogram, training_panel → 7 gaps.
+    // 9 children: pair_row, strategy_row, date_range_row, run_button_row,
+    // status_strip, lab_kpi_strip, chart (Fill), histogram, training_panel
+    // → 8 gaps.
+    // lab-end-to-end-v2 Wave D-1.1 F8: added lab_kpi_strip (+1 child, +1 gap).
     #[allow(clippy::cast_precision_loss)]
-    let spacing = (space::M as f32) * 7.0;
+    let spacing = (space::M as f32) * 8.0;
     let training_height = if training_collapsed {
         TRAINING_PANEL_COLLAPSED_HEIGHT_PX
     } else {
@@ -132,6 +140,7 @@ pub fn chart_canvas_height_for_body_with_training(
         + DATE_RANGE_ROW_HEIGHT_PX
         + RUN_BUTTON_ROW_HEIGHT_PX
         + STATUS_STRIP_HEIGHT_PX
+        + LAB_KPI_STRIP_HEIGHT_PX
         + HISTOGRAM_LABEL_HEIGHT_PX
         + HISTOGRAM_HEIGHT_PX
         + training_height;
@@ -201,9 +210,23 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     );
 
     // ── Phase A top-bar row 4: Run button (T-D-14b) + delta badge (T-D-N13) ─
-    // Derive RunState from lab_run_inflight + (no prior outcome tracking at
-    // Phase A — Phase B adds last_run_ok field to LabState).
-    let run_state = RunState::from_cockpit(model.lab_run_inflight, None);
+    // F10 (lab-end-to-end-v2 Wave D-1.1): use the selection-gated variant so
+    // the button is Disabled until BOTH pair AND strategy are selected.
+    let strategy_selected = model.lab_state.strategy.is_some();
+    let pair_selected = model.lab_state.pair.is_some();
+    tracing::trace!(
+        target: "lab.view",
+        strategy = ?model.lab_state.strategy,
+        pair = ?model.lab_state.pair,
+        last_run_report_present = model.lab_state.last_run_report.is_some(),
+        "lab::view selection gate"
+    );
+    let run_state = RunState::from_cockpit_with_selection(
+        model.lab_run_inflight,
+        None,
+        strategy_selected,
+        pair_selected,
+    );
     // T-D-N13: show delta badge when both last + prev reports are present
     // and share the same tuple (same (strategy, pair, range) selection).
     let delta_badge = if let (Some(last), Some(prev)) = (
@@ -252,10 +275,21 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(position_mirror(active_position.as_ref(), mode))
         .width(Length::Fill);
 
+    // Lab single-run KPI strip (lab-end-to-end-v2 Wave D-1.1 F8).
+    // Renders absolute KPIs from the most-recent completed run.
+    // When `last_run_report` is None (no run yet), renders placeholder
+    // em-dashes so the visual structure is stable.
+    let lab_kpi_strip = kpi_strip::view_for_lab(
+        model.lab_state.last_run_report.as_ref().map(|m| &m.kpis),
+        mode,
+    );
+
     // Chart canvas — full width, fills remaining vertical space.
     // T-D-N11: route equity overlay from in-memory last_run_report first,
     // then fall through to EquityCache (Phase A behaviour). Uses interior
     // mutability (RefCell) so `view` can stay `&Cockpit` (immutable).
+    // F9 tracing (lab-end-to-end-v2 Wave D-1.1): trace! level so these only
+    // appear when RUST_LOG=trace — kept opt-in per the brief.
     let equity_overlay = if let (Some(strategy), Some((venue, symbol))) = (
         model.lab_state.strategy.as_ref(),
         model.lab_state.pair.as_ref(),
@@ -263,8 +297,23 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         let current_tuple = LabTuple::new(strategy, *venue, symbol, model.lab_state.range.clone());
         let spec_root = crate::lab::equity_loader::default_spec_root();
         let mut cache = model.equity_cache.borrow_mut();
-        route_equity_overlay(&model.lab_state, &mut cache, &current_tuple, &spec_root)
+        let overlay =
+            route_equity_overlay(&model.lab_state, &mut cache, &current_tuple, &spec_root);
+        tracing::trace!(
+            target: "lab.equity_overlay",
+            strategy = %strategy.0,
+            symbol = %symbol.0,
+            overlay_present = overlay.is_some(),
+            samples_count = overlay.as_ref().map_or(0, |o| o.samples.len()),
+            bars_in_chart = bars.len(),
+            "lab::view equity overlay route result"
+        );
+        overlay
     } else {
+        tracing::trace!(
+            target: "lab.equity_overlay",
+            "lab::view equity overlay skipped: strategy or pair is None"
+        );
         None
     };
     let chart_body = if let Some((_, _)) = active {
@@ -301,6 +350,11 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(range_picker)
         .push(run_button_row)
         .push(status_strip)
+        // F8 (lab-end-to-end-v2 Wave D-1.1) — Lab single-run KPI strip.
+        // Inserted between the status strip and the chart so the operator
+        // sees absolute run KPIs without needing to click a second run
+        // (that would show zero deltas in the run-delta-badge).
+        .push(lab_kpi_strip)
         // T2032 — defensive `.width(Length::Fill)` on the chart-body
         // container.
         //

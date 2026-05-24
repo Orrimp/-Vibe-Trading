@@ -1,0 +1,5 @@
+---
+source: crates/ui/src/widgets/run_button.rs
+expression: summary
+---
+state=Disabled run_handle_present=false mode=Dark label="Select pair & strategy"

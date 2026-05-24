@@ -181,6 +181,31 @@ copy-verbatim block + cargo invocation + expected output.
       - test: `bash scripts/verify_anchors.sh`
       - output: `ANCHORS PASS  (34 / 34)`
 
+### Wave D-1.1 — P1 fixpack: KPI strip + equity overlay + run-button gate
+
+- [x] **T-D-14a — R-KPI / F8**: Add `kpi_strip::view_for_lab` function and
+      insert KPI strip between `status_strip` and chart in `screens/lab.rs`.
+      6 cards: Return%, Max DD, Trades, Fees, Sharpe, Final Equity.
+      Placeholder em-dashes when `last_run_report = None`.
+      - file:line: `crates/ui/src/widgets/kpi_strip.rs:view_for_lab` + `crates/ui/src/screens/lab.rs` (LAB_KPI_STRIP_HEIGHT_PX + column insert)
+      - test: `cargo test -p ui --lib widgets::kpi_strip`
+      - output: `test widgets::kpi_strip::tests::kpi_strip_view_for_lab_none_renders ... ok` (5 passed)
+
+- [x] **T-D-15 — R-EQUITY / F9**: Fix `chart.rs` equity overlay not drawing
+      when `bars.is_empty()`. Add `draw_equity_polyline_standalone` and an
+      equity-only rendering path in the `bars.is_empty()` early-return block.
+      Add `tracing::trace!` diagnostics at 4 points (opt-in at RUST_LOG=trace).
+      - file:line: `crates/ui/src/widgets/chart.rs:draw_equity_polyline_standalone` + `draw` early-return block
+      - test: `cargo test -p ui --lib widgets::chart`
+      - output: `test widgets::chart::tests::chart_program_constructs_without_panic ... ok`
+
+- [x] **T-D-14b — R-GATE / F10**: Add `RunState::Disabled` variant and
+      `from_cockpit_with_selection` method to `run_button.rs`. Update
+      `screens/lab.rs` call site to use the new method with selection gates.
+      - file:line: `crates/ui/src/widgets/run_button.rs:RunState::Disabled` + `from_cockpit_with_selection`
+      - test: `cargo test -p ui --lib widgets::run_button`
+      - output: `test widgets::run_button::tests::run_state_disabled_when_selection_incomplete ... ok`
+
 ### Wave D-2 — single-symbol dispatch arms (anchor-gated; Q1=(a))
 
 - [ ] **T-D2.1 — R3.1**: extract `run_sma_backtest` from
@@ -311,3 +336,7 @@ copy-verbatim block + cargo invocation + expected output.
   `owner: analyst → architect`, `status: proposed → in-progress`.
   Baseline gate locked: `ANCHORS PASS  (34 / 34)`. Decomp deliverable
   at `decomp.md`. Wave D handoff to developer.
+- 2026-05-24 (developer): Wave D-1.1 complete — F8 (KPI strip) + F9
+  (equity overlay standalone path) + F10 (run-button disabled gate).
+  T-D-14a, T-D-14b, T-D-15 ticked. Gate results: fmt PASS, clippy PASS,
+  329 lib tests PASS, lab_run_integration 2 PASS, anchors 34/34 PASS.

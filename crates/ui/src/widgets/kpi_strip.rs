@@ -182,6 +182,159 @@ fn unavailable_strip<'a>(mode: ThemeMode) -> iced::Element<'a, ViewerMessage> {
         .into()
 }
 
+/// Render the Lab single-run KPI strip from a live `BacktestKpis`.
+///
+/// Called by `screens/lab.rs` between the status strip and the chart.
+/// Returns an `Element<'_, crate::state::Message>` (not `ViewerMessage`)
+/// so it can compose with the Lab screen's element tree.
+///
+/// Cards rendered (6-column layout):
+/// 1. Return % — `(final − initial) / initial × 100`, sentiment colour.
+/// 2. Max DD — always `DOWN_500`, percent with minus prefix.
+/// 3. Trades — neutral, thousands-separated count.
+/// 4. Fees — neutral, USDT amount.
+/// 5. Sharpe — always em-dash (Phase C follow-up; engine not yet computing).
+/// 6. Final equity — neutral, USDT amount.
+///
+/// When `kpis` is `None` (no run completed yet): all six cards show `—`.
+/// lab-end-to-end-v2 Wave D-1.1 F8.
+#[must_use]
+pub fn view_for_lab<'a>(
+    kpis: Option<&backtest::BacktestKpis>,
+    mode: ThemeMode,
+) -> iced::Element<'a, crate::state::Message> {
+    use super::num::{fmt_usdt, format_count};
+    use crate::strings::{
+        KPI_DASH_PLACEHOLDER, LAB_KPI_FEES_LABEL, LAB_KPI_FINAL_EQUITY_LABEL, LAB_KPI_MAX_DD_LABEL,
+        LAB_KPI_RETURN_LABEL, LAB_KPI_SHARPE_LABEL, LAB_KPI_TRADES_LABEL,
+    };
+
+    let body: iced::Element<'a, crate::state::Message> = match kpis {
+        None => {
+            // Placeholder — all six dashes.
+            let dash = KPI_DASH_PLACEHOLDER.to_string();
+            let dash_color = color::FG_3.current(mode);
+            let labels = [
+                LAB_KPI_RETURN_LABEL,
+                LAB_KPI_MAX_DD_LABEL,
+                LAB_KPI_TRADES_LABEL,
+                LAB_KPI_FEES_LABEL,
+                LAB_KPI_SHARPE_LABEL,
+                LAB_KPI_FINAL_EQUITY_LABEL,
+            ];
+            let mut grid = Grid::new()
+                .columns(6)
+                .spacing(space::M)
+                .height(Length::Shrink);
+            for label in labels {
+                grid = grid.push(lab_card(label, dash.clone(), dash_color, mode));
+            }
+            grid.into()
+        }
+        Some(k) => {
+            // Return % = (final - initial) / initial * 100
+            let initial = k.initial_equity.amount();
+            let final_eq = k.final_equity.amount();
+            let (return_text, return_color) = if initial.is_zero() {
+                (KPI_DASH_PLACEHOLDER.to_string(), color::FG_3.current(mode))
+            } else {
+                let ret_pct = (final_eq - initial) / initial * rust_decimal::Decimal::ONE_HUNDRED;
+                format_pct_sentiment(ret_pct, mode)
+            };
+
+            // Max DD — already stored as a fraction (0.0 → 100 %).
+            let dd_pct = k.max_drawdown * rust_decimal::Decimal::ONE_HUNDRED;
+            let (dd_text, dd_color) = format_pct_max_dd(dd_pct, mode);
+
+            // Trades — integer count.
+            let trades_text = format_count(k.trade_count as u64);
+            let trades_color = color::FG_1.current(mode);
+
+            // Fees — USDT amount.
+            let fees_text = fmt_usdt(k.total_fees.amount());
+            let fees_color = color::FG_1.current(mode);
+
+            // Sharpe — Phase C follow-up; always em-dash.
+            let sharpe_text = KPI_DASH_PLACEHOLDER.to_string();
+            let sharpe_color = color::FG_3.current(mode);
+
+            // Final equity — USDT amount.
+            let equity_text = fmt_usdt(k.final_equity.amount());
+            let equity_color = color::FG_1.current(mode);
+
+            Grid::new()
+                .columns(6)
+                .spacing(space::M)
+                .height(Length::Shrink)
+                .push(lab_card(
+                    LAB_KPI_RETURN_LABEL,
+                    return_text,
+                    return_color,
+                    mode,
+                ))
+                .push(lab_card(LAB_KPI_MAX_DD_LABEL, dd_text, dd_color, mode))
+                .push(lab_card(
+                    LAB_KPI_TRADES_LABEL,
+                    trades_text,
+                    trades_color,
+                    mode,
+                ))
+                .push(lab_card(LAB_KPI_FEES_LABEL, fees_text, fees_color, mode))
+                .push(lab_card(
+                    LAB_KPI_SHARPE_LABEL,
+                    sharpe_text,
+                    sharpe_color,
+                    mode,
+                ))
+                .push(lab_card(
+                    LAB_KPI_FINAL_EQUITY_LABEL,
+                    equity_text,
+                    equity_color,
+                    mode,
+                ))
+                .into()
+        }
+    };
+
+    Container::new(body)
+        .width(Length::Fill)
+        .padding(space::M as u16)
+        .style(move |_theme: &iced::Theme| container::Style {
+            background: Some(color::PANEL.current(mode).into()),
+            border: Border {
+                color: color::BORDER_1.current(mode),
+                width: 1.0,
+                radius: radius::R4.into(),
+            },
+            text_color: Some(color::FG_1.current(mode)),
+            ..Default::default()
+        })
+        .into()
+}
+
+/// Single 2-line card for the Lab KPI strip.
+/// Identical shape to the viewer `card()` helper but returns
+/// `Element<'_, crate::state::Message>` to compose with the Lab screen.
+fn lab_card<'a>(
+    label: &'a str,
+    value: String,
+    value_color: iced::Color,
+    mode: ThemeMode,
+) -> iced::Element<'a, crate::state::Message> {
+    let label_line = Text::new(label)
+        .size(text::SMALL)
+        .color(color::FG_3.current(mode));
+    let value_line = Text::new(value).size(text::H1).color(value_color);
+    Container::new(
+        iced::widget::Column::new()
+            .spacing(space::XS)
+            .push(label_line)
+            .push(value_line),
+    )
+    .padding([space::XS as u16, space::S as u16])
+    .into()
+}
+
 /// Single 2-line card: label (`text::SMALL` `FG_3`) over value
 /// (`text::H1` 24 px coloured).
 fn card<'a>(
@@ -290,5 +443,39 @@ mod tests {
             "viewer__kpi_strip__metrics_unavailable",
             strip_summary(&state)
         );
+    }
+
+    // ── view_for_lab tests (lab-end-to-end-v2 Wave D-1.1 F8 / T-D-14a) ───────
+
+    /// F8 — `view_for_lab(None, _)` renders without panic (all-dash path).
+    #[test]
+    fn kpi_strip_view_for_lab_none_renders() {
+        let _el = view_for_lab(None, ThemeMode::Dark);
+        let _el2 = view_for_lab(None, ThemeMode::Light);
+    }
+
+    /// F8 — `view_for_lab(Some(&kpis), _)` renders without panic (numeric path).
+    #[test]
+    fn kpi_strip_view_for_lab_some_renders() {
+        use backtest::BacktestKpis;
+        use rust_decimal_macros::dec;
+        use trading_core::{Money, Usdt};
+        let kpis = BacktestKpis {
+            final_equity: Money::<Usdt>::from_decimal(dec!(11000)),
+            initial_equity: Money::<Usdt>::from_decimal(dec!(10000)),
+            max_drawdown: dec!(0.12),
+            trade_count: 42,
+            total_fees: Money::<Usdt>::from_decimal(dec!(17.50)),
+        };
+        let _el = view_for_lab(Some(&kpis), ThemeMode::Dark);
+        let _el2 = view_for_lab(Some(&kpis), ThemeMode::Light);
+    }
+
+    /// F8 — `view_for_lab` with zero initial equity renders a dash for return%.
+    #[test]
+    fn kpi_strip_view_for_lab_zero_initial_equity() {
+        use backtest::BacktestKpis;
+        let kpis = BacktestKpis::default();
+        let _el = view_for_lab(Some(&kpis), ThemeMode::Dark);
     }
 }
