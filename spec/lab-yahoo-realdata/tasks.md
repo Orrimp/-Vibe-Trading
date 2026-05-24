@@ -1,8 +1,8 @@
 ---
 slug: lab-yahoo-realdata
 version: 0.1.0
-status: proposed
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-24
 ---
 
@@ -46,41 +46,87 @@ M-T1 decomp can fan out unambiguously.
 
 ## Wave B — Architect (M-T1) — gates on operator-decide Q1-Q10
 
-- [ ] **T-AR1 — Q1 resolution.** Engine-dispatch shape. Analyst-
-      recommended (b) source-agnostic engine; Lab swaps bars upstream.
-      Acceptance: decomp.md records the picked shape + the file:line
-      where the swap lands (e.g., `crates/ui/src/lab/runner.rs:spawn_lab_run`).
-- [ ] **T-AR2 — Q2 resolution.** Asset universe scope. Analyst-
-      recommended (a) crypto-mirror only. Acceptance: the 10-ticker
-      `YAHOO_CRYPTO_UNIVERSE` slice contents are confirmed in
-      decomp.md (operator may amend).
-- [ ] **T-AR3 — Q3 resolution.** Yahoo crate pick. Analyst-recommended
-      (a) `yahoo_finance_api 4.1.x`. Acceptance: exact version pin
-      recorded in decomp.md; Cargo.toml dep planned.
-- [ ] **T-AR4 — Q4 resolution.** Cadence policy. Analyst-recommended
-      (c) adaptive. Acceptance: the `Cadence::derive(range)` table is
-      finalised in decomp.md.
-- [ ] **T-AR5 — Q5-Q10 resolutions.** All remaining Q's resolved with
-      decomp.md citation.
-- [ ] **T-AR6 — ADR-0040 authored.** File at
-      `spec/architecture/adr/0040-yahoo-realdata-path-and-revision-pin.md`
-      following the ADR-0032 template. Acceptance: ADR-0040 has a
-      registered entry in the ADR README + a citation from the
-      `spec/architecture/10-foundation-libraries.md` foundation
-      libraries section.
-- [ ] **T-AR7 — Module layout decision.** `crates/data/src/yahoo.rs`
-      vs new `crates/data_yahoo` crate vs sub-module of
-      `crates/backtest`. Acceptance: decomp.md records the file:line
-      where the wrapper lands and how `--features yahoo` gates the
-      compile.
-- [ ] **T-AR8 — Wave plan.** Wave C (developer) split into independent
-      sub-tasks per feature.md § Routes (Wave C-1 .. C-4). Wave D
-      (ui-designer) gated on R-UI-1 acceptance. Acceptance: decomp.md
-      carries a Gantt-style "do this in parallel; do this serially"
-      table mirroring lab-end-to-end-v2's Wave D-1 .. D-4 shape.
-- [ ] **T-AR9 — Anchor baseline gate.** `bash scripts/verify_anchors.sh`
-      → `ANCHORS PASS (34 / 34)` re-confirmed at the architect ratification
-      moment so the developer wave starts from a known-green baseline.
+All 10 T-OD operator resolutions ratified at analyst M0 close
+(2026-05-24). Architect M-T1 closed 2026-05-24 with all 9 T-AR rows
+ticked.
+
+- [x] **T-AR1 — Q1 = (b) resolution.** Engine stays source-agnostic;
+      Lab runner swaps bars upstream of `engine::run_scenario` via the
+      existing `bars_override` hook. **Landing site:**
+      `crates/backtest/src/engine.rs:151` (ScenarioConfig gains
+      `data_source: ScenarioDataSource` + `bars_override: Option<Vec<Bar>>`
+      with `#[serde(default)]` defaults that preserve byte-identity for
+      all 34 anchor-generating CLI call sites);
+      `crates/ui/src/lab/runner.rs:160` (`LabRunConfig.data_source:
+      LabDataSource`); new helper `preload_yahoo_bars(cfg, scenario_cfg)`
+      at `crates/ui/src/lab/runner.rs:~250` feature-gated
+      `#[cfg(feature = "yahoo")]`. See
+      [`decomp.md` § T-AR1](decomp.md#t-ar1--q1--b-implementation-shape).
+- [x] **T-AR2 — Q2 = (a) resolution.** Crypto-mirror universe (10
+      tickers). **Landing site:** `crates/ui/src/lab/universe.rs` —
+      `YAHOO_CRYPTO_UNIVERSE` const (XRP-first order mirroring
+      `XRP_FIRST_UNIVERSE`); `crates/data/src/yahoo.rs` —
+      `binance_to_yahoo_ticker` conversion helper (10 entries).
+      See [`decomp.md` § T-AR2](decomp.md#t-ar2--q2--a-universe-mapping).
+- [x] **T-AR3 — Q3 = (a) resolution + ADR-0040 authored.**
+      `yahoo_finance_api 4.1.x` pinned via workspace Cargo.toml +
+      `crates/data/Cargo.toml` features (`yahoo`, `yahoo-online`,
+      default-off). CLAUDE.md non-negotiable gate satisfied in
+      ADR-0040 § D2 (6-item library-compat checklist all green).
+      ADR file at
+      `spec/architecture/adr/0040-yahoo-realdata-path.md`. See
+      [`decomp.md` § T-AR3](decomp.md#t-ar3--q3--a-external-dep--adr-0040).
+- [x] **T-AR4 — Q4 = (c) resolution.** Adaptive cadence
+      `Interval::derive_from_range(start_ms, end_ms)`:
+      `<7d → Minutes1`, `[7,60]d → Hours1`, `>60d → Days1`. 10-row
+      boundary truth-table locked in
+      [`decomp.md` § T-AR4](decomp.md#t-ar4--q4--c-adaptive-cadence).
+      Cadence badge widget at `crates/ui/src/widgets/cadence_badge.rs`
+      (NEW; Wave D-3 ui-designer authors).
+- [x] **T-AR5 — Q5..Q10 resolutions.** All locked in
+      [`decomp.md` § T-AR5](decomp.md#t-ar5--q5q10-implementation-locks):
+      Q5 (per-cadence overrides) deferred to v0.1.1; Q7 (parquet cache
+      layout) — `data/yahoo/<TICKER>/<INTERVAL>/<YEAR>/<MONTH>.parquet`
+      with sample fixtures at `tests/fixtures/yahoo/`; Q8 (no in-cockpit
+      Fetch button) — tooltip with CLI-hint on cache miss; Q9 (95%
+      MissingData threshold) — `MISSING_DATA_THRESHOLD_PCT = 95u32`
+      const; Q10 (`.gitignore` parquets) — `.gitignore` extends with
+      `data/yahoo/**/*.parquet` + `!data/yahoo/REVISION.toml` carve-out.
+- [x] **T-AR6 — Module layout decision (R1.1 / R1.3 / R2.1-R2.5).**
+      Sub-module of `crates/data`, not a new crate.
+      **Landing site:** `crates/data/src/yahoo.rs` (feature-gated
+      `yahoo`). Public surface verbatim-locked in
+      [`decomp.md` § T-AR6](decomp.md#t-ar6--cratesdata-yahoo-module-r11--r13--r21r25):
+      `YahooBarSource::{new, load_cached, fetch_and_cache}`,
+      `Interval::{Minutes1, Hours1, Days1}`, `LoadedBars`,
+      `YahooError` (9 variants), `binance_to_yahoo_ticker`. Load
+      algorithm sketched in 8 steps mirroring ADR-0032 § D1 +
+      adapted for Yahoo cadence subdir + 95% threshold.
+- [x] **T-AR7 — `fetch_yahoo_klines` CLI binary.** **Landing site:**
+      `crates/data/src/bin/fetch_yahoo_klines.rs` (NEW; co-located
+      with `fetch_binance_klines`, NOT under `crates/backtest/src/bin/`).
+      Feature-gated `yahoo-online`. CLI surface + clap args + fetch
+      loop with exponential backoff (1s → 60s cap, max 5 retries) on
+      `429` locked in
+      [`decomp.md` § T-AR7](decomp.md#t-ar7--fetchyahooklines-cli-binary).
+- [x] **T-AR8 — Wave plan.** Wave C decomposed into 4 sub-waves
+      (C-1 ∥ C-2 ∥ C-4; C-3 depends on C-1 + C-4). Wave D parallel
+      with C-3. Gantt chart + sequencing constraints in
+      [`decomp.md` § T-AR8](decomp.md#t-ar8--wave-plan-gantt-style).
+      Total dev wall-clock: 4-7 days with parallelism; 8 days
+      strictly sequential.
+- [x] **T-AR9 — Anchor baseline gate + spec hygiene.**
+      `bash scripts/verify_anchors.sh` → `ANCHORS PASS (34 / 34)`
+      run + quoted in [`decomp.md` § Baseline](decomp.md#baseline).
+      Anchor neutrality proof in
+      [`decomp.md` § T-AR9](decomp.md#t-ar9--anchor--spec-lint-contract):
+      the 34 anchored body-SHAs originate from CLI `--features realdata`
+      paths that construct `ScenarioConfig` without `data_source` /
+      `bars_override`; the new fields' `#[serde(default)]` +
+      `Option::None` defaults preserve byte-identity. spec-lint baseline
+      (60 violations) stays clean; zero new. Trace.toml `arch` column
+      extended with decomp.md + ADR-0040 + ADR-0032 precedent;
+      `REQ-LAB-YAHOO-REALDATA-001` state flips `proposed → in-progress`.
 
 ## Wave C — Developer (parallel; gates on Wave B)
 
@@ -222,3 +268,12 @@ waves are independently shippable; T-C3 + T-C4 synchronise only on
 - 2026-05-24 (analyst): initial task list. Waves A-F scaffolded;
   Wave A T-A1..T-A8 ticked (M0 deliverables). Wave B-F ungated
   pending operator-decide Q1-Q10 + architect M-T1.
+- 2026-05-24 (architect, M-T1): all 10 operator T-OD resolutions
+  ratified. Wave B (T-AR1..T-AR9) ticked. `decomp.md` (~1000 lines)
+  authored locking file:line + verbatim Rust + cargo invocations.
+  `spec/architecture/adr/0040-yahoo-realdata-path.md` authored
+  (status `accepted`); ADR README registry row added. `trace.toml::
+  REQ-LAB-YAHOO-REALDATA-001` state flipped `proposed → in-progress`;
+  `arch` column extended. Anchor baseline gate re-run:
+  `ANCHORS PASS (34 / 34)`. Hand-off to orchestrator → developer
+  Wave C-1 ∥ C-2 (sequential first).

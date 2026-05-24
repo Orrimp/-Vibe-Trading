@@ -1203,10 +1203,12 @@ feature     = "lab-yahoo-realdata"
 product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-24) — feature.md + tasks.md authored.
-  # ARCHITECT M-T1 will add the ADR-0040 path once authored:
-  #   "spec/architecture/adr/0040-yahoo-realdata-path-and-revision-pin.md"
+  # ARCHITECT M-T1 (2026-05-24) — decomp.md + ADR-0040 authored.
   "spec/lab-yahoo-realdata/feature.md",
   "spec/lab-yahoo-realdata/tasks.md",
+  "spec/lab-yahoo-realdata/decomp.md",
+  "spec/architecture/adr/0040-yahoo-realdata-path.md",
+  "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",
 ]
 crates      = [
   # ANALYST M0 (2026-05-24) — paths surfaced from R1-R7 + R-UI-1 in feature.md.
@@ -1233,4 +1235,4 @@ tests       = [
   "crates/backtest/tests/determinism.rs",                   # R-NR.1 — anchor preservation gate (34 SHAs)
 ]
 anchors     = []   # v0.1.0 emits NO new anchors (R6.3 — Yahoo anchors lock in v0.1.1 after operator approval). The 34 Binance-based anchors stay byte-identical (R-NR.1; H5 hypothesis guard via verify_anchors.sh).
-state       = "proposed"
+state       = "in-progress"  # architect M-T1 2026-05-24: 9/9 T-AR rows closed; ADR-0040 accepted; handed to developer Wave C-1 ∥ C-2.

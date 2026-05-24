@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-22 (ADR-0039 added)
+updated: 2026-05-24 (ADR-0040 added)
 ---
 
 
@@ -87,6 +87,7 @@ the canonical table; the parent file links here.)
 | 0037  | Phase B scenario-dispatch extraction — renumbered 0035→0037 to resolve number collision with ADR-0035-tcn-sigma-train-recalibration (audit-2026-05-22) | accepted | 2026-05-19 (number reassigned 2026-05-22) |
 | 0038  | v3 vol-forecast V-verdict report shape + GARCH(1,1) baseline contract (parallel to ADR-0033, not extension) | accepted | 2026-05-22 |
 | 0039  | LLM-forecaster verdict criteria L0-L4 (parallel to ADR-0033 § D3 and ADR-0038 § D1, not extension) | accepted | 2026-05-22 |
+| 0040  | Yahoo realdata path + revision pin (Lab dispatch source) — generalises ADR-0032 to a second data source; engine stays source-agnostic per Q1=(b); 34/34 anchors byte-identical | accepted | 2026-05-24 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -227,6 +228,33 @@ finalisation.
   agnostic refactor of `tcn_overlay_momentum.rs` — K6 scope-creep
   guard). Sibling deliverable: `spec/v25a-patchtst-overlay/decomp.md`.
   Closes T-AR-2 of `spec/v25a-patchtst-overlay/tasks.md`.
+- 2026-05-24 (architect, M-T1): ADR-0040 added — Yahoo realdata path
+  + revision pin (Lab dispatch source). Generalises ADR-0032's
+  revision-pin protocol to a second data source (Yahoo Finance) on
+  the Lab dispatch path. Locks D1 (module placement —
+  `crates/data/src/yahoo.rs` feature-gated `yahoo`; CLI binary
+  co-located at `crates/data/src/bin/fetch_yahoo_klines.rs`), D2
+  (external dep `yahoo_finance_api 4.1.x` with CLAUDE.md 6-item
+  library-compat checklist all green), D3 (revision-pin protocol —
+  cadence subdir on disk + per-fetch `[revision.yahoo_response]`
+  table for K2 forensics; aggregate-SHA algorithm verbatim-shared
+  with ADR-0032), D4 (engine remains source-agnostic per Q1=(b);
+  Lab swaps bars upstream via existing `bars_override` hook; the 4
+  cross-sectional arms reject `data_source = YahooCache` with typed
+  error), D5 (`YahooBarSource` API surface with `load_cached`
+  /`fetch_and_cache` split feature-gated so cockpit doesn't pull
+  tokio into iced — K10 mitigation), D6 (adaptive cadence Q4=(c) —
+  `Interval::derive_from_range` 10-row truth table), D7 (boundary
+  ticker conversion Q6=(a) — `binance_to_yahoo_ticker` 10-entry
+  table in `crates/data/src/yahoo.rs` for CLI reuse), D8
+  (`Venue::Yahoo` variant cascade — additive; existing rows
+  untouched; clippy `-D warnings` drives exhaustive-match
+  completion). 34/34 anchors stay byte-identical (anchored body-SHAs
+  all originate from CLI `--features realdata` paths that construct
+  `ScenarioConfig` without the new fields; `#[serde(default)]`
+  preserves byte-identity). Closes T-AR3 + T-AR6 of
+  `spec/lab-yahoo-realdata/tasks.md`.
+
 - 2026-05-22 (architect, M-T1): ADR-0039 added — LLM-forecaster verdict
   criteria L0-L4 (parallel to ADR-0033 § D3 and ADR-0038 § D1, NOT
   extension; PARALLEL is the operator-locked precedent per
