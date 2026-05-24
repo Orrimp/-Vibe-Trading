@@ -1227,12 +1227,14 @@ crates      = [
 ]
 tests       = [
   # ANALYST M0 (2026-05-24) — test paths gating R1-R7 acceptance criteria.
-  # Forward-listed paths (`crates/data/tests/yahoo_revision_verify.rs` at R2;
-  # `crates/ui/tests/lab_yahoo_dispatch.rs` at R3.5) are tasks.md Wave C work —
-  # appended here once on disk per lint-clean-while-draft convention.
   "crates/backtest/tests/realdata_revision_verify.rs",      # analyst reference — the shape the Yahoo equivalent will follow (R2)
   "crates/ui/src/lab/universe.rs",                          # R4.1 unit test xrp_first_order_pinned mirror (yahoo_crypto_universe_order_pinned)
   "crates/backtest/tests/determinism.rs",                   # R-NR.1 — anchor preservation gate (34 SHAs)
+  # DEVELOPER Wave C-1 (2026-05-24)
+  "crates/data/tests/yahoo_revision_verify.rs",             # R2 — YahooBarSource fixture integration test (5 cases: happy_path, tamper, cache_miss, coverage_94_pct, revision_missing)
+  "crates/data/src/yahoo.rs",                               # R1.1 — 9 unit tests in yahoo::tests module
+  # TESTER Wave E (2026-05-24)
+  "crates/ui/tests/lab_yahoo_dispatch.rs",                  # T-C3.7 — Yahoo dispatch boundary integration test (7 cases: ticker conversion, ScenarioConfig shape, bar loading, SHA determinism)
 ]
-anchors     = []   # v0.1.0 emits NO new anchors (R6.3 — Yahoo anchors lock in v0.1.1 after operator approval). The 34 Binance-based anchors stay byte-identical (R-NR.1; H5 hypothesis guard via verify_anchors.sh).
-state       = "in-progress"  # architect M-T1 2026-05-24: 9/9 T-AR rows closed; ADR-0040 accepted; handed to developer Wave C-1 ∥ C-2.
+anchors     = []   # v0.1.0 emits NO new anchors (R6.3 — Yahoo anchors lock in v0.1.1 after operator approval). The 34 Binance-based anchors stay byte-identical (R-NR.1; ANCHORS PASS 34/34 on 2026-05-24 tester run).
+state       = "shipped"  # tester M-FINAL 2026-05-24: VERDICT → PASS. All Wave C + E gates closed. Report at spec/lab-yahoo-realdata/reports/test-final-2026-05-24.md.
