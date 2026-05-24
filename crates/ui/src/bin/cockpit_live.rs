@@ -595,6 +595,11 @@ fn main() -> Result<()> {
         // subscription() can build the TrailMirrorRecipe from it.
         #[cfg(feature = "live")]
         trail_mirror_handle,
+        // Wave D-3/D-4 — Lab progress channel (T-AR-6). No in-flight run at boot.
+        #[cfg(feature = "live")]
+        lab_progress_rx: None,
+        #[cfg(feature = "live")]
+        lab_progress_recipe_salt: 0,
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -804,6 +809,23 @@ struct AppState {
     #[cfg(feature = "live")]
     #[allow(dead_code)] // accessed via subscription() only
     trail_mirror_handle: Option<reflection::trail_mirror::TrailMirrorHandle>,
+
+    // ── Wave D-3/D-4 — Lab Stop + progress (lab-end-to-end-v2 T-AR-5/T-AR-6) ──
+
+    /// In-flight Lab run progress receiver.
+    ///
+    /// `Some` while a backtest is running; `None` otherwise.
+    /// Stored in an `Arc<Mutex<Option<...>>>` so the `LabProgressRecipe`
+    /// can take ownership of the receiver in its `stream()` call without
+    /// requiring the AppState to be moved into the subscription.
+    /// Only available in `live` builds (tokio mpsc requires a runtime).
+    #[cfg(feature = "live")]
+    lab_progress_rx: Option<std::sync::Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<backtest::progress::Progress>>>>>,
+
+    /// Salt bumped on every `LabRunRequested` so `LabProgressRecipe::hash`
+    /// returns a fresh identity per run (iced de-duplicates subscriptions by hash).
+    #[cfg(feature = "live")]
+    lab_progress_recipe_salt: u64,
 }
 
 impl AppState {
@@ -905,6 +927,11 @@ impl AppState {
             Message::LabRunCompleted(Ok(summary)) => Some(summary.clone()),
             _ => None,
         };
+        // T-D3.1 — detect any LabRunCompleted (Ok or Err) so we can clear the
+        // cancel handle + progress receiver unconditionally on run completion.
+        let lab_run_completed_any = matches!(&msg, Message::LabRunCompleted(_));
+        // T-D3.4 — detect LabRunStopRequested to drop the cancel handle.
+        let lab_run_stop_requested = matches!(&msg, Message::LabRunStopRequested);
         let lab_run_completed_pre_tuple = if lab_run_completed_summary.is_some() {
             let ls = &self.cockpit.lab_state;
             match (ls.strategy.as_ref(), ls.pair.as_ref()) {
@@ -923,6 +950,22 @@ impl AppState {
         };
 
         ui::state::update(&mut self.cockpit, msg);
+
+        // T-D3.4 — Stop button: drop the cancel handle so the receiver sees
+        // Disconnected at its next poll boundary (≤ 128 bars ≈ a few hundred ms).
+        if lab_run_stop_requested {
+            self.cockpit.lab_state.run_cancel = None;
+            // Also clear the progress receiver — the run is being cancelled.
+            self.lab_progress_rx = None;
+        }
+
+        // T-D3.1 — on any LabRunCompleted: clear the cancel handle (it may
+        // already be None if the run completed normally, but clearing is
+        // idempotent). Also clear the progress receiver.
+        if lab_run_completed_any {
+            self.cockpit.lab_state.run_cancel = None;
+            self.lab_progress_rx = None;
+        }
 
         // T-D1.3 (lab-end-to-end-v2 T-AR-1) — rotate RunReportMirror:
         // prev ← last, last ← Some(new_mirror).
@@ -1125,8 +1168,24 @@ impl AppState {
             // T-D-N9: LabRunRequested with a valid (strategy, pair) selection.
             // Spawn the real backtest engine call and post LabRunCompleted back
             // to the iced update loop.
-            let (_, cancel_recv) = ui::lab::runner::cancellation_pair();
-            ui::lab::runner::spawn_lab_run(Some(&self.rt_handle), run_cfg, cancel_recv)
+
+            // T-D3.1 (lab-end-to-end-v2 R6.1) — F4 fix: store the cancel handle
+            // in `lab_state.run_cancel` so it lives until the run completes or
+            // the operator presses Stop. Previous code dropped the handle immediately
+            // with `let (_, cancel_recv) = ...` which meant `is_cancelled()` was
+            // always true on the very first poll.
+            let (handle, cancel_recv) = ui::lab::runner::cancellation_pair();
+            self.cockpit.lab_state.run_cancel = Some(handle);
+
+            // T-D4.1 (lab-end-to-end-v2 R7.1) — create progress channel.
+            // The receiver is stored in an Arc<Mutex<Option<_>>> so the
+            // LabProgressRecipe can take ownership in stream().
+            let (progress_tx, progress_rx) = backtest::progress::progress_pair();
+            // Bump the salt so the iced subscription sees a new recipe identity.
+            self.lab_progress_recipe_salt = self.lab_progress_recipe_salt.wrapping_add(1);
+            self.lab_progress_rx = Some(std::sync::Arc::new(std::sync::Mutex::new(Some(progress_rx))));
+
+            ui::lab::runner::spawn_lab_run(Some(&self.rt_handle), run_cfg, cancel_recv, progress_tx)
         } else {
             iced::Task::none()
         }
@@ -1171,11 +1230,27 @@ impl AppState {
             .map(|h| ui::live::trail_mirror_subscription(h.clone()))
             .unwrap_or_else(iced::Subscription::none);
 
+        // Wave D-4 T-AR-6 — Lab progress subscription.
+        // Active only while a run is in-flight and the progress channel is open.
+        // Salt-bumped per LabRunRequested so iced sees a fresh recipe each run.
+        let progress_sub = if let Some(rx) = &self.lab_progress_rx {
+            iced::advanced::subscription::from_recipe(
+                ui::lab::progress::LabProgressRecipe {
+                    rt_handle: self.rt_handle.clone(),
+                    rx: std::sync::Arc::clone(rx),
+                    salt: self.lab_progress_recipe_salt,
+                }
+            )
+        } else {
+            iced::Subscription::none()
+        };
+
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![
                 bus_sub,
                 time_sub,
                 trail_sub,
+                progress_sub,
                 iced::event::listen_with(|event, _status, _window| match event {
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
@@ -1185,7 +1260,7 @@ impl AppState {
                 }),
             ])
         } else {
-            iced::Subscription::batch(vec![bus_sub, time_sub, trail_sub])
+            iced::Subscription::batch(vec![bus_sub, time_sub, trail_sub, progress_sub])
         }
     }
 

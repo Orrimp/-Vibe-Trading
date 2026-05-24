@@ -24,9 +24,9 @@ use crate::theme::ThemeMode;
 use crate::widgets::{
     agent_feed, cadence_badge, chart, date_range, focus_ring, frame, human_control,
     journal_transaction_modal, kill, kpi_strip, latency, num, override_risk_veto, pair_chip,
-    placeholder, pnl, positions, run_button, run_delta_badge, settings_tabs, sidebar_nav,
-    source_toggle, sparkline, status_bar, strategies, strategy_card, strategy_chip, training_log,
-    training_plot, volume_histogram,
+    placeholder, pnl, positions, progress_bar, run_button, run_delta_badge, settings_tabs,
+    sidebar_nav, source_toggle, sparkline, status_bar, strategies, strategy_card, strategy_chip,
+    training_log, training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -1181,6 +1181,19 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_cadence_badge_days1,
         seed: seed_cadence_badge,
     },
+    // ── lab-end-to-end-v2 — progress_bar (T-AR-6) ────────────────────────────
+    GalleryCell {
+        widget: "progress_bar",
+        state: "50pct",
+        render: render_progress_bar_50pct,
+        seed: seed_progress_bar,
+    },
+    GalleryCell {
+        widget: "progress_bar",
+        state: "indeterminate",
+        render: render_progress_bar_indeterminate,
+        seed: seed_progress_bar,
+    },
 ];
 
 // ── lab-yahoo-realdata — source_toggle gallery cells (T-C3.2) ────────────────
@@ -1223,6 +1236,20 @@ fn render_matrix_cold_boot(model: &Cockpit) -> iced::Element<'_, Message> {
     crate::widgets::matrix::view(model, ThemeMode::Dark)
 }
 
+// ── lab-end-to-end-v2 — progress_bar gallery cells (T-AR-6) ─────────────────
+
+fn seed_progress_bar() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn render_progress_bar_50pct(_model: &Cockpit) -> iced::Element<'_, Message> {
+    progress_bar::view(Some(0.5), Some("360 / 720 bars · 1.5s"), ThemeMode::Dark)
+}
+
+fn render_progress_bar_indeterminate(_model: &Cockpit) -> iced::Element<'_, Message> {
+    progress_bar::view(None, None, ThemeMode::Dark)
+}
+
 /// The canonical list of widget-module names the gallery is expected to
 /// cover. Sync this with `crates/ui/src/widgets/mod.rs` ANY time a new
 /// `pub mod` lands there.
@@ -1251,6 +1278,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "placeholder",
     "pnl",
     "positions",
+    "progress_bar",
     "run_button",
     "run_delta_badge",
     "sidebar_nav",

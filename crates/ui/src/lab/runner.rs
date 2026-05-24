@@ -114,53 +114,22 @@ pub struct RunSummary {
     pub bars: Arc<Vec<Bar>>,
 }
 
-// ── In-flight cancellation token ──────────────────────────────────────────────
+// ── In-flight cancellation token (re-exported from backtest::cancel) ─────────
 
-/// Lightweight cancellation handle: dropping this signals the in-flight run
-/// to abort at the next checkpoint (the task polls `rx.try_recv()`).
-///
-/// Held in `LabState::run_inflight`; replaced (and thus dropped) each time
-/// the operator presses Run.
-pub struct RunCancelHandle {
-    _tx: std::sync::mpsc::SyncSender<()>,
-}
+/// Re-export `RunCancelHandle` from `backtest::cancel` so existing call
+/// sites in `cockpit_live.rs` and tests need no import changes.
+pub use backtest::cancel::RunCancelHandle;
 
-impl std::fmt::Debug for RunCancelHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RunCancelHandle").finish_non_exhaustive()
-    }
-}
-
-impl RunCancelHandle {
-    fn new(tx: std::sync::mpsc::SyncSender<()>) -> Self {
-        Self { _tx: tx }
-    }
-}
-
-/// Receiver end of the cancellation channel — passed into the spawned task.
-pub struct RunCancelReceiver {
-    #[allow(dead_code)]
-    rx: std::sync::mpsc::Receiver<()>,
-}
-
-impl RunCancelReceiver {
-    /// Returns `true` if the run has been cancelled (handle dropped or
-    /// explicit cancellation signal sent).
-    #[allow(dead_code)]
-    #[must_use]
-    pub fn is_cancelled(&self) -> bool {
-        matches!(
-            self.rx.try_recv(),
-            Err(std::sync::mpsc::TryRecvError::Disconnected)
-        )
-    }
-}
+/// Re-export `RunCancelReceiver` from `backtest::cancel`.
+pub use backtest::cancel::RunCancelReceiver;
 
 /// Build a new `(RunCancelHandle, RunCancelReceiver)` pair.
+///
+/// Delegates to `backtest::cancel::cancellation_pair()`.  Existing call
+/// sites in `cockpit_live.rs` need no changes.
 #[must_use]
 pub fn cancellation_pair() -> (RunCancelHandle, RunCancelReceiver) {
-    let (tx, rx) = std::sync::mpsc::sync_channel(0);
-    (RunCancelHandle::new(tx), RunCancelReceiver { rx })
+    backtest::cancel::cancellation_pair()
 }
 
 // ── Spawn glue (non-backtest-dep path) ───────────────────────────────────────
@@ -373,7 +342,8 @@ pub fn spawn_lab_run(
     #[cfg(feature = "live")] rt_handle: Option<&tokio::runtime::Handle>,
     #[cfg(not(feature = "live"))] _rt_handle: Option<()>,
     cfg: LabRunConfig,
-    _cancel: RunCancelReceiver,
+    cancel: RunCancelReceiver,
+    progress_tx: backtest::progress::ProgressSender,
 ) -> iced::Task<crate::state::Message> {
     use crate::state::Message;
 
@@ -383,6 +353,10 @@ pub fn spawn_lab_run(
     // Fixtures / no-`live` / no-runtime mode: immediately resolve.
     #[cfg(not(feature = "live"))]
     {
+        // In fixture mode there's no tokio runtime to drive the progress channel.
+        // Drop the cancel receiver + progress sender immediately (no-op).
+        let _ = cancel;
+        let _ = progress_tx;
         let summary = RunSummary {
             strategy_id: strategy,
             symbol,
@@ -398,6 +372,8 @@ pub fn spawn_lab_run(
     #[cfg(feature = "live")]
     {
         let Some(handle) = rt_handle else {
+            let _ = cancel;
+            let _ = progress_tx;
             let summary = RunSummary {
                 strategy_id: strategy,
                 symbol,
@@ -412,6 +388,7 @@ pub fn spawn_lab_run(
 
         // T-D-N9: Map LabRunConfig → backtest::ScenarioConfig.
         // Returns Err immediately if the range label is unrecognised.
+        #[allow(unused_mut)]
         let mut scenario_cfg = match lab_config_to_scenario(&cfg) {
             Ok(c) => c,
             Err(e) => {
@@ -465,7 +442,7 @@ pub fn spawn_lab_run(
                     // scenario modules (T-D-N2..N6). If NotImplemented is returned,
                     // the error propagates as Err(SmolStr) and the Run button shows
                     // "Retry".
-                    match backtest::engine::run_scenario(scenario_cfg).await {
+                    match backtest::engine::run_scenario(scenario_cfg, cancel, progress_tx).await {
                         Ok(report) => {
                             let path = report.report_path.clone();
                             // R2.4 — promote the in-memory equity / fills / kpis
@@ -647,6 +624,7 @@ mod tests {
             data_source: crate::lab::state::LabDataSource::default(),
         };
         let (_handle, recv) = cancellation_pair();
+        let progress_tx = backtest::progress::ProgressSender::disabled();
         // Should compile and return a Task without panicking.
         let _task = spawn_lab_run(
             #[cfg(feature = "live")]
@@ -655,6 +633,7 @@ mod tests {
             None,
             cfg,
             recv,
+            progress_tx,
         );
     }
 }

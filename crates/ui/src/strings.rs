@@ -337,6 +337,14 @@ pub const LAB_RUN_BUTTON_FAILED: &str = "Retry";
 /// are made — button is disabled (lab-end-to-end-v2 Wave D-1.1 F10).
 pub const LAB_RUN_BUTTON_DISABLED: &str = "Select pair & strategy";
 
+/// Label on the Run button after a cancelled run — operator can re-run
+/// (lab-end-to-end-v2 Wave D-3 T-D3.5 / Q8=(b)).
+pub const LAB_RUN_BUTTON_CANCELLED: &str = "Cancelled — Run again";
+
+/// Label on the Stop button rendered in the Lab top-bar while a run is
+/// in-flight (lab-end-to-end-v2 Wave D-3 T-D3.4 / R6.3).
+pub const LAB_STOP_BUTTON: &str = "Stop";
+
 // ── Run delta badge — ui-rethink-phase-b-lab-run T-D-N13 ─────────────────────
 
 /// Short label for the `PnL` delta column of the `run_delta_badge` (R8.2 / D5).
@@ -1268,6 +1276,8 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_RUN_BUTTON_COMPLETED", LAB_RUN_BUTTON_COMPLETED),
         ("LAB_RUN_BUTTON_FAILED", LAB_RUN_BUTTON_FAILED),
         ("LAB_RUN_BUTTON_DISABLED", LAB_RUN_BUTTON_DISABLED),
+        ("LAB_RUN_BUTTON_CANCELLED", LAB_RUN_BUTTON_CANCELLED),
+        ("LAB_STOP_BUTTON", LAB_STOP_BUTTON),
         // Phase B — run delta badge (T-D-N13)
         ("RUN_DELTA_BADGE_PNL_LABEL", RUN_DELTA_BADGE_PNL_LABEL),
         ("RUN_DELTA_BADGE_DD_LABEL", RUN_DELTA_BADGE_DD_LABEL),

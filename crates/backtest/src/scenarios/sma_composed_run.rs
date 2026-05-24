@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
@@ -33,6 +33,45 @@ use trading_core::{
 };
 
 use crate::cli_types::{BacktestState, SmaComposedRunInput, StrategyMeta};
+
+// ── Error type ────────────────────────────────────────────────────────────────
+
+/// Error from `sma_composed_run::run`.
+///
+/// Separate from `anyhow::Error` so the engine dispatch can pattern-match
+/// the `Cancelled` variant and convert it to `RunError::Cancelled` rather
+/// than `RunError::Internal`.
+#[derive(Debug)]
+pub enum SmaRunError {
+    /// Operator cancelled the run before the bar loop completed.
+    Cancelled,
+    /// Any other error (strategy load failure, I/O, etc.).
+    Other(anyhow::Error),
+}
+
+impl std::fmt::Display for SmaRunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => write!(f, "run cancelled by operator"),
+            Self::Other(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for SmaRunError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Other(e) => e.source(),
+            Self::Cancelled => None,
+        }
+    }
+}
+
+impl From<anyhow::Error> for SmaRunError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Other(e)
+    }
+}
 
 // ── Result struct ─────────────────────────────────────────────────────────────
 
@@ -245,14 +284,18 @@ pub fn default_start_price(symbol: &Symbol) -> Decimal {
 ///
 /// # Errors
 ///
-/// Returns `Err` if the composed strategy TOML cannot be loaded or is
-/// malformed.  Compiled-in `sma_crossover` never fails.
+/// Returns `Err(SmaRunError::Other(_))` if the composed strategy TOML cannot be
+/// loaded or is malformed.  Compiled-in `sma_crossover` never fails.
+/// Returns `Err(SmaRunError::Cancelled)` if the cancel handle is dropped
+/// before or during the run (polled at the 32/128-bar boundary per K4 mitigation).
 #[allow(clippy::too_many_lines)]
 pub async fn run(
     input: &SmaComposedRunInput,
     bars_override: Option<Vec<Bar>>,
     seed: u64,
-) -> Result<SmaComposedRunResult> {
+    cancel_rx: crate::cancel::RunCancelReceiver,
+    progress_tx: crate::progress::ProgressSender,
+) -> Result<SmaComposedRunResult, SmaRunError> {
     use crate::engine::MatchingEngine as _;
 
     let start_instant = Instant::now();
@@ -354,6 +397,27 @@ pub async fn run(
     let mut all_fills: Vec<FillView> = Vec::new();
 
     for (bar_idx, bar) in bars_arc.iter().enumerate() {
+        // R6.2 + R7.2 — cancellation + progress at the poll boundary.
+        // K4 mitigation: every 32 bars during the first 128 bars (warmup),
+        // then every 128 bars steady-state.
+        #[allow(clippy::verbose_bit_mask)] // bitmask is more readable than trailing_zeros here
+        let poll_now = if bar_idx < 128 {
+            bar_idx & 0x1F == 0 // every 32 bars during warmup
+        } else {
+            bar_idx & 0x7F == 0 // every 128 bars steady-state
+        };
+        if poll_now {
+            if cancel_rx.is_cancelled() {
+                return Err(SmaRunError::Cancelled);
+            }
+            progress_tx.try_send(crate::progress::Progress {
+                current_bar: bar_idx,
+                total_bars: bar_count,
+                elapsed_ms: u64::try_from(start_instant.elapsed().as_millis())
+                    .unwrap_or(u64::MAX),
+            });
+        }
+
         let bar = bar.clone();
         let mark = bar.close.get();
         position.last_mark = bar.close;
@@ -517,10 +581,14 @@ mod tests {
             slippage_bps: 2,
             taker_fee_bps: 4,
         };
-        let result1 = run(&input, None, TEST_SEED)
+        let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result1 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
-        let result2 = run(&input, None, TEST_SEED)
+        let (_handle2, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result2 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
         assert_eq!(
@@ -557,10 +625,14 @@ mod tests {
             slippage_bps: 2,
             taker_fee_bps: 4,
         };
-        let result1 = run(&input, None, TEST_SEED)
+        let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result1 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
-        let result2 = run(&input, None, TEST_SEED)
+        let (_handle2, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result2 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
         assert_eq!(
@@ -588,10 +660,14 @@ mod tests {
             slippage_bps: 2,
             taker_fee_bps: 4,
         };
-        let result1 = run(&input, None, TEST_SEED)
+        let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result1 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
-        let result2 = run(&input, None, TEST_SEED)
+        let (_handle2, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result2 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
         assert_eq!(
@@ -619,10 +695,14 @@ mod tests {
             slippage_bps: 2,
             taker_fee_bps: 4,
         };
-        let result1 = run(&input, None, TEST_SEED)
+        let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result1 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
-        let result2 = run(&input, None, TEST_SEED)
+        let (_handle2, cancel_rx) = crate::cancel::cancellation_pair();
+        let progress_tx = crate::progress::ProgressSender::disabled();
+        let result2 = run(&input, None, TEST_SEED, cancel_rx, progress_tx)
             .await
             .expect("run should succeed");
         assert_eq!(

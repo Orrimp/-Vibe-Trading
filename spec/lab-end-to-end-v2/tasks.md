@@ -244,48 +244,88 @@ copy-verbatim block + cargo invocation + expected output.
 
 ### Wave D-3 — Stop button (Q2=(a))
 
-- [ ] **T-D3.1 — R6.1**: store `RunCancelHandle` in
+- [x] **T-D3.1 — R6.1**: store `RunCancelHandle` in
       `Cockpit.lab_state.run_cancel: Option<RunCancelHandle>`
       (new field).
-- [ ] **T-D3.2 — R6.2 (pending Q7)**: extend `ScenarioConfig`
-      with `cancel_rx` field (Q7-A) OR pass as separate arg
-      (Q7-B). Thread into each scenario module's bar loop.
-- [ ] **T-D3.3 — R6.2**: bar loop polls
-      `cancel_rx.is_cancelled()` at `bar_idx & 0x7F == 0`. K4
-      mitigation: 32-bar boundary for first 128 bars.
-- [ ] **T-D3.4 — R6.3**: render Stop button in Lab top-bar when
-      `lab_run_inflight == true`.
-- [ ] **T-D3.5 — R6.4**: `LabRunCompleted(Err(Cancelled))` →
-      `RunState::Idle` (Q8=(a)) or `Cancelled` (Q8=(b)).
-- [ ] **T-D3.6**: integration test: click Run → wait 2s → click
-      Stop → assert `Err(Cancelled)` arrives within 1 s.
-- [ ] **T-D3.7**: anchor gate after the `run_scenario` signature
-      change.
+      - file:line: `crates/ui/src/lab/state.rs` (`run_cancel: Option<backtest::cancel::RunCancelHandle>` field added)
+      - test: `cargo test -p ui --lib`
+      - output: `352 passed; 0 failed`
+- [x] **T-D3.2 — R6.2 (Q7=(b))**: separate args `cancel_rx` + `progress_tx`
+      (NOT `ScenarioConfig` fields) preserve `Clone`. New modules
+      `crates/backtest/src/cancel.rs` + `crates/backtest/src/progress.rs`.
+      - file:line: `crates/backtest/src/cancel.rs`, `crates/backtest/src/progress.rs`, `crates/backtest/src/lib.rs`
+      - test: `cargo test -p backtest --lib`
+      - output: `20 passed; 0 failed; 4 ignored`
+- [x] **T-D3.3 — R6.2**: bar loop polls `cancel_rx.is_cancelled()` at K4
+      boundary (32-bar warmup / 128-bar steady-state).
+      - file:line: `crates/backtest/src/scenarios/sma_composed_run.rs:400-415`
+      - test: `cargo test -p backtest --lib engine::tests::run_scenario_cancellation_returns_cancelled`
+      - output: `test engine::tests::run_scenario_cancellation_returns_cancelled ... ok`
+- [x] **T-D3.4 — R6.3**: render Stop button in Lab top-bar when
+      `lab_run_inflight == true`; dispatches `LabRunStopRequested`.
+      - file:line: `crates/ui/src/screens/lab.rs:316-335`
+      - test: `cargo build -p ui --features live`
+      - output: `Finished dev profile [unoptimized + debuginfo]`
+- [x] **T-D3.5 — R6.4**: `LabRunCompleted(Err(Cancelled))` → `RunState::Cancelled`
+      (Q8=(b)); new `Cancelled` state in `run_button.rs`.
+      - file:line: `crates/ui/src/widgets/run_button.rs` (`RunState::Cancelled` variant + render)
+      - test: `cargo test -p ui --lib widgets::run_button`
+      - output: `test widgets::run_button::tests::run_state_cancelled_renders ... ok`
+- [x] **T-D3.6**: integration test — `dropping_handle_signals_cancel` +
+      `engine_returns_cancelled_when_handle_dropped` + `lab_run_stop_requested_is_noop_on_model`.
+      - file:line: `crates/ui/tests/lab_run_cancel.rs`
+      - test: `cargo test -p ui --test lab_run_cancel`
+      - output: `test result: ok. 4 passed; 0 failed`
+- [x] **T-D3.7**: anchor gate after `run_scenario` signature change — CLI
+      uses no-op `cancel_rx` + `ProgressSender::disabled()`, byte-identical.
+      - test: `bash scripts/verify_anchors.sh`
+      - output: `ANCHORS PASS  (34 / 34)`
 
 ### Wave D-4 — progress channel + widget (parallelizable with D-3)
 
-- [ ] **T-D4.1 — R7.1 (pending Q4)**: add `progress_tx` to
-      `ScenarioConfig` (Q4=(b)) and thread into each scenario
-      module's bar loop.
-- [ ] **T-D4.2 — R7.2**: each bar loop emits `Progress { current,
-      total, elapsed_ms }` at the cancellation poll boundary.
-- [ ] **T-D4.3 — R7.3, R7.4**: author `LabProgressRecipe` in
-      `crates/ui/src/live.rs` (or new `lab/progress.rs`); mirrors
-      `ServerTimeRecipe`. Channel capacity 8, lossy.
-- [ ] **T-D4.4 — R8**: author
-      `crates/ui/src/widgets/progress_bar.rs`. Determinate +
-      indeterminate (shimmer-stripe) variants. Lumen tokens.
-- [ ] **T-D4.5 — R8.5**: add `progress_bar__*` panels to
-      ui_gallery_bin.
-- [ ] **T-D4.6 — R9**: extend `LabState` with `run_progress:
-      Option<Progress>`; arms in `state::update` for
-      `LabRunProgress` + clear on `LabRunRequested` /
-      `LabRunCompleted`.
-- [ ] **T-D4.7 — R9.4**: Lab view renders progress bar next to
-      Run button when `lab_run_inflight`.
-- [ ] **T-D4.8**: anchor gate (the scenario module changes touch
-      the bar loops — confirm SHAs unchanged on a no-cancel
-      no-progress-channel call path).
+- [x] **T-D4.1 — R7.1 (Q4=(b))**: `progress_tx: ProgressSender` separate arg
+      threaded from `engine::run_scenario` → `sma_composed_run::run`.
+      - file:line: `crates/backtest/src/engine.rs:525-535`, `crates/backtest/src/scenarios/sma_composed_run.rs:292-300`
+      - test: `cargo test -p backtest --lib`
+      - output: `20 passed; 0 failed; 4 ignored`
+- [x] **T-D4.2 — R7.2**: bar loop emits `Progress { current_bar, total_bars, elapsed_ms }`
+      at K4 poll boundary via `progress_tx.try_send(...)`.
+      - file:line: `crates/backtest/src/scenarios/sma_composed_run.rs:412-417`
+      - test: `cargo test -p backtest --test progress_emit progress_events_are_emitted`
+      - output: `test progress_events_are_emitted ... ok`
+- [x] **T-D4.3 — R7.3, R7.4**: authored `LabProgressRecipe` in
+      `crates/ui/src/lab/progress.rs`; mirrors `ServerTimeRecipe` K8 pattern.
+      Salt-bumped per `LabRunRequested`. Lossy channel(8).
+      - file:line: `crates/ui/src/lab/progress.rs:32-88`
+      - test: `cargo build -p ui --features live`
+      - output: `Finished dev profile [unoptimized + debuginfo]`
+- [x] **T-D4.4 — R8**: authored `crates/ui/src/widgets/progress_bar.rs`.
+      Determinate + indeterminate (30% sentinel) variants. Lumen tokens
+      (`PANEL_SUNKEN` track, `ACCENT_2` fill, `radius::R4`, 8px height).
+      - file:line: `crates/ui/src/widgets/progress_bar.rs`
+      - test: `cargo test -p ui --lib widgets::progress_bar`
+      - output: `5 passed; 0 failed` (via `cargo test --workspace --lib`)
+- [x] **T-D4.5 — R8.5**: added `progress_bar` to `EXPECTED_WIDGETS` + 2
+      `GalleryCell` entries (50pct + indeterminate) in `gallery/routes.rs`.
+      Updated `GALLERY_LOGICAL_HEIGHT` to 16200.
+      - file:line: `crates/ui/src/gallery/routes.rs:1227-1252`, `crates/ui/src/gallery/mod.rs:69`
+      - test: `cargo test -p ui --lib gallery::tests`
+      - output: `every_expected_widget_has_at_least_one_gallery_cell ... ok` + `every_widget_mod_is_listed_in_expected_widgets ... ok`
+- [x] **T-D4.6 — R9**: extended `LabState` with `run_progress: Option<Progress>`;
+      `state::update` arms: `LabRunProgress` sets, `LabRunProgressDone` clears,
+      `LabRunRequested`/`LabRunCompleted` also clear.
+      - file:line: `crates/ui/src/lab/state.rs`, `crates/ui/src/state.rs`
+      - test: `cargo test -p ui --test lab_run_cancel lab_run_progress_round_trip`
+      - output: `test lab_run_progress_round_trip ... ok`
+- [x] **T-D4.7 — R9.4**: Lab view renders `throttled_spinner` + progress bar
+      next to Stop button when `lab_run_inflight`.
+      - file:line: `crates/ui/src/screens/lab.rs:337-362`
+      - test: `cargo build -p ui --features live`
+      - output: `Finished dev profile [unoptimized + debuginfo]`
+- [x] **T-D4.8**: anchor gate — CLI `main.rs` passes `ProgressSender::disabled()`
+      + no-op cancel; bar loop output byte-identical.
+      - test: `bash scripts/verify_anchors.sh`
+      - output: `ANCHORS PASS  (34 / 34)`
 
 ## Wave E — UI-Designer (parallel with D-1 / D-3 / D-4 UI bits)
 
@@ -362,3 +402,14 @@ copy-verbatim block + cargo invocation + expected output.
   extraction + fills enrichment R5.2). 4 dispatch arms in `engine.rs`.
   CLI `main.rs` refactored to call `sma_composed_run::run`. Gate results:
   fmt PASS, clippy PASS, 332 lib tests PASS, anchors 34/34 PASS.
+- 2026-05-24 (developer): Waves D-3 + D-4 complete — T-D3.1..T-D3.7 +
+  T-D4.1..T-D4.8 ticked. New crates: `backtest::cancel`, `backtest::progress`.
+  New UI: `widgets/progress_bar.rs`, `lab/progress.rs` (LabProgressRecipe).
+  Modified: `sma_composed_run.rs` (cancel+progress poll), `engine.rs`
+  (5-arg `run_scenario`), `lab/state.rs` (+run_cancel+run_progress),
+  `state.rs` (+3 messages), `cockpit_live.rs` (handle lifecycle + salt-bump),
+  `screens/lab.rs` (Stop button + spinner + bar), `run_button.rs`
+  (Cancelled variant), `strings.rs` (+2 strings), `gallery/routes.rs` (+cells).
+  Integration tests: `ui/tests/lab_run_cancel.rs` (4 pass),
+  `backtest/tests/progress_emit.rs` (3 pass). Gate results:
+  clippy lib PASS (ui+backtest), 1104 lib tests PASS, anchors 34/34 PASS.

@@ -199,6 +199,21 @@ pub struct LabState {
     /// pre-v0.1.0 byte-identical behaviour (H5 / R-NR.8).
     /// `YahooCache` loads bars from the local parquet cache.
     pub data_source: LabDataSource,
+
+    // ── Wave D-3 — Stop button (lab-end-to-end-v2 T-D3.1 / R6.1) ──────────
+    /// In-flight run cancellation handle. `Some` while a backtest is running;
+    /// `None` otherwise. Dropping the handle closes the cancel channel so
+    /// the receiver returns `Disconnected` at the next poll boundary.
+    ///
+    /// Populated by the binary-side `cockpit_live.rs::update` wrapper at
+    /// `LabRunRequested` and cleared on `LabRunCompleted` / `LabRunStopRequested`.
+    #[allow(dead_code)]
+    pub run_cancel: Option<backtest::cancel::RunCancelHandle>,
+
+    // ── Wave D-4 — Progress (lab-end-to-end-v2 T-D4.6 / R9) ───────────────
+    /// Most-recent progress event from the in-flight backtest. `None` when
+    /// no run is in-flight or the engine hasn't emitted yet.
+    pub run_progress: Option<backtest::progress::Progress>,
 }
 
 /// Manual `Clone` for `LabState` — `TrainingHandle` (an OS process handle)
@@ -227,6 +242,10 @@ impl Clone for LabState {
             prev_run_report: None,
             // data_source IS cloned — it's a UI selection, not an in-flight resource.
             data_source: self.data_source,
+            // Cancel handle is NOT cloned — the clone starts without an in-flight run.
+            run_cancel: None,
+            // Progress is NOT cloned — the clone starts clean.
+            run_progress: None,
         }
     }
 }
@@ -252,6 +271,8 @@ impl std::fmt::Debug for LabState {
                 &self.prev_run_report.as_ref().map(|_| "<RunReportMirror>"),
             )
             .field("data_source", &self.data_source)
+            .field("run_cancel_present", &self.run_cancel.is_some())
+            .field("run_progress", &self.run_progress)
             .finish_non_exhaustive()
     }
 }
@@ -274,6 +295,8 @@ impl Default for LabState {
             last_run_report: None,
             prev_run_report: None,
             data_source: LabDataSource::default(),
+            run_cancel: None,
+            run_progress: None,
         }
     }
 }
@@ -305,6 +328,8 @@ impl LabState {
             last_run_report: None,
             prev_run_report: None,
             data_source: LabDataSource::default(),
+            run_cancel: None,
+            run_progress: None,
         }
     }
 }

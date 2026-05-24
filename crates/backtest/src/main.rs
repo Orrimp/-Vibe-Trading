@@ -1540,8 +1540,11 @@ async fn main() -> Result<()> {
         slippage_bps: scenario.slippage_bps,
         taker_fee_bps: scenario.taker_fee_bps,
     };
+    // CLI path: use no-op cancel + progress so the anchor bytes are unchanged.
+    let (_cancel_handle, cancel_rx) = backtest::cancel::cancellation_pair();
+    let progress_tx = backtest::progress::ProgressSender::disabled();
     let result =
-        backtest::scenarios::sma_composed_run::run(&sma_run_input, Some(bars), seed).await?;
+        backtest::scenarios::sma_composed_run::run(&sma_run_input, Some(bars), seed, cancel_rx, progress_tx).await?;
 
     let final_equity = result.final_equity;
     let elapsed = result.elapsed_secs;

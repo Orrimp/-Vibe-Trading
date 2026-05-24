@@ -1420,6 +1420,29 @@ pub enum Message {
     /// Async backtest-run result (M2.5 / T-D-14).
     /// Carries `Ok(RunSummary)` on success, `Err(message)` on failure.
     LabRunCompleted(crate::lab::runner::LabRunResult),
+    /// Operator pressed the Stop button while a Lab run is in-flight.
+    ///
+    /// Handled by the binary-side wrapper in `cockpit_live.rs::update` which
+    /// drops `lab_state.run_cancel` (the Drop fires cancel at the engine's next
+    /// poll boundary). Pure state: `run_inflight` stays `true` until
+    /// `LabRunCompleted(Err("cancelled"))` arrives.
+    ///
+    /// lab-end-to-end-v2 T-D3.4 / R6.3.
+    LabRunStopRequested,
+    /// Progress update from the in-flight backtest engine.
+    ///
+    /// Delivered by `LabProgressRecipe::stream()` as bars complete.
+    /// Pure state: stored in `LabState::run_progress`.
+    ///
+    /// lab-end-to-end-v2 T-D4.6 / R9.
+    LabRunProgress(backtest::progress::Progress),
+    /// Progress channel closed — engine completed or was cancelled.
+    ///
+    /// Belt-and-suspenders clear of `run_progress` before `LabRunCompleted`
+    /// arrives. Pure state: clears `LabState::run_progress`.
+    ///
+    /// lab-end-to-end-v2 T-D4.6 / R9.4.
+    LabRunProgressDone,
     /// Show a transient toast notification (R4.2 / T-D-16).
     /// The string is a `&'static str` via `crate::strings`; no inline literals.
     ShowToast(SmolStr),
@@ -1934,9 +1957,13 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         // Pure state: the binary side wires the Task::perform.
         Message::LabRunRequested => {
             model.lab_run_inflight = true;
+            // R9.3 — clear stale progress from any prior run.
+            model.lab_state.run_progress = None;
         }
         Message::LabRunCompleted(_outcome) => {
             model.lab_run_inflight = false;
+            // R9.3 — clear progress on run completion.
+            model.lab_state.run_progress = None;
             // T-D-N10: The equity cache invalidation + repaint is triggered by
             // the binary-side `update` wrapper after pure-state `update` returns.
             // Pure state only clears the inflight flag here.
@@ -1945,6 +1972,21 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // RunSummary + equity series. The pure update cannot build a
             // RunReportMirror because it has no equity data or BacktestKpis
             // (those come from the async run result stored in the binary layer).
+        }
+        // T-D3.4 / R6.3 — Stop button: pure state is unchanged (inflight stays
+        // true until LabRunCompleted arrives). The binary-side wrapper drops
+        // the cancel handle which fires cancel at the engine's next poll.
+        Message::LabRunStopRequested => {
+            // Pure state: no change needed here. The binary-side wrapper in
+            // cockpit_live.rs::update drops `lab_state.run_cancel`.
+        }
+        // T-D4.6 / R9 — progress update from the in-flight engine.
+        Message::LabRunProgress(progress) => {
+            model.lab_state.run_progress = Some(progress);
+        }
+        // T-D4.6 / R9.4 — channel closed; belt-and-suspenders clear.
+        Message::LabRunProgressDone => {
+            model.lab_state.run_progress = None;
         }
         Message::ShowToast(msg) => {
             model.toast_message = Some(msg);

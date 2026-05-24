@@ -522,7 +522,11 @@ fn sma_composed_result_to_report(
 /// - `RunError::Cancelled` if the in-flight run is cancelled.
 /// - `RunError::Internal` for unexpected scenario errors.
 #[allow(clippy::too_many_lines)]
-pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
+pub async fn run_scenario(
+    cfg: ScenarioConfig,
+    cancel_rx: crate::cancel::RunCancelReceiver,
+    progress_tx: crate::progress::ProgressSender,
+) -> Result<RunReport, RunError> {
     // ── 1. Seed gate ─────────────────────────────────────────────────────────
     if cfg.seed == [0u8; 32] {
         return Err(RunError::ZeroSeed);
@@ -651,9 +655,12 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 taker_fee_bps: 4,
             };
             let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
                     .await
-                    .map_err(|e| RunError::Internal(e.to_string()))?;
+                    .map_err(|e| match e {
+                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
+                    })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -669,9 +676,12 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 taker_fee_bps: 4,
             };
             let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
                     .await
-                    .map_err(|e| RunError::Internal(e.to_string()))?;
+                    .map_err(|e| match e {
+                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
+                    })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -687,9 +697,12 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 taker_fee_bps: 4,
             };
             let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
                     .await
-                    .map_err(|e| RunError::Internal(e.to_string()))?;
+                    .map_err(|e| match e {
+                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
+                    })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -708,15 +721,31 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 taker_fee_bps: 4,
             };
             let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
                     .await
-                    .map_err(|e| RunError::Internal(e.to_string()))?;
+                    .map_err(|e| match e {
+                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
+                    })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
         // ── Unknown strategy ─────────────────────────────────────────────────
         other => Err(RunError::UnknownStrategy(other.to_string())),
     }
+}
+
+// ── Test helper ──────────────────────────────────────────────────────────────
+
+/// Convenience wrapper for tests and the CLI that provides no-op cancel/progress.
+///
+/// K1 mitigation per T-AR-5: the 6+ Phase B determinism tests and all new
+/// engine unit tests call this so `ScenarioConfig` literals are unchanged
+/// (only `run_scenario`'s call site shifts from `cfg` to `cfg, cancel, progress`).
+#[cfg(test)]
+pub async fn run_scenario_for_test(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
+    let (_handle, cancel_rx) = crate::cancel::cancellation_pair();
+    run_scenario(cfg, cancel_rx, crate::progress::ProgressSender::disabled()).await
 }
 
 // ── Unit tests ───────────────────────────────────────────────────────────────
@@ -751,7 +780,7 @@ mod tests {
     #[tokio::test]
     async fn run_scenario_rejects_zero_seed() {
         let cfg = config_with_seed([0u8; 32]);
-        let result = run_scenario(cfg).await;
+        let result = run_scenario_for_test(cfg).await;
         assert!(
             matches!(result, Err(RunError::ZeroSeed)),
             "zero seed must be rejected; got: {result:?}"
@@ -766,7 +795,7 @@ mod tests {
     async fn run_scenario_accepts_non_zero_seed() {
         let mut cfg = config_with_seed(valid_seed());
         cfg.strategy = StrategyId("__nonexistent_strategy__".into());
-        let result = run_scenario(cfg).await;
+        let result = run_scenario_for_test(cfg).await;
         // Phase B: known strategy would succeed, unknown returns UnknownStrategy.
         // Either way, ZeroSeed must NOT be returned.
         assert!(
@@ -783,7 +812,7 @@ mod tests {
             start_ms: 1_000_000,
             end_ms: 999_999,
         };
-        let result = run_scenario(cfg).await;
+        let result = run_scenario_for_test(cfg).await;
         assert!(
             matches!(result, Err(RunError::InvalidRange(_))),
             "start > end must be rejected; got: {result:?}"
@@ -800,7 +829,7 @@ mod tests {
             start_ms: 1_000_000,
             end_ms: 2_000_000,
         };
-        let result = run_scenario(cfg).await;
+        let result = run_scenario_for_test(cfg).await;
         assert!(
             !matches!(result, Err(RunError::InvalidRange(_))),
             "valid custom range must not trigger InvalidRange; got: {result:?}"
@@ -820,7 +849,7 @@ mod tests {
             let mut cfg = config_with_seed(valid_seed());
             cfg.strategy = StrategyId("__nonexistent_strategy__".into());
             cfg.range = range.clone();
-            let result = run_scenario(cfg).await;
+            let result = run_scenario_for_test(cfg).await;
             assert!(
                 matches!(result, Err(RunError::UnknownStrategy(_))),
                 "unregistered strategy with preset {range:?} must reach dispatch (UnknownStrategy); got: {result:?}"
@@ -850,7 +879,7 @@ mod tests {
     async fn run_scenario_unknown_strategy_is_rejected() {
         let mut cfg = config_with_seed(valid_seed());
         cfg.strategy = StrategyId("__nonexistent_strategy__".into());
-        let result = run_scenario(cfg).await;
+        let result = run_scenario_for_test(cfg).await;
         assert!(
             matches!(result, Err(RunError::UnknownStrategy(_))),
             "unregistered strategy must return UnknownStrategy; got: {result:?}"
@@ -881,7 +910,7 @@ mod tests {
         let mut cfg = config_with_seed(valid_seed());
         cfg.strategy = StrategyId("v1.momentum".into());
         cfg.range = DateRange::Last30d; // 720 bars × 10 symbols — small fixture
-        let result = run_scenario(cfg).await;
+        let result = run_scenario_for_test(cfg).await;
         match result {
             Ok(report) => {
                 assert!(
@@ -910,7 +939,7 @@ mod tests {
         let mut cfg = config_with_seed(valid_seed());
         cfg.strategy = StrategyId("v1.momentum".into());
         cfg.range = DateRange::Last30d;
-        let result = run_scenario(cfg).await;
+        let result = run_scenario_for_test(cfg).await;
         // Must NOT be UnknownStrategy — the arm is registered.
         // Will be Internal (config file not at test cwd) or Ok.
         assert!(
@@ -938,5 +967,30 @@ mod tests {
             "Cancelled variant must be constructible and matchable"
         );
         assert!(!e.to_string().is_empty());
+    }
+
+    /// T-AR-5 — `run_scenario` returns `Err(RunError::Cancelled)` when the
+    /// cancel handle is dropped before the run completes.
+    ///
+    /// Uses a short SMA crossover scenario (Last30d = 525 600 * (30/365) ≈
+    /// small bar count via date_range_to_scenario_params which returns 720
+    /// for `Last30d` for minute bars → sma_composed). We pre-cancel by
+    /// dropping the handle before calling run_scenario so the very first
+    /// poll (bar 0) sees `is_cancelled() == true`.
+    #[tokio::test]
+    async fn run_scenario_cancellation_returns_cancelled() {
+        let mut cfg = config_with_seed(valid_seed());
+        cfg.strategy = StrategyId("v0.sma".into());
+        cfg.range = DateRange::Last30d;
+
+        // Build a pre-cancelled receiver: drop the handle immediately.
+        let (handle, cancel_rx) = crate::cancel::cancellation_pair();
+        drop(handle); // signal cancel before the run starts
+
+        let result = run_scenario(cfg, cancel_rx, crate::progress::ProgressSender::disabled()).await;
+        assert!(
+            matches!(result, Err(RunError::Cancelled)),
+            "pre-cancelled run must return Cancelled; got: {result:?}"
+        );
     }
 }

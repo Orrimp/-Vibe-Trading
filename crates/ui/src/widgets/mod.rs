@@ -64,6 +64,10 @@ pub mod pair_chip;
 /// implemented. Used by `shell::screen_body` for Compare / Memory /
 /// Models / Trail / Settings.
 pub mod placeholder;
+/// lab-end-to-end-v2 Wave D-4 T-AR-6 / R8 — Determinate progress bar
+/// for the Lab run flow. Lumen-token'd 8px bar with optional label overlay.
+/// Renders indeterminate (30% sentinel) when `progress == None`.
+pub mod progress_bar;
 /// Phase A (T-D-14b) — Run backtest button widget for the Lab screen.
 /// Big primary button per Lumen Phase 1 tokens; disabled while a run is
 /// in-flight (at-most-one-in-flight per Design § 4).

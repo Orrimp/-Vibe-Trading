@@ -66,8 +66,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     //   trail_node (3 states) + trail_drawer (2 states) = 5 cells.
     // lab-yahoo-realdata (T-C3.2/T-C3.3) adds 3 new cells:
     //   source_toggle (2 states) + cadence_badge (1 state).
-    // 58 * 260 = 15_080. Adding 320 px headroom for outer container padding.
-    15_400
+    // lab-end-to-end-v2 (T-AR-6) adds 2 new cells:
+    //   progress_bar (50pct + indeterminate).
+    // 61 * 260 = 15_860. Adding 320 px headroom for outer container padding.
+    16_200
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

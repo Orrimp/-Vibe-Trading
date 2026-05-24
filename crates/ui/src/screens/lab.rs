@@ -31,7 +31,7 @@ use trading_core::{FillView, PositionView, Side, Symbol};
 
 use crate::lab::equity_loader::{LabTuple, route_equity_overlay};
 use crate::lab::state::{LabDataSource, StrategyFamily};
-use crate::state::{Cockpit, PanelState};
+use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     CHART_POSITION_MIRROR_LABEL, CHART_POSITION_MIRROR_NONE, CHART_VOLUME_HISTOGRAM_LABEL,
     CHART_VOLUME_TILE_BUYS_LABEL, CHART_VOLUME_TILE_NET_LABEL, CHART_VOLUME_TILE_SELLS_LABEL,
@@ -42,7 +42,8 @@ use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::run_button::{self, RunState};
 use crate::widgets::volume_histogram::{self, VolumeBin};
 use crate::widgets::{
-    cadence_badge, chart, date_range, kpi_strip, pair_chip, source_toggle, strategy_chip,
+    cadence_badge, chart, date_range, kpi_strip, pair_chip, progress_bar, source_toggle,
+    strategy_chip, throttled_spinner,
 };
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
@@ -303,9 +304,63 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     } else {
         None
     };
+    // T-D3.4 (lab-end-to-end-v2 R6.3) — Stop button rendered when Running.
+    // Dispatches `Message::LabRunStopRequested` which the binary-side wrapper
+    // in `cockpit_live.rs` handles by dropping `lab_state.run_cancel`.
     let mut run_button_row = Row::new()
         .spacing(crate::theme::space::M)
         .push(run_button::view(&run_state, model.lab_run_inflight, mode));
+
+    // Stop button — rendered when Running.
+    if model.lab_run_inflight {
+        use iced::widget::button;
+        let stop_btn = button(
+            Text::new(crate::strings::LAB_STOP_BUTTON)
+                .size(text::SMALL)
+                .color(color::FG_1.current(mode)),
+        )
+        .padding([crate::theme::space::S as u16, crate::theme::space::L as u16])
+        .style(move |_t: &iced::Theme, _s| button::Style {
+            background: Some(color::PANEL.current(mode).into()),
+            border: iced::Border {
+                color: color::BORDER_1.current(mode),
+                width: 1.0,
+                radius: crate::theme::radius::R4.into(),
+            },
+            text_color: color::FG_1.current(mode),
+            ..Default::default()
+        })
+        .on_press(Message::LabRunStopRequested);
+        run_button_row = run_button_row.push(stop_btn);
+
+        // T-D4.7 (lab-end-to-end-v2 R9.4) — Progress bar + spinner
+        // next to the Stop button. Spinner stays per Q5=(a).
+        run_button_row = run_button_row
+            .push(throttled_spinner::view(mode));
+
+        #[allow(clippy::cast_precision_loss)]
+        let progress_pct = model
+            .lab_state
+            .run_progress
+            .as_ref()
+            .filter(|p| p.total_bars > 0)
+            .map(|p| {
+                let ratio = p.current_bar as f32 / p.total_bars as f32;
+                ratio.clamp(0.0, 1.0)
+            });
+        #[allow(clippy::cast_precision_loss)]
+        let label = model.lab_state.run_progress.as_ref().map(|p| {
+            format!(
+                "{} / {} bars · {:.1}s",
+                p.current_bar,
+                p.total_bars,
+                p.elapsed_ms as f32 / 1000.0
+            )
+        });
+        run_button_row =
+            run_button_row.push(progress_bar::view(progress_pct, label.as_deref(), mode));
+    }
+
     if let Some(badge) = delta_badge {
         run_button_row = run_button_row.push(badge);
     }
@@ -532,7 +587,6 @@ fn derive_range_ms_for_badge(range: &crate::lab::state::DateRange) -> (i64, i64)
 #[must_use]
 #[allow(clippy::too_many_lines)]
 fn training_panel(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
-    use crate::state::Message;
     use crate::strings;
     use crate::widgets::training_log;
 

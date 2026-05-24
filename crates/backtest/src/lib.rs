@@ -5,6 +5,12 @@
 pub mod engine;
 pub mod paper;
 
+/// Cancellation primitives for the bar-loop poll boundary (lab-end-to-end-v2 T-AR-5 / Wave D-3).
+pub mod cancel;
+
+/// Progress primitives for the bar-loop poll boundary (lab-end-to-end-v2 T-AR-5 / Wave D-4).
+pub mod progress;
+
 /// Shared CLI-scenario types used by `main.rs` and the extracted modules.
 /// Made `pub` so that the backtest binary can access them.
 pub mod cli_types;

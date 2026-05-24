@@ -1155,6 +1155,84 @@ module has a `DO NOT modify` doc comment and the ADR-0038 § D6.b note.
 - `cargo test --workspace --lib`: 332 passed / 0 failed
 - `bash scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
 
+### Wave D-3 + D-4 — Stop button + progress channel + widget (2026-05-24)
+
+**Scope:** T-D3.1..T-D3.7 + T-D4.1..T-D4.8 — combined in one pass because
+the waves touch overlapping files (`sma_composed_run.rs`, `engine.rs`,
+`cockpit_live.rs`, `lab.rs`).
+
+**New files:**
+
+- `crates/backtest/src/cancel.rs`: `RunCancelHandle` + `RunCancelReceiver` +
+  `cancellation_pair()`. Drop semantics: sender drop signals cancel via
+  `TryRecvError::Disconnected`.
+
+- `crates/backtest/src/progress.rs`: `Progress { current_bar, total_bars, elapsed_ms }` +
+  `ProgressSender` (wraps `Option<tokio::sync::mpsc::Sender<Progress>>`) +
+  `progress_pair()`. `ProgressSender::disabled()` no-op for CLI path.
+
+- `crates/ui/src/widgets/progress_bar.rs`: Determinate + indeterminate (30%
+  sentinel) Lumen progress bar. 8 px height, `PANEL_SUNKEN` track, `ACCENT_2`
+  fill, `radius::R4` corners. 5 unit tests.
+
+- `crates/ui/src/lab/progress.rs`: `LabProgressRecipe` (K8 pattern — `enter()`
+  + drop guard before `Box::pin`). Salt-bumped per `LabRunRequested` for Recipe
+  identity. Channel capacity 8, lossy. Emits `LabRunProgressDone` on channel close.
+
+- `crates/ui/tests/lab_run_cancel.rs`: 4 integration tests covering Stop
+  no-op state, progress round-trip, handle-drop signal, and engine Cancelled return.
+
+- `crates/backtest/tests/progress_emit.rs`: 3 integration tests covering
+  live progress emit, disabled no-op, pre-dropped cancel.
+
+**Modified files:**
+
+- `crates/backtest/src/scenarios/sma_composed_run.rs`: `SmaRunError` enum
+  (`Cancelled` / `Other(anyhow::Error)`); `run()` extended to 5 args; K4 poll
+  site (`#[allow(clippy::verbose_bit_mask)]`); `run_scenario_for_test` helper.
+
+- `crates/backtest/src/engine.rs`: `run_scenario` takes `cancel_rx` + `progress_tx`
+  as separate args. 4 dispatch arms updated. `SmaRunError` matched explicitly to
+  avoid `match_wildcard_for_single_variants` lint.
+
+- `crates/ui/src/lab/state.rs`: `run_cancel: Option<RunCancelHandle>` and
+  `run_progress: Option<Progress>` added; Clone/Debug/Default updated.
+
+- `crates/ui/src/state.rs`: 3 new `Message` variants (`LabRunStopRequested`,
+  `LabRunProgress(Progress)`, `LabRunProgressDone`). Arms added in `update`.
+
+- `crates/ui/src/bin/cockpit_live.rs`: `lab_progress_rx` + `lab_progress_recipe_salt`
+  on `AppState`. `LabRunRequested` handler creates `cancellation_pair()` +
+  `progress_pair()`; stores handle in `lab_state.run_cancel`. Post-forward
+  cleanup drops handle + rx on Stop/Completed. `subscription()` subscribes
+  `LabProgressRecipe` when `lab_progress_rx.is_some()`.
+
+- `crates/ui/src/screens/lab.rs`: Stop button + `throttled_spinner` + `progress_bar`
+  rendered in `run_button_row` when `lab_run_inflight`.
+
+- `crates/ui/src/widgets/run_button.rs`: `RunState::Cancelled` variant.
+
+- `crates/ui/src/strings.rs`: `LAB_STOP_BUTTON = "Stop"` + `LAB_RUN_BUTTON_CANCELLED`.
+
+- `crates/ui/src/widgets/throttled_spinner.rs`: `view()` convenience function added.
+
+- `crates/ui/src/gallery/routes.rs`: `progress_bar` added to imports, `EXPECTED_WIDGETS`,
+  and `GALLERY_CELLS` (2 cells). `GALLERY_LOGICAL_HEIGHT` bumped to 16200.
+
+**Determinism / anchor discipline:**
+CLI `main.rs` passes `cancellation_pair().1` with handle kept alive +
+`ProgressSender::disabled()`. The bar loop poll site (`bar_idx & 0x1F/0x7F`)
+only branches on `poll_now`; when `cancel_rx.is_cancelled()` is `false` and
+`progress_tx.try_send(...)` drops (no receiver), the bar-loop output is
+bit-identical. All 34 anchor SHAs verified unchanged.
+
+**Gate results (D-3 + D-4):**
+- `cargo clippy -p ui -p backtest --lib -- -D warnings`: PASS
+- `cargo test --workspace --lib`: 1104 passed, 0 failed
+- `cargo test -p ui --test lab_run_cancel`: 4 passed
+- `cargo test -p backtest --test progress_emit`: 3 passed
+- `bash scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
+
 ## Changelog
 
 - 2026-05-24 (analyst): initial v0.1.0 brief; closes the
@@ -1178,3 +1256,7 @@ module has a `DO NOT modify` doc comment and the ADR-0038 § D6.b note.
   v2's Wave D-2 ship is the load-bearing prerequisite — lab-yahoo-
   realdata layers on top of the single-symbol dispatch arms shipped
   here.
+- 2026-05-24 (developer): Waves D-3 + D-4 complete — Stop button lifecycle
+  (RunCancelHandle drop semantics), progress channel (tokio mpsc 8-cap lossy),
+  LabProgressRecipe (K8 pattern), progress_bar widget (Lumen tokens), gallery
+  cells added, 7 new integration tests. 1104 lib tests, 34/34 anchors PASS.

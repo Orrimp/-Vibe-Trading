@@ -37,8 +37,8 @@ use iced::widget::{Text, button};
 
 use crate::state::Message;
 use crate::strings::{
-    LAB_RUN_BUTTON, LAB_RUN_BUTTON_COMPLETED, LAB_RUN_BUTTON_DISABLED, LAB_RUN_BUTTON_FAILED,
-    LAB_RUN_BUTTON_RUNNING,
+    LAB_RUN_BUTTON, LAB_RUN_BUTTON_CANCELLED, LAB_RUN_BUTTON_COMPLETED, LAB_RUN_BUTTON_DISABLED,
+    LAB_RUN_BUTTON_FAILED, LAB_RUN_BUTTON_RUNNING,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 
@@ -60,6 +60,12 @@ pub enum RunState {
     Completed,
     /// The last run failed.
     Failed,
+    /// The last run was cancelled by the operator (Stop button).
+    ///
+    /// lab-end-to-end-v2 Wave D-3 T-D3.5 / Q8=(b).
+    /// Delta-badge correctness: `T-AR-1` binary wrapper does NOT rotate on
+    /// `Err(Cancelled)` so a cancelled run is not a valid comparison anchor (K6).
+    Cancelled,
 }
 
 impl RunState {
@@ -139,10 +145,12 @@ pub fn view(
         RunState::Running => LAB_RUN_BUTTON_RUNNING,
         RunState::Completed => LAB_RUN_BUTTON_COMPLETED,
         RunState::Failed => LAB_RUN_BUTTON_FAILED,
+        RunState::Cancelled => LAB_RUN_BUTTON_CANCELLED,
     };
 
-    let is_disabled =
-        run_handle_present || *state == RunState::Running || *state == RunState::Disabled;
+    let is_disabled = run_handle_present
+        || *state == RunState::Running
+        || *state == RunState::Disabled;
 
     let fg = if is_disabled {
         color::FG_3.current(mode)
@@ -202,10 +210,19 @@ mod tests {
             RunState::Running,
             RunState::Completed,
             RunState::Failed,
+            RunState::Cancelled,
         ] {
             let _el = view(&state, false, ThemeMode::Dark);
             let _el2 = view(&state, true, ThemeMode::Light);
         }
+    }
+
+    /// T-D3.5 — `RunState::Cancelled` variant renders with non-empty label.
+    #[test]
+    fn run_state_cancelled_renders() {
+        let _el = view(&RunState::Cancelled, false, ThemeMode::Dark);
+        // Verify the label string is non-empty.
+        assert!(!crate::strings::LAB_RUN_BUTTON_CANCELLED.is_empty());
     }
 
     /// T-D-14b — disabled when `run_handle_present = true`.

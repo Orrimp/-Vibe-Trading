@@ -293,6 +293,22 @@ where
     }
 }
 
+/// Convenience `view` function — returns a 20×20 `ThrottledSpinner` as
+/// an `iced::Element`.
+///
+/// The `_mode` parameter is accepted for API uniformity with other widget
+/// `view` helpers (theme adaption is handled via `renderer::Style::text_color`
+/// inherited from the ambient iced theme).
+#[must_use]
+pub fn view<Message: 'static, Theme: 'static, Renderer>(
+    _mode: crate::theme::ThemeMode,
+) -> iced::Element<'static, Message, Theme, Renderer>
+where
+    Renderer: renderer::Renderer + 'static,
+{
+    ThrottledSpinner::new().into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
