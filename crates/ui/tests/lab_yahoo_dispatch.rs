@@ -123,13 +123,21 @@ fn lab_config_to_scenario_yahoo_btcusdt_h1_2024() {
 
     let sc = lab_config_to_scenario(&cfg).expect("H1_2024 must be a known range");
 
-    assert_eq!(sc.strategy, StrategyId("v0.sma".into()), "strategy id mismatch");
+    assert_eq!(
+        sc.strategy,
+        StrategyId("v0.sma".into()),
+        "strategy id mismatch"
+    );
     assert_eq!(
         sc.pair.1,
         Symbol::new("BTCUSDT"),
         "symbol must be BTCUSDT (Binance-style; Yahoo conversion at dispatch boundary)"
     );
-    assert_eq!(sc.pair.0, Venue::Binance, "venue must be Binance in base config");
+    assert_eq!(
+        sc.pair.0,
+        Venue::Binance,
+        "venue must be Binance in base config"
+    );
     assert_eq!(sc.seed, LAB_DEFAULT_SEED, "seed must pass through");
     assert!(!sc.write_report, "write_report must be false");
     // data_source and bars_override are set by spawn_lab_run after lab_config_to_scenario.
@@ -158,7 +166,10 @@ fn lab_config_to_scenario_yahoo_last30d_is_ok() {
         data_source: LabDataSource::YahooCache,
     };
     let result = lab_config_to_scenario(&cfg);
-    assert!(result.is_ok(), "Last30d must map to a valid DateRange; got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "Last30d must map to a valid DateRange; got: {result:?}"
+    );
 }
 
 // ── Test 3: YahooBarSource::load_cached with fixture ─────────────────────────

@@ -323,10 +323,27 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let active_position = active
         .as_ref()
         .and_then(|(_, sym)| position_for_symbol(model, sym));
-    let bars = active
-        .as_ref()
-        .map(|(v, s)| model.chart_buffer.bars(*v, s).cloned().collect::<Vec<_>>())
-        .unwrap_or_default();
+    // Prefer the run's own bars (surfaced from `last_run_report.bars`) so fill
+    // triangle markers anchor correctly even when the live chart_buffer is empty
+    // (e.g. Yahoo or synthetic-2023 runs whose timestamps don't overlap with
+    // the current live-feed window). Fall back to chart_buffer for live-mode
+    // streams that arrive before any Lab run has completed.
+    let bars: Vec<trading_core::Bar> =
+        if let Some(mirror) = model.lab_state.last_run_report.as_ref() {
+            if mirror.bars.is_empty() {
+                active
+                    .as_ref()
+                    .map(|(v, s)| model.chart_buffer.bars(*v, s).cloned().collect::<Vec<_>>())
+                    .unwrap_or_default()
+            } else {
+                mirror.bars.as_ref().clone()
+            }
+        } else {
+            active
+                .as_ref()
+                .map(|(v, s)| model.chart_buffer.bars(*v, s).cloned().collect::<Vec<_>>())
+                .unwrap_or_default()
+        };
     let bins = compute_volume_bins(&active_markers, &bars);
 
     // Status strip — three-tile cumulative volume + open-position mirror.

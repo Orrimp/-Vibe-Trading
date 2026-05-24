@@ -38,6 +38,7 @@ fn synthetic_summary(n: usize) -> RunSummary {
             .collect(),
         fills: vec![],
         kpis: backtest::BacktestKpis::default(),
+        bars: std::sync::Arc::new(Vec::new()),
     }
 }
 
@@ -63,6 +64,7 @@ fn apply_wrapper(cockpit: &mut Cockpit, summary: &RunSummary) {
             equity_series: std::sync::Arc::new(summary.equity_series.clone()),
             kpis: summary.kpis.clone(),
             generated_at: ::time::OffsetDateTime::now_utc(),
+            bars: summary.bars.clone(),
         };
         let prev = cockpit.lab_state.last_run_report.take();
         cockpit.lab_state.prev_run_report = prev;

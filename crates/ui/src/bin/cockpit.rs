@@ -299,6 +299,7 @@ impl App {
                 equity_series: Vec::new(),
                 fills: Vec::new(),
                 kpis: backtest::BacktestKpis::default(),
+                bars: std::sync::Arc::new(Vec::new()),
             };
             return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         }

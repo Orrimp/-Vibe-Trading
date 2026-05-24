@@ -219,6 +219,7 @@ mod tests {
                 total_fees: Money::<Usdt>::from_decimal(Decimal::ZERO),
             },
             generated_at: time::OffsetDateTime::UNIX_EPOCH,
+            bars: Arc::new(Vec::new()),
         }
     }
 

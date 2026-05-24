@@ -1183,6 +1183,7 @@ pub fn fake_run_report_mirror_pair() -> (
             total_fees: Money::<Usdt>::from_decimal(dec!(4.80)),
         },
         generated_at: OffsetDateTime::UNIX_EPOCH,
+        bars: Arc::new(Vec::new()),
     };
 
     // Prev run: +$1 200 P&L, 14% max DD, slower rise.
@@ -1205,6 +1206,7 @@ pub fn fake_run_report_mirror_pair() -> (
             total_fees: Money::<Usdt>::from_decimal(dec!(3.20)),
         },
         generated_at: OffsetDateTime::UNIX_EPOCH,
+        bars: Arc::new(Vec::new()),
     };
 
     (last, prev)

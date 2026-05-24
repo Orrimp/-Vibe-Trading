@@ -20,6 +20,7 @@
 //! the anchor SHAs are unaffected.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -54,6 +55,13 @@ pub struct SmaComposedRunResult {
     pub equity_curve: Vec<Decimal>,
     /// All executed fills in chronological order (R5.2).
     pub fills: Vec<FillView>,
+    /// The bars used for this run, in chronological order.
+    ///
+    /// Wrapped in `Arc` for cheap cloning into `RunReport` / `RunSummary`
+    /// without copying the potentially-large bar vector. The UI Lab screen
+    /// uses this to anchor fill markers on the chart canvas even when the
+    /// live `chart_buffer` is empty (e.g. Yahoo/Synthetic runs in 2023).
+    pub bars: Arc<Vec<Bar>>,
     /// Strategy metadata populated during run (id, kind, hash, signal, notes).
     pub strategy_meta: StrategyMeta,
     /// Scenario bar state (for the CLI report writer).
@@ -314,6 +322,12 @@ pub async fn run(
     let bar_count = bars.len();
     tracing::info!("running backtest loop ({bar_count} bars)");
 
+    // Preserve bars in an Arc BEFORE the loop consumes them by iteration.
+    // The UI Lab screen uses `result.bars` to anchor fill triangle markers
+    // against the run's own time window (chart_buffer may be empty for
+    // Yahoo/Synthetic runs whose timestamps differ from the live feed).
+    let bars_arc: Arc<Vec<Bar>> = Arc::new(bars);
+
     // ── 3. Risk + matching engine setup ──────────────────────────────────────
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: dec!(0.40),
@@ -339,7 +353,8 @@ pub async fn run(
     // R5.2 — collect fills for `SmaComposedRunResult.fills`.
     let mut all_fills: Vec<FillView> = Vec::new();
 
-    for (bar_idx, bar) in bars.into_iter().enumerate() {
+    for (bar_idx, bar) in bars_arc.iter().enumerate() {
+        let bar = bar.clone();
         let mark = bar.close.get();
         position.last_mark = bar.close;
 
@@ -474,6 +489,7 @@ pub async fn run(
         elapsed_secs: elapsed,
         equity_curve: state.equity_curve.clone(),
         fills: all_fills,
+        bars: bars_arc,
         strategy_meta,
         state,
     })

@@ -29,6 +29,7 @@
 //! `crates/ui/src/lab/defaults.rs`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rust_decimal::Decimal;
@@ -216,6 +217,17 @@ pub struct RunReport {
     /// Path to the written Markdown report (only when
     /// `cfg.write_report = true`).
     pub report_path: Option<PathBuf>,
+    /// The bars used for this run, in chronological order.
+    ///
+    /// `Arc<Vec<Bar>>` for cheap cloning across the UI mirror chain.
+    /// Populated for single-symbol SMA/Composed arms; empty (`Arc::new(Vec::new())`)
+    /// for cross-sectional paths (momentum/pairs/TCN) which don't have a single
+    /// bar series to surface.
+    ///
+    /// The Lab screen prefers these bars over the live `chart_buffer` so fill
+    /// triangle markers anchor correctly even when the `chart_buffer` is empty
+    /// (e.g. Yahoo or synthetic-2023 runs).
+    pub bars: Arc<Vec<Bar>>,
 }
 
 /// Errors from `run_scenario`.
@@ -362,6 +374,7 @@ fn momentum_result_to_report(
         fills: Vec::new(), // FillView aggregation is a Phase C enhancement.
         kpis,
         report_path: None,
+        bars: Arc::new(Vec::new()),
     }
 }
 
@@ -390,6 +403,7 @@ fn pairs_result_to_report(
         fills: Vec::new(),
         kpis,
         report_path: None,
+        bars: Arc::new(Vec::new()),
     }
 }
 
@@ -418,6 +432,7 @@ fn tcn_result_to_report(
         fills: Vec::new(),
         kpis,
         report_path: None,
+        bars: Arc::new(Vec::new()),
     }
 }
 
@@ -451,6 +466,9 @@ fn sma_composed_result_to_report(
         fills: result.fills.clone(),
         kpis,
         report_path: None,
+        // Surface run bars to the UI so Lab chart markers anchor correctly
+        // against the run's own time window (chart_buffer may be empty).
+        bars: result.bars.clone(),
     }
 }
 

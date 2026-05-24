@@ -38,7 +38,7 @@ use std::sync::Arc;
 
 use rust_decimal::Decimal;
 use smol_str::SmolStr;
-use trading_core::{Symbol, Venue};
+use trading_core::{Bar, Symbol, Venue};
 
 use crate::lab::equity_loader::LabTuple;
 
@@ -59,6 +59,12 @@ pub struct RunReportMirror {
     pub kpis: backtest::BacktestKpis,
     /// Wall-clock time when the run completed.
     pub generated_at: time::OffsetDateTime,
+    /// The bars used for this run (from `RunReport.bars`), shared cheaply via Arc.
+    ///
+    /// Lab screen prefers these bars over the live `chart_buffer` so fill
+    /// triangle markers anchor correctly even when `chart_buffer` is empty
+    /// (e.g. Yahoo or synthetic-2023 runs).
+    pub bars: Arc<Vec<Bar>>,
 }
 
 // ── Run status types ──────────────────────────────────────────────────────────
@@ -100,6 +106,12 @@ pub struct RunSummary {
     pub fills: Vec<trading_core::FillView>,
     /// Aggregate KPI summary from `RunReport.kpis`.
     pub kpis: backtest::BacktestKpis,
+    /// Bars used by this run (from `RunReport.bars`).
+    ///
+    /// Empty for cross-sectional strategies (momentum/pairs/TCN).
+    /// Non-empty for single-symbol SMA/Composed arms.
+    /// Used by `RunReportMirror` so the Lab chart can anchor fill markers.
+    pub bars: Arc<Vec<Bar>>,
 }
 
 // ── In-flight cancellation token ──────────────────────────────────────────────
@@ -378,6 +390,7 @@ pub fn spawn_lab_run(
             equity_series: Vec::new(),
             fills: Vec::new(),
             kpis: backtest::BacktestKpis::default(),
+            bars: Arc::new(Vec::new()),
         };
         iced::Task::done(Message::LabRunCompleted(Ok(summary)))
     }
@@ -392,6 +405,7 @@ pub fn spawn_lab_run(
                 equity_series: Vec::new(),
                 fills: Vec::new(),
                 kpis: backtest::BacktestKpis::default(),
+                bars: Arc::new(Vec::new()),
             };
             return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         };
@@ -469,6 +483,7 @@ pub fn spawn_lab_run(
                                 equity_series,
                                 fills: report.fills.clone(),
                                 kpis: report.kpis.clone(),
+                                bars: report.bars.clone(),
                             })
                         }
                         Err(e) => Err(SmolStr::new(format!("{e}"))),
