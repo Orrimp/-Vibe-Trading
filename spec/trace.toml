@@ -1149,9 +1149,14 @@ title       = "Lab end-to-end v2 — close Phase A/B runtime gaps (LabSelectPair
 feature     = "lab-end-to-end-v2"
 product     = "spec/product.md"
 arch        = [
-  # analyst-authored Architecture findings F1-F6 in feature.md; architect M-T1 fills Design section
+  # analyst-authored Architecture findings F1-F6 in feature.md
   "spec/lab-end-to-end-v2/feature.md",
   "spec/lab-end-to-end-v2/tasks.md",
+  # ARCHITECT M-T1 (2026-05-24) — decomp.md is the developer's verbatim
+  # copy-source for T-AR-1..T-AR-8 (file:line + Rust block + cargo
+  # invocation + expected literal output). Wave plan with 4 waves
+  # (D-1 → D-2 → D-3 ∥ D-4); ~7-10 days dev wall-clock.
+  "spec/lab-end-to-end-v2/decomp.md",
 ]
 crates      = [
   # ANALYST M0 (2026-05-24) — paths surfaced from F1-F6 + R1-R9 in feature.md.
@@ -1184,5 +1189,5 @@ tests       = [
   "crates/ui/tests/panel_snapshots.rs",                    # R8.5 + K9 — running-state lab snapshot
   "crates/ui/tests/gallery_snapshots.rs",                  # R8.5 — progress_bar__* panels
 ]
-anchors     = []   # v2 touches engine dispatch + scenario bar loops (cancel + progress); 34 originals MUST stay byte-identical (R10.1; H5 hypothesis guard via verify_anchors.sh)
-state       = "proposed"
+anchors     = []   # v2 touches engine dispatch + scenario bar loops (cancel + progress); 34 originals MUST stay byte-identical (R10.1; H5 hypothesis guard via verify_anchors.sh). Architect M-T1 (2026-05-24) confirmed baseline `ANCHORS PASS  (34 / 34)`. Wave D-2 re-verifies 4 legacy anchors (btc-2023-1m-sma-cross, btc-2023-1m-macd-trend, btc-2023-1m-rsi-reversion, btc-2023-1m-bbands-mean-revert) byte-identical via ADR-0038 § D6.b protocol.
+state       = "in-progress"

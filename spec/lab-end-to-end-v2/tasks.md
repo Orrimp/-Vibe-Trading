@@ -1,7 +1,7 @@
 ---
 slug: lab-end-to-end-v2
-status: proposed
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-24
 ---
 
@@ -63,25 +63,73 @@ M-T1 kickoff (Q3-Q8 are LOW-risk analyst-recommended defaults).
 
 ## Wave C — Architect M-T1
 
-- [ ] **T-AR1** Read brief + read operator's Q answers (M-OD).
-- [ ] **T-AR2** Author Design section in `feature.md` (or sibling
-      ADR if surface changes warrant): `ScenarioConfig` field
-      additions (Q7-driven), `RunSummary` shape (Q3-driven),
-      progress Recipe pattern (mirrors `ServerTimeRecipe`).
-- [ ] **T-AR3** Anchor pre-stage: run `scripts/pre_stage_anchors.sh`
-      to record current 34 SHAs; confirm baseline before any
-      developer extraction.
-- [ ] **T-AR4** Wave / task decomposition: split into wave-1
-      (R1+R2 binary wrapper + LabSelectPair fix — small, no anchor
-      risk), wave-2 (R3 single-symbol dispatch arms — anchor-
-      gated), wave-3 (R6 Stop button — needs `ScenarioConfig`
-      change), wave-4 (R7+R8+R9 progress channel + widget). Mark
-      wave-3 and wave-4 as parallelizable (different crates).
-- [ ] **T-AR5** Document the assertion budget for `LabSelectPair`
-      cascade (existing markers/signals fetch fires for free) —
-      surface to developer brief.
-- [ ] **T-AR6** Update REQ row in `spec/trace.toml`: add `arch`
-      paths (the architect-authored Design + ADR if any).
+Decomposition deliverable: [`decomp.md`](decomp.md). The 8 T-AR rows
+below cite the corresponding `decomp.md` § for the developer's
+copy-verbatim block + cargo invocation + expected output.
+
+- [x] **T-AR-1** Binary-side `LabRunCompleted` wrapper (F1 closure)
+      — see [`decomp.md § T-AR-1`](decomp.md#t-ar-1--binary-side-labruncompleted-wrapper-f1-closure).
+      Decision: intercept BEFORE `ui::state::update` to preserve K3
+      pre-mutation tuple snapshot. Mirror `select_pair` capture
+      pattern at `cockpit_live.rs:793-816`. Rotate
+      `prev ← last; last ← new_mirror` post-forward; on `Err`, no
+      rotation (R2.3).
+- [x] **T-AR-2** `LabSelectPair` → `selected_symbol` wiring (F2)
+      — see [`decomp.md § T-AR-2`](decomp.md#t-ar-2--labselectpair--selected_symbol-wiring-f2-closure).
+      Decision: one-line add to the existing arm at `state.rs:1893`;
+      extend `select_pair` capture marker at `cockpit_live.rs:793`
+      to also see `LabSelectPair` so the markers/signals fetch
+      cascade fires for free (R1.2). NO `Task::done(SelectSymbol)`
+      chain — avoids the full cascade's side effects (chart tooltip
+      clear, zoom reset).
+- [x] **T-AR-3** `RunSummary` shape extension (Q3=(a))
+      — see [`decomp.md § T-AR-3`](decomp.md#t-ar-3--runsummary-shape-extension-q3a-closure).
+      Decision: `RunSummary` at `runner.rs:79-87` gains
+      `equity_series`, `fills`, `kpis`. 4 existing call sites get the
+      sweep. `BacktestKpis: Default` confirmed (or added in same
+      commit). No disk re-read; binary-side wrapper reads in-memory.
+- [x] **T-AR-4** Engine dispatch extension (Q1=(a)+(d))
+      — see [`decomp.md § T-AR-4`](decomp.md#t-ar-4--engine-dispatch-extension-q1ad-closure).
+      Decision: extract `main.rs:1629-1791` inline bar loop +
+      write-report block into NEW `scenarios/sma_composed_run.rs`.
+      4 new arms at `engine.rs:513`. ADR-0038 § D6.b
+      wiring-bug-fix re-emission protocol applies; expect 4 legacy
+      anchors to stay byte-identical.
+- [x] **T-AR-5** `cancel_rx` + `progress_tx` engine threading
+      (Q2=(a) + Q4=(b) + Q7=(b))
+      — see [`decomp.md § T-AR-5`](decomp.md#t-ar-5--cancel_rx--progress_tx-engine-threading-q2a--q4b--q7b).
+      Decision: separate args (NOT `ScenarioConfig` fields) preserve
+      `Clone`. New modules `backtest/src/cancel.rs` +
+      `backtest/src/progress.rs`. Poll cadence: 32 bars during first
+      128 bars (K4 worst-case Stop latency), 128 bars steady-state.
+      K1 mitigation: `run_scenario_for_test(cfg)` helper preserves
+      6 Phase B determinism tests with zero assertion changes.
+- [x] **T-AR-6** Progress widget + Subscription Recipe (Q5=(a))
+      — see [`decomp.md § T-AR-6`](decomp.md#t-ar-6--progress-widget--subscription-recipe-q5a).
+      Decision: `LabProgressRecipe` mirrors `ServerTimeRecipe`
+      verbatim (K8 mitigation — `rt_handle.enter()` + drop guard
+      before `Box::pin`). Salt-bumped per-`LabRunRequested` for
+      Recipe identity. Lossy `tokio::sync::mpsc::channel(8)`.
+      Widget renders ONLY when `lab_run_inflight == true` — Phase F
+      panel-snapshot ratchet stays green (R10.3).
+- [x] **T-AR-7** `RunState::Cancelled` variant (Q8=(b))
+      — see [`decomp.md § T-AR-7`](decomp.md#t-ar-7--run-button-state-machine-extension-q8b).
+      Decision: 5-variant enum at `run_button.rs:39-49`.
+      `from_cockpit` signature widens to `Option<LastRunOutcome>`
+      (Ok / Failed / Cancelled). New `Message::LabStopPressed` arm
+      drops `lab_state.run_cancel` (the handle Drop fires cancel).
+      Delta-badge correctness preserved: T-AR-1 wrapper does NOT
+      rotate on `Err(Cancelled)` so a cancelled run is not a valid
+      `last_run` comparison anchor (K6).
+- [x] **T-AR-8** Wave plan (4 waves; D-1 → D-2 → D-3 ∥ D-4)
+      — see [`decomp.md § T-AR-8`](decomp.md#t-ar-8--wave-plan-4-waves-d-1--d-2--d-3--d-4).
+      Decision: D-1 (2d; F1+F2+Q6+test; zero anchor risk) →
+      D-2 (3d; Q1=(a) extraction; 4-anchor byte-identical re-verify)
+      → D-3 (2d; Stop button + cancel threading) ∥ D-4 (2-3d;
+      progress channel + widget + Recipe). Total: 7-10 days.
+      Baseline gate: `ANCHORS PASS  (34 / 34)`.
+- [x] **T-AR-9** Update REQ row in `spec/trace.toml`: add `arch`
+      paths (decomp.md, feature.md Design refs).
 
 ## Wave D — Developer (parallel where independent)
 
@@ -235,3 +283,8 @@ M-T1 kickoff (Q3-Q8 are LOW-risk analyst-recommended defaults).
 - 2026-05-24 (analyst): initial task list — wave A done; B-G
   ungated. Wave D split into D-1..D-4 with explicit parallel/
   serial markers.
+- 2026-05-24 (architect): M-T1 closed. T-AR-1..T-AR-9 ticked with
+  decision rationale + decomp.md cross-refs. Frontmatter flipped
+  `owner: analyst → architect`, `status: proposed → in-progress`.
+  Baseline gate locked: `ANCHORS PASS  (34 / 34)`. Decomp deliverable
+  at `decomp.md`. Wave D handoff to developer.
