@@ -26,6 +26,7 @@ use crate::time::Timestamp;
 ///
 /// `Ord` is derived alphabetically — `Binance < Coinbase < Kraken`
 /// matches the v1.5b feature brief's R7.4 tie-break order.
+/// `Yahoo` sorts last (data-source only, not tradeable).
 ///
 /// **No `Default` impl** — every `Bar` / `Tick` must construct
 /// `Venue` explicitly so a venue is always declared at the type level.
@@ -35,6 +36,11 @@ pub enum Venue {
     Binance,
     Coinbase,
     Kraken,
+    /// Yahoo Finance — data-source only.  Not a tradeable venue.
+    /// Attempting to route orders through `Venue::Yahoo` is a
+    /// programming error; any trading-path `match` arm should use
+    /// `unreachable!("Yahoo is data-only; not tradeable")`.
+    Yahoo,
 }
 
 impl fmt::Display for Venue {
@@ -43,6 +49,7 @@ impl fmt::Display for Venue {
             Venue::Binance => "binance",
             Venue::Coinbase => "coinbase",
             Venue::Kraken => "kraken",
+            Venue::Yahoo => "yahoo",
         };
         f.write_str(s)
     }
@@ -70,6 +77,7 @@ impl FromStr for Venue {
             "binance" => Ok(Venue::Binance),
             "coinbase" => Ok(Venue::Coinbase),
             "kraken" => Ok(Venue::Kraken),
+            "yahoo" => Ok(Venue::Yahoo),
             _ => Err(ParseVenueError {
                 input: s.to_string(),
             }),
@@ -142,11 +150,12 @@ mod tests {
         assert_eq!(Venue::Binance.to_string(), "binance");
         assert_eq!(Venue::Coinbase.to_string(), "coinbase");
         assert_eq!(Venue::Kraken.to_string(), "kraken");
+        assert_eq!(Venue::Yahoo.to_string(), "yahoo");
     }
 
     #[test]
     fn venue_from_str_round_trip() {
-        for v in [Venue::Binance, Venue::Coinbase, Venue::Kraken] {
+        for v in [Venue::Binance, Venue::Coinbase, Venue::Kraken, Venue::Yahoo] {
             let s = v.to_string();
             let parsed: Venue = s.parse().unwrap();
             assert_eq!(parsed, v);
@@ -161,7 +170,7 @@ mod tests {
 
     #[test]
     fn venue_serde_round_trip() {
-        for v in [Venue::Binance, Venue::Coinbase, Venue::Kraken] {
+        for v in [Venue::Binance, Venue::Coinbase, Venue::Kraken, Venue::Yahoo] {
             let json = serde_json::to_string(&v).unwrap();
             // snake_case JSON encoding
             assert_eq!(json, format!("\"{}\"", v));
@@ -174,6 +183,20 @@ mod tests {
     fn venue_ord_alphabetical() {
         assert!(Venue::Binance < Venue::Coinbase);
         assert!(Venue::Coinbase < Venue::Kraken);
+        // Yahoo sorts last (data-only, added after tradeable venues)
+        assert!(Venue::Kraken < Venue::Yahoo);
+    }
+
+    #[test]
+    fn venue_yahoo_display_parse_serde() {
+        // T-C4.3 gate: Yahoo round-trip
+        assert_eq!(Venue::Yahoo.to_string(), "yahoo");
+        let parsed: Venue = "yahoo".parse().unwrap();
+        assert_eq!(parsed, Venue::Yahoo);
+        let json = serde_json::to_string(&Venue::Yahoo).unwrap();
+        assert_eq!(json, "\"yahoo\"");
+        let back: Venue = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, Venue::Yahoo);
     }
 
     #[test]

@@ -899,6 +899,81 @@ Architect M-T1 finalises:
 - [`https://docs.rs/yfinance-rs`](https://docs.rs/yfinance-rs)
   — Q3=(b) candidate crate docs.
 
+## Implementation
+
+### Wave C-4 — `Venue::Yahoo` variant cascade (developer, 2026-05-24)
+
+**Files touched:**
+
+- `crates/core/src/venue.rs` — added `Yahoo` variant with doc-comment explaining
+  data-only semantics; extended `Display`, `FromStr`, and unit tests.
+- `crates/agent/tests/coinbase_outage_isolation.rs` — cascade fix: added
+  `Venue::Yahoo => unreachable!("Yahoo is data-only; no live tick feed routes
+  ticks with Venue::Yahoo")` arm to the non-exhaustive `match tick.venue`.
+- `crates/ui/src/lab/persistence.rs` — string decode: added `"Yahoo" =>
+  Venue::Yahoo` arm for future deserialization of persisted Lab state.
+- `crates/backtest/src/scenarios/sma_composed_run.rs` — fixed pre-existing
+  `doc_markdown` clippy warning (ChaCha20Rng backtick).
+
+**Cascade map:** clippy `-D warnings` surfaced exactly 1 non-exhaustive match
+site (agent/tests/coinbase_outage_isolation.rs:308). All other Venue::X usages
+are constructors, not match arms.
+
+**Anchor impact:** `Venue::Yahoo` is additive. All 34 anchored body-SHAs remain
+byte-identical (`bash scripts/verify_anchors.sh` → `ANCHORS PASS (34 / 34)`).
+The existing Binance-path audit writes use `venue.to_string()` → "binance" —
+unchanged.
+
+**Cargo gates:**
+- `cargo fmt --check` → PASS
+- `cargo clippy --workspace --features candle,realdata,live -- -D warnings` → PASS (0 warnings)
+- `cargo test --workspace --lib --features candle` → 1,078 passed; 0 failed
+- `bash scripts/verify_anchors.sh` → ANCHORS PASS (34 / 34)
+
+### Wave C-2 — `fetch_yahoo_klines` CLI binary (developer, 2026-05-24)
+
+**Scope:** workspace `Cargo.toml` dep add + `crates/data/Cargo.toml` feature gates +
+`crates/data/src/bin/fetch_yahoo_klines.rs` (NEW).
+
+**Files touched:**
+
+- `Cargo.toml` — added `yahoo_finance_api = { version = "=4.1.0",
+  default-features = false }` to `[workspace.dependencies]`.
+  ADR-0040 D2 (6-item library-compat checklist) is the CLAUDE.md
+  non-negotiable gate for this external dep.
+- `crates/data/Cargo.toml` — added `yahoo_finance_api = { workspace = true,
+  optional = true }` + features `yahoo = ["dep:yahoo_finance_api"]` and
+  `yahoo-online = ["yahoo"]` (default-off). Also added
+  `[[bin]] name = "fetch_yahoo_klines" required-features = ["yahoo-online"]`.
+- `crates/data/src/yahoo.rs` — added `fetch_and_cache` async method under
+  `#[cfg(feature = "yahoo-online")]` with supporting helpers:
+  `classify_yfa_error`, `sha256_of_quotes`, `quotes_to_bars`,
+  `write_bars_by_month`, `upsert_yahoo_response_checksum`,
+  `regenerate_revision_manifest`, `write_revision_manifest`.
+- `crates/data/src/bin/fetch_yahoo_klines.rs` (NEW, ~340 LOC):
+  - clap arg parsing: `--tickers`, `--interval`, `--start`, `--end`,
+    `--out`, `--dry-run`, `--emit-revision-manifest`.
+  - tokio async main.
+  - `fetch_with_backoff`: exponential backoff 1s→60s cap, max 5 retries
+    on `YahooError::RateLimited` (K1 mitigation, ADR-0040 § T-AR7).
+  - `run_dry`: prints URL + expected bar count, zero I/O (T-C2.4).
+  - 9 unit tests: `parse_interval_*`, `parse_date_range_*`,
+    `parse_date_to_midnight_ms_*`, `format_date_*`,
+    `dry_run_executes_without_panic`.
+
+**Anchor impact:** zero. `cargo run --bin fetch_yahoo_klines` never touches
+anchored CLI paths. `ANCHORS PASS (34 / 34)` confirmed.
+
+**Cargo gates:**
+- `cargo fmt --check` → PASS
+- `cargo clippy -p data --features yahoo-online -- -D warnings` → PASS (0 warnings)
+- `cargo build -p data --features yahoo-online --bin fetch_yahoo_klines` → PASS
+- `cargo test -p data --features yahoo-online --bin fetch_yahoo_klines` →
+  `test result: ok. 9 passed; 0 failed`
+- `cargo test -p data --features yahoo-online --lib` →
+  `test result: ok. 56 passed; 0 failed; 1 ignored`
+- `bash scripts/verify_anchors.sh` → `ANCHORS PASS (34 / 34)`
+
 ## Changelog
 
 - 2026-05-24 (analyst): initial v0.1.0 brief. Crate survey

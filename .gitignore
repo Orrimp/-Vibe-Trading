@@ -12,6 +12,15 @@
 *.toml.local
 config/*.local
 
+# Yahoo Finance parquet cache (Q10 = (b) / ADR-0040 § D3).
+# Bulk data is NOT redistributed per Yahoo TOS (K5); only
+# `data/yahoo/REVISION.toml` and sample fixtures under
+# `crates/data/tests/fixtures/yahoo/` are tracked.
+# Note: `/data/` above already covers this; these lines are explicit
+# documentation of the policy for future operators.
+data/yahoo/**/*.parquet
+!data/yahoo/REVISION.toml
+
 # TCN checkpoints — gitignored except LFS-tracked anchors.
 # Anchors live under crates/forecast/checkpoints/anchors/ (Wave C).
 crates/forecast/checkpoints/*.safetensors

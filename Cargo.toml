@@ -121,6 +121,13 @@ parking_lot = { version = "0.12.3" }
 # HTTP mock server (dev-only — T613 mock REST integration test)
 wiremock = { version = "0.6.2" }
 
+# Yahoo Finance unofficial-API client (ADR-0040 / D2).
+# Pinned at =4.1.0 for stability against Yahoo response-shape drift.
+# Feature `default-features = false` so the `blocking` feature is not pulled into
+# the async-only cockpit build (K10 mitigation). Optional dep — only active when
+# `crates/data --features yahoo` or `--features yahoo-online` is requested.
+yahoo_finance_api = { version = "=4.1.0", default-features = false }
+
 # chart-fixture-line-clipping bug — backport iced master commit 76b32d4906
 # (Jan 28, 2026) "Fix transformation of `canvas` primitives in `tiny_skia`"
 # into our pinned iced 0.14.0. The fix lives in `vendor/iced_tiny_skia/`

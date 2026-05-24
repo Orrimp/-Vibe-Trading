@@ -311,6 +311,11 @@ async fn t1414_v7_coinbase_outage_isolated() {
                     Venue::Coinbase => {
                         panic!("Coinbase feed produced a tick post-panic — isolation regressed");
                     }
+                    Venue::Yahoo => {
+                        unreachable!(
+                            "Yahoo is data-only; no live tick feed routes ticks with Venue::Yahoo"
+                        );
+                    }
                 },
                 Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
                 Err(tokio::sync::broadcast::error::TryRecvError::Closed) => break,

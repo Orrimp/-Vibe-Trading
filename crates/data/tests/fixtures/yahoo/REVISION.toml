@@ -1,0 +1,12 @@
+[revision]
+sha256 = "fc0ad9a6be6c89d50373d9214cf80cd2777b11e26e48440234313dcf0588ddf4"
+
+[revision.metadata]
+generated_at = "2026-05-24T14:14:18Z"
+binance_base = "https://api.binance.com"
+fetch_tool = "fetch_binance_klines"
+fetch_version = "0.1.0"
+interval = "1h"
+
+[files]
+"BTC-USD/1d/2024/01.parquet" = "22e4103ff5a14576cfd017a22f08e5f51b0ed15aeb5ecc4fb339c8853bd580df"

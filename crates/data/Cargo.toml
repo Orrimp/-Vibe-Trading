@@ -8,6 +8,11 @@ license.workspace = true
 name = "fetch_binance_klines"
 path = "src/bin/fetch_binance_klines.rs"
 
+[[bin]]
+name = "fetch_yahoo_klines"
+path = "src/bin/fetch_yahoo_klines.rs"
+required-features = ["yahoo-online"]
+
 [dependencies]
 trading_core = { path = "../core" }
 audit = { path = "../audit" }
@@ -32,14 +37,27 @@ clap.workspace = true
 anyhow.workspace = true
 sha2.workspace = true
 toml.workspace = true
+smol_str.workspace = true
 
 tokio-util.workspace = true
+yahoo_finance_api = { workspace = true, optional = true }
 
 [features]
 # `fixtures` exposes `MockFeed` and other test-harness scaffolding to other
 # crates' integration tests (T1407 / Q10). Production binaries do not enable
 # this feature, so the harness is excluded from `cargo build --release`.
 fixtures = []
+
+# v0.1.0 — Yahoo Finance read-path + parquet cache.
+# Enables `pub mod yahoo` and the `binance_to_yahoo_ticker` helper.
+# No network required — reads from data/yahoo/ cache only.
+yahoo = ["dep:yahoo_finance_api"]
+
+# Adds the async `fetch_and_cache` method; used by the `fetch_yahoo_klines`
+# CLI only. The cockpit reads the cache and never fetches directly (K10).
+# tokio and reqwest are already non-optional workspace deps in this crate,
+# so we only gate on the yahoo dep here.
+yahoo-online = ["yahoo"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

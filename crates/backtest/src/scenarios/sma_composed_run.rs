@@ -177,7 +177,7 @@ pub fn synthetic_bars_minute(
 
 /// F11 — Per-symbol seed offset for `synthetic_bars_minute`.
 ///
-/// Returns a deterministic `u64` mixed into the ChaCha20Rng seed so the Lab
+/// Returns a deterministic `u64` mixed into the `ChaCha20Rng` seed so the Lab
 /// UI's pair picker produces different synthetic random walks per pair.
 ///
 /// **Anchor-preservation contract**: returns 0 for `BTCUSDT` so the legacy

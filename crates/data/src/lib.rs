@@ -16,6 +16,8 @@ pub mod mock_feed;
 pub mod replay_feed;
 pub mod revision;
 pub mod source;
+#[cfg(feature = "yahoo")]
+pub mod yahoo;
 
 pub use bar_aggregator::{aggregate_one_second, aggregate_one_second_iter};
 pub use bar_stream::{bar_stream, bar_stream_with_cross_check};

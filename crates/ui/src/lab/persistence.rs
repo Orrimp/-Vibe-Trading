@@ -225,6 +225,7 @@ fn lab_state_from_json(j: &LabStateJson) -> LabState {
     let pair = j.pair.as_ref().and_then(|p| {
         let venue = match p.venue.as_str() {
             "Binance" => Venue::Binance,
+            "Yahoo" => Venue::Yahoo,
             _ => return None,
         };
         Some((venue, Symbol::new(&p.symbol)))
