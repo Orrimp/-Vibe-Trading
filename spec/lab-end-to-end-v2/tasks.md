@@ -39,28 +39,27 @@ start on Q1 / Q2 without the operator's call (HIGH-stakes); the
 remaining Q's auto-default if the operator hasn't responded by
 M-T1 kickoff (Q3-Q8 are LOW-risk analyst-recommended defaults).
 
-- [ ] **T-OD1 — Q1**: strategy dispatch shape. (a) single-symbol
+- [x] **T-OD1 — Q1**: strategy dispatch shape. (a) single-symbol
       arms / (b) `pair_filter` / (c) scope selector / (d) defer.
-      Analyst default: (a)+(d). **HIGH-stakes — operator must pick.**
-- [ ] **T-OD2 — Q2**: Stop button in scope. (a) in / (b) sibling
-      feature. Analyst default: (a). **HIGH-stakes — operator
-      should pick.**
-- [ ] **T-OD3 — Q3**: `last_run_report` data path. (a) extend
-      `RunSummary` / (b) on-disk re-read. Analyst default: (a).
-- [ ] **T-OD4 — Q4**: progress channel shape. (a) explicit /
+      Analyst default: (a)+(d). — **Resolved 2026-05-24 → (a)+(d)** by operator. Full scope: extract 4 single-symbol arms (`v0.sma`, `v0.5.macd`, `v0.5.rsi`, `v0.5.bbands`) from CLI into engine dispatch. BTCUSDT picker actually trades BTC only when paired with a single-symbol strategy.
+- [x] **T-OD2 — Q2**: Stop button in scope. (a) in / (b) sibling
+      feature. Analyst default: (a). — **Resolved 2026-05-24 → (a)** by operator. Wave D-3 (`RunCancelHandle` lifecycle + `cancel_rx` engine threading + `is_cancelled()` honored at loop boundary) in v2 scope.
+- [x] **T-OD3 — Q3**: `last_run_report` data path. (a) extend
+      `RunSummary` / (b) on-disk re-read. Analyst default: (a). — **Resolved 2026-05-24 → (a)** by orchestrator under standing Autoapprove. Extend `RunSummary` with equity + fills in-memory; avoid disk round-trip.
+- [x] **T-OD4 — Q4**: progress channel shape. (a) explicit /
       (b) reuse cancel poll / (c) UI-side fake / (d) bar-count
-      estimate + snap. Analyst default: (b).
-- [ ] **T-OD5 — Q5**: progress UX shape. (a) bar + spinner /
+      estimate + snap. Analyst default: (b). — **Resolved 2026-05-24 → (b)** by orchestrator under standing Autoapprove. Reuse cancellation poll boundary as natural progress emit site.
+- [x] **T-OD5 — Q5**: progress UX shape. (a) bar + spinner /
       (b) bar replaces spinner / (c) bar + spinner stacked.
-      Analyst default: (a).
-- [ ] **T-OD6 — Q6**: fixtures cockpit pair pre-loading.
+      Analyst default: (a). — **Resolved 2026-05-24 → (a)** by orchestrator under standing Autoapprove. Spinner + bar combo signals both activity + progress.
+- [x] **T-OD6 — Q6**: fixtures cockpit pair pre-loading.
       (a) pre-load all / (b) lazy / (c) symbol-rewrite. Analyst
-      default: (a).
-- [ ] **T-OD7 — Q7**: cancellation receiver threading.
+      default: (a). — **Resolved 2026-05-24 → (a)** by orchestrator under standing Autoapprove. Pre-load all 10 in fixtures.
+- [x] **T-OD7 — Q7**: cancellation receiver threading.
       (a) `ScenarioConfig` field / (b) separate arg. Analyst
-      default: (b).
-- [ ] **T-OD8 — Q8**: Run-button label on Stop. (a) Idle /
-      (b) Cancelled. Analyst default: (b).
+      default: (b). — **Resolved 2026-05-24 → (b)** by orchestrator under standing Autoapprove. Separate arg preserves `ScenarioConfig: Clone` for tests.
+- [x] **T-OD8 — Q8**: Run-button label on Stop. (a) Idle /
+      (b) Cancelled. Analyst default: (b). — **Resolved 2026-05-24 → (b)** by orchestrator under standing Autoapprove. New `Cancelled` state preserves delta-badge correctness vs reusing `Idle`.
 
 ## Wave C — Architect M-T1
 
