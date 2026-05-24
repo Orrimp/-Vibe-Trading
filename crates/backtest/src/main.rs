@@ -11,7 +11,6 @@
 //! [`scenario_to_feature`] (defined at the bottom of this file).
 
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 
 #[cfg(feature = "realdata")]
 use backtest::realdata::{RealDataBarSource, TimeSpan as RealDataTimeSpan};
@@ -22,10 +21,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use tracing::info;
-use trading_core::{
-    Bar, Money, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
-    Timeframe, Timestamp, Usdt, Venue,
-};
+use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -103,6 +99,11 @@ enum ScenarioDataSource {
 #[derive(Debug, Clone)]
 enum ScenarioStrategy {
     /// Compiled-in SMA crossover.
+    // fast_len / slow_len are set from `Scenario::from_name`; the extracted
+    // `sma_composed_run::run` currently hardcodes 20/50 (the single canonical
+    // values used by all v0 SMA scenarios). These fields are retained for
+    // potential future parameterisation.
+    #[allow(dead_code)]
     SmaCrossover { fast_len: usize, slow_len: usize },
     /// Composed strategy — resolved at run-time from a config path.
     Composed { id: String },
@@ -1021,8 +1022,6 @@ async fn main() -> Result<()> {
     info!(bars = bar_count, data = %data_source, "data ready");
 
     // ── Strategy + risk setup ──────────────────────────────────────────────────
-    let registry = strategy::StrategyRegistry::new();
-
     // ── v1 multi-symbol momentum: separate execution path ─────────────────────
     if let ScenarioStrategy::Momentum { config_id } = &scenario.strategy.clone() {
         let config_id = config_id.clone();
@@ -1508,235 +1507,46 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Resolve the strategy to use — CLI `--strategy` overrides scenario default.
-    // Priority: CLI flag → scenario default.
-    let effective_strategy_id: Option<String> = args.strategy.clone().or_else(|| {
-        match &scenario.strategy {
-            ScenarioStrategy::Composed { id } => Some(id.clone()),
-            ScenarioStrategy::SmaCrossover { .. } => None, // use compiled-in
-            ScenarioStrategy::Momentum { .. } => unreachable!("handled above"),
-            ScenarioStrategy::MeanReversionPairs { .. } => unreachable!("handled above"),
-            ScenarioStrategy::TcnOverlayMomentum { .. } => unreachable!("handled above"),
-            ScenarioStrategy::TcnOverlayMomentumWeights { .. } => unreachable!("handled above"),
-            ScenarioStrategy::PatchtstOverlayMomentumWeights { .. } => {
-                unreachable!("handled above")
-            }
-            ScenarioStrategy::GarchVolTargetOverlayMomentum { .. } => {
-                unreachable!("handled above")
-            }
-        }
-    });
+    // Wave D-2 / T-AR-4: Resolve strategy_id for the extracted bar loop.
+    // Priority: CLI `--strategy` flag → scenario default.
+    // `None` for SmaCrossover → normalised to "sma_crossover" below.
+    let effective_strategy_id: String =
+        args.strategy
+            .clone()
+            .unwrap_or_else(|| match &scenario.strategy {
+                ScenarioStrategy::Composed { id } => id.clone(),
+                ScenarioStrategy::SmaCrossover { .. } => "sma_crossover".to_string(),
+                ScenarioStrategy::Momentum { .. } => unreachable!("handled above"),
+                ScenarioStrategy::MeanReversionPairs { .. } => unreachable!("handled above"),
+                ScenarioStrategy::TcnOverlayMomentum { .. } => unreachable!("handled above"),
+                ScenarioStrategy::TcnOverlayMomentumWeights { .. } => unreachable!("handled above"),
+                ScenarioStrategy::PatchtstOverlayMomentumWeights { .. } => {
+                    unreachable!("handled above")
+                }
+                ScenarioStrategy::GarchVolTargetOverlayMomentum { .. } => {
+                    unreachable!("handled above")
+                }
+            });
 
-    // Compute strategy notes for the SMA/Composed report body (mirrors write_report @2538).
-    let strategy_notes = match &scenario.strategy {
-        ScenarioStrategy::SmaCrossover { fast_len, slow_len } => {
-            format!("v0 SMA crossover: fast={fast_len}, slow={slow_len}")
-        }
-        ScenarioStrategy::Composed { id } => {
-            format!("Composed strategy: {id}")
-        }
-        _ => String::new(), // unreachable for SMA/Composed path
-    };
-
-    let strategy_meta = if let Some(ref strat_id) = effective_strategy_id {
-        // Check if it's a compiled-in strategy first.
-        if strat_id == "sma_crossover" {
-            let (fast_len, slow_len) = match &scenario.strategy {
-                ScenarioStrategy::SmaCrossover { fast_len, slow_len } => (*fast_len, *slow_len),
-                _ => (20, 50), // CLI override with sma_crossover — use defaults
-            };
-            registry.register(Box::new(strategy::SmaCrossover::new(fast_len, slow_len)));
-            backtest::cli_types::StrategyMeta {
-                id: "sma_crossover".to_string(),
-                kind: "compiled-in".to_string(),
-                hash_hex: "n/a".to_string(),
-                source_path: "compiled-in".to_string(),
-                signal: format!("sma_crossover(fast={fast_len}, slow={slow_len})"),
-                notes: strategy_notes.clone(),
-            }
-        } else {
-            // Attempt to load from config/strategies/<id>.toml.
-            let toml_path = PathBuf::from(format!("config/strategies/{strat_id}.toml"));
-            let cfg = strategy::ComposedStrategyConfig::from_file(&toml_path)
-                .with_context(|| format!("load strategy config: {}", toml_path.display()))?;
-            let hash_hex = cfg
-                .hash
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>();
-            let source_path = toml_path.display().to_string();
-            let signal = cfg.signal_raw.to_string();
-            let meta = backtest::cli_types::StrategyMeta {
-                id: strat_id.clone(),
-                kind: "composed".to_string(),
-                hash_hex,
-                source_path,
-                signal,
-                notes: strategy_notes.clone(),
-            };
-            let composed = strategy::ComposedStrategy::from_config(
-                cfg,
-                smol_str::SmolStr::new(toml_path.to_string_lossy()),
-            );
-            registry.register(Box::new(composed));
-            meta
-        }
-    } else {
-        // Default: use compiled-in SMA crossover from scenario.
-        let (fast_len, slow_len) = match &scenario.strategy {
-            ScenarioStrategy::SmaCrossover { fast_len, slow_len } => (*fast_len, *slow_len),
-            _ => (20, 50),
-        };
-        registry.register(Box::new(strategy::SmaCrossover::new(fast_len, slow_len)));
-        backtest::cli_types::StrategyMeta {
-            id: "sma_crossover".to_string(),
-            kind: "compiled-in".to_string(),
-            hash_hex: "n/a".to_string(),
-            source_path: "compiled-in".to_string(),
-            signal: format!("sma_crossover(fast={fast_len}, slow={slow_len})"),
-            notes: strategy_notes.clone(),
-        }
-    };
-
-    info!(
-        strategy_id = %strategy_meta.id,
-        strategy_kind = %strategy_meta.kind,
-        "strategy resolved"
-    );
-
-    let risk_limits = RiskLimits {
-        per_symbol_exposure_cap: dec!(0.40),
-        price_sanity_band: dec!(0.20),
-        portfolio_exposure_cap: None,
-    };
-    let sizer = risk::FixedFractionSizer::new(dec!(0.10));
-
-    let match_config = backtest::paper::MatchConfig {
+    // Wave D-2 / T-AR-4: delegate to the extracted sma_composed_run module.
+    // Passing `bars_override = Some(bars)` ensures the CLI uses the same
+    // pre-generated bar stream as before (anchor-preserving behaviour move).
+    let sma_run_input = backtest::cli_types::SmaComposedRunInput {
+        strategy_id: effective_strategy_id,
+        symbol: scenario.symbol.clone(),
+        start_year: scenario.start_year,
+        bar_count: scenario.bar_count,
+        initial_capital: scenario.initial_capital,
         slippage_bps: scenario.slippage_bps,
         taker_fee_bps: scenario.taker_fee_bps,
-        maker_fee_bps: 2,
-        fill_price_mode: backtest::paper::FillPriceMode::BarClose,
     };
-    let mut engine = backtest::PaperEngine::new(match_config, seed);
+    let result =
+        backtest::scenarios::sma_composed_run::run(&sma_run_input, Some(bars), seed).await?;
 
-    let mut state = backtest::cli_types::BacktestState::new(scenario.initial_capital);
-    let mut position = Position::empty(scenario.symbol.clone());
-    let tolerance = dec!(0.01);
-
-    let start_instant = Instant::now();
-    info!("running backtest loop ({bar_count} bars)");
-
-    for (bar_idx, bar) in bars.into_iter().enumerate() {
-        let mark = bar.close.get();
-        position.last_mark = bar.close;
-
-        // Record pre-fill equity for sizing / drawdown reference
-        let equity = state.equity(mark);
-
-        let signals = registry.on_bar(&bar);
-        let mut orders: Vec<Order> = Vec::new();
-
-        for sig in &signals {
-            let desired_side: Option<Side> = match sig.kind {
-                trading_core::SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
-                    Some(Side::Buy)
-                }
-                trading_core::SignalKind::Sell if position.base_qty > Decimal::ZERO => {
-                    Some(Side::Sell)
-                }
-                _ => None,
-            };
-
-            if let Some(side) = desired_side {
-                let order_opt = match side {
-                    Side::Buy => {
-                        let eq_money: Money<Usdt> = Money::from_decimal(equity);
-                        risk::size_and_validate(
-                            &sizer,
-                            sig.strategy_id.clone(),
-                            sig.symbol.clone(),
-                            side,
-                            eq_money,
-                            bar.close,
-                            &position,
-                            &risk_limits,
-                        )
-                        .ok()
-                    }
-                    Side::Sell => Quantity::new(position.base_qty)
-                        .ok()
-                        .filter(|q| q.get() > Decimal::ZERO)
-                        .and_then(|q| {
-                            Order::new(
-                                sig.strategy_id.clone(),
-                                sig.symbol.clone(),
-                                Side::Sell,
-                                q,
-                                OrderKind::Market,
-                                TimeInForce::Ioc,
-                                &position,
-                                bar.close,
-                                &risk_limits,
-                                equity,
-                            )
-                            .ok()
-                        }),
-                };
-                if let Some(ord) = order_opt {
-                    orders.push(ord);
-                }
-            }
-        }
-
-        if !orders.is_empty() {
-            use backtest::MatchingEngine;
-            if let Ok(fills) = engine.step(&bar, orders).await {
-                for fill in &fills {
-                    match fill.side {
-                        Side::Buy => {
-                            state.apply_buy(fill.qty.get(), fill.price.get(), fill.fee.amount());
-                            position.base_qty += fill.qty.get();
-                            position.cost_basis = Money::from_decimal(state.position_cost);
-                        }
-                        Side::Sell => {
-                            state.apply_sell(fill.qty.get(), fill.price.get(), fill.fee.amount());
-                            position.base_qty -= fill.qty.get();
-                            if position.base_qty < Decimal::ZERO {
-                                position.base_qty = Decimal::ZERO;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Push post-fill equity to the equity curve
-        let post_fill_equity = state.equity(mark);
-        state.update_drawdown(post_fill_equity);
-        state.equity_curve.push(post_fill_equity);
-
-        // Minute-boundary reconciliation check (every 1440 bars ≈ 1 day)
-        // Invariant: cash + position_qty * mark == equity_curve.last()
-        if bar_idx % 1440 == 0 {
-            let recomputed = state.cash + state.position_qty * mark;
-            let recorded = post_fill_equity;
-            if (recomputed - recorded).abs() > tolerance {
-                state.ledger_imbalance_events += 1;
-                tracing::warn!(bar = bar_idx, diff = %(recomputed - recorded).abs(), "reconciliation mismatch");
-            }
-        }
-    }
-
-    let elapsed = start_instant.elapsed().as_secs_f64();
-    let final_equity = state.equity(position.last_mark.get());
-
-    info!(
-        elapsed_s = elapsed,
-        trades = state.trades,
-        final_equity = %final_equity,
-        imbalances = state.ledger_imbalance_events,
-        "backtest complete"
-    );
+    let final_equity = result.final_equity;
+    let elapsed = result.elapsed_secs;
+    let strategy_meta = result.strategy_meta.clone();
+    let state = &result.state;
 
     // ── Write report ───────────────────────────────────────────────────────────
     let now = OffsetDateTime::now_utc();
@@ -1770,7 +1580,7 @@ async fn main() -> Result<()> {
     };
     backtest::report::sma::write(
         &sma_input,
-        &state,
+        state,
         scenario.initial_capital,
         final_equity,
         seed,

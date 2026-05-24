@@ -188,6 +188,34 @@ impl BacktestState {
     }
 }
 
+// ── SmaComposedRun scenario input (Wave D-2 / T-AR-4) ────────────────────────
+
+/// Input for the single-symbol SMA/Composed strategy bar-loop extracted into
+/// `scenarios::sma_composed_run`. Carries the strategy id and the Scenario
+/// parameters needed by both the engine dispatch path and the CLI call path.
+///
+/// `strategy_id` selects which composed TOML is loaded
+/// (`config/strategies/<strategy_id>.toml`) — or `"sma_crossover"` for the
+/// compiled-in crossover.
+#[derive(Debug, Clone)]
+pub struct SmaComposedRunInput {
+    /// Strategy id, e.g. `"sma_crossover"`, `"btc_macd_trend"`,
+    /// `"btc_rsi_reversion"`, `"btc_bbands_mean_revert"`.
+    pub strategy_id: String,
+    /// Symbol to trade, e.g. `Symbol::new("BTCUSDT")`.
+    pub symbol: trading_core::Symbol,
+    /// Calendar year for synthetic-bar epoch base (2023 or 2024).
+    pub start_year: i32,
+    /// Total bars to replay (e.g. `525_600` for a full 2023 minute run).
+    pub bar_count: usize,
+    /// Starting portfolio capital in USDT.
+    pub initial_capital: rust_decimal::Decimal,
+    /// Matching engine slippage in basis points.
+    pub slippage_bps: u32,
+    /// Matching engine taker fee in basis points.
+    pub taker_fee_bps: u32,
+}
+
 // ── Strategy metadata (SMA / Composed report) ─────────────────────────────────
 
 /// Strategy metadata for the SMA/Composed report.

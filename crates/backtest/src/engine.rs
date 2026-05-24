@@ -381,6 +381,39 @@ fn tcn_result_to_report(
     }
 }
 
+/// Build a `RunReport` from a single-symbol SMA/Composed result (Wave D-2 / T-AR-4).
+///
+/// Unlike the cross-sectional variants, this path populates `fills` from the
+/// in-memory fill list so the Lab UI can render buy/sell triangle markers and
+/// hover overlays (R5.2).  The equity curve uses synthetic 1-minute timestamps
+/// starting from `{start_year}-01-01 00:00:00Z`.
+fn sma_composed_result_to_report(
+    result: &crate::scenarios::sma_composed_run::SmaComposedRunResult,
+    start_year: i32,
+) -> RunReport {
+    let ts_series = synthetic_timestamps(start_year, result.equity_curve.len());
+    let equity_series: Vec<(Timestamp, Money<Usdt>)> = ts_series
+        .into_iter()
+        .zip(result.equity_curve.iter())
+        .map(|(ts, &eq)| (ts, Money::<Usdt>::from_decimal(eq)))
+        .collect();
+
+    let kpis = BacktestKpis {
+        final_equity: Money::<Usdt>::from_decimal(result.final_equity),
+        initial_equity: Money::<Usdt>::from_decimal(result.initial_equity),
+        max_drawdown: result.max_drawdown,
+        trade_count: result.trades,
+        total_fees: Money::<Usdt>::from_decimal(result.total_fees),
+    };
+
+    RunReport {
+        equity_series,
+        fills: result.fills.clone(),
+        kpis,
+        report_path: None,
+    }
+}
+
 // ── run_scenario ─────────────────────────────────────────────────────────────
 
 /// Run a backtest for the given `ScenarioConfig` and return an
@@ -388,13 +421,17 @@ fn tcn_result_to_report(
 ///
 /// ## Dispatch table (ADR-0035)
 ///
-/// | `cfg.strategy` string       | Module dispatched to                         |
-/// |-----------------------------|----------------------------------------------|
-/// | `"v1.momentum"`             | `scenarios::momentum::run`                   |
-/// | `"v1.5a.mr"`, `"v1.5a.pairs"` | `scenarios::pairs::run`                   |
-/// | `"v2.5.tcn"`, `"v2.5.tcn_overlay"` | `scenarios::tcn_overlay::run`       |
-/// | `"v2.5.tcn.weights"`, `"v2.5.tcn_overlay_weights"` | `scenarios::tcn_overlay_weights::run` |
-/// | anything else               | `Err(RunError::UnknownStrategy)`             |
+/// | `cfg.strategy` string                                       | Module dispatched to                          |
+/// |-------------------------------------------------------------|-----------------------------------------------|
+/// | `"v0.sma"`, `"sma_cross"`, `"sma_crossover"`               | `scenarios::sma_composed_run::run`            |
+/// | `"v0.5.macd"`, `"macd_trend"`, `"btc_macd_trend"`          | `scenarios::sma_composed_run::run`            |
+/// | `"v0.5.rsi"`, `"rsi_reversion"`, `"btc_rsi_reversion"`     | `scenarios::sma_composed_run::run`            |
+/// | `"v0.5.bbands"`, `"bbands_mean_revert"`, `"btc_bbands_mean_revert"` | `scenarios::sma_composed_run::run` |
+/// | `"v1.momentum"`                                             | `scenarios::momentum::run`                    |
+/// | `"v1.5a.mr"`, `"v1.5a.pairs"`                              | `scenarios::pairs::run`                       |
+/// | `"v2.5.tcn"`, `"v2.5.tcn_overlay"`                         | `scenarios::tcn_overlay::run`                 |
+/// | `"v2.5.tcn.weights"`, `"v2.5.tcn_overlay_weights"`         | `scenarios::tcn_overlay_weights::run`         |
+/// | anything else                                               | `Err(RunError::UnknownStrategy)`              |
 ///
 /// ## Cancel pattern (ADR-0035 § D6 / K3)
 ///
@@ -426,6 +463,7 @@ fn tcn_result_to_report(
 /// - `RunError::UnknownStrategy` if the strategy string is not in the dispatch table.
 /// - `RunError::Cancelled` if the in-flight run is cancelled.
 /// - `RunError::Internal` for unexpected scenario errors.
+#[allow(clippy::too_many_lines)]
 pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
     // ── 1. Seed gate ─────────────────────────────────────────────────────────
     if cfg.seed == [0u8; 32] {
@@ -524,6 +562,77 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 .await
                 .map_err(|e| RunError::Internal(e.to_string()))?;
             Ok(tcn_result_to_report(&result, start_year))
+        }
+
+        // ── v0 single-symbol SMA crossover ───────────────────────────────────
+        "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "sma_crossover".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+            };
+            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
+                .await
+                .map_err(|e| RunError::Internal(e.to_string()))?;
+            Ok(sma_composed_result_to_report(&result, start_year))
+        }
+
+        // ── v0.5 MACD trend ──────────────────────────────────────────────────
+        "v0.5.macd" | "macd_trend" | "btc_macd_trend" | "macd_trend_h1" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_macd_trend".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+            };
+            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
+                .await
+                .map_err(|e| RunError::Internal(e.to_string()))?;
+            Ok(sma_composed_result_to_report(&result, start_year))
+        }
+
+        // ── v0.5 RSI reversion ───────────────────────────────────────────────
+        "v0.5.rsi" | "rsi_reversion" | "btc_rsi_reversion" | "rsi_reversion_h1" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_rsi_reversion".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+            };
+            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
+                .await
+                .map_err(|e| RunError::Internal(e.to_string()))?;
+            Ok(sma_composed_result_to_report(&result, start_year))
+        }
+
+        // ── v0.5 BBands mean-revert ──────────────────────────────────────────
+        "v0.5.bbands"
+        | "bbands_mean_revert"
+        | "btc_bbands_mean_revert"
+        | "bbands_mean_revert_h1" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_bbands_mean_revert".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+            };
+            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
+                .await
+                .map_err(|e| RunError::Internal(e.to_string()))?;
+            Ok(sma_composed_result_to_report(&result, start_year))
         }
 
         // ── Unknown strategy ─────────────────────────────────────────────────

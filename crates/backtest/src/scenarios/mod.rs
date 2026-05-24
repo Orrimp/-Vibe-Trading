@@ -16,6 +16,7 @@ pub mod momentum;
 pub mod pairs;
 pub mod patchtst_overlay_weights;
 pub mod sma_composed;
+pub mod sma_composed_run;
 pub mod tcn_overlay;
 pub mod tcn_overlay_weights;
 pub mod threshold_sweep;

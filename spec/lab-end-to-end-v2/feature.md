@@ -1072,6 +1072,53 @@ Pre-drawn so the presenter can route the operator approval cleanly:
 - `cargo test -p ui --test lab_run_integration`: 2 passed
 - `bash scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
 
+### Wave D-2 — Single-symbol engine dispatch + fills enrichment (2026-05-24)
+
+**Scope:** T-D2.1..T-D2.6 — behavior-preserving extraction of the inline
+SMA/Composed bar loop from `main.rs` (lines 1629-1791) into a reusable
+module, plus engine dispatch and R5.2 fills enrichment.
+
+**Files written:**
+
+- `crates/backtest/src/scenarios/sma_composed_run.rs` (NEW, ~580 lines):
+  `SmaComposedRunResult` struct; `synthetic_bars_minute()` (verbatim copy
+  of `main.rs::synthetic_bars` — DO NOT modify to preserve anchor SHAs);
+  `default_start_price()` symbol table; `run()` accepting
+  `bars_override: Option<Vec<Bar>>` (CLI passes `Some(bars)` for anchor
+  preservation; engine dispatch passes `None`); 4 unit tests.
+
+- `crates/backtest/src/engine.rs`: Added `sma_composed_result_to_report()`
+  helper; 4 new `run_scenario` match arms for `"v0.sma"`,
+  `"v0.5.macd"`, `"v0.5.rsi"`, `"v0.5.bbands"` (plus legacy aliases).
+  Each arm builds `SmaComposedRunInput` keyed on `cfg.pair.1` and calls
+  `sma_composed_run::run(&input, None, seed)`.
+
+- `crates/backtest/src/main.rs`: Inline strategy-setup + bar loop + report
+  block (lines 1511-1792) replaced with a call to
+  `sma_composed_run::run(&sma_run_input, Some(bars), seed)`. Unused imports
+  and the unreachable `registry` local removed.
+
+- `crates/backtest/src/cli_types.rs`: `SmaComposedRunInput` struct added
+  (carries `strategy_id`, `symbol`, `start_year`, `bar_count`,
+  `initial_capital`, `slippage_bps`, `taker_fee_bps`).
+
+- `crates/backtest/src/scenarios/mod.rs`: `pub mod sma_composed_run;` added.
+
+**Root causes closed:** F3 (single-symbol dispatch missing from engine),
+R5.2 (fills enrichment — `SmaComposedRunResult.fills: Vec<FillView>`
+populated from every `engine.step()` call, not `Vec::new()`).
+
+**Anchor discipline:** `bars_override = Some(bars)` in the CLI path threads
+the exact same pre-generated bar stream through the extracted module, keeping
+the anchor SHAs byte-identical. The `synthetic_bars_minute()` copy in the
+module has a `DO NOT modify` doc comment and the ADR-0038 § D6.b note.
+
+**Gate results (D-2):**
+- `cargo fmt --check`: PASS
+- `cargo clippy --workspace --features candle,realdata,live -- -D warnings`: PASS
+- `cargo test --workspace --lib`: 332 passed / 0 failed
+- `bash scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
+
 ## Changelog
 
 - 2026-05-24 (analyst): initial v0.1.0 brief; closes the
@@ -1083,3 +1130,6 @@ Pre-drawn so the presenter can route the operator approval cleanly:
 - 2026-05-24 (developer): Wave D-1.1 complete — F8 (KPI strip) + F9
   (equity overlay standalone path) + F10 (run-button disabled gate).
   All 5 gate checks PASS; 34/34 anchors preserved.
+- 2026-05-24 (developer): Wave D-2 complete — F3 (single-symbol dispatch)
+  + R5.2 (fills enrichment). 4 new engine arms; CLI bar loop extracted;
+  all 34 anchors preserved.
