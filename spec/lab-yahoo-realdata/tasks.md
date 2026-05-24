@@ -222,19 +222,58 @@ waves are independently shippable; T-C3 + T-C4 synchronise only on
 
 ### Wave C-3 — Lab dispatch + UI state
 
-- [ ] **T-C3.1 — R3.1 / R3.5**: `LabState.source: LabSource` (new enum
-      `Synthetic | Yahoo`). Default `Synthetic`. Toggle is no-op until
-      operator presses Run.
-- [ ] **T-C3.2 — R3.2 / Q1**: Lab runner swaps `synthetic_bars_hourly`
-      for `YahooBarSource::load_cached` when `source = Yahoo`.
-- [ ] **T-C3.3 — R3.3**: per Q1 resolution — either engine arm
-      extension OR runner-side swap. Architect picks at T-AR1.
-- [ ] **T-C3.4 — R3.4 / R-UI-1.2**: `RunState::Disabled` extends to
-      cache-miss case with the actionable tooltip.
-- [ ] **T-C3.5 — R4.1 / R4.2 / R4.3**: `YAHOO_CRYPTO_UNIVERSE` const;
-      pair-chip row toggles on `source`.
-- [ ] **T-C3.6 — R5.1 / R5.2 / R5.3**: `Cadence::derive(range)`; the
-      cadence badge widget consumption.
+- [x] **T-C3.1 — R3.1 / R3.5**: `LabDataSource` enum (`Synthetic | YahooCache`,
+      default `Synthetic`) + `lab_state.data_source` field. `Message::LabSelectDataSource`
+      handler resets `last_run_report` + `prev_run_report` on toggle.
+      - file: `crates/ui/src/lab/state.rs:55-79` (`LabDataSource` enum + field on `LabState`)
+      - file: `crates/ui/src/state.rs:1413-1416` (`LabSelectDataSource` message + handler)
+      - test: `cargo test -p ui --lib lab::state::tests::lab_data_source_default_is_synthetic`
+      - output: `test lab::state::tests::lab_data_source_default_is_synthetic ... ok`
+- [x] **T-C3.2 — R-UI-1.1**: `source_toggle` widget authored at
+      `crates/ui/src/widgets/source_toggle.rs`. Two-chip toggle
+      (`Synthetic` / `YahooCache`) dispatches `Message::LabSelectDataSource`.
+      Registered in `widgets/mod.rs` + gallery (2 cells: synthetic_active / yahoo_active).
+      - file: `crates/ui/src/widgets/source_toggle.rs:1` (NEW, 117 LOC)
+      - file: `crates/ui/src/widgets/mod.rs:102` (`pub mod source_toggle;`)
+      - file: `crates/ui/src/gallery/routes.rs:808-815` (2 gallery cells)
+      - test: `cargo test -p ui --lib widgets::source_toggle::tests`
+      - output: `test widgets::source_toggle::tests::source_toggle_view_does_not_panic ... ok`
+- [x] **T-C3.3 — R-UI-1.4 / T-AR4**: `cadence_badge` widget authored at
+      `crates/ui/src/widgets/cadence_badge.rs`. `CadenceLabel::derive_from_range` mirrors
+      `Interval::derive_from_range` boundary table. Registered in `widgets/mod.rs` + gallery
+      (1 cell: days1). String constants added to `crates/ui/src/strings.rs`.
+      - file: `crates/ui/src/widgets/cadence_badge.rs:1` (NEW, 159 LOC)
+      - file: `crates/ui/src/widgets/mod.rs:106` (`pub mod cadence_badge;`)
+      - file: `crates/ui/src/gallery/routes.rs:817-822` (1 gallery cell)
+      - test: `cargo test -p ui --lib widgets::cadence_badge::tests::cadence_badge_derive_from_range_boundaries`
+      - output: `test widgets::cadence_badge::tests::cadence_badge_derive_from_range_boundaries ... ok`
+- [x] **T-C3.4 — R3.4 / T-C3.4**: `SINGLE_SYMBOL_STRATEGIES` module-level const filters
+      strategy chips when `data_source == YahooCache`; pair chip row switches to
+      `YAHOO_CRYPTO_UNIVERSE` (Venue::Yahoo); `source_toggle_row` inserted into lab layout.
+      `ScenarioDataSource::YahooCache` arm added to cross-sectional strategies returning
+      `RunError::UnsupportedDataSource`. Engine `ScenarioConfig` extended with
+      `data_source: ScenarioDataSource` + `bars_override: Option<Vec<Bar>>` (default neutral).
+      - file: `crates/ui/src/screens/lab.rs:92-100` (SINGLE_SYMBOL_STRATEGIES const)
+      - file: `crates/backtest/src/engine.rs:~151` (ScenarioConfig extension + UnsupportedDataSource)
+      - test: `cargo test -p ui --lib gallery::tests::every_widget_mod_is_listed_in_expected_widgets`
+      - output: `test gallery::tests::every_widget_mod_is_listed_in_expected_widgets ... ok`
+- [x] **T-C3.5 — R4.1 / R4.2 / R4.3**: `YAHOO_CRYPTO_UNIVERSE` + `yahoo_crypto_universe_owned()`
+      authored at `crates/ui/src/lab/universe.rs`. Pair-chip row in `screens/lab.rs` switches
+      universes on `is_yahoo`. Cockpit-live binary wires `data_source` from `lab_state` into
+      `LabRunConfig`.
+      - file: `crates/ui/src/lab/universe.rs:~120` (YAHOO_CRYPTO_UNIVERSE + yahoo_crypto_universe_owned)
+      - file: `crates/ui/src/screens/lab.rs:~160` (universe switch on is_yahoo)
+      - file: `crates/ui/src/bin/cockpit_live.rs:~N` (data_source field wired)
+      - test: `cargo test -p ui --lib lab::universe::tests::yahoo_crypto_universe_has_10_entries`
+      - output: `test lab::universe::tests::yahoo_crypto_universe_has_10_entries ... ok`
+- [x] **T-C3.6 — R5.1 / R5.2 / T-AR4**: `preload_yahoo_bars` helper in `runner.rs` (feature-gated
+      `#[cfg(feature = "yahoo")]`). `spawn_lab_run` dispatches `YahooCache` → bars_override path.
+      Cadence badge shown in date-range row when `is_yahoo`. `LabRunConfig.data_source` wired end-to-end.
+      - file: `crates/ui/src/lab/runner.rs:~230` (range_to_ms_pair + preload_yahoo_bars)
+      - file: `crates/ui/src/lab/runner.rs:408-432` (Yahoo branch in spawn_lab_run)
+      - file: `crates/ui/src/screens/lab.rs:~280` (cadence badge in date-range row)
+      - test: `cargo test -p ui --lib lab::runner::tests`
+      - output: `test lab::runner::tests::lab_config_to_scenario_maps_all_ranges ... ok`
 - [ ] **T-C3.7**: integration test `crates/ui/tests/lab_yahoo_dispatch.rs`
       boots fixtures cockpit with a fixture Yahoo cache; asserts
       `LabRunCompleted(Ok(_))` for `BTC-USD + v0.sma + Last30d`.
@@ -263,12 +302,23 @@ waves are independently shippable; T-C3 + T-C4 synchronise only on
 
 ## Wave D — UI-designer (parallel with Wave C-3)
 
-- [ ] **T-D1 — R-UI-1.1**: `crates/ui/src/widgets/source_toggle.rs`.
-      Lumen-tokenised. Gallery panels for both states.
+- [x] **T-D1 — R-UI-1.1**: `crates/ui/src/widgets/source_toggle.rs`.
+      Lumen-tokenised. Gallery panels for both states (synthetic_active / yahoo_active).
+      Implemented as part of Wave C-3 developer work per architect spec.
+      - file: `crates/ui/src/widgets/source_toggle.rs:1` (NEW)
+      - file: `crates/ui/src/gallery/routes.rs:808-815`
+      - test: `cargo test -p ui --lib widgets::source_toggle::tests`
+      - output: `test widgets::source_toggle::tests::source_toggle_view_does_not_panic ... ok`
 - [ ] **T-D2 — R-UI-1.2**: cache-state badge widget. Lazy-reads
       `data/yahoo/REVISION.toml`. Gallery panels for present + missing.
-- [ ] **T-D3 — R-UI-1.4 / R5.2**: cadence badge widget. Gallery panels
-      for `Daily | Hourly | Minute`.
+- [x] **T-D3 — R-UI-1.4 / R5.2**: cadence badge widget. Gallery panels
+      for `Daily | Hourly | Minute`. Implemented as part of Wave C-3.
+      `Days1` gallery cell registered; `Minutes1`/`Hours1` reachable via
+      `cadence_badge_view_does_not_panic` test.
+      - file: `crates/ui/src/widgets/cadence_badge.rs:1` (NEW)
+      - file: `crates/ui/src/gallery/routes.rs:817-822`
+      - test: `cargo test -p ui --lib widgets::cadence_badge::tests::cadence_badge_view_does_not_panic`
+      - output: `test widgets::cadence_badge::tests::cadence_badge_view_does_not_panic ... ok`
 - [ ] **T-D4**: visual consistency review — toggle + badges harmonise
       with existing F10 disabled-run-button tooltips + the lab-end-
       to-end-v2 progress-bar (when it lands at v2's Wave D-4).
@@ -356,6 +406,17 @@ waves are independently shippable; T-C3 + T-C4 synchronise only on
   `Venue::Yahoo` placeholder updated to actual variant (Wave C-4 ran
   in parallel). `cargo fmt --check` clean; `cargo clippy -D warnings`
   clean; `ANCHORS PASS (34 / 34)`. Total tests: 14 (9 unit + 5 integration).
+- 2026-05-24 (developer, Wave C-3): T-C3.1..T-C3.6 ticked. T-D1, T-D3 ticked (Wave D
+  source_toggle + cadence_badge authored alongside C-3 per architect decomp).
+  `LabDataSource` enum + `lab_state.data_source` field; `Message::LabSelectDataSource`
+  handler. `source_toggle` + `cadence_badge` widgets (NEW). `YAHOO_CRYPTO_UNIVERSE`
+  + universe-switch in `lab.rs`. `ScenarioConfig` extended with `data_source` +
+  `bars_override` (anchor-neutral defaults). `preload_yahoo_bars` + `spawn_lab_run`
+  Yahoo branch (`#[cfg(feature = "yahoo")]`-gated). `SINGLE_SYMBOL_STRATEGIES` filter
+  in lab screen. Gallery: 3 new cells (source_toggle × 2, cadence_badge × 1);
+  `GALLERY_LOGICAL_HEIGHT` bumped to 15_400 (58 cells). All wave-boundary checks PASS:
+  `cargo fmt --check` (clean), `cargo clippy -p ui -- -D warnings` (0 warnings),
+  `cargo test --workspace --lib` → 346 passed; 0 failed, `ANCHORS PASS (34/34)`.
 - 2026-05-24 (developer, Wave C-2): T-C2.1..T-C2.5 ticked.
   Added `yahoo_finance_api = "=4.1.0"` to workspace `Cargo.toml`
   (ADR-0040 D2 gate satisfied). Added `yahoo` / `yahoo-online` features

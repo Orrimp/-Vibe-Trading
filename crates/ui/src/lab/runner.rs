@@ -157,9 +157,13 @@ pub fn cancellation_pair() -> (RunCancelHandle, RunCancelReceiver) {
 ///
 /// Phase A: built from `LabState` fields and the `LAB_DEFAULT_SEED`.
 /// Phase B: the `params` field lifts to a typed `ParamSheet`.
+/// v0.1.0 (lab-yahoo-realdata T-C3.6): `data_source` added.
 #[derive(Debug, Clone)]
 pub struct LabRunConfig {
     pub strategy_id: SmolStr,
+    /// UI-side Binance-style symbol (e.g. `BTCUSDT`). Conversion to Yahoo-
+    /// native format happens at the dispatch boundary in `preload_yahoo_bars`
+    /// via `data::yahoo::binance_to_yahoo_ticker` (Q6 = (a) / D7).
     pub symbol: SmolStr,
     pub venue: SmolStr,
     /// Human-readable range label, e.g. "Last90d".
@@ -168,10 +172,90 @@ pub struct LabRunConfig {
     pub seed: [u8; 32],
     /// Write a Markdown report to `spec/<slug>/reports/…` on completion.
     pub write_report: bool,
+    /// Data source for this run. `Synthetic` (default) preserves byte-identical
+    /// pre-v0.1.0 behaviour (H5 / R-NR.8). `YahooCache` loads real bars from
+    /// the local parquet cache before engine dispatch (T-AR1 / Q1 = (b)).
+    pub data_source: crate::lab::state::LabDataSource,
 }
 
 /// Outcome of the in-process run for `iced::Task::perform`.
 pub type LabRunResult = Result<RunSummary, SmolStr>;
+
+// ── Yahoo bar pre-loading helpers (lab-yahoo-realdata T-C3.6 / T-AR1) ────────
+
+/// Map a `backtest::engine::DateRange` to `(start_ms, end_ms)` UTC epoch-millis.
+#[cfg(feature = "yahoo")]
+///
+/// `H1_2024` / `H2_2024` use fixed calendar boundaries so they are deterministic.
+/// `Last30d` / `Last90d` use wall-clock `now()` — intentional; these are the
+/// operator's "show me recent data" presets for Yahoo real bars (H1 hypothesis).
+/// `Custom` passes the caller's values through unchanged.
+///
+/// Note: `time::OffsetDateTime::now_utc()` is only reachable when
+/// `data_source == YahooCache` (rolling presets are date-relative by design
+/// for real-data); the synthetic path never calls this function.
+fn range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
+    use backtest::engine::DateRange;
+    const MS_PER_DAY: i64 = 86_400_000;
+    let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
+    match range {
+        DateRange::Last30d => (now_ms - 30 * MS_PER_DAY, now_ms),
+        DateRange::Last90d => (now_ms - 90 * MS_PER_DAY, now_ms),
+        DateRange::H1_2024 => (1_704_067_200_000, 1_719_792_000_000), // 2024-01-01 .. 2024-07-01 UTC
+        DateRange::H2_2024 => (1_719_792_000_000, 1_735_689_600_000), // 2024-07-01 .. 2025-01-01 UTC
+        DateRange::Custom { start_ms, end_ms } => (*start_ms, *end_ms),
+    }
+}
+
+/// Pre-load Yahoo bars upstream of engine dispatch (T-AR1 / Q1 = (b)).
+///
+/// Called by `spawn_lab_run` when `cfg.data_source == YahooCache`.
+/// Converts the UI Binance-style symbol to Yahoo-native at the dispatch
+/// boundary (Q6 = (a) / D7), derives the adaptive cadence (Q4 = (c) / D6),
+/// and returns `(bars, revision_sha)` for logging / report forensics.
+///
+/// # Errors
+///
+/// Returns `Err(SmolStr)` with an operator-friendly message on:
+/// - Unknown ticker (`UnmappedTicker`)
+/// - Cache miss (`CacheMiss`) — includes a `cargo run` hint
+/// - Coverage below 95% (`MissingData`)
+/// - Revision manifest missing or tampered (`RevisionMissing` / `RevisionMismatch`)
+#[cfg(feature = "yahoo")]
+fn preload_yahoo_bars(
+    cfg: &LabRunConfig,
+    scenario_range: &backtest::engine::DateRange,
+) -> Result<(Vec<trading_core::Bar>, SmolStr), SmolStr> {
+    use data::yahoo::{Interval, YahooBarSource, binance_to_yahoo_ticker};
+    use trading_core::Symbol;
+
+    // Convert UI ticker (BTCUSDT) → Yahoo ticker (BTC-USD) at the boundary.
+    let sym = Symbol::new(cfg.symbol.as_str());
+    let yahoo_ticker =
+        binance_to_yahoo_ticker(&sym).map_err(|e| SmolStr::new(format!("ticker mapping: {e}")))?;
+
+    // Derive adaptive cadence from the selected date range.
+    let (start_ms, end_ms) = range_to_ms_pair(scenario_range);
+    let interval = Interval::derive_from_range(start_ms, end_ms);
+
+    // Construct the cache source from the standard working-dir path.
+    let src = YahooBarSource::new(std::path::PathBuf::from("data/yahoo"));
+
+    let loaded = src
+        .load_cached(yahoo_ticker.as_str(), interval, start_ms, end_ms)
+        .map_err(|e| SmolStr::new(format!("yahoo cache load: {e}")))?;
+
+    tracing::info!(
+        target: "lab.yahoo",
+        ticker = %yahoo_ticker,
+        interval = ?interval,
+        bars = loaded.loaded_count,
+        revision_sha = %loaded.revision_sha,
+        "Yahoo bars pre-loaded for Lab run"
+    );
+
+    Ok((loaded.bars, SmolStr::new(loaded.revision_sha)))
+}
 
 // ── LabRunConfig → ScenarioConfig mapper (T-D-N9 / R3.1–R3.5) ───────────────
 
@@ -235,13 +319,18 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
     Ok(backtest::ScenarioConfig {
         strategy: StrategyId(cfg.strategy_id.as_str().into()),
         pair: (
-            Venue::Binance, // Phase A: single-venue universe
+            Venue::Binance, // Phase A: single-venue universe (Yahoo bars override on data_source)
             Symbol::new(cfg.symbol.as_str()),
         ),
         range,
         params: None,
         seed: cfg.seed,
         write_report: cfg.write_report,
+        // lab-yahoo-realdata T-C3.6: data_source and bars_override are set by
+        // the caller (spawn_lab_run) after this helper returns; for non-Yahoo
+        // paths these remain at their defaults (Synthetic, None).
+        data_source: backtest::engine::ScenarioDataSource::default(),
+        bars_override: None,
     })
 }
 
@@ -267,7 +356,7 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
 /// T-D-13 tightens `backtest::engine::run_scenario`, the spawned future
 /// returns a simulated success — the anchor gate is T-D-13's remit, not
 /// T-D-14's.
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 pub fn spawn_lab_run(
     #[cfg(feature = "live")] rt_handle: Option<&tokio::runtime::Handle>,
     #[cfg(not(feature = "live"))] _rt_handle: Option<()>,
@@ -309,12 +398,38 @@ pub fn spawn_lab_run(
 
         // T-D-N9: Map LabRunConfig → backtest::ScenarioConfig.
         // Returns Err immediately if the range label is unrecognised.
-        let scenario_cfg = match lab_config_to_scenario(&cfg) {
+        let mut scenario_cfg = match lab_config_to_scenario(&cfg) {
             Ok(c) => c,
             Err(e) => {
                 return iced::Task::done(Message::LabRunCompleted(Err(e)));
             }
         };
+
+        // lab-yahoo-realdata T-C3.6 / T-AR1: when data source is YahooCache,
+        // pre-load bars synchronously before the async engine dispatch.
+        // The `yahoo` feature gate ensures this compiles out in builds that
+        // don't want the parquet dependency (R-NR.7 / H6).
+        if cfg.data_source == crate::lab::state::LabDataSource::YahooCache {
+            #[cfg(feature = "yahoo")]
+            {
+                match preload_yahoo_bars(&cfg, &scenario_cfg.range) {
+                    Ok((bars, _sha)) => {
+                        scenario_cfg.data_source = backtest::engine::ScenarioDataSource::YahooCache;
+                        scenario_cfg.bars_override = Some(bars);
+                    }
+                    Err(e) => {
+                        return iced::Task::done(Message::LabRunCompleted(Err(e)));
+                    }
+                }
+            }
+            #[cfg(not(feature = "yahoo"))]
+            {
+                return iced::Task::done(Message::LabRunCompleted(Err(SmolStr::new(
+                    "YahooCache data source requires the `yahoo` feature; \
+                     rebuild with `--features yahoo`",
+                ))));
+            }
+        }
 
         let rt = handle.clone();
         let strat = cfg.strategy_id.clone();
@@ -428,6 +543,7 @@ mod tests {
                 range_label: SmolStr::new(*input),
                 seed: crate::lab::defaults::LAB_DEFAULT_SEED,
                 write_report: false,
+                data_source: crate::lab::state::LabDataSource::default(),
             };
             let result = lab_config_to_scenario(&cfg);
             assert!(
@@ -447,6 +563,7 @@ mod tests {
             range_label: SmolStr::new("NotAPreset"),
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             write_report: false,
+            data_source: crate::lab::state::LabDataSource::default(),
         };
         let result = lab_config_to_scenario(&cfg);
         assert!(result.is_err(), "unknown range label must return Err");
@@ -463,11 +580,43 @@ mod tests {
             range_label: SmolStr::new("Last90d"),
             seed,
             write_report: true,
+            data_source: crate::lab::state::LabDataSource::default(),
         };
         let sc = lab_config_to_scenario(&cfg).unwrap();
         assert_eq!(sc.seed, seed);
         assert!(sc.write_report);
         assert_eq!(sc.pair.1.to_string(), "XRPUSDT");
+    }
+
+    /// T-C3.5 — `LabSelectDataSource` updates `lab_state.data_source`.
+    #[test]
+    fn lab_select_data_source_updates_state() {
+        let mut cockpit = crate::state::Cockpit::default();
+        // Default is Synthetic.
+        assert_eq!(
+            cockpit.lab_state.data_source,
+            crate::lab::state::LabDataSource::Synthetic
+        );
+        // Toggle to YahooCache.
+        crate::state::update(
+            &mut cockpit,
+            crate::state::Message::LabSelectDataSource(
+                crate::lab::state::LabDataSource::YahooCache,
+            ),
+        );
+        assert_eq!(
+            cockpit.lab_state.data_source,
+            crate::lab::state::LabDataSource::YahooCache
+        );
+        // Toggle back to Synthetic.
+        crate::state::update(
+            &mut cockpit,
+            crate::state::Message::LabSelectDataSource(crate::lab::state::LabDataSource::Synthetic),
+        );
+        assert_eq!(
+            cockpit.lab_state.data_source,
+            crate::lab::state::LabDataSource::Synthetic
+        );
     }
 
     /// T-D-14 — spawn_lab_run without a runtime resolves immediately.
@@ -480,6 +629,7 @@ mod tests {
             range_label: SmolStr::new("Last90d"),
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             write_report: false,
+            data_source: crate::lab::state::LabDataSource::default(),
         };
         let (_handle, recv) = cancellation_pair();
         // Should compile and return a Task without panicking.

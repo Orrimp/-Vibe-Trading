@@ -135,6 +135,26 @@ impl Default for BacktestKpis {
     }
 }
 
+/// Data source selector for `ScenarioConfig` (lab-yahoo-realdata v0.1.0 / T-AR1).
+///
+/// CLI anchor-generating paths construct `ScenarioConfig` without this field;
+/// the `#[serde(default)]` default (`Synthetic`) preserves byte-identical
+/// behaviour for all 34 anchored reports (anchor neutrality proof in
+/// `spec/lab-yahoo-realdata/decomp.md § T-AR9`).
+///
+/// `YahooCache` is Lab-only at v0.1.0; the 4 cross-sectional arms reject it
+/// with `RunError::UnsupportedDataSource`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScenarioDataSource {
+    /// Synthetic GBM bars — pre-v0.1.0 default path (anchor-safe).
+    #[default]
+    Synthetic,
+    /// Real Yahoo Finance bars loaded from the local parquet cache.
+    /// Only valid for the 4 single-symbol strategy arms at v0.1.0.
+    YahooCache,
+}
+
 /// Configuration for a single backtest run (ADR-0030).
 ///
 /// All fields are mandatory. Use `Default` trait implementations only
@@ -163,6 +183,20 @@ pub struct ScenarioConfig {
     /// When `true`, write the Markdown report to
     /// `spec/<feature>/reports/backtest-<stamp>-<scenario>.md`.
     pub write_report: bool,
+    /// Data source for the run (lab-yahoo-realdata v0.1.0 / T-AR1).
+    ///
+    /// Defaults to `Synthetic` — CLI paths that construct `ScenarioConfig`
+    /// in Rust code without this field use the struct-update syntax or
+    /// explicit `ScenarioDataSource::default()`, preserving byte-identical
+    /// behaviour for all 34 anchored reports (anchor neutrality proof in
+    /// `spec/lab-yahoo-realdata/decomp.md § T-AR9`).
+    pub data_source: ScenarioDataSource,
+    /// Pre-loaded bars passed verbatim to the 4 single-symbol scenario arms
+    /// instead of generating synthetic GBM bars (T-AR1 / ADR-0040 § D4).
+    ///
+    /// Set by `lab::runner::preload_yahoo_bars` when `data_source == YahooCache`.
+    /// CLI paths always pass `None` — anchor-safe default.
+    pub bars_override: Option<Vec<Bar>>,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -221,6 +255,12 @@ pub enum RunError {
     /// Catch-all for internal errors.
     #[error("internal backtest error: {0}")]
     Internal(String),
+
+    /// A cross-sectional strategy arm received `data_source == YahooCache`,
+    /// which is unsupported at v0.1.0 (only the 4 single-symbol arms support
+    /// Yahoo bars; cross-sectional arms require Binance hourly universes).
+    #[error("data source YahooCache is not supported for cross-sectional strategy '{0}' at v0.1.0")]
+    UnsupportedDataSource(String),
 }
 
 // ── `run_scenario` implementation ────────────────────────────────────────────
@@ -490,6 +530,11 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
     match strategy_str {
         // ── v1 cross-sectional momentum ──────────────────────────────────────
         "v1.momentum" | "top10_momentum_h1" => {
+            // YahooCache is unsupported for cross-sectional arms at v0.1.0
+            // (they require the Binance hourly multi-symbol universe).
+            if cfg.data_source == ScenarioDataSource::YahooCache {
+                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+            }
             let input = crate::cli_types::MomentumScenarioInput {
                 scenario_name: "v1.momentum".to_string(),
                 start_year,
@@ -509,6 +554,9 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
 
         // ── v1.5a mean-reversion pairs ───────────────────────────────────────
         "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => {
+            if cfg.data_source == ScenarioDataSource::YahooCache {
+                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+            }
             let input = crate::cli_types::PairsScenarioInput {
                 scenario_name: "v1.5a.pairs".to_string(),
                 start_year,
@@ -526,6 +574,9 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
 
         // ── v2.5 TCN overlay momentum (passthrough / no-candle) ──────────────
         "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => {
+            if cfg.data_source == ScenarioDataSource::YahooCache {
+                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+            }
             let input = crate::cli_types::TcnScenarioInput {
                 scenario_name: "v2.5.tcn_overlay".to_string(),
                 start_year,
@@ -546,6 +597,9 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
 
         // ── v2.5 TCN overlay momentum with real weights (candle feature) ─────
         "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => {
+            if cfg.data_source == ScenarioDataSource::YahooCache {
+                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+            }
             let input = crate::cli_types::TcnScenarioInput {
                 scenario_name: "v2.5.tcn_overlay_weights".to_string(),
                 start_year,
@@ -565,6 +619,9 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
         }
 
         // ── v0 single-symbol SMA crossover ───────────────────────────────────
+        // `cfg.bars_override` is threaded through verbatim (T-AR1).
+        // When `Some`, the scenario uses real Yahoo bars instead of synthetic GBM.
+        // When `None` (all CLI/anchor paths), synthetic GBM is used unchanged.
         "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" => {
             let input = crate::cli_types::SmaComposedRunInput {
                 strategy_id: "sma_crossover".to_string(),
@@ -575,9 +632,10 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
-                .await
-                .map_err(|e| RunError::Internal(e.to_string()))?;
+            let result =
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                    .await
+                    .map_err(|e| RunError::Internal(e.to_string()))?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -592,9 +650,10 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
-                .await
-                .map_err(|e| RunError::Internal(e.to_string()))?;
+            let result =
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                    .await
+                    .map_err(|e| RunError::Internal(e.to_string()))?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -609,9 +668,10 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
-                .await
-                .map_err(|e| RunError::Internal(e.to_string()))?;
+            let result =
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                    .await
+                    .map_err(|e| RunError::Internal(e.to_string()))?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -629,9 +689,10 @@ pub async fn run_scenario(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result = crate::scenarios::sma_composed_run::run(&input, None, seed_u64)
-                .await
-                .map_err(|e| RunError::Internal(e.to_string()))?;
+            let result =
+                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64)
+                    .await
+                    .map_err(|e| RunError::Internal(e.to_string()))?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -663,6 +724,8 @@ mod tests {
             params: None,
             seed,
             write_report: false,
+            data_source: ScenarioDataSource::default(),
+            bars_override: None,
         }
     }
 

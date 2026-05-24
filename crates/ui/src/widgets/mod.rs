@@ -46,6 +46,10 @@ pub mod strategies;
 // cockpit-performance-and-input-responsiveness M1 Candidate A — local
 // 10 fps wrap of `iced_aw::Spinner`. Used by `frame::loading_with_spinner`;
 // see `widgets/throttled_spinner.rs` for context.
+/// lab-yahoo-realdata T-C3.3 / T-AR4 / R-UI-1.4 — Cadence badge widget.
+/// Small chip showing the adaptive bar cadence ("1m" / "1h" / "1d").
+/// Only rendered when `data_source == YahooCache`.
+pub mod cadence_badge;
 /// Phase A (T-D-7) — date-range picker widget for the Lab top-bar.
 /// Preset chips + inline Custom editor with parse-error highlight (R5.1).
 pub mod date_range;
@@ -74,6 +78,10 @@ pub mod run_delta_badge;
 /// Three-tab chrome strip: Risk · Control · Debug, with T1609 active-chip
 /// bottom-edge accent on the active tab.
 pub mod settings_tabs;
+/// lab-yahoo-realdata T-C3.2 / R-UI-1.1 — Source toggle widget.
+/// Two-state chip toggle between Synthetic GBM and YahooCache real data.
+/// Dispatches `Message::LabSelectDataSource(LabDataSource)` on chip press.
+pub mod source_toggle;
 /// Phase C — strategy registry card widget (ui-rethink-phase-c-sidebar-ia T-D-N15).
 /// One card per registered strategy in the registry list view (R6.1).
 pub mod strategy_card;

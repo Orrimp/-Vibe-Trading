@@ -907,6 +907,28 @@ pub const SIDE_SELL: &str = "SELL";
 pub const UNIT_USDT: &str = "USDT";
 pub const UNIT_BTC: &str = "BTC";
 
+// ── lab-yahoo-realdata — source toggle + cadence badge (T-C3 / R-UI-1) ──────
+
+/// Source toggle chip label for Synthetic GBM bars (default).
+pub const LAB_SOURCE_SYNTHETIC: &str = "Synthetic";
+
+/// Source toggle chip label for Yahoo Finance real-data cache.
+pub const LAB_SOURCE_YAHOO: &str = "Yahoo";
+
+/// Cadence badge label for 1-minute bars.
+pub const LAB_CADENCE_1M: &str = "1m";
+
+/// Cadence badge label for 1-hour bars.
+pub const LAB_CADENCE_1H: &str = "1h";
+
+/// Cadence badge label for 1-day bars.
+pub const LAB_CADENCE_1D: &str = "1d";
+
+/// Tooltip on the Run button when `data_source` = `YahooCache` and the cache
+/// is missing for the selected (ticker, interval, range) combination.
+/// The CLI hint is appended by the error path in the runner.
+pub const LAB_YAHOO_CACHE_MISS_PREFIX: &str = "Yahoo cache miss — run: ";
+
 // ── Fallbacks / placeholders ─────────────────────────────────────────────────
 
 /// Rendered when a value is known to be "no data yet" rather than zero.
@@ -1363,6 +1385,13 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TRAINING_PLOT_EPOCH_ROW_FMT", TRAINING_PLOT_EPOCH_ROW_FMT),
         ("TRAINING_PLOT_HEADER_FMT", TRAINING_PLOT_HEADER_FMT),
         ("TRAINING_PLOT_LATEST_FMT", TRAINING_PLOT_LATEST_FMT),
+        // lab-yahoo-realdata T-C3 — source toggle + cadence badge
+        ("LAB_SOURCE_SYNTHETIC", LAB_SOURCE_SYNTHETIC),
+        ("LAB_SOURCE_YAHOO", LAB_SOURCE_YAHOO),
+        ("LAB_CADENCE_1M", LAB_CADENCE_1M),
+        ("LAB_CADENCE_1H", LAB_CADENCE_1H),
+        ("LAB_CADENCE_1D", LAB_CADENCE_1D),
+        ("LAB_YAHOO_CACHE_MISS_PREFIX", LAB_YAHOO_CACHE_MISS_PREFIX),
     ]
 }
 

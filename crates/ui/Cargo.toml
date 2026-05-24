@@ -50,6 +50,11 @@ path = "src/bin/viewer.rs"
 
 [dependencies]
 trading_core = { path = "../core" }
+# lab-yahoo-realdata T-C3.6 / T-AR1 — `data` crate for Yahoo parquet reader.
+# Optional dep gated behind the `yahoo` feature so default builds (fixtures,
+# live) do not pull the polars / parquet dep tree (R-NR.7 / H6).
+# `yahoo-online` is NOT pulled here — fetching is CLI-only (Q8 / T-AR7).
+data = { path = "../data", optional = true }
 # Phase 4 (T1803/T1808/T1810) — viewer bin reads `reports::parse` +
 # `reports::csv_artifacts::read_equity_csv` over committed report
 # bodies. Read-only consumer; no write-path coupling.
@@ -163,6 +168,13 @@ proptest = { workspace = true }
 # `#[cfg(test)]` via a gate in `lib.rs` so snapshot tests see the module
 # without needing `--features fixtures` on every invocation.
 fixtures = []
+
+# `yahoo` — enables the Yahoo Finance parquet cache reader path in
+# `lab::runner::preload_yahoo_bars`. When this feature is absent, toggling
+# the Source = YahooCache and pressing Run returns a friendly error
+# directing the operator to rebuild with `--features yahoo`.
+# Pulls `data/yahoo` which depends on `polars` (parquet reader).
+yahoo = ["dep:data", "data/yahoo"]
 
 # `render-debug` — ui-quality-gate-overhaul M2-A + M2-B opt-in. Composes
 # two surfaces under one flag per architect Q7 resolution

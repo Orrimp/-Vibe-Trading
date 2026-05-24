@@ -1410,6 +1410,10 @@ pub enum Message {
     /// Operator selected a date-range preset or committed a custom range.
     /// Pure assignment to `Cockpit::lab_state.range`.
     LabSelectRange(DateRange),
+    /// Operator toggled the data-source chip between `Synthetic` and `YahooCache`
+    /// (lab-yahoo-realdata T-C3.5 / R3.1). Pure assignment to
+    /// `Cockpit::lab_state.data_source`.
+    LabSelectDataSource(crate::lab::state::LabDataSource),
     /// Operator pressed "Run backtest". Fires `lab::runner::spawn_lab_run`
     /// on the binary side (M2.5 / T-D-14). Pure state marks `run_inflight`.
     LabRunRequested,
@@ -1916,6 +1920,13 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::LabSelectRange(range) => {
             model.lab_state.range = range;
             // T-D-N10: tuple changed — clear both run report mirrors.
+            model.lab_state.last_run_report = None;
+            model.lab_state.prev_run_report = None;
+        }
+        // lab-yahoo-realdata T-C3.5 / R3.1 — data-source toggle.
+        Message::LabSelectDataSource(src) => {
+            model.lab_state.data_source = src;
+            // Clear run reports — data source change invalidates previous results.
             model.lab_state.last_run_report = None;
             model.lab_state.prev_run_report = None;
         }

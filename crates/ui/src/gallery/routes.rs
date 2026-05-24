@@ -22,10 +22,11 @@ use crate::state::{
 use crate::strings;
 use crate::theme::ThemeMode;
 use crate::widgets::{
-    agent_feed, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
-    kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, positions,
-    run_button, run_delta_badge, settings_tabs, sidebar_nav, sparkline, status_bar, strategies,
-    strategy_card, strategy_chip, training_log, training_plot, volume_histogram,
+    agent_feed, cadence_badge, chart, date_range, focus_ring, frame, human_control,
+    journal_transaction_modal, kill, kpi_strip, latency, num, override_risk_veto, pair_chip,
+    placeholder, pnl, positions, run_button, run_delta_badge, settings_tabs, sidebar_nav,
+    source_toggle, sparkline, status_bar, strategies, strategy_card, strategy_chip, training_log,
+    training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -1160,7 +1161,53 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_matrix_cold_boot,
         seed: seed_matrix,
     },
+    // ── lab-yahoo-realdata — source_toggle (T-C3.2) ────────────────────────────
+    GalleryCell {
+        widget: "source_toggle",
+        state: "synthetic_active",
+        render: render_source_toggle_synthetic,
+        seed: seed_source_toggle,
+    },
+    GalleryCell {
+        widget: "source_toggle",
+        state: "yahoo_active",
+        render: render_source_toggle_yahoo,
+        seed: seed_source_toggle,
+    },
+    // ── lab-yahoo-realdata — cadence_badge (T-C3.3) ────────────────────────────
+    GalleryCell {
+        widget: "cadence_badge",
+        state: "days1",
+        render: render_cadence_badge_days1,
+        seed: seed_cadence_badge,
+    },
 ];
+
+// ── lab-yahoo-realdata — source_toggle gallery cells (T-C3.2) ────────────────
+
+fn seed_source_toggle() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn render_source_toggle_synthetic(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::state::LabDataSource;
+    source_toggle::view(LabDataSource::Synthetic, ThemeMode::Dark)
+}
+
+fn render_source_toggle_yahoo(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::state::LabDataSource;
+    source_toggle::view(LabDataSource::YahooCache, ThemeMode::Dark)
+}
+
+// ── lab-yahoo-realdata — cadence_badge gallery cell (T-C3.3) ─────────────────
+
+fn seed_cadence_badge() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn render_cadence_badge_days1(_model: &Cockpit) -> iced::Element<'_, Message> {
+    cadence_badge::view(cadence_badge::CadenceLabel::Days1, ThemeMode::Dark)
+}
 
 // ── Phase E — matrix gallery cells ────────────────────────────────────────────
 
@@ -1183,6 +1230,7 @@ fn render_matrix_cold_boot(model: &Cockpit) -> iced::Element<'_, Message> {
 /// **Q-ARCH-2:** `canvas_chart` is `pub(crate)` and intentionally excluded.
 pub const EXPECTED_WIDGETS: &[&str] = &[
     "agent_feed",
+    "cadence_badge",
     "chart",
     "chart_legend",
     "chart_tooltip",
@@ -1206,6 +1254,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "run_button",
     "run_delta_badge",
     "sidebar_nav",
+    "source_toggle",
     "sparkline",
     "status_bar",
     "settings_tabs",

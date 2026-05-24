@@ -886,6 +886,9 @@ impl AppState {
                     range_label,
                     seed: ui::lab::defaults::LAB_DEFAULT_SEED,
                     write_report: true,
+                    // lab-yahoo-realdata T-C3.6: mirror the current UI data_source
+                    // selection into the run config so runner can dispatch accordingly.
+                    data_source: self.cockpit.lab_state.data_source,
                 })
             } else {
                 None

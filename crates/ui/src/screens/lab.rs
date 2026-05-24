@@ -30,7 +30,7 @@ use rust_decimal::Decimal;
 use trading_core::{FillView, PositionView, Side, Symbol};
 
 use crate::lab::equity_loader::{LabTuple, route_equity_overlay};
-use crate::lab::state::StrategyFamily;
+use crate::lab::state::{LabDataSource, StrategyFamily};
 use crate::state::{Cockpit, PanelState};
 use crate::strings::{
     CHART_POSITION_MIRROR_LABEL, CHART_POSITION_MIRROR_NONE, CHART_VOLUME_HISTOGRAM_LABEL,
@@ -41,7 +41,9 @@ use crate::theme::{ThemeMode, color, color_for_delta, radius, space, text};
 use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::run_button::{self, RunState};
 use crate::widgets::volume_histogram::{self, VolumeBin};
-use crate::widgets::{chart, date_range, kpi_strip, pair_chip, strategy_chip};
+use crate::widgets::{
+    cadence_badge, chart, date_range, kpi_strip, pair_chip, source_toggle, strategy_chip,
+};
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
 /// chart (R7.2 + Q5 — operator-locked at ~80 px).
@@ -87,6 +89,14 @@ const TRAINING_PANEL_COLLAPSED_HEIGHT_PX: f32 = 32.0;
 /// Training panel height when expanded (log + status strip + buttons, T-D-N3).
 const TRAINING_PANEL_EXPANDED_HEIGHT_PX: f32 = 240.0;
 
+/// lab-yahoo-realdata T-C3.4 — strategies compatible with the Yahoo data path.
+///
+/// Cross-sectional strategies (v1.*, v2.*) require the Binance hourly
+/// multi-symbol universe and reject `YahooCache` at the engine level with
+/// `RunError::UnsupportedDataSource`. Only these four single-symbol
+/// strategies are shown when `data_source == YahooCache`.
+const SINGLE_SYMBOL_STRATEGIES: &[&str] = &["v0.sma", "v0.5.macd", "v0.5.rsi", "v0.5.bbands"];
+
 /// Pure calculation of the chart canvas's vertical allocation given a
 /// body height.  Mirrors the Layout β arithmetic this module's
 /// [`view`] composes: chip row + status strip + chart (Fill) + volume
@@ -124,18 +134,19 @@ pub fn chart_canvas_height_for_body_with_training(
 ) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let padding = (space::L as f32) * 2.0;
-    // 9 children: pair_row, strategy_row, date_range_row, run_button_row,
-    // status_strip, lab_kpi_strip, chart (Fill), histogram, training_panel
-    // → 8 gaps.
-    // lab-end-to-end-v2 Wave D-1.1 F8: added lab_kpi_strip (+1 child, +1 gap).
+    // 10 children: pair_row, source_toggle_row, strategy_row, date_range_row,
+    // run_button_row, status_strip, lab_kpi_strip, chart (Fill), histogram,
+    // training_panel → 9 gaps.
+    // lab-yahoo-realdata T-C3.4: added source_toggle_row (+1 child, +1 gap).
     #[allow(clippy::cast_precision_loss)]
-    let spacing = (space::M as f32) * 8.0;
+    let spacing = (space::M as f32) * 9.0;
     let training_height = if training_collapsed {
         TRAINING_PANEL_COLLAPSED_HEIGHT_PX
     } else {
         TRAINING_PANEL_EXPANDED_HEIGHT_PX
     };
     let fixed = CHIP_ROW_HEIGHT_PX
+        + CHIP_ROW_HEIGHT_PX  // source_toggle_row (~same height as pair chip row)
         + STRATEGY_ROW_HEIGHT_PX
         + DATE_RANGE_ROW_HEIGHT_PX
         + RUN_BUTTON_ROW_HEIGHT_PX
@@ -164,10 +175,17 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // Use XRP-first universe (operator-locked order per R3.2). The chips
     // dispatch `LabSelectPair`; the chart canvas continues to read from
     // `selected_symbol` (M2 will wire `lab_state.pair` → chart).
-    // Build each chip individually using `pair_chip::view` (which returns
-    // `'static` elements) to avoid borrowing a locally-owned universe Vec.
+    // lab-yahoo-realdata T-C3.4: when data_source == YahooCache, render
+    // the Yahoo crypto-mirror universe (Venue::Yahoo chips) instead of
+    // the Binance universe.
+    let is_yahoo = model.lab_state.data_source == LabDataSource::YahooCache;
     let mut pair_chip_row = Row::new().spacing(space::S);
-    for (v, s) in crate::lab::universe::XRP_FIRST_UNIVERSE {
+    let pair_universe: &[(trading_core::Venue, &str)] = if is_yahoo {
+        crate::lab::universe::YAHOO_CRYPTO_UNIVERSE
+    } else {
+        crate::lab::universe::XRP_FIRST_UNIVERSE
+    };
+    for (v, s) in pair_universe {
         let sym = Symbol::new(*s);
         let is_active = model
             .lab_state
@@ -178,12 +196,38 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     }
     let chip_row = pair_chip_row;
 
+    // ── lab-yahoo-realdata T-C3.4 — Source toggle row ──────────────────
+    // Inserted between the pair chip row and the strategy chip row.
+    let source_toggle_row = Row::new()
+        .spacing(space::S)
+        .push(source_toggle::view(model.lab_state.data_source, mode))
+        .width(Length::Fill);
+
     // ── Phase A top-bar row 2: strategy chips (T-D-6 / T-D-8) ──────────
     // Collect strategy ids from the strategies panel; fall back to empty
     // at cold start (strategies panel is Loading). No family-registry at
     // Phase A — all strategies default to `Rule` family.
+    //
+    // lab-yahoo-realdata T-C3.4: when data_source == YahooCache, only show
+    // the 4 single-symbol strategies (v0.sma, v0.5.macd, v0.5.rsi, v0.5.bbands).
+    // Cross-sectional strategies (v1.*, v2.*) are hidden because they require
+    // the Binance hourly multi-symbol universe and reject YahooCache at the
+    // engine level (RunError::UnsupportedDataSource).
+    // (Filter list defined at module level: SINGLE_SYMBOL_STRATEGIES.)
     let strategy_ids: Vec<trading_core::StrategyId> = match &model.strategies {
-        PanelState::Ready(rows) => rows.iter().map(|r| r.id.clone()).collect(),
+        PanelState::Ready(rows) => rows
+            .iter()
+            .filter(|r| {
+                if is_yahoo {
+                    SINGLE_SYMBOL_STRATEGIES
+                        .iter()
+                        .any(|s| r.id.0.as_str() == *s)
+                } else {
+                    true
+                }
+            })
+            .map(|r| r.id.clone())
+            .collect(),
         _ => Vec::new(),
     };
     // Build a minimal family map: all Rule at Phase A (R4.1 — family pill
@@ -203,11 +247,29 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     );
 
     // ── Phase A top-bar row 3: date-range picker (T-D-7 / T-D-8) ───────
-    let range_picker = date_range::view(
-        &model.lab_state.range,
-        None, // narrowed_from badge is M2 (equity_loader)
-        mode,
-    );
+    // lab-yahoo-realdata T-C3.4: when data_source == YahooCache, append a
+    // cadence badge (e.g. "1d", "1h") derived from the selected range.
+    let range_row = if is_yahoo {
+        // Derive cadence from the current date range for the badge.
+        let (start_ms, end_ms) = derive_range_ms_for_badge(&model.lab_state.range);
+        let cadence = cadence_badge::CadenceLabel::derive_from_range(start_ms, end_ms);
+        Row::new()
+            .spacing(space::S)
+            .push(date_range::view(&model.lab_state.range, None, mode))
+            .push(cadence_badge::view(cadence, mode))
+            .width(Length::Fill)
+    } else {
+        Row::new()
+            .spacing(space::S)
+            .push(date_range::view(
+                &model.lab_state.range,
+                None, // narrowed_from badge is M2 (equity_loader)
+                mode,
+            ))
+            .width(Length::Fill)
+    };
+    // Keep `range_picker` for the column push below.
+    let range_picker = range_row;
 
     // ── Phase A top-bar row 4: Run button (T-D-14b) + delta badge (T-D-N13) ─
     // F10 (lab-end-to-end-v2 Wave D-1.1): use the selection-gated variant so
@@ -346,6 +408,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .padding(space::L as u16)
         .spacing(space::M)
         .push(chip_row)
+        .push(source_toggle_row)
         .push(strategy_row)
         .push(range_picker)
         .push(run_button_row)
@@ -401,6 +464,35 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+// ── lab-yahoo-realdata T-C3.4 — cadence badge helper ────────────────────────
+
+/// Derive `(start_ms, end_ms)` UTC epoch-millis from a `DateRange` for the
+/// cadence badge. Uses fixed calendar boundaries for `H1_2024`/`H2_2024`;
+/// uses wall-clock `now()` for rolling presets (`Last30d`/`Last90d`).
+///
+/// This is view-layer only — does not affect the engine or anchors.
+fn derive_range_ms_for_badge(range: &crate::lab::state::DateRange) -> (i64, i64) {
+    use crate::lab::state::{DateRange, Preset};
+    const MS_PER_DAY: i64 = 86_400_000;
+    let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
+    match range {
+        DateRange::Preset(Preset::Last30d) => (now_ms - 30 * MS_PER_DAY, now_ms),
+        DateRange::Preset(Preset::Last90d) => (now_ms - 90 * MS_PER_DAY, now_ms),
+        DateRange::Preset(Preset::H1_2024) => (1_704_067_200_000, 1_719_792_000_000),
+        DateRange::Preset(Preset::H2_2024) => (1_719_792_000_000, 1_735_689_600_000),
+        DateRange::Custom { start_raw, end_raw } => {
+            // Parse ISO-8601 date strings; fall back to (now-90d, now) on parse failure.
+            let parse_date = |s: &str| -> i64 {
+                let padded = format!("{s}T00:00:00Z");
+                time::OffsetDateTime::parse(&padded, &time::format_description::well_known::Rfc3339)
+                    .map(|dt| dt.unix_timestamp() * 1_000)
+                    .unwrap_or(now_ms - 90 * MS_PER_DAY)
+            };
+            (parse_date(start_raw.as_str()), parse_date(end_raw.as_str()))
+        }
+    }
 }
 
 // ── Training panel (cockpit-training-control T-D-N3) ─────────────────────────

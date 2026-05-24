@@ -16,10 +16,30 @@
 
 use std::collections::VecDeque;
 
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use trading_core::{StrategyId, Symbol, Venue};
 
 use crate::widgets::training_log::RingBuffer;
+
+/// Data source toggle for the Lab screen (lab-yahoo-realdata T-C3.1 / R3.1).
+///
+/// `Synthetic` (default) — GBM-generated bars as in all pre-v0.1.0 runs.
+/// `YahooCache` — bars loaded from `data/yahoo/<TICKER>/<INTERVAL>/…` parquet
+/// cache via `data::yahoo::YahooBarSource::load_cached`.
+///
+/// The enum is `#[serde(…)]`-ready so it can round-trip through the Lab
+/// persistence schema (version: 1) without breaking existing saved state
+/// (unknown string → falls back to `Synthetic` via `#[serde(default)]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LabDataSource {
+    /// GBM synthetic bars — byte-identical to pre-v0.1.0 default (H5).
+    #[default]
+    Synthetic,
+    /// Yahoo Finance parquet cache — real historical OHLCV data.
+    YahooCache,
+}
 
 /// Operator-facing strategy family labels (Design § 2.2 family pill).
 /// Four-char badge rendered on the strategy chip.
@@ -173,6 +193,12 @@ pub struct LabState {
     /// Rotated from `last_run_report` when a second run on the same tuple completes.
     /// Same carve-out rules as `last_run_report`.
     pub prev_run_report: Option<crate::lab::runner::RunReportMirror>,
+
+    // ── lab-yahoo-realdata v0.1.0 — data source toggle (T-C3.1 / R3.1) ──────
+    /// Data source for the next Run. `Synthetic` (default) preserves the
+    /// pre-v0.1.0 byte-identical behaviour (H5 / R-NR.8).
+    /// `YahooCache` loads bars from the local parquet cache.
+    pub data_source: LabDataSource,
 }
 
 /// Manual `Clone` for `LabState` — `TrainingHandle` (an OS process handle)
@@ -199,6 +225,8 @@ impl Clone for LabState {
             // only needed in the live session instance, not in snapshots/persistence clones).
             last_run_report: None,
             prev_run_report: None,
+            // data_source IS cloned — it's a UI selection, not an in-flight resource.
+            data_source: self.data_source,
         }
     }
 }
@@ -223,6 +251,7 @@ impl std::fmt::Debug for LabState {
                 "prev_run_report",
                 &self.prev_run_report.as_ref().map(|_| "<RunReportMirror>"),
             )
+            .field("data_source", &self.data_source)
             .finish_non_exhaustive()
     }
 }
@@ -244,6 +273,7 @@ impl Default for LabState {
             training_events: std::collections::VecDeque::new(),
             last_run_report: None,
             prev_run_report: None,
+            data_source: LabDataSource::default(),
         }
     }
 }
@@ -274,6 +304,7 @@ impl LabState {
             training_events: std::collections::VecDeque::new(),
             last_run_report: None,
             prev_run_report: None,
+            data_source: LabDataSource::default(),
         }
     }
 }
@@ -435,6 +466,40 @@ mod tests {
             assert!(!badge.is_empty(), "empty badge for {:?}", f);
             assert!(badge.len() <= 4, "badge too long: {:?} = {:?}", f, badge);
         }
+    }
+
+    // ── T-C3.1 — LabDataSource enum ──────────────────────────────────────────
+
+    /// T-C3.1 — Default is Synthetic (H5 / R-NR.8 byte-identity).
+    #[test]
+    fn lab_data_source_default_is_synthetic() {
+        assert_eq!(LabDataSource::default(), LabDataSource::Synthetic);
+        let state = LabState::default();
+        assert_eq!(state.data_source, LabDataSource::Synthetic);
+    }
+
+    /// T-C3.1 — LabDataSource serde round-trip via JSON.
+    #[test]
+    fn lab_data_source_serde_round_trip() {
+        let cases = [
+            (LabDataSource::Synthetic, "\"synthetic\""),
+            (LabDataSource::YahooCache, "\"yahoo_cache\""),
+        ];
+        for (variant, expected_json) in cases {
+            let json = serde_json::to_string(&variant).unwrap();
+            assert_eq!(json, expected_json, "wrong JSON for {variant:?}");
+            let parsed: LabDataSource = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, variant, "serde round-trip mismatch for {variant:?}");
+        }
+    }
+
+    /// T-C3.1 — Clone preserves data_source (it is a UI selection, not a handle).
+    #[test]
+    fn lab_state_clone_preserves_data_source() {
+        let mut state = LabState::default();
+        state.data_source = LabDataSource::YahooCache;
+        let cloned = state.clone();
+        assert_eq!(cloned.data_source, LabDataSource::YahooCache);
     }
 
     // ── T-D-16 proptest: cap holds under randomised add/remove sequences ──────

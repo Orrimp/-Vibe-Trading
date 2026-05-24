@@ -64,8 +64,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     // CELL_HEIGHT_PX = 260.0.
     // Phase D (ui-rethink-phase-d-trail T-D-N7/N13) adds 5 new cells:
     //   trail_node (3 states) + trail_drawer (2 states) = 5 cells.
-    // 55 * 260 = 14_300. Adding 300 px headroom for outer container padding.
-    14_600
+    // lab-yahoo-realdata (T-C3.2/T-C3.3) adds 3 new cells:
+    //   source_toggle (2 states) + cadence_badge (1 state).
+    // 58 * 260 = 15_080. Adding 320 px headroom for outer container padding.
+    15_400
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

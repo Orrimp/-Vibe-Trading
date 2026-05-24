@@ -987,3 +987,86 @@ anchored CLI paths. `ANCHORS PASS (34 / 34)` confirmed.
   edit. 10 Q-rows, 10 K-rows, 6 H-rows, 8 R-rows + 1 R-UI +
   1 R-NR contract. ADR-0040 outline drafted. HANDOFF →
   orchestrator → operator-decide → architect for M-T1.
+
+## Implementation
+
+### Wave C-3 (developer, 2026-05-24)
+
+**Scope**: Lab UI state, messages, widgets, screen integration, and engine
+data-source plumbing.
+
+**Files changed / created**:
+
+- `crates/ui/src/lab/state.rs` — `LabDataSource` enum (`Synthetic | YahooCache`,
+  `#[derive(Default)]` → `Synthetic`); `data_source: LabDataSource` field on
+  `LabState`; updated `Clone`, `Default`, `with_selection`, `Debug` impls; 3 new
+  unit tests.
+
+- `crates/ui/src/state.rs` — `Message::LabSelectDataSource(LabDataSource)` variant;
+  handler resets `last_run_report` + `prev_run_report` on data-source toggle.
+
+- `crates/ui/src/widgets/source_toggle.rs` (NEW) — `view(current, mode)` renders two
+  Lumen chip buttons (`Synthetic` / `Yahoo`). Active chip uses `ACCENT` background;
+  inactive uses `PANEL_RAISED`. `chip_button` helper with `#[allow(cast_possible_truncation)]`.
+  2 unit tests.
+
+- `crates/ui/src/widgets/cadence_badge.rs` (NEW) — `CadenceLabel` enum (`Minutes1 |
+  Hours1 | Days1`) with `derive_from_range(start_ms, end_ms)` mirroring
+  `Interval::derive_from_range` boundary table. `view(cadence, mode)` renders a
+  read-only `Container` chip (`PANEL_RAISED` bg, `BORDER_1` outline, `MICRO` font,
+  `R3` radius). 3 unit tests.
+
+- `crates/ui/src/widgets/mod.rs` — `pub mod source_toggle;` + `pub mod cadence_badge;`
+  added.
+
+- `crates/ui/src/strings.rs` — 6 new constants: `LAB_SOURCE_SYNTHETIC`, `LAB_SOURCE_YAHOO`,
+  `LAB_CADENCE_1M`, `LAB_CADENCE_1H`, `LAB_CADENCE_1D`, `LAB_YAHOO_CACHE_MISS_PREFIX`;
+  all added to `all()`.
+
+- `crates/ui/src/screens/lab.rs` — `SINGLE_SYMBOL_STRATEGIES` module-level const;
+  `source_toggle_row` between pair chips and strategy chips; strategy chips filtered
+  to single-symbol set when `is_yahoo`; pair chip row switches to `YAHOO_CRYPTO_UNIVERSE`;
+  cadence badge rendered in date-range row when `is_yahoo`; `derive_range_ms_for_badge`
+  helper; `CHIP_ROW_HEIGHT_PX` spacing bump (`* 9.0`); `is_yahoo` local flag.
+
+- `crates/ui/src/lab/universe.rs` — `YAHOO_CRYPTO_UNIVERSE` const (10 pairs,
+  `Venue::Yahoo`, XRP-first order matching `XRP_FIRST_UNIVERSE`) + `yahoo_crypto_universe_owned()`
+  function; 5 unit tests.
+
+- `crates/ui/src/lab/runner.rs` — `LabRunConfig.data_source: LabDataSource`;
+  `#[cfg(feature = "yahoo")] fn range_to_ms_pair` + `fn preload_yahoo_bars` (binance-to-yahoo
+  ticker conversion → `YahooBarSource::load_cached`); `spawn_lab_run` Yahoo branch
+  with `#[cfg(not(feature = "yahoo"))]` fallback error; `lab_config_to_scenario` default
+  `data_source`/`bars_override`; `#[allow(clippy::too_many_lines)]` on `spawn_lab_run`;
+  test updated.
+
+- `crates/ui/src/bin/cockpit_live.rs` — `LabRunConfig` construction wires
+  `data_source: self.cockpit.lab_state.data_source`.
+
+- `crates/ui/Cargo.toml` — `data = { path = "../data", optional = true }` in
+  `[dependencies]`; `yahoo = ["dep:data", "data/yahoo"]` in `[features]`.
+
+- `crates/backtest/src/engine.rs` — `ScenarioDataSource` enum (default `Synthetic`);
+  `ScenarioConfig.data_source: ScenarioDataSource` + `.bars_override: Option<Vec<Bar>>`
+  (both anchor-neutral defaults); `RunError::UnsupportedDataSource(String)` variant;
+  cross-sectional strategy arms guard-return `UnsupportedDataSource` for `YahooCache`;
+  single-symbol arms pass `cfg.bars_override` to `sma_composed_run::run`.
+
+- `crates/ui/src/gallery/routes.rs` — `source_toggle` + `cadence_badge` imports; seed
+  functions + render functions; 3 new `GalleryCell` entries (2 source_toggle states +
+  1 cadence_badge state); `EXPECTED_WIDGETS` updated.
+
+- `crates/ui/src/gallery/mod.rs` — `GALLERY_LOGICAL_HEIGHT` bumped to `15_400`
+  (58 cells × 260 px + 320 px headroom).
+
+**Wave-boundary checkpoint (all PASS)**:
+1. `cargo fmt --check` — clean
+2. `cargo clippy -p ui -- -D warnings` — 0 warnings, 0 errors
+3. `cargo test --workspace --lib` → 346 passed; 0 failed
+4. `bash scripts/verify_anchors.sh` → `ANCHORS PASS (34 / 34)`
+
+**Deviations from architect decomp**:
+- None. All architecture decisions followed as specified in `decomp.md`.
+
+**Open item**: T-C3.7 integration test (`crates/ui/tests/lab_yahoo_dispatch.rs`)
+not yet authored — left for tester wave per task list.
