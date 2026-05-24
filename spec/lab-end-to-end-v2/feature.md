@@ -136,6 +136,42 @@ post-F9 fix.
 
 Estimated budget: ~3-5 days when promoted.
 
+### D-2c — Binance parquet → Lab dispatch wiring (**SUPERSEDED 2026-05-24**)
+
+**Status (2026-05-24)**: SUPERSEDED by
+[`lab-yahoo-realdata v0.1.0`](../lab-yahoo-realdata/feature.md) per
+operator decision "Replace Binance for Lab — multi-asset pivot."
+
+**Original intent**: a follow-on to Wave D-2 (single-symbol scenarios)
+would wire the Binance parquet cache (`data/binance/<SYM>/<YEAR>/*.parquet`;
+revision SHA `3a8b96c43f…`) into the Lab's `engine::run_scenario`
+dispatch path, replacing the synthetic GBM bar source for the Lab's
+"pair × strategy" UX. The Binance parquet cache currently feeds the
+`crates/backtest` CLI via `--features realdata` (ADR-0032) but is
+**not wired to Lab dispatch** today.
+
+**Why superseded**: the operator's 2026-05-24 decision is to pivot the
+Lab's real-data source to Yahoo Finance for a multi-asset universe
+(crypto + equities + FX + commodities; ~30+ years of history;
+license-friendly; no exchange membership). Binance stays as the CLI
+realdata path (anchored Binance reports remain immutable evidence —
+the 34/34 anchor invariant is non-negotiable per `spec/anchors.toml`),
+but the Lab's real-data dispatch points at Yahoo, not Binance.
+
+**Replacement**:
+[`spec/lab-yahoo-realdata/feature.md`](../lab-yahoo-realdata/feature.md)
+authored 2026-05-24 (analyst M0). Trace row
+`REQ-LAB-YAHOO-REALDATA-001` at `proposed`. ADR-0040 (Yahoo realdata
+path + revision pin) pending architect M-T1.
+
+**Cross-feature contract**: the v2 brief's Wave D-2 ship (single-symbol
+scenario dispatch arms `v0.sma`, `v0.5.macd`, `v0.5.rsi`,
+`v0.5.bbands` in `engine::run_scenario`) is the load-bearing
+prerequisite for lab-yahoo-realdata v0.1.0. v2 ships first; Yahoo
+realdata layers on top. No v2 R-row needs to change as a result of
+this SUPERSEDED note — D-2c was never a v2 R-row, only a roadmap
+follow-on stub.
+
 ## Architecture findings
 
 ### F1 — Binary-side update wrapper is missing
@@ -1133,3 +1169,12 @@ module has a `DO NOT modify` doc comment and the ADR-0038 § D6.b note.
 - 2026-05-24 (developer): Wave D-2 complete — F3 (single-symbol dispatch)
   + R5.2 (fills enrichment). 4 new engine arms; CLI bar loop extracted;
   all 34 anchors preserved.
+- 2026-05-24 (analyst, lab-yahoo-realdata M0 cross-feature edit):
+  appended **D-2c SUPERSEDED** note under `## Roadmap follow-ons` per
+  operator decision "Replace Binance for Lab — multi-asset pivot." The
+  v2 brief's R-rows are unchanged; D-2c was only a roadmap stub. New
+  brief at `spec/lab-yahoo-realdata/feature.md` (status: proposed;
+  trace `REQ-LAB-YAHOO-REALDATA-001`; ADR-0040 pending architect).
+  v2's Wave D-2 ship is the load-bearing prerequisite — lab-yahoo-
+  realdata layers on top of the single-symbol dispatch arms shipped
+  here.

@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-22
+updated: 2026-05-24
 ---
 <!-- updated 2026-05-22 (orchestrator, audit-2026-05-22 P2.5 cleanup) —
      v25-tcn-alpha-investigation shipped 2026-05-19; v25-tcn-overlay
@@ -372,6 +372,77 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+
+<!-- updated 2026-05-24 (analyst, lab-yahoo-realdata) —
+     **PROMOTED Idea → Active 2026-05-24** under the operator's
+     2026-05-24 decision "Replace Binance for Lab — multi-asset
+     pivot." This brief sits downstream of two predecessors: (i)
+     `backtest-real-binance-data v0.1.0` (shipped 2026-05-18) which
+     locked the parquet revision-pin protocol per ADR-0032; (ii)
+     `lab-end-to-end-v2 v0.1.0` Wave D-2 (shipped 2026-05-24) which
+     extracted single-symbol dispatch arms (`v0.sma`, `v0.5.macd`,
+     `v0.5.rsi`, `v0.5.bbands`) into `engine::run_scenario`, making
+     the Lab's "pair × strategy" UX real for single-symbol strategies.
+     This brief swaps the underlying data source for that UX from
+     synthetic GBM to Yahoo-Finance-cached historical OHLCV.
+
+     **What this brief does NOT do**: the 34 locked anchors stay
+     byte-identical (Binance CLI path stays in tree for anchor
+     reproducibility; Lab simply stops dispatching to it). New
+     Yahoo-based anchors emit at a future v0.1.1 M-FINAL after an
+     operator-approved baseline.
+
+     **Cost framing**: ~1-2 weeks wall-clock. Wave C splits into 4
+     independent sub-waves:
+     - C-1 (`YahooBarSource` + cache) — ~3 days, no UI surface;
+     - C-2 (`fetch_yahoo_klines` CLI) — ~1 day, depends on C-1;
+     - C-3 (Lab dispatch wiring) — ~3 days, parallel with C-1 + C-4;
+     - C-4 (`Venue::Yahoo` cascade) — ~1 day, gates C-3 UI work.
+     Wave D (ui-designer) runs parallel with C-3 once `LabSource`
+     enum lands.
+
+     **Operator-decide Q's** (load-bearing — architect M-T1 gates on
+     Q1, Q2, Q4, Q6):
+     - Q1 — engine-dispatch shape: (a) yahoo-specific arms vs
+       (b) source-agnostic engine + Lab-side bar swap. Analyst
+       recommends **(b)** — minimum anchor risk.
+     - Q2 — asset universe scope: (a) crypto-mirror only vs
+       (b)-(d) equities/FX/commodities expansion. Analyst
+       recommends **(a)** at v0.1.0; (b)-(d) are one-week
+       follow-ups each.
+     - Q3 — Yahoo crate pick: (a) `yahoo_finance_api 4.1.x` vs
+       (b) `yfinance-rs 0.7.x` vs (c) custom HTTP. Analyst
+       recommends **(a)**.
+     - Q4 — cadence policy: (a) hourly only vs (b) daily only vs
+       (c) adaptive. Analyst recommends **(c)** with badge UI.
+     - Q5-Q10 — strategy params, ticker convention, cache backend,
+       in-cockpit fetch button, coverage threshold, git-tracking.
+       Analyst defaults documented in feature.md.
+
+     **Cross-feature impact**: `lab-end-to-end-v2` D-2c "Binance
+     parquet → Lab wiring" is SUPERSEDED by this brief per the
+     operator's decision; the v2 spec gains an explicit
+     SUPERSEDED note (analyst T-A9 in this M0 pass).
+
+     **Trace row**: `REQ-LAB-YAHOO-REALDATA-001` at `proposed` state.
+     **Feature folder**:
+     [`spec/lab-yahoo-realdata/`](lab-yahoo-realdata/feature.md).
+     **ADR sketch**: ADR-0040 (Yahoo realdata path + revision pin) —
+     architect authors at M-T1 from the analyst outline in
+     feature.md.
+-->
+
+- **lab-yahoo-realdata** — multi-asset pivot for the Lab UI; replace
+  Binance-parquet as the Lab's real-data source with Yahoo Finance
+  (via Rust crate). 10-ticker crypto-mirror at v0.1.0; equities + FX
+  + commodities expansion at v0.2.0. Parquet cache + revision-pin
+  mirrors the Binance precedent. 34/34 anchors stay byte-identical
+  (Lab dispatch stops pointing at Binance CLI path; the anchors live
+  on that CLI path and are unchanged). **Spec**:
+  [`spec/lab-yahoo-realdata/feature.md`](lab-yahoo-realdata/feature.md).
+  **Trace**: `REQ-LAB-YAHOO-REALDATA-001`. Estimated 1-2 weeks
+  wall-clock. **Operator-decide Q1-Q10 pending**; architect M-T1
+  gates on Q1, Q2, Q4, Q6.
 
 <!-- updated 2026-05-24 (analyst, lab-end-to-end-v2) —
      **PROMOTED Idea → Active 2026-05-24** after operator's 2026-05-24

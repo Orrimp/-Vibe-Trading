@@ -1191,3 +1191,46 @@ tests       = [
 ]
 anchors     = []   # v2 touches engine dispatch + scenario bar loops (cancel + progress); 34 originals MUST stay byte-identical (R10.1; H5 hypothesis guard via verify_anchors.sh). Architect M-T1 (2026-05-24) confirmed baseline `ANCHORS PASS  (34 / 34)`. Wave D-2 re-verifies 4 legacy anchors (btc-2023-1m-sma-cross, btc-2023-1m-macd-trend, btc-2023-1m-rsi-reversion, btc-2023-1m-bbands-mean-revert) byte-identical via ADR-0038 § D6.b protocol.
 state       = "in-progress"
+
+#
+# ─── Lab Yahoo realdata — multi-asset pivot (proposed 2026-05-24) ───────
+#
+
+[[req]]
+id          = "REQ-LAB-YAHOO-REALDATA-001"
+title       = "Lab Yahoo realdata — multi-asset pivot; replace Binance for Lab dispatch; yahoo_finance_api crate + parquet revision-pinned cache + Source toggle + Cadence badge; preserve 34/34 anchors byte-identical; ADR-0040 pending architect"
+feature     = "lab-yahoo-realdata"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-24) — feature.md + tasks.md authored.
+  # ARCHITECT M-T1 will add the ADR-0040 path once authored:
+  #   "spec/architecture/adr/0040-yahoo-realdata-path-and-revision-pin.md"
+  "spec/lab-yahoo-realdata/feature.md",
+  "spec/lab-yahoo-realdata/tasks.md",
+]
+crates      = [
+  # ANALYST M0 (2026-05-24) — paths surfaced from R1-R7 + R-UI-1 in feature.md.
+  # Only ON-DISK paths listed here per the project's lint-clean-while-draft
+  # convention (spec_lint treats `crates` as path-bearing). Forward-listed
+  # paths (`crates/data/src/yahoo.rs` at R1.1; `crates/ui/src/widgets/source_toggle.rs`
+  # at R-UI-1.1; `data/yahoo/REVISION.toml` at R2.2) are tasks.md Wave C/D
+  # work — appended here once on disk.
+  "crates/data",                                            # R1.1 — wrapper module landing site (architect-decide at T-AR7)
+  "crates/backtest/src/realdata.rs",                        # R1.1 — RealDataBarSource is the API shape we mirror (analyst reference)
+  "crates/ui/src/lab/state.rs",                             # R3.1 — LabSource enum + cadence state
+  "crates/ui/src/lab/runner.rs",                            # R3.2, R3.3 — bar-source swap site
+  "crates/ui/src/lab/universe.rs",                          # R4.1 — YAHOO_CRYPTO_UNIVERSE const
+  "crates/core/src/lib.rs",                                 # K7 — Venue::Yahoo variant
+  "data/binance/REVISION.toml",                             # R2.2 reference: manifest format we mirror
+]
+tests       = [
+  # ANALYST M0 (2026-05-24) — test paths gating R1-R7 acceptance criteria.
+  # Forward-listed paths (`crates/data/tests/yahoo_revision_verify.rs` at R2;
+  # `crates/ui/tests/lab_yahoo_dispatch.rs` at R3.5) are tasks.md Wave C work —
+  # appended here once on disk per lint-clean-while-draft convention.
+  "crates/backtest/tests/realdata_revision_verify.rs",      # analyst reference — the shape the Yahoo equivalent will follow (R2)
+  "crates/ui/src/lab/universe.rs",                          # R4.1 unit test xrp_first_order_pinned mirror (yahoo_crypto_universe_order_pinned)
+  "crates/backtest/tests/determinism.rs",                   # R-NR.1 — anchor preservation gate (34 SHAs)
+]
+anchors     = []   # v0.1.0 emits NO new anchors (R6.3 — Yahoo anchors lock in v0.1.1 after operator approval). The 34 Binance-based anchors stay byte-identical (R-NR.1; H5 hypothesis guard via verify_anchors.sh).
+state       = "proposed"
