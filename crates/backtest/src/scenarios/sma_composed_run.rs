@@ -88,7 +88,20 @@ pub fn synthetic_bars_minute(
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
 
-    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+    // F11 fix 2026-05-24 — mix symbol into RNG seed so the Lab UI's pair picker
+    // produces different synthetic random walks per pair. Without this, every
+    // pair produced identical percent-return sequences (only the start_price
+    // differed), making the pair picker strategically meaningless.
+    //
+    // Anchor-preserving contract: BTCUSDT returns offset = 0 so legacy fixed-
+    // symbol anchored reports (4 single-symbol body-SHA-256s under
+    // spec/v0-paper-sma/reports etc.) remain byte-identical. Other symbols get
+    // a deterministic FNV-1a-64 hash of the symbol bytes XORed in.
+    //
+    // ADR-0038 § D6 compliance: this is behavior-preserving for BTCUSDT (the
+    // only anchored symbol); strictly additive variation for other symbols.
+    let effective_seed = seed ^ symbol_seed_offset(symbol);
+    let mut rng = ChaCha20Rng::seed_from_u64(effective_seed);
     let mut bars = Vec::with_capacity(count);
 
     let per_min_vol: f64 = 0.001_10;
@@ -160,6 +173,32 @@ pub fn synthetic_bars_minute(
     }
 
     bars
+}
+
+/// F11 — Per-symbol seed offset for `synthetic_bars_minute`.
+///
+/// Returns a deterministic `u64` mixed into the ChaCha20Rng seed so the Lab
+/// UI's pair picker produces different synthetic random walks per pair.
+///
+/// **Anchor-preservation contract**: returns 0 for `BTCUSDT` so the legacy
+/// fixed-symbol anchored reports (4 single-symbol body-SHA-256s under
+/// `spec/v0-paper-sma/reports/` etc.) stay byte-identical. All other symbols
+/// receive an FNV-1a-64 hash of the symbol bytes.
+///
+/// ADR-0038 § D6 compliance: behavior-preserving for the only anchored
+/// symbol; additive variation for everything else.
+#[must_use]
+pub fn symbol_seed_offset(symbol: &Symbol) -> u64 {
+    if symbol.0.as_str() == "BTCUSDT" {
+        return 0;
+    }
+    // FNV-1a 64-bit (deterministic across Rust versions; never changes).
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in symbol.0.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
 }
 
 /// Default start price for a symbol, used when the engine dispatch provides
