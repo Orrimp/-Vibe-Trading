@@ -76,6 +76,11 @@ pub enum RunOutcome {
 /// that the UI needs for the overlay). Full `RunReport` is written to
 /// disk when `write_report = true`; the equity series is loaded by
 /// `EquityCache` from the written report on the next cache miss.
+///
+/// v2 / Q3=(a) — carries the in-memory equity series + fills + KPIs
+/// so the binary-side wrapper can build a `RunReportMirror` and
+/// dispatch `ChartMarkersLoaded` without re-reading the written
+/// Markdown report from disk.
 #[derive(Debug, Clone)]
 pub struct RunSummary {
     /// Strategy id that was run.
@@ -84,6 +89,17 @@ pub struct RunSummary {
     pub symbol: SmolStr,
     /// Path to the written Markdown report, if `write_report = true`.
     pub report_path: Option<std::path::PathBuf>,
+    /// Per-bar equity curve `(timestamp_millis, equity_usdt)`.
+    /// Built from `RunReport.equity_series` in `spawn_lab_run`'s
+    /// post-completion block (R2.4).
+    pub equity_series: Vec<(i64, Decimal)>,
+    /// Executed fills in chronological order. May be empty for
+    /// scenarios that don't yet populate `RunReport.fills` (today
+    /// momentum / pairs / TCN all return `Vec::new()` per the Phase B
+    /// TODO at engine.rs:307; R5.2 extends them in Wave D-2).
+    pub fills: Vec<trading_core::FillView>,
+    /// Aggregate KPI summary from `RunReport.kpis`.
+    pub kpis: backtest::BacktestKpis,
 }
 
 // ── In-flight cancellation token ──────────────────────────────────────────────
@@ -270,6 +286,9 @@ pub fn spawn_lab_run(
             strategy_id: strategy,
             symbol,
             report_path: None,
+            equity_series: Vec::new(),
+            fills: Vec::new(),
+            kpis: backtest::BacktestKpis::default(),
         };
         iced::Task::done(Message::LabRunCompleted(Ok(summary)))
     }
@@ -281,6 +300,9 @@ pub fn spawn_lab_run(
                 strategy_id: strategy,
                 symbol,
                 report_path: None,
+                equity_series: Vec::new(),
+                fills: Vec::new(),
+                kpis: backtest::BacktestKpis::default(),
             };
             return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         };
@@ -317,10 +339,21 @@ pub fn spawn_lab_run(
                     match backtest::engine::run_scenario(scenario_cfg).await {
                         Ok(report) => {
                             let path = report.report_path.clone();
+                            // R2.4 — promote the in-memory equity / fills / kpis
+                            // from RunReport into RunSummary so the binary-side
+                            // wrapper avoids a disk round-trip.
+                            let equity_series: Vec<(i64, rust_decimal::Decimal)> = report
+                                .equity_series
+                                .iter()
+                                .map(|(ts, money)| (ts.unix_millis(), money.amount()))
+                                .collect();
                             Ok(RunSummary {
                                 strategy_id: strat,
                                 symbol: sym,
                                 report_path: path,
+                                equity_series,
+                                fills: report.fills.clone(),
+                                kpis: report.kpis.clone(),
                             })
                         }
                         Err(e) => Err(SmolStr::new(format!("{e}"))),

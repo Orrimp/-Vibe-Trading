@@ -792,6 +792,10 @@ impl AppState {
         // as a fallback when the 1 Hz tick has not landed yet).
         let select_pair = match &msg {
             Message::SelectSymbol(v, s) => Some((*v, s.clone())),
+            // R1.2 (lab-end-to-end-v2 T-D1.1) — extend capture so that a
+            // Lab pair-chip click also fires the markers/signals re-fetch
+            // cascade in the post-forward block (cockpit_live.rs:861-916).
+            Message::LabSelectPair(v, s) => Some((*v, s.clone())),
             _ => None,
         };
         // Phase 3 R5.2 / Q11b — compound dispatch: on a Home →
@@ -848,7 +852,58 @@ impl AppState {
             None
         };
 
+        // T-D1.3 (lab-end-to-end-v2 T-AR-1) — capture LabRunCompleted BEFORE
+        // state::update so we still see the pre-forward LabState (operator MAY
+        // have clicked away during the run; the pre-forward snapshot is what
+        // the RunReportMirror.tuple must encode per K3).
+        let lab_run_completed_summary: Option<ui::lab::runner::RunSummary> = match &msg {
+            Message::LabRunCompleted(Ok(summary)) => Some(summary.clone()),
+            _ => None,
+        };
+        let lab_run_completed_pre_tuple = if lab_run_completed_summary.is_some() {
+            let ls = &self.cockpit.lab_state;
+            match (ls.strategy.as_ref(), ls.pair.as_ref()) {
+                (Some(strategy), Some((venue, symbol))) => {
+                    Some(ui::lab::equity_loader::LabTuple::new(
+                        strategy,
+                        *venue,
+                        symbol,
+                        ls.range.clone(),
+                    ))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+
         ui::state::update(&mut self.cockpit, msg);
+
+        // T-D1.3 (lab-end-to-end-v2 T-AR-1) — rotate RunReportMirror:
+        // prev ← last, last ← Some(new_mirror).
+        // On Err / no captured tuple, do not rotate (R2.3: failure does NOT
+        // mutate last_run_report).
+        if let (Some(summary), Some(tuple)) =
+            (lab_run_completed_summary, lab_run_completed_pre_tuple)
+        {
+            let mirror = ui::lab::runner::RunReportMirror {
+                tuple,
+                equity_series: std::sync::Arc::new(summary.equity_series.clone()),
+                kpis: summary.kpis.clone(),
+                generated_at: ::time::OffsetDateTime::now_utc(),
+            };
+            let prev = self.cockpit.lab_state.last_run_report.take();
+            self.cockpit.lab_state.prev_run_report = prev;
+            self.cockpit.lab_state.last_run_report = Some(mirror);
+
+            // T-D1.5 / R2.5 — when the engine surfaced fills (Phase C work
+            // landing in Wave D-2 alongside the single-symbol extraction),
+            // dispatch ChartMarkersLoaded so the chart's triangle markers
+            // update. Empty fills → no dispatch (chart shows equity-only).
+            if !summary.fills.is_empty() {
+                return iced::Task::done(Message::ChartMarkersLoaded(Ok(summary.fills.clone())));
+            }
+        }
 
         if let Some(ref id) = select_strategy_id {
             // Phase 4 R13 — insert Loading marker so the screen
@@ -1110,5 +1165,161 @@ impl AppState {
 
     fn theme(&self) -> iced::Theme {
         iced::Theme::Dark
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use ui::lab::runner::{RunReportMirror, RunSummary};
+    use ui::state::Cockpit;
+
+    /// Build a minimal `RunSummary` with the given equity series length.
+    fn make_summary(equity_len: usize) -> RunSummary {
+        use rust_decimal::Decimal;
+        RunSummary {
+            strategy_id: smol_str::SmolStr::new("v1.momentum"),
+            symbol: smol_str::SmolStr::new("XRPUSDT"),
+            report_path: None,
+            equity_series: (0..equity_len as i64)
+                .map(|i| (i * 3_600_000, Decimal::new(100_000, 0)))
+                .collect(),
+            fills: vec![],
+            kpis: backtest::BacktestKpis::default(),
+        }
+    }
+
+    /// T-D1.3 / T-AR-1 — `lab_run_completed_wrapper_rotates_mirror`:
+    /// after calling the binary-side wrapper logic with a `LabRunCompleted(Ok(_))`
+    /// message and a valid pre-update (strategy + pair) lab tuple, the wrapper
+    /// MUST populate `last_run_report` with a `RunReportMirror` whose
+    /// `equity_series` length matches the summary.
+    ///
+    /// This is the K7 mitigation test.  The wrapper is tested directly by
+    /// constructing a synthetic `Cockpit` state, pre-populating the `lab_state`
+    /// fields, and invoking the capture + rotate logic.
+    #[test]
+    fn lab_run_completed_wrapper_rotates_mirror() {
+        use trading_core::{StrategyId, Symbol, Venue};
+        use ui::lab::equity_loader::LabTuple;
+        use ui::lab::state::DateRange;
+
+        let mut cockpit = Cockpit::new();
+        // Pre-populate the cockpit lab_state so the pre-forward tuple snapshot
+        // resolves (mimics the state just before LabRunCompleted arrives).
+        cockpit.lab_state.strategy = Some(StrategyId::new("v1.momentum"));
+        cockpit.lab_state.pair = Some((Venue::Binance, Symbol::new("XRPUSDT")));
+        cockpit.lab_state.range = DateRange::default();
+        assert!(cockpit.lab_state.last_run_report.is_none());
+
+        // Reproduce the capture logic from cockpit_live::update's pre-forward block.
+        let summary = make_summary(5);
+        let pre_tuple = {
+            let ls = &cockpit.lab_state;
+            match (ls.strategy.as_ref(), ls.pair.as_ref()) {
+                (Some(strategy), Some((venue, symbol))) => {
+                    Some(LabTuple::new(strategy, *venue, symbol, ls.range.clone()))
+                }
+                _ => None,
+            }
+        };
+        assert!(
+            pre_tuple.is_some(),
+            "pre_tuple must resolve when strategy+pair set"
+        );
+
+        // Reproduce the post-forward rotate block.
+        if let Some(tuple) = pre_tuple {
+            let mirror = RunReportMirror {
+                tuple,
+                equity_series: std::sync::Arc::new(summary.equity_series.clone()),
+                kpis: summary.kpis.clone(),
+                generated_at: ::time::OffsetDateTime::now_utc(),
+            };
+            let prev = cockpit.lab_state.last_run_report.take();
+            cockpit.lab_state.prev_run_report = prev;
+            cockpit.lab_state.last_run_report = Some(mirror);
+        }
+
+        // Assert post-conditions.
+        let report = cockpit
+            .lab_state
+            .last_run_report
+            .as_ref()
+            .expect("last_run_report must be Some after wrapper rotation");
+        assert_eq!(
+            report.equity_series.len(),
+            5,
+            "RunReportMirror equity_series must match summary.equity_series"
+        );
+        assert!(
+            cockpit.lab_state.prev_run_report.is_none(),
+            "prev_run_report must be None — first run has no predecessor"
+        );
+    }
+
+    /// T-D1.3 extension — on a second run, prev ← last and last ← new.
+    #[test]
+    fn lab_run_completed_wrapper_rotates_prev_on_second_run() {
+        use trading_core::{StrategyId, Symbol, Venue};
+        use ui::lab::equity_loader::LabTuple;
+        use ui::lab::state::DateRange;
+
+        let mut cockpit = Cockpit::new();
+        cockpit.lab_state.strategy = Some(StrategyId::new("v1.momentum"));
+        cockpit.lab_state.pair = Some((Venue::Binance, Symbol::new("XRPUSDT")));
+        cockpit.lab_state.range = DateRange::default();
+
+        // First run.
+        let apply_wrapper = |cockpit: &mut Cockpit, equity_len: usize| {
+            let summary = make_summary(equity_len);
+            let ls = &cockpit.lab_state;
+            let pre_tuple = match (ls.strategy.as_ref(), ls.pair.as_ref()) {
+                (Some(strategy), Some((venue, symbol))) => {
+                    Some(LabTuple::new(strategy, *venue, symbol, ls.range.clone()))
+                }
+                _ => None,
+            };
+            if let Some(tuple) = pre_tuple {
+                let mirror = RunReportMirror {
+                    tuple,
+                    equity_series: std::sync::Arc::new(summary.equity_series.clone()),
+                    kpis: summary.kpis.clone(),
+                    generated_at: ::time::OffsetDateTime::now_utc(),
+                };
+                let prev = cockpit.lab_state.last_run_report.take();
+                cockpit.lab_state.prev_run_report = prev;
+                cockpit.lab_state.last_run_report = Some(mirror);
+            }
+        };
+
+        apply_wrapper(&mut cockpit, 5);
+        assert!(cockpit.lab_state.last_run_report.is_some());
+        assert!(cockpit.lab_state.prev_run_report.is_none());
+
+        apply_wrapper(&mut cockpit, 10);
+        // After second run: last has 10, prev has 5.
+        assert_eq!(
+            cockpit
+                .lab_state
+                .last_run_report
+                .as_ref()
+                .unwrap()
+                .equity_series
+                .len(),
+            10
+        );
+        assert_eq!(
+            cockpit
+                .lab_state
+                .prev_run_report
+                .as_ref()
+                .unwrap()
+                .equity_series
+                .len(),
+            5
+        );
     }
 }

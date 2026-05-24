@@ -120,6 +120,21 @@ pub struct BacktestKpis {
     pub total_fees: Money<Usdt>,
 }
 
+// K8a (lab-end-to-end-v2 T-D1.4) — `BacktestKpis::default()` is used by
+// fixture-path `RunSummary` constructors where no real KPI data is available
+// (non-live / no-rt_handle placeholder summaries).
+impl Default for BacktestKpis {
+    fn default() -> Self {
+        Self {
+            final_equity: Money::<Usdt>::zero(),
+            initial_equity: Money::<Usdt>::zero(),
+            max_drawdown: Decimal::ZERO,
+            trade_count: 0,
+            total_fees: Money::<Usdt>::zero(),
+        }
+    }
+}
+
 /// Configuration for a single backtest run (ADR-0030).
 ///
 /// All fields are mandatory. Use `Default` trait implementations only

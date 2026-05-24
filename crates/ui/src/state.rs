@@ -1890,6 +1890,11 @@ pub fn update(model: &mut Cockpit, msg: Message) {
 
         // ── Phase A — Lab screen (ui-rethink-phase-a-lab T-D-4) ─────────
         Message::LabSelectPair(venue, symbol) => {
+            // R1.1 (lab-end-to-end-v2 T-D1.1) — keep `selected_symbol` in
+            // sync so the chart's `chart_buffer.bars(...)` read at
+            // screens/lab.rs:243 returns bars for the pair-chip-selected pair.
+            // Phase A R3.3 closure. Clone before the move into `pair`.
+            model.selected_symbol = Some((venue, symbol.clone()));
             model.lab_state.pair = Some((venue, symbol));
             // T-D-N10: tuple changed — clear both run report mirrors.
             model.lab_state.last_run_report = None;
@@ -3806,5 +3811,65 @@ mod tests {
         // `Offline` view fn doesn't read it (the byte-identity guard
         // short-circuits before touching the payload).
         assert!(c.assistant_state.last_forecast.is_some());
+    }
+
+    // ── lab-end-to-end-v2 Wave D-1 tests (T-D1.1 / T-AR-2) ─────────────────
+
+    /// T-D1.1 / R1.1 — `LabSelectPair` updates BOTH `lab_state.pair` AND
+    /// `selected_symbol`.  Phase A R3.3 closure.
+    ///
+    /// This is the forensic-gate test: it MUST HAVE FAILED before the fix
+    /// at state.rs:1893 (which only wrote `lab_state.pair` and left
+    /// `selected_symbol` unchanged).
+    #[test]
+    fn lab_select_pair_updates_selected_symbol() {
+        let mut c = Cockpit::new();
+        assert!(
+            c.selected_symbol.is_none(),
+            "cold-start: selected_symbol must be None"
+        );
+
+        let venue = trading_core::Venue::Binance;
+        let symbol = trading_core::Symbol::new("XRPUSDT");
+
+        update(&mut c, Message::LabSelectPair(venue, symbol.clone()));
+
+        assert_eq!(
+            c.lab_state.pair,
+            Some((venue, symbol.clone())),
+            "LabSelectPair must set lab_state.pair"
+        );
+        assert_eq!(
+            c.selected_symbol,
+            Some((venue, symbol.clone())),
+            "LabSelectPair must also set selected_symbol (R1.1 fix)"
+        );
+    }
+
+    /// T-D1.1 extension — a second `LabSelectPair` overwrites `selected_symbol`
+    /// (not just `lab_state.pair`).
+    #[test]
+    fn lab_select_pair_overwrites_selected_symbol_on_subsequent_click() {
+        let mut c = Cockpit::new();
+        let v = trading_core::Venue::Binance;
+
+        update(
+            &mut c,
+            Message::LabSelectPair(v, trading_core::Symbol::new("XRPUSDT")),
+        );
+        update(
+            &mut c,
+            Message::LabSelectPair(v, trading_core::Symbol::new("ETHUSDT")),
+        );
+
+        assert_eq!(
+            c.selected_symbol,
+            Some((v, trading_core::Symbol::new("ETHUSDT"))),
+            "second LabSelectPair must overwrite selected_symbol with ETHUSDT"
+        );
+        assert_eq!(
+            c.lab_state.pair,
+            Some((v, trading_core::Symbol::new("ETHUSDT"))),
+        );
     }
 }

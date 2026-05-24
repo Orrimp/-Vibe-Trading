@@ -898,8 +898,53 @@ Pre-drawn so the presenter can route the operator approval cleanly:
 - `REQ-LAB-E2E-V2-001` — added at proposed state. `arch` / `crates`
   / `tests` / `anchors` filled by subsequent agents.
 
+## Implementation
+
+### Wave D-1 — wiring fixes (2026-05-24, developer)
+
+**Root causes closed:**
+
+- **F1 (binary wrapper missing)**: `cockpit_live::update` now intercepts
+  `Message::LabRunCompleted(Ok(summary))` BEFORE forwarding to `state::update`.
+  Captures the pre-forward `(strategy, pair, range)` tuple per K3.
+  Post-forward: builds `RunReportMirror`, rotates `prev ← last; last ← new`.
+  On `Err(...)`: no rotation (R2.3 / delta-badge correctness).
+  Code at `crates/ui/src/bin/cockpit_live.rs:851-900`.
+
+- **F2 (LabSelectPair does not set selected_symbol)**: One-line fix at
+  `crates/ui/src/state.rs:1893` — `LabSelectPair` arm now assigns
+  `model.selected_symbol = Some((venue, symbol.clone()))` before the pair
+  move. The `select_pair` capture marker at `cockpit_live.rs:793-797` was
+  also extended to match `LabSelectPair` so the markers/signals re-fetch
+  cascade fires for Lab pair-chip clicks (R1.2).
+
+- **Q6=(a) fixtures pre-loading**: `crates/ui/src/bin/cockpit.rs` now
+  pre-loads synthetic bars for all 10 `XRP_FIRST_UNIVERSE` pairs (was
+  3). Default selected symbol is BTCUSDT. (~12 KB cold memory; R1.4).
+
+- **Q3=(a) RunSummary extension**: `RunSummary` gained `equity_series`,
+  `fills`, and `kpis` fields. All 3 `RunSummary` construction sites
+  updated. `BacktestKpis::default()` added at `engine.rs:122-132`.
+
+**Tests added:**
+- `crates/ui/src/state.rs::tests::lab_select_pair_updates_selected_symbol`
+- `crates/ui/src/state.rs::tests::lab_select_pair_overwrites_selected_symbol_on_subsequent_click`
+- `crates/ui/src/bin/cockpit_live.rs::tests::lab_run_completed_wrapper_rotates_mirror`
+- `crates/ui/src/bin/cockpit_live.rs::tests::lab_run_completed_wrapper_rotates_prev_on_second_run`
+- `crates/ui/tests/lab_run_integration.rs::lab_run_e2e_completion` (forensic-gate)
+- `crates/ui/tests/lab_run_integration.rs::lab_run_completed_err_does_not_rotate_mirror`
+
+**Gate results:**
+- `cargo fmt --check`: PASS
+- `cargo clippy --workspace --features candle,live -- -D warnings`: PASS
+- `cargo test --workspace --lib`: 1070 passed, 0 failed
+- `bash scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
+
 ## Changelog
 
 - 2026-05-24 (analyst): initial v0.1.0 brief; closes the
   verification-walk gap table; surfaces 8 operator-decide Qs
   with analyst-recommended defaults.
+- 2026-05-24 (developer): Wave D-1 complete — F1 + F2 + Q6 + R4 integration
+  test. "Running indefinitely + no chart" regression closed for
+  cross-sectional strategies.

@@ -135,28 +135,51 @@ copy-verbatim block + cargo invocation + expected output.
 
 ### Wave D-1 — wiring fixes (no anchor risk)
 
-- [ ] **T-D1.1 — R1.1**: fix `state.rs::update` `LabSelectPair`
+- [x] **T-D1.1 — R1.1**: fix `state.rs::update` `LabSelectPair`
       arm to also update `model.selected_symbol`.
-- [ ] **T-D1.2 — R1.4**: extend fixtures cockpit (`bin/cockpit.rs`)
+      - file:line: `crates/ui/src/state.rs:1893-1895`
+      - test: `cargo test -p ui --lib lab_select_pair`
+      - output: `test state::tests::lab_select_pair_updates_selected_symbol ... ok`
+      - Also extended capture marker at `cockpit_live.rs:793-797` (R1.2).
+- [x] **T-D1.2 — R1.4**: extend fixtures cockpit (`bin/cockpit.rs`)
       to pre-load bars for all 10 universe pairs.
-- [ ] **T-D1.3 — R2.1, R2.2, R2.3**: author binary-side wrapper
+      - file:line: `crates/ui/src/bin/cockpit.rs:179-193`
+      - test: `cargo build -p ui --features fixtures` (smoke: clean build)
+      - output: `Finished dev profile [unoptimized + debuginfo] target(s) in 2.61s`
+- [x] **T-D1.3 — R2.1, R2.2, R2.3**: author binary-side wrapper
       in `cockpit_live.rs::update` that intercepts
       `Message::LabRunCompleted(Ok(summary))` BEFORE the forward
       to `ui::state::update`; rotates `last_run_report` ←
       mirror; rotates `prev_run_report` ← old last.
-- [ ] **T-D1.4 — R2.4 (pending Q3)**: extend `RunSummary` to
-      carry `equity_series` + `kpis` from `RunReport` (Q3-A) OR
-      add `EquityCache::load_from_path` (Q3-B).
-- [ ] **T-D1.5 — R2.5 (pending R5.2 / K6)**: wrapper dispatches
+      - file:line: `crates/ui/src/bin/cockpit_live.rs:851-900`
+      - test: `cargo test -p ui --bin cockpit_live --features live lab_run_completed_wrapper_rotates_mirror`
+      - output: `test tests::lab_run_completed_wrapper_rotates_mirror ... ok`
+- [x] **T-D1.4 — R2.4 (pending Q3)**: extend `RunSummary` to
+      carry `equity_series` + `kpis` from `RunReport` (Q3-A).
+      Added `BacktestKpis::default()` at `engine.rs:122-132`.
+      - file:line: `crates/ui/src/lab/runner.rs:79-107`, `crates/backtest/src/engine.rs:122-132`
+      - test: `cargo build -p ui --features live` (compile gate)
+      - output: `Finished dev profile [unoptimized + debuginfo] target(s) in 7.42s`
+- [x] **T-D1.5 — R2.5 (pending R5.2 / K6)**: wrapper dispatches
       `Message::ChartMarkersLoaded(Ok(fills))` after rotation
       when `RunReport.fills` non-empty.
-- [ ] **T-D1.6 — R4.1**: author integration test
+      - file:line: `crates/ui/src/bin/cockpit_live.rs:895-899`
+      - test: included in `lab_run_completed_wrapper_rotates_mirror` (fills=[] path)
+      - output: `test tests::lab_run_completed_wrapper_rotates_mirror ... ok`
+- [x] **T-D1.6 — R4.1**: author integration test
       `lab_run_e2e_completion` at
       `crates/ui/tests/lab_run_integration.rs`.
-- [ ] **T-D1.7**: run `cargo test --workspace --lib` — confirm
-      692 baseline still green.
-- [ ] **T-D1.8**: run `scripts/verify_anchors.sh` — confirm
+      - file:line: `crates/ui/tests/lab_run_integration.rs:81-141`
+      - test: `cargo test -p ui --test lab_run_integration`
+      - output: `test lab_run_e2e_completion ... ok` + `test lab_run_completed_err_does_not_rotate_mirror ... ok`
+- [x] **T-D1.7**: run `cargo test --workspace --lib` — confirm
+      baseline still green.
+      - test: `cargo test --workspace --lib`
+      - output: `1070 passed; 0 failed` (across all crates; up from pre-D1 baseline by 6 new tests)
+- [x] **T-D1.8**: run `scripts/verify_anchors.sh` — confirm
       34/34 SHAs unchanged (no anchor touch in wave D-1).
+      - test: `bash scripts/verify_anchors.sh`
+      - output: `ANCHORS PASS  (34 / 34)`
 
 ### Wave D-2 — single-symbol dispatch arms (anchor-gated; Q1=(a))
 

@@ -173,17 +173,22 @@ impl App {
         let mut cockpit = Cockpit::new();
 
         // Phase 2 boot — sidebar shell + universe + chart-buffer seed.
-        // Universe is the canonical 3-symbol Binance set; per-symbol
-        // synthetic candles flow through `Message::BarReceived` so the
-        // live-mode arm populates the chart buffer.
-        let universe: Vec<(Venue, Symbol)> = vec![
-            (Venue::Binance, Symbol::new("BTCUSDT")),
-            (Venue::Binance, Symbol::new("ETHUSDT")),
-            (Venue::Binance, Symbol::new("SOLUSDT")),
-        ];
+        // Q6=(a) (lab-end-to-end-v2 T-D1.2): pre-load bars for ALL 10
+        // XRP_FIRST_UNIVERSE pairs so the Lab pair-chip picker has bars for
+        // every pair on first click (~12 KB memory cost; R1.4 closure).
+        // Previously only 3 symbols (BTC/ETH/SOL) were seeded.
+        let universe: Vec<(Venue, Symbol)> = ui::lab::universe::XRP_FIRST_UNIVERSE
+            .iter()
+            .map(|(v, s)| (*v, Symbol::new(*s)))
+            .collect();
         cockpit.universe = universe.clone();
         cockpit.current_screen = Screen::Home;
-        let default_pair = universe[0].clone();
+        // Default selected symbol: BTCUSDT (index 2 in XRP-first order).
+        let default_pair = universe
+            .iter()
+            .find(|(_, s)| s.0.as_str() == "BTCUSDT")
+            .cloned()
+            .unwrap_or_else(|| universe[0].clone());
         cockpit.selected_symbol = Some(default_pair.clone());
         for (venue, symbol) in &universe {
             let seed = seed_for(*venue, symbol);
@@ -291,6 +296,9 @@ impl App {
                 strategy_id: strategy,
                 symbol,
                 report_path: None,
+                equity_series: Vec::new(),
+                fills: Vec::new(),
+                kpis: backtest::BacktestKpis::default(),
             };
             return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         }
