@@ -1138,3 +1138,51 @@ crates      = ["crates/core", "crates/data", "crates/exec"]
 tests       = []
 anchors     = []
 state       = "shipped"
+
+#
+# ─── Lab end-to-end v2 — close Phase A/B gaps + progress bar (proposed 2026-05-24) ──
+#
+
+[[req]]
+id          = "REQ-LAB-E2E-V2-001"
+title       = "Lab end-to-end v2 — close Phase A/B runtime gaps (LabSelectPair → chart redraw; LabRunCompleted → last_run_report rotation; engine dispatch for single-symbol strategies; Stop button wired; buy/sell markers from fresh fills) + new progress-bar widget; preserve 34/34 anchors byte-identical"
+feature     = "lab-end-to-end-v2"
+product     = "spec/product.md"
+arch        = [
+  # analyst-authored Architecture findings F1-F6 in feature.md; architect M-T1 fills Design section
+  "spec/lab-end-to-end-v2/feature.md",
+  "spec/lab-end-to-end-v2/tasks.md",
+]
+crates      = [
+  # ANALYST M0 (2026-05-24) — paths surfaced from F1-F6 + R1-R9 in feature.md.
+  # Only ON-DISK paths listed here per the project's lint-clean-while-draft
+  # convention (spec_lint treats `crates` as path-bearing). Forward-listed
+  # paths (`widgets/progress_bar.rs` at R8; `scenarios/{sma,macd,rsi,bbands}.rs`
+  # at R3.1) are tasks.md Wave D-2 / D-4 work — appended here once on disk.
+  "crates/ui/src/state.rs",                                # F1, F2, R1.1, R9 (state arms + LabSelectPair fix)
+  "crates/ui/src/bin/cockpit_live.rs",                     # F1, F4, R2 (binary-side update wrapper + RunCancelHandle storage)
+  "crates/ui/src/bin/cockpit.rs",                          # R1.4 (fixtures pre-load all pairs)
+  "crates/ui/src/lab/runner.rs",                           # R2.4, R6.1 (RunSummary extension + cancel handle lifecycle)
+  "crates/ui/src/lab/state.rs",                            # R6.1, R9.1 (run_cancel + run_progress fields)
+  "crates/ui/src/widgets/run_button.rs",                   # R6.3, R6.4 (Stop button + Cancelled state)
+  "crates/ui/src/live.rs",                                 # R7.3 (LabProgressRecipe — mirrors ServerTimeRecipe)
+  "crates/backtest/src/engine.rs",                         # F3, F5, R3, R6.2, R7.1 (dispatch arms + cancel_rx + progress_tx)
+  "crates/backtest/src/main.rs",                           # R3.1 (extraction source for single-symbol scenarios)
+  "crates/backtest/src/scenarios/momentum.rs",             # R6.2, R7.2 (cancel poll + progress emit)
+  "crates/backtest/src/scenarios/pairs.rs",                # R6.2, R7.2
+  "crates/backtest/src/scenarios/tcn_overlay.rs",          # R6.2, R7.2
+  "crates/backtest/src/scenarios/tcn_overlay_weights.rs",  # R6.2, R7.2
+]
+tests       = [
+  # ANALYST M0 (2026-05-24) — test paths gating R1-R9 acceptance criteria.
+  # Forward-listed paths (`tests/lab_run_integration.rs` at R4.1;
+  # `widgets/progress_bar.rs` at R8) are tasks.md Wave D-1 / D-4 work —
+  # appended here once on disk per lint-clean-while-draft convention.
+  "crates/ui/src/lab/state.rs",                            # R9.1-R9.3 — run_progress arms + Stop button arms
+  "crates/backtest/src/engine.rs",                         # R3 + R6 — dispatch + cancel-poll tests
+  "crates/backtest/tests/determinism.rs",                  # R10.1 — anchor preservation (34 SHAs)
+  "crates/ui/tests/panel_snapshots.rs",                    # R8.5 + K9 — running-state lab snapshot
+  "crates/ui/tests/gallery_snapshots.rs",                  # R8.5 — progress_bar__* panels
+]
+anchors     = []   # v2 touches engine dispatch + scenario bar loops (cancel + progress); 34 originals MUST stay byte-identical (R10.1; H5 hypothesis guard via verify_anchors.sh)
+state       = "proposed"

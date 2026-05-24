@@ -373,6 +373,69 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-24 (analyst, lab-end-to-end-v2) —
+     **PROMOTED Idea → Active 2026-05-24** after operator's 2026-05-24
+     verification walk of the Lab screen exposed multiple gaps between
+     the locked Phase A/B R-rows and the runtime reality. Two root
+     causes are wiring bugs that should never have shipped under the
+     locked Phase A/B rows:
+
+     1. F1 — `crates/ui/src/state.rs:1922-1931` `LabRunCompleted` arm
+        carries a NOTE comment promising a binary-side update wrapper
+        rotates `last_run_report ← new RunReportMirror`; the wrapper
+        DOES NOT EXIST in `crates/ui/src/bin/cockpit_live.rs`. Phase B's
+        R5 ("chart reads equity from `last_run_report` first") is
+        therefore dead code — `last_run_report` is never set from a real
+        run.
+     2. F2 — `crates/ui/src/state.rs:1892-1897` `LabSelectPair` arm
+        updates `lab_state.pair` but NOT `model.selected_symbol`. The
+        chart's price-line read at `screens/lab.rs:149-152` keys on
+        `selected_symbol`. Pair chip is decorative for the chart.
+
+     Plus 4 scope-leakage debts:
+     3. F3 — `engine::run_scenario` dispatch is cross-sectional-only;
+        4 single-symbol scenarios (SMA / MACD / RSI / BBands) still live
+        in `crates/backtest/src/main.rs` CLI-only, not extracted in
+        Phase B.
+     4. F4 — `crates/ui/src/bin/cockpit_live.rs:1027` drops the
+        `RunCancelHandle` immediately (`let (_, cancel_recv) = …`).
+        Stop button never worked. Engine doesn't thread `cancel_rx`
+        into scenario bar loops.
+     5. F5 — No progress channel exists end-to-end. Operator's
+        2026-05-24 walk asks for a progress-bar widget instead of the
+        opaque ThrottledSpinner.
+     6. F6 — `chart_markers` is fed by `audit::query::recent_fills_filtered`,
+        not by `RunReport.fills`. Fresh-Run markers gap.
+
+     **Cost framing**: ~1-2 weeks wall-clock. Wave D-1 (binary wrapper
+     + LabSelectPair fix + fixtures pair pre-load + Run-completion test)
+     is small + zero anchor risk — ~2 days. Wave D-2 (single-symbol
+     dispatch extraction) is anchor-gated, ~3 days. Wave D-3 (Stop
+     button) is medium, ~2 days. Wave D-4 (progress channel + widget)
+     is medium, ~2-3 days; parallelizable with D-3 across different
+     crates. Total estimated wall-clock 7-10 days.
+
+     **Operator-decide Q's** (HIGH-stakes ones):
+     - Q1 — strategy dispatch shape (single-symbol arms vs `pair_filter`
+       vs scope selector vs defer). Analyst recommends single-symbol arms.
+     - Q2 — Stop button in v2 scope or sibling feature. Analyst
+       recommends in scope.
+
+     **Trace row**: `REQ-LAB-E2E-V2-001` at proposed state.
+     **Feature folder**: [`spec/lab-end-to-end-v2/`](lab-end-to-end-v2/feature.md).
+     **Predecessor chain**: `ui-rethink-phase-a-lab v0.2.0` (shipped
+     2026-05-18) → `ui-rethink-phase-b-lab-run v0.2.0` (shipped
+     2026-05-19) → `lab-end-to-end-v2 v0.1.0` (this).
+-->
+
+- **lab-end-to-end-v2** — close Phase A/B runtime gaps in the Lab
+  screen + add progress-bar widget. Wiring bugs (binary-side wrapper
+  missing; `LabSelectPair` doesn't update `selected_symbol`) + scope
+  debts (cross-sectional-only engine dispatch; Stop button never
+  wired; no progress channel). 34/34 anchors must stay byte-identical.
+  **Spec**: [`spec/lab-end-to-end-v2/feature.md`](lab-end-to-end-v2/feature.md).
+  **Trace**: `REQ-LAB-E2E-V2-001`. Estimated 7-10 days wall-clock.
+
 <!-- updated 2026-05-22 (analyst-bridge, v3-llm-forecaster) —
      **PROMOTED Queue → Active 2026-05-22** by operator under the
      `v3-volatility-forecaster-noop-fix` v0.1.0 sprint-review deck
