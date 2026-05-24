@@ -154,15 +154,20 @@ Pre-existing (not introduced by this feature, NOT blocking ship):
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / reason
-_operator fills in_
+_Operator approved 2026-05-24. v0.1.0 ships as wiring-only; v0.1.1
+trigger (fetch_yahoo_klines run + Yahoo anchor lock) commits as the
+next backlog row._
 
 ## Changelog
 
 - 2026-05-24 (presenter): v0.1.0 sprint-review deck — covers Waves
   C-1..C-4 + tester M-FINAL PASS; commits `7ab924e`, `04e059f`,
   `a87bbc4`.
+- 2026-05-24 (operator): **APPROVED — ship**. v0.1.0 closes. Q-ship
+  resolved (yes, ship wiring-only). Q-v0.1.1-trigger resolved
+  (commit to follow-up; operator will run fetch CLI then re-lock).

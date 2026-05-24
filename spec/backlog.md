@@ -432,17 +432,19 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      feature.md.
 -->
 
-- **lab-yahoo-realdata** — multi-asset pivot for the Lab UI; replace
-  Binance-parquet as the Lab's real-data source with Yahoo Finance
-  (via Rust crate). 10-ticker crypto-mirror at v0.1.0; equities + FX
-  + commodities expansion at v0.2.0. Parquet cache + revision-pin
-  mirrors the Binance precedent. 34/34 anchors stay byte-identical
-  (Lab dispatch stops pointing at Binance CLI path; the anchors live
-  on that CLI path and are unchanged). **Spec**:
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-24 -->
+<!-- - **lab-yahoo-realdata** — see Recent section below for v0.1.0 ship summary. -->
+
+- **lab-yahoo-realdata v0.1.1 (live-cache + Yahoo anchor lock)** —
+  follow-up wave queued by v0.1.0 approval. Operator runs
+  `cargo run -p data --features yahoo,yahoo-online --bin fetch_yahoo_klines`
+  against BTC-USD (or similar small window); developer wires Yahoo
+  anchors into `spec/anchors.toml` + tester re-locks. Closes H1
+  (Yahoo vs Binance equity divergence <30%) and H2 (fetch success
+  >95%). **Spec**:
   [`spec/lab-yahoo-realdata/feature.md`](lab-yahoo-realdata/feature.md).
-  **Trace**: `REQ-LAB-YAHOO-REALDATA-001`. Estimated 1-2 weeks
-  wall-clock. **Operator-decide Q1-Q10 pending**; architect M-T1
-  gates on Q1, Q2, Q4, Q6.
+  **Trace**: `REQ-LAB-YAHOO-REALDATA-001`. Estimated 1-2 days
+  wall-clock after operator cache populated.
 
 <!-- updated 2026-05-24 (analyst, lab-end-to-end-v2) —
      **PROMOTED Idea → Active 2026-05-24** after operator's 2026-05-24
@@ -1466,6 +1468,26 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+### 2026-05-24 cohort
+
+- **lab-yahoo-realdata v0.1.0** — shipped 2026-05-24 (operator-approved).
+  Yahoo Finance pivot for the Lab UI: 10-ticker crypto-mirror universe
+  (`BTCUSDT` … `LINKUSDT`), Binance-style symbols converted to Yahoo
+  (`BTC-USD` …) at the dispatch boundary (Q6=(a) operator-override);
+  adaptive cadence (1m ≤7d, 1h 7-60d, 1d >60d, Q4=(c)); parquet cache
+  pattern + revision-pin mirroring the Binance precedent. New widgets:
+  Source toggle (Synthetic / YahooCache), cadence badge. New crate path:
+  `crates/data/src/yahoo.rs` + `fetch_yahoo_klines` CLI. New Venue::Yahoo.
+  Anchor-additive contract preserved per ADR-0038 § D6.b — all 34
+  anchors byte-identical (ScenarioConfig extensions use
+  `#[serde(default, skip_serializing_if)]`). Tester Wave E PASS: 878+
+  tests, T-C3.7 7/7 (yahoo-gated), clippy clean on touched crates,
+  spec-lint baseline-stable. ADR-0040 codifies Yahoo realdata path +
+  revision pin (`yahoo_finance_api = "=4.1.0"`). H1/H2 + cockpit-smoke
+  + idle-CPU deferred to v0.1.1 per R6.3. Commits: `7ab924e`,
+  `04e059f`, `a87bbc4`, `899c2a0`. See
+  [`spec/lab-yahoo-realdata/feature.md`](lab-yahoo-realdata/feature.md).
 
 ### 2026-05-22 cohort
 
