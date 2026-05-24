@@ -639,6 +639,22 @@ Each Q has an analyst-recommended default. Listed in dispatch
 order — Q1, Q2, Q4, Q6 are load-bearing (architect M-T1 needs
 them); Q3, Q5, Q7, Q8, Q9 can defer to a later wave.
 
+**Operator resolutions 2026-05-24** (all 10 Q's resolved; standing Autoapprove applied to Q3 / Q5 / Q7 / Q8 / Q9 / Q10):
+- **Q1 = (b)** source-agnostic engine + Lab-side bar swap *(operator; matches analyst rec)*.
+- **Q2 = (a)** crypto-mirror only — 10 Yahoo crypto tickers *(operator; matches analyst rec)*.
+- **Q3 = (a)** `yahoo_finance_api 4.1.x` *(Autoapprove)*.
+- **Q4 = (c)** adaptive cadence (1m ≤7d / 1h 7-60d / 1d >60d) *(operator; matches analyst rec)*.
+- **Q5 = (b)** per-cadence param overrides deferred to v0.1.1 *(Autoapprove)*.
+- **Q6 = (a)** UI ticker stays Binance-style (`BTCUSDT`); convert at dispatch boundary *(operator; OVERRODE analyst rec of (b))*. Rationale (operator): preserves UI symbol familiarity; hides Yahoo's `-USD` convention; avoids two-namespace cognitive load even though it costs operator visibility of the actual Yahoo ticker.
+- **Q7 = (a)** parquet cache *(Autoapprove)*.
+- **Q8 = (b)** defer in-cockpit Fetch Data button; CLI-only at v0.1.0 *(Autoapprove)*.
+- **Q9 = (b)** 95% coverage threshold for `MissingData` *(Autoapprove)*.
+- **Q10 = (b)** `.gitignore` parquets, track only REVISION.toml + sample fixtures *(Autoapprove)*.
+
+All 10 resolutions are load-bearing for architect M-T1.
+
+
+
 - **Q1 — Engine dispatch shape.** (a) extend
   `engine::run_scenario` with Yahoo-specific arms (`yahoo.v0.sma`,
   etc.); (b) keep engine source-agnostic, swap bars upstream in
