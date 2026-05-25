@@ -1959,11 +1959,21 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             model.lab_run_inflight = true;
             // R9.3 — clear stale progress from any prior run.
             model.lab_state.run_progress = None;
+            // Bug #54 — clear stale error from previous failed run so the
+            // Run button transitions Failed → Running cleanly.
+            model.lab_state.last_run_error = None;
         }
-        Message::LabRunCompleted(_outcome) => {
+        Message::LabRunCompleted(outcome) => {
             model.lab_run_inflight = false;
             // R9.3 — clear progress on run completion.
             model.lab_state.run_progress = None;
+            // Bug #54 — track success/failure so Run button can render
+            // RunState::Failed and the screen can show the error message
+            // instead of silently flipping back to "Run".
+            model.lab_state.last_run_error = match &outcome {
+                Ok(_) => None,
+                Err(msg) => Some(msg.clone()),
+            };
             // T-D-N10: The equity cache invalidation + repaint is triggered by
             // the binary-side `update` wrapper after pure-state `update` returns.
             // Pure state only clears the inflight flag here.
@@ -3329,13 +3339,13 @@ mod tests {
 
         assert_eq!(
             cockpit.lab_state.strategy.as_ref().map(|s| s.0.as_str()),
-            Some("v1.momentum"),
-            "absent file must yield cold-start strategy v1.momentum"
+            Some("v0.sma"),
+            "Bug #54 cold-start strategy = v0.sma (compiled-in, no CWD dep)"
         );
         assert_eq!(
             cockpit.lab_state.pair.as_ref().map(|(_, s)| s.0.as_str()),
-            Some("XRPUSDT"),
-            "absent file must yield cold-start symbol XRPUSDT"
+            Some("BTCUSDT"),
+            "Bug #54 cold-start symbol = BTCUSDT"
         );
         assert_eq!(
             cockpit.lab_state.range,

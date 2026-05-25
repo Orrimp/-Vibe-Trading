@@ -194,6 +194,16 @@ pub struct LabState {
     /// Same carve-out rules as `last_run_report`.
     pub prev_run_report: Option<crate::lab::runner::RunReportMirror>,
 
+    /// Error message from the most-recent `LabRunCompleted(Err(_))`, or `None`
+    /// after a successful run / cold-start. Drives the Run button's `Failed`
+    /// state and the error banner next to the Run button so engine errors
+    /// (e.g. `load momentum config` or `YahooCache cache miss`) are surfaced
+    /// to the operator instead of disappearing silently.
+    ///
+    /// NOT cloned (`LabState::clone` sets to None) and NOT serialized.
+    /// Cleared on next `LabRunRequested` and on `LabRunCompleted(Ok)`.
+    pub last_run_error: Option<smol_str::SmolStr>,
+
     // ── lab-yahoo-realdata v0.1.0 — data source toggle (T-C3.1 / R3.1) ──────
     /// Data source for the next Run. `Synthetic` (default) preserves the
     /// pre-v0.1.0 byte-identical behaviour (H5 / R-NR.8).
@@ -240,6 +250,7 @@ impl Clone for LabState {
             // only needed in the live session instance, not in snapshots/persistence clones).
             last_run_report: None,
             prev_run_report: None,
+            last_run_error: None,
             // data_source IS cloned — it's a UI selection, not an in-flight resource.
             data_source: self.data_source,
             // Cancel handle is NOT cloned — the clone starts without an in-flight run.
@@ -294,6 +305,7 @@ impl Default for LabState {
             training_events: std::collections::VecDeque::new(),
             last_run_report: None,
             prev_run_report: None,
+            last_run_error: None,
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,
@@ -327,6 +339,7 @@ impl LabState {
             training_events: std::collections::VecDeque::new(),
             last_run_report: None,
             prev_run_report: None,
+            last_run_error: None,
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,

@@ -13,11 +13,24 @@ use trading_core::{StrategyId, Symbol, Venue};
 
 use crate::lab::state::{DateRange, Preset};
 
-/// Cold-start strategy — `v1.momentum` (operator-decision Q-A3).
-pub const LAB_COLD_START_STRATEGY_ID: &str = "v1.momentum";
+/// Cold-start strategy — `v0.sma` (Bug #54 fix 2026-05-25).
+///
+/// Was `v1.momentum` (operator-decision Q-A3) but momentum loads its config
+/// from `config/strategies/top10_momentum_h1.toml` which is CWD-relative.
+/// When the operator launches the cockpit from a non-workspace-root CWD,
+/// the file fails to load and the run silently errors. `v0.sma` uses the
+/// compiled-in `sma_crossover` strategy — no external config needed, no
+/// CWD dependency, works in every launch context. The cross-sectional
+/// strategies are still reachable via the chip row.
+pub const LAB_COLD_START_STRATEGY_ID: &str = "v0.sma";
 
-/// Cold-start symbol — `XRPUSDT` (operator-decision Q-A3).
-pub const LAB_COLD_START_SYMBOL_STR: &str = "XRPUSDT";
+/// Cold-start symbol — `BTCUSDT` (Bug #54 fix 2026-05-25).
+///
+/// Was `XRPUSDT` (operator-decision Q-A3) but BTCUSDT is the canonical
+/// pair for both the Synthetic GBM path (BTC seed-offset = 0, preserving
+/// anchor byte-identity) and the Yahoo path (BTC-USD has the most
+/// available historical data). XRPUSDT remains in the chip row.
+pub const LAB_COLD_START_SYMBOL_STR: &str = "BTCUSDT";
 
 /// Cold-start venue — `Binance` (Phase A universe is single-venue).
 pub const LAB_COLD_START_VENUE: Venue = Venue::Binance;
@@ -58,15 +71,21 @@ mod tests {
 
     /// T-D-17 — cold-start tuple matches the operator-locked Q-A3 decision.
     #[test]
-    fn cold_start_tuple_matches_qa3() {
+    fn cold_start_tuple_matches_post_bug54() {
+        // Bug #54 fix 2026-05-25: cold-start flipped from v1.momentum × XRPUSDT
+        // (Q-A3) to v0.sma × BTCUSDT (works in every CWD; no external config).
         let strat = cold_start_strategy();
         let sym = cold_start_symbol();
         assert_eq!(
             strat.0.as_str(),
-            "v1.momentum",
-            "Q-A3: strategy must be v1.momentum"
+            "v0.sma",
+            "Bug #54 cold-start strategy = v0.sma (compiled-in, no CWD dep)"
         );
-        assert_eq!(sym.0.as_str(), "XRPUSDT", "Q-A3: symbol must be XRPUSDT");
+        assert_eq!(
+            sym.0.as_str(),
+            "BTCUSDT",
+            "Bug #54 cold-start symbol = BTCUSDT (canonical anchor pair)"
+        );
         assert_eq!(
             LAB_COLD_START_VENUE,
             Venue::Binance,

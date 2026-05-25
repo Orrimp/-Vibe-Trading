@@ -396,10 +396,10 @@ mod tests {
     fn decode_corrupted_returns_cold_start() {
         let bad = r#"{"version": 1, "range": NOTJSON}"#;
         let state = decode(bad, "test");
-        // Should be cold-start defaults.
+        // Should be cold-start defaults (Bug #54 fix: v0.sma, not v1.momentum).
         assert_eq!(
             state.strategy.as_ref().map(|s| s.0.as_str()),
-            Some("v1.momentum")
+            Some("v0.sma")
         );
     }
 
@@ -421,8 +421,8 @@ mod tests {
         let state = restore_or_default(Path::new("/tmp/nonexistent-lab-state-999.json"));
         assert_eq!(
             state.strategy.as_ref().map(|s| s.0.as_str()),
-            Some("v1.momentum"),
-            "absent file must yield cold-start strategy"
+            Some("v0.sma"),
+            "absent file must yield cold-start strategy (Bug #54: v0.sma)"
         );
     }
 
@@ -519,8 +519,10 @@ mod tests {
         );
     }
 
-    /// T-D-17 — cold-start defaults encode cleanly and decode back to the
-    /// Q-A3 tuple.
+    /// T-D-17 / Bug #54 — cold-start defaults encode cleanly and decode back
+    /// to the post-Bug-#54 tuple (v0.sma × BTCUSDT instead of v1.momentum
+    /// × XRPUSDT — momentum had a CWD-relative config path that broke
+    /// non-workspace-root launches).
     #[test]
     fn cold_start_encode_decode_qa3() {
         let state = cold_start_defaults();
@@ -528,11 +530,11 @@ mod tests {
         let restored = decode(&json, "test");
         assert_eq!(
             restored.strategy.as_ref().map(|s| s.0.as_str()),
-            Some("v1.momentum")
+            Some("v0.sma")
         );
         assert_eq!(
             restored.pair.as_ref().map(|(_, s)| s.0.as_str()),
-            Some("XRPUSDT")
+            Some("BTCUSDT")
         );
     }
 

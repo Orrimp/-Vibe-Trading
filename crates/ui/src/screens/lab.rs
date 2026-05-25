@@ -302,9 +302,21 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         last_run_report_present = model.lab_state.last_run_report.is_some(),
         "lab::view selection gate"
     );
+    // Bug #54 — derive last_run_ok from `last_run_error` (Err) or
+    // `last_run_report` presence (Ok). Previously hardcoded to None, so
+    // the Run button never showed Failed and engine errors disappeared
+    // silently into the SmolStr message. Now Run → Running → Failed
+    // (with error message rendered below) → Idle (after re-Run).
+    let last_run_ok: Option<bool> = if model.lab_state.last_run_error.is_some() {
+        Some(false)
+    } else if model.lab_state.last_run_report.is_some() {
+        Some(true)
+    } else {
+        None
+    };
     let run_state = RunState::from_cockpit_with_selection(
         model.lab_run_inflight,
-        None,
+        last_run_ok,
         strategy_selected,
         pair_selected,
     );
@@ -380,6 +392,16 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 
     if let Some(badge) = delta_badge {
         run_button_row = run_button_row.push(badge);
+    }
+    // Bug #54 — surface the engine error message next to the Run button
+    // when the last run failed. Without this, errors like "load momentum
+    // config" or "YahooCache cache miss" disappear silently and the
+    // operator sees "nothing happens" after clicking Run.
+    if let Some(err) = model.lab_state.last_run_error.as_ref() {
+        let error_text = Text::new(format!("⚠ {err}"))
+            .size(text::SMALL)
+            .color(color::DOWN_500.current(mode));
+        run_button_row = run_button_row.push(error_text);
     }
     let run_button_row = run_button_row.width(Length::Fill);
 
