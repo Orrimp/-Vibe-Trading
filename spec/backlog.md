@@ -507,7 +507,18 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   debts (cross-sectional-only engine dispatch; Stop button never
   wired; no progress channel). 34/34 anchors must stay byte-identical.
   **Spec**: [`spec/lab-end-to-end-v2/feature.md`](lab-end-to-end-v2/feature.md).
-  **Trace**: `REQ-LAB-E2E-V2-001`. Estimated 7-10 days wall-clock.
+  **Trace**: `REQ-LAB-E2E-V2-001`. **SHIPPED v0.1.0 2026-05-25** —
+  see Recent section.
+
+- **lab-polish-round-2** — position-curve overlay (R1) + SMA fast/slow
+  param editor (R2) + KPI strip densification (R3). Author-approved
+  follow-on from the 2026-05-25 verification walk after lab-end-to-end-v2
+  shipped — Lab is functional but minimal; operator wants per-pair
+  position visibility, in-cockpit param tuning, and denser at-a-glance
+  KPIs. Anchor-additive (KPI extension goes UI-only, doesn't touch
+  Markdown body). **Spec**:
+  [`spec/lab-polish-round-2/feature.md`](lab-polish-round-2/feature.md).
+  Estimated 3-5 days wall-clock. Operator-decide Q1-Q3 pending.
 
 <!-- updated 2026-05-22 (analyst-bridge, v3-llm-forecaster) —
      **PROMOTED Queue → Active 2026-05-22** by operator under the
