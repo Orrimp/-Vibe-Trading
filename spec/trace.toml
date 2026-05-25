@@ -412,7 +412,7 @@ anchors     = [
   "top10-2023-fy-vol-target-overlay-realdata",
   "sharpe-comparison-vol-target-bs1-realdata",
 ]
-state       = "shipped"   # TESTER M-FINAL closed 2026-05-22 — T-T1 cargo gates PASS; anchor lock 30/30 → 33/33; V3 × T-VOL-NO-ALPHA advisory verdict (MODEL-BROKEN / NO-ALPHA) recorded in feature.md § Verification; test report at spec/v3-volatility-forecaster/reports/test-final-2026-05-22.md; HANDOFF → presenter
+state       = "retired"   # flipped 2026-05-25 per audit-2026-05-25 P1 — feature.md status = retired (joint MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA verdict under real-wired overlay; operator routing R-O1 = (a) RETIRE C1 at v3-vol-forecaster-noop-fix v0.1.0 ship). Original M-FINAL: T-T1 cargo gates PASS; anchor lock 30/30 → 33/33; V3 × T-VOL-NO-ALPHA advisory verdict recorded in feature.md § Verification; test report at spec/v3-volatility-forecaster/reports/test-final-2026-05-22.md.
 
 # v3-volatility-forecaster-rebaseline v0.1.0 — analyst 2026-05-22.
 # Spawned by operator routing pick (b) RE-BASELINE FIRST on the parent's
@@ -448,7 +448,7 @@ tests       = [
 anchors     = [
   "sharpe-comparison-vol-target-bs1-realbaseline",  # Q2=(a) default, NEW namespace [v3.0.0-volatility-rebaseline]; M-FINAL gate: ANCHORS PASS (34 / 34)
 ]
-state       = "shipped"   # TESTER M-FINAL closed 2026-05-22; VERDICT PASS; ANCHORS PASS (34/34); T-classifier = T-VOL-NO-ALPHA confirmed on real-vs-real; joint advisory MODEL-BROKEN / NO-ALPHA data-caveat RULED OUT; routing R-O1 → (a) RETIRE C1 [PROVISIONALLY-INVALIDATED 2026-05-22 — vol-targeting overlay determined to be a no-op at crates/strategy/src/vol_targeting_overlay.rs:305-319; see REQ-V3-VOL-FORECASTER-NOOP-FIX-001 — net_delta = 0.000000 is the no-op signature, NOT a true real-vs-real T-VOL-NO-ALPHA verdict]
+state       = "retired"   # flipped 2026-05-25 per audit-2026-05-25 P1 — feature.md status = retired (rebaseline confirmed parent retirement after no-op fix and re-evaluation). Original M-FINAL: TESTER 2026-05-22 VERDICT PASS; ANCHORS PASS (34/34); T-classifier T-VOL-NO-ALPHA confirmed on real-vs-real (post-noop-fix); joint advisory MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA; routing R-O1 → (a) RETIRE C1 ratified.
 
 # v3-volatility-forecaster-noop-fix v0.1.0 — analyst 2026-05-22.
 # P0 wiring-bug discovery: the GARCH vol-targeting overlay's

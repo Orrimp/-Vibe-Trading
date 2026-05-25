@@ -406,9 +406,24 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let run_button_row = run_button_row.width(Length::Fill);
 
     // Compute the per-active-symbol slices once.
-    let active_markers: Vec<FillView> = match &model.chart_markers {
+    // D-2.5 (cross-sectional per-pair exposure, v0.2.0): when a cross-
+    // sectional strategy runs, the merged_bars + all_fills are interleaved
+    // across the top-N universe. Filter to the operator's active symbol so
+    // the chart shows ONLY that symbol's bars + buy/sell triangles. For
+    // single-symbol scenarios this filter is a no-op (all bars/fills share
+    // one symbol). For cross-sectional this is the operator-visible win.
+    let active_symbol_ref = active.as_ref().map(|(_, s)| s.clone());
+    let all_markers: Vec<FillView> = match &model.chart_markers {
         PanelState::Ready(v) => v.clone(),
         _ => Vec::new(),
+    };
+    let active_markers: Vec<FillView> = if let Some(sym) = active_symbol_ref.as_ref() {
+        all_markers
+            .into_iter()
+            .filter(|f| &f.symbol == sym)
+            .collect()
+    } else {
+        all_markers
     };
     let active_signals = match &model.chart_signals {
         PanelState::Ready(v) => v.clone(),
@@ -422,22 +437,40 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // (e.g. Yahoo or synthetic-2023 runs whose timestamps don't overlap with
     // the current live-feed window). Fall back to chart_buffer for live-mode
     // streams that arrive before any Lab run has completed.
-    let bars: Vec<trading_core::Bar> =
-        if let Some(mirror) = model.lab_state.last_run_report.as_ref() {
-            if mirror.bars.is_empty() {
+    let bars: Vec<trading_core::Bar> = {
+        let raw_bars: Vec<trading_core::Bar> =
+            if let Some(mirror) = model.lab_state.last_run_report.as_ref() {
+                if mirror.bars.is_empty() {
+                    active
+                        .as_ref()
+                        .map(|(v, s)| model.chart_buffer.bars(*v, s).cloned().collect::<Vec<_>>())
+                        .unwrap_or_default()
+                } else {
+                    mirror.bars.as_ref().clone()
+                }
+            } else {
                 active
                     .as_ref()
                     .map(|(v, s)| model.chart_buffer.bars(*v, s).cloned().collect::<Vec<_>>())
                     .unwrap_or_default()
-            } else {
-                mirror.bars.as_ref().clone()
-            }
+            };
+        // D-2.5 — filter to the active symbol so cross-sectional runs (which
+        // surface merged top-N interleaved bars) show only the operator's
+        // selected pair. Single-symbol scenarios are no-ops. If filtering
+        // would empty the chart (e.g. cross-sectional with the user's pair
+        // not in the universe) fall back to all bars rather than show
+        // nothing — that way the operator at least sees portfolio context.
+        if let Some(sym) = active_symbol_ref.as_ref() {
+            let filtered: Vec<_> = raw_bars
+                .iter()
+                .filter(|b| &b.symbol == sym)
+                .cloned()
+                .collect();
+            if filtered.is_empty() { raw_bars } else { filtered }
         } else {
-            active
-                .as_ref()
-                .map(|(v, s)| model.chart_buffer.bars(*v, s).cloned().collect::<Vec<_>>())
-                .unwrap_or_default()
-        };
+            raw_bars
+        }
+    };
     let bins = compute_volume_bins(&active_markers, &bars);
 
     // Status strip — three-tile cumulative volume + open-position mirror.
