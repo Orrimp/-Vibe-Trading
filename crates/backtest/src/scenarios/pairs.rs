@@ -64,10 +64,12 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
 
     let start_instant = Instant::now();
 
-    // Load strategy config.
-    let toml_path = PathBuf::from(format!("config/strategies/{}.toml", input.config_id));
+    // Load strategy config. Bug #56 — resolve workspace-relative so the
+    // Lab cockpit launched from any CWD can still find the config.
+    let rel_path = PathBuf::from(format!("config/strategies/{}.toml", input.config_id));
+    let toml_path = crate::paths::resolve_workspace_path(&rel_path);
     let cfg = strategy::pairs::config::MeanReversionPairsConfig::from_file(&toml_path)
-        .with_context(|| format!("load pairs config: {}", toml_path.display()))?;
+        .with_context(|| format!("load pairs config: {}", rel_path.display()))?;
     let universe_list: Vec<String> = {
         let mut syms: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for p in &cfg.pairs {
@@ -81,7 +83,8 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
     let mut pairs_strategy =
         strategy::pairs::mean_reversion::MeanReversionPairsStrategy::from_config(
             cfg,
-            smol_str::SmolStr::new(toml_path.to_string_lossy()),
+            // Bug #56 — keep rel_path (not resolved abs path) for anchor identity.
+            smol_str::SmolStr::new(rel_path.to_string_lossy()),
         );
     let config_hash_hex = {
         use std::fmt::Write as _;

@@ -184,16 +184,20 @@ pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRun
 
     let start_instant = Instant::now();
 
-    // Load strategy config.
-    let toml_path = PathBuf::from(format!("config/strategies/{}.toml", input.config_id));
+    // Load strategy config. Bug #56 — resolve workspace-relative so the
+    // Lab cockpit launched from any CWD can find the config. The
+    // ORIGINAL rel_path is used for source identifiers + error messages
+    // so anchored Markdown report bytes stay byte-identical.
+    let rel_path = PathBuf::from(format!("config/strategies/{}.toml", input.config_id));
+    let toml_path = crate::paths::resolve_workspace_path(&rel_path);
     let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
-        .with_context(|| format!("load momentum config: {}", toml_path.display()))?;
+        .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
     let universe_list: Vec<String> = cfg.universe.iter().map(ToString::to_string).collect();
     let strategy_id_str = cfg.id.to_string();
 
     let mut momentum = strategy::MomentumStrategy::from_config(
         cfg,
-        smol_str::SmolStr::new(toml_path.to_string_lossy()),
+        smol_str::SmolStr::new(rel_path.to_string_lossy()),
     );
     let config_hash_hex = {
         use std::fmt::Write as _;

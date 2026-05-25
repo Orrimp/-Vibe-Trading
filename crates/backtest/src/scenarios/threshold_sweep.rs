@@ -88,11 +88,12 @@ pub async fn run_cell(
 
         let start_instant = Instant::now();
 
-        // Load the base momentum config to derive universe + strategy_id.
+        // Load the base momentum config. Bug #56 — resolve workspace-relative.
         let base_config_id = "top10_momentum_h1";
-        let toml_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
+        let rel_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
+        let toml_path = crate::paths::resolve_workspace_path(&rel_path);
         let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
-            .with_context(|| format!("load momentum config: {}", toml_path.display()))?;
+            .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
         let universe_list: Vec<String> = cfg.universe.iter().map(ToString::to_string).collect();
         let strategy_id_str = format!("threshold_sweep/{}", input.config_id);
         let forecaster_label = format!("threshold_sweep tuned cell ({})", input.forecaster_id);

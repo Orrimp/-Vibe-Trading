@@ -11,6 +11,11 @@ pub mod cancel;
 /// Progress primitives for the bar-loop poll boundary (lab-end-to-end-v2 T-AR-5 / Wave D-4).
 pub mod progress;
 
+/// Bug #56 — workspace-relative path resolver so cross-sectional scenarios
+/// (`momentum`, `pairs`, `tcn_overlay`, etc.) can load their
+/// `config/strategies/*.toml` from any CWD, not just workspace root.
+pub mod paths;
+
 /// Shared CLI-scenario types used by `main.rs` and the extracted modules.
 /// Made `pub` so that the backtest binary can access them.
 pub mod cli_types;

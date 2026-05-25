@@ -61,17 +61,19 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
         use strategy::Strategy as _;
         let start_instant = Instant::now();
 
-        // Load the base momentum config.
+        // Load the base momentum config. Bug #56 — resolve workspace-relative.
         let base_config_id = "top10_momentum_h1";
-        let toml_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
+        let rel_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
+        let toml_path = crate::paths::resolve_workspace_path(&rel_path);
         let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
-            .with_context(|| format!("load momentum config: {}", toml_path.display()))?;
+            .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
         let universe_list: Vec<String> = cfg.universe.iter().map(ToString::to_string).collect();
         let strategy_id_str = format!("tcn_overlay_momentum_weights/{}", input.config_id);
 
         let base = strategy::MomentumStrategy::from_config(
             cfg,
-            smol_str::SmolStr::new(toml_path.to_string_lossy()),
+            // Bug #56 — keep rel_path (not resolved abs path) for anchor identity.
+            smol_str::SmolStr::new(rel_path.to_string_lossy()),
         );
 
         // Load real anchor checkpoint.

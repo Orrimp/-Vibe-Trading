@@ -128,15 +128,17 @@ pub async fn run(
     // ── Load base momentum config ──────────────────────────────────────────────
 
     let base_config_id = "top10_momentum_h1";
-    let toml_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
+    // Bug #56 — resolve workspace-relative; rel_path stored for anchor identity.
+    let rel_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
+    let toml_path = crate::paths::resolve_workspace_path(&rel_path);
     let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
-        .with_context(|| format!("load momentum config: {}", toml_path.display()))?;
+        .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
     let universe_list: Vec<String> = cfg.universe.iter().map(ToString::to_string).collect();
     let strategy_id_str = format!("garch_vol_target_overlay_momentum/{}", input.config_id);
 
     let base = strategy::MomentumStrategy::from_config(
         cfg,
-        smol_str::SmolStr::new(toml_path.to_string_lossy()),
+        smol_str::SmolStr::new(rel_path.to_string_lossy()),
     );
 
     // ── Load GARCH checkpoint ──────────────────────────────────────────────────

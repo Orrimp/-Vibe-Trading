@@ -153,11 +153,11 @@ async fn e2e_eth_sma_last30d_renders_triangles() {
     assert!(!summary.bars.is_empty(), "ETH v0.sma must surface bars");
 }
 
+/// Bug #56 forensic-gate: momentum loads `config/strategies/top10_momentum_h1.toml`.
+/// Before Bug #56 fix, the test CWD (`crates/ui/`) couldn't find this file and
+/// the test was `#[ignore]`d. After Bug #56 fix, `crate::paths::resolve_workspace_path`
+/// walks up to find `Cargo.lock` and resolves correctly — this test runs green.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "v1.momentum loads config/strategies/*.toml relative to CWD; \
-            test crate CWD is crates/ui/ which can't see the workspace-root \
-            config/ tree. This test runs green from workspace root via \
-            `cargo test -p ui --test lab_run_real_engine -- --ignored`."]
 async fn e2e_momentum_xrp_last90d_cold_start_renders() {
     // Cold-start defaults: v1.momentum (cross-sectional) + XRPUSDT + Last90d.
     let mut cockpit = Cockpit::new();

@@ -316,9 +316,14 @@ pub async fn run(
             notes: format!("v0 SMA crossover: fast={fast_len}, slow={slow_len}"),
         }
     } else {
-        let toml_path = PathBuf::from(format!("config/strategies/{}.toml", input.strategy_id));
+        // Bug #56 — resolve workspace-relative so the Lab cockpit launched
+        // from any CWD can still load the config. The relative path is
+        // preserved in `source_path` for anchor byte-identity (ADR-0038 §
+        // D6 — report writer renders source_path into the Markdown body).
+        let rel_path = PathBuf::from(format!("config/strategies/{}.toml", input.strategy_id));
+        let toml_path = crate::paths::resolve_workspace_path(&rel_path);
         let cfg = strategy::ComposedStrategyConfig::from_file(&toml_path)
-            .with_context(|| format!("load strategy config: {}", toml_path.display()))?;
+            .with_context(|| format!("load strategy config: {}", rel_path.display()))?;
         let hash_hex = {
             use std::fmt::Write as _;
             cfg.hash.iter().fold(String::new(), |mut s, b| {
@@ -326,7 +331,7 @@ pub async fn run(
                 s
             })
         };
-        let source_path = toml_path.display().to_string();
+        let source_path = rel_path.display().to_string();
         let signal = cfg.signal_raw.to_string();
         let meta = StrategyMeta {
             id: input.strategy_id.clone(),
@@ -338,7 +343,8 @@ pub async fn run(
         };
         let composed = strategy::ComposedStrategy::from_config(
             cfg,
-            smol_str::SmolStr::new(toml_path.to_string_lossy()),
+            // Bug #56 — keep rel_path (not resolved abs path) for anchor identity.
+            smol_str::SmolStr::new(rel_path.to_string_lossy()),
         );
         registry.register(Box::new(composed));
         meta
