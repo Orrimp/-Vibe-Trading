@@ -54,6 +54,7 @@ fn apply_wrapper(cockpit: &mut Cockpit, summary: &RunSummary) {
             kpis: summary.kpis.clone(),
             generated_at: ::time::OffsetDateTime::now_utc(),
             bars: summary.bars.clone(),
+            position_curve: Arc::new(summary.position_curve.clone()),
         };
         let prev = cockpit.lab_state.last_run_report.take();
         cockpit.lab_state.prev_run_report = prev;
@@ -78,6 +79,14 @@ async fn execute_run(cfg: LabRunConfig) -> RunSummary {
         .iter()
         .map(|(ts, money)| (ts.unix_millis(), money.amount()))
         .collect();
+    // lab-polish-round-2 R1 — filter position_curve_raw to active symbol.
+    let active_sym = trading_core::Symbol::new(cfg.symbol.as_str());
+    let position_curve: Vec<(i64, rust_decimal::Decimal)> = report
+        .position_curve_raw
+        .iter()
+        .filter(|(_, _, s)| s == &active_sym)
+        .map(|&(ts, qty, _)| (ts, qty))
+        .collect();
     RunSummary {
         strategy_id: cfg.strategy_id.clone(),
         symbol: cfg.symbol.clone(),
@@ -86,6 +95,7 @@ async fn execute_run(cfg: LabRunConfig) -> RunSummary {
         fills: report.fills.clone(),
         kpis: report.kpis.clone(),
         bars: report.bars.clone(),
+        position_curve,
     }
 }
 

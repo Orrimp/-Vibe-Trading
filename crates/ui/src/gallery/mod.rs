@@ -70,8 +70,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     //   progress_bar (50pct + indeterminate).
     // lab-yahoo-realdata T-D2 follow-up adds 3 new cells:
     //   cache_state_badge (fresh + stale + empty).
-    // 64 * 260 = 16_640. Adding 360 px headroom for outer container padding.
-    17_000
+    // lab-polish-round-2 R1 adds 2 new cells:
+    //   position_curve (with_points + empty).
+    // 66 * 260 = 17_160. Adding 360 px headroom for outer container padding.
+    17_520
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

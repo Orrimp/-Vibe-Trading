@@ -438,5 +438,8 @@ pub async fn run(
         equity_curve,
         fills: all_fills,
         bars: bars_arc,
+        // lab-polish-round-2 R1 — position_curve not yet computed for this
+        // scenario (garch overlay). Defaults to empty — anchor-additive.
+        position_curve: Vec::new(),
     })
 }

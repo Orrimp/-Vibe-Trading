@@ -24,9 +24,9 @@ use crate::theme::ThemeMode;
 use crate::widgets::{
     agent_feed, cache_state_badge, cadence_badge, chart, date_range, focus_ring, frame,
     human_control, journal_transaction_modal, kill, kpi_strip, latency, num, override_risk_veto,
-    pair_chip, placeholder, pnl, positions, progress_bar, run_button, run_delta_badge,
-    settings_tabs, sidebar_nav, source_toggle, sparkline, status_bar, strategies, strategy_card,
-    strategy_chip, training_log, training_plot, volume_histogram,
+    pair_chip, placeholder, pnl, position_curve, positions, progress_bar, run_button,
+    run_delta_badge, settings_tabs, sidebar_nav, source_toggle, sparkline, status_bar, strategies,
+    strategy_card, strategy_chip, training_log, training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -372,6 +372,20 @@ fn render_num(_model: &Cockpit) -> iced::Element<'_, Message> {
 
 fn render_volume_histogram_mixed(_model: &Cockpit) -> iced::Element<'_, Message> {
     volume_histogram::view(fx::fake_volume_bins(), ThemeMode::Dark)
+}
+
+// ── lab-polish-round-2 R1 — position_curve gallery cells ─────────────────────
+
+fn seed_position_curve() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn render_position_curve_with_points(_model: &Cockpit) -> iced::Element<'_, Message> {
+    position_curve::view(fx::fake_position_curve_points(), ThemeMode::Dark)
+}
+
+fn render_position_curve_empty(_model: &Cockpit) -> iced::Element<'_, Message> {
+    position_curve::view(vec![], ThemeMode::Dark)
 }
 
 // ── training_log gallery cells (cockpit-training-control T-D-N2) ─────────────
@@ -1213,6 +1227,19 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_progress_bar_indeterminate,
         seed: seed_progress_bar,
     },
+    // ── lab-polish-round-2 R1 — position_curve gallery cells ─────────────────
+    GalleryCell {
+        widget: "position_curve",
+        state: "with_points",
+        render: render_position_curve_with_points,
+        seed: seed_position_curve,
+    },
+    GalleryCell {
+        widget: "position_curve",
+        state: "empty",
+        render: render_position_curve_empty,
+        seed: seed_position_curve,
+    },
 ];
 
 // ── lab-yahoo-realdata — source_toggle gallery cells (T-C3.2) ────────────────
@@ -1318,6 +1345,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "pair_chip",
     "placeholder",
     "pnl",
+    "position_curve",
     "positions",
     "progress_bar",
     "run_button",

@@ -111,4 +111,8 @@ pub mod training_log;
 /// cockpit-training-control T-D-N12 — loss-curve plot inside Train panel.
 /// Renders (epoch, train_loss, val_loss) series as two lines.
 pub mod training_plot;
+/// lab-polish-round-2 R1 — position-curve stepped-polyline widget for the Lab
+/// screen. Shows base-asset position quantity over time for the active pair.
+/// Mirrors `volume_histogram` structure. Lumen-token'd, anchor-additive.
+pub mod position_curve;
 pub mod volume_histogram;

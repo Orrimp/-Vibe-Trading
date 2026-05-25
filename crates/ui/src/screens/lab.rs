@@ -35,20 +35,24 @@ use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     CHART_POSITION_MIRROR_LABEL, CHART_POSITION_MIRROR_NONE, CHART_VOLUME_HISTOGRAM_LABEL,
     CHART_VOLUME_TILE_BUYS_LABEL, CHART_VOLUME_TILE_NET_LABEL, CHART_VOLUME_TILE_SELLS_LABEL,
-    CHART_VOLUME_TILE_TRADES_SUFFIX,
+    CHART_VOLUME_TILE_TRADES_SUFFIX, LAB_POSITION_CURVE_LABEL,
 };
 use crate::theme::{ThemeMode, color, color_for_delta, radius, space, text};
 use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::run_button::{self, RunState};
 use crate::widgets::volume_histogram::{self, VolumeBin};
 use crate::widgets::{
-    cache_state_badge, cadence_badge, chart, date_range, kpi_strip, pair_chip, progress_bar,
-    source_toggle, strategy_chip, throttled_spinner,
+    cache_state_badge, cadence_badge, chart, date_range, kpi_strip, pair_chip, position_curve,
+    progress_bar, source_toggle, strategy_chip, throttled_spinner,
 };
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
 /// chart (R7.2 + Q5 — operator-locked at ~80 px).
 const HISTOGRAM_HEIGHT_PX: f32 = 80.0;
+
+/// Fixed pixel height for the position-curve strip between the chart and
+/// the volume histogram (lab-polish-round-2 R1 — ~60 px).
+const POSITION_CURVE_HEIGHT_PX: f32 = 60.0;
 
 /// Approximate chip-row height (one row of Lumen `SMALL`-sized buttons
 /// with `XS`/`M` padding).  Used for the [`chart_canvas_height_for_body`]
@@ -135,12 +139,12 @@ pub fn chart_canvas_height_for_body_with_training(
 ) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let padding = (space::L as f32) * 2.0;
-    // 10 children: pair_row, source_toggle_row, strategy_row, date_range_row,
-    // run_button_row, status_strip, lab_kpi_strip, chart (Fill), histogram,
-    // training_panel → 9 gaps.
-    // lab-yahoo-realdata T-C3.4: added source_toggle_row (+1 child, +1 gap).
+    // 11 children: pair_row, source_toggle_row, strategy_row, date_range_row,
+    // run_button_row, status_strip, lab_kpi_strip, chart (Fill),
+    // position_curve, histogram, training_panel → 10 gaps.
+    // lab-polish-round-2 R1: added position_curve strip (+1 child, +1 gap).
     #[allow(clippy::cast_precision_loss)]
-    let spacing = (space::M as f32) * 9.0;
+    let spacing = (space::M as f32) * 10.0;
     let training_height = if training_collapsed {
         TRAINING_PANEL_COLLAPSED_HEIGHT_PX
     } else {
@@ -153,6 +157,7 @@ pub fn chart_canvas_height_for_body_with_training(
         + RUN_BUTTON_ROW_HEIGHT_PX
         + STATUS_STRIP_HEIGHT_PX
         + LAB_KPI_STRIP_HEIGHT_PX
+        + POSITION_CURVE_HEIGHT_PX  // lab-polish-round-2 R1
         + HISTOGRAM_LABEL_HEIGHT_PX
         + HISTOGRAM_HEIGHT_PX
         + training_height;
@@ -611,6 +616,27 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(histogram_label)
         .push(histogram_canvas);
 
+    // lab-polish-round-2 R1 — Position-curve strip between chart and histogram.
+    // Shows the operator-selected pair's base-asset position quantity over time
+    // as a stepped polyline. Filtered to the active symbol (D-2.5 pattern) by
+    // runner.rs before building RunSummary → RunReportMirror.
+    let position_curve_points: Vec<(i64, Decimal)> = model
+        .lab_state
+        .last_run_report
+        .as_ref()
+        .map(|m| m.position_curve.as_ref().clone())
+        .unwrap_or_default();
+    let position_curve_label = Text::new(LAB_POSITION_CURVE_LABEL)
+        .size(text::MICRO)
+        .color(color::FG_3.current(mode));
+    let position_curve_canvas = Container::new(position_curve::view(position_curve_points, mode))
+        .width(Length::Fill)
+        .height(Length::Fixed(POSITION_CURVE_HEIGHT_PX));
+    let position_curve_strip = Column::new()
+        .spacing(space::XXS)
+        .push(position_curve_label)
+        .push(position_curve_canvas);
+
     Column::new()
         .padding(space::L as u16)
         .spacing(space::M)
@@ -663,6 +689,8 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
                 .width(Length::Fill)
                 .height(Length::Fill),
         )
+        // lab-polish-round-2 R1 — position-curve strip above histogram.
+        .push(position_curve_strip)
         .push(histogram)
         // cockpit-training-control T-D-N3 — Training panel (collapsed by
         // default per R1.2 / Q4). Always rendered; collapsed = header-chip

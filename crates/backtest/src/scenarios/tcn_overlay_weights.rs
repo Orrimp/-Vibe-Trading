@@ -344,6 +344,9 @@ pub async fn run(input: TcnScenarioInput, seed: u64) -> Result<TcnOverlayRunResu
             equity_curve,
             fills: all_fills,
             bars: bars_arc,
+            // lab-polish-round-2 R1 — position_curve not yet computed for the
+            // weights variant (candle-gated). Defaults to empty — anchor-additive.
+            position_curve: Vec::new(),
         })
     }
 }

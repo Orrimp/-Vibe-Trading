@@ -254,6 +254,18 @@ pub struct RunReport {
     /// triangle markers anchor correctly even when the `chart_buffer` is empty
     /// (e.g. Yahoo or synthetic-2023 runs).
     pub bars: Arc<Vec<Bar>>,
+    /// lab-polish-round-2 R1 — position-curve for the Lab position-curve widget.
+    ///
+    /// Stores the full per-(symbol, bar) data tagged by symbol.
+    /// `(close_ts_millis, signed_qty, symbol)`.
+    ///
+    /// - Single-symbol arms: all entries share the same symbol.
+    /// - Cross-sectional arms: entries interleaved across the top-N universe.
+    ///
+    /// Filtered to the active symbol in `runner::spawn_lab_run` before being
+    /// placed in `RunSummary.position_curve` (plain `Vec<(i64, Decimal)>`).
+    /// NOT written to Markdown reports — anchor-additive.
+    pub position_curve_raw: Vec<(i64, Decimal, Symbol)>,
 }
 
 /// Errors from `run_scenario`.
@@ -407,6 +419,8 @@ fn momentum_result_to_report(
         report_path: None,
         // Surface run bars to the UI so Lab chart markers anchor correctly.
         bars: result.bars.clone(),
+        // lab-polish-round-2 R1 — position-curve with symbol tag for UI filter.
+        position_curve_raw: result.position_curve.clone(),
     }
 }
 
@@ -451,6 +465,8 @@ fn pairs_result_to_report(
         report_path: None,
         // Surface run bars to the UI so Lab chart markers anchor correctly.
         bars: result.bars.clone(),
+        // lab-polish-round-2 R1 — position-curve with symbol tag for UI filter.
+        position_curve_raw: result.position_curve.clone(),
     }
 }
 
@@ -485,6 +501,8 @@ fn tcn_result_to_report(
         report_path: None,
         // Surface run bars to the UI so Lab chart markers anchor correctly.
         bars: result.bars.clone(),
+        // lab-polish-round-2 R1 — position-curve with symbol tag for UI filter.
+        position_curve_raw: result.position_curve.clone(),
     }
 }
 
@@ -516,6 +534,19 @@ fn sma_composed_result_to_report(
         total_return_pct: total_return_pct(result.initial_equity, result.final_equity),
     };
 
+    // lab-polish-round-2 R1 — single-symbol: tag each position entry with the
+    // symbol from the input bars (all bars share the same symbol).
+    let sym_tag = result
+        .bars
+        .first()
+        .map(|b| b.symbol.clone())
+        .unwrap_or_else(|| Symbol::new("UNKNOWN"));
+    let position_curve_raw: Vec<(i64, Decimal, Symbol)> = result
+        .position_curve
+        .iter()
+        .map(|&(ts, qty)| (ts, qty, sym_tag.clone()))
+        .collect();
+
     RunReport {
         equity_series,
         fills: result.fills.clone(),
@@ -524,6 +555,7 @@ fn sma_composed_result_to_report(
         // Surface run bars to the UI so Lab chart markers anchor correctly
         // against the run's own time window (chart_buffer may be empty).
         bars: result.bars.clone(),
+        position_curve_raw,
     }
 }
 

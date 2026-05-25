@@ -1139,6 +1139,24 @@ pub fn fake_equity_series_for_sparkline() -> EquitySeries {
     EquitySeries::from_points(pts).unwrap_or_else(|_| unreachable!())
 }
 
+/// lab-polish-round-2 R1 — deterministic `(close_ts_millis, qty)` slice for
+/// the `position_curve` gallery cell. Mimics a three-buy / two-sell cumulative
+/// position sequence so both the rising and falling step are visible.
+#[must_use]
+pub fn fake_position_curve_points() -> Vec<(i64, rust_decimal::Decimal)> {
+    use rust_decimal_macros::dec;
+    // 6 bars spaced 1 hour apart starting from a fixed epoch.
+    let base_ms = FIXED_EPOCH_SECS * 1_000;
+    vec![
+        (base_ms,                  dec!(0)),
+        (base_ms + 3_600_000,      dec!(0.5)),
+        (base_ms + 7_200_000,      dec!(1.0)),
+        (base_ms + 10_800_000,     dec!(1.5)),
+        (base_ms + 14_400_000,     dec!(1.0)),
+        (base_ms + 18_000_000,     dec!(0)),
+    ]
+}
+
 /// Phase B (T-D-N13) — two deterministic `RunReportMirror` instances for
 /// the `run_delta_badge` gallery cell and unit tests.
 ///
@@ -1187,6 +1205,7 @@ pub fn fake_run_report_mirror_pair() -> (
         },
         generated_at: OffsetDateTime::UNIX_EPOCH,
         bars: Arc::new(Vec::new()),
+        position_curve: Arc::new(Vec::new()),
     };
 
     // Prev run: +$1 200 P&L, 14% max DD, slower rise.
@@ -1213,6 +1232,7 @@ pub fn fake_run_report_mirror_pair() -> (
         },
         generated_at: OffsetDateTime::UNIX_EPOCH,
         bars: Arc::new(Vec::new()),
+        position_curve: Arc::new(Vec::new()),
     };
 
     (last, prev)

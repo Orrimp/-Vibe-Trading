@@ -172,3 +172,45 @@ doesn't change.
 - Wave F — presenter sprint review.
 
 Estimated 3-5 days wall-clock.
+
+## Implementation
+
+### R1 — Position-curve overlay (completed 2026-05-25)
+
+**Data layer** (`crates/backtest/`):
+- Added `position_curve: Vec<(i64, Decimal)>` to `SmaComposedRunResult` with per-bar emit in the bar loop. File: `crates/backtest/src/scenarios/sma_composed_run.rs`.
+- Added `position_curve: Vec<(i64, Decimal, trading_core::Symbol)>` to `MomentumRunResult`, `PairsRunResult`, and `TcnOverlayRunResult`. Per-bar emit tracks cumulative position qty per symbol. Files: `crates/backtest/src/scenarios/momentum.rs`, `pairs.rs`, `tcn_overlay.rs`.
+- `garch_vol_target_overlay.rs` and `tcn_overlay_weights.rs` use `Vec::new()` (candle-gated / GARCH path).
+- `RunReport` gained `position_curve_raw: Vec<(i64, Decimal, Symbol)>`. The `*_result_to_report` functions in `engine.rs` map per-scenario curves (SMA: symbol-tagged from `result.bars.first()`; cross-sectional: already tagged).
+
+**UI pipeline** (`crates/ui/src/lab/runner.rs`):
+- `RunSummary` gained `position_curve: Vec<(i64, Decimal)>` (active-symbol filtered).
+- `RunReportMirror` gained `position_curve: Arc<Vec<(i64, Decimal)>>` for cheap cloning.
+- `spawn_lab_run` filters `report.position_curve_raw` to the active symbol (D-2.5 filter pattern) before building `RunSummary`.
+- All `RunReportMirror` construction sites updated: `cockpit_live.rs`, `fixtures.rs`, `equity_loader.rs`, `run_delta_badge.rs`, `lab_run_integration.rs`, `lab_run_real_engine.rs`.
+
+**Widget** (`crates/ui/src/widgets/position_curve.rs`, NEW):
+- Canvas-based stepped-polyline widget mirroring `volume_histogram.rs` structure.
+- Positive qty rendered as stepped line + fill in `UP_500` colour above a zero baseline.
+- Empty state: horizontal zero-line + `KPI_DASH_PLACEHOLDER` centred text.
+- 5 unit tests: empty_renders_placeholder, all_zero_non_empty_summary, three_buys_two_sells_step_curve (insta snapshot), cumulative_qty_from_fills (pure logic), per_symbol_filter.
+- Registered in `widgets/mod.rs` and `gallery/routes.rs` (2 gallery cells: `with_points` + `empty`).
+- `fake_position_curve_points()` added to `fixtures.rs`.
+- `GALLERY_LOGICAL_HEIGHT` bumped 17_000 → 17_520 (+2 cells × 260 px + 360 px headroom).
+
+**Screen wiring** (`crates/ui/src/screens/lab.rs`):
+- `POSITION_CURVE_HEIGHT_PX = 60.0` constant.
+- `chart_canvas_height_for_body_with_training` updated: 10 spacing gaps (was 9, +1 for new child), `POSITION_CURVE_HEIGHT_PX` added to fixed allocation.
+- `position_curve_strip` (label + canvas) pushed into the Column layout between the chart body and the volume histogram.
+
+**Strings**: `LAB_POSITION_CURVE_LABEL = "Position size"` added to `strings.rs`.
+
+**Regression gate**: `scripts/verify_anchors.sh` → ANCHORS PASS (34/34). No Markdown report bodies changed; `position_curve_raw` is in-memory only.
+
+### R2 — SMA parameter editor (completed 2026-05-25, prior session)
+
+Shipped at commits `c1cddbe` + `ae26281`. `LabState.sma_fast_input` / `sma_slow_input` text inputs + `SmaComposedRunInput` override propagation through `cockpit_live.rs`.
+
+### R3 — KPI strip densification (completed 2026-05-25, prior session)
+
+Shipped at commit `371d870`. 8-card 2×4 layout: Final / Initial / MaxDD / Trades / Buys / Sells / Return% / Fees.

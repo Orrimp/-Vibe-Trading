@@ -300,6 +300,7 @@ impl App {
                 fills: Vec::new(),
                 kpis: backtest::BacktestKpis::default(),
                 bars: std::sync::Arc::new(Vec::new()),
+                position_curve: Vec::new(),
             };
             return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         }

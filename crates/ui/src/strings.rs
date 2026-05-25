@@ -669,6 +669,9 @@ pub const CHART_VOLUME_TILE_TRADES_SUFFIX: &str = "trades";
 pub const CHART_VOLUME_HISTOGRAM_LABEL: &str = "Per-bar volume";
 pub const CHART_POSITION_MIRROR_LABEL: &str = "Open position";
 pub const CHART_POSITION_MIRROR_NONE: &str = "No open position on this symbol.";
+/// lab-polish-round-2 R1 — label for the position-curve strip below the price
+/// chart in the Lab screen. Analogous to `CHART_VOLUME_HISTOGRAM_LABEL`.
+pub const LAB_POSITION_CURVE_LABEL: &str = "Position size";
 
 // ── Chart legend (chart-canvas-overhaul v1.10, T3015) ────────────────────────
 //
@@ -1131,6 +1134,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("CHART_VOLUME_HISTOGRAM_LABEL", CHART_VOLUME_HISTOGRAM_LABEL),
         ("CHART_POSITION_MIRROR_LABEL", CHART_POSITION_MIRROR_LABEL),
         ("CHART_POSITION_MIRROR_NONE", CHART_POSITION_MIRROR_NONE),
+        ("LAB_POSITION_CURVE_LABEL", LAB_POSITION_CURVE_LABEL),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),

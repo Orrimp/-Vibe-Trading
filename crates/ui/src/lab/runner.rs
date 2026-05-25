@@ -65,6 +65,12 @@ pub struct RunReportMirror {
     /// triangle markers anchor correctly even when `chart_buffer` is empty
     /// (e.g. Yahoo or synthetic-2023 runs).
     pub bars: Arc<Vec<Bar>>,
+    /// lab-polish-round-2 R1 — position-curve for the Lab position-curve widget.
+    ///
+    /// Already filtered to the active symbol (from `RunSummary.position_curve`).
+    /// `(close_ts_millis, signed_qty)` ordered oldest-first.
+    /// Empty when no position data is available.
+    pub position_curve: Arc<Vec<(i64, Decimal)>>,
 }
 
 // ── Run status types ──────────────────────────────────────────────────────────
@@ -119,6 +125,10 @@ pub struct RunSummary {
     /// Non-empty for single-symbol SMA/Composed arms.
     /// Used by `RunReportMirror` so the Lab chart can anchor fill markers.
     pub bars: Arc<Vec<Bar>>,
+    /// lab-polish-round-2 R1 — position-curve already filtered to the active
+    /// symbol. `(close_ts_millis, signed_qty)` oldest-first.
+    /// Empty when the scenario produced no position data.
+    pub position_curve: Vec<(i64, Decimal)>,
 }
 
 // ── In-flight cancellation token (re-exported from backtest::cancel) ─────────
@@ -498,6 +508,7 @@ pub fn spawn_lab_run(
             fills: Vec::new(),
             kpis: backtest::BacktestKpis::default(),
             bars: Arc::new(Vec::new()),
+            position_curve: Vec::new(),
         };
         iced::Task::done(Message::LabRunCompleted(Ok(summary)))
     }
@@ -515,6 +526,7 @@ pub fn spawn_lab_run(
                 fills: Vec::new(),
                 kpis: backtest::BacktestKpis::default(),
                 bars: Arc::new(Vec::new()),
+                position_curve: Vec::new(),
             };
             return iced::Task::done(Message::LabRunCompleted(Ok(summary)));
         };
@@ -598,6 +610,16 @@ pub fn spawn_lab_run(
                                 .iter()
                                 .map(|(ts, money)| (ts.unix_millis(), money.amount()))
                                 .collect();
+                            // lab-polish-round-2 R1 — filter position_curve_raw to
+                            // the active symbol so the UI gets a ready-to-render
+                            // `Vec<(i64, Decimal)>` without any further filtering.
+                            let active_sym = trading_core::Symbol::new(sym.as_str());
+                            let position_curve: Vec<(i64, rust_decimal::Decimal)> = report
+                                .position_curve_raw
+                                .iter()
+                                .filter(|(_, _, s)| s == &active_sym)
+                                .map(|&(ts, qty, _)| (ts, qty))
+                                .collect();
                             Ok(RunSummary {
                                 strategy_id: strat,
                                 symbol: sym,
@@ -606,6 +628,7 @@ pub fn spawn_lab_run(
                                 fills: report.fills.clone(),
                                 kpis: report.kpis.clone(),
                                 bars: report.bars.clone(),
+                                position_curve,
                             })
                         }
                         Err(e) => Err(SmolStr::new(format!("{e}"))),

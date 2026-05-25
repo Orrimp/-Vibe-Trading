@@ -49,6 +49,10 @@ pub struct TcnOverlayRunResult {
     /// All bars from the run (Arc-shared to avoid copying).
     /// Populated for `RunReport.bars` so the Lab chart can anchor fill timestamps.
     pub bars: Arc<Vec<Bar>>,
+    /// lab-polish-round-2 R1 — per-(symbol,bar) position entries.
+    /// Format: `(bar.close_ts unix_millis, signed_qty, symbol)`.
+    /// NOT written to Markdown reports — anchor-additive.
+    pub position_curve: Vec<(i64, Decimal, trading_core::Symbol)>,
 }
 
 // ── Run function ──────────────────────────────────────────────────────────────
@@ -164,6 +168,8 @@ pub async fn run(
 
     // F3 — collect fills for `TcnOverlayRunResult.fills`.
     let mut all_fills: Vec<FillView> = Vec::new();
+    // lab-polish-round-2 R1 — per-(symbol,bar) position entries.
+    let mut position_curve: Vec<(i64, Decimal, trading_core::Symbol)> = Vec::new();
     // Preserve bars in an Arc BEFORE the loop so the UI Lab chart can anchor
     // fill triangle markers against the run's own time window (R5.2 pattern).
     let bars_arc: Arc<Vec<Bar>> = Arc::new(merged_bars_raw);
@@ -323,6 +329,17 @@ pub async fn run(
         if dd > max_drawdown {
             max_drawdown = dd;
         }
+
+        // lab-polish-round-2 R1 — emit one position entry per (symbol, bar).
+        let close_ts_ms = bar.close_ts.unix_millis();
+        position_curve.push((
+            close_ts_ms,
+            position_book
+                .get(&bar.symbol)
+                .copied()
+                .unwrap_or(Decimal::ZERO),
+            bar.symbol.clone(),
+        ));
     }
 
     let position_value: Decimal = position_book
@@ -362,5 +379,6 @@ pub async fn run(
         equity_curve,
         fills: all_fills,
         bars: bars_arc,
+        position_curve,
     })
 }

@@ -105,6 +105,12 @@ pub struct SmaComposedRunResult {
     pub strategy_meta: StrategyMeta,
     /// Scenario bar state (for the CLI report writer).
     pub state: BacktestState,
+    /// lab-polish-round-2 R1 — cumulative base-asset position over time.
+    /// Each entry is `(bar.close_ts unix_millis, signed_qty)`.
+    /// For the single-symbol case there is one entry per bar.
+    /// Positive = long, zero = flat. Used by the Lab position-curve widget.
+    /// NOT written to Markdown reports — anchor-additive.
+    pub position_curve: Vec<(i64, Decimal)>,
 }
 
 // ── Synthetic minute-bar generator ───────────────────────────────────────────
@@ -403,6 +409,8 @@ pub async fn run(
 
     // R5.2 — collect fills for `SmaComposedRunResult.fills`.
     let mut all_fills: Vec<FillView> = Vec::new();
+    // lab-polish-round-2 R1 — position-curve: cumulative signed qty over time.
+    let mut position_curve: Vec<(i64, Decimal)> = Vec::with_capacity(bar_count);
 
     for (bar_idx, bar) in bars_arc.iter().enumerate() {
         // R6.2 + R7.2 — cancellation + progress at the poll boundary.
@@ -525,6 +533,11 @@ pub async fn run(
         state.update_drawdown(post_fill_equity);
         state.equity_curve.push(post_fill_equity);
 
+        // lab-polish-round-2 R1 — record (close_ts_ms, cumulative_qty) for
+        // the position-curve widget.  `position.base_qty` is updated by the
+        // fill loop above, so this snapshot is post-fill for this bar.
+        position_curve.push((bar.close_ts.unix_millis(), position.base_qty));
+
         // Minute-boundary reconciliation check (every 1440 bars ≈ 1 day)
         // Invariant: cash + position_qty * mark == equity_curve.last()
         if bar_idx % 1440 == 0 {
@@ -563,6 +576,7 @@ pub async fn run(
         bars: bars_arc,
         strategy_meta,
         state,
+        position_curve,
     })
 }
 

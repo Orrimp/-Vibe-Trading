@@ -987,6 +987,9 @@ impl AppState {
                 kpis: summary.kpis.clone(),
                 generated_at: ::time::OffsetDateTime::now_utc(),
                 bars: summary.bars.clone(),
+                // lab-polish-round-2 R1 — position-curve (already symbol-filtered
+                // by the runner before being placed in RunSummary).
+                position_curve: std::sync::Arc::new(summary.position_curve.clone()),
             };
             let prev = self.cockpit.lab_state.last_run_report.take();
             self.cockpit.lab_state.prev_run_report = prev;
@@ -1317,6 +1320,7 @@ mod tests {
             fills: vec![],
             kpis: backtest::BacktestKpis::default(),
             bars: std::sync::Arc::new(Vec::new()),
+            position_curve: Vec::new(),
         }
     }
 
@@ -1367,6 +1371,7 @@ mod tests {
                 kpis: summary.kpis.clone(),
                 generated_at: ::time::OffsetDateTime::now_utc(),
                 bars: summary.bars.clone(),
+                position_curve: std::sync::Arc::new(summary.position_curve.clone()),
             };
             let prev = cockpit.lab_state.last_run_report.take();
             cockpit.lab_state.prev_run_report = prev;
@@ -1419,6 +1424,7 @@ mod tests {
                     kpis: summary.kpis.clone(),
                     generated_at: ::time::OffsetDateTime::now_utc(),
                     bars: summary.bars.clone(),
+                    position_curve: std::sync::Arc::new(summary.position_curve.clone()),
                 };
                 let prev = cockpit.lab_state.last_run_report.take();
                 cockpit.lab_state.prev_run_report = prev;

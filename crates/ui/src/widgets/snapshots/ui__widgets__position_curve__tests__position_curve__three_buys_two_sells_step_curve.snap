@@ -1,0 +1,13 @@
+---
+source: crates/ui/src/widgets/position_curve.rs
+expression: summary(&points)
+---
+widget: position_curve
+point_count: 6
+non_zero_points: 4
+empty_state: false
+representation: stepped_polyline
+gridlines: 5
+long_color: UP_500
+max_qty: 1.5
+total_qty_sum: 4.0

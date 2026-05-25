@@ -961,6 +961,7 @@ data_source: synthetic
             },
             generated_at: time::OffsetDateTime::UNIX_EPOCH,
             bars: Arc::new(Vec::new()),
+            position_curve: Arc::new(Vec::new()),
         }
     }
 
