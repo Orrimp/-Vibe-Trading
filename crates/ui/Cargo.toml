@@ -181,12 +181,17 @@ default = ["live", "yahoo"]
 # without needing `--features fixtures` on every invocation.
 fixtures = []
 
-# `yahoo` — enables the Yahoo Finance parquet cache reader path in
-# `lab::runner::preload_yahoo_bars`. When this feature is absent, toggling
-# the Source = YahooCache and pressing Run returns a friendly error
-# directing the operator to rebuild with `--features yahoo`.
-# Pulls `data/yahoo` which depends on `polars` (parquet reader).
-yahoo = ["dep:data", "data/yahoo"]
+# `yahoo` — enables the Yahoo Finance parquet cache reader + auto-fetch
+# path in `lab::runner::preload_yahoo_bars`. When this feature is absent,
+# toggling the Source = YahooCache and pressing Run returns a friendly
+# error directing the operator to rebuild with `--features yahoo`.
+#
+# Pulls `data/yahoo` (parquet reader via polars) AND `data/yahoo-online`
+# (auto-fetch on cache miss via `YahooBarSource::fetch_and_cache`).
+# Operator decision 2026-05-25: when the cache is empty, the cockpit
+# fetches online in-flight instead of erroring out — first Run takes
+# 30-60 s for the network round-trip, subsequent Runs hit the cache.
+yahoo = ["dep:data", "data/yahoo", "data/yahoo-online"]
 
 # `render-debug` — ui-quality-gate-overhaul M2-A + M2-B opt-in. Composes
 # two surfaces under one flag per architect Q7 resolution

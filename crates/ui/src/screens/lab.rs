@@ -466,7 +466,11 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
                 .filter(|b| &b.symbol == sym)
                 .cloned()
                 .collect();
-            if filtered.is_empty() { raw_bars } else { filtered }
+            if filtered.is_empty() {
+                raw_bars
+            } else {
+                filtered
+            }
         } else {
             raw_bars
         }

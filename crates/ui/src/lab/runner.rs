@@ -203,11 +203,11 @@ fn range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
 /// - Coverage below 95% (`MissingData`)
 /// - Revision manifest missing or tampered (`RevisionMissing` / `RevisionMismatch`)
 #[cfg(feature = "yahoo")]
-fn preload_yahoo_bars(
+async fn preload_yahoo_bars(
     cfg: &LabRunConfig,
     scenario_range: &backtest::engine::DateRange,
 ) -> Result<(Vec<trading_core::Bar>, SmolStr), SmolStr> {
-    use data::yahoo::{Interval, YahooBarSource, binance_to_yahoo_ticker};
+    use data::yahoo::{Interval, YahooBarSource, YahooError, binance_to_yahoo_ticker};
     use trading_core::Symbol;
 
     // Convert UI ticker (BTCUSDT) → Yahoo ticker (BTC-USD) at the boundary.
@@ -219,12 +219,52 @@ fn preload_yahoo_bars(
     let (start_ms, end_ms) = range_to_ms_pair(scenario_range);
     let interval = Interval::derive_from_range(start_ms, end_ms);
 
-    // Construct the cache source from the standard working-dir path.
-    let src = YahooBarSource::new(std::path::PathBuf::from("data/yahoo"));
+    // Construct the cache source. Ensure the parent exists so the auto-fetch
+    // fallback can write into it (`fetch_and_cache` calls
+    // `create_dir_all(<TICKER>/<INTERVAL>/<YEAR>/)` under the hood, but the
+    // root must exist first).
+    let cache_root = std::path::PathBuf::from("data/yahoo");
+    let _ = std::fs::create_dir_all(&cache_root);
+    let src = YahooBarSource::new(cache_root);
 
-    let loaded = src
-        .load_cached(yahoo_ticker.as_str(), interval, start_ms, end_ms)
-        .map_err(|e| SmolStr::new(format!("yahoo cache load: {e}")))?;
+    // First: try the cache.
+    let cache_attempt = src.load_cached(yahoo_ticker.as_str(), interval, start_ms, end_ms);
+
+    // On CacheMiss / RevisionMissing, fall back to fetching online (operator
+    // decision 2026-05-25 — auto-fetch on demand). Other errors surface as-is.
+    let loaded = match cache_attempt {
+        Ok(loaded) => loaded,
+        Err(err @ (YahooError::CacheMiss { .. } | YahooError::RevisionMissing { .. })) => {
+            tracing::info!(
+                target: "lab.yahoo",
+                ticker = %yahoo_ticker,
+                interval = ?interval,
+                reason = %err,
+                "cache miss — auto-fetching from Yahoo Finance"
+            );
+            // Online fetch with exponential backoff (mirrors the CLI's
+            // `fetch_with_backoff` shape). Errors here propagate up.
+            match fetch_with_backoff(&src, yahoo_ticker.as_str(), interval, start_ms, end_ms).await
+            {
+                Ok(()) => {
+                    tracing::info!(
+                        target: "lab.yahoo",
+                        ticker = %yahoo_ticker,
+                        "Yahoo fetch completed; reloading cache"
+                    );
+                    src.load_cached(yahoo_ticker.as_str(), interval, start_ms, end_ms)
+                        .map_err(|e| SmolStr::new(format!("yahoo cache load (post-fetch): {e}")))?
+                }
+                Err(e) => {
+                    return Err(SmolStr::new(format!(
+                        "Yahoo auto-fetch failed for {yahoo_ticker}: {e}. \
+                         Check network connectivity or run the fetch CLI manually."
+                    )));
+                }
+            }
+        }
+        Err(e) => return Err(SmolStr::new(format!("yahoo cache load: {e}"))),
+    };
 
     tracing::info!(
         target: "lab.yahoo",
@@ -232,10 +272,65 @@ fn preload_yahoo_bars(
         interval = ?interval,
         bars = loaded.loaded_count,
         revision_sha = %loaded.revision_sha,
-        "Yahoo bars pre-loaded for Lab run"
+        "Yahoo bars ready for Lab run"
     );
 
     Ok((loaded.bars, SmolStr::new(loaded.revision_sha)))
+}
+
+/// Exponential-backoff retry wrapper around `YahooBarSource::fetch_and_cache`.
+/// Mirrors the CLI binary's `fetch_with_backoff` so the in-flight auto-fetch
+/// path is equivalent. 5 retries, 1s → 60s cap.
+#[cfg(feature = "yahoo")]
+async fn fetch_with_backoff(
+    src: &data::yahoo::YahooBarSource,
+    ticker: &str,
+    interval: data::yahoo::Interval,
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<(), data::yahoo::YahooError> {
+    use data::yahoo::YahooError;
+    use std::time::Duration;
+
+    let max_retries: u32 = 5;
+    let mut backoff = Duration::from_secs(1);
+    let cap = Duration::from_secs(60);
+
+    for attempt in 0..=max_retries {
+        match src
+            .fetch_and_cache(ticker, interval, start_ms, end_ms)
+            .await
+        {
+            Ok(loaded) => {
+                tracing::info!(
+                    target: "lab.yahoo",
+                    ticker = %ticker,
+                    bars = loaded.loaded_count,
+                    expected = loaded.expected_count,
+                    revision_sha = %&loaded.revision_sha[..8],
+                    "Yahoo fetch OK"
+                );
+                return Ok(());
+            }
+            Err(YahooError::RateLimited { retry_after_secs }) if attempt < max_retries => {
+                let delay = backoff.max(Duration::from_secs(retry_after_secs));
+                tracing::warn!(
+                    target: "lab.yahoo",
+                    ticker = %ticker,
+                    attempt,
+                    delay_s = delay.as_secs(),
+                    "rate-limited by Yahoo, backing off"
+                );
+                tokio::time::sleep(delay).await;
+                backoff = (backoff * 2).min(cap);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err(YahooError::Http(format!(
+        "max retries ({max_retries}) exhausted for {ticker}"
+    )))
 }
 
 // ── LabRunConfig → ScenarioConfig mapper (T-D-N9 / R3.1–R3.5) ───────────────
@@ -397,24 +492,14 @@ pub fn spawn_lab_run(
         };
 
         // lab-yahoo-realdata T-C3.6 / T-AR1: when data source is YahooCache,
-        // pre-load bars synchronously before the async engine dispatch.
+        // pre-load bars BEFORE the engine dispatch. As of 2026-05-25 the
+        // preload is async (auto-fetches online on cache miss), so the call
+        // is moved INTO the spawned task below.
         // The `yahoo` feature gate ensures this compiles out in builds that
         // don't want the parquet dependency (R-NR.7 / H6).
-        if cfg.data_source == crate::lab::state::LabDataSource::YahooCache {
-            #[cfg(feature = "yahoo")]
-            {
-                match preload_yahoo_bars(&cfg, &scenario_cfg.range) {
-                    Ok((bars, _sha)) => {
-                        scenario_cfg.data_source = backtest::engine::ScenarioDataSource::YahooCache;
-                        scenario_cfg.bars_override = Some(bars);
-                    }
-                    Err(e) => {
-                        return iced::Task::done(Message::LabRunCompleted(Err(e)));
-                    }
-                }
-            }
-            #[cfg(not(feature = "yahoo"))]
-            {
+        #[cfg(not(feature = "yahoo"))]
+        {
+            if cfg.data_source == crate::lab::state::LabDataSource::YahooCache {
                 return iced::Task::done(Message::LabRunCompleted(Err(SmolStr::new(
                     "YahooCache data source requires the `yahoo` feature; \
                      rebuild with `--features yahoo`",
@@ -425,6 +510,7 @@ pub fn spawn_lab_run(
         let rt = handle.clone();
         let strat = cfg.strategy_id.clone();
         let sym = cfg.symbol.clone();
+        let cfg_for_preload = cfg.clone();
         iced::Task::perform(
             async move {
                 // T-D-N9 + T-D-N15: tracing latency span around the engine call.
@@ -435,6 +521,27 @@ pub fn spawn_lab_run(
                 );
                 let _enter = span.enter();
                 let start = std::time::Instant::now();
+
+                // YahooCache pre-load with auto-fetch fallback (operator
+                // decision 2026-05-25). On cache miss, fetches online via
+                // `fetch_and_cache` then retries the load. First Run on a
+                // ticker takes 30-60 s for the network round-trip; subsequent
+                // Runs hit the cache.
+                #[cfg(feature = "yahoo")]
+                {
+                    if cfg_for_preload.data_source == crate::lab::state::LabDataSource::YahooCache {
+                        match preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await {
+                            Ok((bars, _sha)) => {
+                                scenario_cfg.data_source =
+                                    backtest::engine::ScenarioDataSource::YahooCache;
+                                scenario_cfg.bars_override = Some(bars);
+                            }
+                            Err(e) => {
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
 
                 let join = rt.spawn(async move {
                     // T-D-N9: Call the real engine (R3.1).

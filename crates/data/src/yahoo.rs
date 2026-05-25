@@ -32,8 +32,8 @@
 
 #![cfg(feature = "yahoo")]
 
-use std::cell::OnceCell;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use polars::prelude::*;
 use smol_str::SmolStr;
@@ -212,7 +212,7 @@ pub struct LoadedBars {
 pub struct YahooBarSource {
     cache_root: PathBuf,
     /// Lazily cached aggregate SHA (set on first call to `load_cached`).
-    revision_sha: OnceCell<String>,
+    revision_sha: OnceLock<String>,
 }
 
 impl YahooBarSource {
@@ -222,7 +222,7 @@ impl YahooBarSource {
     pub fn new(cache_root: PathBuf) -> Self {
         Self {
             cache_root,
-            revision_sha: OnceCell::new(),
+            revision_sha: OnceLock::new(),
         }
     }
 
