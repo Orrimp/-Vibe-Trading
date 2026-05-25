@@ -914,6 +914,10 @@ impl AppState {
                     // lab-yahoo-realdata T-C3.6: mirror the current UI data_source
                     // selection into the run config so runner can dispatch accordingly.
                     data_source: self.cockpit.lab_state.data_source,
+                    // lab-polish-round-2 R2: pass operator-tuned SMA windows
+                    // through. None → engine falls back to the (20, 50) default.
+                    sma_fast_len: self.cockpit.lab_state.sma_fast_len,
+                    sma_slow_len: self.cockpit.lab_state.sma_slow_len,
                 })
             } else {
                 None

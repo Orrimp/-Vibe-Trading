@@ -1414,6 +1414,12 @@ pub enum Message {
     /// (lab-yahoo-realdata T-C3.5 / R3.1). Pure assignment to
     /// `Cockpit::lab_state.data_source`.
     LabSelectDataSource(crate::lab::state::LabDataSource),
+    /// Operator typed into the SMA fast-window input (lab-polish-round-2 R2).
+    /// String value lives in `sma_fast_input`; if it parses to `usize`,
+    /// `sma_fast_len = Some(parsed)`, else `sma_fast_len = None`.
+    LabSetSmaFast(String),
+    /// Operator typed into the SMA slow-window input (lab-polish-round-2 R2).
+    LabSetSmaSlow(String),
     /// Operator pressed "Run backtest". Fires `lab::runner::spawn_lab_run`
     /// on the binary side (M2.5 / T-D-14). Pure state marks `run_inflight`.
     LabRunRequested,
@@ -1561,6 +1567,21 @@ pub enum Message {
     /// v0.1.0: only `Sharpe` is wired; other variants fall back to Sharpe
     /// with a `tracing::warn!`.
     CompareSelectKpiAxis(crate::compare::state::CompareKpiAxis),
+}
+
+/// lab-polish-round-2 R2 — parse SMA window text input.
+///
+/// Returns `Some(n)` only when `s` parses to a `usize` in `[2, 500]`.
+/// Below 2: degenerate (single bar). Above 500: silly for daily/hourly
+/// strategies and almost certainly an operator typo. Empty / non-numeric
+/// returns `None` → engine falls back to the compiled-in (20, 50) default.
+fn parse_sma_window(s: &str) -> Option<usize> {
+    let n: usize = s.trim().parse().ok()?;
+    if (2..=500).contains(&n) {
+        Some(n)
+    } else {
+        None
+    }
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1952,6 +1973,18 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Clear run reports — data source change invalidates previous results.
             model.lab_state.last_run_report = None;
             model.lab_state.prev_run_report = None;
+        }
+        // lab-polish-round-2 R2 — SMA param edits.
+        // Validation: parse to `usize`; only update the typed `sma_*_len`
+        // when the parse succeeds + the value is in [2, 500]. Empty string
+        // resets to `None` (= back to compiled-in 20/50 default).
+        Message::LabSetSmaFast(s) => {
+            model.lab_state.sma_fast_input.clone_from(&s);
+            model.lab_state.sma_fast_len = parse_sma_window(&s);
+        }
+        Message::LabSetSmaSlow(s) => {
+            model.lab_state.sma_slow_input.clone_from(&s);
+            model.lab_state.sma_slow_len = parse_sma_window(&s);
         }
         // Wave 2 (M2.5 / T-D-14) — run-inflight tracking.
         // Pure state: the binary side wires the Task::perform.

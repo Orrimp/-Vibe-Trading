@@ -74,6 +74,8 @@ async fn yahoo_btc_2024_sma_deterministic() {
         seed: ui::lab::defaults::LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::YahooCache,
+        sma_fast_len: None,
+        sma_slow_len: None,
     };
 
     let scenario_cfg = lab_config_to_scenario(&cfg).expect("lab_config_to_scenario");

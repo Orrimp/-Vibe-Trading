@@ -164,6 +164,10 @@ pub struct LabRunConfig {
     /// pre-v0.1.0 behaviour (H5 / R-NR.8). `YahooCache` loads real bars from
     /// the local parquet cache before engine dispatch (T-AR1 / Q1 = (b)).
     pub data_source: crate::lab::state::LabDataSource,
+    /// lab-polish-round-2 R2 — operator-tuned SMA fast window (None → 20 default).
+    pub sma_fast_len: Option<usize>,
+    /// lab-polish-round-2 R2 — operator-tuned SMA slow window (None → 50 default).
+    pub sma_slow_len: Option<usize>,
 }
 
 /// Outcome of the in-process run for `iced::Task::perform`.
@@ -414,6 +418,9 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         // paths these remain at their defaults (Synthetic, None).
         data_source: backtest::engine::ScenarioDataSource::default(),
         bars_override: None,
+        // lab-polish-round-2 R2 — pass operator-tuned SMA windows through.
+        sma_fast_len: cfg.sma_fast_len,
+        sma_slow_len: cfg.sma_slow_len,
     })
 }
 
@@ -650,6 +657,8 @@ mod tests {
                 seed: crate::lab::defaults::LAB_DEFAULT_SEED,
                 write_report: false,
                 data_source: crate::lab::state::LabDataSource::default(),
+                sma_fast_len: None,
+                sma_slow_len: None,
             };
             let result = lab_config_to_scenario(&cfg);
             assert!(
@@ -670,6 +679,8 @@ mod tests {
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             write_report: false,
             data_source: crate::lab::state::LabDataSource::default(),
+            sma_fast_len: None,
+            sma_slow_len: None,
         };
         let result = lab_config_to_scenario(&cfg);
         assert!(result.is_err(), "unknown range label must return Err");
@@ -687,6 +698,8 @@ mod tests {
             seed,
             write_report: true,
             data_source: crate::lab::state::LabDataSource::default(),
+            sma_fast_len: None,
+            sma_slow_len: None,
         };
         let sc = lab_config_to_scenario(&cfg).unwrap();
         assert_eq!(sc.seed, seed);
@@ -736,6 +749,8 @@ mod tests {
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             write_report: false,
             data_source: crate::lab::state::LabDataSource::default(),
+            sma_fast_len: None,
+            sma_slow_len: None,
         };
         let (_handle, recv) = cancellation_pair();
         let progress_tx = backtest::progress::ProgressSender::disabled();

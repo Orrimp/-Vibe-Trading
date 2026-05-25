@@ -31,6 +31,8 @@ fn lab_config(strategy: &str, symbol: &str, range_label: &str) -> LabRunConfig {
         seed: ui::lab::defaults::LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::Synthetic,
+        sma_fast_len: None,
+        sma_slow_len: None,
     }
 }
 

@@ -119,6 +119,8 @@ fn lab_config_to_scenario_yahoo_btcusdt_h1_2024() {
         seed: LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::YahooCache,
+        sma_fast_len: None,
+        sma_slow_len: None,
     };
 
     let sc = lab_config_to_scenario(&cfg).expect("H1_2024 must be a known range");
@@ -164,6 +166,8 @@ fn lab_config_to_scenario_yahoo_last30d_is_ok() {
         seed: LAB_DEFAULT_SEED,
         write_report: false,
         data_source: LabDataSource::YahooCache,
+        sma_fast_len: None,
+        sma_slow_len: None,
     };
     let result = lab_config_to_scenario(&cfg);
     assert!(

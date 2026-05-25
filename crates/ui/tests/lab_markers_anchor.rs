@@ -43,9 +43,13 @@ async fn fills_anchor_within_run_bars() {
         initial_capital: dec!(100_000),
         slippage_bps: 2,
         taker_fee_bps: 4,
+        sma_fast_len: None,
+        sma_slow_len: None,
     };
 
-    let result = sma_composed_run::run(&input, None, TEST_SEED)
+    let (_h, cancel_rx) = backtest::cancel::cancellation_pair();
+    let progress_tx = backtest::progress::ProgressSender::disabled();
+    let result = sma_composed_run::run(&input, None, TEST_SEED, cancel_rx, progress_tx)
         .await
         .expect("sma_crossover run must succeed");
 
@@ -90,12 +94,18 @@ async fn run_bars_are_deterministic() {
         initial_capital: dec!(100_000),
         slippage_bps: 2,
         taker_fee_bps: 4,
+        sma_fast_len: None,
+        sma_slow_len: None,
     };
 
-    let r1 = sma_composed_run::run(&input, None, TEST_SEED)
+    let (_h1, cancel_rx1) = backtest::cancel::cancellation_pair();
+    let progress_tx1 = backtest::progress::ProgressSender::disabled();
+    let r1 = sma_composed_run::run(&input, None, TEST_SEED, cancel_rx1, progress_tx1)
         .await
         .expect("first run must succeed");
-    let r2 = sma_composed_run::run(&input, None, TEST_SEED)
+    let (_h2, cancel_rx2) = backtest::cancel::cancellation_pair();
+    let progress_tx2 = backtest::progress::ProgressSender::disabled();
+    let r2 = sma_composed_run::run(&input, None, TEST_SEED, cancel_rx2, progress_tx2)
         .await
         .expect("second run must succeed");
 

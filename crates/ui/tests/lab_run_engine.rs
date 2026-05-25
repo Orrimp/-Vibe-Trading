@@ -38,7 +38,7 @@ mod inner {
     use ui::lab::state::{DateRange, Preset};
 
     /// Build the canonical test `ScenarioConfig`.
-    fn test_config(tmp_dir: &std::path::Path) -> ScenarioConfig {
+    fn test_config(_tmp_dir: &std::path::Path) -> ScenarioConfig {
         ScenarioConfig {
             strategy: StrategyId("v1.momentum".into()),
             pair: (Venue::Binance, Symbol::new("XRPUSDT")),
@@ -46,6 +46,10 @@ mod inner {
             params: None,
             seed: LAB_DEFAULT_SEED,
             write_report: true,
+            data_source: backtest::engine::ScenarioDataSource::default(),
+            bars_override: None,
+            sma_fast_len: None,
+            sma_slow_len: None,
         }
     }
 
@@ -63,8 +67,10 @@ mod inner {
             range: DateRange::Preset(Preset::Last90d),
         };
 
-        // Step 1: run the backtest.
-        let report_result = backtest::engine::run_scenario(cfg).await;
+        // Step 1: run the backtest. Wave D-3+D-4 added cancel + progress args.
+        let (_handle, cancel_rx) = backtest::cancel::cancellation_pair();
+        let progress_tx = backtest::progress::ProgressSender::disabled();
+        let report_result = backtest::engine::run_scenario(cfg, cancel_rx, progress_tx).await;
 
         match report_result {
             Err(RunError::NotImplemented) => {
@@ -79,9 +85,14 @@ mod inner {
                 panic!("H3 test: run_scenario returned unexpected error: {e}");
             }
             Ok(report) => {
-                // Step 2: extract the in-memory equity series.
-                let in_memory: Vec<(i64, rust_decimal::Decimal)> =
-                    report.equity_series.iter().copied().collect();
+                // Step 2: extract the in-memory equity series. Today's API uses
+                // Money<Usdt> for equity; project to (i64, Decimal) for the
+                // EquityCache comparison.
+                let in_memory: Vec<(i64, rust_decimal::Decimal)> = report
+                    .equity_series
+                    .iter()
+                    .map(|(ts, money)| (ts.unix_millis(), money.amount()))
+                    .collect();
 
                 assert!(
                     !in_memory.is_empty(),
@@ -89,11 +100,15 @@ mod inner {
                 );
 
                 // Step 3: load the cached-disk series from the written report.
-                let spec_root = report
+                // report_path is now Option<PathBuf> (set only when write_report=true).
+                let report_path = report
                     .report_path
+                    .as_ref()
+                    .expect("write_report=true should produce a report_path");
+                let spec_root = report_path
                     .parent()
-                    .and_then(|p| p.parent())
-                    .and_then(|p| p.parent())
+                    .and_then(std::path::Path::parent)
+                    .and_then(std::path::Path::parent)
                     .unwrap_or_else(|| std::path::Path::new("spec"));
 
                 let mut cache = EquityCache::new();

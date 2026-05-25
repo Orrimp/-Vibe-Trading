@@ -204,6 +204,21 @@ pub struct LabState {
     /// Cleared on next `LabRunRequested` and on `LabRunCompleted(Ok)`.
     pub last_run_error: Option<smol_str::SmolStr>,
 
+    // lab-polish-round-2 R2 — SMA param overrides ────────────────────────
+    /// Optional override for the fast SMA window length (`None` → 20 default).
+    /// Set by the param-stepper widget when the operator picks `v0.sma`.
+    /// Plumbed into `SmaComposedRunInput.sma_fast_len` at run time.
+    /// NOT serialized — resets to None on cockpit restart (Phase A simplicity).
+    pub sma_fast_len: Option<usize>,
+    /// Optional override for the slow SMA window length (`None` → 50 default).
+    pub sma_slow_len: Option<usize>,
+    /// Raw text the operator is currently typing into the fast input.
+    /// Kept separately from `sma_fast_len` so partial / invalid input
+    /// (e.g. "1" while typing "10") doesn't immediately reset to None.
+    pub sma_fast_input: String,
+    /// Raw text for the slow input. Same rationale as `sma_fast_input`.
+    pub sma_slow_input: String,
+
     // ── lab-yahoo-realdata v0.1.0 — data source toggle (T-C3.1 / R3.1) ──────
     /// Data source for the next Run. `Synthetic` (default) preserves the
     /// pre-v0.1.0 byte-identical behaviour (H5 / R-NR.8).
@@ -251,6 +266,10 @@ impl Clone for LabState {
             last_run_report: None,
             prev_run_report: None,
             last_run_error: None,
+            sma_fast_len: None,
+            sma_slow_len: None,
+            sma_fast_input: String::new(),
+            sma_slow_input: String::new(),
             // data_source IS cloned — it's a UI selection, not an in-flight resource.
             data_source: self.data_source,
             // Cancel handle is NOT cloned — the clone starts without an in-flight run.
@@ -306,6 +325,10 @@ impl Default for LabState {
             last_run_report: None,
             prev_run_report: None,
             last_run_error: None,
+            sma_fast_len: None,
+            sma_slow_len: None,
+            sma_fast_input: String::new(),
+            sma_slow_input: String::new(),
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,
@@ -340,6 +363,10 @@ impl LabState {
             last_run_report: None,
             prev_run_report: None,
             last_run_error: None,
+            sma_fast_len: None,
+            sma_slow_len: None,
+            sma_fast_input: String::new(),
+            sma_slow_input: String::new(),
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,

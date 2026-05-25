@@ -25,6 +25,8 @@ fn sma_config() -> ScenarioConfig {
         write_report: false,
         data_source: ScenarioDataSource::default(),
         bars_override: None,
+        sma_fast_len: None,
+        sma_slow_len: None,
     }
 }
 

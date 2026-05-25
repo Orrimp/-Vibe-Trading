@@ -257,13 +257,55 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
             .iter()
             .map(|id| (id.clone(), StrategyFamily::default()))
             .collect();
-    let strategy_row = strategy_chip::row(
+    let strategy_row_chips = strategy_chip::row(
         &strategy_ids,
         &families,
         model.lab_state.strategy.as_ref(),
         model.lab_state.compare_set(),
         mode,
     );
+
+    // lab-polish-round-2 R2 — SMA param editor (fast / slow window length).
+    // Only visible when the active strategy is `v0.sma`. Two text inputs
+    // dispatch `LabSetSmaFast(s)` / `LabSetSmaSlow(s)` which parse to
+    // Option<usize> via parse_sma_window in state.rs. `None` → defaults
+    // (20, 50) hardcoded in sma_composed_run.rs.
+    let active_is_v0_sma = model
+        .lab_state
+        .strategy
+        .as_ref()
+        .is_some_and(|s| s.0.as_str() == "v0.sma");
+    let strategy_row: iced::Element<'_, _> = if active_is_v0_sma {
+        let fast_input =
+            iced::widget::text_input("fast (default 20)", &model.lab_state.sma_fast_input)
+                .on_input(Message::LabSetSmaFast)
+                .size(text::SMALL)
+                .width(Length::Fixed(160.0));
+        let slow_input =
+            iced::widget::text_input("slow (default 50)", &model.lab_state.sma_slow_input)
+                .on_input(Message::LabSetSmaSlow)
+                .size(text::SMALL)
+                .width(Length::Fixed(160.0));
+        Row::new()
+            .spacing(space::S)
+            .push(strategy_row_chips)
+            .push(
+                Text::new("SMA")
+                    .size(text::MICRO)
+                    .color(color::FG_3.current(mode)),
+            )
+            .push(fast_input)
+            .push(
+                Text::new("/")
+                    .size(text::MICRO)
+                    .color(color::FG_3.current(mode)),
+            )
+            .push(slow_input)
+            .width(Length::Fill)
+            .into()
+    } else {
+        strategy_row_chips
+    };
 
     // ── Phase A top-bar row 3: date-range picker (T-D-7 / T-D-8) ───────
     // lab-yahoo-realdata T-C3.4: when data_source == YahooCache, append a

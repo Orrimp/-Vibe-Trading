@@ -59,6 +59,8 @@ fn momentum_config() -> ScenarioConfig {
         write_report: false,
         data_source: ScenarioDataSource::Synthetic,
         bars_override: None,
+        sma_fast_len: None,
+        sma_slow_len: None,
     }
 }
 

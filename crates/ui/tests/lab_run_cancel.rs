@@ -86,6 +86,8 @@ async fn engine_returns_cancelled_when_handle_dropped() {
         write_report: false,
         data_source: ScenarioDataSource::default(),
         bars_override: None,
+        sma_fast_len: None,
+        sma_slow_len: None,
     };
 
     let result = backtest::engine::run_scenario(cfg, cancel_rx, progress_tx).await;

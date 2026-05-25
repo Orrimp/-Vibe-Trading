@@ -218,6 +218,12 @@ pub struct ScenarioConfig {
     /// Set by `lab::runner::preload_yahoo_bars` when `data_source == YahooCache`.
     /// CLI paths always pass `None` — anchor-safe default.
     pub bars_override: Option<Vec<Bar>>,
+    /// lab-polish-round-2 R2 — operator-tuned SMA fast window (None → 20).
+    /// Plumbed into `SmaComposedRunInput.sma_fast_len` at the
+    /// `"v0.sma"` dispatch arm. CLI paths pass `None` — anchor-safe.
+    pub sma_fast_len: Option<usize>,
+    /// lab-polish-round-2 R2 — operator-tuned SMA slow window (None → 50).
+    pub sma_slow_len: Option<usize>,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -702,10 +708,12 @@ pub async fn run_scenario(
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
-                // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
-                // anchored byte-identity. Lab override happens at the runner.
-                sma_fast_len: None,
-                sma_slow_len: None,
+                // lab-polish-round-2 R2 — pass the operator-tuned overrides
+                // through. CLI paths leave these as None on ScenarioConfig
+                // → here they map to None → defaults (20/50) preserve anchor
+                // byte-identity. Lab UI sets them to user-typed values.
+                sma_fast_len: cfg.sma_fast_len,
+                sma_slow_len: cfg.sma_slow_len,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -866,6 +874,8 @@ mod tests {
             write_report: false,
             data_source: ScenarioDataSource::default(),
             bars_override: None,
+            sma_fast_len: None,
+            sma_slow_len: None,
         }
     }
 
