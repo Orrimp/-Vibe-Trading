@@ -68,8 +68,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     //   source_toggle (2 states) + cadence_badge (1 state).
     // lab-end-to-end-v2 (T-AR-6) adds 2 new cells:
     //   progress_bar (50pct + indeterminate).
-    // 61 * 260 = 15_860. Adding 320 px headroom for outer container padding.
-    16_200
+    // lab-yahoo-realdata T-D2 follow-up adds 3 new cells:
+    //   cache_state_badge (fresh + stale + empty).
+    // 64 * 260 = 16_640. Adding 360 px headroom for outer container padding.
+    17_000
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

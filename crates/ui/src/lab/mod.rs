@@ -17,6 +17,8 @@
 //! └── runner.rs        — ADR-0030 invocation glue (M2.5 / T-D-14)
 //! ```
 
+/// lab-yahoo-realdata Wave D-followup (T-D2) — Yahoo cache freshness probe.
+pub mod cache_state;
 pub mod defaults;
 pub mod equity_loader;
 pub mod persistence;

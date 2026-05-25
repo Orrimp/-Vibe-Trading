@@ -46,6 +46,10 @@ pub mod strategies;
 // cockpit-performance-and-input-responsiveness M1 Candidate A — local
 // 10 fps wrap of `iced_aw::Spinner`. Used by `frame::loading_with_spinner`;
 // see `widgets/throttled_spinner.rs` for context.
+/// lab-yahoo-realdata Wave D-followup (T-D2) — Cache-state badge widget.
+/// Three-state pill (Fresh / Stale / Empty) for the active Yahoo ticker.
+/// Only rendered when `data_source == YahooCache`.
+pub mod cache_state_badge;
 /// lab-yahoo-realdata T-C3.3 / T-AR4 / R-UI-1.4 — Cadence badge widget.
 /// Small chip showing the adaptive bar cadence ("1m" / "1h" / "1d").
 /// Only rendered when `data_source == YahooCache`.

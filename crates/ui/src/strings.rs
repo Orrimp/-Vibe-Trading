@@ -937,6 +937,18 @@ pub const LAB_CADENCE_1D: &str = "1d";
 /// The CLI hint is appended by the error path in the runner.
 pub const LAB_YAHOO_CACHE_MISS_PREFIX: &str = "Yahoo cache miss — run: ";
 
+/// Cache-state badge label when the Yahoo cache directory for the active
+/// ticker is missing entirely (no parquet files at `data/yahoo/<TICKER>/`).
+pub const LAB_CACHE_STATE_EMPTY: &str = "no cache";
+
+/// Cache-state badge label when the Yahoo cache exists but its most recent
+/// file's mtime is older than 24 h. Operator may want to refresh.
+pub const LAB_CACHE_STATE_STALE: &str = "stale";
+
+/// Cache-state badge label when the Yahoo cache exists and its most recent
+/// file's mtime is within the last 24 h.
+pub const LAB_CACHE_STATE_FRESH: &str = "fresh";
+
 // ── Fallbacks / placeholders ─────────────────────────────────────────────────
 
 /// Rendered when a value is known to be "no data yet" rather than zero.
@@ -1402,6 +1414,9 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_CADENCE_1H", LAB_CADENCE_1H),
         ("LAB_CADENCE_1D", LAB_CADENCE_1D),
         ("LAB_YAHOO_CACHE_MISS_PREFIX", LAB_YAHOO_CACHE_MISS_PREFIX),
+        ("LAB_CACHE_STATE_EMPTY", LAB_CACHE_STATE_EMPTY),
+        ("LAB_CACHE_STATE_STALE", LAB_CACHE_STATE_STALE),
+        ("LAB_CACHE_STATE_FRESH", LAB_CACHE_STATE_FRESH),
     ]
 }
 

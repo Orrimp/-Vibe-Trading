@@ -42,8 +42,8 @@ use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::run_button::{self, RunState};
 use crate::widgets::volume_histogram::{self, VolumeBin};
 use crate::widgets::{
-    cadence_badge, chart, date_range, kpi_strip, pair_chip, progress_bar, source_toggle,
-    strategy_chip, throttled_spinner,
+    cache_state_badge, cadence_badge, chart, date_range, kpi_strip, pair_chip, progress_bar,
+    source_toggle, strategy_chip, throttled_spinner,
 };
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
@@ -199,10 +199,28 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 
     // ── lab-yahoo-realdata T-C3.4 — Source toggle row ──────────────────
     // Inserted between the pair chip row and the strategy chip row.
-    let source_toggle_row = Row::new()
+    // T-D2 follow-up: append cache-state badge when YahooCache is active.
+    let mut source_toggle_row = Row::new()
         .spacing(space::S)
-        .push(source_toggle::view(model.lab_state.data_source, mode))
-        .width(Length::Fill);
+        .push(source_toggle::view(model.lab_state.data_source, mode));
+    if is_yahoo {
+        // Active ticker probe — Binance symbol → Yahoo ticker conversion
+        // mirrors the runner's dispatch boundary (Q6=(a) / ADR-0040 § D7).
+        // Falls back to BTC-USD if no pair selected (cold-start) or symbol
+        // is unmapped (10-pair table miss).
+        let yahoo_ticker = model
+            .lab_state
+            .pair
+            .as_ref()
+            .and_then(|(_, sym)| {
+                crate::lab::cache_state::binance_to_yahoo_ticker_lookup(sym.0.as_str())
+            })
+            .unwrap_or("BTC-USD");
+        let cache_root = crate::lab::cache_state::default_cache_root();
+        let state = crate::lab::cache_state::probe_now(&cache_root, yahoo_ticker);
+        source_toggle_row = source_toggle_row.push(cache_state_badge::view(state, mode));
+    }
+    let source_toggle_row = source_toggle_row.width(Length::Fill);
 
     // ── Phase A top-bar row 2: strategy chips (T-D-6 / T-D-8) ──────────
     // Collect strategy ids from the strategies panel; fall back to empty

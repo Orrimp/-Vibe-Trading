@@ -22,11 +22,11 @@ use crate::state::{
 use crate::strings;
 use crate::theme::ThemeMode;
 use crate::widgets::{
-    agent_feed, cadence_badge, chart, date_range, focus_ring, frame, human_control,
-    journal_transaction_modal, kill, kpi_strip, latency, num, override_risk_veto, pair_chip,
-    placeholder, pnl, positions, progress_bar, run_button, run_delta_badge, settings_tabs,
-    sidebar_nav, source_toggle, sparkline, status_bar, strategies, strategy_card, strategy_chip,
-    training_log, training_plot, volume_histogram,
+    agent_feed, cache_state_badge, cadence_badge, chart, date_range, focus_ring, frame,
+    human_control, journal_transaction_modal, kill, kpi_strip, latency, num, override_risk_veto,
+    pair_chip, placeholder, pnl, positions, progress_bar, run_button, run_delta_badge,
+    settings_tabs, sidebar_nav, source_toggle, sparkline, status_bar, strategies, strategy_card,
+    strategy_chip, training_log, training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -1181,6 +1181,25 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_cadence_badge_days1,
         seed: seed_cadence_badge,
     },
+    // ── lab-yahoo-realdata — cache_state_badge (T-D2 follow-up) ────────────────
+    GalleryCell {
+        widget: "cache_state_badge",
+        state: "fresh",
+        render: render_cache_state_badge_fresh,
+        seed: seed_cache_state_badge,
+    },
+    GalleryCell {
+        widget: "cache_state_badge",
+        state: "stale",
+        render: render_cache_state_badge_stale,
+        seed: seed_cache_state_badge,
+    },
+    GalleryCell {
+        widget: "cache_state_badge",
+        state: "empty",
+        render: render_cache_state_badge_empty,
+        seed: seed_cache_state_badge,
+    },
     // ── lab-end-to-end-v2 — progress_bar (T-AR-6) ────────────────────────────
     GalleryCell {
         widget: "progress_bar",
@@ -1222,6 +1241,27 @@ fn render_cadence_badge_days1(_model: &Cockpit) -> iced::Element<'_, Message> {
     cadence_badge::view(cadence_badge::CadenceLabel::Days1, ThemeMode::Dark)
 }
 
+// ── lab-yahoo-realdata — cache_state_badge gallery cells (T-D2 follow-up) ────
+
+fn seed_cache_state_badge() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn render_cache_state_badge_fresh(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::cache_state::CacheState;
+    cache_state_badge::view(CacheState::Fresh, ThemeMode::Dark)
+}
+
+fn render_cache_state_badge_stale(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::cache_state::CacheState;
+    cache_state_badge::view(CacheState::Stale, ThemeMode::Dark)
+}
+
+fn render_cache_state_badge_empty(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::cache_state::CacheState;
+    cache_state_badge::view(CacheState::Empty, ThemeMode::Dark)
+}
+
 // ── Phase E — matrix gallery cells ────────────────────────────────────────────
 
 fn seed_matrix() -> Cockpit {
@@ -1257,6 +1297,7 @@ fn render_progress_bar_indeterminate(_model: &Cockpit) -> iced::Element<'_, Mess
 /// **Q-ARCH-2:** `canvas_chart` is `pub(crate)` and intentionally excluded.
 pub const EXPECTED_WIDGETS: &[&str] = &[
     "agent_feed",
+    "cache_state_badge",
     "cadence_badge",
     "chart",
     "chart_legend",
