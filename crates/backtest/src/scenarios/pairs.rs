@@ -4,13 +4,16 @@
 //! same seed derivation, same merge order, same fill logic.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use smol_str::SmolStr;
 use trading_core::{
-    Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
+    Bar, FillView, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol,
+    TimeInForce,
 };
 
 use crate::cli_types::PairsScenarioInput;
@@ -37,6 +40,12 @@ pub struct PairsRunResult {
     /// Per-bar equity curve (`[initial_capital, equity_after_bar_0, …]`).
     /// Populated for `RunReport.equity_series` in the engine dispatch path.
     pub equity_curve: Vec<Decimal>,
+    /// All fills produced during the run, in bar order.
+    /// Populated for `RunReport.fills` so the Lab UI can render buy/sell triangle markers.
+    pub fills: Vec<FillView>,
+    /// All bars from the run (Arc-shared to avoid copying).
+    /// Populated for `RunReport.bars` so the Lab chart can anchor fill timestamps.
+    pub bars: Arc<Vec<Bar>>,
 }
 
 // ── Run function ──────────────────────────────────────────────────────────────
@@ -107,8 +116,8 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
         .collect();
 
     // k-way merge: (venue_ts ASC, symbol ASC).
-    let merged_bars = data::ReplayFeed::merge_synthetic(bars_by_symbol);
-    let bar_count = merged_bars.len();
+    let merged_bars_raw = data::ReplayFeed::merge_synthetic(bars_by_symbol);
+    let bar_count = merged_bars_raw.len();
 
     tracing::info!(
         bar_count = bar_count,
@@ -147,7 +156,13 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
     let mut pair_trade_counts: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
 
-    for bar in &merged_bars {
+    // F3 — collect fills for `PairsRunResult.fills`.
+    let mut all_fills: Vec<FillView> = Vec::new();
+    // Preserve bars in an Arc BEFORE the loop so the UI Lab chart can anchor
+    // fill triangle markers against the run's own time window (R5.2 pattern).
+    let bars_arc: Arc<Vec<Bar>> = Arc::new(merged_bars_raw);
+
+    for bar in bars_arc.iter() {
         mark_prices.insert(bar.symbol.clone(), bar.close.get());
 
         let signals = pairs_strategy.on_bar(bar);
@@ -214,6 +229,17 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
                                     let key_str = meta.pair_key.to_string();
                                     *pair_trade_counts.entry(key_str).or_insert(0) += 1;
                                 }
+                                // F3 — convert Fill → FillView for the result struct.
+                                all_fills.push(FillView {
+                                    symbol: fill.symbol.clone(),
+                                    side: fill.side,
+                                    price: fill.price,
+                                    qty: fill.qty,
+                                    fee: fill.fee,
+                                    fee_tier: fill.fee_tier,
+                                    venue_ts: fill.venue_ts,
+                                    transaction_id: SmolStr::default(),
+                                });
                             }
                         }
                     }
@@ -265,6 +291,17 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
                                     let key_str = meta.pair_key.to_string();
                                     *pair_trade_counts.entry(key_str).or_insert(0) += 1;
                                 }
+                                // F3 — convert Fill → FillView for the result struct.
+                                all_fills.push(FillView {
+                                    symbol: fill.symbol.clone(),
+                                    side: fill.side,
+                                    price: fill.price,
+                                    qty: fill.qty,
+                                    fee: fill.fee,
+                                    fee_tier: fill.fee_tier,
+                                    venue_ts: fill.venue_ts,
+                                    transaction_id: SmolStr::default(),
+                                });
                             }
                         }
                     }
@@ -326,5 +363,7 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
         config_hash_hex,
         pair_trades,
         equity_curve,
+        fills: all_fills,
+        bars: bars_arc,
     })
 }

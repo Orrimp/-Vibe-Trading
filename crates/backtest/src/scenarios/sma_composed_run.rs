@@ -413,8 +413,7 @@ pub async fn run(
             progress_tx.try_send(crate::progress::Progress {
                 current_bar: bar_idx,
                 total_bars: bar_count,
-                elapsed_ms: u64::try_from(start_instant.elapsed().as_millis())
-                    .unwrap_or(u64::MAX),
+                elapsed_ms: u64::try_from(start_instant.elapsed().as_millis()).unwrap_or(u64::MAX),
             });
         }
 

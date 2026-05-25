@@ -148,9 +148,8 @@ pub fn view(
         RunState::Cancelled => LAB_RUN_BUTTON_CANCELLED,
     };
 
-    let is_disabled = run_handle_present
-        || *state == RunState::Running
-        || *state == RunState::Disabled;
+    let is_disabled =
+        run_handle_present || *state == RunState::Running || *state == RunState::Disabled;
 
     let fg = if is_disabled {
         color::FG_3.current(mode)

@@ -371,10 +371,12 @@ fn momentum_result_to_report(
 
     RunReport {
         equity_series,
-        fills: Vec::new(), // FillView aggregation is a Phase C enhancement.
+        // F3 — surface fills from the momentum result for Lab chart triangle markers.
+        fills: result.fills.clone(),
         kpis,
         report_path: None,
-        bars: Arc::new(Vec::new()),
+        // Surface run bars to the UI so Lab chart markers anchor correctly.
+        bars: result.bars.clone(),
     }
 }
 
@@ -400,10 +402,12 @@ fn pairs_result_to_report(
 
     RunReport {
         equity_series,
-        fills: Vec::new(),
+        // F3 — surface fills from the pairs result for Lab chart triangle markers.
+        fills: result.fills.clone(),
         kpis,
         report_path: None,
-        bars: Arc::new(Vec::new()),
+        // Surface run bars to the UI so Lab chart markers anchor correctly.
+        bars: result.bars.clone(),
     }
 }
 
@@ -429,10 +433,12 @@ fn tcn_result_to_report(
 
     RunReport {
         equity_series,
-        fills: Vec::new(),
+        // F3 — surface fills from the TCN/overlay result for Lab chart triangle markers.
+        fills: result.fills.clone(),
         kpis,
         report_path: None,
-        bars: Arc::new(Vec::new()),
+        // Surface run bars to the UI so Lab chart markers anchor correctly.
+        bars: result.bars.clone(),
     }
 }
 
@@ -654,13 +660,20 @@ pub async fn run_scenario(
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
-                    .await
-                    .map_err(|e| match e {
-                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
-                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
-                    })?;
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override,
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -675,13 +688,20 @@ pub async fn run_scenario(
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
-                    .await
-                    .map_err(|e| match e {
-                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
-                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
-                    })?;
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override,
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -696,13 +716,20 @@ pub async fn run_scenario(
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
-                    .await
-                    .map_err(|e| match e {
-                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
-                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
-                    })?;
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override,
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -720,13 +747,20 @@ pub async fn run_scenario(
                 slippage_bps: 2,
                 taker_fee_bps: 4,
             };
-            let result =
-                crate::scenarios::sma_composed_run::run(&input, cfg.bars_override, seed_u64, cancel_rx, progress_tx)
-                    .await
-                    .map_err(|e| match e {
-                        crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
-                        crate::scenarios::sma_composed_run::SmaRunError::Other(e) => RunError::Internal(e.to_string()),
-                    })?;
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override,
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
             Ok(sma_composed_result_to_report(&result, start_year))
         }
 
@@ -987,7 +1021,8 @@ mod tests {
         let (handle, cancel_rx) = crate::cancel::cancellation_pair();
         drop(handle); // signal cancel before the run starts
 
-        let result = run_scenario(cfg, cancel_rx, crate::progress::ProgressSender::disabled()).await;
+        let result =
+            run_scenario(cfg, cancel_rx, crate::progress::ProgressSender::disabled()).await;
         assert!(
             matches!(result, Err(RunError::Cancelled)),
             "pre-cancelled run must return Cancelled; got: {result:?}"

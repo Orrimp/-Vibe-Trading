@@ -107,13 +107,16 @@ pub async fn run(
     seed: u64,
 ) -> Result<TcnOverlayRunResult> {
     use std::path::PathBuf;
+    use std::sync::Arc;
     use std::time::Instant;
 
     use anyhow::Context;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
+    use smol_str::SmolStr;
     use trading_core::{
-        Bar, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
+        Bar, FillView, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol,
+        TimeInForce,
     };
 
     use crate::engine::MatchingEngine as _;
@@ -159,7 +162,7 @@ pub async fn run(
 
     // ── Load bars ─────────────────────────────────────────────────────────────
 
-    let (merged_bars, bar_count) = if let Some(real_bars) = input.bars_override {
+    let (merged_bars_raw, bar_count) = if let Some(real_bars) = input.bars_override {
         let n = real_bars.len();
         tracing::info!(
             bar_count = n,
@@ -229,9 +232,15 @@ pub async fn run(
     let mut peak_equity = input.initial_capital;
     let mut max_drawdown = Decimal::ZERO;
 
+    // F3 — collect fills for `TcnOverlayRunResult.fills`.
+    let mut all_fills: Vec<FillView> = Vec::new();
+    // Preserve bars in an Arc BEFORE the loop so the UI Lab chart can anchor
+    // fill triangle markers against the run's own time window (R5.2 pattern).
+    let bars_arc: Arc<Vec<Bar>> = Arc::new(merged_bars_raw);
+
     // ── Bar loop ───────────────────────────────────────────────────────────────
 
-    for bar in &merged_bars {
+    for bar in bars_arc.iter() {
         mark_prices.insert(bar.symbol.clone(), bar.close.get());
 
         let signals = overlay_strategy.on_bar(bar);
@@ -301,6 +310,17 @@ pub async fn run(
                             total_fees += fill.fee.amount();
                             trades += 1;
                             buys += 1;
+                            // F3 — convert Fill → FillView for the result struct.
+                            all_fills.push(FillView {
+                                symbol: fill.symbol.clone(),
+                                side: fill.side,
+                                price: fill.price,
+                                qty: fill.qty,
+                                fee: fill.fee,
+                                fee_tier: fill.fee_tier,
+                                venue_ts: fill.venue_ts,
+                                transaction_id: SmolStr::default(),
+                            });
                         }
                     }
                 }
@@ -334,6 +354,17 @@ pub async fn run(
                             total_fees += fill.fee.amount();
                             trades += 1;
                             sells += 1;
+                            // F3 — convert Fill → FillView for the result struct.
+                            all_fills.push(FillView {
+                                symbol: fill.symbol.clone(),
+                                side: fill.side,
+                                price: fill.price,
+                                qty: fill.qty,
+                                fee: fill.fee,
+                                fee_tier: fill.fee_tier,
+                                venue_ts: fill.venue_ts,
+                                transaction_id: SmolStr::default(),
+                            });
                         }
                     }
                 }
@@ -403,5 +434,7 @@ pub async fn run(
         warmup_signals: stats.bars_no_model,
         forecaster_label,
         equity_curve,
+        fills: all_fills,
+        bars: bars_arc,
     })
 }

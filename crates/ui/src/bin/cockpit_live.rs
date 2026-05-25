@@ -811,7 +811,6 @@ struct AppState {
     trail_mirror_handle: Option<reflection::trail_mirror::TrailMirrorHandle>,
 
     // ── Wave D-3/D-4 — Lab Stop + progress (lab-end-to-end-v2 T-AR-5/T-AR-6) ──
-
     /// In-flight Lab run progress receiver.
     ///
     /// `Some` while a backtest is running; `None` otherwise.
@@ -820,7 +819,11 @@ struct AppState {
     /// requiring the AppState to be moved into the subscription.
     /// Only available in `live` builds (tokio mpsc requires a runtime).
     #[cfg(feature = "live")]
-    lab_progress_rx: Option<std::sync::Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<backtest::progress::Progress>>>>>,
+    lab_progress_rx: Option<
+        std::sync::Arc<
+            std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<backtest::progress::Progress>>>,
+        >,
+    >,
 
     /// Salt bumped on every `LabRunRequested` so `LabProgressRecipe::hash`
     /// returns a fresh identity per run (iced de-duplicates subscriptions by hash).
@@ -1183,7 +1186,9 @@ impl AppState {
             let (progress_tx, progress_rx) = backtest::progress::progress_pair();
             // Bump the salt so the iced subscription sees a new recipe identity.
             self.lab_progress_recipe_salt = self.lab_progress_recipe_salt.wrapping_add(1);
-            self.lab_progress_rx = Some(std::sync::Arc::new(std::sync::Mutex::new(Some(progress_rx))));
+            self.lab_progress_rx = Some(std::sync::Arc::new(std::sync::Mutex::new(Some(
+                progress_rx,
+            ))));
 
             ui::lab::runner::spawn_lab_run(Some(&self.rt_handle), run_cfg, cancel_recv, progress_tx)
         } else {
@@ -1234,13 +1239,11 @@ impl AppState {
         // Active only while a run is in-flight and the progress channel is open.
         // Salt-bumped per LabRunRequested so iced sees a fresh recipe each run.
         let progress_sub = if let Some(rx) = &self.lab_progress_rx {
-            iced::advanced::subscription::from_recipe(
-                ui::lab::progress::LabProgressRecipe {
-                    rt_handle: self.rt_handle.clone(),
-                    rx: std::sync::Arc::clone(rx),
-                    salt: self.lab_progress_recipe_salt,
-                }
-            )
+            iced::advanced::subscription::from_recipe(ui::lab::progress::LabProgressRecipe {
+                rt_handle: self.rt_handle.clone(),
+                rx: std::sync::Arc::clone(rx),
+                salt: self.lab_progress_recipe_salt,
+            })
         } else {
             iced::Subscription::none()
         };

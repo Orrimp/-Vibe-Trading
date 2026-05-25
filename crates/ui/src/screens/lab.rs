@@ -335,8 +335,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 
         // T-D4.7 (lab-end-to-end-v2 R9.4) — Progress bar + spinner
         // next to the Stop button. Spinner stays per Q5=(a).
-        run_button_row = run_button_row
-            .push(throttled_spinner::view(mode));
+        run_button_row = run_button_row.push(throttled_spinner::view(mode));
 
         #[allow(clippy::cast_precision_loss)]
         let progress_pct = model

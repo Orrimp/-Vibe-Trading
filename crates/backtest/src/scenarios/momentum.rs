@@ -5,15 +5,17 @@
 //! same merge order, same fill logic.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use smol_str::SmolStr;
 use time::OffsetDateTime;
 use trading_core::{
-    Bar, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
-    Timeframe, Timestamp, Venue,
+    Bar, FillView, Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol,
+    TimeInForce, Timeframe, Timestamp, Venue,
 };
 
 use crate::cli_types::MomentumScenarioInput;
@@ -38,6 +40,12 @@ pub struct MomentumRunResult {
     /// Populated by the engine dispatch path for `RunReport.equity_series`.
     /// The CLI report path does not require this field (report uses aggregate stats).
     pub equity_curve: Vec<Decimal>,
+    /// All fills produced during the run, in bar order.
+    /// Populated for `RunReport.fills` so the Lab UI can render buy/sell triangle markers.
+    pub fills: Vec<FillView>,
+    /// All bars from the run (Arc-shared to avoid copying).
+    /// Populated for `RunReport.bars` so the Lab chart can anchor fill timestamps.
+    pub bars: Arc<Vec<Bar>>,
 }
 
 // ── Shared price-list helpers (used also by pairs + tcn_overlay) ──────────────
@@ -271,7 +279,13 @@ pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRun
     let mut peak_equity = input.initial_capital;
     let mut max_drawdown = Decimal::ZERO;
 
-    for bar in &merged_bars {
+    // F3 — collect fills for `MomentumRunResult.fills`.
+    let mut all_fills: Vec<FillView> = Vec::new();
+    // Preserve bars in an Arc BEFORE the loop so the UI Lab chart can anchor
+    // fill triangle markers against the run's own time window (R5.2 pattern).
+    let bars_arc: Arc<Vec<Bar>> = Arc::new(merged_bars);
+
+    for bar in bars_arc.iter() {
         mark_prices.insert(bar.symbol.clone(), bar.close.get());
 
         let signals = momentum.on_bar(bar);
@@ -333,6 +347,17 @@ pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRun
                             total_fees += fill.fee.amount();
                             trades += 1;
                             buys += 1;
+                            // F3 — convert Fill → FillView for the result struct.
+                            all_fills.push(FillView {
+                                symbol: fill.symbol.clone(),
+                                side: fill.side,
+                                price: fill.price,
+                                qty: fill.qty,
+                                fee: fill.fee,
+                                fee_tier: fill.fee_tier,
+                                venue_ts: fill.venue_ts,
+                                transaction_id: SmolStr::default(),
+                            });
                         }
                     }
                 }
@@ -367,6 +392,17 @@ pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRun
                             total_fees += fill.fee.amount();
                             trades += 1;
                             sells += 1;
+                            // F3 — convert Fill → FillView for the result struct.
+                            all_fills.push(FillView {
+                                symbol: fill.symbol.clone(),
+                                side: fill.side,
+                                price: fill.price,
+                                qty: fill.qty,
+                                fee: fill.fee,
+                                fee_tier: fill.fee_tier,
+                                venue_ts: fill.venue_ts,
+                                transaction_id: SmolStr::default(),
+                            });
                         }
                     }
                 }
@@ -423,5 +459,7 @@ pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRun
         strategy_id: strategy_id_str,
         config_hash_hex,
         equity_curve,
+        fills: all_fills,
+        bars: bars_arc,
     })
 }

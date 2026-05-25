@@ -6,10 +6,10 @@
 //! 2. Each emitted `Progress` has `current_bar <= total_bars`.
 //! 3. A run with a pre-dropped cancel handle returns `RunError::Cancelled`.
 
+use backtest::DateRange;
 use backtest::cancel::cancellation_pair;
 use backtest::engine::{RunError, ScenarioConfig, ScenarioDataSource};
-use backtest::progress::{progress_pair, ProgressSender};
-use backtest::DateRange;
+use backtest::progress::{ProgressSender, progress_pair};
 use trading_core::{StrategyId, Symbol, Venue};
 
 fn sma_config() -> ScenarioConfig {
@@ -74,7 +74,10 @@ async fn disabled_progress_sender_is_noop() {
     let progress_tx = ProgressSender::disabled();
 
     let result = backtest::engine::run_scenario(sma_config(), cancel_rx, progress_tx).await;
-    assert!(result.is_ok(), "disabled progress sender should not break run");
+    assert!(
+        result.is_ok(),
+        "disabled progress sender should not break run"
+    );
 }
 
 /// T-D3.7 — cancel while run is in-flight returns `Cancelled`.

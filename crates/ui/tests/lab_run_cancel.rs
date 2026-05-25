@@ -61,8 +61,8 @@ fn dropping_handle_signals_cancel() {
 /// T-D3.6 / T-D3.7 — engine returns `Cancelled` when handle is pre-dropped.
 #[tokio::test]
 async fn engine_returns_cancelled_when_handle_dropped() {
-    use backtest::engine::{RunError, ScenarioConfig, ScenarioDataSource};
     use backtest::DateRange;
+    use backtest::engine::{RunError, ScenarioConfig, ScenarioDataSource};
     use trading_core::{StrategyId, Symbol, Venue};
 
     let (handle, cancel_rx) = backtest::cancel::cancellation_pair();

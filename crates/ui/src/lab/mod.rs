@@ -22,6 +22,9 @@ pub mod equity_loader;
 pub mod persistence;
 /// cockpit-training-control T-D-N14 — cross-platform PID liveness check.
 pub mod pid_alive;
+/// lab-end-to-end-v2 Wave D-4 T-AR-6 — LabProgressRecipe subscription.
+/// Streams backtest progress events from tokio mpsc into the iced update loop.
+pub mod progress;
 pub mod runner;
 pub mod state;
 pub mod trainer;
@@ -30,9 +33,6 @@ pub mod trainer;
 #[cfg(feature = "live")]
 pub mod training_subscription;
 pub mod universe;
-/// lab-end-to-end-v2 Wave D-4 T-AR-6 — LabProgressRecipe subscription.
-/// Streams backtest progress events from tokio mpsc into the iced update loop.
-pub mod progress;
 
 pub use equity_loader::{EquityCache, EquityLoadError, Fidelity, LabEquitySeries, LabTuple};
 pub use state::{COMPARE_SET_CAP, DateRange, LabState, Preset, StrategyFamily};

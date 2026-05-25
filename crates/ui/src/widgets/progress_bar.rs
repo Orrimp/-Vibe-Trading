@@ -23,8 +23,8 @@
 //! **Zero hex literals** — all colors from `crate::theme`.
 //! **Zero string literals** — all dynamic strings from callers.
 
-use iced::widget::{Row, Text, progress_bar};
 use iced::Length;
+use iced::widget::{Row, Text, progress_bar};
 
 use crate::theme::{ThemeMode, color, radius, space, text as theme_text};
 
