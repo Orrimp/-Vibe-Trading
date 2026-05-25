@@ -107,6 +107,12 @@ pub enum DateRange {
 pub struct ParamSheet;
 
 /// Backtest performance KPIs for the `RunReport`.
+///
+/// **Anchor-additive contract** (lab-polish-round-2 R3): fields added after
+/// the v0.1.0 ship (`buys`, `sells`, `total_return_pct`) are in-memory only —
+/// the Markdown report body at `report/sma.rs::build_content` pulls from
+/// `BacktestState` directly, not from this struct, so adding fields here
+/// does NOT change anchored body-SHAs.
 #[derive(Debug, Clone)]
 pub struct BacktestKpis {
     /// Final portfolio equity in USDT.
@@ -119,6 +125,17 @@ pub struct BacktestKpis {
     pub trade_count: usize,
     /// Total fees paid in USDT.
     pub total_fees: Money<Usdt>,
+
+    // ── lab-polish-round-2 R3 — UI-only fields (anchor-additive) ────────
+    /// Number of executed buy fills. `BacktestState.buys`.
+    /// Defaults to 0 in `BacktestKpis::default()` for fixture-path summaries.
+    pub buys: usize,
+    /// Number of executed sell fills. `BacktestState.sells`.
+    pub sells: usize,
+    /// Total return as a decimal fraction relative to `initial_equity`.
+    /// `(final_equity - initial_equity) / initial_equity`. 0.0 = break-even,
+    /// 0.1 = +10 %, -0.05 = -5 %. Defaults to 0.0 in `default()`.
+    pub total_return_pct: Decimal,
 }
 
 // K8a (lab-end-to-end-v2 T-D1.4) — `BacktestKpis::default()` is used by
@@ -132,6 +149,9 @@ impl Default for BacktestKpis {
             max_drawdown: Decimal::ZERO,
             trade_count: 0,
             total_fees: Money::<Usdt>::zero(),
+            buys: 0,
+            sells: 0,
+            total_return_pct: Decimal::ZERO,
         }
     }
 }
@@ -367,6 +387,10 @@ fn momentum_result_to_report(
         max_drawdown: result.max_drawdown,
         trade_count: result.trades,
         total_fees: Money::<Usdt>::from_decimal(result.total_fees),
+        // lab-polish-round-2 R3 (UI-only, anchor-additive).
+        buys: result.buys,
+        sells: result.sells,
+        total_return_pct: total_return_pct(result.initial_equity, result.final_equity),
     };
 
     RunReport {
@@ -377,6 +401,16 @@ fn momentum_result_to_report(
         report_path: None,
         // Surface run bars to the UI so Lab chart markers anchor correctly.
         bars: result.bars.clone(),
+    }
+}
+
+/// lab-polish-round-2 R3 — pure helper for `(final - initial) / initial`.
+/// Returns 0 when `initial == 0` (fixture path).
+fn total_return_pct(initial: Decimal, final_: Decimal) -> Decimal {
+    if initial.is_zero() {
+        Decimal::ZERO
+    } else {
+        (final_ - initial) / initial
     }
 }
 
@@ -398,6 +432,9 @@ fn pairs_result_to_report(
         max_drawdown: result.max_drawdown,
         trade_count: result.trades,
         total_fees: Money::<Usdt>::from_decimal(result.total_fees),
+        buys: result.buys,
+        sells: result.sells,
+        total_return_pct: total_return_pct(result.initial_equity, result.final_equity),
     };
 
     RunReport {
@@ -429,6 +466,9 @@ fn tcn_result_to_report(
         max_drawdown: result.max_drawdown,
         trade_count: result.trades,
         total_fees: Money::<Usdt>::from_decimal(result.total_fees),
+        buys: result.buys,
+        sells: result.sells,
+        total_return_pct: total_return_pct(result.initial_equity, result.final_equity),
     };
 
     RunReport {
@@ -465,6 +505,9 @@ fn sma_composed_result_to_report(
         max_drawdown: result.max_drawdown,
         trade_count: result.trades,
         total_fees: Money::<Usdt>::from_decimal(result.total_fees),
+        buys: result.buys,
+        sells: result.sells,
+        total_return_pct: total_return_pct(result.initial_equity, result.final_equity),
     };
 
     RunReport {

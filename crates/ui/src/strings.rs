@@ -753,6 +753,14 @@ pub const LAB_KPI_SHARPE_LABEL: &str = "Sharpe";
 /// Label for the "Return" card in the Lab single-run KPI strip.
 pub const LAB_KPI_RETURN_LABEL: &str = "Return";
 
+// lab-polish-round-2 R3 — densified KPI strip (2-row 4-column layout).
+/// Label for the "Buys" card.
+pub const LAB_KPI_BUYS_LABEL: &str = "Buys";
+/// Label for the "Sells" card.
+pub const LAB_KPI_SELLS_LABEL: &str = "Sells";
+/// Label for the "Net Δ" card — `final_equity - initial_equity` (USDT).
+pub const LAB_KPI_NET_DELTA_LABEL: &str = "Net Δ";
+
 /// Rendered below the KPI strip when the parser returned a
 /// `BacktestMetrics::all_absent()` shape OR the `metrics` panel state
 /// is `Error` (R2.6 / Q3 graceful fallback).
@@ -1150,6 +1158,9 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_KPI_FEES_LABEL", LAB_KPI_FEES_LABEL),
         ("LAB_KPI_SHARPE_LABEL", LAB_KPI_SHARPE_LABEL),
         ("LAB_KPI_RETURN_LABEL", LAB_KPI_RETURN_LABEL),
+        ("LAB_KPI_BUYS_LABEL", LAB_KPI_BUYS_LABEL),
+        ("LAB_KPI_SELLS_LABEL", LAB_KPI_SELLS_LABEL),
+        ("LAB_KPI_NET_DELTA_LABEL", LAB_KPI_NET_DELTA_LABEL),
         ("VIEWER_METRICS_UNAVAILABLE", VIEWER_METRICS_UNAVAILABLE),
         ("VIEWER_NO_EQUITY_DATA", VIEWER_NO_EQUITY_DATA),
         (

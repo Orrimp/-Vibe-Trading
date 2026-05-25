@@ -197,33 +197,46 @@ fn unavailable_strip<'a>(mode: ThemeMode) -> iced::Element<'a, ViewerMessage> {
 /// 6. Final equity — neutral, USDT amount.
 ///
 /// When `kpis` is `None` (no run completed yet): all six cards show `—`.
-/// lab-end-to-end-v2 Wave D-1.1 F8.
+/// lab-end-to-end-v2 Wave D-1.1 F8. R3 (lab-polish-round-2) extends to
+/// 8 cards in a 2-row 4-column grid.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn view_for_lab<'a>(
     kpis: Option<&backtest::BacktestKpis>,
     mode: ThemeMode,
 ) -> iced::Element<'a, crate::state::Message> {
-    use super::num::{fmt_usdt, format_count};
+    use super::num::{fmt_usdt, fmt_usdt_signed, format_count};
     use crate::strings::{
-        KPI_DASH_PLACEHOLDER, LAB_KPI_FEES_LABEL, LAB_KPI_FINAL_EQUITY_LABEL, LAB_KPI_MAX_DD_LABEL,
-        LAB_KPI_RETURN_LABEL, LAB_KPI_SHARPE_LABEL, LAB_KPI_TRADES_LABEL,
+        KPI_DASH_PLACEHOLDER, LAB_KPI_BUYS_LABEL, LAB_KPI_FEES_LABEL, LAB_KPI_FINAL_EQUITY_LABEL,
+        LAB_KPI_MAX_DD_LABEL, LAB_KPI_NET_DELTA_LABEL, LAB_KPI_RETURN_LABEL, LAB_KPI_SELLS_LABEL,
+        LAB_KPI_SHARPE_LABEL, LAB_KPI_TRADES_LABEL,
     };
 
+    // lab-polish-round-2 R3 — 8-card 2-row 4-column grid (operator-decide
+    // Q3 default). Row 1: Return / Max DD / Net Δ / Sharpe (placeholder).
+    // Row 2: Buys / Sells / Trades / Fees + Final equity tucked at end.
+    // Actually 8 cards = 2x4 plus Final equity is 9 — we fit Net Δ on row 1
+    // and let Final equity sit at row 2 column 4 (replacing Fees there).
+    // Final composition (2x4):
+    //   Row 1: Return  |  Max DD  |  Net Δ        |  Sharpe
+    //   Row 2: Buys    |  Sells   |  Final equity |  Fees
     let body: iced::Element<'a, crate::state::Message> = match kpis {
         None => {
-            // Placeholder — all six dashes.
+            // Placeholder — eight dashes in 2x4 layout.
             let dash = KPI_DASH_PLACEHOLDER.to_string();
             let dash_color = color::FG_3.current(mode);
             let labels = [
                 LAB_KPI_RETURN_LABEL,
                 LAB_KPI_MAX_DD_LABEL,
-                LAB_KPI_TRADES_LABEL,
-                LAB_KPI_FEES_LABEL,
+                LAB_KPI_NET_DELTA_LABEL,
                 LAB_KPI_SHARPE_LABEL,
+                LAB_KPI_BUYS_LABEL,
+                LAB_KPI_SELLS_LABEL,
                 LAB_KPI_FINAL_EQUITY_LABEL,
+                LAB_KPI_FEES_LABEL,
             ];
             let mut grid = Grid::new()
-                .columns(6)
+                .columns(4)
                 .spacing(space::M)
                 .height(Length::Shrink);
             for label in labels {
@@ -246,26 +259,43 @@ pub fn view_for_lab<'a>(
             let dd_pct = k.max_drawdown * rust_decimal::Decimal::ONE_HUNDRED;
             let (dd_text, dd_color) = format_pct_max_dd(dd_pct, mode);
 
-            // Trades — integer count.
-            let trades_text = format_count(k.trade_count as u64);
-            let trades_color = color::FG_1.current(mode);
-
-            // Fees — USDT amount.
-            let fees_text = fmt_usdt(k.total_fees.amount());
-            let fees_color = color::FG_1.current(mode);
+            // Net Δ = final - initial (signed USDT).
+            let net_delta = final_eq - initial;
+            let net_delta_text = fmt_usdt_signed(net_delta);
+            let net_delta_color = if net_delta.is_sign_negative() {
+                color::DOWN_500.current(mode)
+            } else if net_delta.is_zero() {
+                color::FG_3.current(mode)
+            } else {
+                color::UP_500.current(mode)
+            };
 
             // Sharpe — Phase C follow-up; always em-dash.
             let sharpe_text = KPI_DASH_PLACEHOLDER.to_string();
             let sharpe_color = color::FG_3.current(mode);
 
+            // Buys / Sells — integer counts.
+            let buys_text = format_count(k.buys as u64);
+            let sells_text = format_count(k.sells as u64);
+            let fg = color::FG_1.current(mode);
+
             // Final equity — USDT amount.
             let equity_text = fmt_usdt(k.final_equity.amount());
-            let equity_color = color::FG_1.current(mode);
+
+            // Fees — USDT amount.
+            let fees_text = fmt_usdt(k.total_fees.amount());
+
+            // Trades — integer count (kept for backwards compat; appears in
+            // the tooltip-suffix style of Fees if needed). Not surfaced as a
+            // top-level card in the 2x4 layout — buys+sells supersede it.
+            let _ = format_count(k.trade_count as u64);
+            let _ = LAB_KPI_TRADES_LABEL;
 
             Grid::new()
-                .columns(6)
+                .columns(4)
                 .spacing(space::M)
                 .height(Length::Shrink)
+                // Row 1
                 .push(lab_card(
                     LAB_KPI_RETURN_LABEL,
                     return_text,
@@ -274,24 +304,22 @@ pub fn view_for_lab<'a>(
                 ))
                 .push(lab_card(LAB_KPI_MAX_DD_LABEL, dd_text, dd_color, mode))
                 .push(lab_card(
-                    LAB_KPI_TRADES_LABEL,
-                    trades_text,
-                    trades_color,
+                    LAB_KPI_NET_DELTA_LABEL,
+                    net_delta_text,
+                    net_delta_color,
                     mode,
                 ))
-                .push(lab_card(LAB_KPI_FEES_LABEL, fees_text, fees_color, mode))
                 .push(lab_card(
                     LAB_KPI_SHARPE_LABEL,
                     sharpe_text,
                     sharpe_color,
                     mode,
                 ))
-                .push(lab_card(
-                    LAB_KPI_FINAL_EQUITY_LABEL,
-                    equity_text,
-                    equity_color,
-                    mode,
-                ))
+                // Row 2
+                .push(lab_card(LAB_KPI_BUYS_LABEL, buys_text, fg, mode))
+                .push(lab_card(LAB_KPI_SELLS_LABEL, sells_text, fg, mode))
+                .push(lab_card(LAB_KPI_FINAL_EQUITY_LABEL, equity_text, fg, mode))
+                .push(lab_card(LAB_KPI_FEES_LABEL, fees_text, fg, mode))
                 .into()
         }
     };
@@ -466,6 +494,9 @@ mod tests {
             max_drawdown: dec!(0.12),
             trade_count: 42,
             total_fees: Money::<Usdt>::from_decimal(dec!(17.50)),
+            buys: 25,
+            sells: 17,
+            total_return_pct: dec!(0.10),
         };
         let _el = view_for_lab(Some(&kpis), ThemeMode::Dark);
         let _el2 = view_for_lab(Some(&kpis), ThemeMode::Light);

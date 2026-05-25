@@ -70,6 +70,13 @@ pub struct RunReportMirror {
 // ── Run status types ──────────────────────────────────────────────────────────
 
 /// Outcome returned to the cockpit via `Message::LabRunCompleted`.
+///
+/// The size disparity between `Ok(RunSummary)` and `Err(SmolStr)` is
+/// intentional — `RunSummary` carries the full run payload (equity
+/// series, fills, bars) and is moved into the cockpit's `LabState`.
+/// `Box`ing `RunSummary` would add an allocation on the success path
+/// where most runs land; the lint trade-off favours direct embedding.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum RunOutcome {
     /// Run completed successfully. Carries a summary for the UI.
