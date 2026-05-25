@@ -29,10 +29,14 @@
 pub use live_recipe::LabProgressRecipe;
 
 #[cfg(feature = "live")]
+pub use live_recipe::stream_impl;
+
+#[cfg(feature = "live")]
 mod live_recipe {
     use std::sync::{Arc, Mutex};
 
     use backtest::progress::Progress;
+    use futures::stream::BoxStream;
     use iced::advanced::subscription::{EventStream, Hasher, Recipe};
 
     use crate::state::Message;
@@ -75,16 +79,35 @@ mod live_recipe {
                     .take()
             };
 
-            Box::pin(async_stream::stream! {
-                if let Some(mut rx) = rx_opt {
-                    while let Some(progress) = rx.recv().await {
-                        yield Message::LabRunProgress(progress);
-                    }
-                    // R7.4 — channel closed: engine completed or was cancelled.
-                    // Belt-and-suspenders clear before LabRunCompleted arrives.
-                    yield Message::LabRunProgressDone;
-                }
-            })
+            stream_impl(rx_opt)
         }
+    }
+
+    /// Inner stream logic, extracted so integration tests can drive it directly
+    /// without needing a running iced application or an `EventStream`.
+    ///
+    /// - When `rx_opt` is `Some(rx)`: drains progress events as
+    ///   `Message::LabRunProgress`, then emits `Message::LabRunProgressDone`
+    ///   when the sender side closes.
+    /// - When `rx_opt` is `None` (i.e. `stream()` was called a second time
+    ///   after the receiver was already taken): the stream yields nothing.
+    ///   This is the smoking-gun case: a silent empty stream means the UI
+    ///   never receives progress messages.
+    pub fn stream_impl(
+        rx_opt: Option<tokio::sync::mpsc::Receiver<Progress>>,
+    ) -> BoxStream<'static, Message> {
+        Box::pin(async_stream::stream! {
+            if let Some(mut rx) = rx_opt {
+                while let Some(progress) = rx.recv().await {
+                    yield Message::LabRunProgress(progress);
+                }
+                // R7.4 — channel closed: engine completed or was cancelled.
+                // Belt-and-suspenders clear before LabRunCompleted arrives.
+                yield Message::LabRunProgressDone;
+            }
+            // If rx_opt was None: stream yields nothing (double-stream() call
+            // after .take() already consumed the receiver). This is the
+            // silent-failure case that lab_progress_recipe_stream.rs tests.
+        })
     }
 }
