@@ -1,7 +1,13 @@
 /target
 
 # Runtime state — not source
-/data/
+# `/data/` excluded except for `data/yahoo/REVISION.toml` (revision-pin manifest
+# committed per ADR-0040 / Q10=(b) so v0.1.1 anchor locks are reproducible).
+# Bulk Yahoo parquets stay gitignored per the explicit rule below.
+/data/*
+!/data/yahoo/
+/data/yahoo/*
+!/data/yahoo/REVISION.toml
 /logs/
 /snapshot/
 /data-snapshot/
