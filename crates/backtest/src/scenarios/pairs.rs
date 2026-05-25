@@ -181,7 +181,9 @@ pub async fn run(
     let total_bars = bars_arc.len();
     for (bar_idx, bar) in bars_arc.iter().enumerate() {
         // Bug #63 — cancel + progress poll at the 128-bar boundary.
-        if bar_idx.trailing_zeros() >= 7 {
+        // Bug #64 — also force-emit at the FINAL bar so short runs visibly
+        // reach 100% before completion (Yahoo daily, narrow custom ranges).
+        if bar_idx.trailing_zeros() >= 7 || bar_idx == total_bars.saturating_sub(1) {
             if cancel_rx.is_cancelled() {
                 return Err(anyhow::anyhow!("Cancelled"));
             }

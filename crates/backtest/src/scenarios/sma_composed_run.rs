@@ -416,12 +416,18 @@ pub async fn run(
         // R6.2 + R7.2 — cancellation + progress at the poll boundary.
         // K4 mitigation: every 32 bars during the first 128 bars (warmup),
         // then every 128 bars steady-state.
+        //
+        // Bug #64 — also force-emit at the FINAL bar so short runs (e.g. Yahoo
+        // daily Last30d ≈ 30 bars) still visibly reach 100% before the engine
+        // returns. Without this clause, a 30-bar run emits only at bar 0
+        // (progress_pct = 0.0) and the bar appears stuck at empty.
         #[allow(clippy::verbose_bit_mask)] // bitmask is more readable than trailing_zeros here
-        let poll_now = if bar_idx < 128 {
-            bar_idx & 0x1F == 0 // every 32 bars during warmup
-        } else {
-            bar_idx & 0x7F == 0 // every 128 bars steady-state
-        };
+        let poll_now = bar_idx == bar_count.saturating_sub(1)
+            || if bar_idx < 128 {
+                bar_idx & 0x1F == 0 // every 32 bars during warmup
+            } else {
+                bar_idx & 0x7F == 0 // every 128 bars steady-state
+            };
         if poll_now {
             if cancel_rx.is_cancelled() {
                 return Err(SmaRunError::Cancelled);

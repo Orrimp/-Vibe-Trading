@@ -580,6 +580,22 @@ pub fn spawn_lab_run(
                 #[cfg(feature = "yahoo")]
                 {
                     if cfg_for_preload.data_source == crate::lab::state::LabDataSource::YahooCache {
+                        // Bug #64 — emit a sentinel Progress event BEFORE the
+                        // network/disk preload await so the operator sees an
+                        // explicit 0%-with-label state instead of the 30%
+                        // indeterminate fallback during the wait. (Cold cache
+                        // misses can spin for 30-60 s on the Yahoo round-trip.)
+                        // `total_bars = 1` is a placeholder; the real value
+                        // arrives once the engine's bar loop emits its first
+                        // event. The widget renders this as 0% with label
+                        // "0 / 1 bars · 0.0s" — clearly identifiable as a
+                        // pre-engine state.
+                        progress_tx.try_send(backtest::progress::Progress {
+                            current_bar: 0,
+                            total_bars: 1,
+                            elapsed_ms: 0,
+                        });
+
                         match preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await {
                             Ok((bars, _sha)) => {
                                 scenario_cfg.data_source =

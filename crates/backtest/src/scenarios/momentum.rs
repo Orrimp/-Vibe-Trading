@@ -312,7 +312,11 @@ pub async fn run(
         // Bug #63 — cancel + progress poll boundary every 128 bars.
         // CLI passes RunCancelReceiver::never_cancelled() + ProgressSender::disabled()
         // so anchored runs see no behaviour change. Lab passes real handles.
-        if bar_idx.trailing_zeros() >= 7 {
+        //
+        // Bug #64 — also force-emit at the FINAL bar so short cross-sectional
+        // runs (Yahoo daily, custom narrow ranges) visibly reach 100% before
+        // completion. Without this, a sub-128-bar run emits only at bar 0.
+        if bar_idx.trailing_zeros() >= 7 || bar_idx == total_bars.saturating_sub(1) {
             if cancel_rx.is_cancelled() {
                 return Err(anyhow::anyhow!("Cancelled"));
             }
