@@ -177,8 +177,17 @@ pub fn synthetic_bars_hourly(
 /// # Errors
 ///
 /// Returns `Err` if the strategy config file cannot be loaded or is malformed.
+///
+/// Bug #63 (2026-05-25): now threads `cancel_rx` + `progress_tx` into the
+/// bar loop at the standard 128-bar poll boundary so the Lab Stop button
+/// works and the progress bar updates.
 #[allow(clippy::too_many_lines)]
-pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRunResult> {
+pub async fn run(
+    input: &MomentumScenarioInput,
+    seed: u64,
+    cancel_rx: crate::cancel::RunCancelReceiver,
+    progress_tx: crate::progress::ProgressSender,
+) -> Result<MomentumRunResult> {
     use crate::engine::MatchingEngine as _;
     use strategy::Strategy as _;
 
@@ -289,7 +298,21 @@ pub async fn run(input: &MomentumScenarioInput, seed: u64) -> Result<MomentumRun
     // fill triangle markers against the run's own time window (R5.2 pattern).
     let bars_arc: Arc<Vec<Bar>> = Arc::new(merged_bars);
 
-    for bar in bars_arc.iter() {
+    let total_bars = bars_arc.len();
+    for (bar_idx, bar) in bars_arc.iter().enumerate() {
+        // Bug #63 — cancel + progress poll boundary every 128 bars.
+        // CLI passes RunCancelReceiver::never_cancelled() + ProgressSender::disabled()
+        // so anchored runs see no behaviour change. Lab passes real handles.
+        if bar_idx.trailing_zeros() >= 7 {
+            if cancel_rx.is_cancelled() {
+                return Err(anyhow::anyhow!("Cancelled"));
+            }
+            progress_tx.try_send(crate::progress::Progress {
+                current_bar: bar_idx,
+                total_bars,
+                elapsed_ms: u64::try_from(start_instant.elapsed().as_millis()).unwrap_or(u64::MAX),
+            });
+        }
         mark_prices.insert(bar.symbol.clone(), bar.close.get());
 
         let signals = momentum.on_bar(bar);

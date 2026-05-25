@@ -58,7 +58,14 @@ pub struct PairsRunResult {
 ///
 /// Returns `Err` if the strategy config file cannot be loaded or is malformed.
 #[allow(clippy::too_many_lines)]
-pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult> {
+/// Bug #63 — cancel + progress threading added so the Lab Stop button + progress
+/// bar work for pairs runs.
+pub async fn run(
+    input: &PairsScenarioInput,
+    seed: u64,
+    cancel_rx: crate::cancel::RunCancelReceiver,
+    progress_tx: crate::progress::ProgressSender,
+) -> Result<PairsRunResult> {
     use crate::engine::MatchingEngine as _;
     use strategy::Strategy as _;
 
@@ -165,7 +172,19 @@ pub async fn run(input: &PairsScenarioInput, seed: u64) -> Result<PairsRunResult
     // fill triangle markers against the run's own time window (R5.2 pattern).
     let bars_arc: Arc<Vec<Bar>> = Arc::new(merged_bars_raw);
 
-    for bar in bars_arc.iter() {
+    let total_bars = bars_arc.len();
+    for (bar_idx, bar) in bars_arc.iter().enumerate() {
+        // Bug #63 — cancel + progress poll at the 128-bar boundary.
+        if bar_idx.trailing_zeros() >= 7 {
+            if cancel_rx.is_cancelled() {
+                return Err(anyhow::anyhow!("Cancelled"));
+            }
+            progress_tx.try_send(crate::progress::Progress {
+                current_bar: bar_idx,
+                total_bars,
+                elapsed_ms: u64::try_from(start_instant.elapsed().as_millis()).unwrap_or(u64::MAX),
+            });
+        }
         mark_prices.insert(bar.symbol.clone(), bar.close.get());
 
         let signals = pairs_strategy.on_bar(bar);

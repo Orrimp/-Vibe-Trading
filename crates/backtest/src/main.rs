@@ -1036,7 +1036,10 @@ async fn main() -> Result<()> {
             bars_override: realdata_bars_for_momentum.take(),
             data_revision_sha: realdata_revision_sha_for_momentum.clone(),
         };
-        let result = backtest::scenarios::momentum::run(&input, seed).await?;
+        // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
+        let (_h, m_cancel) = backtest::cancel::cancellation_pair();
+        let m_progress = backtest::progress::ProgressSender::disabled();
+        let result = backtest::scenarios::momentum::run(&input, seed, m_cancel, m_progress).await?;
 
         let report_dir = args
             .reports_dir
@@ -1092,7 +1095,11 @@ async fn main() -> Result<()> {
             taker_fee_bps: scenario.taker_fee_bps,
             config_id,
         };
-        let result = backtest::scenarios::pairs::run(&pairs_input, seed).await?;
+        // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
+        let (_h, p_cancel) = backtest::cancel::cancellation_pair();
+        let p_progress = backtest::progress::ProgressSender::disabled();
+        let result =
+            backtest::scenarios::pairs::run(&pairs_input, seed, p_cancel, p_progress).await?;
 
         let report_dir = args
             .reports_dir
@@ -1156,7 +1163,11 @@ async fn main() -> Result<()> {
             bars_override: None,
             emit_equity_bin: None,
         };
-        let result = backtest::scenarios::tcn_overlay::run(tcn_input, seed).await?;
+        // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
+        let (_h, t_cancel) = backtest::cancel::cancellation_pair();
+        let t_progress = backtest::progress::ProgressSender::disabled();
+        let result =
+            backtest::scenarios::tcn_overlay::run(tcn_input, seed, t_cancel, t_progress).await?;
 
         // T-D-8: --reports-dir override (default: resolved from scenario name).
         let report_dir = args

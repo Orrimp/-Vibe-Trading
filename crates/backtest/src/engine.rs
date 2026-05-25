@@ -623,9 +623,17 @@ pub async fn run_scenario(
                 bars_override: None,
                 data_revision_sha: None,
             };
-            let result = crate::scenarios::momentum::run(&input, seed_u64)
+            // Bug #63 — pass cancel + progress through so Stop + progress bar
+            // work for cross-sectional runs.
+            let result = crate::scenarios::momentum::run(&input, seed_u64, cancel_rx, progress_tx)
                 .await
-                .map_err(|e| RunError::Internal(e.to_string()))?;
+                .map_err(|e| {
+                    if e.to_string().contains("Cancelled") {
+                        RunError::Cancelled
+                    } else {
+                        RunError::Internal(e.to_string())
+                    }
+                })?;
             Ok(momentum_result_to_report(&result, start_year))
         }
 
@@ -643,9 +651,16 @@ pub async fn run_scenario(
                 taker_fee_bps: 4,
                 config_id: "pairs_mr_h1".to_string(),
             };
-            let result = crate::scenarios::pairs::run(&input, seed_u64)
+            // Bug #63 — cancel + progress.
+            let result = crate::scenarios::pairs::run(&input, seed_u64, cancel_rx, progress_tx)
                 .await
-                .map_err(|e| RunError::Internal(e.to_string()))?;
+                .map_err(|e| {
+                    if e.to_string().contains("Cancelled") {
+                        RunError::Cancelled
+                    } else {
+                        RunError::Internal(e.to_string())
+                    }
+                })?;
             Ok(pairs_result_to_report(&result, start_year))
         }
 
@@ -666,9 +681,17 @@ pub async fn run_scenario(
                 bars_override: None,
                 emit_equity_bin: None,
             };
-            let result = crate::scenarios::tcn_overlay::run(input, seed_u64)
-                .await
-                .map_err(|e| RunError::Internal(e.to_string()))?;
+            // Bug #63 — cancel + progress.
+            let result =
+                crate::scenarios::tcn_overlay::run(input, seed_u64, cancel_rx, progress_tx)
+                    .await
+                    .map_err(|e| {
+                        if e.to_string().contains("Cancelled") {
+                            RunError::Cancelled
+                        } else {
+                            RunError::Internal(e.to_string())
+                        }
+                    })?;
             Ok(tcn_result_to_report(&result, start_year))
         }
 

@@ -307,35 +307,59 @@ async fn fetch_with_backoff(
     let mut backoff = Duration::from_secs(1);
     let cap = Duration::from_secs(60);
 
+    // Bug #63 — per-attempt timeout so a hung Yahoo endpoint can't freeze
+    // the cockpit indefinitely. 60 s is well above normal fetch time
+    // (<5 s typical) and well below operator patience threshold.
+    let per_attempt_timeout = Duration::from_secs(60);
+
     for attempt in 0..=max_retries {
-        match src
-            .fetch_and_cache(ticker, interval, start_ms, end_ms)
-            .await
-        {
-            Ok(loaded) => {
-                tracing::info!(
-                    target: "lab.yahoo",
-                    ticker = %ticker,
-                    bars = loaded.loaded_count,
-                    expected = loaded.expected_count,
-                    revision_sha = %&loaded.revision_sha[..8],
-                    "Yahoo fetch OK"
-                );
-                return Ok(());
-            }
-            Err(YahooError::RateLimited { retry_after_secs }) if attempt < max_retries => {
-                let delay = backoff.max(Duration::from_secs(retry_after_secs));
+        let fetch_future = src.fetch_and_cache(ticker, interval, start_ms, end_ms);
+        match tokio::time::timeout(per_attempt_timeout, fetch_future).await {
+            Err(_) => {
                 tracing::warn!(
                     target: "lab.yahoo",
                     ticker = %ticker,
                     attempt,
-                    delay_s = delay.as_secs(),
-                    "rate-limited by Yahoo, backing off"
+                    timeout_s = per_attempt_timeout.as_secs(),
+                    "fetch timed out — retrying with backoff"
                 );
-                tokio::time::sleep(delay).await;
-                backoff = (backoff * 2).min(cap);
+                if attempt < max_retries {
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(cap);
+                    continue;
+                }
+                return Err(YahooError::Http(format!(
+                    "fetch timeout ({}s) after {} attempts for {ticker}",
+                    per_attempt_timeout.as_secs(),
+                    max_retries + 1
+                )));
             }
-            Err(e) => return Err(e),
+            Ok(result) => match result {
+                Ok(loaded) => {
+                    tracing::info!(
+                        target: "lab.yahoo",
+                        ticker = %ticker,
+                        bars = loaded.loaded_count,
+                        expected = loaded.expected_count,
+                        revision_sha = %&loaded.revision_sha[..8],
+                        "Yahoo fetch OK"
+                    );
+                    return Ok(());
+                }
+                Err(YahooError::RateLimited { retry_after_secs }) if attempt < max_retries => {
+                    let delay = backoff.max(Duration::from_secs(retry_after_secs));
+                    tracing::warn!(
+                        target: "lab.yahoo",
+                        ticker = %ticker,
+                        attempt,
+                        delay_s = delay.as_secs(),
+                        "rate-limited by Yahoo, backing off"
+                    );
+                    tokio::time::sleep(delay).await;
+                    backoff = (backoff * 2).min(cap);
+                }
+                Err(e) => return Err(e),
+            },
         }
     }
 
