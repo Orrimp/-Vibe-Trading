@@ -702,6 +702,10 @@ pub async fn run_scenario(
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
+                // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
+                // anchored byte-identity. Lab override happens at the runner.
+                sma_fast_len: None,
+                sma_slow_len: None,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -730,6 +734,10 @@ pub async fn run_scenario(
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
+                // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
+                // anchored byte-identity. Lab override happens at the runner.
+                sma_fast_len: None,
+                sma_slow_len: None,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -758,6 +766,10 @@ pub async fn run_scenario(
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
+                // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
+                // anchored byte-identity. Lab override happens at the runner.
+                sma_fast_len: None,
+                sma_slow_len: None,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -789,6 +801,10 @@ pub async fn run_scenario(
                 initial_capital: dec!(100_000),
                 slippage_bps: 2,
                 taker_fee_bps: 4,
+                // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
+                // anchored byte-identity. Lab override happens at the runner.
+                sma_fast_len: None,
+                sma_slow_len: None,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,

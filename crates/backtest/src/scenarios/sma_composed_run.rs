@@ -304,8 +304,10 @@ pub async fn run(
     let registry = strategy::StrategyRegistry::new();
 
     let strategy_meta = if input.strategy_id == "sma_crossover" {
-        let fast_len = 20usize;
-        let slow_len = 50usize;
+        // lab-polish-round-2 R2 — Lab UI may override the (20, 50) defaults.
+        // Anchored CLI scenarios pass None → byte-identical to pre-R2 behavior.
+        let fast_len = input.sma_fast_len.unwrap_or(20usize);
+        let slow_len = input.sma_slow_len.unwrap_or(50usize);
         registry.register(Box::new(strategy::SmaCrossover::new(fast_len, slow_len)));
         StrategyMeta {
             id: "sma_crossover".to_string(),
@@ -585,6 +587,8 @@ mod tests {
             initial_capital: dec!(100_000),
             slippage_bps: 2,
             taker_fee_bps: 4,
+            sma_fast_len: None,
+            sma_slow_len: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -629,6 +633,8 @@ mod tests {
             initial_capital: dec!(100_000),
             slippage_bps: 2,
             taker_fee_bps: 4,
+            sma_fast_len: None,
+            sma_slow_len: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -664,6 +670,8 @@ mod tests {
             initial_capital: dec!(100_000),
             slippage_bps: 2,
             taker_fee_bps: 4,
+            sma_fast_len: None,
+            sma_slow_len: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -699,6 +707,8 @@ mod tests {
             initial_capital: dec!(100_000),
             slippage_bps: 2,
             taker_fee_bps: 4,
+            sma_fast_len: None,
+            sma_slow_len: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();

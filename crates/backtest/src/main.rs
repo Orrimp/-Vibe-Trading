@@ -1539,6 +1539,11 @@ async fn main() -> Result<()> {
         initial_capital: scenario.initial_capital,
         slippage_bps: scenario.slippage_bps,
         taker_fee_bps: scenario.taker_fee_bps,
+        // lab-polish-round-2 R2 — CLI scenarios always pass None to preserve
+        // anchored byte-identity (defaults map back to the hardcoded 20/50
+        // pair inside `sma_composed_run::run`).
+        sma_fast_len: None,
+        sma_slow_len: None,
     };
     // CLI path: use no-op cancel + progress so the anchor bytes are unchanged.
     let (_cancel_handle, cancel_rx) = backtest::cancel::cancellation_pair();

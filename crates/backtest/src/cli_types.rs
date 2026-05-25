@@ -214,6 +214,20 @@ pub struct SmaComposedRunInput {
     pub slippage_bps: u32,
     /// Matching engine taker fee in basis points.
     pub taker_fee_bps: u32,
+
+    // ── lab-polish-round-2 R2 — SMA param overrides ──────────────────────
+    //
+    // ANCHOR-PRESERVING CONTRACT: when both fields are None the run uses
+    // the legacy (20, 50) hardcoded defaults so anchored CLI scenarios stay
+    // byte-identical. The Lab UI sets these to user-chosen values to enable
+    // in-cockpit A/B testing without editing TOML.
+    //
+    /// Optional override for the fast SMA window length (default 20).
+    /// Only honoured when `strategy_id == "sma_crossover"`. `None` → 20.
+    pub sma_fast_len: Option<usize>,
+    /// Optional override for the slow SMA window length (default 50).
+    /// Only honoured when `strategy_id == "sma_crossover"`. `None` → 50.
+    pub sma_slow_len: Option<usize>,
 }
 
 // ── Strategy metadata (SMA / Composed report) ─────────────────────────────────
