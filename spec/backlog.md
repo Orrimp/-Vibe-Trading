@@ -446,6 +446,88 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   **Trace**: `REQ-LAB-YAHOO-REALDATA-001`. Estimated 1-2 days
   wall-clock after operator cache populated.
 
+<!-- updated 2026-05-25 (analyst, reflection-memory-trader-wiring) —
+     **PROMOTED Idea → Active 2026-05-25** as a P0 hygiene-gate
+     recovery brief. The workspace test
+     `crates/reflection/tests/no_strategy_caller.rs::t1809_no_strategy_crate_consumes_reflection_retrieval`
+     is currently RED on main — `v3-llm-forecaster` Waves B/C/G
+     (commits 8c40ab0, 97b7c39, 8dcd72c) landed reflection-retrieval
+     code directly inside `crates/strategy/src/llm_forecaster/`,
+     violating R8.1 / R10.8 from `spec/v3-llm-forecaster/feature.md`.
+     The gate-test names this brief as the recovery path.
+
+     **Scope**: create new `crates/trader/` workspace crate
+     (Q1=(a) analyst-recommended); move the entire 8-file
+     `crates/strategy/src/llm_forecaster/` subtree + 13 integration
+     test suites (Q2=(a) clean-cut); strategy crate's Cargo.toml
+     drops the `reflection` path-dep (structural enforcement of the
+     R8.1 invariant); no new trait surface at v0.1.0 (Q3=(a) —
+     `MemoryProvider` trait deferred to v0.1.1 once second consumer
+     lands). Gate-test recovery contract is R5: gate-test returns to
+     PASS at M-FINAL + a sibling positive-assertion test
+     `t1810_trader_crate_owns_reflection_retrieval` lands in the
+     trader crate.
+
+     **What this brief does NOT do**: touch the `Strategy` trait,
+     touch the reflection writer pipeline, touch any backtest scenario
+     body bytes, touch any audit migration. The 34 locked anchors
+     stay byte-identical (R6.1 / H2 — additive-zero by construction);
+     the 98 LLM-forecaster integration tests stay PASS post import-
+     path rewrite (R6.2 / H3); Phase F UI byte-identity preserved
+     (R6.3). Pure package-level refactor.
+
+     **Cost framing**: 3-5 days wall-clock — architect M-T1 ~0.5 day,
+     developer M-DEV ~2 days (split into Wave A workspace plumbing →
+     Wave B file moves → Wave C import rewrites → Wave D gate-test
+     tightening → Wave E errata + docs), tester M-FINAL ~0.5 day,
+     presenter ~0.5 day. **No LLM costs** (pure refactor; no model
+     calls).
+
+     **Operator-decide Q's** (load-bearing — architect M-T1 gates):
+     - Q1 — new `crates/trader/` vs extend existing. Analyst
+       recommends **(a)** new crate per product.md § 3 Trader agent.
+     - Q2 — move scope: entire subtree vs reflection-touching files
+       only. Analyst recommends **(a)** clean-cut.
+     - Q3 — inverse-API trait shape at v0.1.0. Analyst recommends
+       **(a)** no new trait; v0.1.1 brief for `MemoryProvider`.
+     - Q4 — gate-test tightening (add `NullReflectionStore` to
+       forbidden list). Analyst recommends **(a)** tighten.
+     - Q5 — trader crate owns audit emission. Analyst recommends **(a)**.
+     - Q6 — sequencing parallel with lab-yahoo-realdata v0.1.1.
+       Analyst recommends **(a)+(b)** parallel — no file overlap.
+     - Q7 — v3-llm-forecaster errata location. Analyst recommends
+       **(a)** append `## Errata` to v3 feature.md (preserves history).
+
+     **Cross-feature impact**: v3-llm-forecaster `spec/v3-llm-forecaster/
+     feature.md` gets a `## Errata` block per Q7=(a) (CLAUDE.md
+     non-negotiable — anchored reports under `reports/` are byte-
+     immutable; the feature.md itself is NOT a report and accepts
+     additive edits). v3 decomp.md path references — architect M-T1
+     decides update strategy at K6.
+
+     **Trace row**: `REQ-REFLECTION-TRADER-001` at `proposed` state.
+     **Feature folder**: [`spec/reflection-memory-trader-wiring/`](reflection-memory-trader-wiring/feature.md).
+     **Gate test**: [`crates/reflection/tests/no_strategy_caller.rs`](../crates/reflection/tests/no_strategy_caller.rs).
+-->
+
+- **reflection-memory-trader-wiring v0.1.0 (R8.1 hygiene-gate recovery)** —
+  P0 brief authored 2026-05-25 to resolve the red gate-test on main.
+  Creates new `crates/trader/` workspace crate; moves the 8-file
+  `crates/strategy/src/llm_forecaster/` subtree + 13 integration test
+  suites (98 PASS tests) out of the analyst-layer `strategy` crate
+  into the new trader-layer crate. Strategy crate's `Cargo.toml`
+  drops the `reflection` path-dep — structural enforcement of the
+  R8.1 invariant. Gate-test
+  `t1809_no_strategy_crate_consumes_reflection_retrieval` returns to
+  PASS at M-FINAL; sibling positive-assertion test
+  `t1810_trader_crate_owns_reflection_retrieval` lands in the trader
+  crate. Anchor risk LOW (34/34 anchors byte-identical by construction;
+  pure package-level refactor). **Spec**:
+  [`spec/reflection-memory-trader-wiring/feature.md`](reflection-memory-trader-wiring/feature.md).
+  **Trace**: `REQ-REFLECTION-TRADER-001`. Estimated 3-5 days wall-clock
+  total across architect M-T1 + developer M-DEV + tester M-FINAL +
+  presenter.
+
 <!-- updated 2026-05-24 (analyst, lab-end-to-end-v2) —
      **PROMOTED Idea → Active 2026-05-24** after operator's 2026-05-24
      verification walk of the Lab screen exposed multiple gaps between

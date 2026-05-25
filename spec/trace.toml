@@ -1072,6 +1072,31 @@ anchors     = []   # ship plans to add 2 anchors top10-2023-fy-llm-forecaster-re
 state       = "shipped-partial"   # TESTER M-FINAL CLOSED 2026-05-22. Waves A+B+C+E+F+G PASS: fmt+clippy PASS, 692 lib tests PASS, 98 LLM-forecaster integration tests PASS, 19 visual snapshots PASS, 11 layout invariants PASS, 20 llm_verdict_priority_tree PASS, ANCHORS PASS (34/34 additive-zero). Wave D DEFERRED → v0.1.1 (no ANTHROPIC_API_KEY). VERDICT → PASS (PARTIAL). R9.3 SHA 2fb4b243… confirmed. L-verdict L2 stub-path (expected). test-final-2026-05-22.md written. First shipped-partial precedent. --- ARCHITECT M-T1 CLOSED 2026-05-22. Analyst-bridge pass 2026-05-22 populated tasks.md M-OD (T-OD1..T-OD10 with standing-Autoapprove eligibility flags — Q1/Q2/Q3/Q5/Q7/Q8 + Q-V2X-SEQ + Q-ASSISTANT-WAKE auto-approved; **Q4 + Q6 explicit operator decision** — product-differentiation surface + new durable LLM-verdict ADR artifact resolved 2026-05-22 → Q4=(a)+(c) hybrid; Q6=(b) NEW ADR analyst-strawman L1-L4 LOCKED). Architect M-T1 pass 2026-05-22 closed T-AR-1..T-AR-10: ADR-0039 LLM-forecaster verdict criteria L0-L4 written + registered (status accepted; ADR namespace pick 0039 — T-OD6 open resolved); decomp.md authored at spec/v3-llm-forecaster/decomp.md (~720 lines) covering all 10 T-AR rows + K1-K10 mitigations + Wave A-G plan with cargo invocations + expected literals + 5-cell joint advisory verdict routing table; spike T-AR-8 = YES (2-3 day prefix to Wave A; scope locked at bench bin + prompt iteration + cache-hit empirical); Wave F UNGATED per Q4=(a)+(c) hybrid operator-pick; baseline `ANCHORS PASS (34 / 34)` quoted; anchor delta plan 34 → 36 at developer Wave G close; Q5b refined: timeout_ms = 45_000 (2.25× Anthropic Sonnet p99 margin). HANDOFF → orchestrator → spike (2-3 day prefix) → developer Wave A → through G → tester → presenter.
 
 #
+# ─── Reflection-memory trader wiring (P0 hygiene-gate recovery 2026-05-25) ─
+# REQ-REFLECTION-TRADER-001 → reflection-memory-trader-wiring (proposed 2026-05-25)
+# Resolves the red gate-test on main:
+#   crates/reflection/tests/no_strategy_caller.rs::t1809_no_strategy_crate_consumes_reflection_retrieval
+# Introduced by v3-llm-forecaster Waves B/C/G (commits 8c40ab0 + 97b7c39 + 8dcd72c)
+# violating R8.1 / R10.8 of spec/v3-llm-forecaster/feature.md.
+#
+
+[[req]]
+id          = "REQ-REFLECTION-TRADER-001"
+title       = "Reflection-memory trader wiring — move crates/strategy/src/llm_forecaster/ (8 files) + 13 integration test suites into new crates/trader/ workspace crate to recover the R8.1 / R10.8 layering invariant; drop reflection path-dep from strategy/Cargo.toml; gate-test t1809_no_strategy_crate_consumes_reflection_retrieval returns to PASS at M-FINAL; sibling positive-assertion test t1810_trader_crate_owns_reflection_retrieval lands in trader crate; pure package-level refactor (additive-zero anchors; 98 integration tests stay PASS); Q1=(a) new crates/trader/ workspace crate; Q2=(a) clean-cut entire llm_forecaster/ subtree; Q3=(a) no new trait at v0.1.0 (MemoryProvider trait deferred to v0.1.1 once second memory-consuming strategy lands); Q4=(a) tighten gate-test to also forbid reflection::NullReflectionStore; Q5=(a) trader crate owns audit emission; Q7=(a) append ## Errata to v3-llm-forecaster/feature.md; predecessor REQ-V3-LLM-FORECASTER-001 (shipped-partial)"
+feature     = "reflection-memory-trader-wiring"
+product     = "spec/product.md"  # § 3 Trader agent line 135-139 — runtime trader-layer definition
+arch        = [
+  "spec/reflection-memory-trader-wiring/feature.md",  # analyst M0 pass 2026-05-25 — R1-R7 + K1-K8 + H1-H5 + Q1-Q7 + 10-item non-regression contract
+  "spec/reflection-memory-trader-wiring/tasks.md",     # M0 stub — M0 DONE; M-T1 / M-DEV / M-FINAL / M-PRESENTER deferred to respective agents
+  "spec/v3-llm-forecaster/feature.md",                 # parent — R8.1 + R10.8 violated invariants; this brief is the recovery
+  "spec/product.md",                                   # § Trading-time agent roster — Trader agent (layer 3) definition that motivates the trader crate
+]
+crates      = []  # Wave A creates crates/trader/Cargo.toml + src/lib.rs; Wave B moves the 8-file llm_forecaster/ subtree out of crates/strategy/src/; Wave C rewrites imports across workspace; M-DEV appends on land
+tests       = ["crates/reflection/tests/no_strategy_caller.rs"]  # The gate-test that is currently RED on main. M-FINAL gates on PASS. Sibling positive-assertion test t1810_trader_crate_owns_reflection_retrieval added at Wave D-2.
+anchors     = []  # additive-zero by construction (R6.1 / H2). The 34 existing anchors stay byte-identical; no scenario body bytes touched.
+state       = "proposed"   # analyst M0 closed 2026-05-25; HANDOFF → architect for M-T1 (T-AR-1..T-AR-10).
+
+#
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
 #
 
