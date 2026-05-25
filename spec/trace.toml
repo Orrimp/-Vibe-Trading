@@ -32,7 +32,7 @@ feature     = "v0-paper-sma"
 product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/strategy", "crates/backtest"]
-tests       = []   # TODO developer: link integration tests
+tests       = []   # shipped — verification floor is the anchor regression gate (scripts/verify_anchors.sh); integration-test inventory not yet enumerated, see crates/backtest/tests/ + crates/strategy/tests/ for the actual suites
 anchors     = ["btc-2023-1m-sma-cross", "btc-2023-1m-sma-baseline-refresh"]
 state       = "shipped"   # flipped 2026-05-22 per audit-2026-05-22 P1.3 — feature.md shipped; anchors locked
 
@@ -43,7 +43,7 @@ feature     = "v05-composed-strategies"
 product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/strategy", "crates/backtest"]
-tests       = []   # TODO developer
+tests       = []   # shipped — verification floor is the anchor regression gate; integration-test inventory deferred
 anchors     = ["btc-2023-1m-macd-trend", "btc-2023-1m-rsi-reversion", "btc-2023-1m-bbands-mean-revert"]
 state       = "shipped"   # flipped 2026-05-22 per audit-2026-05-22 P1.3 — feature.md shipped; anchors locked
 
@@ -54,7 +54,7 @@ feature     = "v1-cross-sectional-momentum"
 product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/strategy", "crates/backtest", "crates/data"]
-tests       = []   # TODO developer
+tests       = []   # shipped — verification floor is the anchor regression gate; integration-test inventory deferred
 anchors     = ["top10-2023-1h-momentum", "top10-2024-h1-momentum"]
 state       = "shipped"   # flipped 2026-05-22 per audit-2026-05-22 P1.3 — feature.md shipped; anchors locked
 
@@ -65,7 +65,7 @@ feature     = "v15a-mean-reversion-pairs"
 product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/strategy", "crates/backtest"]
-tests       = []   # TODO developer
+tests       = []   # shipped — verification floor is the anchor regression gate; integration-test inventory deferred
 anchors     = ["pairs-2023-zscore-mr", "pairs-2024-h1-zscore-mr"]
 state       = "shipped"
 
@@ -76,7 +76,7 @@ feature     = "v1-5b-multi-venue"
 product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/exec", "crates/data"]
-tests       = []   # TODO developer
+tests       = []   # shipped — verification floor is the anchor regression gate; integration-test inventory deferred
 anchors     = []
 state       = "shipped"
 
@@ -87,7 +87,7 @@ feature     = "v2-llm-strategy"
 product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/llm", "crates/agent", "crates/strategy"]
-tests       = []   # TODO developer
+tests       = []   # shipped — verification floor is the anchor regression gate; integration-test inventory deferred
 anchors     = []
 state       = "shipped"
 
@@ -524,7 +524,7 @@ feature     = "per-symbol-position-accounts"
 product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/audit", "crates/exec"]
-tests       = []   # TODO developer
+tests       = []   # shipped — verification floor is the anchor regression gate; integration-test inventory deferred
 anchors     = []
 state       = "shipped"
 
@@ -1190,7 +1190,7 @@ tests       = [
   "crates/ui/tests/gallery_snapshots.rs",                  # R8.5 — progress_bar__* panels
 ]
 anchors     = []   # v2 touches engine dispatch + scenario bar loops (cancel + progress); 34 originals MUST stay byte-identical (R10.1; H5 hypothesis guard via verify_anchors.sh). Architect M-T1 (2026-05-24) confirmed baseline `ANCHORS PASS  (34 / 34)`. Wave D-2 re-verifies 4 legacy anchors (btc-2023-1m-sma-cross, btc-2023-1m-macd-trend, btc-2023-1m-rsi-reversion, btc-2023-1m-bbands-mean-revert) byte-identical via ADR-0038 § D6.b protocol.
-state       = "in-progress"
+state       = "shipped"   # flipped 2026-05-25 — Waves D-1/D-2/D-3/D-4 + D-2.5 per-pair filter all shipped (commits 79fceb5, 992dd82, cb065fa); 1136 lib tests + 3/3 lab_run_real_engine PASS; 34/34 anchors byte-identical. v0.2.0 follow-ons (position-curve overlay, full per-pair PairResult struct) tracked separately.
 
 #
 # ─── Lab Yahoo realdata — multi-asset pivot (proposed 2026-05-24) ───────

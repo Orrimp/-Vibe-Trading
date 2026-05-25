@@ -1,9 +1,10 @@
 ---
 slug: lab-end-to-end-v2
 version: 0.1.0
-status: proposed
+status: shipped
 owner: analyst
-updated: 2026-05-24
+updated: 2026-05-25
+shipped: 2026-05-25
 parent: ui-rethink-phase-b-lab-run
 ---
 

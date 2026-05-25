@@ -216,9 +216,20 @@ never automatic.
 - Volume/flow: OBV, VWAP, CVD.
 - Microstructure: spread, depth-imbalance, trade-aggressor ratio.
 
-### DL/RL models (planned)
-- Forecaster: lightweight Transformer or TCN on multivariate features.
+### DL/RL models
+
+- ~~Forecaster: lightweight Transformer or TCN on multivariate features.~~
+  **Retired 2026-05-22** — the v2.5 4-phase DL forecaster programme (TCN +
+  PatchTST + planned Transformer + bake-off) reached terminal F4 verdict
+  across two model families with no Sharpe-delta unlock (see § Strategy
+  ladder v2.5 row). Research budget pivoted to **σ-prediction**
+  ([`v3-volatility-forecaster`](v3-volatility-forecaster/feature.md) —
+  also retired 2026-05-22 after MODEL-BROKEN / NO-ALPHA verdict) and
+  **LLM-as-forecaster** ([`v3-llm-forecaster`](v3-llm-forecaster/feature.md),
+  shipped-partial 2026-05-22; Wave D paused on `ANTHROPIC_API_KEY`).
 - Regime classifier: HMM or small LSTM for trend/range/crash regimes.
+  Cross-link to draft lane [`v3-regime-classifier`](v3-regime-classifier/feature.md)
+  (analyst-only spec; activation-gated).
 - RL policy: PPO agent on a constrained action space (size in {0, ¼, ½, full}).
 
 ### Universe & data fidelity ladder
