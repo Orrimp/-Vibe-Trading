@@ -773,7 +773,7 @@ mod tests {
     #[tokio::test]
     async fn mode_stream_maps_halted_to_external_halt() {
         let bus = Arc::new(EventBus::new(&BusConfig::default()));
-        let mut s = Box::pin(stream_mode(Arc::clone(&bus)));
+        let mut s = Box::pin(stream_mode(&bus));
         tokio::task::yield_now().await;
         bus.publish_mode(AgentBusMode::Halted {
             reason: "halt file detected".into(),

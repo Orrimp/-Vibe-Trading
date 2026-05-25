@@ -69,7 +69,10 @@ mod live_recipe {
             // `Box::pin` so the returned `BoxStream` remains `Send + 'static`.
             let rx_opt = {
                 let _guard = self.rt_handle.enter();
-                self.rx.lock().unwrap_or_else(|e| e.into_inner()).take()
+                self.rx
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
             };
 
             Box::pin(async_stream::stream! {

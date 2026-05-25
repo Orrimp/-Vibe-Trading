@@ -467,6 +467,23 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         );
         None
     };
+    // Bug #54 diagnostic — log what the chart actually receives. If the
+    // operator reports "no triangles" or "empty chart" we want immediate
+    // visibility into bars/markers/overlay counts without a debugger.
+    // Info-level so a default RUST_LOG surfaces it.
+    tracing::info!(
+        target: "lab.chart",
+        active_pair = ?active.as_ref().map(|(_, s)| s.0.as_str()),
+        bars_count = bars.len(),
+        markers_count = active_markers.len(),
+        signals_count = active_signals.len(),
+        equity_overlay_present = equity_overlay.is_some(),
+        first_bar_ts = bars.first().map(|b| b.open_ts.unix_millis()),
+        last_bar_ts = bars.last().map(|b| b.close_ts.unix_millis()),
+        first_marker_ts = active_markers.first().map(|m| m.venue_ts.unix_millis()),
+        last_run_report_present = model.lab_state.last_run_report.is_some(),
+        "lab::view chart inputs"
+    );
     let chart_body = if let Some((_, _)) = active {
         chart::view(
             bars,

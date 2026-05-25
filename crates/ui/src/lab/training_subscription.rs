@@ -220,15 +220,19 @@ mod tests {
         let ledger = Arc::new(audit::Ledger::in_memory().await.unwrap());
         let ts = Arc::new(Mutex::new(String::new()));
 
+        // Test runtime handle for rt_handle field.
+        let rt = tokio::runtime::Handle::current();
         let p1 = TrainingPoller {
             ledger: ledger.clone(),
             run_id: "run-001".to_string(),
             last_seen_ts: ts.clone(),
+            rt_handle: rt.clone(),
         };
         let p2 = TrainingPoller {
             ledger: ledger.clone(),
             run_id: "run-002".to_string(),
             last_seen_ts: ts.clone(),
+            rt_handle: rt.clone(),
         };
         p1.hash(&mut h1);
         p2.hash(&mut h2);

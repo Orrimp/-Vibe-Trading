@@ -162,6 +162,18 @@ image = { version = "=0.25.6", default-features = false, features = ["png"] }
 proptest = { workspace = true }
 
 [features]
+# Default features — operator's everyday-use bundle. Includes `live` (real
+# broadcast-bus subscription + cockpit_live binary deps) and `yahoo` (Yahoo
+# Finance parquet cache reader for the Lab Source toggle). This means
+# `cargo run -p ui --bin cockpit_live` Just Works without `--features` flags.
+#
+# Builds that explicitly want a minimal surface can opt out with
+# `--no-default-features` and then re-enable individual features as needed
+# (e.g. `--no-default-features --features fixtures` for the gallery-only bin).
+#
+# 2026-05-25: promoted from explicit-opt-in to default per operator request.
+default = ["live", "yahoo"]
+
 # `fixtures` — enables ui::fixtures with deterministic in-memory generators.
 # Used by `cargo run --bin cockpit --features fixtures` to smoke-test the
 # cockpit without a running agent. `fixtures` is also auto-enabled under
