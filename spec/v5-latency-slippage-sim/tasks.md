@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim
-status: draft
-owner: architect
+status: in-progress
+owner: developer
 updated: 2026-05-26
 priority: P1
 ---
@@ -36,15 +36,14 @@ Autoapprove via the operator's session-level directive._
 All 5 Qs are standing-Autoapprove-eligible at analyst-recommended
 defaults per the feature.md § Operator-decide table.
 
-- [ ] **T-OD1** — Q1 latency model. Default: (b) uniform jitter range.
-- [ ] **T-OD2** — Q2 slippage model. Default: (a) linear bps.
-- [ ] **T-OD3** — Q3 audit row shape. Default: (b) NEW
+- [x] **T-OD1** — Q1 latency model = (b) uniform jitter range. *(operator 2026-05-26 standing-Autoapprove on analyst default.)*
+- [x] **T-OD2** — Q2 slippage model = (a) linear bps. *(operator 2026-05-26 standing-Autoapprove on analyst default.)*
+- [x] **T-OD3** — Q3 audit row shape = (b) NEW
   `AuditEvent::SimulatedExecMetrics` variant. **Load-bearing — locks
-  the audit schema.**
-- [ ] **T-OD4** — Q4 scope. Default: (a) backtest-only.
-- [ ] **T-OD5** — Q5 anchor migration timing. Default: (a) defer to
-  v0.2.0.
-- [ ] **T-OD6** — Frontmatter flip `status: draft → in-progress`;
+  the audit schema.** *(operator 2026-05-26: "(b) NEW `AuditEvent::SimulatedExecMetrics` variant (Recommended)" verbatim.)*
+- [x] **T-OD4** — Q4 scope = (a) backtest-only. *(operator 2026-05-26 standing-Autoapprove on analyst default.)*
+- [x] **T-OD5** — Q5 anchor migration timing = (a) defer to v0.2.0. *(operator 2026-05-26 standing-Autoapprove on analyst default.)*
+- [x] **T-OD6** — Frontmatter flip `status: draft → in-progress`;
   `owner: analyst → architect`. trace.toml state flip
   `proposed → in-progress`.
 

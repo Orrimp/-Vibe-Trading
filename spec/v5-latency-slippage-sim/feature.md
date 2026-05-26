@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim
 version: 0.1.0
-status: draft
-owner: analyst
+status: in-progress
+owner: developer
 updated: 2026-05-26
 predecessor: cockpit-activity-status-bar v0.1.0 (no direct dep — parallel feature track)
 parent: backtest-vs-live-execution-gap

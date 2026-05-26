@@ -529,13 +529,28 @@ Tick exactly one. The presenter agent has **not** ticked anything below
 — the mechanical pre-tick guard (`scripts/check_presentation.sh`)
 re-verifies this after the file is written (see closing block).
 
-- [ ] Approved — ship
+- [x] Approved — ship  *(operator 2026-05-26: "Approved — ship (Recommended)")*
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
+### Operator's resolution of the surfaced open question
+
+**Assistant slot body promotion timing**: Operator chose **(b) Defer until `cockpit-activity-llm-producer` ships first** (presenter-recommended). The Phase F Assistant slot stays as a stub at v0.1.0; the live LLM wire lands as a separate follow-on after the LLM-call activity producer + audit-ledger producer + TrainingPressed wiring close out the v0.1.1 wave. Architectural rationale: ride the LLM track; the producer plumbing is the foundation, the Assistant slot is the consumer.
+
 ### Notes / rejection reason
 
-_(operator fills in if Approve-with-notes or Reject is ticked)_
+_(operator approved; no notes)_
+
+### 6/6 UI rethink phases — CLOSED 2026-05-26
+
+| Phase | Slug | Status |
+|---|---|---|
+| A | `ui-rethink-phase-a-lab` | ✅ shipped 2026-05-19 |
+| B | `ui-rethink-phase-b-lab-run` | ✅ shipped 2026-05-19 |
+| C | `ui-rethink-phase-c-sidebar-ia` | ✅ shipped 2026-05-19 |
+| D | `ui-rethink-phase-d-trail` | ✅ shipped 2026-05-20 |
+| E | `ui-rethink-phase-e-compare` | ✅ shipped 2026-05-20 |
+| F | `ui-rethink-phase-f-memory-models-assistant` (this) | ✅ shipped 2026-05-21; deck approved 2026-05-26 |
 
 ## 16. Feedback log
 
