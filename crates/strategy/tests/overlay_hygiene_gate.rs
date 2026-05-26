@@ -32,7 +32,7 @@
 //! required test MUST panic — that is the whole point of this gate.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ── Allowlist ─────────────────────────────────────────────────────────────────
 
@@ -40,10 +40,9 @@ use std::path::PathBuf;
 /// exempt from the hard-fail.  They must still appear in the warning output.
 /// Remove an entry only after writing the matching `*_end_to_end.rs`.
 const KNOWN_UNCOVERED: &[&str] = &[
-    // Killswitch has unit tests (#[cfg(test)] in the module) but no
-    // end-to-end equity-divergence test.  Tracked: write
-    // `vol_killswitch_overlay_end_to_end.rs` before the next overlay PR.
-    "vol_killswitch_overlay",
+    // All overlays are now covered by end-to-end divergence tests.
+    // vol_killswitch_overlay: covered by vol_killswitch_overlay_end_to_end.rs
+    //   (added 2026-05-26, Bug #65 fix — Q4=(p3) fixture fix + broadened filter).
 ];
 
 // ── Divergence assertion substrings ──────────────────────────────────────────
@@ -82,7 +81,7 @@ const COMPARISON_MARKERS: &[&str] = &[
 /// `*_end_to_end.rs` file, or `Err(reason)` otherwise.
 ///
 /// Exposed at module scope so the self-test below can call it with synthetic paths.
-fn check_overlay(stem: &str, tests_dir: &PathBuf) -> Result<(), String> {
+fn check_overlay(stem: &str, tests_dir: &Path) -> Result<(), String> {
     let expected = tests_dir.join(format!("{stem}_end_to_end.rs"));
     if !expected.exists() {
         return Err(format!(

@@ -107,22 +107,29 @@ For a 30-bar Yahoo daily Last30d run, only `bar_idx = 0` hit the boundary. One p
 **Probes used during diagnosis** (now reverted): `tracing::warn!` at `crates/ui/src/bin/cockpit_live.rs:1200` (LabRunRequested handler) + `crates/ui/src/lab/progress.rs::Recipe::stream()` (entry + rx_opt = Some/None branch). Captured to `/tmp/cockpit-probes.log` via `RUST_LOG=lab.progress.recipe=warn`. Probe log showed salt bump 1→2→3 across runs with `rx_opt = Some` every time — ruling out the iced subscription as the failure mode.
 
 ### `#65` — `vol_killswitch_overlay` is a no-op (computes counters, never mutates Signal.kind)
-**Status**: open (analyst brief authored 2026-05-26 — see [`spec/vol-killswitch-overlay-noop-fix/feature.md`](vol-killswitch-overlay-noop-fix/feature.md); tests `#[ignore]`-gated pending source fix)
-**Discovery commit**: (this commit's parent — Wave 1 salvage)
-**Recovery feature**: [`spec/vol-killswitch-overlay-noop-fix v0.1.0`](vol-killswitch-overlay-noop-fix/feature.md) (P0; analyst pass 2026-05-26; trace row `REQ-VOL-KILLSWITCH-NOOP-FIX-001`; sibling of shipped `v3-volatility-forecaster-noop-fix v0.1.0` 2026-05-22)
-**Area**: `crates/strategy/src/vol_killswitch_overlay.rs`.
-**Discovery**: Wave 1's overlay-e2e test (`crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`) detected the no-op via the divergence-assertion pattern that closed `#64`'s sibling issue. Same shape as `v3-volatility-forecaster-noop-fix` 2026-05-22 (see `spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`): the overlay's `stats.kill_switch_count` counter increments correctly when the trigger condition fires, but the overlay never mutates `Signal::kind` to `Hold` — so equity matches the un-overlaid baseline byte-for-byte.
+**Status**: FIXED 2026-05-26 — Q4=(p3) "Both" — fix test fixture AND broaden overlay filter.
+**Discovery commit**: (Wave 1 parent commit — overlay-e2e test found the no-op)
+**Fix commit**: (vol-killswitch-overlay-noop-fix v0.1.0 developer pass 2026-05-26)
+**Recovery feature**: [`spec/vol-killswitch-overlay-noop-fix v0.1.0`](vol-killswitch-overlay-noop-fix/feature.md) (P0; developer pass complete 2026-05-26)
+**Area**: `crates/strategy/src/vol_killswitch_overlay.rs`, `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`.
+**Root cause** (H1 REFUTED by architect M-T1 probe): the ORIGINAL bug report hypothesized the `sig.symbol == bar.symbol` filter was too narrow. H1 was REFUTED. The REAL root cause was the TEST FIXTURE warmup gap: `MomentumStrategy`'s ring buffer (capacity = `lookback_minutes + 1 = 61`) never filled because only ~31 bars per symbol were fed — ring buffer never filled → inner strategy never emitted signals → overlay had nothing to mutate.
 
-**Test evidence** (from `trigger_fires_and_equity_diverges`, currently `#[ignore]`-gated):
+**Fixes applied** (Q4=(p3) "Both"):
+- A.1 (test fixture): `lookback_minutes` 60→5 in `stub_momentum()` (capacity 61→6). Flat BTC warmup prices prevent GARCH early-kill with `min_median_floor=1e-3`.
+- A.2 (broadened filter): dropped `if sig.symbol == bar.symbol` guard; kill now converts ALL basket signals to Hold, not just the triggering symbol's signals.
+- A.3: Removed `#[ignore]` annotations; added `broadened_filter_dampens_cross_sectional_basket` test; 4/4 tests pass.
+- A.4: This entry.
+
+**Test evidence** (all 4 tests green after fix):
 ```
-vol-killswitch overlay equity divergence is below 1 bp — the overlay may be a no-op.
-baseline_equity=1.00000000, killswitch_equity=1.00000000, divergence=0.00000000,
-required_min=0.00010000 (1 bp). kill_switch_count=2
+test post_trigger_signals_are_hold ... ok
+test broadened_filter_dampens_cross_sectional_basket ... ok
+test passthrough_when_threshold_unreachably_high ... ok
+test trigger_fires_and_equity_diverges ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored
 ```
 
-**Negative control** (`passthrough_when_threshold_unreachably_high` — passes): with the threshold set unreachably high, the overlay correctly passes through with zero divergence. So the trigger path is the broken one, not the passthrough path.
-
-**Recovery path**: a follow-up brief (suggested slug: `vol-killswitch-overlay-noop-fix`) must patch `crates/strategy/src/vol_killswitch_overlay.rs` to actually mutate `Signal::kind` on trigger. After the fix lands, the two `#[ignore]` annotations in `vol_killswitch_overlay_end_to_end.rs` are removed and the test must turn green.
+**Overlay hygiene gate**: `vol_killswitch_overlay` removed from `KNOWN_UNCOVERED` allowlist (2/2 gate tests pass).
 
 **Why this matters**: analyst's framing in `spec/dev-notes/testing-strategy-review-2026-05-25.md` — "a killswitch that doesn't kill is the worst kind of no-op." Risk profile: in production, if vol exceeds the killswitch threshold, the strategy continues trading as if nothing happened. This is the worst-case failure mode for a risk-overlay.
 
@@ -132,3 +139,4 @@ required_min=0.00010000 (1 bp). kill_switch_count=2
 - 2026-05-25 (orchestrator): #64 added — progress bar short-run starvation fix.
 - 2026-05-26 (orchestrator): #65 added — vol_killswitch_overlay no-op discovered by Wave 1 overlay-e2e test; 2 tests `#[ignore]`-gated pending source fix.
 - 2026-05-26 (analyst): #65 updated — analyst brief authored at [`spec/vol-killswitch-overlay-noop-fix v0.1.0`](vol-killswitch-overlay-noop-fix/feature.md). P0 safety; trace row `REQ-VOL-KILLSWITCH-NOOP-FIX-001` at `proposed`; sibling of shipped `v3-volatility-forecaster-noop-fix v0.1.0` 2026-05-22. Status flipped `open` → `open (analyst brief authored)`.
+- 2026-05-26 (developer): #65 FIXED — Q4=(p3) "Both" fix shipped. A.1: lookback_minutes 60→5 + flat warmup prevents GARCH early-kill. A.2: overlay filter broadened to basket-wide Hold. A.3: #[ignore] removed; 4/4 tests green. Hygiene gate 2/2 pass.

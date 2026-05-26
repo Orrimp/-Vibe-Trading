@@ -593,6 +593,53 @@ keys to the post-fix e2e test outcome.
 > outputs live in `decomp.md` (created by architect; not in scope
 > for this analyst pass).
 
+## Implementation
+
+**Completed 2026-05-26 — Q4=(p3) "Both" operator-locked decision.**
+
+### A.1 — Test fixture fix
+
+`crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`
+
+- `stub_momentum()`: `lookback_minutes` changed 60 → 5 (ring capacity 61 → 6).
+- `build_bar_stream()`: Flat BTC warmup (100, not rising 100+i). Prevents GARCH sigma from rising above `min_median_floor=1e-3` during the 20 warmup bars.
+- Two-spike design: BTC 100 → 1000 (spike, sets r_prev ≈ 2.3) → 50 (crash, GARCH fires: sigma_hat ≈ 0.73 >> 1e-3). At the crash bar, BTC score negative, ETH score 0 → Sell BTC + Buy ETH → kill converts to Hold.
+- `min_median_floor: 1e-3` in all test configs with `threshold_multiplier=1.0` prevents early-kill during warmup (warmup sigma ≈ 4.47e-4 < 1e-3).
+
+### A.2 — Broadened overlay filter
+
+`crates/strategy/src/vol_killswitch_overlay.rs:231-244`
+
+Dropped `if sig.symbol == bar.symbol` guard. The new semantic: when kill fires on any symbol, ALL signals in the rebalance basket → Hold. This is the Q4=(p3) broadened cross-sectional semantic (noted in K2 caveats in the filter comment).
+
+### A.3 — Tests
+
+Four tests (no `#[ignore]` annotations):
+1. `trigger_fires_and_equity_diverges` — equity divergence ≥ 1 bp.
+2. `post_trigger_signals_are_hold` — at least one Hold in kill-active window.
+3. `passthrough_when_threshold_unreachably_high` — divergence < 1 bp with threshold=1e9.
+4. `broadened_filter_dampens_cross_sectional_basket` — no Buy/Sell leaks during kill window.
+
+Overlay hygiene gate: `vol_killswitch_overlay` removed from `KNOWN_UNCOVERED` — 2/2 gate tests pass.
+
+### Test run output
+
+```
+test post_trigger_signals_are_hold ... ok
+test broadened_filter_dampens_cross_sectional_basket ... ok
+test passthrough_when_threshold_unreachably_high ... ok
+test trigger_fires_and_equity_diverges ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+### Changed files
+
+- `crates/strategy/src/vol_killswitch_overlay.rs` (A.2 — broadened filter + doc update)
+- `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs` (A.1 + A.3 — full rewrite)
+- `crates/strategy/tests/overlay_hygiene_gate.rs` (remove from KNOWN_UNCOVERED + fix clippy `&PathBuf → &Path`)
+- `spec/bug-log.md` § #65 (A.4 — status FIXED)
+
 ## Verification
 
 > Tester M-FINAL fills this section with the joint advisory
@@ -613,3 +660,4 @@ keys to the post-fix e2e test outcome.
   returns zero `vol_killswitch` rows); CLAUDE.md non-negotiable
   on baseline-equity-divergence e2e tests cited. HANDOFF →
   architect (M-T1).
+- 2026-05-26 (developer): Wave A complete — Q4=(p3) "Both" implemented. H1 REFUTED (architect M-T1 probe). Root cause: test fixture warmup gap, not the overlay filter. A.1: fixture fixed (lookback_minutes 60→5, flat warmup, two-spike bar stream). A.2: overlay filter broadened to basket-wide Hold. A.3: 4/4 e2e tests green, overlay hygiene gate 2/2 pass. A.4: bug-log #65 FIXED. HANDOFF → tester.

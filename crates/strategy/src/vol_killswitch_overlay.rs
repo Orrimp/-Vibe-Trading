@@ -9,11 +9,21 @@
 //!
 //! ```text
 //! if sigma_hat > threshold_multiplier * rolling_median_sigma:
-//!     emit Hold for this symbol
+//!     emit Hold for ALL symbols in the basket (Q4=(p3) broadened filter)
 //!     start cooldown_bars countdown
 //! else:
 //!     pass base signal through unchanged
 //! ```
+//!
+//! ## Cross-sectional basket semantic (Q4=(p3), 2026-05-26)
+//!
+//! When the kill-switch fires for ANY symbol in the basket, ALL signals in the
+//! rebalance basket are converted to `Hold` — not just the triggering symbol's.
+//! This is the "belt+suspenders" cross-sectional-basket semantic: a vol spike on
+//! BTCUSDT halts the whole basket (BTCUSDT + ETHUSDT + …).
+//! Caveat (K2): this overlay is designed for `MomentumStrategy` (cross-sectional);
+//! wrapping a single-symbol inner strategy with this overlay would over-suppress
+//! signals on unrelated symbols.  See `spec/vol-killswitch-overlay-noop-fix/feature.md`.
 //!
 //! ## Determinism
 //!
@@ -229,13 +239,25 @@ impl Strategy for VolKillSwitchOverlay {
         let base_signals = self.inner.on_bar(bar);
 
         if kill_active {
-            // Replace all signals for this symbol with Hold.
+            // Q4=(p3) broadened filter (2026-05-26): when the kill-switch fires for
+            // ANY symbol in the basket, convert ALL signals in the rebalance basket
+            // to Hold — not just the triggering symbol's signals.
+            //
+            // Rationale: `VolKillSwitchOverlay` wraps a cross-sectional momentum
+            // strategy (`MomentumStrategy`).  At rebalance time the inner strategy
+            // emits signals for multiple basket symbols simultaneously.  If vol
+            // spikes on BTCUSDT, the operator's intent is to halt the WHOLE basket
+            // (belt+suspenders), not just the spiking symbol.  See K2 in the feature
+            // brief for the single-symbol-strategy caveat — this overlay is
+            // cross-sectional-basket-only at v0.1.0.
+            //
+            // Before (Q4=(p1)-default — narrow, trigger-symbol-only):
+            //   if sig.symbol == bar.symbol { sig.kind = SignalKind::Hold; }
+            // After (Q4=(p3) — broaden to cross-sectional basket):
             base_signals
                 .into_iter()
                 .map(|mut sig| {
-                    if sig.symbol == bar.symbol {
-                        sig.kind = SignalKind::Hold;
-                    }
+                    sig.kind = SignalKind::Hold;
                     sig
                 })
                 .collect()
