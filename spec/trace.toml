@@ -1359,15 +1359,18 @@ feature     = "vol-killswitch-overlay-noop-fix"
 product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-26) — paths surfaced from R1-R6 + non-regression contract.
-  # Architect M-T1 will append the decomp.md path once authored.
+  # ARCHITECT M-T1 (2026-05-26) — H1 falsification probe REFUTED H1. New T-AR-OD-1
+  # row escalates Q4 to operator-decide; default Q4=(p1) test-fixture-only fix.
+  # No decomp.md authored (tasks.md § T-AR is sufficient at this scope).
+  # No ADR amendment required (ADR-0038 § D6.b applies trivially with empty anchor set).
   "spec/vol-killswitch-overlay-noop-fix/feature.md",
-  "spec/vol-killswitch-overlay-noop-fix/tasks.md",
-  "spec/v3-volatility-forecaster-noop-fix/feature.md",          # PRECEDENT — sibling fix shape; Q1=(ii) / Q2=(a) / Q3=(b) pattern
+  "spec/vol-killswitch-overlay-noop-fix/tasks.md",               # ARCHITECT M-T1: T-AR-OD-1 (Q4 escalation) + revised T-D-N1..T-D-N8 wave shape under Q4=(p1) default
+  "spec/v3-volatility-forecaster-noop-fix/feature.md",           # PRECEDENT — sibling fix shape; Q1=(ii) / Q2=(a) / Q3=(b) pattern
   "spec/v3-volatility-forecaster-noop-fix/decomp.md",            # PRECEDENT — wave shape + forensic-gate FAIL/PASS protocol
   "spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md",  # PRECEDENT — diagnostic chain for the sibling no-op
   "spec/dev-notes/testing-strategy-review-2026-05-25.md",        # framing — "a killswitch that doesn't kill is the worst kind of no-op" (§1 P2)
-  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",    # § D5 strategy-side composition lock; § D6 + § D6.b anchor-additive + wiring-bug-fix re-emission protocol (R5 cites this)
-  "spec/bug-log.md",                                             # § #65 discovery row (this brief's parent)
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",    # § D5 strategy-side composition lock; § D6 + § D6.b anchor-additive + wiring-bug-fix re-emission protocol (architect M-T1 confirmed trivial-application; no amendment)
+  "spec/bug-log.md",                                             # § #65 discovery row (this brief's parent); developer T-D-N8 will flip to fixed
 ]
 crates      = [
   # ANALYST M0 (2026-05-26) — paths surfaced from § Smoking gun + R1.
