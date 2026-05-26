@@ -1,9 +1,10 @@
 ---
 slug: cockpit-activity-status-bar
 version: 0.1.0
-status: draft
-owner: architect
-updated: 2026-05-25
+status: shipped
+shipped: 2026-05-26
+owner: orchestrator
+updated: 2026-05-26
 predecessor: lab-end-to-end-v2 v0.1.0
 ---
 

@@ -512,23 +512,19 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      all three into a global tape).
 -->
 
-- **cockpit-activity-status-bar v0.1.0 (activity tape in the bottom
-  status bar)** — operator-requested 2026-05-25 ("Status bar should
-  show all the current steps the cockpit is doing"). Adds an
-  aggregated activity tape inside the existing 24 px bottom status
-  bar. New `EventBus::activity_tx` broadcast channel + RAII
-  `ActivityHandle` shape (`crates/agent`); new `widgets/activity_tape`
-  region + `ActivityRecipe` subscription (`crates/ui`); R4 producer
-  wiring at three call sites (Yahoo preload, Lab Run, Training
-  subprocess). LLM-call + audit-ledger-writes producers forward-
-  listed for v0.1.1. Anchor risk ZERO (UI + agent only; zero
-  backtest/strategy/exec/risk/reports/forecast/audit/data body
-  changes; 34/34 anchors byte-identical by construction).
-  **Spec**:
-  [`spec/cockpit-activity-status-bar/feature.md`](cockpit-activity-status-bar/feature.md).
-  **Trace**: `REQ-COCKPIT-ACTIVITY-001`. Estimated 1 week
-  wall-clock (architect M0 done; developer M-DEV ~3-4 days; tester
-  M-FINAL ~0.5 day; presenter ~0.5 day).
+<!-- Moved Active → Recent 2026-05-26 — operator approval "I approve, next".
+     v0.1.0 shipped; commit chain 4248c00 → 0ff402f → e4f39ed → c1597ec.
+     Trace row REQ-COCKPIT-ACTIVITY-001 state = passed.
+     Open v0.1.1 follow-ons: LLM call producer (rides v3-llm-forecaster);
+     TrainingPressed e2e wiring; cockpit-smoke operator-manual capture;
+     pre-existing backtest::engine.rs:539 clippy::map_unwrap_or sweep;
+     spec/trace.toml anchors-string char-iteration artifact fix. -->
+- **cockpit-activity-status-bar v0.1.0** — SHIPPED 2026-05-26 (operator
+  approval "I approve, next"; deck at
+  [`spec/cockpit-activity-status-bar/presentations/cockpit-activity-status-bar-2026-05-26.md`](cockpit-activity-status-bar/presentations/cockpit-activity-status-bar-2026-05-26.md)).
+  Activity tape live in bottom status bar; 3 producers (Yahoo / Lab Run
+  / Training). 34/34 anchors byte-identical. 31 new tests + 5 criterion
+  benches + 4 insta baselines. See Recent section below.
 
 <!-- updated 2026-05-25 (analyst, reflection-memory-trader-wiring) —
      **PROMOTED Idea → Active 2026-05-25** as a P0 hygiene-gate

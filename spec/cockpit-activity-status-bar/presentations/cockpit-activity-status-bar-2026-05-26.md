@@ -289,11 +289,19 @@ Expected: `Panic count: 0`. Then visually verify the tape region appears between
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  *(operator 2026-05-26: "I approve, next")*
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 - [ ] Retire — _the feature is unwanted; route to architect to plan removal_
 - [ ] Fix-and-reship — _changes required before approval; notes below_
+
+### Operator's resolution of the 5 surfaced decisions (analyst-recommended defaults)
+
+1. **Re-baseline criterion to tester's isolated re-run numbers** — Δ < 6% vs Wave 2.D dev baseline; isolated bench is the more stable reference.
+2. **v0.1.1 scope = split**. LLM call producer rides v3-llm-forecaster; audit-ledger writes deferred (K3); TrainingPressed e2e wiring is its own follow-on; !Send-runbook docs live alongside the trainer-wiring brief.
+3. **`backtest::engine.rs:539` `clippy::map_unwrap_or`** — fold into the next code-hygiene sweep; not blocking ship.
+4. **cockpit-smoke** — deferred. Operator runs the manual capture per the deck recipes when they next launch the cockpit. Approval not conditional.
+5. **Spec-lint drift (61/1 → 78/4)** — inherited at PASS, dominated by lint-tool char-iteration of the `anchors = "34/34 PASS"` string in `spec/trace.toml`. Fix the trace row shape in the next sweep (decisions 3 + 5 batched).
 
 ### Notes / feedback
 
