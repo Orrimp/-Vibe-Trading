@@ -112,6 +112,11 @@ name = "tcn_overlay_tuned_builder"
 path = "tests/tcn_overlay_tuned_builder.rs"
 required-features = ["forecast"]
 
+# Hygiene gate: every *_overlay.rs must have a matching *_end_to_end.rs test.
+[[test]]
+name = "overlay_hygiene_gate"
+path = "tests/overlay_hygiene_gate.rs"
+
 [[bench]]
 name = "composed_strategies"
 harness = false
