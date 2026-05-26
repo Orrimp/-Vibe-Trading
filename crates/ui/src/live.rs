@@ -742,6 +742,60 @@ pub fn activity_stream_impl(
     })
 }
 
+// ── subscription-pipe-server-time-template — ServerTimeRecipe helper ─────────
+//
+// Extracted so integration tests can drive the stream directly without
+// constructing a running iced application or an `EventStream`.
+//
+// See `crates/ui/tests/server_time_recipe_stream.rs` for the test suite.
+//
+// ## K8 mitigation (same as `LabProgressRecipe` / `TrailMirrorRecipe`)
+//
+// `tokio::time::interval()` must be created inside the tokio runtime
+// context. The `rt_handle.enter()` guard is scoped to a `{ ... }` block
+// that ends **before** `Box::pin(...)`, so the `EnterGuard` (which is
+// `!Send`) does not leak into the returned `BoxStream<'static, Message>`
+// (which must be `Send + 'static` on native per iced_futures contract).
+
+/// Inner stream logic for `ServerTimeRecipe`, extracted so integration tests
+/// can drive it directly without needing a running iced application or an
+/// `EventStream`.
+///
+/// Emits `Message::ServerTimeTick(Timestamp::now())` once per second.
+/// The first (immediate) tick from `tokio::time::interval` is skipped so
+/// the clock shows the time ~1 s after subscription, not immediately at boot.
+///
+/// The stream never terminates — `ServerTimeRecipe` is a process-lifetime
+/// always-on recipe (K2 contract). The only way to stop it is to drop the
+/// `BoxStream` (i.e. iced removes the subscription).
+///
+/// ## Runtime context
+///
+/// `rt_handle` must be the agent-runtime `Handle` (the multi-thread tokio
+/// runtime spawned in `cockpit_live::main`). On iced's `futures::ThreadPool`
+/// executor there is no tokio reactor context; this helper enters it via
+/// `rt_handle.enter()` so `tokio::time::interval` finds the time driver.
+/// The guard is dropped before `Box::pin` per K8.
+#[must_use]
+pub fn server_time_stream_impl(rt_handle: &tokio::runtime::Handle) -> BoxStream<'static, Message> {
+    use std::time::Duration;
+    use trading_core::Timestamp;
+
+    let mut interval = {
+        let _guard = rt_handle.enter();
+        tokio::time::interval(Duration::from_secs(1))
+    };
+    Box::pin(async_stream::stream! {
+        // Skip the first (immediate) tick so the first ServerTimeTick
+        // arrives ~1 s after subscription, not immediately at boot.
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            yield Message::ServerTimeTick(Timestamp::now());
+        }
+    })
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

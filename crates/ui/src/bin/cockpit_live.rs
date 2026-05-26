@@ -82,8 +82,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use trading_core::Timestamp;
-
 use anyhow::{Context, Result};
 use clap::Parser;
 use tokio_util::sync::CancellationToken;
@@ -145,31 +143,11 @@ impl Recipe for ServerTimeRecipe {
         self: Box<Self>,
         _input: EventStream,
     ) -> futures::stream::BoxStream<'static, Self::Output> {
-        // Enter the tokio runtime context to create the interval, then
-        // immediately drop the guard. `tokio::time::interval()` captures a
-        // reference to the tokio time driver at construction time
-        // (`Handle::current()` is called inside `interval()`). After the
-        // `Interval` is created it does NOT need the thread-local runtime
-        // context to be active during `tick().await` — the driver reference
-        // is embedded in the `Interval` struct.
-        //
-        // Dropping the guard before the `Box::pin(...)` call avoids the
-        // `!Send` constraint that `EnterGuard` would otherwise impose on the
-        // returned `BoxStream<'static, T>` (which must be `Send + 'static`
-        // on native platforms per iced_futures platform definition).
-        let mut interval = {
-            let _guard = self.rt_handle.enter();
-            tokio::time::interval(Duration::from_secs(1))
-        };
-        Box::pin(async_stream::stream! {
-            // Skip the first (immediate) tick so the first ServerTimeTick
-            // arrives ~1 s after subscription, not immediately at boot.
-            interval.tick().await;
-            loop {
-                interval.tick().await;
-                yield Message::ServerTimeTick(Timestamp::now());
-            }
-        })
+        // Delegate to the extracted helper in `ui::live` so integration tests
+        // can drive the stream without constructing a running iced application.
+        // Behavior is identical to the previous inline body — see
+        // `ui::live::server_time_stream_impl` for the full K8 rationale.
+        ui::live::server_time_stream_impl(&self.rt_handle)
     }
 }
 
