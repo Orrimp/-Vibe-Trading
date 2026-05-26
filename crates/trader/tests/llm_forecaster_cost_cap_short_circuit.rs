@@ -116,7 +116,7 @@ async fn e5_cost_cap_exceeded_returns_budget_exceeded() {
     let cfg = Arc::new(llm::config::LlmConfig::default());
     let sink: Arc<dyn CostSink> = Arc::new(NoopCostSink);
     let inner = AnthropicProvider::with_base_url(
-        &server.uri(),
+        server.uri(),
         "test-key",
         ModelId::from("claude-haiku-4-5-20251001"),
     );
@@ -205,7 +205,7 @@ async fn e5_sixth_call_blocked_with_budget_exceeded() {
     let cfg = Arc::new(llm::config::LlmConfig::default());
     let sink: Arc<dyn CostSink> = Arc::new(NoopCostSink);
     let inner = AnthropicProvider::with_base_url(
-        &server.uri(),
+        server.uri(),
         "test-key",
         ModelId::from("claude-haiku-4-5-20251001"),
     );

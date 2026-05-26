@@ -115,7 +115,7 @@ async fn e6_one_forecast_call_produces_one_cost_event_one_journal_row_one_tick()
     let budget = Arc::new(CostBudget::new(dec!(200.00)));
     let cfg = Arc::new(llm::config::LlmConfig::default());
     let inner = AnthropicProvider::with_base_url(
-        &server.uri(),
+        server.uri(),
         "test-key",
         ModelId::from("claude-haiku-4-5-20251001"),
     );
@@ -237,7 +237,7 @@ async fn e6_duplicate_forecast_idempotent_on_replay_warm() {
 
     // Call 1: fresh forecast.
     let inner1 = AnthropicProvider::with_base_url(
-        &server.uri(),
+        server.uri(),
         "test-key",
         ModelId::from("claude-haiku-4-5-20251001"),
     );
@@ -257,7 +257,7 @@ async fn e6_duplicate_forecast_idempotent_on_replay_warm() {
     // Call 2: same correlation_id.
     ctx.correlation_id = fixed_cid; // force same id
     let inner2 = AnthropicProvider::with_base_url(
-        &server.uri(),
+        server.uri(),
         "test-key",
         ModelId::from("claude-haiku-4-5-20251001"),
     );

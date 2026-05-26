@@ -243,7 +243,7 @@ mod tests {
     use time::OffsetDateTime;
     use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
-    use crate::llm_forecaster::types::{DEFAULT_MODEL_ID, ForecastContext, TechnicalIndicators};
+    use crate::llm_forecaster::types::{ForecastContext, TechnicalIndicators};
 
     fn make_symbol(s: &str) -> Symbol {
         Symbol::new(s)
