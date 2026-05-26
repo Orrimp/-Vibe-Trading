@@ -1,8 +1,9 @@
 ---
 slug: reflection-memory-trader-wiring
-status: draft
-owner: analyst
-updated: 2026-05-25
+status: shipped
+shipped: 2026-05-26
+owner: orchestrator
+updated: 2026-05-26
 version: 0.1.0
 predecessor: v3-llm-forecaster v0.1.0 (shipped-partial)
 parent: REQ-V3-LLM-FORECASTER-001 (R8.1 / R10.8 layering rule)

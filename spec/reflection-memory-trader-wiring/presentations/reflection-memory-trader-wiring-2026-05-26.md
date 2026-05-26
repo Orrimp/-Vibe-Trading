@@ -284,11 +284,16 @@ No load-bearing operator-decide deltas — recommendation is **ship**.
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  *(operator 2026-05-26: "Approved — ship (Recommended)")*
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 - [ ] Retire (do not ship; revert and remove)
 - [ ] Fix-and-reship (specific deltas required; see notes)
+
+### Operator's resolution of the surfaced open questions
+
+1. **spec-lint trace-row string-format char-parse artifact** (30 violations across 3 rows: REQ-COCKPIT-ACTIVITY-001 / REQ-VOL-KILLSWITCH-NOOP-FIX-001 / REQ-REFLECTION-TRADER-001 — all from the `anchors = "34/34 PASS"` string) — folded into the next code-hygiene sweep; not blocking ship.
+2. **`cargo fmt --check` confirmation** — already inline-fixed in commit `f05fc9b`; operator-noted but not gating.
 
 ### Notes / feedback
 _empty until operator fills_

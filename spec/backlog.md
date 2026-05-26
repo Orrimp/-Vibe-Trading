@@ -709,23 +709,20 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      **Gate test**: [`crates/reflection/tests/no_strategy_caller.rs`](../crates/reflection/tests/no_strategy_caller.rs).
 -->
 
-- **reflection-memory-trader-wiring v0.1.0 (R8.1 hygiene-gate recovery)** —
-  P0 brief authored 2026-05-25 to resolve the red gate-test on main.
-  Creates new `crates/trader/` workspace crate; moves the 8-file
-  `crates/strategy/src/llm_forecaster/` subtree + 13 integration test
-  suites (98 PASS tests) out of the analyst-layer `strategy` crate
-  into the new trader-layer crate. Strategy crate's `Cargo.toml`
-  drops the `reflection` path-dep — structural enforcement of the
-  R8.1 invariant. Gate-test
-  `t1809_no_strategy_crate_consumes_reflection_retrieval` returns to
-  PASS at M-FINAL; sibling positive-assertion test
-  `t1810_trader_crate_owns_reflection_retrieval` lands in the trader
-  crate. Anchor risk LOW (34/34 anchors byte-identical by construction;
-  pure package-level refactor). **Spec**:
-  [`spec/reflection-memory-trader-wiring/feature.md`](reflection-memory-trader-wiring/feature.md).
-  **Trace**: `REQ-REFLECTION-TRADER-001`. Estimated 3-5 days wall-clock
-  total across architect M-T1 + developer M-DEV + tester M-FINAL +
-  presenter.
+<!-- Moved Active → Recent 2026-05-26 — operator approval "Approved — ship".
+     v0.1.0 shipped; commit chain 6d3d716 → 028761c → f05fc9b → f6a2a42.
+     Trace row REQ-REFLECTION-TRADER-001 state = passed.
+     **R8.1 RED gate that's been red on main the entire session — now GREEN.**
+     Architect's corrected counts (9 source + 10 tests + 1 bin, not 8/13/0)
+     applied at T-AR-2; trader crate now carries 153 tests (incl. doc-tests). -->
+- **reflection-memory-trader-wiring v0.1.0** — SHIPPED 2026-05-26
+  (operator approval "Approved — ship"). The R8.1 layering gate is
+  now structurally enforced via the new `crates/trader/` workspace
+  crate; strategy crate dropped its `reflection` path-dep. 9 source
+  files + 1 bin + 10 integration tests migrated; t1809 + t1810 both
+  GREEN; 34/34 anchors byte-identical. Deck at
+  [`spec/reflection-memory-trader-wiring/presentations/reflection-memory-trader-wiring-2026-05-26.md`](reflection-memory-trader-wiring/presentations/reflection-memory-trader-wiring-2026-05-26.md).
+  See Recent section.
 
 <!-- updated 2026-05-24 (analyst, lab-end-to-end-v2) —
      **PROMOTED Idea → Active 2026-05-24** after operator's 2026-05-24
