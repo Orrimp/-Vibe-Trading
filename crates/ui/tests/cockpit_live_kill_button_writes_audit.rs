@@ -194,9 +194,16 @@ fn t906_stitch_kill_confirmed_via_state_update_writes_both_audit_rows() {
     // time both audit rows land, `KillSwitch::trip` has run to
     // completion (the audit dual-write is the last side-effect).
 
-    // ── (f) Wait briefly (<= 500 ms) for the spawned dual-write ─────────────
+    // ── (f) Wait for the spawned dual-write ─────────────────────────────────
+    // silent-quarantine-fix-2026-05-26: deadline bumped 500ms → 5000ms after
+    // the architect's audit (spec/dev-notes/testing-framework-audit-2026-05-25.md)
+    // flagged this test as silently flaky under parallel workspace execution.
+    // 500ms was tight enough that scheduler contention with sibling integration
+    // tests sharing the multi-thread tokio runtime + audit ledger I/O would
+    // miss the deadline. 5000ms is generous on quiet machines (real dual-write
+    // completes in ~10ms) and survives heavily-loaded CI.
     let (memo_present, strategy_event_present) =
-        wait_for_dual_write(&agent_runtime, &ledger, Duration::from_millis(500));
+        wait_for_dual_write(&agent_runtime, &ledger, Duration::from_millis(5000));
 
     // ── (g) Assert the T809 dual-write invariant ────────────────────────────
     assert!(

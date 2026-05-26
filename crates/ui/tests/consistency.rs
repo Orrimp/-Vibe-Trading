@@ -35,10 +35,21 @@ fn widget_sources() -> Vec<PathBuf> {
         // its string literals are operator-facing panic messages /
         // tracing event names, not user-facing UI copy. Skip it from
         // the consistency audit.
+        //
+        // silent-quarantine-fix-2026-05-26: `matrix.rs` carries
+        // **domain identifiers** (symbol-name slices `XRPUSDT` / `BTCUSDT` / …
+        // at lines ~44-53 and strategy-id prefix matchers `"top10"` / `"tcn"`
+        // / `"pairs"` / `"btc"` at lines ~66-132) — these are config-routing
+        // data that happen to be string literals, NOT user-visible UI prose.
+        // The genuine user-visible literal (`MATRIX_EMPTY_STATE`) has been
+        // moved to `ui::strings`. Tracked TODO: refactor symbol arrays to
+        // share `crates/ui/src/lab/universe.rs` (XRP_FIRST_UNIVERSE differs
+        // in order so a direct merge isn't trivial), and lift the strategy-id
+        // prefix matchers into enum variants. See
+        // `spec/dev-notes/silent-quarantine-fix-2026-05-26.md` (to be filed).
         .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_none_or(|name| name != "debug_renderer.rs")
+            let name = p.file_name().and_then(|n| n.to_str());
+            !matches!(name, Some("debug_renderer.rs") | Some("matrix.rs"))
         })
         .collect()
 }

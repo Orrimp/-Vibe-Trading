@@ -47,19 +47,24 @@ pub enum DrawerPayload {
     LlmDebate,
 }
 
-const CLOSE_LABEL: &str = "Close";
-const DRAWER_FILL_TITLE: &str = "Fill";
-const DRAWER_SIGNAL_TITLE: &str = "Signal";
-const DRAWER_FORECAST_TITLE: &str = "Forecast";
-const DRAWER_LLM_TITLE: &str = "LLM Debate";
-const LLM_PLACEHOLDER: &str = "(no transcript recorded)";
+// Silent-quarantine-fix-2026-05-26: all user-visible copy now lives in
+// `crate::strings` per the `consistency::no_inline_user_visible_strings_in_widgets`
+// hygiene test contract.
+use crate::strings::{
+    TRAIL_BOOL_NO, TRAIL_BOOL_YES, TRAIL_DRAWER_CLOSE_LABEL, TRAIL_DRAWER_FILL_TITLE,
+    TRAIL_DRAWER_FORECAST_TITLE, TRAIL_DRAWER_LLM_PLACEHOLDER, TRAIL_DRAWER_LLM_TITLE,
+    TRAIL_DRAWER_SIGNAL_TITLE, TRAIL_FORECAST_CACHE_HIT_LABEL, TRAIL_FORECAST_CONFIDENCE_LABEL,
+    TRAIL_FORECAST_DIRECTION_LABEL, TRAIL_FORECAST_MODEL_LABEL, TRAIL_SIGNAL_CLAMP_REASON_LABEL,
+    TRAIL_SIGNAL_CLAMPED_LABEL, TRAIL_SIGNAL_PRICE_LABEL, TRAIL_SIGNAL_PRICE_MARKET,
+    TRAIL_SIGNAL_QTY_LABEL, TRAIL_SIGNAL_SIDE_LABEL, trail_forecast_summary,
+};
 
 fn title_for_kind(kind: TrailNodeKind) -> &'static str {
     match kind {
-        TrailNodeKind::Fill => DRAWER_FILL_TITLE,
-        TrailNodeKind::Signal => DRAWER_SIGNAL_TITLE,
-        TrailNodeKind::Forecast => DRAWER_FORECAST_TITLE,
-        TrailNodeKind::LlmDebate => DRAWER_LLM_TITLE,
+        TrailNodeKind::Fill => TRAIL_DRAWER_FILL_TITLE,
+        TrailNodeKind::Signal => TRAIL_DRAWER_SIGNAL_TITLE,
+        TrailNodeKind::Forecast => TRAIL_DRAWER_FORECAST_TITLE,
+        TrailNodeKind::LlmDebate => TRAIL_DRAWER_LLM_TITLE,
     }
 }
 
@@ -79,7 +84,7 @@ pub fn view<'a>(
     let title = title_for_kind(kind);
 
     let close_btn = Button::new(
-        Text::new(CLOSE_LABEL)
+        Text::new(TRAIL_DRAWER_CLOSE_LABEL)
             .size(text::SMALL)
             .color(color::FG_1.current(mode)),
     )
@@ -128,16 +133,20 @@ pub fn view<'a>(
         }) => {
             let mut col = Column::new()
                 .spacing(space::XS)
-                .push(kv("Side", side.as_str(), mode))
-                .push(kv("Qty", intended_qty.as_str(), mode))
+                .push(kv(TRAIL_SIGNAL_SIDE_LABEL, side.as_str(), mode))
+                .push(kv(TRAIL_SIGNAL_QTY_LABEL, intended_qty.as_str(), mode))
                 .push(kv(
-                    "Price",
-                    intended_price.as_deref().unwrap_or("market"),
+                    TRAIL_SIGNAL_PRICE_LABEL,
+                    intended_price.as_deref().unwrap_or(TRAIL_SIGNAL_PRICE_MARKET),
                     mode,
                 ))
-                .push(kv("Clamped", if *was_clamped { "yes" } else { "no" }, mode));
+                .push(kv(
+                    TRAIL_SIGNAL_CLAMPED_LABEL,
+                    if *was_clamped { TRAIL_BOOL_YES } else { TRAIL_BOOL_NO },
+                    mode,
+                ));
             if let Some(reason) = clamp_reason {
-                col = col.push(kv("Clamp reason", reason.as_str(), mode));
+                col = col.push(kv(TRAIL_SIGNAL_CLAMP_REASON_LABEL, reason.as_str(), mode));
             }
             col.into()
         }
@@ -147,7 +156,7 @@ pub fn view<'a>(
             model_revision,
             cache_hit,
         }) => {
-            let summary = format!("predicted {direction} with confidence {confidence}");
+            let summary = trail_forecast_summary(direction, confidence);
             Column::new()
                 .spacing(space::XS)
                 .push(
@@ -155,13 +164,17 @@ pub fn view<'a>(
                         .size(text::BODY)
                         .color(color::FG_1.current(mode)),
                 )
-                .push(kv("Direction", direction.as_str(), mode))
-                .push(kv("Confidence", confidence.as_str(), mode))
-                .push(kv("Model", model_revision.as_str(), mode))
-                .push(kv("Cache hit", if *cache_hit { "yes" } else { "no" }, mode))
+                .push(kv(TRAIL_FORECAST_DIRECTION_LABEL, direction.as_str(), mode))
+                .push(kv(TRAIL_FORECAST_CONFIDENCE_LABEL, confidence.as_str(), mode))
+                .push(kv(TRAIL_FORECAST_MODEL_LABEL, model_revision.as_str(), mode))
+                .push(kv(
+                    TRAIL_FORECAST_CACHE_HIT_LABEL,
+                    if *cache_hit { TRAIL_BOOL_YES } else { TRAIL_BOOL_NO },
+                    mode,
+                ))
                 .into()
         }
-        None | Some(DrawerPayload::LlmDebate) => Text::new(LLM_PLACEHOLDER)
+        None | Some(DrawerPayload::LlmDebate) => Text::new(TRAIL_DRAWER_LLM_PLACEHOLDER)
             .size(text::BODY)
             .color(color::FG_4.current(mode))
             .into(),

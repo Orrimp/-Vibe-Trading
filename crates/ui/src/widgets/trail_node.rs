@@ -52,27 +52,34 @@ pub struct TrailNode {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Silent-quarantine-fix-2026-05-26: all user-visible copy now lives in
+// `crate::strings` per the `consistency::no_inline_user_visible_strings_in_widgets`
+// hygiene test contract.
+use crate::strings::{
+    TRAIL_NODE_FILL_LABEL, TRAIL_NODE_FORECAST_LABEL, TRAIL_NODE_LLM_LABEL,
+    TRAIL_NODE_NO_LLM_TRANSCRIPT, TRAIL_NODE_NO_UPSTREAM_FILL,
+    TRAIL_NODE_NO_UPSTREAM_FORECAST, TRAIL_NODE_NO_UPSTREAM_SIGNAL,
+    TRAIL_NODE_SIGNAL_LABEL,
+};
+
+// Chevron arrow is a typographic glyph, not prose — left inline.
 const CHEVRON_LABEL: &str = "›";
-const NO_UPSTREAM_FILL: &str = "(no upstream fill recorded)";
-const NO_UPSTREAM_SIGNAL: &str = "(no upstream signal recorded)";
-const NO_UPSTREAM_FORECAST: &str = "(no upstream forecast recorded)";
-const NO_LLM_TRANSCRIPT: &str = "(no transcript recorded)";
 
 fn empty_label(kind: TrailNodeKind) -> &'static str {
     match kind {
-        TrailNodeKind::Fill => NO_UPSTREAM_FILL,
-        TrailNodeKind::Signal => NO_UPSTREAM_SIGNAL,
-        TrailNodeKind::Forecast => NO_UPSTREAM_FORECAST,
-        TrailNodeKind::LlmDebate => NO_LLM_TRANSCRIPT,
+        TrailNodeKind::Fill => TRAIL_NODE_NO_UPSTREAM_FILL,
+        TrailNodeKind::Signal => TRAIL_NODE_NO_UPSTREAM_SIGNAL,
+        TrailNodeKind::Forecast => TRAIL_NODE_NO_UPSTREAM_FORECAST,
+        TrailNodeKind::LlmDebate => TRAIL_NODE_NO_LLM_TRANSCRIPT,
     }
 }
 
 fn kind_label(kind: TrailNodeKind) -> &'static str {
     match kind {
-        TrailNodeKind::Fill => "Fill",
-        TrailNodeKind::Signal => "Signal",
-        TrailNodeKind::Forecast => "Forecast",
-        TrailNodeKind::LlmDebate => "LLM Debate",
+        TrailNodeKind::Fill => TRAIL_NODE_FILL_LABEL,
+        TrailNodeKind::Signal => TRAIL_NODE_SIGNAL_LABEL,
+        TrailNodeKind::Forecast => TRAIL_NODE_FORECAST_LABEL,
+        TrailNodeKind::LlmDebate => TRAIL_NODE_LLM_LABEL,
     }
 }
 

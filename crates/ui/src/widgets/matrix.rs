@@ -415,7 +415,7 @@ fn blanked_cell(mode: ThemeMode) -> Element<'static, Message> {
 /// Empty-state placeholder when no strategy config is available.
 fn empty_state(mode: ThemeMode) -> Element<'static, Message> {
     Container::new(
-        Text::new("No strategies registered — configure strategies to populate the matrix.")
+        Text::new(crate::strings::MATRIX_EMPTY_STATE)
             .size(text::BODY)
             .color(color::FG_3.current(mode)),
     )

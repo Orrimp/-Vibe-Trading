@@ -673,6 +673,67 @@ pub const CHART_POSITION_MIRROR_NONE: &str = "No open position on this symbol.";
 /// chart in the Lab screen. Analogous to `CHART_VOLUME_HISTOGRAM_LABEL`.
 pub const LAB_POSITION_CURVE_LABEL: &str = "Position size";
 
+// ── Trail node + drawer (silent-quarantine-fix-2026-05-26) ───────────────────
+//
+// `trail_node.rs` and `trail_drawer.rs` previously carried these strings as
+// module-local `const` items, which still trip the `consistency` hygiene test
+// (`no_inline_user_visible_strings_in_widgets`) because they scan the widget
+// file content for any `"..."` literal regardless of whether it's pub or
+// const-bound. The convention is to keep user-visible copy here.
+
+pub const TRAIL_DRAWER_CLOSE_LABEL: &str = "Close";
+pub const TRAIL_DRAWER_FILL_TITLE: &str = "Fill";
+pub const TRAIL_DRAWER_SIGNAL_TITLE: &str = "Signal";
+pub const TRAIL_DRAWER_FORECAST_TITLE: &str = "Forecast";
+pub const TRAIL_DRAWER_LLM_TITLE: &str = "LLM Debate";
+pub const TRAIL_DRAWER_LLM_PLACEHOLDER: &str = "(no transcript recorded)";
+
+// Trail drawer — Signal payload labels
+pub const TRAIL_SIGNAL_SIDE_LABEL: &str = "Side";
+pub const TRAIL_SIGNAL_QTY_LABEL: &str = "Qty";
+pub const TRAIL_SIGNAL_PRICE_LABEL: &str = "Price";
+pub const TRAIL_SIGNAL_PRICE_MARKET: &str = "market";
+pub const TRAIL_SIGNAL_CLAMPED_LABEL: &str = "Clamped";
+pub const TRAIL_SIGNAL_CLAMP_REASON_LABEL: &str = "Clamp reason";
+
+// Trail drawer — Forecast payload labels
+pub const TRAIL_FORECAST_DIRECTION_LABEL: &str = "Direction";
+pub const TRAIL_FORECAST_CONFIDENCE_LABEL: &str = "Confidence";
+pub const TRAIL_FORECAST_MODEL_LABEL: &str = "Model";
+pub const TRAIL_FORECAST_CACHE_HIT_LABEL: &str = "Cache hit";
+
+// Trail node — kind labels (mirror drawer titles but kept separate so the
+// IDs stay decoupled if the trail-node UI evolves independently).
+pub const TRAIL_NODE_FILL_LABEL: &str = "Fill";
+pub const TRAIL_NODE_SIGNAL_LABEL: &str = "Signal";
+pub const TRAIL_NODE_FORECAST_LABEL: &str = "Forecast";
+pub const TRAIL_NODE_LLM_LABEL: &str = "LLM Debate";
+
+// Trail node — empty-state placeholders
+pub const TRAIL_NODE_NO_UPSTREAM_FILL: &str = "(no upstream fill recorded)";
+pub const TRAIL_NODE_NO_UPSTREAM_SIGNAL: &str = "(no upstream signal recorded)";
+pub const TRAIL_NODE_NO_UPSTREAM_FORECAST: &str = "(no upstream forecast recorded)";
+pub const TRAIL_NODE_NO_LLM_TRANSCRIPT: &str = "(no transcript recorded)";
+
+// Shared boolean labels (used by both trail drawer's Signal "Clamped" row and
+// Forecast "Cache hit" row).
+pub const TRAIL_BOOL_YES: &str = "yes";
+pub const TRAIL_BOOL_NO: &str = "no";
+
+// Compare matrix screen — empty state placeholder.
+pub const MATRIX_EMPTY_STATE: &str =
+    "No strategies registered — configure strategies to populate the matrix.";
+
+/// Trail drawer Forecast summary text. Captures the `direction` and
+/// `confidence` fields from the active forecast payload. Kept as a helper
+/// rather than a raw const so the `format!` template lives in this module
+/// (widget files must not carry inline format strings with prose content per
+/// the `consistency::no_inline_user_visible_strings_in_widgets` hygiene test).
+#[must_use]
+pub fn trail_forecast_summary(direction: &str, confidence: &str) -> String {
+    format!("predicted {direction} with confidence {confidence}")
+}
+
 // ── Chart legend (chart-canvas-overhaul v1.10, T3015) ────────────────────────
 //
 // Five entries rendered in the top-right inset card over the chart canvas
@@ -1135,6 +1196,33 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("CHART_POSITION_MIRROR_LABEL", CHART_POSITION_MIRROR_LABEL),
         ("CHART_POSITION_MIRROR_NONE", CHART_POSITION_MIRROR_NONE),
         ("LAB_POSITION_CURVE_LABEL", LAB_POSITION_CURVE_LABEL),
+        ("TRAIL_DRAWER_CLOSE_LABEL", TRAIL_DRAWER_CLOSE_LABEL),
+        ("TRAIL_DRAWER_FILL_TITLE", TRAIL_DRAWER_FILL_TITLE),
+        ("TRAIL_DRAWER_SIGNAL_TITLE", TRAIL_DRAWER_SIGNAL_TITLE),
+        ("TRAIL_DRAWER_FORECAST_TITLE", TRAIL_DRAWER_FORECAST_TITLE),
+        ("TRAIL_DRAWER_LLM_TITLE", TRAIL_DRAWER_LLM_TITLE),
+        ("TRAIL_DRAWER_LLM_PLACEHOLDER", TRAIL_DRAWER_LLM_PLACEHOLDER),
+        ("TRAIL_SIGNAL_SIDE_LABEL", TRAIL_SIGNAL_SIDE_LABEL),
+        ("TRAIL_SIGNAL_QTY_LABEL", TRAIL_SIGNAL_QTY_LABEL),
+        ("TRAIL_SIGNAL_PRICE_LABEL", TRAIL_SIGNAL_PRICE_LABEL),
+        ("TRAIL_SIGNAL_PRICE_MARKET", TRAIL_SIGNAL_PRICE_MARKET),
+        ("TRAIL_SIGNAL_CLAMPED_LABEL", TRAIL_SIGNAL_CLAMPED_LABEL),
+        ("TRAIL_SIGNAL_CLAMP_REASON_LABEL", TRAIL_SIGNAL_CLAMP_REASON_LABEL),
+        ("TRAIL_FORECAST_DIRECTION_LABEL", TRAIL_FORECAST_DIRECTION_LABEL),
+        ("TRAIL_FORECAST_CONFIDENCE_LABEL", TRAIL_FORECAST_CONFIDENCE_LABEL),
+        ("TRAIL_FORECAST_MODEL_LABEL", TRAIL_FORECAST_MODEL_LABEL),
+        ("TRAIL_FORECAST_CACHE_HIT_LABEL", TRAIL_FORECAST_CACHE_HIT_LABEL),
+        ("TRAIL_NODE_FILL_LABEL", TRAIL_NODE_FILL_LABEL),
+        ("TRAIL_NODE_SIGNAL_LABEL", TRAIL_NODE_SIGNAL_LABEL),
+        ("TRAIL_NODE_FORECAST_LABEL", TRAIL_NODE_FORECAST_LABEL),
+        ("TRAIL_NODE_LLM_LABEL", TRAIL_NODE_LLM_LABEL),
+        ("TRAIL_NODE_NO_UPSTREAM_FILL", TRAIL_NODE_NO_UPSTREAM_FILL),
+        ("TRAIL_NODE_NO_UPSTREAM_SIGNAL", TRAIL_NODE_NO_UPSTREAM_SIGNAL),
+        ("TRAIL_NODE_NO_UPSTREAM_FORECAST", TRAIL_NODE_NO_UPSTREAM_FORECAST),
+        ("TRAIL_NODE_NO_LLM_TRANSCRIPT", TRAIL_NODE_NO_LLM_TRANSCRIPT),
+        ("TRAIL_BOOL_YES", TRAIL_BOOL_YES),
+        ("TRAIL_BOOL_NO", TRAIL_BOOL_NO),
+        ("MATRIX_EMPTY_STATE", MATRIX_EMPTY_STATE),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
