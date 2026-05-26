@@ -1285,30 +1285,41 @@ arch        = [
 ]
 crates      = [
   # ARCHITECT M0 (2026-05-25) — paths surfaced from R1-R4 + R-NR in feature.md.
-  # Wave A: agent bus extension.
-  "crates/agent/src/bus.rs",
-  # Wave B: UI state + recipe + widget.
+  # Wave A: agent bus extension (DEVELOPER 2026-05-26 — LANDED).
+  "crates/agent/src/activity.rs",                              # NEW — ActivityEvent/Kind/Phase/Outcome/Id + ActivitySender + ActivityHandle RAII
+  "crates/agent/src/bus.rs",                                   # EDIT — activity_tx field (cap 256) + activity() accessor
+  "crates/agent/src/lib.rs",                                   # EDIT — pub mod activity; + re-exports
+  "crates/agent/tests/no_new_bus_channel.rs",                  # EDIT — snapshot updated to include activity_tx
+  # Wave B: UI state + recipe + widget — LANDED 2026-05-26.
+  "crates/ui/src/lab/activity.rs",                             # NEW — ActivityState + ActivityTape (apply/purge/visible)
+  "crates/ui/src/lab/mod.rs",                                  # EDIT — pub mod activity;
   "crates/ui/src/state.rs",                                    # Cockpit::activity_tape field + Message arms (R3)
   "crates/ui/src/live.rs",                                     # ActivityRecipe sibling of BusRecipe + ServerTimeRecipe (R3.3)
-  "crates/ui/src/widgets/status_bar.rs",                       # extended with activity-tape region between server-time + CPU (R2)
+  "crates/ui/src/widgets/activity_tape.rs",                    # NEW — pure view() render function (R2.2 + R2.3 + R3.1 + Q5)
+  "crates/ui/src/widgets/mod.rs",                              # EDIT — pub mod activity_tape;
+  "crates/ui/src/widgets/status_bar.rs",                       # extended with activity-tape region between account + server-time (Q2=(a))
+  "crates/ui/src/strings.rs",                                  # R7.2 — 5 new string constants (no inline literals in widget)
+  "crates/ui/src/bin/cockpit_live.rs",                         # ActivityRecipe wired into both Subscription::batch branches
   # Wave C: R4 producer wiring at three sites.
   "crates/ui/src/lab/runner.rs",                               # R4.1 + R4.2 (preload_yahoo_bars + spawn_lab_run)
   "crates/ui/src/lab/trainer.rs",                              # R4.3 (spawn_training_run)
-  "crates/ui/src/strings.rs",                                  # R7.2 net-new operator-facing copy
 ]
 tests       = [
-  # ARCHITECT M0 (2026-05-25) — test paths gating R1-R8 acceptance criteria.
-  # Wave A (Agent unit tests):
-  "crates/agent/src/bus.rs",                                   # bus::activity_channel_lag_drops_oldest, activity_handle_drop_emits_end, activity_handle_throttle_caps_at_10_hz, activity_handle_drop_during_panic_emits_failed
-  # Wave B (UI unit tests):
-  # spec/cockpit-activity-status-bar/tasks.md T-D-N4..N6
-  # Wave C (UI integration tests):
+  # ARCHITECT M0 (2026-05-25) + DEVELOPER Wave A (2026-05-26).
+  # Wave A (Agent unit tests) — LANDED:
+  "crates/agent/src/activity.rs",                              # activity_event_clone_round_trips, activity_kind_hash_round_trips, activity_id_atomic_monotonic, activity_handle_drop_emits_end, activity_handle_throttle_caps_at_10_hz, activity_handle_drop_during_panic_emits_failed
+  "crates/agent/src/bus.rs",                                   # bus::activity_channel_lag_drops_oldest
+  # Wave B (UI unit tests) — LANDED 2026-05-26:
+  "crates/ui/src/lab/activity.rs",                             # T-D-N4: applies_start_event_appends_to_in_flight, applies_tick_event_updates_in_place_no_realloc, applies_end_success_event_removes_immediately, applies_end_failed_event_holds_red_for_3s, purge_removes_expired_red_holds
+  "crates/ui/src/live.rs",                                     # T-D-N5: activity_recipe_emits_messages, activity_recipe_handles_lag
+  "crates/ui/src/widgets/activity_tape.rs",                    # T-D-N6: widget_renders_empty_state_no_panic, widget_renders_one_inflight_no_panic, widget_renders_three_plus_overflow_chip, widget_renders_failed_in_red (+ 4 insta snapshots)
+  # Wave C (UI integration tests) — pending Wave C:
   "crates/ui/tests/activity_tape_yahoo_preload.rs",            # T-D-N7 — Yahoo preload producer integration
   "crates/ui/tests/activity_tape_lab_run.rs",                  # T-D-N8 — Lab Run producer integration
   "crates/ui/tests/activity_tape_training_run.rs",             # T-D-N9 — Training subprocess producer integration
-  # Wave D (perf gates):
+  # Wave D (perf gates) — pending Wave D:
   "crates/ui/tests/activity_tape_event_storm.rs",              # T-D-N11 — 10k-event burst, <16ms P99 latency, ≥95% delivery
-  # crates/ui/benches/activity_tape.rs                         # T-D-N10 criterion bench (not file-path-cited until bench infra adds bench directory)
+  # crates/ui/benches/activity_tape.rs                         # T-D-N10 criterion bench
 ]
-anchors     = []   # ZERO new anchors by construction — feature is UI + agent only. The 34 locked Binance/Yahoo anchors stay byte-identical (R-NR.1). Verified at M-FINAL via scripts/verify_anchors.sh.
-state       = "proposed"   # ARCHITECT M0 2026-05-25 — feature.md authored, tasks.md scaffolded, backlog.md Active row landed. Awaiting operator decision on Q1-Q8 (all 8 standing-Autoapprove-eligible at analyst-recommended defaults; Q1+Q2+Q4 load-bearing).
+anchors     = []   # ZERO new anchors by construction — feature is UI + agent only. The 34 locked Binance/Yahoo anchors stay byte-identical (R-NR.1). Verified Wave A+B: 34/34 PASS via scripts/verify_anchors.sh (2026-05-26).
+state       = "in-progress"   # DEVELOPER Wave B 2026-05-26 — activity tape state + ActivityRecipe + widget landed. 11 new Wave B tests, 4 insta snapshots accepted. Wave C (producer wiring) running in parallel.

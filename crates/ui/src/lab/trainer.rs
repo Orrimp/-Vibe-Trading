@@ -28,6 +28,11 @@ use smol_str::SmolStr;
 
 pub use super::runner::{RunCancelHandle, RunCancelReceiver, cancellation_pair};
 
+// cockpit-activity-status-bar v0.1.0 T-D-N9 — import ActivitySender/Handle/Kind
+// under the `live` feature gate (activity types live in the `agent` crate).
+#[cfg(feature = "live")]
+use agent::activity::{ActivityHandle, ActivityKind, ActivitySender};
+
 // ── Log-line type ──────────────────────────────────────────────────────────────
 
 /// A single line from the `train_tcn` subprocess's stdout or stderr.
@@ -141,13 +146,19 @@ pub fn resolve_train_tcn_path() -> PathBuf {
 /// Spawn `train_tcn` as a subprocess and wire its stdout/stderr into the
 /// provided channel.
 ///
-/// Returns `Ok(TrainingHandle)` where the handle must be stashed in
-/// `LabState::training_inflight`; dropping it immediately kills the subprocess
-/// (SIGKILL-immediate per Q2). The line channel is passed in by the caller who
-/// owns the `SyncSender<TrainingLogLine>`.
+/// Returns `Ok((TrainingHandle, Option<ActivityHandle>))` where the
+/// `TrainingHandle` must be stashed in `LabState::training_inflight` (dropping
+/// it immediately kills the subprocess — SIGKILL-immediate per Q2) and the
+/// `ActivityHandle` must be stashed alongside it so the iced side can tick /
+/// end the activity on `TrainingEventsRefreshed` / `TrainingExited`.
 ///
 /// Returns `Err(SmolStr)` if the subprocess cannot be spawned (binary missing,
 /// permissions error, etc.).
+///
+/// **cockpit-activity-status-bar T-D-N9:** `activity_sender` is `Some` when
+/// the bus is available. When present, a `Training` `ActivityHandle` is started
+/// before the subprocess spawn and returned to the caller. Label:
+/// `"Train <binary> · running"`.
 ///
 /// # Errors
 /// Returns `Err` if `tokio::process::Command::spawn()` fails.
@@ -157,7 +168,8 @@ pub fn spawn_training_run(
     cfg: &TrainingConfig,
     _cancel: RunCancelReceiver,
     line_tx: std::sync::mpsc::SyncSender<TrainingLogLine>,
-) -> Result<TrainingHandle, SmolStr> {
+    activity_sender: Option<ActivitySender>,
+) -> Result<(TrainingHandle, Option<ActivityHandle>), SmolStr> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
 
@@ -166,6 +178,21 @@ pub fn spawn_training_run(
             "no tokio runtime handle — cannot spawn training",
         ));
     };
+
+    // T-D-N9 — cockpit-activity-status-bar Training producer wiring.
+    // Start the activity handle BEFORE the subprocess spawn (approach A).
+    // Label: "Train <binary-name> · running". The handle is returned to
+    // the caller (iced side) to tick/end on audit-DB poll events.
+    let training_label = format!(
+        "Train {} · running",
+        cfg.binary_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("train_tcn")
+    );
+    let activity_handle: Option<ActivityHandle> = activity_sender
+        .as_ref()
+        .map(|s| s.start(ActivityKind::Training, training_label));
 
     // Build the argument list.
     let mut args: Vec<std::ffi::OsString> = vec![
@@ -232,7 +259,7 @@ pub fn spawn_training_run(
         });
     }
 
-    Ok(TrainingHandle { child })
+    Ok((TrainingHandle { child }, activity_handle))
 }
 
 /// Non-live stub: always returns `Err` (training requires the `live` feature).
@@ -245,7 +272,8 @@ pub fn spawn_training_run(
     _cfg: &TrainingConfig,
     _cancel: RunCancelReceiver,
     _line_tx: std::sync::mpsc::SyncSender<TrainingLogLine>,
-) -> Result<TrainingHandle, SmolStr> {
+    _activity_sender: Option<()>,
+) -> Result<(TrainingHandle, Option<()>), SmolStr> {
     Err(SmolStr::new(
         "training not supported in non-live fixture builds",
     ))
@@ -400,7 +428,8 @@ mod tests {
         #[cfg(feature = "live")]
         {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let result = spawn_training_run(Some(rt.handle()), &cfg, cancel_rx, line_tx);
+            // cockpit-activity-status-bar T-D-N9: pass None for activity_sender.
+            let result = spawn_training_run(Some(rt.handle()), &cfg, cancel_rx, line_tx, None);
             assert!(
                 result.is_err(),
                 "spawn with missing binary must return Err, not Ok"
@@ -409,7 +438,8 @@ mod tests {
 
         #[cfg(not(feature = "live"))]
         {
-            let result = spawn_training_run(None, &cfg, cancel_rx, line_tx);
+            // cockpit-activity-status-bar T-D-N9: pass None for activity_sender.
+            let result = spawn_training_run(None, &cfg, cancel_rx, line_tx, None);
             assert!(
                 result.is_err(),
                 "non-live build must return Err for training"

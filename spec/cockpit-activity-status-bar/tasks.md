@@ -2,7 +2,7 @@
 slug: cockpit-activity-status-bar
 status: in-progress
 owner: developer
-updated: 2026-05-25
+updated: 2026-05-26
 ---
 
 # Tasks — cockpit-activity-status-bar
@@ -89,72 +89,89 @@ _owner: developer. Wave-parallelizable per
 
 ### Wave A — `crates/agent` bus extension (blocks Wave B + C)
 
-- [ ] **T-D-N1** — New type module: `ActivityEvent`, `ActivityKind`,
+- [x] **T-D-N1** — New type module: `ActivityEvent`, `ActivityKind`,
   `ActivityPhase`, `ActivityOutcome`, `ActivityId`.
   - Owner: developer • Milestone: M-DEV • Depends on: T-AR-4 • Blocks: T-D-N2, T-D-N3, T-D-N4
-  - File:line: `crates/agent/src/bus.rs` (extend) OR
-    `crates/agent/src/activity.rs` (new file ~ 120 LOC — architect picks)
+  - File:line: `crates/agent/src/activity.rs:1` (new sibling module, ~280 LOC)
+    + `crates/agent/src/lib.rs:4` (`pub mod activity;` + re-exports)
   - Body: derive `Debug + Clone` on `ActivityEvent`. `ActivityKind`
     derives `Debug + Clone + Copy + PartialEq + Eq + Hash`.
     `ActivityId(u64)` is `#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]`.
-  - Test cmd: `cargo test -p agent --lib bus::activity_types`
-  - Expected: `test result: ok. 3 passed; 0 failed`
-- [ ] **T-D-N2** — `EventBus::activity_tx` field + `EventBus::activity(&self)`
+  - Architectural choice: new `crates/agent/src/activity.rs` (not extended `bus.rs`)
+    per architect recommendation — types are cohesive and `bus.rs` is already large.
+  - Test cmd: `cargo test -p agent --lib activity_types`
+  - Output: `test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 0.00s`
+  - Note: 6 tests (not 3) because T-D-N3 handle tests also live in the `activity_types`
+    module per implementation choice — all 3 T-D-N1 type tests + 3 T-D-N3 handle tests pass.
+- [x] **T-D-N2** — `EventBus::activity_tx` field + `EventBus::activity(&self)`
   accessor.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N1 • Blocks: T-D-N3, T-D-N6
-  - File:line: `crates/agent/src/bus.rs` (extend struct + impl).
-    Capacity 256 (R1.1). New `ActivitySender` thin wrapper around
-    `broadcast::Sender<ActivityEvent>` with `.start(kind, label) ->
-    ActivityHandle` factory.
-  - Test cmd: `cargo test -p agent --lib bus::activity_channel_lag_drops_oldest`
-  - Expected: `test result: ok. 1 passed; 0 failed`
-- [ ] **T-D-N3** — `ActivityHandle` RAII type with `tick`, `fail`,
+  - File:line: `crates/agent/src/bus.rs:93` (`activity_tx` field),
+    `crates/agent/src/bus.rs:120` (constructed in `new()` with capacity 256),
+    `crates/agent/src/bus.rs:285` (`pub fn activity(&self) -> ActivitySender`).
+    `ActivitySender` defined at `crates/agent/src/activity.rs:87`.
+  - Also updated `crates/agent/tests/no_new_bus_channel.rs` to include
+    `activity_tx` in the v1+ field snapshot (intentional architect-approved addition).
+  - Test cmd: `cargo test -p agent --lib "bus::tests::activity_channel_lag_drops_oldest"`
+  - Output: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out; finished in 0.00s`
+- [x] **T-D-N3** — `ActivityHandle` RAII type with `tick`, `fail`,
   `cancel`, `Drop`.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N2 • Blocks: T-D-N7..N9
-  - File:line: same module as T-D-N1. RAII shape: holds
-    `broadcast::Sender<ActivityEvent>` + `ActivityId` + outcome
-    `Cell<Option<ActivityOutcome>>` + last-tick `Cell<Instant>` for
-    R1.4 throttle. Drop emits End with the recorded outcome OR
-    `Success` by default OR `Failed("dropped")` on panic-unwind
-    (use `std::thread::panicking()` inside Drop).
-  - Test cmd: `cargo test -p agent --lib bus::activity_handle_drop_emits_end bus::activity_handle_throttle_caps_at_10_hz bus::activity_handle_drop_during_panic_emits_failed`
-  - Expected: `test result: ok. 3 passed; 0 failed`
+  - File:line: `crates/agent/src/activity.rs:161` (`ActivityHandle` struct),
+    `crates/agent/src/activity.rs:193` (`tick` method with 100ms throttle),
+    `crates/agent/src/activity.rs:215` (`fail`), `crates/agent/src/activity.rs:222` (`cancel`),
+    `crates/agent/src/activity.rs:228` (`Drop` impl with panic detection).
+  - Drop emits End with recorded outcome OR `Success` by default OR
+    `Failed("dropped during panic")` when `std::thread::panicking()`.
+  - Test cmd: `cargo test -p agent --lib "activity_handle"`
+  - Output: `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 56 filtered out; finished in 0.00s`
 
 ### Wave B — `crates/ui` tape state + subscription + widget (parallel with Wave C)
 
-- [ ] **T-D-N4** — `ActivityTape` state struct + Message arms +
+- [x] **T-D-N4** — `ActivityTape` state struct + Message arms +
   update handlers.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N3 • Blocks: T-D-N6
-  - File:line: `crates/ui/src/state.rs` (extend `Cockpit`) +
-    `crates/ui/src/lab/activity.rs` (new file ~ 150 LOC) per T-AR-7
-    decision.
+  - File:line: `crates/ui/src/lab/activity.rs:1` (new ~337 LOC — `ActivityState`,
+    `ActivityTape`, `apply`, `purge`, `visible`); `crates/ui/src/state.rs:20`
+    (`use crate::lab::activity::ActivityTape`), `state.rs:807` (`pub activity_tape:
+    ActivityTape`), `state.rs:1056`/`1160` (constructors), `state.rs:1586`
+    (`ActivityEventReceived`), `state.rs:1591` (`ActivityTapePurgeTick`),
+    `state.rs:2255-2263` (update arms).
   - Body: per feature.md § R3. Update arms strictly O(1) for Start
     + Tick (with ≤ 32 in_flight ring); O(32) for the 1 Hz
     `ActivityTapePurgeTick`.
   - Test cmd: `cargo test -p ui --lib lab::activity::tests`
-  - Expected: `test result: ok. 5 passed; 0 failed`
-- [ ] **T-D-N5** — `ActivityRecipe` subscription in `crates/ui/src/live.rs`.
+  - Output: `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 383 filtered out; finished in 0.00s`
+- [x] **T-D-N5** — `ActivityRecipe` subscription in `crates/ui/src/live.rs`.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N2 • Blocks: T-D-N7
-  - File:line: `crates/ui/src/live.rs` (sibling of `BusRecipe`,
-    `ServerTimeRecipe`).
+  - File:line: `crates/ui/src/live.rs:677` (section header + `ActivityRecipe`
+    struct at `:691`; `Recipe` impl at `:695`; `activity_stream_impl` at `:720`);
+    `crates/ui/src/bin/cockpit_live.rs:1441-1468` (`ActivityRecipe` wired into
+    both `Subscription::batch` branches).
   - Body: subscribes via `bus.activity()`; emits Message arms;
     handles `RecvError::Lagged(n)` with `tracing::warn` + continue;
     handles `RecvError::Closed` by ending the subscription
     (matches BusRecipe behaviour).
-  - Test cmd: `cargo test -p ui --lib live::activity_recipe_emits_messages live::activity_recipe_handles_lag`
-  - Expected: `test result: ok. 2 passed; 0 failed`
-- [ ] **T-D-N6** — `widgets::activity_tape` rendering region (extracted
+  - Test cmd: `cargo test -p ui --lib live::tests`
+  - Output: `test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 376 filtered out; finished in 0.00s`
+  - Note: both `activity_recipe_emits_messages` and `activity_recipe_handles_lag` pass in the 12-test set.
+- [x] **T-D-N6** — `widgets::activity_tape` rendering region (extracted
   per T-AR-6).
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N4 • Blocks: T-D-N7
-  - File:line: `crates/ui/src/widgets/activity_tape.rs` (new file ~ 180 LOC).
+  - File:line: `crates/ui/src/widgets/activity_tape.rs:1` (new ~289 LOC — `view`,
+    `activity_kind_label`, `format_elapsed`, constants); `crates/ui/src/widgets/mod.rs`
+    (`pub mod activity_tape;`); `crates/ui/src/strings.rs` (5 new string consts:
+    `ACTIVITY_KIND_YAHOO_LABEL`, `ACTIVITY_KIND_LAB_RUN_LABEL`, `ACTIVITY_KIND_TRAINING_LABEL`,
+    `ACTIVITY_TAPE_MORE_PREFIX`, `ACTIVITY_TAPE_MORE_SUFFIX`); `crates/ui/src/widgets/status_bar.rs`
+    (`activity_tape::view(&cockpit.activity_tape)` pushed between account and server labels).
   - Body: pure render function `fn view(&ActivityTape) -> Element`.
     Reads `Instant::now()` for elapsed display; applies R2.3
     200 ms render-floor; renders dot + label + elapsed; overflow
     chip; failure-state red colour. Zero string literals (R7.2);
     zero new Lumen tokens (R-NR.3).
   - Test cmd: `cargo test -p ui --lib widgets::activity_tape::tests`
-  - Expected: `test result: ok. 4 passed; 0 failed`
-  - Insta snapshots (4 per feature.md R2 acceptance):
+  - Output: `test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 384 filtered out; finished in 0.29s`
+  - Insta snapshots (4 created and accepted via `INSTA_UPDATE=always`):
     `status_bar__activity_tape_empty`,
     `status_bar__activity_tape_one_inflight`,
     `status_bar__activity_tape_three_plus_overflow`,
@@ -162,45 +179,44 @@ _owner: developer. Wave-parallelizable per
 
 ### Wave C — R4 producer wiring at 3 call sites (parallel with Wave B)
 
-- [ ] **T-D-N7** — Yahoo preload producer wiring.
+- [x] **T-D-N7** — Yahoo preload producer wiring.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N3 • Blocks: T-D-N10
-  - File:line: `crates/ui/src/lab/runner.rs::preload_yahoo_bars`
-    (and `spawn_lab_run` call site at lines ~582-610).
-  - Body: 2-3 lines around the `preload_yahoo_bars` call: build label
-    from `cfg_for_preload.symbol` + `range`; call
-    `bus.activity().start(ActivityKind::YahooPreload, label)`; hold
-    the handle until the preload returns; on `Err`, call
-    `handle.fail(err.to_string())`.
+  - File:line: `crates/ui/src/lab/runner.rs:600-637` (Yahoo preload block inside
+    `spawn_lab_run`'s `iced::Task::perform` closure). Added `activity_sender`
+    parameter to `spawn_lab_run`; `ActivitySender` (Clone+Send) captured into
+    async closure; `ActivityHandle` (`!Send`) held inline (approach A).
+    Label: `"Yahoo {symbol} · {range_label}"`. On `Ok`: drop emits Success.
+    On `Err`: `handle.fail(e)` before returning.
+  - Caller updated: `crates/ui/src/bin/cockpit_live.rs:1338` (passes
+    `yahoo_preload_sender = Some(self.bus.activity())`).
   - Integration test:
-    `crates/ui/tests/activity_tape_yahoo_preload.rs`.
-  - Test cmd: `cargo test -p ui --test activity_tape_yahoo_preload`
-  - Expected: `test result: ok. 1 passed; 0 failed`
-- [ ] **T-D-N8** — Lab Run producer wiring.
+    `crates/ui/tests/activity_tape_yahoo_preload.rs` (2 tests).
+  - Test cmd: `cargo test -p ui --test activity_tape_yahoo_preload --features live`
+  - Output: `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`
+- [x] **T-D-N8** — Lab Run producer wiring.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N3 • Blocks: T-D-N10
-  - File:line: `crates/ui/src/lab/runner.rs::spawn_lab_run` (~ line 564
-    `iced::Task::perform` closure).
-  - Body: build label from `LabRunConfig.strategy_id` +
-    `LabRunConfig.symbol` + `LabRunConfig.range`; start handle
-    BEFORE the `async move {` closure (handle is `Send`); tick in
-    the bar-loop alongside the existing `progress_tx.try_send`
-    site (one new line); fail/cancel/success on the matching arm.
+  - File:line: `crates/ui/src/bin/cockpit_live.rs:1313-1326` (start handle on
+    `LabRunRequested`, approach A: handle held in `AppState::lab_activity_handle`).
+    Ticked on `LabRunProgress` at `crates/ui/src/bin/cockpit_live.rs:1048-1073`.
+    Ended (Success/Failed/Cancelled) on `LabRunCompleted`/`LabRunStopRequested`
+    at `crates/ui/src/bin/cockpit_live.rs:1041-1072`.
+    Label: `"Backtest {strategy} · {symbol} · {range}"`.
+    `AppState` implements manual `Clone` (ActivityHandle is `!Clone`).
   - Integration test:
-    `crates/ui/tests/activity_tape_lab_run.rs`.
-  - Test cmd: `cargo test -p ui --test activity_tape_lab_run`
-  - Expected: `test result: ok. 1 passed; 0 failed`
-- [ ] **T-D-N9** — Training subprocess producer wiring.
+    `crates/ui/tests/activity_tape_lab_run.rs` (3 tests).
+  - Test cmd: `cargo test -p ui --test activity_tape_lab_run --features live`
+  - Output: `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s`
+- [x] **T-D-N9** — Training subprocess producer wiring.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N3 • Blocks: T-D-N10
-  - File:line: `crates/ui/src/lab/trainer.rs::spawn_training_run`.
-  - Body: build label from training config; start handle before
-    the subprocess spawn; tick on each audit-DB poll
-    (per `cockpit-training-control` R7 — 1 Hz); end on subprocess
-    exit / cancel / failure (the trainer already has clean exit
-    branches per R9 of cockpit-training-control v0.2.0).
+  - File:line: `crates/ui/src/lab/trainer.rs:173-191` (start handle before
+    subprocess spawn; returns `(TrainingHandle, Option<ActivityHandle>)` so
+    caller holds the handle — approach A). Label: `"Train {binary} · running"`.
+  - Return type changed from `Result<TrainingHandle>` to
+    `Result<(TrainingHandle, Option<ActivityHandle>)>`.
   - Integration test:
-    `crates/ui/tests/activity_tape_training_run.rs` — spawns a
-    `sleep 1` subprocess and asserts the handle's lifecycle.
-  - Test cmd: `cargo test -p ui --test activity_tape_training_run`
-  - Expected: `test result: ok. 1 passed; 0 failed`
+    `crates/ui/tests/activity_tape_training_run.rs` (2 tests, `sleep 1` subprocess).
+  - Test cmd: `cargo test -p ui --test activity_tape_training_run --features live`
+  - Output: `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s`
 
 ### Wave D — Perf gates (depends on Wave C)
 

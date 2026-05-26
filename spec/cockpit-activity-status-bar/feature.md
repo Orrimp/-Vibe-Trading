@@ -666,11 +666,139 @@ producer. The 34 locked anchors stay byte-identical (R-NR.1).
 
 ## Implementation
 
-_developer fills this at M-DEV._
+### Wave A — `crates/agent` bus extension (2026-05-26)
+
+**Architectural choice**: new `crates/agent/src/activity.rs` sibling module
+(~280 LOC) rather than extending `bus.rs`. Rationale: types are cohesive,
+`bus.rs` is already 400+ LOC, and a sibling module maintains the single-
+responsibility principle. Matches the architect's recommendation in D1.
+
+**Files created/modified**:
+- NEW `crates/agent/src/activity.rs` — `ActivityId`, `ActivityKind`,
+  `ActivityPhase`, `ActivityOutcome`, `ActivityEvent`, `ActivitySender`,
+  `ActivityHandle` (RAII with 100ms tick throttle + panic-aware Drop).
+- EDIT `crates/agent/src/lib.rs` — `pub mod activity;` + re-exports of
+  all 7 public types.
+- EDIT `crates/agent/src/bus.rs` — `activity_tx: broadcast::Sender<ActivityEvent>`
+  field (capacity 256), constructed in `new()`, `pub fn activity() -> ActivitySender`
+  accessor, `activity_channel_lag_drops_oldest` test.
+- EDIT `crates/agent/tests/no_new_bus_channel.rs` — updated v1+ field snapshot
+  to include `activity_tx` (intentional architect-approved addition per D1).
+
+**Test count**: 7 new tests in `crates/agent` (6 in `activity::activity_types`
+module + 1 in `bus::tests`). All pass. Zero regressions. 34/34 anchors PASS.
+
+## Implementation
+
+_Wave B — developer (2026-05-26)_
+
+### Files created
+
+- `crates/ui/src/lab/activity.rs` (~337 LOC) — `ActivityState` + `ActivityTape`
+  state machine. `apply()` handles all four `ActivityPhase` variants;
+  `purge(now)` removes expired red-hold rows; `visible()` exposes the full
+  slice. `Vec<ActivityState>` (not VecDeque) capped at 32 — O(32) scans are
+  negligible at the UI update rate and VecDeque buys nothing at this cap.
+- `crates/ui/src/widgets/activity_tape.rs` (~289 LOC) — pure render function
+  `fn view(&ActivityTape) -> Element`. Applies R2.3 200 ms render-floor (red-held
+  rows bypass), R3.1 max-3-visible cap + overflow chip, Q5=(a) `DOWN_500` colour
+  for failed rows. Zero inline string literals; zero new Lumen tokens.
+- `crates/ui/src/widgets/snapshots/` — 4 insta snapshot files created and
+  accepted via `INSTA_UPDATE=always`.
+
+### Files modified
+
+- `crates/ui/src/lab/mod.rs` — added `pub mod activity;`
+- `crates/ui/src/widgets/mod.rs` — added `pub mod activity_tape;`
+- `crates/ui/src/strings.rs` — added 5 string constants:
+  `ACTIVITY_KIND_YAHOO_LABEL`, `ACTIVITY_KIND_LAB_RUN_LABEL`,
+  `ACTIVITY_KIND_TRAINING_LABEL`, `ACTIVITY_TAPE_MORE_PREFIX`,
+  `ACTIVITY_TAPE_MORE_SUFFIX`.
+- `crates/ui/src/state.rs` — `Cockpit.activity_tape: ActivityTape` field,
+  `Message::ActivityEventReceived(ActivityEvent)` and `Message::ActivityTapePurgeTick`
+  variants, update arms delegating to `ActivityTape::apply` and `ActivityTape::purge`.
+- `crates/ui/src/live.rs` — `ActivityRecipe` struct + `Recipe` impl +
+  `activity_stream_impl` extracted for testability; handles `RecvError::Lagged`
+  with `tracing::warn`, `RecvError::Closed` with `debug` + break.
+- `crates/ui/src/bin/cockpit_live.rs` — `ActivityRecipe` wired into both
+  `Subscription::batch` branches (modal-open and normal).
+- `crates/ui/src/widgets/status_bar.rs` — `activity_tape::view(&cockpit.activity_tape)`
+  pushed into the status bar row between account label and server-time label
+  (Q2=(a) placement: to the LEFT of server-time).
+
+### Test verdict (Wave B)
+
+| Task   | Tests | Result |
+|--------|-------|--------|
+| T-D-N4 | 5 unit tests in `lab::activity::tests` | ok. 5 passed |
+| T-D-N5 | 2 unit tests in `live::tests` (`activity_recipe_emits_messages`, `activity_recipe_handles_lag`) | ok. 12 passed (full module) |
+| T-D-N6 | 4 unit tests + 4 insta snapshots in `widgets::activity_tape::tests` | ok. 4 passed |
+
+`scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
+
+### Design decisions
+
+- **Vec vs VecDeque**: Chose `Vec<ActivityState>` capped at 32. Rationale: the
+  cap is small enough (32 slots) that O(32) linear scans and removals are
+  negligible at the iced UI update rate (~60 fps / 16 ms budget). A `VecDeque`
+  would buy constant-time front removal but `Cockpit` update runs on the iced
+  thread and the scan is sub-microsecond.
+- **Snapshot strategy**: insta snapshots capture a descriptive text summary of
+  `ActivityTape::visible()` state rather than the iced element tree (which cannot
+  be serialized). Follows the `run_button.rs` precedent in this codebase.
+- **stream_impl extraction**: `activity_stream_impl` is a free function so
+  integration tests can construct a stream directly without a running iced
+  application. Follows the `trail_mirror_stream_impl` pattern in `live.rs`.
 
 ## Verification
 
 _tester links to reports here at M-FINAL._
+
+### Wave C — Producer wiring at 3 call sites (2026-05-26)
+
+**Send-constraint decisions**:
+
+- **T-D-N7 (Yahoo preload)**: Approach A (inline handle). `ActivitySender`
+  (Clone+Send) cloned into `iced::Task::perform` async closure. `ActivityHandle`
+  (`!Send`) held entirely within the closure on a single task — no thread
+  boundary crossing. `spawn_lab_run` gains `activity_sender: Option<ActivitySender>`
+  parameter.
+- **T-D-N8 (Lab Run)**: Approach A (iced-side hold). `ActivityHandle` stored in
+  `AppState::lab_activity_handle`; started on `LabRunRequested`; ticked on
+  `LabRunProgress`; ended (Success/Failed/Cancelled) on `LabRunCompleted` /
+  `LabRunStopRequested`. `AppState::Clone` implemented manually (ActivityHandle
+  is `!Clone`; both fields return `None` on clone — correct since clone only
+  happens at cold-boot).
+- **T-D-N9 (Training)**: Approach A (caller holds). `spawn_training_run` gains
+  `activity_sender: Option<ActivitySender>` parameter and returns
+  `(TrainingHandle, Option<ActivityHandle>)`. Caller holds the activity handle
+  alongside the training handle and ends it on subprocess exit.
+
+**Files modified**:
+- `crates/ui/src/lab/runner.rs` — `spawn_lab_run` signature + Yahoo preload
+  activity wiring (T-D-N7).
+- `crates/ui/src/lab/trainer.rs` — `spawn_training_run` signature + return type
+  + activity handle creation (T-D-N9).
+- `crates/ui/src/bin/cockpit_live.rs` — `AppState` manual Clone; new
+  `lab_activity_handle` + `training_activity_handle` fields; Lab Run start/tick/end
+  lifecycle management (T-D-N8); Yahoo preload sender passed to `spawn_lab_run`
+  (T-D-N7).
+
+**Files created**:
+- `crates/ui/tests/activity_tape_yahoo_preload.rs` — 2 tests (T-D-N7).
+- `crates/ui/tests/activity_tape_lab_run.rs` — 3 tests (T-D-N8).
+- `crates/ui/tests/activity_tape_training_run.rs` — 2 tests (T-D-N9).
+
+**Test verdict (Wave C)**:
+
+| Task   | Tests | Result |
+|--------|-------|--------|
+| T-D-N7 | 2 integration tests | ok. 2 passed |
+| T-D-N8 | 3 integration tests | ok. 3 passed |
+| T-D-N9 | 2 integration tests (Unix) | ok. 2 passed |
+
+`scripts/verify_anchors.sh`: ANCHORS PASS (34 / 34)
+`cargo test -p backtest --test progress_emit`: ok. 6 passed
 
 ## Changelog
 
@@ -678,3 +806,11 @@ _tester links to reports here at M-FINAL._
   + H1-H5 + Q1-Q8 + D1-D6 design closed. Analyst-recommended defaults
   set on all 8 Qs. Anchor risk zero by construction. HANDOFF →
   developer.
+- 2026-05-26 (developer): Wave B complete — T-D-N4 (ActivityTape state),
+  T-D-N5 (ActivityRecipe subscription), T-D-N6 (activity_tape widget).
+  11 tests pass; 4 insta snapshots accepted; anchors 34/34 PASS.
+  HANDOFF → tester (Wave C parallel via background agent).
+- 2026-05-26 (developer): Wave C complete — T-D-N7 (Yahoo preload producer),
+  T-D-N8 (Lab Run producer), T-D-N9 (Training producer). 7 new integration
+  tests (2+3+2); 34/34 anchors PASS; progress_emit 6/6 PASS.
+  HANDOFF → tester.

@@ -40,6 +40,14 @@ use rust_decimal::Decimal;
 use smol_str::SmolStr;
 use trading_core::{Bar, Symbol, Venue};
 
+// cockpit-activity-status-bar v0.1.0 T-D-N7 — import ActivitySender/Kind
+// only when the `live` feature (and therefore the `agent` crate) is enabled.
+// cockpit-activity-status-bar v0.1.0 T-D-N7 — import ActivityKind for the
+// Yahoo preload producer wiring inside `spawn_lab_run`. `ActivitySender` is
+// used via the `agent::ActivitySender` path in the parameter type.
+#[cfg(feature = "live")]
+use agent::activity::ActivityKind;
+
 use crate::lab::equity_loader::LabTuple;
 
 // ── RunReportMirror (T-D-N10) ─────────────────────────────────────────────────
@@ -480,6 +488,14 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
 /// T-D-13 tightens `backtest::engine::run_scenario`, the spawned future
 /// returns a simulated success — the anchor gate is T-D-13's remit, not
 /// T-D-14's.
+///
+/// **cockpit-activity-status-bar v0.1.0 T-D-N7:**
+/// `activity_sender` is `Some` in live builds (provided by the caller).
+/// When `Some`, the function emits a `YahooPreload` `ActivityHandle` around
+/// the preload block (T-D-N7). `ActivitySender` is `Clone + Send` so it
+/// crosses the `iced::Task::perform` async closure safely.
+/// The LabRun `ActivityHandle` lifecycle (T-D-N8) is managed by the caller
+/// on the iced side — see `AppState::lab_activity_handle`.
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 pub fn spawn_lab_run(
     #[cfg(feature = "live")] rt_handle: Option<&tokio::runtime::Handle>,
@@ -487,6 +503,8 @@ pub fn spawn_lab_run(
     cfg: LabRunConfig,
     cancel: RunCancelReceiver,
     progress_tx: backtest::progress::ProgressSender,
+    #[cfg(feature = "live")] activity_sender: Option<agent::activity::ActivitySender>,
+    #[cfg(not(feature = "live"))] _activity_sender: Option<()>,
 ) -> iced::Task<crate::state::Message> {
     use crate::state::Message;
 
@@ -561,6 +579,10 @@ pub fn spawn_lab_run(
         let strat = cfg.strategy_id.clone();
         let sym = cfg.symbol.clone();
         let cfg_for_preload = cfg.clone();
+        // cockpit-activity-status-bar T-D-N7: clone ActivitySender into the
+        // async closure. ActivitySender wraps broadcast::Sender which is
+        // Clone + Send — safe to move across the iced::Task::perform boundary.
+        let activity_sender_for_closure = activity_sender;
         iced::Task::perform(
             async move {
                 // T-D-N9 + T-D-N15: tracing latency span around the engine call.
@@ -596,13 +618,39 @@ pub fn spawn_lab_run(
                             elapsed_ms: 0,
                         });
 
-                        match preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await {
+                        // T-D-N7 — cockpit-activity-status-bar Yahoo preload
+                        // producer wiring (approach A: inline handle, no Send
+                        // needed — preload runs in the iced::Task::perform
+                        // closure, NOT inside rt.spawn).
+                        //
+                        // Build label: "Yahoo <SYMBOL> · <RANGE>" (≤ 64 chars).
+                        // ActivitySender is Clone + Send; ActivityHandle is !Send
+                        // but lives entirely within this async closure (single task).
+                        let yahoo_label = format!(
+                            "Yahoo {} · {}",
+                            cfg_for_preload.symbol,
+                            cfg_for_preload.range_label
+                        );
+                        let yahoo_activity_handle = activity_sender_for_closure
+                            .as_ref()
+                            .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
+
+                        let preload_result =
+                            preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await;
+                        match preload_result {
                             Ok((bars, _sha)) => {
                                 scenario_cfg.data_source =
                                     backtest::engine::ScenarioDataSource::YahooCache;
                                 scenario_cfg.bars_override = Some(bars);
+                                // yahoo_activity_handle dropped here →
+                                // emits End { Success } automatically (R1.3).
+                                drop(yahoo_activity_handle);
                             }
                             Err(e) => {
+                                // Emit End { Failed } before returning the error (R1.3 / F3).
+                                if let Some(handle) = yahoo_activity_handle {
+                                    handle.fail(e.as_str());
+                                }
                                 return Err(e);
                             }
                         }
@@ -826,6 +874,11 @@ mod tests {
             cfg,
             recv,
             progress_tx,
+            // cockpit-activity-status-bar T-D-N7: no EventBus in unit tests.
+            #[cfg(feature = "live")]
+            None,
+            #[cfg(not(feature = "live"))]
+            None,
         );
     }
 }
