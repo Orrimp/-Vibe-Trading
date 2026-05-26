@@ -373,6 +373,149 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-26 (analyst + architect, v5-latency-slippage-sim M0 + M-T1 close) —
+     **PROMOTED Idea → Active 2026-05-26** by operator directive: "New
+     feature track to close the gap between backtesting and live
+     execution." Closes the well-known backtest-vs-live alpha
+     overestimation gap by simulating two real-world frictions in
+     `crates/exec` + `crates/cost`:
+     - Network latency (uniform jitter range, default 0..=0 ms)
+     - Linear-bps order-book slippage (default 0 bps)
+
+     **Default = noop**, so the 34 SHA-256 anchors in
+     `spec/anchors.toml` stay byte-identical at v0.1.0 ship. Anchor
+     migration to non-zero values is deferred to a separate v0.2.0
+     brief per Q5 analyst-recommended default.
+
+     **CLAUDE.md non-negotiable honored**: ships with a baseline-
+     equity-divergence e2e test (R5) at M-DEV Wave E per the v3-
+     volatility-forecaster-noop-fix 2026-05-22 precedent.
+
+     **5 R / 7 K / 4 H / 5 Q** + non-regression contract + cost framing
+     + pre-drawn 4-cell verdict tree. Cost ~1.5-2 weeks wall-clock
+     (analyst 0.5d + architect 0.5d + dev Waves A-E 5-8d + tester 1d
+     + presenter 0.5d).
+
+     **5 sub-decisions locked by ADR-0043** (NOT 0040 as the operator
+     brief suggested — 0040 is taken by yahoo-realdata-path; 0041 by
+     trader-crate-split; 0042 by cockpit-activity-broadcast; 0043 is
+     the next free number):
+     - D1 always-on code path with default-zero noop (rejects Cargo
+       feature flag)
+     - D2 seeded `ChaCha20Rng` sub-stream keyed on
+       `(scenario_seed, order_id)` for replay determinism
+     - D3 linear bps slippage at v0.1.0; defer square-root market
+       impact to v0.2.0
+     - D4 NEW `AuditEvent::SimulatedExecMetrics` variant with skip-
+       when-zero guard
+     - D5 backtest-only scope; live mode untouched
+
+     **Wave plan**: Wave A configuration toggle (FIRST task — CRITICAL
+     anchor gate at T-D-N2) blocks Waves B-E. Wave B latency in
+     `crates/exec`; Wave C slippage in `crates/cost` (B ‖ C parallel);
+     Wave D audit-event variant; Wave E e2e divergence test +
+     criterion bench (perf < 1%) + non-regression contract.
+
+     **K5 sequencing constraint**: vol-killswitch-overlay-noop-fix
+     Bug #65 Q4=(p3) developer is in flight as of 2026-05-26. Both
+     briefs touch `crates/strategy/` + cost-modifier semantics.
+     Sequence: Bug #65 lands first; this brief's developer rebases
+     after.
+
+     Trace row `REQ-V5-LATENCY-SLIPPAGE-001` opened at `proposed`
+     state. HANDOFF → operator-decide (Q1-Q5 standing-Autoapprove-
+     eligible at analyst defaults) → developer Wave A. -->
+
+- **v5-latency-slippage-sim v0.1.0** — Deterministic latency + slippage
+  simulation in `crates/exec` + `crates/cost`. Default-zero noop
+  preserves all 34 anchors at v0.1.0 ship; v0.2.0 anchor-migration
+  brief deferred per Q5. Ships with CLAUDE.md non-negotiable e2e
+  divergence test (R5). **5 R / 7 K / 4 H / 5 Q** + non-regression
+  contract + 4-cell verdict tree. ADR-**0043** (next-free slot;
+  operator brief suggested 0040 but it's taken).
+  **Spec**:
+  [`spec/v5-latency-slippage-sim/feature.md`](v5-latency-slippage-sim/feature.md).
+  **ADR**:
+  [`spec/architecture/adr/0043-simulated-latency-and-slippage.md`](architecture/adr/0043-simulated-latency-and-slippage.md).
+  **Trace**: `REQ-V5-LATENCY-SLIPPAGE-001`. Estimated ~1.5-2 weeks
+  wall-clock total.
+
+<!-- updated 2026-05-26 (analyst, cockpit-activity-audit-ledger-producer M0 close) —
+     **PROMOTED Idea → Active 2026-05-26** as the v0.1.1 follow-on slot
+     opened by `cockpit-activity-status-bar v0.1.0` (shipped 2026-05-26).
+     v0.1.0 R5.2 + K3 explicitly deferred the
+     `ActivityKind::AuditLedgerWrite` producer because audit-ledger
+     writes fan-out at thousands/sec during a fast backtest — the
+     per-event 100 ms `ActivityHandle::tick` throttle is the wrong place
+     to enforce aggregation. This brief picks the aggregation policy.
+
+     **Architecture insight surfaced by the M0 pass**: the existing
+     `crates/audit/src/tick.rs` `AuditTick<AuditEvent>` broadcast
+     already tees every post-commit writer in `journal.rs` (7-8 call
+     sites: `post_fill`, `post_strategy_signal`, `kill_switch_tripped`,
+     `strategy_event`, `forecast_emitted`, `uptime_*`,
+     `llm_forecast_emitted`). The aggregator subscribes to that bus —
+     **ZERO changes to `crates/audit/`**. Aggregator lives in NEW
+     `crates/agent/src/activity_audit.rs` sibling of v0.1.0's
+     `activity.rs`. ~150 LOC; AtomicU32 counter + 100 ms
+     `tokio::time::interval` + long-lived `ActivityHandle` with
+     idle-end semantics.
+
+     **Three operator-decide Qs**, all Autoapprove-eligible at the
+     analyst-recommended defaults:
+     - **Q1 — aggregation policy**: (a) per-batch / **(b)
+       per-time-window 100 ms — ANALYST DEFAULT** (aligns with the
+       existing 100 ms `ActivityHandle::tick` throttle from v0.1.0
+       R1.4 — same cadence) / (c) per-entity (one handle per
+       `AuditEvent` variant; 9 variants today blow the status-bar
+       max-3-visible budget).
+     - **Q2 — label content**: **(a) redacted "Audit: N writes" —
+       ANALYST DEFAULT** (PII-safe; the rate-of-writes is already
+       observable via existing metrics counters; the operator drills
+       into the actual ledger for detail) / (b) verbose
+       "Audit: KillSwitchTripped" (PII leak via screenshot vector;
+       hard-veto) / (c) kind-mix summary (forward-listed to v0.2.0).
+     - **Q3 — failure handling**: **(a) continue aggregator + spawn
+       sibling Failed-event ActivityHandle — ANALYST DEFAULT** (the
+       successful writes stay green; failures get the red 3 s hold
+       per parent R2.5) / (b) flip the aggregated handle to Failed on
+       any inner write error (misleading — taints the green ones).
+
+     **R5 performance gate (K3-discharge)**: criterion bench
+     `aggregator_overhead_per_tick` (< 100 ns/tick budget) +
+     anchor-replay parity bench on the
+     `top10-2024-fy-momentum-bs1` anchor (< 1 % wall-clock
+     divergence at p99 WITH vs WITHOUT aggregator). MUST pass
+     before tester M-FINAL.
+
+     **Anchor risk zero by construction** — UI + agent additive only;
+     no backtest / strategy / audit changes. 34/34 anchors
+     byte-identical.
+
+     **Cost**: ~2-3 days end-to-end wall-clock. Wave A (aggregator
+     ~0.5d) → Wave B (UI label + spawn-site ~0.5d) → Wave C (perf
+     gates ~1d) → Wave D (storm + flood-mitigation ~0.5d).
+
+     **Trace row**: `REQ-COCKPIT-ACTIVITY-AUDIT-LEDGER-001` at
+     `proposed` state.
+     **Feature folder**:
+     [`spec/cockpit-activity-audit-ledger-producer/`](cockpit-activity-audit-ledger-producer/feature.md).
+     **ADR sketch**: ADR-NNNN (audit-ledger activity aggregator —
+     number assigned at architect M-T1 against ADR registry, likely
+     0042+). HANDOFF → architect for M-T1 decomposition. -->
+
+- **cockpit-activity-audit-ledger-producer v0.1.0** —
+  v0.1.1 follow-on to `cockpit-activity-status-bar v0.1.0` (shipped
+  2026-05-26). Wires the deferred `ActivityKind::AuditLedgerWrite`
+  producer with a 100 ms aggregation envelope. Subscribes to the
+  existing `crates/audit/src/tick.rs` `AuditTick<AuditEvent>`
+  broadcast — zero changes to `crates/audit/`. Long-lived
+  `ActivityHandle` with idle-end semantics; PII-redacted
+  "Audit: N writes" label; 34/34 anchors byte-identical.
+  **Spec**: [`spec/cockpit-activity-audit-ledger-producer/feature.md`](cockpit-activity-audit-ledger-producer/feature.md).
+  **Trace**: `REQ-COCKPIT-ACTIVITY-AUDIT-LEDGER-001`. Cost: ~2-3 days.
+
+
 <!-- updated 2026-05-24 (analyst, lab-yahoo-realdata) —
      **PROMOTED Idea → Active 2026-05-24** under the operator's
      2026-05-24 decision "Replace Binance for Lab — multi-asset
@@ -644,6 +787,92 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   Activity tape live in bottom status bar; 3 producers (Yahoo / Lab Run
   / Training). 34/34 anchors byte-identical. 31 new tests + 5 criterion
   benches + 4 insta baselines. See Recent section below.
+
+<!-- updated 2026-05-26 (analyst, subscription-pipe-server-time-template) —
+     **PROMOTED Idea → Active 2026-05-26** as a Wave-1 follow-on closing
+     the operator's 2026-05-26 ServerTimeRecipe carve-out. The
+     subscription-pipe test class template landed for `LabProgressRecipe`
+     ([`crates/ui/tests/lab_progress_recipe_stream.rs`](../crates/ui/tests/lab_progress_recipe_stream.rs))
+     and `TrailMirrorRecipe`
+     ([`crates/ui/tests/trail_mirror_recipe_stream.rs`](../crates/ui/tests/trail_mirror_recipe_stream.rs))
+     in Wave 1; `ServerTimeRecipe` was deferred because
+     `cockpit-activity-status-bar v0.1.0` was concurrently touching
+     `crates/ui/src/bin/cockpit_live.rs`. With cockpit-activity v0.1.0
+     SHIPPED, this brief picks up the third and final canonical UI Recipe
+     impl. Closes one of three identified Recipe surfaces under the
+     [`testing-framework-audit-2026-05-25 § R1`](dev-notes/testing-framework-audit-2026-05-25.md)
+     recommendation; brings the workspace to 3/3 covered.
+
+     **Scope at v0.1.0**: (R1) refactor `ServerTimeRecipe::stream` to
+     delegate to a `pub fn stream_impl(rt_handle) -> BoxStream<Message>`
+     helper mirroring the precedent `ui::lab::progress::stream_impl`
+     shape (architect M-T1 chooses (a) keep inline in `cockpit_live.rs`
+     vs (b) extract to `crates/ui/src/live/server_time.rs` — default
+     (a)); (R2) NEW test file
+     `crates/ui/tests/server_time_recipe_stream.rs` with 4-5 tests
+     (happy path, monotonicity, stream remains open, full Recipe
+     end-to-end integration, optional lag handling); (R3) update
+     `subscription-missing-e2e` spec-lint rule IF Wave 1 shipped it
+     (analyst grep 2026-05-26 found ZERO matches — defer at R3.a
+     default); (R4) non-regression contract — 34/34 anchors byte-
+     identical + `cockpit_live.rs::subscription()` batch behavior
+     unchanged + `Recipe::hash` impl byte-identical; (R5) workspace
+     test count delta = +4 to +5.
+
+     **What this brief does NOT do**: ship the
+     `subscription-missing-e2e` spec-lint rule from scratch (deferred);
+     change `ServerTimeRecipe`'s cadence or salt its identity hash
+     (K2 forward-risk only); touch backtest / strategy / exec / risk
+     / forecast / reports / audit / data bodies. UI bin + new test
+     file only. 34/34 anchors stay byte-identical (NR-1, zero
+     scenario-body changes by construction).
+
+     **Cost framing**: ~0.5 day end-to-end wall-clock. Architect M-T1
+     ~30 min (optional — light); developer M-DEV ~2 h (Wave A single
+     wave: refactor + 4-5 tests + run gates); tester M-FINAL ~30 min;
+     presenter ~30 min (optional — small enough to skip). ZERO LLM
+     costs.
+
+     **Operator-decide Q's**: NONE. Q1 = 0 by construction. The fix
+     shape is determined by precedent (mirror Wave 1's verbatim);
+     R3 is conditional and defaults to defer; architect R1 (a) vs (b)
+     is an internal-architecture decision no operator routing needed.
+     Standing Autoapprove applies trivially.
+
+     **Trace row**: `REQ-SUBSCRIPTION-PIPE-SERVER-TIME-001` at
+     `proposed` state (appended at END of `spec/trace.toml`; does NOT
+     modify any existing row).
+     **Feature folder**: [`spec/subscription-pipe-server-time-template/`](subscription-pipe-server-time-template/feature.md).
+     **Predecessor (Wave 1 templates)**:
+     [`crates/ui/tests/lab_progress_recipe_stream.rs`](../crates/ui/tests/lab_progress_recipe_stream.rs)
+     +
+     [`crates/ui/tests/trail_mirror_recipe_stream.rs`](../crates/ui/tests/trail_mirror_recipe_stream.rs)
+     (both shipped 2026-05-25/26).
+     **Audit framing**:
+     [`spec/dev-notes/testing-framework-audit-2026-05-25.md § R1`](dev-notes/testing-framework-audit-2026-05-25.md).
+-->
+
+- **subscription-pipe-server-time-template v0.1.0 (Wave-1 follow-on — ServerTimeRecipe coverage)** —
+  Brief authored 2026-05-26 closing the operator's 2026-05-26
+  ServerTimeRecipe carve-out from the Wave 1 subscription-pipe test
+  class template. With `cockpit-activity-status-bar v0.1.0` SHIPPED,
+  `crates/ui/src/bin/cockpit_live.rs` is free for the third and final
+  canonical UI Recipe refactor + integration test pair. Scope: refactor
+  `ServerTimeRecipe::stream` body into a `pub fn stream_impl(rt_handle)
+  -> BoxStream<Message>` helper (mirror Wave 1's
+  `ui::lab::progress::stream_impl` shape, ~10-15 LoC change in one
+  file), author a NEW `crates/ui/tests/server_time_recipe_stream.rs`
+  with 4-5 tests (happy path / monotonicity / stream-remains-open /
+  full Recipe end-to-end / optional lag handling). Q1 = 0
+  operator-decide (refactor + test addition only). Anchor risk ZERO
+  by construction. Workspace test count delta +4 to +5. **Spec**:
+  [`spec/subscription-pipe-server-time-template/feature.md`](subscription-pipe-server-time-template/feature.md).
+  **Trace**: `REQ-SUBSCRIPTION-PIPE-SERVER-TIME-001`. **Predecessors**:
+  Wave 1 templates at
+  [`crates/ui/tests/lab_progress_recipe_stream.rs`](../crates/ui/tests/lab_progress_recipe_stream.rs)
+  +
+  [`crates/ui/tests/trail_mirror_recipe_stream.rs`](../crates/ui/tests/trail_mirror_recipe_stream.rs).
+  Estimated ~0.5 day wall-clock end-to-end.
 
 <!-- updated 2026-05-25 (analyst, reflection-memory-trader-wiring) —
      **PROMOTED Idea → Active 2026-05-25** as a P0 hygiene-gate
@@ -1252,6 +1481,228 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      v25-tcn-alpha-investigation pivot-reference) are preserved as
      archeology of the operator-decide choice flow that produced the
      7-ship journey + joint F4-F4-F4 retirement decision. -->
+
+<!-- updated 2026-05-26 (analyst, cockpit-activity-llm-producer) —
+     **PROMOTED Idea → Active 2026-05-26** as the v0.1.1 follow-on
+     of the just-shipped `cockpit-activity-status-bar v0.1.0`
+     (2026-05-26). v0.1.0 § Q8 forward-listed `ActivityKind::LlmCall`
+     as the next producer to wire once `v3-llm-forecaster` provider
+     lifecycle stabilised + the trader-crate housing landed. Both
+     conditions are now met: `v3-llm-forecaster` Waves B/C/G shipped
+     2026-05-23..05-24; `reflection-memory-trader-wiring v0.1.0`
+     shipped 2026-05-26 (moved `crates/strategy/src/llm_forecaster/`
+     → `crates/trader/src/llm_forecaster/`). The LLM call site is
+     now `crates/trader/src/llm_forecaster/anthropic_impl.rs:412-416`
+     — single hot path, `async fn forecast` of `LlmForecasterImpl`.
+
+     **Scope at v0.1.1**: wire an `ActivityHandle` around
+     `provider.complete(request).await` in `anthropic_impl.rs:412-416`.
+     Label: `"LLM call: <model_id>"` (Q1=(a) — no prompt content,
+     no symbol context, structural PII redaction by construction).
+     Conditional wiring via new optional field
+     `activity_sender: Option<ActivitySender>` injected at construction
+     time + builder setter `.with_activity_sender(s)`. When None
+     (all existing test paths + bin paths + anchored backtest paths),
+     `forecast()` behaves byte-identical to today — zero perf impact,
+     zero event emission, zero anchor risk. `!Send` constraint
+     workaround per Q2=(a): handle created on one line, awaited,
+     explicit `drop(activity)` BEFORE any subsequent `.await` (there
+     is none today — H1 falsification probe at architect M-T1). All
+     `LlmForecasterError` variants map to `handle.fail(error.to_string())`
+     per Q3=(a) — surfaces in tape as red 3-second hold (inherits
+     parent R2.5).
+
+     **What this brief does NOT do**: touch GARCH math, change
+     timeout semantics (45 s Q5b architect-locked), touch
+     `BudgetedProvider` cap accounting, touch `spawn_audit_row`,
+     change `LlmForecasterImpl::new` arity (additive builder setter
+     instead), touch `crates/strategy/` (would re-introduce the R8.1
+     layering violation just resolved by
+     reflection-memory-trader-wiring), touch `crates/agent/`
+     (consumes the parent's `ActivitySender` + `ActivityKind::LlmCall`
+     enum value forward-listed at v0.1.0; does not extend). Anchor
+     risk ZERO by construction (R5.1) — 34 anchors stay byte-
+     identical because anchored backtest paths construct
+     `LlmForecasterImpl` without an `ActivitySender`.
+
+     **Cost framing**: ~1-2 days end-to-end wall-clock. Analyst pass
+     ~0.5 day (this); operator-decide ~30 min (all 3 Qs
+     standing-Autoapprove); architect M-T1 ~0.5 day (H1 probe + K6
+     injection-site lock); developer M-DEV ~0.5-1 day (single Wave A,
+     single file edit + ~ 200 LOC test file with 6 integration tests);
+     tester M-FINAL ~0.5 day; presenter ~0.5 day. **No LLM costs**
+     (wiremock + stub providers). Rollback ~ 220 LOC.
+
+     **Operator-decide Q's** (3 surfaced; all standing-Autoapprove-
+     eligible at analyst-recommended defaults — focused producer
+     wire-up; no mechanism choices to make, parent v0.1.0 locked
+     them):
+     - Q1 — label content: (a) `"LLM call: <model_id>"` (analyst
+       recommended — structural PII redaction; no prompt, no symbol,
+       no lesson content) vs (b) include symbol context (rejected —
+       slippery slope) vs (c) generic without model ID (rejected —
+       loses cost/latency debugging actionability).
+     - Q2 — handle ownership / Send-constraint workaround: (a) store
+       inside `LlmForecasterImpl::forecast` for the duration of the
+       `complete()` call; explicit drop BEFORE any subsequent `.await`;
+       `!Send` is fine because the call is awaited in-place (analyst
+       recommended — smallest blast radius, zero parent design
+       change) vs (b) Arc-Mutex (rejected — lock contention) vs
+       (c) make handle `Send` (rejected — parent design lock) vs
+       (d) tokio spawn (rejected — thread hop).
+     - Q3 — failure-state handling: (a) `handle.fail(error.to_string())`
+       on `LlmError`; red 3 s hold in tape (analyst recommended) vs
+       (b) cancel on user-cancellable errors only (rejected — no
+       cancel surface exists today) vs (c) drop without fail
+       (rejected — misleading "succeeded" on network error).
+
+     **Cross-feature impact**:
+     - `cockpit-activity-status-bar v0.1.0` § Q8 forward-list closes.
+     - `v3-llm-forecaster v0.1.0` provider lifecycle untouched —
+       we tap the existing call site, no protocol change.
+     - `reflection-memory-trader-wiring v0.1.0` provided the housing
+       crate; no further interaction.
+     - **Forward-listed at v0.1.2+**: per-token streaming Tick events
+       (requires Anthropic streaming API switch); reflection
+       retrieval as a separate activity (K4 — operator-on-request);
+       cost / token-usage in label (requires parent `ActivityHandle`
+       post-response rewrite contract).
+
+     **Trace row**: `REQ-COCKPIT-ACTIVITY-LLM-PRODUCER-001` at
+     `proposed` state (appended at END of `spec/trace.toml`; does
+     NOT modify any existing row; parallel analysts also appending
+     at EOF — row-level carving preserved).
+     **Feature folder**:
+     [`spec/cockpit-activity-llm-producer/`](cockpit-activity-llm-producer/feature.md).
+     **Predecessor chain**:
+     `cockpit-training-control v0.2.0` →
+     `lab-end-to-end-v2 v0.1.0` →
+     `cockpit-activity-status-bar v0.1.0` (parent — Q8 forward-list) +
+     `v3-llm-forecaster v0.1.0` (provider) +
+     `reflection-memory-trader-wiring v0.1.0` (housing) →
+     `cockpit-activity-llm-producer v0.1.1` (this brief).
+-->
+
+- **cockpit-activity-llm-producer v0.1.0 (v0.1.1 follow-on of
+  cockpit-activity-status-bar)** — Brief authored 2026-05-26 closing
+  the parent's Q8 forward-list. Wires `ActivityHandle` around
+  `crates/trader/src/llm_forecaster/anthropic_impl.rs:412-416`
+  (`provider.complete(request).await`). Label
+  `"LLM call: <model_id>"` (Q1=(a) — structural PII redaction).
+  Conditional wiring via optional `activity_sender:
+  Option<ActivitySender>` builder setter — None path is byte-
+  identical to today; production cockpit path injects the sender.
+  `!Send` constraint workaround per Q2=(a): handle scope-dropped
+  BEFORE any subsequent `.await` (none today — H1 architect probe).
+  Failure mapping per Q3=(a): all `LlmForecasterError` variants
+  surface as red 3 s hold (inherits parent R2.5). **Anchor risk
+  ZERO by construction** — 34 anchors stay byte-identical (anchored
+  bins don't construct an `EventBus`). 153 trader LLM-forecaster
+  tests stay PASS. No `crates/strategy` / `crates/agent` touch.
+  Estimated 1-2 days wall-clock end-to-end. No LLM costs (wiremock
+  + stubs). **Spec**:
+  [`spec/cockpit-activity-llm-producer/feature.md`](cockpit-activity-llm-producer/feature.md).
+  **Trace**: `REQ-COCKPIT-ACTIVITY-LLM-PRODUCER-001`.
+  **Parent**: `cockpit-activity-status-bar v0.1.0` (shipped
+  2026-05-26; § Q8 + § R5.1 forward-list).
+
+<!-- updated 2026-05-26 (analyst, cockpit-training-pressed-wiring M0) —
+     v0.1.1 follow-on brief authored against
+     [`cockpit-activity-status-bar v0.1.0`](cockpit-activity-status-bar/feature.md)
+     Wave C open question. The Wave C T-D-N9 producer wiring landed the
+     `training_activity_handle` field + tick/end/cancel arms in
+     `crates/ui/src/bin/cockpit_live.rs::AppState::update` (lines
+     1103-1131) but the upstream `Message::TrainingPressed` arm is NOT
+     wired to call `lab::trainer::spawn_training_run`. The pure-state
+     arm at `crates/ui/src/state.rs:2064-2070` is a documented no-op
+     ("Actual subprocess spawn lives in the binary"); the binary's
+     `update` wrapper has no corresponding intercept. The gap is
+     called out verbatim at `cockpit_live.rs:1020-1025`. **From a real
+     cockpit launch, pressing the Train button does nothing.**
+
+     **Scope at v0.1.0**: bind the binary-side intercept (~30-60
+     LOC). Mirrors the `LabRunRequested` precedent in the same file.
+     Resolves default `TrainingConfig` (R3 — analyst-default
+     `crates/forecast/train_tcn.toml`), constructs mpsc + cancel
+     handles, calls `lab::trainer::spawn_training_run(..., Some(self.bus.activity()))`,
+     stores `(TrainingHandle, ActivityHandle)` on success, toasts on
+     error. The downstream Wave C T-D-N9 lifecycle arms already
+     consume `training_activity_handle` for tick/cancel/end — no
+     changes there. Activity tape lights up automatically once the
+     producer fires.
+
+     **What this brief does NOT do**: schema changes (R-NR.2 —
+     `training_events` audit table unchanged); bus channel changes
+     (R-NR.3); new Lumen tokens (R-NR.4); state.rs signature changes
+     (R-NR.5 — `Message`, `Cockpit`, `LabState`, `update` unchanged);
+     hyperparameter editing (parent `cockpit-training-control` Q3
+     deferred); config picker dropdown (Q1=(c) deferred); audit-DB
+     toggle UI (deferred); multi-run queue (parent out-of-scope).
+
+     **Operator-decide Qs** (both analyst-default + standing-
+     Autoapprove-eligible; cost of wrong default ~5 LOC):
+     - Q1 — Default training config source: (a)
+       `crates/forecast/train_tcn.toml` (the canonical v2.5 config,
+       already on disk) vs (b) `crates/strategy/configs/training/btc_macd_trend.toml`
+       (referenced in upstream task brief but **does NOT exist on
+       disk** — verified 2026-05-26) vs (c) defer to follow-on
+       picker UI. Analyst recommends **(a)**.
+     - Q2 — Cancellation on double-press: (a) button disabled
+       (inherits parent R3.4 — `cockpit-training-control` R3.4)
+       vs (b) re-press SIGKILL-cancels vs (c) re-press queues
+       (out-of-scope per parent). Analyst recommends **(a)**.
+
+     **Anchor risk ZERO by construction** — 34 anchors stay
+     byte-identical (no `crates/backtest` / `crates/strategy` /
+     `crates/exec` / `crates/forecast` source touches; the
+     `train_tcn` binary is invoked as a SUBPROCESS, its bytes
+     unchanged). 818+ workspace tests stay green; cockpit-smoke 0
+     panics; spec-lint contributes zero new violation categories.
+     Hard gates per R-NR.6 / R-NR.7 / R-NR.8 / R-NR.9.
+
+     **Cost framing**: ~0.5-1 day end-to-end wall-clock. Analyst
+     pass ~0.5 day (this); operator-decide ~5 min (both Qs
+     standing-Autoapprove); architect M-T1 ~1-2h (or skip directly
+     to developer — the wiring shape is unambiguous against the
+     `LabRunRequested` precedent); developer M-DEV ~3-4h (~30-60
+     LOC binary glue + 4 integration tests + 1 unit test);
+     tester M-FINAL ~30 min. Rollback ~ 60 LOC.
+
+     **Trace row**: `REQ-COCKPIT-TRAINING-PRESSED-001` at
+     `proposed` state (appended at END of `spec/trace.toml`).
+     **Feature folder**:
+     [`spec/cockpit-training-pressed-wiring/`](cockpit-training-pressed-wiring/feature.md).
+     **Predecessor**: `cockpit-activity-status-bar v0.1.0` (shipped
+     2026-05-26 — landed the field this brief populates).
+     **Parent**: `cockpit-training-control v0.2.0` (shipped
+     2026-05-19 — defined `spawn_training_run`, `TrainingConfig`,
+     `TrainingHandle`, cancellation contract).
+-->
+
+- **cockpit-training-pressed-wiring v0.1.0 (v0.1.1 follow-on of
+  cockpit-activity-status-bar)** — Brief authored 2026-05-26 closing
+  the Wave C T-D-N9 ship-time open question. Wires
+  `Message::TrainingPressed` in
+  `crates/ui/src/bin/cockpit_live.rs::AppState::update` to call
+  `lab::trainer::spawn_training_run(self.rt_handle.as_ref(), &cfg,
+  cancel_rx, line_tx, Some(self.bus.activity()))` and store the
+  returned `(TrainingHandle, Option<ActivityHandle>)` on
+  `LabState::training_inflight` + `AppState::training_activity_handle`.
+  Default config: `crates/forecast/train_tcn.toml` (Q1=(a) — the
+  upstream brief's referenced `crates/strategy/configs/training/btc_macd_trend.toml`
+  does NOT exist on disk per 2026-05-26 find sweep). Double-press
+  inert via parent R3.4 button-disabled contract (Q2=(a)). Pure-state
+  arm at `state.rs:2064-2070` STAYS a no-op (no changes to public
+  types). Wave C T-D-N9 downstream lifecycle (cockpit_live.rs:1103-1131)
+  unchanged. **Anchor risk ZERO by construction** — 34 anchors stay
+  byte-identical (UI-binary wiring only; `training_events` table
+  unchanged; `--audit-db` stays opt-in). Estimated 0.5-1 day
+  wall-clock end-to-end. **Spec**:
+  [`spec/cockpit-training-pressed-wiring/feature.md`](cockpit-training-pressed-wiring/feature.md).
+  **Trace**: `REQ-COCKPIT-TRAINING-PRESSED-001`.
+  **Predecessor**: `cockpit-activity-status-bar v0.1.0` (shipped
+  2026-05-26).
+  **Parent**: `cockpit-training-control v0.2.0` (shipped 2026-05-19).
 
 ## Queue
 
