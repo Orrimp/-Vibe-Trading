@@ -106,7 +106,27 @@ For a 30-bar Yahoo daily Last30d run, only `bar_idx = 0` hit the boundary. One p
 
 **Probes used during diagnosis** (now reverted): `tracing::warn!` at `crates/ui/src/bin/cockpit_live.rs:1200` (LabRunRequested handler) + `crates/ui/src/lab/progress.rs::Recipe::stream()` (entry + rx_opt = Some/None branch). Captured to `/tmp/cockpit-probes.log` via `RUST_LOG=lab.progress.recipe=warn`. Probe log showed salt bump 1→2→3 across runs with `rx_opt = Some` every time — ruling out the iced subscription as the failure mode.
 
+### `#65` — `vol_killswitch_overlay` is a no-op (computes counters, never mutates Signal.kind)
+**Status**: open (tests `#[ignore]`-gated pending source fix)
+**Discovery commit**: (this commit's parent — Wave 1 salvage)
+**Area**: `crates/strategy/src/vol_killswitch_overlay.rs`.
+**Discovery**: Wave 1's overlay-e2e test (`crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`) detected the no-op via the divergence-assertion pattern that closed `#64`'s sibling issue. Same shape as `v3-volatility-forecaster-noop-fix` 2026-05-22 (see `spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`): the overlay's `stats.kill_switch_count` counter increments correctly when the trigger condition fires, but the overlay never mutates `Signal::kind` to `Hold` — so equity matches the un-overlaid baseline byte-for-byte.
+
+**Test evidence** (from `trigger_fires_and_equity_diverges`, currently `#[ignore]`-gated):
+```
+vol-killswitch overlay equity divergence is below 1 bp — the overlay may be a no-op.
+baseline_equity=1.00000000, killswitch_equity=1.00000000, divergence=0.00000000,
+required_min=0.00010000 (1 bp). kill_switch_count=2
+```
+
+**Negative control** (`passthrough_when_threshold_unreachably_high` — passes): with the threshold set unreachably high, the overlay correctly passes through with zero divergence. So the trigger path is the broken one, not the passthrough path.
+
+**Recovery path**: a follow-up brief (suggested slug: `vol-killswitch-overlay-noop-fix`) must patch `crates/strategy/src/vol_killswitch_overlay.rs` to actually mutate `Signal::kind` on trigger. After the fix lands, the two `#[ignore]` annotations in `vol_killswitch_overlay_end_to_end.rs` are removed and the test must turn green.
+
+**Why this matters**: analyst's framing in `spec/dev-notes/testing-strategy-review-2026-05-25.md` — "a killswitch that doesn't kill is the worst kind of no-op." Risk profile: in production, if vol exceeds the killswitch threshold, the strategy continues trading as if nothing happened. This is the worst-case failure mode for a risk-overlay.
+
 ## Changelog
 
 - 2026-05-25 (orchestrator): file created. Backfilled #54–#63 from `git log` + inline `Bug #N` comments.
 - 2026-05-25 (orchestrator): #64 added — progress bar short-run starvation fix.
+- 2026-05-26 (orchestrator): #65 added — vol_killswitch_overlay no-op discovered by Wave 1 overlay-e2e test; 2 tests `#[ignore]`-gated pending source fix.

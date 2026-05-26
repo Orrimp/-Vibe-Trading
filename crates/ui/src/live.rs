@@ -565,25 +565,42 @@ impl Recipe for TrailMirrorRecipe {
     fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
         // Subscribe eagerly (before the stream is first polled) to avoid the
         // publish-before-subscribe race — mirrors BusRecipe's pattern.
-        let mut rx = self.handle.tick_tx.subscribe();
-        Box::pin(async_stream::stream! {
-            loop {
-                match rx.recv().await {
-                    Ok(tick) => yield Message::TrailMirrorTick(TrailMirrorUiTick::from(tick)),
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        warn!(channel = "trail_mirror", skipped = n, "broadcast lagged — dropping");
-                        // Continue: lag is not fatal; the cockpit re-fetches on
-                        // the next visible chevron click (R1.5 drop-on-lag policy).
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        // Mirror task exited (agent shutdown or config disabled).
-                        debug!(channel = "trail_mirror", "broadcast closed — stopping recipe");
-                        break;
-                    }
+        let rx = self.handle.tick_tx.subscribe();
+        trail_mirror_stream_impl(rx)
+    }
+}
+
+/// Inner stream logic for `TrailMirrorRecipe`, extracted so integration tests
+/// can drive it directly without needing a running iced application or an
+/// `EventStream`.
+///
+/// - Loops on `rx.recv()`, converting each `TrailMirrorTick` to
+///   `Message::TrailMirrorTick(TrailMirrorUiTick::from(tick))`.
+/// - On `Lagged(n)`: logs a warning and continues (R1.5 drop-on-lag policy).
+/// - On `Closed`: logs at debug level and terminates the stream cleanly.
+///
+/// The caller (i.e. `Recipe::stream`) is responsible for subscribing eagerly
+/// before passing `rx` here, to avoid the publish-before-subscribe race.
+pub fn trail_mirror_stream_impl(
+    mut rx: tokio::sync::broadcast::Receiver<reflection::trail_mirror::TrailMirrorTick>,
+) -> BoxStream<'static, Message> {
+    Box::pin(async_stream::stream! {
+        loop {
+            match rx.recv().await {
+                Ok(tick) => yield Message::TrailMirrorTick(TrailMirrorUiTick::from(tick)),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    warn!(channel = "trail_mirror", skipped = n, "broadcast lagged — dropping");
+                    // Continue: lag is not fatal; the cockpit re-fetches on
+                    // the next visible chevron click (R1.5 drop-on-lag policy).
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    // Mirror task exited (agent shutdown or config disabled).
+                    debug!(channel = "trail_mirror", "broadcast closed — stopping recipe");
+                    break;
                 }
             }
-        })
-    }
+        }
+    })
 }
 
 /// Crate-boundary conversion: `reflection::trail_mirror::TrailMirrorTick`
