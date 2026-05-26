@@ -1087,14 +1087,15 @@ feature     = "reflection-memory-trader-wiring"
 product     = "spec/product.md"  # § 3 Trader agent line 135-139 — runtime trader-layer definition
 arch        = [
   "spec/reflection-memory-trader-wiring/feature.md",  # analyst M0 pass 2026-05-25 — R1-R7 + K1-K8 + H1-H5 + Q1-Q7 + 10-item non-regression contract
-  "spec/reflection-memory-trader-wiring/tasks.md",     # M0 stub — M0 DONE; M-T1 / M-DEV / M-FINAL / M-PRESENTER deferred to respective agents
+  "spec/reflection-memory-trader-wiring/tasks.md",     # architect M-T1 pass 2026-05-26 — Waves A-D (12 T-D-N rows) + M-FINAL (11 T-T rows) + M-PRESENTER (4 T-P rows) decomp; zero T-OD operator-decide deltas (analyst defaults stand on Q1-Q7); analyst file-count miscount corrected (9 source / 10 test / 1 bin — not 8 / 13)
+  "spec/architecture/adr/0041-trader-crate-split.md",  # NEW ADR architect M-T1 2026-05-26; status accepted; locks D1 new crates/trader/ crate (Q1=(a)) + D2 clean-cut move of all 9 source files + 10 test suites + 1 bin (Q2=(a)) + D3 inverse-API via existing strategy::Strategy trait (Q3=(a); MemoryProvider deferred to v0.1.1) + D4 registry-arm full removal + trader::register_llm_forecaster_v3 (mechanically subsumes Q4 gate-test tightening) + D5 t1810 positive-assertion sibling test (R5.3) + D6 trader-owns-audit (Q5=(a)) + D7 documentation surface (Q7=(a) errata append, K6 leave-historical)
   "spec/v3-llm-forecaster/feature.md",                 # parent — R8.1 + R10.8 violated invariants; this brief is the recovery
   "spec/product.md",                                   # § Trading-time agent roster — Trader agent (layer 3) definition that motivates the trader crate
 ]
-crates      = []  # Wave A creates crates/trader/Cargo.toml + src/lib.rs; Wave B moves the 8-file llm_forecaster/ subtree out of crates/strategy/src/; Wave C rewrites imports across workspace; M-DEV appends on land
-tests       = ["crates/reflection/tests/no_strategy_caller.rs"]  # The gate-test that is currently RED on main. M-FINAL gates on PASS. Sibling positive-assertion test t1810_trader_crate_owns_reflection_retrieval added at Wave D-2.
+crates      = []  # Wave A creates crates/trader/Cargo.toml + src/lib.rs; Wave B moves the 9-file llm_forecaster/ subtree out of crates/strategy/src/ + 10 integration test suites + 1 bin (llm_verdict); Wave C re-exports public API + UI doc-comment polish; Wave D adds t1810 positive-assertion sibling test. Architect M-T1 corrected analyst's 8-file count to actual 9 files (4100 LoC) and 13-suite count to actual 10 strategy-crate suites that move (3 non-strategy suites stay). M-DEV appends actual crates/* list on land per T-T-10.
+tests       = ["crates/reflection/tests/no_strategy_caller.rs"]  # The gate-test that is currently RED on main. M-FINAL gates on PASS (t1809). Sibling positive-assertion test t1810_trader_crate_owns_reflection_retrieval added at T-D-N11 (Wave D) per ADR-0041 § D5 — co-located in the same file, not split (regression evidence stays together). M-DEV appends the 10 moved integration-test paths under crates/trader/tests/ on land per T-T-10.
 anchors     = []  # additive-zero by construction (R6.1 / H2). The 34 existing anchors stay byte-identical; no scenario body bytes touched.
-state       = "proposed"   # analyst M0 closed 2026-05-25; HANDOFF → architect for M-T1 (T-AR-1..T-AR-10).
+state       = "proposed"   # analyst M0 closed 2026-05-25; HANDOFF → architect for M-T1. --- ARCHITECT M-T1 CLOSED 2026-05-26. T-AR-1..T-AR-10 all green: Q1-Q7 ratified at analyst-recommended defaults via operator standing-Autoapprove; T-AR-2 move-set inventory corrected analyst miscount (9 source files / 10 test suites / 1 bin — not 8 / 13); T-AR-3 binary import-site inventory (crates/ui/src/bin/cockpit_live.rs + crates/backtest/src/main.rs for registry arm; crates/ui/src/assistant/state.rs:21 doc-comment); T-AR-4 registry-arm FULL REMOVAL per ADR-0041 § D4 (not warn-and-skip); T-AR-5 gate-test list NOT tightened at v0.1.0 — Q4 mechanically subsumed by D4 removal; T-AR-6 K6 decomp.md left-historical option (iii); T-AR-7 ADR-0041 authored (6 top-level sections + ADR registry row at README.md:91); T-AR-8 cost re-estimated to 3.5-4.5 d wall-clock (+0.5-1 d vs analyst lower bound for corrected move-set + new registry_arm.rs); T-AR-9 this `arch` column populated; T-AR-10 HANDOFF → developer for M-DEV Waves A-D.
 
 #
 # ─── Cross-cutting invariants (no feature folder) ───────────────────────
@@ -1323,3 +1324,65 @@ tests       = [
 ]
 anchors     = "34/34 PASS"   # ZERO new anchors by construction — feature is UI + agent only. All 34 locked Binance/Yahoo anchors byte-identical (R-NR.1). Verified M-FINAL 2026-05-26 at commit 0ff402f by scripts/verify_anchors.sh — ANCHORS PASS (34/34).
 state       = "passed"   # tester M-FINAL second pass 2026-05-26 — VERDICT PASS at commit 0ff402f. All 5 prior blockers resolved: fmt PASS, clippy PASS (cockpit crates), render_snapshots 2/2 PASS, visual_snapshots 19/19 PASS, trace-broken-path resolved. Workspace 2034 passed / 3 failed (all pre-existing/whitelisted). Criterion 5/5 benches within budget. Anchors 34/34.
+
+# REQ-VOL-KILLSWITCH-NOOP-FIX-001 → vol-killswitch-overlay-noop-fix (proposed 2026-05-26)
+#
+# Bug #65 — `crates/strategy/src/vol_killswitch_overlay.rs` is a no-op.
+# `kill_switch_count` increments correctly when the trigger fires, but the
+# `Signal::kind = Hold` mutation gate (`if sig.symbol == bar.symbol` at line 236)
+# rejects every signal in the cross-sectional momentum basket whose symbol
+# doesn't match the trigger bar's symbol. Equity matches un-overlaid baseline
+# byte-for-byte. Sibling of `v3-volatility-forecaster-noop-fix v0.1.0` 2026-05-22.
+# Severity P0 safety — a killswitch that doesn't kill.
+#
+# Discovery: Wave 1's overlay-e2e hygiene gate
+# (crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs) — 2 tests
+# `#[ignore]`-gated with `tracked-in: bug-log #65` annotations:
+#   - trigger_fires_and_equity_diverges (0 bp divergence vs ≥1 bp required)
+#   - post_trigger_signals_are_hold (zero Hold signals on trigger bar)
+# Negative control (passthrough_when_threshold_unreachably_high) PASSES.
+#
+# Fix scope: wire-up at vol_killswitch_overlay.rs:229-244 (~10-20 LoC).
+# Q1=(i) analyst-default (mutate Signal::kind = Hold for the basket;
+# smallest blast radius; binary kill-switch semantic).
+# Q2=(a) ZERO new anchors (grep `vol_killswitch` on anchors.toml → 0 rows;
+# anchor risk ZERO by construction).
+# Q3=(a) defer Strategy::dampen_signals trait surface to v0.1.1+.
+#
+# Cost: 1-3 days end-to-end wall-clock. Predecessor:
+# v3-volatility-forecaster-noop-fix v0.1.0 (shipped 2026-05-22).
+
+[[req]]
+id          = "REQ-VOL-KILLSWITCH-NOOP-FIX-001"
+title       = "Vol-killswitch overlay — no-op wire-up FIX (Bug #65; sibling of v3-volatility-forecaster-noop-fix v0.1.0)"
+feature     = "vol-killswitch-overlay-noop-fix"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-26) — paths surfaced from R1-R6 + non-regression contract.
+  # Architect M-T1 will append the decomp.md path once authored.
+  "spec/vol-killswitch-overlay-noop-fix/feature.md",
+  "spec/vol-killswitch-overlay-noop-fix/tasks.md",
+  "spec/v3-volatility-forecaster-noop-fix/feature.md",          # PRECEDENT — sibling fix shape; Q1=(ii) / Q2=(a) / Q3=(b) pattern
+  "spec/v3-volatility-forecaster-noop-fix/decomp.md",            # PRECEDENT — wave shape + forensic-gate FAIL/PASS protocol
+  "spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md",  # PRECEDENT — diagnostic chain for the sibling no-op
+  "spec/dev-notes/testing-strategy-review-2026-05-25.md",        # framing — "a killswitch that doesn't kill is the worst kind of no-op" (§1 P2)
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",    # § D5 strategy-side composition lock; § D6 + § D6.b anchor-additive + wiring-bug-fix re-emission protocol (R5 cites this)
+  "spec/bug-log.md",                                             # § #65 discovery row (this brief's parent)
+]
+crates      = [
+  # ANALYST M0 (2026-05-26) — paths surfaced from § Smoking gun + R1.
+  # Developer M-DEV populates literal change counts at Wave A completion.
+  "crates/strategy/src/vol_killswitch_overlay.rs",               # FIX SITE — lines 229-244 kind-mutation block (Q1=(i) widen scope)
+  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",  # EDIT — remove 2x #[ignore] annotations (lines 169 + 237) at T-D-N4
+  # R6 unit test target — architect picks at M-T1 either:
+  # (a) NEW row in `crates/strategy/tests/vol_killswitch_overlay.rs` (extends existing test file), OR
+  # (b) NEW file `crates/strategy/tests/vol_killswitch_overlay_unit.rs` (sibling of e2e file)
+]
+tests       = [
+  # ANALYST M0 (2026-05-26) — test surfaces surfaced from R3 + R4 + R6.
+  # Developer M-DEV / tester M-FINAL populate with literal `cargo test` outputs.
+  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",  # R3 + R4 — `trigger_fires_and_equity_diverges` + `post_trigger_signals_are_hold` flip RED→GREEN; `passthrough_when_threshold_unreachably_high` stays green (R2)
+  # R6 unit test path TBD at M-T1 — see crates[] comment above.
+]
+anchors     = "34/34 PASS"   # ZERO new anchors by construction (verified 2026-05-26 by grep on `spec/anchors.toml` for `vol_killswitch` / `vol-killswitch` — 0 matches). 34 anchors stay byte-identical; tester confirms via `bash scripts/verify_anchors.sh` at M-FINAL.
+state       = "proposed"   # analyst M0 2026-05-26 — HANDOFF → operator-decide (Q1..Q3) → architect M-T1. Tester flips to `passed` at M-FINAL once R-O1 SHIP path confirmed.

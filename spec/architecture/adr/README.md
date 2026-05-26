@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-24 (ADR-0040 added)
+updated: 2026-05-26 (ADR-0041 added)
 ---
 
 
@@ -88,6 +88,7 @@ the canonical table; the parent file links here.)
 | 0038  | v3 vol-forecast V-verdict report shape + GARCH(1,1) baseline contract (parallel to ADR-0033, not extension) | accepted | 2026-05-22 |
 | 0039  | LLM-forecaster verdict criteria L0-L4 (parallel to ADR-0033 § D3 and ADR-0038 § D1, not extension) | accepted | 2026-05-22 |
 | 0040  | Yahoo realdata path + revision pin (Lab dispatch source) — generalises ADR-0032 to a second data source; engine stays source-agnostic per Q1=(b); 34/34 anchors byte-identical | accepted | 2026-05-24 |
+| 0041  | Trader crate split — reflection-memory consumer moves out of strategy into new `crates/trader/`; structurally enforces R8.1 / R10.8 layering invariant; pure package-level refactor (additive-zero anchors) | accepted | 2026-05-26 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -229,6 +230,11 @@ finalisation.
   guard). Sibling deliverable: `spec/v25a-patchtst-overlay/decomp.md`.
   Closes T-AR-2 of `spec/v25a-patchtst-overlay/tasks.md`.
 - 2026-05-24 (architect, M-T1): ADR-0040 added — Yahoo realdata path
+- 2026-05-26 (architect, M-T1): ADR-0041 added — trader crate split;
+  recovery brief for `reflection-memory-trader-wiring` v0.1.0 (P0
+  gate-test red on `main`); locks Q1=(a) new `crates/trader/` +
+  Q2=(a) clean-cut move + Q3=(a) inverse-API; corrects analyst
+  file-count miscount (9 files / 10 test suites, not 8 / 13).
   + revision pin (Lab dispatch source). Generalises ADR-0032's
   revision-pin protocol to a second data source (Yahoo Finance) on
   the Lab dispatch path. Locks D1 (module placement —

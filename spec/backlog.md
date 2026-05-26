@@ -446,6 +446,125 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   **Trace**: `REQ-LAB-YAHOO-REALDATA-001`. Estimated 1-2 days
   wall-clock after operator cache populated.
 
+<!-- updated 2026-05-26 (analyst, vol-killswitch-overlay-noop-fix) —
+     **PROMOTED Idea → Active 2026-05-26** under Bug #65 (P0 safety
+     wiring-bug recovery). Sibling of the shipped
+     `v3-volatility-forecaster-noop-fix v0.1.0` 2026-05-22 — same
+     no-op pattern; `crates/strategy/src/vol_killswitch_overlay.rs`
+     increments its `kill_switch_count` counter correctly when the
+     trigger condition fires, but the `Signal::kind = Hold` mutation
+     never reaches the executor's load-bearing path for the
+     cross-sectional momentum inner strategy. Equity matches the
+     un-overlaid baseline byte-for-byte. **Severity P0 safety**: a
+     killswitch that doesn't kill is the worst kind of no-op — in
+     production, vol spikes above the threshold show "kill-switch
+     tripped" in metrics, but the executor takes the position anyway.
+
+     **Discovery**: Wave 1's overlay-e2e hygiene gate
+     (`crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`)
+     surfaced the bug 2026-05-26. Two tests fail correctly detecting
+     the no-op: `trigger_fires_and_equity_diverges` (0 bp divergence
+     vs ≥1 bp required) + `post_trigger_signals_are_hold` (zero
+     Hold signals on the trigger bar). Both are `#[ignore]`-gated
+     with `tracked-in: bug-log #65` annotations; the developer
+     un-ignores at M-DEV after the fix lands. Negative control
+     (`passthrough_when_threshold_unreachably_high`) passes — so
+     the trigger path is the broken one.
+
+     **Smoking gun**: lines 229-244 of `vol_killswitch_overlay.rs`
+     mutate `sig.kind = SignalKind::Hold` BUT gate the mutation on
+     `if sig.symbol == bar.symbol`. The inner strategy is
+     `MomentumStrategy` (cross-sectional momentum), which emits
+     signals for the BASKET at rebalance time, not for the trigger
+     bar's symbol. Analyst's H1 (85% confidence): the per-signal
+     symbol filter is the bug. Architect runs a 5-minute
+     `tracing::warn!` probe at M-T1 to falsify H1 before locking
+     the fix shape.
+
+     **Scope at v0.1.0**: wire-up fix at the strategy → executor
+     handoff in `vol_killswitch_overlay.rs` (~10-20 LoC, single
+     file, single method body). Q1=(i) `Signal::kind = Hold`
+     mutation widened to cover the basket — kill-switch semantic is
+     binary, not scalar; smallest blast radius (cf the precedent's
+     Q1=(ii) trait method, which was needed for vol-target's scalar
+     semantic but not for kill-switch's binary semantic). Q2=(a)
+     ZERO new anchors (grep on `spec/anchors.toml` for vol_killswitch
+     returns zero matches; anchor risk ZERO by construction).
+     Q3=(a) defer the `Strategy::dampen_signals` trait surface
+     decision to v0.1.1+ once a second consumer surfaces.
+
+     **What this brief does NOT do**: touch GARCH math, change the
+     trigger condition arithmetic, change the cooldown semantic,
+     touch `MomentumStrategy::on_bar`, change `trading_core::Signal`
+     shape, add a new trait method to `Strategy`, add new anchored
+     scenarios, touch any audit / reflection / executor crate. 34
+     anchors stay byte-identical; pure strategy-internal patch.
+
+     **Cost framing**: ~1-3 days end-to-end wall-clock. Analyst pass
+     ~0.5 day (this); operator-decide ~30 min (standing Autoapprove);
+     architect M-T1 ~0.5 day (H1 probe + fix shape lock); developer
+     M-DEV ~1 day (single Wave A with forensic-gate FAIL/PASS
+     bracket per the precedent T-D-N3a/3b protocol); tester M-FINAL
+     ~0.5 day; presenter ~0.5 day. No LLM costs; pure source patch.
+
+     **Operator-decide Q's** (3 surfaced; all standing-Autoapprove-
+     eligible per the v3-volatility-forecaster-noop-fix precedent):
+     - Q1 — fix shape: (i) mutate `Signal::kind = Hold` (smallest
+       blast radius; kill-switch is binary) vs (ii) add a new
+       `Signal::quantity_scale` field (rejected — over-engineered for
+       binary semantic) vs (iii) add `Strategy::dampen_signals`
+       defaulted trait method (rejected — YAGNI). Analyst recommends
+       **(i)**.
+     - Q2 — anchor handling: (a) zero new anchors (analyst-
+       recommended) vs (b) add 1-2 anchored killswitch scenarios at
+       v0.1.0 (deferred to v0.1.1+) vs (c) tighten e2e to drive
+       top10 universe (rejected — over-scoped). Analyst recommends **(a)**.
+     - Q3 — `Strategy::dampen_signals` trait surface: (a) defer to
+       architect M-T1 (YAGNI) vs (b) add at v0.1.0 (rejected) vs
+       (c) richer `signal_kind_override` surface (rejected). Analyst
+       recommends **(a)**.
+
+     **Pre-drawn verdict routing tree** (presenter inherits):
+     - R-O1 — fix works; all 3 e2e tests PASS; no anchor delta → **SHIP**.
+     - R-O2 — fix works but unexpected anchor delta → operator-decide HOLD.
+     - R-O3 — fix doesn't work (H1 was the wrong root cause) →
+       architect re-spawn; cost widens to 3-5 days.
+
+     **Trace row**: `REQ-VOL-KILLSWITCH-NOOP-FIX-001` at `proposed`
+     state (appended at END of `spec/trace.toml`; does NOT modify
+     any existing row; parallel architect owns
+     REQ-REFLECTION-TRADER-001 at line 1084).
+     **Feature folder**: [`spec/vol-killswitch-overlay-noop-fix/`](vol-killswitch-overlay-noop-fix/feature.md).
+     **Bug log**: [`spec/bug-log.md` § #65](bug-log.md).
+     **Predecessor**: `v3-volatility-forecaster-noop-fix v0.1.0`
+     (shipped 2026-05-22; sibling fix for vol_targeting_overlay
+     under the same no-op pattern).
+-->
+
+- **vol-killswitch-overlay-noop-fix v0.1.0 (Bug #65 — P0 safety wiring-bug recovery)** —
+  P0 brief authored 2026-05-26 in response to Wave 1's overlay-e2e
+  hygiene gate detecting that `crates/strategy/src/vol_killswitch_overlay.rs`
+  is a no-op: `kill_switch_count` increments correctly when the
+  trigger condition fires, but the `Signal::kind = Hold` mutation
+  never reaches the executor's load-bearing path for the
+  cross-sectional momentum inner strategy. Equity matches the
+  un-overlaid baseline byte-for-byte. **A killswitch that doesn't
+  kill is the worst kind of no-op** — in production, vol spikes
+  above the threshold show "kill-switch tripped" in the operator's
+  metrics, but the executor takes the position anyway. Fix scope:
+  wire-up at `vol_killswitch_overlay.rs:229-244` (~10-20 LoC,
+  single file, single method body) per Q1=(i) analyst default.
+  Anchor risk ZERO by construction (grep on `spec/anchors.toml`
+  for vol_killswitch returns zero rows). Test count delta: 1 PASS
+  → 3 PASS in `vol_killswitch_overlay_end_to_end.rs` (the 2
+  `#[ignore]` annotations come off at M-DEV). 34/34 anchors stay
+  byte-identical. **Spec**:
+  [`spec/vol-killswitch-overlay-noop-fix/feature.md`](vol-killswitch-overlay-noop-fix/feature.md).
+  **Trace**: `REQ-VOL-KILLSWITCH-NOOP-FIX-001`. **Bug log**:
+  [`spec/bug-log.md` § #65](bug-log.md). **Predecessor**:
+  `v3-volatility-forecaster-noop-fix v0.1.0` (shipped 2026-05-22).
+  Estimated 1-3 days wall-clock end-to-end.
+
 <!-- updated 2026-05-25 (architect, cockpit-activity-status-bar) —
      **PROMOTED Idea → Active 2026-05-25** under operator request
      2026-05-25: "Status bar should show all the current steps the
