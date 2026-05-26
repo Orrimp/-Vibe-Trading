@@ -62,6 +62,7 @@ use trading_core::{
     StrategyLoaded, StrategySwapped, Tick,
 };
 
+use crate::activity::{ActivityEvent, ActivitySender};
 use crate::config::BusConfig;
 use crate::kill_switch::AgentMode;
 
@@ -90,6 +91,11 @@ pub struct EventBus {
     /// snapshot (1 Hz tick). Mirrors the `MarketHealth` channel pattern.
     /// Capacity 64 — well above the steady-state 1 Hz tick rate.
     risk_telemetry_tx: broadcast::Sender<RiskTelemetry>,
+    /// cockpit-activity-status-bar v0.1.0 — in-flight work tape for the
+    /// status bar (R1.1). Capacity 256: bounded ring-buffer; slow consumers
+    /// get `RecvError::Lagged(n)` and skip — same backpressure contract as
+    /// every other channel.
+    activity_tx: broadcast::Sender<ActivityEvent>,
 }
 
 impl EventBus {
@@ -113,6 +119,9 @@ impl EventBus {
         // Phase 3 Q3 / T1707 — capacity 64 covers the 1 Hz risk-engine
         // tick with headroom for late subscribers.
         let (risk_telemetry_tx, _) = broadcast::channel(64);
+        // cockpit-activity-status-bar v0.1.0 R1.1 — capacity 256 per spec.
+        // Bounded ring-buffer; slow consumers get RecvError::Lagged(n) and skip.
+        let (activity_tx, _) = broadcast::channel(256);
         Self {
             fills_tx,
             positions_tx,
@@ -126,6 +135,7 @@ impl EventBus {
             funding_obs_tx,
             market_health_tx,
             risk_telemetry_tx,
+            activity_tx,
         }
     }
 
@@ -279,6 +289,18 @@ impl EventBus {
     pub fn risk_telemetry(&self) -> broadcast::Receiver<RiskTelemetry> {
         self.risk_telemetry_tx.subscribe()
     }
+
+    /// Return an `ActivitySender` wrapping the activity broadcast channel
+    /// (cockpit-activity-status-bar v0.1.0 R1.3).
+    ///
+    /// Producers call `bus.activity().start(kind, label)` to obtain an
+    /// `ActivityHandle` that automatically emits `End` on drop.
+    /// The `ActivityRecipe` in `crates/ui/src/live.rs` (Wave B) subscribes
+    /// via `bus.activity().subscribe()`.
+    #[must_use]
+    pub fn activity(&self) -> ActivitySender {
+        ActivitySender(self.activity_tx.clone())
+    }
 }
 
 // ── T903a-glue — `FillPublisher` impl on the bus ─────────────────────────────
@@ -320,12 +342,56 @@ mod tests {
 
     use exec::{FillPublisher, PaperEnginePublisher};
     use rust_decimal_macros::dec;
+    use tokio::sync::broadcast::error::TryRecvError;
     use trading_core::{
         FeeTier, Fill, FillId, Liquidity, Money, OrderId, Position, Price, Quantity, Side, Symbol,
         Timestamp,
     };
 
     use super::*;
+
+    // ── T-D-N2 acceptance test ────────────────────────────────────────────────
+
+    /// Fill the 256-slot channel with 257 activities and assert that a slow
+    /// receiver gets `RecvError::Lagged(_)` on its first `try_recv`.
+    ///
+    /// Validates the bounded ring-buffer backpressure contract (R1.1):
+    /// slow consumers skip events rather than blocking the producer.
+    ///
+    /// Strategy: subscribe first, then send 257 raw events via a cloned
+    /// sender obtained from `activity().subscribe()` → we hold a sender clone
+    /// through `ActivitySender::0`. Since `ActivitySender` wraps a
+    /// `broadcast::Sender`, cloning it is free.
+    #[test]
+    fn activity_channel_lag_drops_oldest() {
+        use crate::activity::{ActivityEvent, ActivityId, ActivityKind, ActivityPhase};
+
+        let bus = EventBus::new(&BusConfig::default());
+        let activity = bus.activity();
+
+        // Register a slow receiver BEFORE the flood.
+        let mut rx = activity.subscribe();
+
+        // Use the inner sender (via `ActivitySender::0`) to push events at
+        // full speed — bypassing the tick throttle intentionally.
+        let tx = activity.0.clone();
+        for i in 0_u64..257 {
+            let _ = tx.send(ActivityEvent {
+                id: ActivityId(i),
+                kind: ActivityKind::LabRun,
+                label: format!("activity {i}"),
+                phase: ActivityPhase::Start { total_units: None },
+                ts_ms: 0,
+            });
+        }
+
+        // First recv must be Lagged — the 256-slot ring overflowed by 1.
+        let result = rx.try_recv();
+        assert!(
+            matches!(result, Err(TryRecvError::Lagged(_))),
+            "expected TryRecvError::Lagged, got {result:?}"
+        );
+    }
 
     fn sample_fill() -> Fill {
         Fill {

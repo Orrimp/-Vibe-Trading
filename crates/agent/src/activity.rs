@@ -1,0 +1,420 @@
+//! Activity types and RAII handle for the cockpit-activity-status-bar feature.
+//!
+//! This module owns the `ActivityEvent` type hierarchy (D1 / R1.2), the
+//! `ActivitySender` thin-wrapper around the broadcast channel, and the
+//! `ActivityHandle` RAII guard that auto-emits `End` on drop (R1.3).
+//!
+//! ## Design
+//!
+//! - `ActivityId` — monotonic `u64` counter, not a UUID (R1.2).
+//! - `ActivityHandle::tick` — producer-side 100 ms throttle (R1.4).
+//! - `Drop` — emits `End { Success }` by default; `End { Failed("dropped
+//!   during panic") }` when `std::thread::panicking()` is true (R1.3 / F3).
+
+use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+use tokio::sync::broadcast;
+
+// ── Global ID counter ────────────────────────────────────────────────────────
+
+static NEXT_ACTIVITY_ID: AtomicU64 = AtomicU64::new(1);
+
+/// A monotonic per-process activity identifier. NOT a UUID; IDs do not need
+/// to survive restarts (the activity tape is purely in-memory per R-NR.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ActivityId(pub u64);
+
+impl ActivityId {
+    /// Allocate the next ID from the global atomic counter.
+    #[must_use]
+    pub fn next() -> Self {
+        Self(NEXT_ACTIVITY_ID.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+// ── Kind ─────────────────────────────────────────────────────────────────────
+
+/// The activity class. Determines icon/label prefix in the status bar tape.
+///
+/// Q8=(a): only the three v0.1.0 producers are active.
+/// `LlmCall` / `AuditLedgerWrite` are forward-listed (R5.1 / R5.2) and
+/// included as variants so future producers can add wiring without a
+/// schema migration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActivityKind {
+    /// Yahoo data preload (cold-cache fetch + parquet read).
+    YahooPreload,
+    /// Lab backtest run dispatched by the cockpit Lab screen.
+    LabRun,
+    /// Training subprocess managed by the cockpit Train sub-panel.
+    Training,
+    /// Forward-listed for v0.1.1 (`v3-llm-forecaster`). Not wired at v0.1.0.
+    LlmCall,
+    /// Forward-listed for v0.1.1. Not wired at v0.1.0 (K3 — aggregation
+    /// design required before enabling).
+    AuditLedgerWrite,
+}
+
+// ── Outcome / Phase ──────────────────────────────────────────────────────────
+
+/// Terminal outcome of a completed activity.
+#[derive(Debug, Clone)]
+pub enum ActivityOutcome {
+    /// Activity completed normally.
+    Success,
+    /// Activity failed with the given human-readable reason.
+    Failed(String),
+    /// Activity was cancelled by the operator or the system.
+    Cancelled,
+}
+
+/// Lifecycle phase carried by each `ActivityEvent`.
+#[derive(Debug, Clone)]
+pub enum ActivityPhase {
+    /// Activity just started. `total_units` is known if the producer can
+    /// estimate it upfront (e.g. total bars for a backtest).
+    Start { total_units: Option<u64> },
+    /// Progress heartbeat. Rate-limited to ≤ 10 events/sec per handle (R1.4).
+    Tick { current: u64, elapsed_ms: u64 },
+    /// Activity finished (success, failure, or cancellation).
+    End(ActivityOutcome),
+}
+
+// ── Event ─────────────────────────────────────────────────────────────────────
+
+/// A single event on the activity broadcast channel.
+///
+/// All fields are `Clone` so the broadcast channel can fan out to multiple
+/// subscribers without allocation per receiver.
+#[derive(Debug, Clone)]
+pub struct ActivityEvent {
+    /// Stable ID for correlating Start → Tick* → End across events.
+    pub id: ActivityId,
+    /// Which subsystem produced this event.
+    pub kind: ActivityKind,
+    /// Operator-facing label (≤ 64 chars recommended per R1.2).
+    pub label: String,
+    /// Lifecycle phase for this event.
+    pub phase: ActivityPhase,
+    /// Wall-clock milliseconds since the Unix epoch (UTC) at event emission.
+    pub ts_ms: i64,
+}
+
+// ── ActivitySender ────────────────────────────────────────────────────────────
+
+/// Thin wrapper around the activity broadcast sender.
+///
+/// Obtained via `EventBus::activity(&self)`. The wrapper is the public surface
+/// for producers — they call `start(kind, label)` to get an `ActivityHandle`.
+///
+/// `ActivitySender` is `Clone` (it wraps a `broadcast::Sender` which is already
+/// clone-friendly and cheap to clone).
+#[derive(Clone, Debug)]
+pub struct ActivitySender(pub(crate) broadcast::Sender<ActivityEvent>);
+
+impl ActivitySender {
+    /// Start a new activity, returning a RAII `ActivityHandle`.
+    ///
+    /// The handle's `Drop` impl emits an `End` event automatically — producers
+    /// need only hold the handle for the lifetime of the work.
+    ///
+    /// An immediate `Start` event is emitted before returning. If there are
+    /// no subscribers the send is silently dropped (matching every other
+    /// channel's backpressure contract — see `EventBus::publish_fill`).
+    #[must_use = "ActivityHandle must be held — dropping it emits End on the channel"]
+    pub fn start(&self, kind: ActivityKind, label: impl Into<String>) -> ActivityHandle {
+        let id = ActivityId::next();
+        let label: String = label.into();
+        let ts_ms = now_ms();
+        let _ = self.0.send(ActivityEvent {
+            id,
+            kind,
+            label: label.clone(),
+            phase: ActivityPhase::Start { total_units: None },
+            ts_ms,
+        });
+        ActivityHandle {
+            sender: self.0.clone(),
+            id,
+            kind,
+            label,
+            outcome_at_drop: Cell::new(None),
+            last_tick: Cell::new(Instant::now()),
+            started_at: Instant::now(),
+        }
+    }
+
+    /// Subscribe to the broadcast channel.
+    ///
+    /// Used by the `ActivityRecipe` in `crates/ui/src/live.rs` (Wave B).
+    #[must_use]
+    pub fn subscribe(&self) -> broadcast::Receiver<ActivityEvent> {
+        self.0.subscribe()
+    }
+}
+
+// ── ActivityHandle ─────────────────────────────────────────────────────────
+
+const TICK_THROTTLE: Duration = Duration::from_millis(100);
+
+/// RAII activity guard. Dropping it always emits an `End` event.
+///
+/// Producers obtain this via `ActivitySender::start`. Typical usage:
+///
+/// ```rust,ignore
+/// let handle = bus.activity().start(ActivityKind::YahooPreload, "Yahoo BTC-USD 2y · downloading");
+/// // ... do work ...
+/// handle.tick(bars_done);
+/// // handle drops here → emits End { Success }
+/// ```
+///
+/// The handle is NOT `Send` by default (due to `Cell`). If you need to move
+/// it across async boundaries wrap it in a `tokio::sync::Mutex` or use the
+/// `fail` / `cancel` path from the same task that created it.
+///
+/// Note: `ActivityHandle` intentionally uses `Cell<_>` (not `RefCell` or
+/// `Mutex`) for the throttle state because tick is always called from the
+/// same thread/task that owns the handle — no cross-thread mutation is needed.
+pub struct ActivityHandle {
+    sender: broadcast::Sender<ActivityEvent>,
+    id: ActivityId,
+    kind: ActivityKind,
+    label: String,
+    /// `Some(outcome)` if `fail` or `cancel` has been called.
+    outcome_at_drop: Cell<Option<ActivityOutcome>>,
+    /// Tracks last successful tick emit for the 100 ms throttle (R1.4).
+    last_tick: Cell<Instant>,
+    /// Wall-clock start for computing `elapsed_ms` on each tick.
+    started_at: Instant,
+}
+
+impl ActivityHandle {
+    /// Emit a `Tick` progress event.
+    ///
+    /// Rate-limited: if fewer than 100 ms have elapsed since the last emit
+    /// this call is a no-op (R1.4 / Q7=(a)).
+    pub fn tick(&self, current: u64) {
+        let now = Instant::now();
+        if now.duration_since(self.last_tick.get()) < TICK_THROTTLE {
+            return; // throttled — silent no-op
+        }
+        self.last_tick.set(now);
+        let elapsed_ms = now.duration_since(self.started_at).as_millis() as u64;
+        let _ = self.sender.send(ActivityEvent {
+            id: self.id,
+            kind: self.kind,
+            label: self.label.clone(),
+            phase: ActivityPhase::Tick { current, elapsed_ms },
+            ts_ms: now_ms(),
+        });
+    }
+
+    /// Record a failure reason. The `End { Failed(reason) }` event is emitted
+    /// when the handle is dropped. Calling this multiple times overwrites the
+    /// previous reason (last wins).
+    pub fn fail(&self, reason: impl Into<String>) {
+        self.outcome_at_drop
+            .set(Some(ActivityOutcome::Failed(reason.into())));
+    }
+
+    /// Record a cancellation. The `End { Cancelled }` event is emitted when
+    /// the handle is dropped.
+    pub fn cancel(&self) {
+        self.outcome_at_drop.set(Some(ActivityOutcome::Cancelled));
+    }
+}
+
+impl Drop for ActivityHandle {
+    fn drop(&mut self) {
+        let outcome = self.outcome_at_drop.take().unwrap_or_else(|| {
+            if std::thread::panicking() {
+                ActivityOutcome::Failed("dropped during panic".to_owned())
+            } else {
+                ActivityOutcome::Success
+            }
+        });
+        let _ = self.sender.send(ActivityEvent {
+            id: self.id,
+            kind: self.kind,
+            label: self.label.clone(),
+            phase: ActivityPhase::End(outcome),
+            ts_ms: now_ms(),
+        });
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Current UTC time in milliseconds since the Unix epoch.
+///
+/// Uses `std::time::SystemTime` — acceptable outside backtest replay paths.
+/// This module is only ever called from live UI producers (R4.1–R4.3), never
+/// from deterministic backtest loops.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod activity_types {
+    use std::collections::HashSet;
+    use std::sync::atomic::Ordering;
+
+    use tokio::sync::broadcast;
+
+    use super::*;
+
+    /// T-D-N1 — `ActivityEvent` can be cloned and the clone round-trips all
+    /// fields correctly.
+    #[test]
+    fn activity_event_clone_round_trips() {
+        let id = ActivityId(42);
+        let event = ActivityEvent {
+            id,
+            kind: ActivityKind::YahooPreload,
+            label: "test label".to_owned(),
+            phase: ActivityPhase::Start { total_units: Some(100) },
+            ts_ms: 1_700_000_000_000,
+        };
+        let cloned = event.clone();
+        assert_eq!(cloned.id, event.id);
+        assert_eq!(cloned.kind, event.kind);
+        assert_eq!(cloned.label, event.label);
+        assert_eq!(cloned.ts_ms, event.ts_ms);
+        // Phase variants don't implement PartialEq — inspect structurally.
+        assert!(matches!(
+            cloned.phase,
+            ActivityPhase::Start { total_units: Some(100) }
+        ));
+    }
+
+    /// T-D-N1 — `ActivityKind` variants are hashable and usable as map keys.
+    #[test]
+    fn activity_kind_hash_round_trips() {
+        let mut set = HashSet::new();
+        set.insert(ActivityKind::YahooPreload);
+        set.insert(ActivityKind::LabRun);
+        set.insert(ActivityKind::Training);
+        set.insert(ActivityKind::LlmCall);
+        set.insert(ActivityKind::AuditLedgerWrite);
+        // Insert duplicates — set must deduplicate.
+        set.insert(ActivityKind::YahooPreload);
+        set.insert(ActivityKind::LabRun);
+        assert_eq!(set.len(), 5);
+        assert!(set.contains(&ActivityKind::Training));
+    }
+
+    /// T-D-N1 — `ActivityId` atomic counter is strictly monotonic across
+    /// two consecutive calls.
+    #[test]
+    fn activity_id_atomic_monotonic() {
+        let a = ActivityId::next();
+        let b = ActivityId::next();
+        assert!(
+            b.0 > a.0,
+            "expected b ({}) > a ({})",
+            b.0,
+            a.0
+        );
+        // Also verify the underlying counter advanced (not stuck).
+        let current = NEXT_ACTIVITY_ID.load(Ordering::Relaxed);
+        assert!(current > b.0, "counter must have advanced past b");
+    }
+
+    /// T-D-N3 — A dropped `ActivityHandle` emits exactly one `End { Success }`
+    /// event on the channel (happy path).
+    #[test]
+    fn activity_handle_drop_emits_end() {
+        let (tx, mut rx) = broadcast::channel::<ActivityEvent>(64);
+        let sender = ActivitySender(tx);
+        // Drop the handle immediately after creation.
+        {
+            let _handle = sender.start(ActivityKind::LabRun, "test run");
+        }
+        // We should have received: Start + End.
+        let start_event = rx.try_recv().expect("Start event expected");
+        assert!(matches!(start_event.phase, ActivityPhase::Start { .. }));
+        let end_event = rx.try_recv().expect("End event expected");
+        assert!(
+            matches!(end_event.phase, ActivityPhase::End(ActivityOutcome::Success)),
+            "expected End(Success), got {:?}",
+            end_event.phase
+        );
+        // No further events.
+        assert!(rx.try_recv().is_err(), "unexpected extra event");
+    }
+
+    /// T-D-N3 — Tight-loop tick calls are throttled: ≤ 11 Tick events arrive
+    /// for 100 calls fired within well under 100 ms per call.
+    #[test]
+    fn activity_handle_throttle_caps_at_10_hz() {
+        let (tx, mut rx) = broadcast::channel::<ActivityEvent>(256);
+        let sender = ActivitySender(tx);
+        let handle = sender.start(ActivityKind::YahooPreload, "throttle test");
+        // Fire 100 ticks in a tight loop (no sleep).
+        for i in 0_u64..100 {
+            handle.tick(i);
+        }
+        drop(handle);
+
+        // Drain all events.
+        let mut tick_count = 0usize;
+        loop {
+            match rx.try_recv() {
+                Ok(ev) => {
+                    if matches!(ev.phase, ActivityPhase::Tick { .. }) {
+                        tick_count += 1;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        // At most 11 Tick events (the 1-boundary-flake allowance from tasks.md).
+        assert!(
+            tick_count <= 11,
+            "expected ≤ 11 Tick events, got {tick_count}"
+        );
+    }
+
+    /// T-D-N3 — A handle dropped inside `catch_unwind` (simulating a panic)
+    /// emits `End { Failed("dropped during panic") }`.
+    #[test]
+    fn activity_handle_drop_during_panic_emits_failed() {
+        let (tx, mut rx) = broadcast::channel::<ActivityEvent>(64);
+        let sender = ActivitySender(tx.clone());
+
+        // Capture a raw sender clone so the channel stays open while we
+        // assert — otherwise the receiver sees `Closed`.
+        let _keep_open = tx.clone();
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _handle = sender.start(ActivityKind::Training, "panic test");
+            panic!("simulated panic");
+        }));
+
+        // Drain to find the End event.
+        let mut found_failed = false;
+        loop {
+            match rx.try_recv() {
+                Ok(ev) => {
+                    if let ActivityPhase::End(ActivityOutcome::Failed(ref reason)) = ev.phase {
+                        assert!(
+                            reason.contains("panic"),
+                            "expected 'panic' in reason, got: {reason:?}"
+                        );
+                        found_failed = true;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        assert!(found_failed, "expected a Failed End event from the panicking drop");
+    }
+}

@@ -5,6 +5,12 @@
 //! `crates/reports/tests/body_no_volatile_metadata.rs`. Fails CI if a
 //! future PR adds a new bus channel for cards (the reflection writer
 //! mpsc must stay private to `ReflectionWriter`).
+//!
+//! **Updated 2026-05-26 (cockpit-activity-status-bar v0.1.0 Wave A)**:
+//! Added `activity_tx` (capacity 256) per architect-approved D1 spec.
+//! This is the only permitted addition at v0.1.0 — any further new
+//! field still requires architect escalation before this snapshot is
+//! updated.
 
 use std::fs;
 use std::path::PathBuf;
@@ -13,7 +19,10 @@ use std::path::PathBuf;
 /// the **shape contract** of the bus; reflection-memory adds zero
 /// channels (Q8 — internal mpsc on `ReflectionWriter`, not on the
 /// bus).
+///
+/// `activity_tx` added at cockpit-activity-status-bar v0.1.0 per D1.
 const EXPECTED_FIELDS: &[&str] = &[
+    "activity_tx",
     "fills_tx",
     "positions_tx",
     "bars_tx",
