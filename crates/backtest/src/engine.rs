@@ -539,8 +539,7 @@ fn sma_composed_result_to_report(
     let sym_tag = result
         .bars
         .first()
-        .map(|b| b.symbol.clone())
-        .unwrap_or_else(|| Symbol::new("UNKNOWN"));
+        .map_or_else(|| Symbol::new("UNKNOWN"), |b| b.symbol.clone());
     let position_curve_raw: Vec<(i64, Decimal, Symbol)> = result
         .position_curve
         .iter()

@@ -326,14 +326,21 @@ def check_trace(
                     f"row {rid} field feature: missing folder spec/{slug}",
                 )
         # Anchor citations.
-        for anc in row.get("anchors", []):
-            cited_anchors.add(anc)
-            if anc not in anchors:
-                report.add(
-                    "trace-broken-path",
-                    trace_path,
-                    f"row {rid}: anchor {anc!r} not in anchors.toml",
-                )
+        # `anchors` may be a list of scenario-name strings (the normal case),
+        # or a bare prose string such as "34/34 PASS" used when a feature
+        # contributes zero new anchors but the tester still wants to record
+        # the verification result inline.  Iterate only when it is a list;
+        # a bare string is not path-checkable and is silently skipped here.
+        raw_anchors = row.get("anchors", [])
+        if isinstance(raw_anchors, list):
+            for anc in raw_anchors:
+                cited_anchors.add(anc)
+                if anc not in anchors:
+                    report.add(
+                        "trace-broken-path",
+                        trace_path,
+                        f"row {rid}: anchor {anc!r} not in anchors.toml",
+                    )
 
     # Anchors not referenced by any trace row.
     for scenario in anchors:

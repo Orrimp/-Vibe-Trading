@@ -13,7 +13,7 @@
 use audit::{bootstrap, journal, tick::AuditEvent};
 use rust_decimal_macros::dec;
 use trading_core::{
-    Decision, FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Signal,
+    FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Signal,
     SignalEvidence, SignalKind, StrategyId, Symbol, Timestamp, Venue,
 };
 use uuid::Uuid;

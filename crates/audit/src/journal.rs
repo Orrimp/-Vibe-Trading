@@ -2572,7 +2572,7 @@ mod tests {
     }
 
     /// T-D-N8 V3 — `post_training_finish` sets `model_revision` and populates
-    /// epoch / total_epochs from the latest epoch row.
+    /// `epoch` / `total_epochs` from the latest epoch row.
     #[tokio::test]
     async fn post_training_finish_sets_model_revision() {
         let ledger = open_ledger().await;
@@ -2607,7 +2607,7 @@ mod tests {
     }
 
     /// T-D-N8 V4 — `post_training_failed` writes `kind='failed'` with the
-    /// error_message field populated and epoch/model_revision NULL.
+    /// `error_message` field populated and `epoch`/`model_revision` NULL.
     #[tokio::test]
     async fn post_training_failed_writes_error_message() {
         let ledger = open_ledger().await;

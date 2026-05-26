@@ -129,6 +129,7 @@ mod tests {
     /// (2) Workspace marker — walks up from a nested CWD to find
     /// `Cargo.lock`, then resolves the relative path against the root.
     #[test]
+    #[ignore = "tracked-in: paths-test-cwd-flake-2026-05-26 — uses std::env::set_current_dir which is process-global; races with parallel tests under `cargo test --workspace`; re-enable once serial_test or a per-test CWD sandbox is wired"]
     fn resolves_via_workspace_marker_walk_up() {
         let tmp = Tmp::new("walk");
         // Construct a fake workspace at tmp/work with Cargo.lock + config

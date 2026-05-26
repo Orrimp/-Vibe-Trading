@@ -112,7 +112,7 @@ mod tests {
     /// exists and has the expected columns by running a SELECT.
     ///
     /// Idempotency: `Ledger::in_memory()` is called twice (two separate pools).
-    /// SQLite's `IF NOT EXISTS` guarantees the second apply is a no-op and does
+    /// `SQLite`'s `IF NOT EXISTS` guarantees the second apply is a no-op and does
     /// not raise an error. We verify no error is returned on the second open.
     #[tokio::test]
     async fn migration_010() {

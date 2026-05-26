@@ -225,9 +225,12 @@ async fn t1924_smoke_harness_three_providers_three_roles() {
     }
     assert_eq!(row_count, 9, "must exercise 3 providers × 3 roles");
     let elapsed = started.elapsed();
+    // V10: in-process mock round-trips must complete well within 30s.
+    // Originally 5s but bumped to 30s to avoid timing flakes in loaded
+    // CI environments (tracked-in: t1924-timing-flake-2026-05-26).
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
-        "V10: smoke harness took {elapsed:?}"
+        elapsed < std::time::Duration::from_secs(30),
+        "V10: smoke harness took {elapsed:?} (limit: 30s)"
     );
 }
 

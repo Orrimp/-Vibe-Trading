@@ -259,7 +259,7 @@ fn make_equity(start: f64, n: usize) -> Vec<Decimal> {
     let mut curr = Decimal::try_from(start).unwrap();
     v.push(curr);
     for _ in 1..n {
-        curr = curr * dec!(1.001);
+        curr *= dec!(1.001);
         v.push(curr);
     }
     v

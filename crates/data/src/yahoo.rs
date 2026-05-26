@@ -1092,9 +1092,8 @@ mod tests {
 
         for (binance, yahoo) in table {
             let sym = Symbol::new(*binance);
-            let result = binance_to_yahoo_ticker(&sym).expect(&format!(
-                "binance_to_yahoo_ticker({binance}) should succeed"
-            ));
+            let result = binance_to_yahoo_ticker(&sym)
+                .unwrap_or_else(|_| panic!("binance_to_yahoo_ticker({binance}) should succeed"));
             assert_eq!(result.as_str(), *yahoo, "mapping for {binance}");
         }
 
