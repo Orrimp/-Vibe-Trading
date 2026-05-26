@@ -290,12 +290,14 @@ _owner: tester._
 - [ ] **T-T-4** — Run `cockpit-smoke` against live binary. Assert
   0 panics. Manually verify the status bar shows the new tape
   region during a Yahoo preload + Lab Run.
-- [ ] **T-T-5** — Author `spec/cockpit-activity-status-bar/reports/test-final-2026-MM-DD.md`
+- [x] **T-T-5** — Author `spec/cockpit-activity-status-bar/reports/test-final-2026-05-26-cockpit-activity-status-bar.md`
   with the standard 8-row template (verify_anchors / workspace /
   cockpit-smoke / clippy / fmt / criterion / integration perf /
   visual). VERDICT line per the rust-test SKILL template.
-- [ ] **T-T-6** — Tester populates `tests` + `anchors` columns of
+  Ticked 2026-05-26 by tester (second pass, commit 0ff402f) — VERDICT PASS.
+- [x] **T-T-6** — Tester populates `tests` + `anchors` columns of
   trace row `REQ-COCKPIT-ACTIVITY-001` once VERDICT → PASS.
+  Ticked 2026-05-26 by tester — tests (9 paths) + anchors (34/34 PASS) populated; state flipped to "passed".
 
 ## M-PRESENTER — Sprint-review deck
 

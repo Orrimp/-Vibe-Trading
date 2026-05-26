@@ -1306,21 +1306,20 @@ crates      = [
   "crates/ui/src/lab/trainer.rs",                              # R4.3 (spawn_training_run)
 ]
 tests       = [
-  # ARCHITECT M0 (2026-05-25) + DEVELOPER Wave A (2026-05-26).
-  # Wave A (Agent unit tests) — LANDED:
+  # Wave A (Agent unit tests) — PASSED M-FINAL 2026-05-26:
   "crates/agent/src/activity.rs",                              # activity_event_clone_round_trips, activity_kind_hash_round_trips, activity_id_atomic_monotonic, activity_handle_drop_emits_end, activity_handle_throttle_caps_at_10_hz, activity_handle_drop_during_panic_emits_failed
   "crates/agent/src/bus.rs",                                   # bus::activity_channel_lag_drops_oldest
-  # Wave B (UI unit tests) — LANDED 2026-05-26:
-  "crates/ui/src/lab/activity.rs",                             # T-D-N4: applies_start_event_appends_to_in_flight, applies_tick_event_updates_in_place_no_realloc, applies_end_success_event_removes_immediately, applies_end_failed_event_holds_red_for_3s, purge_removes_expired_red_holds
-  "crates/ui/src/live.rs",                                     # T-D-N5: activity_recipe_emits_messages, activity_recipe_handles_lag
-  "crates/ui/src/widgets/activity_tape.rs",                    # T-D-N6: widget_renders_empty_state_no_panic, widget_renders_one_inflight_no_panic, widget_renders_three_plus_overflow_chip, widget_renders_failed_in_red (+ 4 insta snapshots)
-  # Wave C (UI integration tests) — pending Wave C:
-  "crates/ui/tests/activity_tape_yahoo_preload.rs",            # T-D-N7 — Yahoo preload producer integration
-  "crates/ui/tests/activity_tape_lab_run.rs",                  # T-D-N8 — Lab Run producer integration
-  "crates/ui/tests/activity_tape_training_run.rs",             # T-D-N9 — Training subprocess producer integration
-  # Wave D (perf gates) — pending Wave D:
-  "crates/ui/tests/activity_tape_event_storm.rs",              # T-D-N11 — 10k-event burst, <16ms P99 latency, ≥95% delivery
-  # crates/ui/benches/activity_tape.rs                         # T-D-N10 criterion bench
+  # Wave B (UI unit tests) — PASSED M-FINAL 2026-05-26:
+  "crates/ui/src/lab/activity.rs",                             # applies_start_event_appends_to_in_flight, applies_tick_event_updates_in_place_no_realloc, applies_end_success_event_removes_immediately, applies_end_failed_event_holds_red_for_3s, purge_removes_expired_red_holds
+  "crates/ui/src/live.rs",                                     # activity_recipe_emits_messages, activity_recipe_handles_lag
+  "crates/ui/src/widgets/activity_tape.rs",                    # widget_renders_empty_state_no_panic, widget_renders_one_inflight_no_panic, widget_renders_three_plus_overflow_chip, widget_renders_failed_in_red (+ 4 insta snapshots)
+  # Wave C (UI integration tests) — PASSED M-FINAL 2026-05-26:
+  "crates/ui/tests/activity_tape_yahoo_preload.rs",            # yahoo_preload_activity_emits_start_and_end_success, yahoo_preload_activity_emits_end_failed_on_error
+  "crates/ui/tests/activity_tape_lab_run.rs",                  # lab_run_activity_emits_start_tick_end_success, lab_run_activity_emits_end_failed_on_error, lab_run_activity_emits_end_cancelled_on_stop
+  "crates/ui/tests/activity_tape_training_run.rs",             # training_run_activity_emits_start_and_end_success, training_run_activity_emits_end_cancelled_on_stop
+  # Wave D (perf gates) — PASSED M-FINAL 2026-05-26:
+  "crates/ui/tests/activity_tape_event_storm.rs",              # activity_tape_handles_10k_event_burst_without_lag (drain <1s, delivery 100%, P99 <16ms)
+  "crates/ui/benches/activity_tape.rs",                        # T-D-N10 criterion bench: 5 benches PASS absolute budget (throttle 20ns / fan-out 58ns / render-empty 33ns / render-3 945ns / render-overflow 1.07µs)
 ]
-anchors     = []   # ZERO new anchors by construction — feature is UI + agent only. The 34 locked Binance/Yahoo anchors stay byte-identical (R-NR.1). Verified Wave A+B: 34/34 PASS via scripts/verify_anchors.sh (2026-05-26).
-state       = "in-progress"   # DEVELOPER Wave B 2026-05-26 — activity tape state + ActivityRecipe + widget landed. 11 new Wave B tests, 4 insta snapshots accepted. Wave C (producer wiring) running in parallel.
+anchors     = "34/34 PASS"   # ZERO new anchors by construction — feature is UI + agent only. All 34 locked Binance/Yahoo anchors byte-identical (R-NR.1). Verified M-FINAL 2026-05-26 at commit 0ff402f by scripts/verify_anchors.sh — ANCHORS PASS (34/34).
+state       = "passed"   # tester M-FINAL second pass 2026-05-26 — VERDICT PASS at commit 0ff402f. All 5 prior blockers resolved: fmt PASS, clippy PASS (cockpit crates), render_snapshots 2/2 PASS, visual_snapshots 19/19 PASS, trace-broken-path resolved. Workspace 2034 passed / 3 failed (all pre-existing/whitelisted). Criterion 5/5 benches within budget. Anchors 34/34.
