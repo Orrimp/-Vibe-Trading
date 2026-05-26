@@ -118,8 +118,59 @@ operator approval recorded against a presentation.
 
 ## Parallelism rules
 
-The orchestrator (the main Claude session) MUST spawn sub-agents in parallel
-whenever their tasks are independent. Concrete patterns:
+**Default to parallel.** The orchestrator (the main Claude session) MUST
+spawn sub-agents in parallel whenever their tasks are independent. Sequential
+execution is the exception, not the default — and it must be justified by a
+real file-scope conflict, an explicit dependency edge in the task graph, or
+an operator-decide gate that hasn't been answered yet.
+
+When the operator hands the orchestrator a multi-item agenda (e.g. "do
+items A, B, C, D, E"), the orchestrator's FIRST action is to evaluate
+which items can run concurrently and present a wave plan to the operator
+**before** spawning any agents. Use the **file-scope conflict matrix**
+below.
+
+### File-scope conflict matrix (orchestrator pre-spawn checklist)
+
+Before spawning any wave of agents, for every (agent_i, agent_j) pair in
+the wave answer YES/NO to each of these:
+
+1. **Touches the same file?** If both will edit the same `crates/.../*.rs`
+   or `spec/.../*.md`, they conflict. SEQUENCE them or carve out
+   non-overlapping line ranges and document the carve-out in both briefs.
+2. **Touches the same module's public API?** If A introduces a new
+   `pub fn foo()` and B imports `bar::*`, B is going to have to rebase.
+   Spawn A first, then B.
+3. **Same `Cargo.toml`?** Two agents both adding deps/features/[[test]]
+   entries to the same Cargo.toml conflict. SEQUENCE.
+4. **Same generated artifact?** Anchored reports, insta snapshots,
+   gallery snapshots — two agents both regenerating these will collide.
+5. **Same operator-decide question?** If two agents need the SAME Q
+   answered before they can converge, defer to the operator first;
+   don't spawn both on optimistic defaults — you'll re-spawn one of them.
+
+If every cell is NO, the pair is safe to spawn concurrently. If any cell
+is YES, the conflicting agents go into sequential waves.
+
+### Wave-based scheduling
+
+For multi-item agendas, partition into waves:
+
+- **Wave 1**: every item whose file-scope is independent of every other
+  Wave 1 item. Spawn ALL of them in a single Agent tool-use block.
+- **Wave 2**: items that conflict with at least one Wave 1 item OR
+  depend on Wave 1's output. Spawn after Wave 1 lands.
+- **Wave 3+**: same rule, applied recursively.
+
+A 7-item agenda commonly maps to 1-3 waves with 3-5 agents per wave.
+That's normal. Avoid the antipattern of "spawn agent 1, wait, spawn
+agent 2, wait, ..." — that's sequential execution dressed up as
+orchestration.
+
+When in doubt about a particular pair, ask the operator with
+`AskUserQuestion` showing the conflict + your proposed wave assignment.
+
+### Concrete patterns
 
 1. **Analyst fan-out.** Kick off separate analyst sub-agents for:
    - market/data research
@@ -159,7 +210,14 @@ whenever their tasks are independent. Concrete patterns:
    before more work is committed.
 
 Call the Agent tool **once with multiple tool-use blocks in the same message**
-to achieve actual concurrency. Sequential calls defeat the purpose.
+to achieve actual concurrency. Sequential `Agent` calls in separate messages
+defeat the purpose — they serialize what should be parallel.
+
+**Anti-pattern check** — if you find yourself writing "I'll spawn the X
+agent first, then once it lands I'll spawn Y" but X and Y don't share
+files / API / Cargo.toml / generated artifacts / operator-decide gates,
+you're sequencing for no reason. Spawn both in one block. The runtime
+notifies you when each finishes; you don't have to wait.
 
 ## Communication contract
 
