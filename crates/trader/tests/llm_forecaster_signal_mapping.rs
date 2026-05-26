@@ -256,10 +256,8 @@ fn fires_exactly_once_per_fire_every_n_bars_window() {
         async fn forecast(
             &self,
             ctx: trader::llm_forecaster::ForecastContext,
-        ) -> Result<
-            trader::llm_forecaster::LlmForecast,
-            trader::llm_forecaster::LlmForecasterError,
-        > {
+        ) -> Result<trader::llm_forecaster::LlmForecast, trader::llm_forecaster::LlmForecasterError>
+        {
             self.count.fetch_add(1, Ordering::SeqCst);
             let trace =
                 "stub trace for counting test — exactly 50 chars for validation".to_string();

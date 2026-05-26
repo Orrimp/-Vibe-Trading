@@ -36,10 +36,7 @@ use crate::llm_forecaster::{LlmForecasterConfig, LlmForecasterStrategy, StubFore
 /// via `StrategyRegistry::register` when operating in production mode.
 ///
 /// Returns `true` if the strategy was registered, `false` if `enabled = false`.
-pub fn register_llm_forecaster_v3(
-    registry: &StrategyRegistry,
-    entry: &StrategyTomlEntry,
-) -> bool {
+pub fn register_llm_forecaster_v3(registry: &StrategyRegistry, entry: &StrategyTomlEntry) -> bool {
     if !entry.enabled {
         tracing::info!(
             kind = "llm_forecaster_v3",

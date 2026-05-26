@@ -77,7 +77,10 @@ fn t1810_trader_crate_owns_reflection_retrieval() {
         .and_then(|p| p.parent())
         .expect("walk to workspace root");
     let trader_src = workspace_root.join("crates").join("trader").join("src");
-    assert!(trader_src.exists(), "trader crate missing at {trader_src:?}");
+    assert!(
+        trader_src.exists(),
+        "trader crate missing at {trader_src:?}"
+    );
 
     let required_substring = "reflection::retrieve_top_k";
     let mut found = false;
