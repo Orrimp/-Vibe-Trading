@@ -179,10 +179,7 @@ impl canvas::Program<Message> for PositionCurveProgram {
         // Final horizontal segment to the right edge.
         if prev_h > 0.0 {
             let y = baseline_y - prev_h;
-            let seg = Path::line(
-                Point::new(prev_x, y),
-                Point::new(inner.x + inner.width, y),
-            );
+            let seg = Path::line(Point::new(prev_x, y), Point::new(inner.x + inner.width, y));
             frame.stroke(
                 &seg,
                 canvas::Stroke::default()
@@ -228,7 +225,10 @@ mod tests {
             out.push_str("representation: stepped_polyline\n");
             out.push_str(&format!("gridlines: {}\n", GRIDLINE_COUNT));
             out.push_str("long_color: UP_500\n");
-            let max_qty: Decimal = points.iter().map(|(_, q)| *q).fold(Decimal::ZERO, |a, b| a.max(b));
+            let max_qty: Decimal = points
+                .iter()
+                .map(|(_, q)| *q)
+                .fold(Decimal::ZERO, |a, b| a.max(b));
             let total_qty: Decimal = points.iter().map(|(_, q)| *q).sum();
             out.push_str(&format!("max_qty: {max_qty}\n"));
             out.push_str(&format!("total_qty_sum: {total_qty}\n"));
@@ -268,7 +268,10 @@ mod tests {
             (5_000_000_i64, dec!(1.0)),
             (6_000_000_i64, dec!(0)),
         ];
-        assert_snapshot!("position_curve__three_buys_two_sells_step_curve", summary(&points));
+        assert_snapshot!(
+            "position_curve__three_buys_two_sells_step_curve",
+            summary(&points)
+        );
     }
 
     /// R1 — unit test: cumulative qty computation from a synthetic fills sequence.
@@ -285,10 +288,22 @@ mod tests {
         }
 
         let fills = vec![
-            Fill { side: Side::Buy, qty: dec!(0.5) },
-            Fill { side: Side::Buy, qty: dec!(0.5) },
-            Fill { side: Side::Sell, qty: dec!(0.3) },
-            Fill { side: Side::Buy, qty: dec!(0.2) },
+            Fill {
+                side: Side::Buy,
+                qty: dec!(0.5),
+            },
+            Fill {
+                side: Side::Buy,
+                qty: dec!(0.5),
+            },
+            Fill {
+                side: Side::Sell,
+                qty: dec!(0.3),
+            },
+            Fill {
+                side: Side::Buy,
+                qty: dec!(0.2),
+            },
         ];
 
         let mut position_qty = Decimal::ZERO;

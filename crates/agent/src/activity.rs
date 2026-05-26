@@ -206,7 +206,10 @@ impl ActivityHandle {
             id: self.id,
             kind: self.kind,
             label: self.label.clone(),
-            phase: ActivityPhase::Tick { current, elapsed_ms },
+            phase: ActivityPhase::Tick {
+                current,
+                elapsed_ms,
+            },
             ts_ms: now_ms(),
         });
     }
@@ -280,7 +283,9 @@ mod activity_types {
             id,
             kind: ActivityKind::YahooPreload,
             label: "test label".to_owned(),
-            phase: ActivityPhase::Start { total_units: Some(100) },
+            phase: ActivityPhase::Start {
+                total_units: Some(100),
+            },
             ts_ms: 1_700_000_000_000,
         };
         let cloned = event.clone();
@@ -291,7 +296,9 @@ mod activity_types {
         // Phase variants don't implement PartialEq — inspect structurally.
         assert!(matches!(
             cloned.phase,
-            ActivityPhase::Start { total_units: Some(100) }
+            ActivityPhase::Start {
+                total_units: Some(100)
+            }
         ));
     }
 
@@ -317,12 +324,7 @@ mod activity_types {
     fn activity_id_atomic_monotonic() {
         let a = ActivityId::next();
         let b = ActivityId::next();
-        assert!(
-            b.0 > a.0,
-            "expected b ({}) > a ({})",
-            b.0,
-            a.0
-        );
+        assert!(b.0 > a.0, "expected b ({}) > a ({})", b.0, a.0);
         // Also verify the underlying counter advanced (not stuck).
         let current = NEXT_ACTIVITY_ID.load(Ordering::Relaxed);
         assert!(current > b.0, "counter must have advanced past b");
@@ -343,7 +345,10 @@ mod activity_types {
         assert!(matches!(start_event.phase, ActivityPhase::Start { .. }));
         let end_event = rx.try_recv().expect("End event expected");
         assert!(
-            matches!(end_event.phase, ActivityPhase::End(ActivityOutcome::Success)),
+            matches!(
+                end_event.phase,
+                ActivityPhase::End(ActivityOutcome::Success)
+            ),
             "expected End(Success), got {:?}",
             end_event.phase
         );
@@ -364,16 +369,12 @@ mod activity_types {
         }
         drop(handle);
 
-        // Drain all events.
+        // Drain all events (clippy::while_let_loop fix 2026-05-26: prefer
+        // `while let Ok(_) = ...` over `loop { match ... }`).
         let mut tick_count = 0usize;
-        loop {
-            match rx.try_recv() {
-                Ok(ev) => {
-                    if matches!(ev.phase, ActivityPhase::Tick { .. }) {
-                        tick_count += 1;
-                    }
-                }
-                Err(_) => break,
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(ev.phase, ActivityPhase::Tick { .. }) {
+                tick_count += 1;
             }
         }
         // At most 11 Tick events (the 1-boundary-flake allowance from tasks.md).
@@ -399,22 +400,20 @@ mod activity_types {
             panic!("simulated panic");
         }));
 
-        // Drain to find the End event.
+        // Drain to find the End event (clippy::while_let_loop fix).
         let mut found_failed = false;
-        loop {
-            match rx.try_recv() {
-                Ok(ev) => {
-                    if let ActivityPhase::End(ActivityOutcome::Failed(ref reason)) = ev.phase {
-                        assert!(
-                            reason.contains("panic"),
-                            "expected 'panic' in reason, got: {reason:?}"
-                        );
-                        found_failed = true;
-                    }
-                }
-                Err(_) => break,
+        while let Ok(ev) = rx.try_recv() {
+            if let ActivityPhase::End(ActivityOutcome::Failed(ref reason)) = ev.phase {
+                assert!(
+                    reason.contains("panic"),
+                    "expected 'panic' in reason, got: {reason:?}"
+                );
+                found_failed = true;
             }
         }
-        assert!(found_failed, "expected a Failed End event from the panicking drop");
+        assert!(
+            found_failed,
+            "expected a Failed End event from the panicking drop"
+        );
     }
 }

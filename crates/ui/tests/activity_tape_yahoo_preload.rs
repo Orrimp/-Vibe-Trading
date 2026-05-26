@@ -110,8 +110,7 @@ fn yahoo_preload_activity_emits_end_failed_on_error() {
     let activity_sender = bus.activity();
     let mut rx = activity_sender.subscribe();
 
-    let handle =
-        activity_sender.start(ActivityKind::YahooPreload, "Yahoo BTCUSDT · H1_2024");
+    let handle = activity_sender.start(ActivityKind::YahooPreload, "Yahoo BTCUSDT · H1_2024");
 
     // Drain the Start event.
     let _ = rx.try_recv().expect("Start event expected");

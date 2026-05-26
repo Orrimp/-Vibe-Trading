@@ -79,7 +79,10 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
 
     if renderable.is_empty() {
         // R2.7 — empty tape: a blank space, no "no activity" label.
-        return Space::new().width(Length::Shrink).height(Length::Shrink).into();
+        return Space::new()
+            .width(Length::Shrink)
+            .height(Length::Shrink)
+            .into();
     }
 
     let visible_count = renderable.len().min(ACTIVITY_TAPE_MAX_VISIBLE);
@@ -87,16 +90,12 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
 
     let fg3 = color::FG_3.current(MODE);
 
-    let mut row = Row::new()
-        .spacing(space::S)
-        .align_y(Alignment::Center);
+    let mut row = Row::new().spacing(space::S).align_y(Alignment::Center);
 
     for state in renderable.iter().take(visible_count) {
         // Determine dot colour and text colour based on activity state.
-        let is_failed = matches!(
-            &state.outcome,
-            Some(ActivityOutcome::Failed(_))
-        ) || state.is_red_held(now);
+        let is_failed =
+            matches!(&state.outcome, Some(ActivityOutcome::Failed(_))) || state.is_red_held(now);
 
         let dot_color = if is_failed {
             color::DOWN_500.current(MODE)
@@ -131,9 +130,7 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
         // Combine label + elapsed into one compact string.
         let label_str = format!("{kind_label} {elapsed}");
 
-        let label = Text::new(label_str)
-            .size(text::MICRO)
-            .color(text_color);
+        let label = Text::new(label_str).size(text::MICRO).color(text_color);
 
         let slot = Row::new()
             .spacing(space::XS)
@@ -141,8 +138,7 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
             .push(dot)
             .push(label);
 
-        let slot_container = Container::new(slot)
-            .width(Length::Fixed(ACTIVITY_SLOT_WIDTH_PX));
+        let slot_container = Container::new(slot).width(Length::Fixed(ACTIVITY_SLOT_WIDTH_PX));
 
         row = row.push(slot_container);
     }
@@ -150,11 +146,10 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
     // ── Overflow chip ──
     if overflow > 0 {
         let chip_str = format!(
-            "{}{}{}", ACTIVITY_TAPE_MORE_PREFIX, overflow, ACTIVITY_TAPE_MORE_SUFFIX
+            "{}{}{}",
+            ACTIVITY_TAPE_MORE_PREFIX, overflow, ACTIVITY_TAPE_MORE_SUFFIX
         );
-        let chip = Text::new(chip_str)
-            .size(text::MICRO)
-            .color(fg3);
+        let chip = Text::new(chip_str).size(text::MICRO).color(fg3);
         row = row.push(chip);
     }
 
@@ -229,11 +224,19 @@ mod tests {
                     s.id.0,
                     s.kind,
                     if s.outcome.is_some() { "some" } else { "none" },
-                    if s.red_hold_until.is_some() { "yes" } else { "no" },
+                    if s.red_hold_until.is_some() {
+                        "yes"
+                    } else {
+                        "no"
+                    },
                 )
             })
             .collect();
-        format!("scenario={label} count={} entries=[{}]", visible.len(), in_flight.join(", "))
+        format!(
+            "scenario={label} count={} entries=[{}]",
+            visible.len(),
+            in_flight.join(", ")
+        )
     }
 
     /// T-D-N6 test 1 — empty tape renders without panic.

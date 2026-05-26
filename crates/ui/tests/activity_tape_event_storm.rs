@@ -82,8 +82,7 @@ fn activity_tape_handles_10k_event_burst_without_lag() {
         // values and tx.send(event)" — we comply. The ring size difference is
         // acknowledged: production (256) might see slightly more lag under a
         // 10 kHz burst but the test verifies the path at near-production load.
-        let (storm_tx, storm_rx) =
-            tokio::sync::broadcast::channel::<ActivityEvent>(512);
+        let (storm_tx, storm_rx) = tokio::sync::broadcast::channel::<ActivityEvent>(512);
 
         // Per-event send timestamps: index = event id. Shared with producer.
         let send_times: Arc<std::sync::Mutex<Vec<Option<Instant>>>> =
@@ -125,8 +124,7 @@ fn activity_tape_handles_10k_event_burst_without_lag() {
         let consumer = tokio::spawn(async move {
             let mut rx = storm_rx;
             let mut received_count = 0usize;
-            let mut receive_times: Vec<(usize, Instant)> =
-                Vec::with_capacity(TOTAL_EVENTS);
+            let mut receive_times: Vec<(usize, Instant)> = Vec::with_capacity(TOTAL_EVENTS);
 
             loop {
                 match rx.recv().await {
@@ -166,9 +164,10 @@ fn activity_tape_handles_10k_event_burst_without_lag() {
         let mut latency_samples: Vec<Duration> = receive_times
             .iter()
             .filter_map(|(idx, recv_t)| {
-                send_guard.get(*idx).and_then(|s| s.as_ref()).map(|send_t| {
-                    recv_t.saturating_duration_since(*send_t)
-                })
+                send_guard
+                    .get(*idx)
+                    .and_then(|s| s.as_ref())
+                    .map(|send_t| recv_t.saturating_duration_since(*send_t))
             })
             .collect();
         drop(send_guard);

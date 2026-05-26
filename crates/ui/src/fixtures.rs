@@ -1148,12 +1148,12 @@ pub fn fake_position_curve_points() -> Vec<(i64, rust_decimal::Decimal)> {
     // 6 bars spaced 1 hour apart starting from a fixed epoch.
     let base_ms = FIXED_EPOCH_SECS * 1_000;
     vec![
-        (base_ms,                  dec!(0)),
-        (base_ms + 3_600_000,      dec!(0.5)),
-        (base_ms + 7_200_000,      dec!(1.0)),
-        (base_ms + 10_800_000,     dec!(1.5)),
-        (base_ms + 14_400_000,     dec!(1.0)),
-        (base_ms + 18_000_000,     dec!(0)),
+        (base_ms, dec!(0)),
+        (base_ms + 3_600_000, dec!(0.5)),
+        (base_ms + 7_200_000, dec!(1.0)),
+        (base_ms + 10_800_000, dec!(1.5)),
+        (base_ms + 14_400_000, dec!(1.0)),
+        (base_ms + 18_000_000, dec!(0)),
     ]
 }
 

@@ -1281,7 +1281,8 @@ arch        = [
   "spec/cockpit-activity-status-bar/feature.md#design",
   "spec/cockpit-training-control/feature.md",                  # cross-feature precedent for status-strip + training_events poll (R4.3)
   "spec/lab-end-to-end-v2/feature.md",                         # cross-feature precedent for Progress channel (R4.2)
-  "spec/lumen-phase-1-foundation",                             # R13 24 px status-bar height contract (R-NR; K6)
+  "spec/lumen-design-adoption/feature.md",                     # R13 24 px status-bar height contract (R-NR; K6) — lumen-phase-1-foundation shipped via the master adoption brief
+  "spec/ui-design-principles.md",                              # Lumen tokens — design system contract (R-NR.3 zero new tokens)
 ]
 crates      = [
   # ARCHITECT M0 (2026-05-25) — paths surfaced from R1-R4 + R-NR in feature.md.

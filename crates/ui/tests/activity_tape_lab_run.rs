@@ -105,7 +105,10 @@ fn lab_run_activity_emits_start_tick_end_success() {
             Err(_) => break,
         }
     }
-    assert!(found_tick, "expected at least one Tick event after handle.tick()");
+    assert!(
+        found_tick,
+        "expected at least one Tick event after handle.tick()"
+    );
 
     // Simulate AppState::update(LabRunCompleted(Ok(_))): drop the handle.
     drop(handle);
@@ -132,7 +135,10 @@ fn lab_run_activity_emits_end_failed_on_error() {
     let activity_sender = bus.activity();
     let mut rx = activity_sender.subscribe();
 
-    let handle = activity_sender.start(ActivityKind::LabRun, "Backtest v1.momentum · XRPUSDT · H2_2024");
+    let handle = activity_sender.start(
+        ActivityKind::LabRun,
+        "Backtest v1.momentum · XRPUSDT · H2_2024",
+    );
 
     // Drain the Start event.
     let _ = rx.try_recv().expect("Start event expected");

@@ -9,10 +9,10 @@
 //! - No string literals — use `crate::strings::*`.
 //! - No hex colors or magic-number `Length::Units(N)` — use `crate::theme::*`.
 
-pub mod agent_feed;
 /// cockpit-activity-status-bar v0.1.0 Wave B (T-D-N6) — activity tape region.
 /// Renders in-flight + failed activities to the left of the server-time field.
 pub mod activity_tape;
+pub mod agent_feed;
 /// cockpit-training-control T-D-N17 — shared axis-rendering helpers.
 /// Tick spacing, label formatting, and coordinate mapping for use by
 /// `widgets::training_plot` and potentially `widgets::chart`.
@@ -71,6 +71,10 @@ pub mod pair_chip;
 /// implemented. Used by `shell::screen_body` for Compare / Memory /
 /// Models / Trail / Settings.
 pub mod placeholder;
+/// lab-polish-round-2 R1 — position-curve stepped-polyline widget for the Lab
+/// screen. Shows base-asset position quantity over time for the active pair.
+/// Mirrors `volume_histogram` structure. Lumen-token'd, anchor-additive.
+pub mod position_curve;
 /// lab-end-to-end-v2 Wave D-4 T-AR-6 / R8 — Determinate progress bar
 /// for the Lab run flow. Lumen-token'd 8px bar with optional label overlay.
 /// Renders indeterminate (30% sentinel) when `progress == None`.
@@ -114,8 +118,4 @@ pub mod training_log;
 /// cockpit-training-control T-D-N12 — loss-curve plot inside Train panel.
 /// Renders (epoch, train_loss, val_loss) series as two lines.
 pub mod training_plot;
-/// lab-polish-round-2 R1 — position-curve stepped-polyline widget for the Lab
-/// screen. Shows base-asset position quantity over time for the active pair.
-/// Mirrors `volume_histogram` structure. Lumen-token'd, anchor-additive.
-pub mod position_curve;
 pub mod volume_histogram;

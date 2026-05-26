@@ -131,9 +131,7 @@ async fn run_with_progress(
         }
     }
 
-    let summary = engine_task
-        .await
-        .expect("engine task must not panic");
+    let summary = engine_task.await.expect("engine task must not panic");
 
     (summary, progress_events)
 }
@@ -197,9 +195,7 @@ async fn smoke_synthetic_short_range() {
     let (result, progress_events) = run_with_progress(cfg).await;
 
     // Step 3: assert at least one progress event with current_bar > 0.
-    let meaningful_progress = progress_events
-        .iter()
-        .any(|p| p.current_bar > 0);
+    let meaningful_progress = progress_events.iter().any(|p| p.current_bar > 0);
     assert!(
         meaningful_progress,
         "must receive at least one LabRunProgress with current_bar > 0; \
@@ -211,10 +207,7 @@ async fn smoke_synthetic_short_range() {
     let summary = result.expect("engine must return Ok for v0.sma × BTCUSDT × Last30d");
 
     // Step 5: dispatch LabRunCompleted and apply binary-side wrapper.
-    ui::state::update(
-        &mut cockpit,
-        Message::LabRunCompleted(Ok(summary.clone())),
-    );
+    ui::state::update(&mut cockpit, Message::LabRunCompleted(Ok(summary.clone())));
     apply_wrapper(&mut cockpit, &summary);
 
     // Step 6: assert post-conditions (closing conditions from the feature spec).
@@ -272,10 +265,7 @@ async fn smoke_synthetic_longer_range() {
     }
 
     let summary = result.expect("engine must return Ok for v0.sma × BTCUSDT × Last90d");
-    ui::state::update(
-        &mut cockpit,
-        Message::LabRunCompleted(Ok(summary.clone())),
-    );
+    ui::state::update(&mut cockpit, Message::LabRunCompleted(Ok(summary.clone())));
     apply_wrapper(&mut cockpit, &summary);
 
     assert!(
@@ -373,10 +363,7 @@ async fn smoke_cancel_mid_run() {
 
     // The cancel error propagates as LabRunCompleted(Err(_)).
     let err_msg = smol_str::SmolStr::new(format!("{}", RunError::Cancelled));
-    ui::state::update(
-        &mut cockpit,
-        Message::LabRunCompleted(Err(err_msg)),
-    );
+    ui::state::update(&mut cockpit, Message::LabRunCompleted(Err(err_msg)));
 
     // Post-cancel: inflight cleared, last_run_report NOT rotated (R2.3).
     assert!(
@@ -413,7 +400,8 @@ async fn smoke_yahoo_cache_hit() {
         // The test may run with cwd = workspace root or cwd = crates/ui.
         // Try both.
         let direct = probe_path.exists();
-        let via_workspace = std::path::Path::new("../../data/yahoo/BTC-USD/1d/2024/01.parquet").exists();
+        let via_workspace =
+            std::path::Path::new("../../data/yahoo/BTC-USD/1d/2024/01.parquet").exists();
         direct || via_workspace
     };
 
@@ -525,10 +513,7 @@ async fn smoke_yahoo_cache_hit() {
         position_curve: Vec::new(),
     };
     ui::state::update(&mut cockpit, Message::LabRunRequested);
-    ui::state::update(
-        &mut cockpit,
-        Message::LabRunCompleted(Ok(summary.clone())),
-    );
+    ui::state::update(&mut cockpit, Message::LabRunCompleted(Ok(summary.clone())));
     apply_wrapper(&mut cockpit, &summary);
 
     assert!(

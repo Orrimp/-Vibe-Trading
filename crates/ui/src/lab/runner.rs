@@ -628,8 +628,7 @@ pub fn spawn_lab_run(
                         // but lives entirely within this async closure (single task).
                         let yahoo_label = format!(
                             "Yahoo {} · {}",
-                            cfg_for_preload.symbol,
-                            cfg_for_preload.range_label
+                            cfg_for_preload.symbol, cfg_for_preload.range_label
                         );
                         let yahoo_activity_handle = activity_sender_for_closure
                             .as_ref()

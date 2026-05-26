@@ -218,10 +218,7 @@ async fn lab_progress_recipe_stream_end_to_end() {
     }
 
     // Verify: Arc now holds None (receiver was taken).
-    let still_held = rx_arc
-        .lock()
-        .unwrap()
-        .is_none();
+    let still_held = rx_arc.lock().unwrap().is_none();
     assert!(
         still_held,
         "After Recipe::stream() calls take(), the Arc<Mutex<Option<_>>> must hold None"

@@ -22,8 +22,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use iced::advanced::widget::Tree;
 use iced::Element;
+use iced::advanced::widget::Tree;
 
 use ui::state::Message;
 use ui::theme::ThemeMode;
@@ -139,8 +139,7 @@ fn view_determinate_no_label_light_has_no_children() {
 fn label_present_vs_absent_differ_in_child_count() {
     let with_label: Element<'static, Message> =
         progress_bar::view(Some(0.5), Some("360 / 720 bars · 1.5s"), ThemeMode::Dark);
-    let without_label: Element<'static, Message> =
-        progress_bar::view(None, None, ThemeMode::Dark);
+    let without_label: Element<'static, Message> = progress_bar::view(None, None, ThemeMode::Dark);
 
     let tree_with = Tree::new(with_label.as_widget());
     let tree_without = Tree::new(without_label.as_widget());

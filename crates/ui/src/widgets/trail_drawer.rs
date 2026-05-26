@@ -137,12 +137,18 @@ pub fn view<'a>(
                 .push(kv(TRAIL_SIGNAL_QTY_LABEL, intended_qty.as_str(), mode))
                 .push(kv(
                     TRAIL_SIGNAL_PRICE_LABEL,
-                    intended_price.as_deref().unwrap_or(TRAIL_SIGNAL_PRICE_MARKET),
+                    intended_price
+                        .as_deref()
+                        .unwrap_or(TRAIL_SIGNAL_PRICE_MARKET),
                     mode,
                 ))
                 .push(kv(
                     TRAIL_SIGNAL_CLAMPED_LABEL,
-                    if *was_clamped { TRAIL_BOOL_YES } else { TRAIL_BOOL_NO },
+                    if *was_clamped {
+                        TRAIL_BOOL_YES
+                    } else {
+                        TRAIL_BOOL_NO
+                    },
                     mode,
                 ));
             if let Some(reason) = clamp_reason {
@@ -165,11 +171,23 @@ pub fn view<'a>(
                         .color(color::FG_1.current(mode)),
                 )
                 .push(kv(TRAIL_FORECAST_DIRECTION_LABEL, direction.as_str(), mode))
-                .push(kv(TRAIL_FORECAST_CONFIDENCE_LABEL, confidence.as_str(), mode))
-                .push(kv(TRAIL_FORECAST_MODEL_LABEL, model_revision.as_str(), mode))
+                .push(kv(
+                    TRAIL_FORECAST_CONFIDENCE_LABEL,
+                    confidence.as_str(),
+                    mode,
+                ))
+                .push(kv(
+                    TRAIL_FORECAST_MODEL_LABEL,
+                    model_revision.as_str(),
+                    mode,
+                ))
                 .push(kv(
                     TRAIL_FORECAST_CACHE_HIT_LABEL,
-                    if *cache_hit { TRAIL_BOOL_YES } else { TRAIL_BOOL_NO },
+                    if *cache_hit {
+                        TRAIL_BOOL_YES
+                    } else {
+                        TRAIL_BOOL_NO
+                    },
                     mode,
                 ))
                 .into()

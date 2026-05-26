@@ -65,9 +65,9 @@ impl ActivityState {
     /// `true` while the row is in the Q5=(a) red hold window.
     #[must_use]
     pub fn is_red_held(&self, now: Instant) -> bool {
-        self.red_hold_until
-            .map(|deadline| now < deadline)
-            .unwrap_or(false)
+        // clippy::map_unwrap_or fix 2026-05-26 — `is_some_and` is the idiomatic
+        // shape for "Some(x) AND predicate(x)".
+        self.red_hold_until.is_some_and(|deadline| now < deadline)
     }
 }
 
@@ -181,8 +181,8 @@ impl ActivityTape {
             if s.outcome.is_none() {
                 return true;
             }
-            // Keep if still within the red-hold window
-            s.red_hold_until.map(|d| now < d).unwrap_or(false)
+            // Keep if still within the red-hold window (clippy::map_unwrap_or fix).
+            s.red_hold_until.is_some_and(|d| now < d)
         });
     }
 
@@ -313,7 +313,10 @@ mod tests {
             expected_min
         );
         // Not yet expired — we are well within the 3-second window.
-        assert!(state.is_red_held(Instant::now()), "row should still be red-held");
+        assert!(
+            state.is_red_held(Instant::now()),
+            "row should still be red-held"
+        );
     }
 
     /// T-D-N4 test 5 — `purge` removes rows whose hold window has passed.

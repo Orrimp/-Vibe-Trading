@@ -171,9 +171,7 @@ fn every_overlay_has_end_to_end_divergence_test() {
             }
             Err(reason) => {
                 if KNOWN_UNCOVERED.contains(&stem.as_str()) {
-                    warnings.push(format!(
-                        "[ALLOWLIST-WARNING] {stem}.rs — {reason}"
-                    ));
+                    warnings.push(format!("[ALLOWLIST-WARNING] {stem}.rs — {reason}"));
                 } else {
                     hard_failures.push(format!(
                         "[HARD-FAIL] {stem}.rs\n\
@@ -190,9 +188,7 @@ fn every_overlay_has_end_to_end_divergence_test() {
     if !warnings.is_empty() {
         eprintln!();
         eprintln!("=== overlay_hygiene_gate ALLOWLIST WARNINGS ===");
-        eprintln!(
-            "These overlays are in KNOWN_UNCOVERED and are warned, not failed."
-        );
+        eprintln!("These overlays are in KNOWN_UNCOVERED and are warned, not failed.");
         eprintln!("Remove the entry from KNOWN_UNCOVERED once you write the test.");
         eprintln!();
         for w in &warnings {
@@ -217,8 +213,10 @@ fn every_overlay_has_end_to_end_divergence_test() {
             "Cross-reference: \
              spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md"
         );
-        eprintln!("Pattern reference: \
-             crates/strategy/tests/vol_targeting_overlay_end_to_end.rs");
+        eprintln!(
+            "Pattern reference: \
+             crates/strategy/tests/vol_targeting_overlay_end_to_end.rs"
+        );
         eprintln!("=== end ALLOWLIST WARNINGS ===");
         eprintln!();
     }
@@ -256,9 +254,7 @@ fn every_overlay_has_end_to_end_divergence_test() {
             msg.push_str(f);
             msg.push('\n');
         }
-        msg.push_str(
-            "\n============================================================\n",
-        );
+        msg.push_str("\n============================================================\n");
         panic!("{msg}");
     }
 }

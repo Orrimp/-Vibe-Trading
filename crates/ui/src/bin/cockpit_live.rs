@@ -1438,11 +1438,9 @@ impl AppState {
         // Subscribes to the activity broadcast channel and emits
         // `Message::ActivityEventReceived` messages. Always active (no salt /
         // no per-run gating — the channel is open for the process lifetime).
-        let activity_sub = iced::advanced::subscription::from_recipe(
-            ui::live::ActivityRecipe {
-                bus: std::sync::Arc::clone(&self.bus),
-            },
-        );
+        let activity_sub = iced::advanced::subscription::from_recipe(ui::live::ActivityRecipe {
+            bus: std::sync::Arc::clone(&self.bus),
+        });
 
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![

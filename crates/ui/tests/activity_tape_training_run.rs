@@ -31,8 +31,8 @@ use std::time::Duration;
 use agent::EventBus;
 use agent::activity::{ActivityOutcome, ActivityPhase};
 use agent::config::BusConfig;
-use ui::lab::trainer::{TrainingConfig, cancellation_pair, spawn_training_run};
 use ui::lab::trainer::TrainingLogLine;
+use ui::lab::trainer::{TrainingConfig, cancellation_pair, spawn_training_run};
 
 /// Drain activity events from a broadcast receiver.
 fn drain_activity(

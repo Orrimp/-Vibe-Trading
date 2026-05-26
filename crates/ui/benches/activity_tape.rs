@@ -82,8 +82,7 @@ fn activity_handle_tick_throttle(c: &mut Criterion) {
 /// Target per feature.md § D3 Layer 2: < 50 µs total for 100 events.
 /// Expressed per-event: < 500 ns per event P99.
 fn activity_recipe_fan_out(c: &mut Criterion) {
-    let (tx, mut rx) =
-        tokio::sync::broadcast::channel::<ActivityEvent>(256);
+    let (tx, mut rx) = tokio::sync::broadcast::channel::<ActivityEvent>(256);
 
     let id = ActivityId(1);
     // Pre-allocate the label to avoid measuring String alloc in the hot loop.
@@ -213,21 +212,18 @@ fn build_tape_with_n_inflight(n: usize) -> ActivityTape {
             id: ActivityId(i),
             kind: ActivityKind::YahooPreload,
             label: format!("bench activity {i}"),
-            phase: ActivityPhase::End(agent::activity::ActivityOutcome::Failed(
-                "bench".to_owned(),
-            )),
+            phase: ActivityPhase::End(agent::activity::ActivityOutcome::Failed("bench".to_owned())),
             ts_ms: 0,
         });
     }
 
     // Verify all n rows are red-held so they will render.
     let now = Instant::now();
-    let renderable = tape
-        .visible()
-        .iter()
-        .filter(|s| s.is_red_held(now))
-        .count();
-    assert_eq!(renderable, n, "expected {n} red-held rows, got {renderable}");
+    let renderable = tape.visible().iter().filter(|s| s.is_red_held(now)).count();
+    assert_eq!(
+        renderable, n,
+        "expected {n} red-held rows, got {renderable}"
+    );
 
     tape
 }

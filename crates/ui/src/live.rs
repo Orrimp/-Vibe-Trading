@@ -921,11 +921,10 @@ mod tests {
         // Collect 3 messages.
         let mut received = Vec::new();
         for _ in 0..3 {
-            let msg =
-                tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
-                    .await
-                    .expect("within 2s")
-                    .expect("stream yielded");
+            let msg = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+                .await
+                .expect("within 2s")
+                .expect("stream yielded");
             received.push(msg);
         }
 

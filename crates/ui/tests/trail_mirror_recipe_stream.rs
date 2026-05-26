@@ -126,9 +126,9 @@ async fn stream_impl_none_rx_yields_nothing() {
         Ok(None) => {
             // Stream closed without yielding — correct Closed path.
         }
-        Ok(Some(m)) => panic!(
-            "stream_impl with a closed sender must yield nothing, but got: {m:?}"
-        ),
+        Ok(Some(m)) => {
+            panic!("stream_impl with a closed sender must yield nothing, but got: {m:?}")
+        }
         Err(_timeout) => {
             // Timeout = stream still open but never yielded. Also acceptable:
             // the Closed branch may not fire until the first poll in some

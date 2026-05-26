@@ -125,9 +125,10 @@ async fn assert_progress_emitted(cfg: ScenarioConfig) {
     let (_handle, cancel_rx) = cancellation_pair();
     let (progress_tx, mut progress_rx) = progress_pair();
 
-    let handle = tokio::spawn(async move {
-        backtest::engine::run_scenario(cfg, cancel_rx, progress_tx).await
-    });
+    let handle =
+        tokio::spawn(
+            async move { backtest::engine::run_scenario(cfg, cancel_rx, progress_tx).await },
+        );
 
     let mut received: Vec<backtest::progress::Progress> = Vec::new();
     while let Some(p) = progress_rx.recv().await {
