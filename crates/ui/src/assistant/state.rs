@@ -18,7 +18,7 @@
 //! ## No `strategy` crate dep
 //!
 //! [`LlmForecastView`] mirrors the relevant render-time fields of
-//! `crates/strategy::llm_forecaster::types::LlmForecast`. Mirroring (vs
+//! `crates/trader::llm_forecaster::types::LlmForecast`. Mirroring (vs
 //! re-exporting) preserves the architecture rule "ui depends only on
 //! core + audit + reflection" — the same rule that drives
 //! `state::StrategiesConfig` (the UI-local mirror of

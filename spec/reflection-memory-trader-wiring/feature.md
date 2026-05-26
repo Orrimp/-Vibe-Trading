@@ -660,6 +660,52 @@ No LLM costs (pure refactor; no model calls).
 
 **Gate severity:** P0 (red on main; CI/test failure blocks PRs).
 
+## Implementation
+
+Developer M-DEV completed 2026-05-26. All 12 T-D-N* tasks executed in
+Waves A → B → C → D per tasks.md plan.
+
+### Files created
+
+- `crates/trader/Cargo.toml` — new workspace member with path-deps:
+  `trading_core`, `strategy`, `reflection`, `llm`, `audit`, `cost`,
+  plus dev-deps matching the moved test suites.
+- `crates/trader/src/lib.rs` — pub re-exports of all public symbols.
+- `crates/trader/src/registry_arm.rs` — `register_llm_forecaster_v3`
+  free function (ADR-0041 § D4).
+
+### Files moved (git mv, blame preserved)
+
+**Source files (9):**
+`crates/strategy/src/llm_forecaster/{mod,trait_def,types,canonicalize,strategy,anthropic_impl,prompt,tool_schema,verdict}.rs`
+→ `crates/trader/src/llm_forecaster/`
+
+**Bin (1):**
+`crates/strategy/src/bin/llm_verdict.rs` → `crates/trader/src/bin/llm_verdict.rs`
+
+**Integration tests (10):**
+`crates/strategy/tests/llm_forecaster_{audit_tick,budget_gate,cost_cap_short_circuit,cost_event,neutrality,payload,signal_mapping,wiremock,wiremock_wave_e}.rs`
++ `llm_verdict_priority_tree.rs` → `crates/trader/tests/`
+
+### Key import rewrites
+
+- `use crate::Strategy` → `use strategy::Strategy` in moved `strategy.rs`
+- `strategy::llm_forecaster::*` → `trader::llm_forecaster::*` in all 10 test files + bin
+- `crates/strategy::llm_forecaster` doc-comment → `crates/trader::llm_forecaster`
+  in `crates/ui/src/assistant/state.rs`
+
+### Gate outcomes
+
+| Gate | Result |
+|------|--------|
+| `t1809_no_strategy_crate_consumes_reflection_retrieval` | GREEN (was RED) |
+| `t1810_trader_crate_owns_reflection_retrieval` (new) | GREEN |
+| `cargo build --workspace --all-targets` | GREEN |
+| `scripts/verify_anchors.sh` | ANCHORS PASS (34/34) |
+| Trader integration tests | 153 passed, 0 failed, 2 ignored |
+| Strategy dep on reflection | REMOVED (cargo metadata confirms) |
+| Cycle check (strategy→trader) | ABSENT |
+
 ## Changelog
 
 - 2026-05-25 (analyst): authored v0.1.0 — recovery brief for R8.1
@@ -667,3 +713,5 @@ No LLM costs (pure refactor; no model calls).
   K1-K8 + H1-H5 + Q1-Q7 + 10-item non-regression contract. Trace
   row REQ-REFLECTION-TRADER-001 opened at `proposed` state. HANDOFF
   → architect for M-T1.
+- 2026-05-26 (developer): M-DEV complete per tasks.md T-D-N1..T-D-N12.
+  All gates green. HANDOFF → tester for M-FINAL.

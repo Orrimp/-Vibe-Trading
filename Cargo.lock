@@ -7192,37 +7192,26 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "strategy"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "async-trait",
  "audit",
  "candle-core",
- "clap",
- "cost",
  "criterion",
  "features",
  "forecast",
- "llm",
  "parking_lot",
  "pollster 0.3.0",
  "proptest",
- "reflection",
- "rusqlite",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
  "serde_json",
  "sha2",
  "smol_str 0.3.6",
- "sqlx",
  "thiserror 2.0.18",
  "time",
  "tokio",
  "toml 0.8.23",
  "tracing",
- "tracing-subscriber",
  "trading_core",
- "uuid",
- "wiremock",
 ]
 
 [[package]]
@@ -7930,6 +7919,40 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "trader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "audit",
+ "clap",
+ "cost",
+ "criterion",
+ "llm",
+ "parking_lot",
+ "pollster 0.3.0",
+ "proptest",
+ "reflection",
+ "rusqlite",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "sha2",
+ "smol_str 0.3.6",
+ "sqlx",
+ "strategy",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "trading_core",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]

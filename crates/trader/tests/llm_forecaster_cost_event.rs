@@ -20,7 +20,7 @@ use trading_core::{Bar, CostError, Price, Quantity, Symbol, Timeframe, Timestamp
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use strategy::llm_forecaster::{ForecastContext, LlmForecaster, LlmForecasterImpl};
+use trader::llm_forecaster::{ForecastContext, LlmForecaster, LlmForecasterImpl};
 
 // ── CaptureCostSink ───────────────────────────────────────────────────────────
 

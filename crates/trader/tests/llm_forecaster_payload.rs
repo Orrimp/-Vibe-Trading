@@ -30,7 +30,7 @@ use time::OffsetDateTime;
 use trading_core::{Bar, Price, Quantity, SignalKind, Symbol, Timeframe, Timestamp, Venue};
 
 use reflection::NullReflectionStore;
-use strategy::llm_forecaster::{
+use trader::llm_forecaster::{
     Confidence, ForecastContext, Horizon, LessonCardRef, LlmForecast, LlmForecasterConfig,
     LlmForecasterStrategy, Rating, StubForecaster, UnknownRating, canonicalize,
 };
@@ -39,7 +39,7 @@ use strategy::llm_forecaster::{
 /// `NullReflectionStore` and empty `btc_closes`.
 fn make_strategy(
     cfg: LlmForecasterConfig,
-    forecaster: Arc<dyn strategy::llm_forecaster::LlmForecaster>,
+    forecaster: Arc<dyn trader::llm_forecaster::LlmForecaster>,
 ) -> LlmForecasterStrategy {
     LlmForecasterStrategy::new(
         cfg,
@@ -380,7 +380,7 @@ fn config_default_is_disabled() {
 #[test]
 fn config_default_model_id_matches_constant() {
     let cfg = LlmForecasterConfig::default();
-    assert_eq!(cfg.model_id, strategy::llm_forecaster::DEFAULT_MODEL_ID);
+    assert_eq!(cfg.model_id, trader::llm_forecaster::DEFAULT_MODEL_ID);
 }
 
 // ── StubForecaster ────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ fn stub_forecaster_produces_configured_rating() {
     let ctx = minimal_context("BTCUSDT", 1_700_000_000);
 
     let result = pollster::block_on(
-        <StubForecaster as strategy::llm_forecaster::LlmForecaster>::forecast(&*stub, ctx),
+        <StubForecaster as trader::llm_forecaster::LlmForecaster>::forecast(&*stub, ctx),
     );
     let forecast = result.expect("stub must not error");
     assert_eq!(forecast.rating, Rating::StrongBuy);
@@ -408,7 +408,7 @@ fn stub_forecaster_default_returns_hold() {
     let ctx = minimal_context("ETHUSDT", 1_700_000_000);
 
     let result = pollster::block_on(
-        <StubForecaster as strategy::llm_forecaster::LlmForecaster>::forecast(&*stub, ctx),
+        <StubForecaster as trader::llm_forecaster::LlmForecaster>::forecast(&*stub, ctx),
     );
     let forecast = result.expect("stub must not error");
     assert_eq!(forecast.rating, Rating::Hold);

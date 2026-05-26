@@ -8,14 +8,14 @@
 //! follow-up brief replaces `post_mortem_analyst::generate_card`'s
 //! body behind the same name.
 //!
-//! ## Q4 = report-only
+//! ## Q4 = recovered (ADR-0041)
 //!
-//! The trader's `Strategy` trait does not consume retrieval; the only
-//! caller of [`retrieve_top_k`] is the operator success report's
-//! memory-highlights renderer.  Trader-side wiring is a follow-up
-//! brief named `reflection-memory-trader-wiring`; the negative-confirm
-//! test at `crates/reflection/tests/no_strategy_caller.rs` guards the
-//! invariant.
+//! The trader crate's `LlmForecasterStrategy` is the first consumer
+//! of [`retrieve_top_k`] (ADR-0041 D2 — moved from `crates/strategy/`
+//! per the `reflection-memory-trader-wiring` brief).  The
+//! `no_strategy_caller.rs` defensive grep continues to enforce that the
+//! strategy crate stays consumer-free (t1809); a sibling positive
+//! assertion (t1810) confirms trader owns the retrieval call.
 //!
 //! ## Q5 — periodic distillation deferred
 //!

@@ -30,7 +30,7 @@ use time::OffsetDateTime;
 use trading_core::{Bar, Price, Quantity, SignalKind, Symbol, Timeframe, Timestamp, Venue};
 
 use strategy::Strategy;
-use strategy::llm_forecaster::{
+use trader::llm_forecaster::{
     LlmForecaster, LlmForecasterConfig, LlmForecasterStrategy, Rating, StubForecaster,
 };
 
@@ -255,20 +255,20 @@ fn fires_exactly_once_per_fire_every_n_bars_window() {
 
         async fn forecast(
             &self,
-            ctx: strategy::llm_forecaster::ForecastContext,
+            ctx: trader::llm_forecaster::ForecastContext,
         ) -> Result<
-            strategy::llm_forecaster::LlmForecast,
-            strategy::llm_forecaster::LlmForecasterError,
+            trader::llm_forecaster::LlmForecast,
+            trader::llm_forecaster::LlmForecasterError,
         > {
             self.count.fetch_add(1, Ordering::SeqCst);
             let trace =
                 "stub trace for counting test — exactly 50 chars for validation".to_string();
-            Ok(strategy::llm_forecaster::LlmForecast::new(
+            Ok(trader::llm_forecaster::LlmForecast::new(
                 ctx.symbol,
                 ctx.now,
                 Rating::Hold,
-                strategy::llm_forecaster::Confidence::new(dec!(0.5)),
-                strategy::llm_forecaster::Horizon::OneHour,
+                trader::llm_forecaster::Confidence::new(dec!(0.5)),
+                trader::llm_forecaster::Horizon::OneHour,
                 trace,
                 Vec::new(),
                 None,
@@ -330,7 +330,7 @@ fn disabled_strategy_emits_no_signals() {
 /// This is the pure no-panic path test for Wave C analytical integration.
 #[test]
 fn from_runtime_with_null_store_produces_empty_lessons() {
-    use strategy::llm_forecaster::ForecastContext;
+    use trader::llm_forecaster::ForecastContext;
 
     let bar = make_bar("BTCUSDT", 1_700_000_000);
     let store = NullReflectionStore;
@@ -340,7 +340,7 @@ fn from_runtime_with_null_store_produces_empty_lessons() {
         &store,
         &[], // empty btc_closes → Chop fallback
         Vec::new(),
-        strategy::llm_forecaster::DEFAULT_MODEL_ID,
+        trader::llm_forecaster::DEFAULT_MODEL_ID,
         Vec::new(),
     ))
     .expect("from_runtime with NullReflectionStore must not fail");
@@ -357,7 +357,7 @@ fn from_runtime_with_null_store_produces_empty_lessons() {
 /// two calls with the same inputs and NullReflectionStore.
 #[test]
 fn from_runtime_request_hash_is_deterministic() {
-    use strategy::llm_forecaster::ForecastContext;
+    use trader::llm_forecaster::ForecastContext;
 
     let bar = make_bar("ETHUSDT", 1_700_000_000);
     let store = NullReflectionStore;
@@ -367,7 +367,7 @@ fn from_runtime_request_hash_is_deterministic() {
         &store,
         &[],
         Vec::new(),
-        strategy::llm_forecaster::DEFAULT_MODEL_ID,
+        trader::llm_forecaster::DEFAULT_MODEL_ID,
         vec![make_bar("ETHUSDT", 1_699_996_400)],
     ))
     .expect("from_runtime must not fail");
@@ -377,7 +377,7 @@ fn from_runtime_request_hash_is_deterministic() {
         &store,
         &[],
         Vec::new(),
-        strategy::llm_forecaster::DEFAULT_MODEL_ID,
+        trader::llm_forecaster::DEFAULT_MODEL_ID,
         vec![make_bar("ETHUSDT", 1_699_996_400)],
     ))
     .expect("from_runtime must not fail (second call)");

@@ -25,7 +25,7 @@ use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use strategy::llm_forecaster::{ForecastContext, LlmForecaster, LlmForecasterImpl};
+use trader::llm_forecaster::{ForecastContext, LlmForecaster, LlmForecasterImpl};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

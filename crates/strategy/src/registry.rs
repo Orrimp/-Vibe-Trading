@@ -97,52 +97,21 @@ impl StrategyRegistry {
     ///
     /// Supported `kind` values:
     /// - `"sma_crossover"` — SMA crossover strategy (Wave A).
-    /// - `"llm_forecaster_v3"` — LLM-based directional forecasting (Wave C).
-    ///   When `enabled = false` (the default per R9.3), the strategy is loaded
-    ///   but returns no signals. When `enabled = true`, it uses a `StubForecaster`
-    ///   with a `NullReflectionStore` — the production wiring of a real
-    ///   `LlmForecasterImpl` + live `ReflectionStore` is done by the application
-    ///   binary via `StrategyRegistry::register` (not this TOML loader).
+    ///
+    /// Note: `"llm_forecaster_v3"` is now a trader-layer strategy and is
+    /// registered via `trader::register_llm_forecaster_v3` from the application
+    /// binary (ADR-0041 § D4). Passing it here results in the unknown-kind
+    /// warning and a skip.
     ///
     /// Every load is journaled.
     pub fn load_from_toml(&self, entries: HashMap<String, StrategyTomlEntry>) {
         for (name, entry) in entries {
             if !entry.enabled {
-                // For `llm_forecaster_v3`, still log the skip so the operator
-                // can see the config is recognised; other strategies skip quietly.
-                if entry.kind == "llm_forecaster_v3" {
-                    tracing::info!(
-                        kind = "llm_forecaster_v3",
-                        name = %name,
-                        "llm_forecaster_v3 loaded but enabled=false (R9.3 default-disabled)"
-                    );
-                }
                 continue;
             }
             let strategy: Box<dyn Strategy> = match entry.kind.as_str() {
                 "sma_crossover" => {
                     Box::new(crate::SmaCrossover::new(entry.fast_len, entry.slow_len))
-                }
-                // Wave C: register llm_forecaster_v3.
-                // Uses StubForecaster + NullReflectionStore for the TOML-loader
-                // path. The real LlmForecasterImpl wiring is done by the
-                // application binary via StrategyRegistry::register.
-                "llm_forecaster_v3" => {
-                    use crate::llm_forecaster::{
-                        LlmForecasterConfig, LlmForecasterStrategy, StubForecaster,
-                    };
-                    use reflection::NullReflectionStore;
-                    let cfg = LlmForecasterConfig {
-                        enabled: true,
-                        ..LlmForecasterConfig::default()
-                    };
-                    Box::new(LlmForecasterStrategy::new(
-                        cfg,
-                        std::sync::Arc::new(StubForecaster::default()),
-                        std::sync::Arc::new(NullReflectionStore),
-                        Vec::new(), // btc_closes: empty → regime = Chop fallback
-                        None,       // rt: None → pollster::block_on in test path
-                    ))
                 }
                 other => {
                     tracing::warn!(kind = other, name = %name, "unknown strategy kind — skipping");

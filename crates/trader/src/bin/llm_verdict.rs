@@ -7,7 +7,7 @@
 //! ## Usage
 //!
 //! ```bash
-//! cargo run -p strategy --bin llm_verdict -- \
+//! cargo run -p trader --bin llm_verdict -- \
 //!     --audit-db data/audit.db \
 //!     --window-bars 1000 \
 //!     --out-dir spec/v3-llm-forecaster/reports/
@@ -50,7 +50,7 @@ use clap::Parser;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use strategy::llm_forecaster::verdict::{LlmForecastRow, aggregate_rows, classify_l};
+use trader::llm_forecaster::verdict::{LlmForecastRow, aggregate_rows, classify_l};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 

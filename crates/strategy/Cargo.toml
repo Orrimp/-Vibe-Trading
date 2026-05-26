@@ -21,91 +21,35 @@ candle-core = { version = "0.9", optional = true }
 trading_core = { path = "../core" }
 features = { path = "../features" }
 audit = { path = "../audit" }
-# v3-llm-forecaster Wave A: LlmProvider trait + LlmError + reflection types
-llm = { path = "../llm" }
-reflection = { path = "../reflection" }
-# v3-llm-forecaster Wave B: AgentRole + LlmTier for ChatRequest construction
-cost = { path = "../cost" }
-uuid.workspace = true
-# v3-llm-forecaster: tokio Handle for block_on in on_bar sync path
-tokio = { workspace = true, features = ["rt"] }
-# v3-llm-forecaster: pollster for test-mode block_on without a tokio handle
-pollster.workspace = true
+# NOTE: llm, reflection, cost, uuid, tokio, pollster deps REMOVED per ADR-0041 D1.
+# LlmForecasterStrategy (which used these) moved to crates/trader/.
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 tracing.workspace = true
 rust_decimal.workspace = true
-async-trait.workspace = true
+# NOTE: async-trait REMOVED per ADR-0041 D1 (only used in llm_forecaster, now in trader).
 parking_lot.workspace = true
 smol_str.workspace = true
 sha2.workspace = true
 
 time.workspace = true
 rust_decimal_macros.workspace = true
-# Wave G: llm_verdict bin — direct DB reads from llm_forecast_entries
-rusqlite = { version = "0.32", features = ["bundled"] }
-clap = { workspace = true }
-anyhow = { workspace = true }
-tracing-subscriber = { workspace = true }
+# NOTE: rusqlite, clap, anyhow, tracing-subscriber REMOVED per ADR-0041 D1.
+# These were only used by the llm_verdict bin + llm_forecaster module, now in trader.
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "rt-multi-thread", "macros"] }
 proptest.workspace = true
 criterion.workspace = true
 time.workspace = true
-uuid.workspace = true
 pollster.workspace = true
-# v3-llm-forecaster Wave B: wiremock for LlmForecasterImpl integration tests
-wiremock.workspace = true
-cost = { path = "../cost" }
-# v3-llm-forecaster Wave E: sqlx for direct DB assertions in Wave E integration tests
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+# NOTE: uuid, wiremock, cost(dev), sqlx REMOVED per ADR-0041 D1
+# (only used by llm_forecaster integration tests, now in crates/trader/).
 
-# Wave G: L0-L4 verdict report bin (ADR-0039)
-[[bin]]
-name = "llm_verdict"
-path = "src/bin/llm_verdict.rs"
-
-[[test]]
-name = "llm_forecaster_wiremock"
-path = "tests/llm_forecaster_wiremock.rs"
-
-[[test]]
-name = "llm_forecaster_signal_mapping"
-path = "tests/llm_forecaster_signal_mapping.rs"
-
-# Wave E tests
-[[test]]
-name = "llm_forecaster_cost_event"
-path = "tests/llm_forecaster_cost_event.rs"
-
-[[test]]
-name = "llm_forecaster_audit_tick"
-path = "tests/llm_forecaster_audit_tick.rs"
-
-[[test]]
-name = "llm_forecaster_budget_gate"
-path = "tests/llm_forecaster_budget_gate.rs"
-
-[[test]]
-name = "llm_forecaster_wiremock_wave_e"
-path = "tests/llm_forecaster_wiremock_wave_e.rs"
-
-[[test]]
-name = "llm_forecaster_cost_cap_short_circuit"
-path = "tests/llm_forecaster_cost_cap_short_circuit.rs"
-
-# Wave G: L0-L4 verdict priority-tree integration tests (ADR-0039)
-[[test]]
-name = "llm_verdict_priority_tree"
-path = "tests/llm_verdict_priority_tree.rs"
-
-# Wave G: LLM-forecaster registry-add neutrality gate (R10.2)
-[[test]]
-name = "llm_forecaster_neutrality"
-path = "tests/llm_forecaster_neutrality.rs"
+# NOTE: llm_verdict bin + all llm_forecaster_* + llm_verdict_priority_tree tests
+# MOVED to crates/trader/ per ADR-0041 D2. Entries removed from strategy here.
 
 [[test]]
 name = "tcn_overlay_tuned_builder"

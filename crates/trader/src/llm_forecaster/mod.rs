@@ -27,8 +27,8 @@
 //!
 //! ## Strategy ID
 //!
-//! `"llm_forecaster_v3"` — registered in `crates/strategy/src/registry.rs`
-//! at Wave C. Opt-in via:
+//! `"llm_forecaster_v3"` — registered via `trader::register_llm_forecaster_v3`
+//! per ADR-0041 § D4. Opt-in via:
 //!
 //! ```toml
 //! # config/agent.toml

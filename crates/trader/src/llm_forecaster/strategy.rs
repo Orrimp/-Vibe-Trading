@@ -49,7 +49,7 @@ use std::sync::Arc;
 use rust_decimal::Decimal;
 use trading_core::{Bar, Signal, SignalEvidence, StrategyId, Symbol, Tick, Timestamp};
 
-use crate::Strategy;
+use strategy::Strategy;
 
 use super::trait_def::LlmForecaster;
 use super::types::{

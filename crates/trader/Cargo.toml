@@ -1,0 +1,113 @@
+[package]
+name = "trader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# ADR-0041 D1: the trader crate is the runtime decision-synthesis layer.
+# It is the legitimate consumer of `reflection` retrieval (R8.1 / layering rule).
+# Dependency graph: trader → strategy (Strategy trait) + reflection + llm + audit
+
+[dependencies]
+# ADR-0041 D3 inverse-API: trader depends on strategy (for the Strategy trait);
+# strategy does NOT depend on trader.
+strategy = { path = "../strategy" }
+# The reflection crate is now LEGAL here (moved from strategy per ADR-0041 D2).
+reflection = { path = "../reflection" }
+# LlmProvider trait + Budgeted/Recording/Replay decorators
+llm = { path = "../llm" }
+# JournalEntry emission for kind = "llm_forecast"
+audit = { path = "../audit" }
+# Bar, Signal, Symbol, Timestamp, StrategyId, SignalKind, SignalEvidence, Tick
+trading_core = { path = "../core" }
+# Cost budgeting for LLM calls
+cost = { path = "../cost" }
+
+# Numerics
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+
+# Async / trait machinery
+tokio = { workspace = true, features = ["rt"] }
+pollster = { workspace = true }
+async-trait = { workspace = true }
+
+# Serialization + hash
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true }
+
+# Error handling + logging
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+# DB access for the llm_verdict bin
+rusqlite = { version = "0.32", features = ["bundled"] }
+clap = { workspace = true }
+
+# Sync primitives
+parking_lot = { workspace = true }
+smol_str = { workspace = true }
+
+# Time
+time = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "rt-multi-thread", "macros"] }
+proptest = { workspace = true }
+criterion = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true }
+pollster = { workspace = true }
+# Integration tests: wiremock for LlmForecasterImpl
+wiremock = { workspace = true }
+cost = { path = "../cost" }
+# Wave E integration tests: sqlx for direct DB assertions
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+
+# Wave G: L0-L4 verdict report bin (ADR-0039) — moved from strategy
+[[bin]]
+name = "llm_verdict"
+path = "src/bin/llm_verdict.rs"
+
+[[test]]
+name = "llm_forecaster_wiremock"
+path = "tests/llm_forecaster_wiremock.rs"
+
+[[test]]
+name = "llm_forecaster_signal_mapping"
+path = "tests/llm_forecaster_signal_mapping.rs"
+
+# Wave E tests
+[[test]]
+name = "llm_forecaster_cost_event"
+path = "tests/llm_forecaster_cost_event.rs"
+
+[[test]]
+name = "llm_forecaster_audit_tick"
+path = "tests/llm_forecaster_audit_tick.rs"
+
+[[test]]
+name = "llm_forecaster_budget_gate"
+path = "tests/llm_forecaster_budget_gate.rs"
+
+[[test]]
+name = "llm_forecaster_wiremock_wave_e"
+path = "tests/llm_forecaster_wiremock_wave_e.rs"
+
+[[test]]
+name = "llm_forecaster_cost_cap_short_circuit"
+path = "tests/llm_forecaster_cost_cap_short_circuit.rs"
+
+# Wave G: L0-L4 verdict priority-tree integration tests (ADR-0039)
+[[test]]
+name = "llm_verdict_priority_tree"
+path = "tests/llm_verdict_priority_tree.rs"
+
+# Wave G: LLM-forecaster registry-add neutrality gate (R10.2)
+[[test]]
+name = "llm_forecaster_neutrality"
+path = "tests/llm_forecaster_neutrality.rs"

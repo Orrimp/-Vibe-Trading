@@ -15,7 +15,7 @@
 //!
 //! `<verdict>_<positive|negative>_<scenario>` e.g. `l1_positive_hold_dominated`.
 
-use strategy::llm_forecaster::verdict::{LVerdict, LlmForecastRow, aggregate_rows, classify_l};
+use trader::llm_forecaster::verdict::{LVerdict, LlmForecastRow, aggregate_rows, classify_l};
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

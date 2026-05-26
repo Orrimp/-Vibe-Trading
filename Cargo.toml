@@ -8,6 +8,7 @@ members = [
     "crates/cost",
     "crates/risk",
     "crates/strategy",
+    "crates/trader",
     "crates/exec",
     "crates/backtest",
     "crates/audit",

@@ -1,7 +1,7 @@
 ---
 slug: reflection-memory-trader-wiring
 status: in-progress
-owner: architect
+owner: developer
 updated: 2026-05-26
 ---
 
@@ -113,7 +113,7 @@ _owner: developer. Wave-parallel where noted._
 
 > Sequential within wave. T-D-N1 must land + green before T-D-N2.
 
-- [ ] **T-D-N1** — Create `crates/trader/` skeleton.
+- [x] **T-D-N1** — Create `crates/trader/` skeleton.
   - Owner: developer • Milestone: M-DEV • Depends on: T-AR-10 • Blocks: T-D-N2..T-D-N9
   - File:line: `crates/trader/Cargo.toml:1` (new, ~30 LoC — package
     block + `[dependencies]` per [ADR-0041 § D1](../architecture/adr/0041-trader-crate-split.md):
@@ -134,7 +134,7 @@ _owner: developer. Wave-parallel where noted._
   - Test cmd: `cargo build -p trader`
   - Expected output: `Finished` (no compile errors; warnings about
     unused-dep are acceptable until Wave B lands the sources).
-- [ ] **T-D-N2** — Drop `reflection` path-dep from strategy crate.
+- [x] **T-D-N2** — Drop `reflection` path-dep from strategy crate.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N1 • Blocks: T-D-N3
   - File:line: `crates/strategy/Cargo.toml` — remove the line
     `reflection = { path = "../reflection" }` from `[dependencies]`
@@ -162,7 +162,7 @@ _owner: developer. Wave-parallel where noted._
 > Imports rewrite in the same commit as the moves so reviewers see
 > one self-contained refactor commit.
 
-- [ ] **T-D-N3** — `git mv` the 9 source files.
+- [x] **T-D-N3** — `git mv` the 9 source files.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N2 • Blocks: T-D-N4..T-D-N6
   - File:line:
     `git mv crates/strategy/src/llm_forecaster/mod.rs            crates/trader/src/llm_forecaster/mod.rs`
@@ -189,7 +189,7 @@ _owner: developer. Wave-parallel where noted._
   - Test cmd: `ls crates/trader/src/llm_forecaster/`
   - Expected output: 9 file names (the moved set above) +
     `crates/strategy/src/llm_forecaster/` directory is gone.
-- [ ] **T-D-N4** — `git mv` the strategy-crate bin.
+- [x] **T-D-N4** — `git mv` the strategy-crate bin.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N3 • Blocks: T-D-N5
   - File:line:
     `git mv crates/strategy/src/bin/llm_verdict.rs crates/trader/src/bin/llm_verdict.rs`.
@@ -207,7 +207,7 @@ _owner: developer. Wave-parallel where noted._
   - Test cmd: `ls crates/trader/src/bin/llm_verdict.rs`
   - Expected output: file exists; `cargo build -p trader --bin
     llm_verdict` green after T-D-N6 lands the import rewrites.
-- [ ] **T-D-N5** — `git mv` the 10 integration test suites + move
+- [x] **T-D-N5** — `git mv` the 10 integration test suites + move
       `[[test]]` entries in Cargo.toml.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N3 • Blocks: T-D-N6
   - File:line:
@@ -233,7 +233,7 @@ _owner: developer. Wave-parallel where noted._
   - Test cmd: `ls crates/trader/tests/ | grep -E '^llm_(forecaster|verdict)' | wc -l`
   - Expected output: `10` (exactly 10 moved test files; no
     leftovers in `crates/strategy/tests/`).
-- [ ] **T-D-N6** — Integration-test import-path rewrite + intra-crate
+- [x] **T-D-N6** — Integration-test import-path rewrite + intra-crate
       `use crate::` audit in moved sources.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N5 • Blocks: T-D-N7
   - File:line: across all 10 moved test files + the moved bin +
@@ -263,7 +263,7 @@ _owner: developer. Wave-parallel where noted._
   - Test cmd: `cargo build -p trader --tests` followed by
     `grep -r 'strategy::llm_forecaster' crates/ --include='*.rs'`
   - Expected output: build green; grep returns ZERO matches.
-- [ ] **T-D-N7** — Registry-arm extraction per ADR-0041 § D4.
+- [x] **T-D-N7** — Registry-arm extraction per ADR-0041 § D4.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N6 • Blocks: T-D-N8
   - File:line:
     1. Remove the `"llm_forecaster_v3"` match arm from
@@ -307,7 +307,7 @@ _owner: developer. Wave-parallel where noted._
 > work can start as soon as the source files are in their trader
 > home (post T-D-N3).
 
-- [ ] **T-D-N8** — Re-export the public surface from
+- [x] **T-D-N8** — Re-export the public surface from
       `crates/trader/src/lib.rs`.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N6 • Blocks: T-D-N10
   - File:line: `crates/trader/src/lib.rs` — add:
@@ -338,7 +338,7 @@ _owner: developer. Wave-parallel where noted._
     gate at M-FINAL T-T-7 via `cargo-semver-checks` if available).
   - Expected output: non-zero `pub` symbol count;
     `cargo build -p trader` green.
-- [ ] **T-D-N9** — UI assistant doc-comment + crate Cargo.toml
+- [x] **T-D-N9** — UI assistant doc-comment + crate Cargo.toml
       polish.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N8 • Blocks: T-D-N10
   - File:line:
@@ -366,7 +366,7 @@ _owner: developer. Wave-parallel where noted._
 
 > Sequential within wave. T-D-N10 must PASS before T-D-N11 lands.
 
-- [ ] **T-D-N10** — Verify gate-test t1809 flips RED → GREEN.
+- [x] **T-D-N10** — Verify gate-test t1809 flips RED → GREEN.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N8, T-D-N9 • Blocks: T-D-N11
   - File:line: no source change — observation only.
     `crates/reflection/tests/no_strategy_caller.rs::t1809_no_strategy_crate_consumes_reflection_retrieval`.
@@ -381,7 +381,7 @@ _owner: developer. Wave-parallel where noted._
   - Expected output: `1 passed; 0 failed; 0 ignored; 0 filtered out;`
     + the test name `t1809_no_strategy_crate_consumes_reflection_retrieval`
     in the success list.
-- [ ] **T-D-N11** — Add positive-assertion sibling test t1810.
+- [x] **T-D-N11** — Add positive-assertion sibling test t1810.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N10 • Blocks: T-D-N12
   - File:line: append to
     `crates/reflection/tests/no_strategy_caller.rs` (do NOT split
@@ -429,7 +429,7 @@ _owner: developer. Wave-parallel where noted._
   - Test cmd: `cargo nextest run -p reflection --test no_strategy_caller -E 'test(t1810)'`
   - Expected output: `1 passed; 0 failed; 0 ignored; 0 filtered out;`
     + the test name `t1810_trader_crate_owns_reflection_retrieval`.
-- [ ] **T-D-N12** — Workspace re-green + anchor verification +
+- [x] **T-D-N12** — Workspace re-green + anchor verification +
       handoff to tester.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N1..T-D-N11 • Blocks: M-FINAL
   - File:line: no source change — composite gate.
@@ -582,3 +582,14 @@ _owner: presenter. Runs only after VERDICT → PASS._
   files / 10 test suites / 1 bin — not 8 / 13). Cost re-estimated
   to 3.5-4.5 d. Zero T-OD operator-decide deltas. HANDOFF →
   developer for M-DEV.
+- 2026-05-26 (developer): M-DEV complete. Waves A-D executed
+  sequentially per plan. Created `crates/trader/` (Cargo.toml + lib.rs
+  + registry_arm.rs). git-mv'd 9 source files + 1 bin + 10 integration
+  tests from strategy → trader. Rewrote `use crate::Strategy` →
+  `use strategy::Strategy` in moved strategy.rs; rewrote all 10 test
+  files from `strategy::llm_forecaster` → `trader::llm_forecaster`.
+  Removed registry arm + reflection dep from strategy crate.
+  Added t1810 positive-assertion sibling to no_strategy_caller.rs.
+  Updated reflection/src/lib.rs Q4 doc-comment + ui/assistant/state.rs
+  doc-comment. Gates: t1809 RED→GREEN, t1810 GREEN, 34/34 anchors PASS,
+  cargo build --workspace --all-targets GREEN. HANDOFF → tester.

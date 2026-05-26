@@ -11,12 +11,12 @@
 //!   - `with_garch_vol_kill_switch` (R6.b secondary — kill-switch overlay).
 //!   - `with_garch_vol_strategy` (R6.c tertiary — standalone mean-reversion).
 //!
-//! v3.0.0-llm-forecaster adds `LlmForecasterStrategy` (Wave A foundation);
-//! see `crates/strategy/src/llm_forecaster/` for the module layout.
+//! Note: `LlmForecasterStrategy` has moved to `crates/trader/src/llm_forecaster/`
+//! per ADR-0041 D2. The trader crate is the legitimate consumer of reflection
+//! retrieval (R8.1 layering rule). Use `trader::LlmForecasterStrategy` instead.
 
 pub mod composed;
 pub mod cross_sectional;
-pub mod llm_forecaster;
 pub mod pairs;
 pub mod patchtst_overlay_momentum;
 pub mod patchtst_sync;
