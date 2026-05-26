@@ -584,6 +584,12 @@ fn main() -> Result<()> {
         lab_activity_handle: None,
         #[cfg(feature = "live")]
         training_activity_handle: None,
+        // cockpit-training-pressed-wiring v0.1.0 T-D-N1.
+        // Training log channel: None until TrainingPressed fires.
+        #[cfg(feature = "live")]
+        training_log_rx: None,
+        #[cfg(feature = "live")]
+        training_log_recipe_salt: 0,
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -838,6 +844,22 @@ struct AppState {
     /// `None` when no training run is in flight.
     #[cfg(feature = "live")]
     training_activity_handle: Option<agent::ActivityHandle>,
+
+    // ── cockpit-training-pressed-wiring v0.1.0 T-D-N1 ────────────────────────
+    /// In-flight training log receiver. `Some` while training is in-flight;
+    /// `None` otherwise. The `TrainingLogRecipe` takes ownership of the
+    /// receiver in `stream()` via `.take()` — same pattern as `lab_progress_rx`.
+    #[cfg(feature = "live")]
+    training_log_rx: Option<
+        std::sync::Arc<
+            std::sync::Mutex<Option<std::sync::mpsc::Receiver<ui::lab::trainer::TrainingLogLine>>>,
+        >,
+    >,
+
+    /// Salt bumped on every `TrainingPressed` so `TrainingLogRecipe::hash`
+    /// returns a fresh identity per run (iced de-duplicates subscriptions by hash).
+    #[cfg(feature = "live")]
+    training_log_recipe_salt: u64,
 }
 
 // ── Manual Clone for AppState ─────────────────────────────────────────────────
@@ -867,6 +889,11 @@ impl Clone for AppState {
             lab_activity_handle: None,
             #[cfg(feature = "live")]
             training_activity_handle: None,
+            // Training log receiver is not cloned — clone only happens at cold-boot.
+            #[cfg(feature = "live")]
+            training_log_rx: None,
+            #[cfg(feature = "live")]
+            training_log_recipe_salt: self.training_log_recipe_salt,
         }
     }
 }
@@ -995,12 +1022,11 @@ impl AppState {
             _ => None,
         };
 
-        // cockpit-activity-status-bar T-D-N9 — capture training lifecycle events.
-        // Note: `TrainingPressed` spawning is NOT yet wired in cockpit_live.rs
-        // (the training subprocess dispatch is handled by other means); the
-        // activity handle is returned from `spawn_training_run` when the caller
-        // is ready to wire it. The lifecycle management below operates on
-        // `training_activity_handle` which is populated externally.
+        // cockpit-activity-status-bar T-D-N9 / cockpit-training-pressed-wiring T-D-N1 —
+        // capture training lifecycle events. `TrainingPressed` is intercepted BELOW
+        // (before delegation) to spawn the subprocess and populate the activity handle.
+        // The lifecycle management below (cancel/exit/tick) operates on
+        // `training_activity_handle` which is populated by the interception.
         #[cfg(feature = "live")]
         let training_cancel_pressed = matches!(&msg, Message::TrainingCancelPressed);
         #[cfg(feature = "live")]
@@ -1028,6 +1054,76 @@ impl AppState {
         } else {
             None
         };
+
+        // ── cockpit-training-pressed-wiring v0.1.0 T-D-N1 — TrainingPressed intercept ──
+        // Intercept BEFORE ui::state::update so the binary-side I/O wiring (spawn,
+        // channel setup, handle storage) runs before the pure-state no-op arm.
+        // Mirrors the LabRunRequested intercept pattern at lines ~1314-1362.
+        #[cfg(feature = "live")]
+        if matches!(msg, Message::TrainingPressed) {
+            // Short-circuit if already in-flight (button is disabled per parent R3.4,
+            // but defensive check matches the LabRunRequested precedent).
+            if self.cockpit.lab_state.training_inflight.is_none() {
+                use ui::lab::trainer::{
+                    TrainingLogLine, cancellation_pair, default_training_config, spawn_training_run,
+                };
+
+                // Build TrainingConfig from workspace defaults (R3 / Q1=(a)).
+                let cfg = default_training_config();
+
+                // Build cancellation pair (mirrors LabRunRequested precedent).
+                let (cancel_handle, cancel_rx) = cancellation_pair();
+
+                // Build the log line channel (256-slot per R1.1 step 3).
+                let (line_tx, line_rx) = std::sync::mpsc::sync_channel::<TrainingLogLine>(256);
+
+                // Stash the receiver so the TrainingLogRecipe can take it in stream().
+                let line_rx_arc = std::sync::Arc::new(std::sync::Mutex::new(Some(line_rx)));
+                self.training_log_rx = Some(std::sync::Arc::clone(&line_rx_arc));
+                // Bump salt so iced sees a new recipe identity per TrainingPressed.
+                self.training_log_recipe_salt = self.training_log_recipe_salt.wrapping_add(1);
+
+                // Call spawn_training_run — synchronous (uses rt_handle.block_on internally).
+                match spawn_training_run(
+                    Some(&self.rt_handle),
+                    &cfg,
+                    cancel_rx,
+                    line_tx,
+                    Some(self.bus.activity()),
+                ) {
+                    Ok((training_handle, activity_handle)) => {
+                        self.cockpit.lab_state.training_inflight = Some(training_handle);
+                        self.training_activity_handle = activity_handle;
+                        self.cockpit.lab_state.training_cancel = Some(cancel_handle);
+                    }
+                    Err(e) => {
+                        // Surface the error via toast (R1.1 step 7 / R-NR.4).
+                        self.cockpit.toast_message = Some(smol_str::SmolStr::new(format!(
+                            "Training failed to launch: {e}"
+                        )));
+                        // Reset the log channel — recipe goes idle.
+                        self.training_log_rx = None;
+                    }
+                }
+            }
+        }
+
+        // ── cockpit-training-pressed-wiring v0.1.0 T-D-N1 — TrainingExited clear ──
+        // Clear training-specific resources when the subprocess exits. The Wave C
+        // T-D-N9 lifecycle arm above already handles `training_activity_handle`;
+        // here we additionally clear the log channel so the recipe goes idle.
+        #[cfg(feature = "live")]
+        if matches!(msg, Message::TrainingExited(_)) {
+            self.training_log_rx = None;
+            self.cockpit.lab_state.training_cancel = None;
+        }
+
+        // ── cockpit-training-pressed-wiring v0.1.0 T-D-N1 — TrainingCancelPressed clear ──
+        #[cfg(feature = "live")]
+        if matches!(msg, Message::TrainingCancelPressed) {
+            self.training_log_rx = None;
+            self.cockpit.lab_state.training_cancel = None;
+        }
 
         ui::state::update(&mut self.cockpit, msg);
 
@@ -1420,6 +1516,19 @@ impl AppState {
             bus: std::sync::Arc::clone(&self.bus),
         });
 
+        // cockpit-training-pressed-wiring v0.1.0 T-D-N4 — TrainingLogRecipe subscription.
+        // Active only while a training run is in-flight and the log channel is open.
+        // Salt-bumped per TrainingPressed so iced sees a fresh recipe each run.
+        let training_log_sub = if let Some(rx) = &self.training_log_rx {
+            iced::advanced::subscription::from_recipe(ui::lab::training_log::TrainingLogRecipe {
+                rt_handle: self.rt_handle.clone(),
+                rx: std::sync::Arc::clone(rx),
+                salt: self.training_log_recipe_salt,
+            })
+        } else {
+            iced::Subscription::none()
+        };
+
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![
                 bus_sub,
@@ -1427,6 +1536,7 @@ impl AppState {
                 trail_sub,
                 progress_sub,
                 activity_sub,
+                training_log_sub,
                 iced::event::listen_with(|event, _status, _window| match event {
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
@@ -1442,6 +1552,7 @@ impl AppState {
                 trail_sub,
                 progress_sub,
                 activity_sub,
+                training_log_sub,
             ])
         }
     }

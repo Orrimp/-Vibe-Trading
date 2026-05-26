@@ -33,6 +33,9 @@ pub mod progress;
 pub mod runner;
 pub mod state;
 pub mod trainer;
+/// cockpit-training-pressed-wiring v0.1.0 T-D-N3 — TrainingLogRecipe subscription.
+/// Streams TrainingLogLine events from std-mpsc into the iced update loop.
+pub mod training_log;
 /// cockpit-training-control T-D-N11 — 1 Hz audit-DB poller subscription.
 /// Gated behind `live` because it requires the `audit` crate + `async-stream`.
 #[cfg(feature = "live")]

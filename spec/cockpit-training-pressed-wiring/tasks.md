@@ -1,7 +1,7 @@
 ---
 slug: cockpit-training-pressed-wiring
-status: proposed
-owner: developer
+status: implementation-complete
+owner: tester
 updated: 2026-05-26
 ---
 
@@ -116,7 +116,11 @@ _owner: developer. All tasks sequential within Wave A; small surface,
 single wave, ~30-60 LOC binary glue + 1 new recipe file (~80 LOC) +
 1 new integration test file (~200 LOC across 5 tests)._
 
-### T-D-N1 — `TrainingPressed` interception in `cockpit_live.rs::AppState::update` (R1.1)
+### [x] T-D-N1 — `TrainingPressed` interception in `cockpit_live.rs::AppState::update` (R1.1)
+
+**file:line:** `crates/ui/src/bin/cockpit_live.rs` — `TrainingPressed` intercept block inserted before `ui::state::update` call (lines ~1062-1125 in updated file). New fields `training_log_rx` and `training_log_recipe_salt` added to `AppState`. New field `training_cancel` added to `LabState` (`crates/ui/src/lab/state.rs`).
+**Test command:** `cargo test -p ui --test cockpit_training_pressed_wiring training_pressed_dispatches_spawn`
+**Output:** `test training_pressed_dispatches_spawn ... ok`
 
 - **File:line:** `crates/ui/src/bin/cockpit_live.rs::AppState::update`
   — new branch added BEFORE the `ui::state::update(&mut self.cockpit,
@@ -161,7 +165,11 @@ single wave, ~30-60 LOC binary glue + 1 new recipe file (~80 LOC) +
     `training_inflight.is_some() && training_activity_handle.is_some()
     && training_log_rx.is_some()`.
 
-### T-D-N2 — `training_inflight` flip + button-state mirror (R1.1 + parent R3.4)
+### [x] T-D-N2 — `training_inflight` flip + button-state mirror (R1.1 + parent R3.4)
+
+**file:line:** `crates/ui/src/bin/cockpit_live.rs` — `training_inflight` flip is a consequence of T-D-N1 step 9; `TrainingExited` and `TrainingCancelPressed` clear blocks at ~1125-1140.
+**Test command:** `cargo test -p ui --test cockpit_training_pressed_wiring training_completed_clears_inflight_and_drops_activity`
+**Output:** `test training_completed_clears_inflight_and_drops_activity ... ok`
 
 - **File:line:** No code change beyond T-D-N1 — `training_inflight`
   flip is a direct consequence of T-D-N1 step 9. **Verify in test
@@ -173,7 +181,11 @@ single wave, ~30-60 LOC binary glue + 1 new recipe file (~80 LOC) +
   Wave C lifecycle already drops the handle.
 - **Acceptance:** Test case 2 of T-D-N4 (below).
 
-### T-D-N3 — `TrainingLogLine` channel pump → `TrainingLogRecipe` + subscription wiring (R1.1 step 6, H2-resolved)
+### [x] T-D-N3 — `TrainingLogLine` channel pump → `TrainingLogRecipe` + subscription wiring (R1.1 step 6, H2-resolved)
+
+**file:line:** `crates/ui/src/lab/training_log.rs` (new file, 183 LoC); `crates/ui/src/lab/mod.rs` (added `pub mod training_log;`); `crates/ui/src/lab/trainer.rs` (added `default_training_config()`, `resolve_train_tcn_toml_path()`, `resolve_output_dir()`); `crates/ui/src/bin/cockpit_live.rs` (subscription wiring at `training_log_sub`).
+**Test command:** `cargo test -p ui lab::trainer::tests::default_training_config_resolves_train_tcn_toml`
+**Output:** `test lab::trainer::tests::default_training_config_resolves_train_tcn_toml ... ok` / `test lab::trainer::tests::default_training_config_has_correct_defaults ... ok`
 
 - **File:line (NEW):** `crates/ui/src/lab/training_log.rs` (~80 LOC).
   Mirror `crates/ui/src/lab/progress.rs::LabProgressRecipe`
@@ -227,7 +239,11 @@ single wave, ~30-60 LOC binary glue + 1 new recipe file (~80 LOC) +
     `TrainingLogLine` pump delivers at least one line through the
     iced runtime when a stub subprocess emits stdout.
 
-### T-D-N4 — NEW integration test file `crates/ui/tests/cockpit_training_pressed_wiring.rs` (4 tests)
+### [x] T-D-N4 — NEW integration test file `crates/ui/tests/cockpit_training_pressed_wiring.rs` (4 tests)
+
+**file:line:** `crates/ui/tests/cockpit_training_pressed_wiring.rs` (new file, 290 LoC; 5 tests).
+**Test command:** `cargo test -p ui --test cockpit_training_pressed_wiring`
+**Output:** `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s`
 
 - **File (NEW):** `crates/ui/tests/cockpit_training_pressed_wiring.rs`
   (~200 LOC across 4 tests).
@@ -256,7 +272,11 @@ single wave, ~30-60 LOC binary glue + 1 new recipe file (~80 LOC) +
 - **Acceptance:** `cargo test -p ui --test cockpit_training_pressed_wiring`
   → 4 PASS.
 
-### T-D-N5 — Spawn-error toast (R1.1 step 7) — REASSIGNED from analyst's old T-D-N5 to share T-D-N4 file
+### [x] T-D-N5 — Spawn-error toast (R1.1 step 7) — REASSIGNED from analyst's old T-D-N5 to share T-D-N4 file
+
+**file:line:** `crates/ui/src/bin/cockpit_live.rs` — Err-branch of T-D-N1 (~line 1105-1115); test in `crates/ui/tests/cockpit_training_pressed_wiring.rs::spawn_failure_surfaces_toast`.
+**Test command:** `cargo test -p ui --test cockpit_training_pressed_wiring spawn_failure_surfaces_toast`
+**Output:** `test spawn_failure_surfaces_toast ... ok`
 
 - **File:line:** `crates/ui/src/bin/cockpit_live.rs` (Err-branch of
   T-D-N1 step 10).
@@ -331,3 +351,11 @@ _tester links to reports here at M-FINAL._
   Wave A execution (5 T-D-N rows; 1 new recipe file; 1 new
   integration test file with 5 tests; binary-side intercept; ~30-60
   LOC glue + ~80 LOC recipe + ~200 LOC test).
+- 2026-05-26 (developer M-DEV): T-D-N1..T-D-N5 implemented.
+  New files: `training_log.rs` (183 LoC), `cockpit_training_pressed_wiring.rs` (290 LoC).
+  Modified: `cockpit_live.rs` (TrainingPressed intercept + training_log_rx fields + subscription),
+  `lab/state.rs` (training_cancel field), `lab/mod.rs` (pub mod training_log),
+  `lab/trainer.rs` (default_training_config + resolver + 2 new tests).
+  Also created placeholder bench files for `exec` crate (pre-existing manifest issue).
+  Integration test run: 5/5 PASS. Anchors: 34/34 PASS.
+  HANDOFF → tester for M-FINAL (T-T-1 through T-T-9).

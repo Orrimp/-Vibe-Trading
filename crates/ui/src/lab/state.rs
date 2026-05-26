@@ -235,6 +235,17 @@ pub struct LabState {
     #[allow(dead_code)]
     pub run_cancel: Option<backtest::cancel::RunCancelHandle>,
 
+    // ── cockpit-training-pressed-wiring v0.1.0 T-D-N1 ────────────────────────
+    /// In-flight training subprocess cancellation handle. `Some` while training
+    /// is running; `None` otherwise. Dropping the handle closes the cancel
+    /// channel. The SIGKILL itself is fired by `TrainingHandle::drop` when
+    /// `training_inflight` is dropped.
+    ///
+    /// Populated by the binary-side `cockpit_live.rs::update` wrapper at
+    /// `TrainingPressed` and cleared on `TrainingExited` / `TrainingCancelPressed`.
+    #[allow(dead_code)]
+    pub training_cancel: Option<crate::lab::trainer::RunCancelHandle>,
+
     // ── Wave D-4 — Progress (lab-end-to-end-v2 T-D4.6 / R9) ───────────────
     /// Most-recent progress event from the in-flight backtest. `None` when
     /// no run is in-flight or the engine hasn't emitted yet.
@@ -276,6 +287,8 @@ impl Clone for LabState {
             run_cancel: None,
             // Progress is NOT cloned — the clone starts clean.
             run_progress: None,
+            // Training cancel handle is NOT cloned.
+            training_cancel: None,
         }
     }
 }
@@ -332,6 +345,7 @@ impl Default for LabState {
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,
+            training_cancel: None,
         }
     }
 }
@@ -370,6 +384,7 @@ impl LabState {
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,
+            training_cancel: None,
         }
     }
 }

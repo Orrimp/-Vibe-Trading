@@ -141,6 +141,99 @@ pub fn resolve_train_tcn_path() -> PathBuf {
     PathBuf::from("train_tcn")
 }
 
+// ── Default config resolver (R3 — cockpit-training-pressed-wiring T-D-N3) ────
+
+/// Build a `TrainingConfig` from the canonical workspace defaults.
+///
+/// - `config_path`: resolved by walking up from `current_dir` to find
+///   `crates/forecast/train_tcn.toml`. Falls back to the literal path
+///   if the walk fails. Emits a `tracing::warn!` on fallback (T-AR-3).
+/// - `binary_path`: resolved via `resolve_train_tcn_path()` (D10 three-tier).
+/// - `output_dir`: `<workspace>/target/training_checkpoints/<timestamp>`.
+///   Isolated by timestamp so successive runs don't clobber each other (R3.3).
+/// - `dry_run = false`, `epochs = None`, `scenario = None`, `audit_db = None`
+///   per analyst R3.5-R3.6 and R3.4.
+#[must_use]
+pub fn default_training_config() -> TrainingConfig {
+    let config_path = resolve_train_tcn_toml_path();
+    let binary_path = resolve_train_tcn_path();
+    let output_dir = resolve_output_dir();
+    TrainingConfig {
+        binary_path,
+        config_path,
+        output_dir,
+        dry_run: false,
+        epochs: None,
+        scenario: None,
+        audit_db: None,
+    }
+}
+
+/// Resolve the `crates/forecast/train_tcn.toml` config path.
+///
+/// Walks up from `current_dir` looking for a directory that contains the
+/// `crates/forecast/train_tcn.toml` sub-path (same pattern as
+/// `resolve_train_tcn_path` tier 2). Falls back to the literal relative
+/// path with a `tracing::warn!` if the walk exhausts without finding it.
+#[must_use]
+pub fn resolve_train_tcn_toml_path() -> std::path::PathBuf {
+    const RELATIVE: &str = "crates/forecast/train_tcn.toml";
+
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut probe = cwd.as_path();
+        loop {
+            let candidate = probe.join(RELATIVE);
+            if candidate.exists() {
+                return candidate;
+            }
+            match probe.parent() {
+                Some(p) => probe = p,
+                None => break,
+            }
+        }
+    }
+
+    tracing::warn!(
+        path = RELATIVE,
+        "resolve_train_tcn_toml_path: workspace walk failed — falling back to literal path"
+    );
+    std::path::PathBuf::from(RELATIVE)
+}
+
+/// Resolve the output directory for a new training run.
+///
+/// Returns `<workspace-root>/target/training_checkpoints/<timestamp>` where
+/// `<workspace-root>` is the first parent of `current_dir` that contains a
+/// `target/` directory (same walk as tier 2 of `resolve_train_tcn_path`).
+/// Falls back to `target/training_checkpoints/<timestamp>` if the walk fails.
+#[must_use]
+fn resolve_output_dir() -> std::path::PathBuf {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Timestamp for isolation (run-varying — does NOT affect determinism
+    // because this is the live binary, not the backtest harness).
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dir_name = format!("training_checkpoints/{ts}");
+
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut probe = cwd.as_path();
+        loop {
+            let target = probe.join("target");
+            if target.exists() && target.is_dir() {
+                return target.join(&dir_name);
+            }
+            match probe.parent() {
+                Some(p) => probe = p,
+                None => break,
+            }
+        }
+    }
+
+    std::path::PathBuf::from("target").join(dir_name)
+}
+
 // ── Spawn ──────────────────────────────────────────────────────────────────────
 
 /// Spawn `train_tcn` as a subprocess and wire its stdout/stderr into the
@@ -445,5 +538,43 @@ mod tests {
                 "non-live build must return Err for training"
             );
         }
+    }
+
+    /// T-D-N3 — `default_training_config` resolves `crates/forecast/train_tcn.toml`.
+    ///
+    /// Asserts that `resolve_train_tcn_toml_path()` returns a path that exists on
+    /// disk and ends with `crates/forecast/train_tcn.toml`.  This test pins the
+    /// workspace-relative config path so CI catches a moved file immediately.
+    #[test]
+    fn default_training_config_resolves_train_tcn_toml() {
+        let path = resolve_train_tcn_toml_path();
+        assert!(
+            path.exists(),
+            "resolve_train_tcn_toml_path must return a path that exists on disk; got: {}",
+            path.display()
+        );
+        let path_str = path.to_string_lossy();
+        assert!(
+            path_str.ends_with("crates/forecast/train_tcn.toml"),
+            "resolved path must end with crates/forecast/train_tcn.toml; got: {path_str}"
+        );
+    }
+
+    /// T-D-N3 — `default_training_config` produces a valid `TrainingConfig`.
+    ///
+    /// Asserts the defaults match the R3 requirements: dry_run=false, epochs=None,
+    /// scenario=None, audit_db=None.
+    #[test]
+    fn default_training_config_has_correct_defaults() {
+        let cfg = default_training_config();
+        assert!(!cfg.dry_run, "dry_run must be false (R3.5)");
+        assert!(cfg.epochs.is_none(), "epochs must be None (R3.6)");
+        assert!(cfg.scenario.is_none(), "scenario must be None (R3.6)");
+        assert!(cfg.audit_db.is_none(), "audit_db must be None (R3.4)");
+        let output_str = cfg.output_dir.to_string_lossy();
+        assert!(
+            output_str.contains("training_checkpoints"),
+            "output_dir must contain 'training_checkpoints' (R3.3); got: {output_str}"
+        );
     }
 }

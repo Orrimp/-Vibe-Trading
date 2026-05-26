@@ -400,6 +400,42 @@ roundtrip.
   (2 tests) — proves the downstream consumer works; this brief proves
   the upstream producer (button press) works.
 
+## Implementation
+
+Implemented 2026-05-26 by developer (M-DEV Wave A).
+
+### Files created
+
+- `crates/ui/src/lab/training_log.rs` — `TrainingLogRecipe` (183 LoC).
+  Mirrors `LabProgressRecipe` symbol-for-symbol with std-mpsc → `tokio::task::spawn_blocking`
+  bridge (H2 resolution per T-AR-1). Gated on `#[cfg(feature = "live")]`.
+- `crates/ui/tests/cockpit_training_pressed_wiring.rs` — 5 integration tests (290 LoC).
+- `crates/exec/benches/latency_slippage.rs` — placeholder bench (pre-existing manifest issue fix).
+- `crates/exec/benches/throughput_with_sim.rs` — placeholder bench (pre-existing manifest issue fix).
+
+### Files modified
+
+- `crates/ui/src/bin/cockpit_live.rs` — `TrainingPressed` interception block added before
+  `ui::state::update` delegation. New `AppState` fields: `training_log_rx`, `training_log_recipe_salt`.
+  `TrainingLogRecipe` added to `subscription()`. `TrainingExited` / `TrainingCancelPressed` clear blocks.
+- `crates/ui/src/lab/state.rs` — `training_cancel: Option<RunCancelHandle>` field added to `LabState`
+  (+ all constructors: `Clone` impl, `Default`, `with_selection`).
+- `crates/ui/src/lab/mod.rs` — `pub mod training_log;` added.
+- `crates/ui/src/lab/trainer.rs` — `default_training_config()`, `resolve_train_tcn_toml_path()`,
+  `resolve_output_dir()` functions added. Two new unit tests: `default_training_config_resolves_train_tcn_toml`
+  and `default_training_config_has_correct_defaults`.
+
+### Test results (developer verification)
+
+- `cargo test -p ui --test cockpit_training_pressed_wiring` → 5/5 PASS (0.31s)
+- `bash scripts/verify_anchors.sh` → ANCHORS PASS (34/34)
+- `cargo build -p ui --tests` → green (exit 0)
+
+### Deviations from spec
+
+None. Architecture matches T-AR-1 (Recipe pattern, not Task::stream). H2 PARTIALLY FALSIFIED
+confirmed correct — `TrainingLogRecipe` uses `spawn_blocking` bridge per architect resolution.
+
 ## Changelog
 
 - 2026-05-26 (analyst): authored v0.1.0 draft. R1-R4 + R-NR.1-9 +
