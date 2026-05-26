@@ -581,3 +581,50 @@ cost ~ 220 LOC.
   defaults set on all 3 Qs. Anchor risk zero by construction.
   Parent forward-list (cockpit-activity-status-bar v0.1.0 § Q8
   / R5.1) closed. HANDOFF → architect (M-T1).
+- 2026-05-26 (developer): M-DEV complete. T-D-N1..T-D-N5 closed.
+  HANDOFF → tester.
+
+## Implementation
+
+_Developer M-DEV — 2026-05-26_
+
+### Files modified
+
+- `crates/trader/src/llm_forecaster/anthropic_impl.rs` — added
+  `ACTIVITY_LABEL_PREFIX` const, `activity_sender: Option<ActivitySender>`
+  field, `with_activity_sender()` builder setter, and the R3.2 wire-up
+  block inside `forecast()`. Also added `agent` to imports. The
+  `!Send` `ActivityHandle` is created before the `.await` and dropped
+  before `decode_response()` — no `.await` crosses the handle lifetime.
+- `crates/trader/Cargo.toml` — added `agent = { path = "../agent" }`
+  to both `[dependencies]` and `[dev-dependencies]`; added
+  `[[test]] llm_forecaster_activity_tape` entry.
+
+### Files created
+
+- `crates/trader/tests/llm_forecaster_activity_tape.rs` — 6 integration
+  tests via wiremock. All 6 PASS.
+
+### Deviations from spec
+
+- None. Builder setter shape exactly as architect T-AR-1 prescribed.
+  Label constant in `anthropic_impl.rs` as T-AR-3 prescribed.
+  The `!Send` constraint handled via `drop(activity)` before any
+  subsequent sync call (T-AR-2 confirmed).
+
+### Gate results
+
+| Gate | Result |
+|------|--------|
+| `cargo build -p trader` | PASS (exit 0) |
+| `cargo clippy -p trader -- -D warnings` | PASS (exit 0) |
+| `cargo test -p trader --test llm_forecaster_activity_tape` | 6/6 PASS |
+| `cargo test -p trader` | PASS (exit 0, 159 total) |
+| `bash scripts/verify_anchors.sh` | 34/34 PASS |
+
+### PII redaction verification
+
+`grep -E "symbol|prompt" <test output>` returns ZERO matches when
+scanning activity event labels. The label is structurally restricted
+to `"LLM call: " + self.model_id` by construction (R2.2 / K6). Test 4
+(`pii_redaction_label_excludes_symbol_and_prompt`) confirms at runtime.

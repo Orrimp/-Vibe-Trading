@@ -46,6 +46,7 @@
 
 use std::sync::Arc;
 
+use agent::{ActivityKind, ActivitySender};
 use async_trait::async_trait;
 use cost::{AgentRole, LlmTier};
 use rust_decimal::Decimal;
@@ -66,6 +67,18 @@ use super::{
         Rating,
     },
 };
+
+// ── Label constant (R2.4 / T-AR-3) ────────────────────────────────────────────
+
+/// Activity-tape label prefix for LLM calls (K6 / PII-redaction contract).
+///
+/// The full label is `ACTIVITY_LABEL_PREFIX + model_id`. Only `self.model_id`
+/// (a construction-time constant) is concatenated — no field of
+/// `ForecastContext`, `LlmRequest`, `Bar`, or `LessonCard` flows into the
+/// label. PII / prompt-content leakage is structurally impossible at v0.1.1.
+/// Maximum label length: 10 + 32 (longest Anthropic model ID) = 42 chars,
+/// well within the parent's 64-char budget (ADR-0042 § R1.2).
+const ACTIVITY_LABEL_PREFIX: &str = "LLM call: ";
 
 // ── LlmForecasterImpl ─────────────────────────────────────────────────────────
 
@@ -93,6 +106,14 @@ pub struct LlmForecasterImpl {
     /// tick (R7.1.3) via `tokio::spawn` (fire-and-forget). When `None`, no audit
     /// row is written (backtest replay or test mode without a ledger).
     audit_ledger: Option<Arc<audit::Ledger>>,
+    /// Optional activity-tape producer (cockpit-activity-llm-producer v0.1.1 R1.2).
+    ///
+    /// When `Some`, each `forecast()` call emits `ActivityKind::LlmCall` Start
+    /// and End events on the bus so the status bar tape shows in-flight LLM calls.
+    /// When `None` (all existing tests + backtest bin paths + `llm_verdict` CLI),
+    /// the activity path is a no-op — zero events emitted, zero perf impact.
+    /// Injected via `.with_activity_sender(sender)` builder (R5.2 / K6).
+    activity_sender: Option<ActivitySender>,
 }
 
 impl std::fmt::Debug for LlmForecasterImpl {
@@ -122,6 +143,7 @@ impl LlmForecasterImpl {
             tier,
             role: AgentRole::Trader,
             audit_ledger: None,
+            activity_sender: None,
         }
     }
 
@@ -143,7 +165,26 @@ impl LlmForecasterImpl {
             tier,
             role: AgentRole::Trader,
             audit_ledger: Some(audit_ledger),
+            activity_sender: None,
         }
+    }
+
+    /// Wire the cockpit activity-tape producer for LLM calls (R1.2 / T-D-N1).
+    ///
+    /// Returns `self` for chaining after `new()` or `with_audit_ledger()`:
+    ///
+    /// ```rust,ignore
+    /// let forecaster = LlmForecasterImpl::new(provider, model_id, tier)
+    ///     .with_activity_sender(bus.activity());
+    /// ```
+    ///
+    /// When wired, each `forecast()` call emits `ActivityKind::LlmCall` Start
+    /// and End events on the bus broadcast channel. When not wired (the default),
+    /// `forecast()` is byte-identical to v0.1.0 — zero events, zero overhead.
+    #[must_use]
+    pub fn with_activity_sender(mut self, sender: ActivitySender) -> Self {
+        self.activity_sender = Some(sender);
+        self
     }
 
     /// Fire-and-forget audit row emission after a successful forecast.
@@ -409,11 +450,65 @@ impl LlmForecaster for LlmForecasterImpl {
         let request = self.build_request(&ctx);
         let timeout_ms = 45_000u64; // Q5b architect-locked (45s; Anthropic Sonnet p99 + safety)
 
-        let response = self
+        // ── Activity-tape wire-up (cockpit-activity-llm-producer v0.1.1 R1.2) ──
+        //
+        // The handle is created BEFORE the `.await` and explicitly dropped
+        // BEFORE any subsequent call so the `!Send` `ActivityHandle` (which
+        // uses `Cell<_>` internally — see `crates/agent/src/activity.rs:177-179`)
+        // never crosses an `.await` boundary. The resulting `forecast` future
+        // stays `Send` for `async-trait` (T-AR-2 / H1 falsification probe).
+        //
+        // INVARIANT: `drop(activity)` MUST remain before `decode_response` and
+        // `spawn_audit_row` with no intervening `.await`. If a future refactor
+        // introduces an `.await` between handle creation and `drop(activity)`,
+        // `cargo build -p trader` will fail with "future is not `Send`" (K7).
+        let activity = self.activity_sender.as_ref().map(|s| {
+            s.start(
+                ActivityKind::LlmCall,
+                format!("{ACTIVITY_LABEL_PREFIX}{}", self.model_id),
+            )
+        });
+
+        let response_result = self
             .provider
             .complete(request)
             .await
-            .map_err(|e| Self::map_provider_error(e, timeout_ms))?;
+            .map_err(|e| Self::map_provider_error(e, timeout_ms));
+
+        // Map each error variant to a human-readable fail-reason string for the
+        // activity tape's red 3-second hold (R4.1 / Q3=(a) default).
+        // The mapped reason is captured in `ActivityEvent::End(Failed(reason))`
+        // and available for structured logging; it is NOT rendered in the tape
+        // UI widget (parent R4.2 — the tape shows the label, not the reason).
+        if let (Some(handle), Err(err)) = (&activity, &response_result) {
+            let reason = match err {
+                LlmForecasterError::Provider(LlmError::Network(_)) => "network error".to_string(),
+                LlmForecasterError::Provider(LlmError::Auth(_)) => "auth error".to_string(),
+                LlmForecasterError::Provider(LlmError::RateLimited { .. }) => {
+                    "rate limited".to_string()
+                }
+                LlmForecasterError::Provider(LlmError::Provider { .. }) => {
+                    "server error".to_string()
+                }
+                LlmForecasterError::Provider(LlmError::BudgetExceeded { .. }) => {
+                    "budget cap".to_string()
+                }
+                LlmForecasterError::Timeout { timeout_ms: ms } => {
+                    format!("timeout {ms}ms")
+                }
+                LlmForecasterError::InvalidResponse { reason } => {
+                    format!("invalid response: {reason}")
+                }
+                LlmForecasterError::BudgetExceeded { .. } => "budget cap".to_string(),
+                _ => "provider error".to_string(),
+            };
+            handle.fail(reason);
+        }
+        // Explicit drop here emits `End { Success }` or `End { Failed(reason) }`.
+        // MUST precede `decode_response` and `spawn_audit_row` (no `.await` between).
+        drop(activity);
+
+        let response = response_result?;
 
         // Decode the response. Keep a reference to the raw response for audit
         // emission (token counts, model id) — `decode_response` clones what it

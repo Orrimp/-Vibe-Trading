@@ -18,6 +18,10 @@ reflection = { path = "../reflection" }
 llm = { path = "../llm" }
 # JournalEntry emission for kind = "llm_forecast"
 audit = { path = "../audit" }
+# cockpit-activity-llm-producer v0.1.1 — ActivitySender + ActivityKind for the
+# status-bar tape producer wiring in LlmForecasterImpl (R1.2 / T-D-N1).
+# agent does NOT depend on trader (acyclic); this is a one-way dependency.
+agent = { path = "../agent" }
 # Bar, Signal, Symbol, Timestamp, StrategyId, SignalKind, SignalEvidence, Tick
 trading_core = { path = "../core" }
 # Cost budgeting for LLM calls
@@ -67,6 +71,8 @@ wiremock = { workspace = true }
 cost = { path = "../cost" }
 # Wave E integration tests: sqlx for direct DB assertions
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+# cockpit-activity-llm-producer v0.1.1 — ActivitySender test helpers
+agent = { path = "../agent" }
 
 # Wave G: L0-L4 verdict report bin (ADR-0039) — moved from strategy
 [[bin]]
@@ -111,3 +117,8 @@ path = "tests/llm_verdict_priority_tree.rs"
 [[test]]
 name = "llm_forecaster_neutrality"
 path = "tests/llm_forecaster_neutrality.rs"
+
+# cockpit-activity-llm-producer v0.1.1 — activity tape producer integration tests
+[[test]]
+name = "llm_forecaster_activity_tape"
+path = "tests/llm_forecaster_activity_tape.rs"
