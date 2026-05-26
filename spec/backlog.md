@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 <!-- updated 2026-05-22 (orchestrator, audit-2026-05-22 P2.5 cleanup) —
      v25-tcn-alpha-investigation shipped 2026-05-19; v25-tcn-overlay
@@ -445,6 +445,90 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   [`spec/lab-yahoo-realdata/feature.md`](lab-yahoo-realdata/feature.md).
   **Trace**: `REQ-LAB-YAHOO-REALDATA-001`. Estimated 1-2 days
   wall-clock after operator cache populated.
+
+<!-- updated 2026-05-25 (architect, cockpit-activity-status-bar) —
+     **PROMOTED Idea → Active 2026-05-25** under operator request
+     2026-05-25: "Status bar should show all the current steps the
+     cockpit is doing — downloading data, backtesting, everything
+     else which could be helpful for the UI user to understand
+     what's going on in background." Brief authored by architect
+     in M0 sweep (rare — analyst pass skipped because the
+     operator request is already an unambiguous extension of three
+     shipped surfaces: `cockpit-training-control v0.2.0` R3.5
+     status strip, `lab-end-to-end-v2 v0.1.0` Wave D-4 progress
+     channel, `lumen-phase-1-foundation` R13 24 px bottom status
+     bar contract).
+
+     **Scope at v0.1.0**: aggregate activity tape inside the
+     existing 24 px bottom status bar, surfacing three operator-
+     cited slow producers — Yahoo preload (30-60 s cold cache),
+     Lab Run (long backtest), Training subprocess (multi-minute
+     train_tcn). Event source: new `EventBus::activity_tx`
+     broadcast channel on the agent crate (capacity 256, mirrors
+     existing 9-channel pattern). UI consumer: new
+     `ActivityRecipe` subscription + new `widgets/activity_tape`
+     region rendered between server-time and CPU placeholder.
+     RAII `ActivityHandle` Drop semantics catch panic-unwinds
+     ("Failed: dropped" rows in red 3 s hold). Producer-side
+     100 ms throttle prevents flooding. Q1=(a) EventBus / Q2=(a)
+     bottom bar / Q3=(a) stack max-3 + "+N more" / Q4=(a) < 1 ms
+     render budget + criterion bench / Q5=(a) red 3 s hold /
+     Q6=(a) read-only / Q7=(a) producer+consumer throttle /
+     Q8=(a) Yahoo+Lab+Training all default-recommended.
+
+     **What this brief does NOT do**: touch backtest / strategy /
+     exec / risk / forecast / reports / audit / data / replay-
+     cache / core / cost / models bodies. UI + agent only. The
+     34 locked anchors stay byte-identical (R-NR.1, zero scenario-
+     body changes by construction). No new audit migration; no
+     persistence; no subprocess / IPC. No new Lumen tokens (reuses
+     ACCENT, DANGER, FG_3). LLM-call producer + audit-ledger-
+     writes producer are forward-listed and explicit OUT-of-scope
+     at v0.1.0 (defer to v0.1.1 once `v3-llm-forecaster` ships +
+     audit-writer aggregator design lands respectively).
+
+     **Cost framing**: ~1 week wall-clock. Wave A (`crates/agent`
+     bus + RAII handle) ~1 day; Wave B (`crates/ui` tape state +
+     recipe + widget) ~2 days, parallel with Wave C (R4 producer
+     wiring at three call sites) ~1 day; Wave D (criterion bench
+     + integration storm test) ~1 day; tester M-FINAL ~0.5 day;
+     presenter ~0.5 day. Rollback cost ~ 60 LOC across 4-5 files.
+     Anchor risk ZERO by construction.
+
+     **Operator-decide Q's** (8 surfaced; Q1+Q2+Q4 load-bearing,
+     all 8 standing-Autoapprove-eligible at analyst-recommended
+     defaults). See feature.md § Open questions.
+
+     **Trace row**: `REQ-COCKPIT-ACTIVITY-001` at `proposed`
+     state.
+     **Feature folder**:
+     [`spec/cockpit-activity-status-bar/`](cockpit-activity-status-bar/feature.md).
+     **Predecessor chain**:
+     `lumen-phase-1-foundation` (R13 24 px status-bar contract) →
+     `cockpit-training-control v0.2.0` (R3.5 train status strip,
+     audit poll precedent) →
+     `lab-end-to-end-v2 v0.1.0` (Wave D-4 progress channel) →
+     `cockpit-activity-status-bar v0.1.0` (this brief, aggregates
+     all three into a global tape).
+-->
+
+- **cockpit-activity-status-bar v0.1.0 (activity tape in the bottom
+  status bar)** — operator-requested 2026-05-25 ("Status bar should
+  show all the current steps the cockpit is doing"). Adds an
+  aggregated activity tape inside the existing 24 px bottom status
+  bar. New `EventBus::activity_tx` broadcast channel + RAII
+  `ActivityHandle` shape (`crates/agent`); new `widgets/activity_tape`
+  region + `ActivityRecipe` subscription (`crates/ui`); R4 producer
+  wiring at three call sites (Yahoo preload, Lab Run, Training
+  subprocess). LLM-call + audit-ledger-writes producers forward-
+  listed for v0.1.1. Anchor risk ZERO (UI + agent only; zero
+  backtest/strategy/exec/risk/reports/forecast/audit/data body
+  changes; 34/34 anchors byte-identical by construction).
+  **Spec**:
+  [`spec/cockpit-activity-status-bar/feature.md`](cockpit-activity-status-bar/feature.md).
+  **Trace**: `REQ-COCKPIT-ACTIVITY-001`. Estimated 1 week
+  wall-clock (architect M0 done; developer M-DEV ~3-4 days; tester
+  M-FINAL ~0.5 day; presenter ~0.5 day).
 
 <!-- updated 2026-05-25 (analyst, reflection-memory-trader-wiring) —
      **PROMOTED Idea → Active 2026-05-25** as a P0 hygiene-gate
