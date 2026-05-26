@@ -48,6 +48,10 @@ required-features = ["live"]
 name = "viewer"
 path = "src/bin/viewer.rs"
 
+[[bench]]
+name = "activity_tape"
+harness = false
+
 [dependencies]
 trading_core = { path = "../core" }
 # lab-yahoo-realdata T-C3.6 / T-AR1 — `data` crate for Yahoo parquet reader.
@@ -132,6 +136,7 @@ uuid = { workspace = true, optional = true }
 # below (`iced/tester` → `dep:iced_tester` inside iced's manifest).
 
 [dev-dependencies]
+criterion.workspace = true
 insta = { version = "=1.47.2", features = ["yaml"] }
 # T32 integration test: needs tokio runtime to drive the live subscription.
 tokio = { workspace = true }

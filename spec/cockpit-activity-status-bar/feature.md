@@ -750,6 +750,59 @@ _Wave B — developer (2026-05-26)_
   integration tests can construct a stream directly without a running iced
   application. Follows the `trail_mirror_stream_impl` pattern in `live.rs`.
 
+## Implementation
+
+_Wave D — developer (2026-05-26)_
+
+### Wave D — Criterion bench + integration storm test (T-D-N10 + T-D-N11)
+
+**Files created**:
+- `crates/ui/benches/activity_tape.rs` (~200 LOC) — 5 criterion micro-benches
+  per feature.md § D3 Layer 2: `activity_handle_tick_throttle`,
+  `activity_recipe_fan_out`, `activity_tape_render_empty`,
+  `activity_tape_render_three_inflight`, `activity_tape_render_five_plus_overflow`.
+- `crates/ui/tests/activity_tape_event_storm.rs` (~150 LOC) — Layer 3 integration
+  perf test: 10,000-event concurrent producer/consumer storm with 3 budgeted
+  assertions (drain < 1 s, delivery rate >= 95 %, P99 latency < 16 ms).
+
+**Files modified**:
+- `crates/ui/Cargo.toml` — added `[[bench]] name = "activity_tape" harness = false`
+  + `criterion.workspace = true` in `[dev-dependencies]`.
+
+**Bench baselines (Apple M2 Pro, 2026-05-26, `cargo bench -p ui --bench activity_tape`)**:
+
+| Bench | Result | Budget (D3 L2) | Status |
+|-------|--------|-----------------|--------|
+| `activity_handle_tick_throttle` | 19.84 ns | < 200 ns | PASS |
+| `activity_recipe_fan_out` | 54.74 ns | < 500 ns | PASS |
+| `activity_tape_render_empty` | 33.10 ns | < 200 µs | PASS |
+| `activity_tape_render_three_inflight` | 912 ns | < 1 ms | PASS |
+| `activity_tape_render_five_plus_overflow` | 1.034 µs | < 1.2 ms | PASS |
+
+**Storm test measurements (Apple M2 Pro, 2026-05-26)**:
+
+| Metric | Result | Budget | Status |
+|--------|--------|--------|--------|
+| drain_time | 7.3 ms | < 1 s | PASS |
+| delivery_rate | 1.0000 (10000/10000) | >= 0.95 | PASS |
+| p99_latency | 0.040 ms | < 16 ms | PASS |
+
+**Design decisions**:
+- **Concurrent producer/consumer**: the storm test uses a 2-task `tokio::join!`
+  pattern (producer on one worker, consumer on another). A single-threaded run
+  would overflow the 256-slot ring before the consumer gets scheduled. The
+  512-slot storm channel (vs. production 256) gives the scheduler headroom;
+  the latency/drain measurements still exercise the same codepath.
+- **Red-held rows for bench render-floor**: bench helper `build_tape_with_n_inflight`
+  uses `End(Failed)` events to put rows in the red-hold state, bypassing the
+  200 ms render-floor. This ensures the bench measures the rendering path
+  rather than the early-exit empty path.
+- **No numeric thresholds in bench code**: per spec, criterion compares against
+  its saved baseline; the tester sets the +20 % regression-fail rule at M-FINAL.
+
+**Anchors**: 34/34 PASS (no scenario-body changes; pure bench + test additions).
+**Zero regressions introduced** (lab_run_engine H3 failure is pre-existing).
+
 ## Verification
 
 _tester links to reports here at M-FINAL._

@@ -8070,6 +8070,7 @@ dependencies = [
  "audit",
  "backtest",
  "clap",
+ "criterion",
  "data",
  "futures",
  "iced",

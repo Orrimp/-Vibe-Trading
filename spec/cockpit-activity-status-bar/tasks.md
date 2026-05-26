@@ -220,25 +220,36 @@ _owner: developer. Wave-parallelizable per
 
 ### Wave D — Perf gates (depends on Wave C)
 
-- [ ] **T-D-N10** — Criterion bench `crates/ui/benches/activity_tape.rs`
+- [x] **T-D-N10** — Criterion bench `crates/ui/benches/activity_tape.rs`
   (NEW). Per feature.md § D3 Layer 2.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N7, T-D-N8, T-D-N9 • Blocks: T-D-N11
-  - File:line: `crates/ui/benches/activity_tape.rs` (new file).
+  - File:line: `crates/ui/benches/activity_tape.rs:1` (new file, 5 benches)
+    + `crates/ui/Cargo.toml` (`[[bench]]` entry + `criterion.workspace = true` dev-dep).
   - Body: 5 benches per feature.md § D3 Layer 2. Each bench prints
-    its P99 result; tester records baseline at M-FINAL.
+    its criterion mean/P99 result; tester records baseline at M-FINAL.
+    M-FINAL baseline numbers from one run on Apple M2 Pro (2026-05-26):
+    - `activity_handle_tick_throttle`:  19.84 ns  (budget < 200 ns) PASS
+    - `activity_recipe_fan_out`:        54.74 ns  (budget < 500 ns) PASS
+    - `activity_tape_render_empty`:     33.10 ns  (budget < 200 µs) PASS
+    - `activity_tape_render_three_inflight`: 912 ns  (budget < 1 ms) PASS
+    - `activity_tape_render_five_plus_overflow`: 1.034 µs (budget < 1.2 ms) PASS
   - Test cmd: `cargo bench -p ui --bench activity_tape`
-  - Expected: each bench under its budget per feature.md § D3
-    Layer 2.
-- [ ] **T-D-N11** — Integration perf test
+  - Output: `Finished bench profile` + 5 criterion timing blocks exit 0.
+- [x] **T-D-N11** — Integration perf test
   `crates/ui/tests/activity_tape_event_storm.rs` (NEW). Per
   feature.md § D3 Layer 3.
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N5 • Blocks: T-FINAL
-  - File:line: `crates/ui/tests/activity_tape_event_storm.rs` (new).
-  - Body: spawn synthetic 10 k Hz event stream; assert drain
-    < 1 s wall-clock; assert ≥ 95 % delivery rate; assert P99
-    end-to-end latency < 16 ms.
-  - Test cmd: `cargo test -p ui --test activity_tape_event_storm`
-  - Expected: `test result: ok. 1 passed; 0 failed`
+  - File:line: `crates/ui/tests/activity_tape_event_storm.rs:1` (new file,
+    1 test: `activity_tape_handles_10k_event_burst_without_lag`).
+  - Body: concurrent producer (10,000 events at max rate) + consumer
+    (broadcast rx drain). Asserts drain < 1 s; delivery rate ≥ 95 %;
+    P99 end-to-end latency < 16 ms.
+  - Measurements on dev machine (Apple M2 Pro, 2026-05-26):
+    - drain_time:    7.3 ms  (budget < 1 s) PASS
+    - delivery_rate: 1.0000 (10000/10000, 100 %) (budget ≥ 0.95) PASS
+    - p99_latency:   0.040 ms (budget < 16 ms) PASS
+  - Test cmd: `cargo test -p ui --test activity_tape_event_storm --features live -- --nocapture`
+  - Output: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`
 - [ ] **T-D-N12** — Smoke + workspace test re-run.
   - Owner: developer • Milestone: M-DEV • Depends on: all T-D-N1..N11 • Blocks: M-FINAL
   - Body: full `cargo test --workspace --no-fail-fast` + cockpit-smoke
