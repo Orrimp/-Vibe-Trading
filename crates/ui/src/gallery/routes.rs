@@ -24,9 +24,9 @@ use crate::theme::ThemeMode;
 use crate::widgets::{
     agent_feed, cache_state_badge, cadence_badge, chart, date_range, focus_ring, frame,
     human_control, journal_transaction_modal, kill, kpi_strip, latency, num, override_risk_veto,
-    pair_chip, placeholder, pnl, position_curve, positions, progress_bar, run_button,
-    run_delta_badge, settings_tabs, sidebar_nav, source_toggle, sparkline, status_bar, strategies,
-    strategy_card, strategy_chip, training_log, training_plot, volume_histogram,
+    activity_tape, pair_chip, placeholder, pnl, position_curve, positions, progress_bar,
+    run_button, run_delta_badge, settings_tabs, sidebar_nav, source_toggle, sparkline, status_bar,
+    strategies, strategy_card, strategy_chip, training_log, training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -372,6 +372,16 @@ fn render_num(_model: &Cockpit) -> iced::Element<'_, Message> {
 
 fn render_volume_histogram_mixed(_model: &Cockpit) -> iced::Element<'_, Message> {
     volume_histogram::view(fx::fake_volume_bins(), ThemeMode::Dark)
+}
+
+// ── cockpit-activity-status-bar v0.1.0 — activity_tape gallery cells ─────────
+
+fn seed_activity_tape() -> Cockpit {
+    Cockpit::default()
+}
+
+fn render_activity_tape_empty(model: &Cockpit) -> iced::Element<'_, Message> {
+    activity_tape::view(&model.activity_tape)
 }
 
 // ── lab-polish-round-2 R1 — position_curve gallery cells ─────────────────────
@@ -1227,6 +1237,13 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_progress_bar_indeterminate,
         seed: seed_progress_bar,
     },
+    // ── cockpit-activity-status-bar v0.1.0 — activity_tape gallery cell ──────
+    GalleryCell {
+        widget: "activity_tape",
+        state: "empty",
+        render: render_activity_tape_empty,
+        seed: seed_activity_tape,
+    },
     // ── lab-polish-round-2 R1 — position_curve gallery cells ─────────────────
     GalleryCell {
         widget: "position_curve",
@@ -1323,6 +1340,7 @@ fn render_progress_bar_indeterminate(_model: &Cockpit) -> iced::Element<'_, Mess
 ///
 /// **Q-ARCH-2:** `canvas_chart` is `pub(crate)` and intentionally excluded.
 pub const EXPECTED_WIDGETS: &[&str] = &[
+    "activity_tape",
     "agent_feed",
     "cache_state_badge",
     "cadence_badge",

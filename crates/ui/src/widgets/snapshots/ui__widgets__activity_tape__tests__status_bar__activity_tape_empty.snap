@@ -1,0 +1,5 @@
+---
+source: crates/ui/src/widgets/activity_tape.rs
+expression: summary
+---
+scenario=empty count=0 entries=[]

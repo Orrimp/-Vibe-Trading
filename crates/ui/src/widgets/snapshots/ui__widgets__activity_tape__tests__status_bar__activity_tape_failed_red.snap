@@ -1,0 +1,5 @@
+---
+source: crates/ui/src/widgets/activity_tape.rs
+expression: summary
+---
+scenario=failed_red count=1 entries=[id=7 kind=YahooPreload outcome=some red_held=yes]

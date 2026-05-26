@@ -15,6 +15,9 @@ use trading_core::{
     StrategyLoaded, StrategySwapped, Symbol, Tick, Timestamp, Venue,
 };
 
+use agent::ActivityEvent;
+
+use crate::lab::activity::ActivityTape;
 use crate::lab::state::{DateRange, LabState};
 
 /// Operator-locked XRP-first pair ordering (ui-rethink-phase-a-lab R3.2 /
@@ -797,6 +800,12 @@ pub struct Cockpit {
     /// M-FINAL adds persistence via `lab::persistence`.
     pub lab_state: LabState,
 
+    /// cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) — activity tape.
+    /// In-flight background ops (Yahoo preload, Lab Run, Training).
+    /// Updated by `Message::ActivityEventReceived` and purged at ~1 Hz by
+    /// `Message::ActivityTapePurgeTick`. Read by `widgets::activity_tape`.
+    pub activity_tape: ActivityTape,
+
     /// `true` while a Lab backtest run is in-flight (T-D-14 / M2.5).
     /// The Run button greys out while this is set; cleared on
     /// `LabRunCompleted`.
@@ -989,6 +998,7 @@ impl std::fmt::Debug for Cockpit {
             .field("focused_widget", &self.focused_widget)
             .field("lab_run_inflight", &self.lab_run_inflight)
             .field("toast_message", &self.toast_message)
+            .field("activity_tape", &"<ActivityTape>")
             .field("equity_cache", &"<EquityCache>")
             .field("settings_active_tab", &self.settings_active_tab);
         dbg.finish()
@@ -1043,6 +1053,7 @@ impl Default for Cockpit {
             focused_widget: None,
             lab_run_inflight: false,
             toast_message: None,
+            activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
         }
     }
@@ -1146,6 +1157,7 @@ impl Cockpit {
             focused_widget: None,
             lab_run_inflight: false,
             toast_message: None,
+            activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
         }
     }
@@ -1567,6 +1579,16 @@ pub enum Message {
     /// v0.1.0: only `Sharpe` is wired; other variants fall back to Sharpe
     /// with a `tracing::warn!`.
     CompareSelectKpiAxis(crate::compare::state::CompareKpiAxis),
+
+    // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
+    /// An `ActivityEvent` arrived from the broadcast channel via
+    /// `ActivityRecipe`. Delegates to `ActivityTape::apply`.
+    ActivityEventReceived(ActivityEvent),
+    /// 1 Hz tick to purge expired failed-activity rows from the tape.
+    /// Driven by the same 1 Hz `ServerTimeTick` subscription (the binary
+    /// can piggyback the existing time recipe or add a dedicated one;
+    /// the update arm is stateless — it only calls `tape.purge(now)`).
+    ActivityTapePurgeTick,
 }
 
 /// lab-polish-round-2 R2 — parse SMA window text input.
@@ -2227,6 +2249,18 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 );
             }
             model.compare_screen_state.kpi_axis = axis;
+        }
+
+        // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────
+        Message::ActivityEventReceived(event) => {
+            // Delegate to ActivityTape::apply — O(1) for Start/Tick;
+            // O(32) for End. All are well within the iced update budget.
+            model.activity_tape.apply(event);
+        }
+        Message::ActivityTapePurgeTick => {
+            // Remove expired red-hold rows (Q5=(a) 3-second hold).
+            // Called by the 1 Hz purge tick subscription.
+            model.activity_tape.purge(std::time::Instant::now());
         }
     }
 }

@@ -10,6 +10,9 @@
 //! - No hex colors or magic-number `Length::Units(N)` — use `crate::theme::*`.
 
 pub mod agent_feed;
+/// cockpit-activity-status-bar v0.1.0 Wave B (T-D-N6) — activity tape region.
+/// Renders in-flight + failed activities to the left of the server-time field.
+pub mod activity_tape;
 /// cockpit-training-control T-D-N17 — shared axis-rendering helpers.
 /// Tick spacing, label formatting, and coordinate mapping for use by
 /// `widgets::training_plot` and potentially `widgets::chart`.

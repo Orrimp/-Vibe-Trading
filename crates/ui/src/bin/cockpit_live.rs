@@ -600,6 +600,12 @@ fn main() -> Result<()> {
         lab_progress_rx: None,
         #[cfg(feature = "live")]
         lab_progress_recipe_salt: 0,
+        // cockpit-activity-status-bar v0.1.0 Wave C — T-D-N8 / T-D-N9.
+        // Both handles start as None; started on the first activity trigger.
+        #[cfg(feature = "live")]
+        lab_activity_handle: None,
+        #[cfg(feature = "live")]
+        training_activity_handle: None,
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -774,7 +780,10 @@ fn join_with_deadline(handle: std::thread::JoinHandle<()>, deadline: Duration) -
 /// `boot` closure into the runtime; cloning once at boot is cheap (Arcs
 /// are refcount bumps, `Cockpit::new()` allocates a few empty
 /// collections).
-#[derive(Clone)]
+// NOTE: Clone is implemented manually below because `agent::ActivityHandle`
+// is `!Clone` (uses `Cell<>` for throttle state). The manual impl returns
+// `None` for both activity handle fields — the clone is only used at boot
+// where both fields are always `None`, so this is semantically correct.
 struct AppState {
     cockpit: Cockpit,
     bus: Arc<EventBus>,
@@ -829,6 +838,59 @@ struct AppState {
     /// returns a fresh identity per run (iced de-duplicates subscriptions by hash).
     #[cfg(feature = "live")]
     lab_progress_recipe_salt: u64,
+
+    // ── cockpit-activity-status-bar v0.1.0 Wave C — T-D-N8 / T-D-N9 ─────────
+    /// In-flight Lab run `ActivityHandle` (T-D-N8 approach A).
+    ///
+    /// Started on `LabRunRequested` (before `iced::Task::perform`); ticked
+    /// on each `LabRunProgress` message; ended (`Success` or `Failed`) on
+    /// `LabRunCompleted`. Held on the iced side because `ActivityHandle` is
+    /// `!Send` (uses `Cell<>` for the throttle state).
+    ///
+    /// `None` when no run is in flight.
+    #[cfg(feature = "live")]
+    lab_activity_handle: Option<agent::ActivityHandle>,
+
+    /// In-flight Training subprocess `ActivityHandle` (T-D-N9 approach A).
+    ///
+    /// Started on `TrainingPressed`; ticked on each `TrainingEventsRefreshed`;
+    /// ended (`Success` or `Cancelled`) on `TrainingExited` / `TrainingCancelPressed`.
+    /// Held on the iced side — same `!Send` constraint as `lab_activity_handle`.
+    ///
+    /// `None` when no training run is in flight.
+    #[cfg(feature = "live")]
+    training_activity_handle: Option<agent::ActivityHandle>,
+}
+
+// ── Manual Clone for AppState ─────────────────────────────────────────────────
+//
+// `agent::ActivityHandle` is `!Clone` (uses `Cell<>` for the tick-throttle
+// state). The two activity-handle fields are always `None` at cold-boot (the
+// only site where `AppState` is cloned — see `app_state.clone()` in the
+// reflection / memory-mirror warm-up block), so returning `None` is
+// semantically correct for the clone.
+impl Clone for AppState {
+    fn clone(&self) -> Self {
+        Self {
+            cockpit: self.cockpit.clone(),
+            bus: self.bus.clone(),
+            kill_switch: self.kill_switch.clone(),
+            ledger: self.ledger.clone(),
+            rt_handle: self.rt_handle.clone(),
+            #[cfg(feature = "live")]
+            trail_mirror_handle: self.trail_mirror_handle.clone(),
+            #[cfg(feature = "live")]
+            lab_progress_rx: self.lab_progress_rx.clone(),
+            #[cfg(feature = "live")]
+            lab_progress_recipe_salt: self.lab_progress_recipe_salt,
+            // Activity handles are never cloned — they are unique per run.
+            // The clone only happens at cold-boot where both are None.
+            #[cfg(feature = "live")]
+            lab_activity_handle: None,
+            #[cfg(feature = "live")]
+            training_activity_handle: None,
+        }
+    }
 }
 
 impl AppState {
@@ -939,6 +1001,39 @@ impl AppState {
         let lab_run_completed_any = matches!(&msg, Message::LabRunCompleted(_));
         // T-D3.4 — detect LabRunStopRequested to drop the cancel handle.
         let lab_run_stop_requested = matches!(&msg, Message::LabRunStopRequested);
+
+        // cockpit-activity-status-bar T-D-N8 — capture LabRunProgress current
+        // bar so we can tick the activity handle after state::update.
+        #[cfg(feature = "live")]
+        let lab_run_progress_current: Option<u64> = match &msg {
+            Message::LabRunProgress(p) => Some(p.current_bar as u64),
+            _ => None,
+        };
+        // cockpit-activity-status-bar T-D-N8 — capture LabRunCompleted error
+        // so we can fail the activity handle if needed.
+        #[cfg(feature = "live")]
+        let lab_run_completed_err: Option<smol_str::SmolStr> = match &msg {
+            Message::LabRunCompleted(Err(e)) => Some(e.clone()),
+            _ => None,
+        };
+
+        // cockpit-activity-status-bar T-D-N9 — capture training lifecycle events.
+        // Note: `TrainingPressed` spawning is NOT yet wired in cockpit_live.rs
+        // (the training subprocess dispatch is handled by other means); the
+        // activity handle is returned from `spawn_training_run` when the caller
+        // is ready to wire it. The lifecycle management below operates on
+        // `training_activity_handle` which is populated externally.
+        #[cfg(feature = "live")]
+        let training_cancel_pressed = matches!(&msg, Message::TrainingCancelPressed);
+        #[cfg(feature = "live")]
+        let training_exited = matches!(&msg, Message::TrainingExited(_));
+        // Capture epoch for tick forwarding: use number of training events as proxy.
+        #[cfg(feature = "live")]
+        let training_events_count: Option<u64> = match &msg {
+            Message::TrainingEventsRefreshed(rows) => Some(rows.len() as u64),
+            _ => None,
+        };
+
         let lab_run_completed_pre_tuple = if lab_run_completed_summary.is_some() {
             let ls = &self.cockpit.lab_state;
             match (ls.strategy.as_ref(), ls.pair.as_ref()) {
@@ -972,6 +1067,67 @@ impl AppState {
         if lab_run_completed_any {
             self.cockpit.lab_state.run_cancel = None;
             self.lab_progress_rx = None;
+        }
+
+        // ── cockpit-activity-status-bar T-D-N8 — Lab Run activity handle ───────
+        // Approach A: handle held on the iced side; ticked via LabRunProgress
+        // messages already flowing to the iced thread (no Send required).
+        #[cfg(feature = "live")]
+        {
+            // Tick on progress.
+            if let Some(current) = lab_run_progress_current {
+                if let Some(ref handle) = self.lab_activity_handle {
+                    handle.tick(current);
+                }
+            }
+            // End on stop-requested: cancel the activity.
+            if lab_run_stop_requested {
+                if let Some(handle) = self.lab_activity_handle.take() {
+                    handle.cancel();
+                    // Drop emits End { Cancelled }.
+                }
+            }
+            // End on completion.
+            if lab_run_completed_any {
+                if let Some(handle) = self.lab_activity_handle.take() {
+                    if let Some(ref err) = lab_run_completed_err {
+                        handle.fail(err.as_str());
+                        // Drop emits End { Failed }.
+                    }
+                    // Else: Success — Drop emits End { Success }.
+                    drop(handle);
+                }
+            }
+        }
+
+        // ── cockpit-activity-status-bar T-D-N9 — Training activity handle ──────
+        // Approach A: handle held on the iced side; ticked via TrainingEventsRefreshed
+        // messages (1 Hz poller per cockpit-training-control R7).
+        #[cfg(feature = "live")]
+        {
+            // Tick on new training events.
+            if let Some(count) = training_events_count {
+                if count > 0 {
+                    if let Some(ref handle) = self.training_activity_handle {
+                        // Use the running total length of training_events as
+                        // a monotonic progress counter.
+                        let total_events = self.cockpit.lab_state.training_events.len() as u64;
+                        handle.tick(total_events);
+                    }
+                }
+            }
+            // End on cancel pressed: cancel the activity.
+            if training_cancel_pressed {
+                if let Some(handle) = self.training_activity_handle.take() {
+                    handle.cancel();
+                    // Drop emits End { Cancelled }.
+                }
+            }
+            // End on subprocess exited: success.
+            if training_exited {
+                // Drop emits End { Success } — no explicit call needed.
+                self.training_activity_handle = None;
+            }
         }
 
         // T-D1.3 (lab-end-to-end-v2 T-AR-1) — rotate RunReportMirror:
@@ -1197,7 +1353,30 @@ impl AppState {
                 progress_rx,
             ))));
 
-            ui::lab::runner::spawn_lab_run(Some(&self.rt_handle), run_cfg, cancel_recv, progress_tx)
+            // cockpit-activity-status-bar T-D-N8 — start Lab Run activity handle
+            // (approach A: held on iced side, ticked via LabRunProgress messages,
+            // ended on LabRunCompleted). Label: "<strategy> · <symbol> · <range>".
+            let lab_activity_label = format!(
+                "Backtest {} · {} · {}",
+                run_cfg.strategy_id, run_cfg.symbol, run_cfg.range_label
+            );
+            let lab_activity_sender = self.bus.activity();
+            self.lab_activity_handle = Some(
+                lab_activity_sender
+                    .start(agent::activity::ActivityKind::LabRun, lab_activity_label),
+            );
+
+            // T-D-N7: pass the ActivitySender so spawn_lab_run can wrap the
+            // Yahoo preload in its own YahooPreload handle (approach A inline).
+            let yahoo_preload_sender = Some(self.bus.activity());
+
+            ui::lab::runner::spawn_lab_run(
+                Some(&self.rt_handle),
+                run_cfg,
+                cancel_recv,
+                progress_tx,
+                yahoo_preload_sender,
+            )
         } else {
             iced::Task::none()
         }
@@ -1255,12 +1434,23 @@ impl AppState {
             iced::Subscription::none()
         };
 
+        // cockpit-activity-status-bar v0.1.0 Wave B (T-D-N5) — Activity recipe.
+        // Subscribes to the activity broadcast channel and emits
+        // `Message::ActivityEventReceived` messages. Always active (no salt /
+        // no per-run gating — the channel is open for the process lifetime).
+        let activity_sub = iced::advanced::subscription::from_recipe(
+            ui::live::ActivityRecipe {
+                bus: std::sync::Arc::clone(&self.bus),
+            },
+        );
+
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![
                 bus_sub,
                 time_sub,
                 trail_sub,
                 progress_sub,
+                activity_sub,
                 iced::event::listen_with(|event, _status, _window| match event {
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
@@ -1270,7 +1460,13 @@ impl AppState {
                 }),
             ])
         } else {
-            iced::Subscription::batch(vec![bus_sub, time_sub, trail_sub, progress_sub])
+            iced::Subscription::batch(vec![
+                bus_sub,
+                time_sub,
+                trail_sub,
+                progress_sub,
+                activity_sub,
+            ])
         }
     }
 

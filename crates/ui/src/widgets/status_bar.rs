@@ -23,6 +23,7 @@ use crate::strings::{
     STATUS_BAR_RECONNECTING, STATUS_BAR_SERVER_LABEL, STATUS_BAR_UTC_SUFFIX, STATUS_BAR_VERSION,
 };
 use crate::theme::{ThemeMode, color, color_for_latency_ms, radius, space, text};
+use crate::widgets::activity_tape;
 
 /// Height of the status bar in logical pixels.
 const BAR_HEIGHT: f32 = 24.0;
@@ -123,15 +124,22 @@ pub fn view(cockpit: &Cockpit) -> crate::Element<'_> {
     // ── Version ─────────────────────────────────────────────────────────────
     let version_label = Text::new(STATUS_BAR_VERSION).size(text::MICRO).color(fg3);
 
+    // ── Activity tape (cockpit-activity-status-bar v0.1.0 Wave B T-D-N6) ───
+    // Renders in-flight background ops to the LEFT of the server-time field
+    // per Q2=(a) placement. Pure function — reads `&Cockpit::activity_tape`.
+    let tape_widget = activity_tape::view(&cockpit.activity_tape);
+
     // ── Assemble the bar ────────────────────────────────────────────────────
     // Items are separated by `space::L` (16 px) spacing; the version label
     // is right-aligned by pushing a fill spacer before it.
+    // Layout: conn_row | latency | account | [activity tape] | server | cpu | — | version
     let inner_row = Row::new()
         .spacing(space::L)
         .align_y(Alignment::Center)
         .push(conn_row)
         .push(latency_label)
         .push(account_label)
+        .push(tape_widget)
         .push(server_label)
         .push(cpu_label)
         .push(Space::new().width(Length::Fill))

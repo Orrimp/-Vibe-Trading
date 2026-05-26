@@ -1,0 +1,5 @@
+---
+source: crates/ui/src/widgets/activity_tape.rs
+expression: summary
+---
+scenario=one_inflight count=1 entries=[id=1 kind=YahooPreload outcome=none red_held=no]

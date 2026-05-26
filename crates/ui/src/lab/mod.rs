@@ -22,6 +22,9 @@ pub mod cache_state;
 pub mod defaults;
 pub mod equity_loader;
 pub mod persistence;
+/// cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) — UI-side activity tape.
+/// Tracks in-flight background ops; consumed by `widgets::activity_tape`.
+pub mod activity;
 /// cockpit-training-control T-D-N14 — cross-platform PID liveness check.
 pub mod pid_alive;
 /// lab-end-to-end-v2 Wave D-4 T-AR-6 — LabProgressRecipe subscription.

@@ -51,6 +51,8 @@ use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, warn};
 use trading_core::{Fill, FillView, Position, PositionView, RiskTelemetry};
 
+use agent::ActivityEvent;
+
 use crate::state::{AgentMode, Message, RiskState};
 use crate::strings;
 
@@ -672,6 +674,74 @@ fn trail_stage_to_ui(stage: &reflection::trail_mirror::TrailStage) -> TrailStage
     }
 }
 
+// ── cockpit-activity-status-bar v0.1.0 — ActivityRecipe (T-D-N5) ────────────
+//
+// Subscribes to `bus.activity()` (the broadcast channel added to `EventBus`
+// in Wave A) and emits one `Message::ActivityEventReceived(event)` per
+// `ActivityEvent`. Lag is handled the same way as every other BusRecipe
+// channel: warn + continue; Closed ends the stream cleanly.
+//
+// `stream_impl` is extracted (mirror of `lab/progress.rs`) so integration
+// tests can drive it directly without needing a running iced application.
+
+/// iced `Recipe` that subscribes to the activity broadcast channel and
+/// emits `Message::ActivityEventReceived` messages into the cockpit loop.
+///
+/// Wired into the `Subscription::batch` call in `cockpit_live::subscription()`.
+pub struct ActivityRecipe {
+    pub bus: Arc<EventBus>,
+}
+
+impl Recipe for ActivityRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+        // Static discriminant so iced never merges this with BusRecipe.
+        0xAC71_u16.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        // Subscribe eagerly (before the stream is first polled) to avoid
+        // the publish-before-subscribe race — mirrors BusRecipe pattern.
+        let rx = self.bus.activity().subscribe();
+        activity_stream_impl(rx)
+    }
+}
+
+/// Inner stream logic for `ActivityRecipe`, extracted so integration tests
+/// can drive it directly without needing a running iced application.
+///
+/// - Loops on `rx.recv()`, yielding `Message::ActivityEventReceived(event)`.
+/// - On `Lagged(n)`: logs a warning and continues (display-only; no replay).
+/// - On `Closed`: logs at debug level and terminates the stream cleanly.
+pub fn activity_stream_impl(
+    mut rx: tokio::sync::broadcast::Receiver<ActivityEvent>,
+) -> BoxStream<'static, Message> {
+    Box::pin(async_stream::stream! {
+        loop {
+            match rx.recv().await {
+                Ok(event) => yield Message::ActivityEventReceived(event),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    warn!(
+                        target: "ui.activity",
+                        lagged = n,
+                        "ActivityRecipe missed events — display may be briefly stale"
+                    );
+                    // Continue: lag is not fatal. The tape may show stale
+                    // state until the next event lands (R6.3 contract).
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    debug!(target: "ui.activity", "activity broadcast closed — stopping recipe");
+                    break;
+                }
+            }
+        }
+    })
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -820,5 +890,85 @@ mod tests {
         let v = position_to_view(&p);
         assert_eq!(v.pnl.amount(), dec!(12.5));
         assert_eq!(v.base_qty, dec!(0.25));
+    }
+
+    // ── T-D-N5 — ActivityRecipe stream tests ─────────────────────────────────
+
+    fn make_activity_event(id: u64) -> ActivityEvent {
+        ActivityEvent {
+            id: agent::ActivityId(id),
+            kind: agent::ActivityKind::YahooPreload,
+            label: format!("test {id}"),
+            phase: agent::ActivityPhase::Start { total_units: None },
+            ts_ms: 0,
+        }
+    }
+
+    /// T-D-N5 test 1 — `activity_stream_impl` emits `ActivityEventReceived`
+    /// messages in order for 3 events pushed through a fake broadcast.
+    #[tokio::test]
+    async fn activity_recipe_emits_messages() {
+        use tokio::sync::broadcast;
+
+        let (tx, rx) = broadcast::channel::<ActivityEvent>(64);
+        let mut stream = activity_stream_impl(rx);
+
+        // Push 3 events.
+        for i in 1..=3u64 {
+            tx.send(make_activity_event(i)).expect("send ok");
+        }
+
+        // Collect 3 messages.
+        let mut received = Vec::new();
+        for _ in 0..3 {
+            let msg =
+                tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+                    .await
+                    .expect("within 2s")
+                    .expect("stream yielded");
+            received.push(msg);
+        }
+
+        assert_eq!(received.len(), 3, "expected 3 messages");
+        for (i, msg) in received.iter().enumerate() {
+            let id = i as u64 + 1;
+            assert!(
+                matches!(msg, Message::ActivityEventReceived(e) if e.id == agent::ActivityId(id)),
+                "message {i} wrong: {msg:?}"
+            );
+        }
+    }
+
+    /// T-D-N5 test 2 — `activity_stream_impl` swallows `Lagged` errors and
+    /// continues (does not panic; stream remains open).
+    #[tokio::test]
+    async fn activity_recipe_handles_lag() {
+        use tokio::sync::broadcast;
+
+        // Small channel (capacity 4) so we can force a lag easily.
+        let (tx, rx) = broadcast::channel::<ActivityEvent>(4);
+
+        // Fill the channel completely before the consumer reads — this
+        // forces the next send to overflow and the consumer to get Lagged.
+        for i in 0..4u64 {
+            tx.send(make_activity_event(i)).expect("fill send ok");
+        }
+        // One more send causes the oldest to be evicted — consumer will see Lagged.
+        tx.send(make_activity_event(99)).expect("overflow send ok");
+
+        let mut stream = activity_stream_impl(rx);
+
+        // The stream must NOT panic; it must swallow Lagged and yield the
+        // surviving messages. We just verify it produces at least one message
+        // after the lagged gap without hanging.
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+            .await
+            .expect("within 2s")
+            .expect("stream yielded at least one message after lag");
+
+        assert!(
+            matches!(msg, Message::ActivityEventReceived(_)),
+            "expected ActivityEventReceived after lag, got {msg:?}"
+        );
     }
 }

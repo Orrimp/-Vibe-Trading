@@ -222,6 +222,27 @@ pub const STATUS_BAR_VERSION_SUFFIX: &str = " \u{00b7} rust";
 /// never carries raw string literals for the version sigil or stack tag.
 pub const STATUS_BAR_VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"), " \u{00b7} rust");
 
+// ── Activity tape (cockpit-activity-status-bar v0.1.0 Wave B T-D-N6) ────────
+//
+// Zero inline literals contract (R7.2): every operator-visible string must
+// live here, not inside `widgets/activity_tape.rs`.
+
+/// Status-bar activity tape: label prefix for Yahoo data preload activities.
+pub const ACTIVITY_KIND_YAHOO_LABEL: &str = "Loading data";
+
+/// Status-bar activity tape: label prefix for Lab Run backtest activities.
+pub const ACTIVITY_KIND_LAB_RUN_LABEL: &str = "Backtesting";
+
+/// Status-bar activity tape: label prefix for Training subprocess activities.
+pub const ACTIVITY_KIND_TRAINING_LABEL: &str = "Training";
+
+/// Overflow chip prefix: rendered as `"+{n} more"` where n is the hidden count.
+/// Combined with `ACTIVITY_TAPE_MORE_SUFFIX` in the widget.
+pub const ACTIVITY_TAPE_MORE_PREFIX: &str = "+";
+
+/// Overflow chip suffix: combined with `ACTIVITY_TAPE_MORE_PREFIX`.
+pub const ACTIVITY_TAPE_MORE_SUFFIX: &str = " more";
+
 // ── Sidebar nav (Phase 2 — T1602) ────────────────────────────────────────────
 //
 // Net-new strings for the screen-routed shell. Phase 2 wires the first
@@ -723,6 +744,26 @@ pub const TRAIL_BOOL_NO: &str = "no";
 // Compare matrix screen — empty state placeholder.
 pub const MATRIX_EMPTY_STATE: &str =
     "No strategies registered — configure strategies to populate the matrix.";
+
+// ── Activity tape (cockpit-activity-status-bar v0.1.0 R2/R7) ─────────────────
+
+/// Format an elapsed duration into the operator-facing activity-tape label.
+/// Output convention: `<1s` for sub-second, `Ns` for 1-59s, `NmNs` for ≥60s.
+/// Kept here (not inline in `widgets/activity_tape.rs`) per the
+/// `consistency::no_inline_user_visible_strings_in_widgets` hygiene contract.
+#[must_use]
+pub fn activity_tape_elapsed_label(elapsed: std::time::Duration) -> String {
+    let total_secs = elapsed.as_secs();
+    if total_secs == 0 {
+        "<1s".to_owned()
+    } else if total_secs < 60 {
+        format!("{total_secs}s")
+    } else {
+        let m = total_secs / 60;
+        let s = total_secs % 60;
+        format!("{m}m{s}s")
+    }
+}
 
 /// Trail drawer Forecast summary text. Captures the `direction` and
 /// `confidence` fields from the active forecast payload. Kept as a helper
@@ -1520,6 +1561,12 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_CACHE_STATE_EMPTY", LAB_CACHE_STATE_EMPTY),
         ("LAB_CACHE_STATE_STALE", LAB_CACHE_STATE_STALE),
         ("LAB_CACHE_STATE_FRESH", LAB_CACHE_STATE_FRESH),
+        // cockpit-activity-status-bar v0.1.0 Wave B (T-D-N6)
+        ("ACTIVITY_KIND_YAHOO_LABEL", ACTIVITY_KIND_YAHOO_LABEL),
+        ("ACTIVITY_KIND_LAB_RUN_LABEL", ACTIVITY_KIND_LAB_RUN_LABEL),
+        ("ACTIVITY_KIND_TRAINING_LABEL", ACTIVITY_KIND_TRAINING_LABEL),
+        ("ACTIVITY_TAPE_MORE_PREFIX", ACTIVITY_TAPE_MORE_PREFIX),
+        ("ACTIVITY_TAPE_MORE_SUFFIX", ACTIVITY_TAPE_MORE_SUFFIX),
     ]
 }
 
