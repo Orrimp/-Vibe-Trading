@@ -2,7 +2,7 @@
 slug: cockpit-activity-status-bar
 status: in-progress
 owner: developer
-updated: 2026-05-26
+updated: 2026-05-26 (ADR-0042 authored — T-AR-4 ticked)
 ---
 
 # Tasks — cockpit-activity-status-bar
@@ -31,13 +31,19 @@ _owner: architect_
 - [x] **T-AR-3** (2026-05-25) — Opened trace row
   `REQ-COCKPIT-ACTIVITY-001` at `proposed` state in
   [`spec/trace.toml`](../trace.toml).
-- [ ] **T-AR-4** — Author ADR at
-  `spec/architecture/adr/00NN-cockpit-activity-broadcast.md` (number
-  assigned at M-T1 against the ADR registry — likely 0041).
-  Locks ActivityEvent shape, capacity-256 bound, RAII Drop semantics,
-  100 ms producer-side throttle, in-memory-only display contract.
-  _Acceptance_: registry entry committed + cross-link in feature.md
-  § Design D5.
+- [x] **T-AR-4** (2026-05-26) — ADR authored at
+  [`spec/architecture/adr/0042-cockpit-activity-broadcast.md`](../architecture/adr/0042-cockpit-activity-broadcast.md).
+  Number 0042 assigned (0041 was allocated to `trader-crate-split`
+  earlier the same day). Locks D1 Q1=(a) broadcast-bus over (b)
+  tracing-layer / (c) per-source polling; D1.1 ActivityEvent shape;
+  D1.2 capacity-256 bounded ring (lossy under producer storm);
+  D1.3 RAII ActivityHandle Drop semantics (panic-detection emits
+  `Failed("dropped during panic")`); D1.4 100 ms producer-side throttle;
+  D1.5 in-memory only (audit ledger remains source of truth).
+  Registry entry added at
+  [`spec/architecture/adr/README.md`](../architecture/adr/README.md)
+  L92. Cross-link in feature.md § Design D5 already present (number
+  resolved from `00NN` placeholder).
 - [ ] **T-AR-5** — Surface Q1-Q8 to operator via `AskUserQuestion`
   (orchestrator-routed). All 8 Qs are standing-Autoapprove-eligible
   at the analyst-recommended defaults, but Q1 (event source) + Q2

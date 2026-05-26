@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-26 (ADR-0041 added)
+updated: 2026-05-26 (ADR-0044 added)
 ---
 
 
@@ -89,6 +89,9 @@ the canonical table; the parent file links here.)
 | 0039  | LLM-forecaster verdict criteria L0-L4 (parallel to ADR-0033 § D3 and ADR-0038 § D1, not extension) | accepted | 2026-05-22 |
 | 0040  | Yahoo realdata path + revision pin (Lab dispatch source) — generalises ADR-0032 to a second data source; engine stays source-agnostic per Q1=(b); 34/34 anchors byte-identical | accepted | 2026-05-24 |
 | 0041  | Trader crate split — reflection-memory consumer moves out of strategy into new `crates/trader/`; structurally enforces R8.1 / R10.8 layering invariant; pure package-level refactor (additive-zero anchors) | accepted | 2026-05-26 |
+| 0042  | Cockpit activity broadcast — 10th `EventBus` channel + RAII `ActivityHandle` for in-flight-work tape (extends ADR-0012); Q1=(a) broadcast-bus over (b) tracing-layer / (c) per-source polling; capacity-256 lossy ring; 100 ms producer-side throttle; in-memory only (audit ledger remains source of truth); 34/34 anchors byte-identical | accepted | 2026-05-26 |
+| 0043  | Simulated network latency + order-book slippage in backtest — D1 always-on code path with default-zero noop (rejects Cargo feature flag); D2 seeded `ChaCha20Rng` sub-stream keyed on `(scenario_seed, order_id)` for replay determinism; D3 linear bps slippage at v0.1.0, defer square-root to v0.2.0; D4 NEW `AuditEvent::SimulatedExecMetrics` variant with skip-when-zero guard; D5 backtest-only scope (live mode untouched); 34/34 anchors byte-identical at v0.1.0 ship via R-NR.1 hard gate | accepted | 2026-05-26 |
+| 0044  | Activity-aggregator producer pattern — audit-ledger-writes producer with 100 ms aggregation envelope (extends ADR-0042); D1 placement at `crates/agent/src/activity_audit_aggregator.rs` sibling of `activity.rs` (producer cohesion) over `crates/ui/` (UI is subscriber) / `crates/audit/` (R-NR.1 zero-change contract); D2 internal shape (broadcast::Receiver + AtomicU32 + tokio::time::interval + long-lived ActivityHandle); D3 100 ms cadence verbatim from ADR-0042 § D1.4 (status-bar render budget unchanged); D4 separate-handle Failed emission (NOT main-handle fail() — don't taint successful writes red); D5 idle-end semantics (long-lived handle; drop on first empty window for free "audit active / quiet" boolean); 34/34 anchors byte-identical by construction | accepted | 2026-05-26 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body
@@ -235,6 +238,40 @@ finalisation.
   gate-test red on `main`); locks Q1=(a) new `crates/trader/` +
   Q2=(a) clean-cut move + Q3=(a) inverse-API; corrects analyst
   file-count miscount (9 files / 10 test suites, not 8 / 13).
+- 2026-05-26 (architect, M-T1): ADR-0043 added — simulated network
+  latency + order-book slippage in backtest; default-zero noop preserves
+  34 anchors via R-NR.1 hard gate; v0.2.0 anchor-migration brief
+  deferred per Q5.
+- 2026-05-26 (architect, M-T1): ADR-0044 added — activity-aggregator
+  producer pattern (extends ADR-0042). Codifies the
+  broadcast-receiver + `AtomicU32` + `tokio::time::interval` +
+  long-lived `ActivityHandle` with idle-end semantics recipe as
+  reusable for future high-frequency event sources. Locks D1
+  placement at `crates/agent/src/activity_audit_aggregator.rs`
+  (producer cohesion with existing `activity.rs`), D2 internal
+  shape (50 ns/tick fetch_add hot path), D3 100 ms cadence verbatim
+  from ADR-0042 § D1.4, D4 separate-handle Failed emission (NOT
+  main-handle `fail()` — don't taint successful writes red), D5
+  idle-end semantics. Q1=(b) per-window 100 ms / Q2=(a) redacted
+  "Audit: N writes" / Q3=(a) sibling Failed event all locked at
+  analyst-recommended defaults under standing Autoapprove.
+  Zero changes to `crates/audit/` (R-NR.1 anchor-additive
+  contract); 34/34 anchors stay byte-identical. Closes T-AR-4 of
+  `spec/cockpit-activity-audit-ledger-producer/tasks.md`.
+- 2026-05-26 (architect, post-ship): ADR-0042 added — cockpit activity
+  broadcast; codifies the design shipped at
+  `cockpit-activity-status-bar v0.1.0` (commits `4248c00` + `ea52057`
+  + `49bf342` + `ef6f018` + `0ff402f` + `f728334`). 10th `EventBus`
+  channel (`activity_tx`, capacity 256) + RAII `ActivityHandle` with
+  panic-aware `Drop` + 100 ms producer-side throttle. Q1=(a)
+  broadcast-bus pattern wins over (b) tracing-layer (fragile + slow,
+  ties UI to log filtering) and (c) per-source polling (coupling-heavy,
+  doesn't extend). Lossiness OK because activity tape is operator-
+  eyeball UX, not audit (R-NR.4 in-memory only; audit ledger remains
+  source of truth). Deferred to v0.1.1: PII redaction for `LlmCall`
+  producer (K4); aggregator design for `AuditLedgerWrite` producer
+  (R5.2 / K3). 34/34 anchors stay byte-identical. Closes T-AR-4 of
+  `spec/cockpit-activity-status-bar/tasks.md`.
   + revision pin (Lab dispatch source). Generalises ADR-0032's
   revision-pin protocol to a second data source (Yahoo Finance) on
   the Lab dispatch path. Locks D1 (module placement —
