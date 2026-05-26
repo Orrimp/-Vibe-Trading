@@ -18,7 +18,7 @@ use trading_core::{
     TimeInForce, Timeframe, Timestamp, Venue,
 };
 
-use crate::cli_types::MomentumScenarioInput;
+use crate::cli_types::{LatencySlippageSimConfig, MomentumScenarioInput};
 
 // ── Result struct ─────────────────────────────────────────────────────────────
 
@@ -380,7 +380,16 @@ pub async fn run(
                     {
                         for fill in fills {
                             let notional_fill = fill.qty.get() * fill.price.get();
-                            cash -= notional_fill + fill.fee.amount();
+                            // v5-latency-slippage-sim: apply additional simulated slippage
+                            // on top of the PaperEngine's spread model. At zero bps this
+                            // is a noop (byte-identical to pre-feature code).
+                            let sim_slip_cost = sim_slippage_cost(
+                                fill.qty.get(),
+                                fill.price.get(),
+                                Side::Buy,
+                                &input.latency_slippage_sim,
+                            );
+                            cash -= notional_fill + fill.fee.amount() + sim_slip_cost;
                             *position_book
                                 .entry(sig.symbol.clone())
                                 .or_insert(Decimal::ZERO) += fill.qty.get();
@@ -421,7 +430,14 @@ pub async fn run(
                     {
                         for fill in fills {
                             let notional_fill = fill.qty.get() * fill.price.get();
-                            cash += notional_fill - fill.fee.amount();
+                            // v5-latency-slippage-sim: apply additional simulated slippage.
+                            let sim_slip_cost = sim_slippage_cost(
+                                fill.qty.get(),
+                                fill.price.get(),
+                                Side::Sell,
+                                &input.latency_slippage_sim,
+                            );
+                            cash += notional_fill - fill.fee.amount() - sim_slip_cost;
                             let qty_held = position_book
                                 .entry(sig.symbol.clone())
                                 .or_insert(Decimal::ZERO);
@@ -516,4 +532,36 @@ pub async fn run(
         bars: bars_arc,
         position_curve,
     })
+}
+
+// ── v5-latency-slippage-sim helpers ──────────────────────────────────────────
+
+/// Compute the extra cash cost due to simulated slippage on a fill.
+///
+/// At `slippage_bps == 0` (the default) returns `Decimal::ZERO` — no change
+/// to the fill accounting, byte-identical to the pre-feature code path.
+///
+/// For a Buy fill: simulated slippage costs EXTRA cash (we pay more).
+/// For a Sell fill: simulated slippage costs LESS cash received (we get less).
+///
+/// The caller deducts the returned value from cash in both directions:
+/// - Buy: `cash -= notional + fee + sim_slip_cost`
+/// - Sell: `cash += notional - fee - sim_slip_cost`
+#[allow(clippy::float_arithmetic)] // no float; uses Decimal throughout
+fn sim_slippage_cost(
+    qty: Decimal,
+    fill_price: Decimal,
+    side: Side,
+    cfg: &LatencySlippageSimConfig,
+) -> Decimal {
+    if cfg.slippage_bps == 0 {
+        return Decimal::ZERO;
+    }
+    let bps_decimal = Decimal::from(cfg.slippage_bps) / Decimal::from(10_000_u32);
+    // For both sides, the extra COST is qty * fill_price * bps/10_000.
+    // For Buy: we pay bps% more than the fill_price → extra cost.
+    // For Sell: we receive bps% less than the fill_price → extra cost.
+    // The sign logic in the caller handles the direction.
+    let _ = side; // direction is handled by the caller's sign logic
+    qty * fill_price * bps_decimal
 }

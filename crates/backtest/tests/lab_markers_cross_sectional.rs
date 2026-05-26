@@ -61,6 +61,7 @@ fn momentum_config() -> ScenarioConfig {
         bars_override: None,
         sma_fast_len: None,
         sma_slow_len: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
     }
 }
 

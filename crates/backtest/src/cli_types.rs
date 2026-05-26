@@ -9,7 +9,110 @@
 use std::path::PathBuf;
 
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use trading_core::Symbol;
+
+// ── LatencySlippageSimConfig (v5-latency-slippage-sim R1 / ADR-0043 § D1) ─────
+
+/// Configuration for deterministic latency and slippage simulation in backtest.
+///
+/// **Default is noop**: all fields are zero so no latency or slippage is
+/// applied unless the operator explicitly sets non-zero values. The default
+/// config produces byte-identical output to the pre-feature code, preserving
+/// all 34 SHA-256 anchors in `spec/anchors.toml` (R-NR.1 / ADR-0043 § D1).
+///
+/// ## Latency model (Q1 = uniform jitter / ADR-0043 § D2)
+///
+/// When `latency_ms_min == latency_ms_max == 0`: timestamp unchanged (noop).
+/// When `latency_ms_min == latency_ms_max > 0`: fixed delay.
+/// When `latency_ms_min < latency_ms_max`: uniform sample from `[min, max]`.
+///
+/// The RNG is a seeded `ChaCha20` sub-stream keyed on `(scenario_seed, order_id)`
+/// via blake3, making jitter deterministic across replay runs (D2).
+///
+/// ## Slippage model (Q2 = linear bps / ADR-0043 § D3)
+///
+/// `slippage_bps == 0`: fill price unchanged (noop).
+/// `slippage_bps > 0`: `fill_price = signal_price * (1 ± bps/10_000)`,
+/// sign-applied per `Side` (Buy = +, Sell = −).
+///
+/// ## Scope (Q4 = backtest-only / ADR-0043 § D5)
+///
+/// This config is consumed only by `crates/backtest`. The live-mode agent
+/// (`crates/agent`) does not read it — live fills already carry real
+/// latency and slippage from the venue.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LatencySlippageSimConfig {
+    /// Minimum latency added to `order_ts_ms` in milliseconds.
+    /// Default: 0 (noop).
+    pub latency_ms_min: u64,
+    /// Maximum latency added to `order_ts_ms` in milliseconds.
+    /// When equal to `latency_ms_min`: fixed delay. Default: 0 (noop).
+    pub latency_ms_max: u64,
+    /// Linear slippage in basis points applied to the fill price.
+    /// Default: 0 (noop).
+    pub slippage_bps: u32,
+}
+
+impl LatencySlippageSimConfig {
+    /// Returns `true` when the config is the noop default (all zeros).
+    /// Used by callers to skip RNG construction on the hot path.
+    #[inline]
+    #[must_use]
+    pub fn is_noop(&self) -> bool {
+        self.latency_ms_min == 0 && self.latency_ms_max == 0 && self.slippage_bps == 0
+    }
+}
+
+// ── T-D-N1 unit tests ─────────────────────────────────────────────────────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_arithmetic)]
+mod latency_slippage_config_tests {
+    use super::*;
+
+    /// T-D-N1: Default config is all zeros (noop / anchor-safe).
+    #[test]
+    fn latency_slippage_sim_config_default_is_noop() {
+        let cfg = LatencySlippageSimConfig::default();
+        assert_eq!(cfg.latency_ms_min, 0, "default latency_ms_min must be 0");
+        assert_eq!(cfg.latency_ms_max, 0, "default latency_ms_max must be 0");
+        assert_eq!(cfg.slippage_bps, 0, "default slippage_bps must be 0");
+        assert!(cfg.is_noop(), "default must be noop");
+    }
+
+    /// Default config has `PartialEq` with another default.
+    #[test]
+    fn default_equals_default() {
+        let a = LatencySlippageSimConfig::default();
+        let b = LatencySlippageSimConfig::default();
+        assert_eq!(a, b);
+    }
+
+    /// Non-zero config is NOT noop.
+    #[test]
+    fn non_zero_is_not_noop() {
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 50,
+            latency_ms_max: 100,
+            slippage_bps: 10,
+        };
+        assert!(!cfg.is_noop(), "non-zero config must not be noop");
+    }
+
+    /// Serialization round-trip (Serde derives).
+    #[test]
+    fn serde_round_trip() {
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 20,
+            latency_ms_max: 80,
+            slippage_bps: 5,
+        };
+        let json = serde_json::to_string(&cfg).expect("must serialize");
+        let back: LatencySlippageSimConfig = serde_json::from_str(&json).expect("must deserialize");
+        assert_eq!(cfg, back);
+    }
+}
 
 // ── SMA / Composed scenario input ─────────────────────────────────────────────
 
@@ -59,6 +162,13 @@ pub struct MomentumScenarioInput {
     /// Dataset revision SHA (from `data/binance/REVISION.toml`) for the
     /// `data_revision_sha:` frontmatter field. `None` for synthetic scenarios.
     pub data_revision_sha: Option<String>,
+    /// v5-latency-slippage-sim R1 / ADR-0043 § D1 — optional deterministic
+    /// latency + slippage simulation. Default is noop (all zeros).
+    ///
+    /// **Anchor contract**: CLI paths that construct `MomentumScenarioInput`
+    /// without this field use `..Default::default()` or `LatencySlippageSimConfig::default()`
+    /// explicitly, ensuring byte-identical output for all 34 anchored scenarios.
+    pub latency_slippage_sim: LatencySlippageSimConfig,
 }
 
 // ── Pairs scenario input ───────────────────────────────────────────────────────

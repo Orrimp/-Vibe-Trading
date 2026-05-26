@@ -1035,6 +1035,8 @@ async fn main() -> Result<()> {
             config_id,
             bars_override: realdata_bars_for_momentum.take(),
             data_revision_sha: realdata_revision_sha_for_momentum.clone(),
+            // v5-latency-slippage-sim: CLI paths use noop default (anchor-safe).
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
         let (_h, m_cancel) = backtest::cancel::cancellation_pair();

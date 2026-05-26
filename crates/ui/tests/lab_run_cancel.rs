@@ -88,6 +88,7 @@ async fn engine_returns_cancelled_when_handle_dropped() {
         bars_override: None,
         sma_fast_len: None,
         sma_slow_len: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
     };
 
     let result = backtest::engine::run_scenario(cfg, cancel_rx, progress_tx).await;

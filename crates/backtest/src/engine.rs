@@ -224,6 +224,16 @@ pub struct ScenarioConfig {
     pub sma_fast_len: Option<usize>,
     /// lab-polish-round-2 R2 — operator-tuned SMA slow window (None → 50).
     pub sma_slow_len: Option<usize>,
+
+    /// v5-latency-slippage-sim R1 / ADR-0043 § D1 — optional deterministic
+    /// latency + slippage simulation. Default is noop (all zeros); existing
+    /// call sites that construct `ScenarioConfig` without this field use
+    /// `ScenarioConfig::default_latency_slippage()` or struct-update syntax
+    /// with `..ScenarioConfig::default_latency_slippage_sim()`.
+    ///
+    /// **Anchor contract**: the default value (`LatencySlippageSimConfig::default()`)
+    /// produces byte-identical output for all 34 anchored backtest reports.
+    pub latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -653,6 +663,8 @@ pub async fn run_scenario(
                 config_id: "top10_momentum_h1".to_string(),
                 bars_override: None,
                 data_revision_sha: None,
+                // v5-latency-slippage-sim: thread config through from ScenarioConfig.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
             };
             // Bug #63 — pass cancel + progress through so Stop + progress bar
             // work for cross-sectional runs.
@@ -930,6 +942,7 @@ mod tests {
             bars_override: None,
             sma_fast_len: None,
             sma_slow_len: None,
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
         }
     }
 

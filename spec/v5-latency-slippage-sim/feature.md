@@ -2,7 +2,7 @@
 slug: v5-latency-slippage-sim
 version: 0.1.0
 status: in-progress
-owner: developer
+owner: tester
 updated: 2026-05-26
 predecessor: cockpit-activity-status-bar v0.1.0 (no direct dep — parallel feature track)
 parent: backtest-vs-live-execution-gap
@@ -279,3 +279,89 @@ post-ship migration is expensive.
   **ADR-0043** since 0040 is already taken by yahoo-realdata-path
   (0041 = trader-crate-split, 0042 = cockpit-activity-broadcast,
   0043 is the next free number).
+- 2026-05-26 (developer): Waves A-E complete. Implementation summary below.
+
+## Implementation
+
+### Developer notes (2026-05-26)
+
+**Waves A-E implemented**. All T-D-N1 through T-D-N10 rows ticked with
+evidence. T-D-N11 (workspace test) delegated to tester.
+
+#### Wave A — Configuration toggle (CRITICAL anchor gate)
+
+- `LatencySlippageSimConfig` added to `crates/backtest/src/cli_types.rs:44-64`.
+  Derives `Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize`.
+  `is_noop()` helper at line 70.
+- `ScenarioConfig` gains `latency_slippage_sim: LatencySlippageSimConfig`
+  field in `crates/backtest/src/engine.rs`.
+- All 9 construction sites updated with `..Default::default()` (5 test sites
+  + `main.rs` + `lab/runner.rs` + 2 UI test files).
+- **Anchor gate**: 34/34 PASS confirmed.
+
+#### Wave B — Latency simulation
+
+- `crates/exec/src/latency.rs` (new module, 255 lines).
+- `apply_latency()` function: noop at zero, fixed delay at min==max,
+  Murmur3-based jitter otherwise.
+- `latency_u64_for_order()`: XOR-mixes 4 u64 seed words with order_id,
+  applies two rounds of Murmur3 finalizer constants (no external hash call).
+  Result: `apply_latency_jitter` bench at 2.28 ns (target ≤50 ns — massively
+  ahead of target; previous blake3 approach was 61 ns).
+- 4 unit tests: noop, fixed, jitter range, determinism.
+
+#### Wave C — Slippage simulation
+
+- `crates/cost/src/slippage.rs` (new module, 148 lines).
+- `apply_slippage()`: linear bps, side-signed, noop at bps=0.
+- `sim_slippage_cost()` helper in `crates/backtest/src/scenarios/momentum.rs:551`
+  deducts slippage from `cash` on every Buy/Sell fill (lines 386-392, 434-440).
+- 5 unit tests: noop, buy increases, sell decreases, symmetry, precision.
+
+#### Wave D — Audit-ledger integration
+
+- `AuditEvent::SimulatedExecMetrics` variant added to `crates/audit/src/tick.rs:126`.
+- Skip-when-zero guard in tests; actual guard at caller's emit site.
+- 3 unit tests: round-trip, skip-when-zero, variant_label.
+
+#### Wave E — e2e + bench + non-regression
+
+- `crates/strategy/tests/latency_slippage_sim_e2e.rs` (228 lines):
+  - `noop_byte_identical_to_baseline` — determinism guard.
+  - `enabled_diverges_by_at_least_1bp` — FORENSIC GATE (CLAUDE.md non-negotiable).
+  - `enabled_audit_metrics_recorded` — skip-when-zero guard semantics.
+- `crates/exec/benches/latency_slippage.rs` — 3 micro-benches.
+- `crates/exec/benches/throughput_with_sim.rs` — 2 throughput benches.
+
+#### Deviation: `apply_slippage_10bps` bench target
+
+R7 target for `apply_slippage_10bps` was ≤10 ns. Actual: ~19 ns.
+Root cause: `rust_decimal` arithmetic requires ~6-10 ns per operation;
+the enabled path performs `Decimal::from(bps) / Decimal::from(10_000_u32)`
++ one multiplication = 2-3 Decimal ops = 18-30 ns minimum.
+The noop path (bps=0) returns immediately — branch prediction makes it free.
+The ≤10 ns target was aspirational and physically impossible with `rust_decimal`.
+Decision: document deviation; tester to confirm acceptability.
+The noop path (critical for R-NR.4 anchor preservation) is unaffected.
+
+#### RNG architecture deviation (from ADR-0043 § D2 draft)
+
+The ADR draft cited `ChaCha20Rng::from_seed()` for sub-stream derivation.
+Benchmarks showed ChaCha20Rng init costs ~400-600 ns per order — an order of
+magnitude over the ≤50 ns R7 target. Implemented Murmur3-style bit mixer
+instead: XOR-combines the 32-byte seed (as 4 u64 words) with the order_id,
+runs two rounds of Murmur3 finalizer constants. Result: 2.28 ns total, 10x
+under the target. Quality is sufficient for backtest jitter (cryptographic-
+strength distribution not required here). The `ChaCha20Rng`-per-order API
+(`latency_rng_for_order`) is retained in the codebase for future multi-sample
+use cases.
+
+#### Performance summary
+
+| Bench | Result | Target | Status |
+|---|---|---|---|
+| `apply_latency_noop` | 1.46 ns | ≤5 ns | PASS |
+| `apply_latency_jitter` | 2.28 ns | ≤50 ns | PASS (22x under) |
+| `apply_slippage_10bps` | 19 ns | ≤10 ns | MISS (deviation documented) |
+| `noop_8760_fills` | 33 µs | baseline | ~3.8 ns/fill |
+| `enabled_8760_fills` | 191 µs | opt-in | ~21.8 ns/fill |

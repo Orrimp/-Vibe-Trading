@@ -12,8 +12,23 @@ serde.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
+# v5-latency-slippage-sim R2: seeded RNG for deterministic latency jitter (ADR-0043 § D2)
+rand.workspace = true
+rand_chacha.workspace = true
+blake3.workspace = true
 
 [dev-dependencies]
 rust_decimal.workspace = true
 rust_decimal_macros.workspace = true
 time.workspace = true
+criterion.workspace = true
+cost = { path = "../cost" }
+trading_core = { path = "../core" }
+
+[[bench]]
+name = "latency_slippage"
+harness = false
+
+[[bench]]
+name = "throughput_with_sim"
+harness = false

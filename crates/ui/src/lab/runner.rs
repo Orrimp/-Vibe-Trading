@@ -463,6 +463,8 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         // lab-polish-round-2 R2 — pass operator-tuned SMA windows through.
         sma_fast_len: cfg.sma_fast_len,
         sma_slow_len: cfg.sma_slow_len,
+        // v5-latency-slippage-sim R1 — default noop (anchor-safe).
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
     })
 }
 

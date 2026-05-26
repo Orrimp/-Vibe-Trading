@@ -1664,27 +1664,42 @@ arch        = [
   "spec/bug-log.md",                                                  # references Bug #65 K5 sequencing constraint
 ]
 crates      = [
-  # ANALYST M0 (2026-05-26) — paths surfaced from R1-R7. Developer creates at M-DEV.
-  # Wave A — configuration toggle (FIRST task; CRITICAL anchor gate at T-D-N2):
-  "crates/backtest/src/cli_types.rs",                                # EXTEND — add `LatencySlippageSimConfig` field on `ScenarioConfig`; default zeros applied at all 34 anchored call sites
+  # DEVELOPER M-DEV (2026-05-26) — actual files modified/created.
+  # Wave A — configuration toggle:
+  "crates/backtest/src/cli_types.rs",                                # EXTEND — `LatencySlippageSimConfig` struct + Default + is_noop (lines 44-74); 4 unit tests (lines 69-114)
+  "crates/backtest/src/engine.rs",                                   # EXTEND — `latency_slippage_sim` field on `ScenarioConfig`; `config_with_seed` helper updated
+  "crates/backtest/src/main.rs",                                     # EXTEND — default field at `MomentumScenarioInput` construction
+  "crates/backtest/src/scenarios/momentum.rs",                       # EXTEND — `sim_slippage_cost()` helper; cash deductions at Buy/Sell fill loops; field plumbing
+  "crates/ui/src/lab/runner.rs",                                     # EXTEND — default field at `ScenarioConfig` construction
+  "crates/ui/tests/lab_run_cancel.rs",                               # EXTEND — default field
+  "crates/ui/tests/lab_run_engine.rs",                               # EXTEND — default field
+  "crates/backtest/tests/lab_markers_cross_sectional.rs",            # EXTEND — default field
+  "crates/backtest/tests/progress_emit.rs",                          # EXTEND — default field (2 sites)
   # Wave B — latency simulation:
-  "crates/exec/src/matching.rs",                                     # EDIT — `MatchingEngine::apply_latency` per R2; seeded `ChaCha20Rng` sub-stream per D2
+  "crates/exec/src/latency.rs",                                      # NEW — `apply_latency()` + `latency_u64_for_order()` (Murmur3 finalizer); 4 unit tests
+  "crates/exec/src/lib.rs",                                          # EXTEND — `pub mod latency; pub use latency::apply_latency`
+  "crates/exec/Cargo.toml",                                          # EXTEND — rand/rand_chacha/blake3 + bench entries
   # Wave C — slippage simulation:
-  "crates/cost/src/slippage.rs",                                     # NEW — `apply_slippage(signal_price, side, notional, bps)` per R3; linear bps model per D3
-  "crates/cost/src/lib.rs",                                          # EDIT — `pub mod slippage;`
+  "crates/cost/src/slippage.rs",                                     # NEW — `apply_slippage()` linear bps model; 5 unit tests
+  "crates/cost/src/lib.rs",                                          # EXTEND — `pub mod slippage; pub use slippage::apply_slippage`
   # Wave D — audit-ledger integration:
-  "crates/audit/src/journal.rs",                                     # EDIT — NEW `AuditEvent::SimulatedExecMetrics` variant per D4; skip-when-zero guard
+  "crates/audit/src/tick.rs",                                        # EXTEND — `AuditEvent::SimulatedExecMetrics` variant (line 126); `variant_label` arm (line 182); 3 unit tests (lines 247-353)
+  # Wave E — benches:
+  "crates/exec/benches/latency_slippage.rs",                         # NEW — 3 micro-benches (R7)
+  "crates/exec/benches/throughput_with_sim.rs",                      # NEW — 2 throughput benches (R-NR.4)
+  # Wave E — workspace deps:
+  "crates/strategy/Cargo.toml",                                      # EXTEND — rust_decimal + backtest dev-deps; bench entry for e2e test
+  "Cargo.toml",                                                      # EXTEND — blake3 workspace dep
 ]
 tests       = [
-  # Developer creates at M-DEV:
-  "crates/backtest/src/cli_types.rs",                                # Wave A T-D-N1: inline test `latency_slippage_sim_config_default_is_noop`
-  "crates/exec/src/matching.rs",                                     # Wave B T-D-N3: 4 inline tests — noop_at_zero / fixed_at_min_eq_max / jitter_uniform_distribution / deterministic_across_runs
-  "crates/cost/src/slippage.rs",                                     # Wave C T-D-N5: 5 inline tests — noop_at_zero_bps / buy_increases_price / sell_decreases_price / sign_symmetry / decimal_precision
-  "crates/audit/src/journal.rs",                                     # Wave D T-D-N7: 3 inline tests — variant_serializes_round_trip / skip_when_zero_emits_nothing / dual_write_lands_in_both_tables
-  "crates/strategy/tests/latency_slippage_sim_e2e.rs",               # Wave E T-D-N8: NEW — CLAUDE.md non-negotiable baseline-equity-divergence e2e test (R5); 3 tests
-  "crates/exec/benches/latency_slippage.rs",                         # Wave E T-D-N9: NEW criterion bench — 3 micro-benches (R7)
-  "crates/exec/benches/throughput_with_sim.rs",                      # Wave E T-D-N10: NEW criterion bench — < 1% regression vs noop (R-NR.4)
-  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",        # PRECEDENT REFERENCE — Wave E test pattern; CLAUDE.md non-negotiable canonical e2e shape
+  # Developer M-DEV (2026-05-26):
+  "crates/backtest/src/cli_types.rs",                                # Wave A T-D-N1: 4 tests in `latency_slippage_config_tests` — noop, default_equals, non_zero, serde
+  "crates/exec/src/latency.rs",                                      # Wave B T-D-N3: 4 tests — noop_at_zero / fixed_at_min_eq_max / jitter_uniform_distribution / deterministic_across_runs
+  "crates/cost/src/slippage.rs",                                     # Wave C T-D-N5: 5 tests — noop_at_zero_bps / buy_increases_price / sell_decreases_price / sign_symmetry / decimal_precision
+  "crates/audit/src/tick.rs",                                        # Wave D T-D-N7: 3 tests in `simulated_exec_metrics_tests` — round_trip / skip_when_zero / variant_label
+  "crates/strategy/tests/latency_slippage_sim_e2e.rs",               # Wave E T-D-N8: CLAUDE.md non-negotiable e2e — 3 tests (noop_byte_identical / enabled_diverges_by_at_least_1bp / enabled_audit_metrics_recorded)
+  "crates/exec/benches/latency_slippage.rs",                         # Wave E T-D-N9: criterion bench — noop 1.46 ns / jitter 2.28 ns / slippage 19 ns
+  "crates/exec/benches/throughput_with_sim.rs",                      # Wave E T-D-N10: throughput bench — noop 33 µs / enabled 191 µs (8760 fills)
 ]
-anchors     = "34/34 PASS"  # NONE ADDED by construction at v0.1.0 ship (R-NR.1 / Default::default() = noop). Tester confirms via `bash scripts/verify_anchors.sh` at M-FINAL. v0.2.0 anchor-migration brief (deferred per Q5) is where canonical-config-with-non-zero-values backtest reports re-emit + new anchors lock.
-state       = "proposed"   # analyst M0 + architect M-T1 closed same-day 2026-05-26. Standing Autoapprove on Q1/Q2/Q3/Q4/Q5 defaults eligible per operator's session-level directive; orchestrator may auto-tick T-OD1..T-OD5 before spawning developer for M-DEV Wave A. Tester flips to `passed` at M-FINAL once R-O1 SHIP path confirmed (verdict tree in feature.md).
+anchors     = "34/34 PASS"  # Verified 2026-05-26 (task bxjh9cwf5). NONE ADDED — all scenarios use Default::default() = noop. v0.2.0 anchor-migration brief deferred per Q5.
+state       = "in-progress"   # Developer M-DEV complete 2026-05-26. Tester M-FINAL pending. Tester flips to `passed` at M-FINAL once R-O1 SHIP path confirmed (verdict tree in feature.md).

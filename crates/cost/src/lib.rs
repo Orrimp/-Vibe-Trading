@@ -7,6 +7,11 @@ pub mod budget;
 pub mod event;
 pub mod sink;
 
+/// Linear-bps slippage simulation for backtest fills (v5-latency-slippage-sim R3).
+/// Backtest-only — not called from live-mode paths (ADR-0043 § D5).
+pub mod slippage;
+
 pub use budget::{BudgetError, CostBudget};
 pub use event::{AgentRole, CostEvent, InfraLine, LlmTier, ProviderKind};
 pub use sink::{CostSink, LedgerCostSink, NoopCostSink};
+pub use slippage::apply_slippage;
