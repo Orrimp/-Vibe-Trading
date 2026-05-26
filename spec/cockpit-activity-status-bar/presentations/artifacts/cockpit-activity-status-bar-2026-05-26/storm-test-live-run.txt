@@ -1,0 +1,15 @@
+$ cargo test -p ui --test activity_tape_event_storm --features live -- --nocapture
+   Compiling ui v0.1.0 (/Users/.../trading/crates/ui)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.69s
+     Running tests/activity_tape_event_storm.rs
+
+running 1 test
+=== activity_tape_event_storm measurements ===
+  drain_time:      7.923 ms
+  delivery_rate:   1.0000 (10000 / 10000)
+  p99_latency:     0.034 ms
+  latency_samples: 10000 events measured
+=== PASS: all 3 assertions hold ===
+test activity_tape_handles_10k_event_burst_without_lag ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
