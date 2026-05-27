@@ -357,7 +357,7 @@ shipped defaults stand until you say otherwise.
 
 Operator: tick exactly one box below.
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-27, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

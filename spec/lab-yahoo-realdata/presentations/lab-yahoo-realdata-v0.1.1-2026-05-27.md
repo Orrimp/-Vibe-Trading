@@ -315,7 +315,7 @@ Mapped onto the 8 non-regression rows from
 
 The operator is the only one who ticks. Pick exactly one:
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-27, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

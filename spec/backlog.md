@@ -377,13 +377,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      after analyst agentId a43a615341bd60112 529'd at 26 tool uses;
      orchestrator appended this backlog row + trace row REQ-COCKPIT-TOAST-QUEUE-001
      at EOF since both were missing from the 529'd run). -->
-- **cockpit-toast-queue v0.1.0** — multi-toast bounded queue replacing
-  the current single-slot REPLACE semantic at `state.rs:2056-2061`.
-  Spawned from cockpit-training-pressed-wiring v0.1.0 M-DEV K5 follow-on
-  (commit 28db398). Brief at
-  [`spec/cockpit-toast-queue/feature.md`](cockpit-toast-queue/feature.md);
-  tasks at [`spec/cockpit-toast-queue/tasks.md`](cockpit-toast-queue/tasks.md).
-  Estimated ~2-3 days end-to-end. Trace: `REQ-COCKPIT-TOAST-QUEUE-001`.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-27 -->
+<!-- - **cockpit-toast-queue v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 <!-- updated 2026-05-27 (analyst, v5-latency-slippage-sim-v0.2.0-anchor-migration
      M0 close — inline-salvaged after analyst agentId ac4d192d801af160a 529'd at
@@ -606,16 +601,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 <!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-24 -->
 <!-- - **lab-yahoo-realdata** — see Recent section below for v0.1.0 ship summary. -->
 
-- **lab-yahoo-realdata v0.1.1 (live-cache + Yahoo anchor lock)** —
-  follow-up wave queued by v0.1.0 approval. Operator runs
-  `cargo run -p data --features yahoo,yahoo-online --bin fetch_yahoo_klines`
-  against BTC-USD (or similar small window); developer wires Yahoo
-  anchors into `spec/anchors.toml` + tester re-locks. Closes H1
-  (Yahoo vs Binance equity divergence <30%) and H2 (fetch success
-  >95%). **Spec**:
-  [`spec/lab-yahoo-realdata/feature.md`](lab-yahoo-realdata/feature.md).
-  **Trace**: `REQ-LAB-YAHOO-REALDATA-001`. Estimated 1-2 days
-  wall-clock after operator cache populated.
+<!-- moved to Recent (shipped) — v0.1.1 operator-approved 2026-05-27 -->
+<!-- - **lab-yahoo-realdata v0.1.1** — see Recent section below for v0.1.1 ship summary. -->
 
 <!-- updated 2026-05-26 (analyst, vol-killswitch-overlay-noop-fix) —
      **PROMOTED Idea → Active 2026-05-26** under Bug #65 (P0 safety
@@ -2216,6 +2203,43 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-27 cohort
+
+- **cockpit-toast-queue v0.1.0** — shipped 2026-05-27 (operator-approved).
+  Replaces the cockpit's single-slot toast REPLACE semantic with a
+  bounded multi-toast queue. `VecDeque<ToastEntry>` capped at 5 with
+  drop-oldest FIFO; stacked Lumen-card overlay in the bottom-right via
+  `iced::widget::Stack`; 5 s auto-dismiss via shared 500 ms
+  `ToastDismissRecipe` (6th cockpit subscription) + per-card `×` button.
+  Severity tokens reuse existing Lumen palette (`FG_2 / UP_500 /
+  INFO_400 / DOWN_500`) — zero new design tokens. K5 back-compat shim
+  keeps `cockpit_training_pressed_wiring` regression 5/5 green.
+  Architecture deviation flagged: `pub toast_message: Option<SmolStr>`
+  FIELD kept alongside queue + method shim (dead-store relative to
+  queue; annotated `// MIGRATION: remove at v0.2.0`). 4 integration +
+  4 unit + 86 panel-snapshot tests PASS; 69/69 anchors byte-identical
+  (UI-only). Operator-side smoke tests T-D-N16/T-D-N17 deferred per
+  AGENT.md human-verification recipe contract. Commits: `8480ded`,
+  `9cf813a`, `a723d24`, `896baab`. ADR-0046. See
+  [`spec/cockpit-toast-queue/feature.md`](cockpit-toast-queue/feature.md).
+
+- **lab-yahoo-realdata v0.1.1 (live-cache + Yahoo anchor lock)** —
+  shipped 2026-05-27 (operator-approved follow-up to v0.1.0). First
+  Yahoo Finance anchor locked: BTC-USD 2024 1d SMA cross.
+  Operator-populated cache at `data/yahoo/BTC-USD/1d/2024/` (12
+  parquets, 366 bars, REVISION.toml SHA `7b33166e1eb8...`). New
+  `crates/backtest/src/bin/run_yahoo_sma.rs` binary (247 LoC, gated by
+  `yahoo` feature). Anchor count 68 → 69; new row
+  `btc-yahoo-2024-1d-sma-cross` under namespace
+  `lab-yahoo-realdata-v0.1.1`. **H1 PASS** at 9.03% Yahoo-vs-Binance
+  equity divergence (well below 30% threshold). **H2 PASS** at 100%
+  fetch success (trivially satisfied at scale=1). Determinism
+  confirmed via 2 independent re-runs of the new binary. Tester
+  formal FAIL on workspace fmt + gallery test was *external* — both
+  blockers attributable to in-flight cockpit-toast-queue dev; resolved
+  by toast-queue landing. v0.1.2 follow-on: T-D2 cache-state badge UI,
+  multi-ticker fetch, T-T5 cockpit-smoke, T-T8 idle-CPU. Commits:
+  `bb14e11`, `8bd6b5c`, `9cf813a`, `a723d24`. See
+  [`spec/lab-yahoo-realdata/feature.md`](lab-yahoo-realdata/feature.md).
 
 - **cockpit-activity-audit-ledger-producer v0.1.0** — shipped 2026-05-27
   (operator-approved). Closes the activity-tape producer trio (LLM + Training

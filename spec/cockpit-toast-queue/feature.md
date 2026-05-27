@@ -2,7 +2,7 @@
 slug: cockpit-toast-queue
 version: 0.1.0
 status: shipped
-owner: presenter
+owner: shipped
 updated: 2026-05-27
 predecessor: cockpit-training-pressed-wiring v0.1.0
 priority: P2
