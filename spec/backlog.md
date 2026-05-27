@@ -373,6 +373,33 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-27 (analyst, lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
+     M0 close) — **PROMOTED Idea → Active 2026-05-27** by operator multi-select
+     option C against the v0.1.1 presenter deck open list: (1) lock ETH-USD as
+     anchor row 70 of `spec/anchors.toml` under namespace `lab-yahoo-realdata-v0.1.2`
+     (mirrors v0.1.1 BTC pattern at row 69, body SHA 8045623b…); (2) ship the
+     deferred T-D2 cache-state SUMMARY badge — an AGGREGATE multi-ticker indicator
+     that COMPLEMENTS (does not replace) the per-pair Fresh/Stale/Empty pill
+     already shipped at v0.1.0 Wave D-followup. Q1 load-bearing: extend
+     `run_yahoo_sma.rs` with `--ticker` flag (analyst-recommended) vs add parallel
+     `run_yahoo_sma_eth.rs` binary; 15-LoC delta vs +250 LoC, scales DRY to 8
+     future tickers, anchor preservation trivially proven by default-arg
+     invariance (H3: BTC SHA `8045623b…` byte-identical when `--ticker` omitted).
+     Q2 + Q3 ui-designer placement + content choices (Autoapprove-eligible at
+     analyst defaults: source-toggle row sibling + middle-ground copy "Cache: N
+     tickers · last YYYY-MM-DD"). **5 R / 4 K / 4 H / 3 Q** + non-regression
+     contract (zero new design tokens, exactly 1 new string) + cost framing
+     (~4-6 hours wall-clock; dev + ui-designer parallelizable, zero file
+     overlap) + pre-drawn 2-cell verdict tree. K1 fallback: if Binance ETHUSDT
+     reference data is missing/stale at M-DEV, route back to analyst with
+     operator-decide on synthetic-comparison fallback. Trace row
+     `REQ-LAB-YAHOO-REALDATA-V0-1-2-001` opened at `proposed` state. Frontmatter
+     stays `owner: analyst`, `status: draft` — operator-decide is next.
+     HANDOFF → architect (M-T1 ratifies Q1/Q2/Q3 + decomposes M-DEV + M-DEV-UI). -->
+- **lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge v0.1.0** —
+  ETH-USD anchor + cache-state SUMMARY badge; closes Q1+Q3 of v0.1.1 deck.
+  See `spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md`.
+
 <!-- updated 2026-05-27 (analyst, cockpit-toast-queue M0 close — inline-salvaged
      after analyst agentId a43a615341bd60112 529'd at 26 tool uses;
      orchestrator appended this backlog row + trace row REQ-COCKPIT-TOAST-QUEUE-001

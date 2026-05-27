@@ -1836,3 +1836,43 @@ tests       = [
 anchors     = "byte-identical to v0.1.0 baseline — verify_anchors.sh: ANCHORS PASS (69 / 69)"
 state       = "implemented"
 
+#
+# ─── Lab Yahoo realdata v0.1.2 — ETH-USD anchor + cache-state summary badge (proposed 2026-05-27) ───
+#
+
+[[req]]
+id          = "REQ-LAB-YAHOO-REALDATA-V0-1-2-001"
+title       = "Lab Yahoo realdata v0.1.2 — lock ETH-USD as anchor row 70 (namespace lab-yahoo-realdata-v0.1.2) + ship cache-state SUMMARY badge (aggregate multi-ticker, complements the per-pair pill already shipped at v0.1.0 Wave D-followup); Q1 load-bearing: extend run_yahoo_sma.rs with --ticker flag (analyst-recommended; 15-LoC delta vs +250 LoC parallel binary; default-arg invariance preserves v0.1.1 BTC SHA 8045623b… byte-identical); Q2+Q3 ui-designer placement+content (Autoapprove-eligible: source-toggle row sibling, middle-ground copy 'Cache: N tickers · last YYYY-MM-DD'); 5 R / 4 K / 4 H / 3 Q + non-regression contract (zero new design tokens, exactly 1 new string LAB_CACHE_STATE_SUMMARY_PREFIX); ~4-6 hours wall-clock (dev + ui-designer parallelizable, zero file overlap); K1 fallback: if Binance ETHUSDT reference data missing/stale at M-DEV → route back to analyst with synthetic-comparison fallback decision"
+feature     = "lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-27) — feature.md + tasks.md authored.
+  "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md",
+  "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/tasks.md",
+  "spec/lab-yahoo-realdata/feature.md",                                         # PREDECESSOR — v0.1.1 shipped 2026-05-27, anchor 69 locked
+  "spec/lab-yahoo-realdata/presentations/lab-yahoo-realdata-v0.1.1-2026-05-27.md", # § Open decisions Q1+Q3 sourced this brief
+  "spec/architecture/adr/0040-yahoo-realdata-path.md",                          # parent ADR — Yahoo realdata path + revision pin
+]
+crates      = [
+  # ANALYST M0 (2026-05-27) — on-disk paths surfaced from R1-R4 in feature.md.
+  # Forward-listed paths (crates/ui/src/widgets/cache_state_summary_badge.rs at
+  # R3.1) land at M-DEV-UI; appended here once on disk by tester.
+  "crates/backtest/src/bin/run_yahoo_sma.rs",                                   # R4 — extend with --ticker flag (Q1=(a) analyst-recommended)
+  "crates/ui/src/widgets/cache_state_badge.rs",                                 # R5.2 reference — per-pair pill UNCHANGED at v0.1.2
+  "crates/ui/src/lab/cache_state.rs",                                           # R3.5 — extend with probe_summary()
+  "crates/ui/src/screens/lab.rs",                                               # R3.6 — wire summary badge into source-toggle row
+  "crates/ui/src/strings.rs",                                                   # R-NR.2 — exactly 1 new string LAB_CACHE_STATE_SUMMARY_PREFIX
+  "data/yahoo/REVISION.toml",                                                   # R5.4 — read-only at v0.1.2; ETH-USD entries 31-42 already populated
+  "spec/anchors.toml",                                                          # R1.2 — append row 70 (lab-yahoo-realdata-v0.1.2 namespace)
+]
+tests       = [
+  # ANALYST M0 (2026-05-27) — test paths gating R1-R4 acceptance criteria.
+  # Forward-listed paths (crates/backtest/tests/run_yahoo_sma_ticker_flag.rs at
+  # R4.4) land at M-DEV; appended here once on disk by tester.
+  "crates/ui/src/widgets/cache_state_badge.rs",                                 # R5.2 reference — existing per-pair pill 2 unit tests stay green
+  "crates/backtest/tests/determinism.rs",                                       # R5.1 — anchor preservation gate (69 SHAs byte-identical)
+]
+anchors     = "v0.1.0 R1 — append row 70 'eth-yahoo-2024-1d-sma-cross' to spec/anchors.toml at M-DEV (T-D6); body-SHA TBD; PRE-EXISTING 69 rows byte-identical (R5.1); verify_anchors.sh baseline at analyst pass: ANCHORS PASS (69 / 69)"
+state       = "proposed"
+
+
