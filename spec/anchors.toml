@@ -10,7 +10,9 @@
 # and `v5-realdata-medium-2026-05` (canonical friction; the current
 # reference for paper-trading alpha).
 #
-# Verify with: scripts/verify_anchors.sh  (expects 68/68 PASS)
+# Verify with: scripts/verify_anchors.sh  (expects 69/69 PASS — 2026-05-27;
+# was 68/68 until lab-yahoo-realdata v0.1.1 added btc-yahoo-2024-1d-sma-cross
+# row 69 under namespace `lab-yahoo-realdata-v0.1.1`)
 # Recompute one: scripts/hash_report.py spec/<feature>/reports/backtest-...md
 #
 # Owners: tester locks new entries; architect approves any change to an

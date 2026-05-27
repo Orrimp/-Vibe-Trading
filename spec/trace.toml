@@ -1394,8 +1394,8 @@ tests       = [
   "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",  # R3 + R4 — `trigger_fires_and_equity_diverges` + `post_trigger_signals_are_hold` flip RED→GREEN; `passthrough_when_threshold_unreachably_high` stays green (R2)
   # R6 unit test path TBD at M-T1 — see crates[] comment above.
 ]
-anchors     = "34/34 PASS"   # ZERO new anchors by construction (verified 2026-05-26 by grep on `spec/anchors.toml` for `vol_killswitch` / `vol-killswitch` — 0 matches). 34 anchors stay byte-identical; tester confirms via `bash scripts/verify_anchors.sh` at M-FINAL.
-state       = "proposed"   # analyst M0 2026-05-26 — HANDOFF → operator-decide (Q1..Q3) → architect M-T1. Tester flips to `passed` at M-FINAL once R-O1 SHIP path confirmed.
+anchors     = "69/69 PASS"   # ZERO new anchors by construction (verified 2026-05-27 — anchors now at 69 after v0.2.0 + lab-yahoo v0.1.1; vol-killswitch added zero); 69 anchors byte-identical.
+state       = "passed"     # flipped 2026-05-27 by orchestrator retroactively. bug-log #65 records fix shipped 2026-05-26 (Q4=(p3) "Both" — fix test fixture + broaden overlay filter); orchestrator re-verified 2026-05-27 (cargo test -p strategy --test vol_killswitch_overlay_end_to_end → 4/4 PASS) during audit-2026-05-27 P0 triage. No formal test-final/<DATE>.md; bug-log #65 is authoritative shipping record (orchestrator-flow precedent: simple Bug-fix briefs may close via bug-log when test-final is overkill). Spec drift was paperwork-only.
 
 # ── REQ-COCKPIT-ACTIVITY-AUDIT-LEDGER-001 ──────────────────────────────────────
 # ANALYST M0 (2026-05-26) — v0.1.1 follow-on to cockpit-activity-status-bar v0.1.0

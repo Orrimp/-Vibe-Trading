@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-25
+updated: 2026-05-27
 ---
 <!-- updated 2026-05-22 (orchestrator, audit-2026-05-22 P2.5 cleanup) —
      v25-tcn-alpha-investigation shipped 2026-05-19; v25-tcn-overlay
@@ -699,29 +699,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      under the same no-op pattern).
 -->
 
-- **vol-killswitch-overlay-noop-fix v0.1.0 (Bug #65 — P0 safety wiring-bug recovery)** —
-  P0 brief authored 2026-05-26 in response to Wave 1's overlay-e2e
-  hygiene gate detecting that `crates/strategy/src/vol_killswitch_overlay.rs`
-  is a no-op: `kill_switch_count` increments correctly when the
-  trigger condition fires, but the `Signal::kind = Hold` mutation
-  never reaches the executor's load-bearing path for the
-  cross-sectional momentum inner strategy. Equity matches the
-  un-overlaid baseline byte-for-byte. **A killswitch that doesn't
-  kill is the worst kind of no-op** — in production, vol spikes
-  above the threshold show "kill-switch tripped" in the operator's
-  metrics, but the executor takes the position anyway. Fix scope:
-  wire-up at `vol_killswitch_overlay.rs:229-244` (~10-20 LoC,
-  single file, single method body) per Q1=(i) analyst default.
-  Anchor risk ZERO by construction (grep on `spec/anchors.toml`
-  for vol_killswitch returns zero rows). Test count delta: 1 PASS
-  → 3 PASS in `vol_killswitch_overlay_end_to_end.rs` (the 2
-  `#[ignore]` annotations come off at M-DEV). 34/34 anchors stay
-  byte-identical. **Spec**:
-  [`spec/vol-killswitch-overlay-noop-fix/feature.md`](vol-killswitch-overlay-noop-fix/feature.md).
-  **Trace**: `REQ-VOL-KILLSWITCH-NOOP-FIX-001`. **Bug log**:
-  [`spec/bug-log.md` § #65](bug-log.md). **Predecessor**:
-  `v3-volatility-forecaster-noop-fix v0.1.0` (shipped 2026-05-22).
-  Estimated 1-3 days wall-clock end-to-end.
+<!-- moved to Recent (shipped) — v0.1.0 fix landed 2026-05-26 (bug-log #65); orchestrator retroactively closed spec drift 2026-05-27 during audit-2026-05-27 P0 triage. -->
+<!-- - **vol-killswitch-overlay-noop-fix v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 <!-- updated 2026-05-25 (architect, cockpit-activity-status-bar) —
      **PROMOTED Idea → Active 2026-05-25** under operator request
@@ -2233,6 +2212,21 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-27 cohort
+
+- **vol-killswitch-overlay-noop-fix v0.1.0 (Bug #65 — P0 safety
+  wiring-bug recovery)** — fix landed 2026-05-26 in tree; **spec
+  retroactively closed 2026-05-27** by orchestrator during the
+  audit-2026-05-27 P0 triage after the auditor flagged the
+  paperwork drift (feature.md was `status: draft`, trace.toml was
+  `state: proposed`, but bug-log #65 records FIXED 2026-05-26 with
+  Q4=(p3) "Both" — fix test fixture AND broaden overlay filter).
+  Verified at retroactive close: `cargo test -p strategy --test
+  vol_killswitch_overlay_end_to_end` → 4/4 PASS. No formal
+  test-final/<DATE>.md was authored at original ship; bug-log #65
+  entry is the authoritative shipping record (precedent for
+  Bug-fix briefs whose scope makes a full test-final overkill).
+  **Trace**: `REQ-VOL-KILLSWITCH-NOOP-FIX-001` flipped
+  `proposed → passed`. **Bug log**: [`spec/bug-log.md` § #65](bug-log.md).
 
 - **cockpit-toast-queue v0.1.0** — shipped 2026-05-27 (operator-approved).
   Replaces the cockpit's single-slot toast REPLACE semantic with a

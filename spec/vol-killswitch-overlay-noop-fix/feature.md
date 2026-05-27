@@ -1,10 +1,11 @@
 ---
 slug: vol-killswitch-overlay-noop-fix
 version: 0.1.0
-status: draft
-owner: analyst
+status: shipped
+owner: shipped
 priority: P0
-updated: 2026-05-26
+updated: 2026-05-27
+shipped: 2026-05-26
 parent: bug-log #65
 predecessor: v3-volatility-forecaster-noop-fix v0.1.0 (precedent)
 ---
