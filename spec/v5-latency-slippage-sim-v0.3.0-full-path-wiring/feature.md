@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim-v0.3.0-full-path-wiring
-version: 0.2.0
+version: 0.3.0
 status: in-progress
-owner: developer
+owner: tester
 updated: 2026-05-27
 predecessor: v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0
 parent: backtest-vs-live-execution-gap
@@ -467,7 +467,48 @@ brief author time. R6 scope confirmed at 3 + 1 meta.
 
 ## Implementation
 
-_Developer M-DEV fills this section after architect M-T1 lock._
+Developer M-DEV closed 2026-05-27.
+
+### Wave A — sim.rs lift + 6-path plumbing
+
+- `crates/backtest/src/scenarios/sim.rs` created. `sim_slippage_cost` lifted from `momentum.rs:551` (byte-identical body). Grep gate: exactly 1 definition of `fn sim_slippage_cost` in `crates/backtest/src/`.
+- `latency_slippage_sim: LatencySlippageSimConfig` added to `SmaComposedRunInput`, `PairsScenarioInput`, `TcnScenarioInput` in `cli_types.rs`. All 6 strategy fill loops wired with `sim_slippage_cost` (Buy: `cash -= sim_slip_cost`; Sell: `cash -= sim_slip_cost`).
+- `--force-synthetic-bars` CLI flag (~5 LoC) added to `crates/backtest/src/main.rs`; guards `has_parquet` predicate per Q1=(a).
+- All construction sites updated in `engine.rs` (7), `main.rs` (10+), `bin/run_yahoo_sma.rs` (1), `bin/threshold_sweep.rs` (3), `crates/ui/tests/` (2).
+- 6 plumbing unit tests added to `cli_types.rs` under `latency_slippage_config_tests`.
+
+### Wave B — Canonical re-emission (11 synthetic reports)
+
+- 11 canonical reports emitted under `{ 30, 80, 8 }` to `spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/`.
+- Group A (SMA): `--force-synthetic-bars` used (Q1=(a)). SMA cross: equity $47k → $17.9k (8bps × 12,077 fills = -$29.3k).
+- Group D (Pairs): newly wired; `pairs-2023-zscore-mr` SHA changed from noop-identical to `01c9da4d`.
+- Group E (TCN overlay synthetic): newly wired; `top10-2023-fy-tcn-overlay` SHA changed from noop-identical to `1460fcc7`.
+- Realdata/candle scenarios: not re-emitted (feature absent in default build); SHA unchanged.
+- Determinism verified: 2 independent runs of each scenario produced identical body-SHAs.
+
+### Wave C — Anchor SHA migration (9 rows updated in anchors.toml)
+
+- `spec/anchors.toml` v5 v0.3.0 canonical section updated per Q3=(a) (same `v5-realdata-medium-2026-05` pin, new SHAs for 9 changed scenarios).
+- `scripts/verify_anchors.sh` extended: v0.3.0 migration dir added as preferred source; noop exclusion pattern widened to exclude all `v5-latency-slippage-sim-v0.*.0-*` dirs.
+- Final: `ANCHORS PASS (69 / 69)`.
+
+### Wave D — Sharpe-delta table
+
+- `reports/sharpe-delta-table-2026-05-27.md` written with full 11-group breakdown.
+- K1 surprise scan: **0 surprises** across all 69 scenarios.
+
+### Wave E — t1937 namespace-aware resolver
+
+- `crates/reports/tests/strategy_anchors_unchanged.rs` rewritten with `Namespace` enum, `CANONICAL_FEATURE_DIRS`, `is_canonical_path`, `find_backtest_report` with namespace filter, and `CANONICAL_STRATEGY_ANCHORS` table (11 entries).
+- `t1937_nine_strategy_anchors_unchanged` — GREEN.
+- `t1937b_canonical_strategy_anchors_unchanged` — GREEN (new test, populated).
+- `t1942_anchor_shas_are_well_formed_64_lowercase_hex` — GREEN.
+
+### Wave F — Cross-feature e2e re-checks
+
+- `latency_slippage_sim_e2e.rs`: 3/3 pass.
+- `vol_targeting_overlay_end_to_end.rs`: 1/1 pass.
+- `vol_killswitch_overlay_end_to_end.rs`: 4/4 pass.
 
 ## Verification
 

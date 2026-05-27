@@ -18,7 +18,8 @@ use trading_core::{
     TimeInForce, Timeframe, Timestamp, Venue,
 };
 
-use crate::cli_types::{LatencySlippageSimConfig, MomentumScenarioInput};
+use crate::cli_types::MomentumScenarioInput;
+use crate::scenarios::sim::sim_slippage_cost;
 
 // ── Result struct ─────────────────────────────────────────────────────────────
 
@@ -535,33 +536,9 @@ pub async fn run(
 }
 
 // ── v5-latency-slippage-sim helpers ──────────────────────────────────────────
-
-/// Compute the extra cash cost due to simulated slippage on a fill.
-///
-/// At `slippage_bps == 0` (the default) returns `Decimal::ZERO` — no change
-/// to the fill accounting, byte-identical to the pre-feature code path.
-///
-/// For a Buy fill: simulated slippage costs EXTRA cash (we pay more).
-/// For a Sell fill: simulated slippage costs LESS cash received (we get less).
-///
-/// The caller deducts the returned value from cash in both directions:
-/// - Buy: `cash -= notional + fee + sim_slip_cost`
-/// - Sell: `cash += notional - fee - sim_slip_cost`
-#[allow(clippy::float_arithmetic)] // no float; uses Decimal throughout
-fn sim_slippage_cost(
-    qty: Decimal,
-    fill_price: Decimal,
-    side: Side,
-    cfg: &LatencySlippageSimConfig,
-) -> Decimal {
-    if cfg.slippage_bps == 0 {
-        return Decimal::ZERO;
-    }
-    let bps_decimal = Decimal::from(cfg.slippage_bps) / Decimal::from(10_000_u32);
-    // For both sides, the extra COST is qty * fill_price * bps/10_000.
-    // For Buy: we pay bps% more than the fill_price → extra cost.
-    // For Sell: we receive bps% less than the fill_price → extra cost.
-    // The sign logic in the caller handles the direction.
-    let _ = side; // direction is handled by the caller's sign logic
-    qty * fill_price * bps_decimal
-}
+//
+// `sim_slippage_cost` has been lifted to `crates/backtest/src/scenarios/sim.rs`
+// (ADR-0047 D2 / anchor-additive per ADR-0038 § D6.a). This module imports it
+// from the shared location above. The function body is byte-identical.
+//
+// grep gate: `grep -r "fn sim_slippage_cost" crates/backtest/src` → 1 line only.

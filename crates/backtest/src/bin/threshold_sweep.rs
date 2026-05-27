@@ -869,6 +869,8 @@ fn main() -> Result<()> {
             forecaster_id: "passthrough".to_string(),
             bars_override: Some(real_bars.clone()),
             emit_equity_bin: None,
+            // v5-latency-slippage-sim: threshold_sweep has no equity surface; noop per ADR-0047 D2.
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         };
         let passthrough_base = {
             let toml_path = PathBuf::from("config/strategies/top10_momentum_h1.toml");
@@ -931,6 +933,8 @@ fn main() -> Result<()> {
             forecaster_id: label.to_string(),
             bars_override: Some(real_bars.clone()),
             emit_equity_bin: None,
+            // v5-latency-slippage-sim: threshold_sweep has no equity surface; noop per ADR-0047 D2.
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         };
         let result = pollster::block_on(backtest::scenarios::threshold_sweep::run_cell(
             input,
@@ -1006,6 +1010,9 @@ fn main() -> Result<()> {
                     forecaster_id: label.to_string(),
                     bars_override: Some(real_bars.clone()),
                     emit_equity_bin: None,
+                    // v5-latency-slippage-sim: threshold_sweep has no equity surface;
+                    // sim is structurally noop here. Noop config per ADR-0047 D2.
+                    latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
                 };
 
                 // Use pollster::block_on — a minimal future poller with no executor-context

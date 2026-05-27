@@ -112,6 +112,143 @@ mod latency_slippage_config_tests {
         let back: LatencySlippageSimConfig = serde_json::from_str(&json).expect("must deserialize");
         assert_eq!(cfg, back);
     }
+
+    // ── T-D-N4 plumbing tests: default-is-noop for each new struct ────────────
+
+    /// T-D-N4a: `PairsScenarioInput.latency_slippage_sim` defaults to noop.
+    #[test]
+    fn pairs_scenario_input_default_sim_is_noop() {
+        let input = super::PairsScenarioInput {
+            scenario_name: "test".to_string(),
+            start_year: 2023,
+            bar_count: 100,
+            initial_capital: rust_decimal_macros::dec!(100_000),
+            slippage_bps: 2,
+            taker_fee_bps: 4,
+            config_id: "pairs_mr_h1".to_string(),
+            latency_slippage_sim: LatencySlippageSimConfig::default(),
+        };
+        assert!(
+            input.latency_slippage_sim.is_noop(),
+            "PairsScenarioInput: default sim must be noop"
+        );
+    }
+
+    /// T-D-N4b: `TcnScenarioInput.latency_slippage_sim` defaults to noop.
+    #[test]
+    fn tcn_scenario_input_default_sim_is_noop() {
+        let input = super::TcnScenarioInput {
+            scenario_name: "test".to_string(),
+            start_year: 2023,
+            bar_count: 100,
+            initial_capital: rust_decimal_macros::dec!(100_000),
+            slippage_bps: 2,
+            taker_fee_bps: 4,
+            config_id: "tcn_overlay_momentum".to_string(),
+            forecaster_id: "passthrough".to_string(),
+            bars_override: None,
+            emit_equity_bin: None,
+            latency_slippage_sim: LatencySlippageSimConfig::default(),
+        };
+        assert!(
+            input.latency_slippage_sim.is_noop(),
+            "TcnScenarioInput: default sim must be noop"
+        );
+    }
+
+    /// T-D-N4c: `SmaComposedRunInput.latency_slippage_sim` defaults to noop.
+    #[test]
+    fn sma_composed_run_input_default_sim_is_noop() {
+        use trading_core::Symbol;
+        let input = super::SmaComposedRunInput {
+            strategy_id: "sma_crossover".to_string(),
+            symbol: Symbol::new("BTCUSDT"),
+            start_year: 2023,
+            bar_count: 100,
+            initial_capital: rust_decimal_macros::dec!(100_000),
+            slippage_bps: 2,
+            taker_fee_bps: 4,
+            sma_fast_len: None,
+            sma_slow_len: None,
+            latency_slippage_sim: LatencySlippageSimConfig::default(),
+        };
+        assert!(
+            input.latency_slippage_sim.is_noop(),
+            "SmaComposedRunInput: default sim must be noop"
+        );
+    }
+
+    /// T-D-N4d: non-zero config flows through `PairsScenarioInput`.
+    #[test]
+    fn pairs_scenario_input_non_zero_sim_flows_through() {
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 30,
+            latency_ms_max: 80,
+            slippage_bps: 8,
+        };
+        let input = super::PairsScenarioInput {
+            scenario_name: "test".to_string(),
+            start_year: 2023,
+            bar_count: 100,
+            initial_capital: rust_decimal_macros::dec!(100_000),
+            slippage_bps: 2,
+            taker_fee_bps: 4,
+            config_id: "pairs_mr_h1".to_string(),
+            latency_slippage_sim: cfg.clone(),
+        };
+        assert!(!input.latency_slippage_sim.is_noop());
+        assert_eq!(input.latency_slippage_sim.slippage_bps, 8);
+    }
+
+    /// T-D-N4e: non-zero config flows through `TcnScenarioInput`.
+    #[test]
+    fn tcn_scenario_input_non_zero_sim_flows_through() {
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 30,
+            latency_ms_max: 80,
+            slippage_bps: 8,
+        };
+        let input = super::TcnScenarioInput {
+            scenario_name: "test".to_string(),
+            start_year: 2023,
+            bar_count: 100,
+            initial_capital: rust_decimal_macros::dec!(100_000),
+            slippage_bps: 2,
+            taker_fee_bps: 4,
+            config_id: "tcn_overlay_momentum".to_string(),
+            forecaster_id: "passthrough".to_string(),
+            bars_override: None,
+            emit_equity_bin: None,
+            latency_slippage_sim: cfg.clone(),
+        };
+        assert!(!input.latency_slippage_sim.is_noop());
+        assert_eq!(input.latency_slippage_sim.slippage_bps, 8);
+    }
+
+    /// T-D-N4f: non-zero config flows through `SmaComposedRunInput`.
+    #[test]
+    fn sma_composed_run_input_non_zero_sim_flows_through() {
+        use trading_core::Symbol;
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 30,
+            latency_ms_max: 80,
+            slippage_bps: 8,
+        };
+        let input = super::SmaComposedRunInput {
+            strategy_id: "sma_crossover".to_string(),
+            symbol: Symbol::new("BTCUSDT"),
+            start_year: 2023,
+            bar_count: 100,
+            initial_capital: rust_decimal_macros::dec!(100_000),
+            slippage_bps: 2,
+            taker_fee_bps: 4,
+            sma_fast_len: None,
+            sma_slow_len: None,
+            latency_slippage_sim: cfg.clone(),
+        };
+        assert!(!input.latency_slippage_sim.is_noop());
+        assert_eq!(input.latency_slippage_sim.slippage_bps, 8);
+    }
 }
 
 // ── SMA / Composed scenario input ─────────────────────────────────────────────
@@ -185,12 +322,17 @@ pub struct PairsScenarioInput {
     pub taker_fee_bps: u32,
     /// Strategy config ID, e.g. `"pairs_mr_h1"`.
     pub config_id: String,
+    /// v5-latency-slippage-sim R1 / ADR-0047 D2 — optional deterministic
+    /// latency + slippage simulation. Default is noop (all zeros).
+    pub latency_slippage_sim: LatencySlippageSimConfig,
 }
 
 // ── TCN overlay scenario input ─────────────────────────────────────────────────
 
 /// Inputs for the v2.5 TCN overlay momentum backtest and report writer.
 /// Shared by both the passthrough and real-weights variants.
+/// Also used by `patchtst_overlay_weights`, `garch_vol_target_overlay`, and
+/// `threshold_sweep` (all share this struct — field added once, auto-propagates).
 #[derive(Debug, Clone)]
 pub struct TcnScenarioInput {
     /// CLI scenario name (written into the YAML `scenario:` field).
@@ -208,6 +350,13 @@ pub struct TcnScenarioInput {
     pub bars_override: Option<Vec<trading_core::Bar>>,
     /// Optional output path for the equity-curve text file (`--emit-equity-bin`).
     pub emit_equity_bin: Option<PathBuf>,
+    /// v5-latency-slippage-sim R1 / ADR-0047 D2 — optional deterministic
+    /// latency + slippage simulation. Default is noop (all zeros).
+    ///
+    /// NOTE: `threshold_sweep::run_cell` consumes this field but the sim is
+    /// structurally noop for analysis sweeps (no equity surface). Deferred per
+    /// ADR-0047 D2.
+    pub latency_slippage_sim: LatencySlippageSimConfig,
 }
 
 // ── BacktestState (SMA / Composed run state) ──────────────────────────────────
@@ -338,6 +487,9 @@ pub struct SmaComposedRunInput {
     /// Optional override for the slow SMA window length (default 50).
     /// Only honoured when `strategy_id == "sma_crossover"`. `None` → 50.
     pub sma_slow_len: Option<usize>,
+    /// v5-latency-slippage-sim R1 / ADR-0047 D2 — optional deterministic
+    /// latency + slippage simulation. Default is noop (all zeros).
+    pub latency_slippage_sim: LatencySlippageSimConfig,
 }
 
 // ── Strategy metadata (SMA / Composed report) ─────────────────────────────────

@@ -693,6 +693,8 @@ pub async fn run_scenario(
                 slippage_bps: 2,
                 taker_fee_bps: 4,
                 config_id: "pairs_mr_h1".to_string(),
+                // engine dispatch: noop sim (Lab UI does not expose sim flags).
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             };
             // Bug #63 — cancel + progress.
             let result = crate::scenarios::pairs::run(&input, seed_u64, cancel_rx, progress_tx)
@@ -723,6 +725,8 @@ pub async fn run_scenario(
                 forecaster_id: "passthrough".to_string(),
                 bars_override: None,
                 emit_equity_bin: None,
+                // engine dispatch: noop sim (Lab UI does not expose sim flags).
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             };
             // Bug #63 — cancel + progress.
             let result =
@@ -754,6 +758,8 @@ pub async fn run_scenario(
                 forecaster_id: "tcn-bs1".to_string(),
                 bars_override: None,
                 emit_equity_bin: None,
+                // engine dispatch: noop sim (Lab UI does not expose sim flags).
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             };
             let result = crate::scenarios::tcn_overlay_weights::run(input, seed_u64)
                 .await
@@ -780,6 +786,8 @@ pub async fn run_scenario(
                 // byte-identity. Lab UI sets them to user-typed values.
                 sma_fast_len: cfg.sma_fast_len,
                 sma_slow_len: cfg.sma_slow_len,
+                // engine dispatch: noop sim (Lab UI does not expose sim flags).
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -812,6 +820,8 @@ pub async fn run_scenario(
                 // anchored byte-identity. Lab override happens at the runner.
                 sma_fast_len: None,
                 sma_slow_len: None,
+                // engine dispatch: noop sim (Lab UI does not expose sim flags).
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -844,6 +854,8 @@ pub async fn run_scenario(
                 // anchored byte-identity. Lab override happens at the runner.
                 sma_fast_len: None,
                 sma_slow_len: None,
+                // engine dispatch: noop sim (Lab UI does not expose sim flags).
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -879,6 +891,8 @@ pub async fn run_scenario(
                 // anchored byte-identity. Lab override happens at the runner.
                 sma_fast_len: None,
                 sma_slow_len: None,
+                // engine dispatch: noop sim (Lab UI does not expose sim flags).
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,

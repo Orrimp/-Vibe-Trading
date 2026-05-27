@@ -45,6 +45,7 @@ async fn fills_anchor_within_run_bars() {
         taker_fee_bps: 4,
         sma_fast_len: None,
         sma_slow_len: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
     };
 
     let (_h, cancel_rx) = backtest::cancel::cancellation_pair();
@@ -96,6 +97,7 @@ async fn run_bars_are_deterministic() {
         taker_fee_bps: 4,
         sma_fast_len: None,
         sma_slow_len: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
     };
 
     let (_h1, cancel_rx1) = backtest::cancel::cancellation_pair();

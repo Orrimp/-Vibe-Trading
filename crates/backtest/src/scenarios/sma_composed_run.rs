@@ -33,6 +33,7 @@ use trading_core::{
 };
 
 use crate::cli_types::{BacktestState, SmaComposedRunInput, StrategyMeta};
+use crate::scenarios::sim::sim_slippage_cost;
 
 // ── Error type ────────────────────────────────────────────────────────────────
 
@@ -505,14 +506,27 @@ pub async fn run(
             && let Ok(fills) = engine.step(&bar, orders).await
         {
             for fill in &fills {
+                // v5-latency-slippage-sim R1 wiring (ADR-0047 D2).
+                // At slippage_bps == 0 (default) this returns Decimal::ZERO —
+                // byte-identical to pre-feature code for all anchored scenarios.
+                let sim_slip_cost = sim_slippage_cost(
+                    fill.qty.get(),
+                    fill.price.get(),
+                    fill.side,
+                    &input.latency_slippage_sim,
+                );
                 match fill.side {
                     Side::Buy => {
                         state.apply_buy(fill.qty.get(), fill.price.get(), fill.fee.amount());
+                        // Deduct sim slippage from cash (extra cost on top of fill + fee).
+                        state.cash -= sim_slip_cost;
                         position.base_qty += fill.qty.get();
                         position.cost_basis = Money::from_decimal(state.position_cost);
                     }
                     Side::Sell => {
                         state.apply_sell(fill.qty.get(), fill.price.get(), fill.fee.amount());
+                        // Deduct sim slippage from cash (reduced proceeds on sell).
+                        state.cash -= sim_slip_cost;
                         position.base_qty -= fill.qty.get();
                         if position.base_qty < Decimal::ZERO {
                             position.base_qty = Decimal::ZERO;
@@ -609,6 +623,7 @@ mod tests {
             taker_fee_bps: 4,
             sma_fast_len: None,
             sma_slow_len: None,
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -655,6 +670,7 @@ mod tests {
             taker_fee_bps: 4,
             sma_fast_len: None,
             sma_slow_len: None,
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -692,6 +708,7 @@ mod tests {
             taker_fee_bps: 4,
             sma_fast_len: None,
             sma_slow_len: None,
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -729,6 +746,7 @@ mod tests {
             taker_fee_bps: 4,
             sma_fast_len: None,
             sma_slow_len: None,
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();

@@ -305,46 +305,47 @@ scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
 version  = "v3.0.0-volatility-rebaseline + noop-baseline"
 sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
 
-# ── v5 v0.2.0 canonical-friction anchor set ──────────────────────────────────
+# ── v5 v0.3.0 canonical-friction anchor set ──────────────────────────────────
 # Re-emitted under LatencySlippageSimConfig { latency_ms_min: 30,
-# latency_ms_max: 80, slippage_bps: 8 } per ADR-0045 D1.
-# Locked by developer at v5-latency-slippage-sim-v0.2.0-anchor-migration
-# M-DEV on 2026-05-27. Each row mirrors a noop-baseline row above by
-# (scenario, base-version); the version suffix `+ v5-realdata-medium-2026-05`
-# is the canonical namespace pin.
-# Verify: bash scripts/verify_anchors.sh (expects 68/68 PASS).
+# latency_ms_max: 80, slippage_bps: 8 } per ADR-0047 D1 (full-path wiring).
+# Updated from v0.2.0 by developer at v5-latency-slippage-sim-v0.3.0-full-path-wiring
+# M-DEV on 2026-05-27. Per Q3=(a) same pin extended in-place with new SHAs.
+# Each row mirrors a noop-baseline row above by (scenario, base-version);
+# the version suffix `+ v5-realdata-medium-2026-05` is the canonical namespace pin.
+# Verify: bash scripts/verify_anchors.sh (expects 69/69 PASS).
 #
-# NOTE: Scenarios where the v5 sim is not yet wired (TCN/PatchTST/GARCH/Pairs)
-# produce byte-identical output to the noop-baseline; their canonical SHA =
-# noop SHA. Only momentum scenarios and SMA/Composed scenarios (running against
-# real Binance data vs the original synthetic fallback) show different SHAs.
-# Investigation/analysis reports and operator success reports cannot be
-# re-emitted via the backtest CLI; their canonical SHA = noop SHA.
+# Changes vs v0.2.0:
+# - Group A (SMA/Composed): now run with --force-synthetic-bars (Q1=(a) revert).
+#   Pairs, TCN overlay synthetic: newly wired — SHAs differ from noop-baseline.
+#   Momentum scenarios: unchanged (wired in v0.1.0; synthetic data + friction = same SHA).
+# - TCN overlay-weights, realdata scenarios: require candle/realdata features
+#   (not built in default CI binary); SHA unchanged from v0.2.0.
+# - Investigation/analysis reports and operator success reports: SHA unchanged.
 
 [[anchors]]
 scenario = "btc-2023-1m-sma-cross"
 version  = "v0 + v5-realdata-medium-2026-05"
-sha256   = "f6f971aca0d5a8eabc4974f7263c1a852ca104d70c0d88d6a10956b9bdce2350"
+sha256   = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0"
 
 [[anchors]]
 scenario = "btc-2023-1m-sma-baseline-refresh"
 version  = "v0 + v5-realdata-medium-2026-05"
-sha256   = "f6f971aca0d5a8eabc4974f7263c1a852ca104d70c0d88d6a10956b9bdce2350"
+sha256   = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0"
 
 [[anchors]]
 scenario = "btc-2023-1m-macd-trend"
 version  = "v0.5 + v5-realdata-medium-2026-05"
-sha256   = "692ff12e29f28653fb6ff37617c32ee6544e4e05332cbe821e2a7991c4c893e1"
+sha256   = "6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5"
 
 [[anchors]]
 scenario = "btc-2023-1m-rsi-reversion"
 version  = "v0.5 + v5-realdata-medium-2026-05"
-sha256   = "e506b9f658afb44b09a49487ad579279023487c7b65da085aff4f3166cc6a884"
+sha256   = "87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695"
 
 [[anchors]]
 scenario = "btc-2023-1m-bbands-mean-revert"
 version  = "v0.5 + v5-realdata-medium-2026-05"
-sha256   = "93787f7bda4b4a87792b24b41458534cc27a5d8d3b1ff5cfa40362c519adf73e"
+sha256   = "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd"
 
 [[anchors]]
 scenario = "top10-2023-1h-momentum"
@@ -359,12 +360,12 @@ sha256   = "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490"
 [[anchors]]
 scenario = "pairs-2023-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "90591a0ecc5d56c8ff93834b127a3780a31f51634f38f12c3c412391116abbd0"
+sha256   = "01c9da4d4c5ce268b5de49c72f367ef729fcaccf04d572e5dc0fa1f1bd65e76e"
 
 [[anchors]]
 scenario = "pairs-2024-h1-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
+sha256   = "6252819b4f719ce45bf5cfa70bfb38143c216e96dde8e5a43fdfe43055dce5e9"
 
 [[anchors]]
 scenario = "report-sample-7d"
@@ -379,12 +380,12 @@ sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5"
+sha256   = "1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163"
+sha256   = "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights"

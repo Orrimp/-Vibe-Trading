@@ -12,18 +12,26 @@
 # When spec/anchors.toml carries two-namespace rows (noop-baseline + canonical),
 # the `version` field disambiguates which report to verify against:
 #   - version contains "+ noop-baseline": use the NEWEST matching report
-#     OUTSIDE the migration folder (sort | tail -1, excluding
-#     spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/).
+#     OUTSIDE any canonical migration folder (sort | tail -1, excluding
+#     spec/v5-latency-slippage-sim-v0.*.0-*/reports/).
 #   - version contains "+ v5-realdata-medium-2026-05": use the NEWEST matching
-#     report from the migration folder first, then fall back to the global newest.
+#     report from canonical migration folders first (v0.3.0 preferred over v0.2.0),
+#     then fall back to the global newest.
 #   - all other versions: use the NEWEST matching report (legacy default).
+#
+# v5 v0.3.0 amendment (ADR-0047 D3 / T-D-N9):
+# Canonical migration dirs expanded to include v0.3.0-full-path-wiring.
+# The resolver first checks v0.3.0 dir, then v0.2.0 dir (newest wins).
 
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 anchors="$root/spec/anchors.toml"
 hasher="$root/scripts/hash_report.py"
-migration_dir="$root/spec/v5-latency-slippage-sim-v0.2.0-anchor-migration"
+migration_dir_v02="$root/spec/v5-latency-slippage-sim-v0.2.0-anchor-migration"
+migration_dir_v03="$root/spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring"
+# Combined pattern for excluding all canonical dirs from noop-baseline search:
+canonical_dirs_pattern="$root/spec/v5-latency-slippage-sim-v0"
 
 [[ -f "$anchors" ]] || { echo "missing $anchors" >&2; exit 2; }
 [[ -x "$hasher"  ]] || { echo "missing $hasher (chmod +x?)" >&2; exit 2; }
@@ -61,23 +69,27 @@ while IFS= read -r line; do
         latest=""
 
         if [[ "$version" == *"noop-baseline"* ]]; then
-            # noop-baseline: find newest report OUTSIDE the migration folder
+            # noop-baseline: find newest report OUTSIDE all canonical migration folders
             latest="$(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" \
-                ! -path "$migration_dir/*" 2>/dev/null | sort | tail -1 || true)"
+                ! -path "${canonical_dirs_pattern}*" 2>/dev/null | sort | tail -1 || true)"
             if [[ -z "$latest" ]]; then
                 latest="$(find "$root"/spec -type f -path "*/reports/success-*-$scenario.md" \
-                    ! -path "$migration_dir/*" 2>/dev/null | sort | tail -1 || true)"
+                    ! -path "${canonical_dirs_pattern}*" 2>/dev/null | sort | tail -1 || true)"
             fi
             if [[ -z "$latest" ]]; then
                 latest="$(find "$root"/spec -type f -path "*/reports/$scenario-*.md" \
-                    ! -path "$migration_dir/*" 2>/dev/null \
+                    ! -path "${canonical_dirs_pattern}*" 2>/dev/null \
                     | grep -E "/reports/${scenario}-[0-9]+\.md$" \
                     | sort | tail -1 || true)"
             fi
         elif [[ "$version" == *"v5-realdata-medium-2026-05"* ]]; then
-            # canonical: prefer files in migration folder, fall back to global newest
-            latest="$(find "$migration_dir" -type f -name "backtest-*-$scenario.md" \
+            # canonical: prefer v0.3.0 migration dir, then v0.2.0, then global newest
+            latest="$(find "$migration_dir_v03" -type f -name "backtest-*-$scenario.md" \
                 2>/dev/null | sort | tail -1 || true)"
+            if [[ -z "$latest" ]]; then
+                latest="$(find "$migration_dir_v02" -type f -name "backtest-*-$scenario.md" \
+                    2>/dev/null | sort | tail -1 || true)"
+            fi
             if [[ -z "$latest" ]]; then
                 # canonical SHA = noop SHA for non-re-emittable scenarios
                 latest="$(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" \

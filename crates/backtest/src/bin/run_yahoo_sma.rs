@@ -147,6 +147,8 @@ async fn main() -> Result<()> {
         // Use default SMA params (20/50) — matches Binance anchor convention.
         sma_fast_len: None,
         sma_slow_len: None,
+        // v5-latency-slippage-sim: noop for Yahoo SMA runs (not part of v5 re-emission).
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
     };
 
     let run_start = std::time::Instant::now();

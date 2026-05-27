@@ -1,0 +1,53 @@
+---
+scenario: btc-2023-1m-rsi-reversion
+seed: 0xC0FFEE
+generated: 2026-05-27T18:13:31Z
+wall_clock_s: 0.0
+data_source: real (Binance Vision)
+baseline_report: backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md
+ledger_imbalance_total: 0
+llm_spend_usd: 0.00
+strategy:
+id: btc_rsi_reversion
+kind: composed
+content_hash: 336e0c0970645643631562140b3644b73260f376215d8aedf1804f670a667355
+source: config/strategies/btc_rsi_reversion.toml
+signal: rsi(14) < 30 AND close > min(low, 20)
+---
+
+# Backtest Report — btc-2023-1m-rsi-reversion
+
+## Summary
+
+| Metric               | Value                      |
+|----------------------|----------------------------|
+| Scenario             | btc-2023-1m-rsi-reversion            |
+| Symbol               | BTCUSDT                   |
+| Start year           | 2023               |
+| Bars replayed        | 17544                     |
+| Initial capital      | $100000.00 USDT         |
+| Final equity         | $94941.37 USDT        |
+| Total return         | -5.06%                  |
+| Sharpe ratio (ann.)  | -15.2570                |
+| Max drawdown         | 5.42%               |
+| Trades               | 466                   |
+| Buys                 | 233                     |
+| Sells                | 233                    |
+| Total fees           | $1818.470325 USDT            |
+| Ledger imbalances    | 0                |
+| LLM spend            | $0.00                      |
+| Wall-clock time      | 1.8s              |
+| Seed                 | 0xC0FFEE                 |
+| Data source          | real (Binance Vision)              |
+
+## Reconciliation
+
+Minute-boundary reconciler ran at every bar close.
+`ledger_imbalance_total == 0` — PASS.
+
+## Notes
+
+- Composed strategy: btc_rsi_reversion
+- Slippage: 2 bps, Taker fee: 4 bps
+- Size: fixed_fraction = 10%
+- Risk: per-symbol exposure cap = 40%

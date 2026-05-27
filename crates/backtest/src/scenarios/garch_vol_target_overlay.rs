@@ -26,6 +26,7 @@
 
 use anyhow::Result;
 
+use crate::scenarios::sim::sim_slippage_cost;
 use crate::scenarios::tcn_overlay::TcnOverlayRunResult;
 
 // ── GARCH checkpoint loader (inline) ─────────────────────────────────────────
@@ -305,7 +306,14 @@ pub async fn run(
                     {
                         for fill in fills {
                             let notional_fill = fill.qty.get() * fill.price.get();
-                            cash -= notional_fill + fill.fee.amount();
+                            // v5-latency-slippage-sim R1 wiring (ADR-0047 D2).
+                            let sim_slip_cost = sim_slippage_cost(
+                                fill.qty.get(),
+                                fill.price.get(),
+                                Side::Buy,
+                                &input.latency_slippage_sim,
+                            );
+                            cash -= notional_fill + fill.fee.amount() + sim_slip_cost;
                             *position_book
                                 .entry(sig.symbol.clone())
                                 .or_insert(Decimal::ZERO) += fill.qty.get();
@@ -349,7 +357,14 @@ pub async fn run(
                     {
                         for fill in fills {
                             let notional_fill = fill.qty.get() * fill.price.get();
-                            cash += notional_fill - fill.fee.amount();
+                            // v5-latency-slippage-sim R1 wiring (ADR-0047 D2).
+                            let sim_slip_cost = sim_slippage_cost(
+                                fill.qty.get(),
+                                fill.price.get(),
+                                Side::Sell,
+                                &input.latency_slippage_sim,
+                            );
+                            cash += notional_fill - fill.fee.amount() - sim_slip_cost;
                             *position_book
                                 .entry(sig.symbol.clone())
                                 .or_insert(Decimal::ZERO) -= fill.qty.get();

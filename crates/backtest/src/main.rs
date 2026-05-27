@@ -83,6 +83,20 @@ struct Args {
     /// Simulated slippage in basis points applied per fill. Default: 0 (noop).
     #[arg(long, default_value = "0")]
     sim_slippage_bps: u32,
+
+    // ── v5-latency-slippage-sim v0.3.0 Q1=(a) flag (T-D-N3a / ADR-0047 D1) ───
+    /// Force synthetic-bar generation even when Parquet data exists on disk.
+    ///
+    /// Affects ONLY the single-symbol (SMA/Composed) dispatch arm at the auto-
+    /// detect site (main.rs line ~977). Multi-symbol scenarios (momentum / pairs /
+    /// tcn / patchtst / garch) are unaffected — they branch on the statically-
+    /// declared `ScenarioDataSource` enum and never reach this guard.
+    ///
+    /// Use this flag when re-emitting canonical reports for Group A (SMA/Composed)
+    /// under v5 canonical config to preserve the synthetic-data friction-free oracle
+    /// (Q1 = route (a) per operator M-OD 2026-05-27, ADR-0047 D1 + D4).
+    #[arg(long, default_value_t = false)]
+    force_synthetic_bars: bool,
 }
 
 fn parse_seed(s: &str) -> Result<u64> {
@@ -974,7 +988,14 @@ async fn main() -> Result<()> {
             .join(scenario.symbol.to_string())
             .join(scenario.start_year.to_string());
 
-        let has_parquet = parquet_dir.exists()
+        // v5-latency-slippage-sim v0.3.0 Q1=(a) guard (ADR-0047 D1):
+        // when --force-synthetic-bars is set, skip the Parquet auto-detect so
+        // Group A (SMA/Composed) scenarios always use the synthetic GBM baseline.
+        // This preserves the friction-free oracle for 5/69 anchors (noop-baseline
+        // SHAs stay valid apples-to-apples comparisons when friction is the only
+        // variable). Default: false → existing auto-detect behaviour unchanged.
+        let has_parquet = !args.force_synthetic_bars
+            && parquet_dir.exists()
             && std::fs::read_dir(&parquet_dir)
                 .map(|mut d| d.next().is_some())
                 .unwrap_or(false);
@@ -1119,6 +1140,12 @@ async fn main() -> Result<()> {
             slippage_bps: scenario.slippage_bps,
             taker_fee_bps: scenario.taker_fee_bps,
             config_id,
+            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
         let (_h, p_cancel) = backtest::cancel::cancellation_pair();
@@ -1174,6 +1201,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
+            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         // Keep a report-only copy of the input (without the moved bars/equity_bin).
         let tcn_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1187,6 +1220,11 @@ async fn main() -> Result<()> {
             forecaster_id,
             bars_override: None,
             emit_equity_bin: None,
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
         let (_h, t_cancel) = backtest::cancel::cancellation_pair();
@@ -1276,6 +1314,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
+            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         let tcn_w_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1288,6 +1332,11 @@ async fn main() -> Result<()> {
             forecaster_id,
             bars_override: None,
             emit_equity_bin: None,
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         let result = backtest::scenarios::tcn_overlay_weights::run(tcn_w_input, seed).await?;
 
@@ -1373,6 +1422,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
+            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         let patchtst_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1385,6 +1440,11 @@ async fn main() -> Result<()> {
             forecaster_id,
             bars_override: None,
             emit_equity_bin: None,
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         let result =
             backtest::scenarios::patchtst_overlay_weights::run(patchtst_input, seed).await?;
@@ -1468,6 +1528,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
+            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         let vol_target_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1480,6 +1546,11 @@ async fn main() -> Result<()> {
             forecaster_id,
             bars_override: None,
             emit_equity_bin: None,
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         let result =
             backtest::scenarios::garch_vol_target_overlay::run(vol_target_input, seed).await?;
@@ -1580,6 +1651,13 @@ async fn main() -> Result<()> {
         // pair inside `sma_composed_run::run`).
         sma_fast_len: None,
         sma_slow_len: None,
+        // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+        // Default is noop (0/0/0); set via --sim-latency-ms-min/max/--sim-slippage-bps.
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+            latency_ms_min: args.sim_latency_ms_min,
+            latency_ms_max: args.sim_latency_ms_max,
+            slippage_bps: args.sim_slippage_bps,
+        },
     };
     // CLI path: use no-op cancel + progress so the anchor bytes are unchanged.
     let (_cancel_handle, cancel_rx) = backtest::cancel::cancellation_pair();
