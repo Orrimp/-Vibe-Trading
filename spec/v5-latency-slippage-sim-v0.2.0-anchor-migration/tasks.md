@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.2.0-anchor-migration
-status: draft
-owner: analyst
+status: in-progress
+owner: developer
 updated: 2026-05-27
 priority: P1
 ---
@@ -34,32 +34,149 @@ _owner: analyst_
 
 _owner: operator. Q1 (canonical config) is the load-bearing one._
 
-- [ ] **T-OD1** — Q1 canonical config. Default: (b) medium (30..=80 ms
-  / 8 bps).
-- [ ] **T-OD2** — Q2 retire-or-keep OLD noop anchors. Default: (a)
-  keep as noop-baseline namespace.
-- [ ] **T-OD3** — Q3 strategy retirement on K1 surprise. Default: (b)
-  flag per scenario for operator review.
-- [ ] **T-OD4** — Q4 cross-feature re-check budget. Default: (a)
-  re-run all overlay e2e tests under canonical config.
+**RESOLVED 2026-05-27 — all four locked at analyst-recommended defaults.**
+
+- [x] **T-OD1** (2026-05-27) — Q1 canonical config = **(b) medium
+  (30..=80 ms / 8 bps)**. Every backtest report re-emits under this
+  friction profile.
+- [x] **T-OD2** (2026-05-27) — Q2 = **(a) keep OLD 34 anchors as
+  noop-baseline namespace**. Both sets co-exist (68 anchors total);
+  noop-baseline = friction-free oracle, canonical = under-friction
+  reality. Sharpe-delta table becomes a permanent regression gate.
+- [x] **T-OD3** (2026-05-27) — Q3 = **(b) flag inverted-alpha
+  scenarios per scenario for operator review**. Tester surfaces K1-
+  surprise candidates in the Sharpe-delta table; operator decides
+  each retirement.
+- [x] **T-OD4** (2026-05-27) — Q4 = **(a) re-run all overlay e2e
+  tests under canonical config**. Defensive — catches silent cross-
+  feature breakage. ~3 overlays today (vol_targeting,
+  vol_killswitch, tcn_overlay). 1-2 day budget.
 
 ## M-T1 — Architect
 
-_owner: architect (post-operator-decide)._
+_owner: architect (post-operator-decide). COMPLETE 2026-05-27._
 
-- [ ] **T-AR-1** — Lock the canonical config exact values per Q1
-  resolution.
-- [ ] **T-AR-2** — ADR-0043 amendment OR new ADR-0045 documenting the
-  canonical-config decision + the noop-baseline namespace strategy
-  (per Q2 resolution).
-- [ ] **T-AR-3** — Anchor-migration plan: name the new namespace pin,
-  define the file-by-file rewrite contract for `spec/anchors.toml`.
-- [ ] **T-AR-4** — Cross-feature re-check inventory (Q4): enumerate
-  every overlay/sizing-modifier whose e2e test needs re-running. At
-  minimum: vol_targeting_overlay_end_to_end + vol_killswitch_overlay
-  _end_to_end + tcn_overlay (if applicable).
-- [ ] **T-AR-5** — Frontmatter flip `owner: architect → developer`;
-  trace.toml `arch` column populated.
+- [x] **T-AR-1** (2026-05-27) — Canonical config locked per Q1 = (b)
+  medium. **Exact Rust literal** developer applies at Wave A:
+
+  ```rust
+  // crates/backtest construction sites; applied uniformly to every
+  // anchored scenario for the v0.2.0 re-emission run.
+  LatencySlippageSimConfig {
+      latency_ms_min: 30,
+      latency_ms_max: 80,
+      slippage_bps:   8,
+  }
+  ```
+
+  Semantics: 30..=80 ms uniform-jitter latency sampled via the
+  ADR-0043 D2 Murmur3-mixer sub-stream keyed on `(scenario_seed,
+  order_id)`; 8 bps linear slippage applied per `Side` via ADR-0043 D3.
+  This is the **canonical friction** every future anchored alpha
+  number is measured against.
+
+- [x] **T-AR-2** (2026-05-27) — ADR-0045 authored at
+  [`spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md`](../architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md).
+  Locks D1 medium config / D2 two-namespace co-existence /
+  D3 per-scenario K1-surprise flag / D4 mandatory cross-feature
+  e2e re-check / D5 Sharpe-delta-table as permanent regression gate.
+
+- [x] **T-AR-3** (2026-05-27) — Anchor-migration plan (developer
+  follows mechanically at Wave B):
+
+  **Canonical namespace pin chosen**: `v5-realdata-medium-2026-05`.
+
+  **`spec/anchors.toml` rewrite contract**:
+
+  1. The existing 34 `[[anchors]]` rows STAY in the file. Their
+     `version` field gets the suffix ` + noop-baseline` appended,
+     e.g. `version = "v0 + noop-baseline"`,
+     `version = "v3.0.0-volatility + noop-baseline"`, etc. SHAs
+     unchanged — these are the friction-free oracle.
+  2. A new comment block before the appended NEW rows reads:
+
+     ```
+     # ── v5 v0.2.0 canonical-friction anchor set ──────────────────
+     # Re-emitted under LatencySlippageSimConfig { latency_ms_min: 30,
+     # latency_ms_max: 80, slippage_bps: 8 } per ADR-0045 D1.
+     # Locked by tester at v5-latency-slippage-sim-v0.2.0-anchor-
+     # migration M-FINAL on YYYY-MM-DD. Each row mirrors a noop-baseline
+     # row above by (scenario, base-version); the version suffix
+     # `+ v5-realdata-medium-2026-05` is the canonical namespace pin.
+     # Verify: bash scripts/verify_anchors.sh (expects 68/68 PASS).
+     ```
+  3. For each of the 34 noop-baseline rows, append a paired NEW row
+     with identical `scenario` value, `version = "<base> +
+     v5-realdata-medium-2026-05"`, and the newly computed SHA from
+     Wave A re-emission. Example pair:
+
+     ```toml
+     # OLD (now noop-baseline):
+     [[anchors]]
+     scenario = "btc-2023-1m-sma-cross"
+     version  = "v0 + noop-baseline"
+     sha256   = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c"
+
+     # NEW (canonical friction):
+     [[anchors]]
+     scenario = "btc-2023-1m-sma-cross"
+     version  = "v0 + v5-realdata-medium-2026-05"
+     sha256   = "<NEW_SHA_FROM_WAVE_A>"
+     ```
+  4. File header (top comment block) gains one sentence per K2:
+     `# As of v5 v0.2.0 (2026-05-27): anchors carry two namespaces — `
+     `# `noop-baseline` (pre-friction historical oracle, SHAs from`
+     `# v0.1.0 ship) and `v5-realdata-medium-2026-05` (canonical`
+     `# friction; the current reference for paper-trading alpha).`
+  5. After the rewrite, `bash scripts/verify_anchors.sh` MUST report
+     `ANCHORS PASS (68 / 68)`. If the script's report-glob resolution
+     surfaces a collision on identical `scenario` keys across
+     namespaces, the developer routes back to architect for an
+     anchors-schema mini-amendment (extending `[[anchors]]` with an
+     explicit `namespace` field if needed). Architect's expectation:
+     the version-suffix discriminator + glob fallthrough handles it,
+     but the developer surfaces any ambiguity at Wave B kickoff.
+
+- [x] **T-AR-4** (2026-05-27) — Cross-feature re-check inventory (per
+  Q4 = (a) re-run ALL overlay e2e tests under canonical config).
+
+  **Files surveyed**: `crates/strategy/tests/*_end_to_end.rs` +
+  `latency_slippage_sim_e2e.rs` (the explicit baseline-divergence
+  e2e tests mandated by the CLAUDE.md non-negotiable). Wave D
+  re-runs each; Wave D checklist:
+
+  - [ ] **W-D-1** — `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`
+    (v3 GARCH vol-targeting overlay; H3 falsifier — re-asserts ≥ 1 bp
+    divergence between overlay-on and un-targeted baseline under
+    canonical friction).
+  - [ ] **W-D-2** — `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`
+    (Bug #65 vol-killswitch fix; K5 cross-feature anchor cascade — if
+    Hold-emission counts shift under friction, test invariants need
+    re-anchoring in the test file itself).
+  - [ ] **W-D-3** — `crates/strategy/tests/latency_slippage_sim_e2e.rs`
+    (v5 itself; H4 falsifier — confirms the 1-bp divergence assertion
+    still passes when the "enabled" config IS the canonical config
+    instead of the v0.1.0 ad-hoc test config).
+
+  **NOT in scope at Wave D** (covered by Wave A anchored backtest
+  re-emission, not by a dedicated `*_end_to_end.rs` divergence test):
+
+  - TCN overlay (v2.5 / v2.6 — alpha captured by anchored backtest
+    reports, no dedicated e2e divergence file).
+  - PatchTST overlay (v2.5a — same; no dedicated e2e divergence file).
+  - `overlay_hygiene_gate.rs` (not a divergence test; structural
+    invariant gate — re-runs in `cargo test --workspace` per R-NR.4
+    but doesn't need re-anchoring).
+
+  Developer at Wave D kickoff confirms no new overlay e2e file has
+  landed since 2026-05-27; if any new overlay/sizing-modifier
+  divergence test exists (CLAUDE.md non-negotiable mandates one per
+  overlay), it is added to W-D-N at that time.
+
+- [x] **T-AR-5** (2026-05-27) — Frontmatter flipped
+  `owner: architect → developer` (top of this file). Trace.toml
+  `arch` column populated for `REQ-V5-ANCHOR-MIGRATION-V0-2-0-001`
+  with the ADR-0045 cross-reference.
 
 ## M-DEV — Developer execution (4 waves)
 

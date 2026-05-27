@@ -1737,7 +1737,9 @@ arch        = [
   "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md",
   "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md",
   "spec/v5-latency-slippage-sim/feature.md",                                    # PARENT — Q5 deferred this brief
-  "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # PARENT ADR — D3 canonical config
+  "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # PARENT ADR — D1-D5 simulator engine
+  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # NEW ADR — architect M-T1 2026-05-27 — locks D1 medium config (30..=80 ms / 8 bps) + D2 two-namespace co-existence (noop-baseline + v5-realdata-medium-2026-05) + D3 per-scenario K1-surprise flag + D4 mandatory Wave-D cross-feature e2e re-check + D5 Sharpe-delta-table as permanent regression-gate contract
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",                   # ADR-0038 § D6 anchor-additive contract — analogous discipline; namespace separation here is the v0.2.0 generalisation
 ]
 crates      = [
   # Developer touches at M-DEV (no source changes; backtest-binary re-runs only):
@@ -1751,4 +1753,4 @@ tests       = [
   "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # MUST re-PASS (divergence ≥1bp survives canonical config)
 ]
 anchors     = "34 OLD → 34 NEW (migration)"  # The whole point of this brief — anchors move. v0.1.0 noop SHAs retire to `noop-baseline` namespace per Q2=(a). Verify post-migration via verify_anchors.sh.
-state       = "proposed"   # analyst M0 inline-salvaged 2026-05-27. Q1 (canonical config) is the load-bearing operator decision.
+state       = "in-progress"   # architect M-T1 complete 2026-05-27 — ADR-0045 locks canonical config (30..=80 ms / 8 bps) + namespace pin `v5-realdata-medium-2026-05` + noop-baseline namespace strategy. HANDOFF → developer for Wave A re-emission.

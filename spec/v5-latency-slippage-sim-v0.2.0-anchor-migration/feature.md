@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim-v0.2.0-anchor-migration
 version: 0.1.0
-status: draft
-owner: analyst
+status: in-progress
+owner: developer
 updated: 2026-05-27
 predecessor: v5-latency-slippage-sim v0.1.0 (shipped commit a5f8647 2026-05-26)
 parent: backtest-vs-live-execution-gap
@@ -272,6 +272,56 @@ friction profile every future strategy's alpha is measured against.
 - Verify script — [`scripts/verify_anchors.sh`](../../scripts/verify_anchors.sh)
 - Hash recompute — [`scripts/hash_report.py`](../../scripts/hash_report.py)
 
+## Design
+
+_Architect M-T1 2026-05-27. Locked by
+[ADR-0045](../architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md)._
+
+### Canonical config literal (T-AR-1)
+
+```rust
+LatencySlippageSimConfig {
+    latency_ms_min: 30,
+    latency_ms_max: 80,
+    slippage_bps:   8,
+}
+```
+
+Applied uniformly to every anchored scenario at Wave A. Sampling via
+the ADR-0043 D2 Murmur3-mixer (`(scenario_seed, order_id)` keyed);
+slippage via ADR-0043 D3 linear-bps per-side multiplier.
+
+### Two-namespace anchor strategy (T-AR-3)
+
+- Canonical namespace pin: **`v5-realdata-medium-2026-05`**.
+- OLD 34 anchors retain SHAs but gain a `+ noop-baseline` version
+  suffix; they become the friction-free oracle.
+- NEW 34 anchors land with the canonical version suffix
+  `+ v5-realdata-medium-2026-05` and freshly computed SHAs from
+  Wave A.
+- `verify_anchors.sh` expects 68/68 PASS post-migration.
+
+Full file-by-file rewrite contract is in
+[`tasks.md` § T-AR-3](tasks.md).
+
+### Cross-feature e2e inventory (T-AR-4 → Wave D)
+
+Three files re-run under the canonical config:
+
+1. `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` (H3)
+2. `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs` (K5)
+3. `crates/strategy/tests/latency_slippage_sim_e2e.rs` (H4)
+
+TCN / PatchTST coverage flows through anchored backtest re-emission
+at Wave A, not via a dedicated e2e divergence file.
+
+### Sharpe-delta regression gate is permanent
+
+Per ADR-0045 D5, the dev-note authored at Wave C is load-bearing
+forever — every future strategy-anchor change re-renders the
+noop-vs-canonical Sharpe delta and re-checks the "Flipped?" column for
+K1 surprise.
+
 ## Changelog
 
 - 2026-05-27 (analyst): feature.md v0.1.0 authored. **7 R / 7 K /
@@ -279,3 +329,13 @@ friction profile every future strategy's alpha is measured against.
   tree + cost framing. Q1 (canonical config = medium) is the
   load-bearing default. v0.1.0's R-O1 SHIP path (commit `a5f8647`,
   2026-05-26) explicitly spawned this brief per Q5 = (a) defer.
+- 2026-05-27 (operator M-OD): Q1-Q4 all resolved at analyst-
+  recommended defaults via standing-Autoapprove. Q1 = (b) medium /
+  Q2 = (a) noop-baseline namespace / Q3 = (b) per-scenario flag /
+  Q4 = (a) re-run all overlay e2e.
+- 2026-05-27 (architect M-T1): § Design appended. ADR-0045 authored
+  locking canonical config literal (30..=80 ms / 8 bps), namespace
+  pin `v5-realdata-medium-2026-05`, two-namespace co-existence,
+  Wave D cross-feature inventory, Sharpe-delta permanent regression
+  gate. T-AR-1 through T-AR-5 ticked in tasks.md. Frontmatter
+  `owner: architect → developer`.
