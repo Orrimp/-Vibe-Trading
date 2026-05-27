@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.3.0-full-path-wiring
 status: in-progress
-owner: tester
+owner: presenter
 updated: 2026-05-27
 priority: P1
 ---
@@ -163,12 +163,12 @@ _owner: developer. Wave-parallelizable where independent per AGENT.md
 
 _owner: tester._
 
-- [ ] **T-T-1** — `bash scripts/verify_anchors.sh` PASS (68/68 or N/N per Q3).
-- [ ] **T-T-2** — `cargo test --workspace --no-fail-fast` — zero NEW failures vs v0.2.0 whitelist. **CRITICAL:** `t1937_nine_strategy_anchors_unchanged` MUST FLIP TO GREEN (R3 / R-NR.4 gate).
-- [ ] **T-T-3** — Sharpe-delta table reviewed for K1 surprise; retirement candidates surfaced per v0.2.0 Q3=(b) precedent.
-- [ ] **T-T-4** — Wave F cross-feature e2e all PASS at ≥ 1 bp divergence.
-- [ ] **T-T-5** — Author `reports/test-final-<DATE>-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md`.
-- [ ] **T-T-6** — Trace row populated + flipped `proposed → passed`.
+- [x] **T-T-1** — `bash scripts/verify_anchors.sh` PASS (69/69). Verified 2026-05-27 by tester.
+- [x] **T-T-2** — `cargo test --workspace --no-fail-fast` — zero NEW failures vs v0.2.0 whitelist. **CRITICAL:** `t1937_nine_strategy_anchors_unchanged` FLIPPED TO GREEN (R3 / R-NR.4 gate satisfied). One pre-existing flake (`lab_run_engine::h3_in_memory_equals_cached_disk`) unchanged. Verified 2026-05-27 by tester.
+- [x] **T-T-3** — Sharpe-delta table reviewed. K1 surprise scan: 0 surprises across all 69 scenarios. No retirement candidates. H1 holds (0 flipped scenarios vs threshold of 3). Verified 2026-05-27 by tester.
+- [x] **T-T-4** — Wave F cross-feature e2e all PASS at ≥ 1 bp divergence. latency_slippage_sim_e2e 3/3, vol_targeting_overlay_end_to_end 1/1, vol_killswitch_overlay_end_to_end 4/4. Verified 2026-05-27 by tester.
+- [x] **T-T-5** — Report authored at `reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md`. Verdict: SOFT-PASS (8 candle/realdata-absent scenarios deferred to v0.4.0). 2026-05-27.
+- [x] **T-T-6** — Trace row `REQ-V5-FULL-PATH-WIRING-001` anchors column updated; state flipped `in-progress → passed`. 2026-05-27.
 
 ## M-PRESENTER — Sprint-review deck
 

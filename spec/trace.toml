@@ -1809,8 +1809,8 @@ tests       = [
   "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",
   "crates/ui/tests/lab_markers_anchor.rs",
 ]
-anchors     = "69/69 PASS — verified 2026-05-27 (v0.3.0 canonical: 9 SHAs updated; 60 unchanged)"
-state       = "in-progress"   # Developer M-DEV closed 2026-05-27. All T-D-N rows ticked. Handing off to tester.
+anchors     = "69/69 PASS — tester-verified 2026-05-27 (v0.3.0 canonical: 9 SHAs updated; 60 unchanged; determinism spot-check PASS pairs-2023-zscore-mr + top10-2023-1h-momentum)"
+state       = "passed"   # Tester M-FINAL SOFT-PASS 2026-05-27. All 69/69 anchors verified. t1937 + t1937b GREEN. 0 K1 surprises. 8 candle/realdata-absent scenarios deferred to v0.4.0. Report: spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md
 
 # ── cockpit-toast-queue-v0.2.0-cleanup v0.1.0 (analyst M0 close 2026-05-27 — closes v0.1.0 architecture-deviation follow-on) ──
 [[requirements]]
