@@ -373,6 +373,34 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-27 (analyst, cockpit-toast-queue M0 close — inline-salvaged
+     after analyst agentId a43a615341bd60112 529'd at 26 tool uses;
+     orchestrator appended this backlog row + trace row REQ-COCKPIT-TOAST-QUEUE-001
+     at EOF since both were missing from the 529'd run). -->
+- **cockpit-toast-queue v0.1.0** — multi-toast bounded queue replacing
+  the current single-slot REPLACE semantic at `state.rs:2056-2061`.
+  Spawned from cockpit-training-pressed-wiring v0.1.0 M-DEV K5 follow-on
+  (commit 28db398). Brief at
+  [`spec/cockpit-toast-queue/feature.md`](cockpit-toast-queue/feature.md);
+  tasks at [`spec/cockpit-toast-queue/tasks.md`](cockpit-toast-queue/tasks.md).
+  Estimated ~2-3 days end-to-end. Trace: `REQ-COCKPIT-TOAST-QUEUE-001`.
+
+<!-- updated 2026-05-27 (analyst, v5-latency-slippage-sim-v0.2.0-anchor-migration
+     M0 close — inline-salvaged after analyst agentId ac4d192d801af160a 529'd at
+     14 tool uses; orchestrator wrote tasks.md + appended this backlog row +
+     trace row REQ-V5-ANCHOR-MIGRATION-V0-2-0-001 at EOF). -->
+- **v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0** — converts
+  v5 v0.1.0's noop ship into a meaningful canonical-friction ship.
+  Re-emits all 34 anchored backtest reports under a canonical
+  `LatencySlippageSimConfig` (default-recommendation: medium —
+  30..=80 ms / 8 bps); migrates SHAs in `spec/anchors.toml`; quantifies
+  Sharpe-delta per scenario; cross-feature anchor cascade re-verifies
+  every overlay/sizing-modifier e2e test. Q5 from v5 v0.1.0 explicitly
+  deferred this to v0.2.0. Brief at
+  [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md);
+  tasks at [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md`](v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md).
+  Estimated ~1-2 weeks wall-clock. Trace: `REQ-V5-ANCHOR-MIGRATION-V0-2-0-001`.
+
 <!-- updated 2026-05-26 (analyst + architect, v5-latency-slippage-sim M0 + M-T1 close) —
      **PROMOTED Idea → Active 2026-05-26** by operator directive: "New
      feature track to close the gap between backtesting and live

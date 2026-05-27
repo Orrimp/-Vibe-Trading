@@ -1575,12 +1575,11 @@ crates      = [
   "crates/trader/tests/llm_forecaster_activity_tape.rs",           # NEW — ~ 200 LOC, 6 integration tests per T-D-N5
 ]
 tests       = [
-  # ANALYST M0 (2026-05-26) — test surfaces from R1 / R2.4 / R3.3 / R4.3.
-  # Developer M-DEV / tester M-FINAL populate with literal `cargo test` outputs.
-  "crates/trader/tests/llm_forecaster_activity_tape.rs",           # happy_path_emits_start_then_end_success / label_format_is_model_id_only / failed_call_emits_red_row / budget_cap_short_circuit_closes_handle / handle_does_not_cross_await / none_activity_sender_emits_no_events
+  # TESTER M-FINAL (2026-05-27) — literal cargo test outputs; all 6 PASS.
+  "crates/trader/tests/llm_forecaster_activity_tape.rs",           # start_event_emitted_with_correct_label_format / end_success_event_on_happy_path / end_failed_event_on_llm_error / pii_redaction_label_excludes_symbol_and_prompt / activity_event_survives_cache_replay_path / no_event_emitted_when_activity_sender_not_wired
 ]
-anchors     = "34/34 PASS"   # ZERO new anchors by construction (R5.1). Activity wiring is conditional on Option<ActivitySender>::is_some(); anchored bin paths construct LlmForecasterImpl without an ActivitySender so forecast() is byte-identical for anchored runs. 34 anchors stay byte-identical; tester confirms via `bash scripts/verify_anchors.sh` at M-FINAL.
-state       = "proposed"   # analyst M0 2026-05-26 — HANDOFF → architect M-T1. Q1..Q3 all standing-Autoapprove-eligible at analyst-recommended defaults; operator MAY skip M-OD. Tester flips to `passed` at M-FINAL once anchor verify + 153+6 trader tests PASS.
+anchors     = "34/34 PASS"   # ZERO new anchors by construction (R5.1). Activity wiring is conditional on Option<ActivitySender>::is_some(); anchored bin paths construct LlmForecasterImpl without an ActivitySender so forecast() is byte-identical for anchored runs. 34 anchors verified byte-identical by tester M-FINAL 2026-05-27 via `bash scripts/verify_anchors.sh`.
+state       = "passed"   # tester M-FINAL 2026-05-27 — VERDICT PASS; 6/6 activity tape tests; 159/0 trader total; 34/34 anchors; clippy 0 warnings; fmt clean; PII-redaction audit PASS. Report: spec/cockpit-activity-llm-producer/reports/test-final-2026-05-26-cockpit-activity-llm-producer.md
 
 # ── REQ-SUBSCRIPTION-PIPE-SERVER-TIME-001 ──────────────────────────────────────
 # ANALYST M0 (2026-05-26) — v0.1.1 Wave-1 follow-on closing the operator's
@@ -1702,4 +1701,54 @@ tests       = [
   "crates/exec/benches/throughput_with_sim.rs",                      # Wave E T-D-N10: throughput bench — noop 33 µs / enabled 191 µs (8760 fills)
 ]
 anchors     = "34/34 PASS"  # Verified 2026-05-26 (task bxjh9cwf5). NONE ADDED — all scenarios use Default::default() = noop. v0.2.0 anchor-migration brief deferred per Q5.
-state       = "in-progress"   # Developer M-DEV complete 2026-05-26. Tester M-FINAL pending. Tester flips to `passed` at M-FINAL once R-O1 SHIP path confirmed (verdict tree in feature.md).
+state       = "passed"        # Developer M-DEV complete 2026-05-26. Tester M-FINAL PASS 2026-05-27 (commit 28db398). R-O1 SHIP path confirmed: 34/34 anchors + e2e divergence 3/3 + all 5 wave tests green. Verdict tree: R-O1 → SHIP v0.1.0 + spawn v0.2.0 anchor-migration brief.
+
+# ── cockpit-toast-queue v0.1.0 (analyst inline-salvaged 2026-05-27 after a43a615341bd60112 529'd at tool 26/30) ──
+[[requirements]]
+id          = "REQ-COCKPIT-TOAST-QUEUE-001"
+title       = "Cockpit toast subsystem — bounded queue replacing single-slot REPLACE semantic at state.rs:2056-2061; spawned from cockpit-training-pressed-wiring v0.1.0 M-DEV K5 follow-on (commit 28db398); operator-decide on (a) display strategy [stacked vs carousel vs tray vs dropdown] / (b) queue capacity / (c) auto-dismiss timeout / (d) placement vs activity-tape cohabitation; ZERO anchor delta (UI-only); cross-references cockpit-activity-status-bar v0.1.0 sibling status-strip surface + cockpit-activity-audit-ledger-producer v0.1.0 K3 high-frequency producer interaction"
+feature     = "cockpit-toast-queue"
+product     = "spec/product.md"
+arch        = [
+  "spec/cockpit-toast-queue/feature.md",
+  "spec/cockpit-toast-queue/tasks.md",
+  "spec/cockpit-training-pressed-wiring/feature.md",                           # PARENT — K5 deferral
+  "spec/cockpit-activity-status-bar/feature.md",                                # SIBLING — activity-tape surface
+]
+crates      = [
+  # Developer creates at M-DEV (paths TBD by architect M-T1):
+  "crates/ui/src/state.rs",                                                     # CURRENT — single-slot toast_message
+  "crates/ui/src/widgets/",                                                     # NEW widget for queue render
+]
+tests       = [
+  # Developer creates at M-DEV:
+  "crates/ui/tests/cockpit_toast_queue.rs",                                     # NEW integration tests
+]
+anchors     = "34/34 PASS"  # ZERO delta — UI-only feature
+state       = "proposed"   # analyst M0 inline-salvaged 2026-05-27. Standing-Autoapprove eligible at analyst-recommended defaults on Q1-Q4.
+
+# ── v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0 (analyst inline-salvaged 2026-05-27 after ac4d192d801af160a 529'd at tool 14/35) ──
+[[requirements]]
+id          = "REQ-V5-ANCHOR-MIGRATION-V0-2-0-001"
+title       = "v5 latency-slippage-sim v0.2.0 anchor migration — re-emits 34 anchored backtest reports under canonical non-zero LatencySlippageSimConfig (analyst-recommended default: medium = 30..=80ms / 8bps per Q1); migrates SHAs in spec/anchors.toml under new namespace pin; 34 OLD anchors retire to noop-baseline namespace per Q2=(a); Sharpe-delta-per-scenario table for K1 surprise audit per Q3; cross-feature anchor cascade re-verifies every overlay/sizing-modifier e2e test per Q4; this is the brief that makes v5 v0.1.0's engine actually useful — every alpha number under canonical friction"
+feature     = "v5-latency-slippage-sim-v0.2.0-anchor-migration"
+product     = "spec/product.md"
+arch        = [
+  "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md",
+  "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md",
+  "spec/v5-latency-slippage-sim/feature.md",                                    # PARENT — Q5 deferred this brief
+  "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # PARENT ADR — D3 canonical config
+]
+crates      = [
+  # Developer touches at M-DEV (no source changes; backtest-binary re-runs only):
+  "crates/backtest/src/bin/",                                                   # re-run anchored scenarios under canonical config
+  "spec/anchors.toml",                                                          # 34 SHA rewrites + namespace migration
+]
+tests       = [
+  # Developer M-DEV runs existing anchored backtests + cross-feature e2e tests under canonical config:
+  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # MUST re-PASS under canonical config
+  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # MUST re-PASS under canonical config
+  "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # MUST re-PASS (divergence ≥1bp survives canonical config)
+]
+anchors     = "34 OLD → 34 NEW (migration)"  # The whole point of this brief — anchors move. v0.1.0 noop SHAs retire to `noop-baseline` namespace per Q2=(a). Verify post-migration via verify_anchors.sh.
+state       = "proposed"   # analyst M0 inline-salvaged 2026-05-27. Q1 (canonical config) is the load-bearing operator decision.

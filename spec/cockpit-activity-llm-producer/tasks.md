@@ -1,8 +1,8 @@
 ---
 slug: cockpit-activity-llm-producer
 status: in-progress
-owner: tester
-updated: 2026-05-26
+owner: presenter
+updated: 2026-05-27
 ---
 
 # Tasks — cockpit-activity-llm-producer
@@ -219,21 +219,15 @@ file. ~ 50 LOC source + ~ 200 LOC tests. ~ 0.5-1 day._
 
 _owner: tester._
 
-- [ ] **T-T-1** — Re-run T-D-N5 gates + `cargo clippy -p trader -- -D warnings`.
-  _Acceptance_: all green.
-- [ ] **T-T-2** — **K1 / H4 grep audit.** Confirm no `format!(...)` site
-  in `anthropic_impl.rs` contains the `ActivityKind::LlmCall` label
-  besides the one in T-D-N1.4. Pattern:
-  `grep -n 'LLM call' crates/trader/src/llm_forecaster/anthropic_impl.rs`
-  should return ≤ 2 hits (the const + the format site). _Acceptance_:
-  H4 / K1 mitigation confirmed.
-- [ ] **T-T-3** — Author test report at
-  `spec/cockpit-activity-llm-producer/reports/test-<YYYY-MM-DD>.md`
-  using the standard template. _Acceptance_: VERDICT line +
-  anchor hash table + trader test count delta recorded.
-- [ ] **T-T-4** — Populate `tests` + `anchors` columns of trace row
-  `REQ-COCKPIT-ACTIVITY-LLM-PRODUCER-001` after PASS verdict; flip
-  state `proposed → passed`.
+- [x] **T-T-1** (2026-05-27) — Re-run T-D-N5 gates + `cargo clippy -p trader -- -D warnings`.
+  All green: `cargo test -p trader` 159/0/3-ignored PASS; `cargo test -p trader --test llm_forecaster_activity_tape` 6/6 PASS; `bash scripts/verify_anchors.sh` 34/34 PASS; `cargo clippy -p trader --all-targets -- -D warnings` 0 errors; `cargo fmt --check` clean; `cargo test --workspace --no-fail-fast` 0 new failures.
+- [x] **T-T-2** (2026-05-27) — **K1 / H4 grep audit.** `grep -n 'LLM call' crates/trader/src/llm_forecaster/anthropic_impl.rs` returns 6 hits: lines 73/75/112/172 are doc-comments, line 81 is the const definition, line 423 is a timeout error string (not the activity label). Single `format!` site at line 468 confirmed: `format!("{ACTIVITY_LABEL_PREFIX}{}", self.model_id)`. Zero PII-bearing fields (BTCUSDT/price/prompt/symbol/lesson) in the label-forming path. _Acceptance: H4 / K1 mitigation confirmed._
+- [x] **T-T-3** (2026-05-27) — Test report authored at
+  `spec/cockpit-activity-llm-producer/reports/test-final-2026-05-26-cockpit-activity-llm-producer.md`.
+  VERDICT PASS + 34/34 anchor table + trader delta +6 (153 → 159) recorded.
+- [x] **T-T-4** (2026-05-27) — `tests` + `anchors` columns of trace row
+  `REQ-COCKPIT-ACTIVITY-LLM-PRODUCER-001` populated; state flipped
+  `proposed → passed`.
 
 ## M-PRESENTER — Sprint review
 

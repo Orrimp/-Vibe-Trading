@@ -269,3 +269,17 @@ the anchor invariant. The seeded sub-stream is non-negotiable.
   recommended defaults. Operator brief suggested ADR-0040 numbering
   but 0040-0042 are already allocated; this ADR lands at the next
   free slot (0043).
+- 2026-05-27 (tester, M-FINAL): Deviation 3 amendment — D2 RNG
+  implementation. The ADR draft specified `ChaCha20Rng::from_seed()`
+  for latency sub-stream derivation. Developer benchmarks showed
+  ChaCha20Rng init at ~400-600 ns/order (8-12x over the ≤50 ns R7
+  target). Implemented Murmur3-style bit mixer instead: XOR-combines
+  the 32-byte scenario seed (as 4 u64 words) with the order_id, runs
+  two rounds of Murmur3 finalizer constants. Result: 2.28-2.50 ns/call
+  (20x under target). Determinism contract preserved — same
+  `(scenario_seed, order_id)` always produces the same latency value.
+  The `latency_rng_for_order` function retaining the `ChaCha20Rng` API
+  is available for future multi-sample use cases. Tester verdict:
+  ACCEPT. ADR D2 intent (deterministic sub-stream keyed on
+  scenario_seed + order_id) is fully satisfied; mixer implementation
+  detail is an optimization below the ADR abstraction boundary.
