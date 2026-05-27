@@ -174,8 +174,8 @@ _owner: tester._
 
 _owner: presenter. Runs only after VERDICT → PASS._
 
-- [ ] **T-P-1** — Author `presentations/v5-latency-slippage-sim-v0.3.0-full-path-wiring-<DATE>.md`.
-- [ ] **T-P-2** — Lead with full-coverage Sharpe-delta story (1 → 7 paths under canonical friction); 4-cell verdict tree; K1 retirement candidates; Q1 load-bearing decision in retrospect.
+- [x] **T-P-1** (2026-05-27) — Authored `presentations/v5-latency-slippage-sim-v0.3.0-full-path-wiring-2026-05-27.md`. Pre-tick guard `bash scripts/check_presentation.sh` PASS; spec-lint baseline unchanged (72 violations in 3 categories — identical to v0.2.0 M-FINAL).
+- [x] **T-P-2** (2026-05-27) — Lead with the v0.2.0 → v0.3.0 Sharpe-delta story (2 → 11 friction-real scenarios); 0 K1 surprises across 69; SOFT-PASS carve-out (8 candle/realdata-gated scenarios deferred to v0.4.0) surfaced honestly.
 - [ ] **T-P-3** — Operator review. Capture verdict cell.
 - [ ] **T-P-4** — On operator approval, flip feature.md `status: draft → shipped`; move backlog Active → Recent.
 
