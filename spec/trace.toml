@@ -1811,3 +1811,29 @@ tests       = [
 ]
 anchors     = "69/69 PASS — verified 2026-05-27 (v0.3.0 canonical: 9 SHAs updated; 60 unchanged)"
 state       = "in-progress"   # Developer M-DEV closed 2026-05-27. All T-D-N rows ticked. Handing off to tester.
+
+# ── cockpit-toast-queue-v0.2.0-cleanup v0.1.0 (analyst M0 close 2026-05-27 — closes v0.1.0 architecture-deviation follow-on) ──
+[[requirements]]
+id          = "REQ-COCKPIT-TOAST-QUEUE-CLEANUP-001"
+title       = "Cockpit toast subsystem v0.2.0 cleanup — retire the legacy `pub toast_message: Option<SmolStr>` FIELD kept as one-cycle back-compat shim by the v0.1.0 developer (commit a723d24); migrates the 2 known direct-field-WRITE sites in cockpit_training_pressed_wiring.rs (lines 125, 323) to Message::ShowToastWithSeverity / Message::ShowToast dispatch; optionally retires the toast_message() method shim too (developer-discretion sub-route); zero operator-visible behaviour change; zero anchor delta (UI-only); zero new Lumen tokens; no operator-decide Qs (standing-Autoapprove-eligible); pre-verified at analyst pass via grep — H1+H2 VERIFIED, no K1 hidden-writer detected"
+feature     = "cockpit-toast-queue-v0.2.0-cleanup"
+product     = "spec/product.md"
+arch        = [
+  "spec/cockpit-toast-queue-v0.2.0-cleanup/feature.md",
+  "spec/cockpit-toast-queue-v0.2.0-cleanup/tasks.md",
+  "spec/cockpit-toast-queue/feature.md",                                       # PREDECESSOR — v0.1.0 shipped 2026-05-27, commit a723d24
+  "spec/architecture/adr/0046-cockpit-toast-queue.md",                          # PARENT ADR — § T-AR-5 specified the method shim; this brief restores the ADR-locked end state
+]
+crates      = [
+  # Architect M-T1 likely fast-skips (no design changes); developer Wave A paths:
+  "crates/ui/src/state.rs",                                                     # MUTATE — delete `pub toast_message` field (state.rs:879), its doc-comment, the two `toast_message: None,` init lines (1132, 1238), and the `.field("toast_message", ...)` line in the Debug impl (1075); R3 sub-route (a) retains the `toast_message()` method shim with updated doc / (b) removes it
+  "crates/ui/tests/cockpit_training_pressed_wiring.rs",                         # MUTATE — rewrite lines 125 (Danger spawn-fail) + 323 (Info K5-setup) field-WRITES to message dispatch; flip the 5 field-READ assertions (196-197, 332, 365-366, 368) to method shim or direct queue access per R3 sub-route choice
+]
+tests       = [
+  # Regression contract — all PASS counts unchanged from v0.1.0 baseline (commit a723d24):
+  "crates/ui/tests/cockpit_training_pressed_wiring.rs",                         # 5/5 PASS (R4.1 — K5 contract preserved via message-API rewrite)
+  "crates/ui/tests/cockpit_toast_queue.rs",                                     # 4/4 PASS (R5.3 — v0.1.0 integration suite untouched)
+]
+anchors     = "byte-identical to v0.1.0 baseline (UI-only; R5.1 zero touched files in backtest/strategy/exec/risk/reports/forecast/audit/cost/data)"
+state       = "proposed"
+

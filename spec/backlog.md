@@ -1855,6 +1855,36 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 
+<!-- updated 2026-05-27 (analyst, cockpit-toast-queue-v0.2.0-cleanup M0). Closes
+     the v0.1.0 ship's architecture-deviation follow-on (developer kept the
+     `pub toast_message: Option<SmolStr>` FIELD alongside the new
+     `toast_queue: VecDeque<ToastEntry>` because `cockpit_training_pressed_wiring.rs`
+     writes the field directly; annotated `// MIGRATION: remove at v0.2.0`).
+     R1 remove the field; R2 migrate the 2 known field-write sites (both in
+     one test file) to `Message::ShowToastWithSeverity` / `Message::ShowToast`
+     dispatch; R3 audit + optionally remove the `toast_message()` method shim
+     (developer-discretion sub-route, not operator-decide). Pure refactor —
+     zero operator-visible behaviour change. No Qs (standing-Autoapprove-
+     eligible). Cost ~2-4 hours wall-clock. Pre-verified at analyst pass:
+     `grep -rn "toast_message" crates/` confirms exactly the 2 field-write +
+     5 method-read sites in the K5 test file; production `cockpit_live.rs`
+     already routes via the message API. Trace row
+     REQ-COCKPIT-TOAST-QUEUE-CLEANUP-001 opened at `proposed` state. -->
+- **cockpit-toast-queue v0.2.0 cleanup** — retire the legacy
+  `pub toast_message: Option<SmolStr>` field kept as a one-cycle back-
+  compat shim by the v0.1.0 developer (commit `a723d24`). Migrates the
+  2 known direct-field-write sites in
+  `crates/ui/tests/cockpit_training_pressed_wiring.rs` (lines 125, 323)
+  to the message-API dispatcher; optionally retires the
+  `toast_message()` method shim as well. Zero operator-visible
+  behaviour change; zero anchor delta (UI-only); zero new Lumen tokens.
+  Brief at [`spec/cockpit-toast-queue-v0.2.0-cleanup/feature.md`](cockpit-toast-queue-v0.2.0-cleanup/feature.md);
+  tasks at [`spec/cockpit-toast-queue-v0.2.0-cleanup/tasks.md`](cockpit-toast-queue-v0.2.0-cleanup/tasks.md).
+  Predecessor: `cockpit-toast-queue v0.1.0` (shipped 2026-05-27,
+  commit `a723d24`). Priority P3 — can wait for an operator standing-
+  Autoapprove; no scheduling pressure beyond avoiding annotation drift.
+  Trace: `REQ-COCKPIT-TOAST-QUEUE-CLEANUP-001`.
+
 - **Lumen Phase 6 — Assistant slot.** _reserved_ — depends on the
   v2 LLM strategy queued item above. Right-rail collapsible panel
   for the v2 LLM assistant per
