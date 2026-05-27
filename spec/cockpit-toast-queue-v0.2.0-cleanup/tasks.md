@@ -1,7 +1,7 @@
 ---
 slug: cockpit-toast-queue-v0.2.0-cleanup
-status: draft
-owner: analyst
+status: in-progress
+owner: developer
 updated: 2026-05-27
 ---
 
