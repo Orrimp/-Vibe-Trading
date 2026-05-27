@@ -35,23 +35,28 @@ use ui::lab::state::{DateRange, LabDataSource, Preset};
 const EXPECTED_BTC_USD_1D_2024_REVISION_PREFIX: &str = "7b33166e";
 
 /// Lock #2 — expected SMA(20,50) trade count on BTC-USD 1d 2024 (366 bars
-/// at daily cadence). Computed first run 2026-05-25.
-const EXPECTED_TRADE_COUNT: usize = 10;
+/// at daily cadence).
+///
+/// Confirmed 2026-05-27 by `cargo run -p backtest --features yahoo --bin run_yahoo_sma`
+/// producing 7 trades on the full-year 2024 parquet cache (REVISION.toml SHA 7b33166e…).
+/// Mismatch = SMA logic or bar-loader changed. Update if intentional.
+const EXPECTED_TRADE_COUNT: usize = 7;
 
 /// Lock #3 — final equity after a year of SMA(20,50) on Yahoo BTC-USD 1d
 /// 2024 with initial capital = $100,000, 2 bps slippage, 4 bps taker fee.
-/// Computed first run 2026-05-25. Mismatch = behaviour drift in the SMA
-/// engine or fill logic.
+///
+/// Confirmed 2026-05-27: $104,560.07 USDT (+4.56%).
+/// Body-SHA anchored in `spec/anchors.toml` as `btc-yahoo-2024-1d-sma-cross`.
+/// Mismatch = behaviour drift in the SMA engine or fill logic.
 fn expected_final_equity() -> Decimal {
-    // Placeholder — will be set after first run inspects the output.
-    // Uses a wide tolerance window via assert_in_range below.
-    dec!(100_000)
+    // 2026-05-27 confirmed empirical value.
+    // Anchor body-SHA: 8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867
+    dec!(104_560.07)
 }
 
-/// Tolerance window for final equity invariance (±50% — wide enough to
-/// catch a code regression but tolerant of small numeric drift). Once
-/// the empirical value is known the test can be tightened.
-const FINAL_EQUITY_TOLERANCE: Decimal = dec!(50_000);
+/// Tolerance window for final equity invariance (±$1 — tight now that the
+/// empirical value is locked; any deviation indicates a behaviour regression).
+const FINAL_EQUITY_TOLERANCE: Decimal = dec!(1);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires Yahoo cache populated under data/yahoo/BTC-USD/1d/2024 \

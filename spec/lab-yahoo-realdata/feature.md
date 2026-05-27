@@ -1,9 +1,9 @@
 ---
 slug: lab-yahoo-realdata
-version: 0.1.0
+version: 0.1.1
 status: shipped
-owner: analyst
-updated: 2026-05-24
+owner: tester
+updated: 2026-05-27
 shipped: 2026-05-24
 parent: lab-end-to-end-v2
 ---
@@ -924,6 +924,52 @@ are constructors, not match arms.
 byte-identical (`bash scripts/verify_anchors.sh` → `ANCHORS PASS (34 / 34)`).
 The existing Binance-path audit writes use `venue.to_string()` → "binance" —
 unchanged.
+
+### Wave C v0.1.1 — Yahoo anchor lock + H1/H2 hypothesis discharge (developer, 2026-05-27)
+
+**Deliverable:** First real-data Yahoo anchor emitted, H1 and H2 hypotheses discharged.
+
+**Operator prerequisite:** operator populated `data/yahoo/BTC-USD/1d/2024/` via
+`cargo run -p data --features yahoo,yahoo-online --bin fetch_yahoo_klines --
+--tickers BTC-USD --interval 1d --start 2024-01-01 --end 2024-12-31` on 2026-05-27.
+Cache: 12 monthly parquet files (Jan–Dec 2024), REVISION.toml SHA `7b33166e1eb8…`.
+
+**New binary:** `crates/backtest/src/bin/run_yahoo_sma.rs` (NEW, `--features yahoo`)
+— standalone backtest that loads Yahoo BTC-USD 1d bars, runs SMA(20,50), and writes
+a report to `spec/lab-yahoo-realdata/reports/`. Feature gate `yahoo` added to
+`crates/backtest/Cargo.toml`.
+
+**Backtest result (2024 full year):**
+- Bars: 366 (daily, including Feb 29 leap day)
+- Trades: 7 (SMA crossover at daily cadence is conservative vs hourly)
+- Final equity: $104,560.07 (+4.56%) from $100,000 initial capital
+- Ledger imbalances: 0
+
+**Anchor appended** to `spec/anchors.toml` (68 → 69 rows):
+```toml
+[[anchors]]
+scenario = "btc-yahoo-2024-1d-sma-cross"
+version  = "lab-yahoo-realdata-v0.1.1"
+sha256   = "8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867"
+```
+Determinism verified: two independent runs produced identical body SHA.
+`scripts/verify_anchors.sh` → `ANCHORS PASS (69 / 69)`.
+
+**H1 DISCHARGED (PASS):**
+Yahoo BTC-USD H1 2024 (1d, 182 bars) final equity $101,202.81 vs Binance BTCUSDT
+H1 2024 (1h, 17,543 real bars) final equity $111,248.16. Divergence = 9.03% < 30%
+threshold. Both profitable in 2024 H1 bull market. Cadence difference (daily vs hourly)
+explains the divergence (fewer trades, slower signal). Full analysis in
+`spec/lab-yahoo-realdata/dev-notes/yahoo-vs-binance-divergence-2026-05-27.md`.
+
+**H2 DISCHARGED (PASS):**
+1 fetch invocation of BTC-USD 1d 2024-01-01→2024-12-31 returned 366/366 bars (100% >
+95% threshold). Trivially satisfied at scale=1. See dev-note for discussion of
+at-scale considerations.
+
+**Test constants updated:** `crates/ui/tests/lab_yahoo_anchor.rs` — updated
+`EXPECTED_TRADE_COUNT = 7` (was 10 placeholder), `expected_final_equity() = dec!(104_560.07)`
+(was dec!(100_000) placeholder), `FINAL_EQUITY_TOLERANCE = dec!(1)` (tightened from dec!(50_000)).
 
 **Cargo gates:**
 - `cargo fmt --check` → PASS

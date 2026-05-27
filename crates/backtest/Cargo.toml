@@ -13,6 +13,11 @@ name = "threshold_sweep"
 path = "src/bin/threshold_sweep.rs"
 required-features = ["candle", "realdata"]
 
+[[bin]]
+name = "run_yahoo_sma"
+path = "src/bin/run_yahoo_sma.rs"
+required-features = ["yahoo"]
+
 [features]
 # Enable real TCN-weights backtest scenarios (top10-*-tcn-overlay-weights).
 # Requires `--features candle` at build time; without it those scenarios emit
@@ -22,6 +27,10 @@ candle = ["strategy/forecast"]
 # Requires data/binance/REVISION.toml to be present at runtime.
 # See ADR-0032 and spec/backtest-real-binance-data/feature.md.
 realdata = ["dep:toml"]
+# Enable Yahoo Finance parquet-cache read path (lab-yahoo-realdata v0.1.1).
+# Enables data/src/yahoo.rs via the `data` crate's `yahoo` feature.
+# No network required — reads from data/yahoo/ cache only.
+yahoo = ["data/yahoo"]
 
 [dependencies.toml]
 workspace = true

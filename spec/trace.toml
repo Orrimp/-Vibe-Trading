@@ -1262,8 +1262,14 @@ tests       = [
   # TESTER Wave E (2026-05-24)
   "crates/ui/tests/lab_yahoo_dispatch.rs",                  # T-C3.7 — Yahoo dispatch boundary integration test (7 cases: ticker conversion, ScenarioConfig shape, bar loading, SHA determinism)
 ]
-anchors     = []   # v0.1.0 emits NO new anchors (R6.3 — Yahoo anchors lock in v0.1.1 after operator approval). The 34 Binance-based anchors stay byte-identical (R-NR.1; ANCHORS PASS 34/34 on 2026-05-24 tester run).
-state       = "shipped"  # tester M-FINAL 2026-05-24: VERDICT → PASS. All Wave C + E gates closed. Report at spec/lab-yahoo-realdata/reports/test-final-2026-05-24.md.
+anchors     = [
+  # v0.1.1 (developer 2026-05-27): first Yahoo anchor locked.
+  # Body-SHA from `run_yahoo_sma` binary on BTC-USD 1d 2024 cache (REVISION.toml SHA 7b33166e1eb8).
+  # Determinism: 2 independent runs produced identical SHA.
+  # spec/anchors.toml entry: btc-yahoo-2024-1d-sma-cross SHA 8045623b...
+  "spec/lab-yahoo-realdata/reports/backtest-20260527-143420-btc-yahoo-2024-1d-sma-cross.md",
+]
+state       = "shipped"  # tester M-FINAL 2026-05-24: VERDICT → PASS. v0.1.1 developer 2026-05-27: Yahoo anchor locked (68→69 rows), H1/H2 discharged (both PASS). Report: spec/lab-yahoo-realdata/reports/test-final-2026-05-24.md. Dev-note: spec/lab-yahoo-realdata/dev-notes/yahoo-vs-binance-divergence-2026-05-27.md.
 
 #
 # ─── Cockpit activity status bar (proposed 2026-05-25) ──────────────────

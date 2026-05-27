@@ -490,3 +490,15 @@ sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
 version  = "v3.0.0-volatility-rebaseline + v5-realdata-medium-2026-05"
 sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
+
+# lab-yahoo-realdata v0.1.1 Yahoo anchor (2026-05-27).
+# First real-data Yahoo anchor in the registry.  Source: data/yahoo/BTC-USD/1d/2024
+# parquet cache (REVISION.toml SHA 7b33166e1eb80dc0e0076dcde89ca56f36b9b0d695d21aed8effcb2e052ef5d7).
+# 366 daily bars, SMA(20,50), seed=0xC0FFEE, initial capital=$100,000.
+# Final equity: $104,560.08 (+4.56%).  Determinism: body SHA identical on 2 independent runs.
+# Verify with: scripts/verify_anchors.sh  (expects 69 / 69 PASS)
+
+[[anchors]]
+scenario = "btc-yahoo-2024-1d-sma-cross"
+version  = "lab-yahoo-realdata-v0.1.1"
+sha256   = "8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867"
