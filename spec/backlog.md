@@ -1681,7 +1681,38 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Queue
 
+<!-- updated 2026-05-27 (orchestrator, v5-latency-slippage-sim-v0.2.0-anchor-migration
+     Wave A-D close) — operator approved Ship Route (a) on the v0.2.0 ship:
+     "Ship v0.2.0 as-is + backlog v0.3.0 for full wiring (Recommended)".
+     The Wave A-D dev surfaced two gaps the operator explicitly accepted as
+     ship-blocker-bypassed: (1) scope gap — only Momentum (2/34 scenarios) got
+     real friction migration; 6 strategy paths (SMA/Composed, TCN, PatchTST,
+     Pairs, VolTarget, GARCHVol) don't have LatencySlippageSimConfig wired into
+     their construction sites, so their canonical SHAs = noop SHAs byte-identical;
+     (2) data-source drift — Group A (5 SMA/Composed) canonical SHAs DIFFER from
+     noop but ONLY due to synthetic→real-Binance auto-switch (env effect, not
+     v5 sim). v0.3.0 closes both. -->
+
 ### Strategy
+
+- **v5-latency-slippage-sim v0.3.0 (full-path wiring + data-source-drift decision).**
+  Closes the operator-accepted scope gap from v0.2.0 (commit `c223d11`,
+  shipped 2026-05-27): wires `LatencySlippageSimConfig` into the 6
+  strategy construction sites that v0.2.0 missed —
+  `SmaComposedScenarioInput`, `TcnOverlayScenarioInput`,
+  `PatchTstOverlayScenarioInput`, `PairsScenarioInput`,
+  `VolTargetOverlayScenarioInput`, `GarchVolOverlayScenarioInput`
+  (or their current names — re-survey at analyst M0). Re-emits the
+  32 byte-identical canonical anchors under real medium friction;
+  Sharpe-delta table extends to capture per-path equity drag.
+  Operator-decide Q: should Group A (SMA/Composed) re-anchor against
+  synthetic baseline (revert the data-source drift) OR accept current
+  real-Binance baseline (treat 2026-05-27 as the new oracle epoch)?
+  Estimated ~3-5 days wall-clock. **Predecessor**:
+  `v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0` (shipped
+  2026-05-27). **Stub-folder**: `spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/`
+  (analyst authors at M0 promotion). **No trace row yet** (opens at
+  analyst M0 promotion).
 
 - **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire`).**
   _moved Queue → Active 2026-05-21 (analyst pass)_ — see
