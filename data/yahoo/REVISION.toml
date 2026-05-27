@@ -40,7 +40,7 @@
 "ETH-USD/1d/2024/10.parquet" = "5dfcbdfd2c25121934f0381fd871aac91240fd5667c059052c53757a1eada637"
 "ETH-USD/1d/2024/11.parquet" = "db2eed63e63acaf5441ce2af8f19499b46f1426046e05855cd392297f271f290"
 "ETH-USD/1d/2024/12.parquet" = "557fbc1b6633e2ebaebbd305cda85b583fb7cf2053f6b7035530b7f8fd0c6159"
-"ETH-USD/1d/2025/01.parquet" = "264cea4a65a182b88adb86781415a07f1f3844297a97b4084e3a09036b5286f9"
+"ETH-USD/1d/2025/01.parquet" = "218cc3224a166ccf742ed3f6e545cf753babd16a5b69b77149c79d9a48dd3ed0"
 "ETH-USD/1d/2025/02.parquet" = "f408e17fa6ad5c51cdbd11822f82b0d57cdae92072cc887d9de9da795be10993"
 "ETH-USD/1d/2025/03.parquet" = "78988a7d6a846c7e70db6c235e9cb47eba742078ec71421d08523efe7e76d7d2"
 "ETH-USD/1d/2025/04.parquet" = "b24fdd45947cb45aa001e9f8a059792ec964515b5fed9ce5fdab7766ffe63edd"
@@ -59,14 +59,14 @@
 "ETH-USD/1d/2026/05.parquet" = "9232907e657741f0d6adac866f53950e88de8cf53538818c632843e71846cb11"
 
 [revision]
-sha256 = "7b33166e1eb80dc0e0076dcde89ca56f36b9b0d695d21aed8effcb2e052ef5d7"
+sha256 = "e018f876c36ab82aae2b6509be3ceb1cab4124c2c5eea4a08c1b8aa3000e7734"
 
 [revision.metadata]
 fetch_tool = "fetch_yahoo_klines"
 fetch_version = "0.1.0"
-generated_at = "2026-05-25T13:35:30Z"
+generated_at = "2026-05-27T21:10:54Z"
 yahoo_base = "https://query1.finance.yahoo.com"
 
 [revision.yahoo_response]
 "BTC-USD/1d/2024-01" = "99b5b08e2b0a5e73927aee25bd29b6a33eb176f8aa23c3763be1107a7d6edb11"
-"ETH-USD/1d/2024-01" = "0ca8d659baf3a0a86a3466e186c6a2e22e53c9ea5e2c5a70db12bdc3bcc90f38"
+"ETH-USD/1d/2024-01" = "33238c4904e1c616597ce938eb541b0fecd21c5aaf486801c3032cb2333bdf7e"
