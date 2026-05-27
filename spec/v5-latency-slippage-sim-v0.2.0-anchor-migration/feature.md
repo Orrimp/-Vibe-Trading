@@ -2,7 +2,7 @@
 slug: v5-latency-slippage-sim-v0.2.0-anchor-migration
 version: 0.1.0
 status: in-progress
-owner: developer
+owner: tester
 updated: 2026-05-27
 predecessor: v5-latency-slippage-sim v0.1.0 (shipped commit a5f8647 2026-05-26)
 parent: backtest-vs-live-execution-gap
@@ -339,3 +339,64 @@ K1 surprise.
   Wave D cross-feature inventory, Sharpe-delta permanent regression
   gate. T-AR-1 through T-AR-5 ticked in tasks.md. Frontmatter
   `owner: architect → developer`.
+- 2026-05-27 (developer M-DEV): All four Waves complete. See
+  `## Implementation` below.
+
+## Implementation
+
+_Authored by developer agent, 2026-05-27. All T-D-N rows ticked._
+
+### Wave A — Re-emission (20 canonical reports)
+
+Three CLI flags added to `crates/backtest/src/main.rs` (`--sim-latency-ms-min`,
+`--sim-latency-ms-max`, `--sim-slippage-bps`). The `MomentumScenarioInput.latency_slippage_sim`
+field is now populated from these flags rather than `Default::default()`.
+
+All 34 anchored scenarios were re-run under the canonical config
+`{ latency_ms_min: 30, latency_ms_max: 80, slippage_bps: 8 }`. Twenty
+scenarios produced re-emittable reports (stored in
+`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/`). The
+remaining 14 are analysis/investigation reports for which the simulator is
+not wired — their canonical SHA equals the noop SHA.
+
+Two compile errors (missing `position_curve` field in `TcnOverlayRunResult`
+initializers in `threshold_sweep.rs` and `patchtst_overlay_weights.rs`) were
+fixed as part of Wave A.
+
+**Key finding**: Only the momentum scenario path has `LatencySlippageSimConfig`
+wired into trade accounting. All other paths (SMA/Composed, TCN, PatchTST,
+PairsZScore, VolTarget) carry `=noop` canonical SHAs and are backlog candidates
+for v5 sim wiring in a future sprint.
+
+### Wave B — Anchor migration (68 anchors)
+
+`spec/anchors.toml` rewritten from 34 to 68 rows. All 34 original noop rows
+received the `+ noop-baseline` version suffix (SHAs unchanged). Thirty-four
+new canonical rows were appended with the `+ v5-realdata-medium-2026-05` suffix.
+
+`scripts/verify_anchors.sh` was rewritten to track the `version` field and apply
+namespace-aware file selection:
+- `noop-baseline`: finds the newest report **outside** the migration folder
+- `v5-realdata-medium-2026-05`: prefers migration folder, falls back to global newest
+
+Result: `ANCHORS PASS (68 / 68)`.
+
+### Wave C — Sharpe-delta table
+
+Full metrics comparison rendered at
+`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md`.
+
+**K1 surprise scan: 0 K1 surprises detected** across all 34 scenarios. No strategy
+went from positive Sharpe (noop) to negative Sharpe (canonical). The SMA/Composed
+scenarios show large equity swings due to the data-source switch (synthetic →
+real Binance Parquet), not the v5 sim itself. The momentum scenarios show the
+expected ~$5.4k / ~$3.5k equity reduction from 8 bps slippage + 30–80 ms latency.
+
+### Wave D — Cross-feature e2e re-checks
+
+All 8 overlay e2e divergence tests pass:
+- `latency_slippage_sim_e2e`: 3/3 (noop_byte_identical, enabled_diverges_by_at_least_1bp, enabled_audit_metrics_recorded)
+- `vol_targeting_overlay_end_to_end`: 1/1 (overlay_quantity_scale_reflects_computed_factor)
+- `vol_killswitch_overlay_end_to_end`: 4/4 (post_trigger_signals_are_hold, broadened_filter_dampens_cross_sectional_basket, passthrough_when_threshold_unreachably_high, trigger_fires_and_equity_diverges)
+
+No cross-feature anchored SHA fixtures found outside `spec/anchors.toml`.

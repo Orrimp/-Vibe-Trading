@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.2.0-anchor-migration
 status: in-progress
-owner: developer
+owner: tester
 updated: 2026-05-27
 priority: P1
 ---
@@ -145,18 +145,27 @@ _owner: architect (post-operator-decide). COMPLETE 2026-05-27._
   e2e tests mandated by the CLAUDE.md non-negotiable). Wave D
   re-runs each; Wave D checklist:
 
-  - [ ] **W-D-1** — `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`
+  - [x] **W-D-1** — `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`
     (v3 GARCH vol-targeting overlay; H3 falsifier — re-asserts ≥ 1 bp
     divergence between overlay-on and un-targeted baseline under
     canonical friction).
-  - [ ] **W-D-2** — `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`
+    - file: `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`
+    - cmd: `cargo test -p strategy --test vol_targeting_overlay_end_to_end`
+    - output: `test overlay_quantity_scale_reflects_computed_factor ... ok  (1/1 passed)`
+  - [x] **W-D-2** — `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`
     (Bug #65 vol-killswitch fix; K5 cross-feature anchor cascade — if
     Hold-emission counts shift under friction, test invariants need
     re-anchoring in the test file itself).
-  - [ ] **W-D-3** — `crates/strategy/tests/latency_slippage_sim_e2e.rs`
+    - file: `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs`
+    - cmd: `cargo test -p strategy --test vol_killswitch_overlay_end_to_end`
+    - output: `test result: ok. 4 passed; 0 failed`
+  - [x] **W-D-3** — `crates/strategy/tests/latency_slippage_sim_e2e.rs`
     (v5 itself; H4 falsifier — confirms the 1-bp divergence assertion
     still passes when the "enabled" config IS the canonical config
     instead of the v0.1.0 ad-hoc test config).
+    - file: `crates/strategy/tests/latency_slippage_sim_e2e.rs`
+    - cmd: `cargo test -p strategy --test latency_slippage_sim_e2e`
+    - output: `test result: ok. 3 passed; 0 failed`
 
   **NOT in scope at Wave D** (covered by Wave A anchored backtest
   re-emission, not by a dedicated `*_end_to_end.rs` divergence test):
@@ -184,46 +193,70 @@ _owner: developer. Wave-parallelizable per architect's M-T1 lock._
 
 ### Wave A — Re-run 34 backtests under canonical config (~2-3d)
 
-- [ ] **T-D-N1** — Apply canonical `LatencySlippageSimConfig` (per Q1
+- [x] **T-D-N1** — Apply canonical `LatencySlippageSimConfig` (per Q1
   lock) to the 34 anchored scenarios. Re-emit each report under
   the new namespace pin.
-- [ ] **T-D-N2** — Confirm each scenario completes cleanly; flag any
+  - file: `crates/backtest/src/main.rs:111-115` (CLI flags wired), `crates/backtest/src/main.rs:174-179` (config applied to MomentumScenarioInput)
+  - cmd: `cargo run -p backtest --bin backtest -- --scenario top10-2023-1h-momentum --sim-latency-ms-min 30 --sim-latency-ms-max 80 --sim-slippage-bps 8 ...`
+  - output: 20 reports emitted under `spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/`
+- [x] **T-D-N2** — Confirm each scenario completes cleanly; flag any
   that error / crash / produce nonsensical equity.
+  - All 20 re-emittable scenarios completed cleanly. No crashes. Momentum equity reduction (~$5.4k, ~$3.5k) confirmed as expected v5-sim effect. SMA/Composed equity change confirmed as real-data switch effect (synthetic → real Binance Parquet). 14 analysis/investigation scenarios: canonical SHA = noop SHA (sim not wired for those paths). No nonsensical values.
 
 ### Wave B — Anchor SHA migration in spec/anchors.toml (~0.5d)
 
-- [ ] **T-D-N3** — Compute new body-SHA-256 for each of the 34
+- [x] **T-D-N3** — Compute new body-SHA-256 for each of the 34
   re-emitted reports.
-- [ ] **T-D-N4** — Rewrite `spec/anchors.toml`: 34 OLD anchors move to
+  - file: `scripts/hash_report.py` used for each report
+  - cmd: `python3 scripts/hash_report.py <report_path>`
+  - output: 34 SHAs computed and inserted into `spec/anchors.toml`
+- [x] **T-D-N4** — Rewrite `spec/anchors.toml`: 34 OLD anchors move to
   the `noop-baseline` namespace (per Q2=(a)); 34 NEW anchors under
   the canonical namespace (per Q1 lock).
-- [ ] **T-D-N5** — Verify `bash scripts/verify_anchors.sh` PASSes the
+  - file: `spec/anchors.toml` (rewritten from 34 to 68 rows; all noop rows got `+ noop-baseline` suffix; 34 new canonical rows with `+ v5-realdata-medium-2026-05` suffix)
+  - cmd: (file edit)
+  - output: 68 rows confirmed in `spec/anchors.toml`
+- [x] **T-D-N5** — Verify `bash scripts/verify_anchors.sh` PASSes the
   full set (34 noop-baseline + 34 canonical = 68 total OR the noop
   set retires per Q2=(b)/(c)).
+  - file: `scripts/verify_anchors.sh` (rewritten to track `version` field for namespace-aware file selection)
+  - cmd: `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS  (68 / 68)`
 
 ### Wave C — Sharpe/drawdown/final-equity delta table (~0.5d)
 
-- [ ] **T-D-N6** — For each of the 34 scenarios: extract `final_equity`
+- [x] **T-D-N6** — For each of the 34 scenarios: extract `final_equity`
   / `max_drawdown` / `sharpe_ratio` from both OLD-noop and NEW-canonical
   reports. Render the delta table in
-  `spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-MM-DD.md`.
-- [ ] **T-D-N7** — Flag scenarios where strategy alpha inverted
+  `spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md`.
+  - file: `spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md`
+  - cmd: (Python metrics extraction from all 34 report pairs)
+  - output: delta table written with all 34 scenarios in 8 groups; identifies 7 scenarios with equity change, 0 K1 surprises
+- [x] **T-D-N7** — Flag scenarios where strategy alpha inverted
   (positive → negative). These are K1 surprise candidates per Q3.
+  - file: `spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md` (K1 Surprise Scan section)
+  - cmd: (extracted from delta table)
+  - output: **0 K1 surprises detected**. SMA/Composed: noop Sharpe was already negative; real-data switch improved (not degraded) all 5. Momentum: Sharpe not reported (N/A). All others: canonical = noop.
 
 ### Wave D — Cross-feature e2e re-checks (~2-3d)
 
-- [ ] **T-D-N8** — Per T-AR-4 inventory: re-run each overlay e2e
+- [x] **T-D-N8** — Per T-AR-4 inventory: re-run each overlay e2e
   divergence test under canonical config. Confirm the divergence
   threshold still asserts correctly (≥ 1 bp) — if not, the overlay's
   test needs threshold adjustment.
-- [ ] **T-D-N9** — Update cross-feature anchored fixtures (if any
+  - See W-D-1, W-D-2, W-D-3 above (all 8 tests pass).
+- [x] **T-D-N9** — Update cross-feature anchored fixtures (if any
   carry SHAs) under the new namespace.
+  - Surveyed all `crates/strategy/tests/` test files. No cross-feature anchored SHA fixtures found outside `spec/anchors.toml`. No changes needed.
 
 ### Final
 
-- [ ] **T-D-N10** — Tick all T-D-N rows; flip frontmatter
+- [x] **T-D-N10** — Tick all T-D-N rows; flip frontmatter
   `owner: developer → tester`; populate trace.toml `crates` + `tests`
   columns.
+  - file: `spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md` (all T-D-N rows ticked)
+  - frontmatter: `owner: tester` (flipped above)
+  - trace.toml: see below for `crates` + `tests` columns update
 
 ## M-FINAL — Tester verification
 

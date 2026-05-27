@@ -66,6 +66,23 @@ struct Args {
     /// so anchor SHAs are byte-identical whether the flag is set or not.
     #[arg(long)]
     emit_equity_bin: Option<PathBuf>,
+
+    // ── v5-latency-slippage-sim v0.2.0 canonical config flags (T-D-N1) ──────────
+    // Default 0 = noop (anchor-safe). Set to canonical values for the
+    // v0.2.0 re-emission run under ADR-0045 D1 (30..=80 ms / 8 bps).
+    // Only consumed by scenario paths that have LatencySlippageSimConfig wired;
+    // other paths ignore these flags and produce byte-identical output.
+    /// Minimum simulated latency added to order timestamps (ms). Default: 0 (noop).
+    #[arg(long, default_value = "0")]
+    sim_latency_ms_min: u64,
+
+    /// Maximum simulated latency added to order timestamps (ms). Default: 0 (noop).
+    #[arg(long, default_value = "0")]
+    sim_latency_ms_max: u64,
+
+    /// Simulated slippage in basis points applied per fill. Default: 0 (noop).
+    #[arg(long, default_value = "0")]
+    sim_slippage_bps: u32,
 }
 
 fn parse_seed(s: &str) -> Result<u64> {
@@ -1035,8 +1052,14 @@ async fn main() -> Result<()> {
             config_id,
             bars_override: realdata_bars_for_momentum.take(),
             data_revision_sha: realdata_revision_sha_for_momentum.clone(),
-            // v5-latency-slippage-sim: CLI paths use noop default (anchor-safe).
-            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+            // v5-latency-slippage-sim: v0.2.0 canonical config flags (T-D-N1).
+            // Default is noop (all zeros); set via --sim-latency-ms-min/max/--sim-slippage-bps
+            // to re-emit under the canonical config per ADR-0045 D1.
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
         let (_h, m_cancel) = backtest::cancel::cancellation_pair();

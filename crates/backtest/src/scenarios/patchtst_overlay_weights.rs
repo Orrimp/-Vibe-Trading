@@ -351,6 +351,9 @@ pub async fn run(
             equity_curve,
             fills: all_fills,
             bars: bars_arc,
+            // v5-latency-slippage-sim v0.2.0: patchtst_overlay_weights does not produce
+            // per-(symbol,bar) position entries — supply empty vec.
+            position_curve: Vec::new(),
         })
     }
 }

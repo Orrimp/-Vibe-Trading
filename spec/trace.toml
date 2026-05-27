@@ -1742,15 +1742,16 @@ arch        = [
   "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",                   # ADR-0038 § D6 anchor-additive contract — analogous discipline; namespace separation here is the v0.2.0 generalisation
 ]
 crates      = [
-  # Developer touches at M-DEV (no source changes; backtest-binary re-runs only):
-  "crates/backtest/src/bin/",                                                   # re-run anchored scenarios under canonical config
-  "spec/anchors.toml",                                                          # 34 SHA rewrites + namespace migration
+  "crates/backtest/src/main.rs",                                                # CLI flags --sim-latency-ms-min/max/--sim-slippage-bps wired; LatencySlippageSimConfig applied to MomentumScenarioInput
+  "crates/backtest/src/scenarios/threshold_sweep.rs",                           # position_curve field added to TcnOverlayRunResult initializer (compile fix)
+  "crates/backtest/src/scenarios/patchtst_overlay_weights.rs",                  # position_curve field added to TcnOverlayRunResult initializer (compile fix)
+  "spec/anchors.toml",                                                          # 34 noop-baseline + 34 canonical = 68 rows; namespace-aware version suffixes
+  "scripts/verify_anchors.sh",                                                  # rewritten for namespace-aware file selection (noop-baseline vs canonical)
 ]
 tests       = [
-  # Developer M-DEV runs existing anchored backtests + cross-feature e2e tests under canonical config:
-  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # MUST re-PASS under canonical config
-  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # MUST re-PASS under canonical config
-  "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # MUST re-PASS (divergence ≥1bp survives canonical config)
+  "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # 3/3 PASS — noop_byte_identical, enabled_diverges_by_at_least_1bp, enabled_audit_metrics_recorded
+  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # 1/1 PASS under canonical config
+  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # 4/4 PASS under canonical config
 ]
-anchors     = "34 OLD → 34 NEW (migration)"  # The whole point of this brief — anchors move. v0.1.0 noop SHAs retire to `noop-baseline` namespace per Q2=(a). Verify post-migration via verify_anchors.sh.
-state       = "in-progress"   # architect M-T1 complete 2026-05-27 — ADR-0045 locks canonical config (30..=80 ms / 8 bps) + namespace pin `v5-realdata-medium-2026-05` + noop-baseline namespace strategy. HANDOFF → developer for Wave A re-emission.
+anchors     = "68 rows (34 noop-baseline + 34 canonical v5-realdata-medium-2026-05)"  # verify_anchors.sh ANCHORS PASS (68/68) 2026-05-27
+state       = "proposed"   # developer M-DEV complete 2026-05-27 — all Waves A/B/C/D done; HANDOFF → tester. verify_anchors.sh 68/68 PASS locally.

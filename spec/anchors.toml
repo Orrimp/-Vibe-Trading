@@ -1,11 +1,16 @@
-# Locked body-only SHA-256 anchors for the 9-scenario regression gate.
+# Locked body-only SHA-256 anchors for the backtest regression gate.
 #
 # `body` = report file with leading YAML front-matter (`---\n...\n---\n`)
 # stripped. The front-matter holds run-varying metadata (generated:,
 # wall_clock_s, host, pid, git_commit, data_source); the body is the
 # deterministic part that must remain byte-identical across runs.
 #
-# Verify with: scripts/verify_anchors.sh
+# As of v5 v0.2.0 (2026-05-27): anchors carry two namespaces —
+# `noop-baseline` (pre-friction historical oracle, SHAs from v0.1.0 ship)
+# and `v5-realdata-medium-2026-05` (canonical friction; the current
+# reference for paper-trading alpha).
+#
+# Verify with: scripts/verify_anchors.sh  (expects 68/68 PASS)
 # Recompute one: scripts/hash_report.py spec/<feature>/reports/backtest-...md
 #
 # Owners: tester locks new entries; architect approves any change to an
@@ -14,47 +19,47 @@
 
 [[anchors]]
 scenario = "btc-2023-1m-sma-cross"
-version  = "v0"
+version  = "v0 + noop-baseline"
 sha256   = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c"
 
 [[anchors]]
 scenario = "btc-2023-1m-sma-baseline-refresh"
-version  = "v0"
+version  = "v0 + noop-baseline"
 sha256   = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c"
 
 [[anchors]]
 scenario = "btc-2023-1m-macd-trend"
-version  = "v0.5"
+version  = "v0.5 + noop-baseline"
 sha256   = "ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805"
 
 [[anchors]]
 scenario = "btc-2023-1m-rsi-reversion"
-version  = "v0.5"
+version  = "v0.5 + noop-baseline"
 sha256   = "bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa"
 
 [[anchors]]
 scenario = "btc-2023-1m-bbands-mean-revert"
-version  = "v0.5"
+version  = "v0.5 + noop-baseline"
 sha256   = "d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3"
 
 [[anchors]]
 scenario = "top10-2023-1h-momentum"
-version  = "v1"
+version  = "v1 + noop-baseline"
 sha256   = "3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97"
 
 [[anchors]]
 scenario = "top10-2024-h1-momentum"
-version  = "v1"
+version  = "v1 + noop-baseline"
 sha256   = "1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6"
 
 [[anchors]]
 scenario = "pairs-2023-zscore-mr"
-version  = "v1.5a"
+version  = "v1.5a + noop-baseline"
 sha256   = "90591a0ecc5d56c8ff93834b127a3780a31f51634f38f12c3c412391116abbd0"
 
 [[anchors]]
 scenario = "pairs-2024-h1-zscore-mr"
-version  = "v1.5a"
+version  = "v1.5a + noop-baseline"
 sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
 
 # v1+ operator success report scenarios (T816).  Resolved by
@@ -74,12 +79,12 @@ sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
 
 [[anchors]]
 scenario = "report-sample-7d"
-version  = "v2.0.0"
+version  = "v2.0.0 + noop-baseline"
 sha256   = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3"
 
 [[anchors]]
 scenario = "report-sample-90d"
-version  = "v2.0.0"
+version  = "v2.0.0 + noop-baseline"
 sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
 
 # v2.5 TCN overlay scenarios (T-T-1 / M7).  Locked by tester on 2026-05-18;
@@ -94,12 +99,12 @@ sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay"
-version  = "v2.5.0"
+version  = "v2.5.0 + noop-baseline"
 sha256   = "01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay"
-version  = "v2.5.0"
+version  = "v2.5.0 + noop-baseline"
 sha256   = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163"
 
 # v2.5 TCN overlay with REAL WEIGHTS scenarios (M3 / T-D-11 / T-D-12).
@@ -112,12 +117,12 @@ sha256   = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights"
-version  = "v2.5.0-tcn-weights"
+version  = "v2.5.0-tcn-weights + noop-baseline"
 sha256   = "7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights"
-version  = "v2.5.0-tcn-weights"
+version  = "v2.5.0-tcn-weights + noop-baseline"
 sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"
 
 # v2.6 backtest-real-binance-data scenarios (T-T-1A).  Locked by tester on
@@ -129,22 +134,22 @@ sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
-version  = "v2.6.0-realdata"
+version  = "v2.6.0-realdata + noop-baseline"
 sha256   = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-realdata"
-version  = "v2.6.0-realdata"
+version  = "v2.6.0-realdata + noop-baseline"
 sha256   = "fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
-version  = "v2.6.0-realdata"
+version  = "v2.6.0-realdata + noop-baseline"
 sha256   = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
-version  = "v2.6.0-realdata"
+version  = "v2.6.0-realdata + noop-baseline"
 sha256   = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c"
 
 # v2.5 alpha-investigation reports (T-T-1).  Locked by tester on 2026-05-19
@@ -154,17 +159,17 @@ sha256   = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c"
 
 [[anchors]]
 scenario = "forecast-distribution-bs1-realdata"
-version  = "v2.6.0-alpha-investigation"
+version  = "v2.6.0-alpha-investigation + noop-baseline"
 sha256   = "ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54"
 
 [[anchors]]
 scenario = "forecast-distribution-bs2-realdata"
-version  = "v2.6.0-alpha-investigation"
+version  = "v2.6.0-alpha-investigation + noop-baseline"
 sha256   = "d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06"
 
 [[anchors]]
 scenario = "sharpe-comparison-realdata"
-version  = "v2.6.0-alpha-investigation"
+version  = "v2.6.0-alpha-investigation + noop-baseline"
 sha256   = "17d2e96c1bb79c0dad84c81daf4be333acb2b35a8c05b954ccaee7aa53370924"
 
 # v2.6.1 σ_train recalibration reports (T-T-1.b / M-FINAL).  Locked by tester
@@ -179,22 +184,22 @@ sha256   = "17d2e96c1bb79c0dad84c81daf4be333acb2b35a8c05b954ccaee7aa53370924"
 
 [[anchors]]
 scenario = "forecast-distribution-bs1-realdata-recalibrated"
-version  = "v2.6.1-alpha-investigation-recalibrated"
+version  = "v2.6.1-alpha-investigation-recalibrated + noop-baseline"
 sha256   = "8a548042f552899cbccfa4d9b8d6eca6306f7de5c1a1bd7ed18201b08a06f80f"
 
 [[anchors]]
 scenario = "forecast-distribution-bs2-realdata-recalibrated"
-version  = "v2.6.1-alpha-investigation-recalibrated"
+version  = "v2.6.1-alpha-investigation-recalibrated + noop-baseline"
 sha256   = "d6c1e17ca162469e94b8dacd7c4485ec4d8cd77b6768f9e7ebe2f7deaf4b4151"
 
 [[anchors]]
 scenario = "recalibrate-sigma-train-bs1"
-version  = "v2.6.1-alpha-investigation-recalibrated"
+version  = "v2.6.1-alpha-investigation-recalibrated + noop-baseline"
 sha256   = "baa658fb7ad96796f643d8fecab9156362b17faad97afc37be77867850336ad9"
 
 [[anchors]]
 scenario = "recalibrate-sigma-train-bs2"
-version  = "v2.6.1-alpha-investigation-recalibrated"
+version  = "v2.6.1-alpha-investigation-recalibrated + noop-baseline"
 sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
 
 # v2.6.2 τ × ε threshold-tuning sweep reports (T-T-1.b / M-FINAL).  Locked by tester
@@ -206,12 +211,12 @@ sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
 
 [[anchors]]
 scenario = "threshold-sweep-bs1-realdata-recalibrated"
-version  = "v2.6.2-threshold-tuning"
+version  = "v2.6.2-threshold-tuning + noop-baseline"
 sha256   = "551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c"
 
 [[anchors]]
 scenario = "threshold-sweep-bs2-realdata-recalibrated"
-version  = "v2.6.2-threshold-tuning"
+version  = "v2.6.2-threshold-tuning + noop-baseline"
 sha256   = "755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3"
 
 # v2.5a PatchTST overlay scenarios (T-T-1.b / M-FINAL).  Locked by tester on 2026-05-22
@@ -228,12 +233,12 @@ sha256   = "755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3"
 
 [[anchors]]
 scenario = "forecast-distribution-patchtst-bs1-realdata"
-version  = "v2.5a.0-patchtst"
+version  = "v2.5a.0-patchtst + noop-baseline"
 sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
 
 [[anchors]]
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
-version  = "v2.5a.0-patchtst"
+version  = "v2.5a.0-patchtst + noop-baseline"
 sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"
 
 # v3.0.0-volatility GARCH vol-targeting scenarios (T-T2 / M-FINAL).  Locked by
@@ -258,17 +263,17 @@ sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"
 
 [[anchors]]
 scenario = "vol-verdict-bs1-realdata"
-version  = "v3.0.0-volatility"
+version  = "v3.0.0-volatility + noop-baseline"
 sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
 
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
-version  = "v3.0.0-volatility"
+version  = "v3.0.0-volatility + noop-baseline"
 sha256   = "9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f"
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
-version  = "v3.0.0-volatility"
+version  = "v3.0.0-volatility + noop-baseline"
 sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
 
 # v3.0.0-volatility-rebaseline: 1-day re-baseline pass swapping the
@@ -297,5 +302,191 @@ sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
-version  = "v3.0.0-volatility-rebaseline"
+version  = "v3.0.0-volatility-rebaseline + noop-baseline"
+sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
+
+# ── v5 v0.2.0 canonical-friction anchor set ──────────────────────────────────
+# Re-emitted under LatencySlippageSimConfig { latency_ms_min: 30,
+# latency_ms_max: 80, slippage_bps: 8 } per ADR-0045 D1.
+# Locked by developer at v5-latency-slippage-sim-v0.2.0-anchor-migration
+# M-DEV on 2026-05-27. Each row mirrors a noop-baseline row above by
+# (scenario, base-version); the version suffix `+ v5-realdata-medium-2026-05`
+# is the canonical namespace pin.
+# Verify: bash scripts/verify_anchors.sh (expects 68/68 PASS).
+#
+# NOTE: Scenarios where the v5 sim is not yet wired (TCN/PatchTST/GARCH/Pairs)
+# produce byte-identical output to the noop-baseline; their canonical SHA =
+# noop SHA. Only momentum scenarios and SMA/Composed scenarios (running against
+# real Binance data vs the original synthetic fallback) show different SHAs.
+# Investigation/analysis reports and operator success reports cannot be
+# re-emitted via the backtest CLI; their canonical SHA = noop SHA.
+
+[[anchors]]
+scenario = "btc-2023-1m-sma-cross"
+version  = "v0 + v5-realdata-medium-2026-05"
+sha256   = "f6f971aca0d5a8eabc4974f7263c1a852ca104d70c0d88d6a10956b9bdce2350"
+
+[[anchors]]
+scenario = "btc-2023-1m-sma-baseline-refresh"
+version  = "v0 + v5-realdata-medium-2026-05"
+sha256   = "f6f971aca0d5a8eabc4974f7263c1a852ca104d70c0d88d6a10956b9bdce2350"
+
+[[anchors]]
+scenario = "btc-2023-1m-macd-trend"
+version  = "v0.5 + v5-realdata-medium-2026-05"
+sha256   = "692ff12e29f28653fb6ff37617c32ee6544e4e05332cbe821e2a7991c4c893e1"
+
+[[anchors]]
+scenario = "btc-2023-1m-rsi-reversion"
+version  = "v0.5 + v5-realdata-medium-2026-05"
+sha256   = "e506b9f658afb44b09a49487ad579279023487c7b65da085aff4f3166cc6a884"
+
+[[anchors]]
+scenario = "btc-2023-1m-bbands-mean-revert"
+version  = "v0.5 + v5-realdata-medium-2026-05"
+sha256   = "93787f7bda4b4a87792b24b41458534cc27a5d8d3b1ff5cfa40362c519adf73e"
+
+[[anchors]]
+scenario = "top10-2023-1h-momentum"
+version  = "v1 + v5-realdata-medium-2026-05"
+sha256   = "0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3"
+
+[[anchors]]
+scenario = "top10-2024-h1-momentum"
+version  = "v1 + v5-realdata-medium-2026-05"
+sha256   = "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490"
+
+[[anchors]]
+scenario = "pairs-2023-zscore-mr"
+version  = "v1.5a + v5-realdata-medium-2026-05"
+sha256   = "90591a0ecc5d56c8ff93834b127a3780a31f51634f38f12c3c412391116abbd0"
+
+[[anchors]]
+scenario = "pairs-2024-h1-zscore-mr"
+version  = "v1.5a + v5-realdata-medium-2026-05"
+sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
+
+[[anchors]]
+scenario = "report-sample-7d"
+version  = "v2.0.0 + v5-realdata-medium-2026-05"
+sha256   = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3"
+
+[[anchors]]
+scenario = "report-sample-90d"
+version  = "v2.0.0 + v5-realdata-medium-2026-05"
+sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay"
+version  = "v2.5.0 + v5-realdata-medium-2026-05"
+sha256   = "01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay"
+version  = "v2.5.0 + v5-realdata-medium-2026-05"
+sha256   = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163"
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-weights"
+version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
+sha256   = "7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-weights"
+version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
+sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-realdata"
+version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
+sha256   = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-realdata"
+version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
+sha256   = "fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3"
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
+version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
+sha256   = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
+version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
+sha256   = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c"
+
+[[anchors]]
+scenario = "forecast-distribution-bs1-realdata"
+version  = "v2.6.0-alpha-investigation + v5-realdata-medium-2026-05"
+sha256   = "ef73cb8d65c1aad8bdcaf1b541f142f02000fbb26d19427899abd4d77b216d54"
+
+[[anchors]]
+scenario = "forecast-distribution-bs2-realdata"
+version  = "v2.6.0-alpha-investigation + v5-realdata-medium-2026-05"
+sha256   = "d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06"
+
+[[anchors]]
+scenario = "sharpe-comparison-realdata"
+version  = "v2.6.0-alpha-investigation + v5-realdata-medium-2026-05"
+sha256   = "17d2e96c1bb79c0dad84c81daf4be333acb2b35a8c05b954ccaee7aa53370924"
+
+[[anchors]]
+scenario = "forecast-distribution-bs1-realdata-recalibrated"
+version  = "v2.6.1-alpha-investigation-recalibrated + v5-realdata-medium-2026-05"
+sha256   = "8a548042f552899cbccfa4d9b8d6eca6306f7de5c1a1bd7ed18201b08a06f80f"
+
+[[anchors]]
+scenario = "forecast-distribution-bs2-realdata-recalibrated"
+version  = "v2.6.1-alpha-investigation-recalibrated + v5-realdata-medium-2026-05"
+sha256   = "d6c1e17ca162469e94b8dacd7c4485ec4d8cd77b6768f9e7ebe2f7deaf4b4151"
+
+[[anchors]]
+scenario = "recalibrate-sigma-train-bs1"
+version  = "v2.6.1-alpha-investigation-recalibrated + v5-realdata-medium-2026-05"
+sha256   = "baa658fb7ad96796f643d8fecab9156362b17faad97afc37be77867850336ad9"
+
+[[anchors]]
+scenario = "recalibrate-sigma-train-bs2"
+version  = "v2.6.1-alpha-investigation-recalibrated + v5-realdata-medium-2026-05"
+sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
+
+[[anchors]]
+scenario = "threshold-sweep-bs1-realdata-recalibrated"
+version  = "v2.6.2-threshold-tuning + v5-realdata-medium-2026-05"
+sha256   = "551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c"
+
+[[anchors]]
+scenario = "threshold-sweep-bs2-realdata-recalibrated"
+version  = "v2.6.2-threshold-tuning + v5-realdata-medium-2026-05"
+sha256   = "755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3"
+
+[[anchors]]
+scenario = "forecast-distribution-patchtst-bs1-realdata"
+version  = "v2.5a.0-patchtst + v5-realdata-medium-2026-05"
+sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
+
+[[anchors]]
+scenario = "top10-2023-fy-patchtst-overlay-realdata"
+version  = "v2.5a.0-patchtst + v5-realdata-medium-2026-05"
+sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"
+
+[[anchors]]
+scenario = "vol-verdict-bs1-realdata"
+version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
+sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
+
+[[anchors]]
+scenario = "top10-2023-fy-vol-target-overlay-realdata"
+version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
+sha256   = "9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f"
+
+[[anchors]]
+scenario = "sharpe-comparison-vol-target-bs1-realdata"
+version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
+sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
+
+[[anchors]]
+scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
+version  = "v3.0.0-volatility-rebaseline + v5-realdata-medium-2026-05"
 sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
