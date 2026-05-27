@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim-v0.3.0-full-path-wiring
 version: 0.2.0
-status: draft
-owner: operator-decide
+status: in-progress
+owner: developer
 updated: 2026-05-27
 predecessor: v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0
 parent: backtest-vs-live-execution-gap

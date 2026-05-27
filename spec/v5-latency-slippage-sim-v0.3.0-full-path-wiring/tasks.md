@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.3.0-full-path-wiring
 status: in-progress
-owner: operator-decide
+owner: developer
 updated: 2026-05-27
 priority: P1
 ---
@@ -30,11 +30,13 @@ _owner: operator. Per the analyst handoff K2-precedes-Q1 contract, architect M-T
 - **Architect Q1 lean: (a) revert to synthetic baseline.** Preserves friction-free oracle for 5/68 anchors at trivial cost. (b) still defensible if operator weights forward-looking realism higher.
 - **Architect Q2-Q5 leans: concur with all analyst defaults.** Q2=(a), Q3=(a), Q4=(b), Q5=(a).
 
-- [ ] **T-OD1** — Q1 Group A data-source: (a) revert to synthetic baseline *architect-lean post-K2* / (b) accept real-Binance baseline as new oracle epoch. Still genuinely operator judgment — value tradeoff (regression-gate semantics vs real-data realism), not feasibility-blocked. See feature.md § Operator-decide table + ADR-0047 D4 for the conditional re-emission contract.
-- [ ] **T-OD2** — Q2 Wave ordering: (a) all-then-emit *analyst + architect concur* / (b) wire-and-emit per-path.
-- [ ] **T-OD3** — Q3 Anchor namespace: (a) extend `v5-realdata-medium-2026-05` *analyst + architect concur* / (b) new pin `v5-realdata-medium-2026-05-full`.
-- [ ] **T-OD4** — Q4 t1937 resolution: (a) update constants / (b) namespace-aware resolver *analyst + architect concur*.
-- [ ] **T-OD5** — Q5 Cross-feature re-check: (a) re-run all overlay e2e *analyst + architect concur — inventory confirmed unchanged at 3 + 1 meta* / (b) load-bearing 3 only / (c) defer v0.4.
+**RESOLVED 2026-05-27 — all 5 locked at architect-recommended choices after deep-dive context (Q1) and architect-concur defaults (Q2-Q5).**
+
+- [x] **T-OD1** (2026-05-27) — Q1 Group A data-source = **(a) revert to synthetic baseline**. Operator chose after deep-dive on the friction-free-oracle preservation argument: regression-gate semantics stay clean (friction is the only canonical-vs-noop variable for all 68/68 anchors), at ~5 LoC cost via the `--force-synthetic-bars` CLI flag (ADR-0047 D1). v0.2.0's Group A canonical SHAs become stranded artifacts in git history.
+- [x] **T-OD2** (2026-05-27) — Q2 Wave ordering = **(a) all-then-emit**. Wire LatencySlippageSimConfig into all 6 construction sites first, then re-emit canonical reports in one atomic Wave A.
+- [x] **T-OD3** (2026-05-27) — Q3 Anchor namespace = **(a) extend `v5-realdata-medium-2026-05`** (same pin, new SHAs). v0.2.0 SHAs that were byte-identical to noop get overwritten in-place with the full-friction values.
+- [x] **T-OD4** (2026-05-27) — Q4 t1937 resolution = **(b) namespace-aware resolver**. Refactor `crates/reports/tests/strategy_anchors_unchanged.rs` to mirror `scripts/verify_anchors.sh` v0.2.0 namespace-aware pattern. Future-proof against subsequent canonical re-emissions.
+- [x] **T-OD5** (2026-05-27) — Q5 Cross-feature re-check = **(a) re-run all overlay e2e** under canonical config. 3 known files: `vol_targeting_overlay_end_to_end.rs`, `vol_killswitch_overlay_end_to_end.rs`, `latency_slippage_sim_e2e.rs` (architect re-confirmed inventory).
 
 ## M-T1 — Architect
 
