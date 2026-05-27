@@ -1695,7 +1695,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Strategy
 
-- **v5-latency-slippage-sim v0.3.0 (full-path wiring + data-source-drift decision).**
+- **v5-latency-slippage-sim v0.3.0 (full-path wiring + data-source-drift decision + t1937 test refresh).**
   Closes the operator-accepted scope gap from v0.2.0 (commit `c223d11`,
   shipped 2026-05-27): wires `LatencySlippageSimConfig` into the 6
   strategy construction sites that v0.2.0 missed —
@@ -1705,10 +1705,17 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   (or their current names — re-survey at analyst M0). Re-emits the
   32 byte-identical canonical anchors under real medium friction;
   Sharpe-delta table extends to capture per-path equity drag.
-  Operator-decide Q: should Group A (SMA/Composed) re-anchor against
-  synthetic baseline (revert the data-source drift) OR accept current
-  real-Binance baseline (treat 2026-05-27 as the new oracle epoch)?
-  Estimated ~3-5 days wall-clock. **Predecessor**:
+  **Also fixes** `t1937_nine_strategy_anchors_unchanged` in
+  `crates/reports/tests/` (surfaced by v0.2.0 M-FINAL tester
+  `aa1dfdf45def03560`): the test hardcodes noop-baseline SHA constants
+  from v2.0.0 ship time; Wave A canonical reports now sort
+  lexicographically newer and the test resolver picks them up. v0.3.0
+  must either update the constants to the canonical SHAs OR make the
+  resolver namespace-aware (mirror the `verify_anchors.sh` extension
+  pattern). Operator-decide Q: should Group A (SMA/Composed) re-anchor
+  against synthetic baseline (revert the data-source drift) OR accept
+  current real-Binance baseline (treat 2026-05-27 as the new oracle
+  epoch)? Estimated ~3-5 days wall-clock. **Predecessor**:
   `v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0` (shipped
   2026-05-27). **Stub-folder**: `spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/`
   (analyst authors at M0 promotion). **No trace row yet** (opens at

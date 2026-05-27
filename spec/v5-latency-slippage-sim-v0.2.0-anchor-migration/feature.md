@@ -2,7 +2,7 @@
 slug: v5-latency-slippage-sim-v0.2.0-anchor-migration
 version: 0.1.0
 status: in-progress
-owner: tester
+owner: presenter
 updated: 2026-05-27
 predecessor: v5-latency-slippage-sim v0.1.0 (shipped commit a5f8647 2026-05-26)
 parent: backtest-vs-live-execution-gap

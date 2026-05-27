@@ -1753,5 +1753,5 @@ tests       = [
   "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # 1/1 PASS under canonical config
   "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # 4/4 PASS under canonical config
 ]
-anchors     = "68 rows (34 noop-baseline + 34 canonical v5-realdata-medium-2026-05)"  # verify_anchors.sh ANCHORS PASS (68/68) 2026-05-27
-state       = "proposed"   # developer M-DEV complete 2026-05-27 — all Waves A/B/C/D done; HANDOFF → tester. verify_anchors.sh 68/68 PASS locally.
+anchors     = "68/68 PASS — 34 noop-baseline + 34 v5-realdata-medium-2026-05 — tester M-FINAL 2026-05-27; scenarios: noop_byte_identical_to_baseline, enabled_diverges_by_at_least_1bp, enabled_audit_metrics_recorded, overlay_quantity_scale_reflects_computed_factor, post_trigger_signals_are_hold, broadened_filter_dampens_cross_sectional_basket, passthrough_when_threshold_unreachably_high, trigger_fires_and_equity_diverges"
+state       = "passed"   # tester M-FINAL VERDICT → PASS 2026-05-27 — 68/68 anchors, 8/8 e2e, K1=0, no new clippy/spec-lint categories; 2 pre-existing test failures whitelisted (t1937 noop-SHA superseded + lab_run_engine flake). See test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md
