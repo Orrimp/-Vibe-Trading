@@ -401,19 +401,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      verify_anchors.sh. 6 R / 6 K / 4 H / 5 Q + non-regression contract +
      pre-drawn 4-cell verdict tree + cost framing. Cost ~3-5 days wall-clock.
      Trace row REQ-V5-FULL-PATH-WIRING-001 opened at `proposed` state. -->
-- **v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0** —
-  closes v0.2.0's accepted scope gap (6 strategy paths still =noop
-  byte-identical to baseline) and the Group A data-source drift
-  decision. Brief at
-  [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md`](v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md);
-  tasks at
-  [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/tasks.md`](v5-latency-slippage-sim-v0.3.0-full-path-wiring/tasks.md).
-  Q1 (Group A data-source — real-Binance baseline vs synthetic
-  revert) is the load-bearing question with NO SAFE ANALYST DEFAULT.
-  Q2-Q5 standing-Autoapprove-eligible. Predecessor:
-  `v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0` (shipped
-  2026-05-27, commits `d2cc343`, `c223d11`, `4dfa2d8`, `d191227`).
-  Estimated ~3-5 days end-to-end. Trace: `REQ-V5-FULL-PATH-WIRING-001`.
+<!-- moved to Recent (shipped) — v0.3.0 operator-approved 2026-05-27 -->
+<!-- - **v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0** — see Recent section below for v0.3.0 ship summary. -->
 
 <!-- updated 2026-05-26 (analyst + architect, v5-latency-slippage-sim M0 + M-T1 close) —
      **PROMOTED Idea → Active 2026-05-26** by operator directive: "New
@@ -2212,6 +2201,31 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-27 cohort
+
+- **v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0** —
+  shipped 2026-05-27 (operator-approved). Closes v0.2.0's accepted
+  scope gap: friction-real anchored scenarios **2 → 11** (was 2 of 34
+  at v0.2.0; momentum-only). `LatencySlippageSimConfig` now plumbs
+  through 6 strategy paths via new `crates/backtest/src/scenarios/sim.rs`
+  shared helper (lifted from momentum.rs as anchor-additive per
+  ADR-0038 § D6.a). New `--force-synthetic-bars` CLI flag (~5 LoC)
+  honours operator Q1=(a) revert-to-synthetic for Group A SMA/Composed
+  re-emission — preserves friction-free oracle for all 69 anchors;
+  v0.2.0's Group A canonical SHAs become stranded artifacts. t1937
+  test refactored to namespace-aware resolver (Namespace::Noop /
+  Namespace::Canonical) — mirrors `verify_anchors.sh` v0.2.0 pattern;
+  future-proof against subsequent canonical re-emissions. 11
+  canonical reports re-emitted; 9 SHAs overwritten in `spec/anchors.toml`
+  in-place under same canonical namespace pin `v5-realdata-medium-2026-05`
+  (Q3=(a)). **0 K1 surprises** across all 11 re-emitted scenarios.
+  Cross-feature e2e tests all PASS (latency_slippage_sim_e2e 3/3,
+  vol_targeting 1/1, vol_killswitch 4/4). **SOFT-PASS qualifier**:
+  8 candle/realdata-feature-gated scenarios deferred to v0.4.0
+  (plumbing wired; feature-flagged rebuild needed): TCN-weights × 2,
+  TCN-realdata × 4, PatchTST × 1, VolTarget-GARCH × 1. Commits:
+  `1267d39`, `4fd1095`, `275a6d0`, `21bda41`, `61db5f9`, `fe6b14a`.
+  ADR-0047. See
+  [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md`](v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md).
 
 - **vol-killswitch-overlay-noop-fix v0.1.0 (Bug #65 — P0 safety
   wiring-bug recovery)** — fix landed 2026-05-26 in tree; **spec

@@ -257,7 +257,7 @@ ship is held.
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-27, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — <add reason below>
 
