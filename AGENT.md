@@ -228,6 +228,31 @@ notifies you when each finishes; you don't have to wait.
 - Bidirectional loops are allowed: developer may push back to architect;
   architect may push back to analyst; tester may route to any of the above.
   The orchestrator honors those routes rather than forcing linear progress.
+- **Human-verification recipe contract** — whenever the orchestrator (or a
+  sub-agent through the orchestrator) needs the operator to do something
+  out-of-band — run a CLI, eyeball a UI, inspect a report file, populate
+  a data cache — the request MUST be a fully self-contained recipe with
+  the six sections below. The operator must never have to ask "how do I
+  run this?" or "what should I see if it worked?". See
+  [memory/feedback_human_verification_recipe.md](.claude/projects/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/memory/feedback_human_verification_recipe.md)
+  for the full contract.
+
+  1. **Command(s) to execute** — exact, copy-pasteable bash, fenced. No
+     placeholders without example values.
+  2. **Step-by-step actions** — numbered list; UI clicks, keystrokes,
+     sub-shell probes.
+  3. **Expected timing** — wall-clock estimate (so the operator can
+     distinguish "still working" from "hung").
+  4. **Expected result on success** — verbatim text or specific visual
+     state to look for.
+  5. **What to do if it fails** — likely failure modes + diagnosis +
+     "report back with: <specific artifact>".
+  6. **Cleanup** — only if there's state to tear down; omit the section
+     otherwise.
+
+  Quality bar: if the operator follows the recipe verbatim and fails,
+  that's a recipe defect — fix the recipe, don't blame the operator.
+  Confirm flag names via `--help` or source-inspection before emitting.
 
 ### Structured handoff envelope
 
