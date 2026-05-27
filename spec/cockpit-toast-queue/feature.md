@@ -1,8 +1,8 @@
 ---
 slug: cockpit-toast-queue
 version: 0.1.0
-status: draft
-owner: analyst
+status: in-progress
+owner: developer
 updated: 2026-05-27
 predecessor: cockpit-training-pressed-wiring v0.1.0
 priority: P2
@@ -451,9 +451,179 @@ M-FINAL by `scripts/verify_anchors.sh`.
   — the 24 px bottom status bar; Q4=(b) hard-vetoed because it
   violates this.
 
+## Design
+
+_architect 2026-05-27 — locked at M-T1; see [ADR-0046](../architecture/adr/0046-cockpit-toast-queue.md)._
+
+### Storage & types
+
+- **Field**: `AppState.toast_queue: VecDeque<ToastEntry>` replaces
+  `toast_message: Option<SmolStr>` at `state.rs:816`. The two
+  constructors at `state.rs:1055` + `state.rs:1159` initialize
+  `VecDeque::with_capacity(MAX_TOAST_QUEUE_LEN)`. `Debug` impl at
+  `state.rs:1000` updates the field name.
+- **ID counter**: `AppState.toast_next_id: Cell<u64>` (per-instance;
+  no cross-instance contention; matches `training_log_recipe_salt`
+  precedent).
+- **Const**: `pub const MAX_TOAST_QUEUE_LEN: usize = 5;` and
+  `pub const TOAST_AUTODISMISS: Duration = Duration::from_secs(5);`
+  both colocated in `state.rs` near the `AppState` type.
+- **`ToastEntry`**:
+  ```rust
+  #[derive(Clone, Debug, PartialEq)]
+  pub struct ToastEntry {
+      pub id: u64,
+      pub message: SmolStr,
+      pub severity: ToastSeverity,
+      pub created_at: Instant,
+  }
+
+  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+  pub enum ToastSeverity { Info, Success, Warning, Danger }
+  ```
+
+### Message arms (`state.rs:1466-1468` region + new variants)
+
+- `Message::ShowToast(SmolStr)` retained → `enqueue(ToastEntry {
+  severity: Info, .. })`. Back-compat for 2 existing producers + the
+  parent feature's K5 test.
+- `Message::ShowToastWithSeverity(SmolStr, ToastSeverity)` NEW.
+  Both enqueue paths share `enqueue_toast(&mut self, msg, sev)`
+  helper that allocates a new `id`, stamps `Instant::now()`, drops
+  the front entry if `len == cap`, and pushes back.
+- `Message::DismissToast` retained → `pop_front()`.
+- `Message::DismissToastById(u64)` NEW → `retain(|t| t.id != id)`.
+- `Message::ToastTick(Instant)` NEW → walks `toast_queue` and
+  `retain(|t| now.duration_since(t.created_at) < TOAST_AUTODISMISS)`.
+  **Important**: `Instant` is carried in the message payload, NOT
+  read inside the arm — this is the K5 clock-injection point. Tests
+  pass a synthetic instant.
+
+### View (`crates/ui/src/widgets/toast_tray.rs` — NEW, ~150 LOC)
+
+- Public entry: `pub fn view<'a>(queue: &'a VecDeque<ToastEntry>,
+  mode: ThemeMode) -> Element<'a, Message>`. Returns
+  `Container::new(Space::new(0, 0))` when `queue.is_empty()` — the
+  Stack layer is structurally present but pixel-empty (mirrors the
+  `journal_transaction_modal` empty-layer pattern; an empty Stack
+  layer is byte-identical to no overlay).
+- Layout: outer `Container` pinned to bottom-right of its parent
+  cell via `align_x(Right) + align_y(Bottom)` chrome; inner
+  `Column<ToastCard>` reversed (newest at bottom of the stack —
+  matches macOS Notifications direction). Per-card width fixed at
+  `TOAST_CARD_WIDTH_PX = 320.0` to avoid the cards growing with
+  variable message length.
+- Each card: `Row[severity-tinted-border | message text | × button]`
+  inside a `Container` with `radius::SM` corner, `space::SM`
+  internal padding, `color::PANEL_RAISED` background, severity
+  border on the left edge (4 px). Mapping (zero new Lumen tokens):
+  - `Info`     → `color::FG_2`
+  - `Success`  → `color::UP_500`
+  - `Warning`  → `color::INFO_400`
+  - `Danger`   → `color::DOWN_500`
+- `×` button: text glyph "×" only (no icon font); on press emits
+  `Message::DismissToastById(entry.id)`. The button styling reuses
+  existing button chrome (`button::text` if available; else the
+  status-bar's plain `button` style).
+
+### Shell wiring (`crates/ui/src/shell.rs:88-97` region)
+
+- Wrap the existing `Container::new(shell_row)` body in
+  `iced::widget::Stack` with two layers (lowest to highest z-order):
+  1. The current `shell_row` Container (untouched chrome).
+  2. `toast_tray::view(&model.toast_queue, mode)` — only renders
+     visible content when the queue is non-empty.
+- The Stack-wrapped outer Container retains the existing style
+  closure (background `color::CANVAS`, `text_color: color::FG_1`)
+  so the shell-grid invariant test stays green.
+- Placement: the tray's `align_y(Bottom)` chrome stacks the cards
+  upward FROM the bottom edge, but with a 28 px bottom offset
+  (`padding::bottom(28)`) so the 24 px activity tape stays
+  uncovered. This is Q4=(a) "above the activity tape."
+
+### Auto-dismiss ticker (`crates/ui/src/bin/cockpit_live.rs` —
+recipe + subscription wiring)
+
+- NEW recipe `ToastDismissRecipe` colocated with `ServerTimeRecipe`
+  at the top of `cockpit_live.rs`. Same `rt_handle` injection
+  pattern; emits `Message::ToastTick(Instant::now())` every 500 ms
+  via `tokio::time::interval` + `tokio_stream::wrappers::IntervalStream`.
+  Stream body extracted to `ui::live::toast_dismiss_stream_impl` for
+  test reachability (mirrors `server_time_stream_impl` precedent).
+- Wire into `cockpit_live.rs::subscription()` as the 6th batched
+  recipe (alongside `bus_sub`, `time_sub`, `trail_sub`,
+  `progress_sub`, `activity_sub`, `training_log_sub`). Active
+  unconditionally — the 500 ms idle cost is negligible vs the
+  100 ms activity-tape tick.
+- The `update` wrapper in `cockpit_live.rs` routes `ToastTick` to
+  the pure `state.rs::update`. No binary-side state needed.
+
+### Back-compat shim
+
+- `pub fn toast_message(&self) -> Option<&SmolStr>` on `AppState`,
+  doc-commented:
+  ```rust
+  /// MIGRATION: remove at v0.2.0 cleanup. Existed for one cycle to
+  /// keep cockpit-training-pressed-wiring v0.1.0 K5 test compiling
+  /// unchanged.
+  ```
+- Behavior: `self.toast_queue.front().map(|t| &t.message)`.
+
+### Producer migration
+
+- **Lab Compare cap-hit** (`state.rs:1983`):
+  was `model.toast_message = Some(SmolStr::new(LAB_COMPARE_CAP_HIT));`
+  becomes (handled at the `Message::ShowToastWithSeverity(.., Warning)`
+  arm — emit it instead of mutating the slot inline OR call the
+  `enqueue_toast` helper directly with severity = `Warning`).
+- **Training spawn-failure** (`bin/cockpit_live.rs:1143`):
+  was `self.cockpit.toast_message = Some(...)` direct mutation;
+  becomes `self.update(Message::ShowToastWithSeverity(msg, Danger))`
+  routed through the normal message path.
+
+### Test plan delta
+
+The 4 unit tests + 4 integration tests in feature.md R1/R2 acceptance
+are honored as-is by tasks.md Wave-A T-D-N4 and Wave-C T-D-N9. The
+`auto_dismiss_after_timeout` test sends a synthetic
+`Message::ToastTick(future_instant)` rather than wiring a fake clock
+field — simpler test ergonomics.
+
+### File scope (developer-visible touch list)
+
+- `crates/ui/src/state.rs` — replace field, add types/messages/arms,
+  add back-compat shim. (~80 LOC + 4 unit tests inline.)
+- `crates/ui/src/widgets/toast_tray.rs` — NEW file (~150 LOC).
+- `crates/ui/src/widgets/mod.rs` — add `pub mod toast_tray;`.
+- `crates/ui/src/shell.rs` — wrap shell body in `Stack`, push
+  `toast_tray::view` overlay.
+- `crates/ui/src/bin/cockpit_live.rs` — add `ToastDismissRecipe`,
+  wire into `subscription()`, migrate the training spawn-failure
+  producer call. (~60 LOC.)
+- `crates/ui/src/live.rs` — add `pub fn toast_dismiss_stream_impl`
+  (mirror of `server_time_stream_impl`).
+- `crates/ui/tests/cockpit_toast_queue.rs` — NEW integration test
+  file with 4 tests (~120 LOC).
+- `crates/ui/tests/cockpit_training_pressed_wiring.rs` — UNCHANGED.
+  The R5.9 back-compat shim is the explicit contract that keeps
+  this file byte-stable.
+
+**Zero overlap with the in-flight `lab-yahoo-realdata v0.1.1`
+developer** (which touches `crates/data/`, `crates/strategy/`,
+`spec/anchors.toml`, `spec/lab-yahoo-realdata/`). UI crate is
+ours; data/strategy/anchors are theirs.
+
 ## Changelog
 
 - 2026-05-27 (analyst): authored v0.1.0 draft. R1-R5 + H1-H4 +
   K1-K7 + Q1-Q4 closed; analyst-recommended defaults locked on
   all four operator questions. Anchor risk zero by construction.
   Cost ~2-3 days. HANDOFF → architect for M-T1 decomposition.
+- 2026-05-27 (architect): M-T1 close. ADR-0046 authored locking
+  `VecDeque<ToastEntry>` capped at 5, drop-oldest FIFO,
+  `Message::ToastTick(Instant)` clock injection via message
+  payload, stacked Lumen cards in bottom-right above the 24 px
+  activity tape, severity → existing Lumen token mapping (zero new
+  tokens). All 4 analyst Q-defaults retained. Frontmatter flipped
+  to `owner: developer`. HANDOFF → developer for Wave A-D
+  execution.

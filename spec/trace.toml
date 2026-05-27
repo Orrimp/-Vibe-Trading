@@ -1712,20 +1712,26 @@ product     = "spec/product.md"
 arch        = [
   "spec/cockpit-toast-queue/feature.md",
   "spec/cockpit-toast-queue/tasks.md",
+  "spec/architecture/adr/0046-cockpit-toast-queue.md",                          # ADR — storage + bound + render + dismissal lock (architect M-T1 2026-05-27)
   "spec/cockpit-training-pressed-wiring/feature.md",                           # PARENT — K5 deferral
-  "spec/cockpit-activity-status-bar/feature.md",                                # SIBLING — activity-tape surface
+  "spec/cockpit-activity-status-bar/feature.md",                                # SIBLING — activity-tape surface (Q4=(a) above this)
 ]
 crates      = [
-  # Developer creates at M-DEV (paths TBD by architect M-T1):
-  "crates/ui/src/state.rs",                                                     # CURRENT — single-slot toast_message
-  "crates/ui/src/widgets/",                                                     # NEW widget for queue render
+  # Architect-locked paths at M-T1 (2026-05-27, per ADR-0046 § Decision):
+  "crates/ui/src/state.rs",                                                     # MUTATE — replace toast_message slot with toast_queue VecDeque; add ToastEntry / ToastSeverity / Message::{ShowToastWithSeverity,DismissToastById,ToastTick} + enqueue_toast helper + toast_message() back-compat shim
+  "crates/ui/src/widgets/toast_tray.rs",                                        # NEW — stacked Lumen card overlay (R2.1; ~150 LOC)
+  "crates/ui/src/widgets/mod.rs",                                               # MUTATE — pub mod toast_tray;
+  "crates/ui/src/shell.rs",                                                     # MUTATE — wrap shell_row in iced::widget::Stack + push toast_tray overlay (Q4=(a) above 24 px activity tape)
+  "crates/ui/src/bin/cockpit_live.rs",                                          # MUTATE — add ToastDismissRecipe (mirror of ServerTimeRecipe), wire 6th subscription, route training spawn-failure through Message::ShowToastWithSeverity
+  "crates/ui/src/live.rs",                                                      # MUTATE — add pub fn toast_dismiss_stream_impl (mirror of server_time_stream_impl)
 ]
 tests       = [
-  # Developer creates at M-DEV:
-  "crates/ui/tests/cockpit_toast_queue.rs",                                     # NEW integration tests
+  "crates/ui/tests/cockpit_toast_queue.rs",                                     # NEW — 4 integration tests: queue_displays_multiple, auto_dismiss_after_timeout, two_completions_in_rapid_succession_both_visible, overflow_drops_oldest_keeps_newest
+  # state.rs::tests inline (4 unit tests): toast_queue_enqueue_basic, toast_queue_overflow_drops_oldest, toast_queue_dismiss_by_id, show_toast_msg_back_compat
+  # cockpit_training_pressed_wiring.rs (R4.2 regression) — back-compat shim keeps it green; ZERO byte mutation expected
 ]
-anchors     = "34/34 PASS"  # ZERO delta — UI-only feature
-state       = "proposed"   # analyst M0 inline-salvaged 2026-05-27. Standing-Autoapprove eligible at analyst-recommended defaults on Q1-Q4.
+anchors     = "34/34 PASS"  # ZERO delta — UI-only feature (R5.1)
+state       = "architected"   # architect M-T1 CLOSED 2026-05-27. ADR-0046 authored. Owner → developer. All 7 T-AR rows resolved; storage = VecDeque cap=5 drop-oldest FIFO; ticker = shared 500 ms ToastDismissRecipe; clock injection via Message::ToastTick(Instant) payload; severity → existing Lumen tokens (zero new); back-compat shim kept for v0.1.0.
 
 # ── v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0 (analyst inline-salvaged 2026-05-27 after ac4d192d801af160a 529'd at tool 14/35) ──
 [[requirements]]
