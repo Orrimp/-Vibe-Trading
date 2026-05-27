@@ -32,10 +32,10 @@ use audit::tick::{AuditContext, AuditEvent, AuditTick};
 fn make_fill_tick() -> AuditTick<AuditEvent> {
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use uuid::Uuid;
     use trading_core::{
         FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
     };
+    use uuid::Uuid;
 
     AuditTick {
         event: AuditEvent::Fill {
@@ -186,16 +186,32 @@ fn aggregator_idle_drops_handle() {
 
         // Drain events.
         let events = drain_events(&mut activity_rx, 0).await;
-        println!("test2: {} events: {:?}", events.len(), events.iter().map(|e| format!("{:?}", e.phase)).collect::<Vec<_>>());
+        println!(
+            "test2: {} events: {:?}",
+            events.len(),
+            events
+                .iter()
+                .map(|e| format!("{:?}", e.phase))
+                .collect::<Vec<_>>()
+        );
 
         // Aggregator must still be alive (not finished).
-        assert!(!agg.is_finished(), "aggregator must still be running after idle-end");
+        assert!(
+            !agg.is_finished(),
+            "aggregator must still be running after idle-end"
+        );
 
         // Must see at least 1 Start and 1 End{Success}.
         // (A single-tick burst only shows Start → End{Success} — no Tick because
         // the 100 ms throttle prevents a tick() call in the same window as start().)
-        let starts: Vec<_> = events.iter().filter(|e| matches!(e.phase, ActivityPhase::Start { .. })).collect();
-        let ends: Vec<_> = events.iter().filter(|e| matches!(e.phase, ActivityPhase::End(ActivityOutcome::Success))).collect();
+        let starts: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e.phase, ActivityPhase::Start { .. }))
+            .collect();
+        let ends: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e.phase, ActivityPhase::End(ActivityOutcome::Success)))
+            .collect();
 
         assert_eq!(starts.len(), 1, "exactly 1 Start");
         assert_eq!(ends.len(), 1, "exactly 1 End{{Success}}");
@@ -250,8 +266,14 @@ fn aggregator_handle_resumes_after_idle() {
         println!("test3: burst1_ids={burst1_ids:?} burst2_ids={burst2_ids:?}");
 
         // Both bursts must have produced at least one event.
-        assert!(!burst1_ids.is_empty(), "burst1 must produce at least 1 event");
-        assert!(!burst2_ids.is_empty(), "burst2 must produce at least 1 event");
+        assert!(
+            !burst1_ids.is_empty(),
+            "burst1 must produce at least 1 event"
+        );
+        assert!(
+            !burst2_ids.is_empty(),
+            "burst2 must produce at least 1 event"
+        );
 
         // The ActivityId must differ between bursts — proving idle-end fired a
         // fresh handle with a new ActivityId (ADR-0044 § D5).

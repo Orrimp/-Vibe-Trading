@@ -28,10 +28,10 @@ use audit::tick::{AuditContext, AuditEvent, AuditTick};
 fn make_fill_tick() -> AuditTick<AuditEvent> {
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use uuid::Uuid;
     use trading_core::{
         FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
     };
+    use uuid::Uuid;
 
     AuditTick {
         event: AuditEvent::Fill {
@@ -123,9 +123,7 @@ fn no_failed_events_on_happy_path_500ms_synthetic_backtest() {
             );
         }
 
-        println!(
-            "T-D-N9: {event_count} total events (tick={tick_count}, failed={failed_count})"
-        );
+        println!("T-D-N9: {event_count} total events (tick={tick_count}, failed={failed_count})");
 
         // ── Assertion: zero Failed events ─────────────────────────────────────
         assert_eq!(

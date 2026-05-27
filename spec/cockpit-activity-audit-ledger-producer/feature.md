@@ -1,9 +1,9 @@
 ---
 slug: cockpit-activity-audit-ledger-producer
-status: draft
-owner: analyst
+status: in-review
+owner: presenter
 version: 0.1.0
-updated: 2026-05-26
+updated: 2026-05-27
 predecessor: cockpit-activity-status-bar v0.1.0
 ---
 

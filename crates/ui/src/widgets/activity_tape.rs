@@ -296,8 +296,7 @@ mod tests {
 
         let label = activity_kind_label(ActivityKind::AuditLedgerWrite);
         assert_eq!(
-            label,
-            ACTIVITY_KIND_AUDIT_LABEL,
+            label, ACTIVITY_KIND_AUDIT_LABEL,
             "AuditLedgerWrite must map to ACTIVITY_KIND_AUDIT_LABEL"
         );
 

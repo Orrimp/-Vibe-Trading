@@ -101,10 +101,7 @@ struct Aggregator {
 }
 
 impl Aggregator {
-    fn new(
-        rx: broadcast::Receiver<AuditTick<AuditEvent>>,
-        bus: ActivitySender,
-    ) -> Self {
+    fn new(rx: broadcast::Receiver<AuditTick<AuditEvent>>, bus: ActivitySender) -> Self {
         Self {
             rx,
             bus,
@@ -243,9 +240,11 @@ mod tests {
     use tokio::sync::broadcast;
     use tokio::time::sleep;
 
-    use crate::activity::{ActivityEvent, ActivityKind, ActivityOutcome, ActivityPhase, ActivitySender};
-    use crate::config::BusConfig;
+    use crate::activity::{
+        ActivityEvent, ActivityKind, ActivityOutcome, ActivityPhase, ActivitySender,
+    };
     use crate::bus::EventBus;
+    use crate::config::BusConfig;
 
     use super::*;
 
@@ -255,11 +254,11 @@ mod tests {
         use audit::tick::AuditContext;
         use rust_decimal_macros::dec;
         use time::OffsetDateTime;
-        use uuid::Uuid;
         use trading_core::{
             FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol,
             Timestamp,
         };
+        use uuid::Uuid;
 
         AuditTick {
             event: AuditEvent::Fill {
@@ -393,7 +392,10 @@ mod tests {
             }
             let sib_end = rx.try_recv().expect("End event from sibling handle");
             assert!(
-                matches!(sib_end.phase, ActivityPhase::End(ActivityOutcome::Failed(_))),
+                matches!(
+                    sib_end.phase,
+                    ActivityPhase::End(ActivityOutcome::Failed(_))
+                ),
                 "sibling handle must end with Failed, got {:?}",
                 sib_end.phase
             );
@@ -407,8 +409,7 @@ mod tests {
     /// K5/T-AR-3 invariant at unit level.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn no_failed_events_on_happy_path() {
-        let (tick_tx, tick_rx) =
-            broadcast::channel::<AuditTick<AuditEvent>>(256);
+        let (tick_tx, tick_rx) = broadcast::channel::<AuditTick<AuditEvent>>(256);
         let bus = EventBus::new(&BusConfig::default());
         let mut activity_rx = bus.activity().subscribe();
 

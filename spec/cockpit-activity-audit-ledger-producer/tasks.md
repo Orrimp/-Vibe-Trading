@@ -1,8 +1,8 @@
 ---
 slug: cockpit-activity-audit-ledger-producer
-status: in-review
+status: in-progress
 owner: tester
-updated: 2026-05-27 (developer M-DEV — Waves A-D shipped; T-D-N1..T-D-N9 all ticked; HANDOFF → tester)
+updated: 2026-05-27
 ---
 
 # Tasks — cockpit-activity-audit-ledger-producer

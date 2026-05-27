@@ -33,8 +33,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use tokio::sync::broadcast;
 use tokio::runtime::Runtime;
+use tokio::sync::broadcast;
 
 use audit::tick::{AuditContext, AuditEvent, AuditTick};
 
@@ -47,10 +47,10 @@ use agent::config::BusConfig;
 fn make_fill_tick() -> AuditTick<AuditEvent> {
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use uuid::Uuid;
     use trading_core::{
         FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
     };
+    use uuid::Uuid;
 
     AuditTick {
         event: AuditEvent::Fill {
@@ -214,7 +214,9 @@ fn bench_anchor_replay_parity(c: &mut Criterion) {
     // per-send overhead of having an additional subscriber.
     group.bench_function("with_aggregator", |b| {
         let (tx, _) = broadcast::channel::<AuditTick<AuditEvent>>(1024);
-        let bus = EventBus::new(&BusConfig::default());
+        // Kept for symmetry with `without_aggregator`; the real aggregator is
+        // simulated by `_agg_handle` below — see TODO at K5 bench scaffold.
+        let _bus = EventBus::new(&BusConfig::default());
 
         // Spawn aggregator ONCE before the measurement loop.
         let _agg_handle = rt.spawn(async move {

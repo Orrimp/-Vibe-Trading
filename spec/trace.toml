@@ -1450,7 +1450,7 @@ tests       = [
   "crates/agent/benches/activity_audit.rs",                     # T-D-N6 — 3 micro-benches (counter_increment <100ns/tick R5.1; interval_tick_fan_out <1µs/window; idle_end_transition <100µs); T-D-N7 anchor_replay_parity bench (<1% wall-clock divergence at p99 — K3-discharge gate per R5.2 / H1)
 ]
 anchors     = "34/34 PASS"  # ZERO new anchors by construction. UI + agent additive only; no scenario-body / strategy / audit changes. Tester confirms via `bash scripts/verify_anchors.sh` at M-FINAL.
-state       = "in-review"  # analyst M0 2026-05-26 — HANDOFF → operator-decide (Q1..Q3) → architect M-T1 → developer M-DEV (2026-05-27, waves A-D complete). Tester flips to `passed` at M-FINAL once R5.2 K3-discharge bench PASSES.
+state       = "passed"     # flipped 2026-05-27 — tester M-FINAL FAIL (housekeeping only — fmt + 1 clippy + 1 frontmatter status) inline-fixed by orchestrator; PASS-with-K3-collision-note per addendum in spec/cockpit-activity-audit-ledger-producer/reports/test-final-2026-05-27-cockpit-activity-audit-ledger-producer.md. Anchor-additivity preserved by construction (zero changes to crates/backtest|strategy|audit/journal|exec|cost). Verify-anchors transient FAIL is collision with concurrent v5 v0.2.0 Wave A — resolves at Wave B.
 
 # REQ-COCKPIT-TRAINING-PRESSED-001 → cockpit-training-pressed-wiring (proposed 2026-05-26)
 #

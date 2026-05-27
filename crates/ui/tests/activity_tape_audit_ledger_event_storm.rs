@@ -43,10 +43,10 @@ const TOTAL_EVENTS: usize = 10_000;
 fn make_fill_tick() -> AuditTick<AuditEvent> {
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use uuid::Uuid;
     use trading_core::{
         FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
     };
+    use uuid::Uuid;
 
     AuditTick {
         event: AuditEvent::Fill {

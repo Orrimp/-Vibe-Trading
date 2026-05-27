@@ -19,8 +19,8 @@ use tokio::time::timeout;
 
 use agent::activity::ActivityPhase;
 use agent::activity_audit_aggregator::spawn_aggregator;
-use agent::config::BusConfig;
 use agent::bus::EventBus;
+use agent::config::BusConfig;
 use audit::tick::{AuditContext, AuditEvent, AuditTick};
 
 // ── Helper: synthetic AuditTick ───────────────────────────────────────────────
@@ -28,10 +28,10 @@ use audit::tick::{AuditContext, AuditEvent, AuditTick};
 fn make_audit_tick() -> AuditTick<AuditEvent> {
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use uuid::Uuid;
     use trading_core::{
         FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, Symbol, Timestamp,
     };
+    use uuid::Uuid;
 
     AuditTick {
         event: AuditEvent::Fill {
@@ -91,7 +91,10 @@ async fn aggregator_starts_and_emits_first_event_within_1s() {
 
     // ── 5. Send one AuditTick to the bus ─────────────────────────────────────
     let send_result = tick_tx.send(make_audit_tick());
-    assert!(send_result.is_ok(), "tick send must succeed with aggregator subscribed");
+    assert!(
+        send_result.is_ok(),
+        "tick send must succeed with aggregator subscribed"
+    );
 
     // ── 6. Assert: first activity event arrives within 1 s ───────────────────
     // The aggregator emits on the first non-empty 100 ms window. We wait up
