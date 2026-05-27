@@ -1,7 +1,7 @@
 ---
 slug: lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-27
 ---
 
@@ -21,9 +21,11 @@ Scaffold authored by analyst M0; architect refines waves at M-T1.
 
 ## M-OD — Operator decide
 
-- [ ] T-OD1 — Q1 (LOAD-BEARING): ticker handling (extend vs separate binary). Default (a) extend.
-- [ ] T-OD2 — Q2: summary badge placement. Default (a) source-toggle row.
-- [ ] T-OD3 — Q3: summary badge content. Default (c) middle-ground.
+**RESOLVED 2026-05-27 — all 3 locked at analyst-recommended defaults.**
+
+- [x] T-OD1 (2026-05-27) — Q1 LOAD-BEARING: ticker handling = **(a) extend `run_yahoo_sma.rs` with `--ticker` flag** (default BTC-USD; ~15 LoC delta). Scales DRY across remaining 8 unanchored crypto-mirror tickers. H3 anchor preservation provable by default-arg invocation matching v0.1.1 BTC SHA `8045623b...`.
+- [x] T-OD2 (2026-05-27) — Q2: aggregate badge placement = **Lab tab toolbar**. Visible whenever Lab is active; doesn't clutter the global 24 px activity tape.
+- [x] T-OD3 (2026-05-27) — Q3: aggregate badge content = **middle-ground "Yahoo cache: 2 tickers · last fetch YYYY-MM-DD"**. Operator-readable at a glance; click-to-expand reveals per-ticker detail.
 
 ## M-T1 — Architect
 
