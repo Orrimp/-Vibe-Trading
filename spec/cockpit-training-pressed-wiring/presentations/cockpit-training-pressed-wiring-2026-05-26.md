@@ -248,7 +248,7 @@ follow-on `cockpit-toast-queue` brief, not blocking ship._
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-27, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

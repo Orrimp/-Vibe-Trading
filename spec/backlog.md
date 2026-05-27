@@ -454,19 +454,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      state. HANDOFF → operator-decide (Q1-Q5 standing-Autoapprove-
      eligible at analyst defaults) → developer Wave A. -->
 
-- **v5-latency-slippage-sim v0.1.0** — Deterministic latency + slippage
-  simulation in `crates/exec` + `crates/cost`. Default-zero noop
-  preserves all 34 anchors at v0.1.0 ship; v0.2.0 anchor-migration
-  brief deferred per Q5. Ships with CLAUDE.md non-negotiable e2e
-  divergence test (R5). **5 R / 7 K / 4 H / 5 Q** + non-regression
-  contract + 4-cell verdict tree. ADR-**0043** (next-free slot;
-  operator brief suggested 0040 but it's taken).
-  **Spec**:
-  [`spec/v5-latency-slippage-sim/feature.md`](v5-latency-slippage-sim/feature.md).
-  **ADR**:
-  [`spec/architecture/adr/0043-simulated-latency-and-slippage.md`](architecture/adr/0043-simulated-latency-and-slippage.md).
-  **Trace**: `REQ-V5-LATENCY-SLIPPAGE-001`. Estimated ~1.5-2 weeks
-  wall-clock total.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-27 -->
+<!-- - **v5-latency-slippage-sim v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 <!-- updated 2026-05-26 (analyst, cockpit-activity-audit-ledger-producer M0 close) —
      **PROMOTED Idea → Active 2026-05-26** as the v0.1.1 follow-on slot
@@ -1611,28 +1600,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      `cockpit-activity-llm-producer v0.1.1` (this brief).
 -->
 
-- **cockpit-activity-llm-producer v0.1.0 (v0.1.1 follow-on of
-  cockpit-activity-status-bar)** — Brief authored 2026-05-26 closing
-  the parent's Q8 forward-list. Wires `ActivityHandle` around
-  `crates/trader/src/llm_forecaster/anthropic_impl.rs:412-416`
-  (`provider.complete(request).await`). Label
-  `"LLM call: <model_id>"` (Q1=(a) — structural PII redaction).
-  Conditional wiring via optional `activity_sender:
-  Option<ActivitySender>` builder setter — None path is byte-
-  identical to today; production cockpit path injects the sender.
-  `!Send` constraint workaround per Q2=(a): handle scope-dropped
-  BEFORE any subsequent `.await` (none today — H1 architect probe).
-  Failure mapping per Q3=(a): all `LlmForecasterError` variants
-  surface as red 3 s hold (inherits parent R2.5). **Anchor risk
-  ZERO by construction** — 34 anchors stay byte-identical (anchored
-  bins don't construct an `EventBus`). 153 trader LLM-forecaster
-  tests stay PASS. No `crates/strategy` / `crates/agent` touch.
-  Estimated 1-2 days wall-clock end-to-end. No LLM costs (wiremock
-  + stubs). **Spec**:
-  [`spec/cockpit-activity-llm-producer/feature.md`](cockpit-activity-llm-producer/feature.md).
-  **Trace**: `REQ-COCKPIT-ACTIVITY-LLM-PRODUCER-001`.
-  **Parent**: `cockpit-activity-status-bar v0.1.0` (shipped
-  2026-05-26; § Q8 + § R5.1 forward-list).
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-27 -->
+<!-- - **cockpit-activity-llm-producer v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 <!-- updated 2026-05-26 (analyst, cockpit-training-pressed-wiring M0) —
      v0.1.1 follow-on brief authored against
@@ -1707,30 +1676,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      `TrainingHandle`, cancellation contract).
 -->
 
-- **cockpit-training-pressed-wiring v0.1.0 (v0.1.1 follow-on of
-  cockpit-activity-status-bar)** — Brief authored 2026-05-26 closing
-  the Wave C T-D-N9 ship-time open question. Wires
-  `Message::TrainingPressed` in
-  `crates/ui/src/bin/cockpit_live.rs::AppState::update` to call
-  `lab::trainer::spawn_training_run(self.rt_handle.as_ref(), &cfg,
-  cancel_rx, line_tx, Some(self.bus.activity()))` and store the
-  returned `(TrainingHandle, Option<ActivityHandle>)` on
-  `LabState::training_inflight` + `AppState::training_activity_handle`.
-  Default config: `crates/forecast/train_tcn.toml` (Q1=(a) — the
-  upstream brief's referenced `crates/strategy/configs/training/btc_macd_trend.toml`
-  does NOT exist on disk per 2026-05-26 find sweep). Double-press
-  inert via parent R3.4 button-disabled contract (Q2=(a)). Pure-state
-  arm at `state.rs:2064-2070` STAYS a no-op (no changes to public
-  types). Wave C T-D-N9 downstream lifecycle (cockpit_live.rs:1103-1131)
-  unchanged. **Anchor risk ZERO by construction** — 34 anchors stay
-  byte-identical (UI-binary wiring only; `training_events` table
-  unchanged; `--audit-db` stays opt-in). Estimated 0.5-1 day
-  wall-clock end-to-end. **Spec**:
-  [`spec/cockpit-training-pressed-wiring/feature.md`](cockpit-training-pressed-wiring/feature.md).
-  **Trace**: `REQ-COCKPIT-TRAINING-PRESSED-001`.
-  **Predecessor**: `cockpit-activity-status-bar v0.1.0` (shipped
-  2026-05-26).
-  **Parent**: `cockpit-training-control v0.2.0` (shipped 2026-05-19).
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-27 -->
+<!-- - **cockpit-training-pressed-wiring v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 ## Queue
 
@@ -2236,6 +2183,54 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+### 2026-05-27 cohort
+
+- **v5-latency-slippage-sim v0.1.0** — shipped 2026-05-27 (operator-approved
+  triple-batch). Deterministic latency + slippage simulator in `crates/exec`
+  + `crates/cost`. Default-zero noop preserves all 34 anchors byte-identically;
+  CLAUDE.md non-negotiable overlay-e2e divergence test (R5) shipped from day 1
+  (3/3 PASS). Murmur3-style finalizer keyed on `(scenario_seed, order_id)`
+  (D2 deviation accepted via ADR-0043 Changelog amendment — ChaCha20Rng
+  replaced for hot-path perf). Criterion baselines: `apply_latency_noop`
+  2.35 ns, `apply_latency_jitter` 2.50 ns, `apply_slippage_10bps` 22.7 ns,
+  `noop_8760_fills` 73.9 µs, `enabled_8760_fills` 171.6 µs. New
+  `AuditEvent::SimulatedExecMetrics` variant with skip-when-zero guard.
+  v0.2.0 anchor-migration brief at
+  [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/`](v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md)
+  picks the canonical non-zero friction profile (operator-decide Q1-Q4
+  pending). Commits: `a5f8647`, `c46fd45`. ADR-0043. See
+  [`spec/v5-latency-slippage-sim/feature.md`](v5-latency-slippage-sim/feature.md).
+
+- **cockpit-activity-llm-producer v0.1.0** — shipped 2026-05-27 (operator-
+  approved triple-batch). v0.1.1 follow-on of `cockpit-activity-status-bar
+  v0.1.0` closing the parent's Q8 forward-list. `ActivityHandle` wired
+  around `crates/trader/src/llm_forecaster/anthropic_impl.rs:412-516`
+  via new `with_activity_sender()` builder setter. PII-redacted label
+  `"LLM call: <model_id>"` enforced at producer boundary (no prompt /
+  completion leakage). RAII handle ensures Completed/Failed on drop;
+  failure mapping inherits parent R2.5 red 3 s hold. 159 trader-crate
+  tests green; 34/34 anchors byte-identical (anchored bins never
+  construct an EventBus). Open H3 (per-variant failure reason chip)
+  deferred to v0.1.2. Commit: `c46fd45`. See
+  [`spec/cockpit-activity-llm-producer/feature.md`](cockpit-activity-llm-producer/feature.md).
+
+- **cockpit-training-pressed-wiring v0.1.0** — shipped 2026-05-27
+  (operator-approved triple-batch). v0.1.1 follow-on of
+  `cockpit-activity-status-bar v0.1.0` closing the Wave C T-D-N9
+  ship-time open question — the Train button now actually trains.
+  Binds `Message::TrainingPressed` in
+  `crates/ui/src/bin/cockpit_live.rs::AppState::update` to call
+  `lab::trainer::spawn_training_run` with default config
+  `crates/forecast/train_tcn.toml` (Q1=(a)). New
+  `crates/ui/src/lab/training_log.rs` (183 LoC) `TrainingLogRecipe`
+  bridges std-mpsc training logs into the tokio runtime via
+  spawn_blocking, surfacing per-epoch progress in the activity tape.
+  Double-press inert per parent R3.4 (Q2=(a)). 34/34 anchors
+  byte-identical; 5/5 integration tests · 0.31 s. K5 multi-toast
+  follow-on opened as `cockpit-toast-queue v0.1.0` (Active). Commits:
+  `28db398`, `c46fd45`. See
+  [`spec/cockpit-training-pressed-wiring/feature.md`](cockpit-training-pressed-wiring/feature.md).
 
 ### 2026-05-24 cohort
 

@@ -244,7 +244,7 @@ brief** (the v0.2.0 brief is already drafted).
 
 Operator picks one:
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-27, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

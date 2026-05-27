@@ -1,9 +1,9 @@
 ---
 slug: cockpit-training-pressed-wiring
 version: 0.1.0
-status: proposed
-owner: analyst
-updated: 2026-05-26
+status: shipped
+owner: shipped
+updated: 2026-05-27
 predecessor: cockpit-activity-status-bar v0.1.0
 parent: cockpit-training-control v0.2.0
 ---

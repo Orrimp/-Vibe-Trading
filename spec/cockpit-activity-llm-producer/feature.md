@@ -1,9 +1,9 @@
 ---
 slug: cockpit-activity-llm-producer
 version: 0.1.0
-status: draft
-owner: analyst
-updated: 2026-05-26
+status: shipped
+owner: shipped
+updated: 2026-05-27
 predecessor: cockpit-activity-status-bar v0.1.0
 parent: cockpit-activity-status-bar v0.1.1 forward-list (Q8 LlmCall)
 ---

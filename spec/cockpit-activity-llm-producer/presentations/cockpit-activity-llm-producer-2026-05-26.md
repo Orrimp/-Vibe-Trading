@@ -228,7 +228,7 @@ The three Qs from the analyst pass (Q1 label content, Q2 handle ownership, Q3 fa
 
 ### Operator decision
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-27, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
