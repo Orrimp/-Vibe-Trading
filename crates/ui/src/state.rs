@@ -868,21 +868,10 @@ pub struct Cockpit {
     /// `LabRunCompleted`.
     pub lab_run_inflight: bool,
 
-    /// Currently displayed toast message, if any (T-D-16).
-    /// `None` when no toast is visible. Cleared by `Message::DismissToast`.
-    ///
-    /// # MIGRATION (cockpit-toast-queue v0.1.0)
-    /// Direct field writes are retained for one cycle so
-    /// `cockpit_training_pressed_wiring` tests compile unchanged.
-    /// Remove this field at v0.2.0 cleanup; callers should migrate to
-    /// `Message::ShowToastWithSeverity` + `toast_message()` accessor.
-    pub toast_message: Option<SmolStr>,
-
     // ── cockpit-toast-queue v0.1.0 — bounded queue ───────────────────────────
     /// Bounded FIFO queue of visible toast notifications (ADR-0046).
     /// Capacity capped at `MAX_TOAST_QUEUE_LEN = 5`; overflow drops the
-    /// OLDEST entry. Replaces the single-slot REPLACE semantic while keeping
-    /// the `toast_message` field for a one-cycle back-compat shim.
+    /// OLDEST entry.
     pub toast_queue: VecDeque<ToastEntry>,
 
     /// Monotonic ID counter for `ToastEntry::id` (per-instance, test-safe).
@@ -1072,7 +1061,6 @@ impl std::fmt::Debug for Cockpit {
             .field("risk_veto_events", &self.risk_veto_events)
             .field("focused_widget", &self.focused_widget)
             .field("lab_run_inflight", &self.lab_run_inflight)
-            .field("toast_message", &self.toast_message)
             .field("toast_queue_len", &self.toast_queue.len())
             .field("toast_next_id", &self.toast_next_id)
             .field("activity_tape", &"<ActivityTape>")
@@ -1129,7 +1117,6 @@ impl Default for Cockpit {
             risk_veto_events: Vec::new(),
             focused_widget: None,
             lab_run_inflight: false,
-            toast_message: None,
             toast_queue: VecDeque::with_capacity(MAX_TOAST_QUEUE_LEN),
             toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
@@ -1235,28 +1222,11 @@ impl Cockpit {
             risk_veto_events: Vec::new(),
             focused_widget: None,
             lab_run_inflight: false,
-            toast_message: None,
             toast_queue: VecDeque::with_capacity(MAX_TOAST_QUEUE_LEN),
             toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
         }
-    }
-}
-
-impl Cockpit {
-    /// Back-compat shim for `toast_message` field readers.
-    ///
-    /// Returns the FRONT entry of `toast_queue` (the oldest, least-recently
-    /// enqueued toast), or `None` if the queue is empty.
-    ///
-    /// # MIGRATION: remove at v0.2.0 cleanup brief.
-    /// Callers should switch to reading `self.toast_queue` directly.
-    /// This shim exists so `cockpit_training_pressed_wiring` integration
-    /// tests compile unchanged for one release cycle (ADR-0046 § Back-compat).
-    #[must_use]
-    pub fn toast_message(&self) -> Option<&SmolStr> {
-        self.toast_queue.front().map(|t| &t.message)
     }
 }
 

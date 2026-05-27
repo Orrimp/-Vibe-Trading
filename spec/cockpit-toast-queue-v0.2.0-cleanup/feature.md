@@ -1,8 +1,8 @@
 ---
 slug: cockpit-toast-queue-v0.2.0-cleanup
-version: 0.1.0
+version: 0.2.0
 status: in-progress
-owner: developer
+owner: tester
 updated: 2026-05-27
 predecessor: cockpit-toast-queue v0.1.0
 priority: P3
@@ -192,9 +192,63 @@ no visual smoke).
   Lab Compare cap-hit and K5 depend on it.
 - Promoting any v0.1.0 H1/H2/H3 falsifier into a fix.
 
+## Implementation
+
+**Developer wave A completed 2026-05-27.**
+
+### R3 sub-route decision: (b) full removal
+
+Chose **sub-route (b)** — the `toast_message()` method shim was removed
+entirely. Rationale: audit confirmed only test code referenced it (1 call
+in `cockpit_toast_queue.rs`, 0 production readers). The analyst brief
+recommends (b) when K5-only, and the naming `toast_message()` is
+misleading now that the queue is the authoritative store.
+
+### Changed files
+
+- `crates/ui/src/state.rs` — deleted `pub toast_message: Option<SmolStr>`
+  field (lines 871-879), the `Debug` impl field line (`.field("toast_message",
+  &self.toast_message)`), two `toast_message: None,` constructor init lines
+  (in `Default::default` and `Cockpit::ready`/`boot`), and the
+  `pub fn toast_message()` method shim block.
+- `crates/ui/tests/cockpit_training_pressed_wiring.rs` — added
+  `Message, ToastSeverity, update` imports; migrated line-125 field-write to
+  `update(.., ShowToastWithSeverity(.., Danger))`; migrated line-323
+  field-write to `update(.., ShowToast(..))`; flipped all 5 field-READ
+  assertions to direct `toast_queue` access.
+- `crates/ui/tests/cockpit_toast_queue.rs` — migrated the one
+  `c.toast_message()` method call to `c.toast_queue.front().map(|t|
+  t.message.as_str())`.
+
+### grep gate output (post-cleanup)
+
+```
+grep -rn "toast_message" crates/ --include="*.rs"
+crates/ui/src/bin/cockpit_live.rs:1181:  // The back-compat `toast_message` field shim keeps the
+```
+
+Single stale comment in `cockpit_live.rs:1181` (not modified per constraint).
+Zero field declarations, zero method definitions, zero field reads.
+
+`grep -rn "pub toast_message" crates/` → 0 matches.
+`grep -rn "\.toast_message\s*=" crates/` → 0 matches.
+
+### Gate results
+
+| Gate | Result |
+|---|---|
+| `cargo build -p ui` | PASS |
+| `cargo test -p ui --test cockpit_training_pressed_wiring --features live` | 5/5 PASS |
+| `cargo test -p ui --test cockpit_toast_queue` | 4/4 PASS |
+| `cargo test -p ui --lib` | 397 PASS |
+| `scripts/verify_anchors.sh` | 69/69 PASS |
+| New clippy warnings from changed files | 0 |
+
 ## Changelog
 
 - 2026-05-27 (analyst): v0.1.0 draft. R1-R5 + R-NR.1 + K1-K3 + H1-H2
   closed; no Qs (standing-Autoapprove). H1+H2 pre-verified via grep
   (both VERIFIED, no K1 HARD STOP). Cost ~2-4 h. HANDOFF →
   operator-decide.
+- 2026-05-27 (developer): v0.2.0 Wave A complete. R1+R2+R3(b) done.
+  All gate tests green. Sub-route (b) shipped. HANDOFF → tester.

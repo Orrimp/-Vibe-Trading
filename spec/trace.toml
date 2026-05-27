@@ -1825,15 +1825,14 @@ arch        = [
   "spec/architecture/adr/0046-cockpit-toast-queue.md",                          # PARENT ADR — § T-AR-5 specified the method shim; this brief restores the ADR-locked end state
 ]
 crates      = [
-  # Architect M-T1 likely fast-skips (no design changes); developer Wave A paths:
-  "crates/ui/src/state.rs",                                                     # MUTATE — delete `pub toast_message` field (state.rs:879), its doc-comment, the two `toast_message: None,` init lines (1132, 1238), and the `.field("toast_message", ...)` line in the Debug impl (1075); R3 sub-route (a) retains the `toast_message()` method shim with updated doc / (b) removes it
-  "crates/ui/tests/cockpit_training_pressed_wiring.rs",                         # MUTATE — rewrite lines 125 (Danger spawn-fail) + 323 (Info K5-setup) field-WRITES to message dispatch; flip the 5 field-READ assertions (196-197, 332, 365-366, 368) to method shim or direct queue access per R3 sub-route choice
+  "crates/ui/src/state.rs",                                                     # MUTATED — deleted `pub toast_message` field + doc-comment, two `toast_message: None,` init lines, `.field("toast_message",...)` Debug line, and `pub fn toast_message()` method shim (sub-route b)
+  "crates/ui/tests/cockpit_training_pressed_wiring.rs",                         # MUTATED — rewrote line-125 Danger spawn-fail + line-323 Info K5-setup field-WRITES to message dispatch; flipped 5 field-READ assertions to direct toast_queue access (sub-route b)
+  "crates/ui/tests/cockpit_toast_queue.rs",                                     # MUTATED — migrated 1 toast_message() method call to direct toast_queue.front() access (sub-route b)
 ]
 tests       = [
-  # Regression contract — all PASS counts unchanged from v0.1.0 baseline (commit a723d24):
-  "crates/ui/tests/cockpit_training_pressed_wiring.rs",                         # 5/5 PASS (R4.1 — K5 contract preserved via message-API rewrite)
-  "crates/ui/tests/cockpit_toast_queue.rs",                                     # 4/4 PASS (R5.3 — v0.1.0 integration suite untouched)
+  "crates/ui/tests/cockpit_training_pressed_wiring.rs",                         # 5/5 PASS — cargo test -p ui --test cockpit_training_pressed_wiring --features live
+  "crates/ui/tests/cockpit_toast_queue.rs",                                     # 4/4 PASS — cargo test -p ui --test cockpit_toast_queue
 ]
-anchors     = "byte-identical to v0.1.0 baseline (UI-only; R5.1 zero touched files in backtest/strategy/exec/risk/reports/forecast/audit/cost/data)"
-state       = "proposed"
+anchors     = "byte-identical to v0.1.0 baseline — verify_anchors.sh: ANCHORS PASS (69 / 69)"
+state       = "implemented"
 

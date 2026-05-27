@@ -34,7 +34,7 @@ use agent::activity::{ActivityKind, ActivityPhase};
 use agent::config::BusConfig;
 use smol_str::SmolStr;
 use ui::lab::trainer::{TrainingConfig, TrainingLogLine};
-use ui::state::Cockpit;
+use ui::state::{Cockpit, Message, ToastSeverity, update};
 
 // ── Test helper: minimal AppState simulator ────────────────────────────────────
 //
@@ -122,8 +122,13 @@ impl TrainingSimState {
                 Ok(())
             }
             Err(e) => {
-                self.cockpit.toast_message =
-                    Some(SmolStr::new(format!("Training failed to launch: {e}")));
+                update(
+                    &mut self.cockpit,
+                    Message::ShowToastWithSeverity(
+                        SmolStr::new(format!("Training failed to launch: {e}")),
+                        ToastSeverity::Danger,
+                    ),
+                );
                 self.training_log_rx = None;
                 Err(e)
             }
@@ -193,8 +198,8 @@ fn training_pressed_dispatches_spawn() {
         "training_cancel must be Some after TrainingPressed"
     );
     assert!(
-        sim.cockpit.toast_message.is_none(),
-        "toast_message must remain None on successful spawn"
+        sim.cockpit.toast_queue.is_empty(),
+        "toast_queue must remain empty on successful spawn"
     );
 }
 
@@ -320,17 +325,20 @@ fn k5_toast_non_clobber_run_completed_then_training_completed() {
     let mut cockpit = Cockpit::new();
 
     // Pre-set an existing toast (e.g., from a just-completed backtest).
-    cockpit.toast_message = Some(SmolStr::new("Backtest complete"));
+    update(
+        &mut cockpit,
+        Message::ShowToast(SmolStr::new("Backtest complete")),
+    );
 
-    // Simulate TrainingExited(Ok) — the pure-state arm at state.rs:2078-2081
-    // clears training_inflight but does NOT set toast_message.
+    // Simulate TrainingExited(Ok) — the pure-state arm at state.rs clears
+    // training_inflight but does NOT set any toast.
     // We reproduce the pure-state arm's effect manually (as state::update would):
     cockpit.lab_state.training_inflight = None;
-    // No toast_message mutation on success — this is the documented K5 contract.
+    // No toast mutation on success — this is the documented K5 contract.
 
     assert_eq!(
-        cockpit.toast_message,
-        Some(SmolStr::new("Backtest complete")),
+        cockpit.toast_queue.front().map(|t| t.message.as_str()),
+        Some("Backtest complete"),
         "existing toast must not be clobbered by TrainingExited success (K5 silent-no-op contract)"
     );
 }
@@ -360,12 +368,12 @@ fn spawn_failure_surfaces_toast() {
         "TrainingPressed with invalid binary must return Err"
     );
 
-    // Toast must be set.
+    // Toast must be set (enqueued via message dispatch).
     assert!(
-        sim.cockpit.toast_message.is_some(),
-        "toast_message must be Some after spawn failure"
+        !sim.cockpit.toast_queue.is_empty(),
+        "toast_queue must be non-empty after spawn failure"
     );
-    let toast = sim.cockpit.toast_message.as_ref().unwrap();
+    let toast = sim.cockpit.toast_queue.front().unwrap().message.as_str();
     assert!(
         toast.contains("Training failed"),
         "toast must contain 'Training failed'; got: {toast}"

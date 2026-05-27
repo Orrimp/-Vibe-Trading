@@ -97,9 +97,8 @@ fn auto_dismiss_after_timeout() {
 
 /// R4.1 / K5 stronger contract: two `ShowToastWithSeverity` dispatches in
 /// rapid succession (same logical instant) — both entries must be queue-
-/// resident. The back-compat `toast_message()` shim returns the FRONT (oldest)
-/// entry. This is the "graduated K5" test that the old single-slot REPLACE
-/// semantic would have FAILED.
+/// resident. The FRONT (oldest) entry is the first-enqueued toast. This is the
+/// "graduated K5" test that the old single-slot REPLACE semantic would have FAILED.
 #[test]
 fn two_completions_in_rapid_succession_both_visible() {
     let mut c = Cockpit::new();
@@ -124,11 +123,11 @@ fn two_completions_in_rapid_succession_both_visible() {
     let back_id = c.toast_queue.back().expect("back exists").id;
     assert_ne!(front_id, back_id, "entries must have distinct ids");
 
-    // back-compat shim returns FRONT (first enqueued = oldest visible).
+    // Direct queue front — first enqueued = oldest visible.
     assert_eq!(
-        c.toast_message().map(SmolStr::as_str),
+        c.toast_queue.front().map(|t| t.message.as_str()),
         Some("run_completed"),
-        "toast_message() shim must return the FRONT (first) entry"
+        "toast_queue front must be the first-enqueued entry"
     );
 }
 
