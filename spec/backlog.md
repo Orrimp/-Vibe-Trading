@@ -392,6 +392,34 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 <!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-27 -->
 <!-- - **v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
+<!-- updated 2026-05-27 (analyst, v5-latency-slippage-sim-v0.3.0-full-path-wiring
+     M0 promotion Queue → Active). Closes the operator-approved v0.2.0
+     Ship Route (a) partial-migration follow-on commitment: (1) wires
+     canonical LatencySlippageSimConfig into the 6 strategy construction
+     sites v0.2.0 missed (SmaComposed, TcnOverlay, PatchTstOverlay, Pairs,
+     VolTargetOverlay, GarchVolOverlay) so their canonical SHAs stop being
+     byte-identical to noop-baseline; (2) resolves the LOAD-BEARING Group A
+     data-source question — accept real-Binance baseline as new oracle epoch
+     OR revert to synthetic baseline (Q1 = HARD operator-decide, no safe
+     analyst default); (3) flips the v0.2.0-whitelisted t1937_nine_strategy_
+     anchors_unchanged test to GREEN via namespace-aware resolver mirroring
+     verify_anchors.sh. 6 R / 6 K / 4 H / 5 Q + non-regression contract +
+     pre-drawn 4-cell verdict tree + cost framing. Cost ~3-5 days wall-clock.
+     Trace row REQ-V5-FULL-PATH-WIRING-001 opened at `proposed` state. -->
+- **v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0** —
+  closes v0.2.0's accepted scope gap (6 strategy paths still =noop
+  byte-identical to baseline) and the Group A data-source drift
+  decision. Brief at
+  [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md`](v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md);
+  tasks at
+  [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/tasks.md`](v5-latency-slippage-sim-v0.3.0-full-path-wiring/tasks.md).
+  Q1 (Group A data-source — real-Binance baseline vs synthetic
+  revert) is the load-bearing question with NO SAFE ANALYST DEFAULT.
+  Q2-Q5 standing-Autoapprove-eligible. Predecessor:
+  `v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0` (shipped
+  2026-05-27, commits `d2cc343`, `c223d11`, `4dfa2d8`, `d191227`).
+  Estimated ~3-5 days end-to-end. Trace: `REQ-V5-FULL-PATH-WIRING-001`.
+
 <!-- updated 2026-05-26 (analyst + architect, v5-latency-slippage-sim M0 + M-T1 close) —
      **PROMOTED Idea → Active 2026-05-26** by operator directive: "New
      feature track to close the gap between backtesting and live
@@ -1678,31 +1706,13 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Strategy
 
-- **v5-latency-slippage-sim v0.3.0 (full-path wiring + data-source-drift decision + t1937 test refresh).**
-  Closes the operator-accepted scope gap from v0.2.0 (commit `c223d11`,
-  shipped 2026-05-27): wires `LatencySlippageSimConfig` into the 6
-  strategy construction sites that v0.2.0 missed —
-  `SmaComposedScenarioInput`, `TcnOverlayScenarioInput`,
-  `PatchTstOverlayScenarioInput`, `PairsScenarioInput`,
-  `VolTargetOverlayScenarioInput`, `GarchVolOverlayScenarioInput`
-  (or their current names — re-survey at analyst M0). Re-emits the
-  32 byte-identical canonical anchors under real medium friction;
-  Sharpe-delta table extends to capture per-path equity drag.
-  **Also fixes** `t1937_nine_strategy_anchors_unchanged` in
-  `crates/reports/tests/` (surfaced by v0.2.0 M-FINAL tester
-  `aa1dfdf45def03560`): the test hardcodes noop-baseline SHA constants
-  from v2.0.0 ship time; Wave A canonical reports now sort
-  lexicographically newer and the test resolver picks them up. v0.3.0
-  must either update the constants to the canonical SHAs OR make the
-  resolver namespace-aware (mirror the `verify_anchors.sh` extension
-  pattern). Operator-decide Q: should Group A (SMA/Composed) re-anchor
-  against synthetic baseline (revert the data-source drift) OR accept
-  current real-Binance baseline (treat 2026-05-27 as the new oracle
-  epoch)? Estimated ~3-5 days wall-clock. **Predecessor**:
-  `v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0` (shipped
-  2026-05-27). **Stub-folder**: `spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/`
-  (analyst authors at M0 promotion). **No trace row yet** (opens at
-  analyst M0 promotion).
+<!-- PROMOTED Queue → Active 2026-05-27 (analyst M0). Brief authored at
+     spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md;
+     tasks at spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/tasks.md;
+     trace row REQ-V5-FULL-PATH-WIRING-001 at EOF of spec/trace.toml in
+     proposed state. See Active section above for the live tracking row. -->
+<!-- - **v5-latency-slippage-sim v0.3.0 (full-path wiring + data-source-drift decision + t1937 test refresh).**
+  (Queue stub preserved as comment for archeology; live row now in Active.) -->
 
 - **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire`).**
   _moved Queue → Active 2026-05-21 (analyst pass)_ — see

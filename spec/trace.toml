@@ -1767,3 +1767,24 @@ tests       = [
 ]
 anchors     = "68/68 PASS — 34 noop-baseline + 34 v5-realdata-medium-2026-05 — tester M-FINAL 2026-05-27; scenarios: noop_byte_identical_to_baseline, enabled_diverges_by_at_least_1bp, enabled_audit_metrics_recorded, overlay_quantity_scale_reflects_computed_factor, post_trigger_signals_are_hold, broadened_filter_dampens_cross_sectional_basket, passthrough_when_threshold_unreachably_high, trigger_fires_and_equity_diverges"
 state       = "passed"   # tester M-FINAL VERDICT → PASS 2026-05-27 — 68/68 anchors, 8/8 e2e, K1=0, no new clippy/spec-lint categories; 2 pre-existing test failures whitelisted (t1937 noop-SHA superseded + lab_run_engine flake). See test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md
+
+# ── v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0 (analyst M0 promotion Queue → Active 2026-05-27) ──
+[[requirements]]
+id          = "REQ-V5-FULL-PATH-WIRING-001"
+title       = "v5 latency-slippage-sim v0.3.0 full-path wiring — plumbs canonical LatencySlippageSimConfig { latency_ms_min: 30, latency_ms_max: 80, slippage_bps: 8 } into the 6 strategy construction sites v0.2.0 missed (SmaComposed / TcnOverlay / PatchTstOverlay / Pairs / VolTargetOverlay / GarchVolOverlay), closes the operator-approved v0.2.0 Ship Route (a) partial-migration follow-on commitment; resolves LOAD-BEARING Group A data-source decision (Q1 = HARD operator-decide, no safe analyst default — revert to synthetic baseline OR accept real-Binance as new oracle epoch); flips v0.2.0-whitelisted t1937_nine_strategy_anchors_unchanged to GREEN via namespace-aware resolver mirroring scripts/verify_anchors.sh; re-emits 32 currently-=noop canonical SHAs; extends Sharpe-delta table to cover all 7 strategy paths under canonical friction with K1 surprise scan"
+feature     = "v5-latency-slippage-sim-v0.3.0-full-path-wiring"
+product     = "spec/product.md"
+arch        = [
+  "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md",
+  "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/tasks.md",
+  "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md",            # PREDECESSOR — v0.2.0 partial migration; this brief closes its accepted scope gap
+  "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md",  # the 8-group table identifying the 6 unwired strategy paths
+  "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md",  # the t1937 whitelist that R3 closes
+  "spec/v5-latency-slippage-sim/feature.md",                                    # GRANDPARENT — v0.1.0 default-zero noop engine
+  "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # PARENT ADR — D1-D5 simulator engine
+  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # PARENT ADR — D1 canonical config + D2 namespace strategy; v0.3.0 may amend D2/D4 depending on Q3 lock
+]
+crates      = []   # developer fills at M-DEV close
+tests       = []   # developer fills at M-DEV close
+anchors     = []   # tester fills at M-FINAL close (expected: 68/68 if Q3=(a) extend pin, or N/N if Q3=(b) new pin)
+state       = "proposed"   # analyst M0 promotion Queue → Active 2026-05-27. Awaiting operator M-OD on Q1-Q5 (Q1 LOAD-BEARING — Group A data-source decision, no safe analyst default).
