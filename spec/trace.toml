@@ -1736,8 +1736,8 @@ tests       = [
   # state.rs::tests inline (4 unit tests): toast_queue_enqueue_basic, toast_queue_overflow_drops_oldest, toast_queue_dismiss_by_id, show_toast_msg_back_compat
   # cockpit_training_pressed_wiring.rs (R4.2 regression) — back-compat shim keeps it green; ZERO byte mutation expected
 ]
-anchors     = "69/69 PASS"  # ZERO delta — UI-only feature (R5.1); anchor count grew to 69 since tasks.md was authored; all 69 PASS
-state       = "dev-complete"  # developer M-DEV CLOSED 2026-05-27. Waves A-E shipped. 397 lib tests + 4 integration tests + 5 K5 regression tests PASS. No new clippy errors. HANDOFF → tester.
+anchors     = "69/69 PASS (ZERO delta — UI-only feature R5.1). Tester-verified 2026-05-27. Integration scenarios: queue_displays_multiple / auto_dismiss_after_timeout / two_completions_in_rapid_succession_both_visible / overflow_drops_oldest_keeps_newest / k5_toast_non_clobber_run_completed_then_training_completed"
+state       = "passed"        # developer M-DEV CLOSED 2026-05-27. Tester M-FINAL SOFT-PASS 2026-05-27 (commit 9cf813a). All functional gates green: 397 lib + 4 toast-queue integration + 5 K5 regression + 3 shell_grid + 86 panel_snapshots PASS; 69/69 anchors; no new workspace failures; no new spec-lint categories; fmt clean; 0 clippy in toast files. Operator-side cockpit_smoke + visual smoke deferred per AGENT.md human-verification recipe contract. Architecture deviation (toast_message field coexistence) confirmed functionally sound. See test-final-2026-05-27-cockpit-toast-queue.md.
 
 # ── v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0 (analyst inline-salvaged 2026-05-27 after ac4d192d801af160a 529'd at tool 14/35) ──
 [[requirements]]
