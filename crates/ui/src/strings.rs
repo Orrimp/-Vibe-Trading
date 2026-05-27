@@ -362,6 +362,10 @@ pub const DATE_RANGE_INVALID_DATE: &str = "Invalid date (use YYYY-MM-DD)";
 /// (R8.2 / R4.2 / T-D-16): compare cap is 4.
 pub const LAB_COMPARE_CAP_HIT: &str = "Compare cap reached — deselect one to add another.";
 
+/// Dismiss button label on toast cards in the tray widget (cockpit-toast-queue v0.1.0).
+/// Uses "×" (U+00D7 MULTIPLICATION SIGN) — not an icon, just a text glyph.
+pub const TOAST_DISMISS_BUTTON: &str = "\u{00D7}";
+
 /// Label on the Run backtest button in the Lab screen (T-D-14).
 pub const LAB_RUN_BUTTON: &str = "Run";
 
@@ -1463,6 +1467,8 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("DATE_RANGE_START_PLACEHOLDER", DATE_RANGE_START_PLACEHOLDER),
         ("DATE_RANGE_END_PLACEHOLDER", DATE_RANGE_END_PLACEHOLDER),
         ("DATE_RANGE_INVALID_DATE", DATE_RANGE_INVALID_DATE),
+        // cockpit-toast-queue v0.1.0 — toast tray dismiss button
+        ("TOAST_DISMISS_BUTTON", TOAST_DISMISS_BUTTON),
         // Phase A — Lab Run button + compare overflow toast (T-D-14, T-D-16)
         ("LAB_COMPARE_CAP_HIT", LAB_COMPARE_CAP_HIT),
         ("LAB_RUN_BUTTON", LAB_RUN_BUTTON),

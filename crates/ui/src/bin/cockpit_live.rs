@@ -151,6 +151,42 @@ impl Recipe for ServerTimeRecipe {
     }
 }
 
+// ── cockpit-toast-queue v0.1.0 — ToastDismissRecipe (6th subscription) ──────
+//
+// Mirrors `ServerTimeRecipe` above: carries the agent-runtime `Handle` so
+// `tokio::time::interval` is called inside the tokio reactor context.
+// Emits `Message::ToastTick(Instant::now())` every 500 ms via
+// `ui::live::toast_dismiss_stream_impl` (extracted for test reachability).
+//
+// Always-on — no salt / no per-run gating. The 500 ms idle cost is negligible
+// vs the 100 ms activity-tape tick already running.
+//
+// See ADR-0046 § Decision (ticker pattern) and T-D-N10.
+
+struct ToastDismissRecipe {
+    /// Agent-runtime handle so the stream body can call `tokio::time::interval`
+    /// inside the iced `futures::ThreadPool` subscription executor.
+    rt_handle: tokio::runtime::Handle,
+}
+
+impl Recipe for ToastDismissRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: EventStream,
+    ) -> futures::stream::BoxStream<'static, Self::Output> {
+        // Delegate to the extracted helper in `ui::live` for test reachability.
+        ui::live::toast_dismiss_stream_impl(&self.rt_handle)
+    }
+}
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 /// Mirror of the `trading` bin CLI so operator muscle memory carries
@@ -1139,10 +1175,18 @@ impl AppState {
                         self.cockpit.lab_state.training_cancel = Some(cancel_handle);
                     }
                     Err(e) => {
-                        // Surface the error via toast (R1.1 step 7 / R-NR.4).
-                        self.cockpit.toast_message = Some(smol_str::SmolStr::new(format!(
-                            "Training failed to launch: {e}"
-                        )));
+                        // Surface the error via toast (R1.1 step 7 / R-NR.4 / R3.2).
+                        // cockpit-toast-queue v0.1.0 T-D-N8: route through the message
+                        // dispatcher with Danger severity instead of direct field write.
+                        // The back-compat `toast_message` field shim keeps the
+                        // `spawn_failure_surfaces_toast` test green via its own helper.
+                        ui::state::update(
+                            &mut self.cockpit,
+                            Message::ShowToastWithSeverity(
+                                smol_str::SmolStr::new(format!("Training failed to launch: {e}")),
+                                ui::state::ToastSeverity::Danger,
+                            ),
+                        );
                         // Reset the log channel — recipe goes idle.
                         self.training_log_rx = None;
                     }
@@ -1571,6 +1615,14 @@ impl AppState {
             iced::Subscription::none()
         };
 
+        // cockpit-toast-queue v0.1.0 T-D-N10 — 6th subscription.
+        // Always-on 500 ms ticker for auto-dismiss sweep; emits
+        // `Message::ToastTick(Instant::now())`. No salt / no gating —
+        // the 500 ms cost is negligible vs the 100 ms activity-tape tick.
+        let toast_dismiss_sub = iced::advanced::subscription::from_recipe(ToastDismissRecipe {
+            rt_handle: self.rt_handle.clone(),
+        });
+
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![
                 bus_sub,
@@ -1579,6 +1631,7 @@ impl AppState {
                 progress_sub,
                 activity_sub,
                 training_log_sub,
+                toast_dismiss_sub,
                 iced::event::listen_with(|event, _status, _window| match event {
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
@@ -1595,6 +1648,7 @@ impl AppState {
                 progress_sub,
                 activity_sub,
                 training_log_sub,
+                toast_dismiss_sub,
             ])
         }
     }

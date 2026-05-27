@@ -1,8 +1,8 @@
 ---
 slug: cockpit-toast-queue
 version: 0.1.0
-status: in-progress
-owner: developer
+status: dev-complete
+owner: tester
 updated: 2026-05-27
 predecessor: cockpit-training-pressed-wiring v0.1.0
 priority: P2
@@ -627,3 +627,71 @@ ours; data/strategy/anchors are theirs.
   tokens). All 4 analyst Q-defaults retained. Frontmatter flipped
   to `owner: developer`. HANDOFF → developer for Wave A-D
   execution.
+- 2026-05-27 (developer): M-DEV complete. Waves A-E shipped. See
+  Implementation section below. HANDOFF → tester.
+
+## Implementation
+
+### Waves A-E delivered 2026-05-27
+
+**Wave A — state types + message arms**
+
+- `crates/ui/src/state.rs:37-47` — constants: `MAX_TOAST_QUEUE_LEN=5`,
+  `TOAST_AUTODISMISS=Duration::from_secs(5)`, `TOAST_CARD_WIDTH_PX=320.0`,
+  `type ToastId=u64`.
+- `crates/ui/src/state.rs:55-82` — `ToastSeverity` enum (Info/Success/Warning/Danger),
+  `ToastEntry` struct (id, message, severity, created_at).
+- `crates/ui/src/state.rs:886+891` — `Cockpit` struct: `toast_queue: VecDeque<ToastEntry>`
+  and `toast_next_id: Cell<u64>` added alongside kept `toast_message: Option<SmolStr>`
+  (back-compat field — see deviation note below).
+- `crates/ui/src/state.rs:1133+1239` — constructors initialize queue with
+  `VecDeque::with_capacity(MAX_TOAST_QUEUE_LEN)`.
+- `crates/ui/src/state.rs:1258` — back-compat method shim
+  `pub fn toast_message(&self) -> Option<&SmolStr>`.
+- `crates/ui/src/state.rs:1572-1580` — three new Message variants.
+- `crates/ui/src/state.rs:1733` — private `fn enqueue_toast(...)` helper.
+- `crates/ui/src/state.rs:2122+2201-2220` — 5 update arms wired.
+- `crates/ui/src/state.rs:4171` — 4 unit tests.
+
+**Wave B — toast_tray widget + shell wiring**
+
+- `crates/ui/src/widgets/toast_tray.rs` (NEW, ~187 LoC) — `pub fn view(...)`,
+  `fn toast_card(...)`, `fn severity_color(...)`.
+- `crates/ui/src/widgets/mod.rs:112` — `pub mod toast_tray;`.
+- `crates/ui/src/shell.rs` — `Stack::new()` wraps shell body + toast_tray overlay.
+- `crates/ui/src/strings.rs` — `TOAST_DISMISS_BUTTON = "×"` (U+00D7) added.
+- `crates/ui/src/gallery/routes.rs` — 2 gallery cells + EXPECTED_WIDGETS entry.
+- `crates/ui/src/gallery/mod.rs` — `GALLERY_LOGICAL_HEIGHT` updated to 18040.
+
+**Wave C — integration tests + producer migration**
+
+- `crates/ui/tests/cockpit_toast_queue.rs` (NEW) — 4 integration tests.
+- `crates/ui/src/bin/cockpit_live.rs` — training spawn-failure routed through
+  `Message::ShowToastWithSeverity(...)`.
+
+**Wave D — ToastDismissRecipe subscription**
+
+- `crates/ui/src/live.rs:824` — `pub fn toast_dismiss_stream_impl(...)`.
+- `crates/ui/src/bin/cockpit_live.rs:154-186` — `ToastDismissRecipe` + `Recipe` impl.
+- `crates/ui/src/bin/cockpit_live.rs:1622-1651` — wired as 6th sub in both
+  modal-open and modal-closed subscription batches.
+
+**Architecture deviation (back-compat field kept)**
+
+ADR-0046 § T-AR-5 specified a back-compat METHOD `pub fn toast_message(&self)`.
+The implementation also KEEPS the `pub toast_message: Option<SmolStr>` FIELD
+because `cockpit_training_pressed_wiring.rs` directly WRITES to it
+(`cockpit.toast_message = Some(...)`), which a method shim cannot support.
+Keeping both field and method is idiomatic Rust (field vs method syntax is distinct).
+The field is annotated `// MIGRATION: remove at v0.2.0`. Cost: +4 bytes per Cockpit
+instance. Risk: zero — write to field does NOT affect the queue; tests remain
+self-consistent. Flagged for architect awareness; no ADR update required at v0.1.0.
+
+**Test results**
+
+- `cargo test -p ui --lib`: 397/397 PASS
+- `cargo test -p ui --test cockpit_toast_queue`: 4/4 PASS
+- `cargo test -p ui --test cockpit_training_pressed_wiring`: 5/5 PASS (K5 regression clean)
+- `cargo test -p ui --test shell_grid`: 3/3 PASS
+- `cargo test -p ui --test panel_snapshots`: 86/86 PASS
+- `scripts/verify_anchors.sh`: 69/69 PASS (all anchors unaffected — UI-only change)

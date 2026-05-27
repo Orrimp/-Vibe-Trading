@@ -2,7 +2,7 @@
 slug: lab-yahoo-realdata
 version: 0.1.1
 status: shipped
-owner: tester
+owner: presenter
 updated: 2026-05-27
 shipped: 2026-05-24
 parent: lab-end-to-end-v2

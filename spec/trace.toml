@@ -1736,8 +1736,8 @@ tests       = [
   # state.rs::tests inline (4 unit tests): toast_queue_enqueue_basic, toast_queue_overflow_drops_oldest, toast_queue_dismiss_by_id, show_toast_msg_back_compat
   # cockpit_training_pressed_wiring.rs (R4.2 regression) — back-compat shim keeps it green; ZERO byte mutation expected
 ]
-anchors     = "34/34 PASS"  # ZERO delta — UI-only feature (R5.1)
-state       = "architected"   # architect M-T1 CLOSED 2026-05-27. ADR-0046 authored. Owner → developer. All 7 T-AR rows resolved; storage = VecDeque cap=5 drop-oldest FIFO; ticker = shared 500 ms ToastDismissRecipe; clock injection via Message::ToastTick(Instant) payload; severity → existing Lumen tokens (zero new); back-compat shim kept for v0.1.0.
+anchors     = "69/69 PASS"  # ZERO delta — UI-only feature (R5.1); anchor count grew to 69 since tasks.md was authored; all 69 PASS
+state       = "dev-complete"  # developer M-DEV CLOSED 2026-05-27. Waves A-E shipped. 397 lib tests + 4 integration tests + 5 K5 regression tests PASS. No new clippy errors. HANDOFF → tester.
 
 # ── v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0 (analyst inline-salvaged 2026-05-27 after ac4d192d801af160a 529'd at tool 14/35) ──
 [[requirements]]

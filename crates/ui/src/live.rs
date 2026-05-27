@@ -796,6 +796,51 @@ pub fn server_time_stream_impl(rt_handle: &tokio::runtime::Handle) -> BoxStream<
     })
 }
 
+// ── subscription-pipe-toast-dismiss-template — ToastDismissRecipe helper ─────
+//
+// Extracted so integration tests can drive the stream directly without
+// constructing a running iced application or an `EventStream`.
+//
+// Mirrors `server_time_stream_impl` (above) pattern: tokio interval inside
+// `rt_handle.enter()` guard, guard dropped before `Box::pin(...)` so the
+// `EnterGuard` (`!Send`) does not leak into the `BoxStream<'static, Message>`.
+//
+// See `ServerTimeRecipe` / `server_time_stream_impl` for the full K8 rationale.
+
+/// Inner stream logic for `ToastDismissRecipe`, extracted for test reachability.
+///
+/// Emits `Message::ToastTick(Instant::now())` every 500 ms.
+/// The first tick from `tokio::time::interval` is skipped so the first
+/// `ToastTick` arrives ~500 ms after subscription.
+///
+/// The stream never terminates — `ToastDismissRecipe` is an always-on
+/// process-lifetime recipe (same as `ServerTimeRecipe`).
+///
+/// ## Runtime context
+///
+/// `rt_handle` must be the agent-runtime `Handle`. Entered via `rt_handle.enter()`
+/// before `tokio::time::interval` is called; guard dropped before `Box::pin`.
+#[must_use]
+pub fn toast_dismiss_stream_impl(
+    rt_handle: &tokio::runtime::Handle,
+) -> BoxStream<'static, Message> {
+    use std::time::{Duration, Instant};
+
+    let mut interval = {
+        let _guard = rt_handle.enter();
+        tokio::time::interval(Duration::from_millis(500))
+    };
+    Box::pin(async_stream::stream! {
+        // Skip the first (immediate) tick so the first ToastTick arrives
+        // ~500 ms after subscription, not immediately at boot.
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            yield Message::ToastTick(Instant::now());
+        }
+    })
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

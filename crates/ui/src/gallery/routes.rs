@@ -1257,6 +1257,19 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_position_curve_empty,
         seed: seed_position_curve,
     },
+    // ── cockpit-toast-queue v0.1.0 — toast_tray gallery cells (ADR-0046) ────
+    GalleryCell {
+        widget: "toast_tray",
+        state: "empty",
+        render: render_toast_tray_empty,
+        seed: seed_toast_tray_empty,
+    },
+    GalleryCell {
+        widget: "toast_tray",
+        state: "three_severities",
+        render: render_toast_tray_three_severities,
+        seed: seed_toast_tray_three_severities,
+    },
 ];
 
 // ── lab-yahoo-realdata — source_toggle gallery cells (T-C3.2) ────────────────
@@ -1334,6 +1347,47 @@ fn render_progress_bar_indeterminate(_model: &Cockpit) -> iced::Element<'_, Mess
     progress_bar::view(None, None, ThemeMode::Dark)
 }
 
+// ── cockpit-toast-queue v0.1.0 — toast_tray gallery cells (ADR-0046) ─────────
+
+fn seed_toast_tray_empty() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+fn seed_toast_tray_three_severities() -> Cockpit {
+    use crate::state::{Message, ToastSeverity, update};
+    let mut c = fx::fake_cockpit_ready();
+    update(
+        &mut c,
+        Message::ShowToastWithSeverity(
+            smol_str::SmolStr::new("Info: server time synced"),
+            ToastSeverity::Info,
+        ),
+    );
+    update(
+        &mut c,
+        Message::ShowToastWithSeverity(
+            smol_str::SmolStr::new("Training completed"),
+            ToastSeverity::Success,
+        ),
+    );
+    update(
+        &mut c,
+        Message::ShowToastWithSeverity(
+            smol_str::SmolStr::new("Training failed to launch: binary not found"),
+            ToastSeverity::Danger,
+        ),
+    );
+    c
+}
+
+fn render_toast_tray_empty(model: &Cockpit) -> iced::Element<'_, Message> {
+    crate::widgets::toast_tray::view(&model.toast_queue, ThemeMode::Dark)
+}
+
+fn render_toast_tray_three_severities(model: &Cockpit) -> iced::Element<'_, Message> {
+    crate::widgets::toast_tray::view(&model.toast_queue, ThemeMode::Dark)
+}
+
 /// The canonical list of widget-module names the gallery is expected to
 /// cover. Sync this with `crates/ui/src/widgets/mod.rs` ANY time a new
 /// `pub mod` lands there.
@@ -1376,6 +1430,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "strategies",
     "strategy_card",
     "strategy_chip",
+    "toast_tray",
     "training_log",
     "trail_drawer",
     "trail_node",

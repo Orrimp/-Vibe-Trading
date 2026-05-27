@@ -105,6 +105,11 @@ pub mod strategy_card;
 /// compare toggle).
 pub mod strategy_chip;
 pub mod throttled_spinner;
+/// cockpit-toast-queue v0.1.0 (ADR-0046) — Stacked vertical toast-card tray.
+/// Renders ≤ 5 toast entries in the bottom-right corner above the activity tape.
+/// Empty-queue path returns a 0×0 Container (pixel-silent Stack layer).
+/// Per-card `×` button emits `Message::DismissToastById(id)`.
+pub mod toast_tray;
 /// Phase D — Trail side-drawer widget (ui-rethink-phase-d-trail R4.1-R4.4).
 /// Renders Fill / Signal / Forecast / LLM-placeholder drawer bodies.
 pub mod trail_drawer;

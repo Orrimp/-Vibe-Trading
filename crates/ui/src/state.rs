@@ -4,7 +4,9 @@
 //! only presentation state. Data comes in via feed messages and ledger
 //! refresh callbacks; `update` is pure.
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::time::{Duration, Instant};
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -27,6 +29,61 @@ use crate::lab::state::{DateRange, LabState};
 /// compatible (contains `SmolStr`), so the raw `&str` form is used.
 pub use crate::lab::universe::XRP_FIRST_UNIVERSE as LAB_PAIR_ORDER;
 use crate::theme::layout::TAPE_MAX_ROWS;
+
+// ── cockpit-toast-queue v0.1.0 — bounded queue, types, and constants ─────────
+
+/// Maximum number of simultaneously visible toast cards (ADR-0046 § Decision).
+/// Overflow policy: drop OLDEST (FIFO ring) — newest is most operator-relevant.
+pub const MAX_TOAST_QUEUE_LEN: usize = 5;
+
+/// Auto-dismiss timeout for toast cards (ADR-0046 § Decision / Q3=(b)).
+/// Evaluated at each 500 ms `ToastTick` tick against `ToastEntry::created_at`.
+pub const TOAST_AUTODISMISS: Duration = Duration::from_secs(5);
+
+/// Fixed pixel width of each toast card in the tray (ADR-0046 § Design).
+pub const TOAST_CARD_WIDTH_PX: f32 = 320.0;
+
+/// Type alias for toast IDs — monotonic u64, per-`AppState` counter.
+pub type ToastId = u64;
+
+/// Severity level for a toast card. Maps to existing Lumen color tokens;
+/// zero new tokens introduced (ADR-0046 § Decision / R-NR.4 / K7).
+///
+/// Color mapping (view-side): `Info → FG_2` / `Success → UP_500` /
+/// `Warning → INFO_400` / `Danger → DOWN_500`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToastSeverity {
+    /// Informational — `color::FG_2` left border.
+    Info,
+    /// Positive outcome — `color::UP_500` left border.
+    Success,
+    /// Caution — `color::INFO_400` left border.
+    Warning,
+    /// Error / failure — `color::DOWN_500` left border.
+    Danger,
+}
+
+/// A single toast notification entry in the queue.
+///
+/// `Clone + Debug + PartialEq` — enables unit-test assertions.
+/// `created_at: Instant` is the auto-dismiss seam: the `ToastTick(now)` arm
+/// compares `now.duration_since(created_at)` rather than calling
+/// `Instant::now()` inside the arm (ADR-0046 clock-injection pattern).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToastEntry {
+    /// Monotonic ID from `Cockpit::toast_next_id` (per-instance `Cell<u64>`).
+    /// Stable across clone; used by `DismissToastById` and the `×` button.
+    pub id: ToastId,
+    /// Message text. `SmolStr` for small-string-optimised allocation.
+    pub message: SmolStr,
+    /// Severity tag — drives the left-border color in the tray widget.
+    pub severity: ToastSeverity,
+    /// Wall-clock stamp at enqueue time. The `ToastTick` arm uses this to
+    /// implement auto-dismiss without a per-entry timer task.
+    pub created_at: Instant,
+}
+
+// ── end of cockpit-toast-queue types ─────────────────────────────────────────
 
 /// Maximum number of recent strategy events kept in the cockpit's in-memory
 /// window. The panel only renders the top ten but we hold a small buffer so a
@@ -813,7 +870,25 @@ pub struct Cockpit {
 
     /// Currently displayed toast message, if any (T-D-16).
     /// `None` when no toast is visible. Cleared by `Message::DismissToast`.
+    ///
+    /// # MIGRATION (cockpit-toast-queue v0.1.0)
+    /// Direct field writes are retained for one cycle so
+    /// `cockpit_training_pressed_wiring` tests compile unchanged.
+    /// Remove this field at v0.2.0 cleanup; callers should migrate to
+    /// `Message::ShowToastWithSeverity` + `toast_message()` accessor.
     pub toast_message: Option<SmolStr>,
+
+    // ── cockpit-toast-queue v0.1.0 — bounded queue ───────────────────────────
+    /// Bounded FIFO queue of visible toast notifications (ADR-0046).
+    /// Capacity capped at `MAX_TOAST_QUEUE_LEN = 5`; overflow drops the
+    /// OLDEST entry. Replaces the single-slot REPLACE semantic while keeping
+    /// the `toast_message` field for a one-cycle back-compat shim.
+    pub toast_queue: VecDeque<ToastEntry>,
+
+    /// Monotonic ID counter for `ToastEntry::id` (per-instance, test-safe).
+    /// Matches the `training_log_recipe_salt` precedent — no global `AtomicU64`.
+    /// Not `Debug`-derived (excluded from manual `Debug` impl below).
+    pub toast_next_id: Cell<u64>,
 
     /// Configured `(Venue, Symbol)` universe — populated once at boot
     /// from `agent::config::Config` in live mode, hard-coded to the
@@ -998,6 +1073,8 @@ impl std::fmt::Debug for Cockpit {
             .field("focused_widget", &self.focused_widget)
             .field("lab_run_inflight", &self.lab_run_inflight)
             .field("toast_message", &self.toast_message)
+            .field("toast_queue_len", &self.toast_queue.len())
+            .field("toast_next_id", &self.toast_next_id)
             .field("activity_tape", &"<ActivityTape>")
             .field("equity_cache", &"<EquityCache>")
             .field("settings_active_tab", &self.settings_active_tab);
@@ -1053,6 +1130,8 @@ impl Default for Cockpit {
             focused_widget: None,
             lab_run_inflight: false,
             toast_message: None,
+            toast_queue: VecDeque::with_capacity(MAX_TOAST_QUEUE_LEN),
+            toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
         }
@@ -1157,9 +1236,27 @@ impl Cockpit {
             focused_widget: None,
             lab_run_inflight: false,
             toast_message: None,
+            toast_queue: VecDeque::with_capacity(MAX_TOAST_QUEUE_LEN),
+            toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
         }
+    }
+}
+
+impl Cockpit {
+    /// Back-compat shim for `toast_message` field readers.
+    ///
+    /// Returns the FRONT entry of `toast_queue` (the oldest, least-recently
+    /// enqueued toast), or `None` if the queue is empty.
+    ///
+    /// # MIGRATION: remove at v0.2.0 cleanup brief.
+    /// Callers should switch to reading `self.toast_queue` directly.
+    /// This shim exists so `cockpit_training_pressed_wiring` integration
+    /// tests compile unchanged for one release cycle (ADR-0046 § Back-compat).
+    #[must_use]
+    pub fn toast_message(&self) -> Option<&SmolStr> {
+        self.toast_queue.front().map(|t| &t.message)
     }
 }
 
@@ -1463,9 +1560,24 @@ pub enum Message {
     LabRunProgressDone,
     /// Show a transient toast notification (R4.2 / T-D-16).
     /// The string is a `&'static str` via `crate::strings`; no inline literals.
+    /// Maps to `ToastSeverity::Info` — back-compat with existing producers.
     ShowToast(SmolStr),
-    /// Clear the currently shown toast (auto-fired after the display timeout).
+    /// Clear the FRONT toast entry (T-D-16 back-compat — dismisses oldest visible).
     DismissToast,
+
+    // ── cockpit-toast-queue v0.1.0 — NEW message variants ────────────────────
+    /// Enqueue a typed-severity toast notification (ADR-0046 / R1.5).
+    /// Producers should prefer this over `ShowToast` so the severity tint is
+    /// accurate. `ShowToast` continues to work and maps to `Info` severity.
+    ShowToastWithSeverity(SmolStr, ToastSeverity),
+    /// Dismiss a specific toast card by its `ToastEntry::id` (ADR-0046 / R1.4).
+    /// Emitted by the `×` button on each card in `widgets::toast_tray`.
+    DismissToastById(ToastId),
+    /// Auto-dismiss sweep trigger (ADR-0046 / R2.5).
+    /// Emitted every 500 ms by `ToastDismissRecipe`. Carries the "now" instant
+    /// as a payload so tests can inject a synthetic instant without a clock
+    /// field on `AppState` (ADR-0046 clock-injection pattern / K5).
+    ToastTick(Instant),
 
     // ── Training panel — cockpit-training-control T-D-N4 ─────────────────────
     /// Operator pressed the Train button — start a new training run.
@@ -1604,6 +1716,32 @@ fn parse_sma_window(s: &str) -> Option<usize> {
     } else {
         None
     }
+}
+
+// ── cockpit-toast-queue v0.1.0 — private enqueue helper ─────────────────────
+
+/// Enqueue a new toast entry into `model.toast_queue`.
+///
+/// - Bumps `toast_next_id` (per-instance monotonic counter via `Cell<u64>`).
+/// - If the queue is at `MAX_TOAST_QUEUE_LEN`, drops the FRONT (oldest) entry
+///   before pushing the new one (FIFO ring / drop-oldest policy).
+/// - Stamps `created_at: Instant::now()` so the `ToastTick` auto-dismiss arm
+///   can compare elapsed time against `TOAST_AUTODISMISS`.
+///
+/// Called by the `ShowToast`, `ShowToastWithSeverity`, and `LabToggleCompare`
+/// arms in `update`.
+fn enqueue_toast(model: &mut Cockpit, message: SmolStr, severity: ToastSeverity) {
+    let id = model.toast_next_id.get();
+    model.toast_next_id.set(id.wrapping_add(1));
+    if model.toast_queue.len() == MAX_TOAST_QUEUE_LEN {
+        model.toast_queue.pop_front();
+    }
+    model.toast_queue.push_back(ToastEntry {
+        id,
+        message,
+        severity,
+        created_at: Instant::now(),
+    });
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -1977,10 +2115,15 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             model.lab_state.prev_run_report = None;
         }
         Message::LabToggleCompare(id) => {
-            // Returns `false` when cap hit — emit a toast (T-D-16 / R4.2).
+            // Returns `false` when cap hit — emit a toast (T-D-16 / R4.2 / R3.1).
             let changed = model.lab_state.toggle_compare(id);
             if !changed {
-                model.toast_message = Some(SmolStr::new(crate::strings::LAB_COMPARE_CAP_HIT));
+                // R3.1: migrate from direct field-write to enqueue with Warning severity.
+                enqueue_toast(
+                    model,
+                    SmolStr::new(crate::strings::LAB_COMPARE_CAP_HIT),
+                    ToastSeverity::Warning,
+                );
             }
         }
         Message::LabSelectRange(range) => {
@@ -2054,10 +2197,27 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             model.lab_state.run_progress = None;
         }
         Message::ShowToast(msg) => {
-            model.toast_message = Some(msg);
+            // Back-compat: ShowToast maps to Info severity (ADR-0046 § Back-compat).
+            enqueue_toast(model, msg, ToastSeverity::Info);
         }
         Message::DismissToast => {
-            model.toast_message = None;
+            // Dismiss FRONT entry (oldest visible) — back-compat for DismissToast callers.
+            model.toast_queue.pop_front();
+        }
+        // ── cockpit-toast-queue v0.1.0 — new toast arms ──────────────────────
+        Message::ShowToastWithSeverity(msg, sev) => {
+            enqueue_toast(model, msg, sev);
+        }
+        Message::DismissToastById(id) => {
+            model.toast_queue.retain(|t| t.id != id);
+        }
+        Message::ToastTick(now) => {
+            // Auto-dismiss: drop entries whose age exceeds TOAST_AUTODISMISS.
+            // `now` is the Instant carried by the message — not Instant::now()
+            // inside this arm (K5 clock-injection via payload per ADR-0046).
+            model
+                .toast_queue
+                .retain(|t| now.duration_since(t.created_at) < TOAST_AUTODISMISS);
         }
 
         // ── Training panel — cockpit-training-control T-D-N4 ─────────────────
@@ -4000,6 +4160,95 @@ mod tests {
         assert_eq!(
             c.lab_state.pair,
             Some((v, trading_core::Symbol::new("ETHUSDT"))),
+        );
+    }
+
+    // ── cockpit-toast-queue v0.1.0 — unit tests (T-D-N4) ─────────────────────
+
+    /// T-D-N4 / R1 acceptance: enqueue 3 distinct messages, expect len==3
+    /// and ids [0, 1, 2] (monotonic, 0-indexed counter).
+    #[test]
+    fn toast_queue_enqueue_basic() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::ShowToast(SmolStr::new("msg1")));
+        update(&mut c, Message::ShowToast(SmolStr::new("msg2")));
+        update(&mut c, Message::ShowToast(SmolStr::new("msg3")));
+
+        assert_eq!(c.toast_queue.len(), 3, "queue must hold all 3 entries");
+        let ids: Vec<_> = c.toast_queue.iter().map(|t| t.id).collect();
+        assert_eq!(ids, vec![0, 1, 2], "ids must be monotonic 0-indexed");
+        assert!(
+            c.toast_queue
+                .iter()
+                .all(|t| t.severity == ToastSeverity::Info),
+            "ShowToast must map to Info severity"
+        );
+    }
+
+    /// T-D-N4 / R1 acceptance: enqueue 6 messages with cap 5; front entry
+    /// ("m1") is dropped; front becomes "m2" (oldest retained = 2nd enqueued).
+    #[test]
+    fn toast_queue_overflow_drops_oldest() {
+        let mut c = Cockpit::new();
+        for i in 1..=6u32 {
+            update(&mut c, Message::ShowToast(SmolStr::new(format!("m{i}"))));
+        }
+        assert_eq!(
+            c.toast_queue.len(),
+            MAX_TOAST_QUEUE_LEN,
+            "cap must be respected"
+        );
+        assert_eq!(
+            c.toast_queue.front().map(|t| t.message.as_str()),
+            Some("m2"),
+            "oldest (m1) must have been dropped; front must be m2"
+        );
+        assert_eq!(
+            c.toast_queue.back().map(|t| t.message.as_str()),
+            Some("m6"),
+            "newest (m6) must be at the back"
+        );
+    }
+
+    /// T-D-N4 / R1 acceptance: enqueue 3, dispatch DismissToastById on the
+    /// middle entry; queue len == 2 with the middle id gone.
+    #[test]
+    fn toast_queue_dismiss_by_id() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::ShowToast(SmolStr::new("a")));
+        update(&mut c, Message::ShowToast(SmolStr::new("b")));
+        update(&mut c, Message::ShowToast(SmolStr::new("c")));
+
+        let middle_id = c.toast_queue[1].id;
+        update(&mut c, Message::DismissToastById(middle_id));
+
+        assert_eq!(c.toast_queue.len(), 2, "middle must be dismissed");
+        assert!(
+            c.toast_queue.iter().all(|t| t.id != middle_id),
+            "dismissed id must not be in the queue"
+        );
+        // Surviving messages in order.
+        assert_eq!(c.toast_queue[0].message, SmolStr::new("a"));
+        assert_eq!(c.toast_queue[1].message, SmolStr::new("c"));
+    }
+
+    /// T-D-N4 / R1 acceptance: `ShowToast` back-compat — dispatching
+    /// `Message::ShowToast(...)` enqueues with `Info` severity.
+    #[test]
+    fn show_toast_msg_back_compat() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::ShowToast(SmolStr::new("hello")));
+
+        assert_eq!(c.toast_queue.len(), 1, "ShowToast must enqueue one entry");
+        assert_eq!(
+            c.toast_queue.front().map(|t| t.severity),
+            Some(ToastSeverity::Info),
+            "ShowToast must map to Info severity"
+        );
+        assert_eq!(
+            c.toast_queue.front().map(|t| t.message.as_str()),
+            Some("hello"),
+            "message must match"
         );
     }
 }

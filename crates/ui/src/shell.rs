@@ -23,7 +23,7 @@
 //! **Zero hex colours** — tokens via `crate::theme`.
 
 use iced::Length;
-use iced::widget::{Column, Container, Row};
+use iced::widget::{Column, Container, Row, Stack};
 
 use crate::assistant;
 use crate::screens::{compare, lab, live, memory, models, settings, strategy_registry, trail};
@@ -32,7 +32,7 @@ use crate::theme::layout::{
     RIGHT_RAIL_OPEN_WIDTH_PX, RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C,
 };
 use crate::theme::{ThemeMode, color};
-use crate::widgets::{sidebar_nav, status_bar};
+use crate::widgets::{sidebar_nav, status_bar, toast_tray};
 
 /// Render the full cockpit shell.
 #[allow(clippy::needless_pass_by_value, clippy::cast_possible_truncation)]
@@ -85,7 +85,30 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .width(Length::Fill)
         .height(Length::Fill);
 
-    Container::new(shell_row)
+    // cockpit-toast-queue v0.1.0 (ADR-0046 § Shell wiring / T-D-N6).
+    // Wrap the shell body in a two-layer `Stack`:
+    //   Layer 0 (lowest z): the existing `shell_row` Container — untouched chrome.
+    //   Layer 1 (highest z): `toast_tray::view` overlay — pixel-silent when empty.
+    //
+    // The outer Container retains the existing style closure (CANVAS background +
+    // FG_1 text color) so the shell-grid invariant test stays green.
+    //
+    // Q4=(a): tray is positioned above the 24 px activity tape via
+    // `TOAST_TRAY_BOTTOM_OFFSET_PX = 28` inside `toast_tray::view`.
+    //
+    // T-D-N6 open Q: if hit-test bleed-through surfaces on the 0-sized top
+    // layer, fall back to conditional Stack-vs-bare-Container at view-time.
+    // Architect's expectation: bleed-through won't happen with an empty-queue
+    // path that returns a shrink Container rather than a fill Container.
+    let shell_with_toasts = Stack::new()
+        .push(
+            Container::new(shell_row)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .push(toast_tray::view(&model.toast_queue, mode));
+
+    Container::new(shell_with_toasts)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(move |_theme: &iced::Theme| iced::widget::container::Style {

@@ -72,8 +72,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     //   cache_state_badge (fresh + stale + empty).
     // lab-polish-round-2 R1 adds 2 new cells:
     //   position_curve (with_points + empty).
-    // 66 * 260 = 17_160. Adding 360 px headroom for outer container padding.
-    17_520
+    // cockpit-toast-queue v0.1.0 adds 2 new cells:
+    //   toast_tray (empty + three_severities).
+    // 68 * 260 = 17_680. Adding 360 px headroom for outer container padding.
+    18_040
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).
