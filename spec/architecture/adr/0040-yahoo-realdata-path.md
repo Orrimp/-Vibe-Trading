@@ -496,3 +496,34 @@ Binance / Coinbase / Kraken rows are untouched.
   (Q4 = (c)), boundary ticker conversion (Q6 = (a)), `Venue::Yahoo`
   variant cascade (K7). 34/34 anchors stay byte-identical; closes
   T-AR3 / T-AR6 of `spec/lab-yahoo-realdata/tasks.md`.
+- 2026-05-27 (architect, M-T1 lab-yahoo-realdata-v0.1.2): per-ticker
+  scaling pattern + aggregate cache-state UI surface. **No new
+  architectural decisions** — operationalises existing D3 + D4 + D7
+  for multi-ticker. Two operational extensions:
+  (1) **Per-ticker scaling pattern.** `crates/backtest/src/bin/run_yahoo_sma.rs`
+  gains a `--ticker <T>` Clap arg validated against a 10-row
+  `const ALLOWED_YAHOO_TICKERS` mirror of the D7 table RHS. Scenario
+  name derives mechanically: `{lc-ticker-no-USD}-yahoo-2024-1d-sma-cross`
+  (BTC-USD → `btc-yahoo-2024-1d-sma-cross`, ETH-USD →
+  `eth-yahoo-2024-1d-sma-cross`, …). Default-arg invocation
+  (`--ticker BTC-USD` implicit) is byte-identical to v0.1.1 anchor 69
+  `8045623b…`. New anchors are append-only per
+  `lab-yahoo-realdata-v0.1.{N}` namespace (one per ticker per release).
+  Cross-crate pinned-table test in `crates/backtest/tests/run_yahoo_sma_ticker_flag.rs`
+  locks the 10-row mirror to `data::yahoo::binance_to_yahoo_ticker`
+  source-of-truth. Three-mirror crate-graph rationale (data → ui →
+  backtest) documented at `spec/lab-yahoo-realdata-v0.1.2-…/feature.md` § D-V0.1.2-2.
+  (2) **Aggregate cache-state UI surface.** New `cache_state_summary_badge`
+  widget (sibling of v0.1.0 per-pair `cache_state_badge`) reads the
+  same `REVISION.toml` already pinned by D3. Probe extension
+  `cache_state::probe_summary` performs a bounded 30-stat fan-out
+  (10 tickers × ~3 dir levels) → `CacheSummary { populated_count,
+  newest_mtime }`. Cached on `LabState::cache_summary: Option<CacheSummary>`
+  and invalidated on `data_source` toggle + Lab-Run-complete events
+  (operator-decided coarse cadence; no background polling, no
+  per-frame re-stat). Rendered in the Lab tab toolbar row
+  (operator Q2 2026-05-27 override of analyst's source-toggle-row
+  recommendation), independent of `data_source` selection — visible
+  whenever Lab is active. 69/69 anchors stay byte-identical;
+  v0.1.2 appends row 70 (`eth-yahoo-2024-1d-sma-cross`). Closes
+  T-T1.6 of `spec/lab-yahoo-realdata-v0.1.2-…/tasks.md`.

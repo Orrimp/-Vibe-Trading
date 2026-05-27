@@ -1852,6 +1852,9 @@ arch        = [
   "spec/lab-yahoo-realdata/feature.md",                                         # PREDECESSOR — v0.1.1 shipped 2026-05-27, anchor 69 locked
   "spec/lab-yahoo-realdata/presentations/lab-yahoo-realdata-v0.1.1-2026-05-27.md", # § Open decisions Q1+Q3 sourced this brief
   "spec/architecture/adr/0040-yahoo-realdata-path.md",                          # parent ADR — Yahoo realdata path + revision pin
+  # ARCHITECT M-T1 (2026-05-27) — Q1/Q2/Q3 ratified + § Design D-V0.1.2-1..6 authored.
+  "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md#design", # § Design D-V0.1.2-1 (K3 cached-summary cadence), D-V0.1.2-2 (--ticker validation surface, 3-mirror crate-graph rationale), D-V0.1.2-3 (scenario-name derivation rule + 10-row forecast table), D-V0.1.2-4 (M-DEV/M-DEV-UI parallelism contract), D-V0.1.2-5 (architect risk register K1-K4), D-V0.1.2-6 (ADR-0040 extend vs ADR-0048 new — extend chosen)
+  "spec/architecture/adr/0040-yahoo-realdata-path.md#changelog",                # ADR-0040 § Changelog 2026-05-27 entry — per-ticker scaling pattern + aggregate cache-state UI surface contract (operationalises D3 + D4 + D7 for multi-ticker; no new architectural decisions)
 ]
 crates      = [
   # ANALYST M0 (2026-05-27) — on-disk paths surfaced from R1-R4 in feature.md.
@@ -1873,6 +1876,6 @@ tests       = [
   "crates/backtest/tests/determinism.rs",                                       # R5.1 — anchor preservation gate (69 SHAs byte-identical)
 ]
 anchors     = "v0.1.0 R1 — append row 70 'eth-yahoo-2024-1d-sma-cross' to spec/anchors.toml at M-DEV (T-D6); body-SHA TBD; PRE-EXISTING 69 rows byte-identical (R5.1); verify_anchors.sh baseline at analyst pass: ANCHORS PASS (69 / 69)"
-state       = "proposed"
+state       = "arch-done"
 
 
