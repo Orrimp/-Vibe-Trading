@@ -371,11 +371,47 @@ waves are independently shippable; T-C3 + T-C4 synchronise only on
 - [x] **T-T9**: integration test `crates/ui/tests/lab_yahoo_dispatch.rs` — PASS.
       - cmd: `cargo test -p ui --features yahoo --test lab_yahoo_dispatch`
       - output: `test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; finished in 0.02s`
-- [x] **T_FINAL_VERDICT**: VERDICT → PASS.
+- [x] **T_FINAL_VERDICT**: VERDICT → PASS (v0.1.0, 2026-05-24).
       - test report: `spec/lab-yahoo-realdata/reports/test-final-2026-05-24.md`
       - verify-anchors: PASS (34/34)
       - spec-lint: BASELINE-STABLE (60 violations, 0 new)
       - T-T5 (cockpit-smoke) and T-T8 (CPU check) deferred per offline tester context; H1/H2 deferred to v0.1.1.
+
+### v0.1.1 Tester Verification (2026-05-27)
+
+- [x] **T-V0.1.1-1**: `bash scripts/verify_anchors.sh` → ANCHORS PASS (69/69).
+      - cmd: `bash scripts/verify_anchors.sh`
+      - output: `ANCHORS PASS  (69 / 69)` (exit 0). All 68 prior anchors byte-identical; new row 69 (`btc-yahoo-2024-1d-sma-cross`) PASS.
+      - tester: 2026-05-27
+- [x] **T-V0.1.1-2**: Build `run_yahoo_sma` binary → PASS.
+      - cmd: `cargo build -p backtest --features yahoo --bin run_yahoo_sma`
+      - output: `Finished dev profile in 9.74s` (exit 0)
+      - tester: 2026-05-27
+- [x] **T-V0.1.1-3**: Determinism check — 2 independent tester runs produce body SHA `8045623b...`.
+      - run 1: `backtest-20260527-144822-btc-yahoo-2024-1d-sma-cross.md` → SHA `8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867`
+      - run 2: `backtest-20260527-144836-btc-yahoo-2024-1d-sma-cross.md` → SHA `8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867`
+      - anchored SHA: `8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867` — MATCH
+      - DETERMINISM PASS
+      - tester: 2026-05-27
+- [x] **T-V0.1.1-4**: H1 re-verify → PASS. Delta |$101,202.81 − $111,248.17| / $111,248.17 = 9.03% < 30%.
+      - tester independently verified arithmetic (Python `abs(101202.81 - 111248.17) / 111248.17 * 100 = 9.03`).
+      - tester: 2026-05-27
+- [x] **T-V0.1.1-5**: H2 re-verify → PASS. 1/1 invocations = 100% > 95%. Trivially satisfied.
+      - tester: 2026-05-27
+- [x] **T-V0.1.1-6**: REVISION.toml byte-immutability check → PASS. On-disk SHA `7b33166e1eb8...` matches anchored report `data_source` prefix `7b33166e1eb8`.
+      - tester: 2026-05-27
+- [x] **T-V0.1.1-7**: `cargo clippy -p backtest --features yahoo --bin run_yahoo_sma -- -D warnings` → PASS (0 warnings).
+      - tester: 2026-05-27
+- [x] **T-V0.1.1-8**: `trace.toml` anchors column wiring fix — tester corrected `anchors[]` from file path to scenario name `"btc-yahoo-2024-1d-sma-cross"`. Spec-lint `unreferenced-anchor` + `trace-broken-path` violations resolved.
+      - Before: 5 categories (73 violations); After fix: 3 categories (71 violations). 2 v0.1.1-introduced violations cleared.
+      - tester: 2026-05-27
+- [ ] **T_FINAL_VERDICT_V0.1.1**: VERDICT → PENDING (HANDOFF → developer).
+      - test report: `spec/lab-yahoo-realdata/reports/test-final-2026-05-27-lab-yahoo-realdata-v0.1.1.md`
+      - verify-anchors: PASS (69/69)
+      - determinism: PASS (SHA matches anchored value ×2 tester runs)
+      - H1: PASS (9.03%); H2: PASS (100%)
+      - BLOCKS: (1) `cargo fmt --check` FAIL (cockpit-toast-queue in-flight dev must format state.rs); (2) tester corrected trace.toml anchors column (wiring bug fixed).
+      - After cockpit-toast-queue developer formats code, tester re-verifies fmt and flips this to PASS.
 
 ## Wave F — Presenter (M-P1)
 
@@ -460,6 +496,7 @@ waves are independently shippable; T-C3 + T-C4 synchronise only on
   -- -D warnings` (0 warnings), `cargo build` (clean),
   `cargo test` (65 tests pass), `bash scripts/verify_anchors.sh`
   → `ANCHORS PASS (34 / 34)`.
+- 2026-05-27 (tester, Wave E v0.1.1): T-V0.1.1-1..T-V0.1.1-8 verification complete. ANCHORS PASS 69/69; determinism PASS (SHA `8045623b...` ×2 runs); H1 9.03% PASS; H2 100% PASS; REVISION.toml SHA match PASS. Tester fixed trace.toml anchors column wiring (file path → scenario name `"btc-yahoo-2024-1d-sma-cross"`; resolved 2 spec-lint violations). VERDICT: HANDOFF → developer (1 blocker: `cargo fmt --check` FAIL in `state.rs`, attributable to cockpit-toast-queue in-flight dev). Report: `spec/lab-yahoo-realdata/reports/test-final-2026-05-27-lab-yahoo-realdata-v0.1.1.md`.
 - 2026-05-27 (developer, Wave C v0.1.1): Yahoo anchor lock + H1/H2 discharge.
   Operator pre-populated `data/yahoo/BTC-USD/1d/2024/` (12 monthly parquets,
   REVISION.toml SHA 7b33166e1eb8…). Created
