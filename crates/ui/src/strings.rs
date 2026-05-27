@@ -236,6 +236,26 @@ pub const ACTIVITY_KIND_LAB_RUN_LABEL: &str = "Backtesting";
 /// Status-bar activity tape: label prefix for Training subprocess activities.
 pub const ACTIVITY_KIND_TRAINING_LABEL: &str = "Training";
 
+// ── Activity tape — audit-ledger-writes producer (cockpit-activity-audit-ledger-producer v0.1.0) ──
+//
+// R-NR.4: all operator-visible strings live here; zero inline literals in widgets.
+// R2.1 (Q2 = redacted): label carries only the write count, not event detail.
+
+/// Status-bar activity tape: label prefix for audit-ledger-write activities.
+///
+/// Rendered as `"Audit: N writes"` (R2.1 / Q2=(a) — redacted label).
+pub const ACTIVITY_KIND_AUDIT_LABEL: &str = "Audit";
+
+/// Count format template for normal audit write counts (N ≤ 9999).
+///
+/// Combined with the window count in the aggregator: `"Audit: N writes"`.
+pub const ACTIVITY_AUDIT_COUNT_FORMAT: &str = "{N} writes";
+
+/// K2 flood-truncation label: emitted when the window count exceeds 9999.
+///
+/// Prevents the `"Audit: N writes"` label from exceeding the 64-char budget.
+pub const ACTIVITY_AUDIT_FLOOD_TRUNCATION: &str = "9999+ writes";
+
 /// Overflow chip prefix: rendered as `"+{n} more"` where n is the hidden count.
 /// Combined with `ACTIVITY_TAPE_MORE_SUFFIX` in the widget.
 pub const ACTIVITY_TAPE_MORE_PREFIX: &str = "+";

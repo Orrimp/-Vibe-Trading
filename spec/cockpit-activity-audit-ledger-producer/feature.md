@@ -405,7 +405,82 @@ crates/audit::Ledger::tick_bus  (existing; broadcast::Sender<AuditTick<AuditEven
 
 ## Implementation
 
-_developer fills this at Wave A_
+Shipped 2026-05-27 by developer (M-DEV). All 4 waves landed in a single turn.
+
+### Wave A — Aggregator construction
+
+NEW `crates/agent/src/activity_audit_aggregator.rs` (180 LoC). Implements:
+
+- `Aggregator` struct with `broadcast::Receiver<AuditTick<AuditEvent>>` +
+  `AtomicU32` counter + `tokio::time::interval(100ms)` + `Option<ActivityHandle>`.
+- `spawn_aggregator(tick_sender: Option<&broadcast::Sender<...>>, bus: &EventBus) -> JoinHandle<()>`
+  as the public API. Takes `Option<&Sender>` (not `&Arc<Ledger>`) because
+  `Ledger::tick_bus` is `pub(crate)` — accessing it would violate R-NR.1.
+  Signature deviation from ADR-0044 § D2 sketch; rationale recorded inline.
+- K2 truncation: `format_label(n)` caps at 9999, returns `"Audit: 9999+ writes"` for n > 9999.
+- Module re-exported at `crates/agent/src/lib.rs` as `pub use activity_audit_aggregator::spawn_aggregator`.
+
+**Throttle-interaction note**: `ActivityHandle::tick()` is throttled at 100ms.
+Since `start()` initialises `last_tick = Instant::now()`, a `tick(N)` call in
+the same 100ms window as `start()` is always throttled to a no-op. The aggregator
+does NOT call `tick()` on the first non-empty window — only `start()` fires
+(emitting Start with the count in the label). Subsequent 100ms non-empty windows
+emit Tick events normally. This is a minor deviation from the ADR-0044 § D2
+pseudocode (`h.tick(n as u64)` immediately after `start()`) — the net observable
+behaviour is identical (operator sees "Audit is active" immediately via Start).
+
+5 unit tests in the module:
+1. `counter_increments_on_audit_tick_recv` — AtomicU32 semantics.
+2. `format_label_truncates_above_k2_threshold` — K2 label path.
+3. `idle_window_drops_handle_emits_end_success` — idle-end semantics.
+4. `separate_handle_failed_emission_per_d4` — D4 main-handle-stays-Success.
+5. `no_failed_events_on_happy_path` — K5/T-AR-3 invariant.
+
+### Wave B — UI integration
+
+- EDIT `crates/ui/src/strings.rs`: added `ACTIVITY_KIND_AUDIT_LABEL`,
+  `ACTIVITY_AUDIT_COUNT_FORMAT`, `ACTIVITY_AUDIT_FLOOD_TRUNCATION` constants.
+- EDIT `crates/ui/src/widgets/activity_tape.rs`: `AuditLedgerWrite` arm added
+  to `activity_kind_label` (now `pub(crate)` for testability). New test
+  `audit_ledger_label_renders_correctly` with insta snapshot accepted.
+- EDIT `crates/ui/src/bin/cockpit_live.rs`: `spawn_aggregator` wired inside
+  the side-thread's `rt.block_on(async move {...})`, after trail_mirror spawn,
+  before `agent::runtime::run`. K6 ordering preserved — the aggregator spawns
+  inside the tokio runtime context. `_agg_handle` is intentionally dropped
+  (K5 at v0.1.0: no supervisor; forward-listed to future ADR).
+
+NEW integration test `crates/ui/tests/cockpit_audit_aggregator_boot.rs` (2 tests):
+- `aggregator_starts_and_emits_first_event_within_1s` — T-D-N5 acceptance.
+- `aggregator_noop_when_tick_sender_is_none` — no-op path.
+
+### Wave C — Perf gates
+
+NEW `crates/agent/benches/activity_audit.rs` — 4 criterion functions.
+
+Measured P99 numbers on Apple Silicon (macOS 25.5.0):
+| Bench | Measured | Budget | Verdict |
+|-------|----------|--------|---------|
+| `aggregator_counter_increment_per_tick` | 1.73 ns | < 100 ns | PASS |
+| `aggregator_interval_tick_fan_out` | 46.1 ns | < 1 µs | PASS |
+| `aggregator_idle_end_transition` | 132 ns | < 100 µs | PASS |
+| T-D-N7 parity (with_aggregator vs without) | 0.55 % divergence | < 1 % | PASS |
+
+### Wave D — Storm test + invariants
+
+NEW tests:
+- `crates/ui/tests/activity_tape_audit_ledger_event_storm.rs` — 10k storm.
+  96.2% coverage, 0 Failed events, rate-cap satisfied.
+- `crates/agent/tests/activity_audit_no_failed_events.rs` — D4 invariant,
+  500ms synthetic backtest, 0 Failed events.
+- `crates/agent/tests/activity_audit_aggregator_invariants.rs` — K5 invariants;
+  2 active tests (Lagged handling, Closed clean exit); 1 `#[ignore]`-marked
+  poison-pill test per architect's K5 fallback.
+- `crates/agent/tests/activity_audit_aggregator.rs` — Wave A integration tests
+  (3 active tests).
+
+### R-NR.1 — Zero changes to `crates/audit/`
+
+Verified: `bash scripts/verify_anchors.sh → ANCHORS PASS (34 / 34)`.
 
 ## Verification
 

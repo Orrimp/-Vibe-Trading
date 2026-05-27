@@ -1,0 +1,12 @@
+$ bash scripts/verify_anchors.sh
+...
+PASS  threshold-sweep-bs1-realdata-recalibrated  551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c
+PASS  threshold-sweep-bs2-realdata-recalibrated  755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3
+PASS  forecast-distribution-patchtst-bs1-realdata  c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd
+PASS  top10-2023-fy-patchtst-overlay-realdata  5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c
+PASS  vol-verdict-bs1-realdata              99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21
+PASS  top10-2023-fy-vol-target-overlay-realdata  9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f
+PASS  sharpe-comparison-vol-target-bs1-realdata  d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31
+PASS  sharpe-comparison-vol-target-bs1-realbaseline  ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9
+---
+ANCHORS PASS  (34 / 34)

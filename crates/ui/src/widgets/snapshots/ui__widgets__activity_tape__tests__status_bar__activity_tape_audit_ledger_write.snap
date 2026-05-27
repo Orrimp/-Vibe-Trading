@@ -1,0 +1,6 @@
+---
+source: crates/ui/src/widgets/activity_tape.rs
+assertion_line: 334
+expression: summary
+---
+scenario=audit_ledger_write count=1 entries=[id=99 kind=AuditLedgerWrite outcome=none red_held=no]

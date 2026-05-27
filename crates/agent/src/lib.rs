@@ -2,6 +2,7 @@
 //! and by the cockpit (via broadcast bus subscriptions).
 
 pub mod activity;
+pub mod activity_audit_aggregator;
 pub mod bus;
 pub mod config;
 #[cfg(feature = "in_process_cron")]
@@ -16,6 +17,7 @@ pub use activity::{
     ActivityEvent, ActivityHandle, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase,
     ActivitySender,
 };
+pub use activity_audit_aggregator::spawn_aggregator;
 pub use bus::EventBus;
 pub use kill_switch::{
     AgentMode, CommandIncidentSpawner, HaltReason, IncidentSpawnArgs, IncidentSpawner, KillSwitch,

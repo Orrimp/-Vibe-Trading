@@ -25,8 +25,8 @@ use agent::{ActivityKind, ActivityOutcome};
 
 use crate::lab::activity::ActivityTape;
 use crate::strings::{
-    ACTIVITY_KIND_LAB_RUN_LABEL, ACTIVITY_KIND_TRAINING_LABEL, ACTIVITY_KIND_YAHOO_LABEL,
-    ACTIVITY_TAPE_MORE_PREFIX, ACTIVITY_TAPE_MORE_SUFFIX,
+    ACTIVITY_KIND_AUDIT_LABEL, ACTIVITY_KIND_LAB_RUN_LABEL, ACTIVITY_KIND_TRAINING_LABEL,
+    ACTIVITY_KIND_YAHOO_LABEL, ACTIVITY_TAPE_MORE_PREFIX, ACTIVITY_TAPE_MORE_SUFFIX,
 };
 use crate::theme::{ThemeMode, color, space, text};
 
@@ -145,10 +145,7 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
 
     // ── Overflow chip ──
     if overflow > 0 {
-        let chip_str = format!(
-            "{}{}{}",
-            ACTIVITY_TAPE_MORE_PREFIX, overflow, ACTIVITY_TAPE_MORE_SUFFIX
-        );
+        let chip_str = format!("{ACTIVITY_TAPE_MORE_PREFIX}{overflow}{ACTIVITY_TAPE_MORE_SUFFIX}");
         let chip = Text::new(chip_str).size(text::MICRO).color(fg3);
         row = row.push(chip);
     }
@@ -159,13 +156,17 @@ pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Map `ActivityKind` to its operator-facing label prefix (R7.2 — no inline literals).
-fn activity_kind_label(kind: ActivityKind) -> &'static str {
+///
+/// `pub(crate)` so the T-D-N4 test in this module can call it directly without
+/// going through the full `view` rendering path.
+pub(crate) fn activity_kind_label(kind: ActivityKind) -> &'static str {
     match kind {
         ActivityKind::YahooPreload => ACTIVITY_KIND_YAHOO_LABEL,
         ActivityKind::LabRun => ACTIVITY_KIND_LAB_RUN_LABEL,
-        ActivityKind::Training => ACTIVITY_KIND_TRAINING_LABEL,
-        // Forward-listed variants (v0.1.1); show generic label.
-        ActivityKind::LlmCall | ActivityKind::AuditLedgerWrite => ACTIVITY_KIND_TRAINING_LABEL,
+        // Forward-listed variant (v0.1.1 — LLM forecaster) shares the Training label.
+        ActivityKind::Training | ActivityKind::LlmCall => ACTIVITY_KIND_TRAINING_LABEL,
+        // cockpit-activity-audit-ledger-producer v0.1.0 — now wired (R2.1/Q2=(a)).
+        ActivityKind::AuditLedgerWrite => ACTIVITY_KIND_AUDIT_LABEL,
     }
 }
 
@@ -191,7 +192,7 @@ mod tests {
 
     use crate::lab::activity::ActivityTape;
 
-    use super::view;
+    use super::{activity_kind_label, view};
 
     fn make_start_event(id: u64) -> ActivityEvent {
         ActivityEvent {
@@ -283,5 +284,49 @@ mod tests {
         // Snapshot: one failed row in the red-hold window.
         let summary = tape_summary(&tape, "failed_red");
         insta::assert_snapshot!("status_bar__activity_tape_failed_red", summary);
+    }
+
+    /// T-D-N4 new test — `ActivityKind::AuditLedgerWrite` label renders correctly.
+    ///
+    /// Asserts the `activity_kind_label` function maps `AuditLedgerWrite` to
+    /// `ACTIVITY_KIND_AUDIT_LABEL` ("Audit") — per R2.1 / Q2=(a) redacted label.
+    #[test]
+    fn audit_ledger_label_renders_correctly() {
+        use crate::strings::ACTIVITY_KIND_AUDIT_LABEL;
+
+        let label = activity_kind_label(ActivityKind::AuditLedgerWrite);
+        assert_eq!(
+            label,
+            ACTIVITY_KIND_AUDIT_LABEL,
+            "AuditLedgerWrite must map to ACTIVITY_KIND_AUDIT_LABEL"
+        );
+
+        // Also verify other kinds are not accidentally mapped to "Audit".
+        assert_ne!(
+            activity_kind_label(ActivityKind::LabRun),
+            ACTIVITY_KIND_AUDIT_LABEL
+        );
+        assert_ne!(
+            activity_kind_label(ActivityKind::Training),
+            ACTIVITY_KIND_AUDIT_LABEL
+        );
+        assert_ne!(
+            activity_kind_label(ActivityKind::YahooPreload),
+            ACTIVITY_KIND_AUDIT_LABEL
+        );
+
+        // The AuditLedgerWrite activity tape entry renders without panic.
+        let mut tape = ActivityTape::new();
+        tape.apply(ActivityEvent {
+            id: ActivityId(99),
+            kind: ActivityKind::AuditLedgerWrite,
+            label: "Audit: 42 writes".to_owned(),
+            phase: ActivityPhase::Start { total_units: None },
+            ts_ms: 0,
+        });
+        let _element = view(&tape);
+        // Summary check: one AuditLedgerWrite in the tape.
+        let summary = tape_summary(&tape, "audit_ledger_write");
+        insta::assert_snapshot!("status_bar__activity_tape_audit_ledger_write", summary);
     }
 }

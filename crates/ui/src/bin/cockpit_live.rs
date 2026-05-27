@@ -421,6 +421,22 @@ fn main() -> Result<()> {
     #[cfg(feature = "live")]
     let checkpoint_dir: PathBuf = PathBuf::from("crates/forecast/checkpoints/anchors");
 
+    // ── cockpit-activity-audit-ledger-producer v0.1.0 — aggregator sender ───────
+    // Clone the tick-bus sender for the aggregator. The original `_tick_bus_sender`
+    // stays alive so the broadcast channel remains open for the full process
+    // lifetime. The clone is moved into the side-thread closure below and used
+    // to call `agent::spawn_aggregator` once the tokio runtime is live (K6
+    // ordering: the aggregator MUST spawn inside the tokio runtime context so
+    // `tokio::time::interval` has a reactor; spawning before `rt.block_on`
+    // panics with "no reactor running").
+    //
+    // `#[cfg(feature = "live")]` mirrors the trail-mirror gate above — the
+    // aggregator is only wired in live builds where the tick bus is alive.
+    #[cfg(feature = "live")]
+    let audit_aggregator_tick_sender = _tick_bus_sender.clone();
+    #[cfg(feature = "live")]
+    let bus_for_aggregator = Arc::clone(&bus);
+
     // ── Side thread: own the runtime, drive agent::runtime::run on it ────────
     let agent_handle = {
         let cancel = cancel.clone();
@@ -464,6 +480,32 @@ fn main() -> Result<()> {
                             mirror.run().await;
                             info!("trail mirror task exited");
                         });
+                    }
+
+                    // cockpit-activity-audit-ledger-producer v0.1.0 T-D-N5 —
+                    // Spawn the audit-ledger-writes activity aggregator.
+                    //
+                    // K6 ordering: we are now INSIDE `rt.block_on`, so the tokio
+                    // reactor is live and `tokio::time::interval` works correctly.
+                    // The aggregator is gated on `audit_aggregator_tick_sender` being
+                    // `Some` (i.e. `tick_bus_capacity > 0` in config). When `None`,
+                    // `spawn_aggregator` spawns a no-op task that returns immediately.
+                    //
+                    // The returned `JoinHandle` is intentionally not held across the
+                    // function boundary — if the aggregator panics, `tracing::warn`
+                    // surfaces the panic but the cockpit continues (K5 mitigation per
+                    // ADR-0044 § "What costs this incurs"). A future ADR can promote
+                    // the handle into a supervisor if K5 surfaces as a real incident.
+                    #[cfg(feature = "live")]
+                    {
+                        let _agg_handle = agent::spawn_aggregator(
+                            audit_aggregator_tick_sender.as_ref(),
+                            &bus_for_aggregator,
+                        );
+                        info!(
+                            tick_bus_active = audit_aggregator_tick_sender.is_some(),
+                            "audit-ledger activity aggregator spawned"
+                        );
                     }
 
                     if let Err(e) = agent::runtime::run(handles, cancel).await {

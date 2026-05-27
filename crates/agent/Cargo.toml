@@ -63,7 +63,12 @@ uuid.workspace = true
 # `in_process_cron` feature is enabled; default build is unchanged.
 tokio-cron-scheduler = { version = "0.15", optional = true }
 
+[[bench]]
+name = "activity_audit"
+harness = false
+
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 tempfile.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 async-trait.workspace = true

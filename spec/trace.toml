@@ -1450,7 +1450,7 @@ tests       = [
   "crates/agent/benches/activity_audit.rs",                     # T-D-N6 — 3 micro-benches (counter_increment <100ns/tick R5.1; interval_tick_fan_out <1µs/window; idle_end_transition <100µs); T-D-N7 anchor_replay_parity bench (<1% wall-clock divergence at p99 — K3-discharge gate per R5.2 / H1)
 ]
 anchors     = "34/34 PASS"  # ZERO new anchors by construction. UI + agent additive only; no scenario-body / strategy / audit changes. Tester confirms via `bash scripts/verify_anchors.sh` at M-FINAL.
-state       = "proposed"  # analyst M0 2026-05-26 — HANDOFF → operator-decide (Q1..Q3) → architect M-T1. Tester flips to `passed` at M-FINAL once R5.2 K3-discharge bench PASSES.
+state       = "in-review"  # analyst M0 2026-05-26 — HANDOFF → operator-decide (Q1..Q3) → architect M-T1 → developer M-DEV (2026-05-27, waves A-D complete). Tester flips to `passed` at M-FINAL once R5.2 K3-discharge bench PASSES.
 
 # REQ-COCKPIT-TRAINING-PRESSED-001 → cockpit-training-pressed-wiring (proposed 2026-05-26)
 #

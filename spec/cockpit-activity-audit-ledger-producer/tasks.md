@@ -1,8 +1,8 @@
 ---
 slug: cockpit-activity-audit-ledger-producer
-status: in-progress
-owner: developer
-updated: 2026-05-26 (architect M-T1 — ADR-0044 authored; Q1/Q2/Q3 locked at analyst defaults; Waves A-D decomp expanded; HANDOFF → developer)
+status: in-review
+owner: tester
+updated: 2026-05-27 (developer M-DEV — Waves A-D shipped; T-D-N1..T-D-N9 all ticked; HANDOFF → tester)
 ---
 
 # Tasks — cockpit-activity-audit-ledger-producer
@@ -122,7 +122,7 @@ _owner: developer. Wave-parallelizable per
 
 ### Wave A — `crates/agent::activity_audit_aggregator` (blocks Wave B + Wave D)
 
-- [ ] **T-D-N1** — NEW `crates/agent/src/activity_audit_aggregator.rs`
+- [x] **T-D-N1** — NEW `crates/agent/src/activity_audit_aggregator.rs`
   (~150 LOC). Aggregator struct + private worker loop + public
   `spawn_aggregator(ledger: &Arc<Ledger>, bus: &EventBus) -> JoinHandle<()>`.
   - Owner: developer • Milestone: M-DEV • Depends on: T-AR-4 •
@@ -151,7 +151,7 @@ _owner: developer. Wave-parallelizable per
     at T-D-N2).
   - Expected: build clean, no warnings; `clippy -D warnings` PASS.
 
-- [ ] **T-D-N2** — NEW `crates/agent/tests/activity_audit_aggregator.rs`
+- [x] **T-D-N2** — NEW `crates/agent/tests/activity_audit_aggregator.rs`
   (4 unit tests).
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N1 • Blocks: T-T1.
   - file:line target: `crates/agent/tests/activity_audit_aggregator.rs:1-220`.
@@ -181,7 +181,7 @@ _owner: developer. Wave-parallelizable per
 
 ### Wave B — UI wire-up (parallel with Wave C; depends on T-D-N1)
 
-- [ ] **T-D-N3** — EDIT `crates/ui/src/strings.rs`: add
+- [x] **T-D-N3** — EDIT `crates/ui/src/strings.rs`: add
   `pub const ACTIVITY_KIND_AUDIT_LABEL: &str = "Audit";` and
   `pub const ACTIVITY_AUDIT_COUNT_FORMAT: &str = "{N} writes";`
   (R-NR.4: no inline literals). Add `ACTIVITY_AUDIT_FLOOD_TRUNCATION: &str = "9999+ writes"`
@@ -192,7 +192,7 @@ _owner: developer. Wave-parallelizable per
     existing `ACTIVITY_KIND_TRAINING_LABEL` block).
   - Test cmd: `cargo build -p ui`. Expected: build clean.
 
-- [ ] **T-D-N4** — EDIT `crates/ui/src/widgets/activity_tape.rs`:
+- [x] **T-D-N4** — EDIT `crates/ui/src/widgets/activity_tape.rs`:
   add the `ActivityKind::AuditLedgerWrite` arm to
   `activity_kind_label` and to the icon mapper. Match the existing
   `LabRun` / `Training` arm style verbatim.
@@ -204,7 +204,7 @@ _owner: developer. Wave-parallelizable per
     matches `ACTIVITY_KIND_AUDIT_LABEL`).
   - Expected: existing 6 widget tests + 1 new = 7 passed.
 
-- [ ] **T-D-N5** — EDIT `crates/ui/src/bin/cockpit_live.rs`: wire
+- [x] **T-D-N5** — EDIT `crates/ui/src/bin/cockpit_live.rs`: wire
   `spawn_aggregator(&ledger, &bus)` AFTER the `iced::Subscription`
   boot (K6 ordering mitigation per feature.md § K6). Hold the
   returned `JoinHandle` on `AppState` (or a sibling shutdown-coordinator
@@ -224,7 +224,7 @@ _owner: developer. Wave-parallelizable per
 
 ### Wave C — Perf gates (parallel with Wave B; depends on T-D-N1)
 
-- [ ] **T-D-N6** — NEW criterion bench
+- [x] **T-D-N6** — NEW criterion bench
   `crates/agent/benches/activity_audit.rs` with **3 micro-benches**:
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N1 •
     Blocks: T-T3.
@@ -253,7 +253,7 @@ _owner: developer. Wave-parallelizable per
     bars within budget; copy P50/P99/Mean into the M-FINAL test
     report).
 
-- [ ] **T-D-N7** — Anchor-replay parity bench (R5.2 / H1 falsifier;
+- [x] **T-D-N7** — Anchor-replay parity bench (R5.2 / H1 falsifier;
   the **K3-discharge gate**):
   - Owner: developer • Milestone: M-DEV • Depends on: T-D-N1, T-D-N5 •
     Blocks: T-T3.
@@ -275,7 +275,7 @@ _owner: developer. Wave-parallelizable per
 
 ### Wave D — Storm integration test (parallel with Wave B + C; depends on T-D-N1)
 
-- [ ] **T-D-N8** — NEW integration storm test
+- [x] **T-D-N8** — NEW integration storm test
   `crates/ui/tests/activity_tape_audit_ledger_event_storm.rs`. Push
   10 000 synthetic `AuditTick<AuditEvent>` events at the audit bus's
   max rate (no sleeps; tight `tick::emit_public` loop); subscribe the
@@ -301,7 +301,7 @@ _owner: developer. Wave-parallelizable per
   - Expected: `test result: ok. 1 passed; 0 failed` (single
     test function, 4 assertions).
 
-- [ ] **T-D-N9** — Happy-path Failed-event invariant test
+- [x] **T-D-N9** — Happy-path Failed-event invariant test
   `crates/agent/tests/activity_audit_no_failed_events.rs`. Run a
   60 s synthetic backtest with the aggregator subscribed; subscribe
   a sibling activity-channel receiver and filter for
