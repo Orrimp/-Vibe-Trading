@@ -1,0 +1,3 @@
+PASS  btc-yahoo-2024-1d-sma-cross           8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867
+---
+ANCHORS PASS  (69 / 69)
