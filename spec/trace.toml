@@ -1782,9 +1782,10 @@ arch        = [
   "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md",  # the t1937 whitelist that R3 closes
   "spec/v5-latency-slippage-sim/feature.md",                                    # GRANDPARENT — v0.1.0 default-zero noop engine
   "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # PARENT ADR — D1-D5 simulator engine
-  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # PARENT ADR — D1 canonical config + D2 namespace strategy; v0.3.0 may amend D2/D4 depending on Q3 lock
+  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # PARENT ADR — D1 canonical config + D2 namespace strategy; v0.3.0 ADR-0047 extends D2 (per-path contract) + D4 (conditional Group A re-emission)
+  "spec/architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md",  # ARCHITECT M-T1 2026-05-27 — K2 verdict (REACHABLE-CHEAP) + per-path plumbing audit + namespace-aware Rust resolver + conditional Q1 re-emission contract
 ]
 crates      = []   # developer fills at M-DEV close
 tests       = []   # developer fills at M-DEV close
 anchors     = []   # tester fills at M-FINAL close (expected: 68/68 if Q3=(a) extend pin, or N/N if Q3=(b) new pin)
-state       = "proposed"   # analyst M0 promotion Queue → Active 2026-05-27. Awaiting operator M-OD on Q1-Q5 (Q1 LOAD-BEARING — Group A data-source decision, no safe analyst default).
+state       = "proposed"   # analyst M0 promotion Queue → Active 2026-05-27. Architect M-T1 closed 2026-05-27 (ADR-0047 + § Design + per-path checklist). Awaiting operator M-OD on Q1-Q5 (Q1 = value-tradeoff, no longer feasibility-blocked post-K2).

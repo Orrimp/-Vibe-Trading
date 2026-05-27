@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.3.0-full-path-wiring
-status: draft
-owner: analyst
+status: in-progress
+owner: operator-decide
 updated: 2026-05-27
 priority: P1
 ---
@@ -23,35 +23,53 @@ _owner: analyst_
 
 ## M-OD — Operator decides (Q1-Q5)
 
-_owner: operator. Q1 is LOAD-BEARING (no safe analyst default); Q2-Q5 standing-Autoapprove-eligible._
+_owner: operator. Per the analyst handoff K2-precedes-Q1 contract, architect M-T1 ran BEFORE this milestone to surface K2 verdict + architect leans._
 
-- [ ] **T-OD1** — Q1 Group A data-source: (a) revert to synthetic baseline / (b) accept real-Binance baseline as new oracle epoch. **HARD operator-decide.** See feature.md § Operator-decide table.
-- [ ] **T-OD2** — Q2 Wave ordering: (a) all-then-emit *recommended* / (b) wire-and-emit per-path.
-- [ ] **T-OD3** — Q3 Anchor namespace: (a) extend `v5-realdata-medium-2026-05` *recommended* / (b) new pin `v5-realdata-medium-2026-05-full`.
-- [ ] **T-OD4** — Q4 t1937 resolution: (a) update constants / (b) namespace-aware resolver *recommended*.
-- [ ] **T-OD5** — Q5 Cross-feature re-check: (a) re-run all overlay e2e *recommended* / (b) load-bearing 3 only / (c) defer v0.4.
+**Pre-flight context for the operator (post-architect M-T1)**:
+- **K2-REACHABLE-CHEAP** — route (a) for Q1 is cheap (~5 LoC CLI flag). The analyst-style "no safe default" framing has softened. See feature.md § Design T-AR-1 and ADR-0047 D1.
+- **Architect Q1 lean: (a) revert to synthetic baseline.** Preserves friction-free oracle for 5/68 anchors at trivial cost. (b) still defensible if operator weights forward-looking realism higher.
+- **Architect Q2-Q5 leans: concur with all analyst defaults.** Q2=(a), Q3=(a), Q4=(b), Q5=(a).
+
+- [ ] **T-OD1** — Q1 Group A data-source: (a) revert to synthetic baseline *architect-lean post-K2* / (b) accept real-Binance baseline as new oracle epoch. Still genuinely operator judgment — value tradeoff (regression-gate semantics vs real-data realism), not feasibility-blocked. See feature.md § Operator-decide table + ADR-0047 D4 for the conditional re-emission contract.
+- [ ] **T-OD2** — Q2 Wave ordering: (a) all-then-emit *analyst + architect concur* / (b) wire-and-emit per-path.
+- [ ] **T-OD3** — Q3 Anchor namespace: (a) extend `v5-realdata-medium-2026-05` *analyst + architect concur* / (b) new pin `v5-realdata-medium-2026-05-full`.
+- [ ] **T-OD4** — Q4 t1937 resolution: (a) update constants / (b) namespace-aware resolver *analyst + architect concur*.
+- [ ] **T-OD5** — Q5 Cross-feature re-check: (a) re-run all overlay e2e *analyst + architect concur — inventory confirmed unchanged at 3 + 1 meta* / (b) load-bearing 3 only / (c) defer v0.4.
 
 ## M-T1 — Architect
 
-_owner: architect (post-operator-decide)._
+_owner: architect (this milestone ran BEFORE M-OD per the K2-probe-precedes-Q1 contract in the analyst handoff)._
 
-- [ ] **T-AR-1** — Per-scenario plumbing audit for the 6 unwired strategy paths; reference wired path: `crates/backtest/src/scenarios/momentum.rs` lines 390, 438, 555.
-- [ ] **T-AR-2** — Q1 K2 reachability check: confirm R2 route (a) (synthetic-baseline revert) is technically reachable for the 5 Group A scenarios. If unreachable, escalate to operator as forced-route-(b).
-- [ ] **T-AR-3** — ADR amendment or new ADR extending ADR-0045 D2 (namespace) per Q3 and D4 (e2e inventory) per Q5.
-- [ ] **T-AR-4** — R3 namespace-aware resolver design contract: Rust mirror of `verify_anchors.sh` namespace-filter walk (Q4=(b) lock).
-- [ ] **T-AR-5** — Flip frontmatter `architect → developer`; populate trace.toml `arch` column with new ADR ref.
+- [x] **T-AR-1** (2026-05-27) — **K2 reachability check** for Q1 route (a). Auto-switch lives at `crates/backtest/src/main.rs:977-1020` (single `if has_parquet` block in the SMA/Composed dispatch arm). **Verdict: K2-REACHABLE-CHEAP** — ~5 LoC CLI flag `--force-synthetic-bars` makes route (a) cheap and reachable. No refactor needed. See § Design T-AR-1 + ADR-0047 D1.
+- [x] **T-AR-2** (2026-05-27) — Per-scenario plumbing audit for the 6 unwired strategy paths. See § Design T-AR-2 table; ~77 LoC total (~42 production + ~30 plumbing tests + ~5 CLI flag). `sim_slippage_cost` helper lifted to `crates/backtest/src/scenarios/sim.rs` per ADR-0047 D2. ThresholdSweep deferred (no equity surface); GarchVolOverlay confirmed IN scope (has equity surface).
+- [x] **T-AR-3** (2026-05-27) — **ADR-0047** authored ([`spec/architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md`](../architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md)) covering D1-D6. Q3 default-confirmed (extend `v5-realdata-medium-2026-05`), Q5 default-confirmed (re-run all 3 e2e — inventory unchanged).
+- [x] **T-AR-4** (2026-05-27) — R3 namespace-aware resolver contract locked in ADR-0047 D3. Pattern mirrors `scripts/verify_anchors.sh:63-110`. Existing `STRATEGY_ANCHORS` table stays pinned to noop SHAs; new `CANONICAL_STRATEGY_ANCHORS` table added at Wave C close. Test fans out to both with `Namespace::Noop` and `Namespace::Canonical`.
+- [x] **T-AR-5** (2026-05-27) — Frontmatter flipped `analyst → operator-decide` (NOT `→ developer` — Q1 is still genuinely operator judgment; the K2 verdict made route (a) cheap but didn't pre-decide the value tradeoff). Trace.toml `arch` column updated with ADR-0047 ref at orchestrator close.
 
 ## M-DEV — Developer execution (6 waves)
 
 _owner: developer. Wave-parallelizable where independent per AGENT.md
 § Parallelism rules._
 
-### Wave A — R1 plumbing for 6 strategy paths (~1d)
+### Wave A — R1 plumbing for 6 strategy paths (~1d, ~77 LoC per architect M-T1)
 
-- [ ] **T-D-N1** — Add `latency_slippage_sim: LatencySlippageSimConfig` to `SmaScenarioInput`, `PairsScenarioInput`, `TcnScenarioInput` in `crates/backtest/src/cli_types.rs`.
-- [ ] **T-D-N2** — Thread the field through `scenarios/{sma_composed_run, pairs, tcn_overlay, tcn_overlay_weights, patchtst_overlay_weights, garch_vol_target_overlay, threshold_sweep}.rs::run` (mirror momentum.rs lines 390, 438, 555).
-- [ ] **T-D-N3** — Wire existing v0.2.0 CLI flags (`--sim-latency-ms-{min,max}`, `--sim-slippage-bps`) in `main.rs` to populate new input fields on all 6 paths.
-- [ ] **T-D-N4** — Plumbing unit test per scenario-input struct: Default = noop, non-zero config flows through.
+**Wave A is parallelizable across paths #1, #2, and #3-#6-as-group per AGENT.md § Parallelism rules — the three branches touch independent struct/run-fn pairs.**
+
+- [ ] **T-D-N1a** — Lift `sim_slippage_cost` from `crates/backtest/src/scenarios/momentum.rs:551` to a new module `crates/backtest/src/scenarios/sim.rs` (behaviour-preserving move; anchor-additive per ADR-0038 § D6.a). Add `pub mod sim;` to the scenarios module. Replace momentum's private fn with `use crate::scenarios::sim::sim_slippage_cost;`. Grep gate: `grep -r "fn sim_slippage_cost" crates/backtest/src` returns exactly 1 line.
+- [ ] **T-D-N1b** — Add `latency_slippage_sim: LatencySlippageSimConfig` field to:
+  - `SmaScenarioInput` in `crates/backtest/src/cli_types.rs:124-141`
+  - `PairsScenarioInput` in `crates/backtest/src/cli_types.rs:178-188`
+  - `TcnScenarioInput` in `crates/backtest/src/cli_types.rs:195-211` (auto-propagates to TcnOverlay / TcnOverlayWeights / PatchTstOverlay / GarchVolOverlay / ThresholdSweep — shared struct)
+- [ ] **T-D-N2a** — Thread `latency_slippage_sim` field through `sma_composed_run::run` at `crates/backtest/src/scenarios/sma_composed_run.rs:298`. Apply `sim_slippage_cost` at the buy/sell fill-accounting boundary in the bar loop (~lines 505-540). Mirror momentum.rs lines 386-391 (Buy) and 434-439 (Sell).
+- [ ] **T-D-N2b** — Thread field through `pairs::run` at `crates/backtest/src/scenarios/pairs.rs:67`. 4-symbol universe; apply `sim_slippage_cost` per fill in the pairs fill loop.
+- [ ] **T-D-N2c** — Thread field through `tcn_overlay::run` at `crates/backtest/src/scenarios/tcn_overlay.rs:69`. Apply `sim_slippage_cost` per fill (mirror momentum pattern).
+- [ ] **T-D-N2d** — Thread field through `tcn_overlay_weights::run` at `crates/backtest/src/scenarios/tcn_overlay_weights.rs:31`. Each has its own fill loop even though the struct is shared.
+- [ ] **T-D-N2e** — Thread field through `patchtst_overlay_weights::run` at `crates/backtest/src/scenarios/patchtst_overlay_weights.rs:46`.
+- [ ] **T-D-N2f** — Thread field through `garch_vol_target_overlay::run` at `crates/backtest/src/scenarios/garch_vol_target_overlay.rs:105`.
+- [ ] **T-D-N2g** — `threshold_sweep::run_cell` at `crates/backtest/src/scenarios/threshold_sweep.rs:56` is **DEFERRED** per ADR-0047 D2 — analysis sweep has no equity surface. Add a comment in the struct field doc noting the deferral.
+- [ ] **T-D-N3a** — **Q1 = (a) route (architect lean)**: add `--force-synthetic-bars` CLI flag (~5 LoC) to `Args` in `crates/backtest/src/main.rs:33`. Guard the Parquet auto-detect at line 977 with `!args.force_synthetic_bars && parquet_dir.exists() && …`. **Q1 = (b) route**: skip this task; auto-detect stays as-is. Final lock at M-OD close per operator Q1.
+- [ ] **T-D-N3b** — Wire existing v0.2.0 CLI flags (`--sim-latency-ms-{min,max}`, `--sim-slippage-bps` at `main.rs:76-85`) to populate the new `latency_slippage_sim` field on all 6 ScenarioInput construction sites (`main.rs:1114`, `1166`, `1179`, `1268`, `1280`, `1365`, `1377`, `1460`, `1472`, `1620`). Mirror the momentum site at `main.rs:1045-1056`.
+- [ ] **T-D-N4** — Plumbing unit test per scenario-input struct (3 structs × Default-is-noop + non-zero-flows-through = 6 tests). Pattern: `latency_slippage_config_tests` at `cli_types.rs:69-115`.
 
 ### Wave B — Re-emit canonical reports for 32 scenarios (~1d)
 

@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim-v0.3.0-full-path-wiring
-version: 0.1.0
+version: 0.2.0
 status: draft
-owner: analyst
+owner: operator-decide
 updated: 2026-05-27
 predecessor: v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0
 parent: backtest-vs-live-execution-gap
@@ -250,7 +250,7 @@ shift per scenario as new paths actually fire friction.
 | K | Risk | Mitigation |
 |---|---|---|
 | **K1** | **Alpha inversion under realistic friction** — newly-wired strategies (TCN, PatchTST, VolTarget, Pairs, SMA/Composed) may flip from positive to negative Sharpe under 8 bps slippage. | R5 delta table surfaces flipped scenarios. Q3 v0.2.0 (per-scenario flag for operator review) precedent applies. H1 falsifier: > 3 flipped → R-O3 route. |
-| **K2** | **R2 route (a) is technically infeasible** — the synthetic-data fallback path may no longer be reachable (data files always exist now, OR the auto-switch logic is hardcoded). | Architect M-T1 confirms reachability before locking Q1. If infeasible, the operator effectively has only route (b); the analyst-recommended default ladders into "(b) accept new oracle epoch" by default. |
+| **K2** ~~RESOLVED 2026-05-27~~ | ~~**R2 route (a) is technically infeasible**~~ — **K2-REACHABLE-CHEAP** confirmed by architect M-T1 (5-LoC CLI flag `--force-synthetic-bars` at `main.rs:977-1020`; no refactor). Route (a) is alive for operator Q1. See § Design T-AR-1 and ADR-0047 D1. | Risk retired. Operator decides Q1 on value-tradeoff merits, not feasibility. |
 | **K3** | **Data-source drift contaminates K1 surprise detection for Group A.** Under R2 route (b), it becomes impossible to attribute Sharpe changes to friction vs data-source vs both. | R5 column "Δ Sharpe driver" makes the attribution explicit. For Group A under route (b), driver = "real-data + v5-sim combined" — the noop-baseline SHA is no longer a valid friction-free oracle for SMA/Composed because the data inputs differ. |
 | **K4** | **`t1937` failure cascade.** Even after R3 lands, other tests may have similar hardcoded-SHA + lex-sort patterns. | Developer Wave grep for "STRATEGY_ANCHORS\|find_backtest_report\|body_sha256" across `crates/*/tests/*.rs` and lists every offender. Each offender either updates constants OR adopts the namespace-aware pattern from R3. |
 | **K5** | **Cross-feature e2e tests still pass at v0.2.0 ship; passing them again is performative.** | True for the 3 known overlay files. The real gate is the NEW 32 strategy-path friction tests embedded in R5's delta table — those are the ones that haven't been validated before. R6 is defensive ("did we break anything"), R5 is offensive ("did we change what we intended to change"). |
@@ -269,15 +269,20 @@ shift per scenario as new paths actually fire friction.
 
 | Q | Topic | Options | Analyst-recommended default | Rationale |
 |---|---|---|---|---|
-| **Q1** | **Group A data-source — load-bearing** | **(a) revert to synthetic baseline** / **(b) accept real-Binance baseline as new oracle epoch** | **NONE — HARD OPERATOR DECIDE** | This is the most load-bearing Q in the entire v5 series. Route (a) preserves the apples-to-apples comparison between noop-baseline SHAs and canonical SHAs for SMA/Composed (friction is the ONLY variable). Route (b) accepts the more realistic real-Binance data inputs as the new ground truth but **forfeits the friction-free oracle for Group A** — the noop-baseline SHAs for SMA/Composed become historical-only, not regression-gate-functional. **There is no safe analyst default**: route (a) protects regression-gate semantics at the cost of synthetic data which may not reflect production reality; route (b) accepts production reality at the cost of losing the friction-free oracle for 5/68 anchors. Both are defensible. Operator must choose the project's preferred bias. |
+| **Q1** | **Group A data-source — load-bearing** | **(a) revert to synthetic baseline** / **(b) accept real-Binance baseline as new oracle epoch** | **(a) revert to synthetic baseline (REVISED post-K2)** | **K2 verdict (architect M-T1 2026-05-27): K2-REACHABLE-CHEAP.** The synthetic-vs-Parquet auto-detect lives at `crates/backtest/src/main.rs:977-1020` in a single `if has_parquet { Parquet } else { synthetic }` block, affecting ONLY the single-symbol (SMA/Composed) dispatch arm. A `--force-synthetic-bars` CLI flag (~5 LoC, no refactor) makes route (a) cheap and reachable. **Cost picture has flipped versus the analyst brief.** Route (a) now preserves the apples-to-apples comparison between noop-baseline and canonical SHAs for SMA/Composed (friction is the ONLY variable) at trivial cost. Route (b) accepts more realistic real-Binance data inputs but forfeits the friction-free oracle for 5/68 anchors — operator MAY still prefer (b) for forward-looking-realism reasons, but the previous "(a) has hidden refactor cost" framing no longer holds. **Architect lean (transparency, not a decision): (a)** — preserves regression-gate semantics for 5/68 anchors at trivial cost. Operator override to (b) remains valid; defensible. See ADR-0047 D1 + D4 for the conditional re-emission contract under each route. |
 | **Q2** | **Wave ordering** | (a) wire all 6 paths first, then re-emit all canonicals in one atomic Wave / (b) wire-and-emit per-path | **(a) all-then-emit** | Single atomic SHA migration is cleaner for `spec/anchors.toml` review; per-path emission risks intermediate states where some paths show new SHAs and others don't, confusing the Sharpe-delta diff. Cost is the same; risk of mid-migration interrupt is lower with (a). |
 | **Q3** | **Anchor namespace strategy** | **(a) extend `v5-realdata-medium-2026-05`** (same pin, new SHAs) / (b) new pin `v5-realdata-medium-2026-05-full` | **(a) extend same pin** | The v0.2.0 pin is 1 day old; bumping the SHAs in-place is acceptable. Route (b) is appropriate ONLY if operator explicitly wants v0.2.0's partial-wiring SHAs preserved for archeology. Storage cost route (b): +32 anchor rows. Clarity cost route (b): two "canonical" pins requiring operator interpretation forever. |
 | **Q4** | **t1937 resolution** | (a) update SHA constants / **(b) namespace-aware resolver** | **(b) namespace-aware** | Mirror `verify_anchors.sh` Bash logic in Rust (the script's namespace-filter walk). Future-proof against the inevitable v0.4+ namespace expansion. Route (a) is a 5-minute edit but re-breaks every future anchor migration. |
 | **Q5** | **Cross-feature re-check budget** | **(a) re-run all overlay e2e tests under canonical config** / (b) re-run only the load-bearing 3 / (c) defer all to v0.4 | **(a) re-run all** | Same precedent as v0.2.0 Q4 = (a). Anchor cascade isn't optional — half-migrating leaves silent invariant drift. Cost is ~0.5-1 dev-day given the 3-test inventory from v0.2.0 hasn't grown. |
 
 **Q1 is the load-bearing one.** Q2-Q5 are standing-Autoapprove-
-eligible at analyst-recommended defaults. Q1 requires explicit
-operator judgment with no safe default.
+eligible at analyst-recommended defaults. The K2 reachability probe
+(architect M-T1 2026-05-27 — see § Design and ADR-0047 D1) found
+route (a) is cheaply reachable (~5 LoC CLI flag), shifting the cost
+picture such that analyst-style "no safe default" no longer fully
+applies — but the value tradeoff (regression-gate semantics vs
+real-data realism) is still genuinely operator judgment. The
+revised analyst default = (a) is recommended but not mandatory.
 
 ## Pre-drawn 4-cell verdict tree (presenter inherits)
 
@@ -338,7 +343,127 @@ operator judgment with no safe default.
 
 ## Design
 
-_Architect M-T1 fills this section after operator M-OD locks Q1-Q5._
+> Architect M-T1 2026-05-27 — partial design lock. Q1 still open
+> (operator-decide); D4 contract conditionally locked per route.
+> Q2-Q5 lean toward analyst-recommended defaults.
+> Full ADR: [`spec/architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md`](../architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md).
+
+### T-AR-1 — K2 reachability probe verdict: K2-REACHABLE-CHEAP
+
+The synthetic-vs-Parquet auto-switch for Group A (SMA/Composed) lives
+at `crates/backtest/src/main.rs:977-1020` in the `else`-arm of the
+multi-symbol dispatch:
+
+```rust
+let parquet_dir = data_root
+    .join(scenario.symbol.to_string())
+    .join(scenario.start_year.to_string());
+let has_parquet = parquet_dir.exists()
+    && std::fs::read_dir(&parquet_dir)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false);
+if has_parquet {
+    // load Parquet
+} else {
+    // synthetic_bars(...)
+}
+```
+
+This auto-switch is NOT entered by momentum, pairs, tcn-overlay, or
+realdata scenarios — they branch earlier on `ScenarioDataSource`
+(statically declared per scenario at `Scenario::from_name` lines
+105-461). It is reached purely by single-symbol (SMA/Composed)
+scenarios when Parquet exists on disk (which it does today —
+`data/binance/BTCUSDT/2023/01.parquet` … `12.parquet` present).
+
+**Route (a) is cheap and reachable** with a 5-LoC CLI flag:
+
+```rust
+// crates/backtest/src/main.rs Args struct
+#[arg(long, default_value_t = false)]
+force_synthetic_bars: bool,
+```
+
+```rust
+// main.rs:977
+let has_parquet = !args.force_synthetic_bars
+    && parquet_dir.exists()
+    && std::fs::read_dir(&parquet_dir)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false);
+```
+
+**Verdict: K2-REACHABLE-CHEAP** — route (a) is alive for operator Q1
+at trivial cost (~5 LoC, no refactor, no struct changes, no test
+contract breakage). The K2 risk row in § K is therefore retired;
+ADR-0047 D1 codifies the verdict.
+
+### T-AR-2 — Per-path plumbing audit (R1 of the brief)
+
+| # | Strategy | ScenarioInput struct | `run()` site | Wiring LoC | Cross-path note |
+|---|----------|---------------------|-------------|------------|------------------|
+| 1 | SmaComposed (5 scenarios) | `SmaScenarioInput` (`crates/backtest/src/cli_types.rs:124`) | `sma_composed_run::run` at `crates/backtest/src/scenarios/sma_composed_run.rs:298` | ~8 (add field; thread through fill loops at ~505-540) | Independent — `LatencySlippageSimConfig` field is NEW for `SmaScenarioInput` (likely no — that's the gap) |
+| 2 | Pairs (2 scenarios) | `PairsScenarioInput` (`crates/backtest/src/cli_types.rs:178`) | `pairs::run` at `crates/backtest/src/scenarios/pairs.rs:67` | ~10 (pairs has 4-symbol universe; fill loop more complex than SMA) | Independent — field NEW on `PairsScenarioInput` |
+| 3 | TcnOverlay (4 scenarios) | `TcnScenarioInput` (`crates/backtest/src/cli_types.rs:195`) | `tcn_overlay::run` at `crates/backtest/src/scenarios/tcn_overlay.rs:69` | ~8 | Shares struct — field added ONCE in `TcnScenarioInput` auto-propagates to #4-#6 |
+| 4 | TcnOverlayWeights (4 scenarios) | `TcnScenarioInput` (shared with #3) | `tcn_overlay_weights::run` at `crates/backtest/src/scenarios/tcn_overlay_weights.rs:31` | ~8 (still needs its OWN fill-loop wiring) | Shares struct with #3 |
+| 5 | PatchTstOverlay (1 scenario) | `TcnScenarioInput` (shared) | `patchtst_overlay_weights::run` at `crates/backtest/src/scenarios/patchtst_overlay_weights.rs:46` | ~8 | Shares struct with #3-#4 |
+| 6 | VolTarget / GarchVolOverlay (1 scenario) | `TcnScenarioInput` (shared) | `garch_vol_target_overlay::run` at `crates/backtest/src/scenarios/garch_vol_target_overlay.rs:105` | ~8 | Shares struct with #3-#5 — clarifies the Group F vs G ambiguity in the brief: `garch_vol_target_overlay` IS a strategy run with an equity surface, IN SCOPE |
+| 7 | ThresholdSweep (analysis) | `TcnScenarioInput` (shared) | `threshold_sweep::run_cell` at `crates/backtest/src/scenarios/threshold_sweep.rs:56` | DEFERRED — 2D analysis sweep emits CSV (no equity surface); sim has no meaningful effect | Confirmed out of scope per ADR-0047 D2 |
+
+**Production LoC ~42 + CLI flag ~5 + plumbing tests ~30 = ~77 LoC.**
+Aligns with the v0.2.0 Wave A estimate of ~1 day.
+
+**Helper consolidation lock**: `sim_slippage_cost` currently lives
+inside `crates/backtest/src/scenarios/momentum.rs:551` as a private
+function. Per ADR-0047 D2, the helper is lifted to a new module
+`crates/backtest/src/scenarios/sim.rs` with the same signature.
+Momentum and the 6 new wiring sites all `use` it; grep enforcement
+at tester M-FINAL (`grep -r "fn sim_slippage_cost" crates/backtest/src`
+must return exactly 1 line). Lift is behaviour-preserving and
+anchor-additive per ADR-0038 § D6.a.
+
+### T-AR-3 — t1937 fix: namespace-aware Rust resolver (R3 / Q4)
+
+Locked per analyst Q4 default = (b) namespace-aware (architect
+concurs). Pattern mirrors `scripts/verify_anchors.sh:63-110`.
+The existing `STRATEGY_ANCHORS` constant table at
+`crates/reports/tests/strategy_anchors_unchanged.rs:41-77` STAYS
+pinned to noop-baseline SHAs forever. A NEW `CANONICAL_STRATEGY_ANCHORS`
+table is added with the post-R1+R2 SHAs (populated at Wave C close).
+The test fans out to both, calling
+`find_backtest_report(scenario, Namespace::Noop)` and
+`find_backtest_report(scenario, Namespace::Canonical)`. Full
+contract in ADR-0047 D3.
+
+### T-AR-4 — ADR decision: ADR-0047 (new ADR, not amendment)
+
+Decision rationale: the per-path wiring contract + namespace-aware
+resolver are tightly coupled (the resolver only makes sense after
+the 6 paths emit canonical reports), and the K2 verdict warrants a
+durable architectural record. A standalone ADR is clearer than a
+multi-section amendment to ADR-0045. ADR-0047 references ADR-0045
+D2 + D4 as amended-by-extension, not superseded.
+
+### T-AR-5 — Cross-feature e2e re-check inventory (R6 / Q5)
+
+Confirmed unchanged at 3 + 1 meta-gate (per analyst expectation):
+
+| File | Role |
+|------|------|
+| `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` | Vol-targeting overlay ≥ 1 bp divergence |
+| `crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs` | Vol-killswitch overlay ≥ 1 bp divergence |
+| `crates/strategy/tests/latency_slippage_sim_e2e.rs` | This feature's e2e |
+| `crates/strategy/tests/overlay_hygiene_gate.rs` *(meta)* | Audits that every overlay HAS a divergence test |
+
+No new overlay shipped between 2026-05-27 v0.2.0 ship and v0.3.0
+brief author time. R6 scope confirmed at 3 + 1 meta.
+
+### Q2-Q5 default-confirm
+
+- **Q2 (Wave ordering)** = (a) all-then-emit — architect concurs.
+- **Q3 (Anchor namespace)** = (a) extend `v5-realdata-medium-2026-05` — architect concurs.
+- **Q4 (t1937 fix)** = (b) namespace-aware — architect concurs (see T-AR-3 above).
+- **Q5 (Cross-feature re-check)** = (a) re-run all — architect concurs (see T-AR-5 above).
 
 ## Implementation
 
@@ -360,3 +485,16 @@ _Tester M-FINAL links to reports here after developer M-DEV close._
   pre-spec confirmed; `scripts/spec_lint.py` requires Python 3.11+
   (not available on analyst environment Python 3.9.6) — orchestrator
   re-runs at M0 close on a Python 3.11+ host.
+- 2026-05-27 (architect M-T1): feature.md v0.2.0. § Design section
+  filled with K2-REACHABLE-CHEAP verdict (5-LoC CLI flag at
+  `main.rs:977-1020`), per-path plumbing audit (~77 LoC total), and
+  Q2-Q5 architect-concur-with-analyst-defaults. Q1 reframed with K2
+  cost picture inline — architect lean = (a) revert to synthetic
+  baseline (now cheap; preserves friction-free oracle for 5/68
+  anchors). ADR-0047 authored covering D1 (K2 verdict) + D2 (per-path
+  contract + `sim_slippage_cost` shared-location lift to
+  `crates/backtest/src/scenarios/sim.rs`) + D3 (namespace-aware Rust
+  resolver) + D4 (conditional Group A re-emission per Q1) + D5
+  (anchor namespace) + D6 (e2e inventory confirmed at 3 + 1).
+  Frontmatter flipped `owner: analyst → operator-decide`. Q1 still
+  genuinely operator judgment (value tradeoff, not cost-blocked).
