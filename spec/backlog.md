@@ -389,17 +389,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      M0 close — inline-salvaged after analyst agentId ac4d192d801af160a 529'd at
      14 tool uses; orchestrator wrote tasks.md + appended this backlog row +
      trace row REQ-V5-ANCHOR-MIGRATION-V0-2-0-001 at EOF). -->
-- **v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0** — converts
-  v5 v0.1.0's noop ship into a meaningful canonical-friction ship.
-  Re-emits all 34 anchored backtest reports under a canonical
-  `LatencySlippageSimConfig` (default-recommendation: medium —
-  30..=80 ms / 8 bps); migrates SHAs in `spec/anchors.toml`; quantifies
-  Sharpe-delta per scenario; cross-feature anchor cascade re-verifies
-  every overlay/sizing-modifier e2e test. Q5 from v5 v0.1.0 explicitly
-  deferred this to v0.2.0. Brief at
-  [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md);
-  tasks at [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md`](v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md).
-  Estimated ~1-2 weeks wall-clock. Trace: `REQ-V5-ANCHOR-MIGRATION-V0-2-0-001`.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-27 -->
+<!-- - **v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 <!-- updated 2026-05-26 (analyst + architect, v5-latency-slippage-sim M0 + M-T1 close) —
      **PROMOTED Idea → Active 2026-05-26** by operator directive: "New
@@ -521,16 +512,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      number assigned at architect M-T1 against ADR registry, likely
      0042+). HANDOFF → architect for M-T1 decomposition. -->
 
-- **cockpit-activity-audit-ledger-producer v0.1.0** —
-  v0.1.1 follow-on to `cockpit-activity-status-bar v0.1.0` (shipped
-  2026-05-26). Wires the deferred `ActivityKind::AuditLedgerWrite`
-  producer with a 100 ms aggregation envelope. Subscribes to the
-  existing `crates/audit/src/tick.rs` `AuditTick<AuditEvent>`
-  broadcast — zero changes to `crates/audit/`. Long-lived
-  `ActivityHandle` with idle-end semantics; PII-redacted
-  "Audit: N writes" label; 34/34 anchors byte-identical.
-  **Spec**: [`spec/cockpit-activity-audit-ledger-producer/feature.md`](cockpit-activity-audit-ledger-producer/feature.md).
-  **Trace**: `REQ-COCKPIT-ACTIVITY-AUDIT-LEDGER-001`. Cost: ~2-3 days.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-27 -->
+<!-- - **cockpit-activity-audit-ledger-producer v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 
 <!-- updated 2026-05-24 (analyst, lab-yahoo-realdata) —
@@ -2223,6 +2206,49 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-27 cohort
+
+- **cockpit-activity-audit-ledger-producer v0.1.0** — shipped 2026-05-27
+  (operator-approved). Closes the activity-tape producer trio (LLM + Training
+  + audit-ledger). New `crates/agent/src/activity_audit_aggregator.rs` (~210
+  LoC) subscribes to existing `crates/audit/src/tick.rs` `AuditTick<AuditEvent>`
+  broadcast — ZERO changes to `crates/audit/`. 100 ms time-window envelope
+  (Q1=(b)); PII-redacted `"Audit: N writes"` label (Q2=(a)); separate-handle
+  Failed-event emission (Q3=(a)). Long-lived `ActivityHandle` with idle-end
+  semantics. Criterion benches: counter increment 1.797 ns / fan-out 46.81 ns
+  / idle-end 131.98 ns / K3-discharge anchor-replay parity 0.12 % < 1 % budget.
+  6/6 audit-ledger tests + 2/2 UI tests PASS (1 ignored by K5 design).
+  Anchor-additivity preserved by construction (zero crates/backtest|strategy|
+  audit/journal|exec|cost changes). M-FINAL FAIL on 3 housekeeping issues
+  (fmt + 1 clippy + 1 frontmatter status) inline-fixed by orchestrator at
+  commit 6b494aa; tester K3-collision-note in addendum is informational
+  (resolves at v5 v0.2.0 Wave B namespace-aware verify_anchors). Commits:
+  `8b67669`, `6b494aa`. ADR-0044. See
+  [`spec/cockpit-activity-audit-ledger-producer/feature.md`](cockpit-activity-audit-ledger-producer/feature.md).
+
+- **v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0** — shipped
+  2026-05-27 (operator-approved Ship Route (a) — partial migration accepted).
+  Anchor count doubled 34→68: 34 noop-baseline rows preserve original SHAs
+  as friction-free oracle; 34 canonical rows under namespace pin
+  `v5-realdata-medium-2026-05` carry re-emitted SHAs under
+  `LatencySlippageSimConfig { latency_ms_min: 30, latency_ms_max: 80,
+  slippage_bps: 8 }`. `scripts/verify_anchors.sh` extended namespace-aware
+  (T-AR-3 step 5 escape hatch invoked). Sharpe-delta table at
+  [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md`](v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md)
+  documents 8 scenario groups: only Group B (top-10 momentum, 2/34 scenarios)
+  received real v5-sim migration (Δequity -$3.5k to -$5.4k); Group A
+  (5x SMA/Composed) Δequity +$48k to +$83k driven by synthetic→real-Binance
+  data-source auto-switch, NOT v5 sim; Groups C-F (12 scenarios — Pairs /
+  TCN / PatchTST / VolTarget) canonical = noop SHA byte-identical (sim
+  not wired into those construction sites); Groups G-H (15 analysis /
+  success reports) no equity metrics. **0 K1 surprises** across all 34
+  scenarios. Cross-feature e2e tests 8/8 PASS (latency_slippage_sim_e2e
+  3/3 + vol_targeting 1/1 + vol_killswitch 4/4). Operator-accepted scope
+  gap → v0.3.0 Queue row covers (a) wire LatencySlippageSimConfig into the
+  6 remaining strategy paths; (b) operator-decide for Group A re-anchor
+  (revert to synthetic OR accept real-Binance baseline); (c) refresh
+  `t1937_nine_strategy_anchors_unchanged` test resolver. Commits:
+  `d2cc343`, `c223d11`, `4dfa2d8`, `d191227`. ADR-0045. See
+  [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md).
 
 - **v5-latency-slippage-sim v0.1.0** — shipped 2026-05-27 (operator-approved
   triple-batch). Deterministic latency + slippage simulator in `crates/exec`

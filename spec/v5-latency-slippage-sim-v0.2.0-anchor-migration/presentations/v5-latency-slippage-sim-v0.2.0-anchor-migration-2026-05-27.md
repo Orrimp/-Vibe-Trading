@@ -279,7 +279,7 @@ architect's ADR-0045 commit (`d2cc343`), predating developer's
 
 Pick one. The boxes ship un-ticked — only the operator ticks.
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-27, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
