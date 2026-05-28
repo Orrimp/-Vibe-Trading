@@ -182,7 +182,7 @@ _n/a — no operator-decide questions raised. This is a binary ship-or-reject._
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-28, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

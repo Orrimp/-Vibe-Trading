@@ -424,12 +424,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      Trace row `REQ-LAB-RECIPE-TEST-HARNESS-001` opened at `arch-done`
      state. HANDOFF → developer (T-D1 → T-D6 sequential; tester closes
      loop with falsification-probe evidence). -->
-- **lab-recipe-test-harness v0.1.0** — P1 tooling investment closing the
-  channel/subscription test gap exposed by the Bug #64 D.1.1+D.2.1 revert
-  (commit `05937e4`). Two new test files in `crates/ui/tests/` + one
-  trait extraction in `crates/ui/src/lab/runner.rs`. Gates the Bug #64
-  re-attempt. See [`spec/lab-recipe-test-harness/feature.md`](lab-recipe-test-harness/feature.md)
-  + [ADR-0048](architecture/adr/0048-lab-recipe-test-harness.md).
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
+<!-- - **lab-recipe-test-harness v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 <!-- updated 2026-05-27 (analyst, cockpit-toast-queue M0 close — inline-salvaged
      after analyst agentId a43a615341bd60112 529'd at 26 tool uses;
@@ -2247,6 +2243,27 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-28 cohort
+
+- **lab-recipe-test-harness v0.1.0** — shipped 2026-05-28 (operator-
+  approved). P1 tooling investment closing the channel/subscription
+  test gap exposed by the Bug #64 D.1.1+D.2.1 revert (commit
+  `05937e4`). Architect pattern (d) Combination: Surface 1 boundary-
+  test for `spawn_lab_run` with `MockLabYahooBarSource` + Surface 2
+  Stop-button gating state-machine test against `model.lab_run_inflight`.
+  New `pub trait LabYahooBarSource` extraction in `crates/ui/src/lab/runner.rs:194-260`;
+  `Box<dyn>` for ergonomic test construction; production path
+  backwards-compatible via `None` injection. 6 new tests across 2 new
+  files (3 in `spawn_lab_run_yahoo_harness.rs` + 3 in
+  `lab_stop_button_gating.rs`). **T-T4 falsification CONFIRMED**:
+  tester independently commented out `state.rs:2147` and verified 2
+  Surface 2 tests fail at `lab_stop_button_gating.rs:133` + `:182`;
+  restore verified 3/3 PASS. Zero anchor delta (channel-only events,
+  no file output); 70/70 byte-identical. K5 regression intact (5/5).
+  411 lib tests PASS; clippy 0 new (9 pre-existing). Unblocks AND
+  gates the Bug #64 D.1.1+D.2.1 re-attempt. Future UI Recipe touches
+  can opt into the same harness pattern. Commits: `a971008`, `648d470`,
+  `dbe1609`, `aaa5bc9`. ADR-0048. See
+  [`spec/lab-recipe-test-harness/feature.md`](lab-recipe-test-harness/feature.md).
 
 - **lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge v0.1.0** —
   shipped 2026-05-28 (operator-approved). Closes Q1 + Q3 of v0.1.1
