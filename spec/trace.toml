@@ -1876,7 +1876,15 @@ tests       = [
   "crates/ui/src/widgets/cache_state_badge.rs",                                 # R5.2 reference — existing per-pair pill unit tests stay green
   "crates/backtest/tests/determinism.rs",                                       # R5.1 — anchor preservation gate (70 SHAs byte-identical)
 ]
-anchors     = "R1 — row 70 'eth-yahoo-2024-1d-sma-cross' appended at T-D6; body-SHA e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a; determinism: 3 consecutive runs identical (H2 PASS); verify_anchors.sh ANCHORS PASS (70 / 70)"
-state       = "dev-done"
+anchors     = [
+  # v0.1.2 (tester 2026-05-28): scenario name from spec/anchors.toml row 70.
+  # Body-SHA e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a.
+  # Determinism: developer 3 independent runs + tester 2 independent re-runs —
+  # all 5 runs produced identical SHA (H2 PASS; K2 gate: PASS).
+  # Cache: data/yahoo/ETH-USD/1d/2024/ REVISION.toml SHA e018f876c36a.
+  # verify_anchors.sh ANCHORS PASS (70 / 70).
+  "eth-yahoo-2024-1d-sma-cross",
+]
+state       = "passed"  # tester M-FINAL 2026-05-28: VERDICT → SOFT-PASS. All gates green. BTC SHA drift documented as known transitional state (see test-final report). spec-lint unreferenced-anchor resolved by this anchors array update. Report: spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/test-final-2026-05-28-lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge.md.
 
 
