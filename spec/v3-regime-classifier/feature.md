@@ -2,7 +2,7 @@
 slug: v3-regime-classifier
 version: 0.1.0
 status: in-progress
-owner: architect
+owner: developer
 updated: 2026-05-28
 predecessor: spec/dev-notes/strategy-reformulation-survey-2026-05-22.md (Candidate 2)
 parent: v3-three-pick
@@ -365,10 +365,178 @@ weeks; ~14 weeks remain unused after C1 + C5 → comfortably within cap.
 
 ## Design
 
-> Architect M-T1 populates after operator-decide M-OD closes Q1-Q5.
-> ADR-0049 (proposed name; architect may renumber to current free
-> ADR slot) sibling to ADR-0033 — regime-classification-verdict-shape;
-> ADR-0033 § D3 STAYS IMMUTABLE.
+> Architect M-T1 closed 2026-05-28 (commit pending — this edit).
+> Authoritative reference: [ADR-0049](../architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md)
+> — sibling to ADR-0038 (NOT extension); ADR-0033 § D3 STAYS IMMUTABLE.
+
+### Architect decisions (resolution of operator-override interaction surface)
+
+The M-OD overrides on Q1+Q3+Q4 (operator went bolder than analyst
+defaults) opened three architect-load-bearing questions. Resolutions:
+
+#### A. Q4 dispatcher prerequisite (no v1.5 price-MR exists for Chop/Volatile)
+
+**RESOLVED — option (i) degenerate cash-hold strategy.** The dispatcher
+routes Bull/Bear → v1 MomentumStrategy and Volatile/Calm → new
+`CashHoldStrategy`. Existing positions are HELD on regime transition
+into Volatile/Calm (cash-fallback is SUPPRESSION, not LIQUIDATION) —
+natural exits via composed exit policy (ADR-0010). Forward-compatible
+seam: v0.2.0 follow-on brief `v1.5-mean-reversion-for-regime-dispatcher`
+swaps `CashHoldStrategy → MeanReversionStrategy` with zero dispatcher
+rewire. Full contract: ADR-0049 § D3.
+
+#### B. K4 lesson-card embedding determinism vs. Q1=(b) new variants
+
+**RESOLVED — option (γ): preserve Chop, append Volatile + Calm.** The
+RegimeTag enum keeps `Chop` as deprecated-but-preserved-for-K4 (existing
+ordinal 2; legacy daily seed keeps emitting it byte-identically) +
+appends `Volatile=3, Calm=4`. The new Markov-switching classifier emits
+**only the 4 Q1=(b) variants**; the dispatcher routes only on the 4
+Q1=(b) variants. Embedding vector grows by 2 one-hot slots but legacy
+3-state fixtures emit byte-identical embeddings (Volatile/Calm slots
+stay zero). Wave B's `regime_overlay_neutrality_4state.rs` gates the
+K4 invariant. Escape hatch (no ADR amendment): versioned embedding
+schema (`EmbeddingV1` / `EmbeddingV2`) if vector-length growth itself
+breaks downstream byte-compare. Full contract: ADR-0049 § D2.
+**Alternatives (α) remap and (β) full 5-state rejected** — see ADR-0049
+§ D2.
+
+#### C. Markov-switching {μ_s, σ²_s} 4-state prior specification
+
+**RESOLVED — operator-set semantic priors lock regime identities;
+Baum-Welch refines parameter values only (no post-hoc state-label
+reassignment).** Hamilton 1989 regression-form mixture with 4 explicit
+{μ_s, σ²_s} parameters per regime + 4×4 row-stochastic transition
+matrix P:
+
+| State    | μ_s prior (hourly log-return) | σ²_s prior                       |
+|----------|-------------------------------|----------------------------------|
+| Bull     | +1e-4 (≈+0.01%/h drift)       | Low — 25th-pctile realized var   |
+| Bear     | −1e-4                         | Low — 25th-pctile                |
+| Volatile | 0                             | High — 90th-pctile               |
+| Calm     | 0                             | Low — 10th-pctile                |
+
+EM convergence: Δ log-likelihood ≤ 1e-6 over 5 consecutive iters; max
+200 iters; failure → V-REG-1. Per-pair fit on the 2023 train window
+(Q2=(c) split); 2024 held-out for val + H2 accuracy gate. Full contract:
+ADR-0049 § D1.
+
+### Crate layout
+
+| Component | Crate | New file? |
+|-----------|-------|-----------|
+| Markov-switching fitter + forward filter | `crates/forecast` | NEW `markov_switching.rs` (sibling to `garch.rs` / `vol.rs`) |
+| RegimeClassifier trait + hourly impl | `crates/forecast` | extend `markov_switching.rs` |
+| RegimeTag enum extension (Chop preserve + Volatile + Calm append) | `crates/reflection` | edit `regime.rs` (developer territory — architect only specs K4 contract) |
+| Embedding K4 ordinal contract | `crates/reflection` | edit `embedding.rs:120-126` |
+| Dispatcher | `crates/strategy` | NEW `regime_dispatcher.rs` (sibling to `vol_targeting_overlay.rs`) |
+| CashHoldStrategy | `crates/strategy` | NEW `cash_hold.rs` |
+| V-REG verdict bin | `crates/forecast` | NEW `bin/regime_verdict.rs` |
+| T-REG Sharpe-comparison report bin | `crates/forecast` | extend existing `bin/sharpe_comparison.rs` with regime-dispatcher dispatch arm (ADR-0038 § D1.c precedent) |
+| Audit ledger regime_tag row shape | `crates/audit` | extend `JournalEntry` enum (additive variant) |
+| Trail UI surface | `crates/ui` | conditional column / modal (Wave D) |
+
+### Wave decomposition (M-DEV)
+
+5 sequential developer waves (Wave A → B → C → D → E) + 1 closing
+gate-wave (F = e2e + harness). Wall-clock ~5-7 days per Wave A; ~2-5
+days for subsequent waves.
+
+**Wave A — Markov-switching core + forward filter**
+- New `crates/forecast/src/markov_switching.rs`: 4-state regression
+  with D1 operator-set priors; Baum-Welch EM refinement; forward
+  filter emitting per-bar posterior `[p_Bull, p_Bear, p_Volatile, p_Calm]`.
+- New `RegimeClassifier` trait (`classify(bars: &[Bar]) -> Vec<RegimePosterior>`)
+  with `MarkovSwitchingClassifier` impl. Trait-based seam for v0.2.0+
+  alternate model classes.
+- Unit tests: convergence on synthetic 4-regime GBM-with-switch
+  fixtures; per-state μ_s/σ²_s recovery within 10% of ground truth;
+  K2 falsifier (`regime_switch_rate_under_threshold`); D6 falsifier
+  (`dispatcher_confidence_gate_zero_when_uncertain` +
+  `dispatcher_switches_when_confident`).
+- **K1 mitigation:** trained on synthetic and on real-Binance 2023
+  hourly fixtures; H3 likelihood-vs-K curve logged.
+
+**Wave B — RegimeTag extension + K4 embedding contract**
+- Extend `crates/reflection/src/regime.rs`: add `Volatile, Calm` enum
+  variants (APPEND only; ordinals 3, 4). Display: `"volatile"`, `"calm"`.
+- Extend `crates/reflection/src/embedding.rs:120-126`: add
+  `RegimeTag::Volatile => 3, RegimeTag::Calm => 4` arms; embedding
+  vector grows by 2 slots.
+- New test `crates/reflection/tests/regime_overlay_neutrality_4state.rs`:
+  re-runs ≥ 1 legacy 3-state lesson-card fixture (e.g.
+  `embedding_determinism.rs` reference vector) and asserts byte-identity
+  on the Bull/Bear/Chop slots. Falsifies the K4 invariant if it breaks.
+- **Escape hatch (if K4 byte-identity breaks because vector-length grew
+  even with zero-init Volatile/Calm slots):** promote to versioned
+  embedding schema — legacy fixtures pin to `EmbeddingV1` (3-state,
+  unchanged byte output); new classifier emits `EmbeddingV2` (5-slot).
+  **No ADR amendment required** — declared in-scope in ADR-0049 § D2.
+
+**Wave C — Strategy dispatcher + cash-fallback**
+- New `crates/strategy/src/cash_hold.rs`: `CashHoldStrategy` emits
+  `SignalKind::Hold` for every (symbol, bar). Existing positions HELD.
+- New `crates/strategy/src/regime_dispatcher.rs`: stateful adapter
+  wrapping `MomentumStrategy` + `CashHoldStrategy`. Routes per regime
+  tag (D3 routing table); gates switches on `max_p ≥ 0.70` (D6).
+- Unit tests: routing table coverage (4 regime variants × 2 strategies);
+  D6 confidence gate; transition semantics (Bull→Volatile suppresses
+  new signals, holds positions; Volatile→Bull resumes momentum).
+
+**Wave D — Audit + Trail UI surface**
+- `JournalEntry::RegimeTag { ts, symbol, regime: RegimeTag,
+  max_confidence: Decimal }` — additive variant.
+- Phase F Trail UI: regime-tag-per-bar column or per-symbol modal
+  (architect default: column, since the dispatcher is already
+  visible). Register `volatile`, `calm` strings in
+  `crates/ui/src/strings.rs::all()`.
+- R-NR.4 zero-new-design-tokens gate; spec-lint passes.
+
+**Wave E — Backtest scenarios + anchors (D5 namespace)**
+- 2 scenario equity-curve runs: `top10-2023-fy-regime-dispatcher-realdata`
+  + `top10-2024-fy-regime-dispatcher-realdata` (Q5=(b) 10 pairs;
+  Q2=(c) train/val split).
+- New V-REG bin `crates/forecast/src/bin/regime_verdict.rs` emits
+  `regime-verdict-bs1-realdata` (held-out 2024).
+- Sharpe-comparison bin extension emits
+  `sharpe-comparison-regime-dispatcher-bs1-realdata` (T-REG gate
+  input).
+- 4 new anchors added to `spec/anchors.toml` under namespace
+  `v3.0.0-regime` (D5). 70 → 74 PASS at M-FINAL.
+
+**Wave F — e2e divergence gate + tester harness**
+- **Mandatory CLAUDE.md non-negotiable** (R-NR.6): new e2e test
+  `crates/strategy/tests/regime_dispatcher_end_to_end.rs` (pattern
+  copied from `vol_targeting_overlay_end_to_end.rs`) asserts dispatcher
+  equity ≠ un-conditional v1 momentum baseline by ≥ 1 bp when the
+  regime tag is non-trivial. K6 noop-fix precedent mitigation.
+- Tester M-FINAL: V-REG + T-REG verdicts per ADR-0049 § D4 joint
+  table; routes R-O1/R-O2/R-O3/R-O4 per feature.md § 4-cell verdict
+  tree.
+
+### Risk re-assessment after M-OD overrides
+
+- **K3 (latency)** — Markov-switching forward filter is O(K² × T)
+  per bar with K=4; should be < 1 ms/bar at hourly cadence on 10
+  pairs. Wave A measures; if exceeded, fall back to cached regime at
+  24-bar coarser cadence (per K3 mitigation in feature.md).
+- **K-reg-2 (dispatcher two-stage error compounding)** — explicitly
+  mitigated by D6 max-confidence gate. Compounds Wave A test surface
+  but unlocks Q4=(b).
+- **K4 (embedding determinism)** — Wave B contract above; escape
+  hatch declared.
+- **K6 (noop-fix precedent)** — Wave F e2e divergence gate is the
+  load-bearing CLAUDE.md non-negotiable. Mandatory from day 1.
+
+### Cross-references
+
+- ADR-0049 — [`spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md`](../architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md) (primary)
+- ADR-0038 — V-VOL verdict shape sibling — [`spec/architecture/adr/0038-vol-forecast-verdict-shape.md`](../architecture/adr/0038-vol-forecast-verdict-shape.md)
+- ADR-0033 — F-verdict IMMUTABLE — [`spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md`](../architecture/adr/0033-tcn-alpha-investigation-report-shape.md)
+- Load-bearing seed — [`crates/reflection/src/regime.rs`](../../crates/reflection/src/regime.rs)
+- K4 embedding ordinal site — [`crates/reflection/src/embedding.rs#L120-L126`](../../crates/reflection/src/embedding.rs)
+- Noop-fix precedent (K6) — [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../v3-volatility-forecaster-noop-fix/feature.md)
+- e2e divergence test pattern (mandatory CLAUDE.md non-negotiable) — [`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`](../../crates/strategy/tests/vol_targeting_overlay_end_to_end.rs)
 
 ## Implementation
 
@@ -444,3 +612,27 @@ refresh tightens to operator-actionable M0 shape and supersedes the
   M-OD opens Q1-Q5). Trace row `REQ-V3-REGIME-CLASSIFIER-001`
   flipped `draft → proposed`. Anchors baseline 70/70 PASS pre-spec
   confirmed.
+- 2026-05-28 (operator): **M-OD closed at commit `6b47027`** —
+  Q1=(b) 4-state Bull/Bear/Volatile/Calm (override; bolder than
+  3-state default); Q2=(a)+(c) 2023 train / 2024 val on existing
+  realdata (default); Q3=(b) Markov-switching regression (Hamilton 1989,
+  override; bolder than HMM default); Q4=(b) strategy-switching
+  dispatcher (override; bolder than overlay default); Q5=(b) all 10
+  USDT pairs (default). Cost framing revised ~5-7 weeks (was ~3-4 wks).
+- 2026-05-28 (architect): **M-T1 closed**. ADR-0049 authored
+  ([`spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md`](../architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md)
+  — sibling to ADR-0038, NOT extension; ADR-0033 § D3 IMMUTABLE).
+  Resolved three load-bearing questions: (A) dispatcher prerequisite =
+  option (i) degenerate CashHoldStrategy for Volatile/Calm (positions
+  HELD not LIQUIDATED; v0.2.0 v1.5-MR follow-on fills seam); (B) K4
+  RegimeTag encoding = option (γ) preserve Chop + append Volatile=3,
+  Calm=4 (new classifier emits only 4 Q1=(b) variants); (C)
+  Markov-switching priors = operator-set semantic identities {Bull,
+  Bear, Volatile, Calm} × {μ_s, σ²_s} priors per ADR-0049 § D1 table;
+  Baum-Welch refines parameter values only (no post-hoc state-label
+  reassignment). Anchor namespace bumped `v2.7.0-regime → v3.0.0-regime`
+  per D5. 4 new anchors planned (70 → 74). 6-wave M-DEV decomposition
+  (A-F). Trace row `REQ-V3-REGIME-CLASSIFIER-001` flipped
+  `proposed → arch-done`. Frontmatter `owner: architect → developer`
+  (no UI surface at v0.1.0 beyond Wave D Trail column extension —
+  handled by developer not ui-designer per single-track scope).

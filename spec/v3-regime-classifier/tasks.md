@@ -1,8 +1,8 @@
 ---
 slug: v3-regime-classifier
-status: draft
-owner: analyst
-updated: 2026-05-22
+status: in-progress
+owner: developer
+updated: 2026-05-28
 ---
 
 # Tasks — v3 regime classifier
@@ -136,76 +136,188 @@ fallback adds ~half-week over overlay-style multiplier.
 > (API socket-aborted at tool 34; orchestrator inline-finished
 > bookkeeping). Architect M-T1 now active.
 
-### Architect rows (T-AR) — DEFERRED
+### Architect rows (T-AR) — DONE 2026-05-28
 
-- [ ] **T-AR1** (DEFERRED) — Lock Q1-Q7 resolutions with operator;
-  document final taxonomy + classifier choice + horizon + strategy
-  shape + verdict + anchor + disposition in `decomp.md`.
-- [ ] **T-AR2** (DEFERRED) — Author new ADR (`ADR-0037 regime-
-  classification-verdict-shape` proposed name) as sibling to
-  ADR-0033, defining V-PASS / V-MARGINAL / V-FAIL leaves for the
-  regime-classifier verdict tree. ADR-0033 § D3 stays immutable.
-- [ ] **T-AR3** (DEFERRED) — Architect M-T1 Wave decomposition
-  (analyst proposes provisional shape; architect locks):
-  - **Wave A — Classifier core.** Extend `crates/reflection/src/regime.rs`
-    in-place (Q7 = (a) default). Add hourly classifier per Q1 + Q2
-    resolution. New `RegimeClassifier` trait. Pure-fn or pure-trait;
-    no I/O.
-  - **Wave B — Strategy builder.** New `with_regime_overlay` builder
-    in `crates/strategy` consuming the classifier output per Q4.
-    Composition shape mirrors v2.5 TCN overlay pattern.
-  - **Wave C — Audit + Trail.** Add `JournalEntry { kind:
-    "regime_tag", ... }` row shape in `crates/audit`; Trail UI surface
-    additive column or modal.
-  - **Wave D — Backtest scenarios.** Two new realdata scenarios
-    (`top10-2023-fy-regime-overlay-realdata` +
-    `top10-2024-fy-regime-overlay-realdata` analogues) under the
-    `v2.7.0-regime` anchor pin.
-  - **Wave E — Verification + reports.** Forecast-distribution-
-    equivalent regime-tag report + Sharpe-comparison report (mirrors
-    ADR-0033 § D3 report shape but for regime task — see T-AR2).
-  - **Wave F — Anchor lock + presenter.**
-- [ ] **T-AR4** (DEFERRED) — Architect identifies K4-equivalent
-  byte-identity guard: a `regime_overlay_neutrality` test (analogous
-  to existing `patchtst_overlay_neutrality`) that re-runs at least
-  one v2.5-chain anchor and asserts byte-identity to enforce R1.
-- [ ] **T-AR5** (DEFERRED) — Architect verifies no
-  `crates/reflection/src/embedding.rs` byte drift; lesson-card
-  embedding determinism contract holds across the regime-classifier
-  extension (K-reg-4 mitigation).
+- [x] **T-AR1** (2026-05-28) — Locked operator M-OD Q1-Q5 resolutions
+  + resolved 3 architect load-bearing follow-ons (A, B, C below).
+  Documented in `feature.md § Design`:
+  - **A — dispatcher prerequisite gap** = option (i) degenerate
+    `CashHoldStrategy` for Volatile/Calm regimes (suppression, NOT
+    liquidation; existing positions HELD; v0.2.0 v1.5-MR follow-on
+    fills seam).
+  - **B — K4 lesson-card embedding determinism** = option (γ) preserve
+    `Chop` as deprecated-but-K4-stable + APPEND `Volatile=3, Calm=4`.
+    New classifier emits only the 4 Q1=(b) variants. Embedding vector
+    grows by 2 zero-init slots; legacy fixtures byte-identical.
+    Escape hatch: versioned schema EmbeddingV1/V2 if vector-length-growth
+    breaks downstream byte-compare (no ADR amendment required).
+  - **C — Markov-switching 4-state prior specification** =
+    operator-set semantic priors per ADR-0049 § D1 table {Bull μ>0
+    σ²low, Bear μ<0 σ²low, Volatile μ=0 σ²high, Calm μ=0 σ²low};
+    Baum-Welch refines parameter values only, no state-label
+    reassignment.
 
-### Developer rows (T-D) — DEFERRED
+- [x] **T-AR2** (2026-05-28) — Authored
+  [`spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md`](../architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md).
+  Sibling to ADR-0038 (NOT extension); ADR-0033 § D3 + ADR-0038 § D1
+  STAY IMMUTABLE. Covers D1-D6: D1 Markov-switching model class + EM
+  contract; D2 RegimeTag ordinal encoding (γ); D3 dispatcher +
+  cash-fallback; D4 V-REG / T-REG verdict shape + joint table; D5
+  anchor namespace `v3.0.0-regime` (bumped from analyst Q6 default
+  `v2.7.0-regime` to match v3 sibling line); D6 K-reg-2 mitigation
+  max-confidence dispatcher gate at ≥ 0.70. 235 lines (under 250 cap).
 
-- [ ] **T-D1** (DEFERRED) — Wave A: extend `crates/reflection/src/regime.rs`
-  with hourly classifier per Q1+Q2 lock. Add tests:
-  - T-D1.a: existing T1802 family must keep passing byte-identical.
-  - T-D1.b: new hourly classifier accuracy ≥ Q5.1 threshold on a
-    held-out fixture set.
-  - T-D1.c: regime-switch rate ≤ Q5.3 threshold per H6.
-- [ ] **T-D2** (DEFERRED) — Wave B: implement `with_regime_overlay`
-  strategy builder. Verify v1 momentum composition.
-- [ ] **T-D3** (DEFERRED) — Wave C: audit + Trail wiring.
-- [ ] **T-D4** (DEFERRED) — Wave D: backtest scenarios + Sharpe-
-  comparison report.
-- [ ] **T-D5** (DEFERRED) — Wave E: report binaries + ADR-0037
-  conformance.
+- [x] **T-AR3** (2026-05-28) — Locked 6-wave M-DEV decomposition:
+  - **Wave A — Markov-switching core + forward filter** (`crates/forecast/src/markov_switching.rs` NEW; RegimeClassifier trait; D1+D6 unit tests; ~5-7d)
+  - **Wave B — RegimeTag extension + K4 embedding contract** (`regime.rs` edit Volatile+Calm APPEND; `embedding.rs:120-126` extension; `regime_overlay_neutrality_4state.rs` NEW; D2 escape hatch declared; ~2-3d)
+  - **Wave C — Strategy dispatcher + cash-fallback** (`regime_dispatcher.rs` NEW + `cash_hold.rs` NEW in `crates/strategy`; D3 routing table; D6 confidence gate; ~3-5d)
+  - **Wave D — Audit + Trail UI surface** (`JournalEntry::RegimeTag` additive variant; Phase F Trail column; strings.rs `volatile` + `calm` adds; ~2-3d)
+  - **Wave E — Backtest scenarios + anchors** (2 dispatcher scenarios + V-REG + T-REG reports; 4 new anchors under `v3.0.0-regime`; 70 → 74; ~3-5d)
+  - **Wave F — e2e divergence gate + tester harness** (`regime_dispatcher_end_to_end.rs` NEW; CLAUDE.md non-negotiable R-NR.6; K6 noop-fix mitigation; ~2-3d)
 
-### Tester rows (T-F) — DEFERRED
+- [x] **T-AR4** (2026-05-28) — K4-equivalent byte-identity guard
+  specified: developer Wave B ships
+  `crates/reflection/tests/regime_overlay_neutrality_4state.rs`
+  (analogous to `patchtst_overlay_neutrality`) re-running ≥ 1 legacy
+  3-state `embedding_determinism` fixture and asserting byte-identity
+  on the Bull/Bear/Chop slots. Falsifies the K4 invariant if it
+  breaks; triggers the D2 escape hatch (versioned embedding schema).
 
-- [ ] **T-F1** (DEFERRED) — Standard test-report.md per
-  `.claude/skills/rust-test/templates/test-report.md`. R1-R8
-  conformance gate. V-PASS / V-MARGINAL / V-FAIL verdict per
-  ADR-0037 (T-AR2).
-- [ ] **T-F2** (DEFERRED) — Anchor lock under `v2.7.0-regime`
-  (Q6 default).
-- [ ] **T-F3** (DEFERRED) — 30 v2.5-chain anchors verified
-  byte-identical (R1 invariant + K4-equivalent guard from T-AR4).
-- [ ] **T-F4** (DEFERRED) — Lesson-card embedding determinism
-  verified across the extension (K-reg-4 mitigation; existing
-  `embedding_determinism.rs` family + new test if architect
-  proposes).
-- [ ] **T-F5** (DEFERRED) — Presenter deck + operator approval
-  (M-FINAL).
+- [x] **T-AR5** (2026-05-28) — `crates/reflection/src/embedding.rs`
+  byte-identity contract documented in ADR-0049 § D2 + Wave B contract
+  above. Architect specs the K4 contract; developer Wave B verifies
+  byte-identity at compile + test time. Escape hatch declared in-scope
+  (no ADR amendment if vector-length growth necessitates schema
+  versioning).
+
+### Developer rows (T-D) — ACTIVE (architect M-T1 closed 2026-05-28)
+
+> Wave ordering: A → B → C → D → E → F. Each wave is a separate
+> developer turn; B's K4 contract is **load-bearing** (blocks C-F if
+> the escape hatch trips).
+
+#### Wave A — Markov-switching core + forward filter
+
+- [ ] **T-D-A1** — New `crates/forecast/src/markov_switching.rs`.
+  4-state regression per ADR-0049 § D1 priors; Baum-Welch EM
+  refinement (Δ log-lik ≤ 1e-6, max 200 iters); forward filter
+  emitting per-bar posterior `[p_Bull, p_Bear, p_Volatile, p_Calm]`.
+  — _acceptance: synthetic 4-regime fixture recovers per-state
+  μ_s/σ²_s within 10%._
+- [ ] **T-D-A2** — `RegimeClassifier` trait + `MarkovSwitchingClassifier`
+  impl. Trait seam for v0.2.0+ alternate model classes.
+  — _acceptance: trait-object dispatch unit test._
+- [ ] **T-D-A3** — Wave A unit tests:
+  - `regime_switch_rate_under_threshold` (K2 falsifier; ≤ 20/wk).
+  - `dispatcher_confidence_gate_zero_when_uncertain` (D6 falsifier).
+  - `dispatcher_switches_when_confident` (D6 inverse).
+  - Convergence on real-Binance 2023 hourly per-pair (K1 mitigation).
+  - H3 likelihood-vs-K curve logged.
+
+#### Wave B — RegimeTag extension + K4 embedding contract (LOAD-BEARING)
+
+- [ ] **T-D-B1** — Extend `crates/reflection/src/regime.rs`: add
+  `RegimeTag::Volatile, RegimeTag::Calm` (APPEND ONLY; ordinals 3, 4).
+  Display: `"volatile"`, `"calm"`. — _acceptance: existing T1802
+  test family passes byte-identical._
+- [ ] **T-D-B2** — Extend `crates/reflection/src/embedding.rs:120-126`:
+  add `Volatile => 3, Calm => 4` arms; embedding vector length grows
+  by 2 one-hot slots. — _acceptance: legacy 3-state fixtures emit
+  byte-identical Bull/Bear/Chop slots (Volatile/Calm slots zero)._
+- [ ] **T-D-B3** — New
+  `crates/reflection/tests/regime_overlay_neutrality_4state.rs`
+  (pattern from `patchtst_overlay_neutrality`). Re-runs ≥ 1 legacy
+  `embedding_determinism.rs` fixture; asserts byte-identity on the
+  Bull/Bear/Chop slots. — _acceptance: K4 invariant byte-identical
+  for legacy fixtures; falsifier is the test itself._
+- [ ] **T-D-B4 (escape hatch — execute IFF T-D-B3 fails)** — Promote
+  to versioned embedding schema: `EmbeddingV1` (3-slot legacy, pinned
+  to existing fixtures) + `EmbeddingV2` (5-slot, new classifier).
+  Per ADR-0049 § D2 in-scope; **NO ADR amendment required**. New
+  fixture builder picks V1 or V2 by classifier type.
+
+#### Wave C — Strategy dispatcher + cash-fallback
+
+- [ ] **T-D-C1** — New `crates/strategy/src/cash_hold.rs`.
+  `CashHoldStrategy` emits `SignalKind::Hold` for every (symbol, bar).
+  — _acceptance: positions HELD, never liquidated, when dispatcher
+  routes to CashHold._
+- [ ] **T-D-C2** — New `crates/strategy/src/regime_dispatcher.rs`.
+  Stateful adapter wrapping `MomentumStrategy` + `CashHoldStrategy`.
+  Routes per D3 table: Bull/Bear → Momentum; Volatile/Calm → CashHold.
+  — _acceptance: routing-table coverage test (4 regimes × 2 strategies)._
+- [ ] **T-D-C3** — D6 confidence gate: dispatcher only switches when
+  `max_p ≥ 0.70`. Below threshold, previous regime's strategy keeps
+  running. — _acceptance: D6 falsifier tests pass (Wave A defined
+  the contract; Wave C wires)._
+- [ ] **T-D-C4** — Transition semantics: Bull/Bear → Volatile/Calm
+  suppresses NEW signals; existing positions HELD. Reverse transition
+  resumes momentum forwarding. — _acceptance: transition lifecycle
+  test._
+
+#### Wave D — Audit + Trail UI surface
+
+- [ ] **T-D-D1** — Add `JournalEntry::RegimeTag { ts, symbol, regime,
+  max_confidence }` additive variant in `crates/audit`. — _acceptance:
+  serde round-trip; SQLite schema migration additive only._
+- [ ] **T-D-D2** — Phase F Trail UI: regime-tag-per-bar column or
+  per-symbol modal (architect default = column). Register `volatile`,
+  `calm` in `crates/ui/src/strings.rs::all()`. — _acceptance:
+  R-NR.4 zero-new-design-tokens; spec-lint PASS._
+
+#### Wave E — Backtest scenarios + anchors (D5 namespace)
+
+- [ ] **T-D-E1** — 2 scenario equity-curve runs under namespace
+  `v3.0.0-regime`:
+  - `top10-2023-fy-regime-dispatcher-realdata` (train window).
+  - `top10-2024-fy-regime-dispatcher-realdata` (val window; Q5=(b)
+    10 pairs; Q2=(c) split).
+  — _acceptance: deterministic byte-output; per-bar regime tag
+  + max_confidence logged._
+- [ ] **T-D-E2** — New V-REG bin `crates/forecast/src/bin/regime_verdict.rs`.
+  Emits `regime-verdict-bs1-realdata`. Implements V-REG priority tree
+  per ADR-0049 § D4. — _acceptance: V-REG-1..V-REG-5 mutual
+  exclusivity test (ADR-0038 § D1 precedent)._
+- [ ] **T-D-E3** — Extend `crates/forecast/src/bin/sharpe_comparison.rs`
+  with regime-dispatcher dispatch arm. Emits
+  `sharpe-comparison-regime-dispatcher-bs1-realdata`. — _acceptance:
+  T-REG-ALPHA-UNLOCKED / T-REG-MARGINAL / T-REG-NO-ALPHA classifier
+  test._
+- [ ] **T-D-E4** — Add 4 new anchors to `spec/anchors.toml` under
+  namespace `v3.0.0-regime`. 70 → 74. — _acceptance: `verify_anchors.sh`
+  PASS 74/74; zero existing-SHA delta._
+
+#### Wave F — e2e divergence gate + tester harness (CLAUDE.md non-negotiable)
+
+- [ ] **T-D-F1** — New `crates/strategy/tests/regime_dispatcher_end_to_end.rs`.
+  Pattern copied from `vol_targeting_overlay_end_to_end.rs`. Asserts
+  dispatcher equity ≠ un-conditional v1 momentum baseline by ≥ 1 bp
+  when regime tag is non-trivial. — _acceptance: divergence ≥ 1 bp on
+  the 2023+2024 fixture; K6 noop-fix precedent foreclosed._
+- [ ] **T-D-F2** — Pre-flight smoke: full `cargo test --workspace` PASS;
+  `bash scripts/verify_anchors.sh` PASS (74/74).
+
+### Tester rows (T-F) — ACTIVE on developer M-DEV completion
+
+- [ ] **T-F1** — Standard test-report.md per
+  `.claude/skills/rust-test/templates/test-report.md`. R1-R5 + R-NR.1-6
+  conformance gate. V-REG + T-REG joint verdict per ADR-0049 § D4
+  table; route R-O1/R-O2/R-O3/R-O4 per feature.md § 4-cell verdict
+  tree.
+- [ ] **T-F2** — Anchor lock under namespace `v3.0.0-regime`
+  (ADR-0049 § D5). 70 → 74. `bash scripts/verify_anchors.sh` PASS.
+- [ ] **T-F3** — 30 v2.5-chain + 40 v0.x existing anchors verified
+  byte-identical (R1 + K4 invariant). Zero existing-SHA delta.
+- [ ] **T-F4** — Lesson-card embedding K4 determinism verified across
+  the 4-state extension (`regime_overlay_neutrality_4state.rs` PASS;
+  legacy `embedding_determinism.rs` family PASS). If the D2 escape
+  hatch tripped at Wave B-4, V1/V2 schema is documented in the test
+  report.
+- [ ] **T-F5** — R-NR.6 e2e divergence gate
+  (`regime_dispatcher_end_to_end.rs`) PASS — divergence ≥ 1 bp.
+  **MANDATORY** CLAUDE.md non-negotiable; K6 noop-fix precedent
+  foreclosed.
+- [ ] **T-F6** — Presenter deck + operator approval (M-FINAL).
 
 ## Handoff envelope (analyst → operator-decide AFTER C1 ships)
 
