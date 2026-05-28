@@ -31,33 +31,51 @@ updated: 2026-05-28
 
 ### Wave A — Feature-flagged rebuild + 8-scenario re-emission (~0.5-1 day)
 
-- [ ] Build canonical binary: `cargo build --release -p backtest --features "candle realdata"` on Apple Silicon
-- [ ] Run each of the 8 scenarios under canonical `LatencySlippageSimConfig { 30, 80, 8 }` (ADR-0045 D1; ADR-0047 D4 inherits unchanged):
-  - [ ] `top10-2023-fy-tcn-overlay-weights`
-  - [ ] `top10-2024-fy-tcn-overlay-weights`
-  - [ ] `top10-2023-fy-tcn-overlay-realdata`
-  - [ ] `top10-2024-fy-tcn-overlay-realdata`
-  - [ ] `top10-2023-fy-tcn-overlay-weights-realdata`
-  - [ ] `top10-2024-fy-tcn-overlay-weights-realdata`
-  - [ ] `top10-2023-fy-patchtst-overlay-realdata`
-  - [ ] `top10-2023-fy-vol-target-overlay-realdata`
-- [ ] Emit reports to `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-<YYYYMMDD>-<HHMMSS>-<scenario>.md`
-- [ ] **Determinism gate**: run each scenario twice; assert byte-identical body-SHAs (R-NR + K4 falsifier)
+- [x] Build canonical binary: `cargo build --release -p backtest --features "candle realdata"` on Apple Silicon
+  - file: `crates/backtest/Cargo.toml` (feature definitions lines 21-33)
+  - test cmd: `cargo build --release -p backtest --features "candle realdata"`
+  - output: `Finished 'release' profile [optimized] target(s) in 7.38s`
+- [x] Run each of the 8 scenarios under canonical `LatencySlippageSimConfig { 30, 80, 8 }` (ADR-0045 D1; ADR-0047 D4 inherits unchanged):
+  - [x] `top10-2023-fy-tcn-overlay-weights` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182120-top10-2023-fy-tcn-overlay-weights.md`
+  - [x] `top10-2024-fy-tcn-overlay-weights` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182154-top10-2024-fy-tcn-overlay-weights.md`
+  - [x] `top10-2023-fy-tcn-overlay-realdata` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182204-top10-2023-fy-tcn-overlay-realdata.md`
+  - [x] `top10-2024-fy-tcn-overlay-realdata` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182214-top10-2024-fy-tcn-overlay-realdata.md`
+  - [x] `top10-2023-fy-tcn-overlay-weights-realdata` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182304-top10-2023-fy-tcn-overlay-weights-realdata.md`
+  - [x] `top10-2024-fy-tcn-overlay-weights-realdata` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182352-top10-2024-fy-tcn-overlay-weights-realdata.md`
+  - [x] `top10-2023-fy-patchtst-overlay-realdata` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182438-top10-2023-fy-patchtst-overlay-realdata.md`
+  - [x] `top10-2023-fy-vol-target-overlay-realdata` → `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-182448-top10-2023-fy-vol-target-overlay-realdata.md`
+- [x] Emit reports to `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-<YYYYMMDD>-<HHMMSS>-<scenario>.md`
+  - All 8 reports emitted at `20260528-18xxxx` timestamps.
+- [x] **Determinism gate**: run each scenario twice; assert byte-identical body-SHAs (R-NR + K4 falsifier)
+  - All 8 second-run SHAs byte-match first-run SHAs. Compound determinism (candle × realdata × friction) confirmed. K4 NOT triggered.
+  - test cmd: `python3 scripts/hash_report.py <path>` on both runs
+  - output: 8/8 SHA pairs identical
 
 ### Wave B — Anchor SHA migration (~0.1 day)
 
-- [ ] Update 8 SHAs in `spec/anchors.toml` canonical section (lines 392-420 + 472-475 + 482-485); namespace pin `v5-realdata-medium-2026-05` unchanged
-- [ ] Run `bash scripts/verify_anchors.sh` → expect `ANCHORS PASS (70 / 70)`
+- [x] Update 8 SHAs in `spec/anchors.toml` canonical section (lines 392-420 + 472-475 + 482-485); namespace pin `v5-realdata-medium-2026-05` unchanged
+  - file:line: `spec/anchors.toml` lines 395, 400, 405, 410, 415, 420, 475, 485
+  - Also updated: `scripts/verify_anchors.sh` — added `migration_dir_v04` variable; resolver updated to check v0.4.0 first
+- [x] Run `bash scripts/verify_anchors.sh` → `ANCHORS PASS (70 / 70)`
+  - test cmd: `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS  (70 / 70)`
 
 ### Wave C — Sharpe-delta table addendum (~0.25 day)
 
-- [ ] Author `reports/sharpe-delta-table-<DATE>.md` extending v0.3.0 series; flip Groups E-H from `=noop (candle/realdata absent)` to live Δ Equity / Δ Sharpe
-- [ ] Run K1 surprise scan across the 8 newly-friction-real scenarios; verify H3 holds (0 K1 surprises) or flag for R-O2 route
+- [x] Author `reports/sharpe-delta-table-<DATE>.md` extending v0.3.0 series; flip Groups E-H from `=noop (candle/realdata absent)` to live Δ Equity / Δ Sharpe
+  - file: `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/sharpe-delta-table-2026-05-28.md`
+  - 19 friction-real scenarios now covered (was 11 at v0.3.0)
+- [x] Run K1 surprise scan across the 8 newly-friction-real scenarios; verify H3 holds (0 K1 surprises) or flag for R-O2 route
+  - Result: **0 K1 surprises.** H3 holds. All 8 scenarios remain equity-positive under canonical friction. No retirement candidates.
+  - H1 CONFIRMED (candle path). H2 FALSIFIED (PatchTST fewer trades). H3 CONFIRMED.
 
 ### Wave D — t1937b `CANONICAL_STRATEGY_ANCHORS` table extension (~0.1 day)
 
-- [ ] Extend `crates/reports/tests/strategy_anchors_unchanged.rs` `CANONICAL_STRATEGY_ANCHORS` with 8 new entries
-- [ ] `cargo test -p reports --test strategy_anchors_unchanged` → expect 3/3 PASS (t1937 + t1937b + t1942)
+- [x] Extend `crates/reports/tests/strategy_anchors_unchanged.rs` `CANONICAL_STRATEGY_ANCHORS` with 8 new entries
+  - file:line: `crates/reports/tests/strategy_anchors_unchanged.rs` lines 79-82 (CANONICAL_FEATURE_DIRS), lines 214+ (8 new CANONICAL_STRATEGY_ANCHORS entries)
+- [x] `cargo test -p reports --test strategy_anchors_unchanged` → `3/3 PASS` (t1937 + t1937b + t1942)
+  - test cmd: `cargo test -p reports --test strategy_anchors_unchanged`
+  - output: `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s`
 
 ## M-FINAL — Tester (~0.5 day)
 

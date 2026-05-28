@@ -392,32 +392,32 @@ sha256   = "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e"
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4"
+sha256   = "28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"
+sha256   = "0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642"
+sha256   = "10fd4502d9057f9390d4869c32ef1c65dc93d91b8574a740b198f995b2563d37"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3"
+sha256   = "87dfad459bcbb0640dd70985063f25da985dbb4f39776c99bbe9056ccceda61b"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70"
+sha256   = "123d8228e50536c9094bc8605ecae2e0aadbdcd8a4bf854e5ae3e5f3414413a7"
 
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c"
+sha256   = "21bec3c9f9da750853ddcc571246ba00d00b3903d18a0f6989b1434f8c72b612"
 
 [[anchors]]
 scenario = "forecast-distribution-bs1-realdata"
@@ -472,7 +472,7 @@ sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
 [[anchors]]
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
 version  = "v2.5a.0-patchtst + v5-realdata-medium-2026-05"
-sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"
+sha256   = "55c5b715e6f5573e73c2db4b9aae859cf6d52472cbac6918920ac7afd7f36e6b"
 
 [[anchors]]
 scenario = "vol-verdict-bs1-realdata"
@@ -482,7 +482,7 @@ sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
-sha256   = "9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f"
+sha256   = "4edd8cc5f3041e308d4c83cfcf35109da9b9e4a363d7b6bc6d8d4407e50aa8ce"
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"

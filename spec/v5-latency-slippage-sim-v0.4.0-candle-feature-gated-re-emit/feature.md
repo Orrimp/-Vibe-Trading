@@ -2,7 +2,7 @@
 slug: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
 version: 0.1.0
 status: draft
-owner: developer
+owner: tester
 updated: 2026-05-28
 predecessor: v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0
 parent: backtest-vs-live-execution-gap
@@ -174,7 +174,56 @@ Outstanding architect-side risk (forwarded to developer): the determinism gate a
 
 ## Implementation
 
-_Developer M-DEV populates after rebuild + re-emission._
+**M-DEV completed 2026-05-28 on canonical Apple Silicon box (Darwin 25.5.0, Apple Silicon M-series).**
+
+### Wave A — Feature-flagged rebuild + 8-scenario re-emission
+
+- **T-D-N1 (Build precondition)**: `cargo build --release -p backtest --features "candle realdata"` completed in 7.38s. No compile errors.
+- **T-D-N2 (First emission)**: All 8 scenarios run under `LatencySlippageSimConfig { latency_ms_min: 30, latency_ms_max: 80, slippage_bps: 8 }`. Reports emitted to `spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260528-<HHMMSS>-<scenario>.md`.
+- **T-D-N3 (Determinism gate — LOAD-BEARING PASS)**: All 8 scenarios run a second time to `/tmp/v0.4.0-run2/`. Every SHA matches the first run byte-for-byte. Compound determinism (candle × realdata × friction) confirmed.
+
+| Scenario | Feature Flags | Run 1 SHA | Run 2 SHA | Match |
+|----------|---------------|-----------|-----------|-------|
+| top10-2023-fy-tcn-overlay-weights | candle | `28379df8...` | `28379df8...` | PASS |
+| top10-2024-fy-tcn-overlay-weights | candle | `0c13ed0b...` | `0c13ed0b...` | PASS |
+| top10-2023-fy-tcn-overlay-realdata | realdata | `10fd4502...` | `10fd4502...` | PASS |
+| top10-2024-fy-tcn-overlay-realdata | realdata | `87dfad45...` | `87dfad45...` | PASS |
+| top10-2023-fy-tcn-overlay-weights-realdata | candle+realdata | `123d8228...` | `123d8228...` | PASS |
+| top10-2024-fy-tcn-overlay-weights-realdata | candle+realdata | `21bec3c9...` | `21bec3c9...` | PASS |
+| top10-2023-fy-patchtst-overlay-realdata | candle+realdata | `55c5b715...` | `55c5b715...` | PASS |
+| top10-2023-fy-vol-target-overlay-realdata | realdata | `4edd8cc5...` | `4edd8cc5...` | PASS |
+
+### Wave B — Anchor SHA migration
+
+- **T-D-N4**: `spec/anchors.toml` lines updated in-place for all 8 scenarios under namespace `v5-realdata-medium-2026-05`. Namespace pin unchanged.
+- `scripts/verify_anchors.sh` updated: `migration_dir_v04` variable added; resolver checks v0.4.0 dir first, then v0.3.0, then v0.2.0.
+- **T-D-N5**: `bash scripts/verify_anchors.sh` → `ANCHORS PASS (70 / 70)`. Count unchanged; 8 SHAs updated in-place.
+
+### Wave C — Sharpe-delta table addendum
+
+- **T-D-N6**: `reports/sharpe-delta-table-2026-05-28.md` authored. Groups E-H flip from `=noop (candle/realdata absent)` to live Δ Equity rows. Fleet: 11 → 19 friction-real scenarios.
+- **T-D-N7 (K1 surprise scan)**: 0 K1 surprises across all 8 scenarios. All remain equity-positive under canonical friction. H3 holds.
+  - Notable finding: TCN-realdata drag ($36.5k per scenario) is ~19× larger than TCN-synthetic ($1.9k) due to ~5× trade-frequency amplification on real Binance hourly data. H1 confirmed (synthetic path) but the realdata path shows the compounding effect of real-world signal frequency.
+  - H2 falsified: PatchTST generated fewer trades (3,187) than TCN-realdata (6,203), not more.
+
+### Wave D — t1937b CANONICAL_STRATEGY_ANCHORS extension
+
+- `crates/reports/tests/strategy_anchors_unchanged.rs` updated:
+  - `CANONICAL_FEATURE_DIRS` extended with `v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit`
+  - `CANONICAL_STRATEGY_ANCHORS` extended with 8 new entries (Groups F-J)
+- `cargo test -p reports --test strategy_anchors_unchanged` → `3/3 PASS` (t1937 + t1937b + t1942)
+
+### Wave E — Cross-feature e2e re-check (T-D-N8)
+
+- `cargo test -p strategy --test latency_slippage_sim_e2e` → `3/3 PASS`
+- `cargo test -p strategy --test vol_targeting_overlay_end_to_end` → `1/1 PASS`
+- `cargo test -p strategy --test vol_killswitch_overlay_end_to_end` → `4/4 PASS`
+
+### Final gate checks
+
+- `cargo fmt --all -- --check` → PASS (no formatting changes needed)
+- `cargo clippy -p backtest --features "candle realdata" -- -D warnings` → PASS (0 new warnings)
+- `cargo test --workspace --no-fail-fast` → PASS (0 failures; all test groups pass)
 
 ## Verification
 

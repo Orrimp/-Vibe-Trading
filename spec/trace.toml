@@ -1950,17 +1950,27 @@ arch        = [
   "crates/forecast/checkpoints/anchors/patchtst-bs1-62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d.metadata.json",  # K2 PatchTST checkpoint anchor — model_revision byte-matches analyst-cited 62520db9...
 ]
 crates      = [
-  # Developer M-DEV populates after rebuild + re-emission. v0.4.0 is rebuild-only;
-  # no library code is touched. The plumbing was discharged at v0.3.0 Wave A.
-  "spec/anchors.toml",                                                          # R2 — 8 in-place SHA updates under v5-realdata-medium-2026-05 namespace (lines 392-420 + 472-475 + 482-485)
-  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # Wave D — CANONICAL_STRATEGY_ANCHORS extended with 8 new entries
+  # Developer M-DEV completed 2026-05-28 on Apple Silicon canonical box.
+  # v0.4.0 is rebuild-only; no library code is touched. The plumbing was discharged at v0.3.0 Wave A.
+  "spec/anchors.toml",                                                          # R2 — 8 in-place SHA updates under v5-realdata-medium-2026-05 namespace; anchors PASS 70/70
+  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # Wave D — CANONICAL_FEATURE_DIRS extended with v0.4.0 dir; CANONICAL_STRATEGY_ANCHORS extended with 8 new entries
+  "scripts/verify_anchors.sh",                                                  # Updated: migration_dir_v04 added; resolver checks v0.4.0 first, then v0.3.0, then v0.2.0
 ]
 tests       = [
-  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # t1937 + t1937b + t1942 — 3/3 PASS expected post-Wave D
-  "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # R-NR.6 — ≥ 1 bp divergence stays green
-  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # R-NR.6 — ≥ 1 bp divergence stays green
-  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # R-NR.6 — ≥ 1 bp divergence stays green
+  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # t1937 + t1937b + t1942 — 3/3 PASS (cargo test -p reports --test strategy_anchors_unchanged)
+  "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # R-NR.6 — 3/3 PASS (cargo test -p strategy --test latency_slippage_sim_e2e)
+  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # R-NR.6 — 1/1 PASS (cargo test -p strategy --test vol_targeting_overlay_end_to_end)
+  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # R-NR.6 — 4/4 PASS (cargo test -p strategy --test vol_killswitch_overlay_end_to_end)
 ]
-anchors     = []     # Tester M-FINAL populates after re-emission. Target: 70/70 PASS (same row count as v0.3.0; 8 SHAs updated in-place).
-state       = "in-progress"  # architect M-T1 FAST-SKIP closed 2026-05-28 — ADR-0047 D1-D6 carries forward unchanged for v0.4.0; K1 confirmed at Cargo manifest level (canonical-box Metal validation deferred to M-DEV Wave A determinism gate); K2 both preconditions INTACT (REVISION.toml SHA 3a8b96...bfc7 byte-match + PatchTST checkpoint 62520db9... present on disk). HANDOFF → developer for M-DEV Waves A-D (Q1-Q2 standing-Autoapprove inherits; M-OD empty).
+anchors     = [
+  "28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc",  # top10-2023-fy-tcn-overlay-weights (2-run verified)
+  "0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137",  # top10-2024-fy-tcn-overlay-weights (2-run verified)
+  "10fd4502d9057f9390d4869c32ef1c65dc93d91b8574a740b198f995b2563d37",  # top10-2023-fy-tcn-overlay-realdata (2-run verified)
+  "87dfad459bcbb0640dd70985063f25da985dbb4f39776c99bbe9056ccceda61b",  # top10-2024-fy-tcn-overlay-realdata (2-run verified)
+  "123d8228e50536c9094bc8605ecae2e0aadbdcd8a4bf854e5ae3e5f3414413a7",  # top10-2023-fy-tcn-overlay-weights-realdata (2-run verified)
+  "21bec3c9f9da750853ddcc571246ba00d00b3903d18a0f6989b1434f8c72b612",  # top10-2024-fy-tcn-overlay-weights-realdata (2-run verified)
+  "55c5b715e6f5573e73c2db4b9aae859cf6d52472cbac6918920ac7afd7f36e6b",  # top10-2023-fy-patchtst-overlay-realdata (2-run verified)
+  "4edd8cc5f3041e308d4c83cfcf35109da9b9e4a363d7b6bc6d8d4407e50aa8ce",  # top10-2023-fy-vol-target-overlay-realdata (2-run verified)
+]
+state       = "dev-complete"  # developer M-DEV Waves A-D complete 2026-05-28. Build: cargo build --release -p backtest --features "candle realdata" PASS. 8 scenarios emitted × 2-run determinism gate ALL-PASS. anchors PASS 70/70. t1937+t1937b+t1942 PASS. e2e gates 8/8 PASS. HANDOFF → tester for M-FINAL.
 

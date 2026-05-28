@@ -22,6 +22,10 @@
 # v5 v0.3.0 amendment (ADR-0047 D3 / T-D-N9):
 # Canonical migration dirs expanded to include v0.3.0-full-path-wiring.
 # The resolver first checks v0.3.0 dir, then v0.2.0 dir (newest wins).
+#
+# v5 v0.4.0 amendment (2026-05-28):
+# Canonical migration dirs expanded to include v0.4.0-candle-feature-gated-re-emit.
+# The resolver first checks v0.4.0 dir, then v0.3.0 dir, then v0.2.0 dir (newest wins).
 
 set -euo pipefail
 
@@ -30,6 +34,7 @@ anchors="$root/spec/anchors.toml"
 hasher="$root/scripts/hash_report.py"
 migration_dir_v02="$root/spec/v5-latency-slippage-sim-v0.2.0-anchor-migration"
 migration_dir_v03="$root/spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring"
+migration_dir_v04="$root/spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit"
 # Combined pattern for excluding all canonical dirs from noop-baseline search:
 canonical_dirs_pattern="$root/spec/v5-latency-slippage-sim-v0"
 
@@ -83,9 +88,13 @@ while IFS= read -r line; do
                     | sort | tail -1 || true)"
             fi
         elif [[ "$version" == *"v5-realdata-medium-2026-05"* ]]; then
-            # canonical: prefer v0.3.0 migration dir, then v0.2.0, then global newest
-            latest="$(find "$migration_dir_v03" -type f -name "backtest-*-$scenario.md" \
+            # canonical: prefer v0.4.0 migration dir, then v0.3.0, then v0.2.0, then global newest
+            latest="$(find "$migration_dir_v04" -type f -name "backtest-*-$scenario.md" \
                 2>/dev/null | sort | tail -1 || true)"
+            if [[ -z "$latest" ]]; then
+                latest="$(find "$migration_dir_v03" -type f -name "backtest-*-$scenario.md" \
+                    2>/dev/null | sort | tail -1 || true)"
+            fi
             if [[ -z "$latest" ]]; then
                 latest="$(find "$migration_dir_v02" -type f -name "backtest-*-$scenario.md" \
                     2>/dev/null | sort | tail -1 || true)"

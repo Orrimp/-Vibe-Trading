@@ -79,6 +79,7 @@ enum Namespace {
 const CANONICAL_FEATURE_DIRS: &[&str] = &[
     "v5-latency-slippage-sim-v0.2.0-anchor-migration",
     "v5-latency-slippage-sim-v0.3.0-full-path-wiring",
+    "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit",
 ];
 
 /// Predicate: returns `true` if any path component matches a canonical
@@ -209,6 +210,45 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     (
         "top10-2024-fy-tcn-overlay",
         "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e",
+    ),
+    // Group F: TCN overlay weights (candle feature — v0.4.0 re-emit, 2026-05-28)
+    // Reports in spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/
+    // Built with --features "candle realdata"; 2-run determinism verified.
+    (
+        "top10-2023-fy-tcn-overlay-weights",
+        "28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc",
+    ),
+    (
+        "top10-2024-fy-tcn-overlay-weights",
+        "0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137",
+    ),
+    // Group G: TCN overlay realdata (realdata feature — v0.4.0 re-emit, 2026-05-28)
+    (
+        "top10-2023-fy-tcn-overlay-realdata",
+        "10fd4502d9057f9390d4869c32ef1c65dc93d91b8574a740b198f995b2563d37",
+    ),
+    (
+        "top10-2024-fy-tcn-overlay-realdata",
+        "87dfad459bcbb0640dd70985063f25da985dbb4f39776c99bbe9056ccceda61b",
+    ),
+    // Group H: TCN overlay weights+realdata (both features — v0.4.0 re-emit, 2026-05-28)
+    (
+        "top10-2023-fy-tcn-overlay-weights-realdata",
+        "123d8228e50536c9094bc8605ecae2e0aadbdcd8a4bf854e5ae3e5f3414413a7",
+    ),
+    (
+        "top10-2024-fy-tcn-overlay-weights-realdata",
+        "21bec3c9f9da750853ddcc571246ba00d00b3903d18a0f6989b1434f8c72b612",
+    ),
+    // Group I: PatchTST overlay realdata (candle+realdata features — v0.4.0 re-emit, 2026-05-28)
+    (
+        "top10-2023-fy-patchtst-overlay-realdata",
+        "55c5b715e6f5573e73c2db4b9aae859cf6d52472cbac6918920ac7afd7f36e6b",
+    ),
+    // Group J: Vol-target GARCH overlay realdata (realdata feature — v0.4.0 re-emit, 2026-05-28)
+    (
+        "top10-2023-fy-vol-target-overlay-realdata",
+        "4edd8cc5f3041e308d4c83cfcf35109da9b9e4a363d7b6bc6d8d4407e50aa8ce",
     ),
 ];
 
