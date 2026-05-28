@@ -1,8 +1,8 @@
 ---
 slug: v3-regime-classifier
 version: 0.1.0
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-28
 predecessor: spec/dev-notes/strategy-reformulation-survey-2026-05-22.md (Candidate 2)
 parent: v3-three-pick

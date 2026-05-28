@@ -82,17 +82,59 @@ updated: 2026-05-22
   per Q-SEQ hybrid. Reference: this brief + the survey + the seed
   file.
 
-## DEFERRED — Architect / developer / tester rows
+## M-OD — Operator decides (Q1-Q5)
 
-> **No work past T-A5 until activation gate fires.** Per operator-
-> decide 2026-05-22 Q-SEQ = HYBRID: C1 (volatility) builds first;
-> this feature's M-T1+ waves activate on:
-> (a) C1 verdict landed AND operator routing = promote-C2; OR
-> (b) operator explicit promote-C2 directive.
-> When activation fires, orchestrator re-spawns analyst for a
-> light-touch **M-A5 refresh** (re-read this brief; confirm no drift
-> in `crates/reflection/src/regime.rs` since 2026-05-22; surface
-> any new Q's) before architect M-T1.
+_owner: operator. **RESOLVED 2026-05-28** after analyst M-A5 refresh._
+
+- [x] **T-OD1** (2026-05-28) — Q1 regime taxonomy = **(b) 4-state
+  Bull/Bear/Volatile/Calm** (overrode analyst default of 3-state
+  for richer regime semantics). K4 lesson-card embedding determinism
+  becomes architect M-T1 surface — new `RegimeTag::Volatile` +
+  `RegimeTag::Calm` enum variants must APPEND (not insert) to
+  preserve the byte-identity contract.
+- [x] **T-OD2** (2026-05-28) — Q2 training window = **(a) 2023+2024
+  real-Binance hourly OHLCV** + **(c) 2023→train / 2024→val split**
+  (analyst default). Reuses `data/binance/REVISION.toml` lock SHA
+  `3a8b96c4…`. Defer 2022 extension to v0.2.0.
+- [x] **T-OD3** (2026-05-28) — Q3 model class = **(b) Markov-switching
+  regression (Hamilton 1989)** (overrode analyst default of HMM for
+  long-term composability + Q4 dispatcher fit). Per orchestrator
+  analysis: Markov-switching gives interpretable per-regime {μ, σ²}
+  parameters that map naturally onto Q1's 4-state semantics; forward
+  filter gives the dispatcher (Q4) confidence intervals for K-reg-2
+  mitigation; reuses retired GARCH MLE infra; trait-based seam for
+  v0.2.0+ DL upgrades.
+- [x] **T-OD4** (2026-05-28) — Q4 integration mode = **(b) Strategy-
+  switching dispatcher** (overrode analyst default of overlay-style
+  multiplier for more expressive integration). **LOAD-BEARING for
+  architect M-T1**: the dispatcher prerequisite (no v1.5 mean-reversion
+  strategy exists for Chop / Volatile regimes) becomes a HARD QUESTION
+  the architect must resolve. Options surfaced for architect:
+    - (i) Degenerate "hold cash / Flat" strategy for Chop + Volatile
+      regimes (most conservative; minimum scope impact)
+    - (ii) Build v1.5 mean-reversion sibling as part of v0.1.0 scope
+      (HUGE scope blow-up — likely route back to operator)
+    - (iii) Regime-conditional position sizing on v1 momentum
+      (degrades back to overlay; defeats Q4=(b) choice)
+  Architect-recommend (i) for v0.1.0; (ii) deferred to v0.2.0.
+- [x] **T-OD5** (2026-05-28) — Q5 v0.1.0 scope = **(b) all 10 USDT
+  pairs** (analyst default). Matches v1 momentum's basket so H1
+  +0.10 Sharpe-delta gate is computed against the right baseline.
+
+**Cost framing (revised post-locks)**: ~5-7 weeks (was analyst-estimate
+~4-6 weeks). The Q1+Q3+Q4 overrides add ~1-2 weeks: 4-state Markov-
+switching with 4 distinct {μ, σ²} fits is ~1 week of architect +
+dev work over 3-state HMM; dispatcher (Q4=(b)) with degenerate-cash
+fallback adds ~half-week over overlay-style multiplier.
+
+## DEFERRED — was deferred 2026-05-22; ACTIVATED 2026-05-28
+
+> Activation gate fired 2026-05-28: operator promoted Queue → Active
+> after the v2.5 TCN re-investigation analyst-halt save. C1 + C5
+> outcomes detailed in feature.md frontmatter sibling_picks.
+> M-A5 light-touch refresh completed by analyst agent a78dc46ac61e304ee
+> (API socket-aborted at tool 34; orchestrator inline-finished
+> bookkeeping). Architect M-T1 now active.
 
 ### Architect rows (T-AR) — DEFERRED
 
