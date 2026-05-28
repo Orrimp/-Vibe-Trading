@@ -604,31 +604,16 @@ pub fn spawn_lab_run(
                 #[cfg(feature = "yahoo")]
                 {
                     if cfg_for_preload.data_source == crate::lab::state::LabDataSource::YahooCache {
-                        // Bug #64 D.1.1 — animate the preload sentinel.
-                        //
-                        // During cold-cache Yahoo fetches (30-60 s on first run
-                        // for a ticker, ≤5 s on cache hits) the operator sees the
-                        // bar ticking instead of a static "0 / 1 bars · 0.0s".
-                        //
-                        // Strategy: emit a Progress sentinel every 250 ms while
-                        // `preload_yahoo_bars` is awaited, racing via
-                        // `tokio::select!`. Each tick carries the real
-                        // wall-clock elapsed since preload start so the label
-                        // advances visibly. The ticker is cancelled as soon as
-                        // preload completes — no extra events leak through.
-                        //
+                        // Bug #64 — emit a sentinel Progress event BEFORE the
+                        // network/disk preload await so the operator sees an
+                        // explicit 0%-with-label state instead of the 30%
+                        // indeterminate fallback during the wait. (Cold cache
+                        // misses can spin for 30-60 s on the Yahoo round-trip.)
                         // `total_bars = 1` is a placeholder; the real value
                         // arrives once the engine's bar loop emits its first
-                        // event. The widget renders 0% with label
-                        // "0 / 1 bars · X.Xs" — clearly identifiable as a
+                        // event. The widget renders this as 0% with label
+                        // "0 / 1 bars · 0.0s" — clearly identifiable as a
                         // pre-engine state.
-                        let preload_start = std::time::Instant::now();
-                        let mut ticker =
-                            tokio::time::interval(std::time::Duration::from_millis(250));
-                        // Consume the immediate first tick so the first sleep is ~250 ms.
-                        ticker.tick().await;
-                        // Emit one sentinel immediately so the bar appears at 0%
-                        // before the first 250 ms interval fires.
                         progress_tx.try_send(backtest::progress::Progress {
                             current_bar: 0,
                             total_bars: 1,
@@ -651,30 +636,8 @@ pub fn spawn_lab_run(
                             .as_ref()
                             .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
 
-                        // Race the preload against the periodic ticker.
-                        // When preload wins, we break out of the loop.
-                        // When the ticker fires, we emit a sentinel and loop again.
-                        let preload_result = loop {
-                            tokio::select! {
-                                biased;
-                                result = preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range) => {
-                                    break result;
-                                }
-                                _ = ticker.tick() => {
-                                    // Clamp to u64::MAX on overflow (impossible in
-                                    // practice — preload is bounded to ~5 min by
-                                    // the per-attempt timeout in fetch_with_backoff).
-                                    let elapsed_ms = u64::try_from(
-                                        preload_start.elapsed().as_millis()
-                                    ).unwrap_or(u64::MAX);
-                                    progress_tx.try_send(backtest::progress::Progress {
-                                        current_bar: 0,
-                                        total_bars: 1,
-                                        elapsed_ms,
-                                    });
-                                }
-                            }
-                        };
+                        let preload_result =
+                            preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await;
                         match preload_result {
                             Ok((bars, _sha)) => {
                                 scenario_cfg.data_source =

@@ -118,78 +118,6 @@ Dev-note with full 11-hop code-path trace + 3 scoped fix options (not applied; o
 
 Operator picks which (if any) to apply.
 
-#### Fix entry — D.1.1 + D.2.1 applied 2026-05-28
-
-**Fix label**: D.1.1 (sentinel ticker) + D.2.1 (post-completion linger)
-**Commit**: `<pending>` (orchestrator fills SHA at commit time)
-**Date**: 2026-05-28
-
-**D.1.1 — Animate the preload sentinel (`crates/ui/src/lab/runner.rs`)**
-
-File:line citations:
-- `crates/ui/src/lab/runner.rs:607` — D.1.1 comment block and ticker setup
-- `crates/ui/src/lab/runner.rs:631` — immediate sentinel emit (Progress { 0, 1, 0 }) before first tick
-- `crates/ui/src/lab/runner.rs:654-672` — `tokio::select!` loop racing preload against 250 ms interval;
-  each tick emits `Progress { current_bar: 0, total_bars: 1, elapsed_ms: <real> }` so the
-  operator sees the label `"0 / 1 bars · X.Xs"` advance during the cold-cache 30–60 s window.
-
-Mechanism: `tokio::time::interval(250ms)` created before the preload; its first tick is consumed
-immediately (so the first real interval delay is ~250 ms). A `tokio::select!` with `biased;`
-ensures the preload future is always checked first; when it wins, the result is captured via
-`break`. Ticker is dropped when the loop exits — no extra events leak.
-
-**D.2.1 — Post-completion linger (~500 ms) across 2 files**
-
-File:line citations (`crates/ui/src/lab/state.rs`):
-- `lab/state.rs:252-256` — new `progress_linger_id: u32` field on `LabState`
-  (also updated in `Clone` impl and both `Default`/`with_selection` constructors)
-- `state.rs:1532-1538` — new `Message::LabClearLingerProgress(u32)` variant
-- `state.rs:2148-2150` — `LabRunRequested` increments `progress_linger_id`
-  (stale timer guard for fast re-press within 500 ms)
-- `state.rs:2157-2163` — `LabRunCompleted` no longer clears `run_progress`
-  (removed the immediate `None` clear; linger timer now owns the clear)
-- `state.rs:2179-2187` — `LabRunProgressDone` is a no-op for `run_progress`;
-  `LabClearLingerProgress(id)` clears only if `id == progress_linger_id`
-
-File:line citations (`crates/ui/src/bin/cockpit_live.rs`):
-- `cockpit_live.rs:1291-1312` — `linger_task` built on `lab_run_completed_any`;
-  `tokio::time::sleep(500ms)` via `rt_handle.spawn`, emits `LabClearLingerProgress(id)`
-- `cockpit_live.rs:1338-1344` — batch linger with `ChartMarkersLoaded` early-return path
-- `cockpit_live.rs:1416-1419` — batch linger with `ChartMarkersLoaded+ChartSignalsLoaded` path
-- `cockpit_live.rs:1580-1584` — batch linger with the base task from the normal return chain
-
-**Test evidence**:
-
-```
-cargo test -p ui --lib -- \
-  tests::lab_run_completed_does_not_clear_run_progress \
-  tests::lab_clear_linger_progress_matching_id_clears_progress \
-  tests::lab_clear_linger_progress_stale_id_does_not_clear \
-  tests::lab_run_progress_done_does_not_clear_run_progress
-
-running 4 tests
-test state::tests::lab_run_progress_done_does_not_clear_run_progress ... ok
-test state::tests::lab_clear_linger_progress_stale_id_does_not_clear ... ok
-test state::tests::lab_clear_linger_progress_matching_id_clears_progress ... ok
-test state::tests::lab_run_completed_does_not_clear_run_progress ... ok
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 411 filtered out
-```
-
-Full gate results:
-- `cargo fmt --all` — clean
-- `cargo build -p ui` — `Finished dev profile` (0 errors)
-- `cargo clippy -p ui --all-targets -- -D warnings` — 0 new warnings from changed files
-- `cargo test -p ui --lib` — **415 passed** (baseline 411; +4 new linger tests)
-- `cargo test -p ui --test cockpit_training_pressed_wiring --features live` — **5/5 passed**
-- `bash scripts/verify_anchors.sh` — **ANCHORS PASS (70 / 70)**
-
-**UX outcome**:
-1. Operator presses Run on a Yahoo backtest (cold cache).
-2. Progress bar appears immediately at "0 / 1 bars · 0.0s"; label ticks to
-   "0 / 1 bars · 0.3s", "0 / 1 bars · 0.5s", etc. every ~250 ms during preload.
-3. After preload + engine complete (~10-100 ms post-preload), bar shows ~99%;
-   bar stays visible for ~500 ms before clearing.
-
 ### `#65` — `vol_killswitch_overlay` is a no-op (computes counters, never mutates Signal.kind)
 **Status**: FIXED 2026-05-26 — Q4=(p3) "Both" — fix test fixture AND broaden overlay filter.
 **Discovery commit**: (Wave 1 parent commit — overlay-e2e test found the no-op)
@@ -222,6 +150,5 @@ test result: ok. 4 passed; 0 failed; 0 ignored
 - 2026-05-25 (orchestrator): file created. Backfilled #54–#63 from `git log` + inline `Bug #N` comments.
 - 2026-05-25 (orchestrator): #64 added — progress bar short-run starvation fix.
 - 2026-05-26 (orchestrator): #65 added — vol_killswitch_overlay no-op discovered by Wave 1 overlay-e2e test; 2 tests `#[ignore]`-gated pending source fix.
-- 2026-05-26 (analyst): #65 updated — analyst brief authored at [`spec/vol-killswitch-overlay-noop-fix v0.1.0`](vol-killswitch-overlay-noop-fix/feature.md). P0 safety; trace row `REQ-VOL-KILLSWITCH-NOOP-FIX-001` at `proposed`; sibling of shipped `v3-volatility-forecaster-noop-fix v0.1.0` 2026-05-22. Status flipped `open` → `open (analyst brief authorized)`.
+- 2026-05-26 (analyst): #65 updated — analyst brief authored at [`spec/vol-killswitch-overlay-noop-fix v0.1.0`](vol-killswitch-overlay-noop-fix/feature.md). P0 safety; trace row `REQ-VOL-KILLSWITCH-NOOP-FIX-001` at `proposed`; sibling of shipped `v3-volatility-forecaster-noop-fix v0.1.0` 2026-05-22. Status flipped `open` → `open (analyst brief authored)`.
 - 2026-05-26 (developer): #65 FIXED — Q4=(p3) "Both" fix shipped. A.1: lookback_minutes 60→5 + flat warmup prevents GARCH early-kill. A.2: overlay filter broadened to basket-wide Hold. A.3: #[ignore] removed; 4/4 tests green. Hygiene gate 2/2 pass.
-- 2026-05-28 (developer): #64 D.1.1 + D.2.1 applied — two UX fixes for the residual "stuck bar" perception on Yahoo runs. See fix entry below `#64`.

@@ -1524,18 +1524,10 @@ pub enum Message {
     /// Progress channel closed — engine completed or was cancelled.
     ///
     /// Belt-and-suspenders clear of `run_progress` before `LabRunCompleted`
-    /// arrives. Pure state: no-op when D.2.1 linger is active (the 500 ms
-    /// linger timer is the sole clearer); otherwise clears `run_progress`.
+    /// arrives. Pure state: clears `LabState::run_progress`.
     ///
     /// lab-end-to-end-v2 T-D4.6 / R9.4.
     LabRunProgressDone,
-    /// Bug #64 D.2.1 — deferred linger clear.
-    ///
-    /// Emitted 500 ms after `LabRunCompleted` by a `tokio::time::sleep`
-    /// task on the binary side. Carries the `progress_linger_id` at the
-    /// time the timer was created; the pure-state arm ignores stale IDs
-    /// so a fast second Run cannot be erased by the prior run's timer.
-    LabClearLingerProgress(u32),
     /// Show a transient toast notification (R4.2 / T-D-16).
     /// The string is a `&'static str` via `crate::strings`; no inline literals.
     /// Maps to `ToastSeverity::Info` — back-compat with existing producers.
@@ -2145,21 +2137,14 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             model.lab_run_inflight = true;
             // R9.3 — clear stale progress from any prior run.
             model.lab_state.run_progress = None;
-            // Bug #64 D.2.1 — increment linger ID so any pending
-            // LabClearLingerProgress from the previous run is ignored.
-            model.lab_state.progress_linger_id = model.lab_state.progress_linger_id.wrapping_add(1);
             // Bug #54 — clear stale error from previous failed run so the
             // Run button transitions Failed → Running cleanly.
             model.lab_state.last_run_error = None;
         }
         Message::LabRunCompleted(outcome) => {
             model.lab_run_inflight = false;
-            // Bug #64 D.2.1 — do NOT clear run_progress here.
-            // The binary side schedules a 500 ms LabClearLingerProgress
-            // so the operator sees the final percentage briefly before
-            // the bar disappears. LabClearLingerProgress is the sole
-            // clearer; LabRunRequested clears stale progress at the
-            // start of the next run (guard against fast re-press).
+            // R9.3 — clear progress on run completion.
+            model.lab_state.run_progress = None;
             // Bug #54 — track success/failure so Run button can render
             // RunState::Failed and the screen can show the error message
             // instead of silently flipping back to "Run".
@@ -2199,19 +2184,9 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::LabRunProgress(progress) => {
             model.lab_state.run_progress = Some(progress);
         }
-        // T-D4.6 / R9.4 — channel closed; belt-and-suspenders.
-        // Bug #64 D.2.1 — do NOT clear run_progress here either;
-        // LabClearLingerProgress (500 ms timer) is the sole clearer so
-        // the final-bar percentage remains visible during the linger window.
-        Message::LabRunProgressDone => {}
-        // Bug #64 D.2.1 — deferred linger clear (500 ms post-completion).
-        Message::LabClearLingerProgress(id) => {
-            // Only clear if this timer belongs to the current run.
-            // A fast second Run increments progress_linger_id so stale
-            // timers from the previous run carry an outdated id and are ignored.
-            if model.lab_state.progress_linger_id == id {
-                model.lab_state.run_progress = None;
-            }
+        // T-D4.6 / R9.4 — channel closed; belt-and-suspenders clear.
+        Message::LabRunProgressDone => {
+            model.lab_state.run_progress = None;
         }
         Message::ShowToast(msg) => {
             // Back-compat: ShowToast maps to Info severity (ADR-0046 § Back-compat).
@@ -4266,124 +4241,6 @@ mod tests {
             c.toast_queue.front().map(|t| t.message.as_str()),
             Some("hello"),
             "message must match"
-        );
-    }
-
-    // ── Bug #64 D.2.1 — progress linger tests ────────────────────────────────
-
-    /// D.2.1: LabRunCompleted no longer clears run_progress immediately.
-    /// The final-bar percentage must remain visible after the run finishes.
-    #[test]
-    fn lab_run_completed_does_not_clear_run_progress() {
-        use backtest::progress::Progress;
-        let mut c = Cockpit::new();
-        // Simulate a progress event arriving (e.g. from the engine final-bar emit).
-        update(
-            &mut c,
-            Message::LabRunProgress(Progress {
-                current_bar: 29,
-                total_bars: 30,
-                elapsed_ms: 500,
-            }),
-        );
-        assert!(
-            c.lab_state.run_progress.is_some(),
-            "run_progress must be Some after LabRunProgress"
-        );
-        // Simulate the run completing.
-        update(
-            &mut c,
-            Message::LabRunCompleted(Ok(crate::lab::runner::RunSummary {
-                strategy_id: smol_str::SmolStr::new("v0.sma"),
-                symbol: smol_str::SmolStr::new("BTCUSDT"),
-                report_path: None,
-                equity_series: vec![],
-                fills: vec![],
-                kpis: Default::default(),
-                bars: std::sync::Arc::new(vec![]),
-                position_curve: vec![],
-            })),
-        );
-        assert!(
-            c.lab_state.run_progress.is_some(),
-            "D.2.1: run_progress must NOT be cleared by LabRunCompleted (linger timer owns the clear)"
-        );
-    }
-
-    /// D.2.1: LabClearLingerProgress with the current generation clears run_progress.
-    #[test]
-    fn lab_clear_linger_progress_matching_id_clears_progress() {
-        use backtest::progress::Progress;
-        let mut c = Cockpit::new();
-        update(
-            &mut c,
-            Message::LabRunProgress(Progress {
-                current_bar: 29,
-                total_bars: 30,
-                elapsed_ms: 500,
-            }),
-        );
-        let current_id = c.lab_state.progress_linger_id;
-        // Timer fires with the matching generation.
-        update(&mut c, Message::LabClearLingerProgress(current_id));
-        assert!(
-            c.lab_state.run_progress.is_none(),
-            "D.2.1: LabClearLingerProgress with matching id must clear run_progress"
-        );
-    }
-
-    /// D.2.1: LabClearLingerProgress with a STALE id (from a prior run) must NOT
-    /// clear run_progress for the new run.
-    #[test]
-    fn lab_clear_linger_progress_stale_id_does_not_clear() {
-        use backtest::progress::Progress;
-        let mut c = Cockpit::new();
-        // First run completes; linger id = 1 after LabRunRequested.
-        update(&mut c, Message::LabRunRequested);
-        let id_after_first_run = c.lab_state.progress_linger_id;
-        // Second run starts — increments the id.
-        update(&mut c, Message::LabRunRequested);
-        let id_after_second_run = c.lab_state.progress_linger_id;
-        assert_ne!(
-            id_after_first_run, id_after_second_run,
-            "id must increment on each run"
-        );
-
-        // New run emits some progress.
-        update(
-            &mut c,
-            Message::LabRunProgress(Progress {
-                current_bar: 5,
-                total_bars: 30,
-                elapsed_ms: 50,
-            }),
-        );
-        // Stale timer from first run fires.
-        update(&mut c, Message::LabClearLingerProgress(id_after_first_run));
-        assert!(
-            c.lab_state.run_progress.is_some(),
-            "D.2.1: stale LabClearLingerProgress must NOT clear current run's progress"
-        );
-    }
-
-    /// D.2.1: LabRunProgressDone (channel closed) must NOT clear run_progress
-    /// during the linger window — the linger timer is the sole clearer.
-    #[test]
-    fn lab_run_progress_done_does_not_clear_run_progress() {
-        use backtest::progress::Progress;
-        let mut c = Cockpit::new();
-        update(
-            &mut c,
-            Message::LabRunProgress(Progress {
-                current_bar: 29,
-                total_bars: 30,
-                elapsed_ms: 500,
-            }),
-        );
-        update(&mut c, Message::LabRunProgressDone);
-        assert!(
-            c.lab_state.run_progress.is_some(),
-            "D.2.1: LabRunProgressDone must NOT clear run_progress (linger timer owns the clear)"
         );
     }
 }

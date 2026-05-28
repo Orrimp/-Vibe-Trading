@@ -1288,28 +1288,6 @@ impl AppState {
             }
         }
 
-        // Bug #64 D.2.1 — build a 500 ms linger task when a run completes.
-        // The task sleeps on the side-thread tokio runtime, then emits
-        // LabClearLingerProgress(id) so the final-bar percentage stays visible
-        // before the bar disappears. The ID guards against a fast second Run
-        // clearing the new run's early progress events.
-        let linger_task: Option<iced::Task<Message>> = if lab_run_completed_any {
-            let id = self.cockpit.lab_state.progress_linger_id;
-            let rt = self.rt_handle.clone();
-            Some(iced::Task::perform(
-                async move {
-                    let join = rt.spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        id
-                    });
-                    join.await.unwrap_or(id)
-                },
-                Message::LabClearLingerProgress,
-            ))
-        } else {
-            None
-        };
-
         // T-D1.3 (lab-end-to-end-v2 T-AR-1) — rotate RunReportMirror:
         // prev ← last, last ← Some(new_mirror).
         // On Err / no captured tuple, do not rotate (R2.3: failure does NOT
@@ -1336,20 +1314,9 @@ impl AppState {
             // dispatch ChartMarkersLoaded so the chart's triangle markers
             // update. Empty fills → no dispatch (chart shows equity-only).
             if !summary.fills.is_empty() {
-                let markers =
-                    iced::Task::done(Message::ChartMarkersLoaded(Ok(summary.fills.clone())));
-                return if let Some(lt) = linger_task {
-                    iced::Task::batch([markers, lt])
-                } else {
-                    markers
-                };
+                return iced::Task::done(Message::ChartMarkersLoaded(Ok(summary.fills.clone())));
             }
         }
-
-        // If a linger task was built but no other early-return path fired,
-        // check whether we should return it alongside the upcoming chain.
-        // We stash it in `pending_linger` and batch below at each return point.
-        let pending_linger = linger_task;
 
         if let Some(ref id) = select_strategy_id {
             // Phase 4 R13 — insert Loading marker so the screen
@@ -1413,15 +1380,10 @@ impl AppState {
                 Message::ChartSignalsLoaded,
             );
 
-            if let Some(lt) = pending_linger {
-                return iced::Task::batch([markers_task, signals_task, lt]);
-            }
             return iced::Task::batch([markers_task, signals_task]);
         }
 
-        // Bug #64 D.2.1 — compute the base task for the remaining chain,
-        // then batch with pending_linger (if any) before returning.
-        let base_task = if let Some(tx_id) = tx_id {
+        if let Some(tx_id) = tx_id {
             let ledger = Arc::clone(&self.ledger);
             let rt_handle = self.rt_handle.clone();
             iced::Task::perform(
@@ -1575,13 +1537,6 @@ impl AppState {
             )
         } else {
             iced::Task::none()
-        };
-
-        // Bug #64 D.2.1 — batch the linger task alongside the base task.
-        if let Some(lt) = pending_linger {
-            iced::Task::batch([base_task, lt])
-        } else {
-            base_task
         }
     }
 

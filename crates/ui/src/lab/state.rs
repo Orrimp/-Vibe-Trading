@@ -251,12 +251,6 @@ pub struct LabState {
     /// no run is in-flight or the engine hasn't emitted yet.
     pub run_progress: Option<backtest::progress::Progress>,
 
-    // ── Bug #64 D.2.1 — post-completion linger ────────────────────────────
-    /// Monotonic generation counter. Incremented on each `LabRunRequested`.
-    /// Carried by `LabClearLingerProgress(id)` so a stale timer from a
-    /// previous run cannot clear the next run's early progress events.
-    pub progress_linger_id: u32,
-
     // ── lab-yahoo-realdata v0.1.2 — aggregate cache summary (T-DU3.5 / D-V0.1.2-1) ──
     /// Cached aggregate Yahoo cache summary for the Lab toolbar's
     /// `cache_state_summary_badge`. `None` = invalidated (next render
@@ -306,8 +300,6 @@ impl Clone for LabState {
             run_cancel: None,
             // Progress is NOT cloned — the clone starts clean.
             run_progress: None,
-            // Linger ID resets to 0 on clone (no in-flight run).
-            progress_linger_id: 0,
             // Training cancel handle is NOT cloned.
             training_cancel: None,
             // Cache summary is NOT cloned — recomputed lazily on next read.
@@ -368,7 +360,6 @@ impl Default for LabState {
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,
-            progress_linger_id: 0,
             training_cancel: None,
             cache_summary: None,
         }
@@ -409,7 +400,6 @@ impl LabState {
             data_source: LabDataSource::default(),
             run_cancel: None,
             run_progress: None,
-            progress_linger_id: 0,
             training_cancel: None,
             cache_summary: None,
         }
