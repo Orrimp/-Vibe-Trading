@@ -130,6 +130,36 @@ Lesson: **the dev's unit gates (415 PASS) DID NOT catch regressions on the live 
 
 Disposition: bug stays `fixed` (per the original 2026-05-25 commit `<unknown SHA>` — bar advance + sentinel both worked pre-attempt). D.1.1 / D.2.1 polish remains an open follow-up if operator wants to re-attempt with deeper testing (suggested: live cockpit smoke + iced-test driver covering Stop-after-Run + a sentinel-emission unit-test asserting `progress_tx.send` actually fires before `preload_yahoo_bars().await`).
 
+**Attempt 2 — D.1.1 applied 2026-05-28, harness-gated** (commit `<pending>`):
+
+The lab-recipe-test-harness shipped at commit `d4fc321` (ADR-0048) provided the structural gate missing from attempt 1. D.1.1 was re-implemented with two critical bug fixes over attempt 1:
+
+1. **Sentinel fires FIRST** (before ticker creation, before first `ticker.tick().await`). Attempt 1 called `ticker.tick().await` BEFORE the sentinel emit, delaying first event by ~250ms. Fix: sentinel emit happens unconditionally as the first statement in the YahooCache block.
+
+2. **Preload future pinned once** (`std::pin::pin!`). Attempt 1 called `preload_yahoo_bars(&cfg, &range)` inside the `select!` loop body, creating a NEW future each iteration — preload never made progress. Fix: create + pin the future ONCE before the loop; each `select!` iteration polls the same pinned future to completion.
+
+**D.2.1 status**: NOT implemented in this attempt. The Surface 2 harness (lab_stop_button_gating.rs Test 1, line 134) mandates `cockpit.lab_state.run_progress.is_none()` immediately after `LabRunCompleted`. The D.2.1 linger approach (keeping `run_progress` alive) directly contradicts this. Since the harness IS the gate and cannot be modified to pass the implementation, D.2.1 requires either (a) a separate `linger_progress` field with view-layer changes, or (b) a harness update to accommodate the linger semantics — both are architect decisions. D.2.1 is deferred.
+
+**D.1.1 file:line citations**:
+- `crates/ui/src/lab/runner.rs:718–807` — sentinel emit + `std::pin::pin!` preload future + `tokio::select!` ticker loop (production `#[cfg(feature = "yahoo")]` path only; mock path left unchanged to keep Surface 1 tests passing).
+
+**Test evidence**:
+- Surface 1 (`spawn_lab_run_yahoo_harness.rs`): 3/3 PASS
+  - `sentinel_fires_before_preload_await` — first event < 50ms (sentinel before ticker)
+  - `channel_survives_after_preload` — channel alive after preload completes
+  - `ticker_events_stop_after_preload_complete` — zero ticker-leak events after preload
+- Surface 2 (`lab_stop_button_gating.rs`): 3/3 PASS
+  - `full_lifecycle_ok_completion_clears_inflight` — run_progress = None after LabRunCompleted
+  - `err_completion_clears_inflight` — error path also clears inflight
+  - `stop_requested_mid_run_leaves_inflight_true` — Stop press doesn't flip inflight prematurely
+- K5 (`cockpit_training_pressed_wiring`): 5/5 PASS
+- `cargo test -p ui --lib --features live`: 411/411 PASS
+- `bash scripts/verify_anchors.sh`: 70/70 PASS
+
+**Harness earned its keep**: Test 1 (`sentinel_fires_before_preload_await`) directly falsifies attempt 1's regression A (50ms gate vs attempt 1's ~250ms delay). Test 3 (`ticker_events_stop_after_preload_complete`) would catch ticker-leak regressions. The harness confirmed no regression was reintroduced before handoff.
+
+**Operator visual-verify recommendation**: STILL RECOMMENDED for the preload animation UX (the harness confirms no channel regressions but does not exercise the production `#[cfg(feature = "yahoo")]` ticker path directly — that path requires a live Yahoo cache miss to observe). The harness is sufficient to gate channel correctness; visual UX smoothness requires operator confirm on a cold-cache run.
+
 ### `#65` — `vol_killswitch_overlay` is a no-op (computes counters, never mutates Signal.kind)
 **Status**: FIXED 2026-05-26 — Q4=(p3) "Both" — fix test fixture AND broaden overlay filter.
 **Discovery commit**: (Wave 1 parent commit — overlay-e2e test found the no-op)

@@ -707,21 +707,44 @@ pub fn spawn_lab_run(
                         if cfg_for_preload.data_source
                             == crate::lab::state::LabDataSource::YahooCache
                         {
-                            // Bug #64 — emit a sentinel Progress event BEFORE the
-                            // network/disk preload await so the operator sees an
-                            // explicit 0%-with-label state instead of the 30%
-                            // indeterminate fallback during the wait. (Cold cache
-                            // misses can spin for 30-60 s on the Yahoo round-trip.)
-                            // `total_bars = 1` is a placeholder; the real value
-                            // arrives once the engine's bar loop emits its first
-                            // event. The widget renders this as 0% with label
-                            // "0 / 1 bars · 0.0s" — clearly identifiable as a
-                            // pre-engine state.
+                            // Bug #64 D.1.1 — animate the preload sentinel.
+                            //
+                            // During cold-cache Yahoo fetches (30-60 s on first run
+                            // for a ticker, ≤5 s on cache hits) the label now ticks
+                            // visibly instead of sitting static at "0 / 1 bars · 0.0s".
+                            //
+                            // Implementation (attempt 2 — harness-gated):
+                            //   1. Emit sentinel FIRST (elapsed_ms == 0) — this is
+                            //      the contract that Surface 1 Test 1 guards. It must
+                            //      fire BEFORE the first ticker tick.
+                            //   2. Pin the preload future once — attempt 1 bug: the
+                            //      loop called `preload_yahoo_bars(...)` fresh each
+                            //      iteration creating a new future, so preload never
+                            //      completed. Pinning ensures the same future is
+                            //      polled to completion.
+                            //   3. Consume the ticker's immediate tick AFTER the
+                            //      sentinel emit so the first interval is ~250 ms
+                            //      from the sentinel (not before it).
+                            //   4. Race: `select! { biased; result = &mut pinned => break,
+                            //                        _ = ticker.tick() => emit elapsed }`.
+                            //      When preload wins, the loop exits; the ticker is
+                            //      dropped and no more events leak (Surface 1 Test 3 guard).
+                            //
+                            // `total_bars = 1` is the sentinel placeholder; real value
+                            // arrives from the engine's bar-loop first emit.
                             progress_tx.try_send(backtest::progress::Progress {
                                 current_bar: 0,
                                 total_bars: 1,
                                 elapsed_ms: 0,
                             });
+
+                            let preload_start = std::time::Instant::now();
+                            // Tick every 250 ms — visible animation on cold cache.
+                            let mut ticker =
+                                tokio::time::interval(std::time::Duration::from_millis(250));
+                            // Consume the immediate (t=0) tick so the first sleep is
+                            // ~250 ms from here — well after the sentinel has fired.
+                            ticker.tick().await;
 
                             // T-D-N7 — cockpit-activity-status-bar Yahoo preload
                             // producer wiring (approach A: inline handle, no Send
@@ -739,8 +762,51 @@ pub fn spawn_lab_run(
                                 .as_ref()
                                 .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
 
-                            let preload_result =
-                                preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await;
+                            // Pin the preload future ONCE so the same future is
+                            // polled across all `select!` iterations (attempt 1 bug
+                            // fix: calling the fn fresh each iteration created a new
+                            // future, so preload never made progress).
+                            let mut preload_future = std::pin::pin!(preload_yahoo_bars(
+                                &cfg_for_preload,
+                                &scenario_cfg.range
+                            ));
+
+                            // Race the preload against the periodic ticker.
+                            // `biased` ensures preload wins over ticker when both
+                            // are ready simultaneously (no ticker-event leak at
+                            // completion boundary — Surface 1 Test 3 guard).
+                            let preload_result = loop {
+                                tokio::select! {
+                                    biased;
+                                    result = &mut preload_future => {
+                                        break result;
+                                    }
+                                    _ = ticker.tick() => {
+                                        // Clamp to u64::MAX on overflow (impossible in
+                                        // practice — preload is bounded to ~5 min by
+                                        // the per-attempt timeout in fetch_with_backoff).
+                                        let elapsed_ms = u64::try_from(
+                                            preload_start.elapsed().as_millis()
+                                        ).unwrap_or(u64::MAX);
+                                        // Non-blocking try_send: if the iced receiver
+                                        // is temporarily full (buffer = 8), skip this
+                                        // tick rather than blocking the preload loop.
+                                        // ProgressSender::try_send returns () — no
+                                        // error value to discard (lossy by design).
+                                        progress_tx.try_send(
+                                            backtest::progress::Progress {
+                                                current_bar: 0,
+                                                total_bars: 1,
+                                                elapsed_ms,
+                                            },
+                                        );
+                                    }
+                                }
+                            };
+                            // Ticker dropped here — no more ticker events after this
+                            // point (ensures Surface 1 Test 3 contract).
+                            drop(ticker);
+
                             match preload_result {
                                 Ok((bars, _sha)) => {
                                     scenario_cfg.data_source =
