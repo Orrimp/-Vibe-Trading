@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
-status: draft
-owner: analyst
+status: in-progress
+owner: developer
 updated: 2026-05-28
 ---
 
@@ -20,12 +20,12 @@ updated: 2026-05-28
 - [ ] Q1 — Canonical box for candle/realdata feature-flagged rebuild — **analyst-recommended (a) Apple Silicon M-series** (operator-locked since v2.5 TCN; Metal CPU drift prior)
 - [ ] Q2 — Standing-Autoapprove-eligible — **analyst-recommended (a) yes** (pure rebuild + re-emit; no design changes)
 
-## M-T1 — Architect (~0 day, fast-skip)
+## M-T1 — Architect (~0 day, fast-skip) ✅ closed 2026-05-28
 
-- [ ] Confirm no design changes vs v0.3.0 (ADR-0047 carries forward unchanged)
-- [ ] Confirm `data/binance/REVISION.toml` SHA still matches `3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7` (K2 precondition)
-- [ ] Confirm PatchTST BS-1 checkpoint still at `model_revision 62520db9...` (K2 precondition)
-- [ ] If any precondition drifted, write T-AR-1 note and route back to analyst; otherwise emit fast-skip handoff
+- [x] Confirm no design changes vs v0.3.0 (ADR-0047 carries forward unchanged) — D1-D6 all cover v0.4.0; no ADR-0048 needed
+- [x] Confirm `data/binance/REVISION.toml` SHA still matches `3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7` (K2 precondition) — byte-match verified
+- [x] Confirm PatchTST BS-1 checkpoint still at `model_revision 62520db9...` (K2 precondition) — `.safetensors` + `.metadata.json` present at `crates/forecast/checkpoints/anchors/`; metadata `model_revision` field byte-matches
+- [x] No precondition drift — fast-skip handoff to developer (see feature.md § Design M-T1 close note)
 
 ## M-DEV — Developer (~1 day, sequential Waves A-D)
 

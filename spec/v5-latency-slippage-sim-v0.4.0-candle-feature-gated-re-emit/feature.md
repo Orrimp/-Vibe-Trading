@@ -2,7 +2,7 @@
 slug: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
 version: 0.1.0
 status: draft
-owner: analyst
+owner: developer
 updated: 2026-05-28
 predecessor: v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0
 parent: backtest-vs-live-execution-gap
@@ -146,6 +146,32 @@ K1 surprise scan re-runs across the 8 newly re-emitted scenarios. H1 falsifier (
 
 > If the architect at M-T1 discovers any pre-condition drift (data revision SHA, checkpoint SHA, candle/Metal version bump that would force a re-anchor), this section gets a T-AR-1 note and the brief routes back to analyst for K2 expansion.
 
+### M-T1 close note (architect, 2026-05-28)
+
+**Verdict: FAST-SKIP confirmed. No design changes. No new ADR. ADR-0047 carries forward unchanged for v0.4.0.**
+
+K1 — Apple Silicon canonical box availability (manifest-level pre-check):
+- `crates/backtest/Cargo.toml` `[features]` block (lines 21-33) defines BOTH `candle = ["strategy/forecast"]` AND `realdata = ["dep:toml"]`. Build command `cargo build --release -p backtest --features "candle realdata"` is structurally well-formed.
+- `[[bin]] backtest` at lines 7-9 has NO `required-features` constraint, so the default-feature build still works for the 11 v0.3.0-friction-real scenarios and the feature-flagged build covers the 8 v0.4.0 scenarios. (The `[[bin]] threshold_sweep` at line 11-14 DOES carry `required-features = ["candle", "realdata"]` but that binary is out of scope for v0.4.0 R1.)
+- Dispatch arms verified: `crates/backtest/src/main.rs` lines 481-660 carry `#[cfg(feature = "realdata")]` gates for the 6 realdata scenarios (lines 481, 508, 531, 553, 580, 606 — one per scenario). The 2 `top10-*-fy-tcn-overlay-weights` arms (synthetic data, candle-only) live at lines 438 + 458 and are NOT dispatch-gated — their candle dependency lives downstream at strategy execution (`ScenarioStrategy::TcnOverlayMomentumWeights` resolves at runtime via the candle-backed `forecast` crate).
+- K1 confirmed at Cargo manifest level. **Final canonical-box validation (Metal CPU drift; 2-run byte-identity SHA) deferred to developer M-DEV Wave A determinism gate.** If the developer cannot reach the operator-locked Apple Silicon box, route back to analyst per K1 mitigation (drop the 4 realdata scenarios from the anchor set — operator-decide).
+
+K2 — Data + checkpoint revision drift (architect-side verification):
+- `data/binance/REVISION.toml` aggregate SHA at line 2 = `3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7` — **byte-match against analyst-cited SHA. No drift.** Cross-confirmed against same SHA cited 4 separate times in `spec/anchors.toml` (lines 132, 159, 228, 248) and in the live `crates/backtest/src/main.rs:508, 528` `expected_revision_sha` field. Scenarios 3-8 K2 precondition INTACT.
+- PatchTST BS-1 checkpoint at `crates/forecast/checkpoints/anchors/patchtst-bs1-62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d.{safetensors,metadata.json}` — both files present on disk; `model_revision` field in metadata.json = `62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d` (analyst-cited prefix `62520db9` matches). The hard-coded byte-identity check at `crates/forecast/src/patchtst.rs:546` + `crates/forecast/tests/patchtst_byte_identity.rs:32` both reference the same SHA. Scenario 7 K2 precondition INTACT.
+
+ADR-0047 carries-forward ratification:
+- D1 (K2-REACHABLE-CHEAP, `--force-synthetic-bars` flag) — v0.4.0 does not touch Group A SMA/Composed scenarios; D1 is preserved but inert at v0.4.0 scope.
+- D2 (per-path plumbing contract via `crates/backtest/src/scenarios/sim.rs::sim_slippage_cost`) — `sim.rs` confirmed on disk; `pub fn sim_slippage_cost` defined exactly once at line 38; v0.4.0 rebuilds the 4 module paths (`tcn_overlay.rs`, `tcn_overlay_weights.rs`, `patchtst_overlay_weights.rs`, `garch_vol_target_overlay.rs`) under feature flags but their wiring is unchanged.
+- D3 (namespace-aware Rust resolver in t1937) — Wave D extends `CANONICAL_STRATEGY_ANCHORS` table with 8 new entries; the resolver itself is unchanged.
+- D4 (Group A re-emission contract conditional on Q1) — v0.4.0 inherits the Q1=(a) route locked at v0.3.0 ship; D4 is inert at v0.4.0 scope (no Group A touch).
+- D5 (anchor namespace strategy = extend `v5-realdata-medium-2026-05` in-place) — v0.4.0 Q3 default `(a) extend-same-pin` is structurally identical to v0.3.0 D5. **No new namespace.** R2 overwrites 8 SHAs in-place at the same pin.
+- D6 (cross-feature e2e re-check inventory = 3 files + 1 meta) — unchanged at v0.4.0; R-NR.6 inherits the same 3 + 1 list verbatim.
+
+**Conclusion: every ADR-0047 D-term covers v0.4.0 without amendment. No ADR-0048 needed.** The architect explicitly recommends against authoring a new ADR — the brief is correctly scoped as a "rebuild + re-emit with feature flags enabled" pass, and the contract that governs it is ADR-0047 in full.
+
+Outstanding architect-side risk (forwarded to developer): the determinism gate at R-NR + K4 is the only non-trivial gate. If the candle/realdata path is non-deterministic when run on the canonical Apple Silicon box, route back to architect for ChaCha20Rng sub-stream audit per ADR-0043 D2. v2.6.0-realdata Wave A confirmed 2-run byte-identity for the same 4 realdata scenarios at noop config (strong prior); v2.5 TCN-weights determinism was confirmed at v2.5 M-FINAL on the canonical box. The compound risk (candle × realdata × friction-applied) is novel at v0.4.0 — flag for developer Wave A 2-run check.
+
 ## Implementation
 
 _Developer M-DEV populates after rebuild + re-emission._
@@ -157,3 +183,4 @@ _Tester M-FINAL links to reports here after developer M-DEV close._
 ## Changelog
 
 - 2026-05-28 (analyst): feature.md v0.1.0 authored. **4 R / 4 K / 3 H / 2 Q** + non-regression contract + pre-drawn 2-cell verdict tree + cost framing. Closes the v0.3.0 SOFT-PASS carve-out (8 candle/realdata-feature-gated scenarios). Q1-Q2 standing-Autoapprove-eligible. M-T1 likely fast-skips; M-OD likely empty. Anchor risk: 0 added rows, 8 SHAs updated in-place under existing `v5-realdata-medium-2026-05` pin. ANCHORS PASS (70/70) pre-spec confirmed.
+- 2026-05-28 (architect): M-T1 FAST-SKIP closed. K1 confirmed at Cargo manifest level (`backtest` Cargo.toml lines 21-33 define `candle` + `realdata` features; `[[bin]] backtest` has no `required-features` constraint). K2 both preconditions INTACT: `data/binance/REVISION.toml` SHA = `3a8b96...bfc7` (byte-match); PatchTST checkpoint at `crates/forecast/checkpoints/anchors/patchtst-bs1-62520db9....{safetensors,metadata.json}` present on disk with `model_revision 62520db9...` (byte-match). ADR-0047 carries forward unchanged (D1-D6 all covered; no ADR-0048 needed). Frontmatter `owner: analyst → developer`. Design § M-T1 close note appended with full verification trail. Outstanding flag for developer: determinism gate (compound risk candle × realdata × friction-applied novel at v0.4.0; 2-run byte-identity check is the only non-trivial gate).

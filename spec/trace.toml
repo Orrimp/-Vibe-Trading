@@ -1933,7 +1933,21 @@ arch        = [
   "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/sharpe-delta-table-2026-05-27.md",  # the per-scenario template R3 extends
   "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # ENGINE ADR — D1-D5 simulator (no amendment at v0.4.0)
   "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # CANONICAL CONFIG ADR — D1 + D2 unchanged
-  "spec/architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md",  # PER-PATH CONTRACT ADR — D2 + D3 + D4 carry forward unchanged
+  "spec/architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md",  # PER-PATH CONTRACT ADR — D1-D6 carry forward unchanged for v0.4.0 (architect M-T1 ratification 2026-05-28; no ADR-0048 needed)
+  # ─── architect M-T1 FAST-SKIP close (2026-05-28) ───
+  # K1 Apple Silicon canonical box: confirmed at Cargo manifest level.
+  #   `crates/backtest/Cargo.toml` [features] block (lines 21-33) defines candle + realdata.
+  #   `[[bin]] backtest` (lines 7-9) has NO required-features constraint.
+  #   Final canonical-box validation (Metal CPU drift; 2-run byte-identity) deferred to developer M-DEV Wave A determinism gate.
+  # K2 data + checkpoint revision drift: BOTH preconditions INTACT.
+  #   data/binance/REVISION.toml SHA = 3a8b96...bfc7 (byte-match against analyst-cited; same SHA in main.rs:508,528 + anchors.toml:132,159,228,248).
+  #   PatchTST checkpoint patchtst-bs1-62520db9....{safetensors,metadata.json} present on disk; metadata model_revision = 62520db9... (byte-match against analyst-cited prefix).
+  # ADR-0047 carries-forward verdict: D1 (K2-reachable) inert at v0.4.0 scope, D2 (sim.rs sim_slippage_cost defined exactly once) unchanged, D3 (namespace-aware resolver) Wave D extends table only, D4 (Group A) inert, D5 (extend-same-pin v5-realdata-medium-2026-05) structurally identical, D6 (3 e2e + 1 meta) unchanged.
+  # Outstanding architect-flagged risk for developer: compound determinism risk candle × realdata × friction-applied is novel at v0.4.0; 2-run byte-identity check is the gate.
+  "crates/backtest/Cargo.toml",                                                 # K1 manifest-level verification anchor (lines 7-9 + 21-33)
+  "crates/backtest/src/scenarios/sim.rs",                                       # ADR-0047 D2 carry-forward anchor (sim_slippage_cost defined exactly once at line 38)
+  "data/binance/REVISION.toml",                                                 # K2 precondition anchor — aggregate SHA byte-matches analyst-cited 3a8b96...bfc7
+  "crates/forecast/checkpoints/anchors/patchtst-bs1-62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d.metadata.json",  # K2 PatchTST checkpoint anchor — model_revision byte-matches analyst-cited 62520db9...
 ]
 crates      = [
   # Developer M-DEV populates after rebuild + re-emission. v0.4.0 is rebuild-only;
@@ -1948,5 +1962,5 @@ tests       = [
   "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # R-NR.6 — ≥ 1 bp divergence stays green
 ]
 anchors     = []     # Tester M-FINAL populates after re-emission. Target: 70/70 PASS (same row count as v0.3.0; 8 SHAs updated in-place).
-state       = "proposed"
+state       = "in-progress"  # architect M-T1 FAST-SKIP closed 2026-05-28 — ADR-0047 D1-D6 carries forward unchanged for v0.4.0; K1 confirmed at Cargo manifest level (canonical-box Metal validation deferred to M-DEV Wave A determinism gate); K2 both preconditions INTACT (REVISION.toml SHA 3a8b96...bfc7 byte-match + PatchTST checkpoint 62520db9... present on disk). HANDOFF → developer for M-DEV Waves A-D (Q1-Q2 standing-Autoapprove inherits; M-OD empty).
 
