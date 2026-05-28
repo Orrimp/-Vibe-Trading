@@ -250,6 +250,19 @@ pub struct LabState {
     /// Most-recent progress event from the in-flight backtest. `None` when
     /// no run is in-flight or the engine hasn't emitted yet.
     pub run_progress: Option<backtest::progress::Progress>,
+
+    // ── lab-yahoo-realdata v0.1.2 — aggregate cache summary (T-DU3.5 / D-V0.1.2-1) ──
+    /// Cached aggregate Yahoo cache summary for the Lab toolbar's
+    /// `cache_state_summary_badge`. `None` = invalidated (next render
+    /// will populate); `Some(_)` = cached (per-frame read).
+    ///
+    /// Invalidated to `None` on TWO events only (D-V0.1.2-1):
+    ///   1. `LabSelectDataSource` (`Synthetic` ↔ `YahooCache` toggle).
+    ///   2. `LabRunCompleted` (any backtest finish on the Lab dispatch path).
+    ///
+    /// NOT cloned (`LabState::clone` sets to None) and NOT serialized —
+    /// it's a pure filesystem-derived view, recomputed on demand.
+    pub cache_summary: Option<crate::lab::cache_state::CacheSummary>,
 }
 
 /// Manual `Clone` for `LabState` — `TrainingHandle` (an OS process handle)
@@ -289,6 +302,8 @@ impl Clone for LabState {
             run_progress: None,
             // Training cancel handle is NOT cloned.
             training_cancel: None,
+            // Cache summary is NOT cloned — recomputed lazily on next read.
+            cache_summary: None,
         }
     }
 }
@@ -346,6 +361,7 @@ impl Default for LabState {
             run_cancel: None,
             run_progress: None,
             training_cancel: None,
+            cache_summary: None,
         }
     }
 }
@@ -385,6 +401,7 @@ impl LabState {
             run_cancel: None,
             run_progress: None,
             training_cancel: None,
+            cache_summary: None,
         }
     }
 }

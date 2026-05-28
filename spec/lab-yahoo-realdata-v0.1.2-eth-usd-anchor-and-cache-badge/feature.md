@@ -2,8 +2,8 @@
 slug: lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
 version: 0.1.0
 status: in-progress
-owner: developer + ui-designer
-updated: 2026-05-27
+owner: tester
+updated: 2026-05-28
 predecessor: lab-yahoo-realdata v0.1.1
 priority: P2
 ---
@@ -405,6 +405,45 @@ A fresh ADR would duplicate the rationale without adding decisions.
 The Changelog entry (≤ 30 lines, see ADR-0040 § Changelog edit at
 T-T1.6) suffices.
 
+## Implementation
+
+_Developer M-DEV completed 2026-05-28. M-DEV-UI (ui-designer) still in-progress._
+
+### M-DEV summary
+
+**T-D1 — Pre-flight:** `data/binance/ETHUSDT/2024/` confirmed with 12 parquets;
+`data/binance/REVISION.toml` current. K1 falsifier: PASS.
+
+**T-D2 + T-D3 — Binary extension:** `run_yahoo_sma.rs` extended with:
+- `pub const ALLOWED_YAHOO_TICKERS: &[&str]` — 10 Yahoo ticker mirror
+- `--ticker <TICKER>` Clap arg (default `BTC-USD`), validated against allowed list
+- `pub fn scenario_name(ticker: &str) -> String` — D-V0.1.2-3 naming rule
+- 6 mechanical BTC-USD substitution sites updated to use `ticker` variable
+- Unknown ticker → `eprintln!` + `exit(2)` (Clap InvalidValue convention)
+
+**T-D4 — H3 gate:** BTC body SHA drifted from v0.1.1 anchor `8045623b...` to
+`d2a709ef...`. Root cause: REVISION.toml aggregate SHA changed from `7b33166e`
+to `e018f876` when operator ran ETH-USD fetch on 2026-05-27. BTC financial
+results unchanged ($104,560.08, 7 trades, +4.56%). H3 code-purity: PASS.
+verify_anchors.sh uses the original anchored file → 70/70 PASS.
+
+**T-D5 — ETH determinism:** 3 consecutive runs, all SHA `e59a5f87...`. H2 PASS.
+
+**T-D6 — Anchor row 70 appended:** `spec/anchors.toml` row 70 = `eth-yahoo-2024-1d-sma-cross`,
+version `lab-yahoo-realdata-v0.1.2`, sha256 = `e59a5f87...`.
+
+**T-D7 — Anchor gate:** `bash scripts/verify_anchors.sh` → `ANCHORS PASS (70 / 70)`.
+
+**T-D8 — H1 dev-note:** Yahoo ETH H1 (+0.35%) vs Yahoo BTC H1 (+1.20%) delta = 0.84%
+< 30% threshold → H1 PASS (K1 fallback mode). No Binance ETH H1 scenario registered
+at v0.1.2; K1 fallback (Yahoo-to-Yahoo) is the measurement basis.
+
+**T-D9 — Integration test:** 6 tests in `crates/backtest/tests/run_yahoo_sma_ticker_flag.rs`:
+`pinned_table`, `btc_sha`, `eth_sha`, `unknown_ticker`, `scenario_name_btc`, `scenario_name_eth`.
+All green. Uses `std::process::Command` (no `assert_cmd` dep required).
+
+**T-D10 — Lint gates:** `cargo fmt --all --check` clean; `cargo clippy -p backtest --features yahoo -- -D warnings` clean.
+
 ## Changelog
 
 - 2026-05-27 (analyst): M0 brief — operator multi-select option C
@@ -423,3 +462,27 @@ T-T1.6) suffices.
   field + invalidation hooks added to T-DU3); owner flipped
   `architect → developer + ui-designer`; trace.toml `arch` column
   populated; tester unchanged.
+- 2026-05-28 (ui-designer, M-DEV-UI): T-DU1..T-DU9 ticked.
+  Shipped `widgets/cache_state_summary_badge.rs` (R3.1-R3.4),
+  `LAB_CACHE_STATE_SUMMARY_PREFIX` const + `fmt_lab_cache_state_summary`
+  helper (R-NR.2 honored — 1 operator-visible const + 1 internal helper
+  to satisfy `tests/consistency.rs::no_inline_user_visible_strings_in_widgets`),
+  `CacheSummary` + `probe_summary` + `ALL_YAHOO_TICKERS` in
+  `lab/cache_state.rs` (T-DU3), `LabState::cache_summary` field +
+  immediate-re-populate invalidation hooks on `LabSelectDataSource`
+  + `LabRunCompleted` (T-DU3.5 / D-V0.1.2-1 update-side preferred path),
+  Lab toolbar row wired as FIRST child of body Column (T-DU4 / Q2 lock),
+  4 gallery cells + `EXPECTED_WIDGETS` entry + `GALLERY_LOGICAL_HEIGHT`
+  bumped 18_040 → 19_080 (T-DU5), 4 panel snapshots accepted (T-DU6).
+  Layout smoke at 1280/1024/960 px: badge ~298 px fits trailing edge
+  comfortably; K4 truncate-to-YY-MM-DD mitigation not needed at v0.1.2.
+  Gates: `cargo fmt --all --check` clean; `cargo clippy -p ui -- -D warnings`
+  shows 0 NEW errors (9 pre-existing in `lab/{runner,trainer,training_log,progress}`,
+  `live.rs`, `widgets/position_curve.rs` — within "pre-existing 9 OK"
+  budget); `cargo test -p ui --lib` 411 (≥ 397 v0.1.1 baseline);
+  `cargo test -p ui --test panel_snapshots` 90/90;
+  `cargo test -p ui --test cockpit_training_pressed_wiring --features live`
+  5/5; `cargo test -p ui --test consistency` 2/2;
+  `bash scripts/verify_anchors.sh` 70/70 PASS (developer's M-DEV lane
+  shipped row 70 `eth-yahoo-2024-1d-sma-cross` = `e59a5f87…`
+  concurrently). Owner already flipped to `tester` by developer.

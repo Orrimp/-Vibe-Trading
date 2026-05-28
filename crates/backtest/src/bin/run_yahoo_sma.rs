@@ -1,9 +1,12 @@
-//! Yahoo SMA backtest — lab-yahoo-realdata v0.1.1.
+//! Yahoo SMA backtest — lab-yahoo-realdata v0.1.2.
 //!
-//! Runs the compiled-in SMA crossover (fast=20, slow=50) on real BTC-USD
+//! Runs the compiled-in SMA crossover (fast=20, slow=50) on real Yahoo-ticker
 //! 1-day bars from the local Yahoo parquet cache (`data/yahoo/`).
 //!
-//! Scenario: `btc-yahoo-2024-1d-sma-cross`
+//! Supported tickers (10 crypto-mirror pairs):
+//!   BTC-USD, ETH-USD, BNB-USD, SOL-USD, XRP-USD,
+//!   ADA-USD, DOGE-USD, AVAX-USD, DOT-USD, LINK-USD
+//!
 //! Period:   2024-01-01 → 2024-12-31 (full year, daily cadence)
 //! Seed:     0xC0FFEE (matching the canonical Binance anchor seed)
 //!
@@ -15,11 +18,20 @@
 //!   --reports-dir spec/lab-yahoo-realdata/reports
 //! ```
 //!
+//! ETH-USD anchor (v0.1.2):
+//! ```bash
+//! cargo run -p backtest --features yahoo \
+//!   --bin run_yahoo_sma -- \
+//!   --ticker ETH-USD \
+//!   --reports-dir spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports
+//! ```
+//!
 //! # Anchor discipline
 //!
-//! This binary emits a NEW scenario (`btc-yahoo-2024-1d-sma-cross`) that is
-//! NOT in the 68 existing anchors.  The operator locks the body-SHA after
-//! inspecting the first run, then appends an entry to `spec/anchors.toml`.
+//! This binary emits scenario IDs of the form `{ticker}-yahoo-2024-1d-sma-cross`
+//! (e.g. `btc-yahoo-2024-1d-sma-cross`, `eth-yahoo-2024-1d-sma-cross`).
+//! The default invocation (no `--ticker` flag) emits `btc-yahoo-2024-1d-sma-cross`
+//! byte-identical to v0.1.1 anchor 69 (H3 anchor-preservation gate).
 //! Existing anchors are byte-immutable (ADR-0038 § D6).
 //!
 //! # Determinism contract
@@ -51,12 +63,26 @@ use trading_core::Symbol;
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
+/// 10 crypto-mirror Yahoo tickers (RHS of `data::yahoo::binance_to_yahoo_ticker` table).
+/// Must stay in sync with that table; the cross-crate pinned-table test in
+/// `crates/backtest/tests/run_yahoo_sma_ticker_flag.rs` enforces drift parity.
+pub const ALLOWED_YAHOO_TICKERS: &[&str] = &[
+    "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "AVAX-USD",
+    "DOT-USD", "LINK-USD",
+];
+
 #[derive(Parser, Debug)]
 #[command(
     name = "run_yahoo_sma",
-    about = "BTC-USD 2024 1d SMA-cross backtest on the Yahoo parquet cache"
+    about = "Yahoo 2024 1d SMA-cross backtest on the Yahoo parquet cache (10 crypto-mirror tickers)"
 )]
 struct Args {
+    /// Yahoo ticker to run the backtest on.
+    /// Default: BTC-USD (preserves v0.1.1 BTC anchor byte-identically; H3 gate).
+    /// Allowed: BTC-USD, ETH-USD, BNB-USD, SOL-USD, XRP-USD, ADA-USD, DOGE-USD, AVAX-USD, DOT-USD, LINK-USD
+    #[arg(long, default_value = "BTC-USD")]
+    ticker: String,
+
     /// Path to the Yahoo parquet cache root (must contain REVISION.toml).
     /// Default: data/yahoo (relative to workspace root).
     #[arg(long, default_value = "data/yahoo")]
@@ -87,10 +113,26 @@ const DEFAULT_START_MS: i64 = 1_704_067_200_000;
 /// 2024-12-31 23:59:59 UTC in epoch-millis.
 const DEFAULT_END_MS: i64 = 1_735_689_599_000;
 
-const SCENARIO_NAME: &str = "btc-yahoo-2024-1d-sma-cross";
 const INITIAL_CAPITAL: Decimal = dec!(100_000);
 const SLIPPAGE_BPS: u32 = 2;
 const TAKER_FEE_BPS: u32 = 4;
+
+// ── Scenario name helper ──────────────────────────────────────────────────────
+
+/// Derive the canonical scenario name from a Yahoo ticker.
+///
+/// Rule (D-V0.1.2-3): `{lc-ticker-no-USD}-yahoo-2024-1d-sma-cross`
+///   - Strip trailing `-USD` suffix.
+///   - Lowercase.
+///   - Append `-yahoo-2024-1d-sma-cross`.
+///
+/// Examples:
+///   `BTC-USD` → `btc-yahoo-2024-1d-sma-cross`
+///   `ETH-USD` → `eth-yahoo-2024-1d-sma-cross`
+pub fn scenario_name(ticker: &str) -> String {
+    let base = ticker.strip_suffix("-USD").unwrap_or(ticker);
+    format!("{}-yahoo-2024-1d-sma-cross", base.to_lowercase())
+}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -104,13 +146,30 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
+
+    // Validate ticker against the 10-row allowed list (R4.3).
+    if !ALLOWED_YAHOO_TICKERS.contains(&args.ticker.as_str()) {
+        let allowed = ALLOWED_YAHOO_TICKERS.join(", ");
+        eprintln!(
+            "error: invalid value '{}' for '--ticker <TICKER>'\n  \
+             [possible values: {}]\n\n\
+             For more information, try '--help'.",
+            args.ticker, allowed
+        );
+        std::process::exit(2);
+    }
+
+    let ticker = &args.ticker;
     let cache_root = resolve_workspace_path(&args.cache_root);
     let reports_dir = resolve_workspace_path(&args.reports_dir);
 
     let start_ms = args.start_ms.unwrap_or(DEFAULT_START_MS);
     let end_ms = args.end_ms.unwrap_or(DEFAULT_END_MS);
 
-    println!("Scenario     : {SCENARIO_NAME}");
+    let scenario = scenario_name(ticker);
+
+    println!("Scenario     : {scenario}");
+    println!("Ticker       : {ticker}");
     println!("Cache root   : {}", cache_root.display());
     println!("Period       : 2024-01-01 → 2024-12-31 (1d cadence)");
     println!("Seed         : 0x{SEED:X}");
@@ -118,13 +177,13 @@ async fn main() -> Result<()> {
     // ── 1. Load Yahoo bars ────────────────────────────────────────────────────
     let source = YahooBarSource::new(cache_root.clone());
     let loaded = source
-        .load_cached("BTC-USD", Interval::Days1, start_ms, end_ms)
+        .load_cached(ticker, Interval::Days1, start_ms, end_ms)
         .with_context(|| {
             format!(
-                "Failed to load BTC-USD 1d bars from {}\n\
+                "Failed to load {ticker} 1d bars from {}\n\
                  Ensure you ran: cargo run -p data --features yahoo-online \\\n\
                  --bin fetch_yahoo_klines -- \\\n\
-                 --tickers BTC-USD --interval 1d --start 2024-01-01 --end 2024-12-31",
+                 --tickers {ticker} --interval 1d --start 2024-01-01 --end 2024-12-31",
                 cache_root.display()
             )
         })?;
@@ -135,7 +194,7 @@ async fn main() -> Result<()> {
     println!("Revision SHA : {revision_sha}");
 
     // ── 2. Run SMA crossover ──────────────────────────────────────────────────
-    let symbol = Symbol::new("BTC-USD");
+    let symbol = Symbol::new(ticker);
     let input = SmaComposedRunInput {
         strategy_id: "sma_crossover".to_string(),
         symbol: symbol.clone(),
@@ -182,11 +241,11 @@ async fn main() -> Result<()> {
         now.second()
     );
 
-    let report_path = reports_dir.join(format!("backtest-{stamp}-{SCENARIO_NAME}.md"));
+    let report_path = reports_dir.join(format!("backtest-{stamp}-{scenario}.md"));
 
     let sma_input = SmaScenarioInput {
-        scenario_name: SCENARIO_NAME.to_string(),
-        body_name: SCENARIO_NAME.to_string(),
+        scenario_name: scenario.clone(),
+        body_name: scenario.clone(),
         // No elapsed override — this is a new scenario, not replicating an anchor.
         body_elapsed_override: None,
         symbol,
@@ -197,7 +256,7 @@ async fn main() -> Result<()> {
         baseline_report: None,
     };
 
-    let data_source = format!("yahoo-cache:BTC-USD/1d/2024 rev={revision_sha:.12}");
+    let data_source = format!("yahoo-cache:{ticker}/1d/2024 rev={revision_sha:.12}");
     let strategy_meta: StrategyMeta = result.strategy_meta.clone();
 
     backtest::report::sma::write(
@@ -246,4 +305,21 @@ fn resolve_workspace_path(rel: &std::path::Path) -> PathBuf {
     }
 
     rel.to_path_buf()
+}
+
+// ── Unit tests ────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scenario_name_btc() {
+        assert_eq!(scenario_name("BTC-USD"), "btc-yahoo-2024-1d-sma-cross");
+    }
+
+    #[test]
+    fn scenario_name_eth() {
+        assert_eq!(scenario_name("ETH-USD"), "eth-yahoo-2024-1d-sma-cross");
+    }
 }

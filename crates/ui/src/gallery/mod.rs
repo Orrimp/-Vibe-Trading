@@ -74,8 +74,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     //   position_curve (with_points + empty).
     // cockpit-toast-queue v0.1.0 adds 2 new cells:
     //   toast_tray (empty + three_severities).
-    // 68 * 260 = 17_680. Adding 360 px headroom for outer container padding.
-    18_040
+    // lab-yahoo-realdata v0.1.2 T-DU5 adds 4 new cells:
+    //   cache_state_summary_badge (empty + one + two + ten).
+    // 72 * 260 = 18_720. Adding 360 px headroom for outer container padding.
+    19_080
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

@@ -2746,6 +2746,121 @@ mod strategy_registry_screen {
     }
 }
 
+// ── lab-yahoo-realdata v0.1.2 — cache_state_summary_badge snapshots (T-DU6) ──
+
+mod cache_state_summary_badge_screen {
+    use insta::assert_snapshot;
+    use std::time::{Duration, UNIX_EPOCH};
+    use ui::lab::cache_state::CacheSummary;
+    use ui::strings;
+    use ui::widgets::cache_state_summary_badge;
+
+    /// Stable mtime fixture for snapshot determinism: 2024-12-31 00:00:00 UTC.
+    fn fixture_mtime() -> std::time::SystemTime {
+        UNIX_EPOCH + Duration::from_secs(1_735_603_200)
+    }
+
+    /// Render the widget for smoke-coverage so a panic in `view` trips the
+    /// snapshot test at the same time as the textual summary.
+    fn render_widget_smoke(summary: &CacheSummary) {
+        let _ = cache_state_summary_badge::view(summary, ui::theme::ThemeMode::Dark);
+    }
+
+    /// Pure-text summary mirroring `format_label` + the design tokens the
+    /// widget emits. Locks the operator-visible string and the Lumen token
+    /// names against drift.
+    fn summary_text(name: &str, s: &CacheSummary) -> String {
+        let mut out = String::new();
+        out.push_str("widget: cache_state_summary_badge\n");
+        out.push_str(&format!("scenario: {name}\n"));
+        out.push_str(&format!("populated_count: {}\n", s.populated_count));
+        out.push_str(&format!(
+            "newest_mtime: {}\n",
+            if s.newest_mtime.is_some() {
+                "Some"
+            } else {
+                "None"
+            }
+        ));
+        out.push_str(&format!(
+            "label: {}\n",
+            cache_state_summary_badge::format_label(s)
+        ));
+        out.push_str(&format!(
+            "prefix_constant: {}\n",
+            strings::LAB_CACHE_STATE_SUMMARY_PREFIX
+        ));
+        out.push_str(&format!(
+            "empty_constant: {}\n",
+            strings::LAB_CACHE_STATE_EMPTY
+        ));
+        // Token tokens — byte-identical to the per-pair pill (R3.4).
+        out.push_str("bg: PANEL_RAISED\n");
+        out.push_str("border: BORDER_1 1px\n");
+        out.push_str("radius: R3\n");
+        out.push_str("text_size: MICRO\n");
+        out.push_str("padding: XXS_S\n");
+        out
+    }
+
+    /// T-DU6 snapshot 1 — empty cache (N=0).
+    #[test]
+    #[allow(non_snake_case)]
+    fn cache_state_summary_badge__empty() {
+        let s = CacheSummary::empty();
+        render_widget_smoke(&s);
+        assert_snapshot!(
+            "cache_state_summary_badge__empty",
+            summary_text("empty", &s)
+        );
+    }
+
+    /// T-DU6 snapshot 2 — one ticker populated.
+    #[test]
+    #[allow(non_snake_case)]
+    fn cache_state_summary_badge__one_ticker() {
+        let s = CacheSummary {
+            populated_count: 1,
+            newest_mtime: Some(fixture_mtime()),
+        };
+        render_widget_smoke(&s);
+        assert_snapshot!(
+            "cache_state_summary_badge__one_ticker",
+            summary_text("one_ticker", &s)
+        );
+    }
+
+    /// T-DU6 snapshot 3 — two tickers populated.
+    #[test]
+    #[allow(non_snake_case)]
+    fn cache_state_summary_badge__two_tickers() {
+        let s = CacheSummary {
+            populated_count: 2,
+            newest_mtime: Some(fixture_mtime()),
+        };
+        render_widget_smoke(&s);
+        assert_snapshot!(
+            "cache_state_summary_badge__two_tickers",
+            summary_text("two_tickers", &s)
+        );
+    }
+
+    /// T-DU6 snapshot 4 — full mirror (10 tickers).
+    #[test]
+    #[allow(non_snake_case)]
+    fn cache_state_summary_badge__ten_tickers() {
+        let s = CacheSummary {
+            populated_count: 10,
+            newest_mtime: Some(fixture_mtime()),
+        };
+        render_widget_smoke(&s);
+        assert_snapshot!(
+            "cache_state_summary_badge__ten_tickers",
+            summary_text("ten_tickers", &s)
+        );
+    }
+}
+
 // ── Phase C — Settings screen snapshots (ui-rethink-phase-c-sidebar-ia T-D-N22) ──
 
 mod settings_screen {

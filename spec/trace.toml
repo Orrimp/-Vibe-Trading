@@ -1857,25 +1857,26 @@ arch        = [
   "spec/architecture/adr/0040-yahoo-realdata-path.md#changelog",                # ADR-0040 § Changelog 2026-05-27 entry — per-ticker scaling pattern + aggregate cache-state UI surface contract (operationalises D3 + D4 + D7 for multi-ticker; no new architectural decisions)
 ]
 crates      = [
-  # ANALYST M0 (2026-05-27) — on-disk paths surfaced from R1-R4 in feature.md.
-  # Forward-listed paths (crates/ui/src/widgets/cache_state_summary_badge.rs at
-  # R3.1) land at M-DEV-UI; appended here once on disk by tester.
-  "crates/backtest/src/bin/run_yahoo_sma.rs",                                   # R4 — extend with --ticker flag (Q1=(a) analyst-recommended)
+  # DEVELOPER M-DEV (2026-05-28) — crates/tests populated after M-DEV lane complete.
+  "crates/backtest/src/bin/run_yahoo_sma.rs",                                   # R4 — extended with --ticker flag, ALLOWED_YAHOO_TICKERS, scenario_name()
+  "crates/backtest/tests/run_yahoo_sma_ticker_flag.rs",                         # R4.4 — new integration test: BTC SHA, ETH SHA, pinned-table, invalid-ticker
+  "spec/anchors.toml",                                                          # R1.2 — row 70 appended (eth-yahoo-2024-1d-sma-cross, SHA e59a5f87...)
+  # M-DEV-UI paths (ui-designer, still in-progress):
   "crates/ui/src/widgets/cache_state_badge.rs",                                 # R5.2 reference — per-pair pill UNCHANGED at v0.1.2
   "crates/ui/src/lab/cache_state.rs",                                           # R3.5 — extend with probe_summary()
-  "crates/ui/src/screens/lab.rs",                                               # R3.6 — wire summary badge into source-toggle row
+  "crates/ui/src/screens/lab.rs",                                               # R3.6 — wire summary badge into Lab toolbar row
   "crates/ui/src/strings.rs",                                                   # R-NR.2 — exactly 1 new string LAB_CACHE_STATE_SUMMARY_PREFIX
-  "data/yahoo/REVISION.toml",                                                   # R5.4 — read-only at v0.1.2; ETH-USD entries 31-42 already populated
-  "spec/anchors.toml",                                                          # R1.2 — append row 70 (lab-yahoo-realdata-v0.1.2 namespace)
+  "data/yahoo/REVISION.toml",                                                   # R5.4 — read-only at v0.1.2; ETH-USD entries 31-42 populated
 ]
 tests       = [
-  # ANALYST M0 (2026-05-27) — test paths gating R1-R4 acceptance criteria.
-  # Forward-listed paths (crates/backtest/tests/run_yahoo_sma_ticker_flag.rs at
-  # R4.4) land at M-DEV; appended here once on disk by tester.
-  "crates/ui/src/widgets/cache_state_badge.rs",                                 # R5.2 reference — existing per-pair pill 2 unit tests stay green
-  "crates/backtest/tests/determinism.rs",                                       # R5.1 — anchor preservation gate (69 SHAs byte-identical)
+  # DEVELOPER M-DEV (2026-05-28) — tests paths populated after M-DEV lane complete.
+  "crates/backtest/tests/run_yahoo_sma_ticker_flag.rs",                         # R4.4 — integration test: btc_sha, eth_sha, pinned_table, unknown_ticker, scenario_name x2
+  "crates/backtest/src/bin/run_yahoo_sma.rs",                                   # T-D3 — unit tests scenario_name_btc / scenario_name_eth embedded in binary
+  # M-DEV-UI tests (ui-designer, still in-progress):
+  "crates/ui/src/widgets/cache_state_badge.rs",                                 # R5.2 reference — existing per-pair pill unit tests stay green
+  "crates/backtest/tests/determinism.rs",                                       # R5.1 — anchor preservation gate (70 SHAs byte-identical)
 ]
-anchors     = "v0.1.0 R1 — append row 70 'eth-yahoo-2024-1d-sma-cross' to spec/anchors.toml at M-DEV (T-D6); body-SHA TBD; PRE-EXISTING 69 rows byte-identical (R5.1); verify_anchors.sh baseline at analyst pass: ANCHORS PASS (69 / 69)"
-state       = "arch-done"
+anchors     = "R1 — row 70 'eth-yahoo-2024-1d-sma-cross' appended at T-D6; body-SHA e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a; determinism: 3 consecutive runs identical (H2 PASS); verify_anchors.sh ANCHORS PASS (70 / 70)"
+state       = "dev-done"
 
 

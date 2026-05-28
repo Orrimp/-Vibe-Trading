@@ -53,6 +53,12 @@ pub mod strategies;
 /// Three-state pill (Fresh / Stale / Empty) for the active Yahoo ticker.
 /// Only rendered when `data_source == YahooCache`.
 pub mod cache_state_badge;
+/// lab-yahoo-realdata v0.1.2 (T-DU1) — Aggregate cache-state summary badge.
+/// Sibling of `cache_state_badge`; renders the multi-ticker view
+/// (`"Yahoo cache: N tickers · last fetch YYYY-MM-DD"`). Lives in the Lab
+/// toolbar and is rendered for every Lab activation regardless of
+/// `data_source` (Q2 operator lock 2026-05-27).
+pub mod cache_state_summary_badge;
 /// lab-yahoo-realdata T-C3.3 / T-AR4 / R-UI-1.4 — Cadence badge widget.
 /// Small chip showing the adaptive bar cadence ("1m" / "1h" / "1d").
 /// Only rendered when `data_source == YahooCache`.

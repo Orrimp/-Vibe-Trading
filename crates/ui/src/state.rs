@@ -2108,6 +2108,16 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Clear run reports — data source change invalidates previous results.
             model.lab_state.last_run_report = None;
             model.lab_state.prev_run_report = None;
+            // lab-yahoo-realdata v0.1.2 (T-DU3.5 / D-V0.1.2-1) — invalidate
+            // and immediately re-populate the aggregate cache-state summary
+            // so `view()` reads `&LabState` immutably (no RefCell on the
+            // hot-path read). Bounded by ~30 stats on the 10-row mirror —
+            // see `probe_summary` doc.
+            model.lab_state.cache_summary = Some(crate::lab::cache_state::probe_summary(
+                &crate::lab::cache_state::default_cache_root(),
+                crate::lab::cache_state::ALL_YAHOO_TICKERS,
+                std::time::SystemTime::now(),
+            ));
         }
         // lab-polish-round-2 R2 — SMA param edits.
         // Validation: parse to `usize`; only update the typed `sma_*_len`
@@ -2142,6 +2152,18 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 Ok(_) => None,
                 Err(msg) => Some(msg.clone()),
             };
+            // lab-yahoo-realdata v0.1.2 (T-DU3.5 / D-V0.1.2-1) — invalidate +
+            // re-populate the aggregate cache summary on Lab-Run-complete.
+            // The Lab run does not write cache mtimes itself
+            // (`fetch_yahoo_klines` runs externally), but operators commonly
+            // run a fetch + a backtest back-to-back; recomputing here means
+            // the next badge render reflects the most-recent on-disk state
+            // without forcing `view()` to take a `RefCell` or recompute.
+            model.lab_state.cache_summary = Some(crate::lab::cache_state::probe_summary(
+                &crate::lab::cache_state::default_cache_root(),
+                crate::lab::cache_state::ALL_YAHOO_TICKERS,
+                std::time::SystemTime::now(),
+            ));
             // T-D-N10: The equity cache invalidation + repaint is triggered by
             // the binary-side `update` wrapper after pure-state `update` returns.
             // Pure state only clears the inflight flag here.

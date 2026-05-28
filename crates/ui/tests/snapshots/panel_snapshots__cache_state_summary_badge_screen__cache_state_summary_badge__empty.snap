@@ -1,0 +1,16 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: "summary_text(\"empty\", &s)"
+---
+widget: cache_state_summary_badge
+scenario: empty
+populated_count: 0
+newest_mtime: None
+label: no cache
+prefix_constant: Yahoo cache: 
+empty_constant: no cache
+bg: PANEL_RAISED
+border: BORDER_1 1px
+radius: R3
+text_size: MICRO
+padding: XXS_S

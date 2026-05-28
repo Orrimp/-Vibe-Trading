@@ -42,8 +42,8 @@ use crate::widgets::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
 use crate::widgets::run_button::{self, RunState};
 use crate::widgets::volume_histogram::{self, VolumeBin};
 use crate::widgets::{
-    cache_state_badge, cadence_badge, chart, date_range, kpi_strip, pair_chip, position_curve,
-    progress_bar, source_toggle, strategy_chip, throttled_spinner,
+    cache_state_badge, cache_state_summary_badge, cadence_badge, chart, date_range, kpi_strip,
+    pair_chip, position_curve, progress_bar, source_toggle, strategy_chip, throttled_spinner,
 };
 
 /// Fixed pixel height for the per-bar volume histogram strip below the
@@ -139,18 +139,21 @@ pub fn chart_canvas_height_for_body_with_training(
 ) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     let padding = (space::L as f32) * 2.0;
-    // 11 children: pair_row, source_toggle_row, strategy_row, date_range_row,
+    // 12 children: cache_summary_toolbar_row (lab-yahoo-realdata v0.1.2 T-DU4),
+    // pair_row, source_toggle_row, strategy_row, date_range_row,
     // run_button_row, status_strip, lab_kpi_strip, chart (Fill),
-    // position_curve, histogram, training_panel → 10 gaps.
+    // position_curve, histogram, training_panel → 11 gaps.
     // lab-polish-round-2 R1: added position_curve strip (+1 child, +1 gap).
+    // lab-yahoo-realdata v0.1.2 T-DU4: added cache_summary toolbar row (+1 child, +1 gap).
     #[allow(clippy::cast_precision_loss)]
-    let spacing = (space::M as f32) * 10.0;
+    let spacing = (space::M as f32) * 11.0;
     let training_height = if training_collapsed {
         TRAINING_PANEL_COLLAPSED_HEIGHT_PX
     } else {
         TRAINING_PANEL_EXPANDED_HEIGHT_PX
     };
-    let fixed = CHIP_ROW_HEIGHT_PX
+    let fixed = CHIP_ROW_HEIGHT_PX  // cache_summary toolbar row (v0.1.2 T-DU4)
+        + CHIP_ROW_HEIGHT_PX  // pair_row
         + CHIP_ROW_HEIGHT_PX  // source_toggle_row (~same height as pair chip row)
         + STRATEGY_ROW_HEIGHT_PX
         + DATE_RANGE_ROW_HEIGHT_PX
@@ -176,6 +179,30 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .selected_symbol
         .clone()
         .or_else(|| model.universe.first().cloned());
+
+    // ── lab-yahoo-realdata v0.1.2 — Lab toolbar row (T-DU4 / Q2 lock) ──
+    // NEW row inserted as the FIRST child of the Lab body Column, ABOVE
+    // the pair-chip row. Renders the aggregate Yahoo cache summary badge
+    // right-aligned via `width(Fill)` + leading spacer. Visible for every
+    // Lab activation regardless of `data_source` (operator Q2 lock
+    // 2026-05-27); independent of the per-pair pill on the source-toggle
+    // row.
+    //
+    // Cold-start: `lab_state.cache_summary == None` → render the empty
+    // label. Invalidation hooks in `state.rs::LabSelectDataSource` and
+    // `state.rs::LabRunCompleted` re-populate the field via
+    // `cache_state::probe_summary`; cached value lives on `LabState`
+    // and is read immutably here (D-V0.1.2-1).
+    let cache_summary_borrow: crate::lab::cache_state::CacheSummary = model
+        .lab_state
+        .cache_summary
+        .clone()
+        .unwrap_or_else(crate::lab::cache_state::CacheSummary::empty);
+    let cache_summary_toolbar_row = Row::new()
+        .spacing(space::S)
+        .push(iced::widget::Space::new().width(Length::Fill))
+        .push(cache_state_summary_badge::view(&cache_summary_borrow, mode))
+        .width(Length::Fill);
 
     // ── Phase A top-bar row 1: pair chips (T-D-5 / T-D-8) ──────────────
     // Use XRP-first universe (operator-locked order per R3.2). The chips
@@ -640,6 +667,9 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     Column::new()
         .padding(space::L as u16)
         .spacing(space::M)
+        // lab-yahoo-realdata v0.1.2 T-DU4 — Lab toolbar row (Q2 lock).
+        // FIRST child; right-aligned aggregate cache-state summary badge.
+        .push(cache_summary_toolbar_row)
         .push(chip_row)
         .push(source_toggle_row)
         .push(strategy_row)

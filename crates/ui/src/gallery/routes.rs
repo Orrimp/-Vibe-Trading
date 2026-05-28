@@ -22,11 +22,12 @@ use crate::state::{
 use crate::strings;
 use crate::theme::ThemeMode;
 use crate::widgets::{
-    activity_tape, agent_feed, cache_state_badge, cadence_badge, chart, date_range, focus_ring,
-    frame, human_control, journal_transaction_modal, kill, kpi_strip, latency, num,
-    override_risk_veto, pair_chip, placeholder, pnl, position_curve, positions, progress_bar,
-    run_button, run_delta_badge, settings_tabs, sidebar_nav, source_toggle, sparkline, status_bar,
-    strategies, strategy_card, strategy_chip, training_log, training_plot, volume_histogram,
+    activity_tape, agent_feed, cache_state_badge, cache_state_summary_badge, cadence_badge, chart,
+    date_range, focus_ring, frame, human_control, journal_transaction_modal, kill, kpi_strip,
+    latency, num, override_risk_veto, pair_chip, placeholder, pnl, position_curve, positions,
+    progress_bar, run_button, run_delta_badge, settings_tabs, sidebar_nav, source_toggle,
+    sparkline, status_bar, strategies, strategy_card, strategy_chip, training_log, training_plot,
+    volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -1224,6 +1225,31 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         render: render_cache_state_badge_empty,
         seed: seed_cache_state_badge,
     },
+    // ── lab-yahoo-realdata v0.1.2 — cache_state_summary_badge (T-DU5) ─────────
+    GalleryCell {
+        widget: "cache_state_summary_badge",
+        state: "empty",
+        render: render_cache_state_summary_badge_empty,
+        seed: seed_cache_state_summary_badge,
+    },
+    GalleryCell {
+        widget: "cache_state_summary_badge",
+        state: "one_ticker",
+        render: render_cache_state_summary_badge_one_ticker,
+        seed: seed_cache_state_summary_badge,
+    },
+    GalleryCell {
+        widget: "cache_state_summary_badge",
+        state: "two_tickers",
+        render: render_cache_state_summary_badge_two_tickers,
+        seed: seed_cache_state_summary_badge,
+    },
+    GalleryCell {
+        widget: "cache_state_summary_badge",
+        state: "ten_tickers",
+        render: render_cache_state_summary_badge_ten_tickers,
+        seed: seed_cache_state_summary_badge,
+    },
     // ── lab-end-to-end-v2 — progress_bar (T-AR-6) ────────────────────────────
     GalleryCell {
         widget: "progress_bar",
@@ -1319,6 +1345,52 @@ fn render_cache_state_badge_empty(_model: &Cockpit) -> iced::Element<'_, Message
     cache_state_badge::view(CacheState::Empty, ThemeMode::Dark)
 }
 
+// ── lab-yahoo-realdata v0.1.2 — cache_state_summary_badge gallery cells (T-DU5) ──
+
+fn seed_cache_state_summary_badge() -> Cockpit {
+    fx::fake_cockpit_ready()
+}
+
+/// Fixture: a deterministic `SystemTime` corresponding to 2024-12-31 UTC.
+/// Picked so the rendered ISO date is stable across snapshot regen.
+fn fixture_summary_mtime() -> std::time::SystemTime {
+    use std::time::{Duration, UNIX_EPOCH};
+    // 2024-12-31 00:00:00 UTC = unix epoch 1_735_603_200.
+    UNIX_EPOCH + Duration::from_secs(1_735_603_200)
+}
+
+fn render_cache_state_summary_badge_empty(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::cache_state::CacheSummary;
+    cache_state_summary_badge::view(&CacheSummary::empty(), ThemeMode::Dark)
+}
+
+fn render_cache_state_summary_badge_one_ticker(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::cache_state::CacheSummary;
+    let summary = CacheSummary {
+        populated_count: 1,
+        newest_mtime: Some(fixture_summary_mtime()),
+    };
+    cache_state_summary_badge::view(&summary, ThemeMode::Dark)
+}
+
+fn render_cache_state_summary_badge_two_tickers(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::cache_state::CacheSummary;
+    let summary = CacheSummary {
+        populated_count: 2,
+        newest_mtime: Some(fixture_summary_mtime()),
+    };
+    cache_state_summary_badge::view(&summary, ThemeMode::Dark)
+}
+
+fn render_cache_state_summary_badge_ten_tickers(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::lab::cache_state::CacheSummary;
+    let summary = CacheSummary {
+        populated_count: 10,
+        newest_mtime: Some(fixture_summary_mtime()),
+    };
+    cache_state_summary_badge::view(&summary, ThemeMode::Dark)
+}
+
 // ── Phase E — matrix gallery cells ────────────────────────────────────────────
 
 fn seed_matrix() -> Cockpit {
@@ -1397,6 +1469,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "activity_tape",
     "agent_feed",
     "cache_state_badge",
+    "cache_state_summary_badge",
     "cadence_badge",
     "chart",
     "chart_legend",

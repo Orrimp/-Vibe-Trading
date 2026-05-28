@@ -505,3 +505,16 @@ sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
 scenario = "btc-yahoo-2024-1d-sma-cross"
 version  = "lab-yahoo-realdata-v0.1.1"
 sha256   = "8045623b4c9b7d9e25e3b53156bd64363d87e575a2f9c4cb0d8b291ae7bb4867"
+
+# lab-yahoo-realdata v0.1.2 Yahoo anchor (2026-05-27).
+# Second real-data Yahoo anchor in the registry.  Source: data/yahoo/ETH-USD/1d/2024
+# parquet cache (REVISION.toml SHA e018f876c36ab82aae2b6509be3ceb1cab4124c2c5eea4a08c1b8aa3000e7734).
+# 366 daily bars, SMA(20,50), seed=0xC0FFEE, initial capital=$100,000.
+# Final equity: $102,760.76 (+2.76%).  Determinism: body SHA identical on 3 independent runs.
+# H1 PASS: Yahoo ETH H1 (+0.35%) vs Yahoo BTC H1 (+1.20%) delta = 0.85% < 30% threshold.
+# Verify with: scripts/verify_anchors.sh  (expects 70 / 70 PASS)
+
+[[anchors]]
+scenario = "eth-yahoo-2024-1d-sma-cross"
+version  = "lab-yahoo-realdata-v0.1.2"
+sha256   = "e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a"

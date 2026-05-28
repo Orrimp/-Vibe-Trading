@@ -70,6 +70,11 @@ name = "threshold_sweep_readonly"
 path = "tests/threshold_sweep_readonly.rs"
 required-features = ["candle", "realdata"]
 
+[[test]]
+name = "run_yahoo_sma_ticker_flag"
+path = "tests/run_yahoo_sma_ticker_flag.rs"
+required-features = ["yahoo"]
+
 [dev-dependencies]
 criterion.workspace = true
 cost = { path = "../cost" }

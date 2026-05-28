@@ -1086,6 +1086,41 @@ pub const LAB_CACHE_STATE_STALE: &str = "stale";
 /// file's mtime is within the last 24 h.
 pub const LAB_CACHE_STATE_FRESH: &str = "fresh";
 
+/// lab-yahoo-realdata v0.1.2 (T-DU2 / R-NR.2) — operator Q3 prefix for the
+/// aggregate cache-state summary badge in the Lab toolbar. The badge label
+/// is built via [`fmt_lab_cache_state_summary`] and resolves to
+/// `"Yahoo cache: {N} tickers · last fetch {YYYY-MM-DD}"`.
+///
+/// **Operator lock 2026-05-27:** prefix is `"Yahoo cache: "` (not the
+/// analyst's bare `"Cache: "`) to disambiguate from any future Binance /
+/// synthetic cache surface. N=0 path reuses [`LAB_CACHE_STATE_EMPTY`].
+pub const LAB_CACHE_STATE_SUMMARY_PREFIX: &str = "Yahoo cache: ";
+
+/// Build the aggregate cache-state summary label.
+///
+/// - `populated_count == 0` → returns [`LAB_CACHE_STATE_EMPTY`] verbatim.
+/// - `populated_count >= 1` AND `iso_date` is Some → returns
+///   `"Yahoo cache: N tickers · last fetch YYYY-MM-DD"`.
+/// - `populated_count >= 1` AND `iso_date` is None → returns
+///   `"Yahoo cache: N tickers"` (defensive edge case; the production
+///   `probe_summary` never returns count >= 1 without an mtime).
+///
+/// Lives in `strings` (not the widget) so the prose template "tickers ·
+/// last fetch" stays out of `widgets/*` per the consistency hygiene
+/// contract (R-NR.2 / `tests/consistency.rs::no_inline_user_visible_strings_in_widgets`).
+#[must_use]
+pub fn fmt_lab_cache_state_summary(populated_count: usize, iso_date: Option<&str>) -> String {
+    if populated_count == 0 {
+        return LAB_CACHE_STATE_EMPTY.to_string();
+    }
+    match iso_date {
+        Some(date) => format!(
+            "{LAB_CACHE_STATE_SUMMARY_PREFIX}{populated_count} tickers \u{00b7} last fetch {date}"
+        ),
+        None => format!("{LAB_CACHE_STATE_SUMMARY_PREFIX}{populated_count} tickers"),
+    }
+}
+
 // ── Fallbacks / placeholders ─────────────────────────────────────────────────
 
 /// Rendered when a value is known to be "no data yet" rather than zero.
@@ -1605,6 +1640,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_CACHE_STATE_EMPTY", LAB_CACHE_STATE_EMPTY),
         ("LAB_CACHE_STATE_STALE", LAB_CACHE_STATE_STALE),
         ("LAB_CACHE_STATE_FRESH", LAB_CACHE_STATE_FRESH),
+        (
+            "LAB_CACHE_STATE_SUMMARY_PREFIX",
+            LAB_CACHE_STATE_SUMMARY_PREFIX,
+        ),
         // cockpit-activity-status-bar v0.1.0 Wave B (T-D-N6)
         ("ACTIVITY_KIND_YAHOO_LABEL", ACTIVITY_KIND_YAHOO_LABEL),
         ("ACTIVITY_KIND_LAB_RUN_LABEL", ACTIVITY_KIND_LAB_RUN_LABEL),
