@@ -145,7 +145,7 @@ operator-visible behaviour change._
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-28, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — <add reason below>
 

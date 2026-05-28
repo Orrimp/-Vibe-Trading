@@ -1865,20 +1865,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      5 method-read sites in the K5 test file; production `cockpit_live.rs`
      already routes via the message API. Trace row
      REQ-COCKPIT-TOAST-QUEUE-CLEANUP-001 opened at `proposed` state. -->
-- **cockpit-toast-queue v0.2.0 cleanup** — retire the legacy
-  `pub toast_message: Option<SmolStr>` field kept as a one-cycle back-
-  compat shim by the v0.1.0 developer (commit `a723d24`). Migrates the
-  2 known direct-field-write sites in
-  `crates/ui/tests/cockpit_training_pressed_wiring.rs` (lines 125, 323)
-  to the message-API dispatcher; optionally retires the
-  `toast_message()` method shim as well. Zero operator-visible
-  behaviour change; zero anchor delta (UI-only); zero new Lumen tokens.
-  Brief at [`spec/cockpit-toast-queue-v0.2.0-cleanup/feature.md`](cockpit-toast-queue-v0.2.0-cleanup/feature.md);
-  tasks at [`spec/cockpit-toast-queue-v0.2.0-cleanup/tasks.md`](cockpit-toast-queue-v0.2.0-cleanup/tasks.md).
-  Predecessor: `cockpit-toast-queue v0.1.0` (shipped 2026-05-27,
-  commit `a723d24`). Priority P3 — can wait for an operator standing-
-  Autoapprove; no scheduling pressure beyond avoiding annotation drift.
-  Trace: `REQ-COCKPIT-TOAST-QUEUE-CLEANUP-001`.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
+<!-- - **cockpit-toast-queue v0.2.0 cleanup** — see Recent section below for v0.1.0 ship summary. -->
 
 - **Lumen Phase 6 — Assistant slot.** _reserved_ — depends on the
   v2 LLM strategy queued item above. Right-rail collapsible panel
@@ -2226,6 +2214,25 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+### 2026-05-28 cohort
+
+- **cockpit-toast-queue v0.2.0 cleanup v0.1.0** — shipped 2026-05-28
+  (operator-approved). Closes the v0.1.0 ship's architecture-deviation
+  footnote: retires the `pub toast_message: Option<SmolStr>` FIELD,
+  the `toast_message()` METHOD shim, and the 2-line stale comment in
+  `cockpit_live.rs:1181-1182` — all eliminated. Post-cleanup
+  `grep -rn "toast_message" crates/` → **0 matches** anywhere.
+  Sub-route (b) FULL REMOVAL chosen (analyst recommendation aligned;
+  audit confirmed only test code referenced the method shim). 2 test
+  field-WRITE sites migrated to `Message::ShowToastWithSeverity` /
+  `Message::ShowToast` dispatch (mirrors production `cockpit_live.rs`
+  pattern); 5 field-READ assertions flipped to direct
+  `toast_queue.front()` access. K5 regression 5/5 PASS; v0.1.0
+  integration 4/4 PASS; 397 ui lib tests PASS; 69/69 anchors
+  byte-identical (UI-only). ADR-0046 § T-AR-5 one-cycle migration
+  commitment honored. Commits: `8ebc12a`, `2dcb112`, `8c074bd`. See
+  [`spec/cockpit-toast-queue-v0.2.0-cleanup/feature.md`](cockpit-toast-queue-v0.2.0-cleanup/feature.md).
 
 ### 2026-05-27 cohort
 
