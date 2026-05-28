@@ -511,7 +511,7 @@ arch        = []    # architect M-T1 DEFERRED per Q-SEQ HYBRID; activation gate 
 crates      = []    # developer waves DEFERRED
 tests       = []    # tester DEFERRED
 anchors     = []    # planned under v2.7.0-regime pin (Q6 default): regime-classifier-bs{1,2}-realdata + regime-overlay-momentum-bs{1,2}-realdata — reserved-but-unused until activation
-state       = "draft"   # analyst pass complete 2026-05-22; spec-only design exploration; NO code commitment until activation gate fires
+state       = "proposed"   # analyst M-A5 light-touch refresh 2026-05-28 — narrowed to canonical M0 shape (R1-R5 + R-NR + K1-K6 + H1-H4 + Q1-Q5 + 4-cell verdict tree). Promoted Queue → Active by operator (TCN line retired; C1 retired; C5 partial-shipped — C2 is the remaining v3 three-pick slot). Awaiting M-OD on Q1-Q5 then architect M-T1.
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────

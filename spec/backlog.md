@@ -372,6 +372,32 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+<!-- updated 2026-05-28 (analyst, v3-regime-classifier M-A5 light-touch
+     refresh — promoted Queue → Active per operator Phase 2 re-pick after
+     v2.5 TCN re-investigation analyst-halt). Analyst agent
+     a78dc46ac61e304ee API-aborted at tool 34 with substantial work done
+     (feature.md narrowed from R1-R8/H1-H6/Q1-Q7 to canonical M0 shape
+     R1-R5/K1-K6/H1-H4/Q1-Q5 + 4-cell verdict tree; 430 lines inserted,
+     589 deleted); orchestrator inline-finished the Queue → Active move
+     + trace state flip proposed→arch-ready. -->
+- **v3-regime-classifier v0.1.0** — Candidate 2 of the v3 three-pick
+  set; C1 retired (NEGATIVE-NET-DELTA 2026-05-22); C5 shipped
+  v0.1.0-PARTIAL 2026-05-22 — C2 is the remaining slot. Predicts
+  regime label (Bull / Bear / Chop / regime-aware-default) NOT μ,
+  feeding strategy selection. Extends pre-existing pure-fn 3-state
+  BTC daily-close tagger at `crates/reflection/src/regime.rs`
+  (byte-identity backward-compat is R1.1 load-bearing — 7+ downstream
+  tests + lesson-card embedding + Phase F UI renderer depend on it).
+  M-A5 refresh narrowed brief to canonical M0 shape: 5R + R-NR +
+  K1-K6 + H1-H4 + Q1-Q5 + 4-cell verdict tree. 5 operator-decide Qs
+  (taxonomy granularity, training window, model class HMM /
+  Markov-switching / classifier-ensemble, integration mode overlay /
+  switcher / ensemble, v0.1.0 scope single-asset vs multi). Brief:
+  [`spec/v3-regime-classifier/feature.md`](v3-regime-classifier/feature.md).
+  Trace: `REQ-V3-REGIME-CLASSIFIER-001` (state `proposed`). HANDOFF →
+  operator-decide Q1-Q5 → architect M-T1. Cost ~4-6 weeks from M-OD
+  gate.
+
 
 <!-- updated 2026-05-28 (analyst, v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
      M0 close). **PROMOTED Idea → Active 2026-05-28**. Closes the operator-
@@ -1819,47 +1845,9 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   log-return horizon on hourly crypto bars does not extract +0.10
   Sharpe-delta on the v1 cross-sectional momentum baseline).
 
-- **v3 — Regime classifier (`v3-regime-classifier`).**
-  _Queued DEFERRED-2026-05-22 retained pending C5 ship — NOT Active._
-  Original deferral framing was "C1 ships first; C2 + C5 analyst-only
-  spec until C1 verdict" (operator Q-SEQ HYBRID 2026-05-22 AM session).
-  The C1 programme retired 2026-05-22 PM with NEGATIVE-NET-DELTA real
-  evidence after the v3-volatility-forecaster-noop-fix v0.1.0 fix
-  wave; operator picked **C5 over C2 at C1's retirement** for moat-
-  alignment + crates/llm infra reuse. C2 stays in Queue as the next-
-  in-line fallback pick if C5 returns F-equivalent (R-O3 routing
-  cell of the C5 active block) — explicit precedent for "if C5
-  fails, re-route to C2" preserved in the C5 active comment block
-  above. Candidate 2 of three picks ({C1 volatility + C2 regime +
-  C5 LLM-as-forecaster}) from the
-  [strategy-reformulation survey](dev-notes/strategy-reformulation-survey-2026-05-22.md)
-  resolution. Per operator-decide Q-SEQ = **HYBRID**: C1 (volatility)
-  ships first; this Candidate-2 analyst pass produced a spec-only
-  design brief at
-  [`feature.md`](v3-regime-classifier/feature.md) (R1-R8, H1-H6,
-  Q1-Q7 with analyst-recommended defaults, 8-item non-regression
-  contract, deferred-milestone activation contract) and a `[[req]]`
-  row `REQ-V3-REGIME-CLASSIFIER-001` in `draft` state. **Architect
-  M-T1 + developer waves DEFERRED** — activation gate is C1 verdict
-  landed AND (operator routing = promote-C2 OR Sharpe-delta on C1
-  ≥ +0.10 auto-progression). **Load-bearing finding:**
-  [`crates/reflection/src/regime.rs`](../crates/reflection/src/regime.rs)
-  already ships a pure-fn 3-state BTC daily-close regime tagger
-  (`RegimeTag { Bull, Bear, Chop }`, `REGIME_THRESHOLD_RATIO =
-  dec!(0.02)`, `classify_regime` fn) which 7+ downstream test files
-  + lesson-card embedding + Phase F Memory/Models renderer depend on
-  byte-identically; the feature extends rather than reinvents.
-  Q1-Q7 surfaced: regime taxonomy, classifier architecture (analyst
-  default HMM with rule-based fallback), nowcast vs forecast horizon,
-  strategy consumer shape (default regime-conditional position
-  sizing on v1 momentum), verdict shape (analyst proposes new
-  sibling ADR-0037 NOT ADR-0033 extension), anchor pin (default
-  `v2.7.0-regime`), and in-place vs sibling-file vs new-crate
-  disposition (default extend-in-place to preserve lesson-card
-  embedding determinism). Cost ~4-6 weeks from activation gate;
-  cumulative budget across {C1 + C2 + C5} cap ~16 weeks per
-  Q-BUDGET. Sibling picks: `v3-volatility-forecast` (C1, ships
-  first) + `v3-llm-as-forecaster` (C5, parallel analyst pass).
+<!-- moved Queue → Active 2026-05-28 (operator Phase 2 re-pick after
+     v2.5 TCN analyst-halt). See § Active above for live tracking. -->
+<!-- - **v3 — Regime classifier (`v3-regime-classifier`).** — moved Active 2026-05-28. -->
 
 - **v3 — LLM-as-forecaster (`v3-llm-forecaster`).**
   _moved Queue → Active 2026-05-22 (analyst-bridge)_ — see
