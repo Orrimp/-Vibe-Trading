@@ -399,6 +399,38 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 <!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
 <!-- - **lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
+<!-- updated 2026-05-28 (architect, lab-recipe-test-harness M-T1 close — analyst
+     pass folded in per orchestrator brief since the WHAT was already
+     documented in spec/bug-log.md#64 attempt-1 post-mortem + dev-note
+     bug-64-progress-bar-investigation-2026-05-27.md). **PROMOTED Idea →
+     Active 2026-05-28** as a P1 architect-led tooling investment to close
+     the testing gap exposed by the Bug #64 D.1.1+D.2.1 revert at commit
+     `e94615e` (revert hash; ship was `5f9f920`). Three live regressions
+     escaped 415 PASS + 70/70 anchors + K5 5/5 because no test exercises
+     the channel/subscription flow of `runner::spawn_lab_run` (boundary
+     tests stop at `run_scenario`; pure-state `LabState` invariants stop
+     at message arms). This brief ships two test surfaces totaling ~200
+     LoC: (1) `spawn_lab_run_yahoo_harness.rs` with `MockYahooBarSource`
+     covering sentinel emission + `tokio::select!` channel survival
+     (categories A + B); (2) `lab_stop_button_gating.rs` covering the
+     view-gating predicate `model.lab_run_inflight` lifecycle (category
+     C). Harness pattern (d) Combination per ADR-0048 D1; production
+     binary path API-additive only (extract `pub trait YahooBarSource`).
+     Anchor-additive zero per D6 — channel-only events, no file output,
+     anchors stay 70/70. **GATES the Bug #64 re-attempt** — no polish
+     work may ship until this lands and proves it catches the three
+     regression classes via the M-FINAL T-T4 falsification probe.
+     M-OD is empty (architect locked all decisions at sensible defaults).
+     Trace row `REQ-LAB-RECIPE-TEST-HARNESS-001` opened at `arch-done`
+     state. HANDOFF → developer (T-D1 → T-D6 sequential; tester closes
+     loop with falsification-probe evidence). -->
+- **lab-recipe-test-harness v0.1.0** — P1 tooling investment closing the
+  channel/subscription test gap exposed by the Bug #64 D.1.1+D.2.1 revert
+  (commit `05937e4`). Two new test files in `crates/ui/tests/` + one
+  trait extraction in `crates/ui/src/lab/runner.rs`. Gates the Bug #64
+  re-attempt. See [`spec/lab-recipe-test-harness/feature.md`](lab-recipe-test-harness/feature.md)
+  + [ADR-0048](architecture/adr/0048-lab-recipe-test-harness.md).
+
 <!-- updated 2026-05-27 (analyst, cockpit-toast-queue M0 close — inline-salvaged
      after analyst agentId a43a615341bd60112 529'd at 26 tool uses;
      orchestrator appended this backlog row + trace row REQ-COCKPIT-TOAST-QUEUE-001

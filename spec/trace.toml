@@ -1887,4 +1887,32 @@ anchors     = [
 ]
 state       = "passed"  # tester M-FINAL 2026-05-28: VERDICT → SOFT-PASS. All gates green. BTC SHA drift documented as known transitional state (see test-final report). spec-lint unreferenced-anchor resolved by this anchors array update. Report: spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/test-final-2026-05-28-lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge.md.
 
+[[req]]
+id          = "REQ-LAB-RECIPE-TEST-HARNESS-001"
+title       = "Lab Recipe / Subscription test harness v0.1.0 — boundary-test spawn_lab_run with MockYahooBarSource + Stop-button gating state-machine pair; closes the testing gap exposed by Bug #64 D.1.1+D.2.1 revert (commit 05937e4) where 415 PASS + 70/70 anchors + K5 5/5 missed three live cockpit regressions (no label, 30% indeterminate fallback, Stop dead). Pattern (d) Combination per ADR-0048 D1: two new test files (crates/ui/tests/spawn_lab_run_yahoo_harness.rs + lab_stop_button_gating.rs) ~200 LoC total + one API-additive trait extraction (pub trait YahooBarSource in crates/ui/src/lab/runner.rs). Catches A) sentinel emission BEFORE preload await, B) channel survival across tokio::select! refactor, C) view-gating predicate model.lab_run_inflight lifecycle. P1 priority — GATES the Bug #64 re-attempt (no polish work may ship until M-FINAL T-T4 falsification probe proves the harness catches the regression class). Anchor-additive zero per D6 — channel-only events, no file output, 70/70 stays byte-identical. M-OD empty (architect locked all defaults via D1-D6)."
+feature     = "lab-recipe-test-harness"
+product     = "spec/product.md"
+arch        = [
+  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                       # PARENT ADR — D1 pattern (d) Combination; D2 file:line locations; D3 categories A+B+C; D4 known-gaps; D5 invocation cadence (per-feature M-FINAL + workspace test gate); D6 anchor-additivity contract
+  "spec/lab-recipe-test-harness/feature.md",
+  "spec/lab-recipe-test-harness/tasks.md",
+  "spec/bug-log.md",                                                             # ROOT-CAUSE CONTEXT — bug #64 attempt-1 post-mortem documenting the 3 regressions this harness catches
+  "spec/dev-notes/bug-64-progress-bar-investigation-2026-05-27.md",              # 11-hop code-path trace + D.1.1/D.2.1 fix-option taxonomy that attempt-1 implemented
+]
+crates      = [
+  "crates/ui/src/lab/runner.rs",                                                 # T-D1 — extract `pub trait YahooBarSource` (API-additive; default impl wraps existing parquet+http path)
+  "crates/ui/tests/spawn_lab_run_yahoo_harness.rs",                              # T-D2 — Surface 1: boundary test with MockYahooBarSource (categories A + B)
+  "crates/ui/tests/lab_stop_button_gating.rs",                                   # T-D3 — Surface 2: Stop button gating state-machine test (category C)
+]
+tests       = [
+  # Tests authored by developer at M-DEV:
+  "crates/ui/tests/spawn_lab_run_yahoo_harness.rs",                              # Surface 1 — sentinel emission + ticker channel survival + post-preload engine events
+  "crates/ui/tests/lab_stop_button_gating.rs",                                   # Surface 2 — `lab_run_inflight` lifecycle across LabRunRequested/Progress/Completed/StopRequested
+  # Pre-existing tests that must stay green (non-regression contract):
+  "crates/backtest/tests/determinism.rs",                                        # row 70 SHA byte-identical post-trait-extraction
+  "crates/ui/tests/lab_progress_recipe_stream.rs",                               # existing stream_impl coverage — not regressed by harness
+  "crates/ui/tests/cockpit_live_lab_run_smoke.rs",                               # existing engine-side coverage — complement, not replacement
+]
+anchors     = []                                                                  # Harness produces ZERO file output (channel-only events); no new anchors. R4 contract: scripts/verify_anchors.sh stays 70/70 PASS post-merge.
+state       = "arch-done"  # 2026-05-28 architect M-T1: ADR-0048 authored; pattern (d) selected; feature.md + tasks.md authored; backlog row + trace row appended. HANDOFF → developer (T-D1 trait extraction; T-D2 Surface 1; T-D3 Surface 2; T-D4 workspace green; T-D5 clippy clean; T-D6 anchor gate). M-FINAL T-T4 falsification probe (revert 5f9f920 onto HEAD with harness present → at least one new test MUST fail) is the mandatory ship criterion.
 
