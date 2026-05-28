@@ -1,7 +1,7 @@
 ---
 slug: lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1
-status: draft
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-05-28
 ---
 
@@ -24,9 +24,10 @@ updated: 2026-05-28
 
 ## M-OD — operator decide
 
-- [ ] T-OD1 — Q1 ((a) helper-extraction [Recommended] vs (b) inline fix).
-- [ ] T-OD2 — Q2 ((a) in-place SHA under `lab-yahoo-realdata-v0.1.1`
-  [Recommended] vs (b) new namespace `lab-yahoo-realdata-v0.1.3`).
+**RESOLVED 2026-05-28** — operator picked both (a) durable choices.
+
+- [x] T-OD1 (2026-05-28) — Q1 = **(a) helper-extraction [Recommended — DURABLE]**.
+- [x] T-OD2 (2026-05-28) — Q2 = **(a) in-place SHA under existing `lab-yahoo-realdata-v0.1.1`** [Recommended — DURABLE].
 
 ## M-T1 — architect (fast-skip likely)
 

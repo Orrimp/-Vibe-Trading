@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
 version: 0.1.0
-status: draft
-owner: presenter
+status: shipped
+owner: shipped
 updated: 2026-05-28
 predecessor: v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0
 parent: backtest-vs-live-execution-gap

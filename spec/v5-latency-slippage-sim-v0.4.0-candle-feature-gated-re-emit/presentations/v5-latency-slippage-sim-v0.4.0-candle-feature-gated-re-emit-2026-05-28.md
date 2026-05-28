@@ -169,7 +169,7 @@ spec-lint: FAIL (77 violations in 4 categories)
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-28, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

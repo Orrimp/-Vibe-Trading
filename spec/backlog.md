@@ -433,7 +433,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      scenarios from the anchor set. Trace row `REQ-V5-LATENCY-SLIPPAGE-V0-4-0-001`
      opened at `proposed` state. HANDOFF → architect (M-T1 fast-skip
      ratifies + emits dev handoff). -->
-- **v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0** — closes the v0.3.0 SOFT-PASS carve-out by rebuilding the canonical backtest binary with `--features candle realdata` on the operator-locked Apple Silicon box and re-emitting the 8 deferred scenarios (TCN-weights ×2, TCN-realdata ×2, TCN-weights-realdata ×2, PatchTST-realdata ×1, VolTarget-GARCH-realdata ×1) under canonical `LatencySlippageSimConfig { 30, 80, 8 }`; 8 SHAs update in-place under namespace `v5-realdata-medium-2026-05` (anchor count stays 70/70); fleet of friction-real scenarios goes 11 → 19. Q1-Q2 standing-Autoapprove-eligible. Cost ~1-2 days wall-clock.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
+<!-- - **v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0** — see Recent section below. -->
 
 <!-- updated 2026-05-27 (analyst, lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
      M0 close) — **PROMOTED Idea → Active 2026-05-27** by operator multi-select
@@ -2286,6 +2287,23 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-28 cohort
+
+- **v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0** —
+  shipped 2026-05-28 (operator-approved). Closes the v0.3.0 SOFT-PASS
+  carve-out: 8 candle/realdata-feature-gated scenarios re-emitted under
+  canonical `LatencySlippageSimConfig { 30 ms / 80 ms / 8 bps }`; 8
+  SHAs overwritten in-place under namespace `v5-realdata-medium-2026-05`
+  (anchor count stays 70/70). **Compound determinism (candle × realdata
+  × friction) gate DISCHARGED**: dev's 2-run byte-identity gate PASS
+  (8/8) + tester's independent witness on 2 of 8 (PatchTST + Vol-target)
+  MATCH. ADR-0047 carries forward unchanged; no new ADR. Friction-real
+  scenario fleet grew 11 → 19 of 70 anchors. Sharpe-delta highlights:
+  TCN-realdata Δ -$36.5k / -$29.8k (5× trade-frequency amplification);
+  PatchTST Δ -$25.2k (H2 FALSIFIED — fewer trades than TCN);
+  Vol-target GARCH Δ -$9.5k (17% gross-fill reduction). 0 K1 surprises
+  across all 8. Commits: `f9eb683`, `dcb1935`, `d8fe484`, `57d67cd`,
+  `ed00e65`. See
+  [`spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/feature.md`](v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/feature.md).
 
 - **lab-recipe-test-harness v0.1.0** — shipped 2026-05-28 (operator-
   approved). P1 tooling investment closing the channel/subscription
