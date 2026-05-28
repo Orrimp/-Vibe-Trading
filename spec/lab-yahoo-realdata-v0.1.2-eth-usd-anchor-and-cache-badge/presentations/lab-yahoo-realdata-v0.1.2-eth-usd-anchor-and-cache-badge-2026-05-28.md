@@ -242,7 +242,7 @@ transitional and disposed; everything else is anchored, tested, and green._
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-28, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

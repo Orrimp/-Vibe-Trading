@@ -396,9 +396,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      `REQ-LAB-YAHOO-REALDATA-V0-1-2-001` opened at `proposed` state. Frontmatter
      stays `owner: analyst`, `status: draft` — operator-decide is next.
      HANDOFF → architect (M-T1 ratifies Q1/Q2/Q3 + decomposes M-DEV + M-DEV-UI). -->
-- **lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge v0.1.0** —
-  ETH-USD anchor + cache-state SUMMARY badge; closes Q1+Q3 of v0.1.1 deck.
-  See `spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md`.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
+<!-- - **lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
 <!-- updated 2026-05-27 (analyst, cockpit-toast-queue M0 close — inline-salvaged
      after analyst agentId a43a615341bd60112 529'd at 26 tool uses;
@@ -2216,6 +2215,33 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-28 cohort
+
+- **lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge v0.1.0** —
+  shipped 2026-05-28 (operator-approved). Closes Q1 + Q3 of v0.1.1
+  presenter deck's open list. Anchor count **69 → 70**:
+  `eth-yahoo-2024-1d-sma-cross` locked under namespace
+  `lab-yahoo-realdata-v0.1.2` (SHA `e59a5f87daf0cc58ce8be2e1695dfc2c
+  cc3ab76bd976b54c957e9e3c5ed4199a`). `run_yahoo_sma.rs` extended with
+  `--ticker <TICKER>` Clap arg (default BTC-USD; scales DRY across the
+  remaining 8 crypto-mirror tickers; `ALLOWED_YAHOO_TICKERS` 10-row
+  validation surface). NEW aggregate cache-state SUMMARY badge widget
+  (`cache_state_summary_badge`) in a NEW Lab tab toolbar row (operator
+  Q2 override) — "Yahoo cache: N tickers · last fetch YYYY-MM-DD".
+  Cached on `LabState::cache_summary` with invalidation hooks in
+  `LabSelectDataSource` + `LabRunCompleted` per ADR-0040 § Changelog
+  D-V0.1.2-1. Two-lane parallel ship (M-DEV backtest + M-DEV-UI; zero
+  file overlap). H1 PASS at 0.84% via K1 synthetic fallback (Yahoo
+  ETH vs Yahoo BTC same-window); H2 ×5 determinism PASS. UI lib 411
+  PASS (+14); panel snapshots 90 PASS (+4); cross-feature canary
+  (cockpit_training_pressed_wiring) 5/5 PASS. **SOFT-PASS** qualifier:
+  BTC body SHA drifted from `8045623b...` to `d2a709ef...` because
+  `REVISION.toml` aggregate changed when ETH-USD was fetched
+  (`rev=` line in report body). Verify_anchors.sh still resolves
+  70/70 correctly per ADR-0038 § D6 byte-immutability via on-disk
+  file. Pattern flagged for v0.1.3 architect attention. Commits:
+  `cf7015c`, `d4c4c45`, `bd7e04b`, `9638ff8`, `1fd72b7`. ADR-0040
+  Changelog. See
+  [`spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md`](lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md).
 
 - **cockpit-toast-queue v0.2.0 cleanup v0.1.0** — shipped 2026-05-28
   (operator-approved). Closes the v0.1.0 ship's architecture-deviation
