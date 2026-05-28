@@ -191,6 +191,66 @@ pub struct LabRunConfig {
 /// Outcome of the in-process run for `iced::Task::perform`.
 pub type LabRunResult = Result<RunSummary, SmolStr>;
 
+// ── LabYahooBarSource trait (lab-recipe-test-harness T-D1 / ADR-0048) ─────────
+
+/// Boxed future returned by `LabYahooBarSource::preload`.
+///
+/// Type alias avoids the `clippy::type_complexity` lint on the trait method
+/// return type while keeping the trait object-safe.
+#[cfg(feature = "live")]
+pub type PreloadFuture<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<(Vec<trading_core::Bar>, SmolStr), SmolStr>>
+            + Send
+            + 'a,
+    >,
+>;
+
+/// Abstraction over the Yahoo bar preload step in `spawn_lab_run`.
+///
+/// Allows tests to inject a `MockLabYahooBarSource` without touching HTTP/parquet.
+/// Production path uses `DefaultLabYahooBarSource` which delegates to
+/// `preload_yahoo_bars` (the existing parquet+http impl).
+///
+/// Object-safe via `BoxFuture` return (no async-trait crate needed).
+/// Bounded by `Send + Sync + 'static` so the impl can be moved into
+/// `iced::Task::perform`'s `Send + 'static` async closure.
+///
+/// Feature gate: only compiled under `live` so tests with `--features live`
+/// can construct mocks without requiring the `yahoo` feature flag.
+#[cfg(feature = "live")]
+pub trait LabYahooBarSource: Send + Sync + 'static {
+    /// Preload Yahoo bars for the given config + scenario range.
+    ///
+    /// Returns `(bars, revision_sha)` on success, `Err(SmolStr)` on failure.
+    /// The production impl calls `preload_yahoo_bars`; the mock sleeps then
+    /// returns deterministic bars.
+    fn preload<'a>(
+        &'a self,
+        cfg: &'a LabRunConfig,
+        range: &'a backtest::engine::DateRange,
+    ) -> PreloadFuture<'a>;
+}
+
+/// Production `LabYahooBarSource` implementation — delegates to `preload_yahoo_bars`.
+///
+/// Wired by `spawn_lab_run` when no mock is injected (default path).
+/// Only compiled when both `live` and `yahoo` features are enabled because
+/// `preload_yahoo_bars` itself requires `#[cfg(feature = "yahoo")]`.
+#[cfg(all(feature = "live", feature = "yahoo"))]
+pub struct DefaultLabYahooBarSource;
+
+#[cfg(all(feature = "live", feature = "yahoo"))]
+impl LabYahooBarSource for DefaultLabYahooBarSource {
+    fn preload<'a>(
+        &'a self,
+        cfg: &'a LabRunConfig,
+        range: &'a backtest::engine::DateRange,
+    ) -> PreloadFuture<'a> {
+        Box::pin(preload_yahoo_bars(cfg, range))
+    }
+}
+
 // ── Yahoo bar pre-loading helpers (lab-yahoo-realdata T-C3.6 / T-AR1) ────────
 
 /// Map a `backtest::engine::DateRange` to `(start_ms, end_ms)` UTC epoch-millis.
@@ -507,6 +567,12 @@ pub fn spawn_lab_run(
     progress_tx: backtest::progress::ProgressSender,
     #[cfg(feature = "live")] activity_sender: Option<agent::activity::ActivitySender>,
     #[cfg(not(feature = "live"))] _activity_sender: Option<()>,
+    // lab-recipe-test-harness T-D1 / ADR-0048: injectable Yahoo bar source.
+    // None => production path (DefaultLabYahooBarSource via preload_yahoo_bars).
+    // Some(source) => test injection (e.g. MockLabYahooBarSource).
+    // Only compiled under `live`; non-live builds receive a dummy Option<()>.
+    #[cfg(feature = "live")] yahoo_source_override: Option<Box<dyn LabYahooBarSource>>,
+    #[cfg(not(feature = "live"))] _yahoo_source_override: Option<()>,
 ) -> iced::Task<crate::state::Message> {
     use crate::state::Message;
 
@@ -601,58 +667,96 @@ pub fn spawn_lab_run(
                 // `fetch_and_cache` then retries the load. First Run on a
                 // ticker takes 30-60 s for the network round-trip; subsequent
                 // Runs hit the cache.
-                #[cfg(feature = "yahoo")]
-                {
+                // lab-recipe-test-harness T-D1 / ADR-0048: choose the Yahoo source.
+                // When `yahoo_source_override` is `Some`, use it (test injection).
+                // When `None`, fall through to the production `#[cfg(feature = "yahoo")]`
+                // block which uses `DefaultLabYahooBarSource` (same as before).
+                //
+                // The `Option<Box<dyn LabYahooBarSource>>` is moved into the async
+                // closure above so it is available here regardless of yahoo feature.
+                let yahoo_source_moved: Option<Box<dyn LabYahooBarSource>> = yahoo_source_override;
+
+                // When a test source override is provided, use it for any
+                // data_source == YahooCache run (even when `yahoo` feature is off).
+                if let Some(ref source) = yahoo_source_moved {
                     if cfg_for_preload.data_source == crate::lab::state::LabDataSource::YahooCache {
-                        // Bug #64 — emit a sentinel Progress event BEFORE the
-                        // network/disk preload await so the operator sees an
-                        // explicit 0%-with-label state instead of the 30%
-                        // indeterminate fallback during the wait. (Cold cache
-                        // misses can spin for 30-60 s on the Yahoo round-trip.)
-                        // `total_bars = 1` is a placeholder; the real value
-                        // arrives once the engine's bar loop emits its first
-                        // event. The widget renders this as 0% with label
-                        // "0 / 1 bars · 0.0s" — clearly identifiable as a
-                        // pre-engine state.
+                        // lab-recipe-test-harness T-D1: sentinel emission BEFORE preload.
+                        // This is the contract tested by `sentinel_fires_before_preload_await`.
                         progress_tx.try_send(backtest::progress::Progress {
                             current_bar: 0,
                             total_bars: 1,
                             elapsed_ms: 0,
                         });
 
-                        // T-D-N7 — cockpit-activity-status-bar Yahoo preload
-                        // producer wiring (approach A: inline handle, no Send
-                        // needed — preload runs in the iced::Task::perform
-                        // closure, NOT inside rt.spawn).
-                        //
-                        // Build label: "Yahoo <SYMBOL> · <RANGE>" (≤ 64 chars).
-                        // ActivitySender is Clone + Send; ActivityHandle is !Send
-                        // but lives entirely within this async closure (single task).
-                        let yahoo_label = format!(
-                            "Yahoo {} · {}",
-                            cfg_for_preload.symbol, cfg_for_preload.range_label
-                        );
-                        let yahoo_activity_handle = activity_sender_for_closure
-                            .as_ref()
-                            .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
-
                         let preload_result =
-                            preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await;
+                            source.preload(&cfg_for_preload, &scenario_cfg.range).await;
                         match preload_result {
                             Ok((bars, _sha)) => {
                                 scenario_cfg.data_source =
                                     backtest::engine::ScenarioDataSource::YahooCache;
                                 scenario_cfg.bars_override = Some(bars);
-                                // yahoo_activity_handle dropped here →
-                                // emits End { Success } automatically (R1.3).
-                                drop(yahoo_activity_handle);
                             }
                             Err(e) => {
-                                // Emit End { Failed } before returning the error (R1.3 / F3).
-                                if let Some(handle) = yahoo_activity_handle {
-                                    handle.fail(e.as_str());
-                                }
                                 return Err(e);
+                            }
+                        }
+                    }
+                } else {
+                    #[cfg(feature = "yahoo")]
+                    {
+                        if cfg_for_preload.data_source
+                            == crate::lab::state::LabDataSource::YahooCache
+                        {
+                            // Bug #64 — emit a sentinel Progress event BEFORE the
+                            // network/disk preload await so the operator sees an
+                            // explicit 0%-with-label state instead of the 30%
+                            // indeterminate fallback during the wait. (Cold cache
+                            // misses can spin for 30-60 s on the Yahoo round-trip.)
+                            // `total_bars = 1` is a placeholder; the real value
+                            // arrives once the engine's bar loop emits its first
+                            // event. The widget renders this as 0% with label
+                            // "0 / 1 bars · 0.0s" — clearly identifiable as a
+                            // pre-engine state.
+                            progress_tx.try_send(backtest::progress::Progress {
+                                current_bar: 0,
+                                total_bars: 1,
+                                elapsed_ms: 0,
+                            });
+
+                            // T-D-N7 — cockpit-activity-status-bar Yahoo preload
+                            // producer wiring (approach A: inline handle, no Send
+                            // needed — preload runs in the iced::Task::perform
+                            // closure, NOT inside rt.spawn).
+                            //
+                            // Build label: "Yahoo <SYMBOL> · <RANGE>" (≤ 64 chars).
+                            // ActivitySender is Clone + Send; ActivityHandle is !Send
+                            // but lives entirely within this async closure (single task).
+                            let yahoo_label = format!(
+                                "Yahoo {} · {}",
+                                cfg_for_preload.symbol, cfg_for_preload.range_label
+                            );
+                            let yahoo_activity_handle = activity_sender_for_closure
+                                .as_ref()
+                                .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
+
+                            let preload_result =
+                                preload_yahoo_bars(&cfg_for_preload, &scenario_cfg.range).await;
+                            match preload_result {
+                                Ok((bars, _sha)) => {
+                                    scenario_cfg.data_source =
+                                        backtest::engine::ScenarioDataSource::YahooCache;
+                                    scenario_cfg.bars_override = Some(bars);
+                                    // yahoo_activity_handle dropped here →
+                                    // emits End { Success } automatically (R1.3).
+                                    drop(yahoo_activity_handle);
+                                }
+                                Err(e) => {
+                                    // Emit End { Failed } before returning the error (R1.3 / F3).
+                                    if let Some(handle) = yahoo_activity_handle {
+                                        handle.fail(e.as_str());
+                                    }
+                                    return Err(e);
+                                }
                             }
                         }
                     }
@@ -876,6 +980,11 @@ mod tests {
             recv,
             progress_tx,
             // cockpit-activity-status-bar T-D-N7: no EventBus in unit tests.
+            #[cfg(feature = "live")]
+            None,
+            #[cfg(not(feature = "live"))]
+            None,
+            // lab-recipe-test-harness T-D1: no source override in this unit test.
             #[cfg(feature = "live")]
             None,
             #[cfg(not(feature = "live"))]

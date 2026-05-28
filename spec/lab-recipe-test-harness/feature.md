@@ -1,8 +1,8 @@
 ---
 slug: lab-recipe-test-harness
 version: 0.1.0
-status: draft
-owner: architect → developer
+status: dev-complete
+owner: developer → tester
 updated: 2026-05-28
 priority: P1
 ---
@@ -175,7 +175,68 @@ No HTTP / parquet / disk touched. Test wall-clock budget ≤ 1.5 s per case.
 
 ## Implementation
 
-_(developer fills this section during M-DEV.)_
+### Developer summary (2026-05-28)
+
+**T-D1 — `LabYahooBarSource` trait extraction**
+
+Added `pub trait LabYahooBarSource` and `pub type PreloadFuture<'a>` to
+`crates/ui/src/lab/runner.rs` (lines 194–260). The `PreloadFuture<'a>`
+type alias avoids the `clippy::type_complexity` lint on the trait method.
+`DefaultLabYahooBarSource` (gated `#[cfg(all(feature = "live", feature = "yahoo"))]`)
+wraps the existing `preload_yahoo_bars` function.
+
+`spawn_lab_run` gains a new `yahoo_source_override: Option<Box<dyn LabYahooBarSource>>`
+parameter (under `#[cfg(feature = "live")]`; non-live builds receive `Option<()>`).
+Production call site in `cockpit_live.rs:1531-1537` passes `None`.
+
+**Choice: `Box<dyn LabYahooBarSource>` (object) not `impl Trait` (generic)**
+Rationale: allows tests to construct `Box::new(MockLabYahooBarSource { ... })`
+without turbofish at `spawn_lab_run` call sites. Monomorphization overhead is
+negligible for a once-per-run preload.
+
+**T-D2 — Surface 1 boundary tests (`spawn_lab_run_yahoo_harness.rs`)**
+
+Three tests, all `#[cfg(feature = "live")]`:
+1. `sentinel_fires_before_preload_await`: mock sleep 500ms; assert first
+   `Progress` event arrives `< 50ms` (before mock completes). Catches
+   regression A (D.1.1 ticker delay).
+2. `channel_survives_after_preload`: mock sleep 10ms; assert channel still
+   delivers post-preload events. Catches regression B (select! channel-consume).
+3. `ticker_events_stop_after_preload_complete`: assert zero ticker-shaped events
+   (`current_bar=0, total_bars=1, elapsed_ms>0`) after preload completes.
+
+Tests replicate `spawn_lab_run`'s preload section inline (same pattern as
+`cockpit_live_lab_run_smoke.rs`) — `iced::Task` is not driven.
+
+**T-D3 — Surface 2 gating tests (`lab_stop_button_gating.rs`)**
+
+Three tests, no feature gate (pure state assertions):
+1. `full_lifecycle_ok_completion_clears_inflight`: full lifecycle assertion
+   including `run_progress.is_none()` after `LabRunCompleted(Ok)`.
+2. `err_completion_clears_inflight`: Err path clears `lab_run_inflight` and
+   surfaces `last_run_error`.
+3. `stop_requested_mid_run_leaves_inflight_true`: pure-state no-op confirmed.
+
+**T-D4 — Falsification dry run**
+
+Temporarily removed `model.lab_state.run_progress = None` from
+`LabRunCompleted` arm in `state.rs:2147` to simulate `5f9f920` D.2.1
+regression. Result: `full_lifecycle_ok_completion_clears_inflight` and
+`err_completion_clears_inflight` FAILED (assertions at lines 133, 185
+respectively). Code restored. Proof: harness catches the D.2.1 regression.
+
+The tester's T-T4 should use the same simulation technique (comment out
+`run_progress = None` from `LabRunCompleted`) rather than cherry-picking
+`5f9f920` (which also changes runner.rs and cockpit_live.rs, causing
+merge conflicts with T-D1 changes).
+
+**Gates (dev-side)**
+- `cargo test -p ui --lib --features live` → 411/411 PASS
+- `cargo test -p ui --test spawn_lab_run_yahoo_harness --features live` → 3/3 PASS
+- `cargo test -p ui --test lab_stop_button_gating` → 3/3 PASS
+- `cargo test -p ui --test cockpit_training_pressed_wiring --features live` → 5/5 PASS
+- `bash scripts/verify_anchors.sh` → ANCHORS PASS (70/70)
+- `cargo clippy -p ui --features live -- -D warnings` → 9 pre-existing (0 new)
 
 ## Verification
 

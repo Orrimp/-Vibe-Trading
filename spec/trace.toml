@@ -1914,5 +1914,5 @@ tests       = [
   "crates/ui/tests/cockpit_live_lab_run_smoke.rs",                               # existing engine-side coverage — complement, not replacement
 ]
 anchors     = []                                                                  # Harness produces ZERO file output (channel-only events); no new anchors. R4 contract: scripts/verify_anchors.sh stays 70/70 PASS post-merge.
-state       = "arch-done"  # 2026-05-28 architect M-T1: ADR-0048 authored; pattern (d) selected; feature.md + tasks.md authored; backlog row + trace row appended. HANDOFF → developer (T-D1 trait extraction; T-D2 Surface 1; T-D3 Surface 2; T-D4 workspace green; T-D5 clippy clean; T-D6 anchor gate). M-FINAL T-T4 falsification probe (revert 5f9f920 onto HEAD with harness present → at least one new test MUST fail) is the mandatory ship criterion.
+state       = "dev-done"   # 2026-05-28 developer M-DEV: T-D1 LabYahooBarSource trait extracted (runner.rs:194-260, spawn_lab_run signature extended); T-D2 spawn_lab_run_yahoo_harness.rs 3/3 PASS; T-D3 lab_stop_button_gating.rs 3/3 PASS; T-D4 falsification dry-run PASS (D.2.1 simulation → 2 tests fail); T-D5 0 new clippy errors; T-D6 70/70 anchors. HANDOFF → tester (T-T1 run + report; T-T2 anchor gate; T-T3 workspace gate; T-T4 formal falsification probe via state.rs:2147 comment-out).
 

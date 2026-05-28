@@ -1534,6 +1534,9 @@ impl AppState {
                 cancel_recv,
                 progress_tx,
                 yahoo_preload_sender,
+                // lab-recipe-test-harness T-D1: production path uses default Yahoo
+                // source (None = DefaultLabYahooBarSource via preload_yahoo_bars).
+                None,
             )
         } else {
             iced::Task::none()
