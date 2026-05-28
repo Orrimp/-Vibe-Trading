@@ -219,6 +219,104 @@ files / API / Cargo.toml / generated artifacts / operator-decide gates,
 you're sequencing for no reason. Spawn both in one block. The runtime
 notifies you when each finishes; you don't have to wait.
 
+## Decision framing — durable over quick (operator preference)
+
+**The operator prefers one correct ship over two quick-and-incomplete ships.**
+Reworking shipped features is expensive (cognitive context-swap, anchor
+re-migration, fresh M-T1+M-DEV+M-FINAL cycles); shipping the right thing
+once is cheaper than shipping minimum-viable and patching it. Every agent
+in the workflow MUST reflect this preference.
+
+**Concrete applications:**
+
+- **Analyst — Q&D defaults**: when authoring operator-decide questions
+  with multiple options, the `(Recommended)` tag goes on the **most
+  durable** choice, NOT the cheapest / smallest-blast-radius. If the
+  durable choice is meaningfully more expensive, surface the tradeoff
+  explicitly: "(Recommended) — costs +1 week vs option B but avoids
+  v0.2.0 cleanup brief". Cost-frame in terms of "rework risk over 6
+  months" not just wall-clock days.
+
+- **Architect — M-T1 design**: prefer designs that don't spawn v0.2.0
+  cleanup briefs. If the architect catches themselves writing
+  "MIGRATION: remove at v0.2.0" or "deferred to follow-on" in the
+  source, that's a yellow flag — consider whether the scope of v0.1.0
+  is wrong. ADR amendments are cheaper than fresh ADRs; designs that
+  carry forward unchanged across feature versions are the goal.
+
+- **Developer — implementation choice**: when picking between
+  shortcut implementations (e.g. trait `&dyn` vs `impl Trait`, inline
+  helper vs lifted module, mock-only vs production-injectable), the
+  default is the **lifecycle-cheaper** option, not the **typing-faster**
+  option. If you find yourself adding a "MIGRATION:" comment, stop —
+  ask the architect whether the design is wrong.
+
+- **Tester — verdict framing**: when surfacing SOFT-PASS or carve-out
+  scope, name the **rework cost** explicitly. "Defer to v0.2.0" is
+  bookkeeping; "ship a follow-on brief, re-emit N anchors, re-run M
+  e2e tests, ~3 days dev + 1 day tester" is the real cost the operator
+  uses to decide whether to accept the carve-out.
+
+- **Presenter — deck framing**: when a feature ships with carve-outs,
+  the deck explicitly owns the rework debt. List the v0.X+1 follow-on
+  brief alongside the v0.X ship, with cost estimate. The operator
+  approval is for the v0.X ship AND the debt commitment.
+
+- **Orchestrator — option curation**: when offering the operator
+  multiple paths via AskUserQuestion, the `(Recommended)` label goes
+  on the durable choice. "Quick win" options exist for situations
+  where the architect can PROVE the path won't require future rework
+  (ADR Changelog amendment fully covers the change; no carve-out
+  surfaced). Default phrasing for cheap choices: "Cheap fallback if
+  budget tightens — adds v0.2.0 cleanup commitment".
+
+**Surfaced by the operator 2026-05-28** after a session where multiple
+analyst-recommend defaults landed on the cheapest option and the
+operator routinely overrode them with the more ambitious choice. The
+pattern is consistent enough to codify: when in doubt, bias toward
+durable.
+
+## Continuous work — don't pause unnecessarily
+
+**The orchestrator should not artificially throttle after each ship.**
+After a commit lands, the default response is to spawn the next-step
+agent, not to ask "what's next?" or offer "call it a day" as an
+option. The operator stops the session explicitly when they want to;
+they don't need orchestrator-side checkpoints to do that.
+
+**Concrete applications:**
+
+- **After any commit**: if there's an unblocked next agent in the
+  workflow chain (architect after analyst PASS; developer after
+  architect handoff; tester after developer handoff; presenter after
+  tester PASS), spawn it. No "ready to proceed?" preamble.
+
+- **Parallel work**: when 1 agent is in flight and another agent
+  has independent file-scope, spawn the second one. Don't wait for
+  the first to land before kicking off the second. The file-scope
+  conflict matrix in § Parallelism rules is the gate, not the
+  orchestrator's preference for serial work.
+
+- **End-of-session framing**: do NOT include "call it a day" as a
+  default option in AskUserQuestion. The operator will explicitly
+  say "stop" / "done" / "tomorrow" when they want to stop. Until
+  then, default to "what's the next agent to spawn".
+
+- **Status summaries**: replace "want me to spawn X or hold?" with
+  "spawning X now; will report when it lands." If the operator wants
+  to override, they say so.
+
+- **"Holding" mode**: legitimate only when there's a real reason
+  (file-scope conflict with in-flight agent, dependency on operator
+  visual-verify, missing input). After commits, spawn the next agent
+  immediately.
+
+**Surfaced by the operator 2026-05-28** after a session where the
+orchestrator repeatedly asked "want to call it?" after substantial
+ships and offered multi-day waits as an option. The operator's
+preference is continuous progress; they don't need orchestrator-side
+permission gates.
+
 ## Communication contract
 
 - Every sub-agent ends its response with either a `HANDOFF → <agent>` line or

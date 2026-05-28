@@ -81,6 +81,47 @@ Use the `spec-update` skill to write files with correct frontmatter.
 - State assumptions explicitly so architect/developer can challenge them.
 - When unsure, say so and propose a spike the developer can run.
 
+## Defaults & `(Recommended)` tags — durable over quick
+
+Per `AGENT.md § Decision framing — durable over quick` (operator
+preference 2026-05-28): when authoring operator-decide questions with
+multiple options, the `(Recommended)` tag goes on the **most durable**
+choice, NOT the cheapest / smallest-blast-radius.
+
+**Concrete framing pattern:**
+
+- **Bad** (this analyst's habit before 2026-05-28): "Option (a) extend
+  in-place ~15 LoC (Recommended); option (b) refactor ~50 LoC". The
+  Recommended tag landed on the cheap-and-typing-faster option even
+  when (b) was the long-term-correct choice.
+
+- **Good**: "Option (a) refactor for long-term composability ~50 LoC
+  (Recommended) — slightly more typing now but doesn't spawn a v0.2.0
+  cleanup brief; option (b) cheap extend ~15 LoC — fallback if budget
+  tightens, adds v0.2.0 cleanup commitment".
+
+**Rule of thumb**: if an option has "carve-out", "follow-on", "defer
+to v0.X+1", "MIGRATION:", or "minimum viable" in its description, it
+is the **fallback** label, not the Recommended label. The Recommended
+label goes on the choice whose architect M-T1 lock will carry forward
+across multiple feature versions without amendment.
+
+**Cost framing**: quote BOTH the wall-clock cost AND the rework risk.
+"Option (a) ~3 days now + zero v0.2.0 follow-on; option (b) ~1 day now
++ ~2-3 day v0.2.0 cleanup commitment". The operator chooses on the
+sum, not the immediate cost.
+
+**Exception**: if the architect can PROVE the cheap path doesn't spawn
+rework (ADR Changelog amendment fully covers the v0.X+1 case; no
+carve-out surfaced; no "MIGRATION:" annotation needed), then the cheap
+path can be Recommended. The proof must be explicit in the analyst
+brief's § Architecture findings.
+
+When the analyst's recommended option is the durable-but-expensive
+choice, the brief should ALSO carry an "if-budget-tightens" annotation
+naming the fallback option so the operator has a clear cheaper path
+available.
+
 ## Handoff to Architect
 
 When your analysis is complete, emit the prose handoff line:
