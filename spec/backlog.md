@@ -1723,45 +1723,30 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 <!-- - **v5-latency-slippage-sim v0.3.0 (full-path wiring + data-source-drift decision + t1937 test refresh).**
   (Queue stub preserved as comment for archeology; live row now in Active.) -->
 
-- **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire`).**
-  _moved Queue → Active 2026-05-21 (analyst pass)_ — see
-  [Active section](#active) for the live tracking row and
-  [`feature.md`](v25-tcn-horizon-bump-or-retire/feature.md) for the
-  full brief. The original 4-bucket scope framing is preserved here
-  as a pivot reference: (a) horizon-bump retrain (~5-21 days);
-  (b) retire-promote-PatchTST (~4-6 weeks); (c) both in parallel
-  (~6-9 weeks); (d) defer-on-live (~30-90 days). Q1 (primary scope)
-  is operator-decide HARD BLOCKER with no safe analyst default.
+<!-- RETIRED 2026-05-21 — operator picked Q1=(b) retire. v25-tcn-overlay
+     shipped_disposition records the F4 verdict. Stale Queue entry kept
+     for archaeology + linked from Recent (shipped) cohort. -->
+<!-- - **v2.5 TCN horizon-bump or retire (`v25-tcn-horizon-bump-or-retire`).**
+  RETIRED 2026-05-21 (operator Q1=(b) retire). See Recent (shipped)
+  for the v0.1.0 ship summary. v25-tcn-overlay frontmatter carries
+  `shipped_disposition: F4 verdict — production deployment NOT
+  recommended.` -->
 
-- **v2.5 alpha-verdict investigation (`v25-tcn-alpha-investigation`).**
-  _moved Queue → Active 2026-05-18 (analyst pass)_ — see
-  [Active section](#active) for the live tracking row and
-  [`feature.md`](v25-tcn-alpha-investigation/feature.md) for the full
-  brief. The original 4-bucket framing is preserved here as a pivot
-  reference in case the analyst-recommended **minimal** scope (buckets
-  a + d) needs to be widened post-verdict:
-  (a) **ε / confidence-threshold tuning** — are the deadband (0.0005)
-      and gating-confidence (0.6) too tight? Histograms of `r_hat`
-      and `|r_hat|/sigma_train` across 87 590 BS-1 + 87 840 BS-2 bars
-      answer this — covered by **R1 / R3** of the brief (MINIMAL scope).
-  (b) **horizon mismatch** — TCN trained at next-1h log-return; v1
-      momentum operates on 20-bar lookback. Multi-step / multi-horizon
-      heads may be needed — covered only under **FULL** scope (M-HORIZON
-      milestone); follow-on feature `v25-tcn-horizon-bump` if R4 returns
-      verdict F4 under minimal scope.
-  (c) **training pathology** — final val Huber = 1.5e-5 is suspiciously
-      tiny on real OHLCV; could be "predict ≈zero" collapse. Held-out
-      checkpoint inspection — covered only under **DIAGNOSTIC** scope
-      (M-DIAG milestone); follow-on feature `v25-tcn-retrain` if R4
-      returns verdict F1 under minimal scope.
-  (d) **Sharpe / drawdown table** — TCN vs v1-baseline on the four
-      `v2.6.0-realdata` anchors — covered by **R5 / M-SHARPE**
-      milestone (MINIMAL scope).
-  Predecessor: [`backtest-real-binance-data`](backtest-real-binance-data/feature.md)
-  v0.1.0. Blocks: v2.6 forecast bake-off (need a verdict on whether
-  TCN's `dampened=0` reflects an envelope-tuning issue, a training
-  pathology, or genuine no-signal; bake-off can't compare three
-  model families on data where any may report dampened=0).
+- **v2.5 TCN horizon-bump or retire** — **RETIRED 2026-05-21**;
+  see Recent (shipped) below. Operator Q1=(b) retire; v25-tcn-overlay
+  has shipped_disposition F4 verdict (no production deployment).
+  Replaced in DL roadmap by v2.5a PatchTST (shipped) + v2.5b vanilla
+  Transformer (Queue, not started).
+
+- **v2.5 alpha-verdict investigation** — **SHIPPED 2026-05-19**
+  (`v25-tcn-alpha-investigation v0.3.0`); chained into
+  `v25-tcn-recalibrate v0.1.0` (2026-05-21 σ-train metadata fix),
+  `v25-tcn-threshold-tuning v0.1.0` (2026-05-21 9×5 τ,ε sweep, best
+  +0.018/+0.045 Sharpe-delta T-MARGINAL), and finally
+  `v25-tcn-horizon-bump-or-retire v0.1.0` (2026-05-21 operator Q1=(b)
+  RETIRE). v2.5 TCN line is closed. Stale Queue entry purged
+  2026-05-28; future strategy work routes through v2.5a PatchTST or
+  v2.5b vanilla Transformer.
 
 - **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay`).**
   _moved Queue → Active 2026-05-21 (analyst pass)_ — see
