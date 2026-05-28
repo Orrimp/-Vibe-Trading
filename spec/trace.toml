@@ -504,14 +504,36 @@ state       = "shipped"   # tester M-FINAL 2026-05-22; VERDICT PASS (code); MODE
 
 [[req]]
 id          = "REQ-V3-REGIME-CLASSIFIER-001"
-title       = "v3 regime classifier (Candidate 2 of strategy-reformulation-survey-2026-05-22) — predict regime label not μ; spec-only design exploration at v0.1.0 per Q-SEQ HYBRID — DEFERRED until C1 verdict lands OR operator promotes; extends pre-existing pure-fn 3-state BTC daily-close tagger at crates/reflection/src/regime.rs (Bull/Bear/Chop, ±2% threshold, REGIME_THRESHOLD_RATIO const, classify_regime fn) — 7+ downstream test files + lesson-card embedding + Phase F UI renderer depend on byte-identity of that seed; analyst-pass Qs Q1-Q7 surfaced with defaults (Q1=(a) extend-3-state, Q2=(a) statistical HMM with (d) rule-based fallback, Q3=(a) nowcast, Q4=(a) regime-conditional position sizing on v1 momentum, Q5 new sibling-ADR-0037 not ADR-0033 extension, Q6=v2.7.0-regime anchor pin, Q7=(a) extend-in-place); cost ~4-6 weeks from activation gate; predecessor strategy-reformulation-survey-2026-05-22 § Candidate 2; sibling picks v3-volatility-forecast (C1, ships first) + v3-llm-as-forecaster (C5, parallel analyst)"
+title       = "v3 regime classifier (Candidate 2 of strategy-reformulation-survey-2026-05-22) — predict regime label not μ; operator M-OD CLOSED 2026-05-28 commit 6b47027 with overrides on Q1+Q3+Q4 going bolder than analyst defaults: Q1=(b) 4-state Bull/Bear/Volatile/Calm (analyst rec 3-state), Q2=(a)+(c) 2023 train + 2024 val (default), Q3=(b) Markov-switching regression Hamilton 1989 (analyst rec HMM), Q4=(b) strategy-switching dispatcher (analyst rec overlay), Q5=(b) all 10 USDT pairs (default); extends pre-existing pure-fn 3-state BTC daily-close tagger at crates/reflection/src/regime.rs — K4 lesson-card embedding determinism preserved via option (γ) preserve Chop + APPEND Volatile=3, Calm=4 (new classifier emits only 4 Q1=(b) variants); architect M-T1 CLOSED 2026-05-28: ADR-0049 authored sibling to ADR-0038 (NOT ADR-0033 extension; both stay IMMUTABLE) covering D1 Markov-switching priors + Baum-Welch refinement, D2 RegimeTag γ-encoding, D3 dispatcher + CashHoldStrategy cash-fallback for Volatile/Calm (suppression NOT liquidation; v0.2.0 v1.5-MR follow-on fills seam), D4 V-REG/T-REG verdict shape + joint table, D5 anchor namespace v3.0.0-regime (bumped from analyst Q6 default v2.7.0-regime), D6 max-confidence dispatcher gate ≥ 0.70 for K-reg-2 mitigation; 6-wave M-DEV decomposition (A Markov-switching core + B K4 embedding + C dispatcher + D audit/Trail + E backtest+anchors + F e2e divergence gate CLAUDE.md non-negotiable); cost ~5-7 weeks; 4 new anchors planned (70 → 74); predecessor strategy-reformulation-survey-2026-05-22 § Candidate 2; sibling picks v3-volatility-forecast (C1, RETIRED NEGATIVE-NET-DELTA 2026-05-22) + v3-llm-forecaster (C5, shipped v0.1.0-PARTIAL 2026-05-22)"
 feature     = "v3-regime-classifier"
 product     = "spec/product.md"
-arch        = []    # architect M-T1 DEFERRED per Q-SEQ HYBRID; activation gate = C1 ships AND (promote-C2 OR Sharpe-delta on C1 ≥ +0.10)
-crates      = []    # developer waves DEFERRED
-tests       = []    # tester DEFERRED
-anchors     = []    # planned under v2.7.0-regime pin (Q6 default): regime-classifier-bs{1,2}-realdata + regime-overlay-momentum-bs{1,2}-realdata — reserved-but-unused until activation
-state       = "proposed"   # analyst M-A5 light-touch refresh 2026-05-28 — narrowed to canonical M0 shape (R1-R5 + R-NR + K1-K6 + H1-H4 + Q1-Q5 + 4-cell verdict tree). Promoted Queue → Active by operator (TCN line retired; C1 retired; C5 partial-shipped — C2 is the remaining v3 three-pick slot). Awaiting M-OD on Q1-Q5 then architect M-T1.
+arch        = [
+  "spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md",   # primary — D1-D6 contracts (sibling to ADR-0038 NOT extension)
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",                            # sibling precedent for V-REG/T-REG verdict + joint advisory table pattern
+  "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md",                  # IMMUTABLE F-verdict precedent; V-REG is parallel sibling not extension
+  "spec/architecture/adr/0010-v05-composed-exit-policy.md",                              # cash-fallback semantics defer position liquidation to composed exit policy per D3
+  "spec/v3-regime-classifier/feature.md",                                                # § Design populated 2026-05-28 with A/B/C resolutions + crate layout + 6-wave decomposition
+]
+crates      = [
+  "crates/forecast",     # NEW markov_switching.rs (Wave A) + bin/regime_verdict.rs (Wave E)
+  "crates/reflection",   # extend regime.rs + embedding.rs (Wave B; K4 contract)
+  "crates/strategy",     # NEW regime_dispatcher.rs + cash_hold.rs (Wave C); regime_dispatcher_end_to_end.rs (Wave F)
+  "crates/audit",        # JournalEntry::RegimeTag additive variant (Wave D)
+  "crates/ui",           # strings.rs volatile + calm adds + Trail column (Wave D)
+]
+tests       = [
+  # Wave A: unit tests in crates/forecast/src/markov_switching.rs (14 tests)
+  "crates/forecast/src/markov_switching.rs",
+  # Waves B-F: not yet started (pending Wave B developer turn)
+]
+anchors     = [
+  # 4 planned under namespace v3.0.0-regime (ADR-0049 § D5); Wave E adds at developer M-FINAL.
+  "top10-2023-fy-regime-dispatcher-realdata",            # train-window dispatcher equity curve
+  "top10-2024-fy-regime-dispatcher-realdata",            # val-window dispatcher equity curve
+  "regime-verdict-bs1-realdata",                         # V-REG report (held-out 2024)
+  "sharpe-comparison-regime-dispatcher-bs1-realdata",    # T-REG Sharpe-delta report
+]
+state       = "in-progress"  # Wave A DONE 2026-05-28: markov_switching.rs shipped (14 tests PASS; 70/70 anchors PASS). HANDOFF → developer Wave B (RegimeTag extension + K4 embedding contract in crates/reflection).
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────
@@ -1963,14 +1985,17 @@ tests       = [
   "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # R-NR.6 — 4/4 PASS (cargo test -p strategy --test vol_killswitch_overlay_end_to_end)
 ]
 anchors     = [
-  "28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc",  # top10-2023-fy-tcn-overlay-weights (2-run verified)
-  "0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137",  # top10-2024-fy-tcn-overlay-weights (2-run verified)
-  "10fd4502d9057f9390d4869c32ef1c65dc93d91b8574a740b198f995b2563d37",  # top10-2023-fy-tcn-overlay-realdata (2-run verified)
-  "87dfad459bcbb0640dd70985063f25da985dbb4f39776c99bbe9056ccceda61b",  # top10-2024-fy-tcn-overlay-realdata (2-run verified)
-  "123d8228e50536c9094bc8605ecae2e0aadbdcd8a4bf854e5ae3e5f3414413a7",  # top10-2023-fy-tcn-overlay-weights-realdata (2-run verified)
-  "21bec3c9f9da750853ddcc571246ba00d00b3903d18a0f6989b1434f8c72b612",  # top10-2024-fy-tcn-overlay-weights-realdata (2-run verified)
-  "55c5b715e6f5573e73c2db4b9aae859cf6d52472cbac6918920ac7afd7f36e6b",  # top10-2023-fy-patchtst-overlay-realdata (2-run verified)
-  "4edd8cc5f3041e308d4c83cfcf35109da9b9e4a363d7b6bc6d8d4407e50aa8ce",  # top10-2023-fy-vol-target-overlay-realdata (2-run verified)
+  # canonical namespace v5-realdata-medium-2026-05 — 8 SHAs updated in-place at v0.4.0
+  # tester M-FINAL 2026-05-28: all 8 scenario names verified against anchors.toml;
+  # T-T-3 determinism spot-check confirmed byte-identity on 2 of 8 scenarios independently.
+  "top10-2023-fy-tcn-overlay-weights",           # canonical SHA 28379df8... (2-run verified)
+  "top10-2024-fy-tcn-overlay-weights",           # canonical SHA 0c13ed0b... (2-run verified)
+  "top10-2023-fy-tcn-overlay-realdata",          # canonical SHA 10fd4502... (2-run verified)
+  "top10-2024-fy-tcn-overlay-realdata",          # canonical SHA 87dfad45... (2-run verified)
+  "top10-2023-fy-tcn-overlay-weights-realdata",  # canonical SHA 123d8228... (2-run verified)
+  "top10-2024-fy-tcn-overlay-weights-realdata",  # canonical SHA 21bec3c9... (2-run verified)
+  "top10-2023-fy-patchtst-overlay-realdata",     # canonical SHA 55c5b715... (tester spot-check PASS)
+  "top10-2023-fy-vol-target-overlay-realdata",   # canonical SHA 4edd8cc5... (tester spot-check PASS)
 ]
-state       = "dev-complete"  # developer M-DEV Waves A-D complete 2026-05-28. Build: cargo build --release -p backtest --features "candle realdata" PASS. 8 scenarios emitted × 2-run determinism gate ALL-PASS. anchors PASS 70/70. t1937+t1937b+t1942 PASS. e2e gates 8/8 PASS. HANDOFF → tester for M-FINAL.
+state       = "passed"  # tester M-FINAL 2026-05-28. verify-anchors 70/70 PASS. T-T-3 determinism spot-check 2/2 PASS (patchtst + vol-target SHAs match anchors.toml). 3/3 strategy_anchors_unchanged PASS. 8/8 e2e gates PASS. 0 K1 surprises. spec-lint pre-existing debt only (no new v0.4.0 regressions). VERDICT → PASS.
 

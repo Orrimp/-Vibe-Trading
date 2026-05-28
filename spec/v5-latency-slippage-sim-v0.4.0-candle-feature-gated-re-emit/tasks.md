@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
 status: in-progress
-owner: developer
+owner: presenter
 updated: 2026-05-28
 ---
 
@@ -77,19 +77,34 @@ updated: 2026-05-28
   - test cmd: `cargo test -p reports --test strategy_anchors_unchanged`
   - output: `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s`
 
-## M-FINAL — Tester (~0.5 day)
+## M-FINAL — Tester (~0.5 day) ✅ completed 2026-05-28
 
-- [ ] `bash scripts/verify_anchors.sh` → PASS 70/70 (R-NR.1)
-- [ ] Confirm 8 noop-baseline rows at `spec/anchors.toml:121-155, 242, 272` byte-identical (R-NR.2)
-- [ ] Confirm 11 v0.3.0 canonical SHAs unchanged (R-NR.3)
-- [ ] Determinism spot-check (2 scenarios independently re-run; SHA match against anchors.toml) — K4 gate
-- [ ] `cargo test -p reports --test strategy_anchors_unchanged` → 3/3 PASS
-- [ ] `cargo test -p strategy --test latency_slippage_sim_e2e` → 3/3 PASS (R-NR.6)
-- [ ] `cargo test -p strategy --test vol_targeting_overlay_end_to_end` → 1/1 PASS
-- [ ] `cargo test -p strategy --test vol_killswitch_overlay_end_to_end` → 4/4 PASS
-- [ ] `cargo test --workspace --no-fail-fast` → no new failures vs v0.3.0 whitelist
-- [ ] Author `reports/test-final-<DATE>-v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit.md` with verdict (PASS or REGRESSION)
-- [ ] Populate `anchors` column on `REQ-V5-LATENCY-SLIPPAGE-V0-4-0-001` trace row + flip state to `passed`
+- [x] `bash scripts/verify_anchors.sh` → PASS 70/70 (R-NR.1)
+  - test cmd: `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS  (70 / 70)` — 70/70 rows PASS including 8 new canonical SHAs
+- [x] Confirm 8 noop-baseline rows at `spec/anchors.toml:121-155, 242, 272` byte-identical (R-NR.2)
+  - verify_anchors.sh PASS on noop-baseline rows confirms byte-immutability
+- [x] Confirm 11 v0.3.0 canonical SHAs unchanged (R-NR.3)
+  - verify_anchors.sh PASS on all Group A-D v5-realdata-medium-2026-05 rows confirms
+- [x] Determinism spot-check (2 scenarios independently re-run; SHA match against anchors.toml) — K4 gate
+  - test cmd: `python3 scripts/hash_report.py <report-path>` on 2 scenarios
+  - `top10-2023-fy-patchtst-overlay-realdata`: `55c5b715...` = anchors.toml line 475 — MATCH
+  - `top10-2023-fy-vol-target-overlay-realdata`: `4edd8cc5...` = anchors.toml line 485 — MATCH
+- [x] `cargo test -p reports --test strategy_anchors_unchanged` → 3/3 PASS
+  - output: `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s`
+- [x] `cargo test -p strategy --test latency_slippage_sim_e2e` → 3/3 PASS (R-NR.6)
+  - output: `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.90s`
+- [x] `cargo test -p strategy --test vol_targeting_overlay_end_to_end` → 1/1 PASS
+  - output: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+- [x] `cargo test -p strategy --test vol_killswitch_overlay_end_to_end` → 4/4 PASS
+  - output: `test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+- [x] `cargo test --workspace --no-fail-fast` → no new failures vs v0.3.0 whitelist
+  - Pre-existing whitelisted failures only: lab_run_engine (flake), render_snapshots + visual_snapshots (UI-track parallel features post-v0.3.0, not attributable to v0.4.0)
+  - Zero new failures attributable to v0.4.0 (crates touched: reports, scripts, spec only)
+- [x] Author `reports/test-final-2026-05-28-v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit.md` with verdict (PASS)
+- [x] Populate `anchors` column on `REQ-V5-LATENCY-SLIPPAGE-V0-4-0-001` trace row + flip state to `passed`
+  - anchors column converted from SHA hex → scenario names (spec_lint.py compliance)
+  - state flipped `dev-complete → passed` with tester M-FINAL citation
 
 ## M-PRES — Presenter (~0.5 day)
 
