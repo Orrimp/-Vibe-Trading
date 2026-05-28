@@ -5,17 +5,20 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-# Enable the `forecast` crate dependency for `TcnSyncForecaster`.
-# Requires `--features forecast` to enable the candle backend via forecast.
-forecast = ["dep:forecast", "forecast/candle", "dep:candle-core"]
+# Enable the candle backend on the `forecast` crate for `TcnSyncForecaster`.
+# `forecast` is now an unconditional dep (required by the Wave C regime
+# dispatcher); this feature only gates the *candle* (ML inference) subset.
+forecast = ["forecast/candle", "dep:candle-core"]
 # Enable ForecastEmitted audit-tick tee on TcnForecaster (T-D-14 / decomp §5A).
 # Requires the `forecast` feature. Propagates `audit-tick` to the forecast crate
 # so `TcnForecaster::with_ledger` is available.
 forecast-audit-tick = ["forecast", "forecast/audit-tick"]
 
 [dependencies]
-# Optional: TCN forecaster for tcn_overlay_momentum (v2.5)
-forecast = { path = "../forecast", optional = true }
+# Optional: TCN forecaster for tcn_overlay_momentum (v2.5).
+# Also pulled in unconditionally for regime dispatcher (markov_switching module;
+# no candle dep required — Wave C ADR-0049 § D3).
+forecast = { path = "../forecast" }
 # Optional: candle-core for TcnSyncForecaster (pulled in by forecast feature)
 candle-core = { version = "0.9", optional = true }
 trading_core = { path = "../core" }
@@ -63,6 +66,11 @@ required-features = ["forecast"]
 [[test]]
 name = "overlay_hygiene_gate"
 path = "tests/overlay_hygiene_gate.rs"
+
+# v3-regime-classifier Wave C — K6 noop-fix gate (CLAUDE.md non-negotiable).
+[[test]]
+name = "regime_dispatcher_end_to_end"
+path = "tests/regime_dispatcher_end_to_end.rs"
 
 # v5-latency-slippage-sim R5 — baseline-equity-divergence e2e test (CLAUDE.md non-negotiable).
 [[test]]

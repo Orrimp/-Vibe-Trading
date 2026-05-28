@@ -11,15 +11,22 @@
 //!   - `with_garch_vol_kill_switch` (R6.b secondary — kill-switch overlay).
 //!   - `with_garch_vol_strategy` (R6.c tertiary — standalone mean-reversion).
 //!
+//! v3.0.0-regime adds regime-switching dispatcher (ADR-0049 § D3):
+//!   - `CashHoldStrategy` — degenerate cash-hold fallback for Volatile/Calm.
+//!   - `RegimeDispatcher<C>` — routes Bull/Bear → Momentum; Volatile/Calm → CashHold.
+//!   - `with_regime_dispatcher` — builder fn (mirrors GARCH builder pattern).
+//!
 //! Note: `LlmForecasterStrategy` has moved to `crates/trader/src/llm_forecaster/`
 //! per ADR-0041 D2. The trader crate is the legitimate consumer of reflection
 //! retrieval (R8.1 layering rule). Use `trader::LlmForecasterStrategy` instead.
 
+pub mod cash_hold;
 pub mod composed;
 pub mod cross_sectional;
 pub mod pairs;
 pub mod patchtst_overlay_momentum;
 pub mod patchtst_sync;
+pub mod regime_dispatcher;
 pub mod registry;
 pub mod sma_crossover;
 pub mod tcn_overlay_momentum;
@@ -28,6 +35,7 @@ pub mod vol_killswitch_overlay;
 pub mod vol_meanreversion;
 pub mod vol_targeting_overlay;
 
+pub use cash_hold::CashHoldStrategy;
 pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, StrategyLoadError};
 pub use cross_sectional::{
     CrossSectionalLoadError, CrossSectionalMomentumConfig, MomentumStrategy, top_k_long,
@@ -37,6 +45,9 @@ pub use pairs::{MeanReversionPairsConfig, MeanReversionPairsStrategy, PairsLoadE
 pub use patchtst_overlay_momentum::PatchTstSyncForecaster;
 pub use patchtst_overlay_momentum::{
     PatchTstOverlayMomentumConfig, PatchTstOverlayMomentumStrategy,
+};
+pub use regime_dispatcher::{
+    DispatchedRegime, RegimeDispatcher, RegimeDispatcherConfig, with_regime_dispatcher,
 };
 pub use registry::{
     PendingJournalEvent, RegistryEventKind, StrategyRegistry, StrategyTomlEntry,

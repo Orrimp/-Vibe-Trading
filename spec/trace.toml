@@ -532,7 +532,11 @@ tests       = [
   "crates/reflection/tests/store_top_k_determinism.rs",
   "crates/reflection/tests/post_mortem_generate_card.rs",
   "crates/reports/tests/memory_highlights_with_lessons.rs",
-  # Waves C-F: not yet started (pending Wave C developer turn)
+  # Wave C: strategy dispatcher + cash-fallback + K6 e2e divergence gate
+  "crates/strategy/src/cash_hold.rs",
+  "crates/strategy/src/regime_dispatcher.rs",
+  "crates/strategy/tests/regime_dispatcher_end_to_end.rs",
+  # Waves D-F: pending (audit/Trail UI + backtest anchors + tester harness)
 ]
 anchors     = [
   # 4 planned under namespace v3.0.0-regime (ADR-0049 § D5); Wave E adds at developer M-FINAL.
@@ -541,7 +545,7 @@ anchors     = [
   "regime-verdict-bs1-realdata",                         # V-REG report (held-out 2024)
   "sharpe-comparison-regime-dispatcher-bs1-realdata",    # T-REG Sharpe-delta report
 ]
-state       = "in-progress"  # Wave A DONE 2026-05-28: markov_switching.rs shipped (14 tests PASS; 70/70 anchors PASS). Wave B DONE 2026-05-28: RegimeTag extended (Volatile=3, Calm=4 appended); embedding.rs extended (slots 18/19 in reserved area — K4 byte-identity preserved; single-vector-extension, no escape hatch needed); regime_overlay_neutrality_4state.rs NEW (10 tests PASS; K4 falsifier gate green); T1802 family 8/8 PASS; embedding_determinism 5/5 PASS; store_smoke 2/2 PASS; store_top_k_determinism 3/3 PASS; post_mortem_generate_card 3/3 PASS; memory_highlights_with_lessons 5/5 PASS; 70/70 anchors PASS. HANDOFF → developer Wave C (strategy dispatcher + cash-fallback in crates/strategy).
+state       = "in-progress"  # Wave A DONE 2026-05-28: markov_switching.rs shipped (14 tests PASS; 70/70 anchors PASS). Wave B DONE 2026-05-28: RegimeTag extended (Volatile=3, Calm=4 appended); embedding.rs extended (slots 18/19 in reserved area — K4 byte-identity preserved; single-vector-extension, no escape hatch needed); regime_overlay_neutrality_4state.rs NEW (10 tests PASS; K4 falsifier gate green); T1802 family 8/8 PASS; embedding_determinism 5/5 PASS; store_smoke 2/2 PASS; store_top_k_determinism 3/3 PASS; post_mortem_generate_card 3/3 PASS; memory_highlights_with_lessons 5/5 PASS; 70/70 anchors PASS. Wave C DONE 2026-05-28: cash_hold.rs NEW (4 unit tests PASS; pure-fn SUPPRESSION-NOT-LIQUIDATION semantic); regime_dispatcher.rs NEW (12 unit tests PASS; D3 routing table 4-regime×2-strategy; D6 confidence gate 0.70; hysteresis; transition lifecycle); regime_dispatcher_end_to_end.rs NEW (2 e2e tests PASS; K6 noop-fix gate confirmed: baseline_non_hold=72, dispatcher_non_hold=0, suppressed=72; CLAUDE.md non-negotiable satisfied); 71/71 anchors PASS. HANDOFF → tester (Waves D-F pending: audit/Trail UI, backtest+anchors, full tester harness).
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────
@@ -2024,26 +2028,23 @@ arch        = [
   "spec/architecture/adr/0040-yahoo-realdata-path.md#changelog",                                                    # ADR-0040 § Changelog 2026-05-28 entry — v0.1.3 helper extraction + ETH H1 registration; no new ADR (mechanical refactor + mechanical re-placement)
 ]
 crates      = [
-  # DEVELOPER M-DEV paths anticipated by analyst (populated post-M-DEV).
-  "crates/backtest/src/bin/run_yahoo_sma.rs",                                   # R1.1/R1.2/R1.3 — migrate to helper; remove `rev=` body substring; inject `revision_sha:` front-matter
-  "crates/backtest/src/report/yahoo.rs",                                        # R1.3 — NEW canonical Yahoo report-emit helper (recommended location; developer-final)
-  "crates/backtest/src/main.rs",                                                # R2.1 — new `eth-2024-h1-sma-cross` arm mirroring `btc-2024-h1-sma-cross` (L242 template); + auxiliary match-arm extensions (L1029, L1762)
-  "spec/anchors.toml",                                                          # R3.1 — row 69 BTC SHA in-place update under `lab-yahoo-realdata-v0.1.1`; row 71 NEW `eth-2024-h1-sma-cross` under `lab-yahoo-realdata-v0.1.3`
-  "data/binance/ETHUSDT/2024/",                                                 # R2.2 — data path read-only at v0.1.3; K3 schema-parity pre-flight T-D1
-  "data/yahoo/REVISION.toml",                                                   # R1.2 — read at run time; new `revision_sha:` front-matter field sources from here
+  "crates/backtest/src/bin/run_yahoo_sma.rs",                                   # R1.1/R1.2/R1.3 — migrated to helper; rev= removed; revision_sha: injected via YahooReportContext
+  "crates/backtest/src/report/yahoo.rs",                                        # R1.3 — NEW canonical Yahoo report-emit helper (D-V0.1.3-1); YahooReportContext + emit_sma_report
+  "crates/backtest/src/report/sma.rs",                                          # R1.3 — gained optional revision_sha: Option<&str>; None arm preserves 33 Binance SMA anchors byte-identically
+  "crates/backtest/src/report/mod.rs",                                          # R1.3 — pub mod yahoo added
+  "crates/backtest/src/main.rs",                                                # R2.1 — eth-2024-h1-sma-cross at 3 sites (L~260 config, L~1050 synthetic price, L~1780 scenario_to_feature); Binance sma::write now passes None
+  "spec/anchors.toml",                                                          # R3.1 — row 69 BTC SHA 076929bb… in-place under lab-yahoo-realdata-v0.1.1; row 71 bd4001e4… NEW under lab-yahoo-realdata-v0.1.3
 ]
 tests       = [
-  # DEVELOPER M-DEV tests anticipated by analyst (populated post-M-DEV).
-  "crates/backtest/tests/run_yahoo_sma_ticker_flag.rs",                         # R1 — extend existing v0.1.2 integration tests for new body shape (no `rev=` in body; presence of `revision_sha:` in front-matter)
-  "crates/backtest/tests/determinism.rs",                                       # R3 — anchor preservation gate; row 69 SHA in-place update; row 70 ETH byte-identical; row 71 new
+  "crates/backtest/tests/yahoo_report_helper_shape.rs",                         # R1 + D-V0.1.3-8 — NEW 3-test regression guard: data_source_never_contains_rev_substring; emitted_btc_report_body_has_no_rev_substring; emitted_btc_report_frontmatter_has_revision_sha
+  "crates/backtest/tests/run_yahoo_sma_ticker_flag.rs",                         # R1 — BTC_ANCHOR_SHA + ETH_ANCHOR_SHA updated to v0.1.3 live-emission shape; all 6 tests PASS
 ]
 anchors     = [
-  # ANALYST M0 forecast (tester locks at M-FINAL):
-  # Row 69 BTC SHA updates in-place (new SHA TBD at M-DEV; namespace unchanged `lab-yahoo-realdata-v0.1.1` per Q2=(a)).
-  # Row 70 ETH daily byte-identical (`e59a5f87…` UNCHANGED).
-  # Row 71 NEW (`eth-2024-h1-sma-cross` under namespace `lab-yahoo-realdata-v0.1.3`; SHA TBD at M-DEV).
-  # verify_anchors.sh ANCHORS PASS (71 / 71) at T-D9 + T-F1.
+  # Row 69 BTC SHA updated in-place to 076929bb… under namespace lab-yahoo-realdata-v0.1.1 (Q2=(a) + ADR-0038 § D6.b).
+  # Row 70 ETH daily byte-identical (e59a5f87… UNCHANGED — deferred bulk re-emit to v0.1.4 BNB ship).
+  # Row 71 NEW eth-2024-h1-sma-cross bd4001e4… under namespace lab-yahoo-realdata-v0.1.3.
+  # verify_anchors.sh ANCHORS PASS (71 / 71) confirmed 2026-05-28.
   "btc-yahoo-2024-1d-sma-cross",
   "eth-2024-h1-sma-cross",
 ]
-state       = "arch-done"  # architect M-T1 2026-05-28: Q1+Q2 ratified durable per AGENT.md 2026-05-28 contract; helper boundary at `crates/backtest/src/report/yahoo.rs` locked; ADR-0040 § Changelog amended (no new ADR); K1+K2 grep PASS; anchor cascade 70 → 71 locked (row 69 in-place under `lab-yahoo-realdata-v0.1.1`, row 70 byte-identical, row 71 NEW under `lab-yahoo-realdata-v0.1.3`); ETH H1 bar_count cadence ambiguity flagged for developer T-D4 pre-flight. M-DEV next.
+state       = "dev-done"  # developer M-DEV 2026-05-28: all T-D1..T-D12 ticked; Wave A helper extracted (yahoo.rs NEW); Wave B ETH H1 registered (3 match-arm sites); Wave C anchors 071/71 PASS; Wave D dev-note authored + regression test added; T-D4 bar_count resolution: mirrors btc-2024-h1-sma-cross verbatim (real parquet data overrides at runtime → 17,543 bars); H1 PASS direct (6.78% < 30%); K1.b PASS (None arm preserves 33 Binance SMA anchors); cargo fmt clean; clippy 0 new errors on crates/backtest. HANDOFF → tester.

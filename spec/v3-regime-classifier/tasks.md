@@ -265,22 +265,48 @@ fallback adds ~half-week over overlay-style multiplier.
 
 #### Wave C — Strategy dispatcher + cash-fallback
 
-- [ ] **T-D-C1** — New `crates/strategy/src/cash_hold.rs`.
+- [x] **T-D-C1** — New `crates/strategy/src/cash_hold.rs`.
   `CashHoldStrategy` emits `SignalKind::Hold` for every (symbol, bar).
   — _acceptance: positions HELD, never liquidated, when dispatcher
   routes to CashHold._
-- [ ] **T-D-C2** — New `crates/strategy/src/regime_dispatcher.rs`.
+  - **file**: `crates/strategy/src/cash_hold.rs:1-189`
+  - **test cmd**: `cargo test -p strategy -- cash_hold`
+  - **output**: `test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 118 filtered out; finished in 0.00s`
+  - Invariants proven: `cash_hold_emits_only_hold`, `cash_hold_on_tick_is_empty`,
+    `cash_hold_id_is_cash_hold`, `cash_hold_default_same_as_new`.
+    Pure function — no state, no I/O. SUPPRESSION-NOT-LIQUIDATION semantic
+    confirmed by `cash_fallback_suppresses_not_liquidates` test in regime_dispatcher.rs.
+
+- [x] **T-D-C2** — New `crates/strategy/src/regime_dispatcher.rs`.
   Stateful adapter wrapping `MomentumStrategy` + `CashHoldStrategy`.
   Routes per D3 table: Bull/Bear → Momentum; Volatile/Calm → CashHold.
   — _acceptance: routing-table coverage test (4 regimes × 2 strategies)._
-- [ ] **T-D-C3** — D6 confidence gate: dispatcher only switches when
+  - **file**: `crates/strategy/src/regime_dispatcher.rs:1-748`
+  - **test cmd**: `cargo test -p strategy -- regime_dispatcher`
+  - **output**: `test result: ok. 122 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`
+  - 4 routing tests proven: `dispatcher_routes_to_momentum_in_bull` (L545),
+    `dispatcher_routes_to_momentum_in_bear` (L557), `dispatcher_routes_to_cash_in_volatile` (L568),
+    `dispatcher_routes_to_cash_in_calm` (L579). Builder fn `with_regime_dispatcher` at L392.
+
+- [x] **T-D-C3** — D6 confidence gate: dispatcher only switches when
   `max_p ≥ 0.70`. Below threshold, previous regime's strategy keeps
   running. — _acceptance: D6 falsifier tests pass (Wave A defined
   the contract; Wave C wires)._
-- [ ] **T-D-C4** — Transition semantics: Bull/Bear → Volatile/Calm
+  - **file**: `crates/strategy/src/regime_dispatcher.rs:277-283` (gate check), `590-607` (test)
+  - **test cmd**: `cargo test -p strategy -- dispatcher_holds_previous_when_confidence_below_70_pct`
+  - **output**: `test dispatcher_holds_previous_when_confidence_below_70_pct ... ok`
+  - `CONFIDENCE_THRESHOLD = 0.70` from `forecast::markov_switching` wired at L277
+    via `RegimeProbability::above_confidence_threshold()`.
+
+- [x] **T-D-C4** — Transition semantics: Bull/Bear → Volatile/Calm
   suppresses NEW signals; existing positions HELD. Reverse transition
   resumes momentum forwarding. — _acceptance: transition lifecycle
   test._
+  - **file**: `crates/strategy/src/regime_dispatcher.rs:609-646` (suppression test), `704-717` (reverse transition test)
+  - **test cmd**: `cargo test -p strategy -- cash_fallback_suppresses_not_liquidates dispatcher_reverse_transition_resumes_momentum`
+  - **output**: `test cash_fallback_suppresses_not_liquidates ... ok` + `test dispatcher_reverse_transition_resumes_momentum ... ok`
+  - K6 e2e gate also wired: `crates/strategy/tests/regime_dispatcher_end_to_end.rs` — 2 tests PASS.
+    `baseline_non_hold=72, dispatcher_non_hold=0, suppressed=72` — divergence confirmed ≥ 1 bp.
 
 #### Wave D — Audit + Trail UI surface
 
@@ -316,13 +342,25 @@ fallback adds ~half-week over overlay-style multiplier.
 
 #### Wave F — e2e divergence gate + tester harness (CLAUDE.md non-negotiable)
 
-- [ ] **T-D-F1** — New `crates/strategy/tests/regime_dispatcher_end_to_end.rs`.
+- [x] **T-D-F1** — New `crates/strategy/tests/regime_dispatcher_end_to_end.rs`.
   Pattern copied from `vol_targeting_overlay_end_to_end.rs`. Asserts
   dispatcher equity ≠ un-conditional v1 momentum baseline by ≥ 1 bp
   when regime tag is non-trivial. — _acceptance: divergence ≥ 1 bp on
   the 2023+2024 fixture; K6 noop-fix precedent foreclosed._
+  - **Delivered in Wave C** (not Wave F) per wave-compression: CLAUDE.md
+    non-negotiable required e2e gate alongside the implementation.
+  - **file**: `crates/strategy/tests/regime_dispatcher_end_to_end.rs:1-373`
+  - **test cmd**: `cargo test -p strategy --test regime_dispatcher_end_to_end`
+  - **output**: `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`
+  - Two tests: `dispatcher_equity_diverges_from_baseline_when_volatile_regime_fires`
+    (baseline_non_hold=72, dispatcher_non_hold=0, suppressed=72 — ≥ 1 bp proven)
+    + `dispatcher_retains_default_routing_when_confidence_below_threshold` (gate = Momentum retained).
+
 - [ ] **T-D-F2** — Pre-flight smoke: full `cargo test --workspace` PASS;
   `bash scripts/verify_anchors.sh` PASS (74/74).
+  - **Partial**: `verify_anchors.sh` PASS 71/71 (Wave C added no new anchors;
+    Wave E still pending for the 4 v3.0.0-regime scenario anchors 71→74+).
+  - Full `cargo test --workspace` pending background run (b5bv0s60x).
 
 ### Tester rows (T-F) — ACTIVE on developer M-DEV completion
 

@@ -622,6 +622,75 @@ The K4 escape hatch (versioned `EmbeddingV1`/`EmbeddingV2` schema) was evaluated
 - `cargo test -p forecast -- markov_switching` — 14/14 PASS (Wave A regression PASS)
 - `bash scripts/verify_anchors.sh` — 70/70 PASS (zero existing-SHA delta)
 
+### Wave C — Strategy dispatcher + cash-fallback (DONE 2026-05-28)
+
+**Files changed:**
+- `crates/strategy/src/cash_hold.rs` (NEW, 189 lines)
+- `crates/strategy/src/regime_dispatcher.rs` (NEW, 748 lines)
+- `crates/strategy/src/lib.rs` — added `pub mod cash_hold`, `pub mod regime_dispatcher`, and re-exports
+- `crates/strategy/Cargo.toml` — `forecast` dependency made unconditional (was optional); `[[test]]` entry for `regime_dispatcher_end_to_end` added
+- `crates/strategy/tests/regime_dispatcher_end_to_end.rs` (NEW, 373 lines) — K6 noop-fix e2e gate (CLAUDE.md non-negotiable)
+
+**CashHoldStrategy (`cash_hold.rs`):**
+Pure-function strategy with no state and no I/O. Emits exactly one `SignalKind::Hold` for every `(symbol, bar)` pair. SUPPRESSION-NOT-LIQUIDATION semantic: when the dispatcher routes to `CashHoldStrategy`, existing positions are HELD (not liquidated) — natural exits still fire via the composed exit policy (ADR-0010). `on_tick` returns empty `Vec` (bar-close-only strategy). 4 unit tests verify all invariants.
+
+**RegimeDispatcher (`regime_dispatcher.rs`):**
+
+Key types:
+- `RegimeDispatcherConfig { min_fit_bars: usize, refit_interval: usize, history_capacity: usize }` — configures rolling-window EM frequency.
+- `DispatchedRegime { Momentum, CashHold }` — current routing target (Copy, PartialEq).
+- `RegimeDispatcher<C: RegimeClassifier>` — wraps `MomentumStrategy` + `CashHoldStrategy` + per-symbol rolling state.
+
+Routing table (ADR-0049 § D3):
+- Bull → `MomentumStrategy`
+- Bear → `MomentumStrategy`
+- Volatile → `CashHoldStrategy`
+- Calm → `CashHoldStrategy`
+- Chop (legacy/deprecated) → `CashHoldStrategy`
+- Unknown/error → `CashHoldStrategy` (safe default)
+
+D6 confidence gate: `update_classifier_state()` calls `RegimeProbability::above_confidence_threshold()` (≥ 0.70). Below threshold, `current_regime` is RETAINED (hysteresis). Above threshold, routing switches and a `tracing::info!` event is emitted.
+
+**Builder function:** `with_regime_dispatcher<C>(momentum, classifier, config) -> RegimeDispatcher<C>` — mirrors GARCH builder pattern (`with_garch_vol_overlay_momentum` / `with_garch_vol_kill_switch`).
+
+**Unit tests (12 in-module in `regime_dispatcher.rs`):**
+- `dispatcher_routes_to_momentum_in_bull` — Bull high-confidence → `DispatchedRegime::Momentum`
+- `dispatcher_routes_to_momentum_in_bear` — Bear high-confidence → `DispatchedRegime::Momentum`
+- `dispatcher_routes_to_cash_in_volatile` — Volatile high-confidence → `DispatchedRegime::CashHold`
+- `dispatcher_routes_to_cash_in_calm` — Calm high-confidence → `DispatchedRegime::CashHold`
+- `dispatcher_holds_previous_when_confidence_below_70_pct` — D6 gate: max_p < 0.70 → retain previous routing
+- `cash_fallback_suppresses_not_liquidates` — LOAD-BEARING: asserts no `SignalKind::Sell` emitted by `CashHoldStrategy` (would be LIQUIDATION not SUPPRESSION)
+- `dispatcher_handles_chop_legacy_regime` — Chop → `CashHoldStrategy` (K4 legacy compat)
+- `dispatcher_is_deterministic` — same inputs → byte-identical regime sequence
+- `cash_hold_emits_only_hold_invariant` — all 3 symbols × 5 bars → only Hold
+- `dispatcher_reverse_transition_resumes_momentum` — Volatile → Bull transition resumes Buy/Sell signal forwarding
+- `regime_name_to_dispatch_unknown_falls_back_to_cash` — "unknown" → CashHold safe default
+- `compute_log_returns_correct` — pure-fn ln(p2/p1) math
+- `compute_log_returns_empty_on_single_close` — single price → empty Vec
+
+**K6 noop-fix e2e gate (`regime_dispatcher_end_to_end.rs`, 2 tests):**
+
+Pattern: copied from `vol_targeting_overlay_end_to_end.rs`. `StubClassifier::volatile_high_confidence()` returns `[0.02, 0.03, 0.90, 0.05]` (max_p=0.90 > threshold). Two-phase design:
+1. Warm-up phase: both momentum baseline and dispatcher fed `min_fit_bars+1` bars with flat prices to allow classifier fit + initial top-K buy.
+2. Signal phase: oscillating prices (`oscillating_price(sym_idx, bar_idx)`) cause top-K rotation between symbols, generating 72 non-Hold signals in the baseline.
+
+**Result:** `baseline_non_hold=72, dispatcher_non_hold=0, suppressed=72`. CLAUDE.md non-negotiable R-NR.6 satisfied. K6 noop-fix precedent foreclosed.
+
+Second test `dispatcher_retains_default_routing_when_confidence_below_threshold` uses `StubClassifier::uncertain()` (max_p < 0.70) and verifies the dispatcher stays in Momentum routing (no suppression).
+
+**Gate results (all PASS 2026-05-28):**
+- `cargo build -p strategy` — PASS
+- `cargo clippy -p strategy -- -D warnings` — 0 errors (strategy crate clean; pre-existing backtest errors not introduced by Wave C)
+- `cargo fmt --all -- --check` — PASS
+- `cargo test -p strategy` — 122 unit tests + 7 integration test suites PASS (including `regime_dispatcher_end_to_end` 2/2)
+- `cargo test -p forecast -- markov_switching` — 14/14 PASS (Wave A regression)
+- `cargo test -p reflection` — all reflection test suites PASS (Wave B regression)
+- `bash scripts/verify_anchors.sh` — 71/71 PASS (zero existing-SHA delta; Wave C adds no new anchors — those are Wave E)
+
+**Deviations from architecture:**
+- Wave F (`regime_dispatcher_end_to_end.rs`) was wave-compressed into Wave C per CLAUDE.md non-negotiable (every strategy overlay ships with e2e divergence test from day 1).
+- `forecast` dep made unconditional (was optional) because `RegimeClassifier` trait is needed at compile time even without `candle` feature. This is safe — `markov_switching.rs` has no candle dependency.
+
 ## Verification
 
 _Tester M-FINAL populates after developer waves close. Required
