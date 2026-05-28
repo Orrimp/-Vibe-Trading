@@ -1999,3 +1999,43 @@ anchors     = [
 ]
 state       = "passed"  # tester M-FINAL 2026-05-28. verify-anchors 70/70 PASS. T-T-3 determinism spot-check 2/2 PASS (patchtst + vol-target SHAs match anchors.toml). 3/3 strategy_anchors_unchanged PASS. 8/8 e2e gates PASS. 0 K1 surprises. spec-lint pre-existing debt only (no new v0.4.0 regressions). VERDICT → PASS.
 
+[[req]]
+id          = "REQ-LAB-YAHOO-REALDATA-V0-1-3-001"
+title       = "Lab Yahoo realdata v0.1.3 — closes 2 architect-flagged design notes from v0.1.2 M-FINAL (SOFT-PASS): (R1) move REVISION.toml rev=<sha> substring from `run_yahoo_sma.rs:259` report body → YAML front-matter `revision_sha:` via canonical Yahoo report-emit helper (Q1=(a) [Recommended — DURABLE per AGENT.md 2026-05-28]; helper extraction MUST land before second emitter exists, else retrofit costs more than now — future MACD/RSI/BBands Yahoo emitters at v0.2.0+ inherit byte-identically; Q1=(b) inline-fix labeled cheap fallback, +0.5d now but +1.5-3d v0.2.0+ rework with 3 drift-risk events); (R2) register `eth-2024-h1-sma-cross` Binance hourly scenario in `crates/backtest/src/main.rs` mirroring existing `btc-2024-h1-sma-cross` arm at L242 — retires v0.1.2 Yahoo-to-Yahoo K1 fallback in favor of direct Yahoo-daily-vs-Binance-hourly H1 discharge (Binance ETHUSDT 2024 parquets exist, 12 files confirmed by v0.1.2 tester); anchor cascade 70 → 71 (BTC row 69 SHA in-place under existing namespace `lab-yahoo-realdata-v0.1.1` per Q2=(a) [Recommended — DURABLE precedent v5 v0.3.0+v0.4.0]; row 70 ETH daily `e59a5f87…` byte-identical; new row 71 `eth-2024-h1-sma-cross` under namespace `lab-yahoo-realdata-v0.1.3`); 5R / 4K / 3H / 2Q + non-regression (zero new design tokens / zero new strings.rs entries — backend-only) + pre-drawn 2-cell verdict tree + cost framing (~1.5-2 days wall-clock Q1=(a)); M-T1 fast-skip likely (ADR-0040 § Changelog amendment only per D-V0.1.2-6); no M-DEV-UI lane (backend-only ship)"
+feature     = "lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-28) — feature.md + tasks.md authored.
+  "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md",
+  "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md",
+  "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md",                                        # PREDECESSOR — v0.1.2 shipped 2026-05-28 SOFT-PASS, anchor 70 locked
+  "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/test-final-2026-05-28-lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge.md",  # ROOT-CAUSE — § H3 BTC SHA drift + § H1 K1 fallback writeups
+  "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                               # parent ADR — architect M-T1 to amend § Changelog per D-V0.1.2-6 precedent
+  # ARCHITECT M-T1 paths to be populated post-ratification:
+  # "spec/lab-yahoo-realdata-v0.1.3-.../feature.md#design",                                                         # § Design — Q1/Q2 ratification, K1+K2 grep results
+  # "spec/architecture/adr/0040-yahoo-realdata-path.md#changelog",                                                  # ADR-0040 § Changelog 2026-05-28 entry — v0.1.3 helper extraction + ETH H1 registration
+]
+crates      = [
+  # DEVELOPER M-DEV paths anticipated by analyst (populated post-M-DEV).
+  "crates/backtest/src/bin/run_yahoo_sma.rs",                                   # R1.1/R1.2/R1.3 — migrate to helper; remove `rev=` body substring; inject `revision_sha:` front-matter
+  "crates/backtest/src/report/yahoo.rs",                                        # R1.3 — NEW canonical Yahoo report-emit helper (recommended location; developer-final)
+  "crates/backtest/src/main.rs",                                                # R2.1 — new `eth-2024-h1-sma-cross` arm mirroring `btc-2024-h1-sma-cross` (L242 template); + auxiliary match-arm extensions (L1029, L1762)
+  "spec/anchors.toml",                                                          # R3.1 — row 69 BTC SHA in-place update under `lab-yahoo-realdata-v0.1.1`; row 71 NEW `eth-2024-h1-sma-cross` under `lab-yahoo-realdata-v0.1.3`
+  "data/binance/ETHUSDT/2024/",                                                 # R2.2 — data path read-only at v0.1.3; K3 schema-parity pre-flight T-D1
+  "data/yahoo/REVISION.toml",                                                   # R1.2 — read at run time; new `revision_sha:` front-matter field sources from here
+]
+tests       = [
+  # DEVELOPER M-DEV tests anticipated by analyst (populated post-M-DEV).
+  "crates/backtest/tests/run_yahoo_sma_ticker_flag.rs",                         # R1 — extend existing v0.1.2 integration tests for new body shape (no `rev=` in body; presence of `revision_sha:` in front-matter)
+  "crates/backtest/tests/determinism.rs",                                       # R3 — anchor preservation gate; row 69 SHA in-place update; row 70 ETH byte-identical; row 71 new
+]
+anchors     = [
+  # ANALYST M0 forecast (tester locks at M-FINAL):
+  # Row 69 BTC SHA updates in-place (new SHA TBD at M-DEV; namespace unchanged `lab-yahoo-realdata-v0.1.1` per Q2=(a)).
+  # Row 70 ETH daily byte-identical (`e59a5f87…` UNCHANGED).
+  # Row 71 NEW (`eth-2024-h1-sma-cross` under namespace `lab-yahoo-realdata-v0.1.3`; SHA TBD at M-DEV).
+  # verify_anchors.sh ANCHORS PASS (71 / 71) at T-D9 + T-F1.
+  "btc-yahoo-2024-1d-sma-cross",
+  "eth-2024-h1-sma-cross",
+]
+state       = "proposed"  # analyst M0 2026-05-28: brief authored. M-OD next (operator Q1 LOAD-BEARING).

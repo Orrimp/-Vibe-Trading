@@ -461,6 +461,40 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 <!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
 <!-- - **lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
 
+<!-- updated 2026-05-28 (analyst, lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1
+     M0 close) — **PROMOTED Idea → Active 2026-05-28**. Closes the 2 architect-
+     flagged design notes from v0.1.2 M-FINAL (SOFT-PASS verdict, test-final
+     2026-05-28 report): (1) `rev=<sha>` substring in `run_yahoo_sma.rs:259`
+     "Data source:" body line couples body-SHA stability to REVISION.toml
+     aggregate — every operator-initiated `fetch_yahoo_klines` invocation drifts
+     the BTC anchor SHA (pattern guaranteed to recur for BNB/SOL/XRP/… fetches
+     at v0.1.4+); (2) H1 was discharged at v0.1.2 via K1 fallback (Yahoo ETH
+     vs Yahoo BTC same-window 0.84%) because no `eth-2024-h1-sma-cross` Binance
+     scenario was registered — Binance ETHUSDT 2024 parquets exist (12 files
+     confirmed by v0.1.2 tester) but `crates/backtest/src/main.rs` has no arm.
+     Scope: (R1) move `rev=` from body → front-matter `revision_sha:` via a
+     canonical Yahoo report-emit helper (Q1=(a) [Recommended — DURABLE per
+     AGENT.md 2026-05-28]; +1 day at v0.1.3 vs Q1=(b) inline-fix but -1.5 to -3
+     days follow-on across v0.2.0+ MACD/RSI/BBands emitters); (R2) register
+     `eth-2024-h1-sma-cross` Binance hourly scenario mirroring existing
+     `btc-2024-h1-sma-cross` arm at L242; (R3) anchor cascade 70 → 71 (BTC row
+     69 SHA in-place update under existing namespace `lab-yahoo-realdata-v0.1.1`
+     per Q2=(a) [Recommended — DURABLE]; row 70 ETH daily byte-identical; new
+     row 71 `eth-2024-h1-sma-cross` under namespace `lab-yahoo-realdata-v0.1.3`);
+     (R4) H1 ETH direct re-discharge (Yahoo daily vs Binance hourly, threshold
+     30%, expected 5-15%); (R-NR) zero new design tokens / strings.rs adds —
+     this is backend hygiene + scenario registration only. **5 R / 4 K / 3 H /
+     2 Q** + non-regression contract + pre-drawn 2-cell verdict tree + cost
+     framing (~1.5-2 days Q1=(a) Recommended). M-T1 likely fast-skips
+     (ADR-0040 § Changelog amendment only, per D-V0.1.2-6 ADR-extend-not-new
+     precedent; no new ADR). M-DEV-UI lane DOES NOT EXIST at v0.1.3 (backend-
+     only ship). K1 falsifier: if a forgotten Yahoo emitter exists that also
+     embeds `rev=`, route back to architect for migration-scope expansion.
+     Trace row `REQ-LAB-YAHOO-REALDATA-V0-1-3-001` opened `proposed`.
+     Frontmatter stays `owner: analyst`, `status: draft` — M-OD is next.
+     HANDOFF → architect (M-T1 ratifies Q1/Q2 + decomposes M-DEV waves A-D). -->
+- **lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1 v0.1.0** — closes the 2 architect-flagged design notes from v0.1.2 M-FINAL (SOFT-PASS). (1) Move `rev=<sha>` substring from `run_yahoo_sma.rs:259` report body → YAML front-matter `revision_sha:` via a canonical Yahoo report-emit helper (Q1=(a) [Recommended — DURABLE per AGENT.md 2026-05-28]; future MACD/RSI/BBands Yahoo emitters at v0.2.0+ inherit byte-identically). (2) Register `eth-2024-h1-sma-cross` Binance hourly scenario in `crates/backtest/src/main.rs` mirroring existing `btc-2024-h1-sma-cross` arm; retires v0.1.2's Yahoo-to-Yahoo K1 fallback in favor of direct Yahoo-daily-vs-Binance-hourly H1 discharge. Anchor cascade **70 → 71** (BTC row 69 SHA in-place under existing namespace `lab-yahoo-realdata-v0.1.1` per Q2=(a) [Recommended — DURABLE]; row 70 ETH daily byte-identical; new row 71 `eth-2024-h1-sma-cross` under namespace `lab-yahoo-realdata-v0.1.3`). 5R / 4K / 3H / 2Q + non-regression contract + cost framing (~1.5-2 days wall-clock Q1=(a)). Backend-only ship (zero UI files; no M-DEV-UI lane). M-T1 likely fast-skips (ADR-0040 § Changelog amendment only). HANDOFF → architect.
+
 <!-- updated 2026-05-28 (architect, lab-recipe-test-harness M-T1 close — analyst
      pass folded in per orchestrator brief since the WHAT was already
      documented in spec/bug-log.md#64 attempt-1 post-mortem + dev-note
