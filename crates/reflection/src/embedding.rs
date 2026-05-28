@@ -123,7 +123,10 @@ pub fn embed(card: &LessonCard) -> [Decimal; EMBEDDING_DIM] {
         }
     }
 
-    // Slots 18..31 — reserved (zero).  Already initialised.
+    // Slots 18..19 — Volatile / Calm one-hot (Wave B; set above via regime_slot).
+    // Slots 20..31 — reserved (zero).  Already zero-initialised by array init.
+    // NOTE: regime_slot(Volatile)=11, regime_slot(Calm)=12 → REGIME_BASE+11=18,
+    // REGIME_BASE+12=19, so these slots are set via the regime_slot dispatch above.
 
     v
 }
