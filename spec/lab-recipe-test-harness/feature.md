@@ -1,8 +1,8 @@
 ---
 slug: lab-recipe-test-harness
 version: 0.1.0
-status: dev-complete
-owner: developer → tester
+status: shipped
+owner: tester → presenter
 updated: 2026-05-28
 priority: P1
 ---

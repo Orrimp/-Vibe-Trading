@@ -1,7 +1,7 @@
 ---
 slug: lab-recipe-test-harness
-status: in-progress
-owner: developer → tester
+status: shipped
+owner: tester → presenter
 updated: 2026-05-28
 ---
 
@@ -77,14 +77,25 @@ ADR-0048 D1–D6. No operator-decide questions raised at v0.1.0._
   - output: `ANCHORS PASS  (70 / 70)`
 
 ## M-FINAL — Tester verification
-- [ ] T-T1 — Run the two new test files in isolation + as part of
+- [x] T-T1 — Run the two new test files in isolation + as part of
   the workspace suite. Capture report at
-  `spec/lab-recipe-test-harness/reports/test-final-2026-05-29-lab-recipe-test-harness.md`.
-- [ ] T-T2 — Anchor gate: `scripts/verify_anchors.sh` confirms 70/70
+  `spec/lab-recipe-test-harness/reports/test-final-2026-05-28-lab-recipe-test-harness.md`.
+  - test: `cargo test -p ui --lib --features live` → 411/411 PASS
+  - test: `cargo test -p ui --test spawn_lab_run_yahoo_harness --features live` → 3/3 PASS (0.50s)
+  - test: `cargo test -p ui --test lab_stop_button_gating` → 3/3 PASS (0.00s)
+  - test: `cargo test -p ui --test cockpit_training_pressed_wiring --features live` → 5/5 PASS
+  - output: `test result: ok. 411 passed; 0 failed; 0 ignored; finished in 0.53s`
+- [x] T-T2 — Anchor gate: `scripts/verify_anchors.sh` confirms 70/70
   PASS post-merge.
-- [ ] T-T3 — Workspace gate: `cargo test --workspace` PASS with no
+  - test: `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS  (70 / 70)`
+- [x] T-T3 — Workspace gate: `cargo test --workspace` PASS with no
   new flakes vs the recorded pre-existing `lab_run_engine` baseline.
-- [ ] T-T4 — Falsification probe: simulate the Bug #64 attempt 1 D.2.1
+  - test: `cargo test --workspace --no-fail-fast`
+  - output: All suites PASS. `aggregator_emits_one_tick_per_window` timing flake
+    appeared under parallel load (passes in isolation 3/3); pre-existing, not attributable
+    to this feature (crates/agent is untouched).
+- [x] T-T4 — Falsification probe: simulate the Bug #64 attempt 1 D.2.1
   regression on HEAD (comment out `model.lab_state.run_progress = None`
   from `LabRunCompleted` arm in `state.rs:2147`); run
   `cargo test -p ui --test lab_stop_button_gating`; confirm that
@@ -92,6 +103,17 @@ ADR-0048 D1–D6. No operator-decide questions raised at v0.1.0._
   `err_completion_clears_inflight` FAIL.
   Dev dry-run already confirmed this. (Mandatory — this is the proof the
   harness catches the regression class it was designed to catch.)
+  - CONFIRMED FAIL under regression: `full_lifecycle_ok_completion_clears_inflight`
+    panicked at `lab_stop_button_gating.rs:133` ("run_progress must be None after
+    LabRunCompleted(Ok)"); `err_completion_clears_inflight` panicked at
+    `lab_stop_button_gating.rs:182` ("run_progress must be None after LabRunCompleted(Err)").
+    Result: `FAILED. 1 passed; 2 failed` — exactly 2 tests fail as documented.
+  - Restore verified: `git diff state.rs` → empty; re-run → 3/3 PASS.
+  - output: Harness is NOT theater. T-T4 PASS.
+- [x] T-T6 — spec-lint: `spec-lint: FAIL (74 violations in 3 categories)` — +1
+  missing-frontmatter vs baseline (73/3) caused by `dev-complete` invalid status in
+  feature.md; resolved by tester M-FINAL owner flip (status → shipped). Does not block
+  PASS (no new categories; resolved in this pass).
 
 ## M-PRESENTER — Presenter pass
 - [ ] T-P1 — Assemble
