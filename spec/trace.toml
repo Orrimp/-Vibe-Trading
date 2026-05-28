@@ -524,7 +524,15 @@ crates      = [
 tests       = [
   # Wave A: unit tests in crates/forecast/src/markov_switching.rs (14 tests)
   "crates/forecast/src/markov_switching.rs",
-  # Waves B-F: not yet started (pending Wave B developer turn)
+  # Wave B: K4 falsification gate + T1802 byte-identity gates
+  "crates/reflection/tests/regime_overlay_neutrality_4state.rs",
+  "crates/reflection/tests/regime_classifier.rs",
+  "crates/reflection/tests/embedding_determinism.rs",
+  "crates/reflection/tests/store_smoke.rs",
+  "crates/reflection/tests/store_top_k_determinism.rs",
+  "crates/reflection/tests/post_mortem_generate_card.rs",
+  "crates/reports/tests/memory_highlights_with_lessons.rs",
+  # Waves C-F: not yet started (pending Wave C developer turn)
 ]
 anchors     = [
   # 4 planned under namespace v3.0.0-regime (ADR-0049 § D5); Wave E adds at developer M-FINAL.
@@ -533,7 +541,7 @@ anchors     = [
   "regime-verdict-bs1-realdata",                         # V-REG report (held-out 2024)
   "sharpe-comparison-regime-dispatcher-bs1-realdata",    # T-REG Sharpe-delta report
 ]
-state       = "in-progress"  # Wave A DONE 2026-05-28: markov_switching.rs shipped (14 tests PASS; 70/70 anchors PASS). HANDOFF → developer Wave B (RegimeTag extension + K4 embedding contract in crates/reflection).
+state       = "in-progress"  # Wave A DONE 2026-05-28: markov_switching.rs shipped (14 tests PASS; 70/70 anchors PASS). Wave B DONE 2026-05-28: RegimeTag extended (Volatile=3, Calm=4 appended); embedding.rs extended (slots 18/19 in reserved area — K4 byte-identity preserved; single-vector-extension, no escape hatch needed); regime_overlay_neutrality_4state.rs NEW (10 tests PASS; K4 falsifier gate green); T1802 family 8/8 PASS; embedding_determinism 5/5 PASS; store_smoke 2/2 PASS; store_top_k_determinism 3/3 PASS; post_mortem_generate_card 3/3 PASS; memory_highlights_with_lessons 5/5 PASS; 70/70 anchors PASS. HANDOFF → developer Wave C (strategy dispatcher + cash-fallback in crates/strategy).
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────
@@ -2010,10 +2018,10 @@ arch        = [
   "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md",
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md",                                        # PREDECESSOR — v0.1.2 shipped 2026-05-28 SOFT-PASS, anchor 70 locked
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/test-final-2026-05-28-lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge.md",  # ROOT-CAUSE — § H3 BTC SHA drift + § H1 K1 fallback writeups
-  "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                               # parent ADR — architect M-T1 to amend § Changelog per D-V0.1.2-6 precedent
-  # ARCHITECT M-T1 paths to be populated post-ratification:
-  # "spec/lab-yahoo-realdata-v0.1.3-.../feature.md#design",                                                         # § Design — Q1/Q2 ratification, K1+K2 grep results
-  # "spec/architecture/adr/0040-yahoo-realdata-path.md#changelog",                                                  # ADR-0040 § Changelog 2026-05-28 entry — v0.1.3 helper extraction + ETH H1 registration
+  "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                               # parent ADR — architect M-T1 amended § Changelog 2026-05-28
+  # ARCHITECT M-T1 (2026-05-28) — Q1+Q2 ratified; helper boundary locked; K1+K2 grep PASS.
+  "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md#design",                            # § Design D-V0.1.3-1 → D-V0.1.3-9 — Q1+Q2 ratification, K1 grep PASS (rev= one binary only), K2 grep PASS (no revision_sha: collision), helper module + public API locked, anchor cascade 70 → 71
+  "spec/architecture/adr/0040-yahoo-realdata-path.md#changelog",                                                    # ADR-0040 § Changelog 2026-05-28 entry — v0.1.3 helper extraction + ETH H1 registration; no new ADR (mechanical refactor + mechanical re-placement)
 ]
 crates      = [
   # DEVELOPER M-DEV paths anticipated by analyst (populated post-M-DEV).
@@ -2038,4 +2046,4 @@ anchors     = [
   "btc-yahoo-2024-1d-sma-cross",
   "eth-2024-h1-sma-cross",
 ]
-state       = "proposed"  # analyst M0 2026-05-28: brief authored. M-OD next (operator Q1 LOAD-BEARING).
+state       = "arch-done"  # architect M-T1 2026-05-28: Q1+Q2 ratified durable per AGENT.md 2026-05-28 contract; helper boundary at `crates/backtest/src/report/yahoo.rs` locked; ADR-0040 § Changelog amended (no new ADR); K1+K2 grep PASS; anchor cascade 70 → 71 locked (row 69 in-place under `lab-yahoo-realdata-v0.1.1`, row 70 byte-identical, row 71 NEW under `lab-yahoo-realdata-v0.1.3`); ETH H1 bar_count cadence ambiguity flagged for developer T-D4 pre-flight. M-DEV next.

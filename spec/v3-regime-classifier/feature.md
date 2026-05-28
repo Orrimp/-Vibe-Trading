@@ -585,6 +585,43 @@ pub trait RegimeClassifier {
 - `cargo clippy -p forecast --lib -- -D warnings` — 0 new errors
 - `bash scripts/verify_anchors.sh` — 70/70 PASS (additive; zero anchor delta)
 
+**Wave A integration contract (documented for Wave C dispatcher):** `RegimeProbability::regime_name()` maps state index 0→"bull", 1→"bear", 2→"volatile", 3→"calm". State index 2 intentionally skips `Chop` (ordinal 2) — the Markov-switching classifier NEVER emits Chop. Wave C dispatcher converts regime names to `RegimeTag` variants at the integration boundary.
+
+### Wave B — RegimeTag extension + K4 embedding contract (DONE 2026-05-28)
+
+**Files changed:**
+- `crates/reflection/src/regime.rs` — `RegimeTag` enum extended with `Volatile` (ordinal 3) and `Calm` (ordinal 4). `Display` emits `"volatile"` / `"calm"`. Legacy variants `Bull`/`Bear`/`Chop` and `classify_regime()` are byte-identical (K4 frozen).
+- `crates/reflection/src/embedding.rs` — `regime_slot()` extended with `Volatile => 11`, `Calm => 12` (absolute slots 18/19 in formerly-reserved zero region). `OUTCOME_BASE` stays at 10 — no slot displacement. Doc comment updated with K4 byte-identity contract.
+- `crates/reflection/src/store/sqlite.rs` — `parse_regime()` extended to round-trip `"volatile"` and `"calm"` strings (ADR-0049 § D2).
+
+**Design choice — single-vector-extension (NOT escape hatch):**
+The K4 escape hatch (versioned `EmbeddingV1`/`EmbeddingV2` schema) was evaluated but NOT needed. By placing `Volatile` and `Calm` at offsets 11 and 12 from `REGIME_BASE` (absolute slots 18 and 19), these slots land in the previously-zero-initialised reserved region. `OUTCOME_BASE` remains at 10 — outcome, scalar, and hash slots are not displaced. Legacy cards (Bull/Bear/Chop) produce byte-identical 32-vectors. No schema versioning required.
+
+**New test file:** `crates/reflection/tests/regime_overlay_neutrality_4state.rs` (10 tests):
+- `t_wave_b_bull_card_new_slots_are_zero` — slot 18 and 19 are zero for Bull card (K4)
+- `t_wave_b_bear_card_new_slots_are_zero` — same for Bear card
+- `t_wave_b_chop_card_new_slots_are_zero` — same for Chop card
+- `t_wave_b_volatile_card_activates_slot_18` — slot 18 = ONE for Volatile, all other regime slots zero
+- `t_wave_b_calm_card_activates_slot_19` — slot 19 = ONE for Calm, all other regime slots zero
+- `t_wave_b_pre_wave_b_snapshot_byte_identical` — full 32-slot snapshot comparison against pre-Wave-B expected values; two-call determinism
+- `t_wave_b_all_legacy_regime_combinations_have_zero_new_slots` — sweeps 7 strategies × 3 legacy regimes × 3 outcomes (63 cards); all have slots 18/19 = zero
+- `t_wave_b_display_strings_match_adr0049` — Display output: bull/bear/chop/volatile/calm
+- `t_wave_b_enum_ordinals_match_adr0049` — Ord: Bull < Bear < Chop < Volatile < Calm
+- `t_wave_b_new_regime_tags_produce_nonzero_embeddings` — Volatile/Calm produce sum=1 at slots 18/19
+
+**Gate results (all PASS 2026-05-28):**
+- `cargo build -p reflection` — PASS
+- `cargo clippy -p reflection --all-targets -- -D warnings` — 0 errors
+- `cargo test -p reflection --test regime_overlay_neutrality_4state` — 10/10 PASS
+- `cargo test -p reflection --test regime_classifier` — 8/8 PASS (T1802 byte-identical)
+- `cargo test -p reflection --test embedding_determinism` — 5/5 PASS
+- `cargo test -p reflection --test store_smoke` — 2/2 PASS
+- `cargo test -p reflection --test store_top_k_determinism` — 3/3 PASS
+- `cargo test -p reflection --test post_mortem_generate_card` — 3/3 PASS
+- `cargo test -p reports --test memory_highlights_with_lessons` — 5/5 PASS
+- `cargo test -p forecast -- markov_switching` — 14/14 PASS (Wave A regression PASS)
+- `bash scripts/verify_anchors.sh` — 70/70 PASS (zero existing-SHA delta)
+
 ## Verification
 
 _Tester M-FINAL populates after developer waves close. Required

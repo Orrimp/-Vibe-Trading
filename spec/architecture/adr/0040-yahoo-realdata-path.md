@@ -527,3 +527,34 @@ Binance / Coinbase / Kraken rows are untouched.
   whenever Lab is active. 69/69 anchors stay byte-identical;
   v0.1.2 appends row 70 (`eth-yahoo-2024-1d-sma-cross`). Closes
   T-T1.6 of `spec/lab-yahoo-realdata-v0.1.2-…/tasks.md`.
+- 2026-05-28 (architect, M-T1 lab-yahoo-realdata-v0.1.3): body→frontmatter
+  migration for the `rev=<sha>` substring in Yahoo report emissions,
+  plus registration of `eth-2024-h1-sma-cross` Binance H1 scenario.
+  **No new architectural decisions** — operationalises existing D3
+  (`REVISION.toml` aggregate SHA) + extends the per-ticker scaling
+  pattern from D-V0.1.2-6 to the report-emit boundary. Two operational
+  extensions: (1) **Canonical Yahoo report-emit helper.**
+  `crates/backtest/src/report/yahoo.rs` becomes the single point of
+  truth for Yahoo-cache-sourced report emission. The body
+  `Data source: yahoo-cache:{ticker}/1d/2024 rev={sha:.12}` (D-V0.1.2-6
+  default) loses the `rev=<sha>` suffix; the full 64-char hex moves
+  to a new top-level frontmatter line `revision_sha:` immediately
+  after `data_source:`. Underlying strategy report writers
+  (`report::sma::write`, future `_macd`/`_rsi`/`_bbands` at v0.2.0+)
+  gain an optional `revision_sha: Option<&str>` parameter — `None`
+  preserves byte-identical output for the 33 Binance SMA anchors and
+  all non-Yahoo emitters. Anchor row 69 BTC SHA updates in-place under
+  namespace `lab-yahoo-realdata-v0.1.1` (Q2=(a) precedent: v5 v0.3.0+v0.4.0
+  in-place re-emit; ADR-0038 § D6.b wiring-bug-fix re-emission
+  protocol applies). Row 70 ETH daily byte-identical at v0.1.3 — bulk
+  Yahoo ticker re-emit deferred to v0.1.4 BNB ship to amortize across
+  9 unanchored tickers. (2) **Binance ETH H1 scenario registration.**
+  `eth-2024-h1-sma-cross` arm appended to `crates/backtest/src/main.rs`
+  at three match-arm sites (L242 scenario config mirroring
+  `btc-2024-h1-sma-cross`, L1029 synthetic fallback start price
+  `dec!(2_400)`, L1762 `scenario_to_feature → "v0-paper-sma"`); retires
+  the v0.1.2 Yahoo-to-Yahoo K1 fallback in favor of direct
+  Yahoo-daily-vs-Binance-hourly H1 discharge. New anchor row 71 under
+  namespace `lab-yahoo-realdata-v0.1.3`. Net anchor count 70 → 71.
+  Closes T-T1.4 of
+  `spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md`.

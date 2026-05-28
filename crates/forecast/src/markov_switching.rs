@@ -163,6 +163,26 @@ impl RegimeProbability {
     /// Returns the name of the most probable regime.
     ///
     /// Maps: 0 → "bull", 1 → "bear", 2 → "volatile", 3 → "calm".
+    ///
+    /// ## Wave B integration contract (ADR-0049 § D2)
+    ///
+    /// The state-index-to-`RegimeTag` mapping is:
+    ///
+    /// | `argmax()` | `RegimeTag`      | `RegimeTag` ordinal |
+    /// |-----------|------------------|---------------------|
+    /// | 0         | `Bull`           | 0                   |
+    /// | 1         | `Bear`           | 1                   |
+    /// | 2         | `Volatile`       | 3 (appended)        |
+    /// | 3         | `Calm`           | 4 (appended)        |
+    ///
+    /// **Note:** The Markov-switching classifier NEVER emits `Chop`
+    /// (ordinal 2).  `Chop` is reserved for the legacy daily
+    /// `classify_regime` seed in `crates/reflection`.
+    ///
+    /// The Wave C dispatcher converts this name string to a `RegimeTag`
+    /// at the integration boundary using `reflection::RegimeTag`'s
+    /// `Display` / string parsing.  State index 2 intentionally skips
+    /// ordinal 2 (`Chop`) to preserve the K4 byte-identity contract.
     #[must_use]
     pub fn regime_name(&self) -> &'static str {
         match self.argmax() {

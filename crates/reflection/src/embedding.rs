@@ -7,14 +7,37 @@
 //! | Slots | Field                  |
 //! |-------|------------------------|
 //! | 0..6  | `strategy_one_hot` (7 strategies) |
-//! | 7..9  | `regime_one_hot` (Bull/Bear/Chop)  |
+//! | 7..9  | `regime_one_hot` (Bull/Bear/Chop) — K4-frozen; legacy daily seed only |
 //! | 10..12| `outcome_one_hot` (Win/Loss/Scratch) |
 //! | 13    | `signed_pnl_sign` (+1 / -1 / 0)  |
 //! | 14    | `log_pnl_magnitude` (log10(\|pnl\| + 1), 4dp truncated) |
 //! | 15    | `log_holding_period` (log10(bars + 1), 4dp truncated)  |
 //! | 16    | `pair_hash_norm` ([0, 1] projection of PairKey content hash) |
 //! | 17    | `single_symbol_hash_norm` ([0, 1] projection of Symbol hash) |
-//! | 18..31| reserved (zero) |
+//! | 18    | `regime_volatile_slot` — 1.0 iff `RegimeTag::Volatile` (NEW Wave B) |
+//! | 19    | `regime_calm_slot`    — 1.0 iff `RegimeTag::Calm`     (NEW Wave B) |
+//! | 20..31| reserved (zero) |
+//!
+//! ## K4 byte-identity contract (ADR-0049 § D2)
+//!
+//! **Slots 7-17 and 20-31 are byte-identical to the pre-Wave-B layout
+//! for any card that carries only `Bull`, `Bear`, or `Chop` as its
+//! `entry_regime`.**  Specifically:
+//!
+//! - Slots 7, 8, 9 (`REGIME_BASE + 0/1/2`) remain the one-hot positions
+//!   for `Bull`, `Bear`, `Chop` respectively.  Their encoding is frozen.
+//! - `OUTCOME_BASE` stays at 10 — outcome slots are NOT displaced.
+//! - Slots 18 and 19 were previously part of the reserved-zero region.
+//!   For legacy cards (Bull/Bear/Chop), they remain zero-initialised,
+//!   so legacy embeddings are byte-identical to pre-Wave-B output.
+//! - For new Markov-switching cards that carry `Volatile` or `Calm`,
+//!   slot 18 or 19 (respectively) is set to `Decimal::ONE`; all other
+//!   regime-one-hot slots are zero.
+//!
+//! The `regime_overlay_neutrality_4state` integration test gates this
+//! invariant — it re-runs a legacy fixture and asserts that slots 18
+//! and 19 are exactly zero, and that the full 32-vector is byte-identical
+//! to a pre-Wave-B snapshot.
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -117,11 +140,38 @@ fn strategy_slot_index(id: &str) -> usize {
     STRATEGY_SLOTS.len() - 1
 }
 
+/// Return the one-hot slot offset from `REGIME_BASE` for a `RegimeTag`.
+///
+/// ## K4 byte-identity contract (ADR-0049 § D2)
+///
+/// Offsets 0, 1, 2 (Bull/Bear/Chop) are **frozen** — they map to the
+/// same absolute slots (7, 8, 9) as the pre-Wave-B embedding.  Any
+/// card carrying only these three variants produces a byte-identical
+/// 32-vector to the pre-Wave-B output.
+///
+/// `Volatile` and `Calm` use offsets 11 and 12 respectively, which map
+/// to absolute slots 18 and 19 (`REGIME_BASE + 11 = 18`,
+/// `REGIME_BASE + 12 = 19`).  These slots were in the reserved-zero
+/// region before Wave B; for legacy cards they remain zero.
+///
+/// | Variant  | Offset | Absolute slot | Region           |
+/// |----------|--------|---------------|------------------|
+/// | Bull     | 0      | 7             | regime block     |
+/// | Bear     | 1      | 8             | regime block     |
+/// | Chop     | 2      | 9             | regime block     |
+/// | Volatile | 11     | 18            | formerly reserved|
+/// | Calm     | 12     | 19            | formerly reserved|
 const fn regime_slot(r: RegimeTag) -> usize {
     match r {
         RegimeTag::Bull => 0,
         RegimeTag::Bear => 1,
         RegimeTag::Chop => 2,
+        // Volatile and Calm use offsets 11/12 → absolute slots 18/19.
+        // These were zero-initialised reserved slots before Wave B.
+        // Legacy (Bull/Bear/Chop) cards keep byte-identical output
+        // because these offsets are never reached by the legacy path.
+        RegimeTag::Volatile => 11,
+        RegimeTag::Calm => 12,
     }
 }
 

@@ -228,25 +228,40 @@ fallback adds ~half-week over overlay-style multiplier.
 
 #### Wave B — RegimeTag extension + K4 embedding contract (LOAD-BEARING)
 
-- [ ] **T-D-B1** — Extend `crates/reflection/src/regime.rs`: add
+- [x] **T-D-B1** — Extend `crates/reflection/src/regime.rs`: add
   `RegimeTag::Volatile, RegimeTag::Calm` (APPEND ONLY; ordinals 3, 4).
   Display: `"volatile"`, `"calm"`. — _acceptance: existing T1802
   test family passes byte-identical._
-- [ ] **T-D-B2** — Extend `crates/reflection/src/embedding.rs:120-126`:
-  add `Volatile => 3, Calm => 4` arms; embedding vector length grows
-  by 2 one-hot slots. — _acceptance: legacy 3-state fixtures emit
-  byte-identical Bull/Bear/Chop slots (Volatile/Calm slots zero)._
-- [ ] **T-D-B3** — New
+  - **file**: `crates/reflection/src/regime.rs:18-60`
+  - **test cmd**: `cargo test -p reflection --test regime_classifier`
+  - **output**: `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+  - Also extended `crates/reflection/src/store/sqlite.rs:282-291` (`parse_regime`)
+    to round-trip `"volatile"` and `"calm"` strings.
+- [x] **T-D-B2** — Extend `crates/reflection/src/embedding.rs` (was
+  lines 120-126): add `Volatile => 11, Calm => 12` arms in `regime_slot()`;
+  new variants map to absolute slots 18 and 19 (formerly reserved zero
+  region — K4 byte-identity preserved; OUTCOME_BASE stays at 10).
+  — _acceptance: legacy 3-state fixtures emit byte-identical Bull/Bear/Chop
+  slots (Volatile/Calm slots zero at positions 18/19)._
+  - **Design choice**: **single-vector-extension** (NOT escape hatch).
+    Volatile/Calm placed at reserved slots 18/19 so OUTCOME_BASE=10
+    is not displaced. Legacy embeddings are byte-identical.
+  - **file**: `crates/reflection/src/embedding.rs:1-60, 155-195`
+  - **test cmd**: `cargo test -p reflection --test embedding_determinism`
+  - **output**: `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+- [x] **T-D-B3** — New
   `crates/reflection/tests/regime_overlay_neutrality_4state.rs`
-  (pattern from `patchtst_overlay_neutrality`). Re-runs ≥ 1 legacy
-  `embedding_determinism.rs` fixture; asserts byte-identity on the
-  Bull/Bear/Chop slots. — _acceptance: K4 invariant byte-identical
+  (10 tests covering K4 falsification probe, snapshot byte-comparison,
+  all-legacy-regime sweep, new variant activation, display strings,
+  ordinal contract). — _acceptance: K4 invariant byte-identical
   for legacy fixtures; falsifier is the test itself._
-- [ ] **T-D-B4 (escape hatch — execute IFF T-D-B3 fails)** — Promote
-  to versioned embedding schema: `EmbeddingV1` (3-slot legacy, pinned
-  to existing fixtures) + `EmbeddingV2` (5-slot, new classifier).
-  Per ADR-0049 § D2 in-scope; **NO ADR amendment required**. New
-  fixture builder picks V1 or V2 by classifier type.
+  - **file**: `crates/reflection/tests/regime_overlay_neutrality_4state.rs` (NEW, 10 tests)
+  - **test cmd**: `cargo test -p reflection --test regime_overlay_neutrality_4state`
+  - **output**: `test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+- [ ] **T-D-B4 (escape hatch — SKIPPED; T-D-B3 passed)** — Single-vector-extension
+  preserved byte-identity. No versioned schema required. Volatile/Calm slots
+  occupy formerly-reserved slots 18/19; OUTCOME_BASE unchanged at 10.
+  Per ADR-0049 § D2: escape hatch pre-authorized but not needed here.
 
 #### Wave C — Strategy dispatcher + cash-fallback
 

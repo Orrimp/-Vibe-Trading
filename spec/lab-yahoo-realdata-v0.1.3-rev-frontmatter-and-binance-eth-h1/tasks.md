@@ -1,7 +1,7 @@
 ---
 slug: lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1
 status: in-progress
-owner: architect
+owner: developer
 updated: 2026-05-28
 ---
 
@@ -29,15 +29,41 @@ updated: 2026-05-28
 - [x] T-OD1 (2026-05-28) — Q1 = **(a) helper-extraction [Recommended — DURABLE]**.
 - [x] T-OD2 (2026-05-28) — Q2 = **(a) in-place SHA under existing `lab-yahoo-realdata-v0.1.1`** [Recommended — DURABLE].
 
-## M-T1 — architect (fast-skip likely)
+## M-T1 — architect (NOT a fast-skip; durable boundary locked 2026-05-28)
 
-- [ ] T-T1.1 — ratify Q1+Q2; record § Design.
-- [ ] T-T1.2 — K1 grep: confirm `rev=` substring exists in zero other
-  Yahoo emitters (only `run_yahoo_sma.rs`).
-- [ ] T-T1.3 — K2 grep: confirm `revision_sha:` key does not collide
-  with any existing Yahoo report frontmatter key.
-- [ ] T-T1.4 — ADR-0040 § Changelog amended with v0.1.3 entry.
-- [ ] T-T1.5 — owner flip → developer; trace `state = arch-done`.
+- [x] T-T1.1 (2026-05-28) — Q1+Q2 ratified; § Design recorded (D-V0.1.3-1
+  through D-V0.1.3-9). Operator durable picks locked under AGENT.md
+  2026-05-28 contract.
+- [x] T-T1.2 (2026-05-28) — K1 grep PASS: `rev=` substring appears in
+  exactly one production binary (`crates/backtest/src/bin/run_yahoo_sma.rs:259`).
+  Zero leak to other emitters; Q1=(a) scope correctly bounded.
+- [x] T-T1.3 (2026-05-28) — K2 grep PASS: `revision_sha:` key not
+  present in any existing Yahoo report frontmatter. Insertion
+  collision-free.
+- [x] T-T1.4 (2026-05-28) — ADR-0040 § Changelog amended with v0.1.3
+  entry. No new ADR (helper extraction is mechanical refactor;
+  frontmatter field is mechanical re-placement of existing data).
+- [x] T-T1.5 (2026-05-28) — owner flip → developer; trace
+  `state = arch-done`; trace `arch` column populated with
+  M-T1 paths (feature.md § Design, ADR-0040 § Changelog).
+
+**Architect call-outs for developer T-D phase:**
+
+1. **T-D4 cadence ambiguity** — `btc-2024-h1-sma-cross` predecessor
+   uses `bar_count: 262_800` which is 1m-equivalent (262_800 ≈ 365d ×
+   720m). True H1 would be `8_760` (365d × 24h). Developer pre-flight
+   resolves by counting actual bars in `data/binance/ETHUSDT/2024/`
+   parquets; mirror predecessor verbatim if its bar_count works at
+   runtime, else file an ADR amendment.
+2. **T-D2 helper landing order** — extract `report/yahoo.rs` FIRST,
+   then migrate `run_yahoo_sma.rs:259` SECOND, then add ETH H1
+   scenario THIRD. Out-of-order risks half-migrated state at intermediate
+   commit boundaries.
+3. **T-D8 anchor in-place protocol** — when updating row 69 in
+   `spec/anchors.toml`, preserve the existing namespace label
+   `lab-yahoo-realdata-v0.1.1` verbatim; only the SHA value mutates.
+   Row 71 append goes under `lab-yahoo-realdata-v0.1.3`. Two distinct
+   namespace lines for two distinct contracts.
 
 ## M-DEV — developer (Q1=(a) Recommended path)
 

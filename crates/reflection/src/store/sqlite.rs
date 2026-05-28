@@ -284,6 +284,10 @@ fn parse_regime(s: &str) -> Result<RegimeTag, ReflectionStoreError> {
         "bull" => Ok(RegimeTag::Bull),
         "bear" => Ok(RegimeTag::Bear),
         "chop" => Ok(RegimeTag::Chop),
+        // Wave B additions (ADR-0049 § D2): Markov-switching classifier
+        // emits these two variants; legacy daily seed never emits them.
+        "volatile" => Ok(RegimeTag::Volatile),
+        "calm" => Ok(RegimeTag::Calm),
         other => Err(ReflectionStoreError::Encoding(format!(
             "unknown regime tag: {other}"
         ))),

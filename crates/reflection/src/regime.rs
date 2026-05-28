@@ -10,15 +10,51 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use trading_core::Timestamp;
 
-/// Regime tag — one of three discrete buckets.
+/// Regime tag — five discrete buckets (ordinals 0-4).
 ///
-/// `Display` emits `bull|bear|chop` (lowercase, no quotes) — body byte
-/// stable.
+/// ## K4 ordinal contract (ADR-0049 § D2 — IMMUTABLE)
+///
+/// Ordinals 0-2 are **frozen** — changing them breaks the 30-anchor
+/// body-SHA regression gate via lesson-card embedding determinism.
+///
+/// | Ordinal | Variant  | Emitter                     |
+/// |---------|----------|-----------------------------|
+/// | 0       | Bull     | legacy daily seed (frozen)  |
+/// | 1       | Bear     | legacy daily seed (frozen)  |
+/// | 2       | Chop     | legacy daily seed (frozen)  |
+/// | 3       | Volatile | Markov-switching classifier |
+/// | 4       | Calm     | Markov-switching classifier |
+///
+/// **`Chop` is DEPRECATED for new classifiers** but preserved for the
+/// legacy daily `classify_regime` path and the K4 lesson-card embedding
+/// byte-identity invariant.  The strategy-switching dispatcher (Wave C)
+/// routes ONLY on the 4 Q1=(b) variants (Bull/Bear/Volatile/Calm);
+/// `Chop` is NEVER a dispatcher target.
+///
+/// `Display` emits `bull|bear|chop|volatile|calm` (lowercase, no quotes)
+/// — body byte stable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum RegimeTag {
+    /// Trending-up regime (μ > 0, low σ²).  Ordinal 0 — K4-frozen.
     Bull,
+    /// Trending-down regime (μ < 0, low σ²).  Ordinal 1 — K4-frozen.
     Bear,
+    /// Choppy / sideways regime.  Ordinal 2 — K4-frozen.
+    ///
+    /// **DEPRECATED** for new classifiers.  Only emitted by the legacy
+    /// daily `classify_regime` pure-fn seed.  The Markov-switching
+    /// classifier emits `Volatile` or `Calm` instead.
     Chop,
+    /// High-volatility regime (μ ≈ 0, high σ²).  Ordinal 3 — NEW (Wave B).
+    ///
+    /// Emitted by the Markov-switching classifier (ADR-0049 § D1 state 2).
+    /// Maps to `CashHoldStrategy` in the Wave C dispatcher (ADR-0049 § D3).
+    Volatile,
+    /// Low-volatility calm regime (μ ≈ 0, low σ²).  Ordinal 4 — NEW (Wave B).
+    ///
+    /// Emitted by the Markov-switching classifier (ADR-0049 § D1 state 3).
+    /// Maps to `CashHoldStrategy` in the Wave C dispatcher (ADR-0049 § D3).
+    Calm,
 }
 
 impl std::fmt::Display for RegimeTag {
@@ -27,6 +63,8 @@ impl std::fmt::Display for RegimeTag {
             Self::Bull => "bull",
             Self::Bear => "bear",
             Self::Chop => "chop",
+            Self::Volatile => "volatile",
+            Self::Calm => "calm",
         };
         f.write_str(s)
     }
