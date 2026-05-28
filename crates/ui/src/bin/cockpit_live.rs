@@ -1178,8 +1178,6 @@ impl AppState {
                         // Surface the error via toast (R1.1 step 7 / R-NR.4 / R3.2).
                         // cockpit-toast-queue v0.1.0 T-D-N8: route through the message
                         // dispatcher with Danger severity instead of direct field write.
-                        // The back-compat `toast_message` field shim keeps the
-                        // `spawn_failure_surfaces_toast` test green via its own helper.
                         ui::state::update(
                             &mut self.cockpit,
                             Message::ShowToastWithSeverity(

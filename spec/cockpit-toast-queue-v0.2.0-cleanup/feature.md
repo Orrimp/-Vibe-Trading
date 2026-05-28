@@ -2,8 +2,8 @@
 slug: cockpit-toast-queue-v0.2.0-cleanup
 version: 0.2.0
 status: in-progress
-owner: tester
-updated: 2026-05-27
+owner: presenter
+updated: 2026-05-28
 predecessor: cockpit-toast-queue v0.1.0
 priority: P3
 ---

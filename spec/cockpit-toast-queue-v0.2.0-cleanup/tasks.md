@@ -99,16 +99,21 @@ updated: 2026-05-27
 
 ## M-FINAL — Tester
 
-- [ ] T-T-1 — Anchor gate: `bash scripts/verify_anchors.sh` →
+- [x] T-T-1 — Anchor gate: `bash scripts/verify_anchors.sh` →
   byte-identical to v0.1.0 baseline.
-- [ ] T-T-2 — Workspace sweep: `cargo test --workspace` → no new
+  - Result: ANCHORS PASS (69 / 69) — verified 2026-05-28
+- [x] T-T-2 — Workspace sweep: `cargo test --workspace` → no new
   failures vs v0.1.0 baseline.
-- [ ] T-T-3 — Grep gates: `grep -rn "pub toast_message" crates/` → 0;
+  - Result: Only pre-existing `lab_run_engine::inner::h3_in_memory_equals_cached_disk` flake (whitelisted); zero new failures.
+- [x] T-T-3 — Grep gates: `grep -rn "pub toast_message" crates/` → 0;
   `grep -rn "\.toast_message\s*=" crates/` → 0.
-- [ ] T-T-4 — spec-lint: no new violation categories vs v0.1.0
+  - Result: Both 0 matches. Tester also removed stale 2-line comment at cockpit_live.rs:1181-1182; final `grep -rn "toast_message" crates/` → 0 matches (was 1 stale comment).
+- [x] T-T-4 — spec-lint: no new violation categories vs v0.1.0
   baseline.
-- [ ] T-T-5 — Author `reports/test-final-<date>-cockpit-toast-queue-v0.2.0-cleanup.md`
+  - Result: spec-lint: FAIL (73/3) — same 3 categories as baseline (72/3); +1 dead-link is pre-existing from spec/cockpit-toast-queue/feature.md (lumen-phase-1-foundation), not introduced by this feature. No new categories. Does not block PASS.
+- [x] T-T-5 — Author `reports/test-final-<date>-cockpit-toast-queue-v0.2.0-cleanup.md`
   with PASS / REGRESSION verdict per the 2-cell tree.
+  - Result: spec/cockpit-toast-queue-v0.2.0-cleanup/reports/test-final-2026-05-28-cockpit-toast-queue-v0.2.0-cleanup.md — VERDICT: PASS
 
 ## M-PRESENTER
 

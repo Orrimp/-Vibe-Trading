@@ -1834,7 +1834,7 @@ tests       = [
   "crates/ui/tests/cockpit_toast_queue.rs",                                     # 4/4 PASS — cargo test -p ui --test cockpit_toast_queue
 ]
 anchors     = "byte-identical to v0.1.0 baseline — verify_anchors.sh: ANCHORS PASS (69 / 69)"
-state       = "implemented"
+state       = "passed"   # Tester M-FINAL PASS 2026-05-28. All gates green. K5 5/5, toast_queue 4/4, 69/69 anchors, grep gates 0/0, workspace only pre-existing lab_run_engine flake. Report: spec/cockpit-toast-queue-v0.2.0-cleanup/reports/test-final-2026-05-28-cockpit-toast-queue-v0.2.0-cleanup.md
 
 #
 # ─── Lab Yahoo realdata v0.1.2 — ETH-USD anchor + cache-state summary badge (proposed 2026-05-27) ───
