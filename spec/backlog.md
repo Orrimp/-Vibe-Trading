@@ -379,7 +379,10 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      (feature.md narrowed from R1-R8/H1-H6/Q1-Q7 to canonical M0 shape
      R1-R5/K1-K6/H1-H4/Q1-Q5 + 4-cell verdict tree; 430 lines inserted,
      589 deleted); orchestrator inline-finished the Queue → Active move
-     + trace state flip proposed→arch-ready. -->
+     + trace state flip proposed→arch-ready.
+     2026-05-28 architect M-T1 closed (this annotation update): ADR-0049
+     authored + feature.md § Design populated + tasks.md Waves A-F locked
+     + trace state arch-done. HANDOFF → developer Wave A. -->
 - **v3-regime-classifier v0.1.0** — Candidate 2 of the v3 three-pick
   set; C1 retired (NEGATIVE-NET-DELTA 2026-05-22); C5 shipped
   v0.1.0-PARTIAL 2026-05-22 — C2 is the remaining slot. Predicts
@@ -389,14 +392,22 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   (byte-identity backward-compat is R1.1 load-bearing — 7+ downstream
   tests + lesson-card embedding + Phase F UI renderer depend on it).
   M-A5 refresh narrowed brief to canonical M0 shape: 5R + R-NR +
-  K1-K6 + H1-H4 + Q1-Q5 + 4-cell verdict tree. 5 operator-decide Qs
-  (taxonomy granularity, training window, model class HMM /
-  Markov-switching / classifier-ensemble, integration mode overlay /
-  switcher / ensemble, v0.1.0 scope single-asset vs multi). Brief:
+  K1-K6 + H1-H4 + Q1-Q5 + 4-cell verdict tree. **M-OD CLOSED
+  2026-05-28** (commit `6b47027`): operator overrode Q1+Q3+Q4 bolder
+  than analyst defaults — Q1=(b) 4-state Bull/Bear/Volatile/Calm,
+  Q3=(b) Markov-switching (Hamilton 1989), Q4=(b) strategy-switching
+  dispatcher; Q2+Q5 at default. **M-T1 CLOSED 2026-05-28**: ADR-0049
+  authored ([`spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md`](architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md))
+  — sibling to ADR-0038 (NOT extension); covers Markov-switching priors,
+  RegimeTag γ-encoding (preserve Chop + APPEND Volatile=3, Calm=4),
+  dispatcher with CashHoldStrategy cash-fallback for Volatile/Calm,
+  V-REG/T-REG verdict shape, anchor namespace `v3.0.0-regime`, max-conf
+  dispatcher gate ≥ 0.70. 6-wave M-DEV decomposition (A-F). 4 new
+  anchors planned (70 → 74). Brief:
   [`spec/v3-regime-classifier/feature.md`](v3-regime-classifier/feature.md).
-  Trace: `REQ-V3-REGIME-CLASSIFIER-001` (state `proposed`). HANDOFF →
-  operator-decide Q1-Q5 → architect M-T1. Cost ~4-6 weeks from M-OD
-  gate.
+  Trace: `REQ-V3-REGIME-CLASSIFIER-001` (state `arch-done`). HANDOFF →
+  developer Wave A (Markov-switching core in `crates/forecast`). Cost
+  ~5-7 weeks revised post-overrides.
 
 
 <!-- updated 2026-05-28 (analyst, v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit

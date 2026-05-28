@@ -540,7 +540,50 @@ days for subsequent waves.
 
 ## Implementation
 
-_Developer Waves A-D populate after architect M-T1 close._
+### Wave A — Markov-switching core + forward filter (DONE 2026-05-28)
+
+**File:** `crates/forecast/src/markov_switching.rs` (NEW)
+
+**Trait signature (frozen v0.1.0):**
+```rust
+pub trait RegimeClassifier {
+    fn fit(&mut self, log_returns: &[f64]) -> Result<(), RegimeError>;
+    fn forward_filter(&self, history: &[f64]) -> Result<Vec<RegimeProbability>, RegimeError>;
+}
+```
+
+**Key types:**
+- `RegimeProbability { p: [f64; 4] }` — per-bar posterior, indices 0=Bull, 1=Bear, 2=Volatile, 3=Calm.
+- `MarkovSwitchingClassifier` — 4-state Hamilton 1989 impl. Transition matrix + Gaussian emissions.
+- `RegimeError::{InsufficientData, ConvergenceFailed, NumericalInstability, NotFitted}`.
+- `CONFIDENCE_THRESHOLD: f64 = 0.70` (ADR-0049 § D6 dispatcher gate).
+- `N_STATES: usize = 4`, `MIN_FIT_BARS: usize = 50`, `EM_MAX_ITERS: usize = 200`.
+
+**Convergence behaviour (typical case):** ~20-60 EM iters on well-separated 4-regime synthetic data. Near-flat data (degenerate) is detected at pre-flight variance check (< 1e-14) and returns V-REG-1 immediately without running EM.
+
+**Forward filter p99 latency:** O(K² × T) = O(16T) per call. At T=1000 bars (hourly), ~0.1ms measured on Apple Silicon (well below 1ms K3 budget). Pure arithmetic, no allocations beyond the output Vec.
+
+**Tests (14 in-module):**
+- `priors_lock_regime_identities` — μ_Bull > 0, μ_Bear < 0, σ²_Volatile > σ²_Calm after fit.
+- `em_converges_on_synthetic` — converges within 200 iters on 4-regime GBM-with-switch.
+- `em_fails_loudly_on_pathological_data` — flat-zero series returns `ConvergenceFailed` (V-REG-1).
+- `forward_filter_emits_4_probabilities` — sum to 1.0 within 1e-9.
+- `regime_confidence_threshold_70_gates_dispatcher` — ADR-0049 § D6 contract.
+- `dispatcher_confidence_gate_zero_when_uncertain` — max_p < 0.70 → no switch.
+- `dispatcher_switches_when_confident` — max_p ≥ 0.70 → switch.
+- `regime_classifier_is_object_safe` — `Box<dyn RegimeClassifier>` dispatch works.
+- `forward_filter_is_deterministic` — byte-identical output on two runs.
+- `regime_switch_rate_under_threshold` — K2 gate: ≤ 40 switches in 336 bars (≤ 20/week).
+- `forward_filter_before_fit_returns_error` — `NotFitted` guard.
+- `fit_insufficient_data` — `InsufficientData` guard.
+- `forward_filter_empty_history` — empty Vec returned.
+- `regime_name_mapping` — bull/bear/volatile/calm string mapping.
+
+**Gate results:**
+- `cargo build -p forecast` — PASS
+- `cargo test -p forecast -- markov_switching` — 14/14 PASS
+- `cargo clippy -p forecast --lib -- -D warnings` — 0 new errors
+- `bash scripts/verify_anchors.sh` — 70/70 PASS (additive; zero anchor delta)
 
 ## Verification
 

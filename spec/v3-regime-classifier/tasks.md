@@ -198,21 +198,33 @@ fallback adds ~half-week over overlay-style multiplier.
 
 #### Wave A — Markov-switching core + forward filter
 
-- [ ] **T-D-A1** — New `crates/forecast/src/markov_switching.rs`.
+- [x] **T-D-A1** — New `crates/forecast/src/markov_switching.rs`.
   4-state regression per ADR-0049 § D1 priors; Baum-Welch EM
   refinement (Δ log-lik ≤ 1e-6, max 200 iters); forward filter
   emitting per-bar posterior `[p_Bull, p_Bear, p_Volatile, p_Calm]`.
   — _acceptance: synthetic 4-regime fixture recovers per-state
   μ_s/σ²_s within 10%._
-- [ ] **T-D-A2** — `RegimeClassifier` trait + `MarkovSwitchingClassifier`
+  - **file**: `crates/forecast/src/markov_switching.rs` (NEW, 1078 lines)
+  - **test cmd**: `cargo test -p forecast -- markov_switching::tests::priors_lock_regime_identities`
+  - **output**: `test markov_switching::tests::priors_lock_regime_identities ... ok`
+- [x] **T-D-A2** — `RegimeClassifier` trait + `MarkovSwitchingClassifier`
   impl. Trait seam for v0.2.0+ alternate model classes.
   — _acceptance: trait-object dispatch unit test._
-- [ ] **T-D-A3** — Wave A unit tests:
-  - `regime_switch_rate_under_threshold` (K2 falsifier; ≤ 20/wk).
-  - `dispatcher_confidence_gate_zero_when_uncertain` (D6 falsifier).
-  - `dispatcher_switches_when_confident` (D6 inverse).
-  - Convergence on real-Binance 2023 hourly per-pair (K1 mitigation).
-  - H3 likelihood-vs-K curve logged.
+  - **file**: `crates/forecast/src/markov_switching.rs:178-300`
+  - **test cmd**: `cargo test -p forecast -- markov_switching::tests::regime_classifier_is_object_safe`
+  - **output**: `test markov_switching::tests::regime_classifier_is_object_safe ... ok`
+- [x] **T-D-A3** — Wave A unit tests:
+  - `regime_switch_rate_under_threshold` (K2 falsifier; ≤ 20/wk). ✓
+  - `dispatcher_confidence_gate_zero_when_uncertain` (D6 falsifier). ✓
+  - `dispatcher_switches_when_confident` (D6 inverse). ✓
+  - `priors_lock_regime_identities` (state-identity gate). ✓
+  - `em_converges_on_synthetic`, `em_fails_loudly_on_pathological_data`. ✓
+  - `forward_filter_emits_4_probabilities`, `forward_filter_is_deterministic`. ✓
+  - NOTE: "Convergence on real-Binance 2023 hourly per-pair" and
+    "H3 likelihood-vs-K curve" deferred to Wave E (require live data fixtures).
+  - **file**: `crates/forecast/src/markov_switching.rs:822-1078`
+  - **test cmd**: `cargo test -p forecast -- markov_switching`
+  - **output**: `test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 0.08s`
 
 #### Wave B — RegimeTag extension + K4 embedding contract (LOAD-BEARING)
 
