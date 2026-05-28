@@ -132,23 +132,28 @@ fn pinned_table_allowed_yahoo_tickers_matches_data_crate() {
 
 // ── (a) BTC SHA assertion (H3 second-witness) ─────────────────────────────────
 
-/// BTC body SHA produced by a fresh run against the CURRENT REVISION.toml
-/// (SHA e018f876..., post ETH-USD fetch on 2026-05-27).
+/// BTC body SHA produced by a fresh run under the v0.1.3 emit shape
+/// (no `rev=` in body; `revision_sha:` in frontmatter).
 ///
-/// This differs from the v0.1.1 anchor SHA (`8045623b...`) because the
-/// REVISION.toml aggregate changed when ETH-USD was fetched — an external
-/// event unrelated to the `--ticker` code change. The original anchored
-/// report file (backtest-20260527-143420-btc-yahoo-2024-1d-sma-cross.md)
-/// remains on disk with the v0.1.1 SHA; verify_anchors.sh uses that file
-/// and correctly passes 70/70.
+/// The v0.1.3 body→frontmatter migration (D-V0.1.3-1) moved the
+/// `rev={sha:.12}` substring from the Data source body row to a new
+/// `revision_sha:` frontmatter field, changing the body-SHA.
+/// This constant is the deterministic body SHA under the new emit shape,
+/// confirmed by 2 independent re-runs on 2026-05-28.
 ///
-/// This test verifies code-purity: that the --ticker extension did NOT
-/// change BTC computation. It asserts the CURRENT deterministic output,
-/// which is stable across re-runs with the same REVISION.toml.
-const BTC_ANCHOR_SHA: &str = "d2a709efc0e9a3b02999518d747b588cec7fe9641b535eda1546d76aa9d6d8f5";
+/// The corresponding anchors.toml row 69 (namespace `lab-yahoo-realdata-v0.1.1`)
+/// was updated in-place to this value per Q2=(a) + ADR-0038 § D6.b.
+const BTC_ANCHOR_SHA: &str = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0";
 
-/// ETH anchor SHA from v0.1.2 (row 70 in spec/anchors.toml).
-const ETH_ANCHOR_SHA: &str = "e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a";
+/// ETH body SHA under the v0.1.3 emit shape (no `rev=` in body; `revision_sha:` in frontmatter).
+///
+/// The v0.1.3 body→frontmatter migration changed this SHA from the v0.1.2
+/// anchor (`e59a5f87...`).  Row 70 in spec/anchors.toml retains the OLD SHA
+/// (`e59a5f87...`) because the on-disk archived file is byte-immutable
+/// (ADR-0038 § D6.b); bulk Yahoo ticker re-emit deferred to v0.1.4 BNB ship
+/// (D-V0.1.3-6).  This constant tracks the CURRENT live-emission shape,
+/// which reflects the new no-`rev=` body contract from D-V0.1.3-1.
+const ETH_ANCHOR_SHA: &str = "c854ff2b2a97a876deb978a9db1cd0bf132de2ce5649f16a06d8dfa6cb475da2";
 
 #[cfg(feature = "yahoo")]
 #[test]
@@ -208,10 +213,11 @@ fn btc_default_sha_matches_anchor_69() {
     let sha = body_sha256(&report.path());
     assert_eq!(
         sha, BTC_ANCHOR_SHA,
-        "BTC body SHA drifted from v0.1.1 anchor 69.\n\
+        "BTC body SHA drifted from v0.1.3 row-69 in-place SHA.\n\
          Expected: {BTC_ANCHOR_SHA}\n\
          Actual:   {sha}\n\
-         Check dev-notes/yahoo-vs-binance-divergence-eth-2026-05-27.md for known-cause analysis."
+         If REVISION.toml changed (new ticker fetched), re-emit and update BTC_ANCHOR_SHA.\n\
+         See feature.md D-V0.1.3-1 and anchors.toml row 69 (namespace lab-yahoo-realdata-v0.1.1)."
     );
 }
 
@@ -267,10 +273,12 @@ fn eth_ticker_sha_matches_anchor_70() {
     let sha = body_sha256(&report.path());
     assert_eq!(
         sha, ETH_ANCHOR_SHA,
-        "ETH body SHA drifted from v0.1.2 anchor 70.\n\
+        "ETH body SHA drifted from expected v0.1.3 live-emission shape.\n\
          Expected: {ETH_ANCHOR_SHA}\n\
          Actual:   {sha}\n\
-         Re-run T-D5 and update anchor if intentional."
+         Note: on-disk anchor row 70 in anchors.toml uses the v0.1.2 archived SHA \
+         (e59a5f87…) — that file is byte-immutable per ADR-0038 § D6.b and \
+         bulk re-emit is deferred to v0.1.4 BNB ship."
     );
 }
 

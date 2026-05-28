@@ -256,16 +256,21 @@ async fn main() -> Result<()> {
         baseline_report: None,
     };
 
-    let data_source = format!("yahoo-cache:{ticker}/1d/2024 rev={revision_sha:.12}");
     let strategy_meta: StrategyMeta = result.strategy_meta.clone();
 
-    backtest::report::sma::write(
+    let yahoo_ctx = backtest::report::yahoo::YahooReportContext {
+        ticker,
+        interval: "1d",
+        year: 2024,
+        revision_sha: &revision_sha,
+    };
+    backtest::report::yahoo::emit_sma_report(
+        &yahoo_ctx,
         &sma_input,
         &result.state,
         INITIAL_CAPITAL,
         final_equity,
         SEED,
-        &data_source,
         elapsed_secs,
         &report_path,
         &strategy_meta,

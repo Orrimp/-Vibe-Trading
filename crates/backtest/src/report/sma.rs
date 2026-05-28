@@ -47,6 +47,7 @@ fn kpi_floats(
 // ── Report body builder ───────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn build_content(
     input: &SmaScenarioInput,
     state: &BacktestState,
@@ -57,6 +58,7 @@ fn build_content(
     elapsed_secs: f64,
     stamp: &str,
     strategy_meta: &StrategyMeta,
+    revision_sha: Option<&str>,
 ) -> String {
     let (total_return_pct, sharpe, max_dd_pct, fees_f, initial_f, final_f) =
         kpi_floats(state, initial_capital, final_equity);
@@ -78,6 +80,12 @@ fn build_content(
     // body_elapsed is the elapsed time written into the body's Wall-clock row.
     let body_elapsed = input.body_elapsed_override.unwrap_or(elapsed_secs);
 
+    // Optional `revision_sha:` frontmatter line immediately after `data_source:`.
+    // Populated by Yahoo emitters; `None` for Binance/synthetic paths (byte-identical).
+    let revision_sha_line = revision_sha
+        .map(|sha| format!("revision_sha: {sha}\n"))
+        .unwrap_or_default();
+
     format!(
         "---\n\
          scenario: {scenario_name}\n\
@@ -85,6 +93,7 @@ fn build_content(
          generated: {stamp}\n\
          wall_clock_s: {elapsed:.1}\n\
          data_source: {data_source}\n\
+         {revision_sha_line}\
          {baseline_line}\n\
          ledger_imbalance_total: {imbalance}\n\
          llm_spend_usd: 0.00\n\
@@ -171,6 +180,11 @@ fn build_content(
 ///
 /// Byte-identical to `main.rs::write_report` @2488.
 ///
+/// `revision_sha` — when `Some`, injects a `revision_sha: <64 hex>` line
+/// immediately after `data_source:` in the YAML front-matter.  Pass `None`
+/// for all Binance/synthetic callers to preserve the 33 existing anchors
+/// byte-identically (D-V0.1.3-1 `None` arm contract).
+///
 /// # Errors
 ///
 /// Returns `Err` if the report file cannot be written to disk.
@@ -185,6 +199,7 @@ pub fn write(
     elapsed_secs: f64,
     report_path: &Path,
     strategy_meta: &StrategyMeta,
+    revision_sha: Option<&str>,
 ) -> Result<()> {
     let now = OffsetDateTime::now_utc();
     let stamp = format!(
@@ -207,6 +222,7 @@ pub fn write(
         elapsed_secs,
         &stamp,
         strategy_meta,
+        revision_sha,
     );
     std::fs::write(report_path, content).context("write report")?;
     Ok(())

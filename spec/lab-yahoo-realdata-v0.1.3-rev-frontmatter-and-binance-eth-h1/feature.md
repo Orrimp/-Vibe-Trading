@@ -2,7 +2,7 @@
 slug: lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1
 version: 0.1.0
 status: in-progress
-owner: developer
+owner: tester
 updated: 2026-05-28
 predecessor: lab-yahoo-realdata-v0.1.2 v0.1.0
 priority: P2
@@ -611,7 +611,53 @@ Developer does NOT touch:
 
 ## Implementation
 
-_Developer M-DEV fills this._
+Developer M-DEV completed 2026-05-28. All T-D1..T-D12 ticked.
+
+**Wave A — canonical helper (D-V0.1.3-1):**
+
+- NEW `crates/backtest/src/report/yahoo.rs` — public API: `YahooReportContext<'a>`
+  struct + `YahooReportContext::data_source()` + `emit_sma_report(ctx, ...)`.
+  Single constructor for Yahoo data-source strings; `revision_sha:` frontmatter
+  injection via `Some(ctx.revision_sha)` to underlying `report::sma::write`.
+- `crates/backtest/src/report/sma.rs` — added `revision_sha: Option<&str>`
+  parameter to `build_content` and `write`; `None` arm preserves byte-identical
+  output for 33 Binance SMA anchors (K1.b contract satisfied).
+- `crates/backtest/src/report/mod.rs` — `pub mod yahoo;` added.
+- `crates/backtest/src/bin/run_yahoo_sma.rs` — L259 `format!("yahoo-cache:...rev=...")` 
+  replaced with `YahooReportContext` + `emit_sma_report` call. Zero `MIGRATION:` comments.
+- `crates/backtest/src/main.rs` — Binance/synthetic `sma::write` call passes `None`.
+
+**Wave B — ETH H1 scenario (D-V0.1.3-5):**
+
+- `crates/backtest/src/main.rs` — three match-arm sites:
+  1. L~260 scenario config arm: `eth-2024-h1-sma-cross` → ETHUSDT, `bar_count: 262_800`
+     (mirrors `btc-2024-h1-sma-cross`; real parquet data loaded at runtime: 17,543 bars)
+  2. L~1050 synthetic fallback: `"eth-2024-h1-sma-cross" => dec!(2_400)`
+  3. L~1780 `scenario_to_feature`: `eth-2024-h1-sma-cross` → `"v0-paper-sma"`
+
+**Wave C — anchor migration:**
+
+- `spec/anchors.toml` row 69 BTC SHA updated in-place to `076929bb…` under
+  namespace `lab-yahoo-realdata-v0.1.1` (Q2=(a) + ADR-0038 § D6.b).
+- `spec/anchors.toml` row 71 appended under namespace `lab-yahoo-realdata-v0.1.3`:
+  SHA `bd4001e4…`, 2 independent runs confirming determinism.
+- `verify_anchors.sh` 71/71 PASS confirmed.
+
+**Wave D — H1 discharge + regression guard:**
+
+- H1 PASS direct: Yahoo ETH daily +2.76% vs Binance ETH hourly +9.54%; delta 6.78% < 30%.
+- `crates/backtest/tests/yahoo_report_helper_shape.rs` (NEW — 3 tests):
+  `data_source_never_contains_rev_substring` (unit, no binary),
+  `emitted_btc_report_body_has_no_rev_substring` (yahoo feature + cache),
+  `emitted_btc_report_frontmatter_has_revision_sha` (yahoo feature + cache).
+- `crates/backtest/tests/run_yahoo_sma_ticker_flag.rs` — `BTC_ANCHOR_SHA`
+  updated to v0.1.3 shape (`076929bb…`); `ETH_ANCHOR_SHA` updated to v0.1.3
+  live-emission shape (`c854ff2b…`; on-disk anchor row 70 unchanged per deferred
+  bulk re-emit to v0.1.4 BNB ship).
+
+**T-D4 bar_count resolution:** `btc-2024-h1-sma-cross` uses `bar_count: 262_800`
+as the synthetic fallback. When ETHUSDT parquets exist, the auto-detect path
+overrides it and loads 17,543 real hourly bars. ETH mirrors verbatim per D-V0.1.3-5.
 
 ## Changelog
 
