@@ -373,6 +373,31 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 ## Active
 
 
+<!-- updated 2026-05-28 (analyst, v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
+     M0 close). **PROMOTED Idea → Active 2026-05-28**. Closes the operator-
+     approved v0.3.0 SOFT-PASS carve-out: 8 candle/realdata-feature-gated
+     scenarios (TCN-weights ×2, TCN-realdata ×2, TCN-weights-realdata ×2,
+     PatchTST-realdata ×1, VolTarget-GARCH-realdata ×1) whose v0.3.0 canonical
+     SHAs remain noop-identical to their noop-baseline twins at spec/anchors.toml
+     lines 121-155+242+272 because the default CI binary was built without
+     `--features candle realdata`. v0.4.0 rebuilds on the canonical Apple
+     Silicon box (per v2.5 TCN Metal-CPU-drift precedent) and re-emits all 8
+     scenarios under canonical LatencySlippageSimConfig { 30, 80, 8 } (ADR-0045
+     D1 unchanged). 8 SHAs update in-place under namespace
+     `v5-realdata-medium-2026-05` (Q3=(a) same-pin precedent from v0.3.0);
+     total anchor count stays 70/70. Pure rebuild + re-emit — no plumbing or
+     engine changes (v0.3.0 Wave A discharged the per-path contract per
+     ADR-0047 D2). 4 R / 4 K / 3 H / 2 Q + non-regression contract +
+     pre-drawn 2-cell verdict tree + ~1-2 days wall-clock cost framing.
+     Q1-Q2 standing-Autoapprove-eligible at analyst defaults (Q1=(a) Apple
+     Silicon; Q2=(a) yes). M-T1 likely fast-skips (ADR-0047 carries forward);
+     M-OD likely empty. K1 falsifier: canonical Apple Silicon box not
+     available → route back with operator-decide on dropping the 4 realdata
+     scenarios from the anchor set. Trace row `REQ-V5-LATENCY-SLIPPAGE-V0-4-0-001`
+     opened at `proposed` state. HANDOFF → architect (M-T1 fast-skip
+     ratifies + emits dev handoff). -->
+- **v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0** — closes the v0.3.0 SOFT-PASS carve-out by rebuilding the canonical backtest binary with `--features candle realdata` on the operator-locked Apple Silicon box and re-emitting the 8 deferred scenarios (TCN-weights ×2, TCN-realdata ×2, TCN-weights-realdata ×2, PatchTST-realdata ×1, VolTarget-GARCH-realdata ×1) under canonical `LatencySlippageSimConfig { 30, 80, 8 }`; 8 SHAs update in-place under namespace `v5-realdata-medium-2026-05` (anchor count stays 70/70); fleet of friction-real scenarios goes 11 → 19. Q1-Q2 standing-Autoapprove-eligible. Cost ~1-2 days wall-clock.
+
 <!-- updated 2026-05-27 (analyst, lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
      M0 close) — **PROMOTED Idea → Active 2026-05-27** by operator multi-select
      option C against the v0.1.1 presenter deck open list: (1) lock ETH-USD as

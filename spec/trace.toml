@@ -1916,3 +1916,37 @@ tests       = [
 anchors     = []                                                                  # Harness produces ZERO file output (channel-only events); no new anchors. R4 contract: scripts/verify_anchors.sh stays 70/70 PASS post-merge.
 state       = "passed"     # 2026-05-28 tester M-FINAL: T-T1 411 lib + 3 Surface-1 + 3 Surface-2 + 5 K5 PASS; T-T2 70/70 anchors PASS; T-T3 workspace clean (aggregator timing flake pre-existing/unrelated); T-T4 falsification probe CONFIRMED (full_lifecycle_ok_completion_clears_inflight + err_completion_clears_inflight FAIL under state.rs:2147 commented, 3/3 PASS after restore, git diff clean); T-T6 spec-lint 74/3 (missing-frontmatter +1 resolved by tester M-FINAL owner flip). VERDICT → PASS. HANDOFF → presenter.
 
+#
+# ─── v5-latency-slippage-sim v0.4.0 — candle/realdata feature-gated re-emit (analyst M0 proposed 2026-05-28) ───
+#
+
+[[req]]
+id          = "REQ-V5-LATENCY-SLIPPAGE-V0-4-0-001"
+title       = "v5 latency-slippage-sim v0.4.0 candle/realdata feature-gated re-emit — closes the v0.3.0 SOFT-PASS carve-out by rebuilding the canonical backtest binary with --features 'candle realdata' on the operator-locked Apple Silicon canonical box and re-running the 8 deferred scenarios (top10-2023/2024-fy-tcn-overlay-weights ×2 [candle], top10-2023/2024-fy-tcn-overlay-realdata ×2 [realdata], top10-2023/2024-fy-tcn-overlay-weights-realdata ×2 [candle+realdata], top10-2023-fy-patchtst-overlay-realdata ×1 [candle+realdata], top10-2023-fy-vol-target-overlay-realdata ×1 [realdata]) under canonical LatencySlippageSimConfig { latency_ms_min: 30, latency_ms_max: 80, slippage_bps: 8 } (ADR-0045 D1, ADR-0047 D4 unchanged); overwrites 8 SHAs in-place under namespace v5-realdata-medium-2026-05 (Q3=(a) same-pin precedent from v0.3.0); anchor count stays 70/70; noop-baseline rows stay byte-immutable (ADR-0038 § D6); extends Sharpe-delta table to 19/19 friction-real scenarios with K1 surprise scan; extends t1937b CANONICAL_STRATEGY_ANCHORS by 8 entries; pure rebuild + re-emit, no plumbing or engine changes (v0.3.0 Wave A discharged the per-path contract). 4 R / 4 K / 3 H / 2 Q + non-regression contract + pre-drawn 2-cell verdict tree + ~1-2 days wall-clock cost framing. Q1-Q2 standing-Autoapprove-eligible at analyst defaults (Q1=(a) Apple Silicon box; Q2=(a) yes-standing-Autoapprove). M-T1 likely fast-skips; M-OD likely empty."
+feature     = "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit"
+product     = "spec/product.md"
+arch        = [
+  "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/feature.md",
+  "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/tasks.md",
+  "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md",            # PREDECESSOR — v0.3.0 partial-coverage ship; this brief closes the SOFT-PASS carve-out
+  "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md",  # § 8 Open Items naming the 8 deferred scenarios
+  "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/sharpe-delta-table-2026-05-27.md",  # the per-scenario template R3 extends
+  "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # ENGINE ADR — D1-D5 simulator (no amendment at v0.4.0)
+  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # CANONICAL CONFIG ADR — D1 + D2 unchanged
+  "spec/architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md",  # PER-PATH CONTRACT ADR — D2 + D3 + D4 carry forward unchanged
+]
+crates      = [
+  # Developer M-DEV populates after rebuild + re-emission. v0.4.0 is rebuild-only;
+  # no library code is touched. The plumbing was discharged at v0.3.0 Wave A.
+  "spec/anchors.toml",                                                          # R2 — 8 in-place SHA updates under v5-realdata-medium-2026-05 namespace (lines 392-420 + 472-475 + 482-485)
+  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # Wave D — CANONICAL_STRATEGY_ANCHORS extended with 8 new entries
+]
+tests       = [
+  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # t1937 + t1937b + t1942 — 3/3 PASS expected post-Wave D
+  "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # R-NR.6 — ≥ 1 bp divergence stays green
+  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # R-NR.6 — ≥ 1 bp divergence stays green
+  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # R-NR.6 — ≥ 1 bp divergence stays green
+]
+anchors     = []     # Tester M-FINAL populates after re-emission. Target: 70/70 PASS (same row count as v0.3.0; 8 SHAs updated in-place).
+state       = "proposed"
+
