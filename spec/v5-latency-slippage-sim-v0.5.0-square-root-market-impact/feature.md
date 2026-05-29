@@ -1,12 +1,16 @@
 ---
 slug: v5-latency-slippage-sim-v0.5.0-square-root-market-impact
-version: 0.1.0
-status: operator-decide-pending
-owner: analyst
+version: 0.2.0
+status: dev-in-progress
+owner: developer
 updated: 2026-05-29
 predecessor: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0
 parent: backtest-vs-live-execution-gap
 priority: P1
+q_d1: "(a) Linear{bps:8} fallback for synthetic scenarios — operator ratified 2026-05-29"
+q_d2: "(β) Per-scenario lazy-compute via universe_avg_daily_volume_usd_trailing — operator ratified 2026-05-29"
+anchor_cascade_revised: "75 → 85 (10 new real-data anchors under v5-sqrt-impact-2026-05)"
+m_od_q3b_supersession: "M-OD 2026-05-29 Q3=(b) ratification SUPERSEDED by Q-D1=(a); see spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md"
 ---
 
 # v5 latency-slippage-sim v0.5.0 — square-root market-impact model
@@ -219,6 +223,8 @@ Surfaces:
 | **Q2** | **Per-asset volume V source** | (a) **90-day trailing daily volume from existing Binance parquet** — already on disk; no new data source; deterministic; revision-pinned via `data/binance/REVISION.toml` / (b) hardcoded universe-average constant — fragile; future v0.6.0+ cleanup brief required to migrate to per-asset | **(a) Binance parquet 90-day trailing (Recommended — DURABLE)** | (a) cost: ~0.5d architect + reuses revision-pinned source = no new K-line in determinism gate. (b) cost: ~0.25d now + ~2-3d v0.6.0 cleanup brief when operator notices BTC and DOGE have identical impact (false equivalence) = net STRICTLY WORSE. Academic citation: Kissell 2014 ch. 3 § "Volume-based impact" — the canonical proxy when L2 depth is unavailable. |
 | **Q3** | **Synthetic-scenario behavior** | (a) **synthetic scenarios fall back to `Linear { bps: 8 }` (no V proxy available)** with explicit log message; their v0.5.0 SHAs are byte-identical to v0.4.0 — additive namespace stays clean / (b) use universe-average V from real data — confuses synthetic-scenario semantics; H3 alpha-comparability degrades | **(a) Linear fallback for synthetic (Recommended — DURABLE)** | (a) preserves the v0.4.0 Group A/D/E SHAs as oracles in BOTH namespaces (9 of 19 SHAs trivially byte-identical → R-NR.2 simplified). Clean semantic separation: square-root is a real-data model. (b) muddies the namespace twin contract; v0.6.0 would need a "real vs synthetic" sub-namespace split. Net STRICTLY WORSE. |
 | **Q-D1+Q-D2** (post-`e09e599` re-surfacing 2026-05-29) | **Wave D synthetic-scenario volume strategy + universe-avg V wiring** — see [`spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md`](../dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md). Q-D1: (a) Linear-fallback for synthetic / (b) SquareRoot+universe-avg V on synthetic [M-OD 2026-05-29 ratified (b); brief proposes REVISIT under shipped-helper evidence]. Q-D2: (α) pre-compute / (β) per-scenario lazy-compute / (γ) CLI-flag inject. | **Q-D1=(a) + Q-D2=(β) (Recommended — DURABLE)** | Combined ~0.5-1.0 dev-day + ~1 tester-day; ZERO v0.6.0 follow-on briefs. Q-D1=(a) downgrades the architect M-T1 D-T1.5 v0.6.0 sub-namespace cleanup commitment from "must spawn brief" to "obsolete by-design." Q-D2=(β) aligns verbatim with D-T1.5 end_date-pin contract; uses existing Wave C dashmap cache. If operator holds M-OD lock → Q-D1=(b)+Q-D2=(β) fallback durable-via-commitment (~3-4 dev-days + v0.6.0 cleanup brief queued). See dev-note § Q-D1 + § Q-D2 tables for 5-dimension + 5-dimension comparison. |
+| **Q-D1 RATIFIED 2026-05-29 (operator)** | **(a) Linear{bps:8} fallback for synthetic scenarios.** M-OD 2026-05-29 Q3=(b) SUPERSEDED. Real-data scenarios use SquareRoot; synthetic (Groups A/D/E) fall back to Linear{bps:8}. Anchor cascade: 75 → 85 (10 new real-data anchors only). See [`spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md`](../dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md). | — | v0.6.0 sub-namespace cleanup commitment dropped — obsolete by-design under Q-D1=(a). |
+| **Q-D2 RATIFIED 2026-05-29 (operator)** | **(β) Per-scenario lazy-compute** via `data::universe_avg_daily_volume_usd_trailing` (already cached via `OnceLock<Mutex<HashMap>>` inside the Wave C helper). One call per scenario; dashmap cache handles dedup across scenarios sharing the same end_date. | — | Aligns verbatim with D-T1.5 end_date-pin contract; zero new flags, zero operator cognitive load. |
 
 **Cost framing — both routes:**
 
@@ -887,3 +893,10 @@ _Tester M-FINAL links to reports here._
   Trace state flipped `dev-done → operator-decide-pending`. HANDOFF →
   orchestrator (surface to operator via AskUserQuestion with
   Recommended path defaulted).
+- 2026-05-29 (operator, analyst commit `6072f9a`): **Q-D1=(a) RATIFIED** — Linear{bps:8}
+  fallback for synthetic scenarios. M-OD 2026-05-29 Q3=(b) ratification SUPERSEDED.
+  **Q-D2=(β) RATIFIED** — per-scenario lazy-compute via existing Wave C helper.
+  Anchor cascade REVISED: 75 → 85 (10 new real-data anchors under
+  `v5-sqrt-impact-2026-05`). v0.6.0 sub-namespace cleanup commitment DROPPED
+  — obsolete by-design under Q-D1=(a). Frontmatter: `owner: analyst → developer`,
+  `status: operator-decide-pending → dev-in-progress`. Waves D+E unparked. HANDOFF → developer.

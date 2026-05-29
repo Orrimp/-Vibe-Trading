@@ -10,7 +10,9 @@
 //! where `<feature>` is resolved from the scenario name via
 //! [`scenario_to_feature`] (defined at the bottom of this file).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[cfg(feature = "realdata")]
 use backtest::realdata::{RealDataBarSource, TimeSpan as RealDataTimeSpan};
@@ -21,7 +23,40 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use tracing::info;
+#[cfg(feature = "realdata")]
+use tracing::warn;
 use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
+
+// ── Q-D1=(a) canonical real-data scenario list (v5 v0.5.0 / 2026-05-29) ─────
+//
+// Under operator decision Q-D1=(a) Linear-fallback: synthetic scenarios
+// use `SlippageModel::Linear { bps: 8 }` regardless of CLI flags.
+// Real-data scenarios (this list) use the CLI-specified model (SquareRoot when
+// `--sim-slippage-sqrt-alpha > 0`).
+//
+// Q-D2=(β) per-scenario lazy-compute: for each real-data scenario below,
+// `volume_usd_per_symbol` is populated via `data::universe_avg_daily_volume_usd_trailing`
+// keyed on the scenario's logical end_date + 90-day lookback. The in-process
+// Mutex<HashMap> cache inside the helper deduplicates parquet reads across
+// scenarios sharing the same end_date.
+#[cfg(feature = "realdata")]
+const REAL_DATA_SCENARIO_IDS: &[&str] = &[
+    // Group B — v1 momentum on real Binance data
+    "top10-2023-fy-momentum-realdata",
+    // Group F — TCN overlay realdata
+    "top10-2023-fy-tcn-overlay-realdata",
+    "top10-2024-fy-tcn-overlay-realdata",
+    // Group G — TCN overlay weights realdata
+    "top10-2023-fy-tcn-overlay-weights-realdata",
+    "top10-2024-fy-tcn-overlay-weights-realdata",
+    // Group H — PatchTST overlay realdata
+    "top10-2023-fy-patchtst-overlay-realdata",
+    // Group I — GARCH vol-target overlay realdata
+    "top10-2023-fy-vol-target-overlay-realdata",
+    // v3.0.0-regime — RegimeDispatcher realdata
+    "top10-2023-fy-regime-dispatcher-realdata",
+    "top10-2024-fy-regime-dispatcher-realdata",
+];
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -120,10 +155,16 @@ fn parse_seed(s: &str) -> Result<u64> {
     }
 }
 
-/// Build a `SlippageModel` from CLI args.
+/// Build a `SlippageModel` from CLI args (scenario-agnostic raw builder).
 ///
 /// If `--sim-slippage-sqrt-alpha > 0.0`, returns `SquareRoot { alpha, volume_lookback_days }`.
 /// Otherwise returns `Linear { bps: sim_slippage_bps }`.
+///
+/// Use [`build_slippage_model_for_scenario`] for the Q-D1=(a) dispatch that
+/// applies Linear{bps:8} fallback to synthetic scenarios.
+///
+/// Only called from the realdata branch of `build_slippage_model_for_scenario`.
+#[cfg_attr(not(feature = "realdata"), allow(dead_code))]
 fn build_slippage_model(args: &Args) -> cost::SlippageModel {
     if args.sim_slippage_sqrt_alpha > 0.0_f64 {
         let alpha = rust_decimal::Decimal::try_from(args.sim_slippage_sqrt_alpha)
@@ -137,6 +178,140 @@ fn build_slippage_model(args: &Args) -> cost::SlippageModel {
             bps: args.sim_slippage_bps,
         }
     }
+}
+
+/// Build a `SlippageModel` for a named scenario, applying the Q-D1=(a) operator
+/// decision: synthetic scenarios fall back to `Linear { bps: 8 }` regardless of
+/// CLI flags; real-data scenarios use the CLI-specified model.
+///
+/// **Q-D1=(a) — operator ratified 2026-05-29** (per decision brief
+/// `spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md`):
+/// Linear fallback for synthetic preserves the v0.4.0 anchor SHAs under both
+/// namespaces (`v5-realdata-medium-2026-05` stays byte-identical; the new
+/// `v5-sqrt-impact-2026-05` namespace has only the real-data new SHAs).
+///
+/// Logs a tracing line at INFO level so the fallback path is auditable in the
+/// backtest run log (K3 saturation audit + anchor-provenance audit).
+fn build_slippage_model_for_scenario(args: &Args, scenario_name: &str) -> cost::SlippageModel {
+    // Q-D1=(a) operator decision 2026-05-29: real-data scenarios use the CLI-specified
+    // model; synthetic scenarios fall back to Linear{bps:8} regardless of CLI flags.
+    #[cfg(feature = "realdata")]
+    if REAL_DATA_SCENARIO_IDS.contains(&scenario_name) {
+        // Real-data scenario: honour CLI sqrt flags.
+        let model = build_slippage_model(args);
+        info!(
+            scenario = %scenario_name,
+            model = ?model,
+            "Q-D1=(a): real-data scenario — using CLI-specified slippage model"
+        );
+        return model;
+    }
+
+    // Suppress unused-variable lint when realdata is not compiled in.
+    #[cfg(not(feature = "realdata"))]
+    let _ = args;
+
+    // Synthetic scenario (or realdata feature disabled): Q-D1=(a) Linear{bps:8} fallback.
+    // Overrides any --sim-slippage-sqrt-alpha CLI flag for synthetic paths.
+    info!(
+        scenario = %scenario_name,
+        "Q-D1=(a): synthetic scenario — slippage_model=Linear{{bps:8}} (fallback: synthetic data has no V proxy)"
+    );
+    cost::SlippageModel::Linear { bps: 8 }
+}
+
+/// Build the per-symbol volume USD map for a real-data scenario (Q-D2=(β)).
+///
+/// **Q-D2=(β) — operator ratified 2026-05-29**: per-scenario lazy-compute via
+/// `data::universe_avg_daily_volume_usd_trailing`. The in-process Mutex<HashMap>
+/// cache inside the helper deduplicates parquet reads across scenarios sharing
+/// the same (end_date, lookback_days) tuple.
+///
+/// Returns `None` for synthetic scenarios under Q-D1=(a) Linear fallback, or
+/// when the `realdata` feature is not compiled in.
+///
+/// Returns `Some(Arc<HashMap<Symbol, Decimal>>)` mapping every universe symbol
+/// to the universe-average daily volume in USD. The single universe-avg V is
+/// used for all symbols — per ADR-0043 § D3 v0.5.0 amendment (Kissell 2014
+/// ch. 3 § "Volume-based impact" production-grade approximation).
+///
+/// Logs saturation warnings if the universe-avg V is zero (K3 gate).
+/// Build volume map — realdata-feature-enabled implementation.
+#[cfg(feature = "realdata")]
+fn build_volume_map_for_scenario(
+    data_root: &Path,
+    scenario_name: &str,
+    scenario_end_year: i32,
+) -> Option<Arc<HashMap<Symbol, Decimal>>> {
+    if !REAL_DATA_SCENARIO_IDS.contains(&scenario_name) {
+        return None;
+    }
+
+    // Q-D2=(β): pin end_date to scenario's own end_date (scenario_end_year-12-31).
+    // Deterministic across reruns as long as the parquet revision SHA is pinned.
+    let end_date = match time::Date::from_calendar_date(
+        scenario_end_year,
+        time::Month::December,
+        31,
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            warn!(
+                scenario = %scenario_name,
+                error = %e,
+                "build_volume_map_for_scenario: invalid end_date — falling back to None"
+            );
+            return None;
+        }
+    };
+
+    let universe: Vec<Symbol> = backtest::scenarios::momentum::top10_symbols_with_prices()
+        .into_iter()
+        .map(|(sym, _)| sym)
+        .collect();
+
+    let lookback_days: u16 = 90; // Q2=(a) operator-locked
+
+    match data::universe_avg_daily_volume_usd_trailing(data_root, &universe, end_date, lookback_days) {
+        Ok(avg_v) => {
+            if avg_v.is_zero() {
+                warn!(
+                    scenario = %scenario_name,
+                    "build_volume_map_for_scenario: universe_avg_v=ZERO — K3 saturation risk; fills will hit MAX_SLIPPAGE_BPS"
+                );
+            } else {
+                info!(
+                    scenario = %scenario_name,
+                    universe_avg_v_usd = %avg_v,
+                    end_date = %end_date,
+                    lookback_days = lookback_days,
+                    "Q-D2=(β): universe-avg daily volume USD computed"
+                );
+            }
+            // Map all universe symbols to the same universe-avg V.
+            let map: HashMap<Symbol, Decimal> =
+                universe.into_iter().map(|s| (s, avg_v)).collect();
+            Some(Arc::new(map))
+        }
+        Err(e) => {
+            warn!(
+                scenario = %scenario_name,
+                error = %e,
+                "build_volume_map_for_scenario: universe_avg_daily_volume_usd_trailing failed — volume_usd_per_symbol=None"
+            );
+            None
+        }
+    }
+}
+
+/// Build volume map — stub when realdata feature is disabled.
+#[cfg(not(feature = "realdata"))]
+fn build_volume_map_for_scenario(
+    _data_root: &Path,
+    _scenario_name: &str,
+    _scenario_end_year: i32,
+) -> Option<Arc<HashMap<Symbol, Decimal>>> {
+    None
 }
 
 // ── Scenario catalogue ────────────────────────────────────────────────────────
@@ -1182,6 +1357,12 @@ async fn main() -> Result<()> {
     // ── v1 multi-symbol momentum: separate execution path ─────────────────────
     if let ScenarioStrategy::Momentum { config_id } = &scenario.strategy.clone() {
         let config_id = config_id.clone();
+        // Q-D1=(a): dispatch on synthetic vs real-data for slippage model selection.
+        // Q-D2=(β): lazy-compute universe-avg V for real-data scenarios.
+        let mom_slippage_model =
+            build_slippage_model_for_scenario(&args, &scenario.name);
+        let mom_volume_map =
+            build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let input = backtest::cli_types::MomentumScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1192,14 +1373,14 @@ async fn main() -> Result<()> {
             config_id,
             bars_override: realdata_bars_for_momentum.take(),
             data_revision_sha: realdata_revision_sha_for_momentum.clone(),
-            // v5-latency-slippage-sim: v0.2.0 canonical config flags (T-D-N1).
-            // Default is noop (all zeros); set via --sim-latency-ms-min/max/--sim-slippage-bps
-            // to re-emit under the canonical config per ADR-0045 D1.
+            // v5-latency-slippage-sim v0.5.0: Q-D1=(a) + Q-D2=(β) wiring.
+            // Real-data: SquareRoot model + universe-avg V map.
+            // Synthetic: Linear{bps:8} fallback + no V map (per operator 2026-05-29).
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: mom_slippage_model,
+                volume_usd_per_symbol: mom_volume_map,
             },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
@@ -1252,6 +1433,9 @@ async fn main() -> Result<()> {
     // ── v1.5a mean-reversion pairs: separate execution path ──────────────────
     if let ScenarioStrategy::MeanReversionPairs { config_id } = &scenario.strategy.clone() {
         let config_id = config_id.clone();
+        // Q-D1=(a): Pairs scenarios are always synthetic → Linear{bps:8} fallback.
+        let pairs_slippage_model =
+            build_slippage_model_for_scenario(&args, &scenario.name);
         let pairs_input = backtest::cli_types::PairsScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1260,11 +1444,12 @@ async fn main() -> Result<()> {
             slippage_bps: scenario.slippage_bps,
             taker_fee_bps: scenario.taker_fee_bps,
             config_id,
-            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            // v5-latency-slippage-sim v0.5.0: Q-D1=(a) dispatch.
+            // Pairs scenarios are synthetic → Linear{bps:8} fallback (no V map needed).
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
+                slippage_model: pairs_slippage_model,
                 volume_usd_per_symbol: None,
             },
         };
@@ -1311,6 +1496,11 @@ async fn main() -> Result<()> {
     {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
+        // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
+        let tcn_slippage_model =
+            build_slippage_model_for_scenario(&args, &scenario.name);
+        let tcn_volume_map =
+            build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let tcn_input = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1322,12 +1512,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
-            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            // v5-latency-slippage-sim v0.5.0: Q-D1=(a) + Q-D2=(β) wiring.
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: tcn_slippage_model,
+                volume_usd_per_symbol: tcn_volume_map.clone(),
             },
         };
         // Keep a report-only copy of the input (without the moved bars/equity_bin).
@@ -1345,8 +1535,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: tcn_slippage_model,
+                volume_usd_per_symbol: tcn_volume_map,
             },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
@@ -1426,6 +1616,11 @@ async fn main() -> Result<()> {
     {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
+        // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
+        let tcnw_slippage_model =
+            build_slippage_model_for_scenario(&args, &scenario.name);
+        let tcnw_volume_map =
+            build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let tcn_w_input = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1437,12 +1632,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
-            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            // v5-latency-slippage-sim v0.5.0: Q-D1=(a) + Q-D2=(β) wiring.
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: tcnw_slippage_model,
+                volume_usd_per_symbol: tcnw_volume_map.clone(),
             },
         };
         let tcn_w_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1459,8 +1654,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: tcnw_slippage_model,
+                volume_usd_per_symbol: tcnw_volume_map,
             },
         };
         let result = backtest::scenarios::tcn_overlay_weights::run(tcn_w_input, seed).await?;
@@ -1536,6 +1731,11 @@ async fn main() -> Result<()> {
     {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
+        // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
+        let ptst_slippage_model =
+            build_slippage_model_for_scenario(&args, &scenario.name);
+        let ptst_volume_map =
+            build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let patchtst_input = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1547,12 +1747,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
-            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            // v5-latency-slippage-sim v0.5.0: Q-D1=(a) + Q-D2=(β) wiring.
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: ptst_slippage_model,
+                volume_usd_per_symbol: ptst_volume_map.clone(),
             },
         };
         let patchtst_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1569,8 +1769,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: ptst_slippage_model,
+                volume_usd_per_symbol: ptst_volume_map,
             },
         };
         let result =
@@ -1644,6 +1844,11 @@ async fn main() -> Result<()> {
     {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
+        // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
+        let vt_slippage_model =
+            build_slippage_model_for_scenario(&args, &scenario.name);
+        let vt_volume_map =
+            build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let vol_target_input = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1655,12 +1860,12 @@ async fn main() -> Result<()> {
             forecaster_id: forecaster_id.clone(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
-            // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
+            // v5-latency-slippage-sim v0.5.0: Q-D1=(a) + Q-D2=(β) wiring.
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: vt_slippage_model,
+                volume_usd_per_symbol: vt_volume_map.clone(),
             },
         };
         let vol_target_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1677,8 +1882,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: vt_slippage_model,
+                volume_usd_per_symbol: vt_volume_map,
             },
         };
         let result =
@@ -1747,6 +1952,11 @@ async fn main() -> Result<()> {
     // Wave E T-D-E1: Markov-switching 4-state dispatcher on v1 momentum.
     if let ScenarioStrategy::RegimeDispatcherMomentum { config_id } = &scenario.strategy.clone() {
         let config_id = config_id.clone();
+        // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
+        let regime_slippage_model =
+            build_slippage_model_for_scenario(&args, &scenario.name);
+        let regime_volume_map =
+            build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let regime_input = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1758,12 +1968,12 @@ async fn main() -> Result<()> {
             forecaster_id: "regime-dispatcher-markov-4state".to_string(),
             bars_override: realdata_bars_for_tcn.take(),
             emit_equity_bin: args.emit_equity_bin.clone(),
-            // v5-latency-slippage-sim canonical config (ADR-0045 D1).
+            // v5-latency-slippage-sim v0.5.0: Q-D1=(a) + Q-D2=(β) wiring.
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_model: build_slippage_model(&args),
-                volume_usd_per_symbol: None,
+                slippage_model: regime_slippage_model,
+                volume_usd_per_symbol: regime_volume_map,
             },
         };
         let result =
@@ -1850,6 +2060,8 @@ async fn main() -> Result<()> {
     // Wave D-2 / T-AR-4: delegate to the extracted sma_composed_run module.
     // Passing `bars_override = Some(bars)` ensures the CLI uses the same
     // pre-generated bar stream as before (anchor-preserving behaviour move).
+    // Q-D1=(a): SMA/Composed scenarios are always synthetic → Linear{bps:8} fallback.
+    let sma_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
     let sma_run_input = backtest::cli_types::SmaComposedRunInput {
         strategy_id: effective_strategy_id,
         symbol: scenario.symbol.clone(),
@@ -1863,12 +2075,12 @@ async fn main() -> Result<()> {
         // pair inside `sma_composed_run::run`).
         sma_fast_len: None,
         sma_slow_len: None,
-        // v5-latency-slippage-sim v0.3.0 R1 wiring (ADR-0047 D2 / T-D-N3b).
-        // Default is noop (0/0/0); set via --sim-latency-ms-min/max/--sim-slippage-bps.
+        // v5-latency-slippage-sim v0.5.0: Q-D1=(a) dispatch.
+        // SMA/Composed scenarios are always synthetic → Linear{bps:8} fallback.
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
             latency_ms_min: args.sim_latency_ms_min,
             latency_ms_max: args.sim_latency_ms_max,
-            slippage_model: build_slippage_model(&args),
+            slippage_model: sma_slippage_model,
             volume_usd_per_symbol: None,
         },
     };
