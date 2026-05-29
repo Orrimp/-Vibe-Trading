@@ -1,0 +1,9 @@
+$ bash scripts/verify_anchors.sh
+... (84 anchors verified — full output truncated)
+PASS  top10-2023-fy-vol-target-overlay-realdata  6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf
+PASS  top10-2023-fy-regime-dispatcher-realdata  857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6
+PASS  top10-2024-fy-regime-dispatcher-realdata  519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1
+---
+ANCHORS PASS  (84 / 84)
+
+R-NR.3 verified — Layer affects tracing emit only; zero anchor delta.

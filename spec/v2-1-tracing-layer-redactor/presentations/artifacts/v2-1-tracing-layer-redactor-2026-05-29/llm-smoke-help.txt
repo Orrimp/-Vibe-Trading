@@ -1,0 +1,20 @@
+$ cargo run -p llm --bin llm-smoke -- --help
+
+End-to-end smoke test for the v2 LLM stack.
+
+Usage: llm-smoke [OPTIONS]
+
+Options:
+      --mode <MODE>                Operating mode: live (real APIs), paper (record), research (replay) [default: research] [possible values: live, paper, research]
+      --replay-path <REPLAY_PATH>  Override the replay cache path. Defaults to LlmConfig::default() which is `data/llm-replay.db` (live/paper) or `crates/llm/fixtures/replay-v1.db` (research, set via `--replay-path` or env override)
+      --agent-toml <AGENT_TOML>    `agent.toml` path for key loading. Defaults to `config/agent.toml` (live/paper modes only; research mode skips key load) [default: config/agent.toml]
+      --reset                      Delete the replay cache before opening (Q8c). Only meaningful for `--mode paper`; ignored under `live` and `research`
+  -h, --help                       Print help
+
+Notes:
+- llm-smoke is a P1 (LLM-bearing) migrated binary.
+- The --help path exercises clap parsing only; no LLM call is made, but
+  the binary's process init runs `llm::tracing_init::install_global()`,
+  which mounts the RedactLayer before the fmt::Layer per R1.4 ordering.
+- A clean exit confirms the install_global helper does not panic on a
+  fresh process boot (R-NR.5 first-line check).
