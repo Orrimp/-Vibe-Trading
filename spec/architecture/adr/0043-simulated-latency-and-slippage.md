@@ -283,3 +283,84 @@ the anchor invariant. The seeded sub-stream is non-negotiable.
   ACCEPT. ADR D2 intent (deterministic sub-stream keyed on
   scenario_seed + order_id) is fully satisfied; mixer implementation
   detail is an optimization below the ADR abstraction boundary.
+- 2026-05-29 (architect, v0.5.0 M-T1): **D3 amendment — square-root
+  market-impact model lands**. Closes D3's deferred `_notional`
+  parameter promise. The linear-bps quote `cost = bps · price` upgrades
+  to `cost = α · √(Q/V) · 10_000 [bps]` per Almgren & Chriss 2001 +
+  Kissell 2014 ch. 3 § "Volume-based impact" (the production-grade
+  proxy when L2 depth is unavailable). Locked at:
+  - **Model shape**: `SlippageModel` enum in `crates/cost/src/slippage.rs`
+    with two variants — `Linear { bps: u32 }` (backward-compat;
+    `Default::default()` preserves R-NR.2 byte-identity for the 19
+    v0.4.0 friction-real anchor SHAs under `v5-realdata-medium-2026-05`)
+    and `SquareRoot { alpha: Decimal, volume_lookback_days: u16 }`.
+  - **Operator-locked defaults** (M-OD 2026-05-29 Q1/Q2): α = 1.0
+    (Kissell midpoint), volume_lookback_days = 90 (Binance parquet
+    trailing daily volume × close; revision-pinned via
+    `data/binance/REVISION.toml` SHA `3a8b96…bfc7`).
+  - **f64 conversion boundary** (K2 falsifier): one site in
+    `apply_slippage_sqrt`. `Decimal::to_f64()` for Q, V, α →
+    `f64::sqrt()` (IEEE-754 correctly rounded; AArch64 `fsqrt` on the
+    Apple Silicon canonical box) → multiply by α × 10_000 →
+    `f64::round_ties_even()` (banker's rounding) → saturating cast to
+    `u32` clamped at `MAX_SLIPPAGE_BPS = 1_000`. Back to Decimal for
+    the sign × multiplier step (reuses the existing Linear branch
+    body). Determinism contract: bit-stable across Apple Silicon
+    canonical-box runs (no GPU shader codegen path; this is scalar
+    f64 sqrt — different from the v2.5 TCN Metal-vs-CPU precedent).
+  - **MAX_SLIPPAGE_BPS = 1_000 (10%)**: fat-tail guard for thin-
+    liquidity hours (K3). Operator-override path at M-OD if dry runs
+    surface > 5% saturation.
+  - **Per-asset V retrieval** (R3 lock): Option A — extend `crates/data`
+    with `daily_volume_usd_trailing(parquet_root, symbol, end_date,
+    lookback_days)` query. Pure function of `(parquet revision SHA,
+    symbol, end_date, lookback)`; cached in-process. No new on-disk
+    artifact (Option B `volume_proxy.toml` rejected — would risk
+    silent drift from the parquet revision pin).
+  - **Synthetic-scenario behavior (Q3 OPERATOR OVERRIDE 2026-05-29)**:
+    operator selected (b) MIXED — universe-avg V on synthetic, overriding
+    analyst-recommended (a) Linear fallback. The 9 synthetic-data
+    scenarios (Group A SMA/Composed × 5, Group D TCN-synthetic × 2,
+    Group E TCN-weights × 2) compute V via
+    `universe_avg_daily_volume_usd_trailing` (arithmetic mean across
+    the 10-USDT-pair Binance universe at the scenario's end_date with
+    90-day lookback). **By-design SHA divergence**: the 9 synthetic-
+    sqrt rows in `v5-sqrt-impact-2026-05` will NOT be byte-identical
+    to their `v5-realdata-medium-2026-05` linear-bps twins.
+    Operator-accepted v0.6.0 sub-namespace cleanup commitment (see
+    feature.md § D-T1.5 — v0.6.0 will either split `v5-sqrt-impact-2026-05`
+    into `realdata` + `synthetic` sub-namespaces or retire the 9
+    synthetic-sqrt SHAs and consolidate around 10 real-data sqrt rows
+    + 9 linear-synthetic rows).
+  - **Namespace cascade** (extends ADR-0045 D2 twin pattern): 71 → 90
+    anchors additive. New namespace `v5-sqrt-impact-2026-05` joins
+    `noop-baseline` and `v5-realdata-medium-2026-05` as the third
+    canonical namespace. **`v5-realdata-medium-2026-05` is now
+    permanently the linear-bps oracle** (mirrors how `noop-baseline`
+    is the frictionless oracle); the Sharpe-delta table R5 surfaces
+    both twin diffs in one 3-column view (noop / linear-bps /
+    sqrt-impact).
+  - **t1937 namespace-aware resolver extension** (extends ADR-0047 D3):
+    `Namespace::SqrtImpact` joins `Noop` + `Canonical`. New
+    `SQRT_IMPACT_FEATURE_DIRS` slice + `SQRT_IMPACT_STRATEGY_ANCHORS`
+    constant table. New test `t1937c_sqrt_impact_strategy_anchors_unchanged`
+    mirrors the `t1937b` precedent verbatim. The Noop predicate now
+    excludes paths matching SQRT_IMPACT_FEATURE_DIRS as well — load-
+    bearing for R-NR.3 (51 noop SHAs must not alias to sqrt reports).
+  - **Forward-compat trail closed**: D3's "Future: v0.2.0 may swap in
+    square-root. The signature already includes `notional` as an
+    unused parameter to make that swap a one-function-body change
+    without rippling through call sites." — v0.5.0 ships exactly that
+    swap. `apply_slippage(signal_price, side, _notional, bps)` is
+    rewritten to a model-dispatching variant
+    `apply_slippage_dispatch(signal_price, side, notional, v_daily_usd,
+    model)` that routes to `apply_slippage_linear` or
+    `apply_slippage_sqrt`. The `_notional` parameter is now LOAD-
+    BEARING for the SquareRoot branch.
+  ADR decision rationale (architect M-T1): chose to **amend the §
+  Changelog** rather than author a new ADR-0050 because the square-
+  root model is the **completion of D3's own forward-looking contract**,
+  not a sibling decoupled decision. The Q1/Q2 operator defaults +
+  the Q3 override all live within D3's "1-parameter model" abstraction
+  — these are amendments, not a fork. Mirrors the 2026-05-27 Murmur3
+  D2 amendment precedent (sub-ADR-abstraction implementation upgrade).

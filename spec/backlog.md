@@ -689,9 +689,19 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   windows. Zero new ADRs (ADR-0048 D1-D6 carries forward). Zero anchor
   delta (71/71 byte-identical). Brief:
   [`spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md`](lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md).
-  Trace: `REQ-LAB-RECIPE-TEST-HARNESS-V0-2-0-001` (state `proposed`).
-  HANDOFF → architect (M-T1 ratifies Q1+Q2 + locks R3 mock-pattern +
-  decomposes M-DEV per-Recipe waves A-F).
+  Trace: `REQ-LAB-RECIPE-TEST-HARNESS-V0-2-0-001` (state `arch-done` as
+  of 2026-05-29). **ARCH M-T1 done 2026-05-29**: D-V0.2.0-1 per-Recipe
+  mocks (NOT shared trait); D-V0.2.0-2 mock inventory pinned
+  (`MockTrainingLogChannel` / `MockAuditTickBus` / `MockTrailMirrorHandle`
+  / `MockActivityBus` / `MockAuditLedger`); D-V0.2.0-3 11-row T-T4
+  falsification probe line table; D-V0.2.0-4 ADR-0048 carries forward
+  (one Changelog row, no new ADR); D-V0.2.0-5 Wave A→D dependency-ordered
+  (A‖B parallel — TrainingLog + ActivityAuditAggregator; C extracts
+  `SubscriptionBatchDescriptor` seam — ServerTime S2 + ToastDismiss S1+S2;
+  D depends on C — TrailMirror S2 + Activity S1 + TrainingPoller S1+S2);
+  ~940 LoC tests + ~130 LoC src deltas across 3 API-additive extractions;
+  ~6 dev days + 1 tester day. HANDOFF → developer (Wave A start —
+  TrainingLogRecipe is exact Bug #64 shape, highest urgency).
 
 <!-- updated 2026-05-27 (analyst, cockpit-toast-queue M0 close — inline-salvaged
      after analyst agentId a43a615341bd60112 529'd at 26 tool uses;

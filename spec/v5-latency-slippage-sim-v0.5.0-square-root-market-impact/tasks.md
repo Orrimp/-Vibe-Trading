@@ -1,7 +1,7 @@
 ---
 slug: v5-latency-slippage-sim-v0.5.0-square-root-market-impact
 status: draft
-owner: analyst
+owner: developer
 updated: 2026-05-29
 ---
 
@@ -15,20 +15,25 @@ updated: 2026-05-29
 - [x] Verify gates green: anchors 71/71 PASS; spec_lint baseline-stable
 - [ ] HANDOFF → operator-decide (Q1-Q3 all default to DURABLE per AGENT.md 2026-05-29; Autoapprove-eligible at analyst defaults)
 
-## M-OD — Operator-decide (~0 day, all-DURABLE Autoapprove-eligible)
+## M-OD — Operator-decide (~0 day, all-DURABLE Autoapprove-eligible) ✅ RESOLVED 2026-05-29
 
-- [ ] **Q1** — Impact coefficient α — analyst-recommended **(a) α = 1.0** (Kissell 2014 midpoint; DURABLE). Cheap fallback (b) α = 0.5 = +v0.5.1 calibration brief STRICTLY WORSE.
-- [ ] **Q2** — Per-asset volume V source — analyst-recommended **(a) 90-day trailing Binance parquet** (revision-pinned). Cheap fallback (b) universe-average = +v0.6.0 V-source replacement STRICTLY WORSE.
-- [ ] **Q3** — Synthetic-scenario behavior — analyst-recommended **(a) Linear { bps: 8 } fallback for synthetic** (preserves 9 of 19 SHAs byte-identical across namespaces). Cheap fallback (b) universe-V on synthetic = muddies twin contract STRICTLY WORSE.
+- [x] **Q1** — Impact coefficient α → **(a) α = 1.0** (Kissell 2014 midpoint; DURABLE) ✅
+- [x] **Q2** — Per-asset volume V source → **(a) 90-day trailing Binance parquet** (revision-pinned) ✅
+- [x] **Q3** — Synthetic-scenario behavior → **(b) MIXED — universe-avg V on synthetic** (operator override of analyst-recommended (a) Linear fallback; adds v0.6.0 sub-namespace cleanup commitment) ⚠ override
 
-## M-T1 — Architect (~1 day)
+## M-T1 — Architect (~1 day) ✅ COMPLETE 2026-05-29
 
-- [ ] Lock numerical-precision contract for `√` over Decimal (K2): f64 boundary placement; round-half-to-even on `slippage_bps_effective` u32 conversion
-- [ ] Pick per-asset volume retrieval shape (R3): Option A (extend `crates/data` with `DailyVolume` query) vs Option B (bake `volume_proxy.toml`)
-- [ ] Lock `MAX_SLIPPAGE_BPS` cap (K3): default 1_000 (10%); confirm or override
-- [ ] ADR decision: amendment to ADR-0043 § D3 (preferred — durable; the deferred promise being closed) vs new ADR-0050. Note: amendment preserves the engine ADR's continuity; new ADR triggers if the model swap is decoupled enough to be a sibling decision.
-- [ ] Confirm namespace `v5-sqrt-impact-2026-05` is the correct pin (mirrors ADR-0045 D2 namespace-twin pattern; parallel to `v5-realdata-medium-2026-05`)
-- [ ] Decompose M-DEV into Waves A (model body) / B (enum plumbing) / C (volume retrieval) / D (re-emission) / E (anchor migration + Sharpe-delta table) / F (t1937 third-namespace extension)
+- [x] Lock numerical-precision contract for `√` over Decimal (K2): f64 boundary in `apply_slippage_sqrt`; `f64::sqrt` + `f64::round_ties_even` → saturating-cast u32 ≤ MAX_SLIPPAGE_BPS; back to Decimal for sign × multiplier. Documented in feature.md § D-T1.3.
+- [x] Pick per-asset volume retrieval shape (R3) → **Option A**: extend `crates/data` with `daily_volume_usd_trailing` query (analyst lean — deterministic + revision-pinned + no on-disk artifact). Documented § D-T1.4.
+- [x] Lock `MAX_SLIPPAGE_BPS` cap (K3) → default **1_000 (10%)** confirmed; operator-override path at M-OD if dry runs surface > 5% saturation. Documented § D-T1.6.
+- [x] ADR decision → **amend ADR-0043 § Changelog** (NOT new ADR-0050); mirrors the 2026-05-27 Murmur3 D2 amendment precedent — closes ADR-0043's own deferred § D3 promise without forking a sibling ADR. Documented § D-T1.1.
+- [x] Confirm namespace `v5-sqrt-impact-2026-05` is the correct pin (mirrors ADR-0045 D2 namespace-twin pattern; parallel to `v5-realdata-medium-2026-05`). Documented § D-T1.7.
+- [x] **Operator Q3=(b) override implementation**: `universe_avg_daily_volume_usd_trailing` helper computes arithmetic mean across 10-USDT-pair Binance universe; pinned to scenario's own end_date with 90-day lookback. **9 synthetic-scenario SHAs in `v5-sqrt-impact-2026-05` namespace WILL DIFFER from their `v5-realdata-medium-2026-05` linear-bps twins — by-design; v0.6.0 sub-namespace cleanup commitment recorded**. Documented § D-T1.5.
+- [x] Decompose M-DEV into Waves A (cost crate model swap) → B (backtest plumbing through SlippageModel enum) → C (data crate per-asset + universe-avg V helper) → D (anchor namespace-aware resolver extension; t1937c test) → E (19-scenario re-emission + 2-run determinism + anchors.toml additive + Sharpe-delta table) → F (e2e divergence + tester harness verification). Critical path A → B → C → D → E → F; D parallelizable with C. Documented § D-T1.9.
+- [x] Update `spec/architecture/adr/0043-simulated-latency-and-slippage.md` § Changelog with v0.5.0 amendment block.
+- [x] Flip frontmatter `owner: architect → developer` on feature.md + tasks.md.
+- [x] Populate `arch` column on `REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001` trace row + flip state `proposed → arch-done`.
+- [x] HANDOFF → developer (Waves A–F lockstep critical path).
 
 ## M-DEV — Developer (~3-5 days, Waves A-F)
 

@@ -2,7 +2,7 @@
 slug: v5-latency-slippage-sim-v0.5.0-square-root-market-impact
 version: 0.1.0
 status: draft
-owner: analyst
+owner: developer
 updated: 2026-05-29
 predecessor: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0
 parent: backtest-vs-live-execution-gap
@@ -285,9 +285,470 @@ Surfaces:
 
 ## Design
 
-_Architect M-T1 fills this — locks numerical-precision contract (K2),
-per-asset volume retrieval shape (R3 Option A vs B), MAX_SLIPPAGE_BPS
-cap (K3), and ADR amendment vs new ADR decision._
+_Architect M-T1 — locked 2026-05-29 post-operator-decide
+(Q1=(a) α=1.0, Q2=(a) 90-day Binance parquet, Q3=(b) MIXED universe-avg V
+on synthetic — operator override of analyst-recommended Q3=(a))._
+
+### D-T1.1 — ADR decision: amend ADR-0043 § Changelog (not new ADR-0050)
+
+**Decision**: extend ADR-0043's Changelog with a v0.5.0 amendment block
+(mirrors the 2026-05-27 Murmur3 D2 amendment precedent — a sub-ADR-
+abstraction implementation upgrade that closes a deferred-promise inside
+the same engine ADR).
+
+**Rationale**: ADR-0043 § D3 explicitly says _"Future: v0.2.0 may swap in
+square-root. The signature already includes `notional` as an unused
+parameter to make that swap a one-function-body change without rippling
+through call sites."_ The square-root model is the **completion of D3's
+own forward-looking contract**, not a sibling decoupled decision —
+amending the ADR keeps the engine-ADR provenance chain continuous and
+self-narrating. A new ADR-0050 would have fragmented the engine story
+across two files for a parameter-swap that lives entirely under the
+`apply_slippage` signature that D3 already shipped a `_notional`
+placeholder for.
+
+**Alternatives considered**:
+- _New ADR-0050 "v5 v0.5.0 square-root market-impact model"_ —
+  rejected. Adds a second engine-ADR file for a body-only swap. The Q3
+  operator-override + Q1/Q2 defaults all live within D3's "1-parameter
+  model" abstraction — these are amendments, not a fork.
+- _Amend ADR-0045 D1 (canonical config) instead_ — rejected. ADR-0045
+  governs **which canonical numeric values** are pinned (`30/80/8`),
+  not the **model shape**. The shape lives in ADR-0043 D3.
+
+### D-T1.2 — `SlippageModel` enum public types (R1, R2)
+
+**Location**: `crates/cost/src/slippage.rs` — same source file as the
+existing `apply_slippage` linear impl. Re-exported via
+`crates/cost/src/lib.rs::pub use slippage::{apply_slippage, SlippageModel};`
+so downstream crates (`backtest`) import the enum from the cost crate
+without taking a transitive dep on the model body.
+
+**Signature**:
+
+```rust
+/// Slippage model variant. Linear preserves v0.1.0–v0.4.0 byte-identity
+/// at `Linear { bps: 8 }`; SquareRoot adds the Almgren-Chriss volume-
+/// proxy form `cost = α · √(Q/V)` per ADR-0043 § Changelog v0.5.0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SlippageModel {
+    /// Pre-v0.5.0 linear-bps model. Default `bps = 8` matches the
+    /// `v5-realdata-medium-2026-05` canonical pin from ADR-0045 D1.
+    Linear { bps: u32 },
+    /// v0.5.0 square-root market-impact model. Operator-locked defaults
+    /// (M-OD 2026-05-29): `alpha = 1.0` (Q1=(a) Kissell 2014 midpoint),
+    /// `volume_lookback_days = 90` (Q2=(a) Binance parquet trailing).
+    /// `alpha` is `rust_decimal::Decimal` at the public boundary; the
+    /// f64 conversion happens INSIDE the model body per D-T1.3.
+    SquareRoot {
+        alpha: rust_decimal::Decimal,
+        volume_lookback_days: u16,
+    },
+}
+
+impl Default for SlippageModel {
+    /// Backward-compat default: `Linear { bps: 8 }` (preserves the 71
+    /// existing anchor SHAs byte-identically when `LatencySlippageSimConfig`
+    /// is constructed without an explicit `slippage_model`).
+    fn default() -> Self {
+        SlippageModel::Linear { bps: 8 }
+    }
+}
+
+/// Cap on `slippage_bps_effective` — fat-tail guard for thin-liquidity
+/// hours. Operator-locked 2026-05-29; revisitable at M-OD if dry runs
+/// surface > 5% saturation (K3 falsifier route).
+pub const MAX_SLIPPAGE_BPS: u32 = 1_000; // 10%
+```
+
+**LatencySlippageSimConfig field replacement** (in
+`crates/backtest/src/cli_types.rs`):
+
+```rust
+pub struct LatencySlippageSimConfig {
+    pub latency_ms_min: u64,
+    pub latency_ms_max: u64,
+    pub slippage_model: SlippageModel,  // was: slippage_bps: u16
+}
+```
+
+**Backward-compat serde adapter**: implement `Deserialize` on
+`LatencySlippageSimConfig` with a custom visitor that accepts EITHER
+the new `slippage_model: { kind: "linear", bps: 8 }` shape OR the
+legacy `slippage_bps: 8` u16 field (the latter deserializes to
+`SlippageModel::Linear { bps: 8 }`). Required to keep the 19 v0.4.0
+friction-real anchor SHAs byte-identical under
+`v5-realdata-medium-2026-05` namespace (R-NR.2).
+
+### D-T1.3 — f64 conversion boundary contract (K2 falsifier)
+
+**Closed-form contract** for `apply_slippage_sqrt`:
+
+```rust
+fn apply_slippage_sqrt(
+    signal_price: Decimal,
+    side: Side,
+    notional: Decimal,     // Q in USD = |qty| * fill_price
+    v_daily_usd: Decimal,  // V in USD = trailing-mean(volume × close) over N days
+    alpha: Decimal,        // operator-locked α = 1.0 at v0.5.0
+    max_bps: u32,          // MAX_SLIPPAGE_BPS = 1000
+) -> (Decimal, u32) {       // returns (fill_price, slippage_bps_effective)
+    // Edge case: V = 0 → degenerate Q/V → fall back to MAX_SLIPPAGE_BPS
+    // (treat as worst-case thin liquidity; saturation is logged by caller).
+    if v_daily_usd.is_zero() || notional.is_zero() {
+        return (signal_price, 0);
+    }
+
+    // ── f64 conversion boundary (K2 falsifier) ─────────────────────────
+    // Convert Q/V and α to f64. rust_decimal::Decimal::to_f64() is
+    // deterministic across architectures (no rounding mode env var, no
+    // CPU-feature-flag fast-math). The Apple Silicon canonical box runs
+    // sqrt() via the AArch64 fsqrt instruction which produces IEEE-754-
+    // correctly-rounded results — bit-identical across runs on the same
+    // arch. v2.5 TCN Metal-vs-CPU drift does NOT apply: that was GPU
+    // shader codegen drift; this is scalar f64 sqrt on the CPU.
+    let q_f64: f64 = notional.to_f64().expect("notional fits in f64 — bounded by total wealth");
+    let v_f64: f64 = v_daily_usd.to_f64().expect("v_daily_usd fits in f64 — bounded by venue ADV");
+    let alpha_f64: f64 = alpha.to_f64().expect("alpha fits in f64 — bounded [0.0, ~2.0]");
+
+    // Compute α · √(Q/V) · 10_000 in f64.
+    let ratio: f64 = q_f64 / v_f64;            // dimensionless
+    let sqrt_ratio: f64 = ratio.sqrt();         // f64::sqrt — IEEE-754 correctly rounded
+    let bps_raw: f64 = alpha_f64 * sqrt_ratio * 10_000.0;
+
+    // Round-half-to-even (banker's rounding) to u32. Stable f64::round_ties_even
+    // since Rust 1.77; edition 2024 OK. Clamped at MAX_SLIPPAGE_BPS.
+    // Negative bps_raw can't happen (all inputs non-negative) — saturating_cast.
+    let bps_rounded: f64 = bps_raw.round_ties_even();
+    let bps_u32: u32 = if bps_rounded >= f64::from(max_bps) {
+        max_bps
+    } else if bps_rounded <= 0.0 {
+        0
+    } else {
+        // Safe: bounded [0, max_bps] ≤ 1000 ≪ u32::MAX
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        { bps_rounded as u32 }
+    };
+
+    // ── Back to Decimal for sign × multiplier (R3 D3 preserved) ────────
+    // The fill_price application path is bit-identical to the existing
+    // Linear branch — only the bps value differs by source.
+    let fill_price = apply_slippage_linear(signal_price, side, bps_u32);
+    (fill_price, bps_u32)
+}
+```
+
+**Precision contract (load-bearing for K2 / K4 determinism)**:
+
+1. **One conversion site**. All f64 work happens inside
+   `apply_slippage_sqrt`'s body. No f64 leaks across the function
+   boundary; callers only see `(Decimal, u32)`.
+2. **Round-half-to-even** (`f64::round_ties_even`) at the
+   `bps_raw → u32` step. Default IEEE-754 rounding mode. Deterministic
+   across Apple Silicon hosts.
+3. **Saturating cap**. Clamp to `[0, MAX_SLIPPAGE_BPS]` before the
+   `as u32` cast so the cast is provably lossless.
+4. **No `f64::sqrt` polyfill**. Use the stdlib `f64::sqrt()` directly —
+   it compiles to the AArch64 `fsqrt` instruction on the canonical
+   Apple Silicon box; bit-stable across runs. Cross-architecture
+   determinism is gated by the existing canonical-box invariant
+   (same v0.4.0 hardware; no x86/ARM mixing in CI).
+5. **Decimal-side application**. The sign × multiplier step reuses
+   the existing `Linear` branch logic verbatim via `apply_slippage_linear`
+   helper — preserves R3 D3's "fill prices are Decimal" contract.
+
+**Why round-half-to-even, not truncate or round-half-up**: banker's
+rounding is statistically unbiased over many fills (truncation biases
+downward; round-half-up biases upward at ties). Aligns with Decimal's
+`MidpointNearestEven` default policy. Locks tie-break determinism
+across hardware refresh cycles.
+
+### D-T1.4 — Per-asset daily-volume retrieval shape (R3 → Option A)
+
+**Decision**: **Option A** — extend `crates/data` with a `DailyVolume`
+query that walks the existing Binance parquet feed at scenario load
+time. **Rejected Option B** (bake `volume_proxy.toml`).
+
+**Rationale**:
+- **Determinism free-rider**. The parquet feed is already revision-
+  pinned via `data/binance/REVISION.toml` SHA `3a8b96…bfc7` — the K2
+  v0.4.0 architect check already locked it as the SoT. A `DailyVolume`
+  query computed on-the-fly inherits that pin transitively; no second
+  artifact needs to be regenerated when the parquet feed bumps revision.
+- **No new on-disk artifact**. `volume_proxy.toml` would be a derived
+  cache that could silently drift from the parquet source if the
+  bake script wasn't re-run on every revision bump. Anchor cascade
+  risk.
+- **Trivial cost**. `DailyVolume::query(symbol, end_date, lookback_days)`
+  is a thin wrapper over the existing parquet-read path. Cached per
+  `(symbol, end_date, lookback_days)` tuple in-process — one read per
+  scenario per symbol, not per fill.
+- **Reuses existing crate boundary**. `crates/data` already owns
+  parquet I/O via `data::ReplayFeed` and `crates/backtest/src/realdata.rs`
+  uses it directly. No new crate dep added.
+
+**API contract**:
+
+```rust
+// crates/data/src/binance.rs OR new module crates/data/src/daily_volume.rs
+
+/// Mean daily traded volume in USD over the trailing N days.
+///
+/// Computed as the arithmetic mean of `sum(volume × close)` per UTC day
+/// over the closed-open window `[end_date - lookback_days, end_date)`.
+/// Volume × close is the standard USD-notional proxy when the parquet
+/// feed carries base-asset volume (`volume`) and dollar-denominated
+/// close (`close`). Quote-asset volume (`quote_volume`) would be
+/// preferable but is not present in our v0.4.0 schema; the v · close
+/// approximation is the Kissell 2014 ch. 3 § "Volume-based impact"
+/// canonical form.
+///
+/// # Determinism
+/// Pure function of (parquet revision SHA, symbol, end_date, lookback_days).
+/// Cached in-process via `dashmap::DashMap` keyed on the tuple.
+///
+/// # Errors
+/// - `DailyVolumeError::InsufficientCoverage` if < 95% of expected
+///   trading-hour bars are present in the window (24×N for 1h bars).
+/// - `DailyVolumeError::RevisionMissing` if `data/binance/REVISION.toml`
+///   is absent.
+pub fn daily_volume_usd_trailing(
+    parquet_root: &Path,
+    symbol: &Symbol,
+    end_date: NaiveDate,
+    lookback_days: u16,
+) -> Result<Decimal, DailyVolumeError>;
+```
+
+**Universe-avg V helper** (Q3 operator override — see D-T1.5):
+
+```rust
+/// Arithmetic mean of `daily_volume_usd_trailing` across a fixed
+/// universe of symbols. Used by synthetic scenarios under operator
+/// Q3=(b) to surface real-data-flavored impact magnitudes.
+pub fn universe_avg_daily_volume_usd_trailing(
+    parquet_root: &Path,
+    universe: &[Symbol],
+    end_date: NaiveDate,
+    lookback_days: u16,
+) -> Result<Decimal, DailyVolumeError>;
+```
+
+### D-T1.5 — Q3 universe-avg V on synthetic implementation contract (operator override)
+
+**Operator decision M-OD 2026-05-29**: Q3 = (b) MIXED — universe-avg V
+on synthetic. **Overrides analyst-recommended Q3 = (a) Linear fallback**.
+Operator framing: synthetic scenarios should "behave more real-data-like
+for testing purposes" — accepts the v0.6.0 sub-namespace cleanup cost.
+
+**Universe-avg V computation contract** (lock):
+
+- **Aggregation function**: **arithmetic mean** of `daily_volume_usd_trailing`
+  across the 10-symbol Binance universe. Rejected alternatives:
+  - _Median_ — robust to outliers but introduces a tie-break decision
+    on an even-count universe (10 symbols). Mean is unambiguous.
+  - _Trimmed mean_ — adds a trim-fraction parameter that the operator
+    would have to lock. Bare arithmetic mean is the minimal contract.
+  - _Geometric mean_ — would suit volatility-style aggregation but not
+    USD-volume, which is additive in dollars.
+- **Universe**: the canonical 10-USDT-pair set under
+  `data/binance/{ADA,AVAX,BNB,BTC,DOGE,DOT,ETH,LINK,SOL,XRP}USDT/`.
+  Identical to the v0.4.0 `top10` universe.
+- **end_date** for synthetic scenarios: pinned to the synthetic
+  scenario's _own_ end-date (matches the scenario's logical clock
+  rather than a fixed calendar date — preserves the v0.4.0
+  determinism contract where rerunning a 2023 synthetic scenario in
+  2027 produces the same SHA).
+- **lookback_days**: 90 (Q2 default).
+- **Caching**: one universe-avg V per `(end_date, lookback_days)`
+  tuple; reused across all 9 synthetic scenarios that share the same
+  end-date.
+
+**SHA divergence acknowledgment** (load-bearing for namespace contract):
+
+The 9 synthetic-data scenarios in the new `v5-sqrt-impact-2026-05`
+namespace (Group A SMA/Composed × 5, Group D TCN-overlay synthetic × 2,
+Group E TCN-weights × 2) **will produce SHAs that differ from their
+`v5-realdata-medium-2026-05` linear-bps twins**, because the sqrt model
+now applies a non-zero universe-avg V impact instead of falling back
+to `Linear { bps: 8 }`. **This is by-design** under operator Q3=(b).
+
+**v0.6.0 sub-namespace cleanup commitment** (load-bearing for namespace
+hygiene): the brief acknowledges (per analyst's M-OD framing) that the
+Q3 override "DOES add v0.6.0 sub-namespace cleanup." The cleanup
+contract for v0.6.0 is:
+
+- _Either_ split `v5-sqrt-impact-2026-05` into two sub-namespaces
+  (`v5-sqrt-impact-realdata-2026-05` + `v5-sqrt-impact-synthetic-2026-05`)
+  to make the "real V vs universe-avg V" distinction first-class in
+  the anchor file.
+- _Or_ retire the 9 synthetic-sqrt SHAs from the canonical anchor set
+  and recompute them under the analyst-original Q3=(a) Linear fallback,
+  consolidating around the 10 real-data sqrt rows + 9 linear synthetic
+  rows.
+
+The choice between these two cleanup routes is **deferred to v0.6.0
+M-OD**. v0.5.0 just records the commitment; v0.6.0 is the brief that
+chooses and executes.
+
+**Anchor count under Q3=(b)**: 71 → 90, all 19 rows under
+`v5-sqrt-impact-2026-05` — same row count as the analyst-recommended
+Q3=(a) plan but with the 9 synthetic rows carrying genuinely-new SHAs
+(rather than byte-identical-twin SHAs).
+
+### D-T1.6 — MAX_SLIPPAGE_BPS = 1000 (10%) confirmed default
+
+**Decision**: keep the analyst-recommended `MAX_SLIPPAGE_BPS = 1_000`
+(10%) cap. Hardcoded as `pub const` in `crates/cost/src/slippage.rs`.
+
+**Operator-override path at M-OD**: if v0.5.0 dry runs surface > 5% of
+fills saturating the cap, route back to architect for refined V proxy
+(K3 mitigation: hourly volume vs daily, or volume-adjusted bar windows).
+Per the brief's K3 row.
+
+**Why 1000 bps**: the worst-case scenario from K3 modeling is α=1.0 ×
+sqrt(0.01) × 10_000 = 1_000 bps at `Q/V = 0.01` (1% of daily volume in
+a single fill — realistic only at 03:00 UTC thin liquidity).
+Saturating at 10% protects from algorithmic blow-ups while still
+allowing the model to surface high-impact events. Higher caps (5_000 /
+50%) would let degenerate values dominate equity curves; lower caps
+(100 / 1%) would defeat the purpose of the square-root model.
+
+### D-T1.7 — Namespace cascade contract (ADR-0047 D3 extension)
+
+**Anchor cascade**: 71 → 90 (additive per ADR-0038 § D6.a).
+
+| Namespace | Count pre-v0.5.0 | Count post-v0.5.0 | Mutation |
+|-----------|-----------------:|------------------:|----------|
+| `noop-baseline` | 51 | 51 | None (R-NR.3 byte-identical) |
+| `v5-realdata-medium-2026-05` (linear-bps oracle) | 19 | 19 | None (R-NR.2 byte-identical via serde adapter; this namespace is now **the linear-bps oracle in perpetuity** — operator-pinned status mirrors the noop-baseline oracle role) |
+| `v5-sqrt-impact-2026-05` (NEW; canonical sqrt-impact) | 0 | 19 | All new |
+| `lab-yahoo-realdata` (lab Yahoo BTC, ETH H1) | 1 | 1 | None |
+| Other lab rows | — | — | None |
+
+**Twin-pattern relationship** (mirrors ADR-0045 D2 noop-vs-canonical):
+
+- `noop-baseline` ↔ `v5-realdata-medium-2026-05` = frictionless oracle
+  vs linear-bps friction (ADR-0045 original twin)
+- `v5-realdata-medium-2026-05` ↔ `v5-sqrt-impact-2026-05` = linear-bps
+  oracle vs square-root market-impact (v0.5.0 NEW twin)
+
+The Sharpe-delta table (R5) renders 3 columns per scenario: `noop` /
+`linear-bps` / `sqrt-impact` — surfaces both twin diffs in one view.
+
+**SHA-divergence accounting under Q3=(b) operator override**:
+
+- **10 real-data scenarios** in `v5-sqrt-impact-2026-05` carry NEW
+  SHAs (they use real per-asset V from Binance parquet 90-day
+  trailing).
+- **9 synthetic-data scenarios** in `v5-sqrt-impact-2026-05` also
+  carry NEW SHAs that **differ from their `v5-realdata-medium-2026-05`
+  linear-bps twins** (universe-avg V → non-zero impact, not Linear
+  fallback). Documented as by-design per D-T1.5; v0.6.0 cleanup
+  commitment recorded.
+
+### D-T1.8 — Namespace-aware Rust resolver extension (ADR-0047 D3 → third namespace)
+
+Wave F (test crate) extends `crates/reports/tests/strategy_anchors_unchanged.rs`:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Namespace {
+    Noop,
+    Canonical,    // v5-realdata-medium-2026-05 (linear-bps oracle)
+    SqrtImpact,   // v5-sqrt-impact-2026-05 (NEW v0.5.0)
+}
+
+const CANONICAL_FEATURE_DIRS: &[&str] = &[
+    "v5-latency-slippage-sim-v0.2.0-anchor-migration",
+    "v5-latency-slippage-sim-v0.3.0-full-path-wiring",
+    "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit",
+];
+
+const SQRT_IMPACT_FEATURE_DIRS: &[&str] = &[
+    "v5-latency-slippage-sim-v0.5.0-square-root-market-impact",
+];
+
+const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
+    // Populated by developer Wave E close. 19 (scenario, sha256) pairs.
+];
+
+#[test]
+fn t1937c_sqrt_impact_strategy_anchors_unchanged() {
+    // Mirror of t1937b_canonical_strategy_anchors_unchanged.
+    // For each (scenario, expected) in SQRT_IMPACT_STRATEGY_ANCHORS:
+    //   resolve via find_backtest_report(scenario, Namespace::SqrtImpact)
+    //   assert body_sha256(report) == expected
+}
+```
+
+**Resolver algorithm extension** (mirrors ADR-0047 D3 verbatim):
+
+```text
+fn find_backtest_report(scenario, namespace):
+  match namespace:
+    Noop:
+      collect under spec/**/reports/ EXCLUDING any canonical OR sqrt-impact dir
+    Canonical:
+      collect ONLY from CANONICAL_FEATURE_DIRS
+    SqrtImpact:
+      collect ONLY from SQRT_IMPACT_FEATURE_DIRS
+  return lex-newest
+```
+
+**Noop predicate update** (load-bearing for R-NR.3): the Noop branch
+MUST now exclude paths matching SQRT_IMPACT_FEATURE_DIRS as well — the
+51 noop SHAs are pre-v5 and must NOT alias to v0.5.0 sqrt reports.
+This is a 1-LoC predicate extension at the existing `is_canonical_path`
+helper site.
+
+### D-T1.9 — Wave decomposition for developer (Waves A → F)
+
+| Wave | Scope | Files touched | Est. dev cost |
+|------|-------|---------------|---------------|
+| **A — cost crate model swap** | Add `SlippageModel` enum + `MAX_SLIPPAGE_BPS` const + `apply_slippage_sqrt` private fn + refactor `apply_slippage` → dispatcher; unit tests (α=1.0 reference at Q=$1M V=$1B → ~32 bps; cap saturation at MAX; round-half-to-even ties) | `crates/cost/src/slippage.rs`, `crates/cost/src/lib.rs` | 0.5–1 day |
+| **B — backtest plumbing through `SlippageModel` enum** | Replace `slippage_bps: u16` on `LatencySlippageSimConfig` with `slippage_model: SlippageModel`; implement custom `Deserialize` adapter (legacy `slippage_bps: u16` → `Linear { bps }`); update `sim_slippage_cost` to dispatch on the enum (SOLE-LOCATION grep gate stays green) | `crates/backtest/src/cli_types.rs`, `crates/backtest/src/scenarios/sim.rs` | 0.5 day |
+| **C — data crate per-asset volume + universe-avg V helper** | Add `daily_volume_usd_trailing(parquet_root, symbol, end_date, lookback)` to `crates/data` (D-T1.4 contract); add `universe_avg_daily_volume_usd_trailing(parquet_root, universe, end_date, lookback)` (D-T1.5 contract); in-process cache via `dashmap` keyed on `(symbol, end_date, lookback)`; wire scenario load path to call the helper once per scenario per symbol; explicit log line for synthetic-scenario universe-avg V path | `crates/data/src/binance.rs` (or new `crates/data/src/daily_volume.rs`), `crates/data/src/lib.rs`, `crates/backtest/src/main.rs` (load-time hook) | 0.5–1 day |
+| **D — anchor resolver namespace extension** | Extend t1937 test: `Namespace::SqrtImpact` + `SQRT_IMPACT_FEATURE_DIRS` + `SQRT_IMPACT_STRATEGY_ANCHORS` + `t1937c` test + extend `is_canonical_path` predicate to also exclude sqrt-impact dirs from Noop resolution | `crates/reports/tests/strategy_anchors_unchanged.rs` | 0.25 day |
+| **E — 19-scenario re-emission + 2-run determinism** | `cargo build --release -p backtest --features "candle realdata"`; run all 19 scenarios under v0.5.0 config matrix (10 real-data: `SquareRoot { α: 1.0, lookback: 90 }`; 9 synthetic: `SquareRoot { α: 1.0, lookback: 90 }` + universe-avg V helper); emit to `reports/backtest-<TS>-<scenario>.md`; 2-run byte-identity gate; append 19 new `[[anchors]]` rows under `v5-sqrt-impact-2026-05` to `spec/anchors.toml`; populate `SQRT_IMPACT_STRATEGY_ANCHORS` constants; author `reports/sharpe-delta-table-2026-05-<DD>.md` 3-column comparison; `bash scripts/verify_anchors.sh` → PASS 90/90 | `spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/`, `spec/anchors.toml`, `crates/reports/tests/strategy_anchors_unchanged.rs` (constants) | 0.5 day |
+| **F — e2e divergence + tester harness** | Confirm `crates/strategy/tests/latency_slippage_sim_e2e.rs` + `vol_targeting_overlay_end_to_end.rs` + `vol_killswitch_overlay_end_to_end.rs` PASS under BOTH `Linear { bps: 8 }` AND `SquareRoot { α: 1.0, lookback: 90 }` configs (R-NR.5 + CLAUDE.md non-negotiable); confirm `crates/strategy/tests/overlay_hygiene_gate.rs` PASS (D6 inventory unchanged at 3+1 meta — no new overlay landed); `cargo test --workspace --no-fail-fast` → no new failures vs v0.4.0 whitelist | `crates/strategy/tests/*` (no changes expected; verification only) | 0.25 day |
+
+**Critical-path ordering**: A → B → C → D → E → F. Wave D can land in
+parallel with Wave C (both touch independent files); Wave E depends on
+A+B+C+D all green. Wave F is verification-only — can run in parallel
+with E once reports are emitted.
+
+**Total est.**: ~3.0–4.0 dev-days + 1 tester-day + 0.5 presenter-day =
+**~1 week wall-clock** (consistent with feature.md § Cost framing
+DURABLE route).
+
+### D-T1.10 — Open questions / assumptions for developer
+
+- **A1**: `f64::round_ties_even` is stable since Rust 1.77 (edition 2024
+  compatible). If the workspace stable channel is older than 1.77,
+  fall back to `(bps_raw + 0.5).floor()` (round-half-up, biased) but
+  flag the precision-contract deviation to architect for re-approval.
+  (Verified at brief author time: workspace `rust-toolchain.toml` is
+  on stable; 1.77+ confirmed.)
+- **A2**: `rust_decimal::Decimal::to_f64()` returns `Option<f64>` and
+  can return `None` for unrepresentable values. All four inputs
+  (notional, v_daily_usd, alpha, signal_price) have well-bounded
+  magnitudes (≤ $1e12 cash, ≤ $1e11 ADV, α ∈ [0, 2]) — `.expect()` is
+  load-bearing-safe with the documented invariant. Developer adds a
+  debug_assert! at the boundary for invariant audit.
+- **A3**: The `dashmap` crate is the analyst lean for in-process
+  caching. If `dashmap` is not already a workspace dep, fall back to
+  `std::sync::Mutex<HashMap<_, _>>` — the cache is hit O(N_scenarios ×
+  N_symbols) times per backtest run (low contention; mutex is fine).
+- **A4**: Q3 universe-avg V end_date is derived from the scenario's
+  `end_year + end_month` (the scenario's bar-range end). Developer
+  verifies that synthetic scenarios carry a `end_year`/`end_month`
+  field on their `ScenarioConfig` — if not, the universe-avg V
+  computation pins to a hardcoded `2024-12-31` calendar date and that
+  is documented in the scenario's report front-matter. Architect lean:
+  use the scenario's own end-date if available; hardcoded-fallback
+  if not. Either choice is byte-stable as long as it's deterministic.
 
 ## Implementation
 
@@ -309,3 +770,36 @@ _Tester M-FINAL links to reports here._
   twin pattern; preserves linear-bps namespace as comparison oracle).
   M-T1 architect picks the per-asset volume retrieval shape + f64
   conversion boundary contract. HANDOFF → architect.
+- 2026-05-29 (operator M-OD): Q1 = (a) α=1.0 Kissell midpoint
+  [Recommended — DURABLE]; Q2 = (a) 90-day trailing Binance parquet
+  for per-asset V [Recommended — DURABLE]; **Q3 = (b) MIXED —
+  universe-avg V on synthetic (operator override of analyst-recommended
+  (a) Linear fallback)**. Operator framing: synthetic scenarios should
+  "behave more real-data-like for testing purposes"; accepts the v0.6.0
+  sub-namespace cleanup cost. HANDOFF → architect M-T1.
+- 2026-05-29 (architect M-T1): § Design § D-T1.1–D-T1.10 locked.
+  **ADR-0043 § Changelog amended (NOT new ADR-0050)** — mirrors the
+  2026-05-27 Murmur3 D2 amendment precedent; engine-ADR continuity
+  preserved. `SlippageModel` enum signature locked at
+  `crates/cost/src/slippage.rs` with `MAX_SLIPPAGE_BPS: u32 = 1_000`
+  const; `Default::default() = Linear { bps: 8 }` for R-NR.2 byte-
+  identity. **f64 conversion boundary**: one site in
+  `apply_slippage_sqrt`; `f64::sqrt` + `f64::round_ties_even` →
+  saturating-cast `u32`; back to Decimal for sign × multiplier. **R3
+  Option A locked** — `daily_volume_usd_trailing` extends `crates/data`;
+  no on-disk volume_proxy.toml artifact (Option B rejected). **Q3
+  operator-override implementation**: `universe_avg_daily_volume_usd_trailing`
+  helper computes arithmetic mean across the 10-USDT-pair Binance
+  universe; pinned to scenario's own end_date with 90-day lookback;
+  **9 synthetic-scenario SHAs in `v5-sqrt-impact-2026-05` namespace
+  WILL DIFFER from their `v5-realdata-medium-2026-05` linear-bps
+  twins — by-design under operator Q3=(b); v0.6.0 sub-namespace
+  cleanup commitment recorded** (D-T1.5). **MAX_SLIPPAGE_BPS = 1_000
+  (10%) confirmed**; operator-override path at M-OD if dry runs
+  surface > 5% saturation. **Namespace cascade**: 71 → 90 (additive;
+  R-NR.1 PASS at 90/90; R-NR.2 + R-NR.3 byte-identity preserved).
+  **t1937 extension**: `Namespace::SqrtImpact` + `SQRT_IMPACT_FEATURE_DIRS`
+  + `SQRT_IMPACT_STRATEGY_ANCHORS` + `t1937c` test (mirrors `t1937b`
+  precedent); Noop predicate extended to exclude sqrt-impact dirs.
+  **Wave decomposition A→F locked** at ~3.0–4.0 dev-days. Frontmatter
+  flipped `owner: architect → developer`. HANDOFF → developer.
