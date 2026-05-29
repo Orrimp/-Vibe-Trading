@@ -229,6 +229,62 @@ WITHOUT `rt.enter()` panics (falsification probe), (2) proves WITH guard no pani
 D3 test contract amended: timer tests MUST use plain `#[test]` not
 `#[tokio::test]` to avoid masking the absence of `rt.enter()` guards.
 
+## § Hotfix-2 (rt.spawn — recurrence #3, 2026-05-29)
+
+Operator cold-cache re-verify panicked AGAIN at
+`hyper-util-0.1.20/src/client/legacy/connect/dns.rs:119:24:
+there is no reactor running, must be called from the context of a Tokio 1.x runtime`.
+
+**Why the hotfix-1 fix was also insufficient**: `rt.enter()` guards set a
+thread-local that is dropped at the first `.await` boundary. reqwest's
+`GaiResolver` DNS resolver calls `tokio::task::spawn_blocking` lazily
+INSIDE the awaited HTTP future, long after all construction-scoped guards
+have dropped. The hotfix-1 fixed explicit `tokio::time::*` calls at
+construction time (correct for the K8 pattern) but was structurally
+incapable of covering reqwest DNS — which fires at a different point in the
+call graph.
+
+**Architect re-validation**: `bug-64-arch-revalidation-rt-spawn-2026-05-29.md`
+(commit `3329350`) owns the falsified assertion, derives the mechanism from
+tokio source, and validates `rt.spawn(...).await` as the durable fix.
+
+**The fix (T-BUG64-RS1..RS6)**:
+
+- **RS1**: Spawn the entire `preload_yahoo_bars` call onto `rt` via
+  `rt.spawn(async move { preload_yahoo_bars(cfg, range).await })`.
+  The spawned task runs on tokio worker threads → reactor always present.
+  Mirror of the existing proven pattern at `runner.rs` engine call.
+
+- **RS2**: Remove the now-redundant `rt.enter()` guards from
+  `fetch_with_backoff`. Remove `rt: &Handle` parameter from
+  `fetch_with_backoff` and `preload_yahoo_bars`. Remove `rt` field from
+  `DefaultLabYahooBarSource` (now a unit struct). The guards were both
+  insufficient (didn't cover DNS) and redundant (task runs on-runtime).
+
+- **RS3**: Cancel arm MUST call `fetch_join.abort()` on the `JoinHandle`.
+  Dropping a JoinHandle only DETACHES the task — the HTTP request keeps
+  running. `abort()` is best-effort (stops at next yield point) and
+  well within the ≤500 ms Stop SLA.
+
+- **RS4**: New HTTP-path off-executor test at
+  `crates/ui/tests/lab_runner_http_offexecutor_e2e.rs`. Three tests:
+  (1) proves `spawn_blocking` without `rt.spawn()` panics from
+  `futures::executor::block_on` (falsification probe), (2) proves with
+  `rt.spawn()` no panic (durable gate), (3) proves `abort()` stops
+  spawned tasks (cancel correctness gate).
+
+- **RS5**: ADR-0050 amended: D1 corrected (spawn vs guard decision rule),
+  D4 added (HTTP/reqwest must be spawned), D3 amended (HTTP test required).
+
+- **RS6**: This hotfix-2 section + tasks.md T-BUG64-RS1..RS6 + trace.toml.
+
+**Why RS4 is the durable gate**: the prior test (`lab_runner_cold_cache_
+fetch_e2e.rs`) only exercised `tokio::time::timeout`/`sleep` wrapping
+`std::future::ready(())` — it never hit DNS or `spawn_blocking`. RS4 uses
+`tokio::task::spawn_blocking` directly (the exact primitive that panicked)
+through `futures::executor::block_on` (the exact executor class). This test
+FAILS on pre-fix HEAD and PASSES after.
+
 ## § Changelog
 
 - 2026-05-29 (orchestrator): feature folder created from both
@@ -241,6 +297,11 @@ D3 test contract amended: timer tests MUST use plain `#[test]` not
   Added rt handle threading + guard pattern in fetch_with_backoff.
   New cold-cache e2e test (plain #[test] — production context).
   ADR-0050 § Changelog amended. HANDOFF → tester (re-verify).
+- 2026-05-29 (rt.spawn developer): T-BUG64-RS1..RS6 complete.
+  Architect re-validated at commit 3329350. Hotfix-2 also insufficient.
+  Durable fix: rt.spawn() for entire preload; abort() in cancel arm;
+  new HTTP off-executor test; ADR-0050 D1/D3/D4 amended.
+  HANDOFF → tester (re-verify).
 
 ## Implementation
 

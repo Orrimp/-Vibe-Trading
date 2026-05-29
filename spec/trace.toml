@@ -2380,9 +2380,13 @@ tests       = [
   "crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs::tokio_time_timeout_without_rt_enter_panics",    # ADR-0050 § D1 falsification probe
   "crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs::tokio_time_timeout_with_rt_enter_does_not_panic",  # ADR-0050 § D1 core gate
   "crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs::tokio_time_sleep_with_rt_enter_does_not_panic",    # ADR-0050 § D1 sleep path
+  # rt.spawn fix T-BUG64-RS4 (2026-05-29): HTTP/spawn_blocking off-executor gate — ADR-0050 § D4
+  "crates/ui/tests/lab_runner_http_offexecutor_e2e.rs::spawn_blocking_without_rt_spawn_panics",        # ADR-0050 § D4 falsification probe (spawn_blocking sans rt.spawn panics)
+  "crates/ui/tests/lab_runner_http_offexecutor_e2e.rs::spawn_blocking_with_rt_spawn_does_not_panic",   # ADR-0050 § D4 core gate (rt.spawn makes spawn_blocking safe)
+  "crates/ui/tests/lab_runner_http_offexecutor_e2e.rs::abort_stops_spawned_task",                      # ADR-0050 § D4 + T-BUG64-RS3 cancel abort() correctness gate
 ]
 anchors     = []   # zero anchor delta (R-NR.1); backtest report bodies byte-immutable; 84/84 PASS
-state       = "dev-done"  # hotfix 2026-05-29: fetch_with_backoff rt.enter() guard added (T-BUG64-D13). cold-cache e2e test added (T-BUG64-D14). ADR-0050 § Changelog amended (T-BUG64-D16). Operator re-verify pending → tester.
+state       = "dev-done"  # rt.spawn fix 2026-05-29: entire preload spawned onto rt (T-BUG64-RS1). redundant rt.enter() guards removed (T-BUG64-RS2). abort() in cancel arm (T-BUG64-RS3). HTTP off-executor test added (T-BUG64-RS4). ADR-0050 D1/D3/D4 amended (T-BUG64-RS5). Operator re-verify pending → tester.
 
 #
 # ─── Pick C Wave 1 — Orchestrator hygiene compounder trio promoted features (analyst M0 2026-05-29) ───

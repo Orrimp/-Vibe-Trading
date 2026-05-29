@@ -238,17 +238,16 @@ pub trait LabYahooBarSource: Send + Sync + 'static {
 /// Only compiled when both `live` and `yahoo` features are enabled because
 /// `preload_yahoo_bars` itself requires `#[cfg(feature = "yahoo")]`.
 ///
-/// # Runtime handle (ADR-0050 § D1 hotfix)
+/// # ADR-0050 § D4 (rt.spawn fix — recurrence #3)
 ///
-/// Holds the agent-side tokio runtime `Handle` so that `preload_yahoo_bars`
-/// (and inside it, `fetch_with_backoff`) can call `rt.enter()` before any
-/// `tokio::time::*` API. Without this, the production cold-cache path panics
-/// with "there is no reactor running" — see bug-64-d11-attempt-3 hotfix.
+/// The `rt` field has been removed. The production path now spawns the entire
+/// `preload_yahoo_bars` call onto the tokio runtime via `rt.spawn(async move
+/// { preload_yahoo_bars(cfg, range).await })` in `spawn_lab_run`. Running the
+/// future on a tokio worker thread (not iced's `futures::ThreadPool`) guarantees
+/// reactor context is present for reqwest's DNS `spawn_blocking` and all
+/// `tokio::time::*` calls. See `bug-64-arch-revalidation-rt-spawn-2026-05-29.md`.
 #[cfg(all(feature = "live", feature = "yahoo"))]
-pub struct DefaultLabYahooBarSource {
-    /// Tokio runtime handle for entering reactor context in `fetch_with_backoff`.
-    pub rt: tokio::runtime::Handle,
-}
+pub struct DefaultLabYahooBarSource;
 
 #[cfg(all(feature = "live", feature = "yahoo"))]
 impl LabYahooBarSource for DefaultLabYahooBarSource {
@@ -257,7 +256,7 @@ impl LabYahooBarSource for DefaultLabYahooBarSource {
         cfg: &'a LabRunConfig,
         range: &'a backtest::engine::DateRange,
     ) -> PreloadFuture<'a> {
-        Box::pin(preload_yahoo_bars(cfg, range, &self.rt))
+        Box::pin(preload_yahoo_bars(cfg, range))
     }
 }
 
@@ -302,19 +301,21 @@ fn range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
 /// - Coverage below 95% (`MissingData`)
 /// - Revision manifest missing or tampered (`RevisionMissing` / `RevisionMismatch`)
 ///
-/// # Runtime context (ADR-0050 § D1 hotfix)
+/// # ADR-0050 § D4 (rt.spawn fix — recurrence #3)
 ///
-/// `rt` is the agent-side tokio runtime `Handle`. It is threaded down to
-/// `fetch_with_backoff` so that `tokio::time::timeout` / `tokio::time::sleep`
-/// inside `fetch_with_backoff` can call `rt.enter()` at the top of the
-/// function. Without the guard those calls are permanently `Poll::Pending`
-/// on iced's `futures::ThreadPool` executor (no reactor context).
-/// See bug-64-d11-attempt-3 hotfix + ADR-0050 § D1 amendment (2026-05-29).
+/// This function no longer accepts an `rt: &Handle` parameter. The CALLER
+/// (`spawn_lab_run`) is responsible for spawning this future onto the tokio
+/// runtime via `rt.spawn(async move { preload_yahoo_bars(...).await })`.
+/// Running on a tokio worker thread guarantees reactor context for reqwest's
+/// DNS `spawn_blocking` and for `tokio::time::*` calls inside
+/// `fetch_with_backoff`. The prior `rt.enter()` guards inside
+/// `fetch_with_backoff` are removed — they are redundant (and were
+/// insufficient) once the task runs on-runtime.
+/// See `bug-64-arch-revalidation-rt-spawn-2026-05-29.md § 1-2`.
 #[cfg(feature = "yahoo")]
 async fn preload_yahoo_bars(
     cfg: &LabRunConfig,
     scenario_range: &backtest::engine::DateRange,
-    rt: &tokio::runtime::Handle,
 ) -> Result<(Vec<trading_core::Bar>, SmolStr), SmolStr> {
     use data::yahoo::{Interval, YahooBarSource, YahooError, binance_to_yahoo_ticker};
     use trading_core::Symbol;
@@ -353,8 +354,9 @@ async fn preload_yahoo_bars(
             );
             // Online fetch with exponential backoff (mirrors the CLI's
             // `fetch_with_backoff` shape). Errors here propagate up.
-            match fetch_with_backoff(&src, yahoo_ticker.as_str(), interval, start_ms, end_ms, rt)
-                .await
+            // Note: no `rt` parameter — we run on-runtime (tokio worker thread),
+            // so reactor context is guaranteed. See ADR-0050 § D4.
+            match fetch_with_backoff(&src, yahoo_ticker.as_str(), interval, start_ms, end_ms).await
             {
                 Ok(()) => {
                     tracing::info!(
@@ -392,20 +394,23 @@ async fn preload_yahoo_bars(
 /// Mirrors the CLI binary's `fetch_with_backoff` so the in-flight auto-fetch
 /// path is equivalent. 5 retries, 1s → 60s cap.
 ///
-/// # Runtime context (ADR-0050 § D1 hotfix — bug-64-d11-attempt-3)
+/// # ADR-0050 § D4 (rt.spawn fix — recurrence #3)
 ///
-/// `rt` is the agent-side tokio runtime `Handle`. This function enters the
-/// runtime via `let _guard = rt.enter()` at the top so that
-/// `tokio::time::timeout` (line ~395) and `tokio::time::sleep` (lines ~405,
-/// ~436) can register their wakeups with the correct time driver.
+/// The `rt: &Handle` parameter and per-line `rt.enter()` guards that existed
+/// in the prior hotfix (`bug-64-d11-attempt-3`) have been REMOVED. They were
+/// both insufficient and redundant:
 ///
-/// Without this guard the function is called inside `preload_yahoo_bars`
-/// which is called from inside `iced::Task::perform` — iced's
-/// `futures::ThreadPool` executor has NO tokio reactor context.
-/// `tokio::time::timeout` / `tokio::time::sleep` constructed without a
-/// reactor context are permanently `Poll::Pending` (panic: "there is no
-/// reactor running"). Per ADR-0050 § D1, every `tokio::time::*` call
-/// reachable from `iced::Task::perform` MUST have the enter guard in scope.
+/// - **Insufficient**: `rt.enter()` sets a thread-local that is dropped at
+///   the first `.await`. reqwest's DNS resolver (`GaiResolver`) calls
+///   `tokio::task::spawn_blocking` lazily INSIDE the awaited future, long
+///   after the guard is dropped. That panicked on recurrence #3.
+/// - **Redundant**: This function is now always called from inside a future
+///   spawned via `rt.spawn()` (see `spawn_lab_run`). Spawned tasks run on
+///   tokio worker threads which carry reactor + time-driver context. Every
+///   `tokio::time::*` call and every `spawn_blocking` (including reqwest DNS)
+///   finds a runtime context unconditionally.
+///
+/// See `bug-64-arch-revalidation-rt-spawn-2026-05-29.md § 1-3`.
 #[cfg(feature = "yahoo")]
 async fn fetch_with_backoff(
     src: &data::yahoo::YahooBarSource,
@@ -413,7 +418,6 @@ async fn fetch_with_backoff(
     interval: data::yahoo::Interval,
     start_ms: i64,
     end_ms: i64,
-    rt: &tokio::runtime::Handle,
 ) -> Result<(), data::yahoo::YahooError> {
     use data::yahoo::YahooError;
     use std::time::Duration;
@@ -425,27 +429,16 @@ async fn fetch_with_backoff(
     // Bug #63 — per-attempt timeout so a hung Yahoo endpoint can't freeze
     // the cockpit indefinitely. 60 s is well above normal fetch time
     // (<5 s typical) and well below operator patience threshold.
+    //
+    // No rt.enter() guard needed — this function runs on a tokio worker
+    // thread (spawned by rt.spawn() in spawn_lab_run). Reactor context
+    // is guaranteed. See ADR-0050 § D4.
     let per_attempt_timeout = Duration::from_secs(60);
 
     for attempt in 0..=max_retries {
         let fetch_future = src.fetch_and_cache(ticker, interval, start_ms, end_ms);
 
-        // ADR-0050 § D1 (bug-64-d11-attempt-3 hotfix):
-        // `tokio::time::timeout` requires a tokio reactor context at
-        // CONSTRUCTION time to register its wakeup with the time driver.
-        // Enter the runtime, construct the timeout-wrapped future, then
-        // DROP the guard before `.await` (EnterGuard is !Send, so it
-        // MUST NOT be held across an await point in a Send future).
-        // The constructed `Timeout` future carries its time-driver binding
-        // and fires correctly even after the guard is dropped — same pattern
-        // as the D-R1.1 fix at runner.rs:756 for `tokio::time::interval`.
-        let timeout_future = {
-            let _guard = rt.enter();
-            tokio::time::timeout(per_attempt_timeout, fetch_future)
-            // _guard dropped here; Timeout carries its reactor reference.
-        };
-
-        match timeout_future.await {
+        match tokio::time::timeout(per_attempt_timeout, fetch_future).await {
             Err(_) => {
                 tracing::warn!(
                     target: "lab.yahoo",
@@ -455,13 +448,7 @@ async fn fetch_with_backoff(
                     "fetch timed out — retrying with backoff"
                 );
                 if attempt < max_retries {
-                    // Construct sleep with rt context, drop guard before await.
-                    let sleep_future = {
-                        let _guard = rt.enter();
-                        tokio::time::sleep(backoff)
-                        // _guard dropped here.
-                    };
-                    sleep_future.await;
+                    tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(cap);
                     continue;
                 }
@@ -492,13 +479,7 @@ async fn fetch_with_backoff(
                         delay_s = delay.as_secs(),
                         "rate-limited by Yahoo, backing off"
                     );
-                    // Construct sleep with rt context, drop guard before await.
-                    let sleep_future = {
-                        let _guard = rt.enter();
-                        tokio::time::sleep(delay)
-                        // _guard dropped here.
-                    };
-                    sleep_future.await;
+                    tokio::time::sleep(delay).await;
                     backoff = (backoff * 2).min(cap);
                 }
                 Err(e) => return Err(e),
@@ -843,33 +824,35 @@ pub fn spawn_lab_run(
                                 .as_ref()
                                 .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
 
-                            // Pin the preload future ONCE so the same future is
-                            // polled across all `select!` iterations (attempt 1 bug
-                            // fix: calling the fn fresh each iteration created a new
-                            // future, so preload never made progress).
+                            // ADR-0050 § D4 (rt.spawn fix — recurrence #3):
+                            // Spawn the entire preload onto the tokio runtime so
+                            // that reqwest's DNS spawn_blocking and all
+                            // tokio::time::* calls inside fetch_with_backoff find
+                            // a reactor. The prior rt.enter() guard pattern was
+                            // insufficient — it covered construction time only and
+                            // dropped before .await, letting reqwest DNS fire on a
+                            // thread with NO reactor context (the exact panic at
+                            // hyper-util .../dns.rs:119 on recurrence #3).
                             //
-                            // ADR-0050 § D1 hotfix (bug-64-d11-attempt-3):
-                            // Pass `rt` into preload_yahoo_bars so that
-                            // fetch_with_backoff (called inside preload_yahoo_bars
-                            // on cache miss) can call `rt.enter()` before any
-                            // tokio::time::* API. Without this, the operator hit
-                            // "there is no reactor running" panic at runner.rs:395.
-                            let mut preload_future = std::pin::pin!(preload_yahoo_bars(
-                                &cfg_for_preload,
-                                &scenario_cfg.range,
-                                &rt,
-                            ));
+                            // Move owned copies of cfg + range into the spawned
+                            // future. DateRange is Clone; cfg_for_preload is already
+                            // a clone of cfg (line above). Both are Send + 'static.
+                            // YahooBarSource (inside preload_yahoo_bars) is Send+Sync.
+                            // See bug-64-arch-revalidation-rt-spawn-2026-05-29.md § 6.
+                            let cfg_for_spawn = cfg_for_preload.clone();
+                            let range_for_spawn = scenario_cfg.range.clone();
+                            let mut fetch_join = rt.spawn(async move {
+                                preload_yahoo_bars(&cfg_for_spawn, &range_for_spawn).await
+                            });
 
-                            // Race the preload against the periodic ticker.
-                            // `biased` ensures preload wins over ticker when both
-                            // are ready simultaneously (no ticker-event leak at
-                            // completion boundary — Surface 1 Test 3 guard).
+                            // Race the JoinHandle (not the raw future) against
+                            // ticker and cancel.
                             //
                             // Three select! arms (Bug #64 attempt-3 / ADR-0050):
-                            //   1. preload — winning case, breaks the loop.
-                            //   2. cancel  — D-R2.2: operator Stop during preload.
-                            //   3. ticker  — 250 ms progress animation.
-                            // biased order: preload > cancel > ticker.
+                            //   1. fetch_join — winning case, breaks the loop.
+                            //   2. cancel     — D-R2.2: operator Stop during preload.
+                            //   3. ticker     — 250 ms progress animation.
+                            // biased order: fetch > cancel > ticker.
                             let preload_result = loop {
                                 // D-R1.4 (ADR-0050 § D1 defense-in-depth):
                                 // Yield to the executor before each select! iteration.
@@ -881,8 +864,17 @@ pub fn spawn_lab_run(
 
                                 tokio::select! {
                                     biased;
-                                    result = &mut preload_future => {
-                                        break result;
+                                    joined = &mut fetch_join => {
+                                        // Surface both JoinError and the inner Result.
+                                        // JoinError means the spawned task panicked or
+                                        // was aborted — map to Err(SmolStr) so the UI
+                                        // shows a failure banner rather than hanging.
+                                        match joined {
+                                            Ok(inner) => break inner,
+                                            Err(e) => break Err(SmolStr::new(format!(
+                                                "preload task join error: {e}"
+                                            ))),
+                                        }
                                     }
                                     // D-R2.2 (Bug #64 / ADR-0050 § D2):
                                     // Third arm — operator Stop during cold-cache preload.
@@ -890,7 +882,15 @@ pub fn spawn_lab_run(
                                     // (structural omission — R2 root cause).
                                     // Now: cancel.cancelled() is a future that resolves
                                     // when RunCancelHandle is dropped (Stop button).
+                                    //
+                                    // ADR-0050 § D4 + T-BUG64-RS3: MUST call abort()
+                                    // on the JoinHandle. Dropping a JoinHandle only
+                                    // DETACHES the task — the HTTP request keeps
+                                    // running. abort() stops it at the next yield
+                                    // point (reqwest yields frequently; well within
+                                    // ≤500 ms Stop SLA).
                                     _ = cancel.cancelled() => {
+                                        fetch_join.abort();
                                         // Emit End{Cancelled} activity (if wired).
                                         if let Some(h) = yahoo_activity_handle {
                                             h.fail("operator cancelled");

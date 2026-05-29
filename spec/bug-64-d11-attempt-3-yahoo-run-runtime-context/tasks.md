@@ -255,6 +255,66 @@ M-T1 work required.
     training_log_recipe_harness 3/3, lab_runner_ticker_e2e 1/1, lab_runner_cancel_e2e 2/2.
   - NEW: lab_runner_cold_cache_fetch_e2e 3/3 PASS.
 
+## M-HOTFIX-2 — Developer (2026-05-29 rt.spawn fix — recurrence #3)
+
+### Tier 6 — rt.spawn() durable fix
+
+- [x] **T-BUG64-RS1**: Spawn the whole `preload_yahoo_bars` body onto `rt`
+  via `rt.spawn(async move { preload_yahoo_bars(&cfg_for_spawn, &range_for_spawn).await })`.
+  Remove `rt: &Handle` parameter from `preload_yahoo_bars` and its doc comment.
+  Remove `rt` field from `DefaultLabYahooBarSource` (now a unit struct).
+  **DONE**: `crates/ui/src/lab/runner.rs:250` (DefaultLabYahooBarSource unit struct),
+  `:253-262` (LabYahooBarSource impl without rt), `:295-317` (preload_yahoo_bars
+  signature doc + fn sig without rt), `:355-361` (fetch_with_backoff call without rt),
+  `:843-847` (rt.spawn spawn in spawn_lab_run).
+  Test: `cargo test -p ui --test spawn_lab_run_yahoo_harness --no-default-features --features live`
+  Output: `3 passed; 0 failed; finished in 0.50s`.
+
+- [x] **T-BUG64-RS2**: Remove now-redundant `rt.enter()` guards from
+  `fetch_with_backoff`. Remove `rt: &Handle` parameter from `fetch_with_backoff`.
+  Update doc comment to explain WHY the guards are removed.
+  **DONE**: `crates/ui/src/lab/runner.rs:390-510` — `fetch_with_backoff` signature
+  and body rewritten: no `rt` param, no `rt.enter()` guards, bare
+  `tokio::time::timeout(...).await` and `tokio::time::sleep(...).await`.
+  Test: `cargo build -p ui --no-default-features --features live,yahoo` → `Finished`.
+
+- [x] **T-BUG64-RS3**: Add `fetch_join.abort()` in the cancel arm of the
+  preload select! loop. Dropping a JoinHandle only detaches the task.
+  **DONE**: `crates/ui/src/lab/runner.rs:893-901` — `_ = cancel.cancelled() => {`
+  arm now calls `fetch_join.abort();` before the activity handle fail and return.
+  Test: `cargo test -p ui --test lab_runner_cancel_e2e --no-default-features --features live`
+  Output: `2 passed; 0 failed; finished in 0.10s`.
+
+- [x] **T-BUG64-RS4**: New HTTP-path off-executor test at
+  `crates/ui/tests/lab_runner_http_offexecutor_e2e.rs`. Plain `#[test]`
+  (NOT `#[tokio::test]`). 3 tests: (1) proves `spawn_blocking` without
+  `rt.spawn()` panics (falsification probe), (2) proves with `rt.spawn()`
+  no panic (durable gate), (3) proves `abort()` stops spawned tasks.
+  **DONE**: `crates/ui/tests/lab_runner_http_offexecutor_e2e.rs` — 3 tests.
+  Test: `cargo test -p ui --test lab_runner_http_offexecutor_e2e --no-default-features --features live`
+  Output: `spawn_blocking_without_rt_spawn_panics ... ok`,
+  `spawn_blocking_with_rt_spawn_does_not_panic ... ok`,
+  `abort_stops_spawned_task ... ok` — `3 passed; 0 failed; finished in 0.05s`.
+
+- [x] **T-BUG64-RS5**: ADR-0050 amendment (atomic-register).
+  Apply D1 corrected (spawn-not-guard for lazy/transitive tokio),
+  D4 new (HTTP/reqwest must use rt.spawn), D3 amended (HTTP path test required),
+  Changelog row (2026-05-29 rt.spawn revalidation).
+  Update ADR-0050 Reference table with new test file.
+  Update `spec/architecture/adr/README.md` row + frontmatter `updated:`.
+  **DONE**:
+  - `spec/architecture/adr/0050-iced-tokio-runtime-context-and-cancellation.md`:
+    D1 body rewritten, D3 amended, D4 added, Reference table updated, Changelog row added.
+  - `spec/architecture/adr/README.md`: frontmatter `updated:` bumped, ADR-0050 row amended.
+  Test: files updated — verifiable by diff.
+
+- [x] **T-BUG64-RS6**: Feature folder + trace updates.
+  - `feature.md`: § Hotfix-2 section added, § Changelog row added.
+  - `tasks.md`: this file — T-BUG64-RS1..RS6 added.
+  - `spec/trace.toml` REQ-BUG-64-D-11-ATTEMPT-3-001: new test file appended to `tests`.
+  **DONE**: All files updated in this session.
+  Test: `grep "lab_runner_http_offexecutor_e2e" spec/trace.toml` — entry present after update.
+
 ## M-PRESENT — Presenter (after operator re-verify PASS)
 
 - [ ] T-BUG64-PRESENT.1 — Assemble v0.1.0 presentation deck.
