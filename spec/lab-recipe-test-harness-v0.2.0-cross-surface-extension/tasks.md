@@ -1,7 +1,7 @@
 ---
 slug: lab-recipe-test-harness-v0.2.0-cross-surface-extension
 status: in-progress
-owner: analyst
+owner: developer
 updated: 2026-05-29
 ---
 
@@ -14,21 +14,47 @@ updated: 2026-05-29
 - [x] T-M0.3 — backlog Active row appended under § Process / tooling — _accept: PROMOTED Idea → Active 2026-05-29 annotation_
 - [x] T-M0.4 — trace row `REQ-LAB-RECIPE-TEST-HARNESS-V0-2-0-001` opened `proposed` — _accept: appended at EOF spec/trace.toml_
 
-## M-T1 — Architect (ratify Q1+Q2; lock R3 mock pattern; ADR-0048 amendment iff needed)
+## M-T1 — Architect (DONE 2026-05-29)
 
-- [ ] T-T1.1 — ratify Q1 + Q2 (default: Q1=(a), Q2=(a) durable-recommended; record overrides if operator chose (b)) — _accept: M-OD outcome locked into § Design_
-- [ ] T-T1.2 — lock R3 mock-pattern decision: single shared trait family vs per-Recipe (analyst default: per-Recipe) — _accept: § Design records choice + rationale_
-- [ ] T-T1.3 — decompose M-DEV into per-Recipe waves (one wave per Recipe — Wave A=TrainingLog, B=TrainingPoller, C=ToastDismiss, D=ActivityAuditAggregator, E=Surface-2 ServerTime + TrailMirror, F=Surface-1 ActivityRecipe) — _accept: 4-6 dev waves, each ≤ ~80 LoC + falsification probe_
-- [ ] T-T1.4 — ADR-0048 § Changelog amendment iff R3 changed the contract (likely NO — pattern carries forward verbatim) — _accept: ADR-0048 either untouched or one-line Changelog row only_
+- [x] T-T1.1 — ratify Q1 + Q2 — _outcome: Q1=(a) + Q2=(a) both DURABLE, locked at § Design intro_
+- [x] T-T1.2 — lock R3 mock-pattern decision — _outcome: per-Recipe-specific mocks (D-V0.2.0-1); rationale 4 points; rejects single shared trait_
+- [x] T-T1.3 — decompose M-DEV into waves — _outcome: Waves A→D dependency-ordered (D-V0.2.0-5); A‖B parallel, C extracts `SubscriptionBatchDescriptor` seam, D depends on C; ~940 LoC tests + ~130 LoC src deltas; ~1 week dev + 1 day tester_
+- [x] T-T1.4 — ADR-0048 § Changelog amendment — _outcome: ADR-0048 carries forward verbatim (D-V0.2.0-4); ONE Changelog row appended on ADR-0048 referencing this brief_
 
-## M-DEV — Developer (per-Recipe waves, T-D1.x → T-D6.x sequential)
+## M-DEV — Developer (Waves A→D per D-V0.2.0-5; falsification probe per file)
 
-- [ ] T-D1 — Wave A: `TrainingLogRecipe` boundary test (Surface 1) — _accept: new `crates/ui/tests/training_log_recipe_stream.rs`; ≥ 3 tests; per-Recipe T-T4 probe stub in module docstring_
-- [ ] T-D2 — Wave A: `TrainingLogRecipe` gating test (Surface 2) — _accept: new `crates/ui/tests/training_log_inflight_gating.rs` (or extend `cockpit_training_pressed_wiring.rs` if architect prefers); lifecycle assertion on `training_inflight` predicate_
-- [ ] T-D3 — Wave B: `TrainingPoller` boundary + gating tests — _accept: new file(s); MockAuditLedger uses existing `Ledger::in_memory()`; per-Recipe T-T4 probe stub_
-- [ ] T-D4 — Wave C: `ToastDismissRecipe` boundary + gating tests — _accept: new file(s); `tokio::time::pause()` + `advance()` drives interval deterministically_
-- [ ] T-D5 — Wave D: `ActivityAuditAggregator` `tokio::select!`-arm-survival boundary test — _accept: new test file in `crates/agent/tests/`; asserts channel still receives ticks AFTER N interval boundaries_
-- [ ] T-D6 — Waves E + F: ServerTime S2 + TrailMirror S2 + Activity S1 — _accept: per-Recipe test files; all per-Recipe T-T4 probes documented_
+**Wave A — TrainingLogRecipe S1 + S2 (HIGHEST URGENCY — exact Bug #64 shape; ~200 LoC + 0 src delta)**
+
+- [ ] T-D-A1 — `crates/ui/tests/training_log_recipe_stream.rs` (S1 boundary, ~120 LoC) — _accept: ≥ 3 tests covering happy-path stream + take-ownership semantics (`recipe_takes_receiver_via_arc_mutex_option`) + sender-drop EOF; module docstring `## T-T4 falsification probe` table per D-V0.2.0-3 rows 1 + 2; MockTrainingLogChannel wraps real `std::sync::mpsc::sync_channel`; DEV-CONFIRM-1 line numbers verified_
+- [ ] T-D-A2 — `crates/ui/tests/training_log_inflight_gating.rs` (S2 gating, ~80 LoC) — _accept: lifecycle assertions on `lab_state.training_inflight` predicate: `Default → None → Some after TrainingPressed → None after TrainingExited → None after TrainingCancelPressed`; T-T4 probe per D-V0.2.0-3 row 3 (state.rs:2232); pattern mirrors `lab_stop_button_gating.rs`_
+
+**Wave B — ActivityAuditAggregator S1 (parallel to A; ~150 LoC + ~20 LoC src delta)**
+
+- [ ] T-D-B1 — Src delta: extract `pub async fn run_aggregator_loop(rx, bus)` from `Aggregator::run` body in `crates/agent/src/activity_audit_aggregator.rs`; promote `Aggregator::new` to `pub` — _accept: production `spawn_aggregator` re-calls the extracted fn; all existing 5+ unit tests in this file stay PASS_
+- [ ] T-D-B2 — `crates/agent/tests/activity_audit_aggregator_select_arm_survival.rs` (~150 LoC) — _accept: ≥ 2 tests: `recv_arm_increments_after_interval_fires` + `recv_arm_survives_n_interval_boundaries`; uses `tokio::time::pause()` + `advance()` to interleave `tx.send(tick)` between interval boundaries; MockAuditTickBus wraps real `broadcast::channel`; T-T4 probe per D-V0.2.0-3 rows 4 + 5_
+
+**Wave C — Extract SubscriptionBatchDescriptor seam + ServerTime S2 + ToastDismiss S1 + S2 (sequential after A or B; ~240 LoC + ~80 LoC src delta)**
+
+- [ ] T-D-C1 — Src delta: extract `pub fn build_subscription_batch_descriptor(...) -> SubscriptionBatchDescriptor` from `crates/ui/src/bin/cockpit_live.rs::subscription()`; production calls `build_subscription_batch_descriptor(...).into_iced_subscription()`; descriptor is `Vec<SubscriptionVariant>` enum (one variant per recipe) — _accept: API-additive, anchor-clean; all `cockpit_live_lab_run_smoke.rs` + existing subscription tests stay PASS; DEV-CONFIRM-2 fallback acceptable if extraction proves invasive_
+- [ ] T-D-C2 — `crates/ui/tests/cockpit_subscription_server_time_always_batched.rs` (~60 LoC) — _accept: assert `SubscriptionVariant::ServerTime` present in descriptor across all 5 `Screen::*` variants; T-T4 probe per D-V0.2.0-3 row 6_
+- [ ] T-D-C3 — `crates/ui/tests/toast_dismiss_recipe_stream.rs` (S1 boundary, ~120 LoC) — _accept: `tokio::test(start_paused = true)` + `advance(500ms)` × N; assert N `Message::ToastTick` with monotone `Instant`; T-T4 probe per D-V0.2.0-3 row 7_
+- [ ] T-D-C4 — `crates/ui/tests/cockpit_subscription_toast_dismiss_always_batched.rs` (~60 LoC) — _accept: assert `SubscriptionVariant::ToastDismiss` present across all 5 `Screen::*` variants AND regardless of `toast_queue.is_empty()`; T-T4 probe per D-V0.2.0-3 row 8_
+
+**Wave D — TrailMirror S2 + Activity S1 + TrainingPoller S1+S2 (sequential after C for TrailMirror; ~350 LoC + ~30 LoC src delta)**
+
+- [ ] T-D-D1 — `crates/ui/tests/trail_mirror_subscription_handle_gating.rs` (S2, ~80 LoC) — _accept: 2 tests — handle present → batched; handle absent → omitted; uses `SubscriptionBatchDescriptor` from Wave C; T-T4 probe per D-V0.2.0-3 row 9_
+- [ ] T-D-D2 — `crates/ui/tests/activity_recipe_stream.rs` (S1 boundary, ~120 LoC) — _accept: ≥ 3 tests covering happy-path stream + Lagged warning path + Closed EOF; uses real `EventBus::new(BusConfig::default())`; T-T4 probe per D-V0.2.0-3 row 10_
+- [ ] T-D-D3 — Src delta + test: extract `pub async fn training_poller_stream_impl(ledger, run_id, last_seen_ts) -> BoxStream<Message>` from `crates/ui/src/lab/training_subscription.rs:108-144`; production `Recipe::stream` delegates to it. New `crates/ui/tests/training_poller_subscription.rs` (~150 LoC) — _accept: `MockAuditLedger = Ledger::in_memory()`; tests cover happy-path 3-row refresh + idempotent second-poll + run_id filter (rows for OTHER run_id ignored); T-T4 probe per D-V0.2.0-3 row 11; DEV-CONFIRM-3 fallback (b) acceptable (inline-body replication, zero src delta) if extraction balloons LoC_
+
+**Per-wave acceptance gate:**
+
+- All new tests PASS green.
+- Per-Recipe T-T4 falsification probe documented in module docstring at exact line numbers per D-V0.2.0-3.
+- `bash scripts/verify_anchors.sh` → 71/71 PASS byte-identical (no anchor drift).
+- v0.1.0 harness tests (`spawn_lab_run_yahoo_harness.rs`, `lab_stop_button_gating.rs`) stay PASS byte-identical.
+- `cargo clippy --workspace --all-features -- -D warnings` clean.
+
+**Wall-clock estimate:** A (1.5d) ‖ B (1.5d) → C (2d) → D (1.5d) ≈ 6 dev days net; +1 tester day.
 
 ## M-FINAL — Tester (per-Recipe T-T4 falsification table)
 

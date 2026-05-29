@@ -198,3 +198,24 @@ SHA assertion.
 ## Changelog
 
 - 2026-05-28 (architect): ADR authored; pattern (d) selected; D1-D6 locked.
+- 2026-05-29 (architect, lab-recipe-test-harness-v0.2.0-cross-surface-extension
+  M-T1 close): D1-D6 **carry forward verbatim** to v0.2.0 — pattern (d)
+  is the contract for all 9 R1 Recipe surfaces, not just v0.1.0's
+  `spawn_lab_run` + `lab_run_inflight` pair. v0.2.0 extends the harness
+  PREEMPTIVELY to 7 additional surfaces (`TrainingLogRecipe` S1+S2,
+  `ActivityAuditAggregator` S1, `ServerTimeRecipe` S2, `ToastDismissRecipe`
+  S1+S2, `TrailMirrorRecipe` S2, `ActivityRecipe` S1, `TrainingPoller`
+  S1+S2) via the same per-Recipe-specific mock pattern v0.1.0's
+  `MockLabYahooBarSource` proved (R3 = per-Recipe, NOT a shared trait —
+  see [`spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md`](../../lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md)
+  § D-V0.2.0-1). Three new API-additive production seams accompany the
+  extension: `run_aggregator_loop` extraction from `Aggregator::run`
+  (Wave B), `build_subscription_batch_descriptor` extraction from
+  `cockpit_live.rs::subscription()` (Wave C), `training_poller_stream_impl`
+  extraction from `TrainingPoller::stream` (Wave D). All three are
+  shape-identical to v0.1.0's `LabYahooBarSource` trait extraction —
+  covered by the existing D2 "API-additive" clause; D6 anchor-additivity
+  (71/71 byte-identical) re-verified post-v0.2.0 merge. No new ADR; no
+  D1-D6 row revised. Q2 = per-Recipe T-T4 falsification probe in each
+  test file docstring (mandatory; mirrors v0.1.0 `spawn_lab_run_yahoo_harness.rs`
+  shape) — see § D-V0.2.0-3 for the 11-row probe-line table.
