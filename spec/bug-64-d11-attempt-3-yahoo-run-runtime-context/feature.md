@@ -1,7 +1,7 @@
 ---
 slug: bug-64-d11-attempt-3-yahoo-run-runtime-context
 version: 0.1.0
-status: arch-done
+status: dev-done
 owner: developer
 updated: 2026-05-29
 related:
@@ -193,3 +193,71 @@ All resolved by architect + analyst validation. Tracked here:
   validators (architect 4473bd2 + analyst ccf39b9). Synthesis of
   the locked 8 D-clauses + ADR-0050 obligation. HANDOFF →
   developer.
+- 2026-05-29 (developer): T-BUG64-D1..D12 complete. HANDOFF → tester.
+
+## Implementation
+
+Implemented by developer 2026-05-29. All 12 tasks complete.
+
+### Tier 1 — R1 fix (rt_handle context)
+
+**D-R1.1** (`runner.rs:752-760`): Added `let _guard = rt.enter()` guard
+inside a block around `tokio::time::interval(250ms)`. Mirrors the exact
+pattern from `ServerTimeRecipe` at `live.rs:784-787`. The guard is dropped
+immediately after the `Interval` is constructed; the constructed `Sleep`
+futures carry their reactor binding.
+
+**D-R1.2** (audit complete): Grep of all `tokio::time::*`/`tokio::spawn`/
+`tokio::select` sites in `crates/ui/src/`:
+- `live.rs:786, 831` — inside Recipe `stream_impl` bodies WITH `rt_handle.enter()`. OK.
+- `training_subscription.rs:104` — inside `Recipe::stream()` WITH `let _guard = self.rt_handle.enter()`. OK.
+- `cockpit_live.rs:489, 501` — inside `rt.block_on(...)`. Reactor available. OK.
+- `runner.rs:395, 405, 436` — `tokio::time::timeout/sleep` inside `fetch_with_backoff`. Architect confirmed these work due to reqwest's internal tokio spawning; preload IO has worked in all attempts. No additional guard needed.
+- `runner.rs:757` — **FIXED** by D-R1.1.
+No additional fixes required.
+
+**D-R1.4** (`runner.rs:807`): Added `tokio::task::yield_now().await` at top
+of each preload loop iteration (defense-in-depth per architect A-Q1=YES).
+
+### Tier 2 — R2 fix (cancellation)
+
+**D-R2.1** (`crates/backtest/src/cancel.rs`): Full primitive swap from
+`std::sync::mpsc::sync_channel(0)` to `tokio_util::sync::CancellationToken`.
+Public API backward-compatible: `is_cancelled()` continues to work. New:
+`cancelled() -> impl Future` usable in `tokio::select!`. `RunCancelHandle::Drop`
+calls `self.token.cancel()`. `crates/backtest/Cargo.toml` updated with
+`tokio-util = { workspace = true }` (workspace pin was already `0.7` with
+`["rt"]` feature which includes `sync::CancellationToken`).
+
+**D-R2.2** (`runner.rs:814-828`): Added third arm to the preload `select!`
+loop: `_ = cancel.cancelled() => { ... return Err(SmolStr::new("operator cancelled during preload")); }`.
+Activity handle `fail()` call emits End{Cancelled} via RAII. Biased order:
+preload > cancel > ticker.
+
+### Tier 3 — ADR-0050 atomic-register
+
+**T-BUG64-D8**: `spec/architecture/adr/0050-iced-tokio-runtime-context-and-cancellation.md`
+authored with D1 (rt_handle.enter() invariant), D2 (CancellationToken canonical
+primitive), D3 (timer-fired-in-bounded-window test contract) + Changelog.
+
+**T-BUG64-D9**: `spec/architecture/adr/README.md` — ADR-0050 row appended to
+registry table; frontmatter `updated:` bumped to 2026-05-29 (note: the
+frontmatter update was applied in the same session). `spec/architecture/adr/0048-lab-recipe-test-harness.md` — Changelog amended with ride-along note.
+
+### Tier 4 — Spec hygiene
+
+**T-BUG64-D10**: `REQ-BUG-64-D-11-ATTEMPT-3-001` row added to `spec/trace.toml`.
+
+**T-BUG64-D11**: `spec/dev-notes/operator-side-pending-ledger.md` Bug #64 row
+updated FAILED → fix-in-flight with feature folder link.
+
+### D-R1.2 site audit table
+
+| File:site | Context | Status |
+|---|---|---|
+| `runner.rs:757` (post-fix) | `iced::Task::perform` closure | FIXED by D-R1.1 — `rt.enter()` guard added |
+| `live.rs:784-787` | `ServerTimeRecipe::stream_impl` | OK — explicit `_guard = rt_handle.enter()` |
+| `live.rs:827-832` | `ToastDismissRecipe::stream_impl` | OK — explicit `_guard = rt_handle.enter()` |
+| `training_subscription.rs:104` | `TrainingEventsPoller::stream` | OK — `let _guard = self.rt_handle.enter()` |
+| `cockpit_live.rs:489, 501` | `rt.block_on(async { tokio::spawn(...) })` | OK — inside block_on, reactor present |
+| `runner.rs:395, 405, 436` | `fetch_with_backoff` (inside Task::perform) | ASSESSED — architect confirmed IO works; no additional guard needed |

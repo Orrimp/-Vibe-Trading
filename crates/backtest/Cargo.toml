@@ -67,6 +67,11 @@ time.workspace = true
 sha2.workspace = true
 clap.workspace = true
 smol_str.workspace = true
+# Bug #64 D.1.1 attempt-3 / ADR-0050 § D2: CancellationToken as canonical
+# cooperative-cancellation primitive. `rt` feature is the minimal surface
+# needed for `tokio_util::sync::CancellationToken`; default-features = false
+# keeps the workspace lean (avoids pulling codec/io).
+tokio-util = { workspace = true }
 
 [[test]]
 name = "threshold_sweep_readonly"

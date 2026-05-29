@@ -2347,3 +2347,35 @@ crates      = ["crates/ui"]
 tests       = ["crates/ui/tests/contrast.rs::all_theme_pairs_meet_wcag", "crates/ui/tests/contrast.rs::pairs_table_meets_minimum_count", "crates/ui/tests/contrast.rs::ref_vector_white_on_black_is_21", "crates/ui/tests/contrast.rs::ref_vector_black_on_white_is_21", "crates/ui/tests/contrast.rs::ref_vector_777_on_fff_is_4_48", "crates/ui/tests/contrast.rs::ref_vector_888_on_000_is_5_92", "crates/ui/tests/contrast.rs::opt_outs_all_have_reasons"]
 anchors     = []   # zero anchor delta (pure test infra addition); 75/75 stays byte-identical
 state       = "tester-done"  # tester M-FINAL 2026-05-29 VERDICT → PASS. WARN mode 7/7 PASS (6 eprintln lines confirmed: fg_3_on_panel_raised_dark=3.75, fg_on_accent_on_accent_light=3.52, up_500_on_canvas_light=4.46, down_500_on_canvas_light=4.33, warn_500_on_canvas_light=2.96, warn_500_on_panel_light=3.11). Gate mode panic with same 6 violations. P-CONT-1.A PROBE_LOW=1.25 confirmed. P-CONT-1.B MIN_PAIRS=200 floor fires confirmed. 4 ref-vector tests all PASS. visual_snapshots 51/51 PASS. spawn_lab_run_yahoo_harness 3/3, training_log_recipe_harness 3/3, visual_fail_html_self_test 2/2. 75/75 anchors byte-identical. fmt EXIT:0. Zero new clippy errors from contrast.rs. spec-lint 116 violations — delta vs 94 baseline is carry-forward class only (dev-done/arch-done status, archived doc path, REQ-UI-CONTRAST trace-broken-path format mismatch). HANDOFF → presenter.
+
+[[req]]
+id          = "REQ-BUG-64-D-11-ATTEMPT-3-001"
+title       = "Bug #64 D.1.1 attempt-3 — Yahoo+Run runtime context + cancellation: fix dormant progress label (R1) and broken Stop button (R2) during cold-cache preload window"
+feature     = "bug-64-d11-attempt-3-yahoo-run-runtime-context"
+product     = "spec/product.md"
+arch        = [
+  "spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/feature.md",          # D-R1.1..D-R2.3 + D-R1.4 + D-Tr.1 + ADR-0050 obligation
+  "spec/dev-notes/bug-64-arch-validation-2026-05-29.md",                      # architect validation — Q1..Q5 answered; D-R1.1/R1.2/R1.3/R1.4/R2.1/R2.2/R2.3 locked
+  "spec/dev-notes/bug-64-analyst-validation-2026-05-29.md",                   # analyst validation — Q-refresh + all Qs closed; one-ship Q1=(a) reaffirmed
+  "spec/dev-notes/bug-64-yahoo-run-code-map-2026-05-29.md",                   # code-map — cancellation reachability table + H-R1d confirmation
+  "spec/architecture/adr/0050-iced-tokio-runtime-context-and-cancellation.md", # ADR-0050 — D1 rt_handle.enter() invariant + D2 CancellationToken + D3 timer test contract
+  "spec/architecture/adr/README.md",                                           # ADR-0050 row added atomically
+  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                     # Changelog amended — new e2e tests extend Surface 1 contract per ADR-0050 § D3
+]
+crates      = [
+  "crates/backtest/src/cancel.rs",                # D-R2.1: CancellationToken primitive swap + cancelled() future
+  "crates/ui/src/lab/runner.rs",                  # D-R1.1: rt.enter() guard + D-R2.2: cancel select! arm + D-R1.4: yield_now
+]
+tests       = [
+  "crates/ui/tests/lab_runner_ticker_e2e.rs::ticker_fires_at_least_3_times_in_1s_window",  # D-R1.3 / ADR-0050 § D3
+  "crates/ui/tests/lab_runner_cancel_e2e.rs::stop_during_preload_exits_within_500ms",       # D-R2.3 / ADR-0050 § D2
+  "crates/ui/tests/lab_runner_cancel_e2e.rs::cancel_before_preload_start_is_instant",       # cancel edge case
+  "crates/backtest/src/cancel.rs::tests::cancel_handle_drop_signals_receiver",              # D-R2.1 regression
+  "crates/backtest/src/cancel.rs::tests::cancelled_future_resolves_after_drop",             # ADR-0050 § D2 verification
+  "crates/backtest/src/cancel.rs::tests::is_cancelled_reflects_token_state",                # backward-compat
+  "crates/ui/tests/spawn_lab_run_yahoo_harness.rs",  # R-NR.2 regression suite (3/3 PASS)
+  "crates/ui/tests/lab_stop_button_gating.rs",       # R-NR.2 regression suite (3/3 PASS)
+  "crates/ui/tests/training_log_recipe_harness.rs",  # R-NR.2 regression suite Wave A (3/3 PASS)
+]
+anchors     = []   # zero anchor delta (R-NR.1); backtest report bodies byte-immutable; 84/84 PASS
+state       = "dev-done"  # developer M-DEV 2026-05-29: T-BUG64-D1..D12 complete. D-R1.1 rt.enter() guard (runner.rs:744), D-R2.1 CancellationToken swap (cancel.rs), D-R2.2 cancel select! arm (runner.rs:809-828), D-R1.4 yield_now (runner.rs:807), D-R1.3 ticker e2e (lab_runner_ticker_e2e.rs PASS), D-R2.3 cancel e2e (lab_runner_cancel_e2e.rs PASS), ADR-0050 authored + README row + frontmatter bumped + ADR-0048 amended. HANDOFF → tester.

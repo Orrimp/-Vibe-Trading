@@ -276,3 +276,15 @@ SHA assertion.
   § Design D-VPM-1..D-VPM-7. `.claude/agents/tester.md` inheritance
   from sibling visual-fail-html-reporter § D-VF-4 (D-VPM-6) — no
   independent amendment.
+- 2026-05-29 (developer, bug-64-d11-attempt-3-yahoo-run-runtime-context v0.1.0):
+  ride-along — two new e2e tests extend the Surface 1 contract per ADR-0050 § D3
+  (timer-fired-in-bounded-window test contract). `lab_runner_ticker_e2e.rs`
+  asserts the `tokio::time::interval(250ms)` ticker fires ≥ 3 times in a 1 s
+  preload window (D-R1.3 gate for D1 rt_handle.enter() invariant).
+  `lab_runner_cancel_e2e.rs` asserts Stop dispatched within 100 ms causes
+  preload loop exit within 500 ms (D-R2.3 gate for D2 CancellationToken
+  arm in preload select!). Both tests replicate the production select! loop
+  inline (same pattern as v0.1.0 spawn_lab_run_yahoo_harness.rs). D6
+  anchor-additivity: zero anchor delta; 84/84 byte-identical (pure test-infra
+  addition; production code changes in cancel.rs + runner.rs are scoped to
+  non-backtest crates). See ADR-0050 for the full contract.

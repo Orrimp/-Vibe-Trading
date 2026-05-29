@@ -739,9 +739,25 @@ pub fn spawn_lab_run(
                             });
 
                             let preload_start = std::time::Instant::now();
+                            // D-R1.1 (Bug #64 attempt-3 / ADR-0050 § D1):
+                            // iced::Task::perform closures run on iced's
+                            // futures::ThreadPool executor which has NO tokio
+                            // reactor context. `tokio::time::interval` requires a
+                            // reactor at construction time; without `rt.enter()` the
+                            // returned Sleep futures are permanently Poll::Pending
+                            // (no panic, just silent hang — exact operator symptom
+                            // "endless spinning 0/1 bars · 0.0s").
+                            //
+                            // Pattern from ServerTimeRecipe (live.rs:780-797) and
+                            // documented in cockpit_live.rs:110-125 doc comment.
+                            //
                             // Tick every 250 ms — visible animation on cold cache.
-                            let mut ticker =
-                                tokio::time::interval(std::time::Duration::from_millis(250));
+                            let mut ticker = {
+                                let _guard = rt.enter(); // enter tokio reactor context
+                                tokio::time::interval(std::time::Duration::from_millis(250))
+                                // _guard dropped here; the constructed Sleep futures
+                                // carry their reactor binding and continue to fire.
+                            };
                             // Consume the immediate (t=0) tick so the first sleep is
                             // ~250 ms from here — well after the sentinel has fired.
                             ticker.tick().await;
@@ -775,11 +791,40 @@ pub fn spawn_lab_run(
                             // `biased` ensures preload wins over ticker when both
                             // are ready simultaneously (no ticker-event leak at
                             // completion boundary — Surface 1 Test 3 guard).
+                            //
+                            // Three select! arms (Bug #64 attempt-3 / ADR-0050):
+                            //   1. preload — winning case, breaks the loop.
+                            //   2. cancel  — D-R2.2: operator Stop during preload.
+                            //   3. ticker  — 250 ms progress animation.
+                            // biased order: preload > cancel > ticker.
                             let preload_result = loop {
+                                // D-R1.4 (ADR-0050 § D1 defense-in-depth):
+                                // Yield to the executor before each select! iteration.
+                                // This gives iced's subscription reconciliation a
+                                // canonical wake point, making the sentinel-vs-recipe-
+                                // register ordering deterministic rather than scheduler-
+                                // dependent. Cost: ~0 µs.
+                                tokio::task::yield_now().await;
+
                                 tokio::select! {
                                     biased;
                                     result = &mut preload_future => {
                                         break result;
+                                    }
+                                    // D-R2.2 (Bug #64 / ADR-0050 § D2):
+                                    // Third arm — operator Stop during cold-cache preload.
+                                    // Previously zero cancel checks existed in this loop
+                                    // (structural omission — R2 root cause).
+                                    // Now: cancel.cancelled() is a future that resolves
+                                    // when RunCancelHandle is dropped (Stop button).
+                                    _ = cancel.cancelled() => {
+                                        // Emit End{Cancelled} activity (if wired).
+                                        if let Some(h) = yahoo_activity_handle {
+                                            h.fail("operator cancelled");
+                                        }
+                                        return Err(smol_str::SmolStr::new(
+                                            "operator cancelled during preload",
+                                        ));
                                     }
                                     _ = ticker.tick() => {
                                         // Clamp to u64::MAX on overflow (impossible in
