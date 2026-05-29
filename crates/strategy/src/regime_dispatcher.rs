@@ -130,6 +130,25 @@ struct SymbolState {
 
 // ── RegimeDispatcher ─────────────────────────────────────────────────────────
 
+/// A single pending regime-tag audit entry produced when the confidence gate
+/// fires (ADR-0049 § D6).
+///
+/// The dispatcher accumulates these synchronously in `on_bar`; the caller
+/// drains them asynchronously via `drain_pending_regime_tags()` and writes
+/// each entry to the audit ledger with `audit::journal::post_regime_tag`.
+///
+/// Using an accumulator avoids introducing async into the `Strategy::on_bar`
+/// signature (which is synchronous by design).
+#[derive(Debug, Clone)]
+pub struct PendingRegimeTag {
+    /// The symbol the classification applies to (e.g. `"BTCUSDT"`).
+    pub symbol: smol_str::SmolStr,
+    /// Regime label: `"bull"`, `"bear"`, `"volatile"`, `"calm"`.
+    pub regime: smol_str::SmolStr,
+    /// Maximum posterior probability at the decision bar (as a display string).
+    pub max_confidence: smol_str::SmolStr,
+}
+
 /// Strategy-switching dispatcher: routes each bar to either `MomentumStrategy`
 /// (Bull/Bear) or `CashHoldStrategy` (Volatile/Calm) based on the current
 /// regime classification.
@@ -138,6 +157,14 @@ struct SymbolState {
 ///
 /// `C: RegimeClassifier` is the classifier backend.  The default for production
 /// is `MarkovSwitchingClassifier`.  Tests can substitute a lightweight stub.
+///
+/// ## Audit hook (Wave D — ADR-0049 § D3)
+///
+/// Every time the confidence gate fires and a regime classification is resolved,
+/// a [`PendingRegimeTag`] is appended to `pending_regime_tags`. Callers drain
+/// this buffer asynchronously via `drain_pending_regime_tags()` and persist
+/// each entry with `audit::journal::post_regime_tag`. This decouples the sync
+/// `on_bar` path from async I/O.
 pub struct RegimeDispatcher<C: RegimeClassifier> {
     id: StrategyId,
     /// Inner momentum strategy for Bull/Bear regimes.
@@ -156,6 +183,12 @@ pub struct RegimeDispatcher<C: RegimeClassifier> {
     bars_since_refit: BTreeMap<Symbol, usize>,
     /// Whether the classifier has been fit at least once.
     is_fitted: bool,
+    /// Pending regime-tag audit entries accumulated synchronously in `on_bar`.
+    ///
+    /// Populated when the D6 confidence gate fires (max_p ≥ 0.70).
+    /// NOT populated during hysteresis holds (max_p < 0.70).
+    /// Callers drain via `drain_pending_regime_tags()` and write async.
+    pending_regime_tags: Vec<PendingRegimeTag>,
 }
 
 impl<C: RegimeClassifier> std::fmt::Debug for RegimeDispatcher<C> {
@@ -193,6 +226,7 @@ impl<C: RegimeClassifier> RegimeDispatcher<C> {
             symbol_state: BTreeMap::new(),
             bars_since_refit: BTreeMap::new(),
             is_fitted: false,
+            pending_regime_tags: Vec::new(),
         }
     }
 
@@ -283,9 +317,40 @@ impl<C: RegimeClassifier> RegimeDispatcher<C> {
             return Some(self.current_regime);
         }
 
+        // Confidence gate passed — accumulate an audit entry (Wave D, ADR-0049 § D6).
+        // NOT emitted during hysteresis hold (the early-return above handles that path).
+        let regime_name = last_posterior.regime_name();
+        let max_p = last_posterior.max_confidence();
+        // Format max_confidence to 6 decimal places to match the audit DB microsecond style.
+        let max_confidence_str = format!("{max_p:.6}");
+        self.pending_regime_tags.push(PendingRegimeTag {
+            symbol: smol_str::SmolStr::new(bar.symbol.0.as_str()),
+            regime: smol_str::SmolStr::new(regime_name),
+            max_confidence: smol_str::SmolStr::new(&max_confidence_str),
+        });
+        debug!(
+            symbol = bar.symbol.0.as_str(),
+            regime = regime_name,
+            max_p,
+            "regime tag queued for audit"
+        );
+
         // Map regime name to dispatch target.
-        let new_regime = regime_name_to_dispatch(last_posterior.regime_name());
+        let new_regime = regime_name_to_dispatch(regime_name);
         Some(new_regime)
+    }
+
+    /// Drain and return all pending [`PendingRegimeTag`] entries accumulated
+    /// since the last call to this method.
+    ///
+    /// The caller is responsible for writing each entry to the audit ledger
+    /// via `audit::journal::post_regime_tag`. Entries are only present when
+    /// the ADR-0049 § D6 confidence gate (max_p ≥ 0.70) fired; hysteresis
+    /// holds do NOT produce entries.
+    ///
+    /// Returns an empty `Vec` if no confidence-gate events fired since last drain.
+    pub fn drain_pending_regime_tags(&mut self) -> Vec<PendingRegimeTag> {
+        std::mem::take(&mut self.pending_regime_tags)
     }
 }
 
@@ -744,5 +809,128 @@ size = "equal_weight"
         let closes: VecDeque<f64> = vec![100.0].into_iter().collect();
         let lr = compute_log_returns(&closes);
         assert!(lr.is_empty());
+    }
+
+    // ── Wave D audit hook tests (ADR-0049 § D3 / T-D-D1) ─────────────────────
+
+    /// T-D-D1 gate: `drain_pending_regime_tags()` returns entries when the
+    /// confidence gate fires on a resolved regime (max_p ≥ 0.70).
+    ///
+    /// This is the primary "audit hook fires on resolved regime" test required
+    /// by the Wave D task spec.
+    #[test]
+    fn audit_hook_fires_on_resolved_regime() {
+        // Use a Bull classifier (max_p = 0.90 ≥ 0.70) → gate fires.
+        let mut d = make_dispatcher(StubClassifier::bull(), 10);
+
+        // Before warm-up: no tags.
+        assert!(
+            d.drain_pending_regime_tags().is_empty(),
+            "No tags before fit"
+        );
+
+        // Warm up with 12 bars (11 closes → min_fit_bars=10 satisfied → gate can fire).
+        warm_up(&mut d, 12);
+
+        // After warm-up, at least one PendingRegimeTag must have been accumulated.
+        let tags = d.drain_pending_regime_tags();
+        assert!(
+            !tags.is_empty(),
+            "Confidence gate fired (max_p=0.90 ≥ 0.70) — must produce ≥ 1 PendingRegimeTag"
+        );
+
+        // All emitted tags must have the Bull regime label.
+        for tag in &tags {
+            assert_eq!(
+                tag.regime.as_str(),
+                "bull",
+                "Bull classifier → all tags must be 'bull'"
+            );
+            assert_eq!(
+                tag.symbol.as_str(),
+                "BTCUSDT",
+                "Symbol must match the bar's symbol"
+            );
+            // max_confidence string must be a parseable f64 ≥ 0.70.
+            let parsed: f64 = tag
+                .max_confidence
+                .as_str()
+                .parse()
+                .expect("max_confidence must be a valid float string");
+            assert!(
+                parsed >= 0.70,
+                "max_confidence must be ≥ 0.70 (was {parsed})"
+            );
+        }
+
+        // After draining, the buffer must be empty.
+        assert!(
+            d.drain_pending_regime_tags().is_empty(),
+            "Buffer must be empty after drain"
+        );
+    }
+
+    /// T-D-D1 gate: hysteresis hold does NOT emit a `PendingRegimeTag`.
+    ///
+    /// When `max_p < 0.70`, the dispatcher retains previous routing without
+    /// accumulating any audit entry.
+    #[test]
+    fn audit_hook_silent_on_hysteresis_hold() {
+        // Uncertain classifier: max_p = 0.25 < 0.70 → hysteresis hold.
+        let mut d = make_dispatcher(StubClassifier::uncertain(), 10);
+
+        // Warm up past min_fit_bars so the filter runs but gate does NOT fire.
+        warm_up(&mut d, 12);
+
+        let tags = d.drain_pending_regime_tags();
+        assert!(
+            tags.is_empty(),
+            "Hysteresis hold (max_p=0.25 < 0.70) must NOT produce any PendingRegimeTag; \
+             got {} entries",
+            tags.len()
+        );
+    }
+
+    /// T-D-D1 gate: `drain_pending_regime_tags()` clears the buffer on each call.
+    #[test]
+    fn drain_pending_regime_tags_clears_buffer() {
+        let mut d = make_dispatcher(StubClassifier::bear(), 10);
+        warm_up(&mut d, 12);
+
+        // First drain gets all accumulated tags.
+        let first = d.drain_pending_regime_tags();
+        assert!(
+            !first.is_empty(),
+            "First drain must return tags from warm-up"
+        );
+
+        // Second drain must be empty (buffer cleared).
+        let second = d.drain_pending_regime_tags();
+        assert!(
+            second.is_empty(),
+            "Second drain must be empty (buffer was cleared by first drain)"
+        );
+    }
+
+    /// T-D-D1 gate: tags from different regimes carry correct regime labels.
+    #[test]
+    fn audit_hook_regime_label_matches_classifier() {
+        // Volatile classifier → tags carry "volatile".
+        let mut d = make_dispatcher(StubClassifier::volatile(), 10);
+        warm_up(&mut d, 12);
+        let tags = d.drain_pending_regime_tags();
+        assert!(!tags.is_empty());
+        for tag in &tags {
+            assert_eq!(tag.regime.as_str(), "volatile");
+        }
+
+        // Calm classifier → tags carry "calm".
+        let mut d2 = make_dispatcher(StubClassifier::calm(), 10);
+        warm_up(&mut d2, 12);
+        let tags2 = d2.drain_pending_regime_tags();
+        assert!(!tags2.is_empty());
+        for tag in &tags2 {
+            assert_eq!(tag.regime.as_str(), "calm");
+        }
     }
 }

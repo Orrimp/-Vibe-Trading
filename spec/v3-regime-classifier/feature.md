@@ -785,3 +785,54 @@ refresh tightens to operator-actionable M0 shape and supersedes the
   `proposed → arch-done`. Frontmatter `owner: architect → developer`
   (no UI surface at v0.1.0 beyond Wave D Trail column extension —
   handled by developer not ui-designer per single-track scope).
+
+## Implementation — Wave D (2026-05-29)
+
+**T-D-D1 — Audit JournalEntry::RegimeTag** (developer agent)
+
+- `AuditEvent::RegimeTag { symbol, regime, max_confidence }` variant **appended** (not
+  inserted) at end of `AuditEvent` enum in `crates/audit/src/tick.rs:149-155`. Additive
+  contract preserved: existing fixtures never emit this variant — byte-identity unchanged.
+- `post_regime_tag(ledger, symbol, regime, max_confidence, ts)` writer in
+  `crates/audit/src/journal.rs:2151-2197`. Reuses `strategy_events` table with
+  `kind="RegimeTag"`, `error_code="regime_tag"`, `error_summary` = JSON blob
+  `{"symbol":"...","regime":"...","max_confidence":"..."}`. No SQL migration required.
+- `PendingRegimeTag` struct + `drain_pending_regime_tags()` method added to
+  `RegimeDispatcher` in `crates/strategy/src/regime_dispatcher.rs:133-355`.
+  The accumulator decouples the sync `Strategy::on_bar` from async audit I/O:
+  entries are pushed only when the ADR-0049 § D6 confidence gate fires (max_p ≥ 0.70);
+  hysteresis holds do NOT produce entries. Callers drain async-side and write each
+  entry via `post_regime_tag`.
+- **Tests** (all PASS):
+  - `crates/audit/tests/journal_regime_tag_round_trip.rs` — 5 tests:
+    `journal_entry_regime_tag_round_trips`, `regime_tag_all_regime_variants_persist`,
+    `regime_tag_emits_audit_tick`, `regime_tag_audit_event_serde_byte_identity`,
+    `empty_ledger_has_no_regime_tag_rows`.
+  - In-module `regime_dispatcher::tests` — 4 tests:
+    `audit_hook_fires_on_resolved_regime` (primary Wave D gate),
+    `audit_hook_silent_on_hysteresis_hold`, `drain_pending_regime_tags_clears_buffer`,
+    `audit_hook_regime_label_matches_classifier`.
+
+**T-D-D2 — Trail UI regime-tag column** (developer agent)
+
+- `regime_tag_cell(regime: Option<&str>, mode: ThemeMode) -> Element<'_, Msg>` pure
+  rendering function in `crates/ui/src/screens/trail.rs:242-252`. Maps regime strings to
+  styled text using EXISTING Lumen color tokens only (R-NR.4 zero-new-design-tokens):
+  Bull=FG_1, Bear=DOWN_500, Volatile=WARN_500, Calm=FG_3, None/unknown=FG_4.
+- `regime_tag_column_header() -> &'static str` accessor at `trail.rs:220-222`.
+- 4 new string constants in `crates/ui/src/strings.rs`:
+  `LAB_REGIME_VOLATILE="volatile"`, `LAB_REGIME_CALM="calm"`,
+  `TRAIL_COL_REGIME="Regime"`, `TRAIL_NO_REGIME_TAG="—"`. All registered in `all()`.
+- **Tests** (all PASS):
+  - `crates/ui/tests/panel_snapshots.rs` `regime_tag_column` module — 6 snapshot tests:
+    `__regime_tag_column__bull`, `__regime_tag_column__bear`, `__regime_tag_column__volatile`,
+    `__regime_tag_column__calm`, `__regime_tag_column__none`, `regime_tag_column_header_matches_constant`.
+  - 5 snapshot files in `crates/ui/tests/snapshots/panel_snapshots__regime_tag_column__*.snap`.
+  - Consistency test `cargo test -p ui --test consistency` PASS (strings.rs `all()` integrity).
+
+**Verification gates** (all PASS 2026-05-29):
+- `cargo fmt --all` — clean (no diff after run).
+- `cargo clippy -p audit -p strategy --all-targets -- -D warnings` — 0 errors.
+- UI crate pre-existing clippy errors (unrelated to Wave D) — not introduced by this wave.
+- `bash scripts/verify_anchors.sh` — PASS 71/71 (Wave D is additive; no backtest-touching changes).
+- Trace.toml `tests` column updated with Wave D test files.

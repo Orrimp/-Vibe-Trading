@@ -47,7 +47,8 @@ pub use patchtst_overlay_momentum::{
     PatchTstOverlayMomentumConfig, PatchTstOverlayMomentumStrategy,
 };
 pub use regime_dispatcher::{
-    DispatchedRegime, RegimeDispatcher, RegimeDispatcherConfig, with_regime_dispatcher,
+    DispatchedRegime, PendingRegimeTag, RegimeDispatcher, RegimeDispatcherConfig,
+    with_regime_dispatcher,
 };
 pub use registry::{
     PendingJournalEvent, RegistryEventKind, StrategyRegistry, StrategyTomlEntry,

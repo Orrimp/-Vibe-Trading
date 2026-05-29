@@ -135,6 +135,28 @@ pub enum AuditEvent {
         /// Dollar value of slippage applied (price adjustment * qty).
         slippage_dollars_applied: Decimal,
     },
+    /// Emitted from `journal::post_regime_tag` after the dispatcher resolves a
+    /// regime with `max_p ≥ 0.70` (ADR-0049 § D6 confidence gate).
+    ///
+    /// Fired once per bar per symbol where the forward filter returns a result
+    /// above the confidence threshold. NOT emitted when hysteresis holds (i.e.
+    /// when the confidence gate fails and the previous regime is retained).
+    ///
+    /// **Additive invariant (v3-regime-classifier Wave D):** this variant is
+    /// APPENDED at the end of `AuditEvent`; no existing variant ordinal changes.
+    /// Existing audit-DB fixtures do NOT emit this variant — byte-identity on
+    /// all 71 anchored bodies is preserved.
+    RegimeTag {
+        /// The symbol this regime observation pertains to (e.g. `"BTCUSDT"`).
+        symbol: SmolStr,
+        /// Regime name as lowercase string: `"bull"`, `"bear"`, `"volatile"`,
+        /// `"calm"`. Matches `RegimeProbability::regime_name()` output.
+        regime: SmolStr,
+        /// Maximum posterior probability from the forward filter `[0, 1]`.
+        /// Stored as a Decimal-as-TEXT string (ADR-0003 convention) so the
+        /// JSON representation is lossless and deterministic.
+        max_confidence: SmolStr,
+    },
 }
 
 // ── pub(crate) helper: journal-side tee (single-line call at each writer) ──
@@ -180,6 +202,7 @@ fn variant_label(event: &AuditEvent) -> &'static str {
         AuditEvent::UptimeIntervalClosed { .. } => "UptimeIntervalClosed",
         AuditEvent::LlmForecastEmitted { .. } => "LlmForecastEmitted",
         AuditEvent::SimulatedExecMetrics { .. } => "SimulatedExecMetrics",
+        AuditEvent::RegimeTag { .. } => "RegimeTag",
         _ => "Unknown",
     }
 }

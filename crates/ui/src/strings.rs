@@ -765,6 +765,17 @@ pub const TRAIL_NODE_NO_LLM_TRANSCRIPT: &str = "(no transcript recorded)";
 pub const TRAIL_BOOL_YES: &str = "yes";
 pub const TRAIL_BOOL_NO: &str = "no";
 
+// Trail regime tag column (v3-regime-classifier Wave D — ADR-0049 § D3).
+// Additive column in the Phase F Trail list view: shows the regime classification
+// that was active for this bar. Rendered when a `RegimeTag` audit event is present.
+
+/// Column header label for the regime column in the Trail list view.
+pub const TRAIL_COL_REGIME: &str = "Regime";
+
+/// Placeholder rendered in the regime column when no regime tag is recorded
+/// for this bar (pre-classifier bars, or bars below the D6 confidence threshold).
+pub const TRAIL_NO_REGIME_TAG: &str = "—";
+
 // Compare matrix screen — empty state placeholder.
 pub const MATRIX_EMPTY_STATE: &str =
     "No strategies registered — configure strategies to populate the matrix.";
@@ -1121,6 +1132,36 @@ pub fn fmt_lab_cache_state_summary(populated_count: usize, iso_date: Option<&str
     }
 }
 
+// ── v3-regime-classifier Wave D — regime label strings ───────────────────────
+//
+// R-NR.4: zero new design tokens. Only the two Q1=(b) regime labels that are
+// NEW relative to the existing `Bull`/`Bear`/`Chop` set need to be registered
+// here. The existing `bull`, `bear`, `chop` display strings are produced by
+// `RegimeTag::Display` in `crates/reflection` — they are not UI-copy constants
+// and therefore don't belong in this module.
+//
+// These two constants are the user-visible column labels for the Trail UI
+// regime column (Trail screen, list-mode and node-mode). They mirror
+// `RegimeTag::Volatile.to_string()` and `RegimeTag::Calm.to_string()` exactly
+// so that the UI column is byte-identical to the audit event payload.
+// Registered in `all()` per the K-NR constraint: zero new tokens means
+// "no new colors / sizes / fonts"; string constants are permitted and required
+// so the consistency test passes.
+
+/// Regime label for the `Volatile` regime state (ADR-0049 § D2, Q1=(b)).
+///
+/// Rendered in the Trail screen regime column when the dispatcher routes to
+/// `CashHoldStrategy` due to a Volatile regime classification. Matches
+/// `RegimeTag::Volatile.to_string()` byte-identically.
+pub const LAB_REGIME_VOLATILE: &str = "volatile";
+
+/// Regime label for the `Calm` regime state (ADR-0049 § D2, Q1=(b)).
+///
+/// Rendered in the Trail screen regime column when the dispatcher routes to
+/// `CashHoldStrategy` due to a Calm regime classification. Matches
+/// `RegimeTag::Calm.to_string()` byte-identically.
+pub const LAB_REGIME_CALM: &str = "calm";
+
 // ── Fallbacks / placeholders ─────────────────────────────────────────────────
 
 /// Rendered when a value is known to be "no data yet" rather than zero.
@@ -1340,6 +1381,9 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TRAIL_NODE_NO_LLM_TRANSCRIPT", TRAIL_NODE_NO_LLM_TRANSCRIPT),
         ("TRAIL_BOOL_YES", TRAIL_BOOL_YES),
         ("TRAIL_BOOL_NO", TRAIL_BOOL_NO),
+        // v3-regime-classifier Wave D — Trail regime column (ADR-0049 § D3)
+        ("TRAIL_COL_REGIME", TRAIL_COL_REGIME),
+        ("TRAIL_NO_REGIME_TAG", TRAIL_NO_REGIME_TAG),
         ("MATRIX_EMPTY_STATE", MATRIX_EMPTY_STATE),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
@@ -1650,6 +1694,9 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("ACTIVITY_KIND_TRAINING_LABEL", ACTIVITY_KIND_TRAINING_LABEL),
         ("ACTIVITY_TAPE_MORE_PREFIX", ACTIVITY_TAPE_MORE_PREFIX),
         ("ACTIVITY_TAPE_MORE_SUFFIX", ACTIVITY_TAPE_MORE_SUFFIX),
+        // v3-regime-classifier Wave D — regime label strings (ADR-0049 § D2)
+        ("LAB_REGIME_VOLATILE", LAB_REGIME_VOLATILE),
+        ("LAB_REGIME_CALM", LAB_REGIME_CALM),
     ]
 }
 

@@ -1,0 +1,10 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: "cell_summary(Some(\"volatile\"))"
+---
+widget: regime_tag_cell
+column_header: Regime
+input_regime: volatile
+label: volatile
+color_token: warn
+color_is_existing_lumen_token: true

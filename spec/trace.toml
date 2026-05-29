@@ -536,7 +536,10 @@ tests       = [
   "crates/strategy/src/cash_hold.rs",
   "crates/strategy/src/regime_dispatcher.rs",
   "crates/strategy/tests/regime_dispatcher_end_to_end.rs",
-  # Waves D-F: pending (audit/Trail UI + backtest anchors + tester harness)
+  # Wave D: audit JournalEntry::RegimeTag + dispatcher audit hook + Trail UI snapshots
+  "crates/audit/tests/journal_regime_tag_round_trip.rs",
+  "crates/ui/tests/panel_snapshots.rs",
+  # Waves E-F: pending (backtest anchors + tester harness)
 ]
 anchors     = [
   # 4 planned under namespace v3.0.0-regime (ADR-0049 § D5); Wave E adds at developer M-FINAL.

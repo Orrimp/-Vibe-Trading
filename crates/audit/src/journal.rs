@@ -2106,6 +2106,95 @@ pub async fn verify_balance(ledger: &Ledger, transaction_id: &str) -> Result<(),
     Ok(())
 }
 
+// ── v3-regime-classifier Wave D — regime_tag audit writer ────────────────────
+
+/// Persist a `RegimeTag` observation to the `strategy_events` table and fire
+/// the [`AuditEvent::RegimeTag`] tick (ADR-0049 § D3 / Wave D).
+///
+/// Called by the `RegimeDispatcher` **after** the dispatcher resolves a regime
+/// with `max_confidence ≥ 0.70` (ADR-0049 § D6 confidence gate). This writer
+/// is NOT called when hysteresis holds (confidence gate failed; previous regime
+/// retained).
+///
+/// ## Storage shape
+///
+/// Reuses the existing `strategy_events` table (no new migration needed for
+/// Wave D). The `kind` column carries `"RegimeTag"` and the structured fields
+/// are stored in `error_summary` as a compact JSON object:
+///
+/// ```json
+/// {"symbol":"BTCUSDT","regime":"bull","max_confidence":"0.823456"}
+/// ```
+///
+/// `strategy_id` is `None` (the event is classifier-level, not strategy-level).
+/// `error_code` is `"regime_tag"` (machine-readable discriminator for readers
+/// that grep `strategy_events` without parsing `error_summary`).
+///
+/// ## Timestamp format
+///
+/// 6-digit microsecond RFC-3339 (HF-3 / architect risk #4 determinism gate).
+/// The `ts` parameter follows the same `Option<&str>` convention as the other
+/// `strategy_event` delegating writers: `Some(ts)` injects a deterministic
+/// synthetic clock value (for backtest/test replay); `None` stamps wall-clock.
+///
+/// ## Additive invariant
+///
+/// Existing `strategy_events` readers that filter on `kind` will receive these
+/// rows in the full scan but are unaffected (no existing reader iterates all
+/// kinds without filtering). The `AuditEvent::RegimeTag` tick is `#[non_exhaustive]`
+/// — unknown variants are silently skipped by old consumers.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] on SQL error.
+#[instrument(
+    name = "ledger.post_regime_tag",
+    skip(ledger),
+    fields(symbol, regime, max_confidence)
+)]
+pub async fn post_regime_tag(
+    ledger: &Ledger,
+    symbol: &str,
+    regime: &str,
+    max_confidence: &str,
+    ts: Option<&str>,
+) -> Result<(), LedgerError> {
+    let error_summary = serde_json::json!({
+        "symbol": symbol,
+        "regime": regime,
+        "max_confidence": max_confidence,
+    })
+    .to_string();
+    strategy_event(
+        ledger,
+        &StrategyEventWrite {
+            kind: "RegimeTag",
+            strategy_id: None,
+            old_hash: None,
+            new_hash: None,
+            source_path: "",
+            operator: "system",
+            error_code: Some("regime_tag"),
+            error_summary: Some(&error_summary),
+            ts,
+            venue: None,
+        },
+    )
+    .await?;
+
+    // Post-commit tee: fire RegimeTag AuditEvent tick after the SQL row is durable.
+    crate::tick::emit(
+        ledger,
+        crate::tick::AuditEvent::RegimeTag {
+            symbol: smol_str::SmolStr::new(symbol),
+            regime: smol_str::SmolStr::new(regime),
+            max_confidence: smol_str::SmolStr::new(max_confidence),
+        },
+    );
+    tracing::debug!(symbol, regime, max_confidence, "regime_tag persisted");
+    Ok(())
+}
+
 // ── Phase 5 — operator-write audit writers (Q10 unit tests) ─────────────────
 //
 // Sibling-of-`kill_switch_tripped_test` shape (lives at

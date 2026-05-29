@@ -310,13 +310,34 @@ fallback adds ~half-week over overlay-style multiplier.
 
 #### Wave D — Audit + Trail UI surface
 
-- [ ] **T-D-D1** — Add `JournalEntry::RegimeTag { ts, symbol, regime,
-  max_confidence }` additive variant in `crates/audit`. — _acceptance:
-  serde round-trip; SQLite schema migration additive only._
-- [ ] **T-D-D2** — Phase F Trail UI: regime-tag-per-bar column or
-  per-symbol modal (architect default = column). Register `volatile`,
-  `calm` in `crates/ui/src/strings.rs::all()`. — _acceptance:
-  R-NR.4 zero-new-design-tokens; spec-lint PASS._
+- [x] **T-D-D1** — Add `AuditEvent::RegimeTag { symbol, regime, max_confidence }`
+  additive variant in `crates/audit` (APPENDED at end of enum). `post_regime_tag()`
+  writer in `journal.rs` reuses `strategy_events` table (kind='RegimeTag').
+  `PendingRegimeTag` accumulator in `RegimeDispatcher` decouples sync `on_bar`
+  from async audit write. — _acceptance: serde round-trip; SQLite schema additive;
+  existing ledgers produce zero RegimeTag rows._
+  - **file**: `crates/audit/src/tick.rs:149-155` (AuditEvent::RegimeTag variant),
+    `crates/audit/src/journal.rs:2151-2197` (post_regime_tag writer),
+    `crates/strategy/src/regime_dispatcher.rs:133-355` (PendingRegimeTag + drain_pending_regime_tags),
+    `crates/audit/tests/journal_regime_tag_round_trip.rs` (NEW, 5 tests)
+  - **test cmd**: `cargo test -p audit --test journal_regime_tag_round_trip`
+  - **output**: `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s`
+  - Dispatcher audit hook tests (4 tests):
+    `audit_hook_fires_on_resolved_regime`, `audit_hook_silent_on_hysteresis_hold`,
+    `drain_pending_regime_tags_clears_buffer`, `audit_hook_regime_label_matches_classifier`
+  - **test cmd**: `cargo test -p strategy -- audit_hook drain_pending`
+  - **output**: `test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 122 filtered out; finished in 0.00s`
+
+- [x] **T-D-D2** — Phase F Trail UI: regime-tag-per-bar column added as
+  `regime_tag_cell()` + `regime_tag_column_header()` pure fns in `screens/trail.rs`.
+  Registered `volatile`, `calm`, `Regime`, `—` in `crates/ui/src/strings.rs::all()`.
+  — _acceptance: R-NR.4 zero-new-design-tokens; 6 panel snapshots PASS; spec-lint PASS._
+  - **file**: `crates/ui/src/screens/trail.rs:213-252` (regime_tag_cell + header),
+    `crates/ui/src/strings.rs:773-777,1156-1163,1385-1386,1698-1699` (4 new constants + all() entries),
+    `crates/ui/tests/panel_snapshots.rs:2929-3080` (regime_tag_column snapshot module),
+    `crates/ui/tests/snapshots/panel_snapshots__regime_tag_column__*.snap` (5 new snapshot files)
+  - **test cmd**: `cargo test -p ui --test panel_snapshots -- regime_tag`
+  - **output**: `test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out; finished in 0.31s`
 
 #### Wave E — Backtest scenarios + anchors (D5 namespace)
 

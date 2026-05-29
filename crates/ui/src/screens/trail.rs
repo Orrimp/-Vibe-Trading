@@ -11,11 +11,19 @@
 //! selected node + breadcrumb "back to list".
 //!
 //! The `Screen::Audit` deprecated alias routes here (R2.4).
+//!
+//! ## Regime tag column (v3-regime-classifier Wave D — ADR-0049 § D3)
+//!
+//! The [`regime_tag_cell`] function renders a regime classification string
+//! (`"bull"`, `"bear"`, `"volatile"`, `"calm"`) as a styled text element for
+//! use in the Trail list view. The cell is additive — it does NOT modify the
+//! existing list / trail-node layouts.
 
 use iced::widget::{Button, Column, Row, Text, button};
 use iced::{Border, Element, Length};
 
 use crate::state::{Cockpit, Message};
+use crate::strings::{LAB_REGIME_CALM, LAB_REGIME_VOLATILE, TRAIL_COL_REGIME, TRAIL_NO_REGIME_TAG};
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::trail_node::{self, TrailNode, TrailNodeKind};
 
@@ -200,4 +208,45 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
         .push(breadcrumb)
         .push(main_area)
         .into()
+}
+
+// ── Regime tag column helpers (v3-regime-classifier Wave D — ADR-0049 § D3) ──
+
+/// Returns the column header label for the regime column in the Trail list view.
+///
+/// Wraps [`TRAIL_COL_REGIME`] so callers in snapshot tests and the UI don't
+/// need to import the string constant directly.
+#[must_use]
+pub fn regime_tag_column_header() -> &'static str {
+    TRAIL_COL_REGIME
+}
+
+/// Render a regime classification cell for the Trail list view.
+///
+/// Takes the regime name string from an `AuditEvent::RegimeTag` payload (e.g.
+/// `"bull"`, `"bear"`, `"volatile"`, `"calm"`) and returns a styled `Text`
+/// widget. `None` renders the [`TRAIL_NO_REGIME_TAG`] placeholder.
+///
+/// ## Visual contract (R-NR.4 — zero new design tokens)
+///
+/// | Regime   | Color          | Rationale                                     |
+/// |----------|----------------|-----------------------------------------------|
+/// | `"bull"` | `FG_1` (body)  | Positive trend — neutral readable text        |
+/// | `"bear"` | `NEG_500`      | Negative trend — existing semantic red        |
+/// | `"volatile"` | `WARN_500` | High volatility — existing semantic amber     |
+/// | `"calm"` | `FG_3` (muted) | Low activity — muted foreground               |
+/// | `None` / unknown | `FG_4` (dim) | No data                               |
+///
+/// All colors are existing Lumen tokens — zero new design tokens (R-NR.4).
+#[must_use]
+pub fn regime_tag_cell<Msg: 'static>(regime: Option<&str>, mode: ThemeMode) -> Element<'_, Msg> {
+    let (label, col) = match regime {
+        Some("bull") => ("bull", color::FG_1.current(mode)),
+        Some("bear") => ("bear", color::DOWN_500.current(mode)),
+        Some(s) if s == LAB_REGIME_VOLATILE => (LAB_REGIME_VOLATILE, color::WARN_500.current(mode)),
+        Some(s) if s == LAB_REGIME_CALM => (LAB_REGIME_CALM, color::FG_3.current(mode)),
+        Some(_other) => ("unknown", color::FG_4.current(mode)),
+        None => (TRAIL_NO_REGIME_TAG, color::FG_4.current(mode)),
+    };
+    Text::new(label).size(text::SMALL).color(col).into()
 }
