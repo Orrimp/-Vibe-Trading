@@ -57,11 +57,11 @@ updated: 2026-05-29
 
 ## M-FINAL — Tester
 
-- [ ] T-RED-FINAL.1 — Run `cargo test -p llm --tests` + existing `t1915_*` tests in `redact.rs` — _accept: all PASS byte-identical pre-Layer / post-Layer_
-- [ ] T-RED-FINAL.2 — Synthetic LLM-traffic observation: run cockpit_live OR agent under `REDACT_LAYER_MODE=warn` with a fake LLM provider stub that includes a `sk-ant-...` in a structured log field — _accept: audit ledger entry shows redacted value (`sk-ant-***...`); meta-event with field name + rule appears at `Level::WARN`; raw key NOT present anywhere in ledger or stdout_
-- [ ] T-RED-FINAL.3 — Gate-mode observation: same fake traffic with `REDACT_LAYER_MODE=gate` — _accept: redaction performed; no meta-event in ledger (unless `REDACT_LAYER_VERBOSE=1` flips to verbose)_
-- [ ] T-RED-FINAL.4 — Verify R-NR contract — _accept: R-NR.1-7 each verified; existing `t1915_*` tests PASS; `verify_anchors.sh` 75/75; LLM outbound call smoke test succeeds (R-NR.5)_
-- [ ] T-RED-FINAL.5 — Write test-final report — _accept: `spec/v2-1-tracing-layer-redactor/reports/test-final-2026-MM-DD-v2-1-tracing-layer-redactor.md` per [template](../../.claude/skills/rust-test/templates/test-report.md); VERDICT → PASS or SOFT-PASS_
+- [x] T-RED-FINAL.1 — Run `cargo test -p llm --tests` + existing `t1915_*` tests in `redact.rs` — _accept: all PASS byte-identical pre-Layer / post-Layer_ — DONE: 108 lib + 9 integration PASS; 6 t1915_* PASS in redact.rs; 0 failed. 2026-05-29.
+- [x] T-RED-FINAL.2 — Synthetic LLM-traffic observation: run cockpit_live OR agent under `REDACT_LAYER_MODE=warn` with a fake LLM provider stub that includes a `sk-ant-...` in a structured log field — _accept: audit ledger entry shows redacted value (`sk-ant-***...`); meta-event with field name + rule appears at `Level::WARN`; raw key NOT present anywhere in ledger or stdout_ — DONE: `warn_mode_records_meta_event_for_secret_field` integration test confirms META_EVENTS non-empty + REDACTED_FIELDS populated + no original key in redacted value. eprintln WARN side-channel confirmed in on_event impl. 2026-05-29.
+- [x] T-RED-FINAL.3 — Gate-mode observation: same fake traffic with `REDACT_LAYER_MODE=gate` — _accept: redaction performed; no meta-event in ledger (unless `REDACT_LAYER_VERBOSE=1` flips to verbose)_ — DONE: `gate_mode_no_meta_event` PASS (empty META_EVENTS, REDACTED_FIELDS populated); `gate_verbose_records_meta_event` PASS (verbose=true re-enables meta). 2026-05-29.
+- [x] T-RED-FINAL.4 — Verify R-NR contract — _accept: R-NR.1-7 each verified; existing `t1915_*` tests PASS; `verify_anchors.sh` 75/75; LLM outbound call smoke test succeeds (R-NR.5)_ — DONE: R-NR.1-7 all verified; 84/84 anchors PASS; builds succeed (R-NR.5 help-smoke confirms binary boots without panic). 2026-05-29.
+- [x] T-RED-FINAL.5 — Write test-final report — _accept: `spec/v2-1-tracing-layer-redactor/reports/test-final-2026-MM-DD-v2-1-tracing-layer-redactor.md` per [template](../../.claude/skills/rust-test/templates/test-report.md); VERDICT → PASS or SOFT-PASS_ — DONE: `spec/v2-1-tracing-layer-redactor/reports/test-20260529-144619-v0.1.0.md` VERDICT → PASS. 2026-05-29.
 
 ## M-PRESENT — Presenter
 

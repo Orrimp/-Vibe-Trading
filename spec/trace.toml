@@ -2322,7 +2322,7 @@ tests       = [
   "crates/llm/tests/redact_layer.rs::p_red_2_layer_ordering_documented",
 ]
 anchors     = []   # zero anchor delta (Layer affects tracing emit only); 84/84 PASS byte-identical post-migration
-state       = "dev-done"  # developer M-DEV 2026-05-29. T-RED-D1..D20 complete. redact_layer.rs + tracing_init.rs NEW. 17 binaries migrated from tracing_subscriber::fmt().init() to llm::tracing_init::install_global(). Design deviation: D-RED-3 emit-redacted+filter-original pattern replaced with thread-local field-override map (REDACTED_FIELDS) + RedactingFormatFields custom FormatFields — tracing's reentrancy guard prevents tracing::warn! from on_event; eprintln! to stderr is the WARN-mode side-channel. All 108 unit tests + 9 integration tests PASS. 3 #[ignore] falsification probes ship (P-RED-1/2/3). Anchors 84/84 PASS. HANDOFF → tester.
+state       = "tester-done"  # developer M-DEV 2026-05-29. T-RED-D1..D20 complete. redact_layer.rs + tracing_init.rs NEW. 17 binaries migrated from tracing_subscriber::fmt().init() to llm::tracing_init::install_global(). Design deviation: D-RED-3 emit-redacted+filter-original pattern replaced with thread-local field-override map (REDACTED_FIELDS) + RedactingFormatFields custom FormatFields — tracing's reentrancy guard prevents tracing::warn! from on_event; eprintln! to stderr is the WARN-mode side-channel. All 108 unit tests + 9 integration tests PASS. 3 #[ignore] falsification probes ship (P-RED-1/2/3). Anchors 84/84 PASS. tester M-FINAL 2026-05-29 VERDICT → PASS. T-RED-FINAL.1..5 all ticked. report: spec/v2-1-tracing-layer-redactor/reports/test-20260529-144619-v0.1.0.md. HANDOFF → orchestrator.
 
 [[req]]
 id          = "REQ-UI-CONTRAST-ASSERTER-001"

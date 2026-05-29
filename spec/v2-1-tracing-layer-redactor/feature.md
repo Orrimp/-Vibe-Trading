@@ -1,8 +1,8 @@
 ---
 slug: v2-1-tracing-layer-redactor
 version: 0.1.0
-status: dev-done
-owner: tester
+status: tester-done
+owner: presenter
 priority: P2
 updated: 2026-05-29
 ---
