@@ -132,6 +132,33 @@ is an overclaim. Re-verify each citation (file:line + test cmd +
 output line). If any fails, route `HANDOFF → developer (re-verify
 and un-tick)` and quote the failed citation.
 
+## Visual failures — HTML artifact emission
+
+When any test under `crates/ui/tests/` fails a visual assertion
+(via the `fixtures::visual_diff::matches_screenshot` or
+`matches_rgb_buffers` helpers), the helper automatically emits a
+self-contained `visual-fail-<test_name>-<ts>.html` report next to
+the existing forensic PNG triple at `target/visual-diff/`. The HTML
+inlines the baseline, actual, and perceptual-diff PNGs as
+base64 data URIs alongside the assertion location and body — the
+operator opens it in Safari/Chrome and sees the full triage view
+in one click.
+
+- **Cite the HTML path in your test-final report's "Visual failures"
+  section** rather than re-describing what the PNGs show. Example:
+  `Visual fail report: target/visual-diff/charts_screen_dark_operator-20260529T143012Z.html`.
+- **Opt-in spec-persist**: when the operator wants a durable artifact
+  for an investigation, set `EMIT_VISUAL_FAIL_TO_SPEC=1` AND
+  `VISUAL_FAIL_SPEC_SLUG=<feature-slug>` before re-running the test;
+  the helper writes a byte-identical copy to
+  `spec/<slug>/reports/visual-fail-<test_name>-<ts>.html`. Default
+  OFF — do NOT set these in CI workflows (per K2 falsifier, spec
+  bloats fast otherwise).
+- **The HTML is additive.** The existing forensic PNG triple
+  (`<test>.png`, `<test>-actual.png`, baseline under
+  `crates/ui/tests/visual-baselines/`) continues to be emitted so
+  the operator can open each standalone if needed.
+
 ## Handoff
 
 Emit one prose verdict/handoff line:

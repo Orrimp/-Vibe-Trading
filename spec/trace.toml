@@ -2200,10 +2200,10 @@ arch        = [
   # ARCHITECT M-T1 (2026-05-29) — § Design D-VF-1..D-VF-6 + Q1 (a) ratified + Q2 (a) ratified + Q3 (a) overridden to (b) (tester.md had no pre-existing visual-failure stanza).
   "spec/visual-fail-html-reporter/feature.md#design",                                 # § Design — D-VF-1 HTML schema + D-VF-2 helper signature + D-VF-3 trigger contract + D-VF-4 tester.md amendment + D-VF-5 failure-mode + D-VF-6 ADR amendment
 ]
-crates      = []   # developer fills at M-DEV (Cargo.toml dev-dep; visual_fail_html.rs helper; visual_diff.rs wire-up; .claude/agents/tester.md amendment)
-tests       = []   # developer fills at M-DEV (self-test pair under tempfile::TempDir)
-anchors     = []   # zero delta (helper emits target/ output on FAIL; PASS path byte-identical); 71/71 stays byte-identical
-state       = "arch-done"  # architect M-T1 2026-05-29. § Design D-VF-1..D-VF-6 locked; Q1 (a) + Q2 (a) ratified; Q3 (a) overridden to (b) (tester.md has no pre-existing visual-failure stanza to append to — new top-level section inserted between Tick discipline and Handoff). ADR-0048 § Changelog amendment row drafted; no new ADR. HANDOFF → developer (single M-DEV wave; ~1 dev day; 11 T-VFH-D bullets; falsification probe P-VF-1 spec'd for dry-run during D4).
+crates      = ["crates/ui"]   # Cargo.toml base64+chrono dev-deps (T-VFH-D1); visual_fail_html.rs helper (T-VFH-D2+D3); visual_diff.rs wire-up 3 call sites (T-VFH-D5); .claude/agents/tester.md amendment (T-VFH-D7)
+tests       = ["emit_visual_fail_html_default_path_inlines_pngs", "emit_visual_fail_html_spec_persist_writes_byte_identical_copy"]   # self-test pair in crates/ui/tests/fixtures/visual_fail_html.rs #[cfg(test)] mod tests (T-VFH-D6); invoked via --test visual_fail_html_self_test
+anchors     = []   # zero delta (helper emits target/ output on FAIL; PASS path byte-identical); 75/75 stays byte-identical
+state       = "dev-done"  # developer M-DEV 2026-05-29. T-VFH-D1..D9 complete. Helper at crates/ui/tests/fixtures/visual_fail_html.rs; 3 call sites wired in visual_diff.rs; self-test pair PASS; P-VF-1 falsification probe honoured D-VF-5 contract; tester.md amended with "Visual failures — HTML artifact emission" section; 75/75 anchors PASS. HANDOFF → tester (M-FINAL).
 
 [[req]]
 id          = "REQ-UI-TEST-HARNESS-VIEWPORT-MATRIX-001"

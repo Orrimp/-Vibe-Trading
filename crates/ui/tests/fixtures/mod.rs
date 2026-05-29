@@ -31,6 +31,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, dead_code, non_snake_case)]
 
 pub mod visual_diff;
+// visual-fail-html-reporter v0.1.0 (T-VFH-D2) — HTML artifact emitter.
+pub mod visual_fail_html;
 
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;

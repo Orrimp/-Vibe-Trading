@@ -165,6 +165,16 @@ image = { version = "=0.25.6", default-features = false, features = ["png"] }
 # `ui` crate per architect's H-A3 falsifier resolution
 # (`spec/ui-quality-gate-overhaul/feature.md ## H-A3`).
 proptest = { workspace = true }
+# visual-fail-html-reporter v0.1.0 (T-VFH-D1) — base64 encodes PNG bytes
+# into data URIs for the self-contained visual-fail HTML artifact.
+# Already at 0.22.1 in Cargo.lock via reqwest/aws-*/rustls-* transitive
+# deps; adding as an explicit dev-dep for clarity. Standard alphabet
+# (STANDARD engine) — the canonical pick for HTML data URIs.
+base64 = "0.22"
+# visual-fail-html-reporter v0.1.0 (T-VFH-D2) — UTC timestamp for the
+# HTML filename (`YYYYMMDDTHHMMSSZ`). Already in Cargo.lock at 0.4.44 via
+# transitive deps; dev-dep only (helper lives in tests/).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [features]
 # Default features — operator's everyday-use bundle. Includes `live` (real

@@ -39,6 +39,9 @@ use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, RgbImage, Rgba, RgbaImage};
 
+// visual-fail-html-reporter v0.1.0 (T-VFH-D5) — wire-up at FAIL branches.
+use super::visual_fail_html::{VisualFailContext, emit_visual_fail_html};
+
 /// Where the diff PNGs land — sibling of `target/<profile>/` so the
 /// operator can find them under one path regardless of build profile.
 fn visual_diff_dir() -> PathBuf {
@@ -113,6 +116,25 @@ pub fn matches_screenshot(
 
     if baseline_rgba.dimensions() != actual.dimensions() {
         write_diff_artifacts(&actual, &baseline_rgba, test_name)?;
+        // T-VFH-D5 call site 1: DimensionMismatch — no perceptual diff.
+        let emit_result = emit_visual_fail_html(VisualFailContext {
+            test_name,
+            assertion_location: concat!(file!(), ":", line!()),
+            assertion_body: &format!(
+                "dimension mismatch — baseline {}×{}, actual {}×{}",
+                baseline_rgba.width(),
+                baseline_rgba.height(),
+                width,
+                height,
+            ),
+            baseline_png_path: baseline,
+            actual_png_path: &actual_path(test_name),
+            diff_png_path: None,
+            optional_vlm_verdict: None,
+        });
+        if let Err(ref err) = emit_result {
+            eprintln!("warning: visual-fail HTML emission failed: {err}");
+        }
         return Err(VisualDiffError::DimensionMismatch {
             baseline_w: baseline_rgba.width(),
             baseline_h: baseline_rgba.height(),
@@ -129,6 +151,24 @@ pub fn matches_screenshot(
     }
 
     write_diff_artifacts(&actual, &baseline_rgba, test_name)?;
+    // T-VFH-D5 call site 2: Mismatch — diff PNG available.
+    let emit_result = emit_visual_fail_html(VisualFailContext {
+        test_name,
+        assertion_location: concat!(file!(), ":", line!()),
+        assertion_body: &format!(
+            "visual baseline mismatch:\n  baseline: {}\n    actual: {}\n      diff: {}",
+            baseline.display(),
+            actual_path(test_name).display(),
+            diff_path(test_name).display(),
+        ),
+        baseline_png_path: baseline,
+        actual_png_path: &actual_path(test_name),
+        diff_png_path: Some(&diff_path(test_name)),
+        optional_vlm_verdict: None,
+    });
+    if let Err(ref err) = emit_result {
+        eprintln!("warning: visual-fail HTML emission failed: {err}");
+    }
     Err(VisualDiffError::Mismatch {
         baseline: baseline.to_path_buf(),
         diff: diff_path(test_name),
@@ -160,6 +200,31 @@ pub fn matches_rgb_buffers(
         return Ok(());
     }
     write_rgb_diff_artifacts(actual, baseline, test_name)?;
+    // T-VFH-D5 call site 3: matches_rgb_buffers Mismatch — diff PNG available.
+    // The baseline here is an in-memory buffer (no source file), so we save
+    // it to a temp path that the HTML emitter can read.
+    let baseline_tmp_path = visual_diff_dir().join(format!("{test_name}-baseline-tmp.png"));
+    let has_baseline_tmp = baseline.save(&baseline_tmp_path).is_ok();
+    if has_baseline_tmp {
+        let emit_result = emit_visual_fail_html(VisualFailContext {
+            test_name,
+            assertion_location: concat!(file!(), ":", line!()),
+            assertion_body: &format!(
+                "visual baseline mismatch (in-memory buffer for {test_name}):\n    actual: {}\n      diff: {}",
+                actual_path(test_name).display(),
+                diff_path(test_name).display(),
+            ),
+            baseline_png_path: &baseline_tmp_path,
+            actual_png_path: &actual_path(test_name),
+            diff_png_path: Some(&diff_path(test_name)),
+            optional_vlm_verdict: None,
+        });
+        if let Err(ref err) = emit_result {
+            eprintln!("warning: visual-fail HTML emission failed: {err}");
+        }
+        // Best-effort cleanup of the tmp baseline copy.
+        let _ = fs::remove_file(&baseline_tmp_path);
+    }
     Err(VisualDiffError::Mismatch {
         baseline: PathBuf::from(format!("(in-memory buffer for {test_name})")),
         diff: diff_path(test_name),

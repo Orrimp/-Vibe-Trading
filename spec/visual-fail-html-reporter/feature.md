@@ -1,8 +1,8 @@
 ---
 slug: visual-fail-html-reporter
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 updated: 2026-05-29
 ---
@@ -642,8 +642,34 @@ Probe runtime ≤ 5 seconds. No fixture mutation needed.
 
 ## Implementation
 
-_(developer fills after architect M-T1 ratifies the helper module
-location + base64 crate pick + tester.md stanza shape.)_
+**Developer M-DEV close — 2026-05-29.**
+
+### Files changed
+
+- `crates/ui/Cargo.toml` — added `base64 = "0.22"` and `chrono = { version = "0.4", default-features = false, features = ["clock"] }` under `[dev-dependencies]` (T-VFH-D1). Chrono was already in `Cargo.lock` at 0.4.44 via transitive deps; the explicit dep adds the `clock` feature for `Utc::now()`.
+- `crates/ui/tests/fixtures/visual_fail_html.rs` — NEW file (T-VFH-D2 + D3 + D6). Exports `VisualFailContext<'_>`, `VisualFailHtmlError`, and `emit_visual_fail_html(ctx) -> Result<PathBuf, VisualFailHtmlError>`. HTML template matches D-VF-1 skeleton with inline `<style>` block. Base64 encoding via `base64::engine::general_purpose::STANDARD`. PNG dimensions via `image::ImageReader::open(path)?.into_dimensions()?`. Env-var-gated spec-persist (D-VF-3). Self-test pair in `#[cfg(test)] mod tests` guarded by a static `Mutex<()>` to prevent env var races in parallel test execution. `workspace_root()` uses `std::fs::canonicalize` to resolve `..` components so TempDir-overridden paths match what the test asserts.
+- `crates/ui/tests/fixtures/mod.rs` — added `pub mod visual_fail_html;` (T-VFH-D2).
+- `crates/ui/tests/fixtures/visual_diff.rs` — wired 3 call sites (T-VFH-D5): (a) `matches_screenshot` DimensionMismatch branch (~line 120), (b) `matches_screenshot` Mismatch branch (~line 155), (c) `matches_rgb_buffers` Mismatch branch (~line 205). The in-memory-buffer case (c) saves a temp baseline PNG, emits HTML, then cleans up. PASS path byte-identical — zero new code reachable on `Ok(())`.
+- `crates/ui/tests/visual_fail_html_self_test.rs` — NEW integration test entry point that imports `fixtures/mod.rs` and lets Cargo discover the `#[test]` fns inside `visual_fail_html::tests`.
+- `.claude/agents/tester.md` — inserted `## Visual failures — HTML artifact emission` section at line 135, between `## Tick discipline (T_FINAL ownership)` and `## Handoff` (T-VFH-D7, D-VF-4 verbatim stanza, 22 lines, section count 10 → 11).
+- `spec/trace.toml` — row `REQ-VISUAL-FAIL-HTML-REPORTER-001` updated: `crates = ["crates/ui"]`, `tests = [...]` two self-test fn names, `state = "dev-done"` (T-VFH-D8).
+
+### Falsification probe P-VF-1 outcome
+
+Per D-VF-5: `return Err(VisualFailHtmlError::Io(io::Error::other("synthetic probe")))` inserted at function entry. Test `visual_diff_helper_writes_diff_png_on_mismatch` still PASS (`Err(VisualDiffError::Mismatch { .. })`). Stderr shows `warning: visual-fail HTML emission failed: I/O error: synthetic probe`. D-VF-5 contract honoured. Stub reverted.
+
+### Deviations from architect spec
+
+1. **`chrono` added as dev-dep** — D-VF-2 specified `chrono::Utc::now().format(...)` for the timestamp but did not explicitly list chrono as a dep to add. Since chrono is not a direct dep of `crates/ui` (only transitive), it was added under `[dev-dependencies]` alongside `base64`.
+2. **`matches_rgb_buffers` call site (c)** — D-VF-3 said "diff PNG available" for this branch. However, since the baseline here is in-memory (no source file), a temp PNG is written to `target/visual-diff/<test>-baseline-tmp.png`, used for the HTML, then deleted. This is additive (no change to the existing `Mismatch` return).
+3. **Parallel-safety mutex** — The self-tests use a `static Mutex<()>` to serialize env var mutations. This is a test-layer implementation detail not in the spec but required for correctness.
+
+### Dev gates summary
+
+- `cargo fmt -p ui -- --check` → EXIT:0
+- `cargo test -p ui --test visual_fail_html_self_test --no-default-features --features live` → `test result: ok. 2 passed; 0 failed` (3× consecutive)
+- `bash scripts/verify_anchors.sh` → `ANCHORS PASS (75 / 75)`
+- Clippy: pre-existing failures in `crates/ui/src/lab/runner.rs` + `crates/agent/` (Wave B WIP, not introduced by this feature). Zero new violations in `visual_fail_html.rs` or `visual_diff.rs`.
 
 ## Verification
 
