@@ -372,6 +372,84 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+<!-- updated 2026-05-29 (analyst, lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit
+     M0 close) — **PROMOTED Idea → Active 2026-05-29**. Closes the v0.1.3
+     deck's explicit owned-debt commitment (presented at v0.1.3
+     M-PRESENTER 2026-05-29 § What's deferred to v0.1.4): re-emit 9
+     remaining Yahoo crypto-mirror tickers (BNB, SOL, XRP, ADA, DOGE, AVAX,
+     DOT, LINK, MATIC) AND re-emit ETH-daily row 70 under the v0.1.3
+     helper-extracted emit shape (`revision_sha:` in front-matter, no `rev=`
+     in body). After ship: all 10 crypto-mirror tickers carry anchored
+     2024 SMA(20,50) backtests under the v0.1.3 canonical helper; aggregate
+     `cache_state_summary_badge` flips from "Yahoo cache: 2 tickers" →
+     "Yahoo cache: 10 tickers" — badge becomes meaningful at full universe
+     coverage. Scope: (R1) operator-side cache populate (BLOCKER for M-DEV
+     — explicit `fetch_yahoo_klines --tickers BNB-USD,SOL-USD,XRP-USD,ADA-USD,DOGE-USD,AVAX-USD,DOT-USD,LINK-USD,MATIC-USD --interval 1d --start 2024-01-01 --end 2024-12-31`);
+     (R2) bulk re-emit of 10 tickers + ETH-daily via v0.1.3 helper; (R3)
+     anchor cascade 71 → 80 (row 70 in-place SHA UPDATE under preserved
+     namespace `lab-yahoo-realdata-v0.1.2` per v0.1.3 D-V0.1.3-4 in-place
+     precedent; rows 72-80 append under single new namespace
+     `lab-yahoo-realdata-v0.1.4` per Q2=(a)); (R4) aggregate badge
+     meaningfulness (2 → 10 tickers; zero UI code change — automatic on
+     `REVISION.toml` populated-count); (R5) non-regression — durable
+     boundary FROZEN (zero diff in `crates/backtest/src/report/yahoo.rs`,
+     `report/sma.rs`, `report/mod.rs`, `run_yahoo_sma.rs` — v0.1.3
+     helper-extraction is FROZEN per D-V0.1.3-1); (R-NR) zero new design
+     tokens / strings.rs adds — backend + scenario-reg only. **5 R / R-NR /
+     4 K / 3 H / 2 Q** + non-regression contract + pre-drawn 2-cell verdict
+     tree + cost framing (~5-7 days dev + 1 day tester + 0.5 day presenter
+     ≈ 1 week wall-clock Q1=(a)+Q2=(a) Recommended; ~1.5-2.5 days Q1=(b)
+     cheap but +5-7 days deferred across 8 v0.1.5+ cleanup briefs + 8 H1
+     carve-outs in deck). Q1 LOAD-BEARING (per AGENT.md 2026-05-29
+     durable-over-quick contract): (a) [Recommended — DURABLE] register
+     `{ticker-lc}-2024-h1-sma-cross` Binance hourly scenario per ticker (9
+     additions, 3 match-arm sites each, mirroring v0.1.3 D-V0.1.3-5 ETH-H1
+     template) — H1 discharges DIRECTLY per ticker, zero K1 Yahoo-to-Yahoo
+     fallbacks ship, uniform H1 contract across all 10 crypto-mirror
+     tickers; (b) [cheap fallback] BNB-only Binance H1 + 8 K1 Yahoo-to-Yahoo
+     fallbacks + 8 v0.1.5+ per-ticker cleanup briefs + 8 H1 carve-outs in
+     v0.1.4 deck (the silent-deferral pattern operator dislikes). Q2
+     namespace: (a) [Recommended — DURABLE] single `lab-yahoo-realdata-v0.1.4`
+     for all 9 new (ETH-daily row 70 stays `lab-yahoo-realdata-v0.1.2` with
+     in-place SHA update per v0.1.3 precedent); (b) per-ticker namespaces
+     (fragments tracking). M-T1 likely fast-skips (ADR-0040 § Changelog
+     amendment only, per v0.1.3 precedent — no new ADR). M-DEV-UI lane
+     DOES NOT EXIST at v0.1.4 (backend-only ship). K1 falsifier: any
+     ticker returns < 366 bars for 2024 (e.g. AVAX mid-year listing edge
+     or MATIC rebrand) → route back analyst with drop-or-widen-threshold
+     decision (95% threshold per ADR-0040 § R3). K2 `REVISION.toml` grows
+     ~60 → ~177 file rows (acceptable; ADR-0040 § D3 schema unchanged).
+     K3 Yahoo throttling at 9 successive fetches → H2 ≥ 95% gate +
+     ADR-0040 § D5 `YahooError::RateLimited` + backoff. K4 ticker
+     scenario fails to converge → per-ticker-skip route. H1 expected
+     5-15% Yahoo-daily vs Binance-hourly delta per ticker (mirrors BTC
+     9.03% / ETH 6.78%). Trace row `REQ-LAB-YAHOO-REALDATA-V0-1-4-001`
+     opened at `proposed` state. Frontmatter `owner: analyst`,
+     `status: draft` — M-OD is next. HANDOFF → architect (M-T1 fast-skip
+     ratifies Q1/Q2 + amends ADR-0040 § Changelog + emits dev handoff). -->
+- **lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit v0.1.0** — closes
+  v0.1.3's explicit owned-debt commitment: re-emit 9 remaining Yahoo
+  crypto-mirror tickers (BNB, SOL, XRP, ADA, DOGE, AVAX, DOT, LINK,
+  MATIC) + ETH-daily row 70 under v0.1.3 helper shape; aggregate
+  `cache_state_summary_badge` flips "2 tickers" → "10 tickers".
+  Anchor cascade 71 → 80 (1 in-place row 70 update + 9 appends).
+  Q1 LOAD-BEARING (durable-over-quick per AGENT.md 2026-05-29): (a)
+  **Recommended DURABLE** register 9 new Binance hourly scenarios for
+  direct per-ticker H1 verification (~+5 days dev); (b) cheap fallback
+  BNB-only + 8 K1 Yahoo-to-Yahoo carve-outs + 8 v0.1.5+ cleanup briefs
+  deferred. Q2 namespace: (a) **Recommended DURABLE** single
+  `lab-yahoo-realdata-v0.1.4`; (b) per-ticker fragments. R1 operator-
+  side fetch is BLOCKER for M-DEV — verbatim command in feature.md R1.1.
+  Frozen-boundary contract (R5.7): zero diff in
+  `crates/backtest/src/report/yahoo.rs`, `report/sma.rs`, `report/mod.rs`,
+  `run_yahoo_sma.rs`. Backend-only ship (no M-DEV-UI lane). M-T1 likely
+  fast-skips (ADR-0040 § Changelog amendment). Cost ~1 week Q1=(a)+Q2=(a);
+  ~1.5-2.5 days Q1=(b)+Q2=(b) but +5-7 days deferred + 8 H1 carve-outs
+  in deck. Trace `REQ-LAB-YAHOO-REALDATA-V0-1-4-001` proposed.
+  Brief: [`spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/feature.md`](lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/feature.md).
+  HANDOFF → architect (M-T1 fast-skip).
+
+
 <!-- updated 2026-05-28 (analyst, v3-regime-classifier M-A5 light-touch
      refresh — promoted Queue → Active per operator Phase 2 re-pick after
      v2.5 TCN re-investigation analyst-halt). Analyst agent

@@ -2052,3 +2052,77 @@ anchors     = [
   "eth-2024-h1-sma-cross",
 ]
 state       = "passed"  # tester M-FINAL 2026-05-28: VERDICT → PASS — all gates green, both independent SHA witnesses match, helper-bypass regression guard 3/3, H1 6.78% direct, spec-lint baseline-stable (trace-broken-path carve-out: v3-regime-classifier Wave C in-flight, not this feature): all T-D1..T-D12 ticked; Wave A helper extracted (yahoo.rs NEW); Wave B ETH H1 registered (3 match-arm sites); Wave C anchors 071/71 PASS; Wave D dev-note authored + regression test added; T-D4 bar_count resolution: mirrors btc-2024-h1-sma-cross verbatim (real parquet data overrides at runtime → 17,543 bars); H1 PASS direct (6.78% < 30%); K1.b PASS (None arm preserves 33 Binance SMA anchors); cargo fmt clean; clippy 0 new errors on crates/backtest. HANDOFF → tester.
+
+#
+# ─── v5-latency-slippage-sim v0.5.0 — square-root market-impact (analyst M0 proposed 2026-05-29) ───
+#
+
+[[req]]
+id          = "REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001"
+title       = "v5 latency-slippage-sim v0.5.0 square-root market-impact — closes the v0.1.0 ADR-0043 § D3 deferred promise ('linear bps slippage at v0.1.0; defer square-root market impact to v0.2.0+') by upgrading the linear-bps quote in crates/cost/src/slippage.rs to the academic-canonical square-root form cost = α · √(Q/V) (Almgren & Chriss 2001; Kissell 2014 ch. 3 'Volume-based impact'). Per-asset daily-volume V proxy sourced from existing Binance parquet feed (90-day trailing average of volume × close; revision-pinned via data/binance/REVISION.toml SHA 3a8b96…bfc7 — same revision lock as v0.4.0 K2 architect check). Replaces slippage_bps: u16 with SlippageModel enum (Linear { bps } / SquareRoot { alpha, volume_lookback_days }) — backward-compat serde adapter preserves the 19 v0.4.0 friction-real anchor SHAs byte-identically under existing namespace v5-realdata-medium-2026-05. Re-emits all 19 currently-friction-real scenarios (5 Group A SMA/Composed force-synthetic + 2 Group B momentum + 2 Group C Pairs + 2 Group D TCN-synthetic + 2 Group E TCN-weights + 2 Group F TCN-realdata + 2 Group G TCN-weights-realdata + 1 Group H PatchTST-realdata + 1 Group I VolTarget-GARCH-realdata) under new parallel namespace v5-sqrt-impact-2026-05 (mirrors ADR-0045 D2 noop-vs-canonical namespace-twin pattern). Anchor cascade 71 → 90 (additive — 19 new rows under v5-sqrt-impact-2026-05; the 71 existing rows stay byte-identical per ADR-0038 § D6.a). Plumbing reuses ADR-0047 D2 per-path contract verbatim — crates/backtest/src/scenarios/sim.rs::sim_slippage_cost dispatches on the new enum (grep-gate SOLE-LOCATION unchanged). Synthetic-data scenarios (Group A/D/E, 9 of 19) fall back to SlippageModel::Linear { bps: 8 } with explicit log line (K1 mitigation; their v0.5.0 SHAs are byte-identical to v0.4.0 under both namespaces — analyst-recommended Q3=(a) DURABLE). Numerical-precision contract (K2): √ over rust_decimal::Decimal computed via f64 conversion boundary; architect M-T1 locks placement. Fat-tail guard (K3): MAX_SLIPPAGE_BPS = 1_000 (10%) cap on slippage_bps_effective; log saturation events. Determinism gate (K4): 2-run byte-identity required across all 19 scenarios on Apple Silicon canonical box (compound risk candle × realdata × friction × sqrt is novel at v0.5.0). t1937 namespace-aware resolver (ADR-0047 D3) extends to third namespace SqrtImpact → SQRT_IMPACT_STRATEGY_ANCHORS table + t1937c test. 5 R / R-NR / 4 K / 3 H / 3 Q + pre-drawn 2-cell verdict tree + cost framing both routes. Per AGENT.md 2026-05-29 durable-over-quick contract: Q1+Q2+Q3 all recommend DURABLE (Q1=(a) α=1.0 Kissell midpoint vs (b) α=0.5 +v0.5.1 calibration brief; Q2=(a) Binance parquet 90-day trailing vs (b) universe-average +v0.6.0 V-source replacement; Q3=(a) Linear fallback for synthetic vs (b) universe-V on synthetic +v0.6.0 sub-namespace cleanup). Cheap-fallback aggregate cost = ~3 weeks wall-clock + 3 follow-on briefs STRICTLY WORSE than DURABLE ~1 week one-shot. H1: sqrt drag ≥ 2× linear-bps drag on high-turnover (TCN-realdata $36.5k → ≥ $73k). H2: sqrt drag ≈ linear on low-turnover (≤ 30% delta on Pairs, VolTarget-GARCH). H3: deterministic byte-identity holds. R-NR-UI: zero UI surface change (pure backend). Architect M-T1 picks: per-asset volume retrieval shape (R3 Option A extend crates/data DailyVolume query vs Option B bake volume_proxy.toml — analyst lean A); ADR amendment to ADR-0043 § D3 (preferred — closes the engine ADR's deferred promise) vs new ADR-0050. M-OD likely empty per Autoapprove-eligible-at-DURABLE."
+feature     = "v5-latency-slippage-sim-v0.5.0-square-root-market-impact"
+product     = "spec/product.md"
+arch        = [
+  "spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/feature.md",
+  "spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/tasks.md",
+  "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/feature.md",                                  # PREDECESSOR — v0.4.0 closed candle/realdata coverage gap; v0.5.0 closes the model-quality gap
+  "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/sharpe-delta-table-2026-05-28.md",     # the 19-scenario per-scenario template R5 extends with sqrt column
+  "spec/architecture/adr/0043-simulated-latency-and-slippage.md",                                                 # ENGINE ADR — § D3 is the deferred-to-v0.2.0+ promise this brief closes; architect M-T1 amends Changelog OR authors ADR-0050
+  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",                                # CANONICAL CONFIG ADR — D2 namespace-twin pattern v0.5.0 mirrors (linear-bps vs sqrt-impact = sister twins to noop vs canonical)
+  "spec/architecture/adr/0047-v5-v0.3.0-full-path-wiring-and-namespace-aware-resolver.md",                        # PER-PATH CONTRACT ADR — D2 SOLE-LOCATION sim_slippage_cost dispatches on new enum; D3 namespace-aware resolver extends to third namespace
+]
+crates      = [
+  # Library impact (R-NR.4: crates/exec, crates/audit NOT touched)
+  "crates/cost/src/slippage.rs",                                                # R1 — SOLE library impact site for model body; replaces linear apply_slippage with model-dispatching variant
+  "crates/backtest/src/scenarios/sim.rs",                                       # R2 — sim_slippage_cost dispatches on SlippageModel enum; ADR-0047 D2 SOLE-LOCATION grep-gate stays green
+  "crates/backtest/src/cli_types.rs",                                           # R2 — LatencySlippageSimConfig: slippage_bps u16 → slippage_model SlippageModel; serde adapter for backward-compat
+  "crates/data/",                                                               # R3 — per-asset DailyVolume query (architect M-T1 Option A lean); ALTERNATIVE Option B = bake volume_proxy.toml at data/binance/
+  "spec/anchors.toml",                                                          # Wave E — additive 71 → 90 under new namespace v5-sqrt-impact-2026-05; 71 existing rows byte-identical
+  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # Wave F — Namespace::SqrtImpact added; SQRT_IMPACT_FEATURE_DIRS + SQRT_IMPACT_STRATEGY_ANCHORS constants; t1937c test
+]
+tests       = [
+  "crates/cost/src/slippage.rs",                                                # Wave A unit tests: α=1.0 reference; cap saturation; deterministic across architectures
+  "crates/reports/tests/strategy_anchors_unchanged.rs",                         # Wave F — t1937 + t1937b + t1937c + t1942 → 4/4 PASS target
+  "crates/strategy/tests/latency_slippage_sim_e2e.rs",                          # R-NR.5 — must PASS under BOTH model configs (Linear { bps: 8 } AND SquareRoot { α: 1.0 })
+  "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # R-NR.5 — ≥ 1 bp divergence vs noop under sqrt model
+  "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # R-NR.5 — ≥ 1 bp divergence vs noop under sqrt model
+]
+anchors     = []  # tester M-FINAL fills with 19 scenario names under namespace v5-sqrt-impact-2026-05 after VERDICT → PASS
+state       = "proposed"
+
+[[req]]
+id          = "REQ-LAB-RECIPE-TEST-HARNESS-V0-2-0-001"
+title       = "lab-recipe-test-harness v0.2.0 cross-surface extension — extend the proven two-surface harness pattern (v0.1.0 D1-D6, ADR-0048) PREEMPTIVELY to the 4 uncovered Recipe / aggregator surfaces (TrainingLogRecipe = exact Bug #64 take()+salt shape, HIGHEST URGENCY; TrainingPoller = audit-DB-poll subscription with run-id identity gate; ToastDismissRecipe = always-on tokio::time::interval with zero tests; ActivityAuditAggregator = Bug #64 tokio::select! shape) + Surface-2 gating extension for ServerTimeRecipe + TrailMirrorRecipe + Surface-1 boundary extension for ActivityRecipe; ~80 LoC per Recipe = ~600 total; Q1=(a) [Recommended — DURABLE per AGENT.md 2026-05-29] all 4 + extras ~1 week dev + 1 day tester (vs Q1=(b) TrainingLog only ~2-3 days + ~3-5 days deferred v0.3.0); Q2=(a) [Recommended — DURABLE] per-Recipe T-T4 falsification probe in each test file docstring + tester M-FINAL per-Recipe FAIL→restore→PASS table (mandatory per v0.1.0 lesson 'prove it or it's theater'; Q2=(b) no proof rejected); zero new ADRs (ADR-0048 D1-D6 carries forward verbatim); zero design tokens; zero strings.rs adds; anchor-additive 71/71 byte-identical pre/post; 4-cell pre-drawn verdict tree (Q1×Q2)"
+feature     = "lab-recipe-test-harness-v0.2.0-cross-surface-extension"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored.
+  "spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md",
+  "spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/tasks.md",
+  "spec/lab-recipe-test-harness/feature.md",                                                                        # PREDECESSOR — v0.1.0 shipped 2026-05-28
+  "spec/lab-recipe-test-harness/presentations/lab-recipe-test-harness-2026-05-28.md",                                # PREDECESSOR DECK — § What's next extension targets
+  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                                                          # PARENT ADR — D1-D6 contract carries forward (no new ADR)
+]
+crates      = []
+tests       = []
+anchors     = []
+state       = "proposed"  # analyst M0 2026-05-29: R1 inventory enumerates 9 Recipe surfaces, 4 uncovered + 3 partial; R2-R4 + R-NR locked; K1-K4 falsifiers + H1-H4 hypotheses + Q1-Q2 + 4-cell verdict tree pre-drawn; durable-recommended (Q1=(a) + Q2=(a)) ~1 week dev + 1 day tester; backlog Active row appended under § Process / tooling track. HANDOFF → architect (M-T1).
+
+[[req]]
+id          = "REQ-LAB-YAHOO-REALDATA-V0-1-4-001"
+title       = "Lab Yahoo realdata v0.1.4 — bulk-ticker re-emit closes v0.1.3 deck's explicit owned-debt commitment: (R1) operator-side cache populate BLOCKER for M-DEV (verbatim `fetch_yahoo_klines --tickers BNB-USD,SOL-USD,XRP-USD,ADA-USD,DOGE-USD,AVAX-USD,DOT-USD,LINK-USD,MATIC-USD --interval 1d --start 2024-01-01 --end 2024-12-31`); (R2) bulk re-emit of 10 crypto-mirror tickers + ETH-daily under v0.1.3 helper-extracted emit shape via `run_yahoo_sma --ticker {T}` (helper at crates/backtest/src/report/yahoo.rs is FROZEN durable boundary per v0.1.3 D-V0.1.3-1 — R5.7 contract); (R3) anchor cascade 71 → 80 (row 70 ETH-daily SHA in-place UPDATE under preserved namespace `lab-yahoo-realdata-v0.1.2` per v0.1.3 D-V0.1.3-4 in-place precedent; rows 72-80 append under single new namespace `lab-yahoo-realdata-v0.1.4` per Q2=(a) Recommended DURABLE — 1 in-place + 9 new appends); (R4) `cache_state_summary_badge` flips 2 → 10 tickers automatic on REVISION.toml populated-count (zero UI code change); 5 R / R-NR / 4 K / 3 H / 2 Q + non-regression contract + pre-drawn 2-cell verdict tree + cost framing (~1 week Q1=(a)+Q2=(a) Recommended DURABLE; ~1.5-2.5 days Q1=(b)+Q2=(b) cheap but +5-7 days deferred across 8 v0.1.5+ cleanup briefs + 8 H1 carve-outs in deck — exact silent-deferral pattern operator dislikes per AGENT.md 2026-05-29 durable-over-quick contract); Q1 LOAD-BEARING: (a) [Recommended DURABLE] register `{ticker-lc}-2024-h1-sma-cross` Binance hourly scenario per ticker (9 additions, 3 match-arm sites each, mirroring v0.1.3 D-V0.1.3-5 ETH-H1 template) so H1 discharges DIRECTLY per ticker with uniform contract across 10; (b) [cheap] BNB-only + 8 K1 Yahoo-to-Yahoo fallbacks + 8 cleanup briefs deferred; Q2: (a) [Recommended DURABLE] single `lab-yahoo-realdata-v0.1.4` namespace for all 9 new; (b) per-ticker fragments; M-T1 likely fast-skips (ADR-0040 § Changelog amendment only, per v0.1.3 precedent — no new ADR); no M-DEV-UI lane (backend-only ship); K1 partial-year-listing falsifier (AVAX/MATIC edge) — 95% threshold per ADR-0040 § R3 catches it, route analyst with drop-or-widen-threshold; K2 REVISION.toml growth ~60 → ~177 file rows (acceptable, schema unchanged); K3 Yahoo throttling at 9 successive fetches → H2 ≥ 95% gate + ADR-0040 § D5 RateLimited backoff; K4 ticker convergence failure → per-ticker-skip route"
+feature     = "lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored.
+  "spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/feature.md",
+  "spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/tasks.md",
+  "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md",                                                # PREDECESSOR — v0.1.3 shipped 2026-05-29; helper extraction + ETH-H1 registration + ETH-daily row 70 explicit deferral
+  "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/presentations/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1-2026-05-28.md",  # PREDECESSOR DECK — § What's deferred to v0.1.4 (owned-debt declaration)
+  "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                                            # PARENT ADR — § Changelog 2026-05-28 v0.1.3 amendment; v0.1.4 architect M-T1 to amend § Changelog (no new ADR)
+  "data/yahoo/REVISION.toml",                                                                                                     # CURRENT STATE — 2 tickers populated (BTC + ETH); R1 operator fetch adds 9 (BNB/SOL/XRP/ADA/DOGE/AVAX/DOT/LINK/MATIC)
+]
+crates      = []
+tests       = []
+anchors     = []  # tester M-FINAL fills with row 70 (in-place update under lab-yahoo-realdata-v0.1.2) + rows 72-80 (NEW under lab-yahoo-realdata-v0.1.4) after VERDICT → PASS; net 71 → 80
+state       = "proposed"  # analyst M0 2026-05-29: closes v0.1.3 owned-debt commitment; 5 R / R-NR / 4 K / 3 H / 2 Q + non-regression + 2-cell verdict tree pre-drawn + cost framing (Q1=(a)+Q2=(a) Recommended DURABLE ~1 week; Q1=(b)+Q2=(b) cheap ~1.5-2.5 days but +5-7 days deferred + 8 H1 carve-outs in deck); R1 operator-side cache populate is BLOCKER for M-DEV (verbatim command in feature.md R1.1); R5.7 durable-boundary FROZEN (zero diff allowed in crates/backtest/src/report/yahoo.rs, report/sma.rs, report/mod.rs, run_yahoo_sma.rs); anchor cascade 71 → 80 documented (1 in-place row 70 + 9 appends rows 72-80); backlog Active row appended. verify_anchors.sh pre-ship 71/71 PASS confirmed (analyst zero anchor changes). HANDOFF → architect (M-T1 fast-skip ratifies Q1+Q2 + amends ADR-0040 § Changelog + emits dev handoff).
