@@ -231,3 +231,22 @@ SHA assertion.
   `.claude/agents/tester.md` "Visual failures — HTML artifact emission"
   stanza (D-VF-4) without further amendment per trifecta-direction
   § Risk R1 mitigation.
+- 2026-05-29 (architect, ui-test-harness-viewport-matrix v0.1.0 M-T1
+  close): D1-D6 carry forward verbatim. Matrix harness shape extends
+  the bootstrap-Charts SLOTS table (1280×720 / 1920×1080 / 3360×1890)
+  across 22 in-scope fixtures via the shared
+  `crates/ui/tests/fixtures/viewport_matrix.rs::snapshot_widget_at_slot`
+  helper — function-with-closure shape per Q2 (a) ratification (no
+  proc-macro). Zero new D-clauses; D6 anchor-additivity re-verified
+  (71/71 byte-identical PASS post-merge; empirical ~13 MB net repo
+  growth in baseline PNGs per K2 dry-run, well below 100 MB ceiling —
+  the analyst's 50-100 MB projection was conservative by ~10× because
+  the in-scope `#[test] fn` count is 22 (not 30-40) and PNG deflate on
+  the cockpit dark UI is more efficient than estimated). `.gitattributes`
+  rule: plain `binary` (no `diff=exif` driver present on architect
+  host; analyst's driver-availability contract triggered the (b)
+  durable fallback). No new ADR. See
+  [`spec/ui-test-harness-viewport-matrix/feature.md`](../../ui-test-harness-viewport-matrix/feature.md)
+  § Design D-VPM-1..D-VPM-7. `.claude/agents/tester.md` inheritance
+  from sibling visual-fail-html-reporter § D-VF-4 (D-VPM-6) — no
+  independent amendment.

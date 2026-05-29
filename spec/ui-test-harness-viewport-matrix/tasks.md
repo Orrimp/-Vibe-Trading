@@ -1,7 +1,7 @@
 ---
 slug: ui-test-harness-viewport-matrix
-status: draft
-owner: analyst
+status: arch-done
+owner: developer
 updated: 2026-05-29
 ---
 
@@ -20,25 +20,52 @@ updated: 2026-05-29
 - [x] T-VPM-M0.2 — backlog Active row appended under § Process / tooling — _accept: PROMOTED Idea → Active 2026-05-29 annotation_
 - [x] T-VPM-M0.3 — trace row `REQ-UI-TEST-HARNESS-VIEWPORT-MATRIX-001` opened `proposed` — _accept: appended at EOF spec/trace.toml_
 
-## M-T1 — Architect (inventory + dry-run + ratification)
+## M-T1 — Architect (inventory + dry-run + ratification) — DONE 2026-05-29 (commit `641b94a8`)
 
-- [ ] T-VPM-T1.1 — Audit existing widget test files per R1.2 — _accept: § Design D-VPM-1 enumerates every test file under `crates/ui/tests/` invoking `iced_test::screenshot` or `matches_screenshot`, with current viewport + per-file `#[test] fn` count; H1 confirmed or revised_
-- [ ] T-VPM-T1.2 — Dry-run baseline PNG generation for 3-widget representative sample at all 3 viewport slots — _accept: § Design D-VPM-2 records actual PNG sizes (floor / typical / operator) for the sample; H3 size projection confirmed at 50-100 MB total OR routed to operator-decide per K2_
-- [ ] T-VPM-T1.3 — Ratify Q1 (coverage scope) + Q2 (helper shape) + Q3 (`.gitattributes` rule) — _accept: § Design D-VPM-3 records all three picks (analyst recommends all (a) DURABLE); confirm git `exif` driver availability for Q3 default_
-- [ ] T-VPM-T1.4 — Author opt-out list per K1 falsifier — _accept: § Design D-VPM-4 enumerates any widget × operator-slot pair that CANNOT render (with empirical evidence: dry-run failure trace); opt-outs documented at `// VIEWPORT-MATRIX-OPT-OUT: <reason>` markers; opt-out list ≤ 3 widgets per K1 mitigation_
-- [ ] T-VPM-T1.5 — Confirm ADR-0048 + bootstrap § Design carry forward — _accept: ADR-0048 § Changelog gets 2026-MM-DD architect M-T1 row (or single row covers entire Wave 1 bundle); no new ADR_
-- [ ] T-VPM-T1.6 — Wave decomposition for M-DEV — _accept: § Design D-VPM-5 records wave count + per-wave widget scope + LoC budget (~50-80 LoC helper + ~300 LoC test expansion across all files)_
-- [ ] T-VPM-T1.7 — Confirm visual-fail-HTML stanza inheritance per R3.1 — _accept: § Design D-VPM-6 confirms the visual-fail-HTML stanza (authored by Wave 1 sibling) covers the matrix case OR amends stanza per R3.3_
-- [ ] T-VPM-T1.8 — Frontmatter flip owner: analyst → developer, status: draft → arch-done — _accept: feature.md + tasks.md frontmatter updated_
+- [x] T-VPM-T1.1 — Audit existing widget test files per R1.2 — _DONE: § Design D-VPM-3 enumerates 4 test files (visual_snapshots.rs / render_snapshots.rs / gallery_snapshots.rs / gallery_bisect.rs) × 30 `#[test] fn`; H1 revised downward (analyst projected 10-15 files / 30-40 fns; reality 4 files / 30 fns / 22 in-scope after opt-outs)_
+- [x] T-VPM-T1.2 — Dry-run baseline PNG generation for 3-widget representative sample at all 3 viewport slots — _DONE: § Design ## T-VPM-T1.2 dry-run evidence records empirical sizes (Charts triple: floor 91 KB / typical 155 KB / operator 859 KB); H3 net repo growth projected ~13 MB total (not 50-100 MB); K2 ceiling not triggered_
+- [x] T-VPM-T1.3 — Ratify Q1 (coverage scope) + Q2 (helper shape) + Q3 (`.gitattributes` rule) — _DONE: Q1 (a) all-widgets-v0.1.0 RATIFIED; Q2 (a) function-with-closure RATIFIED; **Q3 falls back to (b) plain `binary`** — empirical check `git config --get diff.exif.command` returns empty; analyst's driver-availability contract triggers the (b) durable fallback (B is durable enough without follow-on debt)_
+- [x] T-VPM-T1.4 — Author opt-out list per K1 falsifier — _DONE: § Design D-VPM-4 lists 3 distinct surfaces / 5 `#[test] fn` opt-outs (gallery 3 / bisect 1 / V9 self-test 1); all already `#[ignore]`d upstream; opt-out marker `// VIEWPORT-MATRIX-OPT-OUT:` not added because existing `#[ignore = "..."]` decorators already document the block_
+- [x] T-VPM-T1.5 — Confirm ADR-0048 + bootstrap § Design carry forward — _DONE: § Design D-VPM-7 drafted ride-along Changelog row for ADR-0048 appended at M-T1 close (single row, ~10 lines); no new ADR; no D1-D6 revision; no README registry frontmatter bump_
+- [x] T-VPM-T1.6 — Wave decomposition for M-DEV — _DONE: § Design ## D-VPM wave decomposition records single-wave delivery (Wave 1 helper ~0.5d + Wave 2 expansion ~2d + Wave 3 review+gates ~1d ≈ 3-4 dev days); LoC budget ~80-100 helper + ~660 test expansion across 22 fixtures_
+- [x] T-VPM-T1.7 — Confirm visual-fail-HTML stanza inheritance per R3.1 — _DONE: § Design D-VPM-6 confirms inheritance from sibling visual-fail-html-reporter v0.1.0 § D-VF-4 without amendment; stanza covers matrix case (per-`#[test] fn` HTML emission scales correctly — three FAILs per regression produce three independently-named HTML files); no amendment by viewport-matrix; sibling owns `.claude/agents/tester.md` under R3.1_
+- [x] T-VPM-T1.8 — Frontmatter flip owner: analyst → developer, status: draft → arch-done — _DONE: feature.md + tasks.md frontmatter updated to owner: developer / status: arch-done_
 
-## M-DEV — Developer (waves per M-T1 decomposition; ~3-4 days)
+## M-DEV — Developer (single-wave delivery; ~3-4 days per M-T1 decomposition)
 
-- [ ] T-VPM-D1 — Author shared helper at `crates/ui/tests/fixtures/viewport_matrix.rs` (or architect-ratified filename) per R1.3 + Q2 — _accept: function-with-closure shape (default Q2=(a)) exposing `run_all_slots(|viewport, scale| { ... })`; SLOTS constant table mirrors bootstrap precedent; ~50-80 LoC_
-- [ ] T-VPM-D2 — Per-test expansion across all existing widget test files (count per M-T1 D-VPM-1) — _accept: each existing `#[test] fn` becomes three discrete `#[test] fn` per slot (floor / typical / operator) named e.g. `widget_panels_dark_floor`, `widget_panels_dark_typical`, `widget_panels_dark_operator`; PASSes at all three slots OR has architect-ratified opt-out comment; bootstrap Charts baselines stay byte-identical_
-- [ ] T-VPM-D3 — Baseline PNG first-run generation — _accept: 90-120 new baseline PNGs at `crates/ui/tests/visual-baselines/<widget>_<theme>_<slot>.png`; first-run helper auto-write per R2.2; operator visually reviews PNGs before commit_
-- [ ] T-VPM-D4 — `.gitattributes` rule per R2.4 + Q3 — _accept: rule added at workspace root `.gitattributes`; covers `crates/ui/tests/visual-baselines/**`; architect-ratified shape (Q3=(a) `binary diff=exif` or fallback `binary`)_
-- [ ] T-VPM-D5 — Dev-side gates — _accept: cargo test -p ui --tests PASS (all expanded tests + opt-outs); cargo clippy -p ui --all-features -- -D warnings clean; bash scripts/verify_anchors.sh 71/71 PASS byte-identical_
-- [ ] T-VPM-D6 — Operator-side PNG review request — _accept: develop emits a six-section recipe per [memory/feedback_human_verification_recipe.md](../../.claude/projects/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/memory/feedback_human_verification_recipe.md) — Command (open Finder at `crates/ui/tests/visual-baselines/`) + Steps (eyeball each `_operator.png` for rendering sanity) + Timing (~10-20 min for 90 PNGs) + Expected (no obviously-broken PNGs — clipping, blank canvas, etc.) + Failure mode (route back to dev with operator-flagged PNG names) + Cleanup (none)_
+### Wave 1 — Helper (~0.5 dev day)
+
+- [ ] T-VPM-D1 — Author shared helper at `crates/ui/tests/fixtures/viewport_matrix.rs` per D-VPM-2 — _accept: function-with-closure shape exposes `pub fn snapshot_widget_at_slot<P, B>(fixture_name, slot_name, baseline_subdir, build_program)` + `pub fn snapshot_widget_at_viewports<P, B>(fixture_name, baseline_subdir, build_program)`; `pub const SLOTS: &[(&str, (u32, u32), f32)]` mirrors bootstrap D-VPM-1 table verbatim; `pub fn slot(slot_name: &str) -> ((u32, u32), f32)`; CHART_FORCE_UTC env-var init mirrors existing `visual_snapshots.rs::run_slot` lines 96-99; baseline path resolution honours `baseline_subdir: Option<&str>` for the `render_snapshots/` nested case; ~80-100 LoC_
+
+### Wave 2 — Per-test expansion (~2 dev days)
+
+- [ ] T-VPM-D2 — Per-test expansion across the 4 in-scope test files per D-VPM-3 — _accept:_
+  - `crates/ui/tests/visual_snapshots.rs`:
+    - **Charts triple (3 fns)**: untouched — already triple-coverage per bootstrap; baselines stay byte-identical
+    - **Trail/Live (3 fixtures × 3 slots = 9 fns)**: existing `trail__steady_state`, `trail__side_drawer_open`, `live__recent_activity_with_chevron` (currently `typical` only) become `<fixture>__floor` / `__typical` / `__operator` triple each; drop the in-file `TRAIL_SLOTS` const + `run_trail_slot` helper; use `viewport_matrix::snapshot_widget_at_slot` directly
+    - **Compare (4 fixtures × 3 slots = 12 fns)**: same shape; drop `COMPARE_SLOTS` + `run_compare_slot`
+    - **Phase F (8 fixtures × 3 slots = 24 fns)**: same shape; drop `PHASE_F_SLOTS` + `run_phase_f_slot`
+    - **V9 self-test**: opt-out per D-VPM-4, no expansion
+  - `crates/ui/tests/render_snapshots.rs`:
+    - **7 fixtures × 3 slots = 21 fns** at `<fixture>__floor` / `__typical` / `__operator`; the 5 currently-`#[ignore]`d shell-composition cases stay `#[ignore]`d per slot (carry forward verbatim); drop the in-file `SLOTS` const + `run_panel_slot` helper; use `viewport_matrix::snapshot_widget_at_slot(..., Some("render_snapshots"), ...)` for the subdir
+  - `crates/ui/tests/gallery_snapshots.rs`: opt-out per D-VPM-4 — file unchanged (already triple-coverage shape, all `#[ignore]`d)
+  - `crates/ui/tests/gallery_bisect.rs`: opt-out per D-VPM-4 — file unchanged (diagnostic-only)
+  - **Existing typical-slot baseline rename per D-VPM-5**: rename each non-Charts existing baseline (`trail__steady_state.png` → `trail__steady_state__typical.png`, `memory__cold_boot_empty.png` → `memory__cold_boot_empty__typical.png`, etc.) as the NEW `__typical` member — single rename, zero byte change, preserves the existing operator-reviewed PNG
+  - **Workspace test count delta: +44 new `#[test] fn`** (22 in-scope fixtures × 2 new slots each); bootstrap Charts triple unchanged
+  - **R-NR.5 reconciliation**: analyst projected "+60-90 new"; actual "+44" — both within "additive expansion" intent; report in M-DEV handoff envelope `[evidence]`
+
+### Wave 3 — Baselines + gates + reviews (~0.5-1 dev day)
+
+- [ ] T-VPM-D3 — Baseline PNG first-run generation — _accept: 44 new baseline PNGs at `crates/ui/tests/visual-baselines/<fixture>__<slot>.png` (top-level) + `crates/ui/tests/visual-baselines/render_snapshots/<fixture>__<slot>.png` (nested for render_snapshots cases); first-run helper auto-write per R2.2; ALL baselines regenerated on the SAME architect host in the SAME build session (K3 cross-time determinism caveat per § Design — including the existing 16 typical-slot PNGs renamed in D2, since the helper byte-comparison will fail on the rename without a fresh regenerate); operator visually reviews PNGs before commit (D6 recipe); net repo growth measured at commit time and reported as evidence (expected ~13 MB net per § Design ## T-VPM-T1.2)_
+- [ ] T-VPM-D4 — `.gitattributes` rule per D-VPM-5 — _accept: existing single-line `.gitattributes` at workspace root gets an additive second line `crates/ui/tests/visual-baselines/** binary` (Q3 (b) plain `binary` per ratification — NO `diff=exif` driver suffix); developer verifies with `git check-attr binary crates/ui/tests/visual-baselines/charts_screen_dark_floor.png` → returns `binary: set`_
+- [ ] T-VPM-D5 — Dev-side gates — _accept: `cargo test -p ui --tests` PASS (all 22 expanded fixtures × 3 slots = 66 PASS + 3 Charts existing + 5 opt-out `#[ignore]`d = 74 total in matrix subset); `cargo clippy -p ui --all-features -- -D warnings` clean; `bash scripts/verify_anchors.sh` → 71/71 PASS byte-identical (zero anchor delta — helper produces zero output on PASS); falsification probe P-VPM-1 PASS (one-line evidence in handoff envelope — see § Design ## Falsification probe)_
+- [ ] T-VPM-D6 — Operator-side PNG review request — _accept: developer emits a six-section recipe per [memory/feedback_human_verification_recipe.md](../../.claude/projects/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/memory/feedback_human_verification_recipe.md):_
+  - **Command**: `open crates/ui/tests/visual-baselines/` in Finder (column view; preview pane on)
+  - **Steps**: eyeball each new PNG for rendering sanity — focus the 22 × 2 = 44 NEW slot PNGs + the 16 renamed `__typical` PNGs (60 PNGs total to review; the existing 3 Charts triple and the 5 opt-out cases are unchanged and skipped); check for clipping (content cut off at viewport edge), blank canvas (white/black-only PNG), or obviously-broken layout (overlapping panels, misaligned text); operator-slot PNGs in particular are at 6720×3780 — confirm they render the full cockpit at scale 2.0 without clipping
+  - **Timing**: ~10-15 min for 60 PNGs (about 10-15s per PNG eyeball)
+  - **Expected result**: no obviously-broken PNGs surface; all 60 read as "cockpit at <slot> renders sensibly"
+  - **Failure mode**: operator flags PNG by filename → routed back to dev with the flagged list; dev investigates whether (a) fixture rendering bug at the operator slot (most likely cause; new failure surface), (b) per-test viewport mismatch (e.g. a test forced the wrong fixture), or (c) iced layout bug at large physical pixel count (K1 escalation: add to opt-out list, document in M-DEV handoff `[open_questions].items` for architect ratification)
+  - **Cleanup**: none — review is observation-only; operator approval gates commit
 
 ## M-FINAL — Tester
 
