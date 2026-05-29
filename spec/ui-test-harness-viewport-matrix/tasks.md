@@ -1,7 +1,7 @@
 ---
 slug: ui-test-harness-viewport-matrix
-status: dev-done
-owner: presenter
+status: present-done
+owner: human-operator
 updated: 2026-05-29
 ---
 
@@ -100,7 +100,7 @@ updated: 2026-05-29
 
 ## M-PRESENT — Presenter
 
-- [ ] T-VPM-P1 — Deck `spec/ui-test-harness-viewport-matrix/presentations/ui-test-harness-viewport-matrix-<date>.md` — _accept: per-cycle benefit (every UI feature inherits 3-viewport snapshot coverage from this point); coverage stats (N test files extended, M baseline PNGs added, K opt-outs with rationale); H4 confirmation (≥ 1 new regression caught OR documented as "no regressions surfaced — confidence buffer"); trifecta-direction cross-ref; operator-decide-ready_
+- [x] T-VPM-P1 — Deck `spec/ui-test-harness-viewport-matrix/presentations/v0.1.0-2026-05-29.md` — _DONE 2026-05-29: 12 verification rows green; 56 baseline PNGs / 15 MB documented; K3 single-host determinism caveat surfaced; T-VPM-D6 operator review punch list embedded (60 PNGs, ~10-15 min); 3 open follow-ups (D6 review, K3 cross-machine deferred to ui-test-harness-ci Queue, render_snapshots legacy baseline v0.2.0 cleanup). Pre-tick guard PRESENTATION CHECK PASS; spec-lint 109 violations identical to tester baseline (zero new functional regressions)._
 
 ## Notes
 
