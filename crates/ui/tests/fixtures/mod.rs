@@ -33,6 +33,8 @@
 pub mod visual_diff;
 // visual-fail-html-reporter v0.1.0 (T-VFH-D2) — HTML artifact emitter.
 pub mod visual_fail_html;
+// ui-test-harness-viewport-matrix v0.1.0 (T-VPM-D1) — three-slot snapshot helper.
+pub mod viewport_matrix;
 
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;

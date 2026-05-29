@@ -1,8 +1,8 @@
 ---
 slug: ui-test-harness-viewport-matrix
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 predecessor: ui-test-harness-bootstrap v0.1.0
 updated: 2026-05-29
@@ -844,8 +844,46 @@ zero baseline byte deltas across 47 PNGs".
 
 ## Implementation
 
-_(developer fills after architect M-T1 ratifies the helper shape +
-existing-test inventory + opt-out list.)_
+**Developer M-DEV 2026-05-29. Single-wave delivery.**
+
+### Wave 1 — Helper (T-VPM-D1)
+
+`crates/ui/tests/fixtures/viewport_matrix.rs` authored (156 LoC):
+- `pub const SLOTS` — three-slot table `[floor, typical, operator]` per D-VPM-1.
+- `pub fn slot(slot_name)` — name-keyed lookup; panics on unknown key.
+- `pub fn snapshot_widget_at_slot<P, B>()` — renders one fixture at one slot, resolves baseline path, calls `visual_diff::matches_screenshot`; CHART_FORCE_UTC env set before render per determinism contract.
+- `pub fn snapshot_widget_at_viewports<P, B>()` — fan-out over all SLOTS.
+- Type bound: `P: iced_test::program::Program<Theme = iced::Theme> + 'static` (matches `iced_test::screenshot`'s actual bound; avoids over-constraining on State/Message).
+- Wired in `crates/ui/tests/fixtures/mod.rs:36` as `pub mod viewport_matrix`.
+
+### Wave 2 — Per-test expansion (T-VPM-D2)
+
+`crates/ui/tests/visual_snapshots.rs` rewritten (19 → 51 `#[test] fn`):
+- Charts triple: kept via original `run_slot` helper (CHARTS_SLOTS const; byte-identical path per R-NR.1 + R4).
+- Trail/Live (3 fixtures × 3 slots = 9 new fns): `trail__steady_state__floor/typical/operator`, `trail__side_drawer_open__*`, `live__recent_activity_with_chevron__*`. Dropped `TRAIL_SLOTS` + `run_trail_slot`.
+- Compare (4 × 3 = 12 new fns): `compare__*__floor/typical/operator`. Dropped `COMPARE_SLOTS` + `run_compare_slot`.
+- Phase F (8 × 3 = 24 new fns): `memory__*`, `models__*`, `assistant_slot__*`. Dropped `PHASE_F_SLOTS` + `run_phase_f_slot`.
+- V9 self-test: unchanged (opt-out D-VPM-4).
+
+`crates/ui/tests/render_snapshots.rs` expanded (7 → 25 `#[test] fn`):
+- Dropped in-file `SLOTS` const + `run_panel_slot` helper.
+- `run_panel_slot_legacy` retained for the 2 pre-existing M1-B baselines (1280×720 "typical" convention preserved per R-NR.1).
+- 7 fixtures × 3 slots = 21 new matrix fns; 5 shell-composition groups stay `#[ignore]`d per D-VPM-3.
+- gallery_snapshots.rs + gallery_bisect.rs: unchanged (opt-out D-VPM-4).
+
+Existing typical-slot baseline renames (15 PNGs — zero byte change):
+`trail__steady_state.png` → `trail__steady_state__typical.png` (and 14 others per D-VPM-5 convention).
+
+### Wave 3 — Baselines + gates (T-VPM-D3..D5)
+
+- 56 baseline PNGs committed (48 top-level + 8 render_snapshots). All generated in a single build session on Apple Silicon host per K3 contract.
+- Second consecutive run: zero byte deltas. 51 PASS + 10 PASS.
+- `.gitattributes:2`: `crates/ui/tests/visual-baselines/** binary` (Q3-b plain binary).
+- `git check-attr binary crates/ui/tests/visual-baselines/charts_screen_dark_floor.png` → `binary: set`.
+- `cargo fmt -p ui --check` → zero diff.
+- Clippy: zero NEW errors from viewport_matrix.rs / visual_snapshots.rs / render_snapshots.rs.
+- `scripts/verify_anchors.sh` → 75/75 PASS.
+- P-VPM-1 falsification probe PASS: SLOTS rotated `[operator, typical, floor]` → 51 PASS, zero baseline byte deltas, zero new files.
 
 ## Verification
 

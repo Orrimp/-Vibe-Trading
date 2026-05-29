@@ -1,50 +1,54 @@
-//! Charts-screen visual snapshots — ui-test-harness-bootstrap v0.1.
+//! Charts-screen + Phase D+ + Phase E + Phase F visual snapshots.
 //!
-//! Three discrete `#[test] fn`s — one per viewport slot (Q10
-//! operator-locked) — each driving `iced_test::screenshot(...)` against
-//! the test-only cockpit factory and comparing the resulting PNG bytes
-//! against a baseline at
-//! `crates/ui/tests/visual-baselines/charts_screen_dark_<slot>.png`.
+//! ## Viewport matrix (ui-test-harness-viewport-matrix v0.1.0)
+//!
+//! Every fixture that was previously snapshot-only at the `typical`
+//! viewport (1920×1080) now runs at all three operator-locked slots:
+//!
+//! | Slot     | Logical viewport | scale_factor | Physical pixels       |
+//! |----------|------------------|--------------|-----------------------|
+//! | floor    | 1280 × 720       | 1.0          | 1280 × 720            |
+//! | typical  | 1920 × 1080      | 1.0          | 1920 × 1080           |
+//! | operator | 3360 × 1890      | 2.0          | 6720 × 3780           |
+//!
+//! Each fixture contributes three discrete `#[test] fn`s named
+//! `<fixture_name>__<slot_name>` so a CI failure is immediately
+//! identifiable by test name.
+//!
+//! ## Charts triple (bootstrap — unchanged)
+//!
+//! `charts_screen_dark_floor` / `charts_screen_dark_typical` /
+//! `charts_screen_dark_operator` are the bootstrap v0.1.0 baselines and
+//! are NOT modified by this brief (R-NR.1 + R4 carry-forward).
+//!
+//! ## Opt-outs (D-VPM-4)
+//!
+//! - `visual_diff_helper_writes_diff_png_on_mismatch` (V9 self-test):
+//!   no viewport, no expansion.
 //!
 //! ## First-run semantics
 //!
-//! The visual-diff helper auto-writes the baseline on first run (when
-//! it doesn't exist), so a fresh checkout produces:
+//! On a missing baseline the `viewport_matrix::snapshot_widget_at_slot`
+//! helper auto-writes the actual PNG as the new baseline and returns
+//! `Ok(())`. Operator visually reviews, then commits.
+//!
+//! ## Determinism
+//!
+//! All fixtures seed fixed `Timestamp`s only and pass `Duration::ZERO` to
+//! `iced_test::screenshot`. Two consecutive runs MUST produce zero
+//! `target/visual-diff/` PNGs and zero `git status` changes.
+//!
+//! ## Baseline file convention
 //!
 //! ```text
-//! crates/ui/tests/visual-baselines/charts_screen_dark_floor.png    (1280 × 720)
-//! crates/ui/tests/visual-baselines/charts_screen_dark_typical.png  (1920 × 1080)
-//! crates/ui/tests/visual-baselines/charts_screen_dark_operator.png (6720 × 3780 — physical 2.0x)
+//! crates/ui/tests/visual-baselines/<fixture_name>__<slot_name>.png
 //! ```
-//!
-//! These three PNGs ship committed. Subsequent runs byte-compare
-//! against them; any mismatch writes a perceptual-diff PNG under
-//! `target/visual-diff/` and fails the test with the path triple
-//! cited in the panic message.
-//!
-//! ## Determinism (R4 / H1)
-//!
-//! The fixture path is clock-free (`charts_screen_with_hovered_marker`
-//! seeds fixed `Timestamp`s only), the `local_offset_or_utc()`
-//! override returns `UtcOffset::UTC` under `#[cfg(test)]`, and the
-//! `Duration::ZERO` argument means no async tasks pump between paint
-//! cycles. Two consecutive `cargo test -p ui --test visual_snapshots`
-//! runs MUST produce zero diff bytes (T4032 / H1 falsifier — run by
-//! the orchestrator, not the developer).
-//!
-//! ## V1 + V2 coverage
-//!
-//! - V1 — `cargo test -p ui --test visual_snapshots` exits 0 with the
-//!   three slot-named `#[test] fn`s green.
-//! - V2 — second consecutive run produces zero `target/visual-diff/`
-//!   PNGs and zero `git status` modifications to
-//!   `crates/ui/tests/visual-baselines/`. (Orchestrator-only check.)
+//! (double-underscore, no theme infix for Phase D+/E/F fixtures)
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
-// The Phase D+ snapshot fn names use double-underscore separators that match
-// the baseline PNG filenames exactly (e.g. `trail__steady_state.png`).
-// Suppressing the lint here is the lowest-noise approach — renaming would
-// de-sync fn names from baselines and confuse the operator.
+// The snapshot fn names use double-underscore separators that match the
+// baseline PNG filenames exactly. Suppressing the lint is the
+// lowest-noise approach — renaming would de-sync fn names from baselines.
 #![allow(non_snake_case)]
 
 use std::time::Duration;
@@ -53,20 +57,15 @@ use std::time::Duration;
 mod fixtures;
 
 use fixtures::charts_screen_with_hovered_marker;
+use fixtures::viewport_matrix;
 use fixtures::visual_diff::matches_screenshot;
 use ui::test_support::program_from_cockpit;
 
-/// Snapshot slots for the three Phase D+ trail / live baselines
-/// (Wave C — T-D-N12, T-D-N13, T-D-N14).  Each entry is a
-/// `(fixture_name, logical_w, logical_h, scale)` tuple.  These all
-/// use the `typical` viewport (1920×1080 @ 1.0x) — the T3022 default
-/// that the operator daily-drives and that the trail-screen ship
-/// decision was made against.
-const TRAIL_SLOTS: &[(&str, u32, u32, f32)] = &[
-    ("trail__steady_state", 1920, 1080, 1.0),
-    ("trail__side_drawer_open", 1920, 1080, 1.0),
-    ("live__recent_activity_with_chevron", 1920, 1080, 1.0),
-];
+// ─── Charts triple (bootstrap — three existing slots, NO expansion) ──────────
+//
+// These are the bootstrap v0.1.0 baselines. They use the bootstrap-era
+// `run_slot` helper below (unchanged) and the `SLOTS` const defined
+// there. They stay byte-identical per R-NR.1 + R4.
 
 /// Slot → (logical width, logical height, scale_factor) — operator-
 /// locked Q10. Adding a fourth slot is one row plus one `#[test] fn`.
@@ -75,7 +74,7 @@ const TRAIL_SLOTS: &[(&str, u32, u32, f32)] = &[
 /// - `typical`: T3022 default — 1920×1080 desktop.
 /// - `operator`: actual hardware — 3360×1890 logical at 2.0x scale
 ///   (6720×3780 physical, ≈ 76 MB rgba).
-const SLOTS: &[(&str, (u32, u32), f32)] = &[
+const CHARTS_SLOTS: &[(&str, (u32, u32), f32)] = &[
     ("floor", (1280, 720), 1.0),
     ("typical", (1920, 1080), 1.0),
     ("operator", (3360, 1890), 2.0),
@@ -98,11 +97,11 @@ fn run_slot(slot_name: &str) {
     // thread observes the env at this point.
     unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
 
-    let (_, (w, h), scale) = SLOTS
+    let (_, (w, h), scale) = CHARTS_SLOTS
         .iter()
         .find(|(s, _, _)| *s == slot_name)
         .copied()
-        .unwrap_or_else(|| panic!("unknown SLOTS row: {slot_name}"));
+        .unwrap_or_else(|| panic!("unknown CHARTS_SLOTS row: {slot_name}"));
 
     let cockpit = charts_screen_with_hovered_marker();
     let program = program_from_cockpit(cockpit);
@@ -168,321 +167,477 @@ fn charts_screen_dark_operator() {
     run_slot("operator");
 }
 
-/// Drive `iced_test::screenshot` for a Phase D+ trail/live snapshot slot
-/// identified by `fixture_name`, then route through `matches_screenshot`.
-///
-/// `fixture_name` must be one of the keys in `TRAIL_SLOTS`.  Baseline PNGs
-/// live at `crates/ui/tests/visual-baselines/<fixture_name>.png`.  On the
-/// first run the baseline is auto-written; subsequent runs byte-compare.
-fn run_trail_slot(fixture_name: &str) {
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+// ─── Trail / Live — Phase D+ (viewport matrix expansion) ─────────────────────
+//
+// Three fixtures previously snapshot only at the `typical` viewport.
+// Now expanded to all three slots via `viewport_matrix::snapshot_widget_at_slot`.
+//
+// Existing typical-slot baseline renamed:
+//   trail__steady_state.png            → trail__steady_state__typical.png
+//   trail__side_drawer_open.png        → trail__side_drawer_open__typical.png
+//   live__recent_activity_with_chevron.png → live__recent_activity_with_chevron__typical.png
+// (single rename, zero byte change — the committed PNG is the new __typical member)
 
-    let (_, w, h, scale) = TRAIL_SLOTS
-        .iter()
-        .find(|(s, _, _, _)| *s == fixture_name)
-        .copied()
-        .unwrap_or_else(|| panic!("unknown TRAIL_SLOTS key: {fixture_name}"));
-
-    let cockpit = match fixture_name {
-        "trail__steady_state" => fixtures::trail_steady_state_cockpit(),
-        "trail__side_drawer_open" => fixtures::trail_side_drawer_open_cockpit(),
-        "live__recent_activity_with_chevron" => {
-            fixtures::live_recent_activity_with_chevron_cockpit()
-        }
-        other => panic!("no fixture builder for: {other}"),
-    };
-
-    let program = program_from_cockpit(cockpit);
-    let theme = iced::Theme::Dark;
-
-    let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);
-
-    let baseline = format!(
-        "{}/tests/visual-baselines/{fixture_name}.png",
-        env!("CARGO_MANIFEST_DIR")
-    );
-
-    matches_screenshot(&screenshot, &baseline, fixture_name).unwrap_or_else(|err| {
-        panic!(
-            "visual snapshot mismatch for `{fixture_name}`:\n{err}\n\n\
-             Review the baseline / actual / diff triple, then either:\n  \
-             (a) accept: delete baseline + rerun (auto-rewritten), or\n  \
-             (b) reject: fix the producing widget code."
-        )
+#[test]
+fn trail__steady_state__floor() {
+    viewport_matrix::snapshot_widget_at_slot("trail__steady_state", "floor", None, || {
+        program_from_cockpit(fixtures::trail_steady_state_cockpit())
     });
 }
 
-/// T-D-N12 — Trail screen in list mode (delegates byte-identically to
-/// `screens::audit::view` per R2.2).  Baseline auto-written on first run.
 #[test]
-fn trail__steady_state() {
-    run_trail_slot("trail__steady_state");
-}
-
-/// T-D-N13 — Trail screen in trail mode: Forecast-stage payload + side-
-/// drawer open.  Exercises the full node stack + `trail_drawer::view`.
-/// Baseline auto-written on first run.
-#[test]
-fn trail__side_drawer_open() {
-    run_trail_slot("trail__side_drawer_open");
-}
-
-/// T-D-N14 — Live screen with 5-row recent-activity tape.  Exercises
-/// `screens::live::view` with the universal chevron on every row (R5.1).
-/// Baseline auto-written on first run.
-#[test]
-fn live__recent_activity_with_chevron() {
-    run_trail_slot("live__recent_activity_with_chevron");
-}
-
-/// Snapshot slots for the Phase E compare baselines
-/// (Wave D — T-D-N10, T-D-N11, T-D-N12, T-D-N13).  All use the
-/// `typical` viewport (1920×1080 @ 1.0x) — the T3022 default.
-const COMPARE_SLOTS: &[(&str, u32, u32, f32)] = &[
-    ("compare__cold_boot_all_empty", 1920, 1080, 1.0),
-    ("compare__steady_state_populated", 1920, 1080, 1.0),
-    ("compare__empty_cell_run_affordance", 1920, 1080, 1.0),
-    ("compare__column_header_hover", 1920, 1080, 1.0),
-];
-
-/// Drive `iced_test::screenshot` for a Phase E compare snapshot slot
-/// identified by `fixture_name`, then route through `matches_screenshot`.
-///
-/// `fixture_name` must be one of the keys in `COMPARE_SLOTS`. Baseline
-/// PNGs live at `crates/ui/tests/visual-baselines/<fixture_name>.png`.
-/// On first run the baseline is auto-written; subsequent runs byte-compare.
-fn run_compare_slot(fixture_name: &str) {
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
-
-    let (_, w, h, scale) = COMPARE_SLOTS
-        .iter()
-        .find(|(s, _, _, _)| *s == fixture_name)
-        .copied()
-        .unwrap_or_else(|| panic!("unknown COMPARE_SLOTS key: {fixture_name}"));
-
-    let cockpit = match fixture_name {
-        "compare__cold_boot_all_empty" => fixtures::compare__cold_boot_all_empty_cockpit(),
-        "compare__steady_state_populated" => fixtures::compare__steady_state_populated_cockpit(),
-        "compare__empty_cell_run_affordance" => {
-            fixtures::compare__empty_cell_run_affordance_cockpit()
-        }
-        "compare__column_header_hover" => fixtures::compare__column_header_hover_cockpit(),
-        other => panic!("no fixture builder for: {other}"),
-    };
-
-    let program = program_from_cockpit(cockpit);
-    let theme = iced::Theme::Dark;
-
-    let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);
-
-    let baseline = format!(
-        "{}/tests/visual-baselines/{fixture_name}.png",
-        env!("CARGO_MANIFEST_DIR")
-    );
-
-    matches_screenshot(&screenshot, &baseline, fixture_name).unwrap_or_else(|err| {
-        panic!(
-            "visual snapshot mismatch for `{fixture_name}`:\n{err}\n\n\
-             Review the baseline / actual / diff triple, then either:\n  \
-             (a) accept: delete baseline + rerun (auto-rewritten), or\n  \
-             (b) reject: fix the producing widget code."
-        )
+fn trail__steady_state__typical() {
+    viewport_matrix::snapshot_widget_at_slot("trail__steady_state", "typical", None, || {
+        program_from_cockpit(fixtures::trail_steady_state_cockpit())
     });
 }
 
-/// T-D-N10 — Compare screen cold-boot: every legal cell shows the "Run"
-/// affordance, every non-universe cell shows `—`. K7 subtitle absent.
-/// Baseline auto-written on first run.
 #[test]
-fn compare__cold_boot_all_empty() {
-    run_compare_slot("compare__cold_boot_all_empty");
+fn trail__steady_state__operator() {
+    viewport_matrix::snapshot_widget_at_slot("trail__steady_state", "operator", None, || {
+        program_from_cockpit(fixtures::trail_steady_state_cockpit())
+    });
 }
 
-/// T-D-N11 — Compare screen steady-state: all 24 populated cells filled
-/// per the T-T1-2 census. K7 multi-symbol disclaimer subtitle visible.
-/// Baseline auto-written on first run.
 #[test]
-fn compare__steady_state_populated() {
-    run_compare_slot("compare__steady_state_populated");
+fn trail__side_drawer_open__floor() {
+    viewport_matrix::snapshot_widget_at_slot("trail__side_drawer_open", "floor", None, || {
+        program_from_cockpit(fixtures::trail_side_drawer_open_cockpit())
+    });
 }
 
-/// T-D-N12 — Compare screen with 20 of 24 cells populated: 4 cells
-/// show the "Run" affordance, exercising the `ACCENT_500` hairline
-/// button path (R2.3). Baseline auto-written on first run.
 #[test]
-fn compare__empty_cell_run_affordance() {
-    run_compare_slot("compare__empty_cell_run_affordance");
+fn trail__side_drawer_open__typical() {
+    viewport_matrix::snapshot_widget_at_slot("trail__side_drawer_open", "typical", None, || {
+        program_from_cockpit(fixtures::trail_side_drawer_open_cockpit())
+    });
 }
 
-/// T-D-N13 — Compare screen column-header hover: column headers are
-/// non-interactive (R2.4 v0.1.0). Snapshot confirms no hover tint.
-/// Baseline auto-written on first run.
 #[test]
-fn compare__column_header_hover() {
-    run_compare_slot("compare__column_header_hover");
+fn trail__side_drawer_open__operator() {
+    viewport_matrix::snapshot_widget_at_slot("trail__side_drawer_open", "operator", None, || {
+        program_from_cockpit(fixtures::trail_side_drawer_open_cockpit())
+    });
 }
 
-// ── Phase F snapshots (ui-rethink-phase-f-memory-models-assistant Wave F T-D-N18) ──
+#[test]
+fn live__recent_activity_with_chevron__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "live__recent_activity_with_chevron",
+        "floor",
+        None,
+        || program_from_cockpit(fixtures::live_recent_activity_with_chevron_cockpit()),
+    );
+}
 
-/// Phase F snapshot slot table.
-/// All use the `typical` viewport (1920×1080 @ 1.0x) — the T3022 default.
-const PHASE_F_SLOTS: &[(&str, u32, u32, f32)] = &[
-    ("memory__cold_boot_empty", 1920, 1080, 1.0),
-    ("memory__steady_state_5_cards", 1920, 1080, 1.0),
-    ("memory__drawer_open_on_card_click", 1920, 1080, 1.0),
-    ("models__cold_boot_no_checkpoints", 1920, 1080, 1.0),
-    ("models__steady_state_2_checkpoints", 1920, 1080, 1.0),
-    ("assistant_slot__open_stub", 1920, 1080, 1.0),
-    // v3-llm-forecaster Wave F (T-D-N(F5)) — two new baselines.
-    // The `_disabled__placeholder` baseline asserts R9.3 byte-identity:
-    // when the v3-llm-forecaster strategy is disabled (default), the
-    // Assistant slot body renders the Phase F placeholder verbatim.
-    // The `_active__most_recent_trace` baseline locks the new reasoning-
-    // trace body composition (R9.2).
-    (
+#[test]
+fn live__recent_activity_with_chevron__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "live__recent_activity_with_chevron",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::live_recent_activity_with_chevron_cockpit()),
+    );
+}
+
+#[test]
+fn live__recent_activity_with_chevron__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "live__recent_activity_with_chevron",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::live_recent_activity_with_chevron_cockpit()),
+    );
+}
+
+// ─── Compare — Phase E (viewport matrix expansion) ───────────────────────────
+//
+// Four fixtures previously snapshot only at the `typical` viewport.
+// Now expanded to all three slots.
+//
+// Existing typical-slot baseline renamed:
+//   compare__cold_boot_all_empty.png       → compare__cold_boot_all_empty__typical.png
+//   compare__steady_state_populated.png    → compare__steady_state_populated__typical.png
+//   compare__empty_cell_run_affordance.png → compare__empty_cell_run_affordance__typical.png
+//   compare__column_header_hover.png       → compare__column_header_hover__typical.png
+
+#[test]
+fn compare__cold_boot_all_empty__floor() {
+    viewport_matrix::snapshot_widget_at_slot("compare__cold_boot_all_empty", "floor", None, || {
+        program_from_cockpit(fixtures::compare__cold_boot_all_empty_cockpit())
+    });
+}
+
+#[test]
+fn compare__cold_boot_all_empty__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__cold_boot_all_empty",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::compare__cold_boot_all_empty_cockpit()),
+    );
+}
+
+#[test]
+fn compare__cold_boot_all_empty__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__cold_boot_all_empty",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::compare__cold_boot_all_empty_cockpit()),
+    );
+}
+
+#[test]
+fn compare__steady_state_populated__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__steady_state_populated",
+        "floor",
+        None,
+        || program_from_cockpit(fixtures::compare__steady_state_populated_cockpit()),
+    );
+}
+
+#[test]
+fn compare__steady_state_populated__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__steady_state_populated",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::compare__steady_state_populated_cockpit()),
+    );
+}
+
+#[test]
+fn compare__steady_state_populated__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__steady_state_populated",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::compare__steady_state_populated_cockpit()),
+    );
+}
+
+#[test]
+fn compare__empty_cell_run_affordance__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__empty_cell_run_affordance",
+        "floor",
+        None,
+        || program_from_cockpit(fixtures::compare__empty_cell_run_affordance_cockpit()),
+    );
+}
+
+#[test]
+fn compare__empty_cell_run_affordance__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__empty_cell_run_affordance",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::compare__empty_cell_run_affordance_cockpit()),
+    );
+}
+
+#[test]
+fn compare__empty_cell_run_affordance__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__empty_cell_run_affordance",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::compare__empty_cell_run_affordance_cockpit()),
+    );
+}
+
+#[test]
+fn compare__column_header_hover__floor() {
+    viewport_matrix::snapshot_widget_at_slot("compare__column_header_hover", "floor", None, || {
+        program_from_cockpit(fixtures::compare__column_header_hover_cockpit())
+    });
+}
+
+#[test]
+fn compare__column_header_hover__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__column_header_hover",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::compare__column_header_hover_cockpit()),
+    );
+}
+
+#[test]
+fn compare__column_header_hover__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "compare__column_header_hover",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::compare__column_header_hover_cockpit()),
+    );
+}
+
+// ─── Phase F — Memory / Models / Assistant (viewport matrix expansion) ───────
+//
+// Eight fixtures previously snapshot only at the `typical` viewport.
+// Now expanded to all three slots.
+//
+// Existing typical-slot baselines renamed (single rename, zero byte change):
+//   memory__cold_boot_empty.png                                    → memory__cold_boot_empty__typical.png
+//   memory__steady_state_5_cards.png                               → memory__steady_state_5_cards__typical.png
+//   memory__drawer_open_on_card_click.png                          → memory__drawer_open_on_card_click__typical.png
+//   models__cold_boot_no_checkpoints.png                           → models__cold_boot_no_checkpoints__typical.png
+//   models__steady_state_2_checkpoints.png                         → models__steady_state_2_checkpoints__typical.png
+//   assistant_slot__open_stub.png                                  → assistant_slot__open_stub__typical.png
+//   assistant_slot__llm_forecaster_disabled__placeholder.png       → assistant_slot__llm_forecaster_disabled__placeholder__typical.png
+//   assistant_slot__llm_forecaster_active__most_recent_trace.png   → assistant_slot__llm_forecaster_active__most_recent_trace__typical.png
+
+#[test]
+fn memory__cold_boot_empty__floor() {
+    viewport_matrix::snapshot_widget_at_slot("memory__cold_boot_empty", "floor", None, || {
+        program_from_cockpit(fixtures::memory__cold_boot_empty_cockpit())
+    });
+}
+
+#[test]
+fn memory__cold_boot_empty__typical() {
+    viewport_matrix::snapshot_widget_at_slot("memory__cold_boot_empty", "typical", None, || {
+        program_from_cockpit(fixtures::memory__cold_boot_empty_cockpit())
+    });
+}
+
+#[test]
+fn memory__cold_boot_empty__operator() {
+    viewport_matrix::snapshot_widget_at_slot("memory__cold_boot_empty", "operator", None, || {
+        program_from_cockpit(fixtures::memory__cold_boot_empty_cockpit())
+    });
+}
+
+#[test]
+fn memory__steady_state_5_cards__floor() {
+    viewport_matrix::snapshot_widget_at_slot("memory__steady_state_5_cards", "floor", None, || {
+        program_from_cockpit(fixtures::memory__steady_state_5_cards_cockpit())
+    });
+}
+
+#[test]
+fn memory__steady_state_5_cards__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "memory__steady_state_5_cards",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::memory__steady_state_5_cards_cockpit()),
+    );
+}
+
+#[test]
+fn memory__steady_state_5_cards__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "memory__steady_state_5_cards",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::memory__steady_state_5_cards_cockpit()),
+    );
+}
+
+#[test]
+fn memory__drawer_open_on_card_click__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "memory__drawer_open_on_card_click",
+        "floor",
+        None,
+        || program_from_cockpit(fixtures::memory__drawer_open_on_card_click_cockpit()),
+    );
+}
+
+#[test]
+fn memory__drawer_open_on_card_click__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "memory__drawer_open_on_card_click",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::memory__drawer_open_on_card_click_cockpit()),
+    );
+}
+
+#[test]
+fn memory__drawer_open_on_card_click__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "memory__drawer_open_on_card_click",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::memory__drawer_open_on_card_click_cockpit()),
+    );
+}
+
+#[test]
+fn models__cold_boot_no_checkpoints__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "models__cold_boot_no_checkpoints",
+        "floor",
+        None,
+        || program_from_cockpit(fixtures::models__cold_boot_no_checkpoints_cockpit()),
+    );
+}
+
+#[test]
+fn models__cold_boot_no_checkpoints__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "models__cold_boot_no_checkpoints",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::models__cold_boot_no_checkpoints_cockpit()),
+    );
+}
+
+#[test]
+fn models__cold_boot_no_checkpoints__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "models__cold_boot_no_checkpoints",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::models__cold_boot_no_checkpoints_cockpit()),
+    );
+}
+
+#[test]
+fn models__steady_state_2_checkpoints__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "models__steady_state_2_checkpoints",
+        "floor",
+        None,
+        || program_from_cockpit(fixtures::models__steady_state_2_checkpoints_cockpit()),
+    );
+}
+
+#[test]
+fn models__steady_state_2_checkpoints__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "models__steady_state_2_checkpoints",
+        "typical",
+        None,
+        || program_from_cockpit(fixtures::models__steady_state_2_checkpoints_cockpit()),
+    );
+}
+
+#[test]
+fn models__steady_state_2_checkpoints__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "models__steady_state_2_checkpoints",
+        "operator",
+        None,
+        || program_from_cockpit(fixtures::models__steady_state_2_checkpoints_cockpit()),
+    );
+}
+
+#[test]
+fn assistant_slot__open_stub__floor() {
+    viewport_matrix::snapshot_widget_at_slot("assistant_slot__open_stub", "floor", None, || {
+        program_from_cockpit(fixtures::assistant_slot__open_stub_cockpit())
+    });
+}
+
+#[test]
+fn assistant_slot__open_stub__typical() {
+    viewport_matrix::snapshot_widget_at_slot("assistant_slot__open_stub", "typical", None, || {
+        program_from_cockpit(fixtures::assistant_slot__open_stub_cockpit())
+    });
+}
+
+#[test]
+fn assistant_slot__open_stub__operator() {
+    viewport_matrix::snapshot_widget_at_slot("assistant_slot__open_stub", "operator", None, || {
+        program_from_cockpit(fixtures::assistant_slot__open_stub_cockpit())
+    });
+}
+
+#[test]
+fn assistant_slot__llm_forecaster_disabled__placeholder__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
         "assistant_slot__llm_forecaster_disabled__placeholder",
-        1920,
-        1080,
-        1.0,
-    ),
-    (
-        "assistant_slot__llm_forecaster_active__most_recent_trace",
-        1920,
-        1080,
-        1.0,
-    ),
-];
-
-/// Drive a Phase F snapshot slot.
-fn run_phase_f_slot(fixture_name: &str) {
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
-
-    let (_, w, h, scale) = PHASE_F_SLOTS
-        .iter()
-        .find(|(s, _, _, _)| *s == fixture_name)
-        .copied()
-        .unwrap_or_else(|| panic!("unknown PHASE_F_SLOTS key: {fixture_name}"));
-
-    let cockpit = match fixture_name {
-        "memory__cold_boot_empty" => fixtures::memory__cold_boot_empty_cockpit(),
-        "memory__steady_state_5_cards" => fixtures::memory__steady_state_5_cards_cockpit(),
-        "memory__drawer_open_on_card_click" => {
-            fixtures::memory__drawer_open_on_card_click_cockpit()
-        }
-        "models__cold_boot_no_checkpoints" => fixtures::models__cold_boot_no_checkpoints_cockpit(),
-        "models__steady_state_2_checkpoints" => {
-            fixtures::models__steady_state_2_checkpoints_cockpit()
-        }
-        "assistant_slot__open_stub" => fixtures::assistant_slot__open_stub_cockpit(),
-        "assistant_slot__llm_forecaster_disabled__placeholder" => {
-            fixtures::assistant_slot__llm_forecaster_disabled__placeholder_cockpit()
-        }
-        "assistant_slot__llm_forecaster_active__most_recent_trace" => {
-            fixtures::assistant_slot__llm_forecaster_active__most_recent_trace_cockpit()
-        }
-        other => panic!("no fixture builder for: {other}"),
-    };
-
-    let program = program_from_cockpit(cockpit);
-    let theme = iced::Theme::Dark;
-
-    let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);
-
-    let baseline = format!(
-        "{}/tests/visual-baselines/{fixture_name}.png",
-        env!("CARGO_MANIFEST_DIR")
+        "floor",
+        None,
+        || {
+            program_from_cockpit(
+                fixtures::assistant_slot__llm_forecaster_disabled__placeholder_cockpit(),
+            )
+        },
     );
-
-    matches_screenshot(&screenshot, &baseline, fixture_name).unwrap_or_else(|err| {
-        panic!(
-            "visual snapshot mismatch for `{fixture_name}`:\n{err}\n\n\
-             Review the baseline / actual / diff triple, then either:\n  \
-             (a) accept: delete baseline + rerun (auto-rewritten), or\n  \
-             (b) reject: fix the producing widget code."
-        )
-    });
 }
 
-/// T-D-N18 (1/6) — Memory screen cold-boot: empty cache renders R1.4 placeholder.
-/// Baseline auto-written on first run.
 #[test]
-fn memory__cold_boot_empty() {
-    run_phase_f_slot("memory__cold_boot_empty");
+fn assistant_slot__llm_forecaster_disabled__placeholder__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "assistant_slot__llm_forecaster_disabled__placeholder",
+        "typical",
+        None,
+        || {
+            program_from_cockpit(
+                fixtures::assistant_slot__llm_forecaster_disabled__placeholder_cockpit(),
+            )
+        },
+    );
 }
 
-/// T-D-N18 (2/6) — Memory screen steady-state: 5 lesson cards (mix of Win /
-/// Loss / Scratch). List mode; drawer closed.
-/// Baseline auto-written on first run.
 #[test]
-fn memory__steady_state_5_cards() {
-    run_phase_f_slot("memory__steady_state_5_cards");
+fn assistant_slot__llm_forecaster_disabled__placeholder__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "assistant_slot__llm_forecaster_disabled__placeholder",
+        "operator",
+        None,
+        || {
+            program_from_cockpit(
+                fixtures::assistant_slot__llm_forecaster_disabled__placeholder_cockpit(),
+            )
+        },
+    );
 }
 
-/// T-D-N18 (3/6) — Memory screen with side-drawer open on first card click.
-/// Exercises Q5=(b) drawer path.
-/// Baseline auto-written on first run.
 #[test]
-fn memory__drawer_open_on_card_click() {
-    run_phase_f_slot("memory__drawer_open_on_card_click");
+fn assistant_slot__llm_forecaster_active__most_recent_trace__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "assistant_slot__llm_forecaster_active__most_recent_trace",
+        "floor",
+        None,
+        || {
+            program_from_cockpit(
+                fixtures::assistant_slot__llm_forecaster_active__most_recent_trace_cockpit(),
+            )
+        },
+    );
 }
 
-/// T-D-N18 (4/6) — Models screen cold-boot: no checkpoints loaded renders
-/// Q3=(a) empty-state placeholder.
-/// Baseline auto-written on first run.
 #[test]
-fn models__cold_boot_no_checkpoints() {
-    run_phase_f_slot("models__cold_boot_no_checkpoints");
+fn assistant_slot__llm_forecaster_active__most_recent_trace__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "assistant_slot__llm_forecaster_active__most_recent_trace",
+        "typical",
+        None,
+        || {
+            program_from_cockpit(
+                fixtures::assistant_slot__llm_forecaster_active__most_recent_trace_cockpit(),
+            )
+        },
+    );
 }
 
-/// T-D-N18 (5/6) — Models screen steady-state: 2 TCN checkpoints loaded
-/// (mirrors the live `tcn-bs1` + `tcn-bs2` on disk). Both render as `staged`
-/// per Q7=(c).
-/// Baseline auto-written on first run.
 #[test]
-fn models__steady_state_2_checkpoints() {
-    run_phase_f_slot("models__steady_state_2_checkpoints");
+fn assistant_slot__llm_forecaster_active__most_recent_trace__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "assistant_slot__llm_forecaster_active__most_recent_trace",
+        "operator",
+        None,
+        || {
+            program_from_cockpit(
+                fixtures::assistant_slot__llm_forecaster_active__most_recent_trace_cockpit(),
+            )
+        },
+    );
 }
 
-/// T-D-N18 (6/6) — Assistant slot open stub: right-rail renders
-/// `ASSISTANT_OFFLINE_TITLE` + `ASSISTANT_OFFLINE_BODY` at Phase 6 wake.
-/// K6 Option A: `RIGHT_RAIL_OPEN_WIDTH_PX = 320.0` governs the slot width.
-/// Baseline auto-written on first run.
-#[test]
-fn assistant_slot__open_stub() {
-    run_phase_f_slot("assistant_slot__open_stub");
-}
-
-/// v3-llm-forecaster Wave F (T-D-N(F5)) — R9.3 byte-identity guard.
-///
-/// When the v3-llm-forecaster strategy is *disabled* (the default per
-/// `LlmForecasterConfig::default().enabled = false`), the cockpit_live
-/// boot path leaves `assistant_state.mode = Offline` and the right-
-/// rail renders the Phase F placeholder verbatim — byte-identical to
-/// the `assistant_slot__open_stub` baseline. Baseline auto-written on
-/// first run; subsequent runs assert byte-identity.
-///
-/// The dedicated baseline (vs reusing `assistant_slot__open_stub`)
-/// makes the regression intent explicit: when the v3-llm-forecaster
-/// view code mutates (say, adds a new `AssistantMode` variant), this
-/// baseline catches any incidental drift on the default-disabled path
-/// even when the original Phase F baseline stays green.
-#[test]
-fn assistant_slot__llm_forecaster_disabled__placeholder() {
-    run_phase_f_slot("assistant_slot__llm_forecaster_disabled__placeholder");
-}
-
-/// v3-llm-forecaster Wave F (T-D-N(F5)) — active reasoning-trace body.
-///
-/// `AssistantMode::ReasoningTrace` with one populated `LlmForecastView`
-/// in `last_forecast`, one prior forecast in `history`, and one
-/// matching `LessonCardCard` hydrated in `memory_screen_state.cache`
-/// (the cited-lessons section exercises both matched-card and
-/// pending-card branches in a single baseline). Baseline auto-written
-/// on first run.
-#[test]
-fn assistant_slot__llm_forecaster_active__most_recent_trace() {
-    run_phase_f_slot("assistant_slot__llm_forecaster_active__most_recent_trace");
-}
+// ─── V9 — Opt-out (D-VPM-4) ──────────────────────────────────────────────────
+//
+// This is a helper self-test that drives the visual-diff helper with
+// synthetic 8×8 RGB buffers (no fixture, no viewport). Not a screenshot
+// test in the matrix sense — no expansion.
 
 /// V9 — the perceptual-diff helper materialises a diff PNG on
 /// mismatch (R6.1 — R6.4). Drives the helper with two known-

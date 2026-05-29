@@ -1,79 +1,59 @@
-//! Real-renderer panel snapshots — ui-quality-gate-overhaul M1-B.
+//! Real-renderer panel snapshots — ui-quality-gate-overhaul M1-B +
+//! ui-test-harness-viewport-matrix v0.1.0.
 //!
-//! Mirrors the [`visual_snapshots.rs`](visual_snapshots.rs) harness pattern
-//! and routes through the same
-//! [`fixtures::visual_diff::matches_screenshot`](fixtures/visual_diff.rs)
-//! helper. Per architect H-A1 falsifier (2026-05-14): the correct
-//! pairing is `iced_test::screenshot()` (which already drives an
-//! `Emulator` backed by `iced_core::renderer::Headless::screenshot`)
-//! plus the existing `fixtures::visual_diff` SSIM helper — NOT a new
-//! `Simulator + Headless + image-compare` triad as the predecessor
-//! architect proposed.
+//! ## Viewport matrix (ui-test-harness-viewport-matrix v0.1.0)
 //!
-//! ## What this file replaces
+//! Previously this file used a single `("typical", (1280, 720), 1.0)` slot
+//! (the M1-B PoC viewport). With the viewport-matrix expansion each of the
+//! 7 fixtures now runs at all three operator-locked slots via
+//! `viewport_matrix::snapshot_widget_at_slot`.
 //!
-//! The text-summary helpers at
-//! [`panel_snapshots.rs:1834-2298`](panel_snapshots.rs) (`tape_summary`,
-//! `positions_summary`, `pnl_summary`, `strategies_summary`) catch
-//! state-machine regressions but not visual regressions. The F1 incident
-//! (`spec/cockpit-render-regression/feature.md`) shipped past 267
-//! text-summary tests because no harness exercised the iced render
-//! path against a live tiny-skia surface. M1-B closes the gap by adding
-//! PNG-baseline tests for each panel surface — first-run writes the
-//! baseline (operator reviews + commits), subsequent runs byte-compare.
+//! Per D-VPM-3 subtlety: the M1-B PoC "typical" was 1280×720, NOT the
+//! matrix `typical` 1920×1080. The old typical baselines stay under their
+//! current filenames (`*_dark_typical.png` at 1280×720) for the 2 stable
+//! fixtures; the new `__floor`, `__typical`, `__operator` matrix baselines
+//! use the viewport_matrix SLOTS convention (floor=1280×720,
+//! typical=1920×1080, operator=3360×1890×2.0).
 //!
-//! ## Two-phase migration (per architect Q1)
+//! ## Baseline path convention (render_snapshots subdir)
 //!
-//! Phase 1 (this file, landed in M1-B-2/-3): render-snapshot tests
-//! ship alongside the existing text-summary helpers. Both run on
-//! `cargo test -p ui`. Cross-check value: if the render-snapshot
-//! says "OK" but a text-summary says "state diverged", we have a
-//! pre-PASS early-warning channel.
+//! ```text
+//! crates/ui/tests/visual-baselines/render_snapshots/<fixture_name>__<slot_name>.png
+//! ```
 //!
-//! Phase 2 (M1-B-5b, after tester VERDICT → PASS): the text-summary
-//! helpers retire. This file becomes the load-bearing panel coverage.
+//! Note: the existing M1-B baselines (`chart_screen_dark_typical.png`,
+//! `strategies_ready_dark_typical.png`) are NOT renamed — they live at
+//! the old path and are exercised by the renamed `run_panel_slot_legacy`
+//! helper. The new matrix expansion writes NEW files alongside them.
 //!
 //! ## First-run semantics
 //!
-//! `fixtures::visual_diff::matches_screenshot` auto-writes the baseline
-//! on first run when it doesn't exist. The orchestrator (per
-//! `AGENT.md ## Capability boundaries`) owns the actual capture-and-
-//! commit cycle: developer authors this file and surfaces in
-//! `[open_questions].items` that orchestrator must run the test once
-//! against a live cockpit-capable host to materialise the baselines
-//! under `crates/ui/tests/visual-baselines/render_snapshots/`. The
-//! committed baselines are part of the M1-B Phase 1 land; without
-//! them the tests pass-on-first-run only.
+//! `viewport_matrix::snapshot_widget_at_slot` auto-writes the baseline on
+//! first run when it doesn't exist. The orchestrator owns the capture-and-
+//! commit cycle.
+//!
+//! ## Opt-outs (D-VPM-4)
+//!
+//! None for this file — all 5 `#[ignore]`d tests stay `#[ignore]`d and get
+//! matrix expansion too (the `#[ignore]` decorator carries through per D-VPM-3).
 //!
 //! ## SSIM threshold (per architect Q5)
 //!
-//! `SSIM_THRESHOLD = 0.99` strict, **no epsilon band**. The existing
-//! `visual_snapshots.rs` harness uses the same
-//! `fixtures::visual_diff` (which under the hood is
-//! `image_compare::rgb_hybrid_compare` via `Algorithm::MSSIMSimple`)
-//! and passes the two-consecutive-runs determinism gate today. If
-//! image-compare's SSIM had a non-deterministic codepath, the
-//! existing harness would FAIL that gate. It doesn't, so we don't
-//! pad the threshold.
-//!
-//! ## Determinism (R4 / H1, mirroring `visual_snapshots.rs:25-33`)
-//!
-//! The fixture path is clock-free (`ui::fixtures::fake_cockpit_ready`
-//! seeds fixed `Timestamp`s only via `fixtures::fixed_ts(...)`), the
-//! `local_offset_or_utc()` override returns `UtcOffset::UTC` under
-//! `#[cfg(test)]`, and the `Duration::ZERO` argument to
-//! `iced_test::screenshot` means no async tasks pump between paint
-//! cycles. Two consecutive `cargo test -p ui --test render_snapshots`
-//! runs MUST produce zero diff bytes (the architect's Q5 acceptance
-//! criterion).
+//! `SSIM_THRESHOLD = 0.99` strict, **no epsilon band**. Same contract as M1-B.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
+// The viewport-matrix slot test fn names use double-underscore separators
+// that match the baseline PNG filenames exactly (e.g. `strategies_ready__floor`).
+// Suppressing the non_snake_case lint is the lowest-noise approach — renaming
+// would de-sync fn names from baselines.
+#![allow(non_snake_case)]
 
 use std::time::Duration;
 
 #[path = "fixtures/mod.rs"]
 mod fixtures;
 
+use fixtures::viewport_matrix;
 use fixtures::visual_diff::matches_screenshot;
 use ui::test_support::program_from_cockpit;
 
@@ -87,36 +67,24 @@ use ui::test_support::program_from_cockpit;
 #[allow(dead_code)]
 pub const SSIM_THRESHOLD: f64 = 0.99_f64;
 
-/// Render-snapshot viewport slots. M1-B PoC ships a single
-/// `("typical", (1280, 720), 1.0)` row per panel — the same viewport
-/// the architect picked for the M1-B PoC. Multi-slot expansion is a
-/// follow-up brief (per Out-of-scope list in
-/// `spec/ui-quality-gate-overhaul/tasks.md ## Out-of-scope reaffirmed`).
-const SLOTS: &[(&str, (u32, u32), f32)] = &[("typical", (1280, 720), 1.0)];
-
-/// Drive `iced_test::screenshot` against the supplied cockpit fixture
-/// and route the resulting `iced::window::Screenshot` through the
-/// `matches_screenshot` helper. Mirrors `visual_snapshots.rs::run_slot`
-/// for the panel-snapshot tier — panics with the multi-line path-triple
-/// message on mismatch so the operator can `open` the baseline / actual
-/// / diff triple in Finder.
-fn run_panel_slot(panel_name: &str, slot_name: &str, cockpit: ui::Cockpit) {
-    // v1.11 chart-x-axis-local-time: integration tests link against
-    // the library compiled WITHOUT `cfg(test)`, so the `cfg(test)`
-    // UTC override in `widgets::chart::local_offset_or_utc` does not
-    // fire here. The env-var gate (`UI_CHART_FORCE_UTC`) preserves
-    // snapshot determinism across host time zones — see the function's
-    // doc comment for the full contract.
+/// Legacy M1-B helper for the two pre-existing stable baselines that
+/// used the M1-B PoC `("typical", 1280×720)` viewport convention. These
+/// baselines are kept byte-identical per R-NR.1 — they are NOT renamed
+/// or regenerated by the viewport-matrix expansion.
+///
+/// Used only by `strategies_ready_renders_clean` and `chart_screen_renders_clean`
+/// legacy tests which act as regression guards on the old baselines.
+fn run_panel_slot_legacy(panel_name: &str, slot_name: &str, cockpit: ui::Cockpit) {
     // SAFETY: `set_var` is unsafe in edition 2024; this is a test-only
     // single-threaded init before iced_test::screenshot — no other
     // thread observes the env at this point.
     unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
 
-    let (_, (w, h), scale) = SLOTS
-        .iter()
-        .find(|(s, _, _)| *s == slot_name)
-        .copied()
-        .unwrap_or_else(|| panic!("unknown SLOTS row: {slot_name}"));
+    // M1-B PoC slot — "typical" maps to (1280, 720) in the legacy convention.
+    let (w, h, scale): (u32, u32, f32) = match slot_name {
+        "typical" => (1280, 720, 1.0),
+        other => panic!("run_panel_slot_legacy only supports 'typical'; got: {other}"),
+    };
 
     let program = program_from_cockpit(cockpit);
     let theme = iced::Theme::Dark;
@@ -140,40 +108,60 @@ fn run_panel_slot(panel_name: &str, slot_name: &str, cockpit: ui::Cockpit) {
 }
 
 // ─── PoC: positions_ready ───────────────────────────────────────────────
-//
+
 // Per architect T-M1-B-2 acceptance criteria: the PoC fixture is
 // `ui::fixtures::fake_cockpit_ready()` (positions in `Ready` state with
 // the three-position fixture set). Rendering the full cockpit shell
 // — not just the positions panel in isolation — keeps the harness
 // congruent with `visual_snapshots.rs` and matches what an operator
-// sees when they boot the fixtures cockpit. Panel-specific isolation
-// is a follow-up (`#[cfg(feature = "fixtures-isolated-panels")]` style),
-// not in M1-B PoC scope.
+// sees when they boot the fixtures cockpit.
+
 #[test]
 #[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
-fn positions_ready_renders_clean() {
-    let cockpit = ui::fixtures::fake_cockpit_ready();
-    run_panel_slot("positions_ready", "typical", cockpit);
+fn positions_ready_renders_clean__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "positions_ready",
+        "floor",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn positions_ready_renders_clean__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "positions_ready",
+        "typical",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn positions_ready_renders_clean__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "positions_ready",
+        "operator",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
 }
 
 // ─── Bulk migration tier (T-M1-B-3) ────────────────────────────────────
 //
-// Each panel surface gets one render-snapshot test at the `typical`
-// viewport. Architect's 6-widget scope (positions, strategies,
-// kpi_strip, journal_transaction_modal, chart, focus_ring) plus the
-// agent-feed/tape panel for coverage parity with the predecessor
-// `panel_snapshots.rs` text-summary tier. The orchestrator captures
-// the baselines once a live cockpit-capable host is available; until
-// then these tests pass-on-first-run by auto-writing the baselines.
+// Each panel surface gets render-snapshot tests at all three viewport
+// slots. The 5 non-deterministic shell-composition tests inherit the
+// `#[ignore]` decorator per D-VPM-3.
 
 // NOTE on two-run determinism for shell-composition tests
 // -------------------------------------------------------
 //
-// The five tests below — `agent_feed_ready_renders_clean`,
-// `kpi_strip_ready_renders_clean`, `pnl_panel_ready_renders_clean`,
-// `positions_ready_renders_clean`, `focus_ring_baseline_renders_clean`
-// — render the full cockpit shell (sidebar + screen body + status bar)
-// via the home-screen `Cockpit` fixture, which carries surfaces with
+// The five test groups below — `agent_feed_ready`, `kpi_strip_ready`,
+// `pnl_panel_ready`, `positions_ready`, `focus_ring_baseline` — render
+// the full cockpit shell (sidebar + screen body + status bar) via the
+// home-screen `Cockpit` fixture, which carries surfaces with
 // time-varying content under the default `iced_test::screenshot`
 // timing (e.g. `iced_aw::Spinner` animations on Loading panels,
 // status-bar uptime text). Two consecutive runs on the same fixture
@@ -185,87 +173,216 @@ fn positions_ready_renders_clean() {
 //
 //   cargo test -p ui --test render_snapshots -- --ignored
 //
-// First run auto-writes baselines under
-// `crates/ui/tests/visual-baselines/render_snapshots/`. Second
-// run will FAIL until the underlying time-varying surfaces are
-// neutralised. Follow-up tickets queued for the orchestrator:
-//
-//   1. Add a `#[cfg(test)]` spinner-freeze hook to `iced_aw::Spinner`
-//      (or wrap it in a `frame::loading_with_spinner_test()`
-//      variant that omits the animated spinner).
-//   2. Wire a deterministic-clock injection into the status-bar
-//      `uptime` widget so the test fixture renders against a fixed
-//      uptime string.
-//   3. Once both land, drop `#[ignore]` and commit baselines.
-//
-// The two stable tests below — `strategies_ready_renders_clean` and
-// `chart_screen_renders_clean` — DO satisfy the two-run determinism
-// gate today (the strategies fixture and the chart fixture lack the
-// time-varying surfaces; the chart fixture is the exact one the
-// shipped `visual_snapshots.rs` harness uses successfully).
+// The two stable groups — `strategies_ready` and `chart_screen` —
+// DO satisfy the two-run determinism gate today and are NOT ignored.
 
 #[test]
 #[ignore = "shell composition has time-varying surfaces (spinner animation, uptime text); orchestrator runs via --ignored after fixture-deterministic-hook follow-up lands"]
-fn agent_feed_ready_renders_clean() {
-    // Tape / agent feed surface — the three-fills fixture is the
-    // shared baseline scene from `panel_snapshots.rs` (and the
-    // existing `agent_feed_ready_three_fills` text-summary test).
-    let cockpit = ui::fixtures::fake_cockpit_ready_with_three_fills();
-    run_panel_slot("agent_feed_ready", "typical", cockpit);
+fn agent_feed_ready_renders_clean__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "agent_feed_ready",
+        "floor",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready_with_three_fills()),
+    );
 }
 
+#[test]
+#[ignore = "shell composition has time-varying surfaces (spinner animation, uptime text); orchestrator runs via --ignored after fixture-deterministic-hook follow-up lands"]
+fn agent_feed_ready_renders_clean__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "agent_feed_ready",
+        "typical",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready_with_three_fills()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition has time-varying surfaces (spinner animation, uptime text); orchestrator runs via --ignored after fixture-deterministic-hook follow-up lands"]
+fn agent_feed_ready_renders_clean__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "agent_feed_ready",
+        "operator",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready_with_three_fills()),
+    );
+}
+
+// strategies_ready — stable, no #[ignore]
+#[test]
+fn strategies_ready_renders_clean__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "strategies_ready",
+        "floor",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_v15a_pairs_steady_state()),
+    );
+}
+
+#[test]
+fn strategies_ready_renders_clean__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "strategies_ready",
+        "typical",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_v15a_pairs_steady_state()),
+    );
+}
+
+#[test]
+fn strategies_ready_renders_clean__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "strategies_ready",
+        "operator",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_v15a_pairs_steady_state()),
+    );
+}
+
+// Legacy M1-B baseline for strategies_ready at 1280×720 "typical" — kept byte-identical.
+// This is the bootstrap anchor; the new matrix expansion writes parallel files.
 #[test]
 fn strategies_ready_renders_clean() {
-    // Strategies panel — the F1 incident's load-bearing widget
-    // (`id_cell`). Render-snapshot coverage proves a future F1-class
-    // regression (zero-height `Length::Fill` inside a Table cell)
-    // surfaces as a pixel-level diff, not a silent miss.
     let cockpit = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
-    run_panel_slot("strategies_ready", "typical", cockpit);
+    run_panel_slot_legacy("strategies_ready", "typical", cockpit);
 }
 
 #[test]
 #[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
-fn kpi_strip_ready_renders_clean() {
-    // KPI strip lives on the viewer-screen; the cockpit shell composes
-    // it indirectly. The fixtures cockpit reaches the strip on
-    // `Screen::Home` per the standard fixtures boot.
-    let cockpit = ui::fixtures::fake_cockpit_ready();
-    run_panel_slot("kpi_strip_ready", "typical", cockpit);
+fn kpi_strip_ready_renders_clean__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "kpi_strip_ready",
+        "floor",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
 }
 
 #[test]
 #[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
-fn pnl_panel_ready_renders_clean() {
-    // PnL mirror — straightforward Ready-state test against the
-    // positive-pnl fixture. Covers the per-symbol PnL row layout.
-    let cockpit = ui::fixtures::fake_cockpit_ready();
-    run_panel_slot("pnl_panel_ready", "typical", cockpit);
+fn kpi_strip_ready_renders_clean__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "kpi_strip_ready",
+        "typical",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
 }
 
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn kpi_strip_ready_renders_clean__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "kpi_strip_ready",
+        "operator",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn pnl_panel_ready_renders_clean__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "pnl_panel_ready",
+        "floor",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn pnl_panel_ready_renders_clean__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "pnl_panel_ready",
+        "typical",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn pnl_panel_ready_renders_clean__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "pnl_panel_ready",
+        "operator",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+// chart_screen — stable, no #[ignore]
+#[test]
+fn chart_screen_renders_clean__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "chart_screen",
+        "floor",
+        Some("render_snapshots"),
+        || program_from_cockpit(fixtures::charts_screen_with_hovered_marker()),
+    );
+}
+
+#[test]
+fn chart_screen_renders_clean__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "chart_screen",
+        "typical",
+        Some("render_snapshots"),
+        || program_from_cockpit(fixtures::charts_screen_with_hovered_marker()),
+    );
+}
+
+#[test]
+fn chart_screen_renders_clean__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "chart_screen",
+        "operator",
+        Some("render_snapshots"),
+        || program_from_cockpit(fixtures::charts_screen_with_hovered_marker()),
+    );
+}
+
+// Legacy M1-B baseline for chart_screen at 1280×720 "typical" — kept byte-identical.
 #[test]
 fn chart_screen_renders_clean() {
-    // Chart screen — already covered by `visual_snapshots.rs` at three
-    // viewports, but the M1-B `render_snapshots.rs` baseline lives at
-    // the canonical `typical` slot for cross-harness parity. The
-    // shared `charts_screen_with_hovered_marker` fixture seeds the
-    // Q9 hovered-marker tooltip so this test exercises the chart-
-    // tooltip code path.
     let cockpit = fixtures::charts_screen_with_hovered_marker();
-    run_panel_slot("chart_screen", "typical", cockpit);
+    run_panel_slot_legacy("chart_screen", "typical", cockpit);
 }
 
 #[test]
 #[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
-fn focus_ring_baseline_renders_clean() {
-    // Focus-ring rendering surface — exercises the
-    // `widgets::focus_ring::wrap(...)` overlay via the standard
-    // cockpit fixture. The `focus_ring` widget is a wrapper used
-    // throughout the cockpit; the baseline captures the default
-    // un-focused state. A keyboard-focus injection variant is a
-    // follow-up brief.
-    let cockpit = ui::fixtures::fake_cockpit_ready();
-    run_panel_slot("focus_ring_baseline", "typical", cockpit);
+fn focus_ring_baseline_renders_clean__floor() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "focus_ring_baseline",
+        "floor",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn focus_ring_baseline_renders_clean__typical() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "focus_ring_baseline",
+        "typical",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
+}
+
+#[test]
+#[ignore = "shell composition non-determinism — see note above `agent_feed_ready_renders_clean`"]
+fn focus_ring_baseline_renders_clean__operator() {
+    viewport_matrix::snapshot_widget_at_slot(
+        "focus_ring_baseline",
+        "operator",
+        Some("render_snapshots"),
+        || program_from_cockpit(ui::fixtures::fake_cockpit_ready()),
+    );
 }
 
 // Note on journal_transaction_modal coverage:
