@@ -35,7 +35,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use time::{Date, Month, PrimitiveDateTime, Time};
 use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
+// EnvFilter now used via llm::tracing_init::install_global (T-RED-D12).
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -427,12 +427,8 @@ fn should_skip(path: &Path, expected_bars: Option<usize>) -> bool {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialise tracing; fall back to INFO if RUST_LOG is not set.
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    // T-RED-D12 (v2-1-tracing-layer-redactor): migrated to install_global.
+    llm::tracing_init::install_global(&[], false)?;
 
     let cli = Cli::parse();
 

@@ -66,6 +66,8 @@ time = { workspace = true }
 clap = { workspace = true }
 # T1923 — `llm-smoke` binary trace output (`tracing_subscriber::fmt`).
 tracing-subscriber = { workspace = true }
+# T-RED-D1 — regex rule set for the tracing-Layer redactor (D-RED-1 / D-RED-3).
+regex = { workspace = true }
 # T1921 — async filesystem prep (`tokio::fs::create_dir_all` for the
 # replay DB's parent directory before `SqlitePool::connect` opens it).
 # Already pulled in via the `tokio` workspace dep; no new line.

@@ -161,6 +161,9 @@ required-features = ["candle"]
 [dependencies]
 # Workspace siblings
 trading_core = { path = "../core" }
+# T-RED-D12 (v2-1-tracing-layer-redactor) — llm::tracing_init::install_global
+# for subscriber migration across all forecast bins.
+llm = { path = "../llm" }
 replay-cache = { path = "../replay-cache" }
 # Audit-DB sidecar for train_tcn --audit-db instrumentation (T-D-N10).
 # Compiled in always; the Ledger is only opened at runtime when --audit-db

@@ -1,8 +1,8 @@
 ---
 slug: v2-1-tracing-layer-redactor
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 updated: 2026-05-29
 ---
@@ -933,7 +933,39 @@ guarantee (75/75 anchors byte-identical pre/post)._
 
 ## Implementation
 
-_Developer fills at M-DEV._
+### M-DEV delivery 2026-05-29
+
+**New files:**
+- `crates/llm/src/redact_layer.rs` — `RedactLayer` + `RedactingFormatFields` + `redact_str()` + thread-local `REDACTED_FIELDS` / `META_EVENTS` state. 9-rule closed regex rule set (OnceLock<RegexSet> per D-RED-1 table). Shannon entropy fallback rule (ENTROPY_THRESHOLD=4.5, ENTROPY_MIN_LEN=32).
+- `crates/llm/src/tracing_init.rs` — `install_global(extra_directives, json)` shared installer. Registry chain: `EnvFilter → RedactLayer → fmt::Layer<RedactingFormatFields>`.
+- `crates/llm/tests/redact_layer.rs` — 9 integration tests + 2 `#[ignore]` falsification probes (P-RED-1, P-RED-2).
+
+**Modified files (17 binary entry points migrated):**
+- `crates/agent/src/main.rs` (P0)
+- `crates/ui/src/bin/cockpit_live.rs` (P0) + `crates/ui/Cargo.toml` (added `llm` optional dep under `live` feature)
+- `crates/backtest/src/main.rs` (P1) + `crates/backtest/Cargo.toml`
+- `crates/llm/src/bin/llm-smoke.rs` (P1)
+- `crates/llm/src/bin/generate-replay-fixture.rs` (P1)
+- `crates/trader/src/bin/llm_verdict.rs` (P1)
+- 8 `crates/forecast/src/bin/*.rs` (P2) + `crates/forecast/Cargo.toml`
+- 2 `crates/backtest/src/bin/*.rs` (P2)
+- 2 `crates/data/src/bin/*.rs` (P2) + `crates/data/Cargo.toml`
+
+**Design deviation from D-RED-3(b):**
+The spec's "emit-redacted + filter-original" pattern cannot work in tracing-subscriber 0.3.x: `tracing::info!()` called from inside `on_event` is silently dropped by tracing's reentrancy guard (confirmed by empirical testing). The implementation uses instead:
+1. `RedactLayer::on_event` populates `REDACTED_FIELDS` thread-local with `(field_name, redacted_value)` pairs.
+2. `RedactingFormatFields` (a custom `FormatFields` impl) reads `REDACTED_FIELDS` during field formatting and substitutes redacted values before they reach stdout/stderr.
+3. WARN meta-events are written via `eprintln!` to stderr (inside `on_event`, bypassing the reentrancy guard) AND recorded in `META_EVENTS` thread-local for integration test assertions.
+
+This approach satisfies R1 (Layer intercepts events before downstream sinks) and R2 (WARN-mode observability) with correct tracing-subscriber semantics.
+
+**Test results:**
+- `cargo test -p llm --lib`: 108 passed, 0 failed, 1 ignored (P-RED-3 probe)
+- `cargo test -p llm --test redact_layer`: 9 passed, 0 failed, 2 ignored (P-RED-1, P-RED-2 probes)
+- `cargo test -p llm -- --ignored`: all 3 probes PASS in documented state
+- `cargo fmt --all --check`: clean
+- `cargo clippy -p llm -p agent -p backtest -p forecast -p data -p trader -- -D warnings`: clean
+- `bash scripts/verify_anchors.sh`: 84/84 PASS (zero anchor delta)
 
 ## Verification
 

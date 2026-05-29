@@ -51,7 +51,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::Deserialize;
 use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
+// EnvFilter now used via llm::tracing_init::install_global (T-RED-D12).
 use uuid::Uuid;
 
 use forecast::{
@@ -364,10 +364,8 @@ impl AuditWriter {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
-    // Initialise tracing subscriber (respects RUST_LOG env var).
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("train_tcn=info".parse()?))
-        .init();
+    // T-RED-D12 (v2-1-tracing-layer-redactor): migrated to install_global.
+    llm::tracing_init::install_global(&["train_tcn=info"], false)?;
 
     let cli = Cli::parse();
 

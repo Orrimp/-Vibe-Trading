@@ -59,7 +59,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+// EnvFilter now used via llm::tracing_init::install_global (T-RED-D12).
 
 use forecast::{
     features::{FeatureConfig, TimeSpan, windows_for_symbol},
@@ -486,13 +486,8 @@ fn render_report(
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("recalibrate_sigma_train=info".parse()?)
-                .add_directive("forecast=info".parse()?),
-        )
-        .init();
+    // T-RED-D12 (v2-1-tracing-layer-redactor): migrated to install_global.
+    llm::tracing_init::install_global(&["recalibrate_sigma_train=info", "forecast=info"], false)?;
 
     let args = Args::parse();
 

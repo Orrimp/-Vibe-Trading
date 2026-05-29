@@ -50,15 +50,11 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // ── Tracing ───────────────────────────────────────────────────────────────
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("trading=info".parse()?)
-                .add_directive("agent=info".parse()?),
-        )
-        .json()
-        .init();
+    // ── Tracing (T-RED-D10 / v2-1-tracing-layer-redactor) ────────────────────
+    // Migrated from `tracing_subscriber::fmt().init()` to `install_global` to
+    // wire the `RedactLayer` BEFORE the fmt sink (R1.4 ordering contract).
+    // Secrets in structured log fields are redacted before reaching stdout/audit.
+    llm::tracing_init::install_global(&["trading=info", "agent=info"], true)?;
 
     let args = Args::parse();
 

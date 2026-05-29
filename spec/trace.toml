@@ -2272,10 +2272,57 @@ arch        = [
   "crates/llm/Cargo.toml",                                                            # DEP EDGE — regex = { workspace = true } add per D-RED § Library compatibility (tracing-subscriber already present)
   "Cargo.toml",                                                                       # WORKSPACE DEP — regex = "1" add at [workspace.dependencies] per D-RED § Library compatibility
 ]
-crates      = []   # developer fills at M-DEV (crates/llm/src/redact_layer.rs NEW + crates/llm/src/tracing_init.rs NEW + 17 binary install_global migrations per D-RED-8 wire-up site list)
-tests       = []   # developer fills at M-DEV (9-rule unit tests + WARN-mode meta-event integration test + gate-mode integration test + marker-field bypass test + pure-fn parity self-test per R4.4 + P-RED-1/2/3 falsification probes as #[ignore] tests)
-anchors     = []   # zero anchor delta (Layer affects tracing emit only); 75/75 stays byte-identical (K-arch-3 mitigation via shared install_global helper)
-state       = "arch-done"  # architect M-T1 2026-05-29. Q-RED-1 (a) closed regex set + Q-RED-2 (a) wire-layer exemption + Q-RED-3 (a) env var all ratified DURABLE. D-RED-1..D-RED-9 authored; D-RED-1 Layer at crates/llm/src/redact_layer.rs (NOT crates/audit/ — preserves R-NR.1 reuse contract); D-RED-2 17-binary install_global helper introduced (analyst framing was 2 sites; grep audit found 17); D-RED-3 (b) emit-redacted + filter-original pattern at v0.1.0; D-RED-7 ADR-0019 § Changelog ride-along + README updated: bump; D-RED-9 P-RED-3 NEW probe added. Library 6/6 PASS for regex = "1" workspace add; aho-corasick rejected as premature opt. HANDOFF → developer (single M-DEV wave; ~1.5 dev days; 10-step sequencing locked in feature.md § Design § Wire-up sequencing).
+crates      = [
+  "crates/llm/src/redact_layer.rs",
+  "crates/llm/src/tracing_init.rs",
+  "crates/llm/src/lib.rs",
+  "crates/agent/src/main.rs",
+  "crates/ui/src/bin/cockpit_live.rs",
+  "crates/backtest/src/main.rs",
+  "crates/llm/src/bin/llm-smoke.rs",
+  "crates/llm/src/bin/generate-replay-fixture.rs",
+  "crates/trader/src/bin/llm_verdict.rs",
+  "crates/forecast/src/bin/train_garch.rs",
+  "crates/forecast/src/bin/vol_verdict.rs",
+  "crates/forecast/src/bin/train_patchtst.rs",
+  "crates/forecast/src/bin/recalibrate_sigma_train.rs",
+  "crates/forecast/src/bin/regime_verdict.rs",
+  "crates/forecast/src/bin/train_tcn.rs",
+  "crates/forecast/src/bin/forecast_distribution.rs",
+  "crates/forecast/src/bin/sharpe_comparison.rs",
+  "crates/backtest/src/bin/threshold_sweep.rs",
+  "crates/backtest/src/bin/run_yahoo_sma.rs",
+  "crates/data/src/bin/fetch_binance_klines.rs",
+  "crates/data/src/bin/fetch_yahoo_klines.rs",
+]
+tests       = [
+  "crates/llm/src/redact_layer.rs::tests::anthropic_key_redacted",
+  "crates/llm/src/redact_layer.rs::tests::openai_proj_key_redacted",
+  "crates/llm/src/redact_layer.rs::tests::openai_key_redacted",
+  "crates/llm/src/redact_layer.rs::tests::bearer_token_redacted",
+  "crates/llm/src/redact_layer.rs::tests::jwt_redacted",
+  "crates/llm/src/redact_layer.rs::tests::aws_access_key_redacted",
+  "crates/llm/src/redact_layer.rs::tests::aws_secret_context_redacted_with_matching_field_name",
+  "crates/llm/src/redact_layer.rs::tests::password_field_name_redacted",
+  "crates/llm/src/redact_layer.rs::tests::entropy_fallback_redacted_for_key_field",
+  "crates/llm/src/redact_layer.rs::tests::t1915_parity_anthropic_key",
+  "crates/llm/src/redact_layer.rs::tests::t1915_parity_below_threshold",
+  "crates/llm/src/redact_layer.rs::tests::t1915_parity_openai_proj",
+  "crates/llm/src/redact_layer.rs::tests::p_red_3_rule_set_load_bearing",
+  "crates/llm/tests/redact_layer.rs::warn_mode_records_meta_event_for_secret_field",
+  "crates/llm/tests/redact_layer.rs::gate_mode_no_meta_event",
+  "crates/llm/tests/redact_layer.rs::gate_verbose_records_meta_event",
+  "crates/llm/tests/redact_layer.rs::non_secret_field_produces_no_state",
+  "crates/llm/tests/redact_layer.rs::password_field_name_triggers_warn_meta_event",
+  "crates/llm/tests/redact_layer.rs::marker_field_bypass_with_reason_no_redaction",
+  "crates/llm/tests/redact_layer.rs::marker_field_missing_reason_still_redacts",
+  "crates/llm/tests/redact_layer.rs::thread_local_peek_and_take_work",
+  "crates/llm/tests/redact_layer.rs::only_secret_fields_are_in_redacted_fields_map",
+  "crates/llm/tests/redact_layer.rs::p_red_1_layer_load_bearing",
+  "crates/llm/tests/redact_layer.rs::p_red_2_layer_ordering_documented",
+]
+anchors     = []   # zero anchor delta (Layer affects tracing emit only); 84/84 PASS byte-identical post-migration
+state       = "dev-done"  # developer M-DEV 2026-05-29. T-RED-D1..D20 complete. redact_layer.rs + tracing_init.rs NEW. 17 binaries migrated from tracing_subscriber::fmt().init() to llm::tracing_init::install_global(). Design deviation: D-RED-3 emit-redacted+filter-original pattern replaced with thread-local field-override map (REDACTED_FIELDS) + RedactingFormatFields custom FormatFields — tracing's reentrancy guard prevents tracing::warn! from on_event; eprintln! to stderr is the WARN-mode side-channel. All 108 unit tests + 9 integration tests PASS. 3 #[ignore] falsification probes ship (P-RED-1/2/3). Anchors 84/84 PASS. HANDOFF → tester.
 
 [[req]]
 id          = "REQ-UI-CONTRAST-ASSERTER-001"

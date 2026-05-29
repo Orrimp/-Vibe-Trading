@@ -38,6 +38,9 @@ optional = true
 
 [dependencies]
 trading_core = { path = "../core" }
+# T-RED-D11/D12 (v2-1-tracing-layer-redactor) — llm::tracing_init::install_global
+# for subscriber migration across backtest / threshold_sweep / run_yahoo_sma bins.
+llm = { path = "../llm" }
 data = { path = "../data" }
 features = { path = "../features" }
 strategy = { path = "../strategy", features = ["forecast"] }

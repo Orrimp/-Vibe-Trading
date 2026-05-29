@@ -48,7 +48,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use rayon::prelude::*;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+// EnvFilter now used via llm::tracing_init::install_global (T-RED-D12).
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -760,10 +760,9 @@ fn main() -> Result<()> {
         .build()
         .context("build rayon sweep thread pool")?;
 
-    // Initialise tracing.
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
-        .init();
+    // T-RED-D12 (v2-1-tracing-layer-redactor): migrated to install_global.
+    // Note: install_global returns Result; use .ok() to ignore double-init.
+    llm::tracing_init::install_global(&[], false).ok();
 
     let args = Args::parse();
     let start = std::time::Instant::now();

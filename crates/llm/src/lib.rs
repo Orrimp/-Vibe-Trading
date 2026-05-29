@@ -157,9 +157,11 @@ pub mod prompt_cache;
 pub mod providers;
 pub mod recording;
 pub mod redact;
+pub mod redact_layer;
 pub mod replay;
 pub mod retry;
 pub mod tools;
+pub mod tracing_init;
 pub mod trait_def;
 
 pub use budgeted::BudgetedProvider;
@@ -169,6 +171,10 @@ pub use error::LlmError;
 pub use prompt_cache::{CachedSystemPrompt, CachedSystemPromptBuilder};
 pub use providers::{AnthropicProvider, OllamaProvider, OpenAiProvider};
 pub use recording::RecordingProvider;
+pub use redact_layer::{
+    RedactLayer, RedactingFormatFields, peek_redacted_fields, redact_str, redact_tracing_layer,
+    take_meta_events, take_redacted_fields,
+};
 pub use replay::{ReplayProvider, SUPPORTED_SCHEMA_VERSION, request_hash};
 pub use tools::{ToolSchema, validate_tool_use};
 pub use trait_def::{

@@ -229,23 +229,10 @@ struct Args {
 const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(2);
 
 fn main() -> Result<()> {
-    // ── Tracing ──────────────────────────────────────────────────────────────
-    // Mirrors `crates/agent/src/main.rs` so audit / ops dashboards see the
-    // same log lines whether the operator boots the headless agent or the
-    // unified cockpit_live bin.
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(
-                    "cockpit_live=info"
-                        .parse()
-                        .expect("static directive parses"),
-                )
-                .add_directive("agent=info".parse().expect("static directive parses"))
-                .add_directive("ui=info".parse().expect("static directive parses")),
-        )
-        .json()
-        .init();
+    // ── Tracing (T-RED-D10 / v2-1-tracing-layer-redactor) ────────────────────
+    // Migrated from `tracing_subscriber::fmt().init()` to `install_global` to
+    // wire the `RedactLayer` BEFORE the fmt sink (R1.4 ordering contract).
+    llm::tracing_init::install_global(&["cockpit_live=info", "agent=info", "ui=info"], true)?;
 
     let args = Args::parse();
     info!("cockpit_live starting");

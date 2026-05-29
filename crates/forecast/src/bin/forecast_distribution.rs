@@ -41,7 +41,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+// EnvFilter now used via llm::tracing_init::install_global (T-RED-D12).
 
 use candle_core::Tensor;
 use forecast::{
@@ -762,13 +762,8 @@ fn read_data_revision_sha(data_root: &std::path::Path) -> String {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("forecast_distribution=info".parse()?)
-                .add_directive("forecast=info".parse()?),
-        )
-        .init();
+    // T-RED-D12 (v2-1-tracing-layer-redactor): migrated to install_global.
+    llm::tracing_init::install_global(&["forecast_distribution=info", "forecast=info"], false)?;
 
     let args = Args::parse();
 

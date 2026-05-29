@@ -46,7 +46,7 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use clap::Parser;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+// EnvFilter now used via llm::tracing_init::install_global (T-RED-D12).
 
 use forecast::features::{FeatureConfig, TimeSpan, VolTargetKind, windows_for_symbol};
 use forecast::garch::GarchModel;
@@ -691,9 +691,8 @@ fn body_sha256(report: &str) -> String {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+    // T-RED-D12 (v2-1-tracing-layer-redactor): migrated to install_global.
+    llm::tracing_init::install_global(&[], false)?;
 
     let args = Args::parse();
     let t0 = Instant::now();

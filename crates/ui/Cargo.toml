@@ -109,6 +109,9 @@ iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia",
 # path reproducible; the bus surface is a handoff contract (see
 # spec/reports/dev-week2-broadcast-api-2026-04-18.md).
 agent = { path = "../agent", optional = true }
+# T-RED-D10 (v2-1-tracing-layer-redactor) — llm::tracing_init::install_global for
+# the cockpit_live subscriber migration. Optional dep gated on `live` feature.
+llm = { path = "../llm", optional = true }
 audit = { path = "../audit", optional = true }
 # Phase D+ (ui-rethink-phase-d-trail-followup T-D-N1) — `reflection` is an
 # optional dep gated behind the existing `live` feature stanza (same shape as
@@ -252,6 +255,7 @@ render-debug = ["dep:tracing-subscriber"]
 # is the single source of truth for everything the unified bin needs.
 live = [
     "dep:agent",
+    "dep:llm",
     "dep:audit",
     # Phase D+ (ui-rethink-phase-d-trail-followup T-D-N1) — reflection pulled in
     # under `live` so the trail-mirror Subscription bridge can access

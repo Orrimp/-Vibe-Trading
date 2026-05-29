@@ -16,6 +16,9 @@ required-features = ["yahoo-online"]
 [dependencies]
 trading_core = { path = "../core" }
 audit = { path = "../audit" }
+# T-RED-D12 (v2-1-tracing-layer-redactor) — llm::tracing_init::install_global
+# for subscriber migration across fetch_binance_klines + fetch_yahoo_klines bins.
+llm = { path = "../llm" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

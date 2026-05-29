@@ -103,16 +103,9 @@ struct Cli {
 }
 
 fn main() -> ExitCode {
-    // Init tracing — JSON in CI, pretty locally. Test runs always
-    // get the line-based shape so the integration test can grep.
-    tracing_subscriber::fmt()
-        .with_target(true)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("llm=info,llm.smoke=info")),
-        )
-        .try_init()
-        .ok();
+    // T-RED-D11 (v2-1-tracing-layer-redactor): migrated to install_global.
+    // Use try_init via install_global; ignore error if subscriber already installed.
+    let _ = llm::tracing_init::install_global(&["llm=info", "llm.smoke=info"], false);
 
     let cli = Cli::parse();
     let rt = match tokio::runtime::Builder::new_multi_thread()

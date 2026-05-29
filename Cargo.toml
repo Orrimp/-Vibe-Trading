@@ -115,6 +115,8 @@ quantedge-ta = { version = "0.17.0" }
 
 # Hash (for determinism checks)
 sha2 = { version = "0.10.8" }
+# Secret-pattern matching (v2-1-tracing-layer-redactor D-RED-1 / T-RED-D1)
+regex = { version = "1" }
 # Blake3 — high-performance hash for deterministic RNG sub-stream derivation
 # (v5-latency-slippage-sim ADR-0043 § D2: faster than sha2 for ≤50 ns target).
 blake3 = { version = "1.5" }

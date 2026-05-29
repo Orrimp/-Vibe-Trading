@@ -97,13 +97,8 @@ fn smoke_prompt(role: &AgentRole) -> ChatRequest {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .try_init()
-        .ok();
+    // T-RED-D11 (v2-1-tracing-layer-redactor): migrated to install_global.
+    let _ = llm::tracing_init::install_global(&[], false);
 
     let manifest = std::env::var("CARGO_MANIFEST_DIR")?;
     let fixture_path = PathBuf::from(manifest).join("fixtures/replay-v1.db");
