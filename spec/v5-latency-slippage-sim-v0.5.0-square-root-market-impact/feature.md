@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim-v0.5.0-square-root-market-impact
 version: 0.1.0
-status: draft
-owner: developer
+status: operator-decide-pending
+owner: analyst
 updated: 2026-05-29
 predecessor: v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0
 parent: backtest-vs-live-execution-gap
@@ -218,6 +218,7 @@ Surfaces:
 | **Q1** | **Impact coefficient α** | (a) **`α = 1.0`** — academic-canonical Kissell 2014 midpoint, well-calibrated to retail-venue real-world impact; future tuning lives in v0.5.1 calibration brief if needed / (b) `α = 0.5` — toward linear; less drag — doesn't capture market-impact realism; defeats the v0.5.0 purpose | **(a) `α = 1.0` (Recommended — DURABLE)** | (a) cost: ~3-5d dev + 1d tester + 0.5d presenter for the proper one-shot model upgrade. (b) cost: ~1d now + future v0.5.1 calibration brief (~3-5d) when the operator observes under-drag = net STRICTLY WORSE wall-clock + repeat cognitive context-swap. Mirrors the v0.1.3 helper-extraction pattern (durable now beats cheap-and-redo later). Academic citations: Almgren & Chriss 2001 § "Optimal execution of portfolio transactions", Kissell 2014 ch. 3 "The market impact model". |
 | **Q2** | **Per-asset volume V source** | (a) **90-day trailing daily volume from existing Binance parquet** — already on disk; no new data source; deterministic; revision-pinned via `data/binance/REVISION.toml` / (b) hardcoded universe-average constant — fragile; future v0.6.0+ cleanup brief required to migrate to per-asset | **(a) Binance parquet 90-day trailing (Recommended — DURABLE)** | (a) cost: ~0.5d architect + reuses revision-pinned source = no new K-line in determinism gate. (b) cost: ~0.25d now + ~2-3d v0.6.0 cleanup brief when operator notices BTC and DOGE have identical impact (false equivalence) = net STRICTLY WORSE. Academic citation: Kissell 2014 ch. 3 § "Volume-based impact" — the canonical proxy when L2 depth is unavailable. |
 | **Q3** | **Synthetic-scenario behavior** | (a) **synthetic scenarios fall back to `Linear { bps: 8 }` (no V proxy available)** with explicit log message; their v0.5.0 SHAs are byte-identical to v0.4.0 — additive namespace stays clean / (b) use universe-average V from real data — confuses synthetic-scenario semantics; H3 alpha-comparability degrades | **(a) Linear fallback for synthetic (Recommended — DURABLE)** | (a) preserves the v0.4.0 Group A/D/E SHAs as oracles in BOTH namespaces (9 of 19 SHAs trivially byte-identical → R-NR.2 simplified). Clean semantic separation: square-root is a real-data model. (b) muddies the namespace twin contract; v0.6.0 would need a "real vs synthetic" sub-namespace split. Net STRICTLY WORSE. |
+| **Q-D1+Q-D2** (post-`e09e599` re-surfacing 2026-05-29) | **Wave D synthetic-scenario volume strategy + universe-avg V wiring** — see [`spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md`](../dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md). Q-D1: (a) Linear-fallback for synthetic / (b) SquareRoot+universe-avg V on synthetic [M-OD 2026-05-29 ratified (b); brief proposes REVISIT under shipped-helper evidence]. Q-D2: (α) pre-compute / (β) per-scenario lazy-compute / (γ) CLI-flag inject. | **Q-D1=(a) + Q-D2=(β) (Recommended — DURABLE)** | Combined ~0.5-1.0 dev-day + ~1 tester-day; ZERO v0.6.0 follow-on briefs. Q-D1=(a) downgrades the architect M-T1 D-T1.5 v0.6.0 sub-namespace cleanup commitment from "must spawn brief" to "obsolete by-design." Q-D2=(β) aligns verbatim with D-T1.5 end_date-pin contract; uses existing Wave C dashmap cache. If operator holds M-OD lock → Q-D1=(b)+Q-D2=(β) fallback durable-via-commitment (~3-4 dev-days + v0.6.0 cleanup brief queued). See dev-note § Q-D1 + § Q-D2 tables for 5-dimension + 5-dimension comparison. |
 
 **Cost framing — both routes:**
 
@@ -858,3 +859,31 @@ _Tester M-FINAL links to reports here._
   precedent); Noop predicate extended to exclude sqrt-impact dirs.
   **Wave decomposition A→F locked** at ~3.0–4.0 dev-days. Frontmatter
   flipped `owner: architect → developer`. HANDOFF → developer.
+- 2026-05-29 (developer, commit `e09e599`): Waves A+B+C+F shipped PASS.
+  Cost-layer `SlippageModel` enum + dispatcher + `apply_slippage_sqrt`
+  (14/14 unit PASS); CLI plumbing + serde backward-compat (13/13 PASS);
+  `crates/data/src/daily_volume.rs` helper + universe-avg helper +
+  dashmap cache (5/5 PASS); namespace-aware resolver + Wave F e2e (4/4 +
+  3/3 PASS). Waves D (19-scenario re-emit) + E (anchors.toml cascade)
+  parked pending Q-D1 + Q-D2 operator clarification — main.rs currently
+  passes `volume_usd_per_symbol: None` → Decimal::ZERO for all 12 configs;
+  Q-D1 asks Linear-fallback vs SquareRoot+universe-avg V on synthetic;
+  Q-D2 asks pre-compute vs lazy-compute vs CLI-flag wiring. HANDOFF →
+  analyst (operator-decide brief).
+- 2026-05-29 (analyst, this commit): Q-D1 + Q-D2 operator-decide brief
+  authored at [`spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md`](../dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md).
+  Recommended path **Q-D1=(a) Linear-fallback + Q-D2=(β) per-scenario
+  lazy-compute** per 2026-05-28 durable-over-quick contract. The
+  recommendation proposes operator REVISIT of M-OD 2026-05-29 Q3=(b)
+  ratification — Wave A+C shipped evidence (14+5 unit-test coverage)
+  now shows the synthetic-sqrt-model-body determinism oracle is already
+  covered at the unit-test layer; the Q-D1=(b) value-prop ("synthetic
+  scenarios behave more real-data-like") collapses post-evidence
+  (synthetic Q × real universe-avg V is a dimensionally-mixed signal,
+  not a cleaner one). Q-D1=(a) drops the v0.6.0 sub-namespace cleanup
+  commitment from "must spawn brief" to "obsolete by-design"; anchor
+  cascade narrows from 75→94 (Q3=(b)) to 75→85 (Q-D1=(a)). Frontmatter
+  flipped `owner: developer → analyst`, `status: draft → operator-decide-pending`.
+  Trace state flipped `dev-done → operator-decide-pending`. HANDOFF →
+  orchestrator (surface to operator via AskUserQuestion with
+  Recommended path defaulted).
