@@ -2172,3 +2172,52 @@ crates      = []   # developer Wave A→D fills (new crates/forecast/src/xgboost
 tests       = []   # developer + tester fill at M-DEV + M-FINAL
 anchors     = []   # tester M-FINAL fills after VERDICT → PASS (2 new under v3.5.0-xgboost: top10-2023-fy-xgboost-overlay-realdata + top10-2024-fy-xgboost-overlay-realdata; 75 → 77 PASS)
 state       = "proposed"  # analyst M0 2026-05-29: feature.md + tasks.md authored; backlog Queue § Strategy entry appended; Queue NOT Active per Route A pre-position contract from spec/dev-notes/post-v3-strategy-direction-2026-05-29.md. Promotion gates: (1) operator picks Route A from post-v3 dev-note; (2) operator answers Q1/Q2/Q3 (analyst-recommended all (a) DURABLE); (3) orchestrator promotes Queue → Active flipping state proposed → arch-pending and spawning architect M-T1. No work past M0 until then. HANDOFF → operator (Route A pick).
+
+#
+# ─── Pick A Wave 1 — Test infra trifecta promoted features (analyst M0 2026-05-29) ───
+# Per spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md strategic direction.
+# Two features promoted Queue → Active under Pick A Wave 1; harness v0.3.0+ stays Queue
+# (analyst spawn AFTER v0.2.0 Wave A→D ships; candidate list sketched in dev-note).
+#
+
+[[req]]
+id          = "REQ-VISUAL-FAIL-HTML-REPORTER-001"
+title       = "Visual-fail HTML reporter v0.1.0 — closes the agent-contract gap surfaced by ui-testability-deep-dive-2026-05-15.md § 4.1 by emitting a self-contained spec/<slug>/reports/visual-fail-<ts>.html (or target/visual-diff/<test>-<ts>.html default) on visual-assertion FAIL with inline-base64 baseline + actual + diff PNG triple + assertion location + assertion body + optional VLM verdict slot. Cheapest pillar of Pick A Wave 1 test-infra trifecta (~1 dev day, ~50-80 LoC helper at crates/ui/tests/fixtures/visual_fail_html.rs + base64 dev-dep + amendment to .claude/agents/tester.md visual-failure stanza). FAIL-only emission (PASS path byte-identical to today). Opt-in spec-persist via EMIT_VISUAL_FAIL_TO_SPEC=1 env var (default OFF — repo-size guard per K1+K2+R4 trifecta risks). Owns the tester.md amendment for the trifecta bundle per direction § Risk R1 mitigation; viewport-matrix Wave 1 sibling inherits the stanza without amendment. R1 helper + R2 self-containment + R3 tester.md stanza + R4 self-test + R-NR (5 clauses); K1-K4 (HTML payload 30 MB ceiling / spec-persist accidental CI / parallel test-write race / stanza drift); H1-H3 (≤ 80 LoC + 5-min → 30-s operator review time + zero existing test break); Q1-Q3 all bias DURABLE per AGENT.md 2026-05-28 (Q1=(a) target/+opt-in-spec; Q2=(a) base64 dev-dep; Q3=(a) append to existing tester.md stanza); pre-drawn 4-cell verdict tree. ADR-0048 carries forward verbatim. Zero anchor delta; 71/71 byte-identical pre/post."
+feature     = "visual-fail-html-reporter"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick A Wave 1 promotion.
+  "spec/visual-fail-html-reporter/feature.md",
+  "spec/visual-fail-html-reporter/tasks.md",
+  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; bundle ordering; tester contract amendment ownership
+  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
+  "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",            # ROOT-CAUSE — § 4.1 agent-contract gap analysis
+  "spec/ui-test-harness-bootstrap/feature.md",                                        # PRECEDENT — bootstrap visual_diff.rs structural template for FAIL-only emission
+  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PARENT ADR — D1-D6 carries forward verbatim (one Changelog row at M-T1; no new ADR)
+]
+crates      = []   # developer fills at M-DEV (Cargo.toml dev-dep; visual_fail_html.rs helper; visual_diff.rs wire-up; .claude/agents/tester.md amendment)
+tests       = []   # developer fills at M-DEV (self-test pair under tempfile::TempDir)
+anchors     = []   # zero delta (helper emits target/ output on FAIL; PASS path byte-identical); 71/71 stays byte-identical
+state       = "proposed"  # analyst M0 2026-05-29. Promoted Queue → Active under Pick A Wave 1 trifecta direction. Parallel-safe with sibling ui-test-harness-viewport-matrix per AGENT.md § Parallelism rules conflict matrix (independent file-scope). HANDOFF → architect (M-T1 fast-skip expected — Q1+Q2+Q3 all DURABLE-recommended; ADR-0048 § Changelog amendment only; no new ADR).
+
+[[req]]
+id          = "REQ-UI-TEST-HARNESS-VIEWPORT-MATRIX-001"
+title       = "UI test harness viewport matrix v0.1.0 — extends the ui-test-harness-bootstrap v0.1.0 Charts-only three-viewport snapshot harness (1280×720 floor / 1920×1080 typical / 3360×1890 operator) to ALL existing widget tests under crates/ui/tests/. R1 widget × viewport matrix per existing #[test] fn that invokes iced_test::screenshot or fixtures::visual_diff::matches_screenshot (architect M-T1 audits ~10-15 test files / ~30-40 #[test] fn; final count ~90-120 after 3× expansion); R2 baseline PNG generation + commit at crates/ui/tests/visual-baselines/<widget>_<theme>_<slot>.png with first-run auto-write per bootstrap precedent; R3 inheritance of visual-fail-html-reporter Wave 1 sibling stanza (no independent tester.md amendment); R4 bootstrap V15 Charts baselines stay byte-identical (chart-canvas-overhaul tooltip-hover acceptance preserved); R5 build budget ≤ 1.5s per slot per test, ~2-3 min total cargo test for matrix subset. R-NR (5 clauses): pre-existing widget tests byte-identical PASS at current viewport + 71/71 anchors + zero design-token / strings.rs / iced-widget code change + zero new Cargo.toml dep (iced_test+image-compare+image already pinned by bootstrap T4011) + workspace test count rises ~60-90 new #[test] fn. K1-K4 falsifiers: some widgets cannot render at operator slot (architect-approved opt-out list ≤ 3 widgets) / repo size > 100 MB net (oxipng recompress or phase) / cross-platform baseline drift (cross-platform CI separate Queue item) / tester contract drift with parallel visual-fail-HTML amendment (R3.3 inheritance carve-out). H1-H4: ~10-15 test files / ~30 LoC per test expansion / 50-100 MB total baseline size / catches ≥ 1 new regression. Q1 coverage scope [(a) DURABLE all widgets v0.1.0 Recommended; (b) phased Charts-first then panels v0.2.0 cheap fallback rejected]; Q2 helper shape [(a) DURABLE function-with-closure Recommended; (b) macro_rules! cheap fallback]; Q3 .gitattributes [(a) DURABLE binary diff=exif Recommended if driver available; (b) plain binary fallback]; pre-drawn 4-cell verdict tree. ADR-0048 + bootstrap § Design carry forward; one Changelog row appended. Mid-cost pillar Pick A Wave 1 trifecta ~3-4 dev days + 0.5 tester day + 0.5 presenter day = ~1 week wall-clock."
+feature     = "ui-test-harness-viewport-matrix"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick A Wave 1 promotion.
+  "spec/ui-test-harness-viewport-matrix/feature.md",
+  "spec/ui-test-harness-viewport-matrix/tasks.md",
+  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; sequencing parallel-with-visual-fail-HTML; risk R1 stanza inheritance contract
+  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
+  "spec/ui-test-harness-bootstrap/feature.md",                                        # PREDECESSOR — Charts-only three-viewport bootstrap shipped 2026-05-12; SLOTS table + helper layout precedent
+  "spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md",                # ROOT-CAUSE — § 1 incident analysis + § 6 week-2 follow-up plan
+  "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",            # SUPPORTING — § 2.10 view-coverage gap quantification
+  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PARENT ADR — D4 wall-clock budget carries forward; one Changelog row at M-T1; no new ADR
+  "spec/visual-fail-html-reporter/feature.md",                                        # WAVE 1 SIBLING — provides the FAIL-only HTML emission helper that matrix tests inherit (R3.1)
+]
+crates      = []   # developer fills at M-DEV (viewport_matrix.rs helper; per-test expansion across ~10-15 test files; .gitattributes rule; ~90-120 new baseline PNGs)
+tests       = []   # developer fills at M-DEV (the expanded #[test] fn set; estimated 60-90 new tests)
+anchors     = []   # zero anchor delta (visual baselines are PNG matter, not anchored backtest reports); 71/71 stays byte-identical
+state       = "proposed"  # analyst M0 2026-05-29. Promoted Queue → Active under Pick A Wave 1 trifecta direction. Parallel-safe with sibling visual-fail-html-reporter per AGENT.md § Parallelism rules conflict matrix (independent file-scope; different test files; matrix tests inherit visual-fail-HTML stanza via Wave 1 sibling ownership per direction § Risk R1). HANDOFF → architect (M-T1 inventory + dry-run + Q1/Q2/Q3 ratification + opt-out list per K1; ADR-0048 § Changelog amendment only; no new ADR).

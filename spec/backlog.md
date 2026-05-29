@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-27
+updated: 2026-05-29
 ---
 <!-- updated 2026-05-22 (orchestrator, audit-2026-05-22 P2.5 cleanup) —
      v25-tcn-alpha-investigation shipped 2026-05-19; v25-tcn-overlay
@@ -461,6 +461,101 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   → Wave D gates. Operator R1 fetch is M-DEV start gate. R5.7 FROZEN
   boundary contract: zero diff in 4 files. Trace `arch` populated;
   state `proposed → arch-done`. HANDOFF → developer.
+
+<!-- updated 2026-05-29 (analyst, visual-fail-html-reporter M0 close) —
+     **PROMOTED Queue → Active 2026-05-29** under Pick A Wave 1 of the
+     test-infra trifecta strategic direction at
+     `spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md` (analyst
+     pass following the architect's process-tooling survey at
+     `spec/dev-notes/process-tooling-survey-2026-05-29.md` § Pick A
+     Top-5 Rank 2). Cheapest of the three trifecta pillars (~1 dev day,
+     ~50-80 LoC helper). Closes the agent-contract gap surfaced by
+     `ui-testability-deep-dive-2026-05-15.md § 4.1`: on visual-assertion
+     FAIL, emit a self-contained `visual-fail-<ts>.html` with inline-
+     base64 baseline + actual + diff PNG triple + assertion location +
+     assertion body + optional VLM verdict slot. FAIL-only emission
+     (PASS path byte-identical to today). Owns the
+     `.claude/agents/tester.md` amendment for the trifecta bundle per
+     direction § Risk R1 mitigation; viewport-matrix Wave 1 sibling
+     inherits the stanza without amendment. Q1 (output path; analyst
+     Recommended DURABLE = `target/visual-diff/<test>-<ts>.html` +
+     opt-in `EMIT_VISUAL_FAIL_TO_SPEC=1`) + Q2 (base64 encoding crate;
+     Recommended DURABLE = base64="0.22" dev-dep) + Q3 (tester.md stanza
+     placement; Recommended DURABLE = append to existing section). All
+     three Qs bias DURABLE per AGENT.md 2026-05-28. ADR-0048 carries
+     forward verbatim (one Changelog row at M-T1, no new ADR). Anchor
+     contract zero delta — 71/71 byte-identical pre/post. PARALLEL-SAFE
+     with sibling `ui-test-harness-viewport-matrix` per AGENT.md §
+     Parallelism rules conflict matrix (independent file-scope; the
+     stanza inheritance contract handles the only shared-file risk).
+     Trace row `REQ-VISUAL-FAIL-HTML-REPORTER-001` opened `proposed`.
+     M-T1 fast-skip expected. HANDOFF → architect (in parallel block
+     with viewport-matrix sibling). -->
+- **visual-fail-html-reporter v0.1.0** — Pick A Wave 1 trifecta pillar
+  (cheapest, ~1 dev day, ~50-80 LoC helper at
+  `crates/ui/tests/fixtures/visual_fail_html.rs`). On visual-snapshot
+  FAIL, emit a self-contained `visual-fail-<ts>.html` with inline
+  baseline + actual + perceptual-diff PNG triple + assertion location +
+  assertion body. Closes the
+  [`ui-testability-deep-dive-2026-05-15.md § 4.1`](dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose)
+  agent-contract gap. Owns the `.claude/agents/tester.md` amendment for
+  the Wave 1 trifecta bundle (viewport-matrix sibling inherits without
+  amendment per direction § Risk R1). Q1/Q2/Q3 all bias DURABLE per
+  AGENT.md 2026-05-28: target/+opt-in-spec output path, base64="0.22"
+  dev-dep, append to existing tester.md stanza. ADR-0048 carries
+  forward (no new ADR). Zero anchor delta; 71/71 byte-identical. Trace
+  `REQ-VISUAL-FAIL-HTML-REPORTER-001` proposed. Brief:
+  [`spec/visual-fail-html-reporter/feature.md`](visual-fail-html-reporter/feature.md).
+  Direction: [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+  HANDOFF → architect (M-T1 fast-skip; parallel-safe with viewport-matrix
+  sibling).
+
+<!-- updated 2026-05-29 (analyst, ui-test-harness-viewport-matrix M0 close) —
+     **PROMOTED Queue → Active 2026-05-29** under Pick A Wave 1 of the
+     test-infra trifecta strategic direction at
+     `spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`. Mid-cost
+     pillar (~3-4 dev days). Extends the
+     `ui-test-harness-bootstrap v0.1.0` Charts-only three-viewport snapshot
+     harness (1280×720 floor / 1920×1080 typical / 3360×1890 operator) to
+     ALL existing widget tests under `crates/ui/tests/` (panels, modals,
+     status bar, agent feed, debug screen). Architect M-T1 audits the
+     existing widget test files (~10-15 files / ~30-40 #[test] fn;
+     final count ~90-120 after 3× expansion) + dry-runs baseline PNG
+     size (~50-100 MB net repo growth projected per H3) + ratifies opt-
+     out list per K1 (widgets that can't render at operator slot; ≤ 3
+     widgets). Bootstrap V15 Charts baselines stay byte-identical
+     (chart-canvas-overhaul tooltip-hover acceptance preserved). Q1
+     (coverage scope) + Q2 (helper shape: function-with-closure vs macro)
+     + Q3 (`.gitattributes` rule: `binary diff=exif` vs plain `binary`)
+     all bias DURABLE per AGENT.md 2026-05-28 (Q1=(a) full coverage in
+     v0.1.0, not phased Charts-first). Inherits the visual-fail-HTML
+     stanza from Wave 1 sibling (no independent tester.md amendment).
+     ADR-0048 + bootstrap § Design carry forward verbatim (one Changelog
+     row at M-T1, no new ADR). Zero anchor delta; 71/71 byte-identical.
+     PARALLEL-SAFE with sibling `visual-fail-html-reporter` per
+     AGENT.md § Parallelism rules conflict matrix. Trace row
+     `REQ-UI-TEST-HARNESS-VIEWPORT-MATRIX-001` opened `proposed`. M-T1
+     inventory + dry-run + ratification expected; ~1 week wall-clock
+     total to ship. HANDOFF → architect (in parallel block with
+     visual-fail-HTML sibling). -->
+- **ui-test-harness-viewport-matrix v0.1.0** — Pick A Wave 1 trifecta
+  pillar (mid-cost, ~3-4 dev days). Extends the bootstrap Charts-only
+  three-viewport harness (1280×720 / 1920×1080 / 3360×1890) to ALL
+  existing widget tests under `crates/ui/tests/` (panels, modals,
+  status bar, agent feed, debug screen). Architect M-T1 audits ~10-15
+  test files + dry-runs ~50-100 MB baseline PNG growth + ratifies
+  ≤ 3-widget opt-out list per K1. Bootstrap V15 Charts baselines
+  byte-identical pre/post. Q1 (coverage scope) + Q2 (helper shape) +
+  Q3 (`.gitattributes` rule) all bias DURABLE per AGENT.md 2026-05-28
+  (Q1=(a) full widget coverage in v0.1.0, not phased Charts-first).
+  Inherits visual-fail-HTML stanza from Wave 1 sibling (no
+  independent tester.md amendment). ADR-0048 + bootstrap § Design
+  carry forward (no new ADR). Zero anchor delta; 71/71 byte-identical.
+  Trace `REQ-UI-TEST-HARNESS-VIEWPORT-MATRIX-001` proposed. Brief:
+  [`spec/ui-test-harness-viewport-matrix/feature.md`](ui-test-harness-viewport-matrix/feature.md).
+  Direction: [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+  HANDOFF → architect (M-T1 inventory + dry-run + ratification;
+  parallel-safe with visual-fail-HTML sibling).
 
 
 <!-- updated 2026-05-28 (analyst, v3-regime-classifier M-A5 light-touch
@@ -2182,6 +2277,33 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Process / tooling
 
+- **`lab-recipe-test-harness v0.3.0+` extension** (Recipe candidate
+  list pre-positioned). _candidate, Wave 2 of Pick A test-infra trifecta;
+  gated on v0.2.0 Wave A→D ship_ — Wave 1 of the trifecta
+  ([`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](dev-notes/pick-a-test-infra-trifecta-2026-05-29.md))
+  promotes visual-fail-HTML + viewport-matrix in parallel. The Wave 2
+  harness v0.3.0+ analyst spawn happens **AFTER** the in-flight v0.2.0
+  ships (per dev-note § Sequencing — scope discovery depends on v0.2.0
+  Wave A→D outcomes; ADR-0048 § Changelog needs the v0.2.0 row before
+  v0.3.0 amends again). Candidate Recipes sketched in the dev-note
+  § "What harness v0.3.0+ candidate list looks like":
+  (1) **`LessonCardRecipe`** — K4 byte-identity coverage for
+  `crates/reflection/src/lesson_cards/`; ~2 dev days; closes the
+  RegimeTag-deletion-class regression class for lesson-card
+  artifacts.
+  (2) **`BacktestProgressRecipe`** — backtest UI tracking; ~2-3 dev
+  days; closes the Bug #64 `tokio::select!` shape on the backtest
+  progress channel (currently uncovered).
+  (3) **`TrailMirrorRecipe` Surface 1 extension** — extends v0.2.0
+  Wave D's S2-only coverage with the select-arm-survival assertion
+  pattern from v0.2.0 Wave B; ~0.5 dev days. Combined ~5-6 dev days
+  + 1.25 tester days ≈ ~1.5 weeks wall-clock. Same shape as v0.2.0
+  (per-Recipe-specific mocks, per-Recipe T-T4 falsification probe in
+  module docstring, zero new ADRs, zero anchor delta). **Analyst
+  spawn trigger**: v0.2.0 tester emits `VERDICT → PASS` AND ADR-0048
+  § Changelog has the v0.2.0 row. **NO** Queue → Active promotion
+  before that gate.
+
 - **`v2x-trading-state-bus`** (v2 LLM evolution) —
   _candidate, sourced from
   [`spec/dev-notes/external-code-patterns-2026-05-17.md`](dev-notes/external-code-patterns-2026-05-17.md)_.
@@ -2251,13 +2373,16 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   Analyst spawn after v0.1 ships.
 
 - **Week-2 follow-up — full-widget viewport matrix
-  (`ui-test-harness-viewport-matrix`).** _candidate, gated on
-  `ui-test-harness-bootstrap` v0.1 ship_ — extends the v0.1 Charts-only
-  three-viewport snapshot harness across ALL widget tests (panels,
-  modals, status bar, agent feed, debug screen) per
+  (`ui-test-harness-viewport-matrix`).** _**PROMOTED Queue → Active
+  2026-05-29**_ under Pick A Wave 1 of the test-infra trifecta
+  strategic direction at
+  [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+  Extends the v0.1 Charts-only three-viewport snapshot harness across
+  ALL widget tests (panels, modals, status bar, agent feed, debug
+  screen) per
   [dev-note §6 week 2](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#6-phased-adoption--4-week-plan).
-  Analyst spawn when v0.1 ships and H1 (tiny-skia byte determinism)
-  is unfalsified.
+  Brief: [`spec/ui-test-harness-viewport-matrix/feature.md`](ui-test-harness-viewport-matrix/feature.md).
+  See Active section above for the promotion annotation.
 
 - **Week-3 follow-up — evaluator subagent + PreToolUse hooks
   (`ui-test-harness-evaluator`).** _candidate, gated on
@@ -2455,18 +2580,21 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   quarterly).
 
 - **Test reporter — visual-fail HTML artifact (agent contract
-  update).** _candidate, surfaced 2026-05-15 by
-  [`ui-testability-deep-dive-2026-05-15.md §4.1`](dev-notes/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose)_
-  — on any visual assertion FAIL, the test-runner additionally
-  writes a self-contained `spec/<slug>/reports/visual-fail-<ts>.html`
-  with baseline/actual/diff PNG triple inline, the assertion that
-  fired, file:line, and the VLM judge's verbatim verdict (if
-  enabled). Adds a stanza to
-  [`.claude/agents/tester.md`](../.claude/agents/tester.md) and a
-  ~50-LOC helper in `crates/ui/tests/fixtures/`. ~1 dev-day.
-  Analyst spawn when `ui-vlm-judge` or
-  `ui-test-harness-viewport-matrix` schedules; pairs with whichever
-  lands first.
+  update; slug `visual-fail-html-reporter`).** _**PROMOTED Queue →
+  Active 2026-05-29**_ under Pick A Wave 1 of the test-infra trifecta
+  strategic direction at
+  [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+  Surfaced 2026-05-15 by
+  [`ui-testability-deep-dive-2026-05-15.md §4.1`](dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose).
+  On any visual-assertion FAIL the helper writes a self-contained
+  `target/visual-diff/<test>-<ts>.html` (default; opt-in `spec/<slug>/
+  reports/...` via `EMIT_VISUAL_FAIL_TO_SPEC=1`) with inline baseline +
+  actual + perceptual-diff PNG triple + assertion location + assertion
+  body + optional VLM verdict slot. ~1 dev day; ~50-80 LoC helper +
+  `.claude/agents/tester.md` stanza amendment (owned by this brief for
+  the Wave 1 trifecta bundle). Brief:
+  [`spec/visual-fail-html-reporter/feature.md`](visual-fail-html-reporter/feature.md).
+  See Active section above for the promotion annotation.
 
 - **File the iced strategies-Table tiny-skia panic upstream
   (`ui-iced-table-panic-upstream`).** _candidate, surfaced
