@@ -2098,6 +2098,43 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   reasoning + retrieved lesson cards + audit correlation live;
   if this lights up, the moat becomes operator-visible.
 
+<!-- 2026-05-29 (analyst, v3-xgboost-cheap-classifier M0) — Queue entry
+     per post-v3 strategy direction Route A pre-position. Brief authored
+     at spec/v3-xgboost-cheap-classifier/feature.md (R1-R5 + R-NR + K1-K6 +
+     H1-H3 + Q1-Q3 + 4-cell verdict tree + cost framing both routes);
+     tasks at spec/v3-xgboost-cheap-classifier/tasks.md; trace row
+     REQ-V3-XGBOOST-001 at EOF of spec/trace.toml in proposed state.
+     Queue NOT Active — promote to Active only on operator explicit
+     pick of Route A from post-v3-strategy-direction-2026-05-29.md.
+     Pre-flight reconciliation confirmed no existing spec/v3-xgboost-*
+     folder with shipped status. -->
+
+- **v3-xgboost-cheap-classifier v0.1.0 (Candidate 6; non-DL model-class
+  axis).** _Queue pre-position per post-v3 strategy direction Route A;
+  promote to Active only on operator explicit pick_ — see
+  [`spec/v3-xgboost-cheap-classifier/feature.md`](v3-xgboost-cheap-classifier/feature.md)
+  for the v0.1.0 brief and
+  [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](dev-notes/post-v3-strategy-direction-2026-05-29.md)
+  for the route framing. Candidate 6 from the
+  [2026-05-22 strategy-reformulation survey](dev-notes/strategy-reformulation-survey-2026-05-22.md#candidate-6--non-dl-approaches-hmm-kernel-methods-statistical-filters)
+  — tests the opposite hypothesis to C1/C2/C5 retirement set:
+  **low-capacity gradient-boosted trees may suit low-SNR hourly OHLCV
+  better than DL/Markov/LLM by underfitting-by-design**. Asymmetric
+  falsification: XGBoost ≥ baseline refutes "edge isn't in fancy model
+  choice"; XGBoost ≤ baseline strengthens "edge isn't extractable from
+  hourly OHLCV regardless of model class" → Route C pivot stronger.
+  Either outcome information-bearing. Cost ~4-6 weeks DURABLE
+  (Q1=(a) classifier + Q2=(a) overlay + Q3=(a) `xgboost` crate);
+  ~2-3 weeks cheap fallback (Q1=(b) regressor + Q3=(c) pure-Rust) but
+  trait-seam break → +1-2 week v0.2.0 cleanup → strictly worse on
+  durability per AGENT.md 2026-05-29. R2 reuses frozen v0.1.0
+  `RegimeClassifier` trait seam from `crates/forecast/src/markov_switching.rs`
+  (v3 Wave A) — XGBoost impl satisfies same trait without amendment.
+  R3 overlay-style multiplier on v1 momentum (different operator-lock
+  per model class from C2's dispatcher). 4-cell verdict tree
+  pre-drawn: V-XGB-PASS / V-XGB-CLASSIFIER-ONLY / V-XGB-DAMPENED /
+  V-XGB-INCONCLUSIVE.
+
 ### UI / cockpit (Lumen design-system adoption — Phase 6 reserved)
 
 <!-- updated 2026-05-27 (analyst, cockpit-toast-queue-v0.2.0-cleanup M0). Closes
