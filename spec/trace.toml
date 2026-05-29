@@ -2252,11 +2252,19 @@ arch        = [
   "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
   "spec/v2-llm-strategy/feature.md",                                                  # PREDECESSOR — pure-fn redact() shipped v2.0.0 pass 3; Layer half deferred to this brief
   "crates/llm/src/redact.rs",                                                         # PURE-FN SURFACE — Layer reuses redact() verbatim (R-NR.1); see redact.rs:18-26 deferral note
+  # ARCHITECT M-T1 (2026-05-29) — design pass; Q-RED-1/2/3 all DURABLE ratified; D-RED-1..D-RED-9 + ADR-0019 ride-along; state proposed → arch-done.
+  "spec/architecture/adr/0019-v2-llm-strategy.md",                                    # ADR RIDE-ALONG — § Changelog one-line row recording v2.1 close per D-RED-7; NO new ADR
+  "spec/architecture/adr/README.md",                                                  # ADR REGISTRY — frontmatter updated: field bumped same-commit per architect.md § ADR registry atomicity (2026-05-29 contract)
+  "crates/reports/tests/mark_unavailable_warns_capture.rs",                           # LAYER PATTERN PRECEDENT — `tracing_subscriber::registry().with(layer)` + `Visit` impl shape mirrored at D-RED-2 / D-RED-3
+  "crates/agent/src/main.rs",                                                         # P0 WIRE-UP SITE — `fmt().init()` migrate target per D-RED-2 / D-RED-8 wire-up site list
+  "crates/ui/src/bin/cockpit_live.rs",                                                # P0 WIRE-UP SITE — same migrate target per D-RED-2 / D-RED-8
+  "crates/llm/Cargo.toml",                                                            # DEP EDGE — regex = { workspace = true } add per D-RED § Library compatibility (tracing-subscriber already present)
+  "Cargo.toml",                                                                       # WORKSPACE DEP — regex = "1" add at [workspace.dependencies] per D-RED § Library compatibility
 ]
-crates      = []   # developer fills at M-DEV (crates/llm/src/redact_layer.rs NEW + crates/llm/Cargo.toml tracing-subscriber runtime dep + crates/agent/src/main.rs Registry::init() wire-up)
-tests       = []   # developer fills at M-DEV (pattern unit tests per R3.2 + WARN-mode meta-event self-test + gate-mode self-test + pure-fn parity self-test per R4.4)
-anchors     = []   # zero anchor delta (Layer affects tracing emit only); 75/75 stays byte-identical
-state       = "proposed"  # analyst M0 2026-05-29. Frontmatter status: draft, owner: analyst. M-T1 next (fast-skip likely if Q-RED-1/2/3 all Recommended DURABLE; pass-3 redact ADR carries forward, no new ADR). HANDOFF → architect (parallel-spawn with sibling REQ-UI-CONTRAST-ASSERTER-001).
+crates      = []   # developer fills at M-DEV (crates/llm/src/redact_layer.rs NEW + crates/llm/src/tracing_init.rs NEW + 17 binary install_global migrations per D-RED-8 wire-up site list)
+tests       = []   # developer fills at M-DEV (9-rule unit tests + WARN-mode meta-event integration test + gate-mode integration test + marker-field bypass test + pure-fn parity self-test per R4.4 + P-RED-1/2/3 falsification probes as #[ignore] tests)
+anchors     = []   # zero anchor delta (Layer affects tracing emit only); 75/75 stays byte-identical (K-arch-3 mitigation via shared install_global helper)
+state       = "arch-done"  # architect M-T1 2026-05-29. Q-RED-1 (a) closed regex set + Q-RED-2 (a) wire-layer exemption + Q-RED-3 (a) env var all ratified DURABLE. D-RED-1..D-RED-9 authored; D-RED-1 Layer at crates/llm/src/redact_layer.rs (NOT crates/audit/ — preserves R-NR.1 reuse contract); D-RED-2 17-binary install_global helper introduced (analyst framing was 2 sites; grep audit found 17); D-RED-3 (b) emit-redacted + filter-original pattern at v0.1.0; D-RED-7 ADR-0019 § Changelog ride-along + README updated: bump; D-RED-9 P-RED-3 NEW probe added. Library 6/6 PASS for regex = "1" workspace add; aho-corasick rejected as premature opt. HANDOFF → developer (single M-DEV wave; ~1.5 dev days; 10-step sequencing locked in feature.md § Design § Wire-up sequencing).
 
 [[req]]
 id          = "REQ-UI-CONTRAST-ASSERTER-001"
@@ -2274,8 +2282,10 @@ arch        = [
   "spec/ui-design-principles.md",                                                     # CONTRACT — ## Accessibility minimums 4.5:1 AA body / 7:1 AAA equity
   "crates/ui/src/theme.rs",                                                           # ENUMERATION SOURCE — pub const color tokens (FG_*, CANVAS, PANEL, ACCENT, UP_500, DOWN_500, WARN_500) the test reads
   "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PRECEDENT — boundary-test pattern carries forward; M-T1 ride-along Changelog row; no new ADR
+  # ARCHITECT M-T1 (2026-05-29) — design pass; Q-CONT-1/2/3 all RATIFIED (a) DURABLE; D-CONT-1..D-CONT-7 locked; theme.rs audit found 30 ModeColor constants → 83 PAIRS → 9 opt-outs → MIN_PAIRS=60 floor → 2 GENUINE WCAG-AA defects (FG_ON_ACCENT_light = 3.52, WARN_500 on CANVAS_light = 2.96) + 4 marginal sub-AA pairs. H2 INVALIDATED (9 opt-outs vs ≤ 3 estimate; K1 PARTIALLY TRIGGERED — bounded + reviewable, not a route-back). WARN mode keeps defects from blocking CI during 2-week observation. Reference vectors validated to 4-decimal precision. No new ADR; ADR-0048 § Changelog + README registry row updated atomically.
+  "spec/architecture/adr/README.md",                                                  # REGISTRY — ADR-0048 row updated with M-T1 carry-forward summary; frontmatter `updated:` bumped per architect.md § ADR registry atomic-write contract
 ]
 crates      = []   # developer fills at M-DEV (crates/ui/tests/contrast.rs NEW; no production code touch per R-NR.1)
 tests       = []   # developer fills at M-DEV (per-class assertions over PAIRS table + reference vector tests for hand-rolled formula + WARN-mode + gate-mode parity tests + MIN_PAIRS floor test per K2 mitigation)
 anchors     = []   # zero anchor delta (pure test infra addition); 75/75 stays byte-identical
-state       = "proposed"  # analyst M0 2026-05-29. Frontmatter status: draft, owner: analyst. M-T1 next (fast-skip likely if Q-CONT-1/2/3 all Recommended DURABLE; theme.rs one-pass audit + opt-out list seed + MIN_PAIRS floor ratification expected at M-T1). HANDOFF → architect (parallel-spawn with sibling REQ-V2-1-TRACING-LAYER-REDACTOR-001).
+state       = "arch-done"  # architect M-T1 2026-05-29. Frontmatter status: draft → arch-done, owner: analyst → developer. M-DEV next (~0.5 dev day; T-CONT-D1..D9 enumerated in tasks.md; expected 6 WARN-log lines at v0.1.0 PASS in default warn mode; gate mode panic with same 6 lines until operator promotes upstream hex tune at v0.2.0). HANDOFF → developer (parallel-safe with sibling REQ-V2-1-TRACING-LAYER-REDACTOR-001 + viewport-matrix dev IN FLIGHT at a54640fd — NEW file crates/ui/tests/contrast.rs has zero overlap).

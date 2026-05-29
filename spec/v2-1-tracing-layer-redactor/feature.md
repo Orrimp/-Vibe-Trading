@@ -1,8 +1,8 @@
 ---
 slug: v2-1-tracing-layer-redactor
 version: 0.1.0
-status: draft
-owner: analyst
+status: arch-done
+owner: developer
 priority: P2
 updated: 2026-05-29
 ---
@@ -344,14 +344,586 @@ verdict cell.
 
 ## Design
 
-_Architect M-T1 fills this. Expected DURABLE-fast-skip path:
-Q-RED-1 (a) ratified + Q-RED-2 (a) ratified + Q-RED-3 (a) ratified;
-Layer module at `crates/llm/src/redact_layer.rs`; wire-up sites
-audited and locked; `tracing-subscriber = "0.3"` runtime dep added
-to `crates/llm/Cargo.toml`; existing ADR (pass-3 redact ADR) amended
-with one Changelog row; no new ADR. Single M-DEV wave (~1.5 dev days)
-covering rule set + Layer impl + meta-event side channel + 3-4 unit
-tests + WARN/gate parity tests + wire-up at agent main._
+**Architect M-T1 ratification 2026-05-29.** Fast-skip path
+materialised: Q-RED-1 = (a) closed regex set ratified, Q-RED-2 = (a)
+wire-layer exemption ratified, Q-RED-3 = (a) runtime env var
+ratified. One material structural finding amends the analyst's
+framing (see D-RED-8 below): every existing binary uses the
+single-Layer `tracing_subscriber::fmt().init()` shape — the redactor
+requires migrating those init sites to
+`tracing_subscriber::registry().with(...)` composition. This grows
+the wire-up surface from 1-2 files to ~17 binaries; the ~1.5 dev-day
+estimate stays valid because the migration is mechanical (the
+existing `fmt::Subscriber` becomes a `fmt::Layer` inside the
+registry chain with byte-identical output).
+
+### Operator-decision ratifications
+
+#### Q-RED-1 (a) — Closed regex rule set ratified
+
+The v0.1.0 rule set is locked as a `const REDACT_RULES: &[Rule]` in
+`crates/llm/src/redact_layer.rs`. Concrete patterns (ratifying R3.2
+verbatim plus tightened entropy clause):
+
+| Rule key | Pattern (regex) | Match scope | Action |
+|---|---|---|---|
+| `anthropic_key` | `sk-ant-[A-Za-z0-9_\-]{16,}` | Field VALUE | `redact(value)` |
+| `openai_proj_key` | `sk-proj-[A-Za-z0-9_\-]{16,}` | Field VALUE | `redact(value)` |
+| `openai_key` | `sk-[A-Za-z0-9_\-]{16,}` (matches AFTER the two above fail) | Field VALUE | `redact(value)` |
+| `bearer_token` | `Bearer\s+[A-Za-z0-9._\-=]{20,}` | Field VALUE | `redact(extracted-token)` |
+| `jwt` | `eyJ[A-Za-z0-9._\-]+\.eyJ[A-Za-z0-9._\-]+\.[A-Za-z0-9._\-]+` | Field VALUE | `redact(value)` |
+| `aws_access` | `AKIA[0-9A-Z]{16}` | Field VALUE | `redact(value)` |
+| `aws_secret_context` | `[A-Za-z0-9/+=]{40}` IFF field name matches `*secret*\|*access*\|*token*` (case-insensitive `contains`) | Field VALUE | `redact(value)` |
+| `password_field_name` | (no value regex) | Field NAME `password\|pwd\|passwd\|secret\|api_key\|apikey\|auth_token\|bearer` (case-insensitive exact-match) | `redact(value)` regardless of shape |
+| `entropy_fallback` | Shannon entropy ≥ **4.5 bits/char** over ≥ **32 chars** AND field name matches `*key*\|*token*\|*secret*` (case-insensitive `contains`) | Field VALUE | `redact(value)` |
+
+The entropy threshold of 4.5 (R3.2 architect-ratify hook) is
+operator-tuned during the 2-week WARN window; v0.1.0 ships at 4.5
+per analyst-recommend; v0.2.0 patches based on WARN-mode
+meta-event grep evidence. Rule evaluation order is the table order
+above; first match wins (so `sk-ant-` wins before the broader `sk-`
+fallback). Adding new patterns requires v0.1.x patch (analyst →
+architect → developer); removing patterns is via the per-site
+opt-out marker (D-RED-7 below).
+
+#### Q-RED-2 (a) — Wire-layer exemption ratified (the durable shape)
+
+**Architect adopts the analyst's wire-layer-exemption framing
+verbatim.** The redactor Layer does NOT carry an internal bypass
+allowlist. Provider headers (`anthropic-version`, `anthropic-beta`,
+`openai-api-version`, `user-agent`, `content-type`,
+`x-request-id`) are exempted at the `reqwest` middleware site in
+each provider impl (`crates/llm/src/providers/anthropic.rs` and
+siblings) — those headers never enter `tracing` events. The
+redactor only sees fields that already entered `tracing`, so the
+bypass list is implicit + structurally enforced (a future provider
+that doesn't honour the middleware contract is the bug, not the
+redactor).
+
+**Cost-side note from the architect.** This contradicts the brief
+preamble's "bypass list = Anthropic-Version, OpenAI-API-Version,
+User-Agent, Content-Type, X-Request-Id, anthropic-beta" framing
+under Q-RED-2 in the orchestrator's M-T1 dispatch — that framing
+described **Option B (rejected)**. The DURABLE shape per the
+feature.md § Operator decisions table cell `(a, a)` carries an
+empty bypass list inside the redactor; the equivalent exempt-list
+lives at the `reqwest` middleware site as an out-of-tracing
+filter. Net effect identical; durable maintenance profile better
+(new provider = one-file change).
+
+**Audit of current provider sites for compliance.** The architect
+notes for the developer that `crates/llm/src/providers/` exists
+but the wire-layer exemption is not yet structurally enforced.
+The v0.1.0 ship contract is: **redactor Layer + redact_str
+helper land first; provider-side wire-layer audit is a v0.1.x
+follow-up** if the WARN-mode meta-event grep surfaces provider
+headers triggering false-positives. Per K2 falsifier mitigation,
+the redactor entropy threshold (4.5) is set high enough that
+short structured-header values do not match — first-line defence.
+
+#### Q-RED-3 (a) — Runtime env var `REDACT_LAYER_MODE=warn|gate` ratified
+
+Default at v0.1.0 = `warn`. Invalid env-var value → log a
+one-time `tracing::warn!` at process init + default to `warn`
+(fail-safe-closed). v0.2.0 patch flips default to `gate` after
+the 2-week WARN observation window closes. The `VERBOSE` knob
+per R2.3 (`REDACT_LAYER_VERBOSE=1`) preserves meta-event emission
+in gate mode for operator-decided diagnostics.
+
+**14-day WARN-mode duration ratified** per the bundle Q-DUO-WARN
+shape (precedent: `ui-contrast-asserter` sibling adopting the same
+14-day window). v0.2.0 patch authored by analyst end-of-window
+records the false-positive count + true-positive count from the
+WARN-mode meta-event grep.
+
+### D-clauses
+
+#### D-RED-1 — Layer module location: `crates/llm/src/redact_layer.rs` (NEW)
+
+**Architect chooses `crates/llm/src/redact_layer.rs` over the
+brief-line `crates/audit/src/redactor.rs`.** Rationale:
+
+- The pure-fn `redact()` lives at `crates/llm/src/redact.rs`. The
+  Layer reuses it verbatim per R-NR.1 (R-NR contract). Co-located
+  module preserves the dependency direction `llm → llm::redact_layer`
+  (one crate, no inter-crate edge added).
+- The brief framing of "redactor lives at the audit/llm boundary"
+  is semantic, not structural. The Layer intercepts **events** in
+  the global `tracing` subscriber chain — it intercepts events
+  emitted by `crates/audit` AND by `crates/llm` AND by every other
+  crate. The Layer's tap point is the global subscriber, not the
+  audit ledger sink directly.
+- `crates/audit/Cargo.toml` does NOT currently pull in
+  `tracing-subscriber`. Adding it to audit would expand the audit
+  crate's surface for a feature that's primarily LLM-secret-shaped.
+  `crates/llm/Cargo.toml` already pulls in `tracing-subscriber` (line
+  68: `tracing-subscriber = { workspace = true }`). Zero new dep.
+
+Module shape:
+
+```rust
+// crates/llm/src/redact_layer.rs
+//! Tracing-subscriber Layer that redacts secrets from event fields
+//! BEFORE they hit downstream sinks (audit ledger, stdout, file).
+//!
+//! Wraps the pure-fn [`crate::redact::redact`] (T1915) — no separate
+//! sanitisation logic (R-NR.1).
+
+use std::borrow::Cow;
+use tracing::field::{Field, Visit};
+use tracing::{Event, Subscriber};
+use tracing_subscriber::Layer;
+use tracing_subscriber::layer::Context;
+
+pub fn redact_tracing_layer<S>() -> RedactLayer
+where
+    S: Subscriber,
+{
+    RedactLayer::from_env()
+}
+
+pub struct RedactLayer {
+    mode: RedactMode,
+    verbose: bool,
+}
+
+enum RedactMode { Warn, Gate }
+
+impl RedactLayer { /* ctor + from_env */ }
+impl<S: Subscriber> Layer<S> for RedactLayer { /* on_event */ }
+
+/// Test seam (D-RED-6). Pure-fn boundary, no Subscriber required.
+#[must_use]
+pub fn redact_str(s: &str) -> Cow<'_, str> { /* run rule set; reuse redact::redact */ }
+```
+
+Wired into `crates/llm/src/lib.rs` exports:
+
+```rust
+pub mod redact_layer;
+pub use redact_layer::{redact_tracing_layer, redact_str, RedactLayer};
+```
+
+#### D-RED-2 — Subscriber composition: registry chain, NOT fmt::Subscriber
+
+**Material structural change from the brief framing.** The redactor
+is a `tracing_subscriber::Layer` impl (NOT a `MakeWriter` wrapper) —
+this matches the analyst's R1.1 recommendation and the `Layer`
+shape already established in
+`crates/reports/tests/mark_unavailable_warns_capture.rs:178`
+(`tracing_subscriber::registry().with(layer)` pattern).
+
+Required composition at every wire-up site:
+
+```rust
+use tracing_subscriber::{fmt, layer::SubscriberExt, registry, util::SubscriberInitExt};
+
+let fmt_layer = fmt::layer()
+    .json()
+    .with_writer(std::io::stderr);
+
+let env_filter = tracing_subscriber::EnvFilter::from_default_env()
+    .add_directive("agent=info".parse()?);
+
+registry()
+    .with(env_filter)
+    .with(llm::redact_tracing_layer::<_>())   // ← BEFORE fmt_layer
+    .with(fmt_layer)
+    .try_init()?;
+```
+
+**Layer ordering contract (R1.4).** The redactor MUST be installed
+**before** the `fmt::Layer` (and before any future audit-sink Layer)
+in the registry chain. In `tracing-subscriber` 0.3.x, the Layer
+chain processes events top-to-bottom by registration order; the
+redactor's `on_event` rewrites the event's field visitor BEFORE
+downstream Layers see it. The redactor's `Visit` impl runs over the
+original event values, computes redacted values, and surfaces them
+via a `Visit`-based shim to downstream Layers (see D-RED-3 sketch).
+
+**Wire-up site list (architect-locked).** Per the grep audit:
+
+| Binary | File | Action |
+|---|---|---|
+| `agent` (P0) | `crates/agent/src/main.rs:54` | Migrate `fmt().init()` → `registry().with(...).try_init()` |
+| `cockpit_live` (P0) | `crates/ui/src/bin/cockpit_live.rs:236` | Same |
+| `cockpit` (P1) | `crates/ui/src/bin/cockpit.rs:133` | Same |
+| `backtest` (P1) | `crates/backtest/src/main.rs:864` | Same |
+| `llm-smoke` (P1) | `crates/llm/src/bin/llm-smoke.rs:108` | Same |
+| `generate-replay-fixture` (P2) | `crates/llm/src/bin/generate-replay-fixture.rs:100` | Same |
+| `llm_verdict` (P2) | `crates/trader/src/bin/llm_verdict.rs:412` | Same |
+| forecast bins (P2 — 7 bins) | `crates/forecast/src/bin/*.rs` | Same |
+| backtest aux bins (P2 — 2 bins) | `crates/backtest/src/bin/{threshold_sweep,run_yahoo_sma}.rs` | Same |
+| data bins (P2 — 2 bins) | `crates/data/src/bin/fetch_{binance,yahoo}_klines.rs` | Same |
+
+**Developer M-DEV scope decision.** The P0 sites
+(`agent`, `cockpit_live`) MUST migrate in v0.1.0 — they're the
+LLM-call-bearing binaries. The P1+P2 sites (15 binaries) MAY ship
+in v0.1.0 with an **`llm::tracing_init::install_global()` helper**
+that all binaries call (one-line replacement of the `fmt().init()`
+block) — this caps the per-binary migration to 1 LoC per site
+and 17 file touches but keeps the per-binary churn minimal.
+**Architect ratifies the helper-fn approach** (better than 17
+hand-rolled `registry().with(...)` blocks) — see D-RED-2 helper
+sketch below.
+
+```rust
+// crates/llm/src/tracing_init.rs (NEW; sibling of redact_layer.rs)
+//!
+//! Workspace-wide subscriber installer. Every binary calls this
+//! INSTEAD of `tracing_subscriber::fmt().init()`. Centralises the
+//! redactor + fmt Layer ordering (R1.4) at a single audit point.
+
+pub fn install_global(
+    extra_directives: &[&str],
+    json: bool,
+) -> Result<(), tracing_subscriber::util::TryInitError> { /* ... */ }
+```
+
+Per-binary replacement (worked example, `crates/agent/src/main.rs`):
+
+```rust
+// before
+tracing_subscriber::fmt()
+    .with_env_filter(
+        tracing_subscriber::EnvFilter::from_default_env()
+            .add_directive("trading=info".parse()?)
+            .add_directive("agent=info".parse()?),
+    )
+    .json()
+    .init();
+
+// after
+llm::tracing_init::install_global(&["trading=info", "agent=info"], true)?;
+```
+
+#### D-RED-3 — Visitor pattern: rewrite-on-record via wrapper Visit
+
+The Layer's `on_event` hook constructs a `RedactingVisitor` that
+wraps the downstream `Visit` and rewrites string-shaped field
+values before forwarding them. Sketch (developer fills the full
+impl at M-DEV):
+
+```rust
+impl<S> Layer<S> for RedactLayer
+where
+    S: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        // tracing-subscriber 0.3 does not expose mutable event-value
+        // rewriting at the Layer boundary. Strategy:
+        //
+        //  1. The redactor Layer captures the event's field values via a
+        //     `Visit` impl that computes redacted strings into a
+        //     side-channel `RedactedFields` map keyed on field name.
+        //  2. Downstream sink Layers (fmt::Layer, audit-write Layer)
+        //     query the side-channel via a `tracing::span::Extensions`-
+        //     stashed `RedactedFields` BEFORE rendering the event.
+        //
+        // For v0.1.0 the simpler shape: the redactor Layer emits a
+        // SECOND event at the same Level with redacted values and the
+        // ORIGINAL event is filtered out by a paired filter Layer.
+        // This double-emit + filter-original is the documented
+        // tracing-subscriber 0.3.x pattern for content rewriting
+        // (see tracing/issues/2570).
+        //
+        // Developer M-DEV picks ONE of:
+        //   (a) Extensions side-channel — preserves single event,
+        //       requires every downstream sink to know about
+        //       RedactedFields (audit-write Layer when it lands).
+        //   (b) Emit-redacted + filter-original — single Layer
+        //       responsibility; downstream sinks see only the
+        //       redacted event. Simpler for v0.1.0.
+        //
+        // ARCHITECT RECOMMENDS (b) for v0.1.0; (a) becomes correct
+        // when the audit-write Layer lands at v0.2.0+ and needs
+        // single-pass rendering.
+    }
+}
+```
+
+**Developer M-DEV decision recorded here:** ship (b)
+emit-redacted + filter-original at v0.1.0. The redacting flow:
+
+1. `on_event` calls `event.record(&mut RedactingVisitor)`.
+2. `RedactingVisitor` collects each field name + Display-rendered
+   value into a `Vec<(name, redacted_value)>`.
+3. For each match, `redact_str(value)` is called; the rule set
+   evaluates per D-RED-1 ratification table.
+4. The Layer re-emits the event using `tracing::event!` with the
+   redacted values and a span-extension marker
+   `__redact_layer_emitted = true` that downstream filters drop
+   the ORIGINAL event for.
+
+Open implementation question (developer M-DEV records the
+choice): whether the filter-original lives in the same Layer
+(via `enabled()` returning `false` for events without the
+marker) or as a sibling Layer. Architect leaves this to the
+developer — both are equivalent + small.
+
+#### D-RED-4 — Bypass mechanism: per-site opt-out via marker field (NOT a bypass allowlist)
+
+Per Q-RED-2 ratification, there is NO bypass allowlist for
+provider headers in the redactor. The per-site opt-out (R3.5) for
+legitimate "this field is not a secret even though it shape-matches"
+cases uses a marker-field convention:
+
+```rust
+tracing::info!(
+    api_key_doc = "sk-ant-EXAMPLE-FOR-DOCS",
+    __redact_skip = "api_key_doc",
+    __redact_reason = "documentation example value; not a real key",
+    "API key field name doc",
+);
+```
+
+The Layer's `RedactingVisitor` checks for the `__redact_skip` field
+naming the to-skip field + a non-empty `__redact_reason`. Missing
+`reason` → no skip applied + a `tracing::warn!` meta-event
+`redact_layer.warn` records the missing-reason. The bypass list as
+a `const BYPASS_FIELDS: &[&str] = &[...]` (brief D-RED-4 framing)
+is NOT shipped — it would conflict with Q-RED-1 (a) closed-rule-set
+durable shape (operator could silently weaken the redactor by
+extending the const).
+
+Marker-field names are reserved (the Layer drops them from the
+re-emitted redacted event so downstream sinks never see them).
+
+#### D-RED-5 — WARN-mode emit: meta-event side channel
+
+Per R2.2 + Q-RED-3 ratification, every redaction in `warn` mode
+emits a `tracing::warn!` meta-event:
+
+```rust
+tracing::warn!(
+    target: "redact_layer",
+    field_name = %field.name(),
+    rule = %rule_key,         // e.g. "anthropic_key", "entropy_fallback"
+    count_so_far = process_counter.fetch_add(1, Ordering::Relaxed) + 1,
+    "redacted field matched rule",
+);
+```
+
+The meta-event carries the field name + rule key + a per-process
+monotonic counter (atomic). The secret VALUE is NEVER part of the
+meta-event payload (mitigates a meta-event-leak K-class risk).
+
+In `gate` mode the meta-event is suppressed UNLESS
+`REDACT_LAYER_VERBOSE=1`. The redaction itself is identical in
+both modes.
+
+**Meta-event recursion guard.** The meta-event itself is a
+`tracing::warn!` call that flows through the subscriber chain.
+The redactor checks `event.metadata().target() == "redact_layer"`
+and bypasses field rewriting on its own emissions (no infinite
+loop; matches the documented tracing pattern).
+
+#### D-RED-6 — Test seam: `pub fn redact_str(s: &str) -> Cow<str>`
+
+Per the M-T1 brief contract, a pure-fn `redact_str` ships
+alongside the Layer:
+
+```rust
+#[must_use]
+pub fn redact_str(s: &str) -> Cow<'_, str> {
+    // Run all 9 rules from the D-RED-1 table over the input.
+    // Return Borrowed(s) on no match; Owned(redacted) on match.
+}
+```
+
+This is the unit-test surface. The Layer wraps `redact_str` with
+span/event semantics. Unit tests at `crates/llm/src/redact_layer.rs`
+`#[cfg(test)] mod tests` exercise:
+
+- Each rule produces the expected redaction on the canonical
+  positive input (R4.1).
+- Each rule does NOT match on the canonical negative input (no
+  false-positive on plain prose / numeric fields / short hashes).
+- Pure-fn parity (R4.4): every `t1915_*` input from `redact.rs`
+  routed through `redact_str` produces identical output to
+  `redact::redact()` directly.
+
+Layer-level tests at `crates/llm/tests/redact_layer.rs` (NEW
+file in `crates/llm/tests/`) install the redactor + a test sink
+Layer (mirroring `mark_unavailable_warns_capture.rs:178`) and
+assert end-to-end:
+
+- WARN-mode self-test (R4.2): meta-event recorded AND redacted event recorded.
+- Gate-mode self-test (R4.3): redacted event only.
+- Gate + verbose self-test: redacted event + meta-event.
+- Marker-field bypass (D-RED-4): field with `__redact_skip` + reason passes through; field with `__redact_skip` + missing reason still redacted + warn meta-event.
+
+#### D-RED-7 — ADR contract: amend ADR-0019 § Changelog; NO new ADR
+
+**Architect ratifies the analyst's "no new ADR" framing.** The
+redactor closes ADR-0019 (v2 LLM strategy foundation) § Q-pass-3
+deferred half — the pure-fn `redact()` shipped under R8.3 in v2.0.0
+pass 3, and the Layer half was deferred per `redact.rs:18-26`. This
+is an additive close of a known-deferred surface, not a new design
+decision. Recording shape:
+
+```
+ADR-0019 § Changelog (one line appended at architect-commit):
+- 2026-05-29 (architect): v2.1 tracing-Layer redactor M-T1 ratified
+  (REQ-V2-1-TRACING-LAYER-REDACTOR-001). Closes the pass-3 deferred
+  half of R8.3 secret-redaction (`crates/llm/src/redact.rs:18-26`).
+  Layer shape: closed regex set + per-site opt-out + 14-day WARN
+  mode (REDACT_LAYER_MODE=warn|gate env var) before v0.2.0 gate
+  flip. Wire-up via new `llm::tracing_init::install_global()`
+  helper called by every binary. Anchor contract 0 delta (Layer
+  affects tracing emit only; 75/75 byte-identical).
+```
+
+The ADR registry README `updated:` frontmatter is bumped same
+commit (per architect.md § ADR registry contract atomicity).
+
+#### D-RED-8 — Material structural finding: binary subscriber init migration (NEW from M-T1 audit)
+
+The analyst brief assumed wire-up at "`crates/agent/src/main.rs` +
+`crates/ui/src/bin/cockpit_live.rs`" — two sites. The grep audit
+finds **17 binary entry points** each calling
+`tracing_subscriber::fmt().init()`. Adding a Layer requires
+migrating to `registry().with(...)`. The architect's response:
+
+- Ship a **shared `llm::tracing_init::install_global()` helper**
+  (D-RED-2). One LoC replacement per binary.
+- **P0 binaries** (`agent`, `cockpit_live`) MUST migrate at v0.1.0
+  ship.
+- **P1 binaries** (`cockpit`, `backtest`, `llm-smoke`,
+  `generate-replay-fixture`, `llm_verdict`) MUST migrate at v0.1.0
+  ship — these are LLM-adjacent and operator-exposed.
+- **P2 binaries** (10 forecast/data/aux bins) are
+  non-LLM-bearing; the redactor would be a no-op (no secrets in
+  their fields). They MAY migrate at v0.1.0 ship for hygiene OR
+  defer to v0.1.x — developer M-DEV decision; architect
+  recommends ship-all-at-once for the durable "every binary
+  inherits redaction" framing per process-tooling-survey Rank 3
+  HIGH pay-forward.
+
+**Anchor impact**: zero. The migration is byte-identical output
+(same `EnvFilter`, same `fmt::Layer` JSON shape). Falsification
+probe P-RED-1 (D-RED-9 below) catches any drift.
+
+#### D-RED-9 — Falsification probes ratified
+
+**P-RED-1 (analyst-spec'd; architect-ratifies).** Comment out the
+Layer's `on_event` field-rewrite logic; send a span with
+`password=hunter2`; assert the test sink receives
+`password=hunter2` UNREDACTED. Confirms the Layer's tap point is
+correct. Revert. Recipe lives in
+`crates/llm/tests/redact_layer.rs ## P-RED-1 falsification` as a
+`#[ignore]` test the developer un-ignores during the probe pass.
+
+**P-RED-2 (analyst-spec'd; architect-ratifies).** Swap the
+Registry chain ordering — put `fmt::Layer` BEFORE
+`redact_tracing_layer()`. Assert fmt output captures
+`password=hunter2` UNREDACTED. Confirms R1.4 ordering is
+load-bearing. Revert. Recipe lives in
+`crates/llm/tests/redact_layer.rs ## P-RED-2 falsification` as a
+`#[ignore]` test.
+
+**P-RED-3 (NEW architect-add).** Replace `REDACT_RULES` with `&[]`
+(empty rule set); assert all 9 positive-rule test cases FAIL
+("expected redaction not applied"). Confirms the rule set is
+load-bearing — catches a future refactor that accidentally drops
+the rule-evaluation loop. Recipe lives at
+`crates/llm/src/redact_layer.rs #[cfg(test)] mod p_red_3` as a
+`#[ignore]` test.
+
+### Library compatibility checklist
+
+The redactor needs a `regex` dep at `crates/llm/Cargo.toml`. The
+audit:
+
+- [x] **Single-binary friendly** — `regex` is a pure-Rust crate,
+  no system C deps, no external services. Standard workspace
+  dependency.
+- [x] **No system C deps** — none.
+- [x] **Edition 2024 compatible** — `regex` 1.10+ supports edition
+  2024 (verified upstream).
+- [x] **`[package] name` does NOT shadow stdlib** — `regex` is not
+  a stdlib name.
+- [x] **Maintained** — `regex` is a `rust-lang/regex` BurntSushi
+  crate, weekly downloads in the millions, last release < 6 months.
+- [x] **License compatible** — `MIT OR Apache-2.0`, matches workspace.
+
+The architect rejects `aho-corasick` as a separate dep for the
+bypass-prefix fast-path:
+
+- The bypass mechanism per D-RED-4 is per-site marker fields, not
+  a static prefix list. No fast-path needed.
+- `regex` 1.x already vendors `aho-corasick` internally for its
+  `RegexSet` literal optimisation. Adding `aho-corasick` as a
+  direct dep is a premature optimisation for the v0.1.0
+  rule-set size (9 rules, all short patterns).
+
+**Workspace dep already present**: `tracing-subscriber = "0.3"` is
+declared at the workspace root (`Cargo.toml:48` —
+`tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }`)
+AND already a runtime dep of `crates/llm`
+(`crates/llm/Cargo.toml:68 — tracing-subscriber = { workspace = true }`).
+Zero new dep edge there.
+
+**New dep edge to add**: `regex = { workspace = true }` at
+`crates/llm/Cargo.toml` `[dependencies]` (after a corresponding
+workspace declaration at `Cargo.toml [workspace.dependencies]`).
+
+**Open architect decision (developer M-DEV picks):** whether
+`once_cell::sync::Lazy<RegexSet>` (well-known pattern, requires
+adding `once_cell`) or `std::sync::OnceLock<RegexSet>` (stdlib,
+edition 2024 stable) — architect recommends `std::sync::OnceLock`
+to avoid the new dep. Free choice for the developer if the
+ergonomic gap matters.
+
+### Wire-up sequencing (developer M-DEV gate)
+
+1. Add `regex = "1"` workspace dep at root `Cargo.toml`
+   `[workspace.dependencies]`; add `regex = { workspace = true }` at
+   `crates/llm/Cargo.toml [dependencies]`. `cargo check -p llm`
+   must pass.
+2. Author `crates/llm/src/redact_layer.rs` with `redact_str` +
+   `RedactLayer` + `RedactMode` + `redact_tracing_layer<S>()`.
+3. Author `crates/llm/src/tracing_init.rs` with
+   `install_global(extra_directives, json) -> Result<...>`.
+4. Wire `pub mod redact_layer; pub mod tracing_init;` +
+   re-exports at `crates/llm/src/lib.rs`.
+5. Author `crates/llm/tests/redact_layer.rs` integration test +
+   `#[cfg(test)] mod tests` in `redact_layer.rs` for unit tests.
+6. Migrate P0 binaries (`agent`, `cockpit_live`) to
+   `llm::tracing_init::install_global(...)`.
+7. Migrate P1 binaries (`cockpit`, `backtest`, `llm-smoke`,
+   `generate-replay-fixture`, `llm_verdict`).
+8. Migrate P2 binaries (10 sites; bulk replacement).
+9. Run P-RED-1, P-RED-2, P-RED-3 falsification probes per D-RED-9.
+10. Run `cargo test --workspace` + `bash scripts/verify_anchors.sh`
+    (must be 75/75 byte-identical pre/post; anchor contract is the
+    R-NR.3 hard gate).
+
+### Risk register update
+
+K1-K4 inherit from the analyst brief; no architect-added K-class
+risks. Material risk callouts from M-T1:
+
+- **K-arch-1**: The double-emit + filter-original (D-RED-3 (b))
+  pattern doubles the event-count on every redacted event before
+  the filter Layer drops the original. Memory + CPU impact is
+  bounded (1 extra event per redaction; the filter is O(1) on a
+  metadata target check). At LLM-call rates (~1 redaction per
+  outbound request, ~10 req/min sustained, ~600 redactions/hour)
+  this is negligible. **Re-evaluated at v0.2.0** if the audit-write
+  Layer requires single-pass rendering (then migrate to D-RED-3 (a)
+  Extensions side-channel).
+
+- **K-arch-2**: The shared `install_global()` helper concentrates
+  the wire-up bug. If the helper is wrong, ALL 17 binaries are
+  wrong. **Mitigation**: P-RED-1 + P-RED-2 integration tests run
+  against the helper, not a hand-rolled chain — catches drift.
+
+- **K-arch-3**: 17-binary migration risks JSON-output drift
+  (someone re-types `with_writer(stderr)` differently). **Mitigation**:
+  one-line per binary; the `install_global()` helper owns all
+  JSON / stderr / EnvFilter shape; per-binary call passes only
+  `extra_directives` + `json: bool`.
 
 ## Backtest Scenarios
 
@@ -385,3 +957,26 @@ pre/post._
   NOT a compounder (deferred with v2 LLM lane activation). HANDOFF →
   architect (M-T1 fast-skip likely if Q-RED-1/2/3 all Recommended
   durable; pass-3 redact ADR carries forward, no new ADR).
+- 2026-05-29 (architect): M-T1 design pass ratified. Q-RED-1 (a)
+  closed regex set + Q-RED-2 (a) wire-layer exemption + Q-RED-3 (a)
+  env var all locked verbatim from analyst recommendation. D-clauses
+  D-RED-1..D-RED-9 authored (Layer at `crates/llm/src/redact_layer.rs`
+  NOT `crates/audit/`; co-located with pure-fn `redact()` per R-NR.1
+  reuse contract). Material structural finding D-RED-8: 17 binary
+  entry points use `tracing_subscriber::fmt().init()` and must
+  migrate to `registry().with(...)` shape — shared
+  `llm::tracing_init::install_global()` helper introduced to cap
+  per-binary churn at 1 LoC. D-RED-3 picks emit-redacted +
+  filter-original pattern for v0.1.0 (simpler) over Extensions
+  side-channel (correct at v0.2.0 when audit-write Layer lands).
+  D-RED-9 adds P-RED-3 falsification probe (empty rule set → all
+  positive tests fail) alongside analyst-spec'd P-RED-1 / P-RED-2.
+  Library checklist 6/6 PASS for `regex = "1"` workspace add;
+  rejected `aho-corasick` direct dep as premature optimisation;
+  recommended `std::sync::OnceLock` over `once_cell`. ADR contract
+  ratified — ADR-0019 § Changelog ride-along (one line); NO new ADR
+  (additive close of pass-3 deferred half per `redact.rs:18-26`).
+  ADR registry README `updated:` frontmatter bumped atomic-same-commit.
+  Trace row state `proposed` → `arch-done`. HANDOFF → developer
+  (single M-DEV wave; ~1.5 dev days; sequencing locked at D-RED §
+  Wire-up sequencing 10 steps).

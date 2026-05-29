@@ -123,3 +123,22 @@ the two `report-sample-*` anchors re-lock **once** at
 - 2026-05-10 (architect): initial accept.
 - 2026-05-13 (architect): extracted from `spec/architecture.md` §
   v2 — LLM strategy resolutions during Phase 1A Session 10.
+- 2026-05-29 (architect): v2.1 tracing-Layer redactor M-T1 ratified
+  (`REQ-V2-1-TRACING-LAYER-REDACTOR-001`). Closes the pass-3
+  deferred half of R8.3 secret-redaction documented at
+  `crates/llm/src/redact.rs:18-26`. Layer shape: closed 9-rule
+  regex set + per-site marker-field opt-out (NO bypass allowlist)
+  + 14-day WARN mode via `REDACT_LAYER_MODE=warn|gate` env var
+  before v0.2.0 gate-default flip. Layer module at
+  `crates/llm/src/redact_layer.rs` (co-located with the pure-fn
+  `redact()` per R-NR.1 reuse). Wire-up via new
+  `llm::tracing_init::install_global()` helper called by 17
+  binary entry points (architect-audit finding: every existing
+  binary uses single-Layer `fmt().init()` shape, must migrate
+  to `registry().with(...)` composition). Provider-header bypass
+  lives at `reqwest` wire layer (Q-RED-2 (a) DURABLE), not in
+  the redactor. Anchor contract zero delta — 75/75 byte-identical
+  pre/post per R-NR.3 hard gate. NO new ADR; this Changelog row
+  is the architectural record. See
+  [`spec/v2-1-tracing-layer-redactor/feature.md ## Design`](../../v2-1-tracing-layer-redactor/feature.md#design)
+  for D-RED-1..D-RED-9.

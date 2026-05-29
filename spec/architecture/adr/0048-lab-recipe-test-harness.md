@@ -231,6 +231,32 @@ SHA assertion.
   `.claude/agents/tester.md` "Visual failures — HTML artifact emission"
   stanza (D-VF-4) without further amendment per trifecta-direction
   § Risk R1 mitigation.
+- 2026-05-29 (architect, ui-contrast-asserter v0.1.0 M-T1 close):
+  D1-D6 carry forward verbatim. The contrast asserter is a sibling
+  boundary-test shape — `crates/ui/tests/contrast.rs` reads
+  `crates/ui/src/theme.rs` `pub const` tokens via the public API and
+  asserts WCAG 2.1 contrast invariants (Body ≥ 4.5, Equity ≥ 7.0,
+  OptOut-with-mandatory-reason skip). D1 (Pattern d Combination
+  Surface-1-API-via-public-symbols + Surface-2-state-machine-via-
+  enum-class-dispatch) applies: Surface 1 = `contrast_ratio` pure-fn
+  over the enumerated `PAIRS` table; Surface 2 = `ContrastClass`
+  dispatch into Body / Equity / OptOut. D2 (file:line locations) =
+  `crates/ui/tests/contrast.rs` NEW. D3 (scope = closed regression
+  categories) = palette-refactor hex drift + token-storage-shape
+  drift via `MIN_PAIRS=60` floor. D4 (visual regressions NOT caught)
+  — contrast asserter is hex-token level, not pixel level, same
+  layering as ADR-0048 D4. D5 (M-FINAL gate) = `cargo test -p ui
+  --test contrast` in both WARN + gate modes per tester M-FINAL T-CONT-
+  FINAL.1/2/3. D6 (anchor-additivity) = zero anchor delta; 75/75
+  byte-identical (pure test-infra addition; no production code touch
+  per R-NR.1). No new ADR. See
+  [`spec/ui-contrast-asserter/feature.md`](../../ui-contrast-asserter/feature.md)
+  § Design D-CONT-1..D-CONT-7. WARN-mode-default-then-gate-flip pattern
+  (D-CONT-6) inherits the env-var-gated DURABLE shape from the Pick A
+  test-infra trifecta; v0.2.0 promotion contract requires upstream
+  hex tune for 2 GENUINE WCAG-AA defects surfaced by M-T1 dry-run
+  (`FG_ON_ACCENT_light` 3.52 + `WARN_500_light` 2.96) — these are
+  NOT opt-outs but the asserter's signal-of-record.
 - 2026-05-29 (architect, ui-test-harness-viewport-matrix v0.1.0 M-T1
   close): D1-D6 carry forward verbatim. Matrix harness shape extends
   the bootstrap-Charts SLOTS table (1280×720 / 1920×1080 / 3360×1890)
