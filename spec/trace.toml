@@ -2119,8 +2119,9 @@ crates      = [
 ]
 tests       = [
   # ARCHITECT M-T1 (2026-05-29) — files developer will CREATE per Wave A→D.
-  "crates/ui/tests/training_log_recipe_stream.rs",                                                                  # Wave A — S1 boundary (~120 LoC, ≥ 3 tests)
-  "crates/ui/tests/training_log_inflight_gating.rs",                                                                # Wave A — S2 gating (~80 LoC)
+  # DEVELOPER M-DEV Wave A (2026-05-29) — actual file names (brief overrides spec names):
+  "crates/ui/tests/training_log_recipe_harness.rs",                                                                 # Wave A — S1 boundary (250 LoC; 3 tests: sentinel + salt-bump-take + graceful-shutdown; T-T4 P1 probe verified)
+  "crates/ui/tests/training_log_state_gating.rs",                                                                   # Wave A — S2 gating (240 LoC; 3 tests: inflight-visibility + clears-on-completion + state-after-cancellation; T-T4 P3 probe verified)
   "crates/agent/tests/activity_audit_aggregator_select_arm_survival.rs",                                            # Wave B — S1 select-arm-survival (~150 LoC, ≥ 2 tests)
   "crates/ui/tests/cockpit_subscription_server_time_always_batched.rs",                                             # Wave C — S2 always-batched (~60 LoC)
   "crates/ui/tests/toast_dismiss_recipe_stream.rs",                                                                 # Wave C — S1 boundary (~120 LoC)
@@ -2133,8 +2134,8 @@ tests       = [
   "crates/ui/tests/lab_stop_button_gating.rs",                                                                      # v0.1.0 S2 — byte-identical PASS
   "crates/backtest/tests/determinism.rs",                                                                           # row 70 SHA anchor — pre/post-merge byte-identical
 ]
-anchors     = []  # zero anchor delta (R-NR contract) — 71/71 PASS byte-identical pre/post-merge per D-V0.2.0-6
-state       = "arch-done"  # architect M-T1 2026-05-29: M-OD locked Q1=(a) all 4 + extras + Q2=(a) per-Recipe T-T4 falsification probe DURABLE; D-V0.2.0-1..7 ratified; ADR-0048 carries forward verbatim (one Changelog row appended 2026-05-29, no new ADR); R3 mock pattern = per-Recipe-specific (NOT shared trait); Wave A→D dependency-ordered (A‖B parallel, C extracts SubscriptionBatchDescriptor seam, D depends on C); ~940 LoC tests + ~130 LoC src deltas across 3 API-additive extractions (run_aggregator_loop, build_subscription_batch_descriptor, training_poller_stream_impl); ~6 dev days + 1 tester day; frontmatter flipped owner: analyst → developer, status: draft → arch-done. HANDOFF → developer (M-DEV; Wave A TrainingLogRecipe is highest urgency — exact Bug #64 shape).
+anchors     = []  # zero anchor delta (R-NR contract) — 75/75 PASS byte-identical pre/post-merge per D-V0.2.0-6
+state       = "dev-in-progress"  # architect M-T1 2026-05-29: M-OD locked Q1=(a) all 4 + extras + Q2=(a) per-Recipe T-T4 falsification probe DURABLE; D-V0.2.0-1..7 ratified; ADR-0048 carries forward verbatim (one Changelog row appended 2026-05-29, no new ADR); R3 mock pattern = per-Recipe-specific (NOT shared trait); Wave A→D dependency-ordered (A‖B parallel, C extracts SubscriptionBatchDescriptor seam, D depends on C); ~940 LoC tests + ~130 LoC src deltas across 3 API-additive extractions (run_aggregator_loop, build_subscription_batch_descriptor, training_poller_stream_impl); ~6 dev days + 1 tester day. DEVELOPER M-DEV Wave A (2026-05-29): training_log_recipe_harness.rs + training_log_state_gating.rs shipped; 6 tests 3/3+3/3 PASS; falsification probes P1+P3 verified; 75/75 anchors PASS; v0.1.0 harness 6/6 PASS. Waves B→D deferred to next dev turn.
 
 [[req]]
 id          = "REQ-LAB-YAHOO-REALDATA-V0-1-4-001"

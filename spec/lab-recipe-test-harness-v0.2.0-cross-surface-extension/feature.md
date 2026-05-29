@@ -350,7 +350,39 @@ that makes 4 of the 10 falsification probes mechanically possible).
 
 ## Implementation
 
-_(developer — per-Recipe waves A-F; T-T4 probe per wave.)_
+### Wave A — TrainingLogRecipe S1 + S2 (DONE 2026-05-29)
+
+**Developer**: Wave A complete. Files added:
+
+- `crates/ui/tests/training_log_recipe_harness.rs` (Surface 1, ~250 LoC)
+  - `MockTrainingLogChannel` — per-Recipe-specific (D-V0.2.0-1); wraps `std::sync::mpsc::sync_channel::<TrainingLogLine>(16)`.
+  - Test 1: `sentinel_log_line_emitted_before_subprocess_spawn` — first event < 50 ms
+  - Test 2: `salt_bump_survives_arc_mutex_take` — Option drained by first take(), second call yields 0
+  - Test 3: `log_stream_survives_recipe_drop` — sender drop terminates stream cleanly (no orphan tasks)
+  - T-T4 falsification probe P1 documented: `training_log.rs:124` (yield line). Dry-run: all 3 tests FAIL.
+
+- `crates/ui/tests/training_log_state_gating.rs` (Surface 2, ~240 LoC)
+  - Uses `spawn_training_run(sleep 5)` to populate `training_inflight = Some(handle)` exactly as production.
+  - Test 4: `training_log_panel_visibility_gated_on_inflight` — default None → Some after spawn → None after TrainingExited
+  - Test 5: `training_log_panel_clears_on_completion` — log lines don't clear inflight; TrainingExited clears it; log persists
+  - Test 6: `training_log_panel_state_after_cancellation` — TrainingCancelPressed clears inflight immediately (SIGKILL semantics)
+  - T-T4 falsification probe P3 documented: `state.rs:2232` (TrainingExited clear). Dry-run: tests 4+5 FAIL.
+
+**Deviations from spec**:
+- File names: `training_log_recipe_harness.rs` and `training_log_state_gating.rs` (per operator brief) vs spec's `training_log_recipe_stream.rs` and `training_log_inflight_gating.rs`. Functionally identical.
+- Test 2 uses standalone closures instead of MockTrainingLogChannel methods to avoid borrow-after-move on the mock struct after close(). No semantic difference.
+
+**Falsification dry-run evidence**:
+- P1 (training_log.rs:124 yield suppressed): `test result: FAILED. 0 passed; 3 failed` — all 3 S1 tests fail
+- P3 (state.rs:2232 clear removed): `test result: FAILED. 1 passed; 2 failed` — tests 4+5 fail; test 6 passes (exercises cancel path)
+
+**All mandatory gates PASS**:
+- `cargo test -p ui --test training_log_recipe_harness --no-default-features --features live` → 3/3 PASS
+- `cargo test -p ui --test training_log_state_gating --no-default-features --features live` → 3/3 PASS
+- v0.1.0 harness: `spawn_lab_run_yahoo_harness` 3/3 + `lab_stop_button_gating` 3/3 PASS
+- `bash scripts/verify_anchors.sh` → 75/75 PASS
+- Zero src delta (no production seam changes needed for Wave A)
+- `cargo fmt -p ui` clean; zero new clippy errors in new test files
 
 ## Verification
 
