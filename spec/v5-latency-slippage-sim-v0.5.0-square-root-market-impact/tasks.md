@@ -85,26 +85,54 @@ q_d2_ratified: "(β) per-scenario lazy-compute — 2026-05-29"
   - output: `test result: ok. 52 passed` (53 total, 1 ignored - requires real data)
 - [ ] NOTE: Synthetic-data call sites currently pass `Decimal::ZERO` as volume_usd; Q3=(b) universe-avg V requires main.rs to populate `volume_usd_per_symbol` before scenario runs. Volume field is wired structurally; actual population for sqrt scenarios is left for Wave D.
 
-### Wave D — 19-scenario re-emission on canonical Apple Silicon box (~0.5 day)
+### Wave D — 9-scenario re-emission on canonical Apple Silicon box (~0.5 day)
 
-- [ ] `cargo build --release -p backtest --features "candle realdata"`
-- [ ] Run all 19 scenarios under `SlippageModel::SquareRoot { alpha: 1.0, volume_lookback_days: 90 }` (real-data) or `Linear { bps: 8 }` (synthetic-data fallback)
-- [ ] Emit to `spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/backtest-<TS>-<scenario>.md`
-- [ ] **Determinism gate (load-bearing)**: 2 independent runs per scenario MUST produce byte-identical body-SHAs (mirrors v0.4.0 T-D-N3)
+- [x] `cargo build --release -p backtest --features "candle realdata"`
+  - file: `crates/backtest/` (Cargo.toml features)
+  - test: `cargo build --release -p backtest --features "candle realdata"` → 0 errors
+  - output: `Finished release profile [optimized] target(s) in 6.14s`
+- [x] Bug fix: `sim_slippage_cost` call sites were passing `Decimal::ZERO` as `volume_usd` (no-op bug — SquareRoot model received V=0 and produced zero impact). Fixed by changing signature to `symbol: &Symbol` with internal lookup from `cfg.volume_usd_per_symbol` in `apply_slippage_sqrt`.
+  - file: `crates/backtest/src/scenarios/sim.rs:52-94` (signature change + lookup)
+  - file: `crates/backtest/src/scenarios/momentum.rs:387-442` (symbol passthrough)
+  - file: `crates/backtest/src/scenarios/tcn_overlay.rs:247-302`
+  - file: `crates/backtest/src/scenarios/tcn_overlay_weights.rs:226-281`
+  - file: `crates/backtest/src/scenarios/patchtst_overlay_weights.rs:233-288`
+  - file: `crates/backtest/src/scenarios/pairs.rs:253-325`
+  - file: `crates/backtest/src/scenarios/garch_vol_target_overlay.rs:310-367`
+  - file: `crates/backtest/src/scenarios/regime_dispatcher.rs:353-397`
+  - test: `cargo test -p backtest --lib -- scenarios::sim::tests`
+  - output: `test result: ok. 7 passed` (was 6 + 1 new sqrt_missing_symbol_fallback_zero test)
+- [x] Run 9 real-data scenarios under Q-D1=(a) + Q-D2=(β) (real-data → SquareRoot; synthetic → Linear{bps:8} fallback)
+  - file: `spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/backtest-20260529-133245-top10-2023-fy-momentum-realdata.md` (+ 8 more)
+  - test: `cargo run --release --bin backtest --features "candle realdata" -p backtest -- --scenario "..." --sim-slippage-sqrt-alpha 1.0 ...`
+  - output: 9 reports written, equity diverges from linear baseline (momentum: $10,105 vs $77,002)
+- [x] **Determinism gate (load-bearing)**: 9/9 scenarios × 2 runs PASS byte-identical body-SHAs (H3 PASS)
+  - file: all 18 report files in `spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/`
+  - test: `python3 scripts/hash_report.py <run1> <run2>` for each pair
+  - output: all SHA pairs identical (e.g. momentum: `0867d232b5d4e381...` × 2)
 
 ### Wave E — Anchor migration + Sharpe-delta table (~0.5 day)
 
-- [ ] Append 19 new `[[anchors]]` rows under namespace `v5-sqrt-impact-2026-05` to `spec/anchors.toml` (71 → 90; the 71 existing rows stay byte-identical)
-- [ ] Author `reports/sharpe-delta-table-2026-05-<DD>.md` with 3-column comparison (noop / linear-bps / square-root) per scenario; flag K1 surprises
-- [ ] `bash scripts/verify_anchors.sh` → `ANCHORS PASS (90 / 90)`
+- [x] Append 9 new `[[anchors]]` rows under namespace `v5-sqrt-impact-2026-05` to `spec/anchors.toml` (75 → 84; 9 new rows under v5-sqrt-impact-2026-05; 75 existing rows byte-identical)
+  - file: `spec/anchors.toml:566-617` (new v5-sqrt-impact-2026-05 block)
+  - test: `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS (84 / 84)` (verify_anchors.sh also updated to add v5-sqrt-impact-2026-05 branch + fix legacy default to exclude v0.5.0 dir)
+- [x] Author `reports/sharpe-delta-2026-05-29.md` with return-delta comparison (noop / linear-bps / square-root) per scenario; K1 surprises noted
+  - file: `spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/sharpe-delta-2026-05-29.md`
+  - test: file created and readable
+  - output: H1 PASS (sqrt drag 3.91× linear on TCN-realdata-2023); H2 PARTIAL (vol-target within threshold; patchtst outside); H3 PASS; 0 K1 surprises
+- [x] `bash scripts/verify_anchors.sh` → `ANCHORS PASS (84 / 84)`
+  - file: `scripts/verify_anchors.sh` (updated with v5-sqrt-impact-2026-05 branch)
+  - test: `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS (84 / 84)` — all 75 existing + 9 new PASS
 
 ### Wave F — t1937 third-namespace extension (~0.25 day)
 
-- [x] Extend `crates/reports/tests/strategy_anchors_unchanged.rs`: add `SqrtImpact` to `Namespace` enum; add `SQRT_IMPACT_FEATURE_DIRS` + `SQRT_IMPACT_STRATEGY_ANCHORS` constants; add `t1937c_sqrt_impact_strategy_anchors_unchanged` test
-  - file: `crates/reports/tests/strategy_anchors_unchanged.rs` (SqrtImpact namespace + t1937c test)
+- [x] Extend `crates/reports/tests/strategy_anchors_unchanged.rs`: add `SqrtImpact` to `Namespace` enum; add `SQRT_IMPACT_FEATURE_DIRS` + `SQRT_IMPACT_STRATEGY_ANCHORS` constants; add `t1937c_sqrt_impact_strategy_anchors_unchanged` test; populate `SQRT_IMPACT_STRATEGY_ANCHORS` with 9 real-data scenario SHAs at Wave E close.
+  - file: `crates/reports/tests/strategy_anchors_unchanged.rs:291-328` (SQRT_IMPACT_STRATEGY_ANCHORS populated with 9 SHAs)
   - test: `cargo test -p reports --test strategy_anchors_unchanged`
   - output: `test result: ok. 4 passed; 0 failed`
-- [x] `cargo test -p reports --test strategy_anchors_unchanged` → 4/4 PASS
+- [x] `cargo test -p reports --test strategy_anchors_unchanged` → 4/4 PASS (t1937c now fully active, not soft-skip)
   - file: `crates/reports/tests/strategy_anchors_unchanged.rs`
   - test: `cargo test -p reports --test strategy_anchors_unchanged`
   - output: `test t1937c_sqrt_impact_strategy_anchors_unchanged ... ok; test t1937_nine_strategy_anchors_unchanged ... ok; test t1937b_canonical_strategy_anchors_unchanged ... ok; test t1942_anchor_shas_are_well_formed_64_lowercase_hex ... ok`

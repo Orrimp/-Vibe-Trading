@@ -562,3 +562,62 @@ sha256   = "2d248f4e9df358c24f49d1fce246c72aa7b00f2f28293edcae6fa0323a2eda1d"
 scenario = "sharpe-comparison-regime-dispatcher-bs1-realdata"
 version  = "v3.0.0-regime"
 sha256   = "a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97"
+
+# v5-latency-slippage-sim v0.5.0 — square-root market-impact anchors (2026-05-29).
+# Namespace: v5-sqrt-impact-2026-05
+# Wave D+E: 9 new anchors under v5-sqrt-impact-2026-05 namespace (75 → 84; tester to add
+# remaining anchor after regime-dispatcher-2024 run-2 determinism gate).
+# Real Binance hourly data (10 USDT pairs), seed=0xC0FFEE, initial capital=$100,000.
+# Slippage model: SquareRoot { alpha=1.0, volume_lookback_days=90 } per ADR-0043 § Changelog v0.5.0.
+# Volume proxy: universe_avg_daily_volume_usd_trailing (Q-D2=(β) lazy-compute per scenario end_date).
+# All 9 anchors: body SHA identical on 2 independent runs each (H3 PASS).
+# K1 note: all 9 real-data scenarios show sqrt drag >> linear drag (H1 directional PASS).
+# Verify with: scripts/verify_anchors.sh  (expects 84/84 PASS after this block; tester verifies 85/85)
+# Bug fix note: sim_slippage_cost signature updated to take &Symbol + look up volume from
+# cfg.volume_usd_per_symbol (was passing Decimal::ZERO to all call sites — no-op bug).
+# Fixed at crates/backtest/src/scenarios/sim.rs + all 7 scenario files (2026-05-29 dev).
+
+[[anchors]]
+scenario = "top10-2023-fy-momentum-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901"
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "1157af76be96f4ffd3a43740366252b747ad4ee077516759aababd8100c4895a"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "39a02c7955b547963ff57898a2a78a524138a91b766e6454895da8920a9e995c"
+
+[[anchors]]
+scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "38736839a3c6dab3394b59a9a831873dea5eeece5e25c79ec63b09ace16a2175"
+
+[[anchors]]
+scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "582dabab182b786aa211e0c44b29b85634cc2f77c696ee6241500e29b36447f6"
+
+[[anchors]]
+scenario = "top10-2023-fy-patchtst-overlay-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "b015b56420d9b20387ea988d0f7f46669ae153e97387e3a9a901fff6fec73aa4"
+
+[[anchors]]
+scenario = "top10-2023-fy-vol-target-overlay-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf"
+
+[[anchors]]
+scenario = "top10-2023-fy-regime-dispatcher-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6"
+
+[[anchors]]
+scenario = "top10-2024-fy-regime-dispatcher-realdata"
+version  = "v5-sqrt-impact-2026-05"
+sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"

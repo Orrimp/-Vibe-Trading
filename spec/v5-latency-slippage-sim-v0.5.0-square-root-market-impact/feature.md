@@ -900,3 +900,12 @@ _Tester M-FINAL links to reports here._
   `v5-sqrt-impact-2026-05`). v0.6.0 sub-namespace cleanup commitment DROPPED
   — obsolete by-design under Q-D1=(a). Frontmatter: `owner: analyst → developer`,
   `status: operator-decide-pending → dev-in-progress`. Waves D+E unparked. HANDOFF → developer.
+- 2026-05-29 (developer, Waves D+E close): Bug discovered and fixed in `sim_slippage_cost`:
+  all 7 call sites were passing `Decimal::ZERO` as `volume_usd` (no-op bug — SquareRoot model
+  received V=0 → zero impact). Fixed by changing `sim_slippage_cost` signature to take
+  `symbol: &Symbol` and look up from `cfg.volume_usd_per_symbol` internally. All 7 scenario
+  files updated. 9 real-data scenarios re-emitted under `v5-sqrt-impact-2026-05` with the
+  FIXED binary. Determinism gate: 9/9 PASS. Anchor cascade: 75 → 84 (9 new rows, not 10,
+  because `top10-2024-fy-momentum-realdata` scenario does not exist in code — Group B implemented
+  as 1 scenario not 2). H1 PASS: sqrt drag 3.91× linear on TCN-realdata-2023. H3 PASS: all
+  deterministic. Status: `dev-in-progress → dev-done`. HANDOFF → tester.

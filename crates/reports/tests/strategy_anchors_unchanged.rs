@@ -88,9 +88,8 @@ const CANONICAL_FEATURE_DIRS: &[&str] = &[
 
 /// Feature-directory names that host sqrt-impact (v0.5.0) reports.
 /// Added per D-T1.8 (ADR-0047 D3 extension — third namespace).
-const SQRT_IMPACT_FEATURE_DIRS: &[&str] = &[
-    "v5-latency-slippage-sim-v0.5.0-square-root-market-impact",
-];
+const SQRT_IMPACT_FEATURE_DIRS: &[&str] =
+    &["v5-latency-slippage-sim-v0.5.0-square-root-market-impact"];
 
 /// Predicate: returns `true` if any path component matches a canonical
 /// feature directory, making this a canonical-namespace report.
@@ -291,10 +290,47 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
 const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave E close (v5-latency-slippage-sim v0.5.0 M-DEV, 2026-05-29).
     // Reports in spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/
-    // Real-data scenarios: SquareRoot { alpha: 1.0, volume_lookback_days: 90 }
-    // Synthetic scenarios: SquareRoot { alpha: 1.0, volume_lookback_days: 90 } + universe-avg V
-    // Determinism verified: 2 independent runs produced identical body-SHAs.
-    // SHA values to be filled by developer Wave E.
+    // Real-data scenarios ONLY (Q-D1=(a) operator decision): SquareRoot { alpha: 1.0, volume_lookback_days: 90 }
+    // Volume proxy: universe_avg_daily_volume_usd_trailing (Q-D2=(β) per-scenario end_date)
+    // Determinism verified: 9/9 scenarios × 2 independent runs → byte-identical body-SHAs (H3 PASS).
+    // Bug fix: sim_slippage_cost symbol-lookup fix (volume was Decimal::ZERO at all call sites → noop bug).
+    // Fixed 2026-05-29 at crates/backtest/src/scenarios/sim.rs + all 7 scenario files.
+    (
+        "top10-2023-fy-momentum-realdata",
+        "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901",
+    ),
+    (
+        "top10-2023-fy-tcn-overlay-realdata",
+        "1157af76be96f4ffd3a43740366252b747ad4ee077516759aababd8100c4895a",
+    ),
+    (
+        "top10-2024-fy-tcn-overlay-realdata",
+        "39a02c7955b547963ff57898a2a78a524138a91b766e6454895da8920a9e995c",
+    ),
+    (
+        "top10-2023-fy-tcn-overlay-weights-realdata",
+        "38736839a3c6dab3394b59a9a831873dea5eeece5e25c79ec63b09ace16a2175",
+    ),
+    (
+        "top10-2024-fy-tcn-overlay-weights-realdata",
+        "582dabab182b786aa211e0c44b29b85634cc2f77c696ee6241500e29b36447f6",
+    ),
+    (
+        "top10-2023-fy-patchtst-overlay-realdata",
+        "b015b56420d9b20387ea988d0f7f46669ae153e97387e3a9a901fff6fec73aa4",
+    ),
+    (
+        "top10-2023-fy-vol-target-overlay-realdata",
+        "6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf",
+    ),
+    (
+        "top10-2023-fy-regime-dispatcher-realdata",
+        "857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6",
+    ),
+    (
+        "top10-2024-fy-regime-dispatcher-realdata",
+        "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1",
+    ),
 ];
 
 // ── Resolver ──────────────────────────────────────────────────────────────────

@@ -10,8 +10,9 @@
 //! `sim_slippage_cost` now dispatches on `SlippageModel`:
 //! - `Linear { bps }`: byte-identical to the v0.4.0 body.
 //! - `SquareRoot { alpha, volume_lookback_days }`: Almgren-Chriss form via
-//!   `cost::apply_slippage_model`. `volume_usd` is passed in by the caller
-//!   (retrieved at scenario load time via `daily_volume_usd_trailing`).
+//!   `cost::apply_slippage_model`. The per-symbol volume is looked up from
+//!   `cfg.volume_usd_per_symbol` using the provided `symbol` key; if the map
+//!   is absent or the symbol is missing, `Decimal::ZERO` is used (no impact).
 //!
 //! ## Anchor-additive contract (ADR-0038 § D6.a)
 //!
@@ -24,7 +25,7 @@
 //! exactly 1 line (this file). The tester enforces this at M-FINAL.
 
 use rust_decimal::Decimal;
-use trading_core::Side;
+use trading_core::{Side, Symbol};
 
 use cost::{SlippageModel, apply_slippage_model};
 
@@ -43,9 +44,9 @@ use crate::cli_types::LatencySlippageSimConfig;
 /// - Buy: `cash -= notional + fee + sim_slip_cost`
 /// - Sell: `cash += notional - fee - sim_slip_cost`
 ///
-/// `volume_usd` is the per-asset daily volume proxy in USD used by
-/// `SlippageModel::SquareRoot`. Pass `Decimal::ZERO` for `Linear` configs
-/// (the value is ignored).
+/// `symbol` is used to look up the per-asset daily volume proxy from
+/// `cfg.volume_usd_per_symbol` for the `SlippageModel::SquareRoot` path.
+/// For `Linear` configs the symbol is ignored.
 #[allow(clippy::float_arithmetic)] // no float in this fn; Decimal throughout
 #[must_use]
 pub fn sim_slippage_cost(
@@ -53,7 +54,7 @@ pub fn sim_slippage_cost(
     fill_price: Decimal,
     side: Side,
     cfg: &LatencySlippageSimConfig,
-    volume_usd: Decimal,
+    symbol: &Symbol,
 ) -> Decimal {
     match cfg.slippage_model {
         SlippageModel::Linear { bps: 0 } => Decimal::ZERO,
@@ -67,7 +68,16 @@ pub fn sim_slippage_cost(
             alpha: _,
             volume_lookback_days: _,
         } => {
-            // Square-root model: compute adjusted fill price, then derive cost delta.
+            // Square-root model: look up per-symbol volume from the cfg map.
+            // Falls back to Decimal::ZERO if map absent or symbol not found
+            // (triggers the V=0 no-impact edge case in apply_slippage_sqrt).
+            let volume_usd = cfg
+                .volume_usd_per_symbol
+                .as_deref()
+                .and_then(|m| m.get(symbol).copied())
+                .unwrap_or(Decimal::ZERO);
+
+            // Compute adjusted fill price, then derive cost delta.
             // notional = qty × fill_price (the Q term in α·√(Q/V)).
             let notional = qty * fill_price;
             let adjusted_fill =
@@ -86,8 +96,15 @@ pub fn sim_slippage_cost(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
     use super::*;
     use rust_decimal_macros::dec;
+
+    fn btc_symbol() -> Symbol {
+        Symbol::new("BTCUSDT")
+    }
 
     /// At `slippage_model == Linear { bps: 0 }` the cost is always zero (noop / anchor-safe).
     #[test]
@@ -98,9 +115,9 @@ mod tests {
             slippage_model: SlippageModel::Linear { bps: 0 },
             volume_usd_per_symbol: None,
         };
-        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, Decimal::ZERO);
+        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, &btc_symbol());
         assert_eq!(cost, Decimal::ZERO, "zero bps must produce zero cost");
-        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Sell, &cfg, Decimal::ZERO);
+        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Sell, &cfg, &btc_symbol());
         assert_eq!(cost, Decimal::ZERO, "zero bps sell must produce zero cost");
     }
 
@@ -114,7 +131,7 @@ mod tests {
             volume_usd_per_symbol: None,
         };
         // 1.0 * 50_000 * 8 / 10_000 = 40
-        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, Decimal::ZERO);
+        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, &btc_symbol());
         assert_eq!(cost, dec!(40), "8bps on 50k should be 40");
     }
 
@@ -127,17 +144,20 @@ mod tests {
             slippage_model: SlippageModel::Linear { bps: 8 },
             volume_usd_per_symbol: None,
         };
-        let buy_cost = sim_slippage_cost(dec!(2.5), dec!(40_000), Side::Buy, &cfg, Decimal::ZERO);
-        let sell_cost = sim_slippage_cost(dec!(2.5), dec!(40_000), Side::Sell, &cfg, Decimal::ZERO);
+        let buy_cost = sim_slippage_cost(dec!(2.5), dec!(40_000), Side::Buy, &cfg, &btc_symbol());
+        let sell_cost = sim_slippage_cost(dec!(2.5), dec!(40_000), Side::Sell, &cfg, &btc_symbol());
         assert_eq!(
             buy_cost, sell_cost,
             "linear cost magnitude is identical for Buy and Sell"
         );
     }
 
-    /// SquareRoot model: positive cost for buy, zero for zero volume.
+    /// SquareRoot model: positive cost for buy when volume map contains the symbol.
     #[test]
     fn sqrt_cost_positive_for_buy() {
+        let sym = btc_symbol();
+        let mut map = HashMap::new();
+        map.insert(sym.clone(), dec!(10_000_000_000)); // $10B daily volume
         let cfg = LatencySlippageSimConfig {
             latency_ms_min: 30,
             latency_ms_max: 80,
@@ -145,20 +165,14 @@ mod tests {
                 alpha: dec!(1.0),
                 volume_lookback_days: 90,
             },
-            volume_usd_per_symbol: None,
+            volume_usd_per_symbol: Some(Arc::new(map)),
         };
-        // 1 BTC @ $50k, daily volume $10B
-        let cost = sim_slippage_cost(
-            dec!(1.0),
-            dec!(50_000),
-            Side::Buy,
-            &cfg,
-            dec!(10_000_000_000),
-        );
+        // 1 BTC @ $50k, daily volume $10B → positive cost
+        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, &sym);
         assert!(cost > Decimal::ZERO, "sqrt buy cost must be positive");
     }
 
-    /// SquareRoot model: zero volume_usd → no impact (V=0 edge case).
+    /// SquareRoot model: no volume map → no impact (V=0 edge case via missing map).
     #[test]
     fn sqrt_zero_volume_zero_cost() {
         let cfg = LatencySlippageSimConfig {
@@ -168,19 +182,22 @@ mod tests {
                 alpha: dec!(1.0),
                 volume_lookback_days: 90,
             },
-            volume_usd_per_symbol: None,
+            volume_usd_per_symbol: None, // no map → V=0 fallback
         };
-        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, Decimal::ZERO);
+        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, &btc_symbol());
         assert_eq!(
             cost,
             Decimal::ZERO,
-            "zero volume must produce zero cost (V=0 edge case)"
+            "absent volume map must produce zero cost (V=0 edge case)"
         );
     }
 
-    /// SquareRoot model: sell cost is positive (not negative).
+    /// SquareRoot model: sell cost is positive (not negative) when volume available.
     #[test]
     fn sqrt_cost_positive_for_sell() {
+        let sym = btc_symbol();
+        let mut map = HashMap::new();
+        map.insert(sym.clone(), dec!(10_000_000_000));
         let cfg = LatencySlippageSimConfig {
             latency_ms_min: 30,
             latency_ms_max: 80,
@@ -188,15 +205,34 @@ mod tests {
                 alpha: dec!(1.0),
                 volume_lookback_days: 90,
             },
-            volume_usd_per_symbol: None,
+            volume_usd_per_symbol: Some(Arc::new(map)),
         };
-        let cost = sim_slippage_cost(
-            dec!(1.0),
-            dec!(50_000),
-            Side::Sell,
-            &cfg,
-            dec!(10_000_000_000),
-        );
+        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Sell, &cfg, &sym);
         assert!(cost > Decimal::ZERO, "sqrt sell cost must also be positive");
+    }
+
+    /// SquareRoot model: symbol not in volume map → falls back to V=0 (no impact).
+    #[test]
+    fn sqrt_missing_symbol_fallback_zero() {
+        let sym = btc_symbol();
+        let other_sym = Symbol::new("ETHUSDT");
+        let mut map = HashMap::new();
+        map.insert(other_sym, dec!(5_000_000_000)); // only ETH in map
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 30,
+            latency_ms_max: 80,
+            slippage_model: SlippageModel::SquareRoot {
+                alpha: dec!(1.0),
+                volume_lookback_days: 90,
+            },
+            volume_usd_per_symbol: Some(Arc::new(map)),
+        };
+        // BTC not in map → V=0 fallback → zero cost
+        let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, &sym);
+        assert_eq!(
+            cost,
+            Decimal::ZERO,
+            "symbol missing from volume map must produce zero cost"
+        );
     }
 }

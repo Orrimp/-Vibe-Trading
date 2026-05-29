@@ -249,21 +249,18 @@ fn build_volume_map_for_scenario(
 
     // Q-D2=(β): pin end_date to scenario's own end_date (scenario_end_year-12-31).
     // Deterministic across reruns as long as the parquet revision SHA is pinned.
-    let end_date = match time::Date::from_calendar_date(
-        scenario_end_year,
-        time::Month::December,
-        31,
-    ) {
-        Ok(d) => d,
-        Err(e) => {
-            warn!(
-                scenario = %scenario_name,
-                error = %e,
-                "build_volume_map_for_scenario: invalid end_date — falling back to None"
-            );
-            return None;
-        }
-    };
+    let end_date =
+        match time::Date::from_calendar_date(scenario_end_year, time::Month::December, 31) {
+            Ok(d) => d,
+            Err(e) => {
+                warn!(
+                    scenario = %scenario_name,
+                    error = %e,
+                    "build_volume_map_for_scenario: invalid end_date — falling back to None"
+                );
+                return None;
+            }
+        };
 
     let universe: Vec<Symbol> = backtest::scenarios::momentum::top10_symbols_with_prices()
         .into_iter()
@@ -272,7 +269,12 @@ fn build_volume_map_for_scenario(
 
     let lookback_days: u16 = 90; // Q2=(a) operator-locked
 
-    match data::universe_avg_daily_volume_usd_trailing(data_root, &universe, end_date, lookback_days) {
+    match data::universe_avg_daily_volume_usd_trailing(
+        data_root,
+        &universe,
+        end_date,
+        lookback_days,
+    ) {
         Ok(avg_v) => {
             if avg_v.is_zero() {
                 warn!(
@@ -289,8 +291,7 @@ fn build_volume_map_for_scenario(
                 );
             }
             // Map all universe symbols to the same universe-avg V.
-            let map: HashMap<Symbol, Decimal> =
-                universe.into_iter().map(|s| (s, avg_v)).collect();
+            let map: HashMap<Symbol, Decimal> = universe.into_iter().map(|s| (s, avg_v)).collect();
             Some(Arc::new(map))
         }
         Err(e) => {
@@ -1036,12 +1037,8 @@ fn synthetic_bars(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("backtest=info".parse()?),
-        )
-        .init();
+    // T-RED-D11 (v2-1-tracing-layer-redactor): migrated to install_global.
+    llm::tracing_init::install_global(&["backtest=info"], false)?;
 
     let args = Args::parse();
     let seed = parse_seed(&args.seed)?;
@@ -1359,8 +1356,7 @@ async fn main() -> Result<()> {
         let config_id = config_id.clone();
         // Q-D1=(a): dispatch on synthetic vs real-data for slippage model selection.
         // Q-D2=(β): lazy-compute universe-avg V for real-data scenarios.
-        let mom_slippage_model =
-            build_slippage_model_for_scenario(&args, &scenario.name);
+        let mom_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
         let mom_volume_map =
             build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let input = backtest::cli_types::MomentumScenarioInput {
@@ -1434,8 +1430,7 @@ async fn main() -> Result<()> {
     if let ScenarioStrategy::MeanReversionPairs { config_id } = &scenario.strategy.clone() {
         let config_id = config_id.clone();
         // Q-D1=(a): Pairs scenarios are always synthetic → Linear{bps:8} fallback.
-        let pairs_slippage_model =
-            build_slippage_model_for_scenario(&args, &scenario.name);
+        let pairs_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
         let pairs_input = backtest::cli_types::PairsScenarioInput {
             scenario_name: scenario.name.clone(),
             start_year: scenario.start_year,
@@ -1497,8 +1492,7 @@ async fn main() -> Result<()> {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
         // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
-        let tcn_slippage_model =
-            build_slippage_model_for_scenario(&args, &scenario.name);
+        let tcn_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
         let tcn_volume_map =
             build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let tcn_input = backtest::cli_types::TcnScenarioInput {
@@ -1617,8 +1611,7 @@ async fn main() -> Result<()> {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
         // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
-        let tcnw_slippage_model =
-            build_slippage_model_for_scenario(&args, &scenario.name);
+        let tcnw_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
         let tcnw_volume_map =
             build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let tcn_w_input = backtest::cli_types::TcnScenarioInput {
@@ -1732,8 +1725,7 @@ async fn main() -> Result<()> {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
         // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
-        let ptst_slippage_model =
-            build_slippage_model_for_scenario(&args, &scenario.name);
+        let ptst_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
         let ptst_volume_map =
             build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let patchtst_input = backtest::cli_types::TcnScenarioInput {
@@ -1845,8 +1837,7 @@ async fn main() -> Result<()> {
         let config_id = config_id.clone();
         let forecaster_id = forecaster_id.clone();
         // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
-        let vt_slippage_model =
-            build_slippage_model_for_scenario(&args, &scenario.name);
+        let vt_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
         let vt_volume_map =
             build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let vol_target_input = backtest::cli_types::TcnScenarioInput {
@@ -1953,8 +1944,7 @@ async fn main() -> Result<()> {
     if let ScenarioStrategy::RegimeDispatcherMomentum { config_id } = &scenario.strategy.clone() {
         let config_id = config_id.clone();
         // Q-D1=(a) + Q-D2=(β): dispatch on scenario identity.
-        let regime_slippage_model =
-            build_slippage_model_for_scenario(&args, &scenario.name);
+        let regime_slippage_model = build_slippage_model_for_scenario(&args, &scenario.name);
         let regime_volume_map =
             build_volume_map_for_scenario(&data_root, &scenario.name, scenario.start_year);
         let regime_input = backtest::cli_types::TcnScenarioInput {

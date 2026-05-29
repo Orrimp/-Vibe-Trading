@@ -17,7 +17,10 @@
 #   - version contains "+ v5-realdata-medium-2026-05": use the NEWEST matching
 #     report from canonical migration folders first (v0.3.0 preferred over v0.2.0),
 #     then fall back to the global newest.
-#   - all other versions: use the NEWEST matching report (legacy default).
+#   - version == "v5-sqrt-impact-2026-05": use ONLY the v0.5.0 square-root dir.
+#   - all other versions: use the NEWEST matching report (legacy default)
+#     OUTSIDE all v5-latency-slippage-sim dirs (so pre-v0.5.0 anchors are not
+#     accidentally satisfied by newer sqrt-impact reports).
 #
 # v5 v0.3.0 amendment (ADR-0047 D3 / T-D-N9):
 # Canonical migration dirs expanded to include v0.3.0-full-path-wiring.
@@ -26,6 +29,12 @@
 # v5 v0.4.0 amendment (2026-05-28):
 # Canonical migration dirs expanded to include v0.4.0-candle-feature-gated-re-emit.
 # The resolver first checks v0.4.0 dir, then v0.3.0 dir, then v0.2.0 dir (newest wins).
+#
+# v5 v0.5.0 amendment (2026-05-29):
+# Added v5-sqrt-impact-2026-05 namespace. Reports live ONLY in v0.5.0 dir.
+# Legacy default now excludes ALL v5-latency-slippage-sim-v0 dirs to prevent
+# pre-v0.5.0 anchors (e.g. v3.0.0-regime) from accidentally resolving to the
+# newer sqrt-impact reports.
 
 set -euo pipefail
 
@@ -35,7 +44,8 @@ hasher="$root/scripts/hash_report.py"
 migration_dir_v02="$root/spec/v5-latency-slippage-sim-v0.2.0-anchor-migration"
 migration_dir_v03="$root/spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring"
 migration_dir_v04="$root/spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit"
-# Combined pattern for excluding all canonical dirs from noop-baseline search:
+migration_dir_v05="$root/spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact"
+# Combined pattern for excluding all canonical dirs from noop-baseline and legacy searches:
 canonical_dirs_pattern="$root/spec/v5-latency-slippage-sim-v0"
 
 [[ -f "$anchors" ]] || { echo "missing $anchors" >&2; exit 2; }
@@ -114,17 +124,23 @@ while IFS= read -r line; do
                     | grep -E "/reports/${scenario}-[0-9]+\.md$" \
                     | sort | tail -1 || true)"
             fi
-        else
-            # Legacy default: newest matching report anywhere
-            latest="$(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" \
+        elif [[ "$version" == "v5-sqrt-impact-2026-05" ]]; then
+            # square-root impact namespace: ONLY look in v0.5.0 dir
+            latest="$(find "$migration_dir_v05" -type f -name "backtest-*-$scenario.md" \
                 2>/dev/null | sort | tail -1 || true)"
+        else
+            # Legacy default: newest matching report OUTSIDE all v5-latency-slippage-sim dirs.
+            # Excluding the canonical dirs prevents pre-v0.5.0 anchors (e.g. v3.0.0-regime)
+            # from accidentally resolving to newer sqrt-impact reports.
+            latest="$(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" \
+                ! -path "${canonical_dirs_pattern}*" 2>/dev/null | sort | tail -1 || true)"
             if [[ -z "$latest" ]]; then
                 latest="$(find "$root"/spec -type f -path "*/reports/success-*-$scenario.md" \
-                    2>/dev/null | sort | tail -1 || true)"
+                    ! -path "${canonical_dirs_pattern}*" 2>/dev/null | sort | tail -1 || true)"
             fi
             if [[ -z "$latest" ]]; then
                 latest="$(find "$root"/spec -type f -path "*/reports/$scenario-*.md" \
-                    2>/dev/null \
+                    ! -path "${canonical_dirs_pattern}*" 2>/dev/null \
                     | grep -E "/reports/${scenario}-[0-9]+\.md$" \
                     | sort | tail -1 || true)"
             fi

@@ -76,8 +76,7 @@ type CacheKey = (String, i32, u16);
 
 /// Global in-process cache.
 /// Keyed on `(symbol_str, end_date_ordinal, lookback_days)` → `Decimal` USD daily volume.
-static CACHE: std::sync::OnceLock<Mutex<HashMap<CacheKey, Decimal>>> =
-    std::sync::OnceLock::new();
+static CACHE: std::sync::OnceLock<Mutex<HashMap<CacheKey, Decimal>>> = std::sync::OnceLock::new();
 
 fn cache() -> &'static Mutex<HashMap<CacheKey, Decimal>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
@@ -170,9 +169,7 @@ pub fn universe_avg_daily_volume_usd_trailing(
 
     if count == 0 {
         // No symbols available — return ZERO (triggers edge-case path in sqrt model).
-        tracing::warn!(
-            "universe_avg_daily_volume_usd_trailing: no symbols loaded, returning ZERO"
-        );
+        tracing::warn!("universe_avg_daily_volume_usd_trailing: no symbols loaded, returning ZERO");
         return Ok(Decimal::ZERO);
     }
 
@@ -244,47 +241,43 @@ fn compute_daily_volume_usd(
             continue;
         }
 
-        let open_times = df
-            .column("open_time")
-            .and_then(|s| s.i64())
-            .map_err(|e| DailyVolumeError::Polars {
-                symbol: sym_str.to_string(),
-                source: e,
-            })?;
-        let volumes = df
-            .column("volume")
-            .and_then(|s| s.str())
-            .map_err(|e| DailyVolumeError::Polars {
-                symbol: sym_str.to_string(),
-                source: e,
-            })?;
-        let closes = df
-            .column("close")
-            .and_then(|s| s.str())
-            .map_err(|e| DailyVolumeError::Polars {
-                symbol: sym_str.to_string(),
-                source: e,
-            })?;
+        let open_times =
+            df.column("open_time")
+                .and_then(|s| s.i64())
+                .map_err(|e| DailyVolumeError::Polars {
+                    symbol: sym_str.to_string(),
+                    source: e,
+                })?;
+        let volumes =
+            df.column("volume")
+                .and_then(|s| s.str())
+                .map_err(|e| DailyVolumeError::Polars {
+                    symbol: sym_str.to_string(),
+                    source: e,
+                })?;
+        let closes =
+            df.column("close")
+                .and_then(|s| s.str())
+                .map_err(|e| DailyVolumeError::Polars {
+                    symbol: sym_str.to_string(),
+                    source: e,
+                })?;
 
         let n = df.height();
         for i in 0..n {
             let ts_ms = open_times.get(i).unwrap_or(0);
             let day_ord = unix_millis_to_day_ordinal(ts_ms);
 
-            let vol_str = volumes
-                .get(i)
-                .ok_or_else(|| DailyVolumeError::Parse {
-                    symbol: sym_str.to_string(),
-                    column: "volume".to_string(),
-                    msg: format!("null at row {i}"),
-                })?;
-            let close_str = closes
-                .get(i)
-                .ok_or_else(|| DailyVolumeError::Parse {
-                    symbol: sym_str.to_string(),
-                    column: "close".to_string(),
-                    msg: format!("null at row {i}"),
-                })?;
+            let vol_str = volumes.get(i).ok_or_else(|| DailyVolumeError::Parse {
+                symbol: sym_str.to_string(),
+                column: "volume".to_string(),
+                msg: format!("null at row {i}"),
+            })?;
+            let close_str = closes.get(i).ok_or_else(|| DailyVolumeError::Parse {
+                symbol: sym_str.to_string(),
+                column: "close".to_string(),
+                msg: format!("null at row {i}"),
+            })?;
 
             let vol = Decimal::from_str(vol_str.trim()).map_err(|e| DailyVolumeError::Parse {
                 symbol: sym_str.to_string(),
@@ -396,12 +389,8 @@ mod tests {
     #[test]
     fn universe_avg_empty_universe_returns_zero() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = universe_avg_daily_volume_usd_trailing(
-            tmp.path(),
-            &[],
-            date!(2024 - 01 - 01),
-            90,
-        );
+        let result =
+            universe_avg_daily_volume_usd_trailing(tmp.path(), &[], date!(2024 - 01 - 01), 90);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Decimal::ZERO);
     }
@@ -421,8 +410,12 @@ mod tests {
     fn universe_avg_all_missing_returns_zero() {
         let tmp = tempfile::tempdir().unwrap();
         let universe = vec![Symbol::new("FAKE1"), Symbol::new("FAKE2")];
-        let result =
-            universe_avg_daily_volume_usd_trailing(tmp.path(), &universe, date!(2024 - 01 - 01), 90);
+        let result = universe_avg_daily_volume_usd_trailing(
+            tmp.path(),
+            &universe,
+            date!(2024 - 01 - 01),
+            90,
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Decimal::ZERO, "all-missing → ZERO");
     }
