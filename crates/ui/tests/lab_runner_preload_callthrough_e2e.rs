@@ -50,15 +50,32 @@
 //! masking the absence of `rt.spawn()`. This test MUST use plain `#[test]` +
 //! `futures::executor::block_on` to reproduce the iced executor environment.
 //!
-//! ## Scope note
+//! ## Scope note (updated T-BUG64-UN1)
 //!
-//! `spawn_preload_on_rt` is called by the mock injection path in `spawn_lab_run`.
-//! The production Yahoo path (runner.rs:843-847, `#[cfg(feature = "yahoo")]`)
-//! has an equivalent inline `rt.spawn()` that is guarded by the mechanism-proof
-//! tests in `lab_runner_http_offexecutor_e2e.rs`. Testing that path would require
-//! real Yahoo network access (reqwest/hyper DNS triggers the spawn_blocking only
-//! on cache miss). See ADR-0050 § D4 and the tester report
-//! `test-20260529-184016-rt-spawn.md § 10` for the full analysis.
+//! After T-BUG64-UN1, `spawn_preload_on_rt` is the SINGLE `rt.spawn()` enforcement
+//! point. Both the mock injection path (`yahoo_source_override = Some(...)`) and the
+//! production Yahoo path (`DefaultLabYahooBarSource` via `#[cfg(feature = "yahoo")]`)
+//! now route through this function. A type-signature change to `spawn_preload_on_rt`
+//! will produce a compile error at BOTH call sites, making this test a compile-error
+//! regression gate for the unified enforcement point.
+//!
+//! ## T-BUG64-UN3 decision (third test)
+//!
+//! The tester requested an optional third test calling `spawn_preload_on_rt` with
+//! `DefaultLabYahooBarSource` (the actual production source). This is NOT hermetically
+//! feasible: `DefaultLabYahooBarSource::preload` calls `preload_yahoo_bars` which
+//! performs real network and disk I/O (reqwest Yahoo Finance API + parquet cache).
+//! No hermetic stub exists for this path. Decision: minimum-bar taken (compile-error
+//! catch via unified enforcement point, per tester § 9 Option B).
+//!
+//! The unification in T-BUG64-UN1 provides the structural guarantee: the production
+//! Yahoo call site (inside `#[cfg(feature = "yahoo")]`) now calls
+//! `spawn_preload_on_rt(&rt, Box::new(DefaultLabYahooBarSource), ...)`. Any revert
+//! that changes `spawn_preload_on_rt`'s return type produces a compile error at both
+//! the mock path (which this test exercises) and the production Yahoo path.
+//!
+//! See tester report `test-20260529-201208-callthrough.md § 9` for the full rationale.
+//! See ADR-0050 § D4.
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]

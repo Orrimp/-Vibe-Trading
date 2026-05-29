@@ -270,10 +270,13 @@ impl LabYahooBarSource for DefaultLabYahooBarSource {
 /// a future from `futures::executor::block_on` (iced's `futures::ThreadPool`)
 /// without `rt.spawn()` wrapping panics: "there is no reactor running".
 ///
-/// This function IS the `rt.spawn()` enforcement point. Both the mock injection
-/// path (`yahoo_source_override = Some(...)`) and the production Yahoo path
-/// (`DefaultLabYahooBarSource` via `#[cfg(feature = "yahoo")]`) route their
-/// preload call through here.
+/// This function IS the single `rt.spawn()` enforcement point. Both the mock
+/// injection path (`yahoo_source_override = Some(...)`) and the production Yahoo
+/// path (`DefaultLabYahooBarSource` via `#[cfg(feature = "yahoo")]`) route their
+/// preload call through here. This invariant is structural: adding a second
+/// inline `rt.spawn` at the production site is the regression pattern that
+/// caused Bug #64 recurrences #1–#3. Keep both call sites going through this
+/// function (T-BUG64-UN1).
 ///
 /// # Regression guard (T-BUG64-CT1)
 ///
@@ -895,25 +898,23 @@ pub fn spawn_lab_run(
                                 .map(|s| s.start(ActivityKind::YahooPreload, yahoo_label));
 
                             // ADR-0050 § D4 (rt.spawn fix — recurrence #3):
-                            // Spawn the entire preload onto the tokio runtime so
-                            // that reqwest's DNS spawn_blocking and all
-                            // tokio::time::* calls inside fetch_with_backoff find
-                            // a reactor. The prior rt.enter() guard pattern was
-                            // insufficient — it covered construction time only and
-                            // dropped before .await, letting reqwest DNS fire on a
-                            // thread with NO reactor context (the exact panic at
-                            // hyper-util .../dns.rs:119 on recurrence #3).
-                            //
-                            // Move owned copies of cfg + range into the spawned
-                            // future. DateRange is Clone; cfg_for_preload is already
-                            // a clone of cfg (line above). Both are Send + 'static.
-                            // YahooBarSource (inside preload_yahoo_bars) is Send+Sync.
-                            // See bug-64-arch-revalidation-rt-spawn-2026-05-29.md § 6.
+                            // Route through spawn_preload_on_rt — the single
+                            // guarded enforcement point (T-BUG64-UN1). This
+                            // ensures DefaultLabYahooBarSource follows the same
+                            // rt.spawn() path as the mock injection branch above,
+                            // so the callthrough regression test
+                            // (lab_runner_preload_callthrough_e2e.rs) catches any
+                            // revert of either site via compile error or runtime
+                            // panic. See bug-64-d11-attempt-3 tester report
+                            // § 9 Option B for rationale.
                             let cfg_for_spawn = cfg_for_preload.clone();
                             let range_for_spawn = scenario_cfg.range.clone();
-                            let mut fetch_join = rt.spawn(async move {
-                                preload_yahoo_bars(&cfg_for_spawn, &range_for_spawn).await
-                            });
+                            let mut fetch_join = spawn_preload_on_rt(
+                                &rt,
+                                Box::new(DefaultLabYahooBarSource),
+                                cfg_for_spawn,
+                                range_for_spawn,
+                            );
 
                             // Race the JoinHandle (not the raw future) against
                             // ticker and cancel.

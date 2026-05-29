@@ -285,6 +285,29 @@ fetch_e2e.rs`) only exercised `tokio::time::timeout`/`sleep` wrapping
 through `futures::executor::block_on` (the exact executor class). This test
 FAILS on pre-fix HEAD and PASSES after.
 
+**Tester CHANGES-REQUESTED (T-BUG64-UN1..UN3, 2026-05-29)**: After the RS1..RS6
+rt.spawn() fix, the tester's `test-20260529-201208-callthrough.md` verdict was
+CHANGES-REQUESTED on the regression-guard architecture: two `rt.spawn` sites
+existed (the mock injection path via `spawn_preload_on_rt`, and the production
+Yahoo inline `rt.spawn` at runner.rs:~914), but the production site did NOT route
+through `spawn_preload_on_rt`. The doc comment for `spawn_preload_on_rt` claimed
+both paths route through it — that claim was false.
+
+**Unification (T-BUG64-UN1)**: The production Yahoo `#[cfg(feature = "yahoo")]`
+block at `runner.rs` now calls `spawn_preload_on_rt(&rt, Box::new(DefaultLabYahooBarSource), cfg_for_spawn, range_for_spawn)` instead of an inline `rt.spawn(...)`. There is now ONE `rt.spawn()` enforcement point. The `spawn_preload_on_rt` doc comment has been updated: "This function IS the SINGLE rt.spawn() enforcement point ... Keep both call sites going through this function (T-BUG64-UN1)."
+
+**Feature-gate alignment (T-BUG64-UN2)**: `yahoo` does not imply `live` in
+Cargo.toml features, but the call site is structurally reachable only when `live`
+is active (the enclosing `spawn_lab_run` function is `#[cfg(feature = "live")]`).
+`DefaultLabYahooBarSource` is `#[cfg(all(feature = "live", feature = "yahoo"))]`.
+No Cargo.toml change required. `cargo build -p ui --no-default-features --features live,yahoo` compiles clean.
+
+**Third test decision (T-BUG64-UN3)**: `DefaultLabYahooBarSource::preload` calls
+`preload_yahoo_bars` which does real network/disk I/O — not hermetically fakeable.
+Minimum-bar taken: compile-error catch via unified enforcement point. The structural
+guarantee: any revert changing `spawn_preload_on_rt`'s return type causes a compile
+error at both call sites simultaneously.
+
 ## § Changelog
 
 - 2026-05-29 (orchestrator): feature folder created from both
@@ -315,6 +338,13 @@ FAILS on pre-fix HEAD and PASSES after.
   removing `rt.spawn()` from `spawn_preload_on_rt` causes
   "there is no reactor running" panic (RED); restoring it passes (GREEN).
   HANDOFF → tester (re-verify Gate 2).
+- 2026-05-29 (developer, unification T-BUG64-UN1..UN4): Tester returned
+  CHANGES-REQUESTED (report `test-20260529-201208-callthrough.md`). Routed
+  production Yahoo call site through `spawn_preload_on_rt` — single enforcement
+  point. Doc comment updated (claim is now true). Feature-gate verified (no
+  Cargo.toml change). Minimum-bar taken for T-BUG64-UN3 (no hermetic third
+  test — DefaultLabYahooBarSource requires real network I/O). Spec updated.
+  HANDOFF → tester.
 
 ## Implementation
 

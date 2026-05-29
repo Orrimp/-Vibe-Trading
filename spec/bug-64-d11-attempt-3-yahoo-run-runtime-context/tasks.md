@@ -358,6 +358,58 @@ M-T1 work required.
   **DONE**: All spec files updated. Trace.toml updated with callthrough test citations.
   Test: `grep lab_runner_preload_callthrough_e2e spec/trace.toml` — entry present.
 
+## M-UNIFY — Developer (2026-05-29 — tester Option B unification)
+
+### Tier 8 — Single enforcement point
+
+- [x] **T-BUG64-UN1**: Route production Yahoo path through `spawn_preload_on_rt`.
+  Inside the `#[cfg(feature = "yahoo")]` block at `spawn_lab_run`, replaced the
+  inline `rt.spawn(async move { preload_yahoo_bars(&cfg_for_spawn, &range_for_spawn).await })`
+  with `spawn_preload_on_rt(&rt, Box::new(DefaultLabYahooBarSource), cfg_for_spawn, range_for_spawn)`.
+  Updated `spawn_preload_on_rt` doc comment: "This function IS the SINGLE rt.spawn()
+  enforcement point" — the claim is now true (was false per tester § 9). Also added
+  a forward-looking invariant note warning against adding a second inline rt.spawn.
+  `fetch_join` remains `JoinHandle<Result<...>>` — the select! `abort()` cancel arm
+  is unchanged.
+  **File**: `crates/ui/src/lab/runner.rs:270-282` (doc comment), `:897-917` (unified call site).
+  **Test**: `cargo test -p ui --test lab_runner_preload_callthrough_e2e --no-default-features --features live`
+  **Output**: `2 passed; 0 failed; finished in 0.00s`.
+
+- [x] **T-BUG64-UN2**: Feature-gate alignment verified.
+  `spawn_preload_on_rt` is `#[cfg(feature = "live")]`; the call site is inside
+  `#[cfg(feature = "yahoo")]` which is nested within the `spawn_lab_run` function
+  body that is itself `#[cfg(feature = "live")]` (line 692). `DefaultLabYahooBarSource`
+  is `#[cfg(all(feature = "live", feature = "yahoo"))]` (line 249). No cfg change
+  needed — the nesting guarantees `live` is active when the yahoo block is compiled.
+  `yahoo` does NOT imply `live` in Cargo.toml [features], but the call site is only
+  reachable under `live` by construction (outer function).
+  **Verification**: `cargo build -p ui --no-default-features --features live,yahoo` → `Finished`.
+  **File**: `crates/ui/Cargo.toml` inspected (no change).
+  **Test**: build gate above (exit 0).
+  **Output**: `Finished dev profile [unoptimized + debuginfo] target(s) in 9.52s`.
+
+- [x] **T-BUG64-UN3**: Third test decision — minimum bar taken.
+  `DefaultLabYahooBarSource::preload` calls `preload_yahoo_bars` which performs
+  real network I/O (reqwest Yahoo Finance) and disk I/O (parquet cache). Not
+  hermetically fakeable without network. Decision: compile-error catch via unified
+  enforcement point is the minimum bar accepted per tester § 9 Option B. Updated
+  `lab_runner_preload_callthrough_e2e.rs` module doc to document the T-BUG64-UN3
+  decision and the structural guarantee the unified call site provides.
+  **File**: `crates/ui/tests/lab_runner_preload_callthrough_e2e.rs:53-78` (module doc updated).
+  **Test**: `cargo test -p ui --test lab_runner_preload_callthrough_e2e --no-default-features --features live`
+  **Output**: `2 passed; 0 failed; finished in 0.00s`.
+
+- [x] **T-BUG64-UN4**: Spec updates.
+  - `tasks.md` (this file): T-BUG64-UN1..UN3 added with ticks + evidence.
+  - `feature.md`: § Hotfix-2 note appended — two spawn sites unified into
+    `spawn_preload_on_rt` (single enforcement point), closing tester Option-B request.
+  - `spec/trace.toml`: `tests` column already contains `lab_runner_preload_callthrough_e2e`
+    (added in T-BUG64-CT3). No additional test file added by this wave (minimum-bar
+    path taken in UN3). No new change needed.
+  **File**: `spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/feature.md` (note under § Hotfix-2).
+  **Test**: prose verification only (spec doc update).
+  **Output**: file edited — inspectable in working tree.
+
 ## M-PRESENT — Presenter (after operator re-verify PASS)
 
 - [ ] T-BUG64-PRESENT.1 — Assemble v0.1.0 presentation deck.
