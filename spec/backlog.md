@@ -2196,17 +2196,14 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   feature. Analyst spawn when operator chooses.
 
 - **`v26-bakeoff-llm-arbiter`** (v2.6 enhancement) —
-  _candidate, sourced from
-  [`spec/dev-notes/external-code-patterns-2026-05-17.md`](dev-notes/external-code-patterns-2026-05-17.md)_.
-  After v2.5 / v2.5a / v2.5b ship as TCN / PatchTST / Vanilla
-  Transformer, an LLM arbiter reads all three forecasters' outputs
-  + the operator's strategy params and produces a tie-break decision
-  with a reasoning trace that lands in the audit ledger. Adapts the
-  [TradingAgents](https://github.com/TauricResearch/TradingAgents)
-  bull/bear adversarial researcher pattern to DL-forecast arbitration.
-  Plugs into [`spec/v26-forecast-bakeoff/feature.md`](v26-forecast-bakeoff/feature.md);
-  not a separate feature — a v2.6 design refinement the analyst
-  considers when the bake-off feature activates.
+  _**RETIRED-by-context 2026-05-29** (process-tooling-survey § Stale-flag
+  findings) — parent `v26-forecast-bakeoff` v2.6 retired 2026-05-22 per
+  v2.6-no-alpha verdict. With no parent to enhance, the LLM-arbiter
+  candidate has nothing to plug into. Original sourcing from
+  [`spec/dev-notes/external-code-patterns-2026-05-17.md`](dev-notes/external-code-patterns-2026-05-17.md);
+  pattern (bull/bear arbitration over multiple DL forecasters) remains
+  available for any future bake-off-flavored feature, but is no longer
+  Queue-positioned._
 
 - **v2.1 — Cockpit LLM-budget tile + tracing-Layer redactor +
   pedantic clippy cleanup (`v2-llm-strategy-v21-followups`).**
@@ -2296,13 +2293,17 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 - **comet debugger revisit trigger (`ui-comet-eval`).** _candidate,
   REVISIT-GATED 2026-05-16 by operator decision_ — Q-COMET-EVAL
-  LOCKED → defer indefinitely STILL APPLIES. Operator-acknowledged
-  revisit trigger added: when iced 0.15.0 **stable** releases (not
-  the current `0.15.0-dev` master pin), bump Q-014-PIN consideration
-  + re-evaluate this candidate. Until then: no spawn trigger, no
-  schedule. See
+  LOCKED → defer indefinitely STILL APPLIES. Three revisit triggers
+  (any one fires re-evaluation): **(a)** our iced pin moves to 0.15.x,
+  OR **(b)** `ui-inspect-mcp` / `ui-session-journal-iced-tester`
+  surface a gap comet would close, OR **(c)** 2026-11-15 calendar
+  6-month revisit. (Trigger (a) supersedes the 2026-05-16 operator-
+  added "iced 0.15.0 stable" gate by being strictly looser.) Until
+  any of the three fires: no spawn trigger, no schedule. See
   [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
-  for the original analysis.
+  for the original analysis. **Duplicate L2488 entry collapsed into
+  this row 2026-05-29 per process-tooling-survey § Stale-flag
+  findings.**
 
   > **Attempted + aborted 2026-05-16.** Operator authorized the
   > full bump (Q-014-PIN + Q-COMET-EVAL override). Two strikes
@@ -2484,16 +2485,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   [`ui-gallery-bin`](ui-gallery-bin/feature.md) eventually (via
   upstream); the in-tree `ui-gallery-table-cell` workaround above
   unblocks sooner. Analyst spawn at operator promotion.
-
-- **comet debugger evaluation (`ui-comet-eval`).** _candidate,
-  deferred 2026-05-15 by
-  [`iced-014-feature-analysis-2026-05-15.md §3`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#comet-debugger)
-  + Q-COMET-EVAL LOCKED_ — comet is pinned at iced
-  `0.15.0-dev` (master); does NOT compile against our `=0.14.0`
-  pin. **No spawn trigger today.** Revisit when (a) our iced pin
-  moves to 0.15.x, OR (b) `ui-inspect-mcp` /
-  `ui-session-journal-iced-tester` surface a gap comet would
-  close, OR (c) by 2026-11-15 (6-month calendar revisit).
 
 _(historical: the only previously queued item, the presenter smoke test against
 operator-success-reports, ran 2026-05-08; surfaced 4 findings, two
