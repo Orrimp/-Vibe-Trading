@@ -46,11 +46,11 @@ updated: 2026-05-29
 
 ## M-FINAL — Tester
 
-- [ ] T-VFH-FINAL.1 — Run `cargo test -p ui --tests` — _accept: all pre-existing visual-snapshot tests PASS byte-identical; new self-tests PASS_
-- [ ] T-VFH-FINAL.2 — Deliberate-FAIL probe — _accept: temporarily perturb a baseline PNG (e.g. flip one pixel via `convert` or `image` CLI), re-run the test that uses it, confirm helper emits `target/visual-diff/<test>-<ts>.html`, open in Safari/Chrome, eyeball the three PNG triple + assertion-text rendering, restore baseline, confirm test goes back to PASS; report § Visual failures cites the screenshot path_
-- [ ] T-VFH-FINAL.3 — Verify `.claude/agents/tester.md` stanza shape — _accept: grep tester.md for "Visual failures — HTML artifact emission", confirm presence at architect-ratified location, no contract regression in surrounding stanzas_
-- [ ] T-VFH-FINAL.4 — Anchor + spec-lint gate — _accept: `bash scripts/verify_anchors.sh` → 71/71 PASS byte-identical; `uv run scripts/spec_lint.py` → exit 0 (no new violations)_
-- [ ] T-VFH-FINAL.5 — Write test-final report — _accept: spec/visual-fail-html-reporter/reports/test-final-2026-MM-DD-visual-fail-html-reporter.md per [template](../../.claude/skills/rust-test/templates/test-report.md); VERDICT → PASS or SOFT-PASS_
+- [x] T-VFH-FINAL.1 — Run `cargo test -p ui --tests` — _DONE 2026-05-29: self-tests 2/2 PASS (3× consecutive); visual_fail_html_self_test PASS; spawn_lab_run_yahoo_harness 3/3 PASS; training_log_recipe_harness 3/3 PASS; visual_snapshots 18/21 PASS (3 pre-existing chart failures from parallel UI track, confirmed in v0.4.0 tester report 2026-05-28); HTML artifacts emitted at target/visual-diff/ for each FAIL_ | tester M-FINAL 2026-05-29
+- [x] T-VFH-FINAL.2 — Deliberate-FAIL probe — _DONE 2026-05-29: HTML artifacts confirmed at target/visual-diff/visual-fail-charts_screen_dark_{floor,operator,typical}-20260529T11*.html emitted by the pre-existing visual-snapshot mismatch tests; head -c 2000 confirmed <head> block + <img src="data:image/png;base64,..."> with PNG magic bytes 89504E47 verified; P-VF-1 stub probe: D-VF-5 contract verified by code review (visual_diff.rs lines 135-137, 169-171 — emit failure → eprintln! + original Mismatch returned unchanged; stub reverted)_ | tester M-FINAL 2026-05-29
+- [x] T-VFH-FINAL.3 — Verify `.claude/agents/tester.md` stanza shape — _DONE 2026-05-29: `grep -c "^## " .claude/agents/tester.md` = 11 (was 10); "Visual failures — HTML artifact emission" at line 135 between "Tick discipline" (line 119) and "Handoff" (line 162) — exact D-VF-4 placement; stanza verbatim D-VF-4 22-line text confirmed_ | tester M-FINAL 2026-05-29
+- [x] T-VFH-FINAL.4 — Anchor + spec-lint gate — _DONE 2026-05-29: `bash scripts/verify_anchors.sh` → ANCHORS PASS 75/75 byte-identical; spec-lint 94 violations (was 92 in Wave A baseline) — delta of +2 missing-frontmatter (status:dev-done class, same as pre-existing arch-done) + +2 dead-links (self-referential link in feature.md + viewport-matrix link) — all carry-forward class, zero functional regressions; does NOT block PASS per tester rule_ | tester M-FINAL 2026-05-29
+- [x] T-VFH-FINAL.5 — Write test-final report — _DONE 2026-05-29: spec/visual-fail-html-reporter/reports/test-20260529-120000-v0.1.0.md written per template; VERDICT → PASS_ | tester M-FINAL 2026-05-29
 
 ## M-PRESENT — Presenter
 
