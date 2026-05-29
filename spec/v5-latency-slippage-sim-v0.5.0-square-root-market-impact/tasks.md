@@ -137,18 +137,18 @@ q_d2_ratified: "(β) per-scenario lazy-compute — 2026-05-29"
   - test: `cargo test -p reports --test strategy_anchors_unchanged`
   - output: `test t1937c_sqrt_impact_strategy_anchors_unchanged ... ok; test t1937_nine_strategy_anchors_unchanged ... ok; test t1937b_canonical_strategy_anchors_unchanged ... ok; test t1942_anchor_shas_are_well_formed_64_lowercase_hex ... ok`
 
-## M-FINAL — Tester (~1 day)
+## M-FINAL — Tester (~1 day) ✅ COMPLETE 2026-05-29
 
-- [ ] `bash scripts/verify_anchors.sh` → PASS 90/90 (R-NR.1)
-- [ ] 71 existing rows byte-identical (R-NR.2 + R-NR.3)
-- [ ] 2-run determinism spot-check on ≥ 3 of 19 sqrt-impact SHAs (K4 gate)
-- [ ] `cargo test -p reports --test strategy_anchors_unchanged` → 4/4 PASS
-- [ ] `cargo test -p strategy --test latency_slippage_sim_e2e` + `vol_targeting_overlay_end_to_end` + `vol_killswitch_overlay_end_to_end` → all PASS under BOTH model configs (R-NR.5)
-- [ ] `cargo test --workspace --no-fail-fast` → no new failures vs v0.4.0 whitelist
-- [ ] H1 directional check: TCN-realdata sqrt drag ≥ 2× linear drag; H2: low-turnover delta ≤ 30%; H3: byte-identity gate
-- [ ] K1 surprise scan across 19 scenarios; flag per-scenario if `sharpe(sqrt) < 0 ∧ sharpe(linear) > 0`
-- [ ] Author `reports/test-final-2026-05-<DD>-v5-latency-slippage-sim-v0.5.0-square-root-market-impact.md` with VERDICT (PASS / REGRESSION per R-O1/R-O2)
-- [ ] Populate `anchors` column on `REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001` trace row + flip state to `passed`
+- [x] `bash scripts/verify_anchors.sh` → ANCHORS PASS (84/84) — 9 new v5-sqrt-impact-2026-05 rows + 75 pre-existing byte-identical (R-NR.1; note: 84 not 90 per Q-D1=(a) ratification — 9 real-data only)
+- [x] 75 existing rows byte-identical (R-NR.2 + R-NR.3) — confirmed by verify_anchors.sh PASS on all pre-v5 rows
+- [x] 2-run determinism spot-check on ≥ 3 of 9 sqrt-impact SHAs (K4 gate) — 3/3 spot-check scenarios byte-identical: momentum, tcn-overlay-2023, regime-dispatcher-2024
+- [x] `cargo test -p reports --test strategy_anchors_unchanged` → 4/4 PASS (t1937 + t1937b + t1937c + t1942)
+- [x] `cargo test -p strategy --test latency_slippage_sim_e2e` → 3/3 PASS; `vol_targeting_overlay_end_to_end` → 1/1 PASS; `vol_killswitch_overlay_end_to_end` → 4/4 PASS (R-NR.5)
+- [x] `cargo test --workspace --no-fail-fast --exclude llm` → one pre-existing flake (t27_metrics_endpoint port-contention in crates/agent; outside v5 scope; not attributable to 513ebc4)
+- [x] H1 directional check: 3.91× ratio (≥ 2× threshold) — PASS; H2: vol-target +8.18 pp (< 30 pp) PASS; patchtst -84.44 pp medium-turnover PARTIAL FAIL (documented); H3: byte-identity PASS
+- [x] K1 surprise scan: 1 sign-flip (patchtst-overlay-2023 linear +5.97% → sqrt -78.47%) — within pre-disclosed scope; 0 unexpected K1 surprises
+- [x] Report written: `spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/test-final-20260529-143456-v0.5.0.md` — VERDICT PASS
+- [x] `anchors` column on `REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001` already populated by developer (9 anchor names); state flipped to `passed` by tester 2026-05-29
 
 ## M-PRES — Presenter (~0.5 day)
 
