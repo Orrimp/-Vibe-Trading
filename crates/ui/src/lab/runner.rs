@@ -260,6 +260,50 @@ impl LabYahooBarSource for DefaultLabYahooBarSource {
     }
 }
 
+// ── Preload spawn helper (ADR-0050 § D4 / T-BUG64-CT1) ───────────────────────
+
+/// Spawn a `LabYahooBarSource::preload` call onto a tokio worker thread.
+///
+/// **ADR-0050 § D4 — durable invariant (Bug #64 recurrence #3):**
+/// Any future that calls `tokio::task::spawn_blocking` (reqwest/hyper DNS,
+/// `fetch_and_cache`, etc.) MUST run on a tokio worker thread. Calling such
+/// a future from `futures::executor::block_on` (iced's `futures::ThreadPool`)
+/// without `rt.spawn()` wrapping panics: "there is no reactor running".
+///
+/// This function IS the `rt.spawn()` enforcement point. Both the mock injection
+/// path (`yahoo_source_override = Some(...)`) and the production Yahoo path
+/// (`DefaultLabYahooBarSource` via `#[cfg(feature = "yahoo")]`) route their
+/// preload call through here.
+///
+/// # Regression guard (T-BUG64-CT1)
+///
+/// `crates/ui/tests/lab_runner_preload_callthrough_e2e.rs` calls this function
+/// directly under `futures::executor::block_on` with a `SpawnBlockingFakeSource`
+/// that calls `tokio::task::spawn_blocking` in its `preload()` impl. Replacing
+/// `rt.spawn(...)` with a direct `.await` in this function causes that test to
+/// panic with "there is no reactor running". The test is the regression gate.
+///
+/// # Returns
+///
+/// A `JoinHandle` to be polled/awaited by the caller. The caller is responsible
+/// for handling `JoinError` (panicked or aborted task) and the inner
+/// `Result<(Vec<Bar>, SmolStr), SmolStr>`.
+#[cfg(feature = "live")]
+#[must_use = "JoinHandle must be awaited or aborted; dropping detaches the task"]
+pub fn spawn_preload_on_rt(
+    rt: &tokio::runtime::Handle,
+    source: Box<dyn LabYahooBarSource>,
+    cfg: LabRunConfig,
+    range: backtest::engine::DateRange,
+) -> tokio::task::JoinHandle<Result<(Vec<trading_core::Bar>, SmolStr), SmolStr>> {
+    // INVARIANT (ADR-0050 § D4): do NOT change this to a direct `.await`.
+    // The source.preload() future may call tokio::task::spawn_blocking
+    // (reqwest DNS, fetch_and_cache, etc.). That requires a tokio reactor on
+    // the polling thread. rt.spawn() guarantees the future runs on a tokio
+    // worker thread regardless of what executor called spawn_preload_on_rt.
+    rt.spawn(async move { source.preload(&cfg, &range).await })
+}
+
 // ── Yahoo bar pre-loading helpers (lab-yahoo-realdata T-C3.6 / T-AR1) ────────
 
 /// Map a `backtest::engine::DateRange` to `(start_ms, end_ms)` UTC epoch-millis.
@@ -724,7 +768,16 @@ pub fn spawn_lab_run(
 
                 // When a test source override is provided, use it for any
                 // data_source == YahooCache run (even when `yahoo` feature is off).
-                if let Some(ref source) = yahoo_source_moved {
+                //
+                // ADR-0050 § D4 (T-BUG64-CT1): the mock injection path routes
+                // through `spawn_preload_on_rt` — the SAME rt.spawn() invariant
+                // as the production Yahoo path below. This ensures that a mock
+                // source calling `tokio::task::spawn_blocking` (e.g. the
+                // `SpawnBlockingFakeSource` in `lab_runner_preload_callthrough_e2e`)
+                // also finds a reactor, AND makes the regression test meaningful:
+                // reverting `spawn_preload_on_rt` to direct-await causes the
+                // callthrough test to panic with "no reactor running".
+                if let Some(source) = yahoo_source_moved {
                     if cfg_for_preload.data_source == crate::lab::state::LabDataSource::YahooCache {
                         // lab-recipe-test-harness T-D1: sentinel emission BEFORE preload.
                         // This is the contract tested by `sentinel_fires_before_preload_await`.
@@ -734,8 +787,25 @@ pub fn spawn_lab_run(
                             elapsed_ms: 0,
                         });
 
-                        let preload_result =
-                            source.preload(&cfg_for_preload, &scenario_cfg.range).await;
+                        // ADR-0050 § D4: spawn the mock preload on the tokio runtime
+                        // via spawn_preload_on_rt. This is identical to the production
+                        // Yahoo path at #[cfg(feature = "yahoo")] below — both use
+                        // rt.spawn() to guarantee reactor context for spawn_blocking.
+                        let cfg_for_mock_spawn = cfg_for_preload.clone();
+                        let range_for_mock_spawn = scenario_cfg.range.clone();
+                        let preload_result = match spawn_preload_on_rt(
+                            &rt,
+                            source,
+                            cfg_for_mock_spawn,
+                            range_for_mock_spawn,
+                        )
+                        .await
+                        {
+                            Ok(inner) => inner,
+                            Err(join_err) => {
+                                Err(SmolStr::new(format!("mock preload join error: {join_err}")))
+                            }
+                        };
                         match preload_result {
                             Ok((bars, _sha)) => {
                                 scenario_cfg.data_source =

@@ -302,6 +302,19 @@ FAILS on pre-fix HEAD and PASSES after.
   Durable fix: rt.spawn() for entire preload; abort() in cancel arm;
   new HTTP off-executor test; ADR-0050 D1/D3/D4 amended.
   HANDOFF → tester (re-verify).
+- 2026-05-29 (developer, INCONCLUSIVE closure): T-BUG64-CT1 + CT2
+  production-call-through regression guard added. Tester returned
+  INCONCLUSIVE (Gate 2) because RS4 tests are mechanism-proof only
+  and do NOT call through production runner.rs code. Added
+  `spawn_preload_on_rt` (pub fn, runner.rs) that wraps
+  `source.preload(...).await` in `rt.spawn()` — both the mock
+  injection path and tests call this function. New test file
+  `lab_runner_preload_callthrough_e2e.rs` (2 tests, plain #[test])
+  directly calls `spawn_preload_on_rt` with `SpawnBlockingFakeSource`
+  from `futures::executor::block_on`. CT2 dry-run confirmed:
+  removing `rt.spawn()` from `spawn_preload_on_rt` causes
+  "there is no reactor running" panic (RED); restoring it passes (GREEN).
+  HANDOFF → tester (re-verify Gate 2).
 
 ## Implementation
 

@@ -2384,6 +2384,9 @@ tests       = [
   "crates/ui/tests/lab_runner_http_offexecutor_e2e.rs::spawn_blocking_without_rt_spawn_panics",        # ADR-0050 § D4 falsification probe (spawn_blocking sans rt.spawn panics)
   "crates/ui/tests/lab_runner_http_offexecutor_e2e.rs::spawn_blocking_with_rt_spawn_does_not_panic",   # ADR-0050 § D4 core gate (rt.spawn makes spawn_blocking safe)
   "crates/ui/tests/lab_runner_http_offexecutor_e2e.rs::abort_stops_spawned_task",                      # ADR-0050 § D4 + T-BUG64-RS3 cancel abort() correctness gate
+  # INCONCLUSIVE closure T-BUG64-CT1 (2026-05-29): production call-through gate
+  "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::preload_callthrough_with_spawn_blocking_does_not_panic",  # production call-through: spawn_preload_on_rt with SpawnBlockingFakeSource
+  "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::direct_await_without_rt_spawn_panics",                   # mechanism falsification: direct-await from block_on panics
 ]
 anchors     = []   # zero anchor delta (R-NR.1); backtest report bodies byte-immutable; 84/84 PASS
 state       = "dev-done"  # rt.spawn fix 2026-05-29: entire preload spawned onto rt (T-BUG64-RS1). redundant rt.enter() guards removed (T-BUG64-RS2). abort() in cancel arm (T-BUG64-RS3). HTTP off-executor test added (T-BUG64-RS4). ADR-0050 D1/D3/D4 amended (T-BUG64-RS5). Operator re-verify pending → tester.

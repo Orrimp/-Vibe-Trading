@@ -315,6 +315,49 @@ M-T1 work required.
   **DONE**: All files updated in this session.
   Test: `grep "lab_runner_http_offexecutor_e2e" spec/trace.toml` — entry present after update.
 
+## M-CALLTHROUGH — Developer (INCONCLUSIVE closure, 2026-05-29)
+
+### Tier 7 — Production-call-through regression gate
+
+- [x] **T-BUG64-CT1**: Add `pub fn spawn_preload_on_rt(rt, source, cfg, range)` to
+  `crates/ui/src/lab/runner.rs` (under `#[cfg(feature = "live")]`). Function wraps
+  `source.preload(&cfg, &range).await` in `rt.spawn(async move { ... })` — the ADR-0050 § D4
+  invariant. Annotated `#[must_use]`. The mock injection path in `spawn_lab_run` now
+  routes through `spawn_preload_on_rt` (previously direct `.await`). Create new test file
+  `crates/ui/tests/lab_runner_preload_callthrough_e2e.rs` with 2 plain `#[test]` tests:
+  (1) `preload_callthrough_with_spawn_blocking_does_not_panic` — calls `spawn_preload_on_rt`
+  with `SpawnBlockingFakeSource` from `futures::executor::block_on`; asserts no panic.
+  (2) `direct_await_without_rt_spawn_panics` — calls `source.preload().await` directly
+  from `block_on`; asserts it panics "no reactor running" (mechanism falsification probe).
+  **DONE**:
+  - `crates/ui/src/lab/runner.rs:263-305` — `spawn_preload_on_rt` function + doc comment.
+  - `crates/ui/src/lab/runner.rs:779-817` — mock injection path updated to call `spawn_preload_on_rt`.
+  - `crates/ui/tests/lab_runner_preload_callthrough_e2e.rs` — 2 tests.
+  Test: `cargo test -p ui --test lab_runner_preload_callthrough_e2e --no-default-features --features live`
+  Output: `preload_callthrough_with_spawn_blocking_does_not_panic ... ok`,
+  `direct_await_without_rt_spawn_panics ... ok` — `2 passed; 0 failed; finished in 0.00s`.
+
+- [x] **T-BUG64-CT2**: Prove the test is NOT theater via RED/GREEN dry-run.
+  Temporarily replaced `rt.spawn(async move { source.preload(...).await })` in
+  `spawn_preload_on_rt` with an OS-thread-based non-reactor implementation
+  (simulates pre-fix direct-await from reactor-less thread). Ran test → RED.
+  Restored `rt.spawn()` → GREEN.
+  **DONE** (RED on pre-fix, GREEN on post-fix):
+  - RED: `cargo test -p ui --test lab_runner_preload_callthrough_e2e --no-default-features --features live`
+    Output: `thread '<unnamed>' panicked: there is no reactor running, must be called from the context of a Tokio 1.x runtime`
+    `test preload_callthrough_with_spawn_blocking_does_not_panic ... FAILED`
+    `test result: FAILED. 1 passed; 1 failed`.
+  - GREEN (restored): `2 passed; 0 failed; finished in 0.00s`.
+  Test guard: reverting `spawn_preload_on_rt` from `rt.spawn()` to direct-await causes
+  test 1 to fail with "no reactor running". The guard is genuine.
+
+- [x] **T-BUG64-CT3**: Spec updates.
+  - `feature.md` § Changelog: note added for INCONCLUSIVE closure.
+  - `tasks.md`: T-BUG64-CT1..CT3 added (this file).
+  - `spec/trace.toml` REQ-BUG-64-D-11-ATTEMPT-3-001: new test file appended to `tests`.
+  **DONE**: All spec files updated. Trace.toml updated with callthrough test citations.
+  Test: `grep lab_runner_preload_callthrough_e2e spec/trace.toml` — entry present.
+
 ## M-PRESENT — Presenter (after operator re-verify PASS)
 
 - [ ] T-BUG64-PRESENT.1 — Assemble v0.1.0 presentation deck.
