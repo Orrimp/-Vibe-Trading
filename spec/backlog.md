@@ -4,6 +4,43 @@ status: living
 owner: orchestrator
 updated: 2026-05-29
 ---
+<!-- updated 2026-05-29 (analyst, pick-c-orchestrator-hygiene-compounder-trio M0 close) —
+     promoted Queue → Active THREE features under Pick C Wave 1 of the
+     architect's process-tooling survey at
+     `spec/dev-notes/process-tooling-survey-2026-05-29.md` § Pick C
+     (Top-5 Rank 5): `queue-staleness-reconciliation` (~1 dev day;
+     scripts/queue_staleness_check.py orchestrator pre-flight
+     catching status-mismatch drift class surfaced 3× in 3 weeks) +
+     `adr-registry-atomic-lint` (~0.5 dev day; scripts/adr_registry_check.py
+     pre-commit hook enforcing the 2026-05-29 codified architect.md
+     atomic-write contract on every commit touching
+     spec/architecture/adr/) + `operator-ledger-schema-lint` (~0.5
+     dev day; scripts/operator_ledger_check.py upgrading the
+     2026-05-29-created operator-side-pending-ledger.md from
+     convention to schema-enforced living document with stale-FAILED
+     escalation at 7-day threshold). Strategic direction at
+     `spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`
+     frames the trio (durable-over-quick per AGENT.md 2026-05-28).
+     Cheapest of architect's Month-1 picks (~2 dev days combined vs
+     Pick A trifecta ~5-7d + Pick B duo ~2d). Operationalises
+     retro fix-improve #1 (Queue staleness) + #6 (ADR registry
+     drift) + #5 (operator pending ledger). All three are
+     Python-stdlib-only scripts under `scripts/` — zero Cargo touch,
+     zero new external deps, zero anchor delta. One bundle-level
+     operator-decide Q-HYG-EMIT (Recommended DURABLE = markdown
+     table + per-violation context lines) locked shared diff
+     dialect across all three scripts. K4 amendment ownership-
+     table: each feature OWNs a specific AGENT.md / architect.md /
+     ledger-frontmatter section to prevent cross-feature contract
+     drift. All per-feature Qs bias DURABLE per AGENT.md 2026-05-28.
+     Three new trace rows opened proposed:
+     `REQ-QUEUE-STALENESS-RECONCILIATION-001` +
+     `REQ-ADR-REGISTRY-ATOMIC-LINT-001` +
+     `REQ-OPERATOR-LEDGER-SCHEMA-LINT-001`. No new ADRs. PARALLEL-
+     SAFE with all in-flight agents (Bug #64 dev, v5 + v2.1
+     presenters, v5 cleanup dev) per the bundle direction
+     § Sequencing conflict matrix — disjoint file scopes throughout. -->
+
 <!-- updated 2026-05-29 (analyst, pick-b-cross-cutting-safety-duo M0 close) —
      promoted Queue → Active TWO features under Pick B Wave 1 of the
      architect's process-tooling survey at
@@ -684,6 +721,127 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   HANDOFF → architect (M-T1 fast-skip + one-pass theme.rs audit +
   opt-out list seed; parallel-safe with v2-1-tracing-layer-redactor
   sibling).
+
+<!-- updated 2026-05-29 (analyst, pick-c-orchestrator-hygiene-compounder-trio
+     M0 close) — **PROMOTED Queue → Active 2026-05-29** under Pick C
+     Wave 1 of the architect's process-tooling survey at
+     `spec/dev-notes/process-tooling-survey-2026-05-29.md` § Pick C
+     (Top-5 Rank 5). Three features promoted in parallel:
+     `queue-staleness-reconciliation` (~1 dev day),
+     `adr-registry-atomic-lint` (~0.5 dev day),
+     `operator-ledger-schema-lint` (~0.5 dev day). Bundle total
+     ~2 dev days — cheapest of architect's Month-1 picks (vs Pick A
+     trifecta at ~5-7d + Pick B duo at ~2d). Operationalises retro
+     fix-improve #1 (Queue staleness) + #6 (ADR registry drift) +
+     #5 (operator pending ledger). All three are Python-stdlib-only
+     scripts under `scripts/` — zero Cargo touch, zero new external
+     deps, zero anchor delta. Strategic direction at
+     `spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`
+     frames the trio (durable-over-quick per AGENT.md 2026-05-28).
+     One bundle-level operator-decide Q-HYG-EMIT (Recommended
+     DURABLE = markdown table + per-violation context lines) locked
+     shared diff dialect across all three scripts. Per-feature K4
+     amendment ownership-table:
+     `queue-staleness-reconciliation` OWNs AGENT.md § Queue
+     pre-flight invocation example; `adr-registry-atomic-lint` OWNs
+     architect.md § ADR registry invocation example;
+     `operator-ledger-schema-lint` OWNs ledger frontmatter R3.3
+     amendment + AGENT.md cross-reference R3.4. Per-feature Qs all
+     bias DURABLE: Q-QSR-1 status-mismatch only at v0.1.0 (defer
+     stale-by-age to v0.2.0), Q-QSR-2 markdown table (inherits
+     Q-HYG-EMIT), Q-ADR-WHEN pre-commit hook, Q-ADR-AMEND always
+     bump on any ADR modification, Q-LED-WHEN session pre-flight,
+     Q-LED-NOTE require dev-note citation on FAILED rows. No new
+     ADRs — all three scripts + thin contract codifications under
+     existing AGENT.md / architect.md sections. Three new trace
+     rows opened proposed:
+     `REQ-QUEUE-STALENESS-RECONCILIATION-001` +
+     `REQ-ADR-REGISTRY-ATOMIC-LINT-001` +
+     `REQ-OPERATOR-LEDGER-SCHEMA-LINT-001`. PARALLEL-SAFE with all
+     in-flight agents (Bug #64 dev edits trace.toml + ledger row
+     only — disjoint hunks; v5 + v2.1 presenters write decks;
+     v5 cleanup dev touches crates/strategy/). HANDOFF →
+     architect (M-T1 fast-skips expected across all three). -->
+- **queue-staleness-reconciliation v0.1.0** — Pick C Wave 1
+  orchestrator hygiene compounder trio LARGEST pillar (~1 dev day).
+  Python-stdlib script `scripts/queue_staleness_check.py` the
+  orchestrator invokes at session start. Reads `spec/backlog.md`
+  Queue + Active sections, cross-references each Queue feature
+  folder's frontmatter `status:`, flags status-mismatch drift (Queue
+  stub claims candidate / proposed / in-flight but folder is
+  `shipped | shipped (retired) | deprecated`). Excludes already-
+  annotated post-ship Queue text per AGENT.md § Queue pre-flight
+  § step 2. Catches the recurring 30-45 min reactive cleanup cost
+  surfaced 3× in 3 weeks (audits 2026-05-07 / 05-27 / 05-29).
+  Q-QSR-1 stale-by-age scope (a) **DURABLE** status-mismatch only
+  at v0.1.0 (defer stale-by-age to v0.2.0 after operator signal).
+  Q-QSR-2 emit format (a) **DURABLE** markdown table per bundle
+  Q-HYG-EMIT. OWNS AGENT.md § Queue pre-flight reconciliation sweep
+  invocation example amendment per bundle K4 ownership-table. No
+  new ADR; no Cargo touch. Zero anchor delta. Trace
+  `REQ-QUEUE-STALENESS-RECONCILIATION-001` proposed. Brief:
+  [`spec/queue-staleness-reconciliation/feature.md`](queue-staleness-reconciliation/feature.md).
+  Direction: [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+  HANDOFF → architect (M-T1 fast-skip + parse-shape ratification +
+  self-test cases; parallel-safe with adr-registry-atomic-lint +
+  operator-ledger-schema-lint siblings).
+
+- **adr-registry-atomic-lint v0.1.0** — Pick C Wave 1 orchestrator
+  hygiene compounder trio CHEAPEST pillar (~0.5 dev day). Python-
+  stdlib script `scripts/adr_registry_check.py` enforcing the
+  architect.md § ADR registry atomic-write contract (codified
+  2026-05-29). Pre-commit hook on any commit touching
+  `spec/architecture/adr/`. Asserts (a) every ADR file has a row in
+  `architecture/adr/README.md ## Registry`; (b) README frontmatter
+  `updated:` bumped same-commit on any ADR modification per Q-ADR-AMEND
+  (a) DURABLE strictest interpretation; (c) ADR status enum in
+  `{accepted, proposed, superseded, deprecated}`. Excludes
+  TEMPLATE.md + README.md from per-ADR checks. Catches the recurring
+  registry drift class (ADRs 0044+, 0045-0049 unregistered). Q-ADR-WHEN
+  (a) **DURABLE** pre-commit hook (catches drift before git history;
+  CI-only rejected because architect.md contract reads as 'atomic at
+  commit authoring time'). Q-ADR-AMEND (a) **DURABLE** always bump
+  on any ADR modification (zero ambiguity at lint time). OWNS
+  architect.md § ADR registry atomic-write invocation example
+  amendment per bundle K4 ownership-table. No new ADR; no Cargo
+  touch. Zero anchor delta. Trace `REQ-ADR-REGISTRY-ATOMIC-LINT-001`
+  proposed. Brief:
+  [`spec/adr-registry-atomic-lint/feature.md`](adr-registry-atomic-lint/feature.md).
+  Direction: [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+  HANDOFF → architect (M-T1 fast-skip + git-diff semantics
+  ratification + Q-ADR-STATUS-ENUM clarification; parallel-safe
+  with siblings).
+
+- **operator-ledger-schema-lint v0.1.0** — Pick C Wave 1
+  orchestrator hygiene compounder trio cheaper pillar (~0.5 dev
+  day). Python-stdlib script `scripts/operator_ledger_check.py`
+  upgrading `spec/dev-notes/operator-side-pending-ledger.md`
+  (created 2026-05-29 per retro fix-improve #5) from convention to
+  schema-enforced living document. Asserts (a) per-table schema
+  (Pending / Done / Cancelled column lists); (b) status enum
+  `{pending, FAILED, done, cancelled}` via markdown-tolerant
+  normalization; (c) Done rows have completion date; (d) **stale-
+  FAILED escalation** — FAILED rows > STALE_FAILED_DAYS (= 7)
+  surface escalation reminder at session start; (e) FAILED rows
+  require follow-up dev-note citation in Notes per Q-LED-NOTE (a)
+  DURABLE strictest interpretation. Consolidates the chronic
+  carry-over class (Bug #64 visual-verify, Yahoo bulk fetch,
+  toast-queue smoke tests). Q-LED-WHEN (a) **DURABLE** orchestrator
+  session pre-flight only (primary value is stale-FAILED escalation
+  which fires at session start not commit). Q-LED-NOTE (a)
+  **DURABLE** require dev-note citation on FAILED rows
+  (structurally enforces investigation-on-failure pattern Bug #64
+  D.1.1 sets precedent for). OWNS ledger frontmatter R3.3 amendment
+  + AGENT.md R3.4 cross-reference per bundle K4 ownership-table.
+  Append-only contract preserved (READ-ONLY on row bodies; only
+  frontmatter touch). No new ADR; no Cargo touch. Zero anchor
+  delta. Trace `REQ-OPERATOR-LEDGER-SCHEMA-LINT-001` proposed.
+  Brief:
+  [`spec/operator-ledger-schema-lint/feature.md`](operator-ledger-schema-lint/feature.md).
+  Direction: [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+  HANDOFF → architect (M-T1 fast-skip + SCHEMA constant + Bug #64
+  D.1.1 regression-case parse confirmation; parallel-safe with
+  siblings).
 
 
 <!-- updated 2026-05-28 (analyst, v3-regime-classifier M-A5 light-touch
