@@ -1,7 +1,7 @@
 ---
 slug: bug-64-d11-attempt-3-yahoo-run-runtime-context
-status: dev-done
-owner: developer
+status: in-progress
+owner: tester
 updated: 2026-05-29
 ---
 
@@ -170,19 +170,30 @@ M-T1 work required.
 
 ## M-FINAL — Tester
 
-- [ ] T-BUG64-FINAL.1 — Re-run all 12 dev tasks in tester
+- [x] T-BUG64-FINAL.1 — Re-run all 12 dev tasks in tester
   environment.
-- [ ] T-BUG64-FINAL.2 — Verify the 2 NEW e2e tests fire ≥ 3
+  **DONE (tester 2026-05-29)**: D1..D12 independently verified via
+  cargo test re-runs. All results match dev claims exactly.
+- [x] T-BUG64-FINAL.2 — Verify the 2 NEW e2e tests fire ≥ 3
   ticker Messages + ≤ 500 ms cancel exit.
-- [ ] T-BUG64-FINAL.3 — Regression: 3/3 spawn_lab_run_yahoo_
+  **DONE (tester 2026-05-29)**: `lab_runner_ticker_e2e` 1/1 PASS
+  in 1.00 s. `lab_runner_cancel_e2e` 2/2 PASS in 0.10 s.
+- [x] T-BUG64-FINAL.3 — Regression: 3/3 spawn_lab_run_yahoo_
   harness + 3/3 lab_stop_button_gating + 3/3 Wave A
   training_log_recipe_harness.
-- [ ] T-BUG64-FINAL.4 — verify_anchors.sh 84/84 PASS.
-- [ ] T-BUG64-FINAL.5 — ADR-0050 atomic-register verified
+  **DONE (tester 2026-05-29)**: All 3 suites 3/3 PASS verified.
+- [x] T-BUG64-FINAL.4 — verify_anchors.sh 84/84 PASS.
+  **DONE (tester 2026-05-29)**: `ANCHORS PASS (84 / 84)`.
+- [x] T-BUG64-FINAL.5 — ADR-0050 atomic-register verified
   (file + README row + README frontmatter all in one commit).
-- [ ] T-BUG64-FINAL.6 — Write `spec/bug-64-d11-attempt-3-
+  **DONE (tester 2026-05-29)**: All 4 atomic-register obligations
+  confirmed in commit `a87b5fa` via `git show --stat`.
+- [x] T-BUG64-FINAL.6 — Write `spec/bug-64-d11-attempt-3-
   yahoo-run-runtime-context/reports/test-<ts>-v0.1.0.md` per
   test-report template.
+  **DONE (tester 2026-05-29)**: Report written to
+  `spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/reports/test-20260529-181500-v0.1.0.md`.
+  VERDICT → PASS. HANDOFF → orchestrator.
 
 ## M-PRESENT — Presenter (after operator re-verify PASS)
 

@@ -2378,7 +2378,7 @@ tests       = [
   "crates/ui/tests/training_log_recipe_harness.rs",  # R-NR.2 regression suite Wave A (3/3 PASS)
 ]
 anchors     = []   # zero anchor delta (R-NR.1); backtest report bodies byte-immutable; 84/84 PASS
-state       = "dev-done"  # developer M-DEV 2026-05-29: T-BUG64-D1..D12 complete. D-R1.1 rt.enter() guard (runner.rs:744), D-R2.1 CancellationToken swap (cancel.rs), D-R2.2 cancel select! arm (runner.rs:809-828), D-R1.4 yield_now (runner.rs:807), D-R1.3 ticker e2e (lab_runner_ticker_e2e.rs PASS), D-R2.3 cancel e2e (lab_runner_cancel_e2e.rs PASS), ADR-0050 authored + README row + frontmatter bumped + ADR-0048 amended. HANDOFF → tester.
+state       = "tester-done"  # tester M-FINAL 2026-05-29 VERDICT → PASS. lab_runner_ticker_e2e 1/1 PASS (1.00s, ≥3 ticks). lab_runner_cancel_e2e 2/2 PASS (0.10s, ≤500ms). spawn_lab_run_yahoo_harness 3/3, lab_stop_button_gating 3/3, training_log_recipe_harness 3/3. backtest cancel 7/7 PASS. 84/84 anchors PASS. fmt EXIT:0. Zero new clippy errors from touched files. ADR-0050 atomic-register verified (D1+D2+D3+README row+frontmatter+ADR-0048 Changelog all in commit a87b5fa). spec-lint 146 (+7 vs 139 baseline) — documentation-layer carry-forward only (6 trace-broken-path from new REQ row + 1 missing-frontmatter dev-done status flip; no new categories). HANDOFF → orchestrator (operator re-verify pending).
 
 #
 # ─── Pick C Wave 1 — Orchestrator hygiene compounder trio promoted features (analyst M0 2026-05-29) ───
