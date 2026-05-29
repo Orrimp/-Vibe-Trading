@@ -2,7 +2,7 @@
 slug: operator-side-pending-ledger
 status: living
 owner: orchestrator
-updated: 2026-05-29
+updated: 2026-05-29 (Bug #64 D.1.1 attempt-3 investigation linked)
 ---
 
 # Operator-side pending ledger
@@ -29,7 +29,7 @@ to avoid re-surfacing stale items.
 
 | Date surfaced | Recipe | Cost | Unblocks | Status | Notes |
 |---|---|---|---|---|---|
-| 2026-05-28 | **Bug #64 D.1.1 visual-verify** — `rm -rf data/yahoo/SOL-USD ; cargo run --release -p ui --bin cockpit_live` then Lab → Yahoo SOL → Run; watch label tick 0 / 1 bars · X.Xs every ~250 ms during 30-60 s cold-cache window | ~5 min | Closes Bug #64 D.1.1 attempt-2; full bug-log close pending operator confirm | **FAILED 2026-05-29** | Operator report: "endless spinning, no progress visible, cannot stop the running task." Progress label does NOT tick during cold-cache fetch AND Stop button non-functional. Bug #64 D.1.1 attempt-2 NOT fixed. Two regressions surfaced: (1) progress label dormant (original D.1.1 issue); (2) Stop button broken (NEW). Needs follow-up architect investigation. |
+| 2026-05-28 | **Bug #64 D.1.1 visual-verify** — `rm -rf data/yahoo/SOL-USD ; cargo run --release -p ui --bin cockpit_live` then Lab → Yahoo SOL → Run; watch label tick 0 / 1 bars · X.Xs every ~250 ms during 30-60 s cold-cache window | ~5 min | Closes Bug #64 D.1.1 attempt-2; full bug-log close pending operator confirm | **FAILED 2026-05-29** | Operator report: "endless spinning, no progress visible, cannot stop the running task." Progress label does NOT tick during cold-cache fetch AND Stop button non-functional. Bug #64 D.1.1 attempt-2 NOT fixed. Two regressions surfaced: (1) progress label dormant (original D.1.1 issue); (2) Stop button broken (NEW). Analyst investigation 2026-05-29 → [`bug-64-d11-attempt-3-investigation-2026-05-29.md`](bug-64-d11-attempt-3-investigation-2026-05-29.md). Recommended: architect M-T1 pass; OR cheap binary-freshness recipe first (H-R1a / H-R1b probe). |
 ## Done recipes (audit trail)
 
 | Date surfaced | Recipe | Cost | Completed | Outcome |
@@ -50,3 +50,4 @@ to avoid re-surfacing stale items.
 
 - 2026-05-29 (orchestrator): file created per weekly-retro-2026-05-27-to-2026-05-29 fix-improve (c). Backfilled 2 pending + 2 done rows from session history. Going forward: every new operator-run recipe appends a row here at surface time.
 - 2026-05-29 (orchestrator): Yahoo bulk fetch v0.1.4 → done. 9 mid-cap tickers cached; REVISION.toml hash-locked. Bug #64 D.1.1 visual-verify remains pending.
+- 2026-05-29 (analyst): Bug #64 D.1.1 attempt-3 investigation dev-note linked from the pending row note column. Awaits operator decision on Q1 (scope), Q2 (label mechanism), Q3 (cancellation). Recommended path: Q1=(a) + Q2=(a)-with-recipe-first + Q3=(a) cancel-token wrap.
