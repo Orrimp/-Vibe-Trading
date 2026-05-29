@@ -461,31 +461,10 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      2026-05-28 architect M-T1 closed (this annotation update): ADR-0049
      authored + feature.md § Design populated + tasks.md Waves A-F locked
      + trace state arch-done. HANDOFF → developer Wave A. -->
-- **v3-regime-classifier v0.1.0** — Candidate 2 of the v3 three-pick
-  set; C1 retired (NEGATIVE-NET-DELTA 2026-05-22); C5 shipped
-  v0.1.0-PARTIAL 2026-05-22 — C2 is the remaining slot. Predicts
-  regime label (Bull / Bear / Chop / regime-aware-default) NOT μ,
-  feeding strategy selection. Extends pre-existing pure-fn 3-state
-  BTC daily-close tagger at `crates/reflection/src/regime.rs`
-  (byte-identity backward-compat is R1.1 load-bearing — 7+ downstream
-  tests + lesson-card embedding + Phase F UI renderer depend on it).
-  M-A5 refresh narrowed brief to canonical M0 shape: 5R + R-NR +
-  K1-K6 + H1-H4 + Q1-Q5 + 4-cell verdict tree. **M-OD CLOSED
-  2026-05-28** (commit `6b47027`): operator overrode Q1+Q3+Q4 bolder
-  than analyst defaults — Q1=(b) 4-state Bull/Bear/Volatile/Calm,
-  Q3=(b) Markov-switching (Hamilton 1989), Q4=(b) strategy-switching
-  dispatcher; Q2+Q5 at default. **M-T1 CLOSED 2026-05-28**: ADR-0049
-  authored ([`spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md`](architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md))
-  — sibling to ADR-0038 (NOT extension); covers Markov-switching priors,
-  RegimeTag γ-encoding (preserve Chop + APPEND Volatile=3, Calm=4),
-  dispatcher with CashHoldStrategy cash-fallback for Volatile/Calm,
-  V-REG/T-REG verdict shape, anchor namespace `v3.0.0-regime`, max-conf
-  dispatcher gate ≥ 0.70. 6-wave M-DEV decomposition (A-F). 4 new
-  anchors planned (70 → 74). Brief:
-  [`spec/v3-regime-classifier/feature.md`](v3-regime-classifier/feature.md).
-  Trace: `REQ-V3-REGIME-CLASSIFIER-001` (state `arch-done`). HANDOFF →
-  developer Wave A (Markov-switching core in `crates/forecast`). Cost
-  ~5-7 weeks revised post-overrides.
+<!-- RETIRED 2026-05-29 — Wave E empirical T-REG-NO-ALPHA + V-REG-5;
+     operator R-O 2026-05-29 picked RETIRE. See Recent (shipped)
+     2026-05-29 cohort for full retirement record. -->
+<!-- - **v3-regime-classifier v0.1.0** — RETIRED 2026-05-29; see Recent. -->
 
 
 <!-- updated 2026-05-28 (analyst, v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit
@@ -2456,6 +2435,30 @@ of which became skill-plumbing fixes that shipped in commit
 ## Recent (shipped)
 
 ### 2026-05-29 cohort
+
+- **v3-regime-classifier v0.1.0** — **RETIRED 2026-05-29** with
+  empirical T-REG-NO-ALPHA verdict (net Sharpe-delta -0.294113 vs
+  un-overlaid v1 momentum on 2024 held-out validation) + V-REG-5
+  (classifier fails to separate regimes meaningfully). 5 dev waves
+  shipped over 2 days under the new durable contract: A core
+  Markov-switching (14 tests) + B K4 RegimeTag extension + C
+  dispatcher with cash-fallback + D audit RegimeTag + Trail UI
+  column + E 4 anchored backtest reports. **Zero MIGRATION:
+  comments across all 5 waves** — durable contract validated
+  end-to-end; gates correctly identified the strategy doesn't work
+  without accumulating debt. Operator R-O 2026-05-29 picked Option 1:
+  retire + close v3 three-pick set. **v3 three-pick scorecard
+  CLOSED**: C1 retired 2026-05-22 (-0.022); C2 (this) retired
+  2026-05-29 (-0.294); C5 shipped v0.1.0-PARTIAL (inconclusive
+  Sharpe). v3 strategy reformulation program empirically dead;
+  anchored Wave E bodies (75/75 total) stay as scientific record
+  per ADR-0038 § D6.a. Architect artifact: ADR-0049 (5-D contract
+  + Markov-switching priors + K4 γ-encoding + dispatcher cash-fallback
+  + V-REG/T-REG shape + namespace pin). Commits: `0e75c45`,
+  `6b47027`, `8252021`, `053b2e8`, `9d867c1`, `2362ed2`, `5eebe4b`,
+  `ced662d`, `cd073c0`. See
+  [`spec/v3-regime-classifier/feature.md`](v3-regime-classifier/feature.md)
+  for shipped_disposition.
 
 - **lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1 v0.1.0** —
   shipped 2026-05-29 (operator-approved). Closes the 2 architect-flagged
