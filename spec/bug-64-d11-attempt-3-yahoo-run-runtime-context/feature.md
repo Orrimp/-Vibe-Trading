@@ -1,0 +1,195 @@
+---
+slug: bug-64-d11-attempt-3-yahoo-run-runtime-context
+version: 0.1.0
+status: arch-done
+owner: developer
+updated: 2026-05-29
+related:
+  - spec/dev-notes/bug-64-yahoo-run-code-map-2026-05-29.md
+  - spec/dev-notes/bug-64-arch-validation-2026-05-29.md
+  - spec/dev-notes/bug-64-analyst-validation-2026-05-29.md
+  - spec/dev-notes/bug-64-d11-attempt-3-investigation-2026-05-29.md
+  - spec/dev-notes/operator-side-pending-ledger.md
+---
+
+# Bug #64 D.1.1 attempt-3 — Yahoo+Run runtime context + cancellation
+
+> **Bug-fix feature.** Closes the 3rd recurrence of the iced-tokio
+> runtime-context-absence bug + the structural cancellation omission
+> during Yahoo cold-cache preload. Both root causes confirmed in
+> lockstep by the developer code-map + architect validation +
+> analyst validation 2026-05-29.
+
+## § Problem statement
+
+Operator reported 2026-05-29: Lab → Yahoo → SOL → Run produces
+**"endless spinning, no progress visible, cannot stop the running
+task."** Two distinct regressions in attempt-2:
+
+**R1 — Progress label dormant.** Loading label does not tick
+during the 30-60 s cold-cache Yahoo auto-fetch window. Label sits
+permanently at `0/1 · 0.0s`.
+
+**R2 — Stop button broken.** Stop dispatch during the cold-cache
+window does nothing; operator must wait for fetch to complete OR
+force-quit the cockpit.
+
+## § Root cause analysis
+
+Read the 3 dev-notes in `related:` for the full investigation.
+Summary:
+
+**R1 root cause (H-R1d, 3rd recurrence)**:
+- `crates/ui/src/lab/runner.rs:744` calls
+  `tokio::time::interval(250ms)` inside an `iced::Task::perform`
+  async closure WITHOUT a tokio runtime context guard.
+- Every working recipe in the codebase
+  (`ServerTimeRecipe::server_time_stream_impl`,
+  `ToastDismissRecipe::toast_dismiss_stream_impl`,
+  `LabProgressRecipe::stream_impl`) explicitly calls
+  `let _guard = rt_handle.enter();` BEFORE invoking
+  `tokio::time::*` APIs.
+- See `crates/ui/src/bin/cockpit_live.rs:104-126` doc comment for
+  the P1 fix rationale (this bug was fixed once before on
+  2026-05-23). This is the 3rd occurrence.
+- Symptom-match: silent ticker pending forever, label sits at
+  `0/1 · 0.0s` — exact operator failure description.
+
+**R2 root cause (structural omission)**:
+- `crates/backtest/src/cancel.rs::RunCancelReceiver` exposes only
+  synchronous `is_cancelled()`. No `notified() -> impl Future`
+  method.
+- `cancel_rx.is_cancelled()` is called at 4 locations, all INSIDE
+  `backtest::engine::run_scenario`, which is called at
+  `runner.rs:837` — AFTER the select! preload loop exits.
+- During the entire cold-cache window (`runner.rs:778-827`), ZERO
+  cancel checks exist on the preload future.
+- Fix requires either (a) new `notified()` method on
+  `RunCancelReceiver` OR (b) primitive swap to
+  `tokio_util::sync::CancellationToken`.
+
+## § Design (locked by architect M-T1 at commit 4473bd2)
+
+8 design clauses (full design in
+[`bug-64-arch-validation-2026-05-29.md` § 3](../dev-notes/bug-64-arch-validation-2026-05-29.md)):
+
+- **D-R1.1**: `let _guard = rt_handle.enter();` at the top of the
+  iced::Task::perform async closure in `spawn_lab_run`, BEFORE
+  `tokio::time::interval(250ms)` is constructed at
+  `crates/ui/src/lab/runner.rs:744`.
+- **D-R1.2**: Extend the rt_handle invariant to ALL reactor APIs
+  called inside `iced::Task::perform` closures across `crates/ui/`.
+  Audit + fix any other site. Defensive guard for
+  `LabProgressRecipe::stream_impl` if found missing.
+- **D-R1.3**: E2E test — ticker MUST fire ≥ 3 times during a 1 s
+  bounded preload window. New test under
+  `crates/ui/tests/lab_runner_ticker_e2e.rs` (or sibling).
+- **D-R2.1**: Adopt `tokio_util::sync::CancellationToken` in
+  `crates/backtest/src/cancel.rs`. Either replace
+  `RunCancelReceiver` internals with `CancellationToken` OR add a
+  `notified() -> impl Future` method that bridges to a
+  `Notify`-backed signaller. Architect-recommended:
+  CancellationToken primitive swap.
+- **D-R2.2**: Add a third arm to the existing
+  `tokio::select!` at `crates/ui/src/lab/runner.rs:705-828`
+  preload loop that listens on `cancel.cancelled()` (the new
+  CancellationToken future). When fires, exit the preload loop
+  with an `Err(SmolStr::new("operator cancelled"))` (or similar).
+- **D-R2.3**: E2E test — cancel-during-preload MUST exit within
+  ≤ 500 ms wall-clock of Stop being dispatched. New test in
+  `crates/ui/tests/lab_runner_cancel_e2e.rs` (or sibling).
+- **D-R1.4** (operator-decide, A-Q1): `tokio::task::yield_now()`
+  defensive yield at top of the preload loop. Architect bias YES
+  for defense-in-depth. Cheap (~3 LoC).
+- **D-Tr.1**: trace.toml row creation for
+  `REQ-BUG-64-D-11-ATTEMPT-3-001` with arch + crates + tests +
+  state columns wired.
+
+## § ADR-0050 (NEW, atomic-register obligation)
+
+Per architect.md atomic-register contract: developer MUST author
+ADR-0050 in the same commit as the fix.
+
+**ADR-0050 title**: "iced ↔ tokio runtime-context contract and
+cooperative cancellation primitives"
+
+- **D1**: rt_handle.enter() invariant. Mandatory before any
+  tokio reactor API in iced::Task::perform closures. Codified
+  this contract because this is the 3rd recurrence (fixed on
+  2026-05-23, 2026-05-2X attempt-2, now 2026-05-29 attempt-3).
+- **D2**: tokio_util::sync::CancellationToken as canonical
+  cancellation primitive. Replaces ad-hoc bool flags.
+- **D3**: Timer-fired-in-bounded-window test contract. Every
+  iced::Task::perform closure that constructs a tokio timer MUST
+  have an e2e test asserting the timer fires ≥ N times in a
+  bounded window.
+
+**Atomic-register obligation**:
+1. Write `spec/architecture/adr/0050-iced-tokio-runtime-context.md`.
+2. Append a row to `spec/architecture/adr/README.md` table.
+3. Bump `spec/architecture/adr/README.md` frontmatter
+   `updated:` field.
+4. All in the SAME commit as the fix.
+
+ADR-0048 § Changelog also gets an amendment row.
+
+## § Constraints
+
+- R-NR.1 — Anchored backtest reports byte-immutable. Verify
+  `bash scripts/verify_anchors.sh` → 84/84 PASS after fix.
+- R-NR.2 — All v0.1.0/v0.2.0/Wave A regression tests stay PASS:
+  - `cargo test -p ui --test spawn_lab_run_yahoo_harness
+    --no-default-features --features live` → 3/3 PASS
+  - `cargo test -p ui --test lab_stop_button_gating
+    --no-default-features --features live` → 3/3 PASS
+  - `cargo test -p ui --test training_log_recipe_harness
+    --no-default-features --features live` → 3/3 PASS
+- R-NR.3 — No production code changes outside `crates/ui/` and
+  `crates/backtest/src/cancel.rs`. The fix is localized.
+- R-NR.4 — One-ship Q1=(a) — R1 + R2 land in one PR + one ADR.
+- R-NR.5 — ADR-0050 atomic-register per the 2026-05-29 contract.
+
+## § Hypotheses
+
+- **H1**: rt_handle.enter() guard at runner.rs:744 + sibling sites
+  causes the ticker to fire ≥ 3 times during a 1 s preload window.
+  TEST: D-R1.3 e2e.
+- **H2**: CancellationToken in cancel.rs + select! third arm at
+  runner.rs:705-828 causes Stop dispatch to exit preload within
+  500 ms. TEST: D-R2.3 e2e.
+- **H3**: No regression to existing harness tests (3/3 each of
+  spawn_lab_run_yahoo_harness, lab_stop_button_gating, Wave A
+  training_log_recipe_harness).
+
+## § Operator-decide questions
+
+All resolved by architect + analyst validation. Tracked here:
+
+- **Q1=(a)** one-ship R1+R2 (analyst Q-BUG64-D11-3-Q1
+  ratification).
+- **Q2=(a)** keep select!+ticker + add rt_handle.enter() guard.
+- **Q3=(a)+(a.i)** cancel-token wrap with CancellationToken
+  primitive swap.
+- **Q4 (CLOSED)** = D-R1.2 (LabProgressRecipe defensive guard).
+- **Q5 (CLOSED)** = keep Recipe pattern (analyst + architect both
+  vote KEEP over iced::time::every migration).
+- **A-Q1 (CLOSED)** = D-R1.4 ship yield_now() (architect YES,
+  cheap).
+- **A-Q2 (CLOSED)** = tokio-util dep shape
+  `default-features = false, features = ["rt"]`.
+- **A-Q3 (CLOSED)** = codify ADR-0050 NOW (twice-bitten + this
+  3rd recurrence; codify-on-3 threshold met).
+
+## § Verdict tree (4-cell)
+
+|  | Code work succeeds | Code work fails / blocks |
+|---|---|---|
+| **Operator re-verify confirms fix** | `PASS` — v0.1.0 ships; Bug #64 closes; ADR-0050 codified. | `INCONCLUSIVE` — code looks right but operator can't reproduce success; possible environment issue (binary cache, feature flag); route to operator-side recipe update. |
+| **Operator re-verify still fails** | `REGRESSION` — fix didn't land; need attempt-4 root-cause. | `FAIL` — same as before + dev work blocked; defer or escalate. |
+
+## § Changelog
+
+- 2026-05-29 (orchestrator): feature folder created from both
+  validators (architect 4473bd2 + analyst ccf39b9). Synthesis of
+  the locked 8 D-clauses + ADR-0050 obligation. HANDOFF →
+  developer.
