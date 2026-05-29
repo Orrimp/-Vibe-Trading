@@ -175,6 +175,16 @@ enum ScenarioStrategy {
         config_id: String,
         forecaster_id: String,
     },
+    /// v3.0.0-regime RegimeDispatcher wrapping v1 momentum (Wave E T-D-E1).
+    ///
+    /// Routes Bull/Bear → v1 MomentumStrategy; Volatile/Calm → CashHoldStrategy.
+    /// Uses MarkovSwitchingClassifier with ADR-0049 § D1 priors.
+    /// Requires `--features realdata` for real-data bar loading.
+    /// Does NOT require `--features candle` — Markov-switching is pure Rust.
+    #[cfg_attr(not(feature = "realdata"), allow(dead_code))]
+    RegimeDispatcherMomentum {
+        config_id: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -670,6 +680,54 @@ impl Scenario {
                     "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
                 ),
             }),
+            // v3.0.0-regime RegimeDispatcher scenarios (Wave E T-D-E1).
+            // Requires `--features realdata`.
+            // Canonical friction: latency 30..=80ms / 8 bps per ADR-0045 D1.
+            // Dataset SHA 3a8b96c4… pinned 2026-05-18 (same as sibling realdata scenarios).
+            #[cfg(feature = "realdata")]
+            "top10-2023-fy-regime-dispatcher-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2023,
+                // Full 2023: 365 days × 24 h = 8760 hourly bars per symbol × 10 symbols.
+                bar_count: 8760,
+                strategy: ScenarioStrategy::RegimeDispatcherMomentum {
+                    config_id: "regime_dispatcher_momentum".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                expected_revision_sha: Some(
+                    "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
+                ),
+            }),
+            #[cfg(feature = "realdata")]
+            "top10-2024-fy-regime-dispatcher-realdata" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: None,
+                symbol: Symbol::new("multi"),
+                start_year: 2024,
+                // Full 2024 (leap year): 366 days × 24 h = 8784 hourly bars × 10 symbols.
+                bar_count: 8784,
+                strategy: ScenarioStrategy::RegimeDispatcherMomentum {
+                    config_id: "regime_dispatcher_momentum".to_string(),
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::RealData,
+                expected_revision_sha: Some(
+                    "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
+                ),
+            }),
             other => anyhow::bail!("unknown scenario: {other}"),
         }
     }
@@ -804,6 +862,7 @@ async fn main() -> Result<()> {
             | ScenarioStrategy::TcnOverlayMomentumWeights { .. }
             | ScenarioStrategy::PatchtstOverlayMomentumWeights { .. }
             | ScenarioStrategy::GarchVolTargetOverlayMomentum { .. }
+            | ScenarioStrategy::RegimeDispatcherMomentum { .. }
     );
 
     // Pre-loaded real bars for TCN realdata path (ADR-0032 § 3).
@@ -911,10 +970,18 @@ async fn main() -> Result<()> {
             ScenarioStrategy::GarchVolTargetOverlayMomentum { .. }
         );
 
+        // Detect regime dispatcher (v3.0.0-regime Wave E).
+        let is_regime_dispatcher = matches!(
+            &scenario.strategy,
+            ScenarioStrategy::RegimeDispatcherMomentum { .. }
+        );
+
         // Branch on data source axis (ADR-0032 § 3).
         match scenario.data_source {
             ScenarioDataSource::Synthetic => {
-                let src = if is_garch_vol_target {
+                let src = if is_regime_dispatcher {
+                    "synthetic (seeded RNG, v3.0.0-regime dispatcher)"
+                } else if is_garch_vol_target {
                     "synthetic (seeded RNG, v3.0.0 garch-vol-target-overlay)"
                 } else if is_patchtst_overlay {
                     "synthetic (seeded RNG, v2.5a patchtst-overlay-weights)"
@@ -928,7 +995,8 @@ async fn main() -> Result<()> {
                     weights = is_weights,
                     patchtst = is_patchtst_overlay,
                     garch_vol_target = is_garch_vol_target,
-                    "tcn/patchtst/garch-overlay scenario — generating synthetic bars"
+                    regime_dispatcher = is_regime_dispatcher,
+                    "tcn/patchtst/garch/regime-overlay scenario — generating synthetic bars"
                 );
                 (Vec::<Bar>::new(), src.to_string())
             }
@@ -969,7 +1037,9 @@ async fn main() -> Result<()> {
                         );
                     }
 
-                    let data_src_str = if is_garch_vol_target {
+                    let data_src_str = if is_regime_dispatcher {
+                        "real (Binance Vision via data/binance/, v3.0.0-regime)".to_string()
+                    } else if is_garch_vol_target {
                         "real (Binance Vision via data/binance/, v3.0.0-volatility)".to_string()
                     } else if is_patchtst_overlay {
                         "real (Binance Vision via data/binance/, v2.5a.0-patchtst)".to_string()
@@ -979,7 +1049,7 @@ async fn main() -> Result<()> {
                     info!(
                         bar_count = loaded.loaded_count,
                         revision_sha = %loaded.revision_sha,
-                        "tcn/patchtst/garch-overlay realdata bars loaded"
+                        "tcn/patchtst/garch/regime-overlay realdata bars loaded"
                     );
                     // Stash the real bars; they are passed to the run function below.
                     // The `bars` variable is unused for TCN overlay (functions generate
@@ -1634,6 +1704,87 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // ── v3.0.0-regime RegimeDispatcher momentum dispatch ─────────────────────
+    // Wave E T-D-E1: Markov-switching 4-state dispatcher on v1 momentum.
+    if let ScenarioStrategy::RegimeDispatcherMomentum { config_id } =
+        &scenario.strategy.clone()
+    {
+        let config_id = config_id.clone();
+        let regime_input = backtest::cli_types::TcnScenarioInput {
+            scenario_name: scenario.name.clone(),
+            start_year: scenario.start_year,
+            bar_count: scenario.bar_count,
+            initial_capital: scenario.initial_capital,
+            slippage_bps: scenario.slippage_bps,
+            taker_fee_bps: scenario.taker_fee_bps,
+            config_id: config_id.clone(),
+            forecaster_id: "regime-dispatcher-markov-4state".to_string(),
+            bars_override: realdata_bars_for_tcn.take(),
+            emit_equity_bin: args.emit_equity_bin.clone(),
+            // v5-latency-slippage-sim canonical config (ADR-0045 D1).
+            latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
+                latency_ms_min: args.sim_latency_ms_min,
+                latency_ms_max: args.sim_latency_ms_max,
+                slippage_bps: args.sim_slippage_bps,
+            },
+        };
+        let result =
+            backtest::scenarios::regime_dispatcher::run(regime_input.clone(), seed).await?;
+
+        let report_dir = args
+            .reports_dir
+            .clone()
+            .unwrap_or_else(|| report_dir_for_scenario(&args.scenario));
+        std::fs::create_dir_all(&report_dir).context("create per-feature reports dir")?;
+        let now = OffsetDateTime::now_utc();
+        let stamp = format!(
+            "{:04}{:02}{:02}-{:02}{:02}{:02}",
+            now.year(),
+            now.month() as u8,
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second()
+        );
+        let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
+
+        let rev_sha = realdata_revision_sha_for_tcn.as_deref().unwrap_or("n/a");
+
+        backtest::report::regime_dispatcher::write(
+            &regime_input,
+            &result,
+            seed,
+            &data_source,
+            &report_path,
+            rev_sha,
+        )?;
+
+        // Emit equity bin for sharpe_comparison subprocess use.
+        if let Some(ref eq_path) = args.emit_equity_bin {
+            let eq_text: String = result
+                .equity_curve
+                .iter()
+                .map(|d| format!("{d}\n"))
+                .collect();
+            std::fs::write(eq_path, eq_text)
+                .with_context(|| format!("writing equity bin to {}", eq_path.display()))?;
+            info!(path = %eq_path.display(), len = result.equity_curve.len(), "equity bin written");
+        }
+
+        println!("Report written: {}", report_path.display());
+        println!("Scenario     : {}", args.scenario);
+        println!("Bars (total) : {}", result.bar_count);
+        println!("Trades       : {}", result.trades);
+        println!("Final equity : ${:.2} USDT", result.final_equity);
+        println!("Elapsed      : {:.1}s", result.elapsed_secs);
+        println!(
+            "Dispatcher   : suppressed={} momentum={} warmup={}",
+            result.suppressed_bars, result.momentum_bars, result.warmup_bars,
+        );
+        println!("Data source  : {data_source}");
+        return Ok(());
+    }
+
     // Wave D-2 / T-AR-4: Resolve strategy_id for the extracted bar loop.
     // Priority: CLI `--strategy` flag → scenario default.
     // `None` for SmaCrossover → normalised to "sma_crossover" below.
@@ -1651,6 +1802,9 @@ async fn main() -> Result<()> {
                     unreachable!("handled above")
                 }
                 ScenarioStrategy::GarchVolTargetOverlayMomentum { .. } => {
+                    unreachable!("handled above")
+                }
+                ScenarioStrategy::RegimeDispatcherMomentum { .. } => {
                     unreachable!("handled above")
                 }
             });
@@ -1804,6 +1958,9 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         "top10-2023-fy-vol-target-overlay-realdata" => "v3-volatility-forecaster",
         // v3.0.0-volatility-rebaseline: un-targeted v1 momentum on real Binance data.
         "top10-2023-fy-momentum-realdata" => "v3-volatility-forecaster-rebaseline",
+        // v3.0.0-regime RegimeDispatcher scenarios (Wave E T-D-E1).
+        "top10-2023-fy-regime-dispatcher-realdata"
+        | "top10-2024-fy-regime-dispatcher-realdata" => "v3-regime-classifier",
         _ => "_unknown",
     }
 }

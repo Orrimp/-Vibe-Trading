@@ -47,6 +47,7 @@ use tracing_subscriber::EnvFilter;
 /// `Tcn` (default) → existing 5-scenario TCN + PatchTST run (byte-identical).
 /// `VolTarget` → new v3.0.0-volatility: v1 momentum baseline + vol-targeting overlay.
 /// `VolTargetRebaseline` → v3.0.0-volatility-rebaseline: real-data momentum baseline.
+/// `RegimeDispatcher` → v3.0.0-regime: real-data momentum baseline vs regime-dispatcher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum ScenarioFamily {
     /// TCN + PatchTST BS-1 (default; 5 scenarios).
@@ -59,6 +60,10 @@ enum ScenarioFamily {
     /// (v3.0.0-volatility-rebaseline; 2026-05-22+ T-AR-2 lock).
     #[value(name = "vol-target-bs1-rebaseline")]
     VolTargetRebaseline,
+    /// v3.0.0-regime RegimeDispatcher vs real-data v1 momentum baseline (BS-1).
+    /// T-REG-ALPHA-UNLOCKED / T-REG-MARGINAL / T-REG-NO-ALPHA classifier per ADR-0049 § D4.
+    #[value(name = "regime-dispatcher-bs1")]
+    RegimeDispatcher,
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -66,10 +71,12 @@ enum ScenarioFamily {
 #[derive(Parser, Debug)]
 #[command(
     name = "sharpe_comparison",
-    about = "M-SHARPE: Sharpe/Sortino/Calmar comparison report (TCN or vol-target family)",
-    long_about = "Runs one of two scenario families:\n\
+    about = "M-SHARPE: Sharpe/Sortino/Calmar comparison report (TCN, vol-target, or regime-dispatcher family)",
+    long_about = "Runs one of the scenario families:\n\
                   - tcn (default): five -realdata scenarios (4 TCN + 1 PatchTST BS-1).\n\
-                  - vol-target-bs1: v1 momentum baseline + GARCH vol-targeting overlay.\n\n\
+                  - vol-target-bs1: v1 momentum baseline + GARCH vol-targeting overlay.\n\
+                  - vol-target-bs1-rebaseline: real-data v1 momentum baseline + vol-target overlay.\n\
+                  - regime-dispatcher-bs1: real-data v1 momentum baseline vs regime-dispatcher (v3.0.0-regime).\n\n\
                   Read-only contract: anchored reports are never touched."
 )]
 struct Args {
@@ -79,7 +86,8 @@ struct Args {
 
     /// Output directory for the report.
     /// Defaults: tcn → spec/v25a-patchtst-overlay/reports/,
-    ///           vol-target-bs1 → spec/v3-volatility-forecaster/reports/.
+    ///           vol-target-bs1 → spec/v3-volatility-forecaster/reports/,
+    ///           regime-dispatcher-bs1 → spec/v3-regime-classifier/reports/.
     #[arg(long)]
     out_dir: Option<PathBuf>,
 
@@ -487,14 +495,21 @@ mod rerun {
         })
     }
 
-    /// Parse final equity from the report Summary table (e.g. "$113479.98").
+    /// Parse final equity from the report Summary table (e.g. "$113479.98 USDT" or "$113479.98").
     fn parse_report_equity(body: &str) -> Option<f64> {
         body.lines()
             .find(|l| l.contains("Final equity"))
             .and_then(|l| {
                 l.split('|')
                     .nth(2)
-                    .map(|v| v.trim().trim_start_matches('$').replace(',', ""))
+                    .map(|v| {
+                        v.trim()
+                            .trim_start_matches('$')
+                            .replace(',', "")
+                            .trim_end_matches(" USDT")
+                            .trim()
+                            .to_string()
+                    })
                     .and_then(|v| v.parse().ok())
             })
     }
@@ -1553,6 +1568,441 @@ mod render_vol_target_rebaseline {
     }
 }
 
+// ── render_regime_dispatcher ──────────────────────────────────────────────────
+//
+// Sibling of `render_vol_target`. Emits the body for the
+// `sharpe-comparison-regime-dispatcher-bs1-realdata` report (v3.0.0-regime).
+// Compares v1 momentum baseline (top10-2023-fy-momentum-realdata) vs
+// regime-dispatcher (top10-2023-fy-regime-dispatcher-realdata).
+// Emits T-REG-ALPHA-UNLOCKED / T-REG-MARGINAL / T-REG-NO-ALPHA verdict
+// per ADR-0049 § D4.
+
+mod render_regime_dispatcher {
+    use super::metrics;
+    use super::rerun::RerunResult;
+
+    /// T-REG classifier verdict per ADR-0049 § D4.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum TClassifier {
+        /// net_delta >= +0.10
+        AlphaUnlocked,
+        /// net_delta in [+0.05, +0.10)
+        Marginal,
+        /// net_delta < +0.05
+        NoAlpha,
+    }
+
+    impl TClassifier {
+        pub fn label(self) -> &'static str {
+            match self {
+                Self::AlphaUnlocked => "T-REG-ALPHA-UNLOCKED",
+                Self::Marginal => "T-REG-MARGINAL",
+                Self::NoAlpha => "T-REG-NO-ALPHA",
+            }
+        }
+
+        pub fn classify(net_delta: f64) -> Self {
+            if net_delta >= 0.10 {
+                Self::AlphaUnlocked
+            } else if net_delta >= 0.05 {
+                Self::Marginal
+            } else {
+                Self::NoAlpha
+            }
+        }
+    }
+
+    /// Run-varying context for the frontmatter.
+    #[derive(Debug, Clone)]
+    pub struct ReportContext {
+        pub generated: String,
+        pub wall_clock_s: f64,
+        pub host: String,
+        pub git_commit: String,
+        pub data_revision_sha: String,
+    }
+
+    /// Render the regime-dispatcher comparison report body.
+    ///
+    /// `baseline` is `top10-2023-fy-momentum-realdata` (v1 cross-sectional momentum, real data).
+    /// `dispatcher` is `top10-2023-fy-regime-dispatcher-realdata` (v3.0.0-regime RegimeDispatcher).
+    pub fn render_report(
+        baseline: &RerunResult,
+        dispatcher: &RerunResult,
+        _ctx: &ReportContext,
+    ) -> String {
+        use std::fmt::Write as FmtWrite;
+        let mut body = String::with_capacity(4096);
+
+        let sharpe_baseline = metrics::compute_sharpe_hourly(&baseline.equity);
+        let sharpe_dispatcher = metrics::compute_sharpe_hourly(&dispatcher.equity);
+        let sortino_baseline = metrics::compute_sortino_hourly(&baseline.equity);
+        let sortino_dispatcher = metrics::compute_sortino_hourly(&dispatcher.equity);
+        let calmar_baseline = metrics::compute_calmar(&baseline.equity);
+        let calmar_dispatcher = metrics::compute_calmar(&dispatcher.equity);
+
+        let gross_delta = sharpe_dispatcher - sharpe_baseline;
+        // Net delta (same as gross — turnover cost not modelled separately).
+        let net_delta = gross_delta;
+        let verdict = TClassifier::classify(net_delta);
+
+        // ── Header ──────────────────────────────────────────────────────────────
+        writeln!(
+            &mut body,
+            "# Sharpe / drawdown comparison — v3.0.0-regime RegimeDispatcher vs v1 momentum baseline"
+        )
+        .unwrap();
+
+        // ── § Methodology ───────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Methodology\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Field             | Value                                          |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|-------------------|------------------------------------------------|"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Baseline scenario | top10-2023-fy-momentum-realdata (v1 cross-sectional momentum, real Binance data) |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Dispatcher scenario | top10-2023-fy-regime-dispatcher-realdata (v3.0.0-regime MarkovSwitching 4-state, real Binance data) |"
+        )
+        .unwrap();
+        writeln!(&mut body, "| Bar interval      | 1h |").unwrap();
+        writeln!(
+            &mut body,
+            "| Annualisation     | sqrt(24*365) = {:.6} (hourly -> annual) |",
+            metrics::SQRT_HOURS_PER_YEAR
+        )
+        .unwrap();
+        writeln!(&mut body, "| Risk-free rate    | 0.000000 (constant) |").unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(24*365) |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| T-classifier      | ADR-0049 D4: net_delta >= 0.10 -> T-REG-ALPHA-UNLOCKED, [0.05,0.10) -> T-REG-MARGINAL, <0.05 -> T-REG-NO-ALPHA |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Hypothesis H1     | Regime-dispatcher Sharpe delta vs v1 baseline >= +0.10 (alpha-unlock threshold) |"
+        )
+        .unwrap();
+
+        // ── § Comparison table ───────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Comparison table\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Scenario | Bars | Final equity | Total return | Max drawdown | Trades | Suppress rate | Sharpe (ann) | Sortino (ann) | Calmar |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|----------|------|--------------|--------------|--------------|--------|----------------|--------------|---------------|--------|"
+        )
+        .unwrap();
+
+        for (r, sharpe, sortino, calmar) in [
+            (baseline, sharpe_baseline, sortino_baseline, calmar_baseline),
+            (dispatcher, sharpe_dispatcher, sortino_dispatcher, calmar_dispatcher),
+        ] {
+            writeln!(
+                &mut body,
+                "| {} | {} | ${:.2} | {:.2}% | {:.2}% | {} | {:.2}% | {:.6} | {:.6} | {:.6} |",
+                r.name,
+                r.bars,
+                r.final_equity,
+                r.total_return * 100.0,
+                r.max_drawdown * 100.0,
+                r.trades,
+                r.dampen_rate * 100.0, // suppress_rate stored in dampen_rate field
+                sharpe,
+                sortino,
+                calmar,
+            )
+            .unwrap();
+        }
+
+        // ── § Verdict ────────────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Verdict\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Field               | Value                                          |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|---------------------|------------------------------------------------|"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe baseline     | {:.6} (top10-2023-fy-momentum-realdata) |",
+            sharpe_baseline
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Sharpe dispatcher   | {:.6} (top10-2023-fy-regime-dispatcher-realdata) |",
+            sharpe_dispatcher
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Gross Sharpe delta  | {:.6} (dispatcher - baseline) |",
+            gross_delta
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Net Sharpe delta    | {:.6} (gross delta, no turnover cost modelled) |",
+            net_delta
+        )
+        .unwrap();
+        writeln!(&mut body, "| T-classifier        | {} |", verdict.label()).unwrap();
+        writeln!(
+            &mut body,
+            "| V-REG verdict       | See regime-verdict-bs1-realdata report (ADR-0049 § D4). |"
+        )
+        .unwrap();
+
+        // H1 hypothesis discharge.
+        writeln!(&mut body, "\n## H1 Hypothesis Discharge\n").unwrap();
+        writeln!(
+            &mut body,
+            "| Field               | Value                                          |"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "|---------------------|------------------------------------------------|"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| Hypothesis H1       | Regime-dispatcher Sharpe delta >= +0.10 vs v1 momentum baseline. |"
+        )
+        .unwrap();
+        let h1_result = if net_delta >= 0.10 {
+            "CONFIRMED: net_delta >= +0.10 — regime-dispatcher delivers alpha lift."
+        } else if net_delta >= 0.05 {
+            "PARTIAL: net_delta in [+0.05, +0.10) — marginal alpha lift; operator decides."
+        } else {
+            "REJECTED: net_delta < +0.05 — regime-dispatcher does not deliver alpha lift at v0.1.0."
+        };
+        writeln!(&mut body, "| H1 result           | {} |", h1_result).unwrap();
+        writeln!(
+            &mut body,
+            "| Net Sharpe delta    | {:.6} |",
+            net_delta
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "| T-REG verdict       | {} |",
+            verdict.label()
+        )
+        .unwrap();
+
+        // ── § Notes ──────────────────────────────────────────────────────────────
+        writeln!(&mut body, "\n## Notes\n").unwrap();
+        writeln!(
+            &mut body,
+            "- Both scenarios use real Binance 2023 hourly data (10 USDT pairs) — apples-to-apples."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- Dispatcher suppress rate = fraction of active bars in CashHold (Volatile/Calm) regime."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- Follow-on per joint advisory table (ADR-0049 § D4):"
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "  - T-REG-ALPHA-UNLOCKED: SHIP + spawn v1.5-MR follow-on."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "  - T-REG-MARGINAL: SHIP-WITH-CAVEATS or HOLD (operator decides)."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "  - T-REG-NO-ALPHA: HOLD-FOR-OPERATOR; C2 retire + close v3 three-pick set."
+        )
+        .unwrap();
+        writeln!(
+            &mut body,
+            "- ASCII-only, LF-only line endings; floats %.6f (Sharpe/Sortino/Calmar) or %.2f%% (returns/drawdown/suppress_rate)."
+        )
+        .unwrap();
+
+        body
+    }
+
+    /// Render YAML frontmatter (excluded from body hash).
+    pub fn render_frontmatter(ctx: &ReportContext) -> String {
+        format!(
+            "---\n\
+             slug: v3-regime-classifier\n\
+             scenario: sharpe-comparison-regime-dispatcher-bs1-realdata\n\
+             generated: {}\n\
+             wall_clock_s: {:.1}\n\
+             host: {}\n\
+             git_commit: {}\n\
+             data_revision_sha: {}\n\
+             ---\n",
+            ctx.generated, ctx.wall_clock_s, ctx.host, ctx.git_commit, ctx.data_revision_sha,
+        )
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use rust_decimal_macros::dec;
+
+        fn make_result(name: &str, sharpe_up: bool, suppress_rate: f64) -> RerunResult {
+            let mut eq = vec![dec!(100_000)];
+            let factor = if sharpe_up {
+                dec!(1.0012)
+            } else {
+                dec!(1.0005)
+            };
+            for _ in 0..8760 {
+                let last = *eq.last().unwrap();
+                eq.push(last * factor);
+            }
+            let final_eq = *eq.last().unwrap();
+            RerunResult {
+                name: name.to_string(),
+                variant: "test".to_string(),
+                equity: eq,
+                bars: 8760,
+                trades: 1000,
+                final_equity: final_eq,
+                total_return: 0.1,
+                max_drawdown: 0.05,
+                dampen_rate: suppress_rate, // suppress_rate stored in dampen_rate field
+            }
+        }
+
+        /// T-REG classifier threshold tests (ADR-0049 § D4).
+        #[test]
+        fn t_reg_classifier_thresholds() {
+            assert_eq!(TClassifier::classify(0.10), TClassifier::AlphaUnlocked);
+            assert_eq!(TClassifier::classify(0.15), TClassifier::AlphaUnlocked);
+            assert_eq!(TClassifier::classify(0.07), TClassifier::Marginal);
+            assert_eq!(TClassifier::classify(0.05), TClassifier::Marginal);
+            assert_eq!(TClassifier::classify(0.04), TClassifier::NoAlpha);
+            assert_eq!(TClassifier::classify(-0.5), TClassifier::NoAlpha);
+        }
+
+        /// Renderer produces required sections.
+        #[test]
+        fn render_contains_required_sections() {
+            let baseline = make_result("top10-2023-fy-momentum-realdata", false, 0.0);
+            let dispatcher = make_result(
+                "top10-2023-fy-regime-dispatcher-realdata",
+                true,
+                0.112,
+            );
+            let ctx = ReportContext {
+                generated: "2026-05-29T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+            let body = render_report(&baseline, &dispatcher, &ctx);
+            assert!(body.contains("## Methodology"), "missing Methodology");
+            assert!(
+                body.contains("## Comparison table"),
+                "missing Comparison table"
+            );
+            assert!(body.contains("## Verdict"), "missing Verdict");
+            assert!(
+                body.contains("## H1 Hypothesis Discharge"),
+                "missing H1 Hypothesis Discharge"
+            );
+            assert!(body.contains("T-REG-"), "missing T-REG classifier label");
+            assert!(
+                body.contains("top10-2023-fy-momentum-realdata"),
+                "missing baseline name"
+            );
+            assert!(
+                body.contains("top10-2023-fy-regime-dispatcher-realdata"),
+                "missing dispatcher name"
+            );
+        }
+
+        /// Renderer is deterministic.
+        #[test]
+        fn render_is_deterministic() {
+            let baseline = make_result("top10-2023-fy-momentum-realdata", false, 0.0);
+            let dispatcher = make_result(
+                "top10-2023-fy-regime-dispatcher-realdata",
+                true,
+                0.112,
+            );
+            let ctx = ReportContext {
+                generated: "2026-05-29T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+            let b1 = render_report(&baseline, &dispatcher, &ctx);
+            let b2 = render_report(&baseline, &dispatcher, &ctx);
+            assert_eq!(
+                b1, b2,
+                "render_regime_dispatcher::render_report must be deterministic"
+            );
+        }
+
+        /// T-REG-NO-ALPHA branch produces correct H1 discharge message.
+        #[test]
+        fn render_no_alpha_h1_discharge() {
+            let baseline = make_result("top10-2023-fy-momentum-realdata", true, 0.0);
+            let dispatcher = make_result(
+                "top10-2023-fy-regime-dispatcher-realdata",
+                false,
+                0.112,
+            );
+            let ctx = ReportContext {
+                generated: "2026-05-29T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+            let body = render_report(&baseline, &dispatcher, &ctx);
+            assert!(
+                body.contains("REJECTED"),
+                "no-alpha branch should emit REJECTED: {body}"
+            );
+            assert!(
+                body.contains("T-REG-NO-ALPHA"),
+                "no-alpha branch should emit T-REG-NO-ALPHA: {body}"
+            );
+        }
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn read_git_commit() -> String {
@@ -1598,6 +2048,9 @@ fn main() -> Result<()> {
         ScenarioFamily::VolTargetRebaseline => {
             PathBuf::from("spec/v3-volatility-forecaster-rebaseline/reports/")
         }
+        ScenarioFamily::RegimeDispatcher => {
+            PathBuf::from("spec/v3-regime-classifier/reports/")
+        }
         ScenarioFamily::Tcn => PathBuf::from("spec/v25a-patchtst-overlay/reports/"),
     });
 
@@ -1637,6 +2090,109 @@ fn main() -> Result<()> {
             .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
         format!("{}{:02}{:02}", dt.year(), dt.month() as u8, dt.day())
     };
+
+    // ── regime-dispatcher-bs1 dispatch ───────────────────────────────────────
+    if args.scenario == ScenarioFamily::RegimeDispatcher {
+        if args.skip_rerun {
+            anyhow::bail!("--skip-rerun is not implemented for regime-dispatcher-bs1.");
+        }
+        let tmpdir = tempfile::TempDir::new().context("creating tempdir")?;
+
+        // Re-run REAL-DATA v1 momentum baseline + regime-dispatcher (2023 train window).
+        // Both use real Binance 2023 hourly data — apples-to-apples per ADR-0049 § D4.
+        let regime_scenarios = [
+            "top10-2023-fy-momentum-realdata",        // v1 momentum baseline (real data)
+            "top10-2023-fy-regime-dispatcher-realdata", // v3.0.0-regime RegimeDispatcher
+        ];
+
+        let mut regime_results: Vec<rerun::RerunResult> = Vec::with_capacity(2);
+        for &name in &regime_scenarios {
+            info!(scenario = name, "running regime-dispatcher scenario");
+            let mut result = rerun::rerun_scenario(name, &args.backtest_bin, tmpdir.path())
+                .with_context(|| format!("rerunning scenario {name}"))?;
+            // For regime-dispatcher scenario: parse suppress_rate and store in dampen_rate field.
+            // The `parse_report_pct` in rerun parses "TCN dampen rate" which doesn't exist here;
+            // re-parse the report to get "Suppress rate".
+            if name.contains("regime-dispatcher") {
+                let report_path = tmpdir.path().join(format!("backtest-*-{name}.md"));
+                // Find the actual report file.
+                if let Ok(entries) = std::fs::read_dir(tmpdir.path()) {
+                    for entry in entries.flatten() {
+                        let fname = entry.file_name().to_string_lossy().to_string();
+                        if fname.ends_with(".md") && fname.contains("regime-dispatcher") {
+                            if let Ok(body) = std::fs::read_to_string(entry.path()) {
+                                // Parse suppress_rate from "Suppress rate | 11.20%"
+                                result.dampen_rate = body
+                                    .lines()
+                                    .find(|l| l.contains("Suppress rate"))
+                                    .and_then(|l| l.split('|').nth(2))
+                                    .map(|v| v.trim().trim_end_matches('%'))
+                                    .and_then(|v| v.parse::<f64>().ok())
+                                    .map(|pct| pct / 100.0)
+                                    .unwrap_or(0.0);
+                                let _ = report_path; // suppress unused warning
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            info!(
+                scenario = name,
+                bars = result.bars,
+                trades = result.trades,
+                suppress_rate = result.dampen_rate,
+                "scenario complete"
+            );
+            regime_results.push(result);
+        }
+
+        let wall_clock_s = t_start.elapsed().as_secs_f64();
+        let baseline = regime_results.remove(0);
+        let dispatcher = regime_results.remove(0);
+
+        let ctx = render_regime_dispatcher::ReportContext {
+            generated,
+            wall_clock_s,
+            host,
+            git_commit: read_git_commit(),
+            data_revision_sha: read_data_revision_sha(),
+        };
+
+        let body = render_regime_dispatcher::render_report(&baseline, &dispatcher, &ctx);
+        let frontmatter = render_regime_dispatcher::render_frontmatter(&ctx);
+        let full_report = format!("{frontmatter}{body}");
+
+        let filename = format!("sharpe-comparison-regime-dispatcher-bs1-realdata-{today}.md");
+        let out_path = out_dir.join(&filename);
+        std::fs::write(&out_path, &full_report)
+            .with_context(|| format!("writing report to {:?}", out_path))?;
+
+        // Compute T-classifier for stdout banner.
+        let sharpe_baseline = metrics::compute_sharpe_hourly(&baseline.equity);
+        let sharpe_dispatcher = metrics::compute_sharpe_hourly(&dispatcher.equity);
+        let net_delta = sharpe_dispatcher - sharpe_baseline;
+        let verdict = render_regime_dispatcher::TClassifier::classify(net_delta);
+
+        info!(
+            path = %out_path.display(),
+            wall_clock_s = format!("{:.1}", wall_clock_s),
+            t_classifier = verdict.label(),
+            sharpe_baseline = format!("{sharpe_baseline:.6}"),
+            sharpe_dispatcher = format!("{sharpe_dispatcher:.6}"),
+            net_delta = format!("{net_delta:.6}"),
+            "regime-dispatcher comparison report written"
+        );
+
+        println!(
+            "wrote {}; T-classifier = {}; net_delta = {:.6}",
+            out_path.display(),
+            verdict.label(),
+            net_delta,
+        );
+
+        return Ok(());
+    }
 
     // ── vol-target-bs1-rebaseline dispatch ───────────────────────────────────
     if args.scenario == ScenarioFamily::VolTargetRebaseline {

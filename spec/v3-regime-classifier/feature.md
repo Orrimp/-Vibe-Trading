@@ -836,3 +836,100 @@ refresh tightens to operator-actionable M0 shape and supersedes the
 - UI crate pre-existing clippy errors (unrelated to Wave D) — not introduced by this wave.
 - `bash scripts/verify_anchors.sh` — PASS 71/71 (Wave D is additive; no backtest-touching changes).
 - Trace.toml `tests` column updated with Wave D test files.
+
+## Implementation — Wave E (2026-05-29)
+
+**T-D-E1 — Backtest scenarios** (developer agent)
+
+Two anchored backtest scenario runs under namespace `v3.0.0-regime` (ADR-0049 § D5):
+
+- **`top10-2023-fy-regime-dispatcher-realdata`** (2023 train window):
+  - Real Binance hourly bars, 10 USDT pairs, seed=0xC0FFEE.
+  - 87590 bars, 6847 trades, final equity $87,431.52 (-12.57%), max drawdown 40.49%.
+  - Suppress rate: 9810 suppressed bars / 77280 momentum bars (11.20%).
+  - Determinism: body SHA `f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775` (2-run PASS).
+  - Report: `spec/v3-regime-classifier/reports/backtest-20260529-055141-top10-2023-fy-regime-dispatcher-realdata.md`
+
+- **`top10-2024-fy-regime-dispatcher-realdata`** (2024 held-out val window):
+  - Real Binance hourly bars, 10 USDT pairs, seed=0xC0FFEE.
+  - 87840 bars, 6243 trades, final equity $94,000.97 (-6.00%), max drawdown 38.21%.
+  - Suppress rate: 11816 suppressed bars / 75524 momentum bars (13.53%).
+  - Determinism: body SHA `691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e` (2-run PASS).
+  - Report: `spec/v3-regime-classifier/reports/backtest-20260529-055810-top10-2024-fy-regime-dispatcher-realdata.md`
+
+- **Key metric**: max drawdown reduced from 73.73% (v1 baseline) → 40.49% (2023 dispatcher)
+  and 38.21% (2024 dispatcher). The suppression of Volatile/Calm regimes limited downside
+  exposure despite hurting overall return in the 2023 bull-recovery environment.
+
+**T-D-E2 — `regime_verdict.rs` binary** (developer agent)
+
+New binary at `crates/forecast/src/bin/regime_verdict.rs` implementing the V-REG priority tree
+per ADR-0049 § D4:
+
+- `VRegVerdict` enum (VReg1..VReg5) with `label()`, `name()`, `follow_on()` methods.
+- `RunStats` struct with `suppress_rate()`, `momentum_rate()`, `weeks_elapsed()`,
+  `estimated_switches_per_week_upper_bound()` methods.
+- `SYMBOL_COUNT = 10.0` constant: switch rate divides suppressed bars by 10 (portfolio-level)
+  before computing blocks — all 10 symbols share ONE classifier, so portfolio-hours not raw bars.
+- `classify_vreg(stats: &RunStats) -> (VRegVerdict, String)` priority tree:
+  V-REG-1 (convergence failure) → V-REG-2 (trivial, >95% one regime) →
+  V-REG-3 (flicker, >20 switches/week UB) → V-REG-4 (calibration drift) → V-REG-5 (healthy).
+- Report: `spec/v3-regime-classifier/reports/regime-verdict-bs1-realdata-20260529.md`
+  V-REG verdict: **V-REG-5** (Healthy) — suppress_rate=0.135287 in (0.05, 0.95);
+  switch_rate_UB=15.07/week <= 20/week; all V-REG-1..V-REG-4 gates PASS.
+  Body SHA `2d248f4e9df358c24f49d1fce246c72aa7b00f2f28293edcae6fa0323a2eda1d` (2-run PASS).
+- New test: `crates/forecast/tests/vreg_mutual_exclusivity.rs` (8 tests — 5 fixture tests,
+  mutual exclusivity proof, property test 100 random stats).
+- 9 in-module unit tests in `regime_verdict.rs` (vreg1..vreg5 fixtures, parse_stats, render_*).
+
+**T-D-E3 — `sharpe_comparison.rs` regime-dispatcher arm** (developer agent)
+
+Extended `crates/forecast/src/bin/sharpe_comparison.rs` with:
+
+- `ScenarioFamily::RegimeDispatcher` enum variant (`--scenario regime-dispatcher-bs1`).
+- `render_regime_dispatcher` module (sibling to `render_vol_target_rebaseline`):
+  - `TClassifier` enum: AlphaUnlocked / Marginal / NoAlpha → T-REG-ALPHA-UNLOCKED / T-REG-MARGINAL / T-REG-NO-ALPHA.
+  - `TClassifier::classify(net_delta)` thresholds: ≥0.10 / [0.05,0.10) / <0.05 per ADR-0049 § D4.
+  - `render_report(baseline, dispatcher, ctx)` deterministic body renderer.
+  - `render_frontmatter(ctx)` — slug=v3-regime-classifier, scenario=sharpe-comparison-regime-dispatcher-bs1-realdata.
+  - H1 hypothesis discharge section (`REJECTED` / `PARTIAL` / `CONFIRMED` branches).
+  - 4 unit tests: t_reg_classifier_thresholds, render_contains_required_sections,
+    render_is_deterministic, render_no_alpha_h1_discharge.
+- `parse_report_equity` fix: added `.trim_end_matches(" USDT")` before f64 parse (was returning $0.00
+  for reports using "USDT" suffix).
+- Report: `spec/v3-regime-classifier/reports/sharpe-comparison-regime-dispatcher-bs1-realdata-20260529.md`
+  T-REG verdict: **T-REG-NO-ALPHA** — net_delta=-0.294113 (dispatcher Sharpe -0.291015 - baseline 0.003098).
+  Body SHA `a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97` (2-run PASS).
+
+**T-D-E4 — Anchors** (developer agent)
+
+4 new anchors appended to `spec/anchors.toml` under `v3.0.0-regime` namespace (71 → 75):
+
+| Scenario                                         | SHA-256 body hash                                                  |
+|--------------------------------------------------|--------------------------------------------------------------------|
+| top10-2023-fy-regime-dispatcher-realdata         | f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775  |
+| top10-2024-fy-regime-dispatcher-realdata         | 691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e  |
+| regime-verdict-bs1-realdata                      | 2d248f4e9df358c24f49d1fce246c72aa7b00f2f28293edcae6fa0323a2eda1d  |
+| sharpe-comparison-regime-dispatcher-bs1-realdata | a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97  |
+
+`bash scripts/verify_anchors.sh` → **ANCHORS PASS (75 / 75)**.
+
+**H1 Hypothesis Discharge** (complete; `spec/v3-regime-classifier/dev-notes/h1-sharpe-delta-2026-05-29.md`)
+
+H1: **REJECTED** at v0.1.0. Net Sharpe delta = -0.294113. T-REG = T-REG-NO-ALPHA.
+
+Root cause: 2023 was a bull-recovery year (BTC +155%). Dispatcher suppressed 11.20% of momentum
+signals (Volatile/Calm), missing upside. The degenerate CashHoldStrategy (ADR-0049 § D3 option (i))
+is conservative by design — it holds existing positions but emits no new signals.
+
+Positive findings: max drawdown reduced 73.73% → 40.49%; V-REG-5 on 2024 held-out window
+(healthy classifier, non-trivial regimes, low flicker). Joint advisory per ADR-0049 § D4:
+V-REG-5 + T-REG-NO-ALPHA → C2 retire (HOLD-FOR-OPERATOR).
+
+**Verification gates** (all PASS 2026-05-29):
+- `bash scripts/verify_anchors.sh` — PASS 75/75.
+- `cargo test -p forecast --test vreg_mutual_exclusivity` — 8/8 PASS.
+- `cargo test -p forecast` (all intra-crate tests including sharpe_comparison arm) — PASS.
+- Two independent sharpe_comparison runs: SHA `a9e00139...` byte-identical.
+- Two independent regime_verdict runs: SHA `2d248f4e...` byte-identical.
+- Trace.toml `tests` + `anchors` columns updated; state updated to Wave E complete.

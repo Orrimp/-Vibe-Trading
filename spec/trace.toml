@@ -539,16 +539,19 @@ tests       = [
   # Wave D: audit JournalEntry::RegimeTag + dispatcher audit hook + Trail UI snapshots
   "crates/audit/tests/journal_regime_tag_round_trip.rs",
   "crates/ui/tests/panel_snapshots.rs",
-  # Waves E-F: pending (backtest anchors + tester harness)
+  # Wave E: V-REG mutual exclusivity + sharpe_comparison regime-dispatcher arm tests
+  "crates/forecast/tests/vreg_mutual_exclusivity.rs",
+  "crates/forecast/src/bin/regime_verdict.rs",
+  "crates/forecast/src/bin/sharpe_comparison.rs",
 ]
 anchors     = [
-  # 4 planned under namespace v3.0.0-regime (ADR-0049 § D5); Wave E adds at developer M-FINAL.
-  "top10-2023-fy-regime-dispatcher-realdata",            # train-window dispatcher equity curve
-  "top10-2024-fy-regime-dispatcher-realdata",            # val-window dispatcher equity curve
-  "regime-verdict-bs1-realdata",                         # V-REG report (held-out 2024)
-  "sharpe-comparison-regime-dispatcher-bs1-realdata",    # T-REG Sharpe-delta report
+  # 4 anchors under namespace v3.0.0-regime (ADR-0049 § D5); Wave E DONE 2026-05-29.
+  "top10-2023-fy-regime-dispatcher-realdata",            # SHA f37bbb8d (2-run PASS)
+  "top10-2024-fy-regime-dispatcher-realdata",            # SHA 691a7056 (2-run PASS)
+  "regime-verdict-bs1-realdata",                         # SHA 2d248f4e (2-run PASS); V-REG-5
+  "sharpe-comparison-regime-dispatcher-bs1-realdata",    # SHA a9e00139 (2-run PASS); T-REG-NO-ALPHA
 ]
-state       = "in-progress"  # Wave A DONE 2026-05-28: markov_switching.rs shipped (14 tests PASS; 70/70 anchors PASS). Wave B DONE 2026-05-28: RegimeTag extended (Volatile=3, Calm=4 appended); embedding.rs extended (slots 18/19 in reserved area — K4 byte-identity preserved; single-vector-extension, no escape hatch needed); regime_overlay_neutrality_4state.rs NEW (10 tests PASS; K4 falsifier gate green); T1802 family 8/8 PASS; embedding_determinism 5/5 PASS; store_smoke 2/2 PASS; store_top_k_determinism 3/3 PASS; post_mortem_generate_card 3/3 PASS; memory_highlights_with_lessons 5/5 PASS; 70/70 anchors PASS. Wave C DONE 2026-05-28: cash_hold.rs NEW (4 unit tests PASS; pure-fn SUPPRESSION-NOT-LIQUIDATION semantic); regime_dispatcher.rs NEW (12 unit tests PASS; D3 routing table 4-regime×2-strategy; D6 confidence gate 0.70; hysteresis; transition lifecycle); regime_dispatcher_end_to_end.rs NEW (2 e2e tests PASS; K6 noop-fix gate confirmed: baseline_non_hold=72, dispatcher_non_hold=0, suppressed=72; CLAUDE.md non-negotiable satisfied); 71/71 anchors PASS. HANDOFF → tester (Waves D-F pending: audit/Trail UI, backtest+anchors, full tester harness).
+state       = "in-progress"  # Wave A DONE 2026-05-28: markov_switching.rs shipped (14 tests PASS; 70/70 anchors PASS). Wave B DONE 2026-05-28: RegimeTag extended (Volatile=3, Calm=4 appended); embedding.rs extended (slots 18/19 in reserved area — K4 byte-identity preserved; single-vector-extension, no escape hatch needed); regime_overlay_neutrality_4state.rs NEW (10 tests PASS; K4 falsifier gate green); T1802 family 8/8 PASS; embedding_determinism 5/5 PASS; store_smoke 2/2 PASS; store_top_k_determinism 3/3 PASS; post_mortem_generate_card 3/3 PASS; memory_highlights_with_lessons 5/5 PASS; 70/70 anchors PASS. Wave C DONE 2026-05-28: cash_hold.rs NEW (4 unit tests PASS; pure-fn SUPPRESSION-NOT-LIQUIDATION semantic); regime_dispatcher.rs NEW (12 unit tests PASS; D3 routing table 4-regime×2-strategy; D6 confidence gate 0.70; hysteresis; transition lifecycle); regime_dispatcher_end_to_end.rs NEW (2 e2e tests PASS; K6 noop-fix gate confirmed: baseline_non_hold=72, dispatcher_non_hold=0, suppressed=72; CLAUDE.md non-negotiable satisfied); 71/71 anchors PASS. Wave D DONE 2026-05-28: AuditEvent::RegimeTag additive variant + post_regime_tag writer; PendingRegimeTag accumulator in RegimeDispatcher; journal_regime_tag_round_trip.rs NEW (5 tests PASS); regime_tag_cell + column_header in Trail UI; strings.rs volatile+calm+Regime+dash; panel_snapshots.rs 6 regime_tag snapshot tests PASS. Wave E DONE 2026-05-29: regime_verdict.rs NEW bin (V-REG priority tree; 9 unit tests PASS); vreg_mutual_exclusivity.rs NEW integration test (8 tests PASS); sharpe_comparison.rs RegimeDispatcher arm added (4 unit tests PASS; 2-run determinism PASS); 4 anchors under v3.0.0-regime locked (71→75; all 75/75 PASS via verify_anchors.sh); H1 REJECTED (T-REG-NO-ALPHA; net_delta=-0.294113); V-REG-5 on 2024 val window. HANDOFF → tester (Waves F pending: full cargo test --workspace + T-F1..T-F6 tester harness).
 
 #
 # ─── Accounting / risk features ─────────────────────────────────────────

@@ -15,6 +15,7 @@ pub mod garch_vol_target_overlay;
 pub mod momentum;
 pub mod pairs;
 pub mod patchtst_overlay_weights;
+pub mod regime_dispatcher;
 pub mod sim;
 pub mod sma_composed;
 pub mod sma_composed_run;

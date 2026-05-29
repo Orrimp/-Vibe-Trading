@@ -12,6 +12,7 @@
 
 pub mod momentum;
 pub mod pairs;
+pub mod regime_dispatcher;
 pub mod sma;
 pub mod tcn_overlay;
 pub mod yahoo;

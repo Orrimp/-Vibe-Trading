@@ -42,6 +42,10 @@ name = "vol_verdict"
 path = "src/bin/vol_verdict.rs"
 
 [[bin]]
+name = "regime_verdict"
+path = "src/bin/regime_verdict.rs"
+
+[[bin]]
 name = "train_tcn"
 path = "src/bin/train_tcn.rs"
 required-features = ["candle"]
@@ -142,6 +146,11 @@ path = "tests/parkinson_target_derivation.rs"
 [[test]]
 name = "vol_verdict_mutual_exclusivity"
 path = "tests/vol_verdict_mutual_exclusivity.rs"
+
+# T-D-E2 V-REG mutual exclusivity test (ADR-0049 § D4).
+[[test]]
+name = "vreg_mutual_exclusivity"
+path = "tests/vreg_mutual_exclusivity.rs"
 
 # T-D-N16 PatchTST overlay anchor-neutrality (K4); #[ignore]d — run manually at M-D end.
 [[test]]

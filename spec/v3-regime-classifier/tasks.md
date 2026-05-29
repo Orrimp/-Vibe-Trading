@@ -341,25 +341,50 @@ fallback adds ~half-week over overlay-style multiplier.
 
 #### Wave E — Backtest scenarios + anchors (D5 namespace)
 
-- [ ] **T-D-E1** — 2 scenario equity-curve runs under namespace
+- [x] **T-D-E1** — 2 scenario equity-curve runs under namespace
   `v3.0.0-regime`:
   - `top10-2023-fy-regime-dispatcher-realdata` (train window).
   - `top10-2024-fy-regime-dispatcher-realdata` (val window; Q5=(b)
     10 pairs; Q2=(c) split).
   — _acceptance: deterministic byte-output; per-bar regime tag
   + max_confidence logged._
-- [ ] **T-D-E2** — New V-REG bin `crates/forecast/src/bin/regime_verdict.rs`.
+  - **2023 run**: `spec/v3-regime-classifier/reports/backtest-20260529-055141-top10-2023-fy-regime-dispatcher-realdata.md`
+    body SHA `f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775` (2-run PASS)
+  - **2024 run**: `spec/v3-regime-classifier/reports/backtest-20260529-055810-top10-2024-fy-regime-dispatcher-realdata.md`
+    body SHA `691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e` (2-run PASS)
+  - **test cmd**: `python3 scripts/hash_report.py spec/v3-regime-classifier/reports/backtest-20260529-055141-top10-2023-fy-regime-dispatcher-realdata.md`
+  - **output**: `f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775`
+
+- [x] **T-D-E2** — New V-REG bin `crates/forecast/src/bin/regime_verdict.rs`.
   Emits `regime-verdict-bs1-realdata`. Implements V-REG priority tree
   per ADR-0049 § D4. — _acceptance: V-REG-1..V-REG-5 mutual
   exclusivity test (ADR-0038 § D1 precedent)._
-- [ ] **T-D-E3** — Extend `crates/forecast/src/bin/sharpe_comparison.rs`
+  - **file**: `crates/forecast/src/bin/regime_verdict.rs` (NEW)
+  - **file**: `crates/forecast/tests/vreg_mutual_exclusivity.rs` (NEW)
+  - **file**: `spec/v3-regime-classifier/reports/regime-verdict-bs1-realdata-20260529.md`
+    body SHA `2d248f4e9df358c24f49d1fce246c72aa7b00f2f28293edcae6fa0323a2eda1d` (2-run PASS)
+  - V-REG verdict: **V-REG-5** (Healthy) — suppress_rate=0.135287, switch_rate_UB=15.07/week
+  - **test cmd**: `cargo test -p forecast --test vreg_mutual_exclusivity`
+  - **output**: `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+
+- [x] **T-D-E3** — Extend `crates/forecast/src/bin/sharpe_comparison.rs`
   with regime-dispatcher dispatch arm. Emits
   `sharpe-comparison-regime-dispatcher-bs1-realdata`. — _acceptance:
   T-REG-ALPHA-UNLOCKED / T-REG-MARGINAL / T-REG-NO-ALPHA classifier
   test._
-- [ ] **T-D-E4** — Add 4 new anchors to `spec/anchors.toml` under
-  namespace `v3.0.0-regime`. 70 → 74. — _acceptance: `verify_anchors.sh`
-  PASS 74/74; zero existing-SHA delta._
+  - **file**: `crates/forecast/src/bin/sharpe_comparison.rs` (extended with `ScenarioFamily::RegimeDispatcher` + `render_regime_dispatcher` module)
+  - **file**: `spec/v3-regime-classifier/reports/sharpe-comparison-regime-dispatcher-bs1-realdata-20260529.md`
+    body SHA `a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97` (2-run determinism PASS)
+  - T-REG verdict: **T-REG-NO-ALPHA** (net_delta = -0.294113)
+  - **test cmd**: `cargo test -p forecast --bin sharpe_comparison -- render_regime_dispatcher`
+  - **output**: `test result: ok. 4 passed; 0 failed` (t_reg_classifier_thresholds, render_contains_required_sections, render_is_deterministic, render_no_alpha_h1_discharge)
+
+- [x] **T-D-E4** — Add 4 new anchors to `spec/anchors.toml` under
+  namespace `v3.0.0-regime`. 71 → 75. — _acceptance: `verify_anchors.sh`
+  PASS 75/75; zero existing-SHA delta._
+  - **file**: `spec/anchors.toml` (lines 531-568, 4 new `[[anchors]]` blocks appended)
+  - **test cmd**: `bash scripts/verify_anchors.sh`
+  - **output**: `ANCHORS PASS  (75 / 75)`
 
 #### Wave F — e2e divergence gate + tester harness (CLAUDE.md non-negotiable)
 
@@ -378,10 +403,9 @@ fallback adds ~half-week over overlay-style multiplier.
     + `dispatcher_retains_default_routing_when_confidence_below_threshold` (gate = Momentum retained).
 
 - [ ] **T-D-F2** — Pre-flight smoke: full `cargo test --workspace` PASS;
-  `bash scripts/verify_anchors.sh` PASS (74/74).
-  - **Partial**: `verify_anchors.sh` PASS 71/71 (Wave C added no new anchors;
-    Wave E still pending for the 4 v3.0.0-regime scenario anchors 71→74+).
-  - Full `cargo test --workspace` pending background run (b5bv0s60x).
+  `bash scripts/verify_anchors.sh` PASS (75/75).
+  - **Partial**: `verify_anchors.sh` PASS 75/75 (Wave E complete — 4 v3.0.0-regime anchors added 71→75).
+  - Full `cargo test --workspace` pending tester verification (T-F1..T-F6).
 
 ### Tester rows (T-F) — ACTIVE on developer M-DEV completion
 
