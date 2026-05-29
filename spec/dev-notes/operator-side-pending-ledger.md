@@ -29,8 +29,7 @@ to avoid re-surfacing stale items.
 
 | Date surfaced | Recipe | Cost | Unblocks | Status | Notes |
 |---|---|---|---|---|---|
-| 2026-05-28 | **Bug #64 D.1.1 visual-verify** — `rm -rf data/yahoo/SOL-USD ; cargo run --release -p ui --bin cockpit_live` then Lab → Yahoo SOL → Run; watch label tick 0 / 1 bars · X.Xs every ~250 ms during 30-60 s cold-cache window | ~5 min | Closes Bug #64 D.1.1 attempt-2; full bug-log close pending operator confirm | **pending** | Recipe in bug-log #64 Attempt 2 entry; cockpit binary built at commit 8d38e38 |
-| 2026-05-29 | **viewport-matrix T-VPM-D6 — 56 PNG visual eyeball** — `open crates/ui/tests/visual-baselines/` in Finder column-view + preview pane; focus `__floor` + `__operator` slots across 15 visual_snapshot fixtures + strategies_ready + chart_screen; also re-review the 3 regenerated Charts triple + 2 regenerated legacy `render_snapshots/*_dark_typical.png` | ~10-15 min | Closes T-VPM-D6; presenter v0.1.0 deck assembly unblocks | **pending** | 56 PNGs committed at ec79ac0; full punch list in viewport-matrix-v0.1.0 dev handoff envelope `[outputs]` |
+| 2026-05-28 | **Bug #64 D.1.1 visual-verify** — `rm -rf data/yahoo/SOL-USD ; cargo run --release -p ui --bin cockpit_live` then Lab → Yahoo SOL → Run; watch label tick 0 / 1 bars · X.Xs every ~250 ms during 30-60 s cold-cache window | ~5 min | Closes Bug #64 D.1.1 attempt-2; full bug-log close pending operator confirm | **FAILED 2026-05-29** | Operator report: "endless spinning, no progress visible, cannot stop the running task." Progress label does NOT tick during cold-cache fetch AND Stop button non-functional. Bug #64 D.1.1 attempt-2 NOT fixed. Two regressions surfaced: (1) progress label dormant (original D.1.1 issue); (2) Stop button broken (NEW). Needs follow-up architect investigation. |
 ## Done recipes (audit trail)
 
 | Date surfaced | Recipe | Cost | Completed | Outcome |
@@ -39,6 +38,8 @@ to avoid re-surfacing stale items.
 | 2026-05-27 | Yahoo cache populate for ETH-USD 2024 1d (v0.1.2 prerequisite) | ~3 min | 2026-05-27 | Cache locked; revision SHA e018f876... ; v0.1.2 dev unblocked |
 | 2026-05-29 | **Yahoo bulk fetch v0.1.4** — 9 mid-cap tickers (BNB, SOL, XRP, ADA, DOGE, AVAX, DOT, LINK, MATIC) 2024 1d | ~3-8 min | 2026-05-29 | 11 ticker dirs total; 175 parquet files; REVISION.toml hash-locked. lab-yahoo v0.1.4 M-DEV unblocked (deferred to next session per operator pause directive). |
 | 2026-05-29 | **visual-fail-html-reporter v0.1.0 presenter approval** — operator inspected deck + sample HTML artifact via AskUserQuestion | ~5 min | 2026-05-29 | APPROVED with all 3 open decisions accepted as carry-forward. v0.1.0 SHIPPED. |
+| 2026-05-29 | **viewport-matrix T-VPM-D6 56-PNG visual eyeball** — operator opened `crates/ui/tests/visual-baselines/` in Finder | ~10-15 min | 2026-05-29 | PASS. "Images look fine." No layout breakage / clipping / blank canvas / font issues across all 56 PNGs (floor + typical + operator slots × 22 fixtures + 3 Charts + 2 legacy). Closes T-VPM-D6. |
+| 2026-05-29 | **viewport-matrix v0.1.0 presenter approval** — operator approval via chat ("I approve the viewport matrix") | ~2 min | 2026-05-29 | APPROVED. 3 open follow-ups accepted as carry-forward (K3 cross-platform → ui-test-harness-ci Queue; render_snapshots legacy 1280×720 → v0.2.0 cleanup; T-VPM-D6 → CLOSED). v0.1.0 SHIPPED. |
 
 ## Cancelled recipes (audit trail)
 
