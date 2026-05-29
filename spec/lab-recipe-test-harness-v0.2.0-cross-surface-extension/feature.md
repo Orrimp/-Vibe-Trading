@@ -388,6 +388,37 @@ that makes 4 of the 10 falsification probes mechanically possible).
 
 _(tester M-FINAL — per-Recipe T-T4 table; anchors 71/71 stable.)_
 
+### Wave B — ActivityAuditAggregator S1 select-arm survival (DONE 2026-05-29)
+
+**Developer**: Wave B complete. Files added/modified:
+
+- `crates/agent/src/activity_audit_aggregator.rs` (~20 LoC src delta)
+  - `Aggregator` struct promoted from `struct` to `pub struct` (line 91).
+  - `Aggregator::new` promoted from `fn` to `pub fn` (line 112).
+  - Body of `Aggregator::run` extracted into `pub async fn run_aggregator_loop(mut agg: Aggregator)` (line 167). Production `Aggregator::run` delegates to it; `spawn_aggregator` path unchanged.
+  - T-T4 falsification probe documentation added to `run_aggregator_loop` docstring (P-B1 + P-B2).
+
+- `crates/agent/tests/activity_audit_aggregator_select_arm_survival.rs` (~190 LoC, 3 tests)
+  - `MockAuditTickBus`: per-Recipe-specific mock (D-V0.2.0-1) wrapping `broadcast::channel::<AuditTick<AuditEvent>>(16)`.
+  - Test 1: `recv_arm_increments_after_interval_fires` — `start_paused = true` + `advance(100ms)` fires interval once (counter=0, idle) → `send_tick()` → `advance(100ms)` fires interval again (counter=1 → Start emitted) → `bus.close()` → aggregator exits within 500ms.
+  - Test 2: `recv_arm_survives_n_interval_boundaries` — `advance(500ms)` (5 intervals, all idle) → `send_tick()` × 3 → `advance(100ms)` (counter=3 → Start emitted) → `bus.close()` → exits within 500ms.
+  - Test 3: `recv_arm_increments_counter` — separate test asserting ≥ 1 Start event (proves fetch_add path); covers D-V0.2.0-3 row-4 probe.
+  - T-T4 falsification probes verified:
+    - **P-B1** (recv arm = `futures::future::pending::<()>()` substitution): all 3 tests FAIL — "aggregator did not exit within 500 ms after bus.close()".
+    - **P-B2** (interval arm body = no-op `{}`): tests 1+2 PASS (negative control — survival tests decouple from interval arm body); test 3 FAILS (expected — documents that P-B2 is negative control for survival tests only, not counter-increment test).
+
+**Deviations from spec**:
+- 3 tests (not ≥ 2 as spec required) — third test covers the D-V0.2.0-3 row-4 fetch_add probe separately, giving clean P-B2 negative control for tests 1+2.
+- P-B1 probe is "recv arm = pending" (per D-V0.2.0-3 row 5) rather than "biased; interval first" (per orchestrator brief P-B1 description). The `biased;` ordering does not cause observable test failure under `tokio::time::pause()` because `advance()` drives all pending futures cooperatively regardless of select priority. The pending-substitution probe is the correct falsification for this test design.
+
+**All mandatory gates PASS**:
+- `cargo test -p agent --test activity_audit_aggregator_select_arm_survival` → 3/3 PASS
+- `cargo test -p agent` → all agent tests PASS (zero regressions)
+- `bash scripts/verify_anchors.sh` → 75/75 PASS
+- `cargo fmt -p agent -- --check` → zero diff
+- `cargo clippy -p agent --tests -- -D warnings` → zero new errors
+- T-D-B1 seam: `cargo test -p agent --test activity_audit_aggregator` → 3/3 PASS (existing integration tests unchanged)
+
 ## Changelog
 
 - 2026-05-29 (analyst): M0 brief authored; R1 inventory enumerates

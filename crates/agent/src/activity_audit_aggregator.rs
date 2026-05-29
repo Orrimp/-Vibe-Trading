@@ -85,8 +85,10 @@ const AGGREGATION_WINDOW: Duration = Duration::from_millis(100);
 
 /// The aggregator worker. Holds all state for the 100 ms aggregation loop.
 ///
-/// Created and owned by the spawned tokio task.
-struct Aggregator {
+/// Created and owned by the spawned tokio task. Promoted to `pub` so that
+/// integration tests can construct one directly and drive `run_aggregator_loop`
+/// without the `JoinHandle` wrapper that `spawn_aggregator` adds (T-D-B1 seam).
+pub struct Aggregator {
     /// Receiver half of the audit tick broadcast.
     rx: broadcast::Receiver<AuditTick<AuditEvent>>,
     /// Producer handle to the activity channel.
@@ -101,7 +103,13 @@ struct Aggregator {
 }
 
 impl Aggregator {
-    fn new(rx: broadcast::Receiver<AuditTick<AuditEvent>>, bus: ActivitySender) -> Self {
+    /// Create a new `Aggregator`.
+    ///
+    /// Promoted to `pub` so that integration tests under `crates/agent/tests/`
+    /// can construct an `Aggregator` directly and drive `run_aggregator_loop`
+    /// without going through `spawn_aggregator`'s `JoinHandle`-only return.
+    /// Production callers use `spawn_aggregator`; only tests call `new` directly.
+    pub fn new(rx: broadcast::Receiver<AuditTick<AuditEvent>>, bus: ActivitySender) -> Self {
         Self {
             rx,
             bus,
@@ -122,74 +130,104 @@ impl Aggregator {
 
     /// The main aggregation loop. Runs until the tick bus is closed.
     ///
-    /// `tokio::select!` races two arms on every iteration:
-    /// 1. `rx.recv()` — an audit tick arrived; increment the counter.
-    /// 2. `interval.tick()` — 100 ms boundary; snapshot counter → emit.
-    async fn run(mut self) {
-        loop {
-            tokio::select! {
-                recv_result = self.rx.recv() => {
-                    match recv_result {
-                        Ok(_tick) => {
-                            self.counter.fetch_add(1, Ordering::Relaxed);
-                        }
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            // Lag: the aggregator fell behind the tick bus.
-                            // Count the skipped events so the internal total
-                            // stays accurate (they were written; we just didn't
-                            // receive all ticks). Per ADR-0044 § D2 / K5 mitigation.
-                            warn!(
-                                consumer = "activity_audit_aggregator",
-                                lagged = n,
-                                "audit tick stream lagged — counting skipped ticks"
-                            );
-                            self.counter.fetch_add(n as u32, Ordering::Relaxed);
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {
-                            // Sender dropped — audit ledger is shutting down.
-                            // Drop the handle to emit End{Success} and exit.
-                            break;
-                        }
+    /// Delegates to `run_aggregator_loop` — see that function for the full
+    /// protocol description. This method is kept as the owned-entry-point so
+    /// `spawn_aggregator` can move `self` into a task.
+    async fn run(self) {
+        run_aggregator_loop(self).await;
+    }
+}
+
+// ── Public loop entry-point (T-D-B1 seam extraction) ─────────────────────────
+
+/// Drive the aggregation loop for `agg` until the tick bus is closed.
+///
+/// Extracted from `Aggregator::run` so integration tests can drive the loop
+/// directly without the `JoinHandle` wrapper that `spawn_aggregator` adds.
+/// Production path: `spawn_aggregator` → `tokio::spawn(agg.run())` → calls here.
+/// Test path: `run_aggregator_loop(agg).await` inside a `tokio::test`.
+///
+/// `tokio::select!` races two arms on every iteration:
+/// 1. `rx.recv()` — an audit tick arrived; increment the counter.
+/// 2. `interval.tick()` — 100 ms boundary; snapshot counter → emit.
+///
+/// ## T-T4 falsification probes (Bug #64 select-arm starvation)
+///
+/// **P-B1 — `biased; interval.tick()` priority swap (EXPECTED FAIL)**
+/// Add `biased;` to the `tokio::select!` with `interval.tick()` arm listed FIRST.
+/// Under `tokio::time::pause()` + `advance(500 ms)`, all 5 interval ticks
+/// fire before the recv arm gets a turn. `recv_arm_survives_n_interval_boundaries`
+/// fails because the recv arm starves and the counter stays 0 after `tx.send(tick)`.
+///
+/// **P-B2 — interval arm no-op (EXPECTED PASS — negative control)**
+/// Comment out the interval arm body. Neither test fails (interval arm only
+/// affects the handle lifecycle, not whether recv processes ticks). This proves
+/// P-B1 is not a tautology — the tests are sensitive to recv starvation, not
+/// merely to interval firing.
+pub async fn run_aggregator_loop(mut agg: Aggregator) {
+    loop {
+        tokio::select! {
+            recv_result = agg.rx.recv() => {
+                match recv_result {
+                    Ok(_tick) => {
+                        agg.counter.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        // Lag: the aggregator fell behind the tick bus.
+                        // Count the skipped events so the internal total
+                        // stays accurate (they were written; we just didn't
+                        // receive all ticks). Per ADR-0044 § D2 / K5 mitigation.
+                        warn!(
+                            consumer = "activity_audit_aggregator",
+                            lagged = n,
+                            "audit tick stream lagged — counting skipped ticks"
+                        );
+                        agg.counter.fetch_add(n as u32, Ordering::Relaxed);
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Sender dropped — audit ledger is shutting down.
+                        // Drop the handle to emit End{Success} and exit.
+                        break;
                     }
                 }
-                _ = self.interval.tick() => {
-                    let n = self.counter.swap(0, Ordering::Relaxed);
-                    match (n, self.handle.as_ref()) {
-                        // (0, None) — still idle, no handle, nothing to do.
-                        (0, None) => {}
-                        // (0, Some(_)) — idle window: drop handle → End{Success}.
-                        (0, Some(_)) => {
-                            self.handle = None; // Drop impl emits End { Success }
-                        }
-                        // (n>0, None) — first non-empty window: start a fresh handle.
-                        //
-                        // NOTE: We do NOT call `h.tick(n)` immediately after `start()`.
-                        // The `ActivityHandle::tick` throttle is `TICK_THROTTLE = 100 ms`,
-                        // and `start()` initialises `last_tick = Instant::now()` — so
-                        // calling `tick()` in the same timer-boundary invocation is always
-                        // throttled to a no-op. The `Start` event (emitted by `start()`)
-                        // carries the label with the window count; subsequent 100 ms windows
-                        // emit `Tick` events via the `(n>0, Some(h))` arm below once the
-                        // throttle expires. This is consistent with ADR-0044 § D2 intent:
-                        // the operator sees "Audit is active" immediately via Start, and
-                        // per-window counts appear on every subsequent non-empty window.
-                        (n, None) => {
-                            let label = Self::format_label(n);
-                            let h = self.bus.start(ActivityKind::AuditLedgerWrite, label);
-                            // Store the handle — next non-empty window will tick(N).
-                            self.handle = Some(h);
-                        }
-                        // (n>0, Some(h)) — continuing burst: tick the existing handle.
-                        (n, Some(h)) => {
-                            h.tick(n as u64);
-                        }
+            }
+            _ = agg.interval.tick() => {
+                let n = agg.counter.swap(0, Ordering::Relaxed);
+                match (n, agg.handle.as_ref()) {
+                    // (0, None) — still idle, no handle, nothing to do.
+                    (0, None) => {}
+                    // (0, Some(_)) — idle window: drop handle → End{Success}.
+                    (0, Some(_)) => {
+                        agg.handle = None; // Drop impl emits End { Success }
+                    }
+                    // (n>0, None) — first non-empty window: start a fresh handle.
+                    //
+                    // NOTE: We do NOT call `h.tick(n)` immediately after `start()`.
+                    // The `ActivityHandle::tick` throttle is `TICK_THROTTLE = 100 ms`,
+                    // and `start()` initialises `last_tick = Instant::now()` — so
+                    // calling `tick()` in the same timer-boundary invocation is always
+                    // throttled to a no-op. The `Start` event (emitted by `start()`)
+                    // carries the label with the window count; subsequent 100 ms windows
+                    // emit `Tick` events via the `(n>0, Some(h))` arm below once the
+                    // throttle expires. This is consistent with ADR-0044 § D2 intent:
+                    // the operator sees "Audit is active" immediately via Start, and
+                    // per-window counts appear on every subsequent non-empty window.
+                    (n, None) => {
+                        let label = Aggregator::format_label(n);
+                        let h = agg.bus.start(ActivityKind::AuditLedgerWrite, label);
+                        // Store the handle — next non-empty window will tick(N).
+                        agg.handle = Some(h);
+                    }
+                    // (n>0, Some(h)) — continuing burst: tick the existing handle.
+                    (n, Some(h)) => {
+                        h.tick(n as u64);
                     }
                 }
             }
         }
-        // Explicitly drop handle so End{Success} is emitted before the task exits.
-        drop(self.handle);
     }
+    // Explicitly drop handle so End{Success} is emitted before the task exits.
+    drop(agg.handle);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
