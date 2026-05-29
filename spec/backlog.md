@@ -448,6 +448,19 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   in deck. Trace `REQ-LAB-YAHOO-REALDATA-V0-1-4-001` proposed.
   Brief: [`spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/feature.md`](lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/feature.md).
   HANDOFF → architect (M-T1 fast-skip).
+  **2026-05-29 architect M-T1 fast-skip CLOSE:** § Design ratified
+  (D-V0.1.4-1 through D-V0.1.4-9). M-OD picks DURABLE at both rows
+  (Q1=(a) 9 Binance H1 regs, Q2=(a) single namespace
+  `lab-yahoo-realdata-v0.1.4`). ADR-0040 § Changelog amended (no new
+  ADR). K1 pre-flight CONFIRMED: `bar_count: 262_800` mirrors v0.1.3
+  BTC+ETH-H1 verbatim (real-parquet auto-detect overrides per v0.1.3
+  T-D4). K3 AVAX/MATIC: 95% threshold uniform; operator-side R1 fetch
+  surfaces K1 BEFORE M-DEV; default drop-on-fire. Anchor cascade
+  ratified 71 → 80. Wave decomposition: Wave A bulk re-emit (~1.5d)
+  ‖ Wave B 9 H1 regs (~3-4d) → Wave C per-ticker dev-notes (~0.5d)
+  → Wave D gates. Operator R1 fetch is M-DEV start gate. R5.7 FROZEN
+  boundary contract: zero diff in 4 files. Trace `arch` populated;
+  state `proposed → arch-done`. HANDOFF → developer.
 
 
 <!-- updated 2026-05-28 (analyst, v3-regime-classifier M-A5 light-touch
@@ -533,8 +546,16 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   (linear-bps stays as comparison oracle). Anchor cascade 71 → 90 (additive).
   3 Q all-DURABLE Autoapprove-eligible per AGENT.md 2026-05-29 contract.
   Brief: [`spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/feature.md`](v5-latency-slippage-sim-v0.5.0-square-root-market-impact/feature.md).
-  Trace: `REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001` (state `proposed`). HANDOFF →
-  architect M-T1. Cost ~1 week wall-clock (DURABLE route).
+  Trace: `REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001` (state **`arch-done`** per architect
+  M-T1 2026-05-29). HANDOFF → developer (Waves A–F). M-OD 2026-05-29 resolved
+  Q1=(a) α=1.0 + Q2=(a) 90-day Binance parquet + **Q3=(b) MIXED universe-avg V
+  on synthetic — operator override** (9 synthetic SHAs in `v5-sqrt-impact-2026-05`
+  will diverge from `v5-realdata-medium-2026-05` linear-bps twins by-design;
+  v0.6.0 sub-namespace cleanup commitment recorded — either split into
+  `realdata`/`synthetic` sub-namespaces or consolidate around 10 real-sqrt + 9
+  linear-synthetic). M-T1 ADR decision: **amend ADR-0043 § Changelog** (NOT new
+  ADR-0050) — mirrors 2026-05-27 Murmur3 D2 amendment precedent. Cost ~1 week
+  wall-clock (DURABLE route).
 
 <!-- updated 2026-05-27 (analyst, lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
      M0 close) — **PROMOTED Idea → Active 2026-05-27** by operator multi-select

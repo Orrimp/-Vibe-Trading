@@ -558,3 +558,51 @@ Binance / Coinbase / Kraken rows are untouched.
   namespace `lab-yahoo-realdata-v0.1.3`. Net anchor count 70 → 71.
   Closes T-T1.4 of
   `spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md`.
+- 2026-05-29 (architect, M-T1 lab-yahoo-realdata-v0.1.4): bulk-ticker
+  re-emit of 9 remaining Yahoo crypto-mirror tickers
+  (BNB/SOL/XRP/ADA/DOGE/AVAX/DOT/LINK/MATIC) + ETH-daily row 70 migration
+  to v0.1.3 helper shape + 9 Binance H1 scenario registrations mirroring
+  v0.1.3 D-V0.1.3-5 ETH template. **No new architectural decisions** —
+  pure operational scaling of v0.1.2 D-V0.1.2-6 per-ticker pattern +
+  v0.1.3 D-V0.1.3-1 helper boundary + v0.1.3 D-V0.1.3-5 H1 registration
+  template across 9 ticker rows. Three operational extensions:
+  (1) **Bulk re-emit via v0.1.3 frozen helper.** `crates/backtest/src/bin/run_yahoo_sma.rs`
+  re-invoked once per ticker with `--ticker {T}` for {BTC, ETH, BNB, SOL,
+  XRP, ADA, DOGE, AVAX, DOT, LINK, MATIC}. The helper at
+  `crates/backtest/src/report/yahoo.rs` is the FROZEN durable boundary
+  per v0.1.4 R5.7 — zero diff allowed in `report/yahoo.rs`, `report/sma.rs`,
+  `report/mod.rs`, `run_yahoo_sma.rs`. Anchor row 69 BTC stays at v0.1.3
+  helper shape `076929bb…` (determinism witness). Row 70 ETH-daily SHA
+  updates in-place under preserved namespace `lab-yahoo-realdata-v0.1.2`
+  per v0.1.3 D-V0.1.3-4 in-place precedent + ADR-0038 § D6.b. Rows 72-80
+  append under single new namespace `lab-yahoo-realdata-v0.1.4` per
+  operator Q2=(a) DURABLE. Net anchor count 71 → 80 (1 in-place row 70
+  + 9 appends rows 72-80).
+  (2) **9 Binance H1 scenario registrations.** `{ticker-lc}-2024-h1-sma-cross`
+  arms for BNB/SOL/XRP/ADA/DOGE/AVAX/DOT/LINK/MATIC appended to
+  `crates/backtest/src/main.rs` at three match-arm sites each per
+  v0.1.3 D-V0.1.3-5 template (scenario config L252+, synthetic fallback
+  start price L1118+, `scenario_to_feature` SMA group L1939+). `bar_count:
+  262_800` copied verbatim from BTC+ETH-H1 (1m-equivalent; real-parquet
+  auto-detect overrides via `bars.len()` at L1149 per v0.1.3 T-D4
+  resolution). Per operator Q1=(a) DURABLE: zero K1 Yahoo-to-Yahoo
+  fallbacks ship; uniform H1 contract across all 10 crypto-mirror
+  tickers. 9 new Binance H1 anchors emitted by Wave B discharge H1 < 30%
+  hypothesis per ticker but are NOT anchored at v0.1.4 (operator
+  re-litigates at v0.1.5 follow-on; if anchored, single namespace
+  `lab-yahoo-realdata-v0.1.5` would append rows 81-89).
+  (3) **K3 partial-year-listing edge handling (AVAX/MATIC).** 95% threshold
+  per § R3 applies UNIFORMLY across all 9 new tickers (no per-ticker
+  threshold widening). Operator-side R1 fetch (verbatim
+  `fetch_yahoo_klines --tickers BNB-USD,…,MATIC-USD --interval 1d
+  --start 2024-01-01 --end 2024-12-31`) is M-DEV start gate; surfaces
+  `YahooError::MissingData` BEFORE developer consumes data. On K1 fire,
+  architect default is option (i) drop ticker (ship 8 + ETH-daily;
+  cascade 71 → 79; deferred ticker gets focused v0.1.5 partial-year-
+  listing-edge brief). Option (ii) widen threshold for the affected
+  ticker requires § R3 architect re-engagement — NOT fast-skip. K2
+  `REVISION.toml` grows ~60 → ~177 file rows (acceptable; § D3 schema
+  unchanged). K3 throttling at 9 successive fetches → H2 ≥ 95% gate +
+  § D5 `YahooError::RateLimited` backoff.
+  Closes T-T1.5 of
+  `spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/tasks.md`.
