@@ -1,8 +1,8 @@
 ---
 slug: ui-contrast-asserter
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 updated: 2026-05-29
 ---
@@ -770,7 +770,63 @@ regression guarantee (75/75 anchors byte-identical pre/post)._
 
 ## Implementation
 
-_Developer fills at M-DEV._
+**Developer M-DEV 2026-05-29.** Single-wave delivery per architect M-T1 wave decomposition.
+
+### Files changed
+
+- **NEW** `crates/ui/tests/contrast.rs` — 83-entry `PAIRS` const table + 9-entry `OPT_OUTS` const table + hand-rolled WCAG 2.1 formula (3 pure fns, ~20 LoC) + 7 `#[test]` fns + 2 `#[ignore]` falsification probe stubs.
+
+### Zero production code touched
+
+`git diff -- crates/ui/src/` is empty. R-NR.1 contract holds.
+
+### Test results (WARN mode default)
+
+```
+running 9 tests
+test probe_low_contrast_rejects_in_gate_mode ... ignored
+test probe_min_pairs_floor_fires_when_pairs_truncated ... ignored
+test pairs_table_meets_minimum_count ... ok
+test ref_vector_777_on_fff_is_4_48 ... ok
+test ref_vector_888_on_000_is_5_92 ... ok
+test ref_vector_white_on_black_is_21 ... ok
+test opt_outs_all_have_reasons ... ok
+test all_theme_pairs_meet_wcag ... ok
+test ref_vector_black_on_white_is_21 ... ok
+
+test result: ok. 7 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+### Design-intent WARN lines (6 expected, all observed)
+
+```
+WARN: contrast pair fg_3_on_panel_raised_dark = 3.75 < threshold 4.5
+WARN: contrast pair fg_on_accent_on_accent_light = 3.52 < threshold 4.5
+WARN: contrast pair up_500_on_canvas_light = 4.46 < threshold 4.5
+WARN: contrast pair down_500_on_canvas_light = 4.33 < threshold 4.5
+WARN: contrast pair warn_500_on_canvas_light = 2.96 < threshold 4.5
+WARN: contrast pair warn_500_on_panel_light = 3.11 < threshold 4.5
+```
+
+### Gate mode (UI_CONTRAST_MODE=gate)
+
+Panics with the same 6 violations as expected at v0.1.0. Operator promotes
+to gate at v0.2.0 after upstream hex tune per § Operator decisions deferred
+to v0.2.0 promotion.
+
+### Falsification probes (both verified before commit)
+
+- **P-CONT-1.A**: Low-contrast probe pair → gate panic "probe_low_contrast_white_on_pale_grey = 1.25 < threshold 4.5". PASS → reverted.
+- **P-CONT-1.B**: MIN_PAIRS=200 temporarily → floor panic "theme token enumeration detected only 83 pairs; refactor likely broke enumeration (MIN_PAIRS = 200)". PASS → reverted.
+
+### Anchors
+
+75/75 PASS byte-identical (`bash scripts/verify_anchors.sh`). Zero anchor delta — pure test infra addition as expected.
+
+### Sibling test non-regression
+
+- `visual_fail_html_self_test`: 2/2 PASS
+- `visual_snapshots`: 51/51 PASS
 
 ## Verification
 
