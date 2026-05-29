@@ -2,8 +2,8 @@
 slug: lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
 version: 0.1.0
 status: shipped
-owner: presenter
-updated: 2026-05-28
+owner: shipped
+updated: 2026-05-29
 predecessor: lab-yahoo-realdata v0.1.1
 priority: P2
 ---

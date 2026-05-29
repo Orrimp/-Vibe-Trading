@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-27 (ADRs 0045-0047 added)
+updated: 2026-05-29 (ADRs 0048-0049 added)
 ---
 
 
@@ -95,6 +95,8 @@ the canonical table; the parent file links here.)
 | 0045  | v5 canonical-config + noop-baseline namespace strategy (v5 v0.2.0 anchor migration) — D1 medium config `LatencySlippageSimConfig { latency_ms_min: 30, latency_ms_max: 80, slippage_bps: 8 }`; D2 two-namespace co-existence (`noop-baseline` historical oracle + `v5-realdata-medium-2026-05` canonical pin); D3 K1-surprise per-scenario flag for operator review; D4 mandatory cross-feature e2e re-check; D5 Sharpe-delta table as permanent regression gate | accepted | 2026-05-27 |
 | 0046  | Cockpit toast queue v0.1.0 — `VecDeque<ToastEntry>` cap 5 drop-oldest FIFO; stacked Lumen-card overlay in bottom-right via `iced::widget::Stack` above the 24 px activity tape; dual dismissal (shared 500 ms `ToastDismissRecipe` auto-timeout 5 s + per-card `×` button); clock injection via `Message::ToastTick(Instant)` (no AppState clock field); severity tokens map to existing Lumen palette (FG_2 / UP_500 / INFO_400 / DOWN_500) — zero new tokens; back-compat `toast_message()` method shim retained one cycle; 69/69 anchors byte-identical (UI-only) | accepted | 2026-05-27 |
 | 0047  | v5 v0.3.0 full-path wiring + namespace-aware Rust resolver — D1 K2-REACHABLE-CHEAP verdict (~5 LoC `--force-synthetic-bars` CLI flag); D2 per-path plumbing contract for 6 unwired strategies (SmaComposed, TcnOverlay, PatchTstOverlay, Pairs, VolTargetOverlay, GarchVolOverlay; ThresholdSweep deferred — no equity surface); D3 namespace-aware Rust resolver in `crates/reports/tests/strategy_anchors_unchanged.rs` (mirrors `verify_anchors.sh` v0.2.0 pattern); D4 conditional Q1 re-emission (operator chose route (a) revert-to-synthetic); D5 anchor namespace extend `v5-realdata-medium-2026-05` (Q3=(a) same pin); D6 e2e inventory unchanged (3 files) | accepted | 2026-05-27 |
+| 0048  | lab-recipe-test-harness — Pattern (d) Combination: Surface 1 boundary-test of `spawn_lab_run` with `MockLabYahooBarSource` (catches sentinel emission + tokio::select! channel survival) + Surface 2 Stop-button gating state-machine test against `model.lab_run_inflight` (catches predicate-gated UI elements); D2 file:line locations at crates/ui/tests/{spawn_lab_run_yahoo_harness,lab_stop_button_gating}.rs; D3 scope 3 regression categories A/B/C; D4 visual regressions NOT caught; D5 per-feature M-FINAL gate for any UI Recipe touch; D6 anchor-additivity (channel-only events; 70/70 byte-identical) | accepted | 2026-05-28 |
+| 0049  | v3-regime-classifier Markov-switching verdict shape — D1 model class Markov-switching regression with operator-set semantic priors {Bull μ>0 σ²low, Bear μ<0 σ²low, Volatile μ=0 σ²high, Calm μ=0 σ²low} + Baum-Welch refinement; D2 4-state K4 contract option (γ) preserve Chop + APPEND Volatile=3, Calm=4 with EmbeddingV1/V2 escape hatch; D3 dispatcher integration with degenerate CashHoldStrategy for Volatile/Calm (SUPPRESSION not LIQUIDATION); D4 verdict shape V-PASS / V-MARGINAL / V-FAIL sibling to ADR-0033; D5 anchor namespace v3.0.0-regime; D6 K-reg-2 mitigation via max_regime_confidence ≥ 0.70 threshold | accepted | 2026-05-28 |
 
 All architectural decisions are now extracted. Remaining Phase 1A
 work: final monolith compression (Changelog) and section-file body

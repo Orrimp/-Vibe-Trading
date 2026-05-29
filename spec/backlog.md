@@ -436,6 +436,49 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 <!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
 <!-- - **v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit v0.1.0** — see Recent section below. -->
 
+<!-- updated 2026-05-29 (analyst, v5-latency-slippage-sim-v0.5.0-square-root-market-impact
+     M0 close). **PROMOTED Idea → Active 2026-05-29** per operator-locked Phase 1 #3.
+     Closes the v0.1.0 ADR-0043 § D3 deferred promise ("linear bps slippage at v0.1.0;
+     defer square-root market impact to v0.2.0+"). Upgrades the linear-bps slippage
+     model to the academic-canonical square-root market-impact form
+     `cost = α · √(Q/V)` (Almgren & Chriss 2001; Kissell 2014 ch. 3). Per-asset V
+     proxy sourced from existing Binance parquet (90-day trailing daily volume,
+     revision-pinned via `data/binance/REVISION.toml` SHA `3a8b96…bfc7`). Re-emits
+     all 19 currently-friction-real anchored scenarios under parallel namespace
+     `v5-sqrt-impact-2026-05` (mirrors ADR-0045 D2 noop-vs-canonical twin pattern);
+     preserves the linear-bps namespace `v5-realdata-medium-2026-05` as comparison
+     oracle. Anchor cascade: 71 → 90 (additive — both models co-exist; the 71
+     existing rows stay byte-identical per ADR-0038 § D6.a). 5 R / R-NR / 4 K /
+     3 H / 3 Q + pre-drawn 2-cell verdict tree + cost framing both routes.
+     **Apply new AGENT.md 2026-05-29 durable-over-quick contract**: Q1+Q2+Q3 all
+     recommend the DURABLE option (Q1=(a) α=1.0 Kissell midpoint; Q2=(a) Binance
+     parquet 90-day trailing; Q3=(a) Linear fallback for synthetic). Cheap
+     fallbacks frame as STRICTLY WORSE wall-clock (~3 weeks + 3 follow-on
+     briefs vs ~1 week one-shot). K1 falsifier: synthetic scenarios fall back to
+     Linear { bps: 8 } (9 of 19 SHAs trivially byte-identical across namespaces).
+     K2 falsifier: f64 conversion boundary for `√` over Decimal (architect M-T1
+     locks the contract). K3 falsifier: thin-liquidity-hours saturation; cap
+     `MAX_SLIPPAGE_BPS = 1_000` (10%). K4 falsifier: compound determinism
+     candle × realdata × friction × sqrt — 2-run byte-identity required.
+     H1: sqrt drag ≥ 2× linear drag on TCN-realdata. H2: sqrt drag ≈ linear
+     on low-turnover (Pairs zscore-mr, VolTarget-GARCH). H3: 2-run determinism
+     holds. **No UI surface change** (R-NR-UI). Trace row
+     `REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001` opened at `proposed` state.
+     HANDOFF → operator-decide (Q1-Q3 all-DURABLE Autoapprove-eligible) →
+     architect M-T1 for numerical-precision contract + per-asset volume
+     retrieval shape + ADR amendment vs new ADR. -->
+- **v5-latency-slippage-sim-v0.5.0-square-root-market-impact v0.1.0** — Closes the
+  v0.1.0 ADR-0043 § D3 deferred promise (linear-bps → square-root market-impact).
+  Cost = `α · √(Q/V)` per Almgren & Chriss 2001; Kissell 2014. Per-asset V from
+  existing Binance parquet 90-day trailing daily volume (revision-pinned, no new
+  data source). Re-emits 19 friction-real scenarios under new namespace
+  `v5-sqrt-impact-2026-05` parallel to existing `v5-realdata-medium-2026-05`
+  (linear-bps stays as comparison oracle). Anchor cascade 71 → 90 (additive).
+  3 Q all-DURABLE Autoapprove-eligible per AGENT.md 2026-05-29 contract.
+  Brief: [`spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/feature.md`](v5-latency-slippage-sim-v0.5.0-square-root-market-impact/feature.md).
+  Trace: `REQ-V5-LATENCY-SLIPPAGE-V0-5-0-001` (state `proposed`). HANDOFF →
+  architect M-T1. Cost ~1 week wall-clock (DURABLE route).
+
 <!-- updated 2026-05-27 (analyst, lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge
      M0 close) — **PROMOTED Idea → Active 2026-05-27** by operator multi-select
      option C against the v0.1.1 presenter deck open list: (1) lock ETH-USD as
@@ -524,6 +567,53 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      loop with falsification-probe evidence). -->
 <!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-28 -->
 <!-- - **lab-recipe-test-harness v0.1.0** — see Recent section below for v0.1.0 ship summary. -->
+
+<!-- updated 2026-05-29 (analyst, lab-recipe-test-harness-v0.2.0-cross-surface-extension
+     M0 close) — **PROMOTED Idea → Active 2026-05-29** under the new
+     durable-over-quick contract (AGENT.md 2026-05-29: `(Recommended)` rewards
+     DURABLE, not cheap). v0.1.0 (shipped 2026-05-28) proved the two-surface
+     harness pattern catches the channel-survival + state-gating regression
+     class Bug #64 surfaced — but only on `spawn_lab_run` (S1) and
+     `lab_run_inflight` (S2). R1 inventory enumerates 9 Recipe / aggregator
+     surfaces across `crates/ui/` + `crates/agent/`; FOUR are completely
+     uncovered for at least one of {S1 boundary, S2 gating}:
+     `TrainingLogRecipe` (exact Bug #64 shape — `Arc<Mutex<Option<_>>>::take()`
+     + per-run salt over `std::mpsc::Receiver<TrainingLogLine>`),
+     `TrainingPoller` (audit-DB-poll subscription with run-id identity gate),
+     `ToastDismissRecipe` (always-on `tokio::time::interval` — zero tests),
+     `ActivityAuditAggregator` (`tokio::select!` rx + 100 ms interval — same
+     two-arm shape as Bug #64). Plus partial extensions: ServerTime S2 +
+     TrailMirror S2 + Activity S1. Mirror v0.1.0 file-layout (~80 LoC per
+     Recipe = ~600 total). Zero new ADRs (ADR-0048 D1-D6 carries forward);
+     zero design tokens; zero `strings.rs` adds; anchor-additive 71/71 stable.
+     K1-K4 falsifiers + H1-H4 hypotheses + Q1-Q2 operator-decide framed
+     durable-recommended (Q1=(a) all 4 + extras ~1 week dev + 1 day tester
+     vs Q1=(b) TrainingLog only ~2-3 days + ~3-5 days v0.3.0 deferred;
+     Q2=(a) per-Recipe T-T4 falsification proof — mandatory per v0.1.0 lesson
+     "prove it or it's theater" — vs Q2=(b) no proof, rejected). 4-cell
+     pre-drawn verdict tree. M-T1 ratifies Q1+Q2 + R3 single-trait-vs-per-Recipe
+     mock pattern + decomposes M-DEV per-Recipe waves A-F. Trace row
+     `REQ-LAB-RECIPE-TEST-HARNESS-V0-2-0-001` opened `proposed`. Frontmatter
+     stays `owner: analyst`, `status: draft` — operator-decide is next.
+     HANDOFF → architect (M-T1). -->
+- **lab-recipe-test-harness v0.2.0 — cross-surface extension v0.1.0** —
+  Durable-coverage follow-up to v0.1.0 (shipped 2026-05-28). v0.1.0 proved
+  the two-surface harness pattern (boundary-test + state-gating) catches
+  the channel-survival + state-gating regression class Bug #64 surfaced
+  on `spawn_lab_run`. R1 inventory found 4 other Recipe / aggregator
+  surfaces in `crates/ui/` + `crates/agent/` with the EXACT same shape
+  and zero boundary/gating coverage: `TrainingLogRecipe` (Bug #64 `take()`
+  + salt shape; HIGHEST URGENCY), `TrainingPoller`, `ToastDismissRecipe`,
+  `ActivityAuditAggregator` (Bug #64 `tokio::select!` shape). v0.2.0
+  extends the proven pattern PREEMPTIVELY before the next regression
+  lands. Per the new durable contract: ~1 week dev + 1 day tester now
+  beats ~3-5 days deferred v0.3.0 cleanup plus 1-2 visual-verify revert
+  windows. Zero new ADRs (ADR-0048 D1-D6 carries forward). Zero anchor
+  delta (71/71 byte-identical). Brief:
+  [`spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md`](lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md).
+  Trace: `REQ-LAB-RECIPE-TEST-HARNESS-V0-2-0-001` (state `proposed`).
+  HANDOFF → architect (M-T1 ratifies Q1+Q2 + locks R3 mock-pattern +
+  decomposes M-DEV per-Recipe waves A-F).
 
 <!-- updated 2026-05-27 (analyst, cockpit-toast-queue M0 close — inline-salvaged
      after analyst agentId a43a615341bd60112 529'd at 26 tool uses;
