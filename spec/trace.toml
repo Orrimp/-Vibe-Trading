@@ -2389,7 +2389,7 @@ tests       = [
   "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::direct_await_without_rt_spawn_panics",                   # mechanism falsification: direct-await from block_on panics
 ]
 anchors     = []   # zero anchor delta (R-NR.1); backtest report bodies byte-immutable; 84/84 PASS
-state       = "tested"    # tester VERDICT → PASS 2026-05-29 (test-20260529-202732-unify.md). Unification confirmed: production Yahoo path routes through spawn_preload_on_rt (single enforcement point). 20/20 PASS. 84/84 anchors. Release build live,yahoo clean. HANDOFF → orchestrator (presenter-ready).
+state       = "shipped"   # operator APPROVED 2026-05-29 — Bug #64 D.1.1 CLOSED after 3 reactor-context recurrences. rt.spawn() durable fix; single spawn_preload_on_rt enforcement point (compile-error-catch guard); ADR-0050 spawn-don't-guard invariant. Operator-confirmed working in live cockpit. Presenter deck approved (bug-64-attempt-3-2026-05-29.md).
 
 #
 # ─── Pick C Wave 1 — Orchestrator hygiene compounder trio promoted features (analyst M0 2026-05-29) ───

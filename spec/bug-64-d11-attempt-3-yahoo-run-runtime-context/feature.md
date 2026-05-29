@@ -1,8 +1,8 @@
 ---
 slug: bug-64-d11-attempt-3-yahoo-run-runtime-context
 version: 0.1.0
-status: in-progress
-owner: tester
+status: shipped
+owner: shipped
 updated: 2026-05-29
 related:
   - spec/dev-notes/bug-64-yahoo-run-code-map-2026-05-29.md
