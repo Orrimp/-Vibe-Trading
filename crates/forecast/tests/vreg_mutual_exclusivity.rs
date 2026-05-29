@@ -161,10 +161,7 @@ fn vreg1_fixture_fires_vreg1() {
         "V-REG-1 fixture must fire V-REG-1, got {}",
         v.label()
     );
-    println!(
-        "[vreg1_fixture_fires_vreg1] PASS — verdict: {}",
-        v.label()
-    );
+    println!("[vreg1_fixture_fires_vreg1] PASS — verdict: {}", v.label());
 }
 
 /// V-REG-2 fixture: CashHold dominant > 95%.
@@ -268,11 +265,26 @@ fn vreg5_fixture_fires_vreg5() {
 #[test]
 fn vreg1_vreg2_vreg3_vreg4_vreg5_all_distinct() {
     let fixtures = [
-        ("V-REG-1", make_stats(false, 100, 8000, 10000, -0.05, 95_000.0)),
-        ("V-REG-2", make_stats(true, 9700, 200, 10000, -0.01, 99_000.0)),
-        ("V-REG-3", make_stats(true, 5000, 5000, 10000, -0.10, 90_000.0)),
-        ("V-REG-4", make_stats(true, 1000, 8000, 10000, -1.10, -5_000.0)),
-        ("V-REG-5", make_stats(true, 11816, 75524, 87840, -0.059, 94_000.96)),
+        (
+            "V-REG-1",
+            make_stats(false, 100, 8000, 10000, -0.05, 95_000.0),
+        ),
+        (
+            "V-REG-2",
+            make_stats(true, 9700, 200, 10000, -0.01, 99_000.0),
+        ),
+        (
+            "V-REG-3",
+            make_stats(true, 5000, 5000, 10000, -0.10, 90_000.0),
+        ),
+        (
+            "V-REG-4",
+            make_stats(true, 1000, 8000, 10000, -1.10, -5_000.0),
+        ),
+        (
+            "V-REG-5",
+            make_stats(true, 11816, 75524, 87840, -0.059, 94_000.96),
+        ),
     ];
 
     for (expected, stats) in &fixtures {

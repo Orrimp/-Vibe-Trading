@@ -514,6 +514,7 @@ pub async fn run(
                     fill.price.get(),
                     fill.side,
                     &input.latency_slippage_sim,
+                    Decimal::ZERO, // v0.5.0: volume_usd
                 );
                 match fill.side {
                     Side::Buy => {

@@ -51,6 +51,8 @@ pollster.workspace = true
 rust_decimal.workspace = true
 # v5-latency-slippage-sim R5 — e2e divergence test needs the backtest engine.
 backtest = { path = "../backtest" }
+# v0.5.0: SlippageModel type needed in latency_slippage_sim_e2e test.
+cost = { path = "../cost" }
 # NOTE: uuid, wiremock, cost(dev), sqlx REMOVED per ADR-0041 D1
 # (only used by llm_forecaster integration tests, now in crates/trader/).
 

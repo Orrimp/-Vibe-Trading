@@ -80,9 +80,21 @@ struct Args {
     #[arg(long, default_value = "0")]
     sim_latency_ms_max: u64,
 
-    /// Simulated slippage in basis points applied per fill. Default: 0 (noop).
+    /// Simulated slippage in basis points applied per fill (linear model). Default: 0 (noop).
+    /// Mutually exclusive with --sim-slippage-sqrt-alpha (the last specified wins).
     #[arg(long, default_value = "0")]
     sim_slippage_bps: u32,
+
+    // ── v5-latency-slippage-sim v0.5.0 square-root model flags ──────────────
+    /// Square-root market-impact model: alpha coefficient (α · √(Q/V) · 10_000).
+    /// When set (non-zero), overrides --sim-slippage-bps with SquareRoot model.
+    /// Operator-locked default: α = 1.0 (M-OD 2026-05-29). Use 0 for linear model.
+    #[arg(long, default_value = "0")]
+    sim_slippage_sqrt_alpha: f64,
+
+    /// Square-root model: volume lookback days for daily-volume-proxy V. Default: 90.
+    #[arg(long, default_value = "90")]
+    sim_slippage_sqrt_lookback_days: u16,
 
     // ── v5-latency-slippage-sim v0.3.0 Q1=(a) flag (T-D-N3a / ADR-0047 D1) ───
     /// Force synthetic-bar generation even when Parquet data exists on disk.
@@ -105,6 +117,25 @@ fn parse_seed(s: &str) -> Result<u64> {
         u64::from_str_radix(hex, 16).context("invalid hex seed")
     } else {
         s.parse::<u64>().context("invalid decimal seed")
+    }
+}
+
+/// Build a `SlippageModel` from CLI args.
+///
+/// If `--sim-slippage-sqrt-alpha > 0.0`, returns `SquareRoot { alpha, volume_lookback_days }`.
+/// Otherwise returns `Linear { bps: sim_slippage_bps }`.
+fn build_slippage_model(args: &Args) -> cost::SlippageModel {
+    if args.sim_slippage_sqrt_alpha > 0.0_f64 {
+        let alpha = rust_decimal::Decimal::try_from(args.sim_slippage_sqrt_alpha)
+            .unwrap_or(rust_decimal_macros::dec!(1.0));
+        cost::SlippageModel::SquareRoot {
+            alpha,
+            volume_lookback_days: args.sim_slippage_sqrt_lookback_days,
+        }
+    } else {
+        cost::SlippageModel::Linear {
+            bps: args.sim_slippage_bps,
+        }
     }
 }
 
@@ -182,9 +213,7 @@ enum ScenarioStrategy {
     /// Requires `--features realdata` for real-data bar loading.
     /// Does NOT require `--features candle` — Markov-switching is pure Rust.
     #[cfg_attr(not(feature = "realdata"), allow(dead_code))]
-    RegimeDispatcherMomentum {
-        config_id: String,
-    },
+    RegimeDispatcherMomentum { config_id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -1169,7 +1198,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
@@ -1234,7 +1264,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
@@ -1295,7 +1326,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         // Keep a report-only copy of the input (without the moved bars/equity_bin).
@@ -1313,7 +1345,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
@@ -1408,7 +1441,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         let tcn_w_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1425,7 +1459,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         let result = backtest::scenarios::tcn_overlay_weights::run(tcn_w_input, seed).await?;
@@ -1516,7 +1551,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         let patchtst_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1533,7 +1569,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         let result =
@@ -1622,7 +1659,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         let vol_target_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1639,7 +1677,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         let result =
@@ -1706,9 +1745,7 @@ async fn main() -> Result<()> {
 
     // ── v3.0.0-regime RegimeDispatcher momentum dispatch ─────────────────────
     // Wave E T-D-E1: Markov-switching 4-state dispatcher on v1 momentum.
-    if let ScenarioStrategy::RegimeDispatcherMomentum { config_id } =
-        &scenario.strategy.clone()
-    {
+    if let ScenarioStrategy::RegimeDispatcherMomentum { config_id } = &scenario.strategy.clone() {
         let config_id = config_id.clone();
         let regime_input = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1725,7 +1762,8 @@ async fn main() -> Result<()> {
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
                 latency_ms_min: args.sim_latency_ms_min,
                 latency_ms_max: args.sim_latency_ms_max,
-                slippage_bps: args.sim_slippage_bps,
+                slippage_model: build_slippage_model(&args),
+                volume_usd_per_symbol: None,
             },
         };
         let result =
@@ -1830,7 +1868,8 @@ async fn main() -> Result<()> {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig {
             latency_ms_min: args.sim_latency_ms_min,
             latency_ms_max: args.sim_latency_ms_max,
-            slippage_bps: args.sim_slippage_bps,
+            slippage_model: build_slippage_model(&args),
+            volume_usd_per_symbol: None,
         },
     };
     // CLI path: use no-op cancel + progress so the anchor bytes are unchanged.
@@ -1959,8 +1998,9 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         // v3.0.0-volatility-rebaseline: un-targeted v1 momentum on real Binance data.
         "top10-2023-fy-momentum-realdata" => "v3-volatility-forecaster-rebaseline",
         // v3.0.0-regime RegimeDispatcher scenarios (Wave E T-D-E1).
-        "top10-2023-fy-regime-dispatcher-realdata"
-        | "top10-2024-fy-regime-dispatcher-realdata" => "v3-regime-classifier",
+        "top10-2023-fy-regime-dispatcher-realdata" | "top10-2024-fy-regime-dispatcher-realdata" => {
+            "v3-regime-classifier"
+        }
         _ => "_unknown",
     }
 }

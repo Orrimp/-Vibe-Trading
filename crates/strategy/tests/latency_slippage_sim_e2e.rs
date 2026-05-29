@@ -36,6 +36,8 @@ use backtest::cli_types::LatencySlippageSimConfig;
 use backtest::engine::{DateRange, RunError, ScenarioConfig, ScenarioDataSource};
 use backtest::{cancel, progress};
 use trading_core::{StrategyId, Symbol, Venue};
+// v0.5.0: SlippageModel needed for test configs
+use cost;
 
 // ── Shared test seed ──────────────────────────────────────────────────────────
 
@@ -137,7 +139,8 @@ async fn enabled_diverges_by_at_least_1bp() {
     let enabled_cfg = LatencySlippageSimConfig {
         latency_ms_min: 50,
         latency_ms_max: 100,
-        slippage_bps: 10, // 10 bps = 0.1 % — should produce measurable divergence
+        slippage_model: cost::SlippageModel::Linear { bps: 10 }, // 10 bps = 0.1%
+        volume_usd_per_symbol: None,
     };
 
     let baseline_equity = run_momentum_with_sim_config(noop_cfg).await;
@@ -211,10 +214,15 @@ fn enabled_audit_metrics_recorded() {
     let enabled_cfg = LatencySlippageSimConfig {
         latency_ms_min: 50,
         latency_ms_max: 100,
-        slippage_bps: 10,
+        slippage_model: cost::SlippageModel::Linear { bps: 10 },
+        volume_usd_per_symbol: None,
     };
     let sim_latency_applied: u64 = 75; // representative sample from [50, 100]
-    let sim_slip_bps: u32 = enabled_cfg.slippage_bps;
+    // For the emit guard, extract bps regardless of model variant.
+    let sim_slip_bps: u32 = match enabled_cfg.slippage_model {
+        cost::SlippageModel::Linear { bps } => bps,
+        cost::SlippageModel::SquareRoot { .. } => 1, // non-zero → emit
+    };
     let would_emit = sim_latency_applied > 0 || sim_slip_bps > 0;
     assert!(
         would_emit,

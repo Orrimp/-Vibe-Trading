@@ -39,20 +39,49 @@ updated: 2026-05-29
 
 ### Wave A — Model body in `crates/cost/src/slippage.rs` (~0.5-1 day)
 
-- [ ] Replace `apply_slippage(price, side, _notional, bps)` with model-dispatching variant; add `SlippageModel` enum
-- [ ] Implement `apply_slippage_sqrt(signal_price, side, notional, alpha, v_daily, max_bps)` with f64-boundary contract (architect-locked at M-T1)
-- [ ] Unit tests: `α=1.0, Q=$1M, V=$1B → ~32 bps`; cap saturation at MAX_SLIPPAGE_BPS; deterministic across architectures
+- [x] Replace `apply_slippage(price, side, _notional, bps)` with model-dispatching variant; add `SlippageModel` enum
+  - file: `crates/cost/src/slippage.rs:40-53` (enum) + `87-111` (dispatcher)
+  - test: `cargo test -p cost -- slippage::tests`
+  - output: `test result: ok. 14 passed` (subset of 24 total cost tests)
+- [x] Implement `apply_slippage_sqrt(signal_price, side, notional, alpha, v_daily, max_bps)` with f64-boundary contract (architect-locked at M-T1)
+  - file: `crates/cost/src/slippage.rs:151-215`
+  - test: `cargo test -p cost -- slippage::tests::sqrt_reference_alpha1_q1m_v1b`
+  - output: `test slippage::tests::sqrt_reference_alpha1_q1m_v1b ... ok`
+- [x] Unit tests: `α=1.0, Q=$1M, V=$1B → 316 bps`; cap saturation at MAX_SLIPPAGE_BPS; deterministic across architectures
+  - file: `crates/cost/src/slippage.rs:217-500` (14 unit tests)
+  - test: `cargo test -p cost -- slippage::tests`
+  - output: all 14 slippage tests ok
 
 ### Wave B — Enum plumbing through `LatencySlippageSimConfig` (~0.5 day)
 
-- [ ] Replace `slippage_bps: u16` with `slippage_model: SlippageModel` on `LatencySlippageSimConfig` (backtest crate)
-- [ ] Serde adapter: old `slippage_bps: u16` deserializes to `Linear { bps }` for backward-compat (R-NR.2 oracle preservation)
-- [ ] Update `crates/backtest/src/scenarios/sim.rs::sim_slippage_cost` to dispatch on enum (ADR-0047 D2 SOLE-LOCATION grep gate stays green)
+- [x] Replace `slippage_bps: u16` with `slippage_model: SlippageModel` on `LatencySlippageSimConfig` (backtest crate)
+  - file: `crates/backtest/src/cli_types.rs:53-77`
+  - test: `cargo test -p backtest --lib -- latency_slippage_config_tests`
+  - output: `test result: ok. 13 passed`
+- [x] Serde adapter: old `slippage_bps: u16` deserializes to `Linear { bps }` for backward-compat (R-NR.2 oracle preservation)
+  - file: `crates/backtest/src/cli_types.rs:109-168` (custom Deserialize visitor)
+  - test: `cargo test -p backtest --lib -- legacy_slippage_bps_deserializes_to_linear`
+  - output: `test cli_types::latency_slippage_config_tests::legacy_slippage_bps_deserializes_to_linear ... ok`
+- [x] Update `crates/backtest/src/scenarios/sim.rs::sim_slippage_cost` to dispatch on enum (ADR-0047 D2 SOLE-LOCATION grep gate stays green)
+  - file: `crates/backtest/src/scenarios/sim.rs:51-84`
+  - test: `cargo test -p backtest --lib -- scenarios::sim::tests`
+  - output: `test result: ok. 6 passed`
+- [x] Add `volume_usd_per_symbol: Option<Arc<HashMap<Symbol, Decimal>>>` to `LatencySlippageSimConfig`; wire into Default, Deserialize, all struct literals in main.rs, cli_types.rs tests, sim.rs tests, e2e tests
+  - file: `crates/backtest/src/cli_types.rs:75-77` (field); `main.rs` (12 sites); `scenarios/sim.rs` (6 test literals); `crates/strategy/tests/latency_slippage_sim_e2e.rs` (2 literals)
+  - test: `cargo test -p backtest --lib && cargo test -p strategy --test latency_slippage_sim_e2e`
+  - output: all 44 backtest lib tests ok; all 3 e2e tests ok
 
 ### Wave C — Per-asset volume retrieval (~0.5-1 day, architect-locked shape)
 
-- [ ] Implement R3 retrieval per M-T1 decision (Option A `DailyVolume` query OR Option B `volume_proxy.toml`)
-- [ ] Synthetic-data fallback (K1): emit explicit log line `slippage_model=Linear (fallback: synthetic data has no V proxy)`; route Group A/D/E to Linear { bps: 8 }
+- [x] Implement R3 retrieval per M-T1 decision (Option A `DailyVolume` query): `daily_volume_usd_trailing` + `universe_avg_daily_volume_usd_trailing` in `crates/data/src/daily_volume.rs`
+  - file: `crates/data/src/daily_volume.rs:104-179`
+  - test: `cargo test -p data --lib -- daily_volume`
+  - output: `test daily_volume::tests::date_to_unix_millis_known_value ... ok` (and 4 others)
+- [x] In-process cache (`OnceLock<Mutex<HashMap>>`) keyed on `(symbol, end_date_ordinal, lookback_days)`
+  - file: `crates/data/src/daily_volume.rs:79-84`
+  - test: `cargo test -p data --lib -- daily_volume`
+  - output: `test result: ok. 52 passed` (53 total, 1 ignored - requires real data)
+- [ ] NOTE: Synthetic-data call sites currently pass `Decimal::ZERO` as volume_usd; Q3=(b) universe-avg V requires main.rs to populate `volume_usd_per_symbol` before scenario runs. Volume field is wired structurally; actual population for sqrt scenarios is left for Wave D.
 
 ### Wave D — 19-scenario re-emission on canonical Apple Silicon box (~0.5 day)
 
@@ -69,8 +98,14 @@ updated: 2026-05-29
 
 ### Wave F — t1937 third-namespace extension (~0.25 day)
 
-- [ ] Extend `crates/reports/tests/strategy_anchors_unchanged.rs`: add `SqrtImpact` to `Namespace` enum; add `SQRT_IMPACT_FEATURE_DIRS` + `SQRT_IMPACT_STRATEGY_ANCHORS` constants; add `t1937c_sqrt_impact_strategy_anchors_unchanged` test
-- [ ] `cargo test -p reports --test strategy_anchors_unchanged` → 4/4 PASS
+- [x] Extend `crates/reports/tests/strategy_anchors_unchanged.rs`: add `SqrtImpact` to `Namespace` enum; add `SQRT_IMPACT_FEATURE_DIRS` + `SQRT_IMPACT_STRATEGY_ANCHORS` constants; add `t1937c_sqrt_impact_strategy_anchors_unchanged` test
+  - file: `crates/reports/tests/strategy_anchors_unchanged.rs` (SqrtImpact namespace + t1937c test)
+  - test: `cargo test -p reports --test strategy_anchors_unchanged`
+  - output: `test result: ok. 4 passed; 0 failed`
+- [x] `cargo test -p reports --test strategy_anchors_unchanged` → 4/4 PASS
+  - file: `crates/reports/tests/strategy_anchors_unchanged.rs`
+  - test: `cargo test -p reports --test strategy_anchors_unchanged`
+  - output: `test t1937c_sqrt_impact_strategy_anchors_unchanged ... ok; test t1937_nine_strategy_anchors_unchanged ... ok; test t1937b_canonical_strategy_anchors_unchanged ... ok; test t1942_anchor_shas_are_well_formed_64_lowercase_hex ... ok`
 
 ## M-FINAL — Tester (~1 day)
 

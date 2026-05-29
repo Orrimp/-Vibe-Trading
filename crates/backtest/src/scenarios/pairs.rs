@@ -255,6 +255,7 @@ pub async fn run(
                                     fill.price.get(),
                                     Side::Buy,
                                     &input.latency_slippage_sim,
+                                    Decimal::ZERO, // v0.5.0: volume_usd
                                 );
                                 cash -= notional_fill + fill.fee.amount() + sim_slip_cost;
                                 *position_book
@@ -320,6 +321,7 @@ pub async fn run(
                                     fill.price.get(),
                                     Side::Sell,
                                     &input.latency_slippage_sim,
+                                    Decimal::ZERO, // v0.5.0: volume_usd
                                 );
                                 cash += notional_fill - fill.fee.amount() - sim_slip_cost;
                                 let qty_held = position_book

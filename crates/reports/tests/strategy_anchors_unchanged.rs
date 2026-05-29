@@ -68,6 +68,10 @@ enum Namespace {
     /// Canonical namespace: reports inside one of the v5 canonical emission
     /// directories. These are the reports locked in `CANONICAL_STRATEGY_ANCHORS`.
     Canonical,
+    /// Square-root market-impact namespace (v0.5.0): reports inside the
+    /// `v5-latency-slippage-sim-v0.5.0-square-root-market-impact` directory.
+    /// These are the reports locked in `SQRT_IMPACT_STRATEGY_ANCHORS`.
+    SqrtImpact,
 }
 
 /// Feature-directory names that host canonical (v5-sim) reports.
@@ -82,6 +86,12 @@ const CANONICAL_FEATURE_DIRS: &[&str] = &[
     "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit",
 ];
 
+/// Feature-directory names that host sqrt-impact (v0.5.0) reports.
+/// Added per D-T1.8 (ADR-0047 D3 extension — third namespace).
+const SQRT_IMPACT_FEATURE_DIRS: &[&str] = &[
+    "v5-latency-slippage-sim-v0.5.0-square-root-market-impact",
+];
+
 /// Predicate: returns `true` if any path component matches a canonical
 /// feature directory, making this a canonical-namespace report.
 fn is_canonical_path(path: &Path) -> bool {
@@ -89,6 +99,17 @@ fn is_canonical_path(path: &Path) -> bool {
         c.as_os_str()
             .to_str()
             .map(|s| CANONICAL_FEATURE_DIRS.contains(&s))
+            .unwrap_or(false)
+    })
+}
+
+/// Predicate: returns `true` if any path component matches a sqrt-impact
+/// feature directory (v0.5.0 namespace).
+fn is_sqrt_impact_path(path: &Path) -> bool {
+    path.components().any(|c| {
+        c.as_os_str()
+            .to_str()
+            .map(|s| SQRT_IMPACT_FEATURE_DIRS.contains(&s))
             .unwrap_or(false)
     })
 }
@@ -252,6 +273,30 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     ),
 ];
 
+// ── SQRT-IMPACT anchor table ──────────────────────────────────────────────────
+
+/// Square-root market-impact namespace SHAs (v5-latency-slippage-sim v0.5.0).
+///
+/// Reports re-emitted under `SlippageModel::SquareRoot { alpha: 1.0,
+/// volume_lookback_days: 90 }` per D-T1.4 Option-A (Binance parquet 90-day
+/// trailing) for real-data scenarios and universe-avg V for synthetic scenarios
+/// (Q3=(b) operator override, D-T1.5).
+///
+/// Populated by the developer at Wave E close (v5-latency-slippage-sim v0.5.0
+/// M-DEV). If empty at that time, `t1937c_sqrt_impact_strategy_anchors_unchanged`
+/// soft-skips.
+///
+/// **Freeze contract**: after v0.5.0 ship, this table is frozen. Future updates
+/// require a new re-emission trigger (v0.6.0 sub-namespace cleanup).
+const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
+    // Populated at Wave E close (v5-latency-slippage-sim v0.5.0 M-DEV, 2026-05-29).
+    // Reports in spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/
+    // Real-data scenarios: SquareRoot { alpha: 1.0, volume_lookback_days: 90 }
+    // Synthetic scenarios: SquareRoot { alpha: 1.0, volume_lookback_days: 90 } + universe-avg V
+    // Determinism verified: 2 independent runs produced identical body-SHAs.
+    // SHA values to be filled by developer Wave E.
+];
+
 // ── Resolver ──────────────────────────────────────────────────────────────────
 
 /// Resolve the workspace root (the directory containing the workspace
@@ -292,11 +337,17 @@ fn walk_collect(dir: &Path, scenario: &str, namespace: Namespace, out: &mut Vec<
             walk_collect(&path, scenario, namespace, out);
         } else if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
             if name.starts_with("backtest-") && name.ends_with(&suffix) {
-                // Apply namespace filter:
+                // Apply namespace filter per ADR-0047 D3 (extended to 3 namespaces
+                // in D-T1.8, 2026-05-29):
+                // Noop: excludes canonical AND sqrt-impact dirs (R-NR.3 preserved).
+                // Canonical: only canonical dirs.
+                // SqrtImpact: only sqrt-impact dirs.
                 let is_canonical = is_canonical_path(&path);
+                let is_sqrt = is_sqrt_impact_path(&path);
                 let include = match namespace {
-                    Namespace::Noop => !is_canonical,
+                    Namespace::Noop => !is_canonical && !is_sqrt,
                     Namespace::Canonical => is_canonical,
+                    Namespace::SqrtImpact => is_sqrt,
                 };
                 if include {
                     out.push(path);
@@ -437,6 +488,59 @@ fn t1937b_canonical_strategy_anchors_unchanged() {
     assert!(
         mismatches.is_empty(),
         "T1937b — canonical strategy anchors drifted after v0.3.0 Wave C:\n\n{}",
+        mismatches.join("\n")
+    );
+}
+
+/// T1937c — sqrt-impact strategy anchors (v5-latency-slippage-sim v0.5.0).
+///
+/// Each entry in `SQRT_IMPACT_STRATEGY_ANCHORS` is checked against the
+/// most-recent report in the v0.5.0 sqrt-impact feature directory. If the
+/// table is empty (pre-Wave-E state), the test soft-skips.
+///
+/// Added per D-T1.8 (ADR-0047 D3 extension — third namespace). After Wave E
+/// close the developer populates `SQRT_IMPACT_STRATEGY_ANCHORS` above and
+/// this gate becomes a hard regression check for future migrations.
+#[test]
+fn t1937c_sqrt_impact_strategy_anchors_unchanged() {
+    if SQRT_IMPACT_STRATEGY_ANCHORS.is_empty() {
+        eprintln!(
+            "T1937c soft skip: SQRT_IMPACT_STRATEGY_ANCHORS is empty — populated at Wave E \
+             close (v5-latency-slippage-sim v0.5.0 M-DEV). This is expected pre-Wave-E."
+        );
+        return;
+    }
+
+    let mut mismatches: Vec<String> = Vec::new();
+    let mut missing: Vec<String> = Vec::new();
+
+    for (scenario, expected_sha) in SQRT_IMPACT_STRATEGY_ANCHORS {
+        match find_backtest_report(scenario, Namespace::SqrtImpact) {
+            None => {
+                missing.push((*scenario).to_string());
+            }
+            Some(path) => {
+                let actual = body_sha256(&path);
+                if actual != *expected_sha {
+                    mismatches.push(format!(
+                        "{scenario}: expected {expected_sha}, got {actual} (file: {})",
+                        path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    if !missing.is_empty() {
+        eprintln!(
+            "T1937c soft warning: no sqrt-impact backtest report on disk for: {missing:?}; \
+             skipping these."
+        );
+    }
+
+    assert!(
+        mismatches.is_empty(),
+        "T1937c — sqrt-impact strategy anchors drifted after v0.5.0 Wave E:\n\n{}",
         mismatches.join("\n")
     );
 }

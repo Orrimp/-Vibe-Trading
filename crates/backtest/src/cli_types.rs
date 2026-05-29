@@ -6,8 +6,11 @@
 //! Defined here so the scenario modules can take typed inputs without
 //! depending on `main.rs`'s internal `Scenario` struct.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use cost::SlippageModel;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use trading_core::Symbol;
@@ -16,10 +19,9 @@ use trading_core::Symbol;
 
 /// Configuration for deterministic latency and slippage simulation in backtest.
 ///
-/// **Default is noop**: all fields are zero so no latency or slippage is
-/// applied unless the operator explicitly sets non-zero values. The default
-/// config produces byte-identical output to the pre-feature code, preserving
-/// all 34 SHA-256 anchors in `spec/anchors.toml` (R-NR.1 / ADR-0043 § D1).
+/// **Default is noop**: `latency_ms_min == latency_ms_max == 0` and
+/// `slippage_model == SlippageModel::Linear { bps: 0 }` so no latency or
+/// slippage is applied unless the operator explicitly sets non-zero values.
 ///
 /// ## Latency model (Q1 = uniform jitter / ADR-0043 § D2)
 ///
@@ -30,18 +32,25 @@ use trading_core::Symbol;
 /// The RNG is a seeded `ChaCha20` sub-stream keyed on `(scenario_seed, order_id)`
 /// via blake3, making jitter deterministic across replay runs (D2).
 ///
-/// ## Slippage model (Q2 = linear bps / ADR-0043 § D3)
+/// ## Slippage model (ADR-0043 § D3 / v0.5.0 extension)
 ///
-/// `slippage_bps == 0`: fill price unchanged (noop).
-/// `slippage_bps > 0`: `fill_price = signal_price * (1 ± bps/10_000)`,
-/// sign-applied per `Side` (Buy = +, Sell = −).
+/// `SlippageModel::Linear { bps: 0 }`: fill price unchanged (noop).
+/// `SlippageModel::Linear { bps > 0 }`: `fill_price = signal_price * (1 ± bps/10_000)`.
+/// `SlippageModel::SquareRoot { alpha, volume_lookback_days }`: Almgren-Chriss form
+///   `slippage_bps = α · √(Q/V) · 10_000` capped at `MAX_SLIPPAGE_BPS`.
+///
+/// ## Backward-compat serde (R-NR.2)
+///
+/// Legacy JSON/TOML payloads that use the old `slippage_bps: u16` field are
+/// accepted and deserialized to `SlippageModel::Linear { bps }` so the 71
+/// existing anchor SHAs under `v5-realdata-medium-2026-05` stay byte-identical.
 ///
 /// ## Scope (Q4 = backtest-only / ADR-0043 § D5)
 ///
 /// This config is consumed only by `crates/backtest`. The live-mode agent
 /// (`crates/agent`) does not read it — live fills already carry real
 /// latency and slippage from the venue.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LatencySlippageSimConfig {
     /// Minimum latency added to `order_ts_ms` in milliseconds.
     /// Default: 0 (noop).
@@ -49,18 +58,114 @@ pub struct LatencySlippageSimConfig {
     /// Maximum latency added to `order_ts_ms` in milliseconds.
     /// When equal to `latency_ms_min`: fixed delay. Default: 0 (noop).
     pub latency_ms_max: u64,
-    /// Linear slippage in basis points applied to the fill price.
-    /// Default: 0 (noop).
-    pub slippage_bps: u32,
+    /// Slippage model applied to fill prices (v0.5.0 enum replaces legacy `slippage_bps: u32`).
+    /// Default: `Linear { bps: 0 }` (noop).
+    ///
+    /// The legacy field name `slippage_bps` is accepted by the custom `Deserialize` impl
+    /// for backward-compat with v0.1.0–v0.4.0 config files/tests.
+    pub slippage_model: SlippageModel,
+    /// Pre-computed per-symbol daily volume proxy in USD (V term in α·√(Q/V)).
+    ///
+    /// Used ONLY by `SlippageModel::SquareRoot`. Populated by the scenario loader
+    /// (main.rs) via `data::daily_volume_usd_trailing` before the bar loop; ignored
+    /// for `SlippageModel::Linear`. `None` → `Decimal::ZERO` → no-impact (edge case).
+    ///
+    /// Arc because `LatencySlippageSimConfig` is `Clone`d into multiple scenarios
+    /// and the map may be non-trivial. Excluded from serde (runtime-computed).
+    #[serde(skip)]
+    pub volume_usd_per_symbol: Option<Arc<HashMap<Symbol, Decimal>>>,
+}
+
+impl Default for LatencySlippageSimConfig {
+    /// Noop default: latency=0, slippage=Linear{bps:0}.
+    /// Produces byte-identical output to the pre-v0.5.0 default config.
+    fn default() -> Self {
+        Self {
+            latency_ms_min: 0,
+            latency_ms_max: 0,
+            slippage_model: SlippageModel::Linear { bps: 0 },
+            volume_usd_per_symbol: None,
+        }
+    }
 }
 
 impl LatencySlippageSimConfig {
-    /// Returns `true` when the config is the noop default (all zeros).
+    /// Returns `true` when the config is the noop default (all zeros, linear bps=0).
     /// Used by callers to skip RNG construction on the hot path.
     #[inline]
     #[must_use]
     pub fn is_noop(&self) -> bool {
-        self.latency_ms_min == 0 && self.latency_ms_max == 0 && self.slippage_bps == 0
+        self.latency_ms_min == 0
+            && self.latency_ms_max == 0
+            && matches!(self.slippage_model, SlippageModel::Linear { bps: 0 })
+    }
+}
+
+/// Custom `Deserialize` for `LatencySlippageSimConfig`.
+///
+/// Accepts two shapes (R-NR.2 backward-compat):
+/// 1. New shape: `{ latency_ms_min, latency_ms_max, slippage_model: { kind: "linear", bps: N } }`
+/// 2. Legacy shape: `{ latency_ms_min, latency_ms_max, slippage_bps: N }` →
+///    deserialized to `slippage_model: Linear { bps: N }`.
+impl<'de> Deserialize<'de> for LatencySlippageSimConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct ConfigVisitor;
+
+        impl<'de> Visitor<'de> for ConfigVisitor {
+            type Value = LatencySlippageSimConfig;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("LatencySlippageSimConfig (new slippage_model or legacy slippage_bps)")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut latency_ms_min: Option<u64> = None;
+                let mut latency_ms_max: Option<u64> = None;
+                // One of these must be present:
+                let mut slippage_model: Option<SlippageModel> = None;
+                let mut slippage_bps_legacy: Option<u32> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "latency_ms_min" => {
+                            latency_ms_min = Some(map.next_value()?);
+                        }
+                        "latency_ms_max" => {
+                            latency_ms_max = Some(map.next_value()?);
+                        }
+                        "slippage_model" => {
+                            slippage_model = Some(map.next_value()?);
+                        }
+                        // Legacy field name (v0.1.0–v0.4.0): accept as u32 or u16.
+                        "slippage_bps" => {
+                            slippage_bps_legacy = Some(map.next_value::<u32>()?);
+                        }
+                        _ => {
+                            // Unknown fields: skip.
+                            let _ = map.next_value::<de::IgnoredAny>()?;
+                        }
+                    }
+                }
+
+                let model = match (slippage_model, slippage_bps_legacy) {
+                    (Some(m), _) => m,
+                    (None, Some(bps)) => SlippageModel::Linear { bps },
+                    (None, None) => SlippageModel::Linear { bps: 0 },
+                };
+
+                Ok(LatencySlippageSimConfig {
+                    latency_ms_min: latency_ms_min.unwrap_or(0),
+                    latency_ms_max: latency_ms_max.unwrap_or(0),
+                    slippage_model: model,
+                    volume_usd_per_symbol: None,
+                })
+            }
+        }
+
+        deserializer.deserialize_map(ConfigVisitor)
     }
 }
 
@@ -77,7 +182,11 @@ mod latency_slippage_config_tests {
         let cfg = LatencySlippageSimConfig::default();
         assert_eq!(cfg.latency_ms_min, 0, "default latency_ms_min must be 0");
         assert_eq!(cfg.latency_ms_max, 0, "default latency_ms_max must be 0");
-        assert_eq!(cfg.slippage_bps, 0, "default slippage_bps must be 0");
+        assert_eq!(
+            cfg.slippage_model,
+            SlippageModel::Linear { bps: 0 },
+            "default slippage_model must be Linear{{bps:0}}"
+        );
         assert!(cfg.is_noop(), "default must be noop");
     }
 
@@ -95,22 +204,64 @@ mod latency_slippage_config_tests {
         let cfg = LatencySlippageSimConfig {
             latency_ms_min: 50,
             latency_ms_max: 100,
-            slippage_bps: 10,
+            slippage_model: SlippageModel::Linear { bps: 10 },
+            volume_usd_per_symbol: None,
         };
         assert!(!cfg.is_noop(), "non-zero config must not be noop");
     }
 
-    /// Serialization round-trip (Serde derives).
+    /// Serialization round-trip (new slippage_model field).
     #[test]
     fn serde_round_trip() {
         let cfg = LatencySlippageSimConfig {
             latency_ms_min: 20,
             latency_ms_max: 80,
-            slippage_bps: 5,
+            slippage_model: SlippageModel::Linear { bps: 5 },
+            volume_usd_per_symbol: None,
         };
         let json = serde_json::to_string(&cfg).expect("must serialize");
         let back: LatencySlippageSimConfig = serde_json::from_str(&json).expect("must deserialize");
         assert_eq!(cfg, back);
+    }
+
+    /// Backward-compat serde: old `slippage_bps: N` field deserializes to Linear{bps:N}.
+    #[test]
+    fn legacy_slippage_bps_deserializes_to_linear() {
+        let legacy_json = r#"{"latency_ms_min":30,"latency_ms_max":80,"slippage_bps":8}"#;
+        let cfg: LatencySlippageSimConfig =
+            serde_json::from_str(legacy_json).expect("must deserialize legacy");
+        assert_eq!(
+            cfg.slippage_model,
+            SlippageModel::Linear { bps: 8 },
+            "legacy slippage_bps:8 must become Linear{{bps:8}}"
+        );
+        assert_eq!(cfg.latency_ms_min, 30);
+        assert_eq!(cfg.latency_ms_max, 80);
+    }
+
+    /// Missing slippage field → Linear{bps:0} (noop).
+    #[test]
+    fn missing_slippage_field_defaults_to_noop() {
+        let json = r#"{"latency_ms_min":10,"latency_ms_max":50}"#;
+        let cfg: LatencySlippageSimConfig = serde_json::from_str(json).expect("must deserialize");
+        assert_eq!(cfg.slippage_model, SlippageModel::Linear { bps: 0 });
+    }
+
+    /// SquareRoot model round-trips through serde.
+    #[test]
+    fn sqrt_model_serde_round_trip() {
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 30,
+            latency_ms_max: 80,
+            slippage_model: SlippageModel::SquareRoot {
+                alpha: rust_decimal_macros::dec!(1.0),
+                volume_lookback_days: 90,
+            },
+            volume_usd_per_symbol: None,
+        };
+        let json = serde_json::to_string(&cfg).expect("must serialize");
+        let back: LatencySlippageSimConfig = serde_json::from_str(&json).expect("must deserialize");
+        assert_eq!(cfg, back, "SquareRoot model must survive serde round-trip");
     }
 
     // ── T-D-N4 plumbing tests: default-is-noop for each new struct ────────────
@@ -184,7 +335,8 @@ mod latency_slippage_config_tests {
         let cfg = LatencySlippageSimConfig {
             latency_ms_min: 30,
             latency_ms_max: 80,
-            slippage_bps: 8,
+            slippage_model: SlippageModel::Linear { bps: 8 },
+            volume_usd_per_symbol: None,
         };
         let input = super::PairsScenarioInput {
             scenario_name: "test".to_string(),
@@ -197,7 +349,10 @@ mod latency_slippage_config_tests {
             latency_slippage_sim: cfg.clone(),
         };
         assert!(!input.latency_slippage_sim.is_noop());
-        assert_eq!(input.latency_slippage_sim.slippage_bps, 8);
+        assert_eq!(
+            input.latency_slippage_sim.slippage_model,
+            SlippageModel::Linear { bps: 8 }
+        );
     }
 
     /// T-D-N4e: non-zero config flows through `TcnScenarioInput`.
@@ -206,7 +361,8 @@ mod latency_slippage_config_tests {
         let cfg = LatencySlippageSimConfig {
             latency_ms_min: 30,
             latency_ms_max: 80,
-            slippage_bps: 8,
+            slippage_model: SlippageModel::Linear { bps: 8 },
+            volume_usd_per_symbol: None,
         };
         let input = super::TcnScenarioInput {
             scenario_name: "test".to_string(),
@@ -222,7 +378,10 @@ mod latency_slippage_config_tests {
             latency_slippage_sim: cfg.clone(),
         };
         assert!(!input.latency_slippage_sim.is_noop());
-        assert_eq!(input.latency_slippage_sim.slippage_bps, 8);
+        assert_eq!(
+            input.latency_slippage_sim.slippage_model,
+            SlippageModel::Linear { bps: 8 }
+        );
     }
 
     /// T-D-N4f: non-zero config flows through `SmaComposedRunInput`.
@@ -232,7 +391,8 @@ mod latency_slippage_config_tests {
         let cfg = LatencySlippageSimConfig {
             latency_ms_min: 30,
             latency_ms_max: 80,
-            slippage_bps: 8,
+            slippage_model: SlippageModel::Linear { bps: 8 },
+            volume_usd_per_symbol: None,
         };
         let input = super::SmaComposedRunInput {
             strategy_id: "sma_crossover".to_string(),
@@ -247,7 +407,10 @@ mod latency_slippage_config_tests {
             latency_slippage_sim: cfg.clone(),
         };
         assert!(!input.latency_slippage_sim.is_noop());
-        assert_eq!(input.latency_slippage_sim.slippage_bps, 8);
+        assert_eq!(
+            input.latency_slippage_sim.slippage_model,
+            SlippageModel::Linear { bps: 8 }
+        );
     }
 }
 

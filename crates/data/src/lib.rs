@@ -6,6 +6,7 @@
 pub mod bar_aggregator;
 pub mod bar_stream;
 pub mod binance;
+pub mod daily_volume;
 pub mod clock_skew;
 pub mod coinbase;
 pub mod fake_feed;
@@ -20,6 +21,9 @@ pub mod source;
 pub mod yahoo;
 
 pub use bar_aggregator::{aggregate_one_second, aggregate_one_second_iter};
+pub use daily_volume::{
+    DailyVolumeError, daily_volume_usd_trailing, universe_avg_daily_volume_usd_trailing,
+};
 pub use bar_stream::{bar_stream, bar_stream_with_cross_check};
 pub use binance::BinanceFeed;
 pub use clock_skew::{ClockSkewConfig, ClockSkewDetector, ObserveResult};

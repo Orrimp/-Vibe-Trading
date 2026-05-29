@@ -1714,7 +1714,12 @@ mod render_regime_dispatcher {
 
         for (r, sharpe, sortino, calmar) in [
             (baseline, sharpe_baseline, sortino_baseline, calmar_baseline),
-            (dispatcher, sharpe_dispatcher, sortino_dispatcher, calmar_dispatcher),
+            (
+                dispatcher,
+                sharpe_dispatcher,
+                sortino_dispatcher,
+                calmar_dispatcher,
+            ),
         ] {
             writeln!(
                 &mut body,
@@ -1801,18 +1806,8 @@ mod render_regime_dispatcher {
             "REJECTED: net_delta < +0.05 — regime-dispatcher does not deliver alpha lift at v0.1.0."
         };
         writeln!(&mut body, "| H1 result           | {} |", h1_result).unwrap();
-        writeln!(
-            &mut body,
-            "| Net Sharpe delta    | {:.6} |",
-            net_delta
-        )
-        .unwrap();
-        writeln!(
-            &mut body,
-            "| T-REG verdict       | {} |",
-            verdict.label()
-        )
-        .unwrap();
+        writeln!(&mut body, "| Net Sharpe delta    | {:.6} |", net_delta).unwrap();
+        writeln!(&mut body, "| T-REG verdict       | {} |", verdict.label()).unwrap();
 
         // ── § Notes ──────────────────────────────────────────────────────────────
         writeln!(&mut body, "\n## Notes\n").unwrap();
@@ -1916,11 +1911,7 @@ mod render_regime_dispatcher {
         #[test]
         fn render_contains_required_sections() {
             let baseline = make_result("top10-2023-fy-momentum-realdata", false, 0.0);
-            let dispatcher = make_result(
-                "top10-2023-fy-regime-dispatcher-realdata",
-                true,
-                0.112,
-            );
+            let dispatcher = make_result("top10-2023-fy-regime-dispatcher-realdata", true, 0.112);
             let ctx = ReportContext {
                 generated: "2026-05-29T00:00:00Z".to_string(),
                 wall_clock_s: 10.0,
@@ -1954,11 +1945,7 @@ mod render_regime_dispatcher {
         #[test]
         fn render_is_deterministic() {
             let baseline = make_result("top10-2023-fy-momentum-realdata", false, 0.0);
-            let dispatcher = make_result(
-                "top10-2023-fy-regime-dispatcher-realdata",
-                true,
-                0.112,
-            );
+            let dispatcher = make_result("top10-2023-fy-regime-dispatcher-realdata", true, 0.112);
             let ctx = ReportContext {
                 generated: "2026-05-29T00:00:00Z".to_string(),
                 wall_clock_s: 10.0,
@@ -1978,11 +1965,7 @@ mod render_regime_dispatcher {
         #[test]
         fn render_no_alpha_h1_discharge() {
             let baseline = make_result("top10-2023-fy-momentum-realdata", true, 0.0);
-            let dispatcher = make_result(
-                "top10-2023-fy-regime-dispatcher-realdata",
-                false,
-                0.112,
-            );
+            let dispatcher = make_result("top10-2023-fy-regime-dispatcher-realdata", false, 0.112);
             let ctx = ReportContext {
                 generated: "2026-05-29T00:00:00Z".to_string(),
                 wall_clock_s: 10.0,
@@ -2048,9 +2031,7 @@ fn main() -> Result<()> {
         ScenarioFamily::VolTargetRebaseline => {
             PathBuf::from("spec/v3-volatility-forecaster-rebaseline/reports/")
         }
-        ScenarioFamily::RegimeDispatcher => {
-            PathBuf::from("spec/v3-regime-classifier/reports/")
-        }
+        ScenarioFamily::RegimeDispatcher => PathBuf::from("spec/v3-regime-classifier/reports/"),
         ScenarioFamily::Tcn => PathBuf::from("spec/v25a-patchtst-overlay/reports/"),
     });
 
@@ -2101,7 +2082,7 @@ fn main() -> Result<()> {
         // Re-run REAL-DATA v1 momentum baseline + regime-dispatcher (2023 train window).
         // Both use real Binance 2023 hourly data — apples-to-apples per ADR-0049 § D4.
         let regime_scenarios = [
-            "top10-2023-fy-momentum-realdata",        // v1 momentum baseline (real data)
+            "top10-2023-fy-momentum-realdata", // v1 momentum baseline (real data)
             "top10-2023-fy-regime-dispatcher-realdata", // v3.0.0-regime RegimeDispatcher
         ];
 

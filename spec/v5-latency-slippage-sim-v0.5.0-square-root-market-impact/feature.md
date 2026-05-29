@@ -752,7 +752,62 @@ DURABLE route).
 
 ## Implementation
 
-_Developer fills this._
+### Waves A–C + F complete (developer 2026-05-29)
+
+**Wave A — `crates/cost/src/slippage.rs`**
+
+- Added `SlippageModel` enum (`Linear { bps: u32 }` | `SquareRoot { alpha: Decimal, volume_lookback_days: u16 }`) with `#[serde(tag = "kind", rename_all = "snake_case")]`.
+- Added `pub const MAX_SLIPPAGE_BPS: u32 = 1_000` (10% cap, K3 gate).
+- Added `pub fn apply_slippage_model(signal_price, side, notional, model, volume_usd) -> Decimal` dispatcher.
+- Added private `apply_slippage_sqrt` with f64 boundary contract (D-T1.3): `Q/V` and `√` in f64, `round_ties_even` → saturating-cast `u32`, back to Decimal for sign × multiplier.
+- Preserved `pub fn apply_slippage(signal_price, side, _notional, bps)` as legacy entry-point (unchanged body).
+- 14 unit tests in `slippage::tests`: reference value (`α=1.0, Q=$1M, V=$1B → 316 bps`), cap saturation, edge cases (V=0, Q=0, α=0), tie-break rounding.
+
+**Wave B — `crates/backtest/src/cli_types.rs` + `scenarios/sim.rs` + `main.rs`**
+
+- Replaced `slippage_bps: u32` with `slippage_model: SlippageModel` on `LatencySlippageSimConfig`.
+- Added `volume_usd_per_symbol: Option<Arc<HashMap<Symbol, Decimal>>>` (`#[serde(skip)]`) for per-symbol V population at scenario load time.
+- Custom `Deserialize` visitor: accepts both `slippage_model` (new) and `slippage_bps` (legacy → `Linear { bps }`); missing → `Linear { bps: 0 }`.
+- `Default` → `Linear { bps: 0 }, volume_usd_per_symbol: None`.
+- `is_noop()` → pattern-matches `Linear { bps: 0 }`.
+- `sim_slippage_cost` (in `scenarios/sim.rs`, SOLE-LOCATION per ADR-0047 D2) dispatches on enum: Linear bps=0 → ZERO; Linear bps>0 → byte-identical body; SquareRoot → `apply_slippage_model` then `qty × |adjusted - original|`.
+- `build_slippage_model(&args)` helper in `main.rs`: `--sim-slippage-sqrt-alpha > 0` → `SquareRoot`; else → `Linear { bps: sim_slippage_bps }`.
+- All 12 `LatencySlippageSimConfig` struct literals in `main.rs` updated with `volume_usd_per_symbol: None`.
+- Updated all test literals in `cli_types.rs` (9 tests), `scenarios/sim.rs` (6 tests), `strategy/tests/latency_slippage_sim_e2e.rs` (3 tests).
+
+**Wave C — `crates/data/src/daily_volume.rs`**
+
+- `DailyVolumeError` enum (thiserror) with SymbolNotFound | Polars | InsufficientCoverage | Parse.
+- `OnceLock<Mutex<HashMap<(String, i32, u16), Decimal>>>` in-process cache.
+- `pub fn daily_volume_usd_trailing(parquet_root, symbol, end_date, lookback_days) -> Result<Decimal, DailyVolumeError>`: scans parquet via polars `LazyFrame`, filters by `open_time` in `[start, end)`, accumulates `Σ(volume × close)` per UTC day, returns arithmetic mean.
+- `pub fn universe_avg_daily_volume_usd_trailing(parquet_root, universe, end_date, lookback_days)`: arithmetic mean across universe; soft-skips SymbolNotFound.
+- 5 unit tests (no real parquet required): cache miss + empty universe + all-missing + date_to_unix_millis + day_ordinal bucketing.
+- Re-exported from `crates/data/src/lib.rs`.
+
+**Wave F — `crates/reports/tests/strategy_anchors_unchanged.rs`**
+
+- Added `SqrtImpact` to `Namespace` enum (3-namespace resolver: Noop / Canonical / SqrtImpact).
+- Added `SQRT_IMPACT_FEATURE_DIRS` + `SQRT_IMPACT_STRATEGY_ANCHORS` (empty until Wave E populates).
+- Added `t1937c_sqrt_impact_strategy_anchors_unchanged` test (soft-skips when table empty).
+- All 4 tests pass: `t1937`, `t1937b`, `t1937c`, `t1942`.
+
+**Verification gates (all green as of 2026-05-29)**
+
+- `cargo test -p cost -- slippage::tests` → 14/14 pass.
+- `cargo test -p data --lib` → 52/53 pass (1 ignored: requires real parquet).
+- `cargo test -p backtest --lib` → 44/44 pass (5 ignored: require config files).
+- `cargo test -p reports --test strategy_anchors_unchanged` → 4/4 pass.
+- `cargo test -p strategy --test latency_slippage_sim_e2e` → 3/3 pass.
+- `cargo test -p strategy --test vol_targeting_overlay_end_to_end` → 1/1 pass.
+- `cargo test -p strategy --test vol_killswitch_overlay_end_to_end` → 4/4 pass.
+- `cargo clippy -p backtest -p cost -p data -p strategy` → 0 warnings, 0 errors.
+- Grep gate: `grep -r "fn sim_slippage_cost" crates/backtest/src` → 1 definition (ADR-0047 D2).
+
+**Pending (Waves D–E)**
+
+Waves D (19-scenario re-emission) and E (anchor population + Sharpe-delta table) require `cargo build --release --features "candle realdata"` + actual backtest runs. Left for tester to run on the canonical Apple Silicon box, or developer can run if the operator authorizes the long-running wave.
+
+_Tester M-FINAL links to reports here._
 
 ## Verification
 

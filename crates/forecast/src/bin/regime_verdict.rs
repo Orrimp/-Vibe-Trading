@@ -233,7 +233,9 @@ impl VRegVerdict {
             VRegVerdict::VReg2 => "prior-recalibrate",
             VRegVerdict::VReg3 => "stability-tune",
             VRegVerdict::VReg4 => "prior-recalibrate",
-            VRegVerdict::VReg5 => "T-REG gate (see sharpe-comparison-regime-dispatcher-bs1-realdata)",
+            VRegVerdict::VReg5 => {
+                "T-REG gate (see sharpe-comparison-regime-dispatcher-bs1-realdata)"
+            }
         }
     }
 }
@@ -375,14 +377,18 @@ fn parse_u64_field(body: &str, field: &str) -> Option<u64> {
 }
 
 fn parse_equity_field(body: &str, field: &str) -> Option<f64> {
-    body.lines()
-        .find(|l| l.contains(field))
-        .and_then(|l| {
-            l.split('|')
-                .nth(2)
-                .map(|v| v.trim().trim_start_matches('$').replace(',', "").trim_end_matches(" USDT").to_string())
-                .and_then(|v| v.parse().ok())
-        })
+    body.lines().find(|l| l.contains(field)).and_then(|l| {
+        l.split('|')
+            .nth(2)
+            .map(|v| {
+                v.trim()
+                    .trim_start_matches('$')
+                    .replace(',', "")
+                    .trim_end_matches(" USDT")
+                    .to_string()
+            })
+            .and_then(|v| v.parse().ok())
+    })
 }
 
 fn parse_pct_field(body: &str, field: &str) -> Option<f64> {
@@ -451,9 +457,24 @@ fn render_report(stats: &RunStats, verdict: &VRegVerdict, evidence: &str) -> Str
     .unwrap();
     writeln!(&mut body, "| Scenario             | {} |", stats.scenario).unwrap();
     writeln!(&mut body, "| Total bars           | {} |", stats.total_bars).unwrap();
-    writeln!(&mut body, "| Suppressed bars      | {} |", stats.suppressed_bars).unwrap();
-    writeln!(&mut body, "| Momentum bars        | {} |", stats.momentum_bars).unwrap();
-    writeln!(&mut body, "| Warmup bars          | {} |", stats.warmup_bars).unwrap();
+    writeln!(
+        &mut body,
+        "| Suppressed bars      | {} |",
+        stats.suppressed_bars
+    )
+    .unwrap();
+    writeln!(
+        &mut body,
+        "| Momentum bars        | {} |",
+        stats.momentum_bars
+    )
+    .unwrap();
+    writeln!(
+        &mut body,
+        "| Warmup bars          | {} |",
+        stats.warmup_bars
+    )
+    .unwrap();
     writeln!(&mut body, "| Active bars          | {} |", active_bars).unwrap();
     writeln!(
         &mut body,
@@ -488,12 +509,7 @@ fn render_report(stats: &RunStats, verdict: &VRegVerdict, evidence: &str) -> Str
         stats.max_drawdown * 100.0
     )
     .unwrap();
-    writeln!(
-        &mut body,
-        "| Weeks elapsed        | {:.2} |",
-        weeks
-    )
-    .unwrap();
+    writeln!(&mut body, "| Weeks elapsed        | {:.2} |", weeks).unwrap();
     writeln!(
         &mut body,
         "| Switch rate (UB)     | {:.6}/week (conservative upper bound) |",
@@ -579,12 +595,7 @@ fn render_report(stats: &RunStats, verdict: &VRegVerdict, evidence: &str) -> Str
     )
     .unwrap();
     writeln!(&mut body, "| Evidence         | {} |", evidence).unwrap();
-    writeln!(
-        &mut body,
-        "| Follow-on        | {} |",
-        verdict.follow_on()
-    )
-    .unwrap();
+    writeln!(&mut body, "| Follow-on        | {} |", verdict.follow_on()).unwrap();
 
     // Joint advisory table (ADR-0049 § D4).
     if *verdict == VRegVerdict::VReg5 {
@@ -647,8 +658,8 @@ fn render_report(stats: &RunStats, verdict: &VRegVerdict, evidence: &str) -> Str
     // ── § Universe ─────────────────────────────────────────────────────────────
     writeln!(&mut body, "\n## Universe\n").unwrap();
     for sym in &[
-        "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT",
-        "DOTUSDT", "ETHUSDT", "LINKUSDT", "SOLUSDT", "XRPUSDT",
+        "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "DOTUSDT", "ETHUSDT", "LINKUSDT",
+        "SOLUSDT", "XRPUSDT",
     ] {
         writeln!(&mut body, "- {sym}").unwrap();
     }
@@ -675,11 +686,7 @@ fn render_report(stats: &RunStats, verdict: &VRegVerdict, evidence: &str) -> Str
         "  classifier state export; internal Markov-switching {{mu_s, sigma_s}} are not surfaced"
     )
     .unwrap();
-    writeln!(
-        &mut body,
-        "  in the aggregate backtest report at v0.1.0)."
-    )
-    .unwrap();
+    writeln!(&mut body, "  in the aggregate backtest report at v0.1.0).").unwrap();
     writeln!(
         &mut body,
         "- The single shared classifier means V-REG-2 symbol diversity check is evaluated globally."
@@ -708,21 +715,13 @@ fn render_report(stats: &RunStats, verdict: &VRegVerdict, evidence: &str) -> Str
         "- Val window: 2024 full year (Q2=(c) operator decision; held-out after 2023 train window)."
     )
     .unwrap();
-    writeln!(
-        &mut body,
-        "- Slippage: 2 bps, Taker fee: 4 bps."
-    )
-    .unwrap();
+    writeln!(&mut body, "- Slippage: 2 bps, Taker fee: 4 bps.").unwrap();
     writeln!(
         &mut body,
         "- Size: equal_weight fraction=10%, exposure_cap=50%."
     )
     .unwrap();
-    writeln!(
-        &mut body,
-        "- Risk: per-symbol cap=40%, portfolio cap=50%."
-    )
-    .unwrap();
+    writeln!(&mut body, "- Risk: per-symbol cap=40%, portfolio cap=50%.").unwrap();
     writeln!(
         &mut body,
         "- Data: real Binance hourly bars, 10 symbols, data_revision_sha={}.",
@@ -798,8 +797,7 @@ fn main() -> Result<()> {
         .clone()
         .unwrap_or_else(|| PathBuf::from("spec/v3-regime-classifier/reports/"));
 
-    std::fs::create_dir_all(&out_dir)
-        .with_context(|| format!("creating out_dir {:?}", out_dir))?;
+    std::fs::create_dir_all(&out_dir).with_context(|| format!("creating out_dir {:?}", out_dir))?;
 
     info!(
         scenario = args.scenario.scenario_name(),
@@ -825,7 +823,10 @@ fn main() -> Result<()> {
     } else {
         let tmpdir = tempfile::TempDir::new().context("creating tempdir")?;
 
-        info!(scenario = scenario_name, "running backtest scenario for V-REG evaluation");
+        info!(
+            scenario = scenario_name,
+            "running backtest scenario for V-REG evaluation"
+        );
 
         let status = std::process::Command::new(&args.backtest_bin)
             .args([
@@ -934,10 +935,7 @@ fn main() -> Result<()> {
         "V-REG verdict report written"
     );
 
-    println!(
-        "Report written: {}",
-        out_path.display()
-    );
+    println!("Report written: {}", out_path.display());
     println!("Scenario     : {scenario_name}");
     println!("V-REG        : {} ({})", verdict.label(), verdict.name());
     println!("Evidence     : {evidence}");
@@ -947,16 +945,17 @@ fn main() -> Result<()> {
 }
 
 fn find_report_file(dir: &std::path::Path, scenario: &str) -> Result<PathBuf> {
-    for entry in std::fs::read_dir(dir)
-        .with_context(|| format!("reading dir {}", dir.display()))?
-    {
+    for entry in std::fs::read_dir(dir).with_context(|| format!("reading dir {}", dir.display()))? {
         let entry = entry?;
         let fname = entry.file_name().to_string_lossy().to_string();
         if fname.ends_with(".md") && fname.contains(scenario) {
             return Ok(entry.path());
         }
     }
-    anyhow::bail!("no report found for scenario {scenario} in {}", dir.display())
+    anyhow::bail!(
+        "no report found for scenario {scenario} in {}",
+        dir.display()
+    )
 }
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
@@ -1163,7 +1162,11 @@ data_revision_sha: abc123def456
         assert_eq!(stats.momentum_bars, 75524);
         assert_eq!(stats.warmup_bars, 500);
         assert_eq!(stats.trades, 6243);
-        assert!((stats.total_return - (-0.0599)).abs() < 1e-4, "total_return mismatch: {}", stats.total_return);
+        assert!(
+            (stats.total_return - (-0.0599)).abs() < 1e-4,
+            "total_return mismatch: {}",
+            stats.total_return
+        );
         assert_eq!(stats.completed_ok, true);
         assert_eq!(stats.data_revision_sha, "abc123def456");
     }
