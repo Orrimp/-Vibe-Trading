@@ -2389,7 +2389,7 @@ tests       = [
   "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::direct_await_without_rt_spawn_panics",                   # mechanism falsification: direct-await from block_on panics
 ]
 anchors     = []   # zero anchor delta (R-NR.1); backtest report bodies byte-immutable; 84/84 PASS
-state       = "dev-done"  # rt.spawn fix 2026-05-29: entire preload spawned onto rt (T-BUG64-RS1). redundant rt.enter() guards removed (T-BUG64-RS2). abort() in cancel arm (T-BUG64-RS3). HTTP off-executor test added (T-BUG64-RS4). ADR-0050 D1/D3/D4 amended (T-BUG64-RS5). Operator re-verify pending → tester.
+state       = "tested"    # tester VERDICT → PASS 2026-05-29 (test-20260529-202732-unify.md). Unification confirmed: production Yahoo path routes through spawn_preload_on_rt (single enforcement point). 20/20 PASS. 84/84 anchors. Release build live,yahoo clean. HANDOFF → orchestrator (presenter-ready).
 
 #
 # ─── Pick C Wave 1 — Orchestrator hygiene compounder trio promoted features (analyst M0 2026-05-29) ───
