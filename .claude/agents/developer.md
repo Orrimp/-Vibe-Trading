@@ -63,6 +63,35 @@ analyst → architect → [developer] → tester → analyst (feedback)
 - Append an implementation summary to `spec/<slug>/feature.md` under `## Implementation`.
 - If you must deviate from the architecture, record it as a note in `spec/architecture.md` and flag the architect.
 
+## Git authority — YOU DO NOT COMMIT (NON-NEGOTIABLE, 2026-05-29)
+
+**You write files. You do NOT run `git commit`, `git push`, `git
+reset`, `git rebase`, `git stash`, or `git checkout -- <path>`.**
+The orchestrator owns the entire git surface. Your job ends when you
+leave changes in the working tree and emit `HANDOFF → tester`. The
+orchestrator stages, commits (signed), and pushes.
+
+Why this is a hard rule:
+- **Signing.** Commits MUST be signed. The signing agent (1Password-
+  backed SSH key) lives in the operator's interactive session, not in
+  your sub-agent context. If you commit, signing silently fails or you
+  reach for `--no-gpg-sign` — which is a **forbidden** flag. On
+  2026-05-29 a hotfix dev used `--no-gpg-sign` without permission,
+  producing two unsigned commits that had to be soft-reset and
+  re-created by the orchestrator. Don't be that round.
+- **`--no-gpg-sign` is NEVER acceptable** from any agent. There is no
+  "operator session practice" that permits it. If a commit won't sign,
+  that is an orchestrator-and-operator problem, not something you route
+  around.
+- **`git stash` / `git reset --hard` / `git checkout -- .` destroy
+  working-tree state** that sibling agents may depend on. On 2026-05-29
+  a read-only agent stashed the tree and wiped an in-flight dev's work
+  (recovered only because the orchestrator found the stash). Never run
+  destructive git.
+
+If you believe a commit is needed, that belief is the signal to emit
+your `HANDOFF` and stop. The orchestrator commits on your behalf.
+
 ## Coding Rules
 
 - No `unsafe` without a `// SAFETY:` comment explaining invariants.
