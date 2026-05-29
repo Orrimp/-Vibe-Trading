@@ -440,6 +440,33 @@ envelope. Older reports are not retroactively edited. The presenter pre-tick
 gate may, in a future change, refuse to ship a feature whose latest sub-
 agent reports lack envelopes — track adoption first, enforce later.
 
+## Queue pre-flight reconciliation sweep (2026-05-29 contract)
+
+**Before promoting any Queue entry to Active, the orchestrator MUST
+verify the feature folder's frontmatter `status` against the Queue
+row text.** Per the weekly-retro-2026-05-27-to-2026-05-29 finding:
+the audit caught stale Queue→Active text on 3 consecutive audits
+(v2.5 TCN near-miss save 2026-05-28; v25a-patchtst earlier;
+v3-llm-forecaster Queue row says "moved to Active" while shipped).
+
+**Mandatory steps before Queue → Active promotion:**
+
+1. Grep for the slug in `spec/<slug>/feature.md` frontmatter; read
+   the `status:` field.
+2. If `status: shipped` or `status: shipped (retired)` — the Queue
+   entry is STALE; DO NOT promote. Instead:
+   - Update the Queue text to reflect the shipped state (e.g.
+     "shipped 2026-MM-DD; see Recent")
+   - Pick a different track or surface a different option to operator
+3. If `status: draft` / `status: proposed` / `status: in-progress` —
+   safe to promote; proceed with analyst M-A5 light-touch refresh.
+4. The analyst-halt protocol (2026-05-28 lesson) is the LAST line of
+   defense — orchestrator should catch this BEFORE spawning analyst.
+
+This is the same pattern the analyst correctly enforced 2026-05-28
+when refusing to overwrite v2.5 TCN artifacts. Codifying it at
+orchestrator level prevents wasted analyst cycles.
+
 ## The vibe-coding loop
 
 **Before every sub-agent delegation**, the orchestrator assembles a brief:

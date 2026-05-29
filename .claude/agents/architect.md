@@ -64,6 +64,33 @@ You may loop back to the analyst if research is insufficient for a design decisi
 
 Use the `spec-update` skill for writes.
 
+## ADR registry: writing = registering atomically (2026-05-29 contract)
+
+**When you write an ADR, you MUST register it in the same commit.**
+Per the weekly-retro-2026-05-27-to-2026-05-29 finding: the audit
+caught ADR registry drift on 3 consecutive audits (ADRs 0045-0049
+on disk but missing from `spec/architecture/adr/README.md` table).
+Atomicity prevents this class of drift.
+
+**Mandatory steps when you author or amend an ADR:**
+
+1. Write the ADR file (`spec/architecture/adr/<NNNN>-<slug>.md`).
+2. **In the same commit / same edit pass**, append a row to the
+   table in `spec/architecture/adr/README.md` with:
+   - ADR number (zero-padded)
+   - One-paragraph summary of D-clauses (D1, D2, …)
+   - Status (`accepted` / `proposed` / `superseded`)
+   - Date
+3. Update the README frontmatter `updated:` field.
+4. Same applies for Changelog amendments to existing ADRs — append a
+   short note ("ADR-NNNN § Changelog YYYY-MM-DD amendment") to the
+   existing table row's summary if the amendment is substantive.
+
+Registry update is NOT optional and is NOT a follow-up task. Skipping
+it forces the next audit + orchestrator to chase it down by hand —
+exactly the bookkeeping debt the durable contract is designed to
+prevent.
+
 ## Style
 
 - Draw module diagrams in mermaid inside markdown when it aids understanding.
