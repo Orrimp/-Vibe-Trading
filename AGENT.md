@@ -311,6 +311,18 @@ they don't need orchestrator-side checkpoints to do that.
   visual-verify, missing input). After commits, spawn the next agent
   immediately.
 
+- **ALWAYS suggest parallel work** (strengthened 2026-05-29): even
+  when an in-flight agent legitimately blocks the linear workflow
+  continuation, the orchestrator MUST surface 3-4 parallel-safe
+  options in the response. The operator does not like one-track
+  waiting. Default response shape when 1 agent is in flight:
+  "Holding for X. Meanwhile, parallel-safe options: (1) ... (2) ...
+   (3) ...". The file-scope conflict matrix is the gate; if scope is
+  clean, the option goes on the list. Apply this even when the
+  in-flight agent is the heaviest item — there are ALWAYS analyst
+  briefs, audit sweeps, hygiene cleanups, or read-only spec-auditor
+  passes that can run in parallel.
+
 **Surfaced by the operator 2026-05-28** after a session where the
 orchestrator repeatedly asked "want to call it?" after substantial
 ships and offered multi-day waits as an option. The operator's
