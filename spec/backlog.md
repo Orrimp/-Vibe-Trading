@@ -4,6 +4,27 @@ status: living
 owner: orchestrator
 updated: 2026-05-29
 ---
+<!-- updated 2026-05-29 (analyst, pick-b-cross-cutting-safety-duo M0 close) —
+     promoted Queue → Active TWO features under Pick B Wave 1 of the
+     architect's process-tooling survey at
+     `spec/dev-notes/process-tooling-survey-2026-05-29.md` § Pick B
+     (Top-5 Rank 3 + Rank 4): `v2-1-tracing-layer-redactor` (~1.5
+     dev days; cross-cutting safety net at audit/llm boundary) +
+     `ui-contrast-asserter` (~0.5 dev days; WCAG 2.1 (fg, bg) pair
+     assertion). Strategic direction at
+     `spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`
+     frames the bundle (durable-over-quick per AGENT.md 2026-05-28).
+     v2.1-tracing-Layer-redactor portion SPLIT OFF from the
+     `v2-llm-strategy-v21-followups` Queue entry (#3); LLM-budget
+     tile + clippy items stay Queue per process-tooling-survey
+     § What's NOT a compounder (defer with v2 LLM lane activation).
+     Two new trace rows opened proposed:
+     `REQ-V2-1-TRACING-LAYER-REDACTOR-001` +
+     `REQ-UI-CONTRAST-ASSERTER-001`. Both biased DURABLE on all
+     operator-decide Qs. One bundle-level operator-decide
+     Q-DUO-WARN (Recommended DURABLE = 2-week WARN per feature
+     before v0.2.0 gate flip) surfaced in the strategic dev-note. -->
+
 <!-- updated 2026-05-22 (orchestrator, audit-2026-05-22 P2.5 cleanup) —
      v25-tcn-alpha-investigation shipped 2026-05-19; v25-tcn-overlay
      parent flipped shipped 2026-05-22 (F4 disposition); v25a-patchtst-overlay
@@ -556,6 +577,113 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   Direction: [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
   HANDOFF → architect (M-T1 inventory + dry-run + ratification;
   parallel-safe with visual-fail-HTML sibling).
+
+<!-- updated 2026-05-29 (analyst, v2-1-tracing-layer-redactor M0 close) —
+     **PROMOTED Queue → Active 2026-05-29** under Pick B Wave 1 of the
+     cross-cutting safety duo strategic direction at
+     `spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`
+     (analyst pass following the architect's process-tooling survey at
+     `spec/dev-notes/process-tooling-survey-2026-05-29.md` § Pick B
+     Top-5 Rank 3). More-expensive pillar of the duo (~1.5 dev days).
+     SPLIT OFF from `v2-llm-strategy-v21-followups` Queue entry (#3);
+     LLM-budget tile + clippy items stay Queue per process-tooling
+     survey § What's NOT a compounder honorable mentions (defer with
+     v2 LLM lane activation). Closes the v2-llm-strategy v2.0.0 pass-3
+     deferred half (per `crates/llm/src/redact.rs:18-26` deferral
+     note): installs a `tracing_subscriber::Layer` field-visitor at
+     the audit/llm boundary that redacts API keys (`sk-` / `sk-ant-`
+     / `sk-proj-` / OpenAI-shape) + Bearer tokens + JWTs + AWS-style
+     secrets + password-like field NAMES + high-entropy strings
+     ≥ 32 chars BEFORE they hit the audit ledger or stdout. Q-RED-1
+     (regex set shape; analyst Recommended DURABLE = closed regex
+     set + per-site opt-out only) + Q-RED-2 (provider header bypass;
+     Recommended DURABLE = wire-layer exemption via reqwest middleware
+     NOT redactor allowlist) + Q-RED-3 (WARN-mode flag shape;
+     Recommended DURABLE = env var `REDACT_LAYER_MODE=warn|gate`).
+     All three Qs bias DURABLE per AGENT.md 2026-05-28. WARN mode
+     default at v0.1.0 per shared bundle Q-DUO-WARN (2-week
+     observation; v0.2.0 patch flips to gate). Pass-3 redact ADR
+     carries forward (one Changelog row at M-T1, no new ADR). Anchor
+     contract zero delta — 75/75 byte-identical pre/post (Layer
+     affects tracing emit only). PARALLEL-SAFE with sibling
+     `ui-contrast-asserter` per AGENT.md § Parallelism rules conflict
+     matrix (independent file-scope: `crates/llm` + `crates/audit`
+     vs `crates/ui/tests/contrast.rs`). Trace row
+     `REQ-V2-1-TRACING-LAYER-REDACTOR-001` opened `proposed`. M-T1
+     fast-skip likely. HANDOFF → architect (parallel-spawn with
+     ui-contrast-asserter sibling). -->
+- **v2-1-tracing-layer-redactor v0.1.0** — Pick B Wave 1 cross-cutting
+  safety duo pillar (more-expensive, ~1.5 dev days). Closes the
+  v2-llm-strategy v2.0.0 pass-3 deferred half (`crates/llm/src/redact.rs`
+  pure-fn was pass 3; the `tracing_subscriber::Layer` field-visitor
+  half is this brief). Installs a Layer at the audit/llm boundary that
+  redacts API keys + Bearer + JWTs + AWS-style secrets + password-like
+  field names + high-entropy strings BEFORE they hit the audit ledger
+  or stdout. Every future LLM call and structured log emit inherits
+  redaction with zero per-call wiring. **SPLIT off from
+  `v2-llm-strategy-v21-followups` Queue (#3)**; LLM-budget tile +
+  clippy items stay Queue per the survey § What's NOT a compounder.
+  Q-RED-1 (closed regex set + per-site opt-out) + Q-RED-2 (provider
+  header bypass at WIRE layer not redactor) + Q-RED-3 (env-var WARN
+  mode flag) all bias DURABLE per AGENT.md 2026-05-28. WARN mode at
+  v0.1.0 per bundle Q-DUO-WARN (2-week observation). Pass-3 redact
+  ADR carries forward (no new ADR). Zero anchor delta; 75/75
+  byte-identical. Trace `REQ-V2-1-TRACING-LAYER-REDACTOR-001`
+  proposed. Brief:
+  [`spec/v2-1-tracing-layer-redactor/feature.md`](v2-1-tracing-layer-redactor/feature.md).
+  Direction: [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md).
+  HANDOFF → architect (M-T1 fast-skip; parallel-safe with
+  ui-contrast-asserter sibling).
+
+<!-- updated 2026-05-29 (analyst, ui-contrast-asserter M0 close) —
+     **PROMOTED Queue → Active 2026-05-29** under Pick B Wave 1 of the
+     cross-cutting safety duo strategic direction at
+     `spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`.
+     Cheap pillar of the duo (~0.5 dev days). Data-driven
+     `crates/ui/tests/contrast.rs` test that enumerates `(fg, bg)`
+     token pairs derived from `crates/ui/src/theme.rs` and asserts
+     WCAG 2.1 contrast ratios per `spec/ui-design-principles.md
+     ## Accessibility minimums` (4.5:1 AA body, 7:1 AAA equity).
+     New tokens auto-inherit assertion without per-token wiring.
+     R1.4 MIN_PAIRS floor assertion (≥ 30 per architect M-T1
+     ratification) defends against silent enumeration break from
+     future token storage refactors (K2). Q-CONT-1 (WARN-mode default;
+     analyst Recommended DURABLE = inherits bundle Q-DUO-WARN 2-week
+     WARN observation) + Q-CONT-2 (WCAG formula impl; Recommended
+     DURABLE = hand-rolled ~20 LoC, zero dep escalation for closed
+     WCAG 2.1 math) + Q-CONT-3 (opt-out marker placement; Recommended
+     DURABLE = in-file `OPT_OUTS` table inside `contrast.rs`, theme.rs
+     stays clean of test-only annotations). All three Qs bias
+     DURABLE per AGENT.md 2026-05-28. ADR-0048 boundary-test
+     precedent carries forward (one Changelog row at M-T1, no new ADR).
+     Anchor contract zero delta — 75/75 byte-identical pre/post (zero
+     production code touched per R-NR.1; pure test infra addition).
+     PARALLEL-SAFE with sibling `v2-1-tracing-layer-redactor` per
+     AGENT.md § Parallelism rules conflict matrix. Trace row
+     `REQ-UI-CONTRAST-ASSERTER-001` opened `proposed`. M-T1 includes
+     one-pass theme.rs audit + opt-out list seed + MIN_PAIRS floor
+     ratification; fast-skip otherwise. HANDOFF → architect
+     (parallel-spawn with v2-1-tracing-layer-redactor sibling). -->
+- **ui-contrast-asserter v0.1.0** — Pick B Wave 1 cross-cutting safety
+  duo pillar (cheap, ~0.5 dev days). Data-driven test at
+  `crates/ui/tests/contrast.rs` enumerates `(fg, bg)` token pairs from
+  `crates/ui/src/theme.rs` and asserts WCAG 2.1 contrast per
+  [`ui-design-principles.md ## Accessibility minimums`](ui-design-principles.md#accessibility-minimums)
+  (4.5:1 AA body, 7:1 AAA equity). Closes the palette-refactor
+  regression class without rendering a pixel. New tokens auto-inherit
+  assertion. R1.4 MIN_PAIRS floor defends against silent enumeration
+  break (K2). Q-CONT-1 (WARN default inheriting bundle Q-DUO-WARN) +
+  Q-CONT-2 (hand-rolled formula, zero dep) + Q-CONT-3 (in-file
+  OPT_OUTS table, theme.rs stays clean) all bias DURABLE per
+  AGENT.md 2026-05-28. WARN mode at v0.1.0 (2-week observation;
+  v0.2.0 patch flips to gate). ADR-0048 boundary-test precedent
+  carries forward (no new ADR). Zero anchor delta; 75/75 byte-identical.
+  Trace `REQ-UI-CONTRAST-ASSERTER-001` proposed. Brief:
+  [`spec/ui-contrast-asserter/feature.md`](ui-contrast-asserter/feature.md).
+  Direction: [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md).
+  HANDOFF → architect (M-T1 fast-skip + one-pass theme.rs audit +
+  opt-out list seed; parallel-safe with v2-1-tracing-layer-redactor
+  sibling).
 
 
 <!-- updated 2026-05-28 (analyst, v3-regime-classifier M-A5 light-touch
@@ -2327,28 +2455,41 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   available for any future bake-off-flavored feature, but is no longer
   Queue-positioned._
 
-- **v2.1 — Cockpit LLM-budget tile + tracing-Layer redactor +
-  pedantic clippy cleanup (`v2-llm-strategy-v21-followups`).**
-  _candidate, surfaced 2026-05-13 by v2-llm-strategy v2.0.0 ship_ —
-  three deferred items consolidated:
+- **v2.1 — Cockpit LLM-budget tile + pedantic clippy cleanup
+  (`v2-llm-strategy-v21-followups`) — REDACTOR PORTION SPLIT OFF
+  2026-05-29.**
+  _candidate, surfaced 2026-05-13 by v2-llm-strategy v2.0.0 ship;
+  partially promoted 2026-05-29 — see Active section above for the
+  split-off `v2-1-tracing-layer-redactor v0.1.0` brief under Pick B
+  Wave 1 of the cross-cutting safety duo strategic direction at
+  [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md)_
+  — two REMAINING deferred items (the redactor half was split off
+  and promoted under Pick B Wave 1):
   (a) **T1938 cockpit "LLM budget" tile** — was deferred in pass 6
       because its dependency `audit::query::llm_spend_this_month`
       isn't implemented. v2.1 ships the audit query helper +
       the right-rail tile (three-color thresholds: green < 60%,
       amber 60-80%, red ≥ 80%; auto-degrade at 80% per Q6).
-  (b) **T1915 tracing-Layer redactor half** — pure-fn `redact()`
-      landed in pass 3; the `tracing_subscriber::Layer` field-
-      visitor side needs `tracing_subscriber = "0.3"` (new dep).
-      v2.1 wires the Layer so structured logging redacts
-      `Bearer ...` / `sk-...` / `anthropic-...` patterns in
-      fields without requiring callers to invoke `redact()`
-      explicitly.
+      **Defer with v2 LLM lane activation** per
+      [`process-tooling-survey-2026-05-29.md § What's NOT a compounder`](dev-notes/process-tooling-survey-2026-05-29.md)
+      honorable mentions — gates Lumen Phase 6 Assistant, no
+      independent compounder benefit until v2 LLM lane re-activates.
+  ~~(b) **T1915 tracing-Layer redactor half**~~ — **PROMOTED
+      2026-05-29 to Active section above as standalone
+      `v2-1-tracing-layer-redactor v0.1.0` (~1.5 dev days)** under
+      Pick B Wave 1 cross-cutting safety duo. The Layer wire-up is
+      cross-cutting safety that compounds regardless of v2 LLM lane
+      state — no reason to defer with the rest of #3. See Active
+      row for full promotion annotation.
   (c) **T1910 pedantic clippy cleanup** — 2 `cast_possible_truncation`
       warnings on `crates/audit/src/query.rs:219, 221` from the
       `cache_hit_ratio_since` query. Non-blocking per v2.0.0
       brief §Critical constraints #2. v2.1 cleans these up via
-      `Decimal::try_from` or explicit clamp.
-  Analyst spawn when operator promotes; not urgent.
+      `Decimal::try_from` or explicit clamp. Roll into next audit's
+      housekeeping per the survey § What's NOT a compounder framing.
+  Analyst spawn for the REMAINING (a)+(c) items when operator
+  promotes; not urgent. The split-off (b) is now Active under its
+  own brief.
 
 - **Canvas-state seeding for snapshot tests
   (`ui-test-harness-canvas-state-seeding`).** _candidate, surfaced
@@ -2448,17 +2589,17 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   > ecosystem migration.
 
 - **Operator UI legibility — WCAG contrast asserter
-  (`ui-contrast-asserter`).** _candidate, surfaced 2026-05-15 by
-  [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md §3.8`](dev-notes/ui-testability-deep-dive-2026-05-15.md#38-stretch--pure-rust-wcag-contrast-asserter--ui-contrast-asserter)_
-  — a `crates/ui/tests/contrast.rs` test that enumerates every
-  `(fg, bg)` token pair in
-  [`crates/ui/src/theme.rs`](../crates/ui/src/theme.rs) and asserts
-  WCAG 2.1 contrast ratios per
-  [`ui-design-principles.md ## Accessibility minimums`](ui-design-principles.md#accessibility-minimums)
-  (4.5:1 AA body, 7:1 AAA equity). Half-day analyzed work. Closes
-  an entire class of palette-refactor regression without rendering
-  a single pixel. Run in WARN mode for two weeks before promoting
-  to gate. Analyst spawn when operator promotes.
+  (`ui-contrast-asserter`).** _**PROMOTED Queue → Active
+  2026-05-29**_ under Pick B Wave 1 of the cross-cutting safety duo
+  strategic direction at
+  [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md)
+  (cheap pillar of the duo, ~0.5 dev days). Originally surfaced
+  2026-05-15 by
+  [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md §3.8`](dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#38-stretch--pure-rust-wcag-contrast-asserter--ui-contrast-asserter).
+  Brief: [`spec/ui-contrast-asserter/feature.md`](ui-contrast-asserter/feature.md).
+  See Active section above for the promotion annotation. WARN mode
+  at v0.1.0 (2-week observation per bundle Q-DUO-WARN) before
+  v0.2.0 patch flips default to gate.
 
 - **Pure-state property tests — update + proptest harness
   (`ui-update-proptest`).** _candidate, surfaced 2026-05-15 by

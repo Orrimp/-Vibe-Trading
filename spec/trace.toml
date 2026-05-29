@@ -2203,7 +2203,7 @@ arch        = [
 crates      = ["crates/ui"]   # Cargo.toml base64+chrono dev-deps (T-VFH-D1); visual_fail_html.rs helper (T-VFH-D2+D3); visual_diff.rs wire-up 3 call sites (T-VFH-D5); .claude/agents/tester.md amendment (T-VFH-D7)
 tests       = ["emit_visual_fail_html_default_path_inlines_pngs", "emit_visual_fail_html_spec_persist_writes_byte_identical_copy"]   # self-test pair in crates/ui/tests/fixtures/visual_fail_html.rs #[cfg(test)] mod tests (T-VFH-D6); invoked via --test visual_fail_html_self_test
 anchors     = []   # zero delta (helper emits target/ output on FAIL; PASS path byte-identical); 75/75 stays byte-identical
-state       = "dev-done"  # developer M-DEV 2026-05-29. T-VFH-D1..D9 complete. Helper at crates/ui/tests/fixtures/visual_fail_html.rs; 3 call sites wired in visual_diff.rs; self-test pair PASS; P-VF-1 falsification probe honoured D-VF-5 contract; tester.md amended with "Visual failures — HTML artifact emission" section; 75/75 anchors PASS. HANDOFF → tester (M-FINAL).
+state       = "tester-done"  # tester M-FINAL 2026-05-29 VERDICT → PASS. Gates 1-8 green; self-tests 2/2 PASS (3× consecutive); anchors 75/75; fmt EXIT:0; zero new clippy errors in visual_fail_html.rs/visual_diff.rs; HTML artifacts emitted at target/visual-diff/*.html with base64 PNG magic bytes verified; D-VF-5 contract verified by code review (emit failure → eprintln + original Mismatch returned); tester.md section count = 11; spec-lint 94 violations (2 new missing-frontmatter for status:dev-done + 2 new dead-links in feature.md — all carry-forward class, zero functional regressions).
 
 [[req]]
 id          = "REQ-UI-TEST-HARNESS-VIEWPORT-MATRIX-001"
@@ -2226,3 +2226,56 @@ crates      = []   # developer fills at M-DEV (viewport_matrix.rs helper at crat
 tests       = []   # developer fills at M-DEV (the expanded #[test] fn set; +44 new tests = 22 in-scope fixtures × 2 new slots; bootstrap Charts triple unchanged)
 anchors     = []   # zero anchor delta (visual baselines are PNG matter, not anchored backtest reports); 71/71 stays byte-identical
 state       = "arch-done"  # architect M-T1 2026-05-29 close at commit 641b94a8. § Design D-VPM-1..D-VPM-7 locked: Q1 (a) all-widgets-v0.1.0 ratified; Q2 (a) function-with-closure ratified; **Q3 falls back to (b) plain `binary`** (no `diff=exif` driver on architect host; analyst contract triggers (b) fallback). H1 revised down (4 files / 30 fns / 22 in-scope); H3 empirically confirmed at ~13 MB net (vs analyst's 50-100 MB — K2 ceiling not within an order of magnitude); K1 opt-outs at 3 surfaces / 5 fns all already #[ignore]d upstream; K3 cross-time determinism caveat reaffirmed (bootstrap RESOLVED-WITH-CAVEAT contract holds; baselines must be regenerated on a single canonical Apple Silicon box in a single build session). tester.md inheritance from sibling visual-fail-html-reporter § D-VF-4 without amendment (R3.1 carve-out); ADR-0048 ride-along Changelog row drafted (D-VPM-7); no new ADR; no D1-D6 revision; no README registry frontmatter bump. Falsification probe P-VPM-1 (SLOTS rotation → zero baseline byte deltas) spec'd for developer dry-run during M-DEV. Single-wave delivery (~3-4 dev days: D1 helper ~0.5d + D2 expansion ~2d + D3-D6 review+gates ~1d). HANDOFF → developer.
+
+#
+# ─── Pick B Wave 1 — Cross-cutting safety duo promoted features (analyst M0 2026-05-29) ───
+# Per spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md strategic direction.
+# Two features promoted Queue → Active under Pick B Wave 1.
+# v2.1-tracing-Layer-redactor portion split off from v2-llm-strategy-v21-followups
+# Queue entry (#3); LLM-budget tile + clippy items stay Queue per
+# process-tooling-survey § What's NOT a compounder (deferred with v2 LLM lane activation).
+# Both features ship at v0.1.0 in WARN mode per shared bundle Q-DUO-WARN ratification
+# (2-week observation window before v0.2.0 promotion-to-gate).
+#
+
+[[req]]
+id          = "REQ-V2-1-TRACING-LAYER-REDACTOR-001"
+title       = "v2.1 tracing-Layer redactor v0.1.0 — closes the v2-llm-strategy v2.0.0 pass-3 deferred half (per redact.rs:18-26 deferral note) by installing a tracing_subscriber::Layer field-visitor at the audit/llm boundary that redacts API keys (sk- / sk-ant- / sk-proj- / OpenAI-shape) + Bearer tokens + JWTs + AWS-style secrets + password-like field NAMES + high-entropy strings >= 32 chars BEFORE they hit the audit ledger or stdout. Cross-cutting safety net every future LLM call and structured log emit inherits automatically with zero per-call wiring. More-expensive pillar of Pick B Wave 1 cross-cutting safety duo (~1.5 dev days; sibling ui-contrast-asserter is ~0.5d). R1 Layer wire-up at tracing_subscriber::Registry::init() sites (BEFORE audit-write Layer per R1.4 ordering) + R2 WARN-mode default per Q-DUO-WARN (REDACT_LAYER_MODE=warn|gate env var; meta-event at Level::WARN for each redaction during 2-week observation window) + R3 closed regex rule set per Q-RED-1=(a) DURABLE (per-site opt-out only; no runtime mutable allowlist) + R4 unit tests + parity test against existing crates/llm/src/redact.rs::redact() pure-fn (R-NR.1) + R-NR (7 clauses); K1-K4 falsifiers (high-entropy prefix miss / provider header allowlist drift / Layer ordering bug / multi-init race); H1-H3 hypotheses (<= 200 LoC / zero false-positives on non-LLM call sites / zero existing tracing tests break); Q-RED-1 (regex set shape; (a) closed Recommended DURABLE — per-site opt-out only) + Q-RED-2 (provider header bypass shape; (a) wire-layer exemption Recommended DURABLE — reqwest middleware NOT redactor allowlist) + Q-RED-3 (WARN-mode flag shape; (a) env var Recommended DURABLE — per-environment without re-compile); pre-drawn 4-cell verdict tree. Pass-3 redact ADR carries forward (one Changelog row at M-T1, no new ADR). Anchor contract zero delta — 75/75 byte-identical pre/post (Layer affects tracing emit only; backtest reports unaffected). PARALLEL-SAFE with sibling ui-contrast-asserter per AGENT.md § Parallelism rules conflict matrix (independent file-scope: crates/llm + crates/audit vs crates/ui/tests/contrast.rs)."
+feature     = "v2-1-tracing-layer-redactor"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick B Wave 1 promotion.
+  "spec/v2-1-tracing-layer-redactor/feature.md",
+  "spec/v2-1-tracing-layer-redactor/tasks.md",
+  "spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation; shared opt-out shape
+  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 3 ranking
+  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
+  "spec/v2-llm-strategy/feature.md",                                                  # PREDECESSOR — pure-fn redact() shipped v2.0.0 pass 3; Layer half deferred to this brief
+  "crates/llm/src/redact.rs",                                                         # PURE-FN SURFACE — Layer reuses redact() verbatim (R-NR.1); see redact.rs:18-26 deferral note
+]
+crates      = []   # developer fills at M-DEV (crates/llm/src/redact_layer.rs NEW + crates/llm/Cargo.toml tracing-subscriber runtime dep + crates/agent/src/main.rs Registry::init() wire-up)
+tests       = []   # developer fills at M-DEV (pattern unit tests per R3.2 + WARN-mode meta-event self-test + gate-mode self-test + pure-fn parity self-test per R4.4)
+anchors     = []   # zero anchor delta (Layer affects tracing emit only); 75/75 stays byte-identical
+state       = "proposed"  # analyst M0 2026-05-29. Frontmatter status: draft, owner: analyst. M-T1 next (fast-skip likely if Q-RED-1/2/3 all Recommended DURABLE; pass-3 redact ADR carries forward, no new ADR). HANDOFF → architect (parallel-spawn with sibling REQ-UI-CONTRAST-ASSERTER-001).
+
+[[req]]
+id          = "REQ-UI-CONTRAST-ASSERTER-001"
+title       = "UI contrast asserter v0.1.0 — closes the palette-refactor regression class with a data-driven crates/ui/tests/contrast.rs test that enumerates (fg, bg) token pairs derived from crates/ui/src/theme.rs and asserts WCAG 2.1 contrast ratios per spec/ui-design-principles.md ## Accessibility minimums (4.5:1 AA body, 7:1 AAA equity). Cheap pillar of Pick B Wave 1 cross-cutting safety duo (~0.5 dev days; sibling v2-1-tracing-layer-redactor is ~1.5d). Closes an entire class of palette-refactor regression without rendering a single pixel. New tokens auto-inherit assertion without per-token wiring (R1.2 pair enumeration is data-driven on theme.rs). R1 pair enumeration with MIN_PAIRS floor assertion (>= 30 per R1.4 — defends against silent enumeration break from future token storage refactors per K2) + R2 WCAG 2.1 hand-rolled formula per Q-CONT-2=(a) DURABLE (~20 LoC closed math; reference vector tests for {#FFFFFF on #000000 = 21:1, #777 on #FFF ~ 4.48:1}) + R3 WARN-mode default per Q-DUO-WARN bundle ratification (UI_CONTRAST_MODE=warn|gate env var; 2-week observation before v0.2.0 gate flip) + R4 per-token opt-out marker with MANDATORY reason: &str per Q-CONT-3=(a) DURABLE (in-file OPT_OUTS table inside contrast.rs; production theme.rs stays clean) + R-NR (7 clauses); K1-K4 falsifiers (architect M-T1 audit finds >= 5 opt-out tokens → tune threshold or expand shape / token storage refactor breaks enumeration → MIN_PAIRS floor catches / cross-platform color drift not at test layer / hand-rolled formula bug → reference vector tests catch); H1-H4 hypotheses (<= 100 LoC / <= 3 opt-outs at M-T1 audit / zero existing test break / new tokens auto-inherit). Q-CONT-1 (WARN-mode default; (a) WARN Recommended DURABLE — inherits Q-DUO-WARN bundle ratification) + Q-CONT-2 (formula impl; (a) hand-rolled Recommended DURABLE — closed WCAG 2.1 math; zero dep escalation; ~20 LoC reviewable in one sitting) + Q-CONT-3 (opt-out marker placement; (a) in-file OPT_OUTS table Recommended DURABLE — test owns the contract; theme.rs production code stays clean of test-only annotations); pre-drawn 4-cell verdict tree. ADR-0048 boundary-test precedent carries forward (one Changelog row at M-T1, no new ADR). Anchor contract zero delta — 75/75 byte-identical pre/post (zero production code touched per R-NR.1; pure test infra addition). PARALLEL-SAFE with sibling v2-1-tracing-layer-redactor per AGENT.md § Parallelism rules conflict matrix."
+feature     = "ui-contrast-asserter"
+product     = "spec/product.md"
+arch        = [
+  # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick B Wave 1 promotion.
+  "spec/ui-contrast-asserter/feature.md",
+  "spec/ui-contrast-asserter/tasks.md",
+  "spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation
+  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 4 ranking ("best-cheap-pick")
+  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
+  "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",            # ROOT-CAUSE — § 3.8 stretch / pure-Rust WCAG contrast asserter analysis
+  "spec/ui-design-principles.md",                                                     # CONTRACT — ## Accessibility minimums 4.5:1 AA body / 7:1 AAA equity
+  "crates/ui/src/theme.rs",                                                           # ENUMERATION SOURCE — pub const color tokens (FG_*, CANVAS, PANEL, ACCENT, UP_500, DOWN_500, WARN_500) the test reads
+  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PRECEDENT — boundary-test pattern carries forward; M-T1 ride-along Changelog row; no new ADR
+]
+crates      = []   # developer fills at M-DEV (crates/ui/tests/contrast.rs NEW; no production code touch per R-NR.1)
+tests       = []   # developer fills at M-DEV (per-class assertions over PAIRS table + reference vector tests for hand-rolled formula + WARN-mode + gate-mode parity tests + MIN_PAIRS floor test per K2 mitigation)
+anchors     = []   # zero anchor delta (pure test infra addition); 75/75 stays byte-identical
+state       = "proposed"  # analyst M0 2026-05-29. Frontmatter status: draft, owner: analyst. M-T1 next (fast-skip likely if Q-CONT-1/2/3 all Recommended DURABLE; theme.rs one-pass audit + opt-out list seed + MIN_PAIRS floor ratification expected at M-T1). HANDOFF → architect (parallel-spawn with sibling REQ-V2-1-TRACING-LAYER-REDACTOR-001).
