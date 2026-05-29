@@ -23,10 +23,20 @@
 #![allow(clippy::unwrap_used)]
 
 use std::path::Path;
+#[cfg(feature = "yahoo")]
 use std::process::Command;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+//
+// The three helpers below (`binary_path`, `split_frontmatter`, `read_report`)
+// are only referenced from `#[cfg(feature = "yahoo")]` tests (a) and (b).
+// Without the yahoo feature enabled they are dead code by design — they exist
+// as documentation of the binary-invoke contract and are retained so the
+// gated tests compile without restructuring.  Suppress the dead_code lint
+// rather than removing the helpers (which would break a `--features yahoo`
+// build) or #[cfg]-gating them (which would hide the API from non-gated IDEs).
 
+#[allow(dead_code)]
 fn workspace_root() -> std::path::PathBuf {
     let mut probe = std::env::current_dir().expect("cwd");
     for _ in 0..8 {
@@ -42,6 +52,7 @@ fn workspace_root() -> std::path::PathBuf {
     std::env::current_dir().expect("cwd")
 }
 
+#[allow(dead_code)]
 fn binary_path() -> Option<std::path::PathBuf> {
     if let Ok(p) = std::env::var("CARGO_BIN_EXE_run_yahoo_sma") {
         let path = std::path::PathBuf::from(p);
@@ -58,6 +69,7 @@ fn binary_path() -> Option<std::path::PathBuf> {
 }
 
 /// Strip YAML front-matter (`---\n...\n---\n`) and return (frontmatter, body).
+#[allow(dead_code)]
 fn split_frontmatter(text: &str) -> (String, String) {
     if !text.starts_with("---\n") {
         return (String::new(), text.to_string());
@@ -72,6 +84,7 @@ fn split_frontmatter(text: &str) -> (String, String) {
     }
 }
 
+#[allow(dead_code)]
 fn read_report(dir: &Path) -> String {
     let report = std::fs::read_dir(dir)
         .expect("read tempdir")

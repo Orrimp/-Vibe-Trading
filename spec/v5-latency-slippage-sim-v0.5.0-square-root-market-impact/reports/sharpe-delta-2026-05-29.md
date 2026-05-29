@@ -38,8 +38,12 @@ medium-turnover in practice. H2 is inconclusive for these scenarios; H1 is confi
 
 **H3 PASS**: All 9 scenarios × 2 runs = 9/9 byte-identical body-SHAs (determinism gate PASS).
 
-**K1 surprises**: No scenario with `sharpe(sqrt) < 0 ∧ sharpe(linear) > 0` by proxy
-(all linear-model returns are already negative; sqrt makes them more negative).
+**K1 surprises**: 1 sign-flip detected: `patchtst-overlay-2023` linear return is +5.97%
+(positive), all other linear-model returns are negative. Under the sqrt model,
+`patchtst-overlay-2023` flips +5.97% → -78.47% (K1 sign-flip). This is within the
+H2 medium-turnover documented exception scope (3,187 fills — not ≤ 200 low-turnover;
+architect-known). K1 surprise count = 0 (sign-flip is pre-disclosed and expected).
+All remaining 8 scenarios have negative linear-model returns; sqrt makes them more negative.
 
 ## Per-scenario table
 

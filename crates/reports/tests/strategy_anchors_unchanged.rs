@@ -371,23 +371,24 @@ fn walk_collect(dir: &Path, scenario: &str, namespace: Namespace, out: &mut Vec<
         let path = entry.path();
         if path.is_dir() {
             walk_collect(&path, scenario, namespace, out);
-        } else if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-            if name.starts_with("backtest-") && name.ends_with(&suffix) {
-                // Apply namespace filter per ADR-0047 D3 (extended to 3 namespaces
-                // in D-T1.8, 2026-05-29):
-                // Noop: excludes canonical AND sqrt-impact dirs (R-NR.3 preserved).
-                // Canonical: only canonical dirs.
-                // SqrtImpact: only sqrt-impact dirs.
-                let is_canonical = is_canonical_path(&path);
-                let is_sqrt = is_sqrt_impact_path(&path);
-                let include = match namespace {
-                    Namespace::Noop => !is_canonical && !is_sqrt,
-                    Namespace::Canonical => is_canonical,
-                    Namespace::SqrtImpact => is_sqrt,
-                };
-                if include {
-                    out.push(path);
-                }
+        } else if let Some(name) = path.file_name().and_then(|s| s.to_str())
+            && name.starts_with("backtest-")
+            && name.ends_with(&suffix)
+        {
+            // Apply namespace filter per ADR-0047 D3 (extended to 3 namespaces
+            // in D-T1.8, 2026-05-29):
+            // Noop: excludes canonical AND sqrt-impact dirs (R-NR.3 preserved).
+            // Canonical: only canonical dirs.
+            // SqrtImpact: only sqrt-impact dirs.
+            let is_canonical = is_canonical_path(&path);
+            let is_sqrt = is_sqrt_impact_path(&path);
+            let include = match namespace {
+                Namespace::Noop => !is_canonical && !is_sqrt,
+                Namespace::Canonical => is_canonical,
+                Namespace::SqrtImpact => is_sqrt,
+            };
+            if include {
+                out.push(path);
             }
         }
     }

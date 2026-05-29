@@ -565,14 +565,15 @@ sha256   = "a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97"
 
 # v5-latency-slippage-sim v0.5.0 — square-root market-impact anchors (2026-05-29).
 # Namespace: v5-sqrt-impact-2026-05
-# Wave D+E: 9 new anchors under v5-sqrt-impact-2026-05 namespace (75 → 84; tester to add
-# remaining anchor after regime-dispatcher-2024 run-2 determinism gate).
+# Wave D+E: 9 new anchors under v5-sqrt-impact-2026-05 namespace (75 → 84 FINAL).
+# 9 scenarios (not 10): top10-2024-fy-momentum-realdata was never implemented; only the
+# 2023 counterpart shipped. Anchor cascade 75 → 84 is the verified final count.
 # Real Binance hourly data (10 USDT pairs), seed=0xC0FFEE, initial capital=$100,000.
 # Slippage model: SquareRoot { alpha=1.0, volume_lookback_days=90 } per ADR-0043 § Changelog v0.5.0.
 # Volume proxy: universe_avg_daily_volume_usd_trailing (Q-D2=(β) lazy-compute per scenario end_date).
 # All 9 anchors: body SHA identical on 2 independent runs each (H3 PASS).
 # K1 note: all 9 real-data scenarios show sqrt drag >> linear drag (H1 directional PASS).
-# Verify with: scripts/verify_anchors.sh  (expects 84/84 PASS after this block; tester verifies 85/85)
+# Verify with: scripts/verify_anchors.sh  (expects 84/84 PASS after this block)
 # Bug fix note: sim_slippage_cost signature updated to take &Symbol + look up volume from
 # cfg.volume_usd_per_symbol (was passing Decimal::ZERO to all call sites — no-op bug).
 # Fixed at crates/backtest/src/scenarios/sim.rs + all 7 scenario files (2026-05-29 dev).
