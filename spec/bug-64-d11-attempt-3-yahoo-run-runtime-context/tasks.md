@@ -195,6 +195,66 @@ M-T1 work required.
   `spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/reports/test-20260529-181500-v0.1.0.md`.
   VERDICT → PASS. HANDOFF → orchestrator.
 
+## M-HOTFIX — Developer (2026-05-29 hotfix)
+
+### Tier 5 — fetch_with_backoff rt.enter() fix
+
+- [x] **T-BUG64-D13** (hotfix): Add `rt: &tokio::runtime::Handle` to
+  `preload_yahoo_bars` and `fetch_with_backoff`. Use guard-construct-drop
+  pattern for all 3 `tokio::time::*` calls in `fetch_with_backoff`.
+  `DefaultLabYahooBarSource` gains `pub rt: tokio::runtime::Handle` field.
+  **DONE**: `crates/ui/src/lab/runner.rs:248-258` (DefaultLabYahooBarSource struct + impl),
+  `:301-325` (preload_yahoo_bars signature + doc), `:353-360` (fetch_with_backoff call),
+  `:409-416` (fetch_with_backoff signature), `:429-505` (3 guard patterns).
+  Test: `cargo test -p ui --test lab_runner_cold_cache_fetch_e2e --no-default-features --features live`
+  Output: `3 passed; 0 failed; finished in 0.00s`.
+
+- [x] **T-BUG64-D14** (hotfix): Author e2e test at
+  `crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs`. Plain `#[test]` (NOT
+  `#[tokio::test]`). 3 tests: (1) proves no-guard panics, (2) proves guard
+  works, (3) same for sleep path.
+  **DONE**: `crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs` — 3 tests.
+  Test: `cargo test -p ui --test lab_runner_cold_cache_fetch_e2e --no-default-features --features live`
+  Output: `tokio_time_timeout_with_rt_enter_does_not_panic ... ok`,
+  `tokio_time_timeout_without_rt_enter_panics ... ok`,
+  `tokio_time_sleep_with_rt_enter_does_not_panic ... ok` — `3 passed; 0 failed`.
+
+- [x] **T-BUG64-D15** (hotfix): Falsification probe.
+  Test 1 (`tokio_time_timeout_without_rt_enter_panics`) directly exercises the
+  pre-fix behavior: calls `tokio::time::timeout` WITHOUT `rt.enter()` inside
+  `futures::executor::block_on` (no tokio reactor), proves it panics. This IS
+  the falsification — if the guard were absent from production code, the test
+  suite would catch it via test 2's `catch_unwind` returning `Err`.
+  **DONE**: Dry-run evidence — test 1 asserts panic IS caught (pre-fix behavior
+  panics), test 2 asserts panic is NOT caught (post-fix behavior works).
+  Together they form a red-green gate. Verified via full test run pass.
+
+- [x] **T-BUG64-D16** (hotfix): ADR-0050 § Changelog amended.
+  **DONE**: `spec/architecture/adr/0050-iced-tokio-runtime-context-and-cancellation.md`
+  — Changelog paragraph added: architect Q1 falsified; D1 now applies to ALL
+  tokio::time::* calls; D3 amended to require plain #[test] not #[tokio::test].
+
+- [x] **T-BUG64-D17** (hotfix): Feature folder updates.
+  **DONE**:
+  - `spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/feature.md`: § Hotfix
+    section added before § Changelog. Explains the missed site and the fix.
+  - `spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/tasks.md`: this file —
+    tasks T-BUG64-D13..D18 added.
+  - `spec/trace.toml` REQ-BUG-64-D-11-ATTEMPT-3-001: new test file appended to
+    `tests` column.
+  - `spec/dev-notes/operator-side-pending-ledger.md` Bug #64 row: hotfix landed
+    note appended.
+
+- [x] **T-BUG64-D18** (hotfix): Standard gates.
+  **DONE**:
+  - `cargo fmt --all --check` → EXIT 0 (zero diff).
+  - `cargo clippy -p ui --tests --no-default-features --features live -- -D warnings`
+    → zero NEW errors from hotfix changes (pre-existing carry-forward errors unchanged).
+  - `bash scripts/verify_anchors.sh` → `ANCHORS PASS (84 / 84)`.
+  - R-NR.2 regression: spawn_lab_run_yahoo_harness 3/3, lab_stop_button_gating 3/3,
+    training_log_recipe_harness 3/3, lab_runner_ticker_e2e 1/1, lab_runner_cancel_e2e 2/2.
+  - NEW: lab_runner_cold_cache_fetch_e2e 3/3 PASS.
+
 ## M-PRESENT — Presenter (after operator re-verify PASS)
 
 - [ ] T-BUG64-PRESENT.1 — Assemble v0.1.0 presentation deck.

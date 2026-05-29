@@ -2376,9 +2376,13 @@ tests       = [
   "crates/ui/tests/spawn_lab_run_yahoo_harness.rs",  # R-NR.2 regression suite (3/3 PASS)
   "crates/ui/tests/lab_stop_button_gating.rs",       # R-NR.2 regression suite (3/3 PASS)
   "crates/ui/tests/training_log_recipe_harness.rs",  # R-NR.2 regression suite Wave A (3/3 PASS)
+  # hotfix T-BUG64-D14 (2026-05-29): cold-cache fetch path e2e — plain #[test], no #[tokio::test]
+  "crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs::tokio_time_timeout_without_rt_enter_panics",    # ADR-0050 § D1 falsification probe
+  "crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs::tokio_time_timeout_with_rt_enter_does_not_panic",  # ADR-0050 § D1 core gate
+  "crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs::tokio_time_sleep_with_rt_enter_does_not_panic",    # ADR-0050 § D1 sleep path
 ]
 anchors     = []   # zero anchor delta (R-NR.1); backtest report bodies byte-immutable; 84/84 PASS
-state       = "tester-done"  # tester M-FINAL 2026-05-29 VERDICT → PASS. lab_runner_ticker_e2e 1/1 PASS (1.00s, ≥3 ticks). lab_runner_cancel_e2e 2/2 PASS (0.10s, ≤500ms). spawn_lab_run_yahoo_harness 3/3, lab_stop_button_gating 3/3, training_log_recipe_harness 3/3. backtest cancel 7/7 PASS. 84/84 anchors PASS. fmt EXIT:0. Zero new clippy errors from touched files. ADR-0050 atomic-register verified (D1+D2+D3+README row+frontmatter+ADR-0048 Changelog all in commit a87b5fa). spec-lint 146 (+7 vs 139 baseline) — documentation-layer carry-forward only (6 trace-broken-path from new REQ row + 1 missing-frontmatter dev-done status flip; no new categories). HANDOFF → orchestrator (operator re-verify pending).
+state       = "dev-done"  # hotfix 2026-05-29: fetch_with_backoff rt.enter() guard added (T-BUG64-D13). cold-cache e2e test added (T-BUG64-D14). ADR-0050 § Changelog amended (T-BUG64-D16). Operator re-verify pending → tester.
 
 #
 # ─── Pick C Wave 1 — Orchestrator hygiene compounder trio promoted features (analyst M0 2026-05-29) ───

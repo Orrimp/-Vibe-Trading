@@ -187,6 +187,48 @@ All resolved by architect + analyst validation. Tracked here:
 | **Operator re-verify confirms fix** | `PASS` — v0.1.0 ships; Bug #64 closes; ADR-0050 codified. | `INCONCLUSIVE` — code looks right but operator can't reproduce success; possible environment issue (binary cache, feature flag); route to operator-side recipe update. |
 | **Operator re-verify still fails** | `REGRESSION` — fix didn't land; need attempt-4 root-cause. | `FAIL` — same as before + dev work blocked; defer or escalate. |
 
+## § Hotfix (2026-05-29)
+
+Operator cold-cache re-verify hit a NEW panic at `crates/ui/src/lab/runner.rs:395`:
+`"there is no reactor running, must be called from the context of a Tokio 1.x runtime"`.
+
+**Root cause**: The architect's Q1 assessment in `bug-64-arch-validation-2026-05-29.md`
+stated that `tokio::time::timeout/sleep` in `fetch_with_backoff` (lines 395/405/436)
+"work without `rt.enter()` because reqwest spawns internally". That assessment was
+FALSIFIED. `tokio::time::timeout` / `tokio::time::sleep` need the reactor at
+CONSTRUCTION TIME in the calling stack frame, not just inside reqwest's internal
+spawns.
+
+**Why the existing e2e tests didn't catch it**: `lab_runner_ticker_e2e` and
+`lab_runner_cancel_e2e` both use `#[tokio::test]` which provides an implicit
+tokio reactor context. The production path (`iced::Task::perform` on
+`futures::ThreadPool`) has NO reactor context. Tests passed; production panicked.
+
+**Fix (T-BUG64-D13)**: Added `rt: &tokio::runtime::Handle` parameter to
+`preload_yahoo_bars` and `fetch_with_backoff`. Inside `fetch_with_backoff`,
+each `tokio::time::*` call uses the guard-construct-drop pattern:
+```rust
+let timeout_future = {
+    let _guard = rt.enter();  // enter context, construct future
+    tokio::time::timeout(per_attempt_timeout, fetch_future)
+    // _guard dropped here — EnterGuard is !Send, MUST drop before .await
+};
+timeout_future.await
+```
+`DefaultLabYahooBarSource` struct gained `pub rt: tokio::runtime::Handle` to
+carry the handle through the `LabYahooBarSource` trait boundary.
+
+**New e2e test (T-BUG64-D14)**: `crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs`
+uses plain `#[test]` (NOT `#[tokio::test]`) + `futures::executor::block_on` to
+simulate iced's non-tokio executor. 3 tests: (1) proves `tokio::time::timeout`
+WITHOUT `rt.enter()` panics (falsification probe), (2) proves WITH guard no panic
+(core gate), (3) same for `tokio::time::sleep` (backoff path).
+
+**ADR-0050 § Changelog amended (T-BUG64-D16)**: D1 invariant extended to ALL
+`tokio::time::*` calls reachable from `iced::Task::perform`, no exceptions.
+D3 test contract amended: timer tests MUST use plain `#[test]` not
+`#[tokio::test]` to avoid masking the absence of `rt.enter()` guards.
+
 ## § Changelog
 
 - 2026-05-29 (orchestrator): feature folder created from both
@@ -194,6 +236,11 @@ All resolved by architect + analyst validation. Tracked here:
   the locked 8 D-clauses + ADR-0050 obligation. HANDOFF →
   developer.
 - 2026-05-29 (developer): T-BUG64-D1..D12 complete. HANDOFF → tester.
+- 2026-05-29 (hotfix developer): T-BUG64-D13..D18 complete.
+  Falsified architect Q1 assertion re fetch_with_backoff.
+  Added rt handle threading + guard pattern in fetch_with_backoff.
+  New cold-cache e2e test (plain #[test] — production context).
+  ADR-0050 § Changelog amended. HANDOFF → tester (re-verify).
 
 ## Implementation
 

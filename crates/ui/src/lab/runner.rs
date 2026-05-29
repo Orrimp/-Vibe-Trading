@@ -237,8 +237,18 @@ pub trait LabYahooBarSource: Send + Sync + 'static {
 /// Wired by `spawn_lab_run` when no mock is injected (default path).
 /// Only compiled when both `live` and `yahoo` features are enabled because
 /// `preload_yahoo_bars` itself requires `#[cfg(feature = "yahoo")]`.
+///
+/// # Runtime handle (ADR-0050 § D1 hotfix)
+///
+/// Holds the agent-side tokio runtime `Handle` so that `preload_yahoo_bars`
+/// (and inside it, `fetch_with_backoff`) can call `rt.enter()` before any
+/// `tokio::time::*` API. Without this, the production cold-cache path panics
+/// with "there is no reactor running" — see bug-64-d11-attempt-3 hotfix.
 #[cfg(all(feature = "live", feature = "yahoo"))]
-pub struct DefaultLabYahooBarSource;
+pub struct DefaultLabYahooBarSource {
+    /// Tokio runtime handle for entering reactor context in `fetch_with_backoff`.
+    pub rt: tokio::runtime::Handle,
+}
 
 #[cfg(all(feature = "live", feature = "yahoo"))]
 impl LabYahooBarSource for DefaultLabYahooBarSource {
@@ -247,7 +257,7 @@ impl LabYahooBarSource for DefaultLabYahooBarSource {
         cfg: &'a LabRunConfig,
         range: &'a backtest::engine::DateRange,
     ) -> PreloadFuture<'a> {
-        Box::pin(preload_yahoo_bars(cfg, range))
+        Box::pin(preload_yahoo_bars(cfg, range, &self.rt))
     }
 }
 
@@ -291,10 +301,20 @@ fn range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
 /// - Cache miss (`CacheMiss`) — includes a `cargo run` hint
 /// - Coverage below 95% (`MissingData`)
 /// - Revision manifest missing or tampered (`RevisionMissing` / `RevisionMismatch`)
+///
+/// # Runtime context (ADR-0050 § D1 hotfix)
+///
+/// `rt` is the agent-side tokio runtime `Handle`. It is threaded down to
+/// `fetch_with_backoff` so that `tokio::time::timeout` / `tokio::time::sleep`
+/// inside `fetch_with_backoff` can call `rt.enter()` at the top of the
+/// function. Without the guard those calls are permanently `Poll::Pending`
+/// on iced's `futures::ThreadPool` executor (no reactor context).
+/// See bug-64-d11-attempt-3 hotfix + ADR-0050 § D1 amendment (2026-05-29).
 #[cfg(feature = "yahoo")]
 async fn preload_yahoo_bars(
     cfg: &LabRunConfig,
     scenario_range: &backtest::engine::DateRange,
+    rt: &tokio::runtime::Handle,
 ) -> Result<(Vec<trading_core::Bar>, SmolStr), SmolStr> {
     use data::yahoo::{Interval, YahooBarSource, YahooError, binance_to_yahoo_ticker};
     use trading_core::Symbol;
@@ -333,7 +353,8 @@ async fn preload_yahoo_bars(
             );
             // Online fetch with exponential backoff (mirrors the CLI's
             // `fetch_with_backoff` shape). Errors here propagate up.
-            match fetch_with_backoff(&src, yahoo_ticker.as_str(), interval, start_ms, end_ms).await
+            match fetch_with_backoff(&src, yahoo_ticker.as_str(), interval, start_ms, end_ms, rt)
+                .await
             {
                 Ok(()) => {
                     tracing::info!(
@@ -370,6 +391,21 @@ async fn preload_yahoo_bars(
 /// Exponential-backoff retry wrapper around `YahooBarSource::fetch_and_cache`.
 /// Mirrors the CLI binary's `fetch_with_backoff` so the in-flight auto-fetch
 /// path is equivalent. 5 retries, 1s → 60s cap.
+///
+/// # Runtime context (ADR-0050 § D1 hotfix — bug-64-d11-attempt-3)
+///
+/// `rt` is the agent-side tokio runtime `Handle`. This function enters the
+/// runtime via `let _guard = rt.enter()` at the top so that
+/// `tokio::time::timeout` (line ~395) and `tokio::time::sleep` (lines ~405,
+/// ~436) can register their wakeups with the correct time driver.
+///
+/// Without this guard the function is called inside `preload_yahoo_bars`
+/// which is called from inside `iced::Task::perform` — iced's
+/// `futures::ThreadPool` executor has NO tokio reactor context.
+/// `tokio::time::timeout` / `tokio::time::sleep` constructed without a
+/// reactor context are permanently `Poll::Pending` (panic: "there is no
+/// reactor running"). Per ADR-0050 § D1, every `tokio::time::*` call
+/// reachable from `iced::Task::perform` MUST have the enter guard in scope.
 #[cfg(feature = "yahoo")]
 async fn fetch_with_backoff(
     src: &data::yahoo::YahooBarSource,
@@ -377,6 +413,7 @@ async fn fetch_with_backoff(
     interval: data::yahoo::Interval,
     start_ms: i64,
     end_ms: i64,
+    rt: &tokio::runtime::Handle,
 ) -> Result<(), data::yahoo::YahooError> {
     use data::yahoo::YahooError;
     use std::time::Duration;
@@ -392,7 +429,23 @@ async fn fetch_with_backoff(
 
     for attempt in 0..=max_retries {
         let fetch_future = src.fetch_and_cache(ticker, interval, start_ms, end_ms);
-        match tokio::time::timeout(per_attempt_timeout, fetch_future).await {
+
+        // ADR-0050 § D1 (bug-64-d11-attempt-3 hotfix):
+        // `tokio::time::timeout` requires a tokio reactor context at
+        // CONSTRUCTION time to register its wakeup with the time driver.
+        // Enter the runtime, construct the timeout-wrapped future, then
+        // DROP the guard before `.await` (EnterGuard is !Send, so it
+        // MUST NOT be held across an await point in a Send future).
+        // The constructed `Timeout` future carries its time-driver binding
+        // and fires correctly even after the guard is dropped — same pattern
+        // as the D-R1.1 fix at runner.rs:756 for `tokio::time::interval`.
+        let timeout_future = {
+            let _guard = rt.enter();
+            tokio::time::timeout(per_attempt_timeout, fetch_future)
+            // _guard dropped here; Timeout carries its reactor reference.
+        };
+
+        match timeout_future.await {
             Err(_) => {
                 tracing::warn!(
                     target: "lab.yahoo",
@@ -402,7 +455,13 @@ async fn fetch_with_backoff(
                     "fetch timed out — retrying with backoff"
                 );
                 if attempt < max_retries {
-                    tokio::time::sleep(backoff).await;
+                    // Construct sleep with rt context, drop guard before await.
+                    let sleep_future = {
+                        let _guard = rt.enter();
+                        tokio::time::sleep(backoff)
+                        // _guard dropped here.
+                    };
+                    sleep_future.await;
                     backoff = (backoff * 2).min(cap);
                     continue;
                 }
@@ -433,7 +492,13 @@ async fn fetch_with_backoff(
                         delay_s = delay.as_secs(),
                         "rate-limited by Yahoo, backing off"
                     );
-                    tokio::time::sleep(delay).await;
+                    // Construct sleep with rt context, drop guard before await.
+                    let sleep_future = {
+                        let _guard = rt.enter();
+                        tokio::time::sleep(delay)
+                        // _guard dropped here.
+                    };
+                    sleep_future.await;
                     backoff = (backoff * 2).min(cap);
                 }
                 Err(e) => return Err(e),
@@ -782,9 +847,17 @@ pub fn spawn_lab_run(
                             // polled across all `select!` iterations (attempt 1 bug
                             // fix: calling the fn fresh each iteration created a new
                             // future, so preload never made progress).
+                            //
+                            // ADR-0050 § D1 hotfix (bug-64-d11-attempt-3):
+                            // Pass `rt` into preload_yahoo_bars so that
+                            // fetch_with_backoff (called inside preload_yahoo_bars
+                            // on cache miss) can call `rt.enter()` before any
+                            // tokio::time::* API. Without this, the operator hit
+                            // "there is no reactor running" panic at runner.rs:395.
                             let mut preload_future = std::pin::pin!(preload_yahoo_bars(
                                 &cfg_for_preload,
-                                &scenario_cfg.range
+                                &scenario_cfg.range,
+                                &rt,
                             ));
 
                             // Race the preload against the periodic ticker.

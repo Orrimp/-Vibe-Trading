@@ -185,3 +185,34 @@ invariant.
   Fix lands in same commit: `crates/backtest/src/cancel.rs` (CancellationToken
   primitive swap) + `crates/ui/src/lab/runner.rs` (D-R1.1 rt.enter() guard +
   D-R2.2 cancel select! arm + D-R1.4 yield_now defense).
+
+- 2026-05-29 (hotfix): Architect Q1 assertion that `fetch_with_backoff` works
+  without `rt.enter()` because reqwest spawns internally was FALSIFIED by
+  operator re-verify. `tokio::time::sleep` / `tokio::time::timeout` inside the
+  CALLING stack frame DOES require runtime context regardless of what reqwest
+  does internally. Operator hit "there is no reactor running" panic at
+  `crates/ui/src/lab/runner.rs:395` (the `tokio::time::timeout` call inside
+  `fetch_with_backoff` during cold-cache Yahoo fetch).
+
+  **D1 invariant now applies to ALL `tokio::time::*` and `tokio::select!` calls
+  reachable from `iced::Task::perform`, no exceptions.** Previously the D1
+  site audit table incorrectly listed `runner.rs:395/405/436` as "ASSESSED —
+  architect confirmed IO works; no additional guard needed". That assessment
+  was wrong.
+
+  **D3 test contract AMENDMENT**: D3 tests MUST run under plain `#[test]` (NOT
+  `#[tokio::test]`) to exercise the PRODUCTION runtime context. `#[tokio::test]`
+  provides an implicit tokio reactor context which masks the absence of
+  `rt.enter()` guards — this is why the existing `lab_runner_ticker_e2e` and
+  `lab_runner_cancel_e2e` tests (under `#[tokio::test]`) PASSED while production
+  PANICKED. New gate: `crates/ui/tests/lab_runner_cold_cache_fetch_e2e.rs`
+  uses plain `#[test]` + `futures::executor::block_on` to simulate iced's
+  non-tokio executor context.
+
+  Fix: `fetch_with_backoff` now accepts `rt: &tokio::runtime::Handle`. All
+  three `tokio::time::*` calls use the guard-construct-drop-then-await pattern:
+  `{ let _guard = rt.enter(); tokio::time::timeout/sleep(...) }`. The
+  `EnterGuard` is `!Send` and MUST NOT be held across `.await` points; dropping
+  before await is the canonical pattern (matches D-R1.1 fix at runner.rs:756
+  for `tokio::time::interval`). See bug-64-d11-attempt-3 hotfix commit for
+  full diff.
