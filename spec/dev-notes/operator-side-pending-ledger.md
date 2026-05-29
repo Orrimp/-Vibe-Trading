@@ -30,6 +30,8 @@ to avoid re-surfacing stale items.
 | Date surfaced | Recipe | Cost | Unblocks | Status | Notes |
 |---|---|---|---|---|---|
 | 2026-05-28 | **Bug #64 D.1.1 visual-verify** — `rm -rf data/yahoo/SOL-USD ; cargo run --release -p ui --bin cockpit_live` then Lab → Yahoo SOL → Run; watch label tick 0 / 1 bars · X.Xs every ~250 ms during 30-60 s cold-cache window | ~5 min | Closes Bug #64 D.1.1 attempt-2; full bug-log close pending operator confirm | **pending** | Recipe in bug-log #64 Attempt 2 entry; cockpit binary built at commit 8d38e38 |
+| 2026-05-29 | **viewport-matrix T-VPM-D6 — 56 PNG visual eyeball** — `open crates/ui/tests/visual-baselines/` in Finder column-view + preview pane; focus `__floor` + `__operator` slots across 15 visual_snapshot fixtures + strategies_ready + chart_screen; also re-review the 3 regenerated Charts triple + 2 regenerated legacy `render_snapshots/*_dark_typical.png` | ~10-15 min | Closes T-VPM-D6; presenter v0.1.0 deck assembly unblocks | **pending** | 56 PNGs committed at ec79ac0; full punch list in viewport-matrix-v0.1.0 dev handoff envelope `[outputs]` |
+| 2026-05-29 | **visual-fail-html-reporter v0.1.0 presenter approval** — open `spec/visual-fail-html-reporter/presentations/v0.1.0-2026-05-29.md` and the embedded HTML artifact at `spec/visual-fail-html-reporter/presentations/artifacts/v0.1.0-2026-05-29/sample-fail-emission.html`; tick the approval block | ~5 min | Closes v0.1.0 ship; merges to backlog Recent | **pending** | Presenter VERDICT → READY; presenter committed next |
 ## Done recipes (audit trail)
 
 | Date surfaced | Recipe | Cost | Completed | Outcome |
