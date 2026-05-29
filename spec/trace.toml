@@ -2045,6 +2045,7 @@ anchors     = [
   # Row 71 NEW eth-2024-h1-sma-cross bd4001e4… under namespace lab-yahoo-realdata-v0.1.3.
   # verify_anchors.sh ANCHORS PASS (71 / 71) confirmed 2026-05-28.
   "btc-yahoo-2024-1d-sma-cross",
+  "eth-yahoo-2024-1d-sma-cross",
   "eth-2024-h1-sma-cross",
 ]
-state       = "dev-done"  # developer M-DEV 2026-05-28: all T-D1..T-D12 ticked; Wave A helper extracted (yahoo.rs NEW); Wave B ETH H1 registered (3 match-arm sites); Wave C anchors 071/71 PASS; Wave D dev-note authored + regression test added; T-D4 bar_count resolution: mirrors btc-2024-h1-sma-cross verbatim (real parquet data overrides at runtime → 17,543 bars); H1 PASS direct (6.78% < 30%); K1.b PASS (None arm preserves 33 Binance SMA anchors); cargo fmt clean; clippy 0 new errors on crates/backtest. HANDOFF → tester.
+state       = "passed"  # tester M-FINAL 2026-05-28: VERDICT → PASS — all gates green, both independent SHA witnesses match, helper-bypass regression guard 3/3, H1 6.78% direct, spec-lint baseline-stable (trace-broken-path carve-out: v3-regime-classifier Wave C in-flight, not this feature): all T-D1..T-D12 ticked; Wave A helper extracted (yahoo.rs NEW); Wave B ETH H1 registered (3 match-arm sites); Wave C anchors 071/71 PASS; Wave D dev-note authored + regression test added; T-D4 bar_count resolution: mirrors btc-2024-h1-sma-cross verbatim (real parquet data overrides at runtime → 17,543 bars); H1 PASS direct (6.78% < 30%); K1.b PASS (None arm preserves 33 Binance SMA anchors); cargo fmt clean; clippy 0 new errors on crates/backtest. HANDOFF → tester.

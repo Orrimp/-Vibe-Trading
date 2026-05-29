@@ -1,8 +1,8 @@
 ---
 slug: lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1
 version: 0.1.0
-status: in-progress
-owner: tester
+status: shipped
+owner: presenter
 updated: 2026-05-28
 predecessor: lab-yahoo-realdata-v0.1.2 v0.1.0
 priority: P2
