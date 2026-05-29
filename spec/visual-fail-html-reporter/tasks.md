@@ -1,7 +1,7 @@
 ---
 slug: visual-fail-html-reporter
-status: draft
-owner: analyst
+status: arch-done
+owner: developer
 updated: 2026-05-29
 ---
 
@@ -18,22 +18,31 @@ updated: 2026-05-29
 - [x] T-VFH-M0.2 — backlog Active row appended under § Process / tooling — _accept: PROMOTED Idea → Active 2026-05-29 annotation_
 - [x] T-VFH-M0.3 — trace row `REQ-VISUAL-FAIL-HTML-REPORTER-001` opened `proposed` — _accept: appended at EOF spec/trace.toml_
 
-## M-T1 — Architect (M-T1 fast-skip expected; no new ADR)
+## M-T1 — Architect (DONE 2026-05-29; M-T1 close)
 
-- [ ] T-VFH-T1.1 — Ratify Q1 (output path) + Q2 (base64 crate) + Q3 (tester.md stanza placement) — _accept: § Design D-VFH-1..3 records Q1/Q2/Q3 picks (analyst recommends all (a) DURABLE)_
-- [ ] T-VFH-T1.2 — Pick helper module filename (analyst suggested `crates/ui/tests/fixtures/visual_fail_html.rs`) + function signature (per R1.3) — _accept: § Design D-VFH-4 names the file + signature_
-- [ ] T-VFH-T1.3 — Confirm ADR-0048 carries forward; one Changelog row appended — _accept: ADR-0048 § Changelog gets 2026-MM-DD architect M-T1 row; no new ADR_
-- [ ] T-VFH-T1.4 — Wave decomposition for M-DEV (analyst expects 1 wave; M-T1 may split into helper + tester.md stanza + self-test) — _accept: § Design D-VFH-5 names wave count + per-wave LoC budget_
-- [ ] T-VFH-T1.5 — Frontmatter flip owner: analyst → developer, status: draft → arch-done — _accept: feature.md + tasks.md frontmatter updated_
+- [x] T-VFH-T1.1 — Ratify Q1 (output path) + Q2 (base64 crate) + Q3 (tester.md stanza placement) — _DONE: § Design records Q1 (a) DURABLE + Q2 (a) DURABLE + Q3 **overridden to (b)** new top-level section (tester.md has no pre-existing visual-failure stanza to append to)_
+- [x] T-VFH-T1.2 — Pick helper module filename + function signature — _DONE: § Design D-VF-2 locks `crates/ui/tests/fixtures/visual_fail_html.rs` + `emit_visual_fail_html(VisualFailContext<'_>) -> Result<PathBuf, VisualFailHtmlError>`_
+- [x] T-VFH-T1.3 — Confirm ADR-0048 carries forward; one Changelog row appended — _DONE: § Design D-VF-6 spec'd; row text drafted; developer commits during M-DEV_
+- [x] T-VFH-T1.4 — Wave decomposition for M-DEV — _DONE: § Design Wave decomposition section + § Design D-VF-5 — single M-DEV wave, ~80-100 LoC helper + ~22 LoC tester.md amendment + ~5 LoC ADR row + ~50 LoC self-test pair_
+- [x] T-VFH-T1.5 — Frontmatter flip owner: analyst → developer, status: draft → arch-done — _DONE: feature.md + tasks.md frontmatter updated_
 
-## M-DEV — Developer (single wave expected; ~1 day)
+## M-DEV — Developer (single wave; ~1 day; architect-ratified)
 
-- [ ] T-VFH-D1 — Add `base64 = "0.22"` (or architect-ratified crate version) under `crates/ui/Cargo.toml [dev-dependencies]` — _accept: cargo check -p ui --tests succeeds; no production dep change_
-- [ ] T-VFH-D2 — Author `crates/ui/tests/fixtures/visual_fail_html.rs` (or architect-ratified filename) with `emit_visual_fail_html(...)` per R1.3 signature — _accept: function exposes 7-arg signature; inline `<style>` HTML template + base64 PNG encode + `fs::write` to default `target/visual-diff/<test>-<ts>.html` path; emits second copy to spec/<slug>/reports/ iff env var EMIT_VISUAL_FAIL_TO_SPEC=1 set; ~50-80 LoC budget_
-- [ ] T-VFH-D3 — Wire `emit_visual_fail_html(...)` invocation into FAIL branch of `crates/ui/tests/fixtures/visual_diff.rs::matches_screenshot` — _accept: helper called ONLY on `Err(VisualDiffError::...)` return path; PASS path byte-identical to today; existing visual-snapshot tests stay PASS_
-- [ ] T-VFH-D4 — Author self-test pair per R4.1 + R4.3 — _accept: two `#[test] fn` in fixtures/visual_fail_html.rs (or sibling test file): (1) default emit path produces HTML with inlined base64 PNGs + assertion text under `tempfile::TempDir`; (2) `EMIT_VISUAL_FAIL_TO_SPEC=1` path produces byte-identical second file; both clean up via `TempDir` drop_
-- [ ] T-VFH-D5 — Amend `.claude/agents/tester.md` per R3.1 — _accept: new ~5-10 line stanza titled "## Visual failures — HTML artifact emission" (architect-ratified placement per Q3); additive only, no removed prose; cites the helper + the env var_
-- [ ] T-VFH-D6 — Dev-side gates — _accept: cargo test -p ui --tests PASS; cargo clippy -p ui --all-features -- -D warnings clean; bash scripts/verify_anchors.sh 71/71 PASS byte-identical_
+- [ ] T-VFH-D1 — Add `base64 = "0.22"` under `crates/ui/Cargo.toml [dev-dependencies]` — _accept: `cargo check -p ui --tests` succeeds; `[dev-dependencies]` table only (no production change); existing `0.22.1` in `Cargo.lock` resolves cleanly (no version bump)_
+- [ ] T-VFH-D2 — Author `crates/ui/tests/fixtures/visual_fail_html.rs` per § Design D-VF-1 + D-VF-2 — _accept: file exists; exports `pub struct VisualFailContext<'a>` (7 fields per D-VF-2), `pub fn emit_visual_fail_html(VisualFailContext<'_>) -> Result<PathBuf, VisualFailHtmlError>`, `pub enum VisualFailHtmlError { Io(io::Error), Image(image::ImageError) }` with `Display`/`Error` impls; HTML template matches D-VF-1 skeleton (head + meta + assertion + baseline + actual + optional diff + optional vlm); inline `<style>` block per D-VF-1 CSS minimum; base64 encode via `base64::engine::general_purpose::STANDARD.encode(&png_bytes)`; PNG dimensions read via `image::ImageReader::open(path)?.into_dimensions()?`; default output path `target/visual-diff/<test_name>-YYYYMMDDTHHMMSSZ.html` via `chrono::Utc::now().format("%Y%m%dT%H%M%SZ")`; ≤ 80 LoC excluding error enum + Display impl_
+- [ ] T-VFH-D3 — Implement env-var-gated spec-persist in `emit_visual_fail_html(...)` per § Design Q1 ratification — _accept: when `EMIT_VISUAL_FAIL_TO_SPEC=1` AND `VISUAL_FAIL_SPEC_SLUG=<slug>` both set, helper additionally writes byte-identical HTML to `spec/<slug>/reports/visual-fail-<test_name>-<ts>.html`; when `EMIT_VISUAL_FAIL_TO_SPEC=1` set but `VISUAL_FAIL_SPEC_SLUG` missing, helper emits `eprintln!("warning: EMIT_VISUAL_FAIL_TO_SPEC=1 set but VISUAL_FAIL_SPEC_SLUG missing; spec-persist skipped")` and writes only the `target/` copy; default (neither var set) writes only `target/` copy_
+- [ ] T-VFH-D4 — Run falsification probe P-VF-1 per § Design — _accept: temporarily edit `emit_visual_fail_html` to `return Err(VisualFailHtmlError::Io(io::Error::other("synthetic probe")))` at function entry; run `cargo test -p ui --test visual_diff visual_diff_helper_writes_diff_png_on_mismatch`; confirm test STILL asserts `Err(VisualDiffError::Mismatch { .. })` PASS (original `Mismatch` semantics preserved); grep stderr for `warning: visual-fail HTML emission failed`; revert synthetic Err; record probe outcome in feature.md § Implementation_
+- [ ] T-VFH-D5 — Wire `emit_visual_fail_html(...)` into FAIL branches of `crates/ui/tests/fixtures/visual_diff.rs` per § Design D-VF-3 — _accept: 3 call sites added: (a) `matches_screenshot` `DimensionMismatch` branch at `visual_diff.rs:115` with `diff_png_path: None`; (b) `matches_screenshot` `Mismatch` branch at `visual_diff.rs:131` with `diff_png_path: Some(&diff_path(test_name))`; (c) `matches_rgb_buffers` Mismatch branch at `visual_diff.rs:198` similar shape; each call uses `eprintln!` to log emission errors but does NOT alter the `VisualDiffError` return; PASS branch of `matches_screenshot` at line 127 unchanged (zero new code reachable on `Ok(())`)_
+- [ ] T-VFH-D6 — Author self-test pair per R4.1 + R4.3 (§ Design D-VF-1 schema assertions) — _accept: new `#[test] fn` in `crates/ui/tests/fixtures/visual_fail_html.rs` under `#[cfg(test)] mod tests`: (1) `emit_visual_fail_html_default_path_inlines_pngs` — drives helper with synthetic 8×8 baseline/actual/diff PNGs under `tempfile::TempDir`, asserts emitted HTML contains `data:image/png;base64,`, the assertion-location string, all three section `<h2>` headers, and PNG dimension `8 × 8 px`; (2) `emit_visual_fail_html_spec_persist_writes_byte_identical_copy` — sets `EMIT_VISUAL_FAIL_TO_SPEC=1` + `VISUAL_FAIL_SPEC_SLUG=test-slug` via `std::env::set_var` in test (scoped to test thread), invokes helper, asserts second file at `<TempDir>/spec/test-slug/reports/visual-fail-...html` exists AND is byte-identical to the `target/`-side copy; uses `std::env::remove_var` cleanup or scoped guard pattern_
+- [ ] T-VFH-D7 — Amend `.claude/agents/tester.md` per § Design D-VF-4 — _accept: new top-level section `## Visual failures — HTML artifact emission` inserted between `## Tick discipline (T_FINAL ownership)` (ends line 133) and `## Handoff` (currently starts line 135); stanza text matches D-VF-4 verbatim (~22 lines); no other tester.md prose touched; `grep -c '^## ' .claude/agents/tester.md` increases by exactly 1_
+- [ ] T-VFH-D8 — Update `spec/trace.toml` REQ-VISUAL-FAIL-HTML-REPORTER-001 row — _accept: `crates` array populated with `crates/ui` (Cargo.toml dev-dep + fixtures helper + visual_diff.rs wire-up + .claude/agents/tester.md amendment); `tests` array populated with self-test fn names (`emit_visual_fail_html_default_path_inlines_pngs`, `emit_visual_fail_html_spec_persist_writes_byte_identical_copy`); state transitions `arch-done → dev-done` (developer M-DEV close) — actual transition `dev-done → passed` ticked by tester at M-FINAL_
+- [ ] T-VFH-D9 — Dev-side gates — _accept: `cargo test -p ui --tests` PASS (existing + new self-tests); `cargo clippy -p ui --all-features -- -D warnings` clean; `bash scripts/verify_anchors.sh` → 71/71 PASS byte-identical pre/post; `python3 scripts/spec_lint.py` exit 0 (no new violations)_
+
+> **Architect note (2026-05-29 M-T1 close)**: ADR-0048 § Changelog
+> amendment and `spec/architecture/adr/README.md` frontmatter
+> `updated:` bump were both committed in the architect M-T1 commit
+> per the ADR registry contract (writing = registering atomically).
+> Developer does NOT re-amend either file.
 
 ## M-FINAL — Tester
 

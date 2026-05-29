@@ -2193,12 +2193,14 @@ arch        = [
   "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
   "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",            # ROOT-CAUSE — § 4.1 agent-contract gap analysis
   "spec/ui-test-harness-bootstrap/feature.md",                                        # PRECEDENT — bootstrap visual_diff.rs structural template for FAIL-only emission
-  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PARENT ADR — D1-D6 carries forward verbatim (one Changelog row at M-T1; no new ADR)
+  "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PARENT ADR — D1-D6 carries forward verbatim; § Changelog amended at architect M-T1 close 2026-05-29 (D-VF-6)
+  # ARCHITECT M-T1 (2026-05-29) — § Design D-VF-1..D-VF-6 + Q1 (a) ratified + Q2 (a) ratified + Q3 (a) overridden to (b) (tester.md had no pre-existing visual-failure stanza).
+  "spec/visual-fail-html-reporter/feature.md#design",                                 # § Design — D-VF-1 HTML schema + D-VF-2 helper signature + D-VF-3 trigger contract + D-VF-4 tester.md amendment + D-VF-5 failure-mode + D-VF-6 ADR amendment
 ]
 crates      = []   # developer fills at M-DEV (Cargo.toml dev-dep; visual_fail_html.rs helper; visual_diff.rs wire-up; .claude/agents/tester.md amendment)
 tests       = []   # developer fills at M-DEV (self-test pair under tempfile::TempDir)
 anchors     = []   # zero delta (helper emits target/ output on FAIL; PASS path byte-identical); 71/71 stays byte-identical
-state       = "proposed"  # analyst M0 2026-05-29. Promoted Queue → Active under Pick A Wave 1 trifecta direction. Parallel-safe with sibling ui-test-harness-viewport-matrix per AGENT.md § Parallelism rules conflict matrix (independent file-scope). HANDOFF → architect (M-T1 fast-skip expected — Q1+Q2+Q3 all DURABLE-recommended; ADR-0048 § Changelog amendment only; no new ADR).
+state       = "arch-done"  # architect M-T1 2026-05-29. § Design D-VF-1..D-VF-6 locked; Q1 (a) + Q2 (a) ratified; Q3 (a) overridden to (b) (tester.md has no pre-existing visual-failure stanza to append to — new top-level section inserted between Tick discipline and Handoff). ADR-0048 § Changelog amendment row drafted; no new ADR. HANDOFF → developer (single M-DEV wave; ~1 dev day; 11 T-VFH-D bullets; falsification probe P-VF-1 spec'd for dry-run during D4).
 
 [[req]]
 id          = "REQ-UI-TEST-HARNESS-VIEWPORT-MATRIX-001"

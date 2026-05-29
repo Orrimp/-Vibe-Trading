@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-29 (ADRs 0048-0049 added)
+updated: 2026-05-29 (ADRs 0048-0049 added; ADR-0048 § Changelog amended for visual-fail-html-reporter v0.1.0 M-T1 close)
 ---
 
 

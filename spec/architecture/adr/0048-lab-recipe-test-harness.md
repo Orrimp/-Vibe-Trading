@@ -219,3 +219,15 @@ SHA assertion.
   D1-D6 row revised. Q2 = per-Recipe T-T4 falsification probe in each
   test file docstring (mandatory; mirrors v0.1.0 `spawn_lab_run_yahoo_harness.rs`
   shape) — see § D-V0.2.0-3 for the 11-row probe-line table.
+- 2026-05-29 (architect, visual-fail-html-reporter v0.1.0 M-T1 close):
+  forensic-artifact emission pattern from D6 anchor-additivity extended
+  to include `target/visual-diff/<test>-<ts>.html` alongside the existing
+  `<test>.png` + `<test>-actual.png` triple on visual-assertion FAIL
+  only. PASS path byte-identical; 71/71 anchors unaffected (helper
+  produces zero output on PASS). No D1-D6 row revised. See
+  [`spec/visual-fail-html-reporter/feature.md`](../../visual-fail-html-reporter/feature.md)
+  § Design D-VF-1..D-VF-6. Wave 1 sibling
+  `ui-test-harness-viewport-matrix` inherits the
+  `.claude/agents/tester.md` "Visual failures — HTML artifact emission"
+  stanza (D-VF-4) without further amendment per trifecta-direction
+  § Risk R1 mitigation.
