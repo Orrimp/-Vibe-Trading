@@ -271,13 +271,25 @@ decision lands at v0.2.0 with empirical data attached._
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] **Approved — ship** _(operator 2026-05-29; orthogonal lint debt accepted)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
 
-_empty until operator fills_
+Operator approved v0.1.0 ship per Recommended path:
+- D-RED-3 (b) deviation (thread-local override map vs emit-
+  redacted+filter-original) accepted as v0.1.0 implementation;
+  architect ratifies at v0.2.0 promotion with empirical
+  WARN-observation data attached.
+- cockpit.rs render-debug feature retains `tracing_subscriber::
+  fmt().try_init()` — acceptable exclusion; note in v0.2.0
+  migration sweep.
+- 14-day WARN observation window OPENS NOW (2026-05-29 →
+  2026-06-12); v0.2.0 analyst records false-positive count
+  before flipping default to gate.
+- spec-lint +7 debt is attributable to Bug #64 attempt-3 lane,
+  NOT v2.1-redactor work — accepted as orthogonal carry-forward.
 
 ## Changelog
 
