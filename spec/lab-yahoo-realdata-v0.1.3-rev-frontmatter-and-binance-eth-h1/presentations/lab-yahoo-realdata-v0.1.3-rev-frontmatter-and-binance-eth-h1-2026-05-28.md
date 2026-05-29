@@ -221,7 +221,7 @@ durable choices; the ship implements them verbatim._
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship  _(2026-05-29, operator)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

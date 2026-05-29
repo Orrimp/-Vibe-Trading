@@ -494,7 +494,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      Trace row `REQ-LAB-YAHOO-REALDATA-V0-1-3-001` opened `proposed`.
      Frontmatter stays `owner: analyst`, `status: draft` — M-OD is next.
      HANDOFF → architect (M-T1 ratifies Q1/Q2 + decomposes M-DEV waves A-D). -->
-- **lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1 v0.1.0** — closes the 2 architect-flagged design notes from v0.1.2 M-FINAL (SOFT-PASS). (1) Move `rev=<sha>` substring from `run_yahoo_sma.rs:259` report body → YAML front-matter `revision_sha:` via a canonical Yahoo report-emit helper (Q1=(a) [Recommended — DURABLE per AGENT.md 2026-05-28]; future MACD/RSI/BBands Yahoo emitters at v0.2.0+ inherit byte-identically). (2) Register `eth-2024-h1-sma-cross` Binance hourly scenario in `crates/backtest/src/main.rs` mirroring existing `btc-2024-h1-sma-cross` arm; retires v0.1.2's Yahoo-to-Yahoo K1 fallback in favor of direct Yahoo-daily-vs-Binance-hourly H1 discharge. Anchor cascade **70 → 71** (BTC row 69 SHA in-place under existing namespace `lab-yahoo-realdata-v0.1.1` per Q2=(a) [Recommended — DURABLE]; row 70 ETH daily byte-identical; new row 71 `eth-2024-h1-sma-cross` under namespace `lab-yahoo-realdata-v0.1.3`). 5R / 4K / 3H / 2Q + non-regression contract + cost framing (~1.5-2 days wall-clock Q1=(a)). Backend-only ship (zero UI files; no M-DEV-UI lane). M-T1 likely fast-skips (ADR-0040 § Changelog amendment only). HANDOFF → architect.
+<!-- moved to Recent (shipped) — v0.1.0 operator-approved 2026-05-29 -->
+<!-- - **lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1 v0.1.0** — see Recent section below. -->
 
 <!-- updated 2026-05-28 (architect, lab-recipe-test-harness M-T1 close — analyst
      pass folded in per orchestrator brief since the WHAT was already
@@ -2285,6 +2286,35 @@ of which became skill-plumbing fixes that shipped in commit
 `8b139c2`. See Recent below.)_
 
 ## Recent (shipped)
+
+### 2026-05-29 cohort
+
+- **lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1 v0.1.0** —
+  shipped 2026-05-29 (operator-approved). Closes the 2 architect-flagged
+  design notes from v0.1.2's M-FINAL via the durable-over-quick choices:
+  (1) **REVISION.toml `rev=` body→frontmatter migration** through a
+  canonical Yahoo report-emit helper at
+  `crates/backtest/src/report/yahoo.rs` (Q1=(a) durable — future
+  MACD/RSI/BBands emitters inherit byte-identically). Helper-bypass
+  regression guard at `crates/backtest/tests/yahoo_report_helper_shape.rs`
+  (3 grep assertions) is the durable-boundary contract. (2) **Binance
+  ETH H1 scenario** `eth-2024-h1-sma-cross` registered with 17,543
+  hourly bars (real Binance parquet auto-detect); retires v0.1.2's
+  Yahoo-to-Yahoo K1 fallback. **H1 PASS DIRECT at 6.78%** (Yahoo ETH
+  daily +2.76% vs Binance ETH hourly +9.54%); well under 30% threshold.
+  Anchor cascade **70 → 71**: row 69 BTC SHA `076929bb...` in-place
+  under existing namespace `lab-yahoo-realdata-v0.1.1` (Q2=(a)); row
+  70 ETH daily byte-identical (`e59a5f87...`); row 71 NEW
+  `eth-2024-h1-sma-cross` SHA `bd4001e4...` under new namespace
+  `lab-yahoo-realdata-v0.1.3`. ETH H1 determinism 4/4 (2 dev + 2
+  tester runs). 33 Binance SMA anchors byte-identical via None-arm
+  of `report::sma::write` (None arm contract). 93 backtest tests
+  PASS. ADR-0040 § Changelog amendment (no new ADR). Carve-outs
+  explicitly owned in deck: ETH daily row 70 bundled with v0.1.4
+  BNB bulk re-emit; trace-broken-path × 4 spec-lint hits owned by
+  parallel v3-regime-classifier Wave E. Commits: `6f97a40`,
+  `5eebe4b`, `e74204a`, `29c1aef`, `72b3947`. See
+  [`spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md`](lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md).
 
 ### 2026-05-28 cohort
 
