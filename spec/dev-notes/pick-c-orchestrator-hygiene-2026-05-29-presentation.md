@@ -205,13 +205,21 @@ No follow-up cost is attached to a "yes" beyond the two minor items below — ne
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] **Approved — ship all 3** _(operator 2026-05-30)_
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
 
-_empty until operator fills_
+Operator approved the bundle 2026-05-30 — all 3 Pick C
+orchestrator-hygiene pillars (queue-staleness-reconciliation,
+adr-registry-atomic-lint, operator-ledger-schema-lint) SHIPPED.
+The 2 non-blocking follow-ups accepted as carry-forward:
+(1) spec-lint can't resolve `scripts/X.py --self-test` test-path
+citations (minor spec-lint enhancement candidate); (2) the 4
+pre-existing backlog stubs are noqa-suppressed — proper
+Active/Queue→Recent section moves deferred to operator
+backlog-triage.
 
 ## Changelog
 

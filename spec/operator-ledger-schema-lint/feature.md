@@ -1,8 +1,8 @@
 ---
 slug: operator-ledger-schema-lint
 version: 0.1.0
-status: tester-done
-owner: presenter
+status: shipped
+owner: shipped
 priority: P2
 updated: 2026-05-30
 ---

@@ -1,8 +1,8 @@
 ---
 slug: queue-staleness-reconciliation
 version: 0.1.0
-status: dev-done
-owner: tester
+status: shipped
+owner: shipped
 priority: P2
 updated: 2026-05-30
 ---
