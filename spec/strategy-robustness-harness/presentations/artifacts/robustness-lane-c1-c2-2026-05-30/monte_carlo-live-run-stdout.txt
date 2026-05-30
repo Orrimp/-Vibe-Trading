@@ -1,0 +1,25 @@
+$ cargo run --release -p backtest --features "candle realdata" --bin monte_carlo -- \
+    --generator block-bootstrap-real --paths 500 --ensemble-seed 0xC0FFEE \
+    --year 2023 --out-dir /tmp/mc-presenter-run/
+
+    Finished `release` profile [optimized] target(s) in 0.60s
+     Running `target/release/monte_carlo --generator block-bootstrap-real --paths 500 --ensemble-seed 0xC0FFEE --year 2023 --out-dir /tmp/mc-presenter-run/`
+monte_carlo DONE
+  report:       /tmp/mc-presenter-run/robustness-20260530-120701-v1-momentum-2023-block-bootstrap-real-fy-mc.md
+  body_sha:     72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4
+  wall_clock_s: 181.0
+  n_paths:      500
+  sharpe p5/p50/p95: -0.0676 / -0.0219 / 0.0031
+  max_dd tail p50/p95: 85.29% / 100.00%
+  P(loss): 0.8680  P(Sharpe>0): 0.1320  P(Sharpe>1): 0.0000
+
+# ---------------------------------------------------------------------------
+# Captured by presenter 2026-05-30 (12:07 UTC). This is the 4th independent
+# run of the anchored scenario; body-SHA 72fc7089... matches dev run 1,
+# dev run 2, and the tester reproduction run, and matches the locked anchor
+# in spec/anchors.toml (namespace mc-robustness-2026-06). Wall clock 181.0s
+# (< 10-min budget). Apple-Silicon canonical box (ADR-0051 D5).
+#
+# Body-SHA verification:
+#   $ python3 scripts/hash_report.py /tmp/mc-presenter-run/robustness-20260530-120701-...md
+#   72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4
