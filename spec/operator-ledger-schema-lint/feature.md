@@ -1,8 +1,8 @@
 ---
 slug: operator-ledger-schema-lint
 version: 0.1.0
-status: dev-done
-owner: tester
+status: tester-done
+owner: presenter
 priority: P2
 updated: 2026-05-30
 ---
@@ -841,7 +841,11 @@ sibling owns the architect.md amendment.
 
 ## Verification
 
-_tester M-FINAL links report here_
+Tester M-FINAL 2026-05-30: VERDICT → PASS. Report at
+[`spec/operator-ledger-schema-lint/reports/test-20260530-070513-v0.1.0.md`](reports/test-20260530-070513-v0.1.0.md).
+All 7 gates pass: self-test 8/8, live exit 0, P-LED-1 fires both flags,
+negative control clean, --today deterministic, fix-in-flight HARD, anchors
+84/84, AGENT.md subsection coexists with queue-staleness sibling edit.
 
 ## Changelog
 

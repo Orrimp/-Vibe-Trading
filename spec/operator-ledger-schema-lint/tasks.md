@@ -1,7 +1,7 @@
 ---
 slug: operator-ledger-schema-lint
-status: dev-done
-owner: tester
+status: tester-done
+owner: presenter
 updated: 2026-05-30
 ---
 
@@ -50,13 +50,13 @@ updated: 2026-05-30
 
 ## M-FINAL — Tester
 
-- [ ] T-LED-FINAL.1 — Run `python3 scripts/operator_ledger_check.py` on current main — _accept: **CORRECTED per architect D-LED-8 / finding F1** — the live ledger is 0 pending / 7 done / 0 cancelled (the Bug #64 D.1.1 row is in the Done table with a 2026-05-29 completion date, NOT a FAILED Pending row). Expectation: **exit 0 with ZERO output** (no FAILED rows to escalate; all 7 Done rows carry ISO completion dates). Any non-clean exit is a FINDING (most likely a Done-row `Completed` cell failing ISO parse) — tester surfaces it. The "1 FAILED row" path is exercised by `--self-test` (cases 3/6) + P-LED-1, NOT by the live ledger._
-- [ ] T-LED-FINAL.2 — Inject synthetic 8-day-old stale-FAILED row in scratch worktree; run script; revert — _accept: exit 1; markdown table identifies the row + escalation issue class_
-- [ ] T-LED-FINAL.3 — Inject schema-enum violation (`status: "blocked"`) in scratch; run; revert — _accept: exit 1; identifies schema-status-enum issue class_
-- [ ] T-LED-FINAL.4 — Run self-test per R4.2 — _accept: `python3 scripts/operator_ledger_check.py --self-test` (inline flag per architect D-LED-7, no separate test file) → `self-test: 8 passed` exit 0; sub-1-s_
-- [ ] T-LED-FINAL.5 — Verify R-NR.4 anchors — _accept: `bash scripts/verify_anchors.sh` → all-PASS byte-identical_
-- [ ] T-LED-FINAL.6 — Verify bundle dialect — _accept: diff message matches bundle Q-HYG-EMIT contract (markdown table); cross-checked against sibling scripts if shipped_
-- [ ] T-LED-FINAL.7 — Write test-final report — _accept: `spec/operator-ledger-schema-lint/reports/test-20260529-v0.1.0-operator-ledger-schema-lint.md` VERDICT → PASS or FAIL_
+- [x] T-LED-FINAL.1 — Run `python3 scripts/operator_ledger_check.py` on current main — _verified 2026-05-30: live ledger exits 0/clean (0 pending / 7 done / 0 cancelled; all 7 Done rows carry ISO completion dates). F1/D-LED-8 corrected precondition satisfied._
+- [x] T-LED-FINAL.2 — Inject synthetic 8-day-old stale-FAILED row in scratch worktree; run script; revert — _verified 2026-05-30: `--ledger /tmp/fixture_stale_no_cite.md --today 2026-05-29` → exit 1; markdown table with `stale-failed` (9 days old) + `missing-devnote-citation`. Fixtures deleted; real ledger byte-identical._
+- [x] T-LED-FINAL.3 — Inject schema-enum violation (`status: "blocked"`) in scratch; run; revert — _verified 2026-05-30 via self-test case 2: `schema-status-enum` issue class fires at exit 1. Also verified `fix-in-flight` → HARD `schema-status-enum` via fixture. Self-test 8/8._
+- [x] T-LED-FINAL.4 — Run self-test per R4.2 — _verified 2026-05-30: `python3 scripts/operator_ledger_check.py --self-test` → `self-test: 8 passed` exit 0; sub-1-s confirmed._
+- [x] T-LED-FINAL.5 — Verify R-NR.4 anchors — _verified 2026-05-30: `bash scripts/verify_anchors.sh` → `ANCHORS PASS (84 / 84)`. Byte-identical confirmed._
+- [x] T-LED-FINAL.6 — Verify bundle dialect — _verified 2026-05-30: P-LED-1 hard output is a markdown table with `issue | row | observed | expected | action` columns matching Q-HYG-EMIT contract. Soft output is `operator-ledger-check: N carry-over(s)` block on stdout. Matches D-LED-6 spec._
+- [x] T-LED-FINAL.7 — Write test-final report — _done 2026-05-30: `spec/operator-ledger-schema-lint/reports/test-20260530-070513-v0.1.0.md` VERDICT → PASS_
 
 ## M-PRESENT — Presenter
 
