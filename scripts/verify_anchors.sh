@@ -130,11 +130,17 @@ while IFS= read -r line; do
                 2>/dev/null | sort | tail -1 || true)"
         elif [[ "$version" == "mc-robustness-2026-06" ]]; then
             # Monte-Carlo robustness namespace (ADR-0051 D4):
-            # Reports live under spec/strategy-robustness-harness/reports/
-            # as robustness-<stamp>-<scenario>.md
+            # C2 reports live under spec/strategy-robustness-harness/reports/
+            # C3 θ-surface reports live under spec/momentum-parameter-robustness-sweep/reports/
+            # Both use robustness[-sweep]-<stamp>-<scenario>.md naming.
             mc_reports_dir="$root/spec/strategy-robustness-harness/reports"
+            mc_sweep_dir="$root/spec/momentum-parameter-robustness-sweep/reports"
             latest="$(find "$mc_reports_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                 2>/dev/null | sort | tail -1 || true)"
+            if [[ -z "$latest" ]]; then
+                latest="$(find "$mc_sweep_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
+                    2>/dev/null | sort | tail -1 || true)"
+            fi
         else
             # Legacy default: newest matching report OUTSIDE all v5-latency-slippage-sim dirs.
             # Excluding the canonical dirs prevents pre-v0.5.0 anchors (e.g. v3.0.0-regime)

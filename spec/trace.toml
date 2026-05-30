@@ -2569,3 +2569,27 @@ tests       = [
 anchors     = ["v1-momentum-2023-block-bootstrap-real-fy-mc"]   # +1 anchor under mc-robustness-2026-06; SHA 7dbf5628 (v0.1.1 corrected, §D6.b re-emission) — tester locked 2026-05-30 after verify-anchors 85/85 PASS
 state       = "tested"     # tester 2026-05-30 v0.1.1 RE-VERIFY VERDICT → PASS: 58/58 lib + 8/8 e2e (incl 2 new solvency guards); body-SHA 7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20 byte-identical across 2 independent N=500 runs; p50 Sharpe -0.010 = FRAGILE (5/5 primary signals unchanged); p95 MaxDD 91.5% (was 100% artifact — fixed); P(loss) 75.2% (was 86.8%); 85/85 anchors; fmt clean; 0 clippy errors in C2 files. mutation-probe: solvency tests GREEN under revert (arithmetic proof, not run_path call — noted as gap, see test report). Presenter re-do unblocked.
 # analyst M0 2026-05-30: feature.md authored as C2 of the Monte-Carlo robustness lane. R1-R3 + R-NR(6, incl MANDATORY adapted CLAUDE.md distribution-harness gate R-NR.6 = divergence-from-single-path-baseline + two-run byte-identity) + K1-K4 + H1-H3 + Q-RH-1/2 + 4-cell verdict tree. ADR-0051 FLAGGED for the architect (next free number confirmed 0051; this brief does NOT author it). Depends on C1 (REQ-MC-BOOTSTRAP-PATH-GENERATOR-001). Operator Q2 (anchor the summary) + Q3 (harness first) are the locked frame, not re-asked. Reuses the threshold_sweep seam (architect's "~80% built" finding).
+
+[[req]]
+id          = "REQ-MOMENTUM-PARAMETER-ROBUSTNESS-SWEEP-001"
+title       = "C3 — momentum parameter-robustness sweep: for each θ in the LOCKED 6-cell hypothesis-aimed grid (lookback × k_long × drift/hold-band; re-scoped from 14-cell for tractability) run the C2 N-path robustness harness (SAME paths across cells, ADR-0051 § D6.1) → per-θ DistributionSummary → per-θ FRAGILE/MARGINAL/ROBUST verdict (frozen decision-rule §4 weakest-link composite). ONE anchored θ-surface report + buy-and-hold control row. Anti-cherry-pick by construction: reports the FULL surface + FAMILY-UNIFORM-FRAGILE / FAMILY-HAS-NON-FRAGILE-CELLS verdict; defers any 'best θ is robust' claim to a C5 deflation pass (Option a, pre-registered). Reuses run_path + DistributionSummary + BlockBootstrapPathGen verbatim; new = outer θ-loop + config-injection + composite classifier + surface renderer."
+feature     = "momentum-parameter-robustness-sweep"
+product     = "spec/product.md"
+arch        = [
+  "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md",  # § D6 amendment: SAME-paths two-axis seed (D6.1), D6.2 REJECT (collision bug), D6.3 grid def hashed, D6.4 sort by g before render
+  "spec/momentum-parameter-robustness-sweep/feature.md#design",                               # D-C3.0..D-C3.7-LOCKED: 5 OQ resolutions, LOCKED 6-cell grid, config-injection seam, verdict classifier, day-1 gate
+]
+crates      = ["crates/backtest"]   # bin/param_robustness_sweep.rs (TIER1_GRID + outer θ-loop + config-injection + verdict classifier + renderer + buy-and-hold); tests/param_sweep_e2e.rs (8 gate tests)
+tests       = [
+  "crates/backtest/tests/param_sweep_e2e.rs::fp_c3_1a_theta_injection_diverges_for_different_cells",      # FP-C3.1(a): θ-injection divergence gate — CLAUDE.md non-negotiable
+  "crates/backtest/tests/param_sweep_e2e.rs::fp_c3_1b_degenerate_injection_produces_identical_cells",     # FP-C3.1(b): degenerate injection collapse → proves fp_c3_1a detects no-ops
+  "crates/backtest/tests/param_sweep_e2e.rs::fp_c3_3_two_run_byte_identity",                              # FP-C3.3: same seeds twice → byte-identical DistributionSummary (ADR-0051 D2/D3/§D6.4)
+  "crates/backtest/tests/param_sweep_e2e.rs::fp_c3_2_grid_sensitivity_different_grids_produce_different_bodies",  # FP-C3.2 / K3: different grid → different body-SHA
+  "crates/backtest/tests/param_sweep_e2e.rs::fp_c3_5_family_summary_always_valid_value",                  # FP-C3.5: anti-cherry-pick — family line always one of two §R2.3 values
+  "crates/backtest/tests/param_sweep_e2e.rs::same_paths_seeding_invariant_adr0051_d6_1",                  # ADR-0051 §D6.1: path seed does NOT depend on g
+  "crates/backtest/src/bin/param_robustness_sweep.rs::tests::classifier_robust_boundary_all_just_above",  # verdict classifier boundary: all signals just clearing ROBUST threshold
+  "crates/backtest/src/bin/param_robustness_sweep.rs::tests::classifier_fragile_on_negative_p5_sharpe",   # verdict classifier: p5 < 0 → FRAGILE
+  "crates/backtest/src/bin/param_robustness_sweep.rs::tests::tier1_grid_has_6_cells",                     # grid shape: exactly 6 cells (re-scoped)
+]
+anchors     = ["v1-momentum-theta-surface-2023-block-bootstrap-real-fy"]   # +1 anchor under mc-robustness-2026-06; SHA 0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5 — tester locked 2026-05-30 after verify-anchors 86/86 PASS
+state       = "tested"     # tester 2026-05-30 VERDICT → PASS (test-2026-05-30-1834-v0.1.0): 8/8 param_sweep_e2e + 19/19 bin unit tests; FAMILY-UNIFORM-FRAGILE confirmed; g=0 correctness probe matched C2 direction (N=200 vs N=500 delta explained by sampling); FP-C3.1 genuine guard (fp_c3_1b degenerate collapse proves fp_c3_1a would fail on no-op); FP-C3.4 buy-and-hold p50=+1.735/P(loss)=4.5%/p95MaxDD=51.15% matches ref; 86/86 anchors (C2+C3); fmt clean; 0 clippy errors in C3 files. Presenter (family-fragility closure deck) unblocked.

@@ -1,8 +1,8 @@
 ---
 slug: momentum-parameter-robustness-sweep
 version: 0.1.0
-status: draft
-owner: analyst
+status: tester-done
+owner: architect
 priority: P2
 updated: 2026-05-30
 ---
@@ -322,9 +322,89 @@ The genuinely NEW code (§D-C3.6) is small and bounded:
 ---
 
 ## Design
-_architect fills the binding M-T1 design; the analyst proposes the shape below
-for the architect to ratify / amend. Everything here is a recommendation, not a
-lock._
+
+> **M-T1 BINDING DESIGN (architect, 2026-05-30).** The 5 open questions are
+> resolved below in § D-C3.0; the Tier-1 θ-grid is LOCKED in § D-C3.2-LOCKED (it
+> IS the anchor input — frozen before the tester anchors); the determinism +
+> anchoring amendment is written into [ADR-0051 § D6](../architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md);
+> the build seams + day-1 gate are specified in § D-C3.6-BUILD / § D-C3.7-LOCKED.
+> The analyst's recommendation shape (§ D-C3.1 … § D-C3.7 below) is RATIFIED with
+> the amendments called out in § D-C3.0. This is design-only — reversible until
+> the dev build per the operator's C3 delegation.
+
+### D-C3.0 — M-T1 resolutions (the 5 open questions, decided + rationale)
+
+| OQ | Decision | Rationale (short) | Where locked |
+|---|---|---|---|
+| **OQ-1** same vs independent N paths across θ-cells | **SAME path-set across ALL cells** | θ becomes the ONLY varying input → controlled experiment; removes path-sampling variance as an inter-row confound; and it is provably C1/C2-determinism-neutral (the θ-axis is varied at the config level, the seed stream is untouched). | ADR-0051 § D6.1 |
+| **OQ-2** exact Tier-1 cell list (THE anchor) | **14 cells, LOCKED** (1 baseline + 3 one-at-a-time arms + 3 low-churn-corner + 1 high-churn-corner + 2 mid-diagonal). Hypothesis-aimed at the turnover/fee-bleed corner. | The adversarial review localized fragility to turnover; the grid sweeps the two turnover axes (lookback horizon, drift/hold-band) + breadth (k_long) and includes the long-lookback × wide-band low-churn corner as the best a-priori robustness shot. | § D-C3.2-LOCKED |
+| **OQ-3** print single auto-L once in header | **Yes — header line, not per-row** | L is computed on the source series (θ-independent) and SAME-paths ⇒ identical L for every cell. One shared-input line. | ADR-0051 § D6.1.4; § D-C3.3 |
+| **OQ-4** ADR-0051 amendment vs new ADR-0052 | **ADR-0051 § D6 amendment** | The seed idiom, FM/body split, fixed-precision, and one-report anchor unit are reused verbatim; only the axis count + report shape change. Cheap-and-correct `analyst-defaults` exception. **Plus** the amendment had to REJECT the brief's D-C3.4 naive additive two-axis fallback as a seed-collision bug. | ADR-0051 § D6.2 |
+| **OQ-5** 2023-only vs +2024 | **2023-FY only for v0.1.0** | Apples-to-apples with the C2 anchor (same year, same revision `3a8b96c4…`). +2024 is a v0.2.0 fast-follow (separate run, separate anchor, same shape). No operator round-trip. | § Backtest Scenarios |
+
+**The one amendment to the analyst's recommended shape:** the analyst's § D-C3.4
+offered SAME-paths as the *lean* and a composed-independent rule as the *fallback*.
+The architect ratifies SAME-paths as the **binding** rule **and rejects the
+fallback outright** — the naive additive composition
+`ensemble_seed + g·0x9E37_79B9 + j·0x9E37_79B9` collapses to
+`+ (g+j)·0x9E37_79B9` and assigns the **same** path seed to `(g, j)` and
+`(g−1, j+1)` (6 colliding pairs in a 4×3 grid, verified arithmetically). Any future
+per-cell-path-independence variant needs its OWN ADR with a collision-free
+non-commuting mix; it does NOT inherit § D6.1. Everything else in § D-C3.1 …
+§ D-C3.7 is ratified as written, with the cell list and gate made concrete below.
+
+### D-C3.2-LOCKED — The Tier-1 θ-grid (RE-SCOPED to 6 cells × N=200 for tractability)
+
+> **Original architect design (FROZEN 2026-05-30 M-T1): 14-cell × N=500.**
+> **RE-SCOPED 2026-05-30 (orchestrator) to 6-cell × N=200** for ~20 min wall-clock
+> vs ~1 hr. Methodology unchanged; grid anchored as a `const` in the bin.
+> The re-scoped 6-cell list is a hashed body field (ADR-0051 § D6.3 / R3.3).
+> **Held constant across every cell:** `rebalance_minutes = 60`, `exposure_cap = 0.50`,
+> `vol_floor = 0.000001`, `size = equal_weight`, `k_short = 0`, the 10-symbol
+> universe, year = 2023, N = 200, `ensemble_seed = 0xC0FFEE`, `fill_seed = 0xC0FFEE`,
+> generator = `block-bootstrap-real`, revision `3a8b96c4…`.
+
+The θ-cell index `g` is the render + seed-composition order (rows are sorted
+by `g` before render — ADR-0051 § D6.4). The swept axes are `lookback_minutes`
+(signal horizon), `k_long` (selection breadth / entry cutoff), and
+`drift_rebalance_threshold` (the no-trade hold band = the turnover/exit lever).
+
+**Re-scoped 6-cell grid (orchestrator 2026-05-30) — ANCHORED:**
+
+| g | lookback_minutes | k_long | drift_rebalance_threshold | role / hypothesis |
+|---|---|---|---|---|
+| 0 | 60 | 3 | 0.10 | **baseline θ\*** (C2-shipped config; correctness probe) |
+| 1 | 24 | 3 | 0.10 | short lookback (1d) → noisiest / highest churn |
+| 2 | 168 | 3 | 0.10 | 1w lookback horizon |
+| 3 | 720 | 3 | 0.50 | **1mo lookback + wide hold-band** — a-priori best robustness shot (low-churn corner) |
+| 4 | 60 | 1 | 0.10 | narrow selection — top-1 only |
+| 5 | 60 | 5 | 0.10 | wide selection — top-5 (more legs to churn) |
+
+Original 14-cell architect grid preserved in the git history (commit pre-2026-05-30).
+The 6-cell grid covers: the baseline (g=0), lookback arms g=1..2, the best-robustness
+corner (g=3: 1mo × wide band, the key low-churn hypothesis), and breadth arms g=4..5.
+
+**Design notes on the lock:**
+- **C0 is a free, powerful validation.** Because OQ-1 = SAME-paths, cell `g=0` runs
+  the *exact* C2 θ\* config over the *exact* C2 path-set. Its per-cell distribution
+  numbers (Sharpe p5/p50/p95, P(loss), p95 MaxDD) MUST reproduce the C2 anchored
+  report's numbers within the same run-to-run identity the C2 anchor enjoys. This is
+  a built-in correctness probe for the whole sweep (if C0 ≠ the C2 numbers, the
+  config-injection or path-plumbing is wrong) — the tester checks it (T-T1). Note
+  the *surface* anchor (§ D6.3) is a distinct artifact from the C2 *single-cell*
+  anchor (different report shape, different body), so this does not collide anchors.
+- **The grid is bounded and hypothesis-aimed, NOT a dense 4×3×3 = 36-cube.** It is
+  the 3 axes swept one-at-a-time around θ\* + the low-churn diagonal + one high-churn
+  extreme + 2 shape fills = 14 cells. This is the analyst's "~12-16 hypothesis-aimed
+  cells" principle made concrete; it spends the budget on the corners the prior says
+  matter (low-churn = possible escape; high-churn = confirm the trap) rather than on
+  a uniform fill.
+- **`rebalance_minutes` held at 60.** It co-moves with `lookback` for turnover; a
+  full cross would explode the grid. A Tier-2 refine MAY add it iff Tier-1 surfaces
+  a non-FRAGILE low-churn cell worth zooming into.
+- **Wall-clock:** ~35 s/cell at N=500 on the canonical box (adversarial-review
+  measured throughput) × 14 cells ≈ **~8 min**. N=300 fallback ≈ ~5 min (the
+  if-budget-tightens lever — noisier tail, NOT a methodology downgrade; § 0).
 
 ### D-C3.1 — Reuse map (what is reused verbatim vs genuinely new)
 
@@ -489,7 +569,213 @@ Mirror C2's `montecarlo_e2e.rs` two-part structure exactly:
 > `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`. Distribution
 > analogue: `crates/backtest/tests/montecarlo_e2e.rs` (C2).
 
-### § ADR flag (for the architect — C3 does NOT author it)
+---
+
+### D-C3.6-BUILD — The binding build (M-T1 → developer): seams, reuse, new code
+
+Verified against the C2 code at HEAD (architect read 2026-05-30). The reuse story
+holds at ~85%; the new surface is bounded and the config-injection seam is
+**smaller and cleaner than the brief feared** — see the seam note.
+
+**Reuse VERBATIM (do NOT reimplement, do NOT touch — R-NR.1/R-NR.2):**
+- `crates/backtest/src/scenarios/montecarlo.rs :: run_path` — the per-path engine
+  loop. It is **already config-agnostic**: it takes a caller-supplied
+  `MomentumStrategy` and the config it loads internally is used ONLY for the
+  universe list, which it then discards (`let _ = cfg;` at line 131; the universe
+  is implicit in the injected `bars_override`). **No edit to `run_path`.**
+- `crates/backtest/src/stats/mod.rs` — `DistributionSummary::from_path_metrics`,
+  `reduce_samples`, `compute_sharpe_hourly` / `_sortino_` / `_calmar` /
+  `compute_max_drawdown_f64` / `compute_total_return`, `PathMetrics`,
+  `MetricDistribution`. Untouched (ADR-0051 D2 reduction is load-bearing).
+- `crates/data/src/synth/` — `BlockBootstrapPathGen` with `BlockLengthPolicy::Auto`
+  (shared-index, the FP-C1.5-confirmed fair adversary). Untouched.
+- ADR-0051 D1 seed idiom `derive_path_seed(master, j) = master.wrapping_add(j *
+  0x9E37_79B9)` — reused **verbatim**, and under OQ-1 SAME-paths the C3 per-path
+  seed IS `derive_path_seed(ensemble_seed, j)` (no new arithmetic; ADR-0051 § D6.1).
+- The `monte_carlo.rs` driver scaffolding: `parse_seed`, `read_git_commit`,
+  `read_hostname`, `read_data_revision_sha`, `days_since_epoch_to_ymd`,
+  `load_source_bars` / `load_real_bars`, `prepare_generator_params` (gives the
+  θ-independent auto-L for the header — OQ-3), the rayon fan-out + `sort_by_key(j)`
+  reduction pattern, and the FM/body `render_report` structure (ADR-0051 D3).
+
+**The config-injection seam (T-A4 RESOLVED — least-invasive choice):** the hardcoded
+TOML load lives in `monte_carlo.rs :: run_one_path` at **lines 852-859** (NOT in
+`run_path`). The seam is: **`run_one_path` (and the C3 sibling driver) builds the
+per-cell `CrossSectionalMomentumConfig` from a base + θ-overrides and passes the
+resulting `MomentumStrategy` down to the unchanged `run_path`.** Because C3 is a
+NEW bin (below), the cleanest realization is a **C3-local copy of the
+`run_one_path` glue** that (a) takes a `&CrossSectionalMomentumConfig` (or the
+3-tuple `(lookback, k_long, drift)` + the frozen base) instead of loading the TOML,
+and (b) is otherwise byte-identical to `run_one_path` (same path-gen call, same
+merge, same `TcnScenarioInput`, same clamp, same `compute_*`). This keeps both
+`run_path` AND the C2 `monte_carlo.rs` driver byte-identical (R-NR.2 / the 85
+anchors), and confines the θ-injection to C3's own code. (Refactoring the C2
+`run_one_path` to accept a config is the alternative; it is rejected for v0.1.0
+because it touches the C2 anchored driver for zero C3 benefit.)
+
+**The build (a dedicated bin — T-A1 confirms bin over flag, mirrors `monte_carlo.rs`
++ `threshold_sweep.rs`):**
+
+1. **`crates/backtest/src/bin/param_robustness_sweep.rs`** — the C3 driver.
+   - CLI (clap): `--paths` (default 500), `--ensemble-seed` (default `0xC0FFEE`),
+     `--data-root`, `--expected-revision-sha` (the `3a8b96c4…` pin), `--out-dir`
+     (default `spec/momentum-parameter-robustness-sweep/reports/`), `--year`
+     (default 2023), `--generator` (default `block-bootstrap-real`).
+   - The **LOCKED θ-grid (§ D-C3.2-LOCKED) is a `const` table in the bin** — 14
+     `(g, lookback, k_long, drift)` rows. It is NOT a CLI parameter (the grid is
+     frozen; making it a flag would let a run silently change the anchor input).
+     A `--grid tier1` enum value is acceptable (one variant at v0.1.0) if the
+     developer wants the K3 grid-sensitivity test (FP-C3.2) to switch grids without
+     editing source — but the **anchored** run uses `tier1`.
+   - **Outer θ-loop:** for each cell `g`, build the per-cell config (frozen base
+     `top10_momentum_h1.toml` with `lookback_minutes/k_long/drift_rebalance_threshold`
+     overridden per the row), then run the **C2 inner N-path harness** (rayon
+     fan-out over `j ∈ 0..N`, per-path seed = `derive_path_seed(ensemble_seed, j)`
+     — SAME for every cell, ADR-0051 § D6.1), collect `Vec<PathMetrics>` in
+     index-`j` order (`sort_by_key(|r| r.j)`), reduce to one `DistributionSummary`.
+     Collect `(g, config-triple, DistributionSummary)` into a `Vec`, **sort by `g`
+     before render** (ADR-0051 § D6.4).
+   - Parallelism: the inner per-path rayon fan-out is reused as-is. The outer
+     θ-loop MAY also be parallel, but **seeds are a pure function of `j` only**
+     (cell-independent), so either order is deterministic — keep the outer loop
+     sequential for log legibility unless wall-clock demands otherwise (it does not
+     at ~8 min).
+2. **Config-injection helper** (in the bin): `fn cell_config(base: &Cfg, lookback:
+   u32, k_long: u32, drift: Decimal) -> Cfg` cloning the base and overriding the 3
+   fields. `MomentumStrategy::from_config(cell_config(...), id)` per cell. This is
+   the ~30-line crux that FP-C3.1 falsifies.
+3. **`ParamRobustnessVerdict` classifier** — a pure function over a
+   `DistributionSummary` returning `{Fragile, Marginal, Robust}` per cell. It
+   mechanizes the frozen decision-rule § 4 weakest-link composite over the **five
+   PRIMARY signals**: p5 Sharpe, p50 Sharpe, prob-of-loss, P(Sharpe>1), p95 MaxDD
+   tail. **Composite = the worst band any primary signal lands in.** It does NOT
+   re-derive the bands — the bands are the frozen `robustness-decision-rule-2026-05-30.md`
+   § 0 numbers, encoded as `const` thresholds with a comment citing the rule. Spread
+   (p95−p5) and p50-vs-real-path are computed and printed but are **interpretive
+   (NOT verdict-forcing)** per rule § 4 step 3. Place it as a small module in the
+   bin (or `crates/backtest/src/stats/` next to `DistributionSummary` if shared) —
+   developer's call; it must be unit-tested at the band boundaries (T-D4).
+   - **Band thresholds (lift verbatim from the decision rule § 0 — do NOT invent):**
+     FRAGILE if any of `{p5_sharpe < 0, p50_sharpe < 0.5, prob_loss > 0.35,
+     prob_sharpe_gt_1 < 0.35, p95_maxdd > 0.70}`; ROBUST only if ALL of
+     `{p5_sharpe ≥ 0.5, p50_sharpe ≥ 1.0, prob_loss ≤ 0.15, prob_sharpe_gt_1 ≥ 0.60,
+     p95_maxdd ≤ 0.50}`; else MARGINAL. (The rule's "ROBUST only if p5 ≥ 0 AND
+     prob-of-loss ≤ 15% AND p95 DD stomach-able" composite gate is satisfied by this
+     weakest-link encoding.)
+4. **θ-surface report renderer** (ADR-0051 D3 / § D6.4 FM/body split):
+   - **Front-matter (run-varying, NOT hashed):** `slug`, `scenario`, `generated`,
+     `wall_clock_s`, `host`, `pid`, `git_commit`, `data_revision_sha`.
+   - **Body (hashed) — shared-input header block first:** `master_seed`,
+     `fill_seed`, `n_paths`, `sub_seed_rule` (`"master + j*0x9E3779B9 (SAME paths
+     across cells, ADR-0051 D6.1)"`), `reduction_rule` (the D2 string), `generator`,
+     `bootstrap_mode` (`shared-index`), `block_length_policy` (`auto`),
+     `selected_block_length_L` (the single θ-independent L — OQ-3), `source_revision_sha`,
+     and the **frozen grid definition string** (the 14 cells, e.g. a canonical
+     one-line-per-cell `g|lookback|k_long|drift` block — this is the hashed grid
+     field, K3 / § D6.3).
+   - **Body — the θ-surface table (the deliverable), rows sorted by `g`:** one row
+     per cell with `g`, `lookback`, `k_long`, `drift`, then the 5 primary signals at
+     fixed precision (`{:.6}` for Sharpe p5/p50/p95, prob_loss, prob_sharpe_gt_1;
+     `{:.2}%` for p95 MaxDD), the spread `{:.6}`, and the composite verdict string +
+     (if non-FRAGILE) the `→ C5 DEFLATION REQUIRED` flag.
+   - **Body — the buy-and-hold control row** (§ D-C3.6 item 5 below): same N paths,
+     same auto-L, labelled `BUYHOLD (passive)`, with the same 5 columns. It carries
+     NO verdict (it is the benchmark, not a candidate).
+   - **Body — the family-summary line:** exactly one of `FAMILY-UNIFORM-FRAGILE`
+     (every active cell FRAGILE) or `FAMILY-HAS-NON-FRAGILE-CELLS` (≥1 cell
+     MARGINAL/ROBUST → each flagged `→ C5`). **NO "best θ" is ever crowned** (the
+     § 0 pre-registration commitment, mechanized — FP-C3.5).
+   - All floats formatted at fixed precision BEFORE entering the body string; metric
+     columns in a FIXED declared order; rows in `g` order. Compute the body-SHA the
+     same way `monte_carlo.rs` does (`extract_report_body` + Sha256) and print it for
+     the tester to lock.
+5. **Buy-and-hold control** — a ~30-line passive equal-weight equity curve over the
+   same injected paths (NOT a strategy; it ignores signals and holds equal weights
+   from bar 0). Reuse the same `compute_*` calculators + `DistributionSummary` over
+   its N per-path metrics so the control row is computed by the identical reducer.
+   FP-C3.4 checks it reproduces the adversarial-review reference (p50 ≈ +1.78,
+   P(loss) ≈ 4%, p95 MaxDD ≈ 51% at auto-L, N=500).
+
+**Watch recipe (developer MUST emit when kicking off the >2 min anchored run):**
+```bash
+watch -n 15 '
+PID=$(pgrep -f param_robustness_sweep | head -1)
+[ -z "$PID" ] && echo "param_robustness_sweep not running" && exit
+N=$(ls spec/momentum-parameter-robustness-sweep/reports/robustness-sweep-*.md 2>/dev/null | wc -l | tr -d " ")
+ELAPSED=$(ps -o etime= -p $PID 2>/dev/null | tr -d " ")
+[ "$N" -gt 0 ] && echo "surface landed ($N file); elapsed ${ELAPSED}" || echo "running (no surface yet); elapsed ${ELAPSED}"
+'
+```
+
+### D-C3.7-LOCKED — The MANDATORY day-1 gate (R-NR.6 non-negotiable, concrete spec)
+
+A new test file **`crates/backtest/tests/param_sweep_e2e.rs`** mirroring C2's
+`montecarlo_e2e.rs` two-part structure. **FP-C3.1 is the CLAUDE.md non-negotiable**
+(the θ-injection no-op falsifier); it MUST be tested on BOTH the real and the
+degenerate-injection case (the FP-C2.1 discipline). Small N (e.g. N=8-20) and a
+short synthetic bar series so the test runs in seconds (no real data; the gate is
+about the *injection wiring*, not the tail numbers).
+
+- **FP-C3.1 — θ-injection divergence gate (the headline anti-no-op):**
+  - **(a) real case — PASS when wired:** build two materially-different cells —
+    `θ_high_churn = (lookback 24, k_long 5, drift 0.10)` and `θ_low_churn =
+    (lookback 720, k_long 3, drift 0.50)` — inject each via the C3 config-injection
+    helper, run the small-N harness over the SAME synthetic paths, and assert the
+    two cells are **distinguishable**: `|p50_sharpe(θ_a) − p50_sharpe(θ_b)| ≥ ε`
+    OR `|trade_count(θ_a) − trade_count(θ_b)| ≥ ε` (the trade-count divergence is
+    the robust signal — a low-churn cell trades far less than a high-churn one;
+    assert on the aggregate or per-path trade counts surfaced by `PathRunResult`).
+    Recommend ε on trade-count = a large integer gap (these two cells differ by
+    hundreds-to-thousands of trades), with the Sharpe-delta as the OR-fallback.
+  - **(b) degenerate case — the falsification dry-run, MUST go RED:** force the
+    injection helper to **ignore the override** (both cells run θ\*), and assert the
+    divergence check from (a) now FAILS (the two cells are byte-identical → Δ = 0 <
+    ε). Mirror C2's `fp_c2_1_degenerate_seeds_have_zero_spread`: the degenerate test
+    *asserts the collapse is detectable* (Δ < a tiny epsilon), proving the gate is
+    not itself a no-op. **Both (a) and (b) ship in the file.** A build that silently
+    runs θ\* for all cells fails (a); the gate's own sensitivity is proven by (b).
+- **FP-C3.3 — two-run byte-identity of the θ-surface body-SHA (mandatory, ADR-0051
+  D2/D3/§ D6.4):** run the whole small-N sweep twice at the same `ensemble_seed`;
+  assert identical `report_body_hash` (or, at the unit level mirroring C2's
+  `rn6b_two_run_byte_identity`, assert the per-cell summaries format byte-identically
+  across two runs). Catches any unordered fold sneaking into the outer θ-loop or the
+  renderer.
+- **FP-C3.2 — grid sensitivity (K3):** two sweeps over DIFFERENT grids (e.g.
+  `tier1` vs a 2-cell sub-grid) at the same seeds ⇒ different θ-surface body-SHAs
+  (proves the grid def is a hashed body field — no missing input).
+- **FP-C3.4 — buy-and-hold control sanity:** assert the passive control row's
+  distribution reproduces the adversarial-review reference at auto-L/N=500 (run at
+  the real-data tester stage, not in the fast unit gate; the tester checks this in
+  T-T1). A wildly different control row ⇒ the control wiring is wrong, not the sweep.
+- **FP-C3.5 — the integrity probe (anti-cherry-pick, mechanized § 0):** a unit test
+  asserts the family-summary line is ALWAYS one of the two § R2.3 values and that
+  every non-FRAGILE cell carries the `→ C5 DEFLATION REQUIRED` flag — i.e. the
+  renderer can NEVER emit a "best θ is ROBUST" claim. This is the pre-registration
+  commitment enforced in code, not prose.
+
+> The two MANDATORY day-1 gates (per CLAUDE.md non-negotiable + R-NR.6) are
+> **FP-C3.1** (θ-divergence / anti-no-op, tested on BOTH real + degenerate) and
+> **FP-C3.3** (two-run byte-identity). FP-C3.2 / FP-C3.4 / FP-C3.5 are required for
+> ship but are not the day-1 blocker pair. Pattern references:
+> `crates/backtest/tests/montecarlo_e2e.rs` (distribution analogue) and
+> `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` (single-path
+> non-negotiable).
+
+### § ADR flag — RESOLVED at M-T1 (ADR-0051 § D6 amendment, NOT ADR-0052)
+
+> **RESOLVED 2026-05-30 (architect).** Written as an **amendment to ADR-0051**
+> ([§ D6](../architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md)),
+> registered atomically in the ADR registry README per the architect.md ADR-registry
+> contract. The analyst's recommendation (amendment over ADR-0052) is ratified: the
+> seed idiom, FM/body split, fixed-precision formatting, and one-report anchor unit
+> are reused verbatim; only the axis count + report shape change. **One correction
+> the amendment had to make:** the analyst's § D-C3.4 *fallback* (composed-independent
+> paths via `ensemble_seed + g·k + j·k`) is a seed-collision bug (it collapses to
+> `+(g+j)·k`, colliding `(g,j)` with `(g−1,j+1)`); ADR-0051 § D6.2 REJECTS it and
+> ratifies SAME-paths-across-cells (§ D6.1) as the binding rule. The amendment proved
+> SAME-paths is byte-identical to the C2 D1 seed (the θ-axis is varied at the config
+> level, not the seed level), so C1/C2 determinism — the 85 anchors — is unchanged by
+> construction. The analyst text below is preserved for provenance.
 
 C3's **two-axis seed composition** (θ-cell axis ⊗ path axis, D-C3.4) and the
 **θ-surface report shape** (one report, G rows, per-cell verdict) are an
@@ -510,38 +796,40 @@ amendment route, so the cheap path is provably rework-free here.
 ## Backtest Scenarios
 _analyst + architect fill using the backtest/scenario template._
 
-The v0.1.0 anchored scenario: **cross-sectional momentum (v1) swept over the
-Tier-1 θ-grid (§D-C3.2) at N=500 per cell, over the shared-index block-bootstrap
-of 2023-FY real Binance returns (revision `3a8b96c4…`), producing ONE θ-surface
-report under `mc-robustness-2026-06`.** Each cell scored against the frozen
-decision-rule bands; family-level verdict + per-cell `→ C5` flags. Buy-and-hold
-control row included. (2024-FY is an optional second scenario, same shape, IF the
-operator wants both years — mirrors the C2 / threshold_sweep bs1/bs2 pattern.)
+The v0.1.0 anchored scenario (**OQ-5 RESOLVED: 2023-FY only**): **cross-sectional
+momentum (v1) swept over the LOCKED Tier-1 14-cell θ-grid (§ D-C3.2-LOCKED) at
+N=500 per cell, over the shared-index block-bootstrap of 2023-FY real Binance
+returns (revision `3a8b96c4…`), producing ONE θ-surface report under
+`mc-robustness-2026-06`** (+1 anchor → 86 total; ADR-0051 § D6.3). Each cell scored
+against the frozen decision-rule bands; family-level verdict + per-cell `→ C5`
+flags. Buy-and-hold control row included. **2023-FY only is the v0.1.0 lock**
+(apples-to-apples with the C2 anchor — same year, same revision). **2024-FY is a
+v0.2.0 fast-follow** (a SEPARATE run = SEPARATE anchor, identical shape; mirrors the
+C2 / threshold_sweep bs1/bs2 pattern). No operator round-trip needed for v0.1.0.
 
 ---
 
-## Open questions (operator / architect — resolve before build)
+## Open questions — ALL RESOLVED at M-T1 (2026-05-30)
 
-- **OQ-1 (same vs independent paths across θ-cells) — leans SAME, M-T1 +
-  possible operator call.** Should every θ be judged on the *identical* N
-  resampled histories (one ensemble seed shared across cells; θ the only varying
-  input — strongest causal read) or independent paths per cell (the D-C3.4
-  composition)? Analyst leans SAME (controlled experiment, anti-confounder). Has
-  a determinism consequence (the hashed seed rule differs) so the architect must
-  ratify; the operator may have a view on the "controlled experiment" framing.
-- **OQ-2 (grid finalization) — architect M-T1.** The exact Tier-1 cell list
-  (the §D-C3.2 "~12-16 hypothesis-aimed cells"). The analyst gives the axes,
-  ranges, and the low-churn-corner principle; the architect locks the precise
-  cells (which IS the anchor).
-- **OQ-3 (L printing) — trivial, architect.** Print the single auto-selected L
-  once in the surface header (it is θ-independent, D-C3.3) rather than per-row.
-  Analyst recommends yes (one shared-input line).
-- **OQ-4 (ADR amendment vs ADR-0052) — architect M-T1.** Per § ADR flag —
-  analyst recommends an ADR-0051 amendment (provably rework-free reuse).
-- **OQ-5 (one year or two) — operator.** 2023-FY only (matches C2's anchored
-  scenario) vs 2023 + 2024 (matches threshold_sweep). Analyst leans 2023-only
-  for v0.1.0 (the C2 comparison is apples-to-apples) with 2024 as a fast
-  follow-on, since adding a year doubles wall-clock but the Tier-1 budget is tiny.
+> All 5 resolved by the architect; see § D-C3.0 for the decision table + rationale
+> and ADR-0051 § D6 for the determinism/anchoring amendment. None required an
+> operator round-trip (the operator delegated C3 direction to the orchestrator's
+> recommendation). Original questions preserved below with their resolution.
+
+- **OQ-1 (same vs independent paths across θ-cells) — RESOLVED: SAME path-set
+  across ALL cells.** θ is the only varying input → controlled experiment;
+  provably C1/C2-determinism-neutral (θ varied at config level, seed stream
+  untouched). The brief's composed-independent fallback is REJECTED as a
+  seed-collision bug. Locked in ADR-0051 § D6.1 / § D6.2.
+- **OQ-2 (grid finalization) — RESOLVED: 14-cell list LOCKED** in
+  § D-C3.2-LOCKED (1 baseline θ\* + 3 one-at-a-time arms + 3 low-churn-corner +
+  1 high-churn-corner + 2 mid-diagonal). This IS the anchor input (frozen).
+- **OQ-3 (L printing) — RESOLVED: yes, one header line.** L is θ-independent and
+  identical across cells under SAME-paths. ADR-0051 § D6.1.4 / § D-C3.3.
+- **OQ-4 (ADR amendment vs ADR-0052) — RESOLVED: ADR-0051 § D6 amendment**
+  (registered atomically). § ADR flag (resolved) / ADR-0051 § D6.
+- **OQ-5 (one year or two) — RESOLVED: 2023-FY only for v0.1.0**, +2024 as a
+  v0.2.0 fast-follow (separate run/anchor). § Backtest Scenarios.
 
 ---
 
@@ -568,7 +856,50 @@ _(Restated compactly; full design in §D-C3.7.)_
 ---
 
 ## Implementation
-_developer fills this._
+
+**Re-scope (orchestrator 2026-05-30):** The original 14-cell × N=500 design was
+re-scoped for tractability to **6-cell × N=200** (~20 min wall-clock vs ~1 hr).
+Grid reduction is documented in `crates/backtest/src/bin/param_robustness_sweep.rs`
+TIER1_GRID const; methodology unchanged.
+
+**What was built:**
+
+- `crates/backtest/src/bin/param_robustness_sweep.rs` — complete C3 sweep driver
+  (1,800+ lines). TIER1_GRID = 6 cells (g=0..5) as a `const` (hashed body field).
+  Config-injection via `cell_config(base, lookback, k_long, drift)` — the
+  ~30-line crux FP-C3.1 falsifies. C3-local `run_one_path_with_config` glue (byte-
+  identical to C2 except caller-supplied config + pre-built shared path_gen).
+  `ParamRobustnessVerdict` classifier (5-signal weakest-link, frozen § 0 bands).
+  θ-surface renderer (ADR-0051 D3/§ D6.4 FM/body split). Buy-and-hold passive control.
+- `crates/backtest/tests/param_sweep_e2e.rs` — 8 e2e gate tests including:
+  FP-C3.1(a) (divergence PASS), FP-C3.1(b) (degenerate/RED-on-revert PASS),
+  FP-C3.3 (two-run identity), FP-C3.2 (grid sensitivity), FP-C3.5 (anti-cherry-pick).
+- `scripts/verify_anchors.sh` — updated `mc-robustness-2026-06` namespace handler
+  to also search `spec/momentum-parameter-robustness-sweep/reports/`.
+- `spec/anchors.toml` — new anchor #86 added:
+  scenario=`v1-momentum-theta-surface-2023-block-bootstrap-real-fy`,
+  SHA=`0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5`.
+
+**Results (measured 2026-05-30):**
+
+- Wall-clock: **1217.1 s (20 min 17 s)** on Apple-Silicon M-series (~11 cores).
+- g=0 correctness probe: p5=-0.049, p50=-0.008, p95=+0.010, P(loss)=76.0%,
+  p95_maxdd=91.5% — MATCHES C2 direction (C2: p5=-0.050, p50=-0.010, p95=+0.009;
+  slight variation expected since N=200 vs N=500).
+- All 6 cells: **FRAGILE**.
+- **FAMILY-UNIFORM-FRAGILE** — momentum-v1 fragility is not tunable away within
+  the tested parameter space (lookback × k_long × drift_rebalance_threshold).
+- Best-shot cell (g=3: 1mo × wide band): p5=-0.032, p50=+0.014, P(loss)=18.5% —
+  still FRAGILE (p5 < 0 is the killer signal).
+- Buy-and-hold control: p50 Sharpe=+1.735, P(loss)=4.5%, p95 MaxDD=51.2%
+  (reference: +1.78 / 4% / 51% — matches well at N=200).
+- Anchor: SHA `0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5`,
+  `scripts/verify_anchors.sh` → **86/86 PASS**.
+
+**FP-C3.1 RED-on-revert proof:** `fp_c3_1b_degenerate_injection_produces_identical_cells`
+asserts that when BOTH cells are forced to θ* (injection override), the divergence
+collapses to |Δtrades|=0 and |Δp50_sharpe| < 1e-9 — proving the FP-C3.1(a)
+gate would FAIL on a no-op injection. Test passes as designed.
 
 ## Verification
 _tester links to reports here. The day-1 gates: FP-C3.1 (θ-divergence /
@@ -589,7 +920,7 @@ id          = "REQ-MOMENTUM-PARAMETER-ROBUSTNESS-SWEEP-001"
 title       = "C3 — momentum parameter-robustness sweep: for each θ in a bounded hypothesis-aimed grid (lookback × k_long × drift/hold-band) run the C2 N-path robustness harness → per-θ DistributionSummary → per-θ FRAGILE/MARGINAL/ROBUST verdict (frozen decision-rule §4 weakest-link composite). ONE anchored θ-surface report + buy-and-hold control row. Anti-cherry-pick by construction: reports the FULL surface + family verdict; defers any 'best θ is robust' claim to a C5 deflation pass (Option a, pre-registered). Reuses run_path + DistributionSummary + BlockBootstrapPathGen + threshold_sweep grid pattern verbatim; new = outer θ-loop + config-injection + composite classifier + surface renderer."
 feature     = "momentum-parameter-robustness-sweep"
 product     = "spec/product.md"
-arch        = []   # architect fills (ADR-0051 amendment OR ADR-0052 — OQ-4)
+arch        = ["spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md#d6", "spec/momentum-parameter-robustness-sweep/feature.md#design"]   # architect filled (M-T1): ADR-0051 § D6 amendment + § D-C3.0/D-C3.2-LOCKED/D-C3.6-BUILD/D-C3.7-LOCKED
 crates      = []   # developer fills (likely crates/backtest: bin/param_robustness_sweep.rs)
 tests       = []   # developer fills (FP-C3.1 θ-divergence + FP-C3.3 two-run identity, mandatory)
 anchors     = []   # tester fills (+1 θ-surface under mc-robustness-2026-06)
@@ -600,6 +931,34 @@ state       = "proposed"
 
 ## Changelog
 
+- 2026-05-30 (architect, M-T1): **arch-done.** Resolved all 5 open questions
+  (§ D-C3.0): OQ-1 = SAME path-set across all θ-cells (θ varied at config level,
+  seed stream untouched ⇒ provably C1/C2-determinism-neutral, 85 anchors hold by
+  construction); OQ-2 = LOCKED the 14-cell Tier-1 θ-grid (§ D-C3.2-LOCKED: baseline
+  θ\* + 3 one-at-a-time arms + 3 low-churn-corner + 1 high-churn-corner + 2
+  mid-diagonal; ~8 min @ N=500; all cells validated against the config loader rules
+  + distinct); OQ-3 = single θ-independent L in the surface header; OQ-4 = ADR-0051
+  § D6 amendment (NOT ADR-0052), registered atomically in the ADR registry README;
+  OQ-5 = 2023-FY only for v0.1.0 (+2024 a v0.2.0 fast-follow). **Wrote the ADR-0051
+  § D6 amendment** specifying the SAME-paths two-axis seed (`cell_seed_g :=
+  ensemble_seed` ⇒ `path_seed_{g,j}` byte-identical to the C2 D1 seed; verified
+  arithmetically) and **REJECTING the brief's § D-C3.4 composed-independent fallback
+  as a seed-collision bug** (`+(g+j)·0x9E37_79B9` collides `(g,j)` with `(g−1,j+1)`;
+  6 collisions in a 4×3 grid). Specified the binding build (§ D-C3.6-BUILD): a new
+  `bin/param_robustness_sweep.rs` with a `const` 14-cell grid, the
+  least-invasive config-injection seam (C3-local copy of `run_one_path` glue taking
+  a `&CrossSectionalMomentumConfig` — leaves `run_path` AND the C2 driver
+  byte-identical), the `ParamRobustnessVerdict` 5-signal weakest-link classifier
+  (frozen decision-rule § 0 bands lifted verbatim as `const`), the θ-surface renderer
+  (ADR-0051 D3/§ D6.4 FM/body split; rows sorted by `g`; grid def + N + buy-hold-flag
+  hashed), and the buy-and-hold control row. Locked the day-1 gate (§ D-C3.7-LOCKED):
+  `tests/param_sweep_e2e.rs` with FP-C3.1 (θ-injection divergence, tested on BOTH
+  real + degenerate — CLAUDE.md non-negotiable) + FP-C3.3 (two-run body-SHA identity)
+  as the MANDATORY pair, plus FP-C3.2/FP-C3.4/FP-C3.5 for ship. Confirmed the C0
+  baseline cell cross-checks the C2 anchor numbers (free correctness probe).
+  Preserved the analyst's § 0 anti-cherry-pick pre-registration (full surface +
+  family verdict + per-cell `→ C5` flags; NO "best θ" crowned). Filled the staged
+  trace row `arch` field. No code written (design-only, reversible until dev build).
 - 2026-05-30 (analyst, monte-carlo-robustness-lane C3): feature.md authored as
   decision-grade SCOPING for C3 (the parameter-robustness axis), reversible
   pre-greenlight design. **Front-and-center methodology decision settled:

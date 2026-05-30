@@ -651,3 +651,19 @@ sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"
 scenario = "v1-momentum-2023-block-bootstrap-real-fy-mc"
 version  = "mc-robustness-2026-06"
 sha256   = "7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20"
+
+# C3 momentum parameter-robustness sweep — θ-surface anchor (2026-05-30).
+# Re-scoped 6-cell × N=200 grid (orchestrator 2026-05-30; was 14-cell × N=500).
+# Methodology: SAME-paths across cells (ADR-0051 § D6.1), FAMILY-UNIFORM-FRAGILE.
+# Verdict: all 6 cells FRAGILE — v1 momentum fragility is not tunable away.
+# g=0 (baseline θ*): p5=-0.049, p50=-0.008, p95=+0.010, P(loss)=76.0%, p95_maxdd=91.5%
+# g=3 (best-robustness shot: 1mo × wide band): p5=-0.032, p50=+0.014, p95=+0.048, P(loss)=18.5%
+# BuyHold control: p50 Sharpe=+1.74, P(loss)=4.5%, p95 MaxDD=51.2% (reference ≈+1.78).
+# Grid: 6 cells g∈{0..5}, N=200, seed=0xC0FFEE, block-bootstrap-real, year=2023.
+# Wall-clock: 1217.1s on Apple-Silicon M-series (canonical box, ~11 cores).
+# Verify with: scripts/verify_anchors.sh (expects 86/86 PASS with this SHA)
+
+[[anchors]]
+scenario = "v1-momentum-theta-surface-2023-block-bootstrap-real-fy"
+version  = "mc-robustness-2026-06"
+sha256   = "0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5"
