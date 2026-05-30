@@ -2,7 +2,7 @@
 slug: product
 status: draft
 owner: analyst
-updated: 2026-04-17
+updated: 2026-05-30
 ---
 
 # Product Requirements — Crypto Trading Agent
@@ -22,6 +22,78 @@ decisions across multiple exchanges.
   to its inputs, model versions, prompts, and config — backed by a
   double-entry ledger so cash and position accounts always reconcile.
 - Be safe: hard risk limits enforced in Rust, independent of any model output.
+
+## Pillar stack — core vs support (ratified 2026-05-30)
+
+> **The reframe.** Three "alpha-engine-by-prediction" bets have now
+> under-delivered on real crypto OHLCV (empirical basis below). The product is
+> re-anchored: **alpha + safety are the quantitative core; the LLM is a support
+> pillar — explanation and narration over a quantitative core, NOT the alpha
+> source.** This stops future sessions re-proposing LLM-as-alpha-engine.
+
+### CORE (alpha + safety — all deterministic)
+
+1. **Quantitative strategy** (momentum / pairs / composed) — the edge candidate.
+2. **Monte-Carlo robustness layer** — quantifies whether the edge is real:
+   resamples real returns into an ensemble of plausible paths and measures the
+   *distribution* of a strategy's outcome (Sharpe percentiles, max-drawdown tail,
+   probability of loss) rather than a single point estimate. First slice in
+   flight: [`monte-carlo-bootstrap-path-generator`](monte-carlo-bootstrap-path-generator/feature.md)
+   (C1, stationary block bootstrap of real Binance returns) +
+   [`strategy-robustness-harness`](strategy-robustness-harness/feature.md)
+   (C2, the distribution-summary report). Direction:
+   [`spec/dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md`](dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md).
+   **This is uncertainty quantification, NOT prediction** — categorically distinct
+   from the retired forecasting bets (it resamples, it does not forecast).
+3. **Deterministic learning loop** (future) — adapts param / route selection from
+   past outcomes via the reflection store, through a sanctioned seam *outside* the
+   strategy crate (the strategy crate stays consumer-free per the ADR-0041
+   layering rule). Queue follow-on (C4), deliberately sequenced **after** the
+   robustness harness so the loop consumes a real outcome distribution, not a
+   hypothetical one. Requires no LLM.
+4. **Risk envelope + auditable double-entry ledger** — the operationally-proven
+   moat (see Differentiator). Hard limits in Rust types, independent of any model.
+
+### SUPPORT (the LLM pillar — explanation, not decision)
+
+The LLM is the **explanation and narration layer over the quantitative core**. Its
+sanctioned roles, none of which is an alpha source:
+
+- **Regime narration** — turn a detected regime + a robustness distribution into a
+  human sentence ("median Sharpe 1.40 holds across 500 resamples but the p5 of
+  0.31 and an 18% probability of net loss indicate the 2023 result is
+  path-favourable").
+- **Lesson summarization** — distill clusters of reflection `LessonCard`s into
+  review-ready rules (the § Memory "periodic distillation" job).
+- **Human-readable robustness-report explanation** — narrate the distribution
+  summary so the quantitative story is legible to the operator.
+- **Tie-break ONLY** — when two strategies / parameter sets are statistically
+  **indistinguishable** on the robustness distribution, the LLM may break the tie
+  with a narrated rationale. Bounded, auditable, **never** the primary gate.
+
+**Explicitly NOT the alpha source.** The LLM does not generate the trading edge.
+The edge is the quantitative strategy; the robustness layer says whether it is
+real; the ledger proves it reconciles; the LLM makes it legible.
+
+### Empirical basis for the demotion
+
+Three alpha-engine-by-prediction bets, all on disk, all under-delivered on hourly
+crypto OHLCV:
+
+| Bet | Role attempted | Verdict | Reference |
+|---|---|---|---|
+| v2.5 DL forecaster programme (TCN + PatchTST + planned Transformer + v2.6 bake-off) | Predict next-period return → trade the prediction | **RETIRED 2026-05-22** — terminal F4 across two model families; no +0.10 Sharpe-delta; bake-off + Transformer phases deprecated without shipping (joint F4-F4 prior exhausted EV) | [`v25-dl-journey-retrospective-2026-05-22.md`](dev-notes/v25-dl-journey-retrospective-2026-05-22.md); [`v26-forecast-bakeoff`](v26-forecast-bakeoff/feature.md) |
+| v3 volatility forecaster (GARCH) | Forecast σ → size positions by it | **RETIRED 2026-05-22** — MODEL-BROKEN / NO-ALPHA / negative net-delta after the noop-fix | [`v3-volatility-forecaster`](v3-volatility-forecaster/feature.md); [`v3-vol-overlay-noop-discovery-2026-05-22.md`](dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) |
+| v3 LLM forecaster | LLM as the alpha engine | **shipped-partial** — load-bearing Wave D alpha verdict deferred (no `ANTHROPIC_API_KEY`); the `strategic-reset` § 4.5 prior rates it LOW-MEDIUM to clear the +0.10 gate | [`v3-llm-forecaster`](v3-llm-forecaster/feature.md); [`strategic-reset-2026-05-23.md`](dev-notes/strategic-reset-2026-05-23.md) |
+
+The honest read: **alpha-engine-by-prediction has not paid off, regardless of
+whether the predictor is a TCN, a GARCH, or an LLM.** The retirements were of the
+*prediction-as-alpha* role. The Monte-Carlo robustness bet (core pillar 2) is a
+*different epistemic act* — it measures the variance of an already-shipped
+strategy's outcome under input perturbation. The GARCH/regime techniques are not
+relitigated as generators; that distinction is owned by the architecture readiness
+audit and is out of scope here. This section ratifies only the **LLM = support,
+not alpha** reframe.
 
 ## Non-goals
 
@@ -249,6 +321,14 @@ for ≥ 14 days before the next one is enabled.
 ---
 
 ## LLM strategy
+
+> **Reframed 2026-05-30 — the LLM is a SUPPORT pillar, not the alpha source.**
+> See [§ Pillar stack — core vs support](#pillar-stack--core-vs-support-ratified-2026-05-30).
+> The dual-tier model use below describes the LLM's *runtime mechanics*
+> (providers, tiers, cost controls); its *role* is bounded to regime narration,
+> lesson summarization, robustness-report explanation, and statistical-tie-break —
+> never the primary trading-edge generator. The empirical basis is three retired /
+> deferred alpha-engine-by-prediction bets (TCN/PatchTST, GARCH-σ, LLM-forecaster).
 
 ### Dual-tier model use (adapted from TradingAgents)
 - `deep_think_llm` — Claude Opus / GPT-class model for trader, researcher
@@ -582,6 +662,20 @@ scope) can render inline.
 
 ## Changelog
 
+- 2026-05-30 (analyst, monte-carlo-robustness-lane M0): ratified operator Q4 —
+  added top-level **§ Pillar stack — core vs support**. CORE = quantitative
+  strategy + Monte-Carlo robustness (uncertainty quantification, resampling not
+  prediction) + (future) deterministic learning loop + risk/ledger moat. SUPPORT
+  = the LLM pillar (regime narration, lesson summarization, robustness-report
+  explanation, statistical tie-break), explicitly **NOT the alpha source**.
+  Empirical basis tabled: three retired/deferred alpha-engine-by-prediction bets
+  (v2.5 TCN+PatchTST F4×2 + deprecated v2.6 bake-off; v3 GARCH-σ NO-ALPHA; v3
+  LLM-forecaster Wave-D-deferred LOW-MEDIUM prior). Cross-linked the in-flight
+  first slice (`monte-carlo-bootstrap-path-generator` C1 +
+  `strategy-robustness-harness` C2) and the direction note. Added a reframe
+  banner to § LLM strategy so the dual-tier mechanics no longer read as
+  alpha-engine framing. GARCH/regime-as-generator distinction deliberately NOT
+  relitigated here (owned by the architecture readiness audit).
 - 2026-05-04 (analyst, post-Phase-1 ship): added new top-level
   section **"Cockpit information architecture"** capturing the
   terminal product IA — left-sidebar shell with Home / Charts /

@@ -430,6 +430,64 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+<!-- updated 2026-05-30 (analyst, monte-carlo-robustness-lane M0 close) —
+     **PROMOTED Idea → Active 2026-05-30**. Opens the Monte-Carlo robustness
+     lane under the operator's 4 locked strategic decisions (2026-05-30):
+     Q1 = stationary block bootstrap first (Politis–Romano; resamples REAL
+     crypto returns → fat tails + vol clustering free; GBM at main.rs
+     synthetic_bars DEMOTED to smoke-test); Q2 = seed the ensemble (ChaCha20
+     from one master seed) → byte-identical N-path SET → anchor ONE
+     distribution summary (NOT N per-path anchors); Q3 = robustness harness
+     FIRST, deterministic learning loop (C4) LAST; Q4 = LLM ratified as a
+     SUPPORT pillar (regime narration / lesson summarization / robustness-report
+     explanation / statistical tie-break — NOT the alpha source), now in
+     product.md § Pillar stack — core vs support.
+
+     **Minimum coherent first slice = C1 + C2 (TWO features).** Decomposition
+     justified in C1's feature.md § Two-feature decomposition: C1 is a reusable
+     crates/data primitive (consumed by C2 AND the C3/C5 Queue follow-ons); C2
+     is a crates/backtest consumer with its own anchor + ADR obligation.
+
+     - **C1 — `monte-carlo-bootstrap-path-generator` v0.1.0** (crates/data).
+       Stationary-block-bootstrap path generator: pure function of (real return
+       series, revision SHA, path seed, N, block-length policy) → N synthetic
+       paths via ChaCha20. Auto-tunable block length per Politis–White (2004) +
+       Patton–Politis–White (2009). GBM lifted behaviour-preserving into
+       data::synth::gbm as the demoted smoke-test. R1-R4 + R-NR(6) + K1-K4 +
+       H1-H3 + Q-MCB-1/2/3 + 4-cell verdict tree. Trace
+       `REQ-MC-BOOTSTRAP-PATH-GENERATOR-001` opened proposed. Adds NO anchor;
+       existing synthetic anchors MUST stay byte-identical post-lift (the K4
+       blast-radius risk → Q-MCB-3 carries the Recommended=durable EXCEPTION:
+       anchor byte-immutability may make the cheap GBM-wrap the honest ship —
+       architect resolves with lift-safety evidence at M-T1).
+
+     - **C2 — `strategy-robustness-harness` v0.1.0** (crates/backtest). Runs a
+       strategy over C1's N paths (reuses the threshold_sweep sweep+aggregate
+       seam the architect found ~80% built), reduces to a DISTRIBUTION SUMMARY
+       (Sharpe p5/p50/p95, max-drawdown tail, prob-of-loss, P(Sharpe>0/1)),
+       emits ONE anchored summary report under a new namespace. R1-R3 + R-NR(6,
+       incl the MANDATORY adapted CLAUDE.md gate R-NR.6 = distribution diverges
+       from single-path baseline by a testable epsilon AND is byte-identical
+       across two seeded runs) + K1-K4 + H1-H3 + Q-RH-1/2 + 4-cell verdict tree.
+       Trace `REQ-STRATEGY-ROBUSTNESS-HARNESS-001` opened proposed. Depends on
+       C1. **ADR-0051 FLAGGED for the architect** ("Monte-Carlo robustness:
+       synthetic-path ensembles, distribution-report shape, and anchor
+       determinism" — next free number confirmed 0051; locks D1 sub-seed rule /
+       D2 reduction order + percentile rule / D3 report FM-body split + fixed
+       precision / D4 anchor unit = 1 summary report / D5 determinism scope =
+       Apple-Silicon canonical box inheriting ADR-0043 verbatim). The analyst
+       does NOT write the ADR — architect M-T1 deliverable.
+
+     C3 (param-sweep) / C4 (learning loop — Q3 LAST) / C5 (CPCV/Deflated-Sharpe)
+     are Queue follow-ons (see Queue § Strategy), NOT promoted in this slice.
+     Direction: spec/dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md.
+     Architecture readiness:
+     spec/dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md.
+     PARALLEL-SAFE with in-flight lanes — C1/C2 touch crates/data (new synth/)
+     + crates/backtest (new montecarlo scenario + monte_carlo bin); disjoint
+     from the Yahoo/Lab UX lane + the Pick C scripts/ Python lane. HANDOFF →
+     architect (M-T1 on C1+C2 + ADR-0051). -->
+
 <!-- updated 2026-05-30 (analyst, lab-yahoo-empty-range-ux M0 close) —
      **PROMOTED Idea → Active 2026-05-30**. Small (~1-2 dev-days),
      operator-motivated UX-polish. Discharges the Bug #64 D.1.1
@@ -2405,6 +2463,43 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      v5 sim). v0.3.0 closes both. -->
 
 ### Strategy
+
+<!-- Monte-Carlo robustness lane — follow-on Queue (opened 2026-05-30, analyst M0).
+     The first slice (C1 `monte-carlo-bootstrap-path-generator` + C2
+     `strategy-robustness-harness`) is in Active. These three are the
+     deliberately-NOT-promoted-yet follow-ons, sequenced per the operator's
+     Q3 (learning loop LAST) and the direction note § 6 / architect § 6.2: -->
+
+- **C3 — Monte-Carlo param-sweep runner** (robustness lane follow-on, ~3-5
+  dev-days). Generalize the `threshold_sweep` (τ×ε) sweep into a generic
+  `scenarios::sweep` over an arbitrary strategy param grid + per-family
+  strategy builders (the registry already maps TOML→strategy). Cross with C1's
+  bootstrap paths → a parameter-sensitivity surface + plateau-vs-peak verdict
+  ("stable plateau = robust; sharp peak = fragile / curve-fit"). Reuses C2's
+  determinism rules. **Queued, not promoted** — lands after C1+C2 prove the
+  anchor-coexistence story. (Architect Phase MC-2.)
+
+- **C4 — Reflection-feedback decision seam (deterministic learning loop)**
+  (robustness lane follow-on, ~5-8 dev-days). The highest-leverage but
+  highest-architecture-risk pillar. A sanctioned pre-run selector (in
+  `trader`/`agent`, NOT `strategy` — the t1809 gate keeps the strategy crate
+  consumer-free) reads `retrieve_top_k` lessons and *configures* the strategy /
+  prunes the param grid; a robustness run's distribution writes a summarizing
+  `LessonCard`. Closes the half-open loop (write-mostly telemetry today; one LLM
+  consumer; deterministic strategies architecturally walled off). **Sequenced
+  LAST per operator Q3** so the loop consumes a real distribution and loop-
+  determinism (deterministic retrieval ordering) does not entangle the first
+  anchorable deliverable. Requires no LLM. (Architect Phase MC-4; direction note
+  § 4.) Possible ADR if lessons feed an anchored report (retrieval determinism).
+
+- **C5 — CPCV / Deflated-Sharpe overfit guard** (robustness lane follow-on,
+  ~4-6 dev-days). Combinatorial Purged Cross-Validation (López de Prado) over the
+  real path: many purged + embargoed train/test splits → a distribution of
+  performance + Probability of Backtest Overfitting (PBO, target < 15%) +
+  Deflated Sharpe. Orthogonal to C1 (CPCV perturbs the *partition*; the bootstrap
+  perturbs *paths*) — the overfit guard the TCN τ×ε ship needed and lacked.
+  Pure-analysis, no live-trade path. Consumes C1's generator. **Queued, not
+  promoted.** (Architect Phase MC-3 sibling; direction note § 2.3.)
 
 <!-- PROMOTED Queue → Active 2026-05-27 (analyst M0). Brief authored at
      spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md;
