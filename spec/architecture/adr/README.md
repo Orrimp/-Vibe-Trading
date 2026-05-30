@@ -2,7 +2,7 @@
 slug: architecture-adr-index
 status: in-progress
 owner: architect
-updated: 2026-05-29 (ADR-0050 D1 corrected + D4 added + D3 amended: rt.spawn() is the invariant for HTTP/reqwest paths — rt.enter() guards insufficient for transitive spawn_blocking; see bug-64-arch-revalidation-rt-spawn-2026-05-29.md)
+updated: 2026-05-30 (ADR-0040 § Changelog amended — lab-yahoo-empty-range-ux v0.1.0: additive NoDataForRange variant + future-dated end_ms clamp + UI typed notice decode; no new ADR; ADR-0050 untouched; anchors byte-identical)
 ---
 
 
@@ -87,7 +87,7 @@ the canonical table; the parent file links here.)
 | 0037  | Phase B scenario-dispatch extraction — renumbered 0035→0037 to resolve number collision with ADR-0035-tcn-sigma-train-recalibration (audit-2026-05-22) | accepted | 2026-05-19 (number reassigned 2026-05-22) |
 | 0038  | v3 vol-forecast V-verdict report shape + GARCH(1,1) baseline contract (parallel to ADR-0033, not extension) | accepted | 2026-05-22 |
 | 0039  | LLM-forecaster verdict criteria L0-L4 (parallel to ADR-0033 § D3 and ADR-0038 § D1, not extension) | accepted | 2026-05-22 |
-| 0040  | Yahoo realdata path + revision pin (Lab dispatch source) — generalises ADR-0032 to a second data source; engine stays source-agnostic per Q1=(b); 34/34 anchors byte-identical | accepted | 2026-05-24 |
+| 0040  | Yahoo realdata path + revision pin (Lab dispatch source) — generalises ADR-0032 to a second data source; engine stays source-agnostic per Q1=(b); 34/34 anchors byte-identical. § Changelog 2026-05-30 (lab-yahoo-empty-range-ux v0.1.0): additive `YahooError::NoDataForRange` variant (HTTP-200 + 0-quote only, K1-correct) + future-dated `end_ms.min(now)` clamp + UI typed notice-vs-error decode; no new ADR; ADR-0050 untouched; anchors byte-identical | accepted | 2026-05-30 |
 | 0041  | Trader crate split — reflection-memory consumer moves out of strategy into new `crates/trader/`; structurally enforces R8.1 / R10.8 layering invariant; pure package-level refactor (additive-zero anchors) | accepted | 2026-05-26 |
 | 0042  | Cockpit activity broadcast — 10th `EventBus` channel + RAII `ActivityHandle` for in-flight-work tape (extends ADR-0012); Q1=(a) broadcast-bus over (b) tracing-layer / (c) per-source polling; capacity-256 lossy ring; 100 ms producer-side throttle; in-memory only (audit ledger remains source of truth); 34/34 anchors byte-identical | accepted | 2026-05-26 |
 | 0043  | Simulated network latency + order-book slippage in backtest — D1 always-on code path with default-zero noop (rejects Cargo feature flag); D2 seeded `ChaCha20Rng` sub-stream keyed on `(scenario_seed, order_id)` for replay determinism; D3 linear bps slippage at v0.1.0, defer square-root to v0.2.0; D4 NEW `AuditEvent::SimulatedExecMetrics` variant with skip-when-zero guard; D5 backtest-only scope (live mode untouched); 34/34 anchors byte-identical at v0.1.0 ship via R-NR.1 hard gate | accepted | 2026-05-26 |

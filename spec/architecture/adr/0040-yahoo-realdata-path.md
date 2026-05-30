@@ -606,3 +606,32 @@ Binance / Coinbase / Kraken rows are untouched.
   § D5 `YahooError::RateLimited` backoff.
   Closes T-T1.5 of
   `spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/tasks.md`.
+- 2026-05-30 (architect, M-T1 lab-yahoo-empty-range-ux v0.1.0): empty-range
+  UX surfacing. **No new architectural decisions** — additive refinement of
+  § D5 (`YahooBarSource` API surface) + § D6/D7 (dispatch boundary). Three
+  operational extensions: (1) **New `YahooError::NoDataForRange { ticker,
+  start_label, end_label }` variant** (additive to the § D5 error enum;
+  zero change to existing variants' Display strings). Emitted ONLY from
+  `fetch_and_cache` when `quotes.is_empty()` on an HTTP-200, well-formed
+  response — K1-correct by construction since `classify_yfa_error` maps
+  every transport/429 failure to `Http`/`RateLimited` BEFORE `.quotes()` is
+  reached. Distinguishes an EXPECTED no-data outcome (future-dated range or
+  delisted ticker) from a real fetch failure. Extends cleanly to v0.2.0
+  equities (weekend/holiday sparse-but-valid windows surface as
+  `MissingData{actual>0}`, distinct from `NoDataForRange`). (2) **`end_ms`
+  clamp at the dispatch boundary** — `range_to_ms_pair` (`runner.rs`)
+  clamps `end_ms.min(now_ms)`, applying ONLY when future-dated; proven
+  no-op for the fixed `H1_2024`/`H2_2024` calendar pairs (byte-identical,
+  K3). Refines the § D6 adaptive-cadence input without changing the cadence
+  algorithm. (3) **UI-crate typed transport decode** — a sentinel-tagged
+  `SmolStr` carries the notice-vs-error bit through the unchanged
+  `LabRunResult = Result<RunSummary, SmolStr>` (94 usages — kept
+  byte-identical), decoded by `ui::lab::runner::preload_notice::classify`.
+  No new `Message` variant. **ADR-0050 (rt.spawn) UNTOUCHED** — the
+  classification is on the preload *result*, not the spawn glue;
+  `spawn_preload_on_rt` keeps its signature and the T-BUG64-CT1 callthrough
+  gate is unaffected. **34/34 anchors stay byte-identical** (synthetic path
+  + report-emitting code untouched; no anchor SHA in scope, so no
+  anchor-mutation ADR required). Full design at
+  `spec/lab-yahoo-empty-range-ux/feature.md` § D-ER-1..6. Closes M-T1 of
+  `spec/lab-yahoo-empty-range-ux/tasks.md`.
