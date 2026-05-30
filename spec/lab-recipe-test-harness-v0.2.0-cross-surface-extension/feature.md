@@ -1,8 +1,8 @@
 ---
 slug: lab-recipe-test-harness-v0.2.0-cross-surface-extension
 version: 0.2.0
-status: dev-done
-owner: tester
+status: shipped
+owner: shipped
 updated: 2026-05-30
 predecessor: lab-recipe-test-harness v0.1.0
 priority: P2

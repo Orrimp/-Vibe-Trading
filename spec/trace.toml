@@ -2149,7 +2149,7 @@ tests       = [
   "crates/backtest/tests/determinism.rs",                                                                           # row 70 SHA anchor — pre/post-merge byte-identical
 ]
 anchors     = []  # zero anchor delta (R-NR contract) — 75/75 PASS byte-identical pre/post-merge per D-V0.2.0-6
-state       = "tested"     # multi-wave T-T-FINAL 2026-05-30 VERDICT → PASS (test-final-20260530-150000): all 4 waves A+B+C+D verified; Wave D 8/8 + 3 probes RED-on-mutation; multi-wave regression 24/24 + Bug#64/lab-yahoo cross-regression 7/7; rt_handle.enter() preserved through training_poller_stream_impl extraction; 84/84 anchors. Presenter-ready.
+state       = "shipped"   # operator-approved 2026-05-30 (v0.2.0 4-wave ship deck). Full cross-surface harness extension shipped.
 
 [[req]]
 id          = "REQ-LAB-YAHOO-REALDATA-V0-1-4-001"
