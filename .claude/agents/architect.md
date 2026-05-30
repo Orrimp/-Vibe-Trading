@@ -79,7 +79,7 @@ Atomicity prevents this class of drift.
    table in `spec/architecture/adr/README.md` with:
    - ADR number (zero-padded)
    - One-paragraph summary of D-clauses (D1, D2, …)
-   - Status (`accepted` / `proposed` / `superseded`)
+   - Status (`accepted` / `proposed` / `superseded` / `deprecated`)
    - Date
 3. Update the README frontmatter `updated:` field.
 4. Same applies for Changelog amendments to existing ADRs — append a
@@ -90,6 +90,14 @@ Registry update is NOT optional and is NOT a follow-up task. Skipping
 it forces the next audit + orchestrator to chase it down by hand —
 exactly the bookkeeping debt the durable contract is designed to
 prevent.
+
+**Mechanical enforcement.** `scripts/adr_registry_check.py --pre-commit`
+lints this contract on every commit touching `spec/architecture/adr/`:
+(a) every `NNNN-*.md` has a README `## Registry` row, (b) README
+`updated:` is staged alongside any ADR change, (c) each ADR `status:`
+∈ `{accepted, proposed, superseded, deprecated}`. Exit 1 + a markdown
+drift table on violation. Install as a pre-commit hook (opt-in) or run
+bare before committing.
 
 ## Style
 

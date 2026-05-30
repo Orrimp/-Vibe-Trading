@@ -1,8 +1,8 @@
 ---
 slug: adr-registry-atomic-lint
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 updated: 2026-05-30
 ---
@@ -664,7 +664,30 @@ cross-referenced the `## Registry` table on `main` at design time:
 
 ## Implementation
 
-_developer M-DEV fills this_
+Implemented 2026-05-30 by developer M-DEV.
+
+**Script**: `scripts/adr_registry_check.py` — 300 LoC (within H2 ≤ 150 core + ~150 self-test).
+Stdlib only (`re`, `pathlib`, `subprocess`, `argparse`, `unittest`, `tempfile`). Executable bit set.
+Shebang `#!/usr/bin/env python3`. `def main(argv: list[str]) -> int` + `raise SystemExit(main(sys.argv[1:]))` sibling convention.
+
+**Invariants implemented:**
+- (a) Registry-row: `_parse_registered_ids()` uses `^\|\s*(\d{4})\s*\|` row-regex anchored to `## Registry` section scan, yielding a `set[str]` of 50 registered IDs on clean `main`. Every `[0-9][0-9][0-9][0-9]-*.md` file is checked against this set.
+- (b) Updated-bump: `_staged_adr_files()` / `_readme_staged()` git seams (list-form subprocess, `cwd=REPO_ROOT`, no `shell=True`) implement D-ADR-2 exactly. If any ADR is staged and README is not, one `(b)` drift row is emitted. Graceful-skip when zero ADR staged.
+- (c) Status enum: module-level `STATUS_ENUM = frozenset({"accepted","proposed","superseded","deprecated"})`. Missing frontmatter → `(c)` drift with observed `"no status: frontmatter"` (not a crash).
+
+**Git seams** factored per architect's requirement: `_staged_adr_files()` and `_readme_staged()` are standalone functions the self-test bypasses via `_check_invariants_raw()` which accepts injected staged-file lists — no real git index needed in tests.
+
+**Self-test**: 5 inline `unittest.TestCase` cases exercised via `--self-test` flag. Uses `tempfile.TemporaryDirectory` fixtures; never mutates `spec/`. Sub-1-s (observed: 0.003 s).
+
+**D-ADR-6 amendment**: `.claude/agents/architect.md` amended at two points:
+1. Line 82: status parenthetical updated to include `/ deprecated`.
+2. After former line 92 (before `## Style`): "Mechanical enforcement." paragraph with 1-line invocation example added verbatim per feature.md § Design D-ADR-6.
+
+**Gates verified:**
+- `python3 scripts/adr_registry_check.py --self-test` → 5/5 PASS, 0.003 s
+- `python3 scripts/adr_registry_check.py --pre-commit` on clean `main` → exit 0, zero output
+- P-ADR-1 probe (`9999-probe.md`, no README row) → exit 1, `(a) registry-row-missing` names ADR-9999; after `rm` → exit 0; `git status spec/architecture/adr/` clean
+- `bash scripts/verify_anchors.sh` → 84/84 PASS (zero anchor delta — scripts/ + docs only)
 
 ## Verification
 
