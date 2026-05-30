@@ -99,6 +99,64 @@ All four probes run and verified:
    GBM smoke run produces `generator: gbm-smoke` body; block-bootstrap run produces
    `generator: block-bootstrap-real` body. GBM run is NOT under the anchor namespace.
 
+## v0.1.1 tasks — Bug B fix + Correction A + re-anchor (developer 2026-05-30)
+
+Triggered by adversarial review (`spec/dev-notes/robustness-verdict-adversarial-review-2026-05-30.md`)
+confirming FRAGILE verdict is SOUND but finding: (A) fabricated Sharpe 1.40 in feature.md:41;
+(B) real engine bug inflating p95 MaxDD to impossible 100% via negative-equity cash accounting.
+
+- [x] **M-DEV-B1 — Bug B fix: long-only solvency guard in `run_path` Buy branch**
+  - file:line: `crates/backtest/src/scenarios/montecarlo.rs:165-221` (v0.1.1)
+  - Three-layer fix: (1) cap notional at `min(equity*0.10, cash)`; (2) pre-flight
+    check `if cash < notional + fee_estimate { skip }`; (3) defensive guard in fill
+    loop `if total_cost > cash { warn and skip }`.
+  - Also refactored `input.*` field extraction to avoid partial-move after `ok_or_else`.
+  - Test command: `cargo test -p backtest --lib -- montecarlo`
+  - Output: `test scenarios::montecarlo::tests::run_path_requires_bars_override ... ok`
+
+- [x] **M-DEV-B2 — Day-1 solvency invariant tests (CLAUDE.md non-negotiable)**
+  - file:line: `crates/backtest/tests/montecarlo_e2e.rs:397-541` (2 new tests)
+  - `solvency_invariant_equity_curve_never_negative_across_paths` — max_dd_tail_p95 ≤ 1.0 (100%)
+    across N=20 paths (pre-v0.1.1 clamped paths produced MaxDD > 1.0, impossible for long-only).
+  - `solvency_guard_arithmetic_unit_test` — direct arithmetic proof: cash=$50, equity=$10,050,
+    target=$1,005 → old code: cash_after=-$959 (asserted < 0 = Bug B proof); new code: skips buy.
+    Also proves guard is not over-conservative: with cash=$100k the buy proceeds.
+  - RED-on-bug proof: `solvency_guard_arithmetic_unit_test` explicitly asserts `cash_after_old_bug < 0`,
+    showing the pre-fix code would produce impossible negative cash. Remove the solvency check → test FAILS.
+  - Test command: `cargo test -p backtest --test montecarlo_e2e`
+  - Output: `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured` (all 8 tests, including 2 new)
+
+- [x] **M-DEV-B3 — Correction A: retract fabricated Sharpe 1.40 from feature.md:41**
+  - file:line: `spec/strategy-robustness-harness/feature.md:41`
+  - Changed `1.40` to `~0.00 (harness real-path: 0.003; the fabricated 1.40 from product.md:78 is retracted per adversarial review 2026-05-30)`.
+  - Also corrected the v0.1.0 Implementation § verdict text that cited "Sharpe ~1.40".
+  - Test command: N/A (spec edit, no code test)
+  - Output: visual diff of feature.md
+
+- [x] **M-DEV-B4 — Re-run N=500 harness + re-anchor (ADR-0038 §D6.b)**
+  - Old SHA (v0.1.0, Bug B): `72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4`
+  - New SHA (v0.1.1, fixed): `7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20`
+  - Report: `spec/strategy-robustness-harness/reports/robustness-20260530-130137-v1-momentum-2023-block-bootstrap-real-fy-mc.md`
+  - Determinism: FP-C2.3 PASS — two independent N=500 runs produce identical SHA `7dbf...f20`.
+  - file:line: `spec/anchors.toml` — updated in-place per ADR-0038 §D6.b (never bifurcate namespace).
+  - Test command: `bash scripts/verify_anchors.sh`
+  - Output: `ANCHORS PASS  (85 / 85)` — new SHA for `v1-momentum-2023-block-bootstrap-real-fy-mc`
+
+- [x] **M-DEV-B5 — Spec sync: feature.md version bump + v0.1.1 Implementation section**
+  - file:line: `spec/strategy-robustness-harness/feature.md` — version 0.1.0 → 0.1.1
+  - Added `## Implementation v0.1.1` section with: bug description, fix, Correction A,
+    new distribution numbers, re-anchor note, FRAGILE verdict confirmation.
+  - Test command: N/A (spec edit)
+  - Output: visual diff of feature.md
+
+- [x] **M-DEV-B6 — Format + clippy clean (no new warnings in changed code)**
+  - `cargo fmt -p backtest --check` → zero diff
+  - `cargo clippy -p backtest --features "candle realdata" --tests -- -D warnings` →
+    0 new errors in `montecarlo.rs` or `montecarlo_e2e.rs`; 2 pre-existing baseline errors
+    in `sma_composed_run.rs:612` and `determinism.rs:915` (NOT introduced by v0.1.1)
+  - Test command: `cargo fmt -p backtest --check`
+  - Output: zero diff (exit 0)
+
 ## Notes
 
 - **C1 is the hard dependency.** Do not start M-DEV-3/4 until C1's

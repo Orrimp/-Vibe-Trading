@@ -625,21 +625,29 @@ scenario = "top10-2024-fy-regime-dispatcher-realdata"
 version  = "v5-sqrt-impact-2026-05"
 sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"
 
-# strategy-robustness-harness v0.1.0 Monte-Carlo anchor (2026-05-30).
+# strategy-robustness-harness v0.1.1 Monte-Carlo anchor (2026-05-30).
+# RE-EMISSION per ADR-0038 §D6.b (wiring-bug-fix protocol).
+# Bug B fixed: montecarlo.rs Buy branch cash solvency guard (v0.1.1).
+# Old SHA (v0.1.0, bug): 72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4
+# Fix feature: strategy-robustness-harness v0.1.1 (developer 2026-05-30).
+# Dev-note: spec/dev-notes/robustness-verdict-adversarial-review-2026-05-30.md §4 (Correction B).
+# Bug site: crates/backtest/src/scenarios/montecarlo.rs — Buy branch, no solvency check.
+# Would-have-caught test: solvency_guard_arithmetic_unit_test (montecarlo_e2e.rs, v0.1.1).
 # Namespace: mc-robustness-2026-06 (ADR-0051 D4 — ONE summary report per scenario).
 # Scenario: v1 cross-sectional momentum at shipped θ* over N=500 block-bootstrap
 # paths of 2023-FY real Binance returns (10 USDT pairs, hourly, 8760 bars).
 # Generator: block-bootstrap-real (BlockBootstrapPathGen, shared-index, Auto L=204).
 # Seeds: ensemble_seed=0xC0FFEE, fill_seed=0xC0FFEE. Sub-seed rule: master + j*0x9E3779B9.
-# Wall-clock: 183.5s on Apple-Silicon M-series (canonical box, rayon 11.5-core fan-out).
+# Wall-clock: 179.4s on Apple-Silicon M-series (canonical box, rayon ~11.5-core fan-out).
 # N=500 ratified (Q-RH-1 = Option A, durable; stable p5/p95 tail; < 10 min).
-# Headline: Sharpe p5/p50/p95 = -0.068 / -0.022 / 0.003; MaxDD p50/p95 = 85.3% / 100%.
-# Verdict: WEAK — p50 Sharpe ≤ 0; P(Sharpe>0) = 13.2%; P(Sharpe>1) = 0%.
+# Headline (v0.1.1): Sharpe p5/p50/p95 = -0.050 / -0.010 / 0.009; MaxDD p50/p95 = 81.4% / 91.5%.
+# Verdict: FRAGILE — p50 Sharpe ≤ 0; P(Sharpe>0) = 24.8%; P(Sharpe>1) = 0%; P(loss) = 75.2%.
+# p95 MaxDD dropped from 100% (false ruin artifact) to 91.5% (real tail — no coin fell >52%).
 # v1 momentum is NOT robust on 2023-FY block-bootstrap paths (paper→live gate: BLOCKED).
-# Determinism: body SHA identical on 2 independent runs (FP-C2.3 PASS).
-# Verify with: scripts/verify_anchors.sh (expects 85/85 PASS after this row)
+# Determinism: body SHA identical on 2 independent runs (FP-C2.3 PASS — tester to verify).
+# Verify with: scripts/verify_anchors.sh (expects 85/85 PASS with this new SHA)
 
 [[anchors]]
 scenario = "v1-momentum-2023-block-bootstrap-real-fy-mc"
 version  = "mc-robustness-2026-06"
-sha256   = "72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4"
+sha256   = "7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20"

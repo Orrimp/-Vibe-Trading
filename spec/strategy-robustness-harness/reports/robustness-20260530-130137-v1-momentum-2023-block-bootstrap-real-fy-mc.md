@@ -1,11 +1,11 @@
 ---
 slug: strategy-robustness-harness
 scenario: v1-momentum-2023-block-bootstrap-real-fy-mc
-generated: 2026-05-30T11:29:42Z
-wall_clock_s: 183.5
+generated: 2026-05-30T13:01:37Z
+wall_clock_s: 179.4
 host: M022517718D
-pid: 53644
-git_commit: f9d9cced868a26979488214a833e95c0eeaee79d
+pid: 78505
+git_commit: 8ed3b1bff2e050d9838ce20bc9e5e3c5c37e8f6c
 data_revision_sha: 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7
 ---
 # Monte-Carlo Robustness Summary — v1-momentum-2023-block-bootstrap-real-fy-mc
@@ -30,26 +30,26 @@ data_revision_sha: 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbb
 
 | metric       | mean     | std      | p5       | p25      | p50      | p75      | p95      | min      | max      |
 |--------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| sharpe       | -0.030031 | 0.044594 | -0.067576 | -0.041437 | -0.021924 | -0.004752 | 0.003101 | -0.290850 | 0.038903 |
-| sortino      | -0.039731 | 0.049662 | -0.094839 | -0.058373 | -0.030719 | -0.006705 | 0.004391 | -0.299594 | 0.055498 |
-| calmar       | -0.133283 | 0.189822 | -0.311330 | -0.165741 | -0.109217 | -0.022870 | 0.016522 | -0.920567 | 0.111841 |
-| max_drawdown | 82.16% | 11.66% | 61.32% | 73.39% | 85.29% | 90.93% | 100.00% | 47.21% | 100.00% |
-| total_return | -0.487027 | 0.377616 | -0.975746 | -0.804599 | -0.605409 | -0.150770 | 0.115274 | -1.000000 | 1.614029 |
+| sharpe       | -0.016325 | 0.020708 | -0.050256 | -0.033527 | -0.010446 | -0.000096 | 0.009047 | -0.079927 | 0.055429 |
+| sortino      | -0.022955 | 0.029127 | -0.070643 | -0.047306 | -0.014738 | -0.000136 | 0.012771 | -0.110318 | 0.079575 |
+| calmar       | -0.065929 | 0.079061 | -0.187118 | -0.142670 | -0.049283 | -0.000543 | 0.043848 | -0.221307 | 0.146961 |
+| max_drawdown | 79.52% | 9.70% | 61.32% | 73.06% | 81.39% | 87.64% | 91.50% | 47.21% | 94.89% |
+| total_return | -0.304323 | 0.451104 | -0.841754 | -0.729693 | -0.315157 | -0.004257 | 0.393117 | -0.901654 | 2.149302 |
 
 ## Ensemble robustness
 
 | Field                          | Value       |
 |--------------------------------|-------------|
-| P(final_equity < initial)      | 0.868000 |
-| P(Sharpe > 0)                  | 0.132000 |
+| P(final_equity < initial)      | 0.752000 |
+| P(Sharpe > 0)                  | 0.248000 |
 | P(Sharpe > 1.0)                | 0.000000 |
-| max_drawdown_tail p50          | 85.29% |
-| max_drawdown_tail p95          | 100.00% |
+| max_drawdown_tail p50          | 81.39% |
+| max_drawdown_tail p95          | 91.50% |
 
 ## Verdict
 
-Sharpe p50: -0.021924
-Sharpe spread (p95-p5): 0.070677
+Sharpe p50: -0.010446
+Sharpe spread (p95-p5): 0.059303
 Verdict: WEAK: p50 Sharpe ≤ 0 — ensemble median is non-positive
 
 Notes:

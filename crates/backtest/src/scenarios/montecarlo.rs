@@ -81,6 +81,12 @@ pub async fn run_path(
     use crate::engine::MatchingEngine as _;
     use strategy::Strategy as _;
 
+    // Extract fields we need before partially moving `input`.
+    let scenario_name = input.scenario_name.clone();
+    let slippage_bps = input.slippage_bps;
+    let taker_fee_bps = input.taker_fee_bps;
+    let initial_capital = input.initial_capital;
+
     // M-DEV-3: bars_override MUST be set — the harness injects the bootstrap path.
     let merged_bars: Vec<Bar> = input.bars_override.ok_or_else(|| {
         anyhow::anyhow!("run_path: bars_override must be Some — inject the bootstrap path")
@@ -89,15 +95,15 @@ pub async fn run_path(
     let bar_count = merged_bars.len();
     tracing::debug!(
         bar_count,
-        scenario = %input.scenario_name,
+        scenario = %scenario_name,
         fill_seed,
         "montecarlo::run_path starting"
     );
 
     // ── Paper matching engine (ADR-0051 D1: fill_seed is CONSTANT across paths)
     let match_config = crate::paper::MatchConfig {
-        slippage_bps: input.slippage_bps,
-        taker_fee_bps: input.taker_fee_bps,
+        slippage_bps,
+        taker_fee_bps,
         maker_fee_bps: 2,
         fill_price_mode: crate::paper::FillPriceMode::BarClose,
     };
@@ -117,14 +123,14 @@ pub async fn run_path(
         .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
     let _ = cfg; // universe list is implicit in the merged bars
 
-    let mut cash = input.initial_capital;
+    let mut cash = initial_capital;
     let mut position_book: std::collections::BTreeMap<Symbol, Decimal> =
         std::collections::BTreeMap::new();
     let mut mark_prices: std::collections::BTreeMap<Symbol, Decimal> =
         std::collections::BTreeMap::new();
     let mut trades = 0usize;
-    let mut equity_curve: Vec<Decimal> = vec![input.initial_capital];
-    let mut peak_equity = input.initial_capital;
+    let mut equity_curve: Vec<Decimal> = vec![initial_capital];
+    let mut peak_equity = initial_capital;
     let mut max_drawdown_tracking = Decimal::ZERO;
 
     for bar in &merged_bars {
@@ -157,7 +163,28 @@ pub async fn run_path(
             match sig.kind {
                 trading_core::SignalKind::Buy if current_qty <= Decimal::ZERO => {
                     let fraction = dec!(0.10);
-                    let notional = equity * fraction;
+                    // Bug B fix (v0.1.1): cap notional against AVAILABLE CASH so cash
+                    // can never go negative. Before this fix, notional was sized against
+                    // total equity (cash + positions) without checking whether cash was
+                    // sufficient, driving cash negative on fee-churn paths (up to 5 343
+                    // trades/year) and producing impossible negative equity on a long-only
+                    // book. Per the solvency invariant: cash ≥ 0 AND equity ≥ 0 at ALL
+                    // steps. The strategy's 10%-of-equity intent is preserved when cash is
+                    // sufficient; the buy is SKIPPED when cash cannot cover notional + fee.
+                    // We estimate the fee conservatively as a bps fraction of notional.
+                    let target_notional = equity * fraction;
+                    // Hard cap: do not spend more than cash on hand.
+                    let notional = if target_notional > cash {
+                        cash
+                    } else {
+                        target_notional
+                    };
+                    // Estimate round-trip fee (taker_fee_bps; conservative).
+                    let fee_estimate = notional * Decimal::new(i64::from(taker_fee_bps), 4); // bps → fraction
+                    // Skip buy if cash cannot cover notional + estimated fee.
+                    if cash < notional + fee_estimate || notional <= Decimal::ZERO {
+                        continue;
+                    }
                     let qty_raw = notional / mark;
                     if qty_raw <= Decimal::ZERO {
                         continue;
@@ -181,7 +208,20 @@ pub async fn run_path(
                     {
                         for fill in fills {
                             let notional_fill = fill.qty.get() * fill.price.get();
-                            cash -= notional_fill + fill.fee.amount();
+                            let total_cost = notional_fill + fill.fee.amount();
+                            // Solvency guard (defensive): if somehow fill cost exceeds
+                            // cash (edge case from price movement between estimate and fill),
+                            // skip updating rather than going negative.
+                            if total_cost > cash {
+                                tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    cash = %cash,
+                                    total_cost = %total_cost,
+                                    "solvency guard triggered — skipping fill to prevent negative cash"
+                                );
+                                continue;
+                            }
+                            cash -= total_cost;
                             *position_book
                                 .entry(sig.symbol.clone())
                                 .or_insert(Decimal::ZERO) += fill.qty.get();
@@ -248,7 +288,7 @@ pub async fn run_path(
     let final_equity = cash + position_value;
 
     tracing::debug!(
-        scenario = %input.scenario_name,
+        scenario = %scenario_name,
         trades,
         final_equity = %final_equity,
         bars = bar_count,
@@ -258,7 +298,7 @@ pub async fn run_path(
     Ok(PathRunResult {
         equity_curve,
         trades,
-        initial_equity: input.initial_capital,
+        initial_equity: initial_capital,
         final_equity,
     })
 }

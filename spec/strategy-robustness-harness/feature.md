@@ -1,13 +1,13 @@
 ---
 slug: strategy-robustness-harness
-version: 0.1.0
+version: 0.1.1
 status: dev-done
 owner: tester
 priority: P2
 updated: 2026-05-30
 ---
 
-# Strategy robustness harness — distribution-summary backtest mode — v0.1.0
+# Strategy robustness harness — distribution-summary backtest mode — v0.1.1
 
 > **Monte-Carlo robustness lane — C2 (first slice, wave 2 of 2).** Per the
 > operator's 4 locked strategic decisions (2026-05-30). Depends on **C1**
@@ -38,7 +38,7 @@ This harness produces `robustness(strategy, θ*, {P_1..P_N}) → distribution`:
 
 | Output | Point-estimate today | Distribution under N paths |
 |---|---|---|
-| Sharpe | `1.40` | p5 / p25 / **p50** / p75 / p95 |
+| Sharpe | `~0.00` (harness real-path: 0.003; the fabricated 1.40 from product.md:78 is retracted per adversarial review 2026-05-30) | p5 / p25 / **p50** / p75 / p95 |
 | Max drawdown | `73%` (one path) | drawdown **tail**: p50 MaxDD + p95 MaxDD (the number that should gate `paper→live`) |
 | Probability of loss | undefined | `P(final_equity < initial)` across the ensemble |
 | P(Sharpe > 0) / P(Sharpe > 1) | undefined | fraction of paths clearing each bar |
@@ -688,14 +688,13 @@ Ensemble robustness:
 - P(Sharpe > 1.0): 0.0%
 - MaxDD tail p50 / p95: **85.3%** / **100%**
 
-**Verdict: WEAK.** p50 Sharpe ≤ 0; the v1 momentum strategy is NOT robust on 2023-FY block-bootstrap paths of real Binance data. The paper→live gate is BLOCKED by this distribution. This is the honest answer to "is v1 momentum robust or one lucky path?": it is one lucky path (the real 2023 path had Sharpe ~1.40 per `strategic-reset-2026-05-23`; the ensemble median is −0.022).
+**Verdict: WEAK (v0.1.0; FRAGILE per decision rule — see v0.1.1 re-run below).** p50 Sharpe ≤ 0; the v1 momentum strategy is NOT robust on 2023-FY block-bootstrap paths of real Binance data. The paper→live gate is BLOCKED by this distribution. This is the honest answer to "is v1 momentum robust or one lucky path?": the real 2023 path had Sharpe **0.003** (NOT 1.40 — the "1.40" was a fabricated number from product.md:78, retracted per adversarial review 2026-05-30; see Correction A below); the ensemble confirms the real path is already near the p95 of the ensemble — plain v1 momentum was already weak on real 2023 and the distribution confirms it is also fragile under resampling.
 
-### Anchor
+### Anchor (v0.1.0 — superseded by v0.1.1 re-emission)
 
-- Body SHA: `72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4`
-- Namespace: `mc-robustness-2026-06`
-- Two-run determinism: SHA identical on 2 independent N=500 runs (FP-C2.3 PASS).
-- `scripts/verify_anchors.sh` → **85/85 PASS** (84 existing + 1 new).
+- Body SHA (v0.1.0, BUG): `72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4`
+- **RETIRED** per ADR-0038 §D6.b wiring-bug-fix re-emission (Bug B — cash solvency).
+- See v0.1.1 § Implementation below for the corrected anchor.
 
 ### Design notes / deviations from spec
 
@@ -706,6 +705,85 @@ Ensemble robustness:
 3. **Generator-label honesty**: The `generator: gbm-smoke` label in the body is produced by the `GeneratorKind::label()` method, not a hardcoded string. The `mc-robustness-2026-06` anchor check in `verify_anchors.sh` only looks in `spec/strategy-robustness-harness/reports/` — a GBM smoke run written to `/tmp/` cannot accidentally satisfy it (K4 mitigated by directory scoping + label check).
 
 4. **`sim.rs` pre-existing clippy errors**: `cargo clippy -p backtest --tests -- -D warnings` shows pre-existing errors in `engine.rs`, `paths.rs`, `progress.rs`, `sma_composed_run.rs`, `cli_types.rs`, and `sim.rs`. These are baseline errors that existed before this feature and are NOT introduced by C2 code. The new lib code (`stats/mod.rs`, `scenarios/montecarlo.rs`) has zero new errors.
+
+## Implementation v0.1.1 (developer 2026-05-30 — Bug B fix + Correction A + re-anchor)
+
+### Bug B fix — long-only solvency guard (`montecarlo.rs`)
+
+**Root cause**: `crates/backtest/src/scenarios/montecarlo.rs` Buy branch computed
+`notional = equity * 0.10` and then `cash -= notional_fill + fee` with NO check
+that cash was sufficient. On fee-churn paths (5,343 trades/year on resampled
+momentum data), `cash` went negative → `equity` went negative → driver clamped
+to `1e-6` → false 100% MaxDD / −100% total_return (impossible for a long-only
+book where no coin fell > 52%).
+
+**Fix** (v0.1.1, `crates/backtest/src/scenarios/montecarlo.rs`):
+
+1. Cap notional against available cash: `notional = min(equity * 0.10, cash)`.
+2. Pre-flight solvency check: `if cash < notional + fee_estimate { continue; }`.
+3. Defensive guard inside fill loop: `if total_cost > cash { warn and skip fill; }`.
+
+The strategy's 10%-of-equity intent is preserved when cash is sufficient. Cash and
+equity are guaranteed >= 0 at all steps on all paths.
+
+### Correction A — fabricated Sharpe 1.40 retracted (`feature.md:41`)
+
+The motivating table's "Point-estimate today: Sharpe 1.40" was FABRICATED (traced
+to `product.md:78` LLM-narration example). The real harness Sharpe on the
+chronological 2023 path is **0.003** (total return +13.48%, maxDD 73.73%).
+The table entry is corrected to `~0.00`. The implementation note in § Implementation
+v0.1.0 referencing "Sharpe ~1.40" is retracted and corrected.
+
+### Solvency invariant tests (day-1 gate — CLAUDE.md non-negotiable)
+
+Two new tests in `crates/backtest/tests/montecarlo_e2e.rs` (v0.1.1):
+
+- `solvency_invariant_equity_curve_never_negative_across_paths`: asserts
+  `max_dd_tail_p95 <= 1.0` AND `total_return.min > -1.0` across N=20 synthetic paths.
+  A MaxDD > 1.0 (100%) is only possible if equity went negative — the pre-v0.1.1 signature.
+- `solvency_guard_arithmetic_unit_test`: directly tests the Bug B solvency guard arithmetic
+  with a concrete cash=$50 / equity=$10,050 / target_notional=$1,005 scenario, proving:
+  (a) old code (no cap, no check) drives cash to -$959 (impossible); (b) the cap reduces to
+  $50 but fee still pushes negative → the pre-flight check fires correctly; (c) with large
+  cash ($100k) the buy DOES go through (guard is not over-conservative).
+
+**FP-C2.1 red-on-bug proof** (per the honest-tick rule): both tests would fail if
+the solvency guard were removed (reverting the `min(target, cash)` cap). The
+`solvency_guard_arithmetic_unit_test` explicitly computes `cash_after_old_bug < 0`
+and asserts it, proving the old code would produce impossible negative cash.
+
+### Re-anchor (ADR-0038 §D6.b wiring-bug-fix re-emission)
+
+- **Old SHA (v0.1.0, Bug B)**: `72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4`
+- **New SHA (v0.1.1, fixed)**: `7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20`
+- Report: `robustness-20260530-130137-v1-momentum-2023-block-bootstrap-real-fy-mc.md`
+- Wall-clock: **179.4s** on Apple-Silicon M-series (N=500, rayon ~11.5 cores).
+- Determinism: byte-identical body SHA across 2 independent N=10 runs (FP-C2.3 PASS for N=10;
+  tester to verify full N=500 second run).
+- `scripts/verify_anchors.sh` → **85/85 PASS** with new SHA.
+
+### New distribution numbers (v0.1.1 — realistic tail, same FRAGILE verdict)
+
+| Metric | p5 | p50 | p95 |
+|--------|-----|------|------|
+| Sharpe | -0.050 | **-0.010** | 0.009 |
+| Sortino | -0.071 | -0.015 | 0.013 |
+| Calmar | -0.187 | -0.049 | 0.044 |
+| Max drawdown | 61.3% | **81.4%** | **91.5%** |
+| Total return | -84.2% | -31.5% | +39.3% |
+
+Ensemble robustness:
+- P(final_equity < initial): **75.2%** (was 86.8% with false ruin paths)
+- P(Sharpe > 0): 24.8% (was 13.2%)
+- P(Sharpe > 1.0): 0.0% (unchanged)
+- MaxDD tail p50 / p95: **81.4%** / **91.5%** (was 85.3% / **100%** — the artifact)
+
+**Verdict: FRAGILE** (per decision rule, superseding the v0.1.0 "WEAK" label). All 5
+primary signals are FRAGILE: p5 Sharpe = −0.050 < 0; p50 Sharpe = −0.010 < 0.5;
+P(loss) = 75.2% >> 35%; P(Sharpe>1) = 0%; p95 MaxDD = 91.5% >> 70%.
+The p95 MaxDD drop from 100% to 91.5% removes the "impossible full wipeout" artifact
+but does NOT rescue the verdict — 91.5% is still firmly in the FRAGILE band (> 70%).
+The decision-rule panel remains FRAGILE; the paper→live gate is BLOCKED.
 
 ## Verification
 
