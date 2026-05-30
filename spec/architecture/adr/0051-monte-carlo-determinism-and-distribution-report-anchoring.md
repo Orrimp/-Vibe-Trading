@@ -280,6 +280,103 @@ formatted body (D3) make the distribution summary anchorable **on the canonical
 box** with the same confidence as today's 84 anchors. Cross-platform is a known,
 accepted limitation, not a new one.
 
+### D6 — θ-sweep extension: two-axis sub-seed composition + θ-surface anchor unit (C3 amendment, 2026-05-30)
+
+> **Amendment, not a new ADR.** C3
+> ([`momentum-parameter-robustness-sweep`](../../momentum-parameter-robustness-sweep/feature.md))
+> wraps the C2 inner harness in an outer θ-loop: for each θ-cell `g` in a
+> bounded grid it runs the N-path harness (D1-D4 unchanged) and collects one
+> `DistributionSummary`, then emits ONE θ-surface report. C3 adds NO new
+> determinism mechanism — it composes D1 on a second axis and reuses D2/D3/D4/D5
+> verbatim. Per the architect's `analyst-defaults` cheap-and-correct exception
+> (C3 § ADR flag), this is an ADR-0051 amendment because the seed idiom, the
+> FM/body split, the fixed-precision formatting, and the one-report anchor unit
+> are all reused without change; only the axis count and the report shape change.
+
+**D6.1 — θ-axis seed rule = SAME path-set across all cells (OQ-1 ratified).**
+Every θ-cell is judged on the **identical** N resampled histories: the only input
+that varies between θ-surface rows is θ itself. Concretely the per-path seed at
+cell `g`, path `j` is
+
+```text
+cell_seed_g     = ensemble_seed                                   # θ-axis collapsed: SAME for every g
+path_seed_{g,j} = cell_seed_g.wrapping_add((j as u64).wrapping_mul(0x9E37_79B9))   # = the D1 rule, verbatim
+```
+
+i.e. `path_seed_{g,j} = ensemble_seed.wrapping_add(j * 0x9E37_79B9)` for **all**
+`g` — **byte-identical to the C2 single-axis D1 seed**. The θ-axis is varied at
+the **config level** (a per-cell `CrossSectionalMomentumConfig`), NOT at the seed
+level. Consequences:
+
+1. **C1/C2 determinism is unchanged by construction.** Because the θ-axis does not
+   touch the seed stream, the C2 path generator, the C2 per-path seeds, and the C2
+   reducer are bit-for-bit what they were. The 85 existing anchors (C2 ship) stay
+   byte-identical — there is no seed-arithmetic change to audit. This is the
+   strongest possible form of the "extends D1 without changing C1/C2
+   determinism" requirement: the extension is the *empty change* on the seed axis.
+   (Verified arithmetically: with `cell_seed_g := ensemble_seed`, `path_seed_{g,j}`
+   equals the C2 `derive_path_seed(ensemble_seed, j)` for every `j` — see § Changelog
+   2026-05-30 amendment for the check.)
+2. **The θ-surface is a controlled experiment.** Cell `g_a` and cell `g_b` consume
+   the identical family of adverse paths; the only causal difference is θ, so any
+   difference in their distributions is attributable to θ alone (the cleanest
+   anti-confounder — it removes path-sampling variance as an alternative
+   explanation for inter-cell differences). This is the same reasoning C2 used to
+   hold the fill-tie-break seed constant (D1), now applied to the path stream
+   across the θ-axis.
+3. **The fill-tie-break seed stays constant (D1 inherited).** `fill_seed = 0xC0FFEE`
+   for every (cell, path), exactly as in C2.
+4. **L is θ-independent and printed once.** The auto-selected block length is
+   computed by Politis–White on the source series' universe-average |log-return|,
+   which does not depend on θ; so L is constant across the entire θ-grid and is a
+   single shared-input line in the surface header (NOT a per-row field). This is a
+   property of D6.1 (SAME source paths ⇒ SAME L) and resolves OQ-3.
+
+**D6.2 — REJECTED: naive additive two-axis composition (the collision hazard).**
+The C3 brief's D-C3.4 *fallback* proposed an independent-paths-per-cell rule
+`cell_seed_g = ensemble_seed + g*0x9E37_79B9` then
+`path_seed_{g,j} = cell_seed_g + j*0x9E37_79B9`. This is **rejected** for v0.1.0 on
+two grounds. (a) **It is a seed-collision bug:** the composition collapses to
+`ensemble_seed + (g+j)*0x9E37_79B9`, so `(g, j)` and `(g−1, j+1)` receive the
+*same* path seed — distinct (cell, path) pairs share a resampled path, which both
+corrupts the per-cell distribution and is not the "independent paths" the rule
+intends. (Verified arithmetically: a 4×3 (g, j) grid yields 6 colliding pairs.) A
+correct independent-paths rule would need a non-commuting mix (e.g. a
+`splitmix64`/`hash(g) ⊕ j` two-stage derivation), which is *new* determinism
+machinery with its own audit burden — exactly what an amendment must not smuggle
+in. (b) **It is not the question C3 asks.** Independent paths per cell would
+reintroduce path-sampling variance as a confound between rows; SAME-paths is the
+methodologically superior choice regardless of the collision. If a future C3.x
+ever wants per-cell path independence (e.g. to estimate inter-cell sampling
+variance), it requires its **own** ADR specifying a collision-free two-axis mix —
+it does NOT inherit D6.1.
+
+**D6.3 — Anchor unit = ONE θ-surface report (D4 extended to the grid axis).**
+C3 adds exactly **+1** anchor under the existing `mc-robustness-2026-06` namespace
+(D4): the body-SHA-256 of the single θ-surface report. The *surface* is the
+deliverable, not any single cell; every cell is reproducible from
+`(ensemble_seed, the frozen cell list, N)`. This is the dual of D4's
+one-report-per-N rule: C3 is one-report-per-grid. An N-per-θ anchor set is
+rejected for the same reason D4 rejected per-path anchors (a G×-explosion that
+re-locks on any grid change). The **θ-grid definition (the explicit cell list),
+the per-cell N, and the buy-and-hold control flag are hashed body fields** — a
+different grid or a different N is a different surface and MUST move the SHA (K3).
+A Tier-2 refine over a different grid is therefore a **separate** run = a
+**separate** anchor, never a mutation of the Tier-1 surface.
+
+**D6.4 — Reduction, FM/body split, precision, scope all inherited verbatim.**
+Inside each cell the reduction is the unchanged D2 (index-order mean/two-pass std +
+`total_cmp` sort + type-7 linear percentile + NaN-absent). The θ-surface report
+obeys the D3 FM/body split (run-varying fields in front-matter, every distribution
+input in the hashed body) and D3 fixed-precision formatting (`{:.6}` ratios /
+`{:.2}%` drawdowns), with **rows sorted by θ-cell index before render** so the body
+is order-invariant (the `threshold_sweep` sort-before-render discipline, also used
+by the C2 driver's `indexed.sort_by_key(|r| r.j)`). Determinism scope is D5
+(Apple-Silicon canonical box; cross-platform NOT contracted). The per-cell verdict
+classifier and the family-summary line are deterministic pure functions of the
+hashed distribution numbers and the frozen decision-rule bands, so they add no new
+determinism surface.
+
 ## Consequences
 
 ### Positive
@@ -343,6 +440,14 @@ accepted limitation, not a new one.
   rejected — audit § 3.3 Option C (embed a sampled-path digest in the hashed
   body) is an acceptable future upgrade of D4 if extra tamper-evidence is wanted;
   not adopted at v0.1.0.
+- **(D6 amendment) Independent N paths per θ-cell via naive additive two-axis
+  seed.** Rejected — see D6.2. The `ensemble_seed + g*0x9E37_79B9 + j*0x9E37_79B9`
+  composition collapses to `+ (g+j)*0x9E37_79B9` and collides distinct (cell, path)
+  pairs; and independent paths reintroduce path-sampling variance as an inter-row
+  confound. SAME-paths-across-cells (D6.1) is chosen.
+- **(D6 amendment) N-per-θ anchor set for the sweep.** Rejected — see D6.3 (a
+  G×-explosion that re-locks on any grid change; the surface is the deliverable).
+  ONE θ-surface report = +1 anchor.
 
 ## Cross-references
 
@@ -388,3 +493,24 @@ accepted limitation, not a new one.
   (GARCH/regime as generators-not-alpha; v0.1.0 ships only block bootstrap).
   Status `accepted`. Registered atomically in `README.md` (architect.md § ADR
   registry contract).
+- 2026-05-30 (architect, C3 M-T1): **D6 amendment added** — θ-sweep extension for
+  C3 ([`momentum-parameter-robustness-sweep`](../../momentum-parameter-robustness-sweep/feature.md)).
+  Resolves the C3 § ADR flag (amendment, NOT a new ADR-0052) and OQ-1/OQ-3/OQ-4.
+  **D6.1** ratifies SAME path-set across all θ-cells: `cell_seed_g := ensemble_seed`
+  for all g, so `path_seed_{g,j} = ensemble_seed.wrapping_add(j*0x9E37_79B9)` is
+  **byte-identical to the C2 D1 seed** — the θ-axis is varied at the config level,
+  not the seed level, so C1/C2 determinism (85 anchors) is unchanged *by
+  construction* (the extension is the empty change on the seed axis). Verified
+  arithmetically: with cell_seed = ensemble_seed, the C3 per-path seed equals
+  `derive_path_seed(ensemble_seed, j)` for every j; the g=0 row reduces exactly to
+  C2. **D6.2** REJECTS the brief's D-C3.4 fallback (naive additive two-axis
+  `+(g+j)*0x9E37_79B9`) as a seed-collision bug (6 colliding pairs in a 4×3 grid)
+  AND as a methodological confound; a future per-cell-independence variant needs its
+  OWN ADR with a collision-free non-commuting mix. **D6.3** extends D4: ONE
+  θ-surface report = +1 anchor under `mc-robustness-2026-06` (85→86); the explicit
+  cell list + per-cell N + buy-and-hold flag are hashed body fields (K3). **D6.4**
+  inherits D2/D3/D5 verbatim (per-cell reduction unchanged; FM/body split;
+  `{:.6}`/`{:.2}%`; rows sorted by θ-cell index before render; canonical-box scope).
+  D6.1.4 confirms L is θ-independent (OQ-3 — printed once in the surface header).
+  Registry README row + frontmatter `updated:` amended atomically (architect.md
+  § ADR registry contract).
