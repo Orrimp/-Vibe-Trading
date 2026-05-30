@@ -1547,98 +1547,116 @@ impl AppState {
     /// consumed; the live cockpit has no general keyboard navigation
     /// today, so nothing leaks to the tape beneath.
     fn subscription(&self) -> iced::Subscription<Message> {
-        let bus_sub = ui::live::subscription(Arc::clone(&self.bus));
+        // ── Wave C seam: build_subscription_batch_descriptor ──────────────────
+        //
+        // `build_subscription_batch_descriptor` returns a `Vec<SubscriptionVariant>`
+        // listing every recipe that should be included in the batch, based on the
+        // current cockpit state.  We convert each variant to the corresponding
+        // real `iced::Subscription` here.  This wires the introspectable
+        // descriptor (tested by `cockpit_subscription_server_time_always_batched`
+        // and `cockpit_subscription_toast_dismiss_always_batched`) to the actual
+        // production subscription batch, so removing a variant from the descriptor
+        // also removes it from the live subscription — closing the seam.
+        let descriptor = ui::live::build_subscription_batch_descriptor(
+            self.trail_mirror_handle.is_some(),
+            self.lab_progress_rx.is_some(),
+            self.training_log_rx.is_some(),
+        );
 
-        // 1 Hz server-time tick — drives the status-bar clock (T1509).
-        // Uses `ServerTimeRecipe` (tokio interval via tokio_stream) rather
-        // than `iced::time::every` which requires iced's `tokio` feature flag.
-        // The rt_handle is passed so the recipe can enter the tokio runtime
-        // context before calling `tokio::time::interval` (P1 bug fix — see
-        // ServerTimeRecipe struct comment above for full rationale).
-        let time_sub = iced::advanced::subscription::from_recipe(ServerTimeRecipe {
-            rt_handle: self.rt_handle.clone(),
-        });
-
-        // Phase D+ T-D-N9 — trail-mirror Subscription bridge (R1.3 / R1.5).
-        // Batched alongside bus_sub + time_sub in both modal-open and
-        // modal-closed branches. `trail_sub` is `Subscription::none()` when
-        // the handle is absent (tick_bus_capacity = 0 in config).
-        let trail_sub = self
-            .trail_mirror_handle
-            .as_ref()
-            .map(|h| ui::live::trail_mirror_subscription(h.clone()))
-            .unwrap_or_else(iced::Subscription::none);
-
-        // Wave D-4 T-AR-6 — Lab progress subscription.
-        // Active only while a run is in-flight and the progress channel is open.
-        // Salt-bumped per LabRunRequested so iced sees a fresh recipe each run.
-        let progress_sub = if let Some(rx) = &self.lab_progress_rx {
-            iced::advanced::subscription::from_recipe(ui::lab::progress::LabProgressRecipe {
-                rt_handle: self.rt_handle.clone(),
-                rx: std::sync::Arc::clone(rx),
-                salt: self.lab_progress_recipe_salt,
+        // Convert each descriptor variant to a real iced Subscription.
+        // Order matches the descriptor (Bus, ServerTime, [Trail], [LabProgress],
+        // Activity, [TrainingLog], ToastDismiss).
+        let mut subs: Vec<iced::Subscription<Message>> = descriptor
+            .iter()
+            .map(|variant| match variant {
+                ui::live::SubscriptionVariant::Bus => ui::live::subscription(Arc::clone(&self.bus)),
+                ui::live::SubscriptionVariant::ServerTime => {
+                    // 1 Hz server-time tick — drives the status-bar clock (T1509).
+                    // Uses `ServerTimeRecipe` (tokio interval via tokio_stream) rather
+                    // than `iced::time::every` which requires iced's `tokio` feature flag.
+                    // The rt_handle is passed so the recipe can enter the tokio runtime
+                    // context before calling `tokio::time::interval` (P1 bug fix — see
+                    // ServerTimeRecipe struct comment above for full rationale).
+                    iced::advanced::subscription::from_recipe(ServerTimeRecipe {
+                        rt_handle: self.rt_handle.clone(),
+                    })
+                }
+                ui::live::SubscriptionVariant::Trail => {
+                    // Phase D+ T-D-N9 — trail-mirror Subscription bridge (R1.3 / R1.5).
+                    // Only reached when has_trail = true, so unwrap is safe.
+                    self.trail_mirror_handle
+                        .as_ref()
+                        .map(|h| ui::live::trail_mirror_subscription(h.clone()))
+                        .unwrap_or_else(iced::Subscription::none)
+                }
+                ui::live::SubscriptionVariant::LabProgress => {
+                    // Wave D-4 T-AR-6 — Lab progress subscription.
+                    // Active only while a run is in-flight and the progress channel is open.
+                    // Salt-bumped per LabRunRequested so iced sees a fresh recipe each run.
+                    // Only reached when has_lab_progress = true, so unwrap is safe.
+                    self.lab_progress_rx
+                        .as_ref()
+                        .map(|rx| {
+                            iced::advanced::subscription::from_recipe(
+                                ui::lab::progress::LabProgressRecipe {
+                                    rt_handle: self.rt_handle.clone(),
+                                    rx: std::sync::Arc::clone(rx),
+                                    salt: self.lab_progress_recipe_salt,
+                                },
+                            )
+                        })
+                        .unwrap_or_else(iced::Subscription::none)
+                }
+                ui::live::SubscriptionVariant::Activity => {
+                    // cockpit-activity-status-bar v0.1.0 Wave B (T-D-N5).
+                    // Always active (no salt / no per-run gating).
+                    iced::advanced::subscription::from_recipe(ui::live::ActivityRecipe {
+                        bus: std::sync::Arc::clone(&self.bus),
+                    })
+                }
+                ui::live::SubscriptionVariant::TrainingLog => {
+                    // cockpit-training-pressed-wiring v0.1.0 T-D-N4.
+                    // Active only while a training run is in-flight.
+                    // Only reached when has_training_log = true, so unwrap is safe.
+                    self.training_log_rx
+                        .as_ref()
+                        .map(|rx| {
+                            iced::advanced::subscription::from_recipe(
+                                ui::lab::training_log::TrainingLogRecipe {
+                                    rt_handle: self.rt_handle.clone(),
+                                    rx: std::sync::Arc::clone(rx),
+                                    salt: self.training_log_recipe_salt,
+                                },
+                            )
+                        })
+                        .unwrap_or_else(iced::Subscription::none)
+                }
+                ui::live::SubscriptionVariant::ToastDismiss => {
+                    // cockpit-toast-queue v0.1.0 T-D-N10 — 6th subscription.
+                    // Always-on 500 ms ticker for auto-dismiss sweep; emits
+                    // `Message::ToastTick(Instant::now())`. No salt / no gating.
+                    iced::advanced::subscription::from_recipe(ToastDismissRecipe {
+                        rt_handle: self.rt_handle.clone(),
+                    })
+                }
             })
-        } else {
-            iced::Subscription::none()
-        };
+            .collect();
 
-        // cockpit-activity-status-bar v0.1.0 Wave B (T-D-N5) — Activity recipe.
-        // Subscribes to the activity broadcast channel and emits
-        // `Message::ActivityEventReceived` messages. Always active (no salt /
-        // no per-run gating — the channel is open for the process lifetime).
-        let activity_sub = iced::advanced::subscription::from_recipe(ui::live::ActivityRecipe {
-            bus: std::sync::Arc::clone(&self.bus),
-        });
-
-        // cockpit-training-pressed-wiring v0.1.0 T-D-N4 — TrainingLogRecipe subscription.
-        // Active only while a training run is in-flight and the log channel is open.
-        // Salt-bumped per TrainingPressed so iced sees a fresh recipe each run.
-        let training_log_sub = if let Some(rx) = &self.training_log_rx {
-            iced::advanced::subscription::from_recipe(ui::lab::training_log::TrainingLogRecipe {
-                rt_handle: self.rt_handle.clone(),
-                rx: std::sync::Arc::clone(rx),
-                salt: self.training_log_recipe_salt,
-            })
-        } else {
-            iced::Subscription::none()
-        };
-
-        // cockpit-toast-queue v0.1.0 T-D-N10 — 6th subscription.
-        // Always-on 500 ms ticker for auto-dismiss sweep; emits
-        // `Message::ToastTick(Instant::now())`. No salt / no gating —
-        // the 500 ms cost is negligible vs the 100 ms activity-tape tick.
-        let toast_dismiss_sub = iced::advanced::subscription::from_recipe(ToastDismissRecipe {
-            rt_handle: self.rt_handle.clone(),
-        });
-
+        // Q6 — modal-open-gated Esc keyboard listener.
+        // Added AFTER the base batch so the descriptor-to-iced loop stays clean.
         if self.cockpit.tape_audit_modal.is_some() {
-            iced::Subscription::batch(vec![
-                bus_sub,
-                time_sub,
-                trail_sub,
-                progress_sub,
-                activity_sub,
-                training_log_sub,
-                toast_dismiss_sub,
-                iced::event::listen_with(|event, _status, _window| match event {
+            subs.push(iced::event::listen_with(
+                |event, _status, _window| match event {
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                         ..
                     }) => Some(Message::TapeAuditModalClosed),
                     _ => None,
-                }),
-            ])
-        } else {
-            iced::Subscription::batch(vec![
-                bus_sub,
-                time_sub,
-                trail_sub,
-                progress_sub,
-                activity_sub,
-                training_log_sub,
-                toast_dismiss_sub,
-            ])
+                },
+            ));
         }
+
+        iced::Subscription::batch(subs)
     }
 
     fn view(&self) -> Element<'_, Message> {

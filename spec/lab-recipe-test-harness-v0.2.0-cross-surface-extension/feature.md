@@ -419,6 +419,60 @@ _(tester M-FINAL — per-Recipe T-T4 table; anchors 71/71 stable.)_
 - `cargo clippy -p agent --tests -- -D warnings` → zero new errors
 - T-D-B1 seam: `cargo test -p agent --test activity_audit_aggregator` → 3/3 PASS (existing integration tests unchanged)
 
+### Wave C — SubscriptionBatchDescriptor seam + ServerTime S2 + ToastDismiss S1 + S2 (DONE 2026-05-30)
+
+**Developer**: Wave C complete. Files added/modified:
+
+- `crates/ui/src/live.rs` (~105 LoC src delta)
+  - Added `SubscriptionVariant` enum (line 879) — 7 variants (Bus, ServerTime, Trail, LabProgress, Activity, TrainingLog, ToastDismiss).
+  - Added `SubscriptionBatchDescriptor` type alias (= `Vec<SubscriptionVariant>`) (line 901).
+  - Added `pub fn build_subscription_batch_descriptor(has_trail, has_lab_progress, has_training_log) -> SubscriptionBatchDescriptor` (line 926) — always includes Bus + ServerTime + Activity + ToastDismiss; conditionally includes Trail / LabProgress / TrainingLog.
+  - Added `tokio = { features = ["test-util"] }` to dev-deps in `crates/ui/Cargo.toml` (test-util is NOT included in `full` in tokio 1.52.3; required for `tokio::time::pause()` + `advance()`).
+  - T-T4 falsification probes documented in module doc-comment block above `build_subscription_batch_descriptor` for rows C2 and C4.
+
+- `crates/ui/src/bin/cockpit_live.rs` (~75 LoC src delta)
+  - `subscription()` refactored (line 1549) to call `ui::live::build_subscription_batch_descriptor` and convert each `SubscriptionVariant` to the corresponding iced subscription via a `.map(|variant| match variant {...})` loop. Production batch is now driven by the descriptor, closing the seam between the introspectable descriptor and the live subscription.
+  - Modal-keyboard Esc subscription added after the descriptor loop (not part of the descriptor — it's modal-state-gated, not screen-gated).
+
+- `crates/ui/tests/cockpit_subscription_server_time_always_batched.rs` (~110 LoC, 2 tests)
+  - Test 1: `server_time_recipe_in_every_screen_batch` — iterates 5 Screen variants (Lab, Live, Compare, Trail, Settings); asserts `ServerTime` in descriptor each time.
+  - Test 2: `server_time_present_with_all_optional_recipes_active` — supplements with all optional recipes active.
+  - T-T4 probe P-C2: comment out `desc.push(SubscriptionVariant::ServerTime)` → both tests FAIL with `ServerTime not found`. Dry-run confirmed RED.
+
+- `crates/ui/tests/toast_dismiss_recipe_stream.rs` (~190 LoC, 3 tests)
+  - Uses `start_paused = true` + `yield_now()` (to drain t=0 skip tick) + `advance(500ms)` × N.
+  - Test 1: `stream_yields_toast_tick_every_500ms` — 3 ticks in 3 × 500ms advances.
+  - Test 2: `toast_tick_instants_are_monotone` — consecutive `Instant` values non-decreasing.
+  - Test 3: `toast_dismiss_stream_remains_open` — channel not disconnected after 3 ticks.
+  - T-T4 probe P-C3: insert `continue;` before `yield Message::ToastTick(...)` → all 3 FAIL with `left: 0, right: 3`. Dry-run confirmed RED.
+  - Timing protocol: `yield_now()` before any `advance()` drains the immediate t=0 interval tick (the skip tick); then 1 `advance(500ms)` = 1 `ToastTick`. This corrects the initial incorrect approach that got 4 ticks instead of 3.
+
+- `crates/ui/tests/cockpit_subscription_toast_dismiss_always_batched.rs` (~160 LoC, 3 tests)
+  - Test 1: `toast_dismiss_in_every_screen_batch` — 5 Screen variants; `ToastDismiss` present each time.
+  - Test 2: `toast_dismiss_present_with_all_optional_recipes_active` — all optional recipes active.
+  - Test 3: `toast_dismiss_present_regardless_of_toast_queue_emptiness` — documents always-on contract.
+  - T-T4 probe P-C4: comment out `desc.push(SubscriptionVariant::ToastDismiss)` → all 3 FAIL. Dry-run confirmed RED.
+
+**DEV-CONFIRM-2 note**: Full extraction taken (not fallback). The descriptor seam was placed in `live.rs` (the library crate, not the binary) to enable test reachability from integration tests. The function signature uses boolean flags (`has_trail`, `has_lab_progress`, `has_training_log`) rather than carrying actual iced subscription args — this is simpler and testable without iced runtime. Production `subscription()` in `cockpit_live.rs` calls the descriptor function and does the variant→subscription conversion inline via a `match` loop.
+
+**DEV-CONFIRM-1 line numbers verified**:
+- `cockpit_live.rs::build_subscription_batch_descriptor` call: line 1549 (subscription() fn).
+- T-T4 probe C2 (ServerTime) load-bearing line: `crates/ui/src/live.rs:933` (`desc.push(SubscriptionVariant::ServerTime)`).
+- T-T4 probe C3 (ToastTick yield) load-bearing line: `crates/ui/src/live.rs:839` (`yield Message::ToastTick(Instant::now())`).
+- T-T4 probe C4 (ToastDismiss) load-bearing line: `crates/ui/src/live.rs:944` (`desc.push(SubscriptionVariant::ToastDismiss)`).
+
+**All mandatory gates PASS**:
+- `cargo test -p ui --test cockpit_subscription_server_time_always_batched --no-default-features --features live` → 2/2 PASS
+- `cargo test -p ui --test toast_dismiss_recipe_stream --no-default-features --features live` → 3/3 PASS
+- `cargo test -p ui --test cockpit_subscription_toast_dismiss_always_batched --no-default-features --features live` → 3/3 PASS
+- Wave A+B regression: `training_log_recipe_harness` 3/3, `training_log_state_gating` 3/3, `activity_audit_aggregator_select_arm_survival` 3/3 — all PASS
+- v0.1.0: `spawn_lab_run_yahoo_harness` 3/3, `lab_stop_button_gating` 3/3 PASS
+- Bug #64: `lab_runner_preload_callthrough_e2e` 2/2, `lab_runner_http_offexecutor_e2e` 3/3, `lab_runner_cancel_e2e` 2/2 PASS
+- Smoke: `cockpit_live_lab_run_smoke` 5/5 PASS
+- `cargo fmt -p ui --check` → zero diff
+- Pre-existing clippy warnings at `live.rs:586` and `live.rs:720` (`#[must_use]` on `trail_mirror_stream_impl` and `activity_stream_impl`) — these existed before Wave C; zero NEW clippy errors from Wave C changes.
+- `bash scripts/verify_anchors.sh` → 84/84 PASS (Wave C is anchor-additive zero)
+
 ## Changelog
 
 - 2026-05-29 (analyst): M0 brief authored; R1 inventory enumerates

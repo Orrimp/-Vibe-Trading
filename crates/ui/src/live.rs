@@ -841,6 +841,110 @@ pub fn toast_dismiss_stream_impl(
     })
 }
 
+// ── SubscriptionBatchDescriptor seam (Wave C — ADR-0048 v0.2.0) ─────────────
+//
+// `build_subscription_batch_descriptor` is the introspectable equivalent of
+// `cockpit_live::subscription()`.  It returns a `Vec<SubscriptionVariant>`
+// listing every recipe that WOULD be included in the iced batch — without
+// constructing any real `iced::Subscription` values.
+//
+// Purpose: integration tests can call this function directly and assert
+// membership (`descriptor.contains(&SubscriptionVariant::ServerTime)`) across
+// all `Screen::*` variants, proving each always-on recipe is never
+// accidentally screen-gated in the future.
+//
+// Production `cockpit_live::subscription()` calls this and converts the
+// result to actual iced subscriptions.  If the conversion and the descriptor
+// diverge, T-D-C2 / T-D-C4 catch it.
+//
+// ## T-T4 falsification probe (C2 + C4)
+//
+// For `ServerTime` (row 6 of D-V0.2.0-3): remove `SubscriptionVariant::ServerTime`
+// from this function's body — the `cockpit_subscription_server_time_always_batched`
+// test's `descriptor.contains(&SubscriptionVariant::ServerTime)` asserts fail.
+//
+// For `ToastDismiss` (row 8 of D-V0.2.0-3): remove `SubscriptionVariant::ToastDismiss`
+// from this function's body — the `cockpit_subscription_toast_dismiss_always_batched`
+// test's `descriptor.contains(&SubscriptionVariant::ToastDismiss)` asserts fail.
+//
+// Restore the removed variant line verbatim after verifying the probe; all tests
+// must then PASS before handoff.
+
+/// Identifies one recipe variant in the iced subscription batch.
+///
+/// Each variant corresponds to one `Recipe` impl in `cockpit_live.rs` or
+/// `ui::live`.  Tests assert on membership to verify that always-on recipes
+/// (e.g. `ServerTime`, `ToastDismiss`) are never accidentally screen-gated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubscriptionVariant {
+    /// `BusRecipe` — live broadcast bus for fills, positions, and portfolio state.
+    Bus,
+    /// `ServerTimeRecipe` — 1 Hz ticker for the status-bar clock.
+    ServerTime,
+    /// `TrailMirrorRecipe` — trail-mirror broadcast bridge (present only when
+    /// the handle is `Some`).
+    Trail,
+    /// `LabProgressRecipe` — lab run progress receiver (present only when a run
+    /// is in-flight, i.e. `lab_progress_rx` is `Some`).
+    LabProgress,
+    /// `ActivityRecipe` — activity broadcast channel (always-on).
+    Activity,
+    /// `TrainingLogRecipe` — training log receiver (present only when a
+    /// training run is in-flight, i.e. `training_log_rx` is `Some`).
+    TrainingLog,
+    /// `ToastDismissRecipe` — 500 ms auto-dismiss ticker (always-on).
+    ToastDismiss,
+}
+
+/// Ordered list of recipe variants that the subscription batch includes.
+///
+/// Call `build_subscription_batch_descriptor` to produce one; call
+/// `.into_iced_subscription()` on `cockpit_live`'s side to turn it into a
+/// real `iced::Subscription`.  Tests use `Vec::contains` to assert membership.
+pub type SubscriptionBatchDescriptor = Vec<SubscriptionVariant>;
+
+/// Build the introspectable subscription-batch descriptor.
+///
+/// Returns a `Vec<SubscriptionVariant>` listing every recipe that WOULD be
+/// included in the iced `Subscription::batch(...)` call given the current
+/// cockpit state.  The caller decides the actual iced subscriptions separately;
+/// this function is purely for test introspection.
+///
+/// # Parameters
+///
+/// - `has_trail`: `true` when the trail-mirror handle is `Some` (i.e.
+///   `trail_mirror_handle.is_some()` in `AppState`).
+/// - `has_lab_progress`: `true` when `lab_progress_rx` is `Some` (run in-flight).
+/// - `has_training_log`: `true` when `training_log_rx` is `Some` (training in-flight).
+///
+/// Note: `current_screen` is intentionally absent — all recipes are
+/// unconditionally batched regardless of the active screen.  The tests
+/// iterate over all `Screen::*` variants and call this function each time
+/// to serve as a regression guard: if a future change mistakenly gates an
+/// always-on recipe on the active screen, the tests will catch it.
+#[must_use]
+pub fn build_subscription_batch_descriptor(
+    has_trail: bool,
+    has_lab_progress: bool,
+    has_training_log: bool,
+) -> SubscriptionBatchDescriptor {
+    let mut desc = Vec::with_capacity(7);
+    desc.push(SubscriptionVariant::Bus);
+    desc.push(SubscriptionVariant::ServerTime);
+    if has_trail {
+        desc.push(SubscriptionVariant::Trail);
+    }
+    if has_lab_progress {
+        desc.push(SubscriptionVariant::LabProgress);
+    }
+    desc.push(SubscriptionVariant::Activity);
+    if has_training_log {
+        desc.push(SubscriptionVariant::TrainingLog);
+    }
+    desc.push(SubscriptionVariant::ToastDismiss);
+    desc
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

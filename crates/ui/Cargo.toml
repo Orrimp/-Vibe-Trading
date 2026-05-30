@@ -142,7 +142,12 @@ uuid = { workspace = true, optional = true }
 criterion.workspace = true
 insta = { version = "=1.47.2", features = ["yaml"] }
 # T32 integration test: needs tokio runtime to drive the live subscription.
-tokio = { workspace = true }
+# Wave C (lab-recipe-test-harness v0.2.0): `test-util` feature enables
+# `tokio::time::pause()` + `tokio::time::advance()` for `ToastDismissRecipe`
+# stream boundary tests under controlled time (`toast_dismiss_recipe_stream.rs`).
+# `test-util` is NOT included in `full` (confirmed tokio 1.52.3 Cargo.toml);
+# must be explicitly enabled — same pattern as `crates/agent/Cargo.toml:78`.
+tokio = { workspace = true, features = ["test-util"] }
 futures = { workspace = true }
 agent = { path = "../agent" }
 # T906 stitch (Wave 3 follow-up — orchestrator-spawned 2026-05-01):
