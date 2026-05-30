@@ -1092,6 +1092,21 @@ pub const LAB_CACHE_STATE_STALE: &str = "stale";
 /// file's mtime is within the last 24 h.
 pub const LAB_CACHE_STATE_FRESH: &str = "fresh";
 
+/// lab-yahoo-empty-range-ux v0.1.0 — no-data notice template (D-ER-3 / R2 / R-NR.4).
+///
+/// Rendered in a neutral/muted style (NOT the red ⚠ error treatment) when
+/// Yahoo returns HTTP-200 but zero bars for the requested window — an expected
+/// outcome for future-dated ranges or delisted tickers.
+///
+/// `{ticker}` and `{window}` are substituted by
+/// `lab::runner::preload_notice::no_data_message`.
+/// `{window}` is `start_label..end_label` from the post-clamp
+/// `range_to_ms_pair` pair (R2 mandates the actual computed window is shown).
+///
+/// NO internal variant name (`CacheMiss`, `MissingData`), NO "Check network" hint.
+pub const LAB_YAHOO_NO_DATA_NOTICE: &str = "No Yahoo data for {ticker} in {window} \
+     \u{2014} the range may be future-dated or the ticker may be delisted.";
+
 /// lab-yahoo-realdata v0.1.2 (T-DU2 / R-NR.2) — operator Q3 prefix for the
 /// aggregate cache-state summary badge in the Lab toolbar. The badge label
 /// is built via [`fmt_lab_cache_state_summary`] and resolves to

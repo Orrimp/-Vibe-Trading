@@ -477,6 +477,18 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
             .color(color::DOWN_500.current(mode));
         run_button_row = run_button_row.push(error_text);
     }
+    // lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (M-DEV.10 / Q3=(a)):
+    // No-data NOTICE rendered in a neutral/muted style. Sibling to the red
+    // error branch above (R-NR.2 — the error branch is BYTE-IDENTICAL).
+    // Uses FG_2 (muted neutral, existing Lumen token — R-NR.4 / M-DEV.20).
+    // `last_run_ok` derivation (line 384) treats this as a clean terminal
+    // (notice ⇒ last_run_error.is_none() ⇒ Run button NOT Failed, R3).
+    if let Some(notice) = model.lab_state.last_run_notice.as_ref() {
+        let notice_text = Text::new(format!("\u{24d8} {notice}"))
+            .size(text::SMALL)
+            .color(color::FG_2.current(mode));
+        run_button_row = run_button_row.push(notice_text);
+    }
     let run_button_row = run_button_row.width(Length::Fill);
 
     // Compute the per-active-symbol slices once.

@@ -185,6 +185,23 @@ pub enum YahooError {
     /// Generic I/O error.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Fetch succeeded (HTTP-200, well-formed) but Yahoo returned ZERO
+    /// usable quotes for the window — an EXPECTED no-data outcome
+    /// (future-dated range or delisted/never-listed ticker), NOT a failure.
+    ///
+    /// Emitted ONLY from `fetch_and_cache` when `quotes.is_empty()` on a
+    /// well-formed 200 response. K1-correct by construction: `classify_yfa_error`
+    /// maps every transport/429 error BEFORE `.quotes()` is reached, so an empty
+    /// quotes vec is provably an HTTP-200, well-formed, zero-quote response.
+    ///
+    /// lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 (Q1=(a) split).
+    #[error("no Yahoo data for {ticker} in {start_label}..{end_label}")]
+    NoDataForRange {
+        ticker: String,
+        start_label: String,
+        end_label: String,
+    },
 }
 
 // ── LoadedBars ────────────────────────────────────────────────────────────────
@@ -385,6 +402,21 @@ impl YahooBarSource {
         let quotes = response
             .quotes()
             .map_err(|e| YahooError::Http(e.to_string()))?;
+
+        // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 (M-DEV.2):
+        // HTTP-200 + well-formed response but ZERO usable quotes → expected
+        // no-data outcome (future-dated range or delisted ticker). Return the
+        // typed variant immediately — do NOT proceed to quotes_to_bars or
+        // write_bars_by_month (nothing to write). K1-correct by construction:
+        // classify_yfa_error above mapped every transport/429 error before
+        // this point, so an empty vec here is provably a zero-quote 200 response.
+        if quotes.is_empty() {
+            return Err(YahooError::NoDataForRange {
+                ticker: ticker.to_string(),
+                start_label: format_iso8601(start_ms),
+                end_label: format_iso8601(end_ms),
+            });
+        }
 
         // K2 mitigation: hash the serialised quotes for forensic tracking.
         let response_sha = sha256_of_quotes(&quotes);
@@ -1213,5 +1245,95 @@ mod tests {
         let d = Date::from_calendar_date(year, m, day).expect("valid date");
         let pdt = PrimitiveDateTime::new(d, Time::MIDNIGHT);
         pdt.assume_utc().unix_timestamp() * 1_000
+    }
+
+    // ── D-ER-4 T2 — K1 boundary: YahooError variant discrimination ───────────
+
+    /// T2 — K1 at the data-crate boundary: `NoDataForRange` is ADDITIVE and
+    /// does NOT match the existing transport/429/parse variants.
+    ///
+    /// lab-yahoo-empty-range-ux v0.1.0 — M-DEV.13.
+    ///
+    /// Verifies that:
+    /// 1. `NoDataForRange` can be constructed and its Display does NOT contain
+    ///    "CacheMiss", "MissingData", "Check network", "rate limited", "network
+    ///    error", or "parquet" — i.e. it is visually distinct from every error
+    ///    variant.
+    /// 2. A `RateLimited` error is NOT a `NoDataForRange` (K1: 429 stays error).
+    /// 3. An `Http` error is NOT a `NoDataForRange` (K1: transport stays error).
+    /// 4. `NoDataForRange`'s `#[error]` Display names ticker and window.
+    ///
+    /// NOTE: A full `fetch_and_cache` empty-quote test requires live network
+    /// mocking which is out of scope for v0.1.0. The runner-level K2 test
+    /// (`crates/ui/tests/lab_yahoo_empty_range_classification.rs`) is the
+    /// primary classification gate. This test pins the K1 contract at the
+    /// data-crate boundary.
+    #[test]
+    fn no_data_for_range_is_distinct_from_transport_errors() {
+        // 1. Construct the new variant.
+        let no_data = YahooError::NoDataForRange {
+            ticker: "BTC-USD".to_string(),
+            start_label: "2026-04-29".to_string(),
+            end_label: "2026-05-29".to_string(),
+        };
+        let display = no_data.to_string();
+
+        // Display names the ticker and window.
+        assert!(
+            display.contains("BTC-USD"),
+            "NoDataForRange display must name the ticker: {display}"
+        );
+        assert!(
+            display.contains("2026-04-29"),
+            "NoDataForRange display must name start_label: {display}"
+        );
+        assert!(
+            display.contains("2026-05-29"),
+            "NoDataForRange display must name end_label: {display}"
+        );
+
+        // Display does NOT contain confusing error copy.
+        assert!(
+            !display.contains("CacheMiss"),
+            "NoDataForRange display must not mention CacheMiss: {display}"
+        );
+        assert!(
+            !display.contains("MissingData"),
+            "NoDataForRange display must not mention MissingData: {display}"
+        );
+        assert!(
+            !display.contains("network error"),
+            "NoDataForRange display must not say 'network error': {display}"
+        );
+        assert!(
+            !display.contains("rate limited"),
+            "NoDataForRange display must not say 'rate limited': {display}"
+        );
+        assert!(
+            !display.contains("parquet"),
+            "NoDataForRange display must not mention parquet: {display}"
+        );
+
+        // 2. K1: RateLimited is NOT NoDataForRange.
+        let rate_limited = YahooError::RateLimited {
+            retry_after_secs: 60,
+        };
+        assert!(
+            !matches!(rate_limited, YahooError::NoDataForRange { .. }),
+            "RateLimited must NOT match NoDataForRange (K1: 429 stays a hard error)"
+        );
+
+        // 3. K1: Http error is NOT NoDataForRange.
+        let http_err = YahooError::Http("connection refused".to_string());
+        assert!(
+            !matches!(http_err, YahooError::NoDataForRange { .. }),
+            "Http error must NOT match NoDataForRange (K1: transport errors stay red)"
+        );
+
+        // 4. NoDataForRange matches itself.
+        assert!(
+            matches!(no_data, YahooError::NoDataForRange { .. }),
+            "NoDataForRange must match its own pattern"
+        );
     }
 }

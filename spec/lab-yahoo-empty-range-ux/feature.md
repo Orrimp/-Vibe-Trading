@@ -1,7 +1,7 @@
 ---
 slug: lab-yahoo-empty-range-ux
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 updated: 2026-05-30
 version: 0.1.0
 ---
@@ -846,3 +846,63 @@ Case A's notice assertion fails; revert.)
   (NO new ADR; ADR-0050 untouched) + README registry/frontmatter bumped
   atomically. Frontmatter `proposed`→`arch-done`, owner→`developer`.
   `arch` column entries cited for orchestrator. HANDOFF → developer.
+- 2026-05-30 (developer, M-DEV): Implementation complete. All 21 M-DEV
+  tasks completed (M-DEV.1-20 ticked with file:line + test output; M-DEV.21
+  this HANDOFF). Key deviations from spec: none — all decisions follow
+  the architect's D-ER-1..6 design lock. Helper named `classify_preload_result`
+  (not `empty_bars_to_notice_or_pass` as suggested — same semantics, cleaner
+  name). P-ER-1 falsifier dry-run: T5 `no_data_notice_completion_clears_inflight_and_progress`
+  FAILS when `NO_DATA_TAG` removed from `no_data_message`, GREEN after restore.
+  All gate tests pass; 84/84 anchors byte-identical. HANDOFF → tester.
+
+## Implementation
+
+**Developer:** 2026-05-30
+
+### Summary
+
+Implemented lab-yahoo-empty-range-ux v0.1.0 exactly per the architect's D-ER-1..6 design lock.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `crates/data/src/yahoo.rs` | Added `YahooError::NoDataForRange` variant (additive, M-DEV.1); early-return in `fetch_and_cache` on empty quotes (M-DEV.2); K1 unit test |
+| `crates/ui/src/lab/runner.rs` | Added `pub mod preload_notice` (NO_DATA_TAG, classify, no_data_message, M-DEV.3); non-retry arm for NoDataForRange in fetch_with_backoff (M-DEV.4); NoDataForRange classification in preload_yahoo_bars (M-DEV.4); `classify_preload_result` helper called from both preload_result arms (M-DEV.5); `end_ms.min(now_ms)` clamp in range_to_ms_pair (M-DEV.6) |
+| `crates/ui/src/strings.rs` | Added `LAB_YAHOO_NO_DATA_NOTICE` template constant (M-DEV.7) |
+| `crates/ui/src/lab/state.rs` | Added `last_run_notice: Option<SmolStr>` field to LabState; init None in clone + Default + with_selection (M-DEV.8) |
+| `crates/ui/src/state.rs` | Clear `last_run_notice` on LabRunRequested (M-DEV.9a); replace flat Err arm with typed `preload_notice::classify` routing in LabRunCompleted (M-DEV.9b) |
+| `crates/ui/src/screens/lab.rs` | Added muted FG_2 notice render branch after existing red error branch (M-DEV.10); existing error branch byte-identical (R-NR.2) |
+
+### Test files added/modified
+
+| File | Tests |
+|------|-------|
+| `crates/ui/tests/lab_yahoo_empty_range_classification.rs` | New: 3 tests — case_a (empty→notice), case_b (transport→error), k2 discriminator |
+| `crates/ui/tests/lab_yahoo_range_clamp.rs` | New: 6 tests — H1/H2 byte-identical + Last30d/Last90d/Custom future clamp |
+| `crates/ui/tests/lab_stop_button_gating.rs` | Added T5: no_data_notice_completion_clears_inflight_and_progress |
+| `crates/data/src/yahoo.rs` | Added K1 unit test: no_data_for_range_is_distinct_from_transport_errors |
+| `crates/ui/src/lab/runner.rs` | Added classify_tests inline module: 4 unit tests for preload_notice |
+
+### Gate results
+
+- `cargo test -p ui --test lab_yahoo_empty_range_classification --features live` → 3/3 PASS
+- `cargo test -p ui --test lab_yahoo_range_clamp --features yahoo` → 6/6 PASS
+- `cargo test -p ui --test lab_stop_button_gating` → 4/4 PASS (including T5)
+- `cargo test -p ui --lib --features live -- preload_notice` → 4/4 PASS
+- `cargo test -p data --features yahoo -- yahoo::tests::no_data_for_range_is_distinct_from_transport_errors` → 1/1 PASS
+- `cargo test -p ui --test spawn_lab_run_yahoo_harness --no-default-features --features live` → 3/3 PASS
+- `cargo test -p ui --test lab_runner_preload_callthrough_e2e --features live` → 2/2 PASS
+- `cargo test -p ui --test lab_runner_cancel_e2e --features live` → 2/2 PASS
+- `cargo test -p ui --test cockpit_subscription_server_time_always_batched --features live` → 2/2 PASS
+- `cargo test -p ui --test toast_dismiss_recipe_stream --features live` → 3/3 PASS
+- `cargo build --release -p ui --bin cockpit_live --features live,yahoo` → Finished release
+- `cargo fmt -p ui -p data --check` → zero diff
+- `bash scripts/verify_anchors.sh` → ANCHORS PASS (84 / 84)
+- P-ER-1 falsifier dry-run: removing NO_DATA_TAG → T5 FAILS (proven discriminating)
+
+### Deviations from spec
+
+- Helper named `classify_preload_result` instead of `empty_bars_to_notice_or_pass` — same semantics, cleaner name communicating the full decision (not just the empty case).
+- `range_to_ms_pair` exposed as `pub` (instead of `pub(crate)`) to enable integration test access from `tests/` (Rust integration tests are separate crates, `pub(crate)` is insufficient).
+- P-ER-1 falsifier documented in test file header + proven via T5 (not Case A — Case A builds the message inline, bypassing `no_data_message()`; T5 calls it directly).

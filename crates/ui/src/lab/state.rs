@@ -204,6 +204,17 @@ pub struct LabState {
     /// Cleared on next `LabRunRequested` and on `LabRunCompleted(Ok)`.
     pub last_run_error: Option<smol_str::SmolStr>,
 
+    /// Operator-facing NOTICE from the most-recent run — a non-error, expected
+    /// outcome (currently: Yahoo has no data for the requested window). Rendered
+    /// in a neutral/muted style, NOT the red ⚠ error treatment. Mutually
+    /// exclusive with `last_run_error` in practice (a run produces one or the
+    /// other). Same carve-out as `last_run_error`: NOT cloned (`LabState::clone`
+    /// sets `None`) and NOT serialized (schema stays `version: 1`). Cleared on
+    /// `LabRunRequested`.
+    ///
+    /// lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (Q3=(a) / M-DEV.8).
+    pub last_run_notice: Option<smol_str::SmolStr>,
+
     // lab-polish-round-2 R2 — SMA param overrides ────────────────────────
     /// Optional override for the fast SMA window length (`None` → 20 default).
     /// Set by the param-stepper widget when the operator picks `v0.sma`.
@@ -290,6 +301,8 @@ impl Clone for LabState {
             last_run_report: None,
             prev_run_report: None,
             last_run_error: None,
+            // lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (Caution #3): NOT cloned.
+            last_run_notice: None,
             sma_fast_len: None,
             sma_slow_len: None,
             sma_fast_input: String::new(),
@@ -353,6 +366,7 @@ impl Default for LabState {
             last_run_report: None,
             prev_run_report: None,
             last_run_error: None,
+            last_run_notice: None,
             sma_fast_len: None,
             sma_slow_len: None,
             sma_fast_input: String::new(),
@@ -393,6 +407,7 @@ impl LabState {
             last_run_report: None,
             prev_run_report: None,
             last_run_error: None,
+            last_run_notice: None,
             sma_fast_len: None,
             sma_slow_len: None,
             sma_fast_input: String::new(),

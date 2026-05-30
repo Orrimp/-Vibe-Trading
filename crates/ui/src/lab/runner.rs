@@ -310,7 +310,6 @@ pub fn spawn_preload_on_rt(
 // ── Yahoo bar pre-loading helpers (lab-yahoo-realdata T-C3.6 / T-AR1) ────────
 
 /// Map a `backtest::engine::DateRange` to `(start_ms, end_ms)` UTC epoch-millis.
-#[cfg(feature = "yahoo")]
 ///
 /// `H1_2024` / `H2_2024` use fixed calendar boundaries so they are deterministic.
 /// `Last30d` / `Last90d` use wall-clock `now()` — intentional; these are the
@@ -320,17 +319,29 @@ pub fn spawn_preload_on_rt(
 /// Note: `time::OffsetDateTime::now_utc()` is only reachable when
 /// `data_source == YahooCache` (rolling presets are date-relative by design
 /// for real-data); the synthetic path never calls this function.
-fn range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
+///
+/// Exposed as `pub` for integration tests (`lab_yahoo_range_clamp.rs`).
+/// Internal use only — not part of the stable API surface.
+#[cfg(feature = "yahoo")]
+#[must_use]
+pub fn range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
     use backtest::engine::DateRange;
     const MS_PER_DAY: i64 = 86_400_000;
     let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
-    match range {
+    let (start_ms, end_ms) = match range {
         DateRange::Last30d => (now_ms - 30 * MS_PER_DAY, now_ms),
         DateRange::Last90d => (now_ms - 90 * MS_PER_DAY, now_ms),
         DateRange::H1_2024 => (1_704_067_200_000, 1_719_792_000_000), // 2024-01-01 .. 2024-07-01 UTC
         DateRange::H2_2024 => (1_719_792_000_000, 1_735_689_600_000), // 2024-07-01 .. 2025-01-01 UTC
         DateRange::Custom { start_ms, end_ms } => (*start_ms, *end_ms),
-    }
+    };
+    // lab-yahoo-empty-range-ux v0.1.0 — D-ER-2 (Q2=(a) clamp / M-DEV.6):
+    // Clamp end_ms to now when future-dated. Applies ONLY when end_ms > now_ms
+    // (K3: H1_2024/H2_2024/past Custom ranges are provably < now_ms and pass
+    // through byte-identical; Last30d/Last90d already set end_ms = now_ms so
+    // the clamp is a no-op for them too). start_ms is NEVER clamped.
+    let end_ms = end_ms.min(now_ms);
+    (start_ms, end_ms)
 }
 
 /// Pre-load Yahoo bars upstream of engine dispatch (T-AR1 / Q1 = (b)).
@@ -413,6 +424,29 @@ async fn preload_yahoo_bars(
                     );
                     src.load_cached(yahoo_ticker.as_str(), interval, start_ms, end_ms)
                         .map_err(|e| SmolStr::new(format!("yahoo cache load (post-fetch): {e}")))?
+                }
+                // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 (M-DEV.4):
+                // NoDataForRange is the typed K1-correct signal from fetch_and_cache
+                // (HTTP-200 + 0 quotes). Build the sentinel-tagged notice instead of
+                // the generic "Check network" message — this routes to
+                // last_run_notice (muted) rather than last_run_error (red ⚠).
+                Err(YahooError::NoDataForRange {
+                    ticker: t,
+                    start_label,
+                    end_label,
+                }) => {
+                    tracing::info!(
+                        target: "lab.yahoo",
+                        ticker = %t,
+                        start = %start_label,
+                        end = %end_label,
+                        "Yahoo returned no data for range (expected — future-dated or delisted)"
+                    );
+                    return Err(preload_notice::no_data_message(
+                        &t,
+                        &start_label,
+                        &end_label,
+                    ));
                 }
                 Err(e) => {
                     return Err(SmolStr::new(format!(
@@ -517,6 +551,16 @@ async fn fetch_with_backoff(
                     );
                     return Ok(());
                 }
+                // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 (M-DEV.4 / K1):
+                // NoDataForRange is a terminal, non-transient outcome — retrying
+                // burns the 5×60s budget on a window that will never have data.
+                // Return immediately without consuming any retry slot.
+                //
+                // This arm is intentionally kept explicit (not merged into the
+                // catch-all below) to document the non-retry decision at the
+                // exact point it matters; the bodies are identical by design.
+                #[allow(clippy::match_same_arms)]
+                Err(e @ YahooError::NoDataForRange { .. }) => return Err(e),
                 Err(YahooError::RateLimited { retry_after_secs }) if attempt < max_retries => {
                     let delay = backoff.max(Duration::from_secs(retry_after_secs));
                     tracing::warn!(
@@ -619,6 +663,60 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         // v5-latency-slippage-sim R1 — default noop (anchor-safe).
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
     })
+}
+
+/// Shared helper — classify a zero-bar preload success as a no-data notice.
+///
+/// lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 step 2 / M-DEV.5 (Caution #2).
+///
+/// Called from BOTH the mock-path arm AND the production Yahoo arm of
+/// `spawn_lab_run`'s `preload_result` match. A single shared helper ensures
+/// both paths apply the `bars.is_empty()` → no-data routing identically.
+///
+/// # Decision
+///
+/// - `Ok((bars, sha))` where `bars.is_empty()` → the ticker name is not
+///   available at this call site; use a generic "no data returned" notice.
+///   The `preload_yahoo_bars` path will have already returned a `NoDataForRange`-
+///   tagged message before reaching here (real Yahoo path). For the mock path
+///   (test injection), the mock returns `Ok((vec![], sha))` directly, so we
+///   must handle it here.
+/// - `Ok((bars, sha))` where `!bars.is_empty()` → `Ok(Some((bars, sha)))`.
+/// - `Err(e)` → `Err(e)` pass-through.
+///
+/// Returns `Err` (either the original error OR a tagged no-data notice) when
+/// the result should short-circuit the run; `Ok(Some(...))` when bars are ready;
+/// `Ok(None)` never (reserved for future use).
+#[cfg(feature = "live")]
+fn classify_preload_result(
+    preload_result: Result<(Vec<trading_core::Bar>, SmolStr), SmolStr>,
+    cfg: &LabRunConfig,
+) -> Result<(Vec<trading_core::Bar>, SmolStr), SmolStr> {
+    match preload_result {
+        Ok((bars, _sha)) if bars.is_empty() => {
+            // Zero bars on a successful preload — either the mock returned empty
+            // or the real Yahoo path returned a NoDataForRange that was caught
+            // upstream and converted. If somehow an empty success slipped through,
+            // build a generic notice now to avoid feeding an empty bars_override
+            // to the engine (which would silently produce a zero-equity run).
+            tracing::info!(
+                target: "lab.yahoo",
+                symbol = %cfg.symbol,
+                range = %cfg.range_label,
+                "preload returned 0 bars — emitting no-data notice"
+            );
+            let window = cfg.range_label.as_str();
+            let body = crate::strings::LAB_YAHOO_NO_DATA_NOTICE
+                .replace("{ticker}", cfg.symbol.as_str())
+                .replace("{window}", window);
+            Err(SmolStr::new(format!(
+                "{}{}",
+                preload_notice::NO_DATA_TAG,
+                body
+            )))
+        }
+        other => other,
+    }
 }
 
 /// Build an `iced::Task` that spawns a Lab run and posts the result back to
@@ -809,7 +907,9 @@ pub fn spawn_lab_run(
                                 Err(SmolStr::new(format!("mock preload join error: {join_err}")))
                             }
                         };
-                        match preload_result {
+                        // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 / M-DEV.5:
+                        // apply classify_preload_result to BOTH arms (Caution #2).
+                        match classify_preload_result(preload_result, &cfg_for_preload) {
                             Ok((bars, _sha)) => {
                                 scenario_cfg.data_source =
                                     backtest::engine::ScenarioDataSource::YahooCache;
@@ -996,7 +1096,9 @@ pub fn spawn_lab_run(
                             // point (ensures Surface 1 Test 3 contract).
                             drop(ticker);
 
-                            match preload_result {
+                            // lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 / M-DEV.5:
+                            // apply classify_preload_result to BOTH arms (Caution #2).
+                            match classify_preload_result(preload_result, &cfg_for_preload) {
                                 Ok((bars, _sha)) => {
                                     scenario_cfg.data_source =
                                         backtest::engine::ScenarioDataSource::YahooCache;
@@ -1007,8 +1109,12 @@ pub fn spawn_lab_run(
                                 }
                                 Err(e) => {
                                     // Emit End { Failed } before returning the error (R1.3 / F3).
+                                    // Use classify().msg() for log cleanliness (Caution #4):
+                                    // strip the NO_DATA_TAG sentinel from the activity log.
                                     if let Some(handle) = yahoo_activity_handle {
-                                        handle.fail(e.as_str());
+                                        handle.fail(
+                                            preload_notice::classify(e.as_str()).msg().as_str(),
+                                        );
                                     }
                                     return Err(e);
                                 }
@@ -1075,6 +1181,141 @@ pub fn spawn_lab_run(
             },
             Message::LabRunCompleted,
         )
+    }
+}
+
+// ── preload_notice — sentinel-tagged no-data classifier (D-ER-1 / D-ER-3) ─────
+
+/// Sentinel-tagged no-data message builder and classifier.
+///
+/// lab-yahoo-empty-range-ux v0.1.0 — D-ER-1 step 2, H2.
+///
+/// The `LabRunResult = Result<RunSummary, SmolStr>` type is kept byte-identical
+/// (94 usages; widening to a typed enum would ripple across ~7 test files).
+/// Instead, a notice-vs-error bit rides a sentinel-tagged `SmolStr` decoded by
+/// `classify`. The sentinel (`NO_DATA_TAG`) is a non-renderable control character
+/// that cannot appear in any operator-facing copy.
+pub mod preload_notice {
+    use smol_str::SmolStr;
+
+    /// Non-renderable sentinel prefix (U+0001 START OF HEADING).
+    /// Presence of this prefix signals a no-data NOTICE, not a hard error.
+    /// Must be stripped before rendering to the operator.
+    pub const NO_DATA_TAG: &str = "\u{1}NODATA\u{1}";
+
+    /// Typed classification of a `LabRunResult` error string.
+    pub enum RunMessageKind {
+        /// A no-data NOTICE — expected, non-alarming outcome (e.g. future-dated
+        /// range). Rendered muted; the `SmolStr` is the tag-stripped operator copy.
+        Notice(SmolStr),
+        /// A hard error — network failure, 429, parse error, etc.
+        /// Rendered red ⚠. The `SmolStr` is the verbatim error message.
+        Error(SmolStr),
+    }
+
+    impl RunMessageKind {
+        /// Extract the inner message string regardless of variant.
+        #[must_use]
+        pub fn msg(&self) -> &SmolStr {
+            match self {
+                Self::Notice(s) | Self::Error(s) => s,
+            }
+        }
+    }
+
+    /// Classify a raw `LabRunResult` error string.
+    ///
+    /// Returns `Notice(stripped)` if `raw` starts with `NO_DATA_TAG` (tag
+    /// removed from the returned string); otherwise returns `Error(raw)`.
+    /// An empty string → `Error("")`.
+    #[must_use]
+    pub fn classify(raw: &str) -> RunMessageKind {
+        if let Some(stripped) = raw.strip_prefix(NO_DATA_TAG) {
+            RunMessageKind::Notice(SmolStr::new(stripped))
+        } else {
+            RunMessageKind::Error(SmolStr::new(raw))
+        }
+    }
+
+    /// Build a sentinel-tagged no-data notice for the operator.
+    ///
+    /// Formats `strings::LAB_YAHOO_NO_DATA_NOTICE` with the given
+    /// ticker + window pair, then prepends `NO_DATA_TAG` so `classify`
+    /// can route it to `last_run_notice` (muted) instead of
+    /// `last_run_error` (red ⚠).
+    #[must_use]
+    pub fn no_data_message(ticker: &str, start_label: &str, end_label: &str) -> SmolStr {
+        let window = format!("{start_label}..{end_label}");
+        let body = crate::strings::LAB_YAHOO_NO_DATA_NOTICE
+            .replace("{ticker}", ticker)
+            .replace("{window}", &window);
+        SmolStr::new(format!("{NO_DATA_TAG}{body}"))
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::unwrap_used, clippy::doc_markdown)]
+    mod classify_tests {
+        use super::*;
+
+        /// D-ER-4 classify unit — tagged string → Notice(stripped).
+        #[test]
+        fn tagged_string_classifies_as_notice_stripped() {
+            let raw = format!("{NO_DATA_TAG}No Yahoo data for BTC-USD in 2026-04-29..2026-05-29");
+            match classify(&raw) {
+                RunMessageKind::Notice(s) => {
+                    assert!(!s.starts_with(NO_DATA_TAG), "tag must be stripped");
+                    assert!(s.contains("BTC-USD"), "operator copy preserved");
+                }
+                RunMessageKind::Error(_) => panic!("expected Notice, got Error"),
+            }
+        }
+
+        /// D-ER-4 classify unit — untagged string → Error(verbatim).
+        #[test]
+        fn untagged_string_classifies_as_error_verbatim() {
+            let raw = "network error: connection refused";
+            match classify(raw) {
+                RunMessageKind::Error(s) => assert_eq!(s.as_str(), raw),
+                RunMessageKind::Notice(_) => panic!("expected Error, got Notice"),
+            }
+        }
+
+        /// D-ER-4 classify unit — empty string → Error.
+        #[test]
+        fn empty_string_classifies_as_error() {
+            match classify("") {
+                RunMessageKind::Error(s) => assert!(s.is_empty()),
+                RunMessageKind::Notice(_) => panic!("expected Error, got Notice"),
+            }
+        }
+
+        /// D-ER-4 no_data_message — produces tagged, readable string.
+        #[test]
+        fn no_data_message_is_tagged_and_readable() {
+            let msg = no_data_message("SOL-USD", "2026-04-29", "2026-05-29");
+            assert!(
+                msg.starts_with(NO_DATA_TAG),
+                "no_data_message must start with NO_DATA_TAG sentinel"
+            );
+            let stripped = msg.strip_prefix(NO_DATA_TAG).unwrap();
+            assert!(stripped.contains("SOL-USD"), "ticker must appear in body");
+            assert!(
+                stripped.contains("2026-04-29..2026-05-29"),
+                "window must appear in body"
+            );
+            assert!(
+                !stripped.contains("CacheMiss"),
+                "must not contain internal variant name"
+            );
+            assert!(
+                !stripped.contains("MissingData"),
+                "must not contain internal variant name"
+            );
+            assert!(
+                !stripped.contains("Check network"),
+                "must not contain misleading hint"
+            );
+        }
     }
 }
 

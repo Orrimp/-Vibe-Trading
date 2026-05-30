@@ -233,3 +233,67 @@ fn stop_requested_mid_run_leaves_inflight_true() {
         "lab_run_inflight must be false after LabRunCompleted(Err(cancelled))"
     );
 }
+
+// ── Test 4 — D-ER-4 T5 (R3): no-data notice also clears inflight ─────────────
+
+/// T5 — D-ER-4 R3 terminal-state gate (lab-yahoo-empty-range-ux v0.1.0 / M-DEV.15).
+///
+/// A no-data `LabRunCompleted(Err(tagged))` outcome MUST:
+/// 1. Clear `lab_run_inflight` → false (no spinner hang, R3).
+/// 2. Clear `run_progress` → None.
+/// 3. Set `last_run_notice` (muted) and NOT `last_run_error` (red ⚠).
+///
+/// This is the T5 gate from feature.md § D-ER-4: "after the no-data
+/// `LabRunCompleted(Err)`, assert `lab_run_inflight == false` and
+/// `run_progress.is_none()`".
+#[test]
+fn no_data_notice_completion_clears_inflight_and_progress() {
+    use ui::lab::runner::preload_notice;
+
+    let mut cockpit = Cockpit::new();
+
+    update(&mut cockpit, Message::LabRunRequested);
+    assert!(
+        cockpit.lab_run_inflight,
+        "inflight must be true after LabRunRequested"
+    );
+
+    // Simulate partial progress (spinner animating during preload).
+    update(&mut cockpit, Message::LabRunProgress(progress_event(0, 1)));
+    assert!(
+        cockpit.lab_state.run_progress.is_some(),
+        "progress must be Some during preload"
+    );
+
+    // Simulate the no-data outcome: tagged sentinel error.
+    let no_data_msg = preload_notice::no_data_message("SOL-USD", "2026-04-29", "2026-05-29");
+    update(&mut cockpit, Message::LabRunCompleted(Err(no_data_msg)));
+
+    // R3: terminal state — no spinner hang.
+    assert!(
+        !cockpit.lab_run_inflight,
+        "T5 FAIL: lab_run_inflight must be false after no-data LabRunCompleted(Err) — \
+         spinner must not hang (R3)"
+    );
+    assert!(
+        cockpit.lab_state.run_progress.is_none(),
+        "T5 FAIL: run_progress must be None after no-data LabRunCompleted(Err) — \
+         progress bar must clear (R3)"
+    );
+
+    // D-ER-3: notice routes to last_run_notice, NOT last_run_error.
+    assert!(
+        cockpit.lab_state.last_run_notice.is_some(),
+        "T5 FAIL: last_run_notice must be Some after no-data outcome — \
+         muted notice must be set (D-ER-3). \
+         Actual: {:?}",
+        cockpit.lab_state.last_run_notice
+    );
+    assert!(
+        cockpit.lab_state.last_run_error.is_none(),
+        "T5 FAIL: last_run_error must be None for no-data outcome — \
+         Run button must NOT show Failed (R3, D-ER-3). \
+         Actual: {:?}",
+        cockpit.lab_state.last_run_error
+    );
+}

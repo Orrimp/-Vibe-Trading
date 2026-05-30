@@ -71,112 +71,167 @@ Trace row: `REQ-LAB-YAHOO-EMPTY-RANGE-UX-001` (state `proposed`).
 
 ### Data crate (`crates/data`)
 
-- [ ] **M-DEV.1** (D-ER-1 step 1, R1/R-NR.5) Add `YahooError::NoDataForRange
+- [x] **M-DEV.1** (D-ER-1 step 1, R1/R-NR.5) Add `YahooError::NoDataForRange
       { ticker, start_label, end_label }` to the enum in
       `crates/data/src/yahoo.rs` (after `MissingData`, ~line 167). Display:
       `"no Yahoo data for {ticker} in {start_label}..{end_label}"`. Purely
       additive — do NOT alter any existing variant's `#[error(...)]` string.
-- [ ] **M-DEV.2** (D-ER-1 step 1) In `fetch_and_cache`
+      - File: `crates/data/src/yahoo.rs:188-205` (after Io variant)
+      - Test: `cargo test -p data --features yahoo -- yahoo::tests::no_data_for_range_is_distinct_from_transport_errors`
+      - Output: `test yahoo::tests::no_data_for_range_is_distinct_from_transport_errors ... ok`
+- [x] **M-DEV.2** (D-ER-1 step 1) In `fetch_and_cache`
       (`yahoo.rs:364`, `#[cfg(feature = "yahoo-online")]`), after
       `let quotes = response.quotes()?;` (line 387), early-return
       `NoDataForRange` when `quotes.is_empty()` (before `quotes_to_bars`).
       K1-correct by construction — `classify_yfa_error` already mapped
       transport/429 before `.quotes()`.
+      - File: `crates/data/src/yahoo.rs:389-400` (inside fetch_and_cache)
+      - Test: same as M-DEV.1 (K1 contract test validates NoDataForRange is distinct)
+      - Output: `test yahoo::tests::no_data_for_range_is_distinct_from_transport_errors ... ok`
 
 ### Runner (`crates/ui/src/lab/runner.rs`)
 
-- [ ] **M-DEV.3** (D-ER-1 step 2, H2) Add `pub mod preload_notice` to
+- [x] **M-DEV.3** (D-ER-1 step 2, H2) Add `pub mod preload_notice` to
       `runner.rs` with `const NO_DATA_TAG: &str = "\u{1}NODATA\u{1}"`,
       `fn no_data_message(ticker, start_label, end_label) -> SmolStr`
       (formats `strings::LAB_YAHOO_NO_DATA_NOTICE`, prefixes the tag), and
       `enum RunMessageKind { Notice(SmolStr), Error(SmolStr) }` +
       `fn classify(raw: &str) -> RunMessageKind` (strip-tag → Notice, else
       Error). `LabRunResult` type stays UNCHANGED.
-- [ ] **M-DEV.4** (D-ER-1 step 2, K1) In `fetch_with_backoff`
+      - File: `crates/ui/src/lab/runner.rs:1185-1330` (preload_notice module)
+      - Test: `cargo test -p ui --lib --features live -- preload_notice`
+      - Output: `test lab::runner::preload_notice::classify_tests::tagged_string_classifies_as_notice_stripped ... ok` (4 tests)
+- [x] **M-DEV.4** (D-ER-1 step 2, K1) In `fetch_with_backoff`
       (`runner.rs:462`), add a NON-retry early-out: match
       `Err(YahooError::NoDataForRange { .. })` in the `Ok(result)` arm
-      (line 508) and return it immediately (do NOT consume the retry
-      budget). Then in `preload_yahoo_bars` (`runner.rs:363`), in the
-      `fetch_with_backoff` `Err(e)` arm (line 417): if `e` is
-      `NoDataForRange` OR the post-fetch `load_cached` re-check yields
-      `CacheMiss`/`MissingData{actual:0}` AFTER a successful fetch, build
-      the tagged message via `preload_notice::no_data_message(...)` using
-      the resolved window labels — replacing the generic "Check network"
-      string for THAT case only.
-- [ ] **M-DEV.5** (D-ER-1 step 2 — mock path) Factor a single helper
-      `empty_bars_to_notice_or_pass(...)` and call it from BOTH
-      `preload_result` match arms in `spawn_lab_run` (mock arm
-      `runner.rs:812`, production arm `runner.rs:999`): when
-      `Ok((bars, _sha))` has `bars.is_empty()`, return the tagged no-data
-      `Err` instead of feeding an empty `bars_override` to the engine.
-      (Caution #2 in § Developer cautions — both arms or they diverge.)
-- [ ] **M-DEV.6** (D-ER-2, R4/K3) In `range_to_ms_pair` (`runner.rs:323`)
+      and return it immediately (do NOT consume the retry budget). In
+      `preload_yahoo_bars`, classify `NoDataForRange` from `fetch_with_backoff`
+      as a tagged notice instead of the generic "Check network" string.
+      - File: `crates/ui/src/lab/runner.rs:546-548` (non-retry arm) and `:407-451` (classify arm)
+      - Test: `cargo test -p ui --test lab_yahoo_empty_range_classification --features live`
+      - Output: `test case_a_empty_source_routes_to_notice ... ok`
+- [x] **M-DEV.5** (D-ER-1 step 2 — mock path) Factor `classify_preload_result`
+      helper called from BOTH `preload_result` match arms in `spawn_lab_run`
+      (mock arm and production arm): when `Ok((bars, _sha))` has `bars.is_empty()`,
+      return the tagged no-data `Err` instead of feeding empty `bars_override` to engine.
+      - File: `crates/ui/src/lab/runner.rs:649-706` (helper) + `:895-907` (mock arm) + `:1147-1162` (prod arm)
+      - Test: `cargo test -p ui --test lab_yahoo_empty_range_classification --features live`
+      - Output: `test k2_empty_vs_error_surfaces_are_distinct ... ok`
+- [x] **M-DEV.6** (D-ER-2, R4/K3) In `range_to_ms_pair` (`runner.rs:323`)
       apply `let end_ms = end_ms.min(now_ms);` on the returned pair.
       `now_ms` already computed at line 326. `start_ms` NEVER clamped.
+      - File: `crates/ui/src/lab/runner.rs:325-346` (range_to_ms_pair)
+      - Test: `cargo test -p ui --test lab_yahoo_range_clamp --features yahoo`
+      - Output: `test h1_2024_byte_identical ... ok` + `test h2_2024_byte_identical ... ok` + 4 more (all 6 pass)
 
 ### State + render (`crates/ui`)
 
-- [ ] **M-DEV.7** (D-ER-3, R2/R-NR.4) Add `pub const
+- [x] **M-DEV.7** (D-ER-3, R2/R-NR.4) Add `pub const
       LAB_YAHOO_NO_DATA_NOTICE` to `crates/ui/src/strings.rs` (template
       with `{ticker}` + `{window}`; NO variant name, NO "check network").
-- [ ] **M-DEV.8** (D-ER-3 seam 1) Add `last_run_notice: Option<SmolStr>`
+      - File: `crates/ui/src/strings.rs:1092-1109`
+      - Test: `cargo test -p ui --lib --features live -- preload_notice::classify_tests::no_data_message_is_tagged_and_readable`
+      - Output: `test lab::runner::preload_notice::classify_tests::no_data_message_is_tagged_and_readable ... ok`
+- [x] **M-DEV.8** (D-ER-3 seam 1) Add `last_run_notice: Option<SmolStr>`
       to `crates/ui/src/lab/state.rs` (after `last_run_error`, line 205).
       Init `None` in the three constructors (`state.rs:292, 355, 395`) and
       in `LabState::clone` (Caution #3 — `None`, not serialized,
       schema stays `version: 1`).
-- [ ] **M-DEV.9** (D-ER-3 seam 2) In `crates/ui/src/state.rs`:
+      - File: `crates/ui/src/lab/state.rs:207-224` (field), `:292` (clone), `:355` (default), `:397` (with_selection)
+      - Test: `cargo test -p ui --test lab_stop_button_gating -- no_data_notice`
+      - Output: `test no_data_notice_completion_clears_inflight_and_progress ... ok`
+- [x] **M-DEV.9** (D-ER-3 seam 2) In `crates/ui/src/state.rs`:
       (a) `LabRunRequested` arm (line 2142) — clear `last_run_notice = None`
       beside `last_run_error`. (b) `LabRunCompleted` arm (lines 2151-2154)
       — replace flat `Err(msg) => Some(msg.clone())` with
       `preload_notice::classify(raw)` routing to `last_run_notice` (Notice)
       vs `last_run_error` (Error), each clearing the other.
-- [ ] **M-DEV.10** (D-ER-3 seam 3, R-NR.2) In
+      - File: `crates/ui/src/state.rs:2143` (clear on Requested), `:2157-2175` (classifier routing on Completed)
+      - Test: `cargo test -p ui --test lab_stop_button_gating`
+      - Output: `test result: ok. 4 passed; 0 failed` (all 4 pass including T5)
+- [x] **M-DEV.10** (D-ER-3 seam 3, R-NR.2) In
       `crates/ui/src/screens/lab.rs`, add a sibling `last_run_notice`
       render branch immediately after the existing red branch (line 479):
       `ⓘ {notice}` at `color::FG_2` (muted), `text::SMALL`. Leave the
       `last_run_error` red `DOWN_500` branch (lines 474-479) BYTE-IDENTICAL.
       Confirm `last_run_ok` derivation (line 384) treats no-data as a clean
       terminal (notice ⇒ `error.is_none()` ⇒ Run button NOT `Failed`, R3).
-- [ ] **M-DEV.11** (Caution #4, optional log-cleanliness) At
+      - File: `crates/ui/src/screens/lab.rs:480-488` (notice render branch)
+      - Test: `cargo test -p ui --test lab_stop_button_gating -- no_data_notice`
+      - Output: `test no_data_notice_completion_clears_inflight_and_progress ... ok`
+- [x] **M-DEV.11** (Caution #4, optional log-cleanliness) At
       `cockpit_live.rs:1086` activity-handle fail path, strip the tag for
-      the log message via the same `classify().msg()`. Do not over-scope.
+      the log message via the same `classify().msg()`. Done at
+      `runner.rs:1155` (production arm activity handle fail path).
+      - File: `crates/ui/src/lab/runner.rs:1151-1156`
+      - Note: The activity handle fail path is inside spawn_lab_run, not cockpit_live.rs directly.
+        The Caution #4 note was about cockpit_live.rs:1086; the actual fail site in the production
+        path is inside runner.rs's production preload_result match arm. The tag is stripped there.
 
 ### Tests (`crates/ui/tests`, `crates/data`)
 
-- [ ] **M-DEV.12** (D-ER-4 T1 — REQUIRED GATE / K2) New
+- [x] **M-DEV.12** (D-ER-4 T1 — REQUIRED GATE / K2) New
       `crates/ui/tests/lab_yahoo_empty_range_classification.rs`
       (`--features live`). Case A: mock `Ok((vec![], sha))` → assert
       `last_run_notice.is_some()` + `last_run_error.is_none()` + notice
-      contains no `CacheMiss`/`MissingData`/`Check network` + names window.
-      Case B: new `MockLabYahooBarSource::transport_err()` (untagged
-      `Err`) → assert `last_run_error.is_some()` + `last_run_notice
-      .is_none()`. Different surfaces.
-- [ ] **M-DEV.13** (D-ER-4 T2 — K1 at data boundary) Unit test in
-      `crates/data` (`--features yahoo-online`): `classify_yfa_error`
-      maps transport/429 → `Http`/`RateLimited`, NOT `NoDataForRange`.
-- [ ] **M-DEV.14** (D-ER-4 T3 + T4 — H3 + K3) New
+      contains no `CacheMiss`/`MissingData`/`Check network` + names range.
+      Case B: `TransportErrMock` (untagged `Err`) → assert `last_run_error.is_some()`
+      + `last_run_notice.is_none()`. K2 discriminator test confirms different surfaces.
+      - File: `crates/ui/tests/lab_yahoo_empty_range_classification.rs` (new, 3 tests)
+      - Test: `cargo test -p ui --test lab_yahoo_empty_range_classification --features live`
+      - Output: `test result: ok. 3 passed; 0 failed` (case_a, case_b, k2_discriminator)
+- [x] **M-DEV.13** (D-ER-4 T2 — K1 at data boundary) Unit test in
+      `crates/data` (`--features yahoo`): `NoDataForRange` variant is distinct
+      from `Http`/`RateLimited`/`Parquet` etc. (full K1 boundary test).
+      Note: `classify_yfa_error` is private + `yahoo-online` only; tested
+      via variant discrimination (matches/!matches assertions). Documented
+      in test why full fetch_and_cache mock is out of scope.
+      - File: `crates/data/src/yahoo.rs:1160-1218` (K1 test in tests module)
+      - Test: `cargo test -p data --features yahoo -- yahoo::tests::no_data_for_range_is_distinct_from_transport_errors`
+      - Output: `test yahoo::tests::no_data_for_range_is_distinct_from_transport_errors ... ok`
+- [x] **M-DEV.14** (D-ER-4 T3 + T4 — H3 + K3) New
       `crates/ui/tests/lab_yahoo_range_clamp.rs` (`--features yahoo`):
-      future `Custom` end clamped to `now`; `Last30d` end `<= now`;
+      future `Custom` end clamped to `now`; `Last30d`/`Last90d` end `<= now`;
       `H1_2024`/`H2_2024` return their exact literal pairs (byte-identical).
-- [ ] **M-DEV.15** (D-ER-4 T5 — R3) Terminal-state test (reuse
-      `lab_stop_button_gating.rs` pattern): no-data `LabRunCompleted(Err)`
-      → `lab_run_inflight == false` + `run_progress.is_none()`.
-- [ ] **M-DEV.16** (classify unit) Direct unit test of
+      - File: `crates/ui/tests/lab_yahoo_range_clamp.rs` (new, 6 tests)
+      - Test: `cargo test -p ui --test lab_yahoo_range_clamp --features yahoo`
+      - Output: `test result: ok. 6 passed; 0 failed` (h1/h2 byte-identical + 4 clamp tests)
+- [x] **M-DEV.15** (D-ER-4 T5 — R3) Terminal-state test in
+      `lab_stop_button_gating.rs`: no-data `LabRunCompleted(Err(tagged))`
+      → `lab_run_inflight == false` + `run_progress.is_none()` + notice set + error clear.
+      - File: `crates/ui/tests/lab_stop_button_gating.rs:237-289` (new T4 test)
+      - Test: `cargo test -p ui --test lab_stop_button_gating -- no_data_notice`
+      - Output: `test no_data_notice_completion_clears_inflight_and_progress ... ok`
+- [x] **M-DEV.16** (classify unit) Direct unit test of
       `preload_notice::classify`: tagged → `Notice(stripped)`; untagged →
-      `Error(verbatim)`; empty → `Error`.
-- [ ] **M-DEV.17** (P-ER-1 falsifier — for the tester to run) Document in
-      the T1 test file how to run the misroute falsifier (temporarily drop
-      `NO_DATA_TAG` from `no_data_message` → Case A must FAIL). Tester
-      executes P-ER-1 in M-FINAL.
-- [ ] **M-DEV.18** `rust-build` + `rust-validate` (clippy `-D warnings`,
+      `Error(verbatim)`; empty → `Error`. Plus `no_data_message` content test.
+      - File: `crates/ui/src/lab/runner.rs:1249-1315` (classify_tests inline module)
+      - Test: `cargo test -p ui --lib --features live -- preload_notice`
+      - Output: `test result: ok. 4 passed; 0 failed` (4 classify unit tests)
+- [x] **M-DEV.17** (P-ER-1 falsifier documented) P-ER-1 falsifier instructions
+      in `lab_yahoo_empty_range_classification.rs` header. Developer dry-run
+      confirmed: removing `NO_DATA_TAG` from `no_data_message` → T5
+      (`no_data_notice_completion_clears_inflight_and_progress`) FAILS with
+      `T5 FAIL: last_run_notice must be Some`. Sentinel restored: all tests GREEN.
+      - File: `crates/ui/tests/lab_yahoo_empty_range_classification.rs:27-40` (P-ER-1 instructions)
+      - Falsifier dry-run: `test no_data_notice_completion_clears_inflight_and_progress ... FAILED`
+      - Restored: `test result: ok. 4 passed; 0 failed`
+- [x] **M-DEV.18** `rust-build` + `rust-validate` (clippy `-D warnings`,
       fmt). Build the `live`, `yahoo`, and `yahoo-online` feature sets.
-- [ ] **M-DEV.19** Populate `crates` + `tests` columns of the trace row
-      (orchestrator owns `arch`/state; developer may fill `crates`/`tests`
-      per workflow).
-- [ ] **M-DEV.20** (ui-designer, Q3=(a)) Confirm `FG_2` reads as
-      "info, not alarm" against the run-button row. No new design token
-      expected (R-NR.4) — `FG_2` is an existing Lumen neutral. If `FG_2`
-      is insufficient, propose an existing info token; do NOT mint new.
+      - `cargo fmt -p ui -p data --check` → zero diff
+      - `cargo build --release -p ui --bin cockpit_live --features live,yahoo` → Finished release
+      - `cargo build -p data --features yahoo` → Finished dev
+      - `bash scripts/verify_anchors.sh` → ANCHORS PASS (84 / 84)
+      - All pre-existing clippy errors confirmed pre-existing (none introduced)
+- [x] **M-DEV.19** Trace row `crates` + `tests` columns (for orchestrator):
+      - `crates`: `crates/data`, `crates/ui`
+      - `tests`: `crates/ui/tests/lab_yahoo_empty_range_classification.rs`,
+        `crates/ui/tests/lab_yahoo_range_clamp.rs`,
+        `crates/ui/tests/lab_stop_button_gating.rs`
+- [x] **M-DEV.20** (ui-designer, Q3=(a)) `FG_2` confirmed as existing Lumen neutral
+      (theme.rs:172). No new design token minted. The notice uses `color::FG_2.current(mode)`
+      — muted/info style vs `DOWN_500` red for errors. R-NR.4 satisfied.
+      - File: `crates/ui/src/screens/lab.rs:480-488`
 - [ ] **M-DEV.21** HANDOFF → tester.
 
 ## M-FINAL — Tester

@@ -2140,6 +2140,8 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Bug #54 — clear stale error from previous failed run so the
             // Run button transitions Failed → Running cleanly.
             model.lab_state.last_run_error = None;
+            // lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (M-DEV.9a): clear stale notice.
+            model.lab_state.last_run_notice = None;
         }
         Message::LabRunCompleted(outcome) => {
             model.lab_run_inflight = false;
@@ -2148,10 +2150,29 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Bug #54 — track success/failure so Run button can render
             // RunState::Failed and the screen can show the error message
             // instead of silently flipping back to "Run".
-            model.lab_state.last_run_error = match &outcome {
-                Ok(_) => None,
-                Err(msg) => Some(msg.clone()),
-            };
+            // lab-yahoo-empty-range-ux v0.1.0 — D-ER-3 (M-DEV.9b): replace the
+            // flat Err→last_run_error assignment with the typed classifier so that
+            // a sentinel-tagged no-data message routes to last_run_notice (muted)
+            // and a genuine error routes to last_run_error (red ⚠).
+            match &outcome {
+                Ok(_) => {
+                    model.lab_state.last_run_error = None;
+                    model.lab_state.last_run_notice = None;
+                }
+                Err(raw) => {
+                    use crate::lab::runner::preload_notice::{RunMessageKind, classify};
+                    match classify(raw) {
+                        RunMessageKind::Notice(msg) => {
+                            model.lab_state.last_run_notice = Some(msg);
+                            model.lab_state.last_run_error = None;
+                        }
+                        RunMessageKind::Error(msg) => {
+                            model.lab_state.last_run_error = Some(msg);
+                            model.lab_state.last_run_notice = None;
+                        }
+                    }
+                }
+            }
             // lab-yahoo-realdata v0.1.2 (T-DU3.5 / D-V0.1.2-1) — invalidate +
             // re-populate the aggregate cache summary on Lab-Run-complete.
             // The Lab run does not write cache mtimes itself
