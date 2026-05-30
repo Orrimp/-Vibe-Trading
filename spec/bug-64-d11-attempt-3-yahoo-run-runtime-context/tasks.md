@@ -1,7 +1,7 @@
 ---
 slug: bug-64-d11-attempt-3-yahoo-run-runtime-context
-status: in-progress
-owner: tester
+status: shipped
+owner: shipped
 updated: 2026-05-29
 ---
 

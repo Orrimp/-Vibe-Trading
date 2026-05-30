@@ -37,3 +37,7 @@ crates/forecast/checkpoints/*.metadata.json
 *.swp
 *.swo
 *~
+
+# Build / test debris (stray rlib + ad-hoc test scratch files)
+*.rlib
+/test_field_method2
