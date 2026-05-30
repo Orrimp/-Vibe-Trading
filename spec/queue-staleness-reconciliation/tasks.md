@@ -1,8 +1,8 @@
 ---
 slug: queue-staleness-reconciliation
-status: draft
-owner: analyst
-updated: 2026-05-29
+status: arch-done
+owner: developer
+updated: 2026-05-30
 ---
 
 # Tasks — queue-staleness-reconciliation v0.1.0
@@ -19,31 +19,33 @@ updated: 2026-05-29
 - [x] T-QSR-M0.3 — Backlog Active row appended under § Process / tooling — _accept: PROMOTED Queue → Active 2026-05-29 annotation_
 - [x] T-QSR-M0.4 — Trace row `REQ-QUEUE-STALENESS-RECONCILIATION-001` opened `proposed` — _accept: appended at EOF spec/trace.toml_
 
-## M-T1 — Architect (PENDING)
+## M-T1 — Architect (DONE 2026-05-30)
 
-- [ ] T-QSR-T1.1 — Ratify Q-QSR-1 (status-mismatch scope) + Q-QSR-2 (markdown emit) per bundle Q-HYG-EMIT — _accept: § Design § Operator-decide ratifications records both on Recommended DURABLE path; fast-skip path expected_
-- [ ] T-QSR-T1.2 — Pick parse shape — _accept: regex-based section parse vs lightweight markdown lib; ratify in D-QSR-1; analyst recommends `re.MULTILINE` with section anchors for zero-dep stdlib-only posture_
-- [ ] T-QSR-T1.3 — Lock script path + invocation contract — _accept: D-QSR-2 documents `scripts/queue_staleness_check.py` with `python3 scripts/queue_staleness_check.py` invocation; exit codes 0/1/≥2 per R1.5_
-- [ ] T-QSR-T1.4 — Author AGENT.md § Queue pre-flight reconciliation sweep amendment — _accept: 1-line invocation example added under existing § contract (codified 2026-05-29); brief OWNS this amendment per bundle K4 ownership-table; no AGENT.md sibling-section drift_
-- [ ] T-QSR-T1.5 — Pre-draw self-test cases — _accept: D-QSR-3 lists ≥ 3 self-test cases (clean / drift / exclude-rule) including the verbatim 2026-05-21 v25-tcn-overlay historical drift case per K4 mitigation_
-- [ ] T-QSR-T1.6 — Falsification probe P-QSR-1 spec'd — _accept: § Design § Falsification probe P-QSR-1 includes (a) inject a synthetic drift into mock backlog, assert script exits 1 with the diff message; (b) revert + assert exit 0_
-- [ ] T-QSR-T1.7 — Frontmatter flipped — _accept: feature.md + tasks.md status: draft → arch-done, owner: analyst → developer_
+- [x] T-QSR-T1.1 — Ratify Q-QSR-1 (status-mismatch scope) + Q-QSR-2 (markdown emit) per bundle Q-HYG-EMIT — _accept: § Design § Operator-decide ratifications records BOTH on Recommended DURABLE path (fast-skip; Q-QSR-1=(a) status-mismatch only, Q-QSR-2=(a) markdown table)_
+- [x] T-QSR-T1.2 — Pick parse shape — _accept: D-QSR-2 ratifies `re.MULTILINE` H2-heading section anchors + **marker-only** slug extraction (`(slug/feature.md)` link OR `` (`slug`) `` backtick-paren); bare-word body scan REJECTED to avoid K1 false-positive; no markdown lib (dep-free)_
+- [x] T-QSR-T1.3 — Lock script path + invocation contract — _accept: D-QSR-1 documents `scripts/queue_staleness_check.py` + `python3 scripts/queue_staleness_check.py`; exit 0/1/2 per R1.5; D1.4 locks stdout (drift) / stderr (error) split_
+- [x] T-QSR-T1.4 — Author AGENT.md § Queue pre-flight reconciliation sweep amendment — _accept: D-QSR-5 specifies the exact additive block + insertion point (after L466-468 paragraph, before § The vibe-coding loop); no edits to existing 4 steps; K4 boundary held_
+- [x] T-QSR-T1.5 — Pre-draw self-test cases — _accept: D-QSR-3 § D3.5 lists 6 cases (SC1 clean / SC2 drift / SC3 exclude / SC4 verbatim v25-tcn-overlay K4 regression / SC5 missing folder / SC6 no-status edge)_
+- [x] T-QSR-T1.6 — Falsification probe P-QSR-1 spec'd — _accept: § Design § Falsification probe P-QSR-1 uses `--backlog /tmp` tmp-copy injection (zero real-tree mutation): inject `(`v3-regime-classifier`)` drift → exit 1 + table names slug; delete tmp + re-run → exit 0_
+- [x] T-QSR-T1.7 — Frontmatter flipped — _accept: feature.md + tasks.md status: draft → arch-done, owner: analyst → developer_
 
 ## M-DEV — Developer (single wave; ~1 day; architect-ratified)
 
-**Architect M-T1 will fill the per-D-clause acceptance criteria;
-developer follows.** Pre-positioned task slots:
+**Architect M-T1 acceptance criteria are now per-D-clause concrete.**
+Suggested implementation order: D1 → D2 → D3 → D4 (build the
+reconciliation core + emit) → D5 (self-test) → D6 (probe) → D8 (AGENT.md)
+→ D7/D9/D10 (gates + trace). All in `scripts/` — READ-ONLY on `crates/`.
 
-- [ ] T-QSR-D1 — Author `scripts/queue_staleness_check.py` per § Design D-QSR-1 (section parse) + D-QSR-2 (invocation contract) — _accept: script runs `python3 scripts/queue_staleness_check.py` from repo root; exits 0 on clean; ≤ 200 LoC per H2_
-- [ ] T-QSR-D2 — Implement frontmatter status read per R1.3 — _accept: each Queue slug's `spec/<slug>/feature.md` frontmatter `status:` field read via PyYAML-stdlib (`yaml.safe_load`) OR plain regex on `^status:` line per architect M-T1 pick; falls back gracefully on missing files_
-- [ ] T-QSR-D3 — Implement drift rule per R1.4 — _accept: exclude-rule for already-annotated post-ship Queue text confirmed; only flag `shipped | shipped (retired) | deprecated` frontmatter against active Queue stubs_
-- [ ] T-QSR-D4 — Implement markdown-table emit per R2.1 + bundle Q-HYG-EMIT — _accept: stderr emit on drift; markdown table with slug + queue excerpt + folder status + suggested fix columns_
-- [ ] T-QSR-D5 — Author self-test per R4.1 — _accept: `scripts/tests/test_queue_staleness_check.py` OR inline `--self-test` flag per architect M-T1; ≥ 3 cases pass; sub-1-s wall-clock_
-- [ ] T-QSR-D6 — Run falsification probe P-QSR-1 — _accept: synthetic drift inject → exit 1 + diff message confirmed; revert → exit 0_
-- [ ] T-QSR-D7 — Verify R-NR contract — _accept: `git diff spec/<slug>/feature.md` shows zero edits to any feature.md (READ-ONLY); `git diff spec/backlog.md` zero edits from script run; anchors all-PASS_
-- [ ] T-QSR-D8 — Amend AGENT.md § Queue pre-flight reconciliation sweep with invocation example per T-QSR-T1.4 — _accept: 1-line addition under existing § contract; verified by manual diff that bundle-sibling K4-ownership amendments do not conflict_
-- [ ] T-QSR-D9 — Update `spec/trace.toml` `REQ-QUEUE-STALENESS-RECONCILIATION-001` row — _accept: `crates = []` (no Rust crates touched); `tests` lists self-test path; `state = "dev-done"`_
-- [ ] T-QSR-D10 — Dev-side gates — _accept: cargo fmt clean (no Rust); spec-lint zero new violations from this brief; manual smoke `python3 scripts/queue_staleness_check.py` exits 0 on current main_
+- [ ] T-QSR-D1 — Author `scripts/queue_staleness_check.py` per § Design **D-QSR-1** + **D-QSR-2** — _accept: PEP-723-style header + `from __future__ import annotations` + `REPO_ROOT = Path(__file__).resolve().parent.parent` (sibling-script preamble); `re.MULTILINE` H2 section walk extracting `## Active` + `## Queue` ranges (exit 2 if either H2 missing per D2.1); **marker-only** slug extraction per D2.2 (regex `\(([a-z0-9][a-z0-9.\-]*)/feature\.md\)` AND `` \(`([a-z0-9][a-z0-9.\-]+)`\) ``); HTML comments stripped per D2.3; runs `python3 scripts/queue_staleness_check.py` from any cwd; exits 0 on clean main; ≤ 200 LoC per H2; flags `--self-test` / `--backlog PATH` / `--spec-dir PATH` per D1.2_
+- [ ] T-QSR-D2 — Frontmatter status read per **D3.1** (R1.3) — _accept: lift `parse_frontmatter(text) -> dict | None` VERBATIM from `scripts/spec_lint.py` (lines 118-140; the `\A---\r?\n(.*?)\r?\n---\r?\n` DOTALL matcher + `key: value` split); read `status`; normalize lowercase + strip + drop inline `# comment` per R6.7; **NO PyYAML** (dep-free); graceful skip on missing file (R6.1) / missing status key (R6.2)_
+- [ ] T-QSR-D3 — Drift rule + EXCLUDE rule per **D3.2 / D3.3 / D3.4** (R1.4) — _accept: `SHIPPED_STATUSES = {"shipped", "shipped (retired)", "deprecated", "retired", "shipped-partial"}` (widened from brief's 3 per frontmatter survey); DRIFT iff marker-extracted slug + folder status ∈ SHIPPED_STATUSES + stub text has NO `EXCLUDE_MARKERS` substring (`see recent` / `shipped 2026` / `retired 2026` / `retired-by-context` / `moved to recent` / `# noqa: queue-staleness`, case-insensitive); Active→draft direction NOT flagged (D3.4)_
+- [ ] T-QSR-D4 — Markdown-table emit per **D-QSR-4** (R2.1 + bundle Q-HYG-EMIT) — _accept: drift → **stdout** (NOT stderr; D1.4); header `queue-staleness-check: <N> drift(s) detected`; 5-col table `slug | section | queue says | folder status | suggested fix`; ≤ 80-char pipe-escaped stub excerpt; templated suggested-fix per D4.2; rows sorted `(section, slug)` for byte-stability (D4.3); clean run → ZERO output (R2.3); errors → `queue-staleness-check: ERROR: <msg>` on stderr (exit 2)_
+- [ ] T-QSR-D5 — Self-test per **D3.5** (R4.1) — _accept: inline `--self-test` path is the canonical gate (R4.2); 6 cases SC1-SC6 (clean / drift / exclude / verbatim v25-tcn-overlay K4 regression / missing-folder / no-status); in-process (no subprocess), sub-1-s; `scripts/tests/` mirror OPTIONAL (no such dir today — creating it is dev discretion)_
+- [ ] T-QSR-D6 — Run falsification probe **P-QSR-1** — _accept: per § Design § P-QSR-1 — write a tmp backlog copy at `/tmp/backlog-drift.md` adding a `(`v3-regime-classifier`)` Queue entry with no exclude marker; `python3 scripts/queue_staleness_check.py --backlog /tmp/backlog-drift.md` exits 1 + table names `v3-regime-classifier` (status `shipped`); delete tmp; baseline re-run exits 0 empty-stdout; real `spec/backlog.md` NEVER mutated_
+- [ ] T-QSR-D7 — Verify R-NR contract — _accept: `git status` shows ONLY `scripts/queue_staleness_check.py` (new) + `AGENT.md` (D8 amendment) + spec frontmatter/trace as expected — NO edit to any `spec/<slug>/feature.md` from a SCRIPT RUN (R-NR.1), NO edit to `spec/backlog.md` from a script run (R-NR.2); `bash scripts/verify_anchors.sh` all-PASS byte-identical (R-NR.5)_
+- [ ] T-QSR-D8 — Amend AGENT.md § Queue pre-flight reconciliation sweep per **D-QSR-5** — _accept: add the verbatim "Automated pre-flight (2026-05-30)" block from D-QSR-5 AFTER the L466-468 closing paragraph + BEFORE `## The vibe-coding loop`; ZERO edits to the existing 4 numbered steps (K4 no-sibling-drift); verify sibling `adr-registry-atomic-lint` / `operator-ledger-schema-lint` amendments target DIFFERENT sections_
+- [ ] T-QSR-D9 — Update `spec/trace.toml` `REQ-QUEUE-STALENESS-RECONCILIATION-001` row — _accept: `crates = []`; `tests` lists `scripts/queue_staleness_check.py --self-test` (+ `scripts/tests/test_queue_staleness_check.py` if created); `state = "dev-done"`_
+- [ ] T-QSR-D10 — Dev-side gates — _accept: `python3 scripts/queue_staleness_check.py` exits 0 on current main (smoke); `python3 scripts/queue_staleness_check.py --self-test` all-PASS; `python3 scripts/spec_lint.py` zero NEW violations from this brief; no Rust touched (cargo fmt N/A)_
 
 ## M-FINAL — Tester
 

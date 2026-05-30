@@ -430,6 +430,39 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+<!-- updated 2026-05-30 (analyst, lab-yahoo-empty-range-ux M0 close) —
+     **PROMOTED Idea → Active 2026-05-30**. Small (~1-2 dev-days),
+     operator-motivated UX-polish. Discharges the Bug #64 D.1.1
+     attempt-3 presenter-deck FYI #2 carry-forward
+     (`spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/presentations/bug-64-attempt-3-2026-05-29.md`
+     § Notes/feedback FYI #2): under the 2026 future-dated test clock,
+     `Last 30d`/`Last 90d` Yahoo presets compute future-dated windows
+     (e.g. 2026-04-29..2026-05-29) for which the real Yahoo API has NO
+     data; the cockpit today renders a confusing red ⚠ error referencing
+     an internal CacheMiss/MissingData variant + a misleading "Check
+     network connectivity" hint, so the operator cannot tell "broken"
+     from "no data exists". Scope: (R1) classify empty-vs-error at the
+     `preload_yahoo_bars` boundary; (R2) surface a distinct, plain-language
+     no-data message naming the ticker + resolved window; (R3) run
+     terminates cleanly (no spinner hang); (R4) date-preset guard
+     (clamp/warn/none per Q2); R-NR synthetic byte-identical + zero
+     anchor delta. 4R / R-NR / K1-K4 / H1-H3 / Q1-Q3 + 4-cell verdict
+     tree, all Qs biased DURABLE per AGENT.md 2026-05-28. Q1 LOAD-BEARING
+     (classification): (a) [Recommended — DURABLE] explicit fetch-outcome
+     classification (~1.5d, correct under K1 Yahoo-outage, extends to
+     v0.2.0 equities sparse-ranges) vs (b) [cheap fallback] bar-count
+     heuristic (~0.5d but fragile + spawns v0.2.0 cleanup). Q2 preset:
+     (a) [Recommended — DURABLE] clamp end_ms to now when future-dated
+     (clamp ONLY when end>now, past ranges byte-identical). Q3 surface:
+     (a) [Recommended — DURABLE] distinct NOTICE style (not red error)
+     so the operator visually distinguishes no-data-expected from
+     broken-act-now. M-T1 likely ADR-0040 Changelog amendment only (no
+     new ADR; no ADR-0050 rt.spawn touch). New trace row
+     `REQ-LAB-YAHOO-EMPTY-RANGE-UX-001` opened proposed. PARALLEL-SAFE
+     with 3 Pick C architects + lab-recipe Wave C dev (disjoint scopes:
+     Pick C is scripts/ Python; this is crates/data + crates/ui
+     Yahoo/Lab paths). HANDOFF → architect (M-T1 design pass). -->
+
 <!-- updated 2026-05-29 (analyst, lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit
      M0 close) — **PROMOTED Idea → Active 2026-05-29**. Closes the v0.1.3
      deck's explicit owned-debt commitment (presented at v0.1.3

@@ -1,10 +1,10 @@
 ---
 slug: adr-registry-atomic-lint
 version: 0.1.0
-status: draft
-owner: analyst
+status: arch-done
+owner: developer
 priority: P2
-updated: 2026-05-29
+updated: 2026-05-30
 ---
 
 # ADR-registry atomic-lint — v0.1.0
@@ -282,7 +282,385 @@ strictly easier to enforce + maintain.
 
 ## Design
 
-_architect M-T1 fills this_
+> **Architect M-T1, 2026-05-30.** Design pass at commit `be3050a` +
+> `d0edc12` (Pick C bundle). Parallel block with
+> `queue-staleness-reconciliation` + `operator-ledger-schema-lint`
+> siblings. No new ADR (this script enforces the EXISTING
+> architect.md § ADR registry contract codified 2026-05-29 — confirmed
+> `adrs_added = []`). All operator-decide Qs ratified on the
+> Recommended DURABLE path. Live ADR-0050 registration verified CLEAN
+> (see § Pre-existing-debt findings).
+
+### Operator-decide ratifications
+
+| Q | Analyst recommendation | Architect verdict | Note |
+|---|------------------------|-------------------|------|
+| **Q-ADR-WHEN** | (a) pre-commit hook (DURABLE) | **RATIFIED (a)** | Catches drift before it enters git history; `git diff --cached` semantics locked at D-ADR-2. CI mode (Option B) deferred to v0.2.0 as an opt-in `--ci` flag. |
+| **Q-ADR-AMEND** | (a) always-bump on any ADR modification (DURABLE) | **RATIFIED (a)** | Strictest interpretation; zero semantic-parse surface; invariant (b) is a pure "was README `updated:` also in the staged diff?" check. |
+| **Q-ADR-STATUS-ENUM** | `{accepted, proposed, superseded, deprecated}`; defer `withdrawn` to v0.2.0 | **RATIFIED** | Grep of all 50 ADRs (§ Pre-existing-debt findings) confirms the enum covers every observed value with zero out-of-enum statuses. Enum is the canonical set already documented in `README.md § Format` line 22 (`status: proposed | accepted | superseded | deprecated`). `deprecated` currently unused (forward-compat); no `withdrawn` ADR exists in tree — assertion holds at v0.1.0. |
+
+### D-ADR-1 — Script location, invocation contract, exit codes
+
+- **File**: `scripts/adr_registry_check.py`. Sibling to
+  `scripts/hash_report.py` / `scripts/spec_brief.py` /
+  `scripts/spec_lint.py` (Python 3 stdlib only; executable bit;
+  shebang `#!/usr/bin/env python3`; no `requirements.txt`).
+- **Structure convention** (verbatim from sibling scripts): `def
+  main(argv: list[str]) -> int` returning the exit code; module
+  guard `if __name__ == "__main__": raise SystemExit(main(sys.argv[1:]))`.
+- **Invocation surface** (argparse):
+  - `python3 scripts/adr_registry_check.py --pre-commit` — the v0.1.0
+    default mode. Reads the STAGED diff (`git diff --cached`). This is
+    the mode the pre-commit hook calls. Per Q-ADR-WHEN=(a).
+  - `python3 scripts/adr_registry_check.py --self-test` — runs the
+    in-process self-test suite (R4); see D-ADR-6. Exits 0 all-pass /
+    1 on any self-test failure.
+  - **No-arg invocation** (`python3 scripts/adr_registry_check.py`)
+    defaults to `--pre-commit` for ergonomics (mirrors the tester's
+    `T-ADR-FINAL.1` smoke step which calls it bare against current
+    `main`). A bare run with NO staged ADR changes performs the
+    full-tree static checks (a) + (c) only and skips the
+    same-commit check (b) gracefully — see D-ADR-2 § graceful-skip.
+  - `--ci` mode is RESERVED, not implemented at v0.1.0 (deferred to
+    v0.2.0; would switch the diff base to `git diff HEAD~1 HEAD`).
+    argparse declares it as a known-future flag in `--help` text but
+    `--ci` raises a "not implemented at v0.1.0; see Q-ADR-WHEN" exit-2
+    message if passed — fail-closed, no silent no-op.
+- **Exit codes** (per R1.5, matches bundle shared contract):
+  - `0` — clean (all in-scope invariants hold). Silent (R2.3).
+  - `1` — one or more drift(s) detected. Markdown table on stderr
+    (D-ADR-5).
+  - `≥ 2` — script failure (git unavailable, README unparseable,
+    malformed frontmatter that prevents the check from running). Error
+    message prefixed `adr-registry-check: error:` with file:line
+    context (R2.4). Use `2` for all script-failure cases at v0.1.0.
+
+### D-ADR-2 — "Same-commit" detection (the staged-diff semantics)
+
+Per Q-ADR-WHEN=(a) pre-commit-hook mode, the lint inspects the STAGED
+changes, NOT the working tree and NOT a committed range.
+
+- **Staged ADR file set** (drives whether invariant (b) fires):
+  ```text
+  git diff --cached --name-only --diff-filter=ACMR -- 'spec/architecture/adr/*.md'
+  ```
+  - `--cached` → the index (what's about to be committed), per
+    Q-ADR-WHEN=(a). This is the load-bearing difference from a
+    post-commit `HEAD~1 HEAD` range.
+  - `--diff-filter=ACMR` → Added, Copied, Modified, Renamed. Excludes
+    pure Deletions (`D`) — a deleted ADR file does not need a README
+    row (it's gone). A *renamed* ADR (R) counts as a modification of
+    the destination path.
+  - The `'spec/architecture/adr/*.md'` pathspec is quoted so git (not
+    the shell) globs it. Use a list-form `subprocess.run([...])` (no
+    `shell=True`) so the literal glob reaches git.
+  - Run with `cwd = REPO_ROOT` (resolved via
+    `Path(__file__).resolve().parent.parent`, the sibling-script
+    idiom) so the invocation is location-independent.
+- **README `updated:` bumped same-commit** (invariant (b) satisfaction):
+  ```text
+  git diff --cached --name-only -- 'spec/architecture/adr/README.md'
+  ```
+  If `spec/architecture/adr/README.md` appears in the staged set,
+  treat invariant (b) as satisfied. **Rationale for the
+  whole-file-staged proxy**: the strictest Q-ADR-AMEND=(a) reading
+  says "any ADR touch ⇒ README must be touched in the same commit."
+  Detecting that the README is staged at all is the structurally
+  simplest, false-negative-free signal. A deeper check ("was the
+  `updated:` *line* specifically in the staged hunk?") is available as
+  a v0.2.0 tightening but is NOT needed at v0.1.0 — staging the README
+  without bumping `updated:` is an architect-discipline question the
+  contract already covers, and over-tightening risks K4
+  false-positives on legitimate README edits. v0.1.0 ships the
+  file-staged proxy.
+  - **Optional v0.1.0 refinement (developer's discretion, ≤ 10 LoC):**
+    additionally confirm the staged README hunk touches the
+    `updated:` frontmatter line via
+    `git diff --cached -U0 -- 'spec/architecture/adr/README.md'` and a
+    regex for `^[+-]updated:`. If the developer includes this, it
+    MUST be a soft-tighten (still satisfied by any `updated:` line
+    change), and a self-test case must cover "README staged but
+    `updated:` line unchanged ⇒ (b) fires." If H2's ≤150 LoC budget
+    is tight, ship the file-staged proxy only and note the refinement
+    as a v0.1.x follow-on.
+- **Graceful skip**: if `git diff --cached` returns ZERO in-scope ADR
+  files (no ADR staged), invariant (b) is N/A and is SKIPPED (not a
+  violation). The script still runs invariants (a) + (c) over the
+  full tree (cheap; catches drift introduced by a non-staged path or
+  a prior un-linted commit). A bare smoke run on clean `main` thus
+  exits 0.
+- **git-unavailable fallback**: if `git` is not on PATH or the cwd is
+  not a git repo, the script exits `2` with
+  `adr-registry-check: error: git unavailable; (b) same-commit check
+  cannot run`. It does NOT silently pass — fail-closed per the
+  bundle contract.
+
+### D-ADR-3 — README `## Registry` table parser
+
+Parse `spec/architecture/adr/README.md` to build the set of
+registered ADR numbers.
+
+- **Table location**: the `## Registry` section. The table has a
+  GitHub-flavoured-markdown pipe structure (verified live):
+  ```text
+  | ID    | Title  | Status     | Date       |
+  |-------|--------|------------|------------|
+  | 0001  | ...    | accepted   | 2026-04-17 |
+  ```
+- **Parser algorithm** (robust, regex-anchored — do NOT hand-roll a
+  full GFM table parser):
+  1. Read the file as UTF-8.
+  2. For each line, apply the row regex
+     `^\|\s*(\d{4})\s*\|` (capture group 1 = the zero-padded ADR
+     number). This matches ONLY data rows whose first cell is exactly
+     4 digits. It naturally rejects:
+     - the header row (`| ID |`),
+     - the separator row (`|----|`),
+     - prose lines and Changelog bullets (no leading `|` + 4-digit
+       cell).
+  3. Collect the captured numbers into a `set[str]` of registered IDs.
+  4. **Anchor the scan to the `## Registry` section** is NOT strictly
+     required because the 4-digit-first-cell regex is already
+     specific — but the developer SHOULD restrict scanning to lines
+     after the `## Registry` heading and before the next `## ` heading
+     to be defensive against a future Changelog table. Cheap (one
+     state flag). Specify it as a SHOULD, not a MUST.
+  5. **Robustness**: tolerate variable inner-cell whitespace
+     (`\s*`), trailing pipe, and the wide-column padding the live
+     table uses. Do NOT depend on column count or column order beyond
+     "first cell is the 4-digit ID."
+- **Registered set** = `{ '0001', '0002', ..., '0050' }` on current
+  `main` (50 rows; verified). The ADR-file set (D-ADR-2 discovery) is
+  compared against this set for invariant (a).
+- **`## Registry` heading match**: `^##\s+Registry\b` (case-sensitive
+  per the live file).
+
+### D-ADR-4 — ADR-file discovery + frontmatter parse + invariant checks
+
+- **ADR file discovery** (invariant a + c domain): glob
+  `spec/architecture/adr/[0-9][0-9][0-9][0-9]-*.md` from `REPO_ROOT`.
+  This pattern STRUCTURALLY excludes `README.md` and `TEMPLATE.md`
+  (neither starts with 4 digits) — satisfies R1.3 by construction. The
+  developer SHOULD additionally assert `name not in {'README.md',
+  'TEMPLATE.md'}` as a belt-and-suspenders guard, but the glob already
+  does the work.
+- **ADR number extraction**: from the filename, `^(\d{4})-` → the
+  zero-padded number. (Do NOT trust the in-file `adr:` frontmatter
+  field as the primary key — the filename is the canonical numbering
+  per README § Numbering rules "Filename pattern:
+  `NNNN-kebab-case-title.md`". A future enhancement could cross-check
+  filename-number == frontmatter-`adr:`-number and flag a mismatch as
+  invariant (d), but that is OUT OF SCOPE at v0.1.0.)
+- **Frontmatter parse**: reuse the canonical sibling regex
+  `^---\n.*?\n---\n` (`re.DOTALL`) from `hash_report.py` to isolate
+  the leading YAML block, then extract `status:` with
+  `^status:\s*(\S+)` (multiline). **Do NOT** add a YAML dependency —
+  the frontmatter is simple `key: value` lines; a line-regex is
+  sufficient and matches the stdlib-only contract (R-NR.3/R-NR.4). If
+  a numbered ADR has NO frontmatter block or no `status:` line, that
+  is a script-relevant malformation → emit it as an invariant-(c)
+  drift row with `observed = "no status: frontmatter"` (NOT an
+  exit-2 crash — it's a content drift the operator should fix).
+- **Invariant (a) — registry-row-present**: for each discovered ADR
+  number, assert it ∈ the registered set from D-ADR-3. Any miss → a
+  drift row `(a) registry-row-missing`.
+- **Invariant (b) — updated-bumped** (per D-ADR-2): if any in-scope
+  ADR is staged AND README is NOT staged → ONE drift row
+  `(b) updated-not-bumped`. (Per Q-ADR-AMEND=(a), this fires on ANY
+  staged ADR modification regardless of whether it's a Changelog-only
+  amendment — strictest, zero semantic parse.)
+- **Invariant (c) — status-in-enum**: for each discovered ADR, assert
+  `status ∈ {accepted, proposed, superseded, deprecated}`
+  (case-sensitive — all live ADRs use lowercase). Any miss → a drift
+  row `(c) status-out-of-enum` with `observed = status: <value>`.
+  The enum is a module-level frozenset named constant
+  (`STATUS_ENUM`) so v0.2.0 can extend it (`withdrawn`) in one place.
+
+### D-ADR-5 — Output format (bundle Q-HYG-EMIT markdown-table dialect)
+
+Per bundle Q-HYG-EMIT=(a) (markdown table on stderr), drift emit shape
+(verbatim contract — matches feature.md R2.1):
+
+```text
+adr-registry-check: <N> drift(s) detected
+| invariant | file | observed | expected |
+|-----------|------|----------|----------|
+| (a) registry-row-missing | spec/architecture/adr/0099-probe.md | no row in README.md ## Registry table | add row to README.md ## Registry table for ADR-0099 |
+| (b) updated-not-bumped | spec/architecture/adr/0048-lab-recipe-test-harness.md | README.md not staged in this commit | stage spec/architecture/adr/README.md with bumped frontmatter updated: |
+| (c) status-out-of-enum | spec/architecture/adr/0036-patchtst-training-contract.md | status: in-progress | set status: one of {accepted, proposed, superseded, deprecated} |
+```
+
+- Header line `adr-registry-check: <N> drift(s) detected` (N =
+  total row count across all three invariants).
+- Exactly 4 columns: `invariant` (a/b/c + slug) | `file` (repo-relative
+  path) | `observed` | `expected` (suggested fix).
+- All drift output → **stderr** (matches sibling scripts' error/diag
+  convention; keeps stdout clean for any future `--json` pipe).
+- Clean run → **zero output** (R2.3); exit 0.
+- Sort drift rows deterministically: by invariant letter (a, b, c)
+  then by file path, so repeated runs / self-test golden assertions
+  are stable.
+
+### D-ADR-6 — K4-owned architect.md amendment (THIS feature owns it)
+
+Per bundle K4 ownership-table, THIS feature OWNS the
+`.claude/agents/architect.md § ADR registry: writing = registering
+atomically (2026-05-29 contract)` amendment. Siblings own AGENT.md
+(queue-staleness) and the ledger (operator-ledger) — do NOT touch
+those.
+
+**Exact amendment** — append a new short paragraph immediately AFTER
+the existing closing paragraph (current line 92, before `## Style`):
+
+```markdown
+**Mechanical enforcement.** `scripts/adr_registry_check.py --pre-commit`
+lints this contract on every commit touching `spec/architecture/adr/`:
+(a) every `NNNN-*.md` has a README `## Registry` row, (b) README
+`updated:` is staged alongside any ADR change, (c) each ADR `status:`
+∈ `{accepted, proposed, superseded, deprecated}`. Exit 1 + a markdown
+drift table on violation. Install as a pre-commit hook (opt-in) or run
+bare before committing.
+```
+
+**Second, load-bearing micro-fix in the SAME owned amendment**: the
+existing contract step 2 (line 82) lists the status set as
+`(accepted / proposed / superseded)` — it OMITS `deprecated`, which IS
+in the canonical enum (`README.md § Format` line 22). The developer
+MUST update line 82's parenthetical to
+`(accepted / proposed / superseded / deprecated)` so the architect's
+prose contract and the lint's `STATUS_ENUM` agree. This is a 1-word
+addition within the owned section — no sibling-section drift.
+
+### D-ADR-7 — Edge cases
+
+- **`TEMPLATE.md`** (`status: proposed`, `adr: NNNN`): excluded by the
+  `[0-9][0-9][0-9][0-9]-*.md` glob (filename does not start with 4
+  digits). NOT required to have a registry row. Self-test asserts the
+  exclude (R4.1 4th case).
+- **`README.md` itself** (`status: in-progress`, `slug:
+  architecture-adr-index`): the README frontmatter `status:` is
+  `in-progress` — which is NOT in the ADR status enum. This is
+  CORRECT and must NOT be flagged: README is the index file, not a
+  numbered ADR, and is excluded by the glob (no 4-digit prefix). The
+  enum check (c) NEVER runs against README. Self-test asserts this.
+- **`superseded` ADRs**: ADR-0027 is `status: superseded` and HAS a
+  registry row (verified). `superseded` is in the enum → invariant (c)
+  passes; invariant (a) passes (row present). No special handling
+  needed — a superseded ADR keeps its row + number per README §
+  Numbering rules.
+- **`proposed` ADRs**: ADR-0036, ADR-0047 are `status: proposed` with
+  rows. In enum → clean. (Confirms the enum is not over-narrow.)
+- **README frontmatter `updated:` format**: the live value is
+  `updated: 2026-05-29 (ADR-0050 D1 corrected + ...)` — a date
+  followed by a long free-text parenthetical. The invariant-(b) check
+  does NOT parse this value (it only checks whether README is in the
+  staged file set), so the parenthetical is irrelevant to v0.1.0. If
+  the optional v0.1.0 refinement (D-ADR-2) is implemented, the
+  `^[+-]updated:` line-regex matches regardless of the parenthetical.
+  No date-parse needed.
+- **Sub-numbered / collision-renumbered ADRs**: ADR-0037 was
+  renumbered 0035→0037 (audit-2026-05-22) and ADR-0035 exists
+  separately. Both are plain 4-digit files with rows — the
+  filename-number primary key handles them with no special case. No
+  `NNNNa` / sub-letter variants exist in the tree; if one is ever
+  filed, the `\d{4}` regex would skip it (drift surfaced as
+  "file not matched" only if it also lacks a row — a v0.2.0
+  consideration, out of scope).
+- **Deleted ADR**: `--diff-filter=ACMR` excludes deletions from the
+  staged set (D-ADR-2), so deleting an ADR file does not trigger
+  invariant (b). (Deletion is itself a contract question the lint
+  does not police at v0.1.0.)
+
+### Self-test cases (R4.1 / D-ADR-6 inline `--self-test`)
+
+The self-test runs against synthetic in-memory / tmpdir fixtures (NOT
+the live tree — must not mutate `spec/`). ≥ 4 cases:
+
+1. **(a) missing-row** — synthetic ADR `0099-foo.md` present in the
+   ADR-file set but absent from a synthetic README registry → asserts
+   one `(a)` drift row naming `0099`.
+2. **(b) updated-not-bumped** — a staged-ADR set containing
+   `0099-foo.md` with README NOT in the staged set → asserts one `(b)`
+   drift row.
+3. **(c) status-out-of-enum** — synthetic ADR with
+   `status: in-progress` → asserts one `(c)` drift row.
+4. **exclude-rule** — `TEMPLATE.md` + `README.md` in the directory →
+   asserts NEITHER triggers an (a) missing-row NOR a (c) enum drift.
+5. **(clean)** — full synthetic set with all rows present + all
+   statuses in enum + README staged → asserts ZERO drift, exit 0.
+
+Implementation: prefer an inline `--self-test` flag (single-file, no
+`scripts/tests/` dir needed; matches the lean sibling pattern) using
+stdlib `unittest` or plain assert-functions. Sub-1-s wall-clock (R4.2).
+The git-dependent invariant (b) self-test injects the staged-file set
+via a seam (pass the file-list into the check function rather than
+shelling out to git in the test) so the self-test does NOT require a
+real git index — this is the "every external I/O behind a seam"
+discipline applied to the git subprocess. **Developer note**: factor
+the git call into a thin `_staged_adr_files()` / `_readme_staged()`
+function so the self-test can inject fakes.
+
+### Falsification probe P-ADR-1 (developer runs at T-ADR-D8; tester re-runs at T-ADR-FINAL.2)
+
+**Goal**: prove the lint actually fires on an unregistered ADR (the
+exact drift class that recurred 3×).
+
+**Recipe** (self-contained; no commit; reverts cleanly):
+
+- **Command / Steps**:
+  1. Create a throwaway ADR file with NO README row:
+     `printf '%s\n' '---' 'adr: 9999' 'title: probe' 'status: accepted' 'date: 2026-05-30' 'supersedes: none' 'superseded-by: none' '---' '' '# ADR-9999: probe' > spec/architecture/adr/9999-probe.md`
+  2. Run `python3 scripts/adr_registry_check.py --pre-commit`.
+  3. **Expected**: exit code `1`; stderr markdown table contains a
+     `(a) registry-row-missing` row naming
+     `spec/architecture/adr/9999-probe.md` (i.e. ADR-9999).
+  4. Delete the probe: `rm spec/architecture/adr/9999-probe.md`.
+  5. Re-run `python3 scripts/adr_registry_check.py --pre-commit`.
+  6. **Expected**: exit code `0`; zero output (registry clean again).
+- **Timing**: < 2 s total.
+- **Failure-diagnosis**: if step 3 exits 0, invariant (a) is not
+  scanning the full ADR-file set (check the glob); if it names the
+  wrong ADR, check the filename-number extraction regex.
+- **Cleanup**: `git status spec/architecture/adr/` must show NO
+  changes after step 4 (the probe file was never committed and is
+  deleted). Confirm `9999-probe.md` is gone.
+
+> **Note**: the probe uses `9999` (not `0099`) to stay clearly out of
+> the live numbering range and avoid any collision with a real future
+> ADR.
+
+### Pre-existing-debt findings (from the live ADR grep)
+
+Architect ran `status:` extraction across all 50 numbered ADRs +
+cross-referenced the `## Registry` table on `main` at design time:
+
+- **Registry completeness**: ALL 50 ADR files (`0001`–`0050`) have a
+  corresponding `## Registry` row. **Zero invariant-(a) debt.** The
+  lint will exit 0 on current `main` for invariant (a).
+- **Status enum coverage**: observed values are `accepted` (47×),
+  `proposed` (2× — ADR-0036, ADR-0047), `superseded` (1× — ADR-0027).
+  ALL ∈ the ratified enum `{accepted, proposed, superseded,
+  deprecated}`. **Zero invariant-(c) debt.** `deprecated` is unused
+  (forward-compat); no `withdrawn` ADR exists (v0.1.0 assertion
+  holds).
+- **Live ADR-0050 registration (the requested live test case)**:
+  CLEAN. `0050-iced-tokio-runtime-context-and-cancellation.md` is
+  present, has a `## Registry` row (line 100 of README.md), and
+  `status: accepted` (in enum). The README frontmatter `updated:` was
+  bumped to `2026-05-29 (ADR-0050 ...)` in the same session that
+  landed ADR-0050 — invariant (b) was satisfied. The atomic-write
+  contract held for the session that created this feature's
+  motivating ADR. **No debt.**
+- **Conclusion**: the lint ships against a CLEAN tree — it is purely
+  preventive at v0.1.0 (consistent with H4: catch ≥ 1 drift in the
+  first 2 weeks of FUTURE commits, not a backfill of existing debt).
+  This is the desirable outcome: the architect's 2026-05-29
+  atomic-write contract has already been honoured for ADR-0050.
+- **Minor prose-vs-enum inconsistency (NOT an ADR-file debt)**: the
+  architect.md contract step 2 omits `deprecated` from its
+  parenthetical status list. Fixed by D-ADR-6's second micro-fix (in
+  the owned amendment). This is a documentation drift, not a tree
+  drift; it does not affect any lint exit code.
 
 ## Implementation
 
@@ -305,3 +683,19 @@ _tester M-FINAL links report here_
   `proposed`. HANDOFF → architect (M-T1 + bundle parallel block
   with `queue-staleness-reconciliation` + `operator-ledger-schema-lint`
   siblings).
+- 2026-05-30 (architect, M-T1): § Design authored — D-ADR-1..7 +
+  Q-ADR-WHEN/Q-ADR-AMEND/Q-ADR-STATUS-ENUM all RATIFIED on Recommended
+  DURABLE path. Locked: `git diff --cached --name-only --diff-filter=ACMR
+  -- 'spec/architecture/adr/*.md'` staged-diff semantics (D-ADR-2);
+  4-digit-first-cell regex README parser (D-ADR-3); `[0-9][0-9][0-9][0-9]-*.md`
+  glob that structurally excludes README.md + TEMPLATE.md (D-ADR-4);
+  `STATUS_ENUM = {accepted, proposed, superseded, deprecated}` named
+  constant (D-ADR-4); markdown-table-on-stderr emit per Q-HYG-EMIT
+  (D-ADR-5); K4-owned architect.md amendment = 1-paragraph mechanical-
+  enforcement note + `deprecated` micro-fix on line 82 (D-ADR-6); ≥ 5
+  self-test cases with git-seam injection (R4); P-ADR-1 probe spec'd
+  with `9999-probe.md` synthetic ADR. Pre-existing-debt grep: registry
+  CLEAN (50/50 rows), zero out-of-enum status, live ADR-0050
+  registration verified CLEAN — lint ships purely preventive. No new ADR
+  (`adrs_added = []` confirmed). frontmatter draft → arch-done,
+  owner analyst → developer. HANDOFF → developer.
