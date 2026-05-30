@@ -1,8 +1,8 @@
 ---
 slug: strategy-robustness-harness
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 updated: 2026-05-30
 ---
@@ -653,7 +653,59 @@ runs._
 
 ## Implementation
 
-_developer fills this._
+**As-built by developer (2026-05-30).**
+
+### New modules
+
+| File | Role |
+|------|------|
+| `crates/backtest/src/stats/mod.rs` | M-DEV-1: verbatim calculator lift + M-DEV-2: `DistributionSummary` reducer |
+| `crates/backtest/src/scenarios/montecarlo.rs` | M-DEV-3: `run_path` cell wrapper (MomentumStrategy, not TCN overlay) |
+| `crates/backtest/src/bin/monte_carlo.rs` | M-DEV-4+5: driver + report renderer (ADR-0051 D1/D3/D4) |
+| `crates/backtest/tests/montecarlo_e2e.rs` | M-DEV-6: mandatory day-1 e2e gate (R-NR.6 adapted) |
+
+### Chosen N + measured wall-clock
+
+- **N = 500** (Q-RH-1 Option A, RATIFIED — durable; stable p5/p95 tail).
+- **Wall-clock: 183.5 seconds** on Apple-Silicon M-series (~11.5 rayon cores).
+- N=500 is well under the 10-min budget; N=200 fallback NOT needed.
+
+### First distribution-summary numbers (headline result)
+
+Scenario: v1 cross-sectional momentum at shipped θ* over N=500 block-bootstrap paths of 2023-FY real Binance returns (10 USDT pairs, hourly, 8760 bars). Block length Auto-selected L=204.
+
+| Metric | p5 | p50 | p95 |
+|--------|------|------|------|
+| Sharpe | −0.068 | **−0.022** | 0.003 |
+| Sortino | −0.095 | −0.031 | 0.004 |
+| Calmar | −0.311 | −0.109 | 0.017 |
+| Max drawdown | 61.3% | **85.3%** | 100.0% |
+| Total return | −97.6% | −60.5% | +11.5% |
+
+Ensemble robustness:
+- P(final_equity < initial): **86.8%**
+- P(Sharpe > 0): 13.2%
+- P(Sharpe > 1.0): 0.0%
+- MaxDD tail p50 / p95: **85.3%** / **100%**
+
+**Verdict: WEAK.** p50 Sharpe ≤ 0; the v1 momentum strategy is NOT robust on 2023-FY block-bootstrap paths of real Binance data. The paper→live gate is BLOCKED by this distribution. This is the honest answer to "is v1 momentum robust or one lucky path?": it is one lucky path (the real 2023 path had Sharpe ~1.40 per `strategic-reset-2026-05-23`; the ensemble median is −0.022).
+
+### Anchor
+
+- Body SHA: `72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4`
+- Namespace: `mc-robustness-2026-06`
+- Two-run determinism: SHA identical on 2 independent N=500 runs (FP-C2.3 PASS).
+- `scripts/verify_anchors.sh` → **85/85 PASS** (84 existing + 1 new).
+
+### Design notes / deviations from spec
+
+1. **Equity clamping for NaN prevention**: When equity goes negative on a ruin path (GBM smoke test with high volatility), `compute_sharpe_hourly` would produce NaN via `ln(curr/prev)` with `curr < 0`. The driver (`run_one_path`) clamps equity to `1e-6` Decimal before calling the calculators. This is NOT a change to the verbatim-lifted calculator functions (R-NR.5 preserved); it's a driver-level guard. The ADR-0051 D2 NaN-absent assertion is enforced by construction (the clamp prevents NaN, `debug_assert!` catches any structural failure). This clamping makes ruin paths produce a large-negative finite Sharpe rather than NaN — correct behavior for a ruin path.
+
+2. **`run_path` loads config for universe but uses caller-supplied strategy**: To keep the bar-loop simple and consistent with `run_cell`, `run_path` loads the momentum config (universe list) but uses the caller-supplied `MomentumStrategy` instance. The config load is for universe metadata only; the actual strategy is constructed once per path in the driver and passed in.
+
+3. **Generator-label honesty**: The `generator: gbm-smoke` label in the body is produced by the `GeneratorKind::label()` method, not a hardcoded string. The `mc-robustness-2026-06` anchor check in `verify_anchors.sh` only looks in `spec/strategy-robustness-harness/reports/` — a GBM smoke run written to `/tmp/` cannot accidentally satisfy it (K4 mitigated by directory scoping + label check).
+
+4. **`sim.rs` pre-existing clippy errors**: `cargo clippy -p backtest --tests -- -D warnings` shows pre-existing errors in `engine.rs`, `paths.rs`, `progress.rs`, `sma_composed_run.rs`, `cli_types.rs`, and `sim.rs`. These are baseline errors that existed before this feature and are NOT introduced by C2 code. The new lib code (`stats/mod.rs`, `scenarios/montecarlo.rs`) has zero new errors.
 
 ## Verification
 

@@ -16,6 +16,17 @@ pub mod progress;
 /// `config/strategies/*.toml` from any CWD, not just workspace root.
 pub mod paths;
 
+/// Shared metric calculators and the Monte-Carlo distribution-summary reducer.
+///
+/// M-DEV-1: `compute_sharpe_hourly` / `compute_sortino_hourly` /
+/// `compute_calmar` / `compute_max_drawdown_f64` / `compute_total_return`
+/// lifted verbatim from `bin/threshold_sweep.rs` (R-NR.5 behaviour-preserving).
+///
+/// M-DEV-2: `DistributionSummary` reducer implementing ADR-0051 D2 frozen
+/// reduction order (index-order mean / two-pass std / `total_cmp` sort /
+/// type-7 linear percentile / NaN-absent assertion).
+pub mod stats;
+
 /// Shared CLI-scenario types used by `main.rs` and the extracted modules.
 /// Made `pub` so that the backtest binary can access them.
 pub mod cli_types;

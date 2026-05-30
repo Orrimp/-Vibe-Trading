@@ -13,6 +13,7 @@
 
 pub mod garch_vol_target_overlay;
 pub mod momentum;
+pub mod montecarlo;
 pub mod pairs;
 pub mod patchtst_overlay_weights;
 pub mod regime_dispatcher;

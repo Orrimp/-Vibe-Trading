@@ -229,122 +229,13 @@ fn t_classifier(max_sharpe_delta: f64) -> &'static str {
     }
 }
 
-/// Compute Sharpe (annualised, hourly) from an equity curve.
-/// Formula: mean_log_return / std_log_return * sqrt(24*365).
-fn compute_sharpe_hourly(equity: &[rust_decimal::Decimal]) -> f64 {
-    use rust_decimal::prelude::ToPrimitive;
-    const SQRT_HPY: f64 = 92.601_295_098_46;
-    let n = equity.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let rets: Vec<f64> = equity
-        .windows(2)
-        .map(|w| {
-            let prev = w[0].to_f64().unwrap_or(1.0);
-            let curr = w[1].to_f64().unwrap_or(1.0);
-            if prev <= 0.0 { 0.0 } else { (curr / prev).ln() }
-        })
-        .collect();
-    let mean = rets.iter().sum::<f64>() / rets.len() as f64;
-    let var = rets.iter().map(|&r| (r - mean).powi(2)).sum::<f64>() / rets.len() as f64;
-    let std = var.sqrt();
-    if std < 1e-15 {
-        0.0
-    } else {
-        mean / std * SQRT_HPY
-    }
-}
-
-/// Compute Sortino (annualised, hourly) from an equity curve.
-fn compute_sortino_hourly(equity: &[rust_decimal::Decimal]) -> f64 {
-    use rust_decimal::prelude::ToPrimitive;
-    const SQRT_HPY: f64 = 92.601_295_098_46;
-    let n = equity.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let rets: Vec<f64> = equity
-        .windows(2)
-        .map(|w| {
-            let prev = w[0].to_f64().unwrap_or(1.0);
-            let curr = w[1].to_f64().unwrap_or(1.0);
-            if prev <= 0.0 { 0.0 } else { (curr / prev).ln() }
-        })
-        .collect();
-    let mean = rets.iter().sum::<f64>() / rets.len() as f64;
-    let down_sq = rets.iter().map(|&r| r.min(0.0).powi(2)).sum::<f64>() / rets.len() as f64;
-    let down_std = down_sq.sqrt();
-    if down_std < 1e-15 {
-        0.0
-    } else {
-        mean / down_std * SQRT_HPY
-    }
-}
-
-/// Compute Calmar ratio from an equity curve.
-fn compute_calmar(equity: &[rust_decimal::Decimal]) -> f64 {
-    use rust_decimal::prelude::ToPrimitive;
-    let n = equity.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let initial = equity[0].to_f64().unwrap_or(0.0);
-    let final_eq = equity[n - 1].to_f64().unwrap_or(0.0);
-    if initial <= 0.0 {
-        return 0.0;
-    }
-    let years = (n as f64 - 1.0) / 8760.0;
-    if years <= 0.0 {
-        return 0.0;
-    }
-    let cagr = (final_eq / initial).powf(1.0 / years) - 1.0;
-    let max_dd = compute_max_drawdown_f64(equity);
-    if max_dd.abs() < 1e-15 {
-        0.0
-    } else {
-        cagr / max_dd.abs()
-    }
-}
-
-/// Compute max drawdown from an equity curve (returns positive fraction).
-fn compute_max_drawdown_f64(equity: &[rust_decimal::Decimal]) -> f64 {
-    use rust_decimal::prelude::ToPrimitive;
-    if equity.len() < 2 {
-        return 0.0;
-    }
-    let mut peak = equity[0].to_f64().unwrap_or(0.0);
-    let mut max_dd = 0.0_f64;
-    for e in &equity[1..] {
-        let eq = e.to_f64().unwrap_or(0.0);
-        if eq > peak {
-            peak = eq;
-        }
-        if peak > 0.0 {
-            let dd = (peak - eq) / peak;
-            if dd > max_dd {
-                max_dd = dd;
-            }
-        }
-    }
-    max_dd
-}
-
-/// Total return from initial to final equity (as a fraction, NOT percentage).
-fn compute_total_return(equity: &[rust_decimal::Decimal]) -> f64 {
-    use rust_decimal::prelude::ToPrimitive;
-    let n = equity.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let initial = equity[0].to_f64().unwrap_or(1.0);
-    let final_eq = equity[n - 1].to_f64().unwrap_or(initial);
-    if initial <= 0.0 {
-        0.0
-    } else {
-        (final_eq - initial) / initial
-    }
-}
+// ── Metric calculators — re-imported from backtest::stats (R-NR.5) ────────────
+// These were lifted verbatim to `backtest::stats` (M-DEV-1). We import them
+// here so the threshold_sweep bin behaves byte-identically (R-NR.5).
+use backtest::stats::{
+    compute_calmar, compute_max_drawdown_f64, compute_sharpe_hourly, compute_sortino_hourly,
+    compute_total_return,
+};
 
 /// Parse gate-survivor counts from the predecessor recalibrate report body.
 ///

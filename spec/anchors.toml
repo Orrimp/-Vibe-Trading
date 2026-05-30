@@ -10,9 +10,11 @@
 # and `v5-realdata-medium-2026-05` (canonical friction; the current
 # reference for paper-trading alpha).
 #
-# Verify with: scripts/verify_anchors.sh  (expects 69/69 PASS — 2026-05-27;
-# was 68/68 until lab-yahoo-realdata v0.1.1 added btc-yahoo-2024-1d-sma-cross
-# row 69 under namespace `lab-yahoo-realdata-v0.1.1`)
+# Verify with: scripts/verify_anchors.sh  (expects 85/85 PASS — 2026-05-30;
+# most recent: row 85 = v1-momentum-2023-block-bootstrap-real-fy-mc under
+# namespace `mc-robustness-2026-06` — the first Monte-Carlo robustness
+# distribution-summary anchor, ADR-0051 D4. Prior milestone: row 69 =
+# btc-yahoo-2024-1d-sma-cross under `lab-yahoo-realdata-v0.1.1`)
 # Recompute one: scripts/hash_report.py spec/<feature>/reports/backtest-...md
 #
 # Owners: tester locks new entries; architect approves any change to an
@@ -622,3 +624,22 @@ sha256   = "857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6"
 scenario = "top10-2024-fy-regime-dispatcher-realdata"
 version  = "v5-sqrt-impact-2026-05"
 sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"
+
+# strategy-robustness-harness v0.1.0 Monte-Carlo anchor (2026-05-30).
+# Namespace: mc-robustness-2026-06 (ADR-0051 D4 — ONE summary report per scenario).
+# Scenario: v1 cross-sectional momentum at shipped θ* over N=500 block-bootstrap
+# paths of 2023-FY real Binance returns (10 USDT pairs, hourly, 8760 bars).
+# Generator: block-bootstrap-real (BlockBootstrapPathGen, shared-index, Auto L=204).
+# Seeds: ensemble_seed=0xC0FFEE, fill_seed=0xC0FFEE. Sub-seed rule: master + j*0x9E3779B9.
+# Wall-clock: 183.5s on Apple-Silicon M-series (canonical box, rayon 11.5-core fan-out).
+# N=500 ratified (Q-RH-1 = Option A, durable; stable p5/p95 tail; < 10 min).
+# Headline: Sharpe p5/p50/p95 = -0.068 / -0.022 / 0.003; MaxDD p50/p95 = 85.3% / 100%.
+# Verdict: WEAK — p50 Sharpe ≤ 0; P(Sharpe>0) = 13.2%; P(Sharpe>1) = 0%.
+# v1 momentum is NOT robust on 2023-FY block-bootstrap paths (paper→live gate: BLOCKED).
+# Determinism: body SHA identical on 2 independent runs (FP-C2.3 PASS).
+# Verify with: scripts/verify_anchors.sh (expects 85/85 PASS after this row)
+
+[[anchors]]
+scenario = "v1-momentum-2023-block-bootstrap-real-fy-mc"
+version  = "mc-robustness-2026-06"
+sha256   = "72fc7089c5f04885e8a2169d91c242a50e47b7820eea38b446a4dfaa2c1938c4"

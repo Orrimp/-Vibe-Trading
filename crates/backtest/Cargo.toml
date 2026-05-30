@@ -18,6 +18,10 @@ name = "run_yahoo_sma"
 path = "src/bin/run_yahoo_sma.rs"
 required-features = ["yahoo"]
 
+[[bin]]
+name = "monte_carlo"
+path = "src/bin/monte_carlo.rs"
+
 [features]
 # Enable real TCN-weights backtest scenarios (top10-*-tcn-overlay-weights).
 # Requires `--features candle` at build time; without it those scenarios emit
@@ -77,6 +81,10 @@ tokio-util = { workspace = true }
 name = "threshold_sweep_readonly"
 path = "tests/threshold_sweep_readonly.rs"
 required-features = ["candle", "realdata"]
+
+[[test]]
+name = "montecarlo_e2e"
+path = "tests/montecarlo_e2e.rs"
 
 [[test]]
 name = "run_yahoo_sma_ticker_flag"
