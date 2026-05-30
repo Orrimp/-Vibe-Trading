@@ -88,6 +88,7 @@ pub fn resolve_workspace_path(rel: impl AsRef<Path>) -> PathBuf {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::fs;

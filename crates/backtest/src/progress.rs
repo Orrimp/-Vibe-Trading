@@ -69,7 +69,11 @@ pub fn progress_pair() -> (ProgressSender, tokio::sync::mpsc::Receiver<Progress>
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::cast_possible_truncation
+)]
 mod tests {
     use super::*;
 

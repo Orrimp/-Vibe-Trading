@@ -604,12 +604,13 @@ pub async fn run(
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unreadable_literal)]
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
     use trading_core::Symbol;
 
-    const TEST_SEED: u64 = 0xC0FFEE;
+    const TEST_SEED: u64 = 0x00C0_FFEE;
 
     /// SMA crossover run produces a deterministic result (same seed → same trades).
     #[tokio::test]
@@ -728,7 +729,7 @@ mod tests {
         assert_eq!(result1.final_equity, result2.final_equity);
     }
 
-    /// BBands mean-revert run produces a deterministic result.
+    /// `BBands` mean-revert run produces a deterministic result.
     ///
     /// Requires `config/strategies/btc_bbands_mean_revert.toml` — run from workspace root:
     /// ```text

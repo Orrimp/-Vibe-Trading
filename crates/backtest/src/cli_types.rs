@@ -210,7 +210,7 @@ mod latency_slippage_config_tests {
         assert!(!cfg.is_noop(), "non-zero config must not be noop");
     }
 
-    /// Serialization round-trip (new slippage_model field).
+    /// Serialization round-trip (new `slippage_model` field).
     #[test]
     fn serde_round_trip() {
         let cfg = LatencySlippageSimConfig {
@@ -247,7 +247,7 @@ mod latency_slippage_config_tests {
         assert_eq!(cfg.slippage_model, SlippageModel::Linear { bps: 0 });
     }
 
-    /// SquareRoot model round-trips through serde.
+    /// `SquareRoot` model round-trips through serde.
     #[test]
     fn sqrt_model_serde_round_trip() {
         let cfg = LatencySlippageSimConfig {

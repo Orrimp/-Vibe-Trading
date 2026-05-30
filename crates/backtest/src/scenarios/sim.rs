@@ -152,7 +152,7 @@ mod tests {
         );
     }
 
-    /// SquareRoot model: positive cost for buy when volume map contains the symbol.
+    /// `SquareRoot` model: positive cost for buy when volume map contains the symbol.
     #[test]
     fn sqrt_cost_positive_for_buy() {
         let sym = btc_symbol();
@@ -172,7 +172,7 @@ mod tests {
         assert!(cost > Decimal::ZERO, "sqrt buy cost must be positive");
     }
 
-    /// SquareRoot model: no volume map → no impact (V=0 edge case via missing map).
+    /// `SquareRoot` model: no volume map → no impact (V=0 edge case via missing map).
     #[test]
     fn sqrt_zero_volume_zero_cost() {
         let cfg = LatencySlippageSimConfig {
@@ -192,7 +192,7 @@ mod tests {
         );
     }
 
-    /// SquareRoot model: sell cost is positive (not negative) when volume available.
+    /// `SquareRoot` model: sell cost is positive (not negative) when volume available.
     #[test]
     fn sqrt_cost_positive_for_sell() {
         let sym = btc_symbol();
@@ -211,7 +211,7 @@ mod tests {
         assert!(cost > Decimal::ZERO, "sqrt sell cost must also be positive");
     }
 
-    /// SquareRoot model: symbol not in volume map → falls back to V=0 (no impact).
+    /// `SquareRoot` model: symbol not in volume map → falls back to V=0 (no impact).
     #[test]
     fn sqrt_missing_symbol_fallback_zero() {
         let sym = btc_symbol();

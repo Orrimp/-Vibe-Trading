@@ -889,30 +889,27 @@ fn ensure_realdata_binary() -> std::path::PathBuf {
         .and_then(|p| p.parent())
         .expect("could not locate workspace root");
 
-    let src = {
-        let _guard = BACKTEST_BUILD_MU.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = BACKTEST_BUILD_MU.lock().unwrap_or_else(|p| p.into_inner());
 
-        // Always rebuild so we pick up any changes.
-        let status = std::process::Command::new("cargo")
-            .args(["build", "--bin", "backtest", "--features", "realdata"])
-            .current_dir(workspace_root)
-            .status()
-            .expect("cargo build failed");
-        assert!(
-            status.success(),
-            "cargo build --bin backtest --features realdata failed"
-        );
+    // Always rebuild so we pick up any changes.
+    let status = std::process::Command::new("cargo")
+        .args(["build", "--bin", "backtest", "--features", "realdata"])
+        .current_dir(workspace_root)
+        .status()
+        .expect("cargo build failed");
+    assert!(
+        status.success(),
+        "cargo build --bin backtest --features realdata failed"
+    );
 
-        // Copy to a unique per-call path BEFORE releasing the mutex so a
-        // concurrent rebuild (different feature set) cannot overwrite the
-        // source between our build and our copy.
-        copy_to_unique(
-            &workspace_root.join("target/debug/backtest"),
-            &workspace_root.join("target/debug"),
-            "realdata",
-        )
-    };
-    src
+    // Copy to a unique per-call path BEFORE releasing the mutex so a
+    // concurrent rebuild (different feature set) cannot overwrite the
+    // source between our build and our copy.
+    copy_to_unique(
+        &workspace_root.join("target/debug/backtest"),
+        &workspace_root.join("target/debug"),
+        "realdata",
+    )
 }
 
 /// Run a realdata scenario once from the given `run_dir` working directory.

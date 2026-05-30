@@ -923,6 +923,12 @@ pub async fn run_scenario(
 /// K1 mitigation per T-AR-5: the 6+ Phase B determinism tests and all new
 /// engine unit tests call this so `ScenarioConfig` literals are unchanged
 /// (only `run_scenario`'s call site shifts from `cfg` to `cfg, cancel, progress`).
+///
+/// # Errors
+///
+/// Propagates all errors from [`run_scenario`]: [`RunError::ZeroSeed`],
+/// [`RunError::InvalidRange`], [`RunError::UnknownStrategy`], [`RunError::Internal`],
+/// and [`RunError::Cancelled`].
 #[cfg(test)]
 pub async fn run_scenario_for_test(cfg: ScenarioConfig) -> Result<RunReport, RunError> {
     let (_handle, cancel_rx) = crate::cancel::cancellation_pair();
@@ -974,7 +980,7 @@ mod tests {
     /// T-D-12 — non-zero seed passes seed validation (Phase B dispatch:
     /// unknown strategy "v1.momentum" with a momentum fixture reaches
     /// `UnknownStrategy` for an unrecognised ID, or succeeds for a known one).
-    /// We test with an unregistered strategy ID to confirm ZeroSeed is NOT triggered.
+    /// We test with an unregistered strategy ID to confirm `ZeroSeed` is NOT triggered.
     #[tokio::test]
     async fn run_scenario_accepts_non_zero_seed() {
         let mut cfg = config_with_seed(valid_seed());
@@ -1004,7 +1010,7 @@ mod tests {
     }
 
     /// T-D-12 — Valid Custom range passes range validation (Phase B: unknown strategy
-    /// is dispatched past the range check, returns UnknownStrategy not InvalidRange).
+    /// is dispatched past the range check, returns `UnknownStrategy` not `InvalidRange`).
     #[tokio::test]
     async fn run_scenario_accepts_valid_custom_range() {
         let mut cfg = config_with_seed(valid_seed());
@@ -1157,9 +1163,9 @@ mod tests {
     /// cancel handle is dropped before the run completes.
     ///
     /// Uses a short SMA crossover scenario (Last30d = 525 600 * (30/365) ≈
-    /// small bar count via date_range_to_scenario_params which returns 720
-    /// for `Last30d` for minute bars → sma_composed). We pre-cancel by
-    /// dropping the handle before calling run_scenario so the very first
+    /// small bar count via `date_range_to_scenario_params` which returns 720
+    /// for `Last30d` for minute bars → `sma_composed`). We pre-cancel by
+    /// dropping the handle before calling `run_scenario` so the very first
     /// poll (bar 0) sees `is_cancelled() == true`.
     #[tokio::test]
     async fn run_scenario_cancellation_returns_cancelled() {
