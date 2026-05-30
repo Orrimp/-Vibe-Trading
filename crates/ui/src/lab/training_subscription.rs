@@ -34,6 +34,7 @@
 use std::hash::Hash;
 use std::sync::Arc;
 
+use futures::stream::BoxStream;
 use iced::advanced::subscription::{EventStream, Hasher, Recipe, from_recipe};
 use tokio::sync::Mutex;
 use tokio::time::{Duration, interval};
@@ -93,56 +94,105 @@ impl Recipe for TrainingPoller {
         self: Box<Self>,
         _input: EventStream,
     ) -> iced::advanced::graphics::futures::BoxStream<Self::Output> {
-        let ledger = self.ledger.clone();
-        let run_id = self.run_id.clone();
-        let last_seen_ts = self.last_seen_ts.clone();
-
         // Enter the tokio context to create the interval, then immediately
         // drop the guard so the stream future remains `Send + 'static`.
         // See module-level runtime-context note for full rationale.
-        let mut ticker = {
+        let ticker = {
             let _guard = self.rt_handle.enter();
             interval(Duration::from_secs(1))
         };
 
-        Box::pin(async_stream::stream! {
-            ticker.tick().await; // First tick is immediate; wait for second.
-
-            loop {
-                ticker.tick().await;
-
-                let since = {
-                    let guard = last_seen_ts.lock().await;
-                    guard.clone()
-                };
-
-                // Use a far-future end bound.
-                let until = "9999-12-31T23:59:59.999999Z".to_string();
-
-                let rows = match audit::query::recent_training_events(&ledger, &since, &until).await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        tracing::warn!(run_id, %e, "training_subscription poll failed");
-                        continue;
-                    }
-                };
-
-                // Filter to events for this run_id.
-                let new_rows: Vec<TrainingEventRow> = rows
-                    .into_iter()
-                    .filter(|r| r.run_id.as_str() == run_id)
-                    .collect();
-
-                if !new_rows.is_empty() {
-                    // Advance last_seen_ts to latest ts seen.
-                    if let Some(latest) = new_rows.iter().map(|r| r.ts.as_str()).max() {
-                        *last_seen_ts.lock().await = latest.to_owned();
-                    }
-                    yield Message::TrainingEventsRefreshed(new_rows);
-                }
-            }
-        })
+        training_poller_stream_impl(
+            self.ledger.clone(),
+            self.run_id.clone(),
+            self.last_seen_ts.clone(),
+            ticker,
+        )
     }
+}
+
+/// Inner stream logic for `TrainingPoller`, extracted so integration tests
+/// can drive it directly without needing a running iced application or an
+/// `EventStream`.
+///
+/// Polls the audit DB at 1 Hz via the pre-constructed `ticker`.  The caller
+/// is responsible for creating the ticker inside the correct tokio runtime
+/// context (see the module-level runtime-context note).  `Recipe::stream`
+/// creates the ticker with `rt_handle.enter()` before calling this function.
+///
+/// For tests, create the ticker with `Handle::current().enter()` in a
+/// `#[tokio::test]` context (or with `start_paused = true` for time control).
+///
+/// # Parameters
+///
+/// - `ledger` — the audit ledger to query.
+/// - `run_id` — UUID of the current training run; only rows matching this ID
+///   are yielded.
+/// - `last_seen_ts` — RFC3339 timestamp of the last delivered row (6-digit
+///   microsecond precision per ADR-0004); advanced on each batch.
+/// - `ticker` — a pre-constructed `tokio::time::Interval` at the desired
+///   poll rate (production: 1 Hz).
+///
+/// ## T-T4 falsification probe (D-V0.2.0-3 row 11)
+///
+/// **Probe**: in this function body, comment out the yield line:
+///
+/// ```text
+/// // Original:
+/// yield Message::TrainingEventsRefreshed(new_rows);
+/// // Probe:
+/// let _ = new_rows; // yield suppressed
+/// ```
+///
+/// **Expected failure**: `poller_yields_refresh_on_new_rows` collects
+/// 0 batches instead of 1 → `assert_eq!(refreshes.len(), 1)` fails with
+/// `left: 0, right: 1`.
+///
+/// **Restore**: reinstate the `yield` line verbatim; all tests PASS.
+#[must_use]
+pub fn training_poller_stream_impl(
+    ledger: Arc<audit::Ledger>,
+    run_id: String,
+    last_seen_ts: Arc<Mutex<String>>,
+    mut ticker: tokio::time::Interval,
+) -> BoxStream<'static, Message> {
+    Box::pin(async_stream::stream! {
+        ticker.tick().await; // First tick is immediate; wait for second.
+
+        loop {
+            ticker.tick().await;
+
+            let since = {
+                let guard = last_seen_ts.lock().await;
+                guard.clone()
+            };
+
+            // Use a far-future end bound.
+            let until = "9999-12-31T23:59:59.999999Z".to_string();
+
+            let rows = match audit::query::recent_training_events(&ledger, &since, &until).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(run_id = %run_id, %e, "training_subscription poll failed");
+                    continue;
+                }
+            };
+
+            // Filter to events for this run_id.
+            let new_rows: Vec<TrainingEventRow> = rows
+                .into_iter()
+                .filter(|r| r.run_id.as_str() == run_id)
+                .collect();
+
+            if !new_rows.is_empty() {
+                // Advance last_seen_ts to latest ts seen.
+                if let Some(latest) = new_rows.iter().map(|r| r.ts.as_str()).max() {
+                    *last_seen_ts.lock().await = latest.to_owned();
+                }
+                yield Message::TrainingEventsRefreshed(new_rows);
+            }
+        }
+    })
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

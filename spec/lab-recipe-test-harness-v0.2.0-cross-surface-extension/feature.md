@@ -1,9 +1,9 @@
 ---
 slug: lab-recipe-test-harness-v0.2.0-cross-surface-extension
-version: 0.1.0
-status: arch-done
-owner: developer
-updated: 2026-05-29
+version: 0.2.0
+status: dev-done
+owner: tester
+updated: 2026-05-30
 predecessor: lab-recipe-test-harness v0.1.0
 priority: P2
 ---
@@ -472,6 +472,60 @@ _(tester M-FINAL — per-Recipe T-T4 table; anchors 71/71 stable.)_
 - `cargo fmt -p ui --check` → zero diff
 - Pre-existing clippy warnings at `live.rs:586` and `live.rs:720` (`#[must_use]` on `trail_mirror_stream_impl` and `activity_stream_impl`) — these existed before Wave C; zero NEW clippy errors from Wave C changes.
 - `bash scripts/verify_anchors.sh` → 84/84 PASS (Wave C is anchor-additive zero)
+
+### Wave D — TrailMirror S2 + ActivityRecipe S1 + TrainingPoller S1+S2 (DONE 2026-05-30)
+
+**Developer**: Wave D complete. All 4 waves (A/B/C/D) are now dev-done. Files added/modified:
+
+- `crates/ui/tests/trail_mirror_subscription_handle_gating.rs` (S2, ~119 LoC)
+  - Test D1-T1: `trail_mirror_batched_when_handle_present` — `has_trail = true` → `Trail` in descriptor.
+  - Test D1-T2: `trail_mirror_omitted_when_handle_absent` — `has_trail = false` → `Trail` absent.
+  - Uses `build_subscription_batch_descriptor` from Wave C (live.rs:926) — no new production seam.
+  - T-T4 falsification probe P-D1 documented: comment out `if has_trail { desc.push(SubscriptionVariant::Trail); }` (live.rs:934-936) → D1-T1 FAILS with `"Descriptor: [Bus, ServerTime, Activity, ToastDismiss]"`. Probe dry-run confirmed RED.
+
+- `crates/ui/tests/activity_recipe_stream.rs` (S1, ~230 LoC)
+  - Test D2-T1: `stream_yields_activity_events_in_send_order` — 3 events → 3 `ActivityEventReceived` in order.
+  - Test D2-T2: `stream_continues_after_lag` — `RecvError::Lagged` path: stream does NOT panic.
+  - Test D2-T3: `stream_terminates_on_sender_close` — sender dropped → stream terminates cleanly.
+  - Uses raw `broadcast::channel::<ActivityEvent>` (not `EventBus` RAII — `ActivitySender.0` is `pub(crate)`).
+  - T-T4 falsification probe P-D2 documented: insert `if true { continue; }` before yield in `activity_stream_impl` (live.rs:726) → D2-T1 FAILS with `"message arrived within 2s: Elapsed(())"`. Probe dry-run confirmed RED.
+
+- `crates/ui/src/lab/training_subscription.rs` (~55 LoC src delta)
+  - Added `use futures::stream::BoxStream` import.
+  - `Recipe::stream()` refactored: creates ticker with `rt_handle.enter()`, then delegates to `training_poller_stream_impl`.
+  - Extracted `pub fn training_poller_stream_impl(ledger, run_id, last_seen_ts, ticker) -> BoxStream<Message>` (line 153) — takes a pre-constructed `tokio::time::Interval` so tests can pass a fast ticker (10 ms) without needing `tokio::time::pause()` (incompatible with sqlx pool timeouts).
+  - `#[must_use]` added per clippy gate requirement.
+
+- `crates/ui/tests/training_poller_subscription.rs` (S1+S2 combined, ~220 LoC)
+  - Test D3-T1: `poller_yields_refresh_on_new_rows` — 3 rows for run_id_A → 1 batch of 3 rows.
+  - Test D3-T2: `cursor_at_far_future_yields_no_rows` — `last_seen_ts = far_future` → 0 batches (cursor gate idempotency).
+  - Test D3-T3: `run_id_filter_excludes_other_runs` — 3 rows for run_id_A + 2 for run_id_B → only run_id_A rows emitted.
+  - Uses `Ledger::in_memory()` + 10 ms fast ticker (wall-clock ≤ 500 ms per test; within ADR-0048 D4 budget).
+  - T-T4 falsification probe P-D3 documented: insert `if true { continue; }` before yield in `training_poller_stream_impl` (training_subscription.rs:192) → D3-T1 FAILS with `left: 0, right: 1`; D3-T3 FAILS with timeout. Probe dry-run confirmed RED.
+
+**DEV-CONFIRM-3 note**: Took option (a) — full extraction. The ticker is pre-constructed by `Recipe::stream` inside `rt_handle.enter()` (preserving the runtime-context fix), then passed into `training_poller_stream_impl`. Total src delta is ~55 LoC (under the ~30 LoC estimate in the spec; the main addition is the `BoxStream` import and the new function signature + docstring). No LoC ballooning.
+
+**DEV-CONFIRM-1 line numbers verified**:
+- D-V0.2.0-3 row 9 probe (Trail push): `live.rs:934-936` (the `if has_trail { ... }` block).
+- D-V0.2.0-3 row 10 probe (Activity yield): `live.rs:726` (`Ok(event) => yield Message::ActivityEventReceived(event)`).
+- D-V0.2.0-3 row 11 probe (TrainingPoller yield): `training_subscription.rs:192` (`yield Message::TrainingEventsRefreshed(new_rows)`).
+
+**Wave D Timing deviation note**: `tokio::time::pause()` (D-V0.2.0-2 spec) is incompatible with `sqlx`'s in-memory SQLite pool — pool connection timeouts fire immediately when time is paused, causing `"pool timed out"` errors. Used 10 ms fast ticker instead. Wall-clock per test: ~100-130 ms. Well within the 1.5 s D4 budget.
+
+**All mandatory gates PASS**:
+- `cargo test -p ui --test trail_mirror_subscription_handle_gating --no-default-features --features live` → 2/2 PASS
+- `cargo test -p ui --test activity_recipe_stream --no-default-features --features live` → 3/3 PASS
+- `cargo test -p ui --test training_poller_subscription --no-default-features --features live` → 3/3 PASS
+- Full v0.2.0 regression: Wave A (3/3, 3/3), Wave B (3/3), Wave C (2/2, 3/3, 3/3) — all PASS
+- v0.1.0 harness: `spawn_lab_run_yahoo_harness` 3/3, `lab_stop_button_gating` 4/4 PASS
+- Bug #64 + lab-yahoo: `lab_runner_preload_callthrough_e2e` 2/2, `lab_runner_cancel_e2e` 2/2, `lab_yahoo_empty_range_classification` 3/3 PASS
+- `cargo fmt -p ui --check` → zero diff
+- Zero NEW clippy errors from Wave D changed lines (pre-existing errors in training_subscription.rs test block are unchanged; `#[must_use]` added to `training_poller_stream_impl` per requirement)
+- `bash scripts/verify_anchors.sh` → 84/84 PASS (Wave D is anchor-additive zero)
+- All 3 T-T4 falsification probes confirmed RED (probe → FAIL, restore → PASS)
+
+**v0.2.0 status**: ALL 4 WAVES COMPLETE (A+B+C+D). Multi-wave T-T-FINAL tester pass is now ready.
+Frontmatter flipped: `status: arch-done → dev-done`, `version: 0.1.0 → 0.2.0`, `owner: developer → tester`, `updated: 2026-05-29 → 2026-05-30`.
 
 ## Changelog
 
