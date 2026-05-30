@@ -691,7 +691,7 @@ Shebang `#!/usr/bin/env python3`. `def main(argv: list[str]) -> int` + `raise Sy
 
 ## Verification
 
-_tester M-FINAL links report here_
+Tester M-FINAL 2026-05-30: [`spec/adr-registry-atomic-lint/reports/test-20260530-065505-v0.1.0.md`](reports/test-20260530-065505-v0.1.0.md) — **VERDICT → PASS**. All 5 self-test cases PASS (0.003 s); live pre-commit exit 0 (50/50 ADRs CLEAN); P-ADR-1 falsification PASS (probe fires exit 1 naming ADR-9999); invariant-(c) enum check PASS (bogus status fires, revert restores exit 0); anchors 84/84 PASS. D-ADR-6 architect.md amendment confirmed. Spec-lint 146 violations entirely pre-existing debt; zero new violations from this feature.
 
 ## Changelog
 

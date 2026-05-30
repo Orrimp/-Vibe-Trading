@@ -47,12 +47,12 @@ updated: 2026-05-30
 
 ## M-FINAL — Tester
 
-- [ ] T-ADR-FINAL.1 — Run `python3 scripts/adr_registry_check.py --pre-commit` on current main — _accept: exit code 0; zero output (assumes current main has clean registry; if not, surface as test finding)_
-- [ ] T-ADR-FINAL.2 — Inject synthetic drift cases (one per invariant a/b/c) in scratch worktree; run script; revert — _accept: exit code 1 for each; markdown table identifies the right invariant + file_
-- [ ] T-ADR-FINAL.3 — Run self-test per R4.2 — _accept: all-PASS; sub-1-s_
-- [ ] T-ADR-FINAL.4 — Verify R-NR.5 anchors — _accept: `bash scripts/verify_anchors.sh` → all-PASS byte-identical_
-- [ ] T-ADR-FINAL.5 — Verify bundle dialect — _accept: diff message matches bundle Q-HYG-EMIT contract (markdown table); cross-checked against sibling scripts if shipped_
-- [ ] T-ADR-FINAL.6 — Write test-final report — _accept: `spec/adr-registry-atomic-lint/reports/test-20260529-v0.1.0-adr-registry-atomic-lint.md` VERDICT → PASS or FAIL_
+- [x] T-ADR-FINAL.1 — Run `python3 scripts/adr_registry_check.py --pre-commit` on current main — _accept: exit code 0; zero output (assumes current main has clean registry; if not, surface as test finding)_ | cmd: python3 scripts/adr_registry_check.py --pre-commit | output: exit 0, zero output; registry CLEAN 50/50 ADRs
+- [x] T-ADR-FINAL.2 — Inject synthetic drift cases (one per invariant a/b/c) in scratch worktree; run script; revert — _accept: exit code 1 for each; markdown table identifies the right invariant + file_ | cmd: P-ADR-1 probe (9999-probe.md → exit 1, (a) registry-row-missing, ADR-9999 named; rm → exit 0; git clean) + ADR-0050 status: bogus → exit 1, (c) status-out-of-enum named; revert → exit 0; git clean
+- [x] T-ADR-FINAL.3 — Run self-test per R4.2 — _accept: all-PASS; sub-1-s_ | cmd: python3 scripts/adr_registry_check.py --self-test | output: Ran 5 tests in 0.003s OK (wall-clock 0.054s)
+- [x] T-ADR-FINAL.4 — Verify R-NR.5 anchors — _accept: `bash scripts/verify_anchors.sh` → all-PASS byte-identical_ | cmd: bash scripts/verify_anchors.sh | output: ANCHORS PASS (84 / 84)
+- [x] T-ADR-FINAL.5 — Verify bundle dialect — _accept: diff message matches bundle Q-HYG-EMIT contract (markdown table); cross-checked against sibling scripts if shipped_ | verified: header "adr-registry-check: N drift(s) detected" + 4-col table (invariant|file|observed|expected) on stderr; clean run zero output; sort by (invariant-letter, file) confirmed
+- [x] T-ADR-FINAL.6 — Write test-final report — _accept: `spec/adr-registry-atomic-lint/reports/test-20260529-v0.1.0-adr-registry-atomic-lint.md` VERDICT → PASS or FAIL_ | file: spec/adr-registry-atomic-lint/reports/test-20260530-065505-v0.1.0.md | verdict: PASS
 
 ## M-PRESENT — Presenter
 
