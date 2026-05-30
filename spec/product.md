@@ -75,9 +75,9 @@ The LLM is the **explanation and narration layer over the quantitative core**. I
 sanctioned roles, none of which is an alpha source:
 
 - **Regime narration** — turn a detected regime + a robustness distribution into a
-  human sentence ("median Sharpe 1.40 holds across 500 resamples but the p5 of
-  0.31 and an 18% probability of net loss indicate the 2023 result is
-  path-favourable").
+  human sentence (e.g. v1 momentum's actual robustness verdict: "median Sharpe ≈ 0
+  across 500 resampled histories with an ~87% probability of net loss — the lone
+  2023 backtest was an ordinary draw, not evidence of a durable edge").
 - **Lesson summarization** — distill clusters of reflection `LessonCard`s into
   review-ready rules (the § Memory "periodic distillation" job).
 - **Human-readable robustness-report explanation** — narrate the distribution
