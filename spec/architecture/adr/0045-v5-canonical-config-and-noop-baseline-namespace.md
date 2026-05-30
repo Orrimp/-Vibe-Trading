@@ -158,6 +158,130 @@ This contract lives in `spec/architecture.md` § Regression gate
 discipline (developer adds the cross-reference at Wave B per
 [`spec-update`](../../.claude/skills/spec-update/SKILL.md)).
 
+### D6 — The two anchor systems are RECONCILED, never independently authored (amendment, 2026-05-30)
+
+> Adopted after the engine-drift PAPERWORK finding
+> ([`spec/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../dev-notes/engine-drift-diagnosis-2026-05-30.md),
+> diagnosis commit `1cbe3d4`). It closes a gap D2 created but did not
+> name: there are **two** physical anchor systems, and D2 only governed
+> one of them.
+
+This repo carries **two** body-SHA-256 regression systems for the same
+engine output. They had silently diverged for ~3 months (the
+`Q-D1=(a)` 0→8 bps synthetic-slippage change at `7e8a7e0`, 2026-05-29,
+moved the engine output; only system (1) was updated):
+
+1. **FILE-anchors** — `spec/anchors.toml`, hashed by
+   `scripts/verify_anchors.sh` against **saved** `.md` report bodies on
+   disk. This system is governed by D1-D5 + the ADR-0038 § D6 / § D6.b
+   contract. It **cannot detect engine-behaviour drift** — it hashes
+   the file an earlier run wrote, not what the current binary emits.
+2. **IN-TEST re-run anchors** — `const ANCHOR` / `const ANCHOR_PREFIX`
+   strings in `crates/backtest/tests/determinism.rs` (the `t622_*` /
+   `t717_*` / `tt1_*` `*_anchor_hash_unchanged` tests). These **re-run
+   the engine** in-process and compare the freshly-emitted body-SHA to
+   a hardcoded constant. This system **does** detect engine drift — but
+   it has no auto-link to system (1) and rotted silently.
+
+**Decision (D6.1) — single source of truth.** `spec/anchors.toml` is
+the **canonical** anchor registry. The `determinism.rs` constants are a
+**derived projection** of it for the synthetic, non-feature-gated
+scenarios. They are never hand-authored against a fresh run; they are
+re-locked **to the matching `spec/anchors.toml` SHA** for the scenario
+under the namespace the default (no-feature) `cargo test` binary
+produces. Mapping rule:
+
+- The `determinism.rs` non-feature-gated tests build the binary with
+  **no `realdata` / `candle` feature**. Under
+  `build_slippage_model_for_scenario` (`crates/backtest/src/main.rs`)
+  every scenario NOT in `REAL_DATA_SCENARIO_IDS` (and ALL scenarios when
+  `realdata` is absent) takes the `Linear { bps: 8 }` synthetic
+  fallback. Therefore the in-test constant for scenario *S* MUST equal
+  the `spec/anchors.toml` row `scenario = S, version = "… + v5-realdata-medium-2026-05"`
+  — the canonical-friction SHA, NOT the `noop-baseline` SHA.
+- A `noop-baseline` SHA may only appear in `determinism.rs` if a test
+  is explicitly run with friction forced to zero (none are today).
+
+**Decision (D6.2) — reconciliation, not a new anchor decision.**
+Updating a `determinism.rs` constant from a stale `noop-baseline` SHA to
+the already-committed `v5-realdata-medium-2026-05` SHA is a
+**reconciliation of a derived projection to its already-approved
+source**, not a new anchor lock. It does NOT require the ADR-0038 § D6.b
+5-step re-emission protocol (no saved file mutates; the canonical
+file-anchor was operator-ratified at `7e8a7e0`). It DOES require
+architect sign-off as a regression-gate edit per the `spec/anchors.toml`
+owner policy — granted here for the 14-test reconciliation enumerated in
+the engine-drift dev spec.
+
+### D7 — Closing the engine-drift blind-spot (amendment, 2026-05-30)
+
+**Problem.** `verify_anchors.sh` is the gate the tester is told to run
+before `VERDICT → PASS` (`.claude/skills/verify-anchors/SKILL.md`); it
+hashes saved files and so is structurally blind to engine-behaviour
+drift. The in-test re-run gate that *would* catch it
+(`determinism.rs`) is part of `cargo test --workspace --all-targets`
+(it is NOT `#[ignore]`d) — but there is **no CI** (`no .github/workflows`)
+and the `rust-validate` gate runs fmt/clippy/audit/deny/doc only, not
+tests. A ship that ran the realdata backtest sweep + `verify_anchors.sh`
+but not the full synthetic determinism suite let the drift through.
+
+**Decision — synthesis of options (b) + (a), in that priority.**
+
+- **D7.1 (primary, option b) — mechanical auto-sync + assert.** Add
+  `scripts/check_determinism_anchors.py` (architect-specced; developer
+  implements). It parses `spec/anchors.toml` and the
+  `const ANCHOR`/`ANCHOR_PREFIX` sites in `determinism.rs`, builds the
+  scenario→SHA map for the non-feature-gated synthetic tests, and
+  **asserts each in-test constant equals the matching
+  `v5-realdata-medium-2026-05` row** (per D6.1). On mismatch it exits 1
+  and prints a drift table (scenario, in-test value, anchors.toml value,
+  file:line). A `--write` mode rewrites the constants in place so the
+  two systems can never be reconciled by hand-typing a SHA. This is the
+  durable fix: it converts a "someone must remember to re-run the slow
+  re-run suite" problem into a sub-second static check with no engine
+  execution. Mirrors the existing `scripts/adr_registry_check.py`
+  drift-linter pattern.
+
+- **D7.2 (secondary, option a) — enforce the re-run suite at the gate
+  the tester actually runs.** The `verify-anchors` skill is the
+  documented pre-`VERDICT → PASS` gate for any change touching
+  strategy / audit / exec / backtest code. Amend that skill to ALSO run
+  the synthetic determinism re-run tests in **release** mode after
+  `verify_anchors.sh` passes:
+  `cargo test --release -p backtest --test determinism t622_ t717_ tt1_`.
+  Release mode is mandatory for cost (see below). This is the
+  belt-and-suspenders catch: D7.1 detects *constant-vs-file* drift
+  statically; D7.2 detects *engine-vs-constant* drift (e.g. a code
+  change that moves output AND the dev forgot to re-lock) by actually
+  re-running.
+
+- **D7.3 (option d, partial) — document the dual model; do NOT retire
+  `noop-baseline`.** The `noop-baseline` rows stay (D2 already makes
+  them the friction-free oracle for the CLAUDE.md ≥ 1 bp non-negotiable).
+  The two-system model and the D6.1 mapping rule are documented in
+  `spec/anchors.toml`'s header and `spec/architecture.md` § Regression
+  gate discipline so the next author understands *why* there are two
+  systems and *which* is canonical. Option (c) (teach
+  `verify_anchors.sh` to regenerate-and-hash) is **rejected**: it would
+  fold engine execution into a script whose entire design point is
+  cheap file-hashing, and it duplicates what `determinism.rs` already
+  does correctly.
+
+**Cost (flagged for operator).** D7.1 is ~sub-second, zero engine runs —
+free. D7.2 re-runs ≈14 synthetic scenario invocations. Measured on the
+canonical Apple-Silicon box, **debug** binary: sma-family ≈ 8.8 s/run,
+momentum ≈ 26 s/run → the full in-test set is multi-minute in debug.
+**Release** binary amortises this to well under a minute total after the
+one-time build. The recommendation runs D7.2 in **release only**, and
+only inside the `verify-anchors` gate (which already gates on
+backtest-touching changes) — NOT on every `cargo test`. Net added
+wall-clock on a backtest-touching ship: < ~1 min (release) on top of an
+already-required backtest sweep. If even that is unwanted, D7.1 alone
+still makes the *specific* drift that occurred here impossible to ship
+silently; D7.2 additionally guards the harder "engine moved + nobody
+re-locked anchors.toml either" case. Operator may down-scope to D7.1-only
+if the < 1 min release cost is judged not worth it.
+
 ## Alternatives considered
 
 - **Single-namespace, retire OLD anchors (Q2 = (b))** — rejected.
@@ -215,6 +339,9 @@ discipline (developer adds the cross-reference at Wave B per
 - CLAUDE.md non-negotiable — `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` pattern reference
 - Verify script — `scripts/verify_anchors.sh`
 - Hash recompute — `scripts/hash_report.py`
+- Engine-drift diagnosis (D6 / D7 trigger) — [`spec/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../dev-notes/engine-drift-diagnosis-2026-05-30.md) (commit `1cbe3d4`)
+- In-test re-run anchor gate — `crates/backtest/tests/determinism.rs` (`t622_*` / `t717_*` / `tt1_*`)
+- D7.1 drift-linter to add — `scripts/check_determinism_anchors.py` (pattern: `scripts/adr_registry_check.py`)
 
 ## Changelog
 
@@ -224,3 +351,18 @@ discipline (developer adds the cross-reference at Wave B per
   Q4=(a) re-run all overlay e2e. Canonical namespace pin =
   `v5-realdata-medium-2026-05`. Sharpe-delta table promoted to
   permanent regression-gate contract per D5.
+- 2026-05-30 (architect): § D6 + § D7 amendment, triggered by the
+  engine-drift PAPERWORK finding (diagnosis `1cbe3d4`). D6 names the
+  two-anchor-system reality D2 left implicit and makes
+  `spec/anchors.toml` the single source of truth, with the
+  `determinism.rs` constants a derived projection re-locked to the
+  `v5-realdata-medium-2026-05` SHAs (NOT `noop-baseline`) for the
+  no-feature default test binary; reconciling them is NOT a § D6.b
+  re-emission. D7 closes the blind-spot: D7.1 a sub-second
+  `check_determinism_anchors.py` static drift-linter (+ `--write`
+  auto-sync), D7.2 enforce the synthetic re-run determinism tests
+  (release mode) inside the `verify-anchors` gate, D7.3 document the
+  dual model + keep `noop-baseline`. Rejected option (c)
+  (regenerate-and-hash inside `verify_anchors.sh`). Operator cost flag:
+  D7.2 adds < ~1 min release wall-clock on backtest-touching ships;
+  down-scope to D7.1-only is available.

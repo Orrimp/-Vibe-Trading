@@ -1,0 +1,63 @@
+[handoff]
+from = "architect"
+to = "developer"
+feature = "engine-drift-fix-2026-05-30"
+trace_refs = ["ADR-0045 § D6", "ADR-0045 § D7"]
+verdict = "APPROVED — PAPERWORK; no engine change"
+priority = "P1"
+
+[inputs]
+brief = "spec/dev-notes/engine-drift-fix-spec-2026-05-30.md"
+artifacts = [
+  "spec/dev-notes/engine-drift-diagnosis-2026-05-30.md",
+  "spec/anchors.toml",
+  "crates/backtest/tests/determinism.rs",
+  "crates/backtest/src/main.rs",
+]
+
+[outputs]
+spec_files = [
+  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",
+  "spec/architecture/adr/README.md",
+  "spec/dev-notes/engine-drift-fix-spec-2026-05-30.md",
+]
+adrs_added = []
+adrs_amended = ["ADR-0045 (§ D6 + § D7 + Changelog + registry row)"]
+
+[work]
+# Decision 1 — re-lock 14 in-test constants (EX-1 + EX-2 in the spec).
+decision_1 = "Re-lock 14 determinism.rs constants to v5-realdata-medium-2026-05 SHAs; convert 3 t622 prefix tests to full-hash assert_eq. Mapping table EX-1 is exact + cross-checked against anchors.toml."
+constants_to_change = 14
+constants_do_not_touch = "lines 809 + 827 (m3_* candle-gated)"
+# Decision 2 — close blind-spot (EX-4..EX-6).
+decision_2 = "D7.1 new scripts/check_determinism_anchors.py static drift-linter (+ --write); D7.2 run synthetic re-run determinism tests in RELEASE inside verify-anchors skill; D7.3 document dual model in anchors.toml header + architecture.md."
+
+[do_not]
+items = [
+  "Do NOT edit spec/anchors.toml (file-anchors already canonical + correct).",
+  "Do NOT edit engine code (engine.rs / main.rs / scenarios/*) — PAPERWORK, no behaviour change.",
+  "Do NOT touch determinism.rs lines 809/827 (candle-gated m3_*).",
+  "Do NOT invoke ADR-0038 § D6.b re-emission — no saved file mutates.",
+  "Do NOT commit (orchestrator commits).",
+]
+
+[open_questions]
+items = [
+  "OPERATOR COST FLAG (D7.2): release-mode re-run gate adds < ~1 min wall-clock on backtest-touching ships only. Down-scope to D7.1-only (sub-second, static) is available if even that is unwanted. D7.1 alone already makes THIS drift impossible to ship silently; D7.2 additionally guards 'engine moved + nobody re-locked anchors.toml either'. Surface to operator before finalizing the verify-anchors skill edit.",
+]
+
+[assumptions]
+items = [
+  "determinism.rs non-feature-gated tests build the binary with no realdata/candle feature; all scenarios take Linear{bps:8} synthetic fallback. Confirmed via REAL_DATA_SCENARIO_IDS (main.rs:43) + build_slippage_model_for_scenario (main.rs:195).",
+  "tt1_* TCN-overlay (rows 13-14) are synthetic and DID drift — confirm in VR-0 before editing; if they pass unchanged, STOP (mapping needs review).",
+  "14 = 12 (t622x5 + t717x7) + 2 (tt1 TCN passthrough). Diagnosis table under-enumerated by 2.",
+]
+
+[verification]
+must_pass = [
+  "VR-0 pre-edit: cargo test -p backtest --test determinism shows exactly 14 fails incl. tt1_* (else STOP).",
+  "VR-1: cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_  → all green.",
+  "VR-2: python3 scripts/check_determinism_anchors.py exit 0; wrong-value scratch → exit 1 drift table.",
+  "VR-3 negative invariant: scripts/verify_anchors.sh still ANCHORS PASS (86/86).",
+  "VR-4: cargo fmt --check + cargo clippy --workspace --all-targets --all-features -D warnings clean.",
+]
