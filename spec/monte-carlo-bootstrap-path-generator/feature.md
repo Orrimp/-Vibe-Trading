@@ -1,7 +1,7 @@
 ---
 slug: monte-carlo-bootstrap-path-generator
 version: 0.1.0
-status: arch-done
+status: dev-done
 owner: developer
 priority: P2
 updated: 2026-05-30
@@ -688,7 +688,49 @@ sibling C2 brief. C1's verification is unit/property tests on the generator
 
 ## Implementation
 
-_developer fills this._
+Developer: completed 2026-05-30.
+
+### As-built notes
+
+**Module layout** (D-C1.1): `crates/data/src/synth/` with 4 files:
+- `mod.rs` — `MonteCarloPathGen` trait + `GeneratedPath` struct + `BlockLengthPolicy` enum + `SynthError` (thiserror).
+- `block_length.rs` — `politis_white_block_length(returns: &[f64]) -> usize` (pure, no RNG, hand-rolled PWSD + PPW-2009 corrected SB constant).
+- `bootstrap.rs` — `BlockBootstrapPathGen` (the headline stationary-block-bootstrap generator; shared-index Q-MCB-2).
+- `gbm.rs` — `GbmPathGen` (new independent GBM smoke-test; NOT a lift of the 3 existing generators — Q-MCB-3 thin-wrap).
+
+**Deviations from spec (none material)**:
+- `SynthError` added as a proper `thiserror`-derived enum (the spec implied `bail`/`Err`; same result, cleaner boundary).
+- `BlockBootstrapPathGen::new()` validates inputs at construction time in addition to `generate()` to fail early.
+- GBM per-symbol seeds derived by `path_seed.wrapping_add((i as u64).wrapping_mul(0x9E37_79B9))` — same idiom as momentum.rs:245, matching ADR-0051 D1 spirit even though the spec left GBM's sub-seeding unspecified.
+
+**Pinned FP-C1.6 auto-L fixture** (canonical Apple-Silicon box, 2026-05-30):
+- AR(1) φ=0.6, N=500 samples: auto-L = **7**
+- iid uniform N=500 samples: auto-L = **1**
+- Confirms: serial dependence increases block length; white noise gets L=1 (i.i.d. floor).
+
+**Test coverage (23 tests, all PASS)**:
+- `synth::block_length::tests` — 4 tests: degenerate/short series, zero-variance, valid-range, FP-C1.6.
+- `synth::bootstrap::tests` — 13 tests: FP-C1.1..5 + error cases + output shape + selected-block-length.
+- `synth::gbm::tests` — 6 tests: same-seed determinism, different-seed divergence, block-length None, bar count, error cases.
+
+**Gates verified** (all green, 2026-05-30):
+- `cargo test -p data --lib -- synth` → 23/23 PASS
+- `cargo build -p data` → clean
+- `cargo fmt -p data --check` → zero diff
+- `cargo clippy -p data --tests -- -D warnings` → zero errors
+- `bash scripts/verify_anchors.sh` → 84/84 PASS (C1 touches no anchored Rust — trivially satisfied)
+
+**C2 consumption interface**:
+```rust
+use data::{BlockBootstrapPathGen, BlockLengthPolicy, GbmPathGen, MonteCarloPathGen, GeneratedPath};
+// headline:
+let bgen = BlockBootstrapPathGen::new(source_bars, BlockLengthPolicy::Auto)?;
+let path: GeneratedPath = bgen.generate(&universe, n_bars, path_seed_j)?;
+// smoke-test:
+let ggen = GbmPathGen::new();
+let path: GeneratedPath = ggen.generate(&universe, n_bars, path_seed_j)?;
+```
+C2 derives `path_seed_j = master.wrapping_add((j as u64).wrapping_mul(0x9E37_79B9))` (ADR-0051 D1).
 
 ## Verification
 
@@ -714,6 +756,10 @@ _tester links to reports here._
   auto-block-length citation chain pinned. Trace row
   `REQ-MC-BOOTSTRAP-PATH-GENERATOR-001` opened `proposed`. HANDOFF → architect
   (M-T1; C1+C2 bundle; ADR-0051 owned by C2).
+- 2026-05-30 (developer): M-DEV-1..7 complete. New `crates/data/src/synth/` module
+  (mod.rs + block_length.rs + bootstrap.rs + gbm.rs). 23 unit tests — all PASS.
+  FP-C1.1..6 all verified. `verify_anchors.sh` 84/84. Clippy + fmt clean. No
+  anchored Rust touched. Status: arch-done → dev-done. HANDOFF → tester.
 - 2026-05-30 (architect, M-T1): `## Design` authored (D-C1.1..D-C1.6) + 6
   falsification probes (FP-C1.1..FP-C1.6). All three Qs resolved:
   **Q-MCB-1 = hand-roll** the Politis–White/PPW-2009 auto-`L` (no maintained

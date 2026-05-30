@@ -2,6 +2,7 @@
 //!
 //! Exposes `MarketDataSource` trait with `BinanceFeed`, `ReplayFeed`, `FakeFeed`.
 //! v1 adds `funding::FundingPoller` (T613).
+//! C1 adds `synth` — Monte-Carlo stationary-block-bootstrap path generator.
 
 pub mod bar_aggregator;
 pub mod bar_stream;
@@ -17,6 +18,7 @@ pub mod mock_feed;
 pub mod replay_feed;
 pub mod revision;
 pub mod source;
+pub mod synth;
 #[cfg(feature = "yahoo")]
 pub mod yahoo;
 
@@ -35,3 +37,7 @@ pub use kraken::{KrakenFeed, kraken_symbol_map};
 pub use mock_feed::MockFeed;
 pub use replay_feed::ReplayFeed;
 pub use source::MarketDataSource;
+pub use synth::{
+    BlockBootstrapPathGen, BlockLengthPolicy, GbmPathGen, GeneratedPath, MonteCarloPathGen,
+    SynthError,
+};

@@ -43,6 +43,8 @@ toml.workspace = true
 smol_str.workspace = true
 
 tokio-util.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
 yahoo_finance_api = { workspace = true, optional = true }
 
 [features]
