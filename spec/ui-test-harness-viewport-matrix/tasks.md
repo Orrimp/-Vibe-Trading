@@ -1,8 +1,8 @@
 ---
 slug: ui-test-harness-viewport-matrix
-status: present-done
+status: presenter-done
 owner: human-operator
-updated: 2026-05-29
+updated: 2026-05-30
 ---
 
 # Tasks — ui-test-harness-viewport-matrix v0.1.0

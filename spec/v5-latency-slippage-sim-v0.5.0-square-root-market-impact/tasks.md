@@ -1,8 +1,8 @@
 ---
 slug: v5-latency-slippage-sim-v0.5.0-square-root-market-impact
-status: dev-in-progress
-owner: developer
-updated: 2026-05-29
+status: tester-done
+owner: tester
+updated: 2026-05-30
 q_d1_ratified: "(a) Linear{bps:8} fallback for synthetic — 2026-05-29"
 q_d2_ratified: "(β) per-scenario lazy-compute — 2026-05-29"
 ---

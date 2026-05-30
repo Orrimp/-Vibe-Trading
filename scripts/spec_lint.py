@@ -80,6 +80,13 @@ VALID_STATUSES = {
     "arch-done",        # architect M-T1 design pass complete; pre-developer.
     "dev-done",         # developer M-DEV complete; pre-tester.
     "tester-done",      # tester VERDICT → PASS; pre-presenter.
+    # 2026-05-30 addition — completes the pipeline vocabulary past the
+    # presenter. Surfaced by the spec-audit-2026-05-30 sweep:
+    # ui-test-harness-viewport-matrix/tasks.md carried the non-enum token
+    # `present-done` (presenter deck assembled, awaiting operator approval —
+    # NOT yet `shipped`). Mirrors arch-done/dev-done/tester-done: the
+    # transient state between a presenter pass and the operator ship tick.
+    "presenter-done",   # presenter deck assembled; pre-operator-approval.
 }
 
 # Categories — used both for grouping output and computing exit code.

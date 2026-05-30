@@ -1,3 +1,12 @@
+---
+slug: lab-polish-round-2
+version: 0.1.0
+status: proposed
+owner: analyst
+updated: 2026-05-25
+parent: lab-end-to-end-v2
+---
+
 # Lab polish round 2 — task list
 
 Slug: `lab-polish-round-2`
