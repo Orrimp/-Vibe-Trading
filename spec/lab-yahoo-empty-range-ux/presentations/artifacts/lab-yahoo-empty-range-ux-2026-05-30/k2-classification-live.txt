@@ -1,0 +1,47 @@
+Presenter live re-run — ground-truth evidence for the ship deck.
+Captured 2026-05-30 by presenter at HEAD eb5db67 (the tested commit).
+
+================================================================
+Command (the K2 required-gate — empty-vs-error classification):
+  cargo test -p ui --test lab_yahoo_empty_range_classification \
+    --no-default-features --features live
+================================================================
+
+running 3 tests
+test case_b_transport_error_routes_to_error ... ok
+test case_a_empty_source_routes_to_notice ... ok
+test k2_empty_vs_error_surfaces_are_distinct ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+(Build under `--no-default-features --features live` emitted 2 pre-existing
+`unused_imports`/`unused_variable` warnings in runner.rs — these are NOT
+clippy `-D warnings` gate hits; the tester ran the full `live,yahoo` clippy
+gate and confirmed it clean at c2f8ec6. Not feature regressions.)
+
+================================================================
+Command (clamp non-regression — K3/H3):
+  cargo test -p ui --test lab_yahoo_range_clamp \
+    --no-default-features --features "live,yahoo"
+================================================================
+
+running 6 tests
+test h1_2024_byte_identical ... ok
+test h2_2024_byte_identical ... ok
+test custom_past_end_passes_through_unchanged ... ok
+test custom_future_end_clamped_to_now ... ok
+test last90d_end_does_not_exceed_now ... ok
+test last30d_end_does_not_exceed_now ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+================================================================
+Command (anchor regression gate — R-NR.1 zero-delta):
+  bash scripts/verify_anchors.sh
+================================================================
+
+PASS  top10-2023-fy-vol-target-overlay-realdata  6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf
+PASS  top10-2023-fy-regime-dispatcher-realdata  857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6
+PASS  top10-2024-fy-regime-dispatcher-realdata  519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1
+---
+ANCHORS PASS  (84 / 84)
