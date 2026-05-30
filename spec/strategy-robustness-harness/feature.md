@@ -1,8 +1,8 @@
 ---
 slug: strategy-robustness-harness
 version: 0.1.0
-status: proposed
-owner: analyst
+status: arch-done
+owner: developer
 priority: P2
 updated: 2026-05-30
 ---
@@ -375,12 +375,271 @@ locked Q2 (anchor the summary) and Q3 (harness first) are the frame, not axes.
 
 ## Design
 
-> _architect fills this at M-T1, **and authors ADR-0051** (see § ADR flag).
-> Inputs flagged: the ADR-0051 D1–D5 contract, the Q-RH-1/Q-RH-2 ratifications,
-> the wall-clock budget for N (Q-RH-1), the ensemble-seed-vs-fill-tie-break-seed
-> orthogonality question (R1.3 / direction note § 8 open question 2), and
-> confirmation that the `threshold_sweep::run_cell` seam generalizes to the path
-> ensemble (direction note § 8 open question 3 — architect § 1.4 says yes)._
+> **Architect M-T1 (2026-05-30).** Trace `arch`: **ADR-0051** (authored this pass
+> — D1 sub-seed rule, D2 reduction order, D3 report shape, D4 anchor unit, D5
+> scope), ADR-0043 (f64-conversion-boundary scope inherited by D5), ADR-0032
+> (realdata path + revision pin reused for the source series). Depends on **C1**
+> ([`monte-carlo-bootstrap-path-generator`](../monte-carlo-bootstrap-path-generator/feature.md)) —
+> build C1 first. Q-RH-1 and Q-RH-2 resolved below.
+
+### D-C2.1 — ADR-0051 authored (the determinism + anchoring contract)
+
+The brief's § ADR flag is discharged:
+[`ADR-0051 — Monte-Carlo robustness: sub-seed derivation, distribution-report
+shape, and anchor determinism`](../architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md),
+status `accepted`, registered atomically in the ADR README. D1-D5 are exactly the
+contract this brief depends on; the design below cites them. The reducer + report
+implement D2/D3 verbatim; the seed wiring implements D1; the anchor unit is D4;
+the scope declaration is D5.
+
+### D-C2.2 — Module layout + Q-RH-2 = dedicated `bin/monte_carlo.rs` (RATIFIED)
+
+**RATIFICATION: dedicated `crates/backtest/src/bin/monte_carlo.rs` (Q-RH-2 =
+Option A, durable).** Mirrors the `bin/threshold_sweep.rs` precedent exactly (the
+seam C2 reuses). Keeps the single-path `backtest` bin's CLI + its 84 single-path
+anchors cleanly separated from the new distribution-report anchor; the MC bin
+family evolves independently (C3 param-sweep, C5 CPCV layer onto it, not onto the
+single-path bin). Cost ~0 (a new Cargo target; the cell wrapper + reducer are
+shared lib code). Option B (`--robustness` flag on the `backtest` bin) is rejected
+at analyst+architect level — it entangles the distribution-report path with the
+single-path CLI and risks an operator running the single-path anchor flow with
+`--robustness` set.
+
+```text
+crates/backtest/src/
+├── bin/monte_carlo.rs       # NEW driver — fan out over 0..N (rayon), reduce, render
+├── scenarios/montecarlo.rs  # NEW — run_path(input, path_seed_j, strategy) cell wrapper
+└── stats/                   # NEW shared module — lifted compute_* + the reducer
+    └── mod.rs               # compute_sharpe_hourly/sortino/calmar/max_dd/total_return
+                             #   (lifted from bin/threshold_sweep.rs, behaviour-preserving)
+                             #   + DistributionSummary reducer (the only genuinely new math)
+```
+
+The metric calculators (`compute_sharpe_hourly:234`, `compute_sortino_hourly:260`,
+`compute_calmar:286`, `compute_max_drawdown_f64:311`, `compute_total_return:334`)
+are currently free functions **inside the `threshold_sweep` bin**. Lift them
+**verbatim** (R-NR.5 — same arithmetic, just relocated) into `backtest::stats` and
+have `bin/threshold_sweep.rs` import them from there. This is behaviour-preserving:
+the `threshold_sweep` report bytes are unchanged (the functions are identical, only
+their path changes). The genuinely new code is `stats::DistributionSummary` — the
+percentile/moment reducer (audit § 2(c): "the new code is the reducer; the rest is
+wiring").
+
+### D-C2.3 — `run_cell` generalizes to the path ensemble (CONFIRMED at code level)
+
+The audit § 1.4 claim is confirmed by reading
+`crates/backtest/src/scenarios/threshold_sweep.rs::run_cell`: it takes
+`(TcnScenarioInput, seed: u64, overlay_strategy)`, accepts `input.bars_override:
+Option<Vec<Bar>>` (pre-loaded bars), runs the standard bar-loop on a fresh
+`PaperEngine::new(match_config, seed)`, and returns a `TcnOverlayRunResult` whose
+`equity_curve: Vec<Decimal>` is exactly what the `compute_*` calculators consume.
+**Monte-Carlo is the dual**: instead of N parameter cells over a fixed
+`bars_override`, C2 runs N path-ensembles (each path's `bars_by_symbol` merged via
+`data::ReplayFeed::merge_synthetic`) over a **fixed** strategy + θ*.
+
+The new `scenarios::montecarlo::run_path` cell wrapper is a thin sibling of
+`run_cell`:
+
+```rust
+// crates/backtest/src/scenarios/montecarlo.rs
+pub async fn run_path(
+    input: TcnScenarioInput,        // bars_override = this path's merged Vec<Bar>
+    fill_seed: u64,                 // the FIXED fill-tie-break seed (ADR-0051 D1)
+    strategy: <the fixed θ* momentum strategy>,
+) -> Result<PathRunResult>          // carries equity_curve: Vec<Decimal>
+```
+
+`run_path` MUST be a behaviour-preserving sibling of `run_cell` (same bar-loop,
+same `PaperEngine`, same risk limits) — it does NOT change `PaperEngine`,
+`MatchingEngine`, or any scenario `run()` (R1.2 / R-NR.2). The cleanest
+implementation: generalize the **existing `run_cell` body** into a
+strategy-and-bars-parameterized helper and have BOTH `run_cell` and `run_path`
+call it; OR copy the `run_cell` body into `run_path` (verbatim, then swap the
+strategy type). Developer picks; both keep the anchored `run_cell` path intact.
+
+> **Strategy type note.** v0.1.0 runs the v1 cross-sectional momentum baseline at
+> a fixed θ* (R1.4). `run_cell` is currently typed to
+> `TcnOverlayMomentumStrategy`; `run_path` should be typed to (or generic over) the
+> momentum `Strategy` so the harness runs plain momentum, not the TCN overlay. If a
+> shared generic helper is used, parameterize it `<S: Strategy>`; the momentum
+> strategy is constructed once from `config/strategies/top10_momentum_h1.toml` and
+> **cloned per path** (the strategy is re-instantiated per path so each path's run
+> is independent — mirror how `threshold_sweep` builds a fresh strategy per cell).
+
+### D-C2.4 — Seed wiring (ADR-0051 D1) + ensemble/fill-seed orthogonality (resolves direction § 8 open-Q2)
+
+- **Master ensemble seed** `--ensemble-seed` (default `0xC0FFEE`). Per path index
+  `j ∈ 0..N`: `path_seed_j = ensemble_seed.wrapping_add((j as u64).
+  wrapping_mul(0x9E37_79B9))` (ADR-0051 D1; the project's existing idiom on the
+  path axis). Bound to `j`, **never** to rayon completion order.
+- **Fill-tie-break seed** is HELD CONSTANT across all paths at `0xC0FFEE`
+  (ADR-0051 D1). The path is supplied by C1's ensemble, so the engine seed no
+  longer generates the path; holding the fill seed constant ensures the only
+  varying input across paths is **the path itself**, not the fill tie-break
+  (which would be a confounding second noise source). **This is the resolution to
+  direction-note § 8 open-Q2** (does the ensemble seed need to be orthogonal to
+  the fill-tie-break seed): yes — they are separate knobs; the ensemble seed
+  varies the paths, the fill seed is pinned. Both are printed in the hashed body
+  (D3) so the anchor is sensitive to either.
+- C2 calls `C1::BlockBootstrapPathGen::generate(universe, n_bars, path_seed_j)` per
+  path; the returned `bars_by_symbol` is merged via
+  `data::ReplayFeed::merge_synthetic` into the `Vec<Bar>` passed as
+  `input.bars_override` to `run_path`.
+
+### D-C2.5 — Q-RH-1 = N=500 (RATIFIED) + wall-clock budget + the `watch` probe
+
+**RATIFICATION: N = 500 (Q-RH-1 = Option A, durable); N = 200 the
+if-budget-tightens fallback.** 500 gives stable p5/p95 tail percentiles (at N=100
+the p95 is the 5th-worst path — too noisy for the `paper→live` gate). N is a
+hashed body field (D3), so re-anchoring at a different N later changes the SHA —
+picking a defensible N now avoids a v0.2.0 re-anchor.
+
+**Wall-clock budget (architect sizing).** One single-path momentum backtest over a
+full year is 8760 hourly bars × 10 symbols ≈ the `top10-*-momentum` scenario cost
+(seconds on the canonical box). N=500 paths over a rayon pool (the
+`threshold_sweep` pattern ran 45 cells comfortably) is **minutes, not hours** —
+each path is independent and embarrassingly parallel. Tractable on the canonical
+box. If the dry-run measures > ~10 min wall-clock, fall back to N=200 (still
+tail-meaningful). **N=500 ratified pending the M-DEV dry-run confirming
+wall-clock < ~10 min**; the developer reports the measured wall-clock in
+`§ Implementation` and the operator confirms N=500 vs the N=200 fallback before
+the anchor is locked.
+
+> **`watch` probe (long-running-task contract — MANDATORY since an N=500 run is
+> > 2 min).** While the MC run executes, monitor with:
+> ```bash
+> watch -n 10 'ls -t spec/strategy-robustness-harness/reports/robustness-*.md 2>/dev/null | head -1 | xargs -I{} sh -c "echo {}; tail -20 {}"'
+> ```
+> (Shows the newest robustness report as it lands. Before the report exists the
+> command prints nothing — that is expected during the fan-out.) Expected result:
+> one `robustness-*.md` appears after the fan-out + reduce completes. Failure
+> diagnosis: if no file after ~15 min at N=500, the fan-out stalled — check the
+> driver's rayon pool (mirror `threshold_sweep`'s dedicated `sweep_pool` to avoid
+> executor-context issues) or fall back to N=200.
+
+### D-C2.6 — `DistributionSummary` reducer (ADR-0051 D2 — the f64 boundary)
+
+The only genuinely new math. `backtest::stats::DistributionSummary`:
+
+```rust
+pub struct MetricDistribution {     // per metric
+    pub mean: f64, pub std: f64,
+    pub p5: f64, pub p25: f64, pub p50: f64, pub p75: f64, pub p95: f64,
+    pub min: f64, pub max: f64,
+}
+pub struct DistributionSummary {
+    pub sharpe: MetricDistribution,
+    pub sortino: MetricDistribution,
+    pub calmar: MetricDistribution,
+    pub max_drawdown: MetricDistribution,
+    pub total_return: MetricDistribution,
+    pub prob_loss: f64,             // P(final_equity < initial)
+    pub prob_sharpe_gt_0: f64,
+    pub prob_sharpe_gt_1: f64,
+    pub max_dd_tail_p50: f64,       // headline paper→live gate number
+    pub max_dd_tail_p95: f64,
+}
+```
+
+Reduction is **frozen per ADR-0051 D2** (carry the load-bearing comment in code):
+
+- Collect the N per-path metrics into a `Vec<f64>` **indexed by path index `j`**
+  (the parallel map returns `(j, PathRunResult)` or writes into a pre-sized vec at
+  index `j`); reduce **sequentially in ascending-`j` order**. An unordered
+  parallel fold is FORBIDDEN (`// ADR-0051 D2: index-order reduction is
+  load-bearing — do NOT parallelize`).
+- `mean` = sequential left-fold sum / N. `std` = **two-pass** population std
+  (`var = Σ(x_j − mean)²/N`, `std = var.sqrt()`).
+- Percentiles = **sort with `f64::total_cmp`** (NEVER `partial_cmp().unwrap()`),
+  **NaN asserted absent first**, then **type-7 linear** interpolation:
+  `h = (N−1)·p/100`, value `= sorted[⌊h⌋] + (h−⌊h⌋)·(sorted[⌈h⌉] − sorted[⌊h⌋])`.
+- Probabilities = integer count / N (platform-independent count; only the final
+  division is f64).
+
+### D-C2.7 — `robustness-*.md` report (ADR-0051 D3) + anchor (D4)
+
+New report type per ADR-0051 D3 (front-matter/body split + fixed-precision
+formatting + fixed metric order). The body MUST print every distribution input so
+the anchor is sensitive to it (K3): `master_seed`, `fill_seed`, `n_paths`,
+`sub_seed_rule` (frozen string `"master + j*0x9E3779B9"`), `reduction_rule` (frozen
+string), `generator` (`block-bootstrap-real` | `gbm-smoke`), `bootstrap_mode`
+(`shared-index` from C1), `block_length_policy`, `selected_block_length_L` (from
+C1's `GeneratedPath`), `source_revision_sha` (the resampled real-data revision),
+`param_set` (the fixed θ*), then the per-metric distribution table (metrics in the
+fixed order `sharpe, sortino, calmar, max_drawdown, total_return`) + the
+prob-of-loss / PPSR / DD-tail block. All hashed floats at `{:.6}` (ratios/probs) /
+`{:.2}%` (drawdowns) — verbatim `threshold_sweep` conventions.
+
+- **Anchor unit = ONE summary report** (ADR-0051 D4) under the **new namespace
+  `mc-robustness-2026-06`**. v0.1.0 adds exactly **+1** anchor. Render the report
+  via the existing `backtest::report_body_hash` contract (body = everything after
+  the second `---`). `scripts/verify_anchors.sh` is namespace-aware; add the new
+  namespace + report-dir to its resolver (the routine additive extension —
+  precedent: every prior namespace add; e.g. ADR-0047 D5 / ADR-0045 D2). The
+  tester locks the body-SHA after two byte-identical runs.
+- **GBM-smoke variant is NON-anchored** and visibly labelled `generator:
+  gbm-smoke` (K4) — it proves the N-path harness runs but is never the verdict
+  source.
+
+### D-C2.8 — The MANDATORY day-1 gate (R-NR.6, CLAUDE.md non-negotiable)
+
+Two e2e tests, both required from day 1 (the v3-vol-overlay-noop precedent
+adapted to a distribution harness):
+
+- **(a) Divergence-from-single-path-baseline (R-NR.6a — catches the harness
+  collapsing to one path run N times, the noop-in-harness-clothing signature).**
+  Run the single deterministic baseline-path backtest (today's momentum scenario
+  on one path) to get `single_baseline_sharpe` (and equity). Run the N-path
+  ensemble. Assert the ensemble is NOT a degenerate spike:
+  `|p50_ensemble_sharpe − single_baseline_sharpe| ≥ epsilon` **OR**
+  `spread = (p95_sharpe − p5_sharpe) ≥ epsilon`. If the per-path seed wiring (D1)
+  is broken so all N paths are identical, the spread collapses to 0 and the p50
+  equals the single baseline → this test FAILS. **This is the falsification probe
+  FP-C2.1.**
+- **(b) Two-run byte-identity of the summary body-SHA (R-NR.6b / R3.1).** Run the
+  whole ensemble twice at the same `--ensemble-seed`; assert identical
+  `report_body_hash`. Extends `tests/determinism.rs` to the ensemble. If a
+  reduction is unordered (D2 violated) or a float is unformatted (D3 violated),
+  the two runs differ → FAILS.
+
+Together (a)+(b): the distribution is **real** (diverges from the degenerate
+single-path) AND **reproducible** (anchorable). This is the literal CLAUDE.md
+adaptation the operator asked for. Pattern reference (single-path analogue):
+`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`.
+
+### D-C2.9 — Non-regression conformance
+
+- `verify_anchors.sh` → 84 existing anchors byte-identical pre/post (R-NR.1; the
+  MC code touches none of their code paths — C1's Q-MCB-3 thin-wrap leaves the
+  anchored GBM untouched, and the `compute_*` lift is verbatim per R-NR.5).
+- Zero behaviour change to `PaperEngine`/`MatchingEngine`/`Strategy`/scenario
+  `run()` (R-NR.2). The `compute_*` lift is verbatim relocation (R-NR.5 — assert
+  the `threshold_sweep` report, if anchored, stays byte-identical).
+- Money math `Decimal`; only the statistical metric layer + the reducer use f64,
+  order-fixed per D2 (R-NR.3). `cargo clippy -- -D warnings` + `cargo fmt` clean;
+  no `.unwrap()` in library code; the path generator is behind C1's trait so the
+  harness is testable with a fake `MonteCarloPathGen` (R-NR.4).
+
+### Falsification probes (C2 — for the developer M-DEV dry-run)
+
+- **FP-C2.1 — force the ensemble to ONE path → the divergence gate MUST FAIL.**
+  Temporarily wire all N `path_seed_j` to the same constant (or N=1 replicated to
+  N). The R-NR.6a divergence test MUST go red (spread → 0, p50 == single
+  baseline). This proves the divergence gate actually detects the noop-collapse —
+  if it stays green with one path, the gate is itself a no-op. Revert after.
+- **FP-C2.2 — anchor sensitivity to θ* (K3).** Run two ensembles with different
+  momentum θ* (e.g. `lookback_minutes` 60 vs 120) at the same `--ensemble-seed`;
+  assert the two summary body-SHAs DIFFER. Proves the anchor moves when inputs
+  move (the inverse of the noop signature). A SHA that does not move when θ*
+  changes means a distribution input is missing from the hashed body (D3 bug).
+- **FP-C2.3 — two-run determinism (R3.1).** Same `--ensemble-seed` twice ⇒
+  identical body-SHA. (The R-NR.6b gate; run as an adversarial check that no
+  reduction snuck in an unordered fold.)
+- **FP-C2.4 — generator-label honesty (K4).** A `gbm-smoke` run emits
+  `generator: gbm-smoke` in the body and is NOT under the `mc-robustness-2026-06`
+  anchor namespace; a `block-bootstrap-real` run emits `generator:
+  block-bootstrap-real`. Assert the label matches the generator used (catches an
+  accidental GBM-optimistic DD tail).
 
 ## Backtest Scenarios
 
@@ -421,3 +680,28 @@ K3 anchor-sensitivity-to-`θ*`._
   ([`monte-carlo-bootstrap-path-generator`](../monte-carlo-bootstrap-path-generator/feature.md)).
   Trace row `REQ-STRATEGY-ROBUSTNESS-HARNESS-001` opened `proposed`. HANDOFF →
   architect (M-T1 + ADR-0051; C1+C2 bundle).
+- 2026-05-30 (architect, M-T1): `## Design` authored (D-C2.1..D-C2.9) + 4
+  falsification probes (FP-C2.1..FP-C2.4). **ADR-0051 AUTHORED** (D1-D5,
+  status accepted, atomically registered in the ADR README) — discharges the
+  § ADR flag. **Q-RH-1 = N=500 RATIFIED** (stable p5/p95 tail; N is a hashed
+  body field so picking a defensible N now avoids a v0.2.0 re-anchor; wall-clock
+  sized as minutes-not-hours on the canonical box; N=200 the if-budget-tightens
+  fallback pending the M-DEV dry-run confirming < ~10 min; mandatory `watch -n 10`
+  probe spec'd). **Q-RH-2 = dedicated `bin/monte_carlo.rs` RATIFIED** (mirrors the
+  `bin/threshold_sweep.rs` precedent; keeps the single-path 84-anchor CLI cleanly
+  separated; the MC bin family carries C3/C5). Confirmed at code level that
+  `threshold_sweep::run_cell` generalizes (it takes `bars_override` + a
+  caller-supplied strategy + a fixed seed and returns `equity_curve: Vec<Decimal>`)
+  → `scenarios::montecarlo::run_path` is a behaviour-preserving sibling (resolves
+  direction § 8 open-Q3). Ensemble-seed-vs-fill-tie-break orthogonality resolved
+  (direction § 8 open-Q2): `--ensemble-seed` varies the paths via D1; the
+  fill-tie-break seed is HELD CONSTANT at `0xC0FFEE` across all paths so the only
+  varying input is the path itself (no confounding tie-break noise). `compute_*`
+  calculators lift verbatim from the `threshold_sweep` bin into a new
+  `backtest::stats` shared module (R-NR.5 behaviour-preserving); the only new math
+  is `stats::DistributionSummary` (index-order reduction + `total_cmp` sort +
+  type-7 linear percentile per ADR-0051 D2). Day-1 gate (R-NR.6) spec'd as two
+  e2e tests: (a) divergence-from-single-path-baseline + (b) two-run byte-identity.
+  +1 anchor under new namespace `mc-robustness-2026-06` (D4). Trace `arch` filled
+  (+ADR-0051 added); status proposed → arch-done; owner → developer. `tasks.md`
+  created with M-DEV rows. HANDOFF → developer (build C1 first, then C2).

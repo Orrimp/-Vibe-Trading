@@ -1,8 +1,8 @@
 ---
 slug: monte-carlo-bootstrap-path-generator
 version: 0.1.0
-status: proposed
-owner: analyst
+status: arch-done
+owner: developer
 priority: P2
 updated: 2026-05-30
 ---
@@ -389,10 +389,296 @@ Q-MCB-1 (hand-roll vs crate) is orthogonal and folds in.
 
 ## Design
 
-_architect fills this at M-T1. Inputs flagged: ADR-0051 (owned by C2; C1's
-per-path determinism contract R2 must be consistent with ADR-0051 D1's
-master-seed → sub-seed rule), the R4 GBM-lift safety evidence (resolves Q-MCB-3),
-and the Q-MCB-1/Q-MCB-2 ratifications._
+> **Architect M-T1 (2026-05-30).** Trace `arch`: ADR-0051 (D1 sub-seed
+> consistency, D2/D3 anchor determinism owned by C2), ADR-0002 (ChaCha20 RNG),
+> ADR-0003 (Decimal money math). All three Qs resolved below; the load-bearing
+> calls are **Q-MCB-2 = shared-index (RATIFIED)** and **Q-MCB-3 = thin-wrap +
+> defer (the documented exception — full dedup is NOT byte-safe; evidence below)**.
+
+### D-C1.1 — Module layout: `crates/data/src/synth/`
+
+New module tree under `crates/data` (sited alongside `fake_feed` / `mock_feed` /
+`replay_feed` per the readiness audit § 2 "where the MC path generator lives"):
+
+```text
+crates/data/src/synth/
+├── mod.rs          # MonteCarloPathGen trait + BlockLengthPolicy enum + re-exports
+├── bootstrap.rs    # BlockBootstrapPathGen (the headline generator; R1.2, R1.3)
+├── block_length.rs # Politis–White / PPW-2009 auto-L selection (R3; Q-MCB-1 hand-roll)
+└── gbm.rs          # GbmPathGen (the demoted smoke-test; R1.4, Q-MCB-3 thin-wrap)
+```
+
+`crates/data/src/lib.rs` gains `pub mod synth;` and re-exports
+`pub use synth::{MonteCarloPathGen, BlockBootstrapPathGen, GbmPathGen,
+BlockLengthPolicy};`. No new crate (audit § 2: a new crate is overkill for ~3
+generators and adds a workspace edge for no isolation benefit). **No new
+dependency** — block bootstrap + auto-`L` are hand-rolled (Q-MCB-1 = A); the only
+crates touched are already-present `rand` / `rand_chacha` / `rust_decimal` /
+`trading_core` (for `Bar`/`Symbol`/`Price`).
+
+### D-C1.2 — `MonteCarloPathGen` trait (ratified signature)
+
+R1.1's sketch is ratified with two refinements: (a) the return type carries the
+selected block length so C2 can print it in the anchored body (R3.2), and (b) the
+universe element is `(Symbol, Decimal)` — `(symbol, start_price)` — matching
+`top10_symbols_with_prices()` (`momentum.rs:63`) so the harness threads the exact
+universe shape the scenarios already use.
+
+```rust
+// crates/data/src/synth/mod.rs
+use rust_decimal::Decimal;
+use trading_core::{Bar, Symbol};
+
+/// One synthetic ensemble member: the per-symbol bar series for a single path.
+pub struct GeneratedPath {
+    /// Outer Vec is per-symbol (universe order preserved); inner is the bar series.
+    pub bars_by_symbol: Vec<Vec<Bar>>,
+    /// The block length actually used (Auto-selected or Fixed). A distribution
+    /// input — C2 prints it in the hashed report body (ADR-0051 D3). `None` for
+    /// generators that have no block-length concept (GbmPathGen).
+    pub selected_block_length: Option<usize>,
+}
+
+pub trait MonteCarloPathGen {
+    /// Pure: identical (universe, n_bars, path_seed) ⇒ identical `GeneratedPath`.
+    /// MUST NOT read wall-clock, env, thread_rng, or any global mutable state.
+    /// All randomness flows from `ChaCha20Rng::seed_from_u64(path_seed)`.
+    fn generate(&self, universe: &[(Symbol, Decimal)], n_bars: usize, path_seed: u64)
+        -> GeneratedPath;
+}
+```
+
+Rationale for `GeneratedPath` over the bare `Vec<Vec<Bar>>` in R1.1: the
+auto-selected `L` (R3.2) must surface to the caller and it would be awkward to
+bolt a getter onto a trait that returns a plain `Vec`. A struct return keeps the
+generator pure (the `L` is a function of the source series, so it is part of the
+deterministic output) and gives C2 exactly the field it needs for the body.
+**This is the minimal upgrade to R1.1; the developer MAY keep the bare-Vec
+signature and add a separate `selected_block_length()` getter if they prefer —
+either satisfies R3.2 as long as the chosen `L` reaches C2's body.**
+
+### D-C1.3 — `BlockBootstrapPathGen` + Q-MCB-2 = SHARED-INDEX (RATIFIED, methodologically load-bearing)
+
+**RATIFICATION: shared-index block bootstrap (Q-MCB-2 = Option A). This upgrades
+R1.3's literal per-symbol-independent default.** The single most important
+methodological call in the slice.
+
+The construction (one path):
+
+1. Build the source **return series per symbol** from the real bar series:
+   `r_sym[t] = (close[t] / close[t-1]).ln()` (log returns; `T-1` returns for `T`
+   bars). All symbols share the **same length `T`** (the scenarios load a fixed
+   `bar_count` per symbol — 8760/8784 — so the real ensemble is rectangular;
+   assert equal lengths and `bail`/`Err` on ragged input).
+2. Seed **one** `ChaCha20Rng::seed_from_u64(path_seed)` for the whole path (D1).
+3. Draw the **stationary-bootstrap index sequence ONCE** (Politis–Romano): emit
+   indices `i_0, i_1, …, i_{n_bars-2}` (`n_bars-1` return indices for `n_bars`
+   output bars) by: pick a uniform start `i_0 ∈ [0, T-1)`; with probability
+   `p = 1/L` start a **new** block (fresh uniform start index), else continue the
+   current block by advancing `i_{k} = (i_{k-1} + 1) mod (T-1)` (circular wrap).
+   `L` is the expected block length (geometric block lengths with mean `L` —
+   R3.4; the `p = 1/L` Bernoulli-restart is the stationary-bootstrap definition,
+   NOT fixed-`L` moving blocks).
+4. **Apply the SAME index sequence to ALL symbols** (the shared-index step):
+   `r'_sym[k] = r_sym[i_k]` for every symbol. Because index `i_k` selects the
+   **same real timestamp** across all symbols, the contemporaneous cross-symbol
+   co-movement on that timestamp is preserved in the resample.
+5. Reconstruct each symbol's price path from its real start price (the universe
+   `Decimal`), compounding the resampled returns: `p_sym[0] = start_price`,
+   `p_sym[k+1] = p_sym[k] * exp(r'_sym[k])`, rounded to `Decimal` at the `Bar`
+   boundary (R-NR.3 — f64 return-space arithmetic, deterministic round to
+   `Decimal` for `Bar.close`). OHLC/volume/timestamps follow the existing
+   `synthetic_bars_hourly` Bar-construction conventions (epoch-based `open_ts`/
+   `close_ts` from a fixed start year; high/low bracket the open/close; volume a
+   resampled real value or a fixed proxy — developer matches `Bar` field
+   semantics; only `close` is load-bearing for the strategy's returns).
+
+**Why shared-index is the right null (the analyst's flag, ratified).** For a
+**cross-sectional** momentum strategy the edge is *relative* ranking across
+symbols at each timestamp. A per-symbol-independent bootstrap (R1.3 literal)
+draws a different index sequence per symbol, which **destroys the contemporaneous
+correlation** — it manufactures diversification the real market does not offer in
+a crash, so the robustness distribution would make the strategy look **more
+robust than it is** (understated tail co-movement, optimistic p95 MaxDD). That is
+precisely the wrong-null failure mode. Shared-index resamples *time blocks*
+jointly across the universe, preserving the cross-sectional structure the
+strategy actually trades on → the distribution C2 produces is **decision-grade
+for the real strategy**. Cost over per-symbol is marginal (~0.5 day per the
+analyst): the index draw is shared; only the per-symbol price reconstruction
+loops. C2's body prints `bootstrap_mode: shared-index` (ADR-0051 D3 / C1 K3) so
+the anchor reflects the ratified mode and would move if a future v0.2.0 ever
+changed it.
+
+> **Determinism note (ADR-0051 D1 composition).** There is **exactly one**
+> `ChaCha20Rng` per path, seeded by `path_seed_j`. The shared index sequence is
+> the only RNG-consuming step; price reconstruction is deterministic arithmetic.
+> So "same `path_seed` ⇒ same index sequence ⇒ same `Vec<Vec<Bar>>`" (R2.1/R2.4)
+> holds by construction, and it composes cleanly with C2's D1 sub-seed rule (C2
+> derives `path_seed_j`; C1 is agnostic to how).
+
+### D-C1.4 — Auto block length: Q-MCB-1 = HAND-ROLL (RATIFIED), Politis–White / PPW-2009
+
+**RATIFICATION: hand-roll in `synth::block_length` (Q-MCB-1 = Option A, durable).**
+No crate. The library-compat checklist was run against the candidate Rust crates:
+none is a clear win and all forfeit determinism control —
+
+- `blocklength` (R-port idea) / `arch` (Python) / `np::b.star` (R) are the
+  *reference* impls but are **not Rust crates we can depend on**; there is no
+  maintained, single-binary-friendly Rust crate implementing PWSD auto-`L` that
+  passed the checklist (maintained ≤ 18 mo + no system C deps + edition-2024
+  clean + determinism-controllable). A crate's internal f64 reductions would sit
+  **outside our ADR-0051 D2 determinism boundary** and could silently break the
+  anchor on a crate bump (the chosen `L` flows into C2's hashed body — D3). The
+  "cheap" path is not cheaper once the determinism boundary is accounted for.
+
+The hand-rolled algorithm (Politis–White 2004 PWSD, with the Patton–Politis–White
+2009 / Nordman 2008 correction; confirmed against the `np::b.star` /
+`arch.bootstrap.optimal_block_length` / `blocklength::pwsd` reference docs):
+
+1. Compute the sample autocorrelations `ρ̂(k)` of the (single representative)
+   return series for `k = 1 … M`.
+2. **`m̂` selection**: `m̂` is the smallest lag such that `K_N` *consecutive*
+   autocorrelations `ρ̂(m̂), …, ρ̂(m̂+K_N-1)` all fall inside the band
+   `±2·sqrt(log10(N)/N)`, where `K_N = max(5, ⌈log10(N)⌉)` and `N = T-1` (the
+   return count). Cap the search at `M = ⌈sqrt(N)⌉ + K_N`.
+3. **Flat-top lag window** (Politis–Romano 1995): `λ(s) = 1` for `|s| ≤ 1/2`,
+   `λ(s) = 2(1−|s|)` for `1/2 < |s| ≤ 1`, `0` otherwise. Estimate
+   `ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/m̂)·|k|·γ̂(k)` and
+   `Ĝ_hat = Σ_{k=-2m̂}^{2m̂} λ(k/m̂)·γ̂(k)` from the autocovariances `γ̂(k)`.
+4. **`b̂` (stationary bootstrap, PPW-2009 corrected constant)**:
+   `b̂ = ( 2·Ĝ_hat² / D_SB )^{1/3} · N^{1/3}`, where for the **stationary**
+   bootstrap `D_SB = 2·Ĝ_hat²` per the PPW-2009 correction (the 2004 paper's
+   constant was corrected following Nordman 2008). Clamp
+   `b̂ ∈ [1, ⌈min(3·sqrt(N), N/3)⌉]` (the reference-impl upper guard) and round to
+   the nearest integer ≥ 1. `L := b̂`.
+
+**Determinism**: every step is a pure function of the source series (no RNG); the
+chosen `L` is therefore part of C1's deterministic output (surfaced via
+`GeneratedPath.selected_block_length` — D-C1.2). The f64 reductions here are
+C1-internal and do **not** enter a hashed report directly — only the resulting
+**integer `L`** does (C2 prints `selected_block_length_L: <usize>`), so the
+auto-`L` f64 math is one integer-quantization away from the anchor and is robust
+to last-bit noise by construction (the integer rounding absorbs it).
+
+**`BlockLengthPolicy`** (R3.1): `enum BlockLengthPolicy { Fixed(usize), Auto }`.
+`Auto` runs the above; `Fixed(L)` is the test/smoke escape hatch (R3.3) — a small
+fixed `L` makes the resampling trivially checkable and `L=1` degenerates to iid
+resampling (falsifier probe FP-C1.3).
+
+> **Which series feeds auto-`L` under shared-index?** Auto-`L` needs ONE `L` for
+> the shared index sequence (the whole universe resamples on one `L`). Ratified
+> rule: compute `ρ̂(k)` on the **universe-average absolute log-return series**
+> `r̄[t] = mean_sym |r_sym[t]|` (a single representative series capturing the
+> common volatility-clustering timescale), then run PWSD on `r̄`. This is
+> deterministic, gives one integer `L`, and ties the block length to the
+> *common* serial-dependence structure the shared-index bootstrap preserves.
+> (Alternative considered: per-symbol `L` then take the median — rejected, it
+> reintroduces a per-symbol step the shared-index design eliminated and the
+> median of integers is a weaker estimator. The universe-average-|return| series
+> is the cleaner single input.)
+
+### D-C1.5 — Q-MCB-3 = THIN-WRAP + DEFER (the documented Recommended=durable EXCEPTION)
+
+**RATIFICATION: Option B (thin-wrap + defer the 3-copy dedup to v0.2.0). Full
+dedup is NOT behaviour-preserving and would re-lock anchors — evidence below.
+This is the deliberate exception per the analyst brief: the cheap option is the
+honest, anchor-safe ship per CLAUDE.md byte-immutability.**
+
+**Lift-safety evidence (the decisive finding — read of the three call sites).**
+The brief's premise that "THREE GBM copies exist" is true at the *grep* level but
+**they are NOT three copies of one function** — they are three *distinct*
+generators with different parameters, draw structure, and output shape:
+
+| Site | File:line | Bar TF | per-Δ vol / drift | intrabar scale | volume draw | trade_count draw | clamp | Anchor-load-bearing? |
+|---|---|---|---|---|---|---|---|---|
+| `synthetic_bars_hourly` | `scenarios/momentum.rs:98` | **hour** | `0.012` / `0.000_03` | `close*0.002` | `rng*500+10` | `random_range(100..5000)` | `[0.01, 10_000_000]` | **YES — the 84 anchors** |
+| `synthetic_bars` | `main.rs:951` | **minute** | `0.001_10` / `0.000_001_9` | `close*0.000_5` | `rng*50+1` | (separate path) | `[1_000, 500_000]` | indirectly (main CLI) |
+| `synthetic_bars_det` | `tests/determinism.rs:37` | **minute** | `0.001_10` / `0.000_001_9` (inline) | none | `rng*50+1` | `random_range(10..500)` | `[1_000, 500_000]` | test-local only |
+
+A "single source-of-truth GBM" would have to be a **parameterized** function
+taking `(timeframe, vol, drift, intrabar_scale, volume_lo, volume_hi,
+trade_count_range, clamp_lo, clamp_hi)` and then prove that **each of the three
+call sites reproduces its exact current `ChaCha20Rng` draw sequence and arithmetic
+byte-for-byte**. That is exactly the ADR-0035 Phase-B verbatim-extraction risk,
+amplified ×3 across sites with *different parameter values* and even **different
+RNG draw counts per bar** (the hourly site draws `trade_count` via
+`random_range`; the minute sites differ). The probability of an off-by-one draw
+or a clamp-order difference re-emitting one of the 84 synthetic anchors (K4) is
+**high**, and per CLAUDE.md anchored reports are byte-immutable. **A behaviour-
+preserving full dedup cannot be proven byte-safe here**, so per the analyst-brief
+exception rule (Recommended=durable yields to anchor-safety) the honest ship is:
+
+- **`GbmPathGen` is a NEW, independent impl in `synth::gbm`** that produces a GBM
+  ensemble for the smoke-test (R1.4). It is parameterized for the harness's needs
+  (universe + n_bars + path_seed via the trait) and is **anchor-free** — it does
+  NOT feed any of the 84 anchors and is never the robustness verdict source
+  (headline = `BlockBootstrapPathGen`).
+- **The three existing GBM functions are NOT touched, NOT moved, NOT re-routed**
+  at v0.1.0. `synthetic_bars_hourly` stays byte-identical in `momentum.rs` (the
+  84 anchors are untouched by construction — R-NR.1/R-NR.2), `synthetic_bars`
+  stays in `main.rs`, `synthetic_bars_det` stays in the test. Zero behaviour
+  change → `verify_anchors.sh` is byte-identical PASS pre/post **trivially**
+  (R4.3 is satisfied because no anchored code path is edited at all).
+- **GbmPathGen's draw order** SHOULD mirror the hourly site's Box-Muller +
+  intrabar + volume + trade_count sequence (so it is a faithful GBM smoke-test),
+  but it does NOT need byte-parity with any anchor (it produces its own,
+  un-anchored paths). The developer copies the *shape* of `synthetic_bars_hourly`
+  into `synth::gbm` as a starting point and adapts it to the trait — a fresh impl
+  informed by the existing one, not a behaviour-preserving lift.
+
+**The v0.2.0 carve-out (named, not built).** Dedup the three GBM functions into
+one canonical `synth::gbm` source-of-truth IS still the durable end-state, but it
+requires the full ADR-0035 § Phase-B verbatim-extraction protocol (or a
+deliberate, operator-approved anchor re-emission). Tracked as a v0.2.0 follow-on;
+NOT in C1's blast radius. **This keeps C1 strictly additive and anchor-safe** —
+the brief's R4.1 "behaviour-preserving lift" is satisfied vacuously because C1
+introduces an *independent* generator rather than lifting the anchored one.
+
+> **Net blast-radius for the developer**: C1 adds a new `synth/` module and
+> touches NO anchored Rust. `verify_anchors.sh` is byte-identical PASS because no
+> anchored code is edited. The Q-MCB-3 decision **shrinks** the dev's risk to the
+> new module only.
+
+### D-C1.6 — Determinism + money-math conformance (ADR-0002 / ADR-0003)
+
+- **RNG**: `ChaCha20Rng::seed_from_u64(path_seed)` only (R2.2; ADR-0002). No
+  `thread_rng`, no `SmallRng`, no wall-clock, no env. One RNG per path.
+- **Money math**: `Bar` prices are `Decimal` (R-NR.3; ADR-0003). The bootstrap's
+  log-return / compounding arithmetic is f64 (returns are dimensionless), rounded
+  to `Decimal` at the `Bar` boundary deterministically (`Decimal::try_from(f64)`
+  with the existing `synthetic_bars_hourly` `to_dec` clamp pattern). The engine's
+  `#![deny(clippy::float_arithmetic)]` posture is unaffected — `synth/` is in
+  `crates/data`, and the f64 use is annotated `#[allow(clippy::float_arithmetic)]`
+  exactly as `synthetic_bars_hourly` already is (`momentum.rs:94`).
+- **No anchor**: C1 adds none (R-NR.1). The anchor unit is C2's summary report
+  (ADR-0051 D4).
+
+### Falsification probes (C1 — for the developer M-DEV dry-run)
+
+- **FP-C1.1 — same-seed determinism (R2.4).** `generate(univ, n, S)` twice ⇒
+  element-wise-equal `Vec<Vec<Bar>>`. Mirrors `tests/determinism.rs` pattern.
+- **FP-C1.2 — different-seed divergence (K1, the noop-in-generator-clothing
+  guard).** `generate(univ, n, S1)` vs `generate(univ, n, S2)` for `S1 ≠ S2` ⇒
+  the two ensembles differ (assert the BTC close-series are not element-wise
+  equal). Catches a resampler that ignores the seed.
+- **FP-C1.3 — `L=1` degenerates to iid (K2).** With `BlockLengthPolicy::Fixed(1)`
+  the index sequence is a fresh uniform draw every step (every step restarts a
+  block, `p=1/1=1`) ⇒ the resample is iid bootstrap. Assert the empirical lag-1
+  autocorrelation of the resampled returns ≈ 0 (within tolerance), confirming
+  block structure collapses at `L=1`.
+- **FP-C1.4 — moment preservation (R-NR.6a).** The resampled return series' mean
+  and variance ≈ the source series' mean and variance (within tolerance, large
+  `n_bars`). Asserts the resampler is not silently degenerate (not emitting a
+  constant or zero-variance series — the K1 collapse signature).
+- **FP-C1.5 — shared-index co-movement (Q-MCB-2 ratification guard).** Generate a
+  2-symbol ensemble where the two real series are positively correlated; assert
+  the resampled series retain a positive contemporaneous correlation ≥ a fraction
+  of the source correlation (proves the shared index actually co-moves the
+  symbols — a per-symbol-independent bug would drive it toward 0). **This is the
+  test that proves the methodologically-load-bearing decision is wired.**
+- **FP-C1.6 — auto-`L` sanity (K2).** On a series with injected serial dependence
+  (e.g. an AR(1) with `φ=0.6`), assert `1 < L < n` AND `L` grows vs an iid series
+  of the same length. Pin the small-fixture expected `L` once computed.
 
 ## Backtest Scenarios
 
@@ -428,3 +714,29 @@ _tester links to reports here._
   auto-block-length citation chain pinned. Trace row
   `REQ-MC-BOOTSTRAP-PATH-GENERATOR-001` opened `proposed`. HANDOFF → architect
   (M-T1; C1+C2 bundle; ADR-0051 owned by C2).
+- 2026-05-30 (architect, M-T1): `## Design` authored (D-C1.1..D-C1.6) + 6
+  falsification probes (FP-C1.1..FP-C1.6). All three Qs resolved:
+  **Q-MCB-1 = hand-roll** the Politis–White/PPW-2009 auto-`L` (no maintained
+  single-binary-friendly Rust crate passed the compat checklist; a crate's f64
+  reductions sit outside the ADR-0051 D2 determinism boundary). **Q-MCB-2 =
+  shared-index RATIFIED** (the methodologically load-bearing call — upgrades
+  R1.3's literal per-symbol default; one shared resampling-index sequence applied
+  across all symbols preserves the cross-sectional co-movement the v1
+  cross-sectional-momentum strategy trades on; per-symbol-independent is the
+  wrong null — it manufactures crash-time diversification and understates p95
+  MaxDD). **Q-MCB-3 = thin-wrap + defer (Option B, the documented Recommended=
+  durable EXCEPTION)**: code-level read of the three "GBM copies" proves they are
+  three DISTINCT generators (hourly vs minute TF; different vol/drift/intrabar/
+  volume/trade_count/clamp; different per-bar RNG draw counts), NOT one
+  copy-pasted function — a "full dedup to one source-of-truth" cannot be a
+  behaviour-preserving verbatim lift and would re-emit synthetic anchors (K4).
+  Per CLAUDE.md byte-immutability, `GbmPathGen` lands as a NEW independent
+  anchor-free smoke-test impl in `synth::gbm`; the three existing functions are
+  NOT touched → `verify_anchors.sh` byte-identical PASS trivially (no anchored
+  code edited). 3-copy dedup deferred to a v0.2.0 carve-out (ADR-0035 § Phase-B
+  protocol). ADR-0051 authored (owned via C2; C1's R2 per-path determinism
+  composes with D1's `master + j*0x9E37_79B9` sub-seed rule — one ChaCha20 per
+  path, one shared index sequence). `MonteCarloPathGen` signature ratified with a
+  `GeneratedPath` return carrying `selected_block_length` for C2's hashed body
+  (R3.2). Trace `arch` filled; status proposed → arch-done; owner → developer.
+  `tasks.md` created with M-DEV rows. HANDOFF → developer (build C1 first).

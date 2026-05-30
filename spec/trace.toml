@@ -2532,11 +2532,16 @@ id          = "REQ-MC-BOOTSTRAP-PATH-GENERATOR-001"
 title       = "C1 — stationary-block-bootstrap (Politis–Romano) Monte-Carlo path generator in crates/data: pure function of (real return series, revision SHA, master/path seed, N, block-length policy) → N synthetic price paths via ChaCha20; auto-tunable block length per Politis–White (2004) + Patton–Politis–White (2009); GBM lifted (behaviour-preserving) into data::synth::gbm as the demoted smoke-test generator. Reusable primitive consumed by C2 (and the C3/C5 Queue follow-ons)."
 feature     = "monte-carlo-bootstrap-path-generator"
 product     = "spec/product.md"
-arch        = []   # architect fills at M-T1 — C1's per-path determinism (R2) must be consistent with ADR-0051 D1 (owned by C2); R4 GBM-lift safety evidence resolves Q-MCB-3
-crates      = []   # developer fills at M-DEV — crates/data (new src/synth/: MonteCarloPathGen trait + BlockBootstrapPathGen + GbmPathGen lift)
-tests       = []   # developer fills at M-DEV — R2.4 two-run byte-identity; R-NR.6 moment-preservation; K1 non-collapse (paths not mutually identical); K2 auto-L sanity (1 < L < n, grows with serial dependence)
-anchors     = []   # C1 adds NO anchor — anchor unit is C2's distribution-summary report (R-NR.1); existing synthetic anchors MUST stay byte-identical post GBM lift (R4.3)
-state       = "proposed"
+arch        = [
+  "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md",  # D1 sub-seed rule — C1's R2 per-path determinism composes (one ChaCha20 per path, one shared index sequence)
+  "spec/architecture/adr/0002-rng-chacha20.md",                                                # ChaCha20Rng::seed_from_u64 only (R2.2)
+  "spec/architecture/adr/0003-decimal-money-math.md",                                          # Bar prices Decimal; f64 only in return-space (R-NR.3)
+  "spec/monte-carlo-bootstrap-path-generator/feature.md#design",                               # D-C1.1..D-C1.6: synth/ layout, trait, shared-index bootstrap, auto-L hand-roll, Q-MCB-3 thin-wrap
+]
+crates      = []   # developer fills at M-DEV — crates/data (new src/synth/: mod.rs trait + bootstrap.rs BlockBootstrapPathGen + block_length.rs auto-L + gbm.rs GbmPathGen NEW impl). NO anchored Rust touched (Q-MCB-3 thin-wrap)
+tests       = []   # developer fills at M-DEV — FP-C1.1 same-seed byte-identity; FP-C1.2 diff-seed divergence; FP-C1.3 L=1 iid; FP-C1.4 moment-preservation; FP-C1.5 shared-index co-movement; FP-C1.6 auto-L sanity
+anchors     = []   # C1 adds NO anchor — anchor unit is C2's distribution-summary report (R-NR.1); existing 84 synthetic anchors stay byte-identical TRIVIALLY (Q-MCB-3 thin-wrap edits no anchored code — R4.3)
+state       = "arch-done"
 # analyst M0 2026-05-30: feature.md authored as C1 of the Monte-Carlo robustness lane. R1-R4 + R-NR(6, incl adapted CLAUDE.md generator-half gate R-NR.6) + K1-K4 + H1-H3 + Q-MCB-1/2/3 + 4-cell verdict tree. Decomposition = two features (C1 primitive + C2 consumer) justified in feature.md. All Qs bias DURABLE; Q-MCB-3 (GBM dedup blast radius) carries the explicit Recommended=durable EXCEPTION (anchor byte-immutability may make the cheap wrap the honest ship — architect resolves with lift-safety evidence at M-T1).
 
 [[req]]
@@ -2544,9 +2549,14 @@ id          = "REQ-STRATEGY-ROBUSTNESS-HARNESS-001"
 title       = "C2 — strategy robustness harness (backtest mode): run a strategy over the N bootstrap paths from C1 (reuse the threshold_sweep sweep+aggregate seam), reduce N per-path outcomes into a DISTRIBUTION SUMMARY (Sharpe p5/p50/p95, max-drawdown tail, prob-of-loss, P(Sharpe>0/1)), emit ONE anchored summary report under a new namespace per operator Q2. Seeded ensemble (ChaCha20 from one master seed) → byte-identical N-path SET → deterministic summary → ONE anchor. Carries the ADR-0051 determinism+anchoring obligation (architect writes it at M-T1)."
 feature     = "strategy-robustness-harness"
 product     = "spec/product.md"
-arch        = []   # architect fills at M-T1 — AND authors ADR-0051 (D1 sub-seed rule, D2 reduction order + percentile rule, D3 report FM/body split + fixed precision, D4 anchor unit = 1 summary report, D5 determinism scope = Apple-Silicon canonical box inheriting ADR-0043 verbatim)
-crates      = []   # developer fills at M-DEV — crates/backtest (new scenarios::montecarlo::run_path cell wrapper + bin/monte_carlo.rs driver per Q-RH-2; lift shared metric calculators from bin/threshold_sweep.rs to a shared module)
-tests       = []   # developer fills at M-DEV — R3.1 two-run byte-identity of summary body-SHA; R-NR.6(a) divergence-from-single-path-baseline + (b) two-run determinism (the MANDATORY day-1 CLAUDE.md gate); K3 anchor-sensitivity-to-θ*
-anchors     = []   # tester fills after verify-anchors PASS — exactly +1 new anchor under namespace e.g. "mc-robustness-2026-06" (R3.2); existing 84 stay byte-identical (R-NR.1)
-state       = "proposed"
+arch        = [
+  "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md",  # AUTHORED this pass — D1 sub-seed + ensemble/fill orthogonality, D2 reduction order + percentile rule, D3 report FM/body split + fixed precision, D4 anchor unit = 1 summary report, D5 scope = Apple-Silicon canonical box
+  "spec/architecture/adr/0043-simulated-latency-and-slippage.md",                              # f64-conversion-boundary determinism scope inherited verbatim by D5
+  "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",                     # RealDataBarSource + REVISION.toml pin reused for the source return series (R1.3 / source_revision_sha)
+  "spec/strategy-robustness-harness/feature.md#design",                                        # D-C2.1..D-C2.9: bin/monte_carlo.rs, run_path sibling, stats::DistributionSummary, seed wiring, day-1 gate
+]
+crates      = []   # developer fills at M-DEV — crates/backtest (new bin/monte_carlo.rs driver per Q-RH-2; new scenarios::montecarlo::run_path cell wrapper; new stats/ module = verbatim compute_* lift + DistributionSummary reducer)
+tests       = []   # developer fills at M-DEV — FP-C2.1 force-one-path → divergence gate FAILS; FP-C2.2 anchor sensitivity to θ*; FP-C2.3 two-run byte-identity; FP-C2.4 generator-label honesty. Day-1 R-NR.6 e2e = (a) divergence-from-single-path-baseline + (b) two-run determinism
+anchors     = []   # tester fills after verify-anchors PASS — exactly +1 new anchor under namespace "mc-robustness-2026-06" (R3.2 / ADR-0051 D4); existing 84 stay byte-identical (R-NR.1)
+state       = "arch-done"
 # analyst M0 2026-05-30: feature.md authored as C2 of the Monte-Carlo robustness lane. R1-R3 + R-NR(6, incl MANDATORY adapted CLAUDE.md distribution-harness gate R-NR.6 = divergence-from-single-path-baseline + two-run byte-identity) + K1-K4 + H1-H3 + Q-RH-1/2 + 4-cell verdict tree. ADR-0051 FLAGGED for the architect (next free number confirmed 0051; this brief does NOT author it). Depends on C1 (REQ-MC-BOOTSTRAP-PATH-GENERATOR-001). Operator Q2 (anchor the summary) + Q3 (harness first) are the locked frame, not re-asked. Reuses the threshold_sweep seam (architect's "~80% built" finding).
