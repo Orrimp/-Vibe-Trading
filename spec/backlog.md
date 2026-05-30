@@ -952,6 +952,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      architect M-T1 for numerical-precision contract + per-asset volume
      retrieval shape + ADR amendment vs new ADR. -->
 - **v5-latency-slippage-sim-v0.5.0-square-root-market-impact v0.1.0** — Closes the
+  <!-- # noqa: queue-staleness — reconciled 2026-05-30: shipped 2026-05-29 + operator-approved; see Recent. Proper Active→Recent section move deferred to operator backlog-triage. -->
   v0.1.0 ADR-0043 § D3 deferred promise (linear-bps → square-root market-impact).
   Cost = `α · √(Q/V)` per Almgren & Chriss 2001; Kissell 2014. Per-asset V from
   existing Binance parquet 90-day trailing daily volume (revision-pinned, no new
@@ -2438,7 +2439,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   2026-05-28; future strategy work routes through v2.5a PatchTST or
   v2.5b vanilla Transformer.
 
-- **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay`).**
+- **v2.5a — PatchTST forecast overlay (`v25a-patchtst-overlay`).** <!-- # noqa: queue-staleness — reconciled 2026-05-30: folder shipped (part of retired v2.5 DL chain); stale Queue→Active pointer stub; see Recent / Active. Stub-retirement deferred to operator backlog-triage. -->
   _moved Queue → Active 2026-05-21 (analyst pass)_ — see
   [Active section](#active) for the live tracking row and
   [`feature.md`](v25a-patchtst-overlay/feature.md) for the
@@ -2488,7 +2489,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      v2.5 TCN analyst-halt). See § Active above for live tracking. -->
 <!-- - **v3 — Regime classifier (`v3-regime-classifier`).** — moved Active 2026-05-28. -->
 
-- **v3 — LLM-as-forecaster (`v3-llm-forecaster`).**
+- **v3 — LLM-as-forecaster (`v3-llm-forecaster`).** <!-- # noqa: queue-staleness — reconciled 2026-05-30: folder shipped-partial (Wave D deferred pending API key); stale Queue→Active pointer stub; see Recent / Active. Stub-retirement deferred to operator backlog-triage. -->
   _moved Queue → Active 2026-05-22 (analyst-bridge)_ — see
   [Active section](#active) for the live tracking comment block
   and [`feature.md`](v3-llm-forecaster/feature.md) for the full
@@ -2728,7 +2729,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   `./target/release/cockpit` denying sub-agents (allowing
   orchestrator). Analyst spawn after v0.1 ships.
 
-- **Week-4 follow-up — GitHub Actions CI + presenter integration
+- **Week-4 follow-up — GitHub Actions CI + presenter integration <!-- # noqa: queue-staleness — reconciled 2026-05-30: cross-refs shipped (`ui-headless-emulator`); this entry is the ui-test-harness-ci candidate, see Recent for the emulator. -->
   (`ui-test-harness-ci`).** _candidate, gated on
   `ui-test-harness-viewport-matrix` + `ui-test-harness-evaluator`
   ship_ — macOS runner workflow uploading baseline+actual+diff PNG
@@ -2928,7 +2929,7 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   [`spec/visual-fail-html-reporter/feature.md`](visual-fail-html-reporter/feature.md).
   See Active section above for the promotion annotation.
 
-- **File the iced strategies-Table tiny-skia panic upstream
+- **File the iced strategies-Table tiny-skia panic upstream <!-- # noqa: queue-staleness — reconciled 2026-05-30: cross-refs shipped (`ui-gallery-bin`); this entry is the upstream-panic-filing candidate, see Recent for the gallery feature. -->
   (`ui-iced-table-panic-upstream`).** _candidate, surfaced
   2026-05-15 by
   [`iced-014-feature-analysis-2026-05-15.md §6`](dev-notes/archive/2026-Q2/iced-014-feature-analysis-2026-05-15.md#the-strategies-table-panic)_
