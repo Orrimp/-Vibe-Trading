@@ -50,7 +50,7 @@ updated: 2026-05-29
 
 - All new tests PASS green.
 - Per-Recipe T-T4 falsification probe documented in module docstring at exact line numbers per D-V0.2.0-3.
-- `bash scripts/verify_anchors.sh` → 71/71 PASS byte-identical (no anchor drift).
+- `bash scripts/verify_anchors.sh` → 84/84 PASS byte-identical (no anchor drift).
 - v0.1.0 harness tests (`spawn_lab_run_yahoo_harness.rs`, `lab_stop_button_gating.rs`) stay PASS byte-identical.
 - `cargo clippy --workspace --all-features -- -D warnings` clean.
 
@@ -58,7 +58,7 @@ updated: 2026-05-29
 
 ## M-FINAL — Tester (per-Recipe T-T4 falsification table)
 
-- [x] T-T-FINAL — run all new tests + falsification probes; emit per-Recipe FAIL → restore → PASS table; verify anchors 71/71 byte-identical pre/post; verify v0.1.0 harness tests stay PASS — _accept: test-final-2026-MM-DD-<slug>.md with per-Recipe T-T4 evidence; VERDICT → PASS or SOFT-PASS — TICKED 2026-05-30 by tester; report: spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/reports/test-final-20260530-150000-v0.2.0.md; 84/84 anchors PASS; all 11 probes CONFIRMED RED; verdict PASS_
+- [x] T-T-FINAL — run all new tests + falsification probes; emit per-Recipe FAIL → restore → PASS table; verify anchors 84/84 byte-identical pre/post; verify v0.1.0 harness tests stay PASS — _accept: test-final-2026-MM-DD-<slug>.md with per-Recipe T-T4 evidence; VERDICT → PASS or SOFT-PASS — TICKED 2026-05-30 by tester; report: spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/reports/test-final-20260530-150000-v0.2.0.md; 84/84 anchors PASS; all 11 probes CONFIRMED RED; verdict PASS_
 
 ## M-PRESENT — Presenter (operator review deck)
 
@@ -66,7 +66,7 @@ updated: 2026-05-29
 
 ## Notes
 
-- **Anchor contract**: 71/71 byte-identical pre/post. Zero file
+- **Anchor contract**: 84/84 byte-identical pre/post. Zero file
   output from any new test. Same as v0.1.0 D6.
 - **Falsification stub per Recipe**: each new test file MUST include
   a module docstring section "T-T4 falsification probe" that names the

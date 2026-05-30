@@ -84,7 +84,7 @@ revert independently.
   `server_time_recipe_stream.rs`, `trail_mirror_recipe_stream.rs`,
   `live_subscription{,_full_bus}.rs`, `cockpit_training_pressed_wiring.rs`)
   stay byte-identical PASS.
-- `bash scripts/verify_anchors.sh` → **71/71 PASS** byte-identical
+- `bash scripts/verify_anchors.sh` → **84/84 PASS** byte-identical
   pre/post-merge.
 
 ### R-NR — Zero new surface area
@@ -164,7 +164,7 @@ revert independently.
 
 **Cost framing.**
 - Q1=(a) + Q2=(a) durable = ~1 week dev + 1 day tester. Anchors
-  71/71 stable. Closes the cross-surface coverage gap.
+  84/84 stable. Closes the cross-surface coverage gap.
 - Q1=(b) + Q2=(b) cheap = ~2-3 days now + ~3-5 days deferred to
   v0.3.0 for ActivityAudit + TrainingPoller + ToastDismiss + ServerTime
   S2 + TrailMirror S2 + Activity S1. Net +0 days, but with 1-2 visual-
@@ -268,7 +268,7 @@ ADR-0048 D1-D6 contract maps to v0.2.0 verbatim:
 - **D4 (NOT-catches)** = same; harness is behaviour, not pixels.
 - **D5 (invocation cadence)** = same; tests join the default suite,
   `#[cfg(feature = "live")]` where appropriate.
-- **D6 (anchor-additivity)** = same; **71/71 PASS byte-identical
+- **D6 (anchor-additivity)** = same; **84/84 PASS byte-identical
   pre/post** (R-NR contract). Zero file output from any new test.
 
 **Verdict.** No new ADR required. ADR-0048 § Changelog gets a single
@@ -308,7 +308,7 @@ that makes 4 of the 10 falsification probes mechanically possible).
   `server_time_recipe_stream.rs`, `trail_mirror_recipe_stream.rs`,
   `live_subscription{,_full_bus}.rs`, `cockpit_training_pressed_wiring.rs`)
   stay byte-identical PASS.
-- **71/71 anchors PASS** byte-identical pre/post-merge. Zero file output
+- **84/84 anchors PASS** byte-identical pre/post-merge. Zero file output
   from any new test (channel-only events + pure-state assertions only).
 - **Zero new design tokens / zero `strings.rs` adds** — harness tests
   are non-user-visible.
@@ -386,7 +386,7 @@ that makes 4 of the 10 falsification probes mechanically possible).
 
 ## Verification
 
-_(tester M-FINAL — per-Recipe T-T4 table; anchors 71/71 stable.)_
+_(tester M-FINAL — per-Recipe T-T4 table; anchors 84/84 stable.)_
 
 ### Wave B — ActivityAuditAggregator S1 select-arm survival (DONE 2026-05-29)
 
@@ -548,7 +548,7 @@ Frontmatter flipped: `status: arch-done → dev-done`, `version: 0.1.0 → 0.2.0
   forward verbatim — no new ADR, single Changelog row on ADR-0048) +
   D-V0.2.0-5 (Wave A→D dependency-ordered decomposition; A‖B parallel,
   C extracts `SubscriptionBatchDescriptor` seam, D depends on C) +
-  D-V0.2.0-6 (R-NR re-affirmed: 71/71 byte-identical, zero design
+  D-V0.2.0-6 (R-NR re-affirmed: 84/84 byte-identical, zero design
   tokens, zero `strings.rs`, three API-additive production seams only)
   + D-V0.2.0-7 (DEV-CONFIRM-1/2/3 open items routed to developer).
   Frontmatter flipped `owner: analyst → developer`,
