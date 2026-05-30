@@ -368,8 +368,12 @@ def _check_trace_path(
     raw: str,
     report: Report,
 ) -> None:
-    # Strip in-doc anchor fragment.
-    raw_no_frag = raw.split("#", 1)[0]
+    # Strip in-doc anchor fragment (#frag) AND the Rust item path (::fn).
+    # Both name a sub-location WITHIN a file; the checkable unit is the file
+    # itself. This mirrors the established `file.rs::test_fn` trace convention
+    # (45 such rows) — previously every one was a `trace-broken-path` false
+    # positive because only `#` was stripped (spec-audit-2026-05-30 SHOULD-FIX).
+    raw_no_frag = raw.split("#", 1)[0].split("::", 1)[0]
     if not raw_no_frag:
         return
     # Trace paths are relative to repo root.

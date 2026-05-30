@@ -1,8 +1,8 @@
 ---
 slug: monte-carlo-bootstrap-path-generator
 version: 0.1.0
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 priority: P2
 updated: 2026-05-30
 ---
@@ -137,8 +137,12 @@ analyst level; named here for completeness.
 - **R1.3** The bootstrap resamples a **real** crypto return series loaded from a
   parquet revision (Binance OHLCV), NOT a synthetic series. The generator takes
   the source series + its **revision SHA** as inputs (see R2.3). The block
-  bootstrap is applied **per symbol independently at v0.1.0** (cross-sectional
-  co-movement preservation is a v0.2.0 carve-out — see K3 / Q-MCB-2).
+  bootstrap draws **ONE shared index sequence and applies it to all symbols**
+  (the shared-index design — **Q-MCB-2 = Option A, RATIFIED**; see the Decision
+  Record and FP-C1.5), so cross-sectional co-movement **is preserved in v0.1.0**.
+  *(Supersedes the pre-ratification draft that deferred co-movement to a v0.2.0
+  carve-out; the tester confirmed FP-C1.5 is a genuine guard — per-symbol-
+  independent resampling collapses cross-symbol correlation to −0.079.)*
 - **R1.4** A `GbmPathGen` impl (the demoted smoke-test) is the
   behaviour-preserving lift of the existing GBM generator into
   `data::synth::gbm` (see R4 for the lift discipline). It exists so C2 can
