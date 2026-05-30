@@ -2478,6 +2478,18 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   ("stable plateau = robust; sharp peak = fragile / curve-fit"). Reuses C2's
   determinism rules. **Queued, not promoted** — lands after C1+C2 prove the
   anchor-coexistence story. (Architect Phase MC-2.)
+  <!-- BACKLOG-CANDIDATE 2026-05-30 (analyst): C3 SCOPED as a decision-grade
+       brief at spec/momentum-parameter-robustness-sweep/feature.md (status:
+       draft, v0.1.0) + tasks.md. Multiple-testing decision SETTLED = Option (a)
+       (full θ-surface + family verdict; defer "best θ is robust" to C5 deflation;
+       anti-cherry-pick by construction). Hypothesis-aimed grid = lookback × k_long
+       × drift/hold-band, ~12-16 Tier-1 cells, ~10 min at N=500 (NOT 1 hr). ~85%
+       reuse of the C2 harness. C3 narrowed from "generic scenarios::sweep over
+       any family" to "momentum family only, v0.1.0" — generic sweep deferred.
+       Reversible pre-greenlight: operator still chooses C3 vs pivot vs C5. Proposed
+       trace row REQ-MOMENTUM-PARAMETER-ROBUSTNESS-SWEEP-001 staged in the brief
+       (NOT yet in trace.toml — add on greenlight). Feeds the architect IFF C3 is
+       picked. -->
 
 - **C4 — Reflection-feedback decision seam (deterministic learning loop)**
   (robustness lane follow-on, ~5-8 dev-days). The highest-leverage but
