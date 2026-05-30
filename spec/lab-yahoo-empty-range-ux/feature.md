@@ -1,7 +1,7 @@
 ---
 slug: lab-yahoo-empty-range-ux
-status: dev-done
-owner: tester
+status: shipped
+owner: shipped
 updated: 2026-05-30
 version: 0.1.0
 ---
