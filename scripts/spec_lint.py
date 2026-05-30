@@ -71,6 +71,15 @@ VALID_STATUSES = {
     "retired",          # research-line closure (not deletion). Used by v3-volatility-forecaster +
                         # v3-volatility-forecaster-rebaseline after the noop-fix retire decision
                         # 2026-05-22. Code stays in the tree; anchors stay locked; no further effort.
+    # 2026-05-29 additions — intermediate workflow statuses for the
+    # analyst → architect → developer → tester → presenter pipeline.
+    # Surfaced by 2 Pick C architects: these transient mid-flight states
+    # were used routinely (arch-done x5, dev-done x3, tester-done x1) but
+    # never in the lint vocabulary, producing false-positive invalid-status
+    # flags for in-flight features. Operator-approved enum widening.
+    "arch-done",        # architect M-T1 design pass complete; pre-developer.
+    "dev-done",         # developer M-DEV complete; pre-tester.
+    "tester-done",      # tester VERDICT → PASS; pre-presenter.
 }
 
 # Categories — used both for grouping output and computing exit code.
