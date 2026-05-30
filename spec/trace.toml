@@ -2538,10 +2538,10 @@ arch        = [
   "spec/architecture/adr/0003-decimal-money-math.md",                                          # Bar prices Decimal; f64 only in return-space (R-NR.3)
   "spec/monte-carlo-bootstrap-path-generator/feature.md#design",                               # D-C1.1..D-C1.6: synth/ layout, trait, shared-index bootstrap, auto-L hand-roll, Q-MCB-3 thin-wrap
 ]
-crates      = []   # developer fills at M-DEV — crates/data (new src/synth/: mod.rs trait + bootstrap.rs BlockBootstrapPathGen + block_length.rs auto-L + gbm.rs GbmPathGen NEW impl). NO anchored Rust touched (Q-MCB-3 thin-wrap)
-tests       = []   # developer fills at M-DEV — FP-C1.1 same-seed byte-identity; FP-C1.2 diff-seed divergence; FP-C1.3 L=1 iid; FP-C1.4 moment-preservation; FP-C1.5 shared-index co-movement; FP-C1.6 auto-L sanity
+crates      = ["crates/data/src/synth/"]   # block_length + bootstrap + gbm + mod (dev aa32ff82)
+tests       = ["crates/data/src/synth (23 unit + FP-C1.1..6)"]   # determinism + shared-index co-movement + auto-L pin + degeneracy
 anchors     = []   # C1 adds NO anchor — anchor unit is C2's distribution-summary report (R-NR.1); existing 84 synthetic anchors stay byte-identical TRIVIALLY (Q-MCB-3 thin-wrap edits no anchored code — R4.3)
-state       = "dev-done"   # dev M-DEV 2026-05-30 (aa32ff82): crates/data/src/synth/ (block_length + bootstrap + gbm); 23/23 synth tests incl FP-C1.1..6; shared-index bootstrap (Q-MCB-2) + auto-L hand-roll (Q-MCB-1) + GbmPathGen thin-wrap (Q-MCB-3, 3 existing GBM fns untouched). 84/84 anchors trivially (no anchored Rust). HANDOFF → tester.
+state       = "tested"     # tester 2026-05-30 VERDICT → PASS (test-20260530-140000): 23/23 synth (2 identical runs); FP-C1.1 same-seed element-wise-IDENTICAL; FP-C1.5 shared-index GENUINE guard (corr collapsed to -0.079 under per-symbol-independent, NOT theater); FP-C1.6 AR(1) L=7/iid L=1 stable; 3 existing GBM fns untouched; 84/84 anchors. C2 unblocked.
 # analyst M0 2026-05-30: feature.md authored as C1 of the Monte-Carlo robustness lane. R1-R4 + R-NR(6, incl adapted CLAUDE.md generator-half gate R-NR.6) + K1-K4 + H1-H3 + Q-MCB-1/2/3 + 4-cell verdict tree. Decomposition = two features (C1 primitive + C2 consumer) justified in feature.md. All Qs bias DURABLE; Q-MCB-3 (GBM dedup blast radius) carries the explicit Recommended=durable EXCEPTION (anchor byte-immutability may make the cheap wrap the honest ship — architect resolves with lift-safety evidence at M-T1).
 
 [[req]]
