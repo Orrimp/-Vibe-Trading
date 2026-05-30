@@ -2149,7 +2149,7 @@ tests       = [
   "crates/backtest/tests/determinism.rs",                                                                           # row 70 SHA anchor — pre/post-merge byte-identical
 ]
 anchors     = []  # zero anchor delta (R-NR contract) — 75/75 PASS byte-identical pre/post-merge per D-V0.2.0-6
-state       = "dev-done"   # Waves A+B+C tester-PASS; Wave D dev (a439d7c4) complete — all 4 waves dev-done. Wave D: trail_mirror_subscription_handle_gating (2) + activity_recipe_stream (3) + training_poller_subscription (3); training_poller_stream_impl extracted (~55 LoC). 84/84 anchors. Multi-wave T-T-FINAL now tickable → final tester pass next.
+state       = "tested"     # multi-wave T-T-FINAL 2026-05-30 VERDICT → PASS (test-final-20260530-150000): all 4 waves A+B+C+D verified; Wave D 8/8 + 3 probes RED-on-mutation; multi-wave regression 24/24 + Bug#64/lab-yahoo cross-regression 7/7; rt_handle.enter() preserved through training_poller_stream_impl extraction; 84/84 anchors. Presenter-ready.
 
 [[req]]
 id          = "REQ-LAB-YAHOO-REALDATA-V0-1-4-001"
