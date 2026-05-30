@@ -9,15 +9,30 @@ updated: 2026-05-30
 
 ## Vision
 
-A Rust-native autonomous trading agent for crypto markets that combines
-classical ML, deep learning, and LLM reasoning to produce risk-aware trading
-decisions across multiple exchanges.
+A Rust-native autonomous trading agent for crypto markets built on a
+**quantitative core** — a strategy edge whose robustness is *measured*, not
+assumed — wrapped in a hard risk envelope and an auditable double-entry ledger.
+The system's question is not "can a model predict the next return?" but
+"**does this strategy survive resampled histories?**" An LLM **support layer**
+explains and narrates that quantitative core; it is not the alpha source.
+
+> **Read the [§ Pillar stack — core vs support](#pillar-stack--core-vs-support-ratified-2026-05-30)
+> first.** It is the ratified (2026-05-30) framing this whole document hangs on:
+> **robustness-of-strategy + safety = core; the LLM = support.** Everything
+> below — agent roster, model notes, LLM strategy — is scoped by it. Three
+> alpha-engine-by-prediction bets (TCN/PatchTST, GARCH-σ, LLM-forecaster) have
+> under-delivered; the product is re-anchored accordingly.
 
 ## Goals
 
 - Research, backtest, paper-trade, and eventually live-trade strategies.
-- Combine numeric models (price/volume/order-book features, DL forecasters,
-  RL policies) with LLM-driven reasoning (news, sentiment, macro).
+- Build a quantitative strategy edge and **quantify whether it is real** via a
+  Monte-Carlo robustness layer (resample real returns into an ensemble of
+  plausible paths; measure the *distribution* of the outcome, not a single
+  point estimate) — this is uncertainty quantification, NOT prediction.
+- Use an LLM **support layer** (regime narration, lesson summarization,
+  robustness-report explanation, statistical tie-break) to make the
+  quantitative core legible — never as the trading edge itself.
 - Be auditable: every decision, intent, order, fill, and P&L line traceable
   to its inputs, model versions, prompts, and config — backed by a
   double-entry ledger so cash and position accounts always reconcile.
@@ -146,13 +161,23 @@ What makes this worth building (and worth talking about) vs the existing crop:
    hot path. The risk engine is reviewable in isolation from strategy code.
 4. **Auditable double-entry** — every decision and every cash/position move
    reconciles to a ledger. Closer to a treasury system than a PoC bot.
+5. **Measured robustness, not asserted alpha** — strategies are judged by the
+   *distribution* of their outcome across resampled real-return histories
+   (Sharpe percentiles, max-drawdown tail, probability of loss), not by a
+   single lucky backtest path. Most projects ship a point-estimate Sharpe; few
+   pre-register a robustness decision rule and ask "does the edge survive a
+   crash-like resampled path?" See [§ Pillar stack](#pillar-stack--core-vs-support-ratified-2026-05-30)
+   core pillar 2.
 
-**Confirmed bet (2026-04-17):** long-term moat is **(2) + (4)** — persistent
+**Confirmed bet (2026-04-17):** long-term *moat* is **(2) + (4)** — persistent
 reflection memory plus auditable double-entry ledger. Most projects can write
 "more agents"; few persist real institutional memory or expose a defensible
 audit trail. v0 priorities lean accordingly: every decision and every cash /
 position movement reconciles to the ledger from day one, even with a trivial
-strategy.
+strategy. **The 2026-05-30 reframe** adds robustness (5) as the *epistemic*
+core — the thing that says whether the strategy edge is real — sitting beside
+the (2)+(4) operational moat; the LLM is the support layer over both (it makes
+the quantitative story legible, it does not generate it).
 
 ## Constraints
 
@@ -180,6 +205,19 @@ strategy.
 > These are **runtime** agents inside the trading binary, distinct from the
 > **dev-time** agents in [AGENT.md](../AGENT.md). They do not edit code — they
 > produce signals, debate them, and pass them through risk gates.
+
+> **Scope note (2026-05-30 reframe).** This LLM-driven desk is the *expressive*
+> decision pipeline, but it is **not the alpha source and not the robustness
+> gate** — see [§ Pillar stack](#pillar-stack--core-vs-support-ratified-2026-05-30).
+> The trading edge is the quantitative strategy (core pillar 1); whether that
+> edge is real is decided by the Monte-Carlo robustness layer (core pillar 2),
+> not by the persuasiveness of a bull/bear debate. The LLM roles below are the
+> **support layer** — analyst opinions, debate narration, and post-trade
+> reflection over a quantitative core. A strategy that the robustness
+> distribution flags as fragile is fragile regardless of what the desk argued.
+> The desk's deep-think trader still produces the `Order` candidate, but it
+> operates *inside* the risk envelope and on strategies that have cleared (or
+> are being measured against) the robustness rule.
 
 Five-layer hierarchy mirroring a real trading desk:
 
@@ -397,9 +435,18 @@ prevents drift):
 | Stage         | Entry criteria                                                                | Approver                  |
 |---------------|-------------------------------------------------------------------------------|---------------------------|
 | `research`    | Hypothesis + backtest scenario file in `spec/<slug>/feature.md`              | analyst                   |
-| `paper`       | Backtest Sharpe > 1.0 on 2y OOS data; no fatal regressions in tester report   | tester verdict + operator |
+| `paper`       | Single-path OOS Sharpe > 1.0 **and** a robustness distribution read against the pre-registered rule (p5 Sharpe sign/magnitude, p95 max-drawdown tail, prob-of-loss — see [`robustness-decision-rule-2026-05-30.md`](dev-notes/robustness-decision-rule-2026-05-30.md)); no fatal regressions in tester report | tester verdict + operator |
 | `live`        | 30 days paper without risk-limit breach; live cost ≤ projected; PM signoff    | operator                  |
 | `deprecated`  | Live drawdown > 1.5× backtest, or operator opt-out                            | operator                  |
+
+> **Robustness gate note (2026-05-30 reframe).** The `paper` entry criterion is
+> deliberately distribution-valued, not point-valued. A single-path Sharpe > 1.0
+> can be one lucky ordering of one historical year; the Monte-Carlo robustness
+> layer (core pillar 2) resamples real returns into an ensemble and asks whether
+> the edge survives. The **max-drawdown *tail* (p95), not the single-path
+> drawdown**, is the headline risk number the operator reads at this gate. The
+> v1 momentum baseline's 73% single-path max-drawdown on 2023-FY is exactly the
+> kind of number that needs a tail distribution behind it before any promotion.
 
 Promotion writes a stage-change row to the audit ledger. Demotion is allowed
 at any time (PM-flatten + remove from active strategies).
@@ -483,7 +530,13 @@ matching feature brief in `spec/v0-paper-sma/feature.md`.
   writes opinions to the ledger; agent debate happens (no money on it yet).
 - **v1 (multi-agent backtest)** — full analyst → debate → trader → risk
   pipeline produces positive Sharpe (> 1.0) net of fees on out-of-sample
-  2024 H1.
+  2024 H1. **Reframe note (2026-05-30):** a single-path OOS Sharpe is necessary
+  but no longer sufficient — the durable v1 bar is the *robustness distribution*
+  (Sharpe p5/p50/p95, max-drawdown tail, prob-of-loss) over a Monte-Carlo
+  ensemble of resampled real-return paths, read against the pre-registered
+  decision rule in [`robustness-decision-rule-2026-05-30.md`](dev-notes/robustness-decision-rule-2026-05-30.md).
+  See [§ Pillar stack](#pillar-stack--core-vs-support-ratified-2026-05-30)
+  core pillar 2.
 - **v2 (paper at scale)** — 30 consecutive days of paper trading on top-10
   USDT spot without a risk-limit breach; LLM cost stays inside monthly
   budget.
@@ -662,6 +715,25 @@ scope) can render inline.
 
 ## Changelog
 
+- 2026-05-30 (analyst, monte-carlo-robustness-lane — narrative coherence pass,
+  closes spec-audit-2026-05-30 COSMETIC #6): tightened the document's prose to
+  the already-ratified core/support reframe — **no new strategic decision, prose
+  coherence only.** Reframed § Vision (now leads with the quantitative core +
+  the "does it survive resampled histories?" question + an explicit
+  read-Pillar-stack-first banner) and § Goals (robustness = uncertainty
+  quantification not prediction; LLM = support layer). Added Differentiator
+  item **(5) measured robustness, not asserted alpha** beside the locked
+  (2)+(4) operational moat (the (2)+(4) moat bet is preserved verbatim; (5) is
+  the epistemic core). Added a scope banner to § Trading-time agent roster (the
+  LLM desk is the expressive pipeline, not the alpha source or robustness gate).
+  Tightened the v1 success metric and the `paper` lifecycle gate to be
+  distribution-valued (p5 Sharpe / p95 max-drawdown tail / prob-of-loss read
+  against the pre-registered rule) rather than single-path-Sharpe-only, with the
+  robustness-gate note pinning the p95 MaxDD as the headline gate number and
+  cross-linking the pre-registered decision rule. Cross-linked the new
+  [`robustness-decision-rule-2026-05-30.md`](dev-notes/robustness-decision-rule-2026-05-30.md).
+  No anchored content touched; the § Pillar stack, § LLM strategy reframe banner,
+  and Strategy-ladder history rows were already self-consistent and left as-is.
 - 2026-05-30 (analyst, monte-carlo-robustness-lane M0): ratified operator Q4 —
   added top-level **§ Pillar stack — core vs support**. CORE = quantitative
   strategy + Monte-Carlo robustness (uncertainty quantification, resampling not
