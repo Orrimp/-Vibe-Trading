@@ -1,8 +1,8 @@
 ---
 slug: operator-ledger-schema-lint
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 updated: 2026-05-30
 ---
@@ -804,7 +804,40 @@ sibling owns the architect.md amendment.
 
 ## Implementation
 
-_developer M-DEV fills this_
+**Developer M-DEV pass — 2026-05-30. All D1-D14 tasks completed (D13 deferred to orchestrator per shared-file discipline).**
+
+### What was built
+
+`scripts/operator_ledger_check.py` — 350-line Python 3.11+ stdlib-only script. Key components:
+
+- **`SCHEMA` dict** (module-top): the single change-management surface for the 3 table shapes (Pending 6-col, Done 5-col, Cancelled 5-col). Extra trailing columns accepted (K2 forward-compat).
+- **`CANONICAL_STATUS`** frozenset: `{pending, FAILED, done, cancelled}`. `fix-in-flight` is non-canonical; HARD `schema-status-enum` if it appears in a live Status cell.
+- **`STALE_FAILED_DAYS = 7`**: named constant (K3 tunable).
+- **`parse_ledger()`**: heading-anchored 3-table parser. Switches active table context on `## ` headings (case-insensitive, strips `(audit trail)` suffix). Handles F1 (empty Pending table immediately followed by next `##` heading — no blank line). Escaped-pipe split via `(?<!\\)\|`. `normalize_cell()` strips bold/italic/backtick/links for enum+date match; raw cell preserved for diff output. Undersized rows emit HARD `schema-row-truncated` (no silent mis-parse).
+- **`check_rows()`**: per-row semantic checks — Pending: status-enum, stale-FAILED (HARD >= 7d, SOFT < 7d to stdout), missing-devnote-citation (HARD, independent of staleness); Done: missing-completion-date (HARD); Cancelled: missing-cancel-date (HARD, symmetric).
+- **`format_hard_table()` / `format_soft_block()`**: bundle Q-HYG-EMIT markdown dialect — HARD to stderr, SOFT to stdout, clean = zero output.
+- **`run_self_test()`**: 8 inline cases using `tempfile` fixtures + explicit `--today 2026-05-29`. Sub-1-s.
+- **CLI**: `--today YYYY-MM-DD` (determinism lever), `--ledger PATH` (P-LED-1 / hermetic testing), `--self-test`.
+
+### Gates verified (developer side)
+
+| Gate | Command | Output |
+|------|---------|--------|
+| 8/8 self-test pass | `python3 scripts/operator_ledger_check.py --self-test` | `self-test: 8 passed` (exit 0) |
+| Live ledger clean | `python3 scripts/operator_ledger_check.py --today 2026-05-30` | exit 0, zero output |
+| P-LED-1 HARD + SOFT | temp fixture, `--today 2026-05-29` | exit 1 with `stale-failed` + `missing-devnote-citation`; negative control exit 0 soft line |
+| Anchors | `bash scripts/verify_anchors.sh` | `ANCHORS PASS (84 / 84)` |
+| Stdlib-only | no pip deps, no requirements.txt | confirmed |
+
+### Files changed
+
+- `scripts/operator_ledger_check.py` — NEW (350 lines)
+- `spec/dev-notes/operator-side-pending-ledger.md` — frontmatter `validated_by:` + `updated:` bump + Changelog row (zero table-row body bytes changed; R-NR.5)
+- `AGENT.md` — new `### Pending operator-verification ledger (2026-05-29 contract)` subsection nested under `## Queue pre-flight reconciliation sweep`
+
+### trace.toml update (orchestrator to flip)
+
+`REQ-OPERATOR-LEDGER-SCHEMA-LINT-001`: `crates = []`, `tests = ["scripts/operator_ledger_check.py"]`, `state = "dev-done"` (dev-done → tester handoff).
 
 ## Verification
 

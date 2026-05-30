@@ -2,7 +2,8 @@
 slug: operator-side-pending-ledger
 status: living
 owner: orchestrator
-updated: 2026-05-29 (Bug #64 D.1.1 attempt-3 investigation linked)
+updated: 2026-05-30 (operator-ledger-schema-lint v0.1.0 validation wired)
+validated_by: scripts/operator_ledger_check.py  # operator-ledger-schema-lint v0.1.0
 ---
 
 # Operator-side pending ledger
@@ -53,3 +54,4 @@ to avoid re-surfacing stale items.
 - 2026-05-29 (analyst): Bug #64 D.1.1 attempt-3 investigation dev-note linked from the pending row note column. Awaits operator decision on Q1 (scope), Q2 (label mechanism), Q3 (cancellation). Recommended path: Q1=(a) + Q2=(a)-with-recipe-first + Q3=(a) cancel-token wrap.
 - 2026-05-29 (developer): Bug #64 D.1.1 attempt-3 fix landed. Row updated FAILED → fix-in-flight. Feature: bug-64-d11-attempt-3-yahoo-run-runtime-context v0.1.0. Root causes: H-R1d (missing rt.enter()) + R2 structural omission (no cancel arm in preload select!). ADR-0050 codified. Operator re-verify recipe pending (cold-cache Yahoo SOL run + Stop-during-fetch manual test).
 - 2026-05-29 (hotfix developer): Bug #64 D.1.1 attempt-3 HOTFIX. Operator cold-cache re-verify hit NEW panic at runner.rs:395 — `tokio::time::timeout` inside `fetch_with_backoff` without rt context. Architect Q1 assertion (fetch_with_backoff works without rt.enter() because reqwest spawns internally) FALSIFIED. Fix: `fetch_with_backoff` now takes `rt: &Handle`; all 3 tokio::time::* calls use guard-construct-drop pattern. New e2e test `lab_runner_cold_cache_fetch_e2e` (plain #[test]) proves fix. ADR-0050 § Changelog amended. Operator re-verify pending. Hotfix commit SHA: d1a7227.
+- 2026-05-30 (operator-ledger-schema-lint v0.1.0): schema now validated by scripts/operator_ledger_check.py (status enum, stale-FAILED escalation, done-row completion dates, FAILED-row dev-note citation). READ-ONLY lint; append-only contract unchanged.

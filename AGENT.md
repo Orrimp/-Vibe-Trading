@@ -476,6 +476,25 @@ failure (stderr); investigate the backlog parse. The manual 4-step
 check below remains the fallback when the script can't reason about an
 entry (suppress a single stub inline with `# noqa: queue-staleness`).
 
+### Pending operator-verification ledger (2026-05-29 contract)
+
+The single source of truth for operator-run recipes that survive
+session boundaries is
+[`spec/dev-notes/operator-side-pending-ledger.md`](spec/dev-notes/operator-side-pending-ledger.md)
+(orchestrator-maintained, append-only). Its schema is enforced by
+`scripts/operator_ledger_check.py` (Python stdlib; exit 0 clean / 1 on
+schema violation or stale-FAILED escalation / >= 2 on script failure).
+Run it at session pre-flight alongside the Queue-staleness sweep:
+
+    python3 scripts/operator_ledger_check.py        # uses today's date
+    python3 scripts/operator_ledger_check.py --today 2026-05-29   # deterministic
+
+FAILED rows older than 7 days escalate (exit 1); FAILED rows within the
+window emit a soft carry-over line for the session header. Every FAILED
+row MUST cite a follow-up `spec/dev-notes/*.md` investigation in its
+Notes cell (Q-LED-NOTE). See
+[`spec/operator-ledger-schema-lint/feature.md`](spec/operator-ledger-schema-lint/feature.md).
+
 ## The vibe-coding loop
 
 **Before every sub-agent delegation**, the orchestrator assembles a brief:
