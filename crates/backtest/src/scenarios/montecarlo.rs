@@ -47,6 +47,13 @@ pub struct PathRunResult {
     pub initial_equity: Decimal,
     /// Final equity (convenience; redundant with `equity_curve.last()`).
     pub final_equity: Decimal,
+    /// Minimum cash value observed during the run (solvency invariant probe).
+    ///
+    /// Under the v0.1.1 solvency guard this is guaranteed ≥ 0.
+    /// Under Bug B (v0.1.0, no guard) this can be negative — the test
+    /// `solvency_guard_run_path_regression_negative_cash_prevented` asserts
+    /// this is ≥ 0, and goes RED when the guard is removed.
+    pub min_cash_seen: Decimal,
 }
 
 // ── run_path ───────────────────────────────────────────────────────────────────
@@ -124,6 +131,7 @@ pub async fn run_path(
     let _ = cfg; // universe list is implicit in the merged bars
 
     let mut cash = initial_capital;
+    let mut min_cash_seen = initial_capital;
     let mut position_book: std::collections::BTreeMap<Symbol, Decimal> =
         std::collections::BTreeMap::new();
     let mut mark_prices: std::collections::BTreeMap<Symbol, Decimal> =
@@ -222,6 +230,9 @@ pub async fn run_path(
                                 continue;
                             }
                             cash -= total_cost;
+                            if cash < min_cash_seen {
+                                min_cash_seen = cash;
+                            }
                             *position_book
                                 .entry(sig.symbol.clone())
                                 .or_insert(Decimal::ZERO) += fill.qty.get();
@@ -300,6 +311,7 @@ pub async fn run_path(
         trades,
         initial_equity: initial_capital,
         final_equity,
+        min_cash_seen,
     })
 }
 

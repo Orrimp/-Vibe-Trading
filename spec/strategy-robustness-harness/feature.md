@@ -791,6 +791,46 @@ _tester links to reports here. The day-1 gates: R-NR.6(a) divergence-from-
 single-path-baseline + R-NR.6(b) two-run byte-identity + R3.2 single new anchor +
 K3 anchor-sensitivity-to-`θ*`._
 
+## Implementation v0.1.2 (developer 2026-05-30 — Gate-2 gap closure)
+
+### Gate-2 gap: run_path solvency regression test added
+
+Closes the tester-flagged Gap (test-2026-05-30-1325-v0.1.1.md Gate-2): the v0.1.1
+solvency tests (`solvency_guard_arithmetic_unit_test` and
+`solvency_invariant_equity_curve_never_negative_across_paths`) were confirmed as
+genuine arithmetic proofs but did NOT call the production `run_path` code path.
+A developer reverting the guard in `montecarlo.rs` would not be caught by those tests.
+
+**New test added:** `solvency_guard_run_path_regression_negative_cash_prevented`
+(`crates/backtest/tests/montecarlo_e2e.rs`).
+
+The test calls the REAL `run_path` with a 10-symbol, k_long=9 scenario engineered
+to trigger negative cash under the old (un-guarded) code:
+
+- Warmup (bars t=0h..t=2h): 9 symbols bought in first rebalance, cash depleted to ~$996.
+- Churn (bar t=3h-AAA): new top-9 puts AAAUSDT (alpha-first) as the new entrant and
+  BBBUSDT (alpha-second) as the exit. Alphabetical signal processing fires BUY AAA
+  BEFORE SELL BBB. With cash≈$996 and notional≈$999.64, the old code drives
+  `cash = $996 - $999.64 - $0.40 ≈ -$3.64` (impossible on a long-only book).
+
+The assertion uses `path_result.min_cash_seen >= 0`, which is exposed via a new
+observability field added to `PathRunResult` (no behavior change; purely tracking).
+
+**RED-on-revert confirmed:**
+- Guard reverted: `min_cash_seen=-2.4998... < 0` → FAIL (RED) ✓
+- Guard restored: `min_cash_seen >= 0` → PASS (GREEN) ✓
+
+**Dangling comment fixed:** `montecarlo_e2e.rs` lines 438-439 previously referenced
+`solvency_guard_prevents_negative_cash` in `montecarlo.rs` (a test that did not exist).
+Updated to reference the new test `solvency_guard_run_path_regression_negative_cash_prevented`.
+
+**Production code change:** `PathRunResult` gained a `min_cash_seen: Decimal` field.
+This is backward-compatible (struct construction in `run_path` is the only site;
+`monte_carlo.rs` binary uses only `equity_curve` and does not destructure the struct).
+No behavior change; no anchor change; `verify_anchors.sh` → 85/85 PASS, SHA `7dbf5628...` unchanged.
+
+**Test count:** was 8; now **9** (`cargo test -p backtest --test montecarlo_e2e` → 9/9 PASS).
+
 ## Changelog
 
 - 2026-05-30 (analyst): Feature brief authored as **C2** of the Monte-Carlo

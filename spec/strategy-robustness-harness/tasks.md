@@ -157,6 +157,53 @@ confirming FRAGILE verdict is SOUND but finding: (A) fabricated Sharpe 1.40 in f
   - Test command: `cargo fmt -p backtest --check`
   - Output: zero diff (exit 0)
 
+## v0.1.2 tasks — Gate-2 gap closure (developer 2026-05-30)
+
+Triggered by tester report `test-2026-05-30-1325-v0.1.1.md` Gate-2 finding: the two
+v0.1.1 solvency tests are arithmetic proofs but do NOT call `run_path`. A guard revert
+in `montecarlo.rs` leaves them GREEN. Tester routed this to developer as a non-blocking
+improvement; task description says "add a run_path-calling solvency regression test."
+
+- [x] **M-DEV-G2-1 — run_path solvency regression test (Gate-2 gap closure)**
+  - file:line: `crates/backtest/tests/montecarlo_e2e.rs:558-808` (new test + added imports)
+  - `solvency_guard_run_path_regression_negative_cash_prevented` — calls the REAL
+    `run_path` with a 10-symbol, k_long=9 scenario designed to trigger negative cash
+    under the old (un-guarded) code (BUY AAA alphabetically before SELL BBB at second
+    rebalance when cash ≈ $996 < notional($999.64) + fee($0.40)).
+  - PRIMARY assertion: `min_cash_seen >= 0` (RED when guard removed, GREEN with guard).
+  - SECONDARY assertion: equity_curve all non-negative.
+  - Test command: `cargo test -p backtest --test montecarlo_e2e solvency_guard_run_path_regression_negative_cash_prevented`
+  - Output: `test solvency_guard_run_path_regression_negative_cash_prevented ... ok`
+
+- [x] **M-DEV-G2-2 — RED-on-revert proof (honest-tick rule)**
+  - Reverted all 3 guard layers in `montecarlo.rs` (notional cap + pre-flight check + fill-loop guard).
+  - Test command: `cargo test -p backtest --test montecarlo_e2e solvency_guard_run_path_regression_negative_cash_prevented`
+  - Output: `FAILED — min_cash_seen=-2.4998450556514364455070281 < 0`
+  - Restored guard: output: `ok`
+  - RED-on-revert confirmed: FAIL when guard reverted / PASS when restored. ✓
+
+- [x] **M-DEV-G2-3 — Fix dangling comment**
+  - file:line: `crates/backtest/tests/montecarlo_e2e.rs:437-441` (was lines 438-439 pre-add)
+  - Changed comment from false reference to `solvency_guard_prevents_negative_cash` in
+    `montecarlo.rs` (non-existent) to reference the new test
+    `solvency_guard_run_path_regression_negative_cash_prevented`.
+  - Test command: `cargo test -p backtest --test montecarlo_e2e`
+  - Output: `test result: ok. 9 passed; 0 failed`
+
+- [x] **M-DEV-G2-4 — Add `min_cash_seen` to `PathRunResult` (observability, no behavior change)**
+  - file:line: `crates/backtest/src/scenarios/montecarlo.rs:55-62` (`PathRunResult` struct)
+  - Added `pub min_cash_seen: Decimal` field with doc comment explaining its purpose.
+  - Updated tracking after `cash -= total_cost` and in the returned struct.
+  - Test command: `cargo test -p backtest --lib -- montecarlo`
+  - Output: `test scenarios::montecarlo::tests::run_path_requires_bars_override ... ok`
+
+- [x] **M-DEV-G2-5 — Anchors + fmt + clippy (test-only, no behavior change)**
+  - `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (85 / 85)`, SHA `7dbf5628...` unchanged
+  - `cargo fmt -p backtest --check` → zero diff
+  - `cargo clippy -p backtest --features "candle realdata" --tests -- -D warnings` → 0 new errors
+  - Test command: `bash scripts/verify_anchors.sh`
+  - Output: `ANCHORS PASS  (85 / 85)`
+
 ## Notes
 
 - **C1 is the hard dependency.** Do not start M-DEV-3/4 until C1's
