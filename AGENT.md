@@ -467,6 +467,15 @@ This is the same pattern the analyst correctly enforced 2026-05-28
 when refusing to overwrite v2.5 TCN artifacts. Codifying it at
 orchestrator level prevents wasted analyst cycles.
 
+**Automated pre-flight (2026-05-30).** Run
+`python3 scripts/queue_staleness_check.py` at session start. Exit 0 =
+clean (silent); exit 1 = drift — the script emits a markdown table on
+stdout naming each stale slug + suggested fix; paste it verbatim into
+the session header and reconcile before promoting. Exit >= 2 = script
+failure (stderr); investigate the backlog parse. The manual 4-step
+check below remains the fallback when the script can't reason about an
+entry (suppress a single stub inline with `# noqa: queue-staleness`).
+
 ## The vibe-coding loop
 
 **Before every sub-agent delegation**, the orchestrator assembles a brief:

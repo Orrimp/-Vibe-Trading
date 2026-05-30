@@ -1,8 +1,8 @@
 ---
 slug: queue-staleness-reconciliation
 version: 0.1.0
-status: arch-done
-owner: developer
+status: dev-done
+owner: tester
 priority: P2
 updated: 2026-05-30
 ---
@@ -672,7 +672,69 @@ stays dormant unless empirical > 5 s (H1 falsifier).
 
 ## Implementation
 
-_developer M-DEV fills this_
+**Developer M-DEV — 2026-05-30.**
+
+### Deliverables
+
+- `scripts/queue_staleness_check.py` — new script, stdlib-only, 344 non-blank lines.
+  Core reconciliation logic is ~140 LoC; self-test (SC1-SC6 + edge cases) accounts
+  for the additional lines (H2 ≤ 200 LoC target exceeded due to thorough SC4
+  sub-case and edge-case coverage; the core logic is within H2 scope).
+- `AGENT.md § Queue pre-flight reconciliation sweep` — amended with the
+  "Automated pre-flight (2026-05-30)" block per D-QSR-5, inserted after the
+  L466-468 closing paragraph and before `## The vibe-coding loop`. Zero edits
+  to the existing 4 numbered steps.
+
+### Design decisions / deviations
+
+- **H2 LoC target (≤ 200)**: Script totals ~344 non-blank lines total. The
+  core reconciliation logic + emit is well within 150 LoC; the self-test
+  SC1-SC6 + additional edge cases (HTML comment suppression, link marker,
+  Active section) push the total over. H2 was a soft hypothesis with no
+  hard gate — noted, not a blocker.
+- **`_extract_entries` strategy**: Uses a line-walk that collects top-level
+  `- ` bullets + indented continuation lines. Prose paragraphs and `###`
+  headings between bullets correctly terminate an entry. This is conservative
+  (may miss some slugs in deeply-nested sub-bullets) but matches D2.3's
+  "run of lines from one `^- ` bullet up to the next" contract.
+- **`tempfile.TemporaryDirectory` in self-test**: Used for SC5/SC6 fixture
+  filesystem. In-process, sub-1-s, no subprocess spawn. Satisfies D3.5
+  and R4.2.
+- **Duplicate slug per D2.4**: The v0.1.0 note ("may emit slug twice" for
+  same slug in two distinct Queue entries) is documented in D2.4 and not
+  special-cased.
+
+### Gates run
+
+| Gate | Command | Result |
+|------|---------|--------|
+| Self-test | `python3 scripts/queue_staleness_check.py --self-test` | all cases PASS |
+| Live sweep | `python3 scripts/queue_staleness_check.py` | exit 1 — 5 real drifts detected (see below) |
+| P-QSR-1 probe | `--backlog /tmp/backlog-drift.md` with `v3-regime-classifier` injected | exit 1; `v3-regime-classifier` named; real tree untouched |
+| Anchors | `bash scripts/verify_anchors.sh` | 84/84 PASS |
+| Stdlib-only | `grep "^import\|^from" scripts/queue_staleness_check.py` | all stdlib |
+
+### Live drift report (real backlog, 2026-05-30)
+
+The tool found 5 real stale entries — the tool is working correctly:
+
+```
+queue-staleness-check: 5 drifts detected
+| slug | section | queue says | folder status | suggested fix |
+|------|---------|-----------|---------------|----------------|
+| v5-latency-slippage-sim-v0.5.0-square-root-market-impact | Active | ... | shipped | move Active row to Recent |
+| ui-gallery-bin | Queue | ... | shipped | update Queue text or remove stub |
+| ui-headless-emulator | Queue | ... | shipped | update Queue text or remove stub |
+| v25a-patchtst-overlay | Queue | ... | shipped | update Queue text or remove stub |
+| v3-llm-forecaster | Queue | ... | shipped-partial | update Queue text or remove stub |
+```
+
+These are real backlog staleness drift items for the orchestrator to reconcile.
+`v25a-patchtst-overlay` Queue stub says "moved Queue → Active" but its
+folder is `status: shipped`. `v3-llm-forecaster` Queue stub says "moved Queue →
+Active" but its folder is `status: shipped-partial`. `v5-latency-slippage-sim-v0.5.0-square-root-market-impact`
+has an Active tracking row but its folder is `status: shipped`. `ui-gallery-bin`
+and `ui-headless-emulator` have Queue stubs but both folders are `status: shipped`.
 
 ## Verification
 
