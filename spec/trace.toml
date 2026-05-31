@@ -74,11 +74,14 @@ id          = "REQ-XS-MEANREVERSION-001"
 title       = "Cross-sectional mean-reversion — first PIVOT family vetted on both robustness axes (C2 path + C3 parameter)"
 feature     = "cross-sectional-mean-reversion-strategy"
 product     = "spec/product.md"
-arch        = []   # architect fills — proposed: Direction{Momentum,Reversion} on the existing cross-sectional config (shared ranking path)
+arch        = [
+    "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md#d6",  # § D6.5 — family axis varied at config level, inherits D6.1 SAME-paths; 86 anchors unchanged by construction
+    "spec/cross-sectional-mean-reversion-strategy/feature.md#design",  # D-MR.0..6: Direction enum, 1-line score inversion, locked 6×200 θ-grid, R-MR.1 divergence gate
+  ]
 crates      = []   # developer fills — proposed: crates/strategy (cross_sectional), crates/backtest (run_path + param_robustness_sweep reuse)
 tests       = []   # developer fills
 anchors     = []   # tester fills after PASS — proposed: mr-2023-block-bootstrap-real-fy-mc, mr-theta-surface-2023-block-bootstrap-real-fy
-state       = "draft"   # reversible design; operator confirms the pivot before any build
+state       = "arch-done"   # architect M-T1 2026-05-30: Direction{Momentum,Reversion} on shared config (run_path concrete-typed → enum not struct); 1-line inversion at momentum.rs:198-201; 6×200 θ-grid LOCKED; day-1 both-axes + R-MR.1 divergence gate; +1 anchor 86→87. Reversible — operator confirming pivot in parallel.
 
 [[req]]
 id          = "REQ-V15B-MULTIVENUE-001"

@@ -377,6 +377,65 @@ classifier and the family-summary line are deterministic pure functions of the
 hashed distribution numbers and the frozen decision-rule bands, so they add no new
 determinism surface.
 
+**D6.5 — Strategy-family axis (Momentum vs Reversion) inherits D6.1 (cross-sectional MR amendment, 2026-05-31).**
+
+> **Cross-reference amendment, not a new ADR.** The first robustness pivot
+> ([`cross-sectional-mean-reversion-strategy`](../../cross-sectional-mean-reversion-strategy/feature.md),
+> § D-MR.6) sweeps a **second strategy family** (cross-sectional mean-reversion =
+> the v1 score negated) through the **same C3 θ-surface machinery**. Like the
+> θ-axis (D6.1), the **family axis is varied at the strategy/config level — a
+> `Direction { Momentum, Reversion }` field on `CrossSectionalMomentumConfig` —
+> NOT at the seed level.** Therefore it is the *second instance* of the
+> "vary at config level, seed stream untouched ⇒ determinism unchanged by
+> construction" pattern, and it inherits D6.1/D6.3/D6.4 with **no new
+> determinism mechanism**. Per the architect's `analyst-defaults` cheap-and-
+> correct exception (identical to the D6 amendment rationale), this is an
+> ADR-0051 cross-reference amendment because the seed idiom, the FM/body split,
+> the fixed-precision formatting, and the one-report anchor unit are all reused
+> verbatim; only the family-selection logic inside the strategy changes.
+
+1. **SAME-paths (D6.1) holds verbatim.** `path_seed_{g,j} =
+   ensemble_seed.wrapping_add(j * 0x9E37_79B9)` for all MR cells — byte-identical
+   to the C2/C3 D1 seed. The MR family is the *empty change* on the seed axis (the
+   same strongest-form argument D6.1 makes for the θ-axis), so the **86 existing
+   anchors hold by construction** — there is no seed arithmetic to audit. The MR
+   sweep at year=2023 consumes the byte-identical resampled paths the C3 momentum
+   sweep does, so **L is family-independent** and printed once (D6.1.4 inherited).
+2. **The signal inversion is anchor-neutral by location.** MR negates the
+   `Decimal` output of the anchored `score_vol_adjusted_return` at one cache-write
+   line in `MomentumStrategy::on_bar`; the anchored `top_k_long` selector (sorts
+   descending, takes top-K) is reused verbatim and naturally selects the bottom-K
+   on negated scores. No feature-crate edit, no selector edit, no `run_path` edit
+   (`run_path` keeps its concrete `MomentumStrategy` signature — a separate MR
+   struct was REJECTED precisely because it would force `run_path` generic/`dyn`
+   and risk the anchors; see § D-MR.0). The strategy *config* hash gains a
+   `;direction={…}` field (K3 — Momentum vs Reversion at the same θ is a distinct
+   strategy), but that is the in-memory config hash, NOT any report body-SHA.
+3. **Anchor unit = ONE MR θ-surface report under the EXISTING namespace
+   (D6.3 extended).** +1 anchor under `mc-robustness-2026-06` (86 → 87): the
+   body-SHA-256 of the single MR θ-surface report, scenario
+   `v1-mr-theta-surface-2023-block-bootstrap-real-fy`. Same report *shape* and
+   same lane as the momentum θ-surface, so a new namespace would fragment the lane
+   for no determinism gain. The MR grid definition (the explicit 6-cell list,
+   § D-MR.2-LOCKED), the per-cell N, the `direction` field, and the buy-and-hold
+   control flag are hashed body fields (K3 — a different grid/N/direction is a
+   different surface and MUST move the SHA). `scripts/verify_anchors.sh`'s
+   `mc-robustness-2026-06` handler is extended to also search the MR feature's
+   `reports/` dir (the same additive change C3 made for its reports dir).
+4. **D2/D3/D5 inherited verbatim** (per-cell index-order reduction; FM/body split;
+   `{:.6}`/`{:.2}%`; rows sorted by g before render; Apple-Silicon canonical-box
+   scope). The MR θ-surface renderer adds one **additive** column (per-cell trade
+   count, for turnover legibility — the MR family's whole design thesis); at
+   v0.1.0 this column is gated to MR reports so the momentum #86 body-SHA stays
+   byte-identical (no re-lock).
+
+This amendment confirms the C3 machinery generalizes to a **family axis** exactly
+as it generalized to a **parameter axis** (D6) — both are config-level variations
+over a fixed seed stream. A third axis (e.g. a *third* family, or a venue/universe
+axis) would inherit D6.1 the same way provided it too is varied at the config
+level and not the seed level; any axis that needs to vary the seed stream requires
+its own ADR with a collision-free mix (the D6.2 standing warning).
+
 ## Consequences
 
 ### Positive
@@ -448,6 +507,20 @@ determinism surface.
 - **(D6 amendment) N-per-θ anchor set for the sweep.** Rejected — see D6.3 (a
   G×-explosion that re-locks on any grid change; the surface is the deliverable).
   ONE θ-surface report = +1 anchor.
+- **(D6.5 amendment) A separate `CrossSectionalMeanReversionStrategy` struct for
+  the MR family.** Rejected — `montecarlo::run_path` takes a **concrete**
+  `strategy::MomentumStrategy` (line 79), so a separate struct would force
+  `run_path` to become generic (`run_path<S: Strategy>`) or take
+  `Box<dyn Strategy>`, **touching the C2-anchored `run_path` and risking all 86
+  anchors** for zero functional gain. MR as a direction-flipped `MomentumStrategy`
+  (a `Direction` field on the shared config) keeps `run_path` byte-identical so
+  the anchors hold by construction, AND keeps the two families on one tested
+  ranking path so they cannot silently diverge in plumbing (the failure the
+  R-MR.1 divergence falsifier guards against). See § D-MR.0.
+- **(D6.5 amendment) A new anchor namespace for the MR θ-surface.** Rejected —
+  the MR θ-surface is the same report shape and the same lane as the momentum
+  θ-surface; a new namespace fragments the lane for no determinism gain. +1 anchor
+  under the existing `mc-robustness-2026-06` (D6.5.3).
 
 ## Cross-references
 
@@ -514,3 +587,24 @@ determinism surface.
   D6.1.4 confirms L is θ-independent (OQ-3 — printed once in the surface header).
   Registry README row + frontmatter `updated:` amended atomically (architect.md
   § ADR registry contract).
+- 2026-05-31 (architect, cross-sectional-mean-reversion M-T1): **D6.5
+  cross-reference amendment added** — the first robustness pivot
+  ([`cross-sectional-mean-reversion-strategy`](../../cross-sectional-mean-reversion-strategy/feature.md))
+  sweeps a **second strategy family** (cross-sectional MR = the v1 vol-adjusted
+  score negated) through the **same C3 θ-surface machinery**. The family axis,
+  like the θ-axis (D6.1), is varied at the **strategy/config level** (a
+  `Direction { Momentum, Reversion }` field on `CrossSectionalMomentumConfig`),
+  NOT the seed level — so it is the second instance of "vary at config level,
+  seed untouched ⇒ determinism unchanged by construction" and inherits
+  D6.1/D6.3/D6.4 with no new seed mechanism (the 86 anchors hold by
+  construction). The inversion is ONE line negating the `Decimal` output of the
+  anchored `score_vol_adjusted_return`; the anchored `top_k_long` is reused
+  verbatim (descending top-K → bottom-K on negated scores). **REJECTED a separate
+  MR struct** (would force `run_path` generic/`dyn` → anchor risk; `run_path`
+  takes a concrete `MomentumStrategy`) and **a new anchor namespace** (same report
+  shape/lane). +1 MR θ-surface anchor under the existing `mc-robustness-2026-06`
+  (86→87, scenario `v1-mr-theta-surface-2023-block-bootstrap-real-fy`); MR grid +
+  N + `direction` + buy-hold flag are hashed body fields (K3). Amendment, NOT a
+  new ADR (analyst-defaults cheap-and-correct exception, identical to the D6
+  rationale). Registry README row summary + frontmatter `updated:` amended
+  atomically (architect.md § ADR registry contract).
