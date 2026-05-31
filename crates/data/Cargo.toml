@@ -9,6 +9,10 @@ name = "fetch_binance_klines"
 path = "src/bin/fetch_binance_klines.rs"
 
 [[bin]]
+name = "fetch_binance_funding"
+path = "src/bin/fetch_binance_funding.rs"
+
+[[bin]]
 name = "fetch_yahoo_klines"
 path = "src/bin/fetch_yahoo_klines.rs"
 required-features = ["yahoo-online"]

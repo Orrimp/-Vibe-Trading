@@ -8,6 +8,9 @@
 !/data/yahoo/
 /data/yahoo/*
 !/data/yahoo/REVISION.toml
+!/data/binance-funding/
+/data/binance-funding/*
+!/data/binance-funding/REVISION.toml
 /logs/
 /snapshot/
 /data-snapshot/

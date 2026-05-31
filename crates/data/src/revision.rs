@@ -115,6 +115,19 @@ pub fn compute_aggregate_sha(files: &BTreeMap<String, String>) -> String {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+/// Advisory metadata for the `[revision.metadata]` section — NOT hashed.
+///
+/// Pass to `write_revision_manifest_with_tool` to override the defaults
+/// written by `write_revision_manifest`.
+pub struct RevisionMetadataInput<'a> {
+    /// Tool name, e.g. `"fetch_binance_funding"`.
+    pub fetch_tool: &'a str,
+    /// Binance REST base URL used to fetch the data.
+    pub binance_base: &'a str,
+    /// Interval string (informational). Use `None` when not applicable.
+    pub interval: Option<&'a str>,
+}
+
 /// Scan all `.parquet` files under `root`, compute per-file SHA-256, write
 /// `REVISION.toml` to `root/REVISION.toml`.
 ///
@@ -123,6 +136,26 @@ pub fn compute_aggregate_sha(files: &BTreeMap<String, String>) -> String {
 /// The `[revision.metadata]` section records the current UTC time as advisory
 /// information. The aggregate hash is NOT influenced by metadata.
 pub fn write_revision_manifest(root: &Path) -> Result<String, RevisionError> {
+    write_revision_manifest_with_tool(
+        root,
+        RevisionMetadataInput {
+            fetch_tool: "fetch_binance_klines",
+            binance_base: "https://api.binance.com",
+            interval: Some("1h"),
+        },
+    )
+}
+
+/// Like `write_revision_manifest` but allows the caller to specify advisory
+/// metadata so the `REVISION.toml` correctly identifies which tool produced
+/// the data.
+///
+/// The aggregate SHA is unchanged — only the `[revision.metadata]` block
+/// differs between callers.
+pub fn write_revision_manifest_with_tool(
+    root: &Path,
+    meta: RevisionMetadataInput<'_>,
+) -> Result<String, RevisionError> {
     // Collect all parquet files relative to root.
     let files = collect_parquet_files(root)?;
     let aggregate = compute_aggregate_sha(&files);
@@ -143,10 +176,10 @@ pub fn write_revision_manifest(root: &Path) -> Result<String, RevisionError> {
             sha256: aggregate.clone(),
             metadata: Some(RevisionMetadata {
                 generated_at,
-                binance_base: Some("https://api.binance.com".to_string()),
-                fetch_tool: Some("fetch_binance_klines".to_string()),
+                binance_base: Some(meta.binance_base.to_string()),
+                fetch_tool: Some(meta.fetch_tool.to_string()),
                 fetch_version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                interval: Some("1h".to_string()),
+                interval: meta.interval.map(str::to_string),
             }),
         },
         files,
