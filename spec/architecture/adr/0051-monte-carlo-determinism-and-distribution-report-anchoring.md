@@ -436,6 +436,131 @@ axis) would inherit D6.1 the same way provided it too is varied at the config
 level and not the seed level; any axis that needs to vary the seed stream requires
 its own ADR with a collision-free mix (the D6.2 standing warning).
 
+### D6.6 — A SECOND co-resampled series under the shared index: funding (cross-sectional carry amendment, 2026-05-31)
+
+> **Amendment, and — unlike D6.5 — a REAL-MECHANISM amendment, not a pure
+> cross-reference.** The second robustness pivot
+> ([`carry-strategy`](../../carry-strategy/feature.md), § D-CARRY.7) is the
+> pre-registered rotation after BOTH price families (momentum #86, MR #87) came
+> back FAMILY-UNIFORM-FRAGILE on the turnover-killer. Carry differs from MR in a
+> way that matters to this ADR: MR consumed the **same price input** as momentum
+> (a 1-line score negation — pure config-level variation, D6.5). Carry consumes a
+> **different input entirely — the funding rate** — which the bootstrap does not
+> currently carry. So carry introduces, for the first time, a **SECOND time series
+> that must be co-resampled through the block bootstrap under the SAME shared
+> index** as the returns. That is a genuinely new (if small) mechanism, hence a
+> substantive § D6.6, not a one-line "carry inherits D6.1." The seed/FM/body/anchor
+> contract is still reused verbatim; only the resampling now governs two series
+> instead of one.
+
+**D6.6.1 — The shared index governs a SECOND series (the new mechanism).** The C1
+shared-index bootstrap (D-C1.3) draws ONE resampling-index sequence `idx_seq` per
+path and applies it to all symbols' returns (preserving cross-symbol co-movement,
+FP-C1.5). For carry, the **funding series is resampled by the SAME `idx_seq`**: a
+per-symbol per-return-step funding series `funding_at_return[s][k]` (the as-of
+forward-fill of the real 8h funding onto the real return grid, length `T−1`) is
+gathered at `funding_at_return[s][idx_seq[k]]` for output bar `k` — the same index
+that selected the return `r_sym[idx_seq[k]]`. Consequences:
+
+1. **Funding↔price co-movement is preserved under resampling — the whole point.**
+   Because the funding for output bar `k` is the funding that was *contemporaneous
+   with* the return that built bar `k`'s price, the resampled (price, funding) pair
+   moves exactly as the real contemporaneous pair did. This is FP-C1.5 (cross-
+   *symbol* co-movement) extended to a cross-*series* (price↔funding) co-movement
+   under the identical index. A naive timestamp forward-fill onto the **synthetic**
+   bar timestamps (`epoch_2023()+k·h`) would be WRONG: those timestamps are NOT
+   real calendar time (the bars carry resampled returns), so it would attach
+   funding from an unrelated real time and silently decouple price from funding.
+   The shared-index gather is the correct and only co-movement-preserving design.
+2. **ZERO new randomness → SAME-paths determinism (D1/D6.1) holds TRIVIALLY.** The
+   funding gather consumes NO `ChaCha20Rng` calls — `idx_seq` is already fully
+   materialized as a `Vec<usize>` before the price-reconstruction loop. The RNG
+   stream is byte-identical whether funding is gathered or not. `path_seed_{g,j} =
+   ensemble_seed.wrapping_add(j*0x9E37_79B9)` is unchanged; the funding axis is the
+   *empty change* on the seed axis, the same strongest-form argument D6.1/D6.5 make.
+   This is the de-risk finding: the new mechanism adds **no new determinism surface
+   to audit**.
+
+**D6.6.2 — Additive / defaults-absent → the 87 anchors hold by construction.**
+The funding path is gated on an **optional** source being present:
+
+- `GeneratedPath` gains a NEW `funding_by_symbol: Option<Vec<Vec<Decimal>>>` field
+  (defaults `None`). When the generator has no funding source, it emits `None` and
+  takes the existing reconstruction path verbatim — the **bars are computed
+  byte-identically**.
+- `TcnScenarioInput` gains a NEW `funding_override: Option<…>` field mirroring
+  `bars_override` (the proven injection seam). Absent for every momentum / MR /
+  buy-and-hold run.
+- `run_path` (`montecarlo.rs:76`) stays **CONCRETE** (`MomentumStrategy`). The
+  funding-cashflow accrual (at the existing `montecarlo.rs:281` equity push) and
+  the carry score path are gated on `funding_override` being `Some` → the accrual
+  block is never entered and the score path is the existing
+  `score_vol_adjusted_return` for non-carry runs.
+- The carry signal is a NEW `ScoreSource { VolAdjustedReturn (default),
+  FundingCarry }` enum on `CrossSectionalMomentumConfig` (serde-default sibling to
+  `Direction`) → every existing TOML / struct literal deserializes to the existing
+  behavior. The strategy *config hash* gains a `;score_source={…}` field (K3 — a
+  distinct strategy), but that is the in-memory hash, NOT any report body-SHA.
+
+Therefore the momentum #86 (`0dd989d9…`) and MR #87 (`a708112e…`) θ-surface
+body-SHAs are **byte-unchanged with no re-lock** — the same additive discipline
+D6.5 used for `direction`.
+
+**D6.6.3 — REJECTED seams that would touch the seed/anchor surface.** Two
+alternatives that the brief floated are rejected for anchor-risk:
+
+- **Extend `Bar` with `funding_rate: Option<Decimal>` (brief option (i)).**
+  REJECTED. `Bar` is `Serialize`/`Deserialize` and is constructed in the bootstrap
+  output path (`bootstrap.rs:247,281`) + every loader + every test; a new field
+  changes the bootstrap output *shape* and risks the byte-identity of the anchors'
+  upstream bar construction, for a field most of the engine ignores. The parallel
+  `funding_by_symbol` (Option, alongside `bars_by_symbol`) achieves the same with
+  zero `Bar` change.
+- **A separate `CarryStrategy` struct implementing `Strategy` (brief option
+  (iii)).** REJECTED — the **exact D6.5.2 trap**. `run_path` is typed to concrete
+  `MomentumStrategy` (`montecarlo.rs:79`); a sibling struct forces `run_path`
+  generic/`dyn`, re-touching the two `run_path` call-sites
+  (`param_robustness_sweep.rs:1294`, `monte_carlo.rs:876`) and risking all 87
+  anchors. Carry is a `ScoreSource`-on-config variation of `MomentumStrategy`, the
+  direct analogue of MR's `Direction`-on-config.
+
+**D6.6.4 — Anchor unit = ONE carry θ-surface report under the EXISTING namespace
+(D6.3 extended).** +1 anchor under `mc-robustness-2026-06` (87 → 88): the
+body-SHA-256 of the single carry θ-surface report, scenario
+`v1-carry-theta-surface-2023-block-bootstrap-real-fy`. Same report *shape*-family
+and same lane as the momentum/MR θ-surfaces (it adds ONE additive column — the
+per-cell realized-funding-harvested total, gated to carry reports so the #86/#87
+body-SHAs stay byte-identical, exactly as MR added its trade-count column at
+D6.5.4), so a new namespace would fragment the lane for no determinism gain. The
+carry grid definition (the LOCKED 6-cell list, § D-CARRY.2-LOCKED), the per-cell N,
+the `score_source` field, and the funding-revision SHA (`bf1ede44…`) are **hashed
+body fields** (K3 — a different grid / N / score-source / funding revision is a
+different surface and MUST move the SHA). `scripts/verify_anchors.sh`'s
+`mc-robustness-2026-06` handler is extended to also search the carry feature's
+`reports/` dir (the same additive change C3 and MR both made). **Per the
+frame-diagnostic E1 multi-regime finding, a carry-C3 surface is also produced on
+2024-FY** as a day-1 gating read; whether that 2024 surface is locked as a
+separate anchor (#89) or kept gating-but-non-anchored is the tester's call at lock
+time (locking it is the durable choice). The funding-data revision SHA is a SECOND
+revision pin in the report body (alongside the OHLCV `3a8b96c4…`), verified at load
+time by the carry funding loader exactly as the OHLCV loader verifies its manifest.
+
+**D6.6.5 — D2/D3/D5 inherited verbatim.** Per-cell index-order reduction; FM/body
+split (run-varying fields in front-matter, every distribution input + both
+revision SHAs in the hashed body); `{:.6}`/`{:.2}%` fixed precision; rows sorted by
+θ-cell index before render; Apple-Silicon canonical-box scope. The funding-cashflow
+accrual is `Decimal` throughout (ADR-0003 — no `f64` in money math); only the
+stats layer crosses the f64 boundary (D2, unchanged). The realized-funding column
+is a `Decimal` sum rendered at fixed precision.
+
+This amendment confirms the shared-index bootstrap generalizes from "one resampled
+series (returns)" to "**N co-resampled series under one index**" (here: returns +
+funding). Any future second observable that must move with price under the
+bootstrap (e.g. a basis series, an open-interest series) co-resamples the same way
+— gather by `idx_seq`, gate behind an `Option`, zero new RNG, anchors hold by
+construction. An observable that needed its OWN index draw would be a different
+mechanism requiring its own ADR (the D6.2 standing warning, generalized).
+
 ## Consequences
 
 ### Positive
@@ -608,3 +733,36 @@ its own ADR with a collision-free mix (the D6.2 standing warning).
   new ADR (analyst-defaults cheap-and-correct exception, identical to the D6
   rationale). Registry README row summary + frontmatter `updated:` amended
   atomically (architect.md § ADR registry contract).
+- 2026-05-31 (architect, carry-strategy M-T1): **D6.6 amendment added — a
+  REAL-MECHANISM amendment (not a pure cross-ref like D6.5).** The second
+  robustness pivot ([`carry-strategy`](../../carry-strategy/feature.md), § D-CARRY.7)
+  sweeps cross-sectional funding carry. Unlike MR (same price input, 1-line
+  negation), carry consumes a **different input (the funding rate)** the bootstrap
+  does not carry, so it introduces a **SECOND time series co-resampled under the
+  SAME shared `idx_seq`** as the returns — a genuinely new (small) mechanism.
+  **D6.6.1** the shared index governs a 2nd series: `funding_at_return[s][idx_seq[k]]`
+  is gathered at the SAME index that picks the return, preserving funding↔price
+  co-movement (FP-C1.5 extended cross-series); the gather consumes ZERO new
+  `ChaCha20Rng` draws (`idx_seq` is already materialized) → SAME-paths determinism
+  (D1/D6.1) holds TRIVIALLY, no new determinism surface to audit (the de-risk
+  finding). A naive timestamp forward-fill onto the synthetic bar timestamps would
+  WRONGLY decouple price/funding (synthetic ts ≠ real calendar time). **D6.6.2**
+  additive/defaults-absent: NEW `GeneratedPath.funding_by_symbol: Option<Vec<Vec<
+  Decimal>>>` + `TcnScenarioInput.funding_override: Option<…>` (mirrors
+  `bars_override`) + a `ScoreSource { VolAdjustedReturn (default), FundingCarry }`
+  serde-default enum on the config → 87 anchors (incl. momentum #86 `0dd989d9…`, MR
+  #87 `a708112e…`) byte-identical by construction; `run_path` stays CONCRETE.
+  **D6.6.3** REJECTED extend-`Bar` (option (i), changes bootstrap output shape →
+  anchor risk) + REJECTED a separate `CarryStrategy` struct (option (iii), the
+  exact D6.5.2 trap — forces `run_path` generic/`dyn`). **D6.6.4** +1 carry
+  θ-surface anchor under the existing `mc-robustness-2026-06` (87→88, scenario
+  `v1-carry-theta-surface-2023-block-bootstrap-real-fy`); grid + N + `score_source`
+  + funding-revision SHA `bf1ede44…` are hashed body fields (K3); one additive
+  realized-funding column gated to carry reports (#86/#87 byte-identical, as MR's
+  trade-count column at D6.5.4); per frame-diagnostic E1 a 2024-FY carry-C3 surface
+  is a day-1 gating read (anchor #89 optional, tester's call). **D6.6.5** D2/D3/D5
+  inherited verbatim; funding cashflow is `Decimal` (ADR-0003). Generalizes the
+  shared-index bootstrap to N co-resampled series under one index. Amendment, NOT a
+  new ADR-0052 (the seed idiom / FM-body split / one-report anchor unit all reused;
+  only the resampling governs a 2nd series). Registry README row summary +
+  frontmatter `updated:` amended atomically (architect.md § ADR registry contract).

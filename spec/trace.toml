@@ -84,6 +84,20 @@ anchors     = ["v1-mr-theta-surface-2023-block-bootstrap-real-fy"]   # MR θ-sur
 state       = "tested"   # tester 2026-05-31 (test-2026-05-31-1550): MR FAMILY-UNIFORM-FRAGILE (all 6 cells; best g=3 p5=-0.043<0). Science PASS: 87/87, R2 #86 byte-identical, R-MR.1 divergence 5/5 (genuine RED-on-revert). 3 paperwork blockers cleared by orchestrator (trivial-change rule). 2nd fragile family → carry rotation scoped.
 
 [[req]]
+id          = "REQ-CARRY-STRATEGY-001"
+title       = "Carry (funding) strategy — structurally-different rotation (non-price return source), vetted on both robustness axes + both regimes (2023+2024)"
+feature     = "carry-strategy"
+product     = "spec/product.md"
+arch        = [
+    "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md#d6",  # D6.6 — shared index co-resamples a 2ND series (funding); ~15-line gather, 0 new RNG draws, Option-gated -> 87 anchors byte-identical
+    "spec/carry-strategy/feature.md#design",  # D-CARRY.0..8: funding loader + as-of fill + shared-idx resample + parallel funding_override + ScoreSource::FundingCarry + cashflow accrual; crux TRACTABLE
+  ]
+crates      = []   # developer fills — proposed: crates/backtest (funding_data + run_path cashflow + sweep), crates/strategy (ScoreSource::FundingCarry)
+tests       = []   # developer fills — incl R-CARRY.2 sign-assertion + R-CARRY.10b cashflow-non-no-op day-1 falsifiers
+anchors     = []   # tester locks — proposed: carry theta-surface #88 (2023) [+ #89 2024 per tester]
+state       = "arch-done"   # architect M-T1 2026-05-31: crux (Q-CARRY-3 funding-through-bootstrap) TRACTABLE (~15-line gather at bootstrap.rs:265, 0 new RNG draws, Option-gated, 87 anchors byte-identical by construction); long-only v0.1.0; sign + cashflow-non-no-op day-1 falsifiers; both-regime (2023+2024) gate. ADR-0051 D6.6. ~4.5-7.5d dev build GATED on operator go.
+
+[[req]]
 id          = "REQ-V15B-MULTIVENUE-001"
 title       = "v1.5b multi-venue execution scaffolding"
 feature     = "v1-5b-multi-venue"

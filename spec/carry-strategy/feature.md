@@ -1,8 +1,8 @@
 ---
 slug: carry-strategy
 version: 0.1.0
-status: draft
-owner: analyst
+status: arch-done
+owner: architect → developer
 priority: P2
 updated: 2026-05-31
 ---
@@ -501,23 +501,307 @@ market-neutral adds the short-side engine on top (~2-3 more days), which is why
 ---
 
 ## Design
-_architect fills this (M-T1). The analyst has flagged the load-bearing decisions
-as Q-CARRY-1 (funding-to-strategy seam), Q-CARRY-2 (long-only directional vs
-market-neutral — the headline), and the bootstrap-shared-index funding resampling
-(§ D-CARRY.7-equivalent, the integration crux). The θ-grid below is PROPOSED, not
-LOCKED — the architect locks it before the tester anchors, per the MR precedent._
 
-### D-CARRY.0 — (architect) resolve Q-CARRY-2: long-only directional vs market-neutral
-### D-CARRY.1 — (architect) resolve Q-CARRY-1: the funding-to-strategy seam
-### D-CARRY.2-PROPOSED — the carry θ-grid (PROPOSED below; architect LOCKS)
-### D-CARRY.7 — (architect) the funding-through-bootstrap shared-index design (the crux)
+_Architect M-T1 (2026-05-31). Q-CARRY-1..5 are all resolved + justified below.
+**The crux (Q-CARRY-3) is TRACTABLE** — verdict + proof in § D-CARRY.7. The
+analyst's ~4.5–7.5 d (framing (a)) estimate **holds** — see § D-CARRY.8 (true-size
+re-assessment). The ADR-0051 § D6.6 amendment is written (a real-mechanism
+amendment, not a pure cross-ref — the shared index now governs a SECOND
+co-resampled series). The 6-cell θ-grid is LOCKED in § D-CARRY.2-LOCKED. Build the
+diagnostic thesis in: judge carry on its funding SIGNAL edge (not low-turnover —
+E2 retired that as the binding lever), on BOTH 2023 AND 2024 from day 1._
+
+### D-CARRY.0 — Q-CARRY-2 RESOLVED: ship framing (a) long-only directional carry-tilt (v0.1.0)
+
+**RATIFIED: framing (a) — long-only directional carry-tilt.** v0.1.0 longs the
+**most-negative-funding** names (the paid side of negative funding is the long
+side — R-CARRY.2) and accrues the funding cashflow on those long legs. The
+market-neutral long/short harvest (framing (b)) is deferred to v0.2.0 IFF (a)
+shows a non-FRAGILE signal worth the short-side engine.
+
+Reasons (ratifying the analyst's `Recommended`, the durable-over-quick exception):
+
+1. **Reuses the solvency-guarded long-only engine verbatim.** `run_path`
+   (`montecarlo.rs:76`) only ever opens `Side::Buy` (line 172) under the Bug-B
+   solvency cap (lines 174-195); `top_k_long` (`selector.rs:25`) is exactly the
+   ranked top-K carry needs. Framing (b) requires a new short-sizing path, short
+   solvency/margin accounting, and `k_short > 0` un-gated in the loader
+   (`config.rs:214`) — a materially larger build on an **unvalidated** premise.
+2. **Apples-to-apples with the momentum #86 / MR #87 anchors.** All three families
+   then run the identical long-only engine on the identical resampled paths; any
+   difference is the SIGNAL, not the engine. A long/short engine would break that
+   comparison.
+3. **The load-bearing scientific question is answerable by (a).** *"Does a
+   non-trend funding signal beat buy-and-hold on this universe?"* is fully tested
+   by (a). If (a) is FRAGILE, (b) almost certainly is (same signal; the short leg
+   just doubles the funding exposure and adds price risk on the other side) — so
+   the short-side engine is never owed. Building it first would be durable
+   infrastructure on an unvalidated premise — the opposite of durable.
+
+**Honest caveat carried into the verdict (NOT suppressed):** framing (a) holds
+*directional long perp exposure* on the negative-funding names, so its P&L carries
+price risk, not pure funding. The R-CARRY.10a divergence falsifier + the
+realized-funding-harvested report column (§ D-CARRY.2-LOCKED) make the
+funding-vs-price P&L split legible so the verdict is read honestly — "carry-tilt
+beats/loses to buy-and-hold," not "market-neutral funding harvest works."
+
+### D-CARRY.1 — Q-CARRY-1 RESOLVED: seam (ii) — a parallel funding lookup injected alongside `bars_override`
+
+**RATIFIED: option (ii)** — a parallel `funding_by_symbol_ts: BTreeMap<(Symbol,
+Timestamp), Decimal>` carried into the strategy alongside the bar stream, via a
+**new additive `TcnScenarioInput.funding_override: Option<FundingPath>`** field
+that mirrors `bars_override`. `run_path` stays **CONCRETE** (`MomentumStrategy`,
+`montecarlo.rs:79`) — no generic/`dyn` — which is the binding constraint (the same
+constraint that forced MR to be config-on-enum, ADR-0051 § D6.5.2). Options (i)
+and (iii) are REJECTED:
+
+| Option | Decision | Why |
+|---|---|---|
+| (i) extend `Bar` with `funding_rate: Option<Decimal>` | **REJECTED** | `Bar` (`core/src/bar.rs:46`) is `Serialize`/`Deserialize` and constructed in the **bootstrap output path** (`bootstrap.rs:247,281`) + every loader + every test. Adding a field changes the bootstrap output *shape* and risks the byte-identity of the 87 anchors' upstream bar construction; high blast radius for a field 9/10 of the engine ignores. |
+| (ii) parallel `(Symbol, Timestamp) → funding` injected alongside `bars_override` | **RATIFIED** | Lowest blast radius. `Bar` untouched → anchors safe by construction. Mirrors the proven `bars_override` seam. `run_path` stays concrete. The funding lookup is `Option` → absent for momentum/MR = byte-identical. |
+| (iii) a new `CarryStrategy` struct implementing `Strategy` | **REJECTED** | `run_path` is typed to concrete `MomentumStrategy` (`montecarlo.rs:79`); a sibling struct forces `run_path` generic/`dyn`, re-touching the 2 `run_path` call-sites (`param_robustness_sweep.rs:1294`, `monte_carlo.rs:876`) and risking all 87 anchors. This is the exact trap ADR-0051 § D6.5.2 rejected for MR. |
+
+**How funding reaches the score.** Carry is a new **`ScoreSource { VolAdjustedReturn
+(default), FundingCarry }`** enum on `CrossSectionalMomentumConfig` (sibling to
+`Direction`, serde-default → byte-compatible with every existing TOML/literal). In
+`MomentumStrategy::on_bar` (`momentum.rs:191`), the score branch becomes:
+
+```rust
+// momentum.rs ~line 203 — the score-source fork (additive; default arm is byte-identical)
+let raw_score = match self.score_source {
+    ScoreSource::VolAdjustedReturn =>            // EXISTING path — unchanged
+        self.histories.get(&bar.symbol)
+            .and_then(|rb| score_vol_adjusted_return(rb, self.lookback_minutes, self.vol_floor).ok()),
+    ScoreSource::FundingCarry =>                 // NEW path
+        self.carry_score(&bar.symbol, bar.open_ts),   // trailing-mean funding over L settlements, as-of open_ts
+};
+// existing Direction inversion still applies on top (Momentum identity / Reversion negate);
+// carry uses Direction::Momentum (rank ASC handled by the sign — see R-CARRY.2 below).
+```
+
+`carry_score` reads the injected `funding_by_symbol_ts` map (threaded onto the
+strategy in `from_config` + a new `with_funding(...)` setter the harness calls, or
+carried on the config — see the dev note in tasks M-DEV-2). It accumulates the
+**trailing mean of the last L *settled* funding rates** at-or-before `bar.open_ts`
+(no look-ahead — R-CARRY.6). The funding map is keyed by `(Symbol, Timestamp)` on
+the **same synthetic timestamps the bootstrap emits** (`epoch_2023() + i·hours`,
+`bootstrap.rs:269`), so the strategy looks up funding by the bar's own `open_ts`
+deterministically.
+
+> **The sign lives in `carry_score`, NOT in `Direction`.** To LONG the paid side
+> of negative funding (R-CARRY.2), `carry_score` returns **`−trailing_mean(funding)`**
+> so the most-negative-funding name floats to the TOP of the unchanged descending
+> `top_k_long`. Then `Direction::Momentum` (the default, identity) selects it. This
+> keeps the reuse of `top_k_long` verbatim AND makes the load-bearing minus
+> explicit in one place — guarded by the R-CARRY.2 sign-assertion test.
+
+### D-CARRY.2-LOCKED — the carry θ-grid (Q-CARRY-5 RESOLVED — LOCKED, this is the hashed anchor input)
+
+**LOCKED** (per the MR/momentum precedent — the grid IS a hashed body field, K3;
+changing it = a different surface = a different SHA). Held constant across every
+cell: `score_source = funding_carry`, `direction = momentum` (identity; the carry
+sign lives in the score), `exposure_cap = 0.50`, `size = equal_weight`, `k_short =
+0`, the 10-symbol universe, `ensemble_seed = 0xC0FFEE`, `fill_seed = 0xC0FFEE`,
+generator = `block-bootstrap-real`, `bootstrap_mode = shared-index`, revision
+`3a8b96c4…` (OHLCV) + `bf1ede44…` (funding), `N = 200`. **No `vol_floor` cell** —
+the carry score has no vol denominator (Q-CARRY-4) so `vol_floor` is inert for
+carry; it stays at its config default and is NOT a swept axis. Swept axes =
+funding-lookback (L, in settlements) × rebalance-cadence (the turnover lever) × K:
+
+| g | funding lookback L (settlements) | rebalance | K | role / hypothesis | turnover |
+|---|---|---|---|---|---|
+| 0 | 9 (~3 d) | 8h (480 m) | 3 | **baseline carry θ\*** (natural funding cadence) | low |
+| 1 | 3 (~1 d) | 8h (480 m) | 3 | short funding lookback — noisier signal | low-mid |
+| 2 | 21 (~7 d) | 8h (480 m) | 3 | long funding lookback — most persistent signal | low |
+| 3 | 9 (~3 d) | 24h (1440 m) | 5 | **deliberately-slow rebalance + wide K** (lowest-churn corner — carry's best structural shot) | **lowest** |
+| 4 | 9 (~3 d) | 8h (480 m) | 1 | narrow selection — top-1 carry name | low |
+| 5 | 3 (~1 d) | 8h (480 m) | 5 | shortest lookback + wide K — highest-churn carry extreme (still far below the price families) | mid |
+
+This is the analyst's PROPOSED grid ratified **unchanged** (the lookback values
+9/3/21/9/9/3 settlements all fit comfortably in a 2023-FY funding series of ~1,095
+settlements — no warm-up shortfall). The 6×200 envelope mirrors the C3/MR tractable
+shape. **Wall-clock re-validation gate (carried to M-DEV):** C3 measured ~20 min
+for 6×200 + control; carry adds the funding-resampling per path (a `Vec<usize>`
+gather over ~1,095 funding values per symbol — O(n_bars) per path, negligible vs
+the bar reconstruction). The dev MUST confirm the 6×200 wall-clock before locking
+(per the C3 lesson `wall-clock ≈ grid × N × per-path cost`); the funding gather is
+not expected to materially move it, but the gate is mandatory.
+
+> **The lookback unit is funding SETTLEMENTS, not minutes.** Momentum's
+> `lookback_minutes` counts bars (1 bar = 1 min in the v1 config's unit, mapped to
+> 1h on real data). Carry's L counts **funding settlements (8h)**. The dev maps L→
+> the strategy's existing `lookback_minutes` field by `lookback_minutes = L` is
+> WRONG — see tasks M-DEV-2: carry needs its own settlement-counting ring over the
+> funding series, NOT the price ring buffer. The grid's `lookback` column is L
+> (settlements); it is hashed as the literal cell value.
+
+### D-CARRY.4 — Q-CARRY-4 RESOLVED: raw trailing-mean funding, NO vol normalization (v0.1.0)
+
+**RATIFIED: the carry score is the RAW trailing-mean funding rate over L
+settlements — no realized-vol normalization.** Justification:
+
+1. **The signal IS the funding premium, by E2's mandate.** The frame-diagnostic
+   forbids pitching carry on anything but its funding/basis signal. A raw
+   trailing-mean funding rank is the most direct expression of "which names pay the
+   most to hold the paid side" — the cleanest test of the funding-premium thesis.
+2. **Vol-normalizing would re-introduce a price quantity into a deliberately
+   price-independent signal** and muddy the R-CARRY.10a divergence claim (carry ≠
+   a price signal). Keep v0.1.0 pure: funding only.
+3. **The grid already spans the smoothing axis** (L = 3 / 9 / 21 settlements), which
+   is carry's analogue of momentum's lookback — the persistence/noise trade-off is
+   tested without a vol term.
+4. **Risk-adjustment is a v0.2.0 lever, not a v0.1.0 axis.** If raw-funding carry is
+   non-FRAGILE and we want to sharpen it, a `funding / realized_vol` variant is a
+   clean v0.2.0 follow-on (a second `ScoreSource`) — but adding it now would be an
+   unjustified extra degree of freedom against the anti-cherry-pick discipline (§ 0).
+
+**Consequence for the grid:** there is no `vol_floor`-equivalent cell for carry
+(the proposed grid never swept one). `vol_floor` stays at the config default and is
+inert. The carry-score has no denominator → no divide-by-zero guard needed; a
+missing-funding symbol (warm-up, or a gap) yields `None` → excluded from the rank,
+identical to a warming-up momentum score.
+
+### D-CARRY.7 — Q-CARRY-3 RESOLVED (THE CRUX): funding resampled by the SAME `idx_seq` — TRACTABLE
+
+**VERDICT: TRACTABLE, sound, and well-bounded. The crux is a ~15-line additive
+change at one existing loop in `bootstrap.rs`, with ZERO new RNG draws and
+byte-identical anchors by construction.** This is the de-risk result the M-T1 was
+gated on. Detail + proof:
+
+**The mechanism.** `BlockBootstrapPathGen::generate` (`bootstrap.rs:121`) draws the
+shared index sequence ONCE (`idx_seq`, lines 193-210) from a single
+`ChaCha20Rng::seed_from_u64(path_seed)` (line 182), then reconstructs each symbol's
+price path in the loop `for (bar_i, &ret_idx) in idx_seq.iter().enumerate()`
+(line 265), reading `source_rets[ret_idx]`. **The funding series is resampled in
+that exact same loop, by the same `ret_idx`:**
+
+```rust
+// Pre-computed ONCE on the real grid (length n_returns = T-1), aligned to returns:
+//   funding_at_return[s][k] = the funding rate in force at real return-step k
+//   (the as-of forward-fill from R-CARRY.6, computed on real calendar time).
+// Inside the existing reconstruction loop, alongside `let r = source_rets[ret_idx];`:
+let f = funding_at_return[sym_i][ret_idx];          // SAME index that picked the return
+out_funding_sym.push(f);                             // → GeneratedPath.funding_by_symbol[sym_i][bar_i]
+```
+
+Because `ret_idx` is the **same draw** that selects the return, the resampled
+funding for output bar `k` is the funding that was *contemporaneous with* the
+return that built bar `k`'s price move — exactly preserving the funding↔price
+co-movement the shared-index design exists to preserve (this is FP-C1.5 extended to
+a second series). A naive timestamp forward-fill onto the synthetic bars would
+attach funding from a *different* real time (since `epoch_2023()+k·h` is NOT real
+calendar-time `k` — the bars carry resampled returns) → price/funding decouple.
+**That is the trap the analyst surfaced; the shared-index gather is the fix.**
+
+**Why it's TRACTABLE (the de-risk evidence):**
+
+- **Zero new randomness.** The funding gather consumes NO RNG calls — `idx_seq` is
+  already fully materialized as a `Vec<usize>` before the reconstruction loop. The
+  ChaCha20 stream is byte-identical whether or not funding is gathered. → ADR-0051
+  D1/D6.1 SAME-paths determinism holds **trivially** (proved by construction, not
+  by re-running).
+- **Byte-identical 87 anchors by construction.** The funding path is gated on an
+  **optional** `funding_source` being present. `GeneratedPath.funding_by_symbol`
+  is a NEW `Option<Vec<Vec<Decimal>>>` field defaulting to `None`. When absent
+  (every momentum/MR/buy-and-hold run), `generate` takes the existing code path
+  verbatim and emits `None`. The bars themselves are computed identically. → the
+  momentum #86 (`0dd989d9…`) and MR #87 (`a708112e…`) θ-surfaces are byte-unchanged
+  with no re-lock. This is the SAME additive discipline MR used for `direction`.
+- **It composes with the merge.** `merge_synthetic` (`replay_feed.rs:273`) flattens
+  `bars_by_symbol` to a `(open_ts ASC, symbol ASC)` stream. The funding is carried
+  in **parallel** as `funding_by_symbol` (aligned to the per-symbol bar index
+  BEFORE the merge) → converted to the `BTreeMap<(Symbol, Timestamp), Decimal>`
+  lookup the strategy consumes (the synthetic `open_ts` of `bars_by_symbol[s][k]`
+  is the key for `funding_by_symbol[s][k]`). No reliance on merge order; the key is
+  `(symbol, open_ts)`, which is unique post-merge.
+
+**The data flow (end-to-end), all additive:**
+
+```mermaid
+flowchart LR
+  A["funding parquet<br/>data/binance-funding/<br/>(symbol, funding_time ms, rate str)"] --> B
+  B["FundingDataSource (NEW)<br/>load + REVISION pin bf1ede44…"] --> C
+  C["as-of forward-fill (R-CARRY.6)<br/>funding_at_return[s][k]<br/>aligned to T-1 returns, real grid"] --> D
+  D["BlockBootstrapPathGen<br/>resample by SAME idx_seq<br/>→ GeneratedPath.funding_by_symbol (Option)"] --> E
+  E["build BTreeMap<(Symbol,Ts),Decimal><br/>from funding_by_symbol + synthetic open_ts"] --> F
+  F["TcnScenarioInput.funding_override (NEW, Option)<br/>mirrors bars_override"] --> G
+  G["run_path (CONCRETE MomentumStrategy)<br/>(1) carry_score reads funding<br/>(2) funding-cashflow accrual @ equity push"] --> H
+  H["equity curve → DistributionSummary → θ-surface anchor #88"]
+```
+
+**The funding-cashflow accrual (R-CARRY.8) — the non-no-op point.** `run_path`
+pushes equity per bar at `montecarlo.rs:281`. The accrual goes immediately before
+that push: on each bar whose `open_ts` is a funding-settlement boundary (every 8h
+on the synthetic grid → every 8th hourly bar), for each held long position,
+`cash += position_notional × (−funding_rate)` (framing (a): long the paid side of
+negative funding → earns `−funding_rate × notional`; pays on positive-funding
+names it holds). This is gated on `funding_override` being `Some` → momentum/MR
+equity curves are byte-identical (the accrual block is never entered). **Per
+CLAUDE.md (v3-vol-overlay non-negotiable) the accrual MUST measurably move equity**
+— guarded by R-CARRY.10b (force the cashflow to zero → equity collapses to the
+no-funding case; RED if the cashflow is computed-and-ignored). `Money` math stays
+`Decimal` throughout (ADR-0003); no `f64` in the cashflow.
+
+> **Settlement-boundary detection on the resampled grid.** Funding settles every 8h
+> in real calendar time. On the synthetic grid the bars are hourly from
+> `epoch_2023()`, so a settlement boundary is `bar_index % 8 == 0` (00:00 / 08:00 /
+> 16:00 synthetic). The funding *value* applied at that boundary is the resampled
+> `funding_by_symbol[s][k]` (which already carries the real contemporaneous rate via
+> the shared index). The dev locks the exact boundary convention (inclusive of bar 0
+> or not) and a unit test pins it; the accrual is applied at-most-once per 8h block
+> per position. **This is the one detail the dev must get exactly right** — over- or
+> under-counting settlements scales the carry P&L linearly. The R-CARRY.10b
+> non-no-op test + the realized-funding-harvested report column make a miscount
+> visible.
+
+### D-CARRY.8 — true-size re-assessment: the analyst's ~4.5–7.5 d (framing (a)) HOLDS — do NOT halt
+
+I challenged the analyst's estimate against the code (the M-T1 mandate). **The
+estimate holds; the crux is at the EASIER end of its MED-LARGE band, not larger.**
+
+| Sub-problem | Analyst size | Architect re-assessment | Note |
+|---|---|---|---|
+| A — funding parquet loader (`FundingDataSource`) | 0.5–1 d | **0.5–1 d (confirmed)** | near-mirror of `RealDataBarSource` (`realdata.rs`) + the existing `data::revision` verifier; tiny data (240 parquets, ~1,095 rows/sym-yr). The `data::ReplayFeed` parquet read pattern is reusable for the 3-column funding schema. |
+| B — 8h→1h as-of forward-fill | 0.5 d | **0.5 d (confirmed)** | deterministic step-function join on real grid; standard. |
+| C — funding THROUGH the bootstrap (the crux) | **2–3 d** | **1.5–2.5 d (slightly EASIER)** | the gather is ~15 lines at one existing loop; `GeneratedPath` +1 `Option` field + threading through `merge_synthetic`→`funding_override`. The *threading* (touch `GeneratedPath`, `TcnScenarioInput`, both `run_path` call-sites' input construction, `run_one_path_with_config`) is the bulk, not the resampling math. Zero new RNG/determinism machinery to audit (the de-risk). |
+| D — funding-cashflow accrual in `run_path` | 0.5–1 d | **0.5–1 d (confirmed)** | per-bar injection at the existing `montecarlo.rs:281` equity push; the settlement-boundary convention is the one fiddly bit (+ its unit test). |
+| Signal — `ScoreSource::FundingCarry` + sign + settlement-ring | 1 d | **1–1.5 d** | sibling to `Direction` (proven pattern) BUT carry needs its OWN funding ring (counts settlements, not price bars) — slightly more than MR's 1-line negation. |
+| Day-1 gate + 4 falsifiers (10a/10b/sign/look-ahead) + 2-run identity | (folded) | **+0.5–1 d** | the e2e tests are the CLAUDE.md non-negotiable; budget them explicitly. |
+| **TOTAL (framing (a), long-only)** | **~4.5–7.5 d** | **~4.5–7.5 d — HOLDS** | crux easier, but signal + the mandatory test surface absorb it. Net: the estimate is honest. |
+
+**Decision: PROCEED to the build (gated on operator go).** The crux is sound; the
+size is as advertised; the anchors are safe by construction. There is **no
+intractability or size blow-up that warrants halting.** The single largest
+*residual* risk is not engineering — it is the SCIENCE (carry may come back
+FAMILY-UNIFORM-FRAGILE via funding mean-reversion / crowding decay, or be a noisy
+directional price bet the +1.74 buy-and-hold already beats), and that is exactly
+what the harness is built to find out cheaply. (Were the operator to want the
+absolute floor, the § Recommendation if-budget-tightens fallback — single-config
+carry-C2 only — saves ~1 d by dropping the 5-cell θ-sweep, at the cost of the
+parameter axis; NOT recommended, it violates the day-1-both-axes spirit.)
 
 ---
 
 ## Backtest Scenarios
-_architect-ratifies. Primary anchored deliverable = the carry-C3 θ-surface;
-carry-C2 single-config = optional higher-confidence tail read; 2023-FY in-sample;
-2024-FY OOS secondary, mirroring the momentum/MR pattern._
+_**Architect-RATIFIED (M-T1).** Primary anchored deliverable = the carry-C3
+θ-surface on 2023-FY (+1 anchor, #88). **Per the frame-diagnostic E1 finding, the
+day-1 robustness gate runs the carry-C3 surface on BOTH 2023 AND 2024** (both
+banked, both REVISION-pinned) — the 2024 bar is the harder/fairer one (buy-and-hold
++1.10, tail-negative). The 2023 surface is the anchored apples-to-apples-with-#86/#87
+deliverable (#88); the 2024 surface is run on the SAME locked grid as a
+multi-regime corroboration (a SEPARATE run → a SEPARATE anchor #89 if the tester
+elects to lock it, OR a non-anchored gating read — the tester's call at lock time).
+carry-C2 single-config = optional higher-confidence tail read._
+
+> **Two-regime gate clarification (architect, reconciling E1 with the anchor-count
+> economy).** The brief's R-CARRY.12 said "2024 OOS secondary, non-gating"; the
+> frame-diagnostic E1 (run AFTER the brief) UPGRADES 2024 to **day-1 gating** (build
+> the diagnostic thesis in). Both 2023 and 2024 carry-C3 surfaces are produced and
+> read against their respective buy-and-hold controls at the M-TEST gate. Anchoring:
+> #88 = the 2023 carry-C3 surface (the apples-to-apples lock). The 2024 surface is
+> gating-but-anchor-optional (tester decides whether the multi-regime read warrants
+> a +1 anchor #89 — locking it is the durable choice, deferring it is acceptable if
+> wall-clock is tight; either way 2024 is RUN and READ on day 1)._
 
 1. **CARRY-C3 (PRIMARY, ANCHORED)** — `v1-carry-theta-surface-2023-block-bootstrap-real-fy`:
    the PROPOSED ~6-cell θ-grid spanning the turnover/lookback axes, N=200/cell,
@@ -651,17 +935,24 @@ two-run + anti-cherry-pick gates).
   `spec/carry-strategy/reports/` (the one-line additive handler change C3 and MR
   both made). Scenario: `v1-carry-theta-surface-2023-block-bootstrap-real-fy`. The
   grid + N + score_source + funding-revision-SHA are hashed body fields (K3).
-- **ADR action (architect):** a short **§ D6.6 amendment** to ADR-0051 stating the
-  carry funding path is additive/defaults-off (87 anchors hold by construction) and
-  the funding series is resampled by the shared `idx_seq` (so funding↔price
-  co-movement is preserved under the bootstrap — a new but small extension of the
-  D-C1.3 shared-index property to a second co-resampled series). **This is likely a
-  real (small) ADR amendment, NOT a pure cross-reference** — the funding-through-
-  bootstrap resampling is a genuinely new mechanism (the shared index now governs a
-  second series), unlike MR's pure config-level variation. The architect rules on
-  amendment-vs-new-ADR. No anchor in `spec/anchors.toml` is added by the architect
-  (the tester locks the +1 carry anchor after the dev's anchored run; the grid + N
-  are locked at design time).
+- **ADR action (architect) — DONE: ADR-0051 § D6.6 amendment written.** The
+  architect ruled **amendment, NOT a new ADR-0052** — but a **real-mechanism
+  amendment, NOT a pure cross-ref** (unlike MR's § D6.5). § D6.6 records: (1) the
+  funding path is additive/defaults-off → 87 anchors hold by construction; (2) the
+  funding series is resampled by the SAME `idx_seq` as the returns (a genuinely new
+  but small extension of the D6.1/FP-C1.5 shared-index co-movement property to a
+  SECOND co-resampled series) consuming ZERO new RNG draws → SAME-paths determinism
+  holds trivially; (3) seam (ii) ratified, `run_path` stays concrete (options (i)/
+  (iii) rejected as anchor-risk); (4) +1 carry θ-surface anchor under the existing
+  `mc-robustness-2026-06` lane (87→88), scenario
+  `v1-carry-theta-surface-2023-block-bootstrap-real-fy`; grid + N + `score_source`
+  + funding-revision-SHA are hashed body fields (K3); `verify_anchors.sh`'s
+  handler extended to also search `spec/carry-strategy/reports/` (the additive
+  one-liner C3/MR both made). **No anchor in `spec/anchors.toml` is added by the
+  architect** (the tester locks #88 after the dev's anchored run; the grid + N are
+  locked at design time in § D-CARRY.2-LOCKED). The amendment is registered
+  atomically in `spec/architecture/adr/README.md` (architect.md § ADR registry
+  contract).
 
 ---
 
@@ -769,6 +1060,39 @@ _tester links to reports here_
 
 ## Changelog
 
+- 2026-05-31 (architect, M-T1 de-risking): resolved Q-CARRY-1..5 + wrote the
+  ADR-0051 § D6.6 amendment; status draft → arch-done. **THE CRUX (Q-CARRY-3) IS
+  TRACTABLE** (the de-risk result): funding is resampled by the SAME `idx_seq` as
+  the returns at the one existing reconstruction loop in `bootstrap.rs:265` — a
+  ~15-line additive gather, ZERO new RNG draws (so ADR-0051 D1/D6.1 SAME-paths
+  holds trivially), funding↔price co-movement preserved by construction (FP-C1.5
+  extended to a 2nd series), and the 87 anchors byte-identical because the funding
+  path is gated on an optional `GeneratedPath.funding_by_symbol`/`funding_override`
+  defaulting absent. **Q-CARRY-2: LOCKED framing (a)** long-only directional
+  carry-tilt (reuses the solvency-guarded long-only `run_path` + `top_k_long`
+  verbatim; apples-to-apples with #86/#87; (b) market-neutral deferred to v0.2.0
+  on validation). **Q-CARRY-1: seam (ii)** — a parallel `funding_by_symbol_ts:
+  BTreeMap<(Symbol,Timestamp),Decimal>` injected via a NEW additive
+  `TcnScenarioInput.funding_override: Option<…>` mirroring `bars_override`;
+  `run_path` stays CONCRETE (options (i) extend-`Bar` and (iii) new-struct REJECTED
+  as anchor-risk, the ADR-0051 § D6.5.2 trap). The funding score reaches `on_bar`
+  via a new `ScoreSource { VolAdjustedReturn (default), FundingCarry }` enum
+  (serde-default sibling to `Direction`); the load-bearing SIGN lives in
+  `carry_score` (returns `−trailing_mean(funding)` so the most-negative-funding
+  name floats to the top of the unchanged descending `top_k_long`). **Q-CARRY-4:
+  raw trailing-mean funding, NO vol normalization** (the signal IS the funding
+  premium per E2; risk-adjustment is a v0.2.0 lever). **Q-CARRY-5: LOCKED the
+  6-cell θ-grid** (analyst's proposal ratified unchanged; lookback unit = funding
+  SETTLEMENTS not minutes — carry needs its own settlement-ring). **True-size
+  re-assessment: the analyst's ~4.5–7.5 d (framing (a)) HOLDS** (crux at the easier
+  end ~1.5–2.5 d, absorbed by the signal's own funding-ring + the mandatory
+  day-1 falsifier surface) → **PROCEED to build (gated on operator go); no
+  intractability or size blow-up warrants halting.** Per frame-diagnostic E1, the
+  day-1 gate runs the carry-C3 surface on **BOTH 2023 AND 2024** (#88 = 2023 lock;
+  2024 gating-but-anchor-optional). The funding-cashflow accrual lands at the
+  existing `montecarlo.rs:281` equity push, gated on funding present, `Decimal`
+  throughout, guarded by the R-CARRY.10b non-no-op falsifier (v3-vol-overlay
+  analogue). No code, no build, no engine run; no `trace.toml`/`anchors.toml` touch.
 - 2026-05-31 (analyst, rotation-scoping): drafted the carry-strategy feature brief
   as the **pre-registered rotation target** after BOTH price families
   (momentum + MR) came back FAMILY-UNIFORM-FRAGILE on the turnover-killer.
