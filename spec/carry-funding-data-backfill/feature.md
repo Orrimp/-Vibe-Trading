@@ -3,6 +3,7 @@ version: 0.1.0
 status: draft
 slug: carry-funding-data-backfill
 created: 2026-05-31
+updated: 2026-05-31
 owner: developer
 ---
 

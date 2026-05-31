@@ -78,10 +78,10 @@ arch        = [
     "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md#d6",  # § D6.5 — family axis varied at config level, inherits D6.1 SAME-paths; 86 anchors unchanged by construction
     "spec/cross-sectional-mean-reversion-strategy/feature.md#design",  # D-MR.0..6: Direction enum, 1-line score inversion, locked 6×200 θ-grid, R-MR.1 divergence gate
   ]
-crates      = []   # developer fills — proposed: crates/strategy (cross_sectional), crates/backtest (run_path + param_robustness_sweep reuse)
-tests       = []   # developer fills
-anchors     = []   # tester fills after PASS — proposed: mr-2023-block-bootstrap-real-fy-mc, mr-theta-surface-2023-block-bootstrap-real-fy
-state       = "arch-done"   # architect M-T1 2026-05-30: Direction{Momentum,Reversion} on shared config (run_path concrete-typed → enum not struct); 1-line inversion at momentum.rs:198-201; 6×200 θ-grid LOCKED; day-1 both-axes + R-MR.1 divergence gate; +1 anchor 86→87. Reversible — operator confirming pivot in parallel.
+crates      = ["crates/strategy", "crates/backtest"]   # Direction enum + 1-line inversion (strategy); --direction flag + MR_TIER1_GRID (backtest sweep)
+tests       = ["crates/backtest/tests/mr_divergence_e2e.rs::r_mr_1a_momentum_vs_reversion_diverge", "crates/backtest/tests/mr_divergence_e2e.rs::r_mr_1b_degenerate_noop_produces_identical_curves", "crates/backtest/tests/mr_divergence_e2e.rs::fp_mr_3_two_run_byte_identity", "crates/backtest/tests/mr_divergence_e2e.rs::fp_mr_5_family_summary_always_valid_value", "crates/backtest/tests/mr_divergence_e2e.rs::fp_mr_5_non_fragile_mr_cell_carries_c5_flag", "crates/strategy/src/cross_sectional/momentum.rs::mr_dev2_reversion_selects_opposite_symbols"]
+anchors     = ["v1-mr-theta-surface-2023-block-bootstrap-real-fy"]   # MR θ-surface anchor #87 (SHA a708112e); tester-confirmed 87/87 + R2 #86 byte-identical
+state       = "tested"   # tester 2026-05-31 (test-2026-05-31-1550): MR FAMILY-UNIFORM-FRAGILE (all 6 cells; best g=3 p5=-0.043<0). Science PASS: 87/87, R2 #86 byte-identical, R-MR.1 divergence 5/5 (genuine RED-on-revert). 3 paperwork blockers cleared by orchestrator (trivial-change rule). 2nd fragile family → carry rotation scoped.
 
 [[req]]
 id          = "REQ-V15B-MULTIVENUE-001"
