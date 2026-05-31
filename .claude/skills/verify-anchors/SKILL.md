@@ -9,15 +9,28 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
 
 ## Procedure
 
-1. Run the verifier:
+1. **D7.1 — static drift-linter (sub-second, no engine execution):**
+
+   ```bash
+   python3 scripts/check_determinism_anchors.py
+   ```
+
+   Exit 0 = all non-cfg-gated `const ANCHOR` sites in `determinism.rs` match
+   `spec/anchors.toml` `v5-realdata-medium-2026-05` SHAs.
+   Exit 1 = stale literal(s) detected → drift table on stderr → route to developer.
+
+   Run this FIRST before the engine-executing steps below. It is fail-fast
+   and sub-second (ADR-0045 § D7.1).
+
+2. Run the file-anchor verifier:
 
    ```bash
    scripts/verify_anchors.sh
    ```
 
-   Exit code 0 = all 9 PASS. Non-zero = at least one FAIL or MISS.
+   Exit code 0 = all PASS. Non-zero = at least one FAIL or MISS.
 
-2. On FAIL the script prints `expected`, `actual`, and the report file path.
+3. On FAIL the script prints `expected`, `actual`, and the report file path.
    Compute the diff of the body bytes to localize the drift:
 
    ```bash
@@ -26,13 +39,36 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
         <(awk '/^---$/{n++; next} n>=2' spec/<slug>/reports/<new>.md)
    ```
 
-3. On MISS (no report for a scenario) re-run the backtest first:
+4. On MISS (no report for a scenario) re-run the backtest first:
 
    ```bash
    cargo run --release --bin backtest -- --scenario <name>
    ```
 
    Then re-verify.
+
+5. **D7.2 — engine-drift re-run gate (release mode; runs after verify_anchors.sh PASS):**
+
+   ```bash
+   # D7.2: synthetic re-run determinism tests in RELEASE (ADR-0045 § D7.2).
+   # Release is mandatory — debug is multi-minute; release ≈ sma 9s, momentum 26s.
+   cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_
+   ```
+
+   These tests re-execute the engine from scratch and assert the output body-SHA
+   equals the locked in-test constant. They guard against "engine moved but nobody
+   updated anchors.toml" (the scenario that D7.1 alone cannot catch).
+
+   **Routing on FAIL:**
+   - If the failing test's constant matches `anchors.toml` → engine moved since the
+     last anchor lock → HANDOFF → developer (re-lock or investigate regression).
+   - If the failing test's constant does NOT match `anchors.toml` → stale in-test
+     constant → run `python3 scripts/check_determinism_anchors.py --write` (or
+     manually re-lock per ADR-0045 § D6).
+
+   **Scope:** this step runs ONLY in the `verify-anchors` skill gate (pre-VERDICT),
+   NOT in every `cargo test`. The full `cargo test --workspace` already includes
+   these tests in debug; D7.2 ensures they also run in release before ship.
 
 ## Routing
 

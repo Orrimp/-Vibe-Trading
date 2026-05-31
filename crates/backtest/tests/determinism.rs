@@ -422,18 +422,15 @@ fn t521_bbands_mean_revert_deterministic() {
 // body-SHA256 against the locked anchor hashes.  If any anchor hash changes,
 // the v1 changes have introduced a regression in the v0/v0.5 output.
 //
-// Anchor hashes (locked per spec/tasks/v1-cross-sectional-momentum.md T622):
-//   btc-2023-1m-sma-cross         fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
+// Anchor hashes re-locked 2026-05-30 to `v5-realdata-medium-2026-05` namespace
+// per ADR-0045 § D6 (Decision 1). SMA rows use full-hash assert_eq.
+// MACD/RSI/BBands rows (3-5) are PENDING orchestrator review — see block comment
+// above the t717 section for details on the data-source mapping mismatch.
+//   btc-2023-1m-sma-cross         d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0
 //   btc-2023-1m-sma-baseline-refresh  (same body as sma-cross)
-//   btc-2023-1m-macd-trend        ef9c5e48… (abbreviated in spec — verified at T521 ship)
-//   btc-2023-1m-rsi-reversion     bc56d20d… (abbreviated in spec)
-//   btc-2023-1m-bbands-mean-revert d8a08a23… (abbreviated in spec)
-//
-// NOTE: The abbreviated hashes (ef9c5e48…, bc56d20d…, d8a08a23…) are shortened
-// in the spec.  For the regression gate we use a "starts_with" check rather than
-// a full 64-character equality so the test still compiles even before the full
-// hashes are recorded.  Once a full hash is observed, replace the 8-char prefix
-// below with the 64-char value.
+//   btc-2023-1m-macd-trend        PENDING (tempdir synthetic SHA ≠ real-data anchor in anchors.toml)
+//   btc-2023-1m-rsi-reversion     PENDING
+//   btc-2023-1m-bbands-mean-revert PENDING
 
 fn run_scenario_once(scenario: &str) -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -499,10 +496,11 @@ fn scenario_body_hex(scenario: &str) -> String {
 
 /// T622 — v0 SMA anchor hash unchanged after v1 changes.
 ///
-/// Locked anchor: `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c`
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
+/// Stale noop-baseline SHA `fc2e3b4a…` replaced with canonical 8-bps SHA.
 #[test]
 fn t622_sma_cross_anchor_hash_unchanged() {
-    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
     let hex = scenario_body_hex("btc-2023-1m-sma-cross");
     assert_eq!(
         hex, ANCHOR,
@@ -513,9 +511,11 @@ fn t622_sma_cross_anchor_hash_unchanged() {
 }
 
 /// T622 — v0.5 SMA baseline-refresh anchor (same body as sma-cross).
+///
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 #[test]
 fn t622_sma_baseline_refresh_anchor_hash_unchanged() {
-    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
     let hex = scenario_body_hex("btc-2023-1m-sma-baseline-refresh");
     assert_eq!(
         hex, ANCHOR,
@@ -527,46 +527,55 @@ fn t622_sma_baseline_refresh_anchor_hash_unchanged() {
 
 /// T622 — v0.5 MACD trend anchor hash unchanged.
 ///
-/// Spec anchor prefix: `ef9c5e48` — full hash recorded at T521 ship.
+/// Re-locked to SYNTHETIC SHA (ADR-0045 § D6.3). The determinism test runs
+/// the v0 synthetic-fallback path (CWD=tempdir → parquet lookup misses).
+/// The v5-realdata-medium-2026-05 anchors.toml row for macd-trend was emitted
+/// from the REAL-DATA path (17544-bar Binance bodies); the synthetic SHA is
+/// held in D7.1's SYNTHETIC_DETERMINISM_SHAS dict (check_determinism_anchors.py).
 #[test]
 fn t622_macd_trend_anchor_hash_unchanged() {
-    const ANCHOR_PREFIX: &str = "ef9c5e48";
+    const ANCHOR: &str = "4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a";
     let hex = scenario_body_hex("btc-2023-1m-macd-trend");
-    assert!(
-        hex.starts_with(ANCHOR_PREFIX),
+    assert_eq!(
+        hex, ANCHOR,
         "T622 REGRESSION: btc-2023-1m-macd-trend body-SHA256 changed.\n\
-         Expected prefix: {ANCHOR_PREFIX}\n\
-         Got:             {hex}"
+         Expected: {ANCHOR}\nGot:      {hex}"
     );
 }
 
 /// T622 — v0.5 RSI reversion anchor hash unchanged.
 ///
-/// Spec anchor prefix: `bc56d20d` — full hash recorded at T521 ship.
+/// Re-locked to SYNTHETIC SHA (ADR-0045 § D6.3). The determinism test runs
+/// the v0 synthetic-fallback path (CWD=tempdir → parquet lookup misses).
+/// The v5-realdata-medium-2026-05 anchors.toml row was emitted from the
+/// REAL-DATA path (17544-bar Binance bodies). Synthetic SHA held in
+/// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py).
 #[test]
 fn t622_rsi_reversion_anchor_hash_unchanged() {
-    const ANCHOR_PREFIX: &str = "bc56d20d";
+    const ANCHOR: &str = "4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7";
     let hex = scenario_body_hex("btc-2023-1m-rsi-reversion");
-    assert!(
-        hex.starts_with(ANCHOR_PREFIX),
+    assert_eq!(
+        hex, ANCHOR,
         "T622 REGRESSION: btc-2023-1m-rsi-reversion body-SHA256 changed.\n\
-         Expected prefix: {ANCHOR_PREFIX}\n\
-         Got:             {hex}"
+         Expected: {ANCHOR}\nGot:      {hex}"
     );
 }
 
 /// T622 — v0.5 BBands mean-revert anchor hash unchanged.
 ///
-/// Spec anchor prefix: `d8a08a23` — full hash recorded at T521 ship.
+/// Re-locked to SYNTHETIC SHA (ADR-0045 § D6.3). The determinism test runs
+/// the v0 synthetic-fallback path (CWD=tempdir → parquet lookup misses).
+/// The v5-realdata-medium-2026-05 anchors.toml row was emitted from the
+/// REAL-DATA path (17544-bar Binance bodies). Synthetic SHA held in
+/// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py).
 #[test]
 fn t622_bbands_mean_revert_anchor_hash_unchanged() {
-    const ANCHOR_PREFIX: &str = "d8a08a23";
+    const ANCHOR: &str = "5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894";
     let hex = scenario_body_hex("btc-2023-1m-bbands-mean-revert");
-    assert!(
-        hex.starts_with(ANCHOR_PREFIX),
+    assert_eq!(
+        hex, ANCHOR,
         "T622 REGRESSION: btc-2023-1m-bbands-mean-revert body-SHA256 changed.\n\
-         Expected prefix: {ANCHOR_PREFIX}\n\
-         Got:             {hex}"
+         Expected: {ANCHOR}\nGot:      {hex}"
     );
 }
 
@@ -576,15 +585,19 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
 // v0/v0.5/v1 scenarios.  The v1.5a backend changes must not affect any of
 // these anchors (architecture determinism contract R9.4).
 //
-// Anchor hashes locked per v1 ship contract
-// (spec/reports/test-2026-04-30-1458-v1-cross-sectional-momentum-ship.md §5A):
-//   btc-2023-1m-sma-cross             fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
-//   btc-2023-1m-sma-baseline-refresh  fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c
-//   btc-2023-1m-macd-trend            ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805
-//   btc-2023-1m-rsi-reversion         bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa
-//   btc-2023-1m-bbands-mean-revert    d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3
-//   top10-2023-1h-momentum            3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97
-//   top10-2024-h1-momentum            1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6
+// Anchor hashes re-locked 2026-05-30 to canonical namespace per ADR-0045 § D6.
+// Original noop-baseline SHAs are preserved in spec/anchors.toml.
+// SMA/Momentum/tt1 re-locked to v5-realdata-medium-2026-05 (synthetic == real-data SHA).
+// MACD/RSI/BBands re-locked to SYNTHETIC SHAs (ADR-0045 § D6.3): the v5-realdata-medium
+// rows for these 3 were emitted from the REAL-DATA path (17544-bar Binance bodies);
+// the determinism tests run the v0 synthetic fallback (CWD=tempdir, 525600 bars).
+//   btc-2023-1m-sma-cross             d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0
+//   btc-2023-1m-sma-baseline-refresh  d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0
+//   btc-2023-1m-macd-trend            4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a  (SYNTHETIC)
+//   btc-2023-1m-rsi-reversion         4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7  (SYNTHETIC)
+//   btc-2023-1m-bbands-mean-revert    5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894  (SYNTHETIC)
+//   top10-2023-1h-momentum            0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3
+//   top10-2024-h1-momentum            78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490
 //
 // NOTE: T715 (pairs backtest) introduced a data_source regression where the
 // momentum scenarios were emitting "synthetic (seeded RNG, v1.5a multi-symbol)"
@@ -592,9 +605,12 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
 // the T717 hotfix: momentum data_source restored; pairs keep the v1.5a label.
 
 /// T717 — SMA cross anchor unchanged after v1.5a backend changes.
+///
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
+/// Stale noop-baseline SHA `fc2e3b4a…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_sma_cross_anchor_hash_unchanged() {
-    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
     let hex = scenario_body_hex("btc-2023-1m-sma-cross");
     assert_eq!(
         hex, ANCHOR,
@@ -604,9 +620,11 @@ fn t717_sma_cross_anchor_hash_unchanged() {
 }
 
 /// T717 — SMA baseline-refresh anchor unchanged after v1.5a backend changes.
+///
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 #[test]
 fn t717_sma_baseline_refresh_anchor_hash_unchanged() {
-    const ANCHOR: &str = "fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c";
+    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
     let hex = scenario_body_hex("btc-2023-1m-sma-baseline-refresh");
     assert_eq!(
         hex, ANCHOR,
@@ -616,9 +634,15 @@ fn t717_sma_baseline_refresh_anchor_hash_unchanged() {
 }
 
 /// T717 — MACD trend full anchor hash unchanged.
+///
+/// Re-locked to SYNTHETIC SHA (ADR-0045 § D6.3). The determinism test runs
+/// the v0 synthetic-fallback path (CWD=tempdir → parquet lookup misses).
+/// The v5-realdata-medium-2026-05 anchors.toml row was emitted from the
+/// REAL-DATA path (17544-bar Binance bodies). Synthetic SHA held in
+/// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py, D7.1).
 #[test]
 fn t717_macd_trend_anchor_hash_unchanged() {
-    const ANCHOR: &str = "ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805";
+    const ANCHOR: &str = "4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a";
     let hex = scenario_body_hex("btc-2023-1m-macd-trend");
     assert_eq!(
         hex, ANCHOR,
@@ -628,9 +652,15 @@ fn t717_macd_trend_anchor_hash_unchanged() {
 }
 
 /// T717 — RSI reversion full anchor hash unchanged.
+///
+/// Re-locked to SYNTHETIC SHA (ADR-0045 § D6.3). The determinism test runs
+/// the v0 synthetic-fallback path (CWD=tempdir → parquet lookup misses).
+/// The v5-realdata-medium-2026-05 anchors.toml row was emitted from the
+/// REAL-DATA path (17544-bar Binance bodies). Synthetic SHA held in
+/// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py, D7.1).
 #[test]
 fn t717_rsi_reversion_anchor_hash_unchanged() {
-    const ANCHOR: &str = "bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa";
+    const ANCHOR: &str = "4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7";
     let hex = scenario_body_hex("btc-2023-1m-rsi-reversion");
     assert_eq!(
         hex, ANCHOR,
@@ -640,9 +670,15 @@ fn t717_rsi_reversion_anchor_hash_unchanged() {
 }
 
 /// T717 — BBands mean-revert full anchor hash unchanged.
+///
+/// Re-locked to SYNTHETIC SHA (ADR-0045 § D6.3). The determinism test runs
+/// the v0 synthetic-fallback path (CWD=tempdir → parquet lookup misses).
+/// The v5-realdata-medium-2026-05 anchors.toml row was emitted from the
+/// REAL-DATA path (17544-bar Binance bodies). Synthetic SHA held in
+/// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py, D7.1).
 #[test]
 fn t717_bbands_mean_revert_anchor_hash_unchanged() {
-    const ANCHOR: &str = "d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3";
+    const ANCHOR: &str = "5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894";
     let hex = scenario_body_hex("btc-2023-1m-bbands-mean-revert");
     assert_eq!(
         hex, ANCHOR,
@@ -653,11 +689,11 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 
 /// T717 — top10-2023-1h-momentum anchor hash unchanged.
 ///
-/// Locked v1 ship anchor: `3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97`
-/// (spec/reports/test-2026-04-30-1458-v1-cross-sectional-momentum-ship.md §5A)
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
+/// Stale noop-baseline SHA `3b60ef07…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_top10_2023_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97";
+    const ANCHOR: &str = "0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3";
     let hex = scenario_body_hex("top10-2023-1h-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -668,11 +704,11 @@ fn t717_top10_2023_momentum_anchor_hash_unchanged() {
 
 /// T717 — top10-2024-h1-momentum anchor hash unchanged.
 ///
-/// Locked v1 ship anchor: `1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6`
-/// (spec/reports/test-2026-04-30-1458-v1-cross-sectional-momentum-ship.md §5A)
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
+/// Stale noop-baseline SHA `1f33534f…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_top10_2024_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6";
+    const ANCHOR: &str = "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490";
     let hex = scenario_body_hex("top10-2024-h1-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -683,25 +719,22 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
 
 // ── T-T-1 — v2.5 TCN overlay anchor regression gate ──────────────────────────
 //
-// Locked by tester on 2026-05-18 against passthrough-forecaster synthetic-RNG
-// baseline runs (cargo run -p backtest --release -- --scenario <s> --seed 0xC0FFEE).
-// Renamed by developer on 2026-05-18 from bs1-tcn-overlay / bs2-tcn-overlay to
-// the canonical names per feature.md § Backtest Scenarios and trace.toml
-// REQ-V25-TCN-001.  Body hashes changed because the scenario name appears in
-// the report header line.
+// Re-locked 2026-05-30 to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
+// Original stale noop-baseline SHAs preserved in spec/anchors.toml.
+// These anchors capture the PassthroughForecaster path (candle feature
+// absent in CI). The tt1_* scenarios are bare synthetic paths (no -realdata
+// suffix) and take the Linear{bps:8} fallback in the default binary.
 //
-// NOTE: These anchors capture the PassthroughForecaster path (candle feature
-// absent in CI).  When the full M3 TCN training run completes and real TCN
-// checkpoints are verified on Apple Silicon, the developer must re-lock these
-// anchors with a new version tag (e.g. v2.5.0-tcn-weights) per ADR-0029.
-//
-//   top10-2023-fy-tcn-overlay  01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5
-//   top10-2024-fy-tcn-overlay  e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163
+//   top10-2023-fy-tcn-overlay  1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc
+//   top10-2024-fy-tcn-overlay  b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e
 
 /// T-T-1 — top10-2023-fy-tcn-overlay (2023 full-year top-10, passthrough mode) anchor hash.
+///
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
+/// Stale noop-baseline SHA `01d02584…` replaced with canonical 8-bps SHA.
 #[test]
 fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5";
+    const ANCHOR: &str = "1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc";
     let hex = scenario_body_hex("top10-2023-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
@@ -711,9 +744,12 @@ fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
 }
 
 /// T-T-1 — top10-2024-fy-tcn-overlay (2024 full-year top-10, passthrough mode) anchor hash.
+///
+/// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
+/// Stale noop-baseline SHA `e24c85ac…` replaced with canonical 8-bps SHA.
 #[test]
 fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "e24c85ac695d9f8f5d4e7f7a8d47f8d33f5567bb02b0be051b6fc76bf4496163";
+    const ANCHOR: &str = "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e";
     let hex = scenario_body_hex("top10-2024-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,

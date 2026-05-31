@@ -10,16 +10,24 @@
 # and `v5-realdata-medium-2026-05` (canonical friction; the current
 # reference for paper-trading alpha).
 #
-# Verify with: scripts/verify_anchors.sh  (expects 85/85 PASS — 2026-05-30;
-# most recent: row 85 = v1-momentum-2023-block-bootstrap-real-fy-mc under
-# namespace `mc-robustness-2026-06` — the first Monte-Carlo robustness
-# distribution-summary anchor, ADR-0051 D4. Prior milestone: row 69 =
-# btc-yahoo-2024-1d-sma-cross under `lab-yahoo-realdata-v0.1.1`)
+# DUAL-ANCHOR SYSTEM (ADR-0045 § D6 + § D7, 2026-05-30):
+# This file is System 1 (canonical). System 2 = in-test re-run anchors
+# in crates/backtest/tests/determinism.rs. This file is THE source of
+# truth; the in-test constants for the default (no-feature) binary mirror
+# the `v5-realdata-medium-2026-05` rows here (D6.1 mapping rule).
+# Use scripts/check_determinism_anchors.py to verify System 2 == System 1.
+# The verify-anchors skill runs both gates before VERDICT → PASS.
+# See spec/architecture/11-regression-gate.md for the full dual-anchor model.
+#
+# Verify with: scripts/verify_anchors.sh  (expects 86/86 PASS — 2026-05-30;
+# most recent: row 86 = v1-momentum-theta-surface-2023-block-bootstrap-real-fy
+# under namespace `mc-robustness-2026-06` — the θ-surface anchor, ADR-0051 D4.
+# Prior milestone: row 85 = v1-momentum-2023-block-bootstrap-real-fy-mc)
 # Recompute one: scripts/hash_report.py spec/<feature>/reports/backtest-...md
 #
 # Owners: tester locks new entries; architect approves any change to an
 # existing entry. Do NOT mutate without an architect-approved migration
-# (see spec/architecture.md "v1.5a regression-gate discipline").
+# (see spec/architecture/11-regression-gate.md dual-anchor model).
 
 [[anchors]]
 scenario = "btc-2023-1m-sma-cross"

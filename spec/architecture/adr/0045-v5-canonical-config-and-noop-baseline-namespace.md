@@ -282,8 +282,103 @@ silently; D7.2 additionally guards the harder "engine moved + nobody
 re-locked anchors.toml either" case. Operator may down-scope to D7.1-only
 if the < 1 min release cost is judged not worth it.
 
+### D6.3 — The `v5-realdata-medium-2026-05` namespace is provenance-MIXED (amendment, 2026-05-30, second pass)
+
+> Adopted after a developer correctly STOPPED at the engine-drift fix
+> verification step (VR-1): 6 of the 14 in-test constants
+> (macd/rsi/bbands × t622+t717) did NOT reproduce their EX-1-mapped
+> `v5-realdata-medium-2026-05` SHA when re-run. Architect re-verified the
+> root cause; it refines D6.1.
+
+D6.1 stated the mapping rule "in-test constant for scenario *S* == the
+`v5-realdata-medium-2026-05` `anchors.toml` row for *S*" as if the no-feature
+default binary reproduces those SHAs for **every** scenario. **It does not.**
+The `v5-realdata-medium-2026-05` namespace is **provenance-mixed** — the saved
+report files it anchors were NOT all emitted from the synthetic path:
+
+| Scenario group | `data_source` of the saved v5 file | Bars | In-test (synthetic) SHA |
+|----------------|------------------------------------|------|--------------------------|
+| `btc-2023-1m-sma-cross`, `-sma-baseline-refresh` | `synthetic (v0 fallback)` | 525601 | **==** the v5 row (`d2fa7616…`) |
+| `top10-{2023,2024}…momentum` | `synthetic (v1 multi-symbol)` | — | **==** the v5 row (`0f6f6eb8…`/`78976062…`) |
+| `top10-{2023,2024}-fy-tcn-overlay` (tt1) | synthetic (v2.5 passthrough) | — | **==** the v5 row (`1460fcc7…`/`b8e9186b…`) |
+| **`btc-2023-1m-{macd-trend,rsi-reversion,bbands-mean-revert}`** | **`real (Binance Vision)`** | **17544** | **≠** the v5 row — synthetic SHA is `4d8192af…`/`4a744788…`/`5037accb…`, held in D7.1's override map |
+
+**Root cause.** At the v0.3.0 re-emission (commit `21bda41`, 2026-05-27) the
+emitting machine had `btc-2023-1m` Binance parquet on disk. The SMA/Composed
+group was run `--force-synthetic-bars` (Q1=(a) revert; see `anchors.toml`
+header line 330), but the macd/rsi/bbands scenarios were NOT forced and so took
+the **real-data** path (17544-bar bodies). The `anchors.toml` header's "Group A
+→ synthetic" line was over-broad and silently mis-stated those 3. The header is
+corrected alongside this amendment.
+
+**Why the determinism.rs constant is the SYNTHETIC SHA regardless.** The
+`determinism.rs` re-run tests (`run_scenario_once`) spawn the binary with
+`.current_dir(tempdir)`. The binary resolves Binance parquet **relative to
+CWD**; in a tempdir the lookup always misses → the engine takes the v0
+synthetic fallback for ALL scenarios, on every machine, deterministically.
+These tests are by-design **pure synthetic regression guards**; their JOB is to
+lock the deterministic synthetic engine path. So the correct in-test constant
+for macd/rsi/bbands is the **synthetic** body-SHA — which has no `anchors.toml`
+row.
+
+**Refined mapping rule (supersedes the single clause in D6.1).** The in-test
+constant for a non-feature-gated scenario *S* equals, in order: (1) the
+synthetic body-SHA recorded in D7.1's `SYNTHETIC_DETERMINISM_SHAS` map if *S* is
+listed there (the scenarios whose `v5-realdata-medium` row is real-data
+provenance); else (2) the `v5-realdata-medium-2026-05` `anchors.toml` row for
+*S* (the scenarios whose row is synthetic provenance — sma/momentum/tt1). Both
+cases assert the engine's **synthetic-path** output; they differ only in WHERE
+the authoritative synthetic SHA is stored, because `anchors.toml` happens to
+carry a synthetic SHA for one group and a real-data SHA for the other.
+
+### D7.1b — Synthetic-override map, NOT new `anchors.toml` rows (amendment, 2026-05-30, second pass)
+
+The blocker raised three options for making D7.1 GREEN for the 6 mixed-provenance
+scenarios. **Decision: option 2a-refined (synthetic-override map inside D7.1).
+Option 2b (add synthetic `anchors.toml` rows) is REJECTED.**
+
+- **2a-refined (CHOSEN).** D7.1 (`check_determinism_anchors.py`) carries an
+  explicit `SYNTHETIC_DETERMINISM_SHAS` dict (the 3 scenario→synthetic-SHA
+  entries). Resolution order per in-test site: synthetic-override map → then
+  `v5-realdata-medium-2026-05` row → else **HARD ERROR** (a scenario in neither
+  map is a linter failure, not a silent skip). This keeps D7.1's invariant
+  uniform and total: every non-cfg-gated in-test constant has exactly one
+  authoritative source and any drift fails the linter. The map lives adjacent
+  to the constants it guards, so re-locking a synthetic constant and updating
+  its map entry is a single-file edit.
+
+- **2b (REJECTED) — add synthetic rows to `anchors.toml`.** `verify_anchors.sh`
+  requires **every** `[[anchors]]` row to resolve to a saved `.md` report on
+  disk whose body hashes to the row's SHA (it keys file-lookup on the `version`
+  namespace and emits `MISS`+fail for any unresolvable row). No saved synthetic
+  report exists for macd/rsi/bbands (the only saved v5 files are the 17544-bar
+  real-data ones). 2b would therefore force EITHER committing 3 new synthetic
+  report files — which become byte-immutable anchored artifacts forever (ADR-0038
+  § D6), plus a new `verify_anchors.sh` namespace branch, plus the row count
+  86→89 — OR leaving 3 unresolvable rows that break the file-anchor gate. Both
+  are disproportionate. The in-test re-run gate already IS the synthetic
+  regression guard for these scenarios; a redundant file-anchor adds immutable
+  surface and a second source of truth for no marginal coverage.
+
+- **2c (REJECTED) — exempt the 6 from D7.1 entirely.** This reopens the exact
+  silent-drift blind spot D7 exists to close: an un-checked constant could rot
+  unnoticed. "Exempt from the `anchors.toml` check" must mean "checked against a
+  different explicit source," never "unchecked." The HARD-ERROR-on-unmapped rule
+  in 2a-refined is what makes the exemption safe.
+
+**Residual cost (flagged).** The 3 synthetic SHAs are not in `anchors.toml`;
+their source of truth is the D7.1 map. If a future engine change moves the
+synthetic macd/rsi/bbands output, D7.2 (re-run) catches it, and the dev re-locks
+BOTH the `determinism.rs` constant AND the map entry in one edit. This is a
+bounded, documented cost accepted in exchange for not growing the immutable
+file-anchor set.
+
 ## Alternatives considered
 
+- **Add synthetic `anchors.toml` rows for macd/rsi/bbands (engine-drift 2b)**
+  — rejected; see § D7.1b. Would force 3 new byte-immutable report files or
+  break `verify_anchors.sh`, for zero coverage the in-test gate doesn't already
+  provide.
 - **Single-namespace, retire OLD anchors (Q2 = (b))** — rejected.
   Loses the friction-free oracle. The CLAUDE.md ≥ 1 bp non-negotiable
   needs a noop reference; without it the assertion has no anchor.
@@ -341,7 +436,8 @@ if the < 1 min release cost is judged not worth it.
 - Hash recompute — `scripts/hash_report.py`
 - Engine-drift diagnosis (D6 / D7 trigger) — [`spec/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../dev-notes/engine-drift-diagnosis-2026-05-30.md) (commit `1cbe3d4`)
 - In-test re-run anchor gate — `crates/backtest/tests/determinism.rs` (`t622_*` / `t717_*` / `tt1_*`)
-- D7.1 drift-linter to add — `scripts/check_determinism_anchors.py` (pattern: `scripts/adr_registry_check.py`)
+- D7.1 drift-linter — `scripts/check_determinism_anchors.py` (implemented 2026-05-30; pattern: `scripts/adr_registry_check.py`; § D7.1b adds the `SYNTHETIC_DETERMINISM_SHAS` override map for the 6 mixed-provenance constants)
+- Engine-drift fix dev spec (EX-1 corrected rows + BLOCKER resolution + EX-4 v2) — [`spec/dev-notes/engine-drift-fix-spec-2026-05-30.md`](../../dev-notes/engine-drift-fix-spec-2026-05-30.md)
 
 ## Changelog
 
@@ -366,3 +462,17 @@ if the < 1 min release cost is judged not worth it.
   (regenerate-and-hash inside `verify_anchors.sh`). Operator cost flag:
   D7.2 adds < ~1 min release wall-clock on backtest-touching ships;
   down-scope to D7.1-only is available.
+- 2026-05-30 (architect, second pass): § D6.3 + § D7.1b added after a
+  developer correctly STOPPED at engine-drift VR-1. The
+  `v5-realdata-medium-2026-05` namespace is provenance-MIXED:
+  `btc-2023-1m-{macd-trend,rsi-reversion,bbands-mean-revert}` v5 rows were
+  emitted from the REAL-DATA path (17544-bar Binance bodies), while
+  sma/momentum/tt1 v5 rows are synthetic. The `determinism.rs` tests run the
+  synthetic v0-fallback path (CWD=tempdir), so the 6 macd/rsi/bbands in-test
+  constants are the SYNTHETIC SHAs (`4d8192af…`/`4a744788…`/`5037accb…`), held
+  in D7.1's `SYNTHETIC_DETERMINISM_SHAS` override map — NOT in `anchors.toml`.
+  D6.3 refines the D6.1 mapping rule (synthetic-override → canonical → HARD
+  ERROR). D7.1b rejects adding synthetic `anchors.toml` rows (option 2b: would
+  break `verify_anchors.sh` or grow the immutable report-anchor set for zero
+  marginal coverage) and rejects exempting the 6 (2c: reopens the blind spot).
+  No `anchors.toml` row or saved report file changes; VR-3 stays 86/86.

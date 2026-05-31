@@ -2,15 +2,59 @@
 slug: architecture-11-regression-gate
 status: shipped
 owner: tester
-updated: 2026-05-13
+updated: 2026-05-30
 ---
 
 # Regression gate
 
-The 9-anchor body-SHA-256 regression gate that prevents silent
-output drift in backtest, audit, and report-rendering paths. Every
-PR that touches the load-bearing crates passes through this gate
-before VERDICT → PASS.
+The body-SHA-256 regression gate that prevents silent output drift
+in backtest, audit, and report-rendering paths. Every PR that
+touches the load-bearing crates passes through this gate before
+VERDICT → PASS.
+
+## Dual-anchor system (ADR-0045 § D6 + § D7)
+
+There are TWO complementary anchor systems, not one:
+
+**System 1 — File anchors (`spec/anchors.toml` + `verify_anchors.sh`)**
+
+`spec/anchors.toml` is the **single source of truth** (canonical).
+It maps `(scenario, version)` pairs to body-SHA-256 values of SAVED
+report files under `spec/*/reports/`. `scripts/verify_anchors.sh`
+checks these saved files against the locked SHAs. This system catches
+accidental edits to anchored report files; it does NOT catch engine
+drift (because the saved files are unchanged when the engine drifts).
+
+**System 2 — In-test re-run anchors (`determinism.rs`)**
+
+`crates/backtest/tests/determinism.rs` contains `const ANCHOR` sites
+inside `t622_*`, `t717_*`, and `tt1_*` test functions. These tests
+RE-EXECUTE the backtest engine from scratch and compare the live
+output body-SHA to the in-test constant. They guard against silent
+engine drift: if the engine's output changes, these tests go RED.
+The in-test constants for the non-feature-gated suite (default binary,
+no `realdata`/`candle` features) mirror the `v5-realdata-medium-2026-05`
+rows in `anchors.toml` (D6.1 mapping rule, ADR-0045 § D6).
+
+**D7.1 drift-linter:** `scripts/check_determinism_anchors.py` is a
+sub-second static check that asserts the System-2 in-test constants
+equal the System-1 canonical SHAs. Run it before every `cargo test`
+and as a pre-commit gate.
+
+**D7.2 release re-run gate:** The `verify-anchors` skill procedure
+runs `cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_`
+AFTER `verify_anchors.sh` exits 0. Release mode is mandatory (debug
+builds are multi-minute on the momentum scenarios; release is ~26s).
+
+**D6.1 mapping rule:** the non-cfg-gated `determinism.rs` tests build
+the binary with no `realdata`/`candle` feature, so every scenario takes
+the `Linear{bps:8}` synthetic fallback in
+`build_slippage_model_for_scenario`. Each in-test constant must equal
+the `anchors.toml` row `(scenario, version = "<base> + v5-realdata-medium-2026-05")`.
+Exception: scenarios whose `v5-realdata-medium-2026-05` anchor was
+produced with real Binance data (Parquet auto-detect) require review
+before re-locking the tempdir-based tests (see ADR-0045 § D7 pending
+items for macd/rsi/bbands).
 
 ## Current anchor set
 
@@ -126,6 +170,11 @@ Both are documented one-shot re-locks. The default rule —
 "anchors are immutable" — holds otherwise.
 
 ## Changelog
+- 2026-05-30 (developer / architect): D7.3 dual-anchor model documented
+  (ADR-0045 § D7). Added the "Dual-anchor system" section covering
+  System 1 (file anchors, `anchors.toml`) and System 2 (in-test re-run
+  anchors, `determinism.rs`), the D7.1 drift-linter, the D7.2 release
+  re-run gate, and the D6.1 mapping rule.
 - 2026-05-13 (tester / architect): body synthesised from
   `../anchors.toml`, the `verify-anchors` skill, and ADRs 0002 /
   0003 / 0004 / 0015 / 0019 during Phase 1A Session 12. This file

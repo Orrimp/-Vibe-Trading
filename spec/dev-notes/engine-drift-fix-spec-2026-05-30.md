@@ -2,12 +2,27 @@
 date: 2026-05-30
 author: architect-agent (claude-opus-4-8)
 slug: engine-drift-fix-spec-2026-05-30
-status: APPROVED — dev spec ready; HANDOFF → developer
+status: AMENDED 2026-05-30 — BLOCKER resolved (mixed-provenance namespace); rows 3/4/5/8/9/10 corrected to SYNTHETIC SHAs + D7.1 dual-map adjustment; HANDOFF → developer
 answers: spec/dev-notes/engine-drift-diagnosis-2026-05-30.md (diagnosis commit 1cbe3d4)
-adr: ADR-0045 § D6 + § D7 (amendment 2026-05-30)
+adr: ADR-0045 § D6 + § D7 (amendment 2026-05-30; § D6.3 + § D7.1b added for mixed-provenance)
 ---
 
 # Engine-Drift Fix — Architect Decision + Developer Spec (2026-05-30)
+
+> **BLOCKER RESOLUTION (2026-05-30, second architect pass).** The developer
+> correctly STOPPED at VR-1: rows 3/4/5/8/9/10 (macd/rsi/bbands × t622+t717)
+> did not match their EX-1-mapped `v5-realdata-medium-2026-05` SHAs. Root
+> cause confirmed: the `v5-realdata-medium-2026-05` namespace is
+> **mixed-provenance** — sma/momentum/tt1 entries are synthetic-run SHAs, but
+> macd/rsi/bbands entries are **real-Binance-run SHAs** (the v0.3.0 re-emission
+> machine had `btc-2023-1m` parquet present and those 3 scenarios were NOT
+> `--force-synthetic-bars`). The `determinism.rs` tests are **pure synthetic
+> re-run guards** (`current_dir(tempdir)` → data-path lookup misses → v0
+> fallback). So the correct in-test constant for the 6 is the **synthetic**
+> SHA, which is not in `anchors.toml`. Decision: re-lock the 6 to the synthetic
+> SHAs (§ "BLOCKER resolution" below) and teach D7.1 a synthetic-override map
+> (§ EX-4 v2). See ADR-0045 § D6.3 + § D7.1b. **Rows 1/2/6/7/11/12/13/14
+> are unchanged and already GREEN.**
 
 ## Verdict
 
@@ -72,14 +87,14 @@ gate identical in shape to t717 (EX-2 covers the assertion edit).
 |---|------|---------|----------|---------------|------------------------|
 | 1 | 505 | `t622_sma_cross_anchor_hash_unchanged` | btc-2023-1m-sma-cross | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` | `d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0` |
 | 2 | 518 | `t622_sma_baseline_refresh_anchor_hash_unchanged` | btc-2023-1m-sma-baseline-refresh | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` | `d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0` |
-| 3 | 533 | `t622_macd_trend_anchor_hash_unchanged` | btc-2023-1m-macd-trend | `ef9c5e48` (PREFIX) | `6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5` |
-| 4 | 548 | `t622_rsi_reversion_anchor_hash_unchanged` | btc-2023-1m-rsi-reversion | `bc56d20d` (PREFIX) | `87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695` |
-| 5 | 563 | `t622_bbands_mean_revert_anchor_hash_unchanged` | btc-2023-1m-bbands-mean-revert | `d8a08a23` (PREFIX) | `5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd` |
+| 3 | 533 | `t622_macd_trend_anchor_hash_unchanged` | btc-2023-1m-macd-trend | `ef9c5e48` (PREFIX) | ~~`6cb14ac5…`~~ → **`4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a`** (SYNTHETIC — see BLOCKER resolution) |
+| 4 | 548 | `t622_rsi_reversion_anchor_hash_unchanged` | btc-2023-1m-rsi-reversion | `bc56d20d` (PREFIX) | ~~`87b4e1cc…`~~ → **`4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7`** (SYNTHETIC) |
+| 5 | 563 | `t622_bbands_mean_revert_anchor_hash_unchanged` | btc-2023-1m-bbands-mean-revert | `d8a08a23` (PREFIX) | ~~`5b6237d1…`~~ → **`5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894`** (SYNTHETIC) |
 | 6 | 597 | `t717_sma_cross_anchor_hash_unchanged` | btc-2023-1m-sma-cross | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` | `d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0` |
 | 7 | 609 | `t717_sma_baseline_refresh_anchor_hash_unchanged` | btc-2023-1m-sma-baseline-refresh | `fc2e3b4a04055e60209fe85541173aa8883df226d2756352dfd101597168649c` | `d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0` |
-| 8 | 621 | `t717_macd_trend_anchor_hash_unchanged` | btc-2023-1m-macd-trend | `ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805` | `6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5` |
-| 9 | 633 | `t717_rsi_reversion_anchor_hash_unchanged` | btc-2023-1m-rsi-reversion | `bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa` | `87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695` |
-| 10 | 645 | `t717_bbands_mean_revert_anchor_hash_unchanged` | btc-2023-1m-bbands-mean-revert | `d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3` | `5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd` |
+| 8 | 621 | `t717_macd_trend_anchor_hash_unchanged` | btc-2023-1m-macd-trend | `ef9c5e483fa079f670a7aa15671643fce3b39a5ce35df8cb6d797887053f8805` | ~~`6cb14ac5…`~~ → **`4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a`** (SYNTHETIC — see BLOCKER resolution) |
+| 9 | 633 | `t717_rsi_reversion_anchor_hash_unchanged` | btc-2023-1m-rsi-reversion | `bc56d20d608c680e534bf6764ce8e0e568f0d4ffdf847a539c53fef65170d7aa` | ~~`87b4e1cc…`~~ → **`4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7`** (SYNTHETIC) |
+| 10 | 645 | `t717_bbands_mean_revert_anchor_hash_unchanged` | btc-2023-1m-bbands-mean-revert | `d8a08a23d3629556c5fca39d6af89d7e0f99418e642af0b86fce22ff4d2792e3` | ~~`5b6237d1…`~~ → **`5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894`** (SYNTHETIC) |
 | 11 | 660 | `t717_top10_2023_momentum_anchor_hash_unchanged` | top10-2023-1h-momentum | `3b60ef0743f006867b9e52f9de154869ee170987b27560e288b2d9597d3ecf97` | `0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3` |
 | 12 | 675 | `t717_top10_2024_momentum_anchor_hash_unchanged` | top10-2024-h1-momentum | `1f33534fc7c6af1c04330564bec77aac620ecf6f1058f11ff90dfb66adcf05c6` | `78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490` |
 | 13 | 704 | `tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged` | top10-2023-fy-tcn-overlay | `01d02584331c4a26334e7c1fb9bd3f16287a6d2024263f869c9658708893eef5` | `1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc` |
@@ -99,6 +114,83 @@ gate identical in shape to t717 (EX-2 covers the assertion edit).
 > path does not route through the slippage fallback and the mapping needs
 > review.
 
+### BLOCKER resolution — the mixed-provenance namespace (rows 3/4/5/8/9/10)
+
+**What the first architect pass got wrong.** EX-1 originally mapped all 14
+constants to their `v5-realdata-medium-2026-05` `anchors.toml` SHAs on the
+assumption that the no-feature default binary reproduces those SHAs for every
+scenario. That holds for 8 rows but NOT for macd/rsi/bbands.
+
+**Evidence (architect re-verified, 2026-05-30).** The saved `v5-realdata-medium`
+report files that `anchors.toml` points to declare their own data source in the
+front-matter, and they are NOT uniform:
+
+| Scenario | `anchors.toml` v5 SHA | Saved-file `data_source` | Bars replayed |
+|----------|-----------------------|--------------------------|---------------|
+| btc-2023-1m-sma-cross / -baseline-refresh | `d2fa7616…` | `synthetic (seeded RNG, v0 fallback)` | 525601 |
+| **btc-2023-1m-macd-trend** | `6cb14ac5…` | **`real (Binance Vision)`** | **17544** |
+| **btc-2023-1m-rsi-reversion** | `87b4e1cc…` | **`real (Binance Vision)`** | **17544** |
+| **btc-2023-1m-bbands-mean-revert** | `5b6237d1…` | **`real (Binance Vision)`** | **17544** |
+| top10-2023/2024 momentum | `0f6f6eb8…`/`78976062…` | `synthetic (seeded RNG, v1 multi-symbol)` | — |
+
+So the `v5-realdata-medium-2026-05` namespace literally lives up to its name for
+macd/rsi/bbands (real Binance data) but is a misnomer for sma/momentum/tt1
+(synthetic). Root cause: at the v0.3.0 re-emission (commit `21bda41`,
+2026-05-27) the operator's box had `btc-2023-1m` Binance parquet on disk; the
+SMA/Composed group was run `--force-synthetic-bars` (Q1=(a) revert, anchors.toml
+header line 330) but macd/rsi/bbands were NOT forced and picked up the real
+parquet → 17544-bar real-data bodies. The `anchors.toml` header line 330-332's
+"Group A → synthetic" is over-broad; it did not name the macd/rsi/bbands
+exception. This is now corrected in ADR-0045 § D6.3.
+
+**The determinism.rs tests are pure synthetic guards.** `run_scenario_once`
+(determinism.rs:467) spawns the binary with `.current_dir(tmp.path())`; the
+binary resolves Binance parquet **relative to CWD**, so in a tempdir the lookup
+always misses and the engine takes the v0 synthetic fallback (525600 bars) for
+ALL scenarios — regardless of what data the operator's repo happens to hold.
+The test's JOB is to guard the deterministic synthetic engine path. Therefore
+the correct in-test constant for macd/rsi/bbands is the **synthetic** SHA.
+
+**The 6 corrected synthetic SHAs (architect-verified by independent re-run,
+CWD=tempdir, seed 0xC0FFEE — identical to the developer's VR-1):**
+
+| Scenario | SYNTHETIC body-SHA (the new in-test constant) |
+|----------|------------------------------------------------|
+| btc-2023-1m-macd-trend | `4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a` |
+| btc-2023-1m-rsi-reversion | `4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7` |
+| btc-2023-1m-bbands-mean-revert | `5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894` |
+
+Each value is used for BOTH the t622 and t717 test of that scenario (rows 3=8,
+4=9, 5=10), exactly like the sma pair. These are stable across runs (architect +
+developer agree).
+
+**Why NOT add these as `anchors.toml` synthetic rows (option 2b rejected).**
+`scripts/verify_anchors.sh` requires **every** `[[anchors]]` row to resolve to a
+saved `.md` report on disk whose body hashes to the row's SHA (it keys
+file-lookup on the `version` namespace string — see verify_anchors.sh:60-176,
+and prints `MISS`+`fail=1` for any row with no matching file). There is NO saved
+synthetic report file for macd/rsi/bbands — the only saved v5 files are the
+real-data (17544-bar) ones. Adding 3 synthetic rows would therefore force
+either (a) committing 3 brand-new synthetic report files (which then become
+byte-immutable anchored artifacts forever, plus a new `verify_anchors.sh`
+namespace branch, plus 86→89) or (b) leaving the rows unresolvable and breaking
+VR-3 (86/86). Both are disproportionate to the goal. The in-test re-run gate
+(`determinism.rs`) IS the synthetic regression guard for these scenarios; it
+does not need a redundant file-anchor. See ADR-0045 § D7.1b for the rejection
+rationale.
+
+**Resolution (option 2a-refined): D7.1 carries an explicit synthetic-override
+map.** D7.1 (`check_determinism_anchors.py`) gains a small, documented
+`SYNTHETIC_DETERMINISM_SHAS` dict (the 3 entries above). For each in-test site
+the script resolves the expected SHA as: (1) if the scenario is in the synthetic
+override map, assert equality against that; (2) else assert equality against the
+`v5-realdata-medium-2026-05` `anchors.toml` row; (3) if the scenario is in
+neither, that is now a HARD ERROR (exit 1), not a silent skip — closing the
+blind spot the old "(not in anchors.toml) → skip" branch would otherwise
+reopen. This keeps D7.1's invariant uniform and meaningful for ALL 14:
+every non-cfg-gated in-test constant has exactly one authoritative source of
+truth, and a typo'd or drifted constant always fails the linter. See EX-4 v2.
+
 ### EX-2 — t622 assertion shape change (rows 3, 4, 5 only)
 
 For the three t622 prefix tests, convert prefix→full-hash equality so
@@ -116,8 +208,10 @@ assert!(
      Got:             {hex}"
 );
 
-// AFTER:
-const ANCHOR: &str = "6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5";
+// AFTER (note: SYNTHETIC SHA per BLOCKER resolution — the determinism test
+// runs the v0 synthetic-fallback path, NOT the real-data path the
+// v5-realdata-medium anchors.toml row was emitted from):
+const ANCHOR: &str = "4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a";
 let hex = scenario_body_hex("btc-2023-1m-macd-trend");
 assert_eq!(
     hex, ANCHOR,
@@ -126,10 +220,21 @@ assert_eq!(
 );
 ```
 
-Also update the comment block at lines ~425-436 and ~530-563 that
-documents the prefixes — replace the "starts_with" rationale with a one
--line note that t622 is now full-hash equality re-locked to the
-`v5-realdata-medium-2026-05` namespace (cite ADR-0045 § D6).
+Apply the analogous prefix→equality edit to rsi (line 548 → `4a744788…`)
+and bbands (line 563 → `5037accb…`) using the SYNTHETIC SHAs from the
+BLOCKER-resolution table.
+
+Also update the comment block at lines ~425-436 and ~530-563 (and the
+matching t717 block ~583-594) that documents the prefixes / pending state.
+Replace the "starts_with" + "PENDING orchestrator review" notes with: SMA /
+momentum / tt1 rows are re-locked to the `v5-realdata-medium-2026-05`
+namespace (synthetic == real-data SHA for those); macd / rsi / bbands rows
+are re-locked to the **synthetic** SHAs because the determinism test exercises
+the v0 synthetic-fallback path while the `v5-realdata-medium` row for those 3
+was emitted from the real-data path (cite ADR-0045 § D6.3). The `--write`
+auto-sync will NOT produce the correct value for these 3 (the map source is
+the synthetic-override dict, not `anchors.toml`); hand-edit them or rely on
+EX-4 v2's `--write` once the synthetic map is wired.
 
 ### EX-3 — DO NOT TOUCH
 
@@ -148,37 +253,56 @@ documents the prefixes — replace the "starts_with" rationale with a one
 Synthesis of options (b) + (a), priority order. Full rationale +
 rejected option (c) in ADR-0045 § D7.
 
-### EX-4 (D7.1, PRIMARY) — `scripts/check_determinism_anchors.py`
+### EX-4 v2 (D7.1, PRIMARY) — `scripts/check_determinism_anchors.py` (dual-map)
 
-New script. Sub-second, **no engine execution**. Mirrors the existing
-`scripts/adr_registry_check.py` drift-linter pattern.
+The script EXISTS (developer implemented it 2026-05-30). It currently asserts
+in-test == `v5-realdata-medium-2026-05` row for every non-cfg-gated site and
+**skips** scenarios not in that map. Under the BLOCKER resolution the 6
+synthetic sites are NOT in (and must not match) the `v5-realdata-medium` map,
+so the script needs the following **adjustment** (the dev makes this edit):
 
-Behaviour:
-1. Parse `spec/anchors.toml`; build a dict
-   `{scenario: sha}` for every row whose `version` contains
-   `v5-realdata-medium-2026-05`.
-2. Parse `crates/backtest/tests/determinism.rs`; for each
-   non-feature-gated `*_anchor_hash_unchanged` test fn (the `t622_*`,
-   `t717_*`, `tt1_*` families — i.e. every `const ANCHOR`/`ANCHOR_PREFIX`
-   site NOT inside a `#[cfg(feature = ...)]` fn), extract the
-   `scenario_body_hex("<scenario>")` argument and the `const` literal.
-3. For each in-test site, assert the literal **equals** the
-   `v5-realdata-medium-2026-05` SHA for that scenario.
-4. On any mismatch: exit 1 and print a markdown drift table
-   (`scenario | in-test (file:line) | anchors.toml | match?`).
-5. `--write` mode: rewrite the in-test literals in place to the
-   anchors.toml SHAs (so reconciliation is mechanical, never hand-typed).
-6. `--pre-commit` flag: same as default check but only when
-   `determinism.rs` or `anchors.toml` is staged (cheap no-op otherwise).
+**Add the synthetic-override map** near the top of the script, alongside
+`CANONICAL_VERSION_SUFFIX`:
 
-Feature-gate handling: the script SKIPS any `const` site inside a
-`#[cfg(feature = ...)]` fn (the `m3_*` candle pair) — those have no
-default-binary `v5-realdata-medium` mapping. Detect by walking the fn's
-attribute lines.
+```python
+# Scenarios whose determinism.rs constant is the SYNTHETIC (v0-fallback) body-SHA,
+# NOT the matching v5-realdata-medium-2026-05 anchors.toml SHA. These v5 anchor
+# rows were emitted from the REAL-DATA path (17544-bar Binance bodies); the
+# determinism tests run the v0 synthetic fallback (525600 bars). See ADR-0045
+# § D6.3 / § D7.1b and the engine-drift-fix BLOCKER resolution.
+SYNTHETIC_DETERMINISM_SHAS: dict[str, str] = {
+    "btc-2023-1m-macd-trend":        "4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a",
+    "btc-2023-1m-rsi-reversion":     "4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7",
+    "btc-2023-1m-bbands-mean-revert": "5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894",
+}
+```
+
+**Resolution order** (in `detect_drift` and `apply_write`): for each
+non-cfg-gated site, the expected SHA is —
+1. `SYNTHETIC_DETERMINISM_SHAS[scenario]` if present (assert full equality);
+2. else `canonical[scenario]` (the `v5-realdata-medium-2026-05` row, full
+   equality; `ANCHOR_PREFIX` sites use `startswith` until EX-2 converts them);
+3. else **HARD ERROR** — append to `mismatches` (not `skipped`) with note
+   "no canonical OR synthetic mapping". This replaces the current
+   `(not in anchors.toml) → skipped` branch (detect_drift lines ~239-250),
+   which would otherwise silently pass an un-anchored constant and reopen the
+   exact blind spot D7 exists to close. cfg-gated sites (`m3_*` candle pair)
+   remain a legitimate skip (R3, unchanged).
+
+**`--write` mode** must consult the same resolution order so auto-sync writes
+the synthetic SHA for the 6 (currently `apply_write` only reads `canonical`,
+lines ~304-312 — extend it to check `SYNTHETIC_DETERMINISM_SHAS` first).
+
+Everything else (cfg-gate handling, `--pre-commit`, drift-table format,
+`ANCHOR_PREFIX→ANCHOR` rename) is unchanged.
 
 Acceptance: after EX-1/EX-2 land, `python3 scripts/check_determinism_anchors.py`
-exits 0. Add a deliberately-wrong constant in a scratch test → exits 1
-with the drift table → revert.
+exits 0 reporting **14 literal(s) match** (8 canonical + 6 synthetic) and the
+candle pair skipped. Negative tests: (a) corrupt one of the 6 synthetic
+constants in a scratch edit → exit 1, drift table names the synthetic source
+→ revert; (b) corrupt one sma/momentum constant → exit 1 against the canonical
+source → revert; (c) add a `*_anchor_hash_unchanged` fn for a scenario in
+NEITHER map → exit 1 (HARD ERROR), proving the blind spot is closed.
 
 ### EX-5 (D7.2, SECONDARY) — enforce the re-run gate the tester runs
 
@@ -205,12 +329,15 @@ cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_
 
 ### EX-6 (D7.3) — document the dual-anchor model
 
-- `spec/anchors.toml` header comment: add a short paragraph stating
-  there are TWO regression systems (file-anchors here, hashed by
-  `verify_anchors.sh`; in-test re-run anchors in `determinism.rs`), that
-  THIS file is canonical, and that the in-test constants for the
-  no-feature default binary mirror the `v5-realdata-medium-2026-05`
-  rows (cite ADR-0045 § D6).
+- `spec/anchors.toml` header comment: the dual-anchor paragraph already
+  landed. ADD a sentence (architect will also patch this — see § EX-6
+  anchors.toml note below) clarifying the **mixed-provenance** reality:
+  the `v5-realdata-medium-2026-05` rows for `btc-2023-1m-{macd-trend,
+  rsi-reversion,bbands-mean-revert}` were emitted from the REAL-DATA path
+  (17544-bar Binance bodies), so the matching `determinism.rs` constants
+  are the **synthetic** SHAs (held in D7.1's `SYNTHETIC_DETERMINISM_SHAS`,
+  NOT here), while the sma / momentum / tt1 v5 rows ARE synthetic and the
+  in-test constants mirror them directly (cite ADR-0045 § D6.3).
 - `spec/architecture.md` § "Regression gate discipline" (or
   "v1.5a regression-gate discipline" if that is the live heading):
   add the dual-system model + the D7.1/D7.2 gates + the D6.1 mapping
@@ -229,7 +356,10 @@ cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_
 - **VR-1 (post-edit):** `cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_`
   → all green (the 14 + the t521 determinism pair + t33 all pass).
 - **VR-2 (drift-linter):** `python3 scripts/check_determinism_anchors.py`
-  → exit 0; then a scratch wrong-value run → exit 1 with drift table → revert.
+  → exit 0 reporting **14 literal(s) match** (8 canonical + 6 synthetic), candle
+  pair skipped. Run the three negative scratch tests in EX-4 v2 acceptance
+  (corrupt a synthetic constant, a canonical constant, add an unmapped fn) →
+  each exits 1 → revert.
 - **VR-3 (file-anchor invariant, negative):** `scripts/verify_anchors.sh`
   → still `ANCHORS PASS (86/86)`. This fix touches NO saved report file
   and NO `anchors.toml` row; the file-anchor gate must be byte-identical
@@ -255,3 +385,18 @@ cargo test --release -p backtest --test determinism -- t622_ t717_ tt1_
   `#[cfg(feature = ...)]` fns (the candle `m3_*` pair). A naive
   line-by-line parse that ignores attributes would wrongly flag them.
   Test against the real file in VR-2.
+- **R4 — synthetic-SHA drift (the 6).** The synthetic SHAs
+  `4d8192af…`/`4a744788…`/`5037accb…` were verified twice (developer VR-1 +
+  architect independent re-run, both CWD=tempdir seed 0xC0FFEE). They are NOT
+  in `anchors.toml`; their sole source of truth is D7.1's
+  `SYNTHETIC_DETERMINISM_SHAS`. If a future engine change moves the synthetic
+  macd/rsi/bbands output, D7.2 (re-run) catches it but D7.1 will then assert
+  against a stale synthetic map entry — the dev who re-locks the constant MUST
+  also update the dict (they live together, by design, so this is a
+  one-file edit). This is the residual cost of NOT adding file-anchors; it is
+  bounded and documented in ADR-0045 § D7.1b.
+- **R5 — do NOT let `--write` silently "fix" the 6 with the wrong source.**
+  Until the dev wires the synthetic-override map into `apply_write` (EX-4 v2),
+  `--write` will rewrite the 6 to the `v5-realdata-medium` (real-data) SHAs,
+  re-introducing the BLOCKER. Wire the map into BOTH `detect_drift` and
+  `apply_write` in the same edit pass.

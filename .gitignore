@@ -41,3 +41,8 @@ crates/forecast/checkpoints/*.metadata.json
 # Build / test debris (stray rlib + ad-hoc test scratch files)
 *.rlib
 /test_field_method2
+
+# Python bytecode cache (scripts/ tooling — e.g. check_determinism_anchors.py,
+# run as part of the verify-anchors gate per ADR-0045 § D7.1).
+__pycache__/
+*.pyc
