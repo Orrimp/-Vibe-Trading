@@ -70,6 +70,17 @@ anchors     = ["pairs-2023-zscore-mr", "pairs-2024-h1-zscore-mr"]
 state       = "shipped"
 
 [[req]]
+id          = "REQ-XS-MEANREVERSION-001"
+title       = "Cross-sectional mean-reversion — first PIVOT family vetted on both robustness axes (C2 path + C3 parameter)"
+feature     = "cross-sectional-mean-reversion-strategy"
+product     = "spec/product.md"
+arch        = []   # architect fills — proposed: Direction{Momentum,Reversion} on the existing cross-sectional config (shared ranking path)
+crates      = []   # developer fills — proposed: crates/strategy (cross_sectional), crates/backtest (run_path + param_robustness_sweep reuse)
+tests       = []   # developer fills
+anchors     = []   # tester fills after PASS — proposed: mr-2023-block-bootstrap-real-fy-mc, mr-theta-surface-2023-block-bootstrap-real-fy
+state       = "draft"   # reversible design; operator confirms the pivot before any build
+
+[[req]]
 id          = "REQ-V15B-MULTIVENUE-001"
 title       = "v1.5b multi-venue execution scaffolding"
 feature     = "v1-5b-multi-venue"
