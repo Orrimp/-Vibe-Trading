@@ -72,6 +72,9 @@ fn make_config(
         drift_rebalance_threshold: drift,
         vol_floor: dec!(0.000001),
         stage: SmolStr::new("research"),
+        // D-MR.0: default to Momentum so all existing C3 e2e tests preserve behavior
+        // (no anchor disturbance). The MR e2e tests use make_config_with_direction().
+        direction: strategy::Direction::Momentum,
     }
 }
 

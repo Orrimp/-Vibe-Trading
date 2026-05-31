@@ -9,6 +9,27 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
+// ── Strategy family direction (D-MR.0) ────────────────────────────────────────
+
+/// Which direction the cross-sectional strategy selects.
+///
+/// - `Momentum`: top-K symbols by vol-adjusted return (v1 behavior — the serde default).
+/// - `Reversion`: bottom-K symbols (the biggest recent losers) — cross-sectional MR.
+///
+/// **Naming note (D-MR.1):** `core::forecast::Direction { Up, Down, Flat }` already
+/// exists. This `cross_sectional::Direction { Momentum, Reversion }` is a distinct
+/// type in the `strategy::cross_sectional` namespace — do NOT unify with the
+/// forecast one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    /// Top-K winners (v1 momentum behavior — default).
+    #[default]
+    Momentum,
+    /// Bottom-K losers (cross-sectional mean-reversion).
+    Reversion,
+}
+
 /// Error codes returned by the loader — matches the Design error-code table.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CrossSectionalLoadError {
@@ -81,6 +102,12 @@ pub struct CrossSectionalMomentumConfig {
     pub vol_floor: Decimal,
     /// Stage: `"research"` or `"paper"`.
     pub stage: SmolStr,
+    /// Strategy family direction (D-MR.0).
+    /// Default = `Momentum` (v1 behavior) — serde `#[serde(default)]` means
+    /// every existing TOML and struct literal that omits this field keeps
+    /// the v1 `Momentum` behavior unchanged (no anchor or test breakage).
+    #[serde(default)]
+    pub direction: Direction,
 }
 
 /// Raw deserializable form before validation.
@@ -106,6 +133,10 @@ struct RawConfig {
     pub vol_floor: Decimal,
     #[serde(default = "default_size")]
     pub size: SmolStr,
+    /// Strategy family direction — default = `Momentum` so existing TOMLs
+    /// without this field keep the v1 behavior unchanged.
+    #[serde(default)]
+    pub direction: Direction,
 }
 
 fn default_lookback() -> u32 {
@@ -212,6 +243,7 @@ impl CrossSectionalMomentumConfig {
             drift_rebalance_threshold: raw.drift_rebalance_threshold,
             vol_floor: raw.vol_floor,
             stage: raw.stage,
+            direction: raw.direction,
         })
     }
 
@@ -390,5 +422,68 @@ rebalance_minutes = 0
     fn t605_toml_parse_error() {
         let err = CrossSectionalMomentumConfig::from_str("not valid toml ]][").unwrap_err();
         assert_eq!(err.error_code(), "toml_parse");
+    }
+
+    // ── M-DEV-1: Direction field tests ────────────────────────────────────────
+
+    /// M-DEV-1 (a): TOML with no `direction` field → `Direction::Momentum` (backward compat).
+    #[test]
+    fn mr_dev1_no_direction_defaults_to_momentum() {
+        let cfg = CrossSectionalMomentumConfig::from_str(VALID_TOML).unwrap();
+        assert_eq!(
+            cfg.direction,
+            Direction::Momentum,
+            "omitting `direction` must default to Momentum (backward compat)"
+        );
+    }
+
+    /// M-DEV-1 (b): `direction = "reversion"` → `Direction::Reversion`.
+    #[test]
+    fn mr_dev1_direction_reversion_parses() {
+        let toml = r#"
+id    = "test_mr"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+direction = "reversion"
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.direction,
+            Direction::Reversion,
+            "`direction = \"reversion\"` must parse to Direction::Reversion"
+        );
+    }
+
+    /// M-DEV-1 (c): Config hash differs between Momentum and Reversion at identical θ (K3).
+    #[test]
+    fn mr_dev1_config_hash_differs_by_direction() {
+        use super::super::momentum::MomentumStrategy;
+        use smol_str::SmolStr;
+
+        let toml_base = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 60
+rebalance_minutes = 60
+k_long = 2
+"#;
+        let mut cfg_mom = CrossSectionalMomentumConfig::from_str(toml_base).unwrap();
+        let mut cfg_rev = cfg_mom.clone();
+        cfg_rev.direction = Direction::Reversion;
+
+        // Make the IDs the same so only direction differs.
+        cfg_mom.id = SmolStr::new("test_hash");
+        cfg_rev.id = SmolStr::new("test_hash");
+
+        let strat_mom = MomentumStrategy::from_config(cfg_mom, SmolStr::new("test"));
+        let strat_rev = MomentumStrategy::from_config(cfg_rev, SmolStr::new("test"));
+
+        assert_ne!(
+            strat_mom.hash, strat_rev.hash,
+            "Momentum and Reversion configs at identical θ MUST produce different hashes (K3)"
+        );
     }
 }

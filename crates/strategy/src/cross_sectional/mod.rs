@@ -8,6 +8,6 @@ pub mod config;
 pub mod momentum;
 pub mod selector;
 
-pub use config::{CrossSectionalLoadError, CrossSectionalMomentumConfig};
+pub use config::{CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction};
 pub use momentum::MomentumStrategy;
 pub use selector::top_k_long;

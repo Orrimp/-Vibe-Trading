@@ -19,8 +19,9 @@
 # The verify-anchors skill runs both gates before VERDICT → PASS.
 # See spec/architecture/11-regression-gate.md for the full dual-anchor model.
 #
-# Verify with: scripts/verify_anchors.sh  (expects 86/86 PASS — 2026-05-30;
-# most recent: row 86 = v1-momentum-theta-surface-2023-block-bootstrap-real-fy
+# Verify with: scripts/verify_anchors.sh  (expects 87/87 PASS — 2026-05-31;
+# most recent: row 87 = v1-mr-theta-surface-2023-block-bootstrap-real-fy (mean-
+# reversion θ-surface, FAMILY-UNIFORM-FRAGILE). Prior: row 86 = v1-momentum-theta-surface-2023-block-bootstrap-real-fy
 # under namespace `mc-robustness-2026-06` — the θ-surface anchor, ADR-0051 D4.
 # Prior milestone: row 85 = v1-momentum-2023-block-bootstrap-real-fy-mc)
 # Recompute one: scripts/hash_report.py spec/<feature>/reports/backtest-...md
@@ -675,3 +676,22 @@ sha256   = "7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20"
 scenario = "v1-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
 sha256   = "0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5"
+
+# C3 MR parameter-robustness sweep — θ-surface anchor #87 (2026-05-31).
+# Cross-sectional mean-reversion: 6-cell × N=200 LOCKED MR Tier-1 grid (§ D-MR.2-LOCKED).
+# Methodology: SAME-paths across cells (ADR-0051 § D6.1 + § D6.5 cross-ref amendment).
+# Verdict: FAMILY-UNIFORM-FRAGILE — all 6 cells FRAGILE.
+# MR family does NOT beat buy-and-hold net of fees on 2023 real Binance universe.
+# g=0 (baseline MR θ*): p5=-0.039, p50=-0.013, p95≈+0.015, direction=reversion
+# g=3 (best-shot low-churn: 1mo × wide band): p50=+0.007 — nearest to non-FRAGILE but still FRAGILE
+# BuyHold control: p50 Sharpe=+1.74, P(loss)=4.5%, p95 MaxDD=51.2% (same SAME-paths as C3 momentum).
+# Grid: 6 cells g∈{0..5}, N=200, seed=0xC0FFEE, block-bootstrap-real, year=2023.
+# Wall-clock: 3087.3s on Apple-Silicon M-series (canonical box, ~12 cores; concurrent with R2 verify run).
+# Namespace: mc-robustness-2026-06 (MR θ-surface = additive entry, no prior anchor disturbed).
+# Anchored by developer (tester confirms 87/87 PASS in test report).
+# Verify with: scripts/verify_anchors.sh (expects 87/87 PASS with this SHA)
+
+[[anchors]]
+scenario = "v1-mr-theta-surface-2023-block-bootstrap-real-fy"
+version  = "mc-robustness-2026-06"
+sha256   = "a708112e1e8ddd4e48360b1e9f83d927c65d3d0f05be984e362c76f20be7bb4a"

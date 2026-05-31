@@ -13,7 +13,7 @@ use smol_str::SmolStr;
 use trading_core::{Bar, Signal, SignalEvidence, SignalKind, StrategyId, Symbol, Tick, Timestamp};
 
 use crate::Strategy;
-use crate::cross_sectional::config::CrossSectionalMomentumConfig;
+use crate::cross_sectional::config::{CrossSectionalMomentumConfig, Direction};
 use crate::cross_sectional::selector::top_k_long;
 use features::{RingBuffer, score_vol_adjusted_return};
 
@@ -35,6 +35,10 @@ pub struct MomentumStrategy {
     #[allow(dead_code)]
     drift_threshold: Decimal,
     exposure_cap: Decimal,
+    /// Strategy family direction (D-MR.0). Default = `Momentum` (v1 behavior).
+    /// `Reversion` negates the score at the cache-write boundary so `top_k_long`
+    /// selects bottom-K losers instead of top-K winners.
+    direction: Direction,
 
     /// Per-symbol ring buffers of close prices (size = lookback_minutes + 1).
     histories: BTreeMap<Symbol, RingBuffer>,
@@ -85,6 +89,7 @@ impl MomentumStrategy {
             vol_floor: cfg.vol_floor,
             drift_threshold: cfg.drift_rebalance_threshold,
             exposure_cap: cfg.exposure_cap,
+            direction: cfg.direction,
             histories,
             scores,
             last_rebalance_ts: None,
@@ -198,6 +203,13 @@ impl Strategy for MomentumStrategy {
         let score = self.histories.get(&bar.symbol).and_then(|rb| {
             score_vol_adjusted_return(rb, self.lookback_minutes, self.vol_floor).ok()
         });
+        // D-MR.1: invert at the cache boundary.
+        // Momentum stores +score; Reversion stores −score so the unchanged
+        // descending `top_k_long` selects the bottom-K losers.
+        let score = match self.direction {
+            Direction::Momentum => score,
+            Direction::Reversion => score.map(|s| -s),
+        };
         self.scores.insert(bar.symbol.clone(), score);
 
         // Decide if this is a rebalance bar.
@@ -231,7 +243,7 @@ fn compute_config_hash(cfg: &CrossSectionalMomentumConfig) -> [u8; 32] {
 
     let canonical = format!(
         "id={id};universe={uni};lookback={lb};rebalance={rb};k_long={kl};k_short={ks};\
-         exposure_cap={ec};drift={dt};vol_floor={vf}",
+         exposure_cap={ec};drift={dt};vol_floor={vf};direction={dir:?}",
         id = cfg.id,
         uni = universe_sorted.join(","),
         lb = cfg.lookback_minutes,
@@ -241,6 +253,7 @@ fn compute_config_hash(cfg: &CrossSectionalMomentumConfig) -> [u8; 32] {
         ec = cfg.exposure_cap,
         dt = cfg.drift_rebalance_threshold,
         vf = cfg.vol_floor,
+        dir = cfg.direction,
     );
 
     let mut hasher = Sha256::new();
@@ -307,6 +320,34 @@ size = "equal_weight"
         );
         let cfg =
             crate::cross_sectional::config::CrossSectionalMomentumConfig::from_str(&toml).unwrap();
+        MomentumStrategy::from_config(cfg, SmolStr::new("test"))
+    }
+
+    fn make_strategy_with_direction(
+        lookback: u32,
+        rebalance: u32,
+        k_long: u32,
+        direction: crate::cross_sectional::config::Direction,
+    ) -> MomentumStrategy {
+        use crate::cross_sectional::config::CrossSectionalMomentumConfig;
+        let mut cfg = CrossSectionalMomentumConfig::from_str(&format!(
+            r#"
+id = "test_dir"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+lookback_minutes = {lookback}
+rebalance_minutes = {rebalance}
+k_long = {k_long}
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"
+"#
+        ))
+        .unwrap();
+        cfg.direction = direction;
         MomentumStrategy::from_config(cfg, SmolStr::new("test"))
     }
 
@@ -405,6 +446,96 @@ size = "equal_weight"
         assert_eq!(
             run1, run2,
             "signal sequence must be identical across two runs"
+        );
+    }
+
+    // ── M-DEV-2: Score inversion — Reversion selects opposite symbols from Momentum ─
+
+    /// M-DEV-2: With a 3-symbol universe and K=1, Momentum picks the top winner
+    /// and Reversion picks the worst loser — the two selected-symbol sets are disjoint.
+    ///
+    /// BTCUSDT trends strongly up (+5% per bar): highest momentum score.
+    /// ETHUSDT is flat.
+    /// BNBUSDT trends strongly down (−5% per bar): lowest momentum score / highest MR score.
+    ///
+    /// Momentum K=1 → BTCUSDT.
+    /// Reversion K=1 → BNBUSDT (negated score floats it to the top).
+    #[test]
+    fn mr_dev2_reversion_selects_opposite_symbols() {
+        use crate::cross_sectional::config::Direction;
+
+        let lookback: u32 = 3;
+        let rebalance: u32 = 3;
+        let k_long: u32 = 1; // K=1 < universe size (3) → sets guaranteed disjoint
+
+        // BTC: strong uptrend; ETH: flat; BNB: strong downtrend.
+        // After lookback bars, momentum score: BTC > ETH > BNB.
+        // After negation (Reversion): BNB_neg > ETH_neg > BTC_neg.
+        let prices_mom: &[(&str, f64, f64)] = &[
+            ("BTCUSDT", 100.0, 5.0), // start=100, per-bar Δ=+5
+            ("ETHUSDT", 50.0, 0.0),  // flat
+            ("BNBUSDT", 30.0, -1.5), // downtrend
+        ];
+
+        // Helper: run a strategy for N bars and return the set of symbols that had
+        // a Buy signal on the LAST rebalance.
+        let run_and_collect_buys = |direction: Direction,
+                                    n_bars: usize|
+         -> std::collections::BTreeSet<String> {
+            let mut strat = make_strategy_with_direction(lookback, rebalance, k_long, direction);
+            let mut last_buy_symbols = std::collections::BTreeSet::new();
+
+            for bar_idx in 0..n_bars as i64 {
+                let mut signals = Vec::new();
+                // Feed all symbols for this timestep.
+                for (sym_name, start, delta) in prices_mom {
+                    #[allow(clippy::cast_precision_loss)]
+                    let price =
+                        Decimal::try_from(start + delta * bar_idx as f64).unwrap_or(dec!(1));
+                    let bar = make_bar(sym_name, price.max(dec!(0.01)), bar_idx);
+                    signals.extend(strat.on_bar(&bar));
+                }
+                if signals.iter().any(|s| s.kind == SignalKind::Buy) {
+                    last_buy_symbols = signals
+                        .iter()
+                        .filter(|s| s.kind == SignalKind::Buy)
+                        .map(|s| s.symbol.to_string())
+                        .collect();
+                }
+            }
+            last_buy_symbols
+        };
+
+        let mom_buys = run_and_collect_buys(Direction::Momentum, 20);
+        let rev_buys = run_and_collect_buys(Direction::Reversion, 20);
+
+        assert!(
+            !mom_buys.is_empty(),
+            "M-DEV-2: Momentum strategy must have generated Buy signals"
+        );
+        assert!(
+            !rev_buys.is_empty(),
+            "M-DEV-2: Reversion strategy must have generated Buy signals"
+        );
+
+        // The two sets must be disjoint — Momentum picks top-K, Reversion bottom-K.
+        let intersection: std::collections::BTreeSet<&String> =
+            mom_buys.intersection(&rev_buys).collect();
+        assert!(
+            intersection.is_empty(),
+            "M-DEV-2: Momentum and Reversion selected-symbol sets MUST be disjoint when K=1 \
+             and all 3 symbols have distinct scores. \
+             mom_buys={mom_buys:?}, rev_buys={rev_buys:?}, intersection={intersection:?}"
+        );
+
+        // Sanity: Momentum should prefer BTCUSDT (uptrend), Reversion should prefer BNBUSDT.
+        assert!(
+            mom_buys.contains("BTCUSDT"),
+            "M-DEV-2: Momentum K=1 should pick BTCUSDT (strongest uptrend). Got: {mom_buys:?}"
+        );
+        assert!(
+            rev_buys.contains("BNBUSDT"),
+            "M-DEV-2: Reversion K=1 should pick BNBUSDT (strongest downtrend). Got: {rev_buys:?}"
         );
     }
 }

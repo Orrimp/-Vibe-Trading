@@ -270,13 +270,16 @@ pub const TIER1_GRID: &[ThetaCell] = &[
 
 /// Which θ-grid to use.
 ///
-/// `Tier1` is the LOCKED anchored grid (§ D-C3.2-LOCKED).
+/// `Tier1` is the LOCKED momentum anchored grid (§ D-C3.2-LOCKED).
+/// `MrTier1` is the LOCKED MR θ-grid (§ D-MR.2-LOCKED).
 /// `TwoCell` is a 2-cell mini-grid used only by the FP-C3.2 grid-sensitivity
 /// test (different grid → different body-SHA). NOT for production runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum GridKind {
-    /// The LOCKED 14-cell Tier-1 anchored grid (production).
+    /// The LOCKED 6-cell Tier-1 anchored momentum grid (§ D-C3.2-LOCKED).
     Tier1,
+    /// The LOCKED 6-cell MR Tier-1 θ-grid (§ D-MR.2-LOCKED).
+    MrTier1,
     /// 2-cell mini-grid for FP-C3.2 grid-sensitivity gate only.
     TwoCell,
 }
@@ -286,6 +289,7 @@ pub enum GridKind {
 pub fn grid_for_kind(kind: GridKind) -> &'static [ThetaCell] {
     match kind {
         GridKind::Tier1 => TIER1_GRID,
+        GridKind::MrTier1 => MR_TIER1_GRID,
         GridKind::TwoCell => TWO_CELL_GRID,
     }
 }
@@ -311,6 +315,78 @@ pub const TWO_CELL_GRID: &[ThetaCell] = &[
     },
 ];
 
+/// MR Tier-1 θ-grid — LOCKED 2026-05-31 (§ D-MR.2-LOCKED).
+///
+/// This exact 6-cell list is the hashed body field for the MR θ-surface anchor
+/// (ADR-0051 § D6.3, inherited). Changing it = a different surface = a different SHA.
+///
+/// **Deliberately spans the turnover axis** (R-MR.3): g=1/g=5 are high-churn cells;
+/// g=3/g=4 are low-churn cells; g=0 is the baseline MR θ* (direction-flipped C3 g=0).
+///
+/// **Held constant across every cell (identical to C3 except direction=Reversion):**
+/// `rebalance_minutes=60`, `exposure_cap=0.50`, `vol_floor=0.000001`,
+/// `size=equal_weight`, `k_short=0`, 10-symbol universe, year=2023, N=200,
+/// `ensemble_seed=0xC0FFEE`, `fill_seed=0xC0FFEE`, generator=block-bootstrap-real.
+///
+/// | g | lookback | k_long | drift | role / turnover |
+/// |---|----------|--------|-------|-----------------|
+/// | 0 | 60       | 3      | 0.10  | baseline MR θ* (apples-to-apples vs momentum g=0) / mid |
+/// | 1 | 24       | 3      | 0.10  | short lookback + narrow band — deliberately HIGH churn  |
+/// | 2 | 168      | 3      | 0.10  | 1w lookback horizon / mid                               |
+/// | 3 | 720      | 5      | 0.50  | 1mo + wide band — deliberately LOW churn                |
+/// | 4 | 720      | 3      | 0.30  | long lookback + medium band / low-mid                   |
+/// | 5 | 24       | 5      | 0.10  | short lookback + wide selection — maximal churn extreme  |
+pub const MR_TIER1_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 60,
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        role: "baseline MR θ* (apples-to-apples vs momentum g=0; must DIFFER from C3 g=0 momentum)",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 24,
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        role: "short lookback + narrow band — deliberately HIGH churn (R-MR.3 high-turnover cell)",
+    },
+    ThetaCell {
+        g: 2,
+        lookback_minutes: 168,
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        role: "1w lookback horizon / mid turnover",
+    },
+    ThetaCell {
+        g: 3,
+        lookback_minutes: 720,
+        k_long: 5,
+        drift_threshold_num: 50,
+        drift_threshold_den: 2,
+        role: "1mo lookback + wide band — deliberately LOW churn (R-MR.3 low-turnover cell)",
+    },
+    ThetaCell {
+        g: 4,
+        lookback_minutes: 720,
+        k_long: 3,
+        drift_threshold_num: 30,
+        drift_threshold_den: 2,
+        role: "long lookback + medium band — low-churn diagonal (narrower selection)",
+    },
+    ThetaCell {
+        g: 5,
+        lookback_minutes: 24,
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        role: "short lookback + wide selection — maximal-churn extreme (confirms fee trap if MR shares it)",
+    },
+];
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 /// Which path generator to use.
@@ -332,17 +408,50 @@ impl GeneratorKind {
     }
 }
 
+/// Strategy family direction for the sweep (D-MR.0).
+///
+/// `momentum` selects top-K winners (v1 behavior — default; reproduces momentum anchor #86).
+/// `reversion` negates scores so the unchanged `top_k_long` selects bottom-K losers (MR family).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Default)]
+pub enum SweepDirection {
+    /// Top-K winners — v1 momentum behavior. Default: reproduces momentum anchor #86.
+    #[default]
+    Momentum,
+    /// Bottom-K losers — cross-sectional mean-reversion (D-MR.1).
+    Reversion,
+}
+
+impl SweepDirection {
+    /// Convert to the strategy `Direction` type (same semantic).
+    fn to_strategy_direction(self) -> strategy::Direction {
+        match self {
+            Self::Momentum => strategy::Direction::Momentum,
+            Self::Reversion => strategy::Direction::Reversion,
+        }
+    }
+
+    /// Label for the scenario name and report.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Momentum => "momentum",
+            Self::Reversion => "mr",
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "param_robustness_sweep",
-    about = "C3 — momentum parameter-robustness sweep: θ-grid × N-path harness → θ-surface report",
-    long_about = "Sweeps the v1 cross-sectional momentum family over the re-scoped 6-cell \
-                  θ-grid (orchestrator-specified 2026-05-30; was 14-cell in architect design), \
+    about = "C3/MR — parameter-robustness sweep: θ-grid × N-path harness → θ-surface report",
+    long_about = "Sweeps the v1 cross-sectional momentum (or MR) family over the re-scoped 6-cell \
+                  θ-grid (orchestrator-specified 2026-05-30 for momentum; 2026-05-31 for MR), \
                   running the C2 N-path harness at each cell (same path-set across cells per \
                   ADR-0051 § D6.1), reduces each cell to a DistributionSummary, applies the \
                   frozen 5-signal weakest-link verdict classifier, and emits ONE anchored \
                   θ-surface report (ADR-0051 D3/D4). Also emits a buy-and-hold passive control \
-                  row (the adversarial-review benchmark)."
+                  row (the adversarial-review benchmark).\n\n\
+                  --direction momentum (default) reproduces the momentum anchor #86 byte-identical.\n\
+                  --direction reversion runs the MR family (§ D-MR.1) with --grid mr-tier1."
 )]
 struct Args {
     /// Path generator to use.
@@ -371,6 +480,7 @@ struct Args {
     expected_revision_sha: String,
 
     /// Output directory for the θ-surface report.
+    /// Defaults to the momentum dir; use --out-dir to override for MR runs.
     #[arg(
         long,
         default_value = "spec/momentum-parameter-robustness-sweep/reports/"
@@ -381,10 +491,18 @@ struct Args {
     #[arg(long, default_value_t = 2023)]
     year: i32,
 
-    /// θ-grid to use. `tier1` is the LOCKED anchored grid (§ D-C3.2-LOCKED).
+    /// θ-grid to use.
+    /// `tier1` is the LOCKED momentum anchored grid (§ D-C3.2-LOCKED).
+    /// `mr-tier1` is the LOCKED MR θ-grid (§ D-MR.2-LOCKED).
     /// `two-cell` is only for the FP-C3.2 grid-sensitivity gate.
     #[arg(long, value_enum, default_value = "tier1")]
     grid: GridKind,
+
+    /// Strategy family direction (D-MR.0).
+    /// `momentum` (default) = top-K winners; reproduces momentum anchor #86 byte-identical.
+    /// `reversion` = bottom-K losers (MR family); use with --grid mr-tier1.
+    #[arg(long, value_enum, default_value = "momentum")]
+    direction: SweepDirection,
 }
 
 // ── Seed helpers ──────────────────────────────────────────────────────────────
@@ -475,21 +593,26 @@ struct CellResult {
 // ── Config injection helper ────────────────────────────────────────────────────
 
 /// Build a per-cell `CrossSectionalMomentumConfig` from the base config,
-/// overriding the 3 swept axes.
+/// overriding the 3 swept axes and the strategy family direction.
 ///
 /// This is the ~30-line crux that FP-C3.1 falsifies. The base config provides
 /// the frozen fields (`rebalance_minutes=60`, `exposure_cap=0.50`,
 /// `vol_floor=1e-6`, `size=equal_weight`, `k_short=0`, universe).
+///
+/// For `SweepDirection::Momentum` (default) this is byte-identical to the
+/// pre-MR behavior — the 86 momentum anchors hold by construction (D-MR.6).
 pub fn cell_config(
     base: &strategy::CrossSectionalMomentumConfig,
     lookback_minutes: u32,
     k_long: u32,
     drift: Decimal,
+    direction: SweepDirection,
 ) -> strategy::CrossSectionalMomentumConfig {
     let mut cfg = base.clone();
     cfg.lookback_minutes = lookback_minutes;
     cfg.k_long = k_long;
     cfg.drift_rebalance_threshold = drift;
+    cfg.direction = direction.to_strategy_direction();
     cfg
 }
 
@@ -658,11 +781,21 @@ fn render_surface_report(
     cell_results: &[CellResult],
     // Buy-and-hold control distribution
     buyhold_summary: &backtest::stats::DistributionSummary,
+    // Strategy family direction (D-MR.0):
+    // Momentum → standard momentum report (slug/heading unchanged for anchor compatibility).
+    // Reversion → MR report slug + trades column added (R-MR.3 turnover legibility).
+    direction: SweepDirection,
 ) -> String {
     // ── Front-matter (NOT hashed) ─────────────────────────────────────────────
+    // slug: momentum reports keep "momentum-parameter-robustness-sweep" for anchor compat.
+    // MR reports use "cross-sectional-mean-reversion-strategy".
+    let slug = match direction {
+        SweepDirection::Momentum => "momentum-parameter-robustness-sweep",
+        SweepDirection::Reversion => "cross-sectional-mean-reversion-strategy",
+    };
     let frontmatter = format!(
         "---\n\
-         slug: momentum-parameter-robustness-sweep\n\
+         slug: {slug}\n\
          scenario: {scenario}\n\
          generated: {generated}\n\
          wall_clock_s: {wall_clock_s:.1}\n\
@@ -676,8 +809,12 @@ fn render_surface_report(
     // ── Body (deterministic, hashed by the anchor) ────────────────────────────
     let mut body = String::new();
 
+    let family_label = match direction {
+        SweepDirection::Momentum => "Momentum",
+        SweepDirection::Reversion => "Mean-Reversion (MR)",
+    };
     body.push_str(&format!(
-        "# Momentum θ-Surface — Parameter-Robustness Sweep — {scenario}\n\n"
+        "# {family_label} θ-Surface — Parameter-Robustness Sweep — {scenario}\n\n"
     ));
 
     // Shared-input header block (every field that is constant across all cells).
@@ -720,11 +857,28 @@ fn render_surface_report(
     body.push_str(&format!(
         "| source_revision_sha      | {source_revision_sha}                                    |\n"
     ));
-    body.push_str("| held_constant            | rebalance_minutes=60 exposure_cap=0.50 vol_floor=0.000001 k_short=0 size=equal_weight |\n");
+    // held_constant: add direction for MR runs (body field — part of hash).
+    let held_constant_str = match direction {
+        SweepDirection::Momentum => {
+            "| held_constant            | rebalance_minutes=60 exposure_cap=0.50 vol_floor=0.000001 k_short=0 size=equal_weight |\n"
+        }
+        SweepDirection::Reversion => {
+            "| held_constant            | rebalance_minutes=60 exposure_cap=0.50 vol_floor=0.000001 k_short=0 size=equal_weight direction=reversion |\n"
+        }
+    };
+    body.push_str(held_constant_str);
     body.push('\n');
 
     // Frozen grid definition (hashed body field — K3 / § D6.3).
-    body.push_str("## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n");
+    let grid_header = match direction {
+        SweepDirection::Momentum => {
+            "## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n"
+        }
+        SweepDirection::Reversion => {
+            "## MR θ-grid definition (6-cell, 2026-05-31 LOCKED § D-MR.2-LOCKED — changing this changes the SHA)\n\n"
+        }
+    };
+    body.push_str(grid_header);
     body.push_str(&grid_def_string(grid));
     body.push('\n');
 
@@ -734,8 +888,19 @@ fn render_surface_report(
     body.push_str("Spread = p95_sharpe − p5_sharpe (interpretive, NOT verdict-forcing).\n");
     body.push_str("Verdict: FRAGILE/MARGINAL/ROBUST via 5-signal weakest-link (frozen decision-rule § 0 bands).\n\n");
 
-    body.push_str("| g  | lookback | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | verdict  | notes |\n");
-    body.push_str("|----|----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|----------|-------|\n");
+    // M-DEV-4: add `trades` column for MR only (R-MR.3 turnover legibility).
+    // Gate on direction so momentum anchor #86 body-SHA stays byte-identical.
+    let show_trades = direction == SweepDirection::Reversion;
+    if show_trades {
+        body.push_str(
+            "Trades = total trade count across all N paths (turnover legibility — R-MR.3).\n\n",
+        );
+        body.push_str("| g  | lookback | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | trades     | verdict  | notes |\n");
+        body.push_str("|----|----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|------------|----------|-------|\n");
+    } else {
+        body.push_str("| g  | lookback | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | verdict  | notes |\n");
+        body.push_str("|----|----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|----------|-------|\n");
+    }
 
     let mut any_non_fragile = false;
 
@@ -750,22 +915,42 @@ fn render_surface_report(
             ""
         };
 
-        body.push_str(&format!(
-            "| {:2} | {:8} | {:6} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:8} | {} |\n",
-            cr.cell.g,
-            cr.cell.lookback_minutes,
-            cr.cell.k_long,
-            cr.cell.drift(),
-            s.sharpe.p5,
-            s.sharpe.p50,
-            s.sharpe.p95,
-            s.prob_loss,
-            s.prob_sharpe_gt_1,
-            s.max_dd_tail_p95 * 100.0,
-            spread,
-            verdict_str,
-            c5_flag,
-        ));
+        if show_trades {
+            body.push_str(&format!(
+                "| {:2} | {:8} | {:6} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:10} | {:8} | {} |\n",
+                cr.cell.g,
+                cr.cell.lookback_minutes,
+                cr.cell.k_long,
+                cr.cell.drift(),
+                s.sharpe.p5,
+                s.sharpe.p50,
+                s.sharpe.p95,
+                s.prob_loss,
+                s.prob_sharpe_gt_1,
+                s.max_dd_tail_p95 * 100.0,
+                spread,
+                cr.total_trades,
+                verdict_str,
+                c5_flag,
+            ));
+        } else {
+            body.push_str(&format!(
+                "| {:2} | {:8} | {:6} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:8} | {} |\n",
+                cr.cell.g,
+                cr.cell.lookback_minutes,
+                cr.cell.k_long,
+                cr.cell.drift(),
+                s.sharpe.p5,
+                s.sharpe.p50,
+                s.sharpe.p95,
+                s.prob_loss,
+                s.prob_sharpe_gt_1,
+                s.max_dd_tail_p95 * 100.0,
+                spread,
+                verdict_str,
+                c5_flag,
+            ));
+        }
     }
 
     body.push('\n');
@@ -809,13 +994,28 @@ fn render_surface_report(
         body.push_str(
             "C3 is not selecting a winner — it is reporting that no cell cleared the bar.\n",
         );
-        body.push_str(
-            "Conclusion: v1 cross-sectional momentum is structurally fragile across the\n",
-        );
-        body.push_str(
-            "tested parameter space. The turnover/fee-bleed is not tunable away within\n",
-        );
-        body.push_str("the Tier-1 grid (lookback × k_long × drift_rebalance_threshold).\n");
+        match direction {
+            SweepDirection::Momentum => {
+                body.push_str(
+                    "Conclusion: v1 cross-sectional momentum is structurally fragile across the\n",
+                );
+                body.push_str(
+                    "tested parameter space. The turnover/fee-bleed is not tunable away within\n",
+                );
+                body.push_str("the Tier-1 grid (lookback × k_long × drift_rebalance_threshold).\n");
+            }
+            SweepDirection::Reversion => {
+                body.push_str(
+                    "Conclusion: v1 cross-sectional mean-reversion is structurally fragile across the\n",
+                );
+                body.push_str(
+                    "tested parameter space. The turnover/fee-bleed is not tunable away within\n",
+                );
+                body.push_str(
+                    "the MR Tier-1 grid (lookback × k_long × drift_rebalance_threshold).\n",
+                );
+            }
+        }
     }
     body.push('\n');
     body.push_str("Notes:\n");
@@ -1206,7 +1406,13 @@ fn main() -> Result<()> {
 
     for cell in grid {
         let cell_start = std::time::Instant::now();
-        let per_cell_cfg = cell_config(&base_cfg, cell.lookback_minutes, cell.k_long, cell.drift());
+        let per_cell_cfg = cell_config(
+            &base_cfg,
+            cell.lookback_minutes,
+            cell.k_long,
+            cell.drift(),
+            args.direction,
+        );
 
         info!(
             g = cell.g,
@@ -1395,9 +1601,10 @@ fn main() -> Result<()> {
     let pid = std::process::id();
 
     let scenario_name = format!(
-        "v1-momentum-theta-surface-{}-block-bootstrap-{}-fy",
-        args.year,
-        match args.generator {
+        "v1-{family}-theta-surface-{year}-block-bootstrap-{gen}-fy",
+        family = args.direction.label(),
+        year = args.year,
+        gen = match args.generator {
             GeneratorKind::BlockBootstrapReal => "real",
             GeneratorKind::GbmSmoke => "gbm",
         }
@@ -1423,6 +1630,7 @@ fn main() -> Result<()> {
         grid,
         &cell_results,
         &buyhold_summary,
+        args.direction,
     );
 
     // ── Write report ──────────────────────────────────────────────────────────

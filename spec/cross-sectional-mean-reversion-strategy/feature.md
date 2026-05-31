@@ -1,8 +1,8 @@
 ---
 slug: cross-sectional-mean-reversion-strategy
 version: 0.1.0
-status: arch-done
-owner: architect
+status: dev-done
+owner: developer → tester
 priority: P2
 updated: 2026-05-31
 ---
@@ -653,12 +653,65 @@ _architect-ratified (M-T1, 2026-05-31). Primary anchored deliverable = the MR-C3
 ---
 
 ## Implementation
-_developer fills this_
 
-Lesson carried from C3 (`momentum-parameter-robustness-sweep` § What this cost):
-**validate the compute budget before locking the grid** — wall-clock ≈ grid × N
-× per-path cost; the C3 14-cell × N=500 design was intractable (~1 h) and was
-re-scoped to 6 × 200 (~20 min). The MR C3 grid inherits the 6 × N=200 envelope.
+**Developer (2026-05-31):** Code complete + anchored θ-surface run complete.
+
+### MR Family Verdict: FAMILY-UNIFORM-FRAGILE
+
+**The headline scientific finding:** Cross-sectional mean-reversion is structurally
+fragile across the entire LOCKED 6-cell Tier-1 grid (lookback × k_long ×
+drift_rebalance_threshold). Zero cells cleared even the FRAGILE/MARGINAL boundary.
+The MR family does NOT beat the +1.74 buy-and-hold Sharpe benchmark net of fees
+on the 2023 real Binance universe.
+
+**Key surface numbers (6×200, block-bootstrap-real, 2023-FY):**
+
+| g | role | p50 Sharpe | P(loss) | p95 MaxDD | trades | verdict |
+|---|------|-----------|---------|-----------|--------|---------|
+| 0 | baseline MR θ* (60-min lookback) | -0.013 | 70.5% | 91.7% | 1,347,505 | FRAGILE |
+| 1 | high-churn (24-min lb) | -0.017 | 84.0% | 91.6% | 1,963,647 | FRAGILE |
+| 2 | 1w lookback | -0.005 | 57.5% | 90.5% | 799,300 | FRAGILE |
+| 3 | LOW-CHURN: 1mo × wide band (best shot) | +0.007 | 42.5% | 85.5% | 379,809 | FRAGILE |
+| 4 | long lb + medium band | -0.004 | 56.0% | 88.8% | 329,321 | FRAGILE |
+| 5 | maximal-churn (24-min + k=5) | -0.010 | 72.0% | 93.2% | 2,082,234 | FRAGILE |
+
+Buy-and-hold control: p50 Sharpe = **+1.74**, P(loss) = 4.5%, p95 MaxDD = 51.2%.
+
+**g=3 (1mo lookback + wide band) is the nearest cell** at p50=+0.007 (barely above zero)
+and the lowest P(loss) at 42.5% — confirming the C3 momentum lesson that slow
+rebalance helps, but even the best-a-priori low-churn MR cell is still decisively
+FRAGILE. No cell approached the MARGINAL threshold (p5 Sharpe ≥ 0 required).
+
+**R-MR.1 surface-level inversion confirmed:** g=0 MR p50=-0.013 vs g=0 momentum
+p50=-0.008. Surfaces differ — the inversion is provably not a no-op at the surface level
+(in addition to the day-1 e2e falsifier `r_mr_1a_momentum_vs_reversion_diverge`).
+
+**R2 binding-constraint verified:** `--direction momentum` reproduces momentum anchor
+#86 SHA `0dd989d9dc6f81a8...` byte-identical. The `--direction` flag did not leak
+into the momentum path.
+
+### Implementation notes
+
+- `Direction` enum + `direction` field on `CrossSectionalMomentumConfig`:
+  `crates/strategy/src/cross_sectional/config.rs`
+- Score inversion (1 line at the cache-write boundary):
+  `crates/strategy/src/cross_sectional/momentum.rs` (on_bar, after `score_vol_adjusted_return`)
+- `MR_TIER1_GRID` sibling const + `--direction` / `--grid mr-tier1` flags:
+  `crates/backtest/src/bin/param_robustness_sweep.rs`
+- R-MR.1 divergence falsifier (both (a) and (b)):
+  `crates/backtest/tests/mr_divergence_e2e.rs` (5/5 PASS)
+- `verify_anchors.sh` MR directory handler: already present (lines 146-149)
+- `cargo fmt` applied: clean
+- `cargo clippy -D warnings`: clean
+
+### Anchored deliverables
+
+- MR θ-surface report (#87): `spec/cross-sectional-mean-reversion-strategy/reports/robustness-sweep-20260531-153647-v1-mr-theta-surface-2023-block-bootstrap-real-fy.md`
+- Body SHA: `a708112e1e8ddd4e48360b1e9f83d927c65d3d0f05be984e362c76f20be7bb4a`
+- `verify_anchors.sh`: 87/87 PASS (all 86 prior anchors byte-identical)
+- Wall-clock: 3087.3s (concurrent with R2 verify run → ~2× expected; single run expected ~1800s)
+
+Lesson carried from C3: **validate the compute budget before locking the grid** — wall-clock ≈ grid × N × per-path cost; the C3 14-cell × N=500 design was intractable (~1 h) and was re-scoped to 6 × 200 (~20 min). The MR C3 grid inherits the 6 × N=200 envelope. Running TWO concurrent sweeps on the same machine approximately doubled each sweep's wall-clock (both competed for ~12 cores).
 
 ---
 
