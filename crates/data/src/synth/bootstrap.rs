@@ -57,12 +57,34 @@ use crate::synth::{BlockLengthPolicy, GeneratedPath, MonteCarloPathGen, SynthErr
 ///
 /// `generate` is a pure function of `(self, universe, n_bars, path_seed)`.
 /// Identical inputs ⇒ byte-identical [`GeneratedPath`].
+///
+/// # Carry-funding co-resampling (ADR-0051 § D6.6)
+///
+/// When `funding_at_return` is set via [`BlockBootstrapPathGen::with_funding`],
+/// the generator gathers the funding rate for each bar by the **same `ret_idx`**
+/// that selected the return. This is the crux of the carry-strategy design:
+/// price and funding are always contemporaneous with their real source index —
+/// no new RNG draws, no decoupling.
+///
+/// When absent (`None`): identical behaviour to the pre-carry code (zero change
+/// to the ChaCha20 stream, zero change to bar output).
 pub struct BlockBootstrapPathGen {
     /// Per-symbol real bar series, in the same order as the universe.
     /// `source_bars[i]` is the real bars for symbol `i`.
     source_bars: Vec<(Symbol, Vec<Bar>)>,
     /// Block-length selection policy.
     block_length_policy: BlockLengthPolicy,
+    /// Optional per-symbol, per-return-step funding series for carry-strategy
+    /// co-resampling (ADR-0051 § D6.6).
+    ///
+    /// `funding_at_return[sym_i][k]` = the funding rate in force at real
+    /// return-step `k` (the as-of forward-fill of the 8h funding onto the 1h
+    /// bar grid, computed ONCE on the real data). Length = `T-1` (matches the
+    /// return series). Universe order must match `source_bars`.
+    ///
+    /// `None` → funding is not gathered; `GeneratedPath.funding_by_symbol`
+    /// is `None`; the 87 existing anchors are byte-identical.
+    funding_at_return: Option<Vec<Vec<Option<Decimal>>>>,
 }
 
 impl BlockBootstrapPathGen {
@@ -102,7 +124,26 @@ impl BlockBootstrapPathGen {
         Ok(Self {
             source_bars,
             block_length_policy,
+            funding_at_return: None,
         })
+    }
+
+    /// Attach an optional per-symbol funding series for carry-strategy
+    /// co-resampling (ADR-0051 § D6.6, M-DEV-3).
+    ///
+    /// `funding_at_return[sym_i][k]` = funding rate at real return-step `k`
+    /// (computed by `build_funding_at_return` from `crates/backtest`).
+    /// Universe order MUST match `source_bars`. Length per symbol MUST be
+    /// `source_len() - 1` (the number of log-returns).
+    ///
+    /// When `None` is passed, the generator behaves identically to `new()` —
+    /// the existing 87 anchors are byte-unchanged by construction.
+    ///
+    /// Returns `self` for chaining.
+    #[must_use]
+    pub fn with_funding(mut self, funding: Option<Vec<Vec<Option<Decimal>>>>) -> Self {
+        self.funding_at_return = funding;
+        self
     }
 
     /// Return the source bar count (number of real bars per symbol).
@@ -224,6 +265,13 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
         };
 
         let mut bars_by_symbol: Vec<Vec<Bar>> = Vec::with_capacity(universe.len());
+        // ADR-0051 § D6.6: optional funding co-resampling (carry-strategy M-DEV-3).
+        // Allocated only when `self.funding_at_return` is `Some`; otherwise `None`
+        // and the code path is byte-identical to the pre-carry implementation.
+        let mut funding_output_by_symbol: Option<Vec<Vec<Option<Decimal>>>> = self
+            .funding_at_return
+            .as_ref()
+            .map(|_| Vec::with_capacity(universe.len()));
 
         for (sym_i, (out_sym, start_price)) in universe.iter().enumerate() {
             // Map output universe symbol to source series by index.
@@ -239,8 +287,16 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
             let start_f = decimal_to_f64(*start_price).max(0.000_001_f64);
             let mut close: f64 = start_f;
             let mut sym_bars: Vec<Bar> = Vec::with_capacity(n_bars);
+            // Per-symbol funding output (only allocated when funding is present).
+            let mut sym_funding: Option<Vec<Option<Decimal>>> = self
+                .funding_at_return
+                .as_ref()
+                .map(|_| Vec::with_capacity(n_bars));
 
             // Bar 0: the "start" bar (close = start_price, no return applied).
+            // Funding convention (§ D-CARRY.7): bar-0 carries funding from real
+            // source index 0 (the most-recent funding at the first real bar's
+            // open_ts). This is a sentinel; strategies warm up from bar-1+.
             {
                 let open_ts = bar_ts(epoch_base, 0);
                 let close_ts = bar_close_ts(epoch_base, 0);
@@ -259,6 +315,17 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
                     local_recv_ts: close_ts,
                     venue: Venue::Binance,
                 });
+                // Bar-0 funding: use real source index 0 as the sentinel value.
+                if let Some(ref mut sf) = sym_funding {
+                    let f0 = self
+                        .funding_at_return
+                        .as_ref()
+                        .and_then(|far| far.get(sym_i))
+                        .and_then(|sym_far| sym_far.first())
+                        .copied()
+                        .flatten();
+                    sf.push(f0);
+                }
             }
 
             // Bars 1..n_bars: apply resampled returns from the shared index.
@@ -296,14 +363,33 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
                     venue: Venue::Binance,
                 });
                 close = next;
+
+                // ADR-0051 § D6.6 — THE CRUX: gather funding by the SAME ret_idx
+                // that selected the return. Zero new RNG draws; idx_seq is already
+                // materialized. This preserves the funding↔price co-movement.
+                if let Some(ref mut sf) = sym_funding {
+                    let f = self
+                        .funding_at_return
+                        .as_ref()
+                        .and_then(|far| far.get(sym_i))
+                        .and_then(|sym_far| sym_far.get(ret_idx))
+                        .copied()
+                        .flatten();
+                    sf.push(f);
+                }
             }
 
             bars_by_symbol.push(sym_bars);
+            // Collect per-symbol funding into the output vec.
+            if let (Some(fobs), Some(sf)) = (&mut funding_output_by_symbol, sym_funding) {
+                fobs.push(sf);
+            }
         }
 
         Ok(GeneratedPath {
             bars_by_symbol,
             selected_block_length: Some(selected_l),
+            funding_by_symbol: funding_output_by_symbol,
         })
     }
 }
@@ -728,5 +814,246 @@ mod tests {
         let l = path.selected_block_length.unwrap();
         assert!(l >= 1, "auto L must be ≥ 1, got {l}");
         assert!(l < 200, "auto L must be < source length, got {l}");
+    }
+
+    // ── M-DEV-3 carry-strategy co-resampling tests (ADR-0051 § D6.6) ─────────
+
+    /// Build a deterministic per-symbol funding-at-return series for testing.
+    ///
+    /// `funding_at_return[sym_i][k]` = Some(rate), where rate is a unique
+    /// integer-valued Decimal encoding the source return index `k` (as a plain
+    /// integer, so that `rate.to_i64() == k` without any floating-point rounding).
+    /// This makes it trivial to verify exactly which source index was used.
+    ///
+    /// For a given symbol, `tag = Decimal::new(k as i64, 0)` so decoding is just
+    /// `.to_i64()` or `.to_string().parse::<i64>()`. The per-symbol offset is
+    /// NOT baked in here; the caller distinguishes symbols by the sym_i index.
+    fn make_funding_at_return(n_syms: usize, n_returns: usize) -> Vec<Vec<Option<Decimal>>> {
+        (0..n_syms)
+            .map(|_sym_i| {
+                (0..n_returns)
+                    .map(|k| {
+                        // Plain integer tag: recoverable as `rate.to_i64() == k`.
+                        Some(Decimal::new(k as i64, 0))
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// M-DEV-3 ANCHOR-NEUTRALITY: `funding=None` produces byte-identical bars.
+    ///
+    /// The same seed with `with_funding(None)` must produce the SAME bars as
+    /// the base generator (no funding attached). This is the proof that the
+    /// 87 existing anchors are byte-unchanged by the carry-strategy Stage 2.
+    #[test]
+    fn funding_none_is_byte_identical_bars() {
+        let bgen_base = make_gen_fixed(5);
+        // Generator with funding explicitly set to None (same as base).
+        let btc_bars = make_bars(&btc(), 200, 0xBEEF_0001);
+        let eth_bars = make_bars(&eth(), 200, 0xBEEF_0002);
+        let bgen_with_none = BlockBootstrapPathGen::new(
+            vec![(btc(), btc_bars), (eth(), eth_bars)],
+            BlockLengthPolicy::Fixed(5),
+        )
+        .unwrap()
+        .with_funding(None);
+
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        let seed = 0xCAFE_DEAD_u64;
+
+        let path_base = bgen_base.generate(&universe, 50, seed).unwrap();
+        let path_none = bgen_with_none.generate(&universe, 50, seed).unwrap();
+
+        // Bars must be byte-identical.
+        assert_eq!(
+            path_base.bars_by_symbol.len(),
+            path_none.bars_by_symbol.len()
+        );
+        for (sym_base, sym_none) in path_base
+            .bars_by_symbol
+            .iter()
+            .zip(path_none.bars_by_symbol.iter())
+        {
+            for (b, n) in sym_base.iter().zip(sym_none.iter()) {
+                assert_eq!(
+                    b.close, n.close,
+                    "funding=None must produce byte-identical bars (anchor-neutrality)"
+                );
+                assert_eq!(
+                    b.open_ts, n.open_ts,
+                    "funding=None must produce identical open_ts"
+                );
+            }
+        }
+        // Both must have None funding.
+        assert!(
+            path_base.funding_by_symbol.is_none(),
+            "base generator must have None funding_by_symbol"
+        );
+        assert!(
+            path_none.funding_by_symbol.is_none(),
+            "with_funding(None) must have None funding_by_symbol"
+        );
+    }
+
+    /// M-DEV-3 DETERMINISM: same seed → byte-identical `funding_by_symbol`.
+    ///
+    /// Runs the same generator twice with the same seed; asserts that every
+    /// funding rate in the output is equal element-wise. Catches any accidental
+    /// non-determinism in the funding gather (e.g. wrong RNG draw).
+    #[test]
+    fn funding_co_resample_same_seed_deterministic() {
+        let n_bars_src = 200;
+        let n_returns = n_bars_src - 1;
+        let n_out = 50;
+        let n_syms = 2;
+
+        let btc_bars = make_bars(&btc(), n_bars_src, 0xBEEF_0001);
+        let eth_bars = make_bars(&eth(), n_bars_src, 0xBEEF_0002);
+        let funding = make_funding_at_return(n_syms, n_returns);
+
+        let bgen = BlockBootstrapPathGen::new(
+            vec![(btc(), btc_bars), (eth(), eth_bars)],
+            BlockLengthPolicy::Fixed(5),
+        )
+        .unwrap()
+        .with_funding(Some(funding));
+
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        let seed = 0xDEAD_BEEF_u64;
+
+        let path1 = bgen.generate(&universe, n_out, seed).unwrap();
+        let path2 = bgen.generate(&universe, n_out, seed).unwrap();
+
+        let f1 = path1
+            .funding_by_symbol
+            .expect("funding must be Some when source is attached");
+        let f2 = path2
+            .funding_by_symbol
+            .expect("funding must be Some when source is attached");
+
+        assert_eq!(f1.len(), f2.len(), "symbol count must match");
+        for (sym_f1, sym_f2) in f1.iter().zip(f2.iter()) {
+            assert_eq!(sym_f1.len(), n_out, "funding length must equal n_out");
+            for (a, b) in sym_f1.iter().zip(sym_f2.iter()) {
+                assert_eq!(
+                    a, b,
+                    "same seed must produce byte-identical funding_by_symbol"
+                );
+            }
+        }
+    }
+
+    /// M-DEV-3 INDEX-ALIGNMENT (THE CRUX): funding gathered by the SAME ret_idx.
+    ///
+    /// Uses a synthetic funding source where `funding_at_return[sym_i][k]` is a
+    /// unique tag encoding `(sym_i, k)`. After resampling, for each output bar
+    /// `bar_i` in the idx_seq, the resampled funding must match the tag for the
+    /// source index that was used — proving the funding was gathered by the same
+    /// `ret_idx` as the return, NOT independently drawn or timestamp-indexed.
+    ///
+    /// This is the formal proof of the co-resampling invariant (FP-C1.5 sibling
+    /// for carry-strategy, ADR-0051 § D6.6).
+    #[test]
+    fn funding_index_aligned_co_movement() {
+        let n_bars_src = 50;
+        let n_returns = n_bars_src - 1; // 49 log-returns
+        let n_out = 30;
+        let n_syms = 2;
+
+        let btc_bars = make_bars(&btc(), n_bars_src, 0xBEEF_0011);
+        let eth_bars = make_bars(&eth(), n_bars_src, 0xBEEF_0022);
+
+        // Each funding tag uniquely encodes (sym_i, source_return_index).
+        // After resampling, we can recover which source index was used by decoding the tag.
+        let funding = make_funding_at_return(n_syms, n_returns);
+
+        let bgen = BlockBootstrapPathGen::new(
+            vec![(btc(), btc_bars.clone()), (eth(), eth_bars.clone())],
+            BlockLengthPolicy::Fixed(3),
+        )
+        .unwrap()
+        .with_funding(Some(funding.clone()));
+
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        let seed = 0xFACE_CAFE_u64;
+        let path = bgen.generate(&universe, n_out, seed).unwrap();
+
+        let resampled_funding = path
+            .funding_by_symbol
+            .expect("funding_by_symbol must be Some");
+        let resampled_bars = &path.bars_by_symbol;
+
+        assert_eq!(resampled_funding.len(), n_syms, "sym count must match");
+        assert_eq!(resampled_bars.len(), n_syms, "sym count must match");
+
+        // For BTC (sym_i=0), recover the source_k from each resampled funding value.
+        // The tag is Decimal::new(source_k as i64, 0), so to_i64() gives source_k.
+        //
+        // We cross-verify with the bar's log-return:
+        // - funding_btc[bar_i] encodes which source_k was used by idx_seq.
+        // - The resampled close at bar_i was built from:
+        //     prev_close * exp(source_rets[source_k]).
+        // - So the log-return of adjacent bars must match source_rets[source_k].
+
+        let src_rets_btc: Vec<f64> = btc_bars
+            .windows(2)
+            .map(|w| {
+                let c0 = decimal_to_f64(w[0].close.get());
+                let c1 = decimal_to_f64(w[1].close.get());
+                (c1 / c0).ln()
+            })
+            .collect();
+
+        let bars_btc = &resampled_bars[0];
+        let funding_btc = &resampled_funding[0];
+
+        assert_eq!(
+            funding_btc.len(),
+            n_out,
+            "funding length must equal n_out bars"
+        );
+
+        let mut misaligned = 0usize;
+        // Bars 1..n_out are built from idx_seq entries. Bar 0 is the sentinel.
+        for bar_i in 1..bars_btc.len() {
+            let Some(rate) = funding_btc[bar_i] else {
+                misaligned += 1; // unexpected None for a return bar
+                continue;
+            };
+            // Decode source_k: tag = Decimal::new(k, 0), so source_k = rate as i64.
+            let source_k_i64 = rate.to_string().parse::<i64>().unwrap_or(-1);
+            if source_k_i64 < 0 || source_k_i64 >= n_returns as i64 {
+                misaligned += 1;
+                continue;
+            }
+            let source_k = source_k_i64 as usize;
+
+            // Cross-check: the resampled bar's log-return must match source_rets[source_k].
+            let prev_close = decimal_to_f64(bars_btc[bar_i - 1].close.get());
+            let this_close = decimal_to_f64(bars_btc[bar_i].close.get());
+            if prev_close < 1e-9 {
+                continue; // degenerate price — skip
+            }
+            let resampled_ret = (this_close / prev_close).ln();
+            let expected_ret = src_rets_btc[source_k];
+
+            // Must match to within clamp tolerance (price is clamped in [1e-6, 1e9]).
+            let diff = (resampled_ret - expected_ret).abs();
+            if diff > 0.001 {
+                misaligned += 1;
+            }
+        }
+
+        // Every bar_i >= 1 must be correctly index-aligned. Allow 0 misalignment
+        // (the clamp edge case is negligible for prices starting at 30_000).
+        assert_eq!(
+            misaligned,
+            0,
+            "funding must be index-aligned with the return (ADR-0051 § D6.6): \
+             {misaligned}/{} bars have misaligned funding vs return source index",
+            bars_btc.len() - 1
+        );
     }
 }

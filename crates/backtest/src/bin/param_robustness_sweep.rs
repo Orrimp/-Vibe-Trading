@@ -1245,6 +1245,7 @@ fn run_one_path_with_config(
             data::GeneratedPath {
                 bars_by_symbol,
                 selected_block_length: None,
+                funding_by_symbol: None,
             }
         }
     };
@@ -1272,6 +1273,7 @@ fn run_one_path_with_config(
         bars_override: Some(merged_bars),
         emit_equity_bin: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        funding_override: None,
     };
 
     let result = pollster::block_on(backtest::scenarios::montecarlo::run_path(
@@ -1533,6 +1535,7 @@ fn main() -> Result<()> {
                         data::GeneratedPath {
                             bars_by_symbol,
                             selected_block_length: None,
+                            funding_by_symbol: None,
                         }
                     }
                 };

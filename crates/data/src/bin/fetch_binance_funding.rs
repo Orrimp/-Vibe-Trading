@@ -125,9 +125,7 @@ pub struct FundingRecord {
 ///
 /// Pure function — no I/O. Used by tests.
 pub fn build_funding_url(symbol: &str, start_ms: i64) -> String {
-    format!(
-        "{BINANCE_FUNDING_URL}?symbol={symbol}&startTime={start_ms}&limit={PAGE_LIMIT}"
-    )
+    format!("{BINANCE_FUNDING_URL}?symbol={symbol}&startTime={start_ms}&limit={PAGE_LIMIT}")
 }
 
 // ── Date utilities ────────────────────────────────────────────────────────────
@@ -177,8 +175,8 @@ fn next_month_start(year: i32, month: Month) -> Date {
 /// a late settlement timestamp rolling into the next month at Binance) will
 /// cause a re-fetch rather than a silent skip. That is the safe direction.
 fn expected_settlements_per_month(year: i32, month: Month) -> usize {
-    let month_start = Date::from_calendar_date(year, month, 1)
-        .expect("first-of-month always valid");
+    let month_start =
+        Date::from_calendar_date(year, month, 1).expect("first-of-month always valid");
     let next_start = next_month_start(year, month);
     let days = (next_start - month_start).whole_days() as usize;
     days * 3 // 3 settlements per day at 8-hour cadence
@@ -305,7 +303,10 @@ pub async fn paginate_funding(
 /// Creates parent directories as needed.
 pub fn write_parquet(records: &[FundingRecord], path: &Path) -> Result<()> {
     if records.is_empty() {
-        warn!(?path, "no funding records to write — skipping parquet creation");
+        warn!(
+            ?path,
+            "no funding records to write — skipping parquet creation"
+        );
         return Ok(());
     }
 
@@ -402,10 +403,10 @@ async fn main() -> Result<()> {
         return Err(anyhow!("--symbols must not be empty"));
     }
 
-    let start_date = parse_date(&cli.start)
-        .with_context(|| format!("parse --start date: {}", cli.start))?;
-    let end_date = parse_date(&cli.end)
-        .with_context(|| format!("parse --end date: {}", cli.end))?;
+    let start_date =
+        parse_date(&cli.start).with_context(|| format!("parse --start date: {}", cli.start))?;
+    let end_date =
+        parse_date(&cli.end).with_context(|| format!("parse --end date: {}", cli.end))?;
     if end_date < start_date {
         return Err(anyhow!("--end must be >= --start"));
     }
@@ -438,8 +439,7 @@ async fn main() -> Result<()> {
 
             // Clamp window to [start_date, end_date+1).
             let window_start = month_start.max(start_date);
-            let window_end = month_end_exclusive
-                .min(end_date.next_day().unwrap_or(end_date));
+            let window_end = month_end_exclusive.min(end_date.next_day().unwrap_or(end_date));
 
             let start_ms = date_to_millis(window_start);
             let end_ms = date_to_millis(window_end);
@@ -471,17 +471,11 @@ async fn main() -> Result<()> {
                 "fetching month funding rates"
             );
 
-            let records = paginate_funding(
-                &fetcher,
-                &symbol_upper,
-                start_ms,
-                end_ms,
-                cli.sleep_ms,
-            )
-            .await
-            .with_context(|| {
-                format!("fetch funding for {symbol_upper} {year}/{month_num:02}")
-            })?;
+            let records = paginate_funding(&fetcher, &symbol_upper, start_ms, end_ms, cli.sleep_ms)
+                .await
+                .with_context(|| {
+                    format!("fetch funding for {symbol_upper} {year}/{month_num:02}")
+                })?;
 
             if records.is_empty() {
                 warn!(

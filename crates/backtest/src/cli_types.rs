@@ -300,6 +300,7 @@ mod latency_slippage_config_tests {
             bars_override: None,
             emit_equity_bin: None,
             latency_slippage_sim: LatencySlippageSimConfig::default(),
+            funding_override: None,
         };
         assert!(
             input.latency_slippage_sim.is_noop(),
@@ -376,6 +377,7 @@ mod latency_slippage_config_tests {
             bars_override: None,
             emit_equity_bin: None,
             latency_slippage_sim: cfg.clone(),
+            funding_override: None,
         };
         assert!(!input.latency_slippage_sim.is_noop());
         assert_eq!(
@@ -520,6 +522,21 @@ pub struct TcnScenarioInput {
     /// structurally noop for analysis sweeps (no equity surface). Deferred per
     /// ADR-0047 D2.
     pub latency_slippage_sim: LatencySlippageSimConfig,
+    /// Carry-strategy funding lookup (ADR-0051 § D6.6, M-DEV-4, Stage 2).
+    ///
+    /// When `Some`, maps `(Symbol, Timestamp)` → the co-resampled funding rate
+    /// for that bar. Built from `GeneratedPath.funding_by_symbol` + the
+    /// synthetic `open_ts` of each bar in `bars_by_symbol[s][k]`.
+    ///
+    /// `None` for every momentum/MR/buy-and-hold run → `run_path` behaviour is
+    /// byte-identical to the pre-carry code. The accrual block is never entered;
+    /// the 87 existing anchors are byte-unchanged.
+    ///
+    /// At Stage 2 (this commit): `run_path` RECEIVES the field but does NOT yet
+    /// use it for signal/cashflow — that is Stage 3 (M-DEV-5 + M-DEV-4 signal).
+    /// Threading it now keeps the seam additive and anchor-neutral.
+    pub funding_override:
+        Option<std::collections::BTreeMap<(Symbol, trading_core::Timestamp), Decimal>>,
 }
 
 // ── BacktestState (SMA / Composed run state) ──────────────────────────────────

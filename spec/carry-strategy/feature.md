@@ -1105,6 +1105,51 @@ Gates confirmed:
 - `bash scripts/verify_anchors.sh` → 87/87 PASS (anchor-neutral — new module is
   purely additive, off-path for all existing momentum/MR runs)
 
+### Stage 2 — Funding co-resample through the bootstrap + seam threading (M-DEV-3 + brief's M-DEV-4) — 2026-06-01
+
+**THE CRUX — co-resample funding by the SAME shared index (M-DEV-3, ADR-0051 § D6.6):**
+
+The binding mechanism is in `crates/data/src/synth/mod.rs` and `bootstrap.rs`:
+
+1. `GeneratedPath` extended with `funding_by_symbol: Option<Vec<Vec<Option<Decimal>>>>` (new field, default `None`). All 4 external construction sites (gbm.rs, param_robustness_sweep.rs ×2, monte_carlo.rs) updated with `funding_by_symbol: None` — byte-identical output by construction.
+
+2. `BlockBootstrapPathGen` extended with a `funding_at_return: Option<Vec<Vec<Option<Decimal>>>>` field + `with_funding(Option<...>) -> Self` builder. When `None` (every momentum/MR/buy-and-hold run), the `generate` function takes the IDENTICAL code path to the pre-Stage-2 code — zero change to the ChaCha20 stream, zero change to bar output.
+
+3. In the reconstruction loop (`bootstrap.rs:265`, `for (bar_i, &ret_idx) in idx_seq.iter().enumerate()`), when funding is present: `f = funding_at_return[sym_i][ret_idx]` — the **same `ret_idx` that selected the return**. Zero new RNG draws. Bar-0 carries `funding_at_return[sym_i][0]` as the sentinel (the most-recent funding at the first real bar's open_ts).
+
+**Seam threading — `funding_override` to `run_path` (brief's M-DEV-4):**
+
+`TcnScenarioInput` extended with `funding_override: Option<BTreeMap<(Symbol, Timestamp), Decimal>>` (new field, default `None`). Updated 15 construction sites across main.rs, engine.rs, param_robustness_sweep.rs, monte_carlo.rs, threshold_sweep.rs, montecarlo.rs (test module), and 3 integration test files. At Stage 2, `run_path` RECEIVES the field but does NOT use it for signal/cashflow (that is Stage 3) — threading it now keeps the seam anchor-neutral.
+
+**Three new determinism tests in `crates/data/src/synth/bootstrap.rs`:**
+
+- `funding_none_is_byte_identical_bars` (anchor-neutrality): `with_funding(None)` produces byte-identical bars to the base generator. Proves the 87 existing anchors are byte-unchanged by construction.
+- `funding_co_resample_same_seed_deterministic`: same seed twice → identical `funding_by_symbol` element-wise. Proves the funding gather inherits the ChaCha20 determinism of `idx_seq` with no new randomness.
+- `funding_index_aligned_co_movement` (THE CRUX proof, FP-C1.5 sibling): uses an integer-tag funding source where `funding_at_return[sym_i][k] = k` (unique integer). After resampling, decodes each output bar's funding tag and cross-checks it against the bar's log-return source index. Asserts 0 misaligned bars — proving the resampled funding is contemporaneous with the resampled return (ADR-0051 § D6.6 invariant).
+
+Files changed:
+- `crates/data/src/synth/mod.rs` — `GeneratedPath` new field `funding_by_symbol`
+- `crates/data/src/synth/bootstrap.rs` — `BlockBootstrapPathGen` new field + `with_funding` builder + gather in the reconstruction loop + 3 new tests
+- `crates/data/src/synth/gbm.rs` — `GeneratedPath` construction: `funding_by_symbol: None`
+- `crates/backtest/src/cli_types.rs` — `TcnScenarioInput` new field `funding_override` + 2 test sites
+- `crates/backtest/src/scenarios/montecarlo.rs` — `funding_override: None` in the unit test
+- `crates/backtest/src/bin/param_robustness_sweep.rs` — `funding_by_symbol: None` (2 GBM sites) + `funding_override: None` in `run_one_path_with_config`
+- `crates/backtest/src/bin/monte_carlo.rs` — both `GeneratedPath` GBM site + `run_path` input
+- `crates/backtest/src/bin/threshold_sweep.rs` — 3 `TcnScenarioInput` sites
+- `crates/backtest/src/engine.rs` — 2 `TcnScenarioInput` sites
+- `crates/backtest/src/main.rs` — 5 `TcnScenarioInput` sites (tcn, tcn_weights, patchtst, regime, vol_target)
+- `crates/backtest/tests/mr_divergence_e2e.rs` — 2 sites
+- `crates/backtest/tests/montecarlo_e2e.rs` — 1 site
+- `crates/backtest/tests/param_sweep_e2e.rs` — 1 site
+
+Gates confirmed:
+- `cargo test -p data synth::bootstrap` → 15 passed, 0 failed (3 new M-DEV-3 tests green)
+- `cargo test -p backtest --features "realdata candle" --lib funding_data` → 10 passed, 0 failed (Stage 1 regression gate)
+- `cargo test -p backtest --features "candle realdata" --test montecarlo_e2e` → 9/9 PASS (C2 e2e regression guard)
+- `bash scripts/verify_anchors.sh` → **87/87 PASS** (anchor-neutral invariant confirmed)
+- `cargo clippy -p data -p backtest --features "backtest/realdata backtest/candle" -- -D warnings` → 0 errors
+- `cargo fmt -p data -p backtest -- --check` → clean
+
 ## Verification
 _tester links to reports here_
 

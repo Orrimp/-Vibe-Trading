@@ -1513,6 +1513,7 @@ async fn main() -> Result<()> {
                 slippage_model: tcn_slippage_model,
                 volume_usd_per_symbol: tcn_volume_map.clone(),
             },
+            funding_override: None,
         };
         // Keep a report-only copy of the input (without the moved bars/equity_bin).
         let tcn_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1532,6 +1533,7 @@ async fn main() -> Result<()> {
                 slippage_model: tcn_slippage_model,
                 volume_usd_per_symbol: tcn_volume_map,
             },
+            funding_override: None,
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
         let (_h, t_cancel) = backtest::cancel::cancellation_pair();
@@ -1632,6 +1634,7 @@ async fn main() -> Result<()> {
                 slippage_model: tcnw_slippage_model,
                 volume_usd_per_symbol: tcnw_volume_map.clone(),
             },
+            funding_override: None,
         };
         let tcn_w_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1650,6 +1653,7 @@ async fn main() -> Result<()> {
                 slippage_model: tcnw_slippage_model,
                 volume_usd_per_symbol: tcnw_volume_map,
             },
+            funding_override: None,
         };
         let result = backtest::scenarios::tcn_overlay_weights::run(tcn_w_input, seed).await?;
 
@@ -1746,6 +1750,7 @@ async fn main() -> Result<()> {
                 slippage_model: ptst_slippage_model,
                 volume_usd_per_symbol: ptst_volume_map.clone(),
             },
+            funding_override: None,
         };
         let patchtst_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1764,6 +1769,7 @@ async fn main() -> Result<()> {
                 slippage_model: ptst_slippage_model,
                 volume_usd_per_symbol: ptst_volume_map,
             },
+            funding_override: None,
         };
         let result =
             backtest::scenarios::patchtst_overlay_weights::run(patchtst_input, seed).await?;
@@ -1858,6 +1864,7 @@ async fn main() -> Result<()> {
                 slippage_model: vt_slippage_model,
                 volume_usd_per_symbol: vt_volume_map.clone(),
             },
+            funding_override: None,
         };
         let vol_target_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1876,6 +1883,7 @@ async fn main() -> Result<()> {
                 slippage_model: vt_slippage_model,
                 volume_usd_per_symbol: vt_volume_map,
             },
+            funding_override: None,
         };
         let result =
             backtest::scenarios::garch_vol_target_overlay::run(vol_target_input, seed).await?;
@@ -1965,6 +1973,7 @@ async fn main() -> Result<()> {
                 slippage_model: regime_slippage_model,
                 volume_usd_per_symbol: regime_volume_map,
             },
+            funding_override: None,
         };
         let result =
             backtest::scenarios::regime_dispatcher::run(regime_input.clone(), seed).await?;

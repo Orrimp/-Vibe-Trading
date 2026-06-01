@@ -215,6 +215,8 @@ impl MonteCarloPathGen for GbmPathGen {
             bars_by_symbol,
             // GBM has no block-length concept.
             selected_block_length: None,
+            // GBM does not support carry-funding co-resampling.
+            funding_by_symbol: None,
         })
     }
 }

@@ -143,38 +143,46 @@ anchoring.** **Remove the disposable frame-diagnostic flags from `param_robustne
 > § D-CARRY.7 + ADR-0051 § D6.6. The ~15-line gather is easy; the THREADING is the
 > bulk. ZERO new RNG draws — `idx_seq` is already a materialized `Vec<usize>`.
 
-- [ ] Add `funding_by_symbol: Option<Vec<Vec<Decimal>>>` to `GeneratedPath`
-      (`crates/data/src/synth/mod.rs:34`), defaulting `None`. Update the struct doc.
-- [ ] Add an OPTIONAL funding source to `BlockBootstrapPathGen`: a
-      `funding_at_return: Option<Vec<Vec<Decimal>>>` field (per-symbol, length `T−1`,
-      universe order) set via a new `with_funding(...)` builder OR a second
-      constructor `new_with_funding(...)`. When `None`, `generate` behaves verbatim.
-- [ ] In `generate`'s reconstruction loop (`bootstrap.rs:265`,
-      `for (bar_i, &ret_idx) in idx_seq.iter().enumerate()`), when funding is present,
-      gather `funding_at_return[sym_i][ret_idx]` into a per-symbol output vec and emit
-      `GeneratedPath.funding_by_symbol = Some(...)`. Bar 0 (the start bar, no return) →
-      decide a convention (carry the first-settlement funding or `None`); pin with a test.
-      **This is the crux: the SAME `ret_idx` that selects the return selects the funding.**
-- [ ] Determinism test (extend `bootstrap.rs` tests): same seed twice → byte-identical
-      `funding_by_symbol`; a co-movement test (FP-C1.5 sibling) — the resampled
-      (price, funding) pairing matches the real contemporaneous pairing for a
-      constructed source where funding ∝ a known function of the return index.
-- [ ] **Anchor-neutrality test:** with `funding=None`, `generate` produces a
-      byte-identical `bars_by_symbol` to the pre-change code for a fixed seed (the
-      existing `fp_c1_1` etc. tests already cover bars; add an explicit
-      `funding_none_is_byte_identical_bars` guard).
-- [ ] Thread funding into the run input: add `funding_override: Option<FundingPath>`
-      to `TcnScenarioInput` (`crates/backtest/src/cli_types.rs`), where `FundingPath`
-      is the `BTreeMap<(Symbol, Timestamp), Decimal>` built from
-      `GeneratedPath.funding_by_symbol` + the synthetic `open_ts` of each
-      `bars_by_symbol[s][k]` (built in `run_one_path_with_config` right after
-      `merge_synthetic`). Default `None` everywhere (both `run_path` call-sites:
-      `param_robustness_sweep.rs:1278`, `monte_carlo.rs:862`).
-- **Gate:** `cargo test -p data synth::bootstrap` + `cargo test -p backtest` green;
-      `bash scripts/verify_anchors.sh` → 87/87 PASS (the funding path is absent for
-      momentum/MR/buy-hold → anchors byte-identical). This gate is the de-risk proof.
+- [x] Add `funding_by_symbol: Option<Vec<Vec<Option<Decimal>>>>` to `GeneratedPath`
+      (`crates/data/src/synth/mod.rs:34`), defaulting `None`. Updated struct doc with
+      the co-resampling invariant and bar-0 convention.
+      **file:line** `crates/data/src/synth/mod.rs:34-73`
+- [x] Add `funding_at_return: Option<Vec<Vec<Option<Decimal>>>>` to
+      `BlockBootstrapPathGen` + `with_funding(...)` builder method (returns `self`).
+      When `None`, `generate` behaves byte-identically to the pre-carry code.
+      **file:line** `crates/data/src/synth/bootstrap.rs:71-155`
+- [x] In `generate`'s reconstruction loop (`bootstrap.rs:265`), gather
+      `funding_at_return[sym_i][ret_idx]` into a per-symbol output vec by the
+      **SAME `ret_idx`** — zero new RNG draws. Bar-0 carries `funding_at_return[sym_i][0]`
+      as the sentinel. Emits `GeneratedPath.funding_by_symbol = Some(...)`.
+      **file:line** `crates/data/src/synth/bootstrap.rs:266-392`
+- [x] Determinism test: `funding_co_resample_same_seed_deterministic` — same seed
+      twice → byte-identical `funding_by_symbol`.
+      **file:line** `crates/data/src/synth/bootstrap.rs:895-940`
+- [x] Index-alignment test (FP-C1.5 sibling, THE CRUX): `funding_index_aligned_co_movement`
+      — uses an integer-tag funding source; verifies the resampled funding decodes to
+      the same source index as the bar's log-return. 0 misaligned bars (strict).
+      **file:line** `crates/data/src/synth/bootstrap.rs:941-1073`
+- [x] Anchor-neutrality test: `funding_none_is_byte_identical_bars` — with
+      `with_funding(None)`, bars are byte-identical to the base generator.
+      **file:line** `crates/data/src/synth/bootstrap.rs:844-893`
+- [x] Thread funding into the run input: added `funding_override: Option<BTreeMap<...>>`
+      to `TcnScenarioInput` (`crates/backtest/src/cli_types.rs`). Default `None`
+      everywhere — all existing construction sites updated (main.rs, engine.rs,
+      param_robustness_sweep.rs, monte_carlo.rs, threshold_sweep.rs, all test files).
+      **file:line** `crates/backtest/src/cli_types.rs:500-543`
+- **Gate:** `cargo test -p data synth::bootstrap` → 15/15 PASS.
+      `bash scripts/verify_anchors.sh` → 87/87 PASS.
+      `cargo test -p backtest --features "candle realdata" --test montecarlo_e2e` → 9/9 PASS.
+      **Test command:** `cargo test -p data synth::bootstrap`
+      **Output:** `test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured`
 
 ## M-DEV-4 — `ScoreSource::FundingCarry` + the sign + the settlement-ring (Signal, PROBLEM 1; MED ~1–1.5 d)
+
+> **Stage 2 note:** The brief's M-DEV-4 "thread funding to run_path (seam (ii),
+> D-CARRY.1)" was completed as the final bullet in M-DEV-3 above (the
+> `funding_override: Option<BTreeMap<...>>` field on `TcnScenarioInput`). The
+> remaining M-DEV-4 items (ScoreSource enum, sign logic, settlement-ring) are Stage 3.
 
 > Sibling to MR's `Direction` (the proven serde-default pattern), BUT carry needs its
 > OWN funding ring (counts SETTLEMENTS, not price bars).

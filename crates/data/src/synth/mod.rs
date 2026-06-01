@@ -29,6 +29,26 @@ pub use gbm::GbmPathGen;
 /// field carries the auto-chosen (or fixed) `L` so C2 can print it in the
 /// anchored report body (R3.2 / ADR-0051 D3). For generators with no
 /// block-length concept (e.g. `GbmPathGen`) this field is `None`.
+///
+/// ## `funding_by_symbol` — ADR-0051 § D6.6 (carry-strategy Stage 2)
+///
+/// When the carry-strategy funding source is present in the generator,
+/// `funding_by_symbol[sym_i][bar_i]` holds the resampled funding rate for
+/// output bar `bar_i` of symbol `sym_i`. The resampling uses the **identical
+/// `idx_seq`** that selected the bar's return — this is the co-resampling
+/// invariant (FP-C1.5 extended to a second series): price and funding always
+/// reflect the same underlying real source index.
+///
+/// When absent (`None`): momentum/MR/buy-and-hold paths are **byte-identical**
+/// to the pre-carry code (the field is never written, the generator takes the
+/// same code path). This is the anchor-neutrality guarantee.
+///
+/// `funding_by_symbol[sym_i][0]` corresponds to bar-0 (the "start" bar, no
+/// return applied). Convention: bar-0 carries the same funding as the first
+/// real source bar (index 0), i.e. the most-recent funding at `real_bar[0]`'s
+/// open-ts. Bar-0 is a price-only sentinel; strategies should look at bar-1
+/// onwards for the carry signal (the warm-up is the same as the price ring-
+/// buffer warm-up for momentum).
 #[derive(Debug, Clone)]
 #[must_use]
 pub struct GeneratedPath {
@@ -38,6 +58,16 @@ pub struct GeneratedPath {
     /// Block length actually used. `Some(L)` for block-bootstrap generators;
     /// `None` for GBM and other non-block generators.
     pub selected_block_length: Option<usize>,
+    /// Co-resampled funding rates (ADR-0051 § D6.6, carry-strategy Stage 2).
+    ///
+    /// `funding_by_symbol[sym_i][bar_i]` = the resampled funding rate for
+    /// output bar `bar_i` of universe symbol `sym_i`. Indexed by the **same
+    /// `ret_idx`** that selected the return for that bar — price and funding
+    /// are always contemporaneous with their real source.
+    ///
+    /// `None` when no funding source was supplied to the generator (every
+    /// momentum/MR/buy-and-hold run). Absent = byte-identical to pre-carry.
+    pub funding_by_symbol: Option<Vec<Vec<Option<Decimal>>>>,
 }
 
 /// Block-length selection policy for [`BlockBootstrapPathGen`].

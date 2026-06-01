@@ -351,6 +351,7 @@ mod tests {
             bars_override: None, // intentionally None → should error
             emit_equity_bin: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            funding_override: None,
         };
         let result = pollster::block_on(run_path(input, 0x00C0_FFEE, strat));
         assert!(
