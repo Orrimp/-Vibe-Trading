@@ -1,8 +1,8 @@
 ---
 slug: cross-sectional-mean-reversion-strategy
 version: 0.1.0
-status: dev-done
-owner: developer → tester
+status: tested
+owner: tester
 priority: P2
 updated: 2026-05-31
 ---
