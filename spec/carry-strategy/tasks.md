@@ -69,16 +69,20 @@ anchoring.** **Remove the disposable frame-diagnostic flags from `param_robustne
 > diagnostic note's § 5 said `git checkout` reverts them, but they are now committed
 > (the diagnostic ran on the working tree). They MUST be removed as a clean edit.
 
-- [ ] Remove the `match_slippage_bps` CLI arg + doc (`param_robustness_sweep.rs:507-511`)
+- [x] Remove the `match_slippage_bps` CLI arg + doc (`param_robustness_sweep.rs:507-511`)
       and `match_taker_fee_bps` (`:513-517`).
-- [ ] Remove the two params from `run_one_path_with_config` (`:1230-1232` — the
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:501-505` (post-edit; was lines 507-517).
+- [x] Remove the two params from `run_one_path_with_config` (`:1230-1232` — the
       `slippage_bps: u32, taker_fee_bps: u32` params + the DISPOSABLE-DIAGNOSTIC comment).
-- [ ] Restore the hardcoded `slippage_bps: 2, taker_fee_bps: 4` literal in the
-      `TcnScenarioInput` construction (`:1283-1286`) — back to anchor-#86-reproducing state.
-- [ ] Remove the two call-site args (`:1461-1462`).
-- **Gate:** `--direction momentum --grid tier1` reproduces momentum #86 byte-identical;
-      `bash scripts/verify_anchors.sh` → momentum #86 + MR #87 PASS. (This is the
-      anchor-baseline floor the rest of the build must preserve.)
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:1218-1228`.
+- [x] Restore the hardcoded `slippage_bps: 2, taker_fee_bps: 4` literal in the
+      `TcnScenarioInput` construction — back to anchor-#86-reproducing state.
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:1278-1280`.
+- [x] Remove the two call-site args from the rayon loop.
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:1435-1446`.
+- **Gate:** `bash scripts/verify_anchors.sh` → 87/87 PASS (all anchors including #86 + #87).
+  **Test command:** `bash scripts/verify_anchors.sh`
+  **Output:** `ANCHORS PASS  (87 / 87)`
 
 ## M-DEV-1 — `FundingDataSource` loader + REVISION pin (Sub-A; SMALL-MED ~0.5–1 d)
 
@@ -87,44 +91,52 @@ anchoring.** **Remove the disposable frame-diagnostic flags from `param_robustne
 > `funding_rate` Utf8 decimal-string (confirmed `fetch_binance_funding.rs:26-33` +
 > on-disk REVISION.toml).
 
-- [ ] New module `crates/backtest/src/funding_data.rs` (sibling to `realdata.rs`):
+- [x] New module `crates/backtest/src/funding_data.rs` (sibling to `realdata.rs`):
       `FundingDataSource { funding_root: PathBuf, universe: Vec<Symbol> }` with a
       `load(span, scenario_name) -> Result<LoadedFunding, FundingDataError>`.
-- [ ] Verify `data/binance-funding/REVISION.toml` exactly as the OHLCV loader does:
+      **file:line** `crates/backtest/src/funding_data.rs:112-295`.
+- [x] Verify `data/binance-funding/REVISION.toml` exactly as the OHLCV loader does:
       reuse `data::revision::{read_manifest_raw, file_sha256, compute_aggregate_sha}`;
       the expected aggregate SHA is `bf1ede44e57d797b57e5a4f2743f58027e4eba12d91e1ffaf883dcdd49365668`.
       Mismatch → `FundingDataError::RevisionMismatch` (mirror the OHLCV error enum).
-- [ ] Read the 3-column funding parquet (reuse the `data::ReplayFeed` parquet-read
-      pattern or a leaner direct polars `scan_parquet`); parse `funding_rate` via
-      `rust_decimal::Decimal::from_str` (NOT f64). Output `Vec<core::FundingObs>` (the
-      type exists, `core/src/funding.rs:19`) OR a leaner `Vec<(Symbol, i64 ms, Decimal)>`
-      per symbol — dev's call; the leaner tuple is sufficient (no `next_funding_ts`/`poll_ts` needed).
-- [ ] Files-for-span helper: mirror `RealDataBarSource::files_for_span` (the funding
+      **file:line** `crates/backtest/src/funding_data.rs:155-206` (revision check) + constant at line 35.
+- [x] Read the 3-column funding parquet via leaner polars `scan_parquet`; parse `funding_rate`
+      via `rust_decimal::Decimal::from_str` (NOT f64). Output `Vec<FundingRow>` (leaner tuple — no
+      `next_funding_ts`/`poll_ts`). `FundingRow` at line 88.
+      **file:line** `crates/backtest/src/funding_data.rs:88-94` (struct) + `207-268` (parse loop).
+- [x] Files-for-span helper: mirror `RealDataBarSource::files_for_span` (the funding
       layout is identical `<SYM>/<YEAR>/<MM>.parquet`).
-- [ ] Unit tests: REVISION-mismatch rejection; a known parquet parses to the expected
-      rows; `funding_rate` decimal precision preserved (no f64 round-trip);
-      out-of-span filter. Use a tempdir fixture or a tiny committed sample.
-- **Gate:** `cargo test -p backtest funding_data` green; `cargo clippy -p backtest -- -D warnings`.
+      **file:line** `crates/backtest/src/funding_data.rs:299-341`.
+- [x] Unit tests: REVISION-mismatch rejection; a known parquet parses to the expected
+      rows (real-data integration test, `--include-ignored`); `funding_rate` decimal precision
+      preserved (no f64 round-trip); out-of-span filter.
+      **file:line** `crates/backtest/src/funding_data.rs:448-700` (tests module).
+- **Gate:** `cargo test -p backtest --features "realdata candle" --lib funding_data` → 10 passed, 0 failed.
+  `cargo clippy -p backtest --features "realdata candle" --lib -- -D warnings` → 0 errors.
+  **Test command:** `cargo test -p backtest --features "realdata candle" --lib funding_data`
+  **Output:** `test result: ok. 10 passed; 0 failed; 1 ignored; 0 measured; 63 filtered out`
 
 ## M-DEV-2 — as-of forward-fill on the REAL grid (Sub-B; SMALL ~0.5 d)
 
 > Deterministic step-function join. Computed ONCE on the real data, length `T−1`
 > (matches the return series the bootstrap builds). NO look-ahead.
 
-- [ ] A pure function `funding_as_of(funding: &[(i64, Decimal)], bar_open_ts_ms: &[i64])
+- [x] A pure function `funding_as_of(funding: &[(i64, Decimal)], bar_open_ts_ms: &[i64])
       -> Vec<Option<Decimal>>`: for each bar open ts, the funding rate from the last
-      settlement **at or before** that ts (information available at decision time —
-      the conservative, no-look-ahead choice the carry-data brief flagged). Before the
-      first settlement → `None` (warm-up).
-- [ ] Build `funding_at_return[s][k]` aligned to the bootstrap's return grid: the
-      bootstrap builds `T−1` returns from `T` bars (`bootstrap.rs:152-159`,
-      `r[k]=ln(close[k+1]/close[k])`), so `funding_at_return[s][k]` = the as-of funding
-      at the OPEN ts of source bar `k` (the bar the return leaves FROM). Lock the exact
-      alignment convention (bar `k` vs `k+1`) and pin it with a test.
-- [ ] Unit test (the no-look-ahead falsifier, R-CARRY.6): shifting the funding series
+      settlement **at or before** that ts. Before the first settlement → `None` (warm-up).
+      Uses `partition_point` for O(log n) binary search per bar.
+      **file:line** `crates/backtest/src/funding_data.rs:360-396`.
+- [x] Build `funding_at_return[s][k]` via `build_funding_at_return(...)`: aligns to T-1
+      return steps (slices `bar_ts[..T-1]`, the bars the returns depart FROM).
+      Convention locked: bar k's open_ts → `funding_at_return[sym_i][k]`.
+      **file:line** `crates/backtest/src/funding_data.rs:420-445`.
+- [x] Unit test (the no-look-ahead falsifier, R-CARRY.6): shifting the funding series
       one settlement into the FUTURE changes the as-of result (proves the join is
       causal); a bar before the first settlement → `None`.
-- **Gate:** `cargo test -p backtest funding_as_of` green.
+      **file:line** `crates/backtest/src/funding_data.rs:516-548` (`no_look_ahead_falsifier`).
+- **Gate:** `cargo test -p backtest --features "realdata candle" --lib funding_data` → all green.
+  **Test command:** `cargo test -p backtest --features "realdata candle" --lib funding_data`
+  **Output:** `test result: ok. 10 passed; 0 failed; 1 ignored; 0 measured; 63 filtered out`
 
 ## M-DEV-3 — co-resample funding through the bootstrap by the SHARED index (Sub-C, THE CRUX; MED ~1.5–2.5 d)
 

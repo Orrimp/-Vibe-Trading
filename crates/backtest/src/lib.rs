@@ -41,6 +41,11 @@ pub mod scenarios;
 #[cfg(feature = "realdata")]
 pub mod realdata;
 
+/// Carry-funding parquet loader and as-of forward-fill (M-DEV-1 + M-DEV-2).
+/// Compiled only when `--features realdata` (funding data requires real parquets).
+#[cfg(feature = "realdata")]
+pub mod funding_data;
+
 pub use engine::run_scenario;
 pub use engine::{
     BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,

@@ -1053,7 +1053,57 @@ universe — and the rotation moves to value (data-gated) or a regime/blended tr
 ---
 
 ## Implementation
-_developer fills this_
+
+### Stage 1 — Funding-data foundation (M-DEV-0, M-DEV-1, M-DEV-2) — 2026-05-31
+
+**M-DEV-0 (complete):** Removed the disposable frame-diagnostic CLI flags
+(`match_slippage_bps`, `match_taker_fee_bps`) from `param_robustness_sweep.rs`.
+Restored hardcoded `slippage_bps: 2, taker_fee_bps: 4` literals. Confirmed
+`bash scripts/verify_anchors.sh` → 87/87 PASS (the anchor-baseline floor).
+
+Files changed:
+- `crates/backtest/src/bin/param_robustness_sweep.rs` — removed CLI struct fields
+  (former lines 507-517), function params (former lines 1230-1232), hardcoded
+  literal restore (line 1280), call-site args removed (lines 1435-1446 post-edit).
+
+**M-DEV-1 (complete):** New `crates/backtest/src/funding_data.rs` —
+`FundingDataSource` loader mirroring `RealDataBarSource`:
+- `FundingDataError` enum with `RevisionMissing`, `RevisionParse`,
+  `RevisionMismatch`, `Parquet`, `DecimalParse`, `Io` variants.
+- `FundingRow { symbol, funding_time_ms: i64, funding_rate: Decimal }` — leaner
+  than `FundingObs` (no `next_funding_ts`/`poll_ts`).
+- `LoadedFunding { rows: Vec<FundingRow>, revision_sha: String }`.
+- `FundingDataSource::load(span, scenario_name)` — 6-step load + verify +
+  parse: REVISION.toml existence check, per-file SHA verify, aggregate SHA
+  verified against the locked `EXPECTED_FUNDING_REVISION_SHA` constant
+  (`bf1ede44...`), polars `scan_parquet`, `Decimal::from_str` parse (never f64),
+  span filter, sort.
+- `files_for_span` — mirrors `RealDataBarSource::files_for_span` exactly.
+- Gated under `#[cfg(feature = "realdata")]`; polars added as optional dep in
+  `crates/backtest/Cargo.toml` under the `realdata` feature.
+
+**M-DEV-2 (complete):** Pure functions for the as-of forward-fill:
+- `funding_as_of(funding, bar_open_ts_ms)` — O(log n) binary-search
+  per bar via `partition_point`; `None` for warm-up (before first settlement).
+- `build_funding_at_return(funding_by_symbol, bar_ts_by_symbol)` — wraps
+  `funding_as_of` to produce the `T-1`-length array the bootstrap needs (slices
+  bar timestamps `[..T-1]` — the bars returns depart FROM).
+
+Tests: 10 unit tests (all passing) + 1 real-data integration test (ignored by
+default, passes with `--include-ignored` against the real parquet files):
+`warm_up_before_first_settlement_is_none`, `bar_at_settlement_uses_that_settlement`,
+`bar_between_settlements_uses_earlier`, `step_function_correctness`,
+`no_look_ahead_falsifier`, `empty_funding_series_all_none`,
+`build_funding_at_return_aligns_to_t_minus_1`, `decimal_precision_preserved`,
+`revision_mismatch_is_rejected`, `out_of_span_filter_via_funding_as_of`,
+`real_parquet_parses_to_expected_rows` (ignored/real-data).
+
+Gates confirmed:
+- `cargo test -p backtest --features "realdata candle" --lib funding_data` → 10 passed, 0 failed
+- `cargo clippy -p backtest --features "realdata candle" --lib -- -D warnings` → 0 errors
+- `cargo fmt -p backtest --check` → clean
+- `bash scripts/verify_anchors.sh` → 87/87 PASS (anchor-neutral — new module is
+  purely additive, off-path for all existing momentum/MR runs)
 
 ## Verification
 _tester links to reports here_

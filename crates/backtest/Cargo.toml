@@ -34,13 +34,17 @@ candle = ["strategy/forecast"]
 # Enable real-Binance-data backtest scenarios (top10-*-tcn-overlay-realdata).
 # Requires data/binance/REVISION.toml to be present at runtime.
 # See ADR-0032 and spec/backtest-real-binance-data/feature.md.
-realdata = ["dep:toml"]
+realdata = ["dep:toml", "dep:polars"]
 # Enable Yahoo Finance parquet-cache read path (lab-yahoo-realdata v0.1.1).
 # Enables data/src/yahoo.rs via the `data` crate's `yahoo` feature.
 # No network required — reads from data/yahoo/ cache only.
 yahoo = ["data/yahoo"]
 
 [dependencies.toml]
+workspace = true
+optional = true
+
+[dependencies.polars]
 workspace = true
 optional = true
 
