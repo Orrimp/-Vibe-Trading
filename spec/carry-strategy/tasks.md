@@ -2,7 +2,7 @@
 slug: carry-strategy
 status: arch-done
 owner: architect → developer
-updated: 2026-05-31
+updated: 2026-06-02
 ---
 
 # Tasks — carry-strategy (M-DEV build order)
@@ -187,59 +187,77 @@ anchoring.** **Remove the disposable frame-diagnostic flags from `param_robustne
 > Sibling to MR's `Direction` (the proven serde-default pattern), BUT carry needs its
 > OWN funding ring (counts SETTLEMENTS, not price bars).
 
-- [ ] Add `ScoreSource { VolAdjustedReturn (default), FundingCarry }` to
+- [x] Add `ScoreSource { VolAdjustedReturn (default), FundingCarry }` to
       `crates/strategy/src/cross_sectional/config.rs` (derive `Copy, PartialEq, Eq,
       Serialize, Deserialize, Default`; `#[serde(rename_all="snake_case")]`). Add
       `#[serde(default)] pub score_source: ScoreSource` to `CrossSectionalMomentumConfig`
       + `RawConfig`. Re-export from `mod.rs` + `lib.rs`. No new validation error
       (closed enum). Backward-compat unit test: omitting `score_source` → `VolAdjustedReturn`.
-- [ ] Append `;score_source={score_source:?}` to `compute_config_hash`
+      **file:line** `config.rs:44` (enum + field) + `mod.rs`/`lib.rs` re-export; tests
+      `m_dev5_score_source_funding_carry_parses` + `m_dev5_no_score_source_defaults_to_vol_adjusted_return`.
+- [x] Append `;score_source={score_source:?}` to `compute_config_hash`
       (`momentum.rs:244`) so carry-vs-momentum at the same θ hashes differently (K3).
       Unit test the hash differs.
-- [ ] Carry the funding lookup onto `MomentumStrategy` (a new
+      **file:line** `momentum.rs:387`; test `m_dev5_config_hash_differs_by_score_source`.
+- [x] Carry the funding lookup onto `MomentumStrategy` (a new
       `funding_by_symbol_ts: Option<BTreeMap<(Symbol, Timestamp), Decimal>>` field +
       a settlement-ring per symbol) via a `with_funding(...)` setter the harness calls
       after `from_config`. Default `None` → momentum/MR unchanged.
-- [ ] In `on_bar` (`momentum.rs:203`), fork the score on `score_source`:
+      **file:line** `momentum.rs:139` (`with_funding`) + the per-symbol `funding_rings`.
+- [x] In `on_bar` (`momentum.rs:203`), fork the score on `score_source`:
       `VolAdjustedReturn` = the EXISTING `score_vol_adjusted_return` path (byte-identical);
       `FundingCarry` = `carry_score(&bar.symbol, bar.open_ts)` = **`−trailing_mean`** of
       the last L SETTLED funding rates at-or-before `open_ts` (the leading minus is the
       sign — § D-CARRY.1). A symbol with < L settlements seen → `None` (excluded from
       the rank, same as a warming-up momentum score). `Direction` stays `Momentum`
       (identity) for carry — the sign lives in `carry_score`, not in `Direction`.
-- [ ] **R-CARRY.2 sign-assertion test (day-1 mandatory):** a synthetic universe with a
+      **file:line** `momentum.rs:321-322` (fork) + `momentum.rs:275` (`carry_score`; −mean at :305).
+- [x] **R-CARRY.2 sign-assertion test (day-1 mandatory):** a synthetic universe with a
       known-POSITIVE-funding symbol and a known-NEGATIVE one + K=1; assert the carry
       strategy SELECTS (LONGS) the NEGATIVE-funding name (the paid side), and goes RED
       if the sign in `carry_score` is flipped.
-- [ ] **No-look-ahead test (R-CARRY.6, strategy level):** the carry score at a bar uses
+      **file:line** `momentum.rs:729` (`r_carry2_sign_assertion_longs_negative_funding_name`)
+      + `r_carry2_carry_score_negative_funding_outscores_positive`.
+- [x] **No-look-ahead test (R-CARRY.6, strategy level):** the carry score at a bar uses
       only funding settled at-or-before its `open_ts` (re-assert at the strategy seam,
       complementing the M-DEV-2 join test).
+      **file:line** `momentum.rs` `r_carry6_no_look_ahead_strategy_level`.
 - **Gate:** `cargo test -p strategy cross_sectional` green; momentum behavior unchanged
       (`score_source` defaults `VolAdjustedReturn`).
+      **Output:** `cargo test -p strategy --lib` → `test result: ok. 136 passed; 0 failed`.
 
 ## M-DEV-5 — the funding-cashflow accrual in `run_path` (Sub-D; SMALL-MED ~0.5–1 d)
 
 > The mechanism that makes carry ≠ a price tilt. At the existing equity push
 > (`montecarlo.rs:281`), gated on `funding_override` present. `Decimal` throughout.
 
-- [ ] In `run_path`, accept the funding lookup from `input.funding_override` (already
+- [x] In `run_path`, accept the funding lookup from `input.funding_override` (already
       threaded M-DEV-3). Pass it to the strategy (`with_funding`) AND keep a copy for the accrual.
-- [ ] Immediately BEFORE the per-bar equity push (`montecarlo.rs:276-281`): if funding
+      **file:line** `montecarlo.rs:138-139` (`funding_map_for_accrual` clone + `strategy.with_funding`).
+- [x] Immediately BEFORE the per-bar equity push (`montecarlo.rs:276-281`): if funding
       is present AND the bar's `open_ts` is a funding-settlement boundary
       (`bar_index % 8 == 0` on the synthetic hourly grid — § D-CARRY.7; lock the exact
       convention incl. whether bar 0 settles), for each held LONG position accrue
       `cash += position_notional × (−funding_rate)` (framing (a): earns on
       negative-funding names, pays on positive). At-most-once per 8h block per position.
       `funding_rate` = the resampled `funding_by_symbol[s][k]` for this (symbol, ts).
-- [ ] **R-CARRY.10b funding non-no-op test (day-1 mandatory, CLAUDE.md v3-vol-overlay
+      **file:line** `montecarlo.rs:283` (settlement-boundary accrual; `Decimal` money math throughout).
+- [x] **R-CARRY.10b funding non-no-op test (day-1 mandatory, CLAUDE.md v3-vol-overlay
       analogue):** run a small synthetic carry path WITH the accrual and with the
       accrual forced to zero; assert the equity curves DIVERGE (the WITH case ≠ the
       zero case by ≥ ε). RED if the cashflow is computed-and-ignored. Pattern:
       `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`.
-- [ ] **Anchor-neutrality:** with `funding_override=None`, `run_path` equity is
+      **file:line** `montecarlo.rs` `r_carry10b_funding_cashflow_non_no_op` — **SINGLE-SYMBOL
+      isolation**: the same symbol is selected with AND without funding, so the only difference
+      is the cashflow (no 2-symbol alphabetical-tie-break confound). Asserts `diff > ε`
+      (non-no-op) AND `equity_with > equity_zero` (longs EARN on the negative-funding name).
+- [x] **Anchor-neutrality:** with `funding_override=None`, `run_path` equity is
       byte-identical to today (the accrual block is never entered) — re-assert via the
       existing `run_path` unit test + the anchor gate.
+      **file:line** `montecarlo.rs` `run_path_funding_none_is_anchor_neutral` + the 87/87 anchor gate.
 - **Gate:** `cargo test -p backtest montecarlo` green; `bash scripts/verify_anchors.sh` → 87/87.
+      **Output:** `cargo test -p backtest --features "candle realdata" --lib` → `70 passed; 0 failed`;
+      `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (87 / 87)`.
 
 ## M-DEV-6 — `--score-source carry` flag + `CARRY_TIER1_GRID` on the sweep bin
 

@@ -38,7 +38,8 @@ pub mod vol_targeting_overlay;
 pub use cash_hold::CashHoldStrategy;
 pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, StrategyLoadError};
 pub use cross_sectional::{
-    CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction, MomentumStrategy, top_k_long,
+    CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction, MomentumStrategy,
+    ScoreSource, top_k_long,
 };
 pub use pairs::{MeanReversionPairsConfig, MeanReversionPairsStrategy, PairsLoadError};
 #[cfg(feature = "forecast")]

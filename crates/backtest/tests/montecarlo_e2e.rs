@@ -632,6 +632,7 @@ fn solvency_guard_run_path_regression_negative_cash_prevented() {
         vol_floor: dec!(0.000001),
         stage: SmolStr::new("research"),
         direction: strategy::Direction::Momentum,
+        score_source: strategy::ScoreSource::VolAdjustedReturn,
     };
     let strategy =
         strategy::MomentumStrategy::from_config(cfg, SmolStr::new("solvency_regression_harness"));

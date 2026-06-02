@@ -71,6 +71,7 @@ fn make_config_mr(direction: Direction) -> strategy::CrossSectionalMomentumConfi
         vol_floor: dec!(0.000001),
         stage: SmolStr::new("research"),
         direction,
+        score_source: strategy::ScoreSource::VolAdjustedReturn,
     }
 }
 

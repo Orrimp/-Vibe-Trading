@@ -75,6 +75,7 @@ fn make_config(
         // D-MR.0: default to Momentum so all existing C3 e2e tests preserve behavior
         // (no anchor disturbance). The MR e2e tests use make_config_with_direction().
         direction: strategy::Direction::Momentum,
+        score_source: strategy::ScoreSource::VolAdjustedReturn,
     }
 }
 

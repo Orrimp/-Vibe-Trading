@@ -30,6 +30,29 @@ pub enum Direction {
     Reversion,
 }
 
+// ── Score source (D-CARRY.1, M-DEV-5) ─────────────────────────────────────────
+
+/// Which signal source drives the cross-sectional ranking.
+///
+/// - `VolAdjustedReturn` (default): vol-adjusted price return, the v1 momentum/MR signal.
+///   Every existing TOML and struct literal that omits this field keeps the v1 behavior
+///   unchanged (serde `#[serde(default)]` → backward-compatible).
+/// - `FundingCarry`: trailing-mean funding rate, negated (R-CARRY.2 sign convention).
+///   `carry_score = −trailing_mean(funding)` so the most-negative-funding name floats
+///   to the TOP of the unchanged descending `top_k_long` — the paid side earns.
+///
+/// **Anchor-neutrality:** `score_source` defaults `VolAdjustedReturn`; the 87 existing
+/// momentum/MR anchors are byte-identical. The carry path is purely opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ScoreSource {
+    /// Vol-adjusted price return (v1 behavior — default, anchor-neutral).
+    #[default]
+    VolAdjustedReturn,
+    /// Funding-carry signal: −trailing_mean(funding) over L settlements (R-CARRY.1/2).
+    FundingCarry,
+}
+
 /// Error codes returned by the loader — matches the Design error-code table.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CrossSectionalLoadError {
@@ -108,6 +131,12 @@ pub struct CrossSectionalMomentumConfig {
     /// the v1 `Momentum` behavior unchanged (no anchor or test breakage).
     #[serde(default)]
     pub direction: Direction,
+    /// Score source (M-DEV-5, D-CARRY.1).
+    /// Default = `VolAdjustedReturn` (v1 behavior) — serde `#[serde(default)]`
+    /// keeps all existing TOMLs and struct literals anchor-neutral.
+    /// Set to `FundingCarry` for the carry strategy.
+    #[serde(default)]
+    pub score_source: ScoreSource,
 }
 
 /// Raw deserializable form before validation.
@@ -137,6 +166,9 @@ struct RawConfig {
     /// without this field keep the v1 behavior unchanged.
     #[serde(default)]
     pub direction: Direction,
+    /// Score source — default = `VolAdjustedReturn` so existing TOMLs keep v1 behavior.
+    #[serde(default)]
+    pub score_source: ScoreSource,
 }
 
 fn default_lookback() -> u32 {
@@ -244,6 +276,7 @@ impl CrossSectionalMomentumConfig {
             vol_floor: raw.vol_floor,
             stage: raw.stage,
             direction: raw.direction,
+            score_source: raw.score_source,
         })
     }
 
@@ -484,6 +517,70 @@ k_long = 2
         assert_ne!(
             strat_mom.hash, strat_rev.hash,
             "Momentum and Reversion configs at identical θ MUST produce different hashes (K3)"
+        );
+    }
+
+    // ── M-DEV-5: ScoreSource field tests ─────────────────────────────────────
+
+    /// M-DEV-5 (a): TOML with no `score_source` field → `ScoreSource::VolAdjustedReturn`
+    /// (backward-compat — all 87 existing anchors are unaffected).
+    #[test]
+    fn m_dev5_no_score_source_defaults_to_vol_adjusted_return() {
+        let cfg = CrossSectionalMomentumConfig::from_str(VALID_TOML).unwrap();
+        assert_eq!(
+            cfg.score_source,
+            ScoreSource::VolAdjustedReturn,
+            "omitting `score_source` must default to VolAdjustedReturn (backward compat)"
+        );
+    }
+
+    /// M-DEV-5 (b): `score_source = "funding_carry"` parses correctly.
+    #[test]
+    fn m_dev5_score_source_funding_carry_parses() {
+        let toml = r#"
+id    = "test_carry"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+score_source = "funding_carry"
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.score_source,
+            ScoreSource::FundingCarry,
+            "`score_source = \"funding_carry\"` must parse to ScoreSource::FundingCarry"
+        );
+    }
+
+    /// M-DEV-5 (c): Config hash differs between VolAdjustedReturn and FundingCarry at
+    /// identical θ (K3 — carry-vs-momentum hash discriminator).
+    #[test]
+    fn m_dev5_config_hash_differs_by_score_source() {
+        use super::super::momentum::MomentumStrategy;
+        use smol_str::SmolStr;
+
+        let toml_base = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 60
+rebalance_minutes = 60
+k_long = 2
+"#;
+        let mut cfg_var = CrossSectionalMomentumConfig::from_str(toml_base).unwrap();
+        let mut cfg_carry = cfg_var.clone();
+        cfg_carry.score_source = ScoreSource::FundingCarry;
+
+        cfg_var.id = SmolStr::new("test_hash");
+        cfg_carry.id = SmolStr::new("test_hash");
+
+        let strat_var = MomentumStrategy::from_config(cfg_var, SmolStr::new("test"));
+        let strat_carry = MomentumStrategy::from_config(cfg_carry, SmolStr::new("test"));
+
+        assert_ne!(
+            strat_var.hash, strat_carry.hash,
+            "VolAdjustedReturn and FundingCarry configs at identical θ MUST produce different hashes (K3)"
         );
     }
 }

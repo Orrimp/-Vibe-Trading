@@ -13,7 +13,7 @@ use smol_str::SmolStr;
 use trading_core::{Bar, Signal, SignalEvidence, SignalKind, StrategyId, Symbol, Tick, Timestamp};
 
 use crate::Strategy;
-use crate::cross_sectional::config::{CrossSectionalMomentumConfig, Direction};
+use crate::cross_sectional::config::{CrossSectionalMomentumConfig, Direction, ScoreSource};
 use crate::cross_sectional::selector::top_k_long;
 use features::{RingBuffer, score_vol_adjusted_return};
 
@@ -39,6 +39,9 @@ pub struct MomentumStrategy {
     /// `Reversion` negates the score at the cache-write boundary so `top_k_long`
     /// selects bottom-K losers instead of top-K winners.
     direction: Direction,
+    /// Score source (M-DEV-5, D-CARRY.1). Default = `VolAdjustedReturn` (anchor-neutral).
+    /// `FundingCarry` switches the score to `−trailing_mean(funding)` (R-CARRY.2 sign).
+    score_source: ScoreSource,
 
     /// Per-symbol ring buffers of close prices (size = lookback_minutes + 1).
     histories: BTreeMap<Symbol, RingBuffer>,
@@ -49,6 +52,22 @@ pub struct MomentumStrategy {
     /// Current per-symbol position — tracked as qty held (0 = flat).
     /// Maintained from the signals emitted (approximate).
     held_symbols: BTreeMap<Symbol, bool>,
+
+    // ── Carry-strategy funding state (M-DEV-5, D-CARRY.1) ────────────────────
+    //
+    // Populated via `with_funding(...)` after `from_config`; `None` for every
+    // momentum/MR run → anchor-neutral, zero overhead.
+    //
+    /// Injected funding lookup: `(Symbol, open_ts) → Decimal`.
+    /// Built from `GeneratedPath.funding_by_symbol` + synthetic open_ts.
+    funding_map: Option<BTreeMap<(Symbol, Timestamp), Decimal>>,
+    /// Per-symbol settlement ring: the last L settled funding rates, in
+    /// ascending settlement order. `VecDeque` with a capacity of `funding_lookback`.
+    funding_rings: BTreeMap<Symbol, std::collections::VecDeque<Decimal>>,
+    /// Number of settlements in the trailing mean (L). Maps to the config's
+    /// `lookback_minutes` field when `score_source == FundingCarry` (D-CARRY.2-LOCKED:
+    /// the grid column is L in settlements, passed literally as `lookback_minutes`).
+    funding_lookback: usize,
 
     /// SHA-256 of canonicalized config — 32 bytes.
     pub hash: [u8; 32],
@@ -77,6 +96,18 @@ impl MomentumStrategy {
         let held_symbols: BTreeMap<Symbol, bool> =
             symbols.iter().map(|s| (s.clone(), false)).collect();
 
+        // For FundingCarry, `lookback_minutes` encodes L (settlements).
+        let funding_lookback = cfg.lookback_minutes as usize;
+        let funding_rings: BTreeMap<Symbol, std::collections::VecDeque<Decimal>> = symbols
+            .iter()
+            .map(|s| {
+                (
+                    s.clone(),
+                    std::collections::VecDeque::with_capacity(funding_lookback + 1),
+                )
+            })
+            .collect();
+
         let hash = compute_config_hash(&cfg);
 
         Self {
@@ -90,13 +121,30 @@ impl MomentumStrategy {
             drift_threshold: cfg.drift_rebalance_threshold,
             exposure_cap: cfg.exposure_cap,
             direction: cfg.direction,
+            score_source: cfg.score_source,
             histories,
             scores,
             last_rebalance_ts: None,
             held_symbols,
+            funding_map: None,
+            funding_rings,
+            funding_lookback,
             hash,
             source_path,
         }
+    }
+
+    /// Inject the carry funding lookup (M-DEV-5, D-CARRY.1).
+    ///
+    /// Called by the harness AFTER `from_config` when `score_source == FundingCarry`.
+    /// `None` for every momentum/MR run → anchor-neutral zero-overhead default.
+    ///
+    /// The map is keyed by `(Symbol, open_ts)` on the **same synthetic timestamps**
+    /// the bootstrap emits, so `carry_score` looks up funding by the bar's own `open_ts`.
+    #[must_use]
+    pub fn with_funding(mut self, funding: Option<BTreeMap<(Symbol, Timestamp), Decimal>>) -> Self {
+        self.funding_map = funding;
+        self
     }
 
     /// Inherent method — introspection only (Q5: not a trait method).
@@ -116,7 +164,21 @@ impl MomentumStrategy {
     }
 
     fn all_warmed(&self) -> bool {
-        self.histories.values().all(|rb| rb.is_full())
+        match self.score_source {
+            ScoreSource::VolAdjustedReturn => {
+                // Original path: all price history ring buffers must be full.
+                self.histories.values().all(|rb| rb.is_full())
+            }
+            ScoreSource::FundingCarry => {
+                // Carry warm-up: every symbol's funding ring must have ≥ L settlements.
+                // A symbol with no ring entry is not yet warmed (it has seen 0 settlements).
+                self.universe_symbols.keys().all(|sym| {
+                    self.funding_rings
+                        .get(sym)
+                        .is_some_and(|ring| ring.len() >= self.funding_lookback)
+                })
+            }
+        }
     }
 
     fn build_rebalance_signals(&mut self, bar: &Bar) -> Vec<Signal> {
@@ -181,6 +243,68 @@ impl MomentumStrategy {
 
         signals
     }
+
+    /// Compute the carry score for `symbol` at bar `open_ts` (M-DEV-5, R-CARRY.1/2).
+    ///
+    /// # Sign convention (R-CARRY.2 — LOAD-BEARING)
+    ///
+    /// Binance perpetual funding: **positive funding → LONGS pay shorts**; to EARN
+    /// the funding, hold the SHORT (paid) side. Under framing (a) long-only
+    /// (D-CARRY.0), we LONG the most-**negative**-funding names — those are the
+    /// names where the **LONG side is the paid side** (shorts pay longs when funding
+    /// is negative). Therefore:
+    ///
+    ///   `carry_score = −trailing_mean(funding)`
+    ///
+    /// The leading minus flips the sign so the most-negative-funding name has the
+    /// **highest** carry score, which floats it to the TOP of the unchanged descending
+    /// `top_k_long`. This is the one place the sign lives (D-CARRY.1); guarded by
+    /// the R-CARRY.2 sign-assertion test.
+    ///
+    /// # Settlement-ring warm-up
+    ///
+    /// The ring must hold ≥ `funding_lookback` settlements before a score is valid.
+    /// Before that, returns `None` (excluded from the rank — same as a warming-up
+    /// momentum score).
+    ///
+    /// # Funding injection
+    ///
+    /// Funding is looked up from `self.funding_map` by `(symbol, open_ts)`. If the
+    /// map is `None` or the key is absent, no settlement is recorded for this bar
+    /// and the score remains `None` until the ring is full from actual settlements.
+    fn carry_score(&mut self, symbol: &Symbol, open_ts: Timestamp) -> Option<Decimal> {
+        // Fetch the funding rate for this (symbol, bar_ts) pair.
+        // Each synthetic bar maps to a funding value co-resampled by the same idx_seq.
+        // Not every bar is a settlement boundary — only every 8th bar carries a
+        // non-None funding value in the map. We look up regardless and push if Some.
+        let funding_rate = self
+            .funding_map
+            .as_ref()
+            .and_then(|m| m.get(&(symbol.clone(), open_ts)).copied());
+
+        // Push into the settlement ring on any non-None funding lookup.
+        // The funding map is keyed for EVERY bar (not just 8h boundaries) — the
+        // co-resampled value is the funding-in-force at that real return step, which
+        // updates every 8h. Only push when we actually see a value.
+        if let Some(rate) = funding_rate {
+            let ring = self.funding_rings.entry(symbol.clone()).or_default();
+            ring.push_back(rate);
+            // Keep only the last L settlements.
+            while ring.len() > self.funding_lookback {
+                ring.pop_front();
+            }
+        }
+
+        // Compute the trailing mean only when the ring is full (warm-up guard).
+        let ring = self.funding_rings.get(symbol)?;
+        if ring.len() < self.funding_lookback {
+            return None;
+        }
+        let sum: Decimal = ring.iter().copied().sum();
+        let mean = sum / Decimal::from(ring.len() as u64);
+        // R-CARRY.2: return −mean so the most-negative-funding name has the highest score.
+        Some(-mean)
+    }
 }
 
 impl Strategy for MomentumStrategy {
@@ -194,21 +318,36 @@ impl Strategy for MomentumStrategy {
             return Vec::new();
         }
 
-        // Push close into the symbol's ring buffer.
-        if let Some(rb) = self.histories.get_mut(&bar.symbol) {
-            rb.push(bar.close.get());
-        }
-
-        // Recompute score for this symbol.
-        let score = self.histories.get(&bar.symbol).and_then(|rb| {
-            score_vol_adjusted_return(rb, self.lookback_minutes, self.vol_floor).ok()
-        });
-        // D-MR.1: invert at the cache boundary.
-        // Momentum stores +score; Reversion stores −score so the unchanged
-        // descending `top_k_long` selects the bottom-K losers.
-        let score = match self.direction {
-            Direction::Momentum => score,
-            Direction::Reversion => score.map(|s| -s),
+        // Compute score — fork on score_source (M-DEV-5, D-CARRY.1).
+        let score = match self.score_source {
+            ScoreSource::VolAdjustedReturn => {
+                // EXISTING path — byte-identical to pre-carry code.
+                // Push close into the symbol's ring buffer.
+                if let Some(rb) = self.histories.get_mut(&bar.symbol) {
+                    rb.push(bar.close.get());
+                }
+                // Recompute score for this symbol.
+                let score = self.histories.get(&bar.symbol).and_then(|rb| {
+                    score_vol_adjusted_return(rb, self.lookback_minutes, self.vol_floor).ok()
+                });
+                // D-MR.1: invert at the cache boundary.
+                // Momentum stores +score; Reversion stores −score so the unchanged
+                // descending `top_k_long` selects the bottom-K losers.
+                match self.direction {
+                    Direction::Momentum => score,
+                    Direction::Reversion => score.map(|s| -s),
+                }
+            }
+            ScoreSource::FundingCarry => {
+                // NEW carry path (M-DEV-5): −trailing_mean(funding) over L settlements.
+                // The sign is in carry_score (R-CARRY.2); Direction stays Momentum (identity).
+                // We still push close for history (no-op for the score but keeps the ring
+                // consistent if score_source ever changes mid-run — defensive).
+                if let Some(rb) = self.histories.get_mut(&bar.symbol) {
+                    rb.push(bar.close.get());
+                }
+                self.carry_score(&bar.symbol, bar.open_ts)
+            }
         };
         self.scores.insert(bar.symbol.clone(), score);
 
@@ -241,9 +380,11 @@ fn compute_config_hash(cfg: &CrossSectionalMomentumConfig) -> [u8; 32] {
     let mut universe_sorted = cfg.universe.clone();
     universe_sorted.sort();
 
+    // M-DEV-5: append ;score_source={...} so carry-vs-momentum at the same θ
+    // hashes differently (K3 — the config hash distinguishes strategy variants).
     let canonical = format!(
         "id={id};universe={uni};lookback={lb};rebalance={rb};k_long={kl};k_short={ks};\
-         exposure_cap={ec};drift={dt};vol_floor={vf};direction={dir:?}",
+         exposure_cap={ec};drift={dt};vol_floor={vf};direction={dir:?};score_source={ss:?}",
         id = cfg.id,
         uni = universe_sorted.join(","),
         lb = cfg.lookback_minutes,
@@ -254,6 +395,7 @@ fn compute_config_hash(cfg: &CrossSectionalMomentumConfig) -> [u8; 32] {
         dt = cfg.drift_rebalance_threshold,
         vf = cfg.vol_floor,
         dir = cfg.direction,
+        ss = cfg.score_source,
     );
 
     let mut hasher = Sha256::new();
@@ -536,6 +678,229 @@ size = "equal_weight"
         assert!(
             rev_buys.contains("BNBUSDT"),
             "M-DEV-2: Reversion K=1 should pick BNBUSDT (strongest downtrend). Got: {rev_buys:?}"
+        );
+    }
+
+    // ── M-DEV-5 / R-CARRY.2: Sign-assertion test (MANDATORY, day-1) ──────────
+
+    /// Helper: build a carry strategy with K=1 and a minimal synthetic funding map.
+    fn make_carry_strategy_with_funding(
+        lookback_settlements: u32,
+        funding_map: BTreeMap<(Symbol, Timestamp), Decimal>,
+    ) -> MomentumStrategy {
+        use crate::cross_sectional::config::ScoreSource;
+        let toml = format!(
+            r#"
+id = "test_carry"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = {lookback_settlements}
+rebalance_minutes = {lookback_settlements}
+k_long = 1
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"
+score_source = "funding_carry"
+"#
+        );
+        let mut cfg = crate::cross_sectional::config::CrossSectionalMomentumConfig::from_str(&toml)
+            .expect("valid carry config");
+        cfg.score_source = ScoreSource::FundingCarry;
+        MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("test"))
+            .with_funding(Some(funding_map))
+    }
+
+    /// R-CARRY.2 sign-assertion test (MANDATORY, day-1).
+    ///
+    /// Universe: BTCUSDT (positive funding = longs pay) + ETHUSDT (negative funding = shorts pay).
+    /// K=1, lookback=1 settlement.
+    ///
+    /// Sign convention (R-CARRY.2):
+    ///   - ETHUSDT has negative funding → the LONG side is the PAID side → `carry_score = +|funding|` (top).
+    ///   - BTCUSDT has positive funding → the LONG side PAYS → `carry_score = −|funding|` (bottom).
+    ///   - With K=1, the strategy MUST select ETHUSDT (the paid-to-be-long name).
+    ///
+    /// **RED-on-mutation**: if the sign in `carry_score` is flipped (returns `+mean` instead
+    /// of `−mean`), BTCUSDT would score higher and be selected — the test fails exactly there.
+    #[test]
+    fn r_carry2_sign_assertion_longs_negative_funding_name() {
+        use time::OffsetDateTime;
+
+        // Build synthetic funding: BTCUSDT = +0.01% (positive), ETHUSDT = −0.01% (negative).
+        // We inject funding at ts=0 (bar 0) so it is seen by the first bar.
+        let base_ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+
+        let positive_rate = dec!(0.0001); // +0.01% — LONGS pay, we don't want to be long
+        let negative_rate = dec!(-0.0001); // −0.01% — SHORTS pay, the LONG side earns
+
+        // funding_map: keyed by (symbol, open_ts); funded at ts=0 so bar-0 sees it.
+        let mut funding_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        funding_map.insert((btc.clone(), base_ts), positive_rate);
+        funding_map.insert((eth.clone(), base_ts), negative_rate);
+
+        // L=1: one settlement needed to fill the ring.
+        let mut strategy = make_carry_strategy_with_funding(1, funding_map);
+
+        // Drive one bar per symbol at ts=0 so the funding is recorded.
+        // rebalance_minutes = 1, lookback_minutes = 1.
+        let bar_btc = make_bar("BTCUSDT", dec!(50_000), 0);
+        let bar_eth = make_bar("ETHUSDT", dec!(3_000), 0);
+
+        let mut all_buy_signals: Vec<String> = Vec::new();
+        for sig in strategy.on_bar(&bar_btc) {
+            if sig.kind == SignalKind::Buy {
+                all_buy_signals.push(sig.symbol.to_string());
+            }
+        }
+        for sig in strategy.on_bar(&bar_eth) {
+            if sig.kind == SignalKind::Buy {
+                all_buy_signals.push(sig.symbol.to_string());
+            }
+        }
+
+        // Must have at least one buy (strategy warmed up with L=1 settlement at bar 0).
+        assert!(
+            !all_buy_signals.is_empty(),
+            "R-CARRY.2: carry strategy must generate at least one Buy after seeing L=1 funding. \
+             Got no signals. funding_map keys saw all symbols."
+        );
+
+        // K=1: exactly one symbol selected.
+        // ETHUSDT (negative funding) MUST be selected — the paid-to-be-long name.
+        // If BTCUSDT is selected instead, the sign is WRONG (funding-payer, not harvester).
+        assert!(
+            all_buy_signals.contains(&"ETHUSDT".to_string()),
+            "R-CARRY.2 SIGN VIOLATION: carry strategy with K=1 MUST select ETHUSDT \
+             (negative funding = longs are the paid side) but got: {:?}. \
+             This means carry_score returns +mean instead of −mean — the sign is flipped \
+             and the strategy is a funding-PAYER, not a funding-harvester.",
+            all_buy_signals
+        );
+        assert!(
+            !all_buy_signals.contains(&"BTCUSDT".to_string()),
+            "R-CARRY.2 SIGN VIOLATION: carry strategy MUST NOT select BTCUSDT \
+             (positive funding = longs pay, NOT the paid side). Got: {:?}",
+            all_buy_signals
+        );
+    }
+
+    /// R-CARRY.2 RED-on-mutation proof: the sign-assertion above WOULD fail if
+    /// `carry_score` returned `+mean` instead of `−mean`. This test directly verifies
+    /// the score ordering: ETHUSDT (negative funding) must have a HIGHER carry_score
+    /// than BTCUSDT (positive funding).
+    ///
+    /// We verify this at the score level so the assertion is independent of K and
+    /// the rebalance timing.
+    #[test]
+    fn r_carry2_carry_score_negative_funding_outscores_positive() {
+        use time::OffsetDateTime;
+
+        let base_ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+
+        let positive_rate = dec!(0.0001);
+        let negative_rate = dec!(-0.0001);
+
+        let mut funding_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        funding_map.insert((btc.clone(), base_ts), positive_rate);
+        funding_map.insert((eth.clone(), base_ts), negative_rate);
+
+        let mut strat = make_carry_strategy_with_funding(1, funding_map);
+
+        // Drive one bar per symbol so the funding is recorded and ring is full.
+        strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+
+        // Inspect the scores cache directly.
+        let btc_score = strat.scores.get(&btc).copied().flatten();
+        let eth_score = strat.scores.get(&eth).copied().flatten();
+
+        assert!(
+            btc_score.is_some(),
+            "R-CARRY.2: BTCUSDT must have a carry score after L=1 settlements"
+        );
+        assert!(
+            eth_score.is_some(),
+            "R-CARRY.2: ETHUSDT must have a carry score after L=1 settlements"
+        );
+
+        let btc_s = btc_score.unwrap();
+        let eth_s = eth_score.unwrap();
+
+        // ETHUSDT (−0.01%) → carry_score = −(−0.0001) = +0.0001
+        // BTCUSDT (+0.01%) → carry_score = −(+0.0001) = −0.0001
+        // Expected: eth_s > btc_s (positive > negative).
+        assert!(
+            eth_s > btc_s,
+            "R-CARRY.2 SIGN VIOLATION: carry_score(ETHUSDT, negative_funding)={eth_s} \
+             must be > carry_score(BTCUSDT, positive_funding)={btc_s}. \
+             The sign `−mean` means the most-negative-funding name has the highest score. \
+             If this fails, carry_score is returning +mean (the harvest-payer bug)."
+        );
+        // Exact values: ETHUSDT score should be +0.0001, BTCUSDT should be −0.0001.
+        assert_eq!(
+            eth_s,
+            dec!(0.0001),
+            "R-CARRY.2: ETHUSDT score must be +0.0001 (−(−0.0001))"
+        );
+        assert_eq!(
+            btc_s,
+            dec!(-0.0001),
+            "R-CARRY.2: BTCUSDT score must be −0.0001 (−(+0.0001))"
+        );
+    }
+
+    /// R-CARRY.6 no-look-ahead test (strategy level).
+    ///
+    /// At bar with ts=0, only funding settled at-or-before ts=0 is visible.
+    /// Funding at ts=1 (the NEXT bar) must NOT affect the carry score at ts=0.
+    ///
+    /// The funding_map only injects at ts=0 → the score at ts=0 uses ts=0 funding.
+    /// A separate strategy with funding injected at ts=1 gets None score at ts=0.
+    #[test]
+    fn r_carry6_no_look_ahead_strategy_level() {
+        use time::OffsetDateTime;
+
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let ts1 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1));
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+
+        let rate = dec!(-0.0001);
+
+        // Strategy A: funding at ts=0 → score is available at ts=0.
+        let mut map_a: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        map_a.insert((btc.clone(), ts0), rate);
+        map_a.insert((eth.clone(), ts0), rate);
+        let mut strat_a = make_carry_strategy_with_funding(1, map_a);
+        strat_a.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat_a.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+        let score_a = strat_a.scores.get(&btc).copied().flatten();
+
+        // Strategy B: funding at ts=1 only (the future, not yet settled at ts=0).
+        let mut map_b: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        map_b.insert((btc.clone(), ts1), rate);
+        map_b.insert((eth.clone(), ts1), rate);
+        let mut strat_b = make_carry_strategy_with_funding(1, map_b);
+        strat_b.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat_b.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+        let score_b = strat_b.scores.get(&btc).copied().flatten();
+
+        assert!(
+            score_a.is_some(),
+            "R-CARRY.6: strategy with funding at ts=0 must produce a carry score at ts=0"
+        );
+        assert!(
+            score_b.is_none(),
+            "R-CARRY.6 NO-LOOK-AHEAD VIOLATION: strategy with funding only at ts=1 \
+             must produce None score at ts=0 (the future funding must not leak). \
+             Got: {score_b:?}"
         );
     }
 }
