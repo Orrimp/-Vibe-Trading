@@ -1,8 +1,8 @@
 ---
 slug: time-series-momentum-robustness
 version: 0.1.0
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect → developer
 priority: P2
 updated: 2026-06-02
 ---
@@ -417,6 +417,332 @@ them — the seam, the grid, and the engine-fit are architect M-T1 calls.
 
 ---
 
+## Design
+
+_Architect M-T1 (2026-06-02). Q-TSM-1..4 are all resolved + justified below. The
+headline call (Q-TSM-1) is **a new `SelectionMode` on `MomentumStrategy`,
+defaults-off** — NOT a `ScoreSource`, NOT a `Direction`, NOT a new strategy
+struct. The variable-cardinality long/flat (Q-TSM-2) is expressible **purely as
+new `on_bar` signal emission** with **ZERO `run_path` / `PaperEngine` change** —
+the anchor-safe path. `run_path` stays **CONCRETE** (Q-TSM-4). The 6-cell θ-grid
+is LOCKED in § D-TSM.3-LOCKED. The 89 existing anchors hold byte-identical by
+construction — the anchor-neutrality argument is § D-TSM.5. The determinism model
+is recorded as an **ADR-0051 § D6.7 amendment** (a new SELECTION mechanism — a
+2nd selector alongside `top_k_long` — varied at the config level, seed untouched,
+the MR/carry "vary-at-config-not-seed" pattern; NO new RNG, NO co-resampled
+series, materially simpler than carry's § D6.6)._
+
+### D-TSM.0 — One-paragraph design
+
+TS-momentum is **the cheapest additive seam the program has had** — materially
+simpler than carry (which needed a new data source, an as-of join, a
+co-resampled-through-the-bootstrap series, and an engine cashflow). It needs **no
+new data, no bootstrap change, no engine change**. It is exactly two additive,
+defaults-off pieces on the SAME concrete `MomentumStrategy` + `run_path` the three
+cross-sectional families already run: **(1)** a new `SelectionMode { CrossSectionalTopK
+(default), TimeSeriesLongFlat }` enum on `CrossSectionalMomentumConfig` (sibling to
+`Direction`/`ScoreSource`, serde-default) that, when `TimeSeriesLongFlat`, swaps the
+`top_k_long` ranker for a new **`select_above_threshold`** selector (long every
+warmed asset whose OWN trailing-return score exceeds the entry threshold, flat the
+rest — NO cross-name ranking, NO top-K); and **(2)** a per-asset **raw
+trailing-return score** (cumulative log-return over L bars, NO vol denominator —
+the trend sign is the signal) computed in the SAME `on_bar` score fork the carry
+`ScoreSource` already established, gated on the new mode. The portfolio is the
+equal-weight set of all above-threshold names, sized by `run_path`'s **existing
+fixed-fraction-per-name** logic under the existing exposure cap — byte-untouched.
+Everything is Option/enum-gated and defaults to today's behavior, so the 89 anchors
+(momentum #86, MR #87, carry #88/#89, and all pre-existing) are byte-identical by
+construction with no re-lock.
+
+```mermaid
+flowchart LR
+  A["banked 10-sym OHLCV<br/>data/binance, pin 3a8b96c4…<br/>(SAME closes as momentum/MR)"] --> B
+  B["BlockBootstrapPathGen<br/>(UNCHANGED — no funding,<br/>no co-resample, no new RNG)"] --> C
+  C["bars_override → run_path<br/>(CONCRETE MomentumStrategy — UNCHANGED)"] --> D
+  D["MomentumStrategy::on_bar<br/>SelectionMode::TimeSeriesLongFlat (NEW, gated)<br/>(1) ts_trend_score = raw Σ log-ret over L<br/>(2) select_above_threshold (NEW selector)"] --> E
+  E["Buy the above-threshold names,<br/>Sell the rest → variable cardinality 0..10"] --> F
+  F["run_path sizes each Buy at the EXISTING<br/>fixed fraction under the exposure cap<br/>(NO engine change)"] --> G
+  G["equity curve → DistributionSummary → θ-surface anchor #90 (2023) / #91 (2024)"]
+```
+
+### D-TSM.1 — Q-TSM-1 RESOLVED: a new `SelectionMode` enum on the config (NOT ScoreSource, NOT Direction, NOT a new struct)
+
+**RATIFIED: TS-momentum is a new `SelectionMode { CrossSectionalTopK (default),
+TimeSeriesLongFlat }` field on `CrossSectionalMomentumConfig`** (`config.rs:44`
+region, sibling to `Direction` and `ScoreSource`; derive `Copy, PartialEq, Eq,
+Serialize, Deserialize, Default`; `#[serde(rename_all="snake_case")]`;
+`#[serde(default)]` on both `CrossSectionalMomentumConfig` and `RawConfig`). The
+three rejected framings and why:
+
+| Framing | Decision | Why |
+|---|---|---|
+| **A new `ScoreSource::TimeSeriesMomentum`** (the analyst's first-listed candidate) | **REJECTED as the seam** | `ScoreSource` is consumed by `top_k_long`, which **ranks across names and fills K slots**. A per-asset trailing-return fed into `top_k_long` would (i) still rank cross-sectionally (the dead channel TS-momentum exists to AVOID), (ii) fill exactly K slots from the warmed set **regardless of whether any trend is positive** → it can NEVER go flat (F-TSM.4 would be un-satisfiable), and (iii) drop trending names when K < #(warmed). The *score* is per-asset, but the *selection* is the load-bearing difference, and `ScoreSource` does not touch selection. A TS trend score IS still needed (D-TSM.2) — but it is NOT sufficient, and it is not the seam. |
+| **A new `Direction::TimeSeriesLongFlat`** | **REJECTED** | `Direction` only negates the score before `top_k_long` (momentum.rs:336-339). It cannot change top-K into threshold-gated variable-cardinality. Wrong layer. |
+| **A new `TimeSeriesMomentumStrategy` struct implementing `Strategy`** | **REJECTED** | `run_path` is typed to the **concrete** `MomentumStrategy` (`montecarlo.rs:87`, call-sites `monte_carlo.rs:878` + `param_robustness_sweep.rs:1623`). A sibling struct forces `run_path` generic/`dyn` and risks all 89 anchors — the **exact ADR-0051 § D6.5.2 trap** that forced MR to be a `Direction`-on-config and carry to be a `ScoreSource`-on-config. Non-starter. |
+| **A new `SelectionMode` enum on the config** | **RATIFIED** | The selection step (rank-top-K vs threshold-long-flat) is precisely what differs. A config enum that forks `build_rebalance_signals` between `top_k_long` (existing) and `select_above_threshold` (new) is the **minimal seam at the right layer**. `MomentumStrategy` stays one concrete type → `run_path` stays concrete → anchors safe. It is the direct structural analogue of MR's `Direction` and carry's `ScoreSource`: vary the behaviour at the config level, leave the seed and the engine untouched. |
+
+**The new selector — `select_above_threshold` (`selector.rs`, sibling to
+`top_k_long`).** Signature mirrors `top_k_long` so `build_rebalance_signals` can
+fork cleanly:
+
+```rust
+// selector.rs — NEW, sibling to top_k_long (NO change to top_k_long itself)
+#[must_use]
+pub fn select_above_threshold(
+    scores: &BTreeMap<Symbol, Option<Decimal>>,   // per-asset TS trend score (warmup = None)
+    entry_threshold: Decimal,                     // the no-trade band (θ axis)
+    exposure_cap: Decimal,                        // existing cap
+) -> BTreeMap<Symbol, Decimal> {
+    // Long EVERY warmed asset whose OWN score > entry_threshold. NO ranking, NO top-K.
+    // Cardinality is variable (0..N). Weight: see D-TSM.2 sizing lock.
+}
+```
+
+`build_rebalance_signals` (`momentum.rs:184`) forks on `self.selection_mode`:
+`CrossSectionalTopK` → the existing `top_k_long(&self.scores, self.k_long,
+self.exposure_cap)` call **verbatim** (byte-identical); `TimeSeriesLongFlat` →
+`select_above_threshold(&self.scores, self.entry_threshold, self.exposure_cap)`.
+The downstream Buy/Sell emission loop (momentum.rs:191-244) is **unchanged** — it
+already turns "in the target-weights map → Buy if not held; not in the map → Sell
+if held" into signals, which is exactly variable-cardinality long/flat when the
+target-weights map has 0..N entries. **This is the entire selection change.**
+
+> **`k_long` is INERT under `TimeSeriesLongFlat`.** TS-momentum has no K — every
+> above-threshold name is long. `k_long` stays at its config default (and is a
+> hashed body field, held constant across the grid). The `entry_threshold` (the
+> no-trade band) is the new swept axis; it lives as a new `#[serde(default)]
+> entry_threshold: Decimal` config field (default `Decimal::ZERO` → inert /
+> backward-compatible for every existing TOML). It is NOT reused from
+> `drift_rebalance_threshold` (that is the hold-band on an already-held position,
+> a different semantic — keeping them separate avoids overloading a field and
+> keeps the carry/MR cells' `drift` meaning intact).
+
+### D-TSM.2 — Q-TSM-2 RESOLVED: variable-cardinality long/flat = PURE on_bar signal emission, ZERO run_path change
+
+**RATIFIED: the variable-cardinality long/flat basket maps onto the engine with
+NO `run_path` / `PaperEngine` change.** This is the anchor-safe path and it is
+already true by construction — verified by reading `run_path`
+(`montecarlo.rs:163-292`):
+
+1. **The engine already handles 0..N concurrent longs.** `run_path`'s per-bar loop
+   processes whatever Buy/Sell signals the strategy emits. Each `Buy` sizes a
+   position at a **fixed `fraction = dec!(0.10)` of current equity**
+   (`montecarlo.rs:202`), hard-capped by available cash (the Bug-B solvency guard,
+   lines 204-214), under the `portfolio_exposure_cap = 0.50` risk limit
+   (`montecarlo.rs:132`). It does NOT assume a fixed cardinality anywhere. If the
+   strategy emits 7 Buys this rebalance, the book holds 7 names at ~10% each
+   (≈70% gross, under the 0.50 portfolio cap → the cap throttles); if it emits 0
+   Buys (all names below threshold), every held name gets a `Sell` and the book
+   goes to **cash** — which is exactly F-TSM.4 (goes-flat). **The variable
+   cardinality is an emergent property of how many Buy signals `on_bar` emits — a
+   pure strategy-side concern.**
+
+2. **The sizing semantics (LOCKED).** TS-momentum uses **`run_path`'s existing
+   fixed-fraction-per-name sizing, UNCHANGED** — i.e. each long leg targets the
+   same fixed fraction of equity the three cross-sectional families already use,
+   throttled by the same exposure cap. We **deliberately do NOT** rescale to a
+   true 1/N equal-weight in `run_path` (that would be an engine change → anchor
+   risk, and would break apples-to-apples with momentum/MR/carry). The
+   `select_above_threshold` weight value is therefore a **sentinel** consumed only
+   by the Buy/Sell emission membership test (in-map = Buy, absent = Sell); the
+   actual notional is `run_path`'s fixed fraction. To keep the selector honest and
+   the renderer legible, `select_above_threshold` returns `exposure_cap / N_above`
+   as the nominal weight (so the map value is a real per-leg target), but **the
+   engine's fixed-fraction sizing is what books the position** — the map is used
+   for *membership*, not for re-sizing the engine. This is the SAME contract under
+   which `top_k_long`'s `exposure_cap / k` weight is a nominal target that
+   `run_path` then sizes via its own fixed fraction. **Net: byte-identical engine
+   path; the only thing that changed is WHICH symbols are in the Buy set.**
+
+3. **It composes with the solvency guard trivially.** Because we add no new sizing
+   path, the Bug-B cash cap and the portfolio cap apply unchanged. A
+   high-cardinality bar (many names trending up — common in 2023/2024 up-years)
+   simply hits the 0.50 portfolio cap sooner, exactly as a momentum top-K=5 bar
+   would. No new solvency surface.
+
+> **Why this is the right call over a 1/N rescale (the durable-over-quick read).**
+> A true 1/N rescale would arguably be a "cleaner" equal-weight, BUT it requires
+> editing `run_path`'s sizing — which (a) is the engine the 89 anchors run
+> through, so it is anchor risk, and (b) breaks the apples-to-apples comparison
+> with the three families whose verdicts the program already banked. The
+> scientific question ("does going flat in downtrends beat BH net of the SAME
+> fee/sizing regime the families paid?") is answered correctly ONLY if TS-momentum
+> runs the identical sizing. Changing sizing AND method at once would confound the
+> verdict. So the fixed-fraction reuse is not a shortcut — it is the
+> apples-to-apples requirement.
+
+### D-TSM.3-LOCKED — the TS-momentum θ-grid (Q-TSM-3 RESOLVED — LOCKED, this is the hashed anchor input)
+
+**LOCKED** (per the MR/momentum/carry precedent — the grid IS a hashed body field,
+K3; changing it = a different surface = a different SHA). Held constant across every
+cell: `selection_mode = time_series_long_flat`, `score_source = vol_adjusted_return`
+(the score fork uses the NEW raw-trend branch under `TimeSeriesLongFlat` — see
+D-TSM.2-note below; `score_source` itself stays at its default and is NOT a swept
+axis), `direction = momentum` (identity — there is no negation in long/flat),
+`k_long = 10` (inert under long/flat; held at the universe size as a documented
+no-op), `exposure_cap = 0.50`, `size = equal_weight`, `k_short = 0`, `vol_floor`
+inert (the TS trend score has no vol denominator — D-TSM.2-note), the 10-symbol
+universe (pin `3a8b96c4…`), `ensemble_seed = 0xC0FFEE`, `fill_seed = 0xC0FFEE`,
+`rebalance_minutes = 60` (1h — the natural decision cadence; TS-momentum re-checks
+the trend every bar, exits promptly — NOT swept, unlike carry which swept the
+funding cadence), generator = `block-bootstrap-real`, `bootstrap_mode =
+shared-index`, `N = 200`. **Swept axes = lookback L (bars) × entry threshold
+(the no-trade band):**
+
+| g | lookback L (bars) | entry_threshold (cum. log-ret over L) | role / hypothesis | turnover |
+|---|---|---|---|---|
+| 0 | 168 (~1 wk) | 0.00 | **baseline TS θ\*** (1-wk trend, pure long/flat-on-sign) | mid |
+| 1 | 24 (~1 d) | 0.00 | short lookback, zero band — **whipsaw extreme** (most fee-bleed) | high |
+| 2 | 720 (~30 d) | 0.00 | long lookback, zero band — slow, persistent trend | low-mid |
+| 3 | 168 (~1 wk) | 0.02 | **wide no-trade band** (must clear +2% to enter) — low-churn corner, **TS-momentum's best structural shot at the BH bar** | **lowest** |
+| 4 | 720 (~30 d) | 0.02 | long lookback + wide band — slowest, most decisive | low |
+| 5 | 24 (~1 d) | 0.02 | short lookback + wide band — fast trend but band-filtered (does the band rescue the whipsaw cell?) | mid |
+
+**Rationale for the exact cells (ratifying the analyst's lean, with the values
+locked):**
+
+- **The threshold axis spans the analyst's framed range:** from **0.00** (pure
+  long/flat-on-sign — the whipsaw extreme, R-TSM.1's zero-threshold corner) to
+  **0.02** (a deliberately wide +2% band over the lookback — the low-churn corner,
+  TS-momentum's structural shot at clearing the BH bar). The band is a **cumulative
+  log-return over L**, so it is dimensionally the same quantity as the score
+  (D-TSM.2-note), directly comparable across the lookback axis.
+- **The lookback axis spans short / mid / long:** **24 bars (~1 d)**, **168 bars
+  (~1 wk, the baseline)**, **720 bars (~30 d)** — the SAME three horizons the
+  momentum/MR grids used (24/168/720), so the TS surface is horizon-comparable to
+  the retired families. All three fit comfortably in a 2023-FY / 2024-FY series of
+  ~8 760 bars (the longest warm-up, L=720, consumes ~30 d of an ~365 d series — no
+  warm-up shortfall, ~91.5% of bars tradeable).
+- **6×200 mirrors the carry/MR/C3 tractable shape** (the analyst's ratified default
+  "mirror the carry 6×200 unless justified otherwise" — no justification to
+  deviate). The 2×3 threshold×lookback factorial is fully crossed (every threshold
+  at every short/long lookback corner) plus the 1-wk baseline at both bands → 6
+  cells with a clean factorial reading.
+
+> **D-TSM.2-note — the TS trend SCORE (raw cumulative log-return, NO vol
+> normalization).** The per-asset score under `TimeSeriesLongFlat` is the **raw
+> cumulative log-return over L bars**: `ts_trend_score(s,t) = ln(close[t] /
+> close[t−L])` — the asset's own trend, sign-and-magnitude. It is **NOT** vol-
+> normalized (unlike `score_vol_adjusted_return`). Two reasons: (i) the entry
+> threshold is a no-trade band on the trend itself, and a band is only
+> interpretable against a raw return (a vol-adjusted band changes meaning per
+> symbol per bar); (ii) keeping it raw makes the goes-flat behaviour (F-TSM.4) a
+> clean function of the price trend, not entangled with a vol denominator. The
+> developer computes it from the SAME per-symbol close `RingBuffer` the existing
+> path fills (`momentum.rs:326`, capacity `lookback_minutes + 1`) via
+> `history.last()` / `history.get_back(L)` (the exact `RingBuffer` API
+> `score_vol_adjusted_return` uses, `cross_sectional.rs:63-64`) and
+> `features::math::decimal_ln` — a ~5-line pure function in `features` (a sibling
+> to `score_vol_adjusted_return`, e.g. `score_trailing_log_return`), Decimal
+> throughout (R-TSM.4 / ADR-0003). Warm-up: < L+1 bars seen → `None` → excluded
+> from selection (same as a warming-up momentum score). **This score is computed
+> ONLY when `selection_mode == TimeSeriesLongFlat`; the existing
+> `VolAdjustedReturn` / `FundingCarry` score branches are byte-untouched.** The
+> hash (`compute_config_hash`, `momentum.rs:378`) appends `;selection_mode={…:?}`
+> and `;entry_threshold={…}` so a TS cell hashes differently from a momentum cell
+> at the same lookback (K3).
+
+### D-TSM.4 — Q-TSM-4 RESOLVED: `run_path` reuses the CONCRETE `MomentumStrategy` (the additive path, NOT a variant)
+
+**CONFIRMED by inspection: `run_path` reuses the concrete `MomentumStrategy`
+verbatim — NO dyn, NO generic, NO variant.** `run_path` is typed
+`strategy::MomentumStrategy` (`montecarlo.rs:87`) and is called at exactly two
+sites (`monte_carlo.rs:878`, `param_robustness_sweep.rs:1623`), both passing a
+concrete `MomentumStrategy`. Because Q-TSM-1 resolves TS-momentum as a
+**`SelectionMode` field on `CrossSectionalMomentumConfig`** (one concrete strategy
+type, not a sibling struct), `run_path`'s signature, call-sites, and body are
+**byte-untouched**. This is the SAME constraint-satisfying answer MR (`Direction`-
+on-config) and carry (`ScoreSource`-on-config) gave — the ADR-0051 § D6.5.2 trap
+(a sibling struct → forced generic/`dyn` → all anchors at risk) is **avoided by
+construction**, not by careful coding. The `funding_override` path carry added is
+simply left `None` for TS-momentum (no funding) → the accrual block is never
+entered, byte-identical.
+
+### D-TSM.5 — Anchor-neutrality: how the 89 existing anchors stay byte-identical (R-TSM.5, NON-NEGOTIABLE)
+
+Every TS-momentum seam is additive and defaults to today's behaviour, so the **89
+existing anchors** (87 pre-existing + carry #88 2023 `f03cd714…` + carry #89 2024
+`fd96d5a8…`, incl. momentum #86 `0dd989d9…` + MR #87 `a708112e…`) are byte-identical
+**by construction**, no re-lock:
+
+1. **`SelectionMode` defaults `CrossSectionalTopK`** (serde `#[serde(default)]` on
+   both `CrossSectionalMomentumConfig` and `RawConfig`). Every existing TOML and
+   struct literal that omits the field keeps the v1 `top_k_long` selection path
+   verbatim — the SAME backward-compat discipline MR's `direction` and carry's
+   `score_source` use. The `build_rebalance_signals` fork takes the
+   `CrossSectionalTopK` arm → calls `top_k_long(...)` exactly as today.
+2. **`entry_threshold` defaults `Decimal::ZERO`** and is read ONLY in the
+   `TimeSeriesLongFlat` arm → inert for every momentum/MR/carry run.
+3. **The score fork only adds a branch** under `selection_mode ==
+   TimeSeriesLongFlat`; the `VolAdjustedReturn` and `FundingCarry` score
+   computations (momentum.rs:323-350) are byte-untouched, so momentum/MR/carry
+   scores are identical.
+4. **`run_path` / `PaperEngine` / `BlockBootstrapPathGen` are UNCHANGED** (D-TSM.2,
+   D-TSM.4). No engine edit, no bootstrap edit, no new RNG draw → the path-set and
+   the equity arithmetic for every existing anchor are bit-for-bit identical.
+5. **`select_above_threshold` is a NEW function** — it adds zero bytes to the
+   `top_k_long` code path (which is called verbatim under `CrossSectionalTopK`).
+6. **The renderer:** any TS-specific report column (the time-in-market /
+   fraction-flat column, R-TSM.7) is **gated to TS reports** (`show_time_in_market
+   = selection_mode == TimeSeriesLongFlat`), exactly as carry gated its
+   realized-funding column (ADR-0051 § D6.5.4 / D6.6.4) so the momentum/MR/carry
+   body-SHAs are byte-identical.
+
+**Verification gate (M-DEV, mandatory):** after the build, `bash
+scripts/verify_anchors.sh` → **89/89 PASS**. If any of the 89 moves, the additive
+discipline is broken — STOP and flag the orchestrator (do not work around it).
+
+### D-TSM.6 — Determinism & the ADR-0051 § D6.7 amendment
+
+TS-momentum's determinism story is **strictly weaker (simpler) than carry's** and
+sits entirely inside the existing ADR-0051 envelope:
+
+- **NO new RNG.** TS-momentum draws zero new random numbers — it reuses the exact
+  `bars_override` path the three families use. SAME-paths (D1/D6.1) holds trivially
+  (the strategy is fed identical bootstrapped bars; only the selection differs at
+  the config level). **No new determinism surface.**
+- **NO co-resampled series.** Unlike carry (§ D6.6, which co-resampled funding
+  under the shared `idx_seq`), TS-momentum reads only the closes already in the
+  bars. The bootstrap is byte-untouched.
+- **The method axis is varied at the CONFIG level, seed untouched** — the 3rd
+  instance of the MR/carry "vary-at-config-not-seed ⇒ determinism unchanged by
+  construction" pattern. The new wrinkle vs MR/carry is a **2nd selector**
+  (`select_above_threshold`) alongside `top_k_long`; it is a deterministic pure
+  function over the `BTreeMap` score map (alphabetical iteration, no unordered
+  fold), so two-run byte-identity (F-TSM.5) holds by construction. The
+  `select_above_threshold` membership set must be built in `BTreeMap` order (no
+  `HashMap`, no `sort_unstable` without a total tie-break) — the SAME ordered-fold
+  discipline `top_k_long` follows (`selector.rs:44-51`).
+
+This is recorded as **ADR-0051 § D6.7** (a Changelog amendment to the existing
+ADR, mirroring how MR = § D6.5 and carry = § D6.6 were each amendments, NOT new
+ADRs — the decision is the same class: a config-level strategy variant through the
+proven harness). The registry row + the README `updated:` frontmatter are updated
+atomically in the same edit (the 2026-05-29 registry-drift contract). **+1 anchor
+(2023 → 90) or +2 (both regimes → 91); the grid + N + `selection_mode` +
+`entry_threshold` + the lookback/threshold cells are hashed body fields (K3); the
+tester locks the anchor(s) after the verify-anchors PASS.**
+
+### D-TSM.7 — Size estimate (honest)
+
+| Piece | Size | Precedent |
+|---|---|---|
+| `SelectionMode` enum + `entry_threshold` field + serde-default + hash | SMALL (~0.5 d) | carry's `ScoreSource` / MR's `Direction` (config.rs:46) |
+| `score_trailing_log_return` (raw Σ log-ret, Decimal) in `features` | SMALL (~0.25 d) | sibling to `score_vol_adjusted_return` (cross_sectional.rs:49) |
+| `select_above_threshold` selector | SMALL (~0.25 d) | sibling to `top_k_long` (selector.rs:25) |
+| `on_bar` score fork + `build_rebalance_signals` selection fork | SMALL (~0.5 d) | the existing `score_source` fork (momentum.rs:321) |
+| `--selection-mode` flag + `TS_TIER1_GRID` + `GridKind::TsTier1` + render col | SMALL-MED (~0.5–1 d) | carry's `--score-source` + `CARRY_TIER1_GRID` (param_robustness_sweep.rs:460) |
+| 5 day-1 falsifiers (F-TSM.1-5) | MED (~1–1.5 d) | carry's `carry_divergence_e2e.rs` + vol-overlay e2e |
+| Wall-clock re-validate + anchored 6×200 on 2023 + 2024 | run-time | the C3/carry sweep |
+| **TOTAL** | **~3.5–5 d** | **vs carry's ~4.5–7.5 d (no data plumbing, no engine cashflow)** |
+
+**The headline: TS-momentum is ~0.6–0.7× carry's engineering** — no funding
+loader, no as-of join, no bootstrap co-resample, no engine cashflow accrual. The
+new work is one config enum + one ~5-line score fn + one ~15-line selector + the
+`on_bar`/`build_rebalance_signals` fork + the sweep wiring + the 5 falsifiers.
+
+---
+
 ## Verification (the tester gates)
 _tester links to reports here after the build_
 
@@ -472,6 +798,32 @@ The tester closes the loop with the standard report template and these gates:
 
 ## Changelog
 
+- 2026-06-02 (architect, M-T1): resolved Q-TSM-1..4 + wrote the `## Design`
+  (D-TSM.0..7) + `tasks.md` (M-DEV-0..7) + flipped state to `arch-done`. **Q-TSM-1:**
+  TS-momentum is a NEW `SelectionMode { CrossSectionalTopK (default),
+  TimeSeriesLongFlat }` enum on `CrossSectionalMomentumConfig` — NOT a `ScoreSource`
+  (which feeds the ranking `top_k_long`, can never go flat), NOT a `Direction`
+  (only negates the score), NOT a new struct (would force `run_path` generic/`dyn`
+  → the ADR-0051 § D6.5.2 trap). The mode forks `build_rebalance_signals` between
+  the existing `top_k_long` and a NEW `select_above_threshold` selector (long every
+  warmed asset whose OWN raw trailing-log-return > entry_threshold, flat the rest —
+  no ranking, no top-K). **Q-TSM-2:** variable-cardinality long/flat (0..10 names)
+  is PURE `on_bar` signal emission with ZERO `run_path`/`PaperEngine` change — the
+  engine already sizes each Buy at a fixed fraction under the exposure cap and goes
+  to cash when 0 Buys are emitted; sizing semantics LOCKED to `run_path`'s existing
+  fixed-fraction-per-name (NOT a 1/N rescale — that would be an engine edit + break
+  apples-to-apples with the 3 families). **Q-TSM-3:** LOCKED 6-cell grid =
+  lookback {24, 168, 720 bars} × entry_threshold {0.00, 0.02 cum-log-ret} at N=200,
+  rebalance=60m (not swept), score=raw Σ log-ret (NO vol-norm), on BOTH 2023 + 2024.
+  **Q-TSM-4:** `run_path` reuses the CONCRETE `MomentumStrategy` verbatim (confirmed
+  by inspection — typed at montecarlo.rs:87, both call-sites concrete). **Anchor-
+  neutrality (R-TSM.5):** all seams Option/enum-gated defaulting to today's
+  behaviour → the 89 anchors (momentum #86, MR #87, carry #88/#89, all pre-existing)
+  byte-identical by construction; recorded as the ADR-0051 § D6.7 amendment (3rd
+  vary-at-config-not-seed instance; NO new RNG, NO co-resampled series — strictly
+  simpler than carry's § D6.6). Size estimate ~3.5–5 d (≈0.6–0.7× carry — no data
+  plumbing, no engine cashflow). `arch` column filled in trace.toml; state →
+  `arch-done`. HANDOFF → developer.
 - 2026-06-02 (analyst, feature scoping): authored the `time-series-momentum-robustness`
   feature brief — the FIRST time-series (non-cross-sectional) family, greenlit by the
   operator after the [universe-method diagnosis](../dev-notes/universe-method-diagnosis-2026-06-02.md)

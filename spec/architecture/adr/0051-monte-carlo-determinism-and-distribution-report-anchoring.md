@@ -561,6 +561,67 @@ bootstrap (e.g. a basis series, an open-interest series) co-resamples the same w
 construction. An observable that needed its OWN index draw would be a different
 mechanism requiring its own ADR (the D6.2 standing warning, generalized).
 
+### D6.7 — A SECOND SELECTOR varied at the config level: time-series long/flat (time-series-momentum amendment, 2026-06-02)
+
+The `time-series-momentum-robustness` feature adds the FIRST **non-cross-sectional**
+strategy — per-asset absolute momentum, long/flat on each asset's OWN trailing-return
+sign (NO cross-sectional ranking). It is the 3rd instance of the "vary the strategy at
+the **config** level, leave the seed untouched ⇒ determinism unchanged by construction"
+pattern (MR = § D6.5 `Direction`; carry = § D6.6 `ScoreSource`), and is **strictly
+simpler than carry's § D6.6** — it adds NO new data source, NO co-resampled series, and
+NO new RNG draw.
+
+**D6.7.1 — the new axis is SELECTION, not score and not seed.** The three
+cross-sectional families share the rank→top-K SELECTION shape (`top_k_long`);
+TS-momentum deliberately has NO ranking. So the new mechanism is a **2nd selector**,
+`select_above_threshold` (long every warmed asset whose OWN score exceeds the entry
+threshold, flat the rest — variable cardinality 0..N), gated by a new **`SelectionMode {
+CrossSectionalTopK (default), TimeSeriesLongFlat }`** serde-default enum on
+`CrossSectionalMomentumConfig`. `build_rebalance_signals` forks on the mode:
+`CrossSectionalTopK` → `top_k_long` VERBATIM; `TimeSeriesLongFlat` →
+`select_above_threshold`. The score under `TimeSeriesLongFlat` is a **raw cumulative
+log-return over L** (`score_trailing_log_return`, NO vol normalization — the band is a
+no-trade threshold on the trend itself), computed in the same `on_bar` score region as
+the existing branches, which are byte-untouched. A new `#[serde(default)]
+entry_threshold: Decimal` (default `ZERO`) is the swept no-trade band.
+
+**D6.7.2 — the variable-cardinality long/flat is PURE on_bar signal emission; the
+ENGINE is byte-untouched.** `run_path` (`montecarlo.rs:163-292`) already processes 0..N
+Buy/Sell signals and sizes each Buy at a fixed fraction under the exposure cap, going to
+cash when 0 Buys are emitted. So the variable cardinality is an emergent property of how
+many Buy signals `on_bar` emits — NO `run_path` / `PaperEngine` change. The sizing is
+LOCKED to `run_path`'s EXISTING fixed-fraction-per-name (NOT a 1/N rescale — that would
+be an engine edit → anchor risk AND would break apples-to-apples with the 3 families
+whose verdicts are banked); the `select_above_threshold` weight is a membership sentinel.
+
+**D6.7.3 — additive/defaults-off ⇒ the 89 anchors byte-identical by construction.**
+`SelectionMode` defaults `CrossSectionalTopK`; `entry_threshold` defaults `ZERO` and is
+read ONLY under `TimeSeriesLongFlat`; the score fork only ADDS a branch;
+`select_above_threshold` is a NEW function adding zero bytes to the `top_k_long` path;
+`run_path` / `PaperEngine` / `BlockBootstrapPathGen` are UNCHANGED. → momentum #86
+(`0dd989d9…`), MR #87 (`a708112e…`), carry #88 (`f03cd714…`), carry #89 (`fd96d5a8…`),
+and all pre-existing anchors hold byte-identical, no re-lock. A separate
+`TimeSeriesMomentumStrategy` struct is REJECTED (the exact D6.5.2 trap — forces
+`run_path` generic/`dyn`).
+
+**D6.7.4 — +1/+2 TS θ-surface anchors under the existing `mc-robustness-2026-06`.**
++1 (2023 → 90, scenario `v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy`) or
++2 (both regimes → 91, the durable choice). The LOCKED 6-cell grid (lookback {24, 168,
+720 bars} × entry_threshold {0.00, 0.02}, § D-TSM.3-LOCKED), per-cell N, `selection_mode`,
+and `entry_threshold` are hashed body fields (K3). One additive time-in-market /
+fraction-flat column is gated to TS reports (momentum/MR/carry body-SHAs byte-identical,
+as carry's funding column at D6.6.4 and MR's trade-count column at D6.5.4).
+`verify_anchors.sh`'s `mc-robustness-2026-06` handler also searches the TS feature's
+`reports/` dir (the same additive change C3, MR, and carry each made).
+
+**D6.7.5 — D1/D2/D3/D5/D6.1 inherited verbatim.** SAME path-set across cells (the method
+varies at config level, seed untouched); no new RNG (the de-risk — TS reads only the
+closes already in the bootstrapped bars); `select_above_threshold` is a deterministic
+pure function over the `BTreeMap` score map (alphabetical iteration, no unordered fold)
+so two-run byte-identity holds by construction; FM/body split + fixed precision + Decimal
+money unchanged. Amendment, NOT a new ADR — the seed idiom, FM/body split, and
+one-report anchor unit are all reused; only a 2nd selector is added at the config level.
+
 ## Consequences
 
 ### Positive
@@ -766,3 +827,33 @@ mechanism requiring its own ADR (the D6.2 standing warning, generalized).
   new ADR-0052 (the seed idiom / FM-body split / one-report anchor unit all reused;
   only the resampling governs a 2nd series). Registry README row summary +
   frontmatter `updated:` amended atomically (architect.md § ADR registry contract).
+- 2026-06-02 (architect, time-series-momentum-robustness M-T1): **D6.7 amendment
+  added — a SECOND SELECTOR varied at the config level (time-series long/flat), the
+  FIRST non-cross-sectional family.** The 3rd "vary-at-config-not-seed ⇒ determinism
+  unchanged by construction" instance (MR=D6.5 `Direction`; carry=D6.6 `ScoreSource`)
+  and STRICTLY simpler than carry: NO new data source, NO co-resampled series, NO new
+  RNG draw. **D6.7.1** the new axis is SELECTION (not score, not seed): the 3 families
+  share rank→top-K (`top_k_long`); TS-momentum has NO ranking, so it adds a 2nd
+  selector `select_above_threshold` (long every warmed asset whose OWN raw-trend score
+  > entry_threshold, flat the rest; variable cardinality 0..N) gated by a new
+  `SelectionMode { CrossSectionalTopK (default), TimeSeriesLongFlat }` serde-default
+  enum + a `#[serde(default)] entry_threshold: Decimal` (default ZERO); the
+  `TimeSeriesLongFlat` score is a RAW cumulative log-return over L
+  (`score_trailing_log_return`, NO vol-norm); existing score branches byte-untouched.
+  **D6.7.2** the variable-cardinality long/flat is PURE `on_bar` signal emission —
+  `run_path` already sizes 0..N Buys at a fixed fraction under the exposure cap and
+  goes to cash on 0 Buys, so the ENGINE is byte-untouched; sizing LOCKED to the
+  existing fixed-fraction-per-name (NOT a 1/N rescale — engine edit + breaks
+  apples-to-apples). **D6.7.3** additive/defaults-off → the 89 anchors (momentum #86
+  `0dd989d9…`, MR #87 `a708112e…`, carry #88 `f03cd714…`, carry #89 `fd96d5a8…`, all
+  pre-existing) byte-identical by construction; a separate `TimeSeriesMomentumStrategy`
+  struct REJECTED (the D6.5.2 trap). **D6.7.4** +1/+2 TS θ-surface anchors under the
+  existing `mc-robustness-2026-06` (90 for 2023 `v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy`,
+  91 for 2024 the durable choice); LOCKED 6-cell grid (lookback {24,168,720 bars} ×
+  entry_threshold {0.00,0.02}, § D-TSM.3-LOCKED) + N + `selection_mode` +
+  `entry_threshold` are hashed body fields (K3); one additive time-in-market column
+  gated to TS reports (momentum/MR/carry body-SHAs byte-identical). **D6.7.5**
+  D1/D2/D3/D5/D6.1 inherited verbatim; no new RNG (the de-risk); `select_above_threshold`
+  is a deterministic `BTreeMap`-ordered pure fn → two-run byte-identity by construction.
+  Amendment, NOT a new ADR. Registry README row summary + frontmatter `updated:` amended
+  atomically (architect.md § ADR registry contract).
