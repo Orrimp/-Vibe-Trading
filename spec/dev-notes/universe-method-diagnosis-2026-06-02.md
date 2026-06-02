@@ -3,7 +3,7 @@ slug: universe-method-diagnosis-2026-06-02
 status: draft
 owner: analyst
 updated: 2026-06-02
-tags: [universe, cross-sectional, factor-structure, correlation, dispersion, rank-ic, method-vs-universe, robustness, go-no-go, post-program-diagnosis]
+tags: [universe, cross-sectional, factor-structure, correlation, dispersion, rank-ic, method-vs-universe, robustness, go-no-go, post-program-diagnosis, broader-universe-spike, time-series-momentum]
 related:
   - spec/carry-strategy/reports/test-2026-06-02-carry-strategy.md
   - spec/carry-strategy/presentations/carry-strategy-2026-06-02.md
@@ -386,8 +386,221 @@ horizon and routes to the broader-universe rebuild).
 
 ---
 
+## Spike results (broader universe)
+
+> **Spike mandate (operator-approved, ~0.5 day, RESEARCH only — no strategy
+> build).** The § 4.4 broader-universe confirmation step. Question: does a
+> broader, more-dispersed mid-cap universe (a) LOWER the common-beta share
+> (avg R²), and (b) REVIVE cross-sectional rank IC to a persistent ±0.03+?
+> Every number below traces to freshly-fetched banked OHLCV under a NEW,
+> independent revision pin — NO fabrication (per the fabricated-"Sharpe 1.40"
+> precedent). The original 10-symbol `data/binance` pin `3a8b96c4…` was NOT
+> touched.
+
+### S.0 TL;DR — the verdict
+
+**The cross-sectional ranking METHOD is the limiter, NOT the universe.** Moving
+to a broader, lower-cap, deliberately-more-dispersed universe **(a) DID lower the
+common-beta share materially** (avg R² 0.715 → 0.598 on 2024, a ~12-point drop;
+avg pairwise corr 0.683 → 0.582) — confirming the large-cap universe *was* a
+genuine beta headwind as § 3.2 suspected — **but (b) did NOT revive
+cross-sectional rank IC.** Rank IC stayed ≈ 0 at every horizon in both years and
+at both universe sizes, with the SAME faint-negative short-horizon tilt and no
+stable positive (momentum-direction) sign. Lowering common-beta by ~12 points
+bought **zero** rank-persistence. This is the clean disambiguation the spike was
+designed to deliver:
+
+> **The idiosyncratic cross-section got bigger, and the ranking signal still
+> could not forecast it.** The dead channel is the ranking method, not the basket
+> it ranks. → **Proceed to the TIME-SERIES-MOMENTUM build as the method fix; do
+> NOT re-attempt a cross-sectional family on the broader universe.**
+
+### S.1 What was fetched (reproducibility)
+
+`fetch_binance_klines` (the same tool + schema that produced the 10-symbol set)
+into a **separate output directory `data/binance-broaduni/`** so the existing
+`data/binance/REVISION.toml` pin (`3a8b96c4…`) stays byte-immutable. New
+self-contained manifest `data/binance-broaduni/REVISION.toml`, aggregate SHA
+**`518b4d4091ebe67d5e7828c5ac67e3e35f937e6cb9c775c235368ba2a5ba07e2`** (covers
+both years; the 2024-only intermediate pin was `2ed2bf677e…`).
+
+- **Selection method:** Binance `exchangeInfo` → filtered to `TRADING` USDT spot
+  pairs; excluded the existing 10 + all stablecoins; required full-2024 hourly
+  history (probed via a 1-bar klines call at `startTime=2024-01-01`, dropped
+  JUP/PYTH which list late-Jan/Feb-2024); ranked the survivors by current 24h
+  quote volume and took the **top 35 mid-caps** (the next liquidity tier below the
+  large-cap 10). This is deliberately a lower-cap, more-dispersed tier — exactly
+  the set most likely to lower common-beta if the universe were the limiter.
+- **2024-FY (35 symbols, all fetched cleanly — 420/420 month-parquets, 0 gaps):**
+  `NEARUSDT, ZECUSDT, WLDUSDT, XLMUSDT, SUIUSDT, FETUSDT, TRXUSDT, INJUSDT,
+  ICPUSDT, PEPEUSDT, JTOUSDT, LTCUSDT, SEIUSDT, HBARUSDT, ORDIUSDT, AAVEUSDT,
+  FILUSDT, CHZUSDT, DASHUSDT, UNIUSDT, APTUSDT, BCHUSDT, ARBUSDT, OPUSDT,
+  ALGOUSDT, TIAUSDT, APEUSDT, LDOUSDT, DYDXUSDT, CFXUSDT, SANDUSDT, GALAUSDT,
+  ETCUSDT, ATOMUSDT, CRVUSDT`.
+- **2023-FY (27 symbols — the subset of the 35 with full-2023 history; 324/324
+  month-parquets, 0 gaps):** the 35 minus the 8 that listed mid-2023
+  (`WLDUSDT, SUIUSDT, PEPEUSDT, JTOUSDT, SEIUSDT, ORDIUSDT, ARBUSDT, TIAUSDT`).
+  2023 was added because it was cheap and gives a true out-of-year replication on
+  the SAME 27 names. A full-35 intersection for 2023 is impossible (JTO lists
+  2023-12-07 → the 35-name 2023 window collapses to ~December), which is why the
+  2023 read is on the 27-name like-for-like subset.
+- **No fetch failed**; every requested symbol-month returned a full bar count
+  (744/720/696 per month as expected for 1h). Aligned-bar intersection: **8 783
+  returns (2024)**, **8 758 returns (2023)** — same depth as the 10-symbol run.
+
+> **Reproduce** (read-only, ~10 s each; probe extended to take `--root` +
+> `--symbols`, 10-symbol default behavior preserved & regression-checked —
+> baseline 2024 reproduces avg corr 0.6832 / 8 783 returns byte-identically):
+> ```
+> cargo run -p data --example universe_diag -- 2024 --root data/binance-broaduni \
+>   --symbols NEARUSDT,ZECUSDT,WLDUSDT,XLMUSDT,SUIUSDT,FETUSDT,TRXUSDT,INJUSDT,ICPUSDT,PEPEUSDT,JTOUSDT,LTCUSDT,SEIUSDT,HBARUSDT,ORDIUSDT,AAVEUSDT,FILUSDT,CHZUSDT,DASHUSDT,UNIUSDT,APTUSDT,BCHUSDT,ARBUSDT,OPUSDT,ALGOUSDT,TIAUSDT,APEUSDT,LDOUSDT,DYDXUSDT,CFXUSDT,SANDUSDT,GALAUSDT,ETCUSDT,ATOMUSDT,CRVUSDT
+> cargo run -p data --example universe_diag -- 2023 --root data/binance-broaduni \
+>   --symbols NEARUSDT,ZECUSDT,XLMUSDT,FETUSDT,TRXUSDT,INJUSDT,ICPUSDT,LTCUSDT,HBARUSDT,AAVEUSDT,FILUSDT,CHZUSDT,DASHUSDT,UNIUSDT,APTUSDT,BCHUSDT,OPUSDT,ALGOUSDT,APEUSDT,LDOUSDT,DYDXUSDT,CFXUSDT,SANDUSDT,GALAUSDT,ETCUSDT,ATOMUSDT,CRVUSDT
+> ```
+
+### S.2 Axis (a) — common-beta share: LOWERED (universe WAS a beta headwind)
+
+Avg R² vs equal-weight index (common-beta share) and avg pairwise correlation,
+broader universe vs the 10-symbol baseline:
+
+| Universe | Year | Avg pairwise corr | Avg R² vs EW idx | Min pair | Dispersion %/bar |
+|---|---|---|---|---|---|
+| **10 large-cap** (baseline) | 2023 | 0.631 | **0.667** | 0.475 (SOL/XRP) | 0.352% |
+| **10 large-cap** (baseline) | 2024 | 0.683 | **0.715** | 0.535 (SOL/XRP) | 0.421% |
+| **27 mid-cap** | 2023 | 0.557 | **0.576** | 0.352 (TRX/CFX) | 0.571% |
+| **27 mid-cap** | 2024 | 0.592 | **0.612** | 0.306 (FET/TRX) | 0.627% |
+| **35 mid-cap** | 2024 | 0.582 | **0.598** | 0.266 (TRX/JTO) | 0.698% |
+
+**Read:** every broader-universe cut LOWERS avg R² by ~10–14 points (0.715 →
+0.598 on the headline 2024 35-name cut) and LOWERS avg pairwise corr by ~0.09–0.10.
+Idiosyncratic share rose from ~28% to ~40% (and the per-name spread widened: TRX
+is nearly market-neutral at R²=0.22 / β=0.30; ZEC, HBAR, XLM, JTO all sit at
+R² 0.44–0.48). Cross-sectional dispersion ~doubled (0.42% → 0.70%/bar). **The
+broader universe is materially less beta-dominated and has more raw dispersion to
+rank — the § 3.2 "high common-beta is a contributing headwind" suspicion is
+CONFIRMED.** So axis (a) = YES.
+
+### S.3 Axis (b) — cross-sectional rank IC: did NOT revive (still ≈ 0)
+
+Mean Spearman rank IC (trailing-L rank vs forward-L return, non-overlapping
+windows), broader universe vs the 10-symbol baseline:
+
+| Lookback L | 10-sym 2023 | 10-sym 2024 | 27-sym 2023 | 27-sym 2024 | 35-sym 2024 |
+|---|---|---|---|---|---|
+| 3 (3h) | −0.049 | −0.036 | −0.054 | −0.043 | −0.041 |
+| 9 (9h) | −0.007 | −0.006 | −0.024 | −0.021 | −0.021 |
+| 24 (1d) | −0.049 | +0.015 | −0.054 | −0.062 | −0.051 |
+| 60 (2.5d) | −0.034 | −0.030 | −0.040 | −0.039 | −0.034 |
+| 168 (1wk) | +0.023 | −0.070 | −0.057 | −0.039 | −0.021 |
+| 720 (30d) | −0.013 | −0.026 | **+0.088** | −0.026 | +0.005 |
+
+**Read:** on the broader universe rank IC is STILL pinned at the noise floor.
+Across the three broader-universe columns, **14 of 18 horizon-cells are negative**
+(the reversal direction), and NONE of the negative cells is large enough to be
+tradeable net of fees. There is **no persistent positive (momentum-direction)
+IC** — the signature a cross-sectional momentum strategy would need. If anything
+the faint short-horizon negative tilt (L=3: −0.041…−0.054) is now slightly MORE
+consistent across horizons than on the large-caps, i.e. the broader universe is,
+if anything, marginally more reversal-flavoured and even less momentum-rankable.
+Lowering common-beta by ~12 points moved rank IC by essentially nothing. So
+axis (b) = **NO**.
+
+**Honest flag on the one positive outlier:** the 27-sym 2023 L=720 cell is
+**+0.088** — the single positive momentum-direction reading in the table. It sits
+on **n=11 non-overlapping 30-day windows** (one calendar year ÷ 30d), i.e. it is
+a near-meaningless sample, and it does NOT replicate (27-sym 2024 L=720 = −0.026;
+35-sym 2024 L=720 = +0.005; 10-sym both years negative). It is exactly the
+"sign-flips-between-years, magnitude-at-the-noise-floor" pattern the original M4
+documented — not evidence of a long-horizon cross-sectional momentum effect. I
+am calling it out rather than burying it (fabricated-Sharpe-precedent discipline).
+
+### S.4 Verdict — METHOD-limiter (not universe-limiter)
+
+Mapping to the spike's pre-registered decision:
+
+| Axis | Result | |
+|---|---|---|
+| (a) Broader universe LOWERS common-beta (avg R²)? | **YES** (0.715 → 0.598) | universe *was* a real headwind |
+| (b) Broader universe REVIVES rank IC to persistent ±0.03+? | **NO** (still ≈ 0, no stable positive sign, both years) | ranking channel still empty |
+
+**Both halves must hold to implicate the universe as the binding limiter. Half (b)
+fails decisively. → VERDICT: the cross-sectional RANKING METHOD is the limiter
+regardless of universe.** The universe was a *contributing* headwind (a is real),
+but removing ~12 points of common-beta did not make the ranking forecast forward
+relative performance — the idiosyncratic cross-section grew and remained
+*unpredictable from the rank*. This is the § 4.1 "NO" branch, now confirmed on
+real broader-universe data rather than inferred from statics. **Confidence: HIGH**
+— the result holds across two universe sizes (27, 35) and two independent years,
+and the one dissenting cell (S.3) is an 11-sample non-replicating outlier.
+
+### S.5 Firmed-up recommendation for the TS-momentum build
+
+1. **PROCEED to the `time-series-momentum-robustness` build as the method fix
+   (§ 5 stub), now with the universe-axis pre-condition CLEARED.** The spike has
+   exonerated "just broaden the universe" as a cross-sectional fix: a more-dispersed
+   universe does not revive ranking. The next legitimate experiment is the one that
+   *removes the ranking channel entirely* — per-asset absolute-momentum / trend
+   (long/flat on each asset's OWN trailing-return sign), exactly as § 4.1 scoped.
+
+2. **Target universe for the TS-momentum build: the ORIGINAL 10-symbol large-cap
+   set under `data/binance` (pin `3a8b96c4…`).** Rationale (durable-over-quick):
+   - The disambiguation is now done; the TS build's *job* is the clean method
+     test (does per-asset direction carry an edge where ranking did not), and the
+     10-symbol set is where the entire robustness program (momentum/MR/carry
+     surfaces, the frozen decision rule, the BH control, the anchors) already
+     lives. Running TS-momentum on the SAME 10 keeps it directly comparable to the
+     three retired cross-sectional families and reuses the existing banked pin +
+     funding data with **zero new data-plumbing risk**.
+   - The broader universe's value was *diagnostic* (it answered the universe-vs-
+     method question), not as a trading set: the higher idiosyncratic share is
+     irrelevant to a time-series rule, which trades each asset's own trend and does
+     not benefit from cross-name dispersion. So there is no TS-specific reason to
+     pay the broader-universe plumbing cost (funding not banked for the 35; new pin
+     to wire into the harness/anchors).
+   - **If — and only if — the TS-momentum result is itself FRAGILE on the 10**, the
+     next move per the § 4.1 logic table is the broader-universe + horizon axis;
+     and at that point this spike's `data/binance-broaduni` set (pin `518b4d40…`)
+     is already banked and ready to feed a broader TS retest without a re-fetch.
+     i.e. the broader data is now a pre-positioned fallback, not wasted.
+
+3. **Do NOT spin up a 4th cross-sectional family on the broader universe.** M4 +
+   this spike jointly predict it would also fail; that would be the exact
+   "build-then-discover-the-channel-is-dead" rework the durable-first rule exists
+   to prevent.
+
+### S.6 Spike artifacts & cleanup
+
+- **New banked data:** `data/binance-broaduni/` (744 month-parquets: 35 symbols ×
+  2024 + 27 symbols × 2023) + its self-contained `data/binance-broaduni/REVISION.toml`
+  (aggregate SHA `518b4d40…`). This is a NEW data tree; it does not touch or
+  supersede `data/binance`. Keep it banked (it is the pre-positioned fallback for a
+  broader TS retest per S.5.2); it can be deleted later if the TS build clears on
+  the 10 and the broader axis is never needed — operator's call.
+- **Probe:** `crates/data/examples/universe_diag.rs` extended additively with
+  optional `--root` + `--symbols` flags (10-symbol large-cap default preserved &
+  regression-verified; clippy-clean under `--all-targets -D warnings`). Still a
+  disposable read-only diagnostic per its existing cleanup contract.
+- **Untouched:** `data/binance/REVISION.toml` (`3a8b96c4…`), `data/yahoo/`,
+  `data/binance-funding/`, all `spec/*/reports/` anchors, `crates/ui/`.
+
+---
+
 ## Changelog
 
+- 2026-06-02 (analyst, broader-universe spike): ran the § 4.4 confirmation spike.
+  Fetched 35 liquid mid-cap USDT pairs (2024-FY) + the 27 with full-2023 history
+  (2023-FY) via `fetch_binance_klines` into a SEPARATE `data/binance-broaduni/`
+  tree (new pin `518b4d40…`; existing `3a8b96c4…` untouched). Extended
+  `universe_diag.rs` additively with `--root`/`--symbols` (10-symbol default
+  preserved, regression-checked). Result: broader universe LOWERS avg R²
+  0.715→0.598 / avg corr 0.683→0.582 (axis a = YES, universe was a real beta
+  headwind) but rank IC stays ≈ 0 with no stable positive sign across two universe
+  sizes and two years (axis b = NO). **VERDICT: cross-sectional ranking METHOD is
+  the limiter, not the universe** (HIGH confidence). Firmed recommendation: proceed
+  to the `time-series-momentum-robustness` build on the ORIGINAL 10-symbol set
+  (`data/binance`); the broader tree is a pre-positioned fallback if TS-momentum is
+  itself fragile on the 10. The one positive outlier (27-sym 2023 L=720 = +0.088,
+  n=11 windows) flagged as a non-replicating noise-floor sample, not buried.
 - 2026-06-02 (analyst, universe-method-diagnosis): post-program diagnosis after
   the three-family cross-sectional negative (momentum/MR/carry all dominated by
   BH). Computed from banked OHLCV via the harness's own `ReplayFeed` reader

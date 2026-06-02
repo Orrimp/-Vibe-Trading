@@ -11,6 +11,12 @@
 !/data/binance-funding/
 /data/binance-funding/*
 !/data/binance-funding/REVISION.toml
+# Broader-universe spike (2026-06-02, universe-method-diagnosis § S): 35 mid-cap
+# 2024 + 27 mid-cap 2023 hourly klines. Bulk parquets stay gitignored (mirrors
+# data/binance); only the revision-pin manifest is tracked for reproducibility.
+!/data/binance-broaduni/
+/data/binance-broaduni/*
+!/data/binance-broaduni/REVISION.toml
 /logs/
 /snapshot/
 /data-snapshot/

@@ -13,8 +13,21 @@
 //!      A high average R^2 means the universe is ~1 factor (almost all common
 //!      market beta), which would be a structural ceiling on cross-sectional alpha.
 //!
-//! Run:  cargo run -p data --example universe_diag -- 2023
+//! Run (default 10-symbol large-cap baseline under data/binance):
+//!       cargo run -p data --example universe_diag -- 2023
 //!       cargo run -p data --example universe_diag -- 2024
+//!
+//! Run (broader-universe spike, 2026-06-02): override the root + symbol list to
+//! re-read M1–M4 on an arbitrary banked symbol set (e.g. the 35 mid-caps fetched
+//! into data/binance-broaduni for the universe-vs-method disambiguation):
+//!       cargo run -p data --example universe_diag -- 2024 \
+//!         --root data/binance-broaduni \
+//!         --symbols NEARUSDT,ZECUSDT,WLDUSDT,XLMUSDT,SUIUSDT,...
+//!
+//! Both knobs are optional and additive: with no `--root` the root is
+//! `data/binance`; with no `--symbols` the 10-symbol large-cap `BASELINE_10`
+//! const below is used. The positional first arg is always the calendar year,
+//! so the original `-- 2023` / `-- 2024` invocations are unchanged.
 //!
 //! NOT committed as a bin; not anchored; pure read-only over banked data.
 
@@ -29,10 +42,53 @@ use data::ReplayFeed;
 use rust_decimal::prelude::ToPrimitive;
 use trading_core::{Bar, Symbol, Timeframe};
 
-const UNIVERSE: [&str; 10] = [
+/// The original 10-symbol large-cap baseline (used when `--symbols` is omitted).
+const BASELINE_10: [&str; 10] = [
     "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "DOTUSDT", "ETHUSDT", "LINKUSDT",
     "SOLUSDT", "XRPUSDT",
 ];
+
+/// Parse `<YEAR> [--root <dir>] [--symbols A,B,C]` from argv.
+///
+/// Returns `(year, root, symbols)`. Symbols default to `BASELINE_10`; root
+/// defaults to `data/binance`. Order of the two flags does not matter.
+fn parse_args() -> (i64, PathBuf, Vec<String>) {
+    let argv: Vec<String> = std::env::args().collect();
+    let mut year: i64 = 2023;
+    let mut root = PathBuf::from("data/binance");
+    let mut symbols: Vec<String> = BASELINE_10.iter().map(|s| s.to_string()).collect();
+
+    let mut i = 1;
+    let mut year_seen = false;
+    while i < argv.len() {
+        match argv[i].as_str() {
+            "--root" => {
+                root = PathBuf::from(argv.get(i + 1).expect("--root needs a value"));
+                i += 2;
+            }
+            "--symbols" => {
+                symbols = argv
+                    .get(i + 1)
+                    .expect("--symbols needs a comma-separated value")
+                    .split(',')
+                    .map(|s| s.trim().to_uppercase())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                i += 2;
+            }
+            other => {
+                // First bare positional is the year (preserves `-- 2024`).
+                if !year_seen {
+                    year = other.parse().expect("year must be an integer");
+                    year_seen = true;
+                }
+                i += 1;
+            }
+        }
+    }
+    assert!(symbols.len() >= 2, "need at least 2 symbols to correlate");
+    (year, root, symbols)
+}
 
 fn year_bounds_ms(year: i64) -> (i64, i64) {
     // [Y-01-01T00:00:00Z, (Y+1)-01-01T00:00:00Z) via time crate parity with realdata.rs.
@@ -53,15 +109,13 @@ fn year_bounds_ms(year: i64) -> (i64, i64) {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let year: i64 = args.get(1).map(|s| s.parse().unwrap()).unwrap_or(2023);
+    let (year, root, universe) = parse_args();
     let (start_ms, end_ms) = year_bounds_ms(year);
 
-    let root = PathBuf::from("data/binance");
     let feed = ReplayFeed::new(&root, true);
-    let symbol_paths: Vec<(Symbol, PathBuf)> = UNIVERSE
+    let symbol_paths: Vec<(Symbol, PathBuf)> = universe
         .iter()
-        .map(|s| (Symbol::new(*s), root.clone()))
+        .map(|s| (Symbol::new(s.as_str()), root.clone()))
         .collect();
 
     let mut bars: Vec<Bar> = feed
@@ -84,25 +138,25 @@ fn main() {
             .insert(ts, close);
     }
 
-    // Intersection of timestamps present for ALL 10 symbols.
+    // Intersection of timestamps present for ALL symbols in the universe.
     let mut common_ts: Vec<i64> = by_sym
-        .get(UNIVERSE[0])
+        .get(&universe[0])
         .expect("first symbol present")
         .keys()
         .copied()
         .collect();
-    for s in &UNIVERSE[1..] {
-        let m = by_sym.get(*s).expect("symbol present");
+    for s in &universe[1..] {
+        let m = by_sym.get(s).expect("symbol present");
         common_ts.retain(|t| m.contains_key(t));
     }
     common_ts.sort_unstable();
 
-    // Build aligned log-return matrix: rows = time (T-1), cols = 10 symbols.
+    // Build aligned log-return matrix: rows = time (T-1), cols = symbols.
     let n_t = common_ts.len();
-    let n_sym = UNIVERSE.len();
+    let n_sym = universe.len();
     let mut rets: Vec<Vec<f64>> = vec![Vec::with_capacity(n_t.saturating_sub(1)); n_sym];
-    for (j, s) in UNIVERSE.iter().enumerate() {
-        let m = by_sym.get(*s).unwrap();
+    for (j, s) in universe.iter().enumerate() {
+        let m = by_sym.get(s).unwrap();
         for w in common_ts.windows(2) {
             let p0 = m[&w[0]];
             let p1 = m[&w[1]];
@@ -141,10 +195,10 @@ fn main() {
             let c = corr(i, j);
             pair_corrs.push(c);
             if c < min_pair.0 {
-                min_pair = (c, UNIVERSE[i], UNIVERSE[j]);
+                min_pair = (c, universe[i].as_str(), universe[j].as_str());
             }
             if c > max_pair.0 {
-                max_pair = (c, UNIVERSE[i], UNIVERSE[j]);
+                max_pair = (c, universe[i].as_str(), universe[j].as_str());
             }
         }
     }
@@ -183,7 +237,7 @@ fn main() {
             / n_ret as f64;
         let r = cov / (stds[j] * idx_var.sqrt());
         let beta = cov / idx_var;
-        r2s.push((r * r, UNIVERSE[j], beta));
+        r2s.push((r * r, universe[j].as_str(), beta));
     }
     let avg_r2 = r2s.iter().map(|x| x.0).sum::<f64>() / r2s.len() as f64;
 
@@ -216,14 +270,16 @@ fn main() {
     };
 
     // ── Report ──
+    let n_pairs = n_sym * (n_sym - 1) / 2;
     println!("=== UNIVERSE STRUCTURE DIAGNOSTIC — {year}-FY (1h log-returns) ===");
-    println!("symbols: {}", UNIVERSE.join(", "));
+    println!("root: {}", root.display());
+    println!("symbols ({n_sym}): {}", universe.join(", "));
     println!(
-        "aligned bars (intersection across 10 names): {} → {} returns",
+        "aligned bars (intersection across {n_sym} names): {} → {} returns",
         n_t, n_ret
     );
     println!();
-    println!("--- M1: pairwise return correlation (45 unique pairs) ---");
+    println!("--- M1: pairwise return correlation ({n_pairs} unique pairs) ---");
     println!("  AVG pairwise corr : {avg_corr:.4}");
     println!(
         "  min pair          : {:.4}  ({} / {})",
@@ -234,7 +290,7 @@ fn main() {
         max_pair.0, max_pair.1, max_pair.2
     );
     println!();
-    println!("--- M2: cross-sectional return dispersion (std across 10 names per bar) ---");
+    println!("--- M2: cross-sectional return dispersion (std across {n_sym} names per bar) ---");
     println!("  time-mean dispersion : {:.5}  ({:.3}%/bar)", disp_mean, disp_mean * 100.0);
     println!("  p10 / p50 / p90      : {:.5} / {:.5} / {:.5}", pct(0.10), pct(0.50), pct(0.90));
     println!("  ratio: avg single-name return std / avg dispersion = {:.3}", {
