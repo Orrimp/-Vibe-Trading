@@ -695,3 +695,46 @@ sha256   = "0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5"
 scenario = "v1-mr-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
 sha256   = "a708112e1e8ddd4e48360b1e9f83d927c65d3d0f05be984e362c76f20be7bb4a"
+
+# C3 carry (funding) θ-surface anchor #88 (2026-06-02).
+# Cross-sectional funding carry (framing (a) long-only directional carry-tilt):
+# 6-cell × N=200 LOCKED carry Tier-1 grid (§ D-CARRY.2-LOCKED).
+# Methodology: SAME-paths across cells (ADR-0051 § D6.1 + § D6.6 real-mechanism amendment —
+# funding co-resampled by the SAME shared idx_seq as returns, zero new RNG draws).
+# Verdict: FAMILY-UNIFORM-FRAGILE — all 6 cells FRAGILE.
+# Carry family does NOT beat buy-and-hold net of fees on 2023 real Binance universe.
+# g=0 (baseline carry θ*): p5=-0.100, p50=+0.025, p95=+0.051, direction=funding-carry (long-only)
+# g=4 (best p50: narrow K=1): p50=+0.039 — best cell but still FRAGILE (p5=-0.192, p95_maxdd=87.4%)
+# BuyHold control: p50 Sharpe=+1.74, P(loss)=4.5%, p95 MaxDD=51.2% (same SAME-paths as C3 momentum/MR).
+# Grid: 6 cells g∈{0..5}, L={9,3,21,9,9,3} settlements, rebalance={480,480,480,1440,480,480}m,
+#        K={3,3,3,5,1,5}, N=200, seed=0xC0FFEE, block-bootstrap-real, year=2023.
+# Data: OHLCV revision 3a8b96c4…, funding revision bf1ede44…
+# Wall-clock: 30.7s on Apple-Silicon M-series (canonical box).
+# Namespace: mc-robustness-2026-06 (carry θ-surface additive entry, no prior anchor disturbed).
+# Anchored by tester at M-TEST (VERDICT → PASS).
+# Verify with: scripts/verify_anchors.sh (expects 88/88 PASS with this SHA)
+
+[[anchors]]
+scenario = "v1-carry-theta-surface-2023-block-bootstrap-real-fy"
+version  = "mc-robustness-2026-06"
+sha256   = "f03cd7145699f854768e1721ee675d7aa87a10269694f41561c404f2e1b9f2c4"
+
+# C3 carry (funding) θ-surface anchor #89 — 2024 OOS regime (2026-06-02).
+# Same LOCKED 6-cell carry Tier-1 grid as #88 but on 2024-FY real Binance data.
+# Methodology: identical to #88 (ADR-0051 § D6.6 — same shared-index co-resample).
+# Verdict: FAMILY-UNIFORM-FRAGILE — all 6 cells FRAGILE.
+# 2024 is a harder regime: BuyHold control p50=+1.10, P(loss)=16.5%, p95 MaxDD=64.8%
+# (tail-negative vs 2023's bull regime). Carry still cannot clear the bar.
+# g=0 (baseline carry θ*): p5=-0.019, p50=+0.005, p95=+0.038, direction=funding-carry (long-only)
+# g=4 (best p50): p50=+0.043, p5=+0.016 — single non-negative-p5 cell but still FRAGILE
+#        (P(Sharpe>1)=0.000, p95_maxdd=63.6% > ~50% ROBUST threshold).
+# Data: OHLCV revision 3a8b96c4…, funding revision bf1ede44…
+# Wall-clock: 28.4s on Apple-Silicon M-series (canonical box).
+# Namespace: mc-robustness-2026-06 (additive — 88 anchors hold unchanged).
+# Anchored by tester at M-TEST per ADR-0051 § D6.6.4 (durable choice — both regimes locked).
+# Verify with: scripts/verify_anchors.sh (expects 89/89 PASS with this SHA)
+
+[[anchors]]
+scenario = "v1-carry-theta-surface-2024-block-bootstrap-real-fy"
+version  = "mc-robustness-2026-06"
+sha256   = "fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199"

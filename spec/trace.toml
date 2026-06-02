@@ -92,10 +92,17 @@ arch        = [
     "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md#d6",  # D6.6 — shared index co-resamples a 2ND series (funding); ~15-line gather, 0 new RNG draws, Option-gated -> 87 anchors byte-identical
     "spec/carry-strategy/feature.md#design",  # D-CARRY.0..8: funding loader + as-of fill + shared-idx resample + parallel funding_override + ScoreSource::FundingCarry + cashflow accrual; crux TRACTABLE
   ]
-crates      = []   # developer fills — proposed: crates/backtest (funding_data + run_path cashflow + sweep), crates/strategy (ScoreSource::FundingCarry)
-tests       = []   # developer fills — incl R-CARRY.2 sign-assertion + R-CARRY.10b cashflow-non-no-op day-1 falsifiers
-anchors     = []   # tester locks — proposed: carry theta-surface #88 (2023) [+ #89 2024 per tester]
-state       = "arch-done"   # architect M-T1 2026-05-31: crux (Q-CARRY-3 funding-through-bootstrap) TRACTABLE (~15-line gather at bootstrap.rs:265, 0 new RNG draws, Option-gated, 87 anchors byte-identical by construction); long-only v0.1.0; sign + cashflow-non-no-op day-1 falsifiers; both-regime (2023+2024) gate. ADR-0051 D6.6. ~4.5-7.5d dev build GATED on operator go.
+crates      = ["crates/backtest", "crates/strategy", "crates/data"]  # funding_data + run_path cashflow + param_robustness_sweep carry path; ScoreSource::FundingCarry + carry_score; GeneratedPath.funding_by_symbol + bootstrap co-resample
+tests       = [
+    "crates/backtest/tests/carry_divergence_e2e.rs::r_carry_10a_carry_vs_price_diverge",
+    "crates/backtest/tests/carry_divergence_e2e.rs::r_carry_10a_red_on_revert_vol_adjusted_return_no_divergence",
+    "crates/backtest/tests/carry_divergence_e2e.rs::r_carry_10b_integration_cashflow_non_no_op",
+    "crates/backtest/tests/carry_divergence_e2e.rs::r_carry_2_sign_assertion_integration",
+    "crates/backtest/tests/carry_divergence_e2e.rs::r_carry_6_no_look_ahead_integration",
+    "crates/backtest/tests/carry_divergence_e2e.rs::carry_two_run_byte_identity",
+  ]
+anchors     = ["v1-carry-theta-surface-2023-block-bootstrap-real-fy", "v1-carry-theta-surface-2024-block-bootstrap-real-fy"]  # #88 (2023 FY) + #89 (2024 FY OOS) — tester locked 2026-06-02 at M-TEST VERDICT PASS
+state       = "tester-done"   # tester M-TEST 2026-06-02 VERDICT → PASS. Science gate: 89/89 anchors (87 pre-existing + #88 2023 + #89 2024). 4 falsifiers RED-on-revert (R-CARRY.2 sign, R-CARRY.6 no-look-ahead, R-CARRY.10a divergence, R-CARRY.10b cashflow non-no-op). Two-run byte-identity PASS. FAMILY-UNIFORM-FRAGILE on both regimes (2023 vs +1.74 BH; 2024 vs +1.10 BH). carry completes the program: all 3 cross-sectional families (momentum, MR, carry) FRAGILE on this universe.
 
 [[req]]
 id          = "REQ-V15B-MULTIVENUE-001"

@@ -133,10 +133,12 @@ while IFS= read -r line; do
             # C2 reports live under spec/strategy-robustness-harness/reports/
             # C3 θ-surface reports live under spec/momentum-parameter-robustness-sweep/reports/
             # MR θ-surface reports live under spec/cross-sectional-mean-reversion-strategy/reports/
+            # Carry θ-surface reports live under spec/carry-strategy/reports/
             # All use robustness[-sweep]-<stamp>-<scenario>.md naming.
             mc_reports_dir="$root/spec/strategy-robustness-harness/reports"
             mc_sweep_dir="$root/spec/momentum-parameter-robustness-sweep/reports"
             mc_mr_dir="$root/spec/cross-sectional-mean-reversion-strategy/reports"
+            mc_carry_dir="$root/spec/carry-strategy/reports"
             latest="$(find "$mc_reports_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                 2>/dev/null | sort | tail -1 || true)"
             if [[ -z "$latest" ]]; then
@@ -145,6 +147,10 @@ while IFS= read -r line; do
             fi
             if [[ -z "$latest" ]]; then
                 latest="$(find "$mc_mr_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
+                    2>/dev/null | sort | tail -1 || true)"
+            fi
+            if [[ -z "$latest" ]]; then
+                latest="$(find "$mc_carry_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                     2>/dev/null | sort | tail -1 || true)"
             fi
         else

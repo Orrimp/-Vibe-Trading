@@ -1,7 +1,7 @@
 ---
 slug: carry-strategy
-status: arch-done
-owner: architect → developer
+status: tester-done
+owner: tester
 updated: 2026-06-02
 ---
 
@@ -407,18 +407,30 @@ anchoring.** **Remove the disposable frame-diagnostic flags from `param_robustne
 
 ## M-TEST — verify on BOTH robustness axes vs the +1.74 / +1.10 buy-and-hold bar (tester)
 
-- [ ] Verify the science gate: 87/87 anchors byte-identical (the funding path is
+- [x] Verify the science gate: 87/87 anchors byte-identical (the funding path is
       additive/off for them); the 4 falsifiers RED-on-revert; two-run identity.
-- [ ] Read the carry-C3 family verdict on BOTH 2023 (vs +1.74 BH) AND 2024 (vs +1.10
+      **Evidence:** `bash scripts/verify_anchors.sh` → 87/87 PASS (pre-lock baseline);
+      R-CARRY.2 RED: `r_carry2_sign_assertion_longs_negative_funding_name` + `r_carry2_carry_score_negative_funding_outscores_positive` FAIL on sign flip;
+      R-CARRY.6 RED: `no_look_ahead_falsifier` FAIL on `<=` → `<` change;
+      R-CARRY.10a RED: `FundingCarry` collapsed to price → R-CARRY.10b/2/6 integration tests FAIL;
+      R-CARRY.10b RED: cashflow zeroed → `r_carry10b_funding_cashflow_non_no_op` FAIL;
+      Two-run identity: `carry_two_run_byte_identity` PASS; `fp_c3_3_two_run_byte_identity` PASS.
+- [x] Read the carry-C3 family verdict on BOTH 2023 (vs +1.74 BH) AND 2024 (vs +1.10
       BH, tail-negative) under the frozen § 0 decision rule. Apply the FP-C3.5
       anti-cherry-pick family-summary; any non-FRAGILE cell carries `→ C5 DEFLATION
       REQUIRED` (and IF non-FRAGILE, the C5 PBO/Deflated-Sharpe pass is genuinely owed).
-- [ ] **Lock the +1 carry θ-surface anchor (87→88)** in `spec/anchors.toml`
-      (scenario `v1-carry-theta-surface-2023-block-bootstrap-real-fy`); decide whether
-      the 2024 surface warrants +1 (#89) per ADR § D6.6.4 (locking it is the durable
-      choice). Extend `verify_anchors.sh`'s `mc-robustness-2026-06` handler to search
-      `spec/carry-strategy/reports/`.
-- [ ] Write the test report per the template; set the verdict (PASS / REGRESSION).
+      **Evidence:** 2023: all 6 cells FRAGILE (p5 Sharpe < 0 for all); 2024: all 6 cells
+      FRAGILE (p5 Sharpe < 0 for 5/6; g=4 p5=+0.016 but P(Sharpe>1)=0.000 + p95_maxdd=63.6%).
+      FAMILY-UNIFORM-FRAGILE on both regimes. No non-FRAGILE cell → no C5 deflation required.
+- [x] **Lock the +1 carry θ-surface anchor (87→88)** in `spec/anchors.toml`
+      (scenario `v1-carry-theta-surface-2023-block-bootstrap-real-fy`); **also locked #89**
+      (2024 surface — durable choice per ADR § D6.6.4). Extend `verify_anchors.sh`'s
+      `mc-robustness-2026-06` handler to search `spec/carry-strategy/reports/`.
+      **Evidence:** `bash scripts/verify_anchors.sh` → **89/89 PASS**.
+      SHA #88: `f03cd7145699f854768e1721ee675d7aa87a10269694f41561c404f2e1b9f2c4`
+      SHA #89: `fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199`
+- [x] Write the test report per the template; set the verdict (PASS / REGRESSION).
+      **Evidence:** `spec/carry-strategy/reports/test-2026-06-02-carry-strategy.md` (VERDICT → PASS).
 
 ---
 
