@@ -441,7 +441,8 @@ pub fn build_funding_at_return(
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::float_arithmetic,
-    clippy::pedantic
+    clippy::pedantic,
+    clippy::identity_op
 )]
 mod tests {
     use super::*;

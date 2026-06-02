@@ -1150,6 +1150,50 @@ Gates confirmed:
 - `cargo clippy -p data -p backtest --features "backtest/realdata backtest/candle" -- -D warnings` → 0 errors
 - `cargo fmt -p data -p backtest -- --check` → clean
 
+### Stage 4a — Sweep-bin wiring + falsifier tests (M-DEV-6 + M-DEV-7) — 2026-06-02
+
+**M-DEV-6 (complete):** `--score-source carry` flag + `CARRY_TIER1_GRID` + carry wiring in `param_robustness_sweep`:
+
+**CLI changes:**
+- `SweepScoreSource { VolAdjustedReturn, Carry }` enum + `DEFAULT_FUNDING_REVISION_SHA` constant.
+- `--score-source {vol-adjusted-return,carry}` (default `vol-adjusted-return`), `--funding-root` (default `data/binance-funding/`), `--funding-revision-sha` (default locked SHA) added to Args.
+
+**Grid:**
+- `ThetaCell` extended with `rebalance_minutes_override: u32` field (0 = use base config; backward-compat for all existing cells).
+- `CARRY_TIER1_GRID` const with 6 cells (L=9/3/21/9/9/3 settlements; rebalance=480m/480m/480m/1440m/480m/480m), `CarryTier1` `GridKind` variant.
+- `carry_grid_def_string` for carry-specific body format (includes rebalance + l_settlements fields — hashed separately from momentum/MR body).
+
+**Carry path wiring:**
+- `load_carry_path_gen` (realdata-gated): loads + REVISION-verifies funding via `FundingDataSource`, builds `funding_at_return`, returns a `BlockBootstrapPathGen` with funding attached via `with_funding`.
+- `run_one_path_with_config` updated: accepts `is_carry: bool`; extracts `funding_override` BTreeMap from `generated_path.funding_by_symbol` when carry.
+- `cell_config` updated: uses `cell.effective_rebalance(base.rebalance_minutes)` + `score_source.to_strategy_score_source()`.
+- `render_surface_report` updated: `funding_harvested` column gated to carry (`show_funding`); carry-specific slug, family label, grid header, held_constant, and family verdict text. **The column value is REAL** — `run_path` sums the per-bar funding cashflow into `PathRunResult.realized_funding` (orchestrator post-handoff fix, 2026-06-02), summed across the N paths per cell; ZERO for momentum/MR (anchor-neutral).
+- Effective out_dir auto-set to `spec/carry-strategy/reports/` when score_source=carry.
+- Scenario name: `v1-carry-theta-surface-{year}-block-bootstrap-real-fy`.
+
+Gates confirmed (M-DEV-6):
+- `bash scripts/verify_anchors.sh` → **87/87 PASS** (momentum #86 + MR #87 byte-identical; carry path is purely additive).
+- Carry smoke N=3 renders NON-ZERO realized funding per cell (g0 +47387, g1 +25274, g2 +25032, g3 −31828, g4 +54945, g5 −26303), TWO-RUN IDENTITY PASS (byte-identical summaries at the same seed). The N=3 smoke is throwaway — the anchored N=200 surface is M-DEV-8.
+- `cargo clippy -p backtest --features "candle realdata" --bin param_robustness_sweep -- -D warnings` → 0 errors.
+- `cargo test -p backtest --features "candle realdata" --test param_sweep_e2e` → 8 passed, 0 failed (FP-C3.x identity tests).
+
+**M-DEV-7 (complete):** Day-1 BOTH-axes gate + divergence falsifier (`crates/backtest/tests/carry_divergence_e2e.rs`):
+
+6 tests, all green (`test result: ok. 6 passed; 0 failed`):
+
+1. `r_carry_10a_carry_vs_price_diverge` — R-CARRY.10a headline: carry equity diverges from price equity by ≥ 1 bp on the engineered universe (BBUSDT negative-funding ≠ AAUSDT high-momentum). **The genuinely-different-return-source gate.**
+2. `r_carry_10a_red_on_revert_vol_adjusted_return_no_divergence` — RED-on-revert proof: two identical-signal strategies (both VolAdjustedReturn, no funding) produce delta=0, proving R-CARRY.10a would FAIL if both strategies used price signal.
+3. `r_carry_10b_integration_cashflow_non_no_op` — R-CARRY.10b at integration level: non-zero funding vs zero-rate funding → equity diverges by ≥ ε; longs EARN on negative-funding names. (Unit-level also in `montecarlo.rs`.)
+4. `r_carry_2_sign_assertion_integration` — R-CARRY.2 sign at integration level: correct-sign vs flipped-sign funding → different equity, proving the sign convention is active.
+5. `r_carry_6_no_look_ahead_integration` — R-CARRY.6 no-look-ahead at integration level: future-shifted funding → different equity from causal funding, proving the as-of join is causal.
+6. `carry_two_run_byte_identity` — ADR-0051 § D6.6.5/D6.4: two sweeps at the same ensemble_seed produce identical formatted summaries. Confirmed at binary level: N=3 smoke body_sha identical both runs.
+
+Files changed:
+- `crates/backtest/src/bin/param_robustness_sweep.rs` — M-DEV-6 (all carry wiring)
+- `crates/backtest/tests/carry_divergence_e2e.rs` — M-DEV-7 (new file, 6 tests)
+
+Wall-clock extrapolation for M-DEV-8: N=3 smoke ran in 1.7s (6 cells × 3 paths = 18 paths). Extrapolation to N=200: `1.7 × (200/3) ≈ 113s ≈ ~2 minutes`. **Well within the ≲30 min gate.** No STOP flag.
+
 ## Verification
 _tester links to reports here_
 

@@ -67,6 +67,13 @@ use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use tracing::info;
 
+// ── Carry score source (M-DEV-6) ──────────────────────────────────────────────
+
+/// Expected aggregate SHA for `data/binance-funding/REVISION.toml`.
+/// Locked at design time per § D-CARRY.2-LOCKED (bf1ede44…).
+const DEFAULT_FUNDING_REVISION_SHA: &str =
+    "bf1ede44e57d797b57e5a4f2743f58027e4eba12d91e1ffaf883dcdd49365668";
+
 // ── Verdict classifier ─────────────────────────────────────────────────────────
 
 /// Per-θ verdict from the 5-signal weakest-link composite.
@@ -177,6 +184,9 @@ pub struct ThetaCell {
     /// Cell index `g` — the LOCKED render + seed-composition order.
     pub g: usize,
     /// `lookback_minutes` (signal horizon).
+    ///
+    /// For carry cells: encodes L (funding settlements), NOT price-bar minutes.
+    /// The carry strategy uses `lookback_minutes` as the settlement-ring size L.
     pub lookback_minutes: u32,
     /// `k_long` (selection breadth / entry cutoff).
     pub k_long: u32,
@@ -184,6 +194,11 @@ pub struct ThetaCell {
     pub drift_threshold_num: i64,
     /// Denominator for the drift threshold (fixed 100 → drift = num/100).
     pub drift_threshold_den: u32,
+    /// Rebalance cadence override in minutes (0 = use base config default).
+    ///
+    /// Momentum/MR cells: always 0 (base config sets rebalance, anchor-neutral).
+    /// Carry cells: 480 (8h) or 1440 (24h, g=3 lowest-churn corner).
+    pub rebalance_minutes_override: u32,
     /// Human-readable role / hypothesis.
     pub role: &'static str,
 }
@@ -193,6 +208,19 @@ impl ThetaCell {
     #[must_use]
     pub fn drift(&self) -> Decimal {
         Decimal::new(self.drift_threshold_num, self.drift_threshold_den)
+    }
+
+    /// Effective rebalance cadence in minutes.
+    ///
+    /// If `rebalance_minutes_override > 0`, returns the override.
+    /// Otherwise returns `base_rebalance`.
+    #[must_use]
+    pub fn effective_rebalance(self, base_rebalance: u32) -> u32 {
+        if self.rebalance_minutes_override > 0 {
+            self.rebalance_minutes_override
+        } else {
+            base_rebalance
+        }
     }
 }
 
@@ -222,6 +250,7 @@ pub const TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "baseline θ* (C2-shipped config; g=0 MUST reproduce C2 anchor numbers)",
     },
     ThetaCell {
@@ -230,6 +259,7 @@ pub const TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "short lookback — 1d horizon; high churn",
     },
     ThetaCell {
@@ -238,6 +268,7 @@ pub const TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "1w lookback horizon",
     },
     ThetaCell {
@@ -246,6 +277,7 @@ pub const TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 50,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "1mo lookback + wide hold-band — best a-priori robustness shot (low-churn corner)",
     },
     ThetaCell {
@@ -254,6 +286,7 @@ pub const TIER1_GRID: &[ThetaCell] = &[
         k_long: 1,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "narrow selection — top-1 only",
     },
     ThetaCell {
@@ -262,6 +295,7 @@ pub const TIER1_GRID: &[ThetaCell] = &[
         k_long: 5,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "wide selection — top-5 (more legs to churn)",
     },
 ];
@@ -272,6 +306,7 @@ pub const TIER1_GRID: &[ThetaCell] = &[
 ///
 /// `Tier1` is the LOCKED momentum anchored grid (§ D-C3.2-LOCKED).
 /// `MrTier1` is the LOCKED MR θ-grid (§ D-MR.2-LOCKED).
+/// `CarryTier1` is the LOCKED carry θ-grid (§ D-CARRY.2-LOCKED).
 /// `TwoCell` is a 2-cell mini-grid used only by the FP-C3.2 grid-sensitivity
 /// test (different grid → different body-SHA). NOT for production runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -280,6 +315,8 @@ pub enum GridKind {
     Tier1,
     /// The LOCKED 6-cell MR Tier-1 θ-grid (§ D-MR.2-LOCKED).
     MrTier1,
+    /// The LOCKED 6-cell carry Tier-1 θ-grid (§ D-CARRY.2-LOCKED).
+    CarryTier1,
     /// 2-cell mini-grid for FP-C3.2 grid-sensitivity gate only.
     TwoCell,
 }
@@ -290,6 +327,7 @@ pub fn grid_for_kind(kind: GridKind) -> &'static [ThetaCell] {
     match kind {
         GridKind::Tier1 => TIER1_GRID,
         GridKind::MrTier1 => MR_TIER1_GRID,
+        GridKind::CarryTier1 => CARRY_TIER1_GRID,
         GridKind::TwoCell => TWO_CELL_GRID,
     }
 }
@@ -303,6 +341,7 @@ pub const TWO_CELL_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "mini-grid cell 0 (FP-C3.2 only)",
     },
     ThetaCell {
@@ -311,6 +350,7 @@ pub const TWO_CELL_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 50,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "mini-grid cell 1 (FP-C3.2 only)",
     },
 ];
@@ -343,6 +383,7 @@ pub const MR_TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "baseline MR θ* (apples-to-apples vs momentum g=0; must DIFFER from C3 g=0 momentum)",
     },
     ThetaCell {
@@ -351,6 +392,7 @@ pub const MR_TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "short lookback + narrow band — deliberately HIGH churn (R-MR.3 high-turnover cell)",
     },
     ThetaCell {
@@ -359,6 +401,7 @@ pub const MR_TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "1w lookback horizon / mid turnover",
     },
     ThetaCell {
@@ -367,6 +410,7 @@ pub const MR_TIER1_GRID: &[ThetaCell] = &[
         k_long: 5,
         drift_threshold_num: 50,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "1mo lookback + wide band — deliberately LOW churn (R-MR.3 low-turnover cell)",
     },
     ThetaCell {
@@ -375,6 +419,7 @@ pub const MR_TIER1_GRID: &[ThetaCell] = &[
         k_long: 3,
         drift_threshold_num: 30,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "long lookback + medium band — low-churn diagonal (narrower selection)",
     },
     ThetaCell {
@@ -383,7 +428,89 @@ pub const MR_TIER1_GRID: &[ThetaCell] = &[
         k_long: 5,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
         role: "short lookback + wide selection — maximal-churn extreme (confirms fee trap if MR shares it)",
+    },
+];
+
+/// Carry Tier-1 θ-grid — LOCKED § D-CARRY.2-LOCKED.
+///
+/// This exact 6-cell list is the hashed body field for the carry θ-surface anchor
+/// (ADR-0051 § D6.3, § D6.6). Changing it = a different surface = a different SHA.
+///
+/// **`lookback_minutes` here encodes L (funding settlements), NOT price-bar minutes.**
+/// The carry score counts settlements (each 8h), so the strategy maps `lookback_minutes`
+/// to the number of settlements in the trailing mean (D-CARRY.2-LOCKED: L as-is).
+///
+/// **Held constant across every cell:** `score_source=funding_carry`,
+/// `direction=momentum` (identity; sign lives in `carry_score`),
+/// `exposure_cap=0.50`, `size=equal_weight`, `k_short=0`, 10-symbol universe,
+/// `ensemble_seed=0xC0FFEE`, `fill_seed=0xC0FFEE`, generator=block-bootstrap-real,
+/// `bootstrap_mode=shared-index`, revisions `3a8b96c4…` (OHLCV) + `bf1ede44…` (funding),
+/// N=200, `vol_floor` inert (funding score has no vol denominator — Q-CARRY-4).
+///
+/// | g | L (settlements) | rebalance | K | role |
+/// |---|-----------------|-----------|---|------|
+/// | 0 | 9 (~3 d)        | 480m (8h) | 3 | baseline carry θ* (natural funding cadence) |
+/// | 1 | 3 (~1 d)        | 480m      | 3 | short lookback — noisier signal |
+/// | 2 | 21 (~7 d)       | 480m      | 3 | long lookback — most persistent signal |
+/// | 3 | 9 (~3 d)        | 1440m (24h)| 5 | deliberately-slow rebalance + wide K (lowest churn) |
+/// | 4 | 9 (~3 d)        | 480m      | 1 | narrow selection — top-1 carry name |
+/// | 5 | 3 (~1 d)        | 480m      | 5 | shortest lookback + wide K — highest-churn carry extreme |
+pub const CARRY_TIER1_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 9, // L=9 settlements (~3 days)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h — natural funding settlement cadence
+        role: "baseline carry θ* (L=9 settlements, 8h rebalance, K=3 — natural funding cadence)",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 3, // L=3 settlements (~1 day)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        role: "short funding lookback (L=3, ~1d) — noisier signal; low-mid turnover",
+    },
+    ThetaCell {
+        g: 2,
+        lookback_minutes: 21, // L=21 settlements (~7 days)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        role: "long funding lookback (L=21, ~1 week) — most persistent signal; low turnover",
+    },
+    ThetaCell {
+        g: 3,
+        lookback_minutes: 9, // L=9 settlements (~3 days)
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 1440, // 24h — deliberately-slow (lowest-churn corner)
+        role: "deliberately-slow 24h rebalance + wide K=5 (lowest-churn corner — carry's best structural shot)",
+    },
+    ThetaCell {
+        g: 4,
+        lookback_minutes: 9, // L=9 settlements (~3 days)
+        k_long: 1,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        role: "narrow selection — top-1 carry name; low turnover",
+    },
+    ThetaCell {
+        g: 5,
+        lookback_minutes: 3, // L=3 settlements (~1 day)
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        role: "shortest lookback (L=3) + wide K=5 — highest-churn carry extreme (still far below price families)",
     },
 ];
 
@@ -435,6 +562,46 @@ impl SweepDirection {
         match self {
             Self::Momentum => "momentum",
             Self::Reversion => "mr",
+        }
+    }
+}
+
+/// Which score source to use (M-DEV-6, D-CARRY.1).
+///
+/// `VolAdjustedReturn` (default) = the v1 price-based signal; reproduces momentum #86 / MR #87
+/// byte-identical. `Carry` = funding-based `ScoreSource::FundingCarry`; uses the locked carry
+/// θ-grid + funding revision; requires `--generator block-bootstrap-real`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Default)]
+pub enum SweepScoreSource {
+    /// Vol-adjusted price return — v1 default; reproduces momentum/MR anchors.
+    #[default]
+    #[value(name = "vol-adjusted-return")]
+    VolAdjustedReturn,
+    /// Funding-carry signal (§ D-CARRY.1 / R-CARRY.1-2); requires real funding data.
+    #[value(name = "carry")]
+    Carry,
+}
+
+impl SweepScoreSource {
+    /// Convert to the strategy `ScoreSource` type.
+    fn to_strategy_score_source(self) -> strategy::ScoreSource {
+        match self {
+            Self::VolAdjustedReturn => strategy::ScoreSource::VolAdjustedReturn,
+            Self::Carry => strategy::ScoreSource::FundingCarry,
+        }
+    }
+
+    /// Whether this source needs the funding data loaded.
+    fn needs_funding(self) -> bool {
+        self == Self::Carry
+    }
+
+    #[allow(dead_code)]
+    /// Short label for scenario name.
+    fn label(self) -> &'static str {
+        match self {
+            Self::VolAdjustedReturn => "carry-fy", // unused for non-carry
+            Self::Carry => "carry-fy",
         }
     }
 }
@@ -503,6 +670,22 @@ struct Args {
     /// `reversion` = bottom-K losers (MR family); use with --grid mr-tier1.
     #[arg(long, value_enum, default_value = "momentum")]
     direction: SweepDirection,
+
+    /// Score source (M-DEV-6, D-CARRY.1).
+    /// `vol-adjusted-return` (default) reproduces momentum/MR anchors byte-identical.
+    /// `carry` uses the funding-carry signal; requires block-bootstrap-real + funding data.
+    #[arg(long, value_enum, default_value = "vol-adjusted-return")]
+    score_source: SweepScoreSource,
+
+    /// Root directory for funding parquets (carry only).
+    /// Default: `data/binance-funding/` (the locked path from carry-funding-data-backfill).
+    #[arg(long, default_value = "data/binance-funding/")]
+    funding_root: PathBuf,
+
+    /// Expected aggregate SHA-256 for data/binance-funding/REVISION.toml (carry only).
+    /// Default: the locked funding revision SHA (bf1ede44…).
+    #[arg(long, default_value = DEFAULT_FUNDING_REVISION_SHA)]
+    funding_revision_sha: String,
 }
 
 // ── Seed helpers ──────────────────────────────────────────────────────────────
@@ -576,6 +759,16 @@ struct IndexedPathMetrics {
     j: usize,
     metrics: backtest::stats::PathMetrics,
     trades: usize,
+    /// Total realized funding harvested on this path (Decimal; 0 for momentum/MR).
+    /// Summed from `run_path`'s cashflow accrual — a proxy via final_equity delta
+    /// relative to a zero-funding baseline. We track this via a direct sum in
+    /// `run_one_path_with_config` by re-computing from the result (not yet threaded
+    /// through `run_path`'s return type). For now: `final_equity − initial_equity`
+    /// delta attributable to funding is not separately tracked in `PathRunResult`.
+    /// We carry a placeholder `Decimal::ZERO` here; the realized-funding COLUMN is
+    /// populated at the cell level via a separate carry of `total_funding_harvested`.
+    #[allow(dead_code)]
+    funding_harvested: Decimal,
 }
 
 // ── Per-cell result ────────────────────────────────────────────────────────────
@@ -588,31 +781,40 @@ struct CellResult {
     /// Total trade count across all N paths (for FP-C3.1 divergence gate).
     #[allow(dead_code)]
     total_trades: u64,
+    /// Total realized funding harvested across all N paths (Decimal).
+    /// Non-zero only for carry runs (score_source=Carry). Populated from the
+    /// per-path equity delta attributable to funding (D-CARRY.2-LOCKED carry column).
+    total_funding_harvested: Decimal,
 }
 
 // ── Config injection helper ────────────────────────────────────────────────────
 
 /// Build a per-cell `CrossSectionalMomentumConfig` from the base config,
-/// overriding the 3 swept axes and the strategy family direction.
+/// overriding the swept axes, the strategy family direction, and score source.
 ///
 /// This is the ~30-line crux that FP-C3.1 falsifies. The base config provides
 /// the frozen fields (`rebalance_minutes=60`, `exposure_cap=0.50`,
 /// `vol_floor=1e-6`, `size=equal_weight`, `k_short=0`, universe).
 ///
-/// For `SweepDirection::Momentum` (default) this is byte-identical to the
-/// pre-MR behavior — the 86 momentum anchors hold by construction (D-MR.6).
+/// For `SweepDirection::Momentum` + `SweepScoreSource::VolAdjustedReturn` (defaults)
+/// this is byte-identical to the pre-MR behavior — the 86 momentum anchors hold
+/// by construction (D-MR.6). Carry cells also override `rebalance_minutes` via
+/// `ThetaCell::effective_rebalance`.
 pub fn cell_config(
     base: &strategy::CrossSectionalMomentumConfig,
-    lookback_minutes: u32,
-    k_long: u32,
-    drift: Decimal,
+    cell: &ThetaCell,
     direction: SweepDirection,
+    score_source: SweepScoreSource,
 ) -> strategy::CrossSectionalMomentumConfig {
     let mut cfg = base.clone();
-    cfg.lookback_minutes = lookback_minutes;
-    cfg.k_long = k_long;
-    cfg.drift_rebalance_threshold = drift;
+    cfg.lookback_minutes = cell.lookback_minutes;
+    cfg.k_long = cell.k_long;
+    cfg.drift_rebalance_threshold = cell.drift();
     cfg.direction = direction.to_strategy_direction();
+    cfg.score_source = score_source.to_strategy_score_source();
+    // Apply rebalance override if set (carry cells); momentum/MR cells have override=0
+    // → effective_rebalance returns the base config's rebalance_minutes unchanged.
+    cfg.rebalance_minutes = cell.effective_rebalance(base.rebalance_minutes);
     cfg
 }
 
@@ -727,6 +929,30 @@ pub fn grid_def_string(grid: &[ThetaCell]) -> String {
     s
 }
 
+/// Build the canonical grid-definition string for carry reports.
+///
+/// Includes `l_settlements` (the `lookback_minutes` field reinterpreted as L)
+/// AND `rebalance_minutes` (swept in carry, unlike momentum/MR). This is a
+/// hashed body field for the carry anchor (K3 / § D6.3 + D6.6).
+///
+/// Format mirrors `grid_def_string` but adds `rebalance` and renames
+/// `lookback` to `l_settlements` to make the unit explicit.
+#[must_use]
+pub fn carry_grid_def_string(grid: &[ThetaCell]) -> String {
+    let mut s = String::from("grid_definition:\n");
+    for cell in grid {
+        s.push_str(&format!(
+            "  g={} l_settlements={} rebalance_minutes={} k_long={} drift={}\n",
+            cell.g,
+            cell.lookback_minutes,
+            cell.rebalance_minutes_override,
+            cell.k_long,
+            cell.drift()
+        ));
+    }
+    s
+}
+
 // ── Simple Gregorian calendar (mirrors monte_carlo.rs) ────────────────────────
 
 #[allow(clippy::cast_possible_truncation)]
@@ -785,13 +1011,23 @@ fn render_surface_report(
     // Momentum → standard momentum report (slug/heading unchanged for anchor compatibility).
     // Reversion → MR report slug + trades column added (R-MR.3 turnover legibility).
     direction: SweepDirection,
+    // Score source (M-DEV-6):
+    // VolAdjustedReturn → standard report (anchor-neutral, no extra column).
+    // Carry → carry report slug + realized-funding-harvested column added.
+    score_source: SweepScoreSource,
+    // Carry only: funding revision SHA (included in body for K3).
+    funding_revision_sha: Option<&str>,
 ) -> String {
     // ── Front-matter (NOT hashed) ─────────────────────────────────────────────
     // slug: momentum reports keep "momentum-parameter-robustness-sweep" for anchor compat.
     // MR reports use "cross-sectional-mean-reversion-strategy".
-    let slug = match direction {
-        SweepDirection::Momentum => "momentum-parameter-robustness-sweep",
-        SweepDirection::Reversion => "cross-sectional-mean-reversion-strategy",
+    // Carry reports use "carry-strategy".
+    let slug = match score_source {
+        SweepScoreSource::Carry => "carry-strategy",
+        SweepScoreSource::VolAdjustedReturn => match direction {
+            SweepDirection::Momentum => "momentum-parameter-robustness-sweep",
+            SweepDirection::Reversion => "cross-sectional-mean-reversion-strategy",
+        },
     };
     let frontmatter = format!(
         "---\n\
@@ -809,9 +1045,12 @@ fn render_surface_report(
     // ── Body (deterministic, hashed by the anchor) ────────────────────────────
     let mut body = String::new();
 
-    let family_label = match direction {
-        SweepDirection::Momentum => "Momentum",
-        SweepDirection::Reversion => "Mean-Reversion (MR)",
+    let family_label = match score_source {
+        SweepScoreSource::Carry => "Carry (Funding)",
+        SweepScoreSource::VolAdjustedReturn => match direction {
+            SweepDirection::Momentum => "Momentum",
+            SweepDirection::Reversion => "Mean-Reversion (MR)",
+        },
     };
     body.push_str(&format!(
         "# {family_label} θ-Surface — Parameter-Robustness Sweep — {scenario}\n\n"
@@ -857,29 +1096,53 @@ fn render_surface_report(
     body.push_str(&format!(
         "| source_revision_sha      | {source_revision_sha}                                    |\n"
     ));
-    // held_constant: add direction for MR runs (body field — part of hash).
-    let held_constant_str = match direction {
-        SweepDirection::Momentum => {
-            "| held_constant            | rebalance_minutes=60 exposure_cap=0.50 vol_floor=0.000001 k_short=0 size=equal_weight |\n"
+    // held_constant: add direction for MR runs; score_source + funding for carry runs.
+    // The body field is part of the hash — the carry string differs from momentum/MR.
+    let held_constant_str: String = match score_source {
+        SweepScoreSource::Carry => {
+            format!(
+                "| held_constant            | score_source=funding_carry direction=momentum exposure_cap=0.50 vol_floor=inert k_short=0 size=equal_weight |\n\
+                 | funding_revision_sha     | {} |\n",
+                funding_revision_sha.unwrap_or("unknown")
+            )
         }
-        SweepDirection::Reversion => {
-            "| held_constant            | rebalance_minutes=60 exposure_cap=0.50 vol_floor=0.000001 k_short=0 size=equal_weight direction=reversion |\n"
-        }
+        SweepScoreSource::VolAdjustedReturn => match direction {
+            SweepDirection::Momentum => {
+                "| held_constant            | rebalance_minutes=60 exposure_cap=0.50 vol_floor=0.000001 k_short=0 size=equal_weight |\n".to_string()
+            }
+            SweepDirection::Reversion => {
+                "| held_constant            | rebalance_minutes=60 exposure_cap=0.50 vol_floor=0.000001 k_short=0 size=equal_weight direction=reversion |\n".to_string()
+            }
+        },
     };
-    body.push_str(held_constant_str);
+    body.push_str(&held_constant_str);
     body.push('\n');
 
     // Frozen grid definition (hashed body field — K3 / § D6.3).
-    let grid_header = match direction {
-        SweepDirection::Momentum => {
-            "## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n"
+    let grid_header: &str = match score_source {
+        SweepScoreSource::Carry => {
+            "## Carry θ-grid definition (6-cell, LOCKED § D-CARRY.2-LOCKED — changing this changes the SHA)\n\n"
         }
-        SweepDirection::Reversion => {
-            "## MR θ-grid definition (6-cell, 2026-05-31 LOCKED § D-MR.2-LOCKED — changing this changes the SHA)\n\n"
-        }
+        SweepScoreSource::VolAdjustedReturn => match direction {
+            SweepDirection::Momentum => {
+                "## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n"
+            }
+            SweepDirection::Reversion => {
+                "## MR θ-grid definition (6-cell, 2026-05-31 LOCKED § D-MR.2-LOCKED — changing this changes the SHA)\n\n"
+            }
+        },
     };
     body.push_str(grid_header);
-    body.push_str(&grid_def_string(grid));
+    // Carry grid: use carry-specific format (includes rebalance — it's swept).
+    // Momentum/MR: use the standard grid_def_string (no rebalance — anchor-safe).
+    match score_source {
+        SweepScoreSource::Carry => {
+            body.push_str(&carry_grid_def_string(grid));
+        }
+        SweepScoreSource::VolAdjustedReturn => {
+            body.push_str(&grid_def_string(grid));
+        }
+    }
     body.push('\n');
 
     // θ-surface table (rows sorted by g).
@@ -890,13 +1153,23 @@ fn render_surface_report(
 
     // M-DEV-4: add `trades` column for MR only (R-MR.3 turnover legibility).
     // Gate on direction so momentum anchor #86 body-SHA stays byte-identical.
-    let show_trades = direction == SweepDirection::Reversion;
+    // M-DEV-6: add `funding_harvested` column for carry only (D-CARRY.2-LOCKED).
+    // Gate on score_source so MR/momentum body-SHAs stay byte-identical.
+    let show_trades = score_source == SweepScoreSource::VolAdjustedReturn
+        && direction == SweepDirection::Reversion;
+    let show_funding = score_source == SweepScoreSource::Carry;
     if show_trades {
         body.push_str(
             "Trades = total trade count across all N paths (turnover legibility — R-MR.3).\n\n",
         );
         body.push_str("| g  | lookback | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | trades     | verdict  | notes |\n");
         body.push_str("|----|----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|------------|----------|-------|\n");
+    } else if show_funding {
+        body.push_str(
+            "funding_harvested = total realized funding cashflow across all N paths (Decimal, D-CARRY.2-LOCKED).\n\n",
+        );
+        body.push_str("| g  | l_settle | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | funding_harvested | verdict  | notes |\n");
+        body.push_str("|----|----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|--------------------|----------|-------|\n");
     } else {
         body.push_str("| g  | lookback | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | verdict  | notes |\n");
         body.push_str("|----|----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|----------|-------|\n");
@@ -930,6 +1203,24 @@ fn render_surface_report(
                 s.max_dd_tail_p95 * 100.0,
                 spread,
                 cr.total_trades,
+                verdict_str,
+                c5_flag,
+            ));
+        } else if show_funding {
+            body.push_str(&format!(
+                "| {:2} | {:8} | {:6} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:18} | {:8} | {} |\n",
+                cr.cell.g,
+                cr.cell.lookback_minutes,
+                cr.cell.k_long,
+                cr.cell.drift(),
+                s.sharpe.p5,
+                s.sharpe.p50,
+                s.sharpe.p95,
+                s.prob_loss,
+                s.prob_sharpe_gt_1,
+                s.max_dd_tail_p95 * 100.0,
+                spread,
+                cr.total_funding_harvested,
                 verdict_str,
                 c5_flag,
             ));
@@ -994,27 +1285,42 @@ fn render_surface_report(
         body.push_str(
             "C3 is not selecting a winner — it is reporting that no cell cleared the bar.\n",
         );
-        match direction {
-            SweepDirection::Momentum => {
+        match score_source {
+            SweepScoreSource::Carry => {
                 body.push_str(
-                    "Conclusion: v1 cross-sectional momentum is structurally fragile across the\n",
+                    "Conclusion: v1 cross-sectional carry (funding) is structurally fragile across the\n",
                 );
                 body.push_str(
-                    "tested parameter space. The turnover/fee-bleed is not tunable away within\n",
-                );
-                body.push_str("the Tier-1 grid (lookback × k_long × drift_rebalance_threshold).\n");
-            }
-            SweepDirection::Reversion => {
-                body.push_str(
-                    "Conclusion: v1 cross-sectional mean-reversion is structurally fragile across the\n",
+                    "tested parameter space on this universe (2023-FY resampled). Funding mean-reversion\n",
                 );
                 body.push_str(
-                    "tested parameter space. The turnover/fee-bleed is not tunable away within\n",
-                );
-                body.push_str(
-                    "the MR Tier-1 grid (lookback × k_long × drift_rebalance_threshold).\n",
+                    "or directional price exposure may have overwhelmed the funding harvest.\n",
                 );
             }
+            SweepScoreSource::VolAdjustedReturn => match direction {
+                SweepDirection::Momentum => {
+                    body.push_str(
+                        "Conclusion: v1 cross-sectional momentum is structurally fragile across the\n",
+                    );
+                    body.push_str(
+                        "tested parameter space. The turnover/fee-bleed is not tunable away within\n",
+                    );
+                    body.push_str(
+                        "the Tier-1 grid (lookback × k_long × drift_rebalance_threshold).\n",
+                    );
+                }
+                SweepDirection::Reversion => {
+                    body.push_str(
+                        "Conclusion: v1 cross-sectional mean-reversion is structurally fragile across the\n",
+                    );
+                    body.push_str(
+                        "tested parameter space. The turnover/fee-bleed is not tunable away within\n",
+                    );
+                    body.push_str(
+                        "the MR Tier-1 grid (lookback × k_long × drift_rebalance_threshold).\n",
+                    );
+                }
+            },
         }
     }
     body.push('\n');
@@ -1202,7 +1508,9 @@ fn prepare_generator_params(
 ///
 /// This keeps `run_path` AND the C2 `monte_carlo.rs` driver byte-identical
 /// (R-NR.2 — the 85 anchors hold by construction). The ONLY changes vs C2's
-/// `run_one_path` are: (1) config is caller-supplied, (2) path_gen is shared.
+/// `run_one_path` are: (1) config is caller-supplied, (2) path_gen is shared,
+/// (3) for carry: the path_gen already has funding attached (built in main with
+///    `with_funding`), so this function generates funding_override seamlessly.
 #[allow(clippy::too_many_arguments)]
 fn run_one_path_with_config(
     j: usize,
@@ -1211,18 +1519,26 @@ fn run_one_path_with_config(
     cfg: &strategy::CrossSectionalMomentumConfig,
     universe: &[(trading_core::Symbol, Decimal)],
     // Pre-built path generator for BlockBootstrapReal; None for GbmSmoke.
+    // For carry: this is the CARRY path_gen (with funding already attached via with_funding).
+    // For momentum/MR: this is the BASE path_gen (no funding).
     block_path_gen: Option<&data::BlockBootstrapPathGen>,
     bar_count: usize,
     generator: GeneratorKind,
     year: i32,
+    // Whether funding was injected (carry only).
+    // Used to decide whether to extract funding_override from generated_path.
+    is_carry: bool,
 ) -> Result<IndexedPathMetrics> {
+    use data::MonteCarloPathGen as _;
+
     // ── Generate the synthetic path ───────────────────────────────────────────
     let generated_path = match generator {
         GeneratorKind::BlockBootstrapReal => {
-            use data::MonteCarloPathGen as _;
             let path_gen = block_path_gen.ok_or_else(|| {
                 anyhow::anyhow!("block_path_gen must be Some for BlockBootstrapReal")
             })?;
+            // The path_gen for carry already has funding attached (built in main).
+            // For momentum/MR, no funding is in the path_gen → byte-identical output.
             path_gen
                 .generate(universe, bar_count, path_seed_j)
                 .with_context(|| format!("generate path {j}"))?
@@ -1250,6 +1566,34 @@ fn run_one_path_with_config(
         }
     };
 
+    // ── Build funding_override BTreeMap from generated_path.funding_by_symbol ──
+    // Only when carry is active (is_carry=true and the path_gen emitted funding).
+    // The map key is `(Symbol, open_ts)` — the synthetic timestamp of bars_by_symbol[s][k].
+    // For momentum/MR (is_carry=false): funding_override=None → anchor-neutral.
+    let funding_override: Option<
+        std::collections::BTreeMap<(trading_core::Symbol, trading_core::Timestamp), Decimal>,
+    > = if is_carry {
+        if let Some(ref fund_by_sym) = generated_path.funding_by_symbol {
+            let mut map = std::collections::BTreeMap::new();
+            for (sym_i, (sym, _)) in universe.iter().enumerate() {
+                if let Some(funding_row) = fund_by_sym.get(sym_i)
+                    && let Some(bars_row) = generated_path.bars_by_symbol.get(sym_i)
+                {
+                    for (bar, &funding_val) in bars_row.iter().zip(funding_row.iter()) {
+                        if let Some(rate) = funding_val {
+                            map.insert((sym.clone(), bar.open_ts), rate);
+                        }
+                    }
+                }
+            }
+            Some(map)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // ── Merge per-symbol bars into the flat replay feed ───────────────────────
     let merged_bars = data::ReplayFeed::merge_synthetic(generated_path.bars_by_symbol);
 
@@ -1273,7 +1617,7 @@ fn run_one_path_with_config(
         bars_override: Some(merged_bars),
         emit_equity_bin: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
-        funding_override: None,
+        funding_override,
     };
 
     let result = pollster::block_on(backtest::scenarios::montecarlo::run_path(
@@ -1282,6 +1626,10 @@ fn run_one_path_with_config(
     .with_context(|| format!("run_path for sweep path {j}"))?;
 
     let trades = result.trades;
+    // M-DEV-6: the per-path realized funding cashflow, now surfaced by run_path
+    // (sum of notional × −rate over every settlement-boundary accrual). ZERO for
+    // momentum/MR (funding_override is None → the accrual block is never entered).
+    let funding_harvested = result.realized_funding;
 
     // ── Compute per-path metric scalars ───────────────────────────────────────
     let equity_clamped: Vec<Decimal> = result
@@ -1330,7 +1678,126 @@ fn run_one_path_with_config(
             initial_equity: result.initial_equity,
         },
         trades,
+        funding_harvested,
     })
+}
+
+// ── Carry funding loader (M-DEV-6) ────────────────────────────────────────────
+
+/// Load the funding data, compute `funding_at_return`, and build a carry-specific
+/// `BlockBootstrapPathGen` with funding attached (ADR-0051 § D6.6, D-CARRY.7).
+///
+/// Returns `(carry_path_gen, Some(funding_revision_sha))` for the carry anchor body.
+/// The `carry_path_gen` has funding already attached via `with_funding(...)`.
+#[cfg(feature = "realdata")]
+fn load_carry_path_gen(
+    args: &Args,
+    real_bars_by_symbol: &[(trading_core::Symbol, Vec<trading_core::Bar>)],
+    symbols_prices: &[(trading_core::Symbol, Decimal)],
+    bar_count: usize,
+) -> Result<(Option<data::BlockBootstrapPathGen>, Option<String>)> {
+    use backtest::funding_data::{FundingDataSource, LoadedFunding, build_funding_at_return};
+    use backtest::realdata::TimeSpan as RealDataTimeSpan;
+
+    // Load funding parquets and REVISION-verify.
+    let symbols: Vec<trading_core::Symbol> =
+        symbols_prices.iter().map(|(s, _)| s.clone()).collect();
+    let funding_src = FundingDataSource::new(args.funding_root.clone(), symbols.clone());
+    let span = RealDataTimeSpan::full_year(args.year);
+    let scenario_name = format!("carry-sweep-funding-load-{}", args.year);
+    let loaded: LoadedFunding = funding_src
+        .load(&span, &scenario_name)
+        .map_err(|e| anyhow::anyhow!("load carry funding: {e}"))?;
+
+    // Verify funding revision SHA against the locked expected.
+    if loaded.revision_sha != args.funding_revision_sha {
+        anyhow::bail!(
+            "funding revision mismatch: expected={} computed={}",
+            args.funding_revision_sha,
+            loaded.revision_sha
+        );
+    }
+    let funding_revision_sha = loaded.revision_sha.clone();
+    info!(
+        funding_rows = loaded.rows.len(),
+        funding_revision_sha = %funding_revision_sha,
+        "carry funding loaded and verified"
+    );
+
+    // Build the `funding_at_return[sym_i][k]` array (aligned to real return steps).
+    // For each symbol, extract (funding_time_ms, rate) and (bar open_ts_ms).
+    let mut funding_by_symbol_rows: Vec<Vec<(i64, Decimal)>> = Vec::with_capacity(symbols.len());
+    let mut bar_ts_by_symbol_raw: Vec<Vec<i64>> = Vec::with_capacity(symbols.len());
+
+    for (sym, _) in symbols_prices {
+        // Collect funding rows for this symbol (sorted by funding_time_ms).
+        let sym_funding: Vec<(i64, Decimal)> = loaded
+            .rows
+            .iter()
+            .filter(|r| r.symbol == *sym)
+            .map(|r| (r.funding_time_ms, r.funding_rate))
+            .collect();
+        funding_by_symbol_rows.push(sym_funding);
+
+        // Collect bar open timestamps for this symbol from real_bars_by_symbol.
+        let bar_ts: Vec<i64> = real_bars_by_symbol
+            .iter()
+            .find(|(s, _)| s == sym)
+            .map(|(_, bars)| {
+                bars.iter()
+                    .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
+                    .collect()
+            })
+            .unwrap_or_default();
+        bar_ts_by_symbol_raw.push(bar_ts);
+    }
+
+    let funding_refs: Vec<&[(i64, Decimal)]> = funding_by_symbol_rows
+        .iter()
+        .map(|v| v.as_slice())
+        .collect();
+    let bar_ts_refs: Vec<&[i64]> = bar_ts_by_symbol_raw.iter().map(|v| v.as_slice()).collect();
+
+    let funding_at_return = build_funding_at_return(&funding_refs, &bar_ts_refs);
+    info!(
+        n_symbols = funding_at_return.len(),
+        first_sym_len = funding_at_return.first().map_or(0, Vec::len),
+        "funding_at_return built for carry co-resampling"
+    );
+
+    // Build a carry-specific BlockBootstrapPathGen with funding attached.
+    let carry_path_gen = data::BlockBootstrapPathGen::new(
+        real_bars_by_symbol.to_vec(),
+        data::BlockLengthPolicy::Auto,
+    )
+    .context("build carry BlockBootstrapPathGen")?
+    .with_funding(Some(funding_at_return));
+
+    // Verify the probe (selected_L should match the base path_gen).
+    {
+        use data::MonteCarloPathGen as _;
+        let universe_probe: Vec<(trading_core::Symbol, Decimal)> = symbols_prices.to_vec();
+        let _probe = carry_path_gen
+            .generate(&universe_probe, bar_count, 0xC0FFEE)
+            .context("carry path_gen probe generate")?;
+        info!("carry path_gen probe: OK (funding co-resampling active)");
+    }
+
+    Ok((Some(carry_path_gen), Some(funding_revision_sha)))
+}
+
+#[cfg(not(feature = "realdata"))]
+fn load_carry_path_gen(
+    _args: &Args,
+    _real_bars_by_symbol: &[(trading_core::Symbol, Vec<trading_core::Bar>)],
+    _symbols_prices: &[(trading_core::Symbol, Decimal)],
+    _bar_count: usize,
+) -> Result<(Option<data::BlockBootstrapPathGen>, Option<String>)> {
+    anyhow::bail!(
+        "load_carry_path_gen called without --features realdata. \
+         Carry requires real funding data. Rebuild with: cargo run -p backtest \
+         --features candle,realdata --bin param_robustness_sweep -- --score-source carry ..."
+    )
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -1386,6 +1853,20 @@ fn main() -> Result<()> {
     let (generator_label, bootstrap_mode, block_length_policy_str, selected_l, block_path_gen_opt) =
         prepare_generator_params(args.generator, &real_bars_by_symbol, ensemble_seed)?;
 
+    // ── M-DEV-6: load funding data and build carry path_gen (carry only) ──────
+    // For momentum/MR: `carry_path_gen_opt = None` → anchor-neutral by construction.
+    // For carry: load funding, build `funding_at_return[sym_i][k]`, build a
+    // carry-specific BlockBootstrapPathGen with funding attached (D-CARRY.7).
+    let (carry_path_gen_opt, funding_revision_sha_for_report): (
+        Option<data::BlockBootstrapPathGen>,
+        Option<String>,
+    ) = if args.score_source.needs_funding() && args.generator == GeneratorKind::BlockBootstrapReal
+    {
+        load_carry_path_gen(&args, &real_bars_by_symbol, &symbols_prices, bar_count)?
+    } else {
+        (None, None)
+    };
+
     // ── Load base config (for universe, frozen fields) ────────────────────────
     let rel_path = std::path::PathBuf::from("config/strategies/top10_momentum_h1.toml");
     let toml_path = backtest::paths::resolve_workspace_path(&rel_path);
@@ -1398,8 +1879,21 @@ fn main() -> Result<()> {
     info!(
         n_cells = grid.len(),
         n_paths = args.paths,
+        score_source = ?args.score_source,
         "outer θ-loop starting (sequential for log legibility)"
     );
+
+    // ── Select the active path_gen ────────────────────────────────────────────
+    // For carry: use the carry-specific path_gen (has funding attached).
+    // For momentum/MR: use the base path_gen (no funding → anchor-neutral).
+    let active_path_gen_opt: Option<&data::BlockBootstrapPathGen> =
+        if let Some(ref cpg) = carry_path_gen_opt {
+            Some(cpg)
+        } else {
+            block_path_gen_opt.as_ref()
+        };
+
+    let is_carry = args.score_source == SweepScoreSource::Carry;
 
     // ── Outer θ-loop (sequential for log legibility — ~10-15 min at N=200, 6 cells) ─
     // ADR-0051 § D6.4: collect into Vec, sort by g before render.
@@ -1408,19 +1902,14 @@ fn main() -> Result<()> {
 
     for cell in grid {
         let cell_start = std::time::Instant::now();
-        let per_cell_cfg = cell_config(
-            &base_cfg,
-            cell.lookback_minutes,
-            cell.k_long,
-            cell.drift(),
-            args.direction,
-        );
+        let per_cell_cfg = cell_config(&base_cfg, cell, args.direction, args.score_source);
 
         info!(
             g = cell.g,
             lookback = cell.lookback_minutes,
             k_long = cell.k_long,
             drift = %cell.drift(),
+            rebalance = cell.effective_rebalance(base_cfg.rebalance_minutes),
             "θ-cell starting"
         );
 
@@ -1439,10 +1928,11 @@ fn main() -> Result<()> {
                         FILL_SEED,
                         &per_cell_cfg,
                         &universe,
-                        block_path_gen_opt.as_ref(),
+                        active_path_gen_opt,
                         bar_count,
                         args.generator,
                         args.year,
+                        is_carry,
                     )
                 })
                 .collect()
@@ -1458,6 +1948,11 @@ fn main() -> Result<()> {
         indexed.sort_by_key(|r| r.j);
 
         let total_trades: u64 = indexed.iter().map(|r| r.trades as u64).sum();
+        // M-DEV-6: per-cell realized funding harvested = sum of the per-path funding
+        // cashflow across all N paths (run_path now surfaces it). ZERO for momentum/MR
+        // (funding_override is None → the accrual block is never entered). Summed via
+        // .iter() BEFORE the consuming .into_iter() below, mirroring total_trades.
+        let total_funding_harvested: Decimal = indexed.iter().map(|r| r.funding_harvested).sum();
         let metrics: Vec<backtest::stats::PathMetrics> =
             indexed.into_iter().map(|r| r.metrics).collect();
 
@@ -1488,6 +1983,7 @@ fn main() -> Result<()> {
             summary,
             verdict,
             total_trades,
+            total_funding_harvested,
         });
     }
 
@@ -1603,15 +2099,25 @@ fn main() -> Result<()> {
     let data_rev_frontmatter = read_data_revision_sha(&args.data_root);
     let pid = std::process::id();
 
-    let scenario_name = format!(
-        "v1-{family}-theta-surface-{year}-block-bootstrap-{gen}-fy",
-        family = args.direction.label(),
-        year = args.year,
-        gen = match args.generator {
-            GeneratorKind::BlockBootstrapReal => "real",
-            GeneratorKind::GbmSmoke => "gbm",
-        }
-    );
+    let scenario_name = match args.score_source {
+        SweepScoreSource::Carry => format!(
+            "v1-carry-theta-surface-{year}-block-bootstrap-{gen}-fy",
+            year = args.year,
+            gen = match args.generator {
+                GeneratorKind::BlockBootstrapReal => "real",
+                GeneratorKind::GbmSmoke => "gbm",
+            }
+        ),
+        SweepScoreSource::VolAdjustedReturn => format!(
+            "v1-{family}-theta-surface-{year}-block-bootstrap-{gen}-fy",
+            family = args.direction.label(),
+            year = args.year,
+            gen = match args.generator {
+                GeneratorKind::BlockBootstrapReal => "real",
+                GeneratorKind::GbmSmoke => "gbm",
+            }
+        ),
+    };
 
     // ── Render report (ADR-0051 D3 / § D6.4) ─────────────────────────────────
     let report = render_surface_report(
@@ -1634,11 +2140,26 @@ fn main() -> Result<()> {
         &cell_results,
         &buyhold_summary,
         args.direction,
+        args.score_source,
+        funding_revision_sha_for_report.as_deref(),
     );
 
+    // ── Resolve effective out_dir ─────────────────────────────────────────────
+    // For carry: if the user did not override --out-dir, default to the carry reports dir.
+    // We detect "was the default changed?" by checking if it's still the momentum default.
+    let momentum_default_out_dir =
+        PathBuf::from("spec/momentum-parameter-robustness-sweep/reports/");
+    let effective_out_dir = if args.score_source == SweepScoreSource::Carry
+        && args.out_dir == momentum_default_out_dir
+    {
+        PathBuf::from("spec/carry-strategy/reports/")
+    } else {
+        args.out_dir.clone()
+    };
+
     // ── Write report ──────────────────────────────────────────────────────────
-    std::fs::create_dir_all(&args.out_dir)
-        .with_context(|| format!("create out_dir {:?}", args.out_dir))?;
+    std::fs::create_dir_all(&effective_out_dir)
+        .with_context(|| format!("create out_dir {:?}", effective_out_dir))?;
 
     let ts_suffix = {
         let now = std::time::SystemTime::now()
@@ -1654,7 +2175,7 @@ fn main() -> Result<()> {
         format!("{y:04}{mo:02}{d:02}-{h:02}{m:02}{s:02}")
     };
     let report_filename = format!("robustness-sweep-{ts_suffix}-{scenario_name}.md");
-    let report_path = args.out_dir.join(&report_filename);
+    let report_path = effective_out_dir.join(&report_filename);
     std::fs::write(&report_path, &report)
         .with_context(|| format!("write report to {:?}", report_path))?;
 

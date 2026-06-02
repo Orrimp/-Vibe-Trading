@@ -54,6 +54,14 @@ pub struct PathRunResult {
     /// `solvency_guard_run_path_regression_negative_cash_prevented` asserts
     /// this is ≥ 0, and goes RED when the guard is removed.
     pub min_cash_seen: Decimal,
+    /// Total realized funding cashflow accrued on this path (Decimal).
+    ///
+    /// Sum of `notional × (−funding_rate)` over every settlement-boundary accrual.
+    /// `Decimal::ZERO` for momentum/MR runs (no `funding_override` → the accrual
+    /// block is never entered, so this stays zero and the existing anchors are
+    /// byte-identical). Surfaced so the carry θ-surface report renders the per-cell
+    /// realized-funding-harvested total (M-DEV-6) instead of a placeholder.
+    pub realized_funding: Decimal,
 }
 
 // ── run_path ───────────────────────────────────────────────────────────────────
@@ -145,6 +153,9 @@ pub async fn run_path(
     let mut mark_prices: std::collections::BTreeMap<Symbol, Decimal> =
         std::collections::BTreeMap::new();
     let mut trades = 0usize;
+    // M-DEV-6: running sum of funding cashflow accrued across all settlement
+    // boundaries (stays ZERO when funding_override is None → momentum/MR unchanged).
+    let mut realized_funding_total = Decimal::ZERO;
     let mut equity_curve: Vec<Decimal> = vec![initial_capital];
     let mut peak_equity = initial_capital;
     let mut max_drawdown_tracking = Decimal::ZERO;
@@ -322,6 +333,7 @@ pub async fn run_path(
                     // cash += notional × (−rate) = notional × (−funding_rate)
                     let cashflow = notional * (-rate);
                     cash += cashflow;
+                    realized_funding_total += cashflow;
                     tracing::trace!(
                         symbol = %sym,
                         %rate,
@@ -373,6 +385,7 @@ pub async fn run_path(
         initial_equity: initial_capital,
         final_equity,
         min_cash_seen,
+        realized_funding: realized_funding_total,
     })
 }
 
@@ -381,6 +394,13 @@ pub async fn run_path(
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::float_arithmetic,
+    clippy::too_many_lines,
+    clippy::doc_markdown
+)]
 mod tests {
     use super::*;
 
@@ -435,11 +455,11 @@ mod tests {
     /// - Carry K=1, L=1: the single symbol is selected WITH and WITHOUT funding, so
     ///   the ONLY difference between the two runs is the cashflow (no alphabetical
     ///   tie-break confound from a 2nd symbol at a different price).
-    /// - Bars hourly from epoch_2023; settlement boundaries at ts=0, 8, 16, ...
-    /// - WITH carry: funding_override has non-zero rates → cashflow moves equity.
-    /// - ZERO: funding_override all-zero → no cashflow.
-    /// - Assertions: equity_with ≠ equity_zero by ≥ ε (non-no-op) AND
-    ///   equity_with > equity_zero (longs EARN on the negative-funding name).
+    /// - Bars hourly from `epoch_2023`; settlement boundaries at ts=0, 8, 16, ...
+    /// - WITH carry: `funding_override` has non-zero rates → cashflow moves equity.
+    /// - ZERO: `funding_override` all-zero → no cashflow.
+    /// - Assertions: `equity_with` ≠ `equity_zero` by ≥ ε (non-no-op) AND
+    ///   `equity_with` > `equity_zero` (longs EARN on the negative-funding name).
     ///
     /// The test FAILS (goes RED) if the cashflow is not applied to `cash`:
     ///   the two equity curves would be identical.
@@ -544,7 +564,7 @@ score_source = "funding_carry"
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: Some(funding_nonzero),
         };
-        let result_with = pollster::block_on(run_path(input_with, 0xC0FFEE, make_carry_strat()))
+        let result_with = pollster::block_on(run_path(input_with, 0x00C0_FFEE, make_carry_strat()))
             .expect("run_path with funding must succeed");
 
         // Run WITH zero-rate funding (cashflow forced to zero).
@@ -562,7 +582,7 @@ score_source = "funding_carry"
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: Some(funding_zero),
         };
-        let result_zero = pollster::block_on(run_path(input_zero, 0xC0FFEE, make_carry_strat()))
+        let result_zero = pollster::block_on(run_path(input_zero, 0x00C0_FFEE, make_carry_strat()))
             .expect("run_path with zero funding must succeed");
 
         // The WITH-carry equity must differ from the zero-cashflow equity.
@@ -658,7 +678,7 @@ score_source = "funding_carry"
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 funding_override,
             };
-            pollster::block_on(run_path(input, 0xC0FFEE, make_strat())).expect("run_path ok")
+            pollster::block_on(run_path(input, 0x00C0_FFEE, make_strat())).expect("run_path ok")
         };
 
         let r_none = run(None);

@@ -264,32 +264,94 @@ anchoring.** **Remove the disposable frame-diagnostic flags from `param_robustne
 > Thread through the EXISTING `param_robustness_sweep` bin (one driver), exactly as MR
 > did with `--direction`. The momentum #86 + MR #87 anchors MUST stay byte-identical.
 
-- [ ] Add `--score-source {vol-adjusted-return,carry}` (default `vol-adjusted-return`)
+- [x] Add `--score-source {vol-adjusted-return,carry}` (default `vol-adjusted-return`)
       to the bin CLI. Add a `--funding-root` arg (default `data/binance-funding/`) +
       a `--funding-revision-sha` arg (default `bf1ede44…`), used only when `carry`.
-- [ ] Add `CARRY_TIER1_GRID: &[ThetaCell]` const = the LOCKED 6 cells from
-      § D-CARRY.2-LOCKED. **NB the `lookback` column is L SETTLEMENTS, not minutes** —
-      either add an `l_settlements` field to `ThetaCell` (preferred — explicit) or
-      document the reinterpretation; the dev's call, but the cell value hashed MUST be
-      the L the design locked (9/3/21/9/9/3). Add a `CarryTier1` `GridKind` variant (or
-      select grid by `(score_source, grid)`).
-- [ ] When `score_source == carry`: build + REVISION-verify the funding via
-      `FundingDataSource`, compute the as-of `funding_at_return`, pass it to
-      `BlockBootstrapPathGen::with_funding`, and build the per-path `funding_override`
-      in `run_one_path_with_config`. Scenario name
-      `v1-carry-theta-surface-{year}-block-bootstrap-real-fy`; out-dir default
-      `spec/carry-strategy/reports/`.
-- [ ] Reuse `classify_verdict`, `derive_path_seed`, `run_buyhold_path`,
-      `prepare_generator_params` VERBATIM. The buy-and-hold control row runs UNCHANGED
-      (no funding — it is the +1.74/+1.10 bar carry must clear; the control is a price-
-      only benchmark by design).
-- [ ] Extend `render_surface_report` with ONE additive column — the per-cell
-      **realized-funding-harvested** total (`Decimal`, fixed precision) — GATED to
-      carry reports (`score_source == carry`) so the momentum/MR body-SHAs are
-      byte-identical (the same gating MR used for its trade-count column, ADR § D6.5.4).
-- **Gate:** `--score-source vol-adjusted-return --grid tier1` reproduces momentum #86
-      byte-identical; `--direction reversion --grid mr-tier1` reproduces MR #87; the
-      FP-C3.x two-run identity tests pass. `bash scripts/verify_anchors.sh` → 87/87.
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs` — `SweepScoreSource` enum
+      (~line 575) + `DEFAULT_FUNDING_REVISION_SHA` constant (~line 70) + CLI Args struct
+      (`score_source`, `funding_root`, `funding_revision_sha` fields).
+- [x] Add `CARRY_TIER1_GRID: &[ThetaCell]` const = the LOCKED 6 cells from § D-CARRY.2-LOCKED.
+      `lookback_minutes` encodes L SETTLEMENTS (9/3/21/9/9/3 as locked). Added
+      `rebalance_minutes_override: u32` field to `ThetaCell` (0 = use base config; carry
+      cells use 480 or 1440). Added `CarryTier1` `GridKind` variant.
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:CARRY_TIER1_GRID` const
+      + `GridKind::CarryTier1` variant + `ThetaCell.rebalance_minutes_override` field.
+- [x] When `score_source == carry`: `load_carry_path_gen` loads + REVISION-verifies funding via
+      `FundingDataSource`, builds `funding_at_return`, passes to `BlockBootstrapPathGen::with_funding`.
+      The per-path `funding_override` BTreeMap is built in `run_one_path_with_config` from
+      `generated_path.funding_by_symbol`. Scenario name `v1-carry-theta-surface-{year}-block-bootstrap-real-fy`;
+      out-dir defaults to `spec/carry-strategy/reports/` when score_source=carry.
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:load_carry_path_gen` function
+      + `run_one_path_with_config` (is_carry parameter + funding_override extraction).
+- [x] `classify_verdict`, `derive_path_seed`, `run_buyhold_path`, `prepare_generator_params` reused VERBATIM.
+      The buy-and-hold control uses the BASE path_gen (no funding — it is the +1.74/+1.10 bar
+      carry must clear; the control is a price-only benchmark by design).
+      **file:line** (unchanged in all four functions).
+- [x] `render_surface_report` extended with ONE additive `funding_harvested` column — GATED to
+      carry reports (`show_funding = score_source == SweepScoreSource::Carry`) so the momentum/MR
+      body-SHAs are byte-identical (ADR § D6.5.4). `carry_grid_def_string` function added for
+      the carry-specific body format (includes rebalance + l_settlements). **The column value is
+      REAL, not a placeholder** — `run_path` sums the per-bar funding cashflow into
+      `PathRunResult.realized_funding` (orchestrator post-handoff fix, 2026-06-02); the cell
+      column sums it across the N paths. ZERO for momentum/MR (no `funding_override` → the
+      accrual block is never entered → anchor-neutral by construction).
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:render_surface_report`
+      + `carry_grid_def_string`; `crates/backtest/src/scenarios/montecarlo.rs`
+      (`PathRunResult.realized_funding` + the accrual sum).
+- **Gate:** `bash scripts/verify_anchors.sh` → 87/87 PASS (confirmed; momentum/MR body-SHAs untouched).
+      Carry smoke (N=3) renders NON-ZERO realized funding (g0 +47387, g1 +25274, g2 +25032,
+      g3 −31828, g4 +54945, g5 −26303 — varying by L/K/rebalance; negatives net-paid funding),
+      two-run identity PASS. `cargo clippy -p backtest --features "candle realdata" --all-targets -- -D warnings` → 0 errors.
+      (The N=3 smoke is throwaway; the anchored N=200 surface is M-DEV-8.)
+  **Test command:** `bash scripts/verify_anchors.sh`
+  **Output:** `ANCHORS PASS  (87 / 87)`
+
+## M-DEV-7 — the day-1 BOTH-axes gate + divergence falsifier (R-CARRY.9-10; e2e)
+
+> CLAUDE.md non-negotiable: every overlay/sizing-modifier ships a baseline-divergence
+> e2e from day 1. Carry's are the divergence + non-no-op + sign + look-ahead falsifiers.
+
+- [x] **R-CARRY.10a carry-vs-price divergence (the headline falsifier).** New e2e
+      `crates/backtest/tests/carry_divergence_e2e.rs` (model on `mr_divergence_e2e.rs`):
+      SAME small synthetic path + funding series, carry vs vol_adjusted_return strategy;
+      assert equity curves diverge by ≥ 1 bp. Universe: AAUSDT (strong uptrend, moderate
+      positive funding) vs BBUSDT (flat, high negative funding) vs CCUSDT (downtrend,
+      positive funding). K=1: momentum selects AAUSDT; carry selects BBUSDT → guaranteed
+      selection divergence.
+      **file:line** `crates/backtest/tests/carry_divergence_e2e.rs:r_carry_10a_carry_vs_price_diverge`
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test carry_divergence_e2e r_carry_10a_carry_vs_price_diverge`
+      **Output:** `test r_carry_10a_carry_vs_price_diverge ... ok`
+- [x] **Two-run byte-identity of the carry θ-surface body-SHA** (ADR § D6.6.5 / D6.4):
+      run the small-N carry sweep twice at the same `ensemble_seed`; assert identical
+      formatted summaries. Catches any unordered fold in the funding resample/gather.
+      **file:line** `crates/backtest/tests/carry_divergence_e2e.rs:carry_two_run_byte_identity`
+      + confirmed at binary level: two N=3 smoke runs at the same seed produce byte-identical
+      summaries (determinism holds with the real funding-harvested column populated).
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test carry_divergence_e2e carry_two_run_byte_identity`
+      **Output:** `test carry_two_run_byte_identity ... ok`
+- [x] R-CARRY.10b (cashflow non-no-op) re-confirmed at integration level:
+      `r_carry_10b_integration_cashflow_non_no_op` — with non-zero funding vs zero-rate
+      funding, equity diverges by ≥ ε. Also confirmed RED-on-revert: forcing zero rates
+      makes the equity identical (cashflow collapses). Unit-level test also present in
+      `montecarlo.rs:r_carry10b_funding_cashflow_non_no_op`.
+      **file:line** `crates/backtest/tests/carry_divergence_e2e.rs:r_carry_10b_integration_cashflow_non_no_op`
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test carry_divergence_e2e`
+      **Output:** `test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured`
+- [x] R-CARRY.2 sign-assertion re-confirmed at integration level: `r_carry_2_sign_assertion_integration`
+      — correct-sign and flipped-sign funding produce different equity (proves sign is active).
+      Unit-level test also in `momentum.rs:r_carry2_sign_assertion_longs_negative_funding_name`.
+      **file:line** `crates/backtest/tests/carry_divergence_e2e.rs:r_carry_2_sign_assertion_integration`
+- [x] R-CARRY.6 no-look-ahead re-confirmed at integration level: `r_carry_6_no_look_ahead_integration`
+      — future-shifted funding produces different equity from causal funding.
+      Unit-level test also in `funding_data.rs:no_look_ahead_falsifier` + `momentum.rs:r_carry6_no_look_ahead_strategy_level`.
+      **file:line** `crates/backtest/tests/carry_divergence_e2e.rs:r_carry_6_no_look_ahead_integration`
+- [x] R-CARRY.10a RED-on-revert confirmed: `r_carry_10a_red_on_revert_vol_adjusted_return_no_divergence`
+      — two identical-signal strategies (both VolAdjustedReturn, no funding) produce identical
+      equity (delta=0), proving R-CARRY.10a would FAIL if both strategies used price signal.
+      **file:line** `crates/backtest/tests/carry_divergence_e2e.rs:r_carry_10a_red_on_revert_vol_adjusted_return_no_divergence`
+- **Gate:** All 6 carry divergence tests green; all 87 anchors PASS.
+  **Test command:** `cargo test -p backtest --features "candle realdata" --test carry_divergence_e2e`
+  **Output:** `test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured`
 
 ## M-DEV-7 — the day-1 BOTH-axes gate + divergence falsifier (R-CARRY.9-10; e2e)
 
