@@ -163,6 +163,8 @@ fn make_carry_config() -> strategy::CrossSectionalMomentumConfig {
         stage: SmolStr::new("research"),
         direction: Direction::Momentum,
         score_source: ScoreSource::FundingCarry,
+        selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+        entry_threshold: Decimal::ZERO,
     }
 }
 
@@ -184,6 +186,8 @@ fn make_price_config() -> strategy::CrossSectionalMomentumConfig {
         stage: SmolStr::new("research"),
         direction: Direction::Momentum,
         score_source: ScoreSource::VolAdjustedReturn, // price-based
+        selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+        entry_threshold: Decimal::ZERO,
     }
 }
 
@@ -353,6 +357,8 @@ fn r_carry_10b_integration_cashflow_non_no_op() {
         stage: SmolStr::new("research"),
         direction: Direction::Momentum,
         score_source: ScoreSource::FundingCarry,
+        selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+        entry_threshold: Decimal::ZERO,
     };
 
     let result_with = run_to_result(
@@ -434,6 +440,8 @@ fn r_carry_2_sign_assertion_integration() {
         stage: SmolStr::new("research"),
         direction: Direction::Momentum,
         score_source: ScoreSource::FundingCarry,
+        selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+        entry_threshold: Decimal::ZERO,
     };
 
     // Run carry strategy WITH negative funding for BBUSDT.
@@ -543,6 +551,8 @@ fn r_carry_6_no_look_ahead_integration() {
         stage: SmolStr::new("research"),
         direction: Direction::Momentum,
         score_source: ScoreSource::FundingCarry,
+        selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+        entry_threshold: Decimal::ZERO,
     };
 
     let result_causal = run_to_result(carry_cfg.clone(), bars.clone(), Some(funding_causal));
@@ -601,6 +611,8 @@ fn carry_two_run_byte_identity() {
                 stage: SmolStr::new("research"),
                 direction: Direction::Momentum,
                 score_source: ScoreSource::FundingCarry,
+                selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+                entry_threshold: Decimal::ZERO,
             };
 
             let mut metrics: Vec<PathMetrics> = Vec::new();

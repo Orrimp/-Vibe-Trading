@@ -36,8 +36,7 @@ use backtest::cli_types::LatencySlippageSimConfig;
 use backtest::engine::{DateRange, RunError, ScenarioConfig, ScenarioDataSource};
 use backtest::{cancel, progress};
 use trading_core::{StrategyId, Symbol, Venue};
-// v0.5.0: SlippageModel needed for test configs
-use cost;
+// v0.5.0: SlippageModel accessed as cost::SlippageModel (no explicit `use cost;` needed in Rust 2024)
 
 // ── Shared test seed ──────────────────────────────────────────────────────────
 

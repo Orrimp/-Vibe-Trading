@@ -72,6 +72,8 @@ fn make_config_mr(direction: Direction) -> strategy::CrossSectionalMomentumConfi
         stage: SmolStr::new("research"),
         direction,
         score_source: strategy::ScoreSource::VolAdjustedReturn,
+        selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+        entry_threshold: rust_decimal::Decimal::ZERO,
     }
 }
 

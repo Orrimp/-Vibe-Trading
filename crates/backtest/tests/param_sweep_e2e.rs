@@ -76,6 +76,8 @@ fn make_config(
         // (no anchor disturbance). The MR e2e tests use make_config_with_direction().
         direction: strategy::Direction::Momentum,
         score_source: strategy::ScoreSource::VolAdjustedReturn,
+        selection_mode: strategy::SelectionMode::CrossSectionalTopK,
+        entry_threshold: rust_decimal::Decimal::ZERO,
     }
 }
 
