@@ -39,7 +39,7 @@ pub use cash_hold::CashHoldStrategy;
 pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, StrategyLoadError};
 pub use cross_sectional::{
     CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction, MomentumStrategy,
-    ScoreSource, top_k_long,
+    ScoreSource, SelectionMode, select_above_threshold, top_k_long,
 };
 pub use pairs::{MeanReversionPairsConfig, MeanReversionPairsStrategy, PairsLoadError};
 #[cfg(feature = "forecast")]

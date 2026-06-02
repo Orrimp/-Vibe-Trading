@@ -1,8 +1,8 @@
 ---
 slug: time-series-momentum-robustness
 version: 0.1.0
-status: arch-done
-owner: architect → developer
+status: in-progress
+owner: developer
 priority: P2
 updated: 2026-06-02
 ---
@@ -796,7 +796,79 @@ The tester closes the loop with the standard report template and these gates:
 
 ---
 
+## Implementation
+
+_Developer Pass 1 of 2 (M-DEV-0..3) — 2026-06-02_
+
+### M-DEV-0 (confirmed, no code)
+- Confirmed `run_path` / `PaperEngine` / `bootstrap.rs` are untouched.
+- Baseline anchor gate: `bash scripts/verify_anchors.sh` → 89/89 PASS.
+
+### M-DEV-1 — `SelectionMode` enum + `entry_threshold` + serde-default + hash
+- Added `SelectionMode { CrossSectionalTopK (default), TimeSeriesLongFlat }` enum to
+  `crates/strategy/src/cross_sectional/config.rs` (derive `Debug, Clone, Copy, PartialEq,
+  Eq, Serialize, Deserialize, Default`; `#[serde(rename_all = "snake_case")]`).
+- Added `#[serde(default)] pub selection_mode: SelectionMode` and
+  `#[serde(default)] pub entry_threshold: Decimal` (default `Decimal::ZERO`) to both
+  `CrossSectionalMomentumConfig` and `RawConfig`.
+- Re-exported `SelectionMode` from `mod.rs` and `lib.rs`.
+- Appended `;selection_mode={...};entry_threshold={...}` to `compute_config_hash`.
+- Added fields `selection_mode` and `entry_threshold` to `MomentumStrategy` struct and `from_config`.
+- 5 backward-compat tests all pass (defaults, parsing, hash discrimination).
+
+### M-DEV-2 — `score_trailing_log_return` raw-trend score
+- Added `pub fn score_trailing_log_return(history: &RingBuffer, n: u32) -> Result<Decimal, ScoreError>`
+  to `crates/features/src/cross_sectional.rs`. Computes `ln(close[t] / close[t-n])` — raw
+  cumulative log-return over `n` bars, no vol normalization, Decimal throughout, same error
+  handling as `score_vol_adjusted_return`.
+- Re-exported from `features` crate root.
+- 6 unit tests pass: up-series → positive, down-series → negative, insufficient history,
+  zero price, decimal precision, known reference value.
+
+### M-DEV-3 — `select_above_threshold` selector + `on_bar`/`build_rebalance_signals` fork
+- Added `pub fn select_above_threshold(scores, entry_threshold, exposure_cap) -> BTreeMap<Symbol, Decimal>`
+  to `crates/strategy/src/cross_sectional/selector.rs`. Iterates `BTreeMap` in alphabetical order
+  (deterministic by construction); filters `score > threshold`; assigns `exposure_cap / n_above`
+  as the membership sentinel weight; returns empty on all-below (the goes-flat path).
+- Re-exported `select_above_threshold` from `mod.rs` and `lib.rs`.
+- Forked `on_bar` score computation on `selection_mode` (outer match, independent of `score_source`):
+  `TimeSeriesLongFlat` → `score_trailing_log_return`; `CrossSectionalTopK` → existing `score_source` match
+  (VolAdjustedReturn/FundingCarry) byte-untouched.
+- Forked `build_rebalance_signals` selector on `selection_mode`: `CrossSectionalTopK` → `top_k_long`
+  (VERBATIM); `TimeSeriesLongFlat` → `select_above_threshold`. Downstream Buy/Sell emission loop unchanged.
+- Updated `all_warmed` to fork on `selection_mode` first: `TimeSeriesLongFlat` → price ring full
+  (same as VolAdjustedReturn); `CrossSectionalTopK` → existing score_source match.
+- 6 selector unit tests + 3 strategy-level tests all pass.
+
+### Gates (all PASS after M-DEV-3)
+- `cargo test -p strategy --lib`: 150 passed, 0 failed (136 pre-existing + 14 new).
+- `cargo test -p features cross_sectional`: 11 passed, 0 failed (5 pre-existing + 6 new).
+- `bash scripts/verify_anchors.sh`: 89/89 PASS (momentum #86, MR #87, carry #88/#89 all byte-identical).
+- `cargo fmt -p features -p strategy -- --check`: clean.
+- `cargo clippy -p features -p strategy --lib -- -D warnings`: clean (pre-existing
+  `latency_slippage_sim_e2e.rs` issue is untouched and pre-dates this pass).
+
+### Files changed (Pass 1)
+- `crates/features/src/cross_sectional.rs` — added `score_trailing_log_return` + M-DEV-2 tests.
+- `crates/features/src/lib.rs` — added `score_trailing_log_return` re-export.
+- `crates/strategy/src/cross_sectional/config.rs` — added `SelectionMode` enum + fields + M-DEV-1 tests.
+- `crates/strategy/src/cross_sectional/mod.rs` — added `SelectionMode` + `select_above_threshold` re-exports.
+- `crates/strategy/src/cross_sectional/momentum.rs` — added fields, score fork, selector fork,
+  all_warmed fork, hash append, M-DEV-3 strategy-level tests.
+- `crates/strategy/src/cross_sectional/selector.rs` — added `select_above_threshold` + M-DEV-3 selector tests.
+- `crates/strategy/src/lib.rs` — added `SelectionMode` + `select_above_threshold` re-exports.
+
+_Pass 2 (M-DEV-4 + M-DEV-5) not yet started._
+
+---
+
 ## Changelog
+
+- 2026-06-02 (developer, Pass 1 M-DEV-0..3): implemented the signal layer —
+  `SelectionMode` enum, `entry_threshold` field, `score_trailing_log_return`,
+  `select_above_threshold`, the `on_bar`/`build_rebalance_signals` fork. 150 strategy
+  tests + 11 features tests pass. 89/89 anchors byte-identical. HANDOFF → tester for
+  M-DEV-4+ (sweep wiring + falsifiers are Pass 2).
 
 - 2026-06-02 (architect, M-T1): resolved Q-TSM-1..4 + wrote the `## Design`
   (D-TSM.0..7) + `tasks.md` (M-DEV-0..7) + flipped state to `arch-done`. **Q-TSM-1:**

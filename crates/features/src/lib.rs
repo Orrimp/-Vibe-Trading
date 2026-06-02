@@ -15,7 +15,9 @@ pub mod rsi;
 pub mod sma;
 
 pub use bbands::{Bbands, BbandsBatch, BbandsStream, BbandsValue};
-pub use cross_sectional::{ScoreError, decimal_std, score_vol_adjusted_return};
+pub use cross_sectional::{
+    ScoreError, decimal_std, score_trailing_log_return, score_vol_adjusted_return,
+};
 pub use ema::{Ema, EmaBatch, EmaStream};
 pub use macd::{Macd, MacdBatch, MacdStream, MacdValue};
 pub use math::{MathError, decimal_ln, decimal_sqrt};

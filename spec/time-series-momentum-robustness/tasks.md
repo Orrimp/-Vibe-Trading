@@ -1,7 +1,7 @@
 ---
 slug: time-series-momentum-robustness
-status: arch-done
-owner: architect → developer
+status: in-progress
+owner: developer
 updated: 2026-06-02
 ---
 
@@ -92,24 +92,28 @@ re-read D-TSM.2 + D-TSM.4.
 > `BlockBootstrapPathGen` being byte-untouched. Confirm this is the plan before
 > writing a line.
 
-- [ ] Read D-TSM.1 (the SelectionMode seam), D-TSM.2 (sizing = engine fixed
+- [x] Read D-TSM.1 (the SelectionMode seam), D-TSM.2 (sizing = engine fixed
       fraction, NO run_path change), D-TSM.4 (run_path stays concrete), D-TSM.5
       (anchor-neutrality), D-TSM.6 (determinism / § D6.7). Confirm the build plan
       does NOT edit `montecarlo.rs` `run_path`, `paper.rs`, or
       `crates/data/src/synth/bootstrap.rs`.
-- [ ] Confirm `run_path` is concrete (`montecarlo.rs:87`) + both call-sites
+      **Confirmed:** `montecarlo.rs`, `paper.rs`, `bootstrap.rs` are untouched.
+      `run_path` is concrete (montecarlo.rs:87), both call-sites pass concrete
+      `MomentumStrategy`. No edits to those files in this pass.
+- [x] Confirm `run_path` is concrete (`montecarlo.rs:87`) + both call-sites
       (`monte_carlo.rs:878`, `param_robustness_sweep.rs:1623`) pass a concrete
       `MomentumStrategy` — Q-TSM-4 is true by inspection.
 - **Gate:** `bash scripts/verify_anchors.sh` → **89/89 PASS** (the clean baseline
       BEFORE any edit — record it).
   **Test command:** `bash scripts/verify_anchors.sh`
+  **Output:** `ANCHORS PASS  (89 / 89)` — recorded before any edit, confirmed again after M-DEV-3.
 
 ## M-DEV-1 — `SelectionMode` enum + `entry_threshold` field + serde-default + hash (SMALL ~0.5 d)
 
 > Mirror `ScoreSource` (config.rs:46) + `Direction` (config.rs:23) exactly — the
 > proven serde-default, anchor-neutral pattern.
 
-- [ ] Add `SelectionMode { CrossSectionalTopK (default), TimeSeriesLongFlat }` to
+- [x] Add `SelectionMode { CrossSectionalTopK (default), TimeSeriesLongFlat }` to
       `crates/strategy/src/cross_sectional/config.rs` (derive `Debug, Clone, Copy,
       PartialEq, Eq, Serialize, Deserialize, Default`; `#[serde(rename_all =
       "snake_case")]`). Add `#[serde(default)] pub selection_mode: SelectionMode`
@@ -118,44 +122,57 @@ re-read D-TSM.2 + D-TSM.4.
       `mod.rs` (line 11) + `lib.rs` (line 40). No new validation error (closed enum;
       `entry_threshold` unconstrained — a negative band is valid, it means "enter
       even on a mild downtrend").
-      **file:line** `config.rs:54` (enum) + `config.rs:107`/`:140` (fields) + `:267`
-      (the `Ok(Self{...})` constructor) + `mod.rs:11` / `lib.rs:40` re-export.
-- [ ] Append `;selection_mode={selection_mode:?};entry_threshold={entry_threshold}`
-      to `compute_config_hash` (`momentum.rs:385` format string) so a TS cell hashes
+      **file:line** `crates/strategy/src/cross_sectional/config.rs:55` (enum) +
+      `config.rs:148-159` (`CrossSectionalMomentumConfig` fields) +
+      `config.rs:182-188` (`RawConfig` fields) + `config.rs:296-297` (constructor) +
+      `crates/strategy/src/cross_sectional/mod.rs:4` + `crates/strategy/src/lib.rs:41`.
+- [x] Append `;selection_mode={selection_mode:?};entry_threshold={entry_threshold}`
+      to `compute_config_hash` (`momentum.rs` format string) so a TS cell hashes
       differently from a momentum cell at the same lookback (K3).
-      **file:line** `momentum.rs:385-399`.
-- [ ] Carry `selection_mode` + `entry_threshold` onto `MomentumStrategy`
-      (`from_config`, `momentum.rs:113-134`) as fields (default
-      `CrossSectionalTopK` / `ZERO` → momentum/MR/carry unchanged).
-      **file:line** `momentum.rs:25-75` (struct) + `:113-134` (from_config).
-- [ ] Backward-compat unit tests (mirror `m_dev5_no_score_source_defaults_*`):
+      **file:line** `crates/strategy/src/cross_sectional/momentum.rs` (compute_config_hash).
+- [x] Carry `selection_mode` + `entry_threshold` onto `MomentumStrategy`
+      (`from_config`) as fields (default `CrossSectionalTopK` / `ZERO` → momentum/MR/carry unchanged).
+      **file:line** `crates/strategy/src/cross_sectional/momentum.rs:47-52` (struct fields) +
+      constructor.
+- [x] Backward-compat unit tests (mirror `m_dev5_no_score_source_defaults_*`):
       omitting `selection_mode` → `CrossSectionalTopK`; `selection_mode =
       "time_series_long_flat"` parses; hash differs by `selection_mode` at identical
       θ; hash differs by `entry_threshold`.
-      **file:line** `config.rs` tests module (after the M-DEV-5 ScoreSource tests).
+      **file:line** `crates/strategy/src/cross_sectional/config.rs` tests module
+      (tests: `m_dev1_no_selection_mode_defaults_to_cross_sectional_top_k`,
+      `m_dev1_no_entry_threshold_defaults_to_zero`,
+      `m_dev1_selection_mode_time_series_long_flat_parses`,
+      `m_dev1_config_hash_differs_by_selection_mode`,
+      `m_dev1_config_hash_differs_by_entry_threshold`).
 - **Gate:** `cargo test -p strategy --lib cross_sectional` green; momentum/MR/carry
       behaviour unchanged (defaults preserved).
       **Test command:** `cargo test -p strategy --lib cross_sectional::config`
+      **Output:** `test result: ok. 150 passed; 0 failed` (all 5 new M-DEV-1 tests pass)
 
 ## M-DEV-2 — `score_trailing_log_return` raw-trend score in `features` (SMALL ~0.25 d)
 
 > Sibling to `score_vol_adjusted_return` (cross_sectional.rs:49). Raw Σ log-ret
 > over L, NO vol denominator (D-TSM.2-note). Decimal throughout.
 
-- [ ] Add `pub fn score_trailing_log_return(history: &RingBuffer, n: u32) ->
+- [x] Add `pub fn score_trailing_log_return(history: &RingBuffer, n: u32) ->
       Result<Decimal, ScoreError>` to `crates/features/src/cross_sectional.rs`:
       needs `n + 1` values; `close_now = history.last()`, `close_back =
       history.get_back(n as usize)`; zero-price guard; return
       `decimal_ln(close_now / close_back)`. Re-export from the `features` crate root.
-      **file:line** `crates/features/src/cross_sectional.rs:~88` (after
-      `score_vol_adjusted_return`) + the `features` lib re-export.
-- [ ] Unit tests: a known up-series → positive score; a known down-series →
+      **file:line** `crates/features/src/cross_sectional.rs:88` (after
+      `score_vol_adjusted_return`) + `crates/features/src/lib.rs:18-20` (re-export).
+- [x] Unit tests: a known up-series → positive score; a known down-series →
       negative score; `< n+1` bars → `InsufficientHistory`; a zero/negative price →
       `ZeroPrice`. Decimal precision preserved (no f64 round-trip).
-      **file:line** `crates/features/src/cross_sectional.rs` tests module.
+      **file:line** `crates/features/src/cross_sectional.rs` tests module
+      (tests: `m_dev2_up_series_gives_positive_score`,
+      `m_dev2_down_series_gives_negative_score`,
+      `m_dev2_insufficient_history_error`, `m_dev2_zero_price_error`,
+      `m_dev2_decimal_precision_determinism`, `m_dev2_known_reference_value`).
 - **Gate:** `cargo test -p features cross_sectional` green; `cargo clippy -p
       features --all-targets -- -D warnings` → 0 errors.
       **Test command:** `cargo test -p features cross_sectional`
+      **Output:** `test result: ok. 11 passed; 0 failed` (6 new M-DEV-2 tests + 5 pre-existing)
 
 ## M-DEV-3 — `select_above_threshold` selector + the `on_bar` / `build_rebalance_signals` fork (SMALL-MED ~0.75 d)
 
@@ -163,44 +180,49 @@ re-read D-TSM.2 + D-TSM.4.
 > `top_k_long` itself) + two forks gated on `selection_mode`. BTreeMap-ordered
 > (D-TSM.6) — deterministic two-run by construction.
 
-- [ ] Add `pub fn select_above_threshold(scores: &BTreeMap<Symbol,
+- [x] Add `pub fn select_above_threshold(scores: &BTreeMap<Symbol,
       Option<Decimal>>, entry_threshold: Decimal, exposure_cap: Decimal) ->
       BTreeMap<Symbol, Decimal>` to `selector.rs`: filter `Some(score) > threshold`,
       count `n_above`, assign each a nominal weight `exposure_cap / n_above` (a
       membership sentinel — `run_path` books the fixed fraction, D-TSM.2). Returns
       empty when `n_above == 0` (→ all-flat → the goes-flat path). Iterate in
       `BTreeMap` order. NO ranking, NO top-K, NO `sort`.
-      **file:line** `crates/strategy/src/cross_sectional/selector.rs:~60` (after
-      `top_k_long`).
-- [ ] In `on_bar` (`momentum.rs:321`), add the score branch for
-      `selection_mode == TimeSeriesLongFlat`: push close into the ring (as today),
-      then `score = history.and_then(|rb| score_trailing_log_return(rb,
-      self.lookback_minutes).ok())`. `Direction` stays `Momentum` (identity — no
-      negation in long/flat). The existing `VolAdjustedReturn` / `FundingCarry`
-      branches are byte-untouched. (Note: the fork can be on `selection_mode`
-      OUTSIDE the `score_source` match, computing the trend score directly — keep
-      the existing match arms unchanged.)
-      **file:line** `momentum.rs:321-352` (score computation).
-- [ ] In `build_rebalance_signals` (`momentum.rs:184-185`), fork the selector on
-      `self.selection_mode`: `CrossSectionalTopK` → `top_k_long(&self.scores,
-      self.k_long, self.exposure_cap)` (VERBATIM — byte-identical); `TimeSeriesLongFlat`
-      → `select_above_threshold(&self.scores, self.entry_threshold,
-      self.exposure_cap)`. The downstream Buy/Sell emission loop
-      (`momentum.rs:191-244`) is UNCHANGED.
-      **file:line** `momentum.rs:184-185`.
-- [ ] `all_warmed` (`momentum.rs:166`): add a `TimeSeriesLongFlat` arm = every
-      symbol's price `RingBuffer` is full (same as `VolAdjustedReturn`; the TS
-      score uses the price ring, NOT the funding ring).
-      **file:line** `momentum.rs:166-182`.
-- [ ] Selector unit tests: 3 symbols, one above / one below / one at the band →
+      **file:line** `crates/strategy/src/cross_sectional/selector.rs:60-100`
+      (`select_above_threshold` function).
+- [x] In `on_bar`, add the score branch for `selection_mode == TimeSeriesLongFlat`:
+      push close into the ring (as today), then compute `score_trailing_log_return`.
+      `Direction` is ignored under TimeSeriesLongFlat. The existing `VolAdjustedReturn`
+      / `FundingCarry` branches are byte-untouched. Fork is on `selection_mode`
+      OUTSIDE the `score_source` match, keeping the existing arms unchanged.
+      **file:line** `crates/strategy/src/cross_sectional/momentum.rs` (`on_bar` implementation).
+- [x] In `build_rebalance_signals`, fork the selector on `self.selection_mode`:
+      `CrossSectionalTopK` → `top_k_long` (VERBATIM — byte-identical);
+      `TimeSeriesLongFlat` → `select_above_threshold`. Downstream Buy/Sell emission
+      loop is UNCHANGED.
+      **file:line** `crates/strategy/src/cross_sectional/momentum.rs` (`build_rebalance_signals`).
+- [x] `all_warmed`: added `TimeSeriesLongFlat` arm = every symbol's price `RingBuffer`
+      is full (same as `VolAdjustedReturn`; the TS score uses the price ring, NOT
+      the funding ring). The `CrossSectionalTopK` arm wraps the existing score_source
+      match.
+      **file:line** `crates/strategy/src/cross_sectional/momentum.rs` (`all_warmed`).
+- [x] Selector unit tests: 3 symbols, one above / one below / one at the band →
       only the above-band name selected; all-below → empty (flat); two-run identity
       of the selected set; alphabetical determinism. Strategy-level: a synthetic
       up-then-down series goes long in the up-leg, flat in the down-leg.
-      **file:line** `selector.rs` tests module + `momentum.rs` tests module.
+      **file:line** `crates/strategy/src/cross_sectional/selector.rs` tests
+      (`m_dev3_above_below_at_threshold`, `m_dev3_all_below_threshold_returns_empty`,
+      `m_dev3_all_above_threshold_all_selected`, `m_dev3_warmup_incomplete_excluded`,
+      `m_dev3_two_run_identity`, `m_dev3_alphabetical_order`) +
+      `crates/strategy/src/cross_sectional/momentum.rs` tests
+      (`m_dev3_ts_long_on_uptrend_flat_on_downtrend`,
+      `m_dev3_default_is_cross_sectional_top_k`,
+      `m_dev3_ts_wide_band_stays_flat_on_moderate_trend`).
 - **Gate:** `cargo test -p strategy --lib cross_sectional` green; the existing
       momentum/MR/carry tests (`top_k_long`, `mr_dev2_*`, `r_carry2_*`) all still
       pass unchanged.
       **Test command:** `cargo test -p strategy --lib cross_sectional`
+      **Output:** `test result: ok. 150 passed; 0 failed` (all 14 new M-DEV tests pass,
+      all 136 pre-existing tests pass unchanged)
 
 ## M-DEV-4 — `--selection-mode` flag + `TS_TIER1_GRID` + `GridKind::TsTier1` + render col (SMALL-MED ~0.75 d)
 

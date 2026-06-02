@@ -85,6 +85,43 @@ pub fn score_vol_adjusted_return(
     Ok(log_return / realized_vol)
 }
 
+/// Compute the raw trailing log-return score for a single symbol (D-TSM.2-note, M-DEV-2).
+///
+/// This is the time-series momentum score: `ln(close[t] / close[t-n])` — the asset's
+/// own cumulative log-return over `n` bars. It is NOT vol-normalized (unlike
+/// `score_vol_adjusted_return`): the entry threshold comparison is only interpretable
+/// against a raw return.
+///
+/// Warm-up: requires at least `n + 1` bars in the ring buffer.
+///
+/// # Arguments
+///
+/// - `history`: ring buffer of close prices (most-recent last via `push`).
+/// - `n`: lookback window in bars (≥ 1).
+///
+/// # Errors
+///
+/// Returns [`ScoreError`] on insufficient history, math domain errors, or zero/negative
+/// prices.
+pub fn score_trailing_log_return(history: &RingBuffer, n: u32) -> Result<Decimal, ScoreError> {
+    let needed = n as usize + 1;
+    if history.len() < needed {
+        return Err(ScoreError::InsufficientHistory {
+            needed,
+            have: history.len(),
+        });
+    }
+
+    let close_now = history.last().ok_or(ScoreError::Empty)?;
+    let close_back = history.get_back(n as usize).ok_or(ScoreError::Empty)?;
+
+    if close_back <= Decimal::ZERO || close_now <= Decimal::ZERO {
+        return Err(ScoreError::ZeroPrice);
+    }
+
+    Ok(decimal_ln(close_now / close_back)?)
+}
+
 /// Standard deviation of a slice of `Decimal` values (population std dev).
 ///
 /// # Errors
@@ -198,5 +235,85 @@ mod tests {
                 "strictly increasing → positive score"
             );
         }
+    }
+
+    // ── M-DEV-2: score_trailing_log_return unit tests ─────────────────────────
+
+    /// M-DEV-2 (a): A known up-series → positive score (ln(higher/lower) > 0).
+    #[test]
+    fn m_dev2_up_series_gives_positive_score() {
+        // n=3, need 4 bars. Prices: 100, 110, 120, 130 (strictly increasing).
+        let rb = make_history(&[100.0_f64, 110.0, 120.0, 130.0]);
+        let score = score_trailing_log_return(&rb, 3).unwrap();
+        assert!(
+            score > Decimal::ZERO,
+            "up-series (100 → 130) must give positive TS score, got {score}"
+        );
+    }
+
+    /// M-DEV-2 (b): A known down-series → negative score (ln(lower/higher) < 0).
+    #[test]
+    fn m_dev2_down_series_gives_negative_score() {
+        // Prices: 130, 120, 110, 100 (strictly decreasing).
+        let rb = make_history(&[130.0_f64, 120.0, 110.0, 100.0]);
+        let score = score_trailing_log_return(&rb, 3).unwrap();
+        assert!(
+            score < Decimal::ZERO,
+            "down-series (130 → 100) must give negative TS score, got {score}"
+        );
+    }
+
+    /// M-DEV-2 (c): Insufficient history → InsufficientHistory error.
+    #[test]
+    fn m_dev2_insufficient_history_error() {
+        let mut rb = RingBuffer::new(10);
+        // Push only 3 bars, need n+1=4 for n=3.
+        for i in 1u32..=3 {
+            rb.push(Decimal::from(i * 100));
+        }
+        let result = score_trailing_log_return(&rb, 3);
+        assert!(
+            matches!(result, Err(ScoreError::InsufficientHistory { .. })),
+            "< n+1 bars must return InsufficientHistory, got {result:?}"
+        );
+    }
+
+    /// M-DEV-2 (d): Zero close price → ZeroPrice error.
+    #[test]
+    fn m_dev2_zero_price_error() {
+        // history: [0, 100, 200, 300] — back-of-window price is zero.
+        let rb = make_history(&[0.0_f64, 100.0, 200.0, 300.0]);
+        let result = score_trailing_log_return(&rb, 3);
+        assert!(
+            matches!(result, Err(ScoreError::ZeroPrice)),
+            "zero price in window must return ZeroPrice, got {result:?}"
+        );
+    }
+
+    /// M-DEV-2 (e): Decimal precision preserved (no f64 round-trip in the result).
+    /// Both runs on the same input must produce bit-identical results.
+    #[test]
+    fn m_dev2_decimal_precision_determinism() {
+        let rb = make_history(&[100.0_f64, 105.0, 110.0, 115.0]);
+        let s1 = score_trailing_log_return(&rb, 3).unwrap();
+        let s2 = score_trailing_log_return(&rb, 3).unwrap();
+        assert_eq!(
+            s1, s2,
+            "TS score must be bit-identical across two calls on the same input"
+        );
+    }
+
+    /// M-DEV-2 (f): Known reference value — ln(200/100) ≈ 0.693147 (n=1, two-bar ring).
+    #[test]
+    fn m_dev2_known_reference_value() {
+        let rb = make_history(&[100.0_f64, 200.0]);
+        let score = score_trailing_log_return(&rb, 1).unwrap();
+        // ln(2) ≈ 0.6931471805599453
+        let ln2 = dec!(0.6931471805599453);
+        let tolerance = dec!(0.000001);
+        assert!(
+            (score - ln2).abs() < tolerance,
+            "score_trailing_log_return([100, 200], n=1) should be ≈ ln(2) = 0.693147, got {score}"
+        );
     }
 }

@@ -13,9 +13,11 @@ use smol_str::SmolStr;
 use trading_core::{Bar, Signal, SignalEvidence, SignalKind, StrategyId, Symbol, Tick, Timestamp};
 
 use crate::Strategy;
-use crate::cross_sectional::config::{CrossSectionalMomentumConfig, Direction, ScoreSource};
-use crate::cross_sectional::selector::top_k_long;
-use features::{RingBuffer, score_vol_adjusted_return};
+use crate::cross_sectional::config::{
+    CrossSectionalMomentumConfig, Direction, ScoreSource, SelectionMode,
+};
+use crate::cross_sectional::selector::{select_above_threshold, top_k_long};
+use features::{RingBuffer, score_trailing_log_return, score_vol_adjusted_return};
 
 /// v1 cross-sectional momentum strategy.
 ///
@@ -42,6 +44,12 @@ pub struct MomentumStrategy {
     /// Score source (M-DEV-5, D-CARRY.1). Default = `VolAdjustedReturn` (anchor-neutral).
     /// `FundingCarry` switches the score to `−trailing_mean(funding)` (R-CARRY.2 sign).
     score_source: ScoreSource,
+    /// Selection mode (M-DEV-1, D-TSM.1). Default = `CrossSectionalTopK` (anchor-neutral).
+    /// `TimeSeriesLongFlat` switches selection to per-asset threshold gating (D-TSM.1).
+    selection_mode: SelectionMode,
+    /// Flat/entry threshold for `TimeSeriesLongFlat` (D-TSM.1). Default = `Decimal::ZERO`.
+    /// Only consumed under `SelectionMode::TimeSeriesLongFlat`.
+    entry_threshold: Decimal,
 
     /// Per-symbol ring buffers of close prices (size = lookback_minutes + 1).
     histories: BTreeMap<Symbol, RingBuffer>,
@@ -122,6 +130,8 @@ impl MomentumStrategy {
             exposure_cap: cfg.exposure_cap,
             direction: cfg.direction,
             score_source: cfg.score_source,
+            selection_mode: cfg.selection_mode,
+            entry_threshold: cfg.entry_threshold,
             histories,
             scores,
             last_rebalance_ts: None,
@@ -164,25 +174,45 @@ impl MomentumStrategy {
     }
 
     fn all_warmed(&self) -> bool {
-        match self.score_source {
-            ScoreSource::VolAdjustedReturn => {
-                // Original path: all price history ring buffers must be full.
+        match self.selection_mode {
+            SelectionMode::TimeSeriesLongFlat => {
+                // TS warm-up: all price history ring buffers must be full.
+                // Same as VolAdjustedReturn — the TS trend score uses the price ring.
+                // (FundingCarry is not used under TimeSeriesLongFlat.)
                 self.histories.values().all(|rb| rb.is_full())
             }
-            ScoreSource::FundingCarry => {
-                // Carry warm-up: every symbol's funding ring must have ≥ L settlements.
-                // A symbol with no ring entry is not yet warmed (it has seen 0 settlements).
-                self.universe_symbols.keys().all(|sym| {
-                    self.funding_rings
-                        .get(sym)
-                        .is_some_and(|ring| ring.len() >= self.funding_lookback)
-                })
+            SelectionMode::CrossSectionalTopK => {
+                match self.score_source {
+                    ScoreSource::VolAdjustedReturn => {
+                        // Original path: all price history ring buffers must be full.
+                        self.histories.values().all(|rb| rb.is_full())
+                    }
+                    ScoreSource::FundingCarry => {
+                        // Carry warm-up: every symbol's funding ring must have ≥ L settlements.
+                        // A symbol with no ring entry is not yet warmed (it has seen 0 settlements).
+                        self.universe_symbols.keys().all(|sym| {
+                            self.funding_rings
+                                .get(sym)
+                                .is_some_and(|ring| ring.len() >= self.funding_lookback)
+                        })
+                    }
+                }
             }
         }
     }
 
     fn build_rebalance_signals(&mut self, bar: &Bar) -> Vec<Signal> {
-        let target_weights = top_k_long(&self.scores, self.k_long, self.exposure_cap);
+        // Fork on selection_mode (D-TSM.1):
+        // CrossSectionalTopK → top_k_long (VERBATIM byte-identical to v1 path).
+        // TimeSeriesLongFlat → select_above_threshold (new, per-asset threshold gating).
+        let target_weights = match self.selection_mode {
+            SelectionMode::CrossSectionalTopK => {
+                top_k_long(&self.scores, self.k_long, self.exposure_cap)
+            }
+            SelectionMode::TimeSeriesLongFlat => {
+                select_above_threshold(&self.scores, self.entry_threshold, self.exposure_cap)
+            }
+        };
 
         let mut signals = Vec::new();
         let ts = bar.close_ts;
@@ -318,35 +348,58 @@ impl Strategy for MomentumStrategy {
             return Vec::new();
         }
 
-        // Compute score — fork on score_source (M-DEV-5, D-CARRY.1).
-        let score = match self.score_source {
-            ScoreSource::VolAdjustedReturn => {
-                // EXISTING path — byte-identical to pre-carry code.
-                // Push close into the symbol's ring buffer.
+        // Compute score — fork on selection_mode first (D-TSM.1 / M-DEV-3):
+        //   TimeSeriesLongFlat → raw cumulative log-return over L (D-TSM.2-note).
+        //   CrossSectionalTopK → existing score_source fork (VolAdjustedReturn / FundingCarry).
+        // The TS score branch is fully independent; the existing score_source arms are
+        // byte-untouched (CrossSectionalTopK path is the DEFAULT).
+        let score = match self.selection_mode {
+            SelectionMode::TimeSeriesLongFlat => {
+                // TS trend score: raw Σ log-return over L bars (D-TSM.2-note).
+                // Push close into the ring (same ring as VolAdjustedReturn).
                 if let Some(rb) = self.histories.get_mut(&bar.symbol) {
                     rb.push(bar.close.get());
                 }
-                // Recompute score for this symbol.
-                let score = self.histories.get(&bar.symbol).and_then(|rb| {
-                    score_vol_adjusted_return(rb, self.lookback_minutes, self.vol_floor).ok()
-                });
-                // D-MR.1: invert at the cache boundary.
-                // Momentum stores +score; Reversion stores −score so the unchanged
-                // descending `top_k_long` selects the bottom-K losers.
-                match self.direction {
-                    Direction::Momentum => score,
-                    Direction::Reversion => score.map(|s| -s),
-                }
+                // Compute raw trailing log-return. None → warmup (excluded from selection).
+                self.histories
+                    .get(&bar.symbol)
+                    .and_then(|rb| score_trailing_log_return(rb, self.lookback_minutes).ok())
+                // Direction is ignored under TimeSeriesLongFlat (no inversion — the
+                // threshold comparison IS the direction signal, D-TSM.1).
             }
-            ScoreSource::FundingCarry => {
-                // NEW carry path (M-DEV-5): −trailing_mean(funding) over L settlements.
-                // The sign is in carry_score (R-CARRY.2); Direction stays Momentum (identity).
-                // We still push close for history (no-op for the score but keeps the ring
-                // consistent if score_source ever changes mid-run — defensive).
-                if let Some(rb) = self.histories.get_mut(&bar.symbol) {
-                    rb.push(bar.close.get());
+            SelectionMode::CrossSectionalTopK => {
+                // EXISTING path — byte-identical to pre-TS code.
+                match self.score_source {
+                    ScoreSource::VolAdjustedReturn => {
+                        // EXISTING path — byte-identical to pre-carry code.
+                        // Push close into the symbol's ring buffer.
+                        if let Some(rb) = self.histories.get_mut(&bar.symbol) {
+                            rb.push(bar.close.get());
+                        }
+                        // Recompute score for this symbol.
+                        let score = self.histories.get(&bar.symbol).and_then(|rb| {
+                            score_vol_adjusted_return(rb, self.lookback_minutes, self.vol_floor)
+                                .ok()
+                        });
+                        // D-MR.1: invert at the cache boundary.
+                        // Momentum stores +score; Reversion stores −score so the unchanged
+                        // descending `top_k_long` selects the bottom-K losers.
+                        match self.direction {
+                            Direction::Momentum => score,
+                            Direction::Reversion => score.map(|s| -s),
+                        }
+                    }
+                    ScoreSource::FundingCarry => {
+                        // NEW carry path (M-DEV-5): −trailing_mean(funding) over L settlements.
+                        // The sign is in carry_score (R-CARRY.2); Direction stays Momentum (identity).
+                        // We still push close for history (no-op for the score but keeps the ring
+                        // consistent if score_source ever changes mid-run — defensive).
+                        if let Some(rb) = self.histories.get_mut(&bar.symbol) {
+                            rb.push(bar.close.get());
+                        }
+                        self.carry_score(&bar.symbol, bar.open_ts)
+                    }
                 }
-                self.carry_score(&bar.symbol, bar.open_ts)
             }
         };
         self.scores.insert(bar.symbol.clone(), score);
@@ -382,9 +435,12 @@ fn compute_config_hash(cfg: &CrossSectionalMomentumConfig) -> [u8; 32] {
 
     // M-DEV-5: append ;score_source={...} so carry-vs-momentum at the same θ
     // hashes differently (K3 — the config hash distinguishes strategy variants).
+    // M-DEV-1: append ;selection_mode={...};entry_threshold={...} so a TS cell
+    // hashes differently from a momentum cell at the same lookback (K3).
     let canonical = format!(
         "id={id};universe={uni};lookback={lb};rebalance={rb};k_long={kl};k_short={ks};\
-         exposure_cap={ec};drift={dt};vol_floor={vf};direction={dir:?};score_source={ss:?}",
+         exposure_cap={ec};drift={dt};vol_floor={vf};direction={dir:?};score_source={ss:?};\
+         selection_mode={sm:?};entry_threshold={et}",
         id = cfg.id,
         uni = universe_sorted.join(","),
         lb = cfg.lookback_minutes,
@@ -396,6 +452,8 @@ fn compute_config_hash(cfg: &CrossSectionalMomentumConfig) -> [u8; 32] {
         vf = cfg.vol_floor,
         dir = cfg.direction,
         ss = cfg.score_source,
+        sm = cfg.selection_mode,
+        et = cfg.entry_threshold,
     );
 
     let mut hasher = Sha256::new();
@@ -901,6 +959,145 @@ score_source = "funding_carry"
             "R-CARRY.6 NO-LOOK-AHEAD VIOLATION: strategy with funding only at ts=1 \
              must produce None score at ts=0 (the future funding must not leak). \
              Got: {score_b:?}"
+        );
+    }
+
+    // ── M-DEV-3: TimeSeriesLongFlat strategy-level tests ─────────────────────
+
+    /// Helper: build a TS-momentum strategy (TimeSeriesLongFlat) for a 2-symbol universe.
+    fn make_ts_strategy(
+        lookback: u32,
+        rebalance: u32,
+        entry_threshold: Decimal,
+    ) -> MomentumStrategy {
+        use crate::cross_sectional::config::{CrossSectionalMomentumConfig, SelectionMode};
+        let toml = format!(
+            r#"
+id = "test_ts"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = {lookback}
+rebalance_minutes = {rebalance}
+k_long = 2
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"
+selection_mode = "time_series_long_flat"
+"#
+        );
+        let mut cfg = CrossSectionalMomentumConfig::from_str(&toml).unwrap();
+        cfg.selection_mode = SelectionMode::TimeSeriesLongFlat;
+        cfg.entry_threshold = entry_threshold;
+        MomentumStrategy::from_config(cfg, SmolStr::new("test"))
+    }
+
+    /// M-DEV-3 strategy-level (a): TS strategy goes LONG on a clear uptrend
+    /// and FLAT on a clear downtrend.
+    ///
+    /// BTC: uptrend (100→200 over lookback bars) → positive log-return → LONG.
+    /// ETH: downtrend (200→100 over lookback bars) → negative log-return → FLAT.
+    /// entry_threshold = 0.00 (pure long/flat-on-sign).
+    #[test]
+    fn m_dev3_ts_long_on_uptrend_flat_on_downtrend() {
+        let lookback: u32 = 5;
+        let rebalance: u32 = 6; // rebalance once all warmed (at bar 6)
+        let mut strat = make_ts_strategy(lookback, rebalance, Decimal::ZERO);
+
+        // Warmup: lookback+1 = 6 bars needed.
+        // BTC: strictly up (100→150 in 6 steps).
+        // ETH: strictly down (200→150 in 6 steps).
+        let btc_prices: Vec<Decimal> = (0..=6u32).map(|i| Decimal::from(100u32 + i * 10)).collect();
+        let eth_prices: Vec<Decimal> = (0..=6u32).map(|i| Decimal::from(200u32 - i * 10)).collect();
+
+        let mut buy_signals: Vec<String> = Vec::new();
+        let mut sell_signals: Vec<String> = Vec::new();
+
+        for bar_idx in 0..=6i64 {
+            let btc_bar = make_bar("BTCUSDT", btc_prices[bar_idx as usize], bar_idx);
+            let eth_bar = make_bar("ETHUSDT", eth_prices[bar_idx as usize], bar_idx);
+            for sig in strat.on_bar(&btc_bar) {
+                if sig.kind == SignalKind::Buy {
+                    buy_signals.push(sig.symbol.to_string());
+                } else if sig.kind == SignalKind::Sell {
+                    sell_signals.push(sig.symbol.to_string());
+                }
+            }
+            for sig in strat.on_bar(&eth_bar) {
+                if sig.kind == SignalKind::Buy {
+                    buy_signals.push(sig.symbol.to_string());
+                } else if sig.kind == SignalKind::Sell {
+                    sell_signals.push(sig.symbol.to_string());
+                }
+            }
+        }
+
+        // After warmup, BTC has positive log-return → Buy; ETH has negative → no Buy.
+        assert!(
+            buy_signals.contains(&"BTCUSDT".to_string()),
+            "M-DEV-3: TS strategy must Buy BTCUSDT (uptrend, positive log-return above threshold=0). \
+             buy_signals={buy_signals:?}"
+        );
+        assert!(
+            !buy_signals.contains(&"ETHUSDT".to_string()),
+            "M-DEV-3: TS strategy must NOT Buy ETHUSDT (downtrend, negative log-return below threshold=0). \
+             buy_signals={buy_signals:?}"
+        );
+    }
+
+    /// M-DEV-3 strategy-level (b): TS strategy defaults-off (SelectionMode = CrossSectionalTopK)
+    /// when selection_mode is omitted — the existing top-K behavior is byte-untouched.
+    #[test]
+    fn m_dev3_default_is_cross_sectional_top_k() {
+        // Build a plain (non-TS) strategy and verify it is CrossSectionalTopK by default.
+        let strat = make_strategy(5, 6, 2);
+        assert_eq!(
+            strat.selection_mode,
+            SelectionMode::CrossSectionalTopK,
+            "M-DEV-3: omitting selection_mode must default to CrossSectionalTopK (anchor-neutral)"
+        );
+    }
+
+    /// M-DEV-3 strategy-level (c): TS strategy with high entry_threshold stays flat
+    /// even on a moderate uptrend (the wide-band / no-trade-zone behavior).
+    #[test]
+    fn m_dev3_ts_wide_band_stays_flat_on_moderate_trend() {
+        let lookback: u32 = 4;
+        let rebalance: u32 = 5;
+        // entry_threshold = 0.50 (50% log-return required — very wide band).
+        let entry_threshold = dec!(0.50);
+        let mut strat = make_ts_strategy(lookback, rebalance, entry_threshold);
+
+        // BTC: modest uptrend (100→110 over 4 bars → log-ret ≈ 9.5% < 50%).
+        let btc_prices: Vec<Decimal> = (0..=5u32)
+            .map(|i| Decimal::from(100u32 + i * 2)) // 100, 102, 104, 106, 108, 110
+            .collect();
+        let eth_prices: Vec<Decimal> = btc_prices.clone(); // same — both modest uptrend
+
+        let mut buy_signals: Vec<String> = Vec::new();
+
+        for bar_idx in 0..=5i64 {
+            let btc_bar = make_bar("BTCUSDT", btc_prices[bar_idx as usize], bar_idx);
+            let eth_bar = make_bar("ETHUSDT", eth_prices[bar_idx as usize], bar_idx);
+            for sig in strat.on_bar(&btc_bar) {
+                if sig.kind == SignalKind::Buy {
+                    buy_signals.push(sig.symbol.to_string());
+                }
+            }
+            for sig in strat.on_bar(&eth_bar) {
+                if sig.kind == SignalKind::Buy {
+                    buy_signals.push(sig.symbol.to_string());
+                }
+            }
+        }
+
+        // With a 50% threshold, a 10% uptrend should NOT generate Buy signals.
+        assert!(
+            buy_signals.is_empty(),
+            "M-DEV-3: TS strategy with entry_threshold=0.50 must stay flat on a ~10% uptrend. \
+             buy_signals={buy_signals:?}"
         );
     }
 }

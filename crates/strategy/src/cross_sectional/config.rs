@@ -53,6 +53,30 @@ pub enum ScoreSource {
     FundingCarry,
 }
 
+// ── Selection mode (D-TSM.1, M-DEV-1) ─────────────────────────────────────────
+
+/// How signals are selected after scoring (D-TSM.1).
+///
+/// - `CrossSectionalTopK` (default): rank all warmed names descending, take the top K.
+///   This is the v1 behavior (momentum/MR/carry). Every existing TOML and struct literal
+///   that omits this field keeps the v1 `top_k_long` selection path unchanged
+///   (`serde` `#[serde(default)]` → fully backward-compatible, anchor-neutral).
+/// - `TimeSeriesLongFlat`: each warmed asset decides long/flat on its OWN trailing-return
+///   sign vs `entry_threshold`. NO cross-sectional ranking, NO top-K. The portfolio is
+///   the equal-weight set of all above-threshold names; cardinality is variable (0..N).
+///
+/// **Anchor-neutrality:** `selection_mode` defaults `CrossSectionalTopK`; the existing
+/// 89 momentum/MR/carry anchors are byte-identical by construction. The TS path is opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectionMode {
+    /// Cross-sectional top-K selection (v1 behavior — default, anchor-neutral).
+    #[default]
+    CrossSectionalTopK,
+    /// Time-series long/flat per-asset selection (D-TSM.1 — no ranking).
+    TimeSeriesLongFlat,
+}
+
 /// Error codes returned by the loader — matches the Design error-code table.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CrossSectionalLoadError {
@@ -137,6 +161,18 @@ pub struct CrossSectionalMomentumConfig {
     /// Set to `FundingCarry` for the carry strategy.
     #[serde(default)]
     pub score_source: ScoreSource,
+    /// Selection mode (M-DEV-1, D-TSM.1).
+    /// Default = `CrossSectionalTopK` (v1 behavior) — serde `#[serde(default)]`
+    /// keeps all existing TOMLs and struct literals anchor-neutral (89 anchors unchanged).
+    /// Set to `TimeSeriesLongFlat` for time-series momentum.
+    #[serde(default)]
+    pub selection_mode: SelectionMode,
+    /// Flat/entry threshold for `TimeSeriesLongFlat` selection (D-TSM.1).
+    /// Default = `Decimal::ZERO` → inert for all existing momentum/MR/carry runs.
+    /// Only read under `SelectionMode::TimeSeriesLongFlat`; ignored by `CrossSectionalTopK`.
+    /// A negative value permits entry on a mild downtrend (wider-than-zero band).
+    #[serde(default)]
+    pub entry_threshold: Decimal,
 }
 
 /// Raw deserializable form before validation.
@@ -169,6 +205,12 @@ struct RawConfig {
     /// Score source — default = `VolAdjustedReturn` so existing TOMLs keep v1 behavior.
     #[serde(default)]
     pub score_source: ScoreSource,
+    /// Selection mode — default = `CrossSectionalTopK` so existing TOMLs keep v1 behavior.
+    #[serde(default)]
+    pub selection_mode: SelectionMode,
+    /// Entry threshold — default = `Decimal::ZERO` → inert for all existing runs.
+    #[serde(default)]
+    pub entry_threshold: Decimal,
 }
 
 fn default_lookback() -> u32 {
@@ -277,6 +319,8 @@ impl CrossSectionalMomentumConfig {
             stage: raw.stage,
             direction: raw.direction,
             score_source: raw.score_source,
+            selection_mode: raw.selection_mode,
+            entry_threshold: raw.entry_threshold,
         })
     }
 
@@ -581,6 +625,113 @@ k_long = 2
         assert_ne!(
             strat_var.hash, strat_carry.hash,
             "VolAdjustedReturn and FundingCarry configs at identical θ MUST produce different hashes (K3)"
+        );
+    }
+
+    // ── M-DEV-1: SelectionMode field tests ────────────────────────────────────
+
+    /// M-DEV-1 (a): TOML with no `selection_mode` field → `SelectionMode::CrossSectionalTopK`
+    /// (backward-compat — all 89 existing anchors are unaffected).
+    #[test]
+    fn m_dev1_no_selection_mode_defaults_to_cross_sectional_top_k() {
+        let cfg = CrossSectionalMomentumConfig::from_str(VALID_TOML).unwrap();
+        assert_eq!(
+            cfg.selection_mode,
+            SelectionMode::CrossSectionalTopK,
+            "omitting `selection_mode` must default to CrossSectionalTopK (backward compat)"
+        );
+    }
+
+    /// M-DEV-1 (b): TOML with no `entry_threshold` field → `Decimal::ZERO` (backward-compat).
+    #[test]
+    fn m_dev1_no_entry_threshold_defaults_to_zero() {
+        let cfg = CrossSectionalMomentumConfig::from_str(VALID_TOML).unwrap();
+        assert_eq!(
+            cfg.entry_threshold,
+            Decimal::ZERO,
+            "omitting `entry_threshold` must default to Decimal::ZERO (backward compat)"
+        );
+    }
+
+    /// M-DEV-1 (c): `selection_mode = "time_series_long_flat"` parses correctly.
+    #[test]
+    fn m_dev1_selection_mode_time_series_long_flat_parses() {
+        let toml = r#"
+id    = "test_ts"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+selection_mode = "time_series_long_flat"
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.selection_mode,
+            SelectionMode::TimeSeriesLongFlat,
+            "`selection_mode = \"time_series_long_flat\"` must parse to SelectionMode::TimeSeriesLongFlat"
+        );
+    }
+
+    /// M-DEV-1 (d): Config hash differs between CrossSectionalTopK and TimeSeriesLongFlat at
+    /// identical θ (K3 — TS-vs-momentum hash discriminator).
+    #[test]
+    fn m_dev1_config_hash_differs_by_selection_mode() {
+        use super::super::momentum::MomentumStrategy;
+        use smol_str::SmolStr;
+
+        let toml_base = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 168
+rebalance_minutes = 60
+k_long = 2
+"#;
+        let mut cfg_cs = CrossSectionalMomentumConfig::from_str(toml_base).unwrap();
+        let mut cfg_ts = cfg_cs.clone();
+        cfg_ts.selection_mode = SelectionMode::TimeSeriesLongFlat;
+
+        cfg_cs.id = SmolStr::new("test_hash");
+        cfg_ts.id = SmolStr::new("test_hash");
+
+        let strat_cs = MomentumStrategy::from_config(cfg_cs, SmolStr::new("test"));
+        let strat_ts = MomentumStrategy::from_config(cfg_ts, SmolStr::new("test"));
+
+        assert_ne!(
+            strat_cs.hash, strat_ts.hash,
+            "CrossSectionalTopK and TimeSeriesLongFlat configs at identical θ MUST produce different hashes (K3)"
+        );
+    }
+
+    /// M-DEV-1 (e): Config hash differs when entry_threshold differs at identical other θ (K3).
+    #[test]
+    fn m_dev1_config_hash_differs_by_entry_threshold() {
+        use super::super::momentum::MomentumStrategy;
+        use smol_str::SmolStr;
+
+        let toml_base = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 168
+rebalance_minutes = 60
+k_long = 2
+selection_mode = "time_series_long_flat"
+"#;
+        let mut cfg_zero = CrossSectionalMomentumConfig::from_str(toml_base).unwrap();
+        let mut cfg_two_pct = cfg_zero.clone();
+        cfg_two_pct.entry_threshold = Decimal::new(2, 2); // 0.02
+
+        cfg_zero.id = SmolStr::new("test_hash");
+        cfg_two_pct.id = SmolStr::new("test_hash");
+
+        let strat_zero = MomentumStrategy::from_config(cfg_zero, SmolStr::new("test"));
+        let strat_two_pct = MomentumStrategy::from_config(cfg_two_pct, SmolStr::new("test"));
+
+        assert_ne!(
+            strat_zero.hash, strat_two_pct.hash,
+            "entry_threshold=0.00 and entry_threshold=0.02 configs MUST produce different hashes (K3)"
         );
     }
 }
