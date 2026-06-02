@@ -1162,7 +1162,7 @@ data_revision_sha: abc123def456
             "total_return mismatch: {}",
             stats.total_return
         );
-        assert_eq!(stats.completed_ok, true);
+        assert!(stats.completed_ok);
         assert_eq!(stats.data_revision_sha, "abc123def456");
     }
 }

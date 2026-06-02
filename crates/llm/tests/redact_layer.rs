@@ -374,5 +374,5 @@ fn p_red_2_layer_ordering_documented() {
     // This test documents the dependency. Falsification requires running a binary
     // with wrong order and observing raw values in stderr output.
     eprintln!("P-RED-2: see tracing_init.rs for the ordering contract documentation.");
-    assert!(true, "P-RED-2 is a documentation probe — always passes");
+    // P-RED-2 is a documentation probe — it passes by not panicking.
 }

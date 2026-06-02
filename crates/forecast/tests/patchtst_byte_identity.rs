@@ -37,10 +37,10 @@ fn find_workspace_root() -> Option<std::path::PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     loop {
         let candidate = dir.join("Cargo.toml");
-        if let Ok(contents) = std::fs::read_to_string(&candidate) {
-            if contents.contains("[workspace]") {
-                return Some(dir);
-            }
+        if let Ok(contents) = std::fs::read_to_string(&candidate)
+            && contents.contains("[workspace]")
+        {
+            return Some(dir);
         }
         let parent = dir.parent()?.to_path_buf();
         if parent == dir {

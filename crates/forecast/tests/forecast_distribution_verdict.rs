@@ -230,7 +230,7 @@ fn test_f3_fixture() {
 /// - std = 0.001, sigma_train = 10.0 → std/sigma = 1e-4 < 0.1, so F2 checks
 ///   condition `std > 0.1 * sigma_train` = 0.001 > 1.0 → FALSE
 /// - confidence_gate_survival[5] = 0.0 < 1e-4 → F3 condition FALSE
-/// → falls through to F4.
+///   → falls through to F4.
 #[test]
 fn test_f4_fixture() {
     let s = CheckpointStats {
@@ -309,7 +309,7 @@ fn test_mutual_exclusivity_random() {
         // NOT triggered.
         if label == "F4" {
             assert!(
-                !((s.abs_p95 as f64) < 1e-6),
+                (s.abs_p95 as f64) >= 1e-6,
                 "F4 returned but F1 condition is true"
             );
             assert!(

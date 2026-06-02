@@ -263,13 +263,13 @@ mod metrics {
                 // 10 bars of +1%, one bar of -0.1%, 10 more bars of +1%
                 let mut curr = dec!(100);
                 for _ in 0..10 {
-                    curr = curr * dec!(1.01);
+                    curr *= dec!(1.01);
                     v.push(curr);
                 }
-                curr = curr * dec!(0.999);
+                curr *= dec!(0.999);
                 v.push(curr);
                 for _ in 0..10 {
-                    curr = curr * dec!(1.01);
+                    curr *= dec!(1.01);
                     v.push(curr);
                 }
                 v
@@ -299,7 +299,7 @@ mod metrics {
             // Then recover and grow.
             let mut curr = *equity.last().unwrap();
             for _ in 0..(8760 - 4381) {
-                curr = curr * dec!(1.0001);
+                curr *= dec!(1.0001);
                 equity.push(curr);
             }
 
@@ -780,7 +780,7 @@ mod render {
             let mut curr = rust_decimal::Decimal::try_from(start).unwrap();
             v.push(curr);
             for _ in 1..n {
-                curr = curr * dec!(1.001);
+                curr *= dec!(1.001);
                 v.push(curr);
             }
             v

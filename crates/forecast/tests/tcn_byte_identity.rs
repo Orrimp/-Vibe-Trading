@@ -40,6 +40,7 @@ const TCN_CHECKPOINT_SHAS: &[(&str, &str)] = &[
 
 /// Run `git diff --quiet HEAD -- <path>` and return `Ok(())` on exit-0.
 /// Returns `Err(String)` with a helpful message on diff or if git is unavailable.
+#[allow(dead_code)] // kept as a documented helper for byte-identity report checks
 fn assert_no_git_diff(path: &str) -> Result<(), String> {
     let output = Command::new("git")
         .args(["diff", "--quiet", "HEAD", "--", path])
@@ -167,10 +168,10 @@ fn find_workspace_root() -> Option<std::path::PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     loop {
         let candidate = dir.join("Cargo.toml");
-        if let Ok(contents) = std::fs::read_to_string(&candidate) {
-            if contents.contains("[workspace]") {
-                return Some(dir);
-            }
+        if let Ok(contents) = std::fs::read_to_string(&candidate)
+            && contents.contains("[workspace]")
+        {
+            return Some(dir);
         }
         let parent = dir.parent()?.to_path_buf();
         if parent == dir {
