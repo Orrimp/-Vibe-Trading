@@ -857,3 +857,58 @@ one-report anchor unit are all reused; only a 2nd selector is added at the confi
   is a deterministic `BTreeMap`-ordered pure fn → two-run byte-identity by construction.
   Amendment, NOT a new ADR. Registry README row summary + frontmatter `updated:` amended
   atomically (architect.md § ADR registry contract).
+- 2026-06-03 (architect, horizon-retest-robustness M-T1): **D6.8 amendment added — a
+  HORIZON/DATA-PATH change varied at the LOAD + the CALCULATOR level (4h + daily coarser
+  decision cadence on the SAME 10-symbol coins), NOT a new strategy family.** The 4th
+  anchor-additive instance (MR=D6.5, carry=D6.6, TS=D6.7); the new wrinkle vs those is
+  the variation touches the DATA PATH (an in-memory OHLCV resample) + the CALCULATOR (a
+  new annualization fn) rather than the config — but the discipline is IDENTICAL: the
+  pre-existing path is byte-verbatim, the new path is additive, the seed is untouched.
+  **D6.8.1 — THE LOAD-BEARING decision (R-HR.LOAD), the sharpest anchor-risk in the
+  program:** `compute_sharpe_hourly`/`compute_sortino_hourly`/`compute_calmar`
+  (`stats/mod.rs:40/70/100`) hardcode 1h-baked constants (Sharpe/Sortino `SQRT_HPY =
+  √8575`; Calmar `years=(n−1)/8760`); run through them, a coarse bar inflates the
+  annualized Sharpe ≈2.0× (4h) / ≈4.9× (daily) → a silent false-ROBUST. The fix is
+  ADDITIVE: the three 1h fns stay BYTE-VERBATIM (re-imported by `bin/threshold_sweep.rs`
+  per R-NR.5; feed all 91 anchors) and three NEW siblings `compute_sharpe_periodic(equity,
+  periods_per_year: f64)` / `_sortino_periodic` / `_calmar_periodic` annualize by
+  `√periods_per_year`. REJECTED parameterizing the existing fns (ULP-change risk → 91-anchor
+  REGRESSION) + REJECTED a `Timeframe`-arg signature (hides the leap-year year-awareness).
+  The 1h path's two INCONSISTENT constants (√8575 Sharpe, /8760 Calmar) stay verbatim; the
+  periodic fns are MATHEMATICALLY CORRECT (no √8575 quirk propagated — 4h/daily are NEW, no
+  anchor binds them). `periods_per_year(horizon, year)` is YEAR-aware (4h 2190/2196; daily
+  365/366; F-HR.2 asserts √2190=46.797…, √365=19.105…). The sweep picks the path by `if
+  horizon==1h { *_hourly /* VERBATIM */ } else { *_periodic(periods_per_year(horizon,year)) }`
+  at BOTH metric call-sites (per-cell 1966 + BH 2383). **D6.8.2 — the resampler:**
+  `resample_ohlcv` = a pure ORDERED Decimal fold (open=first/high=max/low=min/close=last/
+  vol=Σ, UTC integer-division bucketing 14_400_000/86_400_000, single pass over `open_ts`-
+  sorted input, NO `HashMap`) wired as a POST-`merge_symbols` fold in `load_real_bars`
+  (`param_robustness_sweep.rs:1683`); `horizon==1h` → IDENTITY pass-through → the 1h load
+  path byte-untouched; the coverage check stays on the 1h count. The coarse `bar_count`
+  (`:2149`) = `1h_count / {6,24}` (exact integers) threads into the UNCHANGED bootstrap +
+  BH. **D6.8.3 — OQ-CARRY-SEM resolves for FREE:** the funding as-of join
+  (`funding_data.rs:378/421`) is timestamp-driven; the resample-first ordering means
+  `build_funding_at_return` keys off the COARSE bar `open_ts` = "last settlement at the
+  coarse bar's open" (apples-to-apples with carry #88/#89, NO `funding_data.rs` edit); L is
+  re-picked as a coarse-bar ring count; the funding co-resamples under the SAME shared
+  `idx_seq` (D6.6) at length `coarse_bar_count−1`. **D6.8.4 — OQ-BOOTSTRAP-TF:** the
+  bootstrap timestamp ladder stays cosmetically 1h (`bootstrap.rs:414`, correctness-safe —
+  the strategy keys off `close`+ordering, the Sharpe is per-return not per-second); the
+  RENDERER prints the REAL horizon (a hashed body field). CONSEQUENCE (the carry subtlety):
+  `is_rebalance_bar` measures wall-clock minutes on the 1h ladder, so "rebalance every coarse
+  bar" = `rebalance_minutes ≤ 60` and "every 2nd" = 120 — the native coarse cadence is
+  grid-encoded per cell. **D6.8.5** additive/defaults-off (`--horizon` defaults `1h`) → the
+  91 anchors (momentum #86 `0dd989d9…`, MR #87 `a708112e…`, carry #88 `f03cd714…`, carry #89
+  `fd96d5a8…`, TS #90, TS #91, all pre-existing) byte-identical by construction;
+  `run_path`/`PaperEngine`/`BlockBootstrapPathGen` byte-UNTOUCHED (the coarse `bar_count` is
+  a parameter, not a code change). **D6.8.6 — a NEW namespace `horizon-retest-robustness`**
+  (NOT `mc-robustness-2026-06` — the horizon is a distinct experiment axis); reports under
+  `spec/horizon-retest-robustness/reports/`; the tester adds the dir to `verify_anchors.sh`
+  + registers the namespace at lock time; + up to 8 anchors (TS + carry × 4h + daily ×
+  2023/2024); the LOCKED grids (TS-4h {42,180,540}×{0.00,0.02}; TS-daily {5,20,60}×{0.00,0.02};
+  CARRY-4h L∈{2,6,12}; CARRY-daily L∈{1,3,7}, § D-HR.4-LOCKED) + N (200 @ 4h, 1000 @ daily)
+  + horizon + funding-revision SHA are hashed body fields (K3). **D6.8.7** D1/D2/D3/D5/D6.1
+  inherited verbatim; no new RNG (the de-risk); the resampler is a deterministic ordered
+  fold → two-run byte-identity by construction (F-HR.5). Amendment, NOT a new ADR. Registry
+  README row summary + frontmatter `updated:` amended atomically (architect.md § ADR
+  registry contract).

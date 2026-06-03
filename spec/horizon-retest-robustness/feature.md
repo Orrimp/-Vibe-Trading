@@ -1,8 +1,8 @@
 ---
 slug: horizon-retest-robustness
-version: 0.1.0
-status: draft
-owner: analyst
+version: 0.2.0
+status: arch-done
+owner: architect
 priority: P2
 updated: 2026-06-03
 ---
@@ -561,9 +561,527 @@ questions surfaced there.
 ---
 
 ## Design
-_architect fills this (M-T1 next — Design section, tasks.md, the ADR amendment).
-The analyst stays at altitude: Why / Requirements / Scenarios / falsifiers /
-framed questions only._
+
+_Architect M-T1 (2026-06-03). All six OQs resolved + justified below.
+The headline call (**OQ-ANNUALIZE / R-HR.LOAD**) is **keep
+`compute_sharpe_hourly` / `compute_sortino_hourly` / `compute_calmar`
+byte-verbatim as the 1h path, and ADD three sibling horizon-aware
+fns** (`compute_sharpe_periodic` / `compute_sortino_periodic` /
+`compute_calmar_periodic`) that take an explicit `periods_per_year: f64`
+— so the 91 anchors are byte-identical **by construction** (the 1h call
+sites are untouched; the verbatim functions are never edited). The
+resampler (**OQ-RESAMPLE-SEAM**) is a **post-`merge_symbols` fold** in
+`load_real_bars` that, when `--horizon 1h` (the default), is an
+identity pass-through → the 1h load path is byte-untouched. The
+re-picked θ-grids + N (**OQ-GRID / OQ-N**) are LOCKED in § D-HR.4-LOCKED.
+The carry semantics under a coarser bar (**OQ-CARRY-SEM**) keep the
+existing per-bar funding-ring + as-of join unchanged, re-pick L per
+horizon, and set the rebalance to the native coarse-bar cadence via the
+grid. The bootstrap timestamp ladder (**OQ-BOOTSTRAP-TF**) stays
+cosmetically 1h (correctness-safe); the renderer prints the REAL horizon.
+`run_path` / `PaperEngine` / `BlockBootstrapPathGen` are byte-UNTOUCHED.
+The determinism model is recorded as an **ADR-0051 § D6.8 amendment**
+(a horizon/data-path change varied at the LOAD + the calculator level —
+the resampler is a deterministic ordered fold; the new annualization fns
+are additive; the 1h path is verbatim; the same anchor-additive discipline
+MR/carry/TS used). New anchors under a NEW namespace
+`horizon-retest-robustness` (NOT `mc-robustness-2026-06` — the horizon is
+a distinct experiment axis)._
+
+### D-HR.0 — One-paragraph design
+
+The horizon retest is **a data-path + calculator change, not a new
+strategy family** — the two highest-prior families (TS-momentum +
+carry) and the harness, bootstrap, decision rule, BH control, and
+anchor machinery all already exist (TS landed #90/#91; carry #88/#89).
+It is exactly **four additive, defaults-off pieces**: **(1)** a
+deterministic **1h→{4h,daily} OHLCV resampler** (`resample_ohlcv`, a
+pure ordered fold over a sorted per-symbol `Vec<Bar>`:
+open=first/high=max/low=min/close=last/vol=Σ/trade_count=Σ per
+UTC-integer-division bucket), wired as a post-`merge_symbols` fold in
+`load_real_bars` gated on a new `--horizon {1h,4h,daily}` flag that
+**defaults to 1h = identity pass-through**; **(2)** three **sibling
+horizon-aware annualization fns** in `stats/mod.rs`
+(`compute_sharpe_periodic(equity, periods_per_year)` etc.) that
+annualize by `√periods_per_year`, with the existing
+`compute_sharpe_hourly` / `compute_sortino_hourly` / `compute_calmar`
+kept **byte-verbatim** as the 1h path (NOT refactored to derive their
+constant — an ULP change breaks 91 anchors); **(3)** the sweep selects
+the 1h-verbatim path vs the horizon-aware path by the resolved
+`Timeframe`, computes the correct `periods_per_year` per `(horizon,
+year)` (leap-year-aware), and threads the COARSE `bar_count` into the
+bootstrap + BH; **(4)** the re-picked per-horizon θ-grids (lookbacks in
+COARSE bars) as new `const` grids selected by `--horizon` + `--grid`.
+Everything is flag/enum-gated to today's behaviour, so the **91 anchors
+(momentum #86, MR #87, carry #88/#89, TS #90/#91, all pre-existing) are
+byte-identical by construction** with no re-lock. The load-bearing
+gate is the annualization fix; it is REGRESSION-blocked (CLAUDE.md) and
+its 1h byte-identity (F-HR.1, 91/91) is proven BEFORE any horizon
+surface is scored.
+
+```mermaid
+flowchart LR
+  A["banked 10-sym 1h OHLCV<br/>data/binance, pin 3a8b96c4…<br/>(SAME bytes — NO re-fetch)"] --> B
+  B["load_real_bars → merge_symbols(…,OneHour)<br/>(1h load path — BYTE-UNTOUCHED)"] --> C
+  C["resample_ohlcv(bars, horizon)<br/>NEW post-merge fold<br/>1h = identity / 4h = 6:1 / daily = 24:1<br/>open=first/high=max/low=min/close=last/vol=Σ"] --> D
+  D["BlockBootstrapPathGen (UNCHANGED)<br/>coarse bar_count; funding as-of join<br/>keys off the COARSE bar open_ts (OQ-CARRY-SEM)"] --> E
+  E["run_path (CONCRETE MomentumStrategy — UNCHANGED)<br/>TS or carry per the existing grids,<br/>re-picked in COARSE bars (§ D-HR.4-LOCKED)"] --> F
+  F["per-cell metrics:<br/>1h → compute_sharpe_hourly (VERBATIM)<br/>4h/daily → compute_sharpe_periodic(√ppy) (NEW)"] --> G
+  G["DistributionSummary → θ-surface<br/>renderer prints the REAL horizon<br/>→ anchors under namespace horizon-retest-robustness"]
+```
+
+### D-HR.1 — OQ-ANNUALIZE RESOLVED (THE LOAD-BEARING DECISION): keep the 1h fns byte-verbatim, ADD `*_periodic(periods_per_year)` siblings — anchor-neutral by construction
+
+**RATIFIED: the 1h calculators stay byte-verbatim; three NEW sibling
+fns take an explicit `periods_per_year: f64`** (the analyst's lean —
+the most legible and most testable; F-HR.2 asserts a literal √-value).
+The constraint is absolute and is the sharpest anchor-risk in the whole
+program: `compute_sharpe_hourly` is re-imported by `bin/threshold_sweep.rs`
+(R-NR.5) and feeds all 91 locked surfaces, so **its body-SHA must stay
+byte-identical**. The decisive rejection:
+
+| Option | Decision | Why |
+|---|---|---|
+| **Parameterize the EXISTING fns** — make `compute_sharpe_hourly` call a private `compute_sharpe(equity, ppy)` with `ppy = 8575` | **REJECTED** | Even a refactor that is *intended* to be value-preserving risks an ULP change (constant-folding order, an intermediate `let`, a `sqrt` vs a hardcoded `√8575` literal). The brief's HARD CONSTRAINT is the **body** stays byte-identical, not just the output. The 91-anchor blast radius makes any edit to these three fns a REGRESSION risk not worth taking. The verbatim functions are the safe path **by construction** — they are *never touched*. |
+| **A `Timeframe`/cadence argument** that maps to ppy internally | **REJECTED as the signature** | Hides the year-awareness (the leap-year ppy must be year-aware, NOT just horizon-aware — § D-HR.1.2). A `Timeframe`→ppy map cannot see the year; the sweep would have to special-case 2024 *inside* the calculator. Threading the raw `f64` keeps the calculator dumb + testable and puts the `(horizon, year)→ppy` logic in ONE place in the sweep (§ D-HR.1.2). |
+| **Keep the three 1h fns VERBATIM + add `compute_sharpe_periodic(equity, ppy: f64)` / `compute_sortino_periodic` / `compute_calmar_periodic`** | **RATIFIED** | The 91 anchors are byte-identical because the 1h call sites + the 1h fn bodies are **untouched**. The new fns are pure additions (dead code for every 1h run). F-HR.2 asserts the new fns hit `√2190` / `√365` (+ leap) exactly. This is the direct structural analogue of how MR/carry/TS each ADDED a branch and left the existing path verbatim. |
+
+**The new sibling functions (exact signatures, `stats/mod.rs`, siblings
+to the verbatim 1h fns):**
+
+```rust
+// stats/mod.rs — NEW, siblings to compute_sharpe_hourly (which is NOT edited).
+// Body is the SAME arithmetic as the 1h fn EXCEPT the hardcoded SQRT_HPY is
+// replaced by `periods_per_year.sqrt()`. The 1h fn is left byte-verbatim.
+
+#[must_use]
+pub fn compute_sharpe_periodic(equity: &[Decimal], periods_per_year: f64) -> f64 { /* mean/std * periods_per_year.sqrt() */ }
+
+#[must_use]
+pub fn compute_sortino_periodic(equity: &[Decimal], periods_per_year: f64) -> f64 { /* mean/down_std * periods_per_year.sqrt() */ }
+
+#[must_use]
+pub fn compute_calmar_periodic(equity: &[Decimal], periods_per_year: f64) -> f64 { /* years = (n-1)/periods_per_year */ }
+```
+
+> **D-HR.1.1 — the 1h path keeps TWO inconsistent constants, verbatim;
+> the horizon path is mathematically correct (and that is intended +
+> safe).** Read off `stats/mod.rs`: the 1h **Sharpe/Sortino** use
+> `SQRT_HPY = 92.601_295_098_46` where `SQRT_HPY² = 8574.9998…` (a
+> hand-entered ≈√8760, NOT exactly √8760), while the 1h **Calmar** uses
+> `years = (n−1)/8760.0` (the true 8760). These two are **inconsistent
+> inside the 1h path itself** (Sharpe annualizes as if 8575 h/yr;
+> Calmar as if 8760 h/yr). We keep BOTH verbatim — they are
+> anchor-load-bearing and immutable. The new `*_periodic` fns are
+> **mathematically correct for 4h/daily** (Sharpe/Sortino AND Calmar
+> both use the true bars-per-year), because **4h/daily are NEW — no
+> anchor binds them**, so there is no reason to propagate the 1h √8575
+> quirk. This is a feature (the coarse horizons are correct from birth)
+> and is safe (the quirk lives only in the verbatim 1h path). The
+> developer MUST NOT "fix" the 1h √8575 to √8760 — that is a 91-anchor
+> REGRESSION.
+
+> **D-HR.1.2 — the leap-year scalar is YEAR-aware, computed in ONE place
+> (the sweep), not in the calculator.** The exact `periods_per_year`
+> per `(horizon, year)` — the values F-HR.2 asserts:
+>
+> | horizon | 2023 (non-leap) ppy | √ppy | 2024 (leap) ppy | √ppy |
+> |---|---:|---:|---:|---:|
+> | **1h** (verbatim path) | 8 760 | (uses √8575 const) | 8 784 | (uses √8575 const) |
+> | **4h** | **2 190** | **46.797 435 827 2** | **2 196** | **46.861 498 055 4** |
+> | **daily** | **365** | **19.104 973 174 5** | **366** | **19.131 126 469 7** |
+>
+> A small `fn periods_per_year(horizon: Horizon, year: i32) -> f64` in
+> the sweep returns `bars_per_year` directly (`4h → 2190/2196`,
+> `daily → 365/366`, keyed on `year == 2024`), mirroring the existing
+> `bar_count = match year { 2023 => 8760, 2024 => 8784 }`
+> (`param_robustness_sweep.rs:2149`). For 1h the sweep does NOT call
+> `*_periodic` at all — it calls the verbatim `compute_sharpe_hourly`.
+> The sweep picks the path by the resolved horizon: `if horizon == 1h
+> { compute_sharpe_hourly(eq) } else { compute_sharpe_periodic(eq,
+> periods_per_year(horizon, year)) }`. **This branch lives at BOTH
+> metric call sites** — the per-cell path (`param_robustness_sweep.rs:1966`)
+> and the BH control (`param_robustness_sweep.rs:2383`) — so the BH bar
+> is recomputed at the correct scalar too (R-HR.4).
+
+> **D-HR.1.3 — why this is the F-HR.1 gate, restated.** Because the
+> three 1h fns are byte-verbatim and their two 1h call sites are
+> behind `if horizon == 1h`, **every** momentum/MR/carry/TS/BH **1h**
+> run computes its metrics through the identical code → identical f64 →
+> identical body-SHA. F-HR.1 proves it two ways: (a)
+> `scripts/verify_anchors.sh` → **91/91 PASS** after the change; (b) a
+> direct unit assertion that `compute_sharpe_hourly` on a fixed
+> reference series returns the byte-identical f64 it returned before
+> (and that `compute_sharpe_periodic(eq, 8575.0)` ≈ but is NOT asserted
+> bit-equal to the 1h fn — they share arithmetic but the 1h fn is the
+> only anchored one). RED-on-revert: if a refactor folds the 1h fn into
+> the periodic fn, a 91-anchor body-SHA moves → F-HR.1 fails.
+
+### D-HR.2 — OQ-RESAMPLE-SEAM RESOLVED: a post-`merge_symbols` fold in `load_real_bars`, 1h = identity pass-through (smallest anchor blast radius)
+
+**RATIFIED: the resample is a post-`merge_symbols` fold** (the
+analyst's lean — smallest blast radius, the 1h load path byte-untouched
+by construction), NOT a `Timeframe`-parameterized loader path. The
+1h coupling is the single line `merge_symbols(&symbol_paths,
+Timeframe::OneHour)` (`realdata.rs:227`); the parquet reader reads the
+**actual** `open_time`/`close_time` from file content (the `Timeframe`
+arg is metadata stamped on each `Bar`, NOT a re-bucketing instruction —
+scoping § 2.2). So the resample is a pure fold over the already-merged,
+already-sorted per-symbol `Vec<Bar>`.
+
+**Exact integration point.** In `load_real_bars`
+(`param_robustness_sweep.rs:1683`), the merged bars are grouped into
+`by_symbol: BTreeMap<String, Vec<Bar>>` and sorted by `open_ts`
+(lines 1717-1727). The resample fold runs **right there**, per symbol,
+**after** the sort and **before** the `bars_by_symbol` collect
+(line 1729): each symbol's sorted 1h `Vec<Bar>` → a coarse `Vec<Bar>`.
+When `--horizon 1h` (default) the fold is a no-op pass-through (returns
+the input unchanged — the 1h load path is byte-identical). The
+`expected_total` coverage check (`realdata.rs` § 6 / `param_robustness_sweep.rs:1695`)
+stays on the **1h** count (the 99.5% tolerance is verified on the raw 1h
+load, BEFORE the resample — so the gate is unchanged); the COARSE
+`bar_count` is computed separately for the bootstrap (§ D-HR.3).
+
+**`resample_ohlcv` — the new pure fn (locked spec).** A new module
+`crates/backtest/src/resample.rs` (or a sibling fn in `realdata.rs`):
+
+```rust
+// resample.rs — NEW. Pure, deterministic, Decimal OHLCV. No I/O.
+#[must_use]
+pub fn resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar> {
+    // horizon == OneHour → return bars_1h.to_vec()  (identity — 1h byte-untouched)
+    // else: bucket_ms = 14_400_000 (4h) | 86_400_000 (daily);
+    //   key(bar) = (bar.open_ts.unix_ms()).div_euclid(bucket_ms);
+    //   group consecutive bars by key (input is sorted ASC by open_ts);
+    //   per bucket emit ONE Bar:
+    //     open  = first bar.open,  high = max bar.high,  low = min bar.low,
+    //     close = last bar.close,  volume = Σ bar.volume,  trade_count = Σ,
+    //     open_ts  = bucket-aligned (floor(first.open_ts / bucket)*bucket),
+    //     close_ts = last bar.close_ts,  tf = horizon.to_timeframe(),
+    //     symbol/venue = inherited; local_recv_ts = close_ts (the realdata norm).
+}
+```
+
+**The locked rollup rules (the F-HR.3 acceptance):**
+
+- **Bucketing** = integer division of the on-the-hour `open_time_ms`:
+  `floor(ts_ms / 14_400_000)` (4h, 6:1), `floor(ts_ms / 86_400_000)`
+  (daily, 24:1). Because the year starts `YYYY-01-01T00:00:00Z`
+  (`TimeSpan::full_year`, `realdata.rs:86`), the first bucket is full
+  and aligned — no partial leading bucket. Exact integer ratios
+  (`8760/6=1460`, `8784/6=1464`, `8760/24=365`, `8784/24=366`) mean
+  every full bucket has its complement of source bars.
+- **OHLCV** = `open=first 1h open`, `high=max 1h high`, `low=min 1h
+  low`, `close=last 1h close`, `volume=Σ 1h volume`, `trade_count=Σ`.
+  All `Decimal` (R-HR.5 / ADR-0003) — `max`/`min` use `Decimal::max`/`min`
+  (total order, no f64), `Σ` is `Decimal` addition.
+- **Gap handling (defensive).** Aggregate **whatever** bars fall in the
+  bucket — a rare missing 1h bar degrades that bucket's volume, not the
+  boundary (scoping § 2.1). NO interpolation, NO synthetic fill.
+- **Determinism.** The fold is a single pass over the sorted input
+  (`open_ts` ASC), grouping by a monotonically non-decreasing integer
+  key — NO `HashMap`, NO unordered fold. Two-run byte-identity (F-HR.5)
+  holds by construction.
+- **`open_ts`/`close_ts` stamping** is **cosmetic** for the harness
+  (the bootstrap re-stamps with its own ladder — § D-HR.5; the strategy
+  keys off `close` + bar ordering). But we stamp the real coarse
+  `open_ts` so the funding as-of join (§ D-HR.6) keys off the correct
+  bucket-open timestamp.
+
+### D-HR.3 — coarse `bar_count` threading (the bootstrap + BH path length)
+
+`bar_count` (`param_robustness_sweep.rs:2149`) is the path length passed
+to `BlockBootstrapPathGen::generate(universe, bar_count, seed)` and the
+GBM smoke. Today it is `match year { 2023 => 8760, 2024 => 8784 }`. The
+fix is to derive it from `(year, horizon)`:
+
+```rust
+let bars_per_year_1h = match args.year { 2023 => 8760, 2024 => 8784, _ => 8760 };
+let bar_count = match args.horizon {
+    Horizon::OneHour  => bars_per_year_1h,           // 8760 / 8784  (UNCHANGED for 1h)
+    Horizon::FourHours => bars_per_year_1h / 6,      // 1460 / 1464
+    Horizon::OneDay    => bars_per_year_1h / 24,     // 365  / 366
+};
+```
+
+The ratios are exact integers (scoping § 1), so the integer division is
+clean. The resampled per-symbol series produced by § D-HR.2 has exactly
+this length (F-HR.3 asserts the count). The bootstrap then resamples
+blocks of COARSE returns (`T−1 = bar_count−1` coarse log-returns) — the
+power caveat (daily ≈ 365 source returns → noisier tails) is real and is
+the reason daily runs at higher N (§ D-HR.5 / OQ-N). For 1h, `bar_count`
+is the literal `8760/8784` it is today → byte-identical.
+
+### D-HR.4-LOCKED — OQ-GRID + OQ-CARRY-SEM RESOLVED: the re-picked per-horizon θ-grids (lookbacks in COARSE bars), LOCKED
+
+**LOCKED** (the grid IS a hashed body field, K3 — § D6.3; changing it =
+a different surface = a different SHA). The critical correctness bound
+(brief Backtest Scenarios): `lookback_minutes` is interpreted as a
+**BAR COUNT** for the price ring (`config.rs:136` "Lookback window in
+bars"), so the SAME number is a 6×- or 24×-longer wall-clock window at a
+coarser bar — the 1h `{24,168,720}` does NOT carry over (720 daily bars
+= 2 yr > the 365-bar series). The grids are re-centred on
+horizon-appropriate wall-clock windows, **6 cells each** (the proven
+shape), spanning the same two axes.
+
+**HR-TS-4h grid** (`TS_4H_GRID`) — lookback (4h-bars) × entry_threshold;
+`{42, 180, 540}` bars = `{1 wk, 30 d, 90 d}`:
+
+| g | lookback (4h-bars) | wall-clock | entry_threshold | role |
+|---|---:|---|---:|---|
+| 0 | 42 | ~1 wk | 0.00 | baseline TS θ* (1-wk trend, long/flat-on-sign) |
+| 1 | 42 | ~1 wk | 0.02 | 1-wk + wide band — low-churn corner |
+| 2 | 180 | ~30 d | 0.00 | 30-d trend, zero band |
+| 3 | 180 | ~30 d | 0.02 | 30-d + wide band — **best structural shot** |
+| 4 | 540 | ~90 d | 0.00 | slow 90-d trend |
+| 5 | 540 | ~90 d | 0.02 | slowest + most decisive |
+
+**HR-TS-daily grid** (`TS_DAILY_GRID`) — lookback (daily-bars) ×
+entry_threshold; `{5, 20, 60}` bars = `{1 wk, 1 mo, 1 qtr}`, the classic
+TSMOM windows (hard bound: NO lookback > ~365):
+
+| g | lookback (daily-bars) | wall-clock | entry_threshold | role |
+|---|---:|---|---:|---|
+| 0 | 5 | ~1 wk | 0.00 | fast TSMOM (1-wk trend) |
+| 1 | 5 | ~1 wk | 0.02 | 1-wk + wide band |
+| 2 | 20 | ~1 mo | 0.00 | baseline TS θ* (1-mo trend) |
+| 3 | 20 | ~1 mo | 0.02 | 1-mo + wide band — **best structural shot** |
+| 4 | 60 | ~1 qtr | 0.00 | classic slow TSMOM (1-qtr) |
+| 5 | 60 | ~1 qtr | 0.02 | slowest + most decisive |
+
+> Both TS grids hold constant (mirroring § D-TSM.3-LOCKED):
+> `selection_mode = time_series_long_flat`, `direction = momentum`
+> (identity), `k_long = 10` (inert under long/flat), `exposure_cap =
+> 0.50`, `k_short = 0`, `size = equal_weight`, `vol_floor` inert,
+> 10-symbol universe (pin `3a8b96c4…`), `ensemble_seed = 0xC0FFEE`,
+> `fill_seed = 0xC0FFEE`, generator `block-bootstrap-real`,
+> `bootstrap_mode = shared-index`, **`rebalance_minutes_override = 0`**
+> (re-check the trend every coarse bar — see § D-HR.6 for why "every
+> bar" is correct for TS under the cosmetic-1h ladder). The TS trend
+> score (raw Σ log-return over L coarse bars) and the goes-flat
+> behaviour are reused verbatim — only the bar cadence changed.
+
+**HR-CARRY-4h / HR-CARRY-daily grids** (`CARRY_4H_GRID` /
+`CARRY_DAILY_GRID`) — L (funding settlements, consumed as a coarse-bar
+ring count — § D-HR.6) × rebalance × k_long, re-picked so the rebalance
+is the **native coarse-bar cadence** and L spans a sensible settlement
+window. **OQ-CARRY-SEM RESOLVED: keep the existing per-bar funding-ring
++ "last settlement at the coarse bar's open_ts" as-of join (NOT a
+trailing-mean change); re-pick L per horizon as a coarse-bar count; set
+rebalance to native coarse-bar cadence.**
+
+HR-CARRY-4h (`L` in 4h-bars; rebalance native = every 4h bar):
+
+| g | L (4h-bars) | rebalance | k_long | role |
+|---|---:|---|---:|---|
+| 0 | 6 | every 4h bar | 3 | baseline carry θ* (~1 d settlement window) |
+| 1 | 2 | every 4h bar | 3 | fast (~1/3 d) |
+| 2 | 12 | every 4h bar | 3 | slow (~2 d) |
+| 3 | 6 | every 2nd 4h bar (~8 h) | 5 | low-churn / settlement-aligned corner |
+| 4 | 6 | every 4h bar | 1 | narrow selection |
+| 5 | 2 | every 4h bar | 5 | fast + wide |
+
+HR-CARRY-daily (`L` in daily-bars; rebalance native = every daily bar):
+
+| g | L (daily-bars) | rebalance | k_long | role |
+|---|---:|---|---:|---|
+| 0 | 3 | every daily bar | 3 | baseline carry θ* (~3 d window) |
+| 1 | 1 | every daily bar | 3 | fastest (~1 d) |
+| 2 | 7 | every daily bar | 3 | slow (~1 wk) |
+| 3 | 3 | every daily bar | 5 | wide selection |
+| 4 | 3 | every daily bar | 1 | narrow selection |
+| 5 | 7 | every daily bar | 5 | slow + wide |
+
+> **Rebalance cadence under the cosmetic-1h ladder — the load-bearing
+> carry subtlety (read with § D-HR.6).** `is_rebalance_bar`
+> (`momentum.rs:166`) measures `minutes_since(prev, bar.close_ts)` —
+> **wall-clock minutes** between bar-close timestamps — against
+> `rebalance_minutes`. The bootstrap stamps synthetic bars on a **1h
+> ladder** regardless of source cadence (`bootstrap.rs:414`,
+> `Duration::hours(i)`). So on a coarse-resampled path the synthetic
+> bars are still 60 wall-clock minutes apart. Therefore **"rebalance
+> every coarse bar" = `rebalance_minutes ≤ 60`** (the gap between
+> successive synthetic bars is 60 min, so a 60-min threshold fires
+> every bar), and **"rebalance every 2nd coarse bar" = `rebalance_minutes
+> = 120`**, etc. — the cadence is counted in *coarse bars via the 1h
+> ladder*, NOT in real wall-clock hours. The grids above encode this:
+> "every 4h bar" → `rebalance_minutes_override = 0` (base = 60 → fires
+> every synthetic bar = every coarse bar); "every 2nd 4h bar (~8 h)" →
+> `override = 120`. **The developer LOCKS the exact `rebalance_minutes_override`
+> integer per cell to realize the cadence column above, given the
+> cosmetic-1h ladder** (g3 of HR-CARRY-4h is the only non-every-bar
+> cell, `override = 120`). This is the native-coarse-cadence answer
+> OQ-CARRY-SEM asks for, and it keeps the carry surfaces apples-to-apples
+> with the 1h carry #88/#89 (same mechanism, L re-expressed in the new
+> bar unit). A `--horizon`-aware "real minutes per coarse bar" rebalance
+> would require threading the real tf into the bootstrap ladder
+> (§ D-HR.5) — deferred as a legibility-only change, NOT taken, because
+> the grid-encoded cadence is exact and anchor-additive.
+
+> **NO daily lookback may exceed ~365 (the correctness bound):** the
+> longest daily TS cell is 60 (1 qtr) and the longest daily carry L is 7
+> — both ≪ 365. The longest 4h cell is 540 (90 d), well under 1460. ✓
+
+### D-HR.5 — OQ-BOOTSTRAP-TF RESOLVED: leave the bootstrap ladder cosmetically 1h (correctness-safe); the RENDERER prints the real horizon
+
+**RATIFIED: do NOT thread the resampled `tf` through the bootstrap
+timestamp ladder** (the analyst's lean — cosmetic 1h is
+correctness-safe). The bootstrap stamps output bars `Timeframe::OneHour`
++ a 1h `Duration` ladder (`bootstrap.rs:305/414`). This is cosmetic for
+(a) the strategy (keys off `close` + bar ordering, not wall-clock
+spacing) and (b) the per-bar Sharpe (per-return, not per-wall-second).
+Editing the bootstrap is anchor risk (it is on the path the 91 anchors
+run through) for **zero correctness gain**. The ONE place the horizon
+must be visible is the **surface renderer**: today it prints hardcoded
+"…on this 10-symbol **1h** universe" prose (`param_robustness_sweep.rs:1591/1600`)
+and the held-constant line says `rebalance_minutes=60`. For a horizon
+surface the renderer MUST print the **real** horizon (`4h` / `daily`) in
+the header, the held-constant line, and the family-verdict prose — else
+the operator reads the wrong cadence. This is a render-string change
+gated to horizon runs (`horizon != 1h`), exactly as carry/TS gated their
+extra column → the 1h body-SHAs are byte-identical. **The horizon is a
+hashed body field** (K3) — a 4h surface and a daily surface at the same
+grid+N MUST hash differently; the renderer writes `horizon: 4h|daily`
+into the hashed body (alongside `grid_definition` + N).
+
+> Consequence of the cosmetic-1h ladder, made explicit for the carry
+> arm: rebalance cadence is counted in coarse-bars-via-the-1h-ladder
+> (§ D-HR.4 / D-HR.6), and the Calmar `years` for a coarse path is
+> computed from the COARSE `periods_per_year` (§ D-HR.1.2), NOT from the
+> synthetic 1h timestamps. The synthetic timestamps are never read by
+> the annualization (which counts returns, not seconds), so the cosmetic
+> 1h ladder is invisible to every metric.
+
+### D-HR.6 — carry's L + funding as-of join under a coarser bar (OQ-CARRY-SEM, the mechanism detail)
+
+The funding as-of join (`funding_data.rs:378` `funding_as_of` +
+`build_funding_at_return`) is **timestamp-driven, not bar-index-driven**
+— it binary-searches the rightmost settlement `≤ bar_open_ts` for
+**whatever** bar timestamps it is handed (scoping § 2.3). The decisive
+ordering: in `load_carry_path_gen` (`param_robustness_sweep.rs:2014`),
+`build_funding_at_return` reads each symbol's bar `open_ts`
+(lines 2064-2073) to drive the join. Because the resample (§ D-HR.2)
+runs in `load_real_bars` **before** `load_carry_path_gen` consumes
+`real_bars_by_symbol`, the funding join automatically keys off the
+**COARSE** bar open_ts → "last settlement at the coarse bar's open" —
+**exactly the existing as-of semantic, no code change in
+`funding_data.rs`**. This is the analyst's lean (preserve as-of /
+apples-to-apples with 1h carry), confirmed by inspection.
+
+> **L is operationally a COARSE-BAR ring count (the apples-to-apples
+> argument).** The carry funding ring (`momentum.rs:319-325`) pushes the
+> in-force funding on **every bar** (no dedup vs the previous value) and
+> keeps the last `L = lookback_minutes` entries. At 1h, the same 8h
+> settlement value is pushed ~8× (once per 1h bar), so L=9 holds the
+> last 9 *bars'* funding (≈ the last ~1 day). At 4h it is pushed ~2× per
+> settlement; at daily ~once per settlement. So the SAME mechanism, with
+> L re-picked per § D-HR.4, gives a coarse-bar trailing-mean window that
+> is the natural analogue of the 1h one — and it stays the **identical
+> code path** as the 1h carry surfaces (#88/#89), preserving the
+> apples-to-apples the verdict requires. A "trailing-mean over the
+> bar's settlements" (the alternative OQ-CARRY-SEM framing) is a
+> methodological change to `carry_score`; it is **NOT taken** (it would
+> break the apples-to-apples and is unjustified given the existing
+> mechanism resamples cleanly). The carry `bar_count` passed to
+> `.generate()` is the COARSE count (§ D-HR.3); `funding_at_return` has
+> length `coarse_bar_count − 1` and co-resamples under the SAME shared
+> `idx_seq` (ADR-0051 § D6.6) — byte-untouched bootstrap.
+
+### D-HR.7 — anchor-neutrality: how the 91 existing anchors stay byte-identical (R-HR.6 / R-HR.LOAD, NON-NEGOTIABLE)
+
+Every horizon seam is additive and defaults to today's 1h behaviour, so
+the **91 existing anchors** (momentum #86 `0dd989d9…`, MR #87
+`a708112e…`, carry #88 `f03cd714…`, carry #89 `fd96d5a8…`, TS #90, TS
+#91, + all pre-existing) are byte-identical **by construction**, no
+re-lock:
+
+1. **The 1h calculators are byte-verbatim** (§ D-HR.1) — never edited;
+   the new `*_periodic` fns are pure additions (dead code on a 1h run).
+2. **`--horizon` defaults to `1h`** → `resample_ohlcv` is an identity
+   pass-through, `bar_count` is the literal `8760/8784`, the metric
+   branch picks the verbatim `compute_*_hourly` path. Every
+   momentum/MR/carry/TS/BH 1h run is byte-for-byte unchanged.
+3. **The resampler runs ONLY when `horizon != 1h`** and is a pure fold —
+   it adds zero bytes to the 1h load path.
+4. **`run_path` / `PaperEngine` / `BlockBootstrapPathGen` are
+   UNCHANGED** — no engine edit, no bootstrap edit, no new RNG draw. The
+   coarse `bar_count` is just a smaller path length through the same
+   generator; the funding co-resample (§ D6.6) is the same mechanism on
+   coarse bars.
+5. **The renderer's horizon-string + the held-constant horizon are
+   GATED to horizon runs** (`horizon != 1h`), exactly as carry/TS gated
+   their extra column → the 1h body-SHAs are byte-identical.
+6. **The new grids are NEW `const`s** selected only under the matching
+   `--horizon` + `--grid`; the existing `TS_TIER1_GRID` /
+   `CARRY_TIER1_GRID` etc. are byte-untouched.
+
+**Verification gate (M-DEV, mandatory + REGRESSION-blocked):** after the
+annualization change AND after the resampler AND after the sweep wiring,
+`bash scripts/verify_anchors.sh` → **91/91 PASS**. If any of the 91
+moves, the additive discipline is broken — STOP and flag the
+orchestrator (do NOT work around it). This is the F-HR.1 gate; no
+horizon surface is scored until it is green.
+
+### D-HR.8 — determinism & the ADR-0051 § D6.8 amendment
+
+The horizon retest's determinism story sits entirely inside the existing
+ADR-0051 envelope, with two NEW deterministic surfaces (both ordered
+folds, no RNG):
+
+- **NO new RNG.** The resampler draws zero random numbers; the bootstrap
+  is byte-untouched (the coarse `bar_count` is a parameter, not a code
+  change). SAME-paths (D1/D6.1) holds — the strategy is fed coarse
+  bootstrapped bars; only the bar cadence + the annualization scalar
+  differ.
+- **The resampler is a single-pass ordered fold** over `open_ts`-sorted
+  input, grouping by a monotonic integer bucket key (NO `HashMap`, NO
+  unordered reduction) → two-run byte-identity (F-HR.5) by construction
+  (the SAME ordered-fold discipline ADR-0051 D2 mandates for the
+  reducer).
+- **The annualization scalar is varied at the CALL-SITE level** (the
+  `if horizon == 1h` branch picks verbatim-1h vs `*_periodic`), the 4th
+  instance of the program's "vary the path, leave the seed untouched ⇒
+  determinism unchanged by construction" pattern (MR=§D6.5, carry=§D6.6,
+  TS=§D6.7). The new wrinkle vs those is that the variation touches the
+  **data path** (resample) + the **calculator** (a new fn) rather than
+  the **config** — but the discipline is identical: the 1h path is
+  verbatim, the new path is additive, the seed is untouched.
+
+Recorded as **ADR-0051 § D6.8** (a Changelog amendment to the existing
+ADR — mirroring MR=§D6.5 / carry=§D6.6 / TS=§D6.7, each an amendment NOT
+a new ADR; the decision is the same class: an anchor-additive extension
+through the proven harness). **NEW namespace `horizon-retest-robustness`**
+(NOT `mc-robustness-2026-06`) — the horizon is a distinct experiment axis
+and the reports live under `spec/horizon-retest-robustness/reports/`; the
+tester adds the dir to `verify_anchors.sh` (mirroring how the TS dir was
+added, `verify_anchors.sh:143`) and registers the namespace at lock time.
+The registry row + the README `updated:` frontmatter are updated
+atomically in the same edit (the 2026-05-29 registry-drift contract).
+**+ up to 8 anchors** (TS + carry × 4h + daily × 2023/2024); the grids +
+N + horizon + (for carry) the funding-revision SHA are hashed body
+fields (K3); the tester locks the anchor(s) after the verify-anchors
+PASS.
+
+### D-HR.9 — size estimate (honest)
+
+| Piece | Size | Precedent |
+|---|---|---|
+| `Horizon` enum + `--horizon` flag (clap `ValueEnum`, default 1h) | SMALL (~0.25 d) | `SweepScoreSource` / `SweepSelectionMode` (param_robustness_sweep.rs:732/766) |
+| `resample_ohlcv` pure fold (Decimal OHLCV, UTC bucketing, 1h identity) + unit tests | SMALL-MED (~0.5–0.75 d) | the universe-diag intersection grid (universe_diag.rs:141); no engine analogue |
+| `compute_sharpe_periodic` / `_sortino_periodic` / `_calmar_periodic` (siblings; 1h fns verbatim) + unit tests | SMALL (~0.5 d) | the verbatim 1h fns next door (stats/mod.rs:40/70/100) |
+| `periods_per_year(horizon, year)` + coarse `bar_count` + the `if horizon==1h` metric branch at both call sites | SMALL (~0.5 d) | the existing `bar_count = match year` (param_robustness_sweep.rs:2149) |
+| 4 new grids (`TS_4H/TS_DAILY/CARRY_4H/CARRY_DAILY`) + `--horizon`→grid wiring + render horizon-string | SMALL-MED (~0.5–0.75 d) | `TS_TIER1_GRID` + `GridKind` + `grid_for_kind` (param_robustness_sweep.rs:605/346) |
+| 5 day-1 falsifiers (F-HR.1–5), each RED-on-revert | MED (~1–1.5 d) | `ts_momentum_divergence_e2e.rs` + the vol-overlay e2e |
+| Wall-clock re-validate + anchored 4h/daily × 2023/2024 sweeps (TS + carry) | run-time (~1 min compute) | the TS/carry sweeps |
+| **TOTAL** | **~3.5–4.75 d** | **vs TS's ~3.5–5 d — no new data, no engine, no bootstrap edit** |
+
+**The headline: the horizon retest is ~0.7–0.9× the TS build** — no new
+data source, no new strategy, no engine/bootstrap edit. The only genuinely
+new code is the resampler (a pure fold) + three annualization siblings +
+the per-horizon grids + the sweep `--horizon` wiring + the 5 falsifiers.
+The load-bearing risk is concentrated entirely in keeping the 1h
+calculators byte-verbatim (§ D-HR.1) — which the design achieves by
+*never touching them*.
 
 ## Implementation
 _developer fills this_
@@ -657,3 +1175,33 @@ The tester closes the loop with the standard report template and these gates:
   (additive / defaults-off). Honest prior MEDIUM (daily TS-momentum). Created the
   `[[req]]` row `REQ-HORIZON-RETEST-ROBUSTNESS-001`, state = `proposed`. No code, no
   Design section — architect M-T1 next.
+- 2026-06-03 (architect, horizon-retest-robustness): M-T1 — authored the Design
+  section (D-HR.0…D-HR.9) resolving all six OQs, wrote `tasks.md` (M-DEV-0…7 +
+  M-TEST), and amended ADR-0051 § D6.8 + the registry row atomically. **OQ-ANNUALIZE
+  (the headline): keep `compute_sharpe_hourly`/`_sortino_hourly`/`compute_calmar`
+  byte-VERBATIM as the 1h path; ADD three sibling fns `compute_*_periodic(equity,
+  periods_per_year: f64)` for 4h/daily** — the 1h fns are NEVER edited so the 91
+  anchors are byte-identical by construction (the sharpest anchor-risk in the program,
+  neutralized by not touching the calculators). The sweep picks the path by `if
+  horizon == 1h { *_hourly } else { *_periodic(periods_per_year(horizon, year)) }` at
+  BOTH metric call-sites (per-cell 1966 + BH 2383); ppy is YEAR-aware (4h 2190/2196,
+  daily 365/366; F-HR.2 asserts √2190=46.797…, √365=19.105…). Noted the 1h path's two
+  INCONSISTENT constants (Sharpe √8575, Calmar /8760) stay verbatim; the periodic fns
+  are mathematically correct (no √8575 quirk propagated — 4h/daily are new, no anchor
+  binds them). **OQ-RESAMPLE-SEAM: a post-`merge_symbols` fold in `load_real_bars`
+  (1h = identity pass-through → load path byte-untouched).** `resample_ohlcv` =
+  pure ordered Decimal fold, UTC integer-division bucketing (14_400_000/86_400_000),
+  open=first/high=max/low=min/close=last/vol=Σ. **OQ-BOOTSTRAP-TF: leave the bootstrap
+  ladder cosmetically 1h (correctness-safe); the RENDERER prints the real horizon** (a
+  hashed body field). **OQ-CARRY-SEM: keep the existing per-bar funding-ring + as-of
+  join unchanged — the resample-first ordering means `build_funding_at_return` keys
+  off the COARSE bar open_ts = "last settlement at the coarse bar's open" for free
+  (apples-to-apples with carry #88/#89); re-pick L as a coarse-bar count; set rebalance
+  to native coarse-bar cadence via the grid.** Surfaced the load-bearing carry subtlety:
+  `is_rebalance_bar` measures wall-clock minutes on the cosmetic-1h ladder, so "every
+  coarse bar" = `rebalance_minutes ≤ 60`, "every 2nd" = 120. **OQ-GRID + OQ-N LOCKED
+  (§ D-HR.4-LOCKED):** TS-4h `{42,180,540}` bars × {0.00,0.02}; TS-daily `{5,20,60}` ×
+  {0.00,0.02}; CARRY-4h L∈{2,6,12} + CARRY-daily L∈{1,3,7}; N=200 (4h) / **N=1000
+  (daily, the durable choice — maximal tail stability at ~seconds extra compute)**; no
+  daily lookback > 365. `run_path`/`PaperEngine`/`BlockBootstrapPathGen` byte-UNTOUCHED;
+  Decimal money; strict no-look-ahead. Status → `arch-done`. Developer M-DEV next.
