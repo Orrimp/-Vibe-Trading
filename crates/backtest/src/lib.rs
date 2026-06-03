@@ -25,7 +25,18 @@ pub mod paths;
 /// M-DEV-2: `DistributionSummary` reducer implementing ADR-0051 D2 frozen
 /// reduction order (index-order mean / two-pass std / `total_cmp` sort /
 /// type-7 linear percentile / NaN-absent assertion).
+///
+/// M-DEV-1 (horizon-retest-robustness): `compute_sharpe_periodic` /
+/// `compute_sortino_periodic` / `compute_calmar_periodic` — horizon-aware
+/// annualization siblings (pure additions; the 1h fns are byte-verbatim).
 pub mod stats;
+
+/// OHLCV bar resampler and `Horizon` enum (horizon-retest-robustness M-DEV-2).
+///
+/// `resample_ohlcv(bars_1h, horizon)` folds 1h bars into coarser (4h/daily)
+/// bars. `Horizon::OneHour` → identity pass-through (the existing 91 anchors
+/// are byte-untouched by construction).
+pub mod resample;
 
 /// Shared CLI-scenario types used by `main.rs` and the extracted modules.
 /// Made `pub` so that the backtest binary can access them.

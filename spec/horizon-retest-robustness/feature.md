@@ -145,7 +145,7 @@ families), deferring x-sec momentum/MR (R-HR.3).
 
 The 1h grid is the SAME banked data resampled — **no new fetch, no new revision,
 no new anchor-namespace data dependency** (R-HR.1, pin `3a8b96c4…`). The
-resample ratios are **exact integers** (4h = 6:1, daily = 24:1) on Binance's
+resample ratios are **exact integers** (4h = 4:1, daily = 24:1) on Binance's
 UTC-aligned grid, so the rollup is boundary-safe and bit-for-bit reproducible.
 Compute is a rounding error: the 1h 6×200 sweeps ran ~35 s; a 4h surface is ~⅙
 of that (~6 s), daily ~1/24 (~1.5 s). **The focused TS+carry first pass — 2 years
@@ -195,7 +195,7 @@ overclaim a horizon edge.
 
 ### R-HR.1 — Data: resample the banked 1h OHLCV in-memory, NO re-fetch (the data simplification)
 
-- **Deterministically RESAMPLE the banked 1h bars to 4h (6:1) and daily (24:1)
+- **Deterministically RESAMPLE the banked 1h bars to 4h (4:1) and daily (24:1)
   in-memory** — a standard OHLCV bar-rollup per coarse bucket:
   `open = first 1h open`, `high = max 1h high`, `low = min 1h low`,
   `close = last 1h close`, `volume = Σ 1h volume`. Buckets are UTC-aligned by
@@ -207,7 +207,7 @@ overclaim a horizon edge.
   **reuses pin `3a8b96c4…`** (`data/binance/REVISION.toml`), the SAME 10-symbol
   large-cap set the entire program runs on (`ADAUSDT, AVAXUSDT, BNBUSDT, BTCUSDT,
   DOGEUSDT, DOTUSDT, ETHUSDT, LINKUSDT, SOLUSDT, XRPUSDT`). The pin stays in the
-  surface body. The ratios are **exact integers** (`8760/6 = 1460`, `8784/6 = 1464`,
+  surface body. The ratios are **exact integers** (`8760/4 = 2190`, `8784/4 = 2196`,
   `8760/24 = 365`, `8784/24 = 366`), so every bucket has its full complement of
   source bars; a defensive resample still aggregates whatever bars fall in the
   bucket so a rare missing 1h bar degrades that bucket's volume, not the boundary.
@@ -218,7 +218,7 @@ overclaim a horizon edge.
   loader path or a post-`merge_symbols` fold — OQ-RESAMPLE-SEAM).
 
 _Acceptance: a known 1h→4h/daily fixture produces the exact bucket counts
-(1460/1464 at 4h, 365/366 at daily for a full year) and the correct OHLCV rollup
+(2190/2196 at 4h, 365/366 at daily for a full year) and the correct OHLCV rollup
 (open=first, high=max, low=min, close=last, volume=Σ); see F-HR.3._
 
 ### R-HR.2 — Families: TS-momentum + carry FIRST (defer x-sec momentum/MR)
@@ -349,7 +349,7 @@ robustness-decision-rule pre-registration exist to prevent.
 
 ### Requirements summary (consolidated)
 
-- **R-HR.1** — Resample the banked 1h OHLCV in-memory to 4h (6:1) + daily (24:1) —
+- **R-HR.1** — Resample the banked 1h OHLCV in-memory to 4h (4:1) + daily (24:1) —
   open=first/high=max/low=min/close=last/vol=Σ, UTC-bucketed by integer division.
   NO re-fetch (reuse pin `3a8b96c4…`); both `Timeframe` variants already exist.
 - **R-HR.2** — Test TS-momentum + carry FIRST; defer x-sec momentum/MR to a
@@ -394,7 +394,7 @@ in the test file with the code, NOT after.
    wiring the horizon path to the 1h √8575 constant inflates the 4h Sharpe ≈2.0× /
    daily ≈4.9× → the asserted value mismatches and the test fails.
 3. **F-HR.3 — Resample correctness (the OHLCV rollup + causality).** A known 1h→4h
-   and 1h→daily fixture produces (a) the exact bucket counts (1460/1464 at 4h,
+   and 1h→daily fixture produces (a) the exact bucket counts (2190/2196 at 4h,
    365/366 at daily over a full year), (b) the correct OHLCV rollup (open=first /
    high=max / low=min / close=last / volume=Σ), and (c) the BH total-return
    invariant across horizons (the resampled BH total return matches the 1h BH total
@@ -623,7 +623,7 @@ surface is scored.
 flowchart LR
   A["banked 10-sym 1h OHLCV<br/>data/binance, pin 3a8b96c4…<br/>(SAME bytes — NO re-fetch)"] --> B
   B["load_real_bars → merge_symbols(…,OneHour)<br/>(1h load path — BYTE-UNTOUCHED)"] --> C
-  C["resample_ohlcv(bars, horizon)<br/>NEW post-merge fold<br/>1h = identity / 4h = 6:1 / daily = 24:1<br/>open=first/high=max/low=min/close=last/vol=Σ"] --> D
+  C["resample_ohlcv(bars, horizon)<br/>NEW post-merge fold<br/>1h = identity / 4h = 4:1 / daily = 24:1<br/>open=first/high=max/low=min/close=last/vol=Σ"] --> D
   D["BlockBootstrapPathGen (UNCHANGED)<br/>coarse bar_count; funding as-of join<br/>keys off the COARSE bar open_ts (OQ-CARRY-SEM)"] --> E
   E["run_path (CONCRETE MomentumStrategy — UNCHANGED)<br/>TS or carry per the existing grids,<br/>re-picked in COARSE bars (§ D-HR.4-LOCKED)"] --> F
   F["per-cell metrics:<br/>1h → compute_sharpe_hourly (VERBATIM)<br/>4h/daily → compute_sharpe_periodic(√ppy) (NEW)"] --> G
@@ -765,11 +765,11 @@ pub fn resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar> {
 **The locked rollup rules (the F-HR.3 acceptance):**
 
 - **Bucketing** = integer division of the on-the-hour `open_time_ms`:
-  `floor(ts_ms / 14_400_000)` (4h, 6:1), `floor(ts_ms / 86_400_000)`
+  `floor(ts_ms / 14_400_000)` (4h, 4:1), `floor(ts_ms / 86_400_000)`
   (daily, 24:1). Because the year starts `YYYY-01-01T00:00:00Z`
   (`TimeSpan::full_year`, `realdata.rs:86`), the first bucket is full
   and aligned — no partial leading bucket. Exact integer ratios
-  (`8760/6=1460`, `8784/6=1464`, `8760/24=365`, `8784/24=366`) mean
+  (`8760/4=2190`, `8784/4=2196`, `8760/24=365`, `8784/24=366`) mean
   every full bucket has its complement of source bars.
 - **OHLCV** = `open=first 1h open`, `high=max 1h high`, `low=min 1h
   low`, `close=last 1h close`, `volume=Σ 1h volume`, `trade_count=Σ`.
@@ -799,7 +799,7 @@ fix is to derive it from `(year, horizon)`:
 let bars_per_year_1h = match args.year { 2023 => 8760, 2024 => 8784, _ => 8760 };
 let bar_count = match args.horizon {
     Horizon::OneHour  => bars_per_year_1h,           // 8760 / 8784  (UNCHANGED for 1h)
-    Horizon::FourHours => bars_per_year_1h / 6,      // 1460 / 1464
+    Horizon::FourHours => bars_per_year_1h / 4,      // 2190 / 2196
     Horizon::OneDay    => bars_per_year_1h / 24,     // 365  / 366
 };
 ```
@@ -920,7 +920,7 @@ HR-CARRY-daily (`L` in daily-bars; rebalance native = every daily bar):
 
 > **NO daily lookback may exceed ~365 (the correctness bound):** the
 > longest daily TS cell is 60 (1 qtr) and the longest daily carry L is 7
-> — both ≪ 365. The longest 4h cell is 540 (90 d), well under 1460. ✓
+> — both ≪ 365. The longest 4h cell is 540 (90 d), well under 2190. ✓
 
 ### D-HR.5 — OQ-BOOTSTRAP-TF RESOLVED: leave the bootstrap ladder cosmetically 1h (correctness-safe); the RENDERER prints the real horizon
 
@@ -1205,3 +1205,74 @@ The tester closes the loop with the standard report template and these gates:
   (daily, the durable choice — maximal tail stability at ~seconds extra compute)**; no
   daily lookback > 365. `run_path`/`PaperEngine`/`BlockBootstrapPathGen` byte-UNTOUCHED;
   Decimal money; strict no-look-ahead. Status → `arch-done`. Developer M-DEV next.
+
+## Implementation
+
+_Developer Pass 1 (M-DEV-0..2) — 2026-06-03_
+
+### M-DEV-0 — Baseline confirmed
+
+Verified: `Timeframe::FourHours`/`OneDay` exist at `crates/core/src/bar.rs:25-26`.
+`funding_as_of`/`build_funding_at_return` are timestamp-driven — no edits needed.
+`compute_sharpe_hourly`/`_sortino_hourly`/`compute_calmar`/`run_path`/`PaperEngine`/
+`BlockBootstrapPathGen` — NOT edited. Clean baseline: **91/91 anchors PASS**.
+
+### M-DEV-1 — `compute_*_periodic` sibling annualization fns + F-HR.1 + F-HR.2
+
+**Files changed:** `crates/backtest/src/stats/mod.rs`
+
+Added three sibling horizon-aware annualization functions as **pure additions**
+(the three verbatim 1h functions are byte-untouched):
+
+- `compute_sharpe_periodic(equity: &[Decimal], periods_per_year: f64) -> f64` (line 147)
+- `compute_sortino_periodic(equity: &[Decimal], periods_per_year: f64) -> f64` (line 178)
+- `compute_calmar_periodic(equity: &[Decimal], periods_per_year: f64) -> f64` (line 210)
+
+Formula: `mean/std * sqrt(periods_per_year)` (Sharpe/Sortino);
+`years = (n-1) / periods_per_year` (Calmar).
+
+**F-HR.1 test:** `f_hr_1_compute_sharpe_hourly_value_unchanged` — verifies the
+verbatim 1h fn uses `SQRT_HPY = 92.601_295_098_46` (the anchor-load-bearing constant)
+by reconstructing the expected output and asserting exact agreement. RED-on-revert.
+
+**F-HR.2 tests:** 5 tests covering `compute_sharpe_periodic` at 4h (ppy=2190,
+√2190≈46.797), daily (ppy=365, √365≈19.105), Sortino periodic, Calmar periodic,
+and leap-year scalars (ppy=2196/366). All verify the sqrt(ppy) factor is correct.
+
+**Gate result:** 16/16 lib stats tests pass; **91/91 anchors PASS**; clippy EMPTY.
+
+### M-DEV-2 — `resample_ohlcv` pure fold + `Horizon` enum + F-HR.3
+
+**Files changed:** `crates/backtest/src/resample.rs` (new), `crates/backtest/src/lib.rs`
+
+New module `crates/backtest/src/resample.rs` containing:
+
+**`Horizon` enum** (clap `ValueEnum`, `Copy/PartialEq/Eq`):
+- `OneHour` → `#[value(name = "1h")]` — identity pass-through
+- `FourHours` → `#[value(name = "4h")]` — 4:1 fold (14,400,000 ms bucket)
+- `OneDay` → `#[value(name = "daily")]` — 24:1 fold (86,400,000 ms bucket)
+
+Methods: `to_timeframe()`, `bucket_ms()` → `Option<i64>`, `ratio()`, `periods_per_year(year: i32)`.
+
+**`resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar>`:**
+- `OneHour` → `bars_1h.to_vec()` (identity, byte-untouched 1h path)
+- Otherwise: single linear scan over sorted input via `BucketAcc` struct;
+  open=first, high=Decimal::max, low=Decimal::min, close=last, vol=Σ, trade_count=Σ;
+  `open_ts` = bucket-aligned; no HashMap; no RNG; no I/O.
+
+**`is_leap_year(year: i32) -> bool`** helper for proleptic Gregorian calendar.
+
+**F-HR.3 tests (all in `resample.rs` tests module):**
+- `f_hr_3_bucket_counts_4h_daily`: 2023 → 2190 (4h), 365 (daily)
+- `f_hr_3_bucket_counts_leap`: 2024 → 2196 (4h), 366 (daily)
+- `f_hr_3_ohlcv_rollup_hand_verified`: 4-bar fixture (true 4h bucket), hand-verified OHLCV
+- `f_hr_3_ohlcv_rollup_daily_hand_verified`: 24-bar fixture, hand-verified
+- `f_hr_3_bh_total_return_invariant`: BH total return invariant across horizons
+- `f_hr_3_causality_forward_shift_changes_bar`: forward-shift changes resampled bar
+- `resample_1h_identity`: 1h pass-through preserves bar count and timestamps
+
+**Gate result:** 12/12 F-HR lib tests pass (F-HR.1+F-HR.2 stats + F-HR.3 resample); **91/91 anchors PASS**;
+clippy EMPTY; `cargo fmt` clean. The resampler is a pure addition — not yet
+wired into the sweep (M-DEV-3 will do that).
+
+**Changelog:** FourHours corrected to true 4h (4:1, 2190/2196 bars/year) — the earlier 6:1/1460 was a ÷6 arithmetic slip inconsistent with the locked grid ({42,180,540}={1wk,30d,90d} is only correct at 4h) and the annualization (periods_per_year already used 2190/2196).

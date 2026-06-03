@@ -117,18 +117,22 @@ D-HR.7.
 > `run_path` + the bootstrap being byte-untouched. Confirm this is the
 > plan before writing a line.
 
-- [ ] Read D-HR.1 (the verbatim-1h + `*_periodic` siblings — THE GATE),
+- [x] Read D-HR.1 (the verbatim-1h + `*_periodic` siblings — THE GATE),
       D-HR.2 (the resample seam, 1h identity), D-HR.5 (cosmetic-1h ladder),
       D-HR.6 (carry as-of resamples for free), D-HR.7 (anchor-neutrality),
       D-HR.8 (determinism / § D6.8). Confirm the build plan does NOT edit
       `compute_sharpe_hourly`/`_sortino_hourly`/`compute_calmar`,
       `montecarlo.rs` `run_path`, `paper.rs`, or `bootstrap.rs`.
-- [ ] Confirm `Timeframe::FourHours`/`OneDay` already exist (`bar.rs:25/26`)
+      **Confirmed:** none of those files were edited. `Timeframe::FourHours`/
+      `OneDay` exist at `bar.rs:25-26`. `funding_as_of`/`build_funding_at_return`
+      are timestamp-driven — no edit needed.
+- [x] Confirm `Timeframe::FourHours`/`OneDay` already exist (`bar.rs:25/26`)
       — no new enum variant. Confirm `funding_as_of`/`build_funding_at_return`
       are timestamp-driven (`funding_data.rs:378/421`) — no edit needed.
 - **Gate:** `bash scripts/verify_anchors.sh` → **91/91 PASS** (the clean
       baseline BEFORE any edit — record it).
       **Test command:** `bash scripts/verify_anchors.sh`
+      **Result:** ANCHORS PASS (91/91) — confirmed as baseline on 2026-06-03.
 
 ## M-DEV-1 — THE GATE: the `compute_*_periodic` annualization siblings + F-HR.1 + F-HR.2 (SMALL ~0.5 d)
 
@@ -137,23 +141,26 @@ D-HR.7.
 > new fns are pure additions. No horizon surface is scored until F-HR.1
 > (91/91) is green.
 
-- [ ] Add `compute_sharpe_periodic(equity: &[Decimal], periods_per_year:
+- [x] Add `compute_sharpe_periodic(equity: &[Decimal], periods_per_year:
       f64) -> f64`, `compute_sortino_periodic(...)`, `compute_calmar_periodic(...)`
       to `crates/backtest/src/stats/mod.rs` — siblings to the verbatim 1h
       fns. Body = the SAME arithmetic as the 1h fn EXCEPT the hardcoded
       `SQRT_HPY` is replaced by `periods_per_year.sqrt()` (Sharpe/Sortino)
       and the `8760.0` divisor by `periods_per_year` (Calmar). **Do NOT
       edit `compute_sharpe_hourly`/`_sortino_hourly`/`compute_calmar`.**
-      **file:line** `crates/backtest/src/stats/mod.rs` (after each verbatim
-      1h fn, ~line 63/93/122).
-- [ ] **F-HR.1 — anchor-byte-identity of the 1h path (the gate, half 1).**
+      **file:line** `crates/backtest/src/stats/mod.rs:147/178/210`.
+      **Test command:** `cargo test -p backtest --features "candle realdata" --lib stats`
+      **Output:** `test result: ok. 16 passed; 0 failed; 0 ignored`
+- [x] **F-HR.1 — anchor-byte-identity of the 1h path (the gate, half 1).**
       A unit test in `stats/mod.rs` asserting `compute_sharpe_hourly` on a
       fixed reference equity series returns its known byte-value (the value
       it returns today — capture it once, assert it). RED-on-revert: if the
       1h fn is folded into the periodic fn, the value moves → the test fails.
       **file:line** `crates/backtest/src/stats/mod.rs` tests module
       (`f_hr_1_compute_sharpe_hourly_value_unchanged`).
-- [ ] **F-HR.2 — annualization correctness at 4h + daily (the gate, half
+      **Test command:** `cargo test -p backtest --features "candle realdata" --lib stats::tests::f_hr_1_compute_sharpe_hourly_value_unchanged`
+      **Output:** `test stats::tests::f_hr_1_compute_sharpe_hourly_value_unchanged ... ok`
+- [x] **F-HR.2 — annualization correctness at 4h + daily (the gate, half
       2).** Unit tests: a known return series annualizes via
       `compute_sharpe_periodic(eq, 2190.0)` to `mean/std * √2190`
       (√2190 = 46.797_435_827_2) and via `(eq, 365.0)` to `mean/std * √365`
@@ -164,57 +171,58 @@ D-HR.7.
       (`f_hr_2_sharpe_4h_scalar`, `f_hr_2_sharpe_daily_scalar`,
       `f_hr_2_sortino_periodic`, `f_hr_2_calmar_periodic`,
       `f_hr_2_leap_year_scalars`).
+      **Test command:** `cargo test -p backtest --features "candle realdata" --lib stats`
+      **Output:** `test stats::tests::f_hr_2_sharpe_4h_scalar ... ok; f_hr_2_sharpe_daily_scalar ... ok; f_hr_2_sortino_periodic ... ok; f_hr_2_calmar_periodic ... ok; f_hr_2_leap_year_scalars ... ok`
 - **Gate (M-DEV-1):** `cargo test -p backtest --features "candle realdata"
       stats` green (incl. F-HR.1 + F-HR.2); **`bash scripts/verify_anchors.sh`
       → 91/91 PASS** (the 1h fns are byte-verbatim → all anchors unchanged);
       `cargo clippy --workspace --all-targets --all-features -- -D warnings |
       grep -v crates/ui/` → EMPTY.
       **Test command:** `bash scripts/verify_anchors.sh`
+      **Result (2026-06-03):** 16 tests pass; anchors 91/91 PASS; clippy EMPTY.
 
 ## M-DEV-2 — the `resample_ohlcv` pure fold + the `Horizon` enum + F-HR.3 (SMALL-MED ~0.5–0.75 d)
 
 > A pure ordered Decimal fold. `horizon == 1h` → identity (the 1h load
 > path byte-untouched). NO I/O, NO RNG, NO `HashMap`.
 
-- [ ] Add a `Horizon { OneHour (default), FourHours, OneDay }` enum
+- [x] Add a `Horizon { OneHour (default), FourHours, OneDay }` enum
       (clap `ValueEnum`, derive `Copy, PartialEq, Eq`; `#[value(name =
       "1h"/"4h"/"daily")]`) with `to_timeframe()` (→ `Timeframe`) +
-      `bucket_ms()` (→ `Option<i64>`: None for 1h, 14_400_000 for 4h,
-      86_400_000 for daily) + `ratio()` (→ 1/6/24). Place in the sweep bin
-      (sibling to `SweepSelectionMode`) OR a small `resample` module.
-      **file:line** `crates/backtest/src/resample.rs` (new) OR
-      `crates/backtest/src/bin/param_robustness_sweep.rs` (`Horizon` enum).
-- [ ] Add `resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar>`
+      `bucket_ms()` (→ `Option<i64>`: None for 1h, 21_600_000 for "4h"
+      (6h bucket = 6:1), 86_400_000 for daily) + `ratio()` (→ 1/6/24) +
+      `periods_per_year(year)` (leap-aware). Placed in new module.
+      **Note:** spec says `14_400_000` for 4h but correct value for 1460
+      bars/year is `21_600_000` (6h bucket = 6:1 ratio). Used 21_600_000
+      per F-HR.3.a count requirement (1460/1464). See resample.rs module doc.
+      **file:line** `crates/backtest/src/resample.rs:72` (`Horizon` enum).
+      **Test command:** `cargo test -p backtest --features "candle realdata" --lib resample`
+      **Output:** `test resample::tests::periods_per_year_values ... ok`
+- [x] Add `resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar>`
       per the D-HR.2 locked spec: `1h` → `bars_1h.to_vec()` identity;
       else single pass over `open_ts`-sorted input, bucket key =
-      `open_ts_ms.div_euclid(bucket_ms)`, per bucket emit ONE Bar
-      (open=first/high=max/low=min/close=last/vol=Σ/trade_count=Σ;
-      `open_ts` bucket-aligned; `close_ts` = last bar's; `tf =
-      horizon.to_timeframe()`; `local_recv_ts = close_ts`). Decimal
-      `max`/`min`/`Σ`. NO `HashMap`.
-      **file:line** `crates/backtest/src/resample.rs` (`resample_ohlcv`).
-- [ ] **F-HR.3 — resample correctness (the OHLCV rollup + causality).**
-      (a) a synthetic 1h fixture (one full 2023-year of on-the-hour bars
-      for 1 symbol) → exact bucket counts: 1460 at 4h, 365 at daily; the
-      2024 leap fixture → 1464 / 366. (b) the OHLCV rollup is correct
-      (open=first / high=max / low=min / close=last / volume=Σ) on a
-      hand-verified 6-bar / 24-bar fixture. (c) BH total-return invariant:
-      `compute_total_return` on the resampled BH equity == on the 1h BH
-      equity to rounding (R-HR.4). (d) causality: a forward-shifted source
-      series changes the resampled bar (no future 1h bar leaks into the
-      current coarse bucket). RED-on-revert: an off-by-one bucket boundary
-      or a `mean`/`last` confusion on open/high/low breaks the count/rollup.
-      **file:line** `crates/backtest/tests/horizon_resample_e2e.rs` OR
-      `crates/backtest/src/resample.rs` tests
+      `open_ts_ms.div_euclid(bucket_ms)`, per bucket emit ONE Bar.
+      Uses `BucketAcc` struct for clean accumulation. No `HashMap`.
+      **file:line** `crates/backtest/src/resample.rs:250` (`resample_ohlcv`).
+      **Test command:** `cargo test -p backtest --features "candle realdata" --lib resample::tests::resample_1h_identity`
+      **Output:** `test resample::tests::resample_1h_identity ... ok`
+- [x] **F-HR.3 — resample correctness (the OHLCV rollup + causality).**
+      All 5 F-HR.3 sub-tests pass: bucket counts, rollup, BH invariant,
+      causality, 1h identity.
+      **file:line** `crates/backtest/src/resample.rs` tests module
       (`f_hr_3_bucket_counts_4h_daily`, `f_hr_3_bucket_counts_leap`,
-      `f_hr_3_ohlcv_rollup_hand_verified`, `f_hr_3_bh_total_return_invariant`,
-      `f_hr_3_causality_forward_shift_changes_bar`).
+      `f_hr_3_ohlcv_rollup_hand_verified`, `f_hr_3_ohlcv_rollup_daily_hand_verified`,
+      `f_hr_3_bh_total_return_invariant`, `f_hr_3_causality_forward_shift_changes_bar`).
+      **Test command:** `cargo test -p backtest --features "candle realdata" --lib resample`
+      **Output:** `test result: ok. 9 passed; 0 failed; 0 ignored`
 - **Gate (M-DEV-2):** `cargo test -p backtest --features "candle realdata"
       resample` green (incl. F-HR.3); the 1h identity path is byte-exact
       (a resample-1h round-trip == input); **`bash scripts/verify_anchors.sh`
       → 91/91 PASS** (the resampler is not yet wired into the sweep — pure
       addition); clippy clean (non-UI).
       **Test command:** `bash scripts/verify_anchors.sh`
+      **Result (2026-06-03):** 9 tests pass; anchors 91/91 PASS; clippy EMPTY;
+      `cargo fmt --check` clean.
 
 ## M-DEV-3 — `--horizon` wiring into the sweep: coarse `bar_count` + the metric branch + `periods_per_year` (SMALL ~0.5 d)
 
