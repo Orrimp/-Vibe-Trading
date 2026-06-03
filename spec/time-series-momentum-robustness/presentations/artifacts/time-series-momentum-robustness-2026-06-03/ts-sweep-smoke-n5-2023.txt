@@ -1,0 +1,16 @@
+param_robustness_sweep DONE
+  report:         /tmp/ts-demo/robustness-sweep-20260603-174941-v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy.md
+  body_sha:       9ab9c7138fbbebeb202ffcbe52cdf56dd7d66449b0cab7da6dda74b25007efe3
+  wall_clock_s:   16.2
+  n_cells:        6
+  n_paths:        5
+  family_verdict: FAMILY-UNIFORM-FRAGILE
+  buyhold p50 Sharpe: 1.9262  P(loss): 0.0000  p95 MaxDD: 38.01%
+
+  per-cell summary:
+    g= 0 lookback= 168 k_long=10 drift=0.10 → FRAGILE | p50=0.0110 p5=-0.0129 MaxDD_p95=89.8%
+    g= 1 lookback=  24 k_long=10 drift=0.10 → FRAGILE | p50=-0.0202 p5=-0.0437 MaxDD_p95=95.2%
+    g= 2 lookback= 720 k_long=10 drift=0.10 → FRAGILE | p50=0.0645 p5=0.0050 MaxDD_p95=88.6%
+    g= 3 lookback= 168 k_long=10 drift=0.10 → FRAGILE | p50=-0.0264 p5=-0.0415 MaxDD_p95=90.8%
+    g= 4 lookback= 720 k_long=10 drift=0.10 → FRAGILE | p50=0.0504 p5=0.0200 MaxDD_p95=87.1%
+    g= 5 lookback=  24 k_long=10 drift=0.10 → FRAGILE | p50=-0.0148 p5=-0.0296 MaxDD_p95=90.0%
