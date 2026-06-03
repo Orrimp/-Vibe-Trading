@@ -616,7 +616,7 @@ pub const TS_TIER1_GRID: &[ThetaCell] = &[
     },
     ThetaCell {
         g: 1,
-        lookback_minutes: 24,  // ~1 day
+        lookback_minutes: 24, // ~1 day
         k_long: 10,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
@@ -660,7 +660,7 @@ pub const TS_TIER1_GRID: &[ThetaCell] = &[
     },
     ThetaCell {
         g: 5,
-        lookback_minutes: 24,  // ~1 day
+        lookback_minutes: 24, // ~1 day
         k_long: 10,
         drift_threshold_num: 10,
         drift_threshold_den: 2,
@@ -2223,7 +2223,13 @@ fn main() -> Result<()> {
 
     for cell in grid {
         let cell_start = std::time::Instant::now();
-        let per_cell_cfg = cell_config(&base_cfg, cell, args.direction, args.score_source, args.selection_mode);
+        let per_cell_cfg = cell_config(
+            &base_cfg,
+            cell,
+            args.direction,
+            args.score_source,
+            args.selection_mode,
+        );
 
         info!(
             g = cell.g,
@@ -2275,8 +2281,7 @@ fn main() -> Result<()> {
         // .iter() BEFORE the consuming .into_iter() below, mirroring total_trades.
         let total_funding_harvested: Decimal = indexed.iter().map(|r| r.funding_harvested).sum();
         // M-DEV-4: time-in-market totals across all N paths. Summed before consuming iter.
-        let total_time_in_market_bars: u64 =
-            indexed.iter().map(|r| r.time_in_market_bars).sum();
+        let total_time_in_market_bars: u64 = indexed.iter().map(|r| r.time_in_market_bars).sum();
         let total_bars_run: u64 = indexed.iter().map(|r| r.bars_run).sum();
         let metrics: Vec<backtest::stats::PathMetrics> =
             indexed.into_iter().map(|r| r.metrics).collect();
@@ -2490,16 +2495,16 @@ fn main() -> Result<()> {
     // We detect "was the default changed?" by checking if it's still the momentum default.
     let momentum_default_out_dir =
         PathBuf::from("spec/momentum-parameter-robustness-sweep/reports/");
-    let effective_out_dir = if args.selection_mode.is_ts() && args.out_dir == momentum_default_out_dir
-    {
-        PathBuf::from("spec/time-series-momentum-robustness/reports/")
-    } else if args.score_source == SweepScoreSource::Carry
-        && args.out_dir == momentum_default_out_dir
-    {
-        PathBuf::from("spec/carry-strategy/reports/")
-    } else {
-        args.out_dir.clone()
-    };
+    let effective_out_dir =
+        if args.selection_mode.is_ts() && args.out_dir == momentum_default_out_dir {
+            PathBuf::from("spec/time-series-momentum-robustness/reports/")
+        } else if args.score_source == SweepScoreSource::Carry
+            && args.out_dir == momentum_default_out_dir
+        {
+            PathBuf::from("spec/carry-strategy/reports/")
+        } else {
+            args.out_dir.clone()
+        };
 
     // ── Write report ──────────────────────────────────────────────────────────
     std::fs::create_dir_all(&effective_out_dir)

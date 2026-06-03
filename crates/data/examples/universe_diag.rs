@@ -291,15 +291,30 @@ fn main() {
     );
     println!();
     println!("--- M2: cross-sectional return dispersion (std across {n_sym} names per bar) ---");
-    println!("  time-mean dispersion : {:.5}  ({:.3}%/bar)", disp_mean, disp_mean * 100.0);
-    println!("  p10 / p50 / p90      : {:.5} / {:.5} / {:.5}", pct(0.10), pct(0.50), pct(0.90));
-    println!("  ratio: avg single-name return std / avg dispersion = {:.3}", {
-        let avg_single = stds.iter().sum::<f64>() / stds.len() as f64;
-        avg_single / disp_mean
-    });
+    println!(
+        "  time-mean dispersion : {:.5}  ({:.3}%/bar)",
+        disp_mean,
+        disp_mean * 100.0
+    );
+    println!(
+        "  p10 / p50 / p90      : {:.5} / {:.5} / {:.5}",
+        pct(0.10),
+        pct(0.50),
+        pct(0.90)
+    );
+    println!(
+        "  ratio: avg single-name return std / avg dispersion = {:.3}",
+        {
+            let avg_single = stds.iter().sum::<f64>() / stds.len() as f64;
+            avg_single / disp_mean
+        }
+    );
     println!();
     println!("--- M3: 1-factor (equal-weight index) decomposition ---");
-    println!("  AVG R^2 vs EW index : {avg_r2:.4}   ({:.1}% common beta)", avg_r2 * 100.0);
+    println!(
+        "  AVG R^2 vs EW index : {avg_r2:.4}   ({:.1}% common beta)",
+        avg_r2 * 100.0
+    );
     println!("  per-name R^2 (common-beta share) and beta:");
     let mut sorted_r2 = r2s.clone();
     sorted_r2.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
@@ -322,7 +337,9 @@ fn main() {
     println!();
     println!("--- INTERPRETATION GUIDE ---");
     println!("  avg_corr →1 and avg_R^2 →1  ⇒ ~1 factor ⇒ structural ceiling on x-sec alpha");
-    println!("  avg dispersion is the raw material x-sec ranking can exploit (small ⇒ little to harvest)");
+    println!(
+        "  avg dispersion is the raw material x-sec ranking can exploit (small ⇒ little to harvest)"
+    );
     println!("  rank IC is whether the ranking PERSISTS (the method question, signal-agnostic)");
 }
 

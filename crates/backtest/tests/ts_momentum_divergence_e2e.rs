@@ -39,8 +39,10 @@
 
 use backtest::cli_types::TcnScenarioInput;
 use backtest::scenarios::montecarlo::run_path;
-use backtest::stats::{DistributionSummary, PathMetrics, compute_calmar, compute_max_drawdown_f64,
-    compute_sharpe_hourly, compute_sortino_hourly, compute_total_return};
+use backtest::stats::{
+    DistributionSummary, PathMetrics, compute_calmar, compute_max_drawdown_f64,
+    compute_sharpe_hourly, compute_sortino_hourly, compute_total_return,
+};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
@@ -112,9 +114,9 @@ fn make_ts_config(threshold: Decimal) -> strategy::CrossSectionalMomentumConfig 
     strategy::CrossSectionalMomentumConfig {
         id: SmolStr::new("ts_test"),
         universe: vec![SmolStr::new("AAAUSD")],
-        lookback_minutes: 5,   // lookback L=5 bars
-        rebalance_minutes: 1,  // rebalance every bar
-        k_long: 10,            // inert under TimeSeriesLongFlat
+        lookback_minutes: 5,  // lookback L=5 bars
+        rebalance_minutes: 1, // rebalance every bar
+        k_long: 10,           // inert under TimeSeriesLongFlat
         k_short: 0,
         exposure_cap: dec!(0.5),
         drift_rebalance_threshold: dec!(0.10),
@@ -128,7 +130,10 @@ fn make_ts_config(threshold: Decimal) -> strategy::CrossSectionalMomentumConfig 
 }
 
 /// TS-momentum config with custom lookback and threshold.
-fn make_ts_config_custom(lookback: u32, threshold: Decimal) -> strategy::CrossSectionalMomentumConfig {
+fn make_ts_config_custom(
+    lookback: u32,
+    threshold: Decimal,
+) -> strategy::CrossSectionalMomentumConfig {
     strategy::CrossSectionalMomentumConfig {
         id: SmolStr::new(format!("ts_L{lookback}_thr{threshold}")),
         universe: vec![SmolStr::new("AAAUSD")],
@@ -210,20 +215,14 @@ fn run_buyhold(bars: &[Bar]) -> Decimal {
     let sym = Symbol::new("AAAUSD");
 
     // Buy at bar 0 close price.
-    let buy_price = bars
-        .first()
-        .map(|b| b.close.get())
-        .unwrap_or(dec!(1));
+    let buy_price = bars.first().map(|b| b.close.get()).unwrap_or(dec!(1));
     if buy_price <= Decimal::ZERO {
         return initial_capital;
     }
     let qty = initial_capital / buy_price;
 
     // Mark-to-market at final bar.
-    let final_price = bars
-        .last()
-        .map(|b| b.close.get())
-        .unwrap_or(buy_price);
+    let final_price = bars.last().map(|b| b.close.get()).unwrap_or(buy_price);
     let _ = sym; // suppress unused warning
     qty * final_price
 }
@@ -247,7 +246,7 @@ fn run_buyhold(bars: &[Bar]) -> Decimal {
 /// divergence is driven by the long/flat exit mechanism, not a sizing artifact.
 #[test]
 fn f_tsm_1_baseline_divergence() {
-    const N_UP: usize = 15;   // uptrend bars (warmup + several long bars)
+    const N_UP: usize = 15; // uptrend bars (warmup + several long bars)
     const N_DOWN: usize = 25; // sustained downtrend — TS exits; BH suffers
 
     let bars = build_up_then_down_bars(N_UP, N_DOWN);
@@ -350,8 +349,7 @@ fn f_tsm_2_signal_non_no_op() {
     );
 
     // Normal TS must diverge significantly from degenerate TS (the exit makes the difference).
-    let delta_normal_vs_degen =
-        (result_normal.final_equity - result_degenerate.final_equity).abs();
+    let delta_normal_vs_degen = (result_normal.final_equity - result_degenerate.final_equity).abs();
     let epsilon_1bp = dec!(10); // 1 bp of 100_000
     assert!(
         delta_normal_vs_degen > epsilon_1bp,
@@ -392,8 +390,7 @@ fn f_tsm_3_no_look_ahead() {
             price *= dec!(0.97); // −3% on odd bars
         }
     }
-    causal_bars
-        .sort_by(|a, b| a.open_ts.cmp(&b.open_ts).then(a.symbol.0.cmp(&b.symbol.0)));
+    causal_bars.sort_by(|a, b| a.open_ts.cmp(&b.open_ts).then(a.symbol.0.cmp(&b.symbol.0)));
 
     // Build future-shifted bars: shift all bar prices by 1 position (bar 0 gets bar 1's price).
     // This simulates a look-ahead: position at bar t uses price from bar t+1.
@@ -587,7 +584,8 @@ fn f_tsm_5_two_run_byte_identity() {
          in trade count or max_dd. If identical, the lookback/threshold is not affecting \
          behavior. trades_a={trades_a1}, trades_b={trades_b1}, \
          max_dd_a={:.6}, max_dd_b={:.6}",
-        s1a.max_dd_tail_p95, s1b.max_dd_tail_p95,
+        s1a.max_dd_tail_p95,
+        s1b.max_dd_tail_p95,
     );
 }
 
@@ -611,8 +609,8 @@ fn run_ts_cell_summary(
     // Base: enough up bars for the longer lookback (L=20) to warm up (need ≥21 up bars).
     // Variation per j: adds j bars to n_up so paths differ structurally.
     for j in 0..n_paths {
-        let n_up = 25 + j;    // 25..30 up bars (L=20 warms up after 21 up bars)
-        let n_down = 20 + j;  // 20..25 down bars (triggers exit for both L=5 and L=20)
+        let n_up = 25 + j; // 25..30 up bars (L=20 warms up after 21 up bars)
+        let n_down = 20 + j; // 20..25 down bars (triggers exit for both L=5 and L=20)
         let bars = build_up_then_down_bars(n_up, n_down);
 
         let result = run_to_result(cfg.clone(), bars);
@@ -621,7 +619,13 @@ fn run_ts_cell_summary(
         let equity_clamped: Vec<Decimal> = result
             .equity_curve
             .iter()
-            .map(|&e| if e <= Decimal::ZERO { dec!(0.000001) } else { e })
+            .map(|&e| {
+                if e <= Decimal::ZERO {
+                    dec!(0.000001)
+                } else {
+                    e
+                }
+            })
             .collect();
 
         let pm = PathMetrics {
