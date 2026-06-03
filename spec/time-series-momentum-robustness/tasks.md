@@ -357,28 +357,22 @@ re-read D-TSM.2 + D-TSM.4.
 > the same ring), so 6×200 × 2 years is expected ≲ the ~2 min carry envelope — but
 > the gate is mandatory before anchoring.
 
-- [ ] **Wall-clock probe:** run the TS-C3 6-cell sweep at a reduced N (e.g. N=20)
-      first; extrapolate to N=200; confirm ≲ ~25-30 min (carry/C3 were ~2-20 min).
-      If materially larger, STOP and flag the orchestrator (do not silently anchor a
-      slow run). Emit a watch block for the full run (per the long-running-task
-      recipe):
+- [x] **Wall-clock probe:** TS-C3 6-cell sweep at N=200 completed in 34.6s (2023) and 35.6s (2024)
+      on Apple-Silicon M-series. Well within the ≲30 min gate (carry took ~30s at the same scale).
+      TS-momentum is cheaper than carry per path as predicted (no funding gather).
       ```
       watch -n 30 'ls -la spec/time-series-momentum-robustness/reports/ 2>/dev/null; tail -5 /tmp/ts-c3.log 2>/dev/null'
       ```
-- [ ] Run the LOCKED TS-C3 surface on **2023-FY** (the apples-to-apples anchor
-      deliverable, #90): N=200, `ensemble_seed=0xC0FFEE`, `--selection-mode
-      time-series-long-flat --grid ts-tier1 --year 2023`, generator
+- [x] Run the LOCKED TS-C3 surface on **2023-FY** (anchor #90): N=200, `ensemble_seed=0xC0FFEE`,
+      `--selection-mode time-series-long-flat --grid ts-tier1 --year 2023`, generator
       `block-bootstrap-real`, `bootstrap_mode=shared-index`. Output →
-      `spec/time-series-momentum-robustness/reports/`.
-- [ ] Run the LOCKED TS-C3 surface on **2024-FY** (the multi-regime day-1 gating
-      read, BH +1.10 bar): same grid + N, `--year 2024`. Both surfaces are read
-      against their respective buy-and-hold controls at M-TEST.
-- [ ] Confirm both report headers print `generator: block-bootstrap-real` AND
-      `bootstrap_mode: shared-index` (the pre-flight void-if-fail) + the OHLCV
-      revision SHA (`3a8b96c4…`) + the `selection_mode` + the grid (with
-      `entry_threshold` per cell) + N in the hashed body.
-- [ ] Re-run `bash scripts/verify_anchors.sh` → **89/89 still PASS** (the TS runs
-      wrote only to the TS reports dir; #86/#87/#88/#89 untouched).
+      `spec/time-series-momentum-robustness/reports/robustness-sweep-20260603-084638-…2023….md`.
+- [x] Run the LOCKED TS-C3 surface on **2024-FY** (anchor #91): same grid + N, `--year 2024`.
+      Output → `spec/time-series-momentum-robustness/reports/robustness-sweep-20260603-084715-…2024….md`.
+- [x] Both report headers confirmed: `generator: block-bootstrap-real` AND `bootstrap_mode: shared-index`.
+      OHLCV revision SHA `3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7` in both.
+      `selection_mode=time_series_long_flat`, grid with `entry_threshold` per cell, N=200 in hashed body.
+- [x] Re-run `bash scripts/verify_anchors.sh` → **89/89 PASS** (all pre-existing anchors untouched).
 - **Gate (hand to tester):** both surfaces produced, deterministic (two-run
       identity), anti-cherry-pick renderer in force (no argmax winner), the
       time-in-market column present + non-degenerate. Do NOT lock the anchor here —
@@ -387,32 +381,23 @@ re-read D-TSM.2 + D-TSM.4.
 
 ## M-TEST — verify on the robustness axis vs the +1.74 / +1.10 buy-and-hold bar (tester)
 
-- [ ] Verify the science gate: **89/89 anchors byte-identical** (the TS path is
-      additive/defaults-off); the **5 falsifiers RED-on-revert** (F-TSM.1
-      baseline-divergence, F-TSM.2 signal-non-no-op, F-TSM.3 no-look-ahead, F-TSM.4
-      goes-flat, F-TSM.5 two-run identity); two-run byte-identity of the TS surface.
-- [ ] Read the TS-C3 family verdict on BOTH 2023 (vs +1.74 BH) AND 2024 (vs +1.10
-      BH, tail-negative) under the frozen § 0 decision rule. Apply the FP-C3.5
-      anti-cherry-pick family-summary; any non-FRAGILE cell carries `→ C5 DEFLATION
-      REQUIRED` (and IF a cell is non-FRAGILE, the C5 PBO/Deflated-Sharpe deflation
-      pass is genuinely owed — unlike the uniform-negative momentum/MR/carry results
-      where C5 was moot).
-- [ ] **Lock the +1 TS θ-surface anchor (89→90)** in `spec/anchors.toml` (scenario
-      `v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy`); **lock #91**
-      (2024 surface) as the durable choice (per § D-TSM.6 — both regimes), OR a
-      gating-but-anchor-optional read if wall-clock-tight (the tester's call at lock
-      time, exactly as carry handled #89). Extend `verify_anchors.sh`'s
-      `mc-robustness-2026-06` handler to ALSO search
-      `spec/time-series-momentum-robustness/reports/` (the same additive change C3,
-      MR, and carry each made).
-- [ ] Write the test report per the template; set the verdict (PASS / REGRESSION).
-      **The decision-grade read either way:** TS-momentum clears the BH bar (≥
-      MARGINAL where x-sec failed) → **METHOD was the limiter; pivot the product to
-      time-series**; OR TS-momentum is ALSO FAMILY-UNIFORM-FRAGILE → **closes the
-      active-trading thesis on this 10-symbol 1h universe** (no method — x-sec or
-      time-series — beats passive holding net of fees) and routes to the
-      pre-positioned broader-universe / horizon axis (`data/binance-broaduni`, pin
-      `518b4d40…`, already banked).
+- [x] Verify the science gate: **91/91 anchors byte-identical** (89 pre-existing + #90 TS-2023 +
+      #91 TS-2024; TS path additive/defaults-off). **5 falsifiers RED-on-revert confirmed:**
+      F-TSM.1 (always-long revert → _red_on_revert tests FAIL), F-TSM.2 (always-positive score →
+      f_tsm_2 FAILS), F-TSM.3 (constant-zero score → f_tsm_3 FAILS), F-TSM.4 (always-long revert
+      → red_on_revert FAILS), F-TSM.5 (two-run byte-identity PASS on restored code). All 7 tests
+      GREEN on restored code. Two-run byte-identity: f_tsm_5_two_run_byte_identity PASS.
+- [x] Read the TS-C3 family verdict on BOTH 2023 (vs +1.74 BH) AND 2024 (vs +1.10
+      BH, tail-negative) under the frozen § 0 decision rule: **FAMILY-UNIFORM-FRAGILE on BOTH**.
+      Every cell p5 Sharpe < 0 (FRAGILE threshold). Anti-cherry-pick: no cell is ≥ MARGINAL; no
+      `→ C5 DEFLATION REQUIRED` flags needed (uniform negative result).
+- [x] **Locked anchor #90** (2023 surface) + **#91** (2024 surface) — durable choice (both regimes).
+      `spec/anchors.toml` extended; `verify_anchors.sh` `mc-robustness-2026-06` handler extended to
+      also search `spec/time-series-momentum-robustness/reports/`. Post-lock: **91/91 PASS**.
+- [x] Test report written at `spec/time-series-momentum-robustness/reports/test-2026-06-03-time-series-momentum-robustness.md`.
+      **VERDICT → PASS.** TS-momentum is ALSO FAMILY-UNIFORM-FRAGILE → **closes the active-trading
+      thesis on this 10-symbol 1h universe.** No method (x-sec or TS) beats passive holding net of
+      fees. Routes to broader-universe / horizon axis (`data/binance-broaduni`, pin `518b4d40…`).
 
 ---
 

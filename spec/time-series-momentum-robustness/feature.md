@@ -1,10 +1,10 @@
 ---
 slug: time-series-momentum-robustness
 version: 0.1.0
-status: in-progress
-owner: developer
+status: tester-done
+owner: tester
 priority: P2
-updated: 2026-06-02
+updated: 2026-06-03
 ---
 
 # Time-series momentum (per-asset absolute momentum, long/flat) — the FIRST non-cross-sectional method, the program's thesis-closing test — v0.1.0

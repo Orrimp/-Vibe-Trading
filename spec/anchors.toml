@@ -738,3 +738,49 @@ sha256   = "f03cd7145699f854768e1721ee675d7aa87a10269694f41561c404f2e1b9f2c4"
 scenario = "v1-carry-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
 sha256   = "fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199"
+
+# C3 TS-momentum θ-surface anchor #90 — 2023-FY (2026-06-03).
+# Time-series (per-asset absolute) momentum: 6-cell × N=200 LOCKED TS Tier-1 grid (§ D-TSM.3-LOCKED).
+# Methodology: SAME-paths across cells (ADR-0051 § D6.7 amendment — new SELECTION mechanism,
+# NO new RNG, NO co-resampled series; simpler than carry's § D6.6).
+# Verdict: FAMILY-UNIFORM-FRAGILE — all 6 cells FRAGILE.
+# TS-momentum does NOT beat buy-and-hold net of fees on 2023 real Binance universe.
+# g=0 (baseline θ*): p5=-0.054, p50=+0.011, p95=+0.052, direction=time_series_long_flat
+# g=3 (wide band): p50=+0.004 — nearest to non-FRAGILE but still FRAGILE (p5=-0.051)
+# BuyHold control: p50 Sharpe=+1.74, P(loss)=4.5%, p95 MaxDD=51.2% (same SAME-paths as C3 momentum/MR/carry).
+# Grid: 6 cells g∈{0..5}, lookback={168,24,720,168,720,24}, threshold={0.00,0.00,0.00,0.02,0.02,0.02},
+#        N=200, seed=0xC0FFEE, block-bootstrap-real, year=2023.
+# Data: OHLCV revision 3a8b96c4…, NO funding (TS-momentum has no funding data source).
+# time_in_market column: real, non-degenerate (0.64–0.87 across cells), confirms TS actually exits to flat.
+# Wall-clock: 34.6s on Apple-Silicon M-series (canonical box).
+# Namespace: mc-robustness-2026-06 (TS θ-surface additive entry, no prior anchor disturbed).
+# Anchored by tester at M-TEST (VERDICT → PASS, durable choice per § D-TSM.6 / R-TSM.5).
+# Verify with: scripts/verify_anchors.sh (expects 90/90 PASS with this SHA)
+
+[[anchors]]
+scenario = "v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy"
+version  = "mc-robustness-2026-06"
+sha256   = "c1bf9325a2e37628c702f0a3993245641bd060642f2e70c1cf9ca90413c28e57"
+
+# C3 TS-momentum θ-surface anchor #91 — 2024-FY OOS regime (2026-06-03).
+# Same LOCKED 6-cell TS Tier-1 grid as #90 but on 2024-FY real Binance data.
+# Methodology: identical to #90 (ADR-0051 § D6.7 — same selector, same shared-index bootstrap).
+# Verdict: FAMILY-UNIFORM-FRAGILE — all 6 cells FRAGILE.
+# 2024 is a harder regime: BuyHold control p50=+1.10, P(loss)=16.5%, p95 MaxDD=64.8%
+# (tail-negative vs 2023's bull regime). TS-momentum still cannot clear the bar.
+# g=0 (baseline TS θ*): p5=-0.032, p50=+0.016, p95=+0.072, direction=time_series_long_flat
+# g=4 (best p50): p50=+0.041, p5=-0.041 — still FRAGILE (p5 < 0, p95_maxdd=81.4%)
+# Data: OHLCV revision 3a8b96c4…
+# Wall-clock: 35.6s on Apple-Silicon M-series (canonical box).
+# Namespace: mc-robustness-2026-06 (additive — 90 anchors hold unchanged).
+# Anchored by tester at M-TEST per § D-TSM.6 (durable choice — both regimes locked; 89→91).
+# Program-level conclusion: ALL FOUR strategy families (x-sec momentum, x-sec mean-reversion,
+# x-sec carry/funding, TS absolute momentum) are FAMILY-UNIFORM-FRAGILE on this 10-symbol 1h
+# universe — dominated by passive buy-and-hold net of fees. Active-trading thesis on this
+# universe is closed. Routes to broader-universe / horizon axis.
+# Verify with: scripts/verify_anchors.sh (expects 91/91 PASS with this SHA)
+
+[[anchors]]
+scenario = "v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy"
+version  = "mc-robustness-2026-06"
+sha256   = "ff7e7dda98940ac707540a34acfabb0d45d6fbe14c5274d0ba0ba8d5b383dae8"
