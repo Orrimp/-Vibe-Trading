@@ -924,3 +924,78 @@ _Pass 2 (M-DEV-4 + M-DEV-5) not yet started._
   (the ADR-0051 § D6.5.2 anchor-risk constraint). status proposed; `[[req]]` row
   `REQ-TIME-SERIES-MOMENTUM-ROBUSTNESS-001` created (operator greenlit). No code, no
   build, no engine run; no anchors.toml touch (tester owns those at lock time).
+
+## Implementation
+
+_Developer Pass 2 (M-DEV-4 + M-DEV-5) — 2026-06-02_
+
+### M-DEV-4 — sweep wiring
+
+Added `SweepSelectionMode { CrossSectionalTopK (default), TimeSeriesLongFlat }` to
+`crates/backtest/src/bin/param_robustness_sweep.rs`. Key additions:
+
+- `ThetaCell` extended with `entry_threshold_num: i64` + `entry_threshold_den: u32`
+  fields + `entry_threshold()` accessor. All existing grids (TIER1, MR_TIER1,
+  CARRY_TIER1, TWO_CELL) updated with `entry_threshold_num: 0, entry_threshold_den: 0`
+  (inert for momentum/MR/carry — the field is only READ under TimeSeriesLongFlat).
+
+- `TS_TIER1_GRID` (6-cell, LOCKED § D-TSM.3-LOCKED): lookback L ∈ {168,24,720,168,720,24}
+  × entry_threshold ∈ {0.00,0.00,0.00,0.02,0.02,0.02}, k_long=10 (inert), rebalance=60m.
+
+- `GridKind::TsTier1` variant added + `grid_for_kind` arm.
+
+- `--selection-mode {cross-sectional-top-k (default), time-series-long-flat}` CLI arg.
+
+- `cell_config` updated to set `cfg.selection_mode` + `cfg.entry_threshold` from cell.
+  Momentum/MR/carry: selection_mode=CrossSectionalTopK + entry_threshold=0 → byte-identical.
+
+- Scenario name `v1-ts-momentum-theta-surface-{year}-block-bootstrap-real-fy`;
+  out-dir defaults to `spec/time-series-momentum-robustness/reports/`.
+
+- `PathRunResult.time_in_market_bars: u64` — pure observability counter (bars with ≥1
+  long position) in `run_path`; does NOT alter equity/sizing/orders → 89 anchors safe.
+
+- `IndexedPathMetrics` and `CellResult` extended with `time_in_market_bars` + `bars_run`.
+
+- `ts_grid_def_string` function (hashed body field K3).
+
+- `show_time_in_market` column in `render_surface_report`, GATED to `selection_mode.is_ts()`
+  → momentum/MR/carry body-SHAs byte-identical (ADR-0051 § D6.5.4 / D6.7). Column value
+  is REAL: `total_time_in_market_bars / total_bars_run` across N paths.
+
+**Gate verification (all passed):**
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings | grep -v crates/ui/` → EMPTY
+- `bash scripts/verify_anchors.sh` → 89/89 PASS
+- Smoke N=3 two-run body_sha: `e551aa7ab52090313d548cefe03f9b4dbca345575de89b8dd965833cc0ef9909` × 2 = IDENTICAL
+- Time-in-market values non-trivial: cells g=0..5 range 0.70–0.84 (strategy goes flat)
+
+### M-DEV-5 — 5 day-1 falsifiers
+
+New test file: `crates/backtest/tests/ts_momentum_divergence_e2e.rs` (7 tests total,
+5 primary + 2 built-in red-on-revert confirmations).
+
+| Test | Guards | Result |
+|---|---|---|
+| `f_tsm_1_baseline_divergence` | TS equity diverges ≥ 1 bp from BH (downtrend exit) | ok |
+| `f_tsm_1_red_on_revert_always_long_tracks_bh` | Always-long diverges LESS from BH than TS | ok |
+| `f_tsm_2_signal_non_no_op` | Degenerate threshold (−∞) tracks always-long; normal TS diverges | ok |
+| `f_tsm_3_no_look_ahead` | Future-shifted prices produce different equity (causal window) | ok |
+| `f_tsm_4_goes_flat` | time_in_market_bars < total_bars on downtrend; TS > BH | ok |
+| `f_tsm_4_red_on_revert_always_long_does_not_exit` | TS tim < always-long tim | ok |
+| `f_tsm_5_two_run_byte_identity` | Same N=6 paths × 2 runs → identical DistributionSummary | ok |
+
+**Run:** `cargo test -p backtest --features "candle realdata" --test ts_momentum_divergence_e2e`
+→ `test result: ok. 7 passed; 0 failed`
+
+### Files changed (Pass 2)
+
+- `crates/backtest/src/bin/param_robustness_sweep.rs` — M-DEV-4 sweep wiring
+- `crates/backtest/src/scenarios/montecarlo.rs` — `time_in_market_bars` in PathRunResult
+- `crates/backtest/tests/ts_momentum_divergence_e2e.rs` — M-DEV-5 falsifiers (NEW)
+- `spec/time-series-momentum-robustness/tasks.md` — M-DEV-4+5 ticked with evidence
+
+### Non-touched (anchor-safety confirmed)
+
+`run_path` body, `PaperEngine`, `BlockBootstrapPathGen` — byte-untouched.
+`--selection-mode cross-sectional-top-k` (default) reproduces momentum/MR/carry byte-identical.
+All 89 anchors verified PASS after Pass 2.

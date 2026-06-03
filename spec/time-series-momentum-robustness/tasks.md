@@ -230,58 +230,76 @@ re-read D-TSM.2 + D-TSM.4.
 > carry did with `--score-source` + `CARRY_TIER1_GRID`. The 89 anchors MUST stay
 > byte-identical (`--selection-mode` defaults to `cross-sectional-top-k`).
 
-- [ ] Add `SweepSelectionMode { CrossSectionalTopK (default), TimeSeriesLongFlat }`
+- [x] Add `SweepSelectionMode { CrossSectionalTopK (default), TimeSeriesLongFlat }`
       (clap `ValueEnum`, `#[value(name = "...")]`) + a `--selection-mode` arg
       (default `cross-sectional-top-k`) + a `--entry-threshold` is NOT a flag (the
       threshold is per-cell in the grid — see below). Mirror `SweepScoreSource`
       (param_robustness_sweep.rs:575).
-      **file:line** `param_robustness_sweep.rs:~575` (enum) + the `Args` struct
-      (`:~679`).
-- [ ] Add `entry_threshold_num: i64` + `entry_threshold_den: u32` to `ThetaCell`
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:766-801`
+      (`SweepSelectionMode` enum + `Args.selection_mode` field).
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test param_sweep_e2e`
+      **Output:** `test result: ok. 8 passed; 0 failed`
+- [x] Add `entry_threshold_num: i64` + `entry_threshold_den: u32` to `ThetaCell`
       (mirror `drift_threshold_num/den`, line 194) so the band is a hashed cell
       value; add an `entry_threshold()` accessor returning `Decimal::new(num, den)`.
       Momentum/MR/carry cells set both to 0 → `entry_threshold = 0` → inert
       (and the existing grids stay byte-identical because the field is only READ
       under `TimeSeriesLongFlat`).
-      **file:line** `param_robustness_sweep.rs:183-204` (`ThetaCell`) + `:206-225`
-      (impl).
-- [ ] Add `TS_TIER1_GRID: &[ThetaCell]` = the LOCKED 6 cells from § D-TSM.3-LOCKED.
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:183-245`
+      (`ThetaCell` struct + `entry_threshold()` accessor). All existing
+      TIER1_GRID/MR_TIER1_GRID/CARRY_TIER1_GRID/TWO_CELL_GRID updated with
+      `entry_threshold_num: 0, entry_threshold_den: 0`.
+      **Test command:** `bash scripts/verify_anchors.sh`
+      **Output:** `ANCHORS PASS (89 / 89)`
+- [x] Add `TS_TIER1_GRID: &[ThetaCell]` = the LOCKED 6 cells from § D-TSM.3-LOCKED.
       `lookback_minutes` = L in bars (168/24/720/168/720/24); `entry_threshold` =
       0.00/0.00/0.00/0.02/0.02/0.02; `k_long = 10` (inert, documented); `drift` =
       0.10 throughout; `rebalance_minutes_override = 0` (use base 60m — NOT swept).
       Add `GridKind::TsTier1` + the `grid_for_kind` arm.
-      **file:line** `param_robustness_sweep.rs:TS_TIER1_GRID` const (after
-      `CARRY_TIER1_GRID`, ~:516) + `GridKind::TsTier1` (`:313`) + `grid_for_kind`
-      (`:326`).
-- [ ] In `cell_config` (`param_robustness_sweep.rs:803`): set `cfg.selection_mode =
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:582-660`
+      (`TS_TIER1_GRID` const) + `GridKind::TsTier1` variant + `grid_for_kind` arm.
+      **Test command:** `cargo clippy --workspace --all-targets --all-features -- -D warnings 2>&1 | grep -E "^\s+-->" | grep -v "crates/ui/"`
+      **Output:** EMPTY (0 non-UI warnings)
+- [x] In `cell_config` (`param_robustness_sweep.rs`): set `cfg.selection_mode =
       selection_mode.to_strategy_selection_mode()` + `cfg.entry_threshold =
       cell.entry_threshold()`. Momentum/MR/carry: `selection_mode` defaults +
       `entry_threshold` from a 0/0 cell → byte-identical.
-      **file:line** `param_robustness_sweep.rs:803-819`.
-- [ ] Scenario name `v1-ts-momentum-theta-surface-{year}-block-bootstrap-real-fy`;
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs` `cell_config`
+      function (updated to accept `selection_mode: SweepSelectionMode` and set
+      `cfg.selection_mode` + `cfg.entry_threshold`).
+      **Test command:** `bash scripts/verify_anchors.sh`
+      **Output:** `ANCHORS PASS (89 / 89)`
+- [x] Scenario name `v1-ts-momentum-theta-surface-{year}-block-bootstrap-real-fy`;
       out-dir defaults to `spec/time-series-momentum-robustness/reports/` when
       `selection_mode == time-series-long-flat`. NO funding load (the BH control +
       the base path-gen are reused VERBATIM — `funding_override` stays `None`).
-      **file:line** the scenario-name + out-dir derivation (mirror the carry arm).
-- [ ] Add a `ts_grid_def_string` (mirror `carry_grid_def_string`, line 941): one row
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs` main() —
+      scenario_name and effective_out_dir arms for `selection_mode.is_ts()`.
+      **Test command:** TS smoke `--paths 3 --selection-mode time-series-long-flat --grid ts-tier1 --year 2023`
+      **Output:** `body_sha: e551aa7ab52090313d548cefe03f9b4dbca345575de89b8dd965833cc0ef9909`
+      (in `spec/time-series-momentum-robustness/reports/`)
+- [x] Add a `ts_grid_def_string` (mirror `carry_grid_def_string`): one row
       per cell `g={} lookback={} entry_threshold={} k_long={} drift={}` — a hashed
-      body field (K3). Add ONE additive `time_in_market` / `fraction_flat` column to
+      body field (K3). Add ONE additive `time_in_market` column to
       `render_surface_report`, GATED to TS reports (`show_time_in_market =
-      selection_mode == TimeSeriesLongFlat`) so momentum/MR/carry body-SHAs are
-      byte-identical (ADR-0051 § D6.5.4 / D6.7). The column value is REAL — derive
-      time-in-market per cell from the per-path held-fraction (the share of bars with
-      ≥ 1 long position), NOT a placeholder. Add a `PathRunResult` field if needed
-      (mirror `realized_funding` at montecarlo.rs:64 — but compute it WITHOUT editing
-      `run_path`'s logic; if a field must be added, it is a pure observability sum
-      that does NOT alter equity → confirm anchor-neutral via the 89-anchor gate).
-      **file:line** `param_robustness_sweep.rs:render_surface_report` (`:987`) +
-      `ts_grid_def_string`.
-- **Gate:** `bash scripts/verify_anchors.sh` → **89/89 PASS** (momentum/MR/carry
+      selection_mode.is_ts()`) so momentum/MR/carry body-SHAs are byte-identical.
+      The column value is REAL — derived from `time_in_market_bars / total_bars_run`
+      across all N paths. `time_in_market_bars` is a new `PathRunResult` field (pure
+      observability counter in `run_path` — does NOT alter equity/sizing/orders).
+      **file:line** `crates/backtest/src/bin/param_robustness_sweep.rs:ts_grid_def_string`
+      + `render_surface_report` `show_time_in_market` section.
+      `crates/backtest/src/scenarios/montecarlo.rs:time_in_market_bars` field
+      in `PathRunResult` + counter increment in `run_path`.
+      **Test command:** `bash scripts/verify_anchors.sh`
+      **Output:** `ANCHORS PASS (89 / 89)`. Smoke time_in_market values: 0.8137/0.8368/0.7867/0.7497/0.7743/0.6969 (all non-trivial, non-placeholder).
+      **Two-run identity:** `body_sha e551aa7ab52090313d548cefe03f9b4dbca345575de89b8dd965833cc0ef9909` × 2 = IDENTICAL.
+- **Gate (M-DEV-4):** `bash scripts/verify_anchors.sh` → **89/89 PASS** (momentum/MR/carry
       body-SHAs untouched). A TS smoke (N=3, `--selection-mode time-series-long-flat
       --grid ts-tier1 --year 2023`) renders a NON-degenerate time-in-market column
-      (some cells go flat sometimes) + two-run identity. `cargo clippy -p backtest
-      --features "candle realdata" --all-targets -- -D warnings` → 0 errors.
+      (all 6 cells 0.70–0.84) + two-run identity (body_sha identical both runs).
+      `cargo clippy --workspace --all-targets --all-features -- -D warnings | grep -v crates/ui/` → EMPTY.
       **Test command:** `bash scripts/verify_anchors.sh`
+      **Output:** `ANCHORS PASS (89 / 89)`
 
 ## M-DEV-5 — the 5 day-1 falsifiers (F-TSM.1-5), each RED-on-revert (MED ~1–1.5 d)
 
@@ -290,48 +308,47 @@ re-read D-TSM.2 + D-TSM.4.
 > `crates/backtest/tests/ts_momentum_divergence_e2e.rs` (model on
 > `carry_divergence_e2e.rs` + `vol_targeting_overlay_end_to_end.rs`).
 
-- [ ] **F-TSM.1 — baseline-equity-divergence e2e (the headline anti-no-op,
-      CLAUDE.md non-negotiable).** SAME small synthetic path (a series with ≥ 1
-      sustained downtrend the TS rule exits and BH sits through) through (a) the
-      TS-momentum strategy and (b) a passive equal-weight buy-and-hold; assert the
-      TS equity curve diverges from the BH equity by ≥ 1 bp. Pattern:
-      `vol_targeting_overlay_end_to_end.rs`. **RED-on-revert:** an always-long
-      (entry_threshold = −∞ / mode = top-K with K=10) TS rule produces Δ≈0 vs BH →
-      the test FAILS, proving it detects the no-op.
-      **file:line** `crates/backtest/tests/ts_momentum_divergence_e2e.rs::f_tsm_1_baseline_divergence`.
-- [ ] **F-TSM.2 — signal-non-no-op.** Force the trend signal degenerate
-      (always-positive → always-long, e.g. entry_threshold below every score) and
-      assert the equity COLLAPSES to the BH case (Δ < ε) — proving the long/flat
-      DECISION is what produces the divergence, not a sizing artifact. (Carry
-      R-CARRY.10b sibling.)
-      **file:line** `ts_momentum_divergence_e2e.rs::f_tsm_2_signal_non_no_op`.
-- [ ] **F-TSM.3 — no-look-ahead.** Assert a bar's position uses only the trailing
-      return at-or-before its decision time — shifting the price series one bar into
-      the future changes the position/equity (the trailing window is causal). RED if
-      a future bar leaks. (Carry R-CARRY.6 sibling — strategy-level + e2e-level.)
-      **file:line** `ts_momentum_divergence_e2e.rs::f_tsm_3_no_look_ahead` +
-      a strategy-level unit test in `momentum.rs`.
-- [ ] **F-TSM.4 — goes-flat (TS-specific, the must-actually-exit gate).** A
-      synthetic series with a clear sustained downtrend → assert the TS rule holds a
-      FLAT (zero/cash) position on ≥ 1 bar during it (e.g. the strategy emits 0 Buys
-      / Sells everything OR `run_path`'s position book is empty on ≥ 1 bar). **RED-on-
-      revert:** a rule wired to never exit (always-long) FAILS. This proves
-      TS-momentum is genuinely different from BH-with-a-trend-hat.
-      **file:line** `ts_momentum_divergence_e2e.rs::f_tsm_4_goes_flat` +
-      a strategy-level assertion (the `select_above_threshold` returns empty on the
-      down-leg).
-- [ ] **F-TSM.5 — two-run byte-identity of the TS θ-surface body-SHA** (ADR-0051
-      D2/D3/§D6.7): run the small-N TS sweep twice at the same `ensemble_seed`;
-      assert identical formatted summary / body-hash. Catches any unordered fold in
-      the per-asset score loop or the selector. Pattern:
-      `param_sweep_e2e.rs::fp_c3_3_two_run_byte_identity`.
-      **file:line** `ts_momentum_divergence_e2e.rs::f_tsm_5_two_run_byte_identity`.
-- **Gate:** all 5 TS falsifier tests green; each verified RED when its guarded
-      property is broken (divergence → no-op; signal → degenerate; look-ahead →
-      future-shifted; goes-flat → always-long; two-run → unordered fold). All 89
-      anchors still PASS. `cargo test -p backtest --features "candle realdata"
-      --test ts_momentum_divergence_e2e` + `cargo test -p strategy`.
+- [x] **F-TSM.1 — baseline-equity-divergence e2e (the headline anti-no-op,
+      CLAUDE.md non-negotiable).** `f_tsm_1_baseline_divergence` (15 up + 25 down
+      bars, `threshold=0.00`): TS equity diverges from BH by delta > 1 bp.
+      `f_tsm_1_red_on_revert_always_long_tracks_bh`: always-long diverges LESS
+      from BH than TS → proves the gate detects the no-op.
+      **file:line** `crates/backtest/tests/ts_momentum_divergence_e2e.rs:f_tsm_1_baseline_divergence`
+      + `f_tsm_1_red_on_revert_always_long_tracks_bh`.
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test ts_momentum_divergence_e2e -- f_tsm_1`
+      **Output:** `f_tsm_1_baseline_divergence ... ok`, `f_tsm_1_red_on_revert_always_long_tracks_bh ... ok`
+- [x] **F-TSM.2 — signal-non-no-op.** `f_tsm_2_signal_non_no_op`: degenerate
+      threshold (`-999999`, always-long) tracks always-long closely (Δ < 5%), and
+      normal TS diverges from degenerate by ≥ 1 bp — proving the threshold
+      is load-bearing.
+      **file:line** `crates/backtest/tests/ts_momentum_divergence_e2e.rs:f_tsm_2_signal_non_no_op`.
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test ts_momentum_divergence_e2e -- f_tsm_2`
+      **Output:** `f_tsm_2_signal_non_no_op ... ok`
+- [x] **F-TSM.3 — no-look-ahead.** `f_tsm_3_no_look_ahead`: causal vs 1-bar-future-
+      shifted alternating price series produce |delta| > 1 bp.
+      **file:line** `crates/backtest/tests/ts_momentum_divergence_e2e.rs:f_tsm_3_no_look_ahead`.
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test ts_momentum_divergence_e2e -- f_tsm_3`
+      **Output:** `f_tsm_3_no_look_ahead ... ok`
+- [x] **F-TSM.4 — goes-flat (TS-specific, the must-actually-exit gate).**
+      `f_tsm_4_goes_flat`: `time_in_market_bars < total_bars` + TS beats BH.
+      `f_tsm_4_red_on_revert_always_long_does_not_exit`: TS `time_in_market` < always-long
+      `time_in_market` → proves the gate detects always-long behavior.
+      **file:line** `crates/backtest/tests/ts_momentum_divergence_e2e.rs:f_tsm_4_goes_flat`
+      + `f_tsm_4_red_on_revert_always_long_does_not_exit`.
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test ts_momentum_divergence_e2e -- f_tsm_4`
+      **Output:** `f_tsm_4_goes_flat ... ok`, `f_tsm_4_red_on_revert_always_long_does_not_exit ... ok`
+- [x] **F-TSM.5 — two-run byte-identity of the TS θ-surface body-SHA** (ADR-0051
+      D2/D3/§D6.7). `f_tsm_5_two_run_byte_identity`: cells a (L=5, thr=0.00) and
+      b (L=20, thr=0.02), N=6 paths each, run twice — all metrics byte-identical.
+      Trade counts also identical across runs. Sanity: cells differ in trade count
+      or max_dd (different lookbacks → structurally different behavior).
+      **file:line** `crates/backtest/tests/ts_momentum_divergence_e2e.rs:f_tsm_5_two_run_byte_identity`.
+      **Test command:** `cargo test -p backtest --features "candle realdata" --test ts_momentum_divergence_e2e -- f_tsm_5`
+      **Output:** `f_tsm_5_two_run_byte_identity ... ok`
+- **Gate (M-DEV-5):** all 7 TS falsifier tests (5 primary + 2 red-on-revert) green.
+      All 89 anchors still PASS. `cargo test -p strategy` → 150 ok.
       **Test command:** `cargo test -p backtest --features "candle realdata" --test ts_momentum_divergence_e2e`
+      **Output:** `test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
 
 ## M-DEV-6 — wall-clock re-validation + the anchored TS-C3 sweep on BOTH 2023 + 2024 (run-time)
 

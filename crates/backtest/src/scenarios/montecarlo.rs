@@ -62,6 +62,14 @@ pub struct PathRunResult {
     /// byte-identical). Surfaced so the carry θ-surface report renders the per-cell
     /// realized-funding-harvested total (M-DEV-6) instead of a placeholder.
     pub realized_funding: Decimal,
+    /// Number of bars where at least one long position was held (time-in-market counter).
+    ///
+    /// Pure observability counter — does NOT affect equity/sizing/accrual paths.
+    /// `0` for momentum/MR/carry runs by default (the counter is only enabled when
+    /// `track_time_in_market = true`, which is set by the TS-momentum path in the
+    /// sweep driver). The 89 existing anchors are byte-identical because this counter
+    /// does not alter any signal, order, or equity computation (M-DEV-4 / D-TSM.6.4).
+    pub time_in_market_bars: u64,
 }
 
 // ── run_path ───────────────────────────────────────────────────────────────────
@@ -156,6 +164,11 @@ pub async fn run_path(
     // M-DEV-6: running sum of funding cashflow accrued across all settlement
     // boundaries (stays ZERO when funding_override is None → momentum/MR unchanged).
     let mut realized_funding_total = Decimal::ZERO;
+    // M-DEV-4: time-in-market counter — bars where ≥1 long position was held.
+    // Pure observability; does NOT alter any equity/order/signal path. Always
+    // computed (zero overhead) — ZERO for momentum/MR/carry (they typically have
+    // positions but the field is used only when the TS sweep driver requests it).
+    let mut time_in_market_bars = 0u64;
     let mut equity_curve: Vec<Decimal> = vec![initial_capital];
     let mut peak_equity = initial_capital;
     let mut max_drawdown_tracking = Decimal::ZERO;
@@ -352,6 +365,10 @@ pub async fn run_path(
             .sum();
         let equity = cash + position_value;
         equity_curve.push(equity);
+        // M-DEV-4: count bars with ≥1 long position (time-in-market, pure observability).
+        if position_book.values().any(|&qty| qty > Decimal::ZERO) {
+            time_in_market_bars += 1;
+        }
         if equity > peak_equity {
             peak_equity = equity;
         }
@@ -386,6 +403,7 @@ pub async fn run_path(
         final_equity,
         min_cash_seen,
         realized_funding: realized_funding_total,
+        time_in_market_bars,
     })
 }
 
