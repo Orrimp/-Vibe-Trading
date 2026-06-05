@@ -159,6 +159,14 @@ while IFS= read -r line; do
                 latest="$(find "$mc_ts_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                     2>/dev/null | sort | tail -1 || true)"
             fi
+        elif [[ "$version" == "horizon-retest-robustness" ]]; then
+            # Horizon retest namespace (ADR-0051 § D6.8 amendment):
+            # TS + carry × 4h + daily θ-surface reports live under
+            # spec/horizon-retest-robustness/reports/ using
+            # robustness-sweep-<stamp>-<scenario>.md naming.
+            mc_horizon_dir="$root/spec/horizon-retest-robustness/reports"
+            latest="$(find "$mc_horizon_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
+                2>/dev/null | sort | tail -1 || true)"
         else
             # Legacy default: newest matching report OUTSIDE all v5-latency-slippage-sim dirs.
             # Excluding the canonical dirs prevents pre-v0.5.0 anchors (e.g. v3.0.0-regime)

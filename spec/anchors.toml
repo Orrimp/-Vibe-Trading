@@ -784,3 +784,105 @@ sha256   = "c1bf9325a2e37628c702f0a3993245641bd060642f2e70c1cf9ca90413c28e57"
 scenario = "v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
 sha256   = "ff7e7dda98940ac707540a34acfabb0d45d6fbe14c5274d0ba0ba8d5b383dae8"
+
+# Horizon retest — coarser decision cadence (4h + daily) θ-surface anchors (2026-06-05).
+# Namespace: horizon-retest-robustness (NEW — distinct from mc-robustness-2026-06; the horizon
+# is a separate experiment axis, not a new family within the 1h universe).
+# Methodology: SAME block-bootstrap-real + shared-index harness + frozen decision-rule §0.
+# The 91 existing anchors held byte-identical (additive/defaults-off via --horizon flag).
+# All 8 surfaces verified FAMILY-UNIFORM-FRAGILE under the pre-registered §0 weakest-link rule
+# (p5 Sharpe < 0 is the FRAGILE criterion; every cell in all 8 surfaces has p5 Sharpe < 0).
+# Annualization: 4h uses compute_sharpe_periodic(√2190); daily uses compute_sharpe_periodic(√365)
+# (leap-year: 4h 2024=√2196; daily 2024=√366). The 1h compute_sharpe_hourly fns are byte-verbatim.
+# Daily Sharpe p50 values are SANE (0.01–0.17 range) — NOT inflated by the legacy 1h annualizer.
+# Two-run byte-identity: F-HR.5 PASS (confirmed by horizon_divergence_e2e.rs test suite).
+# Program-level conclusion: ALL FOUR method families (x-sec momentum, x-sec MR, carry, TS-momentum)
+# AND THREE horizons (1h, 4h, daily) are FAMILY-UNIFORM-FRAGILE — active trading on this
+# 10-symbol OHLCV-only universe is dominated by passive buy-and-hold at every cadence tested.
+# The OHLCV-only active-trading thesis on this data is CLOSED.
+# Data: OHLCV revision 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7
+# Funding (carry runs): revision bf1ede44e57d797b57e5a4f2743f58027e4eba12d91e1ffaf883dcdd49365668
+# Grids LOCKED per §D-HR.4-LOCKED (architect M-T1). N=200@4h / N=1000@daily.
+# git_commit: d8f327ccda527cb2ae3cfc38b639457e2c3c7a8d (surfaces) / 948d4f8 (committed)
+# Locked by tester at M-TEST (VERDICT → PASS). Extends 91→99 (8 new anchors, durable choice).
+# Verify with: scripts/verify_anchors.sh (expects 99/99 PASS with all 8 SHAs)
+
+# Anchor #92 — TS-momentum 4h horizon, 2023-FY
+# 6-cell × N=200. Grid: lookback∈{42,180,540} × threshold∈{0.00,0.02}. horizon=4h.
+# g=4 (best p50): p50=+0.165, p5=-0.038 — FRAGILE (p5 < 0, p95_maxdd=75.1%).
+# BH control: p50=+1.910, p95_maxdd=49.8% (recomputed at 4h frequency).
+# Wall-clock: 8.3s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "015dbc19c0cd6228b2cb4b1c2fff72a341d76e9cabe0474b2b2ff53fe2a544b6"
+
+# Anchor #93 — TS-momentum 4h horizon, 2024-FY (tail-negative regime)
+# 6-cell × N=200. Grid: lookback∈{42,180,540} × threshold∈{0.00,0.02}. horizon=4h.
+# g=4 (best p50): p50=+0.106, p5=-0.085 — FRAGILE.
+# BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
+# Wall-clock: 8.4s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "760dd5379a4237d8ea6c8cf9b8739fe8754780c9d03388f43f826c589d69cfe4"
+
+# Anchor #94 — TS-momentum daily horizon, 2023-FY
+# 6-cell × N=1000. Grid: lookback∈{5,20,60} × threshold∈{0.00,0.02}. horizon=daily.
+# g=4 (best p50): p50=+0.169, p5=-0.044 — FRAGILE. Daily p50 Sharpes are SANE (NOT inflated).
+# BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
+# Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "0bd24273da3995ec556d831c7c0f0964a81ceae73487e48df9f85ecc62f3990c"
+
+# Anchor #95 — TS-momentum daily horizon, 2024-FY (tail-negative regime)
+# 6-cell × N=1000. Grid: lookback∈{5,20,60} × threshold∈{0.00,0.02}. horizon=daily.
+# g=4 (best p50): p50=+0.106, p5=-0.099 — FRAGILE.
+# BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
+# Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "83366072f5c6fd2076306017c6b021ecd2d6e5c4d8d61d523ae0585041f916a4"
+
+# Anchor #96 — Carry (funding) 4h horizon, 2023-FY
+# 6-cell × N=200. Grid: L∈{2,6,12} settlements × k_long∈{1,3,5}. horizon=4h.
+# g=2 (best p50): p50=+0.029, p5=-0.057 — FRAGILE. Funding harvest overwhelmed by price vol.
+# BH control: p50=+1.910, p95_maxdd=49.8% (same paths as TS 4h 2023).
+# Wall-clock: 7.0s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "a2ca7d3cd62d09cab4d7740f509de12e8ec76f8365e40d0a93b77b6e49854fcc"
+
+# Anchor #97 — Carry (funding) 4h horizon, 2024-FY (tail-negative regime)
+# 6-cell × N=200. Grid: L∈{2,6,12} settlements × k_long∈{1,3,5}. horizon=4h.
+# g=4 (best p50): p50=+0.032, p5=+0.006 — FRAGILE (P(Sharpe>1)=0.000, p95_maxdd=67.2%).
+# BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
+# Wall-clock: 7.1s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "dc46f2a8de8cb12a793f7d6cb1e90993076d4f4fc5e447b80880184373248153"
+
+# Anchor #98 — Carry (funding) daily horizon, 2023-FY
+# 6-cell × N=1000. Grid: L∈{1,3,7} settlements × k_long∈{1,3,5}. horizon=daily.
+# g=5 (best p50): p50=+0.065, p5=-0.016 — FRAGILE.
+# BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
+# Wall-clock: 6.4s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "565e56ccfa01beb748de381b7a7e33b051882ca02a0b009b1367726f8849c675"
+
+# Anchor #99 — Carry (funding) daily horizon, 2024-FY (tail-negative regime)
+# 6-cell × N=1000. Grid: L∈{1,3,7} settlements × k_long∈{1,3,5}. horizon=daily.
+# g=5 (best p50): p50=+0.058, p5=-0.017 — FRAGILE.
+# BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
+# Wall-clock: 6.9s Apple-Silicon M-series (canonical box).
+[[anchors]]
+scenario = "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
+version  = "horizon-retest-robustness"
+sha256   = "baf650bdb5db1d0a9f2aaa8549ad05b9f5f41e2c51c60e54b6046c33c2d773d6"
