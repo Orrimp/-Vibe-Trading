@@ -17,6 +17,13 @@
 !/data/binance-broaduni/
 /data/binance-broaduni/*
 !/data/binance-broaduni/REVISION.toml
+# Perp-spot-basis spike (2026-06-05, new-data-domain-scoping § Basis spike): the
+# 10 large-cap premium-index (perp basis) hourly klines, 2023-2024, fetched by
+# fetch_binance_premium. Bulk parquets stay gitignored (mirrors data/binance);
+# only the revision-pin manifest (aggregate SHA aa72409a…) is tracked.
+!/data/binance-basis/
+/data/binance-basis/*
+!/data/binance-basis/REVISION.toml
 /logs/
 /snapshot/
 /data-snapshot/
