@@ -342,6 +342,8 @@ pub const TIER1_GRID: &[ThetaCell] = &[
 /// `TsTier1` is the LOCKED TS-momentum θ-grid (§ D-TSM.3-LOCKED).
 /// `TwoCell` is a 2-cell mini-grid used only by the FP-C3.2 grid-sensitivity
 /// test (different grid → different body-SHA). NOT for production runs.
+/// `Ts4h` / `TsDaily` / `Carry4h` / `CarryDaily` are the LOCKED horizon retest
+/// grids (§ D-HR.4-LOCKED). Only selected under `--horizon 4h` or `--horizon daily`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum GridKind {
     /// The LOCKED 6-cell Tier-1 anchored momentum grid (§ D-C3.2-LOCKED).
@@ -355,6 +357,18 @@ pub enum GridKind {
     TsTier1,
     /// 2-cell mini-grid for FP-C3.2 grid-sensitivity gate only.
     TwoCell,
+    /// LOCKED 4h TS-momentum grid (§ D-HR.4-LOCKED): lookback {42,180,540} × threshold {0.00,0.02}.
+    #[value(name = "ts-4h")]
+    Ts4h,
+    /// LOCKED daily TS-momentum grid (§ D-HR.4-LOCKED): lookback {5,20,60} × threshold {0.00,0.02}.
+    #[value(name = "ts-daily")]
+    TsDaily,
+    /// LOCKED 4h carry grid (§ D-HR.4-LOCKED): L {2,6,12} × k_long {1,3,5}.
+    #[value(name = "carry-4h")]
+    Carry4h,
+    /// LOCKED daily carry grid (§ D-HR.4-LOCKED): L {1,3,7} × k_long {1,3,5}.
+    #[value(name = "carry-daily")]
+    CarryDaily,
 }
 
 /// Build the grid slice for a given kind.
@@ -366,6 +380,10 @@ pub fn grid_for_kind(kind: GridKind) -> &'static [ThetaCell] {
         GridKind::CarryTier1 => CARRY_TIER1_GRID,
         GridKind::TsTier1 => TS_TIER1_GRID,
         GridKind::TwoCell => TWO_CELL_GRID,
+        GridKind::Ts4h => TS_4H_GRID,
+        GridKind::TsDaily => TS_DAILY_GRID,
+        GridKind::Carry4h => CARRY_4H_GRID,
+        GridKind::CarryDaily => CARRY_DAILY_GRID,
     }
 }
 
@@ -671,6 +689,345 @@ pub const TS_TIER1_GRID: &[ThetaCell] = &[
     },
 ];
 
+/// HR-TS-4h θ-grid — LOCKED § D-HR.4-LOCKED (2026-06-03).
+///
+/// Swept axes: lookback (4h-bars) × entry_threshold.
+/// Lookbacks: {42, 180, 540} 4h-bars = {~1 wk, ~30 d, ~90 d}.
+/// Thresholds: {0.00, 0.02} (pure sign vs filtered).
+///
+/// Held constant: `selection_mode=time_series_long_flat`, `direction=momentum`,
+/// `k_long=10` (inert), `exposure_cap=0.50`, `k_short=0`, `size=equal_weight`,
+/// `rebalance_minutes_override=0` (every coarse bar), 10-symbol universe (pin `3a8b96c4…`),
+/// `ensemble_seed=0xC0FFEE`, N=200.
+///
+/// | g | lookback (4h-bars) | wall-clock | entry_threshold | role |
+/// |---|---:|---|---:|---|
+/// | 0 | 42  | ~1 wk  | 0.00 | baseline TS θ* (1-wk trend, long/flat-on-sign) |
+/// | 1 | 42  | ~1 wk  | 0.02 | 1-wk + wide band — low-churn corner |
+/// | 2 | 180 | ~30 d  | 0.00 | 30-d trend, zero band |
+/// | 3 | 180 | ~30 d  | 0.02 | 30-d + wide band — best structural shot |
+/// | 4 | 540 | ~90 d  | 0.00 | slow 90-d trend |
+/// | 5 | 540 | ~90 d  | 0.02 | slowest + most decisive |
+pub const TS_4H_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 42, // 42 4h-bars ≈ 1 week
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0, // every coarse bar
+        entry_threshold_num: 0,
+        entry_threshold_den: 0, // 0.00 — pure long/flat-on-sign
+        role: "baseline TS θ* (42 4h-bars ~1-wk, zero threshold)",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 42, // 42 4h-bars ≈ 1 week
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 2,
+        entry_threshold_den: 2, // 0.02 — low-churn corner
+        role: "1-wk + wide band (42 4h-bars, 0.02 threshold) — low-churn corner",
+    },
+    ThetaCell {
+        g: 2,
+        lookback_minutes: 180, // 180 4h-bars ≈ 30 days
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0, // 0.00
+        role: "30-d trend, zero band (180 4h-bars)",
+    },
+    ThetaCell {
+        g: 3,
+        lookback_minutes: 180, // 180 4h-bars ≈ 30 days
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 2,
+        entry_threshold_den: 2, // 0.02
+        role: "30-d + wide band (180 4h-bars, 0.02) — best structural shot",
+    },
+    ThetaCell {
+        g: 4,
+        lookback_minutes: 540, // 540 4h-bars ≈ 90 days
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0, // 0.00
+        role: "slow 90-d trend (540 4h-bars, zero threshold)",
+    },
+    ThetaCell {
+        g: 5,
+        lookback_minutes: 540, // 540 4h-bars ≈ 90 days
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 2,
+        entry_threshold_den: 2, // 0.02
+        role: "slowest + most decisive (540 4h-bars, 0.02 threshold)",
+    },
+];
+
+/// HR-TS-daily θ-grid — LOCKED § D-HR.4-LOCKED (2026-06-03).
+///
+/// Swept axes: lookback (daily-bars) × entry_threshold.
+/// Lookbacks: {5, 20, 60} daily-bars = {~1 wk, ~1 mo, ~1 qtr}.
+/// Correctness bound: NO lookback > ~365 (60 ≪ 365 ✓).
+///
+/// | g | lookback (daily-bars) | wall-clock | entry_threshold | role |
+/// |---|---:|---|---:|---|
+/// | 0 | 5  | ~1 wk  | 0.00 | fast TSMOM (1-wk trend) |
+/// | 1 | 5  | ~1 wk  | 0.02 | 1-wk + wide band |
+/// | 2 | 20 | ~1 mo  | 0.00 | baseline TS θ* (1-mo trend) |
+/// | 3 | 20 | ~1 mo  | 0.02 | 1-mo + wide band — best structural shot |
+/// | 4 | 60 | ~1 qtr | 0.00 | classic slow TSMOM (1-qtr) |
+/// | 5 | 60 | ~1 qtr | 0.02 | slowest + most decisive |
+pub const TS_DAILY_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 5, // 5 daily-bars ≈ 1 week
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0, // 0.00
+        role: "fast TSMOM: 5-day lookback, zero threshold",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 5, // 5 daily-bars ≈ 1 week
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 2,
+        entry_threshold_den: 2, // 0.02
+        role: "1-wk + wide band (5-day lookback, 0.02 threshold)",
+    },
+    ThetaCell {
+        g: 2,
+        lookback_minutes: 20, // 20 daily-bars ≈ 1 month
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0, // 0.00
+        role: "baseline TS θ* (20-day ~1-mo lookback, zero threshold)",
+    },
+    ThetaCell {
+        g: 3,
+        lookback_minutes: 20, // 20 daily-bars ≈ 1 month
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 2,
+        entry_threshold_den: 2, // 0.02
+        role: "1-mo + wide band (20-day, 0.02) — best structural shot",
+    },
+    ThetaCell {
+        g: 4,
+        lookback_minutes: 60, // 60 daily-bars ≈ 1 quarter
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0, // 0.00
+        role: "classic slow TSMOM (60-day ~1-qtr lookback, zero threshold)",
+    },
+    ThetaCell {
+        g: 5,
+        lookback_minutes: 60, // 60 daily-bars ≈ 1 quarter
+        k_long: 10,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 2,
+        entry_threshold_den: 2, // 0.02
+        role: "slowest + most decisive (60-day, 0.02 threshold)",
+    },
+];
+
+/// HR-CARRY-4h θ-grid — LOCKED § D-HR.4-LOCKED (2026-06-03).
+///
+/// Swept axes: L (funding settlements, in 4h-bar coarse-bar ring count) × k_long.
+/// L values: {2, 6, 12} 4h-bars; k_long: {1, 3, 5}.
+/// Rebalance under cosmetic-1h ladder: "every 4h bar" = `override=0` (fires every
+/// synthetic 60-min bar = every coarse bar); "every 2nd 4h bar" = `override=120`.
+///
+/// | g | L (4h-bars) | rebalance | k_long | role |
+/// |---|---:|---|---:|---|
+/// | 0 | 6  | every 4h bar     | 3 | baseline carry θ* (~1 d settlement window) |
+/// | 1 | 2  | every 4h bar     | 3 | fast (~1/3 d) |
+/// | 2 | 12 | every 4h bar     | 3 | slow (~2 d) |
+/// | 3 | 6  | every 2nd 4h bar | 5 | low-churn / settlement-aligned corner |
+/// | 4 | 6  | every 4h bar     | 1 | narrow selection |
+/// | 5 | 2  | every 4h bar     | 5 | fast + wide |
+pub const CARRY_4H_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 6, // L=6 4h-bars (~1 day settlement window)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0, // every coarse bar (cosmetic-1h ladder: ≤60 fires each bar)
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "baseline carry θ* (L=6 4h-bars ~1d, every 4h bar, K=3)",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 2, // L=2 4h-bars (fast, ~1/3 day)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "fast carry (L=2 4h-bars ~1/3d), every 4h bar, K=3",
+    },
+    ThetaCell {
+        g: 2,
+        lookback_minutes: 12, // L=12 4h-bars (slow, ~2 days)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "slow carry (L=12 4h-bars ~2d), every 4h bar, K=3",
+    },
+    ThetaCell {
+        g: 3,
+        lookback_minutes: 6, // L=6 4h-bars (~1 day)
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 120, // every 2nd 4h bar (~8h) — settlement-aligned
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "low-churn corner (L=6, every 2nd 4h bar=120m, K=5 — settlement-aligned)",
+    },
+    ThetaCell {
+        g: 4,
+        lookback_minutes: 6, // L=6 4h-bars (~1 day)
+        k_long: 1,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "narrow selection (L=6, every 4h bar, K=1)",
+    },
+    ThetaCell {
+        g: 5,
+        lookback_minutes: 2, // L=2 4h-bars (fast)
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "fast + wide (L=2 4h-bars, every 4h bar, K=5)",
+    },
+];
+
+/// HR-CARRY-daily θ-grid — LOCKED § D-HR.4-LOCKED (2026-06-03).
+///
+/// Swept axes: L (funding settlements, in daily-bar coarse-bar ring count) × k_long.
+/// L values: {1, 3, 7} daily-bars; k_long: {1, 3, 5}.
+/// Rebalance: every daily bar = `override=0` (fires every synthetic 60-min bar).
+/// Correctness bound: L=7 ≪ 366 ✓.
+///
+/// | g | L (daily-bars) | rebalance | k_long | role |
+/// |---|---:|---|---:|---|
+/// | 0 | 3 | every daily bar | 3 | baseline carry θ* (~3 d window) |
+/// | 1 | 1 | every daily bar | 3 | fastest (~1 d) |
+/// | 2 | 7 | every daily bar | 3 | slow (~1 wk) |
+/// | 3 | 3 | every daily bar | 5 | wide selection |
+/// | 4 | 3 | every daily bar | 1 | narrow selection |
+/// | 5 | 7 | every daily bar | 5 | slow + wide |
+pub const CARRY_DAILY_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 3, // L=3 daily-bars (~3 days)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0, // every daily bar
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "baseline carry θ* (L=3 daily-bars ~3d, K=3)",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 1, // L=1 daily-bar (~1 day) — fastest
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "fastest carry (L=1 daily-bar ~1d, K=3)",
+    },
+    ThetaCell {
+        g: 2,
+        lookback_minutes: 7, // L=7 daily-bars (~1 week)
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "slow carry (L=7 daily-bars ~1wk, K=3)",
+    },
+    ThetaCell {
+        g: 3,
+        lookback_minutes: 3, // L=3 daily-bars (~3 days)
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "wide selection (L=3 daily-bars, K=5)",
+    },
+    ThetaCell {
+        g: 4,
+        lookback_minutes: 3, // L=3 daily-bars (~3 days)
+        k_long: 1,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "narrow selection (L=3 daily-bars, K=1)",
+    },
+    ThetaCell {
+        g: 5,
+        lookback_minutes: 7, // L=7 daily-bars (~1 week)
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 0,
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "slow + wide (L=7 daily-bars ~1wk, K=5)",
+    },
+];
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 /// Which path generator to use.
@@ -882,6 +1239,15 @@ struct Args {
     /// The entry_threshold is per-cell in TS_TIER1_GRID — NOT a separate CLI flag.
     #[arg(long, value_enum, default_value = "cross-sectional-top-k")]
     selection_mode: SweepSelectionMode,
+
+    /// Decision cadence for the horizon retest (M-DEV-3, D-HR.2).
+    /// `1h` (default) = identity pass-through → all 91 anchors are byte-identical.
+    /// `4h` = resample 1h bars to true 4h (4:1 fold); 2190/2196 bars/year.
+    /// `daily` = resample to daily (24:1 fold); 365/366 bars/year.
+    /// The metric branch picks compute_sharpe_hourly (1h) vs compute_sharpe_periodic
+    /// (4h/daily) so the 1h anchors are byte-unchanged by construction (D-HR.1).
+    #[arg(long, value_enum, default_value = "1h")]
+    horizon: backtest::resample::Horizon,
 }
 
 // ── Seed helpers ──────────────────────────────────────────────────────────────
@@ -895,6 +1261,21 @@ fn parse_seed(s: &str) -> Result<u64> {
         s.parse::<u64>()
             .with_context(|| format!("parse decimal seed: {s}"))
     }
+}
+
+/// Horizon-aware periods-per-year (M-DEV-3, D-HR.1.2).
+///
+/// Returns the `periods_per_year` scalar for `compute_*_periodic` at the given
+/// `(horizon, year)`. Leap-year aware: 2024 is a leap year (8784h / 4 = 2196 at 4h;
+/// 8784h / 24 = 366 at daily).
+///
+/// **The 1h value is provided for completeness ONLY.** The sweep MUST NOT call
+/// `compute_sharpe_periodic` with the 1h value — instead it calls the verbatim
+/// `compute_sharpe_hourly` (the 1h anchors are byte-identical by construction,
+/// D-HR.1 / D-HR.7). Use this only for 4h and daily.
+#[must_use]
+fn sweep_periods_per_year(horizon: backtest::resample::Horizon, year: i32) -> f64 {
+    horizon.periods_per_year(year)
 }
 
 /// ADR-0051 D1 + D6.1: derive per-path seed from master seed and path index.
@@ -1256,13 +1637,20 @@ fn render_surface_report(
     // CrossSectionalTopK → standard report (anchor-neutral, no TS column).
     // TimeSeriesLongFlat → TS report slug + time_in_market column added (GATED to TS).
     selection_mode: SweepSelectionMode,
+    // M-DEV-3: horizon (D-HR.5). OneHour → body unchanged (all 91 anchors byte-identical).
+    // FourHours/OneDay → render the real horizon in the hashed body.
+    horizon: backtest::resample::Horizon,
 ) -> String {
     // ── Front-matter (NOT hashed) ─────────────────────────────────────────────
     // slug: momentum reports keep "momentum-parameter-robustness-sweep" for anchor compat.
     // MR reports use "cross-sectional-mean-reversion-strategy".
     // Carry reports use "carry-strategy".
     // TS reports use "time-series-momentum-robustness".
-    let slug = if selection_mode.is_ts() {
+    // Horizon retest reports (horizon != 1h) use "horizon-retest-robustness" (D-HR.5).
+    let is_horizon_run = horizon != backtest::resample::Horizon::OneHour;
+    let slug = if is_horizon_run {
+        "horizon-retest-robustness"
+    } else if selection_mode.is_ts() {
         "time-series-momentum-robustness"
     } else {
         match score_source {
@@ -1289,14 +1677,28 @@ fn render_surface_report(
     // ── Body (deterministic, hashed by the anchor) ────────────────────────────
     let mut body = String::new();
 
-    let family_label = if selection_mode.is_ts() {
-        "Time-Series Momentum"
+    let family_label: String = if is_horizon_run && selection_mode.is_ts() {
+        let hz = match horizon {
+            backtest::resample::Horizon::FourHours => "4h",
+            backtest::resample::Horizon::OneDay => "daily",
+            backtest::resample::Horizon::OneHour => "1h",
+        };
+        format!("Time-Series Momentum ({hz} horizon)")
+    } else if is_horizon_run && score_source == SweepScoreSource::Carry {
+        let hz = match horizon {
+            backtest::resample::Horizon::FourHours => "4h",
+            backtest::resample::Horizon::OneDay => "daily",
+            backtest::resample::Horizon::OneHour => "1h",
+        };
+        format!("Carry (Funding, {hz} horizon)")
+    } else if selection_mode.is_ts() {
+        "Time-Series Momentum".to_string()
     } else {
         match score_source {
-            SweepScoreSource::Carry => "Carry (Funding)",
+            SweepScoreSource::Carry => "Carry (Funding)".to_string(),
             SweepScoreSource::VolAdjustedReturn => match direction {
-                SweepDirection::Momentum => "Momentum",
-                SweepDirection::Reversion => "Mean-Reversion (MR)",
+                SweepDirection::Momentum => "Momentum".to_string(),
+                SweepDirection::Reversion => "Mean-Reversion (MR)".to_string(),
             },
         }
     };
@@ -1344,6 +1746,18 @@ fn render_surface_report(
     body.push_str(&format!(
         "| source_revision_sha      | {source_revision_sha}                                    |\n"
     ));
+    // M-DEV-3: render the real horizon in the hashed body (D-HR.5 / K3).
+    // GATED to horizon runs so the 1h body-SHAs are byte-identical.
+    if is_horizon_run {
+        body.push_str(&format!(
+            "| horizon                  | {horizon}                                               |\n",
+            horizon = match horizon {
+                backtest::resample::Horizon::FourHours => "4h",
+                backtest::resample::Horizon::OneDay => "daily",
+                backtest::resample::Horizon::OneHour => "1h", // unreachable under is_horizon_run
+            }
+        ));
+    }
     // held_constant: add direction for MR runs; score_source + funding for carry runs;
     // selection_mode + rebalance + k_long(inert) for TS runs.
     // The body field is part of the hash — each family's string differs from others.
@@ -1372,24 +1786,45 @@ fn render_surface_report(
     body.push('\n');
 
     // Frozen grid definition (hashed body field — K3 / § D6.3).
-    let grid_header: &str = if selection_mode.is_ts() {
-        "## TS-momentum θ-grid definition (6-cell, LOCKED § D-TSM.3-LOCKED — changing this changes the SHA)\n\n"
+    // For horizon runs (§ D-HR.4-LOCKED): use the horizon-specific header + appropriate
+    // grid formatter. The horizon grids use the same format as their 1h counterparts
+    // (ts_grid_def_string for TS, carry_grid_def_string for carry).
+    let grid_header_str: String = if is_horizon_run && selection_mode.is_ts() {
+        let hz = match horizon {
+            backtest::resample::Horizon::FourHours => "4h",
+            backtest::resample::Horizon::OneDay => "daily",
+            backtest::resample::Horizon::OneHour => "1h",
+        };
+        format!(
+            "## TS-momentum {hz} θ-grid definition (6-cell, LOCKED § D-HR.4-LOCKED — changing this changes the SHA)\n\n"
+        )
+    } else if is_horizon_run && score_source == SweepScoreSource::Carry {
+        let hz = match horizon {
+            backtest::resample::Horizon::FourHours => "4h",
+            backtest::resample::Horizon::OneDay => "daily",
+            backtest::resample::Horizon::OneHour => "1h",
+        };
+        format!(
+            "## Carry {hz} θ-grid definition (6-cell, LOCKED § D-HR.4-LOCKED — changing this changes the SHA)\n\n"
+        )
+    } else if selection_mode.is_ts() {
+        "## TS-momentum θ-grid definition (6-cell, LOCKED § D-TSM.3-LOCKED — changing this changes the SHA)\n\n".to_string()
     } else {
         match score_source {
             SweepScoreSource::Carry => {
-                "## Carry θ-grid definition (6-cell, LOCKED § D-CARRY.2-LOCKED — changing this changes the SHA)\n\n"
+                "## Carry θ-grid definition (6-cell, LOCKED § D-CARRY.2-LOCKED — changing this changes the SHA)\n\n".to_string()
             }
             SweepScoreSource::VolAdjustedReturn => match direction {
                 SweepDirection::Momentum => {
-                    "## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n"
+                    "## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n".to_string()
                 }
                 SweepDirection::Reversion => {
-                    "## MR θ-grid definition (6-cell, 2026-05-31 LOCKED § D-MR.2-LOCKED — changing this changes the SHA)\n\n"
+                    "## MR θ-grid definition (6-cell, 2026-05-31 LOCKED § D-MR.2-LOCKED — changing this changes the SHA)\n\n".to_string()
                 }
             },
         }
     };
-    body.push_str(grid_header);
+    body.push_str(&grid_header_str);
     // TS grid: use ts_grid_def_string (includes entry_threshold — the TS swept axis).
     // Carry grid: use carry-specific format (includes rebalance — it's swept).
     // Momentum/MR: use the standard grid_def_string (no rebalance — anchor-safe).
@@ -1584,33 +2019,70 @@ fn render_surface_report(
             "C3 is not selecting a winner — it is reporting that no cell cleared the bar.\n",
         );
         if selection_mode.is_ts() {
-            body.push_str(
-                "Conclusion: v1 time-series momentum (per-asset long/flat on own trailing return) is\n",
-            );
-            body.push_str(
-                "structurally fragile across the tested parameter space on this 10-symbol 1h universe.\n",
-            );
-            body.push_str(
-                "Whipsaw/fee-bleed or late exits may have dominated the trend-capture benefit.\n",
-            );
-            body.push_str(
-                "This closes the active-trading thesis on this universe: no method (x-sec or time-series)\n",
-            );
-            body.push_str(
-                "beat passive buy-and-hold net of fees. Routes to broader-universe / horizon axis.\n",
-            );
+            if is_horizon_run {
+                let hz = match horizon {
+                    backtest::resample::Horizon::FourHours => "4h",
+                    backtest::resample::Horizon::OneDay => "daily",
+                    backtest::resample::Horizon::OneHour => "1h",
+                };
+                body.push_str(&format!(
+                    "Conclusion: v1 time-series momentum at the {hz} horizon (per-asset long/flat on own trailing return) is\n"
+                ));
+                body.push_str(
+                    "structurally fragile across the tested parameter space on this 10-symbol universe.\n",
+                );
+                body.push_str(
+                    "Even at the classically-preferred coarser decision cadence, the trend-capture benefit\n",
+                );
+                body.push_str(
+                    "does not overcome the buy-and-hold bar net of fees. Closes the OHLCV-only active-trading thesis.\n",
+                );
+            } else {
+                body.push_str(
+                    "Conclusion: v1 time-series momentum (per-asset long/flat on own trailing return) is\n",
+                );
+                body.push_str(
+                    "structurally fragile across the tested parameter space on this 10-symbol 1h universe.\n",
+                );
+                body.push_str(
+                    "Whipsaw/fee-bleed or late exits may have dominated the trend-capture benefit.\n",
+                );
+                body.push_str(
+                    "This closes the active-trading thesis on this universe: no method (x-sec or time-series)\n",
+                );
+                body.push_str(
+                    "beat passive buy-and-hold net of fees. Routes to broader-universe / horizon axis.\n",
+                );
+            }
         } else {
             match score_source {
                 SweepScoreSource::Carry => {
-                    body.push_str(
-                        "Conclusion: v1 cross-sectional carry (funding) is structurally fragile across the\n",
-                    );
-                    body.push_str(
-                        "tested parameter space on this universe (2023-FY resampled). Funding mean-reversion\n",
-                    );
-                    body.push_str(
-                        "or directional price exposure may have overwhelmed the funding harvest.\n",
-                    );
+                    if is_horizon_run {
+                        let hz = match horizon {
+                            backtest::resample::Horizon::FourHours => "4h",
+                            backtest::resample::Horizon::OneDay => "daily",
+                            backtest::resample::Horizon::OneHour => "1h",
+                        };
+                        body.push_str(&format!(
+                            "Conclusion: v1 cross-sectional carry (funding) at the {hz} horizon is structurally fragile across the\n"
+                        ));
+                        body.push_str(
+                            "tested parameter space on this universe. Even at the native settlement cadence,\n",
+                        );
+                        body.push_str(
+                            "funding mean-reversion or directional price exposure overwhelmed the funding harvest.\n",
+                        );
+                    } else {
+                        body.push_str(
+                            "Conclusion: v1 cross-sectional carry (funding) is structurally fragile across the\n",
+                        );
+                        body.push_str(
+                            "tested parameter space on this universe (2023-FY resampled). Funding mean-reversion\n",
+                        );
+                        body.push_str(
+                            "or directional price exposure may have overwhelmed the funding harvest.\n",
+                        );
+                    }
                 }
                 SweepScoreSource::VolAdjustedReturn => match direction {
                     SweepDirection::Momentum => {
@@ -1726,10 +2198,14 @@ fn load_real_bars(
         bars.sort_by_key(|b| b.open_ts);
     }
 
+    // M-DEV-3: apply horizon resample per symbol (D-HR.2).
+    // For Horizon::OneHour (default) → identity pass-through → byte-untouched 1h load path.
+    // For 4h/daily → fold into coarse bars. The coverage check above stays on the 1h count.
     let bars_by_symbol: SourceBars = symbols_prices
         .iter()
         .map(|(sym, _)| {
-            let bars = by_symbol.remove(&sym.to_string()).unwrap_or_default();
+            let bars_1h = by_symbol.remove(&sym.to_string()).unwrap_or_default();
+            let bars = backtest::resample::resample_ohlcv(&bars_1h, args.horizon);
             (sym.clone(), bars)
         })
         .collect();
@@ -1844,6 +2320,10 @@ fn run_one_path_with_config(
     // Whether funding was injected (carry only).
     // Used to decide whether to extract funding_override from generated_path.
     is_carry: bool,
+    // M-DEV-3: horizon for metric branch selection (D-HR.1).
+    // OneHour → verbatim compute_sharpe_hourly (anchor-safe);
+    // FourHours/OneDay → compute_sharpe_periodic(periods_per_year).
+    horizon: backtest::resample::Horizon,
 ) -> Result<IndexedPathMetrics> {
     use data::MonteCarloPathGen as _;
 
@@ -1963,9 +2443,23 @@ fn run_one_path_with_config(
         })
         .collect();
 
-    let sharpe = backtest::stats::compute_sharpe_hourly(&equity_clamped);
-    let sortino = backtest::stats::compute_sortino_hourly(&equity_clamped);
-    let calmar = backtest::stats::compute_calmar(&equity_clamped);
+    // M-DEV-3: metric branch (D-HR.1) — 1h uses verbatim fns (anchor-safe);
+    // coarse horizons use the *_periodic fns with the correct periods_per_year.
+    let (sharpe, sortino, calmar) = if horizon == backtest::resample::Horizon::OneHour {
+        // Verbatim 1h path — byte-identical to all 91 existing anchors.
+        (
+            backtest::stats::compute_sharpe_hourly(&equity_clamped),
+            backtest::stats::compute_sortino_hourly(&equity_clamped),
+            backtest::stats::compute_calmar(&equity_clamped),
+        )
+    } else {
+        let ppy = sweep_periods_per_year(horizon, year);
+        (
+            backtest::stats::compute_sharpe_periodic(&equity_clamped, ppy),
+            backtest::stats::compute_sortino_periodic(&equity_clamped, ppy),
+            backtest::stats::compute_calmar_periodic(&equity_clamped, ppy),
+        )
+    };
     let max_dd = backtest::stats::compute_max_drawdown_f64(&equity_clamped);
     let total_ret = backtest::stats::compute_total_return(&equity_clamped);
 
@@ -2146,10 +2640,19 @@ fn main() -> Result<()> {
     // Fixed fill-tie-break seed (ADR-0051 D1: held constant across all paths AND cells).
     const FILL_SEED: u64 = 0xC0FFEE;
 
-    let bar_count = match args.year {
-        2023 => 8760usize,
-        2024 => 8784usize,
-        _ => 8760usize,
+    // M-DEV-3: derive bar_count from (year, horizon) per D-HR.3.
+    // For 1h (default) this is byte-identical to the previous fixed 8760/8784.
+    // For 4h: divide by 4 (exact integer: 8760/4=2190, 8784/4=2196).
+    // For daily: divide by 24 (exact integer: 8760/24=365, 8784/24=366).
+    let bars_per_year_1h: usize = match args.year {
+        2023 => 8760,
+        2024 => 8784,
+        _ => 8760,
+    };
+    let bar_count = match args.horizon {
+        backtest::resample::Horizon::OneHour => bars_per_year_1h,
+        backtest::resample::Horizon::FourHours => bars_per_year_1h / 4,
+        backtest::resample::Horizon::OneDay => bars_per_year_1h / 24,
     };
 
     let symbols_prices = backtest::scenarios::momentum::top10_symbols_with_prices();
@@ -2260,6 +2763,7 @@ fn main() -> Result<()> {
                         args.generator,
                         args.year,
                         is_carry,
+                        args.horizon,
                     )
                 })
                 .collect()
@@ -2379,10 +2883,27 @@ fn main() -> Result<()> {
                         }
                     })
                     .collect();
+                // M-DEV-3: BH metric branch — mirror the per-cell branch (D-HR.1/D-HR.4).
+                // 1h → verbatim fns (byte-identical); coarse → *_periodic.
+                let (bh_sharpe, bh_sortino, bh_calmar) =
+                    if args.horizon == backtest::resample::Horizon::OneHour {
+                        (
+                            backtest::stats::compute_sharpe_hourly(&equity_clamped),
+                            backtest::stats::compute_sortino_hourly(&equity_clamped),
+                            backtest::stats::compute_calmar(&equity_clamped),
+                        )
+                    } else {
+                        let ppy = sweep_periods_per_year(args.horizon, args.year);
+                        (
+                            backtest::stats::compute_sharpe_periodic(&equity_clamped, ppy),
+                            backtest::stats::compute_sortino_periodic(&equity_clamped, ppy),
+                            backtest::stats::compute_calmar_periodic(&equity_clamped, ppy),
+                        )
+                    };
                 let pm = backtest::stats::PathMetrics {
-                    sharpe: backtest::stats::compute_sharpe_hourly(&equity_clamped),
-                    sortino: backtest::stats::compute_sortino_hourly(&equity_clamped),
-                    calmar: backtest::stats::compute_calmar(&equity_clamped),
+                    sharpe: bh_sharpe,
+                    sortino: bh_sortino,
+                    calmar: bh_calmar,
                     max_drawdown: backtest::stats::compute_max_drawdown_f64(&equity_clamped),
                     total_return: backtest::stats::compute_total_return(&equity_clamped),
                     final_equity: final_eq,
@@ -2432,33 +2953,51 @@ fn main() -> Result<()> {
     let pid = std::process::id();
 
     // M-DEV-4: TS-momentum gets its own scenario slug (distinct from momentum/MR/carry).
-    let scenario_name = if args.selection_mode.is_ts() {
+    // M-DEV-3: horizon retest runs get a horizon-specific slug (§ D-HR.5).
+    let is_horizon_run = args.horizon != backtest::resample::Horizon::OneHour;
+    let horizon_label = match args.horizon {
+        backtest::resample::Horizon::OneHour => "",
+        backtest::resample::Horizon::FourHours => "4h",
+        backtest::resample::Horizon::OneDay => "daily",
+    };
+    let gen_label = match args.generator {
+        GeneratorKind::BlockBootstrapReal => "real",
+        GeneratorKind::GbmSmoke => "gbm",
+    };
+    let scenario_name = if is_horizon_run && args.selection_mode.is_ts() {
+        // Horizon TS run: e.g. "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
+        format!(
+            "v1-ts-horizon-{horizon}-theta-surface-{year}-block-bootstrap-{gen}-fy",
+            horizon = horizon_label,
+            year = args.year,
+            gen = gen_label,
+        )
+    } else if is_horizon_run && args.score_source == SweepScoreSource::Carry {
+        // Horizon carry run: e.g. "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
+        format!(
+            "v1-carry-horizon-{horizon}-theta-surface-{year}-block-bootstrap-{gen}-fy",
+            horizon = horizon_label,
+            year = args.year,
+            gen = gen_label,
+        )
+    } else if args.selection_mode.is_ts() {
         format!(
             "v1-ts-momentum-theta-surface-{year}-block-bootstrap-{gen}-fy",
             year = args.year,
-            gen = match args.generator {
-                GeneratorKind::BlockBootstrapReal => "real",
-                GeneratorKind::GbmSmoke => "gbm",
-            }
+            gen = gen_label,
         )
     } else {
         match args.score_source {
             SweepScoreSource::Carry => format!(
                 "v1-carry-theta-surface-{year}-block-bootstrap-{gen}-fy",
                 year = args.year,
-                gen = match args.generator {
-                    GeneratorKind::BlockBootstrapReal => "real",
-                    GeneratorKind::GbmSmoke => "gbm",
-                }
+                gen = gen_label,
             ),
             SweepScoreSource::VolAdjustedReturn => format!(
                 "v1-{family}-theta-surface-{year}-block-bootstrap-{gen}-fy",
                 family = args.direction.label(),
                 year = args.year,
-                gen = match args.generator {
-                    GeneratorKind::BlockBootstrapReal => "real",
-                    GeneratorKind::GbmSmoke => "gbm",
-                }
+                gen = gen_label,
             ),
         }
     };
@@ -2487,24 +3026,28 @@ fn main() -> Result<()> {
         args.score_source,
         funding_revision_sha_for_report.as_deref(),
         args.selection_mode,
+        args.horizon,
     );
 
     // ── Resolve effective out_dir ─────────────────────────────────────────────
     // For carry: if the user did not override --out-dir, default to the carry reports dir.
     // For TS: if the user did not override --out-dir, default to the TS reports dir.
+    // For horizon retest (horizon != 1h): default to the horizon-retest-robustness reports dir.
     // We detect "was the default changed?" by checking if it's still the momentum default.
     let momentum_default_out_dir =
         PathBuf::from("spec/momentum-parameter-robustness-sweep/reports/");
-    let effective_out_dir =
-        if args.selection_mode.is_ts() && args.out_dir == momentum_default_out_dir {
-            PathBuf::from("spec/time-series-momentum-robustness/reports/")
-        } else if args.score_source == SweepScoreSource::Carry
-            && args.out_dir == momentum_default_out_dir
-        {
-            PathBuf::from("spec/carry-strategy/reports/")
-        } else {
-            args.out_dir.clone()
-        };
+    let effective_out_dir = if is_horizon_run && args.out_dir == momentum_default_out_dir {
+        // M-DEV-3: horizon runs default to the horizon-retest-robustness reports dir (D-HR.8).
+        PathBuf::from("spec/horizon-retest-robustness/reports/")
+    } else if args.selection_mode.is_ts() && args.out_dir == momentum_default_out_dir {
+        PathBuf::from("spec/time-series-momentum-robustness/reports/")
+    } else if args.score_source == SweepScoreSource::Carry
+        && args.out_dir == momentum_default_out_dir
+    {
+        PathBuf::from("spec/carry-strategy/reports/")
+    } else {
+        args.out_dir.clone()
+    };
 
     // ── Write report ──────────────────────────────────────────────────────────
     std::fs::create_dir_all(&effective_out_dir)

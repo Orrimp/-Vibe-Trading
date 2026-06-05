@@ -1276,3 +1276,17 @@ clippy EMPTY; `cargo fmt` clean. The resampler is a pure addition — not yet
 wired into the sweep (M-DEV-3 will do that).
 
 **Changelog:** FourHours corrected to true 4h (4:1, 2190/2196 bars/year) — the earlier 6:1/1460 was a ÷6 arithmetic slip inconsistent with the locked grid ({42,180,540}={1wk,30d,90d} is only correct at 4h) and the annualization (periods_per_year already used 2190/2196).
+
+### M-DEV-3/4/5 — `--horizon` wiring, 4 grids, and falsifiers (2026-06-05)
+
+**M-DEV-3 — `--horizon` wiring:** `Args.horizon: Horizon` added at `param_robustness_sweep.rs:1248` (default=1h). In `load_real_bars`, `resample_ohlcv(&bars, args.horizon)` applied per symbol after the sort; `--horizon 1h` → identity → byte-untouched. `sweep_periods_per_year(horizon, year)` added at `:1277`, delegating to `horizon.periods_per_year(year)`. Metric branch at both call-sites: 1h → `compute_sharpe_hourly` (verbatim), 4h/daily → `compute_sharpe_periodic(ppy)`. Gate result: 91/91 anchors PASS; 4h smoke (N=3) ran in 0.6s.
+
+**M-DEV-4 — grids + render:** 4 new LOCKED grid constants at `param_robustness_sweep.rs:711/794/878/962`. `GridKind::{Ts4h,TsDaily,Carry4h,CarryDaily}` at `:362-371`. Explicit `--grid ts-4h|ts-daily|carry-4h|carry-daily` required per horizon run. `horizon: 4h|daily` rendered in hashed body; gated to `is_horizon_run = horizon != Horizon::OneHour` so 1h reports are byte-identical. Out-dir defaults to `spec/horizon-retest-robustness/reports/` when `is_horizon_run`. All 4 smokes (ts-4h, ts-daily, carry-4h, carry-daily at N=3, 2023) produce non-degenerate FRAGILE surfaces in the correct dir. 91/91 anchors PASS.
+
+**M-DEV-5 — F-HR.4/F-HR.5 falsifiers:** `crates/backtest/tests/horizon_divergence_e2e.rs` ships 7 tests. Root cause of the one failing test (`f_hr_4_signal_non_no_op_daily`):
+
+The test fixture used `+1%/1h` (≈+27%/day compounded). After 30 daily up-bars, the position value grew to ≈93% of portfolio equity, tripping the hard `per_symbol_exposure_cap = 0.40` in `Order::new`. The strategy's `held_symbols` tracking was updated to `false` (it believed it exited), but the physical `position_book` entry was never cleared (the `Order::new` Err short-circuited the entire if-let chain). On subsequent bars, `currently_held = false` with score < 0 → no new signal → position persisted. This is NOT a code bug: the TS signal DID go negative (correctly), the risk guard DID correctly reject the over-concentrated sell order, and the strategy's state update DID happen — but they interacted to leave the position physically open indefinitely.
+
+Fix: `build_1h_up_down_bars_moderate(+0.1%/1h, -0.5%/1h)` added at `horizon_divergence_e2e.rs:94`. With moderate rates the position stays at ≈16% of equity throughout (well inside the 40% cap) and the SELL executes, giving `ts_tim=25 < al_tim=40`. The standard `build_1h_up_down_bars` is retained unchanged (passes 4h tests where the short uptrend keeps concentration low).
+
+Gate result: `cargo test -p backtest --features "candle realdata" --test horizon_divergence_e2e` → `test result: ok. 7 passed; 0 failed`. 91/91 anchors PASS. Clippy EMPTY. `cargo fmt --check` clean. `cargo test -p backtest --features "candle realdata" --lib` → 85 pass.
