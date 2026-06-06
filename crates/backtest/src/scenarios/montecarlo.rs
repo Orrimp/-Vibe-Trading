@@ -151,8 +151,23 @@ pub async fn run_path(
     // M-DEV-6: inject the carry funding lookup into the strategy and keep a copy
     // for the per-bar cashflow accrual. `None` for momentum/MR → zero overhead,
     // the accrual block is never entered (anchor-neutral by construction).
+    //
+    // M-DEV-5 (basis-reversal, D-BR.1): the basis arm pre-injects its sidecar map
+    // into the strategy via `strategy.with_funding(Some(map))` in the sweep driver
+    // BEFORE calling `run_path`. To avoid overwriting that map here, we only call
+    // `with_funding` when `funding_override` is `Some` (carry and basis-test paths).
+    // When `funding_override` is `None` (momentum/MR/basis sweep), the strategy's
+    // existing funding_map is preserved. For carry: the map is passed as
+    // `funding_override` so BOTH score and accrual see it. For basis: the map is
+    // pre-injected; `funding_override` stays `None` → no accrual (NO cashflow — D-BR.1).
     let funding_map_for_accrual = funding_override.clone();
-    let mut strategy = strategy.with_funding(funding_override);
+    let mut strategy = if let Some(map) = funding_override {
+        strategy.with_funding(Some(map))
+    } else {
+        // Do NOT call with_funding(None) — preserve any pre-injected sidecar map
+        // (used by the basis-reversal arm, D-BR.1 / D-BR.3).
+        strategy
+    };
 
     let mut cash = initial_capital;
     let mut min_cash_seen = initial_capital;

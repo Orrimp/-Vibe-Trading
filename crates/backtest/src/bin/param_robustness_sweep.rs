@@ -369,6 +369,12 @@ pub enum GridKind {
     /// LOCKED daily carry grid (§ D-HR.4-LOCKED): L {1,3,7} × k_long {1,3,5}.
     #[value(name = "carry-daily")]
     CarryDaily,
+    /// The LOCKED 6-cell Basis-Reversal Tier-1 θ-grid (§ D-BR.2-LOCKED).
+    ///
+    /// `lookback_minutes` = L in **price bars** (basis is native 1h, so 1 bar = 1 hour).
+    /// `rebalance_minutes_override` = cadence (8h or 24h — the turnover lever).
+    #[value(name = "basis-tier1")]
+    BasisTier1,
 }
 
 /// Build the grid slice for a given kind.
@@ -384,6 +390,7 @@ pub fn grid_for_kind(kind: GridKind) -> &'static [ThetaCell] {
         GridKind::TsDaily => TS_DAILY_GRID,
         GridKind::Carry4h => CARRY_4H_GRID,
         GridKind::CarryDaily => CARRY_DAILY_GRID,
+        GridKind::BasisTier1 => BASIS_TIER1_GRID,
     }
 }
 
@@ -594,6 +601,102 @@ pub const CARRY_TIER1_GRID: &[ThetaCell] = &[
         entry_threshold_num: 0,
         entry_threshold_den: 0,
         role: "shortest lookback (L=3) + wide K=5 — highest-churn carry extreme (still far below price families)",
+    },
+];
+
+/// Basis-Reversal Tier-1 θ-grid — LOCKED § D-BR.2-LOCKED (2026-06-05).
+///
+/// This exact 6-cell list is the hashed body field for the basis-reversal θ-surface anchor
+/// (ADR-0051 § D6.9). Changing it = a different surface = a different SHA.
+///
+/// **`lookback_minutes` = L in price BARS** (the basis is native 1h, so 1 bar = 1 hour).
+/// The carry θ-grid used `lookback_minutes` as "L settlements"; here it is "L bars" —
+/// the same field, same formatter (`carry_grid_def_string`), different unit semantics.
+///
+/// **Held constant across every cell (§ D-BR.2-LOCKED):**
+/// `score_source=basis_reversal`, `direction=momentum` (identity; sign in score),
+/// `selection_mode=cross_sectional_top_k`, `exposure_cap=0.50`, `k_short=0`,
+/// `size=equal_weight`, `vol_floor=inert`, 10-symbol universe, `N=200`,
+/// `ensemble_seed=0xC0FFEE`, `fill_seed=0xC0FFEE`, generator=block-bootstrap-real,
+/// `bootstrap_mode=shared-index`, revisions `3a8b96c4…` (OHLCV) + `aa72409a…` (basis).
+///
+/// **The θ-axis (signal lookback) — LOCKED to the spike's signal-bearing band (BS.2a):**
+/// L ∈ {24, 60, 168} bars (SKIP L=720 noise: n=11, sign-flips across years).
+///
+/// | g | lookback L (bars) | rebalance | K | role / hypothesis |
+/// |---|-------------------|-----------|---|-------------------|
+/// | 0 | 60 (2.5d)         | 480m (8h) | 3 | **baseline basis θ*** — IC peak (−0.099/−0.081), low-churn cadence |
+/// | 1 | 24 (1d)           | 480m      | 3 | short lookback — faster, more fee-exposed (IC −0.031/−0.022) |
+/// | 2 | 168 (1wk)         | 480m      | 3 | long lookback — IC peak / lowest-turnover corner (−0.112/−0.069) |
+/// | 3 | 60 (2.5d)         | 1440m (24h)| 5 | **deliberately-slow rebalance + wide K** (lowest-churn corner — best fee shot) |
+/// | 4 | 60 (2.5d)         | 480m      | 1 | narrow selection — top-1 lowest-basis name |
+/// | 5 | 24 (1d)           | 480m      | 5 | shortest lookback + wide K — **highest-churn extreme** (fee-trap stress) |
+pub const BASIS_TIER1_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 60, // L=60 bars (2.5d) — IC peak baseline
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,          // drift=0.10
+        rebalance_minutes_override: 480, // 8h — natural low-churn cadence
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "baseline basis θ* (L=60 bars, 8h rebalance, K=3 — IC peak at −0.099/−0.081)",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 24, // L=24 bars (1d) — short lookback
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "short basis lookback (L=24, 1d) — faster signal, more fee-exposed; IC −0.031/−0.022",
+    },
+    ThetaCell {
+        g: 2,
+        lookback_minutes: 168, // L=168 bars (1wk) — long lookback / IC peak
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "long basis lookback (L=168, 1wk) — most persistent signal; IC −0.112/−0.069; low turnover",
+    },
+    ThetaCell {
+        g: 3,
+        lookback_minutes: 60, // L=60 bars (2.5d)
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 1440, // 24h — deliberately-slow (lowest-churn corner)
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "deliberately-slow 24h rebalance + wide K=5 (lowest-churn corner — reversal arm's best fee shot)",
+    },
+    ThetaCell {
+        g: 4,
+        lookback_minutes: 60, // L=60 bars (2.5d)
+        k_long: 1,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "narrow selection — top-1 lowest-basis name (concentrated reversal bet)",
+    },
+    ThetaCell {
+        g: 5,
+        lookback_minutes: 24, // L=24 bars (1d) — short lookback
+        k_long: 5,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "shortest lookback (L=24) + wide K=5 — highest-churn extreme (fee-trap stress for reversal arm)",
     },
 ];
 
@@ -1080,11 +1183,13 @@ impl SweepDirection {
     }
 }
 
-/// Which score source to use (M-DEV-6, D-CARRY.1).
+/// Which score source to use (M-DEV-6, D-CARRY.1 / M-DEV-5, D-BR.1).
 ///
 /// `VolAdjustedReturn` (default) = the v1 price-based signal; reproduces momentum #86 / MR #87
 /// byte-identical. `Carry` = funding-based `ScoreSource::FundingCarry`; uses the locked carry
 /// θ-grid + funding revision; requires `--generator block-bootstrap-real`.
+/// `BasisReversal` = perp-spot basis reversal signal (§ D-BR.1 / R-BR.1-2); uses the locked
+/// basis θ-grid (§ D-BR.2-LOCKED) + basis revision; requires `--generator block-bootstrap-real`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Default)]
 pub enum SweepScoreSource {
     /// Vol-adjusted price return — v1 default; reproduces momentum/MR anchors.
@@ -1094,6 +1199,14 @@ pub enum SweepScoreSource {
     /// Funding-carry signal (§ D-CARRY.1 / R-CARRY.1-2); requires real funding data.
     #[value(name = "carry")]
     Carry,
+    /// Basis-reversal signal (§ D-BR.1 / R-BR.1-2); requires real basis data.
+    ///
+    /// Uses `ScoreSource::BasisReversal` = `−trailing_mean(basis)` (sign baked in).
+    /// Reuses the `funding_by_symbol` co-resample channel (D-BR.3). NO cashflow —
+    /// the basis is a selection signal (D-BR.1). The fee axis (D-BR.LOAD) is swept
+    /// via `--taker-fee-bps`.
+    #[value(name = "basis-reversal")]
+    BasisReversal,
 }
 
 impl SweepScoreSource {
@@ -1102,12 +1215,18 @@ impl SweepScoreSource {
         match self {
             Self::VolAdjustedReturn => strategy::ScoreSource::VolAdjustedReturn,
             Self::Carry => strategy::ScoreSource::FundingCarry,
+            Self::BasisReversal => strategy::ScoreSource::BasisReversal,
         }
     }
 
-    /// Whether this source needs the funding data loaded.
+    /// Whether this source needs the funding sidecar loaded (carry or basis).
     fn needs_funding(self) -> bool {
         self == Self::Carry
+    }
+
+    /// Whether this source needs the basis sidecar loaded.
+    fn needs_basis(self) -> bool {
+        self == Self::BasisReversal
     }
 
     #[allow(dead_code)]
@@ -1116,6 +1235,7 @@ impl SweepScoreSource {
         match self {
             Self::VolAdjustedReturn => "carry-fy", // unused for non-carry
             Self::Carry => "carry-fy",
+            Self::BasisReversal => "basis-reversal-fy",
         }
     }
 }
@@ -1248,6 +1368,37 @@ struct Args {
     /// (4h/daily) so the 1h anchors are byte-unchanged by construction (D-HR.1).
     #[arg(long, value_enum, default_value = "1h")]
     horizon: backtest::resample::Horizon,
+
+    /// Taker fee in basis points (M-DEV-4, D-BR.LOAD).
+    ///
+    /// Default = **4** (the legacy hardcoded literal at `param_robustness_sweep.rs:2409-2410`).
+    /// Every non-basis run passes the default → `MatchConfig` is byte-identical → the 99
+    /// existing anchors are unchanged. The basis arm sweeps this over {0,2,5,10} bps to
+    /// produce the fee-sensitivity surface (R-BR.LOAD). Slippage is swept separately via
+    /// `--slippage-bps` (default 2).
+    #[arg(long, default_value_t = 4)]
+    taker_fee_bps: u32,
+
+    /// Slippage in basis points (M-DEV-4, D-BR.LOAD).
+    ///
+    /// Default = **2** (the legacy hardcoded literal). Held at the default across the fee
+    /// ladder (the LOAD-BEARING fee sweep varies the taker leg only, per § D-BR.LOAD).
+    /// Changing this on a non-basis run would break the existing anchors.
+    #[arg(long, default_value_t = 2)]
+    slippage_bps: u32,
+
+    /// Root directory for basis parquets (basis-reversal only).
+    /// Default: `data/binance-basis/` (the locked path from the basis data load).
+    #[arg(long, default_value = "data/binance-basis/")]
+    basis_root: PathBuf,
+
+    /// Expected aggregate SHA-256 for data/binance-basis/REVISION.toml (basis only).
+    /// Default: the locked basis revision SHA (aa72409a…).
+    #[arg(
+        long,
+        default_value = "aa72409aa0f856960385a823bc61be1b8274e84f658439b65e5d1b1b1a48f1cd"
+    )]
+    basis_revision_sha: String,
 }
 
 // ── Seed helpers ──────────────────────────────────────────────────────────────
@@ -1545,6 +1696,29 @@ pub fn carry_grid_def_string(grid: &[ThetaCell]) -> String {
     s
 }
 
+/// Build the canonical grid-definition string for basis-reversal reports (M-DEV-5).
+///
+/// Format mirrors `carry_grid_def_string` (rebalance + lookback swept) but uses
+/// `lookback_bars` (not `l_settlements`) to make the unit explicit for the basis arm.
+/// This is a hashed body field for the basis anchor (K3 / § D6.3 + D6.9).
+///
+/// Format: `g={} lookback_bars={} rebalance_minutes={} k_long={} drift={}`
+#[must_use]
+pub fn basis_grid_def_string(grid: &[ThetaCell]) -> String {
+    let mut s = String::from("grid_definition:\n");
+    for cell in grid {
+        s.push_str(&format!(
+            "  g={} lookback_bars={} rebalance_minutes={} k_long={} drift={}\n",
+            cell.g,
+            cell.lookback_minutes,
+            cell.rebalance_minutes_override,
+            cell.k_long,
+            cell.drift()
+        ));
+    }
+    s
+}
+
 /// Build the canonical grid-definition string for TS-momentum reports (M-DEV-4).
 ///
 /// Includes `lookback_bars` (the price-bar lookback, same field as `lookback_minutes`
@@ -1640,6 +1814,11 @@ fn render_surface_report(
     // M-DEV-3: horizon (D-HR.5). OneHour → body unchanged (all 91 anchors byte-identical).
     // FourHours/OneDay → render the real horizon in the hashed body.
     horizon: backtest::resample::Horizon,
+    // M-DEV-4 (D-BR.LOAD): taker fee and slippage in bps.
+    // Rendered as hashed body fields ONLY for BasisReversal runs (so the 99 existing
+    // anchor body-SHAs stay byte-identical — the same gating the horizon row uses).
+    taker_fee_bps: u32,
+    slippage_bps: u32,
 ) -> String {
     // ── Front-matter (NOT hashed) ─────────────────────────────────────────────
     // slug: momentum reports keep "momentum-parameter-robustness-sweep" for anchor compat.
@@ -1648,6 +1827,7 @@ fn render_surface_report(
     // TS reports use "time-series-momentum-robustness".
     // Horizon retest reports (horizon != 1h) use "horizon-retest-robustness" (D-HR.5).
     let is_horizon_run = horizon != backtest::resample::Horizon::OneHour;
+    let is_basis_run = score_source == SweepScoreSource::BasisReversal;
     let slug = if is_horizon_run {
         "horizon-retest-robustness"
     } else if selection_mode.is_ts() {
@@ -1655,6 +1835,7 @@ fn render_surface_report(
     } else {
         match score_source {
             SweepScoreSource::Carry => "carry-strategy",
+            SweepScoreSource::BasisReversal => "perp-basis-signal-robustness",
             SweepScoreSource::VolAdjustedReturn => match direction {
                 SweepDirection::Momentum => "momentum-parameter-robustness-sweep",
                 SweepDirection::Reversion => "cross-sectional-mean-reversion-strategy",
@@ -1696,6 +1877,9 @@ fn render_surface_report(
     } else {
         match score_source {
             SweepScoreSource::Carry => "Carry (Funding)".to_string(),
+            SweepScoreSource::BasisReversal => {
+                format!("Basis-Reversal (taker_fee={taker_fee_bps}bps)")
+            }
             SweepScoreSource::VolAdjustedReturn => match direction {
                 SweepDirection::Momentum => "Momentum".to_string(),
                 SweepDirection::Reversion => "Mean-Reversion (MR)".to_string(),
@@ -1758,8 +1942,19 @@ fn render_surface_report(
             }
         ));
     }
+    // M-DEV-4 (D-BR.LOAD): render the fee level as a hashed body field for basis runs.
+    // GATED to `BasisReversal` so the 99 existing anchor body-SHAs are byte-identical.
+    // The fee level distinguishes the four fee-level surfaces as DISTINCT anchors.
+    if is_basis_run {
+        body.push_str(&format!(
+            "| taker_fee_bps            | {taker_fee_bps}                                                   |\n"
+        ));
+        body.push_str(&format!(
+            "| slippage_bps             | {slippage_bps}                                                    |\n"
+        ));
+    }
     // held_constant: add direction for MR runs; score_source + funding for carry runs;
-    // selection_mode + rebalance + k_long(inert) for TS runs.
+    // selection_mode + rebalance + k_long(inert) for TS runs; basis fields for basis runs.
     // The body field is part of the hash — each family's string differs from others.
     let held_constant_str: String = if selection_mode.is_ts() {
         "| held_constant            | selection_mode=time_series_long_flat score_source=vol_adjusted_return direction=momentum rebalance_minutes=60 exposure_cap=0.50 k_long=10(inert) vol_floor=inert k_short=0 size=equal_weight |\n".to_string()
@@ -1769,6 +1964,13 @@ fn render_surface_report(
                 format!(
                     "| held_constant            | score_source=funding_carry direction=momentum exposure_cap=0.50 vol_floor=inert k_short=0 size=equal_weight |\n\
                      | funding_revision_sha     | {} |\n",
+                    funding_revision_sha.unwrap_or("unknown")
+                )
+            }
+            SweepScoreSource::BasisReversal => {
+                format!(
+                    "| held_constant            | score_source=basis_reversal direction=momentum exposure_cap=0.50 vol_floor=inert k_short=0 size=equal_weight |\n\
+                     | basis_revision_sha       | {} |\n",
                     funding_revision_sha.unwrap_or("unknown")
                 )
             }
@@ -1814,6 +2016,9 @@ fn render_surface_report(
             SweepScoreSource::Carry => {
                 "## Carry θ-grid definition (6-cell, LOCKED § D-CARRY.2-LOCKED — changing this changes the SHA)\n\n".to_string()
             }
+            SweepScoreSource::BasisReversal => {
+                "## Basis-Reversal θ-grid definition (6-cell, LOCKED § D-BR.2-LOCKED — changing this changes the SHA)\n\n".to_string()
+            }
             SweepScoreSource::VolAdjustedReturn => match direction {
                 SweepDirection::Momentum => {
                     "## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n".to_string()
@@ -1826,7 +2031,8 @@ fn render_surface_report(
     };
     body.push_str(&grid_header_str);
     // TS grid: use ts_grid_def_string (includes entry_threshold — the TS swept axis).
-    // Carry grid: use carry-specific format (includes rebalance — it's swept).
+    // Carry grid: use carry_grid_def_string (l_settlements + rebalance).
+    // Basis grid: use basis_grid_def_string (lookback_bars + rebalance — same shape but different name).
     // Momentum/MR: use the standard grid_def_string (no rebalance — anchor-safe).
     if selection_mode.is_ts() {
         body.push_str(&ts_grid_def_string(grid));
@@ -1834,6 +2040,9 @@ fn render_surface_report(
         match score_source {
             SweepScoreSource::Carry => {
                 body.push_str(&carry_grid_def_string(grid));
+            }
+            SweepScoreSource::BasisReversal => {
+                body.push_str(&basis_grid_def_string(grid));
             }
             SweepScoreSource::VolAdjustedReturn => {
                 body.push_str(&grid_def_string(grid));
@@ -1854,10 +2063,14 @@ fn render_surface_report(
     // Gate on score_source so MR/momentum body-SHAs stay byte-identical.
     // M-DEV-4 (TS): add `time_in_market` column for TS only (D-TSM.6.4 / ADR-0051 § D6.5.4).
     // Gate on selection_mode so momentum/MR/carry body-SHAs stay byte-identical.
+    // M-DEV-5 (basis): add `trades` column for basis-reversal (turnover legibility — the
+    // fee story for a reversal arm is dominated by turnover; D-BR.2-LOCKED).
+    // Gated to BasisReversal so all existing body-SHAs stay byte-identical.
     let show_trades = !selection_mode.is_ts()
         && score_source == SweepScoreSource::VolAdjustedReturn
         && direction == SweepDirection::Reversion;
     let show_funding = !selection_mode.is_ts() && score_source == SweepScoreSource::Carry;
+    let show_basis_trades = is_basis_run && !selection_mode.is_ts();
     let show_time_in_market = selection_mode.is_ts();
     if show_time_in_market {
         body.push_str(
@@ -1865,6 +2078,12 @@ fn render_surface_report(
         );
         body.push_str("| g  | lookback | threshold | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | time_in_market | verdict  | notes |\n");
         body.push_str("|----|----------|-----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|----------------|----------|-------|\n");
+    } else if show_basis_trades {
+        body.push_str(
+            "Trades = total trade count across all N paths (turnover legibility — fee story for reversal arm, D-BR.2-LOCKED).\n\n",
+        );
+        body.push_str("| g  | lookback | rebalance | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | trades     | verdict  | notes |\n");
+        body.push_str("|----|----------|-----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|------------|----------|-------|\n");
     } else if show_trades {
         body.push_str(
             "Trades = total trade count across all N paths (turnover legibility — R-MR.3).\n\n",
@@ -1918,6 +2137,27 @@ fn render_surface_report(
                 s.max_dd_tail_p95 * 100.0,
                 spread,
                 tim_fraction,
+                verdict_str,
+                c5_flag,
+            ));
+        } else if show_basis_trades {
+            // Basis-reversal row: includes `rebalance` column (swept in D-BR.2-LOCKED
+            // for the cadence/turnover axis) and `trades` (turnover legibility).
+            body.push_str(&format!(
+                "| {:2} | {:8} | {:9} | {:6} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:10} | {:8} | {} |\n",
+                cr.cell.g,
+                cr.cell.lookback_minutes,
+                cr.cell.rebalance_minutes_override,
+                cr.cell.k_long,
+                cr.cell.drift(),
+                s.sharpe.p5,
+                s.sharpe.p50,
+                s.sharpe.p95,
+                s.prob_loss,
+                s.prob_sharpe_gt_1,
+                s.max_dd_tail_p95 * 100.0,
+                spread,
+                cr.total_trades,
                 verdict_str,
                 c5_flag,
             ));
@@ -2083,6 +2323,20 @@ fn render_surface_report(
                             "or directional price exposure may have overwhelmed the funding harvest.\n",
                         );
                     }
+                }
+                SweepScoreSource::BasisReversal => {
+                    body.push_str(&format!(
+                        "Conclusion: v1 cross-sectional basis-reversal at {taker_fee_bps} bps taker fee is structurally fragile\n"
+                    ));
+                    body.push_str(
+                        "across the tested parameter space on this 10-symbol universe. The fee-bleed from\n",
+                    );
+                    body.push_str(
+                        "reversal-arm turnover consumes the gross −0.10 IC edge at this fee level.\n",
+                    );
+                    body.push_str(
+                        "VERDICT: FRAGILE-on-fees at this fee level. Pre-registered result — see R-BR.LOAD.\n",
+                    );
                 }
                 SweepScoreSource::VolAdjustedReturn => match direction {
                     SweepDirection::Momentum => {
@@ -2303,6 +2557,9 @@ fn prepare_generator_params(
 /// `run_one_path` are: (1) config is caller-supplied, (2) path_gen is shared,
 /// (3) for carry: the path_gen already has funding attached (built in main with
 ///    `with_funding`), so this function generates funding_override seamlessly.
+/// (4) M-DEV-4 (D-BR.LOAD): `taker_fee_bps`/`slippage_bps` are now parameters
+///    replacing the hardcoded literals. Defaults `4`/`2` → MatchConfig is
+///    byte-identical for every non-basis run → the 99 existing anchors hold.
 #[allow(clippy::too_many_arguments)]
 fn run_one_path_with_config(
     j: usize,
@@ -2312,18 +2569,34 @@ fn run_one_path_with_config(
     universe: &[(trading_core::Symbol, Decimal)],
     // Pre-built path generator for BlockBootstrapReal; None for GbmSmoke.
     // For carry: this is the CARRY path_gen (with funding already attached via with_funding).
+    // For basis: this is the BASIS path_gen (with basis attached via with_funding).
     // For momentum/MR: this is the BASE path_gen (no funding).
     block_path_gen: Option<&data::BlockBootstrapPathGen>,
     bar_count: usize,
     generator: GeneratorKind,
     year: i32,
-    // Whether funding was injected (carry only).
-    // Used to decide whether to extract funding_override from generated_path.
+    // Whether a sidecar was injected (carry OR basis).
+    // Used to decide whether to extract the sidecar map from generated_path.
+    // For the basis arm: the sidecar is extracted for the SCORE only — the
+    // `run_path` accrual stays gated `None` (no cashflow — D-BR.1).
+    inject_sidecar: bool,
+    // Whether the sidecar is carry (as opposed to basis).
+    // When inject_sidecar=true and is_carry=true: the map is passed as
+    //   `funding_override` to `TcnScenarioInput` for BOTH score AND accrual.
+    // When inject_sidecar=true and is_carry=false (basis): the map is passed
+    //   ONLY to the strategy via `with_funding`; `funding_override` in
+    //   `TcnScenarioInput` stays `None` so the `run_path` accrual block
+    //   (`montecarlo.rs:322`) is never entered — the basis has NO cashflow.
     is_carry: bool,
     // M-DEV-3: horizon for metric branch selection (D-HR.1).
     // OneHour → verbatim compute_sharpe_hourly (anchor-safe);
     // FourHours/OneDay → compute_sharpe_periodic(periods_per_year).
     horizon: backtest::resample::Horizon,
+    // M-DEV-4 (D-BR.LOAD): taker fee and slippage in bps.
+    // Defaults = 4/2 (the legacy hardcoded literals). Every non-basis caller
+    // passes the defaults → MatchConfig byte-identical → 99 anchors hold.
+    taker_fee_bps: u32,
+    slippage_bps: u32,
 ) -> Result<IndexedPathMetrics> {
     use data::MonteCarloPathGen as _;
 
@@ -2362,21 +2635,31 @@ fn run_one_path_with_config(
         }
     };
 
-    // ── Build funding_override BTreeMap from generated_path.funding_by_symbol ──
-    // Only when carry is active (is_carry=true and the path_gen emitted funding).
-    // The map key is `(Symbol, open_ts)` — the synthetic timestamp of bars_by_symbol[s][k].
-    // For momentum/MR (is_carry=false): funding_override=None → anchor-neutral.
-    let funding_override: Option<
-        std::collections::BTreeMap<(trading_core::Symbol, trading_core::Timestamp), Decimal>,
-    > = if is_carry {
+    // ── Build sidecar BTreeMap from generated_path.funding_by_symbol ────────
+    // When inject_sidecar=true: build the (Symbol, open_ts) → Decimal map from
+    // generated_path.funding_by_symbol (which carries either funding OR basis
+    // depending on which path_gen was used).
+    // For momentum/MR (inject_sidecar=false): both maps are None → anchor-neutral.
+    //
+    // D-BR.1 NOTE: for the basis arm (inject_sidecar=true, is_carry=false):
+    //   - `strategy_sidecar_map` is Some → injected into the strategy via with_funding
+    //     so `basis_reversal_score` can read the basis values.
+    //   - `funding_override` in TcnScenarioInput is NONE → the run_path accrual
+    //     block (`montecarlo.rs:322`) is never entered → NO basis cashflow (correct).
+    // For carry (inject_sidecar=true, is_carry=true):
+    //   - The same map is used for BOTH the strategy score AND the TcnScenarioInput
+    //     funding_override (for accrual). This is the carry-specific path.
+    type SidecarMap =
+        std::collections::BTreeMap<(trading_core::Symbol, trading_core::Timestamp), Decimal>;
+    let strategy_sidecar_map: Option<SidecarMap> = if inject_sidecar {
         if let Some(ref fund_by_sym) = generated_path.funding_by_symbol {
-            let mut map = std::collections::BTreeMap::new();
+            let mut map = SidecarMap::new();
             for (sym_i, (sym, _)) in universe.iter().enumerate() {
-                if let Some(funding_row) = fund_by_sym.get(sym_i)
+                if let Some(sidecar_row) = fund_by_sym.get(sym_i)
                     && let Some(bars_row) = generated_path.bars_by_symbol.get(sym_i)
                 {
-                    for (bar, &funding_val) in bars_row.iter().zip(funding_row.iter()) {
-                        if let Some(rate) = funding_val {
+                    for (bar, &sidecar_val) in bars_row.iter().zip(sidecar_row.iter()) {
+                        if let Some(rate) = sidecar_val {
                             map.insert((sym.clone(), bar.open_ts), rate);
                         }
                     }
@@ -2390,24 +2673,47 @@ fn run_one_path_with_config(
         None
     };
 
+    // funding_override for TcnScenarioInput:
+    //   - carry: pass the sidecar map (enables run_path accrual).
+    //   - basis: always None (no cashflow — D-BR.1).
+    //   - momentum/MR: None (inject_sidecar=false → strategy_sidecar_map is None).
+    let funding_override: Option<SidecarMap> = if is_carry {
+        strategy_sidecar_map.clone()
+    } else {
+        None
+    };
+
     // ── Merge per-symbol bars into the flat replay feed ───────────────────────
     let merged_bars = data::ReplayFeed::merge_synthetic(generated_path.bars_by_symbol);
 
     // ── Build fresh strategy with the INJECTED config (the C3 seam) ──────────
-    // This is the only difference from run_one_path: we use the caller-supplied cfg.
+    // For carry AND basis: inject the sidecar map via with_funding so the
+    // strategy's score function can read carry/basis values per (Symbol, ts).
+    // For momentum/MR: no sidecar → with_funding(None) is a no-op (anchor-safe).
+    //
+    // D-BR.1: for the basis arm, the sidecar is injected HERE (score-only),
+    // but funding_override in TcnScenarioInput is None (no accrual — no cashflow).
+    // The basis arm reuses the `funding_by_symbol`/`funding_map` channel as a
+    // generic sidecar carrier — the value is the BASIS, not funding, and is
+    // consumed ONLY by `basis_reversal_score`, NEVER by the `run_path` accrual
+    // (which stays gated `None` for the basis arm — D-BR.1).
     let strat = strategy::MomentumStrategy::from_config(
         cfg.clone(),
         SmolStr::new(format!("param-sweep-cell-{}", cfg.lookback_minutes)),
-    );
+    )
+    .with_funding(strategy_sidecar_map);
 
     // ── Run the backtest on this path ─────────────────────────────────────────
+    // M-DEV-4 (D-BR.LOAD): taker_fee_bps and slippage_bps are now parameters
+    // replacing the legacy hardcoded literals. Defaults (4/2) → MatchConfig
+    // byte-identical for every non-basis run → 99 anchors hold.
     let input = backtest::cli_types::TcnScenarioInput {
         scenario_name: format!("sweep-path-{j}"),
         start_year: year,
         bar_count: merged_bars.len(),
         initial_capital: dec!(100_000),
-        slippage_bps: 2,
-        taker_fee_bps: 4,
+        slippage_bps,
+        taker_fee_bps,
         config_id: "top10_momentum_h1".to_string(),
         forecaster_id: "param_sweep".to_string(),
         bars_override: Some(merged_bars),
@@ -2615,6 +2921,133 @@ fn load_carry_path_gen(
     )
 }
 
+// ── Basis-reversal loader (M-DEV-5) ────────────────────────────────────────────
+
+/// Load the basis data, compute `basis_at_return`, and build a basis-specific
+/// `BlockBootstrapPathGen` with the basis attached (ADR-0051 § D6.9, D-BR.3).
+///
+/// **CRITICAL D-BR.1:** The basis sidecar is attached via `with_funding(...)` for the
+/// SCORE only. The `run_path` accrual gate (`montecarlo.rs:322`) is NEVER entered for the
+/// basis arm because `TcnScenarioInput.funding_override` is set to `None` in
+/// `run_one_path_with_config`. The basis arm's P&L is pure price-of-selection; NO cashflow.
+///
+/// **Channel reuse (D-BR.3):** The basis rides the `funding_by_symbol` co-resample channel
+/// (basis and funding are mutually exclusive in v0.1.0 — different `ScoreSource` arms).
+/// The field is named `funding_*` but carries the BASIS value when this path_gen is used.
+///
+/// Returns `(basis_path_gen, Some(basis_revision_sha))` for the basis anchor body.
+#[cfg(feature = "realdata")]
+fn load_basis_path_gen(
+    args: &Args,
+    real_bars_by_symbol: &[(trading_core::Symbol, Vec<trading_core::Bar>)],
+    symbols_prices: &[(trading_core::Symbol, Decimal)],
+    bar_count: usize,
+) -> Result<(Option<data::BlockBootstrapPathGen>, Option<String>)> {
+    use backtest::basis_data::{BasisDataSource, LoadedBasis, build_basis_at_return};
+    use backtest::realdata::TimeSpan as RealDataTimeSpan;
+
+    // Load basis parquets and REVISION-verify.
+    let symbols: Vec<trading_core::Symbol> =
+        symbols_prices.iter().map(|(s, _)| s.clone()).collect();
+    let basis_src = BasisDataSource::new(args.basis_root.clone(), symbols.clone());
+    let span = RealDataTimeSpan::full_year(args.year);
+    let scenario_name = format!("basis-sweep-load-{}", args.year);
+    let loaded: LoadedBasis = basis_src
+        .load(&span, &scenario_name)
+        .map_err(|e| anyhow::anyhow!("load basis data: {e}"))?;
+
+    // Verify basis revision SHA against the locked expected.
+    if loaded.revision_sha != args.basis_revision_sha {
+        anyhow::bail!(
+            "basis revision mismatch: expected={} computed={}",
+            args.basis_revision_sha,
+            loaded.revision_sha
+        );
+    }
+    let basis_revision_sha = loaded.revision_sha.clone();
+    info!(
+        basis_rows = loaded.rows.len(),
+        basis_revision_sha = %basis_revision_sha,
+        "basis data loaded and verified"
+    );
+
+    // Build the `basis_at_return[sym_i][k]` array (aligned to real return steps).
+    // The basis parquet uses `open_time_ms` as the timestamp key (per BasisRow schema).
+    // For each symbol: extract (open_time_ms, basis_close) and bar open_ts_ms.
+    let mut basis_by_symbol_rows: Vec<Vec<(i64, Decimal)>> = Vec::with_capacity(symbols.len());
+    let mut bar_ts_by_symbol_raw: Vec<Vec<i64>> = Vec::with_capacity(symbols.len());
+
+    for (sym, _) in symbols_prices {
+        // Collect basis rows for this symbol, sorted by open_time_ms.
+        let sym_basis: Vec<(i64, Decimal)> = loaded
+            .rows
+            .iter()
+            .filter(|r| r.symbol == *sym)
+            .map(|r| (r.open_time_ms, r.basis_close))
+            .collect();
+        basis_by_symbol_rows.push(sym_basis);
+
+        // Collect bar open timestamps for this symbol from real_bars_by_symbol.
+        let bar_ts: Vec<i64> = real_bars_by_symbol
+            .iter()
+            .find(|(s, _)| s == sym)
+            .map(|(_, bars)| {
+                bars.iter()
+                    .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
+                    .collect()
+            })
+            .unwrap_or_default();
+        bar_ts_by_symbol_raw.push(bar_ts);
+    }
+
+    let basis_refs: Vec<&[(i64, Decimal)]> =
+        basis_by_symbol_rows.iter().map(|v| v.as_slice()).collect();
+    let bar_ts_refs: Vec<&[i64]> = bar_ts_by_symbol_raw.iter().map(|v| v.as_slice()).collect();
+
+    let basis_at_return = build_basis_at_return(&basis_refs, &bar_ts_refs);
+    info!(
+        n_symbols = basis_at_return.len(),
+        first_sym_len = basis_at_return.first().map_or(0, Vec::len),
+        "basis_at_return built for basis-reversal co-resampling"
+    );
+
+    // Build a basis-specific BlockBootstrapPathGen with basis attached via with_funding.
+    // D-BR.3: the basis rides the `funding_by_symbol` channel (basis + funding mutually
+    // exclusive in v0.1.0). The value is the BASIS, not funding — see D-BR.1 note above.
+    let basis_path_gen = data::BlockBootstrapPathGen::new(
+        real_bars_by_symbol.to_vec(),
+        data::BlockLengthPolicy::Auto,
+    )
+    .context("build basis BlockBootstrapPathGen")?
+    .with_funding(Some(basis_at_return));
+
+    // Verify the probe (selected_L should match the base path_gen).
+    {
+        use data::MonteCarloPathGen as _;
+        let universe_probe: Vec<(trading_core::Symbol, Decimal)> = symbols_prices.to_vec();
+        let _probe = basis_path_gen
+            .generate(&universe_probe, bar_count, 0xC0FFEE)
+            .context("basis path_gen probe generate")?;
+        info!("basis path_gen probe: OK (basis co-resampling active)");
+    }
+
+    Ok((Some(basis_path_gen), Some(basis_revision_sha)))
+}
+
+#[cfg(not(feature = "realdata"))]
+fn load_basis_path_gen(
+    _args: &Args,
+    _real_bars_by_symbol: &[(trading_core::Symbol, Vec<trading_core::Bar>)],
+    _symbols_prices: &[(trading_core::Symbol, Decimal)],
+    _bar_count: usize,
+) -> Result<(Option<data::BlockBootstrapPathGen>, Option<String>)> {
+    anyhow::bail!(
+        "load_basis_path_gen called without --features realdata. \
+         Basis-reversal requires real basis data. Rebuild with: cargo run -p backtest \
+         --features candle,realdata --bin param_robustness_sweep -- --score-source basis-reversal ..."
+    )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
@@ -2677,16 +3110,24 @@ fn main() -> Result<()> {
     let (generator_label, bootstrap_mode, block_length_policy_str, selected_l, block_path_gen_opt) =
         prepare_generator_params(args.generator, &real_bars_by_symbol, ensemble_seed)?;
 
-    // ── M-DEV-6: load funding data and build carry path_gen (carry only) ──────
+    // ── M-DEV-6/M-DEV-5: load sidecar data and build the sidecar path_gen ──────
     // For momentum/MR: `carry_path_gen_opt = None` → anchor-neutral by construction.
     // For carry: load funding, build `funding_at_return[sym_i][k]`, build a
     // carry-specific BlockBootstrapPathGen with funding attached (D-CARRY.7).
+    // For basis (M-DEV-5): load basis, build `basis_at_return[sym_i][k]`, build a
+    // basis-specific BlockBootstrapPathGen with basis attached via `with_funding`
+    // (D-BR.3 — reuses the funding_by_symbol co-resample channel).
+    // NOTE: `carry_path_gen_opt` is reused for the basis path_gen too (same shape).
     let (carry_path_gen_opt, funding_revision_sha_for_report): (
         Option<data::BlockBootstrapPathGen>,
         Option<String>,
     ) = if args.score_source.needs_funding() && args.generator == GeneratorKind::BlockBootstrapReal
     {
         load_carry_path_gen(&args, &real_bars_by_symbol, &symbols_prices, bar_count)?
+    } else if args.score_source.needs_basis() && args.generator == GeneratorKind::BlockBootstrapReal
+    {
+        // M-DEV-5: load basis and build the basis path_gen (reusing the same Option slot).
+        load_basis_path_gen(&args, &real_bars_by_symbol, &symbols_prices, bar_count)?
     } else {
         (None, None)
     };
@@ -2709,15 +3150,21 @@ fn main() -> Result<()> {
 
     // ── Select the active path_gen ────────────────────────────────────────────
     // For carry: use the carry-specific path_gen (has funding attached).
-    // For momentum/MR: use the base path_gen (no funding → anchor-neutral).
+    // For basis: use the basis-specific path_gen (has basis attached via with_funding).
+    // For momentum/MR: use the base path_gen (no sidecar → anchor-neutral).
+    let is_basis = args.score_source == SweepScoreSource::BasisReversal;
     let active_path_gen_opt: Option<&data::BlockBootstrapPathGen> =
         if let Some(ref cpg) = carry_path_gen_opt {
+            // carry_path_gen_opt holds carry OR basis path_gen (reused channel).
             Some(cpg)
         } else {
             block_path_gen_opt.as_ref()
         };
 
     let is_carry = args.score_source == SweepScoreSource::Carry;
+    // inject_sidecar: true for carry OR basis — both extract sidecar from generated_path.
+    // For basis: sidecar goes to score only; funding_override stays None (no cashflow).
+    let inject_sidecar = is_carry || is_basis;
 
     // ── Outer θ-loop (sequential for log legibility — ~10-15 min at N=200, 6 cells) ─
     // ADR-0051 § D6.4: collect into Vec, sort by g before render.
@@ -2762,8 +3209,11 @@ fn main() -> Result<()> {
                         bar_count,
                         args.generator,
                         args.year,
+                        inject_sidecar,
                         is_carry,
                         args.horizon,
+                        args.taker_fee_bps,
+                        args.slippage_bps,
                     )
                 })
                 .collect()
@@ -2993,6 +3443,15 @@ fn main() -> Result<()> {
                 year = args.year,
                 gen = gen_label,
             ),
+            // M-DEV-5 (D-BR.9): basis-reversal scenario name carries the fee level
+            // as a zero-padded two-digit number so the four fee × two regime surfaces
+            // are DISTINCT anchors (§ D-BR.2-LOCKED / § D-BR.9).
+            SweepScoreSource::BasisReversal => format!(
+                "v1-basis-reversal-fee{fee:02}bps-theta-surface-{year}-block-bootstrap-{gen}-fy",
+                fee = args.taker_fee_bps,
+                year = args.year,
+                gen = gen_label,
+            ),
             SweepScoreSource::VolAdjustedReturn => format!(
                 "v1-{family}-theta-surface-{year}-block-bootstrap-{gen}-fy",
                 family = args.direction.label(),
@@ -3027,12 +3486,15 @@ fn main() -> Result<()> {
         funding_revision_sha_for_report.as_deref(),
         args.selection_mode,
         args.horizon,
+        args.taker_fee_bps,
+        args.slippage_bps,
     );
 
     // ── Resolve effective out_dir ─────────────────────────────────────────────
     // For carry: if the user did not override --out-dir, default to the carry reports dir.
     // For TS: if the user did not override --out-dir, default to the TS reports dir.
     // For horizon retest (horizon != 1h): default to the horizon-retest-robustness reports dir.
+    // For basis: default to the perp-basis-signal-robustness reports dir (D-BR.9).
     // We detect "was the default changed?" by checking if it's still the momentum default.
     let momentum_default_out_dir =
         PathBuf::from("spec/momentum-parameter-robustness-sweep/reports/");
@@ -3045,6 +3507,11 @@ fn main() -> Result<()> {
         && args.out_dir == momentum_default_out_dir
     {
         PathBuf::from("spec/carry-strategy/reports/")
+    } else if args.score_source == SweepScoreSource::BasisReversal
+        && args.out_dir == momentum_default_out_dir
+    {
+        // M-DEV-5 (D-BR.9): basis-reversal reports live in the dedicated namespace dir.
+        PathBuf::from("spec/perp-basis-signal-robustness/reports/")
     } else {
         args.out_dir.clone()
     };
