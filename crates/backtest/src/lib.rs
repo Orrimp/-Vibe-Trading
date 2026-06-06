@@ -57,6 +57,12 @@ pub mod realdata;
 #[cfg(feature = "realdata")]
 pub mod funding_data;
 
+/// Basis parquet loader and as-of join (perp-basis-signal-robustness M-DEV-1 + M-DEV-2).
+/// Mirrors `funding_data` for `data/binance-basis/` (basis = `(markPrice − indexPrice)/indexPrice`).
+/// Compiled only when `--features realdata` (basis data requires real parquets).
+#[cfg(feature = "realdata")]
+pub mod basis_data;
+
 pub use engine::run_scenario;
 pub use engine::{
     BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,

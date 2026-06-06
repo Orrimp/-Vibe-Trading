@@ -1113,3 +1113,56 @@ _Tester links reports here after the M-TEST gate. The gates the tester must clea
   the architect M-T1 (ScoreSource::Basis+Reversion vs BasisReversal; long-only vs
   market-neutral; sidecar threading; θ-grid + fee mechanism; run_path concrete;
   namespace). No Design section, no tasks.md, no code authored by the analyst.
+
+## Implementation
+
+_Developer pass 1 of 2 (M-DEV-0..3), 2026-06-06._
+
+### Scope: M-DEV-0..3 (basis-signal foundation)
+
+This pass implements the anchor-sensitive signal foundation: the basis loader, the as-of
+join, and the `ScoreSource::BasisReversal` arm. M-DEV-4..9 (fee axis, sweep wiring,
+integration falsifiers, anchored run) are the next developer pass.
+
+### Files changed / created
+
+| File | Change | Task |
+|---|---|---|
+| `crates/backtest/src/basis_data.rs` | New (675 lines) — `BasisDataSource`, `BasisRow`, `LoadedBasis`, `BasisDataError`, `basis_as_of`, `build_basis_at_return`, 12 tests | M-DEV-1, M-DEV-2 |
+| `crates/backtest/src/lib.rs` | +6 lines — `pub mod basis_data` registration (realdata-gated) | M-DEV-1 |
+| `crates/strategy/src/cross_sectional/config.rs` | +27 lines — `ScoreSource::BasisReversal` variant + 3 config-hash tests | M-DEV-3 |
+| `crates/strategy/src/cross_sectional/momentum.rs` | +200 lines — `basis_reversal_score`, `all_warmed` BasisReversal arm, `on_bar` BasisReversal arm, mandatory channel-reuse doc-comment, 4 tests (sign-assertion × 2, no-look-ahead, plus helper) | M-DEV-3 |
+
+### Deviations from spec
+
+None. The implementation matches the architecture spec (D-BR.0..3, D-BR.5) exactly:
+- `BasisRow` uses `open_time_ms` as the key (basis parquet schema uses `open_time`, not
+  `close_time`), as confirmed on disk. The as-of join is keyed on `open_time_ms` with
+  `≤` semantics — this implements `basis_close[t-1]` on the 1h grid (D-BR.5).
+- `basis_reversal_score` reuses `funding_rings` as the per-symbol bar-count ring (D-BR.3
+  channel reuse). The mandatory doc-comment is in place at both the method and the
+  `on_bar` arm call site.
+- The `BasisReversal` arm in `all_warmed` mirrors `FundingCarry` exactly (ring.len() ≥
+  funding_lookback). This is correct: both use the same `funding_rings` field.
+
+### Gate results (all 4 gates PASS)
+
+1. **Clippy (canonical):** `cargo clippy --workspace --all-targets --all-features -- -D warnings 2>&1 | grep -E "^\s+-->" | grep -v "crates/ui/" | sort -u` → **EMPTY** (zero non-UI warnings)
+2. **fmt:** `cargo fmt --all -- --check` → **clean**
+3. **Anchors:** `bash scripts/verify_anchors.sh` → **99/99 PASS**
+4. **Tests:**
+   - `cargo test -p backtest --features "candle realdata" --lib basis_data` → **11 passed; 0 failed; 1 ignored**
+   - `cargo test -p strategy --lib` → **156 passed; 0 failed; 0 ignored**
+   - Sign-assertion (`r_br2_sign_assertion_longs_low_basis_name` + `r_br2_basis_reversal_score_low_basis_outscores_high_basis`) → **2 passed**
+   - No-look-ahead (`r_br5_no_look_ahead_strategy_level`) → **1 passed**
+   - Config hash (`m_dev3_*`) → **3 passed**
+
+### Non-negotiables verification
+
+- `run_path` / `PaperEngine` / `bootstrap` / `montecarlo.rs` — **NOT TOUCHED** (confirmed by `git diff --name-only`)
+- No `.unwrap()` in library code (all in `#[cfg(test)]` blocks)
+- No `f64` in the basis parse or the score
+- No `SystemTime::now()` / `thread_rng()` added
+- The SIGN (`−trailing_mean`) is in ONE place (`basis_reversal_score`, line ~277 in `momentum.rs`)
+- `crates/ui/` — NOT TOUCHED
+- `data/yahoo/REVISION.toml` — NOT TOUCHED by this pass

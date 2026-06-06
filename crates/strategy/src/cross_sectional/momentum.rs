@@ -178,7 +178,7 @@ impl MomentumStrategy {
             SelectionMode::TimeSeriesLongFlat => {
                 // TS warm-up: all price history ring buffers must be full.
                 // Same as VolAdjustedReturn — the TS trend score uses the price ring.
-                // (FundingCarry is not used under TimeSeriesLongFlat.)
+                // (FundingCarry / BasisReversal are not used under TimeSeriesLongFlat.)
                 self.histories.values().all(|rb| rb.is_full())
             }
             SelectionMode::CrossSectionalTopK => {
@@ -190,6 +190,17 @@ impl MomentumStrategy {
                     ScoreSource::FundingCarry => {
                         // Carry warm-up: every symbol's funding ring must have ≥ L settlements.
                         // A symbol with no ring entry is not yet warmed (it has seen 0 settlements).
+                        self.universe_symbols.keys().all(|sym| {
+                            self.funding_rings
+                                .get(sym)
+                                .is_some_and(|ring| ring.len() >= self.funding_lookback)
+                        })
+                    }
+                    ScoreSource::BasisReversal => {
+                        // Basis warm-up: every symbol's funding ring must have ≥ L bars.
+                        // The basis arm reuses `funding_rings` as a generic sidecar ring
+                        // (D-BR.3 channel reuse). The ring counts BARS (not 8h settlements)
+                        // because the basis is native 1h — every bar pushes a basis value.
                         self.universe_symbols.keys().all(|sym| {
                             self.funding_rings
                                 .get(sym)
@@ -272,6 +283,81 @@ impl MomentumStrategy {
         }
 
         signals
+    }
+
+    /// Compute the basis-reversal score for `symbol` at bar `open_ts`
+    /// (M-DEV-3, R-BR.1/2 — perp-basis-signal-robustness).
+    ///
+    /// # Sign convention (R-BR.2 — LOAD-BEARING)
+    ///
+    /// The perp-spot basis `(markPrice − indexPrice)/indexPrice`:
+    /// - **POSITIVE basis** (perp > spot) → crowded long, leveraged longs → the
+    ///   crowd subsequently **UNDERPERFORMS** (reversal). HIGH basis → underweight.
+    /// - **NEGATIVE basis** (perp < spot) → cheapest perp → the crowd is not
+    ///   crowded long → subsequently **OUTPERFORMS**. LOW basis → overweight.
+    ///
+    /// Therefore: `basis_reversal_score = −trailing_mean(basis)`
+    ///
+    /// The leading minus makes the **LOWEST-basis** name have the **HIGHEST** score,
+    /// which floats it to the TOP of the unchanged descending `top_k_long`. A long
+    /// on it IS the reversal (long the reversal-favored leg). This is the ONE place
+    /// the sign lives (D-BR.1) — guarded by the R-BR.2 sign-assertion test (RED on flip).
+    ///
+    /// **A sign flip here turns the arm into a basis-MOMENTUM payer** — it would long
+    /// the crowded-long names that subsequently underperform. The sign-assertion
+    /// falsifier (`r_br2_sign_assertion_longs_low_basis_name`) catches this exactly.
+    ///
+    /// # Channel reuse (D-BR.3 — CRITICAL COMMENT, MANDATORY)
+    ///
+    /// **The basis arm reuses the `funding_by_symbol`/`funding_map` channel as a
+    /// generic sidecar carrier — the value is the BASIS, not funding, and is consumed
+    /// ONLY by `basis_reversal_score`, NEVER by the `run_path` accrual (which stays
+    /// gated `None` for the basis arm — D-BR.1).** The `run_path` accrual block
+    /// (`montecarlo.rs:322`) is only entered when `funding_override` in
+    /// `TcnScenarioInput` is `Some`; for the basis arm it is `None` → no cashflow.
+    /// The basis IS a selection signal (R-BR.9 confirmed), NOT a cash settlement.
+    ///
+    /// # Bar-ring warm-up
+    ///
+    /// The ring must hold ≥ `funding_lookback` bars before a score is valid.
+    /// Before that, returns `None` (excluded from the rank — same as a warming-up
+    /// momentum or carry score). Warm-up count is in BARS (the basis is native 1h),
+    /// not 8h settlements — every bar pushes a basis value via the map.
+    fn basis_reversal_score(&mut self, symbol: &Symbol, open_ts: Timestamp) -> Option<Decimal> {
+        // Fetch the basis value for this (symbol, bar_ts) pair.
+        // The basis map is keyed for EVERY bar (the co-resampled value is the
+        // basis-in-force at that real return step on the native 1h grid).
+        // We look up regardless and push if Some — same pattern as carry_score.
+        let basis_value = self
+            .funding_map
+            .as_ref()
+            .and_then(|m| m.get(&(symbol.clone(), open_ts)).copied());
+
+        // Push into the sidecar ring on any non-None basis lookup.
+        // The ring is the SAME `funding_rings` as carry (D-BR.3 channel reuse).
+        // We push on every bar because the basis is native 1h (every bar is a
+        // "settlement" on the basis grid — unlike carry's sparse 8h cadence).
+        if let Some(value) = basis_value {
+            let ring = self.funding_rings.entry(symbol.clone()).or_default();
+            ring.push_back(value);
+            // Keep only the last L bars.
+            while ring.len() > self.funding_lookback {
+                ring.pop_front();
+            }
+        }
+
+        // Compute the trailing mean only when the ring is full (warm-up guard).
+        let ring = self.funding_rings.get(symbol)?;
+        if ring.len() < self.funding_lookback {
+            return None;
+        }
+        let sum: Decimal = ring.iter().copied().sum();
+        let mean = sum / Decimal::from(ring.len() as u64);
+        // R-BR.2: return −mean so the lowest-basis name has the highest score.
+        // HIGH basis → HIGH crowd → underperforms → −mean is NEGATIVE → bottom rank.
+        // LOW basis → LOW crowd → outperforms → −mean is POSITIVE → top rank.
+        // **This is the load-bearing sign. ONE place. A flip → basis-MOMENTUM payer.**
+        Some(-mean)
     }
 
     /// Compute the carry score for `symbol` at bar `open_ts` (M-DEV-5, R-CARRY.1/2).
@@ -398,6 +484,23 @@ impl Strategy for MomentumStrategy {
                             rb.push(bar.close.get());
                         }
                         self.carry_score(&bar.symbol, bar.open_ts)
+                    }
+                    ScoreSource::BasisReversal => {
+                        // BASIS-REVERSAL path (M-DEV-3): −trailing_mean(basis) over L bars.
+                        // The sign is in basis_reversal_score (R-BR.2 — LOAD-BEARING).
+                        // Direction::Momentum (identity) stays — the sign lives in the score.
+                        // We still push close for history consistency (defensive, same as carry).
+                        //
+                        // CHANNEL REUSE NOTE (D-BR.3 — mandatory):
+                        // The basis arm reuses the `funding_by_symbol`/`funding_map` channel as
+                        // a generic sidecar carrier — the value IS the BASIS, not funding, and is
+                        // consumed ONLY by `basis_reversal_score`. The `run_path` accrual (which
+                        // is entered only when `TcnScenarioInput.funding_override.is_some()`) is
+                        // NEVER entered for the basis arm — no cashflow (D-BR.1, R-BR.9).
+                        if let Some(rb) = self.histories.get_mut(&bar.symbol) {
+                            rb.push(bar.close.get());
+                        }
+                        self.basis_reversal_score(&bar.symbol, bar.open_ts)
                     }
                 }
             }
@@ -1057,6 +1160,228 @@ selection_mode = "time_series_long_flat"
             strat.selection_mode,
             SelectionMode::CrossSectionalTopK,
             "M-DEV-3: omitting selection_mode must default to CrossSectionalTopK (anchor-neutral)"
+        );
+    }
+
+    // ── M-DEV-3 / R-BR.2: BasisReversal sign-assertion test (MANDATORY, day-1) ─
+
+    /// Helper: build a BasisReversal strategy with K=1 and a synthetic basis map.
+    ///
+    /// The basis arm reuses the `with_funding` injection channel (D-BR.3 channel reuse).
+    fn make_basis_reversal_strategy_with_map(
+        lookback_bars: u32,
+        basis_map: BTreeMap<(Symbol, Timestamp), Decimal>,
+    ) -> MomentumStrategy {
+        use crate::cross_sectional::config::ScoreSource;
+        let toml = format!(
+            r#"
+id = "test_basis_reversal"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = {lookback_bars}
+rebalance_minutes = {lookback_bars}
+k_long = 1
+k_short = 0
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"
+score_source = "basis_reversal"
+"#
+        );
+        let mut cfg = crate::cross_sectional::config::CrossSectionalMomentumConfig::from_str(&toml)
+            .expect("valid basis_reversal config");
+        cfg.score_source = ScoreSource::BasisReversal;
+        MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("test"))
+            .with_funding(Some(basis_map))
+    }
+
+    /// R-BR.2 sign-assertion test (MANDATORY, day-1).
+    ///
+    /// Universe: BTCUSDT (HIGH basis = crowded long) + ETHUSDT (LOW basis = least crowded).
+    /// K=1, lookback=1 bar.
+    ///
+    /// Sign convention (R-BR.2):
+    ///   - BTCUSDT has HIGH positive basis → crowd → will underperform → should be UNDERWEIGHTED.
+    ///   - ETHUSDT has LOW (near-zero or negative) basis → not crowded → will outperform → OVERWEIGHT.
+    ///   - `basis_reversal_score = −trailing_mean(basis)` → ETHUSDT scores HIGHER than BTCUSDT.
+    ///   - With K=1, the strategy MUST select ETHUSDT (the reversal-favored leg).
+    ///
+    /// **RED-on-mutation**: if the sign in `basis_reversal_score` is flipped (returns `+mean`
+    /// instead of `−mean`), BTCUSDT would score higher and be selected — a basis-MOMENTUM payer.
+    /// The test fails exactly there with an explicit message naming the sign flip.
+    #[test]
+    fn r_br2_sign_assertion_longs_low_basis_name() {
+        use time::OffsetDateTime;
+
+        let base_ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+
+        // BTCUSDT: HIGH positive basis (perp rich, crowded long → will underperform).
+        // ETHUSDT: LOW (negative) basis (perp cheap → will outperform).
+        let high_basis = dec!(0.02); // +2% — clearly crowded, the reversal-short target
+        let low_basis = dec!(-0.005); // −0.5% — cheapest perp, the reversal-long target
+
+        // Inject via the funding_map channel (D-BR.3 reuse): keyed by (symbol, open_ts).
+        let mut basis_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        basis_map.insert((btc.clone(), base_ts), high_basis);
+        basis_map.insert((eth.clone(), base_ts), low_basis);
+
+        // L=1: one bar needed to fill the ring.
+        let mut strategy = make_basis_reversal_strategy_with_map(1, basis_map);
+
+        // Drive one bar per symbol at ts=0 so the basis is recorded.
+        let bar_btc = make_bar("BTCUSDT", dec!(50_000), 0);
+        let bar_eth = make_bar("ETHUSDT", dec!(3_000), 0);
+
+        let mut all_buy_signals: Vec<String> = Vec::new();
+        for sig in strategy.on_bar(&bar_btc) {
+            if sig.kind == SignalKind::Buy {
+                all_buy_signals.push(sig.symbol.to_string());
+            }
+        }
+        for sig in strategy.on_bar(&bar_eth) {
+            if sig.kind == SignalKind::Buy {
+                all_buy_signals.push(sig.symbol.to_string());
+            }
+        }
+
+        // Must have at least one buy (strategy warmed up with L=1 basis bar at bar 0).
+        assert!(
+            !all_buy_signals.is_empty(),
+            "R-BR.2: basis-reversal strategy must generate at least one Buy after seeing L=1 basis bar. \
+             Got no signals. Both symbols had basis injected."
+        );
+
+        // K=1: the LOW-basis name (ETHUSDT) MUST be selected (the reversal-favored leg).
+        // If BTCUSDT is selected instead, the sign is WRONG → basis-MOMENTUM payer.
+        assert!(
+            all_buy_signals.contains(&"ETHUSDT".to_string()),
+            "R-BR.2 SIGN VIOLATION: basis-reversal strategy with K=1 MUST select ETHUSDT \
+             (low/negative basis = reversal-favored leg) but got: {:?}. \
+             This means basis_reversal_score returns +mean instead of −mean — the sign is \
+             FLIPPED and the strategy is a basis-MOMENTUM payer (longs crowded-long names \
+             that subsequently underperform). FIX: ensure `Some(-mean)` in basis_reversal_score.",
+            all_buy_signals
+        );
+        assert!(
+            !all_buy_signals.contains(&"BTCUSDT".to_string()),
+            "R-BR.2 SIGN VIOLATION: basis-reversal strategy MUST NOT select BTCUSDT \
+             (high positive basis = crowded long = reversal-short target). Got: {:?}",
+            all_buy_signals
+        );
+    }
+
+    /// R-BR.2 score-level assertion: ETHUSDT (low basis) must outscored BTCUSDT (high basis).
+    ///
+    /// Verifies the score ordering independently of K and rebalance timing.
+    /// This is the exact `−mean` verification: `score(low basis) > score(high basis)`.
+    #[test]
+    fn r_br2_basis_reversal_score_low_basis_outscores_high_basis() {
+        use time::OffsetDateTime;
+
+        let base_ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+
+        let high_basis = dec!(0.02); // +2% — high → −mean = −0.02 → LOWER score
+        let low_basis = dec!(-0.005); // −0.5% — low → −mean = +0.005 → HIGHER score
+
+        let mut basis_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        basis_map.insert((btc.clone(), base_ts), high_basis);
+        basis_map.insert((eth.clone(), base_ts), low_basis);
+
+        let mut strat = make_basis_reversal_strategy_with_map(1, basis_map);
+
+        // Drive one bar per symbol so the basis is recorded and ring is full.
+        strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+
+        // Inspect the scores cache directly.
+        let btc_score = strat.scores.get(&btc).copied().flatten();
+        let eth_score = strat.scores.get(&eth).copied().flatten();
+
+        assert!(
+            btc_score.is_some(),
+            "R-BR.2: BTCUSDT must have a basis-reversal score after L=1 bars"
+        );
+        assert!(
+            eth_score.is_some(),
+            "R-BR.2: ETHUSDT must have a basis-reversal score after L=1 bars"
+        );
+
+        let btc_s = btc_score.unwrap();
+        let eth_s = eth_score.unwrap();
+
+        // BTCUSDT (basis=+0.02) → basis_reversal_score = −(+0.02) = −0.02
+        // ETHUSDT (basis=−0.005) → basis_reversal_score = −(−0.005) = +0.005
+        // Expected: eth_s > btc_s (positive > negative).
+        assert!(
+            eth_s > btc_s,
+            "R-BR.2 SIGN VIOLATION: basis_reversal_score(ETHUSDT, low_basis={low_basis})={eth_s} \
+             must be > basis_reversal_score(BTCUSDT, high_basis={high_basis})={btc_s}. \
+             The sign `−mean` means the lowest-basis name has the highest score. \
+             If this fails, basis_reversal_score is returning +mean (the basis-MOMENTUM bug)."
+        );
+        // Exact values: ETHUSDT score should be +0.005, BTCUSDT should be -0.02.
+        assert_eq!(
+            eth_s,
+            dec!(0.005),
+            "R-BR.2: ETHUSDT score must be +0.005 (−(−0.005))"
+        );
+        assert_eq!(
+            btc_s,
+            dec!(-0.02),
+            "R-BR.2: BTCUSDT score must be −0.02 (−(+0.02))"
+        );
+    }
+
+    /// R-BR.7 #5 no-look-ahead test (strategy level, M-DEV-3).
+    ///
+    /// At bar with ts=0, only basis settled at-or-before ts=0 is visible.
+    /// Basis at ts=1 (the NEXT bar) must NOT affect the score at ts=0.
+    ///
+    /// Mirrors `r_carry6_no_look_ahead_strategy_level` exactly for BasisReversal.
+    #[test]
+    fn r_br5_no_look_ahead_strategy_level() {
+        use time::OffsetDateTime;
+
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let ts1 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1));
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+
+        let basis_val = dec!(-0.005);
+
+        // Strategy A: basis at ts=0 → score is available at ts=0.
+        let mut map_a: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        map_a.insert((btc.clone(), ts0), basis_val);
+        map_a.insert((eth.clone(), ts0), basis_val);
+        let mut strat_a = make_basis_reversal_strategy_with_map(1, map_a);
+        strat_a.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat_a.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+        let score_a = strat_a.scores.get(&btc).copied().flatten();
+
+        // Strategy B: basis at ts=1 only (the future, not yet settled at ts=0).
+        let mut map_b: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        map_b.insert((btc.clone(), ts1), basis_val);
+        map_b.insert((eth.clone(), ts1), basis_val);
+        let mut strat_b = make_basis_reversal_strategy_with_map(1, map_b);
+        strat_b.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat_b.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+        let score_b = strat_b.scores.get(&btc).copied().flatten();
+
+        assert!(
+            score_a.is_some(),
+            "R-BR.5: strategy with basis at ts=0 must produce a score at ts=0"
+        );
+        assert!(
+            score_b.is_none(),
+            "R-BR.5 NO-LOOK-AHEAD VIOLATION: strategy with basis only at ts=1 \
+             must produce None score at ts=0 (future basis must not leak). \
+             Got: {score_b:?}"
         );
     }
 

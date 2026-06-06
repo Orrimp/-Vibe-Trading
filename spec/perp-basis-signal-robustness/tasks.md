@@ -48,15 +48,19 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
 
 ## Stage 1 — Basis-data foundation
 
-### M-DEV-0 — anchor-baseline floor (the pre-flight)
+### M-DEV-0 — anchor-baseline floor (the pre-flight) [x]
 
 - **Goal:** confirm the 99-anchor floor BEFORE any change, so a later 99/99 regression is
   attributable to the seam under test.
 - **Gate:** `bash scripts/verify_anchors.sh` → **99/99 PASS**. Record the count.
 - **No files changed.** (If the working tree is dirty from a prior feature, note it — the
   basis seams must not perturb it.)
+- **DONE (2026-06-06):** Pre-flight confirmed 99/99 PASS (baseline recorded).
+  - File:line: no files changed (pre-flight only)
+  - Test command: `bash scripts/verify_anchors.sh`
+  - Output: `ANCHORS PASS  (99 / 99)`
 
-### M-DEV-1 — the basis loader (`basis_data.rs`, a near-mirror of `funding_data.rs`)
+### M-DEV-1 — the basis loader (`basis_data.rs`, a near-mirror of `funding_data.rs`) [x]
 
 - **File (new):** `crates/backtest/src/basis_data.rs`, `#[cfg(feature = "realdata")]`,
   registered in `crates/backtest/src/lib.rs` (mirror the `funding_data` mod declaration).
@@ -80,8 +84,14 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
   10-symbol × 2023 tree loads ~8,760 rows/symbol and the SHA matches the locked constant.
 - **Gate:** `cargo test -p backtest --features "candle realdata" --lib basis_data` →
   all green; `bash scripts/verify_anchors.sh` → **99/99** (new module is off-path).
+- **DONE (2026-06-06):**
+  - File:line: `crates/backtest/src/basis_data.rs:1` (new file, 675 lines);
+    `crates/backtest/src/lib.rs:57` (module registration)
+  - Test command: `cargo test -p backtest --features "candle realdata" --lib basis_data`
+  - Output: `test result: ok. 11 passed; 0 failed; 1 ignored` (1 ignored = real-data test)
+  - Anchors: `ANCHORS PASS  (99 / 99)`
 
-### M-DEV-2 — the as-of join (`basis_as_of` + `build_basis_at_return`) — the basis-loader anchor-neutrality gate
+### M-DEV-2 — the as-of join (`basis_as_of` + `build_basis_at_return`) — the basis-loader anchor-neutrality gate [x]
 
 - **File:** `crates/backtest/src/basis_data.rs` (append, mirror `funding_data.rs:351-435`).
 - **`basis_as_of(basis: &[(i64, Decimal)], bar_open_ts_ms: &[i64]) -> Vec<Option<Decimal>>`**
@@ -99,12 +109,18 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
   warm-up→None, empty→all-None, `build_basis_at_return` aligns to `T-1`.
 - **Gate:** `cargo test -p backtest --features "candle realdata" --lib basis_data` → green;
   `bash scripts/verify_anchors.sh` → **99/99**.
+- **DONE (2026-06-06):**
+  - File:line: `crates/backtest/src/basis_data.rs:357` (`basis_as_of`),
+    `crates/backtest/src/basis_data.rs:411` (`build_basis_at_return`)
+  - Test command: `cargo test -p backtest --features "candle realdata" --lib basis_data`
+  - Output: `test result: ok. 11 passed; 0 failed; 1 ignored` (includes `no_look_ahead_falsifier`)
+  - Anchors: `ANCHORS PASS  (99 / 99)`
 
 ---
 
 ## Stage 2 — The signal (`ScoreSource::BasisReversal`)
 
-### M-DEV-3 — the `BasisReversal` ScoreSource arm + the SIGN + the sign-assertion falsifier
+### M-DEV-3 — the `BasisReversal` ScoreSource arm + the SIGN + the sign-assertion falsifier [x]
 
 - **File:** `crates/strategy/src/cross_sectional/config.rs` — add `BasisReversal` to the
   `ScoreSource` enum (`config.rs:48`, a 3rd variant after `VolAdjustedReturn` (default) +
@@ -148,6 +164,20 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
   hash tests pass); `cargo test -p strategy` → no regression in the existing
   momentum/MR/carry/TS tests; `bash scripts/verify_anchors.sh` → **99/99** (config-only
   additive change — the enum default is unchanged).
+- **DONE (2026-06-06):**
+  - File:line: `crates/strategy/src/cross_sectional/config.rs:48` (BasisReversal variant);
+    `crates/strategy/src/cross_sectional/momentum.rs:277` (`basis_reversal_score`);
+    `crates/strategy/src/cross_sectional/momentum.rs:183` (`all_warmed` BasisReversal arm);
+    `crates/strategy/src/cross_sectional/momentum.rs:408` (`on_bar` BasisReversal arm)
+  - Test command (sign-assertion): `cargo test -p strategy --lib cross_sectional::momentum::tests::r_br2`
+  - Output: `test result: ok. 2 passed; 0 failed`
+    (`r_br2_sign_assertion_longs_low_basis_name` + `r_br2_basis_reversal_score_low_basis_outscores_high_basis`)
+  - Test command (no-look-ahead): `cargo test -p strategy --lib cross_sectional::momentum::tests::r_br5`
+  - Output: `test result: ok. 1 passed; 0 failed` (`r_br5_no_look_ahead_strategy_level`)
+  - Test command (config hash): `cargo test -p strategy --lib cross_sectional::config::tests::m_dev3`
+  - Output: `test result: ok. 3 passed; 0 failed` (basis_reversal parse + 2 hash-differs tests)
+  - Full strategy suite: `cargo test -p strategy --lib` → `test result: ok. 156 passed; 0 failed`
+  - Anchors: `ANCHORS PASS  (99 / 99)`
 
 ---
 

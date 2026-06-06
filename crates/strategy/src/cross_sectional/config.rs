@@ -40,9 +40,17 @@ pub enum Direction {
 /// - `FundingCarry`: trailing-mean funding rate, negated (R-CARRY.2 sign convention).
 ///   `carry_score = −trailing_mean(funding)` so the most-negative-funding name floats
 ///   to the TOP of the unchanged descending `top_k_long` — the paid side earns.
+/// - `BasisReversal`: trailing-mean basis, negated (R-BR.2 sign convention — LOAD-BEARING).
+///   `basis_reversal_score = −trailing_mean(basis)` so the **lowest-basis** name floats
+///   to the TOP of the unchanged descending `top_k_long` — the reversal-favored leg
+///   (cheapest perp premium → outperforms). The minus is in ONE place (D-BR.1); a sign
+///   flip turns the arm into a basis-MOMENTUM payer → RED on the sign-assertion falsifier.
 ///
-/// **Anchor-neutrality:** `score_source` defaults `VolAdjustedReturn`; the 87 existing
-/// momentum/MR anchors are byte-identical. The carry path is purely opt-in.
+/// **Anchor-neutrality:** `score_source` defaults `VolAdjustedReturn`; the 99 existing
+/// momentum/MR/carry/TS/horizon anchors are byte-identical. Both carry and basis paths
+/// are purely opt-in. The `BasisReversal` arm reuses the `funding_by_symbol` channel as
+/// a generic sidecar carrier (D-BR.3) — the basis rides the same injection seam but is
+/// consumed ONLY by `basis_reversal_score`, NEVER by the `run_path` accrual.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ScoreSource {
@@ -51,6 +59,18 @@ pub enum ScoreSource {
     VolAdjustedReturn,
     /// Funding-carry signal: −trailing_mean(funding) over L settlements (R-CARRY.1/2).
     FundingCarry,
+    /// Basis-reversal signal: −trailing_mean(basis) over L bars (R-BR.1/2 — LOAD-BEARING SIGN).
+    ///
+    /// The perp-spot basis `(markPrice − indexPrice)/indexPrice` is used as a cross-sectional
+    /// reversal signal. The SIGN (the leading minus) is the load-bearing convention (D-BR.1):
+    /// - HIGH basis → HIGH crowd → subsequently UNDERPERFORMS → should be UNDERWEIGHTED.
+    /// - LOW basis → LOW crowd → subsequently OUTPERFORMS → should be OVERWEIGHTED.
+    /// - `−mean` makes the LOW-basis name score HIGHEST → it floats to the top of
+    ///   the unchanged descending `top_k_long` → the arm longs the reversal-favored leg.
+    ///
+    /// The name `BasisReversal` (not `Basis`) documents the sign: there is no
+    /// sign-neutral "basis" arm to confuse it with.
+    BasisReversal,
 }
 
 // ── Selection mode (D-TSM.1, M-DEV-1) ─────────────────────────────────────────
@@ -593,6 +613,89 @@ score_source = "funding_carry"
             cfg.score_source,
             ScoreSource::FundingCarry,
             "`score_source = \"funding_carry\"` must parse to ScoreSource::FundingCarry"
+        );
+    }
+
+    /// M-DEV-3 (a): `score_source = "basis_reversal"` parses correctly.
+    #[test]
+    fn m_dev3_score_source_basis_reversal_parses() {
+        let toml = r#"
+id    = "test_basis"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+score_source = "basis_reversal"
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.score_source,
+            ScoreSource::BasisReversal,
+            "`score_source = \"basis_reversal\"` must parse to ScoreSource::BasisReversal"
+        );
+    }
+
+    /// M-DEV-3 (b): Config hash differs between VolAdjustedReturn and BasisReversal
+    /// at identical θ (K3 — basis-vs-momentum hash discriminator).
+    #[test]
+    fn m_dev3_config_hash_differs_by_basis_reversal() {
+        use super::super::momentum::MomentumStrategy;
+        use smol_str::SmolStr;
+
+        let toml_base = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 60
+rebalance_minutes = 60
+k_long = 2
+"#;
+        let mut cfg_var = CrossSectionalMomentumConfig::from_str(toml_base).unwrap();
+        let mut cfg_basis = cfg_var.clone();
+        cfg_basis.score_source = ScoreSource::BasisReversal;
+
+        cfg_var.id = SmolStr::new("test_hash");
+        cfg_basis.id = SmolStr::new("test_hash");
+
+        let strat_var = MomentumStrategy::from_config(cfg_var, SmolStr::new("test"));
+        let strat_basis = MomentumStrategy::from_config(cfg_basis, SmolStr::new("test"));
+
+        assert_ne!(
+            strat_var.hash, strat_basis.hash,
+            "VolAdjustedReturn and BasisReversal configs at identical θ MUST produce different hashes (K3)"
+        );
+    }
+
+    /// M-DEV-3 (c): Config hash differs between FundingCarry and BasisReversal
+    /// at identical θ (K3 — carry-vs-basis hash discriminator).
+    #[test]
+    fn m_dev3_config_hash_differs_carry_vs_basis_reversal() {
+        use super::super::momentum::MomentumStrategy;
+        use smol_str::SmolStr;
+
+        let toml_base = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 60
+rebalance_minutes = 60
+k_long = 2
+"#;
+        let mut cfg_carry = CrossSectionalMomentumConfig::from_str(toml_base).unwrap();
+        let mut cfg_basis = cfg_carry.clone();
+        cfg_carry.score_source = ScoreSource::FundingCarry;
+        cfg_basis.score_source = ScoreSource::BasisReversal;
+
+        cfg_carry.id = SmolStr::new("test_hash");
+        cfg_basis.id = SmolStr::new("test_hash");
+
+        let strat_carry = MomentumStrategy::from_config(cfg_carry, SmolStr::new("test"));
+        let strat_basis = MomentumStrategy::from_config(cfg_basis, SmolStr::new("test"));
+
+        assert_ne!(
+            strat_carry.hash, strat_basis.hash,
+            "FundingCarry and BasisReversal configs at identical θ MUST produce different hashes (K3)"
         );
     }
 
