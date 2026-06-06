@@ -183,7 +183,7 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
 
 ## Stage 3 — The fee-sweep axis + the sweep-bin wiring
 
-### M-DEV-4 — the `--taker-fee-bps` / `--slippage-bps` axis (D-BR.LOAD) — the fee-axis anchor-neutrality gate
+### M-DEV-4 — the `--taker-fee-bps` / `--slippage-bps` axis (D-BR.LOAD) — the fee-axis anchor-neutrality gate [x]
 
 - **File:** `crates/backtest/src/bin/param_robustness_sweep.rs`.
   - **`Args`:** add `--taker-fee-bps <u32>` (**default `4`**) + `--slippage-bps <u32>`
@@ -209,7 +209,7 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
   defaults reproduce the literals AND the body row is gated off for non-basis runs — both
   neutrality conditions).
 
-### M-DEV-5 — `SweepScoreSource::BasisReversal` + `BASIS_TIER1_GRID` + `GridKind::BasisTier1` + the basis path-gen
+### M-DEV-5 — `SweepScoreSource::BasisReversal` + `BASIS_TIER1_GRID` + `GridKind::BasisTier1` + the basis path-gen [x]
 
 - **File:** `crates/backtest/src/bin/param_robustness_sweep.rs`.
   - **`SweepScoreSource`** (`param_robustness_sweep.rs:1089`): add `BasisReversal`
@@ -258,7 +258,7 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
 
 ## Stage 4 — Day-1 falsifiers (the integration gate, BEFORE the anchored run)
 
-### M-DEV-6 — the integration-level day-1 falsifiers (`basis_divergence_e2e.rs`)
+### M-DEV-6 — the integration-level day-1 falsifiers (`basis_divergence_e2e.rs`) [x]
 
 - **File (new):** `crates/backtest/tests/basis_divergence_e2e.rs` (mirror
   `crates/backtest/tests/carry_divergence_e2e.rs`). Each falsifier GREEN-as-written AND
@@ -293,7 +293,7 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
   → all green; each RED-on-revert verified by the developer (revert the guard locally, see
   RED, restore); `bash scripts/verify_anchors.sh` → **99/99**.
 
-### M-DEV-7 — the two-run byte-identity falsifier (R-BR.7 #6)
+### M-DEV-7 — the two-run byte-identity falsifier (R-BR.7 #6) [x]
 
 - **In `basis_divergence_e2e.rs`** (or the sweep e2e): `basis_two_run_byte_identity` — run
   the small-N basis sweep twice at the same `ensemble_seed`; assert identical
@@ -308,7 +308,7 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
 
 ## Stage 5 — The anchored fee × grid × regime run (the deliverable)
 
-### M-DEV-8 — the 8 anchored basis-reversal θ × fee surfaces (2023 + 2024 × {0,2,5,10} bps)
+### M-DEV-8 — the 8 anchored basis-reversal θ × fee surfaces (2023 + 2024 × {0,2,5,10} bps) [x]
 
 - **Pre-flight wall-clock gate (the C3 lesson — MANDATORY).** Re-confirm the per-path cost
   on the canonical box at the N=3 smoke. Expected ~0.094 s/path (the carry M-DEV-7
@@ -343,7 +343,7 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
   developer** — the tester locks them at M-TEST PASS.
 - **Files written:** `spec/perp-basis-signal-robustness/reports/robustness-*-v1-basis-reversal-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy.md` (up to 8).
 
-### M-DEV-9 — the additive `verify_anchors.sh` handler (D-BR.9)
+### M-DEV-9 — the additive `verify_anchors.sh` handler (D-BR.9) [x]
 
 - **File:** `scripts/verify_anchors.sh`. Add an `elif [[ "$version" ==
   "perp-basis-signal-robustness" ]]` branch **after** the `horizon-retest-robustness` branch
@@ -355,7 +355,7 @@ bash scripts/verify_anchors.sh            # 99/99 after every additive seam
 
 ---
 
-## M-TEST — the tester's gate (handoff to tester after M-DEV-8/9)
+## M-TEST — the tester's gate (handoff to tester after M-DEV-8/9) [x]
 
 The tester (not the developer) owns these. Listed here so the developer leaves the build in
 a tester-ready state:

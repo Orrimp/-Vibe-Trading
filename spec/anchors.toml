@@ -886,3 +886,83 @@ sha256   = "565e56ccfa01beb748de381b7a7e33b051882ca02a0b009b1367726f8849c675"
 scenario = "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
 sha256   = "baf650bdb5db1d0a9f2aaa8549ad05b9f5f41e2c51c60e54b6046c33c2d773d6"
+
+# Anchor #100 — Basis-Reversal 0bps taker fee, 2023-FY (gross — no fee bleed)
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=0bps, slippage=2bps.
+# g=2 (best p50): p50=+0.049, p5=-0.043 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
+# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "1cd5abbb5c4325a63e1c358c746f7e7b70481ab0429dbf78ad89a1296cebdc87"
+
+# Anchor #101 — Basis-Reversal 0bps taker fee, 2024-FY (tail-negative regime, gross)
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=0bps, slippage=2bps.
+# g=2 (best p50): p50=+0.051, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
+# Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "e8552e4557197caf42f7d479c7c55862eb3e8c99dcfd41f5fe5c09b0eaed6562"
+
+# Anchor #102 — Basis-Reversal 2bps taker fee, 2023-FY
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=2bps, slippage=2bps.
+# g=2 (best p50): p50=+0.048, p5=-0.047 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE.
+# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "9ed405f54715fc97573c2f31c27c717d8d032dbc66ad4287eada727d2ca37d6f"
+
+# Anchor #103 — Basis-Reversal 2bps taker fee, 2024-FY (tail-negative regime)
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=2bps, slippage=2bps.
+# g=2 (best p50): p50=+0.050, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE.
+# Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "87ba979816fc0b5dc63cede6ebf42cd979bf868faf901f8346dcde61d6a98b42"
+
+# Anchor #104 — Basis-Reversal 5bps taker fee, 2023-FY (realistic fee level)
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=5bps, slippage=2bps.
+# g=2 (best p50): p50=+0.047, p5=-0.064 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
+# Wall-clock: 28.2s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "a29d9f954e8c698da7fa233f2302412fae8f9941c19711b933e24d755afc8b06"
+
+# Anchor #105 — Basis-Reversal 5bps taker fee, 2024-FY (realistic fee level, tail-negative regime)
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=5bps, slippage=2bps.
+# g=2 (best p50): p50=+0.049, p5=-0.011 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
+# Wall-clock: 28.3s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "dfe12905e0f41d0275ad0f8672ad1f2eb59eddc5696747a93aa0304098018c97"
+
+# Anchor #106 — Basis-Reversal 10bps taker fee, 2023-FY (high-fee stress)
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=10bps, slippage=2bps.
+# g=2 (best p50): p50=+0.044, p5=-0.075 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at high fee.
+# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "c1ae40887dfcce853f55abeff3bf8de8a5d743258a3d0d6d7a46f69dc289c3ef"
+
+# Anchor #107 — Basis-Reversal 10bps taker fee, 2024-FY (high-fee stress, tail-negative regime)
+# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=10bps, slippage=2bps.
+# g=2 (best p50): p50=+0.047, p5=-0.015 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at high fee.
+# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+[[anchors]]
+scenario = "v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-signal-robustness"
+sha256   = "ab4b53a90ed5d9d1533b9445dcbeb521cae27fd260efa55d016556cacafb847d"
