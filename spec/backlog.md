@@ -2464,6 +2464,48 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Strategy
 
+<!-- updated 2026-06-06 (analyst, basis-reversal vehicle-vs-signal fork) —
+     QUEUED `perp-basis-mn-spread` v0.2.0 (the RECOMMENDED next strategic bet),
+     awaiting operator greenlight of the A-vs-B fork. -->
+
+- **perp-basis-mn-spread v0.2.0 — market-neutral long/short basis spread**
+  (the RECOMMENDED next bet; ~5-8 dev-days; trace `REQ-PERP-BASIS-MN-SPREAD-001`
+  state `proposed`; brief at `spec/perp-basis-mn-spread/feature.md`). **Follow-on
+  to `perp-basis-signal-robustness` v0.1.0** (closed PASS / FAMILY-UNIFORM-FRAGILE
+  at all fees incl. 0bps gross). The adjudication
+  (`spec/dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md`) found the
+  long-only verdict is a **VEHICLE verdict, not a signal verdict**: the long-only
+  arm carries full market beta + captures only the long-low-basis leg, benchmarked
+  against BH +1.74 (35.7× gap); the fee-sweep **falsified fee-bleed** (p50 moves
+  ~0.002 Sharpe across the {0,2,5,10}bps ladder — the killer is BETA, not fees). The
+  market-neutral spread strips beta (null → ≈0, removing the 35× hurdle) + captures
+  BOTH legs (the spike's full −0.10 IC). Runs THREE arms on the same paths
+  (basis-spread / funding-spread / basis⊥funding) to resolve the **funding-confound**
+  (+0.47/+0.66 overlap — is basis the funding mirror, or distinct alpha?). The
+  short-leg funding-cost model **already exists** (`montecarlo.rs:325-363`, only line
+  350's `continue` skip gates it); the bulk + dominant risk is the short-side engine
+  in `run_path` (the FIRST run_path touch since v0.1.0 → the 107-anchor neutrality
+  re-proof when `k_short=0`). ONE frozen-§0 change: BH control → dollar-neutral ≈0
+  null (a CORRECTION, not a goalpost move). Pre-registered H0/H1 + k1/k2/k3 kill-
+  criteria + 5 framed Qs (Q-MN-1..5) for the architect M-T1. **Recommended (A) over
+  (B) on-chain** (durable-over-quick): tests a PROVEN-LIVE signal on HOURLY data
+  already banked vs an UNMEASURED hypothesis on DAILY data (~730 pts/yr) not yet
+  banked, at the same ~5-8d cost; resolves a standing question; de-risks on-chain
+  either way. **If-budget-tightens:** Option A-lite spike ({0,5}bps × {2023,2024} = 4
+  surfaces, gate the full build on clearing the ≈0 null). On-chain is the
+  deferred-not-abandoned next domain IFF the spread is also FRAGILE. **Queued, not
+  promoted** — awaiting operator greenlight of the A-vs-B fork. HANDOFF → architect
+  M-T1 on greenlight.
+
+  <!-- ON-CHAIN (the deferred fork option B): the #2-ranked orthogonal domain
+       (`spec/dev-notes/new-data-domain-scoping-2026-06-05.md` § 3 domain B) —
+       exchange net-flows / stablecoin supply / active addresses; FREE-ish, DAILY,
+       full-history (DeFiLlama no-key + Glassnode/CryptoQuant free-tier daily+delayed);
+       ~5-8 dev-days (new fetcher + PIT hygiene + daily adapter). NOT queued as the
+       next bet — the analyst recommends (A) market-neutral FIRST (tests the
+       proven-live signal in its correct vehicle; on-chain stays the pre-registered
+       next domain IFF (A) is FRAGILE). Re-surface on an (A) FRAGILE verdict. -->
+
 <!-- Monte-Carlo robustness lane — follow-on Queue (opened 2026-05-30, analyst M0).
      The first slice (C1 `monte-carlo-bootstrap-path-generator` + C2
      `strategy-robustness-harness`) is in Active. These three are the
