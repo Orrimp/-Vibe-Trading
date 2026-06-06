@@ -1,8 +1,8 @@
 ---
 slug: perp-basis-signal-robustness
 version: 0.1.0
-status: proposed
-owner: analyst → architect
+status: arch-done
+owner: architect → developer
 priority: P1
 updated: 2026-06-05
 ---
@@ -459,14 +459,425 @@ arm has any cashflow component or is purely a selection tilt — Q-BR-1.)
 ---
 
 ## Design
-_Architect M-T1 fills this. Do NOT author above this line as the analyst._
+
+_Architect M-T1 (2026-06-05). All six OQs (Q-BR-1..6) resolved + justified below.
+Carry (`carry-strategy`) is the line-for-line precedent — the basis arm is the
+**cheaper sibling** (no funding-style cashflow; native-1h basis = no cadence
+forward-fill). The headline new work is the **fee-sweep axis** (D-BR.LOAD), modeled
+on the proven `--horizon` axis (D-HR.5 — a CLI-driven, body-hashed, namespace-routing
+parameter). The 99 anchors hold byte-identical by construction (D-BR.8). The SIGN is
+load-bearing and lives in ONE place (D-BR.1). ADR-0051 § D6.9 amendment registers the
+basis namespace + the fee axis._
+
+> **True-size re-assessment (the M-T1 mandate).** The analyst's "cheaper than carry's
+> ~4.5–7.5 d" prior **HOLDS and tightens to ~3–5 d**. Three of carry's sub-problems
+> shrink or vanish: (B) the 8h→1h forward-fill is an **identity** (basis is native 1h);
+> (D) the funding-cashflow accrual **does not transfer** (basis is a selection signal —
+> Q-BR-1); (C) the bootstrap co-resample is **reused, not rebuilt** (Q-BR-3 — the basis
+> rides the existing `funding_by_symbol` channel). The genuinely-new work is the basis
+> loader (D-BR.3, a near-mirror of `funding_data.rs`) + the **fee-sweep axis** (D-BR.LOAD,
+> the one new parameter). No intractability; PROCEED to build (gated on operator go).
+
+### D-BR.0 — Q-BR-2 RESOLVED: ship framing (a) long-only basis-reversal tilt (v0.1.0)
+
+**RATIFIED: framing (a) — long-only basis-reversal tilt.** v0.1.0 longs the
+**lowest-basis** names (the reversal-favored leg: cheapest perp premium → outperforms),
+sized by the unchanged `top_k_long`. The market-neutral long-low/short-high reversal
+(framing (b)) is deferred to v0.2.0 IFF (a) shows a non-FRAGILE, fee-surviving cell
+worth the short-side engine. This is the exact transfer of carry's D-CARRY.0 ruling,
+for the same three reasons:
+
+1. **Reuses the solvency-guarded long-only engine verbatim.** `run_path`
+   (`montecarlo.rs:92`) only ever opens `Side::Buy` (line 204) under the Bug-B
+   solvency cap; `top_k_long` (`selector.rs`) is exactly the ranked top-K the basis arm
+   needs. The config loader enforces `k_short = 0` (`config.rs:288`). Framing (b)
+   requires a new short-sizing path + short-solvency accounting + `k_short > 0` un-gated
+   — a materially larger build on an **unvalidated** premise.
+2. **Apples-to-apples with the 99 anchors + the four retired families + carry #88/#89.**
+   All families run the identical long-only engine on the identical resampled paths; any
+   difference is the SIGNAL, not the engine. A long/short engine breaks that comparison.
+3. **The fee verdict is the gating risk — (a) answers it cleanly.** For a REVERSAL arm,
+   if (a) dies on fees (the likely outcome the spike flagged), (b) — which rebalances
+   BOTH legs and doubles the turnover-exposed surface — almost certainly dies too, so the
+   short-side engine is never owed. Building it first would be durable infrastructure on
+   an unvalidated premise — the opposite of durable.
+
+**Honest caveat carried into the verdict (NOT suppressed):** framing (a) captures only
+the **long-low-basis leg** of the cross-sectional reversal spread; the spike's full
+−0.10 IC lives in the full long/short cross-section. The verdict must be read as *"does
+the long-low-basis tilt beat BH net of fees,"* NOT *"does the full reversal spread
+work."* This is the deliberate apples-to-apples / fee-verdict-first scope (Assumption 2).
+
+### D-BR.1 — Q-BR-1 RESOLVED: a single `ScoreSource::BasisReversal` with the SIGN baked in (NO cashflow)
+
+**RATIFIED: option (ii) — add ONE new `ScoreSource::BasisReversal` arm to the existing
+`ScoreSource` enum** (`crates/strategy/src/cross_sectional/config.rs:48`, sibling to
+`VolAdjustedReturn` (default) and `FundingCarry`), with the load-bearing minus baked
+**into the score** (`basis_score = −trailing_mean(basis)`). This is the carry pattern
+exactly (D-CARRY.1): the reversal sign lives in **one auditable place**, guarded by the
+day-1 sign-assertion falsifier (D-BR.7 #2). Option (i) — `ScoreSource::Basis` +
+`Direction::Reversion` — is REJECTED:
+
+| Option | Decision | Why |
+|---|---|---|
+| (i) `ScoreSource::Basis` + `Direction::Reversion` to express the sign | **REJECTED** | Splits the load-bearing sign across **two** fields (the score source AND the direction enum). The reversal is then `score = +trailing_mean(basis)` then `Direction::Reversion` negates it — two places to get wrong, two places to audit. A reader must hold both in their head to know which names the arm holds. Carry already proved the "sign-in-the-score" idiom is the safer one. |
+| (ii) single `ScoreSource::BasisReversal`, `−trailing_mean(basis)` baked in, `Direction::Momentum` (identity) | **RATIFIED** | The minus is in ONE place (`basis_reversal_score`, the carry-twin of `carry_score`). The lowest-basis name floats to the TOP of the unchanged descending `top_k_long`; a long-tilt on it IS the reversal. The name `BasisReversal` (not `Basis`) makes the sign self-documenting — there is no sign-neutral "basis" arm to confuse it with. Guarded by the sign-assertion falsifier (RED on a flip → a basis-MOMENTUM payer). |
+
+**Cashflow: NONE. Carry's Sub-problem D does NOT transfer (R-BR.9 confirmed).** The
+basis is a **selection/sizing signal**, not a cash settlement. There is no "basis
+payment" that hits the equity curve — the arm earns (or loses) purely by holding the
+**price** of the low-basis names it selects. Mechanically: the funding-cashflow accrual
+block in `run_path` (`montecarlo.rs:307-359`, gated on `funding_override.is_some()`) is
+**NOT entered** for the basis arm, because the basis arm threads its sidecar **only to
+the strategy's score** (via the `funding_map` injection seam — see D-BR.3), and leaves
+the `run_path` accrual path untouched. Concretely:
+
+- The basis sidecar IS injected into the strategy's `funding_map` (reused as the basis
+  lookup — D-BR.3) so `basis_reversal_score` can read it.
+- The basis sidecar is **NOT** passed as `TcnScenarioInput.funding_override` to
+  `run_path` for accrual. The accrual gate stays `None` for the basis arm → the
+  `cash += notional × (−rate)` block is never entered → the basis arm's P&L is pure
+  price-of-selection, exactly as intended for a selection signal.
+
+> **This is the one place the basis design diverges from a literal carry clone.** Carry
+> passes its sidecar to BOTH the score AND the accrual; the basis arm passes it ONLY to
+> the score. The developer must wire the strategy-side injection **without** wiring the
+> `run_path` accrual side. The D-BR.7 #4 basis-non-no-op falsifier (force the basis to a
+> constant → selection collapses to baseline) is the guard that the score is load-bearing;
+> the absence of a cashflow accrual is the design, not a bug — there is no
+> "basis-cashflow non-no-op" test because there is no basis cashflow.
+
+**The score (R-BR.1).** `basis_reversal_score(s, t) = −mean( basis[s, τ] for τ in the
+last L bars STRICTLY before t )`, computed from the injected basis lookup keyed by
+`(Symbol, open_ts)` on the synthetic bar grid. It is the basis twin of `carry_score`
+(`momentum.rs:305`) — a trailing ring over the sidecar series — EXCEPT the ring counts
+**price bars** (the basis is native 1h), not 8h settlements, so the ring is a plain
+`L`-bar window. The minus is the R-BR.2 sign. Returns `None` until the ring holds ≥ L
+bars (warm-up, excluded from the rank — identical to a warming-up momentum score).
+
+### D-BR.LOAD — Q-BR-4 (the load-bearing half): the FEE-SWEEP mechanism = a `--taker-fee-bps` axis (one surface per fee level)
+
+**RATIFIED: mechanism (i) — a swept `--taker-fee-bps` axis producing ONE anchored
+surface per fee level**, modeled line-for-line on the proven `--horizon` axis (D-HR.5):
+a CLI flag, defaulted to the legacy value (anchor-neutral), threaded into the per-path
+`TcnScenarioInput`, and rendered as a **hashed body field** gated to non-default values.
+Mechanism (ii) — a fixed pin + a separate best-cell fee-sensitivity report — is REJECTED
+as a downgrade for a reversal arm, where the fee axis IS the verdict axis (below).
+
+**Why (i) over (ii).** For a reversal arm, the fee-sweep is not a sensitivity sidebar —
+it is the dimension along which the §-0 verdict is read (R-BR.LOAD). Reading the full
+surface at each fee level (i) lets the verdict say *"the family survives to N bps"* with
+the SAME anti-cherry-pick discipline (FP-C3.5, full surface, no argmax crown) applied at
+every fee. Mechanism (ii) reads the fee axis at only the **best-θ** cell — which is
+exactly the argmax the frozen § 0 rule forbids crowning, and would smuggle a cherry-pick
+into the load-bearing gate. (i) is the durable, anti-cherry-pick-complete choice.
+
+**The mechanism (the seam, precise).** The fee is hardcoded today at
+`param_robustness_sweep.rs:2409-2410` inside `run_one_path_with_config`
+(`slippage_bps: 2, taker_fee_bps: 4`). The change is additive:
+
+1. **New CLI flag** `--taker-fee-bps <u32>` on `Args`, **default `4`** (the legacy
+   taker value). `--slippage-bps <u32>` is ALSO added, **default `2`** (legacy slippage),
+   so the fee point is fully specified; the fee LADDER sweeps `taker_fee_bps` (slippage
+   held at its default unless the operator overrides). Mirrors `--horizon` defaulting to
+   `1h`.
+2. **Thread it** into `run_one_path_with_config` (a new `taker_fee_bps: u32` /
+   `slippage_bps: u32` param, replacing the two hardcoded literals at 2409-2410). For
+   momentum/MR/carry/TS/horizon runs the caller passes the defaults `2`/`4` → the
+   `MatchConfig` is byte-identical → **the 99 anchors are byte-unchanged** (the literals
+   `slippage_bps: 2, taker_fee_bps: 4` become `args.slippage_bps`/`args.taker_fee_bps`
+   which default to `2`/`4`).
+3. **Render it as a hashed body field, GATED to the basis arm + non-default fees.** Add a
+   `| taker_fee_bps | {n} |` (and `| slippage_bps |`) row to the report body **only when
+   `score_source == BasisReversal`** (the same gating idiom as the horizon row, which
+   renders only when `is_horizon_run`). This keeps every existing 1h/non-basis body-SHA
+   byte-identical while making the fee level part of the basis anchor's hashed identity
+   (so the {0,2,5,10}-bps surfaces are four DISTINCT anchors, not four files that collide
+   on the same SHA).
+
+> **Anchor-neutrality proof for the fee axis.** The 99 existing anchors are produced by
+> runs that pass `taker_fee_bps = 4, slippage_bps = 2` (the defaults) and are NOT the
+> basis arm, so (a) their `MatchConfig` is the same literal as before, and (b) the new
+> fee-body-row is gated `score_source == BasisReversal` → never rendered for them. Both
+> the engine input AND the report body are byte-identical for every non-basis run. This
+> is the identical discipline the `--horizon` axis used to add a body row without
+> touching the 91 anchors it inherited.
+
+### D-BR.2-LOCKED — Q-BR-4 (the grid half): the basis θ × fee surface — LOCKED
+
+**LOCKED** (per the MR/carry/TS/horizon precedent — the grid + N + fee ladder are hashed
+body fields, K3; changing any = a different surface = a different SHA). Held constant
+across every cell: `score_source = basis_reversal`, `direction = momentum` (identity; the
+sign lives in the score), `selection_mode = cross_sectional_top_k`, `exposure_cap = 0.50`,
+`size = equal_weight`, `k_short = 0`, the 10-symbol universe, `ensemble_seed = 0xC0FFEE`,
+`fill_seed = 0xC0FFEE`, generator = `block-bootstrap-real`, `bootstrap_mode =
+shared-index`, revisions `3a8b96c4…` (OHLCV) + `aa72409a…` (basis), `N = 200`. **No
+`vol_floor` cell** — the basis score has no vol denominator (the carry Q-CARRY-4 ruling
+transfers: raw trailing-mean basis, no vol-normalization in v0.1.0); `vol_floor` stays at
+its config default and is inert.
+
+**The θ-axis (signal lookback) — LOCKED to the spike's signal-bearing band** (BS.2a; the
+analyst's `{24, 60, 168}` ratified unchanged; **L=720 SKIPPED** as noise: n=11,
+sign-flips across years). The lookback unit is **price BARS** (the basis is native 1h, so
+1 lookback unit = 1 hour), passed literally as the strategy's `lookback_minutes` field
+(reinterpreted as a bar count, exactly as carry reinterprets it as settlements):
+
+| g | lookback L (bars) | K | drift | rebalance | role / hypothesis | turnover |
+|---|---|---|---|---|---|---|
+| 0 | 60 (2.5d) | 3 | 0.10 | 8h (480m) | **baseline basis θ\*** — the IC peak (−0.099/−0.081), low-churn cadence | low |
+| 1 | 24 (1d) | 3 | 0.10 | 8h (480m) | short lookback — faster, more fee-exposed (IC −0.031/−0.022) | low-mid |
+| 2 | 168 (1wk) | 3 | 0.10 | 8h (480m) | long lookback — IC peak / lowest-turnover corner (−0.112/−0.069) | low |
+| 3 | 60 (2.5d) | 5 | 0.10 | 24h (1440m) | **deliberately-slow rebalance + wide K** (lowest-churn corner — the reversal arm's best fee shot) | **lowest** |
+| 4 | 60 (2.5d) | 1 | 0.10 | 8h (480m) | narrow selection — top-1 lowest-basis name | low |
+| 5 | 24 (1d) | 5 | 0.10 | 8h (480m) | shortest lookback + wide K — **highest-churn extreme** (the reversal fee-trap stress) | mid |
+
+> **Why these cells (the reversal-fee diagnostic thesis).** A reversal arm's fee exposure
+> is dominated by **turnover**, so the cadence/K axis is the most diagnostic. g0 is the
+> IC-peak baseline at the natural low-churn cadence; g3 is the lowest-churn corner (the
+> arm's best structural shot at surviving fees); g5 is the highest-churn extreme (the
+> fee-trap stress). g1/g2 span the lookback (faster-vs-persistent). g4 narrows selection.
+> The **rebalance default = 8h (480m)** mirrors carry's reasoning (a wide cadence reduces
+> turnover bleed), with g3 deliberately slowed to 24h — the reversal arm's analogue of
+> carry's lowest-churn corner. **The rebalance cadence is the basis arm's primary fee
+> lever, and the grid spans it explicitly.**
+
+**The fee-axis — the load-bearing gate (R-BR.LOAD):** taker fee ∈ **{0, 2, 5, 10} bps**
+(LOCKED). `0` = the gross-edge ceiling (does the signal survive AT ALL with zero
+friction?); `2` = a low-fee reference; `5` = the realistic Binance taker decision point
+(the verdict fee); `10` = the punitive stress. The {0, 5} read is the R-BR.LOAD-acceptance
+minimum; all four are run. Slippage held at the default `2` bps across the ladder (the fee
+LADDER sweeps the taker leg only — the analyst's `taker_fee_bps` axis).
+
+**N = 200/cell** (the carry/MR/TS/horizon tractable shape; the developer re-validates the
+wall-clock before locking, per the C3 lesson — see D-BR.WALLCLOCK).
+
+### D-BR.WALLCLOCK — the |L|×|K|×|fee|×N×regime budget is TRACTABLE (the C3-lesson gate)
+
+The grid is a **6-cell θ-grid** (the table above; L×K×cadence are folded into the 6
+cells, NOT a full cross-product) **× 4 fee levels × 2 regimes (2023, 2024)**. The fee
+axis multiplies the SURFACE count, NOT the per-surface cell count — each fee level is a
+separate sweep invocation that re-runs the 6×200 grid:
+
+```
+per surface  = 6 cells × 200 paths            = 1,200 backtests  (+ buy-and-hold control)
+per regime   = 4 fee levels × 1,200            = 4,800 backtests
+both regimes = 2 × 4,800                       = 9,600 backtests  → 8 anchored surfaces
+```
+
+**Per-path cost ≈ the carry/TS per-path cost** (same engine, same N, same universe; the
+basis gather is the SAME O(n_bars) `Vec<usize>` index-gather as the funding gather, which
+the carry M-DEV-7 measured as negligible). Carry's N=3 smoke ran in 1.7s for 18 paths →
+~0.094 s/path; the carry N=200 surface extrapolated to **~2 min** and ran well within the
+≲30-min gate. So:
+
+```
+per surface  ≈ 1,200 × 0.094 s   ≈ 113 s ≈ ~2 min   (matches the carry M-DEV-7 measurement)
+per regime   ≈ 4 × 2 min          ≈ 8 min
+both regimes ≈ 2 × 8 min          ≈ 16 min          ← TRACTABLE (under the ≲30-min gate)
+```
+
+**VERDICT: TRACTABLE.** ~16 min wall-clock for the full 8-surface fee × grid × regime
+deliverable — comparable to the carry/horizon runs and under the gate. **No re-scope of
+the fee axis is needed** — the analyst's economy fallback (read the fee axis at only the
+best-θ cell) is NOT invoked; the full 6-cell surface is run at each fee level (the durable,
+anti-cherry-pick-complete choice). The developer MUST re-confirm the per-path cost on the
+canonical box at the small-N smoke before launching the 8 surfaces (the mandatory C3-lesson
+gate: `wall-clock ≈ grid × N × fee × regime × per-path cost`); if the smoke shows a
+material per-path regression, the daily-style economy (drop to {0, 5} bps only — the
+R-BR.LOAD minimum) is the documented fallback.
+
+### D-BR.3 — Q-BR-3 RESOLVED: the basis sidecar loader + threading (reuse the `funding_by_symbol` co-resample channel)
+
+**RATIFIED: REUSE the existing `funding_by_symbol` co-resample channel for the basis**
+(the cheapest path — basis and funding are never used simultaneously in v0.1.0), NOT a
+sibling `basis_by_symbol` field. The basis rides the already-built
+`GeneratedPath.funding_by_symbol: Option<Vec<Vec<Option<Decimal>>>>` +
+`BlockBootstrapPathGen::with_funding` + the `TcnScenarioInput.funding_override` →
+`MomentumStrategy::with_funding` → `funding_map` chain (D-CARRY.7, ADR-0051 § D6.6),
+which is **already a generic per-symbol per-return-step `Option<Decimal>` series**. The
+basis IS that shape. Rationale + the rejected alternative:
+
+| Option | Decision | Why |
+|---|---|---|
+| **Reuse `funding_by_symbol` channel** | **RATIFIED** | The channel is already a generic "co-resampled `Option<Decimal>` sidecar by the shared `idx_seq`" — it is not funding-specific in its plumbing, only in its NAME. The basis is the same `Option<Decimal>`-per-(symbol,return-step) shape. ZERO new bootstrap field, ZERO new `GeneratedPath`/`TcnScenarioInput` field → **smallest anchor blast radius** (no new `Option` field to default-`None` across ~15 construction sites). Basis + funding mutually exclusive in v0.1.0 (the basis arm is its own `ScoreSource`; carry is a different `ScoreSource`) → no collision. The field is `funding_override`/`funding_by_symbol` by name but carries the basis value when the basis arm runs. |
+| Add a sibling `basis_by_symbol` field | **REJECTED for v0.1.0** | Cleaner separation, but +1 `Option` field on `GeneratedPath` + `BlockBootstrapPathGen` + `TcnScenarioInput` + `MomentumStrategy` = ~15 new construction sites to default-`None`, each an anchor-risk surface (every one MUST be `None` for the 99 to hold). More bytes, more risk, for a v0.1.0 where the two series never coexist. Revisit in v0.2.0 IF basis + funding are ever combined (a market-neutral basis arm with a funding overlay) — then the sibling field earns its keep. |
+
+> **A naming-clarity note for the developer (NOT a code change).** The reused field is
+> named `funding_*`. To prevent a future reader thinking the basis arm accrues funding,
+> the developer adds a one-line doc-comment at the basis injection site: *"the basis arm
+> reuses the `funding_by_symbol` co-resample channel as a generic sidecar carrier — the
+> value is the BASIS, not funding, and is consumed ONLY by `basis_reversal_score`, NEVER
+> by the `run_path` accrual (which stays gated `None` for the basis arm — D-BR.1)."* This
+> is the single most-confusable point in the whole feature; the comment is mandatory.
+
+**The basis loader (R-BR.3) — a near-mirror of `funding_data.rs`.** New module
+`crates/backtest/src/basis_data.rs`, `#[cfg(feature = "realdata")]`, mirroring
+`FundingDataSource` (`funding_data.rs`):
+
+- `pub const EXPECTED_BASIS_REVISION_SHA: &str = "aa72409aa0f856960385a823bc61be1b8274e84f658439b65e5d1b1b1a48f1cd";`
+  (verified on disk: `data/binance-basis/REVISION.toml`).
+- `BasisRow { symbol: Symbol, open_time_ms: i64, basis_close: Decimal }` (the basis twin
+  of `FundingRow`). Schema on disk: `open_time` Int64 ms, `close_time` Int64 ms,
+  `basis_open/high/low/close` Utf8 **signed** decimal strings — read `open_time` +
+  `basis_close`, parse `basis_close` via `Decimal::from_str` (never f64 — ADR-0003; the
+  parse MUST handle the leading `-` for negative basis = perp below spot).
+- `BasisDataSource::load(span, scenario)` — the SAME 6-step load+verify+parse as
+  `FundingDataSource::load`: REVISION.toml existence, per-file SHA verify, aggregate SHA
+  verified against `EXPECTED_BASIS_REVISION_SHA`, polars `scan_parquet`, Decimal parse,
+  span filter, sort `(open_time_ms ASC, symbol ASC)`. A `BasisDataError` enum mirrors
+  `FundingDataError` (`RevisionMismatch` rejects unverified data).
+- `files_for_span` — **identical** to `RealDataBarSource`/`FundingDataSource`
+  (`<SYM>/<YEAR>/<MM>.parquet`).
+
+> **The basis is the SAME size class as OHLCV (~8,760 bars/symbol-yr, hourly), unlike
+> funding's sparse 8h cadence — and that is a SIMPLIFICATION, not a cost.** Carry's
+> Sub-problem B (the 8h→1h forward-fill) is an **identity** at 1h: the basis is already on
+> the bar grid, so there is no forward-fill step — the as-of join is just "the basis at
+> the open of bar t is `basis_close[t-1]`" (R-BR.5).
+
+### D-BR.5 — Q-BR-3 (the as-of join): `basis_close[t-1]` at the open of bar t (strict no-look-ahead)
+
+The basis at the open of bar `t` is **`basis_close[t-1]`** (the premium-index close of
+bar `t` is only known at `t+1h`), per the spike's proven convention (BS.1). This is the
+basis analogue of `funding_data.rs::funding_as_of`, BUT simpler because the basis is on
+the bar grid: instead of a forward-fill from a sparse 8h grid, it is a **one-bar lag** of
+the dense 1h series. Implementation:
+
+- A pure function `basis_as_of(basis_by_bar, bar_open_ts_ms)` in `basis_data.rs` mirroring
+  `funding_as_of` — for each bar `t`, return the basis settled **at or before** the
+  PRIOR bar (i.e. `basis_close` of the most-recent bar whose `close_time ≤ t.open_ts`,
+  which on the aligned 1h grid is `basis_close[t-1]`). The same `partition_point`
+  binary-search structure as `funding_as_of` works verbatim (it already returns the
+  rightmost settlement ≤ the query ts; here the "settlements" are the dense per-bar
+  `basis_close` values keyed by `close_time`, so the rightmost `close_time ≤ open_ts` is
+  exactly `basis_close[t-1]`).
+- `build_basis_at_return(...)` — the basis twin of `build_funding_at_return`: produces the
+  `T-1`-length `basis_at_return[s][k]` array the bootstrap co-resamples (the basis in
+  force at real return-step `k` = the as-of basis at the open of source bar `k`). Reused
+  verbatim in shape; only the input series changes.
+
+_Day-1 falsifier (D-BR.7 #5): shifting the basis series one bar into the FUTURE changes
+the result — RED on revert (proving the as-of join is causal). This is the basis twin of
+`funding_data.rs::no_look_ahead_falsifier`, and re-asserts the spike's leak-check (BS.4:
+the leaked basis flips POSITIVE where the causal basis is NEGATIVE)._
+
+### D-BR.6 — Q-BR-5 RESOLVED: `run_path` stays CONCRETE (the basis is a `ScoreSource` arm, not a Strategy struct)
+
+**CONFIRMED — straight transfer of the carry/TS ruling (ADR-0051 § D6.5.2 / D6.6.2).**
+`run_path` (`montecarlo.rs:92`) is typed to the concrete `strategy::MomentumStrategy` —
+the basis arm is a `ScoreSource::BasisReversal` value on `CrossSectionalMomentumConfig`,
+NOT a new `Strategy` struct. A sibling `BasisStrategy` struct is REJECTED (it would force
+`run_path` generic/`dyn`, re-touching both `run_path` call-sites and risking all 99
+anchors — the exact trap that forced MR/carry/TS to be config-on-enum). The basis arm
+flows through the existing `score_source` fork in `MomentumStrategy::on_bar`
+(`momentum.rs:372`) as a third match arm (alongside `VolAdjustedReturn` and
+`FundingCarry`), byte-untouching the existing two. **`run_path`, `PaperEngine`, and the
+bootstrap are byte-UNTOUCHED** (the basis rides the existing `funding_*` channels and the
+existing `score_source` fork; the only `run_path`-adjacent change is the additive
+`taker_fee_bps`/`slippage_bps` parameterization at 2409-2410, which is defaults-`2`/`4`
+for every non-basis caller — D-BR.LOAD).
+
+### D-BR.8 — Determinism & anchoring: the 99 anchors hold byte-identical (additive/defaults-off)
+
+Every new seam is **additive and defaults-off**, gated on the basis `ScoreSource` being
+selected — so every momentum / MR / carry / TS / horizon run is byte-identical by
+construction. **The 99 existing anchors (`spec/anchors.toml`) stay byte-identical — a hard
+gate, NOT a goal.** The four seams + their neutrality argument:
+
+1. **`ScoreSource::BasisReversal` enum arm** — serde-default stays `VolAdjustedReturn`;
+   adding a third variant does NOT change the default-path serialization (the carry
+   `FundingCarry` precedent proved this — the enum already has 2 variants and the 99
+   anchors hold). The config-hash gains a `BasisReversal` discriminant only when selected.
+2. **The basis loader + co-resample** — reuses the `funding_by_symbol` channel
+   (D-BR.3); ZERO new `GeneratedPath`/`bootstrap`/`TcnScenarioInput` fields. The
+   co-resample consumes ZERO new RNG draws (the carry D6.6 proof transfers verbatim: the
+   basis gather rides the already-materialized `idx_seq` — `basis_at_return[s][idx_seq[k]]`
+   at the same index that picks the return). When the basis arm is NOT running, the
+   `funding_at_return` is `None` and the bootstrap takes the byte-identical pre-carry path.
+3. **The fee axis** — `--taker-fee-bps`/`--slippage-bps` default to `4`/`2` (the legacy
+   literals at 2409-2410); the fee body-row is gated `score_source == BasisReversal`. Both
+   the engine input AND the report body are byte-identical for every non-basis run
+   (D-BR.LOAD anchor-neutrality proof).
+4. **The basis score fork** — a third match arm in `on_bar`; the `VolAdjustedReturn` and
+   `FundingCarry` arms are byte-untouched.
+
+**Anchor unit = the basis θ × fee surfaces.** New basis anchors are added **after** the
+developer's anchored run (the tester locks them at the M-TEST PASS gate, per the
+carry/TS/horizon precedent); the grid + N + fee ladder are locked HERE at design time
+(D-BR.2-LOCKED). The existing 99 anchors are NOT re-locked. **Anchored report files in
+`spec/*/reports/` remain byte-immutable** (ADR-0038 § D6).
+
+### D-BR.9 — Q-BR-6 RESOLVED: a new `perp-basis-signal-robustness` namespace + the additive `verify_anchors.sh` handler
+
+**RATIFIED: a NEW `perp-basis-signal-robustness` anchor namespace** (the horizon-retest
+D6.8 precedent — a new program phase, the FIRST LIVE signal, gets its own namespace), NOT
+the existing `mc-robustness-2026-06` lane. Rationale: the basis arm is a distinct
+experiment axis (a structurally-new data domain + a swept fee axis), exactly as the
+horizon retest was a distinct axis (a new cadence). A new namespace keeps the basis
+surfaces' provenance legible and avoids overloading the `mc-robustness-2026-06` lane's
+semantics.
+
+**`verify_anchors.sh` handler (additive one-liner — the carry/MR/horizon precedent).** Add
+a new `elif [[ "$version" == "perp-basis-signal-robustness" ]]` branch (after the
+`horizon-retest-robustness` branch at line 162) that searches
+`spec/perp-basis-signal-robustness/reports/` for `robustness-*-${scenario}.md`. This is
+the identical additive handler shape the horizon namespace used (lines 162-169). No
+existing branch is touched → the 99 anchors resolve through their existing branches
+byte-identically.
+
+**Scenario names (the fee level is in the name AND the hashed body).** Per fee level + per
+regime, to make the four-fee × two-regime surfaces distinct anchors:
+
+```
+v1-basis-reversal-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy
+```
+
+e.g. `v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy` (fee=5 bps,
+2023). The fee level is a two-digit zero-padded `{NN}` (`00`/`02`/`05`/`10`). Up to **8
+anchors** (4 fee × 2 regime), locked by the tester at M-TEST PASS (the durable choice;
+the tester may elect a subset — minimum the {0, 5}-bps × {2023, 2024} = 4 surfaces per
+the R-BR.LOAD acceptance). The slug routes the report to
+`spec/perp-basis-signal-robustness/reports/` (the effective-out-dir logic at line 3044
+gains a `score_source == BasisReversal` branch, mirroring the carry/TS/horizon branches).
+
+### D-BR.10 — the ADR amendment: ADR-0051 § D6.9 (registered atomically)
+
+The basis arm is the **5th anchor-additive instance** after MR=D6.5 / carry=D6.6 /
+TS=D6.7 / horizon=D6.8. It warrants an **amendment to ADR-0051, NOT a new ADR** (the same
+ruling as carry/TS/horizon — it inherits the determinism + anchoring contract and extends
+it additively). § D6.9 records: (1) the basis is a 3rd `ScoreSource` arm
+(`BasisReversal`), the sign baked into the score (NO cashflow — the basis is a selection
+signal, so carry's accrual does NOT transfer); (2) the basis **reuses** the
+`funding_by_symbol` co-resample channel (basis + funding mutually exclusive in v0.1.0) —
+no new field, smallest blast radius, the co-resample consuming ZERO new RNG draws (D6.6
+proof transfers); (3) the NEW `--taker-fee-bps`/`--slippage-bps` axis (defaults `4`/`2` →
+99 anchors byte-identical; fee body-row gated to the basis arm), modeled on the `--horizon`
+D6.8 axis; (4) NEW namespace `perp-basis-signal-robustness` + up to 8 anchors (4 fee × 2
+regime); LOCKED 6-cell grid (§ D-BR.2-LOCKED) + N + fee ladder {0,2,5,10} are hashed body
+fields (K3); (5) `run_path`/`PaperEngine`/`bootstrap` byte-UNTOUCHED. Registered
+atomically in `spec/architecture/adr/README.md` (the § Registry row 0051 summary +
+frontmatter `updated:` bumped in the same edit pass; `adr_registry_check.py --pre-commit`
+must PASS) per the architect.md § ADR registry contract.
 
 ---
 
 ## Backtest Scenarios
-_Architect ratifies + LOCKS the exact grids, the fee ladder, and N before the tester
-anchors. The analyst proposes the surface shape below; the architect's M-T1 locks
-the hashed body fields (the MR/carry/TS/horizon precedent)._
+
+_**Architect-RATIFIED + LOCKED (M-T1, 2026-06-05).** The grid (§ D-BR.2-LOCKED, 6 cells),
+the fee ladder ({0,2,5,10} bps, § D-BR.LOAD), and N (200/cell) are LOCKED hashed body
+fields (the MR/carry/TS/horizon precedent). Primary anchored deliverable = the
+basis-reversal θ × fee surface on 2023-FY at each fee level (+ up to 8 anchors across
+4 fee × 2 regime). The day-1 robustness gate runs BOTH 2023 AND 2024 (the carry/horizon
+E1 precedent: 2024 is gating, not an afterthought). Wall-clock ~16 min for all 8 surfaces
+(§ D-BR.WALLCLOCK — TRACTABLE, under the ≲30-min gate). The analyst's proposed surface
+shape is ratified below with the LOCKED specifics._
+
+> **The locked grid + fee ladder + N live in § D-BR.2-LOCKED / § D-BR.LOAD (the Design).**
+> This section ratifies the analyst's surface PLAN against those locks. The grid is
+> 6 cells (L∈{24,60,168} bars × K/cadence folded into the 6 cells, SKIP L=720) × the fee
+> ladder {0,2,5,10} bps × {2023, 2024}. N=200/cell. The fee axis produces ONE surface per
+> fee level (mechanism (i), § D-BR.LOAD); the {0, 5} bps × {2023, 2024} = 4 surfaces are
+> the R-BR.LOAD-acceptance minimum, all 8 are the durable choice.
 
 The primary anchored deliverable is a **θ × fee surface** — the basis-reversal
 signal swept over its signal-bearing lookback band × the sizing/K axis, AT EACH
@@ -518,11 +929,13 @@ call).
    as the harder/fairer multi-regime gate (the carry/horizon E1 precedent: 2024 is
    gating, not an afterthought). Anchored if the tester elects (the durable choice).
 
-> **Namespace (architect decides):** a new `perp-basis-signal-robustness` anchor
-> namespace (the horizon-retest precedent — a new program phase gets its own
-> namespace), with `verify_anchors.sh` extended to search
-> `spec/perp-basis-signal-robustness/reports/` (the additive one-liner carry / MR /
-> horizon all made).
+> **Namespace (RESOLVED — § D-BR.9):** a new `perp-basis-signal-robustness` anchor
+> namespace (the horizon-retest precedent — a new program phase gets its own namespace),
+> with `verify_anchors.sh` extended (an additive `elif` branch after the
+> `horizon-retest-robustness` branch, line 162) to search
+> `spec/perp-basis-signal-robustness/reports/` for `robustness-*-${scenario}.md`. Scenario
+> names carry the fee level: `v1-basis-reversal-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy`
+> (`{NN}` ∈ {00,02,05,10}).
 
 ---
 
@@ -638,6 +1051,47 @@ _Tester links reports here after the M-TEST gate. The gates the tester must clea
 
 ## Changelog
 
+- 2026-06-05 (architect, M-T1): resolved Q-BR-1..6 + wrote the Design (D-BR.0..10) +
+  authored `tasks.md` (M-DEV-0..8 + M-TEST) + the ADR-0051 § D6.9 amendment (registry row
+  + frontmatter atomic; `adr_registry_check.py` PASS). Status proposed → **arch-done**.
+  **Q-BR-2: framing (a) long-only basis-reversal tilt** (long the lowest-basis names;
+  reuses the solvency-guarded long-only `run_path` + `top_k_long`; apples-to-apples with
+  the 99 anchors + carry #88/#89; (b) market-neutral deferred to v0.2.0 on validation).
+  **Q-BR-1: a single `ScoreSource::BasisReversal` arm** with the SIGN baked into the score
+  (`−trailing_mean(basis)`, one auditable place; option (i) ScoreSource::Basis+Reversion
+  REJECTED — splits the sign across two fields) + **NO cashflow** (the basis is a selection
+  signal — carry's accrual Sub-D does NOT transfer; the `run_path` accrual stays gated
+  `None` for the basis arm). **Q-BR-4 (LOAD-BEARING): the FEE-SWEEP = a `--taker-fee-bps`
+  axis (mechanism (i), one anchored surface per fee level)** modeled on the proven
+  `--horizon` axis (defaults `4`/`2` → 99 anchors byte-identical; fee body-row gated to
+  the basis arm); mechanism (ii) fixed-pin + best-cell report REJECTED (reads the fee axis
+  at the argmax the frozen § 0 rule forbids crowning). The fee site is the hardcoded
+  `slippage_bps: 2`/`taker_fee_bps: 4` at `param_robustness_sweep.rs:2409-2410`. **Q-BR-4
+  grid LOCKED (§ D-BR.2-LOCKED):** 6 cells (L∈{24,60,168} BARS × K/cadence; rebalance
+  default 8h, g3 slowed to 24h — the reversal arm's lowest-churn fee shot; SKIP L=720
+  noise), N=200, fee ladder {0,2,5,10} bps. **Wall-clock ~16 min for all 8 surfaces
+  (4 fee × 2 regime) — TRACTABLE, under the ≲30-min gate** (§ D-BR.WALLCLOCK; the basis
+  gather is the SAME negligible O(n_bars) index-gather carry M-DEV-7 measured). **Q-BR-3:
+  REUSE the existing `funding_by_symbol` co-resample channel** for the basis (cheapest —
+  basis + funding mutually exclusive in v0.1.0; ZERO new bootstrap/`GeneratedPath`/
+  `TcnScenarioInput` field; a sibling `basis_by_symbol` field REJECTED for v0.1.0 as
+  +bytes/+anchor-risk); the co-resample consumes ZERO new RNG draws (D6.6 proof transfers).
+  Basis loader = a near-mirror of `funding_data.rs` (new `basis_data.rs`, pin
+  `aa72409a…`, Decimal parse of signed `basis_close`, REVISION-verify); the 8h→1h
+  forward-fill is an IDENTITY at 1h (the as-of join is `basis_close[t-1]`, a one-bar lag).
+  **Q-BR-5: `run_path` stays CONCRETE** (the basis is a 3rd `ScoreSource` arm, not a
+  Strategy struct — the D6.5.2 trap avoided; `run_path`/`PaperEngine`/`bootstrap`
+  byte-UNTOUCHED). **Q-BR-6: a NEW `perp-basis-signal-robustness` namespace** (the horizon
+  D6.8 precedent) + the additive `verify_anchors.sh` `elif` handler; scenario
+  `v1-basis-reversal-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy`; up to 8
+  anchors (4 fee × 2 regime) locked by the tester at M-TEST PASS ({0,5} bps × {2023,2024}
+  = 4 the minimum). **True-size: ~3–5 d** (cheaper than carry — B is an identity, D
+  vanishes, C is reused). M-DEV-8 (the anchored 8-surface fee × grid × regime run) is the
+  deliverable; the day-1 falsifiers (sign-assertion / baseline-divergence e2e /
+  basis-non-no-op / no-look-ahead / two-run identity) land BEFORE it. No code, no build,
+  no engine run; no `anchors.toml` touch (the tester locks the basis anchors post-run).
+  developer M-DEV next; M-DEV-2 (the fee-axis + the basis loader anchor-neutrality gate,
+  99/99) lands FIRST.
 - 2026-06-05 (analyst, perp-basis-signal-robustness): authored the feature brief +
   opened the trace row `REQ-PERP-BASIS-SIGNAL-ROBUSTNESS-001` (state `proposed`,
   operator-greenlit). Transcribes the basis spike

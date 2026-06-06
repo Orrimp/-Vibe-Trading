@@ -912,3 +912,61 @@ one-report anchor unit are all reused; only a 2nd selector is added at the confi
   fold → two-run byte-identity by construction (F-HR.5). Amendment, NOT a new ADR. Registry
   README row summary + frontmatter `updated:` amended atomically (architect.md § ADR
   registry contract).
+- 2026-06-05 (architect, perp-basis-signal-robustness M-T1): **D6.9 amendment added — the
+  perp-spot BASIS-REVERSAL arm: the FIRST LIVE signal of the post-OHLCV program (a 3rd
+  `ScoreSource`), with a SWEPT FEE AXIS — the 5th anchor-additive instance (MR=D6.5,
+  carry=D6.6, TS=D6.7, horizon=D6.8).** The basis is a cross-sectional rank signal (rank
+  IC −0.08..−0.11 over L=60-168, NEGATIVE + sign-stable both 2023/2024 — the spike VERDICT
+  LIVE), tilted AGAINST (long the lowest-basis names, the reversal-favored leg). **D6.9.1 —
+  the signal:** a single `ScoreSource::BasisReversal` arm (`config.rs` enum, serde-default
+  stays `VolAdjustedReturn`) with the load-bearing SIGN baked into the score
+  (`basis_reversal_score = −trailing_mean(basis)`, the carry-twin of `carry_score`, the
+  minus in ONE auditable place guarded by the day-1 sign-assertion falsifier — a flip = a
+  basis-MOMENTUM payer → RED); option (i) `ScoreSource::Basis`+`Direction::Reversion`
+  REJECTED (splits the sign across two fields). **NO cashflow — carry's accrual Sub-D does
+  NOT transfer:** the basis is a SELECTION/sizing signal, not a cash settlement, so the
+  `run_path` funding-accrual block (`montecarlo.rs:322`) stays gated `None` for the basis
+  arm (the basis P&L is pure price-of-selection); the non-no-op guard is the SELECTION
+  collapse (force the basis constant → selection collapses to baseline), NOT a cashflow
+  collapse. **D6.9.2 — the sidecar REUSES the `funding_by_symbol` co-resample channel** (the
+  basis rides the existing `GeneratedPath.funding_by_symbol: Option<Vec<Vec<Option<Decimal>>>>`
+  + `BlockBootstrapPathGen::with_funding` + `funding_override` → `funding_map` chain, which
+  is a GENERIC `Option<Decimal>` sidecar in its plumbing, funding-specific only in its NAME)
+  — basis + funding are mutually exclusive in v0.1.0, so ZERO new bootstrap/`GeneratedPath`/
+  `TcnScenarioInput` field (smallest blast radius); a sibling `basis_by_symbol` field
+  REJECTED for v0.1.0 (+~15 default-`None` construction sites = +anchor-risk for no v0.1.0
+  benefit). The co-resample consumes ZERO new RNG draws (the D6.6 proof transfers verbatim:
+  `basis_at_return[s][idx_seq[k]]` at the same index that picks the return → basis↔price
+  co-movement preserved). The 8h→1h forward-fill (carry Sub-B) is an IDENTITY at 1h (the
+  basis is native 1h; the as-of join is `basis_close[t-1]`, a one-bar lag). **D6.9.3 — the
+  NEW `--taker-fee-bps`/`--slippage-bps` axis** (the load-bearing R-BR.LOAD fee-sweep gate —
+  a reversal arm is the most fee-sensitive class; if it dies net of realistic Binance taker
+  fees, that IS the verdict, retiring the derivatives-positioning family), modeled on the
+  D6.8 `--horizon` axis: the fee is hardcoded today at `param_robustness_sweep.rs:2409-2410`
+  (`slippage_bps: 2, taker_fee_bps: 4`) → becomes a CLI flag defaulting `2`/`4` (the legacy
+  literals → the `MatchConfig` is byte-identical for every non-basis run) threaded into the
+  per-path `TcnScenarioInput`, rendered as a hashed body row GATED `score_source ==
+  BasisReversal` (the same gating idiom as the D6.8 horizon row → every existing body-SHA
+  byte-identical; the fee level becomes part of the basis anchor's hashed identity so
+  {0,2,5,10} bps are four DISTINCT anchors). Mechanism (i) one-surface-per-fee RATIFIED;
+  mechanism (ii) fixed-pin + best-cell fee report REJECTED (reads the fee axis at the argmax
+  the frozen § 0 rule forbids crowning). **D6.9.4 — a NEW namespace `perp-basis-signal-robustness`**
+  (NOT `mc-robustness-2026-06` — the first LIVE signal + a swept fee axis is a distinct
+  experiment axis, the horizon D6.8 precedent); reports under
+  `spec/perp-basis-signal-robustness/reports/` (additive `verify_anchors.sh` `elif` after
+  the horizon branch); + up to 8 anchors (4 fee {0,2,5,10} × 2 regime {2023,2024}; the tester
+  locks them at M-TEST PASS, {0,5}×{2023,2024}=4 the R-BR.LOAD minimum); scenario
+  `v1-basis-reversal-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy`. The LOCKED
+  6-cell grid (lookback L∈{24,60,168} BARS × K/cadence folded into the 6 cells, rebalance
+  default 8h, g3 slowed to 24h — the reversal arm's lowest-churn fee shot; SKIP L=720 noise,
+  § D-BR.2-LOCKED) + N (200) + the fee ladder {0,2,5,10} bps + the basis-revision SHA
+  `aa72409a…` are hashed body fields (K3). Wall-clock ~16 min for all 8 surfaces — TRACTABLE,
+  under the ≲30-min gate (the basis gather is the SAME negligible O(n_bars) index-gather
+  carry M-DEV-7 measured). **D6.9.5** D1/D2/D3/D5/D6.1 inherited verbatim;
+  `run_path`/`PaperEngine`/`BlockBootstrapPathGen` byte-UNTOUCHED (the basis rides the
+  existing `funding_*` channels + the existing `score_source` fork; the only
+  `run_path`-adjacent change is the additive `taker_fee_bps`/`slippage_bps` parameterization
+  at 2409-2410, defaults `2`/`4` for every non-basis caller); the basis loader `basis_data.rs`
+  is a near-mirror of `funding_data.rs` (pin `aa72409a…`, Decimal parse of signed
+  `basis_close`, REVISION-verify). Amendment, NOT a new ADR. Registry README row summary +
+  frontmatter `updated:` amended atomically (architect.md § ADR registry contract).
