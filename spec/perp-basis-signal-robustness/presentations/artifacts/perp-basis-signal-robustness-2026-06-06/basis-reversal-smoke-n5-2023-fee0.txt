@@ -1,0 +1,16 @@
+param_robustness_sweep DONE
+  report:         /tmp/basis-demo/robustness-sweep-20260606-193352-v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+  body_sha:       b7afb5a118cc2b92dae5012d856ce41b21a6569208ff292410487a277132f536
+  wall_clock_s:   19.3
+  n_cells:        6
+  n_paths:        5
+  family_verdict: FAMILY-UNIFORM-FRAGILE
+  buyhold p50 Sharpe: 1.9262  P(loss): 0.0000  p95 MaxDD: 38.01%
+
+  per-cell summary:
+    g= 0 lookback=  60 k_long=3 drift=0.10 → FRAGILE | p50=0.0305 p5=0.0185 MaxDD_p95=68.2%
+    g= 1 lookback=  24 k_long=3 drift=0.10 → FRAGILE | p50=0.0190 p5=-0.0430 MaxDD_p95=81.1%
+    g= 2 lookback= 168 k_long=3 drift=0.10 → FRAGILE | p50=0.0491 p5=0.0287 MaxDD_p95=73.8%
+    g= 3 lookback=  60 k_long=5 drift=0.10 → FRAGILE | p50=0.0214 p5=0.0071 MaxDD_p95=73.2%
+    g= 4 lookback=  60 k_long=1 drift=0.10 → FRAGILE | p50=0.0201 p5=0.0023 MaxDD_p95=52.4%
+    g= 5 lookback=  24 k_long=5 drift=0.10 → FRAGILE | p50=0.0135 p5=-0.0146 MaxDD_p95=76.1%
