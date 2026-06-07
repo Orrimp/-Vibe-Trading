@@ -1,11 +1,11 @@
 ---
 slug: perp-basis-mn-spread
 version: 0.2.0
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect → developer
 priority: P1
 predecessor: perp-basis-signal-robustness v0.1.0
-updated: 2026-06-06
+updated: 2026-06-07
 ---
 
 # Perp-basis MARKET-NEUTRAL spread — the v0.2.0 follow-on that finally tests the basis signal in its correct vehicle (long low-basis / short high-basis, dollar-neutral, beta-stripped) — v0.2.0
@@ -328,8 +328,359 @@ slope, or a rank-based residual to avoid float regression — Q-MN-4).
 ---
 
 ## Design
-_Architect M-T1 fills this. Q-MN-1..5 resolved + justified. The deferred carry
-framing (b) / v0.1.0 Q-BR-2 framing (b) is the precedent the architect lifts._
+
+> **Architect M-T1, 2026-06-07.** Q-MN-1..5 resolved + justified below. The
+> load-bearing decision record is [ADR-0051 § D6.10](../architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md#d610--the-short-side-engine-the-first-run_path-touch--a-second-simultaneous-sidecar-market-neutral-basis-spread-amendment-2026-06-07)
+> (the FIRST `run_path` touch since C2; the 6th anchor-additive instance). The
+> staged developer breakdown is [tasks.md](tasks.md) (M-DEV-0..N + M-TEST). Every
+> design decision below is grounded in the code seams inspected this session; no
+> paraphrase trusted. Tags **D-MN.\*** map to the requirements R-MN.\* and to the
+> ADR D6.10.\* clauses.
+
+### The dominant constraint — anchor-neutrality (the whole risk, designed out)
+
+This is the **FIRST `run_path` touch since v0.1.0**. There are **107 byte-immutable
+regression anchors** (`spec/anchors.toml`, confirmed 107 on disk this session) that
+MUST stay byte-identical (`bash scripts/verify_anchors.sh` → 107/107 at every stage).
+The non-negotiable rules, inherited from ADR-0051 + the v0.1.0 precedent and re-stated
+for the `run_path` core:
+
+1. **`run_path` stays CONCRETE.** It keeps its `strategy: strategy::MomentumStrategy`
+   signature (`montecarlo.rs:92`). NO `dyn`, NO generics, NO trait-object dispatch —
+   the § D6.5.2 trap that would re-touch both production call-sites
+   (`monte_carlo.rs:878`, `param_robustness_sweep.rs:2725`) and risk all 107 anchors.
+2. **Every new seam is additive / defaults-OFF.** The short-side path is gated on
+   `k_short > 0`; the default (`k_short == 0` / long-only / no-short) path reduces to
+   today's EXACT executed code. New struct fields (`basis_by_symbol`, `basis_override`,
+   `basis_at_return`) default `None`; new enum variants (`SelectionMode::LongShort`)
+   are non-default.
+3. **New sidecars are additive; the existing co-resample + as-of-join are REUSED.**
+   The second `basis_at_return` channel is built with the SAME `idx_seq` gather + the
+   SAME `basis_as_of` join that v0.1.0 already shipped — no edit to the existing
+   `funding_by_symbol` channel.
+4. **Neutrality is proven by construction, then gated mechanically.** M-DEV-0 records
+   the 107 floor FIRST; a `run_path` k_short=0 byte-identity unit test + the 107/107
+   `verify_anchors.sh` gate run after EVERY seam.
+
+### D-MN.1 — Signal: the v0.1.0 basis-reversal score, reused verbatim (R-MN.1)
+
+`basis_reversal_score = −trailing_mean(basis)` over L bars, cross-sectional rank, is
+**reused byte-for-byte** from v0.1.0 (`momentum.rs:326`). The load-bearing minus (the
+R-BR.2 / R-MN.1 sign — tilt AGAINST the basis) stays in ONE place. The v0.1.0
+sign-assertion falsifier carries over unchanged and stays GREEN. **The only change is
+selection** (D-MN.2): v0.1.0 longs the top-K lowest-basis; v0.2.0 ALSO shorts the
+bottom-K highest-basis. No new score code.
+
+### D-MN.2 — Q-MN-1: the short-side engine = a `k_short`-gated branch in `run_path` (LOAD-BEARING)
+
+**Decision: option (i) — a `k_short`-gated branch inside the EXISTING `run_path`.**
+Option (ii) (a sibling `run_path_long_short`) is REJECTED. The anchor-neutrality
+argument is front and centre and decisive:
+
+- **Why (i).** It keeps ONE engine, and the anchor-neutrality proof becomes literal
+  and trivial: *"the `k_short == 0` path is the unchanged code — every short branch is
+  dead code when no shorts are requested"* (D-MN.3). `run_path` keeps its concrete
+  `MomentumStrategy` signature, so neither production call-site changes (the §D6.5.2
+  trap is avoided). The blast radius is the smallest possible.
+- **Why NOT (ii).** A sibling `run_path_long_short` would (a) **duplicate the entire
+  solvency / equity / drawdown / accrual machinery** — a correctness risk (two copies
+  drift over time), and (b) add a 3rd `run_path` call-site to the dispatch fork. It
+  buys separation the feature does not yet need. YAGNI + the D6.5.2 discipline both
+  point to (i). The analyst lean is ratified.
+
+**The threading.** A single read-only `k_short: u32` is read from the caller-supplied
+strategy (the `MomentumStrategy` already carries `k_short` — `momentum.rs:35`). No new
+`run_path` parameter; the gate is `if k_short > 0`.
+
+**The short-side solvency / margin model (Q-MN-1 second half — the new correctness
+surface).** A long's loss is bounded (price → 0); a **short perp's loss is unbounded
+above** (price → ∞), so the long-only Bug-B cash-cap (`montecarlo.rs:232`, "never
+spend more than cash on hand") has NO short analogue and a naive short would drive
+equity negative on an adverse move. The model has three deterministic pieces:
+
+1. **Notional sizing — symmetric + dollar-neutral.** Each leg books the EXISTING fixed
+   fraction (`dec!(0.10)` of equity per name, `montecarlo.rs:220`). With K longs + K
+   shorts the gross book is `2·K·0.10·equity` and the **net dollar exposure is ≈0**
+   (Σ long notional − Σ short notional, asserted ≈0 by the R-MN.7 #1 falsifier). NO
+   1/N rescale — that is an engine edit and breaks apples-to-apples with the long-only
+   arm (the D6.7.2 precedent).
+2. **A short INITIAL-MARGIN gate — the mirror of the long Bug-B cap.** Opening a
+   `Side::Sell` leg reserves `margin = notional / max_leverage` against cash, where
+   `max_leverage = dec!(1)` is a LOCKED Decimal constant for v0.2.0 (fully-collateralized
+   shorts — the conservative + simplest choice; > 1 leverage is a future ADR). The
+   short is SKIPPED (not partially filled) if cash cannot cover the reserved margin +
+   the estimated fee — the exact structure of the long Bug-B skip, so the two solvency
+   paths are visibly symmetric.
+3. **A MAINTENANCE-MARGIN LIQUIDATION rule — bounds the unbounded loss (the new
+   mechanism).** At each per-bar mark-to-market (the existing equity-curve update at
+   `montecarlo.rs:376`), if total equity falls below `maintenance_margin_frac ·
+   gross_short_notional` (LOCKED `maintenance_margin_frac = dec!(0.5)` for v0.2.0 — a
+   conservative half-notional maintenance floor), **all short legs are force-closed at
+   the current mark** (a deterministic buy-to-cover at `mark_prices[sym]`, the same
+   fill path as a normal close), and a `liquidations` counter increments (surfaced in
+   `PathRunResult` for report legibility). This bounds the short loss exactly as a real
+   exchange's liquidation engine does, deterministically (no RNG, ordered `BTreeMap`
+   iteration). Both constants are **hashed body fields** of the MN anchor (K3).
+
+**The accounting (R-MN.3, mark-to-market on the short leg).** The short P&L is the
+mirror of the long path, and the equity math needs NO change:
+
+- **Open short:** `cash += notional − fee` (sell proceeds in); `position_book[sym] -=
+  qty` (qty goes negative).
+- **Close / cover:** `cash -= notional + fee` (buy-to-cover out).
+- **Mark-to-market:** the existing `position_value = Σ qty·mark` (`montecarlo.rs:377`)
+  **already handles `qty < 0` correctly** — a negative position contributes negative
+  value, so equity FALLS when the short moves against the book. Confirmed by reading
+  the equity-tail; only the order-OPENING branch (a `Side::Sell` open, gated
+  `k_short > 0`) and the liquidation cap are new code.
+- **The short-leg funding cost (R-MN.3 — the binding cost; the model ALREADY EXISTS).**
+  `montecarlo.rs:322-373` accrues `cash += notional × (−funding_rate)` at every 8h
+  settlement boundary. Line 350's `continue; // no short legs in framing (a)` is the
+  ONLY gate. **Confirmed this session:** for a short (`qty < 0`, `notional = qty·mark <
+  0`), the existing formula `notional × (−rate)` *already produces the correct cost* —
+  a short on a positive-funding name yields `(negative notional) × (−positive rate) =
+  negative cashflow = a cost`. The change is to REPLACE the `qty <= 0 → continue` skip
+  with a branch that accrues for held shorts too (still gated on `funding_override`
+  being `Some`, so non-MN runs are byte-identical). The cost model is correct as
+  written; only the skip gates it.
+
+### D-MN.3 — Q-MN-2: the `run_path` anchor-neutrality re-proof (THE load-bearing gate)
+
+The 107-anchor byte-identity is proven in **three layers**, designed out explicitly
+(this is the risk D6.5/6/7/8/9 never carried):
+
+1. **By construction.** Every new statement in `run_path` is inside `if k_short > 0
+   { … }` OR is reached only when `position_book` holds a `qty < 0` (impossible unless
+   a short was opened, which requires `k_short > 0`). Concretely:
+   - The short-open is a NEW match arm: `SignalKind::Sell if current_qty <= 0 &&
+     k_short > 0 => { /* open short */ }`. It does NOT alter the existing
+     `SignalKind::Buy` open or the `SignalKind::Sell if current_qty > 0` close arms
+     (which stay byte-identical).
+   - The funding accrual's `if qty <= Decimal::ZERO { continue; }` (`montecarlo.rs:349`)
+     is replaced by a branch that accrues for shorts only when a short is held — and
+     when `k_short == 0` no short is ever held, so the `continue` is taken every time,
+     exactly as today.
+   - The liquidation check is `if k_short > 0 && <maintenance breach> { … }`; inert
+     when `k_short == 0`.
+   - **When `k_short == 0`, every short branch is provably dead code, and the executed
+     path is byte-for-byte HEAD's `run_path`.**
+2. **The test (M-DEV-0 floor + a `run_path` k_short=0 byte-identity unit test).** Before
+   any change, `bash scripts/verify_anchors.sh` → **107/107** is recorded as the floor
+   (M-DEV-0, runs FIRST). A NEW unit test `run_path_k_short_zero_byte_identical_to_head`
+   (in `montecarlo.rs` tests, mirroring the existing `funding_override_none`
+   neutrality test at `montecarlo.rs:648`) asserts `run_path` on a fixed synthetic path
+   with a `k_short == 0` strategy produces an equity curve bit-identical to the same
+   path with the short-side code compiled but never entered — it goes RED the instant
+   any short statement leaks out of its gate.
+3. **The hard gate at every seam.** `verify_anchors.sh` → **107/107** is the
+   non-negotiable gate after EVERY task (M-DEV-0..N), exactly as v0.1.0 gated 99/99.
+   Any drop → STOP, the seam is not anchor-neutral. The 107 are ADDED to, never
+   substituted.
+
+### D-MN.4 — Q-MN-3: the second simultaneous sidecar `basis_by_symbol` (R-MN.3, R-MN.5)
+
+v0.1.0 reused the single `funding_by_symbol` channel because basis + funding were
+mutually exclusive (D6.9.2). v0.2.0 needs **BOTH live simultaneously** — the signal is
+BASIS (selection), the short leg PAYS FUNDING (accrual). So the sibling
+`basis_by_symbol` field that D6.9.2 explicitly deferred is now **owed and added**,
+riding the SAME shared-index machinery D6.6 generalized:
+
+- **`GeneratedPath`** (`crates/data/src/synth/mod.rs:54`) gains a NEW
+  `basis_by_symbol: Option<Vec<Vec<Option<Decimal>>>>` field (defaults `None`) — the
+  exact twin of `funding_by_symbol`.
+- **`BlockBootstrapPathGen`** (`crates/data/src/synth/bootstrap.rs:71`) gains a NEW
+  `basis_at_return: Option<Vec<Vec<Option<Decimal>>>>` field + a `with_basis(…)`
+  builder (the twin of `with_funding`). The co-resample loop (`bootstrap.rs:332-380`)
+  gathers `basis_at_return[s][idx_seq[k]]` at the **same `idx_seq`** that picks the
+  return AND the funding → price ↔ funding ↔ basis all move contemporaneously. This is
+  the three-series shared-index extension D6.6.5 explicitly anticipated. **ZERO new RNG
+  draws** — `idx_seq` is materialized once; the basis gather is a second read of it (the
+  D6.6.1 de-risk transfers verbatim).
+- **`TcnScenarioInput`** (`crates/backtest/src/cli_types.rs:502`) gains a NEW
+  `basis_override: Option<BTreeMap<(Symbol, Timestamp), Decimal>>` field (the twin of
+  `funding_override`). For the MN arm BOTH are `Some`: the basis map is injected into
+  the strategy via `with_funding` for the SCORE (the basis rides the strategy's
+  `funding_map` score channel exactly as v0.1.0), and the funding map is passed as
+  `funding_override` for the short-leg ACCRUAL.
+- **The as-of join + loader are REUSED.** `basis_as_of` + `build_basis_at_return`
+  (`basis_data.rs:357`/`:411`, shipped in v0.1.0) build the `basis_at_return` array;
+  `BasisDataSource` (pin `aa72409a…`) loads it. The funding side (`funding_data.rs`,
+  pin `bf1ede44…`) is unchanged. Both inherit their proven no-look-ahead falsifiers
+  (R-MN.5); the two-sidecar simultaneity must not introduce a leak in either, asserted
+  by the inherited falsifiers staying GREEN under simultaneous threading.
+- **Anchor-neutrality.** `basis_by_symbol = None` and `basis_override = None` for EVERY
+  non-MN run (all 31 `TcnScenarioInput` literals + all 6 `GeneratedPath` literals get
+  the new field defaulted `None` — mechanical, additive, ~37 sites, no behavior
+  change). When the basis source is absent the generator emits `None` and takes the
+  existing reconstruction path byte-identically (the D6.6.2 argument applied to the
+  second field). The 107 hold by construction.
+- **Why a real second field now (vs the D6.9 reuse).** With both series live,
+  overloading the one channel is impossible (it would carry two distinct values per
+  (sym, ts)). A clean parallel field is the smallest correct change; it also resolves
+  the naming-debt D6.9 flagged (the channel was "funding-specific only in name").
+
+### D-MN.5 — the dollar-neutral selection: `SelectionMode::LongShort` + un-gated `k_short` (R-MN.2)
+
+A NEW `SelectionMode::LongShort` variant (`config.rs:92`; serde-default stays
+`CrossSectionalTopK` → the 107 anchors' serialization is byte-identical, the D6.7
+precedent). Under `LongShort`, `build_rebalance_signals` (`momentum.rs:215`) selects:
+
+- **the top-K by score → the LONG book** (the existing `top_k_long`, reused), AND
+- **the bottom-K by score → the SHORT book** via a NEW `bottom_k_short` selector — the
+  `top_k_long` mirror over the SAME `scores` map, taking the K LOWEST scores (with the
+  load-bearing `−mean` basis sign, lowest-score = highest-basis = the crowded-long
+  names the spread shorts). `bottom_k_short` is a deterministic `BTreeMap`-ordered pure
+  fn (alphabetical tie-break, the `top_k_long` twin) → two-run byte-identity by
+  construction (the D6.7.5 precedent).
+
+The `config.rs:308` hard-reject of `k_short > 0` (`UnsupportedShortSizing`) is GATED:
+`k_short > 0` is permitted ONLY when `selection_mode == LongShort` (a `k_short > 0`
+under `CrossSectionalTopK` / `TimeSeriesLongFlat` still rejects — those modes have no
+short semantics, so the existing error stays for them). The short signals are emitted
+as `SignalKind::Sell` with a NEW evidence tag distinguishing "open short" from "close
+long", so `run_path` forks the `Sell` arm on `current_qty` (`> 0` → close long
+(existing, byte-identical); `<= 0 && k_short > 0` → open/extend short (new)).
+
+### D-MN.6 — Q-MN-4: the basis⊥funding residualization — RANK-BASED, Decimal-exact (R-MN.6, R-MN.9)
+
+**Decision: option (b) — a rank-based residual, NOT a Decimal OLS slope.** The 3-arm
+headline needs a basis-orthogonalized-to-funding arm; the residual `basis − β̂·funding`
+is computed:
+
+- **The mechanism.** At each rebalance, over the warmed cross-section: rank the basis
+  scores (1..N), rank the funding scores (1..N), and the residual score =
+  `rank(basis) − rank(funding)` (an integer-valued Decimal). Long = highest residual
+  (low-basis-relative-to-its-funding), short = lowest residual. This is the
+  Spearman-style residual that matches the rank-IC channel the spike actually measured
+  (the −0.10 is a *rank* IC).
+- **Why rank-based, not OLS (the exactness + determinism argument — the decisive one).**
+  A Decimal OLS slope `β̂ = Σ(x−x̄)(y−ȳ) / Σ(x−x̄)²` requires a **Decimal division that
+  does NOT terminate in general** (e.g. `1/3`), forcing a rounding-mode + scale choice
+  that is a hidden determinism surface and a cross-platform-drift risk (ADR-0003 + the
+  ADR-0051 D2 f64-boundary discipline both forbid non-exact Decimal division in the
+  hashed path). The rank residual is **pure integer arithmetic over Decimals** — ranks
+  are exact integers, the subtraction is exact, NO division, NO rounding, NO float. It
+  is Decimal-exact and bit-reproducible by construction, AND it is the correct statistic
+  (the signal lives in the rank channel). Ties in either rank use the alphabetical
+  `BTreeMap` order (the existing tie-break) → deterministic. The OLS slope is REJECTED
+  on exactness grounds; rank-residual is the durable choice. The analyst lean (b) is
+  ratified.
+- The residualization is a NEW pure fn in the strategy/sweep layer; it reads the two
+  sidecar maps (basis + funding) already threaded for the MN arm. The R-MN.7 #7
+  falsifier asserts the basis⊥funding arm produces a DIFFERENT result from the raw
+  basis-spread (the residualization is load-bearing, not a no-op).
+
+### D-MN.7 — the day-1 falsifier set (R-MN.7 — each RED-on-revert, the CLAUDE.md non-negotiable)
+
+The market-neutral arm is a sizing/selection modifier → it ships a **day-1
+baseline-equity-divergence e2e** from the start, plus the v0.1.0 6-falsifier pattern,
+plus a market-neutral-specific assertion. All seven, each GREEN-as-written AND
+RED-on-revert (the genuine-guard proof), in a new `crates/backtest/tests/
+mn_spread_divergence_e2e.rs` (mirroring `carry_divergence_e2e.rs` /
+`basis_divergence_e2e.rs`):
+
+1. **Dollar-neutrality (the MN-specific guard, R-MN.7 #1 — the beta-leak guard).**
+   Σnotional ≈ 0 (long notional ≈ short notional) at every rebalance; the MN book's
+   net dollar exposure ≈ 0. RED if the book carries net directional exposure (a naive
+   non-dollar-neutral long/short re-introduces the beta this feature exists to strip).
+2. **Short-leg funding-cost non-no-op (R-MN.7 #2, the carry R-CARRY.10b analogue).**
+   Zero the short-leg accrual → assert equity diverges; RED on revert (guards against a
+   computed-and-ignored cost — the binding cost must be load-bearing).
+3. **Baseline-equity-divergence e2e (R-MN.7 #3 — the CLAUDE.md non-negotiable).** The
+   MN arm's equity diverges from the un-tilted baseline (a `VolAdjustedReturn` /
+   equal-weight long-only run on the SAME path) by ≥ 1 bp when the basis decision
+   variable is non-trivial. Pattern: `crates/strategy/tests/
+   vol_targeting_overlay_end_to_end.rs`. PLUS the MN-beta-strip assertion: the MN book's
+   equity is beta-stripped vs both the long-only baseline AND a passive buy-and-hold (its
+   return correlation to the market leg is ≈0, not ≈1) — the structural claim of the
+   whole feature, tested directly.
+4. **Sign-assertion (inherited R-MN.1 / R-BR.2).** A sign flip = a basis-momentum payer
+   (it would long the crowded-high-basis names and short the cheap ones) → RED.
+5. **No-look-ahead (R-MN.7 #5).** Both the basis + the funding joins past-only under
+   simultaneous threading; RED on a future shift of EITHER series.
+6. **Two-run byte-identity (R-MN.7 #6).** Same `ensemble_seed` → identical body-SHA
+   (catches any unordered fold in the second co-resample, the `bottom_k_short`
+   selection, the liquidation rule, or the renderer).
+7. **The basis⊥funding orthogonalization is non-no-op (R-MN.7 #7).** The basis⊥funding
+   arm produces a DIFFERENT result from the raw basis-spread arm on the same paths
+   (proving the rank-residualization is load-bearing). RED if the residual collapses to
+   the raw basis.
+
+### D-MN.8 — Q-MN-5: the θ × arms × fee × regime cross-product + wall-clock (the LOCKED plan)
+
+The primary anchored deliverable is a **three-arm × θ × fee surface** vs the
+dollar-neutral ≈0 null (NOT buy-and-hold). LOCKED axes (hashed body fields, K3):
+
+| Axis | LOCKED value | Rationale |
+|---|---|---|
+| **arms** | {basis-spread, funding-spread, basis⊥funding} | the R-MN.6 headline; 3 arms on the SAME paths |
+| **θ (lookback L)** | `{60, 168}` bars | the IC-peak band; **L=24 DROPPED** (for a spread the turnover lever matters less since D6.9 falsified fees as the killer, IC peaks at 60–168); **L=720 SKIPPED** (noise, inherited) |
+| **K split** | `K_long = K_short = 3` | a single LOCKED dollar-neutral split for v0.2.0; rebalance = the existing 8h default |
+| **fee** | `{0, 5}` bps | the R-BR.LOAD minimum — D6.9's fee-sweep falsified fee-bleed (p50 ~0.002 Sharpe across the full ladder), so the full {0,2,5,10} ladder is low-value; {0,5}bps = gross-ceiling + realistic-decision read. Reuses the D6.9.3 `--taker-fee-bps`/`--slippage-bps` flags — NO new fee plumbing |
+| **regime** | `{2023, 2024}` | both day 1 (the carry/horizon E1 precedent) |
+| **N** | `200`/cell | the carry/MR/TS/v0.1.0 tractable shape |
+
+**Surface count + wall-clock (the D-BR.WALLCLOCK / Q-MN-5 gate — tractable).**
+
+- Surface count = `|arms|=3 × |fee|=2 × |regime|=2 = 12 surfaces`. Each surface =
+  `|L|=2 θ-cells × |K|=1 × N=200 = 400 path-runs`. Total = **12 × 400 = 4,800
+  path-runs**.
+- Per-path cost: the carry/basis precedent measured **~0.094 s/path** at the N=3 smoke
+  (D-BR.WALLCLOCK). The long/short book has ~2× the legs, but per-path cost is
+  dominated by the (unchanged) bootstrap generation, so conservatively **≤ ~0.15
+  s/path** for the 2-leg book. Per surface ≈ `400 × 0.15 ≈ 60 s`; **all 12 ≈ 12 min** —
+  TRACTABLE, comfortably under the ≲30-min program gate.
+- **Mandatory C3-lesson pre-flight:** the developer re-confirms the per-path cost at the
+  N=3 smoke BEFORE the full run (M-DEV-8). If a material per-path regression shows, the
+  documented economy is to drop to the **0bps-only gross read = 6 surfaces ≈ 6 min**
+  (flagged) — the gross-ceiling that gates the rest.
+- **Anchors:** + up to **6 anchors** (3 arms × {0,5}bps on 2023; +6 with 2024 → 12
+  potential). The tester locks them at M-TEST PASS; the **minimum is the 3-arm × 0bps ×
+  2023 = 3** (the gross-ceiling read that gates the rest). Scenario name:
+  `v2-mn-{arm}-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy` (`{arm}` ∈
+  `{basis, funding, basisperp}`; `{NN}` ∈ `{00, 05}`). Both revision SHAs (basis
+  `aa72409a…` + funding `bf1ede44…`) appear in the MN body (the D6.6.4 dual-pin
+  precedent).
+
+### D-MN.9 — namespace + anchoring (R-MN.8)
+
+A NEW `perp-basis-mn-spread` anchor namespace (the market-neutral spread is a distinct
+experiment axis from the long-only arm — the D6.8/D6.9 new-namespace precedent), with
+`verify_anchors.sh` extended by an additive `elif` branch **after** the
+`perp-basis-signal-robustness` branch (line 170; touch NO existing branch → the 107
+resolve through their existing branches byte-identically). Reports under
+`spec/perp-basis-mn-spread/reports/` using `robustness-*-<scenario>.md` naming. The
+anchor unit = the three-arm MN θ × fee surfaces; the tester locks them at M-TEST PASS.
+**Anchored report files in `spec/*/reports/` remain byte-immutable** (ADR-0038 § D6).
+
+### Reconciliation with the pre-registered brief (assumptions changed)
+
+The design changes / sharpens the following pre-registered items (all minor; flagged
+per the mandate):
+
+1. **Q-MN-5 θ-grid — L=24 DROPPED (the analyst's proposal, RATIFIED).** The brief's
+   Backtest-Scenarios section proposed dropping L=24 and the architect "may keep L=24
+   for continuity." The architect **drops it** — for a spread the turnover lever
+   matters less (D6.9 falsified fees as the killer) and the IC peaks at 60–168. This
+   shrinks each surface to 2 θ-cells (vs the v0.1.0 6-cell grid).
+2. **The K split is a SINGLE locked value `K=3` (the brief left "K ∈ a small locked
+   set" open).** The architect locks `K_long = K_short = 3` for v0.2.0 — one
+   dollar-neutral split keeps the surface count + wall-clock tight and avoids a
+   premature K-sweep before the spread has shown a net edge. A K-sweep is a clean
+   follow-on if v0.2.0 is ROBUST.
+3. **The margin model adds two LOCKED constants the brief did not specify
+   (`max_leverage = dec!(1)`, `maintenance_margin_frac = dec!(0.5)`).** The brief
+   required "a short analogue" to the Bug-B cap but left the model to the architect.
+   These constants are the conservative fully-collateralized choice and are hashed body
+   fields (a different margin model is a different surface). Flagged as a new
+   pre-registered assumption for the tester to read the verdict against.
+4. **The basis⊥funding arm is RANK-BASED (the analyst's lean (b), RATIFIED on exactness
+   grounds).** No change to intent; the architect confirms the rank residual is
+   Decimal-exact and the OLS slope is rejected (Q-MN-4).
+
+All other pre-registered items (the frozen § 0 rule with the BH→dollar-neutral-null
+correction, H0/H1, k1/k2/k3, the fee axis {0,5}, N=200, the universe + pins, the
+3-arm headline) are carried verbatim.
 
 ## Backtest Scenarios
 
@@ -465,6 +816,37 @@ _Tester links reports here after the M-TEST gate. The gates the tester must clea
 
 ## Changelog
 
+- 2026-06-07 (architect, perp-basis-mn-spread M-T1): filled the `## Design` section
+  (D-MN.0..9), authored [tasks.md](tasks.md) (M-DEV-0..10 + M-TEST), and wrote the
+  load-bearing decision record [ADR-0051 § D6.10](../architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md)
+  (the FIRST `run_path` touch since C2; the 6th anchor-additive instance; registered
+  atomically in the ADR README). **Q-MN-1..5 RESOLVED:** (Q-MN-1) the short-side engine
+  = a `k_short`-GATED BRANCH inside the EXISTING `run_path` (keeps the CONCRETE
+  `MomentumStrategy` signature — NO dyn/generic, the §D6.5.2 trap avoided; sibling
+  `run_path_long_short` REJECTED — duplicates solvency logic); the short SOLVENCY model
+  = symmetric dollar-neutral notional + a short INITIAL-MARGIN gate (`max_leverage =
+  dec!(1)` LOCKED) + a deterministic MAINTENANCE-MARGIN LIQUIDATION rule
+  (`maintenance_margin_frac = dec!(0.5)` LOCKED) bounding the unbounded short loss; the
+  equity math is UNCHANGED (`Σ qty·mark` already handles `qty<0`); the short-leg funding
+  accrual ALREADY EXISTS (`montecarlo.rs:322-373`, `cash += notional × (−rate)` already
+  correct for a short — only line 350's `continue` skip gates it). (Q-MN-2, THE
+  load-bearing gate) the `run_path` anchor-neutrality RE-PROOF = by-construction (short
+  branches are dead code when `k_short==0` → executed path byte-for-byte = HEAD) + a
+  `run_path_k_short_zero_byte_identical_to_head` unit test + the hard `verify_anchors.sh`
+  → 107/107 gate run FIRST (M-DEV-0 floor) + after EVERY seam. (Q-MN-3) a SECOND
+  SIMULTANEOUS sidecar (the D6.9 channel-reuse RETIRED — basis + funding BOTH live):
+  `GeneratedPath.basis_by_symbol` + `BlockBootstrapPathGen.basis_at_return` +
+  `with_basis(…)` + `TcnScenarioInput.basis_override`, co-resampled at the SAME `idx_seq`,
+  ZERO new RNG, `None` for every non-MN run (~37 default-None sites). (Q-MN-4) the
+  basis⊥funding arm is RANK-BASED Decimal-EXACT (`rank(basis) − rank(funding)`, NO
+  division → bit-reproducible; OLS slope REJECTED — non-terminating Decimal division is a
+  hidden determinism surface). (Q-MN-5) a NEW namespace `perp-basis-mn-spread`; 3 arms ×
+  {0,5}bps × {2023,2024} = 12 surfaces × 400 paths ≈ ~12 min TRACTABLE; θ L∈{60,168}
+  (L=24 DROPPED, L=720 SKIPPED), K=3 LOCKED. **Assumptions changed (flagged):** L=24
+  dropped, K locked to a single value 3, two LOCKED margin constants added, the
+  basis⊥funding arm locked rank-based. Build estimate VALIDATED at ~5–8 dev-days (10 dev
+  tasks + M-TEST); the dominant risk is the short-side engine + the FIRST run_path anchor
+  re-proof, NOT the cost model. HANDOFF → developer. No code authored; files only.
 - 2026-06-06 (analyst, perp-basis-mn-spread): authored the v0.2.0 feature brief +
   opened the trace row `REQ-PERP-BASIS-MN-SPREAD-001` (state `proposed`). Follow-on to
   `perp-basis-signal-robustness` v0.1.0 (closed PASS / FAMILY-UNIFORM-FRAGILE at all
