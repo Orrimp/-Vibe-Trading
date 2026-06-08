@@ -430,6 +430,64 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+<!-- updated 2026-06-08 (analyst, on-chain-vs-conclude fork — DECISION-SUPPORT,
+     awaiting operator pick) — `perp-basis-mn-spread` MN v0.2.0 closed PASS /
+     FAMILY-UNIFORM-FRAGILE in all 3 arms (HEAD `8c2e6c4`), retiring the entire
+     DERIVATIVES-POSITIONING domain with finality (k2: mn-basis ≡ mn-funding
+     BYTE-IDENTICAL surfaces — basis IS funding on this universe; basis⊥funding
+     residual NEGATIVE median Sharpe + 100% tail-DD → no orthogonal alpha). This
+     is the SECOND full data domain exhausted with uniform negatives under the
+     frozen block-bootstrap MC § 0 rule (after OHLCV/price: 4 families × 3
+     horizons × universe axis). Passive buy-and-hold remains undefeated.
+
+     **STRATEGIC FORK now at the operator** (NOT auto-resolved by pre-registration
+     despite the "route to on-chain IFF MN fragile" pre-commit — two exhausted
+     domains warrant an explicit conclude-vs-continue call). Full decision-support:
+     `spec/dev-notes/onchain-vs-conclude-fork-2026-06-08.md`.
+
+     ANALYST RECOMMENDATION: **ON-CHAIN (one bounded hunt, then conclude) — the
+     durable choice (Recommended per durable-over-quick).** The two-domain negative
+     is STRONG-but-DOMAIN-LIMITED: it licenses "no harvestable edge in PRICE or
+     DERIVATIVES-POSITIONING data on these large-caps net of cost," NOT "no edge
+     anywhere" — in information space the program has tested ~1.5 distinct channels
+     (price + a positioning signal that collapsed onto its own funding mirror), not
+     2. On-chain is the FIRST genuinely-orthogonal channel (settlement-layer flows:
+     exchange net-flows / stablecoin supply / miner flows — different substrate +
+     population, not a price/positioning transform). Prior LOW-to-MEDIUM (NOT
+     inflated); cost ~5-8 dev-days (no on-chain plumbing exists; daily ~730 pts/yr
+     = 12× thinner tail than the hourly domains; PIT hygiene HARD — on-chain
+     revisions/address-relabeling rewrite history). Routes WITH a PRE-COMMITTED
+     HARD-STOP: FRAGILE on-chain under the frozen rule → CONCLUDE + ship passive,
+     NO further domain hunt (not options, not macro, not on-chain sub-signals).
+     Highest-prior first signal: **EXCHANGE NET-FLOWS** (clearest causal price link
+     + strongest orthogonality + free daily history; PIT leak-check falsifier is
+     THE gate; stablecoin-supply = cleaner-PIT fallback).
+
+     If-budget-tightens (the cheaper lane that is NOT conclude-now): **on-chain
+     research spike first** (~1-2 dev-days; clone `basis_diag.rs` → `netflow_diag.rs`,
+     one series BTC+ETH, daily rank-IC + sign-persistence + PIT leak-check, NO
+     ScoreSource); gate the full ~5-8d build on a non-zero sign-stable IC.
+
+     FALLBACK (named, fully defensible, the CHEAPER choice): **conclude now / ship
+     passive** — zero more dev-days; "ship passive" = promote the already-built +
+     anchored BH control from "benchmark" to "the strategy the paper-agent runs"
+     (a PROMOTION, not a build) + a product.md thesis-doc update (landed alongside
+     the fork note). Defensible if the operator weights the ~10-consecutive-negatives
+     base rate above the orthogonality-diversity argument.
+
+     Remaining-domain map (on-chain ranks #1): options/DVOL #2 (orthogonal but
+     2-symbol + retired-vol skepticism), cross-asset/macro #3 (exogenous but
+     harness-adapter-blocked + unstable beta), social #4 (feasibility-blocked),
+     OI/LSR #5 (in the just-closed domain + paid-for-history), cross-exchange #6
+     (HFT), non-crypto #7 (off-mandate). On-chain is the BEST next bet but NOT the
+     last reasonable domain — concluding now forecloses options + macro too.
+
+     NO on-chain feature brief authored yet (deferred to operator greenlight per
+     trace.toml ownership rule); NO `[[req]]` row opened; NO code; NO commit.
+     product.md thesis sharpened (two-domains-exhausted record +
+     passive-may-be-terminal note + on-chain-as-final-probe). `perp-basis-mn-spread`
+     is tester-done PASS and moves to Recent on operator fork-resolution. -->
+
 <!-- updated 2026-05-30 (analyst, monte-carlo-robustness-lane M0 close) —
      **PROMOTED Idea → Active 2026-05-30**. Opens the Monte-Carlo robustness
      lane under the operator's 4 locked strategic decisions (2026-05-30):

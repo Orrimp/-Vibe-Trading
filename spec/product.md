@@ -297,6 +297,51 @@ data/feature/risk/exec scaffolding. Rough order of arrival:
 Each strategy lifts through the lifecycle gates (see below) — promotion is
 never automatic.
 
+> **Active-edge-search status (2026-06-08) — TWO data domains exhausted; passive
+> undefeated.** The robustness program has now run the frozen block-bootstrap
+> Monte-Carlo § 0 rule
+> ([`robustness-decision-rule-2026-05-30.md`](dev-notes/robustness-decision-rule-2026-05-30.md))
+> across **two structurally-distinct data domains** and both came back
+> uniformly FRAGILE, with passive buy-and-hold the undefeated baseline:
+>
+> 1. **OHLCV / price** — 4 method families (x-sec momentum, mean-reversion,
+>    funding-carry, TS-momentum) × 3 horizons (1h/4h/daily) × a universe axis.
+>    ALL FAMILY-UNIFORM-FRAGILE (program retrospective:
+>    [`horizon-retest-robustness`](horizon-retest-robustness/presentations/horizon-retest-robustness-2026-06-05.md)).
+> 2. **Derivatives-positioning** — funding-carry, basis-reversal long-only
+>    ([`perp-basis-signal-robustness`](perp-basis-signal-robustness/feature.md)),
+>    and the market-neutral basis spread in all 3 arms
+>    ([`perp-basis-mn-spread`](perp-basis-mn-spread/feature.md)) — basis-spread,
+>    funding-spread, and the basis⊥funding residual. ALL FRAGILE, with two
+>    decisive facts: **basis ≡ funding byte-identically** (funding mechanically
+>    prices the basis — same information, verified not a wiring bug) and the
+>    basis⊥funding **residual carries NEGATIVE median Sharpe** with 100% tail
+>    drawdown (no orthogonal alpha). The domain is closed with finality.
+>
+> **What this licenses (scoped honestly):** "no harvestable edge in PRICE or
+> DERIVATIVES-POSITIONING data on these large-caps net of cost." It does **NOT**
+> license "no edge anywhere" — both exhausted domains are transforms of a small
+> set of underlying quantities (realized price + leveraged-positioning pressure,
+> and the positioning signal collapsed onto its own funding mirror), so the
+> program has ruled out ~1.5 distinct *information channels*, not the whole
+> reachable universe. **On-chain** (settlement-layer flows — exchange net-flows /
+> stablecoin supply / miner flows — a genuinely-orthogonal channel, not a
+> price/positioning transform) is the pre-registered **next-and-final** domain
+> probe. Fork decision-support:
+> [`onchain-vs-conclude-fork-2026-06-08.md`](dev-notes/onchain-vs-conclude-fork-2026-06-08.md)
+> (recommendation: one bounded on-chain hunt with a pre-committed hard-stop —
+> a FRAGILE on-chain verdict CONCLUDES the active-vs-passive search).
+>
+> **The realistic terminal strategy for this project may be passive
+> buy-and-hold — and that is a SUCCESS of the robustness program, not a failure.**
+> The product's epistemic core is "measured robustness, not asserted alpha"
+> (§ Differentiator (5)); the machine correctly refusing to certify ~10 plausible
+> active bets (TCN, PatchTST, GARCH-σ, LLM-forecaster, 4 OHLCV families, 3
+> derivatives vehicles) and leaving passive undefeated is the program working as
+> designed. "Ship passive" concretely means promoting the already-built and
+> anchored BH control from benchmark to the production baseline strategy — a
+> promotion of validated code, not a new build.
+
 ---
 
 ## Data sources & feature pipeline
@@ -715,6 +760,25 @@ scope) can render inline.
 
 ## Changelog
 
+- 2026-06-08 (analyst, on-chain-vs-conclude fork): sharpened the § Strategy library
+  roadmap with an **active-edge-search status** note recording that TWO data domains
+  are now exhausted with uniform FRAGILE verdicts under the frozen Monte-Carlo § 0
+  rule (OHLCV/price: 4 families × 3 horizons × universe; derivatives-positioning:
+  funding-carry + basis long-only + MN basis/funding/residual — with basis ≡ funding
+  byte-identical and the basis⊥funding residual at NEGATIVE median Sharpe), passive
+  buy-and-hold undefeated. Scoped the claim honestly: it licenses "no harvestable
+  edge in price/positioning data on these large-caps net of cost," NOT "no edge
+  anywhere" (~1.5 distinct information channels ruled out, not the reachable
+  universe). Recorded **on-chain as the pre-registered next-and-final domain probe**
+  and that the **realistic terminal strategy may be passive BH — a success of the
+  robustness program, not a failure** (the machine correctly killed ~10 active bets;
+  "ship passive" = promote the already-built+anchored BH control to production).
+  Cross-linked the fork decision-support note
+  ([`onchain-vs-conclude-fork-2026-06-08.md`](dev-notes/onchain-vs-conclude-fork-2026-06-08.md)).
+  No reversal of the thesis — a sharpening consistent with the ratified § Pillar
+  stack (measured robustness, not asserted alpha) and the existing
+  demotion-of-prediction-bets record. Locked (2)+(4) moat, the LLM-as-support
+  reframe, and all anchored content untouched.
 - 2026-05-30 (analyst, monte-carlo-robustness-lane — narrative coherence pass,
   closes spec-audit-2026-05-30 COSMETIC #6): tightened the document's prose to
   the already-ratified core/support reframe — **no new strategic decision, prose
