@@ -26,6 +26,11 @@ path = "src/bin/monte_carlo.rs"
 name = "param_robustness_sweep"
 path = "src/bin/param_robustness_sweep.rs"
 
+[[example]]
+name = "passive_baseline_equity"
+path = "examples/passive_baseline_equity.rs"
+required-features = ["realdata"]
+
 [features]
 # Enable real TCN-weights backtest scenarios (top10-*-tcn-overlay-weights).
 # Requires `--features candle` at build time; without it those scenarios emit

@@ -115,6 +115,57 @@ scope the terminal verdict does not call for.
 
 ## Changelog
 
+- 2026-06-08 (developer): produced realized equity-curve + full metrics for the BH baseline.
+  Added `crates/backtest/examples/passive_baseline_equity.rs` (read-only probe, `--features realdata`).
+  Wrote daily-sampled equity CSVs to
+  `spec/runbooks/artifacts/passive-baseline-2026-06-08/bh-equity-curve-{2023,2024}.csv`.
+  Updated `passive-baseline-characterization.md` with "Realized equity curve + full metrics" section.
+
+  **Realized realized single-path metrics (data: revision 3a8b96c4, 10-sym equal-weight, $10k/sym):**
+
+  | Year | Sharpe  | Sortino | Calmar | MaxDD%  | TotalReturn% | FinalEquity |
+  |------|---------|---------|--------|---------|--------------|-------------|
+  | 2023 | +1.8417 | +2.5126 | +5.677 | 34.57%  | +196.22%     | $296,221    |
+  | 2024 | +0.8925 | +1.2047 | +1.853 | 48.95%  | +91.04%      | $191,040    |
+
+  **Bootstrap reconciliation:** 2023 realized Sharpe +1.84 vs bootstrap p50 +1.74 (gap=+6.1%,
+  realized is ABOVE the median bootstrap path — consistent: the actual 2023 bull leg was a
+  strong path). 2024 realized +0.89 vs p50 +1.10 (gap=-19.2%, realized is BELOW the median
+  — consistent: the 2024 actual path had a larger mid-year drawdown than many resampled paths).
+  Both within expected single-path vs median-of-200 variance. No surprise; sign match.
+
+  **Anchor gate:** 119/119 PASS. No stray files in `spec/*/reports/`. Run command:
+  `cargo run -p backtest --features realdata --example passive_baseline_equity`
+
+- 2026-06-08 (developer): produced the passive-baseline characterization artifact
+  at `spec/runbooks/artifacts/passive-baseline-2026-06-08/passive-baseline-characterization.md`
+  by reading the 119 anchored sweep reports — zero new code. Key metrics confirmed:
+
+  **2023 (8760 h bars, N=200 block-bootstrap-real, seed 0xC0FFEE, 10-symbol USDT perps):**
+  - Sharpe p50 = **+1.735** (p5=+0.124, p95=+3.870; reconciles with the +1.74 bar in product.md)
+  - P(loss) = 4.5% | P(Sharpe > 1.0) = 77.5% | p95 MaxDD = 51.15%
+  - Byte-identical across 14 independent anchored reports
+
+  **2024 (8784 h bars, same config):**
+  - Sharpe p50 = **+1.105** (p5=-0.682, p95=+2.691; reconciles with the +1.10 bar in product.md)
+  - P(loss) = 16.5% | P(Sharpe > 1.0) = 53.5% | p95 MaxDD = 64.83%
+  - Byte-identical across 8 independent anchored reports
+
+  **Actual BH construction (honest note):** The harness BH control is a **pure
+  buy-once-hold** (no rebalancing, ever). Equal-weight initial allocation at bar-0
+  close. No fee charged on the initial buy. Mark-to-market tracked per bar. This is
+  NOT the proposed monthly/equal-weight cadence — that cadence is a forward operational
+  proposal that has not been backtested under this harness.
+
+  **Rebalance cadence decision:** The operator confirmed "go ahead" on the monthly /
+  equal-weight default (2026-06-08 ratification). This is the designated operational
+  cadence for the paper-trading agent. The +1.74/+1.10 Sharpe numbers characterize
+  the pure-hold control; a monthly-rebalanced variant would differ slightly (small
+  on a 10-symbol universe at monthly cadence) but has not been quantified.
+
+  **Anchor gate:** 119/119 PASS verified. No stray reports written to anchored dirs.
+  `git diff crates/` empty.
+
 - 2026-06-08 (analyst): created on the terminal verdict of the active-vs-passive
   search (CONCLUDED across price + positioning + on-chain; ship passive). Defines
   the BH control as the canonical production baseline, the proposed monthly /
