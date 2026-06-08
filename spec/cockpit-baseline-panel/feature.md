@@ -1,7 +1,7 @@
 ---
 slug: cockpit-baseline-panel
-status: proposed
-owner: analyst
+status: in-progress
+owner: architect
 updated: 2026-06-08
 version: 0.1.0
 ---
@@ -95,62 +95,330 @@ shipped passive-BH result, reusing existing widgets verbatim.
 
 ## Design
 
-_architect fills this. Two decisions to resolve are pre-stated below._
+_Architect-owned (2026-06-08). D1 + D2 resolved below against the actual
+crate edges. No ADR: every decision here is pure-`ui`, additive, and
+within the existing `viewer`/`registry_read` precedent — nothing
+architecturally load-bearing (no new crate edge, no anchor change, no
+budget shift). Decisions are recorded inline + in the Changelog._
 
-### Decision D1 (architect to resolve) — loader-reads-CSV-live vs embed-as-constants
+### Crate edges (verified — corrects one brief assumption)
 
-The realized BH metrics (§ Data contract) can reach the panel two ways:
+The brief's "ui depends on core + reports, NOT backtest" is **slightly
+off**: `crates/ui/Cargo.toml:70` does declare `backtest = { path =
+"../backtest" }` — added by ADR-0030 for the **Lab Run button only**
+(`engine::run_scenario`). It is the one sanctioned non-`live` cross-crate
+edge. **This feature adds NO new edge** and does not use the `backtest`
+dep: the baseline loader is pure-`ui` over `core` + `std::fs`, exactly
+the `models/registry_read.rs` precedent. AC7 holds.
 
-- **(a) Live-load (Recommended)** — `baseline/loader.rs` reads the two
-  committed CSVs into `EquitySeries` **and** parses/maps the
-  characterization metrics into `core::BacktestMetrics` at boot.
-  - *Pro:* data-driven; the panel is the single source of truth and
-    re-runs of the characterization flow through automatically; exercises
-    a real Loading/Error path; matches the `registry_read.rs` precedent
-    (reads committed files at runtime).
-  - *Con:* couples the cockpit to a **non-anchored** artifact path
-    (`spec/runbooks/artifacts/passive-baseline-2026-06-08/`); the path is
-    date-stamped and could move; needs a robust Error fallback (which R4
-    requires anyway).
-- **(b) Embed metrics as typed constants** — the six metric values are
-  hand-entered as a `const BacktestMetrics` (the equity curve still loads
-  from CSV, since a `const` 367-point vector is unwieldy).
-  - *Pro:* simplest; no metrics-parse failure mode; the metrics are
-    byte-stable + anchored, so embedding is safe.
-  - *Con:* goes **stale** silently if the characterization is ever
-    re-run; splits the data source (curve from file, metrics from code);
-    a second source of truth to keep honest.
+Relevant verified facts:
 
-**Analyst recommendation: (a) live-load**, but **hybrid is acceptable
-and may be the durable sweet spot**: live-load the *equity curve* from
-CSV (R1 needs the 367 points anyway), and let the architect choose
-whether the *six metric scalars* are parsed-from-the-`.md`-table or
-embedded-as-`const`. The curve is the bulky data and must be file-driven;
-the six scalars are the only thing in tension. Live-load keeps the panel
-data-driven (the program's stated value: the cockpit reflects the shipped
-result, not a hand-copied snapshot) at the cost of a path coupling that
-the **mandatory Error state already isolates** — a missing/moved CSV
-degrades to the honest "data isn't bundled in this build" copy, never a
-crash. Embedding is the **if-budget-tightens fallback**: it removes the
-metrics-parse path but commits to a stale-data follow-up the next time
-the characterization changes.
+- `core::EquitySeries::from_points` (`equity_series.rs:68`) computes
+  `peak`/`trough`/per-point `drawdown_pct`/`max_drawdown_pct` in one O(N)
+  `Decimal` walk — **drawdown band (R1) is free** once the curve loads.
+- `core::BacktestMetrics` (`equity_series.rs:167`) is a **pure-data
+  struct** — no compute methods, no `sortino`/`calmar` field. Its only
+  behaviour is the `all_absent()` zero-sentinel.
+- **There is NO Sharpe / CAGR / total-return math anywhere in
+  `crates/core`** (exhaustive grep: only the struct field declarations).
+  `compute_sharpe_hourly` / `compute_calmar` / `compute_max_drawdown_f64`
+  live **only in `crates/backtest`** (`param_robustness_sweep.rs`,
+  `stats/mod.rs`, `examples/passive_baseline_equity.rs`) and
+  `crates/forecast`. The Lab KPI strip itself renders Sharpe as `—` with
+  the standing comment "engine not yet computing" (`kpi_strip.rs:273`).
+- `core::Timestamp` (`time.rs`) wraps `time::OffsetDateTime`; its serde is
+  `rfc3339`. There is **no `FromStr`/parse helper** — the loader parses
+  the timestamp itself via the `time` crate (already a `ui` dep).
 
-**If budget tightens:** ship (b)-for-metrics + (a)-for-curve (embed the
-six scalars, file-load the curve). This is the smaller blast radius and
-still satisfies every acceptance criterion; it adds a "re-sync metrics
-const if characterization re-runs" maintenance note.
+### Decision D1 — RESOLVED: (c) embed the six KPI scalars as a typed `const`; file-load the curve
 
-The architect locks D1 in § Design and records the rationale in the
-Changelog.
+**Option (a) "compute from the loaded curve" is INFEASIBLE here, and
+worse, semantically wrong** — so it is rejected on the merits, not on
+budget:
 
-### Decision D2 (architect to resolve) — fixtures-smoke routing
+1. *Infeasible without a new edge.* Sharpe/CAGR/total-return are not in
+   `core`. Computing them in-`ui` means either (i) adding a new
+   annualized-Sharpe-from-equity-points module to `core` (a non-trivial
+   methodology decision — annualization base, return-series convention —
+   that this S–M read-only panel has no business introducing), or (ii)
+   reaching into `backtest`'s `compute_sharpe_hourly`, which **violates
+   AC7** (the `backtest` dep is ADR-0030-scoped to the Lab Run button).
+2. *Semantically wrong even if feasible.* The published §7.1 Sharpe
+   (`+1.8417`/`+0.8925`) was computed over the **full 8,759 / 8,784 hourly
+   bars** with annualization `sqrt(8760)`. The committed CSV is
+   **daily-sampled (stride 24, ~366 points)**. Recomputing Sharpe — or
+   even MaxDD — from the 366 daily points would produce a **different
+   number** than the operator reads in the characterization. The KPI strip
+   must match the *published* result, not a re-derivation. So even the
+   one metric `from_points` gives for free (MaxDD) is taken from the
+   `const`, not the loaded daily curve, for cross-surface consistency.
 
-Adding a `Screen::Baseline` route means the fixtures `cockpit` should be
-able to paint it inside the ~7 s smoke window. The architect decides
-whether the smoke **default-routes** to Baseline or merely makes it
-**navigable** (and whether the smoke asserts the Error-state render,
-since the CSVs may be absent in a minimal checkout). Either satisfies R7;
-the constraint is first-frame render + no panic.
+**Option (b) "parse the `.md` table" is rejected** — fragile markdown
+parsing (the §7.1 table is hand-formatted prose, not a stable wire
+schema; `reports::parse::parse_from_report` targets the *backtest*-report
+KPI block, a different layout) for zero benefit over (c): the six scalars
+are byte-stable and anchored, so a parse buys no freshness a `const`
+lacks, and adds a parse failure mode.
+
+**Chosen: (c) hybrid — curve from CSV, six scalars + caption Sortino/Calmar
+as a typed `const`.**
+
+- The **equity curve** (R1) is file-driven: `baseline/loader.rs` reads the
+  ~366-point CSV → `EquitySeries::from_points`. The curve is the bulky
+  data; it must live in the file. This also gives the real Loading/Error
+  path R4/R7 require, and the drawdown band for free.
+- The **six KPI scalars + caption Sortino/Calmar** are a
+  `const`/`fn`-built `BacktestMetrics` per year, sourced from
+  characterization §7.1 (the **realized single-path** row, NOT bootstrap
+  p50 — the panel draws the realized curve, so the strip must match the
+  line). Values locked below.
+- **MaxDD source nuance:** the KPI-strip `max_drawdown_pct` comes from the
+  `const` (§7.1 intraday 34.57% / 48.95%), so the headline number matches
+  the characterization. The drawdown *band* renders from the loaded daily
+  curve's per-point `drawdown_pct` (visual shape only) — a band whose
+  visual trough may sit a hair shallower than the const headline because
+  it is daily-sampled. This is acceptable and expected (the band is a
+  shape, the card is the number); the loader does not try to reconcile
+  them.
+
+**Re-sync contract (the one cost of (c)).** Because the scalars are
+embedded, they go stale if the characterization is ever re-run with
+different numbers. Mitigation: (1) a `// RE-SYNC:` doc-comment block on
+the `const` block in `baseline/loader.rs` naming the source
+(`passive-baseline-characterization.md §7.1`) and the exact values; (2) a
+unit test `baseline_metrics_match_characterization` that asserts the six
+embedded scalars equal the documented §7.1 values (so a silent edit trips
+a test); (3) a one-line note in the `passive-baseline.md` runbook pointing
+back here. This is a documented maintenance task, not a hidden
+foot-gun. If the characterization is ever re-run, the failing test is the
+re-sync trigger.
+
+**Locked metric values** (characterization §7.1 realized row → the six
+`kpi_strip` cards; `win_rate` + `trades` are not meaningful for
+buy-once-hold):
+
+| Field | 2023 | 2024 | Notes |
+|-------|------|------|-------|
+| `total_return_pct` | `196.22` | `91.04` | sentiment-coloured (positive → `UP_500`) |
+| `cagr_pct` (`cagr_present=true`) | `196.22` | `91.04` | 1-yr horizon ⇒ CAGR ≈ total return (see caption nuance below) |
+| `sharpe` (`sharpe_present=true`) | `1.8417` | `0.8925` | `format_sharpe` renders 4-dp |
+| `max_drawdown_pct` | `34.57` | `48.95` | always `DOWN_500` with minus prefix |
+| `win_rate_pct` | — (`win_rate_present=false`) | — | renders `—`; do NOT fabricate |
+| `trades` | `0` | `0` | buy-once-hold |
+
+Caption-only (no KPI slot — A2): **Sortino** `2.5126` / `1.2047`,
+**Calmar** `5.677` / `1.853`.
+
+> **CAGR honesty note.** §7.1 publishes `TotalReturn%` but not a separate
+> `CAGR%`. For a single full-year hold the annualized growth rate equals
+> the total return (the period IS one year), so setting `cagr_pct =
+> total_return_pct` is correct, not a fabrication. The `const` doc-comment
+> states this derivation explicitly so a future reader does not mistake it
+> for a copied-from-source value. (Characterization §7.1 footnote derives
+> Calmar as `CAGR/maxDD`; with CAGR=196.22% and maxDD=34.57%,
+> 1.9622/0.3457 ≈ 5.677 — the published Calmar — which independently
+> confirms CAGR≈total-return for this horizon.)
+
+### Decision D2 — RESOLVED: navigable (not default-routed); a dedicated headless Error-state render test carries the smoke assertion
+
+The fixtures `cockpit` smoke (`crates/ui/src/bin/cockpit.rs`) boots to
+`Screen::Home` (→ `Live`) and paints the full fixture steady-state; the
+gate is first-frame render + no panic (`headless_emulator_smoke.rs`).
+
+**Chosen: make `Screen::Baseline` navigable, do NOT change the smoke's
+default screen.**
+
+- *Navigable* = registered in `SIDEBAR_GROUPS_PHASE_C` (Work group, after
+  Compare) + routed in `shell::screen_body`. The operator (and any
+  screen-visiting test) can reach it; the existing smoke's default-screen
+  snapshot baseline is **untouched** (re-routing the default would churn
+  the locked first-frame baseline for no smoke-coverage gain).
+- *Determinism of the smoke gate.* Default-routing to Baseline would make
+  the smoke's first frame depend on CSV presence in the checkout — a
+  flakiness source the brief explicitly warns against. Keeping the default
+  on `Live` keeps the smoke deterministic regardless of whether the
+  runbook CSVs are present.
+- *Error-state assertion lives in a dedicated headless test*, not the
+  smoke: `baseline_error_state_renders_without_panic` constructs the
+  Baseline screen state with the loader pointed at a **missing** path,
+  asserts both panels land in `PanelState::Error(BASELINE_DATA_UNAVAILABLE)`
+  and that `screens::baseline::view` renders in both themes without panic
+  (AC2/AC3). This is the deterministic equivalent of "the smoke paints the
+  Error path" — it pins the exact behaviour the fixtures-only checkout
+  hits, without coupling the global smoke gate to data files.
+- *Optional belt-and-braces (developer discretion, cheap):* if the smoke
+  harness already visits every sidebar screen, Baseline is covered for
+  free by being in `SIDEBAR_GROUPS_PHASE_C`; no extra work. If it does
+  not, the dedicated test above is sufficient — do not expand the smoke.
+
+Net: R7 / AC3 are satisfied by the navigable route + the dedicated
+Error-state headless test; the cockpit-smoke gate stays first-frame +
+no-panic + deterministic.
+
+### `baseline/loader.rs` contract
+
+Pure-`ui` module, no new crate edge. Mirrors `viewer::load_equity_companion`
+(`bin/viewer.rs:172`) and the `registry_read.rs` K2 never-panic contract.
+
+**Input** — committed CSV, schema `bar_index,timestamp_utc,equity_usd`:
+
+```
+bar_index,timestamp_utc,equity_usd
+0,2024-01-01T00:00Z,100000.00
+25,2024-01-02T00:00Z,105017.03
+...
+8784,2024-12-31T23:00Z,191040.25
+```
+
+- `timestamp_utc` is **minute-precision Zulu** (`2024-01-01T00:00Z`), NOT
+  RFC3339 µs. The standard `time::OffsetDateTime::parse(s, &Rfc3339)` path
+  used by `reports::csv_artifacts` **will reject** this (no seconds). The
+  loader uses an explicit `format_description` accepting
+  `[year]-[month]-[day]T[hour]:[minute]Z` (or normalises by appending
+  `:00` before an `Rfc3339` parse — implementer's choice; the former is
+  cleaner). A parse unit test pins the `…T00:00Z` shape.
+- `equity_usd` → `rust_decimal::Decimal` → `Money::<Usdt>::from_decimal`.
+  Never `f64`.
+- `bar_index` is **informational — ignored**. Row order in the file is
+  oldest-first (which `from_points` requires); the loader preserves file
+  order and does not sort on `bar_index`.
+
+**Signatures** (shape; final names the implementer's):
+
+```rust
+/// Load one year's BH equity curve from its committed CSV.
+/// Mirrors viewer::load_equity_companion — synchronous, never panics.
+/// Ok(Ready(series)) on success; Ok(Empty) on zero data rows;
+/// Err(BASELINE_DATA_UNAVAILABLE) on missing file / parse miss.
+pub fn load_baseline_curve(path: &Path) -> PanelState<EquitySeries>;
+
+/// The realized §7.1 metrics for a year, embedded (D1=c).
+/// RE-SYNC: values mirror passive-baseline-characterization.md §7.1.
+pub fn baseline_metrics(year: BaselineYear) -> BacktestMetrics;
+```
+
+**Error cases → states** (R4):
+
+| Condition | Returned state | Copy |
+|-----------|----------------|------|
+| File missing / unreadable | `PanelState::Error(BASELINE_DATA_UNAVAILABLE)` | "Baseline data isn't bundled in this build. …" |
+| CSV header/row parse miss (bad timestamp, non-decimal equity) | `PanelState::Error(BASELINE_DATA_UNAVAILABLE)` | same |
+| `from_points` → `Empty`/`NonMonotone` err | `PanelState::Error(BASELINE_DATA_UNAVAILABLE)` | same |
+| Zero data rows (header only) | `PanelState::Empty` | widget empty body |
+| OK | `PanelState::Ready(EquitySeries)` | populated |
+
+The metrics half **never errors** (it is a `const` map): `baseline_metrics`
+always returns a `Ready`-able `BacktestMetrics`. So a missing CSV yields
+**curve+band in Error, KPI strip still populated from the const** — an
+honest degrade (the numbers are known; only the drawn line is absent).
+The implementer may, at discretion, also force the KPI strip to its
+unavailable state when the curve errors (for visual coherence) — but the
+default (strip stays populated) is acceptable and arguably more useful.
+
+**Path resolution.** The CSV path is resolved relative to the workspace
+root (`CARGO_MANIFEST_DIR`/`../../spec/runbooks/artifacts/passive-baseline-2026-06-08/bh-equity-curve-{year}.csv`),
+matching how `registry_read` resolves `crates/forecast/checkpoints/...`.
+The exact base-path helper is the implementer's call; isolate it in one
+function so the Error-state test can point it at a bogus path. **Do not
+hardcode an absolute path.**
+
+### `Screen::Baseline` integration
+
+Three-touchpoint pattern (matches every existing screen):
+
+1. **`state.rs`** — add `Screen::Baseline` variant (after `Strategies`,
+   before the deprecated aliases). Add a `baseline_screen_state:
+   BaselineScreenState` field to `Cockpit` (enum + `Default` + `Debug`
+   touchpoints). Add the typed message arm
+   `Message::BaselineSelectYear(BaselineYear)` — **no `String` payload**
+   (R2). `BaselineYear` is a 2-variant `enum { Y2023, Y2024 }`,
+   `Default = Y2024`.
+2. **`baseline/state.rs`** — `BaselineScreenState { curve_2023:
+   PanelState<EquitySeries>, curve_2024: PanelState<EquitySeries>,
+   active_year: BaselineYear }`. Metrics are not stored (pulled from the
+   `const` `baseline_metrics(active_year)` at view time). The two curves
+   are loaded once at boot (or lazily on first Baseline visit — boot-load
+   is simpler and matches the fixtures pattern). `Default` =
+   `active_year: Y2024`, both curves `Loading`.
+3. **`shell::screen_body`** — add `Screen::Baseline => baseline::view(model,
+   mode)` arm.
+
+**`update` wiring** (`state.rs`): `Message::BaselineSelectYear(y)` sets
+`baseline_screen_state.active_year = y`. Curve loading happens at boot via
+a helper the bins call (mirroring how `cockpit.rs` boot pre-seeds
+fixtures), or on first visit — either is fine; boot-load keeps `update`
+trivial and is the recommended path.
+
+**`screens/baseline.rs` `view(&Cockpit, ThemeMode)`** composition
+(top→bottom), reusing widgets **verbatim**:
+
+```
+headline (BASELINE_HEADLINE, text::H2)            year chips [2023][2024◀]
+caption (BASELINE_CAPTION, plain language, honest bounded scope — R3/A3)
+kpi_strip::view(&Ready(baseline_metrics(active_year)), mode).map(bridge)
+equity_curve::view(&curve[active_year], mode).map(bridge)
+drawdown_band::view(&curve[active_year], mode).map(bridge)
+[optional] caption-only Sortino/Calmar line (BASELINE_RISK_DETAIL, FG_3)
+```
+
+- The three widgets return `Element<'_, ViewerMessage>`; bridge to the
+  screen's `Message` with `.map(|_| Message::…)` exactly as
+  `screens/live.rs:62,67` does (`.map(|_| Message::ChartMarkerHoverEnded)`
+  — a never-fired no-op bridge, since these panels emit no interactions
+  for Baseline). Reuse the same harmless arm.
+- **Year chips** use the established Compare/Lab chip pattern
+  (`screens/compare.rs::build_range_chips`): `Button` + active/inactive
+  token styling, `on_press(Message::BaselineSelectYear(y))`,
+  focusable + Enter-activatable (R2 / accessibility). Active chip =
+  `ACCENT` + `PANEL_RAISED` bg; inactive = `FG_3` + `BORDER_1`.
+
+**Sidebar IA** (R6) — `theme.rs`:
+
+- Add `Screen::Baseline` to `SIDEBAR_GROUPS_PHASE_C` **Work** group, after
+  `Compare`: `&[Screen::Lab, Screen::Live, Screen::Compare, Screen::Baseline]`.
+- The flatten-invariant test
+  (`sidebar_groups_phase_c__flatten_matches_phase_a`) compares the
+  flattened groups against `SIDEBAR_ENTRIES_PHASE_A` — so **add
+  `Screen::Baseline` to `SIDEBAR_ENTRIES_PHASE_A` too**, in the same
+  position (after `Compare`, before `Strategies`). Both consts must stay
+  in lock-step or the test fails (this is the intended guard, AC6).
+- Sidebar label = `BASELINE_SIDEBAR_LABEL` = "Baseline".
+
+### Lumen / strings / lint
+
+- **Zero new theme tokens** (R5): equity-up `UP_500`, drawdown `DOWN_500`,
+  panel chrome, type scale all exist. Any token addition is a review smell.
+- **All copy via `strings.rs` `BASELINE_*`** (R5): see § Strings. No
+  hardcoded strings, no hex colours. Renders in both themes for free.
+- **Lint:** new Baseline code follows the `ui` crate's existing
+  per-module `#![allow(...)]` convention (e.g. the screen module mirrors
+  `screens/live.rs`'s `#![allow(clippy::cast_possible_truncation,
+  clippy::needless_pass_by_value)]`). It introduces **no new warnings** and
+  does **not** touch the pre-existing ~140 pedantic lints — out of scope.
+
+### Determinism / money / no-overclaim guardrails
+
+- Money math is `rust_decimal::Decimal` + `Money<Usdt>` throughout — no
+  `f64` in the loader or the metrics const (CLAUDE.md non-negotiable).
+- No RNG, no clock reads, no timestamps-in-body — this is a read-only
+  panel over committed data; nothing hashed, no anchor touched.
+- The caption is **binding** (R3/A3): it states the honest bounded finding
+  "passive baseline; active ≤ passive in the reachable universe, this
+  sample" and **MUST NOT** claim "optimal"/"unbeatable"/"none beat it".
+  Asserted by a string-content test (AC5).
+
+### Decisions D1/D2 — one-line summary
+
+- **D1 = (c)** embed the six §7.1 realized scalars (+ caption
+  Sortino/Calmar) as a typed `const`; file-load the curve. Chosen because
+  (a) is infeasible (no Sharpe/CAGR/return math in `core`) **and**
+  semantically wrong (published Sharpe is hourly, the CSV is daily-sampled
+  → re-derivation ≠ published number); (b) is fragile parsing for no gain.
+  Cost = a documented re-sync test + runbook note.
+- **D2 = navigable, not default-routed**; the Error-state assertion lives
+  in a dedicated headless render test (`baseline_error_state_renders_without_panic`)
+  so the global cockpit-smoke gate stays first-frame + no-panic +
+  deterministic regardless of CSV presence.
 
 ## Data contract
 
@@ -284,6 +552,12 @@ constraint (R3/A3) is binding:
 - `BASELINE_DATA_UNAVAILABLE` = error-state copy that tells the operator
   what to do next (e.g. "Baseline data isn't bundled in this build.
   Equity CSVs live at spec/runbooks/artifacts/.").
+- `BASELINE_RISK_DETAIL` (architect addition, D1=c caption-only A2) =
+  the optional Sortino/Calmar caption line, e.g. "Sortino 2.51 / Calmar
+  5.68 (2023) · Sortino 1.20 / Calmar 1.85 (2024)." — rendered `FG_3`
+  below the band. Surfaces the §7.1 metrics that have no KPI card. The
+  ui-designer may template the per-year values or fold them into the
+  caption; keep them out of the six fixed KPI cards (A2).
 - KPI tooltips: reuse the existing `KPI_*` tooltips if present; add
   `BASELINE_*_TOOLTIP` only if a Baseline-specific gloss is needed.
 
@@ -346,3 +620,31 @@ _tester links to reports here._
   curve + architect-choice metrics, embed as if-budget-tightens fallback)
   and D2 (fixtures-smoke routing) for the architect. Opened REQ-COCKPIT-BASELINE-001
   (proposed). HANDOFF → architect.
+- 2026-06-08 (architect): § Design authored; D1/D2 resolved; tasks.md
+  written; trace REQ-COCKPIT-BASELINE-001 → arch-done. **D1 = (c)**
+  embed the six §7.1 *realized* KPI scalars (+ caption Sortino/Calmar)
+  as a typed `const`, file-load the curve. Decided on crate-edge facts,
+  not budget: option (a) "compute from curve" is **infeasible** — there
+  is NO Sharpe/CAGR/total-return math anywhere in `crates/core`
+  (`compute_sharpe_hourly`/`compute_calmar` live only in `backtest` +
+  `forecast`; the Lab strip renders Sharpe as `—` "engine not yet
+  computing"), so (a) would need either a new `core` math module or an
+  AC7-violating `backtest` reach — AND it is **semantically wrong**: the
+  published Sharpe (+1.8417/+0.8925) is computed over 8,759/8,784 *hourly*
+  bars, but the committed CSV is daily-sampled (~366 pts), so any
+  re-derivation ≠ the number the operator reads. Even the free MaxDD from
+  `from_points` is taken from the const for cross-surface consistency.
+  Option (b) parse-the-`.md` rejected as fragile for zero freshness gain.
+  Cost of (c) = a documented re-sync: a `// RE-SYNC:` const block + a
+  `baseline_metrics_match_characterization` unit test + a runbook note.
+  **D2 = navigable, not default-routed**: register `Screen::Baseline` in
+  the sidebar (Work, after Compare) + route it, but keep the smoke's
+  default screen on `Live` so the first-frame smoke gate stays
+  deterministic regardless of CSV presence; the Error-state assertion
+  lives in a dedicated headless test (`baseline_error_state_renders_without_panic`).
+  Confirmed crate-edge surprise: `ui → backtest` **already exists**
+  (ADR-0030, Lab Run button only); this feature adds NO new edge and does
+  not use it. Added `BASELINE_RISK_DETAIL` to the strings block for the
+  caption-only Sortino/Calmar (A2). No ADR — all decisions are pure-`ui`,
+  additive, within the `viewer`/`registry_read` precedent. HANDOFF →
+  developer ‖ ui-designer.
