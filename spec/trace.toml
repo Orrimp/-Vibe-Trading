@@ -2773,3 +2773,15 @@ tests       = [
 ]
 anchors     = []   # read-only UI feature, no new backtest anchors; verification floor is the panel-snapshot suite + the unchanged 119/119 regression gate
 state       = "tester-done"   # tester 2026-06-08 — VERDICT PASS. 428 unit + all integration suites GREEN. AC1–AC7 all pass. verify-anchors 119/119. One pre-existing lab_run_engine failure confirmed pre-existing on parent commit. Report: spec/cockpit-baseline-panel/reports/test-2026-06-08-cockpit-baseline-panel.md
+
+# REQ-COCKPIT-REPORTS-001 → cockpit-reports-viewer (proposed 2026-06-08) — audit #2, the general-case follow-on to #1 Baseline
+[[req]]
+id          = "REQ-COCKPIT-REPORTS-001"
+title       = "In-cockpit Reports screen: browse committed backtest-*.md reports + render the selected one (KPI strip from the ## Summary table, equity curve + drawdown band from the companion CSV when present, markdown body) via the promoted viewer render logic; four PanelState states incl. Error-no-panic"
+feature     = "cockpit-reports-viewer"
+product     = "spec/product.md"
+arch        = []   # architect fills — resolve D1 (selection state), D2 (lift the viewer loader into a shared pure-ui module), D3 (body in v0.1.0?), D4 (sidebar group), D5 (smoke routing — mirror Baseline D2), D6 (optional non-empty-curve demo)
+crates      = []   # developer fills — expected pure-`ui`: crates/ui/src/screens/reports.rs + a lifted shared loader (from bin/viewer.rs) + Screen::Reports touchpoints; no new crate edge (ui→core+reports already exist)
+tests       = []   # developer fills — panel_snapshots (both themes) + a reports four-state test + headless_emulator_paints_reports_route + the lifted-loader unit tests
+anchors     = []   # tester fills (read-only UI feature → no new backtest anchors; regression floor is the unchanged 119/119 gate — Reports only reads committed reports, touches no anchored file)
+state       = "proposed"
