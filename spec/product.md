@@ -659,6 +659,11 @@ and posts a cockpit alert. **Ladder confirmed (2026-04-17).**
 - `strategy::sma_crossover` deterministic rule (e.g. SMA(20) vs SMA(50)).
 - `backtest` engine: paper-fill `MatchingEngine` with `bps: 2` slippage and
   `0.04%` taker fee.
+  _(Historical Week-2 ship value. The current canonical v5 friction profile is
+  `slippage_bps: 8` (medium-friction, sqrt-impact) per
+  [ADR-0045 § D1](architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md)
+  / [ADR-0043 § D3](architecture/adr/0043-simulated-latency-and-slippage.md) —
+  this line records the original 2026-04 history, not the live model.)_
 - First end-to-end run: 2023 `BTCUSDT` 1m, full backtest report from tester
   agent.
 - First paper-trading run: 24 h dry run with kill switch verified.
@@ -867,6 +872,11 @@ scope) can render inline.
 
 ## Changelog
 
+- 2026-06-08 (analyst, doc-hygiene): § Week 2 — added a one-line
+  cross-reference noting the `bps: 2` paper-fill slippage is the original
+  2026-04 ship history, and that the live canonical v5 friction profile is
+  `slippage_bps: 8` per ADR-0045 § D1 / ADR-0043 § D3 (audit-2026-06-08 SC-C).
+  Surgical reconciliation only; the terminal-verdict body below is untouched.
 - 2026-06-08 (analyst, terminal verdict — active-vs-passive search CONCLUDED):
   finalized the § Strategy library status note from "passive-may-be-terminal /
   on-chain-as-next-probe" to the **TERMINAL verdict: SHIP PASSIVE**. The

@@ -2,7 +2,7 @@
 slug: v2-llm-strategy
 status: shipped
 owner: operator
-updated: 2026-05-13
+updated: 2026-06-08
 version: 2.0.0
 ---
 
@@ -638,6 +638,18 @@ This feature is **non-strategy** under Q1 = Option A — does not
 validate edge. Scenarios below are **smoke-test scenarios** for
 provider integrations, not edge-validation backtests. The 9
 strategy-backtest anchors are out of scope (R14.2).
+
+> **Anchor disposition — NOT body-SHA-anchor-able (by intent).** v2-llm-strategy
+> ships with zero `spec/anchors.toml` rows and this is correct: live LLM
+> completions are non-deterministic (sampling temperature, provider-side model
+> revisions, token-count drift), so there is no stable response body to lock a
+> body-SHA-256 against. The determinism floor for this feature is instead the
+> **fixture-replay path** — the `llm-replay-roundtrip` scenario (record →
+> `ReplayProvider` byte-for-byte replay from `llm-replay.db`, plus the
+> `ReplayMiss` case) gives reproducible, hash-keyed verification without a live
+> API call. No backtest-equity anchor applies; the replay fixture is the
+> equivalent regression guard. (audit-2026-06-08 § "Shipped strategy features
+> with no anchor coverage".)
 
 ### Scenario: `llm-smoke-anthropic`
 
@@ -2269,3 +2281,8 @@ overshoot bound that needs a regression test.
   reflection-memory-trader-wiring. Also unblocks Kronos
   v2.5 + Lumen Phase 6 + the v2.1 follow-up cluster
   (T1938 / T1915 / T1910 clippy).
+- 2026-06-08 (architect, doc-hygiene): added an explicit "Anchor disposition"
+  note to § Backtest Scenarios — documents that zero `anchors.toml` rows is
+  correct-by-intent (LLM non-determinism precludes a stable body-SHA) and that
+  the `llm-replay-roundtrip` fixture-replay path is the equivalent regression
+  guard (audit-2026-06-08 anchor-coverage carry-over). No behavioural change.

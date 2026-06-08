@@ -2,7 +2,7 @@
 slug: architecture-11-regression-gate
 status: shipped
 owner: tester
-updated: 2026-05-30
+updated: 2026-06-08
 ---
 
 # Regression gate
@@ -60,7 +60,7 @@ items for macd/rsi/bbands).
 
 The locked anchors live in [`../anchors.toml`](../anchors.toml).
 At Phase 1A close, the set was 11 scenarios (the count grew from 9
-during the v1+ operator-reports and v2 LLM ships). The LIVE set has since grown to **87** (post-Phase-1A: the v2.5/v2.6 TCN-overlay + realdata locks and the `mc-robustness-2026-06` Monte-Carlo θ-surface anchors); `verify_anchors.sh` is the source of truth for the current count. The Phase-1A-close snapshot:
+during the v1+ operator-reports and v2 LLM ships). The LIVE set has since grown well beyond that (post-Phase-1A: the v2.5/v2.6 TCN-overlay + realdata locks and the `mc-robustness-2026-06` Monte-Carlo θ-surface anchors); [`scripts/verify_anchors.sh`](../../scripts/verify_anchors.sh) is the SOLE source of truth for the current count — do not hard-code it here. The Phase-1A-close snapshot:
 
 | Scenario                            | Version | Owner ADR                                                          |
 |-------------------------------------|---------|--------------------------------------------------------------------|
@@ -170,6 +170,11 @@ Both are documented one-shot re-locks. The default rule —
 "anchors are immutable" — holds otherwise.
 
 ## Changelog
+- 2026-06-08 (architect, doc-hygiene): "Current anchor set" caveat — replaced
+  the hard-coded live anchor count (was `87`; had re-rotted, live was 119) with
+  a pure pointer to [`scripts/verify_anchors.sh`](../../scripts/verify_anchors.sh)
+  as the SOLE source of truth, so the caveat no longer re-rots on each anchor
+  wave (audit-2026-06-08 SC-B / P1). No number restated.
 - 2026-05-30 (developer / architect): D7.3 dual-anchor model documented
   (ADR-0045 § D7). Added the "Dual-anchor system" section covering
   System 1 (file anchors, `anchors.toml`) and System 2 (in-test re-run

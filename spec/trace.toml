@@ -105,6 +105,32 @@ anchors     = ["v1-carry-theta-surface-2023-block-bootstrap-real-fy", "v1-carry-
 state       = "tester-done"   # tester M-TEST 2026-06-02 VERDICT → PASS. Science gate: 89/89 anchors (87 pre-existing + #88 2023 + #89 2024). 4 falsifiers RED-on-revert (R-CARRY.2 sign, R-CARRY.6 no-look-ahead, R-CARRY.10a divergence, R-CARRY.10b cashflow non-no-op). Two-run byte-identity PASS. FAMILY-UNIFORM-FRAGILE on both regimes (2023 vs +1.74 BH; 2024 vs +1.10 BH). carry completes the program: all 3 cross-sectional families (momentum, MR, carry) FRAGILE on this universe.
 
 [[req]]
+id          = "REQ-CARRY-FUNDING-DATA-BACKFILL-001"
+title       = "Carry funding-rate data backfill — Binance 8h funding-rate fetcher binary + Parquet output layout feeding the carry-strategy signal (data-infrastructure prerequisite; no backtest edge surface of its own)"
+feature     = "carry-funding-data-backfill"
+product     = "spec/product.md"
+arch        = ["spec/carry-funding-data-backfill/feature.md"]  # developer-authored data-utility brief — § What Was Built (fetcher binary + output layout + schema + universe + period + cadence) is the design record; no architecture.md surface change
+crates      = ["crates/data"]  # crates/data/src/bin/fetch_binance_funding.rs (registered [[bin]] in crates/data/Cargo.toml); also extends crates/backtest/src/realdata.rs funding_root at consume time (carry-strategy)
+tests       = [
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_url_builder_basic",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_url_builder_ethusdt",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_expected_settlements_jan",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_expected_settlements_feb_leap",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_expected_settlements_feb_non_leap",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_expected_settlements_dec",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_paginator_stops_on_empty",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_paginator_two_pages",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_paginator_filters_out_of_window",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_parquet_schema_roundtrip",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_parse_date_valid",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_parse_date_invalid",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_next_month_start_december",
+    "crates/data/src/bin/fetch_binance_funding.rs::tests::test_date_to_millis_epoch",
+  ]  # 14 unit tests in `mod tests` (2 URL builder + 4 settlements incl. leap-Feb + 3 paginator [tokio::test] + 1 Parquet schema round-trip + 4 date helpers); `cargo test -p data --bin fetch_binance_funding`
+anchors     = []   # data-backfill utility — no backtest scenario / equity curve to lock; the carry EDGE anchors (#88/#89) live on REQ-CARRY-STRATEGY-001, the consumer
+state       = "dev-done"   # feature.md frontmatter status: dev-done (developer 2026-05-31). No reports/ or presentations/ on disk — not tester/presenter advanced. Trace row added 2026-06-08 per audit-2026-06-08 § Trace coverage (carry-over P2 from audit-2026-06-01).
+
+[[req]]
 id          = "REQ-TIME-SERIES-MOMENTUM-ROBUSTNESS-001"
 title       = "Time-series momentum (per-asset absolute momentum, LONG/FLAT on the asset's OWN trailing-return sign — NO shorts, NO cross-sectional ranking) — the FIRST non-cross-sectional family; the program's thesis-closing method test after all 3 cross-sectional families (momentum, MR, carry) came back FRAGILE. Removes the dead ranking channel (rank IC ≈ 0, confirmed METHOD-limiter by the universe-method diagnosis + broader-universe spike). On the banked 10-symbol OHLCV (pin 3a8b96c4…, NO new data source) through the EXISTING block-bootstrap harness + the frozen decision-rule §0 weakest-link composite + the SAME buy-and-hold control (+1.74 Sharpe 2023 / +1.10 Sharpe 2024 — the bar it must clear). θ-surface (lookback × flat/entry threshold, architect-locked) at N=200 on BOTH 2023 + 2024 vs BH. Decimal money; strict no-look-ahead. Mandatory day-1 falsifiers (modeled on carry R-CARRY.2/6/10a/10b, each RED-on-revert): baseline-equity-divergence e2e (CLAUDE.md non-negotiable), signal-non-no-op, no-look-ahead, the TS-specific goes-flat falsifier (must actually exit to flat — else ≈ buy-and-hold), two-run byte-identity. Additive/defaults-off → the 89 existing anchors hold byte-identical; +1/+2 TS θ-surface anchors after the anchored run."
 feature     = "time-series-momentum-robustness"

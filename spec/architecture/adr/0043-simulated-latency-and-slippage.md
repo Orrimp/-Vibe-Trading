@@ -74,6 +74,13 @@ sampling RNG MUST be deterministic across runs — wall-clock or
 **Implementation**: a `ChaCha20Rng` sub-stream is constructed by
 hashing `(scenario_seed, order_id)` into a 32-byte derived seed:
 
+> **Canonical (M-FINAL deviation):** the shipped implementation is a
+> Murmur3-style bit mixer, NOT ChaCha20 — ChaCha20 init was 8–12× over the
+> ≤50 ns R7 target. See the § Changelog (2026-05-27) and
+> `crates/exec/src/latency.rs`. The `ChaCha20Rng` sketch below is retained as
+> the original ADR intent (a deterministic sub-stream keyed on
+> `(scenario_seed, order_id)`), which the mixer satisfies.
+
 ```rust
 fn latency_rng_for_order(scenario_seed: [u8; 32], order_id: OrderId) -> ChaCha20Rng {
     let mut hasher = blake3::Hasher::new();
@@ -364,3 +371,9 @@ the anchor invariant. The seeded sub-stream is non-negotiable.
   the Q3 override all live within D3's "1-parameter model" abstraction
   — these are amendments, not a fork. Mirrors the 2026-05-27 Murmur3
   D2 amendment precedent (sub-ADR-abstraction implementation upgrade).
+- 2026-06-08 (architect, doc-hygiene): § D2 body now carries a one-line
+  canonical note that the shipped RNG is the Murmur3-style bit mixer
+  (`crates/exec/src/latency.rs`), NOT the `ChaCha20Rng` sketch in the body —
+  reconciling the body to the 2026-05-27 M-FINAL deviation already recorded
+  above (audit-2026-06-08 SC-A). Code verified: `latency.rs` runs a Murmur3
+  finalizer and explicitly avoids ChaCha20. No code or fence changed.
