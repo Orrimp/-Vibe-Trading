@@ -26,6 +26,8 @@ explains and narrates that quantitative core; it is not the alpha source.
 > remain by lower prior or infeasibility, and passive's high bar is partly a
 > bull-leg artifact of the sample. The win this program ships is the **robustness
 > machine + the auditable negative** — measured robustness, not asserted alpha.
+> **Operator-ratified 2026-06-08** ("I approve") via the program capstone
+> ([`program-capstone-2026-06-08`](dev-notes/presentations/program-capstone-2026-06-08.md)).
 > Full statement, scope, and the concrete definition of "ship passive" for this
 > codebase: [§ Strategy library — Active-edge-search status](#strategy-library--roadmap).
 >

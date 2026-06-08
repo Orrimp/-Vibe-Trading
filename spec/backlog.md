@@ -472,6 +472,17 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      ───────────────────────────────────────────────────────────────────────────
      WIND-DOWN STATE — residual items to a clean close (no new active work):
 
+     ▸ STATUS 2026-06-08 (orchestrator) — WIND-DOWN ESSENTIALLY COMPLETE:
+       • A (ratification): the program capstone + BOTH close-out decks are
+         OPERATOR-RATIFIED ("I approve", 2026-06-08) — approval blocks ticked +
+         logged. REMAINING: the rebalance (cadence, weighting) confirmation only.
+       • B (status-flip hygiene): DONE — 6 feature.md statuses advanced (0ec68a2).
+       • C (foreclosed lanes): DONE — v3-xgboost retired/foreclosed (0ec68a2).
+       • Audit P1/P2 doc-hygiene: DONE — stale-count, RNG reconciliation, carry
+         trace row, LLM anchor-disposition, bps cross-ref (6cb9b3a).
+       Only the rebalance-cadence confirmation remains open; all else closed.
+       (The detailed A–D list below is retained as the wind-down record.)
+
      A. OPERATOR RATIFICATION (one decision, two ratifications):
         - Confirm the rebalance `(cadence, weighting)` for the passive baseline
           (proposed: monthly / equal-weight) → record in the runbook changelog.

@@ -292,12 +292,16 @@ The approval below gates ONLY the close-out decision above (ratify the long-only
 basis-reversal arm as a decision-grade negative on the vehicle). All boxes ship
 un-ticked; you are the only one who ticks.
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
-_empty until operator fills — note any steer on the strategic fork (a vs b) here_
+**2026-06-08 — ratified as part of the program-level terminal sign-off**
+([`program-capstone-2026-06-08`](../../dev-notes/presentations/program-capstone-2026-06-08.md),
+operator: "I approve"). The long-only basis-reversal close-out is approved; the
+signal was subsequently tested in its market-neutral vehicle (v0.2.0) and the
+whole derivatives-positioning domain closed fragile.
 
 ## Feedback log
 _empty — rejections/steers appended here and routed back to the named agent_

@@ -368,12 +368,17 @@ The approval below gates ONLY the close-out decision above (ratify the close of
 the derivatives-positioning domain). All boxes ship un-ticked; you are the only
 one who ticks.
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
-_empty until operator fills — note any steer on the strategic fork (a vs b) here_
+**2026-06-08 — ratified as part of the program-level terminal sign-off**
+([`program-capstone-2026-06-08`](../../dev-notes/presentations/program-capstone-2026-06-08.md),
+operator: "I approve"). The close of the derivatives-positioning domain is
+approved; the strategic fork that followed (on-chain vs conclude) was resolved
+in favor of the bounded on-chain hunt, which then fired its hard-stop → program
+concluded.
 
 ## Feedback log
 _empty — rejections/steers appended here and routed back to the named agent_

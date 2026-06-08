@@ -370,18 +370,26 @@ The approval below ratifies the terminal program conclusion **and** ship-passive
 one decision (per § Open decisions). All boxes ship un-ticked; you are the only one
 who ticks.
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
-_empty until operator fills — note any steer here (e.g. a future fresh options/macro
-program is a separate decision, not a continuation of this hunt)_
+**2026-06-08 — operator: "I approve."** Terminal program conclusion **and**
+ship-passive RATIFIED as one sign-off. The active-vs-passive research program is
+formally closed; passive buy-and-hold is the shipped baseline. No steer toward a
+fresh program at this time — the bounded door (a future fresh options/DVOL or
+macro program) remains available but is not opened, and is not a continuation of
+this hunt.
 
 ## Feedback log
 _empty — rejections/steers appended here and routed back to the named agent_
 
 ## Changelog
+- 2026-06-08 (operator ratification): **APPROVED — ship.** Terminal program
+  conclusion + ship-passive signed off by the operator. The active-vs-passive
+  research program is formally concluded; passive buy-and-hold is the shipped
+  baseline.
 - 2026-06-08 (presenter): program-level capstone — terminal sign-off for the entire
   active-vs-passive research program. The pre-committed on-chain hard-stop fired
   ([`onchain-netflow-spike-2026-06-08`](../onchain-netflow-spike-2026-06-08.md):
