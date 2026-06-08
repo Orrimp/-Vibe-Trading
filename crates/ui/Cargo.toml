@@ -52,6 +52,16 @@ path = "src/bin/viewer.rs"
 name = "activity_tape"
 harness = false
 
+# cockpit-performance-and-input-responsiveness — interaction→render
+# micro-bench. Drives `iced_test::emulator::Emulator::screenshot` (the
+# full view→update→draw→tiny-skia-readback pipeline) on the heavy
+# Lab/Charts route so the dev-vs-release factor and the render-bound vs
+# work-bound split can be measured objectively. Uses the `iced_test` +
+# `agent` dev-deps already declared below; no `live` feature required.
+[[bench]]
+name = "cockpit_render"
+harness = false
+
 [dependencies]
 trading_core = { path = "../core" }
 # lab-yahoo-realdata T-C3.6 / T-AR1 — `data` crate for Yahoo parquet reader.

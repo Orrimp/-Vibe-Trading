@@ -21,6 +21,35 @@ members = [
 ]
 resolver = "2"
 
+# ── Build profiles ────────────────────────────────────────────────────────────
+# cockpit-performance-and-input-responsiveness (2026-06-08).
+#
+# The cockpit renders through the CPU/software `tiny-skia` rasterizer
+# (`crates/ui/Cargo.toml` iced features = ["tiny-skia", ...]) — chosen for
+# snapshot-test determinism over GPU `wgpu`. At `opt-level = 0` (the dev
+# default) that rasterization is brutally slow: a MEASURED per-frame render
+# on the Lab/Charts screen was **707 ms** in dev vs **17 ms** in release
+# — a **40× debug-tax** (see `spec/cockpit-performance-and-input-responsiveness/`
+# and `crates/ui/tests/render_timing_probe.rs`). That 40× IS the operator's
+# "1–3 s per interaction" lag.
+#
+# Fix: optimize DEPENDENCIES (iced, iced_tiny_skia, tiny-skia, cosmic-text —
+# all external/vendored packages) at `opt-level = 3` even in dev, while
+# keeping the workspace's own crates at `opt-level = 0` so the operator's
+# edit→compile loop stays fast. This is the canonical Rust pattern for
+# GUI/rasterizer-heavy workspaces (deps do the per-frame pixel work; first-
+# party code does not). After this, a dev `cargo run` renders at ~release
+# speed without a release rebuild.
+[profile.dev.package."*"]
+opt-level = 3
+
+# Release: the canonical interactive-run profile (operator runs
+# `cargo run -p ui --release --bin cockpit_live`). Explicit so the contract
+# is visible at the workspace root. `opt-level = 3` (the release default) is
+# what produced the MEASURED 17–24 ms renders above.
+[profile.release]
+opt-level = 3
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

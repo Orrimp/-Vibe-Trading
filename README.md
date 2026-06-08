@@ -66,8 +66,21 @@ The committed `config/agent.toml` carries the shape; `config/agent.toml.local` o
 ### Run the cockpit
 
 ```bash
+# Canonical interactive run — ALWAYS use a release build.
+cargo run -p ui --release --bin cockpit_live --features live
+# (or run the prebuilt binary)
 ./target/release/cockpit_live
 ```
+
+> **Run the cockpit in release.** It renders through the CPU `tiny-skia`
+> rasterizer (chosen for snapshot-test determinism over GPU `wgpu`). At the
+> dev default `opt-level = 0` a single Lab/Charts frame takes **~700 ms** to
+> rasterize vs **~17 ms** in release — a measured **40× debug-tax** that
+> shows up as the "1–3 s per interaction" lag. The workspace
+> `[profile.dev.package."*"]` override (root `Cargo.toml`) now compiles the
+> rasterization *dependencies* at `opt-level = 3` even in dev, so a plain
+> `cargo run … --features fixtures` is usable too — but `--release` remains
+> the canonical, fastest path. Numbers: `crates/ui/tests/render_timing_probe.rs`.
 
 Opens the iced window. Default screen is **Lab** (strategy experimentation). Other screens are reachable via the left sidebar: Live, Compare, Memory, Models, Trail, Strategies, Risk, Audit, Control, Settings, Charts, Home, Debug.
 
