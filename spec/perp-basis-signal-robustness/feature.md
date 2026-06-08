@@ -1,10 +1,10 @@
 ---
 slug: perp-basis-signal-robustness
 version: 0.1.0
-status: arch-done
+status: presenter-done
 owner: architect → developer
 priority: P1
-updated: 2026-06-05
+updated: 2026-06-08
 ---
 
 # Perp-spot basis reversal — the FIRST LIVE signal of the post-OHLCV program: a cross-sectional basis-reversal arm, gated on whether it survives realistic taker fees — v0.1.0
@@ -1166,3 +1166,5 @@ None. The implementation matches the architecture spec (D-BR.0..3, D-BR.5) exact
 - The SIGN (`−trailing_mean`) is in ONE place (`basis_reversal_score`, line ~277 in `momentum.rs`)
 - `crates/ui/` — NOT TOUCHED
 - `data/yahoo/REVISION.toml` — NOT TOUCHED by this pass
+
+- 2026-06-08 (orchestrator): status `arch-done` → `presenter-done` (spec-hygiene wind-down, audit-2026-06-08 § Status drift). The lagging mirror is corrected to the actual pipeline state: M-TEST VERDICT PASS (`0a36cdf`), presenter release-retrospective deck (long-only close-out, `f9e3302`); anchors 99→107. trace.toml (the source of truth) was already correct. Frontmatter-only edit; anchors 119/119 unperturbed.

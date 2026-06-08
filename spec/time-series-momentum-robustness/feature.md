@@ -1,10 +1,10 @@
 ---
 slug: time-series-momentum-robustness
 version: 0.1.0
-status: tester-done
+status: presenter-done
 owner: tester
 priority: P2
-updated: 2026-06-03
+updated: 2026-06-08
 ---
 
 # Time-series momentum (per-asset absolute momentum, long/flat) — the FIRST non-cross-sectional method, the program's thesis-closing test — v0.1.0
@@ -999,3 +999,5 @@ New test file: `crates/backtest/tests/ts_momentum_divergence_e2e.rs` (7 tests to
 `run_path` body, `PaperEngine`, `BlockBootstrapPathGen` — byte-untouched.
 `--selection-mode cross-sectional-top-k` (default) reproduces momentum/MR/carry byte-identical.
 All 89 anchors verified PASS after Pass 2.
+
+- 2026-06-08 (orchestrator): status `tester-done` → `presenter-done` (spec-hygiene wind-down, audit-2026-06-08 § Status drift). The lagging mirror is corrected to the actual pipeline state: presenter program-retrospective deck `PRESENTATION → READY` (`25c848a`); anchors #90/#91, active-trading thesis CLOSED. trace.toml (the source of truth) was already correct. Frontmatter-only edit; anchors 119/119 unperturbed.

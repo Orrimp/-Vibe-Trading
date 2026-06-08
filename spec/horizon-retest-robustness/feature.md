@@ -1,10 +1,10 @@
 ---
 slug: horizon-retest-robustness
 version: 0.2.0
-status: arch-done
+status: presenter-done
 owner: architect
 priority: P2
-updated: 2026-06-03
+updated: 2026-06-08
 ---
 
 # Horizon retest — coarser decision cadence (4h + daily) on the SAME coins: the LAST untested axis of the active-strategy robustness program — v0.1.0
@@ -1290,3 +1290,5 @@ The test fixture used `+1%/1h` (≈+27%/day compounded). After 30 daily up-bars,
 Fix: `build_1h_up_down_bars_moderate(+0.1%/1h, -0.5%/1h)` added at `horizon_divergence_e2e.rs:94`. With moderate rates the position stays at ≈16% of equity throughout (well inside the 40% cap) and the SELL executes, giving `ts_tim=25 < al_tim=40`. The standard `build_1h_up_down_bars` is retained unchanged (passes 4h tests where the short uptrend keeps concentration low).
 
 Gate result: `cargo test -p backtest --features "candle realdata" --test horizon_divergence_e2e` → `test result: ok. 7 passed; 0 failed`. 91/91 anchors PASS. Clippy EMPTY. `cargo fmt --check` clean. `cargo test -p backtest --features "candle realdata" --lib` → 85 pass.
+
+- 2026-06-08 (orchestrator): status `arch-done` → `presenter-done` (spec-hygiene wind-down, audit-2026-06-08 § Status drift). The lagging mirror is corrected to the actual pipeline state: M-TEST VERDICT PASS (`2c2d949`), test report `test-2026-06-05-...`, presenter program-retrospective deck `PRESENTATION → READY` (`94b26fc`); anchors #92–99. trace.toml (the source of truth) was already correct. Frontmatter-only edit; anchors 119/119 unperturbed.

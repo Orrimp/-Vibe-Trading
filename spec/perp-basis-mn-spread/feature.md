@@ -1,11 +1,11 @@
 ---
 slug: perp-basis-mn-spread
 version: 0.2.0
-status: arch-done
+status: presenter-done
 owner: architect → developer
 priority: P1
 predecessor: perp-basis-signal-robustness v0.1.0
-updated: 2026-06-07
+updated: 2026-06-08
 ---
 
 # Perp-basis MARKET-NEUTRAL spread — the v0.2.0 follow-on that finally tests the basis signal in its correct vehicle (long low-basis / short high-basis, dollar-neutral, beta-stripped) — v0.2.0
@@ -866,6 +866,12 @@ _Tester links reports here after the M-TEST gate. The gates the tester must clea
   for the architect M-T1. Carry framing (b) / v0.1.0 Q-BR-2 framing (b) are the deferred
   precedents. No Design section, no tasks.md, no code authored by the analyst. Full
   adjudication: [basis-reversal-vehicle-vs-signal-fork-2026-06-06.md](../dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md).
+- 2026-06-08 (orchestrator): status `arch-done` → `presenter-done` (spec-hygiene
+  wind-down, audit-2026-06-08 § Status drift). The lagging mirror is corrected to the
+  actual pipeline state: M-TEST VERDICT PASS (`8c2e6c4`), presenter domain-close
+  retrospective deck (`05f5824`); anchors 107→119, derivatives-positioning domain
+  closes. trace.toml (the source of truth) was already correct. Frontmatter-only
+  edit; anchors 119/119 unperturbed.
 
 ---
 

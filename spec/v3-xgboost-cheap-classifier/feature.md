@@ -1,9 +1,9 @@
 ---
 slug: v3-xgboost-cheap-classifier
 version: 0.1.0
-status: draft
+status: retired
 owner: analyst
-updated: 2026-05-29
+updated: 2026-06-08
 predecessor: spec/dev-notes/post-v3-strategy-direction-2026-05-29.md (Route A Candidate 6 pre-position)
 parent: strategy-reformulation-survey-2026-05-22 Candidate 6
 priority: P2
@@ -20,6 +20,17 @@ sibling_picks:
 > [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](../dev-notes/post-v3-strategy-direction-2026-05-29.md).
 > M0 deliverables (feature.md + tasks.md + trace row + backlog Queue
 > entry) authored now so promotion is one-step on operator's call.
+
+> **⛔ FORECLOSED — DO NOT PROMOTE (2026-06-08).** This OHLCV regime-classifier
+> lane is foreclosed by the program's terminal verdict (active ≤ passive across
+> all reachable channels, *including* OHLCV) — see [`spec/product.md`](../product.md)
+> for the terminal verdict and [`spec/dev-notes/onchain-netflow-spike-2026-06-08.md`](../dev-notes/onchain-netflow-spike-2026-06-08.md)
+> for the hard-stop. The H1/H2 asymmetric-falsification frame below is moot:
+> "edge isn't extractable from hourly OHLCV regardless of model class" (the
+> Route-C branch this brief named) is now the *established* result, so a
+> low-capacity XGBoost re-test on the same OHLCV substrate cannot change the
+> conclusion. Status is `retired` (research-line closure, not deletion — the M0
+> brief stays in the tree as authored). This brief was never promoted to Active.
 
 ## Why now
 
@@ -248,3 +259,14 @@ DAMPENED = H1 red OR K3 trip; INCONCLUSIVE = K1 or K2 trip pre-Wave-D.
   Q1-Q3 with DURABLE-recommended defaults + cheap-fallback labels per
   AGENT.md 2026-05-29. 4-cell verdict tree pre-drawn. Stays Queue
   (NOT Active) pending operator Route A pick.
+- 2026-06-08 (orchestrator): status `draft` → `retired` — track C lane
+  FORECLOSED (spec-hygiene wind-down, audit-2026-06-08). The program's
+  terminal verdict (active ≤ passive across all reachable channels incl.
+  OHLCV) forecloses this OHLCV regime-classifier lane: a low-capacity
+  XGBoost re-test on the same OHLCV substrate cannot change the established
+  conclusion, so the brief is closed without promotion. Added a `⛔
+  FORECLOSED` body note pointing to [`spec/product.md`](../product.md)
+  (terminal verdict) + [`spec/dev-notes/onchain-netflow-spike-2026-06-08.md`](../dev-notes/onchain-netflow-spike-2026-06-08.md)
+  (hard-stop). `retired` is the closest valid `spec_lint.py` enum
+  (research-line closure, not deletion — the M0 brief stays in the tree as
+  authored); never promoted to Active. Frontmatter + body note only.

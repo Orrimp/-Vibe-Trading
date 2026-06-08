@@ -1,10 +1,10 @@
 ---
 slug: carry-strategy
 version: 0.1.0
-status: arch-done
+status: retired
 owner: architect → developer
 priority: P2
-updated: 2026-05-31
+updated: 2026-06-08
 ---
 
 # Cross-sectional funding carry — the pre-registered rotation target after BOTH price families came back fragile — v0.1.0
@@ -1266,3 +1266,11 @@ _tester links to reports here_
   lookback/rebalance(turnover)/K axes (architect LOCKS before anchoring). In-sample
   2023-FY apples-to-apples; 2024-FY OOS secondary. No code, no build, no engine run
   (reversible); no trace.toml / anchors.toml touch (orchestrator/tester own those).
+- 2026-06-08 (orchestrator): status `arch-done` → `retired` (spec-hygiene
+  wind-down, audit-2026-06-08 § Status drift). The lagging mirror is corrected to
+  the actual pipeline state: carry reached M-TEST VERDICT PASS (`72d711c`), the
+  presenter sprint-review deck went `PRESENTATION → READY`, carry was retired and
+  the program closed (`25591cc`); anchors #88/#89 locked. `retired` is the
+  closest valid enum (`spec_lint.py` VALID_STATUSES — research-line closure, not
+  deletion) and captures the full close-out; trace.toml (the source of truth) was
+  already correct. Frontmatter-only edit; anchors 119/119 unperturbed.
