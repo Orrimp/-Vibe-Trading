@@ -71,6 +71,23 @@ pub enum ScoreSource {
     /// The name `BasisReversal` (not `Basis`) documents the sign: there is no
     /// sign-neutral "basis" arm to confuse it with.
     BasisReversal,
+    /// Basis-orthogonalized-to-funding rank-residual signal (D-MN.6, M-DEV-4).
+    ///
+    /// `residual_score[sym] = rank(basis_reversal_score[sym]) − rank(funding_carry_score[sym])`
+    ///
+    /// Both ranks are 1..N integers computed cross-sectionally at each rebalance over the
+    /// warmed cross-section. The subtraction is EXACT (integer-valued `Decimal`) — NO
+    /// division, NO rounding, NO f64 (D-MN.6 / ADR-0003 Decimal-exact requirement).
+    ///
+    /// The basis scores are read from `funding_map` (the same sidecar used by `BasisReversal`).
+    /// The funding scores are read from `basis_score_map` (the second injected map, set via
+    /// `with_basis_score`). The selection is `LongShort` — lowest residual → short (highest
+    /// basis relative to its funding level), highest residual → long (lowest basis relative
+    /// to its funding level).
+    ///
+    /// **Anchor-neutrality:** `BasisFundingResidual` is a NEW arm; `score_source` defaults
+    /// `VolAdjustedReturn`; the 107 existing anchors are byte-identical (opt-in only).
+    BasisFundingResidual,
 }
 
 // ── Selection mode (D-TSM.1, M-DEV-1) ─────────────────────────────────────────

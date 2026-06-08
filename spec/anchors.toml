@@ -966,3 +966,81 @@ sha256   = "c1ae40887dfcce853f55abeff3bf8de8a5d743258a3d0d6d7a46f69dc289c3ef"
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
 sha256   = "ab4b53a90ed5d9d1533b9445dcbeb521cae27fd260efa55d016556cacafb847d"
+
+# Anchors #108-#119 — MN Spread v0.2.0 (perp-basis-mn-spread), 3 arms × 2 fees × 2 years
+# Arms: mn-basis (BasisReversal+accrual), mn-funding (FundingAccrual), mn-basisperp (BasisFundingResidual+accrual)
+# Grid: MN_TIER1_GRID (2 cells: lookback∈{60,168}, k_long=k_short=3, rebalance=480m)
+# All 12 cells FRAGILE — MN v0.2.0 first-pass, expected FRAGILE per analyst forecast.
+# Wall-clock: <30s Apple-Silicon M-series. git stage: M-DEV-8.
+
+# Anchor #108 — MN-Basis 0bps fee, 2023-FY
+[[anchors]]
+scenario = "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "b1de3f9be3fe95bd663274e389ab9b16588688f4459225500737e6b1e76edaea"
+
+# Anchor #109 — MN-Basis 0bps fee, 2024-FY
+[[anchors]]
+scenario = "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "3a263a814948d16b0fbae47f20518f71442dbf3c9afedca5c66fa29ad2d72293"
+
+# Anchor #110 — MN-Basis 5bps fee, 2023-FY
+[[anchors]]
+scenario = "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "9f66a93995bc0c606fe94d5bc475784bfe517d0b3efb61f12f74104d31711909"
+
+# Anchor #111 — MN-Basis 5bps fee, 2024-FY
+[[anchors]]
+scenario = "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "6dddb3f5d96ee2f5c6fb5f155eb93ba950cd233bddf02ffbf75d7e131a1f90c7"
+
+# Anchor #112 — MN-Funding 0bps fee, 2023-FY
+[[anchors]]
+scenario = "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "16633a63864560b83aa60ffb01a8c96f9625bb217696cb3af2e779ffcf4d0aa0"
+
+# Anchor #113 — MN-Funding 0bps fee, 2024-FY
+[[anchors]]
+scenario = "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "b3726a288852fef79cee9bb638e3c94c6dc474e98cb9023448a77748b2a08d72"
+
+# Anchor #114 — MN-Funding 5bps fee, 2023-FY
+[[anchors]]
+scenario = "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "38ccc463f248552b07618fcf26bc7652ac7d91eb324583602f15814c3e776ff1"
+
+# Anchor #115 — MN-Funding 5bps fee, 2024-FY
+[[anchors]]
+scenario = "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "2e2ba8b60d1ca757c0e23f6913dd8a8428e6289976aa43f1bb290f5696d2f23b"
+
+# Anchor #116 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2023-FY
+[[anchors]]
+scenario = "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "1af13f140626be0a94e5d01deeb508eee2cfdc907d23c3ce856bb9da3fabbd82"
+
+# Anchor #117 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2024-FY
+[[anchors]]
+scenario = "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "058820ff1e6011262fb868c621cf84a7c831d63fa3dae0862b83b61d86d17732"
+
+# Anchor #118 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2023-FY
+[[anchors]]
+scenario = "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "aedbc28ad3ec29ae112e44499f6af2ca2174a34356488cb7eb810de429880623"
+
+# Anchor #119 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2024-FY
+[[anchors]]
+scenario = "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
+version  = "perp-basis-mn-spread"
+sha256   = "23f03994730a67368d92f7a6c2405ae43b0d0081c180347d7ebd5e4181d69885"

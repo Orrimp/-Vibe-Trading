@@ -176,6 +176,15 @@ while IFS= read -r line; do
             mc_basis_dir="$root/spec/perp-basis-signal-robustness/reports"
             latest="$(find "$mc_basis_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                 2>/dev/null | sort | tail -1 || true)"
+        elif [[ "$version" == "perp-basis-mn-spread" ]]; then
+            # Perp-basis MN-spread namespace (ADR-0051 § D6.10 amendment, M-DEV-9):
+            # MN θ × fee surface reports live under
+            # spec/perp-basis-mn-spread/reports/ using
+            # robustness-*-<scenario>.md naming.
+            # Scenario format: v2-mn-{arm}-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy
+            mn_spread_dir="$root/spec/perp-basis-mn-spread/reports"
+            latest="$(find "$mn_spread_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
+                2>/dev/null | sort | tail -1 || true)"
         else
             # Legacy default: newest matching report OUTSIDE all v5-latency-slippage-sim dirs.
             # Excluding the canonical dirs prevents pre-v0.5.0 anchors (e.g. v3.0.0-regime)

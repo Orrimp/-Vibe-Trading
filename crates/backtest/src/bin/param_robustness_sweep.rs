@@ -375,6 +375,12 @@ pub enum GridKind {
     /// `rebalance_minutes_override` = cadence (8h or 24h — the turnover lever).
     #[value(name = "basis-tier1")]
     BasisTier1,
+    /// The LOCKED 2-cell MN-spread Tier-1 θ-grid (§ D-MN.8-LOCKED, M-DEV-5).
+    ///
+    /// L ∈ {60, 168} bars, K_long = K_short = 3, rebalance = 480m (8h).
+    /// L=24 dropped per D-MN.8 reconciliation (IC-peak band 60–168; fees falsified).
+    #[value(name = "mn-tier1")]
+    MnTier1,
 }
 
 /// Build the grid slice for a given kind.
@@ -391,6 +397,7 @@ pub fn grid_for_kind(kind: GridKind) -> &'static [ThetaCell] {
         GridKind::Carry4h => CARRY_4H_GRID,
         GridKind::CarryDaily => CARRY_DAILY_GRID,
         GridKind::BasisTier1 => BASIS_TIER1_GRID,
+        GridKind::MnTier1 => MN_TIER1_GRID,
     }
 }
 
@@ -697,6 +704,49 @@ pub const BASIS_TIER1_GRID: &[ThetaCell] = &[
         entry_threshold_num: 0,
         entry_threshold_den: 0,
         role: "shortest lookback (L=24) + wide K=5 — highest-churn extreme (fee-trap stress for reversal arm)",
+    },
+];
+
+/// MN-spread Tier-1 θ-grid — LOCKED § D-MN.8-LOCKED (2026-06-08, M-DEV-5).
+///
+/// This exact 2-cell list is the hashed body field for the MN θ-surface anchors
+/// (ADR-0051 § D6.10). Changing it = a different surface = a different SHA.
+///
+/// **Held constant:** `selection_mode=long_short`, `k_long=k_short=3`, `drift=0.10`,
+/// `exposure_cap=0.50`, `rebalance_minutes=480` (8h), `ensemble_seed=0xC0FFEE`,
+/// `fill_seed=0xC0FFEE`, generator=block-bootstrap-real, `bootstrap_mode=shared-index`,
+/// `max_leverage=1`, `maintenance_margin_frac=0.5`, N=200.
+///
+/// **L=24 dropped (vs BASIS_TIER1_GRID):** D-MN.8 reconciliation — for the spread,
+/// IC peaks at 60–168; the fee-sweep (D6.9) falsified fees as the killer, so the
+/// turnover lever matters less than IC peak.
+///
+/// | g | lookback L (bars) | K_long=K_short | role / hypothesis |
+/// |---|-------------------|----------------|-------------------|
+/// | 0 | 60 (2.5d)         | 3              | baseline MN θ* — IC peak (60–168 band) |
+/// | 1 | 168 (1wk)         | 3              | longest IC-peak lookback — lowest turnover |
+pub const MN_TIER1_GRID: &[ThetaCell] = &[
+    ThetaCell {
+        g: 0,
+        lookback_minutes: 60, // L=60 bars (2.5d) — IC peak baseline
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,          // drift=0.10
+        rebalance_minutes_override: 480, // 8h — natural low-churn cadence
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "MN baseline θ* (L=60 bars, 8h rebalance, K=3) — IC-peak band basis",
+    },
+    ThetaCell {
+        g: 1,
+        lookback_minutes: 168, // L=168 bars (1wk) — longest IC-peak lookback
+        k_long: 3,
+        drift_threshold_num: 10,
+        drift_threshold_den: 2,
+        rebalance_minutes_override: 480, // 8h
+        entry_threshold_num: 0,
+        entry_threshold_den: 0,
+        role: "MN long lookback (L=168, 1wk) — lowest turnover, most persistent IC-peak signal",
     },
 ];
 
@@ -1207,6 +1257,28 @@ pub enum SweepScoreSource {
     /// via `--taker-fee-bps`.
     #[value(name = "basis-reversal")]
     BasisReversal,
+    /// MN arm 1: raw basis-reversal spread (long low-basis / short high-basis, dollar-neutral).
+    ///
+    /// `ScoreSource::BasisReversal` + `SelectionMode::LongShort` + `k_short = 3`.
+    /// Basis → score; funding → short-leg accrual.
+    /// Requires `--grid mn-tier1` and both `--basis-root` + `--funding-root`.
+    #[value(name = "mn-basis-spread")]
+    MnBasisSpread,
+    /// MN arm 2: raw funding-carry spread (long neg-funding / short pos-funding, dollar-neutral).
+    ///
+    /// `ScoreSource::FundingCarry` + `SelectionMode::LongShort` + `k_short = 3`.
+    /// Funding → score AND accrual (the funding spread pays/earns both legs).
+    /// Requires `--grid mn-tier1` and both `--basis-root` + `--funding-root`.
+    #[value(name = "mn-funding-spread")]
+    MnFundingSpread,
+    /// MN arm 3: basis⊥funding rank-residual spread (long low-basis-relative / short high-basis-relative).
+    ///
+    /// `ScoreSource::BasisFundingResidual` + `SelectionMode::LongShort` + `k_short = 3`.
+    /// Residual = rank(basis) − rank(funding) (Decimal-exact integer, D-MN.6).
+    /// Basis → basis_score_map; funding → score (funding_map) AND short-leg accrual.
+    /// Requires `--grid mn-tier1` and both `--basis-root` + `--funding-root`.
+    #[value(name = "mn-basis-funding-residual")]
+    MnBasisFundingResidual,
 }
 
 impl SweepScoreSource {
@@ -1216,17 +1288,38 @@ impl SweepScoreSource {
             Self::VolAdjustedReturn => strategy::ScoreSource::VolAdjustedReturn,
             Self::Carry => strategy::ScoreSource::FundingCarry,
             Self::BasisReversal => strategy::ScoreSource::BasisReversal,
+            Self::MnBasisSpread => strategy::ScoreSource::BasisReversal,
+            Self::MnFundingSpread => strategy::ScoreSource::FundingCarry,
+            Self::MnBasisFundingResidual => strategy::ScoreSource::BasisFundingResidual,
         }
     }
 
     /// Whether this source needs the funding sidecar loaded (carry or basis).
     fn needs_funding(self) -> bool {
-        self == Self::Carry
+        matches!(self, Self::Carry)
     }
 
     /// Whether this source needs the basis sidecar loaded.
     fn needs_basis(self) -> bool {
-        self == Self::BasisReversal
+        matches!(self, Self::BasisReversal)
+    }
+
+    /// Whether this is a market-neutral (MN) arm (D-MN.5, M-DEV-5).
+    fn is_mn(self) -> bool {
+        matches!(
+            self,
+            Self::MnBasisSpread | Self::MnFundingSpread | Self::MnBasisFundingResidual
+        )
+    }
+
+    /// The short arm-label used in MN scenario names (D-MN.8, M-DEV-5).
+    fn mn_arm_label(self) -> &'static str {
+        match self {
+            Self::MnBasisSpread => "basis",
+            Self::MnFundingSpread => "funding",
+            Self::MnBasisFundingResidual => "basisperp",
+            _ => "unknown",
+        }
     }
 
     #[allow(dead_code)]
@@ -1236,6 +1329,9 @@ impl SweepScoreSource {
             Self::VolAdjustedReturn => "carry-fy", // unused for non-carry
             Self::Carry => "carry-fy",
             Self::BasisReversal => "basis-reversal-fy",
+            Self::MnBasisSpread => "mn-basis-spread",
+            Self::MnFundingSpread => "mn-funding-spread",
+            Self::MnBasisFundingResidual => "mn-basis-funding-residual",
         }
     }
 }
@@ -1499,6 +1595,9 @@ struct IndexedPathMetrics {
     /// Total bars processed on this path (equity_curve.len() − 1).
     /// Denominator for time-in-market fraction computation (M-DEV-4).
     bars_run: u64,
+    /// Number of maintenance-margin liquidation events on this path (M-DEV-5, MN only).
+    /// Populated from `run_path`'s `liquidations` field. 0 for all non-MN runs.
+    liquidations: u64,
 }
 
 // ── Per-cell result ────────────────────────────────────────────────────────────
@@ -1521,6 +1620,9 @@ struct CellResult {
     total_time_in_market_bars: u64,
     /// Total bars in the run across all N paths (for computing the fraction).
     total_bars_run: u64,
+    /// Total maintenance-margin liquidations across all N paths (M-DEV-5, MN only).
+    /// 0 for all non-MN runs → anchor-neutral by construction.
+    total_liquidations: u64,
 }
 
 // ── Config injection helper ────────────────────────────────────────────────────
@@ -1558,6 +1660,13 @@ pub fn cell_config(
     // For TS cells: selection_mode=TimeSeriesLongFlat, entry_threshold from cell.
     cfg.selection_mode = selection_mode.to_strategy_selection_mode();
     cfg.entry_threshold = cell.entry_threshold();
+    // M-DEV-5 (D-MN.5): for MN arms, override selection_mode=LongShort + k_short=k_long.
+    // This is ADDITIVE — only set for MN arms; all other arms get the selection_mode from
+    // the SweepSelectionMode arm above (CrossSectionalTopK → byte-identical to existing anchors).
+    if score_source.is_mn() {
+        cfg.selection_mode = strategy::SelectionMode::LongShort;
+        cfg.k_short = cell.k_long; // symmetric K split: k_short = k_long = 3
+    }
     cfg
 }
 
@@ -1719,6 +1828,33 @@ pub fn basis_grid_def_string(grid: &[ThetaCell]) -> String {
     s
 }
 
+/// Build the canonical grid-definition string for MN-spread reports (M-DEV-5, D-MN.8).
+///
+/// Includes `lookback_bars`, `rebalance_minutes`, `k_long=k_short` (the symmetric split),
+/// and the LOCKED margin constants (`max_leverage`, `maintenance_margin_frac`). This is
+/// a hashed body field for the MN anchor (K3 / ADR-0051 § D6.10).
+///
+/// Format mirrors `basis_grid_def_string` but adds `k_short` + margin constants.
+#[must_use]
+pub fn mn_grid_def_string(grid: &[ThetaCell]) -> String {
+    use backtest::scenarios::montecarlo::{MAINTENANCE_MARGIN_FRAC, MAX_LEVERAGE};
+    let mut s = String::from("grid_definition:\n");
+    for cell in grid {
+        s.push_str(&format!(
+            "  g={} lookback_bars={} rebalance_minutes={} k_long={} k_short={} drift={} max_leverage={} maintenance_margin_frac={}\n",
+            cell.g,
+            cell.lookback_minutes,
+            cell.rebalance_minutes_override,
+            cell.k_long,
+            cell.k_long, // k_short = k_long for the MN symmetric split
+            cell.drift(),
+            MAX_LEVERAGE,
+            MAINTENANCE_MARGIN_FRAC,
+        ));
+    }
+    s
+}
+
 /// Build the canonical grid-definition string for TS-momentum reports (M-DEV-4).
 ///
 /// Includes `lookback_bars` (the price-bar lookback, same field as `lookback_minutes`
@@ -1828,6 +1964,7 @@ fn render_surface_report(
     // Horizon retest reports (horizon != 1h) use "horizon-retest-robustness" (D-HR.5).
     let is_horizon_run = horizon != backtest::resample::Horizon::OneHour;
     let is_basis_run = score_source == SweepScoreSource::BasisReversal;
+    let is_mn_run = score_source.is_mn();
     let slug = if is_horizon_run {
         "horizon-retest-robustness"
     } else if selection_mode.is_ts() {
@@ -1836,6 +1973,9 @@ fn render_surface_report(
         match score_source {
             SweepScoreSource::Carry => "carry-strategy",
             SweepScoreSource::BasisReversal => "perp-basis-signal-robustness",
+            SweepScoreSource::MnBasisSpread
+            | SweepScoreSource::MnFundingSpread
+            | SweepScoreSource::MnBasisFundingResidual => "perp-basis-mn-spread",
             SweepScoreSource::VolAdjustedReturn => match direction {
                 SweepDirection::Momentum => "momentum-parameter-robustness-sweep",
                 SweepDirection::Reversion => "cross-sectional-mean-reversion-strategy",
@@ -1879,6 +2019,15 @@ fn render_surface_report(
             SweepScoreSource::Carry => "Carry (Funding)".to_string(),
             SweepScoreSource::BasisReversal => {
                 format!("Basis-Reversal (taker_fee={taker_fee_bps}bps)")
+            }
+            SweepScoreSource::MnBasisSpread => {
+                format!("MN Basis-Spread (long-short, taker_fee={taker_fee_bps}bps)")
+            }
+            SweepScoreSource::MnFundingSpread => {
+                format!("MN Funding-Spread (long-short, taker_fee={taker_fee_bps}bps)")
+            }
+            SweepScoreSource::MnBasisFundingResidual => {
+                format!("MN Basis⊥Funding Residual (long-short, taker_fee={taker_fee_bps}bps)")
             }
             SweepScoreSource::VolAdjustedReturn => match direction {
                 SweepDirection::Momentum => "Momentum".to_string(),
@@ -1945,7 +2094,8 @@ fn render_surface_report(
     // M-DEV-4 (D-BR.LOAD): render the fee level as a hashed body field for basis runs.
     // GATED to `BasisReversal` so the 99 existing anchor body-SHAs are byte-identical.
     // The fee level distinguishes the four fee-level surfaces as DISTINCT anchors.
-    if is_basis_run {
+    // M-DEV-5 (D-MN.8): also render fee for MN runs (same 12-surface anchor scheme).
+    if is_basis_run || is_mn_run {
         body.push_str(&format!(
             "| taker_fee_bps            | {taker_fee_bps}                                                   |\n"
         ));
@@ -1972,6 +2122,28 @@ fn render_surface_report(
                     "| held_constant            | score_source=basis_reversal direction=momentum exposure_cap=0.50 vol_floor=inert k_short=0 size=equal_weight |\n\
                      | basis_revision_sha       | {} |\n",
                     funding_revision_sha.unwrap_or("unknown")
+                )
+            }
+            SweepScoreSource::MnBasisSpread => {
+                // funding_revision_sha holds the combined "basis:{sha} funding:{sha}" string.
+                format!(
+                    "| held_constant            | score_source=basis_reversal selection_mode=long_short k_long=k_short=3 exposure_cap=0.50 vol_floor=inert max_leverage=1 maintenance_margin_frac=0.5 |\n\
+                     | data_revisions           | {} |\n",
+                    funding_revision_sha.unwrap_or("unknown"),
+                )
+            }
+            SweepScoreSource::MnFundingSpread => {
+                format!(
+                    "| held_constant            | score_source=funding_carry selection_mode=long_short k_long=k_short=3 exposure_cap=0.50 vol_floor=inert max_leverage=1 maintenance_margin_frac=0.5 |\n\
+                     | data_revisions           | {} |\n",
+                    funding_revision_sha.unwrap_or("unknown")
+                )
+            }
+            SweepScoreSource::MnBasisFundingResidual => {
+                format!(
+                    "| held_constant            | score_source=basis_funding_residual selection_mode=long_short k_long=k_short=3 exposure_cap=0.50 vol_floor=inert max_leverage=1 maintenance_margin_frac=0.5 |\n\
+                     | data_revisions           | {} |\n",
+                    funding_revision_sha.unwrap_or("unknown"),
                 )
             }
             SweepScoreSource::VolAdjustedReturn => match direction {
@@ -2019,6 +2191,11 @@ fn render_surface_report(
             SweepScoreSource::BasisReversal => {
                 "## Basis-Reversal θ-grid definition (6-cell, LOCKED § D-BR.2-LOCKED — changing this changes the SHA)\n\n".to_string()
             }
+            SweepScoreSource::MnBasisSpread
+            | SweepScoreSource::MnFundingSpread
+            | SweepScoreSource::MnBasisFundingResidual => {
+                "## MN-Spread θ-grid definition (2-cell, LOCKED § D-MN.8-LOCKED — changing this changes the SHA)\n\n".to_string()
+            }
             SweepScoreSource::VolAdjustedReturn => match direction {
                 SweepDirection::Momentum => {
                     "## Re-scoped θ-grid definition (6-cell, 2026-05-30 orchestrator re-scope — changing this changes the SHA)\n\n".to_string()
@@ -2033,6 +2210,7 @@ fn render_surface_report(
     // TS grid: use ts_grid_def_string (includes entry_threshold — the TS swept axis).
     // Carry grid: use carry_grid_def_string (l_settlements + rebalance).
     // Basis grid: use basis_grid_def_string (lookback_bars + rebalance — same shape but different name).
+    // MN grid: use mn_grid_def_string (lookback_bars + rebalance + k_short + margin constants).
     // Momentum/MR: use the standard grid_def_string (no rebalance — anchor-safe).
     if selection_mode.is_ts() {
         body.push_str(&ts_grid_def_string(grid));
@@ -2043,6 +2221,11 @@ fn render_surface_report(
             }
             SweepScoreSource::BasisReversal => {
                 body.push_str(&basis_grid_def_string(grid));
+            }
+            SweepScoreSource::MnBasisSpread
+            | SweepScoreSource::MnFundingSpread
+            | SweepScoreSource::MnBasisFundingResidual => {
+                body.push_str(&mn_grid_def_string(grid));
             }
             SweepScoreSource::VolAdjustedReturn => {
                 body.push_str(&grid_def_string(grid));
@@ -2071,6 +2254,7 @@ fn render_surface_report(
         && direction == SweepDirection::Reversion;
     let show_funding = !selection_mode.is_ts() && score_source == SweepScoreSource::Carry;
     let show_basis_trades = is_basis_run && !selection_mode.is_ts();
+    let show_mn = is_mn_run && !selection_mode.is_ts();
     let show_time_in_market = selection_mode.is_ts();
     if show_time_in_market {
         body.push_str(
@@ -2084,6 +2268,12 @@ fn render_surface_report(
         );
         body.push_str("| g  | lookback | rebalance | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | trades     | verdict  | notes |\n");
         body.push_str("|----|----------|-----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|------------|----------|-------|\n");
+    } else if show_mn {
+        body.push_str(
+            "Liquidations = total maintenance-margin liquidation events across all N paths (MN only, D-MN.8).\n\n",
+        );
+        body.push_str("| g  | lookback | rebalance | k_long | k_short | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | liquidations | verdict  | notes |\n");
+        body.push_str("|----|----------|-----------|--------|---------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|--------------|----------|-------|\n");
     } else if show_trades {
         body.push_str(
             "Trades = total trade count across all N paths (turnover legibility — R-MR.3).\n\n",
@@ -2158,6 +2348,27 @@ fn render_surface_report(
                 s.max_dd_tail_p95 * 100.0,
                 spread,
                 cr.total_trades,
+                verdict_str,
+                c5_flag,
+            ));
+        } else if show_mn {
+            // MN row: includes `rebalance` + `k_short` (symmetric split) + `liquidations`.
+            body.push_str(&format!(
+                "| {:2} | {:8} | {:9} | {:6} | {:7} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:12} | {:8} | {} |\n",
+                cr.cell.g,
+                cr.cell.lookback_minutes,
+                cr.cell.rebalance_minutes_override,
+                cr.cell.k_long,
+                cr.cell.k_long, // k_short = k_long (symmetric)
+                cr.cell.drift(),
+                s.sharpe.p5,
+                s.sharpe.p50,
+                s.sharpe.p95,
+                s.prob_loss,
+                s.prob_sharpe_gt_1,
+                s.max_dd_tail_p95 * 100.0,
+                spread,
+                cr.total_liquidations,
                 verdict_str,
                 c5_flag,
             ));
@@ -2336,6 +2547,23 @@ fn render_surface_report(
                     );
                     body.push_str(
                         "VERDICT: FRAGILE-on-fees at this fee level. Pre-registered result — see R-BR.LOAD.\n",
+                    );
+                }
+                SweepScoreSource::MnBasisSpread
+                | SweepScoreSource::MnFundingSpread
+                | SweepScoreSource::MnBasisFundingResidual => {
+                    let arm_label = score_source.mn_arm_label();
+                    body.push_str(&format!(
+                        "Conclusion: v2 market-neutral {arm_label} spread at {taker_fee_bps} bps taker fee is structurally fragile\n"
+                    ));
+                    body.push_str(
+                        "across the tested parameter space on this 10-symbol universe. The dollar-neutral\n",
+                    );
+                    body.push_str(
+                        "construction removes directional beta but not fee-bleed from short-leg turnover.\n",
+                    );
+                    body.push_str(
+                        "VERDICT: FRAGILE. Pre-registered result — see R-MN.LOAD (§ D6.10).\n",
                     );
                 }
                 SweepScoreSource::VolAdjustedReturn => match direction {
@@ -2560,6 +2788,9 @@ fn prepare_generator_params(
 /// (4) M-DEV-4 (D-BR.LOAD): `taker_fee_bps`/`slippage_bps` are now parameters
 ///    replacing the hardcoded literals. Defaults `4`/`2` → MatchConfig is
 ///    byte-identical for every non-basis run → the 99 existing anchors hold.
+/// (5) M-DEV-5 (D-MN.8): `score_source` drives MN-arm-specific dual-sidecar
+///    injection. For non-MN arms (`!score_source.is_mn()`): byte-identical to
+///    the pre-MN code (the 107 existing anchors hold by construction).
 #[allow(clippy::too_many_arguments)]
 fn run_one_path_with_config(
     j: usize,
@@ -2570,23 +2801,27 @@ fn run_one_path_with_config(
     // Pre-built path generator for BlockBootstrapReal; None for GbmSmoke.
     // For carry: this is the CARRY path_gen (with funding already attached via with_funding).
     // For basis: this is the BASIS path_gen (with basis attached via with_funding).
+    // For MN arms: this is the MN path_gen (with BOTH basis AND funding attached —
+    //   basis_by_symbol for score, funding_by_symbol for short-leg accrual).
     // For momentum/MR: this is the BASE path_gen (no funding).
     block_path_gen: Option<&data::BlockBootstrapPathGen>,
     bar_count: usize,
     generator: GeneratorKind,
     year: i32,
-    // Whether a sidecar was injected (carry OR basis).
+    // Whether a sidecar was injected (carry OR basis OR MN).
     // Used to decide whether to extract the sidecar map from generated_path.
     // For the basis arm: the sidecar is extracted for the SCORE only — the
     // `run_path` accrual stays gated `None` (no cashflow — D-BR.1).
+    // For MN arms: both sidecars are extracted (see score_source arm below).
     inject_sidecar: bool,
-    // Whether the sidecar is carry (as opposed to basis).
+    // Whether the sidecar is carry (as opposed to basis or MN).
     // When inject_sidecar=true and is_carry=true: the map is passed as
     //   `funding_override` to `TcnScenarioInput` for BOTH score AND accrual.
     // When inject_sidecar=true and is_carry=false (basis): the map is passed
     //   ONLY to the strategy via `with_funding`; `funding_override` in
     //   `TcnScenarioInput` stays `None` so the `run_path` accrual block
     //   (`montecarlo.rs:322`) is never entered — the basis has NO cashflow.
+    // For MN arms: `is_carry=false`; MN-specific logic is in the score_source arm.
     is_carry: bool,
     // M-DEV-3: horizon for metric branch selection (D-HR.1).
     // OneHour → verbatim compute_sharpe_hourly (anchor-safe);
@@ -2597,6 +2832,11 @@ fn run_one_path_with_config(
     // passes the defaults → MatchConfig byte-identical → 99 anchors hold.
     taker_fee_bps: u32,
     slippage_bps: u32,
+    // M-DEV-5 (D-MN.8): the score source for MN-arm-specific dual-sidecar injection.
+    // For non-MN arms: VolAdjustedReturn/Carry/BasisReversal — the pre-MN logic is
+    // byte-identical (the 107 existing anchors hold by construction).
+    // For MN arms: controls which map goes to score vs accrual (see inline comments).
+    score_source: SweepScoreSource,
 ) -> Result<IndexedPathMetrics> {
     use data::MonteCarloPathGen as _;
 
@@ -2636,28 +2876,18 @@ fn run_one_path_with_config(
         }
     };
 
-    // ── Build sidecar BTreeMap from generated_path.funding_by_symbol ────────
-    // When inject_sidecar=true: build the (Symbol, open_ts) → Decimal map from
-    // generated_path.funding_by_symbol (which carries either funding OR basis
-    // depending on which path_gen was used).
-    // For momentum/MR (inject_sidecar=false): both maps are None → anchor-neutral.
-    //
-    // D-BR.1 NOTE: for the basis arm (inject_sidecar=true, is_carry=false):
-    //   - `strategy_sidecar_map` is Some → injected into the strategy via with_funding
-    //     so `basis_reversal_score` can read the basis values.
-    //   - `funding_override` in TcnScenarioInput is NONE → the run_path accrual
-    //     block (`montecarlo.rs:322`) is never entered → NO basis cashflow (correct).
-    // For carry (inject_sidecar=true, is_carry=true):
-    //   - The same map is used for BOTH the strategy score AND the TcnScenarioInput
-    //     funding_override (for accrual). This is the carry-specific path.
+    // ── Helper: build a SidecarMap from a `Vec<Vec<Option<Decimal>>>` field ──
     type SidecarMap =
         std::collections::BTreeMap<(trading_core::Symbol, trading_core::Timestamp), Decimal>;
-    let strategy_sidecar_map: Option<SidecarMap> = if inject_sidecar {
-        if let Some(ref fund_by_sym) = generated_path.funding_by_symbol {
+
+    let build_sidecar_map = |opt_by_sym: &Option<Vec<Vec<Option<Decimal>>>>,
+                             bars_by_symbol: &[Vec<trading_core::Bar>]|
+     -> Option<SidecarMap> {
+        opt_by_sym.as_ref().map(|by_sym| {
             let mut map = SidecarMap::new();
             for (sym_i, (sym, _)) in universe.iter().enumerate() {
-                if let Some(sidecar_row) = fund_by_sym.get(sym_i)
-                    && let Some(bars_row) = generated_path.bars_by_symbol.get(sym_i)
+                if let Some(sidecar_row) = by_sym.get(sym_i)
+                    && let Some(bars_row) = bars_by_symbol.get(sym_i)
                 {
                     for (bar, &sidecar_val) in bars_row.iter().zip(sidecar_row.iter()) {
                         if let Some(rate) = sidecar_val {
@@ -2666,43 +2896,122 @@ fn run_one_path_with_config(
                     }
                 }
             }
-            Some(map)
-        } else {
-            None
-        }
+            map
+        })
+    };
+
+    // ── Build sidecar maps depending on arm ──────────────────────────────────
+    //
+    // NON-MN arms (momentum/MR/carry/basis):
+    //   Same logic as before. The `inject_sidecar` / `is_carry` path is unchanged.
+    //   The 107 existing anchors are byte-identical by construction.
+    //
+    // MN arms (MnBasisSpread / MnFundingSpread / MnBasisFundingResidual):
+    //   The MN path_gen has BOTH `funding_by_symbol` (real funding rates, for accrual)
+    //   AND `basis_by_symbol` (basis values, for scoring) attached.
+    //   The wiring per arm (D-MN.5 / D-MN.4):
+    //
+    //   MnBasisSpread:
+    //     score = BasisReversal (−trailing_mean(basis)) → basis in `with_funding` (score channel)
+    //     accrual = real funding rates → funding_override = funding_by_symbol map
+    //
+    //   MnFundingSpread:
+    //     score = FundingCarry (−trailing_mean(funding)) → funding in `with_funding` (score channel)
+    //     accrual = real funding rates (SAME map as score for FundingSpread) → funding_override
+    //     (funding drives BOTH score and accrual for this arm)
+    //
+    //   MnBasisFundingResidual:
+    //     score = BasisFundingResidual: basis via `with_basis_score`, funding via `with_funding`
+    //     accrual = real funding rates → funding_override = funding_by_symbol map
+
+    // Extract basis and funding maps from the generated path.
+    let basis_map_from_path: Option<SidecarMap> = build_sidecar_map(
+        &generated_path.basis_by_symbol,
+        &generated_path.bars_by_symbol,
+    );
+    let funding_map_from_path: Option<SidecarMap> = build_sidecar_map(
+        &generated_path.funding_by_symbol,
+        &generated_path.bars_by_symbol,
+    );
+
+    // Legacy path (non-MN): build strategy_sidecar_map from funding_by_symbol only.
+    // This is the UNCHANGED pre-MN logic (107 anchors safe).
+    let strategy_sidecar_map: Option<SidecarMap> = if inject_sidecar && !score_source.is_mn() {
+        // Non-MN: the sidecar rides funding_by_symbol (carry or basis via D-BR.3 channel reuse).
+        funding_map_from_path.clone()
     } else {
         None
     };
 
-    // funding_override for TcnScenarioInput:
+    // funding_override for TcnScenarioInput (non-MN path):
     //   - carry: pass the sidecar map (enables run_path accrual).
     //   - basis: always None (no cashflow — D-BR.1).
     //   - momentum/MR: None (inject_sidecar=false → strategy_sidecar_map is None).
-    let funding_override: Option<SidecarMap> = if is_carry {
+    let funding_override_non_mn: Option<SidecarMap> = if is_carry && !score_source.is_mn() {
         strategy_sidecar_map.clone()
     } else {
         None
+    };
+
+    // MN-arm-specific sidecar construction (D-MN.4 / D-MN.5, M-DEV-5).
+    // For non-MN arms: strat_score_map = None, strat_basis_score_map = None,
+    //   funding_override_mn = None → byte-identical to the pre-MN code.
+    let (strat_score_map, strat_basis_score_map, funding_override_mn): (
+        Option<SidecarMap>,
+        Option<SidecarMap>,
+        Option<SidecarMap>,
+    ) = match score_source {
+        SweepScoreSource::MnBasisSpread => {
+            // Basis → score (via with_funding, BasisReversal arm).
+            // Real funding → accrual (via funding_override).
+            (basis_map_from_path, None, funding_map_from_path)
+        }
+        SweepScoreSource::MnFundingSpread => {
+            // Funding → score (via with_funding, FundingCarry arm).
+            // Funding → accrual (via funding_override; same map as score).
+            (funding_map_from_path.clone(), None, funding_map_from_path)
+        }
+        SweepScoreSource::MnBasisFundingResidual => {
+            // Basis → basis_score_map (via with_basis_score).
+            // Funding → score ring (via with_funding, funding_rings for rank).
+            // Funding → accrual (via funding_override).
+            (
+                funding_map_from_path.clone(),
+                basis_map_from_path,
+                funding_map_from_path,
+            )
+        }
+        _ => (None, None, None), // non-MN: leave all None → 107 anchors safe
+    };
+
+    let funding_override = if score_source.is_mn() {
+        funding_override_mn
+    } else {
+        funding_override_non_mn
+    };
+    let final_strategy_score_map = if score_source.is_mn() {
+        strat_score_map
+    } else {
+        strategy_sidecar_map
     };
 
     // ── Merge per-symbol bars into the flat replay feed ───────────────────────
     let merged_bars = data::ReplayFeed::merge_synthetic(generated_path.bars_by_symbol);
 
     // ── Build fresh strategy with the INJECTED config (the C3 seam) ──────────
-    // For carry AND basis: inject the sidecar map via with_funding so the
+    // For carry AND basis (non-MN): inject the sidecar map via with_funding so the
     // strategy's score function can read carry/basis values per (Symbol, ts).
     // For momentum/MR: no sidecar → with_funding(None) is a no-op (anchor-safe).
+    // For MN arms: inject the appropriate maps per the arm logic above.
     //
-    // D-BR.1: for the basis arm, the sidecar is injected HERE (score-only),
+    // D-BR.1: for the basis arm (non-MN), the sidecar is injected HERE (score-only),
     // but funding_override in TcnScenarioInput is None (no accrual — no cashflow).
-    // The basis arm reuses the `funding_by_symbol`/`funding_map` channel as a
-    // generic sidecar carrier — the value is the BASIS, not funding, and is
-    // consumed ONLY by `basis_reversal_score`, NEVER by the `run_path` accrual
-    // (which stays gated `None` for the basis arm — D-BR.1).
     let strat = strategy::MomentumStrategy::from_config(
         cfg.clone(),
         SmolStr::new(format!("param-sweep-cell-{}", cfg.lookback_minutes)),
     )
-    .with_funding(strategy_sidecar_map);
+    .with_funding(final_strategy_score_map)
+    .with_basis_score(strat_basis_score_map);
 
     // ── Run the backtest on this path ─────────────────────────────────────────
     // M-DEV-4 (D-BR.LOAD): taker_fee_bps and slippage_bps are now parameters
@@ -2737,6 +3046,8 @@ fn run_one_path_with_config(
     // M-DEV-4: time-in-market counter from run_path (pure observability — no equity effect).
     let time_in_market_bars = result.time_in_market_bars;
     let bars_run = result.equity_curve.len().saturating_sub(1) as u64;
+    // M-DEV-5: liquidations counter from run_path (0 for all non-MN runs → anchor-neutral).
+    let liquidations = result.liquidations;
 
     // ── Compute per-path metric scalars ───────────────────────────────────────
     let equity_clamped: Vec<Decimal> = result
@@ -2802,6 +3113,7 @@ fn run_one_path_with_config(
         funding_harvested,
         time_in_market_bars,
         bars_run,
+        liquidations,
     })
 }
 
@@ -3050,6 +3362,194 @@ fn load_basis_path_gen(
     )
 }
 
+// ── MN dual-sidecar loader (M-DEV-5, D-MN.4) ─────────────────────────────────
+
+/// Load BOTH basis and funding data, and build an MN path_gen with both attached.
+///
+/// The MN path_gen co-resamples BOTH sidecars at the SAME `idx_seq` (zero new RNG draws)
+/// by attaching funding via `with_funding` and basis via `with_basis`. During
+/// `BlockBootstrapPathGen::generate`, BOTH sidecars are bootstrapped with the SAME
+/// block index sequence as the OHLCV bars, preserving cross-sidecar timing alignment.
+///
+/// Returns `(Some(mn_path_gen), Some("<basis_sha> <funding_sha>"))` where the SHA string
+/// encodes both revision SHAs for the hashed body.
+///
+/// **D-MN.4 dual-sidecar roles:**
+/// - `basis_by_symbol` (from `with_basis`): drives score for `MnBasisSpread` and
+///   the `basis_score_map` for `MnBasisFundingResidual`.
+/// - `funding_by_symbol` (from `with_funding`): drives score for `MnFundingSpread`
+///   and the funding ring for `MnBasisFundingResidual`; drives short-leg accrual for
+///   ALL three MN arms via `funding_override` in `TcnScenarioInput`.
+#[cfg(feature = "realdata")]
+fn load_mn_path_gen(
+    args: &Args,
+    real_bars_by_symbol: &[(trading_core::Symbol, Vec<trading_core::Bar>)],
+    symbols_prices: &[(trading_core::Symbol, Decimal)],
+    bar_count: usize,
+) -> Result<(Option<data::BlockBootstrapPathGen>, Option<String>)> {
+    use backtest::basis_data::{BasisDataSource, LoadedBasis, build_basis_at_return};
+    use backtest::funding_data::{FundingDataSource, LoadedFunding, build_funding_at_return};
+    use backtest::realdata::TimeSpan as RealDataTimeSpan;
+
+    let symbols: Vec<trading_core::Symbol> =
+        symbols_prices.iter().map(|(s, _)| s.clone()).collect();
+    let span = RealDataTimeSpan::full_year(args.year);
+
+    // ── Load basis ────────────────────────────────────────────────────────────
+    let basis_src = BasisDataSource::new(args.basis_root.clone(), symbols.clone());
+    let scenario_name_b = format!("mn-sweep-basis-load-{}", args.year);
+    let loaded_basis: LoadedBasis = basis_src
+        .load(&span, &scenario_name_b)
+        .map_err(|e| anyhow::anyhow!("load MN basis data: {e}"))?;
+
+    if loaded_basis.revision_sha != args.basis_revision_sha {
+        anyhow::bail!(
+            "MN basis revision mismatch: expected={} computed={}",
+            args.basis_revision_sha,
+            loaded_basis.revision_sha
+        );
+    }
+    let basis_revision_sha = loaded_basis.revision_sha.clone();
+    info!(
+        basis_rows = loaded_basis.rows.len(),
+        basis_revision_sha = %basis_revision_sha,
+        "MN basis data loaded and verified"
+    );
+
+    // ── Load funding ──────────────────────────────────────────────────────────
+    let funding_src = FundingDataSource::new(args.funding_root.clone(), symbols.clone());
+    let scenario_name_f = format!("mn-sweep-funding-load-{}", args.year);
+    let loaded_funding: LoadedFunding = funding_src
+        .load(&span, &scenario_name_f)
+        .map_err(|e| anyhow::anyhow!("load MN funding data: {e}"))?;
+
+    if loaded_funding.revision_sha != args.funding_revision_sha {
+        anyhow::bail!(
+            "MN funding revision mismatch: expected={} computed={}",
+            args.funding_revision_sha,
+            loaded_funding.revision_sha
+        );
+    }
+    let funding_revision_sha = loaded_funding.revision_sha.clone();
+    info!(
+        funding_rows = loaded_funding.rows.len(),
+        funding_revision_sha = %funding_revision_sha,
+        "MN funding data loaded and verified"
+    );
+
+    // ── Build basis_at_return ─────────────────────────────────────────────────
+    let mut basis_by_symbol_rows: Vec<Vec<(i64, Decimal)>> = Vec::with_capacity(symbols.len());
+    let mut bar_ts_by_symbol_raw: Vec<Vec<i64>> = Vec::with_capacity(symbols.len());
+
+    for (sym, _) in symbols_prices {
+        let sym_basis: Vec<(i64, Decimal)> = loaded_basis
+            .rows
+            .iter()
+            .filter(|r| r.symbol == *sym)
+            .map(|r| (r.open_time_ms, r.basis_close))
+            .collect();
+        basis_by_symbol_rows.push(sym_basis);
+
+        let bar_ts: Vec<i64> = real_bars_by_symbol
+            .iter()
+            .find(|(s, _)| s == sym)
+            .map(|(_, bars)| {
+                bars.iter()
+                    .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
+                    .collect()
+            })
+            .unwrap_or_default();
+        bar_ts_by_symbol_raw.push(bar_ts);
+    }
+
+    let basis_refs: Vec<&[(i64, Decimal)]> =
+        basis_by_symbol_rows.iter().map(|v| v.as_slice()).collect();
+    let bar_ts_refs_b: Vec<&[i64]> = bar_ts_by_symbol_raw.iter().map(|v| v.as_slice()).collect();
+    let basis_at_return = build_basis_at_return(&basis_refs, &bar_ts_refs_b);
+
+    // ── Build funding_at_return ───────────────────────────────────────────────
+    let mut funding_by_symbol_rows: Vec<Vec<(i64, Decimal)>> = Vec::with_capacity(symbols.len());
+    let mut bar_ts_by_symbol_raw2: Vec<Vec<i64>> = Vec::with_capacity(symbols.len());
+
+    for (sym, _) in symbols_prices {
+        let sym_funding: Vec<(i64, Decimal)> = loaded_funding
+            .rows
+            .iter()
+            .filter(|r| r.symbol == *sym)
+            .map(|r| (r.funding_time_ms, r.funding_rate))
+            .collect();
+        funding_by_symbol_rows.push(sym_funding);
+
+        let bar_ts: Vec<i64> = real_bars_by_symbol
+            .iter()
+            .find(|(s, _)| s == sym)
+            .map(|(_, bars)| {
+                bars.iter()
+                    .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
+                    .collect()
+            })
+            .unwrap_or_default();
+        bar_ts_by_symbol_raw2.push(bar_ts);
+    }
+
+    let funding_refs: Vec<&[(i64, Decimal)]> = funding_by_symbol_rows
+        .iter()
+        .map(|v| v.as_slice())
+        .collect();
+    let bar_ts_refs_f: Vec<&[i64]> = bar_ts_by_symbol_raw2.iter().map(|v| v.as_slice()).collect();
+    let funding_at_return = build_funding_at_return(&funding_refs, &bar_ts_refs_f);
+
+    info!(
+        n_symbols = basis_at_return.len(),
+        first_sym_basis_len = basis_at_return.first().map_or(0, Vec::len),
+        first_sym_funding_len = funding_at_return.first().map_or(0, Vec::len),
+        "MN basis_at_return + funding_at_return built for co-resampling"
+    );
+
+    // ── Build MN BlockBootstrapPathGen with BOTH sidecars attached ────────────
+    // The SAME `idx_seq` is used for all three co-sampled arrays (OHLCV, basis, funding).
+    // This ensures timing alignment across all three sidecars (D-MN.4: zero new RNG draws).
+    let mn_path_gen = data::BlockBootstrapPathGen::new(
+        real_bars_by_symbol.to_vec(),
+        data::BlockLengthPolicy::Auto,
+    )
+    .context("build MN BlockBootstrapPathGen")?
+    .with_funding(Some(funding_at_return))
+    .with_basis(Some(basis_at_return));
+
+    // Verify the probe (selected_L should match the base path_gen).
+    {
+        use data::MonteCarloPathGen as _;
+        let universe_probe: Vec<(trading_core::Symbol, Decimal)> = symbols_prices.to_vec();
+        let probe = mn_path_gen
+            .generate(&universe_probe, bar_count, 0xC0FFEE)
+            .context("MN path_gen probe generate")?;
+        info!(
+            has_funding = probe.funding_by_symbol.is_some(),
+            has_basis = probe.basis_by_symbol.is_some(),
+            "MN path_gen probe: OK (dual-sidecar co-resampling active)"
+        );
+    }
+
+    // Combined SHA for the report body (both revision pinned).
+    let combined_sha = format!("basis:{basis_revision_sha} funding:{funding_revision_sha}");
+    Ok((Some(mn_path_gen), Some(combined_sha)))
+}
+
+#[cfg(not(feature = "realdata"))]
+fn load_mn_path_gen(
+    _args: &Args,
+    _real_bars_by_symbol: &[(trading_core::Symbol, Vec<trading_core::Bar>)],
+    _symbols_prices: &[(trading_core::Symbol, Decimal)],
+    _bar_count: usize,
+) -> Result<(Option<data::BlockBootstrapPathGen>, Option<String>)> {
+    anyhow::bail!(
+        "load_mn_path_gen called without --features realdata. \
+         MN spread requires real basis + funding data. Rebuild with: cargo run -p backtest \
+         --features candle,realdata --bin param_robustness_sweep -- --score-source mn-basis-spread ..."
+    )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
@@ -3119,7 +3619,9 @@ fn main() -> Result<()> {
     // For basis (M-DEV-5): load basis, build `basis_at_return[sym_i][k]`, build a
     // basis-specific BlockBootstrapPathGen with basis attached via `with_funding`
     // (D-BR.3 — reuses the funding_by_symbol co-resample channel).
-    // NOTE: `carry_path_gen_opt` is reused for the basis path_gen too (same shape).
+    // For MN arms (M-DEV-5, D-MN.4): load BOTH basis and funding, build an MN
+    // path_gen with basis attached via `with_basis` AND funding via `with_funding`.
+    // NOTE: `carry_path_gen_opt` is reused for the basis/MN path_gen too (same shape).
     let (carry_path_gen_opt, funding_revision_sha_for_report): (
         Option<data::BlockBootstrapPathGen>,
         Option<String>,
@@ -3130,6 +3632,10 @@ fn main() -> Result<()> {
     {
         // M-DEV-5: load basis and build the basis path_gen (reusing the same Option slot).
         load_basis_path_gen(&args, &real_bars_by_symbol, &symbols_prices, bar_count)?
+    } else if args.score_source.is_mn() && args.generator == GeneratorKind::BlockBootstrapReal {
+        // M-DEV-5 (D-MN.4): load BOTH basis and funding, build the MN path_gen
+        // with both sidecars attached for co-resampling at the same idx_seq.
+        load_mn_path_gen(&args, &real_bars_by_symbol, &symbols_prices, bar_count)?
     } else {
         (None, None)
     };
@@ -3153,20 +3659,21 @@ fn main() -> Result<()> {
     // ── Select the active path_gen ────────────────────────────────────────────
     // For carry: use the carry-specific path_gen (has funding attached).
     // For basis: use the basis-specific path_gen (has basis attached via with_funding).
+    // For MN arms: use the MN path_gen (has BOTH basis via with_basis AND funding via with_funding).
     // For momentum/MR: use the base path_gen (no sidecar → anchor-neutral).
     let is_basis = args.score_source == SweepScoreSource::BasisReversal;
     let active_path_gen_opt: Option<&data::BlockBootstrapPathGen> =
         if let Some(ref cpg) = carry_path_gen_opt {
-            // carry_path_gen_opt holds carry OR basis path_gen (reused channel).
+            // carry_path_gen_opt holds carry OR basis OR MN path_gen (reused channel).
             Some(cpg)
         } else {
             block_path_gen_opt.as_ref()
         };
 
     let is_carry = args.score_source == SweepScoreSource::Carry;
-    // inject_sidecar: true for carry OR basis — both extract sidecar from generated_path.
-    // For basis: sidecar goes to score only; funding_override stays None (no cashflow).
-    let inject_sidecar = is_carry || is_basis;
+    // inject_sidecar: true for carry OR basis OR MN — all extract sidecar from generated_path.
+    // For basis/MN: funding_override stays None for the score-only arms; MN handles it internally.
+    let inject_sidecar = is_carry || is_basis || args.score_source.is_mn();
 
     // ── Outer θ-loop (sequential for log legibility — ~10-15 min at N=200, 6 cells) ─
     // ADR-0051 § D6.4: collect into Vec, sort by g before render.
@@ -3216,6 +3723,7 @@ fn main() -> Result<()> {
                         args.horizon,
                         args.taker_fee_bps,
                         args.slippage_bps,
+                        args.score_source,
                     )
                 })
                 .collect()
@@ -3239,6 +3747,9 @@ fn main() -> Result<()> {
         // M-DEV-4: time-in-market totals across all N paths. Summed before consuming iter.
         let total_time_in_market_bars: u64 = indexed.iter().map(|r| r.time_in_market_bars).sum();
         let total_bars_run: u64 = indexed.iter().map(|r| r.bars_run).sum();
+        // M-DEV-5 (D-MN.8): total liquidations across all N paths.
+        // 0 for all non-MN runs → anchor-neutral by construction.
+        let total_liquidations: u64 = indexed.iter().map(|r| r.liquidations).sum();
         let metrics: Vec<backtest::stats::PathMetrics> =
             indexed.into_iter().map(|r| r.metrics).collect();
 
@@ -3272,6 +3783,7 @@ fn main() -> Result<()> {
             total_funding_harvested,
             total_time_in_market_bars,
             total_bars_run,
+            total_liquidations,
         });
     }
 
@@ -3455,6 +3967,18 @@ fn main() -> Result<()> {
                 year = args.year,
                 gen = gen_label,
             ),
+            // M-DEV-5 (D-MN.8): MN scenario name carries the arm label + fee level.
+            // Format: "v2-mn-{arm}-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy"
+            // The three arms × two fee levels × two years → 12 DISTINCT anchors (§ D6.10).
+            SweepScoreSource::MnBasisSpread
+            | SweepScoreSource::MnFundingSpread
+            | SweepScoreSource::MnBasisFundingResidual => format!(
+                "v2-mn-{arm}-fee{fee:02}bps-theta-surface-{year}-block-bootstrap-{gen}-fy",
+                arm = args.score_source.mn_arm_label(),
+                fee = args.taker_fee_bps,
+                year = args.year,
+                gen = gen_label,
+            ),
             SweepScoreSource::VolAdjustedReturn => format!(
                 "v1-{family}-theta-surface-{year}-block-bootstrap-{gen}-fy",
                 family = args.direction.label(),
@@ -3515,6 +4039,9 @@ fn main() -> Result<()> {
     {
         // M-DEV-5 (D-BR.9): basis-reversal reports live in the dedicated namespace dir.
         PathBuf::from("spec/perp-basis-signal-robustness/reports/")
+    } else if args.score_source.is_mn() && args.out_dir == momentum_default_out_dir {
+        // M-DEV-5 (D-MN.8): MN-spread reports live in the MN namespace dir (§ D6.10).
+        PathBuf::from("spec/perp-basis-mn-spread/reports/")
     } else {
         args.out_dir.clone()
     };

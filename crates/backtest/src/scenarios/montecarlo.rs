@@ -86,7 +86,8 @@ pub struct PathRunResult {
 /// `max_leverage = 1` = fully-collateralized shorts — the conservative v0.2.0 choice.
 /// A short open reserves `margin = notional / max_leverage = notional`.
 /// This constant is a hashed body field of the MN anchor; changing it = a new surface.
-const MAX_LEVERAGE: rust_decimal::Decimal = rust_decimal::Decimal::ONE;
+/// `pub` so the sweep harness can embed it in the MN grid-def string (anchor body K3).
+pub const MAX_LEVERAGE: rust_decimal::Decimal = rust_decimal::Decimal::ONE;
 
 /// Maintenance-margin fraction for short liquidation (D-MN.2 LOCKED, hashed body field).
 ///
@@ -95,9 +96,15 @@ const MAX_LEVERAGE: rust_decimal::Decimal = rust_decimal::Decimal::ONE;
 /// This constant is a hashed body field of the MN anchor; changing it = a new surface.
 ///
 /// NOTE: `dec!(0.5)` is not a valid const expression in stable Rust.
-fn maintenance_margin_frac() -> rust_decimal::Decimal {
+#[must_use]
+pub fn maintenance_margin_frac() -> rust_decimal::Decimal {
     rust_decimal_macros::dec!(0.5)
 }
+
+/// Re-export for the sweep harness's `mn_grid_def_string` (anchor body field).
+/// `Decimal::from_parts(5, 0, 0, false, 1)` = 5 × 10^{−1} = 0.5 exactly.
+pub const MAINTENANCE_MARGIN_FRAC: rust_decimal::Decimal =
+    rust_decimal::Decimal::from_parts(5, 0, 0, false, 1);
 
 // ── run_path ───────────────────────────────────────────────────────────────────
 

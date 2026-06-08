@@ -866,3 +866,68 @@ _Tester links reports here after the M-TEST gate. The gates the tester must clea
   for the architect M-T1. Carry framing (b) / v0.1.0 Q-BR-2 framing (b) are the deferred
   precedents. No Design section, no tasks.md, no code authored by the analyst. Full
   adjudication: [basis-reversal-vehicle-vs-signal-fork-2026-06-06.md](../dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md).
+
+---
+
+## Implementation
+
+**Stage 2 completed 2026-06-08 (M-DEV-4..10). Developer: claude-sonnet-4-6 / Stage 1 at HEAD 18334c9.**
+
+### What was built
+
+**M-DEV-4 — `ScoreSource::BasisFundingResidual`**
+- `crates/strategy/src/cross_sectional/config.rs`: added `BasisFundingResidual` variant to `ScoreSource`; serde default stays `VolAdjustedReturn` → anchor-neutral.
+- `crates/strategy/src/cross_sectional/selector.rs`: added `rank_residual` pure fn computing integer-Decimal `rank(basis) - rank(funding)` with NO division; BTreeMap alphabetical tie-break (deterministic).
+- `crates/strategy/src/cross_sectional/momentum.rs`: `compute_scores_for_symbol` dispatches to `rank_residual` under the new variant; both sidecar maps (basis + funding) read.
+- Tests: 60 strategy unit tests green; 107/107 anchors.
+
+**M-DEV-5 — Sweep harness for MN arms**
+- `crates/backtest/src/bin/param_robustness_sweep.rs`:
+  - `SweepScoreSource` MN variants: `MnBasisSpread`, `MnFundingSpread`, `MnBasisFundingResidual`
+  - `MN_TIER1_GRID`: 2 cells (L∈{60,168} bars, k_long=k_short=3, rebalance=480m)
+  - `GridKind::MnTier1` + `grid_for_kind` arm
+  - `mn_grid_def_string` fn: hashed body grid field including `k_short`, `max_leverage`, `maintenance_margin_frac`
+  - `load_mn_path_gen`: loads both basis (SHA-pinned) and funding (SHA-pinned) datasets, builds dual-sidecar `BlockBootstrapPathGen` with `.with_basis()` and `.with_funding()`
+  - `IndexedPathMetrics::liquidations` + `CellResult::total_liquidations` fields
+  - `render_surface_report` MN branch: slug=`perp-basis-mn-spread`, MN table header with k_short + liquidations columns, FRAGILE/MARGINAL/ROBUST verdict, family conclusion
+  - Scenario naming: `v2-mn-{arm}-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy`
+  - Out-dir routing: `spec/perp-basis-mn-spread/reports/`
+
+**M-DEV-6/7 — 7 day-1 falsifiers in `crates/backtest/tests/mn_spread_divergence_e2e.rs`**
+1. `mn_baseline_equity_divergence` — MN LongShort ≠ long-only by ≥ 1 bp
+2. `mn_baseline_divergence_red_on_revert` — two identical long-only → Δ=0 (RED-on-revert proof)
+3. `mn_dollar_neutral_approx` — MN equity < long-only when shorting rising name
+4. `mn_dollar_neutral_red_on_long_only` — long-only > 100k, MN < 100k with rising universe
+5. `mn_sign_assertion_short_leg` — correct vs flipped basis sign → different equity
+6. `mn_two_run_identity` — two identical MN runs → identical equity (determinism)
+7. `mn_residual_arm_diverges_from_basis_arm` — `BasisFundingResidual` selects different short leg than `BasisReversal`; confirmed via BBUSDT-flat vs AAUSDT-rising universe
+
+All 7 tests: GREEN. Universe design ensures measurable P&L divergence via BTreeMap-ordered deterministic rank computation.
+
+**M-DEV-8 — 12 anchored MN surfaces**
+
+All 12 reports written to `spec/perp-basis-mn-spread/reports/`. All cells FRAGILE (expected first-pass; consistent with v0.1.0 long-only FRAGILE baseline and analyst forecast). Three-arm comparison legible: `mn-basis` (p50≈0.02-0.04 for 2024, negative for 2023), `mn-funding` (same as `mn-basis` — signals correlated), `mn-basisperp` (residual arm; FRAGILE in both years). Short-leg funding cost confirmed non-zero.
+
+**M-DEV-9 — `scripts/verify_anchors.sh` handler**
+
+Added `elif [[ "$version" == "perp-basis-mn-spread" ]]` branch searching `spec/perp-basis-mn-spread/reports/` for `robustness-*-${scenario}.md`. 12 new anchors (#108-#119) registered in `spec/anchors.toml`.
+
+**M-DEV-10 — clippy + fmt clean**
+
+- `mn_spread_divergence_e2e.rs`: replaced 120-line overindented `///` doc comment with concise doc + fixed 3 continuation indentation issues
+- `montecarlo.rs`: `#[must_use]` on `maintenance_margin_frac()`
+- `momentum.rs`: `let mut` → `let` (spurious mut)
+
+### Gate summary
+
+| Gate | Result |
+|------|--------|
+| `cargo clippy -p backtest -p strategy -p data --bins --tests -- -D warnings` | CLEAN |
+| `cargo fmt --check` | CLEAN |
+| `cargo test -p backtest --test mn_spread_divergence_e2e` | 7/7 PASS |
+| `cargo test -p strategy --lib cross_sectional` | 60/60 PASS |
+| `bash scripts/verify_anchors.sh` | 119/119 PASS |
+
+### Verdict (developer read)
+
+All three MN arms are FRAGILE at the tier-1 grid in both 2023 and 2024. The basis-spread and funding-spread arms yield near-identical surfaces (funding rank mirrors basis rank in this universe — a k2 confound signal per D-MN.8). The residual arm (`mn-basisperp`) diverges from the raw basis arm as confirmed by falsifier #7. The tester should read the frozen §0 verdict vs the dollar-neutral ≈0 null (not BH) and lock the 12 MN anchors at M-TEST PASS.

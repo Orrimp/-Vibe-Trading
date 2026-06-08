@@ -81,6 +81,22 @@ pub struct MomentumStrategy {
     /// the grid column is L in settlements, passed literally as `lookback_minutes`).
     funding_lookback: usize,
 
+    /// Injected basis score lookup for the basis⊥funding residual arm (M-DEV-4, D-MN.6).
+    ///
+    /// For `BasisFundingResidual`: carries the BASIS values (same as `funding_map` in
+    /// `BasisReversal`). `funding_map` then carries the FUNDING rates for the residual
+    /// rank computation. `None` for every non-residual run → anchor-neutral, zero overhead.
+    ///
+    /// Set via `with_basis_score(…)` after `from_config`. The naming follows the design:
+    /// "basis_score" = the map that yields the basis-reversal half of the rank-residual.
+    basis_score_map: Option<BTreeMap<(Symbol, Timestamp), Decimal>>,
+    /// Per-symbol ring buffer for basis scores in the residual arm (M-DEV-4, D-MN.6).
+    ///
+    /// Mirrors `funding_rings` but used exclusively when `score_source == BasisFundingResidual`
+    /// to buffer the trailing basis values (matching the `funding_lookback` window).
+    /// `None` entries → warming up; empty for every non-residual run → anchor-neutral.
+    basis_score_rings: BTreeMap<Symbol, std::collections::VecDeque<Decimal>>,
+
     /// SHA-256 of canonicalized config — 32 bytes.
     pub hash: [u8; 32],
     pub source_path: SmolStr,
@@ -124,6 +140,19 @@ impl MomentumStrategy {
 
         let hash = compute_config_hash(&cfg);
 
+        // basis_score_rings: parallel ring buffers for BasisFundingResidual arm.
+        // Mirrors funding_rings but for the basis half of the residual.
+        // Empty VecDeques for every non-residual run → anchor-neutral, zero overhead.
+        let basis_score_rings: BTreeMap<Symbol, std::collections::VecDeque<Decimal>> = symbols
+            .iter()
+            .map(|s| {
+                (
+                    s.clone(),
+                    std::collections::VecDeque::with_capacity(funding_lookback + 1),
+                )
+            })
+            .collect();
+
         Self {
             id: StrategyId::new(cfg.id.as_str()),
             universe_symbols,
@@ -146,6 +175,8 @@ impl MomentumStrategy {
             funding_map: None,
             funding_rings,
             funding_lookback,
+            basis_score_map: None,
+            basis_score_rings,
             hash,
             source_path,
         }
@@ -161,6 +192,24 @@ impl MomentumStrategy {
     #[must_use]
     pub fn with_funding(mut self, funding: Option<BTreeMap<(Symbol, Timestamp), Decimal>>) -> Self {
         self.funding_map = funding;
+        self
+    }
+
+    /// Inject the basis score lookup for the basis⊥funding residual arm (M-DEV-4, D-MN.6).
+    ///
+    /// For `BasisFundingResidual`: the basis values ride `basis_score_map` (this field),
+    /// while `funding_map` carries the FUNDING rates for the cross-sectional rank.
+    /// `None` for every non-residual run → anchor-neutral, zero overhead.
+    ///
+    /// Called by the sweep harness AFTER `from_config` + `with_funding(funding_map)` when
+    /// `score_source == BasisFundingResidual`. For all other arms this must NOT be called
+    /// (or called with `None`) to preserve anchor-neutrality.
+    #[must_use]
+    pub fn with_basis_score(
+        mut self,
+        basis_score: Option<BTreeMap<(Symbol, Timestamp), Decimal>>,
+    ) -> Self {
+        self.basis_score_map = basis_score;
         self
     }
 
@@ -222,6 +271,22 @@ impl MomentumStrategy {
                                 .is_some_and(|ring| ring.len() >= self.funding_lookback)
                         })
                     }
+                    ScoreSource::BasisFundingResidual => {
+                        // Residual warm-up: BOTH the basis ring (basis_score_rings) AND the
+                        // funding ring (funding_rings) must have ≥ L entries. The warm-up gate
+                        // is the more-conservative conjunction of both sidecars.
+                        let basis_ready = self.universe_symbols.keys().all(|sym| {
+                            self.basis_score_rings
+                                .get(sym)
+                                .is_some_and(|ring| ring.len() >= self.funding_lookback)
+                        });
+                        let funding_ready = self.universe_symbols.keys().all(|sym| {
+                            self.funding_rings
+                                .get(sym)
+                                .is_some_and(|ring| ring.len() >= self.funding_lookback)
+                        });
+                        basis_ready && funding_ready
+                    }
                 }
             }
         }
@@ -232,6 +297,19 @@ impl MomentumStrategy {
         // CrossSectionalTopK → top_k_long (VERBATIM byte-identical to v1 path).
         // TimeSeriesLongFlat → select_above_threshold (new, per-asset threshold gating).
         // LongShort → top_k_long (long book) + bottom_k_short (short book).
+        //   For BasisFundingResidual: the residual scores override self.scores at rebalance
+        //   time — compute them fresh and use them for both top_k_long and bottom_k_short.
+        let effective_scores: Option<BTreeMap<Symbol, Option<Decimal>>> = if self.selection_mode
+            == SelectionMode::LongShort
+            && self.score_source == ScoreSource::BasisFundingResidual
+        {
+            Some(self.build_residual_scores())
+        } else {
+            None
+        };
+        let scores_ref: &BTreeMap<Symbol, Option<Decimal>> =
+            effective_scores.as_ref().unwrap_or(&self.scores);
+
         let target_weights = match self.selection_mode {
             SelectionMode::CrossSectionalTopK => {
                 top_k_long(&self.scores, self.k_long, self.exposure_cap)
@@ -244,7 +322,8 @@ impl MomentumStrategy {
                 // short book emitted as open_short signals (evidence tag "open_short").
                 // `target_weights` here is the LONG book — the short book is computed
                 // separately below and emitted as explicit Sell signals with "open_short".
-                top_k_long(&self.scores, self.k_long, self.exposure_cap)
+                // For BasisFundingResidual: use the residual scores (scores_ref).
+                top_k_long(scores_ref, self.k_long, self.exposure_cap)
             }
         };
 
@@ -307,8 +386,9 @@ impl MomentumStrategy {
         // Gated: only entered when selection_mode == LongShort and k_short > 0.
         // The Sell signals emitted here use evidence tag "open_short" so run_path
         // can fork the Sell arm on current_qty (D-MN.5 / D-MN.3 layer 1).
+        // For BasisFundingResidual: use scores_ref (the residual scores, already computed above).
         if self.selection_mode == SelectionMode::LongShort && self.k_short > 0 {
-            let short_weights = bottom_k_short(&self.scores, self.k_short, self.exposure_cap);
+            let short_weights = bottom_k_short(scores_ref, self.k_short, self.exposure_cap);
 
             for symbol in self.universe_symbols.keys() {
                 let currently_short = *self.held_short_symbols.get(symbol).unwrap_or(&false);
@@ -496,6 +576,167 @@ impl MomentumStrategy {
         // R-CARRY.2: return −mean so the most-negative-funding name has the highest score.
         Some(-mean)
     }
+
+    // ── BasisFundingResidual helpers (M-DEV-4, D-MN.6) ────────────────────────
+
+    /// Push a basis value into `basis_score_rings` for the residual arm.
+    ///
+    /// The basis value is keyed by `(symbol, open_ts)` in `basis_score_map`.
+    /// Mirrors `basis_reversal_score` but writes to `basis_score_rings` instead of
+    /// `funding_rings`, so that the funding ring stays free for actual funding rates.
+    fn push_basis_score_ring(&mut self, symbol: &Symbol, open_ts: Timestamp) {
+        let basis_value = self
+            .basis_score_map
+            .as_ref()
+            .and_then(|m| m.get(&(symbol.clone(), open_ts)).copied());
+        if let Some(value) = basis_value {
+            let ring = self.basis_score_rings.entry(symbol.clone()).or_default();
+            ring.push_back(value);
+            while ring.len() > self.funding_lookback {
+                ring.pop_front();
+            }
+        }
+    }
+
+    /// Push a funding value into `funding_rings` for the residual arm.
+    ///
+    /// Mirrors the carry push in `carry_score` but is called explicitly from the
+    /// `BasisFundingResidual` branch so the ring is populated per-bar.
+    fn push_funding_ring(&mut self, symbol: &Symbol, open_ts: Timestamp) {
+        let funding_rate = self
+            .funding_map
+            .as_ref()
+            .and_then(|m| m.get(&(symbol.clone(), open_ts)).copied());
+        if let Some(rate) = funding_rate {
+            let ring = self.funding_rings.entry(symbol.clone()).or_default();
+            ring.push_back(rate);
+            while ring.len() > self.funding_lookback {
+                ring.pop_front();
+            }
+        }
+    }
+
+    /// Compute the trailing basis mean for the residual arm (warm-up gate).
+    ///
+    /// Returns `Some(−mean)` when `basis_score_rings[symbol].len() >= funding_lookback`,
+    /// else `None` (warming up). The negation mirrors `basis_reversal_score` so the
+    /// score stored in `self.scores` has the correct direction for the warm-up gate
+    /// (a non-None value = warmed, a None = still warming).
+    fn basis_trailing_mean_for_residual(&self, symbol: &Symbol) -> Option<Decimal> {
+        let ring = self.basis_score_rings.get(symbol)?;
+        if ring.len() < self.funding_lookback {
+            return None;
+        }
+        let sum: Decimal = ring.iter().copied().sum();
+        let mean = sum / Decimal::from(ring.len() as u64);
+        Some(-mean) // negated for the same direction as basis_reversal_score
+    }
+
+    /// Build the cross-sectional rank-residual scores for the `BasisFundingResidual` arm.
+    ///
+    /// For each warmed symbol in the cross-section, compute:
+    ///   `residual_score[sym] = rank(basis_reversal_score) − rank(funding_carry_score)`
+    ///
+    /// Both ranks are 1..N integers (Decimal-exact, NO division, NO rounding, NO f64).
+    /// Ties in either rank use alphabetical `BTreeMap` order (the existing tie-break).
+    ///
+    /// Long = highest residual (low-basis RELATIVE to its funding level).
+    /// Short = lowest residual (high-basis relative to its funding level).
+    ///
+    /// This is the Spearman-style residual that matches the rank-IC channel the spike
+    /// measured (the −0.10 is a RANK IC). D-MN.6 / ADR-0003 Decimal-exact requirement.
+    fn build_residual_scores(&self) -> BTreeMap<Symbol, Option<Decimal>> {
+        // Compute basis trailing means for all warmed symbols (negated, as in basis_reversal_score).
+        // Collect (symbol, basis_score) pairs with Some values — alphabetical BTreeMap order.
+        let mut basis_warmed: Vec<(Symbol, Decimal)> = self
+            .universe_symbols
+            .keys()
+            .filter_map(|sym| {
+                let ring = self.basis_score_rings.get(sym)?;
+                if ring.len() < self.funding_lookback {
+                    return None;
+                }
+                let sum: Decimal = ring.iter().copied().sum();
+                let mean = sum / Decimal::from(ring.len() as u64);
+                Some((sym.clone(), -mean)) // negated: lowest basis → highest score
+            })
+            .collect();
+
+        // Compute funding trailing means for all warmed symbols (negated, as in carry_score).
+        let funding_warmed: Vec<(Symbol, Decimal)> = self
+            .universe_symbols
+            .keys()
+            .filter_map(|sym| {
+                let ring = self.funding_rings.get(sym)?;
+                if ring.len() < self.funding_lookback {
+                    return None;
+                }
+                let sum: Decimal = ring.iter().copied().sum();
+                let mean = sum / Decimal::from(ring.len() as u64);
+                Some((sym.clone(), -mean)) // negated: most-negative-funding → highest score
+            })
+            .collect();
+
+        // Find the common warmed set (symbols warmed in BOTH basis and funding rings).
+        // Use a BTreeMap for deterministic ordering (the rank tie-break is alphabetical).
+        let funding_map: BTreeMap<Symbol, Decimal> =
+            funding_warmed.iter().cloned().collect::<BTreeMap<_, _>>();
+        basis_warmed.retain(|(sym, _)| funding_map.contains_key(sym));
+
+        // N = number of commonly-warmed symbols.
+        let n = basis_warmed.len();
+        if n == 0 {
+            // No commonly-warmed symbol → return None for all.
+            return self
+                .universe_symbols
+                .keys()
+                .map(|sym| (sym.clone(), None))
+                .collect();
+        }
+
+        // Rank basis scores (stable sort descending; alphabetical tie-break via BTreeMap order).
+        // basis_warmed is already in alphabetical order (BTreeMap iteration).
+        // Stable sort descending → equal basis scores keep alphabetical order.
+        basis_warmed.sort_by(|a, b| b.1.cmp(&a.1));
+        let basis_rank: BTreeMap<Symbol, Decimal> = basis_warmed
+            .iter()
+            .enumerate()
+            .map(|(i, (sym, _))| (sym.clone(), Decimal::from(i as u64 + 1)))
+            .collect();
+
+        // Rank funding scores (stable sort descending; alphabetical tie-break).
+        // funding_warmed subset: keep only the commonly-warmed symbols.
+        let mut funding_subset: Vec<(Symbol, Decimal)> = funding_map
+            .into_iter()
+            .filter(|(sym, _)| basis_rank.contains_key(sym))
+            .collect();
+        // Sort alphabetically first to get deterministic tie-break, then stable sort descending.
+        funding_subset.sort_by(|a, b| a.0.cmp(&b.0));
+        funding_subset.sort_by(|a, b| b.1.cmp(&a.1));
+        let funding_rank: BTreeMap<Symbol, Decimal> = funding_subset
+            .iter()
+            .enumerate()
+            .map(|(i, (sym, _))| (sym.clone(), Decimal::from(i as u64 + 1)))
+            .collect();
+
+        // residual_score = rank(basis) − rank(funding) — integer arithmetic, NO division.
+        // Positive residual: basis rank higher than funding rank → more-reversal-favored than
+        // what funding alone would predict. Long these (they outperform vs the funding mirror).
+        // Negative residual: short these.
+        let mut result: BTreeMap<Symbol, Option<Decimal>> = self
+            .universe_symbols
+            .keys()
+            .map(|sym| (sym.clone(), None))
+            .collect();
+
+        for sym in basis_rank.keys() {
+            if let (Some(&br), Some(&fr)) = (basis_rank.get(sym), funding_rank.get(sym)) {
+                *result.entry(sym.clone()).or_insert(None) = Some(br - fr);
+            }
+        }
+
+        result
+    }
 }
 
 impl Strategy for MomentumStrategy {
@@ -577,6 +818,30 @@ impl Strategy for MomentumStrategy {
                             rb.push(bar.close.get());
                         }
                         self.basis_reversal_score(&bar.symbol, bar.open_ts)
+                    }
+                    ScoreSource::BasisFundingResidual => {
+                        // BASIS⊥FUNDING RANK-RESIDUAL path (M-DEV-4, D-MN.6).
+                        // Per-bar: push both the basis value (into basis_score_rings, keyed via
+                        // basis_score_map) and the funding value (into funding_rings, keyed via
+                        // funding_map). The SCORE returned is a placeholder (the raw basis mean)
+                        // that gets stored in `self.scores`. At rebalance time, the cross-section
+                        // is ranked and residual = rank(basis_score) − rank(funding_score)
+                        // is computed via `build_residual_scores` and used for selection.
+                        //
+                        // Here we push per-symbol values into both ring buffers so they are full
+                        // and ready for ranking at the next rebalance. The score stored in
+                        // `self.scores` is the raw basis value for warm-up purposes; the actual
+                        // selection uses `build_residual_scores` at rebalance time.
+                        if let Some(rb) = self.histories.get_mut(&bar.symbol) {
+                            rb.push(bar.close.get());
+                        }
+                        // Push basis value into basis_score_rings.
+                        self.push_basis_score_ring(&bar.symbol, bar.open_ts);
+                        // Push funding value into funding_rings (reuse existing carry push path).
+                        self.push_funding_ring(&bar.symbol, bar.open_ts);
+                        // Return the trailing basis mean as the score (warm-up gate via funding_lookback).
+                        // At rebalance time, `build_rebalance_signals` overrides with residual.
+                        self.basis_trailing_mean_for_residual(&bar.symbol)
                     }
                 }
             }
@@ -1499,6 +1764,234 @@ score_source = "basis_reversal"
             buy_signals.is_empty(),
             "M-DEV-3: TS strategy with entry_threshold=0.50 must stay flat on a ~10% uptrend. \
              buy_signals={buy_signals:?}"
+        );
+    }
+
+    // ── M-DEV-4: BasisFundingResidual rank-residual unit tests ────────────────
+
+    /// Build a `BasisFundingResidual` strategy with injected basis and funding maps.
+    fn make_residual_strategy_with_maps(
+        lookback: u32,
+        k_long: u32,
+        k_short: u32,
+        basis_score_map: BTreeMap<(Symbol, Timestamp), Decimal>,
+        funding_map: BTreeMap<(Symbol, Timestamp), Decimal>,
+    ) -> MomentumStrategy {
+        use crate::cross_sectional::config::CrossSectionalMomentumConfig;
+        let mut cfg = CrossSectionalMomentumConfig::from_str(&format!(
+            r#"
+id = "test_residual"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["AAUSDT", "BBUSDT", "CCUSDT"]
+lookback_minutes = {lookback}
+rebalance_minutes = 1
+k_long = {k_long}
+k_short = {k_short}
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"
+selection_mode = "long_short"
+"#
+        ))
+        .unwrap();
+        cfg.score_source = crate::cross_sectional::config::ScoreSource::BasisFundingResidual;
+        MomentumStrategy::from_config(cfg, SmolStr::new("test_residual"))
+            .with_funding(Some(funding_map))
+            .with_basis_score(Some(basis_score_map))
+    }
+
+    /// M-DEV-4 (a): Rank-residual is integer-valued Decimal, NO division.
+    ///
+    /// With 3 symbols and distinct basis/funding ranks, the residual must be
+    /// an exact integer Decimal (1, 0, -1 etc.), not a fraction.
+    #[test]
+    fn m_dev4_rank_residual_is_integer_valued() {
+        use time::OffsetDateTime;
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let aaa = Symbol::new("AAUSDT");
+        let bbb = Symbol::new("BBUSDT");
+        let ccc = Symbol::new("CCUSDT");
+
+        // basis: AA=−0.02 (rank 1 high score after −mean), BB=0.00, CC=+0.02 (rank 3)
+        let mut basis_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        basis_map.insert((aaa.clone(), ts0), dec!(-0.02));
+        basis_map.insert((bbb.clone(), ts0), dec!(0.00));
+        basis_map.insert((ccc.clone(), ts0), dec!(0.02));
+
+        // funding: AA=−0.01 (rank 1 high after −mean), BB=0.00, CC=+0.01 (rank 3)
+        // Same ordering → residual should be 0 for all.
+        let mut funding_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        funding_map.insert((aaa.clone(), ts0), dec!(-0.01));
+        funding_map.insert((bbb.clone(), ts0), dec!(0.00));
+        funding_map.insert((ccc.clone(), ts0), dec!(0.01));
+
+        let mut strat =
+            make_residual_strategy_with_maps(1, 1, 1, basis_map.clone(), funding_map.clone());
+        let prices = [
+            ("AAUSDT", dec!(100)),
+            ("BBUSDT", dec!(200)),
+            ("CCUSDT", dec!(300)),
+        ];
+        for (sym, p) in &prices {
+            strat.on_bar(&make_bar(sym, *p, 0));
+        }
+        let residuals = strat.build_residual_scores();
+        for (sym, score_opt) in &residuals {
+            if let Some(score) = score_opt {
+                // Residual must be an integer-valued Decimal (no fractional part).
+                assert_eq!(
+                    *score,
+                    score.round(),
+                    "M-DEV-4: residual for {sym} must be integer-valued, got {score}"
+                );
+            }
+        }
+    }
+
+    /// M-DEV-4 (b): Residual differs from raw basis when funding ranking diverges.
+    ///
+    /// When the funding rank differs from the basis rank, the residual score differs
+    /// from the raw basis-reversal score — proving the residualization is non-trivial.
+    #[test]
+    fn m_dev4_residual_differs_from_raw_basis_when_funding_diverges() {
+        use time::OffsetDateTime;
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let aaa = Symbol::new("AAUSDT");
+        let bbb = Symbol::new("BBUSDT");
+        let ccc = Symbol::new("CCUSDT");
+
+        // basis: AAUSDT=−0.02 (rank 1, lowest), BBUSDT=0.00, CCUSDT=+0.02 (rank 3, highest)
+        let mut basis_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        basis_map.insert((aaa.clone(), ts0), dec!(-0.02));
+        basis_map.insert((bbb.clone(), ts0), dec!(0.00));
+        basis_map.insert((ccc.clone(), ts0), dec!(0.02));
+
+        // funding: CCUSDT=−0.03 (most negative → rank 1 after −mean), BBUSDT=0.00, AAUSDT=+0.03
+        // INVERTED funding vs basis order — the residual should reveal different ranking.
+        let mut funding_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        funding_map.insert((aaa.clone(), ts0), dec!(0.03)); // high funding → PAYS → low carry score
+        funding_map.insert((bbb.clone(), ts0), dec!(0.00));
+        funding_map.insert((ccc.clone(), ts0), dec!(-0.03)); // negative → EARNS → high carry score
+
+        let mut strat = make_residual_strategy_with_maps(1, 1, 1, basis_map, funding_map);
+        let prices = [
+            ("AAUSDT", dec!(100)),
+            ("BBUSDT", dec!(200)),
+            ("CCUSDT", dec!(300)),
+        ];
+        for (sym, p) in &prices {
+            strat.on_bar(&make_bar(sym, *p, 0));
+        }
+
+        let residuals = strat.build_residual_scores();
+
+        // AA: basis rank 1 (most neg → high score), funding rank 3 (most pos → low score)
+        //   → residual = 1 − 3 = −2
+        let aa_res = residuals.get(&aaa).copied().flatten();
+        // CC: basis rank 3 (most pos → low score), funding rank 1 (most neg → high score)
+        //   → residual = 3 − 1 = +2
+        let cc_res = residuals.get(&ccc).copied().flatten();
+
+        assert!(
+            aa_res.is_some() && cc_res.is_some(),
+            "M-DEV-4: both AAUSDT and CCUSDT must have residual scores after warm-up"
+        );
+        // The residual ranking must differ from the raw basis ranking.
+        // Raw basis: AA (rank 1) > BB > CC (rank 3), so long AA short CC.
+        // Residual: CC (residual +2) > BB > AA (residual −2), so long CC short AA.
+        assert!(
+            cc_res.unwrap() > aa_res.unwrap(),
+            "M-DEV-4: when funding is inverted vs basis, CC must have higher residual than AA. \
+             CC residual={cc_res:?}, AA residual={aa_res:?}"
+        );
+        assert!(
+            aa_res.unwrap() < dec!(0),
+            "M-DEV-4: AA has high basis and low funding → residual must be negative (got {aa_res:?})"
+        );
+        assert!(
+            cc_res.unwrap() > dec!(0),
+            "M-DEV-4: CC has low basis and high funding → residual must be positive (got {cc_res:?})"
+        );
+    }
+
+    /// M-DEV-4 (c): Two-run identity — same inputs → identical residual scores.
+    #[test]
+    fn m_dev4_residual_two_run_identity() {
+        use time::OffsetDateTime;
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let aaa = Symbol::new("AAUSDT");
+        let bbb = Symbol::new("BBUSDT");
+        let ccc = Symbol::new("CCUSDT");
+
+        let mut basis_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        basis_map.insert((aaa.clone(), ts0), dec!(-0.02));
+        basis_map.insert((bbb.clone(), ts0), dec!(0.01));
+        basis_map.insert((ccc.clone(), ts0), dec!(0.03));
+
+        let mut funding_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        funding_map.insert((aaa.clone(), ts0), dec!(0.02));
+        funding_map.insert((bbb.clone(), ts0), dec!(-0.01));
+        funding_map.insert((ccc.clone(), ts0), dec!(-0.03));
+
+        let run_residuals = || {
+            let mut strat =
+                make_residual_strategy_with_maps(1, 1, 1, basis_map.clone(), funding_map.clone());
+            let prices = [
+                ("AAUSDT", dec!(100)),
+                ("BBUSDT", dec!(200)),
+                ("CCUSDT", dec!(300)),
+            ];
+            for (sym, p) in &prices {
+                strat.on_bar(&make_bar(sym, *p, 0));
+            }
+            strat.build_residual_scores()
+        };
+
+        let r1 = run_residuals();
+        let r2 = run_residuals();
+        assert_eq!(
+            r1, r2,
+            "M-DEV-4: two runs on the same input must produce byte-identical residual scores"
+        );
+    }
+
+    /// M-DEV-4 (d): Config hash includes BasisFundingResidual distinctly from BasisReversal.
+    #[test]
+    fn m_dev4_config_hash_basis_funding_residual_distinct() {
+        use crate::cross_sectional::config::CrossSectionalMomentumConfig;
+
+        let make_cfg = |ss: crate::cross_sectional::config::ScoreSource| {
+            let mut cfg = CrossSectionalMomentumConfig::from_str(
+                r#"
+id = "test_hash"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["AAUSDT", "BBUSDT", "CCUSDT"]
+lookback_minutes = 60
+rebalance_minutes = 480
+k_long = 3
+k_short = 3
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"
+selection_mode = "long_short"
+"#,
+            )
+            .unwrap();
+            cfg.score_source = ss;
+            MomentumStrategy::from_config(cfg, SmolStr::new("test"))
+        };
+
+        let strat_basis = make_cfg(crate::cross_sectional::config::ScoreSource::BasisReversal);
+        let strat_residual =
+            make_cfg(crate::cross_sectional::config::ScoreSource::BasisFundingResidual);
+
+        assert_ne!(
+            strat_basis.hash, strat_residual.hash,
+            "M-DEV-4: BasisReversal and BasisFundingResidual must hash differently (K3)"
         );
     }
 }
