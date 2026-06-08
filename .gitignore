@@ -24,6 +24,14 @@
 !/data/binance-basis/
 /data/binance-basis/*
 !/data/binance-basis/REVISION.toml
+# On-chain stablecoin-supply spike (2026-06-08, onchain-netflow-spike): daily
+# per-chain stablecoin circulating supply from the free DefiLlama API. Net-flows
+# were ruled out at the PIT gate; stablecoin supply is the cleaner-PIT fallback.
+# Bulk parquets stay gitignored (mirrors data/binance-basis); only the
+# revision-pin manifest (aggregate SHA 782148bd…) is tracked for reproducibility.
+!/data/defillama-stablecoins/
+/data/defillama-stablecoins/*
+!/data/defillama-stablecoins/REVISION.toml
 /logs/
 /snapshot/
 /data-snapshot/

@@ -488,6 +488,51 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      passive-may-be-terminal note + on-chain-as-final-probe). `perp-basis-mn-spread`
      is tester-done PASS and moves to Recent on operator fork-resolution. -->
 
+<!-- updated 2026-06-08 (analyst, on-chain spike RAN — VERDICT: HARD-STOP →
+     CONCLUDE + ship passive) — the operator greenlit the bounded on-chain hunt
+     (the if-budget-tightens spike-first lane) and it has now RUN. Full spike:
+     `spec/dev-notes/onchain-netflow-spike-2026-06-08.md`. Both pre-registered
+     branches landed on the pre-committed FUSE:
+
+     (1) EXCHANGE NET-FLOWS — KILLED at the data-feasibility / PIT gate (run FIRST,
+     as mandated). The canonical free net-flow source (CryptoQuant) fails BOTH
+     sub-gates: PAID API key required, AND the vendor's own docs DISCLAIM
+     point-in-time accuracy ("does not support PIT accuracy due to periodic updates
+     to wallet address clustering; historical data may change as new exchange
+     wallets are discovered") — the exact address-relabeling look-ahead the fork
+     note pre-registered as the net-flow killer, confirmed verbatim. No free source
+     serves an immutable past-only net-flow series. FEASIBILITY verdict → fuse.
+     → PIVOTED to the pre-named cleaner-PIT fallback: STABLECOIN SUPPLY.
+
+     (2) STABLECOIN SUPPLY — PIT-clean + free, but FRAGILE. Cleared the data/PIT
+     gates cleanly (DefiLlama, free/no-auth/daily/full-2023-2024; forward-recorded —
+     verified Base chart begins 2023-08-15 at mainnet launch, zero pre-launch
+     backfill; leak-check PASSES causal≠leaked every horizon). But fails the basis
+     spike's LIVE bar at EVERY horizon: no cell jointly sign-stable across 2023 AND
+     2024 with |IC|≥0.05 (per-chain TS L=7d +0.011→−0.086, L=14d +0.036→−0.130 —
+     signs FLIP; aggregate→BTC same-sign cells ALL inside 2σ noise bands, n=25-51).
+     Orthogonal to momentum (|corr|<0.07) but moot without a replicating signal.
+     Universe reality: only ETH/BNB/SOL/AVAX carry usable per-chain supply (4 names,
+     too thin for a rank-IC). Calibration: the basis was LIVE *because* it held the
+     same sign both years; this flips → same rule, opposite verdict. Confidence HIGH.
+
+     → VERDICT: HARD-STOP. The most-orthogonal remaining channel got its fair test
+     on the cleanest free PIT-clean series and FAILED → "active ≤ passive in the
+     reachable universe" is now ASTERISK-FREE across THREE channels (price +
+     positioning + on-chain). Per the pre-committed fuse the program CONCLUDES the
+     active-vs-passive search and SHIPS PASSIVE. The hard-stop BINDS: NO options
+     hunt, NO macro hunt, NO on-chain sub-signal mining (miner flows / active
+     addresses are OUT — the channel got its representative test via its two
+     strongest, cleanest-PIT signals). "Ship passive" = promote the already-built +
+     anchored BH control "benchmark → production strategy" (a PROMOTION, not a build)
+     + a product.md terminal-thesis update. NEXT: operator ratifies the conclusion →
+     a `ship-passive-baseline` promotion feature (analyst authors the brief +
+     `[[req]]` row on greenlight). Artifacts: read-only probe
+     `crates/data/examples/stablecoin_diag.rs` + banked DefiLlama series under
+     `data/defillama-stablecoins/` (REVISION pin `782148bd…`; parquets gitignored,
+     manifest tracked). NO feature brief (spike said HARD-STOP, not BUILD); NO
+     `[[req]]` row; NO strategy/ScoreSource/run_path/anchor surface; NO commit. -->
+
 <!-- updated 2026-05-30 (analyst, monte-carlo-robustness-lane M0 close) —
      **PROMOTED Idea → Active 2026-05-30**. Opens the Monte-Carlo robustness
      lane under the operator's 4 locked strategic decisions (2026-05-30):

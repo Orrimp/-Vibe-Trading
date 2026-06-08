@@ -1,0 +1,38 @@
+# DefiLlama stablecoin-supply snapshot — on-chain spike (2026-06-08).
+#
+# Daily per-chain stablecoin circulating supply (USD) fetched from the FREE,
+# no-auth DefiLlama stablecoins API for the on-chain-netflow-spike. Net-flows were
+# ruled out at the PIT gate (CryptoQuant: paid key + vendor-disclaimed mutable
+# history from address relabeling); this is the pre-named cleaner-PIT fallback
+# signal (mint/burn at issuer contracts is immutable on-chain; DefiLlama records a
+# forward-dated daily snapshot per chain — a chain's series begins at its launch,
+# verified e.g. Base 2023-08-15, no pre-launch backfill).
+#
+# Bulk parquets are gitignored (mirrors data/binance-basis); only this manifest is
+# tracked so the spike's stablecoin_diag.rs numbers are reproducible.
+#
+# Endpoint: GET https://stablecoins.llama.fi/stablecoincharts/{chain}
+#   value used = totalCirculatingUSD.peggedUSD per daily point (date @ 00:00 UTC).
+# Schema (per <chain>.parquet): day_key Int64 (days since epoch), supply_usd Float64.
+
+[revision]
+sha256 = "782148bd82c1cec72e0da0307be95ae855abbc55655e00947ce46880b8c45c75"
+
+[revision.metadata]
+fetched_at = "2026-06-08T13:33:00Z"
+source = "DefiLlama stablecoins API"
+base_url = "https://stablecoins.llama.fi"
+endpoint = "/stablecoincharts/{chain}"
+fetch_tool = "crates/data/examples/stablecoin_diag.rs"
+value = "totalCirculatingUSD.peggedUSD"
+cadence = "daily (00:00 UTC)"
+auth = "none (free public endpoint)"
+chains = "Ethereum, BSC, Solana, Avalanche, all (aggregate)"
+note = "aggregate sha256 = sorted-filename concat of the 5 parquets below"
+
+[files]
+"Avalanche.parquet" = "35f69cccfebf95002d89ce460c69a89f9dcace2c520d7dca2e389cf014b7bd9b"
+"BSC.parquet" = "542cb6a14f20ce0b09aa756c0287d2bd6192d2469e4cb431578bf0dc8822ba25"
+"Ethereum.parquet" = "32405963f6d133ee0ceb62189dd2fe67f58cb238ae74916d6107ba113178800a"
+"Solana.parquet" = "4f902419d1e79e7d204144e1f47d15e199e2794ada0b3a0e4697ea0837f7cc58"
+"all.parquet" = "15f788524e5f8d2027050224984955f1a22eaa9780a998f919fafe2a150c646e"
