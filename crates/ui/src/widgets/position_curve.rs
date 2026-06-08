@@ -68,6 +68,9 @@ impl canvas::Program<Message> for PositionCurveProgram {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
+        // cockpit-chart-cache Phase 1 — time the geometry-build body
+        // (no-op when `chart-build-probe` is off).
+        let _build_timer = super::chart_build_probe::BuildTimer::start();
         let mut frame = Frame::new(renderer, bounds.size());
         let inner = inner_rect(bounds.size());
         let baseline_y = inner.y + inner.height - 4.0; // near the bottom, zero line

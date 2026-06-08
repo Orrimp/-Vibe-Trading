@@ -62,6 +62,17 @@ harness = false
 name = "cockpit_render"
 harness = false
 
+# cockpit-chart-cache Phase 1 MEASURE — geometry-build-vs-raster split
+# on a hover frame (the go/no-go number for the `canvas::Cache` work).
+# `required-features = ["chart-build-probe"]` so a plain
+# `cargo bench -p ui` does NOT select it (the thread-local build timer
+# is only compiled under that feature); run explicitly with
+# `cargo bench -p ui --bench chart_build_probe --features chart-build-probe`.
+[[bench]]
+name = "chart_build_probe"
+harness = false
+required-features = ["chart-build-probe"]
+
 [dependencies]
 trading_core = { path = "../core" }
 # lab-yahoo-realdata T-C3.6 / T-AR1 — `data` crate for Yahoo parquet reader.
@@ -254,6 +265,17 @@ yahoo = ["dep:data", "data/yahoo", "data/yahoo-online"]
 # subscriber and so does not duplicate this on a default + render-debug
 # build (the `try_init` call in `cockpit.rs:main` is idempotent).
 render-debug = ["dep:tracing-subscriber"]
+
+# `chart-build-probe` — cockpit-chart-cache Phase 1 MEASURE. Gates the
+# `widgets::chart_build_probe` thread-local geometry-build timer that
+# brackets every chart `canvas::Program::draw` body. With the feature
+# OFF (every production build) the timer is a zero-sized no-op guard
+# (`widgets/chart_build_probe.rs`) — zero runtime cost, the `let _t =
+# BuildTimer::start();` lines in the draw impls compile away. The
+# Phase-1 bench (`benches/chart_build_probe.rs`) enables it to report
+# the build-vs-raster split on a hover frame (the go/no-go number for
+# the `canvas::Cache` work). Default builds never see it.
+chart-build-probe = []
 
 # `live` — enables the real broadcast-bus subscription (T32). Without this
 # feature the `ui::live` module is not compiled; the cockpit falls back to

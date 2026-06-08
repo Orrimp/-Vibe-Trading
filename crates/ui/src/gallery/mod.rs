@@ -209,7 +209,14 @@ mod tests {
         // the crate but not "widgets" in the gallery-displayable sense.
         // Added 2026-05-15 post-merge with ui-quality-gate-overhaul /
         // cockpit-render-regression (which introduced both modules).
-        const EXCLUDED_FROM_GALLERY: &[&str] = &["debug_renderer", "throttled_spinner"];
+        //
+        // `chart_build_probe` (cockpit-chart-cache Phase 1) is a
+        // measurement helper — `pub` only under the `chart-build-probe`
+        // feature so the out-of-crate bench can read its accumulator —
+        // not a renderable widget. This text-parse sees the `pub mod`
+        // arm regardless of the `#[cfg]`, so it must be excluded here.
+        const EXCLUDED_FROM_GALLERY: &[&str] =
+            &["debug_renderer", "throttled_spinner", "chart_build_probe"];
 
         let mod_rs = include_str!("../widgets/mod.rs");
         let expected_set: std::collections::HashSet<&str> =

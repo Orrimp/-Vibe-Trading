@@ -381,6 +381,11 @@ impl canvas::Program<Message> for ChartProgram {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
+        // cockpit-chart-cache Phase 1 — time the geometry-build body
+        // (no-op when `chart-build-probe` is off). This is the heavy
+        // chart: gridlines + price line + markers + ghost signals +
+        // optional equity overlays + axes + legend + tooltip.
+        let _build_timer = super::chart_build_probe::BuildTimer::start();
         let mut frame = Frame::new(renderer, bounds.size());
         // T3010 — single source of truth for the drawable rect:
         // `chart_inner_rect` applies the brief's R4 gutters

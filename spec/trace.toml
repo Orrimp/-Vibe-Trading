@@ -2785,3 +2785,18 @@ crates      = []   # developer fills — expected pure-`ui`: crates/ui/src/scree
 tests       = []   # developer fills — panel_snapshots (both themes) + a reports four-state test + headless_emulator_paints_reports_route + the lifted-loader unit tests
 anchors     = []   # tester fills (read-only UI feature → no new backtest anchors; regression floor is the unchanged 119/119 gate — Reports only reads committed reports, touches no anchored file)
 state       = "proposed"
+
+# REQ-COCKPIT-CHARTCACHE-001 → cockpit-chart-cache (measured 2026-06-08) — Phase 1 MEASURE → NO-GO
+[[req]]
+id          = "REQ-COCKPIT-CHARTCACHE-001"
+title       = "Chart canvas::Cache hover-smoothness polish (flagged in perf-fix e7d6940): cache the 6 chart Program::draw geometries so they rebuild only on data change, not every hover frame. Phase 1 MEASURE gate: ship only if the geometry-build is a meaningful fraction of a hover frame."
+feature     = "cockpit-chart-cache"
+product     = "spec/product.md"
+arch        = []   # no ADR — Phase 1 measurement concluded NO-GO before any architecture change; Phase 2 (Cache plumbing through screens + invalidation) intentionally not designed/built
+crates      = ["crates/ui"]   # pure-`ui`: widgets/chart_build_probe.rs (feature-gated measurement probe, zero prod cost) + benches/chart_build_probe.rs + 6 chart draw impls instrumented with a no-op timer line; no new crate edge
+tests       = [
+  "crates/ui/benches/chart_build_probe.rs",
+  "crates/ui/tests/panel_snapshots.rs",
+]
+anchors     = []   # measurement-only outcome → no new backtest anchors; regression floor is the unchanged 119/119 gate (no anchored file touched) + panel_snapshots unchanged-in-content (no-op ZST guard)
+state       = "deprecated"   # ui-designer 2026-06-08 — Phase 1 MEASURE → NO-GO (status=deprecated == measured & consciously shelved). Build/raster split on heavy Lab hover frame = 0.1%/99.9% (cache ceiling ≤ 23µs on a 17ms frame). Invasive invalidation-risk work for an imperceptible gain → Phase 2 not done. Measurement harness kept (feature-gated, zero prod cost). See spec/cockpit-chart-cache/feature.md

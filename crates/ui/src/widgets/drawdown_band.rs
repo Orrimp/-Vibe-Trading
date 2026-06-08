@@ -109,6 +109,9 @@ impl canvas::Program<ViewerMessage> for DrawdownBandProgram {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
+        // cockpit-chart-cache Phase 1 — time the geometry-build body
+        // (no-op when `chart-build-probe` is off).
+        let _build_timer = super::chart_build_probe::BuildTimer::start();
         let mut frame = Frame::new(renderer, bounds.size());
         // T3020 — chart-canvas-overhaul v1.10.0 (Q7 viewer parity =
         // BOTH).  Mirrors `equity_curve::draw`: left price-axis

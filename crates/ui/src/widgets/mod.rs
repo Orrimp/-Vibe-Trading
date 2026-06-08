@@ -19,6 +19,18 @@ pub mod agent_feed;
 pub(crate) mod axis;
 pub(crate) mod canvas_chart;
 pub mod chart;
+/// `cockpit-chart-cache` Phase 1 — geometry-build-vs-raster timing
+/// probe. Zero production cost: the module body is gated behind the
+/// `chart-build-probe` cargo feature and compiles to a zero-sized
+/// no-op guard when off. See `widgets/chart_build_probe.rs`.
+///
+/// `pub` ONLY under the feature so the out-of-crate Phase-1 bench
+/// (`benches/chart_build_probe.rs`) can call `reset` / `accumulated`;
+/// `pub(crate)` otherwise so the no-op guard stays crate-internal.
+#[cfg(feature = "chart-build-probe")]
+pub mod chart_build_probe;
+#[cfg(not(feature = "chart-build-probe"))]
+pub(crate) mod chart_build_probe;
 pub mod chart_legend;
 pub mod chart_tooltip;
 // ui-quality-gate-overhaul M2-B (T-M2-B-1/-2) — diagnostic
