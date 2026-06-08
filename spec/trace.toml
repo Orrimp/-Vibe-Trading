@@ -2696,7 +2696,29 @@ arch        = [
   "spec/architecture/adr/0002-rng-chacha20.md",                                                           # ZERO new RNG (2nd sidecar gathers the existing idx_seq)
   "spec/architecture/11-regression-gate.md",                                                              # the 107-anchor verify_anchors.sh gate + the run_path k_short=0 re-proof
 ]
-crates      = []   # developer fills
-tests       = []   # developer fills
-anchors     = []   # tester fills (after PASS): v2-mn-{basis,funding,basisperp}-fee{00,05}bps-theta-surface-{2023,2024}-block-bootstrap-real-fy
-state       = "arch-done"   # architect 2026-06-07 M-T1: Design D-MN.0..9 (feature.md) + tasks.md (M-DEV-0..10 + M-TEST) + ADR-0051 § D6.10 amendment (registered atomically in the ADR README). Q-MN-1..5 RESOLVED: (1) short-side engine = a k_short-GATED BRANCH inside the EXISTING run_path (concrete MomentumStrategy signature kept — NO dyn/generic, §D6.5.2 trap avoided; sibling run_path_long_short REJECTED — duplicates solvency logic); short SOLVENCY = symmetric dollar-neutral notional + a short INITIAL-MARGIN gate (max_leverage=dec!(1) LOCKED) + a deterministic MAINTENANCE-MARGIN LIQUIDATION rule (maintenance_margin_frac=dec!(0.5) LOCKED) bounding the unbounded short loss; equity math UNCHANGED (Σ qty·mark already handles qty<0); short-leg funding accrual ALREADY EXISTS (montecarlo.rs:322-373, only line 350's continue skip gates it). (2) THE load-bearing gate — the run_path anchor-neutrality RE-PROOF = by-construction (short branches dead-code when k_short==0 → byte-for-byte HEAD) + a run_path_k_short_zero_byte_identical_to_head unit test + the hard verify_anchors.sh→107/107 gate run FIRST (M-DEV-0) + after EVERY seam. (3) a SECOND SIMULTANEOUS sidecar (the D6.9 channel-reuse RETIRED — basis + funding BOTH live): GeneratedPath.basis_by_symbol + BlockBootstrapPathGen.basis_at_return + with_basis(…) + TcnScenarioInput.basis_override, co-resampled at the SAME idx_seq, ZERO new RNG, None for every non-MN run (~37 sites). (4) the basis⊥funding arm is RANK-BASED Decimal-EXACT (rank(basis) − rank(funding), NO division → bit-reproducible; OLS slope REJECTED — non-terminating Decimal division is a hidden determinism surface). (5) NEW namespace perp-basis-mn-spread; 3 arms × {0,5}bps × {2023,2024} = 12 surfaces × 400 paths ≈ ~12 min TRACTABLE; θ L∈{60,168} (L=24 DROPPED, L=720 SKIPPED), K_long=K_short=3 LOCKED; null = dollar-neutral ≈0 NOT BH. Assumptions changed (flagged in feature.md): L=24 dropped, K locked to 3, two LOCKED margin constants added, basis⊥funding locked rank-based. Build estimate VALIDATED ~5-8 dev-days (10 dev tasks + M-TEST). HANDOFF → developer. Files only; no code, no anchors.toml lock by the architect.
+crates      = ["crates/backtest", "crates/strategy", "crates/data"]   # developer M-DEV-1..10: short-side engine (montecarlo.rs), SelectionMode::LongShort + bottom_k_short (strategy/cross_sectional), basis_at_return second sidecar (data/synth/bootstrap.rs), MN sweep harness (param_robustness_sweep.rs)
+tests       = [
+  "crates/backtest/tests/mn_spread_divergence_e2e.rs::mn_baseline_equity_divergence",
+  "crates/backtest/tests/mn_spread_divergence_e2e.rs::mn_baseline_divergence_red_on_revert",
+  "crates/backtest/tests/mn_spread_divergence_e2e.rs::mn_dollar_neutral_approx",
+  "crates/backtest/tests/mn_spread_divergence_e2e.rs::mn_dollar_neutral_red_on_long_only",
+  "crates/backtest/tests/mn_spread_divergence_e2e.rs::mn_sign_assertion_short_leg",
+  "crates/backtest/tests/mn_spread_divergence_e2e.rs::mn_two_run_identity",
+  "crates/backtest/tests/mn_spread_divergence_e2e.rs::mn_residual_arm_diverges_from_basis_arm",
+  "crates/backtest/src/scenarios/montecarlo.rs::run_path_k_short_zero_byte_identical_to_head",
+]
+anchors     = [
+  "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy",
+  "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy",
+  "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy",
+  "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy",
+  "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy",
+  "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy",
+  "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy",
+  "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy",
+  "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy",
+  "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy",
+  "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy",
+  "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy",
+]
+state       = "tester-done"   # tester M-TEST 2026-06-08 VERDICT → PASS. Science gate: 119/119 anchors (107 pre-existing byte-identical + 12 new MN anchors #108-#119). 7 falsifiers GREEN (mn_baseline_equity_divergence, mn_baseline_divergence_red_on_revert, mn_dollar_neutral_approx, mn_dollar_neutral_red_on_long_only, mn_sign_assertion_short_leg, mn_two_run_identity, mn_residual_arm_diverges_from_basis_arm). run_path_k_short_zero_byte_identical_to_head GREEN — the FIRST run_path anchor-neutrality re-proof PASSES. Two-run body-SHA identity PASS (sha=aa2c5d13 on N=5 smoke). FAMILY-UNIFORM-FRAGILE on all 12 surfaces (3 arms × 2 fees × 2 regimes) vs the dollar-neutral ≈0 null. k2 fires: mn-basis and mn-funding produce byte-identical surfaces (same p50/p5/liquidations — basis IS the funding signal). Residual arm mn-basisperp: negative median Sharpe (2023 g0 p50=−0.064), 100% p95 MaxDD, 328 liquidations → basis carries no orthogonal alpha. Derivatives-positioning domain CLOSED with finality. Pre-registered FRAGILE outcome; correct science gate.

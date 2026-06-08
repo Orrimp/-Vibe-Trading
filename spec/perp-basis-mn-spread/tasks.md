@@ -510,6 +510,64 @@ bash scripts/verify_anchors.sh            # 107/107 after every additive seam
 
 ## M-TEST — the tester's gate (handoff to tester after M-DEV-8/9/10)
 
+<!-- T_FINAL_1 VERIFIED 2026-06-08 (tester claude-sonnet-4-6):
+     Three-arm comparison (R-MN.6): mn-basis and mn-funding produce byte-identical surfaces
+     (same p50/p5/liquidations counts) — k2 fires; basis IS the funding signal. mn-basisperp
+     produces distinct surfaces with negative median Sharpe (2023: g0 p50=−0.064, g1 p50=−0.043;
+     2024: g0 p50=−0.006, g1 p50=−0.005) — basis carries NO orthogonal alpha beyond funding.
+     All 12 surfaces FAMILY-UNIFORM-FRAGILE vs the dollar-neutral ≈0 null. -->
+
+<!-- T_FINAL_2 VERIFIED 2026-06-08 (tester):
+     Dollar-neutral verdict at 5 bps: all 12 surfaces FRAGILE at the frozen §0 bands.
+     Best cell across all arms at 5 bps:
+       mn-basis/2024/g1: p50=+0.030, p5=−0.082, P(Sharpe>1)=0.000, p95_maxdd=93.59% → FRAGILE.
+     k1 fires: FRAGILE at 0bps gross; k3 not separately triggered (liquidations present but
+     not the primary verdict driver — the spread itself has no net edge even before fees).
+     Dollar-neutral null confirmed: null = ≈0 (cash); the BH bar (+1.74/+1.10) is correctly
+     NOT the comparison. -->
+
+<!-- T_FINAL_3 VERIFIED 2026-06-08 (tester):
+     All 7 day-1 falsifiers GREEN (cargo test -p backtest --test mn_spread_divergence_e2e → 7/7).
+     RED-on-revert proofs documented in test report:
+     - F1 (dollar-neutrality / baseline-divergence): Tests 3+4 structurally encode the revert:
+       mn_dollar_neutral_approx asserts MN < long-only; mn_dollar_neutral_red_on_long_only
+       asserts long-only >100k AND MN <100k. If k_short=0, MN = long-only → both fail.
+     - F2 (red-on-revert pair): mn_baseline_divergence_red_on_revert directly proves F1 RED-on-revert
+       (two identical long-only → Δ=0; proves F1 would fail if short leg disabled).
+     - F5 (sign): flipped basis map → different legs selected → different equity; delta confirmed >> epsilon.
+     - F6 (two-run identity): two identical runs → identical equity (determinism confirmed).
+     - F7 (orthogonalization non-no-op): residual arm selects different SHORT leg than basis arm →
+       measurable equity divergence (AAUSDT rising vs BBUSDT flat); delta confirmed >> epsilon.
+     - run_path_k_short_zero_byte_identical_to_head GREEN: k_short=0 path byte-identical (neutrality re-proof).
+     No look-ahead (F5 R-MN.7 #5) covered by construction: the test file's basis_map is indexed
+     by explicit timestamps; the two-sidecar simultaneity falsifier (F5) is covered by the
+     mn_sign_assertion_short_leg which exercises both basis + funding maps simultaneously. -->
+
+<!-- T_FINAL_4 VERIFIED 2026-06-08 (tester):
+     Anchor gate: verify_anchors.sh → ANCHORS PASS (119 / 119). The 107 pre-existing anchors
+     are byte-identical (confirmed by 107/107 sub-count in verify output). The 12 new MN anchors
+     (#108-#119) are independently re-hashed via python3 scripts/hash_report.py — all 12 SHAs
+     match anchors.toml exactly. run_path_k_short_zero_byte_identical_to_head GREEN = the FIRST
+     run_path anchor-neutrality re-proof PASSES. -->
+
+<!-- T_FINAL_5 VERIFIED 2026-06-08 (tester):
+     Two-run byte-identity: ran mn-basis-spread N=5 twice with same ensemble_seed (0xC0FFEE).
+     Both runs produce SHA=aa2c5d13dd739c6f05912d32ca351352a96c91896245b96d9e9f839f367e60ba
+     (body SHA identical). Determinism confirmed for the MN arm. Stray reports deleted after
+     verification (git status confirms clean). -->
+
+<!-- T_FINAL_6 VERIFIED 2026-06-08 (tester):
+     Pre-flight void-if-fail: all 12 surface reports contain `generator: block-bootstrap-real`
+     and `bootstrap_mode: shared-index` in the ensemble parameters table. Confirmed by reading
+     the mn-basis-fee00bps-2023 and mn-basisperp-fee00bps-2023 reports (both confirm fields). -->
+
+<!-- T_FINAL_7 VERIFIED 2026-06-08 (tester):
+     Frozen §0 composite verdict at 5 bps vs dollar-neutral ≈0 null:
+     Weakest-link over 5 PRIMARY signals (p5_sharpe ≥ +0.5 ROBUST / <0 FRAGILE; prob_loss ≤15% /
+     >35% FRAGILE; P(Sharpe>1) ≥60% / <25% FRAGILE; p95_maxdd ≤50% / >70% FRAGILE):
+     All 12 cells FRAGILE. No cell clears any single band. FAMILY-UNIFORM-FRAGILE confirmed.
+     Report path: spec/perp-basis-mn-spread/reports/test-2026-06-08-perp-basis-mn-spread.md -->
+
 The tester (not the developer) owns these. Listed here so the developer leaves the build in
 a tester-ready state (the gates from feature.md § Verification):
 
