@@ -95,6 +95,13 @@ pub enum SelectionMode {
     CrossSectionalTopK,
     /// Time-series long/flat per-asset selection (D-TSM.1 — no ranking).
     TimeSeriesLongFlat,
+    /// Dollar-neutral long-low/short-high selection (D-MN.5, M-DEV-2).
+    ///
+    /// Selects the top-K by score (long book) AND the bottom-K by score
+    /// (short book) — `k_short > 0` is ONLY permitted under this mode.
+    /// Serde-default stays `CrossSectionalTopK` → all 107 anchors are
+    /// byte-identical (the existing serialization path is unchanged).
+    LongShort,
 }
 
 /// Error codes returned by the loader — matches the Design error-code table.
@@ -304,8 +311,10 @@ impl CrossSectionalMomentumConfig {
             return Err(CrossSectionalLoadError::InvalidKLong);
         }
 
-        // Q3 — k_short must be 0 in v1
-        if raw.k_short > 0 {
+        // Q3 / M-DEV-2: k_short > 0 is permitted ONLY under LongShort mode.
+        // Under CrossSectionalTopK and TimeSeriesLongFlat, shorts have no semantics
+        // and k_short > 0 is still rejected (existing error preserved for those modes).
+        if raw.k_short > 0 && raw.selection_mode != SelectionMode::LongShort {
             return Err(CrossSectionalLoadError::UnsupportedShortSizing);
         }
 
@@ -835,6 +844,109 @@ selection_mode = "time_series_long_flat"
         assert_ne!(
             strat_zero.hash, strat_two_pct.hash,
             "entry_threshold=0.00 and entry_threshold=0.02 configs MUST produce different hashes (K3)"
+        );
+    }
+
+    // ── M-DEV-2: SelectionMode::LongShort + k_short tests ────────────────────
+
+    /// M-DEV-2 (a): `selection_mode = "long_short"` parses correctly.
+    #[test]
+    fn m_dev2_selection_mode_long_short_parses() {
+        let toml = r#"
+id    = "test_ls"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+selection_mode = "long_short"
+k_long = 1
+k_short = 1
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.selection_mode,
+            SelectionMode::LongShort,
+            "`selection_mode = \"long_short\"` must parse to SelectionMode::LongShort"
+        );
+        assert_eq!(
+            cfg.k_short, 1,
+            "k_short = 1 under LongShort must be accepted"
+        );
+    }
+
+    /// M-DEV-2 (b): `k_short > 0` under LongShort is ACCEPTED (the gate lifts).
+    #[test]
+    fn m_dev2_k_short_positive_accepted_under_long_short() {
+        let toml = r#"
+id    = "test_ls"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+selection_mode = "long_short"
+k_long = 1
+k_short = 1
+"#;
+        let result = CrossSectionalMomentumConfig::from_str(toml);
+        assert!(
+            result.is_ok(),
+            "k_short > 0 under LongShort must be accepted; got err: {:?}",
+            result.err()
+        );
+    }
+
+    /// M-DEV-2 (c): `k_short > 0` under CrossSectionalTopK is still REJECTED.
+    #[test]
+    fn m_dev2_k_short_positive_still_rejected_under_cross_sectional_top_k() {
+        let toml = r#"
+id    = "test_ls"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+k_long = 1
+k_short = 1
+"#;
+        let result = CrossSectionalMomentumConfig::from_str(toml);
+        assert!(
+            matches!(result, Err(CrossSectionalLoadError::UnsupportedShortSizing)),
+            "k_short > 0 under CrossSectionalTopK must still be rejected"
+        );
+    }
+
+    /// M-DEV-2 (d): LongShort config hashes differently from CrossSectionalTopK (K3).
+    #[test]
+    fn m_dev_mn_config_hash_differs_by_long_short() {
+        use super::super::momentum::MomentumStrategy;
+        use smol_str::SmolStr;
+
+        let toml_cs = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 60
+rebalance_minutes = 480
+k_long = 3
+"#;
+        let toml_ls = r#"
+id    = "test_hash"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+lookback_minutes = 60
+rebalance_minutes = 480
+k_long = 3
+k_short = 3
+selection_mode = "long_short"
+"#;
+        let cfg_cs = CrossSectionalMomentumConfig::from_str(toml_cs).unwrap();
+        let cfg_ls = CrossSectionalMomentumConfig::from_str(toml_ls).unwrap();
+
+        let strat_cs = MomentumStrategy::from_config(cfg_cs, SmolStr::new("test"));
+        let strat_ls = MomentumStrategy::from_config(cfg_ls, SmolStr::new("test"));
+
+        assert_ne!(
+            strat_cs.hash, strat_ls.hash,
+            "CrossSectionalTopK (k_short=0) and LongShort (k_short=3) configs MUST produce \
+             different hashes (K3 — the config hash distinguishes strategy variants)"
         );
     }
 }

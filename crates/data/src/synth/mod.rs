@@ -49,6 +49,19 @@ pub use gbm::GbmPathGen;
 /// open-ts. Bar-0 is a price-only sentinel; strategies should look at bar-1
 /// onwards for the carry signal (the warm-up is the same as the price ring-
 /// buffer warm-up for momentum).
+///
+/// ## `basis_by_symbol` — ADR-0051 § D6.10 (perp-basis-mn-spread M-DEV-1)
+///
+/// The exact twin of `funding_by_symbol` for the perp-spot basis series.
+/// When the MN-spread basis source is present in the generator,
+/// `basis_by_symbol[sym_i][bar_i]` holds the resampled basis value for
+/// output bar `bar_i` of symbol `sym_i`. Co-resampled at the **identical
+/// `idx_seq`** that selected the return AND the funding — ZERO new RNG draws
+/// (the three-series shared-index extension, D6.6.5).
+///
+/// When absent (`None`): all non-MN-spread runs (momentum/MR/carry/basis-reversal)
+/// are **byte-identical** to pre-M-DEV-1 code. Default `None` at every
+/// non-MN construction site (~6 `GeneratedPath` literals).
 #[derive(Debug, Clone)]
 #[must_use]
 pub struct GeneratedPath {
@@ -68,6 +81,12 @@ pub struct GeneratedPath {
     /// `None` when no funding source was supplied to the generator (every
     /// momentum/MR/buy-and-hold run). Absent = byte-identical to pre-carry.
     pub funding_by_symbol: Option<Vec<Vec<Option<Decimal>>>>,
+    /// Co-resampled perp-spot basis values (ADR-0051 § D6.10, M-DEV-1).
+    ///
+    /// Exact twin of `funding_by_symbol` for the basis series. Gathered from
+    /// `basis_at_return[sym_i][idx_seq[k]]` at the SAME `idx_seq` — ZERO new
+    /// RNG draws. `None` for every non-MN-spread run (anchor-neutral).
+    pub basis_by_symbol: Option<Vec<Vec<Option<Decimal>>>>,
 }
 
 /// Block-length selection policy for [`BlockBootstrapPathGen`].

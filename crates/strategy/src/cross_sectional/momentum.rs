@@ -16,7 +16,7 @@ use crate::Strategy;
 use crate::cross_sectional::config::{
     CrossSectionalMomentumConfig, Direction, ScoreSource, SelectionMode,
 };
-use crate::cross_sectional::selector::{select_above_threshold, top_k_long};
+use crate::cross_sectional::selector::{bottom_k_short, select_above_threshold, top_k_long};
 use features::{RingBuffer, score_trailing_log_return, score_vol_adjusted_return};
 
 /// v1 cross-sectional momentum strategy.
@@ -31,8 +31,9 @@ pub struct MomentumStrategy {
     lookback_minutes: u32,
     rebalance_minutes: u32,
     k_long: u32,
-    #[allow(dead_code)]
-    k_short: u32, // always 0 in v1
+    /// Number of shorts to hold. `0` in all non-LongShort modes; `> 0` only
+    /// under `SelectionMode::LongShort` (M-DEV-2, D-MN.5).
+    k_short: u32,
     vol_floor: Decimal,
     #[allow(dead_code)]
     drift_threshold: Decimal,
@@ -57,9 +58,12 @@ pub struct MomentumStrategy {
     scores: BTreeMap<Symbol, Option<Decimal>>,
     /// Timestamp of the last rebalance bar close (None before first rebalance).
     last_rebalance_ts: Option<Timestamp>,
-    /// Current per-symbol position — tracked as qty held (0 = flat).
+    /// Current per-symbol long position — tracked as held/flat.
     /// Maintained from the signals emitted (approximate).
     held_symbols: BTreeMap<Symbol, bool>,
+    /// Current per-symbol short position (M-DEV-2, D-MN.5).
+    /// `false` for all symbols in non-LongShort modes → zero overhead.
+    held_short_symbols: BTreeMap<Symbol, bool>,
 
     // ── Carry-strategy funding state (M-DEV-5, D-CARRY.1) ────────────────────
     //
@@ -103,6 +107,8 @@ impl MomentumStrategy {
             symbols.iter().map(|s| (s.clone(), None)).collect();
         let held_symbols: BTreeMap<Symbol, bool> =
             symbols.iter().map(|s| (s.clone(), false)).collect();
+        let held_short_symbols: BTreeMap<Symbol, bool> =
+            symbols.iter().map(|s| (s.clone(), false)).collect();
 
         // For FundingCarry, `lookback_minutes` encodes L (settlements).
         let funding_lookback = cfg.lookback_minutes as usize;
@@ -136,6 +142,7 @@ impl MomentumStrategy {
             scores,
             last_rebalance_ts: None,
             held_symbols,
+            held_short_symbols,
             funding_map: None,
             funding_rings,
             funding_lookback,
@@ -155,6 +162,14 @@ impl MomentumStrategy {
     pub fn with_funding(mut self, funding: Option<BTreeMap<(Symbol, Timestamp), Decimal>>) -> Self {
         self.funding_map = funding;
         self
+    }
+
+    /// Return k_short — the number of short legs (M-DEV-3, D-MN.2).
+    /// Read by `run_path` to gate the short-side branch. `0` for all non-LongShort
+    /// strategies → dead code in `run_path` → anchor-neutral.
+    #[must_use]
+    pub fn k_short(&self) -> u32 {
+        self.k_short
     }
 
     /// Inherent method — introspection only (Q5: not a trait method).
@@ -181,7 +196,7 @@ impl MomentumStrategy {
                 // (FundingCarry / BasisReversal are not used under TimeSeriesLongFlat.)
                 self.histories.values().all(|rb| rb.is_full())
             }
-            SelectionMode::CrossSectionalTopK => {
+            SelectionMode::CrossSectionalTopK | SelectionMode::LongShort => {
                 match self.score_source {
                     ScoreSource::VolAdjustedReturn => {
                         // Original path: all price history ring buffers must be full.
@@ -213,9 +228,10 @@ impl MomentumStrategy {
     }
 
     fn build_rebalance_signals(&mut self, bar: &Bar) -> Vec<Signal> {
-        // Fork on selection_mode (D-TSM.1):
+        // Fork on selection_mode (D-TSM.1 / D-MN.5):
         // CrossSectionalTopK → top_k_long (VERBATIM byte-identical to v1 path).
         // TimeSeriesLongFlat → select_above_threshold (new, per-asset threshold gating).
+        // LongShort → top_k_long (long book) + bottom_k_short (short book).
         let target_weights = match self.selection_mode {
             SelectionMode::CrossSectionalTopK => {
                 top_k_long(&self.scores, self.k_long, self.exposure_cap)
@@ -223,11 +239,19 @@ impl MomentumStrategy {
             SelectionMode::TimeSeriesLongFlat => {
                 select_above_threshold(&self.scores, self.entry_threshold, self.exposure_cap)
             }
+            SelectionMode::LongShort => {
+                // Dollar-neutral: long book handled in the normal long-signal loop below;
+                // short book emitted as open_short signals (evidence tag "open_short").
+                // `target_weights` here is the LONG book — the short book is computed
+                // separately below and emitted as explicit Sell signals with "open_short".
+                top_k_long(&self.scores, self.k_long, self.exposure_cap)
+            }
         };
 
         let mut signals = Vec::new();
         let ts = bar.close_ts;
 
+        // ── Long-book signals (all modes) ─────────────────────────────────────
         // Iterate in alphabetical order (BTreeMap) per R12.5
         for symbol in self.universe_symbols.keys() {
             let currently_held = *self.held_symbols.get(symbol).unwrap_or(&false);
@@ -235,18 +259,15 @@ impl MomentumStrategy {
 
             let action = match (currently_held, target_weight) {
                 (false, Some(_)) => {
-                    // Not held, in new top-K → Open
+                    // Not held, in new top-K → Open long
                     Some((SignalKind::Buy, "open"))
                 }
                 (true, None) => {
-                    // Held, fell out of top-K → Close
+                    // Held, fell out of top-K → Close long
                     Some((SignalKind::Sell, "close"))
                 }
                 (true, Some(_)) => {
-                    // Held and still in top-K → check drift
-                    // For simplicity in backtest: always hold (drift check
-                    // would need current position weights which the strategy
-                    // doesn't track in this version — R6.2 threshold check)
+                    // Held and still in top-K → hold
                     None
                 }
                 (false, None) => None,
@@ -279,6 +300,60 @@ impl MomentumStrategy {
                     ),
                     pair_data: None, // v1.5a — not a pair signal
                 });
+            }
+        }
+
+        // ── Short-book signals (LongShort mode only — dead code when k_short==0) ─
+        // Gated: only entered when selection_mode == LongShort and k_short > 0.
+        // The Sell signals emitted here use evidence tag "open_short" so run_path
+        // can fork the Sell arm on current_qty (D-MN.5 / D-MN.3 layer 1).
+        if self.selection_mode == SelectionMode::LongShort && self.k_short > 0 {
+            let short_weights = bottom_k_short(&self.scores, self.k_short, self.exposure_cap);
+
+            for symbol in self.universe_symbols.keys() {
+                let currently_short = *self.held_short_symbols.get(symbol).unwrap_or(&false);
+                let target_short = short_weights.get(symbol);
+
+                let action = match (currently_short, target_short) {
+                    (false, Some(_)) => {
+                        // Not short, in new bottom-K → Open short (Sell signal, "open_short")
+                        Some((SignalKind::Sell, "open_short"))
+                    }
+                    (true, None) => {
+                        // Held short, fell out of bottom-K → Cover short ("close_short" tag)
+                        // run_path forks: current_qty < 0 + "close_short" → buy-to-cover.
+                        Some((SignalKind::Buy, "close_short"))
+                    }
+                    (true, Some(_)) => None, // still in bottom-K → hold short
+                    (false, None) => None,
+                };
+
+                if let Some((kind, action_str)) = action {
+                    match kind {
+                        SignalKind::Sell => {
+                            self.held_short_symbols.insert(symbol.clone(), true);
+                        }
+                        SignalKind::Buy => {
+                            self.held_short_symbols.insert(symbol.clone(), false);
+                        }
+                        _ => {}
+                    }
+                    signals.push(Signal {
+                        strategy_id: self.id.clone(),
+                        symbol: symbol.clone(),
+                        ts,
+                        kind,
+                        evidence: SignalEvidence::momentum(
+                            action_str,
+                            self.scores
+                                .get(symbol)
+                                .copied()
+                                .flatten()
+                                .unwrap_or(Decimal::ZERO),
+                        ),
+                        pair_data: None,
+                    });
+                }
             }
         }
 
@@ -453,8 +528,9 @@ impl Strategy for MomentumStrategy {
                 // Direction is ignored under TimeSeriesLongFlat (no inversion — the
                 // threshold comparison IS the direction signal, D-TSM.1).
             }
-            SelectionMode::CrossSectionalTopK => {
-                // EXISTING path — byte-identical to pre-TS code.
+            SelectionMode::CrossSectionalTopK | SelectionMode::LongShort => {
+                // EXISTING path — byte-identical to pre-TS code for CrossSectionalTopK.
+                // LongShort uses the SAME score computation (same signal, different selection).
                 match self.score_source {
                     ScoreSource::VolAdjustedReturn => {
                         // EXISTING path — byte-identical to pre-carry code.

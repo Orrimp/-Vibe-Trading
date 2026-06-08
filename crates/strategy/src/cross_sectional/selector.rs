@@ -57,6 +57,63 @@ pub fn top_k_long(
         .collect()
 }
 
+/// Select the bottom-K symbols by score for the short book (D-MN.5, M-DEV-2).
+///
+/// Exact mirror of [`top_k_long`]: takes the K **LOWEST** scores (ascending sort
+/// with alphabetical tie-break via stable sort over BTreeMap-ordered input).
+///
+/// # Behaviour
+///
+/// 1. Filters out `None` (warmup-incomplete) entries (same as `top_k_long`).
+/// 2. Sorts **ascending** by score — alphabetical tie-break preserved (stable
+///    sort over BTreeMap iteration order, which is alphabetical).
+/// 3. Takes the first `k` entries (the K lowest-score names = highest-basis
+///    names under the `−mean(basis)` sign convention = the crowded-long names
+///    the spread shorts).
+/// 4. Assigns each a weight of `exposure_cap / k` (same sizing as `top_k_long`
+///    → dollar-neutral, net exposure ≈ 0 at K_long = K_short).
+///
+/// Returns an empty map if fewer than 1 warmed symbol or `k == 0`.
+///
+/// # Determinism
+///
+/// Identical to `top_k_long`: deterministic `BTreeMap`-ordered pure fn →
+/// two-run byte-identity by construction (D6.7.5 precedent).
+#[must_use]
+pub fn bottom_k_short(
+    scores: &BTreeMap<Symbol, Option<Decimal>>,
+    k: u32,
+    exposure_cap: Decimal,
+) -> BTreeMap<Symbol, Decimal> {
+    if k == 0 {
+        return BTreeMap::new();
+    }
+
+    let k_dec = Decimal::from(k);
+    let leg_weight = if k_dec > Decimal::ZERO {
+        exposure_cap / k_dec
+    } else {
+        Decimal::ZERO
+    };
+
+    // Collect (symbol, score) pairs with Some scores, preserving BTreeMap
+    // (alphabetical) iteration order so that when we stable-sort ascending,
+    // equal scores retain alphabetical order.
+    let mut warmed: Vec<(Symbol, Decimal)> = scores
+        .iter()
+        .filter_map(|(s, v)| v.map(|score| (s.clone(), score)))
+        .collect();
+
+    // Stable sort ascending by score — equal scores keep alphabetical order.
+    warmed.sort_by(|a, b| a.1.cmp(&b.1));
+
+    warmed
+        .into_iter()
+        .take(k as usize)
+        .map(|(s, _score)| (s, leg_weight))
+        .collect()
+}
+
 /// Select every warmed asset whose OWN score exceeds `entry_threshold` (D-TSM.1, M-DEV-3).
 ///
 /// This is the time-series long/flat selector: NO cross-sectional ranking, NO top-K.
@@ -202,6 +259,124 @@ mod tests {
         let sc = scores(&[("BTCUSDT", None), ("ETHUSDT", None)]);
         let result = top_k_long(&sc, 2, dec!(0.5));
         assert!(result.is_empty());
+    }
+
+    // ── M-DEV-2: bottom_k_short unit tests ───────────────────────────────────
+
+    /// M-DEV-2 (a): bottom-K selects the K LOWEST scores.
+    #[test]
+    fn m_dev2_bottom_k_short_selects_lowest() {
+        let sc = scores(&[
+            ("ADAUSDT", Some(0.1)), // lowest
+            ("AVAXUSDT", Some(0.2)),
+            ("BNBUSDT", Some(0.3)),
+            ("BTCUSDT", Some(0.9)),
+            ("ETHUSDT", Some(0.8)),
+            ("LINKUSDT", Some(0.6)),
+            ("SOLUSDT", Some(0.7)),
+            ("XRPUSDT", Some(0.05)), // second lowest
+            ("DOTUSDT", Some(0.5)),
+            ("DOGEUSDT", Some(0.4)), // third lowest
+        ]);
+        let result = bottom_k_short(&sc, 3, dec!(0.5));
+        assert_eq!(result.len(), 3, "bottom-3 must select exactly 3 symbols");
+        assert!(
+            result.contains_key(&sym("XRPUSDT")),
+            "XRPUSDT (0.05) must be in bottom-3"
+        );
+        assert!(
+            result.contains_key(&sym("ADAUSDT")),
+            "ADAUSDT (0.10) must be in bottom-3"
+        );
+        assert!(
+            result.contains_key(&sym("AVAXUSDT")),
+            "AVAXUSDT (0.20) must be in bottom-3"
+        );
+        // Weight = exposure_cap / k
+        for w in result.values() {
+            assert_eq!(*w, dec!(0.5) / dec!(3), "weight must be exposure_cap/k");
+        }
+    }
+
+    /// M-DEV-2 (b): alphabetical tie-break on equal-score symbols (ascending sort).
+    #[test]
+    fn m_dev2_bottom_k_short_alphabetical_tie_break() {
+        // Two symbols tied at the lowest score → alphabetically first wins.
+        let sc = scores(&[
+            ("BTCUSDT", Some(0.1)), // tied-low, alphabetically first
+            ("ETHUSDT", Some(0.1)), // tied-low
+            ("BNBUSDT", Some(0.5)),
+        ]);
+        let result = bottom_k_short(&sc, 1, dec!(0.5));
+        assert_eq!(result.len(), 1);
+        assert!(
+            result.contains_key(&sym("BTCUSDT")),
+            "BTCUSDT alphabetically first at tied score must win"
+        );
+    }
+
+    /// M-DEV-2 (c): warm-up incomplete (None) entries are excluded.
+    #[test]
+    fn m_dev2_bottom_k_short_warmup_excluded() {
+        let sc = scores(&[
+            ("BTCUSDT", None),      // warming up — excluded
+            ("ETHUSDT", None),      // warming up — excluded
+            ("BNBUSDT", Some(0.1)), // warmed, low score
+            ("SOLUSDT", Some(0.5)), // warmed, higher score
+        ]);
+        let result = bottom_k_short(&sc, 3, dec!(0.5));
+        // Only 2 warmed symbols, so at most 2 selected (not 3)
+        assert_eq!(result.len(), 2);
+        assert!(!result.contains_key(&sym("BTCUSDT")));
+        assert!(!result.contains_key(&sym("ETHUSDT")));
+    }
+
+    /// M-DEV-2 (d): k=0 returns empty map.
+    #[test]
+    fn m_dev2_bottom_k_short_k_zero_returns_empty() {
+        let sc = scores(&[("BTCUSDT", Some(0.1))]);
+        let result = bottom_k_short(&sc, 0, dec!(0.5));
+        assert!(result.is_empty(), "k=0 must return empty map");
+    }
+
+    /// M-DEV-2 (e): two-run identity — same input → identical output (determinism).
+    #[test]
+    fn m_dev2_bottom_k_short_two_run_identity() {
+        let sc = scores(&[
+            ("ADAUSDT", Some(0.05)),
+            ("BTCUSDT", Some(0.03)),
+            ("ETHUSDT", Some(-0.02)),
+            ("LINKUSDT", Some(0.01)),
+        ]);
+        let run1 = bottom_k_short(&sc, 2, dec!(0.5));
+        let run2 = bottom_k_short(&sc, 2, dec!(0.5));
+        assert_eq!(
+            run1, run2,
+            "two runs on the same input must produce byte-identical results"
+        );
+    }
+
+    /// M-DEV-2 (f): bottom_k_short and top_k_long are DISJOINT on unambiguous scores.
+    /// When the score ranking is strict (no ties), the K-bottom and K-top sets are disjoint.
+    #[test]
+    fn m_dev2_bottom_k_short_disjoint_from_top_k_long() {
+        let sc = scores(&[
+            ("ADAUSDT", Some(0.1)),  // low
+            ("AVAXUSDT", Some(0.2)), // low
+            ("BNBUSDT", Some(0.5)),  // mid
+            ("BTCUSDT", Some(0.9)),  // high
+            ("ETHUSDT", Some(0.8)),  // high
+        ]);
+        let longs = top_k_long(&sc, 2, dec!(0.5));
+        let shorts = bottom_k_short(&sc, 2, dec!(0.5));
+
+        // The two sets must be disjoint.
+        for sym_key in longs.keys() {
+            assert!(
+                !shorts.contains_key(sym_key),
+                "symbol {sym_key} appears in BOTH long and short book — not disjoint"
+            );
+        }
     }
 
     // ── M-DEV-3: select_above_threshold unit tests ────────────────────────────

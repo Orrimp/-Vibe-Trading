@@ -2631,6 +2631,7 @@ fn run_one_path_with_config(
                 bars_by_symbol,
                 selected_block_length: None,
                 funding_by_symbol: None,
+                basis_by_symbol: None,
             }
         }
     };
@@ -2720,6 +2721,7 @@ fn run_one_path_with_config(
         emit_equity_bin: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override,
+        basis_override: None,
     };
 
     let result = pollster::block_on(backtest::scenarios::montecarlo::run_path(
@@ -3318,6 +3320,7 @@ fn main() -> Result<()> {
                             bars_by_symbol,
                             selected_block_length: None,
                             funding_by_symbol: None,
+                            basis_by_symbol: None,
                         }
                     }
                 };

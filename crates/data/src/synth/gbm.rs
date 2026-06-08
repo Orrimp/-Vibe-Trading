@@ -217,6 +217,8 @@ impl MonteCarloPathGen for GbmPathGen {
             selected_block_length: None,
             // GBM does not support carry-funding co-resampling.
             funding_by_symbol: None,
+            // GBM does not support basis co-resampling (MN-spread M-DEV-1).
+            basis_by_symbol: None,
         })
     }
 }

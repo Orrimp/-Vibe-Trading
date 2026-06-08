@@ -63,7 +63,14 @@ bash scripts/verify_anchors.sh            # 107/107 after every additive seam
 
 ## Stage 0 — The anchor floor + the run_path neutrality contract (PRE-FLIGHT, FIRST)
 
-### M-DEV-0 — anchor-baseline floor + the run_path neutrality plan (the pre-flight) [ ]
+### M-DEV-0 — anchor-baseline floor + the run_path neutrality plan (the pre-flight) [x]
+<!-- VERIFIED 2026-06-07:
+     file:line — (no code change; pre-flight check only)
+     Test command: bash scripts/verify_anchors.sh
+     Output line: ANCHORS PASS (107 / 107)
+     Preconditions confirmed: run_path is concrete at montecarlo.rs:92 (MomentumStrategy);
+     short-leg accrual exists at montecarlo.rs:350 with `continue; // no short legs` gate;
+     equity tail at montecarlo.rs:377 already handles qty < 0. -->
 
 - **Goal:** confirm the **107-anchor floor BEFORE any change**, so a later 107/107
   regression is attributable to the seam under test. This is the load-bearing gate
@@ -82,7 +89,17 @@ bash scripts/verify_anchors.sh            # 107/107 after every additive seam
 
 ## Stage 1 — The second sidecar (basis_by_symbol alongside funding_by_symbol)
 
-### M-DEV-1 — the second co-resampled channel: `basis_at_return` / `basis_by_symbol` / `basis_override` (D-MN.4, Q-MN-3) — sidecar anchor-neutrality gate [ ]
+### M-DEV-1 — the second co-resampled channel: `basis_at_return` / `basis_by_symbol` / `basis_override` (D-MN.4, Q-MN-3) — sidecar anchor-neutrality gate [x]
+<!-- VERIFIED 2026-06-07:
+     file:line — crates/data/src/synth/mod.rs:70 (basis_by_symbol field on GeneratedPath),
+       crates/data/src/synth/bootstrap.rs:97 (basis_at_return field + with_basis builder),
+       crates/backtest/src/cli_types.rs:538 (basis_override field on TcnScenarioInput);
+       ~37 None-default construction sites patched across crates/.
+     Test command: cargo test -p data --lib synth
+     Output line: test synth::bootstrap::tests::basis_and_funding_share_idx_seq ... ok
+                  test synth::bootstrap::tests::basis_none_is_byte_identical_to_no_basis ... ok
+                  test result: ok. 28 passed; 0 failed
+     Anchor gate: bash scripts/verify_anchors.sh → ANCHORS PASS (107 / 107) -->
 
 - **File:** `crates/data/src/synth/mod.rs:54` — add `basis_by_symbol:
   Option<Vec<Vec<Option<Decimal>>>>` to `GeneratedPath` (the exact twin of
@@ -115,7 +132,16 @@ bash scripts/verify_anchors.sh            # 107/107 after every additive seam
 
 ## Stage 2 — The short-side engine in run_path (THE BULK + THE LOAD-BEARING RISK)
 
-### M-DEV-2 — un-gate `k_short` + `SelectionMode::LongShort` + `bottom_k_short` (D-MN.5, R-MN.2) [ ]
+### M-DEV-2 — un-gate `k_short` + `SelectionMode::LongShort` + `bottom_k_short` (D-MN.5, R-MN.2) [x]
+<!-- VERIFIED 2026-06-07:
+     file:line — crates/strategy/src/cross_sectional/config.rs:97 (LongShort variant),
+       crates/strategy/src/cross_sectional/config.rs:308 (k_short gate update),
+       crates/strategy/src/cross_sectional/selector.rs:59 (bottom_k_short fn),
+       crates/strategy/src/cross_sectional/momentum.rs (LongShort arm in build_rebalance_signals).
+     Test command: cargo test -p strategy --lib cross_sectional
+     Output line: test result: ok. 60 passed; 0 failed
+       (includes m_dev2_bottom_k_short_selects_lowest, m_dev_mn_config_hash_differs_by_long_short, etc.)
+     Anchor gate: bash scripts/verify_anchors.sh → ANCHORS PASS (107 / 107) -->
 
 - **File:** `crates/strategy/src/cross_sectional/config.rs:92` — add
   `SelectionMode::LongShort` (a 3rd variant; serde-default stays `CrossSectionalTopK` →
@@ -146,7 +172,21 @@ bash scripts/verify_anchors.sh            # 107/107 after every additive seam
 - **Acceptance:** `k_short > 0` parses ONLY under `LongShort`; `bottom_k_short` selects the
   K lowest-score (highest-basis) names; 107/107 holds.
 
-### M-DEV-3 — the short-side branch + solvency + liquidation in `run_path` (D-MN.2, R-MN.2/R-MN.3) — THE run_path anchor-neutrality re-proof [ ]
+### M-DEV-3 — the short-side branch + solvency + liquidation in `run_path` (D-MN.2, R-MN.2/R-MN.3) — THE run_path anchor-neutrality re-proof [x]
+<!-- VERIFIED 2026-06-07:
+     file:line — crates/backtest/src/scenarios/montecarlo.rs:39 (liquidations field on PathRunResult),
+       montecarlo.rs:82 (MAX_LEVERAGE=1 LOCKED const),
+       montecarlo.rs:97 (maintenance_margin_frac()=0.5 LOCKED fn),
+       montecarlo.rs:~246 (Buy if qty<0 && k_short>0 cover branch — BEFORE long open),
+       montecarlo.rs:~300 (long Buy arm — BYTE-IDENTICAL to HEAD),
+       montecarlo.rs:~375 (short open Sell if qty<=0 && k_short>0 branch),
+       montecarlo.rs:~489 (funding accrual qty==0 skip → both longs and shorts accrue),
+       montecarlo.rs:~530 (maintenance-margin liquidation check, gated k_short>0),
+       montecarlo.rs:~945 (run_path_k_short_zero_byte_identical_to_head neutrality test).
+     Test command: cargo test -p backtest --lib montecarlo
+     Output line: test scenarios::montecarlo::tests::run_path_k_short_zero_byte_identical_to_head ... ok
+                  test result: ok. 4 passed; 0 failed
+     Anchor gate: bash scripts/verify_anchors.sh → ANCHORS PASS (107 / 107) — THE FIRST run_path ANCHOR-NEUTRALITY RE-PROOF PASSES -->
 
 - **File:** `crates/backtest/src/scenarios/montecarlo.rs` — `run_path` stays CONCRETE
   (NO signature change, NO dyn/generic). Read `k_short` from the caller-supplied strategy

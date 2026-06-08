@@ -85,6 +85,16 @@ pub struct BlockBootstrapPathGen {
     /// `None` → funding is not gathered; `GeneratedPath.funding_by_symbol`
     /// is `None`; the 87 existing anchors are byte-identical.
     funding_at_return: Option<Vec<Vec<Option<Decimal>>>>,
+    /// Optional per-symbol, per-return-step basis series for MN-spread
+    /// co-resampling (ADR-0051 § D6.10, M-DEV-1).
+    ///
+    /// Exact twin of `funding_at_return` for the perp-spot basis. Gathered
+    /// from `basis_at_return[sym_i][idx_seq[k]]` at the **same** `idx_seq` —
+    /// ZERO new RNG draws (the three-series shared-index extension, D6.6.5).
+    ///
+    /// `None` → basis is not gathered; `GeneratedPath.basis_by_symbol`
+    /// is `None`; all non-MN-spread anchors are byte-identical.
+    basis_at_return: Option<Vec<Vec<Option<Decimal>>>>,
 }
 
 impl BlockBootstrapPathGen {
@@ -125,6 +135,7 @@ impl BlockBootstrapPathGen {
             source_bars,
             block_length_policy,
             funding_at_return: None,
+            basis_at_return: None,
         })
     }
 
@@ -143,6 +154,28 @@ impl BlockBootstrapPathGen {
     #[must_use]
     pub fn with_funding(mut self, funding: Option<Vec<Vec<Option<Decimal>>>>) -> Self {
         self.funding_at_return = funding;
+        self
+    }
+
+    /// Attach an optional per-symbol basis series for MN-spread co-resampling
+    /// (ADR-0051 § D6.10, M-DEV-1).
+    ///
+    /// Exact twin of [`with_funding`] for the perp-spot basis. The basis is
+    /// gathered at the **same `idx_seq`** as the return and funding — ZERO
+    /// new RNG draws (D6.6.5 three-series shared-index extension).
+    ///
+    /// `basis_at_return[sym_i][k]` = perp-spot basis at real return-step `k`
+    /// (computed by `build_basis_at_return` from `crates/backtest`).
+    /// Universe order MUST match `source_bars`. Length per symbol MUST be
+    /// `source_len() - 1`.
+    ///
+    /// When `None` is passed, the generator behaves identically to not having
+    /// a basis source — all non-MN-spread anchors are byte-unchanged.
+    ///
+    /// Returns `self` for chaining.
+    #[must_use]
+    pub fn with_basis(mut self, basis: Option<Vec<Vec<Option<Decimal>>>>) -> Self {
+        self.basis_at_return = basis;
         self
     }
 
@@ -272,6 +305,13 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
             .funding_at_return
             .as_ref()
             .map(|_| Vec::with_capacity(universe.len()));
+        // ADR-0051 § D6.10: optional basis co-resampling (MN-spread M-DEV-1).
+        // Exact twin of funding; allocated only when `self.basis_at_return` is `Some`.
+        // Zero new RNG draws: idx_seq is the SAME sequence used for returns + funding.
+        let mut basis_output_by_symbol: Option<Vec<Vec<Option<Decimal>>>> = self
+            .basis_at_return
+            .as_ref()
+            .map(|_| Vec::with_capacity(universe.len()));
 
         for (sym_i, (out_sym, start_price)) in universe.iter().enumerate() {
             // Map output universe symbol to source series by index.
@@ -290,6 +330,11 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
             // Per-symbol funding output (only allocated when funding is present).
             let mut sym_funding: Option<Vec<Option<Decimal>>> = self
                 .funding_at_return
+                .as_ref()
+                .map(|_| Vec::with_capacity(n_bars));
+            // Per-symbol basis output (only allocated when basis is present).
+            let mut sym_basis: Option<Vec<Option<Decimal>>> = self
+                .basis_at_return
                 .as_ref()
                 .map(|_| Vec::with_capacity(n_bars));
 
@@ -325,6 +370,17 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
                         .copied()
                         .flatten();
                     sf.push(f0);
+                }
+                // Bar-0 basis: mirror the funding bar-0 sentinel convention.
+                if let Some(ref mut sb) = sym_basis {
+                    let b0 = self
+                        .basis_at_return
+                        .as_ref()
+                        .and_then(|bar| bar.get(sym_i))
+                        .and_then(|sym_bar| sym_bar.first())
+                        .copied()
+                        .flatten();
+                    sb.push(b0);
                 }
             }
 
@@ -377,6 +433,18 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
                         .flatten();
                     sf.push(f);
                 }
+                // ADR-0051 § D6.10 — gather basis by the SAME ret_idx (second read of
+                // the materialized idx_seq). Zero new RNG draws; three-series extension.
+                if let Some(ref mut sb) = sym_basis {
+                    let b = self
+                        .basis_at_return
+                        .as_ref()
+                        .and_then(|bar| bar.get(sym_i))
+                        .and_then(|sym_bar| sym_bar.get(ret_idx))
+                        .copied()
+                        .flatten();
+                    sb.push(b);
+                }
             }
 
             bars_by_symbol.push(sym_bars);
@@ -384,12 +452,17 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
             if let (Some(fobs), Some(sf)) = (&mut funding_output_by_symbol, sym_funding) {
                 fobs.push(sf);
             }
+            // Collect per-symbol basis into the output vec.
+            if let (Some(bobs), Some(sb)) = (&mut basis_output_by_symbol, sym_basis) {
+                bobs.push(sb);
+            }
         }
 
         Ok(GeneratedPath {
             bars_by_symbol,
             selected_block_length: Some(selected_l),
             funding_by_symbol: funding_output_by_symbol,
+            basis_by_symbol: basis_output_by_symbol,
         })
     }
 }
@@ -1054,6 +1127,188 @@ mod tests {
             "funding must be index-aligned with the return (ADR-0051 § D6.6): \
              {misaligned}/{} bars have misaligned funding vs return source index",
             bars_btc.len() - 1
+        );
+    }
+
+    // ── M-DEV-1 basis co-resampling tests (ADR-0051 § D6.10) ─────────────────
+
+    /// Build a deterministic per-symbol basis-at-return series for testing.
+    /// Mirror of `make_funding_at_return` — each entry encodes the source
+    /// return index `k` as an integer Decimal so we can verify alignment.
+    fn make_basis_at_return(n_syms: usize, n_returns: usize) -> Vec<Vec<Option<Decimal>>> {
+        (0..n_syms)
+            .map(|sym_i| {
+                (0..n_returns)
+                    .map(|k| {
+                        // Unique tag: encodes (sym_i, k) as sym_i * 10000 + k.
+                        // This distinguishes basis from funding in the same path.
+                        Some(Decimal::new((sym_i as i64) * 10_000 + k as i64, 0))
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// M-DEV-1 INDEX-PARITY: basis and funding share the SAME `idx_seq`.
+    ///
+    /// Attach BOTH a funding source and a basis source; assert that for every
+    /// output bar, the recovered source index from the resampled basis equals the
+    /// recovered source index from the resampled funding. This is the formal proof
+    /// of the three-series shared-index invariant (D6.10 / D6.6.5): the same
+    /// `idx_seq` is used for returns, funding, AND basis — ZERO new RNG draws.
+    #[test]
+    fn basis_and_funding_share_idx_seq() {
+        let n_bars_src = 60;
+        let n_returns = n_bars_src - 1; // 59 log-returns
+        let n_out = 40;
+        let n_syms = 2;
+
+        let btc_bars = make_bars(&btc(), n_bars_src, 0xBEEF_0031);
+        let eth_bars = make_bars(&eth(), n_bars_src, 0xBEEF_0032);
+
+        // Funding tag: Decimal::new(k, 0) → encodes source_k directly.
+        let funding = make_funding_at_return(n_syms, n_returns);
+        // Basis tag: Decimal::new(sym_i * 10000 + k, 0) → sym-distinguishable.
+        let basis = make_basis_at_return(n_syms, n_returns);
+
+        let bgen = BlockBootstrapPathGen::new(
+            vec![(btc(), btc_bars), (eth(), eth_bars)],
+            BlockLengthPolicy::Fixed(4),
+        )
+        .unwrap()
+        .with_funding(Some(funding))
+        .with_basis(Some(basis));
+
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        let seed = 0xAB12_CD34_u64;
+        let path = bgen.generate(&universe, n_out, seed).unwrap();
+
+        let funding_out = path
+            .funding_by_symbol
+            .expect("funding_by_symbol must be Some when funding source is attached");
+        let basis_out = path
+            .basis_by_symbol
+            .expect("basis_by_symbol must be Some when basis source is attached");
+
+        assert_eq!(funding_out.len(), n_syms, "funding sym count must match");
+        assert_eq!(basis_out.len(), n_syms, "basis sym count must match");
+
+        // For each symbol and each bar, recover source_k from funding and basis.
+        // They must be identical (same idx_seq was used — index-parity invariant).
+        for sym_i in 0..n_syms {
+            let sym_funding = &funding_out[sym_i];
+            let sym_basis = &basis_out[sym_i];
+
+            assert_eq!(sym_funding.len(), n_out, "funding length must equal n_out");
+            assert_eq!(sym_basis.len(), n_out, "basis length must equal n_out");
+
+            let mut parity_mismatches = 0usize;
+            // Bar 0 is the sentinel; bars 1..n_out are driven by idx_seq.
+            for bar_i in 1..n_out {
+                let Some(frate) = sym_funding[bar_i] else {
+                    continue;
+                };
+                let Some(bval) = sym_basis[bar_i] else {
+                    continue;
+                };
+
+                // Recover source_k from funding: funding_at_return[sym_i][k] = k.
+                let k_from_funding = frate.to_string().parse::<i64>().unwrap_or(-1);
+                // Recover source_k from basis: basis_at_return[sym_i][k] = sym_i * 10000 + k.
+                let basis_raw = bval.to_string().parse::<i64>().unwrap_or(-1);
+                let k_from_basis = basis_raw - (sym_i as i64) * 10_000;
+
+                if k_from_funding != k_from_basis {
+                    parity_mismatches += 1;
+                }
+            }
+
+            assert_eq!(
+                parity_mismatches, 0,
+                "INDEX-PARITY VIOLATION (M-DEV-1 / D6.10): sym_i={sym_i} has \
+                 {parity_mismatches} bars where basis idx_seq ≠ funding idx_seq. \
+                 Both must use the SAME shared idx_seq — zero new RNG draws."
+            );
+        }
+    }
+
+    /// M-DEV-1 ANCHOR-NEUTRALITY: `basis=None` produces byte-identical bars
+    /// and `basis_by_symbol=None` (the field is absent).
+    ///
+    /// When `with_basis(None)` is called (or not called at all), the generator
+    /// must behave identically to the base generator — both bars and funding
+    /// are unchanged, and `basis_by_symbol` is `None`.
+    #[test]
+    fn basis_none_is_byte_identical_to_no_basis() {
+        let n_bars_src = 200;
+        let n_returns = n_bars_src - 1;
+        let n_syms = 2;
+        let n_out = 50;
+
+        let btc_bars_a = make_bars(&btc(), n_bars_src, 0xBEEF_0041);
+        let eth_bars_a = make_bars(&eth(), n_bars_src, 0xBEEF_0042);
+        let btc_bars_b = make_bars(&btc(), n_bars_src, 0xBEEF_0041);
+        let eth_bars_b = make_bars(&eth(), n_bars_src, 0xBEEF_0042);
+
+        let funding = make_funding_at_return(n_syms, n_returns);
+
+        // Generator A: funding only, no basis call.
+        let bgen_a = BlockBootstrapPathGen::new(
+            vec![(btc(), btc_bars_a), (eth(), eth_bars_a)],
+            BlockLengthPolicy::Fixed(5),
+        )
+        .unwrap()
+        .with_funding(Some(funding.clone()));
+
+        // Generator B: funding + explicit basis=None.
+        let bgen_b = BlockBootstrapPathGen::new(
+            vec![(btc(), btc_bars_b), (eth(), eth_bars_b)],
+            BlockLengthPolicy::Fixed(5),
+        )
+        .unwrap()
+        .with_funding(Some(funding))
+        .with_basis(None);
+
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        let seed = 0x1234_5678_u64;
+
+        let path_a = bgen_a.generate(&universe, n_out, seed).unwrap();
+        let path_b = bgen_b.generate(&universe, n_out, seed).unwrap();
+
+        // Bars must be byte-identical.
+        for (sym_a, sym_b) in path_a
+            .bars_by_symbol
+            .iter()
+            .zip(path_b.bars_by_symbol.iter())
+        {
+            for (ba, bb) in sym_a.iter().zip(sym_b.iter()) {
+                assert_eq!(
+                    ba.close, bb.close,
+                    "basis=None must produce byte-identical bars"
+                );
+            }
+        }
+
+        // Funding must be identical.
+        let fa = path_a
+            .funding_by_symbol
+            .expect("funding must be Some for A");
+        let fb = path_b
+            .funding_by_symbol
+            .expect("funding must be Some for B");
+        assert_eq!(
+            fa, fb,
+            "funding_by_symbol must be identical when basis=None"
+        );
+
+        // Basis must be None in both.
+        assert!(
+            path_a.basis_by_symbol.is_none(),
+            "basis_by_symbol must be None when no basis source was attached"
+        );
+        assert!(
+            path_b.basis_by_symbol.is_none(),
+            "basis_by_symbol must be None when with_basis(None) was called"
         );
     }
 }
