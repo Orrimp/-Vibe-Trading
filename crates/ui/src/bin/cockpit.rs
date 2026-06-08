@@ -229,6 +229,14 @@ impl App {
             }
         }
 
+        // cockpit-baseline-panel v0.1.0 — boot-load both realized BH curves
+        // into `baseline_screen_state` so the navigable Baseline screen shows
+        // `Ready` (or `Error`, never a blank/panic, in a fixtures-only checkout
+        // where the runbook CSVs are absent). The default screen stays on
+        // `Live`/`Home` (D2 — navigable, not default-routed), so this does not
+        // change the deterministic first-frame smoke baseline.
+        ui::baseline::load_into(&mut cockpit);
+
         (Self { cockpit }, iced::Task::none())
     }
 

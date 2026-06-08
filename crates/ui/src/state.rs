@@ -133,6 +133,14 @@ pub enum Screen {
     /// Strategies detail — unchanged from Phase 3.
     Strategies,
 
+    // ── cockpit-baseline-panel v0.1.0 ─────────────────────────────────
+    /// Passive buy-and-hold baseline panel (cockpit-baseline-panel R6).
+    /// Navigable from the Work sidebar group, after `Compare` (D2 —
+    /// navigable, not default-routed). Surfaces the shipped passive-BH
+    /// result: realized equity curve + drawdown band + the six-card KPI
+    /// strip, with a 2023/2024 year toggle.
+    Baseline,
+
     // ── Deprecated aliases — kept for one cycle (Phase A → Phase C) ──
     /// @deprecated — routes to `Live`. Kept for test-harness compat.
     #[deprecated(since = "0.2.0", note = "use Screen::Live")]
@@ -159,6 +167,19 @@ impl Default for Screen {
     fn default() -> Self {
         Screen::Lab
     }
+}
+
+/// cockpit-baseline-panel v0.1.0 — selected year on the Baseline screen
+/// (R2). Two variants only; `Default = Y2024` (most-recent, R2). The
+/// year toggle is a typed message arm — `Message::BaselineSelectYear(
+/// BaselineYear)` — never a `String` payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BaselineYear {
+    /// Calendar year 2023.
+    Y2023,
+    /// Calendar year 2024 — cold-start default (most recent).
+    #[default]
+    Y2024,
 }
 
 /// Phase C — Settings rollup sub-tab selector. Renders the three
@@ -956,6 +977,15 @@ pub struct Cockpit {
     /// `lab_state` (Phase A). Cold-start: empty cache (R3.5 cold-boot-only).
     pub compare_screen_state: crate::compare::state::CompareScreenState,
 
+    /// cockpit-baseline-panel v0.1.0 — Baseline-screen per-session state.
+    /// Sibling of `compare_screen_state`. Holds the two realized BH equity
+    /// curves (loaded once at boot via `baseline::state::load_into`) + the
+    /// active-year toggle. Metrics are NOT stored here — they are pulled
+    /// from the `const` `baseline::baseline_metrics(active_year)` at view
+    /// time (D1=c). Cold-start: `active_year = Y2024`, both curves
+    /// `Loading`.
+    pub baseline_screen_state: crate::baseline::BaselineScreenState,
+
     /// Phase F — Memory-screen per-session state (ui-rethink-phase-f-memory-models-assistant
     /// R4.1 / T-D-N4). Sibling of `compare_screen_state` (Phase E). Cold-start:
     /// empty cache (R5.3 cold-boot-only); real screen body replaces Phase A placeholder.
@@ -1051,6 +1081,7 @@ impl std::fmt::Debug for Cockpit {
             .field("audit_screen_state", &self.audit_screen_state)
             .field("trail_screen_state", &self.trail_screen_state)
             .field("compare_screen_state", &self.compare_screen_state)
+            .field("baseline_screen_state", &self.baseline_screen_state)
             .field("memory_screen_state", &self.memory_screen_state)
             .field("models_screen_state", &self.models_screen_state)
             .field("assistant_state", &self.assistant_state)
@@ -1107,6 +1138,7 @@ impl Default for Cockpit {
             audit_screen_state: AuditScreenState::default(),
             trail_screen_state: TrailScreenState::default(),
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
+            baseline_screen_state: crate::baseline::BaselineScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1212,6 +1244,7 @@ impl Cockpit {
             audit_screen_state: AuditScreenState::default(),
             trail_screen_state: TrailScreenState::default(),
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
+            baseline_screen_state: crate::baseline::BaselineScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1661,6 +1694,13 @@ pub enum Message {
     /// v0.1.0: only `Sharpe` is wired; other variants fall back to Sharpe
     /// with a `tracing::warn!`.
     CompareSelectKpiAxis(crate::compare::state::CompareKpiAxis),
+
+    // ── cockpit-baseline-panel v0.1.0 — year toggle ──────────────────────────
+    /// Operator clicked a year chip (`2023` | `2024`) on the Baseline
+    /// screen (R2). Pure assignment to
+    /// `Cockpit::baseline_screen_state.active_year`. Typed payload — no
+    /// `String` catch-all.
+    BaselineSelectYear(BaselineYear),
 
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
     /// An `ActivityEvent` arrived from the broadcast channel via
@@ -2422,6 +2462,14 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 );
             }
             model.compare_screen_state.kpi_axis = axis;
+        }
+
+        // ── cockpit-baseline-panel v0.1.0 — year toggle ──────────────────────
+        Message::BaselineSelectYear(year) => {
+            // R2 — pure assignment. The curves for both years are already
+            // loaded (boot-load via `baseline::state::load_into`); the view
+            // pulls the active year's curve + the `const` metrics. No I/O.
+            model.baseline_screen_state.active_year = year;
         }
 
         // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────

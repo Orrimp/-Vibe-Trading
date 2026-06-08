@@ -1,7 +1,7 @@
 ---
 slug: cockpit-baseline-panel
 status: in-progress
-owner: architect
+owner: ui-designer
 updated: 2026-06-08
 version: 0.1.0
 ---
@@ -603,7 +603,141 @@ is not — there is no overlay, no sizing math, no decision variable.
 
 ## Implementation
 
-_developer ‖ ui-designer fill this._
+_ui-designer solo (2026-06-08) — the dev‖ui split was collapsed; the loader
+is a small pure-`ui` module._ Files created / changed below; T1–T10 all
+landed (see `tasks.md`).
+
+**New files:**
+
+- `crates/ui/src/baseline/mod.rs` — feature module (re-exports).
+- `crates/ui/src/baseline/loader.rs` — CSV → `EquitySeries` loader (T2) +
+  embedded §7.1 metrics `const` (T3) + 13 unit tests (incl. the re-sync
+  trip).
+- `crates/ui/src/baseline/state.rs` — `BaselineScreenState` + boot-load
+  helper (T4).
+- `crates/ui/src/screens/baseline.rs` — the screen `view` (T5).
+- `crates/ui/tests/baseline_error_state.rs` — Error-state headless render
+  test (T8).
+
+**Changed files:**
+
+- `crates/ui/src/state.rs` — `Screen::Baseline` variant, `BaselineYear`
+  enum (`Default = Y2024`), `baseline_screen_state` field (struct +
+  `Default` + `ready` + `Debug`), `Message::BaselineSelectYear(BaselineYear)`
+  + its pure `update` arm (T1).
+- `crates/ui/src/theme.rs` — `Screen::Baseline` added to
+  `SIDEBAR_ENTRIES_PHASE_A` + `SIDEBAR_GROUPS_PHASE_C` Work group (T7).
+- `crates/ui/src/widgets/sidebar_nav.rs` — `label_for` arm (T7).
+- `crates/ui/src/strings.rs` — `BASELINE_*` block + `all()` registry (T6).
+- `crates/ui/src/shell.rs` — `Screen::Baseline => baseline::view` route
+  (T5).
+- `crates/ui/src/screens/mod.rs`, `crates/ui/src/lib.rs` — module decls.
+- `crates/ui/src/bin/cockpit.rs`, `crates/ui/src/bin/cockpit_live.rs` —
+  `baseline::load_into(&mut cockpit)` at boot (D2 — default screen
+  unchanged).
+- `crates/ui/tests/panel_snapshots.rs` — `mod baseline_screen` (T9) + the
+  AC5 no-overclaim caption test.
+- `crates/ui/tests/headless_emulator_smoke.rs` —
+  `headless_emulator_paints_baseline_route` (AC3 belt-and-braces).
+
+### Architect-design-vs-code corrections (flagged for the record)
+
+1. **Timestamp parse.** The design specified `OffsetDateTime::parse(s, …)`
+   with a `[year]-[month]-[day]T[hour]:[minute]Z` description. That returns
+   `TryFromParsed(InsufficientInformation)` because `time` treats the
+   trailing `Z` as a **literal** char, not an offset directive — so
+   `OffsetDateTime` has no offset to bind. **Resolved:** parse to
+   `PrimitiveDateTime` with the same description, then `.assume_utc()` (the
+   `_utc` column + `Z` suffix make UTC exact). Also `time` 0.3.47 deprecated
+   `FormatItem` → used `BorrowedFormatItem`. A unit test pins both the shape
+   and the `Rfc3339`-rejects falsification.
+2. **Metrics lifetime.** `kpi_strip::view` ties its returned `Element<'a>`
+   to the input ref's lifetime, so a function-local `Ready(baseline_metrics())`
+   can't outlive the returned screen element (E0515). **Resolved** the same
+   way the `viewer` binary does (`bin/viewer.rs:102` borrows
+   `&self.model.metrics`): `BaselineScreenState` carries `metrics_2023 /
+   metrics_2024` materialized from the `const` at boot. The const remains
+   the single source of truth; the re-sync test still guards it. (A slight
+   relaxation of D1/T4's literal "metrics are NOT stored" — the *intent*
+   "use the const, don't recompute/parse" is fully honored.)
+
+The sidebar lock-step (`SIDEBAR_GROUPS_PHASE_C` flatten == `SIDEBAR_ENTRIES_PHASE_A`)
+matched the code exactly — the flatten-invariant test passed once Baseline
+was added to both consts in the same position.
+
+## UI
+
+_ui-designer (2026-06-08)._
+
+### Wireframe (Baseline screen body)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ Passive baseline                                      [ 2023 ][ 2024◀] │  ← headline (H2) + year chips
+│ Equal-weight buy-and-hold across 10 large-cap pairs, bought once at    │  ← caption (BODY, FG_2):
+│ year-open and never rebalanced. Passive baseline; active ≤ passive     │    honest bounded scope,
+│ in the reachable universe, this sample.                                │    NO overclaim (R3/A3)
+│ ┌────────┬────────┬────────┬────────┬────────┬────────┐               │
+│ │ Total  │ CAGR   │ Sharpe │ Max DD │ Win    │ Trades │               │  ← kpi_strip (6 FIXED cards)
+│ │ return │        │        │        │ rate   │        │               │    from §7.1 const:
+│ │ 91.04% │ 91.04% │ 0.8925 │−48.95% │   —    │   0    │               │    2024 default shown
+│ └────────┴────────┴────────┴────────┴────────┴────────┘               │
+│ ╱╲      realized BH equity curve (ACCENT line, UP_500 fill) ╱╲    ╱    │  ← equity_curve (~240px)
+│╱  ╲╱╲╱╲╱                                              ╲╱╲╱  ╲╱╲╱       │
+│ ▁▂▃▅▇█▆▄▃▂  drawdown band (DOWN_500, inverted Y)  ▁▂▃▄▅▆▇          │  ← drawdown_band (~100px)
+│ Sortino 2.51 / Calmar 5.68 (2023) · Sortino 1.20 / Calmar 1.85 (2024) │  ← risk_detail (SMALL, FG_3)
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Toggling `[2023]` swaps the curve + band + the six KPI values + the active
+chip styling (`ACCENT` text on `PANEL_RAISED` bg). The caption +
+risk-detail line are year-agnostic.
+
+### New screens / panels / widgets
+
+- **New screen:** `Screen::Baseline` (`screens::baseline::view`). Navigable
+  from the Work sidebar group (after Compare); **not** default-routed (D2).
+- **New widgets:** none. The three render widgets (`equity_curve`,
+  `drawdown_band`, `kpi_strip`) are reused **verbatim** (AC7). The year
+  chips reuse the Compare/Lab `Button`-chip pattern inline (not a new
+  widget).
+
+### New strings (`ui::strings`)
+
+`BASELINE_SIDEBAR_LABEL` ("Baseline"), `BASELINE_HEADLINE` ("Passive
+baseline"), `BASELINE_CAPTION` (honest bounded — see R3/A3),
+`BASELINE_YEAR_2023_LABEL` ("2023"), `BASELINE_YEAR_2024_LABEL` ("2024"),
+`BASELINE_DATA_UNAVAILABLE` (error-state copy with the artifacts path),
+`BASELINE_RISK_DETAIL` (Sortino/Calmar caption line). All seven registered
+in `strings::all()`. **Zero inline string literals** in the screen.
+
+### New theme tokens
+
+**Zero** (AC7 / R5). All chrome uses existing tokens: `FG_1`/`FG_2`/`FG_3`,
+`ACCENT`, `PANEL_RAISED`, `BORDER_1`, `UP_500`/`DOWN_500` (via the reused
+widgets), `text::{H2, BODY, SMALL}`, `space::{XS, S, M, L}`, `radius::R1`.
+**Zero inline hex.**
+
+### Accessibility notes
+
+- **Keyboard:** the two year chips are iced `Button`s with `on_press` —
+  Tab-reachable and Enter/Space-activatable (R2). The sidebar Baseline row
+  is likewise a focusable nav button.
+- **Color is never the only signal:** the active year chip pairs the
+  `ACCENT` text colour with a `PANEL_RAISED` background + `ACCENT` border
+  (shape), so the selection is distinguishable without colour. KPI
+  sentiment colours pair with the sign-prefixed value text (`91.04%` vs
+  `−48.95%`).
+- **Contrast:** verified by `tests/contrast.rs` (green) — every token pair
+  the screen uses is in the WCAG-asserted PAIRS table; no new pair
+  introduced.
+- **Both themes:** renders in `--theme dark` and `--theme light` for free
+  (widgets are theme-correct); the both-theme snapshots + the both-theme
+  headless render test prove it.
+- **No blank screens:** all four `PanelState` arms are honoured — `Loading`
+  (boot), `Ready` (populated), `Empty` (zero-row CSV), `Error` (CSV absent
+  → helpful `BASELINE_DATA_UNAVAILABLE` copy + path, KPI strip still
+  populated from the const = honest degrade).
 
 ## Verification
 
@@ -648,3 +782,21 @@ _tester links to reports here._
   caption-only Sortino/Calmar (A2). No ADR — all decisions are pure-`ui`,
   additive, within the `viewer`/`registry_read` precedent. HANDOFF →
   developer ‖ ui-designer.
+- 2026-06-08 (ui-designer, solo): T1–T10 all implemented (the dev‖ui split
+  was collapsed — the loader is a small pure-`ui` module). § Implementation
+  + § UI authored. All 7 ACs pass: AC1 (Baseline renders BH; 2024 default,
+  toggle→2023 swaps curve+metrics), AC2 (four states incl. Error-no-panic),
+  AC3 (fixtures cockpit headless smoke green — first-frame paint of the
+  Baseline route + the default route, no panic), AC4 (consistency/contrast/
+  layout_invariants green; zero new tokens; all copy via `strings`; both
+  themes), AC5 (caption honest-bounded, no-overclaim string test), AC6
+  (panel snapshots both themes + sidebar flatten-invariant updated), AC7
+  (no new crate edge/widget/token — `baseline/` is pure-`ui` over `core` +
+  `std::fs`). `cargo build -p ui` clean; new code clippy/fmt-clean per the
+  crate convention; `verify_anchors` 119/119 (no anchored file touched).
+  **Two architect-design-vs-code corrections** recorded in § Implementation:
+  (1) the timestamp parse needs `PrimitiveDateTime` + `.assume_utc()` (not
+  `OffsetDateTime::parse`, which `InsufficientInformation`-fails on the
+  literal `Z`); (2) the KPI metrics are materialized on `BaselineScreenState`
+  from the const (viewer-precedent lifetime fix) rather than a function-local.
+  The sidebar lock-step matched the code exactly. HANDOFF → tester.

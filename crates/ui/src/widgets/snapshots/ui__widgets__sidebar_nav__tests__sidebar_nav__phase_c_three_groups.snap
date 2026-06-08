@@ -9,6 +9,7 @@ active: Lab
   rule=ACCENT label=Lab screen=Lab fg=fg_1
   rule=— label=Live screen=Live fg=fg_2
   rule=— label=Compare screen=Compare fg=fg_2
+  rule=— label=Baseline screen=Baseline fg=fg_2
 --- group 1 ---
   rule=— label=Strategies screen=Strategies fg=fg_2
   rule=— label=Memory screen=Memory fg=fg_2

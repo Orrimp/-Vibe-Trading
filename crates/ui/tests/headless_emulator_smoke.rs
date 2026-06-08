@@ -15,6 +15,7 @@ use iced_test::futures::futures::StreamExt;
 use iced_test::futures::futures::channel::mpsc;
 use iced_test::futures::futures::executor;
 
+use ui::state::Screen;
 use ui::test_support::{charts_screen_cockpit, program_from_cockpit};
 
 /// Bounded number of event-loop ticks before we give up waiting for
@@ -71,5 +72,56 @@ fn headless_emulator_boots_cockpit_and_renders() {
     assert!(
         !screenshot.rgba.is_empty(),
         "screenshot rgba buffer must be non-empty (boot + view loop ran)"
+    );
+}
+
+/// cockpit-baseline-panel v0.1.0 (AC3) — the fixtures cockpit paints the
+/// **Baseline** route headlessly without panic. Boots the same fixtures
+/// cockpit, navigates to `Screen::Baseline`, boot-loads the curves via the
+/// production `baseline::load_into` path (the curves resolve to `Ready` when
+/// the runbook CSVs are present, or degrade to `Error` in a minimal checkout
+/// — never a panic, R7), drains to `Ready`, and asserts a non-empty
+/// first-frame screenshot. Complements the deterministic Error-state render
+/// in `tests/baseline_error_state.rs`.
+#[test]
+fn headless_emulator_paints_baseline_route() {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Baseline;
+    // Production boot path: load both realized BH curves (Ready or Error).
+    ui::baseline::load_into(&mut cockpit);
+
+    let program = program_from_cockpit(cockpit);
+    let theme = iced::Theme::Dark;
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let mut emulator = Emulator::new(tx, &program, Mode::Zen, iced::Size::new(1280.0, 720.0));
+
+    executor::block_on(async {
+        for tick in 0..READY_DEADLINE_TICKS {
+            match rx.next().await {
+                Some(Event::Ready) => {
+                    eprintln!("baseline emulator ready after {tick} tick(s)");
+                    break;
+                }
+                Some(Event::Action(action)) => {
+                    emulator.perform(&program, action);
+                }
+                Some(Event::Failed(instruction)) => {
+                    panic!("unexpected Event::Failed for instruction: {instruction:?}");
+                }
+                None => {
+                    eprintln!("baseline event channel closed at tick {tick} before Ready");
+                    break;
+                }
+            }
+        }
+    });
+
+    let screenshot = emulator.screenshot(&program, &theme, 1.0);
+    assert_eq!(screenshot.size.width, 1280);
+    assert_eq!(screenshot.size.height, 720);
+    assert!(
+        !screenshot.rgba.is_empty(),
+        "Baseline route first-frame screenshot must be non-empty (boot + view ran, no panic)"
     );
 }

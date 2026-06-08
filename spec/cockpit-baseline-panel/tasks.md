@@ -1,11 +1,18 @@
 ---
 slug: cockpit-baseline-panel
 status: in-progress
-owner: architect
+owner: ui-designer
 updated: 2026-06-08
 ---
 
 # Tasks — cockpit-baseline-panel
+
+> **Implementation status (2026-06-08, ui-designer solo):** T1–T10 all
+> landed. The orchestrator chose the single-owner path (the loader is a
+> small pure-`ui` module, so the dev‖ui split was collapsed). Tester gate
+> (rust-validate + smoke + four-state + snapshots + consistency) is next.
+> One architect-design-vs-code correction surfaced: the timestamp parse —
+> see T2 note below.
 
 Proportionate S–M read-only UI feature. Surfaces the shipped passive-BH
 result as `Screen::Baseline`, reusing `equity_curve` / `kpi_strip` /
@@ -34,7 +41,7 @@ independently. T8–T10 (tests) close after their subjects land.
 
 ## Tasks
 
-- [ ] **T1 — `Screen::Baseline` + state touchpoints** —
+- [x] **T1 — `Screen::Baseline` + state touchpoints** —
   `crates/ui/src/state.rs` —
   _Add `Screen::Baseline` variant (after `Strategies`, before deprecated
   aliases); add `BaselineYear { Y2023, Y2024 }` (`Default = Y2024`); add
@@ -44,7 +51,17 @@ independently. T8–T10 (tests) close after their subjects land.
   — _acceptance: `cargo build -p ui` green; `Message::BaselineSelectYear`
   is typed; `current_screen = Screen::Baseline` compiles. (R2, R6, AC1)_
 
-- [ ] **T2 — `baseline/loader.rs` curve loader** (developer) —
+- [x] **T2 — `baseline/loader.rs` curve loader** (ui-designer, solo) —
+  **NOTE — architect-design-vs-code correction (timestamp parse):** the
+  design said "parse `…T00:00Z` with `OffsetDateTime::parse` + an explicit
+  `format_description`." That path returns `TryFromParsed(InsufficientInformation)`
+  because the trailing `Z` is a **literal** char in `time`'s grammar, not an
+  offset directive — `OffsetDateTime` has no offset to bind. Resolved by
+  parsing to `PrimitiveDateTime` with the same `[year]-[month]-[day]T[hour]:[minute]Z`
+  description, then `.assume_utc()` (the `_utc` column + `Z` suffix make UTC
+  exact, not a guess). Also: `time` 0.3.47 deprecated `FormatItem` →
+  used `BorrowedFormatItem`. A unit test pins the shape + the Rfc3339-rejects
+  falsification. —
   `crates/ui/src/baseline/loader.rs` (+ `baseline/mod.rs`) —
   _Pure-`ui` synchronous loader, no new crate edge. `load_baseline_curve(
   &Path) -> PanelState<EquitySeries>`: read 3-column CSV
@@ -60,7 +77,7 @@ independently. T8–T10 (tests) close after their subjects land.
   committed CSVs to `Ready` with first point `$100,000.00`; missing path →
   `Error`, no panic. (R1, R4, R7, AC1, AC3)_
 
-- [ ] **T3 — embedded §7.1 metrics const** (developer) —
+- [x] **T3 — embedded §7.1 metrics const** (ui-designer, solo) —
   `crates/ui/src/baseline/loader.rs` —
   _`baseline_metrics(BaselineYear) -> BacktestMetrics` returning the
   realized §7.1 row (NOT bootstrap p50). Values per [feature.md § Design
@@ -74,7 +91,16 @@ independently. T8–T10 (tests) close after their subjects land.
   `kpi_strip` renders them (Sharpe via `format_sharpe` 4-dp). (R1, A1, A2,
   AC1)_
 
-- [ ] **T4 — `baseline/state.rs`** (ui-designer) —
+- [x] **T4 — `baseline/state.rs`** (ui-designer) —
+  **NOTE — metrics materialized on the model (viewer precedent):** `kpi_strip::view`
+  ties its returned `Element<'a>` to the input `&PanelState<BacktestMetrics>`
+  ref's lifetime, so a function-local `Ready(baseline_metrics(year))` cannot
+  outlive the returned screen element (E0515). Resolved exactly as the
+  `viewer` binary does (`bin/viewer.rs:102` borrows `&self.model.metrics`):
+  `BaselineScreenState` now carries `metrics_2023 / metrics_2024` populated
+  from the `const` `baseline_metrics()` in `Default` + `load_into`. Single
+  source of truth (the const) is unchanged — these are its boot-time
+  materialization; the re-sync test still guards the const. —
   `crates/ui/src/baseline/state.rs` —
   _`BaselineScreenState { curve_2023: PanelState<EquitySeries>, curve_2024:
   PanelState<EquitySeries>, active_year: BaselineYear }`. `Default`:
@@ -85,7 +111,7 @@ independently. T8–T10 (tests) close after their subjects land.
   populates both curves; visiting Baseline shows 2024 by default. (R1, R2,
   R4)_
 
-- [ ] **T5 — `screens/baseline.rs` view** (ui-designer) —
+- [x] **T5 — `screens/baseline.rs` view** (ui-designer) —
   `crates/ui/src/screens/baseline.rs` (+ `screens/mod.rs`) —
   _`view(&Cockpit, ThemeMode)` composing top→bottom: headline
   (`BASELINE_HEADLINE` H2) + year chips `[2023][2024]` (Compare/Lab chip
@@ -101,7 +127,11 @@ independently. T8–T10 (tests) close after their subjects land.
   Baseline renders curve+band+6-card strip for 2024; toggling to 2023 swaps
   curve+metrics; zero hardcoded strings/colours. (R1, R2, R3, R5, AC1)_
 
-- [ ] **T6 — `BASELINE_*` strings block** (ui-designer) —
+- [x] **T6 — `BASELINE_*` strings block** (ui-designer) —
+  Also registered all seven new keys in `strings::all()` (the localization /
+  uniqueness registry). AC5 no-overclaim asserted by
+  `baseline_caption_is_honest_bounded_no_overclaim` (banned-token list +
+  honest-finding-present check). —
   `crates/ui/src/strings.rs` —
   _Add: `BASELINE_SIDEBAR_LABEL`="Baseline", `BASELINE_HEADLINE`="Passive
   baseline", `BASELINE_CAPTION` (equal-weight buy-and-hold across 10
@@ -114,7 +144,14 @@ independently. T8–T10 (tests) close after their subjects land.
   1.20/Calmar 1.85 [2024])._ — _acceptance: all Baseline copy resolves via
   `strings`; caption passes the no-overclaim assertion. (R3, R5, A3, AC5)_
 
-- [ ] **T7 — sidebar IA** (ui-designer) — `crates/ui/src/theme.rs` —
+- [x] **T7 — sidebar IA** (ui-designer) — `crates/ui/src/theme.rs` —
+  Added `Screen::Baseline` after `Compare` to BOTH `SIDEBAR_ENTRIES_PHASE_A`
+  and the `SIDEBAR_GROUPS_PHASE_C` Work group (lock-step verified by the
+  flatten invariant). Also added the `Screen::Baseline => BASELINE_SIDEBAR_LABEL`
+  arm to `widgets::sidebar_nav::label_for`. The two pre-existing sidebar_nav
+  snapshots (`phase_a_workflow_group`, `phase_c_three_groups`) were
+  regenerated to include the new Baseline row (intended IA diff). Smoke
+  default screen unchanged (D2 — navigable only). —
   _Add `Screen::Baseline` to `SIDEBAR_GROUPS_PHASE_C` **Work** group after
   `Compare`, AND to `SIDEBAR_ENTRIES_PHASE_A` after `Compare` (both must
   stay lock-step or the flatten-invariant test fails — that is the guard).
@@ -123,7 +160,16 @@ independently. T8–T10 (tests) close after their subjects land.
   `sidebar_groups_phase_c__flatten_matches_phase_a` green with Baseline in
   both consts; Baseline reachable from the sidebar. (R6, D2, AC6)_
 
-- [ ] **T8 — loader + Error-state tests** (developer) —
+- [x] **T8 — loader + Error-state tests** (ui-designer, solo) —
+  Loader unit tests live in `baseline/loader.rs` `#[cfg(test)]` (timestamp
+  shape, well-formed/header-only/bad-row parse, missing-file→Error,
+  committed-CSV→Ready-$100k, `baseline_metrics_match_characterization`
+  re-sync trip). Integration `tests/baseline_error_state.rs`:
+  `baseline_error_state_renders_without_panic` drives `Widget::layout`
+  (the pass where a render panic surfaces) on the Baseline body in BOTH
+  themes with the loader at a missing path → curves `Error`, KPI strip
+  still `Ready` from the const, non-zero root. Plus a Ready-path render
+  (skips on minimal checkout). —
   `crates/ui/src/baseline/loader.rs` (`#[cfg(test)]`) +
   `crates/ui/tests/baseline_error_state.rs` —
   _Unit: parse `…T00:00Z` timestamp shape; load committed CSV → `Ready`
@@ -136,7 +182,17 @@ independently. T8–T10 (tests) close after their subjects land.
   all green; missing-CSV path proven non-panicking. (R4, R7, D1 re-sync,
   D2, AC2, AC3)_
 
-- [ ] **T9 — Baseline panel snapshot (both themes)** (ui-designer) —
+- [x] **T9 — Baseline panel snapshot (both themes)** (ui-designer) —
+  `mod baseline_screen` in `tests/panel_snapshots.rs` (textual-summary
+  convention): Ready-2024-dark, Ready-2024-light, Ready-2023-toggled-dark,
+  Error-dark, Error-light + the AC5 caption test + a KPI-values-match-
+  characterization belt-and-braces. Dark vs light differ only in the
+  resolved accent + sentiment tokens (proving both-theme correctness). The
+  band's daily-sampled max-DD (~41.8% / ~33.3%) differs from the const
+  headline (48.95% / 34.57%) — the documented D1 nuance (band is shape,
+  card is the number). Plus the `headless_emulator_paints_baseline_route`
+  smoke (boots the fixtures cockpit on Baseline, boot-loads via the
+  production path, asserts first-frame paint). —
   `crates/ui/tests/panel_snapshots.rs` —
   _Add a Baseline-screen snapshot per the 267-test convention: set
   `current_screen = Screen::Baseline`, snapshot Dark + Light (Ready state
@@ -145,7 +201,14 @@ independently. T8–T10 (tests) close after their subjects land.
   (`panel_snapshots.rs:2682` etc.)._ — _acceptance: new snapshots accepted;
   suite green in both themes. (R4, R5, AC2, AC6)_
 
-- [ ] **T10 — Lumen-consistency green** (ui-designer) —
+- [x] **T10 — Lumen-consistency green** (ui-designer) —
+  `tests/{consistency,contrast,layout_invariants}.rs` all green with the
+  new screen. Zero new theme tokens; all copy via `strings::BASELINE_*`
+  (the consistency scan covers `src/widgets/` — screens use `strings::`
+  directly, and the new screen has zero inline literals/hex). New code
+  follows the crate's per-module `#![allow(...)]` convention and introduces
+  **zero** new clippy warnings (verified: no warning points at any
+  `baseline/*` / `screens/baseline.rs` / new-test file). —
   `crates/ui/tests/{consistency,contrast,layout_invariants}.rs` (no new
   invariants expected; just stay green) —
   _Confirm `tests/consistency.rs` / `tests/contrast.rs` /

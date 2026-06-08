@@ -1366,6 +1366,14 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TRAIL_BOOL_YES", TRAIL_BOOL_YES),
         ("TRAIL_BOOL_NO", TRAIL_BOOL_NO),
         ("MATRIX_EMPTY_STATE", MATRIX_EMPTY_STATE),
+        // cockpit-baseline-panel v0.1.0
+        ("BASELINE_SIDEBAR_LABEL", BASELINE_SIDEBAR_LABEL),
+        ("BASELINE_HEADLINE", BASELINE_HEADLINE),
+        ("BASELINE_CAPTION", BASELINE_CAPTION),
+        ("BASELINE_YEAR_2023_LABEL", BASELINE_YEAR_2023_LABEL),
+        ("BASELINE_YEAR_2024_LABEL", BASELINE_YEAR_2024_LABEL),
+        ("BASELINE_DATA_UNAVAILABLE", BASELINE_DATA_UNAVAILABLE),
+        ("BASELINE_RISK_DETAIL", BASELINE_RISK_DETAIL),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -1677,6 +1685,45 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("ACTIVITY_TAPE_MORE_SUFFIX", ACTIVITY_TAPE_MORE_SUFFIX),
     ]
 }
+
+// ── cockpit-baseline-panel v0.1.0 — passive-BH baseline screen ───────────────
+// Honest-bounded-scope constraint (R3 / A3) is BINDING: BASELINE_CAPTION
+// states "passive baseline; active ≤ passive in the reachable universe,
+// this sample" and MUST NOT claim "optimal" / "unbeatable" / "none beat it"
+// — that would overstate the program's bounded terminal verdict into a
+// universal claim. Asserted by the no-overclaim string test (AC5).
+
+/// Sidebar nav label for the Baseline screen (R6).
+pub const BASELINE_SIDEBAR_LABEL: &str = "Baseline";
+
+/// Headline / page title for the Baseline screen (R3).
+pub const BASELINE_HEADLINE: &str = "Passive baseline";
+
+/// Plain-language caption below the headline (R3 / A3). States the
+/// construction (equal-weight buy-and-hold, bought once, never rebalanced)
+/// and the honest bounded finding. MUST NOT overclaim — see the binding
+/// constraint at the top of this block + the AC5 no-overclaim test.
+pub const BASELINE_CAPTION: &str = "Equal-weight buy-and-hold across 10 large-cap pairs, \
+    bought once at year-open and never rebalanced. Passive baseline; active \u{2264} passive \
+    in the reachable universe, this sample.";
+
+/// Year toggle chip label — 2023 (R2).
+pub const BASELINE_YEAR_2023_LABEL: &str = "2023";
+
+/// Year toggle chip label — 2024 (R2).
+pub const BASELINE_YEAR_2024_LABEL: &str = "2024";
+
+/// Error-state copy when the equity CSV is absent (R4 / R7). Tells the
+/// operator what is missing and where it lives — never a bare "no data".
+pub const BASELINE_DATA_UNAVAILABLE: &str = "Baseline equity data isn't bundled in this build. \
+    The realized buy-and-hold curves live at \
+    spec/runbooks/artifacts/passive-baseline-2026-06-08/.";
+
+/// Caption-only risk-detail line (A2 / D1=c). Surfaces the §7.1 Sortino +
+/// Calmar metrics, which have no KPI card in the six-card strip. Rendered
+/// `FG_3` below the drawdown band.
+pub const BASELINE_RISK_DETAIL: &str =
+    "Sortino 2.51 / Calmar 5.68 (2023)  \u{00b7}  Sortino 1.20 / Calmar 1.85 (2024)";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

@@ -1,0 +1,24 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: "baseline_summary(&c, ThemeMode::Dark)"
+---
+screen: baseline
+theme: Dark
+headline: Passive baseline
+caption: Equal-weight buy-and-hold across 10 large-cap pairs, bought once at year-open and never rebalanced. Passive baseline; active ≤ passive in the reachable universe, this sample.
+year_chips:
+  [2023] inactive color=fg_muted
+  [2024] active color=accent(dark) bg=panel_raised
+kpi_strip:
+  total_return: 91.04% color=pos
+  cagr: 91.04%
+  sharpe: 0.8925
+  max_dd: −48.95% color=neg
+  win_rate: —
+  trades: 0
+curve+band:
+  state: ready points=367
+  peak: 243941.06 trough: 86207.37 max_dd: 0.4181760895317619239925250905
+  curve_line=ACCENT curve_fill=UP_500
+  band_line=DOWN_500 band_fill=DOWN_500
+risk_detail: Sortino 2.51 / Calmar 5.68 (2023)  ·  Sortino 1.20 / Calmar 1.85 (2024)

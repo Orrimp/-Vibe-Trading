@@ -43,6 +43,13 @@ pub mod models;
 /// Houses `assistant::state` (AssistantState / AssistantMode) and
 /// `assistant::view` (right-rail slot view fn).
 pub mod assistant;
+
+/// cockpit-baseline-panel v0.1.0 — passive buy-and-hold baseline feature.
+/// Houses `baseline::loader` (CSV → EquitySeries + embedded §7.1 metrics
+/// const) and `baseline::state` (BaselineScreenState + boot-load helper).
+/// Pure-`ui` over `core` + `std::fs`; no new crate edge (AC7). The screen
+/// body lives at `screens::baseline`.
+pub mod baseline;
 pub mod lab;
 pub mod screens;
 pub mod shell;

@@ -586,6 +586,12 @@ fn main() -> Result<()> {
         cockpit.selected_symbol = Some(first.clone());
     }
 
+    // cockpit-baseline-panel v0.1.0 — boot-load the realized BH curves so the
+    // navigable Baseline screen is `Ready` on first visit (or `Error`, never a
+    // panic, if the runbook artifacts are absent). Read-only over committed
+    // files; no bus/audit dependency.
+    ui::baseline::load_into(&mut cockpit);
+
     // F7 fix 2026-05-24 — seed the strategy registry from the engine's
     // dispatched ScenarioStrategy ids so the Lab chip row is non-empty
     // at cold boot. Without this seed, model.strategies stays at

@@ -26,7 +26,9 @@ use iced::Length;
 use iced::widget::{Column, Container, Row, Stack};
 
 use crate::assistant;
-use crate::screens::{compare, lab, live, memory, models, settings, strategy_registry, trail};
+use crate::screens::{
+    baseline, compare, lab, live, memory, models, settings, strategy_registry, trail,
+};
 use crate::state::{Cockpit, Screen};
 use crate::theme::layout::{
     RIGHT_RAIL_OPEN_WIDTH_PX, RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C,
@@ -141,6 +143,9 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         Screen::Live | Screen::Home => live::view(model, mode),
         // Phase E: Compare routes to the matrix screen (replaces Phase A placeholder).
         Screen::Compare => compare::view(model, mode),
+        // cockpit-baseline-panel v0.1.0: passive-BH baseline screen (D2 —
+        // navigable, not default-routed; the smoke's default stays on Live).
+        Screen::Baseline => baseline::view(model, mode),
         // Phase F: Memory routes to the full memory screen (replaces Phase A placeholder).
         Screen::Memory => memory::view(model, mode),
         // Phase F: Models routes to the full models screen (replaces Phase A placeholder).

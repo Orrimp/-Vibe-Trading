@@ -2931,3 +2931,313 @@ mod settings_screen {
 // were excised by `post-v3-retirement-trail-ui-cleanup v0.1.0` after
 // `v3-regime-classifier` was operator-retired. See
 // `spec/dev-notes/post-v3-trail-ui-cleanup-2026-05-29.md`.)
+
+// ── cockpit-baseline-panel v0.1.0 — Baseline screen snapshots (T9) ──────────
+//
+// Textual-summary snapshots per the panel-snapshot convention (no pixel
+// render). Each snapshot pins: the headline + honest caption, the active
+// year + its resolved chip colour, the active curve's PanelState + (for
+// Ready) its points / peak / max-DD, the six KPI-strip values pulled from
+// the §7.1 const, and the Sortino/Calmar risk-detail line. Covers BOTH
+// themes (AC6) and the four panel states the screen can show (AC2).
+//
+// The summary asserts NO hardcoded copy — every label resolves through
+// `ui::strings::BASELINE_*` — and theme-resolves the one colour decision
+// the screen makes (the active chip), so a Dark vs Light snapshot differs
+// only in that token name (proving both-theme correctness).
+
+mod baseline_screen {
+    use super::*;
+    use trading_core::BacktestMetrics;
+    use ui::baseline::baseline_metrics;
+    use ui::state::BaselineYear;
+    use ui::theme::{ThemeMode, color as t};
+    use ui::widgets::num::{format_count, format_pct_max_dd, format_pct_sentiment, format_sharpe};
+
+    /// Resolve the active-year chip colour to a stable, theme-tagged token
+    /// name — the one theme-dependent decision the Baseline screen makes.
+    fn accent_name(mode: ThemeMode) -> &'static str {
+        match mode {
+            ThemeMode::Dark => "accent(dark)",
+            ThemeMode::Light => "accent(light)",
+        }
+    }
+
+    /// Theme-AWARE sentiment-token resolver (the crate-wide `color_name`
+    /// helper resolves against dark-mode only; this one resolves against the
+    /// passed `mode` so the light-theme snapshot shows `pos`/`neg`, not
+    /// `unknown` — proving the screen picks the right token in BOTH themes).
+    fn sentiment_name(c: iced::Color, mode: ThemeMode) -> &'static str {
+        if c == t::UP_500.current(mode) {
+            "pos"
+        } else if c == t::DOWN_500.current(mode) {
+            "neg"
+        } else if c == t::FG_1.current(mode) {
+            "fg"
+        } else if c == t::FG_3.current(mode) {
+            "fg_muted"
+        } else {
+            "other"
+        }
+    }
+
+    /// Format the six KPI cards exactly as `kpi_strip::ready_strip` would,
+    /// theme-resolving the sentiment colours to token names.
+    fn kpi_lines(m: &BacktestMetrics, mode: ThemeMode) -> String {
+        let mut out = String::new();
+        let (tr, tr_c) = format_pct_sentiment(m.total_return_pct, mode);
+        out.push_str(&format!(
+            "  total_return: {tr} color={}\n",
+            sentiment_name(tr_c, mode)
+        ));
+        if m.cagr_present {
+            let (s, _) = format_pct_sentiment(m.cagr_pct, mode);
+            out.push_str(&format!("  cagr: {s}\n"));
+        } else {
+            out.push_str("  cagr: \u{2014}\n");
+        }
+        if m.sharpe_present {
+            out.push_str(&format!("  sharpe: {}\n", format_sharpe(m.sharpe)));
+        } else {
+            out.push_str("  sharpe: \u{2014}\n");
+        }
+        let (mdd, mdd_c) = format_pct_max_dd(m.max_drawdown_pct, mode);
+        out.push_str(&format!(
+            "  max_dd: {mdd} color={}\n",
+            sentiment_name(mdd_c, mode)
+        ));
+        if m.win_rate_present {
+            let (s, _) = format_pct_sentiment(m.win_rate_pct, mode);
+            out.push_str(&format!("  win_rate: {s}\n"));
+        } else {
+            out.push_str("  win_rate: \u{2014}\n");
+        }
+        out.push_str(&format!("  trades: {}\n", format_count(m.trades)));
+        out
+    }
+
+    /// Plain-text summary of the Baseline screen body, mirroring what
+    /// `screens::baseline::view` composes (top → bottom).
+    fn baseline_summary(c: &Cockpit, mode: ThemeMode) -> String {
+        let st = &c.baseline_screen_state;
+        let mut out = String::new();
+        out.push_str("screen: baseline\n");
+        out.push_str(&format!("theme: {mode:?}\n"));
+        out.push_str(&format!("headline: {}\n", strings::BASELINE_HEADLINE));
+        out.push_str(&format!("caption: {}\n", strings::BASELINE_CAPTION));
+
+        // Year chips — active one carries the accent colour + raised bg.
+        out.push_str("year_chips:\n");
+        for (year, label) in [
+            (BaselineYear::Y2023, strings::BASELINE_YEAR_2023_LABEL),
+            (BaselineYear::Y2024, strings::BASELINE_YEAR_2024_LABEL),
+        ] {
+            let active = st.active_year == year;
+            if active {
+                out.push_str(&format!(
+                    "  [{label}] active color={} bg=panel_raised\n",
+                    accent_name(mode)
+                ));
+            } else {
+                out.push_str(&format!("  [{label}] inactive color=fg_muted\n"));
+            }
+        }
+
+        // KPI strip — sourced from the §7.1 const for the active year.
+        out.push_str("kpi_strip:\n");
+        match st.active_metrics() {
+            PanelState::Ready(m) => out.push_str(&kpi_lines(m, mode)),
+            _ => out.push_str("  state: unavailable\n"),
+        }
+
+        // Equity curve + drawdown band — both from the active year's curve.
+        out.push_str("curve+band:\n");
+        match st.active_curve() {
+            PanelState::Ready(s) => {
+                out.push_str(&format!("  state: ready points={}\n", s.points.len()));
+                out.push_str(&format!(
+                    "  peak: {} trough: {} max_dd: {}\n",
+                    s.peak.amount(),
+                    s.trough.amount(),
+                    s.max_drawdown_pct
+                ));
+                out.push_str("  curve_line=ACCENT curve_fill=UP_500\n");
+                out.push_str("  band_line=DOWN_500 band_fill=DOWN_500\n");
+            }
+            PanelState::Loading => out.push_str("  state: loading\n"),
+            PanelState::Empty => out.push_str("  state: empty\n"),
+            PanelState::Error(_) => out.push_str(&format!(
+                "  state: error body={}{}\n",
+                strings::VIEWER_EQUITY_UNAVAILABLE_PREFIX,
+                strings::BASELINE_DATA_UNAVAILABLE
+            )),
+        }
+
+        // Caption-only Sortino / Calmar detail (A2 — no KPI slot).
+        out.push_str(&format!("risk_detail: {}\n", strings::BASELINE_RISK_DETAIL));
+        out
+    }
+
+    /// Boot a Baseline cockpit with both curves forced `Ready` from the
+    /// committed CSVs. Falls back to synthetic curves so the snapshot is
+    /// deterministic even in a minimal checkout missing the runbook CSVs.
+    fn baseline_cockpit_ready() -> Cockpit {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Baseline;
+        ui::baseline::load_into(&mut c);
+        if !matches!(c.baseline_screen_state.curve_2024, PanelState::Ready(_)) {
+            // Minimal checkout — synthesize a tiny monotone-up curve so the
+            // Ready snapshot stays deterministic regardless of CSV presence.
+            c.baseline_screen_state.curve_2023 = PanelState::Ready(synthetic_curve());
+            c.baseline_screen_state.curve_2024 = PanelState::Ready(synthetic_curve());
+        }
+        c
+    }
+
+    /// Deterministic 4-point monotone-up curve (snapshot fallback only).
+    fn synthetic_curve() -> trading_core::EquitySeries {
+        use trading_core::{Money, Timestamp, Usdt};
+        let pts: Vec<(Timestamp, Money<Usdt>)> = (0..4i64)
+            .map(|i| {
+                (
+                    Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(i)),
+                    Money::<Usdt>::from_decimal(dec!(100000) + dec!(1000) * Decimal::from(i)),
+                )
+            })
+            .collect();
+        trading_core::EquitySeries::from_points(pts).expect("synthetic curve")
+    }
+
+    use rust_decimal::Decimal;
+
+    /// AC6 — Ready snapshot, 2024 default (dark theme).
+    #[test]
+    #[allow(non_snake_case)]
+    fn baseline_snapshot__ready_2024_dark() {
+        let c = baseline_cockpit_ready();
+        assert_snapshot!(
+            "baseline_snapshot__ready_2024_dark",
+            baseline_summary(&c, ThemeMode::Dark)
+        );
+    }
+
+    /// AC6 — Ready snapshot, 2024 default (light theme — both-theme gate).
+    #[test]
+    #[allow(non_snake_case)]
+    fn baseline_snapshot__ready_2024_light() {
+        let c = baseline_cockpit_ready();
+        assert_snapshot!(
+            "baseline_snapshot__ready_2024_light",
+            baseline_summary(&c, ThemeMode::Light)
+        );
+    }
+
+    /// AC1 — toggling to 2023 swaps the curve + metrics (dark theme).
+    #[test]
+    #[allow(non_snake_case)]
+    fn baseline_snapshot__ready_2023_toggled_dark() {
+        let mut c = baseline_cockpit_ready();
+        update(&mut c, Message::BaselineSelectYear(BaselineYear::Y2023));
+        assert_snapshot!(
+            "baseline_snapshot__ready_2023_toggled_dark",
+            baseline_summary(&c, ThemeMode::Dark)
+        );
+    }
+
+    /// AC2 — Error state (CSV absent): curve + band Error, KPI strip still
+    /// populated from the const (honest degrade). Dark theme.
+    #[test]
+    #[allow(non_snake_case)]
+    fn baseline_snapshot__error_dark() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Baseline;
+        c.baseline_screen_state.curve_2023 =
+            PanelState::Error(strings::BASELINE_DATA_UNAVAILABLE.into());
+        c.baseline_screen_state.curve_2024 =
+            PanelState::Error(strings::BASELINE_DATA_UNAVAILABLE.into());
+        assert_snapshot!(
+            "baseline_snapshot__error_dark",
+            baseline_summary(&c, ThemeMode::Dark)
+        );
+    }
+
+    /// AC2 — Error state (light theme — both-theme gate).
+    #[test]
+    #[allow(non_snake_case)]
+    fn baseline_snapshot__error_light() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Baseline;
+        c.baseline_screen_state.curve_2023 =
+            PanelState::Error(strings::BASELINE_DATA_UNAVAILABLE.into());
+        c.baseline_screen_state.curve_2024 =
+            PanelState::Error(strings::BASELINE_DATA_UNAVAILABLE.into());
+        assert_snapshot!(
+            "baseline_snapshot__error_light",
+            baseline_summary(&c, ThemeMode::Light)
+        );
+    }
+
+    /// AC5 — the caption conveys the honest **bounded** finding and does
+    /// NOT overclaim. This is binding (R3 / A3): the program's terminal
+    /// verdict is bounded ("active ≤ passive *in the reachable universe,
+    /// this sample*"), so the caption must not inflate it into a universal
+    /// claim. A future copy edit that re-introduces "optimal" / "unbeatable"
+    /// / "none beat it" trips this test.
+    #[test]
+    fn baseline_caption_is_honest_bounded_no_overclaim() {
+        let caption = strings::BASELINE_CAPTION;
+        let lower = caption.to_lowercase();
+
+        // The honest bounded finding MUST be present (verbatim phrasing).
+        assert!(
+            lower.contains("active \u{2264} passive in the reachable universe, this sample"),
+            "caption must state the honest bounded finding; got: {caption}"
+        );
+        // The construction MUST be described (equal-weight, bought once).
+        assert!(
+            lower.contains("buy-and-hold") && lower.contains("never rebalanced"),
+            "caption must describe the BH construction; got: {caption}"
+        );
+
+        // Forbidden overclaim tokens — none may appear (R3 / A3).
+        for banned in [
+            "optimal",
+            "unbeatable",
+            "none beat it",
+            "none can beat",
+            "cannot be beaten",
+            "best possible",
+            "guaranteed",
+        ] {
+            assert!(
+                !lower.contains(banned),
+                "caption overclaims the bounded result with {banned:?}: {caption}"
+            );
+        }
+    }
+
+    /// Belt-and-braces: the §7.1 const values the strip renders match the
+    /// characterization (mirrors the loader's re-sync test from the
+    /// screen-summary side — a silent const edit trips both). The exact
+    /// formatter output is pinned: `format_pct_sentiment` adds no `+` for
+    /// positives; `format_pct_max_dd` uses the Unicode minus (U+2212).
+    #[test]
+    fn baseline_kpi_values_match_characterization_2024() {
+        let m = baseline_metrics(BaselineYear::Y2024);
+        let (tr, tr_c) = format_pct_sentiment(m.total_return_pct, ThemeMode::Dark);
+        assert_eq!(tr, "91.04%");
+        assert_eq!(
+            tr_c,
+            t::UP_500.current(ThemeMode::Dark),
+            "positive → UP_500"
+        );
+        assert_eq!(format_sharpe(m.sharpe), "0.8925");
+        let (mdd, mdd_c) = format_pct_max_dd(m.max_drawdown_pct, ThemeMode::Dark);
+        assert_eq!(mdd, "\u{2212}48.95%");
+        assert_eq!(
+            mdd_c,
+            t::DOWN_500.current(ThemeMode::Dark),
+            "max DD → DOWN_500"
+        );
+    }
+}

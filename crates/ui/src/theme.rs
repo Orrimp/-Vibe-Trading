@@ -748,6 +748,10 @@ pub mod layout {
         Screen::Lab,
         Screen::Live,
         Screen::Compare,
+        // cockpit-baseline-panel v0.1.0 (R6 / D2) — navigable, after Compare.
+        // Must stay lock-step with `SIDEBAR_GROUPS_PHASE_C` Work group below
+        // (the flatten-invariant test is the guard, AC6).
+        Screen::Baseline,
         Screen::Strategies,
         Screen::Memory,
         Screen::Models,
@@ -767,14 +771,16 @@ pub mod layout {
     /// `SIDEBAR_ENTRIES_PHASE_A.to_vec()` — verified by
     /// `theme::layout::tests::sidebar_groups_phase_c__flatten_matches_phase_a`.
     pub const SIDEBAR_GROUPS_PHASE_C: &[&[Screen]] = &[
-        &[Screen::Lab, Screen::Live, Screen::Compare], // work
+        // work — cockpit-baseline-panel v0.1.0 (R6) inserts `Baseline`
+        // after `Compare`; mirrors `SIDEBAR_ENTRIES_PHASE_A` in lock-step.
+        &[Screen::Lab, Screen::Live, Screen::Compare, Screen::Baseline],
         &[
             Screen::Strategies,
             Screen::Memory,
             Screen::Models,
             Screen::Trail,
         ], // library
-        &[Screen::Settings],                           // chrome
+        &[Screen::Settings], // chrome
     ];
 
     /// Phase 3 — Audit-screen pagination size (Q4 — fixed 250 rows / page).

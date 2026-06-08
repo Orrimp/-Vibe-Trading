@@ -8,6 +8,11 @@
 //! → `lab` and adds placeholder routes.
 
 pub mod audit;
+/// cockpit-baseline-panel v0.1.0 — passive buy-and-hold baseline screen.
+/// Headline + year toggle + KPI strip + equity curve + drawdown band,
+/// reusing the existing widgets verbatim. Navigable via the Work sidebar
+/// group (after Compare); not default-routed (D2).
+pub mod baseline;
 /// Phase E — Compare matrix screen (ui-rethink-phase-e-compare R1.1-R1.4).
 /// Toolbar + matrix body. Replaces the Phase A `placeholder::view` route.
 pub mod compare;
