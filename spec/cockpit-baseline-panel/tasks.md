@@ -222,6 +222,8 @@ independently. T8–T10 (tests) close after their subjects land.
 
 ## Validation gate (tester)
 
+- [x] **M-TEST — tester gate** (tester, 2026-06-08) — VERDICT PASS. `cargo test -p ui` 428 unit + all integration suites GREEN (one pre-existing `lab_run_engine` failure confirmed pre-existing on parent commit). Static: build clean, fmt clean, zero new warnings from feature files. AC1–AC7 all pass with direct test evidence. `verify-anchors` 119/119. `git diff crates/` empty. Report: `spec/cockpit-baseline-panel/reports/test-2026-06-08-cockpit-baseline-panel.md`.
+
 After T1–T10 land, the tester runs:
 
 - `rust-build` + `rust-validate` (`cargo clippy -p ui -- -D warnings` for

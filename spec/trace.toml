@@ -2759,11 +2759,17 @@ title       = "Cockpit Baseline screen surfaces the shipped passive-BH result (2
 feature     = "cockpit-baseline-panel"
 product     = "spec/product.md"
 arch        = [
-  "spec/cockpit-baseline-panel/feature.md#design",          # § Design — D1/D2 resolved, loader contract, Screen::Baseline integration
-  "spec/cockpit-baseline-panel/tasks.md",                   # ordered T1–T10 breakdown (ui-designer ‖ developer)
-  "ADR-0030",                                               # ui→backtest edge (Lab Run only) — NOT used here; confirms AC7 no-new-edge
+  "spec/cockpit-baseline-panel/feature.md#design",                 # § Design — D1/D2 resolved, loader contract, Screen::Baseline integration
+  "spec/cockpit-baseline-panel/tasks.md",                          # ordered T1–T10 breakdown (ui-designer ‖ developer)
+  "spec/architecture/adr/0030-cockpit-in-process-backtest.md",     # ui→backtest edge (Lab Run only) — NOT used here; confirms AC7 no-new-edge
 ]
-crates      = []   # developer: pure-`ui` — new crates/ui/src/baseline/{state,loader}.rs + screens/baseline.rs; no new crate edge (ui→backtest already exists per ADR-0030, unused here)
-tests       = []   # developer/tester: panel-snapshot (both themes) + four-state (Loading/Ready/Empty/Error) + baseline_error_state_renders_without_panic + baseline_metrics_match_characterization + caption-no-overclaim string test
-anchors     = []   # tester: read-only UI feature, no new backtest anchors; verification floor is the panel-snapshot suite + the unchanged 119/119 regression gate
-state       = "arch-done"   # architect 2026-06-08 — § Design authored, D1=(c) embed scalars + file-load curve (core has no Sharpe/CAGR math; recompute on daily-sampled CSV ≠ published hourly numbers), D2=navigable-not-default-routed. No ADR (pure-ui, additive). HANDOFF → developer ‖ ui-designer.
+crates      = ["crates/ui"]   # pure-`ui` — crates/ui/src/baseline/{mod,state,loader}.rs + screens/baseline.rs; no new crate edge (ui→backtest already exists per ADR-0030, unused here)
+tests       = [
+  "crates/ui/tests/panel_snapshots.rs",
+  "crates/ui/tests/baseline_error_state.rs",
+  "crates/ui/tests/headless_emulator_smoke.rs",
+  "crates/ui/src/baseline/loader.rs",
+  "crates/ui/src/baseline/state.rs",
+]
+anchors     = []   # read-only UI feature, no new backtest anchors; verification floor is the panel-snapshot suite + the unchanged 119/119 regression gate
+state       = "tester-done"   # tester 2026-06-08 — VERDICT PASS. 428 unit + all integration suites GREEN. AC1–AC7 all pass. verify-anchors 119/119. One pre-existing lab_run_engine failure confirmed pre-existing on parent commit. Report: spec/cockpit-baseline-panel/reports/test-2026-06-08-cockpit-baseline-panel.md
