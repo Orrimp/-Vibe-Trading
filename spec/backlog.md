@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-05-29
+updated: 2026-06-08
 ---
 <!-- updated 2026-05-29 (analyst, pick-c-orchestrator-hygiene-compounder-trio M0 close) —
      promoted Queue → Active THREE features under Pick C Wave 1 of the
@@ -430,8 +430,98 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PROGRAM CONCLUDED 2026-06-08 — ACTIVE-EDGE SEARCH CLOSED, SHIP PASSIVE.
+     This block is the AUTHORITATIVE terminal state and SUPERSEDES the two
+     on-chain entries immediately below (the fork decision-support + the spike
+     verdict), which are retained as archaeology of how the conclusion was reached.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- updated 2026-06-08 (analyst, TERMINAL VERDICT — active-vs-passive search
+     CONCLUDED; SHIP PASSIVE) — the pre-committed on-chain hard-stop FIRED and the
+     program concludes as pre-registered. Decision of record:
+     `spec/product.md` § Strategy library (terminal verdict). Operational artifact:
+     `spec/runbooks/passive-baseline.md` (NEW).
+
+     THE VERDICT: across the THREE reachable information channels — price/OHLCV,
+     derivatives-positioning, and on-chain — no active strategy beats passive
+     buy-and-hold (+1.74/2023, +1.10/2024) net of cost under the frozen
+     block-bootstrap MC § 0 rule. The recommended/shipped approach is PASSIVE.
+     On-chain (the highest-prior remaining orthogonal channel) got its fair test:
+     exchange net-flows are PIT-INFEASIBLE (no free immutable past-only series;
+     CryptoQuant disclaims point-in-time accuracy) and the cleaner-PIT
+     stablecoin-supply fallback is FRAGILE (sign flips year-over-year under the
+     same live-bar that CERTIFIED the basis signal). Full spike:
+     `spec/dev-notes/onchain-netflow-spike-2026-06-08.md`.
+
+     SCOPE (honest, NOT overclaimed): this licenses "active ≤ passive in the
+     REACHABLE universe (price + positioning + on-chain), net of cost, on the
+     2023-24 large-cap perp sample" — NOT "active trading is impossible." Untested
+     lower-prior/infeasible channels remain (options/DVOL, macro, social) and are
+     OUT OF SCOPE for this program (a future FRESH program, not a continuation).
+     The +1.74 BH bar is partly a structural bull-leg artifact of the sample.
+
+     "SHIP PASSIVE" = promotion of already-built+anchored code + documentation,
+     NOT a build. Produces: (1) BH control marked the canonical production baseline
+     in product.md; (2) `spec/runbooks/passive-baseline.md` (baseline = BH on the
+     configured universe; rebalance cadence — monthly/equal-weight proposed default,
+     operator-confirmable; paper-mode run recipe; BH anchor scenarios). Requires NO
+     new strategy crate, NO new ScoreSource, NO new sweep arm, NO new anchor, NO
+     further domain hunt. The hard-stop BINDS.
+
+     ───────────────────────────────────────────────────────────────────────────
+     WIND-DOWN STATE — residual items to a clean close (no new active work):
+
+     A. OPERATOR RATIFICATION (one decision, two ratifications):
+        - Confirm the rebalance `(cadence, weighting)` for the passive baseline
+          (proposed: monthly / equal-weight) → record in the runbook changelog.
+        - Ratify the TWO un-approved presenter close-out decks (both `status: draft`
+          with empty operator-approval sections — byte-immutable, do NOT edit):
+            · `spec/perp-basis-mn-spread/presentations/perp-basis-mn-spread-2026-06-08.md`
+              (domain-close retrospective; VERDICT PASS)
+            · `spec/perp-basis-signal-robustness/presentations/perp-basis-signal-robustness-2026-06-06.md`
+              (long-only close-out; VERDICT PASS)
+          A program-level wind-down deck (active-vs-passive close, all three
+          channels) is OPTIONAL at operator discretion — the presenter authors it
+          only on greenlight; it is NOT required to close the program.
+
+     B. STATUS-FLIP HYGIENE (audit-2026-06-08 § Status drift, P1 — 4th consecutive
+        recurrence; orchestrator-owned, mechanical). FIVE feature.md files lag their
+        actual pipeline state and should advance:
+            · carry-strategy                  arch-done   → retired / closed
+            · horizon-retest-robustness       arch-done   → presenter-done
+            · time-series-momentum-robustness tester-done → presenter-done
+            · perp-basis-signal-robustness    arch-done   → presenter-done
+            · perp-basis-mn-spread            arch-done   → presenter-done
+        Trace rows + anchors (119/119) were maintained correctly each cycle; only
+        the feature.md mirror lagged. The audit recommends a pre-commit enforcement
+        hook (sibling to `adr_registry_check.py`) — that hook is a SEPARATE process-
+        tooling item, NOT part of the active-edge search.
+
+     C. FORECLOSED ACTIVE-STRATEGY LANES (closed by the terminal verdict; remove
+        from any "live lane" reading):
+            · `v3-xgboost-cheap-classifier` (status: draft, Queue pre-position) —
+              an OHLCV-domain regime classifier. The OHLCV channel is exhausted and
+              the hard-stop forecloses further OHLCV active bets under this program.
+              Mark FORECLOSED (re-openable only as a fresh program, not this hunt).
+            · All other v2.5/v3 predictive lanes already RETIRED (TCN, PatchTST,
+              GARCH-σ, regime-classifier) or shipped-partial (LLM-forecaster) — no
+              change; recorded here only so the wind-down is complete.
+
+     D. HARNESS DISPOSITION: keep the robustness harness, the anchored surfaces, the
+        fetchers, and the new read-only `crates/data/examples/stablecoin_diag.rs`
+        probe WARM BUT IDLE — reusable by any future fresh program, but no further
+        domain is pursued under THIS hunt. `perp-basis-mn-spread` (tester-done PASS)
+        and the rest of the program wave move to Recent on operator ratification.
+
+     The durable deliverable shipped is the ROBUSTNESS MACHINE + the auditable
+     negative across three orthogonal channels — a complete, honest product and a
+     SUCCESS of the "measured robustness, not asserted alpha" thesis. -->
+
 <!-- updated 2026-06-08 (analyst, on-chain-vs-conclude fork — DECISION-SUPPORT,
-     awaiting operator pick) — `perp-basis-mn-spread` MN v0.2.0 closed PASS /
+     awaiting operator pick) [SUPERSEDED 2026-06-08 by the TERMINAL VERDICT block
+     above — the on-chain hunt RAN and the hard-stop fired; retained as archaeology]
+     — `perp-basis-mn-spread` MN v0.2.0 closed PASS /
      FAMILY-UNIFORM-FRAGILE in all 3 arms (HEAD `8c2e6c4`), retiring the entire
      DERIVATIVES-POSITIONING domain with finality (k2: mn-basis ≡ mn-funding
      BYTE-IDENTICAL surfaces — basis IS funding on this universe; basis⊥funding
@@ -489,8 +579,11 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
      is tester-done PASS and moves to Recent on operator fork-resolution. -->
 
 <!-- updated 2026-06-08 (analyst, on-chain spike RAN — VERDICT: HARD-STOP →
-     CONCLUDE + ship passive) — the operator greenlit the bounded on-chain hunt
-     (the if-budget-tightens spike-first lane) and it has now RUN. Full spike:
+     CONCLUDE + ship passive) [SUPERSEDED 2026-06-08 by the TERMINAL VERDICT block
+     above, which folds this verdict into the program-conclusion + wind-down state;
+     retained as the detailed spike record] — the operator greenlit the bounded
+     on-chain hunt (the if-budget-tightens spike-first lane) and it has now RUN.
+     Full spike:
      `spec/dev-notes/onchain-netflow-spike-2026-06-08.md`. Both pre-registered
      branches landed on the pre-committed FUSE:
 
