@@ -2748,3 +2748,18 @@ anchors     = [
   "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy",
 ]
 state       = "tester-done"   # tester M-TEST 2026-06-08 VERDICT → PASS. Science gate: 119/119 anchors (107 pre-existing byte-identical + 12 new MN anchors #108-#119). 7 falsifiers GREEN (mn_baseline_equity_divergence, mn_baseline_divergence_red_on_revert, mn_dollar_neutral_approx, mn_dollar_neutral_red_on_long_only, mn_sign_assertion_short_leg, mn_two_run_identity, mn_residual_arm_diverges_from_basis_arm). run_path_k_short_zero_byte_identical_to_head GREEN — the FIRST run_path anchor-neutrality re-proof PASSES. Two-run body-SHA identity PASS (sha=aa2c5d13 on N=5 smoke). FAMILY-UNIFORM-FRAGILE on all 12 surfaces (3 arms × 2 fees × 2 regimes) vs the dollar-neutral ≈0 null. k2 fires: mn-basis and mn-funding produce byte-identical surfaces (same p50/p5/liquidations — basis IS the funding signal). Residual arm mn-basisperp: negative median Sharpe (2023 g0 p50=−0.064), 100% p95 MaxDD, 328 liquidations → basis carries no orthogonal alpha. Derivatives-positioning domain CLOSED with finality. Pre-registered FRAGILE outcome; correct science gate.
+
+#
+# ─── Cockpit / UI build-out ──────────────────────────────────────────────
+#
+
+[[req]]
+id          = "REQ-COCKPIT-BASELINE-001"
+title       = "Cockpit Baseline screen surfaces the shipped passive-BH result (2023+2024 equity curve + drawdown band + 6-card KPI strip + honest bounded-scope caption)"
+feature     = "cockpit-baseline-panel"
+product     = "spec/product.md"
+arch        = []   # architect: fill § Design + resolve D1 (loader live-vs-embed) + D2 (fixtures-smoke routing)
+crates      = []   # developer: pure-`ui` — new crates/ui/src/baseline/{state,loader}.rs + screens/baseline.rs; no new crate edge
+tests       = []   # developer/tester: panel-snapshot (both themes) + four-state (Loading/Ready/Empty/Error) + fixtures cockpit smoke + caption-no-overclaim string test
+anchors     = []   # tester: read-only UI feature, no new backtest anchors; verification floor is the panel-snapshot suite + the unchanged 119/119 regression gate
+state       = "proposed"   # analyst 2026-06-08 — carved from ui-designer build-out audit §3.1 candidate #1 (operator-greenlit). HANDOFF → architect.
