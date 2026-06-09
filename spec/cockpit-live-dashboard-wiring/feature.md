@@ -1,7 +1,7 @@
 ---
 slug: cockpit-live-dashboard-wiring
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-09
 version: 0.1.0
 ---
@@ -237,13 +237,268 @@ pattern, `crates/ui/src/screens/baseline.rs`).
 
 ## Design
 
-_Architect-owned. Resolve D1–D3 below against the actual crate edges
-(`ui` depends on `core` + `agent` for the live build; the `pnl` channel +
-`Message::PnlRefreshed` already exist). No new crate edge is expected —
-the panels consume state the UI already receives. Record decisions inline
-+ in the Changelog. Likely no ADR (additive, within the existing
-`cockpit_live` subscription precedent) — but confirm, since this touches
-the agent→UI live contract._
+_Architect-owned (2026-06-09). Decisions D1–D5 resolved below against the
+verified crate edges and code seams. **No ADR** — this is additive UI
+wiring fully within the established `cockpit_live` subscription +
+`PanelState` precedent (`cockpit-baseline-panel`); it adds no new crate
+edge, no new bus channel, no new `core` math, and mutates no anchor. The
+decisions live here, not in an ADR (proportionate to an S–M, ~100%-UI
+feature)._
+
+### Crate-edge reality (verified — AC7 satisfied by construction)
+
+- `crates/ui/Cargo.toml` `[dependencies]` already lists
+  `trading_core = { path = "../core" }` (for `PnlSnapshot`, `EquitySeries`,
+  `BacktestMetrics`, `Money<Usdt>`, `Timestamp`) **and** `agent` (pulled in
+  the `live` feature for the `cockpit_live` binary). **No new crate edge is
+  introduced.** The two render widgets (`widgets::equity_curve`,
+  `widgets::kpi_strip`) and the `pnl`/`positions` channels are all already
+  subscribed and consumed (`live.rs:215` `stream_pnl` →
+  `Message::PnlRefreshed` → `state.rs:1808`). This feature renders state the
+  UI already receives every bar.
+- New code follows the crate's existing per-module `#![allow(...)]`
+  pattern (`screens/live.rs:23`), introduces **zero new warnings**, and does
+  **not** attempt to clear the ~140 pre-existing `crates/ui` pedantic lints
+  (out of scope — matches the Baseline panel convention).
+
+### D1 — Equity-series location → **(a) UI-accumulate (CONFIRMED for v0.1.0)**
+
+The UI accumulates a **session-scoped** equity series from the existing
+per-bar `pnl` feed. Each `Message::PnlRefreshed(snap)` appends one
+`(snap.as_of, snap.total_equity)` point to a UI-side buffer on the cockpit
+model; the buffer is converted to an `EquitySeries` via
+`EquitySeries::from_points(...)` for the widget. This is pure-`ui`, adds no
+crate edge, no exec change, no new bus message — and reuses the exact
+`EquitySeries` type the existing `strategy_equity: HashMap<StrategyId,
+PanelState<EquitySeries>>` (`state.rs:1011`) already stores (a different,
+backtest-fetched source of the same shape).
+
+**Rejected for v0.1.0 (deferred): (b) durable agent/exec-side equity
+history.** A reconciler/engine-side ring buffer (or ledger-backed series)
+exposed via a new bus message/query would survive restart and be reusable
+by other surfaces — but it is a **larger exec-side change** (~60% exec /
+40% UI, re-scopes the feature to **L**) outside this UI-wiring feature's
+scope. **Deferred to a named follow-on: `live-equity-history-durable`
+(exec-side, unscheduled).** The session-scoped buffer here is the correct,
+honest behavior for a live monitor: it starts empty each `cockpit_live`
+boot and grows as the agent trades.
+
+### D2 — KPI-source mapping (which cards are live vs `—`)
+
+The KPI strip's six fixed `BacktestMetrics` cards are populated **honestly**.
+The strip is built from the **accumulated `EquitySeries`** (not the raw
+buffer) plus the present-flags:
+
+| Card | Field | v0.1.0 source | Live? |
+|------|-------|---------------|-------|
+| **Total return** | `total_return_pct` | `(latest_equity − first_equity) / first_equity` — the **session** return (first accumulated point = session open) | **LIVE** |
+| **Max DD** | `max_drawdown_pct` | `series.max_drawdown_pct` — free from `from_points`'s O(N) walk | **LIVE** |
+| **Trades** | `trades` | **`0`** (see Trades finding below) | absent (`0`) |
+| **Sharpe** | `sharpe` / `sharpe_present=false` | `—` — no live Sharpe math in `core` (verified grep); annualization methodology is out of scope for a monitor | `—` |
+| **CAGR** | `cagr_pct` / `cagr_present=false` | `—` — no CAGR math in `core`; a single session is not a multi-year base | `—` |
+| **Win rate** | `win_rate_pct` / `win_rate_present=false` | `—` — no closed-position win/loss tally wired | `—` |
+
+So `cagr_present = sharpe_present = win_rate_present = false`;
+`total_return_pct` and `max_drawdown_pct` carry real session numbers;
+`trades = 0`. **Do NOT fabricate Sharpe/CAGR/Win-rate** — they render the
+honest `—` (matching the Lab strip's existing `—` Sharpe and the Baseline
+panel's same `core`-has-no-Sharpe finding).
+
+**Trades source — FINDING (analyst evidence refined).** The analyst's R2/D2
+floated "live count of fills observed this session (the UI already sees
+`Channel::Fills`)". **Verified: the UI maintains NO fill *counter*.**
+`Message::FillReceived` (`state.rs:1782`) only `push_front`s into the
+`tape: PanelState<VecDeque<FillView>>`, which is **capped at `TAPE_MAX_ROWS`
+and evicts oldest** — so `tape.len()` is a bounded window, **not** a session
+total. There is no `fill_count` field anywhere in the model (verified grep).
+**Decision: Trades renders `0` in v0.1.0** (absent). Wiring a true
+session fill-counter (a `u64` on the model incremented in the
+`FillReceived` arm, reset on boot) is a small but distinct add — **deferred
+to the same follow-on** rather than bundled, keeping this feature the
+clean two-panel swap. *(If the operator wants it now it is ~10 lines + one
+test; flagged, not assumed.)*
+
+> **Critical edge — the `is_all_absent` bootstrap trap (must-honor).**
+> `kpi_strip::is_all_absent` (`widgets/kpi_strip.rs:79`) renders the
+> *unavailable* (six-dash) strip when **`total_return_pct == 0 AND
+> max_drawdown_pct == 0 AND trades == 0`** and the three present-flags are
+> false. At the **very first** `PnlRefreshed` (a single accumulated point):
+> session-return `= (e − e)/e = 0`, max-DD `= 0` (one point, no drawdown),
+> trades `= 0` → the live `BacktestMetrics` is **byte-identical to the
+> all-absent sentinel**, so the strip would wrongly show all dashes instead
+> of "Total return 0.00% / Max DD 0.00%". **Resolution: the KPI strip stays
+> `PanelState::Loading` until the buffer holds ≥ 2 points** (i.e. at least
+> one real session delta exists); on the ≥2-point transition it becomes
+> `Ready(metrics)`. The **equity curve** has no such constraint — it renders
+> `Ready` from ≥ 1 point (a single dot is a valid 1-point curve). This
+> 1-point-curve / 2-point-strip split is intentional and is asserted by
+> AC2.
+
+### D3 — Update cadence / throttle → **naive append-and-rerender (no throttle)**
+
+The `pnl` feed is per-bar (reconciler `interval_ms`; minute bars in the
+paper config → ~1/min steady state). This is low-frequency; a naive
+"append the point + rebuild the derived state + rerender" on each
+`PnlRefreshed` is correct and cheap. **No throttle / coalescing in
+v0.1.0.** The buffer bound (D-buffer) caps the per-append `from_points`
+cost at O(cap). *Forward note:* if a future config emits sub-second `pnl`,
+revisit with a coalescing throttle (e.g. rebuild at most every N ms) — but
+that is not this feature.
+
+### D4 — Drawdown band on the Live screen → **curve-only (no band)**
+
+The current Live layout (`screens/live.rs`) has **no band slot** — it
+stacks `health_strip → equity → kpi_row → bottom_row`. The Baseline screen
+pairs the curve with a `drawdown_band`, but adding a band row to Live is a
+**layout change** beyond this wiring feature. **Decision: curve-only for
+v0.1.0**, preserving the existing Live layout. (The drawdown data is free
+from the accumulated series, so a band is a cheap future add if the
+operator wants one — deferred, not assumed.)
+
+### D5 — Where `BacktestMetrics` is derived → **on-append (cached on the model)**
+
+Derive the `BacktestMetrics` (and the `EquitySeries`) **on each append**,
+in the `PnlRefreshed` arm, and store the result as a `PanelState` on the
+model — the view reads the cached state (the `strategy_equity` /
+`baseline_screen_state.active_metrics()` pattern: the screen `view` reads a
+model-stored `PanelState`, it does not compute). Rationale: (1) consistent
+with how every other panel on the Live screen reads pre-derived model
+state at view time; (2) the iced `view` runs every frame (incl. on
+unrelated messages / hover), so view-time derivation would rebuild the
+series on frames where nothing changed — on-append rebuilds **only when a
+new bar arrives** (≈ 1/min), which is strictly cheaper. The widget
+borrows the model-stored `PanelState<EquitySeries>` /
+`PanelState<BacktestMetrics>` directly (the lifetime pattern
+`kpi_strip::view(&self.model...)` already uses).
+
+### The equity buffer (the one piece of real design)
+
+**Location.** Two sibling fields on the cockpit model (`state.rs`,
+alongside `pnl`, `positions`, `strategy_equity`):
+
+```text
+/// cockpit-live-dashboard-wiring — session-scoped live equity buffer.
+/// Raw (Timestamp, Money<Usdt>) points appended one-per-PnlRefreshed,
+/// bounded ring (LIVE_EQUITY_BUFFER_CAP). Empty on each cockpit_live boot
+/// (session-scoped — correct for a live monitor; durable history deferred,
+/// D1 follow-on). NOT serialized.
+live_equity_buffer: VecDeque<(Timestamp, Money<Usdt>)>,
+
+/// Derived-on-append (D5) render state for the Live equity curve.
+/// Loading until the first point; Ready(series) from ≥1 point;
+/// Error(msg) on PnlError; Empty only if the channel closes with 0 points.
+live_equity_curve: PanelState<EquitySeries>,
+
+/// Derived-on-append (D5) render state for the Live KPI strip.
+/// Loading until ≥2 points (is_all_absent trap, D2); Ready(metrics) after;
+/// Error(msg) on PnlError; Empty mirrors the curve.
+live_kpi: PanelState<BacktestMetrics>,
+```
+
+**Append (in the `Message::PnlRefreshed(snap)` arm — extend the existing
+arm at `state.rs:1808`, do not add a message).** The existing line
+`model.pnl = PanelState::Ready(snap)` stays. Then:
+
+1. **Monotone guard (must-honor — `from_points` rejects non-monotone
+   timestamps, `equity_series.rs:83`).** Push `(snap.as_of,
+   snap.total_equity)` **only if** the buffer is empty OR `snap.as_of >=
+   buffer.back().ts`. If `snap.as_of < back.ts` (a late/out-of-order
+   snapshot), **drop the point** (do not append, do not error) — a dropped
+   late point is invisible on a monitor and strictly preferable to an
+   `EquitySeries` build error. (Equal timestamps are allowed by
+   `from_points`'s `<` check, so a duplicate-`as_of` bar appends fine.)
+2. **Bound (ring).** After push, while `buffer.len() >
+   LIVE_EQUITY_BUFFER_CAP`, `pop_front()` (drop oldest). **Cap =
+   `LIVE_EQUITY_BUFFER_CAP = 2_880`** — a new `theme::layout` const.
+   Rationale: 2_880 minute-bars = **48 h** of continuous 1-min session at
+   full resolution before any eviction; a session longer than that quietly
+   slides a 48 h window. The chart consumer already `downsample`s to
+   `SPARKLINE_POINT_CAP = 120` for rendering, so the buffer cap governs
+   *retention/memory* (2_880 × ~48 B ≈ 140 KB worst-case — negligible),
+   not pixels. **This is a bounded ring by design — not unbounded.** (A
+   2_880-cap + 120-render-downsample mirrors the established
+   `downsample(SPARKLINE_POINT_CAP)` path the `strategy_equity` curve uses
+   at `cockpit_live.rs:1464`.)
+3. **Rebuild derived state (D5).**
+   - `live_equity_curve`: `EquitySeries::from_points(buffer.iter().cloned()
+     .collect())` → on `Ok(series)` set `Ready(series)`; on `Err` (only
+     possible if the buffer is unexpectedly empty — guarded) leave/clear to
+     `Loading`. Build from ≥1 point.
+   - `live_kpi`: if `buffer.len() < 2` → `Loading` (bootstrap trap, D2);
+     else build `BacktestMetrics { total_return_pct: session_return,
+     max_drawdown_pct: series.max_drawdown_pct, trades: 0,
+     cagr_present:false, sharpe_present:false, win_rate_present:false,
+     ..zeros }` and set `Ready(metrics)`. `session_return =
+     (latest.amount() − first.amount()) / first.amount()` using
+     `rust_decimal::Decimal` (guard `first != 0`; the agent's starting
+     equity is non-zero, but divide-guard anyway → `Decimal::ZERO` if
+     first is zero).
+
+**Session-scoped reset.** The buffer is **not serialized** and is
+initialized empty in `Cockpit::new()` (`state.rs:1160`) and the `Debug`/
+clone constructors — so it starts empty every `cockpit_live` boot. There is
+no explicit "reset" event; a fresh process = a fresh empty buffer = the
+correct live-monitor session-open state.
+
+### The four `PanelState` transitions (R3 — both panels)
+
+| State | Fires when | Curve | Strip |
+|-------|-----------|-------|-------|
+| **Loading** | 0 points (fresh boot, pre-first-bar) **or** fixtures-mode `cockpit` (no `live` feature → no agent → no feed → buffer never fills). Strip also Loading at **1 point** (bootstrap trap, D2). | skeleton (`VIEWER_NO_EQUITY_DATA`) | unavailable strip |
+| **Ready** | Curve: ≥ 1 point. Strip: ≥ 2 points. Streaming — grows per bar. | growing curve | live cards (Total-return/Max-DD live; Sharpe/CAGR/Win `—`; Trades 0) |
+| **Empty** | The `pnl` channel **closes** (`RecvError::Closed` → `PnlError`) with **0** points accumulated — i.e. agent went away before any bar. *(Distinct from Loading: Loading = "no feed yet / waiting"; Empty = "feed ended, nothing seen".)* In practice the closed-channel path routes through `PnlError`; treat a closed-with-zero-points as `Empty` if the impl distinguishes, else `Error` is acceptable (both render a non-blank body). | empty body | empty body |
+| **Error** | `Message::PnlError(e)` (`state.rs:1818`) — extend that arm to also set `live_equity_curve = Error(e.clone())` and `live_kpi = Error(e)`. No panic. | muted error body | muted error body |
+
+**Fixtures-mode determinism (R7 / AC3 — smoke-safe).** `cockpit --features
+fixtures` has no `live` feature, no agent, no `pnl` feed → `PnlRefreshed`
+**never fires** → the buffer stays empty → both panels stay **`Loading`**
+and render their built-in skeleton bodies. The Live screen is the default
+route (`cockpit_live.rs:583`; smoke boots Home→Live and paints frame 1),
+so the smoke (`headless_emulator_smoke.rs`) hits exactly the **Loading**
+state with no feed — deterministic, no panic, no feed required to render.
+
+### `screens/live.rs` wiring (the two-line swap)
+
+Replace the two hard-wired refs:
+
+- `live.rs:58` `let equity_state: &PanelState<EquitySeries> =
+  &PanelState::Loading;` → `let equity_state = &model.live_equity_curve;`
+- `live.rs:66` `let kpi_state: &PanelState<BacktestMetrics> =
+  &PanelState::Loading;` → `let kpi_state = &model.live_kpi;`
+
+Everything downstream (the `equity_curve::view(equity_state, mode).map(...)`
+and `kpi_strip::view(kpi_state, mode).map(...)` bridges) is **unchanged** —
+the widgets already accept `&PanelState<T>` and the never-fired
+`.map(|_| Message::ChartMarkerHoverEnded)` adapter still applies (the live
+curve/strip emit no interactions, same as Baseline). Update the module
+header (lines 8-13, 55-57, 64-66) to drop the "no live feed yet / Phase F"
+annotations and reference this feature. The LLM-spend tile (line 69)
+remains a separate Phase-F placeholder — **untouched**.
+
+### Strings (R6)
+
+Any new copy lives in `crate::strings` under the `LIVE_*` block (the
+existing `LIVE_HEADLINE`/`LIVE_SYSTEM_HEALTH_LABEL`/`LIVE_LLM_*` family) and
+is registered in the `strings.rs` test-table. **No new theme token** — the
+reused widgets are already token-correct, and the strip/curve render in
+both `--theme dark` and `--theme light` for free. If a "session" caption is
+added under the Total-return card (R5/AC5 — optional), it MUST convey
+session-to-date scope (e.g. a `LIVE_SESSION_RETURN_CAPTION` like
+`"Session to date"`) and MUST NOT imply an annualized/characterized result;
+absent cards render `—`, never a fabricated number. **Recommendation:** add
+the short "Session to date" caption so the Total-return card is
+unambiguous (cheap honesty; satisfies R5/AC5 affirmatively).
+
+### Summary table — every constant/decision introduced
+
+| New thing | Where | Value / rule |
+|-----------|-------|--------------|
+| `LIVE_EQUITY_BUFFER_CAP` | `theme::layout` | `2_880` (48 h of 1-min bars; ring) |
+| `live_equity_buffer` | `state::Cockpit` | `VecDeque<(Timestamp, Money<Usdt>)>`, empty on boot, not serialized |
+| `live_equity_curve` | `state::Cockpit` | `PanelState<EquitySeries>`, derived on-append |
+| `live_kpi` | `state::Cockpit` | `PanelState<BacktestMetrics>`, derived on-append, Loading until ≥2 pts |
+| `LIVE_SESSION_RETURN_CAPTION` (optional) | `strings` | `"Session to date"` — R5/AC5 honest caption |
+| (no new) crate edge / bus channel / message / widget / theme token / `core` math | — | AC7 |
 
 ## Data contract
 
@@ -480,3 +735,27 @@ _tester links to reports here._
   under D1=(b)** — recommend (a) and defer durable history to a future exec
   feature. Opened REQ-COCKPIT-LIVE-DASHBOARD-001 (proposed). HANDOFF →
   architect.
+- 2026-06-09 (architect): **Design resolved, no ADR** (additive UI wiring
+  within the `cockpit_live` subscription + `PanelState` precedent). **D1=(a)
+  UI-accumulate** (session-scoped buffer; durable agent-side history
+  deferred to follow-on `live-equity-history-durable`). **D2:** Max-DD +
+  session Total-return LIVE from the accumulated `EquitySeries`;
+  Sharpe/CAGR/Win-rate `—` (no `core` math, verified); **Trades = `0`** —
+  *finding: the UI keeps NO fill counter* (`FillReceived` only pushes the
+  capped `tape` VecDeque, `state.rs:1782`; `tape.len()` is a bounded window,
+  not a session total), so a true counter is deferred. **D3:** no throttle
+  (per-bar feed). **D4:** curve-only (Live layout has no band slot). **D5:**
+  derive on-append, cache `PanelState` on the model. **Equity buffer:**
+  `live_equity_buffer: VecDeque<(Timestamp, Money<Usdt>)>` on the model,
+  appended `(as_of, total_equity)` per `PnlRefreshed` with a **monotone
+  guard** (`from_points` rejects non-monotone ts, `equity_series.rs:83` —
+  drop late points) and a **bounded ring** `LIVE_EQUITY_BUFFER_CAP = 2_880`
+  (48 h of 1-min bars); empty on each boot (session-scoped, not
+  serialized). **Critical edge flagged:** `kpi_strip::is_all_absent`
+  (`kpi_strip.rs:79`) masks a 1-point strip (all-zero == sentinel) →
+  **strip stays Loading until ≥2 points**; curve renders from ≥1.
+  Verified **no new crate edge** (`ui→core` + `ui→agent` already exist).
+  `screens/live.rs:58,66` swap the two `&PanelState::Loading` for
+  `&model.live_equity_curve` / `&model.live_kpi`. tasks.md emitted (T1–T9,
+  ui-designer-solo). trace REQ-COCKPIT-LIVE-DASHBOARD-001 proposed →
+  arch-done. HANDOFF → ui-designer.
