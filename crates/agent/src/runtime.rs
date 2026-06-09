@@ -472,9 +472,14 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         crate::config::Mode::Research => {
             info!("research mode — replay feed (no live orders)");
             let parquet_root = &config.data.historical.parquet_root;
+            let replay_fast = config.data.historical.replay_fast;
             let feed: Arc<dyn MarketDataSource> =
-                Arc::new(data::ReplayFeed::new(parquet_root, false)); // wallclock pace
-            info!(parquet_root = %parquet_root, "replay feed initialized");
+                Arc::new(data::ReplayFeed::new(parquet_root, replay_fast));
+            info!(
+                parquet_root = %parquet_root,
+                replay_fast,
+                "replay feed initialized"
+            );
             spawn_feed_taps(
                 feed.as_ref(),
                 Arc::clone(&bus),
@@ -484,7 +489,37 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 &cancel,
             )
             .await;
-            info!("agent subsystems initialized — entering idle (replay loop in backtest binary)");
+
+            // ── Research-mode strategy + paper-engine trading loop ────────────
+            // Now that bars flow onto the bus via `bars_tap`, we subscribe to
+            // `bus.bars()` and run the strategy + paper engine for each bar.
+            // Without this loop, fills/positions/pnl are never published and
+            // the Live dashboard fills tape + positions panel hang forever on
+            // "Connecting to the fill stream…" / "Loading positions from the
+            // ledger…".
+            //
+            // Design notes:
+            // - We reuse the same `registry` that `run_strategy_watcher` already
+            //   holds — it carries `SmaCrossover` seeded from the config.
+            // - Fill/position publication goes through `PaperEnginePublisher` →
+            //   `EventBus::publish_fill` + `EventBus::publish_position` so the
+            //   existing iced subscription (`ui::live::stream_fills`) picks them up.
+            // - PnL snapshots are emitted every bar via `ReconcilerTask` → bus.
+            // - Determinism: the paper engine seed is fixed (`0x00C0_FFEE`).
+            //   Research mode is single-threaded from the perspective of bar
+            //   processing (broadcast::Receiver is polled in one task).
+            spawn_research_trading_loop(
+                Arc::clone(&feed),
+                Arc::clone(&bus),
+                Arc::clone(&registry),
+                &config.backtest,
+                &config.risk,
+                feed_symbol.clone(),
+                feed_tf,
+                &mut set,
+                &cancel,
+            );
+            info!("agent subsystems initialized — research trading loop + replay feed running");
         }
         crate::config::Mode::Paper => {
             // ── Per-venue ingest topology (T1408) ────────────────────────────
@@ -782,6 +817,265 @@ pub(crate) async fn spawn_feed_taps_with_observer<S: MarketDataSource + ?Sized>(
         }
         Err(e) => warn!(error = %e, "ticks_tap subscribe failed (skipped)"),
     }
+}
+
+/// Spawn the research-mode strategy + paper-engine trading loop.
+///
+/// Subscribes **directly to the feed** (not through the broadcast bus) via
+/// `feed.subscribe_bars(...)`, then runs each bar through the strategy
+/// registry, converts signals to orders using the risk sizer, executes them
+/// through the paper matching engine, and publishes fills + positions + PnL
+/// snapshots to the bus so the Live dashboard panels have data to render.
+///
+/// ## Why direct feed subscription (not bus.bars())
+///
+/// In fast-replay mode (`replay_fast = true`), `bars_tap` publishes all
+/// ~500 k bars in a single tokio turn before any other task gets scheduled.
+/// The broadcast channel capacity (`bars_capacity = 1024`) is far smaller
+/// than the bar count, so `bus.bars()` receivers that subscribe after
+/// `bars_tap` has started will lag and miss almost every bar.  Subscribing
+/// directly to the feed's `BoxStream` avoids the broadcast channel entirely
+/// — the trading loop and `bars_tap` both call `subscribe_bars` independently
+/// (they receive separate, independent streams) and each processes every bar.
+///
+/// ## Why this task exists
+///
+/// Before this fix, research mode only published raw bars to the bus
+/// but never executed strategies or generated fills. The fills tape and
+/// positions panels in the Live view therefore hung forever on their
+/// "Connecting…" / "Loading positions…" placeholders. The pattern is
+/// taken directly from `backtest::scenarios::sma_composed_run::run`.
+///
+/// ## Determinism
+///
+/// - Paper engine seeded with `0x00C0_FFEE` (same as `PaperEngine::with_default_seed`).
+/// - No `SystemTime::now()` in the trade-decision path; `bar.close_ts` is
+///   used as the fill timestamp (same as `backtest::paper::PaperEngine::step`).
+/// - This task is NOT reached by backtest replays
+///   (`crates/backtest/` never calls `runtime::run`), so anchor reports
+///   are unaffected (determinism gate holds).
+///
+/// ## Risk sizing
+///
+/// Uses `risk::size_and_validate` with the agent config's `fixed_fraction`
+/// and `per_symbol_exposure_cap` — same as the Lab backtest runner.
+///
+/// The task exits when the `cancel` token fires OR when the bar stream ends
+/// (replay completed / feed stopped).
+fn spawn_research_trading_loop(
+    feed: Arc<dyn MarketDataSource>,
+    bus: Arc<EventBus>,
+    registry: Arc<strategy::StrategyRegistry>,
+    backtest_cfg: &crate::config::BacktestConfig,
+    risk_cfg: &crate::config::RiskConfig,
+    feed_symbol: Symbol,
+    feed_tf: Timeframe,
+    set: &mut JoinSet<()>,
+    cancel: &CancellationToken,
+) {
+    use backtest::paper::{FillPriceMode, MatchConfig, PaperEngine};
+    use backtest::MatchingEngine as _;
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    use trading_core::{
+        Money, Order, OrderKind, PnlSnapshot, Position, Quantity, RiskLimits, Side, SignalKind,
+        TimeInForce, Timestamp, Usdt,
+    };
+
+    // Build the paper engine config from the agent config.
+    let match_config = MatchConfig {
+        slippage_bps: backtest_cfg.slippage_bps,
+        taker_fee_bps: backtest_cfg.taker_fee_bps,
+        maker_fee_bps: backtest_cfg.maker_fee_bps,
+        fill_price_mode: FillPriceMode::BarClose,
+    };
+
+    // Build the risk sizer + limits from the agent config.
+    let sizer = risk::FixedFractionSizer::new(
+        Decimal::try_from(risk_cfg.sizing.fixed_fraction).unwrap_or(dec!(0.10)),
+    );
+    let risk_limits = RiskLimits {
+        per_symbol_exposure_cap: Decimal::try_from(risk_cfg.per_symbol_exposure_cap)
+            .unwrap_or(dec!(0.40)),
+        price_sanity_band: dec!(0.10),   // 10% band — same default as RiskLimits::default()
+        portfolio_exposure_cap: None,    // no portfolio cap in research mode
+    };
+
+    // Initial capital from backtest config.
+    let initial_capital =
+        Decimal::try_from(backtest_cfg.initial_capital_usdt).unwrap_or(dec!(100_000));
+
+    // Build the publisher that routes fills → bus.fills() + bus.positions().
+    let publisher = paper_engine_publisher(Arc::clone(&bus));
+
+    // Clone bus for PnL publishing inside the async task.
+    let pnl_bus = Arc::clone(&bus);
+
+    let cancel_loop = cancel.child_token();
+    set.spawn(async move {
+        info!("research_trading_loop started");
+
+        // Subscribe directly to the feed stream (bypasses the broadcast bus so
+        // fast-replay bars are never dropped due to channel lag).
+        let mut bar_stream = match feed.subscribe_bars(feed_symbol.clone(), feed_tf).await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(error = %e, "research_trading_loop: subscribe_bars failed — no trading");
+                return;
+            }
+        };
+
+        let mut engine = PaperEngine::new(match_config, 0x00C0_FFEE);
+        let mut position = Position::empty(feed_symbol.clone());
+        let mut cash = initial_capital;
+        let mut realized_pnl = Decimal::ZERO;
+        let mut cost_basis = Decimal::ZERO;
+        let mut fill_count = 0usize;
+
+        loop {
+            tokio::select! {
+                () = cancel_loop.cancelled() => break,
+                next = bar_stream.next() => {
+                    let bar = match next {
+                        Some(Ok(b)) => b,
+                        Some(Err(e)) => {
+                            warn!(error = %e, "research_trading_loop bar stream error (continuing)");
+                            continue;
+                        }
+                        None => {
+                            debug!("research_trading_loop bar stream ended — replay done");
+                            break;
+                        }
+                    };
+
+                    let mark = bar.close.get();
+                    position.last_mark = bar.close;
+
+                    // Equity at start of bar (for risk sizing).
+                    let equity = cash + position.base_qty * mark;
+
+                    let signals = registry.on_bar(&bar);
+                    let mut orders: Vec<Order> = Vec::new();
+
+                    for sig in &signals {
+                        let desired_side: Option<Side> = match sig.kind {
+                            SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
+                                Some(Side::Buy)
+                            }
+                            SignalKind::Sell if position.base_qty > Decimal::ZERO => {
+                                Some(Side::Sell)
+                            }
+                            _ => None,
+                        };
+
+                        if let Some(side) = desired_side {
+                            let order_opt = match side {
+                                Side::Buy => risk::size_and_validate(
+                                    &sizer,
+                                    sig.strategy_id.clone(),
+                                    sig.symbol.clone(),
+                                    side,
+                                    Money::<Usdt>::from_decimal(equity),
+                                    bar.close,
+                                    &position,
+                                    &risk_limits,
+                                )
+                                .ok(),
+                                Side::Sell => Quantity::new(position.base_qty)
+                                    .ok()
+                                    .filter(|q| q.get() > Decimal::ZERO)
+                                    .and_then(|q| {
+                                        Order::new(
+                                            sig.strategy_id.clone(),
+                                            sig.symbol.clone(),
+                                            Side::Sell,
+                                            q,
+                                            OrderKind::Market,
+                                            TimeInForce::Ioc,
+                                            &position,
+                                            bar.close,
+                                            &risk_limits,
+                                            equity,
+                                        )
+                                        .ok()
+                                    }),
+                            };
+                            if let Some(ord) = order_opt {
+                                orders.push(ord);
+                            }
+                        }
+                    }
+
+                    if !orders.is_empty() {
+                        if let Ok(fills) = engine.step(&bar, orders).await {
+                            for fill in &fills {
+                                // Update cash + position (mirror of sma_composed_run.rs).
+                                match fill.side {
+                                    Side::Buy => {
+                                        let cost = fill.qty.get() * fill.price.get();
+                                        cash -= cost + fill.fee.amount();
+                                        position.base_qty += fill.qty.get();
+                                        cost_basis += cost;
+                                    }
+                                    Side::Sell => {
+                                        let proceeds = fill.qty.get() * fill.price.get();
+                                        cash += proceeds - fill.fee.amount();
+                                        let closed =
+                                            fill.qty.get().min(position.base_qty);
+                                        position.base_qty =
+                                            (position.base_qty - closed).max(Decimal::ZERO);
+                                        // Proportional cost-basis reduction.
+                                        let avg_cost = if position.base_qty == Decimal::ZERO {
+                                            cost_basis
+                                        } else {
+                                            cost_basis
+                                                * (closed / (position.base_qty + closed))
+                                        };
+                                        realized_pnl +=
+                                            proceeds - avg_cost - fill.fee.amount();
+                                        cost_basis =
+                                            (cost_basis - avg_cost).max(Decimal::ZERO);
+                                    }
+                                }
+                                // Publish fill + position → Live tape / positions panels.
+                                publisher.on_fill(fill, &position);
+                                fill_count += 1;
+                                if fill_count <= 5 || fill_count % 100 == 0 {
+                                    info!(
+                                        fill_count,
+                                        side = ?fill.side,
+                                        price = %fill.price.get(),
+                                        qty = %fill.qty.get(),
+                                        "research_trading_loop fill"
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    // Publish PnL snapshot every bar → Live equity/pnl chart.
+                    let unrealized = position.base_qty * mark - cost_basis;
+                    let total_equity = cash + position.base_qty * mark;
+                    let snap = PnlSnapshot {
+                        cash: Money::from_decimal(cash),
+                        unrealized: Money::from_decimal(unrealized),
+                        realized: Money::from_decimal(realized_pnl),
+                        total_equity: Money::from_decimal(total_equity),
+                        daily_return: Money::from_decimal(Decimal::ZERO),
+                        as_of: Timestamp::now(),
+                    };
+                    pnl_bus.publish_pnl(snap);
+                }
+            }
+        }
+
+        let total_equity = cash + position.base_qty * position.last_mark.get();
+        info!(
+            total_equity = %total_equity,
+            fills = fill_count,
+            "research_trading_loop stopped — replay complete"
+        );
+    });
 }
 
 /// Spawn the mode-broadcast forwarder task (T905 — live-cockpit-unified).

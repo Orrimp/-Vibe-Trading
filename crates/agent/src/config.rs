@@ -96,13 +96,24 @@ pub struct DataSourcesConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataHistoricalConfig {
+    /// Root of the Binance data tree.  The `ReplayFeed` resolves per-symbol
+    /// subdirectories as `<parquet_root>/<symbol>/<year>/<month>.parquet`.
+    /// Correct value: `"./data/binance"` (not `"./data/binance/BTCUSDT"`).
     pub parquet_root: String,
+    /// When `true` (default), the `ReplayFeed` emits bars as fast as possible
+    /// — suitable for the cockpit demo and unit tests.  When `false`, bars are
+    /// emitted at wallclock pace (1 real second per 1-second bar interval),
+    /// which means 1m bars arrive one per real minute.  Only set to `false`
+    /// when you explicitly want real-time paced replay.
+    #[serde(default = "default_true")]
+    pub replay_fast: bool,
 }
 
 impl Default for DataHistoricalConfig {
     fn default() -> Self {
         Self {
-            parquet_root: "./data/binance/BTCUSDT".into(),
+            parquet_root: "./data/binance".into(),
+            replay_fast: true,
         }
     }
 }
@@ -788,6 +799,54 @@ slow_len = 50
         assert_eq!(cfg.backtest.initial_capital_usdt, 100_000.0);
         assert_eq!(cfg.audit.ledger_db_path, "./data/audit/ledger.db");
         assert_eq!(cfg.bus.bars_capacity, 1024);
+    }
+
+    /// Verify the `DataHistoricalConfig` default `parquet_root` is the
+    /// *root* of the Binance data tree (`./data/binance`), NOT the
+    /// symbol-level subdirectory.  `ReplayFeed` joins `<symbol>` onto
+    /// this root, so `./data/binance/BTCUSDT/…` requires root =
+    /// `./data/binance`.  Regression guard against re-introducing the
+    /// `./data/binance/BTCUSDT` mis-default.
+    #[test]
+    fn historical_config_default_parquet_root_is_binance_root() {
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse");
+        assert_eq!(
+            cfg.data.historical.parquet_root, "./data/binance",
+            "parquet_root default must be the Binance root (not a symbol subdirectory); \
+             ReplayFeed appends the symbol name itself"
+        );
+    }
+
+    /// Verify `replay_fast` defaults to `true` (fast replay for cockpit
+    /// demo) and round-trips correctly for `false`.
+    #[test]
+    fn historical_config_replay_fast_defaults_true() {
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse");
+        assert!(
+            cfg.data.historical.replay_fast,
+            "replay_fast must default to true so the cockpit demo reaches \
+             sma_crossover warmup in seconds, not 50+ real minutes"
+        );
+    }
+
+    #[test]
+    fn historical_config_replay_fast_explicit_false_round_trips() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[data.historical]
+parquet_root = "./data/binance"
+replay_fast  = false
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse explicit replay_fast=false");
+        assert!(
+            !cfg.data.historical.replay_fast,
+            "explicit replay_fast = false must round-trip through serde"
+        );
     }
 
     #[test]

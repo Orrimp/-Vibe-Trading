@@ -5,7 +5,13 @@ ws_url   = "wss://stream.binance.com:9443/ws"
 rest_url = "https://api.binance.com"
 
 [data.historical]
-parquet_root = "./data/binance/BTCUSDT"
+# parquet_root is the root of the Binance data tree: the ReplayFeed resolves
+# per-symbol subdirectories as <parquet_root>/<symbol>/<year>/<month>.parquet.
+# e.g. ./data/binance/BTCUSDT/2023/01.parquet lives under ./data/binance.
+parquet_root = "./data/binance"
+# replay_fast = true emits bars as-fast-as-possible (no wallclock sleep).
+# Set to false only if you need real-time paced replay (1m bar = 1 real minute).
+replay_fast  = true
 
 [data]
 clock_skew_warn_ms = 2000
