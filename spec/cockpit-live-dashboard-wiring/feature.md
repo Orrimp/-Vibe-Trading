@@ -1,7 +1,7 @@
 ---
 slug: cockpit-live-dashboard-wiring
-status: ui-done
-owner: ui-designer
+status: tester-done
+owner: tester
 updated: 2026-06-09
 version: 0.1.0
 ---

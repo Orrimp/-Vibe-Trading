@@ -1,7 +1,7 @@
 ---
 slug: cockpit-live-dashboard-wiring
-status: ui-done
-owner: ui-designer
+status: tester-done
+owner: tester
 updated: 2026-06-09
 ---
 
@@ -201,6 +201,8 @@ scope).
   (floor/typical/operator) regenerated — diff is ONLY the new "Session to
   date" caption + the wired panels (still Loading in that feedless fixture);
   48 other visual snapshots unchanged.
+
+- [x] **M-TEST — tester gate** (tester, 2026-06-09) — VERDICT PASS. `cargo test -p ui` 435 unit + all integration suites GREEN (one pre-existing `lab_run_engine::h3_…` network-dependent failure confirmed pre-existing on parent commit, whitelisted). Static: all 3 builds (default / `--features live` / fixtures) clean; fmt pre-existing bench diff in `chart_build_probe.rs` (not a feature file — carries over from commit 07f71be); zero new warnings from feature's changed files (state.rs/live.rs/theme.rs/strings.rs). 7 wiring tests all GREEN; 1-point trap proven; visual gate 51/51 (only `live__recent_activity_with_chevron` triple changed). `verify-anchors` 119/119. `spec-lint` exit 0 (2 missing-frontmatter self-corrected to `tester-done`). `git diff crates/` empty. Both open questions ratified (Trades = 0 honest; Empty-on-channel-close → Error, non-blank, no panic). Report: `spec/cockpit-live-dashboard-wiring/reports/test-2026-06-09-cockpit-live-dashboard-wiring.md`.
 
 ## Notes
 

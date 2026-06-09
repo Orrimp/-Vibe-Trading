@@ -1,12 +1,20 @@
 ---
 slug: cockpit-reports-viewer
-status: proposed
+status: candidate
 owner: analyst
-updated: 2026-06-08
+updated: 2026-06-09
 version: 0.1.0
 ---
 
 # Cockpit Reports viewer — browse + render committed backtest reports in-cockpit
+
+> **Status: candidate (deferred 2026-06-09).** Parked at the brief stage. The
+> analyst viability finding: no `backtest-*.md` in the corpus has companion
+> equity-curve data, and the anchored reports cannot be re-emitted to add it, so
+> the equity curves would render permanently empty for a now-concluded research
+> program. The operator chose the chart-hover-polish + Live-dashboard tracks
+> instead. Revisit IF committed reports ever ship equity companions; a `tasks.md`
+> lands only on that greenlight.
 
 ## Why
 
