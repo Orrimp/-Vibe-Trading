@@ -1,7 +1,7 @@
 ---
 slug: cockpit-live-dashboard-wiring
-status: arch-done
-owner: architect
+status: ui-done
+owner: ui-designer
 updated: 2026-06-09
 version: 0.1.0
 ---
@@ -707,7 +707,111 @@ _developer ‖ ui-designer fill this._
 
 ## UI
 
-_ui-designer fills this._
+_ui-designer (2026-06-09). Implemented solo per tasks T1–T9 (~100% UI,
+D1=(a)). Files-only; orchestrator commits. All tests green; both default and
+`--features live` builds clean; anchors 119/119._
+
+### Wireframe (the Live screen, wired)
+
+```text
+┌─ Live ─────────────────────────────────────────────────────────────────────┐
+│ System health   [Feed latency OK 120ms]            Server — UTC  binance …  │
+│                                                                              │
+│ ┌─ equity curve (model.live_equity_curve) ─────────────────────────────────┐│
+│ │  Loading → "No equity data"  ·  Ready → growing live line (≥1 pt)         ││
+│ │  Empty → empty body          ·  Error → muted error body                 ││
+│ └──────────────────────────────────────────────────────────────────────────┘│
+│ ┌─ KPI strip (model.live_kpi) ───────────────────────────────┐ ┌ LLM spend ┐│
+│ │ Total return │ CAGR │ Sharpe │ Max DD │ Win rate │ Trades   │ │    —      ││
+│ │   +0.10%     │  —   │   —    │ 0.00%  │    —     │   0      │ │ (Phase F) ││
+│ └────────────────────────────────────────────────────────────┘ └───────────┘│
+│ Session to date                       ← honest scope caption (R5/AC5)         │
+│ ┌─ Open positions ──────────────┐ ┌─ Agent activity ───────────────────────┐ │
+│ │ (already-live)                │ │ (already-live)                          │ │
+│ └───────────────────────────────┘ └─────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+The **only** two panels this feature touches are the equity curve and the KPI
+strip (previously hard-wired `&PanelState::Loading`); everything else on the
+Live screen was already live-wired.
+
+### Screens / panels / widgets
+
+- **No new screen, no new widget, no new panel.** The two stubbed panels on
+  the existing **Live** screen (`crates/ui/src/screens/live.rs`) are pointed
+  at model-backed state. The render widgets (`widgets::equity_curve`,
+  `widgets::kpi_strip`) are reused **verbatim** — same `&PanelState<T>`
+  signature, same never-fired `.map(|_| Message::ChartMarkerHoverEnded)`
+  bridge as `screens/baseline.rs`.
+- **New model state** (`crates/ui/src/state.rs`, siblings of `strategy_equity`):
+  `live_equity_buffer: VecDeque<(Timestamp, Money<Usdt>)>` (session-scoped
+  ring), `live_equity_curve: PanelState<EquitySeries>` and
+  `live_kpi: PanelState<BacktestMetrics>` (both derived on-append, D5).
+- **One UI-element addition:** an honest "Session to date" scope caption under
+  the KPI row (R5/AC5) — a static label clarifying the Total-return card is a
+  session figure, never an annualized/characterized result.
+
+### New strings (`ui::strings`)
+
+- `LIVE_SESSION_RETURN_CAPTION = "Session to date"` (the `LIVE_*` block) — the
+  only new copy. No other user-visible string introduced; no hardcoded
+  literals in the new code.
+
+### New theme tokens
+
+- `theme::layout::LIVE_EQUITY_BUFFER_CAP = 2_880` — **not a visual token**; a
+  retention/memory ring-cap constant (48 h of 1-min bars). **Zero new
+  color/spacing/radius/type tokens** — the reused widgets are already
+  token-correct and render in both `--theme dark` and `--theme light` for
+  free (verified by the dark+light Ready snapshots + the regenerated dark
+  visual PNGs).
+
+### Accessibility notes
+
+- **Keyboard / focus:** no new interactive element. The session caption is
+  static text; the two panels emit no interactions (the `.map` bridge is
+  never fired). Focus order is unchanged from the shipped Live screen.
+- **Contrast:** all colors flow from `theme` tokens already verified ≥ 4.5:1
+  by `tests/contrast.rs` (green). The KPI cards use the existing
+  sentiment/`FG_3`-dash treatment; the absent cards render `—` in `FG_3`.
+- **Color is never the only signal:** P&L sentiment on the Total-return card
+  is paired with the sign (`+`/`−`) and the value text; absent cards show the
+  `—` glyph, not merely a muted color. Max-DD keeps the established minus
+  prefix.
+- **No blank states:** Loading → skeleton/`VIEWER_NO_EQUITY_DATA` + the
+  unavailable strip; Empty → empty body; Error → muted error body. Every
+  state has explicit copy (R3).
+
+### Seams flagged (architect design vs. code)
+
+The design matched the code well; three small clarifications worth recording:
+
+1. **Constructor sites — exactly two struct literals, not "≥2 plus `new()`".**
+   The brief said grep `baseline_screen_state:` (≥2 sites). There are two
+   **struct-literal** constructors — `impl Default for Cockpit` and
+   `Cockpit::ready(...)` — and the three fields are initialized in both.
+   `Cockpit::new()` and `Cockpit::boot()` do **not** list fields; they
+   delegate via `..Self::default()`, so they inherit the empty/Loading state.
+   The manual `Debug` impl also lists fields (added `live_equity_buffer_len`
+   + both panels there). No site was missed.
+2. **`PnlError` payload is `SmolStr` (Clone).** The arm sets the curve +
+   strip to `Error(e.clone())` then `pnl = Error(e)` — `e.clone()` is cheap
+   (`SmolStr`), exactly as the design assumed. Empty-on-channel-close is not
+   separately distinguishable in the UI `update` (the closed `pnl` channel
+   routes through `PnlError`), so it maps to `Error` per the design's
+   accepted both-render-a-non-blank-body fallback.
+3. **The `live_screen` snapshot helper is a text summary, not a render.**
+   The existing `live_screen_summary` builds a `String` (it never called
+   `screens::live::view`), and it **hard-coded** the curve/strip as Loading.
+   It is now `(c, mode)` and reads the model-backed states. The
+   regeneration of `live_snapshot__steady_state` is intentional and its diff
+   is **only** the two added lines (`theme:` + `session_caption:`) — the
+   curve/strip placeholder copy is byte-identical to the prior Loading
+   baseline, confirming the Loading default render is unchanged. The
+   `consistency.rs` "no inline strings" gate scans only `src/widgets/*.rs`,
+   so there is no separate `strings.rs` registration table — the snapshot
+   helper is the reference site for the new caption.
 
 ## Verification
 
@@ -759,3 +863,25 @@ _tester links to reports here._
   `&model.live_equity_curve` / `&model.live_kpi`. tasks.md emitted (T1–T9,
   ui-designer-solo). trace REQ-COCKPIT-LIVE-DASHBOARD-001 proposed →
   arch-done. HANDOFF → ui-designer.
+- 2026-06-09 (ui-designer): **Implemented T1–T9 solo (all green).** Three
+  model fields added (`live_equity_buffer` / `live_equity_curve` /
+  `live_kpi`) initialized in both struct-literal constructors + the `Debug`
+  impl; `Cockpit::push_live_equity_point` derives the curve + strip on each
+  `PnlRefreshed` (monotone guard drops late points; ring cap
+  `LIVE_EQUITY_BUFFER_CAP = 2_880`; strip held Loading until ≥2 pts for the
+  `is_all_absent` trap); `PnlError` degrades both panels to `Error` (no
+  panic); `screens/live.rs:58,66` swapped to the model-backed states + an
+  honest "Session to date" caption (`LIVE_SESSION_RETURN_CAPTION`). KPI
+  mapping: Total-return (session) + Max-DD LIVE; Sharpe/CAGR/Win-rate `—`;
+  Trades 0 (no live counter — deferred). **Tests:** 7 new `state.rs` lib
+  tests (PnlRefreshed-populates-curve, 1-pt→Loading-strip, live Max-DD,
+  monotone-guard, PnlError-no-panic, ring-cap, session-reset) + a
+  `headless_emulator_paints_live_route` fixtures smoke + 3 Live panel
+  snapshots (steady-state regenerated; ready_dark + ready_light added). 435
+  lib tests pass; panel/consistency/contrast/layout green; `--features live`
+  `cockpit_live` + fixtures `cockpit` builds clean; new-code clippy/fmt
+  clean; anchors 119/119. Regenerated the `live__recent_activity_with_chevron`
+  visual PNG triple (diff = only the new caption + wired panels; 48 others
+  unchanged). Pre-existing unrelated failure: `lab_run_engine::h3_…`
+  (network-dependent `--features live` backtest, fails identically on clean
+  HEAD). § UI filled. status → ui-done. HANDOFF → tester.

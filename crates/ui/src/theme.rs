@@ -795,6 +795,15 @@ pub mod layout {
     /// `Cockpit::strategy_equity`.
     pub const SPARKLINE_POINT_CAP: usize = 120;
 
+    /// cockpit-live-dashboard-wiring v0.1.0 (D-buffer) — bounded ring cap
+    /// for the session-scoped live equity buffer
+    /// (`Cockpit::live_equity_buffer`). `2_880` = 48 h of 1-min bars at full
+    /// resolution before any eviction; a longer session quietly slides a
+    /// 48 h window. This governs **retention/memory** only
+    /// (`2_880` × ~48 B ≈ 140 KB worst case) — the chart consumer still
+    /// `downsample`s to `SPARKLINE_POINT_CAP` for pixels.
+    pub const LIVE_EQUITY_BUFFER_CAP: usize = 2_880;
+
     // ── Chart canvas overhaul (v1.10.0) — axis gutters + legend chrome ───
     //
     // Six tokens introduced by `chart-canvas-overhaul` v1.10.0 to host the

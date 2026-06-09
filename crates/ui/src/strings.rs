@@ -1741,6 +1741,13 @@ pub const LIVE_LLM_SPEND_LABEL: &str = "LLM spend";
 /// is not yet wired (Q4b — Phase F wires the real source).
 pub const LIVE_LLM_SPEND_PLACEHOLDER: &str = "\u{2014}";
 
+/// cockpit-live-dashboard-wiring v0.1.0 (R5 / AC5) — honest scope caption for
+/// the Live KPI strip's Total-return card. The live figure is
+/// **session-to-date** (the first accumulated equity point is the session
+/// open), NOT an annualized / multi-year / characterized result. MUST NOT
+/// imply the live session is the "baseline result".
+pub const LIVE_SESSION_RETURN_CAPTION: &str = "Session to date";
+
 /// Panel title for the Strategy registry screen (R7.2).
 pub const STRATEGY_REGISTRY_PANEL_TITLE: &str = "Strategy registry";
 

@@ -6,8 +6,14 @@ screen: Live
 theme: dark
 headline: Live
 system_health_label: System health
-equity_curve: No equity data placeholder
-kpi_strip: Backtest metrics unavailable
+equity_curve: ready points=2
+kpi_strip: ready
+  card Total return: 0.10%
+  card CAGR: —
+  card Sharpe: —
+  card Max DD: 0.00%
+  card Win rate: —
+  card Trades: 0
 session_caption: Session to date
 llm_spend_label: LLM spend
 llm_spend_tile: —

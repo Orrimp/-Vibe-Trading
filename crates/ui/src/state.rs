@@ -12,9 +12,9 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use trading_core::{
-    Bar, EquitySeries, FillView, JournalEntry, MarketHealth, PnlSnapshot, PositionView, Side,
-    Signal, SignalView, StrategyEventKind, StrategyEventView, StrategyId, StrategyLoadError,
-    StrategyLoaded, StrategySwapped, Symbol, Tick, Timestamp, Venue,
+    BacktestMetrics, Bar, EquitySeries, FillView, JournalEntry, MarketHealth, Money, PnlSnapshot,
+    PositionView, Side, Signal, SignalView, StrategyEventKind, StrategyEventView, StrategyId,
+    StrategyLoadError, StrategyLoaded, StrategySwapped, Symbol, Tick, Timestamp, Usdt, Venue,
 };
 
 use agent::ActivityEvent;
@@ -28,7 +28,7 @@ use crate::lab::state::{DateRange, LabState};
 /// Type: `&'static [(Venue, &'static str)]` — `Symbol` is not `const`-
 /// compatible (contains `SmolStr`), so the raw `&str` form is used.
 pub use crate::lab::universe::XRP_FIRST_UNIVERSE as LAB_PAIR_ORDER;
-use crate::theme::layout::TAPE_MAX_ROWS;
+use crate::theme::layout::{LIVE_EQUITY_BUFFER_CAP, TAPE_MAX_ROWS};
 
 // ── cockpit-toast-queue v0.1.0 — bounded queue, types, and constants ─────────
 
@@ -1010,6 +1010,30 @@ pub struct Cockpit {
     /// per Phase 3 Q5).
     pub strategy_equity: HashMap<StrategyId, PanelState<EquitySeries>>,
 
+    // ── cockpit-live-dashboard-wiring v0.1.0 — live equity curve + KPI strip ──
+    /// Session-scoped live equity buffer. Raw `(Timestamp, Money<Usdt>)`
+    /// points appended one-per-`PnlRefreshed` from `(snap.as_of,
+    /// snap.total_equity)`, bounded ring (`LIVE_EQUITY_BUFFER_CAP`). Empty on
+    /// each `cockpit_live` boot — session-scoped, the correct live-monitor
+    /// session-open state; durable agent-side history is deferred to the
+    /// `live-equity-history-durable` follow-on (D1). **NOT serialized.**
+    pub live_equity_buffer: VecDeque<(Timestamp, Money<Usdt>)>,
+
+    /// Derived-on-append (D5) render state for the Live equity curve.
+    /// `Loading` until the first point; `Ready(series)` from ≥1 point;
+    /// `Error(msg)` on `PnlError`; `Empty` only if the channel closes with
+    /// 0 points. Built via `EquitySeries::from_points` — the view reads this
+    /// cached state, it does not recompute per frame.
+    pub live_equity_curve: PanelState<EquitySeries>,
+
+    /// Derived-on-append (D5) render state for the Live KPI strip.
+    /// `Loading` until ≥2 points (the `kpi_strip::is_all_absent` bootstrap
+    /// trap — a 1-point series is byte-identical to the all-absent sentinel,
+    /// D2); `Ready(metrics)` after; `Error(msg)` on `PnlError`; `Empty`
+    /// mirrors the curve. Total-return + Max-DD are live; Sharpe/CAGR/Win-rate
+    /// render `—`; Trades = 0 (no live counter — D2 / follow-on).
+    pub live_kpi: PanelState<BacktestMetrics>,
+
     // ── Phase 5 — HumanControl panel + per-strategy pause + override ───
     /// Operator-selected execution mode (Q4 — runtime-only). Cold-start
     /// = `Observe`; restart returns to `Observe`; no `config/agent.toml`
@@ -1086,6 +1110,9 @@ impl std::fmt::Debug for Cockpit {
             .field("models_screen_state", &self.models_screen_state)
             .field("assistant_state", &self.assistant_state)
             .field("strategy_equity", &self.strategy_equity)
+            .field("live_equity_buffer_len", &self.live_equity_buffer.len())
+            .field("live_equity_curve", &self.live_equity_curve)
+            .field("live_kpi", &self.live_kpi)
             .field("execution_mode", &self.execution_mode)
             .field("paused_strategies", &self.paused_strategies)
             .field("override_risk_veto", &self.override_risk_veto)
@@ -1143,6 +1170,10 @@ impl Default for Cockpit {
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
             strategy_equity: HashMap::new(),
+            // cockpit-live-dashboard-wiring — session-scoped, empty on boot.
+            live_equity_buffer: VecDeque::new(),
+            live_equity_curve: PanelState::Loading,
+            live_kpi: PanelState::Loading,
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
             override_risk_veto: OverrideRiskVetoState::default(),
@@ -1249,6 +1280,12 @@ impl Cockpit {
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
             strategy_equity: HashMap::new(),
+            // cockpit-live-dashboard-wiring — session-scoped, empty on boot.
+            // `ready()` is a fixture/test constructor; tests that exercise the
+            // live curve/strip seed it via `Message::PnlRefreshed` updates.
+            live_equity_buffer: VecDeque::new(),
+            live_equity_curve: PanelState::Loading,
+            live_kpi: PanelState::Loading,
             execution_mode: ExecutionMode::default(),
             paused_strategies: HashSet::new(),
             override_risk_veto: OverrideRiskVetoState::default(),
@@ -1259,6 +1296,90 @@ impl Cockpit {
             toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
+        }
+    }
+
+    /// cockpit-live-dashboard-wiring v0.1.0 (D5) — append one live equity
+    /// point and rebuild the derived curve + KPI-strip render state.
+    ///
+    /// Called from the `Message::PnlRefreshed` arm once per bar. Pure
+    /// mutation on the model; no async work, no bus event. The two derived
+    /// `PanelState`s are cached here so the per-frame `view` reads them
+    /// without recomputing (the iced `view` runs on every message / hover).
+    ///
+    /// Honors the two must-honor edges:
+    /// 1. **Monotone guard** — `EquitySeries::from_points` rejects a strictly
+    ///    earlier timestamp (`equity_series.rs` `NonMonotoneTimestamps`), so a
+    ///    late/out-of-order snapshot is **dropped** (invisible on a monitor,
+    ///    strictly preferable to a build error). Equal timestamps are allowed.
+    /// 2. **`is_all_absent` 1-point trap** — a single point yields
+    ///    `total_return = max_dd = trades = 0`, byte-identical to the
+    ///    all-absent sentinel (`kpi_strip::is_all_absent`), which would render
+    ///    six dashes. The KPI strip therefore stays `Loading` until ≥2 points;
+    ///    the curve renders from ≥1 (a 1-point curve is valid).
+    fn push_live_equity_point(&mut self, ts: Timestamp, equity: Money<Usdt>) {
+        // (1) Monotone guard — drop a strictly-earlier late snapshot.
+        if let Some((back_ts, _)) = self.live_equity_buffer.back()
+            && ts.unix_millis() < back_ts.unix_millis()
+        {
+            return;
+        }
+        self.live_equity_buffer.push_back((ts, equity));
+
+        // (2) Ring bound — evict oldest past the cap.
+        while self.live_equity_buffer.len() > LIVE_EQUITY_BUFFER_CAP {
+            self.live_equity_buffer.pop_front();
+        }
+
+        // (3) Rebuild the curve (≥1 point). `from_points` only errors on the
+        // guarded-empty case (impossible here — we just pushed) or a
+        // non-monotone pair (impossible — the append guard enforces order),
+        // so on the unexpected `Err` we leave the curve `Loading` rather than
+        // panic.
+        let points: Vec<(Timestamp, Money<Usdt>)> =
+            self.live_equity_buffer.iter().copied().collect();
+        if let Ok(series) = EquitySeries::from_points(points) {
+            let max_drawdown_pct = series.max_drawdown_pct;
+            self.live_equity_curve = PanelState::Ready(series);
+
+            // (4) Rebuild the KPI strip — Loading until ≥2 points (trap).
+            if self.live_equity_buffer.len() < 2 {
+                self.live_kpi = PanelState::Loading;
+            } else {
+                // Session return = (latest − first) / first; the first
+                // accumulated point is the session open. Guard first ≠ 0
+                // (the agent's starting equity is non-zero, but divide-guard
+                // anyway).
+                let first = self.live_equity_buffer[0].1.amount();
+                let latest = self.live_equity_buffer[self.live_equity_buffer.len() - 1]
+                    .1
+                    .amount();
+                let total_return_pct = if first.is_zero() {
+                    Decimal::ZERO
+                } else {
+                    (latest - first) / first
+                };
+                self.live_kpi = PanelState::Ready(BacktestMetrics {
+                    total_return_pct,
+                    max_drawdown_pct,
+                    trades: 0,
+                    // No live Sharpe/CAGR/Win-rate math (no `core` source,
+                    // out of scope for a monitor — D2). Render `—`.
+                    cagr_pct: Decimal::ZERO,
+                    cagr_present: false,
+                    sharpe: Decimal::ZERO,
+                    sharpe_present: false,
+                    win_rate_pct: Decimal::ZERO,
+                    win_rate_present: false,
+                });
+            }
+        } else {
+            // `from_points` only errors on the guarded-empty case (impossible
+            // — we just pushed) or a non-monotone pair (impossible — the
+            // append guard enforces order). Leave both panels Loading rather
+            // than panic.
+            self.live_equity_curve = PanelState::Loading;
+            self.live_kpi = PanelState::Loading;
         }
     }
 }
@@ -1806,6 +1927,10 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             model.latency = Latency::Known { ms };
         }
         Message::PnlRefreshed(snap) => {
+            // cockpit-live-dashboard-wiring — append the live equity point
+            // and rebuild the derived curve + KPI strip (D5) BEFORE moving
+            // `snap` into `model.pnl`.
+            model.push_live_equity_point(snap.as_of, snap.total_equity);
             model.pnl = PanelState::Ready(snap);
         }
         Message::PositionsRefreshed(list) => {
@@ -1816,6 +1941,12 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             };
         }
         Message::PnlError(e) => {
+            // cockpit-live-dashboard-wiring — degrade the live curve + KPI
+            // strip consistently with the P&L panel (no panic). The `pnl`
+            // channel closing / erroring routes through here; both derived
+            // panels render their muted error body.
+            model.live_equity_curve = PanelState::Error(e.clone());
+            model.live_kpi = PanelState::Error(e.clone());
             model.pnl = PanelState::Error(e);
         }
         Message::PositionsError(e) => {
@@ -2747,6 +2878,182 @@ mod tests {
         let mut c = Cockpit::new();
         update(&mut c, Message::PnlRefreshed(pnl_snap()));
         assert_eq!(c.pnl.variant_name(), "ready");
+    }
+
+    // ── cockpit-live-dashboard-wiring v0.1.0 — Live equity curve + KPI strip ──
+
+    /// Build a `PnlSnapshot` at a chosen `(secs, equity)` so live-curve tests
+    /// can drive a deterministic monotone (or out-of-order) sequence.
+    fn pnl_snap_at(secs: i64, equity: Decimal) -> PnlSnapshot {
+        let as_of =
+            Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(secs));
+        PnlSnapshot {
+            cash: Money::<Usdt>::from_decimal(equity),
+            unrealized: Money::<Usdt>::from_decimal(dec!(0)),
+            realized: Money::<Usdt>::from_decimal(dec!(0)),
+            total_equity: Money::<Usdt>::from_decimal(equity),
+            daily_return: Money::<Usdt>::from_decimal(dec!(0)),
+            as_of,
+        }
+    }
+
+    /// AC1 (core wiring proof) — a sequence of `PnlRefreshed` messages
+    /// populates the live equity curve point-by-point, and the curve
+    /// transitions Loading → Ready at the **first** point.
+    #[test]
+    fn pnl_refresh_sequence_populates_live_equity_curve() {
+        let mut c = Cockpit::new();
+        // Fresh boot: both live panels Loading, buffer empty.
+        assert!(c.live_equity_buffer.is_empty());
+        assert_eq!(c.live_equity_curve.variant_name(), "loading");
+        assert_eq!(c.live_kpi.variant_name(), "loading");
+
+        // Point 1 — curve goes Ready (1-point curve is valid); strip stays
+        // Loading (the is_all_absent 1-point trap).
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(1000))));
+        assert_eq!(c.live_equity_buffer.len(), 1);
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+        assert_eq!(c.live_kpi.variant_name(), "loading");
+
+        // Points 2..=5 — curve grows one point per snapshot; the cached
+        // series length tracks the buffer.
+        for (i, eq) in [(60i64, dec!(1010)), (120, dec!(1025)), (180, dec!(1005))]
+            .into_iter()
+            .enumerate()
+        {
+            update(&mut c, Message::PnlRefreshed(pnl_snap_at(eq.0, eq.1)));
+            assert_eq!(c.live_equity_buffer.len(), i + 2);
+        }
+        assert_eq!(c.live_equity_buffer.len(), 4);
+        match &c.live_equity_curve {
+            PanelState::Ready(series) => assert_eq!(series.points.len(), 4),
+            other => panic!("expected Ready curve, got {}", other.variant_name()),
+        }
+    }
+
+    /// AC2 (the is_all_absent proof) — the KPI strip stays Loading at 1 point
+    /// and becomes Ready only at ≥2 points, with live Total-return + Max-DD
+    /// and absent Sharpe/CAGR/Win-rate + Trades = 0.
+    #[test]
+    fn live_kpi_strip_loading_at_one_point_ready_at_two() {
+        let mut c = Cockpit::new();
+
+        // 1 point: strip Loading (would otherwise be byte-identical to the
+        // all-absent six-dash sentinel).
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(1000))));
+        assert_eq!(c.live_kpi.variant_name(), "loading");
+
+        // 2 points: strip Ready with a real session delta.
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(1100))));
+        match &c.live_kpi {
+            PanelState::Ready(m) => {
+                // Session return = (1100 − 1000) / 1000 = 0.10.
+                assert_eq!(m.total_return_pct, dec!(0.10));
+                // Max DD = 0 (monotone up so far) — but present (real).
+                assert_eq!(m.max_drawdown_pct, Decimal::ZERO);
+                // Trades = 0, and Sharpe/CAGR/Win-rate are absent (`—`).
+                assert_eq!(m.trades, 0);
+                assert!(!m.sharpe_present);
+                assert!(!m.cagr_present);
+                assert!(!m.win_rate_present);
+            }
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
+
+        // A non-zero session metric makes the strip distinguishable from the
+        // all-absent sentinel — the kpi_strip widget's `is_all_absent` guard
+        // would not mask it.
+        assert!(!matches!(c.live_kpi, PanelState::Loading));
+    }
+
+    /// AC2 — live Max-DD is real: drive a drawdown and assert the strip's
+    /// `max_drawdown_pct` reflects it (free from `EquitySeries::from_points`).
+    #[test]
+    fn live_kpi_strip_max_drawdown_is_live() {
+        let mut c = Cockpit::new();
+        // 1000 → 1200 (peak) → 900 (trough) → max DD = (1200−900)/1200 = 0.25.
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(1000))));
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(1200))));
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(120, dec!(900))));
+        match &c.live_kpi {
+            PanelState::Ready(m) => {
+                assert_eq!(m.max_drawdown_pct, dec!(0.25));
+                // Session return = (900 − 1000) / 1000 = −0.10 (negative, live).
+                assert_eq!(m.total_return_pct, dec!(-0.10));
+            }
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
+    }
+
+    /// T3 must-honor — the monotone guard drops a strictly-earlier late
+    /// snapshot (so `from_points` never errors on out-of-order input); an
+    /// equal-timestamp snapshot is allowed (appends fine).
+    #[test]
+    fn live_equity_buffer_drops_out_of_order_and_allows_equal_ts() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(1000))));
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(120, dec!(1010))));
+        assert_eq!(c.live_equity_buffer.len(), 2);
+
+        // Strictly-earlier `as_of` (30 < 120) — dropped, length unchanged,
+        // curve stays Ready (no NonMonotoneTimestamps error).
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(30, dec!(9999))));
+        assert_eq!(c.live_equity_buffer.len(), 2);
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+
+        // Equal-timestamp (120 == 120) — allowed by `from_points`'s `<` check.
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(120, dec!(1020))));
+        assert_eq!(c.live_equity_buffer.len(), 3);
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+    }
+
+    /// AC2 (Error, no panic) — `PnlError` drives BOTH the live curve and the
+    /// KPI strip to `Error`, alongside the existing `model.pnl` error.
+    #[test]
+    fn pnl_error_drives_live_panels_to_error_no_panic() {
+        let mut c = Cockpit::new();
+        // Seed a couple points so both panels are Ready first.
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(1000))));
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(1100))));
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+        assert_eq!(c.live_kpi.variant_name(), "ready");
+
+        update(&mut c, Message::PnlError("pnl channel closed".into()));
+        assert_eq!(c.pnl.variant_name(), "error");
+        assert_eq!(c.live_equity_curve.variant_name(), "error");
+        assert_eq!(c.live_kpi.variant_name(), "error");
+    }
+
+    /// R3 / D-buffer — the buffer is a bounded ring: past
+    /// `LIVE_EQUITY_BUFFER_CAP` it evicts the oldest (`pop_front`), so the
+    /// length never exceeds the cap and the newest point survives.
+    #[test]
+    fn live_equity_buffer_is_bounded_ring() {
+        let mut c = Cockpit::new();
+        // Push cap + 5 monotone points; assert the buffer caps and the oldest
+        // evicts (front advances past ts=0).
+        for i in 0..(LIVE_EQUITY_BUFFER_CAP as i64 + 5) {
+            update(
+                &mut c,
+                Message::PnlRefreshed(pnl_snap_at(i * 60, dec!(1000) + Decimal::from(i))),
+            );
+        }
+        assert_eq!(c.live_equity_buffer.len(), LIVE_EQUITY_BUFFER_CAP);
+        // Oldest five evicted — the front is no longer ts=0.
+        let front_ts = c.live_equity_buffer.front().expect("non-empty").0;
+        assert!(front_ts.unix_millis() > 0);
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+    }
+
+    /// R1 / D5 — the live panels are session-scoped: a fresh `Cockpit` (a new
+    /// `cockpit_live` boot) starts with an empty buffer and both panels
+    /// Loading. (Reset = `Cockpit::new()`; the buffer is not serialized.)
+    #[test]
+    fn live_panels_reset_on_fresh_cockpit() {
+        let c = Cockpit::new();
+        assert!(c.live_equity_buffer.is_empty());
+        assert_eq!(c.live_equity_curve.variant_name(), "loading");
+        assert_eq!(c.live_kpi.variant_name(), "loading");
     }
 
     #[test]

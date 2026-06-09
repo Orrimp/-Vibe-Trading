@@ -2636,24 +2636,95 @@ fn color_name(c: iced::Color) -> &'static str {
 
 mod live_screen {
     use super::*;
+    use ui::theme::ThemeMode;
 
-    fn live_screen_summary(c: &Cockpit) -> String {
+    /// Mirror the rendered Live equity-curve panel for a given model-backed
+    /// `PanelState` (cockpit-live-dashboard-wiring — the curve is bound to
+    /// `c.live_equity_curve`, no longer a hard-wired `Loading`). The widget
+    /// renders `VIEWER_NO_EQUITY_DATA` for Loading/Empty, the muted error body
+    /// for Error, and the growing curve (point count) for Ready.
+    fn equity_curve_line(c: &Cockpit) -> String {
+        match &c.live_equity_curve {
+            PanelState::Loading | PanelState::Empty => {
+                format!(
+                    "equity_curve: {} placeholder\n",
+                    ui::strings::VIEWER_NO_EQUITY_DATA
+                )
+            }
+            PanelState::Error(e) => format!("equity_curve: error={e}\n"),
+            PanelState::Ready(series) => {
+                format!("equity_curve: ready points={}\n", series.points.len())
+            }
+        }
+    }
+
+    /// Mirror the rendered Live KPI strip for `c.live_kpi`. Loading/Empty/Error
+    /// render `VIEWER_METRICS_UNAVAILABLE` (the unavailable six-dash strip);
+    /// Ready renders the six cards honestly (Total-return + Max-DD live;
+    /// Sharpe/CAGR/Win-rate `—`; Trades 0). Card text is theme-independent;
+    /// the per-snapshot `theme:` line distinguishes the dark/light baselines.
+    fn kpi_strip_lines(c: &Cockpit, mode: ThemeMode) -> String {
+        match &c.live_kpi {
+            PanelState::Loading | PanelState::Empty | PanelState::Error(_) => {
+                format!("kpi_strip: {}\n", ui::strings::VIEWER_METRICS_UNAVAILABLE)
+            }
+            PanelState::Ready(m) => {
+                let (tr_text, _) = ui::widgets::num::format_pct_sentiment(m.total_return_pct, mode);
+                let (mdd_text, _) = ui::widgets::num::format_pct_max_dd(m.max_drawdown_pct, mode);
+                let dash = ui::strings::KPI_DASH_PLACEHOLDER;
+                let mut out = String::from("kpi_strip: ready\n");
+                out.push_str(&format!(
+                    "  card {}: {}\n",
+                    ui::strings::KPI_TOTAL_RETURN_LABEL,
+                    tr_text
+                ));
+                out.push_str(&format!(
+                    "  card {}: {}\n",
+                    ui::strings::KPI_CAGR_LABEL,
+                    dash
+                ));
+                out.push_str(&format!(
+                    "  card {}: {}\n",
+                    ui::strings::KPI_SHARPE_LABEL,
+                    dash
+                ));
+                out.push_str(&format!(
+                    "  card {}: {}\n",
+                    ui::strings::KPI_MAX_DD_LABEL,
+                    mdd_text
+                ));
+                out.push_str(&format!(
+                    "  card {}: {}\n",
+                    ui::strings::KPI_WIN_RATE_LABEL,
+                    dash
+                ));
+                out.push_str(&format!(
+                    "  card {}: {}\n",
+                    ui::strings::KPI_TRADES_LABEL,
+                    ui::widgets::num::format_count(m.trades)
+                ));
+                out
+            }
+        }
+    }
+
+    fn live_screen_summary(c: &Cockpit, mode: ThemeMode) -> String {
         let mut out = String::new();
         out.push_str("screen: Live\n");
+        out.push_str(&format!("theme: {}\n", theme_name(mode)));
         out.push_str(&format!("headline: {}\n", ui::strings::LIVE_HEADLINE));
         out.push_str(&format!(
             "system_health_label: {}\n",
             ui::strings::LIVE_SYSTEM_HEALTH_LABEL
         ));
-        // equity_curve is in PanelState::Loading → renders VIEWER_NO_EQUITY_DATA placeholder.
+        // cockpit-live-dashboard-wiring — both panels read the model-backed
+        // live states (no longer hard-wired Loading).
+        out.push_str(&equity_curve_line(c));
+        out.push_str(&kpi_strip_lines(c, mode));
+        // R5 / AC5 — honest session-scope caption for the Total-return card.
         out.push_str(&format!(
-            "equity_curve: {} placeholder\n",
-            ui::strings::VIEWER_NO_EQUITY_DATA
-        ));
-        // kpi_strip is in PanelState::Loading → renders unavailable_strip.
-        out.push_str(&format!(
-            "kpi_strip: {}\n",
-            ui::strings::VIEWER_METRICS_UNAVAILABLE
+            "session_caption: {}\n",
+            ui::strings::LIVE_SESSION_RETURN_CAPTION
         ));
         out.push_str(&format!(
             "llm_spend_label: {}\n",
@@ -2674,13 +2745,75 @@ mod live_screen {
         out
     }
 
-    /// T-D-N14 — Live screen steady-state snapshot (R2.6).
+    fn theme_name(mode: ThemeMode) -> &'static str {
+        match mode {
+            ThemeMode::Dark => "dark",
+            ThemeMode::Light => "light",
+        }
+    }
+
+    /// Seed `c.live_equity_buffer` with two monotone points via the production
+    /// `PnlRefreshed` update path so the curve + strip transition to Ready —
+    /// exactly the live-monitor path an operator hits after the agent's
+    /// second bar.
+    fn seed_ready_live(c: &mut Cockpit) {
+        for (secs, eq) in [(0i64, dec!(1000)), (60, dec!(1100))] {
+            let as_of =
+                Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(secs));
+            update(
+                c,
+                Message::PnlRefreshed(trading_core::PnlSnapshot {
+                    cash: Money::from_decimal(eq),
+                    unrealized: Money::from_decimal(dec!(0)),
+                    realized: Money::from_decimal(dec!(0)),
+                    total_equity: Money::from_decimal(eq),
+                    daily_return: Money::from_decimal(dec!(0)),
+                    as_of,
+                }),
+            );
+        }
+    }
+
+    /// T-D-N14 — Live screen steady-state (Loading-default) snapshot (R2.6).
+    /// cockpit-live-dashboard-wiring AC6: this is the default-state baseline —
+    /// fresh boot, no feed → both wired panels render their Loading body.
     #[test]
     #[allow(non_snake_case)]
     fn live_snapshot__steady_state() {
         let mut c = Cockpit::new();
         c.current_screen = Screen::Live;
-        assert_snapshot!("live_snapshot__steady_state", live_screen_summary(&c));
+        assert_snapshot!(
+            "live_snapshot__steady_state",
+            live_screen_summary(&c, ThemeMode::Dark)
+        );
+    }
+
+    /// cockpit-live-dashboard-wiring AC6 — Ready-state snapshot (dark): seed
+    /// ≥2 monotone equity points so the curve + KPI strip render the live feed.
+    #[test]
+    #[allow(non_snake_case)]
+    fn live_snapshot__ready_dark() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Live;
+        seed_ready_live(&mut c);
+        assert_snapshot!(
+            "live_snapshot__ready_dark",
+            live_screen_summary(&c, ThemeMode::Dark)
+        );
+    }
+
+    /// cockpit-live-dashboard-wiring AC6 — Ready-state snapshot (light): same
+    /// seeded state rendered against the light theme (both-theme coverage, R6).
+    #[test]
+    #[allow(non_snake_case)]
+    fn live_snapshot__ready_light() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Live;
+        seed_ready_live(&mut c);
+        assert_snapshot!(
+            "live_snapshot__ready_light",
+            live_screen_summary(&c, ThemeMode::Light)
+        );
     }
 }
 
