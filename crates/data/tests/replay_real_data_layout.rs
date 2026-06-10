@@ -40,7 +40,9 @@ fn write_two_level_fixture(root: &Path) {
 
     let open_times: Vec<i64> = (0..N as i64).map(|i| START_MS + i * STEP_MS).collect();
     let close_times: Vec<i64> = open_times.iter().map(|t| t + STEP_MS - 1).collect();
-    let prices: Vec<String> = (0..N).map(|i| format!("{:.2}", 16_500.0 + i as f64)).collect();
+    let prices: Vec<String> = (0..N)
+        .map(|i| format!("{:.2}", 16_500.0 + i as f64))
+        .collect();
     let volumes: Vec<String> = (0..N).map(|_| "1.00".to_string()).collect();
     let tc: Vec<i64> = (0..N as i64).map(|i| 100 + i).collect();
 
@@ -80,9 +82,7 @@ async fn replay_feed_succeeds_when_parquet_root_is_tree_root() {
     let feed = ReplayFeed::new(tmp.path(), /* fast = */ true);
     let symbol = Symbol::new("BTCUSDT");
 
-    let result = feed
-        .subscribe_bars(symbol, Timeframe::OneMinute)
-        .await;
+    let result = feed.subscribe_bars(symbol, Timeframe::OneMinute).await;
     assert!(
         result.is_ok(),
         "subscribe_bars must succeed when parquet_root is the tree root; got: {:?}",
@@ -115,9 +115,7 @@ async fn replay_feed_fails_when_parquet_root_is_symbol_subdir() {
     let feed = ReplayFeed::new(&symbol_subdir, /* fast = */ true);
     let symbol = Symbol::new("BTCUSDT");
 
-    let result = feed
-        .subscribe_bars(symbol, Timeframe::OneMinute)
-        .await;
+    let result = feed.subscribe_bars(symbol, Timeframe::OneMinute).await;
     assert!(
         result.is_err(),
         "subscribe_bars must return Err when parquet_root is the symbol subdir (not the tree root); \

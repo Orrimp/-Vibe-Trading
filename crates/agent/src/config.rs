@@ -100,13 +100,30 @@ pub struct DataHistoricalConfig {
     /// subdirectories as `<parquet_root>/<symbol>/<year>/<month>.parquet`.
     /// Correct value: `"./data/binance"` (not `"./data/binance/BTCUSDT"`).
     pub parquet_root: String,
-    /// When `true` (default), the `ReplayFeed` emits bars as fast as possible
-    /// — suitable for the cockpit demo and unit tests.  When `false`, bars are
-    /// emitted at wallclock pace (1 real second per 1-second bar interval),
-    /// which means 1m bars arrive one per real minute.  Only set to `false`
-    /// when you explicitly want real-time paced replay.
+    /// When `true` (default) and `replay_pace_ms` is `None`, the `ReplayFeed`
+    /// emits bars as fast as possible — suitable for headless backtests and
+    /// the headless `trading` bin.  When `false` (and `replay_pace_ms` is
+    /// `None`), bars are emitted at wallclock pace (1 real minute per 1m bar).
+    ///
+    /// Ignored when `replay_pace_ms` is `Some` — the pace takes precedence.
     #[serde(default = "default_true")]
     pub replay_fast: bool,
+    /// Accelerated-but-streamed replay pace in milliseconds per bar.
+    ///
+    /// When `Some(n)`, the `ReplayFeed` sleeps `n` ms between emitting
+    /// consecutive bars regardless of the bar interval and the `replay_fast`
+    /// flag.  This is the correct mode for the cockpit live view: the SMA-50
+    /// strategy warms up after ~50 bars (≈ 50 × n ms) and then emits fills +
+    /// PnL updates over a watchable timeline, slow enough that the iced
+    /// subscription layer (which subscribes after boot) catches every event.
+    ///
+    /// Recommended value for the cockpit: `30` (30 ms/bar → ~1.5 s warmup,
+    /// ~9 min full replay of 17 520 bars).
+    ///
+    /// Default: `None` (falls back to `replay_fast`).  Leave `None` for
+    /// headless backtests — the fast path is deterministic and anchor-stable.
+    #[serde(default)]
+    pub replay_pace_ms: Option<u64>,
 }
 
 impl Default for DataHistoricalConfig {
@@ -114,6 +131,7 @@ impl Default for DataHistoricalConfig {
         Self {
             parquet_root: "./data/binance".into(),
             replay_fast: true,
+            replay_pace_ms: None,
         }
     }
 }
@@ -846,6 +864,41 @@ replay_fast  = false
         assert!(
             !cfg.data.historical.replay_fast,
             "explicit replay_fast = false must round-trip through serde"
+        );
+    }
+
+    /// Verify `replay_pace_ms` defaults to `None` (backwards compat — existing
+    /// configs without the key must not change replay behaviour).
+    #[test]
+    fn historical_config_replay_pace_ms_defaults_none() {
+        let cfg = Config::from_toml_str(MINIMAL_TOML).expect("parse");
+        assert!(
+            cfg.data.historical.replay_pace_ms.is_none(),
+            "replay_pace_ms must default to None so existing configs that \
+             don't set it are unaffected (fast-replay preserved for headless bins)"
+        );
+    }
+
+    /// Verify `replay_pace_ms = 30` round-trips correctly — the cockpit
+    /// sets this in config/agent.toml to get the paced UI feed.
+    #[test]
+    fn historical_config_replay_pace_ms_round_trips() {
+        let toml = r#"
+mode = "research"
+
+[strategies.sma_crossover]
+fast_len = 20
+slow_len = 50
+
+[data.historical]
+parquet_root = "./data/binance"
+replay_pace_ms = 30
+"#;
+        let cfg = Config::from_toml_str(toml).expect("parse");
+        assert_eq!(
+            cfg.data.historical.replay_pace_ms,
+            Some(30),
+            "replay_pace_ms = 30 must round-trip through serde"
         );
     }
 

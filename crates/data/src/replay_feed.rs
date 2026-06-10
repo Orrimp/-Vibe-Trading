@@ -1,7 +1,20 @@
 //! Parquet replay feed (T09).
 //!
 //! Reads `data/binance/<SYMBOL>/<YEAR>/*.parquet` and drives `MarketDataSource`
-//! at wallclock pace or as-fast-as-possible.
+//! at wallclock pace, as-fast-as-possible, or at an accelerated-but-streamed pace.
+//!
+//! ## Replay pace modes
+//!
+//! | `fast` | `pace_ms`    | Behaviour                                        |
+//! |--------|--------------|--------------------------------------------------|
+//! | `true` | `None`       | **Fast**: emit all bars instantly (default for backtest/research headless) |
+//! | `false`| `None`       | **Wallclock**: sleep the real interval between bars (1m bar = 1 real minute) |
+//! | any    | `Some(n)`    | **Paced**: sleep `n` ms between every bar regardless of bar interval; `fast` is ignored when `pace_ms` is `Some` |
+//!
+//! The paced mode is the correct middle gear for the cockpit UI (e.g. 30 ms/bar):
+//! the strategy warms up (~50 bars × 30 ms ≈ 1.5 s) and then emits fills and PnL
+//! updates over a watchable timeline — fast enough for the UI to stay live, slow
+//! enough that late bus subscribers (the iced subscription layer) catch every event.
 //!
 //! Expected Parquet schema (column names, all nullable):
 //! ```text
@@ -29,17 +42,58 @@ use crate::source::{MarketDataSource, SymbolInfo};
 pub struct ReplayFeed {
     /// Root of the data directory, e.g. `data/binance`.
     pub parquet_root: PathBuf,
-    /// If `true`, emit bars as fast as possible; otherwise emit at wallclock pace.
+    /// If `true` (and `pace_ms` is `None`), emit bars as fast as possible;
+    /// if `false` (and `pace_ms` is `None`), emit at wallclock pace.
+    /// Ignored when `pace_ms` is `Some`.
     pub fast: bool,
+    /// Accelerated-but-streamed pace: sleep this many milliseconds between
+    /// emitting consecutive bars.  `None` defers to `fast`.
+    ///
+    /// Use `Some(30)` for the cockpit live view (1.5 s warmup at SMA-50, then
+    /// fills/pnl arrive over minutes at a rate the UI subscriptions can catch).
+    /// Leave `None` for headless backtests and research replays (fast = true).
+    pub pace_ms: Option<u64>,
 }
 
 impl ReplayFeed {
-    /// Create a `ReplayFeed` pointing at `parquet_root`.
+    /// Create a fast `ReplayFeed` pointing at `parquet_root`.
+    ///
+    /// Equivalent to `new_with_pace(parquet_root, true, None)`.
     #[must_use]
     pub fn new(parquet_root: impl Into<PathBuf>, fast: bool) -> Self {
         let parquet_root = parquet_root.into();
-        info!(path = %parquet_root.display(), fast, "ReplayFeed initialised");
-        Self { parquet_root, fast }
+        info!(path = %parquet_root.display(), fast, pace_ms = "none", "ReplayFeed initialised");
+        Self {
+            parquet_root,
+            fast,
+            pace_ms: None,
+        }
+    }
+
+    /// Create a paced `ReplayFeed` that sleeps `pace_ms` milliseconds between
+    /// every emitted bar.  When `pace_ms` is `Some`, the `fast` flag is ignored.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic — `pace_ms = Some(0)` is valid (no sleep, same as fast).
+    #[must_use]
+    pub fn new_with_pace(
+        parquet_root: impl Into<PathBuf>,
+        fast: bool,
+        pace_ms: Option<u64>,
+    ) -> Self {
+        let parquet_root = parquet_root.into();
+        info!(
+            path = %parquet_root.display(),
+            fast,
+            ?pace_ms,
+            "ReplayFeed initialised",
+        );
+        Self {
+            parquet_root,
+            fast,
+            pace_ms,
+        }
     }
 
     /// Collect all `.parquet` files for `<symbol>` under `parquet_root`,
@@ -331,12 +385,23 @@ impl MarketDataSource for ReplayFeed {
         all_bars.sort_by_key(|b| b.open_ts);
 
         let fast = self.fast;
+        let pace_ms = self.pace_ms;
         let stream = async_stream::stream! {
             let mut prev_close: Option<Timestamp> = None;
             for bar in all_bars {
-                if !fast
+                if let Some(ms) = pace_ms {
+                    // Paced mode: fixed inter-bar delay regardless of bar interval.
+                    // `pace_ms = Some(0)` is valid — no sleep but still yields.
+                    if ms > 0 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                    } else {
+                        // Yield so other tasks get scheduled, even with pace = 0.
+                        tokio::task::yield_now().await;
+                    }
+                } else if !fast
                     && let Some(prev) = prev_close
                 {
+                    // Wallclock mode: sleep the real bar interval.
                     let now = Timestamp::now();
                     let bar_interval_ms = bar.close_ts.unix_millis() - prev.unix_millis();
                     let elapsed_ms = now.unix_millis() - prev.unix_millis();
@@ -346,6 +411,7 @@ impl MarketDataSource for ReplayFeed {
                         tokio::time::sleep(tokio::time::Duration::from_millis(sleep_ms)).await;
                     }
                 }
+                // Fast mode: no sleep — fall through and yield immediately.
                 prev_close = Some(bar.close_ts);
                 yield Ok(bar);
             }

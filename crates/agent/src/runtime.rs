@@ -473,11 +473,16 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
             info!("research mode — replay feed (no live orders)");
             let parquet_root = &config.data.historical.parquet_root;
             let replay_fast = config.data.historical.replay_fast;
-            let feed: Arc<dyn MarketDataSource> =
-                Arc::new(data::ReplayFeed::new(parquet_root, replay_fast));
+            let replay_pace_ms = config.data.historical.replay_pace_ms;
+            let feed: Arc<dyn MarketDataSource> = Arc::new(data::ReplayFeed::new_with_pace(
+                parquet_root,
+                replay_fast,
+                replay_pace_ms,
+            ));
             info!(
                 parquet_root = %parquet_root,
                 replay_fast,
+                ?replay_pace_ms,
                 "replay feed initialized"
             );
             spawn_feed_taps(
@@ -862,7 +867,26 @@ pub(crate) async fn spawn_feed_taps_with_observer<S: MarketDataSource + ?Sized>(
 ///
 /// The task exits when the `cancel` token fires OR when the bar stream ends
 /// (replay completed / feed stopped).
-fn spawn_research_trading_loop(
+/// Spawn the research-mode trading loop with an explicitly-provided feed.
+///
+/// This overload is `pub` for integration tests that need to inject a
+/// synthetic paced feed (e.g. `data::MockFeed` with a fixed interval) to
+/// verify that a **late bus subscriber** — one that subscribes AFTER the feed
+/// starts emitting — still receives fills/positions/pnl events (the core
+/// late-subscriber regression guard for the cockpit UI).
+///
+/// Production code calls this from `runtime::run`; tests call it directly
+/// alongside a controlled tokio runtime (see
+/// `crates/agent/tests/paced_replay_late_subscriber.rs`).
+///
+/// The `doc(hidden)` marker prevents this from cluttering the public API
+/// surface in `cargo doc`; it is still `pub` for the integration test crate.
+// `too_many_arguments` is intentional — the function mirrors the
+// backtest::scenarios::sma_composed_run pattern and all parameters are
+// required.  No builder pattern overhead is warranted for a spawn helper.
+#[allow(clippy::too_many_arguments)]
+#[doc(hidden)]
+pub fn spawn_research_trading_loop(
     feed: Arc<dyn MarketDataSource>,
     bus: Arc<EventBus>,
     registry: Arc<strategy::StrategyRegistry>,
@@ -873,8 +897,8 @@ fn spawn_research_trading_loop(
     set: &mut JoinSet<()>,
     cancel: &CancellationToken,
 ) {
-    use backtest::paper::{FillPriceMode, MatchConfig, PaperEngine};
     use backtest::MatchingEngine as _;
+    use backtest::paper::{FillPriceMode, MatchConfig, PaperEngine};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use trading_core::{
@@ -897,8 +921,8 @@ fn spawn_research_trading_loop(
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: Decimal::try_from(risk_cfg.per_symbol_exposure_cap)
             .unwrap_or(dec!(0.40)),
-        price_sanity_band: dec!(0.10),   // 10% band — same default as RiskLimits::default()
-        portfolio_exposure_cap: None,    // no portfolio cap in research mode
+        price_sanity_band: dec!(0.10), // 10% band — same default as RiskLimits::default()
+        portfolio_exposure_cap: None,  // no portfolio cap in research mode
     };
 
     // Initial capital from backtest config.
@@ -1006,49 +1030,49 @@ fn spawn_research_trading_loop(
                         }
                     }
 
-                    if !orders.is_empty() {
-                        if let Ok(fills) = engine.step(&bar, orders).await {
-                            for fill in &fills {
-                                // Update cash + position (mirror of sma_composed_run.rs).
-                                match fill.side {
-                                    Side::Buy => {
-                                        let cost = fill.qty.get() * fill.price.get();
-                                        cash -= cost + fill.fee.amount();
-                                        position.base_qty += fill.qty.get();
-                                        cost_basis += cost;
-                                    }
-                                    Side::Sell => {
-                                        let proceeds = fill.qty.get() * fill.price.get();
-                                        cash += proceeds - fill.fee.amount();
-                                        let closed =
-                                            fill.qty.get().min(position.base_qty);
-                                        position.base_qty =
-                                            (position.base_qty - closed).max(Decimal::ZERO);
-                                        // Proportional cost-basis reduction.
-                                        let avg_cost = if position.base_qty == Decimal::ZERO {
-                                            cost_basis
-                                        } else {
-                                            cost_basis
-                                                * (closed / (position.base_qty + closed))
-                                        };
-                                        realized_pnl +=
-                                            proceeds - avg_cost - fill.fee.amount();
-                                        cost_basis =
-                                            (cost_basis - avg_cost).max(Decimal::ZERO);
-                                    }
+                    if !orders.is_empty()
+                        && let Ok(fills) = engine.step(&bar, orders).await
+                    {
+                        for fill in &fills {
+                            // Update cash + position (mirror of sma_composed_run.rs).
+                            match fill.side {
+                                Side::Buy => {
+                                    let cost = fill.qty.get() * fill.price.get();
+                                    cash -= cost + fill.fee.amount();
+                                    position.base_qty += fill.qty.get();
+                                    cost_basis += cost;
                                 }
-                                // Publish fill + position → Live tape / positions panels.
-                                publisher.on_fill(fill, &position);
-                                fill_count += 1;
-                                if fill_count <= 5 || fill_count % 100 == 0 {
-                                    info!(
-                                        fill_count,
-                                        side = ?fill.side,
-                                        price = %fill.price.get(),
-                                        qty = %fill.qty.get(),
-                                        "research_trading_loop fill"
-                                    );
+                                Side::Sell => {
+                                    let proceeds = fill.qty.get() * fill.price.get();
+                                    cash += proceeds - fill.fee.amount();
+                                    let closed =
+                                        fill.qty.get().min(position.base_qty);
+                                    position.base_qty =
+                                        (position.base_qty - closed).max(Decimal::ZERO);
+                                    // Proportional cost-basis reduction.
+                                    let avg_cost = if position.base_qty == Decimal::ZERO {
+                                        cost_basis
+                                    } else {
+                                        cost_basis
+                                            * (closed / (position.base_qty + closed))
+                                    };
+                                    realized_pnl +=
+                                        proceeds - avg_cost - fill.fee.amount();
+                                    cost_basis =
+                                        (cost_basis - avg_cost).max(Decimal::ZERO);
                                 }
+                            }
+                            // Publish fill + position → Live tape / positions panels.
+                            publisher.on_fill(fill, &position);
+                            fill_count += 1;
+                            if fill_count <= 5 || fill_count.is_multiple_of(100) {
+                                info!(
+                                    fill_count,
+                                    side = ?fill.side,
+                                    price = %fill.price.get(),
+                                    qty = %fill.qty.get(),
+                                    "research_trading_loop fill"
+                                );
                             }
                         }
                     }

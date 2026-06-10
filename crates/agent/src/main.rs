@@ -44,6 +44,15 @@ struct Args {
     /// Operating mode override (research | paper).
     #[arg(long)]
     mode: Option<String>,
+
+    /// Override `replay_pace_ms` from config: force as-fast-as-possible replay
+    /// regardless of the value in `config/agent.toml`.
+    ///
+    /// Use this flag for headless research runs and benchmarks when the config
+    /// file has `replay_pace_ms = N` set for the cockpit live view.  Without
+    /// this flag the headless bin respects whatever pace the config specifies.
+    #[arg(long, default_value_t = false)]
+    fast_replay: bool,
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -61,7 +70,7 @@ async fn main() -> Result<()> {
     info!("trading agent starting");
 
     // ── Config ────────────────────────────────────────────────────────────────
-    let cfg = if args.config.exists() {
+    let mut cfg = if args.config.exists() {
         agent::config::Config::load(&args.config).context("load config")?
     } else {
         warn!(path = ?args.config, "config file not found — using defaults");
@@ -74,7 +83,15 @@ async fn main() -> Result<()> {
         anyhow::bail!("mode=live is rejected in v0");
     }
 
-    info!(mode = %cfg.mode, "config loaded");
+    // `--fast-replay` overrides `replay_pace_ms` from config so the headless
+    // `trading` bin can run as-fast-as-possible even when the config file has
+    // `replay_pace_ms = N` set for the cockpit live view.
+    if args.fast_replay {
+        cfg.data.historical.replay_pace_ms = None;
+        info!("--fast-replay: replay_pace_ms overridden to None (full-speed replay)");
+    }
+
+    info!(mode = %cfg.mode, replay_pace_ms = ?cfg.data.historical.replay_pace_ms, "config loaded");
 
     // ── Observability ─────────────────────────────────────────────────────────
     // Install recorder before registering metrics — otherwise names never surface on /metrics.

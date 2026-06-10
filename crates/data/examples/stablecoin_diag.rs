@@ -171,11 +171,7 @@ fn day_key_ms(ts_ms: i64) -> i64 {
 /// snapshot under `<bank_root>/<chain>.parquet` (day_key i64, supply_usd f64) on
 /// first run; reuses it thereafter (so re-runs are deterministic + offline). The
 /// fetched JSON is the only network I/O.
-fn load_or_fetch_chain_supply(
-    bank_root: &Path,
-    chain: &str,
-    refetch: bool,
-) -> BTreeMap<i64, f64> {
+fn load_or_fetch_chain_supply(bank_root: &Path, chain: &str, refetch: bool) -> BTreeMap<i64, f64> {
     let path = bank_root.join(format!("{chain}.parquet"));
     if path.exists() && !refetch {
         return read_supply_parquet(&path);
@@ -222,7 +218,11 @@ fn fetch_chain_supply(chain: &str) -> BTreeMap<i64, f64> {
     for p in arr {
         let date = p
             .get("date")
-            .and_then(|d| d.as_str().map(|s| s.parse::<i64>().ok()).unwrap_or(d.as_i64()))
+            .and_then(|d| {
+                d.as_str()
+                    .map(|s| s.parse::<i64>().ok())
+                    .unwrap_or(d.as_i64())
+            })
             .expect("date");
         let supply = p
             .get("totalCirculatingUSD")
@@ -243,7 +243,9 @@ fn write_supply_parquet(path: &Path, series: &BTreeMap<i64, f64>) {
     ])
     .expect("df");
     let mut f = std::fs::File::create(path).expect("create parquet");
-    ParquetWriter::new(&mut f).finish(&mut df).expect("write parquet");
+    ParquetWriter::new(&mut f)
+        .finish(&mut df)
+        .expect("write parquet");
 }
 
 fn read_supply_parquet(path: &Path) -> BTreeMap<i64, f64> {
@@ -377,7 +379,10 @@ fn main() {
     }
     common_days.sort_unstable();
     let n_d = common_days.len();
-    assert!(n_d > 300, "too few aligned days: {n_d} (is supply fetched?)");
+    assert!(
+        n_d > 300,
+        "too few aligned days: {n_d} (is supply fetched?)"
+    );
 
     let n_sym = CHAIN_UNIVERSE.len();
     // price[j][k], supply[j][k], funding[j][k] on the common daily grid.
@@ -426,7 +431,10 @@ fn main() {
         args.year
     );
     println!("ohlcv:   {}", args.ohlcv_root.display());
-    println!("supply:  DefiLlama /stablecoincharts/{{chain}} (banked {})", args.bank_root.display());
+    println!(
+        "supply:  DefiLlama /stablecoincharts/{{chain}} (banked {})",
+        args.bank_root.display()
+    );
     println!("funding: {}", args.funding_root.display());
     println!(
         "chain universe ({n_sym}): {}",
@@ -437,7 +445,11 @@ fn main() {
             .join(", ")
     );
     println!("aligned days (OHLCV ∩ supply, all {n_sym} chains): {n_d} → {n_ret} daily returns");
-    println!("BTC∩agg days: {} → {} returns", btc_days.len(), btc_ret.len());
+    println!(
+        "BTC∩agg days: {} → {} returns",
+        btc_days.len(),
+        btc_ret.len()
+    );
     println!();
 
     // B0: supply level sanity (per chain, $B).
@@ -513,12 +525,16 @@ fn main() {
 
     // ── B1-LEAK: no-look-ahead falsifier (optional) ──
     if args.leak_check {
-        println!("--- B1-LEAK: no-look-ahead falsifier (causal trailing vs leaked contemporaneous) ---");
+        println!(
+            "--- B1-LEAK: no-look-ahead falsifier (causal trailing vs leaked contemporaneous) ---"
+        );
         for lb in [1usize, 3, 7, 14, 30] {
             let (_, causal, _) = chain_ts_ic(lb, false);
             let (_, leaked, _) = chain_ts_ic(lb, true);
             let differ = (causal - leaked).abs() > 1e-9;
-            println!("  L={lb:>3}d: causal={causal:+.4}  leaked(contemporaneous)={leaked:+.4}  differ={differ}");
+            println!(
+                "  L={lb:>3}d: causal={causal:+.4}  leaked(contemporaneous)={leaked:+.4}  differ={differ}"
+            );
         }
         println!("  (causal MUST differ from leaked at every horizon ⇒ B1 uses past-only supply)");
         println!();
@@ -578,15 +594,23 @@ fn main() {
     };
     for lb in [1usize, 3, 7, 14, 30] {
         let (sm, sf, n) = orthogonality(lb);
-        println!("  L={lb:>3}d: corr(Δsupply, momentum) = {sm:+.4}   corr(Δsupply, funding) = {sf:+.4}  (n={n})");
+        println!(
+            "  L={lb:>3}d: corr(Δsupply, momentum) = {sm:+.4}   corr(Δsupply, funding) = {sf:+.4}  (n={n})"
+        );
     }
     println!();
 
     println!("--- INTERPRETATION GUIDE ---");
-    println!("  B1/B2 ≈ 0 (|IC|<~0.05, no stable sign, both years) ⇒ supply carries ~no forward info");
+    println!(
+        "  B1/B2 ≈ 0 (|IC|<~0.05, no stable sign, both years) ⇒ supply carries ~no forward info"
+    );
     println!("  B1/B2 persistently |IC|≥0.05 same-sign 2023 AND 2024 ⇒ LIVE candidate");
-    println!("  B3 |corr| small vs BOTH momentum AND funding ⇒ orthogonal (a genuinely new channel)");
-    println!("  LIVE iff (B1 or B2) persistently sign-stable |IC|≥0.05 AND orthogonal to BOTH dead channels");
+    println!(
+        "  B3 |corr| small vs BOTH momentum AND funding ⇒ orthogonal (a genuinely new channel)"
+    );
+    println!(
+        "  LIVE iff (B1 or B2) persistently sign-stable |IC|≥0.05 AND orthogonal to BOTH dead channels"
+    );
 }
 
 // ── stats helpers (identical to basis_diag.rs) ─────────────────────────────────

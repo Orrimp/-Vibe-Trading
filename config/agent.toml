@@ -10,8 +10,17 @@ rest_url = "https://api.binance.com"
 # e.g. ./data/binance/BTCUSDT/2023/01.parquet lives under ./data/binance.
 parquet_root = "./data/binance"
 # replay_fast = true emits bars as-fast-as-possible (no wallclock sleep).
-# Set to false only if you need real-time paced replay (1m bar = 1 real minute).
+# Ignored when replay_pace_ms is set.
+# Set to false only if you need real-time paced replay (1m bar = 1 real minute)
+# and replay_pace_ms is absent.
 replay_fast  = true
+# replay_pace_ms: sleep N ms between every emitted bar — the "middle gear" for
+# the cockpit live view.  The SMA-50 strategy warms up after ~50 bars (≈ 1.5 s
+# at 30 ms/bar); fills + PnL then arrive over a watchable timeline.
+# The headless `trading` bin and backtests ignore this (they build their own
+# ReplayFeed with pace_ms = None / fast = true for full speed).
+# Set to a lower value (e.g. 5) for a faster cockpit demo; set to 0 to disable.
+replay_pace_ms = 30
 
 [data]
 clock_skew_warn_ms = 2000
