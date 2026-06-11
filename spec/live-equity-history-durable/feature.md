@@ -1,9 +1,9 @@
 ---
 slug: live-equity-history-durable
-status: analyst-draft
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-11
-version: 0.1.0
+version: 0.2.0
 trace: REQ-LIVE-EQUITY-HISTORY-001
 ---
 
@@ -11,6 +11,18 @@ trace: REQ-LIVE-EQUITY-HISTORY-001
 
 ## Changelog
 
+- 2026-06-11 (architect): v0.2.0 — added `## Architecture` (A1–A7 resolving
+  Q1–Q7) + drafted [ADR-0052](../architecture/adr/0052-durable-live-equity-series.md)
+  (registered in the ADR README same pass). A1 audit-ledger `equity_snapshots`
+  table behind a `LiveEquityStore` trait; A2 mint-site write gated
+  `mode != Research`; A3 additive `013` migration (19 anchors byte-safe by
+  construction) + since-inception return + age-capped retention; A4 hydrate via
+  `query → Task::perform → batch PnlHydrated`, guard seeded from MAX hydrated
+  `as_of` (backwards-clock edge + mode-switch-mid-deployment accepted +
+  documented); A5 batch arm; A6 per-bar fire-and-forget; A7 headless bin
+  persists. Status → architect-done. Tasks refined into M-DEV waves (exec ‖ UI
+  parallel once T1+T7-contract land). No disagreement with the analyst's
+  recommended defaults.
 - 2026-06-11 (analyst): initial draft (v0.1.0). Scoped from repo-root
   `TODO.md` item #3 — the last open cockpit Live-view item. Honors the
   `cockpit-live-dashboard-wiring` D1=(b) deferral framing: the
@@ -445,6 +457,212 @@ deferred. The data the agent already computes per bar gets written to the
 store it already runs (the audit ledger), gated to paper/live so research
 replay can't pollute it, and read back on boot so the curve is no longer
 blank on every restart — verified, as required, at the rendered pixel layer.
+
+## Architecture
+
+_Architect-owned (2026-06-11). Decisions A1–A7 resolve the analyst's
+Q1–Q7. The full decision record is [ADR-0052](../architecture/adr/0052-durable-live-equity-series.md);
+this section is the feature-local summary + the seam map the developer ‖
+ui-designer execute against. The three settled invariants in § Why (the
+two-timestamp contract, `push_live_equity_point`, the render harness) are
+inputs, not open questions — the design routes through them._
+
+### Verified crate-edge reality (the seams, with line anchors)
+
+- **Mint site** — `crates/agent/src/reconciler.rs::after_bar_close`
+  (`reconciler.rs:122`) already computes the snapshot and returns it; the
+  research loop `runtime.rs::spawn_research_trading_loop` mints it inline
+  (`runtime.rs:1115-1124`). `runtime::run` already branches on
+  `config.mode` (`runtime.rs:471`: `Mode::Research` vs `Mode::Paper`).
+  `RunHandles` carries `config: Arc<Config>`, `ledger: Arc<audit::Ledger>`,
+  `bus` (`runtime.rs:91-113`) — the persistence handle threads here for
+  BOTH the headless `trading` bin (`crates/agent` `[[bin]] name="trading"`)
+  and `cockpit_live`, since both call `runtime::run`.
+- **Store** — `crates/audit`: the journal-writer pattern
+  (`journal.rs::post_training_*`, `post_strategy_signal`) and the reader
+  pattern (`query.rs::recent_training_events` at `query.rs:1998`, RFC3339
+  half-open window; `equity_curve_for_strategy` at `query.rs:1326` for the
+  `Money<Usdt>` Decimal-as-TEXT round-trip) are the exact siblings to copy.
+  Migrations stop at `012_llm_forecast.sql` → ours is `013`. The `010`
+  migration header is the additive-anchor-safety template verbatim.
+- **Hydrate seam** — `crates/ui/src/bin/cockpit_live.rs`: the boot-time
+  cold-hydrate tasks (`memory_task` at `cockpit_live.rs:696-745`,
+  `models_task` at `:754-761`, batched into `boot_task` at `:764`) are the
+  exact mirror — a `#[cfg(feature = "live")]` `iced::Task::perform` that
+  delegates the query to a crate-boundary helper (so `ui` keeps its
+  no-direct-sqlx edge), is fail-soft (`Ok(vec![])` on a missing file), and
+  fires a hydrate `Message`. `cfg.mode` is in scope at boot
+  (`cockpit_live.rs:241-253`). The `Arc<audit::Ledger>` is in `AppState`
+  (`:641`).
+- **UI append target** — `crates/ui/src/state.rs::push_live_equity_point`
+  (`state.rs:1374`), buffer/guard fields at `:1020`/`:1031`,
+  `LIVE_EQUITY_BUFFER_CAP = 2880` (`theme.rs:805`), the `Message::PnlRefreshed`
+  arm at `:2029`, the `Message` enum at `:1540`. Caption precedent
+  `LIVE_SESSION_RETURN_CAPTION = "Session to date"` (`strings.rs:1789`).
+- **`crates/core`** — **zero change** (confirmed): `PnlSnapshot` already
+  carries `bar_ts, as_of, total_equity, cash, realized, unrealized`. A row
+  DTO, if wanted, is a new `views.rs` struct (sibling of `TrainingEventRow`)
+  — no behaviour change.
+
+### A1 (→ Q1) — Durable store = the audit SQLite ledger, behind a `LiveEquityStore` trait. **ACCEPT (a).**
+
+A new additive `equity_snapshots` table on the existing `Arc<audit::Ledger>`
+handle, reached through a `LiveEquityStore` trait (the
+external-I/O-behind-a-trait boundary; the production impl wraps the
+`Ledger`, tests use a fake). Reuses the single existing audit writer, the
+`010` additive-migration precedent, the `query → Task::perform → message`
+hydrate seam, and the nightly-backup retention story. Provably anchor-safe
+(A3). Fallback (b) flat file and rejected (c) sidecar JSON are recorded in
+ADR-0052 § Alternatives. _No disagreement with the analyst — this is both
+the durable AND the lowest-new-surface option._
+
+### A2 (→ Q2) — Research-replay mode persists nothing. **ACCEPT (a).**
+
+The writer is gated `config.mode != Research` at the **mint** site (NOT the
+UI). Research replays repeating 2023 `bar_ts` ranges each boot; persisting
+them overlaps/duplicates into a meaningless hydrate. This is the single
+load-bearing correctness line. AC2 asserts research writes zero rows.
+
+### A3 (→ Q3) — Schema, retention, and the return baseline.
+
+- **Columns:** `(id, ts, bar_ts, as_of, total_equity, cash, realized,
+  unrealized, mode)`. `id` = UUID v4 PRIMARY KEY (every audit table's
+  shape). Money = Decimal-as-TEXT (ADR-0003); `ts`/`bar_ts`/`as_of` =
+  RFC3339 6-digit-fractional (ADR-0004 — the `subsecond digits:6` format the
+  `post_strategy_signal` writer uses, NOT `Rfc3339` second precision — keeps
+  `ORDER BY` stable under sub-second writes). `ts` = the row's mint
+  wallclock; `bar_ts` and `as_of` are the snapshot's two timestamps stored
+  verbatim. **Persist all three P&L components** (cash/realized/unrealized) —
+  cheap, lets a future surface decompose P&L (durable-over-minimal).
+  `fill_count` is **out** (the UI's `live_fill_count` is a session counter; a
+  durable cumulative count is a separate concern). `mode` is stored for
+  forensics/filtering even though only paper/live rows are ever written.
+- **Retention (R7):** an age/row-capped `DELETE WHERE ts < …` purge task
+  mirroring the nightly ledger-backup task, aligned with the 30-day
+  ledger-snapshot horizon (`08-recovery-and-backups.md`). The hydrate query
+  `LIMIT`s to ≤2880 so a hydrate never exceeds the buffer cap. AC8.
+- **Return baseline (R6):** Total-return measured from the **first buffered
+  point (account inception)**, NOT the session open — once history is
+  durable, "session" return is the less meaningful number. The
+  `ledger_inception_ts` (`query.rs:1626`) is the conceptual precedent. The
+  caption is a new `LIVE_*` string (e.g. `"Since inception"`) — pinned by
+  the ui-designer in T9, honest (not annualized, not "characterized").
+
+### A4 (→ Q4) — Hydrate via boot query → `Task::perform` → batch `PnlHydrated`; seed the guard from the max hydrated `as_of`. **ACCEPT (a).** *(The riskiest decision — pinned exactly.)*
+
+- **Mechanism:** a boot-time `audit::query::equity_snapshot_tail` →
+  `iced::Task::perform` → a new batch `Message::PnlHydrated(Vec<(bar_ts,
+  as_of, equity)>)` arm that seeds `live_equity_buffer` through (or exactly
+  mirroring) `push_live_equity_point` in ONE mutation. Each historical row's
+  plotted x-coordinate is its persisted `bar_ts`. Reuses the exact
+  Memory/Models cold-boot seam; the UI stays a pure consumer; no
+  reconciler-replays-the-tail coupling. **Gated on `cfg.mode != Research`**
+  at the boot site — in research mode the hydrate task is not issued, so the
+  curve stays session-scoped (R6).
+- **The `as_of` guard contract (the load-bearing sub-decision):** seed
+  `live_equity_last_as_of` from the **MAX hydrated `as_of`**. Historical
+  `as_of` values are prior-session wallclock stamps, all `≤ now()`; the first
+  LIVE snapshot's fresh `as_of = now()` is `≥` the max and therefore passes
+  the guard and lands, while a late/duplicate re-delivery of an
+  already-hydrated row is dropped (the guard's purpose). AC5 proves the
+  post-hydrate live append lands at the **render** layer.
+- **Backwards-clock edge (explicit):** if the host clock moved backwards
+  across the restart, a fresh live `as_of` could be < the max hydrated
+  `as_of` and be dropped until wallclock catches up. **Accepted, not
+  defended-against in the guard.** It is bounded (~1 bar/min; the curve
+  simply does not extend until the clock passes the stale max), it cannot
+  corrupt or reorder the stored series (the x-coordinate is `bar_ts`,
+  independent of `as_of`), and it never panics. Keying the guard on `bar_ts`
+  instead was already tried and reverted (`40f5de9`) — it re-introduces the
+  fast-replay drop bug. A backwards clock across a paper/live restart is a
+  host-monitoring fault, not a UI concern. (Stated so the tester does not
+  file it as a defect.)
+- **Mode-switch mid-deployment (explicit):** a research↔paper switch between
+  boots is correct by construction — a paper boot persists forward + hydrates
+  prior paper history; a research boot persists/hydrates nothing. No `run_id`
+  in v0.1.0, so two *different* paper deployments on one ledger would
+  interleave — out of scope (named follow-on).
+- **`is_all_absent` interaction:** ≥2 hydrated rows → build the KPI strip
+  `Ready` immediately (clears the ≥2-point trap); ≤1 row → `Loading`
+  (unchanged). The curve renders from ≥1.
+
+### A5 (→ Q5) — One batch `PnlHydrated` arm, not N `PnlRefreshed`. **ACCEPT.**
+
+A single `Message::PnlHydrated(Vec<…>)` arm seeds the buffer and rebuilds the
+derived curve + KPI strip ONCE (vs re-deriving N times by replaying N
+`PnlRefreshed`). It also makes "hydrate" explicitly distinct from a live
+tick. One new message variant is the cost; worth it.
+
+### A6 (→ Q6) — Per-bar fire-and-forget write. **ACCEPT.**
+
+Per-bar insert behind the trait; a write error logs and continues, never
+blocks and never panics the trading loop (the `bus = None` backtest
+tolerance). The minute-bar cadence is low; batching/buffering is a premature
+optimization until a sub-second config lands (then revisit behind the same
+trait).
+
+### A7 (→ Q7) — Headless `trading` bin persists too. **ACCEPT — confirmed intended.**
+
+Gating at the mint site means the headless `trading` bin (same
+`runtime::run`, no UI) persists equity in paper/live mode. This is the right
+behaviour: the durable series should not depend on a UI being attached. The
+headless bin issues no hydrate (no UI) — it only writes.
+
+### Anchor-safety proof (A3 / AC7) — by construction
+
+`013_equity_snapshots.sql` is `CREATE TABLE IF NOT EXISTS` + indexes — no
+`ALTER`, no backfill, no `UPDATE` on any pre-existing row (the `010`
+template). The backtest binary instantiates the reconciler with `bus = None`
+(`reconciler.rs:72` doc + `runtime.rs:860` note) and never touches this
+table, so the 19 anchored backtest body-SHA-256 reports are byte-unchanged.
+This feature adds **no** row to `spec/anchors.toml` and mutates **none** of
+the 9 anchor SHAs. AC7 asserts the anchor count is byte-unchanged.
+
+### Project-law compliance (stated, per house convention)
+
+- **Every external I/O behind a trait** — the `LiveEquityStore` trait (A1);
+  the `ui` hydrate delegates to an `audit::query` helper (no direct sqlx in
+  `ui`).
+- **Money is `Decimal`/`Money<Usdt>`, never `f64`** — all four money columns
+  Decimal-as-TEXT (ADR-0003); the reader parses to `Money<Usdt>`.
+- **Determinism** — RFC3339 6-digit-fractional timestamps (ADR-0004); no
+  RNG, no report bytes touched.
+- **Baseline-equity-divergence e2e gate — N/A (explicit).** This is a
+  read-only monitor-persistence feature: no strategy, no sizing, no decision
+  variable. Per CLAUDE.md that gate applies to strategy overlays / sizing
+  modifiers only — stated here exactly as `cockpit-live-dashboard-wiring`
+  stated it.
+- **Anchored reports byte-immutable** — the design touches no anchored
+  report file (A3 proves it by construction).
+
+### The one trait (the only real new API)
+
+```rust
+/// crates/audit — the durable live-equity-series boundary (R3 / A1).
+/// External-I/O-behind-a-trait: the production impl wraps `Arc<Ledger>`;
+/// tests use a fake. Money is `Money<Usdt>` (Decimal), never f64.
+#[async_trait::async_trait]
+pub trait LiveEquityStore: Send + Sync {
+    /// Persist one per-bar snapshot. Fire-and-forget at the call site:
+    /// the agent logs + continues on Err, never blocks/panics the loop (A6).
+    async fn append_equity_snapshot(
+        &self,
+        row: &EquitySnapshotRow,   // (bar_ts, as_of, total_equity, cash, realized, unrealized, mode)
+    ) -> Result<(), audit::LedgerError>;
+
+    /// Read the tail for boot hydration, newest-bounded, LIMIT ≤ 2880,
+    /// returned in monotone `bar_ts` order (A4 / R4).
+    async fn equity_snapshot_tail(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<EquitySnapshotRow>, audit::LedgerError>;
+}
+```
+
+(`async_trait` is already a workspace dep — no new dependency. `EquitySnapshotRow`
+is an `audit`-crate DTO carrying `Money<Usdt>` + the two `Timestamp`s; the
+`ui` hydrate consumes it via the `audit::query` helper, keeping `ui`'s
+no-sqlx edge.)
 
 ## Implementation
 

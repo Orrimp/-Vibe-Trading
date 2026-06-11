@@ -2825,3 +2825,23 @@ tests       = [
 ]   # ui-designer 2026-06-09 — all green (435 lib + snapshots + consistency/contrast/layout + 51 visual). Pre-existing unrelated lab_run_engine::h3_… network-backtest failure (fails identically on clean HEAD).
 anchors     = []   # N/A — live-monitor UI wiring (no strategy overlay / no sizing math) → CLAUDE.md baseline-divergence e2e gate does NOT apply; no new backtest anchors; tester-verified 119/119 unchanged (2026-06-09)
 state       = "tester-done"   # tester 2026-06-09 — VERDICT PASS. 435 lib + all integration tests green; 3 builds (default/live/fixtures) clean; new-code clippy/fmt zero warnings; visual gate 51/51; anchors 119/119; spec-lint exit 0 (2 missing-frontmatter from ui-done status self-corrected to tester-done; all other violations pre-existing baseline). The 7 wiring tests confirmed, the 1-pt trap proven, both open questions ratified.
+
+[[req]]
+id          = "REQ-LIVE-EQUITY-HISTORY-001"
+title       = "Durable live equity history — the cockpit Live equity curve survives cockpit_live restarts. Paper/live-mode-only persistence (research replay writes NOTHING — repeating 2023 bar_ts ranges would duplicate/corrupt the series, A2); new additive audit-ledger table equity_snapshots behind the LiveEquityStore trait (A1, external-I/O-behind-a-trait); schema (id, ts, bar_ts, as_of, total_equity, cash, realized, unrealized, mode) Decimal-as-TEXT + RFC3339-micros (A3); boot hydration via audit query -> Task::perform -> batch Message::PnlHydrated seeding live_equity_last_as_of from MAX hydrated as_of so the first live snapshot passes the delivery guard (A4 — the riskiest decision, proven at the render layer per project law); since-inception return caption (R6); age-capped retention purge aligned with the 30-day ledger horizon (R7/A3). Wave 0 pins T1 trait/DTO + T7-contract message, then developer (T2-T6) and ui-designer (T7-T9) run in parallel, reconverging at T10. Baseline-equity-divergence e2e N/A (read-only monitor, no strategy/sizing math). Full decision record: ADR-0052."
+feature     = "live-equity-history-durable"
+product     = "spec/product.md"
+crates      = ["crates/audit", "crates/agent", "crates/ui"]
+arch        = [
+  # ANALYST (2026-06-11) — v0.1.0 brief, Q1-Q7 with recommended defaults.
+  "spec/live-equity-history-durable/feature.md",
+  "spec/live-equity-history-durable/tasks.md",
+  # ARCHITECT (2026-06-11) — A1-A7 resolutions; ADR-0052 decision record.
+  "spec/architecture/adr/0052-durable-live-equity-series.md",
+]
+tests       = [
+  # T8 render-layer gate (AC6 hydrated-boot + AC5 post-hydrate live append) extends this harness.
+  "crates/ui/tests/live_equity_render.rs",
+]
+anchors     = []   # N/A — read-only monitor persistence (no strategy overlay / no sizing math) -> CLAUDE.md baseline-divergence e2e gate does NOT apply; migration 013 is additive, backtest anchors byte-unchanged by construction (AC7).
+state       = "arch-done"   # architect 2026-06-11 — A1-A7 pinned, ADR-0052 registered, waves structured; awaiting Wave 0 (T1 + T7-contract).
