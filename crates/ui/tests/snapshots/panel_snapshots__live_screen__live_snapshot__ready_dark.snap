@@ -1,5 +1,6 @@
 ---
 source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 2805
 expression: "live_screen_summary(&c, ThemeMode::Dark)"
 ---
 screen: Live
@@ -8,7 +9,7 @@ headline: Live
 system_health_label: System health
 equity_curve: ready points=2
 kpi_strip: ready
-  card Total return: 0.10%
+  card Total return: 10.00%
   card CAGR: —
   card Sharpe: —
   card Max DD: 0.00%

@@ -25,7 +25,7 @@ use super::canvas_chart::{
     GRIDLINE_COUNT, RANGE_PAD_FRACTION, draw_gridlines, inner_rect_with_gutters,
     polyline_with_fill, with_alpha,
 };
-use super::chart::{local_offset_or_utc, time_axis_tick_count};
+use super::chart::{format_time_axis_label, local_offset_or_utc, time_axis_tick_count};
 use super::frame::muted_body;
 use crate::state::PanelState;
 use crate::strings::{VIEWER_EQUITY_UNAVAILABLE_PREFIX, VIEWER_NO_EQUITY_DATA};
@@ -248,6 +248,14 @@ fn draw_time_axis(frame: &mut Frame, inner: Rectangle, series: &EquitySeries, mo
         return;
     }
     let offset = local_offset_or_utc();
+    // Total series span drives adaptive label granularity — shared with the
+    // equity curve (cockpit-live-axis-density-fix).
+    let span_seconds = match (series.points.first(), series.points.last()) {
+        (Some(a), Some(b)) => {
+            (b.ts.inner().unix_timestamp() - a.ts.inner().unix_timestamp()).max(0)
+        }
+        _ => 0,
+    };
 
     for i in 0..=intervals {
         let idx = if intervals == 0 {
@@ -276,7 +284,7 @@ fn draw_time_axis(frame: &mut Frame, inner: Rectangle, series: &EquitySeries, mo
             Stroke::default().with_color(border).with_width(1.0),
         );
         let local_ts = pt.ts.inner().to_offset(offset);
-        let label = format!("{:02}:{:02}", local_ts.hour(), local_ts.minute());
+        let label = format_time_axis_label(local_ts, span_seconds);
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
             content: label,

@@ -1,5 +1,6 @@
 ---
 source: crates/ui/tests/panel_snapshots.rs
+assertion_line: 74
 expression: tape_summary(&c)
 ---
 panel: agent_feed
@@ -7,7 +8,7 @@ title: Agent activity
 state: ready
 paused: true
 rows:
-  2024-01-15 12:00:00.0 +00:00:00  BTCUSDT  Buy  40000.00  0.1
-  2024-01-15 12:00:01.0 +00:00:00  BTCUSDT  Sell  40000.50  0.1
-  2024-01-15 12:00:02.0 +00:00:00  BTCUSDT  Buy  40001.00  0.1
+  2024-01-15 12:00:00.0 +00:00:00  BTCUSDT  Buy  40000.00  0.1  notional=4,000.00 USDT  fee=1.60 USDT
+  2024-01-15 12:00:01.0 +00:00:00  BTCUSDT  Sell  40000.50  0.1  notional=4,000.05 USDT  fee=1.60 USDT
+  2024-01-15 12:00:02.0 +00:00:00  BTCUSDT  Buy  40001.00  0.1  notional=4,000.10 USDT  fee=1.60 USDT
 banner: Paused — updates buffered

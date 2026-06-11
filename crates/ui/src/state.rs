@@ -1339,17 +1339,30 @@ impl Cockpit {
         let points: Vec<(Timestamp, Money<Usdt>)> =
             self.live_equity_buffer.iter().copied().collect();
         if let Ok(series) = EquitySeries::from_points(points) {
-            let max_drawdown_pct = series.max_drawdown_pct;
+            // `EquitySeries::max_drawdown_pct` is a FRACTION (0.40 = 40 %);
+            // `BacktestMetrics.max_drawdown_pct` carries PERCENT units (the
+            // baseline const stores `34.57` to render "−34.57%", and the
+            // kpi_strip's `format_pct_max_dd` appends `%` to the value
+            // verbatim). Scale ×100 at this wiring seam so the live Max-DD
+            // card reads "−40.00%", not "−0.40%"
+            // (cockpit-live-kpi-units-fix, 2026-06-10).
+            let max_drawdown_pct = series.max_drawdown_pct * Decimal::ONE_HUNDRED;
             self.live_equity_curve = PanelState::Ready(series);
 
             // (4) Rebuild the KPI strip — Loading until ≥2 points (trap).
             if self.live_equity_buffer.len() < 2 {
                 self.live_kpi = PanelState::Loading;
             } else {
-                // Session return = (latest − first) / first; the first
-                // accumulated point is the session open. Guard first ≠ 0
-                // (the agent's starting equity is non-zero, but divide-guard
-                // anyway).
+                // Session return = (latest − first) / first, a FRACTION
+                // (0.015 = +1.5 %). `BacktestMetrics.total_return_pct` carries
+                // PERCENT units (the baseline const stores `196.22` to render
+                // "+196.22%"; `format_pct_sentiment` appends `%` verbatim), so
+                // we scale ×100 here — otherwise a +1.5 % session rendered as
+                // "0.01%" (100× too small), which is exactly the "Total return
+                // 0.01–0.02" the operator reported
+                // (cockpit-live-kpi-units-fix, 2026-06-10). The first
+                // accumulated point is the session open. Guard first ≠ 0 (the
+                // agent's starting equity is non-zero, but divide-guard anyway).
                 let first = self.live_equity_buffer[0].1.amount();
                 let latest = self.live_equity_buffer[self.live_equity_buffer.len() - 1]
                     .1
@@ -1357,7 +1370,7 @@ impl Cockpit {
                 let total_return_pct = if first.is_zero() {
                     Decimal::ZERO
                 } else {
-                    (latest - first) / first
+                    (latest - first) / first * Decimal::ONE_HUNDRED
                 };
                 self.live_kpi = PanelState::Ready(BacktestMetrics {
                     total_return_pct,
@@ -2947,8 +2960,12 @@ mod tests {
         update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(1100))));
         match &c.live_kpi {
             PanelState::Ready(m) => {
-                // Session return = (1100 − 1000) / 1000 = 0.10.
-                assert_eq!(m.total_return_pct, dec!(0.10));
+                // Session return = (1100 − 1000) / 1000 = 0.10 fraction →
+                // ×100 = 10.00 PERCENT (the units `BacktestMetrics` /
+                // `format_pct_sentiment` expect; renders "+10.00%", not the
+                // 100×-too-small "0.10%" the operator saw — cockpit-live-
+                // kpi-units-fix 2026-06-10).
+                assert_eq!(m.total_return_pct, dec!(10));
                 // Max DD = 0 (monotone up so far) — but present (real).
                 assert_eq!(m.max_drawdown_pct, Decimal::ZERO);
                 // Trades = 0, and Sharpe/CAGR/Win-rate are absent (`—`).
@@ -2977,9 +2994,69 @@ mod tests {
         update(&mut c, Message::PnlRefreshed(pnl_snap_at(120, dec!(900))));
         match &c.live_kpi {
             PanelState::Ready(m) => {
-                assert_eq!(m.max_drawdown_pct, dec!(0.25));
-                // Session return = (900 − 1000) / 1000 = −0.10 (negative, live).
-                assert_eq!(m.total_return_pct, dec!(-0.10));
+                // Max DD = (1200−900)/1200 = 0.25 fraction → ×100 = 25.00
+                // PERCENT (renders "−25.00%", not "−0.25%").
+                assert_eq!(m.max_drawdown_pct, dec!(25));
+                // Session return = (900 − 1000) / 1000 = −0.10 fraction →
+                // ×100 = −10.00 PERCENT (negative, live).
+                assert_eq!(m.total_return_pct, dec!(-10));
+            }
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
+    }
+
+    /// cockpit-live-kpi-units-fix (2026-06-10) — PIN the percent-unit
+    /// semantics end-to-end through the KPI strip's actual formatters.
+    ///
+    /// Regression guard for the operator-reported "Total return 0.01–0.02"
+    /// bug: a fraction was fed where `BacktestMetrics`/`format_pct_sentiment`
+    /// expect percent units, so a real +1.5 % session rendered as "0.01%"
+    /// (100× too small). This test drives the production `PnlRefreshed` path
+    /// (equity 100k → 101.5k, a +1.5 % session, then a dip to 99k for a live
+    /// Max-DD) and asserts the *rendered card text* — not just the raw
+    /// Decimal — so a future reversion of the ×100 is caught at the surface
+    /// the operator actually reads.
+    #[test]
+    fn live_kpi_units_render_percent_not_fraction() {
+        use crate::theme::ThemeMode;
+        use crate::widgets::num::{format_pct_max_dd, format_pct_sentiment};
+        let mode = ThemeMode::Dark;
+
+        let mut c = Cockpit::new();
+        // 100_000 → 101_500: a +1.5 % session (the operator's real magnitude).
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(100000))));
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(101500))));
+        match &c.live_kpi {
+            PanelState::Ready(m) => {
+                // Raw field is in PERCENT units now.
+                assert_eq!(
+                    m.total_return_pct,
+                    dec!(1.5),
+                    "raw return must be 1.5 (percent), not 0.015"
+                );
+                // The card renders "1.50%", NEVER the 100×-too-small "0.01%"
+                // / "0.02%" the operator saw.
+                let (tr_text, _) = format_pct_sentiment(m.total_return_pct, mode);
+                assert_eq!(tr_text, "1.50%");
+                assert_ne!(tr_text, "0.01%");
+                assert_ne!(tr_text, "0.02%");
+            }
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
+
+        // Drive a dip to 99_000 → peak 101_500, trough 99_000:
+        // Max-DD = (101_500 − 99_000) / 101_500 = 0.02463… fraction
+        // → ×100 = 2.4630…% — the card must read "−2.46%", not "−0.02%".
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(120, dec!(99000))));
+        match &c.live_kpi {
+            PanelState::Ready(m) => {
+                let (mdd_text, _) = format_pct_max_dd(m.max_drawdown_pct, mode);
+                // Max-DD is in percent units (≈ 2.46), rendered "−2.46%".
+                assert_eq!(mdd_text, "\u{2212}2.46%");
+                assert_ne!(mdd_text, "\u{2212}0.02%");
+                // Return now negative: (99_000 − 100_000)/100_000 = −1.0 %.
+                let (tr_text, _) = format_pct_sentiment(m.total_return_pct, mode);
+                assert_eq!(tr_text, "\u{2212}1.00%");
             }
             other => panic!("expected Ready strip, got {}", other.variant_name()),
         }

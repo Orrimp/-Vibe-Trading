@@ -1,8 +1,8 @@
 ---
 slug: cockpit-live-dashboard-wiring
 status: tester-done
-owner: tester
-updated: 2026-06-09
+owner: ui-designer
+updated: 2026-06-10
 ---
 
 # Tasks — cockpit-live-dashboard-wiring
@@ -203,6 +203,54 @@ scope).
   48 other visual snapshots unchanged.
 
 - [x] **M-TEST — tester gate** (tester, 2026-06-09) — VERDICT PASS. `cargo test -p ui` 435 unit + all integration suites GREEN (one pre-existing `lab_run_engine::h3_…` network-dependent failure confirmed pre-existing on parent commit, whitelisted). Static: all 3 builds (default / `--features live` / fixtures) clean; fmt pre-existing bench diff in `chart_build_probe.rs` (not a feature file — carries over from commit 07f71be); zero new warnings from feature's changed files (state.rs/live.rs/theme.rs/strings.rs). 7 wiring tests all GREEN; 1-point trap proven; visual gate 51/51 (only `live__recent_activity_with_chevron` triple changed). `verify-anchors` 119/119. `spec-lint` exit 0 (2 missing-frontmatter self-corrected to `tester-done`). `git diff crates/` empty. Both open questions ratified (Trades = 0 honest; Empty-on-channel-close → Error, non-blank, no panic). Report: `spec/cockpit-live-dashboard-wiring/reports/test-2026-06-09-cockpit-live-dashboard-wiring.md`.
+
+## Follow-up polish — v0.1.1 (ui-designer, 2026-06-10)
+
+Three display issues surfaced by the operator's first real session
+(cockpit_live, paced replay 30 ms/bar, sma_crossover BTCUSDT 2023-24).
+Diagnosed against code + run; two UI fixes + one correct-as-configured verdict.
+
+- [x] **F1 — Equity-curve X-axis label smear (rendering bug).**
+  `widgets/chart::time_axis_tick_count` returned `(bar_count−1)/fixed_step`
+  intervals → label count scaled with series length (2880-pt Live ring → ~575
+  labels; 367-pt Baseline → ~73). Capped at the width budget
+  (`raw_intervals.min(clamp(width/96, 4, 12))`) → ≤ 12 labels for any length;
+  **no-op for the ≤ 60-bar price chart** (baseline-preserving). Added
+  span-adaptive `format_time_axis_label` (HH:MM / MMM DD HH:MM / MMM DD /
+  MMM 'YY) shared by `equity_curve` + `drawdown_band`; month names via new
+  `strings::MONTH_ABBREVS` / `month_abbrev`. Tests:
+  `time_axis_tick_count_bounded_for_long_series` (pins n=367 & n=2880 ≤
+  budget) + `format_time_axis_label_span_bands`.
+  Files: `crates/ui/src/widgets/{chart,equity_curve,drawdown_band}.rs`,
+  `crates/ui/src/strings.rs`.
+
+- [x] **F2 — "Total return 0.01–0.02" — fraction-vs-percent unit bug.**
+  `state.rs:1360` fed a fraction `(latest−first)/first` into
+  `BacktestMetrics.total_return_pct` (PERCENT semantics) → +1.5 % rendered
+  "0.01%". `max_drawdown_pct` had the same bug (`EquitySeries` fraction →
+  percent-expecting `format_pct_max_dd`). ×100 both at the seam. Corrected the
+  wiring test's `0.10`→`10` and `-0.10`→`-10`, `0.25`→`25` assertions (they
+  encoded the bug); added `live_kpi_units_render_percent_not_fraction` pinning
+  the rendered card text. Files: `crates/ui/src/state.rs`.
+
+- [x] **F3 — "~$4 buys" — display ambiguity, NOT an exec bug.** Config
+  `[risk.sizing] fixed_fraction = 0.10` on $100k → ~$10k clips; 4 bps taker
+  fee × $10k = exactly $4.00. The agent_feed tape's rightmost USDT-suffixed
+  column was the **fee**; qty showed BTC unlabeled. Added a **Notional**
+  column (qty × price, USDT — derived in-widget, no backend change) so the
+  ~$10k clip is visible and the ~$4 fee is unmistakably a fee. New string
+  `TAPE_COL_NOTIONAL`; extended `tape_summary` panel snapshot to pin
+  notional+fee. Files: `crates/ui/src/widgets/agent_feed.rs`,
+  `crates/ui/src/strings.rs`, `crates/ui/tests/panel_snapshots.rs`.
+  **Sizing is correct as configured — no agent/exec change.**
+
+- [x] **F-TEST — self-verified** (ui-designer, 2026-06-10) — 437 lib tests
+  pass (3 new); consistency/contrast/layout green; 4 panel snaps regenerated
+  intentionally (2 live = "10.00%"; 2 agent_feed = notional+fee); the
+  `live__recent_activity_with_chevron` visual triple regenerated (notional
+  column); 52 other visual baselines + all `charts_screen_*` unchanged;
+  new-code clippy/fmt clean; `verify_anchors.sh` 119/119. Tester to confirm
+  the full integration suite + the operator's eyeball re-test recipe.
 
 ## Notes
 

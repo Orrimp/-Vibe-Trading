@@ -25,9 +25,9 @@ use iced::widget::{Button, Column, Row, Scrollable, Text, button};
 
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    PANEL_AGENT_FEED_TITLE, SIDE_BUY, SIDE_SELL, TAPE_COL_FEE, TAPE_COL_PRICE, TAPE_COL_QTY,
-    TAPE_COL_SIDE, TAPE_COL_SYMBOL, TAPE_COL_TIME, TAPE_EMPTY, TAPE_ERROR_PREFIX, TAPE_LOADING,
-    TAPE_PAUSE_LABEL, TAPE_PAUSED_BANNER, TAPE_RESUME_LABEL,
+    PANEL_AGENT_FEED_TITLE, SIDE_BUY, SIDE_SELL, TAPE_COL_FEE, TAPE_COL_NOTIONAL, TAPE_COL_PRICE,
+    TAPE_COL_QTY, TAPE_COL_SIDE, TAPE_COL_SYMBOL, TAPE_COL_TIME, TAPE_EMPTY, TAPE_ERROR_PREFIX,
+    TAPE_LOADING, TAPE_PAUSE_LABEL, TAPE_PAUSED_BANNER, TAPE_RESUME_LABEL,
 };
 use crate::theme::{ThemeMode, color, space, text};
 
@@ -57,6 +57,10 @@ fn ready_body<'a>(
         .push(col_header(TAPE_COL_SIDE))
         .push(col_header(TAPE_COL_PRICE))
         .push(col_header(TAPE_COL_QTY))
+        // cockpit-live-tape-units-fix — Notional (qty × price, USDT) sits
+        // between Qty and Fee so the operator reads the real clip size and
+        // can't mistake the small USDT-suffixed FEE for the trade size.
+        .push(col_header(TAPE_COL_NOTIONAL))
         .push(col_header(TAPE_COL_FEE))
         .spacing(space::M);
 
@@ -106,12 +110,19 @@ fn row_for(fill: &trading_core::FillView) -> Element<'_, Message> {
         trading_core::Side::Buy => color::UP_500.current(ThemeMode::Dark),
         trading_core::Side::Sell => color::DOWN_500.current(ThemeMode::Dark),
     };
+    // cockpit-live-tape-units-fix — notional = qty × price (USDT). Derived
+    // in the widget from the existing FillView fields (no backend change).
+    // This is the number the operator was looking for: a 10 %-of-$100k clip
+    // shows ≈ "10,000.00 USDT" here, making the adjacent ≈ "4.00 USDT" fee
+    // unmistakably a fee, not the trade size.
+    let notional = fill.qty.get() * fill.price.get();
     let row_content = Row::new()
         .push(cell(short_time(fill.venue_ts)))
         .push(cell(fill.symbol.0.to_string()))
         .push(Text::new(side_label).size(text::BODY).color(side_color))
         .push(cell(fmt_price(fill.price.get())))
         .push(cell(fmt_qty(fill.qty.get())))
+        .push(cell(fmt_usdt(notional)))
         .push(cell(fmt_usdt(fill.fee.amount())))
         .spacing(space::M);
 

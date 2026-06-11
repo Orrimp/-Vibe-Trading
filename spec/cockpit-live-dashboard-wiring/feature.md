@@ -1,9 +1,9 @@
 ---
 slug: cockpit-live-dashboard-wiring
 status: tester-done
-owner: tester
-updated: 2026-06-09
-version: 0.1.0
+owner: ui-designer
+updated: 2026-06-10
+version: 0.1.1
 ---
 
 # Cockpit Live dashboard wiring — equity curve + KPI strip from the live agent
@@ -813,6 +813,69 @@ The design matched the code well; three small clarifications worth recording:
    so there is no separate `strings.rs` registration table — the snapshot
    helper is the reference site for the new caption.
 
+## UI — v0.1.1 follow-up (3 operator-session display fixes)
+
+_ui-designer (2026-06-10). Files-only; orchestrator commits. 437 lib tests +
+panel/consistency/contrast/layout/visual green; new-code clippy/fmt clean;
+anchors 119/119._
+
+### New widgets / panels / columns
+
+- **No new screen or widget.** One new **column** on the existing
+  `widgets::agent_feed` tape: **Notional** (`qty × price`, USDT), inserted
+  between Qty and Fee. Derived in-widget from existing `FillView` fields — no
+  `core`/`agent` change. Resolves the "$4 buys" misread (the rightmost
+  USDT-suffixed number was the fee; the operator read it as the trade size).
+- **One shared helper added** to `widgets::chart`:
+  `format_time_axis_label(local_ts, span_seconds)` — span-adaptive granularity
+  (`HH:MM` < 6 h / `MMM DD HH:MM` < 14 d / `MMM DD` < 18 mo / `MMM 'YY` ≥ 18
+  mo). Consumed by `equity_curve` + `drawdown_band` (shared, not forked).
+- **`time_axis_tick_count` bug fix** (same shared function): interval count now
+  capped at the width budget (`clamp(width/96, 4, 12)`) so the label count is
+  bounded regardless of series length — fixes the Live (2880-pt) + Baseline
+  (367-pt) X-axis smear. No-op for the ≤ 60-bar price chart.
+
+### New strings (`ui::strings`)
+
+- `TAPE_COL_NOTIONAL = "Notional"` — the agent_feed Notional column header.
+- `MONTH_ABBREVS: [&str; 12]` (`"Jan".."Dec"`) + `month_abbrev(u8)` helper —
+  for the adaptive time-axis labels (no inline month literals in widgets).
+  Registered in `strings::all()` as `MONTH_JAN..MONTH_DEC` + `TAPE_COL_NOTIONAL`.
+
+### New theme tokens
+
+- **Zero.** (As required — most additions would be a smell.) The fix reuses
+  existing `text::MICRO`, `space::*`, `color::FG_3`/`BORDER_1` tokens.
+
+### Unit-semantics correction (no token, behavioral)
+
+- `state.rs` live-KPI wiring now scales the session return and Max-DD
+  **fraction → percent** (×100) to match `BacktestMetrics`'s percent
+  semantics (the baseline const + `format_pct_sentiment`/`format_pct_max_dd`
+  all expect percent). A +1.5 % session now renders "1.50%", not "0.01%".
+
+### Accessibility notes
+
+- **Notional column:** right-aligned monospaced digits with thousands
+  separators + explicit "USDT" unit (matches the Fee column treatment). The
+  header is keyboard/screen-reader legible copy from `strings`. No new
+  interactive element; focus order unchanged.
+- **Axis labels:** `text::MICRO` on `FG_3` (existing, contrast-verified);
+  fewer, non-overlapping labels improve legibility. Month/time text is never
+  color-only — it is literal copy.
+- **Both themes:** all changes flow through existing tokens → render correctly
+  in `--theme dark` and `--theme light` (verified by the regenerated dark +
+  light `live_snapshot__ready_*` panel snaps + the visual triple).
+
+### Baselines regenerated (intentional)
+
+- Panel snaps (4): `live_snapshot__ready_dark`, `live_snapshot__ready_light`
+  (Total-return "0.10%"→"10.00%" — the unit fix); `agent_feed_ready_three_fills`,
+  `agent_feed_paused` (new `notional=…  fee=…` columns).
+- Visual baselines (3): `live__recent_activity_with_chevron__{floor,typical,
+  operator}` (Notional column now rendered). All `charts_screen_*` + 49 other
+  visual baselines **unchanged** (price-chart tick-count cap is a no-op).
+
 ## Verification
 
 _tester links to reports here._
@@ -885,3 +948,51 @@ _tester links to reports here._
   unchanged). Pre-existing unrelated failure: `lab_run_engine::h3_…`
   (network-dependent `--features live` backtest, fails identically on clean
   HEAD). § UI filled. status → ui-done. HANDOFF → tester.
+- 2026-06-10 (ui-designer): **v0.1.1 — three post-ship display fixes from the
+  operator's first real session** (cockpit_live, paced replay 30 ms/bar,
+  sma_crossover BTCUSDT 2023-24). All three diagnosed against code + the
+  shipped run; two UI-layer fixes + one verdict-of-correct-with-a-display-fix.
+  **(1) Equity-curve X-axis label smear** — root cause
+  `widgets/chart::time_axis_tick_count` (`chart.rs:125`) derived the interval
+  count as `(bar_count − 1) / fixed_step` (step 5/10/15), so the **label count
+  scaled with the series length**: the 2880-pt Live ring → ~575 labels, the
+  367-pt Baseline year-series → ~73 (a shared bug — the Baseline curve had it
+  too, just milder). The `time_axis_tick_count_adaptive` test only covered
+  `n = 60`, which masked it. **Fix:** cap the interval count at the
+  width-derived label budget `clamp(width/96, 4, 12)` —
+  `raw_intervals.min(max_labels)` — so any series is bounded to ≤ 12 labels;
+  **strict no-op for the ≤ 60-bar price chart** (`(59)/5 = 11 ≤ 12`), so the
+  `charts_screen_*` baselines stay byte-identical. Added adaptive **span-based
+  label formatting** (`format_time_axis_label`, shared by `equity_curve` +
+  `drawdown_band`): `HH:MM` < 6 h, `MMM DD HH:MM` < 14 d, `MMM DD` < 18 mo,
+  `MMM 'YY` ≥ 18 mo (the 2-year replay) — month names from new
+  `strings::MONTH_ABBREVS`/`month_abbrev` (no inline literals). **(2) "Total
+  return 0.01–0.02"** — **fraction-vs-percent unit bug** at the wiring seam:
+  `state.rs:1360` fed `(latest−first)/first` (a FRACTION, 0.015) into
+  `BacktestMetrics.total_return_pct`, whose **PERCENT** semantics the baseline
+  const (`196.22` → "+196.22%") and `format_pct_sentiment` (appends `%`
+  verbatim) establish → a +1.5 % session rendered "0.01%" (100× too small).
+  `max_drawdown_pct` had the **same bug** (`EquitySeries::max_drawdown_pct` is
+  a fraction 0.40; the strip's `format_pct_max_dd` expects percent). **Fix:**
+  ×100 both at the seam. The wiring test's `total_return = 0.10` assertion was
+  the bug encoded as fact (a 1000→1100 = +10 % session); corrected to `10`
+  (percent), + added `live_kpi_units_render_percent_not_fraction` pinning the
+  *rendered card text* ("1.50%", "−2.46%") through the real formatters. **(3)
+  "~$4 buys, never larger / smaller"** — **NOT an exec bug; a display
+  ambiguity.** Config is `[risk.sizing] fixed_fraction = 0.10` on
+  `initial_capital_usdt = 100000` → real clips are ~$10k notional; `taker_fee
+  = 4 bps × $10k = exactly $4.00`. The agent_feed tape's rightmost column was
+  the **fee** (`fmt_usdt(fill.fee)`), the only USDT-suffixed number in the row;
+  the qty column showed BTC (e.g. "0.1") with no unit. The operator read the
+  $4 fee as the trade size. "Never larger/smaller" = correct fixed-10 % clips
+  (≈ constant ~$4 fee until equity moves). **Fix (UI-only):** added a
+  **Notional** column (qty × price, USDT — derived in the widget from existing
+  `FillView` fields, no backend change) between Qty and Fee, so the ~$10k clip
+  is visible and the ~$4 fee is unmistakably a fee. **Tests:** 437 lib (3 new:
+  axis-density-for-long-series, span-band formatting, unit-pinning); 2 state
+  assertions corrected to percent; consistency/contrast/layout green;
+  regenerated 4 panel snaps (2 live = "10.00%"; 2 agent_feed = notional+fee
+  columns) + the `live__recent_activity_with_chevron` visual triple (notional
+  column now rendered); 52 other visual baselines + all `charts_screen_*`
+  unchanged (price-chart cap is a no-op). new-code clippy/fmt clean; anchors
+  119/119. **No agent/exec change** — sizing is correct as configured.

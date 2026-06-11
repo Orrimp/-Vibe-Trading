@@ -2123,13 +2123,19 @@ fn tape_summary(c: &Cockpit) -> String {
         PanelState::Ready(q) => {
             out.push_str("rows:\n");
             for f in q {
+                // cockpit-live-tape-units-fix — pin the derived notional
+                // (qty × price) + fee columns so the tape's unambiguous-row
+                // contract is regression-guarded.
+                let notional = f.qty.get() * f.price.get();
                 out.push_str(&format!(
-                    "  {}  {}  {:?}  {}  {}\n",
+                    "  {}  {}  {:?}  {}  {}  notional={}  fee={}\n",
                     f.venue_ts,
                     f.symbol,
                     f.side,
                     f.price.get(),
                     f.qty.get(),
+                    ui::widgets::num::fmt_usdt(notional),
+                    ui::widgets::num::fmt_usdt(f.fee.amount()),
                 ));
             }
         }

@@ -113,39 +113,109 @@ pub(crate) fn chart_inner_rect_with_equity(size: Size) -> Rectangle {
 /// **T3012 — adaptive tick spacing** for the bottom time axis (R4.2.1
 /// / Q3 architect-resolved).
 ///
-/// Formula: `tick_count = clamp(canvas_width_logical / 96, 4, 12)`
-/// rounded to the nearest 5-bar multiple so labels never overlap at
-/// the 1280-px floor and never look sparse at 3360-px native Retina.
-/// Returns the number of intervals (so `tick_count + 1` actual tick
-/// positions land on the axis line).
+/// Returns the number of *intervals* on the time axis (so
+/// `intervals + 1` actual tick positions land on the axis line, driven
+/// by the caller's `for i in 0..=intervals` loop). The caller maps each
+/// interval index `i` to a data index by even spacing —
+/// `idx = i * (n - 1) / intervals` — so the returned interval count is
+/// the label count minus one, **independent of the per-tick data step**.
 ///
-/// The formula always emits a multiple-of-5 count (5 / 10 / 15 bars
-/// per tick) so the time axis stays visually anchored on round
-/// minute boundaries.  Bar-count `0` returns `0` — empty state.
+/// ## Width-bounded label budget (cockpit-live-axis-density-fix, 2026-06-10)
+///
+/// The label count is bounded by the canvas width so labels never
+/// overlap, **regardless of how many points the series holds**. This is
+/// the fix for the Live equity curve's unbounded-overlap bug: the
+/// session ring buffer holds up to `LIVE_EQUITY_BUFFER_CAP` (2880)
+/// points, and the prior formula derived the interval count from
+/// `bar_count / fixed_step`, which scaled the label count *with the
+/// series length* — 2880 points yielded ~575 ticks (an unreadable
+/// smear), and even the 367-point Baseline year-series yielded ~73.
+///
+/// New contract:
+/// - `max_labels = clamp(canvas_width_logical / 96, 4, 12)` — the
+///   logical-width budget (~96 px per label: `text::MICRO` ≈ 11 px tall,
+///   "HH:MM"/"MMM DD" ≈ 30-45 px wide, plus breathing room).
+/// - For the legacy 60-bar intraday price chart the prior 5/10/15-bar
+///   step still anchors the labels on round minute boundaries; the
+///   resulting interval count is then **capped at `max_labels`** so it
+///   is a strict no-op for the ≤ 60-bar window (preserving the
+///   `charts_screen_*` visual baselines byte-for-byte) while bounding
+///   any longer series to ≤ 12 labels.
+///
+/// Bar-count `0` returns `0` — empty state.
 pub(crate) fn time_axis_tick_count(canvas_width_logical: f32, bar_count: usize) -> usize {
     if bar_count == 0 {
         return 0;
     }
     // Logical-width budget: ~96 px per label (text::MICRO ≈ 11 px
-    // height + space::S inter-label gap + "HH:MM" ≈ 30-35 px wide +
+    // height + space::S inter-label gap + "HH:MM" ≈ 30-45 px wide +
     // breathing room).
     let raw = (canvas_width_logical / 96.0).clamp(4.0, 12.0);
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let raw_count = raw.round() as usize;
+    let max_labels = raw.round() as usize;
     // Round down to a bar-step multiple that yields an EVEN tick count
     // across the 60-bar window: 60 / 5 = 12, 60 / 10 = 6, 60 / 15 = 4.
-    // Pick the largest step ≤ `bar_count / raw_count`.
-    let step = if raw_count >= 12 {
+    // Pick the largest step ≤ `bar_count / max_labels`.
+    let step = if max_labels >= 12 {
         5
-    } else if raw_count >= 6 {
+    } else if max_labels >= 6 {
         10
     } else {
         15
     };
-    // Number of intervals = bar_count / step, capped at bar_count - 1.
-    // Returning `intervals + 1` would over-count the right edge; the
-    // caller drives the tick loop from `i = 0..=intervals`.
-    bar_count.saturating_sub(1) / step
+    // Number of intervals = bar_count / step, then **capped at the
+    // width-derived label budget** so a long series (the 2880-point Live
+    // ring, the 367-point Baseline year) can never exceed ~12 labels.
+    // For the ≤ 60-bar price chart `(bar_count - 1) / step` is already
+    // ≤ `max_labels`, so the cap is a no-op there (baseline-preserving).
+    let raw_intervals = bar_count.saturating_sub(1) / step;
+    raw_intervals.min(max_labels)
+}
+
+/// Adaptive time-axis label formatting (cockpit-live-axis-density-fix,
+/// 2026-06-10).
+///
+/// Picks the label granularity from the series' **total time span** so
+/// the bottom axis reads sensibly whether it covers minutes (a fresh
+/// Live session), days, or months (the 2-year compressed replay the
+/// operator hit, or the Baseline year-series). Without this, every label
+/// was hard-coded `HH:MM` — across a 2-year span the ticks all read the
+/// same wall-clock minute (meaningless), which compounded the overlap
+/// smear.
+///
+/// `span_seconds` is `last_ts − first_ts` over the rendered series.
+/// `local_ts` is the already-offset (`to_offset`) tick timestamp.
+///
+/// Bands (each ≈ 4-6 labels wide given [`time_axis_tick_count`]):
+/// - **< 6 h**  → `HH:MM`        (intraday — e.g. `14:32`)
+/// - **< 14 d** → `MMM DD HH:MM` (multi-day — e.g. `Jan 15 14:32`)
+/// - **< 18 mo**→ `MMM DD`       (months — e.g. `Jan 15`)
+/// - **≥ 18 mo**→ `MMM 'YY`      (multi-year — e.g. `Jan '23`)
+///
+/// Month names come from [`crate::strings::MONTH_ABBREVS`] (no inline
+/// month literals — the consistency gate forbids user-visible strings in
+/// widgets).
+pub(crate) fn format_time_axis_label(local_ts: time::OffsetDateTime, span_seconds: i64) -> String {
+    // Band thresholds in seconds.
+    const SIX_HOURS: i64 = 6 * 3600;
+    const FOURTEEN_DAYS: i64 = 14 * 86_400;
+    const EIGHTEEN_MONTHS: i64 = 18 * 30 * 86_400;
+
+    let mon = crate::strings::month_abbrev(local_ts.month() as u8);
+    let day = local_ts.day();
+    let (h, m) = (local_ts.hour(), local_ts.minute());
+    // Two-digit year-of-century for the multi-year band (e.g. 2023 → 23).
+    let yy = local_ts.year().rem_euclid(100);
+
+    if span_seconds < SIX_HOURS {
+        format!("{h:02}:{m:02}")
+    } else if span_seconds < FOURTEEN_DAYS {
+        format!("{mon} {day:02} {h:02}:{m:02}")
+    } else if span_seconds < EIGHTEEN_MONTHS {
+        format!("{mon} {day:02}")
+    } else {
+        format!("{mon} '{yy:02}")
+    }
 }
 
 /// **T3013 — `local_offset_or_utc`** — chart-canvas-overhaul v1.10.0
@@ -2056,6 +2126,65 @@ mod tests {
         // Empty bar slice → 0 intervals.
         let n = time_axis_tick_count(1920.0, 0);
         assert_eq!(n, 0, "empty bars → 0 intervals");
+    }
+
+    /// cockpit-live-axis-density-fix (2026-06-10) — the label count MUST stay
+    /// width-bounded regardless of series length. Regression guard for the
+    /// operator-reported "every number overlaps" smear: the Live equity ring
+    /// holds up to `LIVE_EQUITY_BUFFER_CAP` (2880) points and the Baseline
+    /// year-series ~367; the prior formula returned `(n-1)/step` intervals,
+    /// which scaled labels WITH the series length (2880 → ~575 labels, 367 →
+    /// ~73). Both must now clamp to the width budget (≤ 12).
+    #[test]
+    fn time_axis_tick_count_bounded_for_long_series() {
+        // The width-derived budget is `clamp(width/96, 4, 12)`; at any real
+        // panel width the interval count must never exceed it.
+        for &width in &[1280.0_f32, 1920.0, 3360.0] {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let budget = (width / 96.0).clamp(4.0, 12.0).round() as usize;
+
+            // 2880-point Live session ring (the reported smear).
+            let n_live = time_axis_tick_count(width, 2880);
+            assert!(
+                n_live <= budget,
+                "2880-pt series at {width}px: {n_live} intervals must be ≤ budget {budget}"
+            );
+            assert!(n_live >= 1, "must still draw ≥ 1 interval");
+
+            // 367-point Baseline year-series.
+            let n_base = time_axis_tick_count(width, 367);
+            assert!(
+                n_base <= budget,
+                "367-pt series at {width}px: {n_base} intervals must be ≤ budget {budget}"
+            );
+        }
+
+        // The fix is a strict no-op for the ≤ 60-bar price chart: at 1280px
+        // the legacy 5-bar step still yields 11 intervals (≤ budget 12), so
+        // the `charts_screen_*` visual baselines are preserved byte-for-byte.
+        assert_eq!(
+            time_axis_tick_count(1280.0, 60),
+            11,
+            "60-bar price chart unchanged (baseline-preserving)"
+        );
+    }
+
+    /// cockpit-live-axis-density-fix (2026-06-10) — adaptive label granularity
+    /// picks the right format band from the series' total time span.
+    #[test]
+    fn format_time_axis_label_span_bands() {
+        use time::OffsetDateTime;
+        // 2023-01-15 14:32:00 UTC.
+        let ts = OffsetDateTime::from_unix_timestamp(1_673_793_120).expect("valid ts");
+
+        // < 6 h → HH:MM.
+        assert_eq!(format_time_axis_label(ts, 3 * 3600), "14:32");
+        // < 14 d → "MMM DD HH:MM".
+        assert_eq!(format_time_axis_label(ts, 5 * 86_400), "Jan 15 14:32");
+        // < 18 mo → "MMM DD".
+        assert_eq!(format_time_axis_label(ts, 90 * 86_400), "Jan 15");
+        // ≥ 18 mo (the 2-year replay) → "MMM 'YY".
+        assert_eq!(format_time_axis_label(ts, 730 * 86_400), "Jan '23");
     }
 
     /// T3013 — `local_offset_under_test_is_utc` — chart-canvas-overhaul

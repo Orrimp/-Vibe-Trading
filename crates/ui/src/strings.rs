@@ -35,6 +35,11 @@ pub const TAPE_COL_SYMBOL: &str = "Symbol";
 pub const TAPE_COL_SIDE: &str = "Side";
 pub const TAPE_COL_PRICE: &str = "Price";
 pub const TAPE_COL_QTY: &str = "Qty";
+/// cockpit-live-tape-units-fix (2026-06-10) — notional column header.
+/// Surfaces `qty × price` in USDT so the operator reads the real clip
+/// size (e.g. a 10 %-of-equity ≈ 10,000 USDT fill) instead of mistaking
+/// the rightmost USDT-suffixed number — the FEE — for the trade size.
+pub const TAPE_COL_NOTIONAL: &str = "Notional";
 pub const TAPE_COL_FEE: &str = "Fee";
 pub const TAPE_PAUSE_LABEL: &str = "Pause";
 pub const TAPE_RESUME_LABEL: &str = "Resume";
@@ -42,6 +47,28 @@ pub const TAPE_LOADING: &str = "Connecting to the fill stream…";
 pub const TAPE_EMPTY: &str = "No fills yet. Waiting for the first bar from BTCUSDT.";
 pub const TAPE_ERROR_PREFIX: &str = "Can't read the fill stream: ";
 pub const TAPE_PAUSED_BANNER: &str = "Paused — updates buffered";
+
+// ── Month abbreviations (cockpit-live-axis-density-fix, 2026-06-10) ──────────
+//
+// Three-letter English month abbreviations for the adaptive time-axis labels
+// on the equity / drawdown curves (`widgets::chart::format_time_axis_label`).
+// Kept here so the widget carries no inline month literals (the consistency
+// gate forbids user-visible string literals inside `src/widgets`).
+
+/// Three-letter month abbreviations, indexed `[0]=Jan … [11]=Dec`.
+pub const MONTH_ABBREVS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/// Map a 1-based month number (`1..=12`, as returned by
+/// `time::Month as u8`) to its three-letter abbreviation. Out-of-range
+/// input clamps into range so the helper is total (never panics on a
+/// malformed timestamp).
+#[must_use]
+pub fn month_abbrev(month_1_based: u8) -> &'static str {
+    let idx = (month_1_based.clamp(1, 12) - 1) as usize;
+    MONTH_ABBREVS[idx]
+}
 
 // ── Position panel ───────────────────────────────────────────────────────────
 
@@ -1175,6 +1202,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TAPE_COL_SIDE", TAPE_COL_SIDE),
         ("TAPE_COL_PRICE", TAPE_COL_PRICE),
         ("TAPE_COL_QTY", TAPE_COL_QTY),
+        ("TAPE_COL_NOTIONAL", TAPE_COL_NOTIONAL),
         ("TAPE_COL_FEE", TAPE_COL_FEE),
         ("TAPE_PAUSE_LABEL", TAPE_PAUSE_LABEL),
         ("TAPE_RESUME_LABEL", TAPE_RESUME_LABEL),
@@ -1182,6 +1210,18 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TAPE_EMPTY", TAPE_EMPTY),
         ("TAPE_ERROR_PREFIX", TAPE_ERROR_PREFIX),
         ("TAPE_PAUSED_BANNER", TAPE_PAUSED_BANNER),
+        ("MONTH_JAN", MONTH_ABBREVS[0]),
+        ("MONTH_FEB", MONTH_ABBREVS[1]),
+        ("MONTH_MAR", MONTH_ABBREVS[2]),
+        ("MONTH_APR", MONTH_ABBREVS[3]),
+        ("MONTH_MAY", MONTH_ABBREVS[4]),
+        ("MONTH_JUN", MONTH_ABBREVS[5]),
+        ("MONTH_JUL", MONTH_ABBREVS[6]),
+        ("MONTH_AUG", MONTH_ABBREVS[7]),
+        ("MONTH_SEP", MONTH_ABBREVS[8]),
+        ("MONTH_OCT", MONTH_ABBREVS[9]),
+        ("MONTH_NOV", MONTH_ABBREVS[10]),
+        ("MONTH_DEC", MONTH_ABBREVS[11]),
         ("POS_COL_SYMBOL", POS_COL_SYMBOL),
         ("POS_COL_QTY", POS_COL_QTY),
         ("POS_COL_COST", POS_COL_COST),
