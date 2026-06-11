@@ -1,0 +1,34 @@
+# live-equity-history-durable — demo artifacts (presenter, 2026-06-11)
+# Captured by the presenter agent at HEAD 9eef752.
+
+## 1. Mode-gate persistence proof (AC1/AC2) — the load-bearing correctness line
+$ cargo test -p agent --test equity_store_integration
+
+running 3 tests
+test ac2_research_mode_writes_zero_rows ... ok
+test ac1_paper_mode_persists_one_row_per_bar ... ok
+test ac1_faked_store_tail_is_monotone ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+## 2. Render-layer pixel gate (AC6 hydrated boot + AC5 post-hydrate append)
+$ cargo test -p ui --features live --test live_equity_render
+
+running 7 tests
+test harness_catches_dropped_points_empty_curve ... ok
+test hydrated_boot_curve_actually_renders ... ok
+test live_equity_curve_actually_renders ... ok
+test diag_accent_bounding_box ... ok
+test healthy_curve_draws_far_more_than_broken ... ok
+test flat_and_single_point_curves_render_without_panic ... ok
+test live_append_after_hydrate_still_renders_and_grows ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+
+## 3. Anchor gate (AC7)
+$ bash scripts/verify_anchors.sh
+ANCHORS PASS  (119 / 119)
+
+## 4. Spec-lint structural integrity (no regression vs audit-2026-06-08 baseline of 94)
+$ python3 scripts/spec_lint.py
+spec-lint: FAIL (71 violations in 2 categories)   # 66 dead-link + 5 trace-broken-path, all pre-existing

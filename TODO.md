@@ -80,13 +80,17 @@ layer (`panel_snapshots::live_kpi_trades_card_shows_session_fill_count` asserts 
 
 ---
 
-## 3. Equity curve resets on every restart  (larger, exec-side)
+## 3. ✅ DONE (2026-06-11) — Durable equity history (`live-equity-history-durable`, VERDICT PASS)
 
-**Symptom:** the curve is session-scoped — it starts empty each `cockpit_live` boot.
-**Why:** the agent keeps only a scalar equity, no durable series. Deferred as a follow-on
-(`live-equity-history-durable`, exec-side, ~L effort).
-**Start here:** `crates/agent/src/reconciler.rs` (the per-bar equity); the architect's `D1=(b)`
-note in `spec/cockpit-live-dashboard-wiring/feature.md`.
+Paper/live sessions now persist per-bar equity to the audit ledger (`equity_snapshots`, additive
+migration 013, behind the `LiveEquityStore` trait) and `cockpit_live` hydrates the curve on boot —
+the curve survives restarts, with an honest "Since inception" caption only when history actually
+hydrated. **Research replay deliberately persists nothing** (repeating 2023 `bar_ts` would corrupt
+the series) — replay behavior is byte-unchanged. Full pipeline: analyst → architect (ADR-0052) →
+developer ‖ ui-designer in parallel → tester (1,262/0 tests, anchors 119/119, AC1–AC9 PASS) →
+cockpit-smoke PASS. Render-layer proof: hydrated-boot + post-hydrate-append cases in
+`crates/ui/tests/live_equity_render.rs`. Note: the retention-purge *scheduling* (nightly task) is
+deferred per ADR-0052 — the purge function exists and is tested.
 
 ---
 
