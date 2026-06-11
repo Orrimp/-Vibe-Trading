@@ -2,8 +2,8 @@
 slug: cockpit-live-dashboard-wiring
 status: tester-done
 owner: ui-designer
-updated: 2026-06-10
-version: 0.1.1
+updated: 2026-06-11
+version: 0.1.2
 ---
 
 # Cockpit Live dashboard wiring — equity curve + KPI strip from the live agent
@@ -875,6 +875,57 @@ anchors 119/119._
 - Visual baselines (3): `live__recent_activity_with_chevron__{floor,typical,
   operator}` (Notional column now rendered). All `charts_screen_*` + 49 other
   visual baselines **unchanged** (price-chart tick-count cap is a no-op).
+
+## Implementation v0.1.2 (developer, 2026-06-11)
+
+### ISSUE 1 — PnlSnapshot.as_of used wallclock instead of bar data time
+
+Root cause: `crates/agent/src/runtime.rs` `spawn_research_trading_loop` (line 1094 in v0.1.1)
+stamped `as_of: Timestamp::now()` on every `PnlSnapshot`. During 30 ms/bar fast replay all ~500k
+bars stamp the current wallclock minute → the equity-curve x-axis shows the same minute for
+every point → span-adaptive axis formatter collapses every label to the current HH:MM.
+
+Fix:
+- `crates/agent/src/runtime.rs:1094`: `as_of: bar.close_ts` (bar data timestamp, not wallclock).
+- `crates/agent/src/reconciler.rs:115`: updated `after_bar_close(&self, bar_ts: Timestamp)`
+  signature so the reconciler path also takes a bar timestamp rather than calling `Timestamp::now()`.
+- `reconciler.rs:268`: test `t903c_after_bar_close_publishes_pnl` now passes a fixed historical
+  timestamp (2023-01-15 12:30:00 UTC) and asserts `snap.as_of == bar_ts`.
+- Removed unused `Timestamp` from the `spawn_research_trading_loop` local import.
+- Correct in all modes: in live/paper `bar.close_ts ≈ now()` anyway; in replay it's the
+  historical 2023-24 bar time.
+- Wallclock-consumer audit: `as_of` only flows to `state.rs:1946` `push_live_equity_point`
+  (equity-curve x-coord). The status-bar server-time/latency reads `Tick::local_recv_ts`
+  (separate path, unaffected).
+
+### ISSUE 2 — "$4 buys/sells" — CONFIRMED display/perception issue
+
+Real fill data captured from headless agent run (`RUST_LOG=agent=info`, BTCUSDT 2023 replay):
+
+| Fill | Side | Price (USDT) | Qty (BTC) | Notional (USDT) | Fee (USDT) | Running equity (USDT) |
+|------|------|-------------|-----------|----------------|-----------|----------------------|
+| 1 | Buy | 16,680.94 | 0.5996 | 10,002.00 | 4.0008 | 99,995.99 |
+| 2 | Sell | 16,698.63 | 0.5996 | 10,012.61 | 4.0050 | 100,002.60 |
+| 3 | Buy | 16,881.56 | 0.5925 | 10,002.26 | 4.0009 | 99,998.60 |
+
+Verdict: **Notional ~$10k (correct); Fee ~$4 (correct, 4bps × $10k).** The Notional column
+in `agent_feed.rs:118` (`fill.qty.get() * fill.price.get()`) is computing correctly.
+The `$4` the operator sees is the Fee column. No sizing bug.
+
+The agent log now emits `notional_usdt` + `fee_usdt` per fill at `debug!` level (always) and
+at `info!` level (first 5 + every 100). This makes the fill detail surfaced when running with
+`RUST_LOG=agent=debug` or reviewing INFO logs.
+
+For the ui-designer: Notional is correct. If the operator is still reading $4 as the trade size
+after refreshing the cockpit binary, they may be looking at the Fee column.
+The column order `Price | Qty | Notional | Fee` is already optimal.
+
+### Test results
+
+- `cargo test -p agent`: 69/69 PASS (including `t903c_after_bar_close_publishes_pnl`)
+- `cargo test -p data`: 79+14+12+11/... PASS
+- `cargo clippy -p agent -- -D warnings`: 0 warnings, exit 0
+- `scripts/verify_anchors.sh`: 119/119 PASS
 
 ## Verification
 

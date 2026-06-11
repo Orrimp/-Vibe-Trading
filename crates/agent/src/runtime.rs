@@ -1065,19 +1065,42 @@ pub fn spawn_research_trading_loop(
                             // Publish fill + position → Live tape / positions panels.
                             publisher.on_fill(fill, &position);
                             fill_count += 1;
-                            if fill_count <= 5 || fill_count.is_multiple_of(100) {
-                                info!(
+                            {
+                                let notional = fill.qty.get() * fill.price.get();
+                                let running_equity = cash + position.base_qty * fill.price.get();
+                                // Detailed fill log: `debug!` for every bar, `info!` every 100.
+                                // notional_usdt = qty × price (the real clip size, ~$10k for
+                                // 10%-of-$100k fixed fraction); fee_usdt ≈ 4bps × notional.
+                                tracing::debug!(
                                     fill_count,
                                     side = ?fill.side,
                                     price = %fill.price.get(),
                                     qty = %fill.qty.get(),
-                                    "research_trading_loop fill"
+                                    notional_usdt = %notional,
+                                    fee_usdt = %fill.fee.amount(),
+                                    running_equity_usdt = %running_equity,
+                                    "research_trading_loop fill detail"
                                 );
+                                if fill_count <= 5 || fill_count.is_multiple_of(100) {
+                                    info!(
+                                        fill_count,
+                                        side = ?fill.side,
+                                        price = %fill.price.get(),
+                                        qty = %fill.qty.get(),
+                                        notional_usdt = %notional,
+                                        fee_usdt = %fill.fee.amount(),
+                                        "research_trading_loop fill"
+                                    );
+                                }
                             }
                         }
                     }
 
                     // Publish PnL snapshot every bar → Live equity/pnl chart.
+                    // as_of is wallclock now(). NOTE (2026-06-11): stamping this with
+                    // bar.close_ts (data time) to get a historical x-axis broke the
+                    // live equity-curve render and was reverted; the data-time x-axis
+                    // needs a UI-verified approach (tracked as a follow-up).
                     let unrealized = position.base_qty * mark - cost_basis;
                     let total_equity = cash + position.base_qty * mark;
                     let snap = PnlSnapshot {

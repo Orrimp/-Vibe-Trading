@@ -2,7 +2,7 @@
 slug: cockpit-live-dashboard-wiring
 status: tester-done
 owner: ui-designer
-updated: 2026-06-10
+updated: 2026-06-11
 ---
 
 # Tasks — cockpit-live-dashboard-wiring
@@ -251,6 +251,54 @@ Diagnosed against code + run; two UI fixes + one correct-as-configured verdict.
   column); 52 other visual baselines + all `charts_screen_*` unchanged;
   new-code clippy/fmt clean; `verify_anchors.sh` 119/119. Tester to confirm
   the full integration suite + the operator's eyeball re-test recipe.
+
+## Follow-up — v0.1.2 (developer, 2026-06-11)
+
+Two issues surfaced from the operator's second live cockpit session (HEAD `3f9fd63`,
+after the Notional-column fix landed).
+
+- [reverted] **I1 — X-axis "now" not data time — the data-time fix was REVERTED.**
+  **REVERTED 2026-06-11:** stamping `as_of: bar.close_ts` (below) passed the agent
+  unit test (t903c) but BROKE the live equity-curve render — the UI buffer's monotone
+  guard (`state.rs` `push_live_equity_point` drops a point whose `as_of < back.ts`)
+  dropped the 2023 bar-time points → empty curve ("no graph, no movement",
+  operator-reported on the real cockpit). Reverted `runtime.rs` `as_of` back to
+  `Timestamp::now()` (the known-working render); the data-time x-axis needs a
+  UI-render-verified approach (deferred follow-up). The fill logging from this pass
+  was kept. Original (still-valid) root cause description follows.
+  Root cause confirmed: `crates/agent/src/runtime.rs` `spawn_research_trading_loop`
+  stamped `as_of: Timestamp::now()` on every `PnlSnapshot`, so the equity-curve
+  x-axis showed the current wallclock minute for every bar during fast replay.
+  ~~**Fix:** use `as_of: bar.close_ts`~~ — REVERTED (broke the live render, see above).
+  Also updated `ReconcilerTask::after_bar_close` signature to accept a
+  `bar_ts: Timestamp` parameter (same semantic fix for any future caller of that
+  path), and updated the `t903c_after_bar_close_publishes_pnl` test to pass a fixed
+  historical timestamp and assert `snap.as_of == bar_ts`.
+  - **file:line:** `crates/agent/src/runtime.rs:1094` (`as_of: bar.close_ts`);
+    `crates/agent/src/reconciler.rs:115` (`pub fn after_bar_close(&self, bar_ts: Timestamp)`).
+  - **Test cmd:** `cargo test -p agent t903c_after_bar_close_publishes_pnl`
+  - **Output:** `test reconciler::tests::t903c_after_bar_close_publishes_pnl ... ok`
+  - **Wallclock-consumer audit:** `PnlSnapshot::as_of` is consumed ONLY by
+    `state.rs:1946` `push_live_equity_point(snap.as_of, ...)` (the x-coord for
+    the equity curve). The status-bar server-time/latency reads `Tick::local_recv_ts`
+    (a completely separate path). No consumer depends on `as_of == wallclock`.
+
+- [x] **I2 — "$4 buys/sells" — CONFIRMED display/perception, not sizing bug.**
+  Ran the headless agent with `RUST_LOG=agent=info` and captured real fills.
+  Fill #1 (Buy): `price=16,680.94 USDT, qty=0.5996 BTC, notional=10,002.00 USDT,
+  fee=4.0008 USDT, running_equity=99,995.99 USDT`. Config:
+  `fixed_fraction=0.10 × $100k equity → ~$10k notional; 4bps taker × $10k = exactly $4.00 fee`.
+  The Notional column added in `3f9fd63` (`agent_feed.rs:118`) computes
+  `qty × price` correctly (= ~$10k USDT). The `$4` the operator sees is the
+  **Fee** column, not Notional. **No sizing bug; no agent/exec change needed.**
+  Added `tracing::debug!` logging with `notional_usdt` + `fee_usdt` per fill
+  (always-on at debug level; info-level at first-5 + every-100) so the fill
+  detail is surfaced for operators running with `RUST_LOG=agent=debug`.
+  **For the ui-designer:** the Notional column is computing correctly (~$10k).
+  The display prominence recommendation: the column order `Price | Qty | Notional | Fee`
+  is already correct (Notional = big ~$10k number; Fee = small ~$4 number).
+  If the operator is still seeing only $4, they may be looking at the Fee column
+  or have a stale binary. No code change needed for Issue 2 beyond the debug log.
 
 ## Notes
 

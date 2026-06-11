@@ -100,10 +100,19 @@ impl ReconcilerTask {
     /// derived from the current reconciler state (T903c —
     /// live-cockpit-unified).
     ///
+    /// `bar_ts` is the **data timestamp** of the bar being closed
+    /// (i.e. `bar.close_ts` from the trading loop).  It is used as
+    /// `PnlSnapshot::as_of` so the equity-curve x-axis shows the
+    /// historical bar timeline in replay/research mode rather than
+    /// the wallclock "now", which collapses every label to the current
+    /// minute when bars are replayed faster than real time.  In live /
+    /// paper mode `bar.close_ts ≈ Timestamp::now()` so this is correct
+    /// in all modes (ISSUE 1 fix).
+    ///
     /// All money math uses [`Decimal`] / [`Money<Usdt>`]; never `f64`.
     /// Returns the computed snapshot so the caller can persist or
     /// log it independently.
-    pub fn after_bar_close(&self) -> PnlSnapshot {
+    pub fn after_bar_close(&self, bar_ts: Timestamp) -> PnlSnapshot {
         let state = self.state_rx.borrow().clone();
         let snap = PnlSnapshot {
             cash: Money::from_decimal(state.cash),
@@ -115,7 +124,7 @@ impl ReconcilerTask {
             // snapshot is well-formed; T912 future work can wire the
             // baseline from the audit ledger.
             daily_return: Money::from_decimal(Decimal::ZERO),
-            as_of: Timestamp::now(),
+            as_of: bar_ts,
         };
         if let Some(bus) = &self.bus {
             bus.publish_pnl(snap.clone());
@@ -232,11 +241,12 @@ mod tests {
 
     /// T903c — `after_bar_close` publishes a [`PnlSnapshot`] onto the
     /// bus's `pnl` channel.  Constructs a reconciler with a real
-    /// [`EventBus`], invokes `after_bar_close`, asserts a snapshot is
-    /// received within 1 s with the expected `realized` and
-    /// `unrealized` decimal values.  Backward-compat: a reconciler
-    /// without a bus does NOT panic and returns the same snapshot
-    /// from `after_bar_close`.
+    /// [`EventBus`], invokes `after_bar_close` with a fixed bar
+    /// timestamp, asserts the snapshot's `as_of` equals the supplied
+    /// bar timestamp (ISSUE 1 — data time, not wallclock), and asserts
+    /// the expected `realized` / `unrealized` decimal values.
+    /// Backward-compat: a reconciler without a bus does NOT panic and
+    /// returns the same snapshot from `after_bar_close`.
     #[tokio::test]
     async fn t903c_after_bar_close_publishes_pnl() {
         use crate::EventBus;
@@ -258,7 +268,13 @@ mod tests {
 
         let task = ReconcilerTask::new(state_rx, ks, 1_000).with_bus(Arc::clone(&bus));
 
-        let snap = task.after_bar_close();
+        // Use a fixed historical bar timestamp (2023-01-15 12:30:00 UTC) — the
+        // snapshot's `as_of` must equal this value, NOT wallclock now().
+        let bar_ts = Timestamp::new(
+            ::time::OffsetDateTime::from_unix_timestamp(1_673_789_400)
+                .expect("static timestamp is valid"),
+        );
+        let snap = task.after_bar_close(bar_ts);
 
         // Computed values: cash = 100_000, unrealized = 0.5*60_000 - 25_000 = 5_000,
         // realized = 123.45, equity = 100_000 + 0.5*60_000 = 130_000.
@@ -266,6 +282,8 @@ mod tests {
         assert_eq!(snap.unrealized.amount(), dec!(5_000));
         assert_eq!(snap.realized.amount(), dec!(123.45));
         assert_eq!(snap.total_equity.amount(), dec!(130_000));
+        // ISSUE 1 assertion: as_of must be the supplied bar time, not now().
+        assert_eq!(snap.as_of, bar_ts, "as_of must equal the bar timestamp");
 
         // Subscriber receives the same snapshot via the bus.
         let received = tokio::time::timeout(std::time::Duration::from_secs(1), pnl_rx.recv())
@@ -276,6 +294,7 @@ mod tests {
         assert_eq!(received.unrealized.amount(), dec!(5_000));
         assert_eq!(received.realized.amount(), dec!(123.45));
         assert_eq!(received.total_equity.amount(), dec!(130_000));
+        assert_eq!(received.as_of, bar_ts, "received as_of must equal bar timestamp");
 
         // Backward-compat: reconciler without a bus returns the
         // snapshot but does NOT panic publishing it.
@@ -285,7 +304,7 @@ mod tests {
             KillSwitch::new("/tmp/nonexistent_t903c_halt2.halt", 16),
             1_000,
         );
-        let bare_snap = bare_task.after_bar_close();
+        let bare_snap = bare_task.after_bar_close(bar_ts);
         assert_eq!(bare_snap.unrealized.amount(), dec!(5_000));
     }
 }
