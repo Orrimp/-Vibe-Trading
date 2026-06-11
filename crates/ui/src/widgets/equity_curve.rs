@@ -155,6 +155,28 @@ impl canvas::Program<ViewerMessage> for EquityCurveProgram {
         let y_min = min_eq - pad;
         let y_max = max_eq + pad;
 
+        // cockpit-live-equity-render-guard (2026-06-11) — the render-verifiable
+        // harness (`tests/live_equity_render.rs`) caught a panic in the
+        // rasterizer (`lyon_path: assertion failed: p.y.is_finite()`) on a
+        // **flat / single-point** series: when every equity is equal — e.g. the
+        // FIRST live bar after boot (a 1-point Ready curve, the design renders
+        // from ≥1 point), or any all-equal run — `max_eq == min_eq`, so
+        // `pad = span * 0.05` underflows; near a ~100k equity value in f32,
+        // `y_min` and `y_max` both round to the same float, making
+        // `y_max - y_min == 0.0` and `frac_y = (v - y_min)/0 == NaN`. A NaN Y
+        // is a non-finite `Point` that panics lyon → the whole cockpit crashes
+        // the instant the live curve holds one point. Guard the denominator:
+        // when the y-range collapses (non-finite or ≤ a tiny epsilon relative
+        // to the values), render the line CENTERED (`frac_y = 0.5`) instead of
+        // dividing by ~zero. A flat curve is a horizontal line through the
+        // middle — correct, and crash-free.
+        let y_range = y_max - y_min;
+        // Epsilon scaled to the magnitude of the values so the guard fires for
+        // a flat large-equity series (where absolute f32 deltas vanish) as well
+        // as a flat near-zero series.
+        let y_eps = max_eq.abs().max(1.0) * 1e-4;
+        let y_range_degenerate = !y_range.is_finite() || y_range <= y_eps;
+
         // Price axis (USD labels in the LEFT gutter — T3019 / Q7).
         draw_price_axis(&mut frame, inner, (y_min, y_max), self.mode);
         // Time axis (wall-clock labels in the BOTTOM gutter — T3019).
@@ -168,7 +190,13 @@ impl canvas::Program<ViewerMessage> for EquityCurveProgram {
             let frac_x = if n <= 1 { 0.0 } else { i as f32 / denom };
             let x = inner.x + frac_x * inner.width;
             let v = p.equity.amount().to_f32().unwrap_or(0.0);
-            let frac_y = (v - y_min) / (y_max - y_min);
+            // Degenerate (flat) y-range → center the line; else map normally.
+            // Both branches yield a FINITE `frac_y` (the panic fix).
+            let frac_y = if y_range_degenerate {
+                0.5
+            } else {
+                (v - y_min) / y_range
+            };
             // Y axis flipped: high values render near the top.
             let y = inner.y + (1.0 - frac_y) * inner.height;
             points.push((x, y));

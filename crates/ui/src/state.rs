@@ -1019,6 +1019,17 @@ pub struct Cockpit {
     /// `live-equity-history-durable` follow-on (D1). **NOT serialized.**
     pub live_equity_buffer: VecDeque<(Timestamp, Money<Usdt>)>,
 
+    /// cockpit-live-equity-render-guard (2026-06-11, approach A) — the
+    /// **wallclock** `as_of` of the last appended `PnlRefreshed`, kept
+    /// SEPARATE from the buffer (whose points store the **data/bar** x-coord
+    /// now). It is the out-of-order-delivery guard key: a snapshot whose
+    /// `as_of` is earlier than this is a late/duplicate delivery and is
+    /// dropped. Tracked apart from the buffer so the delivery guard keys on
+    /// the monotone wallclock while the plotted x-axis uses bar time.
+    /// `None` until the first snapshot; reset empty on each boot
+    /// (session-scoped). **NOT serialized.**
+    pub live_equity_last_as_of: Option<Timestamp>,
+
     /// Derived-on-append (D5) render state for the Live equity curve.
     /// `Loading` until the first point; `Ready(series)` from ≥1 point;
     /// `Error(msg)` on `PnlError`; `Empty` only if the channel closes with
@@ -1111,6 +1122,7 @@ impl std::fmt::Debug for Cockpit {
             .field("assistant_state", &self.assistant_state)
             .field("strategy_equity", &self.strategy_equity)
             .field("live_equity_buffer_len", &self.live_equity_buffer.len())
+            .field("live_equity_last_as_of", &self.live_equity_last_as_of)
             .field("live_equity_curve", &self.live_equity_curve)
             .field("live_kpi", &self.live_kpi)
             .field("execution_mode", &self.execution_mode)
@@ -1172,6 +1184,7 @@ impl Default for Cockpit {
             strategy_equity: HashMap::new(),
             // cockpit-live-dashboard-wiring — session-scoped, empty on boot.
             live_equity_buffer: VecDeque::new(),
+            live_equity_last_as_of: None,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
             execution_mode: ExecutionMode::default(),
@@ -1284,6 +1297,7 @@ impl Cockpit {
             // `ready()` is a fixture/test constructor; tests that exercise the
             // live curve/strip seed it via `Message::PnlRefreshed` updates.
             live_equity_buffer: VecDeque::new(),
+            live_equity_last_as_of: None,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
             execution_mode: ExecutionMode::default(),
@@ -1307,24 +1321,68 @@ impl Cockpit {
     /// `PanelState`s are cached here so the per-frame `view` reads them
     /// without recomputing (the iced `view` runs on every message / hover).
     ///
-    /// Honors the two must-honor edges:
-    /// 1. **Monotone guard** — `EquitySeries::from_points` rejects a strictly
-    ///    earlier timestamp (`equity_series.rs` `NonMonotoneTimestamps`), so a
-    ///    late/out-of-order snapshot is **dropped** (invisible on a monitor,
-    ///    strictly preferable to a build error). Equal timestamps are allowed.
-    /// 2. **`is_all_absent` 1-point trap** — a single point yields
+    /// ## Two timestamps (cockpit-live-equity-render-guard, 2026-06-11 — approach A)
+    ///
+    /// - `as_of` — the snapshot's **wallclock** publish time
+    ///   (`Timestamp::now()`). It is the **out-of-order-delivery guard** key:
+    ///   monotone by construction (a clock never goes back), so a snapshot that
+    ///   arrives with an earlier `as_of` than the last one is a late/duplicate
+    ///   delivery and is dropped. This is the guard the architect pinned to
+    ///   `as_of` (NOT to the data time) — stamping `as_of` with bar time broke
+    ///   the curve once (reverted I1) precisely because it conflated the
+    ///   delivery key with the plotted coordinate.
+    /// - `x_coord` — the **data/bar** time the chart plots on its x-axis
+    ///   (`snap.bar_ts`, i.e. `bar.close_ts`; falls back to `as_of` when a
+    ///   snapshot carries no bar context). Stored as the buffer point's
+    ///   timestamp → becomes `EquityPoint.ts` → drives the span-adaptive axis
+    ///   labels (`MMM 'YY` / `MMM DD`). During a fast replay this is the 2023-24
+    ///   data date, so the axis is meaningful instead of "all the same wallclock
+    ///   minute".
+    ///
+    /// Honors the must-honor edges:
+    /// 1. **Delivery guard on `as_of`** (above) — drop a strictly-earlier-
+    ///    delivered snapshot.
+    /// 2. **`from_points` monotone-`ts` invariant** — `EquitySeries::from_points`
+    ///    rejects a stored `ts` that goes backwards. In forward replay `bar_ts`
+    ///    is chronological, so this never fires; but because the delivery guard
+    ///    keys on `as_of` (not the stored `x_coord`), we additionally **clamp**
+    ///    the stored coordinate to be ≥ the last stored coordinate. That makes
+    ///    the buffer's `ts` sequence monotone *by construction* — `from_points`
+    ///    can never error on it — without ever panicking the rasterizer or
+    ///    dropping a delivered point. (No-op in practice; pure defense.)
+    /// 3. **`is_all_absent` 1-point trap** — a single point yields
     ///    `total_return = max_dd = trades = 0`, byte-identical to the
     ///    all-absent sentinel (`kpi_strip::is_all_absent`), which would render
     ///    six dashes. The KPI strip therefore stays `Loading` until ≥2 points;
     ///    the curve renders from ≥1 (a 1-point curve is valid).
-    fn push_live_equity_point(&mut self, ts: Timestamp, equity: Money<Usdt>) {
-        // (1) Monotone guard — drop a strictly-earlier late snapshot.
-        if let Some((back_ts, _)) = self.live_equity_buffer.back()
-            && ts.unix_millis() < back_ts.unix_millis()
+    fn push_live_equity_point(
+        &mut self,
+        as_of: Timestamp,
+        x_coord: Timestamp,
+        equity: Money<Usdt>,
+    ) {
+        // (1) Delivery guard — drop a snapshot delivered strictly out of order
+        // (earlier wallclock `as_of` than the last delivered point). `as_of` is
+        // monotone on the live path, so this only fires on a genuine late /
+        // duplicate delivery. The guard keys on `as_of` per the architect's
+        // pin, NOT on the plotted `x_coord`.
+        if let Some(back_as_of) = self.live_equity_last_as_of
+            && as_of.unix_millis() < back_as_of.unix_millis()
         {
             return;
         }
-        self.live_equity_buffer.push_back((ts, equity));
+        self.live_equity_last_as_of = Some(as_of);
+
+        // (2) Clamp the stored x-coordinate to be monotone non-decreasing so
+        // `from_points` can never error (defense — see edge 2 above). In
+        // forward replay `x_coord` is already monotone, so the clamp is a
+        // no-op; it only bites in the impossible "wallclock advanced but bar
+        // time went backwards" case, where it keeps the curve crash-free.
+        let stored_ts = match self.live_equity_buffer.back() {
+            Some((last_ts, _)) if x_coord.unix_millis() < last_ts.unix_millis() => *last_ts,
+            _ => x_coord,
+        };
+        self.live_equity_buffer.push_back((stored_ts, equity));
 
         // (2) Ring bound — evict oldest past the cap.
         while self.live_equity_buffer.len() > LIVE_EQUITY_BUFFER_CAP {
@@ -1943,7 +2001,14 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // cockpit-live-dashboard-wiring — append the live equity point
             // and rebuild the derived curve + KPI strip (D5) BEFORE moving
             // `snap` into `model.pnl`.
-            model.push_live_equity_point(snap.as_of, snap.total_equity);
+            //
+            // Two timestamps (cockpit-live-equity-render-guard, approach A):
+            // the WALLCLOCK `as_of` is the out-of-order-delivery guard key
+            // (monotone), while the DATA-time `bar_ts` (fallback `as_of`) is
+            // the x-axis coordinate the chart plots — so a fast replay shows
+            // real 2023-24 dates instead of one repeated wallclock minute.
+            let x_coord = snap.bar_ts.unwrap_or(snap.as_of);
+            model.push_live_equity_point(snap.as_of, x_coord, snap.total_equity);
             model.pnl = PanelState::Ready(snap);
         }
         Message::PositionsRefreshed(list) => {
@@ -2874,6 +2939,7 @@ mod tests {
             total_equity: trading_core::Money::from_decimal(dec!(1)),
             daily_return: trading_core::Money::from_decimal(dec!(0)),
             as_of: Timestamp::now(),
+            bar_ts: None,
         }
     }
 
@@ -2897,6 +2963,12 @@ mod tests {
 
     /// Build a `PnlSnapshot` at a chosen `(secs, equity)` so live-curve tests
     /// can drive a deterministic monotone (or out-of-order) sequence.
+    ///
+    /// `bar_ts` is left `None` here, so the buffer's stored x-coordinate falls
+    /// back to `as_of` (= the `secs` timestamp) AND the delivery guard keys on
+    /// that same value — preserving the pre-approach-A behavior these tests
+    /// assert. The `bar_ts`-driven x-axis path is covered separately by
+    /// `live_equity_curve_plots_bar_ts_not_wallclock` + the render harness.
     fn pnl_snap_at(secs: i64, equity: Decimal) -> PnlSnapshot {
         let as_of =
             Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(secs));
@@ -2907,6 +2979,7 @@ mod tests {
             total_equity: Money::<Usdt>::from_decimal(equity),
             daily_return: Money::<Usdt>::from_decimal(dec!(0)),
             as_of,
+            bar_ts: None,
         }
     }
 
@@ -2942,6 +3015,87 @@ mod tests {
             PanelState::Ready(series) => assert_eq!(series.points.len(), 4),
             other => panic!("expected Ready curve, got {}", other.variant_name()),
         }
+    }
+
+    /// approach-A core proof (cockpit-live-equity-render-guard, 2026-06-11) —
+    /// the live equity buffer plots the **data/bar** time (`bar_ts`) on its
+    /// x-axis, while the out-of-order-delivery guard keys on the **wallclock**
+    /// `as_of`. This split is what makes a fast replay show real 2023-24 dates
+    /// instead of one repeated wallclock minute. The reverted I1 conflated the
+    /// two (stamped `as_of` with bar time) and emptied the curve; this pins them
+    /// SEPARATE. Complements the rasterized `tests/live_equity_render.rs`
+    /// harness (which proves the curve actually draws).
+    #[test]
+    fn live_equity_curve_plots_bar_ts_not_wallclock() {
+        // A snapshot whose wallclock `as_of` and data `bar_ts` live in DISJOINT
+        // epoch ranges, so a mix-up of the two is unmistakable.
+        fn snap_split(as_of_secs: i64, bar_secs: i64, equity: Decimal) -> PnlSnapshot {
+            PnlSnapshot {
+                cash: Money::<Usdt>::from_decimal(equity),
+                unrealized: Money::<Usdt>::from_decimal(dec!(0)),
+                realized: Money::<Usdt>::from_decimal(dec!(0)),
+                total_equity: Money::<Usdt>::from_decimal(equity),
+                daily_return: Money::<Usdt>::from_decimal(dec!(0)),
+                as_of: Timestamp::new(
+                    time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(as_of_secs),
+                ),
+                bar_ts: Some(Timestamp::new(
+                    time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(bar_secs),
+                )),
+            }
+        }
+
+        let mut c = Cockpit::new();
+
+        // `as_of`: a ~2026 monotone wallclock sequence (the delivery key).
+        // `bar_ts`: a 2023 monotone data sequence (the plotted x-coord).
+        let wall_base: i64 = 1_749_600_000; // ~2026-06-11 (wallclock now-ish)
+        let bar_base: i64 = 1_673_789_400; // 2023-01-15 12:30:00 UTC
+        // (as_of_secs, bar_secs, equity) — disjoint epoch ranges, both monotone.
+        let rows: [(i64, i64, Decimal); 3] = [
+            (wall_base, bar_base, dec!(100000)),
+            (wall_base + 1, bar_base + 60, dec!(100800)),
+            (wall_base + 2, bar_base + 120, dec!(101500)),
+        ];
+        for &(as_of_secs, bar_secs, eq) in &rows {
+            update(
+                &mut c,
+                Message::PnlRefreshed(snap_split(as_of_secs, bar_secs, eq)),
+            );
+        }
+
+        // The buffer's stored x-coordinates are the DATA times (`bar_ts`)…
+        let stored: Vec<i64> = c
+            .live_equity_buffer
+            .iter()
+            .map(|(ts, _)| ts.unix_millis())
+            .collect();
+        let expect_bar: Vec<i64> = rows
+            .iter()
+            .map(|&(_, bar_secs, _)| bar_secs * 1000)
+            .collect();
+        assert_eq!(
+            stored, expect_bar,
+            "equity buffer must plot bar_ts (2023 data time) on its x-axis"
+        );
+
+        // …and NEVER the wallclock `as_of` (the I1 conflation this guards against).
+        let wall_millis: Vec<i64> = rows
+            .iter()
+            .map(|&(as_of_secs, _, _)| as_of_secs * 1000)
+            .collect();
+        assert_ne!(
+            stored, wall_millis,
+            "stored x-coords must be bar_ts, never the wallclock as_of"
+        );
+
+        // The delivery guard tracked the latest wallclock `as_of`, kept separate
+        // from the plotted coordinate.
+        assert_eq!(
+            c.live_equity_last_as_of.map(|t| t.unix_millis()),
+            Some((wall_base + 2) * 1000),
+            "delivery guard must track the latest wallclock as_of"
+        );
     }
 
     /// AC2 (the is_all_absent proof) — the KPI strip stays Loading at 1 point

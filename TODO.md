@@ -21,35 +21,50 @@ Every blind fix to the live curve broke it, because it was verified at the **age
 layer** (which passed) while the **actual rendered curve** was broken. The unit test publishing
 a `PnlSnapshot` is NOT proof the curve renders.
 
-**Before changing the curve or x-axis: build a render-verifiable test first.** It should feed a
-realistic sequence of `Message::PnlRefreshed` into the equity buffer and assert the curve
-actually renders — non-empty, expected point count, expected time span. The panel-snapshot
-harness (`crates/ui/tests/panel_snapshots.rs`) renders a screen to a buffer; that's where it
-goes. Once you can SEE the curve break in a test, the fixes below become safe.
+**The render-verifiable harness now EXISTS:** `crates/ui/tests/live_equity_render.rs` rasterizes
+the real Live screen via `iced_test::screenshot` and counts the curve's ACCENT polyline pixels —
+with a self-proving pair that confirms it can tell a broken curve from a healthy one. **Run it
+(`cargo test -p ui --test live_equity_render`) before AND after any change to the curve / x-axis /
+equity buffer.** If you can't first make it go RED for your bug, you can't trust it GREEN for your
+fix. (This is what closed item #1 below.)
 
 ---
 
-## 1. Equity-curve x-axis shows wallclock time, not data dates  ← main open item
+## 1. ✅ DONE (2026-06-11) — Equity-curve x-axis now plots data dates (approach A)
 
-**Symptom:** during a replay the x-axis labels all show the current wallclock minute (e.g. "7:51")
-instead of the historical 2023–24 dates.
+**Landed + render-verified.** `PnlSnapshot.bar_ts` (the bar/data time) is now the chart x-coord,
+kept SEPARATE from the wallclock `as_of` (which stays the equity buffer's out-of-order delivery
+guard). During a fast replay the axis shows real 2023-24 dates instead of one repeated wallclock
+minute. The render harness above (`live_equity_render.rs`, 5/5 green) proves the curve rasterizes;
+the unit test `live_equity_curve_plots_bar_ts_not_wallclock` proves it plots `bar_ts`. A **bonus
+NaN-panic** in `equity_curve.rs` (flat / 1-point curve → `lyon_path: p.y.is_finite()`, the cockpit
+crashing on the FIRST live bar) was caught by the harness and fixed in the same pass. Full record:
+`spec/cockpit-live-dashboard-wiring/tasks.md` I1.
 
-**Why it's stuck:** the obvious fix — stamp `PnlSnapshot.as_of` with `bar.close_ts` (data time) —
-**breaks the entire curve** and was reverted in `40f5de9`. The UI equity buffer's **monotone guard**
-(`push_live_equity_point`) drops any point whose `as_of < back.ts`. With bar-time (2023) values,
-those points get dropped relative to any wallclock-stamped point → empty curve ("no graph").
+> **Operator still owes the human-render confirmation:** run
+> `cargo run -p ui --release --bin cockpit_live --features live` and confirm the equity-curve
+> x-axis labels read as **2023-24 dates** (e.g. `Jan '23`, `Mar '23`), not a wallclock minute.
+> The automated harness proves the polyline draws and stores `bar_ts`; only your eyes confirm the
+> rendered *labels*.
 
-**The right fix:** give the equity point a **separate data-time x-coordinate**, distinct from
-`as_of`. Keep `as_of` = wallclock `now()` (the monotone guard + any freshness logic rely on it);
-add the bar/data time as the x-axis coordinate the chart plots. `format_time_axis_label` already
-does span-adaptive `MMM 'YY` / `MMM DD` labels, so the labels will be right once the x-coord is the
-data time. **Verify with the render test above before shipping.**
+<details><summary>Original investigation notes (how it was solved — kept for reference)</summary>
 
-**Start here:**
-- `crates/ui/src/state.rs` — `push_live_equity_point` (the monotone guard; buffer = `live_equity_buffer`) and the `PnlRefreshed` message arm.
-- `crates/agent/src/runtime.rs` (~line 1112, `spawn_research_trading_loop`) — where `as_of` is set; `bar.close_ts` is the data time available right there.
-- `crates/core/src/views.rs` — `PnlSnapshot` (likely needs a data-time field added).
-- `crates/ui/src/widgets/{chart.rs, equity_curve.rs}` — x-axis tick + label rendering (`format_time_axis_label`, `time_axis_tick_count`).
+**Symptom (was):** during a replay the x-axis labels all showed the current wallclock minute
+(e.g. "7:51") instead of the historical 2023-24 dates.
+
+**Why the first attempt got stuck:** the obvious fix — stamp `PnlSnapshot.as_of` with
+`bar.close_ts` — **broke the entire curve** (reverted in `40f5de9`). The buffer's monotone guard
+(`push_live_equity_point`) drops any point whose `as_of < back.ts`; bar-time (2023) values got
+dropped relative to wallclock-stamped points → empty curve.
+
+**The fix that landed (approach A):** a separate data-time x-coordinate (`bar_ts`), distinct from
+`as_of`. `as_of` stays wallclock `now()` (the guard relies on it); `bar_ts` is the plotted x-coord.
+`format_time_axis_label` already does span-adaptive `MMM 'YY` / `MMM DD` labels, so the labels are
+right once the x-coord is the data time. Files touched: `crates/core/src/views.rs` (`bar_ts` field),
+`crates/agent/src/{runtime.rs,reconciler.rs}` (publish `bar_ts`), `crates/ui/src/state.rs` (guard
+keys on `as_of`, plots `x_coord`), `crates/ui/src/widgets/equity_curve.rs` (NaN guard).
+
+</details>
 
 ---
 

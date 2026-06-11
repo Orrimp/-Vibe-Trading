@@ -124,6 +124,7 @@ fn synthetic_pnl(n: i64) -> PnlSnapshot {
         total_equity: Money::from_decimal(dec!(90_129.50) + rust_decimal::Decimal::from(n)),
         daily_return: Money::from_decimal(dec!(129.50)),
         as_of: ts(n),
+        bar_ts: None,
     }
 }
 

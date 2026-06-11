@@ -257,31 +257,47 @@ Diagnosed against code + run; two UI fixes + one correct-as-configured verdict.
 Two issues surfaced from the operator's second live cockpit session (HEAD `3f9fd63`,
 after the Notional-column fix landed).
 
-- [reverted] **I1 — X-axis "now" not data time — the data-time fix was REVERTED.**
-  **REVERTED 2026-06-11:** stamping `as_of: bar.close_ts` (below) passed the agent
-  unit test (t903c) but BROKE the live equity-curve render — the UI buffer's monotone
-  guard (`state.rs` `push_live_equity_point` drops a point whose `as_of < back.ts`)
-  dropped the 2023 bar-time points → empty curve ("no graph, no movement",
-  operator-reported on the real cockpit). Reverted `runtime.rs` `as_of` back to
-  `Timestamp::now()` (the known-working render); the data-time x-axis needs a
-  UI-render-verified approach (deferred follow-up). The fill logging from this pass
-  was kept. Original (still-valid) root cause description follows.
-  Root cause confirmed: `crates/agent/src/runtime.rs` `spawn_research_trading_loop`
-  stamped `as_of: Timestamp::now()` on every `PnlSnapshot`, so the equity-curve
-  x-axis showed the current wallclock minute for every bar during fast replay.
-  ~~**Fix:** use `as_of: bar.close_ts`~~ — REVERTED (broke the live render, see above).
-  Also updated `ReconcilerTask::after_bar_close` signature to accept a
-  `bar_ts: Timestamp` parameter (same semantic fix for any future caller of that
-  path), and updated the `t903c_after_bar_close_publishes_pnl` test to pass a fixed
-  historical timestamp and assert `snap.as_of == bar_ts`.
-  - **file:line:** `crates/agent/src/runtime.rs:1094` (`as_of: bar.close_ts`);
-    `crates/agent/src/reconciler.rs:115` (`pub fn after_bar_close(&self, bar_ts: Timestamp)`).
-  - **Test cmd:** `cargo test -p agent t903c_after_bar_close_publishes_pnl`
-  - **Output:** `test reconciler::tests::t903c_after_bar_close_publishes_pnl ... ok`
-  - **Wallclock-consumer audit:** `PnlSnapshot::as_of` is consumed ONLY by
-    `state.rs:1946` `push_live_equity_point(snap.as_of, ...)` (the x-coord for
-    the equity curve). The status-bar server-time/latency reads `Tick::local_recv_ts`
-    (a completely separate path). No consumer depends on `as_of == wallclock`.
+- [x] **I1 — X-axis "now" not data time — FIXED via approach A (separate data-time x-coord).**
+  **Landed 2026-06-11 (cockpit-live-equity-render-guard, completed + render-verified by the
+  orchestrator after the implementing agent left it uncommitted & non-compiling).** The live
+  equity curve now plots a SEPARATE data-time coordinate on its x-axis while the delivery
+  guard keeps the wallclock key — so a fast replay shows real 2023-24 dates instead of one
+  repeated wallclock minute.
+  - `crates/core/src/views.rs` — new `PnlSnapshot.bar_ts: Option<Timestamp>`
+    (`#[serde(default)]`, back-compat). `as_of` stays wallclock; `bar_ts` is the chart x-coord.
+  - `crates/agent/src/runtime.rs` (`spawn_research_trading_loop`) + `reconciler.rs`
+    (`after_bar_close`) — publish `as_of: Timestamp::now()`, `bar_ts: Some(bar.close_ts)`.
+  - `crates/ui/src/state.rs` — new `live_equity_last_as_of` delivery-guard key (separate from
+    the buffer); `push_live_equity_point(as_of, x_coord, equity)` keys the out-of-order guard
+    on `as_of` but stores `x_coord = snap.bar_ts.unwrap_or(snap.as_of)` as the plotted ts,
+    with a monotone clamp so `EquitySeries::from_points` can never error.
+  - `crates/ui/src/widgets/equity_curve.rs` — **bonus fix the render harness caught:** guards
+    the y-range denominator → fixes a `lyon_path: p.y.is_finite()` panic on a flat / 1-point
+    curve (the cockpit was crashing on the FIRST live bar after boot).
+
+  **Why the first attempt was reverted (history):** stamping `as_of: bar.close_ts` directly
+  passed t903c but BROKE the live render — the buffer's monotone guard dropped the 2023
+  bar-time points → empty curve ("no graph", operator-reported). Reverted in `40f5de9`.
+  Approach A fixes it properly by keeping the two timestamps SEPARATE.
+
+  **Render-verified (the lesson applied — verify at the rasterized layer, not unit tests):**
+  - `crates/ui/tests/live_equity_render.rs` (NEW) — rasterizes the real Live screen via
+    `iced_test::screenshot` and counts ACCENT polyline pixels; a self-proving pair
+    (`harness_catches_dropped_points_empty_curve` + `healthy_curve_draws_far_more_than_broken`)
+    proves it discriminates a broken curve from a healthy one. **5/5 green** (1198 ACCENT px,
+    x-span ~947px on the healthy case).
+  - `crates/ui/src/state.rs::live_equity_curve_plots_bar_ts_not_wallclock` (NEW unit test) —
+    proves the buffer plots `bar_ts` (2023 data time), never the wallclock `as_of`.
+  - `t903c_after_bar_close_publishes_pnl` updated: asserts `snap.bar_ts == Some(bar_ts)` and
+    `snap.as_of >= bar_ts` (wallclock).
+  - **Test cmd:** `cargo test -p ui --test live_equity_render && cargo test -p ui --lib live_equity && cargo test -p agent reconciler`
+  - **Output:** all green.
+  - **Orchestrator completion note:** the implementing agent updated only 4 of 10
+    `PnlSnapshot` initializers (workspace didn't compile) and referenced a unit test it never
+    wrote. The orchestrator fixed the 6 missing initializers, wrote the missing
+    `live_equity_curve_plots_bar_ts_not_wallclock`, and confirmed the render harness runs green
+    before landing. **Operator still owes the human-render confirmation** (run `cockpit_live`,
+    confirm the x-axis shows 2023-24 dates) — see TODO.md.
 
 - [x] **I2 — "$4 buys/sells" — CONFIRMED display/perception, not sizing bug.**
   Ran the headless agent with `RUST_LOG=agent=info` and captured real fills.

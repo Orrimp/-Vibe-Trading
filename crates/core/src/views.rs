@@ -91,7 +91,29 @@ pub struct PnlSnapshot {
     pub realized: Money<Usdt>,
     pub total_equity: Money<Usdt>,
     pub daily_return: Money<Usdt>,
+    /// **Wallclock** publish time (`Timestamp::now()` on the live path).
+    /// Drives freshness / latency and the UI equity-buffer's out-of-order
+    /// **delivery** guard — it is monotone by construction (a clock never goes
+    /// back). Do NOT stamp this with bar/data time: a wallclock-anchored buffer
+    /// relies on `as_of` being monotone, and stamping it with replay bar-time
+    /// (2023) broke the live curve (reverted I1, 2026-06-11). The historical
+    /// **data** time the chart plots on its x-axis lives in [`Self::bar_ts`].
     pub as_of: Timestamp,
+    /// **Data / bar** time — the close timestamp of the bar this snapshot was
+    /// computed at (`bar.close_ts` on the research-replay path). This is the
+    /// x-axis coordinate the live equity curve plots, kept SEPARATE from
+    /// [`Self::as_of`] so the chart shows meaningful historical dates during a
+    /// fast replay (where every `as_of` is the same wallclock minute) while the
+    /// delivery/freshness logic still rides `as_of`
+    /// (cockpit-live-equity-render-guard, 2026-06-11, approach A).
+    ///
+    /// `None` for snapshots from a source that has no bar context (legacy
+    /// rows, the reconciler's non-bar paths) — consumers fall back to `as_of`,
+    /// so the curve degrades to the prior wallclock behavior rather than
+    /// dropping points. `#[serde(default)]` keeps older serialized snapshots
+    /// (without this field) deserializing cleanly.
+    #[serde(default)]
+    pub bar_ts: Option<Timestamp>,
 }
 
 /// Position as seen by the cockpit.

@@ -101,13 +101,20 @@ impl ReconcilerTask {
     /// live-cockpit-unified).
     ///
     /// `bar_ts` is the **data timestamp** of the bar being closed
-    /// (i.e. `bar.close_ts` from the trading loop).  It is used as
-    /// `PnlSnapshot::as_of` so the equity-curve x-axis shows the
-    /// historical bar timeline in replay/research mode rather than
-    /// the wallclock "now", which collapses every label to the current
-    /// minute when bars are replayed faster than real time.  In live /
-    /// paper mode `bar.close_ts ≈ Timestamp::now()` so this is correct
-    /// in all modes (ISSUE 1 fix).
+    /// (i.e. `bar.close_ts` from the trading loop).  It is stored in
+    /// `PnlSnapshot::bar_ts` — the SEPARATE x-axis coordinate the live
+    /// equity curve plots — so the chart shows the historical bar timeline
+    /// in replay/research mode rather than the wallclock "now", which
+    /// collapses every label to the current minute when bars are replayed
+    /// faster than real time.
+    ///
+    /// `as_of` stays wallclock `Timestamp::now()`: the UI equity buffer's
+    /// out-of-order-delivery guard + freshness/latency rely on it being
+    /// monotone (a clock never goes back).  Stamping `as_of` itself with
+    /// `bar_ts` (data time) broke the live render and was reverted
+    /// (ISSUE 1, 2026-06-11); the data-time axis now rides `bar_ts`
+    /// (cockpit-live-equity-render-guard, approach A).  In live / paper
+    /// mode `bar.close_ts ≈ now()` so both fields nearly coincide.
     ///
     /// All money math uses [`Decimal`] / [`Money<Usdt>`]; never `f64`.
     /// Returns the computed snapshot so the caller can persist or
@@ -124,7 +131,10 @@ impl ReconcilerTask {
             // snapshot is well-formed; T912 future work can wire the
             // baseline from the audit ledger.
             daily_return: Money::from_decimal(Decimal::ZERO),
-            as_of: bar_ts,
+            // Wallclock for the delivery guard / freshness (monotone).
+            as_of: Timestamp::now(),
+            // Data time for the chart x-axis (the historical bar timeline).
+            bar_ts: Some(bar_ts),
         };
         if let Some(bus) = &self.bus {
             bus.publish_pnl(snap.clone());
@@ -269,7 +279,8 @@ mod tests {
         let task = ReconcilerTask::new(state_rx, ks, 1_000).with_bus(Arc::clone(&bus));
 
         // Use a fixed historical bar timestamp (2023-01-15 12:30:00 UTC) — the
-        // snapshot's `as_of` must equal this value, NOT wallclock now().
+        // snapshot's `bar_ts` (the chart x-coord) must equal this value, while
+        // `as_of` is wallclock `now()` (the delivery/freshness coordinate).
         let bar_ts = Timestamp::new(
             ::time::OffsetDateTime::from_unix_timestamp(1_673_789_400)
                 .expect("static timestamp is valid"),
@@ -282,8 +293,19 @@ mod tests {
         assert_eq!(snap.unrealized.amount(), dec!(5_000));
         assert_eq!(snap.realized.amount(), dec!(123.45));
         assert_eq!(snap.total_equity.amount(), dec!(130_000));
-        // ISSUE 1 assertion: as_of must be the supplied bar time, not now().
-        assert_eq!(snap.as_of, bar_ts, "as_of must equal the bar timestamp");
+        // approach-A assertion: the bar/data time rides `bar_ts` (the chart
+        // x-coord), NOT `as_of`. `as_of` is wallclock now() — far in the
+        // future relative to the 2023 bar — so the historical axis stays clean
+        // while the delivery guard keeps a monotone wallclock key.
+        assert_eq!(
+            snap.bar_ts,
+            Some(bar_ts),
+            "bar_ts must carry the supplied data/bar timestamp (the chart x-coord)"
+        );
+        assert!(
+            snap.as_of.unix_millis() >= bar_ts.unix_millis(),
+            "as_of must be wallclock now() (>= the 2023 bar time), not the bar time"
+        );
 
         // Subscriber receives the same snapshot via the bus.
         let received = tokio::time::timeout(std::time::Duration::from_secs(1), pnl_rx.recv())
@@ -294,7 +316,11 @@ mod tests {
         assert_eq!(received.unrealized.amount(), dec!(5_000));
         assert_eq!(received.realized.amount(), dec!(123.45));
         assert_eq!(received.total_equity.amount(), dec!(130_000));
-        assert_eq!(received.as_of, bar_ts, "received as_of must equal bar timestamp");
+        assert_eq!(
+            received.bar_ts,
+            Some(bar_ts),
+            "received bar_ts must carry the data/bar timestamp"
+        );
 
         // Backward-compat: reconciler without a bus returns the
         // snapshot but does NOT panic publishing it.

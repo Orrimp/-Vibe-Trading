@@ -57,6 +57,7 @@ fn synthetic_pnl() -> PnlSnapshot {
         total_equity: Money::from_decimal(dec!(90_129.50)),
         daily_return: Money::from_decimal(dec!(129.50)),
         as_of: Timestamp::now(),
+        bar_ts: None,
     }
 }
 

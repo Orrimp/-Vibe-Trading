@@ -125,6 +125,7 @@ pub fn fake_pnl_positive() -> PnlSnapshot {
         total_equity: Money::from_decimal(dec!(90_129.50)),
         daily_return: Money::from_decimal(dec!(129.50)),
         as_of: fixed_ts(0),
+        bar_ts: None,
     }
 }
 
@@ -138,6 +139,7 @@ pub fn fake_pnl_negative() -> PnlSnapshot {
         total_equity: Money::from_decimal(dec!(99_100.00)),
         daily_return: Money::from_decimal(dec!(-900.00)),
         as_of: fixed_ts(0),
+        bar_ts: None,
     }
 }
 

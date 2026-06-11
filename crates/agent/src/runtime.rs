@@ -1097,10 +1097,19 @@ pub fn spawn_research_trading_loop(
                     }
 
                     // Publish PnL snapshot every bar → Live equity/pnl chart.
-                    // as_of is wallclock now(). NOTE (2026-06-11): stamping this with
-                    // bar.close_ts (data time) to get a historical x-axis broke the
-                    // live equity-curve render and was reverted; the data-time x-axis
-                    // needs a UI-verified approach (tracked as a follow-up).
+                    //
+                    // `as_of` stays wallclock `now()` — the UI equity buffer's
+                    // out-of-order-delivery guard + freshness/latency rely on it
+                    // being monotone (a clock never goes back). Stamping `as_of`
+                    // with `bar.close_ts` (data time) to get a historical x-axis
+                    // BROKE the live render and was reverted (I1, 2026-06-11).
+                    //
+                    // The historical data time the chart plots on its x-axis now
+                    // rides a SEPARATE field, `bar_ts = bar.close_ts`
+                    // (cockpit-live-equity-render-guard, approach A): the curve
+                    // shows real 2023-24 dates during a fast replay while the
+                    // delivery guard still uses the wallclock `as_of`. Verified
+                    // render-side by `crates/ui/tests/live_equity_render.rs`.
                     let unrealized = position.base_qty * mark - cost_basis;
                     let total_equity = cash + position.base_qty * mark;
                     let snap = PnlSnapshot {
@@ -1110,6 +1119,7 @@ pub fn spawn_research_trading_loop(
                         total_equity: Money::from_decimal(total_equity),
                         daily_return: Money::from_decimal(Decimal::ZERO),
                         as_of: Timestamp::now(),
+                        bar_ts: Some(bar.close_ts),
                     };
                     pnl_bus.publish_pnl(snap);
                 }

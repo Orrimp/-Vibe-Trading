@@ -2775,6 +2775,7 @@ mod live_screen {
                     total_equity: Money::from_decimal(eq),
                     daily_return: Money::from_decimal(dec!(0)),
                     as_of,
+                    bar_ts: None,
                 }),
             );
         }
