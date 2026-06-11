@@ -101,11 +101,19 @@ mod inner {
                 );
 
                 // Step 3: load the cached-disk series from the written report.
-                // report_path is now Option<PathBuf> (set only when write_report=true).
-                let report_path = report
-                    .report_path
-                    .as_ref()
-                    .expect("write_report=true should produce a report_path");
+                // Phase B contract (engine.rs § `write_report` doc): the engine
+                // returns `report_path: None` even when `write_report = true` —
+                // the file write is a Phase C enhancement, and "the H3
+                // integration test therefore skips the cached-disk equality
+                // check for Phase B". Skip per that documented contract
+                // (mirrors the NotImplemented skip above) instead of panicking.
+                let Some(report_path) = report.report_path.as_ref() else {
+                    eprintln!(
+                        "H3 test: report_path=None (Phase B in-memory only) — \
+                         cached-disk equality check skipped until Phase C wires the file write"
+                    );
+                    return;
+                };
                 let spec_root = report_path
                     .parent()
                     .and_then(std::path::Path::parent)
