@@ -27,7 +27,7 @@ version: 2.3.0
 
 The `viewer` binary today renders a markdown report from
 `spec/*/reports/backtest-*.md`. The Lumen
-[`Backtest.jsx`](../../design/project/ui_kits/desktop/Backtest.jsx)
+[`Backtest.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz)
 pattern (purpose-built for this project at the design conversation —
 see master roadmap "The Lumen bundle is purpose-built for this
 project") is materially richer: **KPI strip + equity curve +
@@ -225,7 +225,7 @@ precedent.
 ## Requirements
 
 Numbered, testable, derived from
-[`spec/design/project/ui_kits/desktop/Backtest.jsx`](../../design/project/ui_kits/desktop/Backtest.jsx),
+[`spec/design/project/ui_kits/desktop/Backtest.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz),
 the
 [Phase 2 chart-widget contract](../phase-2-shell-ia-charts/feature.md),
 the

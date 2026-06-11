@@ -633,7 +633,7 @@ Python or hand-typed pipelines.
 For the orchestrator-only `scripts/orch_*` set (cursor automation,
 screencapture, cockpit on/off, supplement-log, determinism check, TCC
 probe, PNG crop), see
-[`spec/dev-notes/orchestrator-tooling-2026-05-12.md`](spec/dev-notes/orchestrator-tooling-2026-05-12.md).
+[`spec/dev-notes/orchestrator-tooling-2026-05-12.md`](spec/dev-notes/archive/2026-Q2/orchestrator-tooling-2026-05-12.md).
 Sub-agents must NOT call those — they wrap capabilities scoped to the
 orchestrator's lane.
 

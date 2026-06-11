@@ -13,7 +13,7 @@ parent: v25-tcn-overlay v2.5.0 (in-progress)
 > Cheap-first follow-on to the
 > [`v25-tcn-recalibrate v0.1.0`](../v25-tcn-recalibrate/feature.md) ship
 > on 2026-05-21
-> ([presenter deck](../v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)).
+> ([presenter deck](../archive/presentations-2026-Q2.tar.gz)).
 > The recalibrate ship eliminated the σ_train 608× / 580× inflation
 > (BS-1 10.954 → 0.018, BS-2 6.916 → 0.012; both ∈ 0.005..0.025 — H1
 > confirmed) but the joint F-verdict legitimately stays **F4** under
@@ -990,7 +990,7 @@ runs at T-D-N7 (background + watch recipe REQUIRED).
   — predecessor feature brief (v0.1.0, shipped); R1-R8 + H1-H3 + K1-K5
   + Q1-Q5 with analyst defaults; § Verification records joint F4 +
   gate-survival jump.
-- [`spec/v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md`](../v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
+- [`spec/v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md`](../archive/presentations-2026-Q2.tar.gz)
   — predecessor presenter deck; routing option (c) chosen by operator;
   τ-sweep cheap-first sequencing recommended.
 - [`spec/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md`](../v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md),

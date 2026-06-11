@@ -17,7 +17,7 @@ sibling_picks:
 
 > **Queue pre-position per post-v3 Route A.** Staged at Queue (NOT
 > Active) pending operator Route A pick from
-> [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](../dev-notes/post-v3-strategy-direction-2026-05-29.md).
+> [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](../dev-notes/archive/2026-Q2/post-v3-strategy-direction-2026-05-29.md).
 > M0 deliverables (feature.md + tasks.md + trace row + backlog Queue
 > entry) authored now so promotion is one-step on operator's call.
 
@@ -50,7 +50,7 @@ Asymmetric falsification frame:
   Route C (engineer elsewhere) becomes the durable next call.
 
 **Either outcome is information-bearing.** Cost ~4-6 weeks per
-[post-v3 dev-note Route A](../dev-notes/post-v3-strategy-direction-2026-05-29.md);
+[post-v3 dev-note Route A](../dev-notes/archive/2026-Q2/post-v3-strategy-direction-2026-05-29.md);
 cheapest remaining orthogonal test on the model-class axis.
 
 ## Scope (v0.1.0)
@@ -242,8 +242,8 @@ DAMPENED = H1 red OR K3 trip; INCONCLUSIVE = K1 or K2 trip pre-Wave-D.
 
 ## Cross-references
 
-- Predecessor (Route A framing) — [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](../dev-notes/post-v3-strategy-direction-2026-05-29.md)
-- Parent (Candidate 6) — [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/strategy-reformulation-survey-2026-05-22.md)
+- Predecessor (Route A framing) — [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](../dev-notes/archive/2026-Q2/post-v3-strategy-direction-2026-05-29.md)
+- Parent (Candidate 6) — [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
 - Siblings — [`v3-volatility-forecaster`](../v3-volatility-forecaster/feature.md) (C1 RETIRED), [`v3-regime-classifier`](../v3-regime-classifier/feature.md) (C2 RETIRED), [`v3-llm-forecaster`](../v3-llm-forecaster/feature.md) (C5 PARTIAL)
 - Frozen v0.1.0 trait seam — [`crates/forecast/src/markov_switching.rs`](../../crates/forecast/src/markov_switching.rs)
 - ADR-0049 § Changelog (probable amendment site) — [`spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md`](../architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md)

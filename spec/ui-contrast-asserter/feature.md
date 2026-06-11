@@ -10,7 +10,7 @@ updated: 2026-05-29
 # UI contrast asserter — v0.1.0
 
 > **Pick B Wave 1 promoted feature (cross-cutting safety duo).** Per
-> [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md)
+> [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md)
 > this is the cheaper of the two duo pillars (~0.5 dev days), biased
 > toward DURABLE: a `crates/ui/tests/contrast.rs` test that enumerates
 > every `(fg, bg)` token pair in `crates/ui/src/theme.rs` and asserts
@@ -21,7 +21,7 @@ updated: 2026-05-29
 
 ## Why
 
-Per [`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 4`](../dev-notes/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
+Per [`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 4`](../dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
 the cockpit theme at
 [`crates/ui/src/theme.rs`](../../crates/ui/src/theme.rs) defines
 ~30-60 color tokens (FG_1/2/3 ladders, CANVAS, PANEL, ACCENT, UP_500,
@@ -132,7 +132,7 @@ auto-cover; opt-out list is bounded by reason-stringed annotations.
 - **R3.1** The asserter ships with a `cfg`-feature OR env-var
   default that controls **WARN vs gate** behavior. WARN mode is
   the v0.1.0 default per
-  [`pick-b-cross-cutting-safety-duo-2026-05-29.md § Q-DUO-WARN`](../dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md#-q-duo-warn--shared-warn-mode-duration-before-gate-promotion).
+  [`pick-b-cross-cutting-safety-duo-2026-05-29.md § Q-DUO-WARN`](../dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md#-q-duo-warn--shared-warn-mode-duration-before-gate-promotion).
 - **R3.2** Mode controlled by env var `UI_CONTRAST_MODE=warn|gate`
   (default = `warn` at v0.1.0). Architect M-T1 picks the durable
   shape per Q-CONT-3 below; analyst recommends env var to match
@@ -239,7 +239,7 @@ bundle Q-DUO-WARN ratification) OR gate-from-day-1?
 **(Recommended — DURABLE) Option A — WARN mode default for 2
 weeks, then v0.2.0 patch to gate.** Inherits the bundle-level
 Q-DUO-WARN ratification at
-[`pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md).
+[`pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md).
 WARN duration is 2 weeks shared with the redactor sibling. After
 operator observes WARN signal during the 2-week window, default
 flips to gate via v0.2.0 patch.
@@ -857,7 +857,7 @@ under `crates/ui/tests/visual_*.rs` PASS byte-identical._
   Frontmatter flipped status: draft → arch-done, owner: analyst →
   developer. HANDOFF → developer.
 - 2026-05-29 (analyst): M0 brief authored under Pick B Wave 1
-  promotion per [`pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md).
+  promotion per [`pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md).
   R1 pair enumeration + R2 WCAG compute + R3 WARN-mode + R4
   opt-out marker + R-NR (7 clauses) + K1-K4 falsifiers + H1-H4
   hypotheses + Q-CONT-1/2/3 all bias DURABLE + pre-drawn 4-cell

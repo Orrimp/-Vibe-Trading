@@ -165,7 +165,7 @@ loud test failure rather than a cycle-burning surprise. Parameterize via
 the widget-tree level via accessibility selectors. It does not synthesize
 `canvas::Event::Mouse(CursorMoved { ... })` directly into a `Program`'s
 `update`. We already have a partial harness at
-[`crates/ui/src/widgets/chart.rs:742`](../crates/ui/src/widgets/chart.rs)
+`crates/ui/src/widgets/chart.rs:742` (`../crates/ui/src/widgets/chart.rs`)
 (`dispatch_canvas_event_for_test`). Extend it so a unit test can:
 
 ```rust

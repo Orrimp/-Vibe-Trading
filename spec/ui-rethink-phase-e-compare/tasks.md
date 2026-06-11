@@ -13,7 +13,7 @@ updated: 2026-05-20
 > carries only the T-A* rows; T-T* / T-D-N* are appended in M-T1 by
 > the architect.** Pointers: [feature.md](feature.md) carries R1-R8,
 > Q1-Q8, K1-K8, H1-H5. Scope source-of-truth:
-> [dev-note](../dev-notes/ui-rethink-2026-05-17.md) §6 Phase E
+> [dev-note](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md) §6 Phase E
 > (lines 1082-1096), §J3 (lines 340-390), §3 IA (lines 651-744).
 
 ## M0 — Analyst synthesis

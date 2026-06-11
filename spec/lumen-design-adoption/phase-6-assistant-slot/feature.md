@@ -37,7 +37,7 @@ time.
 - **Right-rail collapsible panel slot** in the shell, hidden by
   default, revealed when the v2 LLM strategy is enabled.
 - **Composer + message-list widget pattern** aligned to
-  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../../design/project/ui_kits/desktop/Assistant.jsx).
+  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).
 - **Wires into the v2 LLM trait** the architect defines at v2
   kickoff.
 - **Coexists with the Phase 2 sidebar nav** (assistant rail on

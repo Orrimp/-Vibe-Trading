@@ -1340,7 +1340,7 @@ _Tester links reports here after the developer pass lands._
   reflecting "production-ready" status now that the runtime regression on the
   v0.1.0 Brief A binding is closed. `owner: developer → presenter` (presenter
   now owns until operator ticks approve in
-  [`presentations/cockpit-render-regression-2026-05-14.md`](presentations/cockpit-render-regression-2026-05-14.md);
+  [`presentations/cockpit-render-regression-2026-05-14.md`](../archive/presentations-2026-Q2.tar.gz);
   on tick the orchestrator flips `status: in-progress → shipped` per AGENT.md
   process discipline rule 2). Sibling frontmatter row updated to read "unblocked
   by this ship" (Brief B's hold lifts on F1 landing). Presentation assembled

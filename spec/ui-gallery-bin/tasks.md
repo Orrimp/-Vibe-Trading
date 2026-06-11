@@ -81,7 +81,7 @@ updated: 2026-05-16
 > owns the M_FINAL_* ticks.
 >
 > Effort budget: **3.0 dev-days total** per
-> [`dev-note §5.1 row C`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
+> [`dev-note §5.1 row C`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
 > (Effort M, ROI **High**, Risk Low). Task estimates below sum to 3.0d.
 
 ## M0 — Architect design pass + falsifier spike
@@ -376,7 +376,7 @@ emits `VERDICT → PASS | FAIL | REGRESSION` at
   + 0.05 + 0.15 + 0.15 + 0.1 + 0.1 + 0.05 + 0.25 + 0.1 + 0.1 + 0.05
   + 0.15 + 0.15 + 0.3 + 0.05 + 0.05 + 0.05 + 0.05 + 0.15 + 0.1 +
   0.05 + 0.15 = **3.0 dev-days**, matching the
-  [`dev-note §5.1 row C`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
+  [`dev-note §5.1 row C`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
   budget exactly.
 - **Architect M0 tasks (T-M0-A..G) are not in the 3.0d budget** —
   architect-pass overhead per the

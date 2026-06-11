@@ -261,10 +261,10 @@ All `spec/` file edits go through the [`spec-update`](.claude/skills/spec-update
 When orienting on the project, these dev-notes give the most signal per word:
 
 - [`feature-state-table-2026-05-22.md`](spec/dev-notes/feature-state-table-2026-05-22.md) — comprehensive 54-feature inventory
-- [`v25-dl-journey-retrospective-2026-05-22.md`](spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md) — what the forecaster track taught (4 retirements)
+- [`v25-dl-journey-retrospective-2026-05-22.md`](spec/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md) — what the forecaster track taught (4 retirements)
 - [`v3-vol-overlay-noop-discovery-2026-05-22.md`](spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) — the load-bearing engineering pattern
-- [`strategic-reset-2026-05-23.md`](spec/dev-notes/strategic-reset-2026-05-23.md) — half-validated moat finding + next-6-week roadmap framing
-- [`feature-state-analyst-review-2026-05-22.md`](spec/dev-notes/feature-state-analyst-review-2026-05-22.md) + [`feature-state-architect-review-2026-05-22.md`](spec/dev-notes/feature-state-architect-review-2026-05-22.md) — dual-perspective reviews
+- [`strategic-reset-2026-05-23.md`](spec/dev-notes/archive/2026-Q2/strategic-reset-2026-05-23.md) — half-validated moat finding + next-6-week roadmap framing
+- [`feature-state-analyst-review-2026-05-22.md`](spec/dev-notes/archive/2026-Q2/feature-state-analyst-review-2026-05-22.md) + [`feature-state-architect-review-2026-05-22.md`](spec/dev-notes/archive/2026-Q2/feature-state-architect-review-2026-05-22.md) — dual-perspective reviews
 
 ---
 

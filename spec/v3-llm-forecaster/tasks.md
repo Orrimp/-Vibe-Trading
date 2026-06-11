@@ -974,7 +974,7 @@ weeks wall-clock per H5.
       - (c) **F-equivalent — H1 = 0 AND no L-verdict** — retire
         C5; preserve spec as what-not-to-chase reference (mirrors
         v2.5 DL retirement pattern from
-        [v25-dl-journey-retrospective](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)).
+        [v25-dl-journey-retrospective](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)).
         Re-route to C2 (`v3-regime-classifier`) which stayed in
         Queue per backlog.
       - (d) **L3 cost-overrun trigger** — bump R5.4 N to 168

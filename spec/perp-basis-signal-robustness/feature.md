@@ -20,7 +20,7 @@ updated: 2026-06-08
 > came back **LIVE** — the program's first decision-grade-positive signal. This
 > brief formalizes the build to convert that spike into a **robustness VERDICT**.
 > Per the
-> [basis spike](../dev-notes/new-data-domain-scoping-2026-06-05.md#basis-spike-results)
+> [basis spike](../dev-notes/archive/2026-Q2/new-data-domain-scoping-2026-06-05.md#basis-spike-results)
 > (§ BS.0-BS.6, VERDICT **LIVE / MEDIUM-HIGH**).
 >
 > **This brief is analyst-altitude only.** It scopes the WHY, the requirements, the
@@ -1095,7 +1095,7 @@ _Tester links reports here after the M-TEST gate. The gates the tester must clea
 - 2026-06-05 (analyst, perp-basis-signal-robustness): authored the feature brief +
   opened the trace row `REQ-PERP-BASIS-SIGNAL-ROBUSTNESS-001` (state `proposed`,
   operator-greenlit). Transcribes the basis spike
-  ([new-data-domain-scoping-2026-06-05.md § BS.0-BS.6](../dev-notes/new-data-domain-scoping-2026-06-05.md#basis-spike-results),
+  ([new-data-domain-scoping-2026-06-05.md § BS.0-BS.6](../dev-notes/archive/2026-Q2/new-data-domain-scoping-2026-06-05.md#basis-spike-results),
   VERDICT **LIVE / MEDIUM-HIGH**). Why = the first non-flat post-OHLCV signal — a
   cross-sectional basis-reversal (high-basis/crowded-long names underperform; rank IC
   −0.08 to −0.11 over L=60-168, sign-stable both years), orthogonal to OHLCV (corr

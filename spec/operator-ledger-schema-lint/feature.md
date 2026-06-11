@@ -11,7 +11,7 @@ updated: 2026-05-30
 
 > **Pick C Wave 1 promoted feature (orchestrator hygiene compounder
 > trio).** Per
-> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md)
+> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md)
 > this is one of three trio pillars (~0.5 dev days), biased toward
 > DURABLE: a `scripts/operator_ledger_check.py` script that enforces
 > the schema of
@@ -21,7 +21,7 @@ updated: 2026-05-30
 ## Why
 
 Per the
-[`weekly-retro-2026-05-27-to-2026-05-29 § What to fix / improve #5`](../dev-notes/weekly-retro-2026-05-27-to-2026-05-29.md#what-to-fix--improve)
+[`weekly-retro-2026-05-27-to-2026-05-29 § What to fix / improve #5`](../dev-notes/archive/2026-Q2/weekly-retro-2026-05-27-to-2026-05-29.md#what-to-fix--improve)
 finding: operator visual-verify recipe backlog accumulates across
 session boundaries — Bug #64 attempt-2 visual-verify; Yahoo v0.1.4
 bulk fetch (now done); cockpit-toast-queue smoke tests; etc. The
@@ -46,7 +46,7 @@ which asserts:
    column or via Q-LED-NOTE shape ratification).
 
 Per the
-[`process-tooling-survey-2026-05-29.md § Pick C`](../dev-notes/process-tooling-survey-2026-05-29.md#pick-c--orchestrator-hygiene-queue-staleness-script-a--adr-registry-atomic-write-contract-b--pending-verifications-ledger-c):
+[`process-tooling-survey-2026-05-29.md § Pick C`](../dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md#pick-c--orchestrator-hygiene-queue-staleness-script-a--adr-registry-atomic-write-contract-b--pending-verifications-ledger-c):
 "Pending-verifications ledger consolidates a chronic carry-over class
 (Bug #64 visual-verify, Yahoo bulk fetch, toast-queue smoke tests)."
 Pick C upgrades this to a **schema + lint script** that enforces the
@@ -842,7 +842,7 @@ sibling owns the architect.md amendment.
 ## Verification
 
 Tester M-FINAL 2026-05-30: VERDICT → PASS. Report at
-[`spec/operator-ledger-schema-lint/reports/test-20260530-070513-v0.1.0.md`](reports/test-20260530-070513-v0.1.0.md).
+[`spec/operator-ledger-schema-lint/reports/test-20260530-070513-v0.1.0.md`](../archive/tester-reports-2026-05-to-06.tar.gz).
 All 7 gates pass: self-test 8/8, live exit 0, P-LED-1 fires both flags,
 negative control clean, --today deterministic, fix-in-flight HARD, anchors
 84/84, AGENT.md subsection coexists with queue-staleness sibling edit.
@@ -851,7 +851,7 @@ negative control clean, --today deterministic, fix-in-flight HARD, anchors
 
 - 2026-05-29 (analyst): Feature brief authored under Pick C Wave 1
   promotion per
-  [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+  [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md).
   R1-R4 + R-NR (7 clauses) + K1-K4 + H1-H4 + Q-LED-WHEN +
   Q-LED-NOTE + pre-drawn 4-cell verdict tree. Both Qs bias DURABLE
   per AGENT.md 2026-05-28. Ledger frontmatter amendment (R3.3) +

@@ -543,7 +543,7 @@ Test-runner + evaluator split per
 
 - [x] **T-M_FINAL-3** *(presenter, after PASS)* — Assemble
   `spec/cockpit-render-regression/presentations/cockpit-render-regression-<date>.md`
-  _Ticked 2026-05-14 (presenter, then operator-approved):_ Presentation at [`presentations/cockpit-render-regression-2026-05-14.md`](presentations/cockpit-render-regression-2026-05-14.md); operator ticked `APPROVE` on 2026-05-14. M2-A tracing snippet deferred to follow-up M1/M2 brief.
+  _Ticked 2026-05-14 (presenter, then operator-approved):_ Presentation at [`presentations/cockpit-render-regression-2026-05-14.md`](../archive/presentations-2026-Q2.tar.gz); operator ticked `APPROVE` on 2026-05-14. M2-A tracing snippet deferred to follow-up M1/M2 brief.
   via the [`present-results`](../../.claude/skills/present-results/SKILL.md)
   skill. Capture cockpit screenshots (clean boot) + verification
   matrix + the M2-A trace log snippet (showing the widget-by-widget

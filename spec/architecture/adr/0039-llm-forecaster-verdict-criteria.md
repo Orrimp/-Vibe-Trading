@@ -14,7 +14,7 @@ superseded-by: none
 [ADR-0033](0033-tcn-alpha-investigation-report-shape.md) § D3 codified
 the **F-verdict** algorithm (F1/F2/F3/F4) for the v2.5 TCN
 alpha-investigation. The retrospective
-([`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)
+([`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
 § Lessons learned, item #2) locked **F-verdict immutability** as the
 load-bearing invariant for cross-paradigm evidence comparability — the
 F-verdict thresholds (`abs_p95 < 1e-6`, `std/sigma_train > 0.1`, etc.)
@@ -666,9 +666,9 @@ preserved.
   Autoapprove; Q4 + Q6 explicit operator-pick).
 - [`spec/v3-llm-forecaster/decomp.md`](../../v3-llm-forecaster/decomp.md)
   § T-AR-9 — this ADR's authoring spec.
-- [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../../dev-notes/strategy-reformulation-survey-2026-05-22.md)
+- [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
   § Candidate 5 — survey-time cost / EV / reuse scoping.
-- [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)
+- [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
   § Lessons learned (cheap-first; F-verdict immutability) — the
   guardrails this ADR honors.
 - Patton 2011 (analogue for verdict-shape discipline) — *Volatility

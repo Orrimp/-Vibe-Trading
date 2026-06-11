@@ -11,7 +11,7 @@ predecessor: chart-canvas-overhaul v1.10.0
 
 > This brief is the first concrete feature carved out of the broader UI
 > rethink at
-> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/ui-rethink-2026-05-17.md).
+> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md).
 > The dev-note's §6 Phase A is the spec source of truth; this brief is
 > the **implementation contract** for that slice. The dev-note's IA
 > argument (hybrid sidebar, strategy-leading, pair-as-chip-not-sidebar),
@@ -28,7 +28,7 @@ The cockpit's headline operator workflow is "test a strategy against
 this pair AND this date range, and see on the chart how successful the
 selection is" — see [`product.md` § Differentiator](../product.md#differentiator)
 and the 2026-05-17 operator critique captured in
-[`ui-rethink-2026-05-17`](../dev-notes/ui-rethink-2026-05-17.md). The
+[`ui-rethink-2026-05-17`](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md). The
 current `Charts` screen (`crates/ui/src/screens/lab.rs`, 597 LOC) is
 the only operator-aligned working surface in the cockpit, but it is
 strategy-blind: the chart shows price + buy/sell markers + window-
@@ -1246,7 +1246,7 @@ just a constant in `lab/defaults.rs`.
   `presentations/ui-rethink-phase-a-lab-2026-05-18.md` (commit `ef8fb3c`).
   Status → `shipped`. Visual A/B captures remain a follow-on (operator-local).
 - 2026-05-17 (analyst): initial brief authored from
-  [`ui-rethink-2026-05-17`](../dev-notes/ui-rethink-2026-05-17.md)
+  [`ui-rethink-2026-05-17`](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md)
   §6 Phase A + operator addendum. Eleven requirements (R1–R11)
   cover screen rename + default-route flip + three overlay layers
   + pair/strategy/date-range chip widgets + Lab tuple persistence

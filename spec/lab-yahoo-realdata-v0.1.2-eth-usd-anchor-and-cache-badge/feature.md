@@ -221,7 +221,7 @@ ALL GREEN gates: anchors 70/70 + `cargo fmt --check` + `cargo clippy
 
 - v0.1.1 brief, deck, BTC H1 dev-note (pattern to replicate for ETH):
   [`spec/lab-yahoo-realdata/feature.md`](../lab-yahoo-realdata/feature.md),
-  [`presentations/lab-yahoo-realdata-v0.1.1-2026-05-27.md`](../lab-yahoo-realdata/presentations/lab-yahoo-realdata-v0.1.1-2026-05-27.md),
+  [`presentations/lab-yahoo-realdata-v0.1.1-2026-05-27.md`](../archive/presentations-2026-Q2.tar.gz),
   [`dev-notes/yahoo-vs-binance-divergence-2026-05-27.md`](../lab-yahoo-realdata/dev-notes/yahoo-vs-binance-divergence-2026-05-27.md).
 - Binary to extend: [`crates/backtest/src/bin/run_yahoo_sma.rs`](../../crates/backtest/src/bin/run_yahoo_sma.rs).
 - Existing per-pair pill + probe + wiring:

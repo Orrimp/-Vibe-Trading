@@ -13,7 +13,7 @@ parent: v25-tcn-overlay v2.5.0 (in-progress)
 > Forensic, read-only investigation into the `dampened=0` finding that
 > persists even after `backtest-real-binance-data v0.1.0` wired the real
 > Binance hourly OHLCV pipeline into the backtest harness
-> ([test report](../backtest-real-binance-data/reports/test-20260518-1800-backtest-real-binance-data.md)).
+> ([test report](../archive/tester-reports-2026-05-to-06.tar.gz)).
 > Scope is **read-only**: we do not re-train, do not change the model,
 > do not move existing anchors. We instrument what the BS-1 and BS-2
 > checkpoints actually emit on real OHLCV and produce the alpha-verdict
@@ -591,7 +591,7 @@ horizon-bump retraining run — operator to decide which to prioritize.
 
 ## Sources cited
 
-- [`spec/backtest-real-binance-data/reports/test-20260518-1800-backtest-real-binance-data.md`](../backtest-real-binance-data/reports/test-20260518-1800-backtest-real-binance-data.md)
+- [`spec/backtest-real-binance-data/reports/test-20260518-1800-backtest-real-binance-data.md`](../archive/tester-reports-2026-05-to-06.tar.gz)
   — the immediate trigger; `dampened=0` across all four real-data
   scenarios at commit `df73780`; §5 quotes
   `dampened=0` for all four `-realdata` scenarios.

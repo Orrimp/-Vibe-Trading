@@ -13,7 +13,7 @@ superseded-by: none
 
 The v2.5 TCN alpha-investigation
 ([feature.md](../../v25-tcn-alpha-investigation/feature.md),
-[presenter deck 2026-05-19](../../v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md))
+[presenter deck 2026-05-19](../../archive/presentations-2026-Q2.tar.gz))
 shipped a joint **F4 verdict** ("no signal at 1h horizon") across BS-1 +
 BS-2 on real Binance hourly OHLCV. The forensic deep-dive in the
 predecessor's reports surfaced a load-bearing **σ_train units /
@@ -369,7 +369,7 @@ training loop, which is not re-run in this feature).
   — architect M-T1 decomposition (this ADR's wave-level decomposition).
 - [`spec/v25-tcn-alpha-investigation/feature.md`](../../v25-tcn-alpha-investigation/feature.md)
   — predecessor F4 verdict.
-- [`spec/v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md`](../../v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md)
+- [`spec/v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md`](../../archive/presentations-2026-Q2.tar.gz)
   — presenter deck where the σ_train calibration anomaly was first
   surfaced as a top-level finding.
 - Bug site: [`crates/forecast/src/bin/train_tcn.rs:606,676-678,733-741`](../../../crates/forecast/src/bin/train_tcn.rs).

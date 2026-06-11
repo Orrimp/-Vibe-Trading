@@ -19,13 +19,13 @@ updated: 2026-05-22
 - [x] **T-A1** (2026-05-22) — Read predecessor materials.
   Confirmed the v2.5 DL forecast overlay umbrella retirement state:
   - **Strategy reformulation survey
-    [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/strategy-reformulation-survey-2026-05-22.md)
+    [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
     § Candidate 1 (volatility forecasting)** — survey-time cost /
     EV / reuse scoping. Survey rated C1 as **highest EV per
     wall-clock week** with MEDIUM-HIGH prior of clearing +0.10
     Sharpe-delta on the v1 cross-sectional momentum baseline.
   - **v2.5 DL journey retrospective
-    [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)
+    [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
     § Lessons learned + § What the next research direction COULD
     usefully chase** — established (a) cheap-first investigation
     order lesson #1, (b) F-verdict immutability lesson #2 (ADR-0033

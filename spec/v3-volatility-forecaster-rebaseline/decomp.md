@@ -589,7 +589,7 @@ parent `[v3.0.0-volatility]` block, which terminates after the
 - [Parent feature.md](../v3-volatility-forecaster/feature.md) — parent
   brief; § Verification carries the contaminated-baseline caveat this
   pass resolves.
-- [Parent presenter deck](../v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md)
+- [Parent presenter deck](../archive/presentations-2026-Q2.tar.gz)
   — routing pick (b) RE-BASELINE FIRST ratified.
 - [ADR-0038](../architecture/adr/0038-vol-forecast-verdict-shape.md) §
   D1.c — T-classifier threshold grid (unchanged); § D6 — anchor-additive

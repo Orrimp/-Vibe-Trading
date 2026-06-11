@@ -10,7 +10,7 @@ updated: 2026-05-29
 # Visual-fail HTML reporter — v0.1.0
 
 > **Pick A Wave 1 promoted feature.** Per
-> [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/pick-a-test-infra-trifecta-2026-05-29.md)
+> [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md)
 > this is the cheapest of the three trifecta pillars (~1 dev day),
 > biased toward DURABLE: a single tester-contract amendment + ~50 LoC
 > helper that lights up agent-facing failure artifacts for every visual
@@ -19,7 +19,7 @@ updated: 2026-05-29
 ## Why
 
 The
-[`ui-testability-deep-dive-2026-05-15.md § 4.1`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose)
+[`ui-testability-deep-dive-2026-05-15.md § 4.1`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose)
 analysis named a **direct agent-contract gap**: when a visual assertion
 fails inside `crates/ui/tests/*.rs` (via the existing
 `tests/fixtures/visual_diff.rs::matches_screenshot` helper), the
@@ -680,7 +680,7 @@ confirms `verify_anchors.sh` 71/71 PASS byte-identical pre/post.)_
 ## Changelog
 
 - 2026-05-29 (analyst): M0 brief authored under Pick A Wave 1 promotion
-  per [`pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+  per [`pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md).
   R1 helper contract + R2 self-containment + R3 tester.md stanza +
   R4 self-test + R-NR (5 clauses including K-class K1-K4 + H1-H3 +
   Q1-Q3 + pre-drawn verdict tree. ~1 dev day estimate. Trace row

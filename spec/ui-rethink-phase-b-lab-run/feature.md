@@ -11,7 +11,7 @@ predecessor: ui-rethink-phase-a-lab v0.2.0
 
 > This brief is the **second concrete feature** carved out of the broader
 > UI rethink at
-> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/ui-rethink-2026-05-17.md).
+> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md).
 > The dev-note's §6 Phase B is the spec source of truth; this brief is
 > the **implementation contract** for that slice. Predecessor:
 > [`ui-rethink-phase-a-lab v0.2.0`](../ui-rethink-phase-a-lab/feature.md)

@@ -741,6 +741,6 @@ Top 3 risks for this feature. Mitigation plan inline.
   H2 RESOLVED-WITH-CAVEAT. Anchors 11/11. Frontmatter
   `owner: test-runner → evaluator`.
 - 2026-05-12 (operator): **SHIPPED.** Operator approval recorded
-  in [`presentations/ui-test-harness-bootstrap-2026-05-12.md ## Approval`](presentations/ui-test-harness-bootstrap-2026-05-12.md#approval)
+  in [`presentations/ui-test-harness-bootstrap-2026-05-12.md ## Approval`](../archive/presentations-2026-Q2.tar.gz)
   as `[x] Approved — ship`. Frontmatter flipped `in-progress →
   shipped`; `owner: evaluator → shipped`.

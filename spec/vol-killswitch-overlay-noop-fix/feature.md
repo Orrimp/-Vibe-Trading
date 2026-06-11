@@ -555,7 +555,7 @@ keys to the post-fix e2e test outcome.
 - Precedent feature (vol_targeting sibling fixed 2026-05-22): [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../v3-volatility-forecaster-noop-fix/feature.md).
 - Precedent feature's decomp.md (wave shape reference): [`spec/v3-volatility-forecaster-noop-fix/decomp.md`](../v3-volatility-forecaster-noop-fix/decomp.md).
 - Discovery dev-note (diagnostic chain for the vol_targeting precedent): [`spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md).
-- Testing-strategy review citing the "killswitch that doesn't kill" framing: [`spec/dev-notes/testing-strategy-review-2026-05-25.md`](../dev-notes/testing-strategy-review-2026-05-25.md) §1 P2.
+- Testing-strategy review citing the "killswitch that doesn't kill" framing: [`spec/dev-notes/testing-strategy-review-2026-05-25.md`](../dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md) §1 P2.
 - ADR-0038 § D5 (strategy-side composition lock) + § D6 + § D6.b (anchor-additive contract + wiring-bug-fix re-emission protocol): [`spec/architecture/adr/0038-vol-forecast-verdict-shape.md`](../architecture/adr/0038-vol-forecast-verdict-shape.md).
 - CLAUDE.md non-negotiable on overlay-equity-divergence e2e tests: [`CLAUDE.md ## Non-negotiables`](../../CLAUDE.md#non-negotiables).
 - Pattern reference for R6 unit tests: [`crates/strategy/tests/vol_targeting_overlay.rs:236-301`](../../crates/strategy/tests/vol_targeting_overlay.rs).

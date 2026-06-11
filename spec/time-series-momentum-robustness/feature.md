@@ -15,7 +15,7 @@ updated: 2026-06-08
 > (FAMILY-UNIFORM-FRAGILE, parameter), and carry/funding (FAMILY-UNIFORM-FRAGILE
 > on BOTH 2023 + 2024) — each dominated end-to-end by passive equal-weight
 > buy-and-hold of the same coins (**+1.74 Sharpe 2023 / +1.10 Sharpe 2024**). The
-> [universe-vs-method diagnosis](../dev-notes/universe-method-diagnosis-2026-06-02.md)
+> [universe-vs-method diagnosis](../dev-notes/archive/2026-Q2/universe-method-diagnosis-2026-06-02.md)
 > (2026-06-02) computed, from the banked OHLCV via the harness's own reader, that
 > the **cross-sectional RANKING channel carries ≈ 0 forward information** on this
 > universe (rank IC within ±0.07 of zero at every horizon, no stable sign, both
@@ -89,7 +89,7 @@ The robustness program's result is now a uniform negative across all three
 | **Carry** (x-sec funding rank) | FAMILY-UNIFORM-FRAGILE on BOTH 2023 + 2024 | funding < price-vol; dead ranking channel |
 | **Buy-and-hold** (passive) | p50 **+1.74** (2023) / **+1.10** (2024) | — (this is the bar) |
 
-The [universe-method diagnosis](../dev-notes/universe-method-diagnosis-2026-06-02.md)
+The [universe-method diagnosis](../dev-notes/archive/2026-Q2/universe-method-diagnosis-2026-06-02.md)
 explained the *uniformity* with one signal-agnostic fact: **cross-sectional rank
 IC ≈ 0 at every horizon, both years** (§ M4). Three different signals (trend,
 reverse-trend, funding) all fed the SAME ranking channel, and that channel is
@@ -898,7 +898,7 @@ _Pass 2 (M-DEV-4 + M-DEV-5) not yet started._
   `arch-done`. HANDOFF → developer.
 - 2026-06-02 (analyst, feature scoping): authored the `time-series-momentum-robustness`
   feature brief — the FIRST time-series (non-cross-sectional) family, greenlit by the
-  operator after the [universe-method diagnosis](../dev-notes/universe-method-diagnosis-2026-06-02.md)
+  operator after the [universe-method diagnosis](../dev-notes/archive/2026-Q2/universe-method-diagnosis-2026-06-02.md)
   proved the cross-sectional RANKING channel is the dead channel (rank IC ≈ 0 at
   every horizon both years; broader-universe spike LOWERED common-beta 0.715→0.598
   but did NOT revive rank IC → METHOD-limiter, HIGH confidence). **Why:** TS-momentum

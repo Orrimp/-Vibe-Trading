@@ -635,7 +635,7 @@ contract; verified non-controversial**.
 [vol-verdict-bs1-realdata-20260522](../v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md) |
 [ADR-0038](../architecture/adr/0038-vol-forecast-verdict-shape.md) |
 [v3-vol-overlay-noop-discovery-2026-05-22](../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) |
-[Test report](reports/test-final-2026-05-22.md)
+[Test report](../archive/tester-reports-2026-05-to-06.tar.gz)
 
 ## Post-fix retrospective
 

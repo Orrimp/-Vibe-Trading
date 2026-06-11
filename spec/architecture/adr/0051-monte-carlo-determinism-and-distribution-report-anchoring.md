@@ -32,7 +32,7 @@ related:
 The whole quality gate assumes **one deterministic output per scenario**. Monte
 Carlo is, naively, stochastic: a robustness run produces a *distribution* of
 outcomes over an ensemble of synthetic paths. The architect readiness audit
-([`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../../dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
+([`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../../dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
 § 3) established that seeded determinism **does** recover anchorability, but only
 under five sub-decisions that must be frozen so the summary body-SHA never drifts:
 
@@ -55,7 +55,7 @@ LLM-as-support. Q2 is the load-bearing input to this ADR.
 
 > **Retired-line guard (standing).** GARCH and Markov/regime-switching were
 > retired as *alpha sources*
-> ([`v3-vol-retirement-and-c5-promotion-2026-05-22.md`](../../dev-notes/v3-vol-retirement-and-c5-promotion-2026-05-22.md)).
+> ([`v3-vol-retirement-and-c5-promotion-2026-05-22.md`](../../dev-notes/archive/2026-Q2/v3-vol-retirement-and-c5-promotion-2026-05-22.md)).
 > The Monte-Carlo lane treats such models only as **synthetic-path / data
 > generators** — a categorically distinct role (it produces price paths to
 > stress an *already-shipped* strategy on; it predicts nothing and claims no
@@ -954,9 +954,9 @@ horizon=D6.8, long-only-basis=D6.9) and the FIRST to touch `run_path`.
 - Feature briefs — [`spec/monte-carlo-bootstrap-path-generator/feature.md`](../../monte-carlo-bootstrap-path-generator/feature.md)
   (C1), [`spec/strategy-robustness-harness/feature.md`](../../strategy-robustness-harness/feature.md) (C2).
 - Architecture-readiness audit —
-  [`spec/dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../../dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
+  [`spec/dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../../dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
   § 3 (the hard tension), § 5 (the ADR mandate this ADR fulfils).
-- Analyst direction — [`spec/dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md`](../../dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md)
+- Analyst direction — [`spec/dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md`](../../dev-notes/archive/2026-Q2/strategy-robustness-monte-carlo-direction-2026-05-29.md)
   § 8 (the stochastic-vs-anchor collision + the three open questions D1 resolves).
 - Determinism scope precedent — ADR-0043 § "f64 conversion boundary" (lines
   301-310): Apple-Silicon canonical-box bit-stability, cross-platform NOT

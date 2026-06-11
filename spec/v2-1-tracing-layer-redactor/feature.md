@@ -10,7 +10,7 @@ updated: 2026-05-29
 # v2.1 tracing-Layer redactor — v0.1.0
 
 > **Pick B Wave 1 promoted feature (cross-cutting safety duo).** Per
-> [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md)
+> [`spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md)
 > this is the more-expensive of the two duo pillars (~1.5 dev days),
 > biased toward DURABLE: a `tracing_subscriber::Layer` field-visitor
 > that redacts API keys / JWTs / AWS-style secrets / password-like
@@ -20,7 +20,7 @@ updated: 2026-05-29
 
 ## Why
 
-Per [`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 3`](../dev-notes/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
+Per [`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 3`](../dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
 the **pure-fn `redact()`** shipped at v2-llm-strategy v2.0.0 pass 3 (see
 [`crates/llm/src/redact.rs`](../../crates/llm/src/redact.rs)) covers
 explicit `redact(secret)` call sites — every error message + audit-memo
@@ -96,7 +96,7 @@ and event across the program lifecycle.
 - **R2.1** The redactor Layer ships with a `cfg`-feature OR env-var
   default that controls **WARN vs gate** behavior. WARN mode is the
   v0.1.0 default per
-  [`pick-b-cross-cutting-safety-duo-2026-05-29.md § Q-DUO-WARN`](../dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md#-q-duo-warn--shared-warn-mode-duration-before-gate-promotion).
+  [`pick-b-cross-cutting-safety-duo-2026-05-29.md § Q-DUO-WARN`](../dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md#-q-duo-warn--shared-warn-mode-duration-before-gate-promotion).
 - **R2.2** In WARN mode: every redaction the Layer performs ALSO
   emits a meta-event at `tracing::Level::WARN` via a side-channel
   (a separate Layer or direct stderr) with the field name (NOT the
@@ -978,7 +978,7 @@ pre/post._
 ## Changelog
 
 - 2026-05-29 (analyst): M0 brief authored under Pick B Wave 1
-  promotion per [`pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md).
+  promotion per [`pick-b-cross-cutting-safety-duo-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md).
   R1 Layer wire-up + R2 WARN-mode + R3 rule set + R4 tests + R-NR
   (7 clauses) + K1-K4 falsifiers + H1-H3 hypotheses + Q-RED-1/2/3
   all bias DURABLE + pre-drawn 4-cell verdict tree. ~1.5 dev day +

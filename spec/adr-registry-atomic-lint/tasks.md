@@ -8,7 +8,7 @@ updated: 2026-05-30
 # Tasks — adr-registry-atomic-lint v0.1.0
 
 > **Analyst handoff 2026-05-29.** Per Pick C Wave 1 promotion in
-> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md).
 > ~0.5 dev day + ~0.25 tester day total. Bias DURABLE per
 > [AGENT.md § Decision framing — durable over quick](../../AGENT.md#decision-framing--durable-over-quick-operator-preference).
 

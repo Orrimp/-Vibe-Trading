@@ -346,7 +346,7 @@ _owner: tester (post-M-DEV)._
 ## Verification
 
 - 2026-05-27 (tester M-FINAL): test report at
-  [`spec/cockpit-training-pressed-wiring/reports/test-final-2026-05-26-cockpit-training-pressed-wiring.md`](reports/test-final-2026-05-26-cockpit-training-pressed-wiring.md).
+  [`spec/cockpit-training-pressed-wiring/reports/test-final-2026-05-26-cockpit-training-pressed-wiring.md`](../archive/tester-reports-2026-05-to-06.tar.gz).
   VERDICT → PASS. Anchors 34/34. tasks.md frontmatter corrected
   (`implementation-complete` → `shipped`). Trace row flipped to `passed`.
 

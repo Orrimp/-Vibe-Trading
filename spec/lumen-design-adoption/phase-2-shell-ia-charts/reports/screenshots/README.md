@@ -40,4 +40,4 @@ screencapture -W spec/lumen-design-adoption/phase-2-shell-ia-charts/reports/scre
 pkill -f "target/release/cockpit_live"
 ```
 
-Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../presentations/lumen-design-adoption-2026-05-04-to-05-08.md) (phase-2-shell-ia-charts section of the consolidated retrospective).
+Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../archive/presentations-2026-Q2.tar.gz) (phase-2-shell-ia-charts section of the consolidated retrospective).

@@ -944,7 +944,7 @@ and T1511 (snapshot accept).
     (re-run T1502 sweep); structural regressions → architect.
   - **Ratification (third pass):** `VERDICT → PASS`. All 8 gates
     green. Report:
-    [`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](reports/test-2026-05-04c-lumen-phase-1-foundation.md).
+    [`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](../../archive/tester-reports-2026-05-to-06.tar.gz).
     First two passes (`…-04…md` fmt+clippy FAIL, `…-04b…md` rustdoc
     FAIL) preserved on disk for audit. Tally:
     - `cargo test --workspace --all-targets` → 757 passed, 0 failed,
@@ -1010,7 +1010,7 @@ spec/lumen-design-adoption/phase-1-foundation/tasks.md    [NEW — this file]
 - Architecture: [`spec/architecture.md`](../../architecture.md).
 - Lumen tokens: [`spec/design/project/colors_and_type.css`](../../design/project/colors_and_type.css).
 - Lumen brand book: [`spec/design/project/README.md`](../../design/project/README.md).
-- Lumen desktop CSS: [`spec/design/project/ui_kits/desktop/desktop.css`](../../design/project/ui_kits/desktop/desktop.css).
-- Lumen Shell: [`spec/design/project/ui_kits/desktop/Shell.jsx`](../../design/project/ui_kits/desktop/Shell.jsx).
+- Lumen desktop CSS: [`spec/design/project/ui_kits/desktop/desktop.css`](../../archive/design-prototypes-2026-Q2.tar.gz).
+- Lumen Shell: [`spec/design/project/ui_kits/desktop/Shell.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).
 - Operator-success-reports R7 latency band contract: [`spec/operator-success-reports/feature.md`](../../operator-success-reports/feature.md).
 - v1.5b multi-venue (MarketHealth source): [`spec/v1-5b-multi-venue/feature.md`](../../v1-5b-multi-venue/feature.md).

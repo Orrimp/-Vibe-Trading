@@ -1146,7 +1146,7 @@ Five blockers + assumptions; the load-bearing ones:
 ## Changelog
 
 - 2026-05-15 (presenter, v1.0.0): Release-mode presentation assembled
-  at [`presentations/ui-quality-gate-overhaul-2026-05-15.md`](presentations/ui-quality-gate-overhaul-2026-05-15.md)
+  at [`presentations/ui-quality-gate-overhaul-2026-05-15.md`](../archive/presentations-2026-Q2.tar.gz)
   after evaluator emitted VERDICT → PASS (20 / 20) on
   [`reports/evaluation-2026-05-15T05-39Z.md`](reports/evaluation-2026-05-15T05-39Z.md)
   (log body-SHA-256

@@ -760,8 +760,8 @@ Leaves: 30-anchor baseline restored; Waves A-D code intact but un-anchored — o
 - [ADR-0028](../architecture/adr/0028-v25-dl-forecast-overlay-candle.md) — candle ML framework (N/A under Q2=(a); covers v0.1.1 DL refinement).
 - [feature.md](feature.md) — R1-R12, H1-H4, K-vol-1..6, Q1-Q6 + Q-anchors-sub + Q3-sub.
 - [tasks.md](tasks.md) — T-A* analyst rows (done); T-OD* operator-decide (resolved); T-AR* + T-D* + T-T* + T-P* rows.
-- [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/strategy-reformulation-survey-2026-05-22.md) § Candidate 1.
-- [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md) § Lessons learned.
+- [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md) § Candidate 1.
+- [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md) § Lessons learned.
 
 ## Changelog
 

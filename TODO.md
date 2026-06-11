@@ -116,7 +116,7 @@ Deprecation warning gone; cockpit-smoke PASS on the fixtures boot.
 The active-vs-passive **research program is concluded** — across price/OHLCV, derivatives-
 positioning, and on-chain, no active strategy beat passive buy-and-hold net of cost; the shipped
 approach is passive. See [`spec/product.md`](spec/product.md) (terminal verdict) and
-[`spec/dev-notes/presentations/program-capstone-2026-06-08.md`](spec/dev-notes/presentations/program-capstone-2026-06-08.md).
+[`spec/dev-notes/presentations/program-capstone-2026-06-08.md`](spec/archive/presentations-2026-Q2.tar.gz).
 The cockpit is the post-research build-out: a Baseline panel (the shipped BH result), the Live
 monitor (this file's subject), a 24–40× interaction-perf fix, and a repaired visual-regression gate.
 [`spec/backlog.md`](spec/backlog.md) holds the wind-down state.

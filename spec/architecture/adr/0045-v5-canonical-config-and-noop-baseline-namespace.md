@@ -161,7 +161,7 @@ discipline (developer adds the cross-reference at Wave B per
 ### D6 — The two anchor systems are RECONCILED, never independently authored (amendment, 2026-05-30)
 
 > Adopted after the engine-drift PAPERWORK finding
-> ([`spec/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../dev-notes/engine-drift-diagnosis-2026-05-30.md),
+> ([`spec/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../dev-notes/archive/2026-Q2/engine-drift-diagnosis-2026-05-30.md),
 > diagnosis commit `1cbe3d4`). It closes a gap D2 created but did not
 > name: there are **two** physical anchor systems, and D2 only governed
 > one of them.
@@ -434,10 +434,10 @@ file-anchor set.
 - CLAUDE.md non-negotiable — `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` pattern reference
 - Verify script — `scripts/verify_anchors.sh`
 - Hash recompute — `scripts/hash_report.py`
-- Engine-drift diagnosis (D6 / D7 trigger) — [`spec/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../dev-notes/engine-drift-diagnosis-2026-05-30.md) (commit `1cbe3d4`)
+- Engine-drift diagnosis (D6 / D7 trigger) — [`spec/dev-notes/engine-drift-diagnosis-2026-05-30.md`](../../dev-notes/archive/2026-Q2/engine-drift-diagnosis-2026-05-30.md) (commit `1cbe3d4`)
 - In-test re-run anchor gate — `crates/backtest/tests/determinism.rs` (`t622_*` / `t717_*` / `tt1_*`)
 - D7.1 drift-linter — `scripts/check_determinism_anchors.py` (implemented 2026-05-30; pattern: `scripts/adr_registry_check.py`; § D7.1b adds the `SYNTHETIC_DETERMINISM_SHAS` override map for the 6 mixed-provenance constants)
-- Engine-drift fix dev spec (EX-1 corrected rows + BLOCKER resolution + EX-4 v2) — [`spec/dev-notes/engine-drift-fix-spec-2026-05-30.md`](../../dev-notes/engine-drift-fix-spec-2026-05-30.md)
+- Engine-drift fix dev spec (EX-1 corrected rows + BLOCKER resolution + EX-4 v2) — [`spec/dev-notes/engine-drift-fix-spec-2026-05-30.md`](../../dev-notes/archive/2026-Q2/engine-drift-fix-spec-2026-05-30.md)
 
 ## Changelog
 

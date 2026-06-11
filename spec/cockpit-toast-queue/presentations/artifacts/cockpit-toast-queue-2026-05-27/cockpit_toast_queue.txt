@@ -1,9 +1,0 @@
-
-running 4 tests
-test two_completions_in_rapid_succession_both_visible ... ok
-test queue_displays_multiple ... ok
-test overflow_drops_oldest_keeps_newest ... ok
-test auto_dismiss_after_timeout ... ok
-
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-

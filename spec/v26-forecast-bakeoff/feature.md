@@ -54,7 +54,7 @@ artifacts.
 ## Open design option — LLM arbiter (sourced 2026-05-17)
 
 Per the external-code survey at
-[`spec/dev-notes/external-code-patterns-2026-05-17.md`](../dev-notes/external-code-patterns-2026-05-17.md),
+[`spec/dev-notes/external-code-patterns-2026-05-17.md`](../dev-notes/archive/2026-Q2/external-code-patterns-2026-05-17.md),
 a candidate refinement worth considering when this phase activates:
 an **LLM arbiter** that reads all three forecasters' outputs (TCN /
 PatchTST / Vanilla Transformer) plus the operator's strategy params

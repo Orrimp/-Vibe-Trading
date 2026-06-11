@@ -519,7 +519,7 @@ Both M_FINAL tasks gated behind M1+M2+M3 all green.
   - On PASS: HANDOFF → presenter.
 - [x] **T-M_FINAL-3** *(presenter, after PASS)* — Assemble
   `spec/iced-aw-cherry-pick/presentations/iced-aw-cherry-pick-<date>.md`
-  _Ticked 2026-05-14 (presenter, then operator-approved post cockpit-render-regression F1 fix):_ Presentation at [`presentations/iced-aw-cherry-pick-2026-05-14.md`](presentations/iced-aw-cherry-pick-2026-05-14.md). Operator approved on 2026-05-14 after the cockpit panic was resolved by the cockpit-render-regression v1.0.0 sibling ship. Brief B's own widgets (loading_with_spinner / status_badge_cell) verified clean by orchestrator's M0 bypass tests — were never the trigger.
+  _Ticked 2026-05-14 (presenter, then operator-approved post cockpit-render-regression F1 fix):_ Presentation at [`presentations/iced-aw-cherry-pick-2026-05-14.md`](../archive/presentations-2026-Q2.tar.gz). Operator approved on 2026-05-14 after the cockpit panic was resolved by the cockpit-render-regression v1.0.0 sibling ship. Brief B's own widgets (loading_with_spinner / status_badge_cell) verified clean by orchestrator's M0 bypass tests — were never the trigger.
   via the [`present-results`](../../.claude/skills/present-results/SKILL.md)
   skill. Capture screenshots of the viewer-bin picker + a loading
   panel + a strategy status badge for the operator approval block.

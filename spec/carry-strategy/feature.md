@@ -18,7 +18,7 @@ updated: 2026-06-08
 > (P(loss) 4.5%), and both active price families converted that capturable drift
 > into a break-even-at-best loss machine through churn
 > ([MR verdict](../cross-sectional-mean-reversion-strategy/feature.md#implementation);
-> [momentum closure](../momentum-parameter-robustness-sweep/presentations/momentum-robustness-closure-2026-05-30.md)).
+> [momentum closure](../archive/presentations-2026-Q2.tar.gz)).
 >
 > **Carry is the pre-registered rotation runner-up**
 > ([MR brief § recommendation](../cross-sectional-mean-reversion-strategy/feature.md#the-recommendation)):

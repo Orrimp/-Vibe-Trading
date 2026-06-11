@@ -18,9 +18,9 @@ updated: 2026-05-30
 > and emit **ONE anchored summary report** per the operator's Q2 (seed the
 > ensemble → anchor the distribution summary, NOT N per-path anchors).
 > Grounded in the direction note
-> [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md)
+> [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/archive/2026-Q2/strategy-robustness-monte-carlo-direction-2026-05-29.md)
 > § 3 / § 6 (C2) + the architect readiness audit
-> [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
+> [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
 > § 2(c) / § 3 / § 6.2 Phase MC-1.
 
 ## Why
@@ -30,7 +30,7 @@ updated: 2026-05-30
 Today a backtest produces `backtest(strategy, θ*, path) → {sharpe, sortino,
 max_dd, equity}` — scalars on **one** path. The load-bearing example: v1
 momentum has **73% max-drawdown on 2023-FY real Binance data**
-([`strategic-reset-2026-05-23.md`](../dev-notes/strategic-reset-2026-05-23.md)
+([`strategic-reset-2026-05-23.md`](../dev-notes/archive/2026-Q2/strategic-reset-2026-05-23.md)
 § 4.2). That is one number on one path. We do not know its p5/p50/p95 across
 plausible alternative 2023s.
 
@@ -838,9 +838,9 @@ No behavior change; no anchor change; `verify_anchors.sh` → 85/85 PASS, SHA `7
   (2026-05-30): Q1 = stationary block bootstrap (consumed via C1) / GBM demoted;
   Q2 = seed the ensemble → anchor the distribution summary (ONE anchor, not N);
   Q3 = robustness harness first / learning loop (C4) last. Grounded in
-  [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md)
+  [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/archive/2026-Q2/strategy-robustness-monte-carlo-direction-2026-05-29.md)
   § 3 / § 6 (C2) + the architect readiness audit
-  [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
+  [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
   § 2(c) / § 3 / § 6.2 Phase MC-1 (reuses the `threshold_sweep` sweep+aggregate
   seam). R1-R3 + R-NR (6 clauses, incl. the MANDATORY adapted CLAUDE.md
   distribution-harness gate R-NR.6 = divergence-from-single-path-baseline +

@@ -11,7 +11,7 @@ updated: 2026-05-30
 
 > **Pick C Wave 1 promoted feature (orchestrator hygiene compounder
 > trio).** Per
-> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md)
+> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md)
 > this is one of three trio pillars (~0.5 dev days; cheapest pillar),
 > biased toward DURABLE: a `scripts/adr_registry_check.py` script that
 > enforces the architect.md ADR registry atomic-write contract by
@@ -20,7 +20,7 @@ updated: 2026-05-30
 ## Why
 
 Per the
-[`weekly-retro-2026-05-27-to-2026-05-29 § What to fix / improve #6`](../dev-notes/weekly-retro-2026-05-27-to-2026-05-29.md#what-to-fix--improve)
+[`weekly-retro-2026-05-27-to-2026-05-29 § What to fix / improve #6`](../dev-notes/archive/2026-Q2/weekly-retro-2026-05-27-to-2026-05-29.md#what-to-fix--improve)
 finding: ADR-registry drift recurred across 3 audits (2026-05-07
 caught ADRs 0044+; 2026-05-29 caught ADRs 0045-0049 on disk but
 absent from `architecture/adr/README.md` table). The CONTRACT was
@@ -35,7 +35,7 @@ The contract is codified at the architect-instructions level; this
 brief **operationalises** the contract with a lint script that
 catches the drift at commit time (pre-commit hook OR post-commit CI
 per Q-ADR-WHEN). Per the
-[`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 5`](../dev-notes/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
+[`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 5`](../dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
 "ADR registry atomicity is a CI check (write ADR file → required
 commit-time `architecture/adr/README.md` row). Operator already paid
 reactively 3× in 3 weeks (audits 2026-05-07 / 05-27 / 05-29)."
@@ -691,13 +691,13 @@ Shebang `#!/usr/bin/env python3`. `def main(argv: list[str]) -> int` + `raise Sy
 
 ## Verification
 
-Tester M-FINAL 2026-05-30: [`spec/adr-registry-atomic-lint/reports/test-20260530-065505-v0.1.0.md`](reports/test-20260530-065505-v0.1.0.md) — **VERDICT → PASS**. All 5 self-test cases PASS (0.003 s); live pre-commit exit 0 (50/50 ADRs CLEAN); P-ADR-1 falsification PASS (probe fires exit 1 naming ADR-9999); invariant-(c) enum check PASS (bogus status fires, revert restores exit 0); anchors 84/84 PASS. D-ADR-6 architect.md amendment confirmed. Spec-lint 146 violations entirely pre-existing debt; zero new violations from this feature.
+Tester M-FINAL 2026-05-30: [`spec/adr-registry-atomic-lint/reports/test-20260530-065505-v0.1.0.md`](../archive/tester-reports-2026-05-to-06.tar.gz) — **VERDICT → PASS**. All 5 self-test cases PASS (0.003 s); live pre-commit exit 0 (50/50 ADRs CLEAN); P-ADR-1 falsification PASS (probe fires exit 1 naming ADR-9999); invariant-(c) enum check PASS (bogus status fires, revert restores exit 0); anchors 84/84 PASS. D-ADR-6 architect.md amendment confirmed. Spec-lint 146 violations entirely pre-existing debt; zero new violations from this feature.
 
 ## Changelog
 
 - 2026-05-29 (analyst): Feature brief authored under Pick C Wave 1
   promotion per
-  [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+  [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md).
   R1-R4 + R-NR (7 clauses) + K1-K4 + H1-H4 + Q-ADR-WHEN +
   Q-ADR-AMEND + pre-drawn 4-cell verdict tree. Both Qs bias DURABLE
   per AGENT.md 2026-05-28. architect.md § ADR registry atomic-write

@@ -22,19 +22,19 @@ updated: 2026-05-16
 # Widget gallery binary (`ui-gallery-bin`) — v0.1
 
 > **Cycle-1, item C** of the rollout locked in
-> [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md §5.2`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#52-recommended-sequencing).
+> [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md §5.2`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#52-recommended-sequencing).
 > Sibling cycle-1 features (A — `ui-contrast-asserter`, B —
 > `ui-update-proptest`, D — `ui-test-harness-canvas-state-seeding`,
 > F — `iced-test-bytes`, G — locale/font determinism fixtures) are
 > independent of this brief. Cycle-2 item **E** (`ui-test-harness-viewport-matrix`)
-> is the downstream blocked-by-this feature: per [§5.3 Keep/Drop/Replace](../dev-notes/ui-testability-deep-dive-2026-05-15.md#53-keep--drop--replace-against-the-existing-weeks-2-4-plan),
+> is the downstream blocked-by-this feature: per [§5.3 Keep/Drop/Replace](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#53-keep--drop--replace-against-the-existing-weeks-2-4-plan),
 > E without the gallery means 50+ per-widget baselines with no shared
 > review surface, so this feature lands first.
 
 ## Why
 
 The operator's founding pain — "an agent cannot see pixels" — is
-quantified in [`dev-note §1.2`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#12-the-agent-cant-see-pixels-sandbox-is-a-strength-not-just-a-constraint):
+quantified in [`dev-note §1.2`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#12-the-agent-cant-see-pixels-sandbox-is-a-strength-not-just-a-constraint):
 the
 [AGENT.md ## Capability boundaries](../../AGENT.md#capability-boundaries)
 regime forbids sub-agents from launching the cockpit, and the
@@ -49,10 +49,10 @@ that:
    N×M individual screenshots when the harness expands across the full
    widget matrix (cycle-2 item E).
 3. The future VLM-judge (cycle-3 item K, deferred per
-   [`Q-VLM lock`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#6-open-questions-for-the-operator))
+   [`Q-VLM lock`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#6-open-questions-for-the-operator))
    has a single page to evaluate per claim — amortizing cost.
 
-The analyst's framing in [`dev-note §3.3 (b)`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
+The analyst's framing in [`dev-note §3.3 (b)`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
 is verbatim: this is the **highest-ROI agent-friendly artifact** in
 the deep-dive. The Rust GUI world has no equivalent today
 ([`boringcactus 2025 Rust GUI survey`](https://www.boringcactus.com/2025/04/13/2025-survey-of-rust-gui-libraries.html));
@@ -65,17 +65,17 @@ would need ~30 individual launches to give the agent the same coverage.
 
 - **Cycle-2 item E — `ui-test-harness-viewport-matrix`** — full-widget
   viewport matrix; per
-  [`dev-note §5.3`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#53-keep--drop--replace-against-the-existing-weeks-2-4-plan)
+  [`dev-note §5.3`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#53-keep--drop--replace-against-the-existing-weeks-2-4-plan)
   E reuses the gallery's `[widget × state]` route table to seed its
   per-cell baselines. E's analyst spawn waits on this brief shipping.
 - **`tester.md` agent-contract change** — the visual-fail HTML
   artifact stanza in
-  [`dev-note §4.1`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose)
+  [`dev-note §4.1`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#41-testermd--emit-a-structured-fail-artifact-not-just-prose)
   templates the gallery-snapshot diff PNG as the embedded failure
   image. The stanza authoring is a separate workflow update; this
   brief's V-items are the precondition.
 - **`ui-designer.md` agent-contract change** —
-  [`dev-note §4.2`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#42-ui-designermd--render-preview-before-handoff)
+  [`dev-note §4.2`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#42-ui-designermd--render-preview-before-handoff)
   mandates the ui-designer cite a gallery snapshot section before
   HANDOFF → tester. That stanza is meaningless until the gallery
   exists.
@@ -90,13 +90,13 @@ reopening:
 
 - **Q-GALLERY-SCOPE — LOCKED 2026-05-15 → reuse
   `crates/ui/src/fixtures.rs` (live state-builders, shared with
-  cockpit).** Per [`dev-note §6 stanza 4`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#6-open-questions-for-the-operator):
+  cockpit).** Per [`dev-note §6 stanza 4`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#6-open-questions-for-the-operator):
   the gallery does NOT fork the state-builders. It imports
   `ui::fixtures::*` directly so a `fake_cockpit_v1_steady_state()`
   update is visible to the cockpit, the gallery, and the snapshot
   baselines simultaneously. Drift is impossible by construction —
   this is the dev-note §3.3 (d) risk mitigation made structural.
-- **Single mega-canvas presentation** — per [`dev-note §3.3 (a)`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
+- **Single mega-canvas presentation** — per [`dev-note §3.3 (a)`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
   the gallery is **one scrolling window** rendering every widget ×
   every state on one page (not an index-page + per-cell routes).
   Rationale: the screen-recorder / `screencapture` use-case wants a
@@ -116,13 +116,13 @@ reopening:
   `[widget × state]` cell registry this brief authors IS the seed
   for E's per-widget viewport matrix. E does not re-author it.
 - **Exhaustiveness check** — per
-  [`dev-note §3.3 (d) risk mitigation`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
-  and [`§2.15 Widget-tree coverage`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#215-feature-completeness-scaffolding--the-reachability-question)
+  [`dev-note §3.3 (d) risk mitigation`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
+  and [`§2.15 Widget-tree coverage`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#215-feature-completeness-scaffolding--the-reachability-question)
   the MVP includes a Rust unit test that fails when a module under
   `crates/ui/src/widgets/` is added without a corresponding gallery
   route. Drift fails loud.
 - **Effort budget — 3 dev-days** per
-  [`dev-note §5.1 row C`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
+  [`dev-note §5.1 row C`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
   (effort M, ROI **High**, risk Low). The task list below sums to
   3 days at standard developer cadence.
 
@@ -260,7 +260,7 @@ does NOT make `num` a renderable widget.
 
 ### Navigation
 
-**Single scrollable mega-canvas** per [`dev-note §3.3 (a)`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
+**Single scrollable mega-canvas** per [`dev-note §3.3 (a)`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
 verbatim — "every widget × every state × every viewport on one page."
 Implementation: one `iced::widget::scrollable(column(...))` wrapping
 all `GALLERY_CELLS` rendered in order. Each cell is wrapped in a
@@ -357,12 +357,12 @@ duplication. NO test-only fixture file. Concretely:
 
 State-drift between gallery and cockpit is **mechanically
 impossible** under this contract (Q-GALLERY-SCOPE's locked rationale,
-[`dev-note §6 stanza 4`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#6-open-questions-for-the-operator)).
+[`dev-note §6 stanza 4`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#6-open-questions-for-the-operator)).
 
 ### Exhaustiveness test
 
 Per
-[`dev-note §2.15 widget-tree coverage`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#215-feature-completeness-scaffolding--the-reachability-question)
+[`dev-note §2.15 widget-tree coverage`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#215-feature-completeness-scaffolding--the-reachability-question)
 + §3.3 (d) risk mitigation. Mechanism:
 
 ```rust
@@ -513,7 +513,7 @@ version bumps and no new external crates.
   MB. Operator review flow is the same Preview.app triple-open the
   bootstrap uses; `cargo insta review` parity returns via cycle-1
   sibling item F
-  ([`iced-test-bytes`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#216-ci-ergonomics--solving-agent-proposes-human-approves)).
+  ([`iced-test-bytes`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#216-ci-ergonomics--solving-agent-proposes-human-approves)).
 - **Operator-slot baseline disk size** — 24 cells × ~220 px @ 2×
   scale × 6720 px wide ≈ 3-6 MB on disk. If T19 measures > 10 MB,
   architect splits the gallery into two scrollables (six baselines
@@ -642,10 +642,10 @@ runs the falsifiers.
   [`positions.rs`](../../crates/ui/src/widgets/positions.rs) +
   [`strategies.rs`](../../crates/ui/src/widgets/strategies.rs)
   cells render the post-shipped native-table form.
-- [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](../dev-notes/ui-testability-deep-dive-2026-05-15.md)
+- [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md)
   — implements item **C** from
-  [`§5.1`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
-  + [`§3.3`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
+  [`§5.1`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#51-idea-table)
+  + [`§3.3`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#33-widget-gallery-binary--ui-gallery-bin)
   + the Q-GALLERY-SCOPE lock.
 - [`spec/ui-design-principles.md`](../ui-design-principles.md) —
   Lumen tokens used for cell-header styling; no new tokens.
@@ -732,7 +732,7 @@ The analyst surfaces these for the architect's Design pass. All are
     open precedent question in the Wave-2a report.
 - 2026-05-15 (analyst): initial draft. Cycle-1 item C of the locked
   rollout from
-  [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](../dev-notes/ui-testability-deep-dive-2026-05-15.md)
+  [`spec/dev-notes/ui-testability-deep-dive-2026-05-15.md`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md)
   (§3.3 + §5.1 row C). Q-GALLERY-SCOPE inherited from operator
   lock (reuse `fixtures.rs` directly). Single mega-canvas
   presentation per §3.3 (a) verbatim. 10 V-items, all sandbox-safe

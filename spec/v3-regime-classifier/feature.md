@@ -23,7 +23,7 @@ sibling_picks:
 > + Q1-Q5 + 4-cell verdict tree + cost framing) so the architect M-T1
 > spawns on a single sharpened brief. Load-bearing 2026-05-22 findings
 > are preserved verbatim in
-> [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md § Candidate 2`](../dev-notes/strategy-reformulation-survey-2026-05-22.md)
+> [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md § Candidate 2`](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
 > plus the [§ Historical context](#historical-context-2026-05-22-analyst-pass)
 > block at the bottom of this brief.
 
@@ -108,7 +108,7 @@ from this menu; analyst stays out of the model-class decision):
 
 **The analyst explicitly does NOT pick the model class at M0.** That
 is the architect's M-T1 Q-arch decision. Candidates surveyed in the
-[2026-05-22 brief](../dev-notes/strategy-reformulation-survey-2026-05-22.md#candidate-2--regime-classification)
+[2026-05-22 brief](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md#candidate-2--regime-classification)
 were: (a) HMM (Baum-Welch on log-returns); (b) small MLP / 1-D conv
 classifier ~100k params; (c) ensemble; (d) rule-based threshold
 extension of the existing seed. Q3 below surfaces this to operator.
@@ -353,7 +353,7 @@ weeks; ~14 weeks remain unused after C1 + C5 → comfortably within cap.
 
 ## Cross-references
 
-- 2026-05-22 strategy-reformulation survey — [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/strategy-reformulation-survey-2026-05-22.md)
+- 2026-05-22 strategy-reformulation survey — [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
 - C1 sibling brief — [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../v3-volatility-forecaster-noop-fix/feature.md)
 - C5 sibling brief — [`spec/v3-llm-forecaster/feature.md`](../v3-llm-forecaster/feature.md)
 - Load-bearing seed — [`crates/reflection/src/regime.rs`](../../crates/reflection/src/regime.rs)

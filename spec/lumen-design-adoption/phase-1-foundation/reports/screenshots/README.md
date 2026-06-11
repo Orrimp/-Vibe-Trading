@@ -24,4 +24,4 @@ screencapture -W spec/lumen-design-adoption/phase-1-foundation/reports/screensho
 pkill -f "target/release/cockpit_live"
 ```
 
-Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../presentations/lumen-design-adoption-2026-05-04-to-05-08.md) (phase-1-foundation section of the consolidated retrospective).
+Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../archive/presentations-2026-Q2.tar.gz) (phase-1-foundation section of the consolidated retrospective).

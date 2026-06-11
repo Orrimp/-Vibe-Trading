@@ -68,18 +68,18 @@ desktop-first system (chat1.md, lines 42–49) with:
 - A **status bar** that is **always visible** and shows connection,
   latency, account, server time
   ([`spec/design/project/README.md:127–131`](../design/project/README.md);
-  [`spec/design/project/ui_kits/desktop/Shell.jsx:67–81`](../design/project/ui_kits/desktop/Shell.jsx)).
+  [`spec/design/project/ui_kits/desktop/Shell.jsx:67–81`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - A **Backtest report viewer** (`Backtest.jsx`) that is materially
   richer than our existing `viewer` binary —
   KPI strip + equity curve + drawdown band + deploy-live action
-  ([`spec/design/project/ui_kits/desktop/Backtest.jsx:54–110`](../design/project/ui_kits/desktop/Backtest.jsx)).
+  ([`spec/design/project/ui_kits/desktop/Backtest.jsx:54–110`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - A **HumanControl** pattern (kill + execution-mode toggle:
   Observe / Supervised / Auto) that extends our shipped kill-only
   surface
-  ([`spec/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../design/project/ui_kits/desktop/HumanControl.jsx)).
+  ([`spec/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - An **AgentFeed** pattern that maps onto our existing tape with
   per-event sparkline visualization
-  ([`spec/design/project/ui_kits/desktop/AgentFeed.jsx:68–93`](../design/project/ui_kits/desktop/AgentFeed.jsx)).
+  ([`spec/design/project/ui_kits/desktop/AgentFeed.jsx:68–93`](../archive/design-prototypes-2026-Q2.tar.gz)).
 
 The design system was generated **for this project**, by a design
 assistant that knew the operator wanted Rust desktop. That changes
@@ -148,7 +148,7 @@ operator-pre-decided constraints.
 **Status: Shipped 2026-05-04.** Tester third-pass `VERDICT → PASS` —
 all 8 gates green; `T_FINAL_LUMEN_PHASE_1` ratified; brief
 frontmatter bumped to `shipped`. Report at
-[`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md).
+[`spec/lumen-design-adoption/phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md`](../archive/tester-reports-2026-05-to-06.tar.gz).
 Scope:
 
 - Replace the 12-token palette in
@@ -176,7 +176,7 @@ Scope:
   table stripes adopt **sunken styling**.
 - Add the **active-row pattern** to tabular widgets — 2 px left rule
   in `accent`, no fill change
-  ([`spec/design/project/ui_kits/desktop/desktop.css:357–360`](../design/project/ui_kits/desktop/desktop.css)).
+  ([`spec/design/project/ui_kits/desktop/desktop.css:357–360`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - Add a new **status-bar widget** (`crates/ui/src/widgets/status_bar.rs`)
   rendering connection / latency / account / server-time — always
   visible at the bottom of the cockpit shell.
@@ -333,7 +333,7 @@ sketch:
 - The Lumen `Backtest.jsx` shows a **KPI strip** (Total return,
   CAGR, Sharpe, Max DD, Win rate, Trades), an **equity curve** with
   filled area, and a **drawdown band** beneath
-  ([`spec/design/project/ui_kits/desktop/Backtest.jsx:79–106`](../design/project/ui_kits/desktop/Backtest.jsx)).
+  ([`spec/design/project/ui_kits/desktop/Backtest.jsx:79–106`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - Today the `viewer` bin renders a markdown report from
   `spec/*/reports/backtest-*.md`. Phase 4 adds a **structured KPI
   band + sparkline** above the markdown body, consuming the same
@@ -361,7 +361,7 @@ metrics; the body-SHA hash is unchanged.
 
 **Status: Shipped 2026-05-07** (tester second-pass `VERDICT → PASS`,
 operator-approved 2026-05-08). Reports at
-[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md).
+[`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../archive/tester-reports-2026-05-to-06.tar.gz).
 Brief frontmatter bumped to `shipped`. **First phase to ship net-new
 operator-write surfaces since v0**: HumanControl panel (execution-
 mode toggle + limits + kill bottom action) on a new "Control"
@@ -386,7 +386,7 @@ collapsible header or move to a dedicated **Control** sidebar entry
   switch becomes the bottom action of a richer "You're in control"
   panel that also shows execution-mode (Observe / Supervised /
   Auto), daily loss limit, max position, and used-today P&L
-  ([`spec/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../design/project/ui_kits/desktop/HumanControl.jsx)).
+  ([`spec/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - **Pause-strategy** and **override-risk-veto** controls land as
   per-strategy actions next to each row in the strategies panel
   (one button per row, typed-confirm flow per the principles
@@ -395,7 +395,7 @@ collapsible header or move to a dedicated **Control** sidebar entry
   [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs)
   rendering stays; the rename is module-level only. The Lumen
   vocabulary in the chat transcript and the
-  [`AgentFeed.jsx`](../design/project/ui_kits/desktop/AgentFeed.jsx)
+  [`AgentFeed.jsx`](../archive/design-prototypes-2026-Q2.tar.gz)
   component ground the rename. **Module path change only — no
   visual change beyond Phase 1's Tier-1 refresh.**
 - Consistency-test fixture and snapshot baseline updated for the
@@ -424,7 +424,7 @@ Phase 6's scope **at the time it lands** (with the v2 LLM strategy):
 - Right-rail collapsible panel slot in the shell, hidden by default,
   revealed when the v2 LLM strategy is enabled.
 - A composer + message-list widget pattern aligned to
-  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../design/project/ui_kits/desktop/Assistant.jsx).
+  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../archive/design-prototypes-2026-Q2.tar.gz).
 - Wires into the v2 LLM trait the architect defines at v2 kickoff.
 - Coexists with the Phase 2 sidebar nav (the assistant rail lives
   on the right; the nav lives on the left). Phase 2 must not
@@ -457,7 +457,7 @@ brief states the constraint and moves on.
 **What this excludes:**
 
 - The string `"Lumen"` in the title bar (the JSX
-  [`Shell.jsx:16`](../design/project/ui_kits/desktop/Shell.jsx)
+  [`Shell.jsx:16`](../archive/design-prototypes-2026-Q2.tar.gz)
   renders `<span>Lumen</span>` — the Phase 1 status bar /
   title bar adopts the *layout* but **not** the brand string).
 - The eye/lens mark
@@ -1165,11 +1165,11 @@ initiative absent v2 LLM.**
 
 | Phase | Status | Shipped | Approval | Tester report |
 |---|---|---|---|---|
-| 1 — Foundation | ✅ Shipped | 2026-05-04 | 2026-05-04 | [`test-2026-05-04c-lumen-phase-1-foundation.md`](phase-1-foundation/reports/test-2026-05-04c-lumen-phase-1-foundation.md) |
-| 2 — Shell IA + Charts | ✅ Shipped | 2026-05-05 | 2026-05-05 | [`test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](phase-2-shell-ia-charts/reports/test-2026-05-05-lumen-phase-2-shell-ia-charts.md) |
-| 3 — Detail screens | ✅ Shipped | 2026-05-05 | 2026-05-06 | [`test-2026-05-05-lumen-phase-3-detail-screens.md`](phase-3-detail-screens/reports/test-2026-05-05-lumen-phase-3-detail-screens.md) |
-| 4 — Backtest panel | ✅ Shipped | 2026-05-06 | 2026-05-06 | [`test-2026-05-06b-lumen-phase-4-backtest-panel.md`](phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md) |
-| 5 — HumanControl + AgentFeed | ✅ Shipped | 2026-05-07 | 2026-05-08 | [`test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md) |
+| 1 — Foundation | ✅ Shipped | 2026-05-04 | 2026-05-04 | [`test-2026-05-04c-lumen-phase-1-foundation.md`](../archive/tester-reports-2026-05-to-06.tar.gz) |
+| 2 — Shell IA + Charts | ✅ Shipped | 2026-05-05 | 2026-05-05 | [`test-2026-05-05-lumen-phase-2-shell-ia-charts.md`](../archive/tester-reports-2026-05-to-06.tar.gz) |
+| 3 — Detail screens | ✅ Shipped | 2026-05-05 | 2026-05-06 | [`test-2026-05-05-lumen-phase-3-detail-screens.md`](../archive/tester-reports-2026-05-to-06.tar.gz) |
+| 4 — Backtest panel | ✅ Shipped | 2026-05-06 | 2026-05-06 | [`test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../archive/tester-reports-2026-05-to-06.tar.gz) |
+| 5 — HumanControl + AgentFeed | ✅ Shipped | 2026-05-07 | 2026-05-08 | [`test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../archive/tester-reports-2026-05-to-06.tar.gz) |
 | 6 — Assistant slot | _Reserved_ | _gated on v2 LLM_ | — | — |
 
 **Cumulative numbers as of Phase 5 ship:** 896 tests passed across

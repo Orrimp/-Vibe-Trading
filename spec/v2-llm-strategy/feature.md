@@ -2274,7 +2274,7 @@ overshoot bound that needs a regression test.
   blocking: 2 pedantic clippy on audit/src/query.rs:219,221
   queued for v2.1). Workspace 1203 passing, 0 failed.
 - 2026-05-13 (operator): **SHIPPED**. Approval recorded
-  in [`presentations/v2-llm-strategy-2026-05-13.md ## Approval`](presentations/v2-llm-strategy-2026-05-13.md#approval)
+  in [`presentations/v2-llm-strategy-2026-05-13.md ## Approval`](../archive/presentations-2026-Q2.tar.gz)
   as `[x] Approved — ship`. Status flipped `in-progress →
   shipped`. Foundation-only (Q1=A) — first consumer briefs
   queued: reflection-memory-llm-enrichment +

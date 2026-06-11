@@ -27,7 +27,7 @@ explains and narrates that quantitative core; it is not the alpha source.
 > bull-leg artifact of the sample. The win this program ships is the **robustness
 > machine + the auditable negative** — measured robustness, not asserted alpha.
 > **Operator-ratified 2026-06-08** ("I approve") via the program capstone
-> ([`program-capstone-2026-06-08`](dev-notes/presentations/program-capstone-2026-06-08.md)).
+> ([`program-capstone-2026-06-08`](archive/presentations-2026-Q2.tar.gz)).
 > Full statement, scope, and the concrete definition of "ship passive" for this
 > codebase: [§ Strategy library — Active-edge-search status](#strategy-library--roadmap).
 >
@@ -72,7 +72,7 @@ explains and narrates that quantitative core; it is not the alpha source.
    (C1, stationary block bootstrap of real Binance returns) +
    [`strategy-robustness-harness`](strategy-robustness-harness/feature.md)
    (C2, the distribution-summary report). Direction:
-   [`spec/dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md`](dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md).
+   [`spec/dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md`](dev-notes/archive/2026-Q2/strategy-robustness-monte-carlo-direction-2026-05-29.md).
    **This is uncertainty quantification, NOT prediction** — categorically distinct
    from the retired forecasting bets (it resamples, it does not forecast).
 3. **Deterministic learning loop** (future) — adapts param / route selection from
@@ -112,9 +112,9 @@ crypto OHLCV:
 
 | Bet | Role attempted | Verdict | Reference |
 |---|---|---|---|
-| v2.5 DL forecaster programme (TCN + PatchTST + planned Transformer + v2.6 bake-off) | Predict next-period return → trade the prediction | **RETIRED 2026-05-22** — terminal F4 across two model families; no +0.10 Sharpe-delta; bake-off + Transformer phases deprecated without shipping (joint F4-F4 prior exhausted EV) | [`v25-dl-journey-retrospective-2026-05-22.md`](dev-notes/v25-dl-journey-retrospective-2026-05-22.md); [`v26-forecast-bakeoff`](v26-forecast-bakeoff/feature.md) |
+| v2.5 DL forecaster programme (TCN + PatchTST + planned Transformer + v2.6 bake-off) | Predict next-period return → trade the prediction | **RETIRED 2026-05-22** — terminal F4 across two model families; no +0.10 Sharpe-delta; bake-off + Transformer phases deprecated without shipping (joint F4-F4 prior exhausted EV) | [`v25-dl-journey-retrospective-2026-05-22.md`](dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md); [`v26-forecast-bakeoff`](v26-forecast-bakeoff/feature.md) |
 | v3 volatility forecaster (GARCH) | Forecast σ → size positions by it | **RETIRED 2026-05-22** — MODEL-BROKEN / NO-ALPHA / negative net-delta after the noop-fix | [`v3-volatility-forecaster`](v3-volatility-forecaster/feature.md); [`v3-vol-overlay-noop-discovery-2026-05-22.md`](dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) |
-| v3 LLM forecaster | LLM as the alpha engine | **shipped-partial** — load-bearing Wave D alpha verdict deferred (no `ANTHROPIC_API_KEY`); the `strategic-reset` § 4.5 prior rates it LOW-MEDIUM to clear the +0.10 gate | [`v3-llm-forecaster`](v3-llm-forecaster/feature.md); [`strategic-reset-2026-05-23.md`](dev-notes/strategic-reset-2026-05-23.md) |
+| v3 LLM forecaster | LLM as the alpha engine | **shipped-partial** — load-bearing Wave D alpha verdict deferred (no `ANTHROPIC_API_KEY`); the `strategic-reset` § 4.5 prior rates it LOW-MEDIUM to clear the +0.10 gate | [`v3-llm-forecaster`](v3-llm-forecaster/feature.md); [`strategic-reset-2026-05-23.md`](dev-notes/archive/2026-Q2/strategic-reset-2026-05-23.md) |
 
 The honest read: **alpha-engine-by-prediction has not paid off, regardless of
 whether the predictor is a TCN, a GARCH, or an LLM.** The retirements were of the
@@ -305,7 +305,7 @@ data/feature/risk/exec scaffolding. Rough order of arrival:
 | v1    | Cross-sectional momentum (top-N)                 | First real edge candidate; multi-symbol  |
 | v1.5  | Mean-reversion on z-scored pairs                 | Tests pairs / portfolio plumbing         |
 | v2    | LLM-augmented news/sentiment overlay             | First LLM-in-the-loop strategy           |
-| v2.5  | DL forecaster portfolio (**RETIRED 2026-05-22**) — 4-phase programme: phase 1 [v2.5 TCN](v25-tcn-overlay/feature.md) shipped with F4 verdict @ 1h horizon; phase 2 [v2.5a PatchTST](v25a-patchtst-overlay/feature.md) shipped 2026-05-22 with F4 verdict @ 24h horizon (Sharpe-delta +0.006 vs v1 baseline, LOWER than retired TCN); phases 3+4 ([v2.5b vanilla Transformer](v25b-transformer-overlay/feature.md) + [v2.6 bake-off](v26-forecast-bakeoff/feature.md)) deprecated without shipping (joint F4-F4 prior exhausted EV). Umbrella: [`v25-dl-forecast-overlay`](v25-dl-forecast-overlay/feature.md) deprecated. Retrospective: [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](dev-notes/v25-dl-journey-retrospective-2026-05-22.md). | **TERMINAL — no production deployment**; v2.5-era DL approaches do not extract +0.10 Sharpe-delta on hourly crypto OHLCV at 1h/24h log-return horizon. Research budget pivoted away. |
+| v2.5  | DL forecaster portfolio (**RETIRED 2026-05-22**) — 4-phase programme: phase 1 [v2.5 TCN](v25-tcn-overlay/feature.md) shipped with F4 verdict @ 1h horizon; phase 2 [v2.5a PatchTST](v25a-patchtst-overlay/feature.md) shipped 2026-05-22 with F4 verdict @ 24h horizon (Sharpe-delta +0.006 vs v1 baseline, LOWER than retired TCN); phases 3+4 ([v2.5b vanilla Transformer](v25b-transformer-overlay/feature.md) + [v2.6 bake-off](v26-forecast-bakeoff/feature.md)) deprecated without shipping (joint F4-F4 prior exhausted EV). Umbrella: [`v25-dl-forecast-overlay`](v25-dl-forecast-overlay/feature.md) deprecated. Retrospective: [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md). | **TERMINAL — no production deployment**; v2.5-era DL approaches do not extract +0.10 Sharpe-delta on hourly crypto OHLCV at 1h/24h log-return horizon. Research budget pivoted away. |
 | v3    | RL policy on constrained action space            | Learning agent                           |
 | v4+   | Event-driven (listings, exploits, regime shifts) | Higher-skill territory                   |
 
@@ -331,7 +331,7 @@ never automatic.
 > 1. **Price / OHLCV** — 4 method families (x-sec momentum, mean-reversion,
 >    funding-carry, TS-momentum) × 3 horizons (1h/4h/daily) × a universe axis.
 >    ALL FAMILY-UNIFORM-FRAGILE (program retrospective:
->    [`horizon-retest-robustness`](horizon-retest-robustness/presentations/horizon-retest-robustness-2026-06-05.md)).
+>    [`horizon-retest-robustness`](archive/presentations-2026-Q2.tar.gz)).
 > 2. **Derivatives-positioning** — funding-carry, basis-reversal long-only
 >    ([`perp-basis-signal-robustness`](perp-basis-signal-robustness/feature.md)),
 >    and the market-neutral basis spread in all 3 arms

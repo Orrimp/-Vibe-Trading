@@ -31,7 +31,7 @@ pass at
 [`spec/chart-buy-sell-emphasis/reports/m6.2-hardening-2026-05-11.md`](../chart-buy-sell-emphasis/reports/m6.2-hardening-2026-05-11.md)
 claimed PASS on tooltip-flash-and-disappear (T2033) and
 chart-cropping (T2032), and the final tester report at
-[`spec/chart-buy-sell-emphasis/reports/test-2026-05-11-2103-chart-buy-sell-emphasis-final.md`](../chart-buy-sell-emphasis/reports/test-2026-05-11-2103-chart-buy-sell-emphasis-final.md)
+[`spec/chart-buy-sell-emphasis/reports/test-2026-05-11-2103-chart-buy-sell-emphasis-final.md`](../archive/tester-reports-2026-05-to-06.tar.gz)
 recorded `VERDICT → PASS` — but on the operator's actual hardware
 both bugs are still visible. The other three are **scope additions**
 the v1.9.0 brief never covered (Q5 layout (β) explicitly omitted a
@@ -2029,7 +2029,7 @@ lands and the developer agent gains GUI capture capability._
 _Operator-facing acceptance summary (presenter-owned, 2026-05-12).
 Distills the V-matrix above into the ship/defer decisions the
 operator approves on the presenter deck at
-[`presentations/chart-canvas-overhaul-2026-05-12.md`](presentations/chart-canvas-overhaul-2026-05-12.md)._
+[`presentations/chart-canvas-overhaul-2026-05-12.md`](../archive/presentations-2026-Q2.tar.gz)._
 
 - **V1–V13** — **PASS** (inherited from the v1.9.0 V-suite + new
   workspace unit tests at developer landings of T3014/T3015/T3019;
@@ -2161,10 +2161,10 @@ output._
   per orchestrator's Swift `CGWarp` automation falsification).
   Frontmatter flipped `status: in-progress → pending-approval`,
   `owner: architect → presenter`. Presenter deck written at
-  [`presentations/chart-canvas-overhaul-2026-05-12.md`](presentations/chart-canvas-overhaul-2026-05-12.md);
+  [`presentations/chart-canvas-overhaul-2026-05-12.md`](../archive/presentations-2026-Q2.tar.gz);
   operator approval there flips status to `shipped`.
 - 2026-05-12 (operator): **SHIPPED**. Operator approval recorded
-  in [`presentations/chart-canvas-overhaul-2026-05-12.md ## Approval`](presentations/chart-canvas-overhaul-2026-05-12.md#approval)
+  in [`presentations/chart-canvas-overhaul-2026-05-12.md ## Approval`](../archive/presentations-2026-Q2.tar.gz)
   as `[x] Approved — ship`. V1-V13 PASS, V14 APPROVED, V15
   DEFERRED to `ui-test-harness-bootstrap` v0.1. Frontmatter
   flipped `pending-approval → shipped`; `owner: presenter →

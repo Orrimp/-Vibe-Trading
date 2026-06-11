@@ -3,7 +3,6 @@ members = [
     "crates/core",
     "crates/data",
     "crates/features",
-    "crates/models",
     "crates/llm",
     "crates/cost",
     "crates/risk",

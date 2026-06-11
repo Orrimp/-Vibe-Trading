@@ -223,7 +223,7 @@ verified by code inspection.
 
 - v0.1.2 predecessor + tester report (root-cause of both defects):
   [`spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md`](../lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md),
-  [`reports/test-final-2026-05-28-...md`](../lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/test-final-2026-05-28-lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge.md).
+  [`reports/test-final-2026-05-28-...md`](../archive/tester-reports-2026-05-to-06.tar.gz).
 - Binary to migrate: [`crates/backtest/src/bin/run_yahoo_sma.rs`](../../crates/backtest/src/bin/run_yahoo_sma.rs)
   (`Data source: ... rev=...` line at L259).
 - Scenario-registry to extend: [`crates/backtest/src/main.rs`](../../crates/backtest/src/main.rs)

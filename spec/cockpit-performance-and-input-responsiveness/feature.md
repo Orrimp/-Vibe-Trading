@@ -50,7 +50,7 @@ operator override):**
 ## Problem statement
 
 The operator's verbatim approval-with-notes block from
-[`spec/ui-quality-gate-overhaul/presentations/ui-quality-gate-overhaul-2026-05-15.md`](../ui-quality-gate-overhaul/presentations/ui-quality-gate-overhaul-2026-05-15.md)
+[`spec/ui-quality-gate-overhaul/presentations/ui-quality-gate-overhaul-2026-05-15.md`](../archive/presentations-2026-Q2.tar.gz)
 lines 479-489:
 
 > Operator verified the cockpit live (2026-05-15) and flagged TWO
@@ -978,7 +978,7 @@ loading) shows a 10 fps spinner instead of 60 fps").
 ## Changelog
 
 - 2026-05-15 (presenter, v1.0.0): release-mode presentation assembled
-  at [`presentations/cockpit-performance-and-input-responsiveness-2026-05-15.md`](presentations/cockpit-performance-and-input-responsiveness-2026-05-15.md)
+  at [`presentations/cockpit-performance-and-input-responsiveness-2026-05-15.md`](../archive/presentations-2026-Q2.tar.gz)
   after evaluator `VERDICT → PASS` (15/15 criteria; log body-SHA-256
   `9c50ec45ce3a627e97088d2adc2d6da8407e33b85f969341a994062729d699c2`)
   and orchestrator cockpit-smoke pre-tick PASS (0 panics, 7s window;

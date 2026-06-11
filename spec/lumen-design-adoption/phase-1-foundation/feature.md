@@ -57,14 +57,14 @@ the **always-visible status bar**.
    row (when one is selected) renders by token-tinting the row fill.
    The Lumen pattern is a 2 px left rule in `accent`, **no fill
    change**
-   ([desktop.css:357–360](../../design/project/ui_kits/desktop/desktop.css))
+   ([desktop.css:357–360](../../archive/design-prototypes-2026-Q2.tar.gz))
    — this preserves the column-of-numbers rhythm the operator scans.
 6. **No status bar.** The cockpit shell has a header (panel titles)
    and a body (panel grid) but nothing at the bottom. Connection
    state lives in a small badge inside the latency widget; account
    identity has no surface; server time has no surface. The Lumen
    status bar
-   ([Shell.jsx:67–81](../../design/project/ui_kits/desktop/Shell.jsx))
+   ([Shell.jsx:67–81](../../archive/design-prototypes-2026-Q2.tar.gz))
    gives the operator a fixed eye-anchor between scans.
 7. **No motion-token semantics.** The principles doc's motion table
    ([principles lines 215–223](../../ui-design-principles.md)) is correct
@@ -136,7 +136,7 @@ would conflict with a UI refresh. Phase 1 is in a clean window.
 
 Numbered, testable, derived from
 [`spec/design/project/colors_and_type.css`](../../design/project/colors_and_type.css),
-[`spec/design/project/ui_kits/desktop/desktop.css`](../../design/project/ui_kits/desktop/desktop.css),
+[`spec/design/project/ui_kits/desktop/desktop.css`](../../archive/design-prototypes-2026-Q2.tar.gz),
 the [Lumen brand book](../../design/project/README.md), and the existing
 [`crates/ui/src/theme.rs`](../../../crates/ui/src/theme.rs) +
 [`crates/ui/src/widgets/`](../../../crates/ui/src/widgets/) shape. Each
@@ -383,7 +383,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R10.2** Panel headers ("Tape", "Positions", etc.) adopt the
   `panel_raised` background tint (Tier 2), one step lighter than
   the panel body — matches
-  [desktop.css:174–181](../../design/project/ui_kits/desktop/desktop.css).
+  [desktop.css:174–181](../../archive/design-prototypes-2026-Q2.tar.gz).
 - **R10.3** The kill-switch panel (`widgets::kill`) adopts Tier 1
   styling identical to other panels; it is no longer visually
   distinct as "the dangerous one" — the **typed-confirm phrase**
@@ -400,7 +400,7 @@ no voice rewrite) and the cross-feature invariants in the
   - `border = 1 px solid BORDER_2`
   - `box_shadow = SHADOW_INSET`
   - `border_radius = radius_2 (4 px)`
-  Matches [desktop.css:478–485](../../design/project/ui_kits/desktop/desktop.css).
+  Matches [desktop.css:478–485](../../archive/design-prototypes-2026-Q2.tar.gz).
 - **R11.2** On focus, the input gains the `FOCUS_RING` outline
   (R4.1) and the border shifts to `accent`.
 - **R11.3** No other input field exists in the shipped cockpit
@@ -417,7 +417,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R12.1** `widgets::positions` and `widgets::strategies` add an
   **active-row indicator**: a 2 px left rule in `accent`, **no
   fill change** to the row
-  ([desktop.css:357–360](../../design/project/ui_kits/desktop/desktop.css)).
+  ([desktop.css:357–360](../../archive/design-prototypes-2026-Q2.tar.gz)).
 - **R12.2** "Active" semantics:
   - Positions: the row whose symbol is currently selected via
     keyboard navigation (when keyboard nav lands; Phase 1
@@ -428,7 +428,7 @@ no voice rewrite) and the cross-feature invariants in the
     `tape-row-audit-modal` flow).
 - **R12.3** The indicator is **additive**: hover styling
   (`PANEL_SUNKEN` row tint per
-  [desktop.css:357](../../design/project/ui_kits/desktop/desktop.css))
+  [desktop.css:357](../../archive/design-prototypes-2026-Q2.tar.gz))
   stacks below the active rule; an actively-selected hovered
   row shows both.
 - **Acceptance:** when the strategies panel has a selection,
@@ -442,7 +442,7 @@ no voice rewrite) and the cross-feature invariants in the
 - **R13.2** Layout: horizontal flexbox, 24 px tall,
   `background = PANEL`, `border-top = 1 px BORDER_1`,
   `font-size = fs_micro (11 px)`, `color = FG_3`. Matches
-  [desktop.css:124–134](../../design/project/ui_kits/desktop/desktop.css).
+  [desktop.css:124–134](../../archive/design-prototypes-2026-Q2.tar.gz).
 - **R13.3** Four primary fields, left-to-right:
   - **Connection** — a 6 px coloured dot + a label.
     Connected (data feed up) → `up_500` dot + "Connected ·
@@ -789,7 +789,7 @@ latency badge is a **continuous-band measurement** (OK / Slow /
 High / Halted). Different vocabularies because different
 semantics. This matches the Lumen status bar's status-dot
 pattern
-([Shell.jsx:71](../../design/project/ui_kits/desktop/Shell.jsx))
+([Shell.jsx:71](../../archive/design-prototypes-2026-Q2.tar.gz))
 and preserves the operator-success-reports R7 contract.
 
 ### Q9 — Existing kill-switch tooltip / dialog scope

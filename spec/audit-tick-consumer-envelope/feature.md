@@ -630,7 +630,7 @@ PASS the architect advances it to `accepted` and fills `arch[]`.
   separately.
 - [01-data-flow.md](../architecture/01-data-flow.md) — edge table
   this brief extends (K3).
-- [`spec/dev-notes/external-code-patterns-2026-05-17.md`](../dev-notes/external-code-patterns-2026-05-17.md)
+- [`spec/dev-notes/external-code-patterns-2026-05-17.md`](../dev-notes/archive/2026-Q2/external-code-patterns-2026-05-17.md)
   — the survey that led to ADR-0031.
 - [`crates/audit/src/journal.rs`](../../crates/audit/src/journal.rs)
   — primary write surface (lines 65, 276, 375, 775, 1335, 1524,

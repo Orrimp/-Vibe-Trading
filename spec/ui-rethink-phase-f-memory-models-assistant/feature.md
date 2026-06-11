@@ -10,7 +10,7 @@ predecessor: ui-rethink-phase-e-compare v0.1.0
 # UI rethink Phase F — Memory + Models + Phase-6 Assistant slot (J7 + J8 + Lumen Phase 6)
 
 > Sixth and final concrete feature carved out of
-> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/ui-rethink-2026-05-17.md).
+> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md).
 > Dev-note §6 Phase F (lines 1098-1112) is the **scope source-of-truth**;
 > this brief is the **implementation contract**. Predecessor:
 > [`ui-rethink-phase-e-compare v0.1.0`](../ui-rethink-phase-e-compare/feature.md)
@@ -248,7 +248,7 @@ v0.1.0 behavior is one of:
 **R3.3** — Right-rail toggle affordance — for Q4=(a) or (b), a
 collapse/expand button is placed in the status bar (right-aligned,
 hairline-bordered) per the Lumen Phase 6 sketch at
-[`spec/design/project/ui_kits/desktop/Assistant.jsx`](../design/project/ui_kits/desktop/Assistant.jsx).
+[`spec/design/project/ui_kits/desktop/Assistant.jsx`](../archive/design-prototypes-2026-Q2.tar.gz).
 Clicking flips `AssistantState::is_open`; when `false` the slot
 collapses back to `RIGHT_RAIL_WIDTH_PX = 0.0`.
 

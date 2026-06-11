@@ -18,7 +18,7 @@ updated: 2026-05-31
 > to capture — momentum specifically converted it into a loss machine through
 > ~5,343 trades/yr of churn
 > ([adversarial-review § 2](../dev-notes/robustness-verdict-adversarial-review-2026-05-30.md);
-> [closure deck](../momentum-parameter-robustness-sweep/presentations/momentum-robustness-closure-2026-05-30.md)).
+> [closure deck](../archive/presentations-2026-Q2.tar.gz)).
 >
 > This brief recommends **cross-sectional mean-reversion** as the first family
 > to vet next, and frames the data-availability decision that gates the
@@ -52,7 +52,7 @@ build inherits them from day 1:
 A family that does not beat simply holding the same coins net of fees on this
 universe is not worth promoting, however internally "robust." That is the
 sharpest scientific question the pivot exists to answer
-([closure deck § neutral framing](../momentum-parameter-robustness-sweep/presentations/momentum-robustness-closure-2026-05-30.md)).
+([closure deck § neutral framing](../archive/presentations-2026-Q2.tar.gz)).
 
 ---
 

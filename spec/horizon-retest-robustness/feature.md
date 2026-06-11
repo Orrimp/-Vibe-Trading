@@ -14,7 +14,7 @@ updated: 2026-06-08
 > cross-sectional momentum, cross-sectional mean-reversion, carry/funding, AND
 > time-series absolute momentum — each FAMILY-UNIFORM-FRAGILE and each dominated
 > end-to-end by passive equal-weight buy-and-hold (**+1.74 Sharpe 2023 / +1.10
-> Sharpe 2024**). The [universe-method diagnosis](../dev-notes/universe-method-diagnosis-2026-06-02.md)
+> Sharpe 2024**). The [universe-method diagnosis](../dev-notes/archive/2026-Q2/universe-method-diagnosis-2026-06-02.md)
 > spiked the universe axis (a broader 35-name mid-cap basket → rank IC still ≈ 0)
 > and named "**universe + horizon**" the binding limiter. The universe half is
 > now exonerated. **Every family ran at 1h. The HORIZON is the one untested
@@ -26,7 +26,7 @@ updated: 2026-06-08
 > classically a daily-to-weekly effect and funding settles every 8h, so a coarser
 > cadence is the highest-prior untried knob — and it is testable for **~seconds of
 > compute** by deterministically resampling the banked 1h data
-> ([pin `3a8b96c4…`](../dev-notes/horizon-retest-scoping-2026-06-03.md), NO
+> ([pin `3a8b96c4…`](../dev-notes/archive/2026-Q2/horizon-retest-scoping-2026-06-03.md), NO
 > re-fetch), **provided the 1h-baked Sharpe annualization is first corrected**.
 >
 > **The load-bearing question this feature answers (either way is decision-grade):**
@@ -44,7 +44,7 @@ updated: 2026-06-08
 > existing anchors MUST hold byte-identical**; the horizon work slots in additive /
 > defaults-off exactly as all four families did. Full scoping rationale + the
 > computed bar counts + the annualization-defect derivation are in
-> [`horizon-retest-scoping-2026-06-03.md`](../dev-notes/horizon-retest-scoping-2026-06-03.md)
+> [`horizon-retest-scoping-2026-06-03.md`](../dev-notes/archive/2026-Q2/horizon-retest-scoping-2026-06-03.md)
 > — this brief transcribes that scoping into the feature shape.
 >
 > **Honest prior: MEDIUM** for a non-fragile TS-momentum cell at daily (the
@@ -109,7 +109,7 @@ families it has tried — and crucially, **all four ran at 1h**:
 | **TS-momentum** (per-asset long/flat) | FAMILY-UNIFORM-FRAGILE (2023 + 2024) | 1h whipsaw / late exits | 1h |
 | **Buy-and-hold** (passive) | p50 **+1.74** (2023) / **+1.10** (2024) | — (this is the bar) | 1h |
 
-The [universe-method diagnosis](../dev-notes/universe-method-diagnosis-2026-06-02.md)
+The [universe-method diagnosis](../dev-notes/archive/2026-Q2/universe-method-diagnosis-2026-06-02.md)
 attributed the *uniformity* to the dead cross-sectional ranking channel (rank IC
 ≈ 0) and named the remaining limiter "**universe + horizon**". The universe spike
 (§ S) ruled out "just broaden the basket": a 35-name mid-cap universe lowered
@@ -1158,7 +1158,7 @@ The tester closes the loop with the standard report template and these gates:
   the operator-greenlit horizon retest — the LAST untested axis after all four
   families (x-sec momentum, x-sec MR, carry, TS absolute momentum) went
   FAMILY-UNIFORM-FRAGILE at 1h and the universe was exonerated by the spike.
-  Transcribed the [scoping note](../dev-notes/horizon-retest-scoping-2026-06-03.md)
+  Transcribed the [scoping note](../dev-notes/archive/2026-Q2/horizon-retest-scoping-2026-06-03.md)
   into the feature shape: Why (coarser cadence on the SAME coins is the highest-prior
   untried knob; trend is a daily effect, funding settles 8-hourly) / Requirements
   R-HR.1..8 + the LOAD-BEARING R-HR.LOAD (the anchor-neutral horizon-aware Sharpe/

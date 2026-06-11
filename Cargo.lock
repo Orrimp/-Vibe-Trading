@@ -4054,13 +4054,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "models"
-version = "0.1.0"
-dependencies = [
- "trading_core",
-]
-
-[[package]]
 name = "naga"
 version = "27.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

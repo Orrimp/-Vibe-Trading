@@ -51,7 +51,7 @@ initiative
    Phase 5 ships only the UI as a runtime flag on `Cockpit`. **Not
    destructive** — gates future trades, doesn't reverse past ones;
    no typed-confirm needed
-   ([`HumanControl.jsx:11–32`](../../design/project/ui_kits/desktop/HumanControl.jsx)).
+   ([`HumanControl.jsx:11–32`](../../archive/design-prototypes-2026-Q2.tar.gz)).
 2. **Pause-strategy** — operator pauses a single strategy without
    halting the agent. Per-strategy button. **Bounded destructive**
    (a paused strategy skips signals it would otherwise take); but
@@ -68,7 +68,7 @@ initiative
 
 [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs)
 (147 lines) renders the live fills panel. Lumen's
-[`AgentFeed.jsx`](../../design/project/ui_kits/desktop/AgentFeed.jsx)
+[`AgentFeed.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz)
 is the operator vocabulary alignment for the same surface. **Visual
 upgrade is deferred** — Phase 5 is module-level rename only; the
 per-event sparkline / agent column / event-kind icons stay
@@ -248,8 +248,8 @@ Phase 1 Q2 / Phase 2 V11 / Phase 3 V12 / Phase 4 V12 precedent.
 ## Requirements
 
 Numbered, testable, derived from
-[`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../../design/project/ui_kits/desktop/HumanControl.jsx),
-[`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../../design/project/ui_kits/desktop/AgentFeed.jsx),
+[`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz),
+[`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz),
 the
 [Phase 1 typed-confirm precedent](../phase-1-foundation/feature.md),
 the
@@ -275,7 +275,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   (R9 mode + R3 limits + R2 kill).
 - **R1.2** Panel title `"You're in control"` and sub-title
   `"Human-in-the-loop"` per
-  [`HumanControl.jsx:9`](../../design/project/ui_kits/desktop/HumanControl.jsx)
+  [`HumanControl.jsx:9`](../../archive/design-prototypes-2026-Q2.tar.gz)
   via new `PANEL_HUMAN_CONTROL_TITLE` / `PANEL_HUMAN_CONTROL_META`
   constants.
 - **R1.3** Placement TBD at Q1; analyst recommends 7th sidebar
@@ -292,7 +292,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 
 - **R2.1** Phase 1 kill button moves into HumanControl as the
   bottom action per
-  [`HumanControl.jsx:49–51`](../../design/project/ui_kits/desktop/HumanControl.jsx)
+  [`HumanControl.jsx:49–51`](../../archive/design-prototypes-2026-Q2.tar.gz)
   via direct `widgets::kill::view(model)` call — no flow
   duplication.
 - **R2.2** Debug-screen kill placement preserved if Q1 picks
@@ -309,7 +309,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
 ### R3 — Mirrored limits and used-today P&L
 
 - **R3.1** Three label-value rows above the kill button per
-  [`HumanControl.jsx:34–47`](../../design/project/ui_kits/desktop/HumanControl.jsx):
+  [`HumanControl.jsx:34–47`](../../archive/design-prototypes-2026-Q2.tar.gz):
   `Daily loss limit` / `Max position` / `Used today`.
 - **R3.2** Daily-loss reads `risk_state.daily_loss_cap_pct`; max
   position derives from `risk_state.per_symbol_caps`; used-today
@@ -438,14 +438,14 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   Auto }` in `core::views`; `Default = Observe` (Q4 — safest
   cold-start).
 - **R9.2** Three-option segmented control per
-  [`HumanControl.jsx:14–32`](../../design/project/ui_kits/desktop/HumanControl.jsx);
+  [`HumanControl.jsx:14–32`](../../archive/design-prototypes-2026-Q2.tar.gz);
   active mode highlighted via Phase 1 active-row pattern.
 - **R9.3** Click emits
   `Message::ExecutionModeSelected(ExecutionMode)`; pure `update`
   arm flips `Cockpit::execution_mode`.
 - **R9.4** Three new mode-hint constants
   (`EXECUTION_MODE_{OBSERVE,SUPERVISED,AUTO}_HINT`) per
-  [`HumanControl.jsx:27–31`](../../design/project/ui_kits/desktop/HumanControl.jsx).
+  [`HumanControl.jsx:27–31`](../../archive/design-prototypes-2026-Q2.tar.gz).
 - **R9.5** No typed-confirm — mode gates *future* trades only;
   not destructive in the typed-confirm sense (master roadmap
   operator-impact bound).
@@ -484,7 +484,7 @@ rewrite, sequential phases, Q11–Q14) apply throughout.
   doesn't.
 - **R11.5** Strings — `PANEL_TAPE_TITLE` →
   `PANEL_AGENT_FEED_TITLE` (`"Agent activity"` per
-  [`AgentFeed.jsx:71`](../../design/project/ui_kits/desktop/AgentFeed.jsx)).
+  [`AgentFeed.jsx:71`](../../archive/design-prototypes-2026-Q2.tar.gz)).
   Net-new constant; not a Master-Constraint-2 voice-rewrite
   edit.
 - **R11.6** No visual change beyond title copy.
@@ -700,7 +700,7 @@ Phase 2/3 IA (every surface is a sidebar entry); panel is too tall
 for footer (~6–8 rows); Home-card breaks the four-panel grid +
 hides kill behind a click. Lumen reference describes HumanControl
 as "always visible"
-([`HumanControl.jsx:2`](../../design/project/ui_kits/desktop/HumanControl.jsx)).
+([`HumanControl.jsx:2`](../../archive/design-prototypes-2026-Q2.tar.gz)).
 
 **Alternatives:** (b) Home-card — breaks grid; (c) footer — too
 tall for status-bar-adjacent slot.
@@ -779,7 +779,7 @@ mechanical.
 trimmed?
 
 **Recommended: full Lumen set per
-[`HumanControl.jsx:6–55`](../../design/project/ui_kits/desktop/HumanControl.jsx).**
+[`HumanControl.jsx:6–55`](../../archive/design-prototypes-2026-Q2.tar.gz).**
 All three limit fields read from existing `Cockpit::risk_state` +
 `Cockpit::pnl`; no new backend wiring needed.
 
@@ -847,7 +847,7 @@ coupled visual work is overhead without value.
 ### Q12 — Kill button copy in HumanControl
 
 **Question:** R2.4 — adopt Lumen `"Halt all agents"`
-([`HumanControl.jsx:50`](../../design/project/ui_kits/desktop/HumanControl.jsx))
+([`HumanControl.jsx:50`](../../archive/design-prototypes-2026-Q2.tar.gz))
 or preserve shipped `"Stop trading"`
 ([`crates/ui/src/strings.rs`](../../../crates/ui/src/strings.rs)
 `KILL_BUTTON_LABEL`)?

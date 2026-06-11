@@ -31,7 +31,7 @@ with no clear "there's nothing here" signal. The operator could not tell
 
 This is the **FYI follow-up** the Bug #64 attempt-3 presenter deck
 explicitly carried forward (see
-[`spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/presentations/bug-64-attempt-3-2026-05-29.md`](../bug-64-d11-attempt-3-yahoo-run-runtime-context/presentations/bug-64-attempt-3-2026-05-29.md)
+[`spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/presentations/bug-64-attempt-3-2026-05-29.md`](../archive/presentations-2026-Q2.tar.gz)
 § Notes/feedback FYI #2: _"Last30d/Last90d show no data under the 2026
 system clock — candidate for a future lab-yahoo UX-polish feature ('no
 data for range' surfacing instead of a confusing empty result)."_).

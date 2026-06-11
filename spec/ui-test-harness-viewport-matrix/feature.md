@@ -11,7 +11,7 @@ updated: 2026-05-29
 # UI test harness — viewport matrix v0.1.0
 
 > **Pick A Wave 1 promoted feature.** Per
-> [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+> [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md).
 > Mid-cost pillar of the trifecta (~3-4 dev days), biased toward
 > DURABLE: extends the Charts-only three-viewport snapshot harness
 > from `ui-test-harness-bootstrap v0.1` to ALL widget tests across
@@ -34,7 +34,7 @@ feed, debug screen — all snapshot at a SINGLE viewport (the prevailing
 This gap is the **same failure class the bootstrap was created to
 close**, just for non-Charts widgets:
 
-- Per [`ui-testability-deep-dive-2026-05-15.md § 2.10`](../dev-notes/ui-testability-deep-dive-2026-05-15.md#210-state-invariant-tests-vs-view-tests--quantifying-the-gap),
+- Per [`ui-testability-deep-dive-2026-05-15.md § 2.10`](../dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md#210-state-invariant-tests-vs-view-tests--quantifying-the-gap),
   ~40 `Message` variants currently have no view-rendered coverage
   beyond a single viewport — meaning a panel that breaks at 3360×1890
   but renders OK at 1280×720 ships through CI silently.
@@ -45,13 +45,13 @@ close**, just for non-Charts widgets:
   bug is now caught for Charts; this brief closes the matrix gap for
   every other widget surface.
 - Per
-  [`process-tooling-survey-2026-05-29.md § Top-5 Rank 2`](../dev-notes/process-tooling-survey-2026-05-29.md#top-5-deep-dives-condensed):
+  [`process-tooling-survey-2026-05-29.md § Top-5 Rank 2`](../dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md#top-5-deep-dives-condensed):
   LARGE per-cycle benefit — every UI feature shipped from this point
   inherits three-viewport snapshot coverage by default; viewport-only
   bugs become CI-detected on the first PR.
 
 The
-[`process-tooling-survey-2026-05-29.md § Top-5 Rank 2`](../dev-notes/process-tooling-survey-2026-05-29.md)
+[`process-tooling-survey-2026-05-29.md § Top-5 Rank 2`](../dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md)
 ranked this Rank 2 jointly with `visual-fail-html-reporter (#16)`
 because the two **multiply each other's value**: viewport-matrix
 generates more failure surface (matrix of widget × viewport snapshots);
@@ -896,7 +896,7 @@ all 3 bootstrap Charts baselines are byte-identical.)_
 
 - 2026-05-29 (analyst): M0 brief authored under Pick A Wave 1
   promotion per
-  [`pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+  [`pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md).
   R1 widget × viewport matrix coverage + R2 baseline PNG generation
   + R3 visual-fail-HTML sibling integration + R4 bootstrap V15
   preservation + R5 build budget + R-NR (5 clauses) + K1-K4 + H1-H4

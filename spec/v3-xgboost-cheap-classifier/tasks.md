@@ -11,7 +11,7 @@ updated: 2026-05-29
 > developer / tester rows are **DEFERRED placeholders** per Route A
 > pre-position — no work past M0 until operator picks Route A
 > Candidate 6 from
-> [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](../dev-notes/post-v3-strategy-direction-2026-05-29.md).
+> [`spec/dev-notes/post-v3-strategy-direction-2026-05-29.md`](../dev-notes/archive/2026-Q2/post-v3-strategy-direction-2026-05-29.md).
 
 ## M0 — Analyst (DONE 2026-05-29)
 

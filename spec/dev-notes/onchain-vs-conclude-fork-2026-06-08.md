@@ -19,7 +19,7 @@ related:
 
 > **Mandate (analyst decision-support, FILES ONLY — orchestrator commits).** The
 > `perp-basis-mn-spread` market-neutral v0.2.0 feature closed PASS (tester
-> [test report](../perp-basis-mn-spread/reports/test-2026-06-08-perp-basis-mn-spread.md),
+> [test report](../archive/tester-reports-2026-05-to-06.tar.gz),
 > HEAD `8c2e6c4`) with science verdict **FAMILY-UNIFORM-FRAGILE in all 3 arms** and,
 > with it, the ENTIRE derivatives-positioning domain. The research program has now
 > exhausted TWO full data domains (OHLCV/price + derivatives-positioning) with uniform

@@ -8,7 +8,7 @@ updated: 2026-05-30
 # Tasks — ui-test-harness-viewport-matrix v0.1.0
 
 > **Analyst handoff 2026-05-29.** Per Pick A Wave 1 promotion in
-> [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/pick-a-test-infra-trifecta-2026-05-29.md).
+> [`spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md).
 > ~3-4 dev days. Bias DURABLE per
 > [AGENT.md ## Decision framing — durable over quick](../../AGENT.md#decision-framing--durable-over-quick-operator-preference).
 > Predecessor: [`ui-test-harness-bootstrap v0.1.0`](../ui-test-harness-bootstrap/feature.md)

@@ -13,7 +13,7 @@ parent: v25-tcn-overlay v2.5.0 (in-progress)
 > Cheap, metadata-only follow-on to the
 > [`v25-tcn-alpha-investigation`](../v25-tcn-alpha-investigation/feature.md)
 > joint **F4 verdict** shipped 2026-05-19
-> ([presenter deck](../v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md)).
+> ([presenter deck](../archive/presentations-2026-Q2.tar.gz)).
 > The investigation surfaced a load-bearing **σ_train units / accumulation
 > bug** in the BS-1 and BS-2 anchored checkpoints: the stored
 > `sigma_train` scalar in each `.metadata.json` is ~500–700× larger than
@@ -37,7 +37,7 @@ classifier correctly landed on F4 ("no signal at 1h horizon").
 
 But the σ_train calibration bug is real and load-bearing for the gate
 calculation. Per the
-[presenter deck § "The bigger finding — σ_train calibration anomaly"](../v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md):
+[presenter deck § "The bigger finding — σ_train calibration anomaly"](../archive/presentations-2026-Q2.tar.gz):
 
 > "Fix the σ_train units and the gate-survival fraction might jump
 > from 0% to 'small but non-zero' — which would re-classify the model
@@ -721,7 +721,7 @@ is confirmed.
 
 ## Sources cited
 
-- [`spec/v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md`](../v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md)
+- [`spec/v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md`](../archive/presentations-2026-Q2.tar.gz)
   — predecessor presenter deck, source-of-truth for F4 verdict + σ_train
   calibration anomaly + ranked follow-on recommendation.
 - [`spec/v25-tcn-alpha-investigation/feature.md`](../v25-tcn-alpha-investigation/feature.md)

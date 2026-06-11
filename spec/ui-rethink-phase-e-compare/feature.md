@@ -10,7 +10,7 @@ predecessor: ui-rethink-phase-d-trail-followup v0.1.1
 # UI rethink Phase E — Compare matrix (J3)
 
 > Fifth concrete feature carved out of
-> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/ui-rethink-2026-05-17.md).
+> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md).
 > Dev-note §6 Phase E (lines 1082-1096) is the **scope source-of-truth**;
 > this brief is the **implementation contract**. Predecessor:
 > [`ui-rethink-phase-d-trail-followup v0.1.1`](../ui-rethink-phase-d-trail-followup/feature.md)

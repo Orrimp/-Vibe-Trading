@@ -629,7 +629,7 @@ the 22 individual scenario rows.)
   [`spec/v25-tcn-recalibrate/feature.md`](feature.md)
 - Predecessor F4 verdict:
   [`spec/v25-tcn-alpha-investigation/feature.md`](../v25-tcn-alpha-investigation/feature.md),
-  [presenter deck](../v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md)
+  [presenter deck](../archive/presentations-2026-Q2.tar.gz)
 - F-verdict algorithm (immutable per Q4):
   [ADR-0033 § D3](../architecture/adr/0033-tcn-alpha-investigation-report-shape.md#d3-f-verdict-decision-algorithm)
 - Metadata canonicaliser:

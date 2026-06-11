@@ -129,7 +129,7 @@ K1 surprise scan re-runs across the 8 newly re-emitted scenarios. H1 falsifier (
 ## Cross-references
 
 - v0.3.0 brief — [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md`](../v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md)
-- v0.3.0 M-FINAL test report (§ 8 Open Items — the carve-out being closed) — [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md`](../v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md)
+- v0.3.0 M-FINAL test report (§ 8 Open Items — the carve-out being closed) — [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md`](../archive/tester-reports-2026-05-to-06.tar.gz)
 - v0.3.0 Sharpe-delta table (the template R3 extends) — [`spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/sharpe-delta-table-2026-05-27.md`](../v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/sharpe-delta-table-2026-05-27.md)
 - ADR-0043 (engine D1-D5) — [`spec/architecture/adr/0043-simulated-latency-and-slippage.md`](../architecture/adr/0043-simulated-latency-and-slippage.md)
 - ADR-0045 (canonical config + namespace strategy) — [`spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md`](../architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md)

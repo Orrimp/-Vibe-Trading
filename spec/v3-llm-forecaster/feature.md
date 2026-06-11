@@ -29,7 +29,7 @@ promotion_ref: spec/v3-volatility-forecaster-noop-fix/presentations/v3-volatilit
 ## Why
 
 Candidate 5 from the
-[strategy reformulation survey](../dev-notes/strategy-reformulation-survey-2026-05-22.md#candidate-5--reflection-memory-as-forecaster-v2-llm-signal)
+[strategy reformulation survey](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md#candidate-5--reflection-memory-as-forecaster-v2-llm-signal)
 asks the load-bearing strategic question the v25 DL journey couldn't
 ask: **does the differentiator (persistent reflection memory + audit
 ledger, locked at [product.md § Differentiator line 80](../product.md#differentiator))
@@ -47,7 +47,7 @@ asset?** The survey rated C5 as
 
 After the v25 DL umbrella retired 2026-05-22 (joint F4-F4-F4 across
 3 model checkpoints / 2 model families / 2 horizons —
-[retrospective § Headline verdict line 22](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md#headline-verdict)),
+[retrospective § Headline verdict line 22](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md#headline-verdict)),
 the operator's prior shifted: the next research direction should
 **not** chase `(same 5-feature input + 1h or 24h next-bar log-return
 target)`. Per the retrospective's "what COULD usefully chase" §
@@ -1341,7 +1341,7 @@ median).
 
 > **Spike T-AR-8 (developer agent, 2026-05-22)**: PARTIAL spike complete.
 > Full dev-note at
-> [`spec/dev-notes/v3-llm-forecaster-prompt-spike-2026-05-22.md`](../dev-notes/v3-llm-forecaster-prompt-spike-2026-05-22.md).
+> [`spec/dev-notes/v3-llm-forecaster-prompt-spike-2026-05-22.md`](../dev-notes/archive/2026-Q2/v3-llm-forecaster-prompt-spike-2026-05-22.md).
 >
 > **Status**: `ANTHROPIC_API_KEY` not configured — empirical sections (latency
 > measurements, quality assessment, tier comparison) are BLOCKED pending operator

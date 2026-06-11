@@ -340,7 +340,7 @@ anchors stay byte-immutable per ADR-0038 § D6).
 ## References
 
 - Parent feature brief: [`spec/v3-volatility-forecaster/feature.md`](../v3-volatility-forecaster/feature.md) — § Verification carries the joint advisory verdict + data caveat.
-- Parent presenter deck: [`spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md`](../v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md) — routing pick (b) ticked.
+- Parent presenter deck: [`spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md`](../archive/presentations-2026-Q2.tar.gz) — routing pick (b) ticked.
 - Contaminated sharpe-comparison report: [`spec/v3-volatility-forecaster/reports/sharpe-comparison-vol-target-bs1-realdata-20260522.md`](../v3-volatility-forecaster/reports/sharpe-comparison-vol-target-bs1-realdata-20260522.md).
 - Anchored vol-target overlay backtest (reused verbatim as overlay column): [`spec/v3-volatility-forecaster/reports/backtest-20260522-082914-top10-2023-fy-vol-target-overlay-realdata.md`](../v3-volatility-forecaster/reports/backtest-20260522-082914-top10-2023-fy-vol-target-overlay-realdata.md).
 - Sharpe-comparison bin (CLI to extend): `crates/forecast/src/bin/sharpe_comparison.rs:1284-1352` (vol-target dispatch) + lines 975 / 1049 / 1082 (advisory string literals).

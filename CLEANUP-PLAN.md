@@ -3,6 +3,23 @@
 > Read-only audit of `trading/` at HEAD `10d1709` (2026-06-11).
 > PLAN ONLY — nothing has been deleted, moved, or modified. Every number below
 > comes from commands actually run against the working tree / git index.
+
+> **EXECUTION LOG (2026-06-11, operator-ratified "Phase 1 + 2"):**
+> ✅ P1-1 `git gc` · ✅ P1-2 `cargo clean` + local debris · ✅ P1-3 tracked `.pyc` removed ·
+> ✅ P1-4 `crates/models` stub removed (workspace check clean) · ✅ P1-5 `spec/_probe_lint_test/` removed ·
+> ✅ P1-6 `SPEC_HYGIENE_PLAN.md` → dev-notes archive · ✅ P1-7 **47** un-anchored tester reports
+> → `spec/archive/tester-reports-2026-05-to-06.tar.gz` (51 of the planned 98 were each their
+> feature's ONLY test evidence — restoring them keeps the spec-lint `shipped-no-tests` contract
+> intact; net new-finding count vs baseline = **0**) ·
+> ✅ P2-1 108 presentation files → `presentations-2026-Q2.tar.gz` · ✅ P2-2 **49** dev-notes →
+> `spec/dev-notes/archive/2026-Q2/` (13 load-bearing kept; `feature-triage` returned — cited by a
+> restored report) · ✅ P2-3 backlog `## Recent` 1,405 lines → `archive/backlog-recent-2026-05.md`
+> (de-linkified) · ✅ P2-4 45 design prototypes → `design-prototypes-2026-Q2.tar.gz`
+> (`colors_and_type.css` kept — `theme.rs` provenance source).
+> **Gates after:** anchors **119/119 PASS** · spec-lint **94 → 71** (zero NEW findings; 26
+> pre-existing fixed incl. 2 trace rows) · `cargo check --workspace --all-targets` clean ·
+> **zero** edits under `spec/*/reports/` except the 5 un-anchored screenshot READMEs + the
+> 51 byte-identical restores. Phase 3 items remain operator decisions.
 > Companion precedents already in-tree:
 > [`spec/dev-notes/repo-cleanup-plan-2026-05-22.md`](spec/dev-notes/repo-cleanup-plan-2026-05-22.md)
 > and [`spec/dev-notes/retired-surface-inventory-2026-05-22.md`](spec/dev-notes/retired-surface-inventory-2026-05-22.md).

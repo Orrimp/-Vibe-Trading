@@ -18,9 +18,9 @@ predecessor: ui-rethink-phase-d-trail v0.1.0
 > or any Phase A/B/C/D-shipped UI surface.
 >
 > **Scope source-of-truth:** presenter deck § 5 + § 8 of
-> [`spec/ui-rethink-phase-d-trail/presentations/ui-rethink-phase-d-trail-2026-05-20.md`](../ui-rethink-phase-d-trail/presentations/ui-rethink-phase-d-trail-2026-05-20.md)
+> [`spec/ui-rethink-phase-d-trail/presentations/ui-rethink-phase-d-trail-2026-05-20.md`](../archive/presentations-2026-Q2.tar.gz)
 > and tester-report § 11 of
-> [`spec/ui-rethink-phase-d-trail/reports/test-final-2026-05-20.md`](../ui-rethink-phase-d-trail/reports/test-final-2026-05-20.md).
+> [`spec/ui-rethink-phase-d-trail/reports/test-final-2026-05-20.md`](../archive/tester-reports-2026-05-to-06.tar.gz).
 >
 > **Implementation contract:** this brief.
 >

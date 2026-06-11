@@ -173,7 +173,7 @@ ONNX conversion proves harder than expected.
 
 - **Not promoted.** Sits in `spec/backlog.md` Strategy queue as a
   candidate for the v2.5 slot.
-- **Stub feature folder:** [`spec/v25-kronos-forecast-overlay/feature.md`](../v25-kronos-forecast-overlay/feature.md)
+- **Stub feature folder:** `spec/v25-kronos-forecast-overlay/feature.md` (`../v25-kronos-forecast-overlay/feature.md`)
   with `status: candidate`. Holds the slot in the file system + a
   pointer back at this dev-note.
 - **No analyst spawn.** The v2.5 promotion happens after v2 LLM

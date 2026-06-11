@@ -226,7 +226,7 @@ boundary diff non-empty → route back analyst.
 - v0.1.3 predecessor + helper precedent:
   [`../lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md`](../lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md)
 - v0.1.3 deck § What's deferred:
-  [`../lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/presentations/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1-2026-05-28.md`](../lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/presentations/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1-2026-05-28.md)
+  [`../lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/presentations/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1-2026-05-28.md`](../archive/presentations-2026-Q2.tar.gz)
 - ADR-0040 § Changelog 2026-05-28:
   [`../architecture/adr/0040-yahoo-realdata-path.md`](../architecture/adr/0040-yahoo-realdata-path.md)
 - Durable boundary (DO NOT MODIFY):

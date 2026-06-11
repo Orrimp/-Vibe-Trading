@@ -11,7 +11,7 @@ updated: 2026-05-30
 
 > **Pick C Wave 1 promoted feature (orchestrator hygiene compounder
 > trio).** Per
-> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md)
+> [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md)
 > this is one of three trio pillars (~1 dev day), biased toward
 > DURABLE: a `scripts/queue_staleness_check.py` orchestrator pre-flight
 > script that catches stale `spec/backlog.md` Queue entries before they
@@ -20,7 +20,7 @@ updated: 2026-05-30
 ## Why
 
 Per the
-[`weekly-retro-2026-05-27-to-2026-05-29 § What to fix / improve #1`](../dev-notes/weekly-retro-2026-05-27-to-2026-05-29.md#what-to-fix--improve)
+[`weekly-retro-2026-05-27-to-2026-05-29 § What to fix / improve #1`](../dev-notes/archive/2026-Q2/weekly-retro-2026-05-27-to-2026-05-29.md#what-to-fix--improve)
 finding: three audits in three weeks (2026-05-07 / 2026-05-27 /
 2026-05-29) caught the same drift class — Queue stubs in
 `spec/backlog.md § Queue` say "moved Queue → Active YYYY-MM-DD"
@@ -35,7 +35,7 @@ The contract is already codified at
 (2026-05-29). This brief **operationalises** the contract with a
 `scripts/queue_staleness_check.py` script the orchestrator invokes at
 session start. Per the
-[`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 5`](../dev-notes/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
+[`process-tooling-survey-2026-05-29.md § Top-5 deep-dives Rank 5`](../dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md#-top-5-deep-dives-condensed):
 "`scripts/queue_staleness_check.sh` greps for 'moved Queue → Active'
 stubs whose target slug has frontmatter `status: shipped`; ~30 s/run
 at session start. Operator already paid reactively 3× in 3 weeks."
@@ -247,7 +247,7 @@ default) OR JSON for tooling integration?
 
 **(Recommended — DURABLE) Option A — markdown table per bundle
 Q-HYG-EMIT.** Inherits the bundle-level Q-HYG-EMIT ratification at
-[`pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+[`pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md).
 Markdown table renders cleanly in orchestrator session headers, PRs,
 chat. Same dialect across all three Pick C scripts.
 
@@ -744,7 +744,7 @@ _tester M-FINAL links report here_
 
 - 2026-05-29 (analyst): Feature brief authored under Pick C Wave 1
   promotion per
-  [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md).
+  [`spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md`](../dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md).
   R1-R4 + R-NR (7 clauses) + K1-K4 + H1-H4 + Q-QSR-1/2 +
   pre-drawn 4-cell verdict tree. Both Qs bias DURABLE per AGENT.md
   2026-05-28. AGENT.md § Queue pre-flight reconciliation sweep

@@ -1406,7 +1406,7 @@ widget). T1812 (snapshot accept) is the narrow point.
     Visual regressions → ui-designer; missed wiring call site →
     developer; structural regressions → architect.
   - _ticked 2026-05-06 (tester, second pass)._
-    - Report: [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md)
+    - Report: [`spec/lumen-design-adoption/phase-4-backtest-panel/reports/test-2026-05-06b-lumen-phase-4-backtest-panel.md`](../../archive/tester-reports-2026-05-to-06.tar.gz)
       (`b` suffix preserves the first-pass FAIL report
       `test-2026-05-06-lumen-phase-4-backtest-panel.md` on disk
       for audit — Phase 1 third-pass precedent).
@@ -1601,4 +1601,4 @@ spec/architecture.md                           [Q1–Q12 ratification block (Pha
 - Phase 3 Strategies-detail screen (sparkline replacement target):
   [`crates/ui/src/screens/strategies.rs`](../../../crates/ui/src/screens/strategies.rs).
 - Lumen Backtest reference component (visual contract source):
-  [`spec/design/project/ui_kits/desktop/Backtest.jsx`](../../design/project/ui_kits/desktop/Backtest.jsx).
+  [`spec/design/project/ui_kits/desktop/Backtest.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).

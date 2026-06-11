@@ -767,7 +767,7 @@ _Tester links reports here after the developer pass lands._
   1.0.0`. Evaluator emitted `VERDICT → PASS` at
   [`reports/evaluation-2026-05-14T07-13Z.md`](reports/evaluation-2026-05-14T07-13Z.md);
   presentation drafted at
-  [`presentations/iced-aw-cherry-pick-2026-05-14.md`](presentations/iced-aw-cherry-pick-2026-05-14.md).
+  [`presentations/iced-aw-cherry-pick-2026-05-14.md`](../archive/presentations-2026-Q2.tar.gz).
   Operator-visible behavior is complete (B1 picker primitive + B2
   spinner+text helper + B3 typed status badge). `status` flips to
   `shipped` only after the operator ticks `Approved — ship` on the

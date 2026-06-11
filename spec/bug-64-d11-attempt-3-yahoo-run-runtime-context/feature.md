@@ -71,7 +71,7 @@ Summary:
 ## § Design (locked by architect M-T1 at commit 4473bd2)
 
 8 design clauses (full design in
-[`bug-64-arch-validation-2026-05-29.md` § 3](../dev-notes/bug-64-arch-validation-2026-05-29.md)):
+[`bug-64-arch-validation-2026-05-29.md` § 3](../dev-notes/archive/2026-Q2/bug-64-arch-validation-2026-05-29.md)):
 
 - **D-R1.1**: `let _guard = rt_handle.enter();` at the top of the
   iced::Task::perform async closure in `spawn_lab_run`, BEFORE

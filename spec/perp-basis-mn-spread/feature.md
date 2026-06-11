@@ -13,9 +13,9 @@ updated: 2026-06-08
 > **The vehicle fix.** `perp-basis-signal-robustness` v0.1.0 (the long-only
 > basis-reversal arm) closed PASS with science verdict **FAMILY-UNIFORM-FRAGILE at
 > every fee level including 0 bps gross**
-> ([test report](../perp-basis-signal-robustness/reports/test-2026-06-06-1200-perp-basis-signal-robustness.md)).
+> ([test report](../archive/tester-reports-2026-05-to-06.tar.gz)).
 > The adjudication
-> ([vehicle-vs-signal fork](../dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md))
+> ([vehicle-vs-signal fork](../dev-notes/archive/2026-Q2/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md))
 > found this is a **VEHICLE verdict, not a signal verdict**: the long-only arm carries
 > full market beta and captures only the long-low-basis leg of a reversal *spread*, so
 > it is swamped by the +1.74 passive bar — exactly as carry's long-only arm was ("the
@@ -865,7 +865,7 @@ _Tester links reports here after the M-TEST gate. The gates the tester must clea
   the bulk + the dominant risk, NOT the cost model). 5 framed design questions Q-MN-1..5
   for the architect M-T1. Carry framing (b) / v0.1.0 Q-BR-2 framing (b) are the deferred
   precedents. No Design section, no tasks.md, no code authored by the analyst. Full
-  adjudication: [basis-reversal-vehicle-vs-signal-fork-2026-06-06.md](../dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md).
+  adjudication: [basis-reversal-vehicle-vs-signal-fork-2026-06-06.md](../dev-notes/archive/2026-Q2/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md).
 - 2026-06-08 (orchestrator): status `arch-done` → `presenter-done` (spec-hygiene
   wind-down, audit-2026-06-08 § Status drift). The lagging mirror is corrected to the
   actual pipeline state: M-TEST VERDICT PASS (`8c2e6c4`), presenter domain-close

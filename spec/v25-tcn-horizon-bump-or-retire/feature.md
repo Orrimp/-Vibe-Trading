@@ -68,7 +68,7 @@ of ~0.02-0.04 across the 2023-2024 span. The signal-to-noise floor on
 1h targets is genuinely poor.
 
 The operator-decided routing (c) from the
-[recalibrate presenter deck](../v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
+[recalibrate presenter deck](../archive/presentations-2026-Q2.tar.gz)
 designated this feature as the multi-week fallback after the cheap
 threshold-tuning sweep failed to unlock alpha. We are now at that
 fallback. **But there are four mutually-exclusive paths forward**,
@@ -980,7 +980,7 @@ If new anchors land, version + naming convention?
   — predecessor feature brief (v0.1.0, shipped 2026-05-21); σ_train
   608× / 580× inflation eliminated; gate-survival jump 0% → 40-89%;
   F-verdict stays F4 under immutable ADR-0033 § D3.
-- [`spec/v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md`](../v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md)
+- [`spec/v25-tcn-recalibrate/presentations/v25-tcn-recalibrate-2026-05-21.md`](../archive/presentations-2026-Q2.tar.gz)
   — presenter deck; routing (c) chosen by operator; cheap τ-sweep
   first, multi-week retrain queued as fallback.
 - [`spec/v25-tcn-alpha-investigation/feature.md`](../v25-tcn-alpha-investigation/feature.md)

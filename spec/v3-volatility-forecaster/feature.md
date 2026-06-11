@@ -29,14 +29,14 @@ predecessor: v25a-patchtst-overlay v0.1.0 (RETIRED-evidence-source)
 > The v2.5 DL forecast overlay umbrella retired with joint F4-F4-F4
 > across TCN BS-1/BS-2 @ 1h (+0.018 / +0.045 Sharpe-delta) and PatchTST
 > BS-1 @ 24h (+0.006) — see
-> [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)
+> [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
 > for the full chain. Predicting **μ** (next-bar log-return) over the
 > 5-feature OHLCV window does not extract +0.10 Sharpe-delta on the v1
 > cross-sectional momentum baseline at hourly cadence. The freed budget
 > (~3-5 weeks of compute + analyst/architect/dev/tester bandwidth) plus
 > operator's fresh 6-8 week cap pivots to **vol forecasting** as the
 > highest-cost-effectiveness candidate per the
-> [strategy-reformulation survey](../dev-notes/strategy-reformulation-survey-2026-05-22.md)
+> [strategy-reformulation survey](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
 > § Tabulated summary (HIGH reuse + MEDIUM-HIGH prior + small compute +
 > HIGH independence from v2.5 F4).
 
@@ -1055,10 +1055,10 @@ refinement as a follow-on if v0.1.0 finishes T-VOL-MARGINAL.
 
 ## References
 
-- [Strategy reformulation survey 2026-05-22](../dev-notes/strategy-reformulation-survey-2026-05-22.md)
+- [Strategy reformulation survey 2026-05-22](../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
   § Candidate 1 (volatility forecasting) — survey-time cost / EV /
   reuse scoping that this brief inherits.
-- [v2.5 DL journey retrospective 2026-05-22](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)
+- [v2.5 DL journey retrospective 2026-05-22](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
   § Lessons learned + § What the next research direction COULD
   usefully chase — the evidence chain that motivated the pivot.
 - [ADR-0028 candle ML framework](../architecture/adr/0028-v25-dl-forecast-overlay-candle.md)

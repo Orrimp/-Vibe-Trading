@@ -14,7 +14,7 @@ updated: 2026-05-17
 > DL/ML forecaster — but the v2.5 instantiation (TCN @ 1h, PatchTST @
 > 24h, vanilla Transformer @ TBD, bake-off) did NOT extract +0.10
 > Sharpe-delta vs the v1 momentum baseline. See
-> [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)
+> [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
 > for the full evidence chain and "what NOT to chase" guardrails.
 > Future forecaster designs (volatility forecasting, regime
 > classification, longer horizons, crypto-specific features) can reuse

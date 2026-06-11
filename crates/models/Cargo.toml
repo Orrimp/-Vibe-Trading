@@ -1,8 +1,0 @@
-[package]
-name = "models"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-trading_core = { path = "../core" }

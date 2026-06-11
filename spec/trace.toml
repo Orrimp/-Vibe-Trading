@@ -163,7 +163,7 @@ crates      = ["crates/backtest"]   # developer Pass 1 (M-DEV-0..2, 2026-06-03):
 tests       = ["crates/backtest/src/stats/mod.rs", "crates/backtest/src/resample.rs"]   # developer Pass 1: F-HR.1 (f_hr_1_compute_sharpe_hourly_value_unchanged), F-HR.2 (f_hr_2_sharpe_4h_scalar/daily_scalar/sortino_periodic/calmar_periodic/leap_year_scalars) in stats/mod.rs; F-HR.3 (f_hr_3_bucket_counts_4h_daily/leap/ohlcv_rollup_*/bh_total_return_invariant/causality + resample_1h_identity) in resample.rs. F-HR.4/5 are Pass 2.
 anchors     = ["v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy", "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy", "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy", "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy", "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy", "v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy", "v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy", "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"]   # tester locked 2026-06-05 at M-TEST VERDICT → PASS; 91→99 anchors; all 8 FAMILY-UNIFORM-FRAGILE; verify-anchors 99/99 PASS
 state       = "tester-done"   # tester M-TEST complete 2026-06-05. All 8 horizon surfaces FAMILY-UNIFORM-FRAGILE. VERDICT → PASS. OHLCV-only active-trading thesis CLOSED across ALL 4 families × 3 horizons. Routes to presenter.
-# analyst 2026-06-03: feature brief authored (spec/horizon-retest-robustness/feature.md) transcribing the scoping note (spec/dev-notes/horizon-retest-scoping-2026-06-03.md). Why = coarser cadence on the SAME coins is the highest-prior untried knob (trend is a daily effect; funding settles 8-hourly); the LAST untested axis after the 4-family 1h uniform-negative + universe exoneration. R-HR.1..8 + the LOAD-BEARING R-HR.LOAD (anchor-neutral horizon-aware annualization — the GATE; 1h byte-identical, 4h/daily correct; REGRESSION-blocked). 5 day-1 falsifiers RED-on-revert. Pre-registered against the frozen decision-rule §0 (bands transfer as-is ONCE the annualization scalar is horizon-correct; prob-of-loss/P(Sharpe>0/>1)/MaxDD are annualization-invariant). Honest prior MEDIUM (daily TS-momentum). State=proposed (operator greenlit). architect M-T1 next — no code, no Design section authored by analyst.
+# analyst 2026-06-03: feature brief authored (spec/horizon-retest-robustness/feature.md) transcribing the scoping note (spec/dev-notes/archive/2026-Q2/horizon-retest-scoping-2026-06-03.md). Why = coarser cadence on the SAME coins is the highest-prior untried knob (trend is a daily effect; funding settles 8-hourly); the LAST untested axis after the 4-family 1h uniform-negative + universe exoneration. R-HR.1..8 + the LOAD-BEARING R-HR.LOAD (anchor-neutral horizon-aware annualization — the GATE; 1h byte-identical, 4h/daily correct; REGRESSION-blocked). 5 day-1 falsifiers RED-on-revert. Pre-registered against the frozen decision-rule §0 (bands transfer as-is ONCE the annualization scalar is horizon-correct; prob-of-loss/P(Sharpe>0/>1)/MaxDD are annualization-invariant). Honest prior MEDIUM (daily TS-momentum). State=proposed (operator greenlit). architect M-T1 next — no code, no Design section authored by analyst.
 # architect 2026-06-03 (M-T1): authored Design D-HR.0..9 (spec/horizon-retest-robustness/feature.md#design) resolving all 6 OQs + tasks.md (M-DEV-0..7 + M-TEST) + ADR-0051 § D6.8 amendment (registry row + frontmatter updated atomically; adr_registry_check.py PASS). HEADLINE (R-HR.LOAD, the sharpest anchor-risk): keep compute_sharpe_hourly/_sortino_hourly/compute_calmar BYTE-VERBATIM + add compute_*_periodic(equity, periods_per_year: f64) siblings for 4h/daily — the 1h fns are NEVER touched so the 91 anchors hold by construction (parameterizing the existing fns REJECTED: ULP-change → REGRESSION). resample_ohlcv = pure ordered Decimal fold, post-merge_symbols in load_real_bars, horizon==1h = identity. Carry as-of join resamples for FREE (resample-first ordering). Bootstrap ladder cosmetic-1h; renderer prints the real horizon. LOCKED grids + N (TS-4h {42,180,540}×{0.00,0.02}; TS-daily {5,20,60}×{0.00,0.02}; CARRY-4h L∈{2,6,12}; CARRY-daily L∈{1,3,7}; 200@4h/1000@daily). New namespace horizon-retest-robustness. M-DEV-1 (the annualization gate, 91/91) lands FIRST. No code written. State → arch-done. developer M-DEV next.
 
 [[req]]
@@ -485,8 +485,8 @@ product     = "spec/product.md"
 arch        = [
   "spec/v3-volatility-forecaster/feature.md",
   "spec/v3-volatility-forecaster/decomp.md",                      # ARCHITECT M-T1 2026-05-22 — T-AR-1..T-AR-10 resolved with file:line citations + Wave A-E ordered breakdown + rollback shape per wave
-  "spec/dev-notes/strategy-reformulation-survey-2026-05-22.md",   # § Candidate 1 cost / EV / reuse scoping — analyst inherits
-  "spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md",    # § Lessons learned (cheap-first, F-verdict immutability, σ_train load-bearing) + § What COULD next chase (vol-target head item)
+  "spec/dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md",   # § Candidate 1 cost / EV / reuse scoping — analyst inherits
+  "spec/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md",    # § Lessons learned (cheap-first, F-verdict immutability, σ_train load-bearing) + § What COULD next chase (vol-target head item)
   "spec/architecture/12-forecast-overlay.md",                     # forecast lane infra carries forward; consumer shape (strategy-side vs risk-engine) is K-vol-2 ADR amendment territory
   "spec/architecture/adr/0028-v25-dl-forecast-overlay-candle.md", # candle ML framework — covers DL vol refinement under Q2 ≠ (a); N/A under Q2=(a) GARCH-only
   "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",      # canonical-arch descriptor — extended additively for GARCH (per-symbol JSON) + conditional DL params; v2.5 TCN/PatchTST model_revision SHAs unchanged
@@ -509,11 +509,11 @@ anchors     = [
   "top10-2023-fy-vol-target-overlay-realdata",
   "sharpe-comparison-vol-target-bs1-realdata",
 ]
-state       = "retired"   # flipped 2026-05-25 per audit-2026-05-25 P1 — feature.md status = retired (joint MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA verdict under real-wired overlay; operator routing R-O1 = (a) RETIRE C1 at v3-vol-forecaster-noop-fix v0.1.0 ship). Original M-FINAL: T-T1 cargo gates PASS; anchor lock 30/30 → 33/33; V3 × T-VOL-NO-ALPHA advisory verdict recorded in feature.md § Verification; test report at spec/v3-volatility-forecaster/reports/test-final-2026-05-22.md.
+state       = "retired"   # flipped 2026-05-25 per audit-2026-05-25 P1 — feature.md status = retired (joint MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA verdict under real-wired overlay; operator routing R-O1 = (a) RETIRE C1 at v3-vol-forecaster-noop-fix v0.1.0 ship). Original M-FINAL: T-T1 cargo gates PASS; anchor lock 30/30 → 33/33; V3 × T-VOL-NO-ALPHA advisory verdict recorded in feature.md § Verification; test report at spec/archive/tester-reports-2026-05-to-06.tar.gz.
 
 # v3-volatility-forecaster-rebaseline v0.1.0 — analyst 2026-05-22.
 # Spawned by operator routing pick (b) RE-BASELINE FIRST on the parent's
-# presenter deck (spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md).
+# presenter deck (spec/archive/presentations-2026-Q2.tar.gz).
 # Tightly-scoped 1-day re-baseline pass that swaps the synthetic GBM v1
 # momentum baseline (used in the parent's sharpe-comparison report) for
 # a real-data un-targeted v1 momentum baseline + re-evaluates the
@@ -530,7 +530,7 @@ product     = "spec/product.md"
 arch        = [
   "spec/v3-volatility-forecaster-rebaseline/feature.md",
   "spec/v3-volatility-forecaster/feature.md",                       # parent — § Verification carries joint advisory verdict + data caveat
-  "spec/v3-volatility-forecaster/presentations/v3-volatility-forecaster-2026-05-22.md", # parent deck — routing pick (b) ratified
+  "spec/archive/presentations-2026-Q2.tar.gz", # parent deck — routing pick (b) ratified
   "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",       # § D1.c T-classifier threshold grid (reused unchanged) + § D6 anchor-additive contract
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md", # new baseline scenario inherits the same revision pin
 ]
@@ -1050,7 +1050,7 @@ product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-b-lab-run/feature.md",
   "spec/ui-rethink-phase-b-lab-run/tasks.md",  # ARCHITECT M-T1 (2026-05-19) — wave map + T-D-N decomposition
-  "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase B sequencing source-of-truth
+  "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",   # §6 Phase B sequencing source-of-truth
   "spec/architecture/adr/0030-cockpit-in-process-backtest.md",
   "spec/architecture/adr/0037-phase-b-scenario-dispatch-extraction.md",  # ARCHITECT M-T1 — extends ADR-0030; renumbered 0035→0037 in audit-2026-05-22 (collision with 0035-tcn-sigma-train-recalibration)
 ]
@@ -1080,7 +1080,7 @@ product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-c-sidebar-ia/feature.md",         # R1-R10 contract + Design § A1-A12 (architect M-T1)
   "spec/ui-rethink-phase-c-sidebar-ia/tasks.md",           # Waves A-F + T-D-N01-N25 (architect M-T1)
-  "spec/dev-notes/ui-rethink-2026-05-17.md",               # §6 Phase C sequencing source-of-truth + §3 IA + §J6 Live sketch
+  "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",               # §6 Phase C sequencing source-of-truth + §3 IA + §J6 Live sketch
 ]
 crates      = [
   "crates/ui",   # src/state.rs, src/strings.rs, src/theme.rs, src/shell.rs
@@ -1107,7 +1107,7 @@ arch        = [
   "spec/ui-rethink-phase-d-trail/feature.md",
   "spec/ui-rethink-phase-d-trail/decomp.md",   # M-T1 architect deliverable: K5 spike result + mig 011 SQL + trail-mirror location
   "spec/ui-rethink-phase-d-trail/tasks.md",    # T-D-N1..N29 per-wave (A-G) checklist
-  "spec/dev-notes/ui-rethink-2026-05-17.md",   # §6 Phase D + §J4 Trail contract
+  "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",   # §6 Phase D + §J4 Trail contract
   "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",   # § "Phase D amendment (2026-05-20)" closes T-D-14
 ]
 crates      = ["crates/ui", "crates/audit", "crates/reflection", "crates/strategy", "crates/forecast", "crates/agent"]   # ui = screens + widgets; audit = mig 011 + writers; reflection = trail_mirror module; strategy = TcnSyncForecaster::with_ledger; forecast = post_forecast_event calls at emit sites; agent = build_registry_with_ledger + config knob
@@ -1124,8 +1124,8 @@ arch        = [
   "spec/ui-rethink-phase-d-trail-followup/feature.md",
   "spec/ui-rethink-phase-d-trail-followup/decomp.md",                                      # M-T1 architect deliverable: Q2/Q3/Q4 resolutions + change-map + Wave A-E decomposition + rollback shape (2026-05-20)
   "spec/ui-rethink-phase-d-trail-followup/tasks.md",
-  "spec/ui-rethink-phase-d-trail/presentations/ui-rethink-phase-d-trail-2026-05-20.md",   # § 5 deferred-items rationale + § 8 next-up follow-up brief — scope source-of-truth
-  "spec/ui-rethink-phase-d-trail/reports/test-final-2026-05-20.md",                       # § 11 deferred-items table
+  "spec/archive/presentations-2026-Q2.tar.gz",   # § 5 deferred-items rationale + § 8 next-up follow-up brief — scope source-of-truth
+  "spec/archive/tester-reports-2026-05-to-06.tar.gz",                       # § 11 deferred-items table
   "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",                           # carry-forward; § "Phase D amendment (2026-05-20)" applies verbatim, no new ADR
 ]
 crates      = ["crates/ui", "crates/reflection", "crates/audit"]   # ui = Subscription bridge + Message payload + Cockpit field + 3 new snapshot baselines; reflection = benches/trail_mirror.rs (new) + TrailMirrorTick re-export per Q2; audit = bench fixture (in-memory ledger seeding 10⁵ rows)
@@ -1146,7 +1146,7 @@ arch        = [
   "spec/ui-rethink-phase-e-compare/feature.md",                  # M0 analyst deliverable — R1-R8 + Q1-Q8 + K1-K8 + H1-H5 + non-regression contract (2026-05-20)
   "spec/ui-rethink-phase-e-compare/tasks.md",                    # M0 analyst T-A1..T-A12 + M-OD T-OD1..T-OD8 + M-T1 T-T1-1..T-T1-7 (ticked) + Wave A-E T-D-N1..T-D-N18 (pending developer)
   "spec/ui-rethink-phase-e-compare/decomp.md",                   # M-T1 architect decomposition (2026-05-20) — K3 hand-parse resolution, H1=40 % first-open hit-rate, H4 ≤ 15 ms p99 static argument, Q6 sub-decision (subtitle + per-cell tooltip), state location locked at `state.rs:~880`, 5-wave shape A-E with T-D-N1..N18, spike requirement = NONE
-  "spec/dev-notes/ui-rethink-2026-05-17.md",                     # §6 Phase E sequencing source-of-truth (lines 1082-1096) + §J3 (lines 340-390) + §3 IA (lines 651-744)
+  "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",                     # §6 Phase E sequencing source-of-truth (lines 1082-1096) + §J3 (lines 340-390) + §3 IA (lines 651-744)
 ]
 crates      = ["crates/ui"]   # Phase E is UI-only (R7.1-R7.7 contract: no backtest binary changes, no anchored renderer touch). Files: src/compare/mod.rs, src/compare/state.rs, src/compare/cache.rs, src/widgets/matrix.rs, src/screens/compare.rs, src/state.rs, src/strings.rs, src/lib.rs, src/shell.rs, src/widgets/mod.rs, src/screens/mod.rs, src/lab/state.rs
 tests       = [
@@ -1168,7 +1168,7 @@ arch        = [
   "spec/ui-rethink-phase-f-memory-models-assistant/feature.md",   # M0 analyst deliverable — R1-R8 + Q1-Q8 + K1-K8 + H1-H6 + non-regression contract (2026-05-20)
   "spec/ui-rethink-phase-f-memory-models-assistant/tasks.md",     # M0 analyst T-A1..T-A15 + M-OD T-OD1..T-OD8 + M-T1 T-T1-1..T-T1-9 (ticked 2026-05-20) + Wave A-F T-D-N1..T-D-N23 (pending developer)
   "spec/ui-rethink-phase-f-memory-models-assistant/decomp.md",    # M-T1 architect decomposition (2026-05-20) — K1+Q8 refined to crates/reflection/src/query.rs (sibling of store/; honors "no trait change" while respecting cockpit_live as async/sync boundary), K2 full serde shape with #[serde(default)] (inventoried live tcn-bs1/bs2 metadata.json), K3 forecast namespace EMPTY → sparkline deferred to v0.2.0, K4 drawer + Assistant slot live in different shell columns (no co-existence conflict, no auto-collapse), K6 Option A (RIGHT_RAIL_OPEN_WIDTH_PX = 320.0 additive; RIGHT_RAIL_WIDTH_PX = 0.0 preserved; trail_drawer byte-identical), H1 reflection.db ABSENT at 2026-05-20 → 0-row cold-empty path dominant, H2 ≤ 1 ms by static argument over 2 × ≤ 1 KB JSON. 6-wave A-F shape with T-D-N1..N23. Net-new file count: 12 source + 6 PNG baselines + 1 trace row. Spike requirement = NONE.
-  "spec/dev-notes/ui-rethink-2026-05-17.md",                      # §6 Phase F sequencing source-of-truth (lines 1098-1112) + §J7 (lines 561-595, reflection memory) + §J8 (lines 596-637, model versions) + §6 Phase ordering (lines 1114-1140)
+  "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",                      # §6 Phase F sequencing source-of-truth (lines 1098-1112) + §J7 (lines 561-595, reflection memory) + §J8 (lines 596-637, model versions) + §6 Phase ordering (lines 1114-1140)
 ]
 crates      = [
   "crates/ui",          # src/memory/{mod,state,drawer}.rs src/models/{mod,state,registry_read}.rs src/assistant/{mod,state,view}.rs src/screens/{memory,models}.rs src/shell.rs src/state.rs src/strings.rs src/theme.rs src/lib.rs src/bin/cockpit_live.rs
@@ -1199,9 +1199,9 @@ arch        = [
   "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",           # IMMUTABLE V-verdict + T-classifier sibling precedent (D1 priority tree shape; D1.c joint advisory verdict table; D6.b re-emission protocol inherited by ADR-0039)
   "spec/architecture/adr/0019-v2-llm-strategy.md",                      # v2 LLM-strategy foundation ADR; this feature builds on crates/llm v2.0.0 surface (LlmProvider + BudgetedProvider + RecordingProvider/ReplayProvider + CachedSystemPromptBuilder + ToolSchema)
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md", # realdata path + frontmatter-vs-body discipline (decomp § T-AR-6 body shape follows)
-  "spec/dev-notes/strategy-reformulation-survey-2026-05-22.md",         # parent — Candidate 5 § lines 432-537 the C5 hypothesis chain
-  "spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md",          # parent — F-verdict-immutability + cheap-first guardrails honored
-  "spec/v3-volatility-forecaster-noop-fix/presentations/v3-volatility-forecaster-noop-fix-2026-05-22.md", # promotion ref (operator approved C5 promotion under noop-fix deck)
+  "spec/dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md",         # parent — Candidate 5 § lines 432-537 the C5 hypothesis chain
+  "spec/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md",          # parent — F-verdict-immutability + cheap-first guardrails honored
+  "spec/archive/presentations-2026-Q2.tar.gz", # promotion ref (operator approved C5 promotion under noop-fix deck)
 ]
 crates      = ["crates/strategy", "crates/reflection"]  # Wave C COMPLETE 2026-05-22: crates/strategy/src/llm_forecaster/ (Wave C adds from_runtime to types.rs + extended strategy.rs + registry entry); crates/reflection/src/store/mod.rs (NullReflectionStore added). Prior: Wave A COMPLETE 2026-05-22: crates/strategy/src/llm_forecaster/ (5 files: mod.rs + trait_def.rs + types.rs + canonicalize.rs + strategy.rs ~500 LoC). Wave B COMPLETE 2026-05-22: anthropic_impl.rs + prompt.rs + tool_schema.rs. Remaining waves (D-G): crates/llm (consumer + new bin/llm_forecaster_bench.rs ~150 LoC; v2.0.0 surface intact — no infra change), crates/audit (additive migration 011_llm_forecast.sql ~30 LoC), crates/ui (assistant/state.rs AssistantMode + ReasoningTrace variant + assistant/view.rs body composition + Message::AssistantReasoningTraceUpdate variant + runtime gate ~360 LoC; Wave F UNGATED per Q4=(a)+(c) hybrid operator-pick T-OD4), crates/forecast (new sharpe_comparison.rs dispatch arm ~80 LoC), crates/backtest (new scenarios/llm_forecaster.rs + reports/llm_forecaster_report.rs + bin/llm_forecaster_rerecord.rs ~700 LoC).
 tests       = ["crates/trader/tests/llm_forecaster_payload.rs", "crates/trader/tests/llm_forecaster_wiremock.rs", "crates/trader/tests/llm_forecaster_signal_mapping.rs", "crates/trader/tests/llm_forecaster_cost_event.rs", "crates/trader/tests/llm_forecaster_audit_tick.rs", "crates/trader/tests/llm_forecaster_budget_gate.rs", "crates/trader/tests/llm_forecaster_cost_cap_short_circuit.rs", "crates/trader/tests/llm_forecaster_wiremock_wave_e.rs", "crates/audit/tests/journal_llm_forecast_round_trip.rs", "crates/trader/tests/llm_verdict_priority_tree.rs", "crates/trader/tests/llm_forecaster_neutrality.rs", "crates/ui/tests/visual_snapshots.rs", "crates/ui/tests/layout_invariants.rs"]  # TESTER M-FINAL CONFIRMED 2026-05-22: 98 integration tests across 13 suites PASS (98 passed; 0 failed; 1 ignored in neutrality). Wave A 25 payload + Wave B 17 wiremock + Wave C 12 signal-mapping + Wave E 4+4+3+2 cost/audit/budget/cap + Wave E wave-e 2 + Wave G 4 journal round-trip + 20 verdict-priority-tree + 1 neutrality (ignored — Wave D). Wave F 19 visual snapshots + 11 layout invariants. Deferred: crates/backtest/tests/llm_forecaster_byte_identity.rs (Wave D — 2-run byte-identity). --- PATHS UPDATED 2026-05-26 (TESTER reflection-memory-trader-wiring M-FINAL): 10 suites relocated from crates/strategy/tests/ → crates/trader/tests/ by commit 028761c per ADR-0041 § D2; crates/audit/ + crates/ui/ paths unchanged.
@@ -1406,7 +1406,7 @@ anchors     = [
   # Cache: data/yahoo/BTC-USD/1d/2024/ REVISION.toml SHA 7b33166e1eb8.
   "btc-yahoo-2024-1d-sma-cross",
 ]
-state       = "shipped"  # tester M-FINAL 2026-05-24: VERDICT → PASS. v0.1.1 developer 2026-05-27: Yahoo anchor locked (68→69 rows), H1/H2 discharged (both PASS). v0.1.1 tester 2026-05-27: HANDOFF → developer (trace.toml anchor wiring fixed by tester; fmt still blocked by cockpit-toast-queue in-flight dev). Report: spec/lab-yahoo-realdata/reports/test-final-2026-05-27-lab-yahoo-realdata-v0.1.1.md.
+state       = "shipped"  # tester M-FINAL 2026-05-24: VERDICT → PASS. v0.1.1 developer 2026-05-27: Yahoo anchor locked (68→69 rows), H1/H2 discharged (both PASS). v0.1.1 tester 2026-05-27: HANDOFF → developer (trace.toml anchor wiring fixed by tester; fmt still blocked by cockpit-toast-queue in-flight dev). Report: spec/archive/tester-reports-2026-05-to-06.tar.gz.
 
 #
 # ─── Cockpit activity status bar (proposed 2026-05-25) ──────────────────
@@ -1512,7 +1512,7 @@ arch        = [
   "spec/v3-volatility-forecaster-noop-fix/feature.md",           # PRECEDENT — sibling fix shape; Q1=(ii) / Q2=(a) / Q3=(b) pattern
   "spec/v3-volatility-forecaster-noop-fix/decomp.md",            # PRECEDENT — wave shape + forensic-gate FAIL/PASS protocol
   "spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md",  # PRECEDENT — diagnostic chain for the sibling no-op
-  "spec/dev-notes/testing-strategy-review-2026-05-25.md",        # framing — "a killswitch that doesn't kill is the worst kind of no-op" (§1 P2)
+  "spec/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md",        # framing — "a killswitch that doesn't kill is the worst kind of no-op" (§1 P2)
   "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",    # § D5 strategy-side composition lock; § D6 + § D6.b anchor-additive + wiring-bug-fix re-emission protocol (architect M-T1 confirmed trivial-application; no amendment)
   "spec/bug-log.md",                                             # § #65 discovery row (this brief's parent); developer T-D-N8 will flip to fixed
 ]
@@ -1593,7 +1593,7 @@ tests       = [
   "crates/agent/benches/activity_audit.rs",                     # T-D-N6 — 3 micro-benches (counter_increment <100ns/tick R5.1; interval_tick_fan_out <1µs/window; idle_end_transition <100µs); T-D-N7 anchor_replay_parity bench (<1% wall-clock divergence at p99 — K3-discharge gate per R5.2 / H1)
 ]
 anchors     = "34/34 PASS"  # ZERO new anchors by construction. UI + agent additive only; no scenario-body / strategy / audit changes. Tester confirms via `bash scripts/verify_anchors.sh` at M-FINAL.
-state       = "passed"     # flipped 2026-05-27 — tester M-FINAL FAIL (housekeeping only — fmt + 1 clippy + 1 frontmatter status) inline-fixed by orchestrator; PASS-with-K3-collision-note per addendum in spec/cockpit-activity-audit-ledger-producer/reports/test-final-2026-05-27-cockpit-activity-audit-ledger-producer.md. Anchor-additivity preserved by construction (zero changes to crates/backtest|strategy|audit/journal|exec|cost). Verify-anchors transient FAIL is collision with concurrent v5 v0.2.0 Wave A — resolves at Wave B.
+state       = "passed"     # flipped 2026-05-27 — tester M-FINAL FAIL (housekeeping only — fmt + 1 clippy + 1 frontmatter status) inline-fixed by orchestrator; PASS-with-K3-collision-note per addendum in spec/archive/tester-reports-2026-05-to-06.tar.gz. Anchor-additivity preserved by construction (zero changes to crates/backtest|strategy|audit/journal|exec|cost). Verify-anchors transient FAIL is collision with concurrent v5 v0.2.0 Wave A — resolves at Wave B.
 
 # REQ-COCKPIT-TRAINING-PRESSED-001 → cockpit-training-pressed-wiring (proposed 2026-05-26)
 #
@@ -1653,7 +1653,7 @@ tests       = [
   "crates/ui/src/lab/trainer.rs",                                # T-D-N3 unit test `default_training_config_resolves_train_tcn_toml`
 ]
 anchors     = "34/34 PASS"   # Tester-confirmed 2026-05-27 via `bash scripts/verify_anchors.sh` — ZERO new anchors by construction (feature is UI-binary wiring only; no `crates/backtest` / `crates/strategy` / `crates/exec` / `crates/forecast` source touches). All 34 anchors byte-identical.
-state       = "passed"   # Tester M-FINAL 2026-05-27 — 5/5 integration tests PASS (developer-captured + code-review verified); 34/34 anchors PASS; K3 config path 1136 bytes on disk; K5 non-clobber confirmed. Infra note: disk-full prevented live cargo test run; substituted developer-captured output + code-review. Report: spec/cockpit-training-pressed-wiring/reports/test-final-2026-05-26-cockpit-training-pressed-wiring.md.
+state       = "passed"   # Tester M-FINAL 2026-05-27 — 5/5 integration tests PASS (developer-captured + code-review verified); 34/34 anchors PASS; K3 config path 1136 bytes on disk; K5 non-clobber confirmed. Infra note: disk-full prevented live cargo test run; substituted developer-captured output + code-review. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz.
 
 #
 # ─── cockpit-activity-llm-producer (v0.1.1 follow-on) ──────────────────
@@ -1722,7 +1722,7 @@ tests       = [
   "crates/trader/tests/llm_forecaster_activity_tape.rs",           # start_event_emitted_with_correct_label_format / end_success_event_on_happy_path / end_failed_event_on_llm_error / pii_redaction_label_excludes_symbol_and_prompt / activity_event_survives_cache_replay_path / no_event_emitted_when_activity_sender_not_wired
 ]
 anchors     = "34/34 PASS"   # ZERO new anchors by construction (R5.1). Activity wiring is conditional on Option<ActivitySender>::is_some(); anchored bin paths construct LlmForecasterImpl without an ActivitySender so forecast() is byte-identical for anchored runs. 34 anchors verified byte-identical by tester M-FINAL 2026-05-27 via `bash scripts/verify_anchors.sh`.
-state       = "passed"   # tester M-FINAL 2026-05-27 — VERDICT PASS; 6/6 activity tape tests; 159/0 trader total; 34/34 anchors; clippy 0 warnings; fmt clean; PII-redaction audit PASS. Report: spec/cockpit-activity-llm-producer/reports/test-final-2026-05-26-cockpit-activity-llm-producer.md
+state       = "passed"   # tester M-FINAL 2026-05-27 — VERDICT PASS; 6/6 activity tape tests; 159/0 trader total; 34/34 anchors; clippy 0 warnings; fmt clean; PII-redaction audit PASS. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
 
 # ── REQ-SUBSCRIPTION-PIPE-SERVER-TIME-001 ──────────────────────────────────────
 # ANALYST M0 (2026-05-26) — v0.1.1 Wave-1 follow-on closing the operator's
@@ -1736,7 +1736,7 @@ state       = "passed"   # tester M-FINAL 2026-05-27 — VERDICT PASS; 6/6 activ
 # chain 4248c00 → 0ff402f → e4f39ed → c1597ec), the carve-out closes.
 #
 # Closes 1 of 3 identified Recipe surfaces under
-# `spec/dev-notes/testing-framework-audit-2026-05-25.md § R1` — brings the
+# `spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md § R1` — brings the
 # workspace to 3/3 canonical UI Recipe impls covered by the subscription-pipe
 # test class template.
 #
@@ -1768,7 +1768,7 @@ arch        = [
   # skipped per the orchestrator's discretion (small refactor + test only).
   "spec/subscription-pipe-server-time-template/feature.md",
   "spec/subscription-pipe-server-time-template/tasks.md",
-  "spec/dev-notes/testing-framework-audit-2026-05-25.md",   # AUDIT FRAMING — § R1 "Promote channel-recipe-state-widget end-to-end to a first-class layer" recommendation; identifies ServerTimeRecipe as Recipe needing this treatment
+  "spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md",   # AUDIT FRAMING — § R1 "Promote channel-recipe-state-widget end-to-end to a first-class layer" recommendation; identifies ServerTimeRecipe as Recipe needing this treatment
   "spec/cockpit-activity-status-bar/feature.md",            # PREDECESSOR (CARVE-OUT) — v0.1.0 shipped 2026-05-26 cleared the cockpit_live.rs file for this refactor
 ]
 crates      = [
@@ -1916,7 +1916,7 @@ arch        = [
   "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/tasks.md",
   "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md",            # PREDECESSOR — v0.2.0 partial migration; this brief closes its accepted scope gap
   "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md",  # the 8-group table identifying the 6 unwired strategy paths
-  "spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md",  # the t1937 whitelist that R3 closes
+  "spec/archive/tester-reports-2026-05-to-06.tar.gz",  # the t1937 whitelist that R3 closes
   "spec/v5-latency-slippage-sim/feature.md",                                    # GRANDPARENT — v0.1.0 default-zero noop engine
   "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # PARENT ADR — D1-D5 simulator engine
   "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # PARENT ADR — D1 canonical config + D2 namespace strategy; v0.3.0 ADR-0047 extends D2 (per-path contract) + D4 (conditional Group A re-emission)
@@ -1947,7 +1947,7 @@ tests       = [
   "crates/ui/tests/lab_markers_anchor.rs",
 ]
 anchors     = "69/69 PASS — tester-verified 2026-05-27 (v0.3.0 canonical: 9 SHAs updated; 60 unchanged; determinism spot-check PASS pairs-2023-zscore-mr + top10-2023-1h-momentum)"
-state       = "passed"   # Tester M-FINAL SOFT-PASS 2026-05-27. All 69/69 anchors verified. t1937 + t1937b GREEN. 0 K1 surprises. 8 candle/realdata-absent scenarios deferred to v0.4.0. Report: spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md
+state       = "passed"   # Tester M-FINAL SOFT-PASS 2026-05-27. All 69/69 anchors verified. t1937 + t1937b GREEN. 0 K1 surprises. 8 candle/realdata-absent scenarios deferred to v0.4.0. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
 
 # ── cockpit-toast-queue-v0.2.0-cleanup v0.1.0 (analyst M0 close 2026-05-27 — closes v0.1.0 architecture-deviation follow-on) ──
 [[requirements]]
@@ -1971,7 +1971,7 @@ tests       = [
   "crates/ui/tests/cockpit_toast_queue.rs",                                     # 4/4 PASS — cargo test -p ui --test cockpit_toast_queue
 ]
 anchors     = "byte-identical to v0.1.0 baseline — verify_anchors.sh: ANCHORS PASS (69 / 69)"
-state       = "passed"   # Tester M-FINAL PASS 2026-05-28. All gates green. K5 5/5, toast_queue 4/4, 69/69 anchors, grep gates 0/0, workspace only pre-existing lab_run_engine flake. Report: spec/cockpit-toast-queue-v0.2.0-cleanup/reports/test-final-2026-05-28-cockpit-toast-queue-v0.2.0-cleanup.md
+state       = "passed"   # Tester M-FINAL PASS 2026-05-28. All gates green. K5 5/5, toast_queue 4/4, 69/69 anchors, grep gates 0/0, workspace only pre-existing lab_run_engine flake. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
 
 #
 # ─── Lab Yahoo realdata v0.1.2 — ETH-USD anchor + cache-state summary badge (proposed 2026-05-27) ───
@@ -1987,7 +1987,7 @@ arch        = [
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md",
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/tasks.md",
   "spec/lab-yahoo-realdata/feature.md",                                         # PREDECESSOR — v0.1.1 shipped 2026-05-27, anchor 69 locked
-  "spec/lab-yahoo-realdata/presentations/lab-yahoo-realdata-v0.1.1-2026-05-27.md", # § Open decisions Q1+Q3 sourced this brief
+  "spec/archive/presentations-2026-Q2.tar.gz", # § Open decisions Q1+Q3 sourced this brief
   "spec/architecture/adr/0040-yahoo-realdata-path.md",                          # parent ADR — Yahoo realdata path + revision pin
   # ARCHITECT M-T1 (2026-05-27) — Q1/Q2/Q3 ratified + § Design D-V0.1.2-1..6 authored.
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md#design", # § Design D-V0.1.2-1 (K3 cached-summary cadence), D-V0.1.2-2 (--ticker validation surface, 3-mirror crate-graph rationale), D-V0.1.2-3 (scenario-name derivation rule + 10-row forecast table), D-V0.1.2-4 (M-DEV/M-DEV-UI parallelism contract), D-V0.1.2-5 (architect risk register K1-K4), D-V0.1.2-6 (ADR-0040 extend vs ADR-0048 new — extend chosen)
@@ -2022,7 +2022,7 @@ anchors     = [
   # verify_anchors.sh ANCHORS PASS (70 / 70).
   "eth-yahoo-2024-1d-sma-cross",
 ]
-state       = "passed"  # tester M-FINAL 2026-05-28: VERDICT → SOFT-PASS. All gates green. BTC SHA drift documented as known transitional state (see test-final report). spec-lint unreferenced-anchor resolved by this anchors array update. Report: spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/test-final-2026-05-28-lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge.md.
+state       = "passed"  # tester M-FINAL 2026-05-28: VERDICT → SOFT-PASS. All gates green. BTC SHA drift documented as known transitional state (see test-final report). spec-lint unreferenced-anchor resolved by this anchors array update. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz.
 
 [[req]]
 id          = "REQ-LAB-RECIPE-TEST-HARNESS-001"
@@ -2034,7 +2034,7 @@ arch        = [
   "spec/lab-recipe-test-harness/feature.md",
   "spec/lab-recipe-test-harness/tasks.md",
   "spec/bug-log.md",                                                             # ROOT-CAUSE CONTEXT — bug #64 attempt-1 post-mortem documenting the 3 regressions this harness catches
-  "spec/dev-notes/bug-64-progress-bar-investigation-2026-05-27.md",              # 11-hop code-path trace + D.1.1/D.2.1 fix-option taxonomy that attempt-1 implemented
+  "spec/dev-notes/archive/2026-Q2/bug-64-progress-bar-investigation-2026-05-27.md",              # 11-hop code-path trace + D.1.1/D.2.1 fix-option taxonomy that attempt-1 implemented
 ]
 crates      = [
   "crates/ui/src/lab/runner.rs",                                                 # T-D1 — extract `pub trait YahooBarSource` (API-additive; default impl wraps existing parquet+http path)
@@ -2066,7 +2066,7 @@ arch        = [
   "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/feature.md",
   "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/tasks.md",
   "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md",            # PREDECESSOR — v0.3.0 partial-coverage ship; this brief closes the SOFT-PASS carve-out
-  "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.3.0-full-path-wiring.md",  # § 8 Open Items naming the 8 deferred scenarios
+  "spec/archive/tester-reports-2026-05-to-06.tar.gz",  # § 8 Open Items naming the 8 deferred scenarios
   "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/sharpe-delta-table-2026-05-27.md",  # the per-scenario template R3 extends
   "spec/architecture/adr/0043-simulated-latency-and-slippage.md",               # ENGINE ADR — D1-D5 simulator (no amendment at v0.4.0)
   "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",  # CANONICAL CONFIG ADR — D1 + D2 unchanged
@@ -2124,7 +2124,7 @@ arch        = [
   "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md",
   "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md",
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md",                                        # PREDECESSOR — v0.1.2 shipped 2026-05-28 SOFT-PASS, anchor 70 locked
-  "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/test-final-2026-05-28-lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge.md",  # ROOT-CAUSE — § H3 BTC SHA drift + § H1 K1 fallback writeups
+  "spec/archive/tester-reports-2026-05-to-06.tar.gz",  # ROOT-CAUSE — § H3 BTC SHA drift + § H1 K1 fallback writeups
   "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                               # parent ADR — architect M-T1 amended § Changelog 2026-05-28
   # ARCHITECT M-T1 (2026-05-28) — Q1+Q2 ratified; helper boundary locked; K1+K2 grep PASS.
   "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md#design",                            # § Design D-V0.1.3-1 → D-V0.1.3-9 — Q1+Q2 ratification, K1 grep PASS (rev= one binary only), K2 grep PASS (no revision_sha: collision), helper module + public API locked, anchor cascade 70 → 71
@@ -2202,7 +2202,7 @@ anchors     = [
   "top10-2023-fy-regime-dispatcher-realdata",
   "top10-2024-fy-regime-dispatcher-realdata",
 ]
-state       = "passed"  # tester 2026-05-29: M-FINAL VERDICT → PASS. 84/84 anchors PASS; determinism 3/9 spot-check byte-identical; all 86 v5-scoped tests PASS; H1 verified 3.91× ≥ 2× threshold; H2 partial-fail (patchtst medium-turnover, documented, no escalation); K1 = 1 sign-flip (patchtst), within pre-disclosed scope; bug fix wired (symbol lookup confirmed, equity diverges >> 1 bp). Report: spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/test-final-20260529-143456-v0.5.0.md. Follow-on: developer to fix clippy, status frontmatter, anchor count comment, K1 note in sharpe-delta table. HANDOFF → orchestrator (presenter next).  # developer 2026-05-29: Waves D+E complete. 9/9 real-data scenarios re-emitted under v5-sqrt-impact-2026-05. Determinism gate: 9/9 PASS (2-run byte-identity). Anchor cascade 75 → 84 (additive; 9 new rows under v5-sqrt-impact-2026-05; 75 existing rows byte-identical). verify_anchors.sh: 84/84 PASS. Bug fix: sim_slippage_cost call sites were passing Decimal::ZERO as volume_usd (no-op bug); fixed by changing signature to symbol: &Symbol with lookup from cfg.volume_usd_per_symbol. H1 PASS: sqrt drag 3.91× linear on TCN-realdata-2023. H3 PASS: 9/9 determinism. HANDOFF → tester.  # operator-decide-pending comment preserved below for context  # analyst 2026-05-29: Q-D1+Q-D2 brief authored at spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md. Recommended Q-D1=(a) Linear-fallback for synthetic + Q-D2=(β) per-scenario lazy-compute (DURABLE per 2026-05-28 contract). Proposes operator REVISIT of M-OD 2026-05-29 Q3=(b) — Wave A+C unit-test evidence collapses Q-D1=(b) value-prop; Q-D1=(a) drops v0.6.0 sub-namespace cleanup commitment. Anchor cascade narrows 75→94 (Q3=(b)) to 75→85 (Q-D1=(a)). HANDOFF → orchestrator for operator surfacing.  # developer 2026-05-29: Waves A+B+C+F complete. Model body, enum plumbing, volume helper, and namespace resolver all green. Waves D+E (19-scenario re-emission + anchors.toml additive) require long-running backtest runs — left for tester/operator on canonical Apple Silicon box.  # architect M-T1 2026-05-29: § Design D-T1.1–D-T1.10 locked. ADR-0043 § Changelog amended (NOT new ADR-0050) — mirrors Murmur3 D2 amendment precedent; closes engine ADR's own § D3 deferred promise. SlippageModel enum locked at crates/cost/src/slippage.rs (Linear { bps: u32 } + SquareRoot { alpha: Decimal, volume_lookback_days: u16 }); Default::default() = Linear { bps: 8 } for R-NR.2 byte-identity. MAX_SLIPPAGE_BPS = 1_000 (10%) confirmed default. f64 conversion boundary (K2): one site in apply_slippage_sqrt; Decimal::to_f64 for Q/V/α → f64::sqrt (IEEE-754 correctly-rounded; AArch64 fsqrt on canonical Apple Silicon box) → α × 10_000 → f64::round_ties_even (banker's rounding) → saturating-cast u32 clamped at MAX_SLIPPAGE_BPS → back to Decimal for sign × multiplier (reuses Linear branch). R3 Option A locked — `daily_volume_usd_trailing(parquet_root, symbol, end_date, lookback)` extends crates/data; pure function of (parquet revision SHA, symbol, end_date, lookback); in-process cache via dashmap; no on-disk volume_proxy.toml artifact (Option B rejected — silent-drift risk). Q3 operator-override implementation: `universe_avg_daily_volume_usd_trailing` helper computes arithmetic mean across 10-USDT-pair Binance universe; pinned to scenario's own end_date with 90-day lookback; 9 synthetic-scenario SHAs in v5-sqrt-impact-2026-05 namespace WILL DIFFER from their v5-realdata-medium-2026-05 linear-bps twins — by-design; v0.6.0 sub-namespace cleanup commitment recorded (split realdata + synthetic sub-namespaces OR consolidate). Namespace cascade 71 → 90 (additive per ADR-0038 § D6.a): 51 noop-baseline + 19 v5-realdata-medium-2026-05 (now permanent linear-bps oracle, mirrors noop-baseline frictionless-oracle role) + 19 v5-sqrt-impact-2026-05 (NEW) + 1 lab Yahoo BTC + 1 lab Binance ETH H1. R-NR.1 PASS at 90/90; R-NR.2 + R-NR.3 byte-identity preserved via SlippageModel::Default + serde adapter for legacy slippage_bps u16. t1937 namespace-aware resolver extension (ADR-0047 D3): Namespace::SqrtImpact + SQRT_IMPACT_FEATURE_DIRS slice + SQRT_IMPACT_STRATEGY_ANCHORS constant table + t1937c_sqrt_impact_strategy_anchors_unchanged test mirrors t1937b precedent; Noop predicate extended to exclude sqrt-impact dirs. Wave decomposition A → B → C → D → E → F locked at ~3.0–4.0 dev-days + 1 tester-day + 0.5 presenter-day = ~1 week wall-clock. Frontmatter flipped owner: architect → developer on feature.md + tasks.md. HANDOFF → developer.
+state       = "passed"  # tester 2026-05-29: M-FINAL VERDICT → PASS. 84/84 anchors PASS; determinism 3/9 spot-check byte-identical; all 86 v5-scoped tests PASS; H1 verified 3.91× ≥ 2× threshold; H2 partial-fail (patchtst medium-turnover, documented, no escalation); K1 = 1 sign-flip (patchtst), within pre-disclosed scope; bug fix wired (symbol lookup confirmed, equity diverges >> 1 bp). Report: spec/archive/tester-reports-2026-05-to-06.tar.gz. Follow-on: developer to fix clippy, status frontmatter, anchor count comment, K1 note in sharpe-delta table. HANDOFF → orchestrator (presenter next).  # developer 2026-05-29: Waves D+E complete. 9/9 real-data scenarios re-emitted under v5-sqrt-impact-2026-05. Determinism gate: 9/9 PASS (2-run byte-identity). Anchor cascade 75 → 84 (additive; 9 new rows under v5-sqrt-impact-2026-05; 75 existing rows byte-identical). verify_anchors.sh: 84/84 PASS. Bug fix: sim_slippage_cost call sites were passing Decimal::ZERO as volume_usd (no-op bug); fixed by changing signature to symbol: &Symbol with lookup from cfg.volume_usd_per_symbol. H1 PASS: sqrt drag 3.91× linear on TCN-realdata-2023. H3 PASS: 9/9 determinism. HANDOFF → tester.  # operator-decide-pending comment preserved below for context  # analyst 2026-05-29: Q-D1+Q-D2 brief authored at spec/dev-notes/archive/2026-Q2/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md. Recommended Q-D1=(a) Linear-fallback for synthetic + Q-D2=(β) per-scenario lazy-compute (DURABLE per 2026-05-28 contract). Proposes operator REVISIT of M-OD 2026-05-29 Q3=(b) — Wave A+C unit-test evidence collapses Q-D1=(b) value-prop; Q-D1=(a) drops v0.6.0 sub-namespace cleanup commitment. Anchor cascade narrows 75→94 (Q3=(b)) to 75→85 (Q-D1=(a)). HANDOFF → orchestrator for operator surfacing.  # developer 2026-05-29: Waves A+B+C+F complete. Model body, enum plumbing, volume helper, and namespace resolver all green. Waves D+E (19-scenario re-emission + anchors.toml additive) require long-running backtest runs — left for tester/operator on canonical Apple Silicon box.  # architect M-T1 2026-05-29: § Design D-T1.1–D-T1.10 locked. ADR-0043 § Changelog amended (NOT new ADR-0050) — mirrors Murmur3 D2 amendment precedent; closes engine ADR's own § D3 deferred promise. SlippageModel enum locked at crates/cost/src/slippage.rs (Linear { bps: u32 } + SquareRoot { alpha: Decimal, volume_lookback_days: u16 }); Default::default() = Linear { bps: 8 } for R-NR.2 byte-identity. MAX_SLIPPAGE_BPS = 1_000 (10%) confirmed default. f64 conversion boundary (K2): one site in apply_slippage_sqrt; Decimal::to_f64 for Q/V/α → f64::sqrt (IEEE-754 correctly-rounded; AArch64 fsqrt on canonical Apple Silicon box) → α × 10_000 → f64::round_ties_even (banker's rounding) → saturating-cast u32 clamped at MAX_SLIPPAGE_BPS → back to Decimal for sign × multiplier (reuses Linear branch). R3 Option A locked — `daily_volume_usd_trailing(parquet_root, symbol, end_date, lookback)` extends crates/data; pure function of (parquet revision SHA, symbol, end_date, lookback); in-process cache via dashmap; no on-disk volume_proxy.toml artifact (Option B rejected — silent-drift risk). Q3 operator-override implementation: `universe_avg_daily_volume_usd_trailing` helper computes arithmetic mean across 10-USDT-pair Binance universe; pinned to scenario's own end_date with 90-day lookback; 9 synthetic-scenario SHAs in v5-sqrt-impact-2026-05 namespace WILL DIFFER from their v5-realdata-medium-2026-05 linear-bps twins — by-design; v0.6.0 sub-namespace cleanup commitment recorded (split realdata + synthetic sub-namespaces OR consolidate). Namespace cascade 71 → 90 (additive per ADR-0038 § D6.a): 51 noop-baseline + 19 v5-realdata-medium-2026-05 (now permanent linear-bps oracle, mirrors noop-baseline frictionless-oracle role) + 19 v5-sqrt-impact-2026-05 (NEW) + 1 lab Yahoo BTC + 1 lab Binance ETH H1. R-NR.1 PASS at 90/90; R-NR.2 + R-NR.3 byte-identity preserved via SlippageModel::Default + serde adapter for legacy slippage_bps u16. t1937 namespace-aware resolver extension (ADR-0047 D3): Namespace::SqrtImpact + SQRT_IMPACT_FEATURE_DIRS slice + SQRT_IMPACT_STRATEGY_ANCHORS constant table + t1937c_sqrt_impact_strategy_anchors_unchanged test mirrors t1937b precedent; Noop predicate extended to exclude sqrt-impact dirs. Wave decomposition A → B → C → D → E → F locked at ~3.0–4.0 dev-days + 1 tester-day + 0.5 presenter-day = ~1 week wall-clock. Frontmatter flipped owner: architect → developer on feature.md + tasks.md. HANDOFF → developer.
 
 [[req]]
 id          = "REQ-LAB-RECIPE-TEST-HARNESS-V0-2-0-001"
@@ -2214,7 +2214,7 @@ arch        = [
   "spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md",
   "spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/tasks.md",
   "spec/lab-recipe-test-harness/feature.md",                                                                        # PREDECESSOR — v0.1.0 shipped 2026-05-28
-  "spec/lab-recipe-test-harness/presentations/lab-recipe-test-harness-2026-05-28.md",                                # PREDECESSOR DECK — § What's next extension targets
+  "spec/archive/presentations-2026-Q2.tar.gz",                                # PREDECESSOR DECK — § What's next extension targets
   "spec/architecture/adr/0048-lab-recipe-test-harness.md",                                                          # PARENT ADR — D1-D6 carries forward verbatim (Changelog row appended 2026-05-29; no new ADR)
   # ARCHITECT M-T1 (2026-05-29) — § Design locks D-V0.2.0-1..7.
   "spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md#design",                                   # § Design = D-V0.2.0-1 per-Recipe mock pattern (NOT single trait) + D-V0.2.0-2 mock surface inventory (MockTrainingLogChannel / MockAuditTickBus / MockTrailMirrorHandle / MockActivityBus / MockAuditLedger) + D-V0.2.0-3 11-row T-T4 falsification probe line table + D-V0.2.0-4 ADR-0048 carry-forward + D-V0.2.0-5 Wave A→D decomposition + D-V0.2.0-6 R-NR re-affirm + D-V0.2.0-7 DEV-CONFIRM-1/2/3
@@ -2258,7 +2258,7 @@ arch        = [
   "spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/feature.md",
   "spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/tasks.md",
   "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md",                                                # PREDECESSOR — v0.1.3 shipped 2026-05-29; helper extraction + ETH-H1 registration + ETH-daily row 70 explicit deferral
-  "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/presentations/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1-2026-05-28.md",  # PREDECESSOR DECK — § What's deferred to v0.1.4 (owned-debt declaration)
+  "spec/archive/presentations-2026-Q2.tar.gz",  # PREDECESSOR DECK — § What's deferred to v0.1.4 (owned-debt declaration)
   "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                                            # PARENT ADR — § Changelog 2026-05-29 v0.1.4 amendment (D-V0.1.4-5) emitted by architect M-T1 fast-skip; no new ADR
   "data/yahoo/REVISION.toml",                                                                                                     # CURRENT STATE — 2 tickers populated (BTC + ETH); R1 operator fetch adds 9 (BNB/SOL/XRP/ADA/DOGE/AVAX/DOT/LINK/MATIC)
   # ARCHITECT M-T1 fast-skip (2026-05-29) — § Design ratified.
@@ -2275,18 +2275,18 @@ state       = "arch-done"  # architect M-T1 fast-skip 2026-05-29: § Design appe
 
 [[req]]
 id          = "REQ-V3-XGBOOST-001"
-title       = "v3-xgboost-cheap-classifier v0.1.0 — Candidate 6 cheap-first model-class axis test (Queue pre-position per post-v3 strategy direction Route A 2026-05-29). Tests opposite hypothesis to C1/C2/C5 retirement set (DL/Markov/LLM all on hourly OHLCV retired NEGATIVE or INCONCLUSIVE): low-capacity 100-200 tree gradient-boosted classifier may suit low-SNR hourly crypto better by underfitting-by-design. R1 XGBoost classifier emits 4-state REGIME LABEL (Bull/Bear/Volatile/Calm, same as v3 Wave A operator-locked taxonomy); R2 reuses frozen v0.1.0 RegimeClassifier trait seam from crates/forecast/src/markov_switching.rs (XGBoost impl satisfies same trait without amendment, drop-in replacement of v3 dispatcher path if operator re-attempts at v0.2.0+); R3 overlay-style multiplier on v1 momentum (different operator-lock per model class from C2's dispatcher — smaller blast radius, isolates model-class as load-bearing variable); R4 2 anchored real-Binance scenarios top10-2023-fy-xgboost-overlay-realdata (train) + top10-2024-fy-xgboost-overlay-realdata (held-out val) under analyst-recommended v3.5.0-xgboost namespace; R5/R-NR.1-8 zero existing anchor delta + v3 retired surfaces untouched + RegimeTag/embedding.rs byte-identical (K4 carried) + v1 momentum baselines byte-identical + ZERO MIGRATION comments (durable contract per AGENT.md 2026-05-29) + mandatory R-NR.7 e2e divergence test from day 1 (CLAUDE.md non-negotiable + K6 noop-fix precedent) + XGBoost crate documented at M-T1 K1 pre-flight; K1 Apple Silicon ARM linker compat (architect M-T1 pre-flight; Q3=(b) lightgbm-rust cheap fallback) + K2 train time < 1 hour CPU budget + K3 class-distribution non-degenerate (no single class > 90% per 2024 val) + K4 accuracy < 50% V-XGB-DAMPENED retire route + K5 same OHLCV signal-floor as C1/C2/C5 (load-bearing falsification frame) + K6 noop-fix recurrence; H1 classifier accuracy ≥ 60% on 2024 held-out + H2 overlay Sharpe-delta ≥ 0.0 BREAKEVEN (weaker than v3 +0.10 alpha-unlock; honest cheap baseline that doesn't lose money is sufficient ship signal) + H3 train time < 1 hour; Q1 classifier-vs-regressor [(a) classifier Recommended DURABLE preserves trait seam; (b) regressor cheap fallback breaks seam +1-2w v0.2.0 cleanup]; Q2 integration mode [(a) overlay-style multiplier Recommended DURABLE; (b) dispatcher revive cheap fallback re-litigates C2 V-REG-5 verdict; (c) ensemble v0.2.0]; Q3 XGBoost crate selection [(a) xgboost crate Recommended DURABLE if M-T1 K1 passes; (b) lightgbm-rust cheap fallback if linker-fails; (c) gradient-boosting pure-Rust escape]; cost framing DURABLE Q1+Q2+Q3 all (a) ~4-6 weeks within Route A budget vs cheap fallback ~2-3 weeks now but trait-seam break → +1-2 week v0.2.0 cleanup → net wall-clock ≥ DURABLE strictly worse on durability; pre-drawn 4-cell verdict tree V-XGB-PASS (H1 ≥ 60% AND H2 ≥ 0.0 → SHIP honest cheap baseline refutes v3 retirement hypothesis) / V-XGB-CLASSIFIER-ONLY (H1 ≥ 60% AND H2 < 0.0 → PARTIAL mirrors C5 pattern document and retire as-overlay) / V-XGB-DAMPENED (H1 < 60% OR K3 trip → TRIVIAL retire strengthens v3 retirement hypothesis Route C pivot) / V-XGB-INCONCLUSIVE (K1 crate-graph OR K2 budget trip → route back to analyst); Queue NOT Active — promote on operator Route A explicit pick from spec/dev-notes/post-v3-strategy-direction-2026-05-29.md."
+title       = "v3-xgboost-cheap-classifier v0.1.0 — Candidate 6 cheap-first model-class axis test (Queue pre-position per post-v3 strategy direction Route A 2026-05-29). Tests opposite hypothesis to C1/C2/C5 retirement set (DL/Markov/LLM all on hourly OHLCV retired NEGATIVE or INCONCLUSIVE): low-capacity 100-200 tree gradient-boosted classifier may suit low-SNR hourly crypto better by underfitting-by-design. R1 XGBoost classifier emits 4-state REGIME LABEL (Bull/Bear/Volatile/Calm, same as v3 Wave A operator-locked taxonomy); R2 reuses frozen v0.1.0 RegimeClassifier trait seam from crates/forecast/src/markov_switching.rs (XGBoost impl satisfies same trait without amendment, drop-in replacement of v3 dispatcher path if operator re-attempts at v0.2.0+); R3 overlay-style multiplier on v1 momentum (different operator-lock per model class from C2's dispatcher — smaller blast radius, isolates model-class as load-bearing variable); R4 2 anchored real-Binance scenarios top10-2023-fy-xgboost-overlay-realdata (train) + top10-2024-fy-xgboost-overlay-realdata (held-out val) under analyst-recommended v3.5.0-xgboost namespace; R5/R-NR.1-8 zero existing anchor delta + v3 retired surfaces untouched + RegimeTag/embedding.rs byte-identical (K4 carried) + v1 momentum baselines byte-identical + ZERO MIGRATION comments (durable contract per AGENT.md 2026-05-29) + mandatory R-NR.7 e2e divergence test from day 1 (CLAUDE.md non-negotiable + K6 noop-fix precedent) + XGBoost crate documented at M-T1 K1 pre-flight; K1 Apple Silicon ARM linker compat (architect M-T1 pre-flight; Q3=(b) lightgbm-rust cheap fallback) + K2 train time < 1 hour CPU budget + K3 class-distribution non-degenerate (no single class > 90% per 2024 val) + K4 accuracy < 50% V-XGB-DAMPENED retire route + K5 same OHLCV signal-floor as C1/C2/C5 (load-bearing falsification frame) + K6 noop-fix recurrence; H1 classifier accuracy ≥ 60% on 2024 held-out + H2 overlay Sharpe-delta ≥ 0.0 BREAKEVEN (weaker than v3 +0.10 alpha-unlock; honest cheap baseline that doesn't lose money is sufficient ship signal) + H3 train time < 1 hour; Q1 classifier-vs-regressor [(a) classifier Recommended DURABLE preserves trait seam; (b) regressor cheap fallback breaks seam +1-2w v0.2.0 cleanup]; Q2 integration mode [(a) overlay-style multiplier Recommended DURABLE; (b) dispatcher revive cheap fallback re-litigates C2 V-REG-5 verdict; (c) ensemble v0.2.0]; Q3 XGBoost crate selection [(a) xgboost crate Recommended DURABLE if M-T1 K1 passes; (b) lightgbm-rust cheap fallback if linker-fails; (c) gradient-boosting pure-Rust escape]; cost framing DURABLE Q1+Q2+Q3 all (a) ~4-6 weeks within Route A budget vs cheap fallback ~2-3 weeks now but trait-seam break → +1-2 week v0.2.0 cleanup → net wall-clock ≥ DURABLE strictly worse on durability; pre-drawn 4-cell verdict tree V-XGB-PASS (H1 ≥ 60% AND H2 ≥ 0.0 → SHIP honest cheap baseline refutes v3 retirement hypothesis) / V-XGB-CLASSIFIER-ONLY (H1 ≥ 60% AND H2 < 0.0 → PARTIAL mirrors C5 pattern document and retire as-overlay) / V-XGB-DAMPENED (H1 < 60% OR K3 trip → TRIVIAL retire strengthens v3 retirement hypothesis Route C pivot) / V-XGB-INCONCLUSIVE (K1 crate-graph OR K2 budget trip → route back to analyst); Queue NOT Active — promote on operator Route A explicit pick from spec/dev-notes/archive/2026-Q2/post-v3-strategy-direction-2026-05-29.md."
 feature     = "v3-xgboost-cheap-classifier"
 product     = "spec/product.md"
 arch        = []   # architect M-T1 fills on Queue → Active promotion (Q1+Q2+Q3 ratification + K1 pre-flight + Wave A→D decomposition + ADR-0049 § Changelog amendment expected, no new ADR)
 crates      = []   # developer Wave A→D fills (new crates/forecast/src/xgboost.rs trait impl; new crates/strategy/src/xgboost_overlay.rs; mandatory crates/strategy/tests/xgboost_overlay_end_to_end.rs R-NR.7 e2e divergence gate)
 tests       = []   # developer + tester fill at M-DEV + M-FINAL
 anchors     = []   # tester M-FINAL fills after VERDICT → PASS (2 new under v3.5.0-xgboost: top10-2023-fy-xgboost-overlay-realdata + top10-2024-fy-xgboost-overlay-realdata; 75 → 77 PASS)
-state       = "proposed"  # analyst M0 2026-05-29: feature.md + tasks.md authored; backlog Queue § Strategy entry appended; Queue NOT Active per Route A pre-position contract from spec/dev-notes/post-v3-strategy-direction-2026-05-29.md. Promotion gates: (1) operator picks Route A from post-v3 dev-note; (2) operator answers Q1/Q2/Q3 (analyst-recommended all (a) DURABLE); (3) orchestrator promotes Queue → Active flipping state proposed → arch-pending and spawning architect M-T1. No work past M0 until then. HANDOFF → operator (Route A pick).
+state       = "proposed"  # analyst M0 2026-05-29: feature.md + tasks.md authored; backlog Queue § Strategy entry appended; Queue NOT Active per Route A pre-position contract from spec/dev-notes/archive/2026-Q2/post-v3-strategy-direction-2026-05-29.md. Promotion gates: (1) operator picks Route A from post-v3 dev-note; (2) operator answers Q1/Q2/Q3 (analyst-recommended all (a) DURABLE); (3) orchestrator promotes Queue → Active flipping state proposed → arch-pending and spawning architect M-T1. No work past M0 until then. HANDOFF → operator (Route A pick).
 
 #
 # ─── Pick A Wave 1 — Test infra trifecta promoted features (analyst M0 2026-05-29) ───
-# Per spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md strategic direction.
+# Per spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md strategic direction.
 # Two features promoted Queue → Active under Pick A Wave 1; harness v0.3.0+ stays Queue
 # (analyst spawn AFTER v0.2.0 Wave A→D ships; candidate list sketched in dev-note).
 #
@@ -2300,8 +2300,8 @@ arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick A Wave 1 promotion.
   "spec/visual-fail-html-reporter/feature.md",
   "spec/visual-fail-html-reporter/tasks.md",
-  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; bundle ordering; tester contract amendment ownership
-  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
+  "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; bundle ordering; tester contract amendment ownership
+  "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
   "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",            # ROOT-CAUSE — § 4.1 agent-contract gap analysis
   "spec/ui-test-harness-bootstrap/feature.md",                                        # PRECEDENT — bootstrap visual_diff.rs structural template for FAIL-only emission
   "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PARENT ADR — D1-D6 carries forward verbatim; § Changelog amended at architect M-T1 close 2026-05-29 (D-VF-6)
@@ -2322,11 +2322,11 @@ arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick A Wave 1 promotion.
   "spec/ui-test-harness-viewport-matrix/feature.md",
   "spec/ui-test-harness-viewport-matrix/tasks.md",
-  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; sequencing parallel-with-visual-fail-HTML; risk R1 stanza inheritance contract
-  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
+  "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; sequencing parallel-with-visual-fail-HTML; risk R1 stanza inheritance contract
+  "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
   "spec/ui-test-harness-bootstrap/feature.md",                                        # PREDECESSOR — Charts-only three-viewport bootstrap shipped 2026-05-12; SLOTS table + helper layout precedent
   "spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md",                # ROOT-CAUSE — § 1 incident analysis + § 6 week-2 follow-up plan
-  "spec/dev-notes/ui-testability-deep-dive-2026-05-15.md",                            # SUPPORTING — § 2.10 view-coverage gap quantification (architect M-T1 fix: file lives at dev-notes/, not dev-notes/archive/2026-Q2/)
+  "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",                            # SUPPORTING — § 2.10 view-coverage gap quantification (architect M-T1 fix: file lives at dev-notes/, not dev-notes/archive/2026-Q2/)
   "spec/architecture/adr/0048-lab-recipe-test-harness.md",                            # PARENT ADR — D4 wall-clock budget carries forward; M-T1 close ride-along Changelog row added (D-VPM-7); no new ADR; no D1-D6 revision
   "spec/visual-fail-html-reporter/feature.md",                                        # WAVE 1 SIBLING — provides the FAIL-only HTML emission helper that matrix tests inherit (R3.1); sibling's § D-VF-4 tester.md stanza inherited without amendment (D-VPM-6)
 ]
@@ -2337,7 +2337,7 @@ state       = "dev-done"  # developer M-DEV 2026-05-29. T-VPM-D1..D5 complete. H
 
 #
 # ─── Pick B Wave 1 — Cross-cutting safety duo promoted features (analyst M0 2026-05-29) ───
-# Per spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md strategic direction.
+# Per spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md strategic direction.
 # Two features promoted Queue → Active under Pick B Wave 1.
 # v2.1-tracing-Layer-redactor portion split off from v2-llm-strategy-v21-followups
 # Queue entry (#3); LLM-budget tile + clippy items stay Queue per
@@ -2355,9 +2355,9 @@ arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick B Wave 1 promotion.
   "spec/v2-1-tracing-layer-redactor/feature.md",
   "spec/v2-1-tracing-layer-redactor/tasks.md",
-  "spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation; shared opt-out shape
-  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 3 ranking
-  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
+  "spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation; shared opt-out shape
+  "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 3 ranking
+  "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
   "spec/v2-llm-strategy/feature.md",                                                  # PREDECESSOR — pure-fn redact() shipped v2.0.0 pass 3; Layer half deferred to this brief
   "crates/llm/src/redact.rs",                                                         # PURE-FN SURFACE — Layer reuses redact() verbatim (R-NR.1); see redact.rs:18-26 deferral note
   # ARCHITECT M-T1 (2026-05-29) — design pass; Q-RED-1/2/3 all DURABLE ratified; D-RED-1..D-RED-9 + ADR-0019 ride-along; state proposed → arch-done.
@@ -2419,7 +2419,7 @@ tests       = [
   "crates/llm/tests/redact_layer.rs::p_red_2_layer_ordering_documented",
 ]
 anchors     = []   # zero anchor delta (Layer affects tracing emit only); 84/84 PASS byte-identical post-migration
-state       = "tester-done"  # developer M-DEV 2026-05-29. T-RED-D1..D20 complete. redact_layer.rs + tracing_init.rs NEW. 17 binaries migrated from tracing_subscriber::fmt().init() to llm::tracing_init::install_global(). Design deviation: D-RED-3 emit-redacted+filter-original pattern replaced with thread-local field-override map (REDACTED_FIELDS) + RedactingFormatFields custom FormatFields — tracing's reentrancy guard prevents tracing::warn! from on_event; eprintln! to stderr is the WARN-mode side-channel. All 108 unit tests + 9 integration tests PASS. 3 #[ignore] falsification probes ship (P-RED-1/2/3). Anchors 84/84 PASS. tester M-FINAL 2026-05-29 VERDICT → PASS. T-RED-FINAL.1..5 all ticked. report: spec/v2-1-tracing-layer-redactor/reports/test-20260529-144619-v0.1.0.md. HANDOFF → orchestrator.
+state       = "tester-done"  # developer M-DEV 2026-05-29. T-RED-D1..D20 complete. redact_layer.rs + tracing_init.rs NEW. 17 binaries migrated from tracing_subscriber::fmt().init() to llm::tracing_init::install_global(). Design deviation: D-RED-3 emit-redacted+filter-original pattern replaced with thread-local field-override map (REDACTED_FIELDS) + RedactingFormatFields custom FormatFields — tracing's reentrancy guard prevents tracing::warn! from on_event; eprintln! to stderr is the WARN-mode side-channel. All 108 unit tests + 9 integration tests PASS. 3 #[ignore] falsification probes ship (P-RED-1/2/3). Anchors 84/84 PASS. tester M-FINAL 2026-05-29 VERDICT → PASS. T-RED-FINAL.1..5 all ticked. report: spec/archive/tester-reports-2026-05-to-06.tar.gz. HANDOFF → orchestrator.
 
 [[req]]
 id          = "REQ-UI-CONTRAST-ASSERTER-001"
@@ -2430,9 +2430,9 @@ arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick B Wave 1 promotion.
   "spec/ui-contrast-asserter/feature.md",
   "spec/ui-contrast-asserter/tasks.md",
-  "spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation
-  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 4 ranking ("best-cheap-pick")
-  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
+  "spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation
+  "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 4 ranking ("best-cheap-pick")
+  "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
   "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",            # ROOT-CAUSE — § 3.8 stretch / pure-Rust WCAG contrast asserter analysis
   "spec/ui-design-principles.md",                                                     # CONTRACT — ## Accessibility minimums 4.5:1 AA body / 7:1 AAA equity
   "crates/ui/src/theme.rs",                                                           # ENUMERATION SOURCE — pub const color tokens (FG_*, CANVAS, PANEL, ACCENT, UP_500, DOWN_500, WARN_500) the test reads
@@ -2452,9 +2452,9 @@ feature     = "bug-64-d11-attempt-3-yahoo-run-runtime-context"
 product     = "spec/product.md"
 arch        = [
   "spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/feature.md",          # D-R1.1..D-R2.3 + D-R1.4 + D-Tr.1 + ADR-0050 obligation
-  "spec/dev-notes/bug-64-arch-validation-2026-05-29.md",                      # architect validation — Q1..Q5 answered; D-R1.1/R1.2/R1.3/R1.4/R2.1/R2.2/R2.3 locked
-  "spec/dev-notes/bug-64-analyst-validation-2026-05-29.md",                   # analyst validation — Q-refresh + all Qs closed; one-ship Q1=(a) reaffirmed
-  "spec/dev-notes/bug-64-yahoo-run-code-map-2026-05-29.md",                   # code-map — cancellation reachability table + H-R1d confirmation
+  "spec/dev-notes/archive/2026-Q2/bug-64-arch-validation-2026-05-29.md",                      # architect validation — Q1..Q5 answered; D-R1.1/R1.2/R1.3/R1.4/R2.1/R2.2/R2.3 locked
+  "spec/dev-notes/archive/2026-Q2/bug-64-analyst-validation-2026-05-29.md",                   # analyst validation — Q-refresh + all Qs closed; one-ship Q1=(a) reaffirmed
+  "spec/dev-notes/archive/2026-Q2/bug-64-yahoo-run-code-map-2026-05-29.md",                   # code-map — cancellation reachability table + H-R1d confirmation
   "spec/architecture/adr/0050-iced-tokio-runtime-context-and-cancellation.md", # ADR-0050 — D1 rt_handle.enter() invariant + D2 CancellationToken + D3 timer test contract
   "spec/architecture/adr/README.md",                                           # ADR-0050 row added atomically
   "spec/architecture/adr/0048-lab-recipe-test-harness.md",                     # Changelog amended — new e2e tests extend Surface 1 contract per ADR-0050 § D3
@@ -2490,7 +2490,7 @@ state       = "shipped"   # operator APPROVED 2026-05-29 — Bug #64 D.1.1 CLOSE
 
 #
 # ─── Pick C Wave 1 — Orchestrator hygiene compounder trio promoted features (analyst M0 2026-05-29) ───
-# Per spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md strategic direction.
+# Per spec/dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md strategic direction.
 # Three features promoted Queue → Active under Pick C Wave 1.
 # All three Python-stdlib-only scripts in scripts/; zero Cargo touch; zero anchor delta.
 # Shared markdown-diff dialect per bundle Q-HYG-EMIT ratification (Recommended DURABLE).
@@ -2510,12 +2510,12 @@ arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick C Wave 1 promotion.
   "spec/queue-staleness-reconciliation/feature.md",
   "spec/queue-staleness-reconciliation/tasks.md",
-  "spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT markdown-diff dialect; K4 amendment ownership table
-  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking ("already paid reactively 3×")
-  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
-  "spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # BUNDLE-PATTERN PRECEDENT — Pick B duo shape; sibling bundle
-  "spec/dev-notes/weekly-retro-2026-05-27-to-2026-05-29.md",                          # ROOT-CAUSE — § What to fix / improve #1 (Queue staleness) proposed-fix
-  "spec/dev-notes/audit-2026-05-29.md",                                               # AUDIT FINDING — Queue staleness drift detected 2026-05-29
+  "spec/dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT markdown-diff dialect; K4 amendment ownership table
+  "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking ("already paid reactively 3×")
+  "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
+  "spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # BUNDLE-PATTERN PRECEDENT — Pick B duo shape; sibling bundle
+  "spec/dev-notes/archive/2026-Q2/weekly-retro-2026-05-27-to-2026-05-29.md",                          # ROOT-CAUSE — § What to fix / improve #1 (Queue staleness) proposed-fix
+  "spec/dev-notes/archive/2026-Q2/audit-2026-05-29.md",                                               # AUDIT FINDING — Queue staleness drift detected 2026-05-29
   "AGENT.md",                                                                         # CONTRACT — § Queue pre-flight reconciliation sweep codified 2026-05-29; OWNED amendment per bundle K4 ownership-table (1-line invocation example added at architect M-T1)
   "spec/backlog.md",                                                                  # LINT TARGET — parsed by script; ## Queue + ## Active sections
   "scripts/spec_brief.py",                                                            # PRECEDENT — Python 3 stdlib sibling pattern (no requirements.txt)
@@ -2538,12 +2538,12 @@ arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick C Wave 1 promotion.
   "spec/adr-registry-atomic-lint/feature.md",
   "spec/adr-registry-atomic-lint/tasks.md",
-  "spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT; K4 amendment ownership-table
-  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking ("already paid reactively 3×")
-  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301
-  "spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # BUNDLE-PATTERN PRECEDENT — Pick B duo; sibling bundle
-  "spec/dev-notes/weekly-retro-2026-05-27-to-2026-05-29.md",                          # ROOT-CAUSE — § What to fix / improve #6 (ADR registry drift) proposed-fix
-  "spec/dev-notes/audit-2026-05-29.md",                                               # AUDIT FINDING — ADR registry drift (ADRs 0045-0049 unregistered) detected 2026-05-29
+  "spec/dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT; K4 amendment ownership-table
+  "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking ("already paid reactively 3×")
+  "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301
+  "spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # BUNDLE-PATTERN PRECEDENT — Pick B duo; sibling bundle
+  "spec/dev-notes/archive/2026-Q2/weekly-retro-2026-05-27-to-2026-05-29.md",                          # ROOT-CAUSE — § What to fix / improve #6 (ADR registry drift) proposed-fix
+  "spec/dev-notes/archive/2026-Q2/audit-2026-05-29.md",                                               # AUDIT FINDING — ADR registry drift (ADRs 0045-0049 unregistered) detected 2026-05-29
   ".claude/agents/architect.md",                                                      # CONTRACT + OWNED AMENDMENT — § ADR registry atomic-write codified 2026-05-29; D-ADR-6 K4-owned amendment (mechanical-enforcement paragraph after L92 + `deprecated` micro-fix on L82)
   "spec/architecture/adr/README.md",                                                  # LINT TARGET — ## Registry table (D-ADR-3 `^\|\s*(\d{4})\s*\|` parser) + frontmatter updated: (D-ADR-2); § Format L22 = canonical status-enum source
   "spec/architecture/adr/TEMPLATE.md",                                                # EXCLUDE — structurally skipped by `[0-9][0-9][0-9][0-9]-*.md` glob (D-ADR-4 / D-ADR-7)
@@ -2566,11 +2566,11 @@ arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick C Wave 1 promotion.
   "spec/operator-ledger-schema-lint/feature.md",
   "spec/operator-ledger-schema-lint/tasks.md",
-  "spec/dev-notes/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT; K4 amendment ownership-table
-  "spec/dev-notes/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking
-  "spec/dev-notes/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301
-  "spec/dev-notes/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # BUNDLE-PATTERN PRECEDENT — Pick B duo; sibling bundle
-  "spec/dev-notes/weekly-retro-2026-05-27-to-2026-05-29.md",                          # ROOT-CAUSE — § What to fix / improve #5 (operator visual-verify recipe backlog accumulates) proposed-fix
+  "spec/dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT; K4 amendment ownership-table
+  "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking
+  "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301
+  "spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # BUNDLE-PATTERN PRECEDENT — Pick B duo; sibling bundle
+  "spec/dev-notes/archive/2026-Q2/weekly-retro-2026-05-27-to-2026-05-29.md",                          # ROOT-CAUSE — § What to fix / improve #5 (operator visual-verify recipe backlog accumulates) proposed-fix
   "spec/dev-notes/operator-side-pending-ledger.md",                                   # LINT TARGET + OWNED amendment — script reads all 3 tables; R3.3 frontmatter amendment OWNED per bundle K4 ownership-table
   "AGENT.md",                                                                         # CROSS-REFERENCE — R3.4 1-line cross-reference OWNED per bundle K4 ownership-table (architect M-T1 picks exact section)
   "scripts/spec_brief.py",                                                            # PRECEDENT — Python 3 stdlib sibling pattern
@@ -2594,8 +2594,8 @@ arch        = [
   # ANALYST M0 (2026-05-30) — feature.md + tasks.md authored from Bug #64 attempt-3 deck FYI #2 carry-forward.
   "spec/lab-yahoo-empty-range-ux/feature.md",
   "spec/lab-yahoo-empty-range-ux/tasks.md",
-  "spec/dev-notes/bug-64-yahoo-run-code-map-2026-05-29.md",                                          # ROOT-CAUSE MAP — YahooError variant table + state table + cancellation/progress diagrams
-  "spec/bug-64-d11-attempt-3-yahoo-run-runtime-context/presentations/bug-64-attempt-3-2026-05-29.md", # CARRY-FORWARD SOURCE — § Notes/feedback FYI #2 ("no data for range" UX-polish candidate)
+  "spec/dev-notes/archive/2026-Q2/bug-64-yahoo-run-code-map-2026-05-29.md",                                          # ROOT-CAUSE MAP — YahooError variant table + state table + cancellation/progress diagrams
+  "spec/archive/presentations-2026-Q2.tar.gz", # CARRY-FORWARD SOURCE — § Notes/feedback FYI #2 ("no data for range" UX-polish candidate)
   "spec/lab-yahoo-realdata/feature.md",                                                              # PREDECESSOR — Yahoo realdata v0.1.0 (data_source toggle, preload_yahoo_bars, 95% coverage threshold)
   # ARCHITECT M-T1 (2026-05-29) — D-ER-1..6 + P-ER-1; Q1=(a) split (data-crate YahooError::NoDataForRange + ui-crate sentinel-tagged SmolStr classify), Q2=(a) clamp end_ms to now, Q3=(a) new last_run_notice field (muted FG_2, not red). Result type stays byte-identical (94-usage SmolStr arm NOT widened).
   "spec/lab-yahoo-empty-range-ux/feature.md#design",                                                  # § Design D-ER-1..6 (classification seam, clamp, notice render, K2 test, ADR-0040 amend, zero-anchor-delta)
@@ -2614,9 +2614,9 @@ state       = "shipped"   # operator-approved 2026-05-30 (v0.1.0 ship deck). Bug
 # Q2 = seed the ensemble → anchor ONE distribution summary; Q3 = robustness
 # harness first, learning loop (C4) LAST; Q4 = LLM ratified as a support pillar
 # (product.md § Pillar stack). Direction:
-# spec/dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md.
+# spec/dev-notes/archive/2026-Q2/strategy-robustness-monte-carlo-direction-2026-05-29.md.
 # Architecture readiness:
-# spec/dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md.
+# spec/dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md.
 # Decomposed into TWO features: C1 = reusable crates/data path-generator
 # primitive; C2 = crates/backtest consumer + the ONE anchored distribution
 # report. C2 carries the ADR-0051 obligation (architect M-T1 deliverable).
@@ -2711,7 +2711,7 @@ state       = "tester-done"   # tester 2026-06-06 (M-TEST): VERDICT PASS. Build 
 
 [[req]]
 id          = "REQ-PERP-BASIS-MN-SPREAD-001"
-title       = "Perp-basis MARKET-NEUTRAL spread (v0.2.0) — the follow-on that finally tests the basis-reversal SIGNAL in its correct vehicle after the long-only arm (REQ-PERP-BASIS-SIGNAL-ROBUSTNESS-001) came back FAMILY-UNIFORM-FRAGILE at all fees incl. 0bps gross. ADJUDICATION (spec/dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md): the long-only verdict is a VEHICLE verdict, NOT a signal verdict — the long-only arm carries full market beta + captures only the long-low-basis leg of a reversal SPREAD, benchmarked against BH +1.74 (best cell p50 +0.0486 vs +1.735 = 35.7× gap); the R-BR.LOAD fee-sweep FALSIFIED fee-bleed (p50 moves only ~0.002 Sharpe across {0,2,5,10}bps vs the 1.70 gap to BH — the killer is BETA, not fees). The carry precedent makes the vehicle read airtight (best long-only cell +0.039; 'the long-only engine cannot isolate the signal from the price beta', carry test report line 146). The market-neutral spread strips beta (long β≈short β≈1, netted → the null becomes ≈0, removing the 35× hurdle) + captures BOTH legs (where the spike's full −0.10 IC lives). Long low-basis / short high-basis, dollar-neutral. Requirements R-MN.1..9: SAME basis-reversal score (R-MN.1, inherited); the SHORT-LEG ENGINE (R-MN.2, LOAD-BEARING — un-gate k_short [today config.rs:308 hard-rejects with unsupported_short_sizing], Side::Sell legs [today run_path opens only Side::Buy], short solvency, dollar-neutral split, SelectionMode::LongShort); the SHORT-LEG FUNDING COST (R-MN.3 — the binding cost; the accrual model ALREADY EXISTS at montecarlo.rs:325-363 [cash += notional × (−rate)], only line 350's 'continue; // no short legs' skip gates it — a short on a positive-funding name yields the correct cost by the existing formula); the FUNDING-ORTHOGONALIZATION arm (R-MN.6 — three arms basis-spread / funding-spread / basis⊥funding on the SAME paths, the confound resolver: if basis-spread ≈ funding-spread the basis IS the funding mirror [k2] → close domain; if basis⊥funding retains a net edge the basis carries orthogonal alpha). ONE frozen-§0 change: BH control → dollar-neutral ≈0 null (a CORRECTION — a beta-neutral book's null is cash, not buy-and-hold; bands unchanged). SAME 10 large-caps + basis pin aa72409a… + funding pin bf1ede44… (now load-bearing for the short-leg cost); 2023 in-sample + 2024 gating both day-1. Day-1 falsifiers (each RED-on-revert): dollar-neutrality (Σnotional≈0), short-leg funding-cost non-no-op (mirror carry R-CARRY.10b), baseline-divergence e2e (CLAUDE.md non-negotiable), sign-assertion (inherited), no-look-ahead (two sidecars), two-run identity, orthogonalization-non-no-op. R-MN.8 (LOAD-BEARING anchor gate): the 107 anchors hold byte-identical when k_short=0 — the FIRST run_path anchor-neutrality re-proof (v0.1.0 + carry kept run_path byte-untouched; the short-side engine cannot). Pre-registered H0/H1 + k1/k2/k3 kill-criteria. Build ~5-8 dev-days (the short-side engine + the run_path anchor re-proof are the bulk + dominant risk, NOT the cost model which already exists). ADR-0051 § D6.10 amendment owed (6th anchor-additive instance + FIRST to touch run_path). Decimal money throughout (the basis⊥funding residual is the one new compute — Q-MN-4: rank-based residual leaned to stay Decimal-clean). 5 framed design questions Q-MN-1..5 for the architect M-T1 (short-leg engine gated-branch vs sibling; run_path anchor-neutrality; second sidecar basis_by_symbol now owed; residualization method; θ-grid × arms × {0,5}bps fee × N cross-product up to 12 surfaces). On-chain deferred-not-abandoned (the pre-registered next domain IFF the spread is also FRAGILE — de-risked by this build's outcome either way)."
+title       = "Perp-basis MARKET-NEUTRAL spread (v0.2.0) — the follow-on that finally tests the basis-reversal SIGNAL in its correct vehicle after the long-only arm (REQ-PERP-BASIS-SIGNAL-ROBUSTNESS-001) came back FAMILY-UNIFORM-FRAGILE at all fees incl. 0bps gross. ADJUDICATION (spec/dev-notes/archive/2026-Q2/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md): the long-only verdict is a VEHICLE verdict, NOT a signal verdict — the long-only arm carries full market beta + captures only the long-low-basis leg of a reversal SPREAD, benchmarked against BH +1.74 (best cell p50 +0.0486 vs +1.735 = 35.7× gap); the R-BR.LOAD fee-sweep FALSIFIED fee-bleed (p50 moves only ~0.002 Sharpe across {0,2,5,10}bps vs the 1.70 gap to BH — the killer is BETA, not fees). The carry precedent makes the vehicle read airtight (best long-only cell +0.039; 'the long-only engine cannot isolate the signal from the price beta', carry test report line 146). The market-neutral spread strips beta (long β≈short β≈1, netted → the null becomes ≈0, removing the 35× hurdle) + captures BOTH legs (where the spike's full −0.10 IC lives). Long low-basis / short high-basis, dollar-neutral. Requirements R-MN.1..9: SAME basis-reversal score (R-MN.1, inherited); the SHORT-LEG ENGINE (R-MN.2, LOAD-BEARING — un-gate k_short [today config.rs:308 hard-rejects with unsupported_short_sizing], Side::Sell legs [today run_path opens only Side::Buy], short solvency, dollar-neutral split, SelectionMode::LongShort); the SHORT-LEG FUNDING COST (R-MN.3 — the binding cost; the accrual model ALREADY EXISTS at montecarlo.rs:325-363 [cash += notional × (−rate)], only line 350's 'continue; // no short legs' skip gates it — a short on a positive-funding name yields the correct cost by the existing formula); the FUNDING-ORTHOGONALIZATION arm (R-MN.6 — three arms basis-spread / funding-spread / basis⊥funding on the SAME paths, the confound resolver: if basis-spread ≈ funding-spread the basis IS the funding mirror [k2] → close domain; if basis⊥funding retains a net edge the basis carries orthogonal alpha). ONE frozen-§0 change: BH control → dollar-neutral ≈0 null (a CORRECTION — a beta-neutral book's null is cash, not buy-and-hold; bands unchanged). SAME 10 large-caps + basis pin aa72409a… + funding pin bf1ede44… (now load-bearing for the short-leg cost); 2023 in-sample + 2024 gating both day-1. Day-1 falsifiers (each RED-on-revert): dollar-neutrality (Σnotional≈0), short-leg funding-cost non-no-op (mirror carry R-CARRY.10b), baseline-divergence e2e (CLAUDE.md non-negotiable), sign-assertion (inherited), no-look-ahead (two sidecars), two-run identity, orthogonalization-non-no-op. R-MN.8 (LOAD-BEARING anchor gate): the 107 anchors hold byte-identical when k_short=0 — the FIRST run_path anchor-neutrality re-proof (v0.1.0 + carry kept run_path byte-untouched; the short-side engine cannot). Pre-registered H0/H1 + k1/k2/k3 kill-criteria. Build ~5-8 dev-days (the short-side engine + the run_path anchor re-proof are the bulk + dominant risk, NOT the cost model which already exists). ADR-0051 § D6.10 amendment owed (6th anchor-additive instance + FIRST to touch run_path). Decimal money throughout (the basis⊥funding residual is the one new compute — Q-MN-4: rank-based residual leaned to stay Decimal-clean). 5 framed design questions Q-MN-1..5 for the architect M-T1 (short-leg engine gated-branch vs sibling; run_path anchor-neutrality; second sidecar basis_by_symbol now owed; residualization method; θ-grid × arms × {0,5}bps fee × N cross-product up to 12 surfaces). On-chain deferred-not-abandoned (the pre-registered next domain IFF the spread is also FRAGILE — de-risked by this build's outcome either way)."
 feature     = "perp-basis-mn-spread"
 product     = "spec/product.md"
 arch        = [
@@ -2772,7 +2772,7 @@ tests       = [
   "crates/ui/src/baseline/state.rs",
 ]
 anchors     = []   # read-only UI feature, no new backtest anchors; verification floor is the panel-snapshot suite + the unchanged 119/119 regression gate
-state       = "tester-done"   # tester 2026-06-08 — VERDICT PASS. 428 unit + all integration suites GREEN. AC1–AC7 all pass. verify-anchors 119/119. One pre-existing lab_run_engine failure confirmed pre-existing on parent commit. Report: spec/cockpit-baseline-panel/reports/test-2026-06-08-cockpit-baseline-panel.md
+state       = "tester-done"   # tester 2026-06-08 — VERDICT PASS. 428 unit + all integration suites GREEN. AC1–AC7 all pass. verify-anchors 119/119. One pre-existing lab_run_engine failure confirmed pre-existing on parent commit. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
 
 # REQ-COCKPIT-REPORTS-001 → cockpit-reports-viewer (proposed 2026-06-08) — audit #2, the general-case follow-on to #1 Baseline
 [[req]]

@@ -37,7 +37,7 @@ before `Box::pin` to avoid the `EnterGuard !Send` leak) that the
 two Wave-1 sibling recipes use. The 2026-05-23 P1 bug fix
 captured in lines 110-128 of `cockpit_live.rs` is exactly the
 class of wiring bug the
-[testing-framework-audit-2026-05-25.md § R1](../dev-notes/testing-framework-audit-2026-05-25.md)
+[testing-framework-audit-2026-05-25.md § R1](../dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md)
 recommendation argued must be locked down with an end-to-end
 test:
 
@@ -383,7 +383,7 @@ No LLM costs. Pure source patch + test authoring.
   [`crates/ui/tests/trail_mirror_recipe_stream.rs`](../../crates/ui/tests/trail_mirror_recipe_stream.rs)
   (4 tests). Shape this brief mirrors verbatim.
 - **Architecture audit** —
-  [`spec/dev-notes/testing-framework-audit-2026-05-25.md § R1`](../dev-notes/testing-framework-audit-2026-05-25.md)
+  [`spec/dev-notes/testing-framework-audit-2026-05-25.md § R1`](../dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md)
   ("Promote channel-recipe-state-widget end-to-end to a
   first-class layer with a `subscription-pipe` skill"). This
   brief closes one of three identified Recipe surfaces (the

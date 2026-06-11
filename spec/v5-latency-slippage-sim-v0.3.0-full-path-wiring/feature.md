@@ -329,7 +329,7 @@ revised analyst default = (a) is recommended but not mandatory.
 
 - v0.2.0 brief — [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](../v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md)
 - v0.2.0 Sharpe-delta table (the 8-group breakdown identifying unwired paths) — [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md`](../v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/sharpe-delta-table-2026-05-27.md)
-- v0.2.0 M-FINAL test report (documenting the t1937 whitelist) — [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md`](../v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md)
+- v0.2.0 M-FINAL test report (documenting the t1937 whitelist) — [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/reports/test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md`](../archive/tester-reports-2026-05-to-06.tar.gz)
 - v0.1.0 brief — [`spec/v5-latency-slippage-sim/feature.md`](../v5-latency-slippage-sim/feature.md)
 - ADR-0043 (engine D1-D5) — [`spec/architecture/adr/0043-simulated-latency-and-slippage.md`](../architecture/adr/0043-simulated-latency-and-slippage.md)
 - ADR-0045 (canonical config + namespace strategy) — [`spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md`](../architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md). v0.3.0 amends or extends D2 + D4 depending on Q1 route.

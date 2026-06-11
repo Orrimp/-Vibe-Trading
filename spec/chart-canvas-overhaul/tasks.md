@@ -777,7 +777,7 @@ shape.
       Anchors `bash scripts/verify_anchors.sh` →_ `ANCHORS PASS  (11 / 11)`
       _(verbatim, run 2026-05-12 from presenter). Operator approval
       pending on the presenter deck at
-      [`presentations/chart-canvas-overhaul-2026-05-12.md`](presentations/chart-canvas-overhaul-2026-05-12.md)._
+      [`presentations/chart-canvas-overhaul-2026-05-12.md`](../archive/presentations-2026-Q2.tar.gz)._
       Acceptance — ALL must hold:
       1. V1–V15 + v1.9.0 V-suite all green
          (`cargo test --workspace`). **V14 + V15 added by M7
@@ -878,7 +878,7 @@ shape.
   text + PNG artifact). Ownership flipped to architect →
   handoff to dev ‖ ui-designer.
 - 2026-05-12 (operator): **SHIPPED**. Operator approval recorded
-  in [`presentations/chart-canvas-overhaul-2026-05-12.md ## Approval`](presentations/chart-canvas-overhaul-2026-05-12.md#approval)
+  in [`presentations/chart-canvas-overhaul-2026-05-12.md ## Approval`](../archive/presentations-2026-Q2.tar.gz)
   as `[x] Approved — ship`. V1-V13 PASS, V14 APPROVED, V15
   DEFERRED to `ui-test-harness-bootstrap` v0.1. Frontmatter
   flipped `pending-approval → shipped`; `owner: presenter →

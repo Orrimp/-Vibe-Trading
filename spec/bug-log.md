@@ -111,7 +111,7 @@ For a 30-bar Yahoo daily Last30d run, only `bar_idx = 0` hit the boundary. One p
 - **D.1** Cold-cache Yahoo fetch shows the sentinel `Progress { current_bar: 0, total_bars: 1, elapsed_ms: 0 }` static for 30-60 s during network/disk fetch — visually indistinguishable from stuck (no label tick during fetch).
 - **D.2** Post-preload engine runs in ~10-100 ms; the two emits (~0% → ~99%) compress into a single repaint frame before `LabRunCompleted` clears `run_progress = None` and the bar vanishes. Synthetic feels smoother because no preload pause + 720-bar SMA loop spans multiple repaint frames.
 
-Dev-note with full 11-hop code-path trace + 3 scoped fix options (not applied; operator-decide) at [`spec/dev-notes/bug-64-progress-bar-investigation-2026-05-27.md`](dev-notes/bug-64-progress-bar-investigation-2026-05-27.md). Includes operator repro recipe in the new AGENT.md 6-section format. Fix options:
+Dev-note with full 11-hop code-path trace + 3 scoped fix options (not applied; operator-decide) at [`spec/dev-notes/bug-64-progress-bar-investigation-2026-05-27.md`](dev-notes/archive/2026-Q2/bug-64-progress-bar-investigation-2026-05-27.md). Includes operator repro recipe in the new AGENT.md 6-section format. Fix options:
 - **D.1.1** sentinel ticker (~25 LoC, runner.rs) — emit periodic sentinel updates during preload
 - **D.1.2** dedicated preload-status field (~50 LoC, 3 files — flagged out of scope)
 - **D.2.1** post-completion linger (~25 LoC, 2 files) — hold the 99% bar visible for 500 ms before clearing

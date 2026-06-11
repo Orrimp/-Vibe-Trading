@@ -41,4 +41,4 @@ screencapture -W spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/repor
 pkill -f "target/release/cockpit"
 ```
 
-Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../presentations/lumen-design-adoption-2026-05-04-to-05-08.md) (Phase 5 section of the consolidated retrospective).
+Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../archive/presentations-2026-Q2.tar.gz) (Phase 5 section of the consolidated retrospective).

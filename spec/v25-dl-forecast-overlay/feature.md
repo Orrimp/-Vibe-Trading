@@ -18,7 +18,7 @@ supersedes: v25-kronos-forecast-overlay (dropped 2026-05-16 — see ADR-0028)
 > v2.5 overlay. Each phase is its own feature folder + ship.
 
 Operator-locked direction (2026-05-17): build **all three model families**
-from [v25-dl-reading-list-2026-05-16](../dev-notes/v25-dl-reading-list-2026-05-16.md)
+from [v25-dl-reading-list-2026-05-16](../dev-notes/archive/2026-Q2/v25-dl-reading-list-2026-05-16.md)
 sequentially, sharing infrastructure (training loop, data loader,
 checkpoint provenance, audit emission, replay-cache wiring). Each ship is
 independently reviewable; v2.6 picks the canonical winner.
@@ -100,7 +100,7 @@ owns its own feature folder, tasks, and reports.
 - 2026-05-17 (orchestrator): reframed as 4-phase roadmap. v2.5 narrowed
   to TCN; v2.5a (PatchTST), v2.5b (vanilla Transformer), v2.6 (bake-off)
   opened as queued feature folders. Operator decision after reading
-  [`spec/dev-notes/v25-dl-reading-list-2026-05-16.md`](../dev-notes/v25-dl-reading-list-2026-05-16.md):
+  [`spec/dev-notes/v25-dl-reading-list-2026-05-16.md`](../dev-notes/archive/2026-Q2/v25-dl-reading-list-2026-05-16.md):
   build all three families for empirical bake-off rather than picking
   one upfront. Status: draft → roadmap.
 - 2026-05-16 (orchestrator): feature replaced — was

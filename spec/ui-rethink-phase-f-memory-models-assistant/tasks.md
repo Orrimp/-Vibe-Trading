@@ -13,7 +13,7 @@ updated: 2026-05-21
 > carries only the T-A* rows; T-T* / T-D-N* are appended in M-T1 by
 > the architect.** Pointers: [feature.md](feature.md) carries R1-R8,
 > Q1-Q8, K1-K8, H1-H6. Scope source-of-truth:
-> [dev-note](../dev-notes/ui-rethink-2026-05-17.md) §6 Phase F
+> [dev-note](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md) §6 Phase F
 > (lines 1098-1112), §J7 (lines 561-595, reflection memory), §J8
 > (lines 596-637, model versions), §6 Phase ordering (lines 1114-1140).
 > This is the **sixth and final** concrete phase of the UI rethink;

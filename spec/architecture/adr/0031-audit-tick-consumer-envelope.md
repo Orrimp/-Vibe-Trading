@@ -41,7 +41,7 @@ Adding a tap per consumer would multiply the number of write call sites
 in `crates/exec` and the auditor's hot path. The
 [`barter-rs` AuditStream pattern](https://github.com/barter-rs/barter-rs/blob/main/barter/src/engine/audit/mod.rs)
 (read 2026-05-17, documented in
-[`spec/dev-notes/external-code-patterns-2026-05-17.md`](../../dev-notes/external-code-patterns-2026-05-17.md))
+[`spec/dev-notes/external-code-patterns-2026-05-17.md`](../../dev-notes/archive/2026-Q2/external-code-patterns-2026-05-17.md))
 solves this with a generic `AuditTick<Event, Context>` envelope and
 consumer-side `Iterator<Item = AuditTick<…>>` abstraction.
 
@@ -146,7 +146,7 @@ send is constant-time).
 
 ## References
 
-- [`spec/dev-notes/external-code-patterns-2026-05-17.md`](../../dev-notes/external-code-patterns-2026-05-17.md) — the survey that led to this ADR.
+- [`spec/dev-notes/external-code-patterns-2026-05-17.md`](../../dev-notes/archive/2026-Q2/external-code-patterns-2026-05-17.md) — the survey that led to this ADR.
 - [`barter-rs` engine/audit module](https://github.com/barter-rs/barter-rs/blob/main/barter/src/engine/audit/mod.rs) — pattern source.
 - [`spec/architecture/01-data-flow.md`](../01-data-flow.md) — edge table this ADR extends.
 - [`crates/audit/src/journal.rs`](../../../crates/audit/src/journal.rs) — primary write surface this ADR augments.

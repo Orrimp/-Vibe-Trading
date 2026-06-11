@@ -10,7 +10,7 @@ predecessor: ui-rethink-phase-b-lab-run v0.2.0
 # UI rethink Phase C — Sidebar IA flip + Live + Strategy registry + Settings rollup
 
 > Third concrete feature carved out of
-> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/ui-rethink-2026-05-17.md).
+> [`spec/dev-notes/ui-rethink-2026-05-17.md`](../dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md).
 > Dev-note §6 Phase C is the **scope source-of-truth**; this brief is
 > the **implementation contract**. Predecessor:
 > [`ui-rethink-phase-b-lab-run v0.2.0`](../ui-rethink-phase-b-lab-run/feature.md)

@@ -437,7 +437,7 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
     `Space::new()` spacers awaiting the per-block tasks.
   - Net-new strings (additive — Constraint 2 unchanged):
     - `PANEL_HUMAN_CONTROL_TITLE = "You're in control"` per
-      [`HumanControl.jsx:9`](../../design/project/ui_kits/desktop/HumanControl.jsx).
+      [`HumanControl.jsx:9`](../../archive/design-prototypes-2026-Q2.tar.gz).
     - `PANEL_HUMAN_CONTROL_META = "Human-in-the-loop"`.
     - `HUMAN_CONTROL_LIMITS_UNAVAILABLE = "Risk limits unavailable"`
       (R3.4 error-state copy).
@@ -789,7 +789,7 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
   - Per-mode hint copy below the segment row, rendered via
     `frame::muted_body(...)` against the active mode's hint constant.
   - Net-new hint constants (additive — per
-    [`HumanControl.jsx:27–31`](../../design/project/ui_kits/desktop/HumanControl.jsx)):
+    [`HumanControl.jsx:27–31`](../../archive/design-prototypes-2026-Q2.tar.gz)):
     - `EXECUTION_MODE_OBSERVE_HINT = "Watch only — no orders sent."`
     - `EXECUTION_MODE_SUPERVISED_HINT = "Each decision needs your approval."`
     - `EXECUTION_MODE_AUTO_HINT = "Within-envelope autonomy."`
@@ -1334,9 +1334,9 @@ T1909's modal + T1912's focus-ring + T1902's audit writer. T1913
     report bodies — out of Phase 5 scope by construction).
   - _ticked 2026-05-07 (tester, second pass)._
   - **Closing block (tester second-pass PASS):**
-    - **Report:** [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md)
+    - **Report:** [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/test-2026-05-07b-lumen-phase-5-humancontrol-agentfeed.md`](../../archive/tester-reports-2026-05-to-06.tar.gz)
       (first-pass FAIL preserved on disk at
-      [`test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md`](reports/test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md)
+      [`test-2026-05-07-lumen-phase-5-humancontrol-agentfeed.md`](../../archive/tester-reports-2026-05-to-06.tar.gz)
       for audit; `b` suffix per Phase 1 third-pass / Phase 4
       second-pass precedent).
     - **Eight gate results (inline):**
@@ -1574,6 +1574,6 @@ spec/architecture.md                           [Q1–Q15 ratification block (Pha
 - Tape widget (rename target):
   [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs).
 - Lumen HumanControl reference component (visual contract source):
-  [`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../../design/project/ui_kits/desktop/HumanControl.jsx).
+  [`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).
 - Lumen AgentFeed reference component (rename source):
-  [`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../../design/project/ui_kits/desktop/AgentFeed.jsx).
+  [`spec/design/project/ui_kits/desktop/AgentFeed.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).

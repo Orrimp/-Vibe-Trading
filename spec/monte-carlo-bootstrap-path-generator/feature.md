@@ -12,9 +12,9 @@ updated: 2026-05-30
 > **Monte-Carlo robustness lane — C1 (first slice, wave 1 of 2).** Per the
 > operator's 4 locked strategic decisions (2026-05-30) and the analyst
 > direction note
-> [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md)
+> [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/archive/2026-Q2/strategy-robustness-monte-carlo-direction-2026-05-29.md)
 > § 6 (C1) + the architect readiness audit
-> [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
+> [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
 > § 2(a) / § 6.2 Phase MC-1. This is the **path-generator primitive**: given
 > a real crypto return series + a master seed + N, produce N synthetic price
 > paths via **stationary block bootstrap** (Politis–Romano 1994), deterministic
@@ -58,8 +58,8 @@ Why this is the durable first bet, not the cheap one:
   result). No generative model to mis-specify.
 - **Categorically NOT the retired bet.** GARCH and regime-switching were retired
   as **alpha sources** (forecasting cousins;
-  [`v3-vol-retirement-and-c5-promotion-2026-05-22.md`](../dev-notes/v3-vol-retirement-and-c5-promotion-2026-05-22.md),
-  [`v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/v25-dl-journey-retrospective-2026-05-22.md)).
+  [`v3-vol-retirement-and-c5-promotion-2026-05-22.md`](../dev-notes/archive/2026-Q2/v3-vol-retirement-and-c5-promotion-2026-05-22.md),
+  [`v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)).
   Bootstrap-of-real-returns **predicts nothing** — it resamples an existing
   series to measure the variance of an already-shipped strategy's outcome under
   input perturbation. One hunts signal; this quantifies uncertainty. **This
@@ -746,9 +746,9 @@ _tester links to reports here._
   robustness lane (M0 pass), under the operator's 4 locked strategic decisions
   (2026-05-30): Q1 = stationary block bootstrap first / GBM demoted to
   smoke-test; Q3 = robustness harness first / learning loop last. Grounded in
-  [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/strategy-robustness-monte-carlo-direction-2026-05-29.md)
+  [`strategy-robustness-monte-carlo-direction-2026-05-29.md`](../dev-notes/archive/2026-Q2/strategy-robustness-monte-carlo-direction-2026-05-29.md)
   § 6 (C1) + the architect readiness audit
-  [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
+  [`monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
   § 2(a) / § 6.2 Phase MC-1. R1-R4 + R-NR (6 clauses, incl. the adapted
   CLAUDE.md generator-half gate R-NR.6) + K1-K4 + H1-H3 + Q-MCB-1/2/3 +
   pre-drawn 4-cell verdict tree. All Qs bias DURABLE per AGENT.md 2026-05-28;

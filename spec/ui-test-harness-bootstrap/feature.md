@@ -942,7 +942,7 @@ tester cycle, not a precondition for the architect handoff.
   seeding queued as week-2 follow-up. Operator decision: "Commit —
   V14 covered, V15 partial-accept".
 - 2026-05-12 (operator): **SHIPPED.** Operator approval recorded
-  in [`presentations/ui-test-harness-bootstrap-2026-05-12.md ## Approval`](presentations/ui-test-harness-bootstrap-2026-05-12.md#approval)
+  in [`presentations/ui-test-harness-bootstrap-2026-05-12.md ## Approval`](../archive/presentations-2026-Q2.tar.gz)
   as `[x] Approved — ship`. Evaluator emitted `VERDICT → PASS`
   (`reports/evaluation-2026-05-12T13-15Z.md`). Anchors PASS 11/11.
   Frontmatter flipped `in-progress → shipped`; `owner: developer →
