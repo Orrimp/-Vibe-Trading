@@ -2822,6 +2822,41 @@ mod live_screen {
             live_screen_summary(&c, ThemeMode::Light)
         );
     }
+
+    /// cockpit-live-trades-counter (TODO #2, 2026-06-11) — the Live screen's
+    /// Trades card renders the SESSION fill count at the summary/render layer
+    /// (the layer the operator reads), not just in the model. Drives real
+    /// `FillReceived` messages through the production `update` path after the
+    /// strip is Ready, then asserts the rendered card text.
+    #[test]
+    fn live_kpi_trades_card_shows_session_fill_count() {
+        use trading_core::{FeeTier, FillView, Price, Quantity, Side, Symbol};
+
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Live;
+        seed_ready_live(&mut c);
+
+        for id in 1..=3u64 {
+            let fill = FillView {
+                symbol: Symbol::new("BTCUSDT"),
+                side: Side::Buy,
+                price: Price::new(dec!(100) + rust_decimal::Decimal::from(id))
+                    .unwrap_or_else(|_| unreachable!()),
+                qty: Quantity::new(dec!(1)).unwrap_or_else(|_| unreachable!()),
+                fee: Money::from_decimal(dec!(0)),
+                fee_tier: FeeTier::Taker,
+                venue_ts: Timestamp::now(),
+                transaction_id: smol_str::SmolStr::default(),
+            };
+            update(&mut c, Message::FillReceived(fill));
+        }
+
+        let summary = live_screen_summary(&c, ThemeMode::Dark);
+        assert!(
+            summary.contains("card Trades: 3"),
+            "Trades card must render the session fill count (3); summary:\n{summary}"
+        );
+    }
 }
 
 // ── Phase C — Strategy registry snapshots (ui-rethink-phase-c-sidebar-ia T-D-N18) ──

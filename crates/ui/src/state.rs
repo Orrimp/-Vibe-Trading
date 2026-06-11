@@ -1030,6 +1030,18 @@ pub struct Cockpit {
     /// (session-scoped). **NOT serialized.**
     pub live_equity_last_as_of: Option<Timestamp>,
 
+    /// cockpit-live-trades-counter (2026-06-11, TODO #2) — session-scoped
+    /// count of fills received over the live bus. The KPI strip's "Trades"
+    /// card renders THIS (a true session total), not `tape.len()` — the tape
+    /// is a capped/evicting display deque (`TAPE_MAX_ROWS`), so its length is
+    /// a sliding window, not a total. Counts every `FillReceived`, including
+    /// fills routed to the paused-tape buffer (pausing the tape display does
+    /// not pause trading). Semantic: FILLS, not round-trip trades — honest
+    /// for a monitor; a round-trip counter would need exec-side pairing.
+    /// Reset to 0 each boot (session-scoped, like the equity buffer).
+    /// **NOT serialized.**
+    pub live_fill_count: u64,
+
     /// Derived-on-append (D5) render state for the Live equity curve.
     /// `Loading` until the first point; `Ready(series)` from ≥1 point;
     /// `Error(msg)` on `PnlError`; `Empty` only if the channel closes with
@@ -1123,6 +1135,7 @@ impl std::fmt::Debug for Cockpit {
             .field("strategy_equity", &self.strategy_equity)
             .field("live_equity_buffer_len", &self.live_equity_buffer.len())
             .field("live_equity_last_as_of", &self.live_equity_last_as_of)
+            .field("live_fill_count", &self.live_fill_count)
             .field("live_equity_curve", &self.live_equity_curve)
             .field("live_kpi", &self.live_kpi)
             .field("execution_mode", &self.execution_mode)
@@ -1185,6 +1198,7 @@ impl Default for Cockpit {
             // cockpit-live-dashboard-wiring — session-scoped, empty on boot.
             live_equity_buffer: VecDeque::new(),
             live_equity_last_as_of: None,
+            live_fill_count: 0,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
             execution_mode: ExecutionMode::default(),
@@ -1298,6 +1312,7 @@ impl Cockpit {
             // live curve/strip seed it via `Message::PnlRefreshed` updates.
             live_equity_buffer: VecDeque::new(),
             live_equity_last_as_of: None,
+            live_fill_count: 0,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
             execution_mode: ExecutionMode::default(),
@@ -1351,10 +1366,11 @@ impl Cockpit {
     ///    can never error on it — without ever panicking the rasterizer or
     ///    dropping a delivered point. (No-op in practice; pure defense.)
     /// 3. **`is_all_absent` 1-point trap** — a single point yields
-    ///    `total_return = max_dd = trades = 0`, byte-identical to the
-    ///    all-absent sentinel (`kpi_strip::is_all_absent`), which would render
-    ///    six dashes. The KPI strip therefore stays `Loading` until ≥2 points;
-    ///    the curve renders from ≥1 (a 1-point curve is valid).
+    ///    `total_return = max_dd = 0` (and `trades = 0` until the first fill
+    ///    lands), byte-identical to the all-absent sentinel
+    ///    (`kpi_strip::is_all_absent`), which would render six dashes. The
+    ///    KPI strip therefore stays `Loading` until ≥2 points; the curve
+    ///    renders from ≥1 (a 1-point curve is valid).
     fn push_live_equity_point(
         &mut self,
         as_of: Timestamp,
@@ -1433,7 +1449,10 @@ impl Cockpit {
                 self.live_kpi = PanelState::Ready(BacktestMetrics {
                     total_return_pct,
                     max_drawdown_pct,
-                    trades: 0,
+                    // Session fill count (cockpit-live-trades-counter). Also
+                    // updated in place by the `FillReceived` arm between
+                    // per-bar rebuilds.
+                    trades: self.live_fill_count,
                     // No live Sharpe/CAGR/Win-rate math (no `core` source,
                     // out of scope for a monitor — D2). Render `—`.
                     cagr_pct: Decimal::ZERO,
@@ -1972,6 +1991,16 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             model.last_tick_ts = Some(tick.venue_ts);
         }
         Message::FillReceived(fill) => {
+            // cockpit-live-trades-counter (TODO #2) — every fill counts toward
+            // the session total, INCLUDING fills buffered while the tape
+            // display is paused (pausing the display doesn't pause trading).
+            // If the KPI strip is already Ready, update its Trades card
+            // in place so the count is current the instant the fill lands,
+            // not only at the next per-bar PnL rebuild.
+            model.live_fill_count = model.live_fill_count.saturating_add(1);
+            if let PanelState::Ready(m) = &mut model.live_kpi {
+                m.trades = model.live_fill_count;
+            }
             if model.tape_paused {
                 model.tape_paused_buffer.push_front(fill);
                 while model.tape_paused_buffer.len() > TAPE_MAX_ROWS {
@@ -3135,6 +3164,58 @@ mod tests {
         // all-absent sentinel — the kpi_strip widget's `is_all_absent` guard
         // would not mask it.
         assert!(!matches!(c.live_kpi, PanelState::Loading));
+    }
+
+    /// cockpit-live-trades-counter (TODO #2, 2026-06-11) — the KPI strip's
+    /// "Trades" card shows the SESSION fill total (`live_fill_count`), not the
+    /// tape window (`tape.len()` is a capped/evicting deque). Fills count
+    /// immediately (in-place update on a Ready strip), survive the per-bar
+    /// KPI rebuild, and include fills received while the tape display is
+    /// paused (pausing the display doesn't pause trading).
+    #[test]
+    fn live_trades_counter_counts_session_fills() {
+        use trading_core::{FeeTier, Price, Quantity, Side, Symbol};
+        fn fill(id: u64) -> FillView {
+            FillView {
+                symbol: Symbol::new("BTCUSDT"),
+                side: Side::Buy,
+                price: Price::new(dec!(100) + Decimal::from(id)).unwrap_or_else(|_| unreachable!()),
+                qty: Quantity::new(dec!(1)).unwrap_or_else(|_| unreachable!()),
+                fee: Money::from_decimal(dec!(0)),
+                fee_tier: FeeTier::Taker,
+                venue_ts: Timestamp::now(),
+                transaction_id: smol_str::SmolStr::default(),
+            }
+        }
+
+        let mut c = Cockpit::new();
+        // Two equity points → strip Ready, trades = 0 (no fills yet).
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(1000))));
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(1100))));
+        match &c.live_kpi {
+            PanelState::Ready(m) => assert_eq!(m.trades, 0),
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
+
+        // Three fills — the middle one while the tape display is paused.
+        update(&mut c, Message::FillReceived(fill(1)));
+        update(&mut c, Message::TapePauseToggled);
+        update(&mut c, Message::FillReceived(fill(2)));
+        update(&mut c, Message::TapePauseToggled);
+        update(&mut c, Message::FillReceived(fill(3)));
+        assert_eq!(c.live_fill_count, 3, "paused fills must still count");
+        // In-place update: the card is current BEFORE the next PnL rebuild.
+        match &c.live_kpi {
+            PanelState::Ready(m) => assert_eq!(m.trades, 3),
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
+
+        // The per-bar KPI rebuild carries the counter (doesn't reset it).
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(120, dec!(1200))));
+        match &c.live_kpi {
+            PanelState::Ready(m) => assert_eq!(m.trades, 3),
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
     }
 
     /// AC2 — live Max-DD is real: drive a drawdown and assert the strip's

@@ -68,14 +68,15 @@ keys on `as_of`, plots `x_coord`), `crates/ui/src/widgets/equity_curve.rs` (NaN 
 
 ---
 
-## 2. Trades KPI always shows 0
+## 2. ✅ DONE (2026-06-11) — Trades KPI shows the live session fill count
 
-**Symptom:** the Live KPI strip's "Trades" card shows 0.
-**Why:** there is no live fill counter — `FillReceived` only pushes into the capped/evicting `tape`
-deque, so `tape.len()` is a sliding window, not a session total. This is honest (0, not faked), but
-a real counter is the follow-on.
-**Start here:** `crates/ui/src/state.rs` (`FillReceived` arm, ~line 1782) — add a `u64` session
-counter; render it in `crates/ui/src/widgets/kpi_strip.rs`.
+`Cockpit.live_fill_count` (u64, session-scoped) increments on every `FillReceived` — including
+fills buffered while the tape display is paused — updates a Ready KPI strip **in place** (current
+the instant a fill lands, not only at the next per-bar rebuild), and feeds the per-bar KPI rebuild.
+Semantic: **fills**, not round-trips (honest for a monitor; round-trip pairing would be exec-side).
+Verified at the model layer (`live_trades_counter_counts_session_fills`) AND the summary/render
+layer (`panel_snapshots::live_kpi_trades_card_shows_session_fill_count` asserts the rendered
+"Trades: 3" card text); cockpit-smoke PASS.
 
 ---
 
@@ -89,10 +90,10 @@ note in `spec/cockpit-live-dashboard-wiring/feature.md`.
 
 ---
 
-## 4. Trivial: deprecated `Screen::Home`
+## 4. ✅ DONE (2026-06-11) — deprecated `Screen::Home` → `Screen::Live`
 
-`crates/ui/src/bin/cockpit.rs:185` uses the deprecated `Screen::Home` alias → change to
-`Screen::Live`. One line; currently just a build warning.
+`crates/ui/src/bin/cockpit.rs:185` now uses `Screen::Live` (the alias target — behavior-identical).
+Deprecation warning gone; cockpit-smoke PASS on the fixtures boot.
 
 ---
 

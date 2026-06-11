@@ -316,6 +316,27 @@ after the Notional-column fix landed).
   If the operator is still seeing only $4, they may be looking at the Fee column
   or have a stale binary. No code change needed for Issue 2 beyond the debug log.
 
+- [x] **I3 — Trades KPI always 0 → live session fill counter (TODO #2, 2026-06-11).**
+  Added `Cockpit.live_fill_count: u64` (session-scoped, NOT serialized): incremented on
+  every `Message::FillReceived` — including fills routed to the paused-tape buffer
+  (pausing the display doesn't pause trading) — with an **in-place** `m.trades` update on
+  a Ready strip (count is current the instant the fill lands, between per-bar rebuilds),
+  and `trades: self.live_fill_count` in the per-bar KPI rebuild. Semantic: FILLS, not
+  round-trips (honest for a monitor; round-trip pairing is exec-side, out of scope).
+  - **file:line:** `crates/ui/src/state.rs` (field by `live_equity_last_as_of`;
+    `FillReceived` arm; KPI rebuild in `push_live_equity_point`).
+  - **Tests:** model layer `state.rs::live_trades_counter_counts_session_fills`
+    (counts paused fills; in-place update; rebuild carries count) + render/summary layer
+    `panel_snapshots.rs::live_kpi_trades_card_shows_session_fill_count` (asserts the
+    rendered "card Trades: 3" text through the production `update` path). Full ui suite
+    440 lib + 100 panel snapshots green; `live_equity_render` harness 5/5; cockpit-smoke
+    PASS (`reports/cockpit-smoke-2026-06-11T19-05Z.log`).
+
+- [x] **I4 — deprecated `Screen::Home` boot screen (TODO #4, 2026-06-11).**
+  `crates/ui/src/bin/cockpit.rs:185` `Screen::Home` → `Screen::Live` (alias target,
+  behavior-identical; removes the deprecation warning). Covered by the same
+  cockpit-smoke PASS above.
+
 ## Notes
 
 - **Why solo (no developer):** D1=(a) means 0% agent/exec work — the `pnl`

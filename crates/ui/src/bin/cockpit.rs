@@ -182,7 +182,7 @@ impl App {
             .map(|(v, s)| (*v, Symbol::new(*s)))
             .collect();
         cockpit.universe = universe.clone();
-        cockpit.current_screen = Screen::Home;
+        cockpit.current_screen = Screen::Live;
         // Default selected symbol: BTCUSDT (index 2 in XRP-first order).
         let default_pair = universe
             .iter()
