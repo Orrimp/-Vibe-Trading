@@ -10,9 +10,13 @@
 #![warn(clippy::pedantic)]
 
 pub mod bootstrap;
+pub mod equity_store;
 pub mod journal;
 pub mod ledger;
 pub mod query;
 pub mod tick;
 
+pub use equity_store::{
+    EquitySnapshotRow, FakeLiveEquityStore, LedgerEquityStore, LiveEquityStore,
+};
 pub use ledger::Ledger;

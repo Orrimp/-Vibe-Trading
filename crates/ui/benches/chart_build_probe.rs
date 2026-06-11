@@ -94,7 +94,11 @@ fn median(sorted: &[Duration]) -> Duration {
 /// `Emulator::screenshot` (iced_test 0.14, emulator.rs:458) leaks its
 /// `UserInterface::Cache` and panics on a second call — the same
 /// constraint `benches/cockpit_render.rs` documents.
-fn measure_split(screen: Screen, viewport: iced::Size, frames: usize) -> (Vec<Duration>, Vec<Duration>) {
+fn measure_split(
+    screen: Screen,
+    viewport: iced::Size,
+    frames: usize,
+) -> (Vec<Duration>, Vec<Duration>) {
     // SAFETY: single-threaded bench setup before any render.
     unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
 

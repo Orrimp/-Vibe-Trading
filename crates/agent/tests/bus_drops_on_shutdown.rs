@@ -77,6 +77,7 @@ async fn t903d_bus_strong_count_collapses_on_cancel() {
         kill_switch: Arc::clone(&kill_switch),
         registry,
         boot_id: boot_id.clone(),
+        equity_store: None, // tests use no equity store
     };
 
     // Drop the outer `bus` rebinding so `bus_outer` is the only "outside

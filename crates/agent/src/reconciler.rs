@@ -11,12 +11,19 @@
 //! [`EventBus`] `pnl` channel so the cockpit's P&L panel can render
 //! the live snapshot.  Backtests instantiate the reconciler with
 //! `bus = None` so report bytes are unchanged (R15 — anchor gate).
+//!
+//! live-equity-history-durable (ADR-0052): when an [`audit::LiveEquityStore`]
+//! is attached via [`ReconcilerTask::with_equity_store`], every
+//! [`ReconcilerTask::after_bar_close`] call fire-and-forget persists the
+//! snapshot.  The store is only provided in **paper/live mode**; research
+//! mode passes `None` at construction time (the A2 mode gate).
 
 use std::sync::Arc;
 
 use rust_decimal::Decimal;
 use tracing::info;
 use trading_core::{Money, PnlSnapshot, Timestamp};
+use uuid::Uuid;
 
 use crate::EventBus;
 use crate::kill_switch::KillSwitch;
@@ -70,6 +77,16 @@ pub struct ReconcilerTask {
     /// renders the live P&L panel (T903c — live-cockpit-unified).
     /// Backtests pass `None` so report bytes stay unchanged.
     bus: Option<Arc<EventBus>>,
+    /// Optional durable equity store (live-equity-history-durable ADR-0052).
+    ///
+    /// When `Some`, every [`Self::after_bar_close`] call fire-and-forget
+    /// persists the snapshot via a tokio::spawn (A6 — never blocks/panics
+    /// the trading loop; write errors are logged and discarded).
+    ///
+    /// **Only provided in paper/live mode** — the mode gate (A2) lives at
+    /// construction time: `runtime::run` passes `None` for research mode
+    /// so no row is ever written during replay.  Backtests use `None`.
+    equity_store: Option<Arc<dyn audit::LiveEquityStore>>,
 }
 
 impl ReconcilerTask {
@@ -85,6 +102,7 @@ impl ReconcilerTask {
             kill_switch,
             interval_ms,
             bus: None,
+            equity_store: None,
         }
     }
 
@@ -93,6 +111,19 @@ impl ReconcilerTask {
     #[must_use]
     pub fn with_bus(mut self, bus: Arc<EventBus>) -> Self {
         self.bus = Some(bus);
+        self
+    }
+
+    /// Builder helper: attach an equity store so `after_bar_close`
+    /// fire-and-forget persists the snapshot (live-equity-history-durable
+    /// ADR-0052 / A6).
+    ///
+    /// **Only call this for paper/live mode** — the mode gate (A2) lives at
+    /// the construction call site (`runtime::run`): research mode passes
+    /// `None`; paper/live mode passes `Some(store)`.
+    #[must_use]
+    pub fn with_equity_store(mut self, store: Arc<dyn audit::LiveEquityStore>) -> Self {
+        self.equity_store = Some(store);
         self
     }
 
@@ -116,11 +147,16 @@ impl ReconcilerTask {
     /// (cockpit-live-equity-render-guard, approach A).  In live / paper
     /// mode `bar.close_ts ≈ now()` so both fields nearly coincide.
     ///
+    /// When an [`audit::LiveEquityStore`] is attached, the snapshot is
+    /// fire-and-forget persisted via a `tokio::spawn` (A6 — never blocks
+    /// or panics the trading loop; write errors are logged and discarded).
+    ///
     /// All money math uses [`Decimal`] / [`Money<Usdt>`]; never `f64`.
     /// Returns the computed snapshot so the caller can persist or
     /// log it independently.
     pub fn after_bar_close(&self, bar_ts: Timestamp) -> PnlSnapshot {
         let state = self.state_rx.borrow().clone();
+        let as_of = Timestamp::now();
         let snap = PnlSnapshot {
             cash: Money::from_decimal(state.cash),
             unrealized: Money::from_decimal(state.unrealized()),
@@ -132,17 +168,41 @@ impl ReconcilerTask {
             // baseline from the audit ledger.
             daily_return: Money::from_decimal(Decimal::ZERO),
             // Wallclock for the delivery guard / freshness (monotone).
-            as_of: Timestamp::now(),
+            as_of,
             // Data time for the chart x-axis (the historical bar timeline).
             bar_ts: Some(bar_ts),
         };
         if let Some(bus) = &self.bus {
             bus.publish_pnl(snap.clone());
         }
+        // live-equity-history-durable ADR-0052 A6: fire-and-forget persist.
+        // The store is only Some in paper/live mode (the A2 mode gate lives at
+        // `ReconcilerTask::with_equity_store` construction time in runtime::run).
+        if let Some(store) = &self.equity_store {
+            let store = Arc::clone(store);
+            let row = build_snapshot_row(&snap, "paper");
+            tokio::spawn(async move {
+                if let Err(e) = store.append_equity_snapshot(&row).await {
+                    tracing::warn!(
+                        error = %e,
+                        bar_ts = %bar_ts,
+                        "equity_snapshot write failed (non-fatal — continuing)"
+                    );
+                }
+            });
+        }
         snap
     }
 
     /// Spawn the reconciler as a background tokio task.
+    ///
+    /// Each interval tick:
+    /// 1. Checks for imbalance vs last recorded equity (original T26 logic).
+    /// 2. Calls [`Self::after_bar_close`] with `bar_ts = Timestamp::now()`
+    ///    so any wired bus/store receives the periodic snapshot.
+    ///    In paper/live mode `bar_ts ≈ now()` — the bar close time and
+    ///    wallclock nearly coincide (unlike replay mode where `bar_ts`
+    ///    is a historical data time).
     pub fn spawn(self) {
         tokio::spawn(async move {
             let interval = tokio::time::Duration::from_millis(self.interval_ms);
@@ -169,9 +229,41 @@ impl ReconcilerTask {
                 }
 
                 last_equity = current_equity;
+
+                // Emit + optionally persist a PnL snapshot every tick
+                // (live-cockpit-unified T903c + ADR-0052 A6).
+                // In paper/live mode bar_ts ≈ now() — bars arrive in real-time
+                // so the bar close time and wallclock nearly coincide.
+                self.after_bar_close(Timestamp::now());
             }
             info!("reconciler stopped");
         });
+    }
+}
+
+/// Build an [`audit::EquitySnapshotRow`] from a [`PnlSnapshot`] and the
+/// agent mode string (live-equity-history-durable ADR-0052 / A3).
+///
+/// Called from [`ReconcilerTask::after_bar_close`] (paper/live path) and
+/// optionally from the research trading loop (where it is never called
+/// because the mode gate is `None` at construction time — A2).
+///
+/// `bar_ts` in the row comes from `snap.bar_ts.unwrap_or(snap.as_of)` so
+/// the row's x-axis coordinate matches the chart (approach A invariant).
+/// The `ts` field is the row mint wallclock (`snap.as_of` is already
+/// `Timestamp::now()` at this point).
+fn build_snapshot_row(snap: &PnlSnapshot, mode: &str) -> audit::EquitySnapshotRow {
+    let bar_ts = snap.bar_ts.unwrap_or(snap.as_of);
+    audit::EquitySnapshotRow {
+        id: Uuid::new_v4().to_string(),
+        ts: snap.as_of,
+        bar_ts,
+        as_of: snap.as_of,
+        total_equity: snap.total_equity,
+        cash: snap.cash,
+        realized: snap.realized,
+        unrealized: snap.unrealized,
+        mode: mode.to_string(),
     }
 }
 

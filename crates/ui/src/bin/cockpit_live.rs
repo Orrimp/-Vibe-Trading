@@ -443,6 +443,14 @@ fn main() -> Result<()> {
     let reflection_db_path: PathBuf = cfg.reflection.path.clone();
     #[cfg(feature = "live")]
     let checkpoint_dir: PathBuf = PathBuf::from("crates/forecast/checkpoints/anchors");
+    // live-equity-history-durable (T7 / A4) — capture the run mode (CLONE; the
+    // enum is not `Copy`) before `cfg` is moved into `Arc::new(cfg)` below, so
+    // the boot-hydrate task closure can read it. The boot equity hydrate is
+    // issued ONLY in paper/live mode; research replay restarts the 2023 series
+    // each boot, so hydrating it would overlap/duplicate a meaningless curve —
+    // research stays session-scoped (R6 / A2).
+    #[cfg(feature = "live")]
+    let boot_mode: agent::config::Mode = cfg.mode.clone();
 
     // ── cockpit-activity-audit-ledger-producer v0.1.0 — aggregator sender ───────
     // Clone the tick-bus sender for the aggregator. The original `_tick_bus_sender`
@@ -461,6 +469,22 @@ fn main() -> Result<()> {
     let bus_for_aggregator = Arc::clone(&bus);
 
     // ── Side thread: own the runtime, drive agent::runtime::run on it ────────
+    // live-equity-history-durable (T5 reconvergence / A1 / A2) — construct the
+    // durable-equity write store for `RunHandles`. The store is wired ONLY in
+    // paper/live mode: research replay restarts the 2023 series each boot, so
+    // persisting it would overlap/duplicate a meaningless series (the
+    // single load-bearing duplication-prevention gate, A2). `None` in research
+    // means the reconciler's `Option<store>` is absent → it writes nothing.
+    // This write-gate is symmetric with the boot-hydrate READ-gate
+    // (`should_hydrate_equity_on_boot`): research = no write + no hydrate;
+    // paper/live = per-bar write + boot hydrate. Production impl wraps the
+    // existing single-writer `Arc<Ledger>` (ADR-0052 D1).
+    let equity_store: Option<Arc<dyn audit::LiveEquityStore>> =
+        if cfg.mode == agent::config::Mode::Research {
+            None
+        } else {
+            Some(Arc::new(audit::LedgerEquityStore::new(Arc::clone(&ledger))))
+        };
     let agent_handle = {
         let cancel = cancel.clone();
         let handles = RunHandles {
@@ -470,6 +494,7 @@ fn main() -> Result<()> {
             kill_switch: Arc::clone(&kill_switch),
             registry: Arc::clone(&registry),
             boot_id: boot_id.clone(),
+            equity_store,
         };
         let ledger_for_close = Arc::clone(&ledger);
         let boot_id_for_close = boot_id.clone();
@@ -681,6 +706,13 @@ fn main() -> Result<()> {
     let boot_reflection_db_path = reflection_db_path;
     #[cfg(feature = "live")]
     let boot_checkpoint_dir = checkpoint_dir;
+    // live-equity-history-durable (T7 / A4) — capture an rt handle + the ledger
+    // for the boot equity-hydrate task before `app_state` moves into the iced
+    // init closure. Mirrors `boot_rt_for_memory` / `boot_reflection_db_path`.
+    #[cfg(feature = "live")]
+    let boot_rt_for_equity = rt_handle.clone();
+    #[cfg(feature = "live")]
+    let boot_equity_ledger = Arc::clone(&ledger);
 
     let iced_result = iced::application(
         move || {
@@ -760,8 +792,59 @@ fn main() -> Result<()> {
                 )
             };
 
+            // live-equity-history-durable (T7 / A4) — boot-time durable-equity
+            // hydrate task. Mirrors `memory_task`: an `iced::Task::perform` that
+            // spawns the `audit::query::equity_snapshot_tail` reader on the
+            // side-thread tokio runtime (so `ui` keeps its no-direct-sqlx edge —
+            // the query lives in the `audit` crate) and routes the tail back as a
+            // batch `Message::PnlHydrated`. Each row maps to `(bar_ts, as_of,
+            // total_equity)`: `bar_ts` is the plotted x-coord, `as_of` the
+            // delivery key (the `PnlHydrated` arm seeds the guard from the MAX
+            // hydrated `as_of`). `LIMIT = LIVE_EQUITY_BUFFER_CAP` so the hydrate
+            // never exceeds the buffer ring.
+            //
+            // Fail-soft: `equity_snapshot_tail` returns `Ok(vec![])` on an empty
+            // table; `unwrap_or_default()` collapses any reader/join error to an
+            // empty tail → `Message::PnlHydrated(vec![])` is a no-op (the curve
+            // stays session-scoped/Loading), exactly the Memory cold-boot
+            // tolerance. Issued ONLY in paper/live mode — research replay restarts
+            // the 2023 series each boot, so hydrating it would overlap/duplicate a
+            // meaningless curve (R2 / A2). In research mode the task is
+            // `Task::none()`, so no hydrate fires and the curve stays
+            // session-scoped (R6).
             #[cfg(feature = "live")]
-            let boot_task = iced::Task::batch([memory_task, models_task]);
+            let equity_hydrate_task = if !ui::live::should_hydrate_equity_on_boot(&boot_mode) {
+                iced::Task::none()
+            } else {
+                let rt = boot_rt_for_equity.clone();
+                let ledger = Arc::clone(&boot_equity_ledger);
+                iced::Task::perform(
+                    async move {
+                        let join = rt.spawn(async move {
+                            let rows = audit::query::equity_snapshot_tail(
+                                &ledger,
+                                ui::theme::layout::LIVE_EQUITY_BUFFER_CAP,
+                            )
+                            .await
+                            .unwrap_or_default();
+                            rows.into_iter()
+                                .map(|r| (r.bar_ts, r.as_of, r.total_equity))
+                                .collect::<Vec<_>>()
+                        });
+                        match join.await {
+                            Ok(tail) => tail,
+                            Err(e) => {
+                                warn!(error = %e, "equity cold-boot: task join error");
+                                vec![]
+                            }
+                        }
+                    },
+                    Message::PnlHydrated,
+                )
+            };
+
+            #[cfg(feature = "live")]
+            let boot_task = iced::Task::batch([memory_task, models_task, equity_hydrate_task]);
             #[cfg(not(feature = "live"))]
             let boot_task = iced::Task::none();
 

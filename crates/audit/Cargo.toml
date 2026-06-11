@@ -21,6 +21,7 @@ time.workspace = true
 uuid.workspace = true
 tokio.workspace = true
 smol_str.workspace = true
+async-trait.workspace = true
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 sha2.workspace = true
 metrics.workspace = true

@@ -1,7 +1,7 @@
 ---
 slug: live-equity-history-durable
-status: arch-done
-owner: architect
+status: tester-done
+owner: tester
 updated: 2026-06-11
 version: 0.2.0
 trace: REQ-LIVE-EQUITY-HISTORY-001
@@ -11,6 +11,18 @@ trace: REQ-LIVE-EQUITY-HISTORY-001
 
 ## Changelog
 
+- 2026-06-11 (ui-designer): UI track landed (T7-contract, T8, T9, T7). Added
+  `Message::PnlHydrated` batch arm + `live_equity_hydrated` honesty flag
+  (T7-contract, A4/A5 — guard seeded from MAX hydrated `as_of`); extended the
+  render harness with the AC6 hydrated-boot + AC5 post-hydrate-live-append pixel
+  gates (T8); added `LIVE_SINCE_INCEPTION_CAPTION` + the mode-correct caption
+  (T9, R6); wired the boot hydrate seam + `RunHandles.equity_store` write store
+  in `cockpit_live.rs` (T7, gated `mode != Research` via
+  `should_hydrate_equity_on_boot`). Filled `## UI`. Non-live gates green
+  (`--lib` 447, `--test live_equity_render` 7, `--test panel_snapshots` 103);
+  the `--features live` gate is blocked on the parallel developer's in-flight
+  `agent`/`audit` compile (T2–T5) — re-run when exec lands. Zero new theme
+  token; one new string.
 - 2026-06-11 (architect): v0.2.0 — added `## Architecture` (A1–A7 resolving
   Q1–Q7) + drafted [ADR-0052](../architecture/adr/0052-durable-live-equity-series.md)
   (registered in the ADR README same pass). A1 audit-ledger `equity_snapshots`
@@ -666,8 +678,197 @@ no-sqlx edge.)
 
 ## Implementation
 
-_developer ‖ ui-designer fill this._
+_developer (exec track, 2026-06-11): T1–T6 landed. Summary below._
+
+### Exec track (T1–T6) — what was built
+
+**T1 — `LiveEquityStore` trait + `EquitySnapshotRow` DTO + `FakeLiveEquityStore`**
+
+- `crates/audit/src/equity_store.rs` (new file):
+  - `EquitySnapshotRow` carries `(id, ts, bar_ts, as_of, total_equity, cash, realized, unrealized, mode)` — all money as `Money<Usdt>`, all timestamps as `Timestamp`.
+  - `LiveEquityStore` async trait (two methods: `append_equity_snapshot`, `equity_snapshot_tail`).
+  - `LedgerEquityStore` (production impl wrapping `Arc<Ledger>`) and `FakeLiveEquityStore` (test fake: `Arc<Mutex<Vec<EquitySnapshotRow>>>`, thread-safe; `equity_snapshot_tail` sorts by `bar_ts` ascending and returns the last `limit` rows).
+- `crates/audit/Cargo.toml`: added `async-trait.workspace = true`.
+- `crates/audit/src/lib.rs`: added `pub mod equity_store;` + re-exports.
+
+**T2 — Additive migration `013_equity_snapshots.sql`**
+
+- `crates/audit/migrations/013_equity_snapshots.sql` (new): `CREATE TABLE IF NOT EXISTS equity_snapshots` — nine columns, two indexes (`ts` for purge; `bar_ts` for tail query). No `ALTER`, no backfill. Idempotent by construction.
+
+**T3 — Writer `journal::post_equity_snapshot` + `LedgerEquityStore` production impl**
+
+- `crates/audit/src/journal.rs`: added `format_ts_micros` helper (RFC3339 6-digit-fractional, per ADR-0004) and `post_equity_snapshot` (single INSERT, Decimal-as-TEXT per ADR-0003).
+
+**T4 — Reader `query::equity_snapshot_tail` + `purge_old_equity_snapshots`**
+
+- `crates/audit/src/query.rs`: added `equity_snapshot_tail` (fetches newest `limit` rows DESC then reverses to ascending `bar_ts` — the UI boundary helper, no direct sqlx in `ui`), `purge_old_equity_snapshots` (DELETE WHERE ts < cutoff, 30-day horizon), and unit tests (`equity_snapshot_round_trip_ac3`, `equity_snapshot_tail_limit_ac3`, `equity_snapshot_purge_ac8`, `equity_snapshot_tail_empty_table`).
+
+**T5 — Mint-site wiring in `crates/agent`**
+
+- `crates/agent/src/reconciler.rs`:
+  - `equity_store: Option<Arc<dyn audit::LiveEquityStore>>` field on `ReconcilerTask`.
+  - `with_equity_store` builder method.
+  - `after_bar_close` fires a `tokio::spawn` fire-and-forget write when `equity_store.is_some()`; write errors are `tracing::warn`-logged, never propagated.
+  - `build_snapshot_row` helper derives `total_equity`, `cash`, `realized`, `unrealized` from `ReconcilerState` (Decimal arithmetic, no f64).
+- `crates/agent/src/runtime.rs`:
+  - `RunHandles::equity_store: Option<Arc<dyn audit::LiveEquityStore>>` field.
+  - Research branch: `drop(equity_store)` with A2-gate comment — research writes zero rows.
+  - Paper branch: wires the store into `ReconcilerTask::with_equity_store` when `Some`.
+- `crates/agent/src/main.rs`:
+  - Constructs `equity_store: Option<Arc<dyn audit::LiveEquityStore>>` before `RunHandles` — `Some(LedgerEquityStore)` for paper/live, `None` for research.
+
+**T6 — Retention purge (30-day horizon, AC8)**
+
+- `purge_old_equity_snapshots` in `query.rs` (above). Retention hook ready for the nightly task; the `PURGE_EQUITY_HORIZON_DAYS = 30` constant is documented in the function signature.
+
+### Test coverage
+
+- `crates/audit/src/query.rs` (`#[cfg(test)]`): `equity_snapshot_round_trip_ac3`, `equity_snapshot_tail_limit_ac3`, `equity_snapshot_purge_ac8`, `equity_snapshot_tail_empty_table` (AC3, AC8).
+- `crates/audit/src/equity_store.rs` (`#[cfg(test)]`): `fake_store_append_and_tail_monotone_order`, `fake_store_tail_respects_limit`, `fake_store_is_empty_and_len`.
+- `crates/agent/tests/equity_store_integration.rs` (new): `ac1_paper_mode_persists_one_row_per_bar`, `ac2_research_mode_writes_zero_rows`, `ac1_faked_store_tail_is_monotone` (AC1, AC2).
+- `RunHandles` initializers in test files updated to include `equity_store: None` (no behavior change to existing tests).
+
+### Verification
+
+- `cargo test -p audit`: all 46+ tests pass (0 failed).
+- `cargo test -p agent`: all tests pass (0 failed across all integration test files).
+- `cargo clippy -p audit -p agent -- -D warnings`: 0 warnings.
+- `scripts/verify_anchors.sh`: 119/119 PASS — migration is anchor-safe by construction.
+
+### Deviations from the architecture
+
+None. The implementation follows A1–A7 exactly as specified.
 
 ## UI
 
-_ui-designer fills this (the hydrate seam + the render-harness gate)._
+_ui-designer-owned (2026-06-11). Resolves A4 (boot hydrate seam) / A5 (batch
+arm) / R6 (since-inception caption). The Live screen reuses the EXISTING equity
+curve + KPI strip verbatim — **no new widget, no new theme token**. The only
+operator-visible change is the boot-hydrated curve (non-empty before the first
+new bar) and a mode-correct return caption._
+
+### What the operator sees
+
+On a **paper/live** `cockpit_live` boot with prior durable history, the Live
+screen's equity curve is **non-empty immediately** (hydrated from the audit
+ledger's `equity_snapshots` tail) instead of blank-until-first-bar, and the
+return caption reads **"Since inception"** (the figure spans the durable
+multi-session history, measured from account inception). In **research** mode
+nothing is hydrated — the curve stays session-scoped and the caption stays
+**"Session to date"**. An **empty** durable table (fresh ledger) is a no-op:
+curve/strip stay `Loading`, caption stays session-scoped — no blank-screen, no
+overclaim.
+
+### Wireframe (Live screen — hydrated paper/live boot)
+
+```
+┌──────────┬──────────────────────────────────────────────────────────┐
+│ Sidebar  │  Live                                                      │
+│  (Live)  │  System health · latency · server-time · market-health    │
+│          │  ┌──────────────────────────────────────────────────────┐ │
+│          │  │  Equity curve  ── HYDRATED on boot (paper/live) ──    │ │
+│          │  │     /\    (ACCENT polyline; spans bar_ts x-axis,      │ │
+│          │  │    /  \  /   = durable 2023→now history, not blank)   │ │
+│          │  │ __/    \/                                             │ │
+│          │  └──────────────────────────────────────────────────────┘ │
+│          │  [Total return] [CAGR —] [Sharpe —] [Max-DD] [Win —] [Tr.] │
+│          │  Since inception          ← caption flips on hydrate (R6)  │
+│          │  ┌── Positions ──────────┐ ┌── Agent feed ──────────────┐  │
+│          │  └───────────────────────┘ └────────────────────────────┘  │
+└──────────┴──────────────────────────────────────────────────────────┘
+       (research mode: curve session-scoped, caption "Session to date")
+```
+
+### New screens / panels / widgets
+
+- **None.** The Live screen (`screens/live.rs`), the equity curve
+  (`widgets::equity_curve`), and the KPI strip (`widgets::kpi_strip`) are reused
+  verbatim. The change is purely in what *seeds* the model state on boot.
+
+### Model / message contract (T7-contract, A4/A5)
+
+- **`Message::PnlHydrated(Vec<(Timestamp /*bar_ts*/, Timestamp /*as_of*/,
+  Money<Usdt>)>)`** — the batch hydrate variant (A5). One `update` arm seeds
+  `live_equity_buffer` through the existing `push_live_equity_point` (x-coord =
+  `bar_ts`) in a single mutation, seeds `live_equity_last_as_of` from the **MAX
+  hydrated `as_of`** (A4 — so the first live `PnlRefreshed(now())` still lands,
+  never dropped by the delivery guard), and rebuilds the curve `Ready` (≥1 row)
+  + KPI strip `Ready` (≥2 rows) / `Loading` (1 row). Empty hydrate = no-op.
+  The batch delivers every row "as of" the batch max so the per-point guard
+  never drops a hydrate row, even when a row's own `as_of` is non-monotone vs.
+  its `bar_ts` (a backed-up-clock prior session).
+- **`Cockpit.live_equity_hydrated: bool`** — the honesty switch for the return
+  caption. Set `true` only by the `PnlHydrated` arm (a real durable history was
+  loaded); never by a live tick; reset `false` each boot (session-scoped, like
+  the buffer). Drives the "Since inception" vs "Session to date" choice.
+
+### Boot hydrate seam (T7, A4) — `crates/ui/src/bin/cockpit_live.rs`
+
+- `equity_hydrate_task` added to the boot `Task::batch` (mirrors `memory_task`):
+  a `#[cfg(feature = "live")]` `iced::Task::perform` that spawns
+  `audit::query::equity_snapshot_tail(&ledger, LIVE_EQUITY_BUFFER_CAP)` on the
+  side-thread runtime (so `ui` keeps its no-direct-sqlx edge — the query lives
+  in `audit`), maps each `EquitySnapshotRow → (bar_ts, as_of, total_equity)`,
+  and fires `Message::PnlHydrated`. Fail-soft (`unwrap_or_default()` → empty
+  tail → no-op). **Gated `mode != Research`** at the boot site via
+  `ui::live::should_hydrate_equity_on_boot(&mode)` (the named, testable mode
+  seam). The `RunHandles.equity_store` write store is wired symmetrically:
+  `Some(LedgerEquityStore)` in paper/live, `None` in research — research writes
+  nothing AND hydrates nothing.
+
+### New strings added to `ui::strings`
+
+- `LIVE_SINCE_INCEPTION_CAPTION = "Since inception"` — the durable-history
+  return caption (R6). Honest scope label: measured from the first persisted
+  point (account inception), spans sessions/days; **never** annualized /
+  "characterized" / a baseline result. A string test
+  (`since_inception_caption_is_honest_no_overclaim`) bans overclaim tokens.
+  (`LIVE_SESSION_RETURN_CAPTION = "Session to date"` is the unchanged
+  session-scoped precedent.)
+
+### New theme tokens
+
+- **Zero.** The curve/strip/caption reuse `text::SMALL`, `color::FG_3`,
+  `layout::LIVE_EQUITY_BUFFER_CAP`, `color::ACCENT` — all existing tokens.
+
+### Render-harness gate (T8, R5 / AC6 / AC5)
+
+`crates/ui/tests/live_equity_render.rs` extended with two pixel-layer tests
+(the project-law render gate — model-Ready is necessary but not sufficient):
+
+- **`hydrated_boot_curve_actually_renders` (AC6)** — one `Message::PnlHydrated`
+  (faked ≥2-row 2023-`bar_ts` tail), **zero** `PnlRefreshed`, render the real
+  Live screen, assert the `ACCENT` polyline drew (`count ≥
+  CURVE_DREW_MIN_ACCENT`, `x_span ≥ CURVE_X_SPAN_MIN`). A blank-canvas
+  regression fails here.
+- **`live_append_after_hydrate_still_renders_and_grows` (AC5)** — hydrate (all
+  `as_of` in the past), THEN one live `PnlRefreshed(now())`; assert the live
+  point landed (model) AND the curve still rasterizes + extends its x-span (the
+  A4 `as_of` guard-reconciliation proven at the pixel layer — the riskiest
+  decision). Uses the rescale-invariant x-span signal (a new higher peak
+  rescales the Y-axis, so a raw pixel-count comparison is not a valid "grew"
+  proof).
+
+### Accessibility notes
+
+- **Keyboard map:** unchanged — the Live curve + strip + caption are read-only
+  display surfaces (no new interactive element; the hydrate is a boot-time data
+  seed, not an operator action). Existing sidebar/screen keyboard nav is
+  untouched.
+- **Contrast:** the caption uses `color::FG_3` on the panel background — the
+  same token the existing `LIVE_SESSION_RETURN_CAPTION` already uses (contrast
+  verified in `theme`, ≥ 4.5:1). No new color pairing introduced.
+- **Color is not the only signal:** the caption text itself ("Since inception"
+  vs "Session to date") names the scope — the operator never relies on color to
+  distinguish hydrated from session-scoped state.
+- **No blank screens:** the empty-hydrate path keeps the curve/strip honest
+  `Loading` (waiting for first bar), not a "no data" dead-end; the existing
+  `VIEWER_NO_EQUITY_DATA` placeholder copy is unchanged.
+
+### Both-theme coverage
+
+The caption renders correctly under `--theme dark` and `--theme light` — the
+`panel_snapshots` live-screen summary asserts the caption in dark; the
+token-driven `color::FG_3.current(mode)` resolves per theme. The existing
+`live_snapshot__ready_dark` / `__ready_light` snapshots stay byte-unchanged
+(they don't hydrate → caption stays "Session to date").

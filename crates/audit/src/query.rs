@@ -2360,6 +2360,157 @@ pub async fn trail_for_fill_id(
     })
 }
 
+// ── live-equity-history-durable (ADR-0052) ────────────────────────────────────
+
+/// Parse a RFC3339-micros TEXT column from `equity_snapshots` into a
+/// [`Timestamp`].  The format must match the writer in
+/// `journal::post_equity_snapshot`.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on parse failure.
+fn parse_equity_ts(s: &str) -> Result<Timestamp, LedgerError> {
+    // The writer uses `format_ts_micros` which always appends 'Z'; the `time`
+    // crate parses that as UTC via `OffsetDateTime::parse`.
+    let dt = time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::Database(format!("equity_snapshot ts parse error '{s}': {e}")))?;
+    Ok(Timestamp::new(dt))
+}
+
+/// Parse a Decimal-as-TEXT money column from `equity_snapshots` into
+/// [`Money<Usdt>`].
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on parse failure.
+fn parse_equity_money(s: &str) -> Result<Money<Usdt>, LedgerError> {
+    let d: Decimal = s
+        .parse()
+        .map_err(|_| LedgerError::Database(format!("equity_snapshot decimal parse error '{s}'")))?;
+    Ok(Money::from_decimal(d))
+}
+
+/// Read the **tail** of `equity_snapshots` for boot hydration
+/// (live-equity-history-durable A4 / R4 / ADR-0052).
+///
+/// Returns at most `limit` rows (pass `2880` — the `LIVE_EQUITY_BUFFER_CAP`)
+/// in **monotone `bar_ts` ascending** order.  Uses a two-step SQL pattern:
+/// first fetch the `limit` newest rows (DESC), then reverse in Rust — this
+/// avoids a `SQLite` subquery while keeping the final slice in ascending order.
+///
+/// Returns an empty `Vec` when the table is empty or `limit == 0` — callers
+/// treat this as "no history yet" (fail-soft hydrate).
+///
+/// ## UI boundary helper (no-sqlx edge)
+///
+/// This function IS the `audit`-crate boundary helper the hydrate task calls
+/// so `crates/ui` keeps its no-direct-sqlx edge.  The UI track calls:
+/// ```ignore
+/// audit::query::equity_snapshot_tail(&ledger, limit)
+///     .await
+///     .unwrap_or_default()
+/// ```
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL or parse failure.
+pub async fn equity_snapshot_tail(
+    ledger: &Ledger,
+    limit: usize,
+) -> Result<Vec<crate::equity_store::EquitySnapshotRow>, LedgerError> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    // SQLite doesn't bind LIMIT as a parameter with sqlx on all drivers;
+    // use a safe cast to i64 (limit ≤ 2880 fits in i64 trivially).
+    let limit_i64 = i64::try_from(limit).unwrap_or(2880);
+
+    // Fetch the `limit` newest rows (by bar_ts DESC), then we reverse so
+    // the final slice is monotone ascending.
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+    )> = sqlx::query_as(
+        "SELECT id, ts, bar_ts, as_of, total_equity, cash, realized, unrealized, mode \
+             FROM equity_snapshots \
+             ORDER BY bar_ts DESC, rowid DESC \
+             LIMIT ?",
+    )
+    .bind(limit_i64)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    // Parse + reverse to restore ascending bar_ts order.
+    let mut result = Vec::with_capacity(rows.len());
+    for (id, ts_s, bar_ts_s, as_of_s, total_equity_s, cash_s, realized_s, unrealized_s, mode) in
+        rows.into_iter().rev()
+    {
+        result.push(crate::equity_store::EquitySnapshotRow {
+            id,
+            ts: parse_equity_ts(&ts_s)?,
+            bar_ts: parse_equity_ts(&bar_ts_s)?,
+            as_of: parse_equity_ts(&as_of_s)?,
+            total_equity: parse_equity_money(&total_equity_s)?,
+            cash: parse_equity_money(&cash_s)?,
+            realized: parse_equity_money(&realized_s)?,
+            unrealized: parse_equity_money(&unrealized_s)?,
+            mode,
+        });
+    }
+    Ok(result)
+}
+
+/// Purge `equity_snapshots` rows older than `horizon_days` days
+/// (live-equity-history-durable R7 / AC8 / ADR-0052).
+///
+/// Mirrors the nightly ledger-backup task's 30-day retention horizon
+/// (`spec/architecture/08-recovery-and-backups.md`).  The `ts` column
+/// (row mint wallclock, RFC3339-micros) is the purge key.
+///
+/// Callers pass `horizon_days = 30` for the production default.
+///
+/// Returns the number of rows deleted (informational; caller logs + continues).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL failure.
+pub async fn purge_old_equity_snapshots(
+    ledger: &Ledger,
+    horizon_days: u32,
+) -> Result<u64, LedgerError> {
+    // Compute the cutoff as a formatted RFC3339 string. `OffsetDateTime::now_utc()`
+    // is acceptable here (not in a backtest replay path — R3 / anchor-safety).
+    let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(i64::from(horizon_days));
+    let cutoff_str = cutoff
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let result = sqlx::query("DELETE FROM equity_snapshots WHERE ts < ?")
+        .bind(&cutoff_str)
+        .execute(&ledger.pool)
+        .await
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let deleted = result.rows_affected();
+    tracing::debug!(
+        deleted,
+        horizon_days,
+        cutoff = %cutoff_str,
+        "equity_snapshots purge complete"
+    );
+    Ok(deleted)
+}
+
 // ── T1606 — recent_fills_filtered unit tests (Phase 2 R12 / Q10) ─────────────
 
 #[cfg(test)]
@@ -3162,5 +3313,170 @@ mod tests {
             .find(|o| o.run_id.as_str() == orphan_id)
             .unwrap();
         assert_eq!(orphan_entry.pid, Some(777), "pid must be captured");
+    }
+
+    // ── live-equity-history-durable: AC3 round-trip + AC8 purge ─────────────
+
+    use crate::equity_store::EquitySnapshotRow;
+    use crate::journal::post_equity_snapshot;
+    use trading_core::Timestamp;
+
+    fn make_snapshot_row(bar_offset_min: i64, equity_usdt: Decimal) -> EquitySnapshotRow {
+        let base = time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(365 * 54); // ~2024-01-01 so RFC3339 round-trip is unambiguous
+        let bar_ts = Timestamp::new(base + time::Duration::minutes(bar_offset_min));
+        let as_of = Timestamp::new(base + time::Duration::minutes(bar_offset_min));
+        let ts = Timestamp::now();
+        EquitySnapshotRow {
+            id: uuid::Uuid::new_v4().to_string(),
+            ts,
+            bar_ts,
+            as_of,
+            total_equity: Money::from_decimal(equity_usdt),
+            cash: Money::from_decimal(dec!(50_000)),
+            realized: Money::from_decimal(dec!(100)),
+            unrealized: Money::from_decimal(equity_usdt - dec!(50_000) - dec!(100)),
+            mode: "paper".to_string(),
+        }
+    }
+
+    /// AC3 — Writer/reader round-trip: write N rows, read tail, check values +
+    /// monotone `bar_ts` order survive losslessly (Decimal-as-TEXT, RFC3339-micros).
+    #[tokio::test]
+    async fn equity_snapshot_round_trip_ac3() {
+        let ledger = Ledger::in_memory().await.expect("in-memory ledger");
+
+        // Insert 5 rows in non-monotone order.
+        let rows_in = vec![
+            make_snapshot_row(3, dec!(100_300)),
+            make_snapshot_row(1, dec!(100_100)),
+            make_snapshot_row(5, dec!(100_500)),
+            make_snapshot_row(2, dec!(100_200)),
+            make_snapshot_row(4, dec!(100_400)),
+        ];
+        for row in &rows_in {
+            post_equity_snapshot(&ledger, row)
+                .await
+                .expect("write must succeed");
+        }
+
+        // Read the tail (limit = 10 > 5 rows written).
+        let tail = equity_snapshot_tail(&ledger, 10)
+            .await
+            .expect("read must succeed");
+        assert_eq!(tail.len(), 5, "must return all 5 rows");
+
+        // Verify monotone ascending bar_ts.
+        for w in tail.windows(2) {
+            assert!(
+                w[0].bar_ts <= w[1].bar_ts,
+                "tail must be monotone: {:?} > {:?}",
+                w[0].bar_ts,
+                w[1].bar_ts
+            );
+        }
+
+        // Verify Decimal round-trip losslessness.
+        let mut sorted_in = rows_in.clone();
+        sorted_in.sort_by_key(|r| r.bar_ts);
+        for (r_in, r_out) in sorted_in.iter().zip(tail.iter()) {
+            assert_eq!(
+                r_in.total_equity.amount(),
+                r_out.total_equity.amount(),
+                "total_equity round-trip"
+            );
+            assert_eq!(r_in.cash.amount(), r_out.cash.amount(), "cash round-trip");
+            assert_eq!(
+                r_in.realized.amount(),
+                r_out.realized.amount(),
+                "realized round-trip"
+            );
+            assert_eq!(
+                r_in.unrealized.amount(),
+                r_out.unrealized.amount(),
+                "unrealized round-trip"
+            );
+            assert_eq!(r_in.mode, r_out.mode, "mode round-trip");
+        }
+    }
+
+    /// AC3 — LIMIT enforcement: only the last `limit` rows are returned.
+    #[tokio::test]
+    async fn equity_snapshot_tail_limit_ac3() {
+        let ledger = Ledger::in_memory().await.expect("in-memory ledger");
+        for i in 0..10 {
+            let row = make_snapshot_row(i, dec!(100_000) + Decimal::from(i * 100));
+            post_equity_snapshot(&ledger, &row).await.expect("write");
+        }
+
+        let tail = equity_snapshot_tail(&ledger, 5).await.expect("read");
+        assert_eq!(tail.len(), 5, "limit = 5 must cap the result");
+
+        // The 5 rows returned must be the 5 most recent by bar_ts.
+        let min_offset = time::OffsetDateTime::UNIX_EPOCH
+            + time::Duration::days(365 * 54)
+            + time::Duration::minutes(5);
+        assert!(
+            tail[0].bar_ts.inner() >= min_offset,
+            "tail must start at bar_ts offset 5"
+        );
+    }
+
+    /// AC8 — Retention purge: rows past the horizon are deleted; rows within
+    /// the horizon survive.
+    #[tokio::test]
+    async fn equity_snapshot_purge_ac8() {
+        let ledger = Ledger::in_memory().await.expect("in-memory ledger");
+
+        // Insert an old row (ts = 2020-01-01 — well past 30-day horizon).
+        let old_ts =
+            time::OffsetDateTime::from_unix_timestamp(1_577_836_800).expect("2020-01-01 is valid"); // 2020-01-01 00:00:00 UTC
+        let old_bar_ts = Timestamp::new(old_ts);
+        let old_row = EquitySnapshotRow {
+            id: uuid::Uuid::new_v4().to_string(),
+            ts: Timestamp::new(old_ts),
+            bar_ts: old_bar_ts,
+            as_of: old_bar_ts,
+            total_equity: Money::from_decimal(dec!(99_000)),
+            cash: Money::from_decimal(dec!(50_000)),
+            realized: Money::from_decimal(dec!(0)),
+            unrealized: Money::from_decimal(dec!(49_000)),
+            mode: "paper".to_string(),
+        };
+        post_equity_snapshot(&ledger, &old_row)
+            .await
+            .expect("insert old row");
+
+        // Insert a recent row (ts ≈ now — within 30-day horizon).
+        let recent_row = make_snapshot_row(0, dec!(100_000));
+        post_equity_snapshot(&ledger, &recent_row)
+            .await
+            .expect("insert recent row");
+
+        // Purge with 30-day horizon.
+        let deleted = purge_old_equity_snapshots(&ledger, 30)
+            .await
+            .expect("purge");
+        assert_eq!(deleted, 1, "only the old row should be purged");
+
+        // Only the recent row survives.
+        let tail = equity_snapshot_tail(&ledger, 10)
+            .await
+            .expect("read after purge");
+        assert_eq!(tail.len(), 1, "only the recent row survives purge");
+        assert_eq!(
+            tail[0].total_equity.amount(),
+            dec!(100_000),
+            "surviving row is the recent one"
+        );
+    }
+
+    /// AC3 — empty table returns empty vec (fail-soft hydrate path).
+    #[tokio::test]
+    async fn equity_snapshot_tail_empty_table() {
+        let ledger = Ledger::in_memory().await.expect("in-memory ledger");
+        let tail = equity_snapshot_tail(&ledger, 2880)
+            .await
+            .expect("read empty");
+        assert!(tail.is_empty(), "empty table returns empty vec");
     }
 }

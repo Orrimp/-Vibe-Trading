@@ -33,7 +33,7 @@ use iced::widget::{Column, Container, Row, Text};
 use crate::state::{Cockpit, Message};
 use crate::strings::{
     LIVE_HEADLINE, LIVE_LLM_SPEND_LABEL, LIVE_LLM_SPEND_PLACEHOLDER, LIVE_SESSION_RETURN_CAPTION,
-    LIVE_SYSTEM_HEALTH_LABEL,
+    LIVE_SINCE_INCEPTION_CAPTION, LIVE_SYSTEM_HEALTH_LABEL,
 };
 use crate::theme::{ThemeMode, color, layout, space, text};
 use crate::widgets::{agent_feed, equity_curve, kpi_strip, latency, positions};
@@ -91,11 +91,20 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(kpi)
         .push(Container::new(llm_tile).width(Length::Fixed(120.0)));
 
-    // cockpit-live-dashboard-wiring (R5 / AC5) — honest scope caption for the
-    // strip's Total-return card: the live figure is session-to-date, NOT an
-    // annualized / characterized result. Static scope label (describes what
-    // the card means, never a fabricated number).
-    let session_caption = Text::new(LIVE_SESSION_RETURN_CAPTION)
+    // cockpit-live-dashboard-wiring (R5 / AC5) + live-equity-history-durable
+    // (R6) — honest scope caption for the strip's Total-return card. When a
+    // durable paper/live history has been hydrated (`live_equity_hydrated`), the
+    // figure is measured from the first persisted point (account inception) and
+    // may span sessions/days → "Since inception"; otherwise (research mode, or a
+    // paper boot with no prior history) it is session-to-date → "Session to
+    // date". Both are honest scope labels — never an annualized / characterized
+    // result, never a fabricated number.
+    let caption_text = if model.live_equity_hydrated {
+        LIVE_SINCE_INCEPTION_CAPTION
+    } else {
+        LIVE_SESSION_RETURN_CAPTION
+    };
+    let session_caption = Text::new(caption_text)
         .size(text::SMALL)
         .color(color::FG_3.current(mode));
 

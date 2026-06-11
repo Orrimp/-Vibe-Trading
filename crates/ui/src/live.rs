@@ -488,6 +488,28 @@ pub fn mode_to_message(m: &AgentBusMode) -> Message {
     }
 }
 
+/// live-equity-history-durable (T7 / A4 / A2) — boot-site gate: should
+/// `cockpit_live` issue the durable-equity hydrate task at boot?
+///
+/// **Yes in paper/live mode; no in research.** Research replay restarts the
+/// 2023 series from scratch each boot, so its `bar_ts` ranges repeat;
+/// hydrating them would overlap/duplicate a meaningless curve. The persistence
+/// writer is gated `mode != Research` at the mint site, so the durable table
+/// only ever holds paper/live rows — but research must ALSO not *read* a
+/// (possibly stale, cross-deployment) tail, so the hydrate is skipped at the
+/// boot site too. In research mode the Live curve stays session-scoped (R6).
+///
+/// Factored out of the `cockpit_live` boot closure so the mode gate is a
+/// named, directly-testable seam (the boot closure itself is not unit-testable).
+///
+/// Takes `&Mode` (not by value) because `agent::config::Mode` is not `Copy` and
+/// the boot is a `move` closure that iced requires to be `Fn` (re-entrant) — a
+/// by-value call would move the captured mode out and make the closure `FnOnce`.
+#[must_use]
+pub fn should_hydrate_equity_on_boot(mode: &agent::config::Mode) -> bool {
+    *mode != agent::config::Mode::Research
+}
+
 /// Convert a full `Fill` (bus) to a `FillView` (UI).
 #[must_use]
 pub fn fill_to_view(fill: &Fill) -> FillView {
@@ -1094,6 +1116,30 @@ mod tests {
         let v = position_to_view(&p);
         assert_eq!(v.pnl.amount(), dec!(12.5));
         assert_eq!(v.base_qty, dec!(0.25));
+    }
+
+    // ── live-equity-history-durable (T7) — boot hydrate mode-gate seam ──
+
+    /// **T7 seam (A4 / A2).** The boot equity-hydrate gate is issued in
+    /// paper/live mode and skipped in research. This is the exact predicate the
+    /// `cockpit_live` boot closure branches on (`Task::perform` when true,
+    /// `Task::none()` when false), factored out here so the mode gate is a
+    /// named, directly-testable seam. Research replay restarts the 2023 series
+    /// each boot, so hydrating it would overlap/duplicate a meaningless curve —
+    /// research stays session-scoped (R6).
+    #[test]
+    fn equity_hydrate_gate_issued_in_paper_skipped_in_research() {
+        use agent::config::Mode;
+        // Paper/live → hydrate is issued.
+        assert!(
+            should_hydrate_equity_on_boot(&Mode::Paper),
+            "paper mode must issue the boot equity hydrate"
+        );
+        // Research → hydrate is skipped (the duplication-prevention gate).
+        assert!(
+            !should_hydrate_equity_on_boot(&Mode::Research),
+            "research mode must NOT issue the boot equity hydrate (session-scoped)"
+        );
     }
 
     // ── T-D-N5 — ActivityRecipe stream tests ─────────────────────────────────

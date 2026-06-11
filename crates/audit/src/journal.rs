@@ -2195,6 +2195,84 @@ pub async fn post_regime_tag(
     Ok(())
 }
 
+// ── live-equity-history-durable (ADR-0052) ────────────────────────────────────
+
+/// Format a [`trading_core::Timestamp`] as RFC3339 with 6-digit microsecond
+/// precision (ADR-0004 — T715 invariant). Two consecutive writes within the
+/// same wall-clock second produce stable `ORDER BY ts` values.
+fn format_ts_micros(ts: &trading_core::Timestamp) -> Result<String, LedgerError> {
+    let fmt = time::format_description::parse(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z",
+    )
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+    ts.inner()
+        .format(&fmt)
+        .map_err(|e| LedgerError::TransactionFailed(e.to_string()))
+}
+
+/// Persist one per-bar equity snapshot to `equity_snapshots`
+/// (live-equity-history-durable A3 / R1 / ADR-0052).
+///
+/// Called **fire-and-forget** at the trading-loop mint site (A6): a write
+/// error is logged by the caller which MUST then continue — this function
+/// MUST NOT be on the blocking path of the trading loop.
+///
+/// Money columns are stored as Decimal-as-TEXT (ADR-0003).
+/// Timestamps use RFC3339 6-digit-fractional format (ADR-0004).
+///
+/// The write is a single `INSERT` (no transaction overhead needed — one
+/// audit-table row, no double-entry balance constraint here).
+///
+/// # Errors
+///
+/// Returns [`LedgerError::TransactionFailed`] if the SQL INSERT fails.
+#[instrument(
+    name = "ledger.post_equity_snapshot",
+    skip(ledger, row),
+    fields(bar_ts = %row.bar_ts, mode = %row.mode)
+)]
+pub async fn post_equity_snapshot(
+    ledger: &Ledger,
+    row: &crate::equity_store::EquitySnapshotRow,
+) -> Result<(), LedgerError> {
+    let ts_str = format_ts_micros(&row.ts)?;
+    let bar_ts_str = format_ts_micros(&row.bar_ts)?;
+    let as_of_str = format_ts_micros(&row.as_of)?;
+
+    let total_equity_str = row.total_equity.amount().to_string();
+    let cash_str = row.cash.amount().to_string();
+    let realized_str = row.realized.amount().to_string();
+    let unrealized_str = row.unrealized.amount().to_string();
+
+    sqlx::query(
+        "INSERT INTO equity_snapshots \
+         (id, ts, bar_ts, as_of, total_equity, cash, realized, unrealized, mode) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&row.id)
+    .bind(&ts_str)
+    .bind(&bar_ts_str)
+    .bind(&as_of_str)
+    .bind(&total_equity_str)
+    .bind(&cash_str)
+    .bind(&realized_str)
+    .bind(&unrealized_str)
+    .bind(&row.mode)
+    .execute(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::TransactionFailed(e.to_string()))?;
+
+    tracing::debug!(
+        id = %row.id,
+        bar_ts = %row.bar_ts,
+        as_of = %row.as_of,
+        total_equity = %row.total_equity.amount(),
+        mode = %row.mode,
+        "equity_snapshot persisted"
+    );
+    Ok(())
+}
+
 // ── Phase 5 — operator-write audit writers (Q10 unit tests) ─────────────────
 //
 // Sibling-of-`kill_switch_tripped_test` shape (lives at

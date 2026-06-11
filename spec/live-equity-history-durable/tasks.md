@@ -1,7 +1,7 @@
 ---
 slug: live-equity-history-durable
-status: arch-done
-owner: architect
+status: tester-done
+owner: tester
 updated: 2026-06-11
 ---
 
@@ -37,7 +37,7 @@ These two tasks define the trait boundary (exec) and the message/view
 contract (UI) the two tracks code against. **Land both, then the tracks
 parallelize.** Keep them small and mergeable.
 
-- [ ] **T1 — `LiveEquityStore` trait + `EquitySnapshotRow` DTO (`crates/audit`).**
+- [x] **T1 — `LiveEquityStore` trait + `EquitySnapshotRow` DTO (`crates/audit`).**
   Define the durable-equity-store trait (the external-I/O-behind-a-trait
   boundary, A1) and the `EquitySnapshotRow` DTO carrying `(bar_ts, as_of,
   total_equity, cash, realized, unrealized, mode)` as `Money<Usdt>` + two
@@ -45,7 +45,7 @@ parallelize.** Keep them small and mergeable.
   per feature.md § "The one trait". _acceptance: trait + `Fake` impl + DTO
   compile; `async_trait` reused (no new dep); the real impl stub selectable in
   `cockpit_live` / headless boot. **Gate: `cargo check -p audit`.**_
-- [ ] **T7-contract — `Message::PnlHydrated` variant + the seed rule (`crates/ui/src/state.rs`).**
+- [x] **T7-contract — `Message::PnlHydrated` variant + the seed rule (`crates/ui/src/state.rs`).**
   Add the batch `Message::PnlHydrated(Vec<(Timestamp /*bar_ts*/, Timestamp
   /*as_of*/, Money<Usdt>)>)` variant (A5) and its `update` arm: seed
   `live_equity_buffer` through `push_live_equity_point` (x-coord = `bar_ts`),
@@ -68,7 +68,7 @@ parallelize.** Keep them small and mergeable.
 
 ## Exec track (developer) — parallel after Wave 0; resolves A1/A2/A3/A6/A7
 
-- [ ] **T2 — Migration `013_equity_snapshots.sql` (A3).** Additive
+- [x] **T2 — Migration `013_equity_snapshots.sql` (A3).** Additive
   `CREATE TABLE IF NOT EXISTS equity_snapshots` + indexes (`ts`, `bar_ts`),
   the `010_training_events.sql` template (copy its anchor-safety header).
   Columns `(id, ts, bar_ts, as_of, total_equity, cash, realized, unrealized,
@@ -78,19 +78,19 @@ parallelize.** Keep them small and mergeable.
   read by the backtest binary). **Gate: `cargo test -p audit` migration test +
   `scripts/verify_anchors.sh` (or `rust-validate`) green; explicit anchor-count
   assertion in the close-out report.**_
-- [ ] **T3 — Writer + real `LiveEquityStore` impl (`crates/audit`).**
+- [x] **T3 — Writer + real `LiveEquityStore` impl (`crates/audit`).**
   `journal::post_equity_snapshot` (sibling of `post_training_*`, 6-digit ts
   format, Decimal binding) and the production `LiveEquityStore` impl wrapping
   `Arc<Ledger>`. _acceptance: writes one row per call; Decimal/ts round-trip
   lossless. **Gate: `cargo test -p audit`** (writer unit test on an in-memory
   `Ledger`)._
-- [ ] **T4 — Reader (`crates/audit`).** `query::equity_snapshot_tail` (sibling
+- [x] **T4 — Reader (`crates/audit`).** `query::equity_snapshot_tail` (sibling
   of `recent_training_events`), monotone `bar_ts` order, `LIMIT ≤ 2880`. Also
   the `ui`-boundary helper the hydrate task calls (so `ui` keeps its no-sqlx
   edge — the `reflection::query::open_and_list_recent` precedent). _acceptance:
   **AC3** round-trip — write N → read tail → values + monotone `bar_ts` order +
   limit correct (in-memory `Ledger`). **Gate: `cargo test -p audit`.**_
-- [ ] **T5 — Mint-site wiring + mode gate (`crates/agent`).** Call the T1 trait
+- [x] **T5 — Mint-site wiring + mode gate (`crates/agent`).** Call the T1 trait
   from `reconciler.rs::after_bar_close` + `runtime.rs::spawn_research_trading_loop`,
   **gated `config.mode != Research`** (A2), per-bar **fire-and-forget**: a write
   error logs + continues, never blocks/panics the loop (A6, the `bus = None`
@@ -101,7 +101,7 @@ parallelize.** Keep them small and mergeable.
   research mode writes ZERO rows (the duplication gate). **Gate: `cargo test -p
   agent`** (integration test driving the loop in each mode against the `Fake`
   store)._
-- [ ] **T6 — Retention purge (R7 / A3).** Age/row-capped `DELETE WHERE ts < …`
+- [x] **T6 — Retention purge (R7 / A3).** Age/row-capped `DELETE WHERE ts < …`
   task mirroring the nightly ledger-backup task, aligned with the 30-day
   snapshot horizon. _acceptance: **AC8** — purge removes rows past the horizon;
   store bounded. **Gate: `cargo test -p audit`** (purge test: insert past +
@@ -109,7 +109,7 @@ parallelize.** Keep them small and mergeable.
 
 ## UI track (ui-designer) — parallel after Wave 0; resolves A4 (boot) / A5 / R6
 
-- [ ] **T7 — Boot hydrate seam (`crates/ui/src/bin/cockpit_live.rs`).** Add an
+- [x] **T7 — Boot hydrate seam (`crates/ui/src/bin/cockpit_live.rs`).** Add an
   `equity_hydrate_task` to the boot `Task::batch` (`cockpit_live.rs:764`),
   mirroring `memory_task`: `#[cfg(feature = "live")]` `iced::Task::perform` →
   `rt.spawn(audit::query::equity_snapshot_tail(...))` → `Message::PnlHydrated`,
@@ -121,7 +121,7 @@ parallelize.** Keep them small and mergeable.
   T8 is the pixel gate). **Gate: `cargo build -p ui --features live` +
   `cargo test -p ui --features live`** (a seam test that the task is issued in
   paper mode, skipped in research)._
-- [ ] **T8 — Render-harness gate (R5 / AC6 — THE gate). RENDER-LAYER
+- [x] **T8 — Render-harness gate (R5 / AC6 — THE gate). RENDER-LAYER
   VERIFICATION.** Extend `crates/ui/tests/live_equity_render.rs`: build a
   cockpit, drive ONE `Message::PnlHydrated(faked tail of ≥2 rows)` through the
   production `update` path (zero `PnlRefreshed`), render the REAL Live screen
@@ -133,7 +133,7 @@ parallelize.** Keep them small and mergeable.
   the pixel layer, AC5). _acceptance: **AC6** hydrated boot rasterizes a
   non-empty curve with zero live snapshots; **AC5** post-hydrate live append
   renders. **Gate: `cargo test -p ui --features live --test live_equity_render`.**_
-- [ ] **T9 — Since-inception caption + mode-correctness (R6). RENDER/STRING
+- [x] **T9 — Since-inception caption + mode-correctness (R6). RENDER/STRING
   VERIFICATION.** Add the `LIVE_*` since-inception caption string (the
   `LIVE_SESSION_RETURN_CAPTION` precedent) and ensure the Live screen renders
   it under a hydrated (multi-session) history; research mode keeps the
@@ -145,7 +145,7 @@ parallelize.** Keep them small and mergeable.
 
 ## Close-out (tester)
 
-- [ ] **T10 — Full gate.** AC1–AC9 green; **AC6** render harness green
+- [x] **T10 — Full gate.** AC1–AC9 green; **AC6** render harness green
   (including the AC5 post-hydrate-live-append render case); **AC7** anchor count
   byte-unchanged (explicit assertion in the report — `scripts/verify_anchors.sh`
   / `rust-validate`); **AC9** fixtures-mode `cockpit` smoke byte-unchanged (no

@@ -137,6 +137,7 @@ async fn t912_runtime_with_prometheus_disabled_does_not_bind_9100() {
         kill_switch: Arc::clone(&kill_switch),
         registry,
         boot_id: boot_id.clone(),
+        equity_store: None, // tests use no equity store
     };
 
     let cancel = CancellationToken::new();

@@ -1042,6 +1042,19 @@ pub struct Cockpit {
     /// **NOT serialized.**
     pub live_fill_count: u64,
 
+    /// live-equity-history-durable (A4 / R6) — `true` once a durable paper/live
+    /// equity history has been hydrated into the buffer on boot
+    /// (`Message::PnlHydrated`). It is the honesty switch for the Live screen's
+    /// return caption: a hydrated buffer is a continuous *since-inception*
+    /// paper/live history (may span sessions/days), so the caption reads
+    /// "Since inception" (`LIVE_SINCE_INCEPTION_CAPTION`); an un-hydrated buffer
+    /// (research mode — no hydrate issued — or a paper boot with no prior
+    /// history) is session-scoped and keeps "Session to date"
+    /// (`LIVE_SESSION_RETURN_CAPTION`). Set only by the hydrate arm; never by a
+    /// live `PnlRefreshed`; reset `false` on each boot (session-scoped, like the
+    /// buffer). **NOT serialized.**
+    pub live_equity_hydrated: bool,
+
     /// Derived-on-append (D5) render state for the Live equity curve.
     /// `Loading` until the first point; `Ready(series)` from ≥1 point;
     /// `Error(msg)` on `PnlError`; `Empty` only if the channel closes with
@@ -1135,6 +1148,7 @@ impl std::fmt::Debug for Cockpit {
             .field("strategy_equity", &self.strategy_equity)
             .field("live_equity_buffer_len", &self.live_equity_buffer.len())
             .field("live_equity_last_as_of", &self.live_equity_last_as_of)
+            .field("live_equity_hydrated", &self.live_equity_hydrated)
             .field("live_fill_count", &self.live_fill_count)
             .field("live_equity_curve", &self.live_equity_curve)
             .field("live_kpi", &self.live_kpi)
@@ -1198,6 +1212,8 @@ impl Default for Cockpit {
             // cockpit-live-dashboard-wiring — session-scoped, empty on boot.
             live_equity_buffer: VecDeque::new(),
             live_equity_last_as_of: None,
+            // live-equity-history-durable — no history hydrated yet on boot.
+            live_equity_hydrated: false,
             live_fill_count: 0,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
@@ -1312,6 +1328,8 @@ impl Cockpit {
             // live curve/strip seed it via `Message::PnlRefreshed` updates.
             live_equity_buffer: VecDeque::new(),
             live_equity_last_as_of: None,
+            // live-equity-history-durable — fixtures never hydrate durable history.
+            live_equity_hydrated: false,
             live_fill_count: 0,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
@@ -1549,6 +1567,18 @@ pub enum Message {
 
     // Ledger query results (async; delivered via Subscription).
     PnlRefreshed(PnlSnapshot),
+    /// live-equity-history-durable (A4 / A5) — boot-time batch hydrate of the
+    /// durable paper/live equity series. Each tuple is `(bar_ts /*plotted
+    /// x-coord*/, as_of /*delivery key*/, total_equity)`, in monotone `bar_ts`
+    /// order, capped at the buffer cap by the reader's `LIMIT`. Seeds
+    /// `live_equity_buffer` through `push_live_equity_point` in ONE mutation
+    /// (one curve/KPI rebuild — distinct from a per-bar live tick), seeds the
+    /// delivery guard from the MAX hydrated `as_of` so the first live
+    /// `PnlRefreshed(now())` still lands, and flips `live_equity_hydrated` so
+    /// the return caption reads "Since inception". Issued only in paper/live
+    /// mode (the boot site gates `mode != Research`); research stays
+    /// session-scoped.
+    PnlHydrated(Vec<(Timestamp, Timestamp, Money<Usdt>)>),
     PositionsRefreshed(Vec<PositionView>),
     PnlError(SmolStr),
     PositionsError(SmolStr),
@@ -2039,6 +2069,61 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             let x_coord = snap.bar_ts.unwrap_or(snap.as_of);
             model.push_live_equity_point(snap.as_of, x_coord, snap.total_equity);
             model.pnl = PanelState::Ready(snap);
+        }
+        Message::PnlHydrated(rows) => {
+            // live-equity-history-durable (A4 / A5) — boot-time batch hydrate of
+            // the durable paper/live equity series. Seeds the buffer through the
+            // SAME `push_live_equity_point` guard a live tick uses (so the
+            // monotone-x clamp + ring + `is_all_absent` ≥2-point KPI trap all
+            // apply identically), then reconciles the delivery guard per the
+            // pinned `as_of` contract.
+            //
+            // An empty hydrate (no durable history — fresh ledger, or the
+            // fail-soft `Ok(vec![])` path) is a no-op: the buffer stays empty,
+            // both panels stay Loading, and the caption stays session-scoped.
+            if rows.is_empty() {
+                return;
+            }
+
+            // THE pinned guard contract (A4): after this hydrate,
+            // `live_equity_last_as_of` MUST equal the MAX hydrated `as_of`, so
+            // the FIRST live `PnlRefreshed(now())` (fresh wallclock ≥ every
+            // prior-session `as_of`) passes the delivery guard and lands — while
+            // a late/duplicate re-delivery of an already-hydrated row is dropped.
+            //
+            // We seed every row through the SAME `push_live_equity_point` used by
+            // a live tick (so its monotone-x clamp, ring bound, and the
+            // `is_all_absent` ≥2-point KPI trap all apply identically) — but we
+            // pass the batch's MAX `as_of` as the delivery key for EVERY row.
+            // This is the correct semantics for a boot batch: all rows arrived
+            // together at boot, so none is "out of order" relative to another,
+            // and the per-point `as_of` guard must therefore never drop a hydrate
+            // row (even when the rows' own `as_of` values are non-monotone vs.
+            // their `bar_ts` order — a backed-up-clock prior session). The PLOTTED
+            // x-coordinate is each row's own `bar_ts` (the contract's x-axis); the
+            // delivery key is uniformly the batch max. After the loop the guard is
+            // pinned to that max by construction — no separate re-set needed.
+            let max_as_of = rows
+                .iter()
+                .map(|(_, as_of, _)| *as_of)
+                .max_by_key(trading_core::Timestamp::unix_millis);
+            let Some(max_as_of) = max_as_of else {
+                // `rows` is non-empty (guarded above), so `max` is always `Some`.
+                // Defensive: an empty max means nothing to seed — bail without
+                // flipping the hydrate switch.
+                return;
+            };
+            for (bar_ts, _row_as_of, equity) in rows {
+                model.push_live_equity_point(max_as_of, bar_ts, equity);
+            }
+
+            // The hydrated buffer is a continuous *since-inception* paper/live
+            // history (may span sessions/days) — flip the honesty switch so the
+            // Live screen's return caption reads "Since inception", not the
+            // session-scoped "Session to date" (R6). `push_live_equity_point`
+            // already built the curve `Ready` (≥1 row) and the KPI strip `Ready`
+            // (≥2 rows) / `Loading` (1 row) — the `is_all_absent` trap is intact.
+            model.live_equity_hydrated = true;
         }
         Message::PositionsRefreshed(list) => {
             model.positions = if list.is_empty() {
@@ -3366,6 +3451,246 @@ mod tests {
         assert!(c.live_equity_buffer.is_empty());
         assert_eq!(c.live_equity_curve.variant_name(), "loading");
         assert_eq!(c.live_kpi.variant_name(), "loading");
+        // live-equity-history-durable — un-hydrated on a fresh boot.
+        assert!(!c.live_equity_hydrated);
+    }
+
+    // ── live-equity-history-durable (T7-contract) — PnlHydrated batch arm ──
+
+    /// Build a durable-hydrate tail row `(bar_ts, as_of, equity)` from realistic
+    /// **2023-era** `bar_ts` data times paired with **prior-session** wallclock
+    /// `as_of` stamps (all ≤ `now()`), exactly the shape
+    /// `audit::query::equity_snapshot_tail` returns. The two timestamps live in
+    /// disjoint, plausible epoch ranges so the guard-reconciliation logic is
+    /// exercised against true two-timestamp rows (not the test shorthand where
+    /// `bar_ts == as_of`).
+    fn hydrate_row(
+        bar_secs: i64,
+        as_of_secs: i64,
+        equity: Decimal,
+    ) -> (Timestamp, Timestamp, Money<Usdt>) {
+        (
+            Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(bar_secs)),
+            Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(as_of_secs)),
+            Money::<Usdt>::from_decimal(equity),
+        )
+    }
+
+    /// A monotone ≥2-row hydrate tail: 2023 `bar_ts` data times (2023-01-15
+    /// onward), prior-session `as_of` wallclock stamps (~2026-05, all in the
+    /// past relative to a live `now()`).
+    fn hydrate_tail() -> Vec<(Timestamp, Timestamp, Money<Usdt>)> {
+        let bar_base: i64 = 1_673_789_400; // 2023-01-15 12:30:00 UTC
+        let wall_base: i64 = 1_746_000_000; // ~2025-04-30 (a prior paper session)
+        vec![
+            hydrate_row(bar_base, wall_base, dec!(100000)),
+            hydrate_row(bar_base + 60, wall_base + 60, dec!(100800)),
+            hydrate_row(bar_base + 120, wall_base + 120, dec!(101500)),
+            hydrate_row(bar_base + 180, wall_base + 180, dec!(101200)),
+            hydrate_row(bar_base + 240, wall_base + 240, dec!(102600)),
+        ]
+    }
+
+    /// **AC4 (model).** A boot-time `PnlHydrated` of M≥2 rows seeds the buffer
+    /// to `min(M, cap)`, plots each row's `bar_ts` (not `as_of`) on the x-axis,
+    /// and brings BOTH the curve and the KPI strip up `Ready` — all BEFORE any
+    /// live `PnlRefreshed`. The since-inception caption switch flips on.
+    #[test]
+    fn pnl_hydrated_seeds_buffer_curve_and_strip_ready() {
+        let mut c = Cockpit::new();
+        // Fresh boot: buffer empty, both panels Loading, un-hydrated.
+        assert!(c.live_equity_buffer.is_empty());
+        assert_eq!(c.live_equity_curve.variant_name(), "loading");
+        assert_eq!(c.live_kpi.variant_name(), "loading");
+        assert!(!c.live_equity_hydrated);
+
+        let tail = hydrate_tail();
+        let m = tail.len();
+        // Capture the expected plotted x-coords (bar_ts) and the max as_of.
+        let expect_bar_ms: Vec<i64> = tail.iter().map(|(b, _, _)| b.unix_millis()).collect();
+        let max_as_of_ms = tail
+            .iter()
+            .map(|(_, a, _)| a.unix_millis())
+            .max()
+            .expect("non-empty");
+
+        update(&mut c, Message::PnlHydrated(tail));
+
+        // Buffer seeded to min(M, cap) (M < cap here).
+        assert_eq!(
+            c.live_equity_buffer.len(),
+            m.min(LIVE_EQUITY_BUFFER_CAP),
+            "hydrate must seed min(M, cap) rows"
+        );
+        // The plotted x-coordinates are the bar_ts data times, NOT as_of.
+        let stored_ms: Vec<i64> = c
+            .live_equity_buffer
+            .iter()
+            .map(|(ts, _)| ts.unix_millis())
+            .collect();
+        assert_eq!(
+            stored_ms, expect_bar_ms,
+            "hydrate must plot each row's bar_ts on the x-axis"
+        );
+        // Curve + strip both Ready (≥2 rows clears the is_all_absent trap),
+        // with zero live ticks delivered.
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+        assert_eq!(c.live_kpi.variant_name(), "ready");
+        // The delivery guard is seeded from the MAX hydrated as_of (A4).
+        assert_eq!(
+            c.live_equity_last_as_of.map(|t| t.unix_millis()),
+            Some(max_as_of_ms),
+            "delivery guard must seed from the MAX hydrated as_of"
+        );
+        // The since-inception honesty switch is on.
+        assert!(c.live_equity_hydrated);
+    }
+
+    /// **AC5 (model) — the guard-reconciliation case.** After a hydrate whose
+    /// `as_of` values are all in the past, the FIRST live `PnlRefreshed(now())`
+    /// (a fresh wallclock ≥ every hydrated `as_of`) MUST be appended — never
+    /// dropped by the delivery guard. This pins the A4 `as_of` sub-decision at
+    /// the model layer (the render layer proves it in `live_equity_render.rs`).
+    #[test]
+    fn live_append_after_hydrate_lands_not_dropped() {
+        let mut c = Cockpit::new();
+        let tail = hydrate_tail();
+        let seeded = tail.len();
+        update(&mut c, Message::PnlHydrated(tail));
+        assert_eq!(c.live_equity_buffer.len(), seeded);
+
+        // A live snapshot with a fresh `now()` wallclock as_of and a fresh
+        // bar_ts AFTER the hydrated 2023 tail (forward in data time too).
+        let live_bar: i64 = 1_673_789_400 + 300; // next bar after the 2023 tail
+        let live = PnlSnapshot {
+            cash: Money::<Usdt>::from_decimal(dec!(103100)),
+            unrealized: Money::<Usdt>::from_decimal(dec!(0)),
+            realized: Money::<Usdt>::from_decimal(dec!(0)),
+            total_equity: Money::<Usdt>::from_decimal(dec!(103100)),
+            daily_return: Money::<Usdt>::from_decimal(dec!(0)),
+            as_of: Timestamp::now(), // strictly ≥ every prior-session as_of
+            bar_ts: Some(Timestamp::new(
+                time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(live_bar),
+            )),
+        };
+        update(&mut c, Message::PnlRefreshed(live));
+
+        // The live point landed — the guard did NOT drop it.
+        assert_eq!(
+            c.live_equity_buffer.len(),
+            seeded + 1,
+            "the first live snapshot after hydrate must append (not be dropped \
+             by the as_of guard seeded from the max hydrated as_of)"
+        );
+        // The newest stored x-coord is the live bar_ts.
+        assert_eq!(
+            c.live_equity_buffer.back().map(|(ts, _)| ts.unix_millis()),
+            Some(live_bar * 1000),
+            "the appended point plots the live bar_ts"
+        );
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+        assert_eq!(c.live_kpi.variant_name(), "ready");
+        // Still flagged hydrated — a live tick does not clear the switch.
+        assert!(c.live_equity_hydrated);
+    }
+
+    /// An EMPTY hydrate (fresh ledger / fail-soft `Ok(vec![])`) is a no-op: the
+    /// buffer stays empty, both panels stay Loading, the caption stays
+    /// session-scoped. Mirrors the boot path where the durable table has no rows.
+    #[test]
+    fn pnl_hydrated_empty_is_noop() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::PnlHydrated(vec![]));
+        assert!(c.live_equity_buffer.is_empty());
+        assert_eq!(c.live_equity_curve.variant_name(), "loading");
+        assert_eq!(c.live_kpi.variant_name(), "loading");
+        assert!(c.live_equity_last_as_of.is_none());
+        assert!(!c.live_equity_hydrated);
+    }
+
+    /// A single-row hydrate brings the curve `Ready` (1-point curve is valid)
+    /// but keeps the KPI strip `Loading` — the `is_all_absent` ≥2-point trap is
+    /// intact through the hydrate path, identical to the live append path.
+    #[test]
+    fn pnl_hydrated_one_row_curve_ready_strip_loading() {
+        let mut c = Cockpit::new();
+        update(
+            &mut c,
+            Message::PnlHydrated(vec![hydrate_row(
+                1_673_789_400,
+                1_746_000_000,
+                dec!(100000),
+            )]),
+        );
+        assert_eq!(c.live_equity_buffer.len(), 1);
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+        assert_eq!(
+            c.live_kpi.variant_name(),
+            "loading",
+            "a 1-row hydrate keeps the strip Loading (is_all_absent trap intact)"
+        );
+        // Still flips the honesty switch: a durable single-row history is a real
+        // since-inception series, even if the strip waits for the 2nd point.
+        assert!(c.live_equity_hydrated);
+    }
+
+    /// The hydrate respects the buffer cap: a tail longer than
+    /// `LIVE_EQUITY_BUFFER_CAP` is bounded to the cap (the reader `LIMIT`s to
+    /// the cap in production; the ring enforces it defensively here too).
+    #[test]
+    fn pnl_hydrated_respects_buffer_cap() {
+        let mut c = Cockpit::new();
+        let bar_base: i64 = 1_673_789_400;
+        let wall_base: i64 = 1_700_000_000;
+        let over_cap = LIVE_EQUITY_BUFFER_CAP + 50;
+        let rows: Vec<_> = (0..over_cap as i64)
+            .map(|i| {
+                hydrate_row(
+                    bar_base + i * 60,
+                    wall_base + i * 60,
+                    dec!(100000) + Decimal::from(i),
+                )
+            })
+            .collect();
+        update(&mut c, Message::PnlHydrated(rows));
+        assert_eq!(
+            c.live_equity_buffer.len(),
+            LIVE_EQUITY_BUFFER_CAP,
+            "hydrate must not exceed the buffer cap"
+        );
+        assert_eq!(c.live_equity_curve.variant_name(), "ready");
+        assert_eq!(c.live_kpi.variant_name(), "ready");
+        assert!(c.live_equity_hydrated);
+    }
+
+    /// Guard-reconciliation robustness: even if a hydrate tail's `as_of` values
+    /// are NOT monotone vs. their `bar_ts` order (a backed-up-clock prior
+    /// session), every row is seeded (none dropped by the per-point guard during
+    /// the seed pass) and the guard ends pinned to the MAX `as_of` — so the
+    /// first live tick at `now()` still lands.
+    #[test]
+    fn pnl_hydrated_non_monotone_as_of_seeds_all_and_pins_max() {
+        let mut c = Cockpit::new();
+        let bar_base: i64 = 1_673_789_400;
+        // bar_ts strictly increasing; as_of deliberately NON-monotone.
+        let rows = vec![
+            hydrate_row(bar_base, 1_746_000_300, dec!(100000)), // as_of high
+            hydrate_row(bar_base + 60, 1_746_000_100, dec!(100800)), // as_of dips
+            hydrate_row(bar_base + 120, 1_746_000_500, dec!(101500)), // as_of high (max)
+        ];
+        update(&mut c, Message::PnlHydrated(rows));
+        // All three rows seeded despite the non-monotone as_of.
+        assert_eq!(
+            c.live_equity_buffer.len(),
+            3,
+            "all hydrate rows must seed even when as_of is non-monotone"
+        );
+        // Guard pinned to the MAX as_of (1_746_000_500), not the last row's.
+        assert_eq!(
+            c.live_equity_last_as_of.map(|t| t.unix_millis()),
+            Some(1_746_000_500 * 1000),
+            "guard must pin to the MAX hydrated as_of, not the last row's"
+        );
     }
 
     #[test]

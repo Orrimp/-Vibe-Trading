@@ -110,6 +110,16 @@ pub struct RunHandles {
     /// `close_uptime_interval` so a single boot writes one open + N
     /// heartbeats + one close, all carrying the same id (R12 / T806).
     pub boot_id: String,
+    /// Durable live-equity store (live-equity-history-durable ADR-0052 / A1).
+    ///
+    /// `Some` in **paper/live mode only** — research mode passes `None` so
+    /// the replayed 2023 `bar_ts` ranges never pollute the series (A2 gate).
+    /// Headless `trading` bin and `cockpit_live` both call `runtime::run`;
+    /// both persist equity when `Some` (A7 — the series accrues regardless of
+    /// whether the UI is attached).
+    ///
+    /// Constructed by the caller from `Arc::new(audit::LedgerEquityStore::new(ledger.clone()))`.
+    pub equity_store: Option<Arc<dyn audit::LiveEquityStore>>,
 }
 
 /// Build a [`strategy::StrategyRegistry`] pre-seeded with the strategies
@@ -265,6 +275,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         kill_switch,
         registry,
         boot_id,
+        equity_store,
     } = handles;
 
     // ── Kill-switch halt-file watcher ─────────────────────────────────────────
@@ -524,6 +535,10 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 &mut set,
                 &cancel,
             );
+            // Research mode: equity_store is None (A2 gate — never write in research).
+            // The mode gate lives at the RunHandles construction site in main.rs /
+            // cockpit_live.rs; `run` trusts the caller's intent.
+            drop(equity_store);
             info!("agent subsystems initialized — research trading loop + replay feed running");
         }
         crate::config::Mode::Paper => {
@@ -625,6 +640,47 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 &mut set,
                 &cancel,
             );
+
+            // ── live-equity-history-durable ADR-0052 A6/A7 ───────────────────
+            // Paper mode: spawn a periodic reconciler that emits + persists a
+            // PnlSnapshot every interval. The state is initialized at zero
+            // (reflecting the agent's boot state before any fills); the paper
+            // trading loop will update it as positions are opened/closed.
+            //
+            // The reconciler's `spawn` loop calls `after_bar_close(now())` each
+            // tick, which fire-and-forget persists via the equity_store (A6).
+            // In paper mode `bar_ts ≈ now()` — live bars arrive in real-time.
+            // Both the headless `trading` bin and `cockpit_live` reach this
+            // code path (A7 — the series accrues regardless of UI attachment).
+            if let Some(store) = equity_store {
+                use crate::reconciler::{ReconcilerState, ReconcilerTask};
+                use rust_decimal::Decimal;
+                use rust_decimal_macros::dec;
+
+                let initial_state = ReconcilerState {
+                    cash: Decimal::try_from(config.backtest.initial_capital_usdt)
+                        .unwrap_or(dec!(100_000)),
+                    position_qty: Decimal::ZERO,
+                    last_mark: Decimal::ZERO,
+                    tolerance: dec!(0.01),
+                    realized_pnl: Decimal::ZERO,
+                    cost_basis: Decimal::ZERO,
+                };
+                let (state_tx, state_rx) = tokio::sync::watch::channel(initial_state);
+                // The state_tx is dropped here (no external updater in the
+                // current paper-mode stub); the reconciler reads the initial
+                // value which is correct at boot. A future paper-mode trading
+                // loop will use state_tx to push equity updates.
+                drop(state_tx);
+
+                let ks = kill_switch.as_ref().clone();
+                let reconciler_interval_ms = 60_000u64; // 1-min bar cadence
+                ReconcilerTask::new(state_rx, ks, reconciler_interval_ms)
+                    .with_bus(Arc::clone(&bus))
+                    .with_equity_store(store)
+                    .spawn();
+                info!("equity_reconciler_spawned (paper mode — periodic persist enabled)");
+            }
         }
     }
 
@@ -1677,6 +1733,7 @@ mod tests {
             kill_switch: Arc::clone(&kill_switch),
             registry,
             boot_id: boot_id.clone(),
+            equity_store: None, // tests use no equity store
         };
 
         let cancel = CancellationToken::new();

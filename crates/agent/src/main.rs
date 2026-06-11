@@ -311,6 +311,16 @@ async fn main() -> Result<()> {
     }
 
     // ── Run the agent runtime ─────────────────────────────────────────────────
+    // live-equity-history-durable ADR-0052 A2: equity store is Some only in
+    // paper/live mode — research replay must NOT persist (repeating 2023
+    // bar_ts ranges would produce a meaningless hydrated curve).
+    let equity_store: Option<Arc<dyn audit::LiveEquityStore>> =
+        if cfg.mode != agent::config::Mode::Research {
+            Some(Arc::new(audit::LedgerEquityStore::new(Arc::clone(&ledger))))
+        } else {
+            None
+        };
+
     let handles = RunHandles {
         config: Arc::new(cfg),
         ledger: Arc::clone(&ledger),
@@ -318,6 +328,7 @@ async fn main() -> Result<()> {
         kill_switch: Arc::clone(&kill_switch),
         registry: Arc::clone(&registry),
         boot_id: boot_id.clone(),
+        equity_store,
     };
     agent::runtime::run(handles, cancel).await?;
 

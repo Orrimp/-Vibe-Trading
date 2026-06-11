@@ -100,6 +100,7 @@ async fn t910_v3_graceful_shutdown_within_two_seconds_with_close_uptime_row() {
         kill_switch: Arc::clone(&kill_switch),
         registry,
         boot_id: boot_id.clone(),
+        equity_store: None, // tests use no equity store
     };
 
     let cancel = CancellationToken::new();

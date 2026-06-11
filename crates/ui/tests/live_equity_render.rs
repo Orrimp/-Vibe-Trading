@@ -417,6 +417,196 @@ fn healthy_curve_draws_far_more_than_broken() {
     );
 }
 
+// ── PHASE 2 — live-equity-history-durable: the HYDRATED-boot render gate ─────
+//
+// AC6 (THE gate, R5): a cockpit hydrated from a durable store tail (zero live
+// snapshots) must rasterize a real ACCENT polyline. AC5: a live append AFTER
+// the hydrate must still land and the curve still draw + grow — the A4 `as_of`
+// delivery-guard reconciliation proven at the pixel layer. These use REALISTIC
+// two-timestamp rows: 2023-era `bar_ts` (the plotted x-coord, an old data date)
+// paired with PRIOR-SESSION `as_of` wallclock stamps (all in the past relative
+// to a live `now()`) — exactly the guard-reconciliation scenario the architect
+// flagged as the riskiest (a fresh `now()` live tick must out-rank the stale
+// hydrated `as_of` max and append, not be dropped).
+
+/// 2023-data-time base for the hydrate tail's `bar_ts` (the plotted x-coord):
+/// 2023-01-15 12:30:00 UTC. The curve self-scales to its own x-range, so the
+/// absolute epoch does not move the ACCENT bbox out of the crop band.
+const HYDRATE_BAR_BASE: i64 = 1_673_789_400;
+
+/// Prior-session wallclock base for the hydrate tail's `as_of` (the delivery
+/// key): ~2025-04-30, comfortably in the past vs. a live `Timestamp::now()`.
+const HYDRATE_AS_OF_BASE: i64 = 1_746_000_000;
+
+/// Build one durable-tail row `(bar_ts, as_of, equity)` from a 2023 `bar_ts`
+/// second and a prior-session `as_of` second — the exact tuple shape
+/// `audit::query::equity_snapshot_tail` returns and `Message::PnlHydrated`
+/// consumes.
+fn hydrate_row(
+    bar_secs: i64,
+    as_of_secs: i64,
+    equity: Decimal,
+) -> (Timestamp, Timestamp, Money<Usdt>) {
+    (
+        Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(bar_secs)),
+        Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(as_of_secs)),
+        Money::<Usdt>::from_decimal(equity),
+    )
+}
+
+/// A realistic ≥2-row hydrate tail mirroring `session_points`' equity SHAPE
+/// (rises, dips for a non-zero drawdown, recovers — same vertical span) so the
+/// rasterized ACCENT geometry is directly comparable to the live-path harness.
+/// `bar_ts` and `as_of` advance one minute per row, in disjoint epoch ranges.
+fn hydrate_tail() -> Vec<(Timestamp, Timestamp, Money<Usdt>)> {
+    session_points()
+        .into_iter()
+        .enumerate()
+        .map(|(i, (secs, eq))| {
+            // `secs` (0..420) seeds the per-row offset for BOTH timestamps so the
+            // tail is monotone in bar_ts and as_of, in their separate epochs.
+            let _ = secs;
+            let off = i as i64 * 60;
+            hydrate_row(HYDRATE_BAR_BASE + off, HYDRATE_AS_OF_BASE + off, eq)
+        })
+        .collect()
+}
+
+/// **AC6 (THE gate).** A cockpit hydrated by ONE `Message::PnlHydrated` (a faked
+/// ≥2-row durable tail) with **zero `PnlRefreshed`** must rasterize a real curve:
+///   (i)   the buffer holds every hydrated row,
+///   (ii)  the curve `PanelState` is `Ready`,
+///   (iii) the rendered polyline paints ≥ `CURVE_DREW_MIN_ACCENT` ACCENT pixels
+///         (the durable history is on-screen, not a blank "no graph" panel), and
+///   (iv)  those pixels span a sane horizontal range (`≥ CURVE_X_SPAN_MIN`).
+///
+/// A model-Ready-but-blank-canvas regression fails here — this is the render
+/// proof the restart-hydrated curve actually draws before the first new bar.
+#[test]
+fn hydrated_boot_curve_actually_renders() {
+    let tail = hydrate_tail();
+    let n = tail.len();
+
+    let mut c = Cockpit::new();
+    c.current_screen = Screen::Live;
+    // ONE batch hydrate through the production update path; NO live tick.
+    update(&mut c, Message::PnlHydrated(tail));
+
+    // (i) every hydrated row landed in the buffer.
+    assert_eq!(
+        c.live_equity_buffer.len(),
+        n,
+        "all {n} hydrated rows must seed the buffer (none dropped)"
+    );
+    // (ii) the model says Ready off the hydrate alone.
+    assert_eq!(
+        c.live_equity_curve.variant_name(),
+        "ready",
+        "curve must be Ready after a ≥2-row hydrate, before any live tick"
+    );
+    // (and the since-inception switch flipped — the caption is mode-correct).
+    assert!(c.live_equity_hydrated);
+
+    let shot = render_live(c);
+    let stats = accent_pixel_stats(&shot);
+
+    // (iii) the hydrated polyline rasterized — a real curve, not a blank panel.
+    assert!(
+        stats.count >= CURVE_DREW_MIN_ACCENT,
+        "HYDRATED curve did NOT render: only {} ACCENT pixels in the curve band \
+         (expected ≥ {CURVE_DREW_MIN_ACCENT}). The buffer is seeded + Ready but \
+         the canvas painted no visible polyline — the restart-blank-curve bug.",
+        stats.count,
+    );
+    // (iv) the curve spans a sane horizontal range (traverses the x/time axis).
+    let x_span = stats.max_x.saturating_sub(stats.min_x);
+    assert!(
+        x_span >= CURVE_X_SPAN_MIN,
+        "hydrated curve x-span is degenerate: ACCENT pixels span only {x_span}px \
+         (expected ≥ {CURVE_X_SPAN_MIN}px). A real multi-row history traverses \
+         the time axis.",
+    );
+}
+
+/// **AC5 (the guard-reconciliation render proof).** Hydrate from a durable tail
+/// whose `as_of` values are all in the PAST, THEN deliver ONE live
+/// `PnlRefreshed(now())`. The fresh `now()` wallclock out-ranks the stale
+/// hydrated `as_of` max, so the live point MUST append (not be dropped) — and
+/// the curve must still draw AND grow. This is the A4 `as_of` delivery-guard
+/// contract proven at the rasterized layer (the riskiest decision, the one the
+/// model-layer AC5 also pins — here at the pixel layer the brief demands).
+#[test]
+fn live_append_after_hydrate_still_renders_and_grows() {
+    let tail = hydrate_tail();
+    let seeded = tail.len();
+
+    let mut c = Cockpit::new();
+    c.current_screen = Screen::Live;
+    update(&mut c, Message::PnlHydrated(tail));
+    assert_eq!(c.live_equity_buffer.len(), seeded);
+
+    // Baseline geometry of the hydrated-only curve. We compare the horizontal
+    // EXTENT (x-span) rather than the raw ACCENT count, because appending a new
+    // peak rescales the curve's Y-axis (the auto-fit range grows), which can
+    // shift the polyline's pixel count slightly either way — a rescale is NOT a
+    // regression. The x-span is the rescale-invariant "grew" signal: a forward
+    // bar extends the curve along the time axis.
+    let before_x_span = {
+        let s = accent_pixel_stats(&render_live(c.clone()));
+        s.max_x.saturating_sub(s.min_x)
+    };
+
+    // A live snapshot: fresh `now()` wallclock `as_of` (≥ every prior-session
+    // hydrated `as_of`) + a `bar_ts` one minute AFTER the 2023 tail's last bar,
+    // so the curve extends forward in DATA time too.
+    let next_bar = HYDRATE_BAR_BASE + (seeded as i64) * 60;
+    let live = PnlSnapshot {
+        cash: Money::<Usdt>::from_decimal(dec!(104000)),
+        unrealized: Money::<Usdt>::from_decimal(dec!(0)),
+        realized: Money::<Usdt>::from_decimal(dec!(0)),
+        total_equity: Money::<Usdt>::from_decimal(dec!(104000)),
+        daily_return: Money::<Usdt>::from_decimal(dec!(0)),
+        as_of: Timestamp::now(),
+        bar_ts: Some(Timestamp::new(
+            time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(next_bar),
+        )),
+    };
+    update(&mut c, Message::PnlRefreshed(live));
+
+    // Model proof: the live point landed (the guard did NOT drop it).
+    assert_eq!(
+        c.live_equity_buffer.len(),
+        seeded + 1,
+        "the first live snapshot after hydrate must append at the model layer"
+    );
+
+    // Render proof (i): the curve still draws a real polyline after the append.
+    let shot = render_live(c);
+    let stats = accent_pixel_stats(&shot);
+    assert!(
+        stats.count >= CURVE_DREW_MIN_ACCENT,
+        "post-hydrate live-append curve did NOT render: only {} ACCENT pixels \
+         (expected ≥ {CURVE_DREW_MIN_ACCENT}). The guard must not have dropped \
+         the live point AND the curve must still rasterize.",
+        stats.count,
+    );
+    let x_span = stats.max_x.saturating_sub(stats.min_x);
+    // Render proof (ii): the curve still spans the time axis (not degenerate)…
+    assert!(
+        x_span >= CURVE_X_SPAN_MIN,
+        "post-append curve x-span is degenerate ({x_span}px < {CURVE_X_SPAN_MIN}px)",
+    );
+    // …and it GREW — the forward bar extended the curve's horizontal extent at
+    // least as wide as the hydrated-only baseline (a dropped live point or a
+    // collapsed curve would shrink it). Rescale-invariant, unlike a raw count.
+    assert!(
+        x_span >= before_x_span,
+        "the curve must extend (or hold) its x-span after the forward live \
+         append: {x_span}px now vs. {before_x_span}px hydrated-only — a shrink \
+         would mean the live point was lost or the series collapsed"
+    );
+}
+
 // ── Render-crash regression (a bonus bug this harness caught) ────────────────
 
 /// **Render-crash regression — flat / single-point series.**

@@ -1788,6 +1788,16 @@ pub const LIVE_LLM_SPEND_PLACEHOLDER: &str = "\u{2014}";
 /// imply the live session is the "baseline result".
 pub const LIVE_SESSION_RETURN_CAPTION: &str = "Session to date";
 
+/// live-equity-history-durable v0.1.0 (R6 / D5) — honest scope caption for the
+/// Live KPI strip's Total-return card when a **durable paper/live history** has
+/// been hydrated on boot (`live_equity_hydrated`). The figure is measured from
+/// the **first persisted point (account inception)** and may span multiple
+/// sessions / days — so the scope is "Since inception", NOT "session to date".
+/// Still honest: it is a continuous real paper/live equity history, NOT an
+/// annualized / characterized / baseline result. Research mode never hydrates,
+/// so it keeps `LIVE_SESSION_RETURN_CAPTION`.
+pub const LIVE_SINCE_INCEPTION_CAPTION: &str = "Since inception";
+
 /// Panel title for the Strategy registry screen (R7.2).
 pub const STRATEGY_REGISTRY_PANEL_TITLE: &str = "Strategy registry";
 

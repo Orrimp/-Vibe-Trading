@@ -22,7 +22,7 @@ use insta::assert_snapshot;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use time::{Date, Month, PrimitiveDateTime, Time};
-use trading_core::{AccountId, JournalEntry, Money, StrategyId, Timestamp};
+use trading_core::{AccountId, JournalEntry, Money, StrategyId, Timestamp, Usdt};
 
 use trading_core::{Symbol, Venue};
 use ui::state::{
@@ -2727,11 +2727,17 @@ mod live_screen {
         // live states (no longer hard-wired Loading).
         out.push_str(&equity_curve_line(c));
         out.push_str(&kpi_strip_lines(c, mode));
-        // R5 / AC5 — honest session-scope caption for the Total-return card.
-        out.push_str(&format!(
-            "session_caption: {}\n",
+        // R5 / AC5 + live-equity-history-durable R6 — honest scope caption for
+        // the Total-return card. "Since inception" once a durable history is
+        // hydrated (`live_equity_hydrated`); "Session to date" otherwise. Mirror
+        // the same conditional `screens/live.rs` uses so the summary tracks the
+        // rendered caption.
+        let caption = if c.live_equity_hydrated {
+            ui::strings::LIVE_SINCE_INCEPTION_CAPTION
+        } else {
             ui::strings::LIVE_SESSION_RETURN_CAPTION
-        ));
+        };
+        out.push_str(&format!("session_caption: {caption}\n"));
         out.push_str(&format!(
             "llm_spend_label: {}\n",
             ui::strings::LIVE_LLM_SPEND_LABEL
@@ -2856,6 +2862,118 @@ mod live_screen {
             summary.contains("card Trades: 3"),
             "Trades card must render the session fill count (3); summary:\n{summary}"
         );
+    }
+
+    // ── live-equity-history-durable (T9) — since-inception caption ──
+
+    /// Hydrate the Live screen from a durable ≥2-row tail via the production
+    /// `PnlHydrated` arm so the curve/strip come up Ready off durable history.
+    /// Mirrors the cockpit_live boot hydrate (paper/live mode).
+    fn hydrate_live(c: &mut Cockpit) {
+        let bar_base: i64 = 1_673_789_400; // 2023-01-15 12:30:00 UTC
+        let wall_base: i64 = 1_746_000_000; // a prior paper session (~2025-04)
+        let rows: Vec<(Timestamp, Timestamp, Money<Usdt>)> = (0..3i64)
+            .map(|i| {
+                (
+                    Timestamp::new(
+                        time::OffsetDateTime::UNIX_EPOCH
+                            + time::Duration::seconds(bar_base + i * 60),
+                    ),
+                    Timestamp::new(
+                        time::OffsetDateTime::UNIX_EPOCH
+                            + time::Duration::seconds(wall_base + i * 60),
+                    ),
+                    Money::<Usdt>::from_decimal(
+                        dec!(100000) + rust_decimal::Decimal::from(i * 500),
+                    ),
+                )
+            })
+            .collect();
+        update(c, Message::PnlHydrated(rows));
+    }
+
+    /// **T9 (R6) — RENDER/SUMMARY.** When a durable paper/live history is
+    /// hydrated, the Live screen's Total-return caption reads "Since inception"
+    /// (account-inception scope), NOT the session-scoped "Session to date". The
+    /// summary mirrors the screen's caption conditional, so this is the
+    /// render-summary proof the operator-visible label flips.
+    #[test]
+    fn live_caption_is_since_inception_when_hydrated() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Live;
+        hydrate_live(&mut c);
+        assert!(c.live_equity_hydrated, "hydrate must flip the switch");
+
+        let summary = live_screen_summary(&c, ThemeMode::Dark);
+        assert!(
+            summary.contains(&format!(
+                "session_caption: {}",
+                ui::strings::LIVE_SINCE_INCEPTION_CAPTION
+            )),
+            "hydrated Live screen must render the since-inception caption; \
+             summary:\n{summary}"
+        );
+        assert!(
+            !summary.contains(ui::strings::LIVE_SESSION_RETURN_CAPTION),
+            "hydrated Live screen must NOT render the session-scoped caption; \
+             summary:\n{summary}"
+        );
+    }
+
+    /// **T9 (R6) — mode-correctness.** With NO hydrate (research mode, or a paper
+    /// boot with no prior history) the Live screen keeps the session-scoped
+    /// "Session to date" caption — the since-inception label must never appear
+    /// without a real durable history behind it.
+    #[test]
+    fn live_caption_is_session_scoped_when_not_hydrated() {
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Live;
+        seed_ready_live(&mut c); // live ticks, NOT a hydrate
+        assert!(!c.live_equity_hydrated);
+
+        let summary = live_screen_summary(&c, ThemeMode::Dark);
+        assert!(
+            summary.contains(&format!(
+                "session_caption: {}",
+                ui::strings::LIVE_SESSION_RETURN_CAPTION
+            )),
+            "un-hydrated Live screen must keep the session-scoped caption; \
+             summary:\n{summary}"
+        );
+        assert!(
+            !summary.contains(ui::strings::LIVE_SINCE_INCEPTION_CAPTION),
+            "the since-inception caption must NOT appear without a durable \
+             history; summary:\n{summary}"
+        );
+    }
+
+    /// **T9 (R6) — honest, no overclaim.** The since-inception caption states an
+    /// honest scope ("Since inception") and never inflates the figure into an
+    /// annualized / characterized / baseline result. Pins the copy so a future
+    /// edit cannot smuggle an overclaim into the operator-facing label.
+    #[test]
+    fn since_inception_caption_is_honest_no_overclaim() {
+        let caption = ui::strings::LIVE_SINCE_INCEPTION_CAPTION;
+        let lower = caption.to_lowercase();
+        assert!(
+            lower.contains("inception"),
+            "caption must convey the account-inception scope; got: {caption}"
+        );
+        for banned in [
+            "annualized",
+            "annualised",
+            "characterized",
+            "characterised",
+            "baseline",
+            "cagr",
+            "guaranteed",
+            "expected",
+        ] {
+            assert!(
+                !lower.contains(banned),
+                "since-inception caption overclaims with {banned:?}: {caption}"
+            );
+        }
     }
 }
 

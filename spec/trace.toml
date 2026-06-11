@@ -2842,6 +2842,14 @@ arch        = [
 tests       = [
   # T8 render-layer gate (AC6 hydrated-boot + AC5 post-hydrate live append) extends this harness.
   "crates/ui/tests/live_equity_render.rs",
+  # UI-DESIGNER (2026-06-11):
+  # T7-contract model tests — AC4 (PnlHydrated seeds buffer/curve/strip Ready) +
+  # AC5-model (post-hydrate live append lands) + empty/1-row/cap/non-monotone-as_of cases.
+  "crates/ui/src/state.rs",
+  # T9 caption tests — since-inception when hydrated / session-scoped when not / honest-no-overclaim.
+  "crates/ui/tests/panel_snapshots.rs",
+  # T7 boot mode-gate seam — should_hydrate_equity_on_boot (issued paper/live, skipped research).
+  "crates/ui/src/live.rs",
 ]
-anchors     = []   # N/A — read-only monitor persistence (no strategy overlay / no sizing math) -> CLAUDE.md baseline-divergence e2e gate does NOT apply; migration 013 is additive, backtest anchors byte-unchanged by construction (AC7).
-state       = "arch-done"   # architect 2026-06-11 — A1-A7 pinned, ADR-0052 registered, waves structured; awaiting Wave 0 (T1 + T7-contract).
+anchors     = []   # N/A — read-only monitor persistence (no strategy overlay / no sizing math) -> CLAUDE.md baseline-divergence e2e gate does NOT apply; migration 013 is additive, backtest anchors byte-unchanged by construction (AC7 — 119/119 PASS verified 2026-06-11).
+state       = "tester-done"   # tester 2026-06-11 — VERDICT PASS. 1262 tests green (audit 139, agent 119, ui-lib 447, ui-lib-live 447, live_equity_render 7/7, panel_snapshots 103/103). AC6 hydrated_boot_curve_actually_renders + AC5 live_append_after_hydrate_still_renders_and_grows both PASS at pixel layer. AC7: 119/119 anchors byte-unchanged. AC9: fixtures build clean; LiveEquityStore trait boundary verified; zero new deps. Spec-lint 71 violations (71 < 94 baseline — improvement). Baseline-equity-divergence e2e N/A by explicit spec decision (read-only monitor, no strategy/sizing math).
