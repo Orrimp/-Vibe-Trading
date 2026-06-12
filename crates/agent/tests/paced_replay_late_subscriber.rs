@@ -48,7 +48,7 @@ use std::time::Duration;
 
 use agent::EventBus;
 use agent::config::{BacktestConfig, BusConfig, RiskConfig, SizingConfig};
-use agent::runtime::spawn_research_trading_loop;
+use agent::runtime::spawn_trading_loop;
 use data::MockFeed;
 use time::OffsetDateTime;
 use tokio::task::JoinSet;
@@ -161,7 +161,8 @@ async fn paced_replay_late_subscriber_receives_fills_positions_pnl() {
     let cancel = CancellationToken::new();
 
     // Spawn the trading loop — it starts emitting bars immediately.
-    spawn_research_trading_loop(
+    // ADR-0053: research mode passes None for equity_store + "research" label.
+    spawn_trading_loop(
         feed.clone() as Arc<dyn data::MarketDataSource>,
         Arc::clone(&bus),
         Arc::clone(&registry),
@@ -169,6 +170,8 @@ async fn paced_replay_late_subscriber_receives_fills_positions_pnl() {
         &test_risk_cfg(),
         symbol.clone(),
         tf,
+        None, // research mode: no persist (A2 gate)
+        "research",
         &mut set,
         &cancel,
     );

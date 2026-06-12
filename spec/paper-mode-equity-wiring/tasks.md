@@ -1,8 +1,8 @@
 ---
 slug: paper-mode-equity-wiring
-status: arch-done
-owner: architect
-updated: 2026-06-11
+status: tester-done
+owner: tester
+updated: 2026-06-12
 version: 0.2.0
 trace: REQ-LIVE-EQUITY-PAPER-001
 ---
@@ -44,7 +44,7 @@ Wave 2 (reconverge — proofs)
 
 ## Task list
 
-- [ ] **M-DEV-1 — Rename + widen the loop; research call site (Q1, A1).**
+- [x] **M-DEV-1 — Rename + widen the loop; research call site (Q1, A1).**
   Rename `spawn_research_trading_loop → spawn_trading_loop`; add two
   additive params: `equity_store: Option<Arc<dyn audit::LiveEquityStore>>`
   and `mode_label: &'static str`. Body unchanged (the verified research
@@ -57,7 +57,7 @@ Wave 2 (reconverge — proofs)
   `paced_replay_late_subscriber` green; research integration tests green.
   (R1, R4 · AC7)
 
-- [ ] **M-DEV-2 — Loop-direct persist + `build_snapshot_row` `pub(crate)`
+- [x] **M-DEV-2 — Loop-direct persist + `build_snapshot_row` `pub(crate)`
   (Q4, A2).** Promote `reconciler::build_snapshot_row` (reconciler.rs:255)
   from private to `pub(crate)` and have it take `mode_label` (drop the
   hardcoded `"paper"`). In `spawn_trading_loop`, immediately after
@@ -69,7 +69,7 @@ Wave 2 (reconverge — proofs)
   `equity_store_integration.rs` AC2 (research store=`None` → 0 rows) still
   green. (R2 · AC1, AC2)
 
-- [ ] **M-DEV-3 — Wire the paper arm; delete the idle-reconciler stub
+- [x] **M-DEV-3 — Wire the paper arm; delete the idle-reconciler stub
   (Q2, A3 · AC4).** In the `Mode::Paper` branch (runtime.rs:544), call
   `spawn_trading_loop(binance_feed, …, equity_store, "paper", …)` using the
   Binance feed built at runtime.rs:571. **Delete the entire
@@ -81,7 +81,7 @@ Wave 2 (reconverge — proofs)
   -D warnings`; no `drop(state_tx)` remains (grep clean). (R1, R2, R3 ·
   AC4)
 
-- [ ] **M-DEV-4 — Data-layer divergence + fills + no-real-orders tests
+- [x] **M-DEV-4 — Data-layer divergence + fills + no-real-orders tests
   (A5, A6 data-half · AC1, AC2, AC3, AC5).** Extend
   `crates/agent/tests/equity_store_integration.rs` with a paper-loop
   integration test: drive `spawn_trading_loop` against a `data::FakeFeed`
@@ -98,7 +98,7 @@ Wave 2 (reconverge — proofs)
   `0x00C0_FFEE`) (AC3). **Gate:** the new test green; deterministic
   (two-run identical). (R7 · AC1, AC2, AC3, AC5)
 
-- [ ] **M-DEV-5 — Research byte-safety + anchor-count proof (R4 · AC7).**
+- [x] **M-DEV-5 — Research byte-safety + anchor-count proof (R4 · AC7).**
   Confirm the research-replay loop's outputs (fills, snapshots, equity)
   are unchanged by the unify: research + paced-replay tests green; run the
   anchor gate (`rust-validate` / `verify_anchors.sh`) — **119 anchor rows
@@ -107,7 +107,7 @@ Wave 2 (reconverge — proofs)
   anchor-count assertion** in the test report. **Gate:** anchor gate green
   + the count is stated, not assumed. (R4 · AC7)
 
-- [ ] **M-DEV-6 — Render-layer divergence gate (the UI test, A6
+- [x] **M-DEV-6 — Render-layer divergence gate (the UI test, A6
   render-half · AC6).** Extend `crates/ui/tests/live_equity_render.rs`:
   add `const CURVE_Y_VAR_MIN` (a Y-variation threshold — pick from the
   `diag_accent_bounding_box` empirics: a real session bbox is tall, a flat
@@ -124,7 +124,7 @@ Wave 2 (reconverge — proofs)
   both assertions green; the flat contrast fails Y-variation but passes
   count/x_span (proving the gate discriminates). (R5 · AC6)
 
-- [ ] **M-DEV-7 — Fixtures smoke + no-live-feature build unchanged
+- [x] **M-DEV-7 — Fixtures smoke + no-live-feature build unchanged
   (AC8).** The fixtures-mode cockpit (no `live` feature, no agent) is
   byte-identical to today (it never runs the paper loop); a build without
   the `live` feature is unaffected. Confirm zero new external I/O (the

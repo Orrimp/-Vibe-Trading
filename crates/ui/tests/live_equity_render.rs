@@ -607,6 +607,134 @@ fn live_append_after_hydrate_still_renders_and_grows() {
     );
 }
 
+// ── PHASE 3 — ADR-0053 paper-mode-equity-wiring Y-variation gate (AC6) ────────
+//
+// The existing `count`/`x_span` assertions PASS on a flat equity series:
+// `equity_curve.rs:178` (the flat-line guard) renders a degenerate series
+// as a **centered, full-width horizontal line** that draws plenty of ACCENT
+// pixels and spans the full x-axis. So `CURVE_DREW_MIN_ACCENT` and
+// `CURVE_X_SPAN_MIN` do NOT distinguish a flat (flat `initial_capital` bug)
+// from a real moving curve.
+//
+// The ONLY valid discriminator is the ACCENT bounding-box HEIGHT:
+// `AccentStats` already tracks `min_y`/`max_y`. A moving curve has a tall
+// bbox; the flat-line guard's centered horizontal line has a ~1-2px bbox.
+// `CURVE_Y_VAR_MIN` is the new threshold that separates them.
+
+/// Minimum ACCENT bounding-box HEIGHT (max_y − min_y) that a MOVING equity
+/// curve must produce. A flat/degenerate series is rendered by the
+/// `equity_curve.rs` flat-line guard as a centered horizontal line, producing
+/// a bbox height of ~1–2 px (AA ramp), well below this threshold.
+///
+/// Calibration (via `diag_accent_bounding_box`): a healthy 8-point session
+/// with rises/dips produces an ACCENT bbox spanning ~168 px vertically.
+/// Setting the floor at 30 px is comfortably ABOVE the ~1–2 px flat-line
+/// noise and comfortably BELOW the ~168 px healthy-curve height — the gap
+/// is ~2 orders of magnitude, so this threshold is stable across themes and
+/// minor layout shifts.
+const CURVE_Y_VAR_MIN: u32 = 30;
+
+/// **AC6 — Y-variation gate: non-flat moving curve passes; flat initial_capital
+/// series fails (the self-proving contrast pair, ADR-0053 A6 / D5).**
+///
+/// This is the render-layer half of the baseline-equity-divergence gate.
+/// The existing `count`/`x_span` checks do NOT discriminate flat from moving
+/// (the flat-line guard renders the flat series as a full-width centered
+/// horizontal line that PASSES both); only the ACCENT bbox HEIGHT distinguishes.
+///
+/// **Non-flat half:** a moving paper equity series (with rises and dips) renders
+/// a polyline whose ACCENT bbox height ≥ `CURVE_Y_VAR_MIN`. This is the "the
+/// paper loop actually produced moving equity" proof at the pixel layer.
+///
+/// **Flat contrast half (the self-proving proof):** a flat `initial_capital`
+/// series (all-equal values — the current paper-mode bug) renders a bbox height
+/// < `CURVE_Y_VAR_MIN`. It still PASSES `count`/`x_span` (the flat-line guard
+/// draws it as a full-width horizontal line) — proving Y-variation is the ONLY
+/// valid discriminator for the "is equity moving?" question.
+#[test]
+fn y_variation_gate_moving_passes_flat_fails() {
+    // ── Non-flat half ─────────────────────────────────────────────────────────
+    // Use `session_points()` which has rises AND dips (same as the other tests),
+    // producing a curve with real vertical extent.
+    let mut moving_c = Cockpit::new();
+    moving_c.current_screen = Screen::Live;
+    for (secs, eq) in session_points() {
+        update(&mut moving_c, Message::PnlRefreshed(snap(secs, eq)));
+    }
+    let moving_shot = render_live(moving_c);
+    let moving_stats = accent_pixel_stats(&moving_shot);
+    let moving_y_span = moving_stats.max_y.saturating_sub(moving_stats.min_y);
+
+    // A moving curve must pass the Y-variation threshold.
+    assert!(
+        moving_y_span >= CURVE_Y_VAR_MIN,
+        "Y-VARIATION GATE FAILED for MOVING curve: ACCENT bbox height = {}px < {}px (CURVE_Y_VAR_MIN). \
+         A real paper equity session with rises and dips should have a tall polyline; \
+         if this fails the curve is rendering as flat when it should not.",
+        moving_y_span,
+        CURVE_Y_VAR_MIN,
+    );
+    // Confirm count/x_span also pass (belt-and-braces).
+    assert!(
+        moving_stats.count >= CURVE_DREW_MIN_ACCENT,
+        "moving curve count check: {} < {CURVE_DREW_MIN_ACCENT}",
+        moving_stats.count,
+    );
+    let moving_x_span = moving_stats.max_x.saturating_sub(moving_stats.min_x);
+    assert!(
+        moving_x_span >= CURVE_X_SPAN_MIN,
+        "moving curve x_span check: {moving_x_span} < {CURVE_X_SPAN_MIN}",
+    );
+
+    // ── Flat contrast half (self-proving proof) ───────────────────────────────
+    // A flat series at constant `initial_capital` — the current paper-mode bug.
+    // All points have the same equity value: 100_000 (never moves).
+    let mut flat_c = Cockpit::new();
+    flat_c.current_screen = Screen::Live;
+    for secs in [0i64, 60, 120, 180, 240, 300, 360, 420] {
+        update(
+            &mut flat_c,
+            Message::PnlRefreshed(snap(secs, dec!(100_000))),
+        );
+    }
+    let flat_shot = render_live(flat_c);
+    let flat_stats = accent_pixel_stats(&flat_shot);
+    let flat_y_span = flat_stats.max_y.saturating_sub(flat_stats.min_y);
+
+    // A flat curve FAILS the Y-variation threshold (the flat-line guard draws it
+    // as a centered horizontal line — ~1-2 px bbox height).
+    assert!(
+        flat_y_span < CURVE_Y_VAR_MIN,
+        "Y-VARIATION SELF-PROOF FAILED for FLAT curve: ACCENT bbox height = {}px >= {}px \
+         (CURVE_Y_VAR_MIN). The flat-line guard should render the flat series as a centered \
+         horizontal line (~1-2px bbox). If this fails the self-proving contrast pair is broken \
+         and the Y-variation gate can no longer distinguish flat from moving.",
+        flat_y_span,
+        CURVE_Y_VAR_MIN,
+    );
+    // The flat curve STILL passes count/x_span — proving those are insufficient.
+    // (The flat-line guard draws a full-width centered horizontal line.)
+    assert!(
+        flat_stats.count >= CURVE_DREW_MIN_ACCENT,
+        "flat curve count check (must pass — flat-line guard draws a full-width line): \
+         {} < {CURVE_DREW_MIN_ACCENT}",
+        flat_stats.count,
+    );
+    let flat_x_span = flat_stats.max_x.saturating_sub(flat_stats.min_x);
+    assert!(
+        flat_x_span >= CURVE_X_SPAN_MIN,
+        "flat curve x_span check (must pass — flat-line guard draws a full-width line): \
+         {flat_x_span} < {CURVE_X_SPAN_MIN}",
+    );
+
+    // Final relational proof: the moving curve has a taller ACCENT bbox than the flat.
+    assert!(
+        moving_y_span > flat_y_span,
+        "Y-variation discriminator broken: moving curve bbox height ({moving_y_span}px) \
+         must be > flat curve bbox height ({flat_y_span}px)"
+    );
+}
+
 // ── Render-crash regression (a bonus bug this harness caught) ────────────────
 
 /// **Render-crash regression — flat / single-point series.**

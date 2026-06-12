@@ -245,14 +245,15 @@ impl ReconcilerTask {
 /// agent mode string (live-equity-history-durable ADR-0052 / A3).
 ///
 /// Called from [`ReconcilerTask::after_bar_close`] (paper/live path) and
-/// optionally from the research trading loop (where it is never called
-/// because the mode gate is `None` at construction time — A2).
+/// from [`crate::runtime::spawn_trading_loop`] (ADR-0053 A2 loop-direct
+/// persist seam).  `pub(crate)` so the trading loop (same crate) reuses it
+/// verbatim — no duplicated row construction.  NOT `pub` — internal only.
 ///
 /// `bar_ts` in the row comes from `snap.bar_ts.unwrap_or(snap.as_of)` so
 /// the row's x-axis coordinate matches the chart (approach A invariant).
 /// The `ts` field is the row mint wallclock (`snap.as_of` is already
 /// `Timestamp::now()` at this point).
-fn build_snapshot_row(snap: &PnlSnapshot, mode: &str) -> audit::EquitySnapshotRow {
+pub(crate) fn build_snapshot_row(snap: &PnlSnapshot, mode: &str) -> audit::EquitySnapshotRow {
     let bar_ts = snap.bar_ts.unwrap_or(snap.as_of);
     audit::EquitySnapshotRow {
         id: Uuid::new_v4().to_string(),

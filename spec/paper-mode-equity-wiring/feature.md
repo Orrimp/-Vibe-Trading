@@ -1,8 +1,8 @@
 ---
 slug: paper-mode-equity-wiring
-status: arch-done
-owner: architect
-updated: 2026-06-11
+status: tester-done
+owner: tester
+updated: 2026-06-12
 version: 0.2.0
 trace: REQ-LIVE-EQUITY-PAPER-001
 ---

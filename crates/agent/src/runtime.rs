@@ -524,7 +524,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
             // - Determinism: the paper engine seed is fixed (`0x00C0_FFEE`).
             //   Research mode is single-threaded from the perspective of bar
             //   processing (broadcast::Receiver is polled in one task).
-            spawn_research_trading_loop(
+            spawn_trading_loop(
                 Arc::clone(&feed),
                 Arc::clone(&bus),
                 Arc::clone(&registry),
@@ -532,13 +532,11 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 &config.risk,
                 feed_symbol.clone(),
                 feed_tf,
+                None, // Research mode: equity_store = None (A2 gate — never write in research)
+                "research",
                 &mut set,
                 &cancel,
             );
-            // Research mode: equity_store is None (A2 gate — never write in research).
-            // The mode gate lives at the RunHandles construction site in main.rs /
-            // cockpit_live.rs; `run` trusts the caller's intent.
-            drop(equity_store);
             info!("agent subsystems initialized — research trading loop + replay feed running");
         }
         crate::config::Mode::Paper => {
@@ -641,45 +639,40 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 &cancel,
             );
 
-            // ── live-equity-history-durable ADR-0052 A6/A7 ───────────────────
-            // Paper mode: spawn a periodic reconciler that emits + persists a
-            // PnlSnapshot every interval. The state is initialized at zero
-            // (reflecting the agent's boot state before any fills); the paper
-            // trading loop will update it as positions are opened/closed.
+            // ── ADR-0053: paper trading loop (A3) ────────────────────────────
+            // The unified `spawn_trading_loop` is the sole per-bar equity writer
+            // in paper mode (Q2=a: retire the idle reconciler mint role).
+            // It subscribes directly to the Binance feed, runs the strategy +
+            // paper engine per bar, and fire-and-forget persists via
+            // `equity_store` (loop-direct persist, Q4=a, ADR-0053 D2).
             //
-            // The reconciler's `spawn` loop calls `after_bar_close(now())` each
-            // tick, which fire-and-forget persists via the equity_store (A6).
-            // In paper mode `bar_ts ≈ now()` — live bars arrive in real-time.
-            // Both the headless `trading` bin and `cockpit_live` reach this
-            // code path (A7 — the series accrues regardless of UI attachment).
-            if let Some(store) = equity_store {
-                use crate::reconciler::{ReconcilerState, ReconcilerTask};
-                use rust_decimal::Decimal;
-                use rust_decimal_macros::dec;
+            // The Binance feed is the first entry in `enabled` (always); we
+            // reuse the first feed from the enabled list built above.
+            // The idle-reconciler `drop(state_tx)` stub (runtime.rs:674) is
+            // DELETED — the loop is now the sole paper mint site (AC4, ADR-0053 D3).
+            {
+                // The Binance feed was the first in `enabled` (already moved into
+                // supervisors); construct a fresh Arc for the trading loop so it
+                // subscribes independently (bypasses the broadcast bus, same as
+                // research mode so fast-replay / live bars are never dropped).
+                let binance_ws_url = config.data.sources.binance.ws_url.clone();
+                let paper_feed: Arc<dyn MarketDataSource> =
+                    Arc::new(data::BinanceFeed::new(&binance_ws_url, &binance_ws_url));
 
-                let initial_state = ReconcilerState {
-                    cash: Decimal::try_from(config.backtest.initial_capital_usdt)
-                        .unwrap_or(dec!(100_000)),
-                    position_qty: Decimal::ZERO,
-                    last_mark: Decimal::ZERO,
-                    tolerance: dec!(0.01),
-                    realized_pnl: Decimal::ZERO,
-                    cost_basis: Decimal::ZERO,
-                };
-                let (state_tx, state_rx) = tokio::sync::watch::channel(initial_state);
-                // The state_tx is dropped here (no external updater in the
-                // current paper-mode stub); the reconciler reads the initial
-                // value which is correct at boot. A future paper-mode trading
-                // loop will use state_tx to push equity updates.
-                drop(state_tx);
-
-                let ks = kill_switch.as_ref().clone();
-                let reconciler_interval_ms = 60_000u64; // 1-min bar cadence
-                ReconcilerTask::new(state_rx, ks, reconciler_interval_ms)
-                    .with_bus(Arc::clone(&bus))
-                    .with_equity_store(store)
-                    .spawn();
-                info!("equity_reconciler_spawned (paper mode — periodic persist enabled)");
+                spawn_trading_loop(
+                    paper_feed,
+                    Arc::clone(&bus),
+                    Arc::clone(&registry),
+                    &config.backtest,
+                    &config.risk,
+                    feed_symbol.clone(),
+                    feed_tf,
+                    equity_store, // Some(store) — the loop-direct persist gate (ADR-0053 D2)
+                    "paper",
+                    &mut set,
+                    &cancel,
+                );
+                info!("paper trading loop spawned (live feed → paper engine → equity store)");
             }
         }
     }
@@ -940,9 +933,15 @@ pub(crate) async fn spawn_feed_taps_with_observer<S: MarketDataSource + ?Sized>(
 // `too_many_arguments` is intentional — the function mirrors the
 // backtest::scenarios::sma_composed_run pattern and all parameters are
 // required.  No builder pattern overhead is warranted for a spawn helper.
+//
+// ADR-0053 (paper-mode-equity-wiring): renamed from `spawn_research_trading_loop`
+// and widened with `equity_store: Option<Arc<dyn audit::LiveEquityStore>>` +
+// `mode_label: &'static str`.  Research passes `None` (byte-identical behavior);
+// paper passes `Some(store)` + `"paper"` so the loop-direct persist seam (A2)
+// fires per bar without any `if mode != Research` inside the body.
 #[allow(clippy::too_many_arguments)]
 #[doc(hidden)]
-pub fn spawn_research_trading_loop(
+pub fn spawn_trading_loop(
     feed: Arc<dyn MarketDataSource>,
     bus: Arc<EventBus>,
     registry: Arc<strategy::StrategyRegistry>,
@@ -950,6 +949,8 @@ pub fn spawn_research_trading_loop(
     risk_cfg: &crate::config::RiskConfig,
     feed_symbol: Symbol,
     feed_tf: Timeframe,
+    equity_store: Option<Arc<dyn audit::LiveEquityStore>>, // NEW (ADR-0053 A1/A2)
+    mode_label: &'static str,                              // NEW ("paper" | "research")
     set: &mut JoinSet<()>,
     cancel: &CancellationToken,
 ) {
@@ -993,14 +994,14 @@ pub fn spawn_research_trading_loop(
 
     let cancel_loop = cancel.child_token();
     set.spawn(async move {
-        info!("research_trading_loop started");
+        info!(mode = mode_label, "trading_loop started");
 
         // Subscribe directly to the feed stream (bypasses the broadcast bus so
         // fast-replay bars are never dropped due to channel lag).
         let mut bar_stream = match feed.subscribe_bars(feed_symbol.clone(), feed_tf).await {
             Ok(s) => s,
             Err(e) => {
-                warn!(error = %e, "research_trading_loop: subscribe_bars failed — no trading");
+                warn!(error = %e, mode = mode_label, "trading_loop: subscribe_bars failed — no trading");
                 return;
             }
         };
@@ -1019,11 +1020,11 @@ pub fn spawn_research_trading_loop(
                     let bar = match next {
                         Some(Ok(b)) => b,
                         Some(Err(e)) => {
-                            warn!(error = %e, "research_trading_loop bar stream error (continuing)");
+                            warn!(error = %e, mode = mode_label, "trading_loop bar stream error (continuing)");
                             continue;
                         }
                         None => {
-                            debug!("research_trading_loop bar stream ended — replay done");
+                            debug!(mode = mode_label, "trading_loop bar stream ended");
                             break;
                         }
                     };
@@ -1129,23 +1130,25 @@ pub fn spawn_research_trading_loop(
                                 // 10%-of-$100k fixed fraction); fee_usdt ≈ 4bps × notional.
                                 tracing::debug!(
                                     fill_count,
+                                    mode = mode_label,
                                     side = ?fill.side,
                                     price = %fill.price.get(),
                                     qty = %fill.qty.get(),
                                     notional_usdt = %notional,
                                     fee_usdt = %fill.fee.amount(),
                                     running_equity_usdt = %running_equity,
-                                    "research_trading_loop fill detail"
+                                    "trading_loop fill detail"
                                 );
                                 if fill_count <= 5 || fill_count.is_multiple_of(100) {
                                     info!(
                                         fill_count,
+                                        mode = mode_label,
                                         side = ?fill.side,
                                         price = %fill.price.get(),
                                         qty = %fill.qty.get(),
                                         notional_usdt = %notional,
                                         fee_usdt = %fill.fee.amount(),
-                                        "research_trading_loop fill"
+                                        "trading_loop fill"
                                     );
                                 }
                             }
@@ -1177,7 +1180,26 @@ pub fn spawn_research_trading_loop(
                         as_of: Timestamp::now(),
                         bar_ts: Some(bar.close_ts),
                     };
-                    pnl_bus.publish_pnl(snap);
+                    pnl_bus.publish_pnl(snap.clone());
+
+                    // ADR-0053 A2 — loop-direct persist, gated by Some(store).
+                    // The Some/None IS the mode gate — no if mode != Research inside the loop.
+                    // Research passes None → this branch never executes → byte-identical outputs.
+                    // Paper passes Some(store) → fire-and-forget persist per bar (A6 — never
+                    // blocks or panics the loop; write errors are logged and discarded).
+                    if let Some(ref store) = equity_store {
+                        let store = Arc::clone(store);
+                        let row = crate::reconciler::build_snapshot_row(&snap, mode_label);
+                        tokio::spawn(async move {
+                            if let Err(e) = store.append_equity_snapshot(&row).await {
+                                tracing::warn!(
+                                    error = %e,
+                                    mode = mode_label,
+                                    "equity_snapshot write failed (non-fatal — loop continues)"
+                                );
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -1186,7 +1208,8 @@ pub fn spawn_research_trading_loop(
         info!(
             total_equity = %total_equity,
             fills = fill_count,
-            "research_trading_loop stopped — replay complete"
+            mode = mode_label,
+            "trading_loop stopped"
         );
     });
 }

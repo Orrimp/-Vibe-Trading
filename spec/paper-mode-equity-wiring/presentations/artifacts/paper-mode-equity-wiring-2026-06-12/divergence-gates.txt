@@ -1,0 +1,73 @@
+Captured by presenter on 2026-06-12 against the uncommitted working tree
+(commit baseline abdb5dc; implementation on disk, commits queued for operator unlock).
+These are the two halves of the baseline-equity-divergence gate (ADR-0053 D5)
+plus the live anchor gate.
+
+────────────────────────────────────────────────────────────────────────────
+$ cargo test -p agent --test equity_store_integration paper_loop_produces_moving_equity -- --exact --nocapture
+────────────────────────────────────────────────────────────────────────────
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.74s
+     Running tests/equity_store_integration.rs (target/debug/deps/equity_store_integration-03164ac06bdad98c)
+
+running 1 test
+test paper_loop_produces_moving_equity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.66s
+
+  Data-layer half (AC1): drives 80 closed bars with a MOVING price series
+  through spawn_trading_loop with Some(store) (paper mode); asserts persisted
+  total_equity values are NOT all equal (line 298) and not all == initial_capital
+  (line 305), plus row count == bar count (line 313, one writer / no double-mint).
+  A constant equity series (the drop(state_tx) bug) makes all_equal == true and
+  panics — this test is its sentinel.
+
+────────────────────────────────────────────────────────────────────────────
+$ cargo test -p ui --test live_equity_render y_variation_gate_moving_passes_flat_fails -- --exact --nocapture
+────────────────────────────────────────────────────────────────────────────
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.78s
+     Running tests/live_equity_render.rs (target/debug/deps/live_equity_render-ef81a9f655c25e50)
+
+running 1 test
+test y_variation_gate_moving_passes_flat_fails ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.40s
+
+  Render-layer half (AC6): CURVE_Y_VAR_MIN = 30 (live_equity_render.rs:635).
+  Moving curve asserts ACCENT bbox height (max_y - min_y) >= 30px (~168px healthy).
+  Flat-contrast half feeds 8 points all at 100_000 USDT and asserts bbox height
+  < 30px (~1-2px) — while STILL passing count >= 200 and x_span >= 400, proving
+  Y-variation is the ONLY valid flat-vs-moving discriminator.
+
+────────────────────────────────────────────────────────────────────────────
+$ cargo test -p ui --test live_equity_render          # full harness
+────────────────────────────────────────────────────────────────────────────
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+────────────────────────────────────────────────────────────────────────────
+$ cargo test -p agent --test equity_store_integration # full suite
+────────────────────────────────────────────────────────────────────────────
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+────────────────────────────────────────────────────────────────────────────
+$ bash scripts/verify_anchors.sh
+────────────────────────────────────────────────────────────────────────────
+ANCHORS PASS  (119 / 119)
+
+  All 119 backtest body-SHA-256 anchors byte-identical. The backtest binary
+  never calls runtime::run, so the spawn_trading_loop rename is structurally
+  independent of every anchored report (AC7).
+
+────────────────────────────────────────────────────────────────────────────
+Structural (AC4 — drop(state_tx) stub deleted):
+$ grep -n "drop(state_tx)" crates/agent/src/runtime.rs
+651:            // The idle-reconciler `drop(state_tx)` stub (runtime.rs:674) is
+  → the only occurrence is a COMMENT; zero live drop(state_tx) calls remain.
+
+$ grep -n "fn build_snapshot_row" crates/agent/src/reconciler.rs
+256:pub(crate) fn build_snapshot_row(snap: &PnlSnapshot, mode: &str) -> audit::EquitySnapshotRow {
+  → pub(crate), not pub — minimal exposure; loop reuses it (runtime.rs:1192).
+
+$ grep -n "spawn_trading_loop(" crates/agent/src/runtime.rs
+527:            spawn_trading_loop(   # research arm → "research", None
+662:                spawn_trading_loop( # paper arm   → "paper", Some(store)
+944:pub fn spawn_trading_loop(          # the unified definition
