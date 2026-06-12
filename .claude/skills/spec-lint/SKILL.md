@@ -1,6 +1,6 @@
 ---
 name: spec-lint
-description: Mechanical lint pass over spec/ — detects dead intra-spec links, missing frontmatter keys, orphan feature folders, anchors not referenced by trace.toml, shipped features without tests, and ADR registry mismatches. Run as part of the presenter pre-tick gate and any CI / pre-commit hook. Read-only; never edits spec.
+description: Mechanical lint pass over spec/ — detects dead intra-spec links, missing frontmatter keys, orphan feature folders, anchors not referenced by trace.toml, shipped features without tests, ADR registry mismatches, and pipeline status drift (deck + PASS tester report present but feature status < presenter-done — the audit-2026-06-12 enforcement hook; verify the rule itself with `python3 scripts/spec_lint.py --self-test`). Run as part of the presenter pre-tick gate and any CI / pre-commit hook. Read-only; never edits spec.
 ---
 
 # spec-lint

@@ -6,7 +6,8 @@
 
 Companion to scripts/verify_anchors.sh (which checks content hashes).
 This script checks shape: dead links, missing frontmatter, orphan
-feature folders, anchor coverage, trace.toml row validity.
+feature folders, anchor coverage, trace.toml row validity, and
+pipeline status drift (deck + PASS report ⇒ status ≥ presenter-done).
 
 Exit code = number of violation CATEGORIES that triggered (0 = clean).
 Pass --all to print every violation regardless of category count.
@@ -15,6 +16,8 @@ Usage:
     uv run scripts/spec_lint.py            # whole spec/ tree (preferred)
     uv run scripts/spec_lint.py spec/<slug>  # restrict to one folder
     uv run scripts/spec_lint.py --all      # verbose
+    uv run scripts/spec_lint.py --self-test  # synthetic-fixture check of the
+                                             # status-drift rule (exit 0 = ok)
 
 System Python (3.11+) also works:
     python3 scripts/spec_lint.py
@@ -97,6 +100,7 @@ CATEGORIES = (
     "bad-anchor",
     "unreferenced-anchor",
     "shipped-no-tests",
+    "status-drift",
     "trace-broken-path",
     "adr-not-registered",
 )
@@ -430,6 +434,108 @@ def check_shipped_have_tests(spec_dir: Path, report: Report) -> None:
             )
 
 
+# Frontmatter statuses that mean "the presenter cycle has been acted on" —
+# at-or-past presenter-done on the pipeline, or explicitly closed out.
+# A feature whose folder holds BOTH a presentation deck AND a PASS tester
+# report must carry one of these; anything earlier is status drift.
+STATUS_AT_OR_PAST_PRESENTER = {
+    "presenter-done",
+    "shipped",
+    "shipped-partial",
+    "retired",
+    "deprecated",
+}
+
+# The tester's verdict line, as emitted by the rust-test template
+# ("VERDICT → PASS"); accept the ASCII arrow too.
+VERDICT_PASS_RE = re.compile(r"VERDICT\s*(?:→|->)\s*PASS")
+
+
+def check_status_drift(spec_dir: Path, report: Report) -> None:
+    """The audit-2026-06-12 enforcement hook (5 consecutive audits of drift).
+
+    Rule: if a feature folder contains a presentation deck
+    (``presentations/*.md``) AND a passing tester report
+    (``reports/test-*.md`` whose body carries ``VERDICT → PASS``), then
+    ``feature.md``'s frontmatter ``status`` must be at-or-past
+    ``presenter-done``. Catching this at lint time (presenter pre-tick /
+    CI) replaces the weekly-audit archaeology that flagged the same drift
+    class five audits running.
+
+    Deliberately requires BOTH artifacts: archived decks/reports (moved to
+    spec/archive tars by cleanup sweeps) make a folder skip this check —
+    the rule fires at the moment drift is introduced, not retroactively.
+    """
+    for child in sorted(spec_dir.iterdir()):
+        if not is_feature_folder(child):
+            continue
+        feature = child / "feature.md"
+        if not feature.exists():
+            continue
+        fm = parse_frontmatter(feature.read_text())
+        if not fm:
+            continue
+        status = fm.get("status", "")
+        if status in STATUS_AT_OR_PAST_PRESENTER:
+            continue
+        decks = list((child / "presentations").glob("*.md"))
+        if not decks:
+            continue
+        has_pass = any(
+            VERDICT_PASS_RE.search(p.read_text(encoding="utf-8", errors="replace"))
+            for p in (child / "reports").glob("test-*.md")
+        )
+        if not has_pass:
+            continue
+        report.add(
+            "status-drift",
+            feature,
+            f"presenter cycle complete (deck {decks[0].name} + PASS tester "
+            f"report) but status is '{status}' — must be ≥ presenter-done",
+        )
+
+
+def self_test() -> int:
+    """Synthetic-fixture proof that the status-drift rule fires and clears.
+
+    Three fixtures in a tempdir: (a) drifting — tester-done + deck + PASS
+    report → exactly 1 violation; (b) compliant — same artifacts at
+    presenter-done → 0; (c) deck but no PASS report → 0. Exit 0 iff all
+    three behave.
+    """
+    import tempfile
+
+    def make_feature(root: Path, slug: str, status: str,
+                     deck: bool, pass_report: bool) -> None:
+        d = root / slug
+        d.mkdir()
+        (d / "feature.md").write_text(
+            f"---\nslug: {slug}\nstatus: {status}\nowner: t\nupdated: 2026-06-12\n---\n# x\n"
+        )
+        if deck:
+            (d / "presentations").mkdir()
+            (d / "presentations" / f"{slug}-2026-06-12.md").write_text("# deck\n")
+        if pass_report:
+            (d / "reports").mkdir()
+            (d / "reports" / "test-2026-06-12.md").write_text("VERDICT → PASS\n")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        make_feature(root, "drifting", "tester-done", deck=True, pass_report=True)
+        make_feature(root, "compliant", "presenter-done", deck=True, pass_report=True)
+        make_feature(root, "no-pass-yet", "tester-done", deck=True, pass_report=False)
+        rep = Report()
+        check_status_drift(root, rep)
+        hits = [v for v in rep.violations if v.category == "status-drift"]
+        ok = len(hits) == 1 and "drifting" in str(hits[0].path)
+        print(
+            "spec-lint --self-test (status-drift): "
+            + ("PASS — fires on drift, silent on compliant/no-pass" if ok
+               else f"FAIL — expected exactly 1 hit on 'drifting', got {[(str(v.path), v.detail) for v in hits]}")
+        )
+        return 0 if ok else 1
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -454,7 +560,15 @@ def main(argv: list[str]) -> int:
         help="restrict to one or more paths under spec/ (default: whole spec/)",
     )
     parser.add_argument("--all", action="store_true", help="print every category")
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run the status-drift rule against synthetic fixtures and exit",
+    )
     args = parser.parse_args(argv)
+
+    if args.self_test:
+        return self_test()
 
     if not SPEC_DIR.exists():
         print(f"error: spec/ not found at {SPEC_DIR}", file=sys.stderr)
@@ -475,6 +589,7 @@ def main(argv: list[str]) -> int:
         anchors = check_anchors(SPEC_DIR, report)
         check_trace(SPEC_DIR, report, anchors)
         check_shipped_have_tests(SPEC_DIR, report)
+        check_status_drift(SPEC_DIR, report)
 
     # Render output, grouped by category.
     grouped = report.by_category()
