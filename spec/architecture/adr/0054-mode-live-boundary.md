@@ -1,7 +1,7 @@
 ---
 adr: 0054
 title: Mode::Live boundary — passive-only, Binance-spot-only, exec-side-capped, operator-armed, kill-switch-supreme; parse-rejection retained until F2 lands
-status: proposed
+status: accepted
 date: 2026-06-12
 supersedes: none
 superseded-by: none
@@ -298,3 +298,14 @@ Q2–Q6 resolutions live in the feature `## Architecture` section.
   non-goal (D6); the proposed product.md amendment carried for operator
   ratification (D7). Status `proposed` until the operator ratifies the D7
   amendment, at which point it moves to `accepted`.
+- 2026-06-12 (analyst): RATIFIED. 2026-06-12 operator ratified ADR-0054 § D7 via
+  orchestrator dialog. status proposed → **accepted**. The analyst (product.md
+  owner) applied the two D7 edits VERBATIM to `spec/product.md` (§ Non-goals bullet
+  replaced; § Project scope boundary exception paragraph appended) — see
+  `product.md` § Changelog 2026-06-12. The product/safety boundary has now moved:
+  operator-armed live execution of the passive baseline on Binance spot is in
+  scope under the 5-condition arming contract. Per D5 the `config.rs:660-668`
+  `mode = "live"` parse-rejection STAYS in force until F2 lands its arming guard
+  atomically — ratification unblocks the build program (P0 cleared) but does NOT
+  itself parse `mode = "live"` or arm anything. Anchor-neutral; no code, no keys,
+  no config changed in this pass.

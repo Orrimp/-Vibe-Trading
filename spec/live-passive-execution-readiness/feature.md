@@ -632,6 +632,17 @@ pub fn check_armed(ctx: &ArmingCtx, order: &Order) -> Result<(), BlockReason> {
 
 ## Changelog
 
+- 2026-06-12 (analyst): **P0 (ADR-0054 § D7) RATIFIED + CLEARED.** Operator ratified
+  the product/safety-boundary amendment via the orchestrator decision dialog
+  (2026-06-12). The analyst (product.md owner) applied the two D7 edits VERBATIM to
+  [`spec/product.md`](../product.md) (§ Non-goals bullet replaced; § Project scope
+  boundary exception paragraph appended) and flipped
+  [ADR-0054](../architecture/adr/0054-mode-live-boundary.md) `proposed → accepted`.
+  The build program (F1/F2/F3) is now **unblocked**; this umbrella stays `arch-done`
+  (build not started). The first feature folder `live-exec-client-binance-spot` (F1)
+  is dispatched with its own `feature.md`/`tasks.md` (v0.1.0, draft). Per ADR-0054
+  § D5 the `mode = "live"` parse-rejection stays in force until F2 lands its arming
+  guard atomically. No code, no keys, no config, no git.
 - 2026-06-12 (analyst): created. Scoped the live-money passive-execution road
   into three shippable features (F1 testnet exec client + real-exchange
   reconciliation; F2 `PassiveBaseline` policy + 5-condition arming mechanism; F3

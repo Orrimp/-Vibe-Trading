@@ -45,15 +45,20 @@ scale-up  (SEPARATE operator ratification — not a feature)
 
 ## Pre-condition — P0 (blocks ALL of F1/F2/F3)
 
-- [ ] **P0 — operator ratifies the product/safety-boundary amendment (ADR-0054 § D7).**
-  Architect has drafted [ADR-0054](../architecture/adr/0054-mode-live-boundary.md)
-  (`status: proposed`) with the exact proposed `product.md` § Non-goals + § Project
-  scope boundary wording. **Operator action:** ratify the D7 amendment; then the
-  analyst (product.md owner) applies the two edits and ADR-0054 moves
-  proposed→accepted.
-  _Gate: until ratified, `mode = "live"` STAYS rejected (`config.rs:660-668`,
-  `t12_mode_live_is_rejected` green) and NO F-task starts._
-  _Owner: architect drafts (done); operator ratifies; analyst applies edit._
+- [x] **P0 — operator ratifies the product/safety-boundary amendment (ADR-0054 § D7).**
+  **RATIFIED + CLEARED 2026-06-12.** The operator ratified the D7 amendment via the
+  orchestrator decision dialog (2026-06-12). The analyst (product.md owner) then
+  applied the TWO D7 edits VERBATIM to [`spec/product.md`](../product.md) (§ Non-goals
+  bullet replaced; § Project scope boundary exception paragraph appended — see
+  `product.md` § Changelog 2026-06-12) and flipped
+  [ADR-0054](../architecture/adr/0054-mode-live-boundary.md) `proposed → accepted`.
+  Build work on F1/F2/F3 is now **unblocked** (P0 is the only thing that gated them).
+  _Gate (still in force per ADR-0054 § D5): `mode = "live"` STAYS rejected
+  (`config.rs:660-668`, `t12_mode_live_is_rejected` green) until **F2** lands its
+  arming guard atomically — ratification cleared the BUILD gate, NOT the parse gate.
+  No F-task code has started._
+  _Owner: architect drafted (done); operator ratified (done); analyst applied the
+  edits (done)._
 
 ---
 
@@ -197,6 +202,14 @@ scale-up  (SEPARATE operator ratification — not a feature)
 
 ## Changelog
 
+- 2026-06-12 (analyst): **P0 RATIFIED + CLEARED.** Operator ratified ADR-0054 § D7
+  via the orchestrator decision dialog. Checked the P0 box; the analyst applied the
+  two `product.md` D7 edits verbatim and flipped ADR-0054 proposed→accepted (see
+  `product.md` + ADR-0054 changelogs). F1/F2/F3 build work is now unblocked; status
+  stays `arch-done` (build not started). Per ADR-0054 § D5 the `mode = "live"`
+  parse-rejection remains in force until F2 lands its arming guard atomically — the
+  ratification cleared the build gate, not the parse gate. No code, no keys, no
+  config, no git.
 - 2026-06-12 (architect): refined the analyst skeleton → `arch-done`, version 0.1.0
   → 0.2.0. Added the wave structure + arming-ladder gates (P0 → F1 → F2 → F3 →
   scale-up) with the per-wave human gate named; structured the program as an umbrella

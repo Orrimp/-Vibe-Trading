@@ -2,7 +2,7 @@
 slug: product
 status: draft
 owner: analyst
-updated: 2026-06-08
+updated: 2026-06-12
 ---
 
 # Product Requirements — Crypto Trading Agent
@@ -130,10 +130,15 @@ not alpha** reframe.
 - Ultra-HFT sub-millisecond execution.
 - Market making at scale.
 - Regulated derivatives trading.
-- **Real-money execution, KYC, exchange API keys, withdrawals.** Out of scope
-  for this project. Terminal mode is continuous paper-trading on **real
-  market data** with **simulated** fills. A follow-up project would integrate
-  multi-venue real-money execution and multi-platform data APIs.
+- **Real-money execution beyond the passive baseline, KYC,
+  withdrawals.** Out of scope for this project. The ONE ratified
+  exception (2026-06-12, ADR-0054) is **operator-armed live execution
+  of the passive buy-and-hold baseline on Binance spot only**, capped
+  exec-side, behind a 5-condition arming contract the agent can never
+  self-satisfy. No active strategy, no leverage, no derivatives, no
+  multi-venue, no withdrawals. Exchange API keys are operator-provisioned
+  out-of-band and never enter the repo. All other real-money execution
+  (active strategies, other venues, custody) remains a follow-up project.
 - **Tax reports / lot accounting.** Out of scope. Operator reports focus on
   performance visibility, not tax compliance.
 
@@ -157,6 +162,17 @@ is stable:
 - KYC, exchange API key management, withdrawal flows.
 - Multi-platform real-money integration (CEXes + DEXes + custody).
 - Tax lot accounting, FIFO / specific-lot, jurisdictional reports.
+
+**Ratified boundary exception (2026-06-12, ADR-0054).** A single,
+tightly-bounded extension is now in scope: **operator-armed, exec-side-
+capped live execution of the passive buy-and-hold baseline on Binance
+spot**. It is passive-only (no active strategy without a fresh ratified
+research program), Binance-spot-only, withdrawal-free, and impossible
+without all five independent operator arming conditions (mode +
+arm-file + exec-side cap + secret presence + not-halted). The
+kill switch is supreme. This narrows — it does not erase — the
+paper-terminal boundary: everything outside this exception remains a
+follow-up project.
 
 The reasoning: real money introduces a large surface of compliance, key
 management, and operational risk that is best tackled **after** the core
@@ -874,6 +890,24 @@ scope) can render inline.
 
 ## Changelog
 
+- 2026-06-12 (analyst, ADR-0054 § D7 ratification applied): 2026-06-12 operator
+  ratified ADR-0054 § D7 via orchestrator dialog. Applied the two PROPOSED edits
+  VERBATIM (the architect proposes / the operator disposes / product.md is the
+  boundary of record). Edit 1 — § Non-goals: replaced the
+  "**Real-money execution, KYC, exchange API keys, withdrawals.**" bullet with
+  "**Real-money execution beyond the passive baseline, KYC, withdrawals.**" — the
+  ONE ratified exception is operator-armed live execution of the passive
+  buy-and-hold baseline on Binance spot only, capped exec-side, behind a
+  5-condition arming contract the agent can never self-satisfy (no active strategy,
+  no leverage, no derivatives, no multi-venue, no withdrawals; keys
+  operator-provisioned out-of-band, never in the repo). Edit 2 — § Project scope
+  boundary: appended the "**Ratified boundary exception (2026-06-12, ADR-0054).**"
+  paragraph after the "What it does **not** ship" list, stating the bounded
+  extension narrows — does not erase — the paper-terminal boundary; everything
+  outside the exception remains a follow-up project. This does NOT reopen the
+  active-strategy research verdict (concluded FRAGILE across three reachable
+  channels, 2026-06-08); live = passive only. ADR-0054 moves proposed→accepted on
+  this edit. No anchored content touched (anchor-neutral by construction).
 - 2026-06-08 (analyst, doc-hygiene): § Week 2 — added a one-line
   cross-reference noting the `bps: 2` paper-fill slippage is the original
   2026-04 ship history, and that the live canonical v5 friction profile is
