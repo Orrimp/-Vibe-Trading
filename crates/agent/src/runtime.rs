@@ -659,6 +659,20 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 let paper_feed: Arc<dyn MarketDataSource> =
                     Arc::new(data::BinanceFeed::new(&binance_ws_url, &binance_ws_url));
 
+                // ── R7 retention — nightly purge (closes the ADR-0052 D5 deferral,
+                // operator-ratified 2026-06-12). Runs only where rows are minted
+                // (paper/live, store = Some); research persists nothing → no task.
+                // First tick fires at boot (catch-up after downtime), then daily.
+                if let Some(ref store) = equity_store {
+                    spawn_equity_purge_task(
+                        Arc::clone(store),
+                        EQUITY_PURGE_HORIZON_DAYS,
+                        EQUITY_PURGE_INTERVAL,
+                        &mut set,
+                        &cancel,
+                    );
+                }
+
                 spawn_trading_loop(
                     paper_feed,
                     Arc::clone(&bus),
@@ -1604,6 +1618,60 @@ fn default_risk_telemetry_stub() -> RiskTelemetry {
 /// Ticks at `interval` (1 Hz in production) and publishes the latest
 /// `RiskTelemetry` snapshot via `bus.publish_risk_telemetry(...)`.
 /// `cancel` stops the loop on shutdown.
+/// R7 retention horizon — rows older than this are purged. Matches the
+/// `purge_old_equity_snapshots` production default and the 30-day
+/// ledger-snapshot horizon (ADR-0052 A3).
+const EQUITY_PURGE_HORIZON_DAYS: u32 = 30;
+
+/// Purge cadence — nightly. The first tick fires immediately at boot so a
+/// long-downtime restart catches up without waiting a day.
+const EQUITY_PURGE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Spawn the nightly equity-snapshot retention purge (R7 — closes the
+/// ADR-0052 D5 scheduling deferral, operator-ratified 2026-06-12).
+///
+/// Spawned ONLY where equity rows are minted (paper/live mode with
+/// `equity_store = Some`); research mode persists nothing (A2) so it gets
+/// no purge task. Fire-and-forget per tick: an `Err` is logged and the
+/// task keeps its cadence — a failed purge never crashes or blocks
+/// anything (the same A6 tolerance as the writer).
+///
+/// Unlike the telemetry publishers, the FIRST tick is NOT skipped:
+/// `tokio::time::interval`'s immediate first fire is the boot catch-up
+/// (a store that grew past the horizon during downtime is trimmed right
+/// away, then daily).
+pub fn spawn_equity_purge_task(
+    store: Arc<dyn audit::LiveEquityStore>,
+    horizon_days: u32,
+    interval: Duration,
+    set: &mut JoinSet<()>,
+    cancel: &CancellationToken,
+) {
+    let cancel_w = cancel.child_token();
+    set.spawn(async move {
+        info!(
+            horizon_days,
+            interval_secs = interval.as_secs(),
+            "equity_purge_task started"
+        );
+        let mut tick = tokio::time::interval(interval);
+        loop {
+            tokio::select! {
+                () = cancel_w.cancelled() => break,
+                _ = tick.tick() => {
+                    match store.purge_older_than(horizon_days).await {
+                        Ok(0) => debug!("equity purge: nothing past the horizon"),
+                        Ok(deleted) => info!(deleted, horizon_days, "equity purge: rows removed"),
+                        // Fire-and-forget (A6): log + keep the cadence.
+                        Err(e) => warn!(error = %e, "equity purge failed; will retry next tick"),
+                    }
+                }
+            }
+        }
+        info!("equity_purge_task stopped");
+    });
+}
+
 pub fn spawn_risk_telemetry_publisher(
     bus: Arc<EventBus>,
     snapshot_fn: RiskSnapshotFn,

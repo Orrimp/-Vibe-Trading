@@ -413,3 +413,64 @@ async fn ac1_faked_store_tail_is_monotone() {
         "tail must be monotone ascending bar_ts (AC3 compatible)"
     );
 }
+
+/// R7 retention — the nightly purge task (closes the ADR-0052 D5 scheduling
+/// deferral, 2026-06-12): `spawn_equity_purge_task`'s FIRST tick fires
+/// immediately at boot (the downtime catch-up) and trims rows past the
+/// 30-day horizon; fresh rows survive. The 1h interval here guarantees only
+/// that boot tick fires within the test window.
+#[tokio::test]
+async fn equity_purge_task_boot_tick_trims_past_horizon() {
+    use audit::EquitySnapshotRow;
+    use trading_core::{Money, Usdt};
+
+    let mk = |id: &str, ts: Timestamp| EquitySnapshotRow {
+        id: id.to_string(),
+        ts,
+        bar_ts: ts,
+        as_of: ts,
+        total_equity: Money::<Usdt>::from_decimal(dec!(100_000)),
+        cash: Money::<Usdt>::from_decimal(dec!(100_000)),
+        realized: Money::<Usdt>::from_decimal(dec!(0)),
+        unrealized: Money::<Usdt>::from_decimal(dec!(0)),
+        mode: "paper".to_string(),
+    };
+
+    let store = FakeLiveEquityStore::new();
+    let stale = mk(
+        "stale",
+        Timestamp::new(OffsetDateTime::now_utc() - ::time::Duration::days(40)),
+    );
+    let fresh = mk("fresh", Timestamp::now());
+    store
+        .append_equity_snapshot(&stale)
+        .await
+        .expect("append stale");
+    store
+        .append_equity_snapshot(&fresh)
+        .await
+        .expect("append fresh");
+    assert_eq!(store.len(), 2);
+
+    let mut set = JoinSet::new();
+    let cancel = CancellationToken::new();
+    agent::runtime::spawn_equity_purge_task(
+        Arc::new(store.clone()),
+        30,
+        Duration::from_secs(3600),
+        &mut set,
+        &cancel,
+    );
+
+    // The boot tick is immediate; give the task a moment to run it.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    cancel.cancel();
+    while set.join_next().await.is_some() {}
+
+    assert_eq!(
+        store.len(),
+        1,
+        "the 40-day-old row is purged on the boot tick"
+    );
+    assert_eq!(store.rows()[0].id, "fresh", "the fresh row survives");
+}

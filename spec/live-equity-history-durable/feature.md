@@ -11,6 +11,12 @@ trace: REQ-LIVE-EQUITY-HISTORY-001
 
 ## Changelog
 
+- 2026-06-12 (orchestrator): **T6b — purge scheduling wired**, closing the
+  ADR-0052 D5 deferral (operator-ratified "wire the hook"). `purge_older_than`
+  on the `LiveEquityStore` trait + `spawn_equity_purge_task` (nightly, boot
+  catch-up first tick, fire-and-forget) spawned only where rows are minted
+  (paper/live, store = Some). Proven by `fake_store_purge_removes_old_keeps_recent`
+  + `equity_purge_task_boot_tick_trims_past_horizon`; anchors 119/119.
 - 2026-06-11 (ui-designer): UI track landed (T7-contract, T8, T9, T7). Added
   `Message::PnlHydrated` batch arm + `live_equity_hydrated` honesty flag
   (T7-contract, A4/A5 — guard seeded from MAX hydrated `as_of`); extended the

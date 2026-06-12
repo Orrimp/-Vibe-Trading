@@ -94,6 +94,20 @@ pub trait LiveEquityStore: Send + Sync {
         &self,
         limit: usize,
     ) -> Result<Vec<EquitySnapshotRow>, LedgerError>;
+
+    /// Purge persisted rows whose mint time (`ts`) is older than
+    /// `horizon_days` (R7 retention — production default 30, aligned with
+    /// the ledger-snapshot horizon). Returns the number of rows deleted.
+    ///
+    /// Fire-and-forget at the call site: the nightly scheduler
+    /// (`agent::runtime::spawn_equity_purge_task`, closing the ADR-0052 D5
+    /// deferral) logs + continues on `Err` — a failed purge never crashes
+    /// or blocks anything.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerError`] on SQL failure.
+    async fn purge_older_than(&self, horizon_days: u32) -> Result<u64, LedgerError>;
 }
 
 // ── Production impl ───────────────────────────────────────────────────────────
@@ -128,6 +142,10 @@ impl LiveEquityStore for LedgerEquityStore {
         limit: usize,
     ) -> Result<Vec<EquitySnapshotRow>, LedgerError> {
         crate::query::equity_snapshot_tail(&self.ledger, limit).await
+    }
+
+    async fn purge_older_than(&self, horizon_days: u32) -> Result<u64, LedgerError> {
+        crate::query::purge_old_equity_snapshots(&self.ledger, horizon_days).await
     }
 }
 
@@ -209,6 +227,17 @@ impl LiveEquityStore for FakeLiveEquityStore {
         let start = sorted.len().saturating_sub(limit);
         Ok(sorted[start..].to_vec())
     }
+
+    #[allow(clippy::unwrap_used)] // mutex poison = test teardown; safe for test fake
+    async fn purge_older_than(&self, horizon_days: u32) -> Result<u64, LedgerError> {
+        // Mirror the SQL `DELETE FROM equity_snapshots WHERE ts < cutoff`.
+        let cutoff =
+            time::OffsetDateTime::now_utc() - time::Duration::days(i64::from(horizon_days));
+        let mut guard = self.rows.lock().unwrap();
+        let before = guard.len();
+        guard.retain(|r| r.ts.inner() >= cutoff);
+        Ok((before - guard.len()) as u64)
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -273,6 +302,26 @@ mod tests {
         let last_bar_ts = tail.last().unwrap().bar_ts;
         let expected_last = time::OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(9);
         assert_eq!(last_bar_ts.inner(), expected_last);
+    }
+
+    #[tokio::test]
+    async fn fake_store_purge_removes_old_keeps_recent() {
+        let store = FakeLiveEquityStore::new();
+
+        // One stale row (minted 40 days ago) + one fresh row (now).
+        let mut old = make_row(0);
+        old.ts = Timestamp::new(time::OffsetDateTime::now_utc() - time::Duration::days(40));
+        let fresh = make_row(1); // make_row stamps ts = now()
+        store.append_equity_snapshot(&old).await.unwrap();
+        store.append_equity_snapshot(&fresh).await.unwrap();
+
+        let deleted = store.purge_older_than(30).await.unwrap();
+        assert_eq!(deleted, 1, "exactly the 40-day-old row is purged");
+        assert_eq!(store.len(), 1, "the fresh row survives");
+        assert_eq!(store.rows()[0].id, fresh.id);
+
+        // Idempotent: a second purge deletes nothing.
+        assert_eq!(store.purge_older_than(30).await.unwrap(), 0);
     }
 
     #[tokio::test]

@@ -106,6 +106,19 @@ parallelize.** Keep them small and mergeable.
   snapshot horizon. _acceptance: **AC8** — purge removes rows past the horizon;
   store bounded. **Gate: `cargo test -p audit`** (purge test: insert past +
   within horizon → only within-horizon survive)._
+- [x] **T6b — Purge SCHEDULING (closes the ADR-0052 D5 deferral; orchestrator,
+  operator-ratified "wire the hook" 2026-06-12).** `purge_older_than(horizon_days)`
+  added to the `LiveEquityStore` trait (Ledger impl delegates to
+  `query::purge_old_equity_snapshots`; Fake mirrors the SQL retain semantics) +
+  `agent::runtime::spawn_equity_purge_task` (nightly `tokio::interval`; the FIRST
+  tick fires at boot as the downtime catch-up; fire-and-forget per tick, A6
+  tolerance) spawned in the paper/live arm only where `equity_store = Some` —
+  research persists nothing (A2) so it gets no purge task. Covers BOTH binaries
+  via `RunHandles`. _acceptance: `fake_store_purge_removes_old_keeps_recent`
+  (trait semantics + idempotence) + `equity_purge_task_boot_tick_trims_past_horizon`
+  (the spawned task trims a 40-day-old row on the boot tick, fresh row survives).
+  **Gates: `cargo test -p audit` 187/187, `cargo test -p agent` 121/121, clippy 0,
+  anchors 119/119.**_
 
 ## UI track (ui-designer) — parallel after Wave 0; resolves A4 (boot) / A5 / R6
 
