@@ -4,6 +4,15 @@
 //! `-1021` (timestamp outside recvWindow) error.  Persistent skew beyond a
 //! threshold maps to `HaltReason::ClockSkew`.
 
+// Epoch-millis arithmetic: `as_millis() -> u128` and Binance `serverTime -> u64`
+// both fit i64 until year ~292,000,000; sign-loss is guarded by `.max(0)`.
+// Pedantic cast lints are safe to allow for this module's time math (incl. tests).
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
+)]
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::live::error::ExecError;
@@ -16,7 +25,7 @@ pub const MAX_SKEW_MS: i64 = 3_000;
 
 /// Tracks the offset between local clock and Binance server time.
 ///
-/// offset_ms = server_time_ms - local_time_ms (positive = local is behind).
+/// `offset_ms` = `server_time_ms` - `local_time_ms` (positive = local is behind).
 #[derive(Debug, Clone, Default)]
 pub struct ServerTimeOffset {
     offset_ms: i64,
@@ -24,6 +33,7 @@ pub struct ServerTimeOffset {
 
 impl ServerTimeOffset {
     /// Construct with a known offset (typically from a `GET /api/v3/time` call).
+    #[must_use]
     pub fn new(offset_ms: i64) -> Self {
         Self { offset_ms }
     }
@@ -72,6 +82,7 @@ impl ServerTimeOffset {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // test module
 mod tests {
     use super::*;
 

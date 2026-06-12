@@ -93,6 +93,7 @@ pub enum ExecError {
 /// | `-2010` | New order rejected — balance or filter (`InsufficientBalance` or `FilterReject`) |
 /// | `-2014` | API-key format invalid (`Auth`) |
 /// | `-2015` | Invalid API-key, IP, or permissions (`Auth`) |
+#[must_use]
 pub fn map_binance_code(code: i32, msg: &str) -> ExecError {
     match code {
         -1003 => ExecError::RateLimited {

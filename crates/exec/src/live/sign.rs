@@ -49,8 +49,8 @@ mod tests {
     /// Vector source: Binance API documentation public example (documented
     /// as an example, never a live credential).
     ///
-    /// From https://binance-docs.github.io/apidocs/spot/en/#signed-trade-user_data-and-margin-endpoints:
-    ///   secret  = "NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j"
+    /// From <https://binance-docs.github.io/apidocs/spot/en/#signed-trade-user_data-and-margin-endpoints>:
+    ///   secret  = "`NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j`"
     ///   payload = "symbol=LTCBTC&side=BUY&type=LIMIT&timeInForce=GTC&quantity=1&price=0.1&recvWindow=5000&timestamp=1499827319559"
     ///   expected sig = "c8db56825ae71d6d79447849e617115f4a920fa2acdcab2b053c4b2838bd6b71"
     ///

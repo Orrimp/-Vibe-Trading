@@ -25,13 +25,13 @@ pub const FILTER_TTL: Duration = Duration::from_secs(3600);
 /// Exchange filters for a single symbol, all fields `Decimal`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExchangeFilters {
-    /// LOT_SIZE: minimum step (all quantities must be a multiple of this).
+    /// `LOT_SIZE`: minimum step (all quantities must be a multiple of this).
     pub step_size: Decimal,
-    /// LOT_SIZE: minimum order quantity.
+    /// `LOT_SIZE`: minimum order quantity.
     pub min_qty: Decimal,
-    /// MIN_NOTIONAL: minimum order notional (`price * qty`).
+    /// `MIN_NOTIONAL`: minimum order notional (`price * qty`).
     pub min_notional: Decimal,
-    /// PRICE_FILTER: minimum tick size for prices.
+    /// `PRICE_FILTER`: minimum tick size for prices.
     pub tick_size: Decimal,
 }
 
@@ -42,15 +42,18 @@ pub struct FilterCache {
 }
 
 impl FilterCache {
+    #[must_use]
     pub fn new(ttl: Duration) -> Self {
         Self { inner: None, ttl }
     }
 
+    #[must_use]
     pub fn default_ttl() -> Self {
         Self::new(FILTER_TTL)
     }
 
     /// Return the cached filters if they are still fresh.
+    #[must_use]
     pub fn get(&self) -> Option<&ExchangeFilters> {
         self.inner.as_ref().and_then(|(f, ts)| {
             if ts.elapsed() < self.ttl {
@@ -236,6 +239,7 @@ pub fn parse_filters_from_json(json: &str, symbol: &str) -> Result<ExchangeFilte
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // test module
 mod tests {
     use rust_decimal_macros::dec;
 

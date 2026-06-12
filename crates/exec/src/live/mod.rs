@@ -171,7 +171,7 @@ impl BinanceSpotExecClient {
         // ServerTimeOffset state is still valid Rust.
         self.clock
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .adjusted_now_ms()
     }
 
@@ -227,7 +227,7 @@ impl BinanceSpotExecClient {
         // SAFETY: mutex recovery — see timestamp_ms comment.
         self.clock
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .sync(t.server_time);
         Ok(())
     }
@@ -237,11 +237,14 @@ impl BinanceSpotExecClient {
         // Check cache first.
         {
             // SAFETY: mutex recovery — see timestamp_ms comment.
-            let cache = self.filter_cache.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(c) = cache.get(symbol) {
-                if let Some(f) = c.get() {
-                    return Ok(f.clone());
-                }
+            let cache = self
+                .filter_cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(c) = cache.get(symbol)
+                && let Some(f) = c.get()
+            {
+                return Ok(f.clone());
             }
         }
         // Fetch from exchange.
@@ -270,7 +273,10 @@ impl BinanceSpotExecClient {
         // Store in cache.
         {
             // SAFETY: mutex recovery — see timestamp_ms comment.
-            let mut cache = self.filter_cache.lock().unwrap_or_else(|e| e.into_inner());
+            let mut cache = self
+                .filter_cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let entry = cache.entry(symbol.to_string()).or_default();
             entry.store(filters.clone());
         }
@@ -280,7 +286,10 @@ impl BinanceSpotExecClient {
     /// Invalidate filter cache for a symbol (after exchange filter-reject).
     fn invalidate_filter_cache(&self, symbol: &str) {
         // SAFETY: mutex recovery — see timestamp_ms comment.
-        let mut cache = self.filter_cache.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cache = self
+            .filter_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(c) = cache.get_mut(symbol) {
             c.invalidate();
         }
@@ -292,7 +301,7 @@ impl BinanceSpotExecClient {
     /// retries once.  On `-1013`/`-2010` filter rejects, invalidates the
     /// filter cache.  Never logs the signature.
     ///
-    /// Box::pin is required because Rust stable doesn't support recursive
+    /// `Box::pin` is required because Rust stable doesn't support recursive
     /// async fns natively; we use it only for the single clock-skew retry path.
     fn post_order_inner<'a>(
         &'a self,
@@ -341,7 +350,7 @@ impl BinanceSpotExecClient {
                     // SAFETY: mutex recovery — see timestamp_ms comment.
                     self.clock
                         .lock()
-                        .unwrap_or_else(|e| e.into_inner())
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .check_persistent()?;
                     return self.post_order_inner(query_base, symbol, false).await;
                 }

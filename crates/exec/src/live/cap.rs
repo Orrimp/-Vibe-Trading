@@ -49,7 +49,7 @@ mod tests {
 
     /// AC-11 (adversarial): parametrized over (notional, cap):
     /// - `notional == cap` → ALLOWED
-    /// - `notional > cap` → REJECTED (CapExceeded)
+    /// - `notional > cap` → REJECTED (`CapExceeded`)
     /// - `notional < cap` → ALLOWED
     #[test]
     fn exec_side_cap_rejects_over_notional() {
@@ -78,7 +78,7 @@ mod tests {
         }
     }
 
-    /// The CapExceeded error carries the exact notional and cap values.
+    /// The `CapExceeded` error carries the exact notional and cap values.
     #[test]
     fn cap_exceeded_error_carries_values() {
         let result = check_notional_cap(dec!(500), dec!(200));

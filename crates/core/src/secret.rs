@@ -42,6 +42,7 @@ pub struct SecretString(String);
 impl SecretString {
     /// Wrap a secret value.  Only `EnvSecretSource` / `LocalFileSecretSource`
     /// (and the test fake `FakeSecretSource`) call this.
+    #[must_use]
     pub fn new(value: String) -> Self {
         Self(value)
     }
@@ -53,6 +54,7 @@ impl SecretString {
     /// 1. Use the bytes only for HMAC input (pass to `sign::sign`).
     /// 2. Never copy the bytes into a struct, log them, or return them.
     /// 3. Drop the reference before any await point.
+    #[must_use]
     pub fn expose_secret(&self) -> &[u8] {
         self.0.as_bytes()
     }
@@ -61,6 +63,7 @@ impl SecretString {
     ///
     /// Same caller contract as [`expose_secret`]: use once, never store,
     /// never log.
+    #[must_use]
     pub fn expose_str(&self) -> &str {
         &self.0
     }
@@ -132,12 +135,12 @@ mod tests {
         let s = SecretString::new("FAKE_TESTNET_KEY_DO_NOT_USE".to_string());
 
         // Debug must not reveal the value
-        let dbg = format!("{:?}", s);
+        let dbg = format!("{s:?}");
         assert_eq!(dbg, "<redacted>", "Debug leaked plaintext: {dbg}");
         assert!(!dbg.contains("FAKE_TESTNET_KEY_DO_NOT_USE"));
 
         // Display must not reveal the value
-        let disp = format!("{}", s);
+        let disp = format!("{s}");
         assert_eq!(disp, "<redacted>", "Display leaked plaintext: {disp}");
         assert!(!disp.contains("FAKE_TESTNET_KEY_DO_NOT_USE"));
 

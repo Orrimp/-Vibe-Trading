@@ -31,7 +31,6 @@
 //! `testnet.binance.vision`; no `LedgerImbalance`; no mainnet host dialed.
 
 use exec::live::endpoint::Network;
-use exec::live::error::ExecError;
 use exec::live::types::OrderStatusKind;
 use exec::live::{AccountReader, BinanceSpotExecClient, LiveExecRouter};
 

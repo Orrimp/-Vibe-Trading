@@ -24,7 +24,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use trading_core::asset::Asset;
 
-use agent::kill_switch::{HaltReason, KillSwitch};
+use agent::kill_switch::KillSwitch;
 use agent::reconciler::ReconcilerTask;
 use exec::live::AccountReader;
 use exec::live::error::ExecError;
@@ -53,6 +53,7 @@ impl FakeAccountReader {
         })
     }
 
+    #[allow(dead_code)] // reserved for F2 arming-guard tests
     fn empty() -> Arc<Self> {
         Arc::new(Self {
             snapshot: AccountSnapshot {

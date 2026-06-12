@@ -28,8 +28,7 @@ use trading_core::asset::Asset;
 use exec::live::cap::check_notional_cap;
 use exec::live::error::ExecError;
 use exec::live::types::{
-    AccountSnapshot, Balance, BinanceAccountResponse, OrderAck, OrderRef, OrderStatus,
-    OrderStatusKind,
+    AccountSnapshot, Balance, OrderAck, OrderRef, OrderStatus, OrderStatusKind,
 };
 use exec::live::{AccountReader, LiveExecRouter};
 
@@ -108,11 +107,13 @@ impl LiveExecRouter for FakeTransport {
 
 // ── FakeAccountReader ──────────────────────────────────────────────────────────
 
+#[allow(dead_code)] // reserved for the F2 arming-guard tests
 struct FakeAccountReader {
     snapshot: AccountSnapshot,
 }
 
 impl FakeAccountReader {
+    #[allow(dead_code)] // reserved for the F2 arming-guard tests
     fn new(snapshot: AccountSnapshot) -> Arc<Self> {
         Arc::new(Self { snapshot })
     }
@@ -128,6 +129,7 @@ impl AccountReader for FakeAccountReader {
 // ── FakeSecretSource ───────────────────────────────────────────────────────────
 
 /// Test fake that always returns a preset value (obviously-fake key).
+#[allow(dead_code)] // reserved for the F2 arming-guard tests
 struct FakeSecretSource {
     key: &'static str,
     secret: &'static str,
@@ -247,7 +249,7 @@ async fn account_reader_parses_decimal() {
     assert!(usdt.locked.is_zero());
 
     // ETH is zeroed — not in the map
-    assert!(snap.balances.get(&Asset::Eth).is_none());
+    assert!(!snap.balances.contains_key(&Asset::Eth));
 }
 
 // ── AC-7: Order observably submitted once ─────────────────────────────────────
