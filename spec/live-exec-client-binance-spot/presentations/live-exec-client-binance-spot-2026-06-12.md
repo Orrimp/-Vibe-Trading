@@ -187,13 +187,13 @@ cargo test -p exec --test binance_testnet_live -- --ignored --nocapture
 
 Approving this deck **ratifies F1's gated evidence** — the substrate is built, secured, and proven against the faked-I/O matrix + the anchor/lint/dep gates. It does **not** ship a live position (`mode = "live"` stays rejected). The testnet rehearsal (M-DEV-F2, above) can run before or after you tick this, but **must be green before F2 dispatches** — it is the hard gate to the arming guard.
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
 
-_empty until operator fills_
+2026-06-12 — operator: **Approved — ship** (in-chat). Approval ships the capability; `mode = "live"` stays parse-rejected. The M-DEV-F2 testnet rehearsal remains the GATE TO F2 dispatch.
 
 ## Feedback log
 

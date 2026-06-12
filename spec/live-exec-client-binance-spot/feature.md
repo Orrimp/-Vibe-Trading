@@ -1,6 +1,6 @@
 ---
 slug: live-exec-client-binance-spot
-status: presenter-done
+status: shipped
 owner: presenter
 updated: 2026-06-12
 version: 0.2.0
