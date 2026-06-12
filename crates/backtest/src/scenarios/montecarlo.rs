@@ -23,7 +23,7 @@
 //! any scenario `run()`. It is a new thin wrapper that reuses the existing
 //! engine with a caller-supplied path and strategy.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rust_decimal::Decimal;
 use trading_core::Bar;
 
@@ -128,8 +128,6 @@ pub async fn run_path(
     fill_seed: u64,
     strategy: strategy::MomentumStrategy,
 ) -> Result<PathRunResult> {
-    use std::path::PathBuf;
-
     use rust_decimal_macros::dec;
     use trading_core::{
         Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
@@ -173,14 +171,6 @@ pub async fn run_path(
         price_sanity_band: dec!(0.20),
         portfolio_exposure_cap: Some(dec!(0.50)),
     };
-
-    // Load config only to get the universe list — strategy is caller-supplied.
-    let base_config_id = "top10_momentum_h1";
-    let rel_path = PathBuf::from(format!("config/strategies/{base_config_id}.toml"));
-    let toml_path = crate::paths::resolve_workspace_path(&rel_path);
-    let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
-        .with_context(|| format!("load momentum config: {}", rel_path.display()))?;
-    let _ = cfg; // universe list is implicit in the merged bars
 
     // M-DEV-3 (MN-spread): read k_short from the strategy — ZERO overhead when k_short==0.
     // Every short-side branch in run_path is gated on `k_short > 0` so the long-only

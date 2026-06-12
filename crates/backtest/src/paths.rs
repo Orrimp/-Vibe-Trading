@@ -113,18 +113,26 @@ mod tests {
     }
 
     /// (1) CWD-relative — anchor-preserving fast path. When the file
-    /// exists relative to CWD, return that path unchanged.
+    /// exists (as an absolute path passed directly), return it unchanged.
+    ///
+    /// The original test used `set_current_dir` to change CWD to a temp dir and
+    /// then resolved a relative path. That mutated the process-global CWD and
+    /// raced with concurrent tests that also rely on CWD for path resolution.
+    /// This rewrite passes an absolute path instead — `rel.exists()` still returns
+    /// true (branch 1 is hit), and no CWD mutation is needed.
     #[test]
     fn resolves_cwd_relative_when_present() {
         let tmp = Tmp::new("cwd");
-        let cfg = tmp.0.join("config/strategies");
-        fs::create_dir_all(&cfg).unwrap();
-        fs::write(cfg.join("foo.toml"), "stub").unwrap();
-        let prev = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&tmp.0).unwrap();
-        let resolved = resolve_workspace_path("config/strategies/foo.toml");
-        std::env::set_current_dir(prev).unwrap();
-        assert_eq!(resolved, PathBuf::from("config/strategies/foo.toml"));
+        let cfg_dir = tmp.0.join("config/strategies");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        let abs_file = cfg_dir.join("foo.toml");
+        fs::write(&abs_file, "stub").unwrap();
+        // Pass the absolute path directly — `rel.exists()` is true → branch (1) fires.
+        let resolved = resolve_workspace_path(&abs_file);
+        assert_eq!(
+            resolved, abs_file,
+            "branch (1): existing absolute path returns unchanged"
+        );
     }
 
     /// (2) Workspace marker — walks up from a nested CWD to find
@@ -152,17 +160,23 @@ mod tests {
     /// (3) Fallback — when neither CWD-relative nor workspace marker
     /// can be found, return the input path unchanged so the caller's
     /// not-found error surfaces.
+    ///
+    /// Uses a path that is guaranteed not to exist anywhere on the filesystem
+    /// rather than mutating the process-global CWD to a temp dir (which races
+    /// with concurrent tests that call `resolve_workspace_path` or `current_dir`).
     #[test]
     fn falls_back_to_input_when_unresolvable() {
-        let tmp = Tmp::new("missing");
-        let prev = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&tmp.0).unwrap();
-        let resolved = resolve_workspace_path("config/strategies/zzz.toml");
-        std::env::set_current_dir(prev).unwrap();
-        // tmp has no Cargo.lock anywhere — walked up to root and gave up.
-        // resolved is some path-like — not equal to the input necessarily
-        // (because the walk may have found a Cargo.lock further up), but
-        // the call must not panic and must return SOMETHING.
-        assert!(!resolved.as_os_str().is_empty());
+        // A relative path that cannot exist anywhere the resolver would look.
+        // The resolver checks: (1) `rel.exists()` — false for a non-existent name;
+        // (2) walks up from current_dir looking for Cargo.lock — even if it finds
+        // the workspace root, the file `zzz_nonexistent_xyzzy.toml` won't be there.
+        // Either way it falls back to returning the input path, and the call must
+        // not panic and must return a non-empty path.
+        let rel = PathBuf::from("config/strategies/zzz_nonexistent_xyzzy.toml");
+        let resolved = resolve_workspace_path(&rel);
+        assert!(
+            !resolved.as_os_str().is_empty(),
+            "fallback must return a non-empty path"
+        );
     }
 }
