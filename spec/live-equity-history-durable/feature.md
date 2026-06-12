@@ -1,6 +1,6 @@
 ---
 slug: live-equity-history-durable
-status: tester-done
+status: shipped
 owner: tester
 updated: 2026-06-11
 version: 0.2.0

@@ -4,6 +4,8 @@
 > PLAN ONLY — nothing has been deleted, moved, or modified. Every number below
 > comes from commands actually run against the working tree / git index.
 
+> **PHASE-3 RATIFICATIONS (operator, 2026-06-12):** **P3-2 = (a) KEEP the research-era Rust** (~30-35k LOC stays — it backs the 119 locked anchors; standing decision). **P3-4 = SKIP the history rewrite** (confirmed off the table; revisit trigger stays .git > 150 MB — currently 41 MB post-gc). P3-1 (retina screenshots) and P3-5 (vendor `.orig`) were NOT ratified — deferred, not rejected.
+>
 > **EXECUTION LOG (2026-06-11, operator-ratified "Phase 1 + 2"):**
 > ✅ P1-1 `git gc` · ✅ P1-2 `cargo clean` + local debris · ✅ P1-3 tracked `.pyc` removed ·
 > ✅ P1-4 `crates/models` stub removed (workspace check clean) · ✅ P1-5 `spec/_probe_lint_test/` removed ·

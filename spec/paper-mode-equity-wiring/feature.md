@@ -1,6 +1,6 @@
 ---
 slug: paper-mode-equity-wiring
-status: tester-done
+status: shipped
 owner: tester
 updated: 2026-06-12
 version: 0.2.0

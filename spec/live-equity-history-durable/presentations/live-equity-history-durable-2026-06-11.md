@@ -204,13 +204,13 @@ of the `iced_tiny_skia::engine.rs` zero-dim Quad panic).
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — <add reason below>
 
 ### Notes / feedback
 
-<empty until operator fills>
+2026-06-12 — operator: **Approved — ship** (captured via orchestrator decision dialog). The D5 purge-scheduling open question was resolved before approval: the nightly hook is WIRED (commit 2ec06c6, T6b), not dormant.
 
 > On **Approved — ship**: the trace row `REQ-LIVE-EQUITY-HISTORY-001` flips to
 > `shipped` only after this approval, and the purge stays dormant (scheduling

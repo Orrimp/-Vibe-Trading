@@ -150,13 +150,13 @@ _Carried-forward item (not a decision for this feature — unchanged by it): the
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
 ### Notes / feedback
 
-_empty until operator fills_
+2026-06-12 — operator: **Approved — ship** (captured via orchestrator decision dialog). Operator runs the paper-mode hands-on demo post-approval; approval ratifies the gated evidence (8/8 ACs, divergence gate at both layers).
 
 ## Feedback log
 
