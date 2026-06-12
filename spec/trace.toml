@@ -185,7 +185,7 @@ product     = "spec/product.md"
 arch        = ["spec/architecture.md"]
 crates      = ["crates/llm", "crates/agent", "crates/strategy"]
 tests       = []   # shipped — verification floor is the anchor regression gate; integration-test inventory deferred
-anchors     = []
+anchors     = []   # anchorless by intent — see spec/v2-llm-strategy/feature.md § Backtest Scenarios "Anchor disposition" (live LLM completions non-deterministic → no stable body-SHA; fixture-replay path is the equivalent regression guard)
 state       = "shipped"
 
 [[req]]
@@ -351,7 +351,7 @@ product     = "spec/product.md"
 arch        = []   # architect fills at M-T1 (scope-dependent); ADR-0037 (horizon-bump training contract) on scope a/c OR ADR-0036 (retire decision-record) on scope b OR ADR-0036-alt (defer-on-live) on scope d
 crates      = []   # developer fills at M-D; scope (a)/(c): crates/forecast (train_tcn --target-horizon-bars + features.rs target derivation extension); scope (b)/(d): zero code change
 tests       = []   # developer fills at M-D; scope (a)/(c): K5 topology-immutability + K6 anchor-neutrality + default-invariance + horizon-bumps-target-derivation; scope (b)/(d): no new tests beyond anchor-neutrality
-anchors     = []   # tester fills at M-FINAL after PASS; scope (a) at Q3=(a): forecast-distribution-bs1-h<Q2>-realdata + top10-2023-fy-tcn-overlay-h<Q2>-realdata under v2.7.0-horizon-bump; scope (b)/(d): no new anchors
+anchors     = []   # shipped scope (b) RETIRE: anchorless by intent — see spec/v25-tcn-horizon-bump-or-retire/feature.md § R7 "Anchor disposition (shipped scope)" (decision-record; zero code change / zero new anchors; 28 pre-feature anchors byte-identical). [historical scope-conditional plan: scope (a) at Q3=(a): forecast-distribution-bs1-h<Q2>-realdata + top10-2023-fy-tcn-overlay-h<Q2>-realdata under v2.7.0-horizon-bump; scope (b)/(d): no new anchors]
 state       = "shipped"   # operator-decided Q1=(b) RETIRE 2026-05-21 — pivot the multi-week budget to v2.5a PatchTST (phase 2 of 4-phase DL roadmap); Q2-Q7 MOOT under (b); zero code change; zero new anchors; 28 existing anchors byte-identical; decision documented in feature.md / tasks.md; next-step is v25a-patchtst-overlay Queue→Active promotion + analyst pass
 
 [[req]]

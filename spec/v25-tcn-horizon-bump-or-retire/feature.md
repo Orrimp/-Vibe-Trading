@@ -2,7 +2,7 @@
 slug: v25-tcn-horizon-bump-or-retire
 status: shipped
 owner: operator
-updated: 2026-05-21
+updated: 2026-06-12
 version: 0.1.0
 predecessor: v25-tcn-threshold-tuning v0.1.0
 parent: v25-tcn-overlay v2.5.0 (in-progress)
@@ -340,6 +340,25 @@ If Q1 = (d), this feature emits a decision record only:
   deployed.
 
 ### R7 — Anchor strategy (anchor-additive only across all scopes)
+
+> **Anchor disposition (shipped scope) — anchorless by intent.** The
+> operator resolved Q1 = **(b) retire-promote-PatchTST** on 2026-05-21
+> (frontmatter `status: shipped`; trace row `REQ-V25-TCN-HORIZON-BUMP-OR-RETIRE-001`
+> `state = "shipped"`). Under scope (b) this feature is a **scope-decision /
+> retirement decision-record** that ships **zero code change and zero new
+> anchors** — see R7 § "Scope (b) — retire" below ("0 new anchors in THIS
+> feature; the PatchTST follow-on ships its own anchors under
+> `v2.7.0-patchtst`") and the trace-row inline comment
+> ("Q2-Q7 MOOT under (b); zero code change; zero new anchors; 28 existing
+> anchors byte-identical"). The decision verdict IS the deliverable; there is
+> no backtest-equity body to lock a body-SHA-256 against. The 28 pre-feature
+> anchors (verified by `scripts/verify_anchors.sh`) remain the regression
+> guard for the strategy code this decision evaluated; the live alpha follow-on
+> (v2.5a PatchTST) carries the new anchors. This resolves the audit-2026-06-12
+> § "Anchor coverage" carry-over (no `anchors.toml` row for this shipped
+> feature) as a documented intentional-anchorless disposition, NOT a gap.
+> Evidence: feature.md frontmatter `status: shipped` + R7 scope-(b) clause +
+> `spec/trace.toml` row `REQ-V25-TCN-HORIZON-BUMP-OR-RETIRE-001`.
 
 This feature is **anchor-additive** regardless of which scope ships.
 All 28 existing anchors stay byte-identical:
@@ -1052,6 +1071,14 @@ If new anchors land, version + naming convention?
 
 ## Changelog
 
+- 2026-06-12 (analyst, doc-truth reconciliation): added the § R7 **Anchor
+  disposition (shipped scope)** note recording WHY this shipped feature is
+  anchorless by intent — Q1=(b) retire-promote ships a decision-record with
+  zero code change / zero new anchors (the verdict is the deliverable). Closes
+  the audit-2026-06-12 § "Anchor coverage" carry-over for this feature.
+  Evidence: frontmatter `status: shipped` + R7 scope-(b) clause + trace row
+  `REQ-V25-TCN-HORIZON-BUMP-OR-RETIRE-001` inline comment. No requirement or
+  decision text changed; documentation-only.
 - 2026-05-21 (analyst): initial brief authored. R1-R8 requirements,
   H1-H3 hypothesis register, K1-K7 risk register, Q1-Q7 operator-
   decide questions. **Q1 is HARD BLOCKER — no safe analyst default**;
