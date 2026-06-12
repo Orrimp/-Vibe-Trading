@@ -1,7 +1,7 @@
 ---
 slug: live-exec-client-binance-spot
-status: tester-done
-owner: tester
+status: presenter-done
+owner: presenter
 updated: 2026-06-12
 version: 0.2.0
 trace: REQ-LIVE-EXEC-CLIENT-001
@@ -933,6 +933,15 @@ rubber-stamp)._
   analyst** — every recommended default accepted; the deltas are sharpenings (the
   AQ-5 trait-in-core dependency-cycle fix; the AQ-1 audit-row + cadence pin; the
   enforced testnet-default test). No code, no keys, no config, no git.
+- 2026-06-12 (presenter): assembled the release deck
+  `presentations/live-exec-client-binance-spot-2026-06-12.md` (operator approval gate)
+  after tester `VERDICT → PASS`. Advanced status `tester-done → presenter-done` (the
+  presenter-owned cycle-completion frontmatter advance the spec-lint status-drift rule
+  requires once a deck exists alongside a PASS report). Evidence re-verified live at
+  HEAD `414c18a`: anchors 119/119, exec adversarial 7/7, reconciler two-class 7/7,
+  `t12_mode_live_is_rejected` PASS, testnet suite clean-skip (0/3); security greps
+  (mainnet URL confined to the `Network::Mainnet` enum arm, zero signature logging,
+  testnet default) re-run clean. No code, no keys, no config, no git.
 
 ## Implementation
 
