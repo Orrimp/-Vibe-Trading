@@ -156,7 +156,7 @@ perpetuity, not just at v0.2.0 ship. The contract is:
 
 This contract lives in `spec/architecture.md` § Regression gate
 discipline (developer adds the cross-reference at Wave B per
-[`spec-update`](../../.claude/skills/spec-update/SKILL.md)).
+[`spec-update`](../../../.claude/skills/spec-update/SKILL.md)).
 
 ### D6 — The two anchor systems are RECONCILED, never independently authored (amendment, 2026-05-30)
 

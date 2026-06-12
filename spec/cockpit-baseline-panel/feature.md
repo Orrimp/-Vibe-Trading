@@ -1,8 +1,8 @@
 ---
 slug: cockpit-baseline-panel
-status: in-progress
+status: presenter-done
 owner: ui-designer
-updated: 2026-06-08
+updated: 2026-06-12
 version: 0.1.0
 ---
 

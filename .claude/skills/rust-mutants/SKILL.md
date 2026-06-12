@@ -11,14 +11,14 @@ version: 0.1.0
 phase: warning-only
 gating: false
 scope_tier: hot   # strategy / exec / audit / risk only — workspace-wide is multi-hour
-cadence: nightly  # operator-decide Q from spec/dev-notes/testing-strategy-review-2026-05-25.md
+cadence: nightly  # operator-decide Q from spec/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md
 roadmap:
   v0.1: skill ships, runs locally, prints survived-mutation punch-list; no gate
   v0.2: extend to warm-tier crates (backtest / forecast); compare to baseline
   v0.3: CI / pre-commit gate enforcement (NOT this version)
 references:
-  - spec/dev-notes/testing-framework-audit-2026-05-25.md § Recommendations
-  - spec/dev-notes/testing-strategy-review-2026-05-25.md § Q1 nightly cargo-mutants
+  - spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md § Recommendations
+  - spec/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md § Q1 nightly cargo-mutants
   - spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md (the exact case this would catch)
   - spec/bug-log.md #65 vol_killswitch_overlay no-op (second exact case)
 ---
@@ -33,9 +33,9 @@ even when the code is broken.
 
 Cross-references:
 - Architect recommendation in
-  [`spec/dev-notes/testing-framework-audit-2026-05-25.md`](../../../spec/dev-notes/testing-framework-audit-2026-05-25.md).
+  [`spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md`](../../../spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md).
 - Analyst Q1 in
-  [`spec/dev-notes/testing-strategy-review-2026-05-25.md`](../../../spec/dev-notes/testing-strategy-review-2026-05-25.md):
+  [`spec/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md`](../../../spec/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md):
   *"Nightly cargo-mutants on Hot tier (strategy/exec/audit/risk) — single
   highest-leverage change; would have caught the v3 no-op."*
 - The exact bug class this catches:

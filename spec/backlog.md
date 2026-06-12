@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-06-08
+updated: 2026-06-12
 ---
 <!-- updated 2026-05-29 (analyst, pick-c-orchestrator-hygiene-compounder-trio M0 close) —
      promoted Queue → Active THREE features under Pick C Wave 1 of the
