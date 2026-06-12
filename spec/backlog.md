@@ -3315,6 +3315,38 @@ Cohorts through 2026-06-08 are archived in
 (2026-06-11 cleanup sweep, `CLEANUP-PLAN.md` P2-3). New shipped entries
 land below as features ship.
 
+### 2026-06-09 → 2026-06-12 cohort — cockpit Live completion + repo cleanup
+
+- **cockpit-live-dashboard-wiring v0.1.2 follow-ups CLOSED** — I1 data-date
+  x-axis via approach A (`PnlSnapshot.bar_ts` separate from the `as_of`
+  delivery key; the rasterizing render harness `live_equity_render.rs` was
+  born here and caught a flat-curve NaN panic; `10d1709`), I3 live Trades
+  session counter + I4 `Screen::Live` boot (`4996fdb`).
+- **live-equity-history-durable SHIPPED** (ADR-0052; `9eef752`; T6b purge
+  scheduling `2ec06c6`; operator-approved `737d7bf`) — paper/live per-bar
+  equity persists to the audit ledger (`equity_snapshots`, additive 013,
+  `LiveEquityStore` trait); `cockpit_live` hydrates the curve on boot with
+  the "Since inception" caption; research replay persists nothing (A2).
+- **paper-mode-equity-wiring SHIPPED** (ADR-0053; `24c6213`;
+  operator-approved `737d7bf`) — `spawn_trading_loop` unified for
+  research+paper; paper mode runs the configured `SmaCrossover` against the
+  live Binance feed via the deterministic `PaperEngine`, so the equity
+  curve MOVES and persists non-constant. First feature since the v3 noop
+  precedent where the baseline-equity-divergence gate APPLIES — satisfied
+  at data (`paper_loop_produces_moving_equity`) + render
+  (`y_variation_gate_moving_passes_flat_fails`, Y-variation bbox) layers.
+  Research mode byte-identical (passes `equity_store: None`).
+- **Repo cleanup Phase 1+2 EXECUTED** (`1405042`) — 367 files / −51.8k
+  lines; tester reports, presentations, dev-notes, design prototypes into
+  `spec/archive/`; `git gc` 61→41 MB; `cargo clean` 26 GiB. Phase-3
+  ratified 2026-06-12 (`737d7bf`): research-era Rust KEPT (backs the 119
+  anchors); history rewrite OFF the table.
+- **Test health: ZERO known red/flaky tests on `main`** — `lab_run_engine::h3`
+  fixed via the documented Phase-B contract (`2c4a59f`); the "montecarlo
+  determinism flakes" root-caused as a `set_current_dir` CWD race × a dead
+  config-load in `run_path` (isolation bug, NOT nondeterminism — anchors
+  were never at risk; `7390fcb`, 11 consecutive green suites).
+
 ## Conventions
 
 - One-line description; deeper context lives in the eventual
