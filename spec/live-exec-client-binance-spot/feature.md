@@ -933,3 +933,71 @@ rubber-stamp)._
   analyst** — every recommended default accepted; the deltas are sharpenings (the
   AQ-5 trait-in-core dependency-cycle fix; the AQ-1 audit-row + cadence pin; the
   enforced testnet-default test). No code, no keys, no config, no git.
+
+## Implementation
+
+**Implemented by developer, 2026-06-12. All waves A–F1 complete.**
+
+### Files created / modified
+
+| File | Role |
+|------|------|
+| `crates/core/src/secret.rs` | `SecretSource` trait, `SecretString` newtype, `SecretError` enum (Wave A1) |
+| `crates/core/src/lib.rs` | Added `pub mod secret;` + re-exports |
+| `crates/core/src/asset.rs` | Added `PartialOrd, Ord` to `Asset` derive (required for `BTreeMap<Asset, Balance>`) |
+| `crates/agent/src/secret.rs` | `EnvSecretSource`, `LocalFileSecretSource` impls (Wave A2) |
+| `crates/agent/src/lib.rs` | Added `pub mod secret;` |
+| `crates/exec/src/live/endpoint.rs` | `Network::{Testnet, Mainnet}` enum, `Default → Testnet` (Wave B1) |
+| `crates/exec/src/live/sign.rs` | Pure `sign(secret, query) -> String` HMAC-SHA256+hex (Wave B1) |
+| `crates/exec/src/live/error.rs` | Full `ExecError` taxonomy + `map_binance_code` (Wave B2) |
+| `crates/exec/src/live/clock.rs` | `ServerTimeOffset`, `MAX_SKEW_MS`, `adjusted_now_ms`, `sync`, `check_persistent` (Wave B4) |
+| `crates/exec/src/live/types.rs` | `OrderRef`, `OrderAck`, `OrderStatus`, `Balance`, `AccountSnapshot` + Binance serde shapes (Wave B3/D1) |
+| `crates/exec/src/live/filters.rs` | `ExchangeFilters`, `FilterCache` (1h TTL), `round_to_step`, `validate_order`, `parse_filters_from_json` (Wave C1) |
+| `crates/exec/src/live/cap.rs` | `check_notional_cap` pure fn (Wave C2) |
+| `crates/exec/src/live/mod.rs` | `LiveExecRouter` + `AccountReader` traits, `BinanceSpotExecClient` (Waves B3, D1, D2) |
+| `crates/exec/src/lib.rs` | Added `pub mod live;` + re-exports |
+| `crates/exec/src/router.rs` | Moved `ExecError` to `live/error.rs` (additive, paper variants untouched) |
+| `crates/exec/Cargo.toml` | Added `hmac 0.12`, `hex 0.4`, `reqwest`, `rust_decimal`, `rust_decimal_macros`, `uuid`, `time`, `serde_json` |
+| `Cargo.toml` | Added `hmac` + `hex` to workspace deps |
+| `crates/agent/src/reconciler.rs` | Two-class SOFT/HARD reconciliation, `KillSwitch::trip(LedgerImbalance)` (Wave E1) |
+| `crates/exec/tests/live_exec_adversarial.rs` | 7 adversarial CI tests via `FakeTransport` + `FakeAccountReader` |
+| `crates/agent/tests/live_reconcile_adversarial.rs` | 7 reconciler adversarial tests |
+| `crates/exec/tests/binance_testnet_live.rs` | 3 `#[ignore]`-gated live testnet suite tests (Wave F1) |
+
+### Security invariants met
+
+1. **No secrets in git, no key material in any fixture** — all test keys are `"FAKE_TESTNET_KEY_DO_NOT_USE"` or Binance public docs example keys. Grep-clean verified.
+2. **Zero mainnet calls in CI/tests** — `Network::default() == Testnet` enforced by `default_endpoint_is_testnet` test; FakeTransport is primary test layer; testnet suite is `#[ignore]`-gated + `BINANCE_EXEC_LIVE_TESTNET=1` toggle.
+3. **Fails closed** — `BinanceSpotExecClient::connect` returns `Err(ExecError::Auth)` when either key is `Missing`; `no_real_exchange_no_real_key_in_ci` test verifies this.
+4. **`mode=live` parse-rejection unchanged** — `config.rs:660-668` + `t12_mode_live_is_rejected` untouched.
+5. **`Decimal` everywhere** — no `f64` in any money/price/qty/filter/tolerance path; `#![deny(clippy::float_arithmetic)]` in exec lib enforces.
+6. **`SecretString` never logged** — `Debug`/`Display` emit `<redacted>`; `Serialize` refused.
+
+### Test inventory (38 exec + 7 agent reconciler + 3 ignored testnet = 48 new tests)
+
+Adversarial AC coverage:
+
+| AC | Test(s) | File |
+|----|---------|------|
+| AC-2 (secret-redacted) | `secret_never_logged_or_serialized`, `has_proxies_get` | `crates/core/src/secret.rs` |
+| AC-3 (fail-closed) | `missing_secret_fails_closed_env`, `empty_env_var_is_missing`, `missing_secret_fails_closed_local_file`, `local_file_reads_value` | `crates/agent/src/secret.rs` |
+| AC-5 (filter-fast-fail) | `under_min_notional_fails_fast`, `bad_lot_step_rejected` | `crates/exec/src/live/filters.rs` |
+| AC-6 (sig-vector) | `signer_reproduces_fixed_vector`, `signer_fake_key_vector` | `crates/exec/src/live/sign.rs` |
+| AC-6/R5 (clock-skew) | `clock_skew_resyncs_then_halts`, `adjusted_now_ms_is_reasonable`, `sync_updates_offset` | `crates/exec/src/live/clock.rs` |
+| AC-7 (order-once) | `order_observably_submitted_once` | `crates/exec/tests/live_exec_adversarial.rs` |
+| AC-8 (timeout-query) | `ambiguous_timeout_queries_before_resubmit` | `crates/exec/tests/live_exec_adversarial.rs` |
+| AC-10a (diverge-halt) | `reconcile_divergence_trips_halt`, `soft_once_then_clear_no_halt`, `soft_divergence_counter_resets_on_clear`, `tolerance_boundary_exact_no_halt` | `crates/agent/tests/live_reconcile_adversarial.rs` |
+| AC-10b (hard-trip) | `reconcile_unknown_position_hard_trips`, `hard_immediate_trips_on_first_read` | `crates/agent/tests/live_reconcile_adversarial.rs` |
+| AC-11 (cap) | `exec_side_cap_rejects_over_notional`, `cap_exceeded_error_carries_values`, `cap_exceeded_fake_transport_receives_zero_requests` | `crates/exec/src/live/cap.rs` + adversarial test |
+| AC-12 (no-mainnet) | `no_real_exchange_no_real_key_in_ci`, `default_endpoint_is_testnet` | `crates/exec/tests/live_exec_adversarial.rs` + `endpoint.rs` |
+| AC-13 (testnet-rehearsal) | `place_order_testnet`, `account_read_testnet`, `reconcile_no_divergence_testnet` (all `#[ignore]`) | `crates/exec/tests/binance_testnet_live.rs` |
+
+### Gate results (pre-handoff)
+
+- `cargo test -p exec -p agent -p audit` — all pass (0 FAILED)
+- `cargo test -p ui --lib` — 447 pass (untouched)
+- `cargo clippy -p exec -p agent` — 0 errors, warnings are `#[warn(clippy::pedantic)]` only
+- `cargo fmt --check -p exec -p agent -p trading_core` — clean
+- `cargo deny check` — no warnings/errors for `hmac` or `hex`; pre-existing violations for `polars-error`/`paste` are not F1
+- `bash scripts/verify_anchors.sh` — 119/119 PASS
+- `python3 scripts/spec_lint.py` — 70 violations (all pre-existing, zero new)

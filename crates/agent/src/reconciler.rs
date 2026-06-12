@@ -17,6 +17,12 @@
 //! [`ReconcilerTask::after_bar_close`] call fire-and-forget persists the
 //! snapshot.  The store is only provided in **paper/live mode**; research
 //! mode passes `None` at construction time (the A2 mode gate).
+//!
+//! live-exec-client-binance-spot F1 (AQ-1 / R7): when an
+//! [`exec::AccountReader`] is attached via
+//! [`ReconcilerTask::with_account_reader`], the two-class divergence check
+//! runs on every [`ReconcilerTask::check_live_divergence`] call in live mode.
+//! Paper/research is byte-unchanged when `account_reader = None` (A4 / AC-10).
 
 use std::sync::Arc;
 
@@ -26,7 +32,7 @@ use trading_core::{Money, PnlSnapshot, Timestamp};
 use uuid::Uuid;
 
 use crate::EventBus;
-use crate::kill_switch::KillSwitch;
+use crate::kill_switch::{HaltReason, KillSwitch};
 
 /// Shared reconciliation state — updated by the trading loop each bar.
 #[derive(Debug, Clone)]
@@ -87,6 +93,22 @@ pub struct ReconcilerTask {
     /// construction time: `runtime::run` passes `None` for research mode
     /// so no row is ever written during replay.  Backtests use `None`.
     equity_store: Option<Arc<dyn audit::LiveEquityStore>>,
+    /// Real-exchange account reader for live-mode reconciliation
+    /// (live-exec-client-binance-spot F1 / R7 / AQ-1).
+    ///
+    /// `None` in paper/research mode — the existing self-ref heuristic is
+    /// used unchanged (AC-10 second half / A4).  `Some` only in live mode.
+    account_reader: Option<Arc<dyn exec::AccountReader>>,
+    /// SOFT-class debounce counter (AQ-1 / feature.md § A3).
+    ///
+    /// Counts consecutive divergent reads; resets to 0 on any in-tolerance
+    /// read.  The `LedgerImbalance` trip fires only on the N-th consecutive
+    /// divergent read (default N=2, `reconcile_debounce_reads`).
+    divergence_consecutive: u8,
+    /// Debounce threshold: N consecutive SOFT reads before trip (default 2).
+    reconcile_debounce_reads: u8,
+    /// Per-asset USDT-valued tolerance (default `Decimal::ONE` = $1.00).
+    reconcile_tolerance_usdt: Decimal,
 }
 
 impl ReconcilerTask {
@@ -103,6 +125,10 @@ impl ReconcilerTask {
             interval_ms,
             bus: None,
             equity_store: None,
+            account_reader: None,
+            divergence_consecutive: 0,
+            reconcile_debounce_reads: 2,            // default N=2 (AQ-1)
+            reconcile_tolerance_usdt: Decimal::ONE, // default $1.00
         }
     }
 
@@ -125,6 +151,132 @@ impl ReconcilerTask {
     pub fn with_equity_store(mut self, store: Arc<dyn audit::LiveEquityStore>) -> Self {
         self.equity_store = Some(store);
         self
+    }
+
+    /// Attach a real-exchange account reader for live-mode reconciliation
+    /// (live-exec-client-binance-spot F1 / R7 / AQ-1).
+    ///
+    /// **Only call this for live mode** — paper/research passes `None`
+    /// (the existing self-ref heuristic continues unchanged — AC-10 / A4).
+    #[must_use]
+    pub fn with_account_reader(mut self, reader: Arc<dyn exec::AccountReader>) -> Self {
+        self.account_reader = Some(reader);
+        self
+    }
+
+    /// Configure the reconcile tolerance and debounce (AQ-1 defaults:
+    /// tolerance = $1.00, N = 2).
+    #[must_use]
+    pub fn with_reconcile_config(mut self, tolerance_usdt: Decimal, debounce_reads: u8) -> Self {
+        self.reconcile_tolerance_usdt = tolerance_usdt;
+        self.reconcile_debounce_reads = debounce_reads;
+        self
+    }
+
+    /// Run the two-class divergence check against the real exchange.
+    ///
+    /// Call this from the `after_bar_close` path when `account_reader = Some`.
+    /// Returns the updated consecutive counter (caller stores it back on `self`
+    /// if not halting).
+    ///
+    /// **This is a no-op (returns `Ok(())`) when `account_reader = None`** —
+    /// paper/research is byte-unchanged (AC-10 second half / A4).
+    ///
+    /// # Class SOFT (debounced, N=2 default)
+    /// Per-asset USDT-valued balance delta > `reconcile_tolerance_usdt` but
+    /// both sides know the asset.  Increments the counter; trips only on the
+    /// N-th consecutive read.
+    ///
+    /// # Class HARD (immediate, N=1, no debounce)
+    /// Exchange reports a non-dust position in an asset the ledger has zero
+    /// record of (set-membership mismatch) — trips immediately.
+    pub async fn check_live_divergence(
+        &mut self,
+        ledger_balances: &std::collections::BTreeMap<trading_core::Asset, (Decimal, Decimal)>,
+        last_mark_usdt: Decimal,
+    ) {
+        let Some(reader) = &self.account_reader else {
+            return; // paper/research — no-op
+        };
+        let reader = std::sync::Arc::clone(reader);
+        let snapshot = match reader.account_snapshot().await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "account_snapshot failed — skip this reconcile tick");
+                return;
+            }
+        };
+
+        let dust_floor = self.reconcile_tolerance_usdt;
+        let tolerance = self.reconcile_tolerance_usdt;
+
+        // Class HARD: check for unknown exchange positions (set membership B ⊄ A).
+        for (asset, balance) in &snapshot.balances {
+            let total = balance.total();
+            if total * last_mark_usdt <= dust_floor {
+                continue; // dust — not a position
+            }
+            if !ledger_balances.contains_key(asset) {
+                // Exchange has a non-dust position the ledger doesn't know.
+                tracing::warn!(
+                    asset = %asset,
+                    total = %total,
+                    "HARD unknown position — immediate LedgerImbalance halt"
+                );
+                self.kill_switch.trip(HaltReason::LedgerImbalance);
+                return;
+            }
+        }
+
+        // Class SOFT: per-asset USDT-valued magnitude check.
+        let mut worst_asset: Option<trading_core::Asset> = None;
+        let mut worst_delta = Decimal::ZERO;
+        for (asset, (ledger_free, ledger_locked)) in ledger_balances {
+            let ledger_total = *ledger_free + *ledger_locked;
+            let exchange_total = snapshot
+                .balances
+                .get(asset)
+                .map(|b| b.total())
+                .unwrap_or(Decimal::ZERO);
+            let delta_qty = (ledger_total - exchange_total).abs();
+            let delta_usdt = delta_qty * last_mark_usdt;
+            if delta_usdt > worst_delta {
+                worst_delta = delta_usdt;
+                worst_asset = Some(asset.clone());
+            }
+        }
+
+        if worst_delta > tolerance {
+            self.divergence_consecutive += 1;
+            let n = self.reconcile_debounce_reads;
+            let consecutive = self.divergence_consecutive;
+            if consecutive >= n {
+                // N-th consecutive divergent read — trip.
+                tracing::warn!(
+                    asset = ?worst_asset,
+                    delta_usdt = %worst_delta,
+                    consecutive,
+                    "SOFT divergence consecutive={consecutive}/{n} — LedgerImbalance halt"
+                );
+                self.kill_switch.trip(HaltReason::LedgerImbalance);
+            } else {
+                tracing::info!(
+                    asset = ?worst_asset,
+                    delta_usdt = %worst_delta,
+                    consecutive,
+                    "SOFT divergence observed (no trip yet, debounce {consecutive}/{n})"
+                );
+            }
+        } else {
+            // In-tolerance — reset the counter.
+            if self.divergence_consecutive > 0 {
+                tracing::debug!(
+                    delta_usdt = %worst_delta,
+                    "reconcile back in tolerance — resetting debounce counter"
+                );
+                self.divergence_consecutive = 0;
+            }
+        }
     }
 
     /// Compute and (when a bus is wired) publish a [`PnlSnapshot`]

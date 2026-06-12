@@ -62,7 +62,7 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
 
 ### Wave A — foundations (no network, no exchange) — `crates/core` + `crates/agent`
 
-- [ ] **M-DEV-A1 — `SecretSource` trait + `SecretString` in `crates/core::secret`
+- [x] **M-DEV-A1 — `SecretSource` trait + `SecretString` in `crates/core::secret`
   (seed F1-T2, part 1).** Declare `trait SecretSource { get; has }`, the
   `SecretString` newtype (private field), `SecretError::{Missing,Io}` in a new
   `crates/core/src/secret.rs` (no deps — the shared vocabulary so `exec` consumes it
@@ -73,8 +73,10 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   `<redacted>`; `tracing` + `serde` round-trips never leak the value; fixtures use
   obviously-fake placeholders only (`"FAKE_TESTNET_KEY_DO_NOT_USE"`)._
   _Gate (invariant i): no key material in any fixture._
+  **[DONE]** `crates/core/src/secret.rs` (entire file, trait + newtype + error).
+  `cargo test -p trading_core` → `secret_never_logged_or_serialized ... ok`, `has_proxies_get ... ok`.
 
-- [ ] **M-DEV-A2 — `EnvSecretSource` + `LocalFileSecretSource` in `crates/agent::secret`
+- [x] **M-DEV-A2 — `EnvSecretSource` + `LocalFileSecretSource` in `crates/agent::secret`
   (seed F1-T2, part 2).** `EnvSecretSource` reads `BINANCE_API_KEY`/`BINANCE_API_SECRET`
   from process env (never repo disk); `LocalFileSecretSource` reads the git-ignored
   `config/agent.toml.local` (the proven LLM-key precedent `config.rs:612-651`). The
@@ -84,10 +86,12 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   unauthenticated request._ → **the `no-secret-fails-closed` AC.**
   _Gate: `[gitignore]` carries `config/agent.toml.local` (already true); no `.local`
   committed._
+  **[DONE]** `crates/agent/src/secret.rs` (EnvSecretSource + LocalFileSecretSource).
+  `cargo test -p agent` → `missing_secret_fails_closed_env ... ok`, `empty_env_var_is_missing ... ok`, `missing_secret_fails_closed_local_file ... ok`, `local_file_reads_value ... ok`.
 
 ### Wave B — the authenticated transport core (`crates/exec/src/live/`) — offline-testable
 
-- [ ] **M-DEV-B1 — `Network` endpoint + the HMAC signer (seed F1-T1, part 1).**
+- [x] **M-DEV-B1 — `Network` endpoint + the HMAC signer (seed F1-T1, part 1).**
   `endpoint.rs`: `Network::{Testnet,Mainnet}` → `base_url` + greppable `label`
   ([feature.md § A1, AQ-6](feature.md)); **default Testnet**. `sign.rs`: a **pure fn**
   `sign(secret: &[u8], query: &str) -> String` (HMAC-SHA256 → hex) — borrows the
@@ -99,8 +103,10 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   `Debug`._ → **the `signature-vector-match` AC.**
   _Acceptance (AQ-6): `default_endpoint_is_testnet` — the default `Network` label is
   `"testnet"`; no test references `api.binance.com`._ → **part of `zero-mainnet-in-CI`.**
+  **[DONE]** `crates/exec/src/live/endpoint.rs:1-79`, `crates/exec/src/live/sign.rs:1-84`.
+  `cargo test -p exec` → `default_endpoint_is_testnet ... ok`, `testnet_and_mainnet_are_distinct ... ok`, `signer_reproduces_fixed_vector ... ok`, `signer_fake_key_vector ... ok`.
 
-- [ ] **M-DEV-B2 — `ExecError` taxonomy + Binance-code mapping (seed F1-T6, part 1).**
+- [x] **M-DEV-B2 — `ExecError` taxonomy + Binance-code mapping (seed F1-T6, part 1).**
   Extend the existing `ExecError` (`router.rs:8-15`) **additively** with the variants +
   mapping table in [feature.md § A4](feature.md) (`Transport`/`RateLimited`/`Auth`/
   `ClockSkew`/`FilterReject`/`InsufficientBalance`/`UnsupportedOrderType`/
@@ -109,8 +115,10 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   _Acceptance: unit test `binance_code_maps_to_variant` (a table of `-1003`/`-1021`/
   `-1022`/`-2010`/`-2014`/`-2015`/`-1013` → expected variant)._ → **the
   `retry-taxonomy` AC (mapping half).**
+  **[DONE]** `crates/exec/src/live/error.rs:1-160`.
+  `cargo test -p exec` → `binance_code_maps_to_variant ... ok`.
 
-- [ ] **M-DEV-B3 — `BinanceSpotExecClient` + `LiveExecRouter` impl (place/status/
+- [x] **M-DEV-B3 — `BinanceSpotExecClient` + `LiveExecRouter` impl (place/status/
   cancel, MARKET-only) (seed F1-T1, part 2).** The client struct
   `{ endpoint, http, signer, secrets, … }` over signed REST: `POST /api/v3/order`
   (MARKET), `GET /api/v3/order` (status), `DELETE /api/v3/order` (cancel). **ONE
@@ -124,18 +132,22 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   hard-coded venue URL._
   _Gate (AC-12): the suite uses `FakeTransport`/recorded JSON — NO real-exchange call,
   keys unset._
+  **[DONE]** `crates/exec/src/live/mod.rs:1-594` (BinanceSpotExecClient, LiveExecRouter impl, AccountReader impl), `crates/exec/src/live/types.rs:1-208`.
+  `cargo test -p exec --test live_exec_adversarial` → `live_exec_router_trait_exists ... ok`, `no_real_exchange_no_real_key_in_ci ... ok`, `order_observably_submitted_once ... ok`.
 
-- [ ] **M-DEV-B4 — clock-skew handling (seed F1-T1, part 3).** `clock.rs`:
+- [x] **M-DEV-B4 — clock-skew handling (seed F1-T1, part 3).** `clock.rs`:
   `ServerTimeOffset` syncs to `GET /api/v3/time` on construction + on any `-1021`;
   persistent skew beyond threshold maps to `HaltReason::ClockSkew` (variant exists,
   `kill_switch.rs:53`).
   _Adversarial: `clock_skew_resyncs_then_halts` — a faked `-1021` triggers one resync
   + retry; a persistent `-1021` surfaces `ExecError::ClockSkew` → halt path._ → **the
   `clock-skew-handling` AC.**
+  **[DONE]** `crates/exec/src/live/clock.rs:1-121`.
+  `cargo test -p exec` → `clock_skew_resyncs_then_halts ... ok`, `adjusted_now_ms_is_reasonable ... ok`, `sync_updates_offset ... ok`.
 
 ### Wave C — pre-trade validation gates (offline pure-fn) — depend on B2 (`ExecError`)
 
-- [ ] **M-DEV-C1 — exchange-filter ingestion + client-side pre-validation (seed F1-T4).**
+- [x] **M-DEV-C1 — exchange-filter ingestion + client-side pre-validation (seed F1-T4).**
   `filters.rs`: ingest `LOT_SIZE`(`stepSize`,`minQty`)/`MIN_NOTIONAL`/`PRICE_FILTER`
   (`tickSize`) from `GET /api/v3/exchangeInfo` into `ExchangeFilters` (all `Decimal`);
   `round_to_step()` + `validate()` in `Decimal` **BEFORE submit**; TTL cache (1 h,
@@ -146,8 +158,10 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   `ExecError::FilterReject` and the `FakeTransport` records **ZERO** outbound
   requests._ → **the `filter-rejections` AC.**
   _Gate (invariant ii): all rounding `Decimal`, never `f64`._
+  **[DONE]** `crates/exec/src/live/filters.rs:1-343`.
+  `cargo test -p exec` → `under_min_notional_fails_fast ... ok`, `bad_lot_step_rejected ... ok`, `valid_order_passes ... ok`, `round_to_step_non_trivial ... ok`, `parse_filters_from_json_btcusdt ... ok`, `filter_cache_ttl ... ok`.
 
-- [ ] **M-DEV-C2 — exec-side cap mechanism (seed F1-T8 — the F1 half of the AQ-4
+- [x] **M-DEV-C2 — exec-side cap mechanism (seed F1-T8 — the F1 half of the AQ-4
   seam).** `cap.rs`: standalone pure fn `check_notional_cap(order_notional: Decimal,
   cap: Decimal) -> Result<(), ExecError>` (`notional == cap` allowed; `notional > cap`
   ⇒ `ExecError::CapExceeded`) + the `[live].max_notional_usdt` config-field parse
@@ -158,18 +172,22 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   (notional, cap) incl. boundary `notional == cap` ALLOWED, `notional > cap` REJECTED;
   the `FakeTransport` records zero requests for the rejected case._ → **the
   `exec-side-cap` AC.**
+  **[DONE]** `crates/exec/src/live/cap.rs:1-75`.
+  `cargo test -p exec` → `exec_side_cap_rejects_over_notional ... ok`, `cap_exceeded_error_carries_values ... ok`, `cap_exceeded_fake_transport_receives_zero_requests ... ok`.
 
 ### Wave D — `AccountReader` + retry/idempotency — depend on B3
 
-- [ ] **M-DEV-D1 — `AccountReader` trait + impl (`GET /api/v3/account`, signed) (seed
+- [x] **M-DEV-D1 — `AccountReader` trait + impl (`GET /api/v3/account`, signed) (seed
   F1-T3).** `account_snapshot()` returns `balances: BTreeMap<Asset, Balance{free,locked:
   Decimal}>` ([feature.md § A1](feature.md)); impl on `BinanceSpotExecClient` (same
   signer + `SecretSource`).
   _Acceptance (AC-4): behind a trait; faked / recorded-JSON `GET /api/v3/account`
   fixture (synthetic balances, no identifiers, no keys); balances parsed `Decimal`,
   free+locked split preserved._
+  **[DONE]** `crates/exec/src/live/mod.rs:549-593` (AccountReader trait + BinanceSpotExecClient impl), `crates/exec/src/live/types.rs:90-112` (Balance, AccountSnapshot).
+  `cargo test -p exec --test live_exec_adversarial` → `account_reader_parses_decimal ... ok`.
 
-- [ ] **M-DEV-D2 — retry / idempotency / ambiguous-timeout (seed F1-T6, part 2).**
+- [x] **M-DEV-D2 — retry / idempotency / ambiguous-timeout (seed F1-T6, part 2).**
   `newClientOrderId` (reuse the `Order.id` UUID) for idempotency; 429/`-1003` capped
   exponential backoff with a **hard ceiling**; **on an ambiguous timeout, query
   `GET /api/v3/order` by `newClientOrderId` BEFORE any retry** — never blind-resubmit a
@@ -182,10 +200,12 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   _Adversarial (AC-8): `ambiguous_timeout_queries_before_resubmit` — a timed-out place
   is status-checked, NEVER blind-resubmitted; N-retry exhaustion → halt, never silent;
   429/`-1003` backs off with a capped ceiling._ → **completes the `retry-taxonomy` AC.**
+  **[DONE]** `crates/exec/src/live/mod.rs:398-463` (retry loop with transport-query-before-retry, backoff, exhaustion).
+  `cargo test -p exec --test live_exec_adversarial` → `order_observably_submitted_once ... ok`, `ambiguous_timeout_queries_before_resubmit ... ok`.
 
 ### Wave E — the real-exchange reconciliation loop (`crates/agent`) — depends on D1
 
-- [ ] **M-DEV-E1 — two-class reconciliation + kill-switch wiring (seed F1-T5 — the
+- [x] **M-DEV-E1 — two-class reconciliation + kill-switch wiring (seed F1-T5 — the
   AQ-1 task, the riskiest in F1).** Add `Option<Arc<dyn AccountReader>>` +
   `Option<DivergenceState{consecutive:u8}>` to `ReconcilerTask`. On the per-bar
   `after_bar_close` tick **in live mode only**, compare per-asset free+locked balances
@@ -206,10 +226,12 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   + the `unknown-position-hard-trip` AC (both halves named to this task).**
   _Gate: with `AccountReader = None` (paper) the `reconciler.rs:222-229` heuristic is
   **byte-unchanged** — assert via the existing `t26_*` tests staying green._
+  **[DONE]** `crates/agent/src/reconciler.rs` (account_reader/divergence_consecutive/reconcile_debounce_reads/reconcile_tolerance_usdt fields; `check_live_divergence` async method; paper path unchanged).
+  `cargo test -p agent --test live_reconcile_adversarial` → `soft_once_then_clear_no_halt ... ok`, `reconcile_divergence_trips_halt ... ok`, `reconcile_unknown_position_hard_trips ... ok`, `hard_immediate_trips_on_first_read ... ok`, `tolerance_boundary_exact_no_halt ... ok`, `paper_mode_reconcile_is_noop ... ok`, `soft_divergence_counter_resets_on_clear ... ok`.
 
 ### Wave F — operator-gated testnet rehearsal (REQUIRES operator-provisioned testnet keys)
 
-- [ ] **M-DEV-F1 — `#[ignore]`-gated live testnet integration suite (seed F1-T7,
+- [x] **M-DEV-F1 — `#[ignore]`-gated live testnet integration suite (seed F1-T7,
   part 1).** `crates/exec/tests/binance_testnet_live.rs`, every test `#[ignore]`-gated,
   `Network::Testnet`-pinned (refuses mainnet — asserts the endpoint label is
   `"testnet"` before the first request). Reads config **only** from env
@@ -223,6 +245,8 @@ F3's monitoring concern). If the orchestrator wants parallelism, the safe cut is
   > keys, but its *green checkmark* gates on the operator running it out-of-band with
   > their own testnet keys (see M-DEV-F2). Mark M-DEV-F1 done when the suite is wired
   > + compiles; the **rehearsal pass** is M-DEV-F2.
+  **[DONE — code wired, suite compiles, all tests `#[ignore]`-gated]** `crates/exec/tests/binance_testnet_live.rs:1-216` (3 tests: `place_order_testnet`, `account_read_testnet`, `reconcile_no_divergence_testnet`).
+  `cargo test -p exec --test binance_testnet_live` → 0 passed; 3 ignored (suite skips cleanly with keys unset). Rehearsal pass (M-DEV-F2) is the operator gate.
 
 - [ ] **M-DEV-F2 — testnet rehearsal recipe + operator run (seed F1-T7, part 2) —
   GATE TO F2.** Produce the self-contained human-verification recipe (Command / Steps /
