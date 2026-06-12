@@ -11,7 +11,6 @@ pub mod kill_switch;
 pub mod observability;
 pub mod reconciler;
 pub mod runtime;
-pub mod secret;
 pub mod watcher;
 
 pub use activity::{

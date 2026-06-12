@@ -1,13 +1,18 @@
 //! `ExecRouter` trait and paper-mode implementation stub.
-//!
-//! The `ExecError` type is defined in `crate::live::error` and re-exported
-//! from `crate::live::error::ExecError` for the F1 live taxonomy extension.
-//! Paper variants (`UnsupportedMode`/`OrderRejected`/`FillFailed`) live there
-//! alongside the live variants — `PaperExecRouter` uses them unchanged.
 use async_trait::async_trait;
+use thiserror::Error;
 use trading_core::{Fill, Order};
 
-pub use crate::live::error::ExecError;
+/// Error from the execution router.
+#[derive(Debug, Error)]
+pub enum ExecError {
+    #[error("unsupported mode: {0}")]
+    UnsupportedMode(String),
+    #[error("order rejected: {0}")]
+    OrderRejected(String),
+    #[error("fill failed: {0}")]
+    FillFailed(String),
+}
 
 /// Routes orders to the appropriate matching engine.
 #[async_trait]

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 /// A tradeable asset.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Asset {
     Btc,
