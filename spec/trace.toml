@@ -2863,6 +2863,14 @@ arch        = [
   # ANALYST (2026-06-11) — v0.1.0 brief, Q1-Q6 with recommended defaults.
   "spec/paper-mode-equity-wiring/feature.md",
   "spec/paper-mode-equity-wiring/tasks.md",
+  # ARCHITECT (2026-06-11) — v0.2.0 arch-done. Q1-Q6 all = analyst default, ACCEPTED.
+  # ADR-0053: unify the per-bar trading loop (research + paper) into one feed-parameterized
+  # spawn_trading_loop + Option<LiveEquityStore> param (mode gate moves to the caller: research
+  # None / paper Some); loop-direct persist fire-and-forget; bar-stream cadence; drop(state_tx)
+  # stub removed; research byte-stability via named guards (paced-replay test compile-enforced,
+  # AC2 store=None, anchor independence from runtime::run); baseline-equity-divergence gate INTENT
+  # SATISFIED (NOT N/A) by AC1 data-layer + AC6 render-layer Y-variation.
+  "spec/architecture/adr/0053-unified-per-bar-trading-loop.md",
 ]
 crates      = ["crates/agent"]   # developer refines; exec-led, ~90% runtime.rs/reconciler.rs
 tests       = [
@@ -2872,4 +2880,4 @@ tests       = [
   "crates/agent/tests/equity_store_integration.rs",
 ]
 anchors     = []   # N/A — additive only; backtest anchors byte-unchanged by construction (AC7). Baseline-divergence gate INTENT satisfied by AC6 + AC1 data-layer assertion (NOT rubber-stamped N/A — Q6).
-state       = "proposed"
+state       = "arch-done"   # architect 2026-06-11 (v0.2.0) — Q1-Q6 resolved (all analyst default accepted); ADR-0053 authored + registered; M-DEV-1..7 waves in tasks.md; single developer track (UI = one render-test assertion). Research byte-stability is the dominant risk, discharged by named guards.

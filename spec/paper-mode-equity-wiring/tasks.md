@@ -1,56 +1,157 @@
 ---
 slug: paper-mode-equity-wiring
-status: draft
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-11
-version: 0.1.0
+version: 0.2.0
 trace: REQ-LIVE-EQUITY-PAPER-001
 ---
 
 # Tasks — paper-mode-equity-wiring
 
-> Analyst draft stub. The architect refines these into M-DEV waves after
-> resolving Q1–Q6 (the unify-vs-seam decision in Q1 sets the task shape).
-> Exec-led (~90% `crates/agent`); the lone UI task is a render-test
-> assertion. No new crate, no new dependency expected (the feed, exec
-> engine, sizer, store, trait, and UI are all already in use).
+> Architect-refined M-DEV waves (v0.2.0), resolving Q1=(a) unify. Design:
+> **[ADR-0053](../architecture/adr/0053-unified-per-bar-trading-loop.md)** +
+> `feature.md` § Architecture (A1–A6). Exec-led (~90% `crates/agent`); the
+> lone UI surface is a render-TEST assertion (no widget, no design-system
+> work). **No new crate, no new dependency** — feed, exec engine, sizer,
+> store, trait, publisher, and UI are all already in use.
 
-## Provisional task list (architect to refine)
+## Shape decision (single developer track — structured honestly)
 
-- **T1 — Structural decision + skeleton (Q1).** Pick unify (a, recommended) /
-  seam (b) / reject duplicate (c). If (a): rename/generalize
-  `spawn_research_trading_loop → spawn_trading_loop(feed, mode, store, …)`
-  preserving research outputs exactly. Lands the signature + the research-arm
-  call-site change (still passing the replay feed). (R1, R4)
-- **T2 — Wire the paper arm to the trading loop against the live feed.** In the
-  `Mode::Paper` branch (`runtime.rs:544`), call the (unified) loop with the
-  Binance feed + `Some(store)`; remove the `drop(state_tx)` idle-reconciler
-  stub (`runtime.rs:655-683`). (R1, R2, AC4)
-- **T3 — Reconcile the periodic reconciler's role (Q2).** Retire its paper
-  MINT role (loop becomes the single writer) OR keep it fed real `state_tx` +
-  bar-paced. Remove the free-60 s-timer marking. (R2, R3, AC2)
-- **T4 — Pin the per-bar persist seam (Q4).** Loop-direct `LiveEquityStore`
-  write per bar, gated `mode != Research`, fire-and-forget (A6 unchanged); ONE
-  writer. (R2, AC1, AC2)
-- **T5 — Data-layer divergence + paper-fill + no-real-orders tests.** Paper-loop
-  integration test against a faked moving feed: fills produced, per-bar
-  `total_equity` non-constant, persisted rows non-constant, no live exec client.
-  Extends `equity_store_integration.rs` AC1. (AC1, AC2, AC3, AC5)
-- **T6 — Non-flat render gate (the UI task, R5/AC6).** Extend
-  `crates/ui/tests/live_equity_render.rs`: `CURVE_Y_VAR_MIN` Y-variation
-  assertion `(max_y - min_y) ≥ CURVE_Y_VAR_MIN` for a moving curve + a
-  self-proving FLAT contrast that fails it (the flat-line guard passes
-  `count`/`x_span`). Render-layer half of the divergence gate. (AC6)
-- **T7 — Research byte-safety + anchor proof (R4/AC7).** Research/paced-replay
-  tests green; 19 anchored backtest reports byte-unchanged; explicit
-  anchor-count assertion. (AC7)
-- **T8 — Fixtures smoke + no-feature build unchanged (AC8).**
+The UI surface is **one render-test assertion** in an existing test file
+(`live_equity_render.rs`) — not a widget, theme token, string, or layout
+change. Forcing a parallel ui-designer track for a single test extension
+would be artificial. **This feature runs as one developer track**; the
+render-test task (M-DEV-6) is the developer's, flagged with its
+render-layer verification. The render-layer-verify discipline still
+binds (MEMORY.md *Verify UI at the render layer*): M-DEV-6 asserts on
+rasterized ACCENT pixels, never on model/agent state.
 
-## Wave hint (if Q1=(a) unify)
+## Waves
 
-- **Wave 0:** T1 (skeleton/signature — unblocks everything).
-- **Wave 1 (parallel):** developer T2–T5, T7 (exec) ‖ ui-designer T6 (render
-  test). Reconverge at T8.
+```
+Wave 0 (blocking skeleton)
+  └─ M-DEV-1  rename + widen spawn_trading_loop; research call site
+Wave 1 (developer, sequential within the track — all touch runtime.rs)
+  ├─ M-DEV-2  loop-direct persist + build_snapshot_row pub(crate)
+  ├─ M-DEV-3  wire the paper arm; delete the drop(state_tx) stub
+  ├─ M-DEV-4  data-layer divergence + fills + no-real-orders tests
+  └─ M-DEV-6  render-layer divergence gate (the UI test)
+Wave 2 (reconverge — proofs)
+  ├─ M-DEV-5  research byte-safety + anchor-count proof
+  └─ M-DEV-7  fixtures smoke + no-live-feature build unchanged
+```
+
+## Task list
+
+- [ ] **M-DEV-1 — Rename + widen the loop; research call site (Q1, A1).**
+  Rename `spawn_research_trading_loop → spawn_trading_loop`; add two
+  additive params: `equity_store: Option<Arc<dyn audit::LiveEquityStore>>`
+  and `mode_label: &'static str`. Body unchanged (the verified research
+  body). Update the research arm call site (runtime.rs:527) to pass
+  `replay_feed, …, None, "research", …` and **remove** `drop(equity_store)`
+  (runtime.rs:541). Update the paced-replay test call site
+  (`paced_replay_late_subscriber.rs:164`) to the new signature
+  (`None, "research"`) — this is compile-enforced and must build + pass
+  before the wave closes. **Gate:** `cargo build -p agent`;
+  `paced_replay_late_subscriber` green; research integration tests green.
+  (R1, R4 · AC7)
+
+- [ ] **M-DEV-2 — Loop-direct persist + `build_snapshot_row` `pub(crate)`
+  (Q4, A2).** Promote `reconciler::build_snapshot_row` (reconciler.rs:255)
+  from private to `pub(crate)` and have it take `mode_label` (drop the
+  hardcoded `"paper"`). In `spawn_trading_loop`, immediately after
+  `publish_pnl(snap)`, persist the same `snap` via
+  `store.append_equity_snapshot` **only when `equity_store` is `Some`**,
+  fire-and-forget (`tokio::spawn`, log + discard on `Err`, never
+  block/panic — ADR-0052 A6). NO `if mode != Research` inside the loop —
+  the `Some`/`None` IS the gate. **Gate:** `cargo build -p agent`;
+  `equity_store_integration.rs` AC2 (research store=`None` → 0 rows) still
+  green. (R2 · AC1, AC2)
+
+- [ ] **M-DEV-3 — Wire the paper arm; delete the idle-reconciler stub
+  (Q2, A3 · AC4).** In the `Mode::Paper` branch (runtime.rs:544), call
+  `spawn_trading_loop(binance_feed, …, equity_store, "paper", …)` using the
+  Binance feed built at runtime.rs:571. **Delete the entire
+  `drop(state_tx)` idle-reconciler block (runtime.rs:655-683)** — the loop
+  is now the sole paper mint site; the free 60 s `reconciler_interval_ms`
+  marking is gone; the bar stream is the cadence. Do NOT respawn the
+  periodic `ReconcilerTask` as a mint site (imbalance-only is an un-wired
+  follow-on). **Gate:** `cargo build -p agent`; `cargo clippy -p agent --
+  -D warnings`; no `drop(state_tx)` remains (grep clean). (R1, R2, R3 ·
+  AC4)
+
+- [ ] **M-DEV-4 — Data-layer divergence + fills + no-real-orders tests
+  (A5, A6 data-half · AC1, AC2, AC3, AC5).** Extend
+  `crates/agent/tests/equity_store_integration.rs` with a paper-loop
+  integration test: drive `spawn_trading_loop` against a `data::FakeFeed`
+  emitting closed bars whose price MOVES and triggers `SmaCrossover`
+  signals, with a `FakeLiveEquityStore` and a recording publisher. Assert:
+  (i) paper fills are produced (recording publisher non-empty) and reach
+  `bus.fills()`/`bus.positions()` (AC5); (ii) the per-bar
+  `PnlSnapshot.total_equity` values are **NOT all equal** — diverge from
+  the flat `initial_capital` baseline by ≥ a testable epsilon (AC1
+  data-half); (iii) the persisted rows carry those non-constant
+  `total_equity` values + **row count == bar count** (one writer, no
+  double-mint — AC2); (iv) no live exchange-execution client is
+  constructed — fills originate only from `PaperEngine` (seed
+  `0x00C0_FFEE`) (AC3). **Gate:** the new test green; deterministic
+  (two-run identical). (R7 · AC1, AC2, AC3, AC5)
+
+- [ ] **M-DEV-5 — Research byte-safety + anchor-count proof (R4 · AC7).**
+  Confirm the research-replay loop's outputs (fills, snapshots, equity)
+  are unchanged by the unify: research + paced-replay tests green; run the
+  anchor gate (`rust-validate` / `verify_anchors.sh`) — **119 anchor rows
+  byte-identical** (the backtest binary never calls `runtime::run`, so
+  anchors are structurally independent). Record an **explicit
+  anchor-count assertion** in the test report. **Gate:** anchor gate green
+  + the count is stated, not assumed. (R4 · AC7)
+
+- [ ] **M-DEV-6 — Render-layer divergence gate (the UI test, A6
+  render-half · AC6).** Extend `crates/ui/tests/live_equity_render.rs`:
+  add `const CURVE_Y_VAR_MIN` (a Y-variation threshold — pick from the
+  `diag_accent_bounding_box` empirics: a real session bbox is tall, a flat
+  line ~1px; floor it well above AA noise and well below the real height).
+  Feed the real Live screen a **moving** paper equity series (live and/or
+  `PnlHydrated` from a moving tail) and assert
+  `(max_y - min_y) ≥ CURVE_Y_VAR_MIN` **in addition to** the existing
+  `count ≥ CURVE_DREW_MIN_ACCENT` + `x_span ≥ CURVE_X_SPAN_MIN`. Add a
+  **self-proving contrast**: render a FLAT `initial_capital` series and
+  assert its bbox height `< CURVE_Y_VAR_MIN` (it PASSES `count`/`x_span`
+  via the `equity_curve.rs:178` centered-full-width-line guard — proving
+  Y-variation is the only valid discriminator). **Render-layer verify:
+  assert on rasterized ACCENT pixels, never on model state.** **Gate:**
+  both assertions green; the flat contrast fails Y-variation but passes
+  count/x_span (proving the gate discriminates). (R5 · AC6)
+
+- [ ] **M-DEV-7 — Fixtures smoke + no-live-feature build unchanged
+  (AC8).** The fixtures-mode cockpit (no `live` feature, no agent) is
+  byte-identical to today (it never runs the paper loop); a build without
+  the `live` feature is unaffected. Confirm zero new external I/O (the
+  feed/exec/store are all reused behind existing traits). **Gate:**
+  fixtures `cockpit` smoke green; `cargo build` (no `live` feature) green;
+  no new dep in any `Cargo.toml` (`scripts/precheck.sh` clean). (AC8)
+
+## Per-task gate summary (for the tester's report)
+
+| Task | AC | Gate command(s) |
+|---|---|---|
+| M-DEV-1 | AC7 | `cargo build -p agent`; paced-replay + research tests green |
+| M-DEV-2 | AC1, AC2 | `cargo build -p agent`; equity_store AC2 green |
+| M-DEV-3 | AC4 | `cargo clippy -p agent -- -D warnings`; grep no `drop(state_tx)` |
+| M-DEV-4 | AC1, AC2, AC3, AC5 | new paper-loop test green + deterministic |
+| M-DEV-5 | AC7 | anchor gate green; explicit anchor-count in report |
+| M-DEV-6 | AC6 | render test: Y-variation + self-proving flat contrast |
+| M-DEV-7 | AC8 | fixtures smoke + no-`live` build + `precheck.sh` clean |
+
+## Wave hint (Q1=(a) unify — confirmed)
+
+- **Wave 0:** M-DEV-1 (skeleton/signature — unblocks everything; the
+  compile-enforced paced-replay call-site update lands here).
+- **Wave 1:** M-DEV-2 → M-DEV-3 → M-DEV-4 → M-DEV-6 (single developer
+  track; M-DEV-2/3 are sequential — both edit `runtime.rs`; M-DEV-4/6 are
+  the test halves of the divergence gate).
+- **Wave 2:** M-DEV-5 + M-DEV-7 (proofs; reconverge for the tester).
 
 ## `[[req]]` row for `spec/trace.toml` (analyst-authored; orchestrator to apply via `spec-update`)
 

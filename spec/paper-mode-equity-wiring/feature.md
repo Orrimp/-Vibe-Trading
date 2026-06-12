@@ -1,9 +1,9 @@
 ---
 slug: paper-mode-equity-wiring
-status: draft
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-11
-version: 0.1.0
+version: 0.2.0
 trace: REQ-LIVE-EQUITY-PAPER-001
 ---
 
@@ -11,6 +11,20 @@ trace: REQ-LIVE-EQUITY-PAPER-001
 
 ## Changelog
 
+- 2026-06-11 (architect): v0.2.0 — `## Architecture` (A1–A6) appended;
+  `status: arch-done`. Resolved Q1–Q6 with the analyst's recommended defaults
+  ACCEPTED on every question (Q1=a unify, Q2=a retire paper-reconciler mint
+  role, Q3 bar-stream cadence / mark `bar.close` / no intra-bar ticks, Q4
+  loop-direct persist, Q5 configured `SmaCrossover`, Q6=a gate-intent-satisfied
+  NOT N/A). Authored **ADR-0053** (unify the per-bar trading loop) + registered
+  it atomically in the ADR README. One correction to the analyst's "pure rename"
+  framing recorded in A1/A2: the research loop does NOT persist today (only
+  `publish_pnl`), so the unify ADDS an `Option<Arc<dyn LiveEquityStore>>`
+  parameter — research passes `None` (preserving the existing
+  `drop(equity_store)` semantic), which makes the A2 mode gate structurally a
+  caller concern, exactly mirroring ADR-0052 D2. `build_snapshot_row`
+  (`reconciler.rs:255`) promoted `pub(crate)` so the loop reuses it. See
+  `tasks.md` for the M-DEV wave breakdown.
 - 2026-06-11 (analyst): initial draft (v0.1.0). Scoped from the presenter-
   discovered gap (2026-06-11): in PAPER mode the cockpit equity curve is a
   flat line at `initial_capital_usdt` because the paper branch of
@@ -586,3 +600,215 @@ render assertion that the existing ACCENT-count gate could not provide (a flat
 line passes ACCENT-count; only Y-variation proves movement). The
 baseline-equity-divergence intent applies and is satisfied by that proof — not
 rubber-stamped N/A.
+
+## Architecture
+
+> Architect pass, 2026-06-11 (v0.2.0). Resolves Q1–Q6. **All six of the
+> analyst's recommended defaults are ACCEPTED.** The design is captured
+> normatively in **[ADR-0053](../architecture/adr/0053-unified-per-bar-trading-loop.md)**
+> (unify the per-bar trading loop); this section is the feature-local
+> restatement the developer builds against. Verified against
+> `crates/agent/src/runtime.rs` @ `abdb5dc` before deciding — every code
+> anchor in the brief was checked; one correction to the "pure rename"
+> framing is recorded in A1.
+
+### Q1–Q6 resolutions (all = analyst default, accepted)
+
+| Q | Decision | Why |
+|---|----------|-----|
+| **Q1** | **(a) Unify** into one `spawn_trading_loop(feed, …, equity_store, mode_label, …)` for research AND paper. | Verified: the loop takes `feed: Arc<dyn MarketDataSource>` (runtime.rs:946), has NO `config.mode` branch in its body, and has exactly 2 call sites. Highest-durability — ONE per-bar equity path for research + paper + the live-money carry-forward. (b) shared-inner-body seam kept as the if-budget-tightens fallback; (c) duplication REJECTED (the CLAUDE.md anti-pattern). |
+| **Q2** | **(a)** Retire the paper reconciler's MINT role; the unified loop is the single per-bar writer (publish + persist); imbalance-only is a named, **un-wired** follow-on for v0.1.0. | One writer, one series; the bar stream is the cadence; no free-timer double-mint. The idle reconciler read a never-updated state anyway. |
+| **Q3** | **Bar-stream-driven**, mark to `bar.close`, **no intra-bar tick marking**. | Matches the research loop; keeps the `bar_ts` two-timestamp contract clean; avoids a tick-rate equity firehose. The live closed-bar stream is the clock; between bars equity holds last; the watchdog already surfaces staleness. |
+| **Q4** | **Loop-direct** `LiveEquityStore` persist per bar, gated by `Some(store)`, fire-and-forget. | The loop already has `cash`/`position`/`realized`/`cost_basis` in hand and mints the `PnlSnapshot`; persisting there is the honest one-writer shape. The `Some`/`None` of the store IS the mode gate — no `if mode != Research` inside the loop. |
+| **Q5** | The **configured registry strategy** (`SmaCrossover` from `config/agent.toml`). | Paper trades what the operator configured, exactly as research does (`runtime.rs:529` passes the same `registry`). No paper-only strategy, no silent substitution (R6). |
+| **Q6** | **(a) Gate INTENT applies, satisfied by AC1 (data-layer) + AC6 (render-layer) — recorded as SATISFIED, explicitly NOT N/A.** | This feature introduces a strategy/sizing/exec decision into paper mode (`registry.on_bar` → `risk::size_and_validate` → `PaperEngine::step`) — the `v3-volatility-forecaster-noop-fix` "computed-but-never-applied" class. The tester GATES on the divergence. See A6. |
+
+### A1 — One feed-parameterized `spawn_trading_loop` (Q1)
+
+Rename `spawn_research_trading_loop` →
+`spawn_trading_loop` and widen its signature with two additive
+parameters, keeping every existing parameter in place:
+
+```
+pub fn spawn_trading_loop(
+    feed: Arc<dyn MarketDataSource>,
+    bus: Arc<EventBus>,
+    registry: Arc<strategy::StrategyRegistry>,
+    backtest_cfg: &crate::config::BacktestConfig,
+    risk_cfg: &crate::config::RiskConfig,
+    feed_symbol: Symbol,
+    feed_tf: Timeframe,
+    equity_store: Option<Arc<dyn audit::LiveEquityStore>>,  // NEW
+    mode_label: &'static str,                               // NEW ("paper" | "research")
+    set: &mut JoinSet<()>,
+    cancel: &CancellationToken,
+)
+```
+
+The loop body is **byte-for-byte the verified research body** except the
+two additive seams in A2. The verified facts the unify rests on:
+`feed` is already param 1 and `Arc<dyn MarketDataSource>`; both the live
+`BinanceFeed` and the `ReplayFeed` satisfy it; the body has no
+`config.mode` branch; the two call sites are runtime.rs:527 (research
+arm) and `paced_replay_late_subscriber.rs:164`.
+
+> **Correction to the brief's "pure rename" framing (load-bearing).**
+> The research loop does **not** persist today — it only `publish_pnl`
+> (runtime.rs:1180) and has no store parameter; the research arm
+> `drop(equity_store)`s the store (runtime.rs:541). So the unify is a
+> rename **plus an additive persistence parameter**, not a no-op rename.
+> Research stays byte-identical because it passes `equity_store = None`,
+> so the new persist branch (A2) never executes for research — the only
+> change to the research path is a wider signature. This is additive, not
+> behavioral.
+
+Call-site wiring:
+
+- **Research arm (runtime.rs:527):** `spawn_trading_loop(replay_feed, …,
+  None, "research", …)`. The existing `drop(equity_store)` at
+  runtime.rs:541 is **removed** (the `None` argument now expresses the
+  same intent explicitly).
+- **Paper arm (runtime.rs:544):** `spawn_trading_loop(binance_feed, …,
+  equity_store /* the Some(store) the arm already binds */, "paper", …)`,
+  using the Binance feed built at runtime.rs:571.
+
+### A2 — Loop-direct persist, gated by `Some(store)`, fire-and-forget (Q4)
+
+Immediately after the per-bar `pnl_bus.publish_pnl(snap)` (runtime.rs:1180),
+the loop persists the same snapshot **only when the store is `Some`**:
+
+```
+if let Some(store) = &equity_store {
+    let store = Arc::clone(store);
+    let row = crate::reconciler::build_snapshot_row(&snap, mode_label);
+    tokio::spawn(async move {
+        if let Err(e) = store.append_equity_snapshot(&row).await {
+            tracing::warn!(error = %e, "equity_snapshot write failed (non-fatal)");
+        }
+    });
+}
+```
+
+- **`build_snapshot_row` (`reconciler.rs:255`) is promoted from private to
+  `pub(crate)`** so the loop (same crate) reuses it verbatim — no
+  duplicated row construction, no `f64`. (It is currently hardcoded to
+  `"paper"`; passing `mode_label` is the only change to it.)
+- **The mode gate is structurally at the caller**, identical in spirit to
+  ADR-0052 D2: research → `None` → no write; paper → `Some` → write. There
+  is NO `if mode != Research` inside the loop. This keeps the audit
+  single-writer invariant intact (the loop is the only paper writer).
+- **Fire-and-forget** (ADR-0052 A6, unchanged): `tokio::spawn`, log +
+  discard on `Err`, never block or panic the loop.
+- **One writer, one series** — the loop is the sole per-bar paper mint
+  site (publish + persist). No `state_tx`, no watch channel, no second
+  writer.
+
+### A3 — Bar-stream cadence; the idle reconciler retires in paper (Q2, Q3)
+
+In the paper arm: **delete the `drop(state_tx)` idle-reconciler stub
+(runtime.rs:655-683) entirely.** The unified loop subsumes its minting
+role. The **live closed-bar stream is the equity cadence** (the loop's
+`bar_stream.next()`), marking to `bar.close` per closed bar — NOT the
+free 60 s `reconciler_interval_ms` timer divorced from bar arrivals.
+Between bars / on feed stall, equity holds its last value; the existing
+stale-data watchdog (runtime.rs:633) surfaces staleness; no separate
+marking timer is added. No intra-bar tick marking in v0.1.0.
+
+The periodic `ReconcilerTask` is **not respawned as a mint site in paper
+mode**. Its imbalance-check role (reconciler.rs:214-231) is a named
+follow-on (ledger-vs-book reconciliation) and is intentionally **un-wired
+for v0.1.0** — it was idle (reading a never-updated state) and adds no
+value without a real ledger query.
+
+### A4 — Mark-to-market source + the two-timestamp contract (Q3, settled)
+
+Equity marks to the live feed's closed-bar `bar.close` (the same mark the
+research body uses, runtime.rs:1031/1170). The `PnlSnapshot` stamps both
+fields exactly as the research body does (runtime.rs:1177-1178):
+`as_of = Timestamp::now()` (wallclock, the monotone delivery/freshness
+key) and `bar_ts = Some(bar.close_ts)` (the chart x-axis data time). In
+paper mode `bar.close_ts ≈ now()` (Binance forwards only closed klines,
+binance.rs:339, with real `close_ts`, binance.rs:348), so the two nearly
+coincide. **Stamping `as_of = bar.close_ts` is forbidden** — it broke the
+render and was reverted in `40f5de9`. This contract is NOT reopened.
+
+### A5 — No real orders; determinism (R7, D6)
+
+The paper loop constructs **no live exchange-execution client** — fills
+originate only from the in-process `PaperEngine` (seed `0x00C0_FFEE`, the
+research value, runtime.rs:1008), marking to `bar.close`. No
+`SystemTime::now()` in the trade-decision path (the fill timestamp is
+`bar.close_ts` inside `PaperEngine::step`). The no-real-orders invariant
+is structural and asserted (AC3). `Decimal`/`Money<Usdt>` throughout;
+never `f64`. No new crate, no new dependency — feed, exec engine, sizer,
+store, trait, and publisher are all already in use by the research loop.
+
+### A6 — The baseline-equity-divergence ruling: gate intent SATISFIED, not N/A (Q6)
+
+This is the **single most important correctness statement** in the
+feature, and it is recorded as a binding tester gate (ADR-0053 D5):
+
+- **The gate's INTENT applies.** Unlike `live-equity-history-durable`
+  (a read-only monitor with no decision variable — a genuine N/A), this
+  feature introduces a strategy + sizing + execution decision into paper
+  mode. The bug it fixes (`state_tx` dropped, equity never updated) is
+  exactly the `v3-volatility-forecaster-noop-fix` "computed but never
+  applied" class the CLAUDE.md non-negotiable exists to catch.
+- **Satisfied by the divergence's two halves — NOT stamped N/A:**
+  - **Data-layer (AC1):** the per-bar `PnlSnapshot.total_equity` values
+    across a moving paper session are **NOT all equal** (diverge from the
+    flat `initial_capital` baseline by ≥ a testable epsilon), and the
+    persisted rows carry those non-constant values.
+  - **Render-layer (AC6 — THE gate):** assert ACCENT bounding-box
+    **height** `(max_y - min_y) ≥ CURVE_Y_VAR_MIN` (a NEW threshold), in
+    addition to the existing `count`/`x_span`. This is the ONLY valid
+    discriminator: the `equity_curve.rs:178` flat-line guard renders a
+    degenerate series as a **centered, full-width horizontal line** that
+    PASSES `CURVE_DREW_MIN_ACCENT=200` and `CURVE_X_SPAN_MIN=400`.
+    `AccentStats` already tracks `min_y`/`max_y` (live_equity_render.rs:142-148).
+    A **self-proving contrast** renders a flat `initial_capital` series and
+    asserts its bbox height `< CURVE_Y_VAR_MIN`, proving the gate
+    distinguishes flat from moving.
+  - The baseline is the flat line (the current bug); the diverged curve is
+    the real paper session; the epsilon is `CURVE_Y_VAR_MIN` /
+    non-constant rows.
+
+### Settled law NOT reopened (inherited from ADR-0052 + the render-guard saga)
+
+The two-timestamp contract (A4); the `LiveEquityStore` trait as the sole
+durable-write API + the `013` migration + the A2 research-writes-nothing
+gate (now expressed via the loop's `None` arg, A2); `Decimal`/`Money<Usdt>`
+never `f64`; every external I/O behind a trait (feed + store traits reused,
+no new deps); the render-verifiable harness as the gate; anchored reports
+byte-immutable; the `PaperEngine` seed `0x00C0_FFEE`. This feature changes
+only the VALUE the existing paper mint site persists — from a boot constant
+to the real mark-to-market — and re-points the per-bar pipeline at the live
+feed.
+
+### Touched surface (architect-confirmed)
+
+| Crate / file | Change | Gate |
+|---|---|---|
+| `crates/agent/src/runtime.rs` | Rename + widen `spawn_research_trading_loop → spawn_trading_loop` (+`equity_store`, +`mode_label`); loop-direct persist (A2); update the research call site (drop `drop(equity_store)`); wire the paper arm to call the loop with the Binance feed + `Some(store)`; **delete** the `drop(state_tx)` idle-reconciler stub (655-683). | AC1, AC2, AC4, AC5, AC7 |
+| `crates/agent/src/reconciler.rs` | `build_snapshot_row` private → `pub(crate)` (+ take `mode_label`). Paper reconciler MINT path retired from `runtime.rs` (the file itself is otherwise unchanged). | AC2 |
+| `crates/agent/tests/paced_replay_late_subscriber.rs` | Update the `spawn_trading_loop` call site (replay feed + `None` + `"research"`); compile-enforced. **The proof the unify preserves the late-subscriber + two-timestamp + fills-tape contract.** | AC7 |
+| `crates/agent/tests/equity_store_integration.rs` | Extend with the paper-loop data-layer divergence assertion (AC1): non-constant `total_equity` + one-row-per-bar against a faked moving feed. | AC1, AC2 |
+| `crates/ui/tests/live_equity_render.rs` | Add `CURVE_Y_VAR_MIN` + the Y-variation assertion + the self-proving flat contrast (AC6). **A test, not a widget.** | AC6 |
+| `crates/exec` / `crates/data` / `crates/risk` / `crates/backtest` / `crates/audit` / `crates/ui` (src) / `crates/core` | **No change** — all reused / shipped. | AC8 |
+
+### Risks the developer must hold
+
+1. **Research byte-stability (R4/AC7) is the dominant risk** — the unify
+   edits the just-shipped, anchor-adjacent research loop. Discharged by
+   the named guards: the paced-replay test (signature change is
+   compile-enforced — it will not build if the call site is wrong, the
+   desired forcing function), the research integration tests,
+   `equity_store_integration.rs` AC2 (research store=`None` → 0 rows), and
+   the anchor gate's structural independence from `runtime::run` (the
+   backtest binary never calls the loop; 119 anchors byte-safe by
+   construction; explicit anchor-count assertion in the test report).
+2. **One-writer discipline (AC2)** — verify exactly the loop mints the
+   paper snapshot; the idle reconciler's mint path is fully deleted, not
+   merely bypassed (row count == bar count).
+3. **`build_snapshot_row` visibility** — the `pub(crate)` promotion is the
+   minimal exposure; do not make it `pub` (it is an internal row builder).
