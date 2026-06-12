@@ -1,9 +1,9 @@
 ---
 slug: live-exec-client-binance-spot
-status: draft
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-12
-version: 0.1.0
+version: 0.2.0
 trace: REQ-LIVE-EXEC-CLIENT-001
 ---
 
@@ -424,14 +424,431 @@ ADR-0054 invariant ii; AC-9.)_
 - A5: F1 is anchor-neutral (AC-15) — the live client is never on the hashed
   backtest-report path.
 
-## Design
-_architect fills this (M-T1). Resolve AQ-1..AQ-6; confirm the N/A-for-F1 /
-APPLIES-for-F2 baseline-divergence ruling; lock the crate boundaries
-(`crates/exec` for the client + cap mechanism, `SecretSource` placement per AQ-5),
-the `ExecError` taxonomy shape, and the reconciler `Option<Arc<dyn AccountReader>>`
-seam. Cite ADR-0054 + the umbrella A1/A2. The umbrella A1/A2/A6 already carry most of
-this design at program granularity — the M-T1 pass tightens it to F1's module/file
-boundaries + the six AQ resolutions._
+## Architecture
+
+> **Owner: architect. Status: `arch-done` (2026-06-12).** This section tightens the
+> umbrella [§ Architecture A1/A2/A6](../live-passive-execution-readiness/feature.md)
+> from program granularity to F1's module/file boundaries and resolves AQ-1..AQ-6.
+> The normative boundary + the 5-condition arming contract + the five binding
+> invariants live in [ADR-0054 § D1/D2/D3](../architecture/adr/0054-mode-live-boundary.md)
+> — F1 is **implementation strictly under that boundary**, not a re-decision of it.
+> **No code, no keys, no config, no git in this pass** — design only; the
+> `config.rs:660-668` parse-rejection stays in force through F1 (ADR-0054 § D5).
+>
+> **ADR decision: NO new ADR for F1.** ADR-0054 already fixes the boundary
+> (D1 permitted shape), the arming contract (D2 — F1 builds the cap *mechanism* for
+> condition 3 but decides nothing armed), and the five invariants (D3). F1 introduces
+> **no new architecturally-significant tradeoff** that ADR-0054 does not already
+> govern: the AQ resolutions below are implementation choices *within* the ratified
+> boundary (a tolerance knob, a cache TTL, a crate placement), not boundary moves. The
+> one place an ADR *would* be required — touching an anchor SHA in `spec/anchors.toml`
+> — is explicitly **not** crossed (A6 / AC-15: F1 is anchor-neutral by construction).
+> `arch` therefore cites ADR-0054 + the umbrella; **no ADR-0055 is registered.**
+
+### Binding law (verbatim — reproduced from ADR-0054 § D3 because F1 is where it lands)
+
+> 1. **No secrets in git, ever.** The `SecretSource` design makes **the safe path the
+>    only path** — the repo ships neither keys nor a non-placeholder config; keys are
+>    read from env or a git-ignored local file, and are NEVER logged, NEVER written to
+>    the audit ledger, NEVER serialized, NEVER committed.
+> 2. **Money is `Decimal` / `Money<Usdt>`, never `f64`** (ADR-0003). Every notional,
+>    cap, balance, filter quantity, and reconciliation tolerance is `rust_decimal::Decimal`;
+>    P&L/balance reconciliation is exact-cent (the R8/AQ-1 *tolerance* is the
+>    divergence-to-halt knob, not float slop on the equality).
+> 3. **Every external I/O is behind a trait.** `LiveExecRouter`, `AccountReader`,
+>    `SecretSource` are each a trait with a Binance/env concrete impl + a test fake;
+>    **no F1 test ever touches a real exchange or a real key** (AC-12).
+> 4. **The operator arms; the agent never self-arms; the assistant never executes.**
+>    F1 builds the exec-side cap *mechanism* (R8) but never reads the arm-file, never
+>    checks mode, never composes the guard, never places a real order. The assistant
+>    produces the testnet rehearsal recipe (AC-13) and **never runs it**.
+> 5. **The kill switch is supreme.** F1 wires reconciliation divergence → `trip()`; a
+>    tripped kill switch is terminal-disarmed (the existing sticky-halt contract). F1
+>    adds the divergence *trigger*; the live-order-cancel-on-halt drill is F3.
+>
+> Plus the project-wide guardrails F1 honours: **zero mainnet (`api.binance.com`)
+> calls anywhere in CI/tests, ever** (AC-12); **anchored reports byte-immutable**
+> (AC-15 — F1 touches none).
+
+### A1 — Module layout in `crates/exec` + the `crates/agent::secret` boundary (AQ-5)
+
+The authenticated client is a **separate type** from `crates/data`'s read-only
+`BinanceFeed` (`binance.rs:91`): F1 reuses the `reqwest` 0.12 + connect *patterns*
+but **shares no auth code** and never imports the feed. Proposed file layout:
+
+```
+crates/exec/src/
+├── router.rs              # EXISTING — ExecRouter + PaperExecRouter (untouched).
+│                          #   F1 ADDS the `LiveExecRouter` trait here (sibling, Send+Sync).
+├── live/
+│   ├── mod.rs            # BinanceSpotExecClient { endpoint, http, account, filters, signer }
+│   │                    #   impls LiveExecRouter + AccountReader. Network injected (A1/AQ-6).
+│   ├── sign.rs          # PURE fn sign(secret: &[u8], query: &str) -> String (HMAC-SHA256→hex).
+│   │                    #   Borrows the secret; never stores it; not in any Debug. (AC-6)
+│   ├── clock.rs         # ServerTimeOffset — sync to GET /api/v3/time on ctor + on -1021;
+│   │                    #   persistent skew > threshold → maps to HaltReason::ClockSkew. (R5)
+│   ├── filters.rs       # ExchangeFilters { step_size, min_qty, min_notional, tick_size: Decimal }
+│   │                    #   + round_to_step()/validate() in Decimal; TTL cache (AQ-2). (R4)
+│   ├── cap.rs           # check_notional_cap(notional: Decimal, cap: Decimal) -> Result<(),ExecError>
+│   │                    #   STANDALONE pure fn — the F1 half of the AQ-4 seam. (R8/AC-11)
+│   ├── error.rs         # ExecError taxonomy (see A4) + Binance code → variant mapping. (R6)
+│   ├── endpoint.rs      # Network::{Testnet, Mainnet} → base_url + label; DEFAULT Testnet. (AQ-6)
+│   └── types.rs         # OrderAck / OrderRef / OrderStatus / AccountSnapshot (serde over JSON).
+└── lib.rs               # re-exports; `pub use live::{BinanceSpotExecClient, …};`
+```
+
+- **Trait boundary the agent consumes (R1/R3).** Two new traits in `crates/exec`,
+  both `Send + Sync`:
+
+  ```rust
+  #[async_trait]
+  pub trait LiveExecRouter: Send + Sync {
+      async fn place_order(&self, order: &Order)   -> Result<OrderAck, ExecError>;
+      async fn order_status(&self, r: &OrderRef)   -> Result<OrderStatus, ExecError>;
+      async fn cancel_order(&self, r: &OrderRef)   -> Result<(), ExecError>;
+  }
+  #[async_trait]
+  pub trait AccountReader: Send + Sync {
+      async fn account_snapshot(&self) -> Result<AccountSnapshot, ExecError>;
+  }
+  // AccountSnapshot.balances: BTreeMap<Asset, Balance{ free: Decimal, locked: Decimal }>
+  ```
+
+  `BinanceSpotExecClient` implements **both** (one signer + one `&dyn SecretSource`).
+  The agent (reconciler, and later F2's guard) holds `Option<Arc<dyn AccountReader>>` /
+  `Option<Arc<dyn LiveExecRouter>>` — `None` in research/paper, `Some` only in live.
+  `place_order` takes `&Order` (immutable `&self`, not `&mut` like the legacy
+  `ExecRouter::submit`) so one `Arc<dyn LiveExecRouter>` is shareable across tasks.
+
+- **MARKET-only, but the signature ADMITS LIMIT additively (AQ-3 = a).** `Order`
+  **already** carries `kind: OrderKind` where `OrderKind::{Market, Limit{price}}`
+  (`crates/core/src/order.rs:39-42`). So the enum-shaped admission AQ-3 asks for is
+  **already native** — no signature change is needed to make LIMIT additive later.
+  F1's client **rejects `OrderKind::Limit` at the boundary** with
+  `ExecError::UnsupportedOrderType` (a typed reject, never silently dropped) and
+  ships/tests MARKET only. Adding LIMIT in a later feature is purely additive (handle
+  the existing variant); no carve-out, no MIGRATION annotation, no rework — which is
+  why the cheap path is the durable one here (AGENT.md § Decision-framing exception).
+
+- **`SecretSource` lives in `crates/agent::secret` (AQ-5 = a), sharpened.** The trait
+  `SecretSource` + the `SecretString` newtype + `EnvSecretSource` + `LocalFileSecretSource`
+  live in a new `crates/agent/src/secret.rs`. Rationale grounded in the tree: the
+  secret boundary is already an **agent** concern — the LLM-key overlay
+  `merge_llm_local_overlay` lives in `crates/agent/src/config.rs:612-651`, and F2's
+  arming guard (also `crates/agent`) reads secret *presence* for condition (4). The
+  dependency edge **`agent → exec` already exists** (the runtime constructs exec
+  routers), so the exec client taking `&dyn SecretSource` introduces **no new edge and
+  no cycle**: `crates/exec` defines the consuming traits, `crates/agent` provides the
+  `SecretSource` impls and constructs `BinanceSpotExecClient` passing `&dyn SecretSource`
+  in. (To keep `crates/exec` from depending on `crates/agent`, the **`SecretSource`
+  trait declaration is re-exported into `exec` via a thin shared definition** —
+  concretely: declare `SecretSource`/`SecretString`/`SecretError` in `crates/core`
+  (no deps, already the shared vocabulary crate for `Money`/`Order`), impl them in
+  `crates/agent::secret`, consume `&dyn SecretSource` in `crates/exec`. This is the
+  dependency-direction-clean realization of AQ-5(a) — placement of the *impls* is
+  agent, placement of the *trait* is core so both exec and agent see it without a
+  cycle. Rejected putting the trait in `exec`: then `agent` would depend on `exec`
+  for a secret type, the wrong direction for an agent-owned boundary.)
+
+- **Topology (Q2 / AQ-6 = a).** ONE `BinanceSpotExecClient`; testnet vs mainnet is a
+  typed `Network` injected at construction, **never a compile-time split and never a
+  hard-coded URL** (the `binance.rs:128-133` `production()` anti-pattern F1 must not
+  repeat). `endpoint.rs` resolves `Network::Testnet → "https://testnet.binance.vision"`
+  and `Network::Mainnet → "https://api.binance.com"`, each carrying a greppable
+  `label` ("testnet"/"mainnet") for the arming audit F2 will want. **F1 ships
+  testnet-only:** the default constructor yields `Network::Testnet`, and a unit test
+  asserts the default endpoint label is `"testnet"` (so "F1 ships testnet-only" is
+  *enforced*, not hoped). Mainnet is gated by the F2 arming guard, **not** by the
+  client type — so every testnet rehearsal exercises the exact mainnet code path
+  (no "tested testnet, shipped untested mainnet" gap).
+
+### A2 — `SecretSource` trait shape + two impls + the fails-closed constructor contract (R2)
+
+> **Binding law 1 (verbatim):** No secrets in git, ever — the safe path is the only path.
+
+```rust
+// crates/core::secret  (trait + newtype; no deps) — the shared secret vocabulary.
+pub trait SecretSource: Send + Sync {
+    /// Returns Err(SecretError::Missing) when absent — NEVER a default/empty key.
+    fn get(&self, key: &str) -> Result<SecretString, SecretError>;
+    /// Presence-only probe for the F2 arming guard condition (4); never reads the value.
+    fn has(&self, key: &str) -> bool { self.get(key).is_ok() }
+}
+pub struct SecretString(/* private */ String);     // Debug/Display ⇒ "<redacted>"
+pub enum SecretError { Missing(String), Io(String) }
+```
+
+- **`SecretString` redaction (AC-2).** `Debug` and `Display` both emit `"<redacted>"`;
+  `Serialize` is **refused** (returns a ser error, never the plaintext) — there is no
+  code path that prints, logs, or serializes the value. The plaintext is reachable
+  **only** via an explicit `expose_secret(&self) -> &[u8]` consumed solely by
+  `sign.rs` (borrowed, never stored, never copied into any struct's `Debug`).
+- **Two impls in `crates/agent::secret`.** `EnvSecretSource` reads `BINANCE_API_KEY` /
+  `BINANCE_API_SECRET` from the process env (never touches repo disk).
+  `LocalFileSecretSource` reads the git-ignored `config/agent.toml.local` — the
+  **proven** LLM-key precedent (`config.rs:612-651`), never a new mechanism; the
+  committed config carries only placeholders.
+- **Fails-closed constructor contract (AC-3).** `BinanceSpotExecClient::connect(network,
+  secrets: &dyn SecretSource, http)` calls `secrets.get("BINANCE_API_KEY")` +
+  `get("BINANCE_API_SECRET")` and **returns `Err` if either is `Missing`** — never a
+  default key, never an empty key, never a silent unauthenticated request. There is
+  **no API to pass a literal key** in code or committed config: `get` is the sole
+  ingress. (This is exactly the presence the F2 arming condition (4) reads via
+  `secrets.has(..)` — F1 builds it; F2 composes it.)
+
+### A3 — Reconciliation loop: owner, the two-class divergence contract (AQ-1), and kill-switch wiring
+
+> **AQ-1 is the riskiest decision in F1 — it is the safety-tolerance + halt-trigger
+> calibration on real money. A false-halt mid-rebalance erodes operator trust; a
+> missed real divergence is silent real-money drift. Both are load-bearing, so the
+> contract encodes the two genuinely-different failure classes rather than one flat
+> number.** ACCEPT recommended default (a), pinned precisely below.
+
+**Owner: the reconciler in `crates/agent` (NOT `crates/exec`).** The reconciler
+already owns the kill-switch handle and the per-bar `after_bar_close` cadence
+(`reconciler.rs:71-89`); the exec crate stays a pure transport. F1 adds an
+`Option<Arc<dyn AccountReader>>` field to `ReconcilerTask` (mirroring the existing
+`Option<Arc<dyn LiveEquityStore>>` mode-gated field) + an `Option<DivergenceState>`
+debounce counter. **Paper/research is byte-unchanged when `AccountReader = None`** —
+the self-referential heuristic at `reconciler.rs:222-229` stays verbatim for paper
+(A4 assumption; AC-10 second half). The real-exchange comparison runs **only** when
+`Some`.
+
+**What is compared, at what cadence, and what each divergence class does:**
+
+| Item | Source A (in-process / ledger) | Source B (exchange truth) | Compared as |
+|------|-------------------------------|---------------------------|-------------|
+| Per-asset balance | ledger free+locked per `Asset` | `AccountReader::account_snapshot().balances[asset]` (free+locked) | `Decimal` delta, valued at last mark → USDT notional |
+| Position presence | the set of assets the ledger knows | the set of non-dust assets the exchange reports | **set membership** |
+
+- **Cadence.** The reconciliation compare runs on the reconciler's existing
+  **per-bar `after_bar_close`** tick in live mode (the same cadence that already
+  marks equity), **not** a separate timer — one account read per closed bar. (The
+  passive baseline is low-turnover ~12–13 acts/year, so per-bar account reads on the
+  monitoring cadence are well within rate limits; no extra timer to reason about.)
+
+- **Class SOFT — transient balance timing (debounced, N=2).** A per-asset balance
+  delta whose **absolute USDT-valued magnitude exceeds `[live].reconcile_tolerance_usdt`**
+  (a `Decimal`, default `dec!(1.00)` — one dollar) but where **both sides know the
+  asset** (the position is *not* unknown). This is the benign class: an in-flight fill
+  the exchange has applied but the ledger has not yet recorded (or vice-versa). It is
+  **debounced**: a `DivergenceState { consecutive: u8 }` counter increments on each
+  divergent read and **resets to 0 on any in-tolerance read**. The
+  `HaltReason::LedgerImbalance` trip fires only on the **N-th consecutive** divergent
+  read (`[live].reconcile_debounce_reads`, default **2**). One transient mismatch that
+  self-heals on the next bar does **not** halt — this is the false-halt guard.
+
+- **Class HARD — structural unknown position (immediate, N=1, no debounce).** The
+  exchange reports a **non-dust position in an asset the ledger has zero record of**
+  (set-membership B ⊄ A) — OR the ledger believes it holds an asset the exchange
+  reports at zero when the ledger qty is non-dust (A ⊄ B on a *position*, not a
+  rounding-dust delta). **An unknown position is never benign**: it means the agent's
+  model of what it holds is structurally wrong, which on real money is a
+  stop-everything condition. This trips `HaltReason::LedgerImbalance`
+  **immediately, bypassing the debounce counter** (the counter is for magnitude
+  timing, not for "I don't know what I own"). The "dust" floor reuses
+  `[live].reconcile_tolerance_usdt` so a 0.0000001-BTC rounding crumb is not mistaken
+  for an unknown position.
+
+  > **The trade-off, made explicit (AQ-1 risk note).** SOFT-debounced-N=2 costs us at
+  > most one extra bar of latency before halting on a *sustained* balance drift (≈ one
+  > minute on 1m bars) in exchange for not false-halting on the single-bar in-flight-fill
+  > race that *will* occur during a live rebalance. HARD-immediate accepts zero latency
+  > tolerance for the one class where latency tolerance would be reckless (an unknown
+  > position). The flat-single-number fallback (AQ-1 option b) was rejected because it
+  > forces one knob to serve both classes: tight enough to catch drift ⇒ false-halts on
+  > the first in-flight fill; loose enough to ride the fill ⇒ misses a real drift. The
+  > two-class split is the durable encoding (no v0.2.0 "debounce the reconciler" follow-on).
+
+**Audit row each transition writes (the journal seam).** Every reconcile transition
+writes through the existing `audit::journal::strategy_event` dual-write seam (the
+same `strategy_events` + memo path the kill-switch trip already uses,
+`kill_switch.rs:287-301`). Timestamps are **6-digit fractional-second** (ADR-0004,
+never Rfc3339-second — avoids SQLite ORDER BY ties). **No balance/key value that
+could be a secret is ever in a memo — only asset symbols, `Decimal` deltas, and the
+class.** The transitions:
+
+| Transition | Event | Memo (Decimal-valued; no secrets) |
+|------------|-------|-----------------------------------|
+| SOFT divergence observed (counter 1..N-1) | `ReconcileDivergenceObserved` | `asset=BTC delta_usdt=2.30 consecutive=1/2 class=soft` (no trip yet) |
+| SOFT divergence trips (N-th consecutive) | `ReconcileDivergenceHalt` | `asset=BTC delta_usdt=2.30 consecutive=2/2 class=soft → LedgerImbalance` |
+| HARD unknown position (immediate) | `ReconcileDivergenceHalt` | `asset=DOGE qty=120.0 class=hard_unknown_position → LedgerImbalance` |
+| Counter reset (back in tolerance) | `ReconcileDivergenceCleared` | `asset=BTC delta_usdt=0.01 consecutive_reset` |
+
+On either `…Halt` row the existing `KillSwitch::trip(HaltReason::LedgerImbalance)`
+fires its full side-effect chain (broadcast `Halted` + the journal `kill_switch_tripped`
+dual-write + incident-report spawn, `kill_switch.rs:274-313`) — F1 wires the
+**trigger**, reusing the proven trip machinery verbatim.
+
+### A4 — `ExecError` taxonomy + Binance-code mapping (R6) + the retry/idempotency contract
+
+The existing `ExecError` (`router.rs:8-15`, three variants) is **extended additively**
+(the paper `UnsupportedMode`/`OrderRejected`/`FillFailed` variants stay so
+`PaperExecRouter` is untouched). New variants and their Binance-code mapping:
+
+| `ExecError` variant | Triggered by | Retry policy |
+|---------------------|--------------|--------------|
+| `Transport(String)` | reqwest timeout / connect failure | **query status before any retry** (AC-8); never blind-resubmit |
+| `RateLimited { retry_after }` | HTTP 429 / Binance `-1003` | capped exponential backoff, **hard ceiling**; then halt |
+| `Auth(String)` | `-1022` (bad sig) / `-2014` / `-2015` (key) | **no retry** — fail fast (a key/sig fault won't self-heal) |
+| `ClockSkew` | `-1021` (timestamp outside recvWindow) | resync `GET /api/v3/time`, retry **once**; persistent → `HaltReason::ClockSkew` |
+| `FilterReject(String)` | client-side R4 checks **AND** exchange `-1013` / `-2010` | **no retry**; force-refresh the filter cache (AQ-2) on the exchange-side variant |
+| `InsufficientBalance` | `-2010` insufficient balance | no retry; surface to caller |
+| `UnsupportedOrderType` | `OrderKind::Limit` handed to the F1 MARKET-only client | no retry (typed reject, never silent — AQ-3) |
+| `CapExceeded { notional, cap }` | `check_notional_cap` (R8) | no retry (rejected before the network — AC-11) |
+| `Unknown(String)` | any unmapped code | no retry; log + surface |
+
+- **Idempotency (R6).** Every `place_order` mints a `newClientOrderId` (a UUID — the
+  `OrderId` already on `Order`, `order.rs:15`, reused) so a retry after an ambiguous
+  outcome is **idempotent at the exchange**.
+- **Ambiguous-timeout contract (AC-8 — adversarial).** On a `Transport` timeout from
+  a `place_order`, the client **queries `GET /api/v3/order` by `newClientOrderId`
+  BEFORE any retry**. If the order exists (filled/partial/new) it is **not**
+  resubmitted (the ack is reconstructed from status); only a confirmed "does not
+  exist" permits a resubmit. Partial fills are tracked on the returned status.
+  **N-retry exhaustion → log + `halt`, never silent** (R6).
+- **No `f64` anywhere in this path** (AC-9): backoff arithmetic uses integer
+  millis/`Duration`; all notionals/caps/balances are `Decimal`.
+
+### A5 — Exec-side cap mechanism (R8 / AQ-4 = a) — the F1 half of the F1/F2 seam
+
+> **Binding law 4 (verbatim):** the operator arms; the agent never self-arms. **F1
+> builds the cap mechanism; F1 decides nothing armed.**
+
+`crates/exec/src/live/cap.rs` ships a **standalone pure fn**:
+
+```rust
+pub fn check_notional_cap(order_notional: Decimal, cap: Decimal) -> Result<(), ExecError> {
+    if order_notional > cap { Err(ExecError::CapExceeded { notional: order_notional, cap }) }
+    else { Ok(()) }   // notional == cap is ALLOWED (boundary)
+}
+```
+
+plus the `[live].max_notional_usdt` config field parse (a `Decimal`). F1 builds and
+**unit-tests the cap arithmetic + the rejection path** (AC-11, parametrized over
+(notional, cap) incl. the `notional == cap` boundary allowed / `notional > cap`
+rejected; the faked transport records **zero** requests for the rejected case). F1
+**never** reads the arm-file, never checks mode, never composes the 5-condition
+guard, never reads secret *presence* for arming — that is **F2-T3's `check_armed`**,
+which *calls* `check_notional_cap` as its condition (3) (ADR-0054 § D2; umbrella A4).
+The cap is proven in isolation in F1 so F2 composes a proven part rather than
+re-deriving the arithmetic inside its adversarial matrix.
+
+### A6 — Test strategy: what is offline-unit, what is trait-faked-transport, what is `#[ignore]`-live
+
+> **Binding law 3 (verbatim):** every external I/O behind a trait; **no F1 test ever
+> touches a real exchange or a real key** (AC-12). **Zero mainnet calls in CI, ever.**
+
+**Dependency decision (checklist applied — see § Library compatibility below): the
+PRIMARY test layer is a trait-faked transport, NOT a mock HTTP server.** A
+`FakeTransport` test double implementing `LiveExecRouter` / `AccountReader` (and a
+`FakeSecretSource`) beats adding/using `wiremock` for the adversarial matrix:
+faking at the trait boundary is exactly invariant iii, needs **zero new deps**, and
+asserts the load-bearing facts directly (e.g. "the faked transport recorded **zero**
+outbound requests" for a filter/cap reject — AC-5/AC-11). `wiremock` **is already a
+workspace dev-dep** (used by `data`/`llm`/`trader`) and **may** be used for a small
+number of HTTP-shape tests (verifying the signer's query string + headers actually
+hit the wire as expected) — but it is **not** required and the adversarial matrix
+does not depend on it. **No new dependency is introduced for testing.**
+
+| Layer | What it covers | Mechanism (no real exchange, no real key) |
+|-------|----------------|-------------------------------------------|
+| **Offline unit** | signer fixed-vector (AC-6); filter round/validate math (AC-5); cap arithmetic (AC-11); `Decimal`-only static grep (AC-9); error-code→variant mapping (R6); endpoint default = testnet (AQ-6); `SecretString` redaction (AC-2); fails-closed ctor (AC-3) | pure fns + recorded JSON fixtures; FAKE placeholder keys only |
+| **Trait-faked transport** | order observably submitted once + `newClientOrderId` + sig (AC-7); ambiguous-timeout-queries-before-resubmit (AC-8); reconcile divergence → halt, both SOFT-debounce and HARD-immediate (AC-10); paper byte-unchanged when `AccountReader=None` | `FakeTransport`/`FakeSecretSource`/`FakeAccountReader` impls; records calls, dials nothing |
+| **`#[ignore]` live testnet** | the full place→status→cancel→account-read→reconcile pipeline on fake money (AC-13) | a `#[ignore]`-gated integration suite the **operator** runs with their out-of-band testnet keys; **never in CI** |
+
+- **Signer fixed-vector (AC-6).** `sign.rs` is a pure `(secret, query) -> hex`
+  function unit-tested against a **pinned** vector using a **FAKE** secret — either
+  the Binance API-docs public example pair (documented as an example, never a live
+  credential) or a synthetic `secret="FAKE_TESTNET_SECRET_DO_NOT_USE"` with the
+  expected signature computed once and pinned. **No file in `crates/` or `spec/`
+  carries a real key.**
+- **No-real-exchange/no-real-key CI gate (AC-12 — load-bearing).** Every CI test runs
+  with `BINANCE_API_KEY`/`_SECRET` **unset** and passes; all transport is the faked
+  trait or recorded JSON; the testnet host string appears **only as data** (never
+  dialed). A test asserts the default endpoint is `testnet` and **no test references
+  `api.binance.com`**. The `#[ignore]` live suite is the only thing that ever opens a
+  socket, and it is operator-run, never CI.
+
+**The `#[ignore]` live testnet integration suite — env contract + watch recipe it emits.**
+The suite (e.g. `crates/exec/tests/binance_testnet_live.rs`, every test
+`#[ignore]`-gated) reads its config **only** from the environment so no key is ever a
+fixture or an arg:
+
+| Env var | Meaning | Notes |
+|---------|---------|-------|
+| `BINANCE_TESTNET_API_KEY` | operator-provisioned **testnet** key | never logged; via `EnvSecretSource` |
+| `BINANCE_TESTNET_API_SECRET` | operator-provisioned **testnet** secret | never logged; redacted |
+| `BINANCE_EXEC_LIVE_TESTNET=1` | opt-in toggle | absent ⇒ the suite is a no-op even with `--ignored` |
+
+The suite is `Network::Testnet`-pinned (it will **refuse to run against mainnet** —
+asserts the endpoint label is `"testnet"` before the first request). When the
+developer wires it they emit, per the watch-recipe contract, a copy-pasteable block
+for the **operator** to run out-of-band (this is the AC-13 recipe's executable core;
+the assistant produces it and **never runs it**):
+
+```
+# OPERATOR-ONLY — fake testnet money. The assistant never runs this.
+export BINANCE_TESTNET_API_KEY=…        # your testnet key, provisioned out-of-band
+export BINANCE_TESTNET_API_SECRET=…     # your testnet secret
+export BINANCE_EXEC_LIVE_TESTNET=1
+cargo test -p exec --test binance_testnet_live -- --ignored --nocapture
+# Expected: place→status→cancel→account-read→reconcile all green on testnet.binance.vision;
+#           the reconcile compare matches (no LedgerImbalance); no mainnet host ever dialed.
+```
+
+### Determinism & format guardrails this design binds (for the tester)
+
+- **`Decimal` everywhere** (AC-9): no `f64` in any order/balance/cap/filter/tolerance/
+  rounding type or arithmetic path. Backoff uses integer `Duration`.
+- **Audit timestamps 6-digit fractional second** (ADR-0004) on every reconcile row —
+  never `Rfc3339` second precision.
+- **No RNG in the F1 decision path.** `newClientOrderId` is a `Uuid` (identity, not a
+  sampled value); if any seeded randomness were ever needed it would be
+  `ChaCha20Rng::from_seed`. The signer is a pure function.
+- **Anchor-neutral by construction** (AC-15): the live client is **never** on the
+  hashed backtest-report path (the backtest never calls it), so F1 mutates **no**
+  `anchors.toml` row and **no** anchor SHA. Any anchor change would require its own
+  ADR — none is needed.
+
+### Library / crate compatibility checklist (new deps this design needs)
+
+F1 needs HMAC-SHA256 signing in `crates/exec`, which currently has **no** `reqwest`,
+`rust_decimal`, `hmac`, or `hex`. Decisions (each checklist item verified):
+
+| Dep | Status in workspace | Checklist verdict |
+|-----|---------------------|-------------------|
+| `reqwest` 0.12 (`json`) | workspace dep (used by `data`/`agent`) | **REUSE** — add to `exec`'s `[dependencies]`. Single-binary-friendly (no separate service); no system C dep with `rustls` (the existing feature set); edition-2024 clean (already compiled in the tree). |
+| `rust_decimal` | workspace dep (everywhere) | **REUSE** — promote from `exec` dev-dep to `[dependencies]` (the money-math rule). |
+| `sha2` 0.10.8 | **already** a workspace dep | **REUSE** for HMAC's hash. |
+| `hmac` | **NOT present** | **ADD** (RustCrypto, MIT/Apache-2.0, maintained, edition-2024 clean, pure-Rust no system C dep, `name="hmac"` shadows no stdlib crate). Pin `^0.12` (the `sha2 0.10` companion). |
+| `hex` | **NOT present** | **ADD** (MIT/Apache-2.0, ubiquitous, pure-Rust, no system C dep, `name="hex"` no stdlib shadow) for the signature hex-encode. |
+| `serde_json` 1.0 | **already** a workspace dep | **REUSE** for the REST JSON (ack/status/account/exchangeInfo). |
+| `wiremock` 0.6.2 | **already** a workspace dev-dep | **OPTIONAL dev-dep** — not required (trait-faked transport is primary); may be used for a few HTTP-shape tests. **No new dep.** |
+
+**Rejected:** adding a Binance SDK crate (e.g. `binance-rs`) — pulls a venue-coupled
+dependency surface, most are stale (> 18 mo) and/or pin their own HTTP client; F1's
+authenticated surface is **four** signed endpoints, hand-rolled over the existing
+`reqwest`/`sha2` is smaller, auditable, and edition-2024-clean. The architect records
+`hmac`/`hex` as the only two **new** crates; both are RustCrypto-ecosystem,
+single-binary-friendly, no system C deps, license-compatible. **The developer adds
+them to `crates/exec/Cargo.toml` only** (not the virtual-workspace root unless a
+second crate needs them).
+
+### Confirmation — baseline-equity-divergence gate is **N/A for F1** (re-ruled, NOT rubber-stamped)
+
+Per the `v3-volatility-forecaster-noop-fix` precedent (rule the gate explicitly,
+every time): **F1 ships no sizing decision.** It is a transport/client feature — it
+places the order it is handed, reads balances, reconciles. There is no allocation, no
+weight, no rebalance, no `scale` "computed but never applied" — the gate has **no
+decision variable to bind** in F1. F1's analogue of "the order actually left the
+process" is discharged by **AC-7** (a placed order is observably submitted through
+the faked client) + **AC-11** (an over-cap/under-filter order observably does **not**
+reach it) + the testnet rehearsal **AC-13**. **The gate APPLIES to F2** (ADR-0054
+§ D4: the equal-weight inception allocation + monthly rebalance is the sizing
+decision; e2e proof `passive_inception_diverges_from_flat_baseline`). This split is
+the honest read — you cannot prove "the allocation moved capital" in a feature with
+no allocation. **The tester records N/A-for-F1 with this justification, not a stamp.**
 
 ## Backtest Scenarios
 _N/A — F1 is a transport/client feature with no strategy, no sizing, and no backtest
@@ -474,3 +891,45 @@ rubber-stamp)._
   feature-level trace row (appendix in tasks.md for the orchestrator to apply; cross-
   references the umbrella `REQ-LIVE-PASSIVE-EXEC-F1-001`). No code, no keys, no config,
   no git.
+- 2026-06-12 (architect): M-T1 design pass → `## Architecture` (A1–A6), status
+  `draft → arch-done`, version `0.1.0 → 0.2.0`. Resolved all 6 AQs by ACCEPTing each
+  recommended default with code-grounded reasons: **AQ-1** (riskiest) two-class
+  divergence — per-asset `Decimal` tolerance `[live].reconcile_tolerance_usdt`
+  (default `dec!(1.00)`) on USDT-valued free+locked balance deltas, SOFT class
+  debounced N=2 consecutive reads (`[live].reconcile_debounce_reads`), HARD class
+  (unknown exchange position / structural set-membership mismatch) immediate N=1
+  no-debounce → `HaltReason::LedgerImbalance`; pinned exactly what is compared
+  (per-asset free+locked + position presence), cadence (per-bar `after_bar_close` in
+  live), per-class action, and the 4 audit-row transitions
+  (`ReconcileDivergenceObserved`/`…Halt`/`…Cleared` via `strategy_event`, 6-digit
+  fractional ts, no secrets in memos); the false-halt-vs-missed-drift trade-off made
+  explicit. **AQ-2** TTL-cached filters (1 h) + force-refresh on exchange `-1013`/`-2010`.
+  **AQ-3** MARKET-only — `Order` already carries `OrderKind::{Market,Limit}` (core
+  `order.rs:39`) so LIMIT is additive natively; F1 rejects `OrderKind::Limit` with a
+  typed `ExecError::UnsupportedOrderType`. **AQ-4** standalone `check_notional_cap` +
+  `[live].max_notional_usdt` parse, unit-tested in F1; F2's `check_armed` composes it.
+  **AQ-5** `SecretSource`/`SecretString` **impls** in `crates/agent::secret`; the
+  **trait** declared in `crates/core::secret` (no-dep shared vocabulary) so
+  `crates/exec` consumes `&dyn SecretSource` with **no `exec→agent` cycle** — the
+  dependency-direction-clean realization of (a). **AQ-6** typed `Network::{Testnet,
+  Mainnet}` → base_url + greppable label, default Testnet, a unit test asserts the
+  default endpoint is testnet (F1-testnet-only enforced, not hoped). **ADR decision:
+  NO new ADR** — ADR-0054 § D1/D2/D3 already fixes the boundary/arming-contract/
+  invariants; F1 is implementation under it; the AQ resolutions are choices within
+  the ratified boundary, not boundary moves; the only ADR-requiring act (anchor-SHA
+  mutation) is explicitly not crossed (AC-15). Locked the `crates/exec/src/live/`
+  module layout (client/sign/clock/filters/cap/error/endpoint/types), the additive
+  `ExecError` taxonomy + Binance-code mapping, the `Option<Arc<dyn AccountReader>>`
+  reconciler seam (paper byte-unchanged when `None`), and the test strategy (primary:
+  trait-faked transport — ZERO new deps; `wiremock` already a workspace dev-dep is
+  optional; `#[ignore]`-gated operator-run testnet suite with its env contract +
+  watch recipe). Dep checklist: REUSE `reqwest`/`rust_decimal`/`sha2`/`serde_json`;
+  ADD only `hmac`+`hex` (RustCrypto, MIT/Apache, edition-2024 clean, no system C dep,
+  no stdlib shadow) to `crates/exec` only; REJECT a Binance SDK crate. Re-ruled the
+  baseline-equity-divergence gate **N/A for F1** (transport, no sizing decision —
+  AC-7/AC-11/AC-13 discharge the "order left the process" analogue; gate APPLIES to
+  F2 per ADR-0054 § D4) — NOT rubber-stamped. Reproduced the five binding invariants
+  verbatim in the `## Architecture` § Binding law. **No disagreement with the
+  analyst** — every recommended default accepted; the deltas are sharpenings (the
+  AQ-5 trait-in-core dependency-cycle fix; the AQ-1 audit-row + cadence pin; the
+  enforced testnet-default test). No code, no keys, no config, no git.
