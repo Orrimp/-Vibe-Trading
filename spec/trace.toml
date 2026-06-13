@@ -2899,4 +2899,4 @@ tests       = [
   "crates/ui/tests/live_equity_render.rs::compare_two_run_overlay_renders_both_series",
 ]
 anchors     = []   # anchor-additive, ZERO new rows — Lab artifacts live in lab-runs/ outside spec/**; verify_anchors.sh 119/119 PASS (ADR-0055 § D2). Baseline-equity-divergence gate N/A: this is backtest/evaluation tooling, no strategy overlay or sizing modifier (feature.md § A6). H3 (h3_in_memory_equals_cached_disk, 21601 pts) is the persisted-vs-in-memory divergence guarantee.
-state       = "tester-done"   # tester 2026-06-12 VERDICT PASS. Report: spec/lab-run-save-compare/reports/test-2026-06-12-lab-run-save-compare.md
+state       = "shipped"   # operator approved 2026-06-13 (deck same day; two-run overlay panel greenlit as follow-on lab-compare-equity-overlay). Was: tester-done.

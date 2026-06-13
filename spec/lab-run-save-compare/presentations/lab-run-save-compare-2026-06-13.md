@@ -235,7 +235,7 @@ is about a deferred follow-on, not a defect.
 
 Tick exactly one. (I do not tick these — the decision is yours.)
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

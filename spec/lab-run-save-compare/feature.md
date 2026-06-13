@@ -1,6 +1,6 @@
 ---
 slug: lab-run-save-compare
-status: presenter-done
+status: shipped
 owner: orchestrator
 updated: 2026-06-12
 version: 0.2.0
