@@ -1,0 +1,27 @@
+# Live demo capture — lab-run-save-compare presenter, 2026-06-13
+# Command (real Binance BTCUSDT 2023, Lab default seed, write into a tempdir
+# exactly as the Lab's run_scenario(reports_dir=...) path does):
+#
+#   cargo run --release -p backtest --bin backtest -- \
+#     --scenario btc-2023-1m-sma-cross --seed 0xC0FFEE --reports-dir <tempdir>
+
+== run 1 stdout ==
+INFO backtest: loading Parquet data path="data/binance/BTCUSDT/2023"
+INFO backtest: Parquet bars loaded bars=17543
+INFO backtest: data ready bars=17543 data=real (Binance Vision)
+INFO backtest::scenarios::sma_composed_run: backtest complete elapsed_s=0.0055 trades=441 final_equity=107381.95...
+Report written: <tempdir>/backtest-20260613-062007-btc-2023-1m-sma-cross.md
+Scenario     : btc-2023-1m-sma-cross
+Bars         : 17543
+Trades       : 441
+Final equity : $107381.95 USDT
+Data source  : real (Binance Vision)
+Ledger imbal : 0
+
+== determinism proof (run 1 vs run 2, same seed, same real data) ==
+run1 body SHA-256: 9b35c926cacd16c0e3b39129a2bff12cd761eac0fbc6c8574825bef4945bc147
+run2 body SHA-256: 9b35c926cacd16c0e3b39129a2bff12cd761eac0fbc6c8574825bef4945bc147
+diff <stripped-frontmatter bodies> => BODIES BYTE-IDENTICAL ACROSS RUNS
+
+== anchor gate (committed synthetic anchors untouched) ==
+bash scripts/verify_anchors.sh => ANCHORS PASS (119 / 119)

@@ -1,6 +1,6 @@
 ---
 slug: lab-run-save-compare
-status: tester-done
+status: presenter-done
 owner: architect
 updated: 2026-06-12
 ---
