@@ -2900,3 +2900,17 @@ tests       = [
 ]
 anchors     = []   # anchor-additive, ZERO new rows — Lab artifacts live in lab-runs/ outside spec/**; verify_anchors.sh 119/119 PASS (ADR-0055 § D2). Baseline-equity-divergence gate N/A: this is backtest/evaluation tooling, no strategy overlay or sizing modifier (feature.md § A6). H3 (h3_in_memory_equals_cached_disk, 21601 pts) is the persisted-vs-in-memory divergence guarantee.
 state       = "shipped"   # operator approved 2026-06-13 (deck same day; two-run overlay panel greenlit as follow-on lab-compare-equity-overlay). Was: tester-done.
+
+[[req]]
+id          = "REQ-LAB-COMPARE-OVERLAY-001"
+title       = "Compare screen two-run equity overlay — the deferred R5 half of lab-run-save-compare: two selected persisted Lab runs' equity curves render overlaid on one chart (ACCENT + ACCENT_2) from CSV-backed timestamped series. UI-only follow-on (CachedCell timestamped field + selection UX + wiring the render-proven overlay widget). Render-layer gate. No engine change, no new anchors (119/119 tripwire), no live trading."
+feature     = "lab-compare-equity-overlay"
+product     = "spec/product.md"
+crates      = ["crates/ui"]
+arch        = [
+  "spec/lab-compare-equity-overlay/feature.md",
+  "spec/lab-compare-equity-overlay/tasks.md",
+  "spec/architecture/adr/0055-lab-run-persistence-topology-and-anchor-safety.md",
+]
+anchors     = []   # UI-only; no backtest scenario; 119/119 unchanged (AC3 tripwire).
+state       = "arch-done"
