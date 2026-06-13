@@ -1,15 +1,40 @@
 ---
 slug: simple-strategies-realdata
-status: draft
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-13
-version: 0.1.0
+version: 0.2.0
 trace: REQ-SIMPLE-STRATEGIES-REALDATA-001
 ---
 
 # Simple strategies on real Binance data — sma / macd / rsi / bbands in the Lab
 
 ## Changelog
+
+- 2026-06-13 (architect): **v0.2.0 — § Architecture added (A1–A6); status →
+  `arch-done`.** Code-anchor claims verified at file:line (engine enum + the 4
+  single-symbol `bars_override` arms + the 4 cross-sectional reject arms + the
+  `data_source_str` non-exhaustive match; the Yahoo UI seam: `LabDataSource`,
+  `source_toggle`, `preload_yahoo_bars`, `LabYahooBarSource` trait +
+  `spawn_preload_on_rt`, `spawn_lab_run` wiring; the `data` crate's
+  timeframe-parametric `ReplayFeed::subscribe_bars`/`merge_symbols` +
+  `revision::read_and_verify_revision_manifest`; ADR-0040 corpus pin + ADR-0055
+  topology). **Resolutions:** Q-tf = hourly, NO engine timeframe field (the
+  loader pins `Timeframe::OneHour` at read; the engine consumes `bars_override`
+  cadence-agnostically — A3); Q-loader = a single-symbol `preload_binance_bars`
+  behind a NEW `LabBinanceBarSource` trait mirroring `LabYahooBarSource`,
+  routed through the EXISTING `spawn_preload_on_rt` enforcement point (A3/A4);
+  Q-feature = YES, a `binance` cargo feature on the `ui` crate, sibling to
+  `yahoo` (A4); Q-miss = typed `Err` with a re-fetch hint, NEVER silent
+  synthetic fallback (A3/A5). **ADR decision: NO new ADR** — implementation
+  under ADR-0040 (data domain) + ADR-0055 § D3 (which already names the
+  `ScenarioDataSource` enum-variant as THE anchor-additive precedent); Q1-policy
+  / Q-anchor are operator-recorded decisions, not architectural tradeoffs (A6).
+  **Baseline-equity-divergence gate: N/A as written** (no overlay / sizing
+  modifier / new decision variable) — but its purpose-built analog, the
+  no-op-source divergence guard (AC4), IS mandatory (A5). All money stays
+  `Money<Usdt>` / `Decimal`; UN-ANCHORED (no `anchors.toml` row); 119/119 by
+  construction; render-layer verification for the toggle; NO live trading.
 
 - 2026-06-13 (operator, via orchestrator dialog): **Q1-policy RESOLVED = (a)
   Both Yahoo + Binance** — the Lab data-source toggle becomes three-way
@@ -260,6 +285,295 @@ touching git and without any risk to the 119 anchored reports**.
   (`runner.rs:403-426`); Binance is pinned + manually re-fetchable per ADR-0040.
   v0.1.0 surfaces a clear "run the fetch tool" error on miss, no in-Lab fetch
   (Q-miss).
+
+## Architecture
+
+_Architect-owned (v0.2.0, 2026-06-13). Authoritative design. The analyst's
+§ Architecture findings below is the verified input this section resolves._
+
+**ADR posture: NO new ADR.** This is an implementation under three accepted ADRs:
+
+- **ADR-0032** (`backtest-realdata-path-and-revision-pin`) — the **Binance**
+  corpus data domain: pinned `3a8b96c4…` parquet, gitignored, re-fetchable,
+  revision-SHA-asserted on load; `RealDataBarSource`/`realdata.rs` + the
+  `data/binance/REVISION.toml` pin live here. **(Provenance correction: earlier
+  drafts of this feature + the brief attributed the Binance corpus pin to
+  ADR-0040 — that is a misattribution. ADR-0040 is the YAHOO realdata path;
+  it cross-references ADR-0032 for the Binance domain in its § Context. The
+  Binance corpus contract is ADR-0032.)**
+- **ADR-0040** (`yahoo-realdata-path`) — the Lab-dispatch real-data PATTERN this
+  feature mirrors: § D4 "engine remains source-agnostic; Lab swaps bars upstream"
+  via the existing `bars_override: Option<Vec<Bar>>` hook, + the revision-pin-on-
+  load discipline. The four-part Yahoo seam (enum + toggle + preload +
+  `bars_override`) I mirror for Binance is this ADR's shipped shape.
+- **ADR-0055** (`lab-run-persistence-topology-and-anchor-safety`) — `lab-runs/`
+  outside every `spec/**` anchor glob, anchor-safety by construction; § D3
+  *already names* the `ScenarioDataSource` enum-variant addition as THE
+  established anchor-additive pattern ("the `ScenarioDataSource` /
+  `latency_slippage_sim` precedents"), so adding a third variant is that
+  precedent in action, not a new tradeoff. The two genuinely decision-bearing questions —
+Q1-policy (three-way toggle) and Q-anchor (UN-ANCHORED) — are **operator
+decisions recorded in this feature's changelog**, not architectural tradeoffs:
+no new durable contract, no anchor mutation, no superseded decision, no new
+crate. Per the contract, ADRs are reserved for non-trivial design tradeoffs; this
+feature has none not already covered by 0040 + 0055. (If a follow-on promotes a
+characterized Lab result into committed anchored evidence — § Out of scope —
+that one DOES warrant its own ADR, inheriting the top10 re-emission discipline.)
+
+```mermaid
+flowchart LR
+  subgraph UI["crate: ui  (feature: binance)"]
+    TGL["source_toggle (3-way)\nSynthetic / Yahoo / Binance"]
+    SEL["Message::LabSelectDataSource"]
+    PBB["preload_binance_bars\n(behind LabBinanceBarSource trait)"]
+    SPN["spawn_preload_on_rt\n(EXISTING enforcement point)"]
+    SLR["spawn_lab_run\nbars_override = Some(bars)\ndata_source = BinanceCache"]
+  end
+  subgraph DATA["crate: data"]
+    RF["ReplayFeed::subscribe_bars(sym, OneHour)"]
+    RV["revision::read_and_verify_revision_manifest\n(assert 3a8b96c4…)"]
+  end
+  subgraph ENG["crate: backtest::engine::run_scenario"]
+    DS["ScenarioDataSource::BinanceCache"]
+    SS["4 single-symbol arms\n(sma/macd/rsi/bbands)\nconsume bars_override verbatim"]
+    XS["4 cross-sectional arms\n(momentum/pairs/tcn/weights)\nREJECT → UnsupportedDataSource"]
+    MW["maybe_write_report (ADR-0055)"]
+  end
+  subgraph PERSIST["lab-runs/ (gitignored, ADR-0055)"]
+    MD["backtest-<ms>-<scenario>.md\n+ companion equity CSV"]
+    CMP["EquityCache / compare::scan_spec_tree\n→ KPIs + overlay"]
+  end
+  TGL --> SEL --> SLR
+  SLR --> PBB --> SPN --> RF
+  PBB --> RV
+  RF -->|Vec<Bar> hourly| SLR
+  SLR -->|bars_override + BinanceCache| DS
+  DS --> SS --> MW
+  DS -.reject.-> XS
+  MW --> MD --> CMP
+```
+
+### A1 — The engine seam: `ScenarioDataSource::BinanceCache` (exec) — R1 / AC1 / AC2
+
+Add a third variant to `crates/backtest/src/engine.rs:170-177`:
+
+```rust
+pub enum ScenarioDataSource {
+    #[default] Synthetic,
+    YahooCache,
+    BinanceCache,   // ← new; Lab-only; single-symbol arms only at v0.1.0
+}
+```
+
+It is `#[serde(rename_all = "snake_case")]` → wire string `"binance_cache"`, and
+anchor-additive by the **exact** `YahooCache` precedent: CLI/anchor-generating
+call sites construct `ScenarioConfig` via struct-update / `..default()` and never
+set `data_source = BinanceCache`, so all 119 anchored bodies are byte-identical
+(neutrality proof reused from `lab-yahoo-realdata/decomp.md § T-AR9`).
+
+**Dispatch arms (verified file:line):**
+
+- **Single-symbol arms accept it unchanged.** The four arms (`v0.sma`
+  `engine.rs:~1082`, `v0.5.macd` `~1159`, `v0.5.rsi`, `v0.5.bbands`) already pass
+  `cfg.bars_override.clone()` into `sma_composed_run::run` — Binance bars ride the
+  SAME field. **No new bar-loading logic in the engine.**
+- **The `data_source_str` match gets a third arm — compile-enforced.** Each
+  single-symbol arm has a `match cfg.data_source { YahooCache => "yahoo",
+  Synthetic => "synthetic" }` (verified at `engine.rs:1104-1107` and `1175-1178`,
+  and the two sibling rsi/bbands arms). This match is **non-exhaustive today**, so
+  adding `BinanceCache` forces a `BinanceCache => "binance"` arm in **all four**
+  arms or the crate won't compile — a free correctness guarantee that the report
+  `data_source` label is `"binance"` (R1). `rev_sha` stays `None` on the engine
+  path (the Lab caller carries the revision SHA for forensics; the body SHA does
+  not depend on it — it's frontmatter-class, ADR-0032 § D4).
+- **Cross-sectional arms reject it.** The four arms (`engine.rs:881` momentum,
+  `922` pairs, `960` tcn, `1016` tcn-weights) today guard
+  `if cfg.data_source == ScenarioDataSource::YahooCache { return
+  Err(UnsupportedDataSource(..)) }`. Change each to
+  `if matches!(cfg.data_source, YahooCache | BinanceCache)` → `BinanceCache` is
+  rejected exactly as `YahooCache` is (R1 / AC2). Single-symbol only at v0.1.0.
+
+### A2 — Timeframe reconciliation: hourly, NO engine timeframe field (exec) — Q-tf / R2
+
+**The 1m/1h mismatch is real and confined to the CLI auto-detect path, not the
+engine.** Verified: the CLI single-symbol arm hardcodes
+`feed.subscribe_bars(symbol, Timeframe::OneMinute)` (`main.rs:1298`) and its
+synthetic fallback emits `bar_count: 525_600` 1m bars — that path would mis-read
+the hourly parquet. But the canonical Binance loader `RealDataBarSource` reads at
+`Timeframe::OneHour` (`realdata.rs:227`, `merge_symbols(&paths, Timeframe::OneHour)`),
+and **both** `ReplayFeed::subscribe_bars(sym, tf)` and `merge_symbols(paths, tf)`
+are **timeframe-parametric** (verified `replay_feed.rs:281,362`).
+
+**Decision (pins Q-tf):**
+
+1. **The engine needs NO timeframe field.** `run_scenario` consumes
+   `cfg.bars_override: Option<Vec<Bar>>` — a plain bar vector — and never
+   re-derives cadence from it. So the cadence is fixed *at load time* by the
+   loader, and the engine is cadence-agnostic. Adding a timeframe enum to
+   `ScenarioConfig` would be dead surface and a non-additive anchor risk. **Do not
+   add one.** This is the cleaner half of the answer to the brief's Q-tf framing:
+   *"the loader emits hourly bars the engine consumes agnostically."*
+2. **The new loader pins `Timeframe::OneHour`** (A3). This is precisely why a NEW
+   loader is required rather than reusing the CLI single-symbol auto-detect: that
+   path is hardcoded to 1m.
+3. **SMA/MACD/RSI/BBands windows are bar-counts on the hourly series** — so the
+   default SMA 20/50 means 20h/50h, a legitimate hourly strategy. The operator can
+   retune via the existing `sma_fast_len`/`sma_slow_len` overrides
+   (`engine.rs:221-226`), already plumbed Lab→engine. Document "20/50 = 20h/50h"
+   in the toggle help / feature.md so the operator is not surprised. The four
+   simple strategies are inherently cadence-agnostic (they consume a `Bar` stream).
+
+**Out of scope:** fixing the CLI 1m auto-detect (`main.rs:1287`). It is not on the
+Lab dispatch path this feature touches, and changing it risks the SMA/composed
+anchors. A 1m corpus is a separate data-fetch + revision-pin feature.
+
+### A3 — The Binance loader: `preload_binance_bars` + `LabBinanceBarSource` trait (exec/UI boundary) — Q-loader / R2 / R6 / AC3 / Q-miss
+
+Mirror the Yahoo seam exactly. The Yahoo path is: a `LabYahooBarSource` trait
+(`runner.rs:222`, object-safe via a `PreloadFuture` boxed-future alias, `Send +
+Sync + 'static`), a `DefaultLabYahooBarSource` production impl
+(`runner.rs:250`, gated `all(feature = "live", feature = "yahoo")`), and a single
+`spawn_preload_on_rt` enforcement point (`runner.rs:296`) that both the mock and
+production paths route through (ADR-0050 § D4 — the rt.spawn reactor invariant).
+
+**Decision (pins Q-loader = (a)):**
+
+- **Add `async fn preload_binance_bars(cfg: &LabRunConfig, range: &DateRange) ->
+  Result<(Vec<Bar>, SmolStr), SmolStr>`** in `crates/ui/src/lab/runner.rs`,
+  sibling to `preload_yahoo_bars` (`runner.rs:374`), gated
+  `#[cfg(feature = "binance")]`. It:
+  1. Maps the UI symbol (`BTCUSDT`) + the selected `DateRange` to the
+     `data/binance/<SYM>USDT/<YEAR>/<MM>.parquet` layout.
+  2. **Asserts the revision pin** via `data::revision::read_and_verify_revision_manifest(
+     "data/binance")` (verified `revision.rs:206`) → on `RevisionMismatch` /
+     `RevisionMissing` returns a typed `Err` (load fails loudly, R6 / AC3). The
+     returned `revision_sha` is the second tuple element (forensics).
+  3. Loads single-symbol hourly bars via `data::ReplayFeed::new("data/binance",
+     true).subscribe_bars(Symbol::new(sym), Timeframe::OneHour)`, collects the
+     stream, and **clips to the selected range**.
+  4. **On cache miss / coverage shortfall: returns a typed `Err` with a re-fetch
+     hint** (mirroring Yahoo's `CacheMiss` message shape but pointing at the
+     Binance fetch tool, since Binance is pinned + manually re-fetchable per
+     ADR-0040 — NO in-Lab auto-fetch, unlike Yahoo). **It NEVER synthesizes bars**
+     (Q-miss / the design-side half of the AC4 no-op-source guard).
+- **Add a `LabBinanceBarSource` trait** mirroring `LabYahooBarSource`
+  (object-safe boxed-future, `Send + Sync + 'static`, gated `feature = "live"`),
+  with a `DefaultLabBinanceBarSource` production impl (gated
+  `all(feature = "live", feature = "binance")`) delegating to
+  `preload_binance_bars`. **This is R2's testable seam (AC8): tests inject a
+  fake without touching the real corpus.**
+- **Route through the EXISTING `spawn_preload_on_rt`.** `spawn_preload_on_rt`
+  currently takes `Box<dyn LabYahooBarSource>`. Generalize it to a shared preload
+  trait so both sources route through the one rt.spawn enforcement point (ADR-0050
+  § D4 — do NOT add a second inline `rt.spawn`). Cleanest mechanic: a small
+  `LabBarSource` super-trait (or make `spawn_preload_on_rt` generic over
+  `S: LabBarSource`), so the Bug-#64 reactor invariant holds for Binance too. The
+  developer picks the lighter of {generic fn, shared super-trait}; the invariant
+  is: **both sources' preload futures spawn on a tokio worker thread via one
+  enforcement point.** Note `preload_binance_bars` does NOT call `spawn_blocking`
+  (no HTTP — pure parquet read), so the reactor requirement is weaker than
+  Yahoo's, but routing through the same point keeps the regression guard
+  (`lab_runner_preload_callthrough_e2e.rs`) meaningful and the code symmetric.
+
+### A4 — Three-way toggle + the `binance` cargo feature (UI) — Q-feature / R3 / AC7 / AC8
+
+- **`LabDataSource` gets a third variant** (`crates/ui/src/lab/state.rs:36-42`):
+  `BinanceCache` with serde `"binance_cache"`. Update the default-is-`Synthetic`
+  + round-trip serde tests (`state.rs:~587-603`).
+- **`source_toggle` becomes three-way** (`crates/ui/src/widgets/source_toggle.rs`
+  — today two chips, `Synthetic` + `YahooCache`, both dispatch
+  `Message::LabSelectDataSource(LabDataSource)`). Add a third Binance chip. The
+  `LabSelectDataSource` handler (`state.rs:2488`, `runner.rs:1425`) already takes
+  the full `LabDataSource` enum, so it absorbs the third variant with the same
+  invalidation hooks — **no message-shape change** (AC7 serde round-trip).
+- **Strategy gating mirrors Yahoo.** `SINGLE_SYMBOL_STRATEGIES`
+  (`screens/lab.rs:103`) already lists exactly the four arms; the existing logic
+  that shows only these when `data_source == YahooCache` extends to
+  `matches!(.., YahooCache | BinanceCache)` — Binance hides/disables the
+  cross-sectional chips (R3). The `chart_canvas_height_for_body` allocation
+  comment (`screens/lab.rs:142-149`) need not change (the toggle row already
+  exists; it gains a chip, not a row).
+- **`binance` cargo feature on the `ui` crate** (pins Q-feature = YES), sibling to
+  `yahoo` (`Cargo.toml:238`): `binance = ["dep:data", "data/<binance-read-feature>"]`
+  — reusing the `data` crate's parquet reader (no `*-online` sub-feature, since
+  Binance does NOT auto-fetch). The toggle's Binance chip is gated on it; the
+  fixtures cockpit (no `binance` feature) hides the chip and is byte-identical to
+  today (AC8). Mirror the `#[cfg(not(feature = "binance"))]` friendly-error guard
+  in `spawn_lab_run` (the `runner.rs:830-838` Yahoo precedent): selecting Binance
+  without the feature returns "rebuild with `--features binance`", never a panic.
+  **Default-features question for the developer:** `ui` default is
+  `["live", "yahoo"]`; the operator wants Binance in the everyday cockpit, so add
+  `binance` to `default` (so `cargo run -p ui --bin cockpit_live` Just Works) —
+  confirm with operator at build time; either way the feature must exist so
+  fixtures/no-feature builds stay clean.
+
+### A5 — `spawn_lab_run` wiring + the no-op-source guard (UI/exec) — R2 / R4 / AC4 / AC5
+
+- **`spawn_lab_run` wiring** mirrors Yahoo (`runner.rs:917-919`): when
+  `cfg.data_source == LabDataSource::BinanceCache`, preload via the
+  `LabBinanceBarSource` (default or injected), then set
+  `scenario_cfg.bars_override = Some(bars)` and
+  `scenario_cfg.data_source = backtest::engine::ScenarioDataSource::BinanceCache`.
+  Reuse `classify_preload_result` (the shared error→notice/error routing). The
+  signature already carries a test-injection seam for Yahoo
+  (`yahoo_source_override: Option<Box<dyn LabYahooBarSource>>`,
+  `runner.rs:768`); add a parallel `binance_source_override` (or fold both into
+  one optional-sources struct — developer's call, keep it additive).
+- **AC4 — the no-op-source divergence guard (THE purpose-built gate).** The
+  CLAUDE.md baseline-equity-divergence gate is **N/A as written** — this feature
+  adds NO strategy overlay, NO sizing modifier, NO new decision variable on any
+  execution path (the strategies are byte-unchanged; only the *bars* differ). But
+  its failure mode has a precise analog: a `BinanceCache` toggle wired but
+  silently feeding synthetic bars (the exact "computed-but-not-applied" class the
+  v3-vol-overlay-noop precedent burned us on). **So the e2e guard IS mandatory:**
+  run `v0.sma × BTCUSDT × 2023` on Binance bars and on synthetic bars with the
+  SAME `(strategy, symbol, range, seed)`, assert the two equity curves **diverge
+  by ≥ epsilon** (final-equity delta or any testable non-trivial difference) —
+  proving the real parquet bytes reached the strategy. Pattern reference:
+  `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`. The loader's
+  no-silent-fallback rule (A3) is the design-side half of the same guard.
+- **AC5 — persist/Compare auto-apply (the free win).** Because
+  `maybe_write_report` runs at the `run_scenario` dispatch boundary (ADR-0055
+  § A2) for ANY `cfg.write_report = true` run, a Binance run produces a
+  `RunReport` of identical shape and inherits the whole chain: the `.md` +
+  companion equity CSV → `lab-runs/<slug>/reports/backtest-<ms>-<scenario>.md` →
+  `EquityCache::get_or_load` element-by-element round-trip → `compare::scan_spec_tree`
+  `CachedCell` with KPIs + overlay. **No new persist/compare code.** The H3
+  round-trip holds because the body is deterministic given fixed parquet + seed
+  (R6). The close-out AC is: prove this chain works for a Binance-sourced run.
+
+### A6 — Determinism, money, anchor safety, render-layer (cross-cutting) — R6 / AC6 / AC7
+
+- **Determinism.** Same pinned parquet (`3a8b96c4…`) + same seed ⇒ byte-identical
+  report body. Bars are read from disk (no RNG for the data); the body is a pure
+  function of `(strategy, symbol, range, seed, on-disk bytes)`. Seed contract is
+  inherited unchanged (`LAB_DEFAULT_SEED`; `[0u8;32]` → `RunError::ZeroSeed`).
+- **Money.** All money is `Money<Usdt>` / `Decimal` (the `report::sma::write`
+  writers already enforce this); Sharpe/drawdown stay display-only `f64` per
+  ADR-0003. **No new `f64` money** — this feature adds no math, only a bar source.
+- **Anchor safety (AC6 tripwire).** UN-ANCHORED. No `spec/anchors.toml` row, no
+  committed `spec/*/reports/` file, no body-SHA mutated. Binance Lab reports live
+  in `lab-runs/` (outside every `spec/**/reports/` glob, ADR-0055 § D2 git
+  boundary). CLI/anchor paths never construct `BinanceCache`, so
+  `scripts/verify_anchors.sh` stays **119/119** by construction (mechanical, not
+  vigilance). **No `adr_registry_check.py` involvement** — no ADR added.
+- **Render-layer verification (AC7, project law).** The three-way `source_toggle`
+  is verified at the render layer via the `live_equity_render.rs` panel-snapshot
+  pattern (`iced_test::screenshot` → real `view`→draw→tiny-skia readback), NOT
+  only at the model layer. Two render assertions: (1) the toggle renders three
+  chips with the correct active state; (2) a Binance-sourced run's equity curve
+  actually rasterizes (ACCENT-pixel-count > threshold), the same signal
+  `live_equity_render.rs` uses — closing the "wired but doesn't paint" gap.
+- **No live trading.** Real-data backtesting only; no live/paper execution path is
+  touched (`project_no_live_trading`).
+
+### Dependency / crate-compatibility check
+
+**No new dependencies.** The loader reuses `data::ReplayFeed` + `data::revision`
+(both already in the workspace, polars-backed parquet — single-binary-friendly,
+already vendored/locked). The `binance` cargo feature on `ui` only re-exports the
+existing `data` crate's read path. Edition-2024, no new C deps, no stdlib-shadow
+crate name. Nothing to flag (AC8).
 
 ## Architecture findings (for the architect — analysis, not hand-waving)
 

@@ -2926,7 +2926,12 @@ id          = "REQ-SIMPLE-STRATEGIES-REALDATA-001"
 title       = "Simple single-symbol strategies (v0.sma / v0.5.macd / v0.5.rsi / v0.5.bbands) run on real pinned Binance hourly data (revision 3a8b96c4…) in the cockpit Lab via a BinanceCache data-source toggle, mirroring the shipped Yahoo seam (LabDataSource enum + source_toggle + preload_*_bars + bars_override). Single-symbol only; cross-sectional arms reject BinanceCache (UnsupportedDataSource). UN-ANCHORED — lab-runs/-only, no anchors.toml row, no committed report (119/119 tripwire). Persist/compare/overlay auto-apply from lab-run-save-compare. No-op-source divergence guard (Binance vs synthetic equity diverges, same seed). Render-layer gate. NO live trading; Decimal/Money<Usdt> never f64; deterministic given fixed parquet + seed."
 feature     = "simple-strategies-realdata"
 product     = "spec/product.md"
-arch        = []
+arch        = [
+  "spec/simple-strategies-realdata/feature.md#architecture",
+  "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",
+  "spec/architecture/adr/0040-yahoo-realdata-path.md",
+  "spec/architecture/adr/0055-lab-run-persistence-topology-and-anchor-safety.md",
+]
 crates      = []
 tests       = []
 anchors     = []
