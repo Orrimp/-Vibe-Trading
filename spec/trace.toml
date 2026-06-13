@@ -2888,7 +2888,15 @@ title       = "Lab runs persist a durable backtest report (outside the anchor na
 feature     = "lab-run-save-compare"
 product     = "spec/product.md"
 arch        = ["spec/architecture/adr/0055-lab-run-persistence-topology-and-anchor-safety.md"]
-crates      = []
-tests       = []
-anchors     = []
-state       = "arch-done"
+crates      = ["crates/backtest", "crates/ui"]
+tests       = [
+  "crates/ui/tests/lab_run_engine.rs::h3_in_memory_equals_cached_disk",
+  "crates/backtest/src/engine.rs::tests::maybe_write_report_write_false_returns_none",
+  "crates/backtest/src/engine.rs::tests::maybe_write_report_write_true_creates_file",
+  "crates/backtest/src/engine.rs::tests::purge_old_lab_reports_keeps_last_n",
+  "crates/backtest/src/engine.rs::tests::strategy_dir_slug_known_ids",
+  "crates/ui/tests/live_equity_render.rs::lab_curve_hydrated_from_lab_runs_report_renders",
+  "crates/ui/tests/live_equity_render.rs::compare_two_run_overlay_renders_both_series",
+]
+anchors     = []   # anchor-additive, ZERO new rows — Lab artifacts live in lab-runs/ outside spec/**; verify_anchors.sh 119/119 PASS (ADR-0055 § D2). Baseline-equity-divergence gate N/A: this is backtest/evaluation tooling, no strategy overlay or sizing modifier (feature.md § A6). H3 (h3_in_memory_equals_cached_disk, 21601 pts) is the persisted-vs-in-memory divergence guarantee.
+state       = "tester-done"   # tester 2026-06-12 VERDICT PASS. Report: spec/lab-run-save-compare/reports/test-2026-06-12-lab-run-save-compare.md

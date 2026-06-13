@@ -172,6 +172,15 @@ index well — but that is out of scope here.
   (the feature's AC8).
 
 ## Changelog
+
+- 2026-06-12 (Wave-2 amendment): the `.md` report persists the equity curve as a
+  SPARKLINE only (visual, not machine-parseable). The Lab artifact therefore
+  ALSO writes a **companion equity CSV** (`backtest-<stamp>-<scenario>-equity.csv`,
+  schema = `reports::csv_artifacts` read/write) carrying the FULL per-bar series;
+  the loader prefers it for PerBar fidelity. The H3 invariant is redefined as
+  "the loader reads the companion CSV → element-by-element equals the in-memory
+  series" (verified: 21601 points). Anchor-safe: the `.md` byte-format is
+  unchanged and the CSV is lab-runs/-only (verify_anchors 119/119).
 - 2026-06-12 (architect): initial accept. Closes the `run_scenario` Phase-C
   deferral for `lab-run-save-compare`; numbered 0055 because 0054 is burned in
   git history (the removed `Mode::Live` ADR, `live-trading-removed-2026-06-12.md`).

@@ -1,7 +1,7 @@
 ---
 slug: lab-run-save-compare
-status: arch-done
-owner: architect
+status: tester-done
+owner: orchestrator
 updated: 2026-06-12
 version: 0.2.0
 trace: REQ-LAB-RUN-SAVE-COMPARE-001
@@ -10,6 +10,26 @@ trace: REQ-LAB-RUN-SAVE-COMPARE-001
 # Lab run → save → compare — real-data strategy checking with durable reports
 
 ## Changelog
+
+- 2026-06-12 (orchestrator, Wave-2 fix): the persisted `.md` report's `## Equity
+  curve` is a SPARKLINE (visual, NOT machine-parseable), so the loader fell back
+  to 2 points → H3 failed (21601 vs 2) and saved curves were degenerate (caught
+  by the parallel ui-designer). **Fix:** persist the full per-bar series as a
+  companion equity CSV beside the `.md`
+  (`backtest-<stamp>-<scenario>-equity.csv`, schema identical to
+  `reports::csv_artifacts::{write,read}_equity_csv`); the loader prefers it for
+  PerBar fidelity. The `.md` byte-format is UNCHANGED (anchors 119/119); the CSV
+  is additive + lab-runs/-only. **H3 now passes — 21601 points round-trip.**
+  Landed by the orchestrator after both Wave-2 fix agents stalled on the cold
+  post-`cargo clean` build (600s watchdog). **REMAINING follow-on:** the two-run
+  equity-OVERLAY panel in the Compare screen — the widget is render-proven (T7b)
+  but not yet screen-wired (needs a `CachedCell` timestamped-series field +
+  two-run selection UX). KPI compare + real per-run curve repaint ARE done.
+- 2026-06-11/12 (developer ‖ ui-designer, Wave 1): T1–T5 — `reports_dir` seam
+  (anchor-additive across all constructors), the write seam in all 8 dispatch
+  arms + retention + `.gitignore /lab-runs/`; the two-root loader (lab-runs
+  FIRST), Lab repaint, the Compare KPI matrix (incl. an `extract_kpis_from_body`
+  truncation-bug fix), and the render proofs. Anchors 119/119 throughout.
 
 - 2026-06-12 (analyst): initial draft (v0.1.0). Scoped from the operator's
   "make the Lab a real strategy-checking tool on real data" direction after

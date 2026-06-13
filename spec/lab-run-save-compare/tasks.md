@@ -1,6 +1,6 @@
 ---
 slug: lab-run-save-compare
-status: arch-done
+status: tester-done
 owner: architect
 updated: 2026-06-12
 ---
@@ -68,7 +68,7 @@ not re-plumb it.
 Two small, mergeable tasks define the exec write-seam and the UI loader-root
 contract the two tracks code against. Land both, then parallelize.
 
-- [ ] **T1 — `reports_dir` seam + `maybe_write_report` in `run_scenario`
+- [x] **T1 — `reports_dir` seam + `maybe_write_report` in `run_scenario`
   (`crates/backtest`).** Add the anchor-additive `reports_dir: Option<PathBuf>`
   field to `ScenarioConfig` (`engine.rs:192`; default-`None`, every existing
   constructor uses struct-update / names the field). Add the thin seam
@@ -84,7 +84,7 @@ contract the two tracks code against. Land both, then parallelize.
   `write_report=true` (momentum) → file exists + `Some(path)`; `write_report=false`
   → no file + `None`. **Gate: `cargo check -p backtest` + `cargo test -p backtest
   --lib`; `scripts/verify_anchors.sh` → 119/119 (the field is additive).**_
-- [ ] **T2 — Lab-runs root helper + two-root loader contract (`crates/ui`).**
+- [x] **T2 — Lab-runs root helper + two-root loader contract (`crates/ui`).**
   Add `default_lab_runs_root()` (sibling of `default_spec_root()`,
   `equity_loader.rs:636` — returns `<workspace>/lab-runs`) and generalize
   `route_equity_overlay` / `discover_reports` / `load_equity`
@@ -106,7 +106,7 @@ contract the two tracks code against. Land both, then parallelize.
 
 ## Exec track (developer) — parallel after Wave 0; resolves A1/A2
 
-- [ ] **T3 — Wire all remaining Lab-reachable arms + retention + the default
+- [x] **T3 — Wire all remaining Lab-reachable arms + retention + the default
   write target.** Complete `maybe_write_report` for every `run_scenario`
   dispatch arm the Lab can reach beyond momentum (T1): the four single-symbol
   composed arms (`v0.sma` / `v0.5.macd` / `v0.5.rsi` / `v0.5.bbands` →
@@ -129,7 +129,7 @@ contract the two tracks code against. Land both, then parallelize.
 
 ## UI track (ui-designer) — parallel after Wave 0; resolves A4 (loaders) / R5 (Compare)
 
-- [ ] **T4 — Lab history repaints from the Lab-runs home (R4).** Point the Lab
+- [x] **T4 — Lab history repaints from the Lab-runs home (R4).** Point the Lab
   cold-path loader (`route_equity_overlay` → `EquityCache::get_or_load`,
   `lab.rs:594-597`) at the two-root union (`[default_lab_runs_root(),
   default_spec_root()]`, Q4). After a run persists, the curve repaints from disk
@@ -141,7 +141,7 @@ contract the two tracks code against. Land both, then parallelize.
   the cold `EquityCache` path. **Render-layer verification (see T7): a
   hydrated-from-`lab-runs/` Lab equity curve rasterizes a non-empty polyline.**
   **Gate: `cargo test -p ui --lib`.**_
-- [ ] **T5 — Compare diffs two persisted Lab runs (R5).** Point
+- [x] **T5 — Compare diffs two persisted Lab runs (R5).** Point
   `compare::cache::scan_spec_tree` at the two-root union (Q4); feed the resulting
   `CachedCell`s into the EXISTING Compare KPI matrix + equity-overlay widget (two
   runs side-by-side: return / Sharpe / max-DD / trade count + both curves on one
@@ -155,7 +155,7 @@ contract the two tracks code against. Land both, then parallelize.
 
 ## Tester wave (reconvergence) — after both tracks
 
-- [ ] **T6 — H3 flips skip → real pass (THE headline gate, R6/AC6 — its own
+- [x] **T6 — H3 flips skip → real pass (THE headline gate, R6/AC6 — its own
   named exec task).** In `crates/ui/tests/lab_run_engine.rs`: set
   `test_config(tmp_dir)` to `reports_dir: Some(tmp_dir.to_path_buf())` (it
   currently ignores `_tmp_dir`, line 41) so the engine writes
@@ -167,7 +167,7 @@ contract the two tracks code against. Land both, then parallelize.
   element-by-element `in_memory == cached_disk`. _acceptance: **AC6** — H3 reaches
   the assertions and passes. **Gate: `cargo test -p ui --features live --test
   lab_run_engine`.**_
-- [ ] **T7 — Render-layer verification of the Lab repaint + Compare overlay.**
+- [x] **T7 — Render-layer verification of the Lab repaint + Compare overlay.**
   Extend / add a render harness in the `crates/ui/tests/live_equity_render.rs`
   style for: (a) the Lab repaint-from-disk curve — a cockpit hydrated from a
   `lab-runs/` tempdir report renders a **non-empty** equity polyline; (b) the
@@ -176,7 +176,7 @@ contract the two tracks code against. Land both, then parallelize.
   MEMORY.md "verify UI at the render layer"). _acceptance: the hydrated-from-disk
   Lab curve and the Compare overlay draw at the pixel layer. **Gate: the render
   test(s).**_
-- [ ] **T8 — Anchor-safety + fixtures-smoke + full report.** Write a Lab report
+- [x] **T8 — Anchor-safety + fixtures-smoke + full report.** Write a Lab report
   to the Lab-runs home, then run `scripts/verify_anchors.sh` → **119/119 PASS**
   (AC7 — MANDATORY, the core constraint: prove the Lab-runs home is outside every
   `spec/**/reports/` glob, no `anchors.toml` row added, no body-SHA mutated);
