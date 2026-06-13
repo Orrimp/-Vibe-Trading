@@ -1197,3 +1197,366 @@ fn single_run_overlay_draws_no_accent2() {
          chrome/AA bleed, not the actual compare series — fix the detector before trusting it."
     );
 }
+
+// ── PHASE 5 — lab-compare-equity-overlay: REAL Compare-screen overlay (T3) ────
+//
+// The headline gate for THIS feature (R3 / AC1-AC2). PHASE 4 above proved the
+// bare `chart::view` overlay widget rasterizes two series; here we prove the
+// **real Compare-screen production path** does the same when driven by two
+// persisted runs:
+//
+//   1. Write two `lab-runs/` reports + their COMPANION equity CSVs.
+//   2. Scan them via `compare::cache::scan_report_roots` (the production
+//      cold-boot path) — building `CachedCell`s whose new `equity_series_ts`
+//      field is hydrated from the companion CSVs (the T1 wiring).
+//   3. Install those cells in a `Cockpit`'s `compare_screen_state.cache`, select
+//      both via `Message::CompareToggleOverlay` (the T2 ring), and render the
+//      REAL `screens::compare::view` (its `overlay_panel` → `chart::view`).
+//   4. Assert BOTH curves rasterize (ACCENT + ACCENT_2) in the chart band, and
+//      a single-run contrast draws NO ACCENT_2.
+//
+// This exercises the EXACT screen code the operator sees — not a synthetic
+// series, not the bare widget. The `CachedCell.equity_series_ts → LabEquitySeries
+// → chart::view` thread is what this feature added; this test is its proof.
+
+use reports::csv_artifacts::{EquitySample, write_equity_csv};
+use ui::compare::state::{CachedCell, OverlaySlot};
+use ui::lab::state::DateRange as CmpDateRange;
+use ui::state::{StrategiesConfig, StrategyConfigEntry};
+use ui::test_support::compare_screen_program;
+
+/// Write a companion equity CSV (`<stem>-equity.csv`) beside a `lab-runs/`
+/// report via the PRODUCTION `csv_artifacts::write_equity_csv` schema, carrying
+/// a 6-point series that rises/dips/recovers shifted to `level` (so two runs
+/// occupy disjoint y-bands → separate overlay pixels). Mirrors the offsets of
+/// `lab_runs_report_at` so the two series have a comparable shape.
+fn write_companion_equity_csv(
+    lab_runs_root: &std::path::Path,
+    slug: &str,
+    md_fname: &str,
+    level: i64,
+) {
+    let reports = lab_runs_root.join(slug).join("reports");
+    std::fs::create_dir_all(&reports).expect("create lab-runs reports dir");
+    let stem = md_fname.strip_suffix(".md").expect("md suffix");
+    let csv_path = reports.join(format!("{stem}-equity.csv"));
+
+    let p = |off: i64| -> Decimal { Decimal::from(level + off) };
+    let offsets = [0i64, 3000, 1000, -3000, 4000, 8000];
+    let samples: Vec<EquitySample> = offsets
+        .iter()
+        .enumerate()
+        .map(|(i, off)| EquitySample {
+            ts: Timestamp::new(
+                time::OffsetDateTime::UNIX_EPOCH
+                    + time::Duration::milliseconds(bar_ms(i as i64 * 10)),
+            ),
+            equity_total: p(*off),
+            realized_pnl: Decimal::ZERO,
+            unrealized_pnl: Decimal::ZERO,
+            cash_balance: p(*off),
+        })
+        .collect();
+    write_equity_csv(&csv_path, &samples).expect("write companion equity csv");
+}
+
+/// Build a Compare-screen `Cockpit` whose cache is hydrated by the PRODUCTION
+/// `scan_report_roots` over a two-run `lab-runs/` scene (reports + companion
+/// CSVs), with a populated `strategies_config` so the real matrix renders.
+fn compare_cockpit_from_two_run_scene(lab_runs: &std::path::Path) -> Cockpit {
+    let cache = ui::compare::cache::scan_report_roots(&[lab_runs.to_path_buf()]);
+
+    let mut c = Cockpit::new();
+    c.current_screen = Screen::Compare;
+    c.strategies_config = Some(StrategiesConfig {
+        strategies: vec![
+            StrategyConfigEntry {
+                id: trading_core::StrategyId::new("top10_momentum_h1"),
+                source_path: smol_str::SmolStr::new("config/strategies/top10_momentum_h1.toml"),
+                params: vec![],
+            },
+            StrategyConfigEntry {
+                id: trading_core::StrategyId::new("btc_sma_cross"),
+                source_path: smol_str::SmolStr::new("config/strategies/btc_sma.toml"),
+                params: vec![],
+            },
+        ],
+    });
+    c.compare_screen_state.cache = cache;
+    c
+}
+
+/// The two overlay slots for the scene — run A (momentum/XRPUSDT, ACCENT) and
+/// run B (sma/BTCUSDT, ACCENT_2). Keys match `scan_report_roots`' cell keys
+/// (`strategy.id` from frontmatter, `DateRange::default()`).
+fn scene_slots() -> (OverlaySlot, OverlaySlot) {
+    let range = CmpDateRange::default();
+    (
+        (
+            smol_str::SmolStr::new("top10_momentum_h1"),
+            trading_core::Symbol::new("XRPUSDT"),
+            range.clone(),
+        ),
+        (
+            smol_str::SmolStr::new("btc_sma_cross"),
+            trading_core::Symbol::new("BTCUSDT"),
+            range,
+        ),
+    )
+}
+
+/// A `lab-runs/`-style report WITH a `strategy:` frontmatter block + a
+/// `## Summary` KPI table — the shape `compare::cache::scan_report_roots`
+/// requires (it skips reports without `strategy.id`). The per-bar series for
+/// the overlay lives in the companion CSV, not the `.md` (the `.md`'s equity
+/// section is a sparkline only). `{strategy_id}` keys the scanned `CachedCell`.
+fn scan_report_with_strategy(
+    scenario: &str,
+    strategy_id: &str,
+    strategy_kind: &str,
+    level: i64,
+) -> String {
+    format!(
+        r#"---
+scenario: {scenario}
+seed: 0xC0FFEE
+generated: 2026-06-01T12:00:00Z
+wall_clock_s: 0.0
+data_source: synthetic
+strategy:
+  id: {strategy_id}
+  kind: {strategy_kind}
+  source: config/strategies/{strategy_id}.toml
+---
+
+# Backtest Report — {scenario}
+
+## Summary
+
+| Metric          | Value             |
+|-----------------|-------------------|
+| Scenario        | {scenario}        |
+| Initial capital | ${level}.00 USDT  |
+| Final equity    | ${level}.00 USDT  |
+| Sharpe ratio    | **0.94**          |
+| Total return    | **12.3 %**        |
+| Max drawdown    | **-5.6 %**        |
+| Trade count     | **42**            |
+"#
+    )
+}
+
+/// Write the full two-run scene: `.md` reports WITH strategy blocks (for the
+/// production `scan_report_roots` KPI scan) + companion equity CSVs (for the
+/// timestamped overlay series). Returns the `lab-runs/` root. Run A at the
+/// ~100k level, run B at the ~60k level (disjoint y-bands).
+fn write_two_run_scene_with_csvs(tmp: &tempfile::TempDir) -> std::path::PathBuf {
+    let lab_runs = tmp.path().join("lab-runs");
+    // Run A — momentum/XRPUSDT @ 100k.
+    write_lab_run(
+        &lab_runs,
+        "v1-cross-sectional-momentum",
+        "backtest-20260601-120000-top10-2024-h1-momentum.md",
+        &scan_report_with_strategy(
+            "top10-2024-h1-momentum",
+            "top10_momentum_h1",
+            "cross_sectional_momentum",
+            100_000,
+        ),
+    );
+    write_companion_equity_csv(
+        &lab_runs,
+        "v1-cross-sectional-momentum",
+        "backtest-20260601-120000-top10-2024-h1-momentum.md",
+        100_000,
+    );
+    // Run B — sma/BTCUSDT @ 60k.
+    write_lab_run(
+        &lab_runs,
+        "v0-paper-sma",
+        "backtest-20260601-130000-btc-2023-1m-sma-cross.md",
+        &scan_report_with_strategy(
+            "btc-2023-1m-sma-cross",
+            "btc_sma_cross",
+            "sma_crossover",
+            60_000,
+        ),
+    );
+    write_companion_equity_csv(
+        &lab_runs,
+        "v0-paper-sma",
+        "backtest-20260601-130000-btc-2023-1m-sma-cross.md",
+        60_000,
+    );
+    lab_runs
+}
+
+/// Crop band for the overlay CHART within the Compare screen body. The screen
+/// stacks `toolbar → matrix(Fill) → overlay-panel(title + legend + 240px
+/// chart)`; with `matrix = Length::Fill` the overlay panel sits at the BOTTOM.
+/// We crop the lower ~250px where the 240px chart paints, excluding the matrix
+/// cells' `+`/✓ chips above — so the curve-pixel classifier sees only the two
+/// overlay polylines, never a selected cell's ACCENT/ACCENT_2 chip.
+const CMP_CROP_Y0: u32 = VIEW_H.saturating_sub(250);
+
+/// Count `(accent, accent2)` curve pixels inside the overlay chart band only
+/// (rows `≥ CMP_CROP_Y0`) via the same winner-take-all classifier.
+fn count_curve_pixels_chart_band(shot: &iced::window::Screenshot) -> (usize, usize) {
+    let w = shot.size.width;
+    let h = shot.size.height;
+    let rgba: &[u8] = &shot.rgba;
+    let (mut accent, mut accent2) = (0usize, 0usize);
+    let y0 = CMP_CROP_Y0.min(h);
+    for y in y0..h {
+        for x in 0..w {
+            let idx = ((y * w + x) * 4) as usize;
+            if idx + 2 >= rgba.len() {
+                continue;
+            }
+            match classify_curve(rgba[idx], rgba[idx + 1], rgba[idx + 2]) {
+                Curve::Accent => accent += 1,
+                Curve::Accent2 => accent2 += 1,
+                Curve::Neither => {}
+            }
+        }
+    }
+    (accent, accent2)
+}
+
+/// Render the real Compare screen body of `cockpit` and return its screenshot.
+fn render_compare_screen(cockpit: Cockpit) -> iced::window::Screenshot {
+    // SAFETY: test-only single-threaded env init before iced_test::screenshot
+    // (UTC time-axis labels for determinism), mirroring `render_live`.
+    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    let program = compare_screen_program(cockpit);
+    let theme = iced::Theme::Dark;
+    iced_test::screenshot(&program, &theme, (VIEW_W, VIEW_H), SCALE, Duration::ZERO)
+}
+
+/// Diagnostic (run with `--nocapture`): per-curve pixel counts in the overlay
+/// chart band for the real Compare screen with two runs selected. Calibrates
+/// the `OVERLAY_DREW_MIN` floor empirically against the cropped band.
+#[test]
+fn diag_compare_screen_overlay_pixel_counts() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lab_runs = write_two_run_scene_with_csvs(&tmp);
+    let mut c = compare_cockpit_from_two_run_scene(&lab_runs);
+    let (slot_a, slot_b) = scene_slots();
+
+    // Sanity: the cells exist AND carry hydrated timestamped series.
+    let cell_a: &CachedCell = c
+        .compare_screen_state
+        .cache
+        .get(&slot_a)
+        .expect("run A cell present in scanned cache");
+    let cell_b: &CachedCell = c
+        .compare_screen_state
+        .cache
+        .get(&slot_b)
+        .expect("run B cell present in scanned cache");
+    eprintln!(
+        "[diag] cell A series len={} ; cell B series len={}",
+        cell_a.equity_series_ts.len(),
+        cell_b.equity_series_ts.len()
+    );
+
+    // Select both through the production message path.
+    update(&mut c, Message::CompareToggleOverlay(slot_a));
+    update(&mut c, Message::CompareToggleOverlay(slot_b));
+
+    let shot = render_compare_screen(c);
+    let (accent, accent2) = count_curve_pixels_chart_band(&shot);
+    eprintln!(
+        "[diag] Compare-screen overlay chart band (y≥{CMP_CROP_Y0}): ACCENT={accent} ACCENT_2={accent2}"
+    );
+}
+
+/// **T3 / AC1-AC2 (THE gate).** Two persisted runs selected in the REAL Compare
+/// screen overlay BOTH rasterize — run A as the `ACCENT` primary curve, run B
+/// as the `ACCENT_2` compare curve — when hydrated from companion-CSV-backed
+/// `CachedCell`s through `screens::compare::view`'s `overlay_panel` → the
+/// render-proven `chart::view` overlay. The `equity_series_ts` field (T1) +
+/// the selection ring (T2) + the screen wiring are proven end-to-end here.
+#[test]
+fn compare_screen_two_run_overlay_renders_both_series() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lab_runs = write_two_run_scene_with_csvs(&tmp);
+    let mut c = compare_cockpit_from_two_run_scene(&lab_runs);
+    let (slot_a, slot_b) = scene_slots();
+
+    // Both cells carry a non-empty timestamped series (companion CSV hydrated).
+    assert!(
+        c.compare_screen_state
+            .cache
+            .get(&slot_a)
+            .is_some_and(|cell| cell.equity_series_ts.len() >= 2),
+        "run A cell must hydrate a ≥2-point timestamped series from its companion CSV"
+    );
+    assert!(
+        c.compare_screen_state
+            .cache
+            .get(&slot_b)
+            .is_some_and(|cell| cell.equity_series_ts.len() >= 2),
+        "run B cell must hydrate a ≥2-point timestamped series from its companion CSV"
+    );
+
+    // Select both runs through the production update path (the T2 ring).
+    update(&mut c, Message::CompareToggleOverlay(slot_a));
+    update(&mut c, Message::CompareToggleOverlay(slot_b));
+    assert_eq!(
+        c.compare_screen_state.overlay_selection.len(),
+        2,
+        "both runs must be in the overlay selection ring"
+    );
+
+    let shot = render_compare_screen(c);
+    let (accent, accent2) = count_curve_pixels_chart_band(&shot);
+
+    // Run A (primary, ACCENT) drew on the real screen.
+    assert!(
+        accent >= OVERLAY_DREW_MIN,
+        "Compare SCREEN overlay: the PRIMARY (ACCENT) run did NOT render: only {accent} ACCENT \
+         pixels in the chart band (expected ≥ {OVERLAY_DREW_MIN}). The cell's hydrated \
+         equity_series_ts did not reach chart::view through overlay_panel."
+    );
+    // Run B (compare, ACCENT_2) drew — two DISTINCT curves on one chart.
+    assert!(
+        accent2 >= OVERLAY_DREW_MIN,
+        "Compare SCREEN overlay: the SECOND (ACCENT_2) run did NOT render: only {accent2} \
+         ACCENT_2 pixels in the chart band (expected ≥ {OVERLAY_DREW_MIN}). The second selected \
+         run's series was dropped or both curves collapsed to one color."
+    );
+}
+
+/// **T3 contrast self-proof.** The SAME real Compare screen with only ONE run
+/// selected draws the `ACCENT` primary curve but NO `ACCENT_2` — proving the
+/// `ACCENT_2` count above genuinely comes from the second selected run, not
+/// from the screen's chrome / matrix chips / AA bleed inside the chart band.
+#[test]
+fn compare_screen_single_run_overlay_draws_no_accent2() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lab_runs = write_two_run_scene_with_csvs(&tmp);
+    let mut c = compare_cockpit_from_two_run_scene(&lab_runs);
+    let (slot_a, _slot_b) = scene_slots();
+
+    // Select ONLY run A.
+    update(&mut c, Message::CompareToggleOverlay(slot_a));
+    assert_eq!(c.compare_screen_state.overlay_selection.len(), 1);
+
+    let shot = render_compare_screen(c);
+    let (accent, accent2) = count_curve_pixels_chart_band(&shot);
+
+    // The primary curve drew…
+    assert!(
+        accent >= OVERLAY_DREW_MIN,
+        "single-run Compare screen: the primary (ACCENT) curve must still render ({accent} \
+         ACCENT pixels < {OVERLAY_DREW_MIN})"
+    );
+    // …and NO second curve.
+    assert!(
+        accent2 < OVERLAY_DREW_MIN,
+        "single-run Compare screen overlay must draw NO second (ACCENT_2) curve, but saw \
+         {accent2} ACCENT_2 pixels in the chart band (≥ {OVERLAY_DREW_MIN}). The two-curve \
+         discriminator is reading chrome/chip/AA bleed — not the actual second run."
+    );
+}

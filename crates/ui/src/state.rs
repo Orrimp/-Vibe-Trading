@@ -1936,6 +1936,13 @@ pub enum Message {
     /// with a `tracing::warn!`.
     CompareSelectKpiAxis(crate::compare::state::CompareKpiAxis),
 
+    /// lab-compare-equity-overlay T2 (Q1) — operator clicked a populated cell's
+    /// `+` overlay chip to add/remove it from the two-run equity-overlay
+    /// selection ring. Typed payload (the cell's `(strategy_id, symbol, range)`
+    /// identity) — no `String` catch-all. Pure: toggles
+    /// `compare_screen_state.overlay_selection` via `toggle_overlay`.
+    CompareToggleOverlay(crate::compare::state::OverlaySlot),
+
     // ── cockpit-baseline-panel v0.1.0 — year toggle ──────────────────────────
     /// Operator clicked a year chip (`2023` | `2024`) on the Baseline
     /// screen (R2). Pure assignment to
@@ -2804,6 +2811,13 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 );
             }
             model.compare_screen_state.kpi_axis = axis;
+        }
+        Message::CompareToggleOverlay(slot) => {
+            // lab-compare-equity-overlay T2 (Q1): add/remove the cell from the
+            // two-run equity-overlay ring (bounded at OVERLAY_CAP; rotate-oldest
+            // on overflow). The single mutation point lives on the state struct
+            // so this arm stays a one-liner.
+            model.compare_screen_state.toggle_overlay(slot);
         }
 
         // ── cockpit-baseline-panel v0.1.0 — year toggle ──────────────────────

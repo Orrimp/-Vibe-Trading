@@ -589,6 +589,7 @@ fn build_compare_cockpit(has_strategies: bool, cache_variant: u8) -> ui::Cockpit
                 max_drawdown_pct: -5.0,
                 trade_count: 42,
                 equity_curve_tail: vec![100.0, 102.0, 105.0, 108.0, 112.0],
+                equity_series_ts: Vec::new(),
                 source_report_path: SmolStr::new("spec/v0.sma/reports/backtest-fixture.md"),
                 generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
                 is_multi_symbol: false,
@@ -601,6 +602,7 @@ fn build_compare_cockpit(has_strategies: bool, cache_variant: u8) -> ui::Cockpit
         kpi_axis: ui::compare::state::CompareKpiAxis::Sharpe,
         cache,
         last_indexed_at: None,
+        overlay_selection: Vec::new(),
     };
 
     cockpit

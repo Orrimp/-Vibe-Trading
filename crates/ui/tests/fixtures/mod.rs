@@ -302,6 +302,7 @@ pub fn compare__cold_boot_all_empty_cockpit() -> ui::state::Cockpit {
         kpi_axis: CompareKpiAxis::Sharpe,
         cache: BTreeMap::new(),
         last_indexed_at: None,
+        overlay_selection: Vec::new(),
     };
 
     cockpit
@@ -369,6 +370,7 @@ pub fn compare__steady_state_populated_cockpit() -> ui::state::Cockpit {
                 max_drawdown_pct: -sharpe * 3.0,
                 trade_count: 42,
                 equity_curve_tail: (0..10).map(|i| 100.0 + i as f64 * sharpe).collect(),
+                equity_series_ts: Vec::new(),
                 source_report_path: SmolStr::new(format!(
                     "spec/{strategy}/reports/backtest-fixture.md"
                 )),
@@ -405,6 +407,7 @@ pub fn compare__steady_state_populated_cockpit() -> ui::state::Cockpit {
         kpi_axis: CompareKpiAxis::Sharpe,
         cache,
         last_indexed_at: None,
+        overlay_selection: Vec::new(),
     };
 
     cockpit
@@ -460,6 +463,7 @@ pub fn compare__empty_cell_run_affordance_cockpit() -> ui::state::Cockpit {
             max_drawdown_pct: -4.3,
             trade_count: 55,
             equity_curve_tail: vec![100.0, 103.0, 107.0, 111.0, 116.0],
+            equity_series_ts: Vec::new(),
             source_report_path: SmolStr::new("spec/v0.sma/reports/backtest-fixture.md"),
             generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
             is_multi_symbol: false,
@@ -483,6 +487,7 @@ pub fn compare__empty_cell_run_affordance_cockpit() -> ui::state::Cockpit {
                 max_drawdown_pct: -3.0,
                 trade_count: 30 + i as u32,
                 equity_curve_tail: vec![100.0, 101.0, 102.0, 103.0, 104.0],
+                equity_series_ts: Vec::new(),
                 source_report_path: SmolStr::new("spec/v1.momentum/reports/backtest-fixture.md"),
                 generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
                 is_multi_symbol: true,
@@ -496,6 +501,7 @@ pub fn compare__empty_cell_run_affordance_cockpit() -> ui::state::Cockpit {
         kpi_axis: CompareKpiAxis::Sharpe,
         cache,
         last_indexed_at: None,
+        overlay_selection: Vec::new(),
     };
 
     cockpit

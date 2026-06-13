@@ -62,6 +62,29 @@ pub struct LabEquitySeries {
     pub narrowed_from: Option<SmolStr>,
 }
 
+impl LabEquitySeries {
+    /// Build a `PerBar` series from raw timestamped samples (oldest-first).
+    ///
+    /// lab-compare-equity-overlay T2 — the Compare overlay constructs one of
+    /// these from a `CachedCell::equity_series_ts` (already hydrated from the
+    /// companion CSV at scan time) to feed the two-run `chart::view` overlay
+    /// WITHOUT re-reading disk on every paint. `source_report` labels the curve;
+    /// `narrowed_from` is `None` (the cell IS the resolved report). Returns
+    /// `None` when `samples` is empty — an empty series has no curve to draw.
+    #[must_use]
+    pub fn from_samples(samples: Vec<(i64, Decimal)>, source_report: SmolStr) -> Option<Self> {
+        if samples.is_empty() {
+            return None;
+        }
+        Some(Self {
+            samples,
+            source_report,
+            fidelity: Fidelity::PerBar,
+            narrowed_from: None,
+        })
+    }
+}
+
 /// Cache key: exact `(strategy_slug, symbol, range)` triple.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LabTuple {
@@ -469,7 +492,14 @@ fn range_score(meta: &ReportMeta, range: &DateRange) -> u32 {
 /// the existing [`reports::csv_artifacts::read_equity_csv`]. Returns `None` if
 /// the companion is absent or unparseable — the caller then falls back to the
 /// sparkline / start-end path (older committed reports have no companion).
-fn load_companion_equity_csv(md_path: &std::path::Path) -> Option<Vec<(i64, Decimal)>> {
+///
+/// `pub(crate)` so the Compare cold-boot cache scanner
+/// (`compare::cache::scan_one_root`, lab-compare-equity-overlay T1) hydrates a
+/// `CachedCell`'s timestamped equity series through the IDENTICAL companion-CSV
+/// resolution the Lab cold path uses — one source of truth for "find the
+/// per-bar series beside this report".
+#[must_use]
+pub(crate) fn load_companion_equity_csv(md_path: &std::path::Path) -> Option<Vec<(i64, Decimal)>> {
     let name = md_path.file_name()?.to_str()?;
     let stem = name.strip_suffix(".md")?;
     let csv = md_path.with_file_name(format!("{stem}-equity.csv"));

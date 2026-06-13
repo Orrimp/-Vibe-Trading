@@ -450,6 +450,47 @@ pub const COMPARE_CELL_RUN_LABEL: &str = "Run";
 /// universe). Passive hairline border; distinguishable from the "Run" affordance.
 pub const COMPARE_CELL_BLANKED_LABEL: &str = "\u{2014}"; // em-dash
 
+// ── lab-compare-equity-overlay T2 — two-run equity overlay ──────────────────
+
+/// Overlay-select chip glyph on a populated cell (unselected). Clicking it adds
+/// the cell to the two-run equity-overlay ring. Reuses the `+` add-metaphor of
+/// the Lab compare chip (`STRATEGY_CHIP_COMPARE_ADD`).
+pub const COMPARE_CELL_OVERLAY_ADD: &str = "+";
+
+/// Overlay-select chip glyph on a populated cell when it IS selected (toggle
+/// off on click). A check mark signals "in the overlay".
+pub const COMPARE_CELL_OVERLAY_SELECTED: &str = "\u{2713}"; // check mark
+
+/// Tooltip on the cell overlay-select chip — tells the operator what the `+`
+/// does (plain language, no jargon).
+pub const COMPARE_CELL_OVERLAY_HINT: &str = "Add this run to the equity overlay below";
+
+/// Title above the two-run equity-overlay chart panel.
+pub const COMPARE_OVERLAY_TITLE: &str = "Equity overlay";
+
+/// Empty-state body for the overlay panel when no run is selected — tells the
+/// operator the next action (no blank screens; plain language).
+pub const COMPARE_OVERLAY_EMPTY: &str =
+    "Pick up to two runs with the + on a cell to overlay their equity curves here.";
+
+/// Caption under the overlay chart naming which run is which colour. The
+/// `{primary}` / `{compare}` placeholders are filled with the selected cells'
+/// strategy × pair labels at render time.
+pub const COMPARE_OVERLAY_LEGEND_PRIMARY: &str = "Run A";
+
+/// Second-slot legend label (the `ACCENT_2` curve).
+pub const COMPARE_OVERLAY_LEGEND_COMPARE: &str = "Run B";
+
+/// Coloured swatch glyph (filled circle) prefixing each overlay legend entry.
+/// Decorative — tinted `ACCENT` / `ACCENT_2` at render time to match the curve.
+pub const COMPARE_OVERLAY_LEGEND_SWATCH: &str = "\u{25CF}"; // ●
+
+/// Shown in the overlay panel when a selected run has no companion equity CSV
+/// (an older committed report) — so its curve cannot be drawn. Explains why
+/// the overlay is missing a line rather than failing silently.
+pub const COMPARE_OVERLAY_NO_SERIES: &str =
+    "A selected run has no saved equity curve (older report) — re-run it in Lab to overlay.";
+
 /// Short label for the Sharpe ratio delta column of the `run_delta_badge` (R8.2 / D5).
 /// Shows the change in annualised Sharpe ratio between the last two runs.
 pub const RUN_DELTA_BADGE_SHARPE_LABEL: &str = "SR";
@@ -1570,6 +1611,28 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_NO_PAIR_HINT", LAB_NO_PAIR_HINT),
         ("STRATEGY_CHIP_COMPARE_ADD", STRATEGY_CHIP_COMPARE_ADD),
         ("STRATEGY_CHIP_COMPARE_REMOVE", STRATEGY_CHIP_COMPARE_REMOVE),
+        // lab-compare-equity-overlay T2 — two-run equity overlay
+        ("COMPARE_CELL_OVERLAY_ADD", COMPARE_CELL_OVERLAY_ADD),
+        (
+            "COMPARE_CELL_OVERLAY_SELECTED",
+            COMPARE_CELL_OVERLAY_SELECTED,
+        ),
+        ("COMPARE_CELL_OVERLAY_HINT", COMPARE_CELL_OVERLAY_HINT),
+        ("COMPARE_OVERLAY_TITLE", COMPARE_OVERLAY_TITLE),
+        ("COMPARE_OVERLAY_EMPTY", COMPARE_OVERLAY_EMPTY),
+        (
+            "COMPARE_OVERLAY_LEGEND_PRIMARY",
+            COMPARE_OVERLAY_LEGEND_PRIMARY,
+        ),
+        (
+            "COMPARE_OVERLAY_LEGEND_COMPARE",
+            COMPARE_OVERLAY_LEGEND_COMPARE,
+        ),
+        (
+            "COMPARE_OVERLAY_LEGEND_SWATCH",
+            COMPARE_OVERLAY_LEGEND_SWATCH,
+        ),
+        ("COMPARE_OVERLAY_NO_SERIES", COMPARE_OVERLAY_NO_SERIES),
         ("DATE_RANGE_SEPARATOR", DATE_RANGE_SEPARATOR),
         ("DATE_RANGE_CUSTOM_LABEL", DATE_RANGE_CUSTOM_LABEL),
         ("DATE_RANGE_START_PLACEHOLDER", DATE_RANGE_START_PLACEHOLDER),

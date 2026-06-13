@@ -16,4 +16,4 @@
 pub mod cache;
 pub mod state;
 
-pub use state::{CachedCell, CompareKpiAxis, CompareScreenState};
+pub use state::{CachedCell, CompareKpiAxis, CompareScreenState, OverlaySlot};

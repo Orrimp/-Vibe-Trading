@@ -175,6 +175,7 @@ fn extract_kpis_from_body(
     frontmatter: &BTreeMap<SmolStr, SmolStr>,
     source_path: &str,
     is_multi_symbol: bool,
+    equity_series_ts: Vec<(i64, rust_decimal::Decimal)>,
 ) -> Option<CachedCell> {
     // Skip the frontmatter block via a LINE-based scan to the closing `---`
     // delimiter line.
@@ -246,6 +247,12 @@ fn extract_kpis_from_body(
         max_drawdown_pct,
         trade_count,
         equity_curve_tail,
+        // lab-compare-equity-overlay T1: the full timestamped per-bar series
+        // from the report's companion equity CSV (empty for start-end-only
+        // cells — older committed reports have no companion). Resolved by the
+        // caller via `equity_loader::load_companion_equity_csv` so the Compare
+        // overlay reads the EXACT series the Lab cold path does.
+        equity_series_ts,
         source_report_path: SmolStr::new(source_path),
         generated_at,
         is_multi_symbol,
@@ -465,7 +472,20 @@ fn scan_one_root(
                     |p| p.to_string_lossy().to_string(),
                 );
 
-            let Some(cell) = extract_kpis_from_body(&content, &fm, &source_path, is_multi) else {
+            // lab-compare-equity-overlay T1: hydrate the cell's timestamped
+            // per-bar series from the companion equity CSV beside this report
+            // (`backtest-<stamp>-<scenario>-equity.csv`), via the SAME loader
+            // the Lab cold path uses. Graceful fallback: a missing/unparseable
+            // companion yields an empty series — the overlay simply has nothing
+            // to draw for this cell (no fake curve, no panic). Older committed
+            // `spec/` reports without a companion CSV stay overlay-blank.
+            let equity_series_ts =
+                crate::lab::equity_loader::load_companion_equity_csv(&report_path)
+                    .unwrap_or_default();
+
+            let Some(cell) =
+                extract_kpis_from_body(&content, &fm, &source_path, is_multi, equity_series_ts)
+            else {
                 tracing::warn!("compare::cache: no KPI table in {}", report_path.display());
                 continue;
             };
@@ -539,29 +559,29 @@ strategy:
     fn parses_flat_kv() {
         let fm = parse_frontmatter(FLAT_FRONTMATTER).expect("should parse");
         assert_eq!(
-            fm.get("scenario").map(|s| s.as_str()),
+            fm.get("scenario").map(SmolStr::as_str),
             Some("btc-2023-1m-sma-cross")
         );
         assert_eq!(
-            fm.get("generated").map(|s| s.as_str()),
+            fm.get("generated").map(SmolStr::as_str),
             Some("2026-04-29T19:51:48Z")
         );
-        assert_eq!(fm.get("seed").map(|s| s.as_str()), Some("0xC0FFEE"));
+        assert_eq!(fm.get("seed").map(SmolStr::as_str), Some("0xC0FFEE"));
     }
 
     #[test]
     fn parses_strategy_block() {
         let fm = parse_frontmatter(FLAT_FRONTMATTER).expect("should parse");
         assert_eq!(
-            fm.get("strategy.id").map(|s| s.as_str()),
+            fm.get("strategy.id").map(SmolStr::as_str),
             Some("btc_sma_cross")
         );
         assert_eq!(
-            fm.get("strategy.kind").map(|s| s.as_str()),
+            fm.get("strategy.kind").map(SmolStr::as_str),
             Some("sma_crossover")
         );
         assert_eq!(
-            fm.get("strategy.source").map(|s| s.as_str()),
+            fm.get("strategy.source").map(SmolStr::as_str),
             Some("config/strategies/btc_sma.toml")
         );
     }
@@ -732,6 +752,119 @@ strategy:
             (btc.sharpe - 0.99).abs() < 1e-9,
             "identical filename: lab-runs copy (0.99) must win, not spec (0.11); got {}",
             btc.sharpe
+        );
+    }
+
+    // ── lab-compare-equity-overlay T1 — CachedCell timestamped series ──────────
+
+    /// Write a companion equity CSV (`<stem>-equity.csv`) beside an `.md` report
+    /// via the PRODUCTION `reports::csv_artifacts::write_equity_csv` schema, so
+    /// the scanner reads the exact format the Lab persistence path writes.
+    fn write_companion_csv(dir: &std::path::Path, md_fname: &str, points: &[(i64, f64)]) {
+        use reports::csv_artifacts::{EquitySample, write_equity_csv};
+        use rust_decimal::Decimal;
+        use std::str::FromStr;
+        use trading_core::Timestamp;
+
+        let stem = md_fname.strip_suffix(".md").unwrap();
+        let csv_path = dir.join(format!("{stem}-equity.csv"));
+        let samples: Vec<EquitySample> = points
+            .iter()
+            .map(|(ts_ms, eq)| EquitySample {
+                ts: Timestamp::new(
+                    time::OffsetDateTime::UNIX_EPOCH + time::Duration::milliseconds(*ts_ms),
+                ),
+                equity_total: Decimal::from_str(&format!("{eq:.2}")).unwrap(),
+                realized_pnl: Decimal::ZERO,
+                unrealized_pnl: Decimal::ZERO,
+                cash_balance: Decimal::from_str(&format!("{eq:.2}")).unwrap(),
+            })
+            .collect();
+        write_equity_csv(&csv_path, &samples).unwrap();
+    }
+
+    /// T1 / R1 — a report WITH a companion equity CSV hydrates the cell's
+    /// `equity_series_ts` with the full timestamped per-bar series (PerBar
+    /// fidelity), preserving timestamps + Decimal money. This is the series that
+    /// feeds the two-run overlay (`equity_curve_tail` alone has no x-axis).
+    #[test]
+    fn cell_hydrates_timestamped_series_from_companion_csv() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lab_runs = tmp.path().join("lab-runs");
+        let reports_dir = lab_runs.join("v0-paper-sma").join("reports");
+        let md_fname = "backtest-20260601-120000-btc-2023-1m-sma-cross.md";
+
+        write_report(
+            &reports_dir,
+            md_fname,
+            &btc_report("2026-06-01T12:00:00Z", "0.94"),
+        );
+        // Companion CSV with a 4-point timestamped series.
+        write_companion_csv(
+            &reports_dir,
+            md_fname,
+            &[
+                (1_700_000_000_000, 100_000.0),
+                (1_700_000_060_000, 100_800.0),
+                (1_700_000_120_000, 99_500.0),
+                (1_700_000_180_000, 103_100.0),
+            ],
+        );
+
+        let roots = [lab_runs];
+        let cache = scan_report_roots(&roots);
+        let btc = cache
+            .get(&(
+                SmolStr::new("btc_sma_cross"),
+                Symbol::new("BTCUSDT"),
+                DateRange::default(),
+            ))
+            .expect("BTC cell present");
+
+        assert_eq!(
+            btc.equity_series_ts.len(),
+            4,
+            "companion CSV must hydrate the full per-bar timestamped series"
+        );
+        // Timestamps preserved, oldest-first.
+        assert_eq!(btc.equity_series_ts[0].0, 1_700_000_000_000);
+        assert_eq!(btc.equity_series_ts[3].0, 1_700_000_180_000);
+        // Money is Decimal, exact.
+        assert_eq!(
+            btc.equity_series_ts[0].1,
+            "100000.00".parse::<rust_decimal::Decimal>().unwrap()
+        );
+        assert_eq!(
+            btc.equity_series_ts[3].1,
+            "103100.00".parse::<rust_decimal::Decimal>().unwrap()
+        );
+    }
+
+    /// T1 / R1 graceful fallback — a report with NO companion CSV (an older
+    /// committed `spec/` report) yields an EMPTY `equity_series_ts`. The cell
+    /// still populates its KPIs; the overlay simply has nothing to draw for it
+    /// (no fake curve, no panic).
+    #[test]
+    fn cell_without_companion_csv_has_empty_timestamped_series() {
+        let tmp = tempfile::tempdir().unwrap();
+        let spec = tmp.path().join("spec");
+        write_report(
+            &spec.join("v0-paper-sma").join("reports"),
+            "backtest-20260101-000000-btc-2023-1m-sma-cross.md",
+            &btc_report("2026-01-01T00:00:00Z", "0.55"),
+        );
+        let cache = scan_spec_tree(&spec);
+        let btc = cache
+            .get(&(
+                SmolStr::new("btc_sma_cross"),
+                Symbol::new("BTCUSDT"),
+                DateRange::default(),
+            ))
+            .expect("BTC cell present");
+        assert_eq!(btc.sharpe, 0.55, "KPIs still populate without a companion");
+        assert!(
+            btc.equity_series_ts.is_empty(),
+            "no companion CSV → empty timestamped series (graceful fallback)"
         );
     }
 

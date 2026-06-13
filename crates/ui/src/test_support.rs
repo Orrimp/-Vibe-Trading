@@ -157,6 +157,87 @@ impl TestApp {
     }
 }
 
+/// lab-compare-equity-overlay T3 — render-layer harness for the **real Compare
+/// screen body** (`screens::compare::view`), the production path that hydrates
+/// the two-run equity overlay from each selected cell's `CachedCell`.
+///
+/// Unlike [`chart_overlay_program`] (which feeds the bare `chart::view` widget
+/// directly), this renders `screens::compare::view(&cockpit, …)` — so it
+/// exercises the ACTUAL screen code: `overlay_panel` reads
+/// `compare_screen_state.overlay_selection`, resolves each slot's `CachedCell`,
+/// builds `LabEquitySeries::from_samples` from the companion-CSV-hydrated
+/// `equity_series_ts`, and calls `chart::view` with `equity`=slot 0 / `compare`
+/// =[slot 1]. The matrix above the chart is omitted from the count by cropping
+/// to the chart band; the bare body (no shell sidebar) keeps stray `ACCENT`
+/// chrome out of the classifier.
+#[must_use]
+pub fn compare_screen_program(
+    cockpit: Cockpit,
+) -> iced::Application<
+    impl iced::Program<State = CompareScreenApp, Message = Message, Theme = iced::Theme>,
+> {
+    let boot = move || {
+        (
+            CompareScreenApp {
+                cockpit: cockpit.clone(),
+            },
+            iced::Task::none(),
+        )
+    };
+    iced::application(boot, CompareScreenApp::update, CompareScreenApp::view)
+        .title(CompareScreenApp::title)
+        .theme(CompareScreenApp::theme)
+}
+
+/// Test app whose `view` is the bare Compare screen body (no shell chrome) so
+/// the screenshot frames the matrix + overlay without the sidebar's `ACCENT`
+/// active-item highlight leaking into the curve-pixel classifier.
+pub struct CompareScreenApp {
+    cockpit: Cockpit,
+}
+
+impl Default for CompareScreenApp {
+    fn default() -> Self {
+        Self {
+            cockpit: Cockpit::new(),
+        }
+    }
+}
+
+impl CompareScreenApp {
+    #[must_use]
+    pub fn title(&self) -> String {
+        crate::strings::APP_TITLE.to_string()
+    }
+
+    #[must_use]
+    pub fn theme(&self) -> iced::Theme {
+        iced::Theme::Dark
+    }
+
+    pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
+        update(&mut self.cockpit, msg);
+        iced::Task::none()
+    }
+
+    /// View — the real Compare screen body, full-bleed in a `PANEL`-background
+    /// container.
+    #[must_use]
+    pub fn view(&self) -> iced::Element<'_, Message> {
+        use iced::Length;
+        use iced::widget::{Container, container};
+        let body = crate::screens::compare::view(&self.cockpit, ThemeMode::Dark);
+        Container::new(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_theme: &iced::Theme| container::Style {
+                background: Some(crate::theme::color::PANEL.current(ThemeMode::Dark).into()),
+                ..Default::default()
+            })
+            .into()
+    }
+}
+
 /// lab-run-save-compare T7 — render-layer harness for the Lab/Compare equity
 /// **overlay** widget (`widgets::chart`), the curve R5 diffs two persisted runs
 /// on. Builds a one-screen iced `Program` whose `view` is exactly the

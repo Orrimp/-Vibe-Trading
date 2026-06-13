@@ -27,7 +27,8 @@ use crate::compare::state::CompareKpiAxis;
 use crate::lab::state::DateRange;
 use crate::state::{Cockpit, Message, StrategyConfigEntry};
 use crate::strings::{
-    COMPARE_CELL_BLANKED_LABEL, COMPARE_CELL_RUN_LABEL, COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE,
+    COMPARE_CELL_BLANKED_LABEL, COMPARE_CELL_OVERLAY_ADD, COMPARE_CELL_OVERLAY_HINT,
+    COMPARE_CELL_OVERLAY_SELECTED, COMPARE_CELL_RUN_LABEL, COMPARE_KPI_UNIVERSE_AGGREGATE_NOTE,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 
@@ -194,6 +195,14 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
                 let key = (strategy_id.clone(), col_sym.clone(), range.clone());
                 if let Some(cached) = cache.get(&key) {
                     // Populated cell.
+                    // lab-compare-equity-overlay T2 — the cell's slot in the
+                    // overlay ring (`Some(0)` ⇒ ACCENT, `Some(1)` ⇒ ACCENT_2,
+                    // `None` ⇒ not selected) drives the `+`/✓ chip styling.
+                    let overlay_idx = model.compare_screen_state.overlay_slot_index(&key);
+                    // Only cells that actually carry a timestamped series can be
+                    // overlaid; a cell with no companion CSV gets no chip (its
+                    // curve cannot draw) — honest affordance, no dead button.
+                    let has_series = !cached.equity_series_ts.is_empty();
                     populated_cell(
                         cached.sharpe,
                         cached.is_multi_symbol,
@@ -201,6 +210,8 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
                         strategy_id.clone(),
                         col_sym.clone(),
                         range.clone(),
+                        overlay_idx,
+                        has_series,
                         mode,
                     )
                 } else {
@@ -255,9 +266,22 @@ fn build_header_row<'a>(column_symbols: &[Symbol], mode: ThemeMode) -> Element<'
     row.into()
 }
 
-/// Populated cell: Sharpe KPI text + hairline border + hover tint.
-/// K7 tooltip wraps the cell when `is_multi_symbol == true` (§1.4).
-#[allow(clippy::needless_pass_by_value)]
+/// Populated cell: Sharpe KPI text + hairline border + hover tint, with a
+/// compact overlay-select chip (lab-compare-equity-overlay T2 / Q1) in the
+/// top-right corner. K7 tooltip wraps the cell when `is_multi_symbol == true`
+/// (§1.4).
+///
+/// - The KPI text is the PRIMARY click → `OpenLabFromCompare` (drill into Lab —
+///   unchanged from v0.1.0; H5 round-trip stays green).
+/// - The `+`/✓ chip → `CompareToggleOverlay` adds/removes this run from the
+///   two-run equity overlay below the matrix. Rendered only when the cell has a
+///   timestamped series (`has_series`) — a curve with no companion CSV cannot
+///   be overlaid, so no dead button is shown.
+#[allow(
+    clippy::needless_pass_by_value,
+    clippy::fn_params_excessive_bools,
+    clippy::too_many_arguments
+)]
 fn populated_cell<'a>(
     sharpe: f64,
     is_multi_symbol: bool,
@@ -265,6 +289,8 @@ fn populated_cell<'a>(
     strategy_id: SmolStr,
     symbol: Symbol,
     range: DateRange,
+    overlay_idx: Option<usize>,
+    has_series: bool,
     mode: ThemeMode,
 ) -> Element<'a, Message> {
     // v0.1.0: only Sharpe is wired (Q3=a). Other axes fall back to Sharpe.
@@ -283,14 +309,14 @@ fn populated_cell<'a>(
     let sym_clone = symbol.clone();
     let range_clone = range.clone();
 
-    let inner = Button::new(Text::new(sharpe_label).size(text::BODY).color(kpi_color))
+    let kpi_btn = Button::new(Text::new(sharpe_label).size(text::BODY).color(kpi_color))
         .on_press(Message::OpenLabFromCompare {
             strategy: trading_core::StrategyId::new(strat_clone),
             pair: Some((Venue::Binance, sym_clone)),
             range: range_clone,
         })
-        .width(Length::Fixed(CELL_MIN_W))
-        .height(Length::Fixed(CELL_MIN_H))
+        .width(Length::Fill)
+        .height(Length::Fill)
         .padding(Padding::from([space::XS as u16, space::S as u16]))
         .style(move |_theme: &iced::Theme, status: button::Status| {
             let bg = match status {
@@ -315,6 +341,33 @@ fn populated_cell<'a>(
             }
         });
 
+    // Compose the KPI button + the overlay-select chip (when a series exists).
+    // The chip floats in the cell's top-right via a right-aligned Row stacked
+    // over the KPI button in a fixed-size container.
+    let inner: Element<'a, Message> = if has_series {
+        let chip = overlay_select_chip(strategy_id, symbol, range, overlay_idx, mode);
+        let chip_row = Row::new()
+            .width(Length::Fill)
+            .push(iced::widget::Space::new().width(Length::Fill))
+            .push(chip);
+        Container::new(
+            iced::widget::Stack::new().push(kpi_btn).push(
+                Container::new(chip_row)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(Padding::from([1u16, 2u16])),
+            ),
+        )
+        .width(Length::Fixed(CELL_MIN_W))
+        .height(Length::Fixed(CELL_MIN_H))
+        .into()
+    } else {
+        Container::new(kpi_btn)
+            .width(Length::Fixed(CELL_MIN_W))
+            .height(Length::Fixed(CELL_MIN_H))
+            .into()
+    };
+
     if is_multi_symbol {
         // K7 tooltip — §1.4 of decomp.md.
         Tooltip::new(
@@ -338,6 +391,87 @@ fn populated_cell<'a>(
     } else {
         inner.into()
     }
+}
+
+/// Compact overlay-select chip in a populated cell's top-right corner
+/// (lab-compare-equity-overlay T2 / Q1). Emits [`Message::CompareToggleOverlay`]
+/// with the cell's `(strategy, symbol, range)` identity.
+///
+/// Visual state:
+/// - **Unselected** (`overlay_idx == None`): a muted `+` — "add to overlay".
+/// - **Slot 0** (`Some(0)`): a `✓` in `ACCENT` — the primary overlay curve.
+/// - **Slot 1** (`Some(1)`): a `✓` in `ACCENT_2` — the second overlay curve.
+///
+/// Colour is paired with the glyph (`+` vs `✓`), so selection is never
+/// signalled by colour alone (accessibility — colour is not the only signal).
+#[allow(clippy::needless_pass_by_value)]
+fn overlay_select_chip<'a>(
+    strategy_id: SmolStr,
+    symbol: Symbol,
+    range: DateRange,
+    overlay_idx: Option<usize>,
+    mode: ThemeMode,
+) -> Element<'a, Message> {
+    // Slot → colour: 0 = ACCENT (primary), 1 = ACCENT_2 (compare). Mirrors the
+    // `chart::view` overlay (equity = ACCENT, compare[0] = ACCENT_2).
+    let chip_color = match overlay_idx {
+        Some(0) => color::ACCENT.current(mode),
+        Some(_) => color::ACCENT_2.current(mode),
+        None => color::FG_4.current(mode),
+    };
+    let glyph = if overlay_idx.is_some() {
+        COMPARE_CELL_OVERLAY_SELECTED
+    } else {
+        COMPARE_CELL_OVERLAY_ADD
+    };
+    let slot = (strategy_id, symbol, range);
+
+    let chip = Button::new(Text::new(glyph).size(text::MICRO).color(chip_color))
+        .on_press(Message::CompareToggleOverlay(slot))
+        .padding(Padding::from([0u16, 3u16]))
+        .style(move |_theme: &iced::Theme, status: button::Status| {
+            let bg = match (overlay_idx.is_some(), status) {
+                (true, _) => Some(color::PANEL_RAISED.current(mode).into()),
+                (false, button::Status::Hovered | button::Status::Pressed) => {
+                    Some(color::PANEL_RAISED.current(mode).into())
+                }
+                _ => None,
+            };
+            button::Style {
+                background: bg,
+                text_color: chip_color,
+                border: Border {
+                    color: if overlay_idx.is_some() {
+                        chip_color
+                    } else {
+                        color::BORDER_1.current(mode)
+                    },
+                    width: 1.0,
+                    radius: radius::R1.into(),
+                },
+                ..Default::default()
+            }
+        });
+
+    // Tooltip explains the affordance in plain language.
+    Tooltip::new(
+        chip,
+        Text::new(COMPARE_CELL_OVERLAY_HINT)
+            .size(text::MICRO)
+            .color(color::FG_2.current(mode)),
+        tooltip::Position::Top,
+    )
+    .style(move |_| container::Style {
+        background: Some(color::OVERLAY.current(mode).into()),
+        border: Border {
+            color: color::BORDER_1.current(mode),
+            width: 1.0,
+            radius: radius::R2.into(),
+        },
+        text_color: Some(color::FG_2.current(mode)),
+        ..Default::default()
+    })
+    .into()
 }
 
 /// Empty-but-legal cell: centred "Run" button with `ACCENT_500` hairline (Q4=b).
