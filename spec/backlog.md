@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-06-12
+updated: 2026-06-13
 ---
 <!-- updated 2026-05-29 (analyst, pick-c-orchestrator-hygiene-compounder-trio M0 close) —
      promoted Queue → Active THREE features under Pick C Wave 1 of the
@@ -3314,6 +3314,33 @@ Cohorts through 2026-06-08 are archived in
 [archive/backlog-recent-2026-05.md](archive/backlog-recent-2026-05.md)
 (2026-06-11 cleanup sweep, `CLEANUP-PLAN.md` P2-3). New shipped entries
 land below as features ship.
+
+### 2026-06-12 → 2026-06-13 cohort — live trading removed; Lab → real-data strategy-checking tool
+
+- **Live execution REMOVED from the project** (`c9c4561`, operator decision
+  2026-06-12). The full live-money program (scoped → architected ADR-0054 →
+  built to F1 `live-exec-client-binance-spot`, tester PASS) was reverted the
+  same day at the operator's direction — "no live trading for a long time."
+  Method: restore every touched file to the pre-live `a063d79` + delete the
+  live files (byte-exact; recoverable from git history at `edbbb10`/`dc3ef58`).
+  ADR-0054 withdrawn (next NEW ADR = 0055). **KEPT in scope:** real market data
+  (Binance read-only feed, Yahoo, parquet) for backtesting, paper simulation,
+  the cockpit Live view. Record: `spec/dev-notes/live-trading-removed-2026-06-12.md`.
+- **lab-run-save-compare SHIPPED** (ADR-0055; `e13cb6c`; operator-approved
+  2026-06-13) — the cockpit Lab is now a real-data strategy-checking tool: run
+  a strategy on the on-disk Binance data → it PERSISTS to a git-ignored
+  `lab-runs/` cache (full-fidelity companion equity CSV; anchor-safe — outside
+  the `verify_anchors.sh` glob) → the curve repaints from disk → Compare diffs
+  KPIs. Headline: the `lab_run_engine::h3` test flipped skip → PASS (21,601
+  equity points round-trip, in-memory == cached-disk). 712 tests, anchors
+  119/119.
+- **lab-compare-equity-overlay SHIPPED** (`53d5112`; operator-approved
+  2026-06-13) — completes the "compare = KPIs + equity overlay" ask: select two
+  persisted Lab runs (a `+` chip on the Compare matrix) and overlay their
+  equity curves on one chart (ACCENT + ACCENT_2). The visual-regression gate
+  correctly caught + rebased 12 stale Compare baselines. 626 tests, H3 intact.
+- **Test health: still ZERO known red/flaky tests on `main`**; anchors held at
+  119/119 across every ship; spec-lint steady at the 70 baseline.
 
 ### 2026-06-09 → 2026-06-12 cohort — cockpit Live completion + repo cleanup
 
