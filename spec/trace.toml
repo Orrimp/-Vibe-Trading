@@ -2912,5 +2912,11 @@ arch        = [
   "spec/lab-compare-equity-overlay/tasks.md",
   "spec/architecture/adr/0055-lab-run-persistence-topology-and-anchor-safety.md",
 ]
+tests       = [
+  "crates/ui/tests/live_equity_render.rs::compare_screen_two_run_overlay_renders_both_series",
+  "crates/ui/tests/live_equity_render.rs::compare_screen_single_run_overlay_draws_no_accent2",
+  "crates/ui/tests/live_equity_render.rs::diag_compare_screen_overlay_pixel_counts",
+  "crates/ui/tests/lab_run_engine.rs::inner::h3_in_memory_equals_cached_disk",
+]
 anchors     = []   # UI-only; no backtest scenario; 119/119 unchanged (AC3 tripwire).
-state       = "arch-done"
+state       = "shipped"   # operator approved 2026-06-13 (deck same day). Completes lab-run-save-compare R5. Was: tester-done.

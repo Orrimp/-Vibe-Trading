@@ -1,0 +1,24 @@
+
+test compare_screen_single_run_overlay_draws_no_accent2 ... ok
+test compare_screen_two_run_overlay_renders_both_series ... ok
+test compare_two_run_overlay_renders_both_series ... ok
+test diag_accent_bounding_box ... [diag] ACCENT pixels in crop (220..1200,130..420): count=1198 bbox=(252..1199, 202..376)
+[diag] frame size = 1280x720, ACCENT rgb (dark) = (111, 182, 174)
+ok
+test diag_compare_screen_overlay_pixel_counts ... [diag] cell A series len=6 ; cell B series len=6
+[diag] Compare-screen overlay chart band (y≥470): ACCENT=1351 ACCENT_2=841
+ok
+test diag_overlay_curve_pixel_counts ... [diag] bars-only (no equity): ACCENT=2610 ACCENT_2=13; single-run overlay: ACCENT=3894 ACCENT_2=13; two-run overlay: ACCENT=3643 ACCENT_2=746
+ok
+test flat_and_single_point_curves_render_without_panic ... ok
+test harness_catches_dropped_points_empty_curve ... ok
+test healthy_curve_draws_far_more_than_broken ... ok
+test hydrated_boot_curve_actually_renders ... ok
+test lab_curve_hydrated_from_lab_runs_report_renders ... ok
+test live_append_after_hydrate_still_renders_and_grows ... ok
+test live_equity_curve_actually_renders ... ok
+test single_run_overlay_draws_no_accent2 ... ok
+test y_variation_gate_moving_passes_flat_fails ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.57s
+

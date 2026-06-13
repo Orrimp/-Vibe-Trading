@@ -1,6 +1,6 @@
 ---
 slug: lab-compare-equity-overlay
-status: arch-done
+status: shipped
 owner: orchestrator
 updated: 2026-06-13
 version: 0.1.0
@@ -13,16 +13,16 @@ ADR-0055 § R5). Single ui-designer track → tester. No engine change.
 
 ## UI track (ui-designer)
 
-- [ ] **T1 — `CachedCell` timestamped series (R1).** Add a timestamped
+- [x] **T1 — `CachedCell` timestamped series (R1).** Add a timestamped
   equity-series field to `CachedCell` (`crates/ui/src/compare/cache.rs`),
   populated from the CSV-backed `LabEquitySeries`
   (`equity_loader::load_companion_equity_csv` → PerBar). Graceful fallback for
   start-end-only cells. _Gate: `cargo test -p ui --lib`._
-- [ ] **T2 — Two-run selection + overlay wiring (R2 / Q1).** Decide the
+- [x] **T2 — Two-run selection + overlay wiring (R2 / Q1).** Decide the
   selection UX (Q1 — recommend reusing the Compare matrix cells/columns), wire
   the render-proven overlay widget so two selected runs draw on one chart in
   ACCENT / ACCENT_2. _Gate: `cargo test -p ui --features fixtures`._
-- [ ] **T3 — Render proof (R3 / AC1-AC2 — THE gate).** Extend
+- [x] **T3 — Render proof (R3 / AC1-AC2 — THE gate).** Extend
   `crates/ui/tests/live_equity_render.rs`: the overlay hydrates from TWO real
   companion-CSV-backed `lab-runs/` fixtures through the production path; assert
   both series rasterize (ACCENT + ACCENT_2 each ≥ threshold) and a single-run
@@ -31,7 +31,7 @@ ADR-0055 § R5). Single ui-designer track → tester. No engine change.
 
 ## Tester wave
 
-- [ ] **T4 — Close-out (AC3).** Full ui suites green (`--lib`, `--features
+- [x] **T4 — Close-out (AC3).** Full ui suites green (`--lib`, `--features
   fixtures`, `live_equity_render`, `panel_snapshots`) + H3 still passes
   (`--features live --test lab_run_engine` — no loader regression);
   `verify_anchors.sh` 119/119 (UI-only tripwire); `cargo clippy -p ui --tests`
